@@ -70,7 +70,7 @@ send(Email, Options, Callback) ->
 		lists:sort(?DEFAULT_OPTIONS)),
 	case check_options(NewOptions) of
 		ok when is_function(Callback) ->
-			spawn(fun() ->
+			Pid = spawn(fun() ->
 						process_flag(trap_exit, true),
 						Pid = spawn_link(fun() ->
 									send_it_nonblock(Email, NewOptions, Callback)
@@ -85,7 +85,8 @@ send(Email, Options, Callback) ->
 										Callback({exit, Error})
 								end
 						end
-				end);
+				end),
+			{ok, Pid};
 		ok ->
 			Pid = spawn_link(fun () ->
 						send_it_nonblock(Email, NewOptions, Callback)
