@@ -73,7 +73,7 @@ init([#rep{source = SrcBucketBinary} = Rep]) ->
                    (_Evt) ->
                         ok
                 end,
-
+    RepMode = xdc_rep_utils:get_replication_mode(),
     {ok, _} = couch_db_update_notifier:start_link(NotifyFun),
     ?xdcr_debug("couch_db update notifier started", []),
     {ok, InitThrottle} = concurrency_throttle:start_link(MaxConcurrentReps, self()),
@@ -85,6 +85,7 @@ init([#rep{source = SrcBucketBinary} = Rep]) ->
         {ok, SrcBucketConfig} ->
             Vbs = xdc_rep_utils:my_active_vbuckets(SrcBucketConfig),
             RepState0 = #replication{rep = Rep,
+                                     mode = RepMode,
                                      vbs = Vbs,
                                      num_tokens = MaxConcurrentReps,
                                      init_throttle = InitThrottle,
@@ -95,6 +96,7 @@ init([#rep{source = SrcBucketBinary} = Rep]) ->
             ?xdcr_error("fail to fetch a valid bucket config and no vb replicator "
                         "would be created (error: ~p)", [Error]),
             RepState = #replication{rep = Rep,
+                                    mode = RepMode,
                                     num_tokens = MaxConcurrentReps,
                                     init_throttle = InitThrottle,
                                     work_throttle = WorkThrottle,
@@ -384,6 +386,7 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 start_vb_replicators(#replication{rep = Rep,
+                                  mode = RepMode,
                                   vbucket_sup = Sup,
                                   init_throttle = InitThrottle,
                                   work_throttle = WorkThrottle,
@@ -408,7 +411,8 @@ start_vb_replicators(#replication{rep = Rep,
                                                                            Vb,
                                                                            InitThrottle,
                                                                            WorkThrottle,
-                                                                           self())
+                                                                           self(),
+                                                                           RepMode)
                 end, misc:shuffle(NewVbs)),
     Replication#replication{vb_rep_dict = Dict2}.
 

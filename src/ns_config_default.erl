@@ -76,6 +76,17 @@ default() ->
      %% when doc body size is no greater than the threshold
      {xdcr_optimistic_replication_threshold, 256},
 
+     %% xdcr replication mode:
+     %% "capi": replicating to ns_server:capi_replication layer
+     %% "xmem": replciating to mecached directly
+     {xdcr_replication_mode, "xmem"},
+     %% # of worker processes per vb rep xmem server
+     {xdcr_xmem_worker, 1},
+     %% enable pipelined memcached operations
+     {xdcr_enable_pipeline_ops, true},
+     %% inverse of probability to dump non-critical trace
+     {xdcr_trace_dump_inverse_prob, 1000},
+
      {directory, path_config:component_path(data, "config")},
      {index_aware_rebalance_disabled, false},
      {max_bucket_count, 10},
