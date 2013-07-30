@@ -303,9 +303,22 @@ dump_parameters() ->
     {value, DefaultRestartWaitTime} = ns_config:search(xdcr_failure_restart_interval),
     RestartWaitTime = misc:getenv_int("XDCR_FAILURE_RESTART_INTERVAL", DefaultRestartWaitTime),
 
+    RepMode  = xdc_rep_utils:get_replication_mode(),
     OptRepThreshold = xdc_rep_utils:get_opt_replication_threshold(),
 
+    {NumXMemWorker, Pipeline}
+        = case RepMode of
+              "xmem" ->
+                  DefNumXMemWorker = xdc_rep_utils:get_xmem_worker(),
+                  EnablePipeline = xdc_rep_utils:enable_pipeline_ops(),
+                  {DefNumXMemWorker, EnablePipeline};
+              _ ->
+                  {undefined, undefined}
+          end,
+
     ?xdcr_debug("default XDCR parameters:~n \t"
+                "replication mode: ~p (pipleline: ~p, "
+                "num xmem worker per vb replicator: ~p);~n \t"
                 "optimistic replication threshold: ~p bytes;~n \t"
                 "number of max concurrent reps per bucket: ~p;~n \t"
                 "checkpoint interval in secs: ~p;~n \t"
@@ -315,7 +328,10 @@ dump_parameters() ->
                 "max number HTTP connections per vb replicator: ~p;~n \t"
                 "max number retries per connection: ~p;~n \t"
                 "vb replicator waiting time before restart: ~p ",
-               [OptRepThreshold,
+               [RepMode,
+                Pipeline,
+                NumXMemWorker,
+                OptRepThreshold,
                 MaxConcurrentReps,
                 IntervalSecs,
                 DefBatchSize, DocBatchSizeKB,
