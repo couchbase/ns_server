@@ -32,8 +32,7 @@
          parse_settings_alerts_post/1,
          build_alerts_json/1]).
 
--export([alert_key/2,
-         category_bin/1]).
+-export([category_bin/1]).
 
 -import(menelaus_util,
         [reply_json/2]).
@@ -286,8 +285,6 @@ category_bin(warn) -> <<"warning">>;
 category_bin(crit) -> <<"critical">>;
 category_bin(_)    -> <<"info">>.
 
-alert_key(auto_failover, Code) -> auto_failover:alert_key(Code);
-alert_key(_Module, _Code) -> all.
 
 common_params(Params) ->
     MinTStamp = case proplists:get_value("sinceTime", Params) of

@@ -161,18 +161,6 @@ handle_cast({log, Module, Node, Time, Code, Category, Fmt, Args},
                                args=Args, cat=Category, tstamp=Time},
             do_log(Entry),
 
-            %% note that if message has undefined code it will be logged with
-            %% 0 code (see do_log) but we still announce it here with actual
-            %% undefined code for subscribers to know that the original
-            %% message does not have a code attached to it; this will allow
-            %% subscribers, for example, just ignore such messages if it's
-            %% required by their context
-            try gen_event:notify(ns_log_events, {ns_log, Category, Module, Code,
-                                                 Fmt, Args})
-            catch _:Reason ->
-                    ?log_error("unable to notify listeners because of ~p",
-                               [Reason])
-            end,
             Dedup2 = dict:store(Key, {0, Time, Time}, Dedup),
             {noreply, State#state{dedup=Dedup2}, hibernate}
     end;

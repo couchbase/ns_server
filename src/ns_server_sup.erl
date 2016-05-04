@@ -83,8 +83,8 @@ child_specs() ->
      {memcached_permissions, {memcached_permissions, start_link, []},
       permanent, 1000, worker, []},
 
-     {ns_log_events, {gen_event, start_link, [{local, ns_log_events}]},
-      permanent, 1000, worker, dynamic},
+     {ns_email_alert, {ns_email_alert, start_link, []},
+      permanent, 1000, worker, [ns_email_alert]},
 
      {ns_node_disco_sup, {ns_node_disco_sup, start_link, []},
       permanent, infinity, supervisor,
@@ -101,9 +101,6 @@ child_specs() ->
 
      {buckets_events, {gen_event, start_link, [{local, buckets_events}]},
       permanent, 1000, worker, dynamic},
-
-     {ns_mail_sup, {ns_mail_sup, start_link, []},
-      permanent, infinity, supervisor, [ns_mail_sup]},
 
      {ns_stats_event, {gen_event, start_link, [{local, ns_stats_event}]},
       permanent, 1000, worker, dynamic},

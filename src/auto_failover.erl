@@ -59,27 +59,13 @@
 %% API
 -export([start_link/0, enable/3, disable/1, reset_count/0, reset_count_async/0]).
 %% For email alert notificatons
--export([alert_key/1, alert_keys/0]).
+-export([alert_keys/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
 -define(SERVER, {via, leader_registry, ?MODULE}).
-
-%% @doc Fired when a node was auto-failovered.
--define(EVENT_NODE_AUTO_FAILOVERED, 1).
-%% @doc Fired when the maximum number of nodes or server groups that can be
-%% automatically failed over has reached.
--define(EVENT_MAX_REACHED, 2).
-%% @doc Fired when another node is down while we were trying to failover
-%% a node
--define(EVENT_OTHER_NODES_DOWN, 3).
-%% @doc Fired when the cluster gets to small to do a safe auto-failover
--define(EVENT_CLUSTER_TOO_SMALL, 4).
-%% @doc Fired when a node is not auto-failedover because auto-failover
-%% for one of the services running on the node is disabled.
--define(EVENT_AUTO_FAILOVER_DISABLED, 5).
 
 %% @doc The time a stats request to a bucket may take (in milliseconds)
 -define(STATS_TIMEOUT, 2000).
@@ -184,13 +170,9 @@ cast(Call) ->
     misc:wait_for_global_name(?MODULE),
     gen_server:cast(?SERVER, Call).
 
--spec alert_key(Code::integer()) -> atom().
-alert_key(?EVENT_NODE_AUTO_FAILOVERED) -> auto_failover_node;
-alert_key(?EVENT_MAX_REACHED) -> auto_failover_maximum_reached;
-alert_key(?EVENT_OTHER_NODES_DOWN) -> auto_failover_other_nodes_down;
-alert_key(?EVENT_CLUSTER_TOO_SMALL) -> auto_failover_cluster_too_small;
-alert_key(?EVENT_AUTO_FAILOVER_DISABLED) -> auto_failover_disabled;
-alert_key(_) -> all.
+-define(log_info_and_email(Alert, Fmt, Args),
+        ale:info(?USER_LOGGER, Fmt, Args),
+        ns_email_alert:alert(Alert, Fmt, Args)).
 
 %% @doc Returns a list of all alerts that might send out an email notification.
 -spec alert_keys() -> [atom()].
@@ -410,26 +392,29 @@ update_state_max_count(Max, #state{max_count = CurrMax} = State) ->
 
 process_action({mail_too_small, Service, SvcNodes, {Node, _UUID}},
                S, _, _, _) ->
-    ?user_log(?EVENT_CLUSTER_TOO_SMALL,
-              "Could not auto-failover node (~p). "
-              "Number of remaining nodes that are running ~s service is ~p. "
-              "You need at least ~p nodes.",
-              [Node,
-               ns_cluster_membership:user_friendly_service_name(Service),
-               length(SvcNodes),
-               auto_failover_logic:service_failover_min_node_count(Service)]),
+    ?log_info_and_email(
+       auto_failover_cluster_too_small,
+       "Could not auto-failover node (~p). "
+       "Number of remaining nodes that are running ~s service is ~p. "
+       "You need at least ~p nodes.",
+       [Node,
+        ns_cluster_membership:user_friendly_service_name(Service),
+        length(SvcNodes),
+        auto_failover_logic:service_failover_min_node_count(Service)]),
     S;
 process_action({mail_down_warning, {Node, _UUID}}, S, _, _, _) ->
-    ?user_log(?EVENT_OTHER_NODES_DOWN,
-              "Could not auto-failover node (~p). "
-              "There was at least another node down.",
-              [Node]),
+    ?log_info_and_email(
+       auto_failover_other_nodes_down,
+       "Could not auto-failover node (~p). "
+       "There was at least another node down.",
+       [Node]),
     S;
 process_action({mail_auto_failover_disabled, Service, {Node, _}}, S, _, _, _) ->
-    ?user_log(?EVENT_AUTO_FAILOVER_DISABLED,
-              "Could not auto-failover node (~p). "
-              "Auto-failover for ~s service is disabled.",
-              [Node, ns_cluster_membership:user_friendly_service_name(Service)]),
+    ?log_info_and_email(
+       auto_failover_disabled,
+       "Could not auto-failover node (~p). "
+       "Auto-failover for ~s service is disabled.",
+       [Node, ns_cluster_membership:user_friendly_service_name(Service)]),
     S;
 process_action({failover, {Node, _UUID}}, S, DownNodes, NodeStatuses, Config) ->
     SG = ns_cluster_membership:get_node_server_group(Node, Config),
@@ -437,9 +422,10 @@ process_action({failover, {Node, _UUID}}, S, DownNodes, NodeStatuses, Config) ->
         {false, ErrMsg} ->
             case should_report(#state.reported_max_node_reached, S) of
                 true ->
-                    ?user_log(?EVENT_MAX_REACHED,
-                              "Could not auto-failover more nodes (~p). ~s",
-                              [Node, ErrMsg]),
+                    ?log_info_and_email(
+                       auto_failover_maximum_reached,
+                       "Could not auto-failover more nodes (~p). ~s",
+                       [Node, ErrMsg]),
                     note_reported(#state.reported_max_node_reached, S);
                 false ->
                     S
@@ -453,10 +439,11 @@ process_action({failover_group, SG, Nodes0}, S, DownNodes, NodeStatuses, _) ->
         {false, ErrMsg} ->
             case should_report(#state.reported_max_group_reached, S) of
                 true ->
-                    ?user_log(?EVENT_MAX_REACHED,
-                              "Could not auto-failover server group (~p) "
-                              "with nodes (~p). ~s",
-                              [binary_to_list(SG), Nodes, ErrMsg]),
+                    ?log_info_and_email(
+                       auto_failover_maximum_reached,
+                       "Could not auto-failover server group (~p) "
+                       "with nodes (~p). ~s",
+                       [binary_to_list(SG), Nodes, ErrMsg]),
                     note_reported(#state.reported_max_group_reached, S);
                 false ->
                     S
@@ -550,16 +537,18 @@ log_failover_success(Node, DownNodes, NodeStatuses) ->
     {_, DownInfo} = lists:keyfind(Node, 1, DownNodes),
     case DownInfo of
         unknown ->
-            ?user_log(?EVENT_NODE_AUTO_FAILOVERED,
-                      "Node (~p) was automatically failovered.~n~p",
-                      [Node, ns_doctor:get_node(Node, NodeStatuses)]);
+            ?log_info_and_email(
+               auto_failover_node,
+               "Node (~p) was automatically failed over.~n~p",
+               [Node, ns_doctor:get_node(Node, NodeStatuses)]);
         {Reason, MARes} ->
             MA = [atom_to_list(M) || M <- MARes],
             master_activity_events:note_autofailover_done(Node,
                                                           string:join(MA, ",")),
-            ?user_log(?EVENT_NODE_AUTO_FAILOVERED,
-                      "Node (~p) was automatically failed over. Reason: ~s",
-                      [Node, Reason])
+            ?log_info_and_email(
+               auto_failover_node,
+               "Node (~p) was automatically failed over. Reason: ~s",
+               [Node, Reason])
     end.
 
 process_failover_error({autofailover_unsafe, UnsafeBuckets}, Nodes, S) ->
@@ -582,9 +571,10 @@ process_failover_error(orchestration_unsafe, Nodes, S) ->
 report_failover_error(Flag, ErrMsg, Nodes, State) ->
     case should_report(Flag, State) of
         true ->
-            ?user_log(?EVENT_NODE_AUTO_FAILOVERED,
-                      "Could not automatically fail over nodes (~p). ~s",
-                      [Nodes, ErrMsg]),
+            ?log_info_and_email(
+               auto_failover_node,
+               "Could not automatically fail over nodes (~p). ~s",
+               [Nodes, ErrMsg]),
             note_reported(Flag, State);
         false ->
             State
