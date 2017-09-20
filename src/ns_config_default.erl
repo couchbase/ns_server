@@ -387,6 +387,8 @@ default() ->
         {datatype_snappy, {memcached_config_mgr, is_snappy_enabled, []}},
         {xattr_enabled, {memcached_config_mgr, is_enabled, [?VERSION_50]}},
         {scramsha_fallback_salt, {memcached_config_mgr, get_fallback_salt, []}},
+        {collections_prototype,
+         {memcached_config_mgr, collections_enabled, []}},
 
         {logger,
          {[{filename, {"~s/~s", [log_path, log_prefix]}},
@@ -587,7 +589,12 @@ do_upgrade_config_from_5_1_1_to_5_5(Config, DefaultConfig) ->
      upgrade_sub_keys(memcached, [other_users], Config, DefaultConfig)].
 
 upgrade_config_from_5_5_to_madhatter() ->
-    [{delete, {node, node(), moxi}}].
+    DefaultConfig = default(),
+    do_upgrade_config_from_5_5_to_madhatter(DefaultConfig).
+
+do_upgrade_config_from_5_5_to_madhatter(DefaultConfig) ->
+    [upgrade_key(memcached_config, DefaultConfig),
+     {delete, {node, node(), moxi}}].
 
 encrypt_config_val(Val) ->
     {ok, Encrypted} = encryption_service:encrypt(term_to_binary(Val)),
@@ -691,8 +698,10 @@ upgrade_5_1_1_to_5_5_test() ->
                  do_upgrade_config_from_5_1_1_to_5_5(Cfg, Default)).
 
 upgrade_5_5_to_madhatter_test() ->
-    ?assertMatch([{delete, {node, _, moxi}}],
-                 upgrade_config_from_5_5_to_madhatter()).
+    Default = [{{node, node(), memcached_config}, new_memcached_config}],
+    ?assertMatch([{set, {node, _, memcached_config}, new_memcached_config},
+                  {delete, {node, _, moxi}}],
+                 do_upgrade_config_from_5_5_to_madhatter(Default)).
 
 no_upgrade_on_current_version_test() ->
     ?assertEqual([], upgrade_config([[{{node, node(), config_version}, get_current_version()}]])).
