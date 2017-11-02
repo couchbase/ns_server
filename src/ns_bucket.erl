@@ -61,6 +61,7 @@
          raw_ram_quota/1,
          sasl_password/1,
          set_bucket_config/2,
+         update_bucket_config/2,
          set_fast_forward_map/2,
          set_map/2,
          set_map_opts/2,
