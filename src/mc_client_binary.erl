@@ -68,7 +68,9 @@
          refresh_rbac/1,
          subdoc_multi_lookup/5,
          get_failover_log/2,
-         update_user_permissions/2
+         update_user_permissions/2,
+         set_collections_manifest/2,
+         get_collections_manifest/1
         ]).
 
 -type recv_callback() :: fun((_, _, _) -> any()) | undefined.
@@ -93,7 +95,9 @@
                      ?CMD_SEQNO_PERSISTENCE | ?CMD_GET_RANDOM_KEY |
                      ?CMD_COMPACT_DB | ?CMD_AUDIT_PUT | ?CMD_AUDIT_CONFIG_RELOAD |
                      ?CMD_RBAC_REFRESH | ?CMD_SUBDOC_MULTI_LOOKUP |
-                     ?CMD_GET_FAILOVER_LOG.
+                     ?CMD_GET_FAILOVER_LOG |
+                     ?CMD_COLLECTIONS_SET_MANIFEST |
+                     ?CMD_COLLECTIONS_GET_MANIFEST.
 
 
 %% A memcached client that speaks binary protocol.
@@ -618,6 +622,8 @@ map_status(?DELTA_BADVAL) ->
     delta_badval;
 map_status(?NOT_MY_VBUCKET) ->
     not_my_vbucket;
+map_status(?NO_COLL_MANIFEST) ->
+    no_coll_manifest;
 map_status(?UNKNOWN_COMMAND) ->
     unknown_command;
 map_status(?ENOMEM) ->
@@ -986,6 +992,26 @@ get_failover_log(Sock, VB) ->
              {#mc_header{vbucket = VB}, #mc_entry{}}) of
         {ok, #mc_header{status = ?SUCCESS}, ME, _NCB} ->
             unpack_failover_log(ME#mc_entry.data);
+        Response ->
+            process_error_response(Response)
+    end.
+
+set_collections_manifest(Sock, Blob) ->
+    RV = cmd(?CMD_COLLECTIONS_SET_MANIFEST, Sock, undefined, undefined,
+             {#mc_header{}, #mc_entry{data = Blob}},
+             infinity),
+    case RV of
+        {ok, #mc_header{status=?SUCCESS}, _, _} ->
+            ok;
+        Other ->
+            process_error_response(Other)
+    end.
+
+get_collections_manifest(Sock) ->
+    case cmd(?CMD_COLLECTIONS_GET_MANIFEST, Sock, undefined, undefined,
+             {#mc_header{}, #mc_entry{}}) of
+        {ok, #mc_header{status = ?SUCCESS}, ME, _NCB} ->
+            {ok, ME#mc_entry.data};
         Response ->
             process_error_response(Response)
     end.

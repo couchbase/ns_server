@@ -106,6 +106,9 @@
 -define(CMD_SEQNO_PERSISTENCE, 16#b7).
 -define(CMD_GET_KEYS, 16#b8).
 
+-define(CMD_COLLECTIONS_SET_MANIFEST, 16#b9).
+-define(CMD_COLLECTIONS_GET_MANIFEST, 16#ba).
+
 -define(CMD_SUBDOC_GET, 16#c5).
 -define(CMD_SUBDOC_MULTI_LOOKUP, 16#d0).
 
@@ -146,6 +149,7 @@
 -define(EINTERNAL,        16#84).
 -define(EBUSY,            16#85).
 -define(ETMPFAIL,         16#86).
+-define(NO_COLL_MANIFEST, 16#89).
 
 -define(SUBDOC_PATH_NOT_EXIST,      16#c0).
 -define(SUBDOC_NOT_DICT,            16#c1).
