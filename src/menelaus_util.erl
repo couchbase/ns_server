@@ -63,6 +63,7 @@
          require_auth/1,
          send_chunked/3,
          handle_streaming/2,
+         assert_cluster_version/1,
          assert_is_enterprise/0,
          assert_is_45/0,
          assert_is_50/0,

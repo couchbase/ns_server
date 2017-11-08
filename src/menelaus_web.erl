@@ -268,6 +268,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[{bucket, Id}, recovery], read},
                      fun menelaus_web_recovery:handle_recovery_status/3,
                      ["default", Id]};
+                ["pools", "default", "buckets", Id, "collections"] ->
+                    {{[{bucket, Id}, collections], read},
+                     fun menelaus_web_collections:handle_get/2, [Id]};
                 ["pools", "default", "remoteClusters"] ->
                     {no_check, fun goxdcr_rest:proxy/1};
                 ["pools", "default", "serverGroups"] ->
@@ -638,6 +641,13 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[{bucket, Id}, views], compact},
                      fun menelaus_web_buckets:handle_set_ddoc_update_min_changes/4,
                      ["default", Id, DDocId]};
+                ["pools", "default", "buckets", Id, "collections", Scope] ->
+                    {{[{bucket, Id}, collections], write},
+                     fun menelaus_web_collections:handle_post_collection/3,
+                     [Id, Scope]};
+                ["pools", "default", "buckets", Id, "collections"] ->
+                    {{[{bucket, Id}, collections], write},
+                     fun menelaus_web_collections:handle_post_scope/2, [Id]};
                 ["pools", "default", "remoteClusters"] ->
                     {no_check, fun goxdcr_rest:proxy/1};
                 ["pools", "default", "remoteClusters", _Id] ->
@@ -703,6 +713,15 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_buckets:handle_bucket_delete/3, ["default", Id]};
                 ["pools", "default", "remoteClusters", _Id] ->
                     {no_check, fun goxdcr_rest:proxy/1};
+                ["pools", "default", "buckets", Id, "collections", Name] ->
+                    {{[{bucket, Id}, collections], delete},
+                     fun menelaus_web_collections:handle_delete_scope/3,
+                     [Id, Name]};
+                ["pools", "default", "buckets", Id, "collections",
+                 Scope, Name] ->
+                    {{[{bucket, Id}, collections], delete},
+                     fun menelaus_web_collections:handle_delete_collection/4,
+                     [Id, Scope, Name]};
                 ["pools", "default", "buckets", Id, "docs", DocId] ->
                     {{[{bucket, Id}, data, docs], delete},
                      fun menelaus_web_crud:handle_delete/3, [Id, DocId]};
