@@ -20,6 +20,8 @@
 -include("ns_common.hrl").
 -include("ns_config.hrl").
 
+-include_lib("eunit/include/eunit.hrl").
+
 -export([this_node_memory_data/0,
          get_total_buckets_ram_quota/1,
          check_quotas/3,
@@ -313,3 +315,11 @@ default_quotas(Services, MemSupData) ->
           MinQuotasServices),
 
     Result.
+
+default_quotas_test() ->
+    MemSupData = {9822564352, undefined, undefined},
+    Services = services_ranking(),
+    Quotas = default_quotas(Services, MemSupData),
+    TotalQuota = lists:sum([Q || {_, Q} <- Quotas]),
+
+    ?assertEqual(true, allowed_memory_usage_max(MemSupData) >= TotalQuota).
