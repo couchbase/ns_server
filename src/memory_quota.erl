@@ -263,30 +263,15 @@ do_set_memory_quota(Service, Quota, Cfg, SetFn) ->
             NewCfg
     end.
 
-default_quota(Service, Memory, Max) ->
-    Quota = calculate_default_quota(Service, Memory),
-    Min = min_quota(Service),
-
-    %% note that this prefers enforcing minimum quota which for very small
-    %% amounts of RAM can result in combined quota be actually larger than RAM
-    %% size; but we don't really support such small machines anyway
-    if Quota < Min ->
-            Min;
-       Quota > Max ->
-            Max;
-       true ->
-            Quota
-    end.
-
-calculate_default_quota(kv, Memory) ->
+calculate_remaining_default_quota(kv, Memory) ->
     (Memory * 3) div 5;
-calculate_default_quota(index, Memory) ->
+calculate_remaining_default_quota(index, Memory) ->
     (Memory * 3) div 5;
-calculate_default_quota(fts, Memory) ->
-    min(Memory div 5, ?MAX_DEFAULT_FTS_QUOTA);
-calculate_default_quota(cbas, Memory) ->
+calculate_remaining_default_quota(fts, Memory) ->
+    min(Memory div 5, ?MAX_DEFAULT_FTS_QUOTA - min_quota(fts));
+calculate_remaining_default_quota(cbas, Memory) ->
     Memory div 5;
-calculate_default_quota(eventing, Memory) ->
+calculate_remaining_default_quota(eventing, Memory) ->
     Memory div 5.
 
 default_quotas(Services) ->
@@ -300,20 +285,31 @@ default_quotas(Services, MemSupData) ->
     Memory = MemoryBytes div ?MIB,
     MemoryMax = allowed_memory_usage_max(MemSupData),
 
+    OrderedServices = [S || S <- services_ranking(), lists:member(S, Services)],
+    MinQuotas = [min_quota(S) || S <- OrderedServices],
+    MinTotal = lists:sum(MinQuotas),
+    MinQuotasServices = lists:zip(OrderedServices, MinQuotas),
+
+    %% we do not support machines with that little memory
+    true = MinTotal =< MemoryMax,
+
     {_, _, Result} =
         lists:foldl(
-          fun (Service, {AccMem, AccMax, AccResult} = Acc) ->
-                  case lists:member(Service, Services) of
-                      true ->
-                          Quota = default_quota(Service, AccMem, AccMax),
-                          AccMem1 = AccMem - Quota,
-                          AccMax1 = AccMax - Quota,
-                          AccResult1 = [{Service, Quota} | AccResult],
+          fun ({Service, MinQ}, {AccMem, AccMax, AccResult}) ->
+                  Quota =
+                      case calculate_remaining_default_quota(Service, AccMem) of
+                          Q when Q > AccMax ->
+                              AccMax;
+                          Q ->
+                              Q
+                      end,
+                  AccMem1 = AccMem - Quota,
+                  AccMax1 = AccMax - Quota,
+                  AccResult1 = [{Service, Quota + MinQ} | AccResult],
 
-                          {AccMem1, AccMax1, AccResult1};
-                      false ->
-                          Acc
-                  end
-          end, {Memory, MemoryMax, []}, services_ranking()),
+                  {AccMem1, AccMax1, AccResult1}
+          end,
+          {Memory - MinTotal, MemoryMax - MinTotal, []},
+          MinQuotasServices),
 
     Result.
