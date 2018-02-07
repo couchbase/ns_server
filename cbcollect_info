@@ -34,6 +34,7 @@ import shutil
 import urlparse
 import errno
 import hashlib
+import uuid
 from datetime import datetime, timedelta, tzinfo
 from StringIO import StringIO
 
@@ -258,10 +259,12 @@ class Task(object):
 class TaskRunner(object):
     default_name = "couchbase.log"
 
-    def __init__(self, verbosity=0, task_regexp='', tmp_dir=None):
+    def __init__(self, verbosity=0, task_regexp='', tmp_dir=None,
+                 salt_value=""):
         self.files = {}
         self.verbosity = verbosity
         self.start_time = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+        self.salt_value = salt_value
 
         # Depending on platform, mkdtemp() may act unpredictably if passed an empty string.
         if not tmp_dir:
@@ -382,7 +385,7 @@ class TaskRunner(object):
         self.run(LiteralTask(description, value, **kwargs))
 
     def _hash_fun(self, match):
-        hash_object = hashlib.sha1(str(match.group(2)))
+        hash_object = hashlib.sha1(self.salt_value + str(match.group(2)))
         return str(match.group(1)) + str(hash_object.hexdigest()) + str(match.group(3))
 
     def _parse_helper(self, p, logline):
@@ -402,12 +405,37 @@ class TaskRunner(object):
             log("I/O error(%s): %s" % (e.errno, e.strerror))
         return op_file
 
-    def redact_and_zip(self, filename, node, r_level):
+    def _parse_cbaselog_file(self, ip_file, f_name, redact_dir):
+        op_file = os.path.join(redact_dir, f_name)
+        try:
+            with open(ip_file, 'r') as ip:
+                with open(op_file, 'w+') as op:
+                    for line in ip:
+                        NotFound = True
+                        if NotFound and "RedactLevel" in line:
+                            op.write('RedactLevel:partial,HashOfSalt:%s'
+                                     % hashlib.sha1(self.salt_value +
+                                                    self.salt_value).hexdigest())
+                            op.write(os.linesep)
+                            NotFound = False
+                        else:
+                            op.write('%s' % line)
+        except IOError as e:
+            log("I/O error(%s): %s" % (e.errno, e.strerror))
+        return op_file
+
+    def redact_and_zip(self, filename, node):
         redact_dir = os.path.join(self.tmpdir, "redacted")
         os.makedirs(redact_dir)
         files = []
         for name, fp in self.files.iteritems():
-            files.append(self._parse_redact_file(fp.name, name, redact_dir))
+            op_file = None
+            if name == self.default_name:
+                # no tagged data except RedactLevel placeholder
+                op_file = self._parse_cbaselog_file(fp.name, name, redact_dir)
+            else:
+                op_file = self._parse_redact_file(fp.name, name, redact_dir)
+            files.append(op_file)
 
         prefix = "cbcollect_info_%s_%s" % (node, self.start_time)
         self._zip_helper(prefix, filename, files)
@@ -556,6 +584,9 @@ def make_index_task(name, api, passwd, index_port, logfile="couchbase.log"):
     index_url = 'http://127.0.0.1:%s/%s' % (index_port, api)
 
     return make_curl_task(name, "@", passwd, index_url, log_file=logfile)
+
+def make_redaction_task():
+    return LiteralTask("Log Redaction", "RedactLevel:none")
 
 def basedir():
     mydir = os.path.dirname(sys.argv[0])
@@ -1241,9 +1272,14 @@ def main():
     parser.add_option("--multi-node-diag", dest="multi_node_diag",
                       action="store_true", default=False,
                       help="collect per-node diag  on all reachable nodes (default is just this node)")
-    parser.add_option("--log-redaction", dest="redact_level",
+    parser.add_option("--log-redaction-level", dest="redact_level",
                       default="none",
                       help="redaction level for the logs collected, none and partial supported (default is none)")
+    parser.add_option("--log-redaction-salt", dest="salt_value",
+                      default=str(uuid.uuid4()),
+                      help="Is used to salt the hashing of tagged data, \
+                            defaults to random uuid. If input by user it should \
+                            be provided along with --log-redaction-level option")
     parser.add_option("--just-upload-into", dest="just_upload_into",
                       help=optparse.SUPPRESS_HELP)
     parser.add_option("--upload-host", dest="upload_host",
@@ -1320,7 +1356,9 @@ def main():
 
     runner = TaskRunner(verbosity=options.verbosity,
                         task_regexp=options.task_regexp,
-                        tmp_dir=options.tmp_dir)
+                        tmp_dir=options.tmp_dir,
+                        salt_value=options.salt_value)
+    runner.run(make_redaction_task()) # We want this at the top of couchbase.log
 
     if not options.product_only:
         runner.run_tasks(make_os_tasks())
@@ -1391,7 +1429,7 @@ def main():
 
     if options.redact_level != "none":
         log("Redacting log files to level: %s" % options.redact_level)
-        runner.redact_and_zip(redact_zip_file, zip_node, options.redact_level)
+        runner.redact_and_zip(redact_zip_file, zip_node)
 
     runner.zip(zip_filename, zip_node)
 

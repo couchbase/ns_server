@@ -274,7 +274,7 @@ start_collection_per_node(TimestampS, Parent, Options) ->
         case proplists:get_value(redact_level, Options) of
             partial ->
                 {filename:join(LogPath, Basename ++ "-redacted" ++ ".zip"),
-                 ["--log-redaction=partial"]};
+                 ["--log-redaction-level=partial"]};
             _ ->
                 {Filename, []}
         end,
