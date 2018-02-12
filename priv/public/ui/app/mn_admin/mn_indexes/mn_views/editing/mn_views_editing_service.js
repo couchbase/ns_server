@@ -102,7 +102,7 @@
 
     function prepareDocForCodeMirror(doc) {
       doc.metaJSON = angular.toJson(doc.meta, 2);
-      doc.jsonJSON = angular.toJson(doc.json, 2);
+      doc.jsonJSON = js_beautify(doc.json, {"indent_size": 2});
       return doc;
     }
 
