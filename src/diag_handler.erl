@@ -344,7 +344,7 @@ sanitize_ets_table(_, Info, Content) ->
         ssl_otp_pem_cache ->
             ["not printed"];
         _ ->
-            Content
+            ns_config_log:tag_user_data(Content)
     end.
 
 grab_all_ets_tables() ->

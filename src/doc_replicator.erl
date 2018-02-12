@@ -113,7 +113,8 @@ replicate_changes_to_node(Module, StorageFrontend, Node, Docs) ->
       end, Docs).
 
 replicate_change_to_node(Module, StorageFrontend, Node, Doc) ->
-    ?log_debug("Sending ~p to ~p", [Module:get_id(Doc), Node]),
+    ?log_debug("Sending ~p to ~p",
+               [ns_config_log:tag_user_data(Module:get_id(Doc)), Node]),
     gen_server:cast({StorageFrontend, Node}, {replicated_update, Doc}).
 
 nodeup_monitoring_loop(LocalStoragePid) ->

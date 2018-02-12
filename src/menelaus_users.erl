@@ -108,7 +108,8 @@ start_auth_cache() ->
     versioned_cache:start_link(
       auth_cache_name(), 200,
       fun (I) ->
-              ?log_debug("Retrieve user ~p from ns_server node", [I]),
+              ?log_debug("Retrieve user ~p from ns_server node",
+                         [ns_config_log:tag_user_data(I)]),
               rpc:call(ns_node_disco:ns_server_node(), ?MODULE, get_auth_info_on_ns_server, [I])
       end,
       fun () ->

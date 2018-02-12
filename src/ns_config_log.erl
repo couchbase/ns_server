@@ -28,7 +28,7 @@
 -record(state, {buckets=[]}).
 
 %% state sanitization
--export([format_status/2]).
+-export([format_status/2, tag_user_data/1, tag_user_name/1]).
 
 format_status(_Opt, [_PDict, State]) ->
     sanitize(State).
@@ -94,6 +94,28 @@ compute_buckets_diff(NewBuckets, OldBuckets) ->
 
     misc:update_proplist(NewBuckets, [{configs, Diffed}]).
 
+do_tag_user_data(UData) when is_list(UData) ->
+    "<ud>" ++ UData ++ "</ud>";
+do_tag_user_data(UData) when is_atom(UData) ->
+    UData;  %% Cases like {source, local} we don't want to tag.
+do_tag_user_data(UData) when is_binary(UData) ->
+    list_to_binary("<ud>" ++ binary_to_list(UData) ++ "</ud>").
+
+tag_user_data(DebugKVList) ->
+    misc:rewrite_tuples(
+      fun ({user, UserName}) when is_binary(UserName) ->
+              {stop, {user, do_tag_user_data(UserName)}};
+          ({UName, IdType}) when IdType =:= local orelse
+                                 IdType =:= external orelse
+                                 IdType =:= admin ->
+              {stop, {do_tag_user_data(UName), IdType}};
+          (_Other) ->
+              continue
+      end, DebugKVList).
+
+tag_user_name(UserName) ->
+    do_tag_user_data(UserName).
+
 rewrite_tuples_with_vclock(Fun, Config) ->
     misc:rewrite_tuples(
       fun ({Key, [{'_vclock', _} = VClock|Value]}) ->
@@ -125,6 +147,8 @@ sanitize(Config) ->
               {stop, {{metakv, K}, {?METAKV_SENSITIVE, <<"*****">>}}};
           ({cookie, Cookie}) ->
               {stop, {cookie, ns_cookie_manager:sanitize_cookie(Cookie)}};
+          ({UName, {auth, Auth}}) ->
+              {stop, {tag_user_name(UName), {auth, Auth}}};
           (_Other) ->
               continue
       end, Config).

@@ -293,8 +293,10 @@ saslauthd_authenticate(Username, Password) ->
                     Identity = {Username, external},
                     case menelaus_users:user_exists(Identity) of
                         false ->
-                            ?log_debug("User ~p succesfully authenticated with saslauthd, but it is not a configured user",
-                                       [Username]),
+                            TagUName = ns_config_log:tag_user_name(Username),
+                            ?log_debug("User ~p succesfully authenticated with "
+                                       "saslauthd, but it is not a configured "
+                                       "user", [TagUName]),
                             false;
                         true ->
                             {ok, Identity}
@@ -399,8 +401,10 @@ check_permission(Identity, Permission) ->
                 true ->
                     allowed;
                 false ->
-                    ?log_debug("Access denied.~nIdentity: ~p~nRoles: ~p~nPermission: ~p~n",
-                               [Identity, Roles, Permission]),
+                    ?log_debug("Access denied.~nIdentity: ~p~nRoles: ~p~n"
+                               "Permission: ~p~n",
+                               [ns_config_log:tag_user_data(Identity),
+                               Roles, Permission]),
                     case Identity of
                         {"", anonymous} ->
                             %% we do allow some api's for anonymous

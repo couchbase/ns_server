@@ -111,7 +111,8 @@ handle_call({interactive_update, Doc}, _From,
             {reply, {not_found, FoundType}, State};
         false ->
             NewDoc = Module:set_revision(Doc, NewRev),
-            ?log_debug("Writing interactively saved doc ~p", [NewDoc]),
+            ?log_debug("Writing interactively saved doc ~p",
+                       [ns_config_log:tag_user_data(NewDoc)]),
             case Module:save_docs([NewDoc], ChildState) of
                 {ok, NewChildState} ->
                     Replicator ! {replicate_change, NewDoc},
@@ -174,7 +175,8 @@ handle_cast({replicated_update, Doc}, #state{child_module = Module,
                                              child_state = ChildState} = State) ->
     case should_be_written(Doc, Module, ChildState) of
         true ->
-            ?log_debug("Writing replicated doc ~p", [Doc]),
+            ?log_debug("Writing replicated doc ~p",
+                       [ns_config_log:tag_user_data(Doc)]),
             {ok, NewChildState} = Module:save_docs([Doc], ChildState),
             {noreply, State#state{child_state = NewChildState}};
         false ->

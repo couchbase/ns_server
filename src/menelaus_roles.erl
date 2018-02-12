@@ -757,12 +757,14 @@ get_compiled_roles(Identity) ->
 build_compiled_roles(Identity) ->
     case ns_node_disco:couchdb_node() == node() of
         false ->
-            ?log_debug("Compile roles for user ~p", [Identity]),
+            ?log_debug("Compile roles for user ~p",
+                       [ns_config_log:tag_user_data(Identity)]),
             Definitions = get_definitions(),
             AllPossibleValues = calculate_possible_param_values(ns_bucket:get_buckets()),
             compile_roles(get_roles(Identity), Definitions, AllPossibleValues);
         true ->
-            ?log_debug("Retrieve compiled roles for user ~p from ns_server node", [Identity]),
+            ?log_debug("Retrieve compiled roles for user ~p from ns_server "
+                       "node", [ns_config_log:tag_user_data(Identity)]),
             rpc:call(ns_node_disco:ns_server_node(), ?MODULE, build_compiled_roles, [Identity])
     end.
 

@@ -103,7 +103,7 @@ handle_call({log, Code, Body}, _From, #state{queue = Queue} = State) ->
             false ->
                 Queue
         end,
-    ?log_debug("Audit ~p: ~p", [Code, Body]),
+    ?log_debug("Audit ~p: ~p", [Code, ns_config_log:tag_user_data(Body)]),
     EncodedBody = ejson:encode({Body}),
     NewQueue = queue:in({Code, EncodedBody}, CleanedQueue),
     self() ! send,

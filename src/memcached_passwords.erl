@@ -152,8 +152,10 @@ jsonify_auth([AU | Users], AP, Buckets, RestCreds) ->
              fun ({{auth, {UserName, _Type}}, Auth}) ->
                      case UserName of
                          ClusterAdmin ->
-                             ?log_warning("Encountered user ~p with the same name as cluster administrator",
-                                          [ClusterAdmin]),
+                             TagCA = ns_config_log:tag_user_name(ClusterAdmin),
+                             ?log_warning("Encountered user ~p with the same "
+                                          "name as cluster administrator",
+                                          [TagCA]),
                              ok;
                          _ ->
                              ?yield({json, {[{<<"n">>, list_to_binary(UserName)} | Auth]}})

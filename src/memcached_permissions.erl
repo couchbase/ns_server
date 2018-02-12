@@ -230,8 +230,10 @@ jsonify_users(Users, Buckets, ParamValues, RoleDefinitions, ClusterAdmin) ->
              fun ({{user, {UserName, _} = Identity}, Props}, Dict) ->
                      case UserName of
                          ClusterAdmin ->
-                             ?log_warning("Encountered user ~p with the same name as cluster administrator",
-                                          [ClusterAdmin]),
+                             TagCA = ns_config_log:tag_user_name(ClusterAdmin),
+                             ?log_warning("Encountered user ~p with the same
+                                          name as cluster administrator",
+                                          [TagCA]),
                              Dict;
                          _ ->
                              Roles3 = proplists:get_value(roles, Props, []),
