@@ -429,6 +429,8 @@ class TaskRunner(object):
         os.makedirs(redact_dir)
         files = []
         for name, fp in self.files.iteritems():
+            if "users.dets" in name:
+                continue # Don't include users.dets in redacted zip file
             op_file = None
             if name == self.default_name:
                 # no tagged data except RedactLevel placeholder
