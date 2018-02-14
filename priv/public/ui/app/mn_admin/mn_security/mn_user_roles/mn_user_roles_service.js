@@ -126,14 +126,16 @@
       });
     }
 
-    function packData(user, roles) {
+    function packData(user, roles, isEditingMode, resetPassword) {
       var data = {
         roles: roles.join(','),
         name: user.name
       };
-      if (user.password) {
+
+      if ((!isEditingMode && user.domain == "local") || resetPassword) {
         data.password = user.password;
       }
+
       return data;
     }
 
@@ -168,7 +170,7 @@
 
     }
 
-    function addUser(user, roles, isEditingMode) {
+    function addUser(user, roles, isEditingMode, resetPassword) {
       if (!user || !user.id) {
         return $q.reject({username: "username is required"});
       }
@@ -177,12 +179,12 @@
         return $q.reject({roles: "at least one role should be added"});
       }
       if (isEditingMode) {
-        return doAddUser(packData(user, roles), user);
+        return doAddUser(packData(user, roles, isEditingMode, resetPassword), user);
       } else {
         return getUser(user).then(function (users) {
           return $q.reject({username: "username already exists"});
         }, function () {
-          return doAddUser(packData(user, roles), user);
+          return doAddUser(packData(user, roles, isEditingMode), user);
         });
       }
 
