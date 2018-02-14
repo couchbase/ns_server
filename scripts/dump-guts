@@ -603,6 +603,7 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
     StatsDir = filename:join(DataDir, "stats"),
 
     UsersStoragePath = filename:join([DataDir, "config", "users.dets"]),
+    {_, Ipv6} = lists:keyfind(ipv6, 1, StaticTerms),
 
     Pairs = OtherPorts ++
         [{ns_config, iolist_to_binary(io_lib:format("~p", [sanitize_config(NSConfig)]))},
@@ -625,7 +626,8 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
          {nodes, string:join(Nodes, ",")},
          {stats_dir, StatsDir},
          {localtoken_path, filename:join(DataDir, "localtoken")},
-         {users_storage_path, UsersStoragePath}],
+         {users_storage_path, UsersStoragePath},
+         {ipv6, Ipv6}],
 
     output([E || {K, V} <- Pairs,
                  E <- [K, V]]),
