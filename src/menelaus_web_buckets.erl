@@ -1791,7 +1791,7 @@ do_handle_ddocs_list(PoolId, Bucket, Req) ->
     RV =
         [begin
              Id = capi_utils:extract_doc_id(Doc),
-             {[{doc, capi_utils:couch_doc_to_json(Doc)},
+             {[{doc, capi_utils:couch_doc_to_json(Doc, parsed)},
                {controllers,
                 {[{compact,
                    bin_concat_path(["pools", PoolId, "buckets", Bucket, "ddocs",

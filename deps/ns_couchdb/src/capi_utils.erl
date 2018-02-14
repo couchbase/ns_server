@@ -107,8 +107,10 @@ must_open_master_vbucket(BucketName) ->
             exit({open_db_failed, Error})
     end.
 
-couch_doc_to_json(Doc) ->
-    couch_doc:to_json_obj(Doc).
+couch_doc_to_json(Doc, parsed) ->
+    couch_doc:to_json_obj(Doc);
+couch_doc_to_json(Doc, unparsed) ->
+    couch_doc:to_json_obj_with_bin_body(Doc).
 
 extract_doc_id(Doc) ->
     Doc#doc.id.

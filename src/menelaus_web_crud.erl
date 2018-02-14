@@ -208,11 +208,11 @@ handle_get(BucketId, DocId, Req) ->
         {error, Msg} ->
             menelaus_util:reply_json(Req, construct_error_reply(Msg), 400);
         {ok, EJSON, {XAttrs}} ->
-            {Json} = capi_utils:couch_doc_to_json(EJSON),
+            {Json} = capi_utils:couch_doc_to_json(EJSON, unparsed),
             menelaus_util:reply_json(Req, {Json ++ XAttrs});
         %% backward compatibility code: response from node of version < vulcan
         {ok, EJSON} ->
-            Res = capi_utils:couch_doc_to_json(EJSON),
+            Res = capi_utils:couch_doc_to_json(EJSON, unparsed),
             menelaus_util:reply_json(Req, Res)
     end.
 
