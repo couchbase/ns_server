@@ -56,17 +56,20 @@ open_connection(Sock, ConnName, Type, RepFeatures, Logger) ->
                     ?DCP_CONNECTION_FLAG_NOTIFIER
             end,
 
-    NewFlags = lists:foldl(
-                 fun({F, Val}, FAcc) ->
-                         case proplists:get_bool(F, RepFeatures) of
-                             true -> FAcc bor Val;
-                             false -> FAcc
-                         end
-                 end, Flags, [{xattr, ?DCP_CONNECTION_FLAG_XATTR}]),
+    NewFlags =
+        lists:foldl(
+          fun({F, Val}, FAcc) ->
+                  case proplists:get_bool(F, RepFeatures) of
+                      true -> FAcc bor Val;
+                      false -> FAcc
+                  end
+          end, Flags, [{xattr, ?DCP_CONNECTION_FLAG_XATTR},
+                       {del_times, ?DCP_CONNECTION_FLAG_INCL_DEL_TIMES}]),
 
     Extra = <<0:32, NewFlags:32>>,
 
-    ale:debug(Logger, "Open ~p connection ~p on socket ~p", [Type, ConnName, Sock]),
+    ale:debug(Logger, "Open ~p connection ~p on socket ~p",
+              [Type, ConnName, Sock]),
     process_response(
       mc_client_binary:cmd_vocal(?DCP_OPEN, Sock,
                                  {#mc_header{},
