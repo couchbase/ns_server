@@ -23,7 +23,7 @@
 
 -export([start_link/1, init/1]).
 
--export([get_children/1, manage_replicators/3, nuke/1]).
+-export([get_children/1, manage_replicators/2, nuke/1]).
 
 start_link(Bucket) ->
     supervisor:start_link({local, server_name(Bucket)}, ?MODULE, []).
@@ -40,16 +40,17 @@ init([]) ->
 
 get_children(Bucket) ->
     [{Node, C, T, M} ||
-        {{Node, _XAttr}, C, T, M} <- supervisor:which_children(server_name(Bucket))].
+        {{Node, _RepFeatures}, C, T, M} <-
+            supervisor:which_children(server_name(Bucket))].
 
-build_child_spec(Bucket, {ProducerNode, XAttr} = ChildId) ->
+build_child_spec(Bucket, {ProducerNode, RepFeatures} = ChildId) ->
     {ChildId,
-     {dcp_replicator, start_link, [ProducerNode, Bucket, XAttr]},
+     {dcp_replicator, start_link, [ProducerNode, Bucket, RepFeatures]},
      temporary, 60000, worker, [dcp_replicator]}.
 
-start_replicator(Bucket, {ProducerNode, XAttr} = ChildId) ->
-    ?log_debug("Starting DCP replication from ~p for bucket ~p (XAttr = ~p)",
-               [ProducerNode, Bucket, XAttr]),
+start_replicator(Bucket, {ProducerNode, RepFeatures} = ChildId) ->
+    ?log_debug("Starting DCP replication from ~p for bucket ~p (Features = ~p)",
+               [ProducerNode, Bucket, RepFeatures]),
 
     case supervisor:start_child(server_name(Bucket),
                                 build_child_spec(Bucket, ChildId)) of
@@ -57,25 +58,33 @@ start_replicator(Bucket, {ProducerNode, XAttr} = ChildId) ->
         {ok, _, _} -> ok
     end.
 
-kill_replicator(Bucket, {ProducerNode, XAttr} = ChildId) ->
-    ?log_debug("Going to stop DCP replication from ~p for bucket ~p (XAttr = ~p)",
-               [ProducerNode, Bucket, XAttr]),
+kill_replicator(Bucket, {ProducerNode, RepFeatures} = ChildId) ->
+    ?log_debug("Going to stop DCP replication from ~p for bucket ~p "
+               "(Features = ~p)", [ProducerNode, Bucket, RepFeatures]),
     _ = supervisor:terminate_child(server_name(Bucket), ChildId),
     ok.
 
-%% This is where we actually control the creation/deletion of DCP replicators.
-%% If the cluster is not XATTR aware, which is indicated when 'XAttr' is set
-%% to false, then the DCP connections will also not be XATTR aware. The fact
-%% that the connections are not XATTR aware is encoded into the child ID. When
-%% the cluster becomes XATTR aware ('XAttr' set to true) we need to kill the
-%% existing replicators and recreate them with XATTR enabled. The way we
-%% determine if recreation is needed is by comparing the 'XAttr' value (which
-%% must be set to true) with the value stored in child ID (which must be false).
-manage_replicators(Bucket, NeededNodes, XAttr) ->
+%% Replicators need to negotiate features while opening DCP connections
+%% in order to enable certain features and these features can be enabled
+%% only when the entire cluster is at a particular compat_version.
+%%
+%% We try to determine what features to enable and send this information as a
+%% canonicalized list which is encoded into the replicator names (child ID).
+%% Whenever features become eligible to be turned on or disabled, this list
+%% would differ in its content thereby signalling the supervisor to drop
+%% existing connections and recreate them with appropriate features enabled.
+%% This could mean that the ongoing rebalance can fail and we are ok with that
+%% as it can be restarted.
+get_replication_features() ->
+    FeatureSet = [{xattr, cluster_compat_mode:is_cluster_50()}],
+    misc:canonical_proplist(FeatureSet).
+
+manage_replicators(Bucket, NeededNodes) ->
     CurrNodes = [ChildId || {ChildId, _C, _T, _M} <-
                                 supervisor:which_children(server_name(Bucket))],
 
-    ExpectedNodes = [{Node, XAttr} || Node <- NeededNodes],
+    RepFeatures = get_replication_features(),
+    ExpectedNodes = [{Node, RepFeatures} || Node <- NeededNodes],
 
     [kill_replicator(Bucket, CurrId) || CurrId <- CurrNodes -- ExpectedNodes],
     [start_replicator(Bucket, NewId) || NewId <- ExpectedNodes -- CurrNodes].

@@ -23,12 +23,12 @@
 
 -export([start_link/4, init/2, handle_packet/5, handle_call/4, handle_cast/3]).
 
-start_link(ConnName, ProducerNode, Bucket, XAttr) ->
+start_link(ConnName, ProducerNode, Bucket, RepFeatures) ->
     dcp_proxy:start_link(producer, ConnName, ProducerNode,
-                         Bucket, ?MODULE, [XAttr]).
+                         Bucket, ?MODULE, [RepFeatures]).
 
-init([XAttr], ParentState) ->
-    {[], dcp_proxy:maybe_connect(ParentState, XAttr)}.
+init([RepFeatures], ParentState) ->
+    {[], dcp_proxy:maybe_connect(ParentState, RepFeatures)}.
 
 handle_packet(request, ?DCP_SET_VBUCKET_STATE, Packet, State, ParentState) ->
     Consumer = dcp_proxy:get_partner(ParentState),

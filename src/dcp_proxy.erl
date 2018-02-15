@@ -206,8 +206,9 @@ maybe_connect(State) ->
     maybe_connect(State, false).
 
 maybe_connect(#state{sock = undefined,
-                     connect_info = {Type, ConnName, Node, Bucket}} = State, XAttr) ->
-    Sock = connect(Type, ConnName, Node, Bucket, XAttr),
+                     connect_info = {Type, ConnName, Node, Bucket}} = State,
+              RepFeatures) ->
+    Sock = connect(Type, ConnName, Node, Bucket, RepFeatures),
 
     %% setup socket to receive the first message
     ok = inet:setopts(Sock, [{active, once}]),
@@ -217,9 +218,9 @@ maybe_connect(State, _) ->
     State.
 
 connect(Type, ConnName, Node, Bucket) ->
-    connect(Type, ConnName, Node, Bucket, false).
+    connect(Type, ConnName, Node, Bucket, []).
 
-connect(Type, ConnName, Node, Bucket, XAttr) ->
+connect(Type, ConnName, Node, Bucket, RepFeatures) ->
     Cfg = ns_config:latest(),
     Username = ns_config:search_node_prop(Node, Cfg, memcached, admin_user),
     Password = ns_config:search_node_prop(Node, Cfg, memcached, admin_pass),
@@ -238,9 +239,8 @@ connect(Type, ConnName, Node, Bucket, XAttr) ->
                                        list_to_binary(Password)}}),
     ok = mc_client_binary:select_bucket(Sock, Bucket),
 
-    %% If XAttr is true that means that the cluster is XATTRs capable and we
-    %% don't expect the XAttr negotiation to fail.
-    %%
+    XAttr = proplists:get_bool(xattr, RepFeatures),
+
     %% Snappy is controlled by datatype_snappy flag and it defaults to true.
     %% So we try to negotiate it unconditionally, if it's enabled. In mixed
     %% clusters, if this fails we still go ahead with the connections as there
@@ -248,6 +248,8 @@ connect(Type, ConnName, Node, Bucket, XAttr) ->
     %% toggled by the user, only the newer connections see the change and it's
     %% semantically ok to retain the older connections as is.
     Snappy = ns_config:search_prop(Cfg, memcached, datatype_snappy, true),
+
+    %% Negotiate XAttr and Snappy features if they are to be enabled.
     negotiate_features(Sock, Type, ConnName, XAttr, Snappy),
 
     ok = dcp_commands:open_connection(Sock, ConnName, Type, XAttr),

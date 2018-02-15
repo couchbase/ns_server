@@ -46,14 +46,15 @@
                 partitions :: [vbucket_id()]
                }).
 
-start_link(ConnName, Bucket, XAttr) ->
-    dcp_proxy:start_link(consumer, ConnName, node(), Bucket, ?MODULE, [XAttr]).
+start_link(ConnName, Bucket, RepFeatures) ->
+    dcp_proxy:start_link(consumer, ConnName, node(), Bucket,
+                         ?MODULE, [RepFeatures]).
 
-init([XAttr], ParentState) ->
+init([RepFeatures], ParentState) ->
     {#state{
         partitions = [],
         state = idle
-       }, dcp_proxy:maybe_connect(ParentState, XAttr)}.
+       }, dcp_proxy:maybe_connect(ParentState, RepFeatures)}.
 
 
 handle_packet(response, ?DCP_ADD_STREAM, Packet,

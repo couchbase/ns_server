@@ -42,12 +42,14 @@
 -define(VBUCKET_POLL_INTERVAL, 100).
 -define(SHUT_CONSUMER_TIMEOUT, ?get_timeout(dcp_shut_consumer, 60000)).
 
-init({ProducerNode, Bucket, XAttr}) ->
+init({ProducerNode, Bucket, RepFeatures}) ->
     process_flag(trap_exit, true),
 
     ConnName = get_connection_name(node(), ProducerNode, Bucket),
-    {ok, ConsumerConn} = dcp_consumer_conn:start_link(ConnName, Bucket, XAttr),
-    {ok, ProducerConn} = dcp_producer_conn:start_link(ConnName, ProducerNode, Bucket, XAttr),
+    {ok, ConsumerConn} = dcp_consumer_conn:start_link(ConnName, Bucket,
+                                                      RepFeatures),
+    {ok, ProducerConn} = dcp_producer_conn:start_link(ConnName, ProducerNode,
+                                                      Bucket, RepFeatures),
 
     erlang:register(consumer_server_name(ProducerNode, Bucket), ConsumerConn),
 
@@ -66,9 +68,9 @@ init({ProducerNode, Bucket, XAttr}) ->
             bucket = Bucket
            }}.
 
-start_link(ProducerNode, Bucket, XAttr) ->
+start_link(ProducerNode, Bucket, RepFeatures) ->
     gen_server:start_link({local, server_name(ProducerNode, Bucket)}, ?MODULE,
-                          {ProducerNode, Bucket, XAttr}, []).
+                          {ProducerNode, Bucket, RepFeatures}, []).
 
 server_name(ProducerNode, Bucket) ->
     list_to_atom(?MODULE_STRING "-" ++ Bucket ++ "-" ++ atom_to_list(ProducerNode)).
