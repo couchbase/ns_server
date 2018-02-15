@@ -168,7 +168,7 @@ encode_doc({Key, Value}) ->
               {binary, V} ->
                   {base64, base64:encode(V)};
               {json, V} ->
-                  {json, mochijson2:decode(V)}
+                  {json, V}
           end,
     {struct, [{id, Key}, {doc, {struct, [Doc]}}]}.
 
