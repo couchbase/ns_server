@@ -84,7 +84,9 @@ get_inner(Bucket, DocId, VBucket, Options, RetriesLeft) ->
                 end
 
             catch
-                _:_ -> get_inner(Bucket, DocId, VBucket, Options, RetriesLeft-1)
+                _:Reason ->
+                    ?log_error("Error during retrieving doc for ~p/~p: ~p", [Bucket, DocId, Reason]),
+                    get_inner(Bucket, DocId, VBucket, Options, RetriesLeft-1)
             end;
         ?KEY_ENOENT ->
             {not_found, missing};
@@ -101,49 +103,12 @@ get_meta(Bucket, DocId, VBucket, CAS) ->
         _ -> {error, bad_resp}
     end.
 
-get_xattrs(_Bucket, _DocId, _VBucket, _CAS, []) -> {ok, {[]}};
 get_xattrs(Bucket, DocId, VBucket, CAS, Permissions) ->
-    try
-        Keys = try_get_xattr(Bucket, DocId, VBucket, CAS, <<"$XTOC">>),
-        AllowedKeys = lists:filter(
-                        fun (K) ->
-                                check_xattr_read_permission(K, Permissions)
-                        end, Keys),
-        %% Subdoc_multi_lookup does not support retriving several xattrs
-        %% at once
-        Res = lists:map(
-                fun (K) ->
-                        {K, try_get_xattr(Bucket, DocId, VBucket, CAS, K)}
-                end, AllowedKeys),
-        {ok, {[{<<"xattrs">>, {Res}}]}}
-    catch
-        _:Reason -> {error, Reason}
+    case ns_memcached:get_xattrs(Bucket, DocId, VBucket, Permissions) of
+        {ok, CAS, XAttrs} -> {ok, {[{<<"xattrs">>, {XAttrs}}]}};
+        {ok, _, _} -> throw(bad_cas);
+        Error -> Error
     end.
-
-try_get_xattr(Bucket, DocId, VBucket, CAS, Key) ->
-    case ns_memcached:subdoc_multi_lookup(Bucket, DocId, VBucket,
-                                          [Key], [xattr_path]) of
-        {ok, CAS, [JSON]} -> ejson:decode(JSON);
-        {ok, _, [_]} -> throw(bad_cas);
-        Error ->
-            ?log_error("Subdoc multi lookup error: arguments: ~p ~p ~p ~p ~p,"
-                       " response: ~p",
-                       [Bucket, DocId, VBucket, CAS, Key, Error]),
-            throw(bad_subdoc_resp)
-    end.
-
-%% X-Keys starting with a leading dollar sign are considered virtual XATTRs
-%% and can only be accessed if the client holds the XATTR_READ privilege.
-check_xattr_read_permission(<<"$", _binary>>, Permissions) ->
-    lists:member(user_read, Permissions);
-%% X-Keys starting with a leading underscore are considered system XATTRs
-%% and can only be read if the client holds the SYSTEM_XATTR read privilege.
-check_xattr_read_permission(<<"_", _/binary>>, Permissions) ->
-    lists:member(server_read, Permissions);
-%% X-Keys not starting with a leading underscore (and not starting with a
-%% reserved symbol) are user XATTRs and may be read by clients with the XATTR_READ
-check_xattr_read_permission(_XKey, Permissions) ->
-    lists:member(user_read, Permissions).
 
 -spec is_valid_json(Data :: binary()) -> boolean().
 is_valid_json(<<>>) ->

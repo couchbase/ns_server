@@ -24,7 +24,7 @@
 -export([bin/1, recv/2, recv/3, send/4, encode/3, quick_stats/4,
          quick_stats/5, quick_stats_append/3,
          decode_packet/1,
-         get_keys/4]).
+         get_keys/4, get_xattrs/4]).
 
 -define(RECV_TIMEOUT, ns_config:get_timeout(memcached_recv, 120000)).
 -define(QUICK_STATS_RECV_TIMEOUT, ns_config:get_timeout(memcached_stats_recv, 180000)).
@@ -515,3 +515,48 @@ handle_include_docs(Sock, TRef, FetchLimit, Params, KeysAndVBuckets, Heap) ->
             KVs ++ handle_include_docs(Sock, TRef, FetchLimit, Params,
                                        NewKeysAndVBuckets, NewHeap)
     end.
+
+get_xattrs(_Sock, _DocId, _VBucket, []) -> {ok, undefined, []};
+get_xattrs(Sock, DocId, VBucket, Permissions) ->
+    try
+        {Keys, CAS} = try_get_xattr(Sock, DocId, VBucket, <<"$XTOC">>),
+        AllowedKeys = lists:filter(
+                        fun (K) ->
+                                check_xattr_read_permission(K, Permissions)
+                        end, Keys),
+        %% Subdoc_multi_lookup does not support retriving several xattrs
+        %% at once
+        {Values, ResCAS} =
+            lists:foldr(
+                fun (K, {Acc, _}) ->
+                        {V, NewCAS} = try_get_xattr(Sock, DocId, VBucket, K),
+                        {[{K, V}|Acc], NewCAS}
+                end, {[], CAS}, AllowedKeys),
+        {ok, ResCAS, Values}
+    catch
+        error:{memcached_error, _, _} = Error -> Error
+    end.
+
+try_get_xattr(Sock, DocId, VBucket, Key) ->
+    case mc_client_binary:subdoc_multi_lookup(Sock, DocId, VBucket,
+                                              [Key], [xattr_path]) of
+        {ok, CAS, [JSON]} -> {ejson:decode(JSON), CAS};
+        {memcached_error, _, _} = Error ->
+            ?log_error("Subdoc multi lookup error: arguments: ~p ~p ~p ~p,"
+                       " response: ~p",
+                       [Sock, DocId, VBucket, Key, Error]),
+            error(Error)
+    end.
+
+%% X-Keys starting with a leading dollar sign are considered virtual XATTRs
+%% and can only be accessed if the client holds the XATTR_READ privilege.
+check_xattr_read_permission(<<"$", _binary>>, Permissions) ->
+    lists:member(user_read, Permissions);
+%% X-Keys starting with a leading underscore are considered system XATTRs
+%% and can only be read if the client holds the SYSTEM_XATTR read privilege.
+check_xattr_read_permission(<<"_", _/binary>>, Permissions) ->
+    lists:member(server_read, Permissions);
+%% X-Keys not starting with a leading underscore (and not starting with a
+%% reserved symbol) are user XATTRs and may be read by clients with the XATTR_READ
+check_xattr_read_permission(_XKey, Permissions) ->
+    lists:member(user_read, Permissions).

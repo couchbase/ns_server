@@ -111,6 +111,7 @@
          sync/4, add/4, get/3, delete/3, delete/4,
          get_from_replica/3,
          get_meta/3,
+         get_xattrs/4,
          subdoc_multi_lookup/5,
          update_with_rev/7,
          get_seqno_stats/2,
@@ -948,6 +949,17 @@ get_meta(Bucket, Key, VBucket) ->
       fun (Sock) ->
               {reply, mc_client_binary:get_meta(Sock, Key, VBucket)}
       end, Bucket).
+
+%% @doc get xattributes for specified key
+-spec get_xattrs(bucket_name(), binary(), integer(), [atom()]) ->
+    {ok, integer(), [{binary(), term()}]}
+    | {memcached_error, key_enoent, integer()}
+    | mc_error().
+get_xattrs(Bucket, Key, VBucket, Permissions) ->
+    perform_very_long_call(
+      fun (Sock) ->
+              {reply, mc_binary:get_xattrs(Sock, Key, VBucket, Permissions)}
+      end, Bucket, [xattrs]).
 
 %% @doc send an subdoc multi lookup command to memcached
 -spec subdoc_multi_lookup(bucket_name(), binary(), integer(),
