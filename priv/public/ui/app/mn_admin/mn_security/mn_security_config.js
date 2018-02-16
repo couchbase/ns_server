@@ -5,7 +5,8 @@
     'mnUserRoles',
     'mnPluggableUiRegistry',
     'mnRootCertificate',
-    'mnElementCrane'
+    'mnElementCrane',
+    'mnClientCertificate'
   ]).config(mnIndexesConfig);
 
   function mnIndexesConfig($stateProvider) {
@@ -111,6 +112,15 @@
         data: {
           ldap: true,
           compat: "atLeast40 && !atLeast45",
+          enterprise: true
+        }
+      })
+      .state('app.admin.security.clientCert', {
+        url: '/clientCert',
+        controller: 'mnClientCertController as clientCertCtl',
+        templateUrl: 'app/mn_admin/mn_security/mn_client_certificate/mn_client_certificate.html',
+        data: {
+          compat: "atLeast50",
           enterprise: true
         }
       })

@@ -114,7 +114,7 @@
 
 <!--  INDEX VIEW **********************************************************  -->
   <span ng-if="viewby == 'viewby_index'">
-    <div class="cbui-table margin-top-1" mn-sortable-table>
+    <div class="cbui-table margin-top-1" mn-sortable-table="" ng-if="gsiCtl.state.indexes.length">
       <div class="cbui-table-header">
         <span class="cbui-table-cell flex-grow-2">
           <span sort-by-default="true" mn-sortable-title="index" class="sorter">index name</span>
@@ -131,7 +131,6 @@
         <span class="cbui-table-cell flex-grow-half">build progress</span>
       </div>
       <section
-         ng-if="gsiCtl.state.indexes.length"
          ng-repeat="row in gsiCtl.state.indexes | orderBy:mnSortableTable.sortableTableProperties.orderBy:mnSortableTable.sortableTableProperties.invert | filter:gsiCtl.filterField as byIndexFiltered track by gsiCtl.generateIndexId(row)"
          ng-click="gsiCtl.toggleDetails(gsiCtl.generateIndexId(row))"
          class="has-hover" ng-class="{
