@@ -26,7 +26,8 @@
 
 %% referenced from ns_config_default
 -export([get_minidump_dir/2, omit_missing_mcd_ports/2, ssl_minimum_protocol/2,
-         is_enabled/2, client_cert_auth/2, is_snappy_enabled/2]).
+         is_enabled/2, client_cert_auth/2, is_snappy_enabled/2,
+         is_snappy_enabled/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -335,6 +336,9 @@ is_enabled([FeatureVersion], _Params) ->
     cluster_compat_mode:is_enabled(FeatureVersion).
 
 is_snappy_enabled([], _Params) ->
+    is_snappy_enabled().
+
+is_snappy_enabled() ->
     is_snappy_enabled(?VULCAN_VERSION_NUM).
 
 is_snappy_enabled(FeatureVersion) ->

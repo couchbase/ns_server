@@ -239,26 +239,17 @@ connect(Type, ConnName, Node, Bucket, RepFeatures) ->
                                        list_to_binary(Password)}}),
     ok = mc_client_binary:select_bucket(Sock, Bucket),
 
-    XAttr = proplists:get_bool(xattr, RepFeatures),
-
-    %% Snappy is controlled by datatype_snappy flag and it defaults to true.
-    %% So we try to negotiate it unconditionally, if it's enabled. In mixed
-    %% clusters, if this fails we still go ahead with the connections as there
-    %% will be no correctness issues. Also when the datatype_snappy flag is
-    %% toggled by the user, only the newer connections see the change and it's
-    %% semantically ok to retain the older connections as is.
-    Snappy = ns_config:search_prop(Cfg, memcached, datatype_snappy, true),
-
     %% Negotiate XAttr and Snappy features if they are to be enabled.
-    negotiate_features(Sock, Type, ConnName, XAttr, Snappy),
+    negotiate_features(Sock, Type, ConnName, RepFeatures),
 
     ok = dcp_commands:open_connection(Sock, ConnName, Type, RepFeatures),
     Sock.
 
-negotiate_features(Sock, Type, ConnName, XAttr, Snappy) ->
-    Features = [<<V:16>> || {V, true} <-
-                                [{?MC_FEATURE_XATTR, XAttr},
-                                 {?MC_FEATURE_SNAPPY, Snappy}]],
+negotiate_features(Sock, Type, ConnName, RepFeatures) ->
+    Features = [<<V:16>> || {F, V} <-
+                                [{xattr, ?MC_FEATURE_XATTR},
+                                 {snappy, ?MC_FEATURE_SNAPPY}],
+                            proplists:get_bool(F, RepFeatures)],
 
     case do_negotiate_features(Sock, Type, ConnName, Features) of
         ok ->
