@@ -1424,7 +1424,13 @@ do_couchbase_index_stats_descriptions(BucketId, Nodes) ->
                            {desc, <<"Number of bytes per second read by a scan">>}]},
                  {struct, [{title, <<"avg scan latency(ns)">>},
                            {name, per_index_stat(Id, <<"avg_scan_latency">>)},
-                           {desc, <<"Average time to serve a scan request (nanoseconds)">>}]}]}]}
+                           {desc, <<"Average time to serve a scan request (nanoseconds)">>}]},
+                 {struct, [{title, <<"cache resident percent">>},
+                           {name, per_index_stat(Id, <<"resident_percent">>)},
+                           {desc, <<"Percentage of index data resident in memory">>}]},
+                 {struct, [{title, <<"cache hit percent">>},
+                           {name, per_index_stat(Id, <<"cache_hit_percent">>)},
+                           {desc, <<"Percentage of index data served from cache">>}]}]}]}
      || Id <- AllIndexes].
 
 couchbase_cbas_stats_descriptions(ServiceNodes) ->

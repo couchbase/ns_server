@@ -85,7 +85,7 @@ start_keeper() ->
 
 get_gauges() ->
     [disk_size, data_size, num_docs_pending, num_docs_queued,
-     items_count, frag_percent].
+     items_count, frag_percent, resident_percent, cache_hit_percent].
 
 get_counters() ->
     [num_requests, num_rows_returned, num_docs_indexed,
