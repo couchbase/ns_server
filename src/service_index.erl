@@ -84,7 +84,7 @@ start_keeper() ->
     service_status_keeper:start_link(?MODULE).
 
 get_gauges() ->
-    [disk_size, data_size, num_docs_pending, num_docs_queued,
+    [disk_size, data_size, memory_used, num_docs_pending, num_docs_queued,
      items_count, frag_percent, resident_percent, cache_hit_percent].
 
 get_counters() ->
