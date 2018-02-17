@@ -189,10 +189,10 @@ extract_auth(Req) ->
                         "Basic " ++ Value ->
                             parse_user_password(base64:decode_to_string(Value));
                         _ ->
-                            undefined
+                            error
                     end;
                 failed ->
-                    undefined;
+                    error;
                 UName ->
                     {client_cert_auth, UName}
             end
@@ -226,11 +226,13 @@ parse_user_password(UserPasswordStr) ->
 has_permission(Permission, Req) ->
     menelaus_roles:is_allowed(Permission, get_identity(Req)).
 
--spec authenticate(undefined |
+-spec authenticate(error | undefined |
                    {token, auth_token()} |
                    {client_cert_auth, string()} |
                    {rbac_user_id(), rbac_password()}) ->
                           false | {ok, rbac_identity()} | {error, term()}.
+authenticate(error) ->
+    false;
 authenticate(undefined) ->
     {ok, {"", anonymous}};
 authenticate({token, Token} = Param) ->
