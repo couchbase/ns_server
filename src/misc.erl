@@ -2475,3 +2475,14 @@ bin_bxor(<<Bin1/binary>>, <<Bin2/binary>>) ->
     <<Int2:SizeBits>> = Bin2,
     Int3 = Int1 bxor Int2,
     <<Int3:SizeBits>>.
+
+duplicates(List) when is_list(List) ->
+    List -- lists:usort(List).
+
+-ifdef(EUNIT).
+no_duplicates_test() ->
+    ?assertEqual([],  duplicates([])),
+    ?assertEqual([],  duplicates([1])),
+    ?assertEqual([],  duplicates([1,2,3,"1"])),
+    ?assertEqual([1,2,2], duplicates([1,2,1,2,3,2])).
+-endif.

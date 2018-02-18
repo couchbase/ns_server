@@ -22,6 +22,7 @@
          maybe_serve_file/4]).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -define(CONFIG_DIR, etc).
 -define(DOCROOTS_DIR, lib).
@@ -43,32 +44,37 @@
 -type proxy_strategy() :: local.
 -type filter_op()      :: keep | drop.
 -type ui_compat_version() :: [integer()].
+-record(prefix_props, { port_name :: atom() }).
 -record(plugin, { name                   :: service_name(),
                   proxy_strategy         :: proxy_strategy(),
-                  rest_api_prefix        :: rest_api_prefix(),
+                  rest_api_prefixes      :: dict(),
                   doc_roots              :: [string()],
                   version_dirs           :: [{ui_compat_version(), string()}],
                   request_headers_filter :: {filter_op(), [string()]}}).
 -type plugin()  :: #plugin{}.
 -type plugins() :: [plugin()].
 
--define(VIEW_PLUGIN, #plugin{name = views,
-                             proxy_strategy = local,
-                             rest_api_prefix = "couchBase",
-                             doc_roots = [],
-                             request_headers_filter = {keep, ["accept",
-                                                              "accept-encoding",
-                                                              "accept-language",
-                                                              "authorization",
-                                                              "cache-control",
-                                                              "connection",
-                                                              "content-type",
-                                                              "pragma",
-                                                              "referer"]}}).
 -spec find_plugins() -> plugins().
 find_plugins() ->
     SpecFiles = find_plugin_spec_files(),
-    [?VIEW_PLUGIN | read_and_validate_plugin_specs(SpecFiles)].
+    [view_plugin() | read_and_validate_plugin_specs(SpecFiles)].
+
+view_plugin() ->
+    ViewPortName = port_name_by_service_name(views),
+    Prefixes = [{"couchBase", #prefix_props{port_name = ViewPortName}}],
+    #plugin{name = views,
+            proxy_strategy = local,
+            rest_api_prefixes = dict:from_list(Prefixes),
+            doc_roots = [],
+            request_headers_filter = {keep, ["accept",
+                                             "accept-encoding",
+                                             "accept-language",
+                                             "authorization",
+                                             "cache-control",
+                                             "connection",
+                                             "content-type",
+                                             "pragma",
+                                             "referer"]}}.
 
 %% The plugin files passed via the command line are processed first so it is
 %% possible to override the standard files.
@@ -108,32 +114,65 @@ validate_plugin_spec(KVs, Plugins) ->
     ServiceName = binary_to_atom(get_element(<<"service">>, KVs), latin1),
     ProxyStrategy = decode_proxy_strategy(get_element(<<"proxy-strategy">>,
                                                       KVs)),
-    RestApiPrefix = binary_to_list(get_element(<<"rest-api-prefix">>, KVs)),
+    Prefixes = decode_prefixes(get_opt_element(<<"rest-api-prefixes">>, KVs)),
+    %% Backward compatibility code
+    %% remove this code when all the services switch to using
+    %% rest-api-prefixes instead of rest-api-prefix
+    RestApiPrefixes = case Prefixes of
+                          undefined ->
+                              decode_obsolete_prefixes(
+                                get_element(<<"rest-api-prefix">>, KVs),
+                                ServiceName);
+                          _ -> Prefixes
+                      end,
+    %% End of backward compatibility code
     DocRoots = decode_docroots(get_element(<<"doc-root">>, KVs)),
     VersionDirs = decode_version_dirs(get_opt_element(<<"version-dirs">>, KVs)),
     ReqHdrFilter = decode_request_headers_filter(
                      get_opt_element(<<"request-headers-filter">>, KVs)),
     case {valid_service(ServiceName),
-          find_plugin_by_prefix(RestApiPrefix, Plugins)} of
-        {true, false} ->
+          check_prefix_uniqueness(RestApiPrefixes, Plugins)} of
+        {true, ok} ->
             ?log_info("Loaded pluggable UI specification for ~p~n",
                       [ServiceName]),
             [#plugin{name = ServiceName,
                      proxy_strategy = ProxyStrategy,
-                     rest_api_prefix = RestApiPrefix,
+                     rest_api_prefixes = dict:from_list(RestApiPrefixes),
                      doc_roots = DocRoots,
                      version_dirs = VersionDirs,
                      request_headers_filter = ReqHdrFilter} | Plugins];
-        {true, #plugin{}} ->
+        {true, {error, {duplicates, Duplicates}}} ->
             ?log_info("Pluggable UI specification for ~p not loaded, "
-                      "duplicate REST API prefix ~p~n",
-                      [ServiceName, RestApiPrefix]),
+                      "duplicate REST API prefixes ~p~n",
+                      [ServiceName, Duplicates]),
             Plugins;
         {false, _} ->
             ?log_info("Pluggable UI specification for ~p not loaded~n",
                       [ServiceName]),
             Plugins
     end.
+
+check_prefix_uniqueness(Prefixes, Plugins) ->
+    PrefixNames = [P || {P, _} <- Prefixes],
+    Duplicates = misc:duplicates(PrefixNames) ++
+        lists:filter(is_plugin(_, Plugins), PrefixNames),
+    case Duplicates of
+        [] -> ok;
+        _  -> {error, {duplicates, Duplicates}}
+    end.
+
+decode_prefixes(undefined) -> undefined;
+decode_prefixes({KeyValues}) ->
+    lists:map(
+      fun ({PrefixBin, {Props}}) ->
+              Prefix = binary_to_list(PrefixBin),
+              Port = binary_to_atom(get_element(<<"portName">>, Props), latin1),
+              {Prefix, #prefix_props{port_name = Port}}
+      end, KeyValues).
+
+decode_obsolete_prefixes(PrefixBin, Service) ->
+    Prefix = binary_to_list(PrefixBin),
+    [{Prefix, #prefix_props{port_name = port_name_by_service_name(Service)}}].
 
 valid_service(ServiceName) ->
     lists:member(ServiceName,
@@ -187,26 +226,28 @@ decode_request_headers_filter({[{Op, BinNames}]}) ->
 proxy_req(RestPrefix, Path, Plugins, Req) ->
     case find_plugin_by_prefix(RestPrefix, Plugins) of
         #plugin{name = Service, proxy_strategy = ProxyStrategy,
-                request_headers_filter = HdrFilter} ->
-            case address_and_port_for(Service, ProxyStrategy) of
-                HostPort when is_tuple(HostPort) ->
+                request_headers_filter = HdrFilter,
+                rest_api_prefixes = Prefixes} ->
+            {ok, PrefixProps} = dict:find(RestPrefix, Prefixes),
+            case address_and_port_for(Service, PrefixProps, ProxyStrategy) of
+                {ok, HostPort} ->
                     Timeout = get_timeout(Service, Req),
                     AuthToken = auth_token(Service, Req),
                     Headers = AuthToken ++ convert_headers(Req, HdrFilter),
                     do_proxy_req(HostPort, Path, Headers, Timeout, Req);
-                Error ->
+                {error, Error} ->
                     server_error(Req, Service, Error)
             end;
         false ->
             send_server_error(Req, <<"Not found.">>)
     end.
 
-address_and_port_for(Service, local) ->
+address_and_port_for(Service, Props, local) ->
     case should_run_service(Service, node()) of
         true ->
-            address_and_port(Service, node());
+            {ok, address_and_port(Props, node())};
         false ->
-            service_not_running
+            {error, service_not_running}
     end.
 
 should_run_service(views, Node) ->
@@ -214,29 +255,20 @@ should_run_service(views, Node) ->
 should_run_service(Service, Node) ->
     ns_cluster_membership:should_run_service(Service, Node).
 
-address_and_port(Service, Node) ->
+address_and_port(Props, Node) ->
     Addr = node_address(Node),
-    Port = port_for(Service, Node),
+    Port = lookup_port(Props#prefix_props.port_name, Node),
     {Addr, Port}.
 
 node_address(Node) ->
     {_Node, Addr} = misc:node_name_host(Node),
     Addr.
 
-port_for(fts, Node) ->
-    lookup_port(fts_http_port, Node);
-
-port_for(cbas, Node) ->
-    lookup_port(cbas_http_port, Node);
-
-port_for(n1ql, Node) ->
-    lookup_port(query_port, Node);
-
-port_for(views, Node) ->
-    lookup_port(capi_port, Node);
-
-port_for(eventing, Node) ->
-    lookup_port(eventing_http_port, Node).
+port_name_by_service_name(fts) -> fts_http_port;
+port_name_by_service_name(cbas) -> cbas_http_port;
+port_name_by_service_name(n1ql) -> query_port;
+port_name_by_service_name(views) -> capi_port;
+port_name_by_service_name(eventing) -> eventing_http_port.
 
 lookup_port(Name, Node) ->
     {value, Port} = ns_config:search(ns_config:latest(),
@@ -376,12 +408,13 @@ is_plugin(Prefix, Plugins) ->
             false
     end.
 
-find_plugin_by_prefix(Prefix, Plugins) ->
-    find_plugin(Prefix, Plugins, #plugin.rest_api_prefix).
-
-find_plugin(Prefix, Plugins, KeyPos) ->
-    lists:keyfind(Prefix, KeyPos, Plugins).
-
+find_plugin_by_prefix(_Prefix, []) ->
+    false;
+find_plugin_by_prefix(Prefix, [Plugin|Tail]) ->
+    case dict:find(Prefix, Plugin#plugin.rest_api_prefixes) of
+        {ok, _} -> Plugin;
+        error -> find_plugin_by_prefix(Prefix, Tail)
+    end.
 
 %%% =============================================================
 %%%
