@@ -187,7 +187,7 @@ extract_auth(Req) ->
                 undefined ->
                     case Req:get_header_value("authorization") of
                         "Basic " ++ Value ->
-                            parse_user_password(base64:decode_to_string(Value));
+                            parse_basic_auth_header(Value);
                         _ ->
                             error
                     end;
@@ -208,18 +208,23 @@ get_rejected_user(Auth) ->
             undefined
     end.
 
-parse_user_password(UserPasswordStr) ->
-    case string:chr(UserPasswordStr, $:) of
-        0 ->
-            case UserPasswordStr of
-                "" ->
-                    undefined;
-                _ ->
-                    {UserPasswordStr, ""}
+parse_basic_auth_header(Value) ->
+    case (catch base64:decode_to_string(Value)) of
+        UserPasswordStr when is_list(UserPasswordStr) ->
+            case string:chr(UserPasswordStr, $:) of
+                0 ->
+                    case UserPasswordStr of
+                        "" ->
+                            undefined;
+                        _ ->
+                            {UserPasswordStr, ""}
+                    end;
+                I ->
+                    {string:substr(UserPasswordStr, 1, I - 1),
+                     string:substr(UserPasswordStr, I + 1)}
             end;
-        I ->
-            {string:substr(UserPasswordStr, 1, I - 1),
-             string:substr(UserPasswordStr, I + 1)}
+        _ ->
+            error
     end.
 
 -spec has_permission(rbac_permission(), mochiweb_request()) -> boolean().
