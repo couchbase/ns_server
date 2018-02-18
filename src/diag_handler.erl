@@ -329,9 +329,9 @@ prepare_ets_table(_Table, failed) ->
 prepare_ets_table(Table, {Info, Content}) ->
     [{{Table, Info}, sanitize_ets_table(Table, Info, Content)}].
 
-sanitize_ets_table(ui_auth_by_token, _Info, _Content) ->
+sanitize_ets_table(menelaus_ui_auth, _Info, _Content) ->
     ["not printed"];
-sanitize_ets_table(ui_auth_by_expiration, _Info, _Content) ->
+sanitize_ets_table(menelaus_ui_auth_by_expiration, _Info, _Content) ->
     ["not printed"];
 sanitize_ets_table(ns_config_ets_dup, _Info, Content) ->
     ns_config_log:sanitize(Content);
