@@ -96,7 +96,7 @@
                 <button
                    class="outline btn-small margin-quarter"
                    title="Remove field"
-                   ng-disabled="!rbac.cluster.settings.write"
+                   ng-disabled="!rbac.cluster.settings.write || !settingsClusterCtl.querySettings.queryCurlWhitelist.allowed_urls.length"
                    ng-click="settingsClusterCtl.querySettings.queryCurlWhitelist.allowed_urls.pop()"
                    type="button">-</button>
               </div>
@@ -105,7 +105,7 @@
                  ng-if="settingsClusterCtl.querySettings.queryCurlWhitelist.all_access">
               <label>Disallowed CURL URLs</label>
               <div
-                 class="formrow"
+                 class="margin-bottom-half"
                  ng-repeat="url in settingsClusterCtl.querySettings.queryCurlWhitelist.disallowed_urls track by $index">
                 <input
                    type="text"
@@ -125,7 +125,7 @@
                 <button
                    class="outline btn-small margin-quarter"
                    title="Remove field"
-                   ng-disabled="!rbac.cluster.settings.write"
+                   ng-disabled="!rbac.cluster.settings.write || !settingsClusterCtl.querySettings.queryCurlWhitelist.disallowed_urls.length"
                    ng-click="settingsClusterCtl.querySettings.queryCurlWhitelist.disallowed_urls.pop()"
                    type="button">-</button>
               </div>

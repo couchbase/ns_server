@@ -105,6 +105,11 @@
         saveSettings();
       }
     }
+    function maybeSetInititalValue(array, value) {
+      if (array.length === 0 || array[0] !== value) {
+        array.push(value);
+      }
+    }
     function activate() {
       mnPromiseHelper(vm, mnPoolDefault.get())
         .applyToScope(function (resp) {
@@ -113,7 +118,11 @@
 
       if (mnPoolDefault.export.compat.atLeast55 && $scope.rbac.cluster.settings.read) {
         mnPromiseHelper(vm, mnClusterConfigurationService.getQuerySettings())
-          .applyToScope("querySettings").onSuccess(function (a) {console.log(a)})
+          .applyToScope("querySettings")
+          .onSuccess(function () {
+            maybeSetInititalValue(vm.querySettings.queryCurlWhitelist.allowed_urls, "");
+            maybeSetInititalValue(vm.querySettings.queryCurlWhitelist.disallowed_urls, "");
+          });
       }
 
       if (mnPoolDefault.export.compat.atLeast55 &&
