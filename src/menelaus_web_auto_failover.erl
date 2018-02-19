@@ -35,8 +35,7 @@
 -define(AUTO_FAILLOVER_MIN_CE_TIMEOUT, 30).
 -define(AUTO_FAILLOVER_MAX_TIMEOUT, 3600).
 
-%% TODO. Rename this config key to failover_on_data_disk_issues.
--define(DATA_DISK_ISSUES_CONFIG_KEY, failoverOnDataDiskIssues).
+-define(DATA_DISK_ISSUES_CONFIG_KEY, failover_on_data_disk_issues).
 -define(MIN_DATA_DISK_ISSUES_TIMEPERIOD, 5). %% seconds
 -define(MAX_DATA_DISK_ISSUES_TIMEPERIOD, 3600). %% seconds
 -define(DEFAULT_DATA_DISK_ISSUES_TIMEPERIOD, 120). %% seconds
@@ -197,7 +196,7 @@ parse_validate_max_count(Args, CurrRV) ->
     end.
 
 parse_validate_failover_disk_issues(Args, CurrRV) ->
-    Key = atom_to_list(?DATA_DISK_ISSUES_CONFIG_KEY),
+    Key = "failoverOnDataDiskIssues",
     KeyEnabled = Key ++ "[enabled]",
     KeyTimePeriod = Key ++ "[timePeriod]",
 
@@ -267,7 +266,7 @@ get_extra_settings(Config) ->
                                        Config),
             Max = proplists:get_value(?MAX_EVENTS_CONFIG_KEY, Config),
             {Enabled, TimePeriod} = get_failover_on_disk_issues(Config),
-            [{?DATA_DISK_ISSUES_CONFIG_KEY,
+            [{failoverOnDataDiskIssues,
               {struct, [{enabled, Enabled}, {timePeriod, TimePeriod}]}},
              {failoverServerGroup, SGFO},
              {maxCount, Max}];
