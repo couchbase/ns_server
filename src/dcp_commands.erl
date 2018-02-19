@@ -39,13 +39,14 @@ process_response(#mc_header{status=Status}, #mc_entry{data=Msg}) ->
 process_response({ok, Header, Body}) ->
     process_response(Header, Body).
 
--spec open_connection(port(), dcp_conn_name(), dcp_conn_type(), boolean()) -> ok | dcp_error().
-open_connection(Sock, ConnName, Type, XAttr) ->
-    open_connection(Sock, ConnName, Type, XAttr, ns_server).
-
--spec open_connection(port(), dcp_conn_name(), dcp_conn_type(), boolean(), atom()) ->
+-spec open_connection(port(), dcp_conn_name(), dcp_conn_type(), list()) ->
                              ok | dcp_error().
-open_connection(Sock, ConnName, Type, XAttr, Logger) ->
+open_connection(Sock, ConnName, Type, RepFeatures) ->
+    open_connection(Sock, ConnName, Type, RepFeatures, ns_server).
+
+-spec open_connection(port(), dcp_conn_name(), dcp_conn_type(), list(),
+                      atom()) -> ok | dcp_error().
+open_connection(Sock, ConnName, Type, RepFeatures, Logger) ->
     Flags = case Type of
                 consumer ->
                     ?DCP_CONNECTION_FLAG_CONSUMER;
@@ -55,12 +56,13 @@ open_connection(Sock, ConnName, Type, XAttr, Logger) ->
                     ?DCP_CONNECTION_FLAG_NOTIFIER
             end,
 
-    NewFlags = case XAttr of
-                   true ->
-                       Flags bor ?DCP_CONNECTION_FLAG_XATTR;
-                   false ->
-                       Flags
-               end,
+    NewFlags = lists:foldl(
+                 fun({F, Val}, FAcc) ->
+                         case proplists:get_bool(F, RepFeatures) of
+                             true -> FAcc bor Val;
+                             false -> FAcc
+                         end
+                 end, Flags, [{xattr, ?DCP_CONNECTION_FLAG_XATTR}]),
 
     Extra = <<0:32, NewFlags:32>>,
 

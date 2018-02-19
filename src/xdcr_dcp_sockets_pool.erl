@@ -49,7 +49,7 @@ do_connect(Bucket) ->
                     Random = couch_uuids:random(),
                     Name = <<"xdcr:", (list_to_binary(Bucket))/binary, "-", Random/binary>>,
                     case dcp_commands:open_connection(Socket, binary_to_list(Name),
-                                                      producer, false, xdcr) of
+                                                      producer, [], xdcr) of
                         ok ->
                             case dcp_commands:setup_flow_control(Socket, ?XDCR_DCP_BUFFER_SIZE) of
                                 ok ->
