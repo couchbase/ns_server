@@ -2466,3 +2466,12 @@ compare_secure([X | RestX], [Y | RestY], Result) ->
     compare_secure(RestX, RestY, (X bxor Y) bor Result);
 compare_secure([], [], Result) ->
     Result == 0.
+
+bin_bxor(<<Bin1/binary>>, <<Bin2/binary>>) ->
+    Size = size(Bin1),
+    Size = size(Bin2),
+    SizeBits = Size * 8,
+    <<Int1:SizeBits>> = Bin1,
+    <<Int2:SizeBits>> = Bin2,
+    Int3 = Int1 bxor Int2,
+    <<Int3:SizeBits>>.
