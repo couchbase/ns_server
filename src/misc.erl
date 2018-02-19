@@ -2449,3 +2449,20 @@ delay(0) ->
 delay(I) ->
     delay(I-1).
 -endif.
+
+%% Compare two strings or binaries for equality without short-circuits
+%% to avoid timing attacks.
+compare_secure(<<X/binary>>, <<Y/binary>>) ->
+    compare_secure(binary_to_list(X), binary_to_list(Y));
+compare_secure(X, Y) when is_list(X), is_list(Y) ->
+    case length(X) == length(Y) of
+        true ->
+            compare_secure(X, Y, 0);
+        false ->
+            false
+    end.
+
+compare_secure([X | RestX], [Y | RestY], Result) ->
+    compare_secure(RestX, RestY, (X bxor Y) bor Result);
+compare_secure([], [], Result) ->
+    Result == 0.
