@@ -21,11 +21,12 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--define(MAX_MOVES_PER_NODE, ns_config:read_key_fast(rebalance_moves_per_node, 1)).
--define(MOVES_BEFORE_COMPACTION, ns_config:read_key_fast(rebalance_moves_before_compaction, 64)).
--define(MAX_INFLIGHT_MOVES_PER_NODE, ns_config:read_key_fast(rebalance_inflight_moves_per_node, 64)).
+-define(MAX_MOVES_PER_NODE,          ?get_param(moves_per_node, 1)).
+-define(MOVES_BEFORE_COMPACTION,     ?get_param(moves_before_compaction, 64)).
+-define(MAX_INFLIGHT_MOVES_PER_NODE, ?get_param(inflight_moves_per_node, 64)).
 
--define(DCP_STATS_LOGGING_INTERVAL, 10*60*1000).
+-define(DCP_STATS_LOGGING_INTERVAL,
+        ?get_param(dcp_stats_logging_interval, 10 * 60 * 1000)).
 
 %% API
 -export([start_link/4]).

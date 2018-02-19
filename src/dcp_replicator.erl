@@ -40,7 +40,7 @@
                 bucket :: bucket_name()}).
 
 -define(VBUCKET_POLL_INTERVAL, 100).
--define(SHUT_CONSUMER_TIMEOUT, ns_config:get_timeout(dcp_shut_consumer, 60000)).
+-define(SHUT_CONSUMER_TIMEOUT, ?get_timeout(dcp_shut_consumer, 60000)).
 
 init({ProducerNode, Bucket, XAttr}) ->
     process_flag(trap_exit, true),

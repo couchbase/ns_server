@@ -36,20 +36,20 @@
 -define(CHECK_INTERVAL, 10000).
 -define(CHECK_WARMUP_INTERVAL, 500).
 -define(VBUCKET_POLL_INTERVAL, 100).
--define(EVAL_TIMEOUT, ns_config:get_timeout(ns_memcached_eval, 120000)).
--define(TIMEOUT, ns_config:get_timeout(ns_memcached_outer, 180000)).
--define(TIMEOUT_HEAVY, ns_config:get_timeout(ns_memcached_outer_heavy, 180000)).
--define(TIMEOUT_VERY_HEAVY, ns_config:get_timeout(ns_memcached_outer_very_heavy, 360000)).
--define(CONNECTED_TIMEOUT, ns_config:get_timeout(ns_memcached_connected, 5000)).
--define(WARMED_TIMEOUT, ns_config:get_timeout(ns_memcached_warmed, 5000)).
--define(MARK_WARMED_TIMEOUT, ns_config:get_timeout(ns_memcached_mark_warmed, 5000)).
+-define(EVAL_TIMEOUT,        ?get_timeout(eval, 120000)).
+-define(TIMEOUT,             ?get_timeout(outer, 180000)).
+-define(TIMEOUT_HEAVY,       ?get_timeout(outer_heavy, 180000)).
+-define(TIMEOUT_VERY_HEAVY,  ?get_timeout(outer_very_heavy, 360000)).
+-define(CONNECTED_TIMEOUT,   ?get_timeout(connected, 5000)).
+-define(WARMED_TIMEOUT,      ?get_timeout(warmed, 5000)).
+-define(MARK_WARMED_TIMEOUT, ?get_timeout(mark_warmed, 5000)).
 %% half-second is definitely 'slow' for any definition of slow
 -define(SLOW_CALL_THRESHOLD_MICROS, 500000).
--define(GET_KEYS_TIMEOUT, ns_config:get_timeout(ns_memcached_get_keys_timeout, 60000)).
--define(GET_KEYS_OUTER_TIMEOUT, ns_config:get_timeout(ns_memcached_get_keys_outer_timeout, 70000)).
+-define(GET_KEYS_TIMEOUT,       ?get_timeout(get_keys, 60000)).
+-define(GET_KEYS_OUTER_TIMEOUT, ?get_timeout(get_keys_outer, 70000)).
 
--define(RECBUF, ns_config:read_key_fast({node, node(), ns_memcached_recbuf}, 64 * 1024)).
--define(SNDBUF, ns_config:read_key_fast({node, node(), ns_memcached_sndbuf}, 64 * 1024)).
+-define(RECBUF, ?get_param(recbuf, 64 * 1024)).
+-define(SNDBUF, ?get_param(sndbuf, 64 * 1024)).
 
 -define(CONNECTION_ATTEMPTS, 5).
 

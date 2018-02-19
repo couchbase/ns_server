@@ -20,8 +20,8 @@
 
 -export([spawn_monitor/2]).
 
--define(LEASE_TIME, get_param(lease_time, 15000)).
--define(LEASE_GRACE_TIME, get_param(lease_grace_time, 5000)).
+-define(LEASE_TIME,       ?get_param(lease_time, 15000)).
+-define(LEASE_GRACE_TIME, ?get_param(lease_grace_time, 5000)).
 
 -record(state, { parent :: pid(),
                  target :: node(),
@@ -41,16 +41,16 @@ spawn_monitor(TargetNode, UUID) ->
 init(Parent, TargetNode, UUID) ->
     process_flag(priority, high),
 
-    Rto = rto:new([{window,         get_param(window, 600 * 1000)},
-                   {backoff,        get_param(backoff, 2)},
-                   {min_timeout,    get_param(min_timeout, 2000)},
-                   {max_timeout,    get_param(max_timeout, ?LEASE_TIME)},
-                   {var_multiplier, get_param(var_multiplier, 4)}]),
+    Rto = rto:new([{window,         ?get_param(window, 600 * 1000)},
+                   {backoff,        ?get_param(backoff, 2)},
+                   {min_timeout,    ?get_param(min_timeout, 2000)},
+                   {max_timeout,    ?get_param(max_timeout, ?LEASE_TIME)},
+                   {var_multiplier, ?get_param(var_multiplier, 4)}]),
 
     RetryBackoff =
-        backoff:new([{initial,    get_param(retry_initial, 500)},
-                     {threshold,  get_param(retry_threshold, ?LEASE_TIME)},
-                     {multiplier, get_param(retry_backoff, 2)}]),
+        backoff:new([{initial,    ?get_param(retry_initial, 500)},
+                     {threshold,  ?get_param(retry_threshold, ?LEASE_TIME)},
+                     {multiplier, ?get_param(retry_backoff, 2)}]),
 
     State = #state{parent = Parent,
                    target = TargetNode,
@@ -184,9 +184,6 @@ handle_lease_lost(StartTime, State) ->
     %% and even update the round trip time
     revoke_now(update_rtt(StartTime, State)).
 
-get_param(Name, Default) ->
-    ns_config:read_key_fast({?MODULE, Name}, Default).
-
 %% Since acquire_lease internally is just a gen_server call, we can be sure
 %% that our message either reaches the worker process on target node or we get
 %% an exception as a result of the distribution connection between the nodes
@@ -225,7 +222,7 @@ get_min_extend_timeout(StartTime) ->
     Now        = time_compat:monotonic_time(),
     SinceStart = misc:convert_time_unit(Now - StartTime, millisecond),
 
-    max(0, get_param(min_extend_timeout, 100) - SinceStart).
+    max(0, ?get_param(min_extend_timeout, 100) - SinceStart).
 
 update_rtt(Start, State) ->
     Now  = time_compat:monotonic_time(),

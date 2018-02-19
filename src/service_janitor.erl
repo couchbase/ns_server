@@ -20,10 +20,9 @@
 
 -export([cleanup/0, cleanup/1, complete_service_failover/3]).
 
--define(INITIAL_REBALANCE_TIMEOUT,
-        ns_config:get_timeout(initial_rebalance, 120000)).
+-define(INITIAL_REBALANCE_TIMEOUT, ?get_timeout(initial_rebalance, 120000)).
 -define(CLEAR_FAILOVER_CONFIG_SYNC_TIMEOUT,
-        ns_config:get_timeout({service_janitor, clear_failover_sync}, 2000)).
+        ?get_timeout(clear_failover_sync, 2000)).
 
 cleanup() ->
     Config = ns_config:get(),

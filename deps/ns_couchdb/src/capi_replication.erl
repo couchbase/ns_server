@@ -32,7 +32,7 @@
 
 -define(SLOW_THRESHOLD_SECONDS, 180).
 
--define(XDCR_CHECKPOINT_TIMEOUT, ns_config:get_timeout(xdcr_checkpoint_timeout, 150000)).
+-define(XDCR_CHECKPOINT_TIMEOUT, ?get_timeout(xdcr_checkpoint_timeout, 150000)).
 
 
 %% public functions

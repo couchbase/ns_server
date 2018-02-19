@@ -61,8 +61,7 @@
 -define(SERVER, leader_registry).
 -define(TABLE,  leader_registry).
 
--define(WHEREIS_NAME_REMOTE_TIMEOUT,
-        ns_config:get_timeout({leader_registry, whereis_name_remote}, 15000)).
+-define(WHEREIS_NAME_REMOTE_TIMEOUT, ?get_timeout(whereis_name_remote, 15000)).
 
 -record(state, { leader :: node() | undefined }).
 

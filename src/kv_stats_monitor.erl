@@ -48,9 +48,9 @@
 -include("ns_common.hrl").
 
 %% Frequency at which stats are checked
--define(REFRESH_INTERVAL, 2000). % 2 seconds
+-define(REFRESH_INTERVAL, ?get_param(refresh_interval, 2000)). % 2 seconds
 %% Percentage threshold
--define(DISK_ISSUE_THRESHOLD, ns_config:read_key_fast(disk_issue_threshold, 60)).
+-define(DISK_ISSUE_THRESHOLD, ?get_param(disk_issue_threshold, 60)).
 
 -export([start_link/0]).
 -export([get_buckets/0,

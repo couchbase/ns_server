@@ -15,6 +15,7 @@
 %%
 -module(service_api).
 
+-include("ns_common.hrl").
 -include("service_api.hrl").
 
 -export([shutdown/1, get_node_info/1,
@@ -22,8 +23,8 @@
          get_current_topology/2,
          prepare_topology_change/6, start_topology_change/6]).
 
--define(RPC_TIMEOUT, ns_config:get_timeout({service_api, rpc}, 60000)).
--define(LONG_POLL_TIMEOUT, ns_config:get_timeout({service_api, long_poll}, 30000)).
+-define(RPC_TIMEOUT,       ?get_timeout(rpc, 60000)).
+-define(LONG_POLL_TIMEOUT, ?get_timeout(long_poll, 30000)).
 
 shutdown(Pid) ->
     perform_call(Pid, "Shutdown", empty_req()).

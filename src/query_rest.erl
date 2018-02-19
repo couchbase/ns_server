@@ -40,7 +40,7 @@ get_stats() ->
 
 do_get_stats() ->
     Port = get_query_port(ns_config:latest(), node()),
-    Timeout = ns_config:get_timeout({n1ql, stats}, 30000),
+    Timeout = ?get_timeout(stats, 30000),
     case rest_utils:get_json_local(n1ql, "/admin/stats", Port, Timeout) of
         {ok, {Stats}} ->
             Stats;

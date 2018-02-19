@@ -573,7 +573,7 @@ do_upgrade_to_50(Nodes, Repair) ->
         true ->
             %% in case if aborted upgrade left some junk
             replicated_storage:sync_to_me(storage_name(),
-                                          ns_config:read_key_fast(users_upgrade_timeout, 60000)),
+                                          ?get_timeout(users_upgrade, 60000)),
             replicated_dets:delete_all(storage_name());
         false ->
             ok

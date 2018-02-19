@@ -330,7 +330,7 @@ terminate_and_wait(Processes, Reason) ->
 %% waits until given name is globally registered. I.e. until calling
 %% {via, leader_registry, Name} starts working
 wait_for_global_name(Name) ->
-    wait_for_global_name(Name, ns_config:get_timeout(wait_for_global_name, 20000)).
+    wait_for_global_name(Name, ?get_timeout(wait_for_global_name, 20000)).
 
 wait_for_global_name(Name, TimeoutMillis) ->
     wait_for_name({via, leader_registry, Name}, TimeoutMillis).

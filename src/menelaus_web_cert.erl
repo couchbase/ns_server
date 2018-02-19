@@ -27,7 +27,7 @@
          handle_client_cert_auth_settings/1,
          handle_client_cert_auth_settings_post/1]).
 
--define(MAX_CLIENT_CERT_PREFIXES, ns_config:read_key_fast(client_cert_auth_max_prefixes, 10)).
+-define(MAX_CLIENT_CERT_PREFIXES, ?get_param(max_prefixes, 10)).
 
 handle_cluster_certificate(Req) ->
     menelaus_util:assert_is_enterprise(),

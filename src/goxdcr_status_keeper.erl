@@ -28,8 +28,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--define(REFRESH_INTERVAL,
-        ns_config:get_timeout(goxdcr_status_keeper_refresh, 5000)).
+-define(REFRESH_INTERVAL, ?get_param(refresh_interval, 5000)).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).

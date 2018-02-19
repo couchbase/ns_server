@@ -29,10 +29,8 @@
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
 
--define(CONNECTION_TIMEOUT,
-        ns_config:get_timeout({service_agent, wait_for_connection}, 60000)).
--define(OUTER_TIMEOUT,
-        ns_config:get_timeout({service_agent, outer_timeout}, 90000)).
+-define(CONNECTION_TIMEOUT, ?get_timeout(wait_for_connection, 60000)).
+-define(OUTER_TIMEOUT,      ?get_timeout(outer, 90000)).
 
 -type revision() :: binary().
 -type node_id() :: binary().

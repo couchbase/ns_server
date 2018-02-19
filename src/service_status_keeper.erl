@@ -30,19 +30,13 @@
 -define(WORKER, service_status_keeper_worker).
 
 get_refresh_interval(Service) ->
-    ns_config:get_timeout(
-      {Service:get_type(), service_status_keeper_refresh},
-      ns_config:get_timeout(index_status_keeper_refresh, 5000)).
+    ?get_timeout({Service:get_type(), service_status_keeper_refresh}, 5000).
 
 get_stale_threshold(Service) ->
-    ns_config:read_key_fast(
-      {Service:get_type(), service_status_keeper_stale_threshold},
-      ns_config:read_key_fast(index_status_keeper_stale_threshold, 2)).
+    ?get_param({Service:get_type(), service_status_keeper_stale_threshold}, 2).
 
 dont_restart_service(Service) ->
-    ns_config:read_key_fast(
-      {Service:get_type(), dont_restart_service},
-      ns_config:read_key_fast(dont_restart_indexer, false)).
+    ?get_param({Service:get_type(), dont_restart_service}, false).
 
 server_name(Service) ->
     list_to_atom(?MODULE_STRING "-" ++ atom_to_list(Service:get_type())).

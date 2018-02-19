@@ -95,7 +95,7 @@ run_rebalance(Parent, Service,
 
 wait_for_agents_timeout(Type) ->
     Default = wait_for_agents_default_timeout(Type),
-    ns_config:get_timeout({service_rebalancer, wait_for_agent, Type}, Default).
+    ?get_timeout({wait_for_agent, Type}, Default).
 
 wait_for_agents_default_timeout(rebalance) ->
     60000;
@@ -126,8 +126,7 @@ rebalance(Rebalancer, Service, Type,
     ok = service_agent:start_rebalance(Service, Leader, Rebalancer,
                                        Id, Type, KeepNodesArg, EjectNodesArg),
 
-    Timeout = ns_config:get_timeout({service_rebalance_timeout, Service}, 10 * 60 * 1000),
-
+    Timeout = ?get_timeout({rebalance, Service}, 10 * 60 * 1000),
     wait_for_rebalance_completion(AllNodes, ProgressCallback, Timeout).
 
 wait_for_rebalance_completion(AllNodes, Callback, Timeout) ->

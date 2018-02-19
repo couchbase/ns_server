@@ -47,7 +47,7 @@ get_port() ->
     ns_config:read_key_fast({node, node(), eventing_http_port}, 8096).
 
 get_local_status() ->
-    Timeout = ns_config:get_timeout({eventing, status}, 30000),
+    Timeout = ?get_timeout(status, 30000),
     rest_utils:get_json_local(eventing, "api/v1/functions",
                               get_port(), Timeout).
 
@@ -85,7 +85,7 @@ flatten_stats(Json) ->
       end, Json).
 
 grab_stats() ->
-    Timeout = ns_config:get_timeout({eventing, stats}, 30000),
+    Timeout = ?get_timeout(stats, 30000),
     case rest_utils:get_json_local(eventing, "api/v1/stats",
                                    get_port(), Timeout) of
         {ok, Json} ->

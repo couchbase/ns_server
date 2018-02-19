@@ -15,6 +15,8 @@
 %%
 -module(service_fts).
 
+-include("ns_common.hrl").
+
 -export([start_keeper/0, get_indexes/0]).
 
 -export([get_type/0, get_remote_items/1, get_local_status/0, restart/0,
@@ -33,7 +35,7 @@ get_port() ->
     ns_config:read_key_fast({node, node(), fts_http_port}, 8094).
 
 get_timeout() ->
-    ns_config:get_timeout(fts_rest_request, 10000).
+    ?get_timeout(rest_request, 10000).
 
 get_remote_items(Node) ->
     remote_api:get_fts_indexes(Node).

@@ -34,8 +34,7 @@
 
 -define(PREFIX, "json_rpc_connection-").
 
--define(RPC_TIMEOUT,
-        ns_config:get_timeout({service_agent, json_rpc_timeout}, 60000)).
+-define(RPC_TIMEOUT, ?get_timeout(json_rpc_timeout, 60000)).
 
 label_to_name(Pid) when is_pid(Pid) ->
     Pid;

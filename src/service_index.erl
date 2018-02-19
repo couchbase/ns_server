@@ -15,6 +15,7 @@
 %%
 -module(service_index).
 
+-include("ns_common.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
 -export([start_keeper/0, get_status/1, get_indexes/0, get_indexes_version/0]).
@@ -41,7 +42,7 @@ get_port() ->
     ns_config:read_key_fast({node, node(), indexer_http_port}, 9102).
 
 get_timeout() ->
-    ns_config:get_timeout(index_rest_request, 10000).
+    ?get_timeout(rest_request, 10000).
 
 get_remote_items(Node) ->
     remote_api:get_indexes(Node).

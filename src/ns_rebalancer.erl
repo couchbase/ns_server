@@ -50,16 +50,13 @@
 -define(DATA_LOST, 1).
 -define(BAD_REPLICATORS, 2).
 
--define(DEFAULT_BUCKETS_SHUTDOWN_WAIT_TIMEOUT, 20000).
+-define(BUCKETS_SHUTDOWN_WAIT_TIMEOUT, ?get_timeout(buckets_shutdown, 20000)).
 
--define(REBALANCER_READINESS_WAIT_TIMEOUT,
-        ns_config:get_timeout({ns_rebalancer, readiness}, 60000)).
--define(REBALANCER_QUERY_STATES_TIMEOUT,
-        ns_config:get_timeout({ns_rebalancer, query_states}, 10000)).
--define(REBALANCER_APPLY_CONFIG_TIMEOUT,
-        ns_config:get_timeout({ns_rebalancer, apply_config}, 300000)).
+-define(REBALANCER_READINESS_WAIT_TIMEOUT, ?get_timeout(readiness, 60000)).
+-define(REBALANCER_QUERY_STATES_TIMEOUT,   ?get_timeout(query_states, 10000)).
+-define(REBALANCER_APPLY_CONFIG_TIMEOUT,   ?get_timeout(apply_config, 300000)).
 -define(FAILOVER_CONFIG_SYNC_TIMEOUT,
-        ns_config:get_timeout({ns_rebalancer, failover_config_sync}, 2000)).
+        ?get_timeout(failover_config_sync, 2000)).
 %%
 %% API
 %%
@@ -429,8 +426,7 @@ wait_local_buckets_shutdown_complete() ->
 do_wait_local_buckets_shutdown_complete([]) ->
     ok;
 do_wait_local_buckets_shutdown_complete(ExcessiveBuckets) ->
-    Timeout = ns_config:get_timeout(buckets_shutdown, ?DEFAULT_BUCKETS_SHUTDOWN_WAIT_TIMEOUT)
-        * length(ExcessiveBuckets),
+    Timeout = ?BUCKETS_SHUTDOWN_WAIT_TIMEOUT * length(ExcessiveBuckets),
     misc:executing_on_new_process(
       fun () ->
               Ref = erlang:make_ref(),
@@ -649,7 +645,7 @@ get_service_eject_delay(Service) ->
                 0
         end,
 
-    ns_config:get_timeout({eject_delay, Service}, Default).
+    ?get_param({eject_delay, Service}, Default).
 
 maybe_delay_eject_nodes(Timestamps, EjectNodes) ->
     case cluster_compat_mode:is_cluster_41() of

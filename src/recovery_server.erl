@@ -26,8 +26,7 @@
 %% gen_server2 callbacks
 -export([handle_call/3]).
 
--define(RECOVERY_QUERY_STATES_TIMEOUT,
-        ns_config:get_timeout(recovery_query_states, 5000)).
+-define(RECOVERY_QUERY_STATES_TIMEOUT, ?get_timeout(query_states, 5000)).
 
 -record(state, {uuid           :: binary(),
                 bucket         :: bucket_name(),

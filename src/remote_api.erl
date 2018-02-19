@@ -20,7 +20,7 @@
 
 -include("ns_common.hrl").
 
--define(DEFAULT_TIMEOUT, ns_config:get_timeout(remote_api_default, 10000)).
+-define(DEFAULT_TIMEOUT, ?get_timeout(default, 10000)).
 
 %% remote calls
 -export([get_indexes/1, get_fts_indexes/1, get_service_remote_items/2]).
@@ -77,9 +77,9 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% internal
 get_timeout(Request) when is_atom(Request) ->
-    ns_config:get_timeout({remote_api, Request}, ?DEFAULT_TIMEOUT);
+    ?get_timeout(Request, ?DEFAULT_TIMEOUT);
 get_timeout({Request, _}) when is_atom(Request) ->
-    ns_config:get_timeout({remote_api, Request}, ?DEFAULT_TIMEOUT).
+    get_timeout(Request).
 
 do_call(Node, Request) ->
     gen_server:call({?MODULE, Node}, Request, get_timeout(Request)).

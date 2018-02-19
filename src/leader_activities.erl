@@ -42,9 +42,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
 -define(SERVER, ?MODULE).
--define(QUORUM_TIMEOUT, ns_config:get_timeout(quorum_timeout, 15000)).
--define(UNSAFE_QUORUM_TIMEOUT,
-        ns_config:get_timeout(unsafe_quorum_timeout, 2000)).
+-define(QUORUM_TIMEOUT,        ?get_timeout(quorum_timeout, 15000)).
+-define(UNSAFE_QUORUM_TIMEOUT, ?get_timeout(unsafe_quorum_timeout, 2000)).
 
 -type lease_holder() :: {node(), binary()}.
 

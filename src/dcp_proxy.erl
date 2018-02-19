@@ -48,10 +48,10 @@
 -define(HIBERNATE_TIMEOUT, 10000).
 -define(LIVELINESS_UPDATE_INTERVAL, 1000).
 
--define(CONNECT_TIMEOUT, ns_config:get_timeout(ebucketmigrator_connect, 180000)).
+-define(CONNECT_TIMEOUT, ?get_timeout(connect, 180000)).
 
--define(RECBUF, ns_config:read_key_fast({node, node(), mc_replication_recbuf}, 64 * 1024)).
--define(SNDBUF, ns_config:read_key_fast({node, node(), mc_replication_sndbuf}, 64 * 1024)).
+-define(RECBUF, ?get_param(recbuf, 64 * 1024)).
+-define(SNDBUF, ?get_param(sndbuf, 64 * 1024)).
 
 init([Type, ConnName, Node, Bucket, ExtModule, InitArgs]) ->
     {ExtState, State} = ExtModule:init(
