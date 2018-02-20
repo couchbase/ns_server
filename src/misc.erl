@@ -2167,6 +2167,7 @@ prop_dump_parse_term_binary() ->
 
 -record(timer, {tref, msg}).
 
+-type timeout()   :: non_neg_integer() | infinity.
 -type timer()     :: timer(any()).
 -type timer(Type) :: #timer{tref :: undefined | reference(),
                             msg  :: Type}.
@@ -2176,14 +2177,16 @@ create_timer(Msg) ->
     #timer{tref = undefined,
            msg  = Msg}.
 
--spec create_timer(non_neg_integer(), Msg :: Type) -> timer(Type).
+-spec create_timer(timeout(), Msg :: Type) -> timer(Type).
 create_timer(Timeout, Msg) ->
     arm_timer(Timeout, create_timer(Msg)).
 
--spec arm_timer(non_neg_integer(), timer(Type)) -> timer(Type).
+-spec arm_timer(timeout(), timer(Type)) -> timer(Type).
 arm_timer(Timeout, Timer) ->
     do_arm_timer(Timeout, cancel_timer(Timer)).
 
+do_arm_timer(infinity, Timer) ->
+    Timer;
 do_arm_timer(0, Timer) ->
     self() ! Timer#timer.msg,
     Timer;
