@@ -426,7 +426,7 @@ get_auth_info_on_ns_server(Identity) ->
 -spec authenticate_with_info(list(), rbac_password()) -> boolean().
 authenticate_with_info(Auth, Password) ->
     {Salt, Mac} = get_salt_and_mac(Auth),
-    ns_config_auth:hash_password(Salt, Password) =:= Mac.
+    misc:compare_secure(ns_config_auth:hash_password(Salt, Password), Mac).
 
 get_user_props_45({User, external}) ->
     ns_config:search_prop(ns_config:latest(), user_roles, {User, saslauthd}, []).

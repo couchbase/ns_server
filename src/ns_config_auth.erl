@@ -93,7 +93,9 @@ credentials_changed(admin, User, Password) ->
     end.
 
 authenticate(admin, [$@ | _] = User, Password) ->
-    Password =:= ns_config:search_node_prop(ns_config:latest(), memcached, admin_pass)
+    MemcachedPassword =
+        ns_config:search_node_prop(ns_config:latest(), memcached, admin_pass),
+    misc:compare_secure(MemcachedPassword, Password)
         orelse authenticate_non_special(admin, User, Password);
 authenticate(Role, User, Password) ->
     authenticate_non_special(Role, User, Password).
@@ -126,7 +128,7 @@ authenticate_non_special(Role, User, Password) ->
 
 do_authenticate(_Role, {value, {User, Auth}}, User, Password) ->
     {Salt, Mac} = get_salt_and_mac(Auth),
-    hash_password(Salt, Password) =:= Mac;
+    misc:compare_secure(hash_password(Salt, Password), Mac);
 do_authenticate(admin, {value, null}, _User, _Password) ->
     true;
 do_authenticate(_Role, _Creds, _User, _Password) ->
@@ -150,7 +152,7 @@ is_bucket_auth(User, Password) ->
                 {none, _} ->
                     Password =:= "";
                 {sasl, P} ->
-                    Password =:= P
+                    misc:compare_secure(Password, P)
             end;
         not_present ->
             false
