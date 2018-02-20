@@ -548,7 +548,7 @@
         case 'n1ql': return 'Query';
         case 'index': return 'Index';
         case 'fts': return 'Search';
-        case 'eventing': return 'Events';
+        case 'eventing': return 'Eventing';
         case 'cbas': return 'Analytics';
       }
     }

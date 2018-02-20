@@ -71,7 +71,7 @@
        class="service-widget"
        ui-sref="app.admin.eventing.summary"
        ng-class="['dynamic_' + overviewCtl.nodes.eventing.statusClass]">
-      <h4>Events</h4>
+      <h4>Eventing</h4>
       <a ng-click="$event.stopPropagation()" ui-sref="app.admin.servers.list">
         {{overviewCtl.nodes.eventing.length || '0'}}
         node{{overviewCtl.getEndings(overviewCtl.nodes.eventing.length)}}
