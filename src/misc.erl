@@ -2008,6 +2008,15 @@ compact_proplist(List) ->
               end
       end, List).
 
+proplist_keyfilter(Pred, PropList) ->
+    lists:filter(proplist_keyfilter_pred(_, Pred), PropList).
+
+proplist_keyfilter_pred(Tuple, Pred)
+  when is_tuple(Tuple) ->
+    Pred(element(1, Tuple));
+proplist_keyfilter_pred(Key, Pred) ->
+    Pred(Key).
+
 -ifdef(EUNIT).
 
 compact_test() ->
@@ -2018,6 +2027,12 @@ canonical_proplist_test() ->
     ?assertEqual([a], canonical_proplist([{a,true}, a, {b,false}])),
     ?assertEqual([123, x, {c,"x"}, {e, "y"}],
                  canonical_proplist([{x,true}, {e,"y"}, 123, {c,"x"}])).
+
+proplist_keyfilter_test() ->
+    ?assertEqual([{a, 0}, a, {c, 2}, {e, 4}],
+                 proplist_keyfilter(
+                   lists:member(_, [a, c, e]),
+                   [{a, 0}, b, a, {b, 23}, {c, 2}, d, {e, 4}])).
 
 -endif.
 
