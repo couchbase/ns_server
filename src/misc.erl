@@ -1182,29 +1182,31 @@ compute_map_diff(NewMap, OldMap) ->
 %% returns and with it's return value. If body produced any exception
 %% it will be rethrown. Care is taken to propagate exits of 'parent'
 %% process to this worker process.
-executing_on_new_process(Body) ->
+executing_on_new_process(Fun) ->
     {trap_exit, TrapExit} = process_info(self(), trap_exit),
-    executing_on_new_process(TrapExit, Body).
+    executing_on_new_process(TrapExit, Fun).
 
-executing_on_new_process(true, Body) ->
+executing_on_new_process(true, Fun) ->
     %% If the caller had trap_exit set, we can't really make the execution
     %% interruptlible, after all it was, hopefully, a deliberate choice to set
     %% trap_exit, so we need to abide by it.
-    async:with(Body, fun async:wait/1);
-executing_on_new_process(false, Body) ->
-    with_trap_exit(
-      fun () ->
-              A = async:start(Body),
+    executing_on_new_process_body(Fun, []);
+executing_on_new_process(false, Fun) ->
+    with_trap_exit(?cut(executing_on_new_process_body(Fun, [interruptible]))).
+
+executing_on_new_process_body(Fun, WaitOptions) ->
+    async:with(
+      Fun,
+      fun (A) ->
               try
-                  async:wait(A, [interruptible])
+                  async:wait(A, WaitOptions)
               catch
                   throw:{interrupted, {'EXIT', _, Reason} = Exit} ->
-                      async:abort(A, Reason),
+                      true = proplists:get_bool(interruptible, WaitOptions),
 
+                      async:abort(A, Reason),
                       %% will be processed by the with_trap_exit
                       self() ! Exit
-              after
-                  async:abort(A)
               end
       end).
 
