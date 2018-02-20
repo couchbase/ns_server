@@ -140,16 +140,7 @@ hash_password(Password) ->
     {Salt, hash_password(Salt, Password)}.
 
 hash_password(Salt, Password) ->
-    {module, crypto} = code:ensure_loaded(crypto),
-    {F, A} =
-        case erlang:function_exported(crypto, hmac, 3) of
-            true ->
-                {hmac, [sha, Salt, list_to_binary(Password)]};
-            false ->
-                {sha_mac, [Salt, list_to_binary(Password)]}
-        end,
-
-    erlang:apply(crypto, F, A).
+    crypto:hmac(sha, Salt, list_to_binary(Password)).
 
 is_bucket_auth(User, Password) ->
     case ns_bucket:get_bucket(User) of
