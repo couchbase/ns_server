@@ -1183,20 +1183,30 @@ compute_map_diff(NewMap, OldMap) ->
 %% it will be rethrown. Care is taken to propagate exits of 'parent'
 %% process to this worker process.
 executing_on_new_process(Fun) ->
-    {trap_exit, TrapExit} = process_info(self(), trap_exit),
-    executing_on_new_process(TrapExit, Fun).
+    executing_on_new_process(Fun, []).
 
-executing_on_new_process(true, Fun) ->
+executing_on_new_process(Fun, Options) ->
+    {trap_exit, TrapExit} = process_info(self(), trap_exit),
+
+    StartOptions = executing_on_new_process_handle_options(Options),
+    executing_on_new_process_handle_trap_exit(TrapExit, Fun, StartOptions).
+
+executing_on_new_process_handle_options(Options) ->
+    PassThrough = [abort_after],
+    proplist_keyfilter(lists:member(_, PassThrough), Options).
+
+executing_on_new_process_handle_trap_exit(true, Fun, StartOptions) ->
     %% If the caller had trap_exit set, we can't really make the execution
     %% interruptlible, after all it was, hopefully, a deliberate choice to set
     %% trap_exit, so we need to abide by it.
-    executing_on_new_process_body(Fun, []);
-executing_on_new_process(false, Fun) ->
-    with_trap_exit(?cut(executing_on_new_process_body(Fun, [interruptible]))).
+    executing_on_new_process_body(Fun, StartOptions, []);
+executing_on_new_process_handle_trap_exit(false, Fun, StartOptions) ->
+    with_trap_exit(?cut(executing_on_new_process_body(
+                          Fun, StartOptions, [interruptible]))).
 
-executing_on_new_process_body(Fun, WaitOptions) ->
+executing_on_new_process_body(Fun, StartOptions, WaitOptions) ->
     async:with(
-      Fun,
+      Fun, StartOptions,
       fun (A) ->
               try
                   async:wait(A, WaitOptions)
@@ -1233,6 +1243,25 @@ executing_on_new_process_exit_test() ->
         exit:shutdown ->
             ok
     end.
+
+executing_on_new_process_abort_after_test() ->
+    ?assertExit(timeout,
+                misc:executing_on_new_process(
+                  fun () ->
+                          register(child, self()),
+                          timer:sleep(10000)
+                  end,
+                  [{abort_after, 100}])),
+
+    %% the child must be dead
+    undefined = whereis(child),
+
+    ok = misc:executing_on_new_process(?cut(timer:sleep(100)),
+                                       [{abort_after, 1000}]),
+
+
+    %% must be no messages left in mailbox
+    0 = ?flush(_).
 
 -endif.
 
