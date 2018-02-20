@@ -385,7 +385,7 @@ default() ->
         {rbac_file, {"~s", [rbac_file]}},
         {dedupe_nmvb_maps, dedupe_nmvb_maps},
         {tracing_enabled, tracing_enabled},
-        {datatype_snappy, datatype_snappy},
+        {datatype_snappy, {memcached_config_mgr, is_snappy_enabled, []}},
         {xattr_enabled, {memcached_config_mgr, is_enabled, [?VERSION_50]}},
 
         {logger,

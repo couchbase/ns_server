@@ -26,7 +26,7 @@
 
 %% referenced from ns_config_default
 -export([get_minidump_dir/2, omit_missing_mcd_ports/2, ssl_minimum_protocol/2,
-         is_enabled/2, client_cert_auth/2]).
+         is_enabled/2, client_cert_auth/2, is_snappy_enabled/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -333,3 +333,16 @@ client_cert_auth([], _Params) ->
 
 is_enabled([FeatureVersion], _Params) ->
     cluster_compat_mode:is_enabled(FeatureVersion).
+
+is_snappy_enabled([], _Params) ->
+    is_snappy_enabled(?VULCAN_VERSION_NUM).
+
+is_snappy_enabled(FeatureVersion) ->
+    Cfg = ns_config:latest(),
+
+    %% Local snappy config > global snappy config > default snappy value.
+    Default = ns_config:search_prop(Cfg, {node, node(), memcached_defaults},
+                                    datatype_snappy, false),
+
+    cluster_compat_mode:is_enabled(FeatureVersion) andalso
+        ns_config:search_node_prop(Cfg, memcached, datatype_snappy, Default).
