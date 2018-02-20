@@ -25,7 +25,7 @@
 
 -export([generate/2, maybe_refresh/2,
          check/2, reset_all/1, remove/2,
-         purge/2]).
+         purge/2, take/2]).
 
 start_link(Module, MaxTokens, ExpirationSeconds) ->
     gen_server:start_link({local, Module}, ?MODULE,
@@ -52,6 +52,9 @@ reset_all(Module) ->
 
 remove(Module, Token) ->
     gen_server:call(Module, {remove, tok2bin(Token)}, infinity).
+
+take(Module, Token) ->
+    gen_server:call(Module, {take, tok2bin(Token)}, infinity).
 
 purge(Module, MemoPattern) ->
     gen_server:cast(Module, {purge, MemoPattern}).
@@ -88,7 +91,7 @@ expire_oldest(#state{table_by_token = Table,
     ets:delete(Table, Token),
     ok.
 
-delete_token(Token, #state{table_by_token = Table,
+remove_token(Token, #state{table_by_token = Table,
                            table_by_exp = ExpTable}) ->
     case ets:lookup(Table, Token) of
         [{Token, Expiration, ReplacedToken, _}] ->
@@ -98,6 +101,22 @@ delete_token(Token, #state{table_by_token = Table,
         [] ->
             false
     end.
+
+remove_token_with_predecessor(Token, State) ->
+    %% NOTE: {maybe_refresh... above is inserting new token when old is
+    %% still valid (to give current requests time to finish). But
+    %% gladly we also store older and potentially valid token, so we
+    %% can delete it as well here
+    OlderButMaybeValidToken = remove_token(Token, State),
+    case OlderButMaybeValidToken of
+        undefined ->
+            ok;
+        false ->
+            ok;
+        _ ->
+            remove_token(OlderButMaybeValidToken, State)
+    end,
+    ok.
 
 get_now() ->
     time_compat:monotonic_time(second).
@@ -120,7 +139,7 @@ validate_token_maybe_expire(Token, #state{table_by_token = Table} = State) ->
             Now = get_now(),
             case Expiration < Now of
                 true ->
-                    delete_token(Token, State),
+                    remove_token(Token, State),
                     false;
                 _ ->
                     {Expiration, Now, Memo}
@@ -158,20 +177,16 @@ handle_call({maybe_refresh, Token}, _From,
             end
     end;
 handle_call({remove, Token}, _From, State) ->
-    %% NOTE: {maybe_refresh... above is inserting new token when old is
-    %% still valid (to give current requests time to finish). But
-    %% gladly we also store older and potentially valid token, so we
-    %% can delete it as well here
-    OlderButMaybeValidToken = delete_token(Token, State),
-    case OlderButMaybeValidToken of
-        undefined ->
-            ok;
-        false ->
-            ok;
-        _ ->
-            delete_token(OlderButMaybeValidToken, State)
-    end,
+    remove_token_with_predecessor(Token, State),
     {reply, ok, State};
+handle_call({take, Token}, _From, State) ->
+    case validate_token_maybe_expire(Token, State) of
+        false ->
+            {reply, false, State};
+        {_, _, Memo} ->
+            remove_token_with_predecessor(Token, State),
+            {reply, {ok, Memo}, State}
+    end;
 handle_call({check, Token}, _From, State) ->
     case validate_token_maybe_expire(Token, State) of
         false ->
@@ -185,7 +200,7 @@ handle_call(Msg, From, _State) ->
 handle_cast({purge, MemoPattern}, #state{table_by_token = Table} = State) ->
     Tokens = ets:match(Table, {'$1', '_', '_', MemoPattern}),
     ?log_debug("Purge tokens ~p", [Tokens]),
-    [delete_token(Token, State) || [Token] <- Tokens],
+    [remove_token(Token, State) || [Token] <- Tokens],
     {noreply, State};
 
 handle_cast(Msg, _State) ->

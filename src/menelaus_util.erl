@@ -143,6 +143,10 @@ compute_sec_headers() ->
                     end, [], ?SEC_HEADERS)
           end).
 
+response_headers(Req, Headers) ->
+    response_headers(
+      scram_sha:get_resp_headers_from_req(Req) ++ Headers).
+
 %% response_header takes a proplist of headers or pseudo-header
 %% descripts and augments it with response specific headers.
 %% Since any given header can only be specified once, headers at the front
@@ -230,7 +234,7 @@ reply_ok(Req, ContentType, Body) ->
 
 reply_ok(Req, ContentType, Body, ExtraHeaders) ->
     Peer = Req:get(peer),
-    Resp = Req:ok({ContentType, response_headers(ExtraHeaders), Body}),
+    Resp = Req:ok({ContentType, response_headers(Req, ExtraHeaders), Body}),
     log_web_hit(Peer, Req, Resp),
     Resp.
 
@@ -241,7 +245,7 @@ reply(Req, Code, ExtraHeaders) ->
     reply(Req, [], Code, ExtraHeaders).
 
 reply(Req, Body, Code, ExtraHeaders) ->
-    respond(Req, {Code, response_headers(ExtraHeaders), Body}).
+    respond(Req, {Code, response_headers(Req, ExtraHeaders), Body}).
 
 respond(Req, RespTuple) ->
     Peer = Req:get(peer),
@@ -284,7 +288,9 @@ serve_file(Req, File, Root) ->
 
 serve_file(Req, File, Root, ExtraHeaders) ->
     Peer = Req:get(peer),
-    Resp = Req:serve_file(File, Root, response_headers(ExtraHeaders ++ [{allow_cache, true}])),
+    Resp = Req:serve_file(
+             File, Root,
+             response_headers(Req, ExtraHeaders ++ [{allow_cache, true}])),
     log_web_hit(Peer, Req, Resp),
     Resp.
 
@@ -658,22 +664,28 @@ reply_error(Req, Field, Error) ->
       Req, {struct, [{errors, {struct, [{iolist_to_binary([Field]), iolist_to_binary([Error])}]}}]}, 400).
 
 require_auth(Req) ->
-    case Req:get_header_value("invalid-auth-response") of
-        "on" ->
+    case {Req:get_header_value("invalid-auth-response"),
+          Req:get_header_value(scram_sha:meta_header())} of
+        {"on", _} ->
             %% We need this for browsers that display auth
             %% dialog when faced with 401 with
             %% WWW-Authenticate header response, even via XHR
             reply(Req, 401);
-        _ ->
+        {_, undefined} ->
             reply(Req, 401, [{"WWW-Authenticate",
-                              "Basic realm=\"Couchbase Server Admin / REST\""}])
+                              "Basic realm=\"Couchbase Server Admin / REST\""}]);
+        _ ->
+            %% scram sha meta header will be converted later on to scram sha
+            %% related auth headers
+            reply(Req, 401)
     end.
 
 send_chunked(Req, StatusCode, ExtraHeaders) ->
     ?make_consumer(
        begin
            Resp = respond(
-                    Req, {StatusCode, response_headers(ExtraHeaders), chunked}),
+                    Req, {StatusCode, response_headers(Req, ExtraHeaders),
+                          chunked}),
            pipes:foreach(?producer(),
                          fun (Part) ->
                                  Resp:write_chunk(Part)

@@ -47,7 +47,8 @@
          upgrade_status/0,
          get_passwordless/0,
          filter_out_invalid_roles/3,
-         cleanup_bucket_roles/1]).
+         cleanup_bucket_roles/1,
+         get_auth_info/1]).
 
 %% callbacks for replicated_dets
 -export([init/1, on_save/2, on_empty/1, handle_call/4, handle_info/2]).

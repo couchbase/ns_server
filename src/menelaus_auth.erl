@@ -128,6 +128,7 @@ assert_no_meta_headers(Req) ->
     undefined = Req:get_header_value("menelaus-auth-user"),
     undefined = Req:get_header_value("menelaus-auth-domain"),
     undefined = Req:get_header_value("menelaus-auth-token"),
+    undefined = Req:get_header_value(scram_sha:meta_header()),
     ok.
 
 apply_headers(Req, []) ->
@@ -174,6 +175,7 @@ get_token(Req) ->
     Req:get_header_value("menelaus-auth-token").
 
 -spec extract_auth(mochiweb_request()) -> {User :: string(), Passwd :: string()}
+                                              | {scram_sha, string()}
                                               | {token, string()}
                                               | {client_cert_auth, string()}
                                               | undefined.
@@ -188,6 +190,8 @@ extract_auth(Req) ->
                     case Req:get_header_value("authorization") of
                         "Basic " ++ Value ->
                             parse_basic_auth_header(Value);
+                        "SCRAM-" ++ Value ->
+                            {scram_sha, Value};
                         _ ->
                             error
                     end;
@@ -355,18 +359,29 @@ uilogin(Req, User, Password) ->
                               {auth_failure | forbidden | allowed, [{_, _}]}.
 verify_rest_auth(Req, Permission) ->
     Auth = extract_auth(Req),
-    case authenticate(Auth) of
-        false ->
-            {auth_failure, meta_headers(get_rejected_user(Auth))};
-        {ok, Identity} ->
-            Token = case Auth of
-                        {token, T} ->
-                            T;
-                        _ ->
-                            undefined
-                    end,
-            {check_permission(Identity, Permission),
-             meta_headers(Identity, Token)}
+    case Auth of
+        {scram_sha, AuthHeader} ->
+            case scram_sha:authenticate(AuthHeader) of
+                {ok, Identity, MetaHeaders} ->
+                    {check_permission(Identity, Permission),
+                     MetaHeaders ++ meta_headers(Identity, undefined)};
+                Other ->
+                    Other
+            end;
+        _ ->
+            case authenticate(Auth) of
+                false ->
+                    {auth_failure, meta_headers(get_rejected_user(Auth))};
+                {ok, Identity} ->
+                    Token = case Auth of
+                                {token, T} ->
+                                    T;
+                                _ ->
+                                    undefined
+                            end,
+                    {check_permission(Identity, Permission),
+                     meta_headers(Identity, Token)}
+            end
     end.
 
 -spec extract_identity_from_cert(binary()) -> auth_failure | tuple().

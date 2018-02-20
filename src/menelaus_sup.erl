@@ -97,6 +97,10 @@ init([]) ->
               {menelaus_ui_auth, start_link, []},
               permanent, 5000, worker, dynamic},
 
+    ScramSha = {scram_sha,
+                {scram_sha, start_link, []},
+                permanent, 5000, worker, dynamic},
+
     LocalAuth = {menelaus_local_auth,
                  {menelaus_local_auth, start_link, []},
                  permanent, 5000, worker, dynamic},
@@ -133,8 +137,8 @@ init([]) ->
               {menelaus_cbauth, start_link, []},
               permanent, 1000, worker, dynamic},
 
-    Processes = [UIAuth, LocalAuth, Cache, StatsGatherer, RpcEvents, Web, WebEvent, HotKeysKeeper,
-                 Alerts, CBAuth],
+    Processes = [UIAuth, ScramSha, LocalAuth, Cache, StatsGatherer, RpcEvents,
+                 Web, WebEvent, HotKeysKeeper, Alerts, CBAuth],
     {ok, {{one_for_one, 10, 10}, Processes}}.
 
 ns_log_cat(?START_OK) ->
