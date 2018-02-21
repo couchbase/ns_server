@@ -405,25 +405,21 @@ build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
               | Suffix5]}.
 
 build_bucket_capabilities(BucketConfig) ->
-    MaybeXattr = case cluster_compat_mode:is_cluster_50() of
-                     true ->
-                         [xattr];
-                     false ->
-                         []
-                 end,
+    MoreCaps = [C || {C, true} <-
+                         [{xattr, cluster_compat_mode:is_cluster_50()},
+                          {snappy, cluster_compat_mode:is_cluster_vulcan()}]],
     Caps =
         case ns_bucket:bucket_type(BucketConfig) of
             membase ->
+                Caps0 = MoreCaps ++ [dcp, cbhello, touch, cccp,
+                                     xdcrxdcrCheckpointing, nodesExt],
+
                 case ns_bucket:storage_mode(BucketConfig) of
-                    couchstore ->
-                        MaybeXattr ++ [dcp, cbhello, touch, couchapi, cccp,
-                                       xdcrCheckpointing, nodesExt];
-                    ephemeral ->
-                        MaybeXattr ++ [dcp, cbhello, touch, cccp,
-                                       xdcrCheckpointing, nodesExt]
+                    couchstore -> [couchapi | Caps0];
+                    ephemeral  -> Caps0
                 end;
             memcached ->
-                MaybeXattr ++ [cbhello, nodesExt]
+                [cbhello, nodesExt]
         end,
 
     [{bucketCapabilitiesVer, ''},
