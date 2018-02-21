@@ -112,7 +112,7 @@ handle_call({interactive_update, Doc}, _From,
         false ->
             NewDoc = Module:set_revision(Doc, NewRev),
             ?log_debug("Writing interactively saved doc ~p",
-                       [ns_config_log:tag_user_data(NewDoc)]),
+                       [ns_config_log:sanitize(NewDoc, true)]),
             case Module:save_docs([NewDoc], ChildState) of
                 {ok, NewChildState} ->
                     Replicator ! {replicate_change, NewDoc},
