@@ -76,12 +76,12 @@
     <div class="formrow fix-width-5">
       <input
          id="for_custom_tmpdir"
-         ng-model="custom_tmpdir"
+         ng-model="logsCollectInfoCtl.collect.enableTmpDir"
          name="tmpdir"
          value="true"
          type="checkbox">
       <label for="for_custom_tmpdir">Specify custom temp directory</label>
-      <div ng-if="custom_tmpdir">
+      <div ng-if="logsCollectInfoCtl.collect.enableTmpDir">
         <input
            type="text"
            autocorrect="off"
@@ -97,12 +97,12 @@
     <div class="formrow fix-width-5">
       <input
          id="for_custom_logdir"
-         ng-model="custom_logdir"
+         ng-model="logsCollectInfoCtl.collect.enableLogDir"
          name="logdir"
          value="true"
          type="checkbox">
       <label for="for_custom_logdir">Specify custom log directory</label>
-      <div ng-if="custom_logdir">
+      <div ng-if="logsCollectInfoCtl.collect.enableLogDir">
         <input
            type="text"
            autocorrect="off"

@@ -45,14 +45,8 @@
       });
     }
     function submit() {
-      var collect = _.clone(vm.collect);
-      collect.nodes = !collect.from ? mnHelper.checkboxesToList(collect.nodes).join(',') : '*';
-      if (!collect.upload) {
-        delete collect.uploadHost;
-        delete collect.customer;
-        delete collect.ticket;
-      }
-      var promise = mnLogsCollectInfoService.startLogsCollection(collect);
+
+      var promise = mnLogsCollectInfoService.startLogsCollection(vm.collect);
       mnPromiseHelper(vm, promise)
         .showSpinner()
         .catchErrors()

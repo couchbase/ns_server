@@ -6,10 +6,11 @@
     'mnTasksDetails',
     'mnFilters',
     'mnSettingsClusterService',
-    'mnPoolDefault'
+    'mnPoolDefault',
+    'mnHelper'
   ]).service('mnLogsCollectInfoService', mnLogsCollectInfoServiceFactory);
 
-  function mnLogsCollectInfoServiceFactory($http, $q, mnServersService, mnTasksDetails, mnStripPortHTMLFilter, mnSettingsClusterService, mnPoolDefault) {
+  function mnLogsCollectInfoServiceFactory($http, $q, mnServersService, mnTasksDetails, mnStripPortHTMLFilter, mnSettingsClusterService, mnPoolDefault, mnHelper) {
     var mnLogsCollectInfoService = {
       startLogsCollection: startLogsCollection,
       cancelLogsCollection: cancelLogsCollection,
@@ -19,16 +20,23 @@
     return mnLogsCollectInfoService;
 
     function startLogsCollection(collect) {
-      if (!collect.logDir) {
-        delete collect.logDir;
+      var data = {};
+      data.nodes = !collect.from ? mnHelper.checkboxesToList(collect.nodes).join(',') : '*';
+      if (collect.upload) {
+        data.uploadHost = collect.uploadHost;
+        data.customer = collect.customer;
+        data.ticket = collect.ticket;
+        if (collect.uploadProxy) {
+          data.uploadProxy = collect.uploadProxy;
+        }
       }
-      if (!collect.tmpDir) {
-        delete collect.tmpDir;
+      if (collect.enableLogDir) {
+        data.logDir = collect.logDir;
       }
-      if (!collect.uploadProxy) {
-        delete collect.uploadProxy;
+      if (collect.enableTmpDir) {
+        data.tmpDir = collect.tmpDir;
       }
-      return $http.post('/controller/startLogsCollection', collect);
+      return $http.post('/controller/startLogsCollection', data);
     }
     function cancelLogsCollection() {
       return $http.post('/controller/cancelLogsCollection');
