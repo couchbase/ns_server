@@ -103,6 +103,34 @@ is_swap_rebalance(OldMap, NewMap) ->
             false
     end.
 
+-ifdef(EUNIT).
+
+is_swap_rebalance_test() ->
+    ?assertEqual(true,  is_swap_rebalance([], [])),
+    ?assertEqual(true,  is_swap_rebalance([[1]], [[2]])),
+    ?assertEqual(true,  is_swap_rebalance([[1]], [[1]])),
+    ?assertEqual(true,  is_swap_rebalance([[1], [1]], [[2], [2]])),
+    ?assertEqual(true,  is_swap_rebalance([[1,2], [2,3]], [[1,4], [4,3]])),
+    ?assertEqual(false, is_swap_rebalance([[1,2], [2,3]], [[4,1], [4,3]])),
+    ?assertEqual(true,  is_swap_rebalance([[1,2,3], [2,3,4], [3,4,1]],
+                                          [[1,5,3], [5,3,4], [3,4,1]])),
+    ?assertEqual(false, is_swap_rebalance([[1,2,3], [2,3,4], [3,4,1]],
+                                          [[1,5,3], [4,3,5], [3,4,1]])),
+    ?assertEqual(true,  is_swap_rebalance([[1,2,undefined], [2,3,undefined]],
+                                          [[1,5,undefined], [5,3,undefined]])),
+    ?assertEqual(false, is_swap_rebalance([[1,2,undefined], [2,3,undefined]],
+                                          [[1,5,undefined], [3,5,undefined]])),
+    ?assertEqual(false, is_swap_rebalance([[1,undefined], [1,undefined]],
+                                          [[1,2], [1,2]])),
+    ?assertEqual(false, is_swap_rebalance([[1,2], [1,2]],
+                                          [[1,undefined], [1,undefined]])),
+    ?assertEqual(false, is_swap_rebalance([[1,2,3], [2,3,1], [3,1,2]],
+                                          [[1,5,undefined],[5,1,undefined],
+                                           [1,5,undefined]])),
+    ok.
+
+-endif.
+
 init({Bucket, OldMap, NewMap, ProgressCallback}) ->
     erlang:put(i_am_master_mover, true),
     erlang:put(bucket_name, Bucket),
