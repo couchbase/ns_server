@@ -5,7 +5,7 @@
     .module('mnLogs')
     .controller('mnLogsCollectInfoController', mnLogsCollectInfoController);
 
-  function mnLogsCollectInfoController($scope, mnHelper, mnPromiseHelper, mnPoolDefault, mnLogsCollectInfoService, mnPoller, $state, $uibModal) {
+  function mnLogsCollectInfoController($scope, mnHelper, mnPromiseHelper, mnPoolDefault, mnLogsCollectInfoService, mnPoller, $state, $uibModal, mnSettingsClusterService, permissions) {
     var vm = this;
     vm.stopCollection = stopCollection;
     vm.submit = submit;
@@ -26,11 +26,18 @@
         .subscribe(function (state) {
           vm.loadingResult = false;
           vm.state = state;
-          vm.collect.logRedactionLevel = state.logRedactionLevel;
         })
         .reloadOnScopeEvent("reloadCollectInfoPoller", vm, "loadingResult")
         .reloadOnScopeEvent("mnTasksDetailsChanged")
         .cycle();
+
+      if (permissions.cluster.settings.read &&
+          mnPoolDefault.export.compat.atLeast55 &&
+          mnPoolDefault.export.isEnterprise) {
+        mnSettingsClusterService.getLogRedaction().then(function (value) {
+          vm.collect.logRedactionLevel = value.logRedactionLevel;
+        });
+      }
     }
 
     function stopCollection() {

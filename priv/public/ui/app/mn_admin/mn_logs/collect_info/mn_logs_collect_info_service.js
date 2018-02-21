@@ -5,12 +5,11 @@
     'mnServersService',
     'mnTasksDetails',
     'mnFilters',
-    'mnSettingsClusterService',
     'mnPoolDefault',
     'mnHelper'
   ]).service('mnLogsCollectInfoService', mnLogsCollectInfoServiceFactory);
 
-  function mnLogsCollectInfoServiceFactory($http, $q, mnServersService, mnTasksDetails, mnStripPortHTMLFilter, mnSettingsClusterService, mnPoolDefault, mnHelper) {
+  function mnLogsCollectInfoServiceFactory($http, $q, mnServersService, mnTasksDetails, mnStripPortHTMLFilter, mnPoolDefault, mnHelper) {
     var mnLogsCollectInfoService = {
       startLogsCollection: startLogsCollection,
       cancelLogsCollection: cancelLogsCollection,
@@ -46,9 +45,6 @@
         mnServersService.getNodes(),
         mnTasksDetails.get()
       ];
-      if (mnPoolDefault.export.compat.atLeast55 && mnPoolDefault.export.isEnterprise) {
-        queries.push(mnSettingsClusterService.getLogRedaction());
-      }
       return $q.all(queries).then(function (resp) {
         var nodes = resp[0].allNodes;
         var tasks = resp[1].tasks;
@@ -62,8 +58,7 @@
             nodeErrors: [],
             status: 'idle',
             perNode: {},
-            nodes: nodes,
-            logRedactionLevel: logRedaction && logRedaction.logRedactionLevel
+            nodes: nodes
           };
         }
 
@@ -100,7 +95,6 @@
 
         task.nodesByStatus = nodesByStatus;
         task.nodeErrors = nodeErrors;
-        task.logRedactionLevel = logRedaction && logRedaction.logRedactionLevel;
         task.nodes = nodes;
 
         return task
