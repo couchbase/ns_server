@@ -18,12 +18,14 @@
 -include("cut.hrl").
 -include("ns_common.hrl").
 
--export([start/1, start/2, start_many/2,
+-export([start/1, start/2,
+         start_many/2, start_many/3,
          perform/1, perform/2,
          abort/1, abort/2,
          abort_many/1, abort_many/2,
          send/2, adopt/1,
-         with/2, with_many/3,
+         with/2, with/3,
+         with_many/3, with_many/4,
          wait/1, wait/2,
          wait_many/1, wait_many/2,
          wait_any/1, wait_any/2,
@@ -58,9 +60,12 @@ perform(Fun, Opts) ->
     start(Fun, Opts ++ [{type, perform}]).
 
 start_many(Fun, Args) ->
+    start_many(Fun, Args, []).
+
+start_many(Fun, Args, Opts) ->
     [start(fun () ->
                    Fun(A)
-           end) || A <- Args].
+           end, Opts) || A <- Args].
 
 abort(Pid) ->
     abort_many([Pid]).
@@ -83,7 +88,10 @@ adopt(Child) ->
     ok = call(Child, {initiate_adoption, get_controller()}).
 
 with(AsyncBody, Fun) ->
-    Async = start(AsyncBody),
+    with(AsyncBody, [], Fun).
+
+with(AsyncBody, Opts, Fun) ->
+    Async = start(AsyncBody, Opts),
     try
         Fun(Async)
     after
@@ -91,7 +99,10 @@ with(AsyncBody, Fun) ->
     end.
 
 with_many(AsyncBody, Args, Fun) ->
-    Asyncs = start_many(AsyncBody, Args),
+    with_many(AsyncBody, Args, [], Fun).
+
+with_many(AsyncBody, Args, Opts, Fun) ->
+    Asyncs = start_many(AsyncBody, Args, Opts),
     try
         Fun(Asyncs)
     after
