@@ -536,6 +536,10 @@ sanitize_config(Config) ->
                       {stop, {{metakv, K}, {metakv_sensitive, <<"*****">>}}};
                   ({cookie, Cookie}) ->
                       {stop, {cookie, "*****"}};
+                  ({<<"h">>, _}) ->
+                      {stop, {<<"h">>, "*****"}};
+                  ({<<"plain">>, _}) ->
+                      {stop, {<<"plain">>, "*****"}};
                   _ ->
                       {continue, T}
               end

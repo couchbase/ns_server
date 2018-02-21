@@ -148,7 +148,12 @@ sanitize(Config) ->
           ({cookie, Cookie}) ->
               {stop, {cookie, ns_cookie_manager:sanitize_cookie(Cookie)}};
           ({UName, {auth, Auth}}) ->
-              {stop, {tag_user_name(UName), {auth, Auth}}};
+              {stop, {tag_user_name(UName),
+                      {auth, sanitize(Auth)}}};
+          ({<<"h">>, _}) ->
+              {stop, {<<"h">>, "*****"}};
+          ({<<"plain">>, _}) ->
+              {stop, {<<"plain">>, "*****"}};
           (_Other) ->
               continue
       end, Config).
