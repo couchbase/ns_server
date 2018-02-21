@@ -313,12 +313,10 @@ call(Pid, Req, Flags) ->
     R.
 
 call_many(Pids, Req, Flags) ->
-    Interruptible = proplists:get_bool(interruptible, Flags),
-
     PidMRefs = monitor_asyncs(Pids),
     try
         send_req_many(PidMRefs, Req),
-        recv_many(PidMRefs, Interruptible)
+        recv_many(PidMRefs, Flags)
     after
         demonitor_asyncs(PidMRefs)
     end.
@@ -377,7 +375,8 @@ recv_resp_handle_down({raised, {T, E, Stack}}) ->
 recv_resp_handle_down(Reason) ->
     exit(Reason).
 
-recv_many(PidMRefs, Interruptible) ->
+recv_many(PidMRefs, Flags) ->
+    Interruptible = proplists:get_bool(interruptible, Flags),
     [{Pid, recv_resp(MRef, Interruptible)} || {Pid, MRef} <- PidMRefs].
 
 recv_any(PidMRefs, Flags) ->
