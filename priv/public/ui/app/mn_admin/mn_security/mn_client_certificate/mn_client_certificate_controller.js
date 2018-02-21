@@ -16,9 +16,6 @@
     activate();
 
     function maybeSetInititalValue(array, value) {
-      if (array.length === 0 || !_.isEqual(value, array[0])) {
-        array.push(value);
-      }
     }
 
     function onSubmit() {
@@ -36,8 +33,8 @@
       mnPromiseHelper(vm, mnClientCertificateService.getClientCertificateSettings())
         .applyToScope("settings")
         .onSuccess(function (resp) {
-          if ($scope.rbac.cluster.admin.security.write) {
-            maybeSetInititalValue(vm.settings.prefixes, {delimiter: '', prefix: '', path: ''});
+          if ($scope.rbac.cluster.admin.security.write && vm.settings.prefixes.length === 0) {
+            vm.settings.prefixes.push({delimiter: '', prefix: '', path: ''});
           }
         });
     }
