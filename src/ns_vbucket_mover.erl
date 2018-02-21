@@ -73,13 +73,17 @@ assert_dict_mapping(Dict, E1, E2) ->
             erlang:throw(not_swap)
     end.
 
-is_swap_rebalance(MapTriples, OldMap, NewMap) ->
+is_swap_rebalance(OldMap, NewMap) ->
+    MapTriples = lists:zip3(lists:seq(0, length(OldMap) - 1),
+                            OldMap,
+                            NewMap),
     OldNodes = lists:usort(lists:append(OldMap)) -- [undefined],
     NewNodes = lists:usort(lists:append(NewMap)) -- [undefined],
     AddedNodes = ordsets:subtract(NewNodes, OldNodes),
     RemovedNodes = ordsets:subtract(OldNodes, NewNodes),
 
     try
+        length(OldNodes) =/= length(NewNodes) andalso erlang:throw(not_swap),
         lists:foldl(
           fun ({_VB, OldChain, NewChain}, Dict0) ->
                   Changed = [Pair || {From, To} = Pair <- lists:zip(OldChain, NewChain),
@@ -104,14 +108,11 @@ init({Bucket, OldMap, NewMap, ProgressCallback}) ->
     erlang:put(bucket_name, Bucket),
     erlang:put(child_processes, []),
 
-    MapTriples = lists:zip3(lists:seq(0, length(OldMap) - 1),
-                            OldMap,
-                            NewMap),
     AllNodesSet0 =
         lists:foldl(fun (Chain, Acc) ->
                             sets:union(Acc, sets:from_list(Chain))
                     end, sets:new(), OldMap ++ NewMap),
-    case is_swap_rebalance(MapTriples, OldMap, NewMap) of
+    case is_swap_rebalance(OldMap, NewMap) of
         true ->
             ale:info(?USER_LOGGER, "Bucket ~p rebalance appears to be swap rebalance", [Bucket]);
         false ->
