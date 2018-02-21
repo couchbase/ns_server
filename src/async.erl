@@ -17,6 +17,7 @@
 
 -include("cut.hrl").
 -include("ns_common.hrl").
+-include_lib("eunit/include/eunit.hrl").
 
 -export([start/1, start/2,
          start_many/2, start_many/3,
@@ -214,6 +215,13 @@ async_init(Parent, ParentController, Opts, Fun) ->
     Adopters = proplists:get_value(adopters, Opts, []),
     lists:foreach(register_for_adoption(_), Adopters),
 
+    case proplists:get_value(abort_after, Opts) of
+        undefined ->
+            ok;
+        AbortAfter when is_integer(AbortAfter) ->
+            erlang:send_after(AbortAfter, self(), abort_after_expired)
+    end,
+
     Type = proplists:get_value(type, Opts, wait),
     async_loop_wait_result(Type, Child, Reply, []).
 
@@ -249,7 +257,9 @@ async_loop_wait_result(Type, Child, Reply, ChildAsyncs) ->
             async_loop_handle_result(Type, Child, ChildAsyncs, Result);
         {'$async_msg', Msg} ->
             Child ! Msg,
-            async_loop_wait_result(Type, Child, Reply, ChildAsyncs)
+            async_loop_wait_result(Type, Child, Reply, ChildAsyncs);
+        abort_after_expired ->
+            terminate_on_query(Type, Child, ChildAsyncs, timeout)
     end.
 
 maybe_terminate_child(undefined, _Reason) ->
@@ -466,3 +476,21 @@ maybe_log_down_message({'DOWN', _MRef, process, Pid, Reason}) ->
             ?log_warning("Monitored process ~p "
                          "terminated abnormally (reason = ~p)", [Pid, Reason])
     end.
+
+-ifdef(EUNIT).
+abort_after_test() ->
+    A1 = async:start(?cut(timer:sleep(10000)), [{abort_after, 100}]),
+    ?assertExit(timeout, async:wait(A1)),
+
+    A2 = async:start(?cut(timer:sleep(10000)), [{abort_after, 100}]),
+    timer:sleep(200),
+    ?assertExit(timeout, async:wait(A2)),
+
+    ok = async:with(?cut(timer:sleep(100)),
+                    [{abort_after, 200}], async:wait(_)),
+
+
+    {A3, MRef} = async:perform(?cut(timer:sleep(1000)),
+                               [monitor, {abort_after, 100}]),
+    ?must_flush({'DOWN', MRef, process, A3, timeout}).
+-endif.
