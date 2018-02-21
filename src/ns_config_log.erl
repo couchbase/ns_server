@@ -21,7 +21,7 @@
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3, sanitize/1]).
+         terminate/2, code_change/3, sanitize/1, sanitize/2]).
 
 -include("ns_common.hrl").
 
@@ -94,27 +94,28 @@ compute_buckets_diff(NewBuckets, OldBuckets) ->
 
     misc:update_proplist(NewBuckets, [{configs, Diffed}]).
 
-do_tag_user_data(UData) when is_list(UData) ->
+do_tag_user_name(UData) when is_list(UData) ->
     "<ud>" ++ UData ++ "</ud>";
-do_tag_user_data(UData) when is_atom(UData) ->
+do_tag_user_name(UData) when is_atom(UData) ->
     UData;  %% Cases like {source, local} we don't want to tag.
-do_tag_user_data(UData) when is_binary(UData) ->
+do_tag_user_name(UData) when is_binary(UData) ->
     list_to_binary("<ud>" ++ binary_to_list(UData) ++ "</ud>").
 
 tag_user_data(DebugKVList) ->
     misc:rewrite_tuples(
-      fun ({user, UserName}) when is_binary(UserName) ->
-              {stop, {user, do_tag_user_data(UserName)}};
-          ({UName, IdType}) when IdType =:= local orelse
-                                 IdType =:= external orelse
-                                 IdType =:= admin ->
-              {stop, {do_tag_user_data(UName), IdType}};
-          (_Other) ->
-              continue
-      end, DebugKVList).
+      fun tag_user_tuples_fun/1, DebugKVList).
+
+tag_user_tuples_fun({user, UserName}) when is_binary(UserName) ->
+    {stop, {user, do_tag_user_name(UserName)}};
+tag_user_tuples_fun({UName, IdType}) when IdType =:= local orelse
+                                          IdType =:= external orelse
+                                          IdType =:= admin ->
+    {stop, {do_tag_user_name(UName), IdType}};
+tag_user_tuples_fun(_Other) ->
+    continue.
 
 tag_user_name(UserName) ->
-    do_tag_user_data(UserName).
+    do_tag_user_name(UserName).
 
 rewrite_tuples_with_vclock(Fun, Config) ->
     misc:rewrite_tuples(
@@ -130,6 +131,16 @@ rewrite_tuples_with_vclock(Fun, Config) ->
       end, Config).
 
 sanitize(Config) ->
+    sanitize(Config, false).
+
+sanitize(Config, TagUserTuples) ->
+    Continue =
+        case TagUserTuples of
+            false ->
+                functools:const(continue);
+            true ->
+                fun tag_user_tuples_fun/1
+        end,
     rewrite_tuples_with_vclock(
       fun ({password, _}) ->
               {stop, {password, "*****"}};
@@ -149,13 +160,13 @@ sanitize(Config) ->
               {stop, {cookie, ns_cookie_manager:sanitize_cookie(Cookie)}};
           ({UName, {auth, Auth}}) ->
               {stop, {tag_user_name(UName),
-                      {auth, sanitize(Auth)}}};
+                      {auth, sanitize(Auth, TagUserTuples)}}};
           ({<<"h">>, _}) ->
               {stop, {<<"h">>, "*****"}};
           ({<<"plain">>, _}) ->
               {stop, {<<"plain">>, "*****"}};
-          (_Other) ->
-              continue
+          (Other) ->
+              Continue(Other)
       end, Config).
 
 log_kv({buckets, RawBuckets0}, #state{buckets=OldBuckets} = State) ->
