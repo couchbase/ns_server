@@ -95,6 +95,8 @@
         delete cluster.certificate;
         delete cluster.demandEncryption;
         delete cluster.encryptionType;
+        delete cluster.clientCertificate;
+        delete cluster.clientKey;
       }
       return $http.post('/pools/default/remoteClusters' + (name ? ("/" + encodeURIComponent(name)) : ""), cluster);
     }
