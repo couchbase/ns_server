@@ -230,14 +230,15 @@ async_loop_wait_result(Type, Child, Reply, ChildAsyncs) ->
     receive
         {'DOWN', _MRef, process, _Pid, Reason} = Down ->
             maybe_log_down_message(Down),
-            terminate_now(Reason, [Child | ChildAsyncs]);
+            terminate_now(Child, ChildAsyncs, Reason);
         {'EXIT', Child, Reason} ->
-            terminate_on_query(Type, {child_died, Reason}, ChildAsyncs);
+            terminate_on_query(Type,
+                               undefined, ChildAsyncs, {child_died, Reason});
         %% note, we don't assume that this comes from the parent, because we
         %% can be terminated by parent async, for example, which is not the
         %% actual parent of our process
         {'EXIT', _, Reason} ->
-            terminate_now(Reason, [Child | ChildAsyncs]);
+            terminate_now(Child, ChildAsyncs, Reason);
         {'$async_req', From, {initiate_adoption, Controller}} ->
             handle_initiate_adoption(Controller, From),
             async_loop_wait_result(Type, Child, Reply, ChildAsyncs);
@@ -251,14 +252,24 @@ async_loop_wait_result(Type, Child, Reply, ChildAsyncs) ->
             async_loop_wait_result(Type, Child, Reply, ChildAsyncs)
     end.
 
-terminate_now(Reason, Children) ->
-    misc:terminate_and_wait(Children, Reason),
+maybe_terminate_child(undefined, _Reason) ->
+    ok;
+maybe_terminate_child(Child, Reason)
+  when is_pid(Child) ->
+    misc:unlink_terminate_and_wait(Child, Reason).
+
+terminate_children(Child, ChildAsyncs, Reason) ->
+    maybe_terminate_child(Child, Reason),
+    misc:terminate_and_wait(ChildAsyncs, Reason).
+
+terminate_now(Child, ChildAsyncs, Reason) ->
+    terminate_children(Child, ChildAsyncs, Reason),
     exit(Reason).
 
-terminate_on_query(perform, Reason, Children) ->
-    terminate_now(Reason, Children);
-terminate_on_query(wait, Reason, Children) ->
-    misc:terminate_and_wait(Children, Reason),
+terminate_on_query(perform, Child, ChildAsyncs, Reason) ->
+    terminate_now(Child, ChildAsyncs, Reason);
+terminate_on_query(wait, Child, ChildAsyncs, Reason) ->
+    terminate_children(Child, ChildAsyncs, Reason),
     async_loop_with_result({die, Reason}).
 
 async_loop_handle_result(Type, Child, ChildAsyncs, Result) ->
