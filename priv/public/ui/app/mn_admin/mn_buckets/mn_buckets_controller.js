@@ -39,7 +39,9 @@
     function activate() {
       var pull = $interval(function () {
         $rootScope.$broadcast("reloadBucketStats");
-      }, 5000);
+      }, 3000);
+
+      $rootScope.$broadcast("reloadBucketStats");
 
       $scope.$on('$destroy', function () {
         $interval.cancel(pull);
