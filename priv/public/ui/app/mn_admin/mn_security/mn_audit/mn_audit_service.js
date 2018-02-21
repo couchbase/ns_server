@@ -5,7 +5,7 @@
     'mnPoolDefault'
   ]).factory('mnAuditService', mnAuditServiceFactory);
 
-  function mnAuditServiceFactory($http, $q, mnPoolDefault) {
+  function mnAuditServiceFactory($http, $q, mnPoolDefault, IEC) {
     var mnAuditService = {
       getAuditSettings: getAuditSettings,
       saveAuditSettings: saveAuditSettings,
@@ -87,6 +87,9 @@
         result.logPath = data.logPath;
         result.rotateSize = data.rotateSize;
       }
+      if (data.rotateSize) {
+        result.rotateSize = data.rotateSize * IEC.Mi;
+      }
       return result;
     }
     function formatTimeUnit(unit) {
@@ -109,6 +112,9 @@
       } else {
         data.rotateInterval /= 60;
         data.rotateUnit = 'minutes';
+      }
+      if (data.rotateSize) {
+        data.rotateSize = data.rotateSize / IEC.Mi;
       }
       if (mnPoolDefault.export.compat.atLeast55 && mnPoolDefault.export.isEnterprise) {
         var mapDisabledIDs = _.groupBy(data.disabled);
