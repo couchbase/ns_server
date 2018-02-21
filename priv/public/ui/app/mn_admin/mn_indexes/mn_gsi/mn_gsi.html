@@ -32,7 +32,7 @@
       <h4 class="margin-top-1-5">{{nodeName}}</h4>
       <div class="cbui-table" mn-sortable-table>
         <div class="cbui-table-header">
-          <span class="cbui-table-cell flex-grow-2">
+          <span class="cbui-table-cell flex-grow-1-5">
             <span mn-sortable-title="index" sort-by-default="true" class="sorter">index name</span>
           </span>
           <span class="cbui-table-cell">
@@ -42,6 +42,7 @@
             <span mn-sortable-title="storageMode | mnFormatStorageMode:pools.isEnterprise" class="sorter">storage type</span>
           </span>
           <span class="cbui-table-cell flex-grow-half">build progress</span>
+          <span class="cbui-table-cell flex-grow-1"></span>
         </div>
         <section
            ng-repeat="row in group | orderBy:mnSortableTable.sortableTableProperties.orderBy:mnSortableTable.sortableTableProperties.invert | filter:gsiCtl.filterField as byServerFiltered track by gsiCtl.generateIndexId(row)"
@@ -51,12 +52,16 @@
                                        'dynamic_unhealthy': row.status !== 'Ready'
                                        }">
           <div class="cbui-tablerow">
-            <span class="cbui-table-cell flex-grow-2" title="{{row.index}}">{{row.index}} <span class="label lt-blue" ng-if="row.partitioned">partitioned</span></span>
+            <span class="cbui-table-cell flex-grow-1-5" title="{{row.index}}">{{row.index}} <span class="label lt-blue" ng-if="row.partitioned">partitioned</span></span>
             <span class="cbui-table-cell">
               <span ng-class="{closed:!gsiCtl.isDetailsOpened(gsiCtl.generateIndexId(row))}">{{row.bucket}}</span>
             </span>
             <span class="cbui-table-cell">{{row.storageMode | mnFormatStorageMode:pools.isEnterprise}}</span>
             <span class="cbui-table-cell flex-grow-half"><span ng-if="row.progress">{{row.progress}}%</span></span>
+            <span class="cbui-table-cell flex-grow-1 text-right wrap" ng-if="gsiCtl.hasQueryService()" ng-click="$event.stopPropagation();">
+              <button class="outline tight" ui-sref="app.admin.query.workbench({query: gsiCtl.dropIndex(row)})">Drop</button>
+              <button class="outline tight" ui-sref="app.admin.query.workbench({query: gsiCtl.editIndex(row)})">Edit</button>
+            </span>
           </div>
           <div class="cbui-tablerow-expanded" ng-if="gsiCtl.isDetailsOpened(gsiCtl.generateIndexId(row))">
             <div class="content-box cursor-auto" ng-click="$event.stopPropagation();">
@@ -76,7 +81,7 @@
       <h4 class="margin-top-1-5">{{bucketName}}</h4>
       <div class="cbui-table" mn-sortable-table>
         <div class="cbui-table-header">
-          <span class="cbui-table-cell flex-grow-2">
+          <span class="cbui-table-cell flex-grow-1-5">
             <span mn-sortable-title="index" sort-by-default="true" class="sorter">index name</span>
           </span>
           <span class="cbui-table-cell">
@@ -86,6 +91,7 @@
             <span mn-sortable-title="storageMode | mnFormatStorageMode:pools.isEnterprise" class="sorter">storage type</span>
           </span>
           <span class="cbui-table-cell flex-grow-half">build progress</span>
+          <span class="cbui-table-cell flex-grow-1"></span>
         </div>
         <section
            ng-repeat="row in group | orderBy:mnSortableTable.sortableTableProperties.orderBy:mnSortableTable.sortableTableProperties.invert | filter:gsiCtl.filterField as byBucketFiltered track by gsiCtl.generateIndexId(row)"
@@ -95,10 +101,14 @@
                                        'dynamic_unhealthy': row.status !== 'Ready'
                                        }">
           <div class="cbui-tablerow">
-            <span class="cbui-table-cell flex-grow-2" title="{{row.index}}">{{row.index}} <span class="label lt-blue" ng-if="row.partitioned">partitioned</span></span>
+            <span class="cbui-table-cell flex-grow-1-5" title="{{row.index}}">{{row.index}} <span class="label lt-blue" ng-if="row.partitioned">partitioned</span></span>
             <span class="cbui-table-cell" title="{{row.hosts.join(', ')}}">{{row.hosts.join(', ')}}</span>
             <span class="cbui-table-cell">{{row.storageMode | mnFormatStorageMode:pools.isEnterprise}}</span>
             <span class="cbui-table-cell flex-grow-half"><span ng-if="row.progress">{{row.progress}}%</span></span>
+            <span class="cbui-table-cell flex-grow-1 text-right wrap" ng-if="gsiCtl.hasQueryService()" ng-click="$event.stopPropagation();">
+              <button class="outline tight" ui-sref="app.admin.query.workbench({query: gsiCtl.dropIndex(row)})">Drop</button>
+              <button class="outline tight" ui-sref="app.admin.query.workbench({query: gsiCtl.editIndex(row)})">Edit</button>
+            </span>
           </div>
           <div class="cbui-tablerow-expanded" ng-if="gsiCtl.isDetailsOpened(gsiCtl.generateIndexId(row))">
             <div class="content-box cursor-auto" ng-click="$event.stopPropagation();">
@@ -116,7 +126,7 @@
   <span ng-if="viewby == 'viewby_index'">
     <div class="cbui-table margin-top-1" mn-sortable-table="" ng-if="gsiCtl.state.indexes.length">
       <div class="cbui-table-header">
-        <span class="cbui-table-cell flex-grow-2">
+        <span class="cbui-table-cell flex-grow-1-5">
           <span sort-by-default="true" mn-sortable-title="index" class="sorter">index name</span>
         </span>
         <span class="cbui-table-cell">
@@ -129,6 +139,7 @@
           <span mn-sortable-title="storageMode | mnFormatStorageMode:pools.isEnterprise" class="sorter">storage type</span>
         </span>
         <span class="cbui-table-cell flex-grow-half">build progress</span>
+        <span class="cbui-table-cell flex-grow-1"></span>
       </div>
       <section
          ng-repeat="row in gsiCtl.state.indexes | orderBy:mnSortableTable.sortableTableProperties.orderBy:mnSortableTable.sortableTableProperties.invert | filter:gsiCtl.filterField as byIndexFiltered track by gsiCtl.generateIndexId(row)"
@@ -138,13 +149,17 @@
                                      'dynamic_unhealthy': row.status !== 'Ready'
                                      }">
         <div class="cbui-tablerow">
-          <span class="cbui-table-cell flex-grow-2" title="{{row.index}}">{{row.index}} <span class="label lt-blue" ng-if="row.partitioned">partitioned</span></span>
+          <span class="cbui-table-cell flex-grow-1-5" title="{{row.index}}">{{row.index}} <span class="label lt-blue" ng-if="row.partitioned">partitioned</span></span>
           <span class="cbui-table-cell">
             <span ng-class="{closed:!gsiCtl.isDetailsOpened(gsiCtl.generateIndexId(row))}">{{row.bucket}}</span>
           </span>
           <span class="cbui-table-cell" title="{{row.hosts.join(', ')}}">{{row.hosts.join(', ')}}</span>
           <span class="cbui-table-cell">{{row.storageMode | mnFormatStorageMode:pools.isEnterprise}}</span>
           <span class="cbui-table-cell flex-grow-half"><span ng-if="row.progress">{{row.progress}}%</span></span>
+          <span class="cbui-table-cell flex-grow-1 text-right wrap" ng-if="gsiCtl.hasQueryService()" ng-click="$event.stopPropagation();">
+            <button class="outline tight" ui-sref="app.admin.query.workbench({query: gsiCtl.dropIndex(row)})">Drop</button>
+            <button class="outline tight" ui-sref="app.admin.query.workbench({query: gsiCtl.editIndex(row)})">Edit</button>
+          </span>
         </div>
         <div class="cbui-tablerow-expanded" ng-if="gsiCtl.isDetailsOpened(gsiCtl.generateIndexId(row))">
           <div class="content-box cursor-auto" ng-click="$event.stopPropagation();">

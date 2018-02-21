@@ -329,7 +329,7 @@ input.filter-input {
 }
 .cbui-tablerow {
   display: flex;
-  flex-wrap: no-wrap;
+  flex-wrap: nowrap;
   justify-content: space-between;
   position: relative;
   padding: .75rem 1rem;/*center items using padding
@@ -473,6 +473,7 @@ section.error {
   overflow: hidden;
   text-overflow: ellipsis;
   padding-right: 1rem;
+  margin: auto 0;
 }
 .cbui-table-cell.status {
   flex: 0 1 .5rem;
