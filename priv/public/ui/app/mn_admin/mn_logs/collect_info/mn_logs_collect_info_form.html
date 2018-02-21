@@ -80,7 +80,16 @@
          name="tmpdir"
          value="true"
          type="checkbox">
-      <label for="for_custom_tmpdir">Specify custom temp directory</label>
+      <label for="for_custom_tmpdir" class="margin-right-zero">Specify custom temp directory</label>
+      <span
+         class="fa-stack icon-info"
+         uib-tooltip="Logs and diagnostics will be combined in this directory during the collection process.
+         The process takes a significant amount of time and the subsequent file tends to be large, so a temporary
+         directory can be a good idea in some production environments."
+         tooltip-placement="top">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+      </span>
       <div ng-if="logsCollectInfoCtl.collect.enableTmpDir">
         <input
            type="text"
@@ -101,7 +110,14 @@
          name="logdir"
          value="true"
          type="checkbox">
-      <label for="for_custom_logdir">Specify custom log directory</label>
+      <label for="for_custom_logdir" class="margin-right-zero">Specify custom destination directory</label>
+      <span
+         class="fa-stack icon-info"
+         uib-tooltip="You can specify any valid directory or just leave blank to store in the default Couchbase directory."
+         tooltip-placement="top">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+      </span>
       <div ng-if="logsCollectInfoCtl.collect.enableLogDir">
         <input
            type="text"
