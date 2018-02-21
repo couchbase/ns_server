@@ -220,18 +220,10 @@ get_meta(Bucket, VBucket, DocId) ->
 handle_with_bucket(Req, Fun) ->
     couch_httpd:validate_ctype(Req, "application/json"),
     {Obj} = couch_httpd:json_body_obj(Req),
-    Bucket =
-        case proplists:get_value(<<"bucket">>, Obj) of
-            undefined ->
-                undefined;
-            B ->
-                %% pre 3.0 clusters will send us "dbname+uuid" here
-                %% so parse uuid out
-                {B1, undefined, _} = capi_utils:split_dbname_with_uuid(B),
-                B1
-        end,
 
+    Bucket = proplists:get_value(<<"bucket">>, Obj),
     BucketUUID = proplists:get_value(<<"bucketUUID">>, Obj),
+
     case (Bucket =:= undefined
           orelse BucketUUID =:= undefined) of
         true ->
