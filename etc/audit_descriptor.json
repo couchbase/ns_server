@@ -103,15 +103,15 @@
       },
       {
           "id" : 8198,
-          "name" : "failover node",
-          "description" : "Node was failed over",
+          "name" : "failover nodes",
+          "description" : "Nodes that were failed over",
           "sync" : false,
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"source" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
-              "node" : "",
+              "nodes" : [],
               "type" : ""
           },
           "optional_fields" : {

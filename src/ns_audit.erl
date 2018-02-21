@@ -28,7 +28,7 @@
          set_user/4,
          add_node/7,
          remove_node/2,
-         failover_node/3,
+         failover_nodes/3,
          enter_node_recovery/3,
          rebalance_initiated/4,
          create_bucket/4,
@@ -199,7 +199,7 @@ code(add_node) ->
     8196;
 code(remove_node) ->
     8197;
-code(failover_node) ->
+code(failover_nodes) ->
     8198;
 code(enter_node_recovery) ->
     8199;
@@ -444,8 +444,8 @@ add_node(Req, Hostname, Port, User, GroupUUID, Services, Node) ->
 remove_node(Req, Node) ->
     put(remove_node, Req, [{node, Node}]).
 
-failover_node(Req, Node, Type) ->
-    put(failover_node, Req, [{node, Node}, {type, Type}]).
+failover_nodes(Req, Nodes, Type) ->
+    put(failover_nodes, Req, [{nodes, {list, Nodes}}, {type, Type}]).
 
 enter_node_recovery(Req, Node, Type) ->
     put(enter_node_recovery, Req, [{node, Node}, {type, Type}]).

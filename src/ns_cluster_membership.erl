@@ -179,8 +179,8 @@ stop_rebalance_if_safe() ->
 is_balanced() ->
     not ns_orchestrator:needs_rebalance().
 
-failover(Node, AllowUnsafe) ->
-    ns_orchestrator:failover(Node, AllowUnsafe).
+failover(Nodes, AllowUnsafe) ->
+    ns_orchestrator:failover(Nodes, AllowUnsafe).
 
 re_failover_possible(NodeString) ->
     case (catch list_to_existing_atom(NodeString)) of

@@ -585,8 +585,7 @@ do_handle_add_node(Req, GroupUUID) ->
             reply_json(Req, ErrorList, 400)
     end.
 
-parse_common_failover_args(Params) ->
-    NodeArg = proplists:get_value("otpNode", Params, "undefined"),
+validate_node(NodeArg) ->
     Node = (catch list_to_existing_atom(NodeArg)),
     case Node of
         undefined ->
@@ -598,24 +597,47 @@ parse_common_failover_args(Params) ->
     end.
 
 parse_graceful_failover_args(Req) ->
-    parse_common_failover_args(Req:parse_post()).
+    Params = Req:parse_post(),
+    validate_node(proplists:get_value("otpNode", Params, "undefined")).
+
+parse_otp_nodes(Params) ->
+    OtpNodes = proplists:lookup_all("otpNode", Params),
+    {Good, Bad} = lists:foldl(
+                    fun ({_Key, Val}, {G, B}) ->
+                            case validate_node(Val) of
+                                {ok, Node} -> {[Node | G], B};
+                                _ -> {G, [Val | B]}
+                            end
+                    end, {[], []}, OtpNodes),
+    case Bad of
+        [] ->
+            case Good of
+                [] ->
+                    {error, "No server specified."};
+                _ ->
+                    %% Remove duplicates.
+                    {ok, lists:usort(Good)}
+            end;
+        _ ->
+            {error, io_lib:format("Unknown server given: ~p", [Bad])}
+    end.
 
 parse_hard_failover_args(Req) ->
     Params = Req:parse_post(),
-    case parse_common_failover_args(Params) of
-        {ok, Node} ->
+    case parse_otp_nodes(Params) of
+        {ok, Nodes} ->
             AllowUnsafe = proplists:get_value("allowUnsafe", Params),
-            {ok, Node, AllowUnsafe =:= "true"};
+            {ok, Nodes, AllowUnsafe =:= "true"};
         Error ->
             Error
     end.
 
 handle_failover(Req) ->
     case parse_hard_failover_args(Req) of
-        {ok, Node, AllowUnsafe} ->
-            case ns_cluster_membership:failover(Node, AllowUnsafe) of
+        {ok, Nodes, AllowUnsafe} ->
+            case ns_cluster_membership:failover(Nodes, AllowUnsafe) of
                 ok ->
-                    ns_audit:failover_node(Req, Node, hard),
+                    ns_audit:failover_nodes(Req, Nodes, hard),
                     reply(Req, 200);
                 rebalance_running ->
                     reply_text(Req, "Rebalance running.", 503);
@@ -667,7 +689,7 @@ handle_start_graceful_failover(Req) ->
                   end,
             case Msg of
                 [] ->
-                    ns_audit:failover_node(Req, Node, graceful),
+                    ns_audit:failover_nodes(Req, [Node], graceful),
                     reply(Req, 200);
                 {Code, Text} ->
                     reply_text(Req, Text, Code)
@@ -765,7 +787,8 @@ handle_re_failover(Req) ->
     NodeString = proplists:get_value("otpNode", Params, "undefined"),
     case ns_cluster_membership:re_failover(NodeString) of
         ok ->
-            ns_audit:failover_node(Req, list_to_existing_atom(NodeString), cancel_recovery),
+            ns_audit:failover_nodes(Req, [list_to_existing_atom(NodeString)],
+                                    cancel_recovery),
             reply(Req, 200);
         not_possible ->
             reply(Req, 400)

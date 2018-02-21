@@ -160,7 +160,7 @@ flush_bucket(BucketName) ->
     gen_fsm:sync_send_event(?SERVER, {flush_bucket, BucketName}, infinity).
 
 
--spec failover(atom(), boolean()) ->
+-spec failover([node()], boolean()) ->
                       ok |
                       rebalance_running |
                       in_recovery |
@@ -172,9 +172,9 @@ flush_bucket(BucketName) ->
                       %% believes to be an impossible return value if all
                       %% other options are also covered
                       any().
-failover(Node, AllowUnsafe) ->
+failover(Nodes, AllowUnsafe) ->
     wait_for_orchestrator(),
-    gen_fsm:sync_send_event(?SERVER, {failover, [Node], AllowUnsafe}, infinity).
+    gen_fsm:sync_send_event(?SERVER, {failover, Nodes, AllowUnsafe}, infinity).
 
 
 -spec try_autofailover(list()) -> ok |
