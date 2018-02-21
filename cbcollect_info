@@ -921,7 +921,10 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                        make_index_task("Indexer Rebalance Tokens: ", "listRebalanceTokens",
                                        memcached_pass, index_port),
                        make_index_task("Indexer Metadata Tokens: ", "listMetadataTokens",
-                                       memcached_pass, index_port)]
+                                       memcached_pass, index_port),
+                       make_index_task("Indexer Memory Profile: ", "debug/pprof/heap?debug=1",
+                                       memcached_pass, index_port, logfile="indexer_mprof.log"),
+        ]
 
     projector_tasks = []
     proj_port = read_guts(guts, "projector_port")
