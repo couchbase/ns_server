@@ -109,8 +109,12 @@
 
           %% Whether we reported to the user autofailover_unsafe condition
           reported_autofailover_unsafe = false :: boolean(),
-          %% Whether we reported that max number of auto failovers was reached
-          reported_max_reached = false :: boolean(),
+          %% Whether we reported that max number of auto failovers for
+          %% individual nodes was reached
+          reported_max_node_reached = false :: boolean(),
+          %% Whether we reported that max number of auto failovers for
+          %% server groups was reached
+          reported_max_group_reached = false :: boolean(),
           %% Whether we reported that we could not auto failover because of
           %% rebalance
           reported_rebalance_running = false :: boolean(),
@@ -402,12 +406,12 @@ process_action({failover, {Node, _UUID}}, S, DownNodes, NodeStatuses, Config) ->
     SG = ns_cluster_membership:get_node_server_group(Node, Config),
     case allow_failover(SG, S, failover) of
         {false, ErrMsg} ->
-            case should_report(#state.reported_max_reached, S) of
+            case should_report(#state.reported_max_node_reached, S) of
                 true ->
                     ?user_log(?EVENT_MAX_REACHED,
                               "Could not auto-failover more nodes (~p). ~s",
                               [Node, ErrMsg]),
-                    note_reported(#state.reported_max_reached, S);
+                    note_reported(#state.reported_max_node_reached, S);
                 false ->
                     S
             end;
@@ -418,14 +422,13 @@ process_action({failover_group, SG, Nodes0}, S, DownNodes, NodeStatuses, _) ->
     Nodes = [N || {N, _} <- Nodes0],
     case allow_failover(SG, S, failover_group) of
         {false, ErrMsg} ->
-            %% TODO - have different reported_max_reached for server groups
-            case should_report(#state.reported_max_reached, S) of
+            case should_report(#state.reported_max_group_reached, S) of
                 true ->
                     ?user_log(?EVENT_MAX_REACHED,
                               "Could not auto-failover server group (~p) "
                               "with nodes (~p). ~s",
                               [binary_to_list(SG), Nodes, ErrMsg]),
-                    note_reported(#state.reported_max_reached, S);
+                    note_reported(#state.reported_max_group_reached, S);
                 false ->
                     S
             end;
@@ -825,7 +828,8 @@ should_report(Flag, State) ->
 
 init_reported(State) ->
     State#state{reported_autofailover_unsafe = false,
-                reported_max_reached = false,
+                reported_max_node_reached = false,
+                reported_max_group_reached = false,
                 reported_rebalance_running = false,
                 reported_in_recovery = false,
                 reported_orchestration_unsafe = false}.
