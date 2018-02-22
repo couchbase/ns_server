@@ -24,6 +24,7 @@
          terminate/2, code_change/3, sanitize/1, sanitize/2]).
 
 -include("ns_common.hrl").
+-include("generic.hrl").
 
 -record(state, {buckets=[]}).
 
@@ -113,6 +114,14 @@ tag_user_data(DebugKVList) ->
 tag_user_tuples_fun({user, UserName}) when is_binary(UserName) ->
     {ok, Val} = do_tag_user_name(UserName),
     {stop, {user, Val}};
+tag_user_tuples_fun({doc, {user, {U, D}}, _, _, V} = Doc) ->
+    T = setelement(2, Doc, {user, {do_tag_user_name(U), D}}),
+    {stop, setelement(5, T, generic:transformt(
+                              ?transform({name, N},
+                                         {name, do_tag_user_name(N)}), V))};
+tag_user_tuples_fun({full_name, FullName}) when is_binary(FullName) ->
+    {ok, Val} = do_tag_user_name(FullName),
+    {stop, {full_name, Val}};
 tag_user_tuples_fun({UName, Type}) when Type =:= local orelse
                                         Type =:= external orelse
                                         Type =:= admin ->
