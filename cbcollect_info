@@ -160,8 +160,7 @@ class AccessLogProcessor:
             return self._hash(user)
 
     def _hash(self, token):
-        hash_object = hashlib.sha1(self.salt + token)
-        return str(hash_object.hexdigest())
+        return hashlib.sha1(self.salt + token).hexdigest()
 
     def _repl_columns(self, matchobj):
         return matchobj.group(1) + \
@@ -170,17 +169,60 @@ class AccessLogProcessor:
             self._process_url(matchobj.group(4)) + \
             matchobj.group(5)
 
-    def _do_line(self, line):
+    def do(self, line):
         return self.column_parser.sub(self._repl_columns, line)
 
-    def do(self, ifile, ofile):
+class CouchbaseLogProcessor:
+    def __init__(self, salt):
+        self.salt = salt
+
+    def do(self, line):
+        if "RedactLevel" in line:
+            return 'RedactLevel:partial,HashOfSalt:%s\n' \
+                % hashlib.sha1(self.salt).hexdigest()
+        else:
+            return line
+
+class RegularLogProcessor:
+    def __init__(self, salt):
+        self.salt = salt
+        self.rex = re.compile('(<ud>)(.+?)(</ud>)')
+
+    def _hash(self, match):
+        h = hashlib.sha1(self.salt + match.group(2)).hexdigest()
+        return match.group(1) + h + match.group(3)
+
+    def do(self, line):
+        return self.rex.sub(self._hash, line)
+
+class LogRedactor:
+    def __init__(self, salt, tmpdir, default_name):
+        self.default_name = default_name
+        self.target_dir = os.path.join(tmpdir, "redacted")
+        os.makedirs(self.target_dir)
+
+        self.access_log = AccessLogProcessor(salt)
+        self.couchbase_log = CouchbaseLogProcessor(salt)
+        self.regular_log = RegularLogProcessor(salt)
+
+    def _process_file(self, ifile, ofile, processor):
         try:
             with open(ifile, 'r') as inp:
                 with open(ofile, 'w+') as out:
                     for line in inp:
-                        out.write(self._do_line(line))
+                        out.write(processor.do(line))
         except IOError as e:
             log("I/O error(%s): %s" % (e.errno, e.strerror))
+
+    def redact_file(self, name, ifile):
+        ofile = os.path.join(self.target_dir, name)
+        if "http_access" in name:
+            self._process_file(ifile, ofile, self.access_log)
+        elif name == self.default_name:
+            self._process_file(ifile, ofile, self.couchbase_log)
+        else:
+            self._process_file(ifile, ofile, self.regular_log)
+        return ofile
 
 class Task(object):
     privileged = False
@@ -441,64 +483,15 @@ class TaskRunner(object):
     def literal(self, description, value, **kwargs):
         self.run(LiteralTask(description, value, **kwargs))
 
-    def _hash_fun(self, match):
-        hash_object = hashlib.sha1(self.salt_value + str(match.group(2)))
-        return str(match.group(1)) + str(hash_object.hexdigest()) + str(match.group(3))
-
-    def _parse_helper(self, p, logline):
-        result = p.sub(self._hash_fun, logline)
-        return result
-
-    def _parse_redact_file(self, ip_file, f_name, redact_dir):
-        p = re.compile('(<ud>)(.+?)(</ud>)')
-        op_file = os.path.join(redact_dir, f_name)
-        try:
-            with open(ip_file, 'r') as ip:
-                with open(op_file, 'w+') as op:
-                    for line in ip:
-                        result = self._parse_helper(p, line)
-                        op.write('%s' % result)
-        except IOError as e:
-            log("I/O error(%s): %s" % (e.errno, e.strerror))
-        return op_file
-
-    def _parse_cbaselog_file(self, ip_file, f_name, redact_dir):
-        op_file = os.path.join(redact_dir, f_name)
-        try:
-            with open(ip_file, 'r') as ip:
-                with open(op_file, 'w+') as op:
-                    for line in ip:
-                        NotFound = True
-                        if NotFound and "RedactLevel" in line:
-                            op.write('RedactLevel:partial,HashOfSalt:%s'
-                                     % hashlib.sha1(self.salt_value +
-                                                    self.salt_value).hexdigest())
-                            op.write(os.linesep)
-                            NotFound = False
-                        else:
-                            op.write('%s' % line)
-        except IOError as e:
-            log("I/O error(%s): %s" % (e.errno, e.strerror))
-        return op_file
 
     def redact_and_zip(self, filename, node):
-        redact_dir = os.path.join(self.tmpdir, "redacted")
-        os.makedirs(redact_dir)
         files = []
+        redactor = LogRedactor(self.salt_value, self.tmpdir, self.default_name)
+
         for name, fp in self.files.iteritems():
             if "users.dets" in name:
-                continue # Don't include users.dets in redacted zip file
-            op_file = None
-            if "http_access" in name:
-                op_file = os.path.join(redact_dir, name)
-                processor = AccessLogProcessor(self.salt_value)
-                processor.do(fp.name, op_file)
-            elif name == self.default_name:
-                # no tagged data except RedactLevel placeholder
-                op_file = self._parse_cbaselog_file(fp.name, name, redact_dir)
-            else:
-                op_file = self._parse_redact_file(fp.name, name, redact_dir)
-            files.append(op_file)
+                continue
+            files.append(redactor.redact_file(name, fp.name))
 
         prefix = "cbcollect_info_%s_%s" % (node, self.start_time)
         self._zip_helper(prefix, filename, files)
