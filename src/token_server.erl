@@ -182,8 +182,8 @@ handle_call({check, Token}, _From, State) ->
 handle_call(Msg, From, _State) ->
     erlang:error({unknown_call, Msg, From}).
 
-handle_cast({purge, MemoPattern}, State) ->
-    Tokens = ets:match(ui_auth_by_token, {'$1', '_', '_', MemoPattern}),
+handle_cast({purge, MemoPattern}, #state{table_by_token = Table} = State) ->
+    Tokens = ets:match(Table, {'$1', '_', '_', MemoPattern}),
     ?log_debug("Purge tokens ~p", [Tokens]),
     [delete_token(Token, State) || [Token] <- Tokens],
     {noreply, State};
