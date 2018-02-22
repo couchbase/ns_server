@@ -95,27 +95,36 @@ compute_buckets_diff(NewBuckets, OldBuckets) ->
     misc:update_proplist(NewBuckets, [{configs, Diffed}]).
 
 do_tag_user_name(UData) when is_list(UData) ->
-    "<ud>" ++ UData ++ "</ud>";
+    {ok, "<ud>" ++ UData ++ "</ud>"};
 do_tag_user_name(UData) when is_atom(UData) ->
-    UData;  %% Cases like {source, local} we don't want to tag.
+    {ok, UData};  %% Cases like {source, local} we don't want to tag.
 do_tag_user_name(UData) when is_binary(UData) ->
-    list_to_binary("<ud>" ++ binary_to_list(UData) ++ "</ud>").
+    {ok, list_to_binary("<ud>" ++ binary_to_list(UData) ++ "</ud>")};
+do_tag_user_name(_) ->
+    continue.
 
 tag_user_data(DebugKVList) ->
     misc:rewrite_tuples(
       fun tag_user_tuples_fun/1, DebugKVList).
 
 tag_user_tuples_fun({user, UserName}) when is_binary(UserName) ->
-    {stop, {user, do_tag_user_name(UserName)}};
-tag_user_tuples_fun({UName, IdType}) when IdType =:= local orelse
-                                          IdType =:= external orelse
-                                          IdType =:= admin ->
-    {stop, {do_tag_user_name(UName), IdType}};
+    {ok, Val} = do_tag_user_name(UserName),
+    {stop, {user, Val}};
+tag_user_tuples_fun({UName, Type}) when Type =:= local orelse
+                                        Type =:= external orelse
+                                        Type =:= admin ->
+    case do_tag_user_name(UName) of
+        continue ->
+            continue;
+        {ok, Val} ->
+            {stop, {Val, Type}}
+    end;
 tag_user_tuples_fun(_Other) ->
     continue.
 
 tag_user_name(UserName) ->
-    do_tag_user_name(UserName).
+    {ok, Val} = do_tag_user_name(UserName),
+    Val.
 
 rewrite_tuples_with_vclock(Fun, Config) ->
     misc:rewrite_tuples(
