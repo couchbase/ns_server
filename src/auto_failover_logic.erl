@@ -205,10 +205,25 @@ log_down_sg_state_change(OldState, Newstate) ->
         OldState ->
             ok;
         _ ->
-            %% TODO: log master activity down group state transitions.
+            log_down_sg_master_activity(OldState, Newstate),
             ?log_debug("Transitioned down server group state from ~p to ~p",
                        [OldState, Newstate])
     end.
+
+log_down_sg_master_activity(OldState, NewState) ->
+    SG = case NewState#down_group_state.name of
+             nil ->
+                 OldState#down_group_state.name;
+             Other ->
+                 Other
+         end,
+    Prev = OldState#down_group_state.state,
+    New = NewState#down_group_state.state,
+    Ctr = NewState#down_group_state.down_counter,
+    master_activity_events:note_autofailover_server_group_state_change(SG,
+                                                                       Prev,
+                                                                       New,
+                                                                       Ctr).
 
 get_down_sg_state(DownStates, DownSG, DownSgState) ->
     NewDownSgState = get_down_sg_state_inner(DownStates, DownSG, DownSgState),
