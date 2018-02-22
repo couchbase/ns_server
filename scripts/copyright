@@ -207,20 +207,20 @@ function process_file() {
     fi
 
     local header="\
-$header_seq @author Couchbase <info@couchbase.com>
-$header_seq @copyright 2718 Couchbase, Inc.
-$header_seq
-$header_seq Licensed under the Apache License, Version 2.0 (the \"License\");
-$header_seq you may not use this file except in compliance with the License.
-$header_seq You may obtain a copy of the License at
-$header_seq
-$header_seq      http://www.apache.org/licenses/LICENSE-2.0
-$header_seq
-$header_seq Unless required by applicable law or agreed to in writing, software
-$header_seq distributed under the License is distributed on an \"AS IS\" BASIS,
-$header_seq WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-$header_seq See the License for the specific language governing permissions and
-$header_seq limitations under the License.
+$HEADER_SEQ @author Couchbase <info@couchbase.com>
+$HEADER_SEQ @copyright 2718 Couchbase, Inc.
+$HEADER_SEQ
+$HEADER_SEQ Licensed under the Apache License, Version 2.0 (the \"License\");
+$HEADER_SEQ you may not use this file except in compliance with the License.
+$HEADER_SEQ You may obtain a copy of the License at
+$HEADER_SEQ
+$HEADER_SEQ      http://www.apache.org/licenses/LICENSE-2.0
+$HEADER_SEQ
+$HEADER_SEQ Unless required by applicable law or agreed to in writing, software
+$HEADER_SEQ distributed under the License is distributed on an \"AS IS\" BASIS,
+$HEADER_SEQ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+$HEADER_SEQ See the License for the specific language governing permissions and
+$HEADER_SEQ limitations under the License.
 "
 
     local awk_script=$(cat <<'EOF'
