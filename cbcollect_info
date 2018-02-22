@@ -442,12 +442,15 @@ class TaskRunner(object):
         prefix = "cbcollect_info_%s_%s" % (node, self.start_time)
         self._zip_helper(prefix, filename, files)
 
+    def close_all_files(self):
+        for name, fp in self.files.iteritems():
+            fp.close()
+
     def zip(self, filename, node):
         prefix = "cbcollect_info_%s_%s" % (node, self.start_time)
 
         files = []
         for name, fp in self.files.iteritems():
-            fp.close()
             files.append(fp.name)
         self._zip_helper(prefix, filename, files)
 
@@ -1428,6 +1431,8 @@ def main():
 
     runner.literal("cbcollect_info log", log_stream.getvalue(),
                    log_file="cbcollect_info.log", no_header=True)
+
+    runner.close_all_files()
 
     if options.redact_level != "none":
         log("Redacting log files to level: %s" % options.redact_level)
