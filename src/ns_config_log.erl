@@ -94,12 +94,15 @@ compute_buckets_diff(NewBuckets, OldBuckets) ->
 
     misc:update_proplist(NewBuckets, [{configs, Diffed}]).
 
+do_tag_user_name("@" ++ _ = Name) ->
+    {ok, Name};
 do_tag_user_name(UData) when is_list(UData) ->
     {ok, "<ud>" ++ UData ++ "</ud>"};
 do_tag_user_name(UData) when is_atom(UData) ->
     {ok, UData};  %% Cases like {source, local} we don't want to tag.
 do_tag_user_name(UData) when is_binary(UData) ->
-    {ok, list_to_binary("<ud>" ++ binary_to_list(UData) ++ "</ud>")};
+    {ok, Val} = do_tag_user_name(binary_to_list(UData)),
+    {ok, list_to_binary(Val)};
 do_tag_user_name(_) ->
     continue.
 
