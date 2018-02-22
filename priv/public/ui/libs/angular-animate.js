@@ -1,6 +1,6 @@
 /**
- * @license AngularJS v1.6.4
- * (c) 2010-2017 Google, Inc. http://angularjs.org
+ * @license AngularJS v1.6.9
+ * (c) 2010-2018 Google, Inc. http://angularjs.org
  * License: MIT
  */
 (function(window, angular) {'use strict';
@@ -528,11 +528,11 @@ var ANIMATE_TIMER_KEY = '$$animateCss';
  * Note that only browsers that support CSS transitions and/or keyframe animations are capable of
  * rendering animations triggered via `$animateCss` (bad news for IE9 and lower).
  *
- * ## Usage
+ * ## General Use
  * Once again, `$animateCss` is designed to be used inside of a registered JavaScript animation that
  * is powered by ngAnimate. It is possible to use `$animateCss` directly inside of a directive, however,
  * any automatic control over cancelling animations and/or preventing animations from being run on
- * child elements will not be handled by Angular. For this to work as expected, please use `$animate` to
+ * child elements will not be handled by AngularJS. For this to work as expected, please use `$animate` to
  * trigger the animation and then setup a JavaScript animation that injects `$animateCss` to trigger
  * the CSS animation.
  *
@@ -1314,6 +1314,12 @@ var $AnimateCssProvider = ['$animateProvider', /** @this */ function($animatePro
       function onAnimationProgress(event) {
         event.stopPropagation();
         var ev = event.originalEvent || event;
+
+        if (ev.target !== node) {
+          // Since TransitionEvent / AnimationEvent bubble up,
+          // we have to ignore events by finished child animations
+          return;
+        }
 
         // we now always use `Date.now()` due to the recent changes with
         // event.timeStamp in Firefox, Webkit and Chrome (see #13494 for more info)
@@ -2294,14 +2300,17 @@ var $$AnimateQueueProvider = ['$animateProvider', /** @this */ function($animate
 
     var callbackRegistry = Object.create(null);
 
-    // remember that the classNameFilter is set during the provider/config
-    // stage therefore we can optimize here and setup a helper function
+    // remember that the `customFilter`/`classNameFilter` are set during the
+    // provider/config stage therefore we can optimize here and setup helper functions
+    var customFilter = $animateProvider.customFilter();
     var classNameFilter = $animateProvider.classNameFilter();
-    var isAnimatableClassName = !classNameFilter
-              ? function() { return true; }
-              : function(className) {
-                return classNameFilter.test(className);
-              };
+    var returnTrue = function() { return true; };
+
+    var isAnimatableByFilter = customFilter || returnTrue;
+    var isAnimatableClassName = !classNameFilter ? returnTrue : function(node, options) {
+      var className = [node.getAttribute('class'), options.addClass, options.removeClass].join(' ');
+      return classNameFilter.test(className);
+    };
 
     var applyAnimationClasses = applyAnimationClassesFactory($$jqLite);
 
@@ -2479,16 +2488,13 @@ var $$AnimateQueueProvider = ['$animateProvider', /** @this */ function($animate
         options.to = null;
       }
 
-      // there are situations where a directive issues an animation for
-      // a jqLite wrapper that contains only comment nodes... If this
-      // happens then there is no way we can perform an animation
-      if (!node) {
-        close();
-        return runner;
-      }
-
-      var className = [node.getAttribute('class'), options.addClass, options.removeClass].join(' ');
-      if (!isAnimatableClassName(className)) {
+      // If animations are hard-disabled for the whole application there is no need to continue.
+      // There are also situations where a directive issues an animation for a jqLite wrapper that
+      // contains only comment nodes. In this case, there is no way we can perform an animation.
+      if (!animationsEnabled ||
+          !node ||
+          !isAnimatableByFilter(node, event, initialOptions) ||
+          !isAnimatableClassName(node, options)) {
         close();
         return runner;
       }
@@ -2497,12 +2503,11 @@ var $$AnimateQueueProvider = ['$animateProvider', /** @this */ function($animate
 
       var documentHidden = $$isDocumentHidden();
 
-      // this is a hard disable of all animations for the application or on
-      // the element itself, therefore  there is no need to continue further
-      // past this point if not enabled
+      // This is a hard disable of all animations the element itself, therefore  there is no need to
+      // continue further past this point if not enabled
       // Animations are also disabled if the document is currently hidden (page is not visible
       // to the user), because browsers slow down or do not flush calls to requestAnimationFrame
-      var skipAnimations = !animationsEnabled || documentHidden || disabledElementsLookup.get(node);
+      var skipAnimations = documentHidden || disabledElementsLookup.get(node);
       var existingAnimation = (!skipAnimations && activeAnimationsLookup.get(node)) || {};
       var hasExistingAnimation = !!existingAnimation.state;
 
@@ -2769,7 +2774,7 @@ var $$AnimateQueueProvider = ['$animateProvider', /** @this */ function($animate
 
       while (parentNode) {
         if (!rootNodeDetected) {
-          // angular doesn't want to attempt to animate elements outside of the application
+          // AngularJS doesn't want to attempt to animate elements outside of the application
           // therefore we need to ensure that the rootElement is an ancestor of the current element
           rootNodeDetected = (parentNode === rootNode);
         }
@@ -3382,11 +3387,9 @@ var ngAnimateSwapDirective = ['$animate', '$rootScope', function($animate, $root
  * @description
  *
  * The `ngAnimate` module provides support for CSS-based animations (keyframes and transitions) as well as JavaScript-based animations via
- * callback hooks. Animations are not enabled by default, however, by including `ngAnimate` the animation hooks are enabled for an Angular app.
+ * callback hooks. Animations are not enabled by default, however, by including `ngAnimate` the animation hooks are enabled for an AngularJS app.
  *
- * <div doc-module-components="ngAnimate"></div>
- *
- * # Usage
+ * ## Usage
  * Simply put, there are two ways to make use of animations when ngAnimate is used: by using **CSS** and **JavaScript**. The former works purely based
  * using CSS (by using matching CSS selectors/styles) and the latter triggers animations that are registered via `module.animation()`. For
  * both CSS and JS animations the sole requirement is to have a matching `CSS class` that exists both in the registered animation and within
@@ -3404,7 +3407,7 @@ var ngAnimateSwapDirective = ['$animate', '$rootScope', function($animate, $root
  * | {@link ng.directive:ngIf#animations ngIf}                                                                | enter and leave                                                          |
  * | {@link ng.directive:ngClass#animations ngClass}                                                          | add and remove (the CSS class(es) present)                               |
  * | {@link ng.directive:ngShow#animations ngShow} & {@link ng.directive:ngHide#animations ngHide}            | add and remove (the ng-hide class value)                                 |
- * | {@link ng.directive:form#animation-hooks form} & {@link ng.directive:ngModel#animation-hooks ngModel}    | add and remove (dirty, pristine, valid, invalid & all other validations) |
+ * | {@link ng.directive:form#animations form} & {@link ng.directive:ngModel#animations ngModel}    | add and remove (dirty, pristine, valid, invalid & all other validations) |
  * | {@link module:ngMessages#animations ngMessages}                                                          | add and remove (ng-active & ng-inactive)                                 |
  * | {@link module:ngMessages#animations ngMessage}                                                           | enter and leave                                                          |
  *
@@ -3413,7 +3416,7 @@ var ngAnimateSwapDirective = ['$animate', '$rootScope', function($animate, $root
  * ## CSS-based Animations
  *
  * CSS-based animations with ngAnimate are unique since they require no JavaScript code at all. By using a CSS class that we reference between our HTML
- * and CSS code we can create an animation that will be picked up by Angular when an underlying directive performs an operation.
+ * and CSS code we can create an animation that will be picked up by AngularJS when an underlying directive performs an operation.
  *
  * The example below shows how an `enter` animation can be made possible on an element using `ng-if`:
  *
@@ -3672,7 +3675,7 @@ var ngAnimateSwapDirective = ['$animate', '$rootScope', function($animate, $root
  *     enter: function(element, doneFn) {
  *       jQuery(element).fadeIn(1000, doneFn);
  *
- *       // remember to call doneFn so that angular
+ *       // remember to call doneFn so that AngularJS
  *       // knows that the animation has concluded
  *     },
  *
@@ -3720,7 +3723,7 @@ var ngAnimateSwapDirective = ['$animate', '$rootScope', function($animate, $root
  *
  * ## CSS + JS Animations Together
  *
- * AngularJS 1.4 and higher has taken steps to make the amalgamation of CSS and JS animations more flexible. However, unlike earlier versions of Angular,
+ * AngularJS 1.4 and higher has taken steps to make the amalgamation of CSS and JS animations more flexible. However, unlike earlier versions of AngularJS,
  * defining CSS and JS animations to work off of the same CSS class will not work anymore. Therefore the example below will only result in **JS animations taking
  * charge of the animation**:
  *
@@ -4036,7 +4039,7 @@ var ngAnimateSwapDirective = ['$animate', '$rootScope', function($animate, $root
  *
  * ## Using $animate in your directive code
  *
- * So far we've explored how to feed in animations into an Angular application, but how do we trigger animations within our own directives in our application?
+ * So far we've explored how to feed in animations into an AngularJS application, but how do we trigger animations within our own directives in our application?
  * By injecting the `$animate` service into our directive code, we can trigger structural and class-based hooks which can then be consumed by animations. Let's
  * imagine we have a greeting box that shows and hides itself when the data changes
  *
@@ -4079,7 +4082,7 @@ var ngAnimateSwapDirective = ['$animate', '$rootScope', function($animate, $root
  * });
  * ```
  *
- * (Note that earlier versions of Angular prior to v1.4 required the promise code to be wrapped using `$scope.$apply(...)`. This is not the case
+ * (Note that earlier versions of AngularJS prior to v1.4 required the promise code to be wrapped using `$scope.$apply(...)`. This is not the case
  * anymore.)
  *
  * In addition to the animation promise, we can also make use of animation-related callbacks within our directives and controller code by registering
@@ -4094,7 +4097,7 @@ var ngAnimateSwapDirective = ['$animate', '$rootScope', function($animate, $root
  * }])
  * ```
  *
- * (Note that you will need to trigger a digest within the callback to get angular to notice any scope-related changes.)
+ * (Note that you will need to trigger a digest within the callback to get AngularJS to notice any scope-related changes.)
  */
 
 var copy;
@@ -4121,7 +4124,7 @@ var noop;
  * Click here {@link ng.$animate to learn more about animations with `$animate`}.
  */
 angular.module('ngAnimate', [], function initAngularHelpers() {
-  // Access helpers from angular core.
+  // Access helpers from AngularJS core.
   // Do it inside a `config` block to ensure `window.angular` is available.
   noop        = angular.noop;
   copy        = angular.copy;
@@ -4136,7 +4139,7 @@ angular.module('ngAnimate', [], function initAngularHelpers() {
   isFunction  = angular.isFunction;
   isElement   = angular.isElement;
 })
-  .info({ angularVersion: '1.6.4' })
+  .info({ angularVersion: '1.6.9' })
   .directive('ngAnimateSwap', ngAnimateSwapDirective)
 
   .directive('ngAnimateChildren', $$AnimateChildrenDirective)
