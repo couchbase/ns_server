@@ -130,14 +130,26 @@ class AccessLogProcessor:
         self.salt = salt
         self.column_parser = re.compile(
             r'(^\S* \S* )(\S*)( \[.*\] \"\S* )(\S*)( .*$)')
-        self.urls_to_redact = ['/settings/rbac/users',
-                               '/_cbauth/checkPermission']
+        self.urls_to_redact = [['/settings/rbac/users',
+                                re.compile(r'\/(?P<user>[^\/\s#&]+)([#&]|$)')],
+                               ['/_cbauth/checkPermission',
+                                re.compile(r'user=(?P<user>[^\s&#]+)')]]
 
     def _process_url(self, surl):
-        for prefix in self.urls_to_redact:
+        for conf in self.urls_to_redact:
+            prefix = conf[0]
             if surl[:len(prefix)] == prefix:
-                return prefix + "(redacted)"
+                return prefix + self._process_url_tail(conf[1],
+                                                       surl[len(prefix):])
         return surl
+
+    def _process_url_tail(self, rex, s):
+        m = rex.search(s)
+        if m != None:
+            return s[:m.start("user")] + self._process_user(m.group("user")) + \
+                s[m.end("user"):]
+        else:
+            return s
 
     def _process_user(self, user):
         if user == '-' or user[0] == '@':
