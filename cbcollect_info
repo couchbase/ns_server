@@ -125,6 +125,51 @@ def log(message, new_line=True):
     sys.stderr.write(message)
     sys.stderr.flush()
 
+class AccessLogProcessor:
+    def __init__(self, salt):
+        self.salt = salt
+        self.column_parser = re.compile(
+            r'(^\S* \S* )(\S*)( \[.*\] \"\S* )(\S*)( .*$)')
+        self.urls_to_redact = ['/settings/rbac/users',
+                               '/_cbauth/checkPermission']
+
+    def _process_url(self, surl):
+        for prefix in self.urls_to_redact:
+            if surl[:len(prefix)] == prefix:
+                return prefix + "(redacted)"
+        return surl
+
+    def _process_user(self, user):
+        if user == '-' or user[0] == '@':
+            return user
+        elif user[-3:] == "/UI":
+            return self._hash(user[:-3]) + "/UI"
+        else:
+            return self._hash(user)
+
+    def _hash(self, token):
+        hash_object = hashlib.sha1(self.salt + token)
+        return str(hash_object.hexdigest())
+
+    def _repl_columns(self, matchobj):
+        return matchobj.group(1) + \
+            self._process_user(matchobj.group(2)) + \
+            matchobj.group(3) + \
+            self._process_url(matchobj.group(4)) + \
+            matchobj.group(5)
+
+    def _do_line(self, line):
+        return self.column_parser.sub(self._repl_columns, line)
+
+    def do(self, ifile, ofile):
+        try:
+            with open(ifile, 'r') as inp:
+                with open(ofile, 'w+') as out:
+                    for line in inp:
+                        out.write(self._do_line(line))
+        except IOError as e:
+            log("I/O error(%s): %s" % (e.errno, e.strerror))
+
 class Task(object):
     privileged = False
     no_header = False
@@ -432,7 +477,11 @@ class TaskRunner(object):
             if "users.dets" in name:
                 continue # Don't include users.dets in redacted zip file
             op_file = None
-            if name == self.default_name:
+            if "http_access" in name:
+                op_file = os.path.join(redact_dir, name)
+                processor = AccessLogProcessor(self.salt_value)
+                processor.do(fp.name, op_file)
+            elif name == self.default_name:
                 # no tagged data except RedactLevel placeholder
                 op_file = self._parse_cbaselog_file(fp.name, name, redact_dir)
             else:
