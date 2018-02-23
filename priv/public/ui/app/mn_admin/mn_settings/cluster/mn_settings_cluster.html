@@ -156,16 +156,16 @@
                      ng-disabled="!rbac.cluster.settings.write"
                      ng-model="settingsClusterCtl.querySettings.queryTmpSpaceSize">
                 </div>
-                <div
-                   class="error error-form"
-                   ng-show="!!settingsClusterCtl.querySettingsErrors.queryTmpSpaceDir">
-                  {{settingsClusterCtl.querySettingsErrors.queryTmpSpaceDir}}
-                </div>
-                <div
-                   class="error error-form"
-                   ng-show="!!settingsClusterCtl.querySettingsErrors.queryTmpSpaceSize">
-                  {{settingsClusterCtl.querySettingsErrors.queryTmpSpaceSize}}
-                </div>
+              </div>
+              <div
+                 class="error error-form"
+                 ng-show="!!settingsClusterCtl.querySettingsErrors.queryTmpSpaceDir">
+                {{settingsClusterCtl.querySettingsErrors.queryTmpSpaceDir}}
+              </div>
+              <div
+                 class="error error-form"
+                 ng-show="!!settingsClusterCtl.querySettingsErrors.queryTmpSpaceSize">
+                {{settingsClusterCtl.querySettingsErrors.queryTmpSpaceSize}}
               </div>
             </div>
           </div>
