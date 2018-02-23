@@ -291,9 +291,7 @@ default() ->
        {rotate_interval, 86400},
        {rotate_size, 20*1024*1024},
        {disabled, []},
-       {enabled, []},
-       {sync, []},
-       {disabled_users, []}] ++ AuditGlobalLogs},
+       {sync, []}] ++ AuditGlobalLogs},
 
      {{node, node(), audit}, AuditLocalLogs},
 
