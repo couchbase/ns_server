@@ -106,7 +106,7 @@
       }
     }
     function maybeSetInititalValue(array, value) {
-      if (array.length === 0 || array[0] !== value) {
+      if (array.length === 0) {
         array.push(value);
       }
     }
