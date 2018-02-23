@@ -113,6 +113,12 @@
      * @return a list of URLs for the current UI location running the
      *         specified service.
      */
+    function parseHostname(href) {
+      var l = document.createElement("a");
+      l.href = href;
+      return l;
+    }
+
     function getUrlsRunningService(nodeInfos, service, max) {
       var nodes = _.filter(nodeInfos, function (node) {
         return _.indexOf(node.services, service) > -1
@@ -126,10 +132,11 @@
       var search = $httpParamSerializerJQLike($location.search());
       var hash = $location.hash();
       return _.map(nodes, function(node) {
-        var hostnameAndPort = node.hostname.split(':');
-        var port = protocol == "https" ? node.ports.httpsMgmt : hostnameAndPort[1];
+        // ipv4/ipv6/hostname + port
+        var link = parseHostname("http://" + node.hostname);
+        var port = protocol == "https" ? node.ports.httpsMgmt : link.port;
         return protocol
-          + "://" + hostnameAndPort[0]
+          + "://" + link.hostname
           + ":" + port
           + appbase
           + "#!" + $location.path()
