@@ -268,7 +268,6 @@ start_collection_per_node(TimestampS, Parent, Options) ->
                   Val -> Val
               end,
     Filename = filename:join(LogPath, Basename ++ ".zip"),
-    proc_lib:init_ack(Parent, {ok, self(), Filename}),
 
     {UploadFilename, MaybeLogRedaction} =
         case proplists:get_value(redact_level, Options) of
@@ -278,6 +277,7 @@ start_collection_per_node(TimestampS, Parent, Options) ->
             _ ->
                 {Filename, []}
         end,
+    proc_lib:init_ack(Parent, {ok, self(), UploadFilename}),
 
     MaybeSingleNode = case proplists:get_bool(no_single_node_diag, Options) of
                           false ->
