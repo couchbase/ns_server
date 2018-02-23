@@ -115,6 +115,8 @@
           %% Whether we reported that max number of auto failovers for
           %% server groups was reached
           reported_max_group_reached = false :: boolean(),
+          %% Whether we reported the attempt to failover a server group
+          reported_group_failover_attempt = false :: boolean(),
           %% Whether we reported that we could not auto failover because of
           %% rebalance
           reported_rebalance_running = false :: boolean(),
@@ -436,19 +438,25 @@ process_action({failover_group, SG, Nodes0}, S, DownNodes, NodeStatuses, _) ->
             failover_group(Nodes, S, DownNodes, NodeStatuses, UpdateCount, SG)
     end.
 
-failover_group(Nodes, S, DownNodes, NodeStatuses, UpdateCount, SG) ->
-    %% TODO: Add new reported flag for following message otherwise
-    %% it will spam the user log if the failover of nodes in the
-    %% server group fails.
-    ale:info(?USER_LOGGER,
-             "Attempting auto-failover of server group (~p) with nodes (~p).",
-             [binary_to_list(SG), Nodes]),
+failover_group(Nodes, S0, DownNodes, NodeStatuses, UpdateCount, SG) ->
+    S = log_group_failover_attempt(SG, Nodes, S0),
     NewState = failover_nodes(Nodes, S, DownNodes, NodeStatuses, UpdateCount),
     case NewState#state.count =:= S#state.count of
         true ->
             NewState;
         false ->
             NewState#state{failed_over_server_groups = [SG]}
+    end.
+
+log_group_failover_attempt(SG, Nodes, State) ->
+    case should_report(#state.reported_group_failover_attempt, State) of
+        true ->
+            ale:info(?USER_LOGGER,
+                     "Attempting auto-failover of server group (~p) with "
+                     "nodes (~p).", [binary_to_list(SG), Nodes]),
+            note_reported(#state.reported_group_failover_attempt, State);
+        false ->
+            State
     end.
 
 allow_failover(SG, #state{count = Count, max_count = Max,
@@ -830,6 +838,7 @@ init_reported(State) ->
     State#state{reported_autofailover_unsafe = false,
                 reported_max_node_reached = false,
                 reported_max_group_reached = false,
+                reported_group_failover_attempt = false,
                 reported_rebalance_running = false,
                 reported_in_recovery = false,
                 reported_orchestration_unsafe = false}.
