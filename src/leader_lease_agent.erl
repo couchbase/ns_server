@@ -173,12 +173,16 @@ grant_lease(Caller, Period, From, #state{lease = Lease} = State) ->
     notify_local_lease_granted(self(), Caller),
     grant_lease_dont_notify(Caller, Period, From, State).
 
-grant_lease_dont_notify(Caller, Period, From, State) ->
+grant_lease_dont_notify(Caller, Period, HandleResult, State)
+  when is_function(HandleResult, 1) ->
     NewState = grant_lease_update_state(Caller, Period, State),
     persist_lease(NewState),
-    grant_lease_reply(From, NewState),
+    HandleResult(build_lease_props(NewState#state.lease)),
 
-    NewState.
+    NewState;
+grant_lease_dont_notify(Caller, Period, From, State) ->
+    Reply = ?cut(gen_server2:reply(From, {ok, _})),
+    grant_lease_dont_notify(Caller, Period, Reply, State).
 
 grant_lease_update_state(Caller, Period, State) ->
     Timer   = misc:create_timer(Period, {lease_expired, Caller}),
@@ -192,9 +196,6 @@ grant_lease_update_state(Caller, Period, State) ->
 
     State#state{lease = NewLease}.
 
-grant_lease_reply(From, #state{lease = Lease}) ->
-    gen_server2:reply(From, {ok, build_lease_props(Lease)}).
-
 extend_lease(Period, WhenRemaining, From, State) ->
     abort_pending_extend_lease(aborted, State),
     case WhenRemaining of
@@ -206,27 +207,37 @@ extend_lease(Period, WhenRemaining, From, State) ->
 
 extend_lease_when_remaining(Period, WhenRemaining, From,
                             #state{lease = Lease} = State) ->
-    TimeLeft    = time_left(Lease),
+    Now         = time_compat:monotonic_time(millisecond),
+    TimeLeft    = time_left(Now, Lease),
     ExtendAfter = TimeLeft - WhenRemaining,
 
     case ExtendAfter > 0 of
         true ->
-            schedule_pending_extend_lease(Period, ExtendAfter, From),
+            schedule_pending_extend_lease(Period, Now, ExtendAfter, From),
             State;
         false ->
             extend_lease_now(Period, From, State)
     end.
 
-schedule_pending_extend_lease(Period, After, From) ->
+schedule_pending_extend_lease(Period, Start, After, From) ->
     gen_server2:async_job(pending_extend,
                           ?cut(timer:sleep(After)),
-                          handle_pending_extend_lease(Period, From, _, _)).
+                          handle_pending_extend_lease(Period,
+                                                      Start, From, _, _)).
 
-handle_pending_extend_lease(Period, From, ok, State) ->
-    {noreply, extend_lease_now(Period, From, State)};
-handle_pending_extend_lease(_Period, From, Error, State) ->
+handle_pending_extend_lease(Period, Start, From, ok, State) ->
+    HandleResult = pending_extend_lease_handle_result(Start, From, _),
+    {noreply, extend_lease_now(Period, HandleResult, State)};
+handle_pending_extend_lease(_Period, _Start, From, Error, State) ->
     gen_server2:reply(From, Error),
     {noreply, State}.
+
+pending_extend_lease_handle_result(Start, From, LeaseProps) ->
+    Now        = time_compat:monotonic_time(millisecond),
+    TimeQueued = Now - Start,
+
+    NewLeaseProps = [{time_queued, TimeQueued} | LeaseProps],
+    gen_server2:reply(From, {ok, NewLeaseProps}).
 
 abort_pending_extend_lease(Reason, State) ->
     gen_server2:abort_queue(pending_extend, {error, Reason}, State).
@@ -234,10 +245,11 @@ abort_pending_extend_lease(Reason, State) ->
 have_pending_extend_lease() ->
     lists:member(pending_extend, gen_server2:get_active_queues()).
 
-extend_lease_now(Period, From, #state{lease = Lease} = State)
+extend_lease_now(Period, FromOrHandleResult, #state{lease = Lease} = State)
   when Lease =/= undefined ->
     cancel_timer(Lease),
-    grant_lease_dont_notify(Lease#lease.holder, Period, From, State).
+    grant_lease_dont_notify(Lease#lease.holder,
+                            Period, FromOrHandleResult, State).
 
 cancel_timer(Lease) ->
     misc:update_field(#lease.timer, Lease, misc:cancel_timer(_)).
@@ -334,9 +346,6 @@ build_lease_props(Now, #lease{holder = Holder} = Lease) ->
      {uuid,      Holder#lease_holder.uuid},
      {time_left, time_left(Now, Lease)},
      {status,    Lease#lease.state}].
-
-time_left(Lease) ->
-    time_left(time_compat:monotonic_time(millisecond), Lease).
 
 time_left(Now, #lease{expires = Expires}) ->
     %% Sometimes the expiration message may be a bit late, or maybe we're busy
