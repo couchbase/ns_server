@@ -69,6 +69,21 @@ alternative(Initial, [F | Funs]) ->
             alternative(Initial, Funs)
     end.
 
+%% Apply functions in sequence and collect the ok results. If any function
+%% fails, return the error.
+sequence(Arg, Funs) ->
+    sequence(Arg, Funs, []).
+
+sequence(_Arg, [], Acc) ->
+    {ok, lists:reverse(Acc)};
+sequence(Arg, [F | Rest], Acc) ->
+    case F(Arg) of
+        {ok, R} ->
+            sequence(Arg, Rest, [R | Acc]);
+        Other ->
+            Other
+    end.
+
 %% some partially applied built-in operations
 add(Y) ->
     fun (X) -> X + Y end.
