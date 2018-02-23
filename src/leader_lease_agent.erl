@@ -306,11 +306,12 @@ load_lease_props() ->
         T:E ->
             ?log_error("Can't read the lease because "
                        "of ~p. Going to ignore.", [{T, E}]),
+            catch remove_persisted_lease(),
             not_found
     end.
 
 do_load_lease_props() ->
-    case misc:take_marker(lease_path()) of
+    case misc:read_marker(lease_path()) of
         {ok, Data} ->
             {ok, parse_lease_props(Data)};
         false ->
@@ -335,9 +336,7 @@ recover_lease_from_props(Props, State) ->
                            uuid = UUID},
 
     notify_local_lease_granted(self(), Holder),
-    NewState = grant_lease_update_state(Holder, TimeLeft, State),
-    persist_lease(NewState),
-    NewState.
+    grant_lease_update_state(Holder, TimeLeft, State).
 
 unpack_lease_holder(Holder) ->
     {Holder#lease_holder.node,
