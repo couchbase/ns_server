@@ -200,8 +200,8 @@ stats(Bucket) ->
         Stats ->
             Stats
     catch T:E ->
-            ?xdcr_debug("Unable to obtain stats for bucket ~p from goxdcr:~n~p",
-                        [Bucket, {T,E,erlang:get_stacktrace()}]),
+            ?log_debug("Unable to obtain stats for bucket ~p from goxdcr:~n~p",
+                       [Bucket, {T,E,erlang:get_stacktrace()}]),
             []
     end.
 
