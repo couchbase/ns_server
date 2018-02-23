@@ -35,6 +35,10 @@
       if (collect.enableTmpDir) {
         data.tmpDir = collect.tmpDir;
       }
+      if (mnPoolDefault.export.compat.atLeast55 &&
+          mnPoolDefault.export.isEnterprise) {
+        data.logRedactionLevel = collect.logRedactionLevel;
+      }
       return $http.post('/controller/startLogsCollection', data);
     }
     function cancelLogsCollection() {
