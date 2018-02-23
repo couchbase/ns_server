@@ -66,8 +66,7 @@
 -define(MAPREDUCE_ERRORS_LOG_FILENAME, "mapreduce_errors.log").
 -define(COUCHDB_LOG_FILENAME, "couchdb.log").
 -define(DEBUG_LOG_FILENAME, "debug.log").
--define(XDCR_LOG_FILENAME, "xdcr.log").
--define(XDCR_ERRORS_LOG_FILENAME, "xdcr_errors.log").
+-define(XDCR_TARGET_LOG_FILENAME, "xdcr_target.log").
 -define(STATS_LOG_FILENAME, "stats.log").
 -define(BABYSITTER_LOG_FILENAME, "babysitter.log").
 -define(NS_COUCHDB_LOG_FILENAME, "ns_couchdb.log").

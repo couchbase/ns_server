@@ -159,8 +159,7 @@ do_init_logging() ->
     ok = start_disk_sink(disk_default, ?DEFAULT_LOG_FILENAME),
     ok = start_disk_sink(disk_error, ?ERRORS_LOG_FILENAME),
     ok = start_disk_sink(disk_debug, ?DEBUG_LOG_FILENAME),
-    ok = start_disk_sink(disk_xdcr, ?XDCR_LOG_FILENAME),
-    ok = start_disk_sink(disk_xdcr_errors, ?XDCR_ERRORS_LOG_FILENAME),
+    ok = start_disk_sink(disk_xdcr, ?XDCR_TARGET_LOG_FILENAME),
     ok = start_disk_sink(disk_stats, ?STATS_LOG_FILENAME),
     ok = start_disk_sink(disk_reports, ?REPORTS_LOG_FILENAME),
     ok = start_disk_sink(disk_access, ?ACCESS_LOG_FILENAME),
@@ -213,11 +212,7 @@ do_init_logging() ->
     ok = ale:add_sink(?MENELAUS_LOGGER, ns_log, info),
     ok = ale:add_sink(?CLUSTER_LOGGER, ns_log, info),
     ok = ale:add_sink(?REBALANCE_LOGGER, ns_log, error),
-
     ok = ale:add_sink(?XDCR_LOGGER, disk_xdcr, get_loglevel(?XDCR_LOGGER)),
-    ok = ale:add_sink(?XDCR_LOGGER, disk_xdcr_errors,
-                      adjust_loglevel(get_loglevel(?XDCR_LOGGER), error)),
-
     ok = ale:add_sink(?STATS_LOGGER, disk_stats, get_loglevel(?STATS_LOGGER)),
     ok = ale:add_sink(?NS_DOCTOR_LOGGER, disk_stats, get_loglevel(?NS_DOCTOR_LOGGER)),
 
