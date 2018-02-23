@@ -94,9 +94,9 @@ handle_acquire_lease(#state{target = TargetNode,
     Start   = time_compat:monotonic_time(),
     Timeout = get_acquire_timeout(State),
 
-    try leader_lease_agent:acquire_lease(TargetNode,
-                                         node(), UUID, ?LEASE_TIME,
-                                         Timeout) of
+    try leader_lease_agent:acquire_lease(TargetNode, node(), UUID,
+                                         [{period, ?LEASE_TIME},
+                                          {timeout, Timeout}]) of
         {ok, LeaseProps} ->
             handle_lease_acquired(Start, LeaseProps, State);
         {error, timeout} ->

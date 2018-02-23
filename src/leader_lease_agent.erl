@@ -20,7 +20,7 @@
 -export([start_link/0]).
 
 -export([get_current_lease/0, get_current_lease/1,
-         acquire_lease/5, abolish_leases/3]).
+         acquire_lease/4, abolish_leases/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
@@ -55,10 +55,13 @@ get_current_lease() ->
 get_current_lease(Node) ->
     gen_server2:call({?SERVER, Node}, get_current_lease).
 
-acquire_lease(WorkerNode, Node, UUID, Period, Timeout) ->
+acquire_lease(WorkerNode, Node, UUID, Options) ->
+    Timeout = proplists:get_value(timeout, Options),
+    true = (Timeout =/= undefined),
+
     try
         gen_server2:call({?SERVER, WorkerNode},
-                         {acquire_lease, Node, UUID, Period}, Timeout)
+                         {acquire_lease, Node, UUID, Options}, Timeout)
     catch
         {exit, {timeout, _}} ->
             {error, timeout}
@@ -75,9 +78,9 @@ init([]) ->
     {ok, _} = leader_activities:register_agent(self()),
     {ok, maybe_recover_persisted_lease(#state{})}.
 
-handle_call({acquire_lease, Node, UUID, Period}, From, State) ->
+handle_call({acquire_lease, Node, UUID, Options}, From, State) ->
     Caller = #lease_holder{node = Node, uuid = UUID},
-    {noreply, handle_acquire_lease(Caller, Period, From, State)};
+    {noreply, handle_acquire_lease(Caller, Options, From, State)};
 handle_call(get_current_lease, From, State) ->
     {noreply, handle_get_current_lease(From, State)};
 handle_call(Request, From, State) ->
@@ -106,10 +109,25 @@ terminate(Reason, #state{lease = Lease}) ->
     handle_terminate(Reason, Lease).
 
 %% internal functions
-handle_acquire_lease(Caller, Period, From, State) ->
-    {Reply, NewState} = do_handle_acquire_lease(Caller, Period, State),
+handle_acquire_lease(Caller, Options, From, State) ->
+    {Reply, NewState} =
+        case validate_acquire_lease_options(Options) of
+            {ok, Period} ->
+                do_handle_acquire_lease(Caller, Period, State);
+            Error ->
+                {Error, State}
+        end,
+
     gen_server2:reply(From, Reply),
     NewState.
+
+validate_acquire_lease_options(Options) ->
+    case proplists:get_value(period, Options) of
+        Period when is_integer(Period) ->
+            {ok, Period};
+        Other ->
+            {error, {bad_option, period, Other}}
+    end.
 
 do_handle_acquire_lease(Caller, Period, #state{lease = undefined} = State) ->
     ?log_debug("Granting lease to ~p for ~bms", [Caller, Period]),
