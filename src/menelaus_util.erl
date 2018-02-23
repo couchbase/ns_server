@@ -227,7 +227,12 @@ log_web_hit(Peer, Req, Resp) ->
                 _ ->
                     info
             end,
-    ale:xlog(?ACCESS_LOGGER, Level, {Peer, Req, Resp}, "", []).
+    try
+        ale:xlog(?ACCESS_LOGGER, Level, {Peer, Req, Resp}, "", [])
+    catch
+        error:undef ->
+            ok
+    end.
 
 reply_ok(Req, ContentType, Body) ->
     reply_ok(Req, ContentType, Body, []).
