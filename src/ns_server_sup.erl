@@ -175,6 +175,10 @@ child_specs() ->
      {ns_memcached_log_rotator, {ns_memcached_log_rotator, start_link, []},
       permanent, 1000, worker, [ns_memcached_log_rotator]},
 
+     %% TODO to be removed after MB-28289 is resolved
+     {xdcr_dcp_sockets_pool, {xdcr_dcp_sockets_pool, start_link, []},
+      permanent, 1000, worker, []},
+
      {testconditions_store, {simple_store, start_link, [testconditions]},
       permanent, 1000, worker, []},
 
