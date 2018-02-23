@@ -110,16 +110,13 @@ terminate(Reason, #state{lease = Lease}) ->
 
 %% internal functions
 handle_acquire_lease(Caller, Options, From, State) ->
-    {Reply, NewState} =
-        case validate_acquire_lease_options(Options) of
-            {ok, Period} ->
-                do_handle_acquire_lease(Caller, Period, State);
-            Error ->
-                {Error, State}
-        end,
-
-    gen_server2:reply(From, Reply),
-    NewState.
+    case validate_acquire_lease_options(Options) of
+        {ok, Period} ->
+            do_handle_acquire_lease(Caller, Period, From, State);
+        Error ->
+            gen_server2:reply(From, Error),
+            State
+    end.
 
 validate_acquire_lease_options(Options) ->
     case proplists:get_value(period, Options) of
@@ -129,33 +126,42 @@ validate_acquire_lease_options(Options) ->
             {error, {bad_option, period, Other}}
     end.
 
-do_handle_acquire_lease(Caller, Period, #state{lease = undefined} = State) ->
+do_handle_acquire_lease(Caller, Period, From,
+                        #state{lease = undefined} = State) ->
     ?log_debug("Granting lease to ~p for ~bms", [Caller, Period]),
-    grant_lease(Caller, Period, State);
-do_handle_acquire_lease(Caller, Period, #state{lease = Lease} = State) ->
+    grant_lease(Caller, Period, From, State);
+do_handle_acquire_lease(Caller, Period, From,
+                        #state{lease = Lease} = State) ->
     case Lease#lease.holder =:= Caller of
         true ->
             case Lease#lease.state of
                 active ->
-                    extend_lease(Period, State);
+                    extend_lease(Period, From, State);
                 expiring ->
-                    Reply = {error, lease_lost},
-                    {Reply, State}
+                    gen_server2:reply(From, {error, lease_lost}),
+                    State
             end;
         false ->
-            Reply = {error, {already_acquired, build_lease_props(Lease)}},
-            {Reply, State}
+            gen_server2:reply(From, {error, {already_acquired,
+                                             build_lease_props(Lease)}}),
+            State
     end.
 
-grant_lease(Caller, Period, #state{lease = Lease} = State) ->
+grant_lease(Caller, Period, From, #state{lease = Lease} = State) ->
     true = (Lease =:= undefined),
 
     %% this is not supposed to take long, so doing this in main process
     notify_local_lease_granted(self(), Caller),
+    grant_lease_dont_notify(Caller, Period, From, State).
 
-    do_grant_lease(Caller, Period, State).
+grant_lease_dont_notify(Caller, Period, From, State) ->
+    NewState = grant_lease_update_state(Caller, Period, State),
+    persist_lease(NewState),
+    grant_lease_reply(From, NewState),
 
-do_grant_lease(Caller, Period, State) ->
+    NewState.
+
+grant_lease_update_state(Caller, Period, State) ->
     Timer   = misc:create_timer(Period, {lease_expired, Caller}),
     Now     = time_compat:monotonic_time(millisecond),
     Expires = Now + Period,
@@ -165,16 +171,15 @@ do_grant_lease(Caller, Period, State) ->
                       timer   = Timer,
                       state   = active},
 
-    Reply = {ok, build_lease_props(Now, NewLease)},
-    NewState = State#state{lease = NewLease},
-    persist_lease(NewState),
+    State#state{lease = NewLease}.
 
-    {Reply, NewState}.
+grant_lease_reply(From, #state{lease = Lease}) ->
+    gen_server2:reply(From, {ok, build_lease_props(Lease)}).
 
-extend_lease(Period, #state{lease = Lease} = State)
+extend_lease(Period, From, #state{lease = Lease} = State)
   when Lease =/= undefined ->
     cancel_timer(Lease),
-    do_grant_lease(Lease#lease.holder, Period, State).
+    grant_lease_dont_notify(Lease#lease.holder, Period, From, State).
 
 cancel_timer(Lease) ->
     misc:update_field(#lease.timer, Lease, misc:cancel_timer(_)).
@@ -329,7 +334,9 @@ recover_lease_from_props(Props, State) ->
     Holder = #lease_holder{node = Node,
                            uuid = UUID},
 
-    {_, NewState} = grant_lease(Holder, TimeLeft, State),
+    notify_local_lease_granted(self(), Holder),
+    NewState = grant_lease_update_state(Holder, TimeLeft, State),
+    persist_lease(NewState),
     NewState.
 
 unpack_lease_holder(Holder) ->
