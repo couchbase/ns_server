@@ -111,32 +111,50 @@ terminate(Reason, #state{lease = Lease}) ->
 %% internal functions
 handle_acquire_lease(Caller, Options, From, State) ->
     case validate_acquire_lease_options(Options) of
-        {ok, Period} ->
-            do_handle_acquire_lease(Caller, Period, From, State);
+        {ok, Period, WhenRemaining} ->
+            do_handle_acquire_lease(Caller, Period, WhenRemaining, From, State);
         Error ->
             gen_server2:reply(From, Error),
             State
     end.
 
 validate_acquire_lease_options(Options) ->
-    case proplists:get_value(period, Options) of
-        Period when is_integer(Period) ->
-            {ok, Period};
-        Other ->
-            {error, {bad_option, period, Other}}
+    case functools:sequence(Options,
+                            [fun validate_acquire_lease_period/1,
+                             fun validate_acquire_lease_when_remaining/1]) of
+        {ok, [Period, WhenRemaining]} ->
+            {ok, Period, WhenRemaining};
+        Error ->
+            Error
     end.
 
-do_handle_acquire_lease(Caller, Period, From,
+validate_acquire_lease_period(Options) ->
+    validate_option(period, Options, fun is_integer/1).
+
+validate_acquire_lease_when_remaining(Options) ->
+    validate_option(when_remaining, Options,
+                    ?cut(_1 =:= undefined orelse is_integer(_1))).
+
+validate_option(Key, Options, Pred) ->
+    Value = proplists:get_value(Key, Options),
+    case Pred(Value) of
+        true ->
+            {ok, Value};
+        false ->
+            {error, {bad_option, Key, Value}}
+    end.
+
+do_handle_acquire_lease(Caller, Period, _WhenRemaining, From,
                         #state{lease = undefined} = State) ->
     ?log_debug("Granting lease to ~p for ~bms", [Caller, Period]),
     grant_lease(Caller, Period, From, State);
-do_handle_acquire_lease(Caller, Period, From,
+do_handle_acquire_lease(Caller, Period, WhenRemaining, From,
                         #state{lease = Lease} = State) ->
     case Lease#lease.holder =:= Caller of
         true ->
             case Lease#lease.state of
                 active ->
-                    extend_lease(Period, From, State);
+                    extend_lease(Period, WhenRemaining, From, State);
                 expiring ->
                     gen_server2:reply(From, {error, lease_lost}),
                     State
@@ -148,7 +166,8 @@ do_handle_acquire_lease(Caller, Period, From,
     end.
 
 grant_lease(Caller, Period, From, #state{lease = Lease} = State) ->
-    true = (Lease =:= undefined),
+    true  = (Lease =:= undefined),
+    false = have_pending_extend_lease(),
 
     %% this is not supposed to take long, so doing this in main process
     notify_local_lease_granted(self(), Caller),
@@ -176,7 +195,46 @@ grant_lease_update_state(Caller, Period, State) ->
 grant_lease_reply(From, #state{lease = Lease}) ->
     gen_server2:reply(From, {ok, build_lease_props(Lease)}).
 
-extend_lease(Period, From, #state{lease = Lease} = State)
+extend_lease(Period, WhenRemaining, From, State) ->
+    abort_pending_extend_lease(aborted, State),
+    case WhenRemaining of
+        undefined ->
+            extend_lease_now(Period, From, State);
+        _ when is_integer(WhenRemaining) ->
+            extend_lease_when_remaining(Period, WhenRemaining, From, State)
+    end.
+
+extend_lease_when_remaining(Period, WhenRemaining, From,
+                            #state{lease = Lease} = State) ->
+    TimeLeft    = time_left(Lease),
+    ExtendAfter = TimeLeft - WhenRemaining,
+
+    case ExtendAfter > 0 of
+        true ->
+            schedule_pending_extend_lease(Period, ExtendAfter, From),
+            State;
+        false ->
+            extend_lease_now(Period, From, State)
+    end.
+
+schedule_pending_extend_lease(Period, After, From) ->
+    gen_server2:async_job(pending_extend,
+                          ?cut(timer:sleep(After)),
+                          handle_pending_extend_lease(Period, From, _, _)).
+
+handle_pending_extend_lease(Period, From, ok, State) ->
+    {noreply, extend_lease_now(Period, From, State)};
+handle_pending_extend_lease(_Period, From, Error, State) ->
+    gen_server2:reply(From, Error),
+    {noreply, State}.
+
+abort_pending_extend_lease(Reason, State) ->
+    gen_server2:abort_queue(pending_extend, {error, Reason}, State).
+
+have_pending_extend_lease() ->
+    lists:member(pending_extend, gen_server2:get_active_queues()).
+
+extend_lease_now(Period, From, #state{lease = Lease} = State)
   when Lease =/= undefined ->
     cancel_timer(Lease),
     grant_lease_dont_notify(Lease#lease.holder, Period, From, State).
@@ -235,6 +293,8 @@ start_expire_lease(Holder, #state{lease = Lease} = State) ->
     true = (Lease#lease.holder =:= Holder),
     true = (Lease#lease.state =:= active),
 
+    abort_pending_extend_lease(lease_lost, State),
+
     Self = self(),
     gen_server2:async_job(?cut(notify_local_lease_expired(Self, Holder)),
                           handle_expire_done(Holder, _, _)),
@@ -274,6 +334,9 @@ build_lease_props(Now, #lease{holder = Holder} = Lease) ->
      {uuid,      Holder#lease_holder.uuid},
      {time_left, time_left(Now, Lease)},
      {status,    Lease#lease.state}].
+
+time_left(Lease) ->
+    time_left(time_compat:monotonic_time(millisecond), Lease).
 
 time_left(Now, #lease{expires = Expires}) ->
     %% Sometimes the expiration message may be a bit late, or maybe we're busy
