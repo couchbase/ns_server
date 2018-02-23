@@ -16,7 +16,7 @@
     function getTabTemplate(config, tabBarName) {
       return "<a " +
         "ng-show=\"" + config.ngShow +
-        "\"class=\"" +
+        "\"class=\"" + (config.responsiveHide ? "resp-hide-sml " : "") +
         (tabBarName == "adminTab" ? "line resp-hide-sml" :
          tabBarName == "indexesTab" ? "pills" :
          "") +
@@ -41,6 +41,7 @@
       if (!pluggableUiConfigs.length) {
         return;
       }
+      pluggableUiConfigs = _.sortBy(pluggableUiConfigs, 'index');
       angular.forEach(pluggableUiConfigs, function (config, index) {
         config.ngShow = config.ngShow == undefined ? true : config.ngShow;
         if (config.after) {
