@@ -164,8 +164,7 @@ handle_unexpected_response(Resp, State) ->
     ?log_warning("Received unexpected "
                  "response ~p from node ~p", [Resp, target_node(State)]),
 
-    %% Well, don't have much else to do.
-    revoke_lease(backoff_retry(State)).
+    exit({unexpected_response, Resp}).
 
 handle_exception(Exception, State) ->
     ?log_warning("Failed to acquire lease from ~p: ~p",
