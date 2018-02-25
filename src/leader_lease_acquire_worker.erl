@@ -142,6 +142,7 @@ update_lease_expire_ts(Start, LeaseProps, State) ->
     TimeInFlight  = TimePassed - TimeQueued,
     ExpiresAfter  = TimeLeft - TimeInFlight - ?LEASE_GRACE_TIME,
 
+    add_histo(time_inflight, TimeInFlight, State),
     State#state{lease_expire_ts = Now + ExpiresAfter}.
 
 handle_lease_already_acquired(LeaseProps, State) ->
@@ -221,3 +222,7 @@ maybe_notify_lease_acquired(#state{have_lease = true}) ->
     ok;
 maybe_notify_lease_acquired(State) ->
     ok = leader_activities:lease_acquired(parent(State), target_node(State)).
+
+add_histo(Name, Value, State) ->
+    FullName = {?MODULE, target_node(State), Name},
+    system_stats_collector:add_histo(FullName, Value).
