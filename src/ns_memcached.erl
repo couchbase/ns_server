@@ -94,7 +94,6 @@
          get_vbucket_details_stats/2,
          host_port/1,
          host_port/2,
-         host_port_str/1,
          list_vbuckets/1, list_vbuckets/2,
          local_connected_and_list_vbuckets/1,
          list_vbuckets_prevstate/2,
@@ -1066,13 +1065,6 @@ host_port(Node, Config) ->
                            {nonempty_string(), pos_integer()}.
 host_port(Node) ->
     host_port(Node, ns_config:get()).
-
--spec host_port_str(node()) ->
-                           nonempty_string().
-host_port_str(Node) ->
-    {Host, Port} = host_port(Node),
-    Host ++ ":" ++ integer_to_list(Port).
-
 
 -spec list_vbuckets(bucket_name()) ->
     {ok, [{vbucket_id(), vbucket_state()}]} | mc_error().
