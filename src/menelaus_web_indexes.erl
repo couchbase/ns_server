@@ -16,24 +16,13 @@
 -module(menelaus_web_indexes).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 -export([handle_settings_get/1, handle_settings_post/1, handle_index_status/1]).
-
--import(menelaus_util,
-        [reply/2,
-         reply_json/2,
-         validate_any_value/3,
-         validate_by_fun/3,
-         validate_one_of/4,
-         validate_has_params/1,
-         validate_unsupported_params/1,
-         validate_integer/2,
-         validate_range/4,
-         execute_if_validated/3]).
 
 handle_settings_get(Req) ->
     Settings = get_settings(),
     true = (Settings =/= undefined),
-    reply_json(Req, {Settings}).
+    menelaus_util:reply_json(Req, {Settings}).
 
 get_settings() ->
     S0 = index_settings_manager:get(generalSettings),
@@ -44,28 +33,26 @@ get_settings() ->
             S0
     end.
 
-validate_settings_post(Args) ->
-    R0 = validate_has_params({Args, [], []}),
-    R1 = lists:foldl(
-           fun ({Key, Min, Max}, Acc) ->
-                   Acc1 = validate_integer(Key, Acc),
-                   validate_range(Key, Min, Max, Acc1)
-           end, R0, integer_settings()),
-    R2 = validate_string(R1, logLevel),
-    R3 = case cluster_compat_mode:is_cluster_45() of
-             true ->
-                 validate_storage_mode(R2);
-             false ->
-                 R2
-         end,
-
-    validate_unsupported_params(R3).
+settings_post_validators() ->
+    [validator:has_params(_),
+     validator:integer(indexerThreads, 0, 1024, _),
+     validator:integer(memorySnapshotInterval, 1, infinity, _),
+     validator:integer(stableSnapshotInterval, 1, infinity, _),
+     validator:integer(maxRollbackPoints, 1, infinity, _),
+     validate_param(logLevel, _)] ++
+        case cluster_compat_mode:is_cluster_45() of
+            true ->
+                [validate_storage_mode(_)];
+            false ->
+                []
+        end ++
+        [validator:unsupported(_)].
 
 validate_storage_mode(State) ->
     %% Note, at the beginning the storage mode will be empty. Once set,
-    %% validate_string will prevent user from changing it back to empty
+    %% validate_param will prevent user from changing it back to empty
     %% since it is not one of the acceptable values.
-    State1 = validate_string(State, storageMode),
+    State1 = validate_param(storageMode, State),
 
     %% Do not allow:
     %% - setting index storage mode to mem optimized or plasma in community edition
@@ -78,7 +65,7 @@ validate_storage_mode(State) ->
     IndexErr = "Changing the optimization mode of global indexes is not supported when index service nodes are present in the cluster. Please remove all index service nodes to change this option.",
 
     OldValue = index_settings_manager:get(storageMode),
-    validate_by_fun(
+    validator:validate(
       fun (Value) when Value =:= OldValue ->
               ok;
           (Value) ->
@@ -162,9 +149,11 @@ acceptable_values(storageMode) ->
             end,
     [binary_to_list(X) || X <- Modes].
 
-validate_string(State, Param) ->
-    validate_one_of(Param, acceptable_values(Param), State,
-                    fun list_to_binary/1).
+validate_param(Name, State) ->
+    functools:chain(
+      State,
+      [validator:one_of(Name, acceptable_values(Name), _),
+       validator:convert(Name, fun list_to_binary/1, _)]).
 
 update_storage_mode(Req, Values) ->
     case proplists:get_value(storageMode, Values) of
@@ -184,7 +173,7 @@ update_settings(Key, Value) ->
     end.
 
 handle_settings_post(Req) ->
-    execute_if_validated(
+    validator:handle(
       fun (Values) ->
               Values1 = case cluster_compat_mode:is_cluster_45() of
                             true ->
@@ -198,15 +187,8 @@ handle_settings_post(Req) ->
                   _ ->
                       ok = update_settings(generalSettings, Values1)
               end,
-              reply_json(Req, {get_settings()})
-      end, Req, validate_settings_post(Req:parse_post())).
-
-integer_settings() ->
-    NearInfinity = 1 bsl 64 - 1,
-    [{indexerThreads, 0, 1024},
-     {memorySnapshotInterval, 1, NearInfinity},
-     {stableSnapshotInterval, 1, NearInfinity},
-     {maxRollbackPoints, 1, NearInfinity}].
+              menelaus_util:reply_json(Req, {get_settings()})
+      end, Req, form, settings_post_validators()).
 
 handle_index_status(Req) ->
     {ok, Indexes0, Stale, Version} = service_index:get_indexes(),
@@ -222,6 +204,6 @@ handle_index_status(Req) ->
                 []
         end,
 
-    reply_json(Req, {[{indexes, Indexes},
-                      {version, Version},
-                      {warnings, Warnings}]}).
+    menelaus_util:reply_json(Req, {[{indexes, Indexes},
+                                    {version, Version},
+                                    {warnings, Warnings}]}).

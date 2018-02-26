@@ -19,13 +19,14 @@
 -module(menelaus_web_secrets).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -export([handle_change_master_password/1,
          handle_rotate_data_key/1]).
 
 handle_change_master_password(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:execute_if_validated(
+    validator:handle(
       fun (Values) ->
               NewPassword = proplists:get_value(newPassword, Values),
               case encryption_service:change_password(NewPassword) of
@@ -36,13 +37,11 @@ handle_change_master_password(Req) ->
                       ns_audit:master_password_change(Req, Error),
                       menelaus_util:reply_global_error(Req, Error)
               end
-      end, Req, validate_change_master_password(Req:parse_post())).
+      end, Req, form, change_master_password_validators()).
 
-validate_change_master_password(Args) ->
-    R0 = menelaus_util:validate_has_params({Args, [], []}),
-    R1 = menelaus_util:validate_required(newPassword, R0),
-    R2 = menelaus_util:validate_any_value(newPassword, R1),
-    menelaus_util:validate_unsupported_params(R2).
+change_master_password_validators() ->
+    [validator:required(newPassword, _),
+     validator:unsupported(_)].
 
 handle_rotate_data_key(Req) ->
     menelaus_util:assert_is_enterprise(),

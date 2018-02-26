@@ -220,15 +220,14 @@ assert_api_can_be_used() ->
 handle_get_roles(Req) ->
     assert_api_can_be_used(),
 
-    Query = Req:parse_qs(),
-    menelaus_util:execute_if_validated(
+    validator:handle(
       fun (Values) ->
               Permission = proplists:get_value(permission, Values),
               Filtered = filter_roles_by_permission(Permission),
               Json =
                   [{role_to_json(Role) ++ Props} || {Role, Props} <- Filtered],
               menelaus_util:reply_json(Req, Json)
-      end, Req, Query, get_users_or_roles_validators()).
+      end, Req, qs, get_users_or_roles_validators()).
 
 get_user_json(Identity, Props, Passwordless) ->
     Roles = proplists:get_value(roles, Props, []),
@@ -265,44 +264,30 @@ handle_get_users(Path, Req) ->
             handle_get_users_45(Req)
     end.
 
-validate_domain(Name, State) ->
-    menelaus_util:validate_by_fun(
-      fun (Value) ->
-              case domain_to_atom(Value) of
-                  unknown ->
-                      {error, "Unknown user domain"};
-                  Atom ->
-                      {value, Atom}
-              end
-      end, Name, State).
-
 get_users_or_roles_validators() ->
-    [menelaus_util:validate_any_value(permission, _),
-     validate_permission(permission, _)].
+    [validate_permission(permission, _)].
 
 get_users_page_validators(DomainAtom, HasStartFrom) ->
-    [menelaus_util:validate_integer(pageSize, _),
-     menelaus_util:validate_range(pageSize, ?MIN_USERS_PAGE_SIZE,
-                                  ?MAX_USERS_PAGE_SIZE, _),
-     menelaus_util:validate_any_value(startFrom, _)] ++
+    [validator:integer(pageSize, ?MIN_USERS_PAGE_SIZE, ?MAX_USERS_PAGE_SIZE, _),
+     validator:touch(startFrom, _)] ++
         case HasStartFrom of
             false ->
                 [];
             true ->
                 case DomainAtom of
                     '_' ->
-                        [menelaus_util:validate_required(startFromDomain, _),
-                         menelaus_util:validate_any_value(startFromDomain, _),
-                         validate_domain(startFromDomain, _)];
+                        [validator:required(startFromDomain, _),
+                         validator:one_of(startFromDomain, known_domains(), _),
+                         validator:convert(startFromDomain, fun list_to_atom/1,
+                                           _)];
                     _ ->
-                        [menelaus_util:validate_prohibited(startFromDomain, _),
-                         menelaus_util:return_value(startFromDomain, DomainAtom,
-                                                    _)]
+                        [validator:prohibited(startFromDomain, _),
+                         validator:return_value(startFromDomain, DomainAtom, _)]
                 end
         end ++ get_users_or_roles_validators().
 
 validate_permission(Name, State) ->
-    menelaus_util:validate_by_fun(
+    validator:validate(
       fun (RawPermission) ->
               case parse_permission(RawPermission) of
                   error ->
@@ -331,12 +316,12 @@ handle_get_users_with_domain(Req, DomainAtom, Path) ->
     Query = Req:parse_qs(),
     case lists:keyfind("pageSize", 1, Query) of
         false ->
-            menelaus_util:execute_if_validated(
+            validator:handle(
               handle_get_all_users(Req, {'_', DomainAtom}, _), Req, Query,
               get_users_or_roles_validators());
         _ ->
             HasStartFrom = lists:keyfind("startFrom", 1, Query) =/= false,
-            menelaus_util:execute_if_validated(
+            validator:handle(
               handle_get_users_page(Req, DomainAtom, Path, _),
               Req, Query, get_users_page_validators(DomainAtom, HasStartFrom))
     end.
@@ -677,12 +662,16 @@ role_to_string({Role, [{BucketName, _}]}) ->
 role_to_string({Role, [BucketName]}) ->
     lists:flatten(io_lib:format("~p[~s]", [Role, BucketName])).
 
-domain_to_atom("local") ->
-    local;
-domain_to_atom("external") ->
-    external;
-domain_to_atom(_) ->
-    unknown.
+known_domains() ->
+    ["local", "external"].
+
+domain_to_atom(Domain) ->
+    case lists:member(Domain, known_domains()) of
+        true ->
+            list_to_atom(Domain);
+        false ->
+            unknown
+    end.
 
 verify_length([P, Len]) ->
     length(P) >= Len.
@@ -804,9 +793,8 @@ handle_put_user(Domain, UserId, Req) ->
             menelaus_util:reply_global_error(Req, Error)
     end.
 
-validate_password(R1) ->
-    R2 = menelaus_util:validate_any_value(password, R1),
-    menelaus_util:validate_by_fun(
+validate_password(State) ->
+    validator:validate(
       fun (P) ->
               case validate_cred(P, password) of
                   true ->
@@ -814,13 +802,11 @@ validate_password(R1) ->
                   Error ->
                       {error, Error}
               end
-      end, password, R2).
+      end, password, State).
 
 put_user_validators(Domain) ->
-    [menelaus_util:validate_has_params(_),
-     menelaus_util:validate_any_value(name, _),
-     menelaus_util:validate_required(roles, _),
-     menelaus_util:validate_any_value(roles, _),
+    [validator:touch(name, _),
+     validator:required(roles, _),
      validate_roles(roles, _)] ++
         case Domain of
             local ->
@@ -828,7 +814,7 @@ put_user_validators(Domain) ->
             external ->
                 []
         end ++
-        [menelaus_util:validate_unsupported_params(_)].
+        [validator:unsupported(_)].
 
 bad_roles_error(BadRoles) ->
     Str = string:join(BadRoles, ","),
@@ -837,7 +823,7 @@ bad_roles_error(BadRoles) ->
       " malformed or role parameters are undefined: [~s]", [Str]).
 
 validate_roles(Name, State) ->
-    menelaus_util:validate_by_fun(
+    validator:validate(
       fun (RawRoles) ->
               Roles = parse_roles(RawRoles),
 
@@ -857,14 +843,14 @@ validate_roles(Name, State) ->
       end, Name, State).
 
 handle_put_user_with_identity({_UserId, Domain} = Identity, Req) ->
-    menelaus_util:execute_if_validated(
+    validator:handle(
       fun (Values) ->
               handle_put_user_validated(Identity,
                                         proplists:get_value(name, Values),
                                         proplists:get_value(password, Values),
                                         proplists:get_value(roles, Values),
                                         Req)
-      end, Req, Req:parse_post(), put_user_validators(Domain)).
+      end, Req, form, put_user_validators(Domain)).
 
 handle_put_user_validated(Identity, Name, Password, Roles, Req) ->
     UniqueRoles = ordsets:to_list(ordsets:from_list(Roles)),
@@ -917,10 +903,8 @@ reply_put_delete_users(Req) ->
     end.
 
 change_password_validators() ->
-    [menelaus_util:validate_has_params(_),
-     menelaus_util:validate_required(password, _),
-     menelaus_util:validate_any_value(password, _),
-     menelaus_util:validate_by_fun(
+    [validator:required(password, _),
+     validator:validate(
        fun (P) ->
                case validate_cred(P, password) of
                    true ->
@@ -929,7 +913,7 @@ change_password_validators() ->
                        {error, Error}
                end
        end, password, _),
-     menelaus_util:validate_unsupported_params(_)].
+     validator:unsupported(_)].
 
 handle_change_password(Req) ->
     menelaus_util:assert_is_enterprise(),
@@ -953,7 +937,7 @@ handle_change_password(Req) ->
     end.
 
 handle_change_password_with_identity(Req, Identity) ->
-    menelaus_util:execute_if_validated(
+    validator:handle(
       fun (Values) ->
               case do_change_password(Identity,
                                       proplists:get_value(password, Values)) of
@@ -966,7 +950,7 @@ handle_change_password_with_identity(Req, Identity) ->
                   unchanged ->
                       menelaus_util:reply(Req, 200)
               end
-      end, Req, Req:parse_post(), change_password_validators()).
+      end, Req, form, change_password_validators()).
 
 do_change_password({_, local} = Identity, Password) ->
     menelaus_users:change_password(Identity, Password);
@@ -1272,15 +1256,13 @@ handle_get_password_policy(Req) ->
         {enforceSpecialChars, lists:member(special, MustPresent)}]}).
 
 post_password_policy_validators() ->
-    [menelaus_util:validate_has_params(_),
-     menelaus_util:validate_required(minLength, _),
-     menelaus_util:validate_integer(minLength, _),
-     menelaus_util:validate_range(minLength, 0, 100, _),
-     menelaus_util:validate_boolean(enforceUppercase, _),
-     menelaus_util:validate_boolean(enforceLowercase, _),
-     menelaus_util:validate_boolean(enforceDigits, _),
-     menelaus_util:validate_boolean(enforceSpecialChars, _),
-     menelaus_util:validate_unsupported_params(_)].
+    [validator:required(minLength, _),
+     validator:integer(minLength, 0, 100, _),
+     validator:boolean(enforceUppercase, _),
+     validator:boolean(enforceLowercase, _),
+     validator:boolean(enforceDigits, _),
+     validator:boolean(enforceSpecialChars, _),
+     validator:unsupported(_)].
 
 must_present_value(JsonField, MustPresentAtom, Args) ->
     case proplists:get_value(JsonField, Args) of
@@ -1291,7 +1273,7 @@ must_present_value(JsonField, MustPresentAtom, Args) ->
     end.
 
 handle_post_password_policy(Req) ->
-    menelaus_util:execute_if_validated(
+    validator:handle(
       fun (Values) ->
               Policy =
                   [{min_length, proplists:get_value(minLength, Values)},
@@ -1305,7 +1287,7 @@ handle_post_password_policy(Req) ->
               ns_config:set(password_policy, Policy),
               ns_audit:password_policy(Req, Policy),
               menelaus_util:reply(Req, 200)
-      end, Req, Req:parse_post(), post_password_policy_validators()).
+      end, Req, form, post_password_policy_validators()).
 
 assert_no_users_upgrade() ->
     case menelaus_users:upgrade_status() of

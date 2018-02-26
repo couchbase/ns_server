@@ -24,20 +24,6 @@
          handle_post/1,
          handle_get_descriptors/1]).
 
--import(menelaus_util,
-        [reply_json/2,
-         reply/2,
-         validate_has_params/1,
-         validate_boolean/2,
-         validate_dir/2,
-         validate_integer/2,
-         validate_range/5,
-         validate_range/4,
-         validate_by_fun/3,
-         validate_any_value/2,
-         validate_unsupported_params/1,
-         execute_if_validated/4]).
-
 handle_get(Req) ->
     menelaus_util:assert_is_enterprise(),
 
@@ -54,20 +40,19 @@ handle_get(Req) ->
                                 end
                         end, Props),
 
-    reply_json(Req, {Json}).
+    menelaus_util:reply_json(Req, {Json}).
 
 handle_post(Req) ->
     menelaus_util:assert_is_enterprise(),
 
-    Args = Req:parse_post(),
     Config = ns_config:get(),
-    execute_if_validated(
+    validator:handle(
       fun (Values) ->
               ns_audit_cfg:set_global(
                 [{key_api_to_config(ApiK), V} ||
                     {ApiK, V} <- pre_process_post(Config, Values)]),
-              reply(Req, 200)
-      end, Req, Args, validators(Config)).
+              menelaus_util:reply(Req, 200)
+      end, Req, form, validators(Config)).
 
 handle_get_descriptors(Req) ->
     menelaus_util:assert_is_enterprise(),
@@ -82,7 +67,7 @@ handle_get_descriptors(Req) ->
                     {module, proplists:get_value(module, Props)},
                     {description, proplists:get_value(description, Props)}]}
           end, Descriptors),
-    reply_json(Req, Json).
+    menelaus_util:reply_json(Req, Json).
 
 jsonifier(disabled_users) ->
     fun (UList) ->
@@ -105,7 +90,7 @@ key_api_to_config(logPath) ->
     log_path;
 key_api_to_config(disabledUsers) ->
     disabled_users;
-key_api_to_config(X) ->
+key_api_to_config(X) when is_atom(X) ->
     X.
 
 key_config_to_api(auditd_enabled) ->
@@ -185,7 +170,7 @@ pre_process_post(Config, Props) ->
     end.
 
 validate_events(Name, Descriptors, State) ->
-    validate_by_fun(
+    validator:validate(
       fun (Value) ->
               Events = string:tokens(Value, ","),
               IntEvents = [(catch list_to_integer(E)) || E <- Events],
@@ -211,7 +196,7 @@ validate_events(Name, Descriptors, State) ->
       end, Name, State).
 
 validate_users(Name, State) ->
-    validate_by_fun(
+    validator:validate(
       fun (Value) ->
               Users = string:tokens(Value, ","),
               UsersParsed = [{U, string:tokens(U, "/")} || U <- Users],
@@ -247,24 +232,18 @@ validator_vulcan(Config, State) ->
 
 validators_vulcan(Config) ->
     Descriptors = orddict:from_list(ns_audit_cfg:get_descriptors(Config)),
-    [validate_any_value(disabled, _),
-     validate_events(disabled, Descriptors, _),
-     validate_any_value(disabledUsers, _),
+    [validate_events(disabled, Descriptors, _),
      validate_users(disabledUsers, _)].
 
 validators(Config) ->
-    [validate_has_params(_),
-     validate_boolean(auditdEnabled, _),
-     validate_any_value(logPath, _),
-     validate_dir(logPath, _),
-     validate_integer(rotateInterval, _),
-     validate_range(
+    [validator:has_params(_),
+     validator:boolean(auditdEnabled, _),
+     validator:dir(logPath, _),
+     validator:integer(rotateInterval, _),
+     validator:range(
        rotateInterval, 15*60, 60*60*24*7,
-       fun (Name, _Min, _Max) ->
-               io_lib:format("The value of ~p must be in range from 15 minutes "
-                             "to 7 days", [Name])
-       end, _),
-     validate_by_fun(
+       ?cut("The value must be in range from 15 minutes to 7 days"), _),
+     validator:validate(
        fun (Value) ->
                case Value rem 60 of
                    0 ->
@@ -273,7 +252,6 @@ validators(Config) ->
                        {error, "Value must not be a fraction of minute"}
                end
        end, rotateInterval, _),
-     validate_integer(rotateSize, _),
-     validate_range(rotateSize, 0, 500*1024*1024, _),
+     validator:integer(rotateSize, 0, 500*1024*1024, _),
      validator_vulcan(Config, _),
-     validate_unsupported_params(_)].
+     validator:unsupported(_)].

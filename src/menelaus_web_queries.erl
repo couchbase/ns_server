@@ -22,56 +22,32 @@
          handle_curl_whitelist_get/1,
          handle_settings_post/1]).
 
--import(menelaus_util,
-        [reply_json/2,
-         assert_is_vulcan/0,
-         validate_dir/2,
-         validate_required/2,
-         validate_boolean/2,
-         validate_json_object/2,
-         validate_has_params/1,
-         validate_any_value/2,
-         validate_any_value/3,
-         validate_integer/2,
-         validate_by_fun/3,
-         validate_unsupported_params/1,
-         execute_if_validated/3]).
-
 handle_settings_get(Req) ->
-    assert_is_vulcan(),
+    menelaus_util:assert_is_vulcan(),
 
     Config = get_settings(),
-    reply_json(Req, {Config}).
+    menelaus_util:reply_json(Req, {Config}).
 
 get_settings() ->
     query_settings_manager:get(generalSettings) ++
     query_settings_manager:get(curlWhitelistSettings).
 
-validate_settings_post(Args) ->
-    NearInfinity = 1 bsl 64 - 1,
-    R0 = validate_has_params({Args, [], []}),
-    R1 = validate_integer(queryTmpSpaceSize, R0),
-    R2 = validate_by_fun(fun (Value) ->
-                                 case Value >= ?QUERY_TMP_SPACE_MIN_SIZE andalso
-                                     Value =< NearInfinity of
-                                     true ->
-                                         ok;
-                                     false ->
-                                         case Value =:= 0 orelse
-                                             Value =:= -1 of
-                                             true ->
-                                                 ok;
-                                             false ->
-                                                 Msg = io_lib:format("The value of \"queryTmpSpaceSize\" must"
-                                                                     " be a positive integer >= ~p",
-                                                                     [?QUERY_TMP_SPACE_MIN_SIZE]),
-                                                 {error, list_to_binary(Msg)}
-                                         end
-                                 end
-                         end, queryTmpSpaceSize, R1),
-    R3 = validate_any_value(queryTmpSpaceDir, R2, fun list_to_binary/1),
-    R4 = validate_dir(queryTmpSpaceDir, R3),
-    validate_unsupported_params(R4).
+settings_post_validators() ->
+    [validator:has_params(_),
+     validator:integer(queryTmpSpaceSize, _),
+     validate_tmp_space_size(queryTmpSpaceSize, _),
+     validator:dir(queryTmpSpaceDir, _),
+     validator:convert(queryTmpSpaceDir, fun list_to_binary/1, _),
+     validator:unsupported(_)].
+
+validate_tmp_space_size(Name, State) ->
+    case validator:get_value(Name, State) of
+        X when X =:= 0 orelse X =:= -1 ->
+            %% zero disables the feature, and -1 implies unlimited quota
+            State;
+        _ ->
+            validator:range(Name, ?QUERY_TMP_SPACE_MIN_SIZE, infinity, State)
+    end.
 
 update_settings(Key, Value) ->
     case query_settings_manager:update(Key, Value) of
@@ -82,33 +58,28 @@ update_settings(Key, Value) ->
     end.
 
 handle_settings_post(Req) ->
-    assert_is_vulcan(),
+    menelaus_util:assert_is_vulcan(),
 
-    execute_if_validated(
+    validator:handle(
       fun (Values) ->
-              case Values of
-                  [] ->
-                      ok;
-                  _ ->
-                      ok = update_settings(generalSettings, Values)
-              end,
-              reply_json(Req, {get_settings()})
-      end, Req, validate_settings_post(Req:parse_post())).
+              ok = update_settings(generalSettings, Values),
+              menelaus_util:reply_json(Req, {get_settings()})
+      end, Req, form, settings_post_validators()).
 
-validate_array(Array) ->
+validate_array(Array) when is_list(Array) ->
     case lists:all(fun is_binary/1, Array) of
-        false -> {error, <<"Invalid array">>};
+        false -> {error, "Invalid array"};
         true -> {value, Array}
-    end.
+    end;
+validate_array(_) ->
+    {error, "Invalid array"}.
 
 settings_curl_whitelist_validators() ->
-    [validate_required(all_access, _),
-     validate_boolean(all_access, _),
-     validate_any_value(allowed_urls, _),
-     validate_any_value(disallowed_urls, _),
-     validate_by_fun(fun validate_array/1, allowed_urls, _),
-     validate_by_fun(fun validate_array/1, disallowed_urls, _),
-     validate_unsupported_params(_)].
+    [validator:required(all_access, _),
+     validator:boolean(all_access, _),
+     validator:validate(fun validate_array/1, allowed_urls, _),
+     validator:validate(fun validate_array/1, disallowed_urls, _),
+     validator:unsupported(_)].
 
 get_curl_whitelist_settings() ->
     Config = query_settings_manager:get(curlWhitelistSettings),
@@ -116,16 +87,14 @@ get_curl_whitelist_settings() ->
     proplists:get_value(queryCurlWhitelist, Config).
 
 handle_curl_whitelist_post(Req) ->
-    assert_is_vulcan(),
-    execute_if_validated(
+    menelaus_util:assert_is_vulcan(),
+    validator:handle(
       fun (Values) ->
               ok = update_settings(curlWhitelistSettings,
                                    [{queryCurlWhitelist, {Values}}]),
-              reply_json(Req, get_curl_whitelist_settings())
-      end, Req,
-      validate_json_object(Req:recv_body(),
-                           settings_curl_whitelist_validators())).
+              menelaus_util:reply_json(Req, get_curl_whitelist_settings())
+      end, Req, json, settings_curl_whitelist_validators()).
 
 handle_curl_whitelist_get(Req) ->
-    assert_is_vulcan(),
-    reply_json(Req, get_curl_whitelist_settings()).
+    menelaus_util:assert_is_vulcan(),
+    menelaus_util:reply_json(Req, get_curl_whitelist_settings()).

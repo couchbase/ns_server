@@ -20,6 +20,7 @@
 
 -include("ns_common.hrl").
 -include("ns_heart.hrl").
+-include("cut.hrl").
 
 -export([handle_pools/1,
          check_and_handle_pool_info/2,
@@ -39,14 +40,6 @@
          bin_concat_path/2,
          format_server_time/1,
          handle_streaming/2,
-         validate_has_params/1,
-         validate_any_value/2,
-         validate_unsupported_params/1,
-         validate_integer/2,
-         get_values/1,
-         return_value/3,
-         return_error/3,
-         execute_if_validated/3,
          reply/2]).
 
 handle_pools(Req) ->
@@ -310,29 +303,28 @@ get_cluster_name() ->
 get_cluster_name(Config) ->
     ns_config:search(Config, cluster_name, "").
 
-validate_pool_settings_post(Config, CompatVersion, Args) ->
-    R0 = validate_has_params({Args, [], []}),
-    R1 = validate_any_value(clusterName, R0),
-    R2 = validate_memory_quota(Config, CompatVersion, R1),
-    validate_unsupported_params(R2).
+pool_settings_post_validators(Config, CompatVersion) ->
+    [validator:has_params(_),
+     validator:touch(clusterName, _),
+     validate_memory_quota(Config, CompatVersion, _),
+     validator:unsupported(_)].
 
-validate_memory_quota(Config, CompatVersion, R0) ->
+validate_memory_quota(Config, CompatVersion, ValidatorState) ->
     QuotaFields =
         [{memory_quota:service_to_json_name(Service), Service} ||
             Service <- memory_quota:aware_services(CompatVersion)],
     ValidationResult =
         lists:foldl(
           fun ({Key, _}, Acc) ->
-                  validate_integer(Key, Acc)
-          end, R0, QuotaFields),
-    Values = get_values(ValidationResult),
+                  validator:integer(Key, Acc)
+          end, ValidatorState, QuotaFields),
 
     Quotas = lists:filtermap(
                fun ({Key, Service}) ->
-                       case lists:keyfind(Key, 1, Values) of
-                           false ->
+                       case validator:get_value(Key, ValidationResult) of
+                           undefined ->
                                false;
-                           {_, ServiceQuota} ->
+                           ServiceQuota ->
                                {true, {Service, ServiceQuota}}
                        end
                end, QuotaFields),
@@ -344,7 +336,7 @@ validate_memory_quota(Config, CompatVersion, R0) ->
             do_validate_memory_quota(Config, Quotas, ValidationResult)
     end.
 
-do_validate_memory_quota(Config, Quotas, R0) ->
+do_validate_memory_quota(Config, Quotas, ValidatorState) ->
     Nodes = ns_node_disco:nodes_wanted(Config),
     {ok, NodeStatuses} = ns_doctor:wait_statuses(Nodes, 3 * ?HEART_BEAT_PERIOD),
     NodeInfos =
@@ -358,10 +350,10 @@ do_validate_memory_quota(Config, Quotas, R0) ->
 
     case memory_quota:check_quotas(NodeInfos, Config, Quotas) of
         ok ->
-            return_value(quotas, Quotas, R0);
+            validator:return_value(quotas, Quotas, ValidatorState);
         {error, Error} ->
             {Key, Msg} = quota_error_msg(Error),
-            return_error(Key, Msg, R0)
+            validator:return_error(Key, Msg, ValidatorState)
     end.
 
 quota_error_msg({total_quota_too_high, Node, TotalQuota, MaxAllowed}) ->
@@ -397,10 +389,9 @@ do_handle_pool_settings_post(Req) ->
     Config = ns_config:get(),
     CompatVersion = cluster_compat_mode:get_compat_version(Config),
 
-    execute_if_validated(
-      fun (Values) ->
-              do_handle_pool_settings_post_body(Req, Config, Values)
-      end, Req, validate_pool_settings_post(Config, CompatVersion, Req:parse_post())).
+    validator:handle(
+      do_handle_pool_settings_post_body(Req, Config, _),
+      Req, form, pool_settings_post_validators(Config, CompatVersion)).
 
 do_handle_pool_settings_post_body(Req, Config, Values) ->
     case lists:keyfind(quotas, 1, Values) of
