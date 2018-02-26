@@ -602,6 +602,8 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
     {_, DataDir} = lists:keyfind(path_config_datadir, 1, StaticTerms),
     StatsDir = filename:join(DataDir, "stats"),
 
+    IndexerMDD = filename:join(DataDir, "crash"),
+
     UsersStoragePath = filename:join([DataDir, "config", "users.dets"]),
     {_, Ipv6} = lists:keyfind(ipv6, 1, StaticTerms),
 
@@ -623,6 +625,7 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
          {memcached_admin, MCDAdmin},
          {memcached_logs_path, MCDLogs},
          {memcached_breakpad_minidump_dir, PerNodeMDD},
+         {indexer_breakpad_minidump_dir, IndexerMDD},
          {nodes, string:join(Nodes, ",")},
          {stats_dir, StatsDir},
          {localtoken_path, filename:join(DataDir, "localtoken")},

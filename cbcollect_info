@@ -1487,10 +1487,17 @@ def main():
     if options.bypass_sensitive_data:
         log("Bypassing Sensitive Data: Breakpad crash dumps")
     else:
-        for dump in glob.glob(os.path.join(read_guts(guts,
-                                                     "memcached_breakpad_minidump_dir"),
-                                           "*.dmp")):
+        memcached_breakpad_minidump_dir = read_guts(guts, "memcached_breakpad_minidump_dir")
+        for dump in glob.glob(os.path.join(memcached_breakpad_minidump_dir, "*.dmp")):
             runner.collect_file(dump)
+
+        # Collect indexer breakpad minidumps
+        index_port = read_guts(guts, "indexer_http_port")
+        if index_port:
+            indexer_breakpad_minidump_dir = read_guts(guts, "indexer_breakpad_minidump_dir")
+            if memcached_breakpad_minidump_dir != indexer_breakpad_minidump_dir:
+                for dump in glob.glob(os.path.join(indexer_breakpad_minidump_dir, "*.dmp")):
+                    runner.collect_file(dump)
 
     addr = zip_node.split("@")[-1]
     if addr == "127.0.0.1" or addr == "::1":
