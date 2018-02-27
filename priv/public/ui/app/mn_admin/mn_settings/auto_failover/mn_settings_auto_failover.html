@@ -99,21 +99,24 @@
           {{settingsAutoFailoverCtl.saveAutoFailoverSettingsErrors['failoverOnDataDiskIssues[timePeriod]']}}
         </div>
       </div>
-      <input
-         type="checkbox"
-         id="for-group-failover-enable"
-         ng-disabled="!settingsAutoFailoverCtl.autoFailoverSettings.enabled"
-         ng-model="settingsAutoFailoverCtl.autoFailoverSettings.failoverServerGroup">
-      <label for="for-group-failover-enable" class="margin-right-zero">
-        Enable auto-failover of server groups
-      </label>
-      <span
-         class="icon-info-warning"
-         uib-tooltip="DO NOT enable this unless you have set up homogenous server groups for failure scenarios
-         (like racks/zones), have 3 or more server groups, and have the capacity to absorb the load of the failed-over group."
-         tooltip-placement="right">
-        <span class="icon fa-warning"></span>
-      </span>
+      <div ng-if="adminCtl.poolDefault.compat.atLeast55 &&
+                  adminCtl.poolDefault.isEnterprise">
+        <input
+           type="checkbox"
+           id="for-group-failover-enable"
+           ng-disabled="!settingsAutoFailoverCtl.autoFailoverSettings.enabled"
+           ng-model="settingsAutoFailoverCtl.autoFailoverSettings.failoverServerGroup">
+        <label for="for-group-failover-enable" class="margin-right-zero">
+          Enable auto-failover of server groups
+        </label>
+        <span
+           class="icon-info-warning"
+           uib-tooltip="DO NOT enable this unless you have set up homogenous server groups for failure scenarios
+                        (like racks/zones), have 3 or more server groups, and have the capacity to absorb the load of the failed-over group."
+           tooltip-placement="right">
+          <span class="icon fa-warning"></span>
+        </span>
+      </div>
     </div>
 
     <div class="margin-top2 margin-bottom-2" ng-show="poolDefault.compat.atLeast50">
