@@ -234,25 +234,28 @@ get_user_json(Identity, Props, Passwordless) ->
     Name = proplists:get_value(name, Props),
     get_user_json(Identity, Name, Passwordless, Roles).
 
-get_user_json({Id, Domain}, Name, Passwordless, Roles) ->
-    UserJson = [{id, list_to_binary(Id)},
-                {domain, Domain},
-                {roles, [{role_to_json(Role)} || Role <- Roles]}],
-    UserJson1 =
-        case Name of
-            undefined ->
-                UserJson;
-            _ ->
-                [{name, list_to_binary(Name)} | UserJson]
-        end,
-    UserJson2 =
+get_user_json({Id, Domain} = Identity, Name, Passwordless, Roles) ->
+    PasswordJson =
         case Passwordless of
             false ->
-                UserJson1;
+                case menelaus_users:get_password_change_timestamp(Identity) of
+                    undefined -> [];
+                    PasswordChangeTime ->
+                        Timestamp = misc:time_to_timestamp(PasswordChangeTime,
+                                                           millisecond),
+                        Local = calendar:now_to_local_time(Timestamp),
+                        BinTime = menelaus_util:format_server_time(Local),
+                        [{password_change_date, BinTime}]
+                end;
             _ ->
-                [{passwordless, true} | UserJson1]
+                [{passwordless, true}]
         end,
-    {UserJson2}.
+
+    {[{id, list_to_binary(Id)},
+      {domain, Domain},
+      {roles, [{role_to_json(Role)} || Role <- Roles]}] ++
+     [{name, list_to_binary(Name)} || Name =/= undefined] ++
+     PasswordJson}.
 
 handle_get_users(Path, Req) ->
     assert_api_can_be_used(),

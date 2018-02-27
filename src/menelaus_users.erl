@@ -35,6 +35,7 @@
          user_exists/1,
          get_user_name/1,
          upgrade_to_4_5/1,
+         get_password_change_timestamp/1,
          get_salt_and_mac/1,
          build_memcached_auth/1,
          build_memcached_auth_info/1,
@@ -454,6 +455,14 @@ get_user_name({_, Domain} = Identity) when Domain =:= local orelse Domain =:= ex
     proplists:get_value(name, get_user_props(Identity));
 get_user_name(_) ->
     undefined.
+
+-spec get_password_change_timestamp(rbac_identity()) -> undefined | integer().
+get_password_change_timestamp({_, external}) ->
+    undefined;
+get_password_change_timestamp(Identity) ->
+    replicated_dets:get_last_modified(storage_name(),
+                                      {auth, Identity},
+                                      undefined).
 
 collect_result(Port, Acc) ->
     receive
