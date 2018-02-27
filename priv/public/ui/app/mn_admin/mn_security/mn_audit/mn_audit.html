@@ -1,8 +1,4 @@
 <div mn-spinner="auditCtl.viewLoading || !auditCtl.state" class="margin-top-half">
-  <h3>Audit Configuration</h3>
-  <p class="max-width-8">
-    Auditing keeps track of important admin events occurring in Couchbase. Tracking and persisting these events is essential for any secured environment and provides evidence for suspicious/malicious activity in Couchbase.
-  </p>
   <form
      ng-submit="auditCtl.submit()"
      name="auditForm"
@@ -14,11 +10,19 @@
          id="audit-enable-flag"
          ng-disabled="!rbac.cluster.admin.security.write"
          ng-model="auditCtl.state.auditdEnabled">
-      <label for="audit-enable-flag">Enable Auditing</label>
+      <label for="audit-enable-flag">Audit events & write them to a log</label>
+
+      <div
+         ng-if="auditCtl.state.auditdEnabled"
+         class="content-box fix-width-5">
+        When enabled, auditing is activated for a default set of events.
+        You can expand the modules below and select your own set of events.
+        NOTE: Your cluster’s performance may be impacted in relation to the number of events selected.
+      </div>
     </div>
 
     <div
-       class="formrow width-300">
+       class="formrow  fix-width-5">
       <label for="target-log-field">Target Log Directory</label>
       <input
          type="text"
@@ -36,18 +40,16 @@
       </div>
     </div>
 
-    <label>Log Rotation: Time Interval & Size Trigger</label>
+    <label>Log Rotation <small>Time interval & size trigger</small></label>
     <div class="row flex-left fix-width-5">
-      <div class="column">
-        <span class="form-inline">
-          <input
-             id="log-rotation-interval"
-             ng-model="auditCtl.state.rotateInterval"
-             ng-disabled="!auditCtl.state.auditdEnabled || !rbac.cluster.admin.security.write"
-             type="number"
-             class="input-short-1">
-          <small>Day{{auditCtl.state.rotateInterval !== 1 ? "s" : ""}}</small>
-        </span>
+      <div class="column form-inline fix-width-2">
+        <input
+           id="log-rotation-interval"
+           ng-model="auditCtl.state.rotateInterval"
+           ng-disabled="!auditCtl.state.auditdEnabled || !rbac.cluster.admin.security.write"
+           type="number"
+           class="input-short-1">
+        <small>day{{auditCtl.state.rotateInterval !== 1 ? "s" : ""}}</small>
       </div>
       <div class="column">
         <span class="form-inline">
@@ -55,7 +57,8 @@
              id="log-rotation-size"
              ng-model="auditCtl.state.rotateSize"
              ng-disabled="!auditCtl.state.auditdEnabled || !rbac.cluster.admin.security.write"
-             type="number">
+             type="number"
+             class="input-short-1">
           <small>MB</small>
         </span>
       </div>
@@ -86,6 +89,7 @@
       </span>
       <span
          class="icon"
+         ng-if="auditCtl.state.auditdEnabled"
          ng-class="auditCtl.findEnabled(module, true) ? 'fa-check green-3' : 'fa-ban red-4'"></span>
 
       <div class="audit-module-body" ng-show="showModule">
