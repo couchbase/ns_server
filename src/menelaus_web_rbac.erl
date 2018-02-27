@@ -714,7 +714,7 @@ password_special_characters() ->
 verify_special(P) ->
     lists:any(
       fun (C) ->
-              lists:member(C, "@%+\\/'\"!#$^?:,(){}[]~`-_")
+              lists:member(C, password_special_characters())
       end, P).
 
 get_verifier(uppercase, P) ->
@@ -745,26 +745,14 @@ execute_verifiers([{Fun, Arg, Error} | Rest]) ->
 get_password_policy() ->
     {value, Policy} = ns_config:search(password_policy),
     MinLength = proplists:get_value(min_length, Policy),
-    true = MinLength =/= undefined,
+    true = (MinLength =/= undefined),
     MustPresent = proplists:get_value(must_present, Policy),
-    true = MustPresent =/= undefined,
+    true = (MustPresent =/= undefined),
     {MinLength, MustPresent}.
 
 validate_cred(undefined, _) -> <<"Field must be given">>;
 validate_cred(P, password) ->
-    {MinLength, MustPresent} = get_password_policy(),
-    LengthError = io_lib:format(
-                    "The password must be at least ~p characters long.",
-                    [MinLength]),
-
-    Verifiers =
-        [{fun verify_length/1, [P, MinLength], list_to_binary(LengthError)},
-         {fun verify_utf8/1, P, <<"The password must be valid utf8">>},
-         {fun verify_control_chars/1, P,
-          <<"The password must not contain control characters">>}] ++
-        [get_verifier(V, P) || V <- MustPresent],
-
-    execute_verifiers(Verifiers);
+    is_valid_password(P, get_password_policy());
 validate_cred([], username) ->
     <<"Username must not be empty">>;
 validate_cred(Username, username) when length(Username) > 128 ->
@@ -780,6 +768,20 @@ validate_cred(Username, username) ->
     V orelse
         <<"The username must not contain spaces, control or any of "
           "()<>@,;:\\\"/[]?={} characters and must be valid utf8">>.
+
+is_valid_password(P, {MinLength, MustPresent}) ->
+    LengthError = io_lib:format(
+                    "The password must be at least ~p characters long.",
+                    [MinLength]),
+
+    Verifiers =
+        [{fun verify_length/1, [P, MinLength], list_to_binary(LengthError)},
+         {fun verify_utf8/1, P, <<"The password must be valid utf8">>},
+         {fun verify_control_chars/1, P,
+          <<"The password must not contain control characters">>}] ++
+        [get_verifier(V, P) || V <- MustPresent],
+
+    execute_verifiers(Verifiers).
 
 handle_put_user(Domain, UserId, Req) ->
     assert_api_can_be_used(),
@@ -1050,12 +1052,22 @@ handle_read_only_user_reset(Req) ->
             end
     end.
 
-gen_password(Length) ->
+gen_password(Policy) ->
+    gen_password(Policy, 100).
+
+gen_password(Policy, 0) ->
+    erlang:error({pass_gen_retries_exceeded, Policy});
+gen_password({MinLength, _} = Policy, Retries) ->
+    Length = max(MinLength, crypto:rand_uniform(8, 16)),
     Letters =
         "0123456789abcdefghijklmnopqrstuvwxyz"
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%^&*?",
     random:seed(os:timestamp()),
-    get_random_string(Length, Letters).
+    Pass = get_random_string(Length, Letters),
+    case is_valid_password(Pass, Policy) of
+        true -> Pass;
+        _ -> gen_password(Policy, Retries - 1)
+    end.
 
 get_random_string(Length, AllowedChars) ->
     lists:foldl(fun(_, Acc) ->
@@ -1095,7 +1107,7 @@ handle_reset_admin_password(Req) ->
     Password =
         case proplists:get_value("generate", Req:parse_qs()) of
             "1" ->
-                gen_password(8);
+                gen_password(get_password_policy());
             _ ->
                 PostArgs = Req:parse_post(),
                 proplists:get_value("password", PostArgs)
@@ -1306,6 +1318,7 @@ assert_no_users_upgrade() ->
                           []})
     end.
 
+-ifdef(EUNIT).
 %% Tests
 parse_roles_test() ->
     Res = parse_roles("admin, bucket_admin[test.test], bucket_admin[*], "
@@ -1481,3 +1494,31 @@ validate_cred_username_test() ->
     %% ?assertEqual(true, validate_cred(Utf8, username)),                  % "ξ" is codepoint 958
     %% ?assertEqual(true, validate_cred(LongButValid ++ Utf8, username)),  % 128 code points
     ok.
+
+gen_password_test() ->
+    Pass1 = gen_password({20, [uppercase]}),
+    Pass2 = gen_password({0,  [digits]}),
+    Pass3 = gen_password({5,  [uppercase, lowercase, digits, special]}),
+    %% Using assertEqual instead of assert because assert is causing
+    %% false dialyzer errors
+    ?assertEqual(true, length(Pass1) >= 20),
+    ?assertEqual(true, verify_uppercase(Pass1)),
+    ?assertEqual(true, length(Pass2) >= 8),
+    ?assertEqual(true, verify_digits(Pass2)),
+    ?assertEqual(true, verify_lowercase(Pass3)),
+    ?assertEqual(true, verify_uppercase(Pass3)),
+    ?assertEqual(true, verify_special(Pass3)),
+    ?assertEqual(true, verify_digits(Pass3)),
+    random:seed(os:timestamp()),
+    GetRandomPolicy =
+        fun () ->
+            MustPresent = [uppercase || random:uniform(2) == 1] ++
+                          [lowercase || random:uniform(2) == 1] ++
+                          [digits    || random:uniform(2) == 1] ++
+                          [special   || random:uniform(2) == 1],
+            {random:uniform(30), MustPresent}
+        end,
+    [gen_password(GetRandomPolicy()) || _ <- lists:seq(1,100000)],
+    ok.
+
+-endif.
