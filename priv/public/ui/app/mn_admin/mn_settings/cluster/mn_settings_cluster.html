@@ -171,37 +171,6 @@
           </div>
         </div>
 
-        <div class="formrow margin-bottom-2"
-             ng-if="adminCtl.poolDefault.compat.atLeast55 && adminCtl.poolDefault.isEnterprise">
-          <label>Log Redaction - Default Level</label>
-          <input
-             type="radio"
-             value="none"
-             id="redaction_none"
-             ng-model="settingsClusterCtl.logRedactionSettings.logRedactionLevel"
-             ng-disabled="!rbac.cluster.settings.write">
-          <label for="redaction_none" class="checkbox">
-            None
-          </label>
-          <br>
-          <input
-             type="radio"
-             value="partial"
-             id="redaction_partial"
-             ng-model="settingsClusterCtl.logRedactionSettings.logRedactionLevel"
-             ng-disabled="!rbac.cluster.settings.write">
-          <label for="redaction_partial" class="checkbox margin-right-zero">
-            Partial Redaction
-          </label>
-          <span
-             class="fa-stack icon-info"
-             uib-tooltip="User data such as key/value pairs and usernames will be redacted. Metadata and system data will not be redacted."
-             tooltip-placement="top">
-            <span class="icon fa-circle-thin fa-stack-2x"></span>
-            <span class="icon fa-info fa-stack-1x"></span>
-          </span>
-        </div>
-
         <label ng-show="poolDefault.compat.atLeast40 && rbac.cluster.indexes.read">
           Index Storage Mode
         </label>

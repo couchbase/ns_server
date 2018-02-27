@@ -6,7 +6,8 @@
     'mnPluggableUiRegistry',
     'mnRootCertificate',
     'mnElementCrane',
-    'mnClientCertificate'
+    'mnClientCertificate',
+    'mnRedaction'
   ]).config(mnIndexesConfig);
 
   function mnIndexesConfig($stateProvider) {
@@ -131,6 +132,15 @@
         data: {
           enterprise: true,
           compat: "atLeast40"
+        }
+      })
+      .state('app.admin.security.redaction', {
+        url: '/redaction',
+        controller: 'mnRedactionController as redactionCtl',
+        templateUrl: 'app/mn_admin/mn_security/mn_redaction/mn_redaction.html',
+        data: {
+          compat: "atLeast50",
+          enterprise: true
         }
       });
   }

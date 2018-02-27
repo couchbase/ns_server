@@ -20,13 +20,17 @@
        ui-sref="app.admin.security.rootCertificate"
        ui-sref-active="selected">Root Certificate</a>
     <a
-       ui-sref="app.admin.security.clientCert"
        ng-show="pools.isEnterprise && poolDefault.compat.atLeast50 && rbac.cluster.admin.security.read"
+       ui-sref="app.admin.security.clientCert"
        ui-sref-active="selected">Client Certificate</a>
     <a
        ng-show="rbac.cluster.admin.security.read && poolDefault.compat.atLeast40 && pools.isEnterprise"
        ui-sref="app.admin.security.audit"
        ui-sref-active="selected">Audit</a>
+    <a
+      ng-show="pools.isEnterprise && poolDefault.compat.atLeast50 && rbac.cluster.admin.security.read"
+      ui-sref="app.admin.security.redaction"
+      ui-sref-active="selected">Log Redaction</a>
     <a
        ng-show="pools.isEnterprise && securityCtl.poolDefault.ldapEnabled && poolDefault.compat.atLeast40 && !poolDefault.compat.atLeast45 && rbac.cluster.admin.security.read"
        ui-sref="app.admin.security.ldap"
