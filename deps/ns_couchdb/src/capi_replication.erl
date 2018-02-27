@@ -248,48 +248,12 @@ handle_with_bucket_ext(Req, Fun) ->
               end,
 
               VBOpaque = proplists:get_value(<<"vbopaque">>, Body),
-
-              CommitOpaque = proplists:get_value(<<"commitopaque">>, Body),
-
-              Fun(Req, Bucket, VB, VBOpaque, CommitOpaque)
+              Fun(Req, Bucket, VB, VBOpaque)
       end).
 
 handle_pre_replicate(Req) ->
-    handle_with_bucket_ext(Req, fun handle_pre_replicate/5).
-
-handle_pre_replicate(Req, Bucket, VB, VBOpaque, CommitOpaque) ->
-    FailoverLog = case xdcr_dcp_streamer:get_failover_log(binary_to_list(Bucket), VB) of
-                      {memcached_error, not_my_vbucket} ->
-                          erlang:throw({not_found, not_my_vbucket});
-                      XFailoverLog when is_list(XFailoverLog) ->
-                          XFailoverLog
-                  end,
-
-    {VBUUID, _} = lists:last(FailoverLog),
-
-    {CommitUUID, CommitSeq} = case CommitOpaque of
-                                  [XU, XS] -> {XU, XS};
-                                  _ -> {undefined, -1}
-                              end,
-
-    CommitOk = case CommitOpaque =:= undefined of
-                   true -> true;
-                   _ ->
-                       validate_commit(FailoverLog, CommitUUID, CommitSeq)
-               end,
-
-    VBMatches = VBOpaque =:= undefined orelse VBOpaque =:= VBUUID,
-
-    ?xdcr_debug("VB: ~p, CommitOk: ~p, VBMatches: ~p, CommitOpaque: ~p, stuff: ~p",
-                [VB, CommitOk, VBMatches,
-                 CommitOpaque, {FailoverLog, CommitUUID, CommitSeq}]),
-
-    Code = case VBMatches andalso CommitOk of
-               true -> 200;
-               false -> 400
-           end,
-
-    couch_httpd:send_json(Req, Code, {[{<<"vbopaque">>, VBUUID}]}).
+    handle_with_bucket(
+      Req, fun menelaus_web_xdcr_target:handle_pre_replicate_legacy/3).
 
 handle_mass_vbopaque_check(Req) ->
     handle_with_bucket(Req, fun handle_mass_vbopaque_check/3).
@@ -386,9 +350,9 @@ get_vbucket_seqno_stats(BucketName, Vb) ->
      list_to_integer(binary_to_list(S0))}.
 
 handle_commit_for_checkpoint(#httpd{method='POST'}=Req) ->
-    handle_with_bucket_ext(Req, fun handle_commit_for_checkpoint/5).
+    handle_with_bucket_ext(Req, fun handle_commit_for_checkpoint/4).
 
-handle_commit_for_checkpoint(Req, Bucket, VB, VBOpaque, _) ->
+handle_commit_for_checkpoint(Req, Bucket, VB, VBOpaque) ->
     case ns_config:read_key_fast(xdcr_commits_dont_wait_disk, false) of
         true ->
             ok;
@@ -425,29 +389,3 @@ do_checkpoint_commit(Bucket, VB) ->
 
     TimeAfter = time_compat:monotonic_time(microsecond),
     system_stats_collector:add_histo(xdcr_checkpoint_commit_time, TimeAfter - TimeBefore).
-
-validate_commit(FailoverLog, CommitUUID, CommitSeq) ->
-    {FailoverUUIDs, FailoverSeqs} = lists:unzip(FailoverLog),
-
-    [SeqnosStart | FailoverSeqs1] = FailoverSeqs,
-
-    %% validness failover log is where each uuid entry has seqno where
-    %% it _ends_ rather than where it begins. It makes validness
-    %% checking simpler
-    ValidnessFailoverLog = lists:zip(FailoverUUIDs, FailoverSeqs1 ++ [16#ffffffffffffffff]),
-
-    case SeqnosStart > CommitSeq of
-        true -> false;
-        _ ->
-            lists:any(fun ({U, EndSeq}) ->
-                              U =:= CommitUUID andalso CommitSeq =< EndSeq
-                      end, ValidnessFailoverLog)
-    end.
-
-validate_commit_test() ->
-    FailoverLog = [{13685158163256569856, 0},
-                   {4598340681889701145, 48}],
-    CommitUUID = 13685158163256569445,
-    CommitSeq = 27,
-    true = not validate_commit(FailoverLog, CommitUUID, CommitSeq),
-    true = validate_commit(FailoverLog, 13685158163256569856, CommitSeq).

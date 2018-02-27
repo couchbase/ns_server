@@ -664,6 +664,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     XdcrPath = drop_prefix(Req:get(raw_path)),
                     {{[admin, internal], all},
                      fun goxdcr_rest:proxy/2, [XdcrPath]};
+                ["_goxdcr", "_pre_replicate", Bucket] ->
+                    {{[{bucket, Bucket}, data, meta], read},
+                     fun menelaus_web_xdcr_target:handle_pre_replicate/2,
+                     [Bucket]};
                 ["logClientError"] ->
                     {no_check, fun log_client_error/1};
                 ["diag", "eval"] ->
