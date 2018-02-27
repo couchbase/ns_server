@@ -1416,8 +1416,37 @@ input[type="checkbox"]:checked + label:before {
   top: 22px;
 }
 
-/* service widgets displaying status & details for each service + XDCR -- */
+/* dashboard widgets displaying node counts for each of four statuses ----- */
+.dashboard-nodes {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-right: 2rem;
+}
+.dashboard-nodes:last-child {
+  margin-right: 0;
+}
+.dashboard-nodes .icon {
+ margin-right: .5rem;
+}
+.dashboard-nodes h3 {
+ margin-right: .25rem;
+}
+.dashboard-nodes .icon {
+  font-size: 1.25rem;
+}
+.dashboard-nodes p {
+  margin: 0;
+  font-size: .75rem;
+  color: #333;
+  line-height: .85rem;
+}
+
+/* dashboard service widgets displaying status & details for each service + XDCR */
 .service-widget-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   max-width: 1280px;
 }
 .service-widget {
@@ -1550,6 +1579,18 @@ section.dynamic_unhealthy {
   font-size: .75rem;
   padding: 1rem;
   margin-bottom: 1.5rem;
+}
+/* dashboard version is a lighter-colored flex container ----------------- */
+.content-box-dashboard {
+  border-radius: 3px;
+  background-color: #f6f7f9;
+  font-size: .75rem;
+  padding: 1rem;
+  margin: 0 0 1.5rem -1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: no-wrap;
 }
 .content-box p {
   margin-bottom: .5rem;

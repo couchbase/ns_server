@@ -1,16 +1,40 @@
 <mn-element-cargo depot="header">
-  <div  class="about-text resp-xsml">
+  <div class="about-text resp-xsml">
     {{::adminCtl.implementationVersion | mnPrettyVersion}}
   </div>
 </mn-element-cargo>
 
 <div mn-spinner="(rbac.cluster.bucket['.'].stats.read && !overviewCtl.mnOverviewStats) || !overviewCtl.mnOverviewConfig || !overviewCtl.nodes || (rbac.cluster.bucket['.'].settings.read && !buckets.details)">
-  <div class="row items-top margin-top-1 service-widget-row resp-margin-xsml">
+
+  <div class="content-box-dashboard max-width-12 resp-xsml">
+    <div class="dashboard-nodes" title="active nodes">
+      <span class="icon fa-server green-2"></span>
+      <h3>4</h3>
+      <p class="resp-hide-xsml">active nodes</p>
+    </div>
+    <div class="dashboard-nodes" title="failed-over nodes">
+      <span class="icon fa-server orange-2"></span>
+      <h3>0</h3>
+      <p class="resp-hide-xsml">failed-over nodes</p>
+    </div>
+    <div class="dashboard-nodes" title="nodes pending rebalance">
+      <span class="icon fa-server orange-2"></span>
+      <h3>0</h3>
+      <p class="resp-hide-xsml">nodes pending rebalance</p>
+    </div>
+    <div class="dashboard-nodes" title="inactive nodes">
+      <span class="icon fa-server red-3"></span>
+      <h3>0</h3>
+      <p class="resp-hide-xsml">inactive nodes</p>
+    </div>
+  </div>
+
+  <div class="service-widget-row resp-margin-xsml">
     <div
        class="service-widget"
        ui-sref="app.admin.buckets"
        ng-class="['dynamic_' + overviewCtl.nodes.kv.statusClass]">
-      <h4>Data</h4>
+      <b class="text-small">Data</b>
       <a ng-click="$event.stopPropagation()" ui-sref="app.admin.servers.list">
         {{overviewCtl.nodes.kv.length || '0'}}
         node{{overviewCtl.getEndings(overviewCtl.nodes.kv.length)}}
@@ -25,7 +49,7 @@
        class="service-widget"
        ui-sref="app.admin.indexes.gsi"
        ng-class="['dynamic_' + overviewCtl.nodes.index.statusClass]">
-      <h4>Index</h4>
+      <b class="text-small">Index</b>
       <a ng-click="$event.stopPropagation()" ui-sref="app.admin.servers.list">
         {{overviewCtl.nodes.index.length || '0'}}
         node{{overviewCtl.getEndings(overviewCtl.nodes.index.length)}}
@@ -40,7 +64,7 @@
        class="service-widget"
        ui-sref="app.admin.search.fts_list"
        ng-class="['dynamic_' + overviewCtl.nodes.fts.statusClass]">
-      <h4>Search</h4>
+      <b class="text-small">Search</b>
       <a ng-click="$event.stopPropagation()" ui-sref="app.admin.servers.list">
         {{overviewCtl.nodes.fts.length || '0'}}
         node{{overviewCtl.getEndings(overviewCtl.nodes.fts.length)}}
@@ -55,7 +79,7 @@
        class="service-widget"
        ui-sref="app.admin.query.workbench"
        ng-class="['dynamic_' + overviewCtl.nodes.n1ql.statusClass]">
-      <h4>Query</h4>
+      <b class="text-small">Query</b>
       <a ng-click="$event.stopPropagation()" ui-sref="app.admin.servers.list">
         {{overviewCtl.nodes.n1ql.length || '0'}}
         node{{overviewCtl.getEndings(overviewCtl.nodes.n1ql.length)}}
@@ -71,7 +95,7 @@
        class="service-widget"
        ui-sref="app.admin.eventing.summary"
        ng-class="['dynamic_' + overviewCtl.nodes.eventing.statusClass]">
-      <h4>Eventing</h4>
+      <b class="text-small">Eventing</b>
       <a ng-click="$event.stopPropagation()" ui-sref="app.admin.servers.list">
         {{overviewCtl.nodes.eventing.length || '0'}}
         node{{overviewCtl.getEndings(overviewCtl.nodes.eventing.length)}}
@@ -87,7 +111,7 @@
        class="service-widget"
        ui-sref="app.admin.cbas.workbench"
        ng-class="['dynamic_' + overviewCtl.nodes.cbas.statusClass]">
-      <h4>Analytics</h4>
+      <b class="text-small">Analytics</b>
       <a ng-click="$event.stopPropagation()" ui-sref="app.admin.servers.list">
         {{overviewCtl.nodes.cbas.length || '0'}}
         node{{overviewCtl.getEndings(overviewCtl.nodes.cbas.length)}}
@@ -103,7 +127,7 @@
        ui-sref="app.admin.replications"
        class="service-widget"
        ng-class="['dynamic_' + (adminCtl.tasks.tasksXDCR.length ? 'healthy' : 'inactive')]">
-      <h4>XDCR</h4>
+      <b class="text-small">XDCR</b>
       <a>
         {{overviewCtl.xdcrReferences.filtered.length}}
         remote cluster{{overviewCtl.getEndings(overviewCtl.xdcrReferences.filtered.length)}}
@@ -115,10 +139,10 @@
     </div>
   </div>
 
-  <div class="row max-width-12 resp-wrap-med">
+  <div class="content-box-dashboard max-width-12 margin-top-2 resp-wrap-med resp-med">
     <div
-       class="column width-6 margin-top-2">
-      <h4>Data Service Memory</h4>
+       class="column width-6">
+      <b class="text-small">Data Service Memory</b>
       <div
          ng-class="{
                    overcommitted: overviewCtl.mnOverviewConfig.ramOverviewConfig.items[1].name === 'overused',
@@ -129,8 +153,8 @@
          base-info="overviewCtl.mnOverviewConfig.ramOverviewConfig"></div>
     </div>
     <div
-       class="column width-6 margin-top-2">
-      <h4>Data Service Disk</h4>
+       class="column width-6">
+      <b class="text-small">Data Service Disk</b>
       <div
          class="bar-usages"
          mn-bar-usage
@@ -142,8 +166,8 @@
     <div
        ng-if="rbac.cluster.bucket['.'].stats.read"
        class="row flex-left items-top resp-wrap-med">
-      <div ng-show="buckets.details.length" class="margin-top-2 fix-width-5">
-        <h4>Buckets Operations Per Second</h4>
+      <div ng-show="buckets.details.length" class="fix-width-5 margin-top-1 margin-right-3">
+        <b class="text-small">Buckets Operations Per Second</b>
           <span ng-show="!overviewCtl.mnOverviewStats.opsGraphConfig.stats.length">
             loading stats...
           </span>
@@ -154,8 +178,8 @@
            style="height: 150px; width: 360px; margin-right: 2rem;"
            class="text-smaller"></div>
       </div>
-      <div ng-show="buckets.details.length" class="margin-top-2 fix-width-5">
-        <h4>Disk Fetches Per Second</h4>
+      <div ng-show="buckets.details.length" class="fix-width-5 margin-top-1">
+        <b class="text-small">Disk Fetches Per Second</b>
           <span ng-show="!overviewCtl.mnOverviewStats.readsGraphConfig.stats.length">
             loading stats...
           </span>
@@ -164,7 +188,7 @@
            ng-if="overviewCtl.mnOverviewStats.readsGraphConfig.stats.length"
            mn-plot
            mn-plot-config="overviewCtl.mnOverviewStats.readsGraphConfig"
-           style="height: 150px; width: 360px"
+           style="height: 150px; width: 360px;"
            class="text-smaller"></div>
       </div>
     </div>

@@ -95,6 +95,13 @@
     width: auto;
     padding-right: 2rem;
   }
+  .content-box-dashboard {
+    margin-left: .25rem;
+  }
+  .content-box-dashboard.resp-med {
+    margin-right: -1rem;
+    margin-left: -1rem;
+  }
 }
 
 /* responsive small ------------------------------------- */
@@ -108,7 +115,8 @@
   .resp-margin-sml {
     margin-bottom: .5rem;
   }
-  .row.resp-sml {
+  .row.resp-sml,
+  .content-box-dashboard.resp-sml{
     flex-wrap: wrap;
 }
 #query_wrapper.resp-small {
@@ -176,10 +184,13 @@
   }
   .about-text.resp-xsml {
     position: absolute;
-    top: 50px;
+    top: 46px;
     right: 0;
     z-index: 1;
     color: #555;
+  }
+  .content-box-dashboard.resp-xsml {
+    margin-top: 1rem;
   }
   .service-widget-row {
     display: block;
