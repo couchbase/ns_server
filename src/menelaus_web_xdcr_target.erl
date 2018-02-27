@@ -68,7 +68,6 @@ do_handle_pre_replicate(Req, Props, Bucket) ->
     end.
 
 do_handle_pre_replicate(Req, Props, Bucket, VB, FailoverLog) ->
-    VBOpaque = proplists:get_value("vbopaque", Props),
     CommitOpaque = proplists:get_value(commitopaque, Props),
 
     {VBUUID, _} = lists:last(FailoverLog),
@@ -84,15 +83,12 @@ do_handle_pre_replicate(Req, Props, Bucket, VB, FailoverLog) ->
                        validate_commit(FailoverLog, CommitUUID, CommitSeq)
                end,
 
-    VBMatches = VBOpaque =:= undefined orelse VBOpaque =:= VBUUID,
-
     ?xdcr_debug(
-       "Bucket: ~p, VB: ~p, CommitOk: ~p, VBMatches: ~p, CommitOpaque: ~p, "
-       "stuff: ~p",
-       [Bucket, VB, CommitOk, VBMatches,
-        CommitOpaque, {FailoverLog, CommitUUID, CommitSeq}]),
+       "Bucket: ~p, VB: ~p, CommitOk: ~p, CommitOpaque: ~p, stuff: ~p",
+       [Bucket, VB, CommitOk, CommitOpaque,
+        {FailoverLog, CommitUUID, CommitSeq}]),
 
-    Code = case VBMatches andalso CommitOk of
+    Code = case CommitOk of
                true -> 200;
                false -> 400
            end,
