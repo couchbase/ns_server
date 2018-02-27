@@ -69,34 +69,26 @@ do_handle_pre_replicate(Req, Props, Bucket) ->
 
 do_handle_pre_replicate(Req, Props, Bucket, VB, FailoverLog) ->
     CommitOpaque = proplists:get_value(commitopaque, Props),
-
     {VBUUID, _} = lists:last(FailoverLog),
 
-    {CommitUUID, CommitSeq} = case CommitOpaque of
-                                  [XU, XS] -> {XU, XS};
-                                  _ -> {undefined, -1}
-                              end,
-
-    CommitOk = case CommitOpaque =:= undefined of
-                   true -> true;
-                   _ ->
-                       validate_commit(FailoverLog, CommitUUID, CommitSeq)
-               end,
+    Code =
+        case validate_commit(FailoverLog, CommitOpaque) of
+            true ->
+                200;
+            false ->
+                400
+        end,
 
     ?xdcr_debug(
-       "Bucket: ~p, VB: ~p, CommitOk: ~p, CommitOpaque: ~p, stuff: ~p",
-       [Bucket, VB, CommitOk, CommitOpaque,
-        {FailoverLog, CommitUUID, CommitSeq}]),
-
-    Code = case CommitOk of
-               true -> 200;
-               false -> 400
-           end,
+       "Bucket: ~p, VB: ~p, Return Code: ~p, CommitOpaque: ~p, FailoverLog: ~p",
+       [Bucket, VB, Code, CommitOpaque, FailoverLog]),
 
     menelaus_util:reply_json(Req, {[{vbopaque, VBUUID}]}, Code).
 
 
-validate_commit(FailoverLog, CommitUUID, CommitSeq) ->
+validate_commit(_FailoverLog, undefined) ->
+    true;
+validate_commit(FailoverLog, [CommitUUID, CommitSeq]) ->
     {FailoverUUIDs, FailoverSeqs} = lists:unzip(FailoverLog),
 
     [SeqnosStart | FailoverSeqs1] = FailoverSeqs,
@@ -120,5 +112,5 @@ validate_commit_test() ->
                    {4598340681889701145, 48}],
     CommitUUID = 13685158163256569445,
     CommitSeq = 27,
-    true = not validate_commit(FailoverLog, CommitUUID, CommitSeq),
-    true = validate_commit(FailoverLog, 13685158163256569856, CommitSeq).
+    false = validate_commit(FailoverLog, [CommitUUID, CommitSeq]),
+    true = validate_commit(FailoverLog, [13685158163256569856, CommitSeq]).
