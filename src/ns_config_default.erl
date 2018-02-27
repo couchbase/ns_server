@@ -378,14 +378,6 @@ default() ->
          {[{enabled, breakpad_enabled},
            {minidump_dir, {memcached_config_mgr, get_minidump_dir, []}}]}},
 
-        {extensions,
-         [
-          {[{module, list_to_binary(
-                       path_config:component_path(lib,
-                                                  "memcached/stdin_term_handler.so"))},
-            {config, <<"">>}]}
-         ]},
-
         {admin, {"~s", [admin_user]}},
 
         {verbosity, verbosity},
