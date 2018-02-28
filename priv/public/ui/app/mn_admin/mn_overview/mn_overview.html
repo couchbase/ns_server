@@ -9,22 +9,22 @@
   <div class="content-box-dashboard max-width-12 resp-xsml">
     <div class="dashboard-nodes" title="active nodes">
       <span class="icon fa-server green-2"></span>
-      <h3>4</h3>
+      <h3>{{overviewCtl.nodes.all.active.length || '0'}}</h3>
       <p class="resp-hide-xsml">active nodes</p>
     </div>
     <div class="dashboard-nodes" title="failed-over nodes">
       <span class="icon fa-server orange-2"></span>
-      <h3>0</h3>
+      <h3>{{overviewCtl.nodes.all.failedOver.length || '0'}}</h3>
       <p class="resp-hide-xsml">failed-over nodes</p>
     </div>
     <div class="dashboard-nodes" title="nodes pending rebalance">
       <span class="icon fa-server orange-2"></span>
-      <h3>0</h3>
+      <h3>{{overviewCtl.nodes.all.pending.length || '0'}}</h3>
       <p class="resp-hide-xsml">nodes pending rebalance</p>
     </div>
     <div class="dashboard-nodes" title="inactive nodes">
       <span class="icon fa-server red-3"></span>
-      <h3>0</h3>
+      <h3>{{overviewCtl.nodes.all.down.length || '0'}}</h3>
       <p class="resp-hide-xsml">inactive nodes</p>
     </div>
   </div>
