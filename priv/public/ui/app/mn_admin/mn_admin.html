@@ -113,7 +113,7 @@
       </span>
     </h1>
 
-<!-- Depots are the placeholders for page-specific controls/content -->
+    <!-- Depots are the placeholders for page-specific controls/content -->
     <div class="row flex-right">
       <mn-element-depot name="header"></mn-element-depot>
       <mn-element-depot name="actions"></mn-element-depot>
@@ -147,6 +147,7 @@
        ng-click="showRespMenu = !showRespMenu"
        mn-pluggable-ui-tabs
        mn-tab-bar-name="adminTab">
+      <h6 class="resp-hide-med">CLUSTER</h6>
       <a
          mn-tab="overview"
          ui-sref="app.admin.overview"
@@ -161,31 +162,17 @@
          ui-sref="app.admin.buckets"
          ui-sref-active="currentnav">Buckets</a>
       <a
-         mn-tab="indexes"
-         ng-class="{currentnav: ('app.admin.indexes' | includedByState)}"
-         ng-show="rbac.cluster.bucket['.'].views.read || rbac.cluster.indexes.read"
-         ui-sref="app.admin.indexes.gsi"
-         class="resp-hide-sml">
-        <span
-           ui-sref="app.admin.indexes.gsi"
-           ng-show="rbac.cluster.indexes.read">Indexes</span>
-        <span
-           ui-sref="app.admin.indexes.views.list"
-           ng-show="rbac.cluster.indexes.read === false">Indexes</span>
-      </a>
-      <a
          ng-show="rbac.cluster.tasks.read"
          mn-tab="replications"
          ui-sref-active="currentnav"
          ui-sref="app.admin.replications"
          class="margin-bottom-1">XDCR</a>
+
       <a
          ng-show="rbac.cluster.admin.security.read"
          mn-tab="security"
          ng-class="{currentnav: ('app.admin.security' | includedByState)}"
-         ui-sref="app.admin.security">
-        Security
-      </a>
+         ui-sref="app.admin.security">Security</a>
       <a
          mn-tab="settings"
          ng-class="{currentnav: ('app.admin.settings' | includedByState)}"
@@ -199,7 +186,27 @@
          mn-tab="logs"
          ui-sref="app.admin.logs.list"
          ng-class="{currentnav: ('app.admin.logs' | includedByState)}"
-         ng-show="rbac.cluster.logs.read">Logs</a>
+         ng-show="rbac.cluster.logs.read"
+         class="margin-bottom-1-5">Logs</a>
+
+      <h6 class="resp-hide-med">WORKBENCH</h6>
+      <nav
+         mn-pluggable-ui-tabs
+         mn-tab-bar-name="workbenchTab">
+      </nav>
+      <a
+         mn-tab="indexes"
+         ng-class="{currentnav: ('app.admin.indexes' | includedByState)}"
+         ng-show="rbac.cluster.bucket['.'].views.read || rbac.cluster.indexes.read"
+         ui-sref="app.admin.indexes.gsi"
+         class="resp-hide-sml">
+        <span
+           ui-sref="app.admin.indexes.gsi"
+           ng-show="rbac.cluster.indexes.read">Indexes</span>
+        <span
+           ui-sref="app.admin.indexes.views.list"
+           ng-show="rbac.cluster.indexes.read === false">Indexes</span>
+      </a>
     </nav>
 
     <!-- all page content goes here -->

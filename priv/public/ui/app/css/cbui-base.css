@@ -172,7 +172,16 @@ h5 {
   font-weight: 600;
   color: #333;
 }
-
+/* nav section title -------------------------------------------------------- */
+h6 {
+  font-size: .8125rem;
+  font-weight: 600;
+  color: #a1a1a1;
+  padding: 0 .75rem .25rem 0;
+  text-align: right;
+  white-space: nowrap;
+  border-right: 2px solid #fff;
+}
 /* MARGINS:  only the first element of type (2nd el in pair),
    preceded by the former element receives this style ----------------------- */
 p + h2,
