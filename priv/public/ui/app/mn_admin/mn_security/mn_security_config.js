@@ -139,7 +139,7 @@
         controller: 'mnRedactionController as redactionCtl',
         templateUrl: 'app/mn_admin/mn_security/mn_redaction/mn_redaction.html',
         data: {
-          compat: "atLeast50",
+          compat: "atLeast55",
           enterprise: true
         }
       });

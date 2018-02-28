@@ -1,13 +1,12 @@
 <form ng-submit="redactionCtl.onSubmit()">
-  <div class="formrow margin-bottom-2 margin-top-half"
-       ><!-- ng-if="adminCtl.poolDefault.compat.atLeast55 && adminCtl.poolDefault.isEnterprise" -->
+  <div class="formrow margin-bottom-2 margin-top-half">
     <label>Log Redaction <small>default setting for collect info logs</small></label>
     <input
        type="radio"
        value="none"
        id="redaction_none"
        ng-model="redactionCtl.logRedactionSettings.logRedactionLevel"
-       ><!-- ng-disabled="!rbac.cluster.settings.write" -->
+       ng-disabled="!rbac.cluster.admin.security.write">
     <label for="redaction_none" class="checkbox">
       None
     </label>
@@ -17,7 +16,7 @@
        value="partial"
        id="redaction_partial"
        ng-model="redactionCtl.logRedactionSettings.logRedactionLevel"
-       ><!-- ng-disabled="!rbac.cluster.settings.write" -->
+       ng-disabled="!rbac.cluster.admin.security.write">
     <label for="redaction_partial" class="checkbox margin-right-zero">
       Partial Redaction
     </label>

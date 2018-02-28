@@ -5,7 +5,7 @@
     .module('mnLogs')
     .controller('mnLogsCollectInfoController', mnLogsCollectInfoController);
 
-  function mnLogsCollectInfoController($scope, mnHelper, mnPromiseHelper, mnPoolDefault, mnLogsCollectInfoService, mnPoller, $state, $uibModal, mnSettingsClusterService, permissions) {
+  function mnLogsCollectInfoController($scope, mnHelper, mnPromiseHelper, mnPoolDefault, mnLogsCollectInfoService, mnPoller, $state, $uibModal, mnLogRedactionService, permissions) {
     var vm = this;
     vm.stopCollection = stopCollection;
     vm.submit = submit;
@@ -34,7 +34,7 @@
       if (permissions.cluster.settings.read &&
           mnPoolDefault.export.compat.atLeast55 &&
           mnPoolDefault.export.isEnterprise) {
-        mnSettingsClusterService.getLogRedaction().then(function (value) {
+        mnLogRedactionService.get().then(function (value) {
           vm.collect.logRedactionLevel = value.logRedactionLevel;
         });
       }

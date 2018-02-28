@@ -49,7 +49,6 @@
           .getPromise();
       var promise2;
       var promise3;
-      var promise4;
       var promise5;
 
       queries.push(promise1);
@@ -79,13 +78,6 @@
 
         queries.push(promise3);
         queries.push(promise5);
-      }
-
-      if (mnPoolDefault.export.compat.atLeast55 &&
-          mnPoolDefault.export.isEnterprise && $scope.rbac.cluster.settings.write) {
-        promise4 = mnSettingsClusterService.postLogRedaction(vm.logRedactionSettings);
-
-        queries.push(promise4);
       }
 
       var promiseAll = $q.all(queries);
@@ -123,12 +115,6 @@
             maybeSetInititalValue(vm.querySettings.queryCurlWhitelist.allowed_urls, "");
             maybeSetInititalValue(vm.querySettings.queryCurlWhitelist.disallowed_urls, "");
           });
-      }
-
-      if (mnPoolDefault.export.compat.atLeast55 &&
-          mnPoolDefault.export.isEnterprise && $scope.rbac.cluster.settings.read) {
-        mnPromiseHelper(vm, mnSettingsClusterService.getLogRedaction())
-          .applyToScope("logRedactionSettings")
       }
 
       var services = {
