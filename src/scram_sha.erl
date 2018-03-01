@@ -65,8 +65,8 @@ reply_error(Sid, Error) ->
     reply_auth_failure(
       "I" ++ encode_with_sid(Sid, "e=" ++ Error)).
 
-reply_success(Sid, UserName, ServerProof) ->
-    {ok, {UserName, local},
+reply_success(Sid, Identity, ServerProof) ->
+    {ok, Identity,
      [{meta_header(),
        "I" ++ encode_with_sid(
                 Sid,
@@ -194,16 +194,24 @@ authenticate(Sha, Sid, Data) ->
 gen_nonce() ->
     [crypto:rand_uniform(48,125) || _ <- lists:seq(1,15)].
 
+find_auth(Name) ->
+    case ns_config_auth:get_user_and_auth(admin) of
+        {Name, {auth, Auth}} ->
+            {Auth, admin};
+        _ ->
+            {menelaus_users:get_auth_info({Name, local}), local}
+    end.
+
 find_auth_info(Sha, Name) ->
-    case menelaus_users:get_auth_info({Name, local}) of
-        false ->
+    case find_auth(Name) of
+        {false, _} ->
             {error, "unknown-user"};
-        AuthInfo ->
+        {AuthInfo, Domain} ->
             case proplists:get_value(auth_info_key(Sha), AuthInfo) of
                 undefined ->
                     {error, "other-error"};
                 {Info} ->
-                    Info
+                    {Info, Domain}
             end
     end.
 
@@ -215,7 +223,7 @@ handle_client_first_message(Sha, Name, Nonce, Bare) ->
     case find_auth_info(Sha, Name) of
         {error, _} ->
             reply_error();
-        Props ->
+        {Props, _} ->
             Salt = binary_to_list(proplists:get_value(<<"s">>, Props)),
             IterationCount = proplists:get_value(<<"i">>, Props),
 
@@ -253,7 +261,7 @@ handle_client_final_message(Sha, Sid, Nonce, Proof, ClientFinalMessage) ->
                     case find_auth_info(Sha, Name) of
                         {error, Error} ->
                             reply_error(Sid, Error);
-                        Props ->
+                        {Props, Domain} ->
                             SaltedPassword =
                                 base64:decode(proplists:get_value(<<"h">>,
                                                                   Props)),
@@ -264,7 +272,7 @@ handle_client_final_message(Sha, Sid, Nonce, Proof, ClientFinalMessage) ->
                                 error ->
                                     reply_error(Sid, "invalid-proof");
                                 ServerProof ->
-                                    reply_success(Sid, Name, ServerProof)
+                                    reply_success(Sid, {Name, Domain}, ServerProof)
                             end
                     end
             end

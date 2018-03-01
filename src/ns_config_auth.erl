@@ -25,6 +25,7 @@
          get_password/1,
          credentials_changed/3,
          unset_credentials/1,
+         get_user_and_auth/1,
          get_creds/2,
          is_system_provisioned/0,
          is_system_provisioned/1,
@@ -47,12 +48,23 @@ set_credentials(Role, User, Password) ->
         end,
     ns_config:set(get_key(Role), {User, Auth}).
 
+get_user_and_auth(Role) ->
+    get_user_and_auth(ns_config:latest(), Role).
+
+get_user_and_auth(Config, Role) ->
+    case ns_config:search(Config, get_key(Role)) of
+        {value, UserAndAuth} ->
+            UserAndAuth;
+        _ ->
+            undefined
+    end.
+
 is_system_provisioned() ->
     is_system_provisioned(ns_config:latest()).
 
 is_system_provisioned(Config) ->
-    case ns_config:search(Config, get_key(admin)) of
-        {value, {_U, _}} ->
+    case get_user_and_auth(Config, admin) of
+        {_, _} ->
             true;
         _ ->
             false
@@ -61,8 +73,8 @@ is_system_provisioned(Config) ->
 get_user(special) ->
     "@";
 get_user(Role) ->
-    case ns_config:search(get_key(Role)) of
-        {value, {U, _}} ->
+    case get_user_and_auth(Role) of
+        {U, _} ->
             U;
         _ ->
             undefined
@@ -77,8 +89,8 @@ get_salt_and_mac({auth, Auth}) ->
     menelaus_users:get_salt_and_mac(Auth).
 
 get_creds(Config, Role) ->
-    case ns_config:search(Config, get_key(Role)) of
-        {value, {User, Auth}} ->
+    case get_user_and_auth(Config, Role) of
+        {User, Auth} ->
             {User, get_salt_and_mac(Auth)};
         _ ->
             undefined
@@ -124,12 +136,12 @@ authenticate(Username, Password) ->
     end.
 
 authenticate_non_special(Role, User, Password) ->
-    do_authenticate(Role, ns_config:search(get_key(Role)), User, Password).
+    do_authenticate(Role, get_user_and_auth(Role), User, Password).
 
-do_authenticate(_Role, {value, {User, Auth}}, User, Password) ->
+do_authenticate(_Role, {User, Auth}, User, Password) ->
     {Salt, Mac} = get_salt_and_mac(Auth),
     misc:compare_secure(hash_password(Salt, Password), Mac);
-do_authenticate(admin, {value, null}, _User, _Password) ->
+do_authenticate(admin, null, _User, _Password) ->
     true;
 do_authenticate(_Role, _Creds, _User, _Password) ->
     false.
