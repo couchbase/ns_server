@@ -5,11 +5,10 @@
     .module("mnUserRoles")
     .controller("mnUserRolesAddDialogController", mnUserRolesAddDialogController);
 
-  function mnUserRolesAddDialogController($scope, mnUserRolesService, $uibModalInstance, mnPromiseHelper, user, isLdapEnabled, mnPoolDefault) {
+  function mnUserRolesAddDialogController($scope, mnUserRolesService, $uibModalInstance, mnPromiseHelper, user, isLdapEnabled, mnPoolDefault, $timeout) {
     var vm = this;
     vm.user = _.clone(user) || {domain: mnPoolDefault.export.compat.atLeast50 ? "local" : "external"};
     vm.userID = vm.user.id || 'New';
-    vm.roles = [];
     vm.save = save;
     vm.isEditingMode = !!user;
     vm.isLdapEnabled = isLdapEnabled;
@@ -17,67 +16,81 @@
     vm.containsSelected = {};
     vm.closedWrappers = {};
     vm.selectedRoles = {};
-    vm.getUIID = getUIID;
+    vm.getUIID = mnUserRolesService.getRoleUIID;
     vm.toggleWrappers = toggleWrappers;
     vm.focusError = false;
+    vm.show = show;
 
     activate();
 
-    function getUIID(role, level) {
-      if (level === 2) {
-        return role.role + (role.bucket_name ? '[' + role.bucket_name + ']' : '');
-      } else {
-        if (level == 0) {
-          return role[0][0].role.split("_")[0] + "_wrapper";
-        } else {
-          return role[0].role + "_wrapper";
-        }
-      }
+    function show(a) {
+      console.log(a)
     }
 
     function toggleWrappers(id, value) {
       vm.closedWrappers[id] = (value !== undefined) ? value : !vm.closedWrappers[id];
     }
 
-    function onCheckChange(role, id) {
-      if (role.bucket_name === "*") {
-        $scope.buckets.details.byType.names.forEach(function (name) {
-          vm.selectedRoles[role.role + "[" + name + "]"] = vm.selectedRoles[id];
-        });
+    function selectWrappers(id, value, applyTo) {
+      var wrappers = id.split("|");
+      var flag = wrappers.pop();
+      var id;
+      while (wrappers.length) {
+        id = wrappers.join("|");
+        applyTo[id] = value;
+        wrappers.pop();
       }
+    }
 
-      var containsSelected = {};
+    function getWrapperName(id) {
+      var wrappers = id.split("|");
+      wrappers.pop();
+      return wrappers.join("|");
+    }
 
-      vm.roles.forEach(function (role1) {
-        if (role.role === "admin" || role.role === "cluster_admin") {
-          if (role1.role !== "admin") {
-            vm.selectedRoles[getUIID(role1, 2)] = vm.selectedRoles[id];
-          }
+    function onCheckChange(role, id) {
+      var selectedRoles;
+      var containsSelected;
+      if (role.role === "admin") {
+        selectedRoles = {};
+        containsSelected = {};
+        if (vm.selectedRoles[id]) {
+          vm.allRoles.forEach(function (roleID) {
+            selectedRoles[roleID] = true;
+            selectWrappers(roleID, true, containsSelected);
+          });
         }
-        if (vm.selectedRoles[getUIID(role1, 2)]) {
-          containsSelected[role1.role + "_wrapper"] = true;
-          containsSelected[role1.role.split("_")[0] + "_wrapper"] = true;
+        vm.selectedRoles = selectedRoles;
+        vm.containsSelected = containsSelected;
+      } else {
+        if (vm.selectedRoles[id]) {
+          selectWrappers(id, true, vm.containsSelected);
+        } else {
+          containsSelected = {};
+          _.forEach(vm.selectedRoles, function (value, key) {
+            if (value) {
+              selectWrappers(key, true, containsSelected);
+            }
+          });
+          vm.containsSelected = containsSelected;
         }
-      });
-
-      vm.containsSelected = containsSelected;
+      }
     }
 
     function activate() {
       mnPromiseHelper(vm, mnUserRolesService.getRoles())
         .showSpinner()
         .onSuccess(function (roles) {
-          vm.roles = roles;
+          vm.allRoles = roles.map(function (role) {
+            return mnUserRolesService.getRoleUIID(role);
+          });
           vm.rolesTree = mnUserRolesService.getRolesTree(roles);
-
           if (user) {
-            return mnPromiseHelper(vm, mnUserRolesService.prepareUserRoles(user.roles))
-              .applyToScope("selectedRoles")
-              .onSuccess(function () {
-                user.roles.forEach(function (role) {
-                  onCheckChange(role, getUIID(role, 2));
-                });
-              });
+            user.roles.forEach(function (role) {
+              var id = mnUserRolesService.getRoleUIID(role);
+              vm.selectedRoles[id] = true;
+              onCheckChange(role, id);
+            });
           }
         });
     }
@@ -87,7 +100,18 @@
         vm.focusError = true;
         return;
       }
-      mnPromiseHelper(vm, mnUserRolesService.addUser(vm.user, _.clone(vm.selectedRoles), vm.isEditingMode), $uibModalInstance)
+
+      //example of the inсoming role
+      //All Buckets (*)|Query and Index Services|query_insert[*]
+      var roles = [];
+      _.forEach(vm.selectedRoles, function (value, key) {
+        if (value) {
+          var path = key.split("|");
+          roles.push(path[path.length - 1]);
+        }
+      });
+
+      mnPromiseHelper(vm, mnUserRolesService.addUser(vm.user, roles, vm.isEditingMode), $uibModalInstance)
         .showGlobalSpinner()
         .catchErrors(function (errors) {
           vm.focusError = !!errors;

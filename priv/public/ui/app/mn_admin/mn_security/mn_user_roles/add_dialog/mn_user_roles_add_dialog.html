@@ -105,53 +105,45 @@
             <div
                ng-if="::isArray"
                ng-init="::
-                        getUIID = userRolesAddDialogCtl.getUIID(role, level);
-                        hasTitle = ('isArray' | lodash:role[1]) || !!role[0].bucket_name;
-                        roles = role">
+                        isFirstArray = ('isArray' | lodash:role[0]);
+                        getUIID = userRolesAddDialogCtl.getUIID(isFirstArray ? role[0] : role[1][0], true);
+                        roles = role;">
               <label
-                 ng-if="::hasTitle"
-                 ng-init="::userRolesAddDialogCtl.toggleWrappers(getUIID, true)"
+                 ng-if="!isFirstArray"
+                 ng-init="::
+                          userRolesAddDialogCtl.toggleWrappers(getUIID, true)"
                  ng-click="::userRolesAddDialogCtl.toggleWrappers(getUIID)"
                  class="disclosure initialcaps"
                  ng-class="{
                            'disclosed': !userRolesAddDialogCtl.closedWrappers[getUIID],
                            'has-selection': userRolesAddDialogCtl.closedWrappers[getUIID] && userRolesAddDialogCtl.containsSelected[getUIID]
                            }">
-                {{::level == 0 ? ((role[0][0].role.split('_')[0] == "fts" ? "FTS" : role[0][0].role.split('_')[0]) + " Roles") : (level == 1 ? role[0].name : "")}}
+                {{::role[0]}}
               </label>
-              <div ng-class="::{'indent-1': hasTitle}">
+              <div ng-class="{'indent-1': !isFirstArray}">
                 <div
                    ng-show="!userRolesAddDialogCtl.closedWrappers[getUIID]"
-                   ng-init="::level = level + 1;"
-                   ng-repeat="role in roles"
+                   ng-repeat="role in (isFirstArray ? roles : roles[1])"
                    ng-include="'rolesTree'">
                 </div>
               </div>
             </div>
             <div
                ng-if="::!isArray"
-               ng-init="::getUIID = userRolesAddDialogCtl.getUIID(role, level);"
+               ng-init="::getUIID = userRolesAddDialogCtl.getUIID(role);
+                        userRolesAddDialogCtl.show(getUIID);"
                ng-class="{'has-selection': userRolesAddDialogCtl.selectedRoles[getUIID]}">
               <input
                  type="checkbox"
                  id="for-{{::getUIID}}"
-                 ng-disabled="(role.role !== 'admin' && userRolesAddDialogCtl.selectedRoles['admin']) ||
-                              (userRolesAddDialogCtl.selectedRoles['cluster_admin'] && role.role !== 'admin' && role.role !== 'cluster_admin') ||
-                              (role.bucket_name !== '*' && userRolesAddDialogCtl.selectedRoles[role.role + '[*]'])"
+                 ng-disabled="(role.role !== 'admin' && userRolesAddDialogCtl.selectedRoles['Administrator Roles|admin'])"
                  ng-change="::userRolesAddDialogCtl.onCheckChange(role, getUIID)"
                  ng-model="userRolesAddDialogCtl.selectedRoles[getUIID]">
               <label
                  for="for-{{::getUIID}}">
-                {{::!role.bucket_name ? role.name : role.bucket_name == "*" ? "all [*]" : role.bucket_name}}
+                {{::role.name}}
                 <span
-                   ng-if="role.bucket_name == '*'"
-                   tooltip-trigger="'mouseenter'"
-                   tooltip-append-to-body="true"
-                   class="fa-exclamation-circle icon orange-3"
-                   uib-tooltip="Note: This role will have access to all current and future data buckets.">
-                </span>
-                <span
-                   ng-if="getUIID === 'query_external_access'"
+                   ng-if="getUIID === 'Administrator Roles|query_external_access'"
                    tooltip-trigger="'mouseenter'"
                    tooltip-append-to-body="true"
                    class="fa-exclamation-circle icon orange-3"
@@ -163,7 +155,6 @@
         </script>
         <div>
           <div
-             ng-init="level = 0;"
              ng-repeat="role in userRolesAddDialogCtl.rolesTree"
              ng-include="'rolesTree'"></div>
         </div>

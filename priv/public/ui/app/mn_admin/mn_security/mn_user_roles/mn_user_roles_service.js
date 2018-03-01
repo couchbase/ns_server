@@ -13,8 +13,8 @@
       deleteUser: deleteUser,
       getRolesByRole: getRolesByRole,
       getRolesTree: getRolesTree,
-      prepareUserRoles: prepareUserRoles,
-      getUsers: getUsers
+      getUsers: getUsers,
+      getRoleUIID: getRoleUIID
     };
 
     return mnUserRolesService;
@@ -45,15 +45,64 @@
       }
     }
 
+    function getWrapperName(name) {
+      switch (name) {
+      case "data": return "Data Service";
+      case "views": return "Views";
+      case "query": return "Query and Index Services";
+      case "fts": return "Search Service";
+      case "analytics": return "Analytics Service";
+      case "undefined": return "Administrator Roles";
+      case "*": return "All Buckets (*)";
+      case "replication":
+      case "bucket": return undefined;
+      default: return name;
+      }
+    }
+
+    function getRoleUIID(role, isWrapper) {
+      var rv = "";
+      var bucketWrapperName = getWrapperName(role.bucket_name || "undefined");
+      var serviceWrapperName;
+      if (role.bucket_name) {
+        serviceWrapperName = getWrapperName(role.role.split("_")[0]);
+      }
+      rv += bucketWrapperName;
+      if (serviceWrapperName) {
+        rv += ("|" + serviceWrapperName);
+      }
+      if (!isWrapper) {
+        rv += ("|" + (role.bucket_name ? (role.role + '[' + role.bucket_name + ']') : role.role));
+      }
+      return rv;
+    }
+
     function getRolesTree(roles) {
       roles = _.sortBy(roles, "name");
-      var roles1 = _.groupBy(roles, 'role');
-      var roles2 = _.groupBy(roles1, function (array, role) {
-        return role.split("_")[0];
+      var roles1 = _.groupBy(roles, 'bucket_name');
+      var rv = [];
+
+      rv.push([getWrapperName("undefined"), roles1["undefined"]]);
+
+      _.forEach(roles1, function (array, bucketName) {
+        if (bucketName == "undefined") {
+          return;
+        }
+
+        var byRole = _.groupBy(array, function (role) {
+          return role.role.split("_")[0];
+        });
+
+        var thisBucketRoles = byRole.bucket.concat(byRole.replication);
+
+        (["data", "views", "query", "fts", "analytics"]).forEach(function (service) {
+          thisBucketRoles.push([getWrapperName(service), byRole[service]]);
+        });
+
+        rv.push([getWrapperName(bucketName), thisBucketRoles]);
       });
-      var roles3 = _.values(roles2);
-      sort(roles3);
-      return roles3;
+
+      return rv;
     }
 
     function getUser(user) {
@@ -98,24 +147,6 @@
       }
     }
 
-    function prepareUserRoles(userRoles) {
-      return $q.all([getRolesByRole(userRoles), getRolesByRole()])
-        .then(function (rv) {
-          var userRolesByRole = rv[0];
-          var rolesByRole = rv[1];
-          var i;
-          for (i in userRolesByRole) {
-            if (!rolesByRole[i]) {
-              delete userRolesByRole[i];
-            } else {
-              userRolesByRole[i] = true;
-            }
-          }
-
-          return userRolesByRole;
-        });
-    }
-
     function getRolesByRole(userRoles) {
       return (userRoles ? $q.when(userRoles) : getRoles()).then(function (roles) {
         var rolesByRole = {};
@@ -128,7 +159,7 @@
 
     function packData(user, roles, isEditingMode, resetPassword) {
       var data = {
-        roles: roles.join(','),
+        roles: roles.indexOf("admin") > -1 ? "admin" : roles.join(','),
         name: user.name
       };
 
@@ -147,34 +178,10 @@
       });
     }
 
-    function prepareRolesForSaving(roles) {
-      if (_.isArray(roles)) {
-        return _.map(roles, function (role) {
-          return role.role + (role.bucket_name ? '[' + role.bucket_name + ']' : '');
-        });
-      }
-      if (roles.admin) {
-        return ["admin"];
-      }
-      if (roles.cluster_admin) {
-        return ["cluster_admin"];
-      }
-      var i;
-      for (i in roles) {
-        var name = i.split("[");
-        if (name[1] !== "*]" && roles[name[0] + "[*]"]) {
-          delete roles[i];
-        }
-      }
-      return mnHelper.checkboxesToList(roles);
-
-    }
-
     function addUser(user, roles, isEditingMode, resetPassword) {
       if (!user || !user.id) {
         return $q.reject({username: "username is required"});
       }
-      roles = prepareRolesForSaving(roles);
       if (!resetPassword && (!roles || !roles.length)) {
         return $q.reject({roles: "at least one role should be added"});
       }
