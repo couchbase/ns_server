@@ -116,7 +116,7 @@ stream_samples(F, Yield) ->
 dump_stats(Archives, F) ->
     pipes:run(json_producer(Archives),
               sjson:encode_extended_json([{compact, false},
-                                          {strict, false}]),
+                                          {strict, true}]),
               pipes:write_file(F)).
 
 do_main(StatsDir, OutputFile) ->
