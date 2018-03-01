@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2016-2017 Couchbase, Inc.
+%% @copyright 2016-2018 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -127,7 +127,7 @@ encode_json(Options) ->
           indent  :: binary(),
 
           last_event     :: start | array_start | object_start | kv_start | other,
-          breadcrumb     :: [array | object | kv],
+          breadcrumb     :: [array | object | kv | top],
           nesting_level  :: non_neg_integer(),
           current_indent :: binary()
          }).
@@ -143,7 +143,7 @@ init_encoder_state(Yield, Options) ->
        strict = Strict,
        indent = Indent,
        last_event = start,
-       breadcrumb = [],
+       breadcrumb = [top],
        nesting_level = 0,
        current_indent = <<>>}.
 
@@ -240,26 +240,46 @@ maybe_validate_event(Event, State) ->
             error({invalid_json, Event, State})
     end.
 
-validate_event(array_end, State) ->
-    validate_nesting(array, State);
-validate_event(object_end, State) ->
-    validate_nesting(object, State);
-validate_event(kv_end, State) ->
-    validate_nesting(kv, State);
-validate_event({kv_start, _}, State) ->
-    validate_nesting(object, State);
-validate_event(_Event, #encoder_state{breadcrumb = [],
-                                      last_event = Last})
-  when Last =/= start ->
-    %% allow only one top-level object
-    false;
-validate_event(_Event, _State) ->
+validate_scope_by_event(array_end, Scope) ->
+    Scope =:= array;
+validate_scope_by_event(object_end, Scope) ->
+    Scope =:= object;
+validate_scope_by_event(kv_end, Scope) ->
+    Scope =:= kv;
+validate_scope_by_event({kv_start, _}, Scope) ->
+    Scope =:= object;
+validate_scope_by_event(_, _) ->
     true.
 
-validate_nesting(Expected, #encoder_state{breadcrumb = [Expected|_]}) ->
-    true;
-validate_nesting(_Expected, _State) ->
-    false.
+validate_event_by_scope(object, Event) ->
+    case Event of
+        {kv_start, _} ->
+            true;
+        object_end ->
+            true;
+        _ ->
+            false
+    end;
+validate_event_by_scope(_, _) ->
+    true.
+
+validate_event_multiplicity(kv_end, LastEvent, kv) ->
+    %% there needs to be a value supplied
+    LastEvent =/= kv_start;
+validate_event_multiplicity(_Event, LastEvent, kv) ->
+    %% there needs to be one and only one value
+    LastEvent =:= kv_start;
+validate_event_multiplicity(_, LastEvent, top) ->
+    %% there can only be one top-level value
+    LastEvent =:= start;
+validate_event_multiplicity(_, _, _) ->
+    true.
+
+validate_event(Event, #encoder_state{last_event = LastEvent,
+                                     breadcrumb = [Scope | _]}) ->
+    validate_scope_by_event(Event, Scope)
+        andalso validate_event_by_scope(Scope, Event)
+        andalso validate_event_multiplicity(Event, LastEvent, Scope).
 
 maybe_add_separator(Event, _State)
   when Event =:= object_end;
