@@ -53,22 +53,22 @@
                  type="radio"
                  ng-value="false"
                  name="all_access"
-                 id="n1ql_curl_access_unrestricted"
+                 id="n1ql_curl_access_restricted"
                  ng-disabled="!rbac.cluster.settings.write"
                  ng-model="settingsClusterCtl.querySettings.queryCurlWhitelist.all_access">
-              <label for="n1ql_curl_access_unrestricted" class="checkbox">
-                Unrestricted
+              <label for="n1ql_curl_access_restricted" class="checkbox">
+                Restricted
               </label>
               <br>
               <input
                  type="radio"
                  ng-value="true"
                  name="all_access"
-                 id="n1ql_curl_access_restricted"
+                 id="n1ql_curl_access_unrestricted"
                  ng-disabled="!rbac.cluster.settings.write"
                  ng-model="settingsClusterCtl.querySettings.queryCurlWhitelist.all_access">
-              <label for="n1ql_curl_access_restricted" class="checkbox">
-                Restricted
+              <label for="n1ql_curl_access_unrestricted" class="checkbox">
+                Unrestricted
               </label>
             </div>
             <div class="formrow"
