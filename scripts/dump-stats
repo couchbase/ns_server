@@ -2,7 +2,7 @@
 %% -*- erlang -*-
 %%
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2015-2017 Couchbase, Inc.
+%% @copyright 2015-2018 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -65,18 +65,18 @@ stream_archives(Archives, Yield) ->
 
 stream_bucket_archives(Bucket, Archives, Yield) ->
     Yield({kv_start, Bucket}),
+    Yield(object_start),
     lists:foreach(
       fun ({Period, Path}) ->
               stream_one_archive(Period, Path, Yield)
       end, Archives),
+    Yield(object_end),
     Yield(kv_end).
 
 stream_one_archive(Period, Path, Yield) ->
-    Yield(object_start),
     Yield({kv_start, Period}),
     do_stream_one_archive(Path, Yield),
-    Yield(kv_end),
-    Yield(object_end).
+    Yield(kv_end).
 
 do_stream_one_archive(Path, Yield) ->
     case file:open(Path, [raw, binary, read]) of
