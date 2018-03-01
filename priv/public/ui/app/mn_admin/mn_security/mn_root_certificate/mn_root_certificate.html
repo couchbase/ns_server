@@ -1,7 +1,11 @@
-<div mn-spinner="!rootCertificateCtl.certificate" class="margin-top-half">
-  <p>
-    The cluster is currently using a <strong>{{(rootCertificateCtl.certificate.cert.type == "generated") ? "self-signed" : "signed"}}</strong> SSL/TLS certificate.
-  </p>
+<div
+   mn-spinner="!rootCertificateCtl.certificate"
+   class="forms fix-width-7">
+  <div class="content-box">
+    <p>
+      This cluster is currently using a <strong>{{(rootCertificateCtl.certificate.cert.type == "generated") ? "self-signed" : "signed"}}</strong> SSL/TLS certificate.
+    </p>
+  </div>
   <span ng-show="rootCertificateCtl.certificate.cert.subject || rootCertificateCtl.certificate.cert.expires">
     <div ng-show="rootCertificateCtl.certificate.cert.subject">
       Subject: {{rootCertificateCtl.certificate.cert.subject}}
@@ -11,13 +15,15 @@
     </div>
   </span>
   <textarea
-     class="width-680"
      rows="15"
      autocorrect="off"
      autocapitalize="off"
      spellcheck="false"
      readonly="readonly">{{rootCertificateCtl.certificate.cert.pem}}</textarea>
-  <div class="error error-field" ng-show="rootCertificateCtl.certificate.warnings.length">
+
+  <div
+     class="error margin-top-half"
+     ng-show="rootCertificateCtl.certificate.warnings.length">
     Warning:
     <div ng-repeat="warn in rootCertificateCtl.certificate.warnings">
       -
