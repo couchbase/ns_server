@@ -76,8 +76,7 @@ handle_settings_post(Req) ->
                                            ?DEFAULT_EVENTS_ALLOWED),
             Extras = proplists:get_value(extras, Params),
             auto_failover:enable(Timeout, MaxCount, Extras),
-            %% TODO: Audit the extras?
-            ns_audit:enable_auto_failover(Req, Timeout, MaxCount),
+            ns_audit:enable_auto_failover(Req, Timeout, MaxCount, Extras),
             reply(Req, 200);
         {true, {error, Errors}} ->
             reply_json(Req, {struct, [{errors, {struct, Errors}}]}, 200);

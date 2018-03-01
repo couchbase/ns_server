@@ -50,7 +50,7 @@
          xdcr_update_replication/3,
          xdcr_cancel_replication/2,
          xdcr_update_global_settings/2,
-         enable_auto_failover/3,
+         enable_auto_failover/4,
          disable_auto_failover/1,
          reset_auto_failover_count/1,
          alerts/2,
@@ -567,9 +567,20 @@ xdcr_cancel_replication(Req, Id) ->
 xdcr_update_global_settings(Req, Settings) ->
     put(xdcr_update_global_settings, Req, [{settings, {prepare_list(Settings)}}]).
 
-enable_auto_failover(Req, Timeout, MaxNodes) ->
-    put(enable_auto_failover, Req, [{timeout, Timeout},
-                                    {max_nodes, MaxNodes}]).
+build_auto_failover_extras(Extras) ->
+    lists:foldl(
+      fun ({failover_on_data_disk_issues, V}, Acc) ->
+              [{failover_on_data_disk_issues, {prepare_list(V)}} | Acc];
+          ({failover_server_group, _} = T, Acc) ->
+              [T | Acc];
+          (_, Acc) ->
+              Acc
+      end, [], Extras).
+
+enable_auto_failover(Req, Timeout, MaxNodes, Extras) ->
+    Params = [{timeout, Timeout}, {max_nodes, MaxNodes}] ++
+        build_auto_failover_extras(Extras),
+    put(enable_auto_failover, Req, Params).
 
 disable_auto_failover(Req) ->
     put(disable_auto_failover, Req, []).
