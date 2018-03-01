@@ -37,10 +37,15 @@
                 name :: atom(),
                 revisions :: term()}).
 
+%% Backward compatibility: old doc record is used in pre-vulcan
 -record(doc, {id :: term(),
               rev :: term(),
               deleted :: boolean(),
               value :: term()}).
+
+-record(docv2, {id    :: term(),
+                value :: term(),
+                props :: [{atom(), term()}] | '_'}).
 
 start_link(ChildModule, InitParams, Name, Path, Replicator, CacheSize) ->
     replicated_storage:start_link(Name, ?MODULE,
@@ -54,10 +59,10 @@ delete(Name, Id) ->
     gen_server:call(Name, {interactive_update, delete_doc(Id)}, infinity).
 
 delete_doc(Id) ->
-    #doc{id = Id, rev = 0, deleted = true, value = []}.
+    #docv2{id = Id, value = [], props = [{deleted, true}, {rev, 0}]}.
 
 update_doc(Id, Value) ->
-    #doc{id = Id, rev = 0, deleted = false, value = Value}.
+    #docv2{id = Id, value = Value, props = [{deleted, false}, {rev, 0}]}.
 
 delete_all(Name) ->
     Keys =
@@ -80,11 +85,13 @@ get(TableName, Id) ->
             {Id, V};
         false ->
             case dets:lookup(TableName, Id) of
-                [#doc{id = Id, deleted = false, value = Value}] ->
-                    TableName ! {cache, Id},
-                    {Id, Value};
-                [#doc{id = Id, deleted = true}] ->
-                    false;
+                [#docv2{id = Id, value = Value} = D] ->
+                    case is_deleted(D) of
+                        true -> false;
+                        false ->
+                            TableName ! {cache, Id},
+                            {Id, Value}
+                    end;
                 [] ->
                     false
             end
@@ -102,7 +109,7 @@ select(Name, KeySpec, N) ->
     select(Name, KeySpec, N, false).
 
 select(Name, KeySpec, N, Locked) ->
-    DocSpec = #doc{id = KeySpec, deleted = false, _ = '_'},
+    DocSpec = #docv2{id = KeySpec, _ = '_'},
     MatchSpec = [{DocSpec, [], ['$_']}],
 
     Select =
@@ -115,9 +122,13 @@ select(Name, KeySpec, N, Locked) ->
 
     ?make_producer(Select(Name, MatchSpec, N,
                           fun (Selection) ->
-                                  lists:foreach(fun (#doc{id = Id, value = Value}) ->
-                                                        ?yield({Id, Value})
-                                                end, Selection)
+                                  lists:foreach(
+                                    fun (#docv2{id = Id, value = Value} = D) ->
+                                            case is_deleted(D) of
+                                                false -> ?yield({Id, Value});
+                                                true -> ok
+                                            end
+                                    end, Selection)
                           end)).
 
 select_with_update(Name, KeySpec, N, UpdateFun) ->
@@ -139,7 +150,7 @@ handle_mass_update({Name, KeySpec, N, UpdateFun}, Updater, _State) ->
                      end
              end)),
     {RawErrors, ParentState} = pipes:run(select(Name, KeySpec, N, true), Transducer, Updater),
-    Errors = [{Id, Error} || {#doc{id = Id}, Error} <- RawErrors],
+    Errors = [{Id, Error} || {#docv2{id = Id}, Error} <- RawErrors],
     {Errors, ParentState}.
 
 init([Name, ChildModule, InitParams, Path, Replicator, CacheSize]) ->
@@ -154,12 +165,20 @@ init([Name, ChildModule, InitParams, Path, Replicator, CacheSize]) ->
 init_after_ack(State = #state{name = TableName}) ->
     ok = open(State),
     Revisions = ets:new(ok, [set, private]),
-    MatchSpec = ets:fun2ms(fun (#doc{id = Id, rev = Rev}) -> {Id, Rev} end),
+    MatchSpec = ets:fun2ms(fun (#docv2{id = Id, props = Props}) ->
+                                   {Id, Props}
+                           end),
 
     Start = os:timestamp(),
+    ExtractRev =
+        fun ({Id, Props}) ->
+                {Id, proplists:get_value(rev, Props)}
+        end,
     select_from_dets_locked(TableName, MatchSpec, 100,
                             fun (Selection) ->
-                                    ets:insert_new(Revisions, Selection)
+                                    ets:insert_new(
+                                      Revisions,
+                                      lists:map(ExtractRev, Selection))
                             end),
     ?log_debug("Loading ~p items, ~p words took ~pms",
                [ets:info(Revisions, size),
@@ -188,9 +207,10 @@ do_open(Path, TableName, Tries) ->
     case dets:open_file(TableName,
                         [{type, set},
                          {auto_save, ns_config:read_key_fast(replicated_dets_auto_save, 60000)},
-                         {keypos, #doc.id},
+                         {keypos, #docv2.id},
                          {file, Path}]) of
         {ok, TableName} ->
+            convert_docs_to_vulcan_in_dets(TableName),
             ok;
         Error ->
             ?log_error("Unable to open ~p, Error: ~p", [Path, Error]),
@@ -198,10 +218,39 @@ do_open(Path, TableName, Tries) ->
             do_open(Path, TableName, Tries - 1)
     end.
 
-get_id(#doc{id = Id}) ->
+convert_docs_to_vulcan_in_dets(Table) ->
+    ?log_info("Checking for pre vulcan records in dets: ~p", [Table]),
+    dets:safe_fixtable(Table, true),
+    %% Dialyzer thinks it's invalid spec if #doc{} is specified inside the spec
+    %% looks like bug in dialyzer
+    Spec = [{'$1', [{'==', doc, {element, 1, '$1'}}],
+            [{element, #doc.id, '$1'}]}],
+    Ids = dets:select(Table, Spec),
+    dets:safe_fixtable(Table, false),
+    case Ids of
+        [] -> ok;
+        _ ->
+            ?log_info("Start converting ~p records to vulcan in dets: ~p",
+                      [length(Ids), Table]),
+            lists:foreach(
+              fun (Id) ->
+                      case dets:lookup(Table, Id) of
+                          [Doc] ->
+                              dets:insert(Table, convert_doc_to_vulcan(Doc));
+                          [] ->
+                              ok
+                      end
+              end, Ids),
+            dets:sync(Table),
+            ?log_info("Finished converting older docs to vulcan in dets: ~p",
+                      [Table]),
+            ok
+    end.
+
+get_id(#docv2{id = Id}) ->
     Id.
 
-get_value(#doc{value = Value}) ->
+get_value(#docv2{value = Value}) ->
     Value.
 
 find_doc(Id, #state{name = TableName}) ->
@@ -224,34 +273,60 @@ all_docs(Pid) ->
     ?make_producer(select_from_dets(Pid, [{'_', [], ['$_']}], 500,
                                     fun (Batch) -> ?yield({batch, Batch}) end)).
 
-get_revision(#doc{rev = Rev}) ->
-    Rev.
+get_revision(#docv2{props = Props}) ->
+    proplists:get_value(rev, Props).
 
 set_revision(Doc, NewRev) ->
-    Doc#doc{rev = NewRev}.
+    misc:update_field(#docv2.props, Doc,
+        fun (Props) ->
+                misc:update_proplist(Props, [{rev, NewRev}])
+        end).
 
-is_deleted(#doc{deleted = Deleted}) ->
-    Deleted.
+is_deleted(#docv2{props = Props}) ->
+    proplists:get_bool(deleted, Props).
 
 save_docs(Docs, #state{name = TableName,
                        child_module = ChildModule,
                        child_state = ChildState,
                        revisions = Revisions} = State) ->
     ok = dets:insert(TableName, Docs),
-    true = ets:insert(Revisions, [{Doc#doc.id, Doc#doc.rev} || Doc <- Docs]),
-    lists:foreach(fun (#doc{id = Id, deleted = true}) ->
-                          _ = mru_cache:delete(TableName, Id);
-                      (#doc{id = Id, deleted = false, value = Value}) ->
-                          _ = mru_cache:update(TableName, Id, Value)
+    true = ets:insert(Revisions,
+                      [{Doc#docv2.id, get_revision(Doc)} || Doc <- Docs]),
+    lists:foreach(fun (#docv2{id = Id, value = Value} = Doc) ->
+                          case is_deleted(Doc) of
+                              true ->
+                                  _ = mru_cache:delete(TableName, Id);
+                              false ->
+                                  _ = mru_cache:update(TableName, Id, Value)
+                          end
                   end, Docs),
     NewChildState = ChildModule:on_save(Docs, ChildState),
     {ok, State#state{child_state = NewChildState}}.
 
 on_replicate_in(Doc) ->
-    Doc.
+    convert_doc_to_vulcan(Doc).
 
 on_replicate_out(Doc) ->
-    Doc.
+    case cluster_compat_mode:is_cluster_vulcan() of
+        true ->
+            Doc;
+        false ->
+            convert_doc_to_pre_vulcan(Doc)
+    end.
+
+convert_doc_to_vulcan(#docv2{} = Doc) ->
+    Doc;
+convert_doc_to_vulcan(
+  #doc{id = Id, rev = Rev, deleted = Deleted, value = Value}) ->
+    #docv2{id = Id,
+           value = Value,
+           props = [{deleted, Deleted}, {rev, Rev}]}.
+
+convert_doc_to_pre_vulcan(#docv2{id = Id, value = Value} = Doc) ->
+    #doc{id = Id,
+         value = Value,
+         rev = get_revision(Doc),
+         deleted = is_deleted(Doc)}.
 
 handle_call(suspend, {Pid, _} = From, #state{name = TableName} = State) ->
     MRef = erlang:monitor(process, Pid),
@@ -283,9 +358,14 @@ handle_call(Msg, From, #state{name = TableName,
 
 handle_info({cache, Id} = Msg, #state{name = TableName} = State) ->
     case dets:lookup(TableName, Id) of
-        [#doc{id = Id, deleted = false, value = Value}] ->
-            _ = mru_cache:add(TableName, Id, Value);
-        _ ->
+        [#docv2{id = Id, value = Value} = Doc] ->
+            case is_deleted(Doc) of
+                false ->
+                    _ = mru_cache:add(TableName, Id, Value);
+                true ->
+                    ok
+            end;
+        [] ->
             ok
     end,
     misc:flush(Msg),
