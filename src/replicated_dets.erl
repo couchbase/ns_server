@@ -23,7 +23,8 @@
 
 -behaviour(replicated_storage).
 
--export([start_link/6, set/3, delete/2, delete_all/1, get/2, get/3, select/3, select/4, empty/1,
+-export([start_link/6, set/3, delete/2, delete_all/1, get/2, get/3,
+         get_last_modified/3, select/3, select/4, empty/1,
          select_with_update/4]).
 
 -export([init/1, init_after_ack/1, handle_call/3, handle_info/2,
@@ -62,7 +63,14 @@ delete_doc(Id) ->
     #docv2{id = Id, value = [], props = [{deleted, true}, {rev, 0}]}.
 
 update_doc(Id, Value) ->
-    #docv2{id = Id, value = Value, props = [{deleted, false}, {rev, 0}]}.
+    %% we don't want last_modified to appear on mixed clusters
+    LastModified =
+        case cluster_compat_mode:is_cluster_vulcan() of
+            true -> [{last_modified, time_compat:os_system_time(millisecond)}];
+            false -> []
+        end,
+    #docv2{id = Id, value = Value,
+           props = [{deleted, false}, {rev, 0}] ++ LastModified}.
 
 delete_all(Name) ->
     Keys =
@@ -103,6 +111,21 @@ get(Name, Id, Default) ->
             Default;
         {Id, Value} ->
             Value
+    end.
+
+get_last_modified(Name, Id, Default) ->
+    case dets:lookup(Name, Id) of
+        [#docv2{props = Props} = D] ->
+            case is_deleted(D) of
+                true -> Default;
+                false ->
+                    case proplists:get_value(last_modified, Props) of
+                        undefined -> Default;
+                        Timestamp -> Timestamp
+                    end
+            end;
+        [] ->
+            Default
     end.
 
 select(Name, KeySpec, N) ->
