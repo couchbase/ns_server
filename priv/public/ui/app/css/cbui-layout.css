@@ -452,9 +452,7 @@ footer {
 .margin-left-3, .indent-3 {
   margin-left: 3rem !important;
 }
-.margin-left-neg-disclosure {
-  margin-left: -1.2rem !important;
-}
+
 /* padding ------------------------------------------------------------- */
 .padding-0 {
   padding: 0 !important;
