@@ -40,7 +40,6 @@
                                          "transfer-encoding",
                                          "www-authenticate"]}).
 -type service_name()   :: atom().
--type rest_api_prefix():: string().
 -type proxy_strategy() :: local.
 -type filter_op()      :: keep | drop.
 -type ui_compat_version() :: [integer()].
