@@ -427,6 +427,11 @@ section.error {
   color: #333;
 }
 
+.disabled-tag {
+  pointer-events: none;
+  opacity: .3;
+}
+
 /* list of properties in the bucket details section --------------------- */
 .cbui-table-bucketprops {
   line-height: 2.2;

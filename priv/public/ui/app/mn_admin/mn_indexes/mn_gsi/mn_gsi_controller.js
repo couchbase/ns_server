@@ -10,10 +10,13 @@
     'mnSpinner',
     'mnFilters',
     'mnSearch',
-    'mnElementCrane'
+    'mnElementCrane',
+    'ui.bootstrap',
+    'mnPromiseHelper',
+    'mnAlertsService'
   ]).controller('mnGsiController', mnGsiController);
 
-  function mnGsiController($scope, mnGsiService, mnHelper, mnPoller, mnPoolDefault) {
+  function mnGsiController($scope, mnGsiService, mnHelper, mnPoller, mnPoolDefault, $uibModal, mnPromiseHelper, mnAlertsService) {
     var vm = this;
     vm.generateIndexId = generateIndexId;
     vm.focusindexFilter = false;
@@ -41,20 +44,35 @@
 
     // we can show Edit / Delete buttons if there is a query service
     function hasQueryService() {
-        return (mnPoolDefault.latestValue().value.thisNode.services
+        return (mnPoolDefault.export.thisNode.services
                 .indexOf('n1ql') != -1);
     }
 
-    // to drop an index, we create a 'DROP' query to send to the query workbench
     function dropIndex(row) {
-        //console.log("dropping row: " + JSON.stringify(row));
-        return('DROP INDEX `' + row.bucket + '`.`' + row.index + '`');
+      $uibModal.open({
+        windowClass: "z-index-10001",
+        templateUrl: 'app/mn_admin/mn_indexes/mn_gsi/mn_gsi_drop_confirm_dialog.html'
+      }).result.then(function () {
+        row.awaytingRemoval = true;
+        mnPromiseHelper(vm, mnGsiService.postDropIndex(row))
+          .showGlobalSpinner()
+          .catchErrors(function (resp) {
+            if (!resp) {
+              return;
+            } else if (_.isString(resp)) {
+              mnAlertsService.formatAndSetAlerts(resp.data, "error", 4000);
+            } else if (resp.errors && resp.errors.length) {
+              mnAlertsService.formatAndSetAlerts(_.map(resp.errors, "msg"), "error", 4000);
+            }
+            row.awaytingRemoval = false;
+          })
+          .showGlobalSuccess("Index dropped successfully!");
+      });
     }
 
     // to edit an index, we create a 'CREATE' query to send to the query workbench
     function editIndex(row) {
-        //console.log("Editing row: " + JSON.stringify(row));
-        return(row.definition + '\nWITH {"nodes": ' + row.hosts.join(', ') + '}');
+        return (row.definition + '\nWITH {"nodes": ' + row.hosts.join(', ') + '}');
     }
   }
 })();

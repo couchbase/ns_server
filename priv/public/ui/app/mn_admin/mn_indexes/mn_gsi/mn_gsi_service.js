@@ -2,14 +2,22 @@
   "use strict";
 
   angular.module('mnGsiService', [
+    "qwQuery"
   ]).factory('mnGsiService', mnGsiServiceFactory);
 
-  function mnGsiServiceFactory($http) {
+  function mnGsiServiceFactory($http, qwQueryService) {
     var mnGsiService = {
-      getIndexesState: getIndexesState
+      getIndexesState: getIndexesState,
+      postDropIndex: postDropIndex
     };
 
     return mnGsiService;
+
+    function postDropIndex(row) {
+      // to drop an index, we create a 'DROP' query to send to the query workbench
+      return qwQueryService
+        .executeQueryUtil('DROP INDEX `' + row.bucket + '`.`' + row.index + '`', true);
+    }
 
     function getIndexesState(mnHttpParams) {
       return $http({

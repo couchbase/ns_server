@@ -48,6 +48,7 @@
            ng-repeat="row in group | orderBy:mnSortableTable.sortableTableProperties.orderBy:mnSortableTable.sortableTableProperties.invert | filter:gsiCtl.filterField as byServerFiltered track by gsiCtl.generateIndexId(row)"
            ng-click="gsiCtl.toggleDetails(gsiCtl.generateIndexId(row))"
            class="has-hover" ng-class="{
+                                       'disabled-tag': row.awaytingRemoval,
                                        'dynamic_healthy': row.status == 'Ready',
                                        'dynamic_unhealthy': row.status !== 'Ready'
                                        }">
@@ -59,7 +60,7 @@
             <span class="cbui-table-cell">{{row.storageMode | mnFormatStorageMode:pools.isEnterprise}}</span>
             <span class="cbui-table-cell flex-grow-half"><span ng-if="row.progress">{{row.progress}}%</span></span>
             <span class="cbui-table-cell flex-grow-1 text-right wrap" ng-if="gsiCtl.hasQueryService()" ng-click="$event.stopPropagation();">
-              <button class="outline tight" ui-sref="app.admin.query.workbench({query: gsiCtl.dropIndex(row)})">Drop</button>
+              <button class="outline tight" ng-click="gsiCtl.dropIndex(row)">Drop</button>
               <button class="outline tight" ui-sref="app.admin.query.workbench({query: gsiCtl.editIndex(row)})">Edit</button>
             </span>
           </div>
@@ -97,6 +98,7 @@
            ng-repeat="row in group | orderBy:mnSortableTable.sortableTableProperties.orderBy:mnSortableTable.sortableTableProperties.invert | filter:gsiCtl.filterField as byBucketFiltered track by gsiCtl.generateIndexId(row)"
            ng-click="gsiCtl.toggleDetails(gsiCtl.generateIndexId(row))"
            class="has-hover" ng-class="{
+                                       'disabled-tag': row.awaytingRemoval,
                                        'dynamic_healthy': row.status == 'Ready',
                                        'dynamic_unhealthy': row.status !== 'Ready'
                                        }">
@@ -106,7 +108,7 @@
             <span class="cbui-table-cell">{{row.storageMode | mnFormatStorageMode:pools.isEnterprise}}</span>
             <span class="cbui-table-cell flex-grow-half"><span ng-if="row.progress">{{row.progress}}%</span></span>
             <span class="cbui-table-cell flex-grow-1 text-right wrap" ng-if="gsiCtl.hasQueryService()" ng-click="$event.stopPropagation();">
-              <button class="outline tight" ui-sref="app.admin.query.workbench({query: gsiCtl.dropIndex(row)})">Drop</button>
+              <button class="outline tight" ng-click="gsiCtl.dropIndex(row)">Drop</button>
               <button class="outline tight" ui-sref="app.admin.query.workbench({query: gsiCtl.editIndex(row)})">Edit</button>
             </span>
           </div>
@@ -145,6 +147,7 @@
          ng-repeat="row in gsiCtl.state.indexes | orderBy:mnSortableTable.sortableTableProperties.orderBy:mnSortableTable.sortableTableProperties.invert | filter:gsiCtl.filterField as byIndexFiltered track by gsiCtl.generateIndexId(row)"
          ng-click="gsiCtl.toggleDetails(gsiCtl.generateIndexId(row))"
          class="has-hover" ng-class="{
+                                     'disabled-tag': row.awaytingRemoval,
                                      'dynamic_healthy': row.status == 'Ready',
                                      'dynamic_unhealthy': row.status !== 'Ready'
                                      }">
@@ -157,7 +160,7 @@
           <span class="cbui-table-cell">{{row.storageMode | mnFormatStorageMode:pools.isEnterprise}}</span>
           <span class="cbui-table-cell flex-grow-half"><span ng-if="row.progress">{{row.progress}}%</span></span>
           <span class="cbui-table-cell flex-grow-1 text-right wrap" ng-if="gsiCtl.hasQueryService()" ng-click="$event.stopPropagation();">
-            <button class="outline tight" ui-sref="app.admin.query.workbench({query: gsiCtl.dropIndex(row)})">Drop</button>
+            <button class="outline tight" ng-click="gsiCtl.dropIndex(row)">Drop</button>
             <button class="outline tight" ui-sref="app.admin.query.workbench({query: gsiCtl.editIndex(row)})">Edit</button>
           </span>
         </div>
