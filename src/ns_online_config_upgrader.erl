@@ -72,7 +72,7 @@ upgrade(?VERSION_45, _Config) ->
 
 upgrade(?VERSION_46, Config) ->
     {?VERSION_50,
-     [{delete, roles_definitions} | menelaus_users:config_upgrade() ++
+     [{delete, roles_definitions} | menelaus_users:config_upgrade_to_50() ++
           ns_bucket:config_upgrade_to_50(Config)]};
 
 upgrade(?VERSION_50, Config) ->
@@ -86,6 +86,7 @@ upgrade(?VERSION_51, Config) ->
          query_settings_manager:config_upgrade_to_vulcan() ++
          eventing_settings_manager:config_upgrade_to_vulcan() ++
          ns_bucket:config_upgrade_to_vulcan(Config) ++
+         menelaus_users:config_upgrade_to_vulcan() ++
          ns_audit_cfg:upgrade_to_vulcan(Config)}.
 
 add_index_ram_alert_limit(Config) ->

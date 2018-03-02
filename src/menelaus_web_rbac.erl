@@ -1289,9 +1289,9 @@ handle_post_password_policy(Req) ->
 
 assert_no_users_upgrade() ->
     case menelaus_users:upgrade_status() of
-        undefined ->
+        no_upgrade ->
             ok;
-        started ->
+        upgrade_in_progress ->
             erlang:throw({web_exception,
                           503,
                           "Not allowed during cluster upgrade.",

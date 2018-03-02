@@ -21,6 +21,7 @@
 -include("ns_config.hrl").
 -include("rbac.hrl").
 -include("pipes.hrl").
+-include("cut.hrl").
 
 -include_lib("eunit/include/eunit.hrl").
 
@@ -44,7 +45,9 @@
          get_auth_version/0,
          empty_storage/0,
          upgrade_to_50/2,
-         config_upgrade/0,
+         upgrade_to_vulcan/2,
+         config_upgrade_to_50/0,
+         config_upgrade_to_vulcan/0,
          upgrade_status/0,
          get_passwordless/0,
          filter_out_invalid_roles/3,
@@ -631,11 +634,23 @@ do_upgrade_to_50(Nodes, Repair) ->
               ok = store_user_50_validated({LdapUser, external}, NewProps, same)
       end, LdapUsers).
 
-config_upgrade() ->
+config_upgrade_to_50() ->
     [{delete, users_upgrade}, {delete, read_only_user_creds}].
 
+vulcan_rbac_upgrade_key() ->
+    {rbac_upgrade, ?VULCAN_VERSION_NUM}.
+
+config_upgrade_to_vulcan() ->
+    [{delete, vulcan_rbac_upgrade_key()}].
+
 upgrade_status() ->
-    ns_config:read_key_fast(users_upgrade, undefined).
+    UserUpgrade = ns_config:read_key_fast(users_upgrade, undefined),
+    RolesUpgrade = ns_config:read_key_fast(vulcan_rbac_upgrade_key(),
+                                           undefined),
+    case {UserUpgrade, RolesUpgrade} of
+        {undefined, undefined} -> no_upgrade;
+        _ -> upgrade_in_progress
+    end.
 
 filter_out_invalid_roles(Props, Definitions, AllPossibleValues) ->
     Roles = proplists:get_value(roles, Props, []),
@@ -667,3 +682,57 @@ cleanup_bucket_roles(BucketName) ->
             ?log_warning("Failed to cleanup some roles: ~p", [Errors]),
             ok
     end.
+
+upgrade_to_vulcan(Config, Nodes) ->
+    try
+        case ns_config:search(Config, vulcan_rbac_upgrade_key()) of
+            false ->
+                ns_config:set(vulcan_rbac_upgrade_key(), started);
+            {value, started} ->
+                ?log_debug("Found unfinished roles upgrade. Continue.")
+        end,
+        do_upgrade_to_vulcan(Nodes),
+        ok
+    catch T:E ->
+              ale:error(?USER_LOGGER, "Unsuccessful user storage upgrade.~n~p",
+                        [{T, E, erlang:get_stacktrace()}]),
+              error
+    end.
+
+upgrade_roles_to_vulcan(OldRoles) ->
+    lists:flatmap(fun maybe_upgrade_role_to_vulcan/1, OldRoles).
+
+maybe_upgrade_role_to_vulcan(cluster_admin) ->
+    [cluster_admin, {bucket_full_access, [any]}];
+maybe_upgrade_role_to_vulcan(Role) ->
+    [Role].
+
+upgrade_user_roles_to_vulcan(Props) ->
+    OldRoles = proplists:get_value(roles, Props),
+    %% Convert roles and remove duplicates.
+    NewRoles = lists:usort(upgrade_roles_to_vulcan(OldRoles)),
+    [{roles, NewRoles} | lists:keydelete(roles, 1, Props)].
+
+user_roles_require_upgrade({{user, _Identity}, Props}) ->
+    Roles = proplists:get_value(roles, Props),
+    lists:any(?cut(maybe_upgrade_role_to_vulcan(_1) =/= [_1]), Roles).
+
+fetch_users_for_vulcan_upgrade() ->
+    pipes:run(menelaus_users:select_users({'_', '_'}),
+              [pipes:filter(fun user_roles_require_upgrade/1),
+               pipes:map(fun ({{user, I}, _}) -> I end)],
+              pipes:collect()).
+
+do_upgrade_to_vulcan(Nodes) ->
+    %% propagate vulcan_rbac_upgrade_key to nodes
+    ok = ns_config_rep:ensure_config_seen_by_nodes(Nodes),
+
+    replicated_storage:sync_to_me(
+      storage_name(), ?get_timeout(vulcan_rbac_upgrade_key(), 60000)),
+
+    UpdateUsers = fetch_users_for_vulcan_upgrade(),
+    lists:foreach(fun (Identity) ->
+                          OldProps = get_user_props(Identity),
+                          NewProps = upgrade_user_roles_to_vulcan(OldProps),
+                          store_user_50_validated(Identity, NewProps, same)
+                  end, UpdateUsers).
