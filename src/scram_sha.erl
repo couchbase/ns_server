@@ -20,6 +20,7 @@
 -module(scram_sha).
 
 -include("cut.hrl").
+-include_lib("eunit/include/eunit.hrl").
 
 -export([start_link/0,
          authenticate/1,
@@ -286,3 +287,163 @@ handle_proofs(Sha, SaltedPassword, Proof, AuthMessage) ->
         true ->
             calculate_server_proof(Sha, SaltedPassword, AuthMessage)
     end.
+
+-ifdef(EUNIT).
+
+shas() ->
+    [sha512, sha256, sha].
+
+pbkdf2(Sha, Password, Salt, Iterations) ->
+    Initial = crypto:hmac(Sha, Password, <<Salt/binary, 1:32/integer>>),
+    pbkdf2_iter(Sha, Password, Salt, Iterations - 1, Initial, Initial).
+
+pbkdf2_iter(_Sha, _Password, _Salt, 0, _Prev, Acc) ->
+    Acc;
+pbkdf2_iter(Sha, Password, Salt, Iteration, Prev, Acc) ->
+    Next = crypto:hmac(Sha, Password, Prev),
+    pbkdf2_iter(Sha, Password, Salt, Iteration - 1,
+                Next, crypto:exor(Next, Acc)).
+
+build_client_first_message(Sha, Nonce, User) ->
+    Bare = "n=" ++ User ++ ",r=" ++ Nonce,
+    "SCRAM-" ++ Prefix  = www_authenticate_prefix(Sha),
+    {Prefix ++ " data=" ++ base64:encode_to_string("n,," ++ Bare), Bare}.
+
+parse_server_first_response(Sha, Nonce, Header) ->
+    Prefix = "A" ++ www_authenticate_prefix(Sha) ++ " ",
+    Message = misc:string_prefix(Header, Prefix),
+    ["sid=" ++ Sid, "data=" ++ Data] = string:tokens(Message, ","),
+
+    DecodedData = base64:decode_to_string(Data),
+
+    ["r=" ++ ServerNonce, "s=" ++ Salt, "i=" ++ Iter] =
+        string:tokens(DecodedData, ","),
+
+    ?assertNotEqual(nomatch, misc:string_prefix(ServerNonce, Nonce)),
+    {Sid, base64:decode(Salt), list_to_integer(Iter), ServerNonce, DecodedData}.
+
+build_client_final_message(Sha, Sid, Nonce, SaltedPassword, Message) ->
+    WithoutProof = "c=biws,r=" ++ Nonce,
+    FullMessage = Message ++ "," ++ WithoutProof,
+
+    Proof = base64:encode_to_string(calculate_client_proof(
+                                      Sha, SaltedPassword, FullMessage)),
+
+    Data = WithoutProof ++ ",p=" ++ Proof,
+
+    "SCRAM-" ++ Prefix  = www_authenticate_prefix(Sha),
+    {Prefix ++ " data=" ++ base64:encode_to_string(Data) ++ ",sid=" ++ Sid,
+     FullMessage}.
+
+check_server_proof(Sha, Sid, SaltedPassword, Message, Header) ->
+    Prefix = "Isid=" ++ Sid ++ ",data=",
+    "v=" ++ ProofFromServer =
+        base64:decode_to_string(misc:string_prefix(Header, Prefix)),
+
+    Proof = calculate_server_proof(Sha, SaltedPassword, Message),
+    ?assertEqual(ProofFromServer, base64:encode_to_string(Proof)).
+
+
+client_auth(Sha, User, Password, Nonce) ->
+    {ToSend, ClientFirstMessage} =
+        build_client_first_message(Sha, Nonce, User),
+
+    MetaHeader = meta_header(),
+    case authenticate(ToSend) of
+        {auth_failure, [{MetaHeader, Header}]} ->
+            {Sid, Salt, Iterations, ServerNonce, ServerFirstMessage} =
+                parse_server_first_response(Sha, Nonce, Header),
+
+            SaltedPassword = pbkdf2(Sha, Password, Salt, Iterations),
+            {ToSend1, ForProof} =
+                build_client_final_message(
+                  Sha, Sid, ServerNonce, SaltedPassword,
+                  ClientFirstMessage ++ "," ++ ServerFirstMessage),
+            case authenticate(ToSend1) of
+                {ok, {User, admin}, [{MetaHeader, Header1}]} ->
+                    check_server_proof(Sha, Sid, SaltedPassword,
+                                       ForProof, Header1),
+                    ok;
+                {auth_failure, [{MetaHeader, _}]} ->
+                    auth_failure
+            end;
+        {auth_failure, []} ->
+            first_stage_failed
+    end.
+
+pbkdf2_t(Sha, Password, Auth) ->
+    {Props} = proplists:get_value(auth_info_key(Sha), Auth),
+    SaltedPasswordCPP =
+        base64:decode(proplists:get_value(<<"h">>, Props)),
+    Salt = base64:decode(proplists:get_value(<<"s">>, Props)),
+    Iterations = proplists:get_value(<<"i">>, Props),
+
+    SaltedPasswordErlang =
+        pbkdf2(Sha, Password, Salt, Iterations),
+    ?assertEqual(SaltedPasswordErlang, SaltedPasswordCPP).
+
+pbkdf2_test_() ->
+    {setup,
+     fun () ->
+             ns_config:test_setup([]),
+             Password = "123456789",
+             Auth = menelaus_users:build_memcached_auth(Password),
+             {Password, Auth}
+     end,
+     fun ({Password, Auth}) ->
+             [{"pbkdf2 test for " ++ atom_to_list(Sha),
+               ?cut(pbkdf2_t(Sha, Password, Auth))} || Sha <- shas()]
+     end}.
+
+calculate_client_proof_regression_test() ->
+    ?assertEqual(
+       "nNoiOTTsg6xXguLqGhW21taip2Ec/iSyrxmQunnB5o4FFHJ1uOrqO6NHR5i0llfFNgkc"
+       "XkgArkX3HEzUv8pSuA==",
+       base64:encode_to_string(
+         calculate_client_proof(sha512, "asdsvdbxgfbdf", "ggkjhlhiuyfhcf"))).
+
+calculate_server_proof_regression_test() ->
+    ?assertEqual(
+       "psZBJnp2+qyiPJOICKNvaYIMbg1hl3RqH613PG03zFFN4EQQLDA/Xg5hMHxGBK2y2nTxk"
+       "xYW7EiK5/PrZve/yg==",
+       base64:encode_to_string(
+         calculate_server_proof(sha512, "asdsvdbxgfbdf", "ggkjhlhiuyfhcf"))).
+
+scram_sha_t({User, Password, Nonce, _}) ->
+    lists:flatmap(
+      fun (Sha) ->
+              Postfix = " test for " ++ atom_to_list(Sha),
+              [{"Successful auth" ++ Postfix,
+                ?_assertEqual(ok, client_auth(Sha, User, Password, Nonce))},
+               {"Wrong password" ++ Postfix,
+                ?_assertEqual(auth_failure,
+                              client_auth(Sha, User, "wrong", Nonce))},
+               {"Unknown user" ++ Postfix,
+                ?_assertEqual(first_stage_failed,
+                              client_auth(Sha, "wrong", "wrong", Nonce))}]
+      end, shas()).
+
+setup_t() ->
+    meck:new(menelaus_users, [passthrough]),
+    meck:expect(menelaus_users, get_auth_info, fun(_) -> false end),
+
+    ns_config:test_setup([]),
+    {ok, Pid} = start_link(),
+
+    User = "testuser",
+    Password = "qwerty",
+    Nonce = gen_nonce(),
+
+    Auth = menelaus_users:build_memcached_auth(Password),
+    ns_config:test_setup([{rest_creds, {User, {auth, Auth}}}]),
+    {User, Password, Nonce, Pid}.
+
+cleanup_t({_, _, _, Pid}) ->
+    unlink(Pid),
+    misc:terminate_and_wait(Pid, normal),
+    meck:unload(menelaus_users).
+
+scram_sha_test_() ->
+    {setup, fun setup_t/0, fun cleanup_t/1, fun scram_sha_t/1}.
+
+-endif.
