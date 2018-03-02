@@ -10,9 +10,10 @@ angular.module('mnSettingsNotificationsService', [
   'mnGsiService',
   'mnAuditService',
   'mnFilters',
-  'mnPermissions'
+  'mnPermissions',
+  'mnTasksDetails'
 ]).factory('mnSettingsNotificationsService',
-  function ($http, mnPoolDefault, mnBucketsService, mnPools, $q, $window, $rootScope, mnAnalyticsService, mnViewsListService, mnGsiService, mnAuditService, mnMBtoBytesFilter, mnPermissions, mnSettingsClusterService, mnSettingsAutoFailoverService, mnSettingsAutoCompactionService) {
+  function ($http, mnPoolDefault, mnBucketsService, mnPools, $q, $window, $rootScope, mnAnalyticsService, mnViewsListService, mnGsiService, mnAuditService, mnMBtoBytesFilter, mnPermissions, mnSettingsClusterService, mnSettingsAutoFailoverService, mnSettingsAutoCompactionService, mnTasksDetails, mnXDCRService) {
     var mnSettingsNotificationsService = {};
 
     function sumWithoutNull(array, average) {
@@ -39,6 +40,10 @@ angular.module('mnSettingsNotificationsService', [
       var indexSettings = source[6];
       var autoFailoverSettings = source[7];
       var autoCompactionSettings = source[8];
+
+      // XDCR
+      var remotes = source[9];
+      var xdcr_tasks = source[10];
 
       function getAvgPerItem(items, filter) {
         var avgs = [];
@@ -123,8 +128,34 @@ angular.module('mnSettingsNotificationsService', [
           total_curr_items_tot: 0, //Total number of items across all buckets
           total_fts_indexes: 0
         },
+        xdcr: {},
         browser: $window.navigator.userAgent
       };
+
+      // get XDCR remote cluster info
+      if (remotes && remotes.filtered) {
+          stats.xdcr.remotes = remotes.filtered.map(function (remote) {
+                  return {
+                      hostname: remote.hostname,
+                      name: remote.name,
+                      uuid: remote.uuid
+                  };
+              });
+      }
+
+      // also get information about each XDCR replication
+      if (xdcr_tasks && xdcr_tasks.tasksXDCR) {
+          stats.xdcr.replications = xdcr_tasks.tasksXDCR.map(function (task) {
+                  return {
+                      source_bucket: task.source,
+                      dest_bucket: task.target.split('buckets/')[1],
+                      dest_cluster: task.id.split('/')[0],
+                      filter: task.filterExpression,
+                      protocol: task.replicationType,
+                      status: task.status
+                  };
+              });
+      }
 
       for(i in poolsDefault.nodes) {
         stats.nodes.os.push(poolsDefault.nodes[i].os);
@@ -281,6 +312,13 @@ angular.module('mnSettingsNotificationsService', [
         if (mnPermissions.export.cluster.settings.read) {
           queries[8] = mnSettingsAutoCompactionService.getAutoCompaction();
         }
+
+        // collect info about XDCR
+        if (mnPermissions.export.cluster.xdcr.remote_clusters.read)
+          queries[9] = mnXDCRService.getReplicationState();
+
+        if (mnPermissions.export.cluster.tasks.read)
+           queries[10] = mnTasksDetails.get(mnHttpParams);
 
         return $q.all(queries).then(buildPhoneHomeThingy);
       });
