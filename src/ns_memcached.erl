@@ -748,7 +748,7 @@ terminate(Reason, #state{bucket=Bucket, sock=Sock}) ->
 
     Deleting = NoBucket orelse NodeDying,
 
-    case misc:is_normal_termination(Reason) of
+    case misc:is_normal_termination(Reason) or Deleting of
         true ->
             Reconfig = (Reason =:= {shutdown, reconfig}),
 
