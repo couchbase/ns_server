@@ -22,7 +22,7 @@ html, body, .root-container {
 /* blue header area w/ logo, title, action links ------------------------ */
 header {
   display: flex;
-  flex-wrap: no-wrap;
+  flex-wrap: nowrap;
   justify-content: flex-start;
   align-items: center;
   background-color: #4287d6;
@@ -33,14 +33,9 @@ header {
 }
 /* contains all content below the header -------------------------------- */
 main {
-  display:-webkit-box;
-  display:-ms-flexbox;
-  display:flex;
-  -ms-flex-wrap:no-wrap;
-  flex-wrap:no-wrap;
-  -webkit-box-align:start;
-  -ms-flex-align:start;
-  align-items:flex-start;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
   padding: 1rem;
   margin: 0;
   width: 100vw;
@@ -56,7 +51,7 @@ nav.nav-sidebar {
   flex: 0 0 auto;
   border-right: 1px solid #ececec;
   padding: .5rem 0 2rem 0;
-  margin: 0 2rem 0 0;
+  margin: .25rem 2rem 0 0;
   text-align: right;
 }
 /* wrapper for all content in <main> besides sidebar -------------------- */
