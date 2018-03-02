@@ -319,6 +319,9 @@ handle_call(Msg, From, State) ->
     NewState = queue_call(Msg, From, StartTS, State),
     {noreply, NewState}.
 
+perform_very_long_call(Fun) ->
+    perform_very_long_call(Fun, undefined).
+
 perform_very_long_call(Fun, Bucket) ->
     perform_very_long_call(Fun, Bucket, []).
 
@@ -816,7 +819,7 @@ run_check_config(Bucket, Parent) ->
                       ok
               end,
               {reply, ok}
-      end, Bucket).
+      end).
 
 -spec active_buckets() -> [bucket_name()].
 active_buckets() ->
