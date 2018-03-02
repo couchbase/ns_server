@@ -406,8 +406,8 @@ build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
 
 build_bucket_capabilities(BucketConfig) ->
     MoreCaps = [C || {C, true} <-
-                         [{xattr, cluster_compat_mode:is_cluster_50()},
-                          {snappy, cluster_compat_mode:is_cluster_vulcan()}]],
+                         [{xattr, cluster_compat_mode:is_cluster_50()}]],
+
     Caps =
         case ns_bucket:bucket_type(BucketConfig) of
             membase ->
