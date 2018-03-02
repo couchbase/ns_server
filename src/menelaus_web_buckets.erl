@@ -1421,7 +1421,7 @@ do_parse_validate_compression_mode(_, false, _CompMode, _BucketCfg, _IsNew) ->
      <<"Compression mode can not be set until the cluster is fully vulcan">>};
 do_parse_validate_compression_mode(true, true, CompMode, BucketCfg, IsNew) ->
     DefaultVal = case IsNew of
-                     true -> off;
+                     true -> passive;
                      false -> proplists:get_value(compression_mode, BucketCfg)
                  end,
     validate_with_missing(CompMode, atom_to_list(DefaultVal), IsNew,
