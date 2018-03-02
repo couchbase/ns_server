@@ -21,6 +21,12 @@
   );
   var dataTypes_array = dataTypes.split('|');
 
+  var terms = [
+    {name:"keyword", tokens: keywords_array},
+    {name:"built-in", tokens: builtinConstants_array},
+    {name:"function", tokens: builtinFunctions_array}
+  ];
+
   define("ace/mode/sql_plus_plus_highlight_rules",["require","exports","module","ace/lib/oop","ace/mode/text_highlight_rules"],
       function(require, exports, module) {
     "use strict";
@@ -137,30 +143,17 @@
 
       this.getCompletions = function(state, session, pos, prefix) {
         var token = session.getTokenAt(pos.row, pos.column);
-
-        // return only matching keywords, constants, or datatypes
         var results = [];
-
-        for (var i=0; i<keywords_array.length; i++)
-          if (_.startsWith(keywords_array[i],prefix))
-            results.push({value: keywords_array[i], meta: 'keyword', score: 1});
-
-        for (var i=0; i<builtinConstants_array.length; i++)
-          if (_.startsWith(builtinConstants_array[i],prefix))
-            results.push({value: builtinConstants_array[i], meta: 'built-in', score: 1});
-
-        for (var i=0; i<builtinFunctions_array.length; i++)
-          if (_.startsWith(builtinFunctions_array[i],prefix))
-            results.push({value: builtinFunctions_array[i], meta: 'function', score: 1});
-
-        for (var i=0; i<dataTypes_array.length; i++)
-          if (_.startsWith(dataTypes_array[i],prefix))
-            results.push({value: dataTypes_array[i], meta: 'datatype', score: 1});
-
+        var prefix_upper = prefix.toLocaleUpperCase();
+        for (var i = 0; i < terms.length; i++) {
+          for (var t = 0; t < terms[i].tokens.length; t++) {
+            if (_.startsWith(terms[i].tokens[t].toLocaleUpperCase(), prefix_upper)) {
+              results.push({ value: terms[i].tokens[t], meta: terms[i].name, score: 1 });
+            }
+          }
+        }
         return results;
       };
-
-
     }).call(SqlPlusPlusCompletions.prototype);
 
     exports.SqlPlusPlusCompletions = SqlPlusPlusCompletions;
