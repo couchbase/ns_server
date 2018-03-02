@@ -409,67 +409,6 @@ stream_json_test() ->
                          object_end,
                          array_end]).
 
-do_encode_events(Events) ->
-    Encoded = iolist_to_binary(pipes:run(pipes:stream_list(Events),
-                                         sjson:encode_json([{strict, true}]),
-                                         pipes:collect())),
-    ejson:decode(Encoded).
-
--define(_assertInvalidJson(Expr), ?_assertError({invalid_json, _, _}, Expr)).
-
-invalid_events_test_() ->
-    [{"basic encoding works",
-      [?_assertEqual({[]}, do_encode_events([object_start, object_end])),
-       ?_assertEqual({[{<<"a">>, 1}, {<<"b">>, 2}]},
-                     do_encode_events([object_start,
-                                       {kv_start, a},
-                                       {literal, 1},
-                                       kv_end,
-                                       {kv_start, b},
-                                       {literal, 2},
-                                       kv_end,
-                                       object_end]))]},
-
-     {"only one top-level value is allowed",
-      ?_assertInvalidJson(do_encode_events([{literal, 1}, {literal, 2}]))},
-
-     {"events need to match",
-      [?_assertInvalidJson(do_encode_events([object_start, array_end])),
-       ?_assertInvalidJson(do_encode_events([array_start, object_end])),
-       ?_assertInvalidJson(do_encode_events([object_start,
-                                             {kv_start, test},
-                                             object_end]))]},
-
-     {"kv pairs are only allowed inside objects",
-      ?_assertInvalidJson(do_encode_events([array_start,
-                                            {kv_start, test},
-                                            {literal, 1},
-                                            kv_end,
-                                            array_end]))},
-
-     {"kv pair must contain a value",
-      ?_assertInvalidJson(do_encode_events([object_start,
-                                            {kv_start, test},
-                                            kv_end,
-                                            object_end]))},
-
-     {"kv pair must only contain one value",
-      ?_assertInvalidJson(do_encode_events([object_start,
-                                            {kv_start, test},
-                                            {literal, 1},
-                                            {literal, 2},
-                                            kv_end,
-                                            object_end]))},
-
-     {"only kv-pairs are allowed inside objects",
-      [?_assertInvalidJson(do_encode_events([object_start,
-                                             {literal, 1},
-                                             object_end])),
-       ?_assertInvalidJson(do_encode_events([object_start,
-                                             object_start,
-                                             object_end,
-                                             object_end]))]}].
-
 prop_compact_encode_equals_to_ejson_encode() ->
     ?FORALL(Json, json(),
             ejson:encode(Json) =:=
