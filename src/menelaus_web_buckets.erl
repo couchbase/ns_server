@@ -412,7 +412,7 @@ build_bucket_capabilities(BucketConfig) ->
         case ns_bucket:bucket_type(BucketConfig) of
             membase ->
                 Caps0 = MoreCaps ++ [dcp, cbhello, touch, cccp,
-                                     xdcrxdcrCheckpointing, nodesExt],
+                                     xdcrCheckpointing, nodesExt],
 
                 case ns_bucket:storage_mode(BucketConfig) of
                     couchstore -> [couchapi | Caps0];
