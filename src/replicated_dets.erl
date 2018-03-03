@@ -87,22 +87,29 @@ delete_all(Name) ->
 empty(Name) ->
     gen_server:call(Name, empty, infinity).
 
+with_live_doc(TableName, Id, Default, Fun) ->
+    case dets:lookup(TableName, Id) of
+        [Doc] ->
+            case is_deleted(Doc) of
+                false ->
+                    Fun(Doc);
+                true ->
+                    Default
+            end;
+        [] ->
+            Default
+    end.
+
 get(TableName, Id) ->
     case mru_cache:lookup(TableName, Id) of
         {ok, V} ->
             {Id, V};
         false ->
-            case dets:lookup(TableName, Id) of
-                [#docv2{id = Id, value = Value} = D] ->
-                    case is_deleted(D) of
-                        true -> false;
-                        false ->
-                            TableName ! {cache, Id},
-                            {Id, Value}
-                    end;
-                [] ->
-                    false
-            end
+            with_live_doc(TableName, Id, false,
+                          fun (#docv2{value = Value}) ->
+                                  TableName ! {cache, Id},
+                                  {Id, Value}
+                          end)
     end.
 
 get(Name, Id, Default) ->
@@ -114,19 +121,10 @@ get(Name, Id, Default) ->
     end.
 
 get_last_modified(Name, Id, Default) ->
-    case dets:lookup(Name, Id) of
-        [#docv2{props = Props} = D] ->
-            case is_deleted(D) of
-                true -> Default;
-                false ->
-                    case proplists:get_value(last_modified, Props) of
-                        undefined -> Default;
-                        Timestamp -> Timestamp
-                    end
-            end;
-        [] ->
-            Default
-    end.
+    with_live_doc(Name, Id, Default,
+                  fun(#docv2{props = Props}) ->
+                          proplists:get_value(last_modified, Props, Default)
+                  end).
 
 select(Name, KeySpec, N) ->
     select(Name, KeySpec, N, false).
@@ -380,17 +378,10 @@ handle_call(Msg, From, #state{name = TableName,
     {reply, RV, State#state{child_state = NewChildState}}.
 
 handle_info({cache, Id} = Msg, #state{name = TableName} = State) ->
-    case dets:lookup(TableName, Id) of
-        [#docv2{id = Id, value = Value} = Doc] ->
-            case is_deleted(Doc) of
-                false ->
-                    _ = mru_cache:add(TableName, Id, Value);
-                true ->
-                    ok
-            end;
-        [] ->
-            ok
-    end,
+    with_live_doc(TableName, Id, ok,
+                  fun (#docv2{value = Value}) ->
+                          _ = mru_cache:add(TableName, Id, Value)
+                  end),
     misc:flush(Msg),
     {noreply, State};
 handle_info(Msg, #state{child_module = ChildModule,
