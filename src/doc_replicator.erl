@@ -88,9 +88,6 @@ loop(Module, GetNodes, StorageFrontend, RemoteNodes) ->
                           handle_sync_to_me(From, StorageFrontend, RemoteNodes, Timeout)
                   end),
                 RemoteNodes;
-            {'$gen_call', From, {pull_docs, Nodes, Timeout}} ->
-                gen_server:reply(From, handle_pull_docs(StorageFrontend, Nodes, Timeout)),
-                RemoteNodes;
             {'DOWN', _Ref, _Type, {Server, RemoteNode}, Error} ->
                 ?log_warning("Remote server node ~p process down: ~p",
                              [{Server, RemoteNode}, Error]),
@@ -140,18 +137,4 @@ handle_sync_to_me(From, StorageFrontend, Nodes, Timeout) ->
             gen_server:reply(From, ok);
         Failed ->
             gen_server:reply(From, {error, Failed})
-    end.
-
-handle_pull_docs(StorageFrontend, Nodes, Timeout) ->
-    {RVs, BadNodes} = gen_server:multi_call(Nodes, StorageFrontend, get_all_docs, Timeout),
-    case BadNodes of
-        [] ->
-            lists:foreach(
-              fun ({_N, Docs}) ->
-                      [gen_server:cast(StorageFrontend, {replicated_update, Doc}) ||
-                          Doc <- Docs]
-              end, RVs),
-            gen_server:call(StorageFrontend, sync, Timeout);
-        _ ->
-            {error, {bad_nodes, BadNodes}}
     end.
