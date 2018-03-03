@@ -55,21 +55,22 @@ version(CompatMode) ->
             1
     end.
 
-fields(1) ->
+fields(common) ->
     [version,
      auditd_enabled,
      log_path,
      rotate_interval,
      rotate_size,
      descriptors_path,
-     disabled,
      sync];
+fields(1) ->
+    [disabled | fields(common)];
 fields(2) ->
-    fields(1) ++
-        %% TODO: add enabled here after MB-27844 is resolved
+    fields(common) ++
         [disabled_userids,
          uuid,
-         filtering_enabled].
+         filtering_enabled,
+         event_states].
 
 is_notable_config_key(audit) ->
     true;
@@ -193,39 +194,36 @@ prepare_params(Global, Local, CompatMode) ->
     Merged = lists:ukeymerge(1, Local, Global),
     massage_params(version(CompatMode), CompatMode, Merged).
 
-calculate_events(Params) ->
+calculate_event_states(Params) ->
     %% leave only those events that change the default
     Descriptors = orddict:from_list((get_descriptors(ns_config:latest()))),
     Enabled = proplists:get_value(enabled, Params, []),
     Disabled = proplists:get_value(disabled, Params, []),
 
     Filter =
-        fun (List, IsEnabled) ->
-                lists:filter(
-                  fun (Id) ->
-                          case orddict:find(Id, Descriptors) of
-                              {ok, Props} ->
-                                  proplists:get_value(enabled, Props)
-                                      =/= IsEnabled;
-                              error ->
-                                  false
-                          end
-                  end, List)
+        fun (Id, IsEnabled) ->
+                case orddict:find(Id, Descriptors) of
+                    {ok, Props} ->
+                        proplists:get_value(enabled, Props)
+                            =/= IsEnabled;
+                    error ->
+                        false
+                end
         end,
-    {Filter(Enabled, true), Filter(Disabled, false)}.
+    {[{integer_to_binary(Id), enabled} || Id <- Enabled, Filter(Id, true)] ++
+         [{integer_to_binary(Id), disabled} ||
+             Id <- Disabled, Filter(Id, false)]}.
 
 massage_params(1, _CompatMode, Params) ->
     Params;
 massage_params(2, CompatMode, Params) ->
-    {Enabled, Disabled} = calculate_events(Params),
+    EventStates = calculate_event_states(Params),
     DisabledUsers = proplists:get_value(disabled_users, Params, []),
 
-    FilteringEnabled = Enabled =/= [] orelse
-        Disabled =/= [] orelse DisabledUsers =/= [],
+    FilteringEnabled = EventStates =/= [] orelse DisabledUsers =/= [],
 
     NewParams =
-        misc:update_proplist(Params, [{enabled, Enabled},
-                                      {disabled, Disabled},
+        misc:update_proplist(Params, [{event_states, EventStates},
                                       {filtering_enabled, FilteringEnabled},
                                       {disabled_userids, DisabledUsers}]),
 
