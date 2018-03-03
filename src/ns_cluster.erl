@@ -247,9 +247,6 @@ handle_cast(leave, State) ->
     ns_config:set_initial(nodes_wanted, [node()]),
     {ok, _} = ns_cookie_manager:cookie_sync(),
 
-    ReplicatorDeleteRV = ns_couchdb_storage:delete_couch_database_files("_replicator"),
-    ?cluster_debug("Deleted _replicator db: ~p", [ReplicatorDeleteRV]),
-
     ?cluster_debug("Leaving cluster", []),
 
     misc:create_marker(start_marker_path()),
@@ -1066,15 +1063,6 @@ perform_actual_join(RemoteNode, NewCookie) ->
     ns_log:delete_log(),
     Status = try
         ?cluster_debug("ns_cluster: joining cluster. Child has exited.", []),
-
-        RV = ns_couchdb_storage:delete_couch_database_files("_replicator"),
-        ?cluster_debug("Deleted _replicator db: ~p.", [RV]),
-        case RV =:= ok of
-            true ->
-                ok;
-            false ->
-                throw({could_not_delete_replicator_db, RV})
-        end,
 
         MyNode = node(),
         %% Generate new node UUID while joining a cluster.
