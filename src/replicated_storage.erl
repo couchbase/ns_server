@@ -165,6 +165,7 @@ handle_call(Msg, From, #state{child_module = Module, child_state = ChildState} =
 handle_cast({replicated_batch, CompressedBatch}, State) ->
     ?log_debug("Applying replicated batch. Size: ~p", [size(CompressedBatch)]),
     Batch = misc:decompress(CompressedBatch),
+    true = is_list(Batch) andalso Batch =/= [],
     {noreply, handle_replication_update(Batch, false, State)};
 handle_cast({replicated_update, Doc}, State) ->
     {noreply, handle_replication_update([Doc], true, State)};
