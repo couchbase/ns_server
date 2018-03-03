@@ -103,7 +103,8 @@ start_replicator() ->
         fun () ->
                 ns_node_disco:nodes_actual_other()
         end,
-    doc_replicator:start_link(replicated_dets, replicator_name(), GetRemoteNodes, storage_name()).
+    doc_replicator:start_link(replicator_name(), GetRemoteNodes,
+                              storage_name()).
 
 start_auth_cache() ->
     versioned_cache:start_link(

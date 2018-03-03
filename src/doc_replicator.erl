@@ -21,12 +21,13 @@
 -include("ns_common.hrl").
 -include("pipes.hrl").
 
--export([start_link/4]).
+-export([start_link/3]).
 
-start_link(Module, Name, GetNodes, StorageFrontend) ->
-    proc_lib:start_link(erlang, apply, [fun start_loop/4, [Module, Name, GetNodes, StorageFrontend]]).
+start_link(Name, GetNodes, StorageFrontend) ->
+    proc_lib:start_link(
+      erlang, apply, [fun start_loop/3, [Name, GetNodes, StorageFrontend]]).
 
-start_loop(Module, Name, GetNodes, StorageFrontend) ->
+start_loop(Name, GetNodes, StorageFrontend) ->
     erlang:register(Name, self()),
     proc_lib:init_ack({ok, self()}),
     LocalStoragePid = replicated_storage:wait_for_startup(),
@@ -42,15 +43,16 @@ start_loop(Module, Name, GetNodes, StorageFrontend) ->
     [{StorageFrontend, N} ! replicate_newnodes_docs ||
         N <- GetNodes()],
 
-    loop(Module, GetNodes, StorageFrontend, []).
+    loop(GetNodes, StorageFrontend, []).
 
-loop(Module, GetNodes, StorageFrontend, RemoteNodes) ->
+loop(GetNodes, StorageFrontend, RemoteNodes) ->
     NewRemoteNodes =
         receive
-            {replicate_change, Doc} ->
+            {replicate_change, Id, Doc} ->
                 lists:foreach(
                   fun (Node) ->
-                          replicate_change_to_node(Module, StorageFrontend, Node, Doc)
+                          replicate_change_to_node(
+                            StorageFrontend, Node, Id, Doc)
                   end, RemoteNodes),
                 RemoteNodes;
             {replicate_newnodes_docs, Producer} ->
@@ -71,8 +73,8 @@ loop(Module, GetNodes, StorageFrontend, RemoteNodes) ->
                           fun (Docs) ->
                                   lists:foreach(
                                     fun (Node) ->
-                                            replicate_changes_to_node(Module, StorageFrontend,
-                                                                      Node, Docs)
+                                            replicate_changes_to_node(
+                                              StorageFrontend, Node, Docs)
                                     end, NewNodes)
                           end)
                 end,
@@ -97,21 +99,20 @@ loop(Module, GetNodes, StorageFrontend, RemoteNodes) ->
                 exit({unexpected_message, Msg})
         end,
 
-    loop(Module, GetNodes, StorageFrontend, NewRemoteNodes).
+    loop(GetNodes, StorageFrontend, NewRemoteNodes).
 
-replicate_changes_to_node(_Module, StorageFrontend, Node, {batch, Docs}) ->
+replicate_changes_to_node(StorageFrontend, Node, {batch, Docs}) ->
     CompressedBatch = misc:compress(Docs),
     ?log_debug("Sending batch of size ~p to ~p", [size(CompressedBatch), Node]),
     gen_server:cast({StorageFrontend, Node}, {replicated_batch, CompressedBatch});
-replicate_changes_to_node(Module, StorageFrontend, Node, Docs) ->
+replicate_changes_to_node(StorageFrontend, Node, Docs) ->
     lists:foreach(
-      fun (Doc) ->
-              replicate_change_to_node(Module, StorageFrontend, Node, Doc)
+      fun ({Id, Doc}) ->
+              replicate_change_to_node(StorageFrontend, Node, Id, Doc)
       end, Docs).
 
-replicate_change_to_node(Module, StorageFrontend, Node, Doc) ->
-    ?log_debug("Sending ~p to ~p",
-               [ns_config_log:tag_user_data(Module:get_id(Doc)), Node]),
+replicate_change_to_node(StorageFrontend, Node, Id, Doc) ->
+    ?log_debug("Sending ~p to ~p", [ns_config_log:tag_user_data(Id), Node]),
     gen_server:cast({StorageFrontend, Node}, {replicated_update, Doc}).
 
 nodeup_monitoring_loop(LocalStoragePid) ->

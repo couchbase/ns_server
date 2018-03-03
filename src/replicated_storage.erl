@@ -115,7 +115,8 @@ handle_call({interactive_update, Doc}, _From,
                        [ns_config_log:sanitize(NewDoc, true)]),
             case Module:save_docs([NewDoc], ChildState) of
                 {ok, NewChildState} ->
-                    Replicator ! {replicate_change, NewDoc},
+                    Replicator ! {replicate_change, Module:get_id(NewDoc),
+                                  NewDoc},
                     {reply, ok, State#state{child_state = NewChildState}};
                 {error, Error} ->
                     {reply, Error, State}

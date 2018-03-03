@@ -64,8 +64,9 @@ start_replicator(Bucket) ->
                                   ordsets:intersection(LiveOtherNodes, ViewNodes)
                           end
                   end,
-              doc_replicator:start_link(?MODULE, replicator_name(Bucket), GetRemoteNodes,
-                                        doc_replication_srv:proxy_server_name(Bucket))
+              doc_replicator:start_link(
+                replicator_name(Bucket), GetRemoteNodes,
+                doc_replication_srv:proxy_server_name(Bucket))
       end).
 
 subscribe_link(Bucket, Body) ->
@@ -196,7 +197,7 @@ handle_call(reset_master_vbucket, _From, #state{bucket = Bucket,
     [do_save_doc(Doc, State) || Doc <- LocalDocs],
     {reply, ok, State};
 handle_call(get_all_docs, _From, #state{local_docs = Docs} = State) ->
-    {reply, Docs, State}.
+    {reply, [{Doc#doc.id, Doc} || Doc <- Docs], State}.
 
 handle_cast(request_snapshot,
             #state{event_manager = EventManager,
