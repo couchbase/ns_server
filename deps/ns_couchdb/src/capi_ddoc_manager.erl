@@ -28,7 +28,8 @@
 
 -export([init/1, init_after_ack/1, handle_call/3, handle_cast/2,
          handle_info/2, get_id/1, find_doc/2, find_doc_rev/2, all_docs/1,
-         get_revision/1, set_revision/2, is_deleted/1, save_docs/2]).
+         get_revision/1, set_revision/2, is_deleted/1, save_docs/2,
+         on_replicate_in/1, on_replicate_out/1]).
 
 -include("ns_common.hrl").
 -include("couch_db.hrl").
@@ -181,6 +182,9 @@ save_docs([NewDoc], State) ->
             ?log_debug("Document validation failed: ~p", [Error]),
             {error, Error}
     end.
+
+on_replicate_in(Docs) -> Docs.
+on_replicate_out(Docs) -> Docs.
 
 handle_call({foreach_doc, Fun}, _From, #state{local_docs = Docs} = State) ->
     Res = [{Id, Fun(Doc)} || #doc{id = Id} = Doc <- Docs],
