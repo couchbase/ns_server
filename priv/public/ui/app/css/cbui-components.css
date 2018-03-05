@@ -1675,3 +1675,23 @@ section.dynamic_unhealthy {
   color: #555;
   margin: 0;
 }
+
+/* External Auth check for Security > Users -------------------------------- */
+.users-auth-check {
+  margin: -1rem 0 .5rem 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+.users-auth-check p {
+  margin: 0;
+  color: #555;
+  font-size: .75rem;
+  cursor: pointer;
+}
+.users-auth-check:hover .fa-ban {
+  color: #e07f82;
+}
+.users-auth-check:hover p {
+  color: #000;
+}
