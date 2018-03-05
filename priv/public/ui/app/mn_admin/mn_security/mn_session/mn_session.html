@@ -6,6 +6,9 @@
 
     <div class="formrow">
       <label>Session Timeout</label>
+      <div class="desc">
+        Minutes until an inactive browser session is closed. <br>Leave empty (or zero) for no timeout.
+      </div>
       <div class="form-inline">
         <input
            id="session-filed"
@@ -25,7 +28,6 @@
          ng-show="sessionCtl.errors.error">
         {{sessionCtl.errors.error}}
       </div>
-      <p>Minutes until an inactive browser session is closed. <br>Leave empty (or zero) for no timeout.</p>
     </div>
 
     <button
