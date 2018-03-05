@@ -17,8 +17,7 @@
       return "<a " +
         "ng-show=\"" + config.ngShow +
         "\"class=\"" + (config.responsiveHide ? "resp-hide-sml " : "") +
-        (tabBarName == "adminTab" ? "line resp-hide-sml" :
-         tabBarName == "indexesTab" ? "pills" :
+        (tabBarName == "indexesTab" ? "pills" :
          "") +
         "\"ui-sref=\"" + config.state +
         (config.includedByState ?
