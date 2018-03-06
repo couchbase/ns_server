@@ -1230,13 +1230,29 @@ connect(Options, Tries) ->
 
 
 ensure_bucket(Sock, Bucket) ->
-    try ns_bucket:config_string(Bucket) of
-        {Engine, ConfigString, BucketType, ExtraParams, DBSubDir} ->
+    Config = ns_config:get(),
+    try memcached_bucket_config:get(Config, Bucket) of
+        BConf ->
             case mc_client_binary:select_bucket(Sock, Bucket) of
                 ok ->
-                    ensure_bucket_config(Sock, Bucket, BucketType, ExtraParams);
+                    case memcached_bucket_config:ensure(Sock, BConf) of
+                        restart ->
+                            ale:info(
+                              ?USER_LOGGER,
+                              "Restarting bucket ~p due to configuration change",
+                              [Bucket]),
+                            exit({shutdown, reconfig});
+                        ok ->
+                            ok
+                    end;
                 {memcached_error, key_enoent, _} ->
+                    {ok, DBSubDir} =
+                        ns_storage_conf:this_node_bucket_dbdir(Bucket),
                     ok = filelib:ensure_dir(DBSubDir),
+
+                    {Engine, ConfigString} =
+                        memcached_bucket_config:start_params(Config, BConf),
+
                     case mc_client_binary:create_bucket(Sock, Bucket, Engine,
                                                         ConfigString) of
                         ok ->
@@ -1255,174 +1271,6 @@ ensure_bucket(Sock, Bucket) ->
                        [Bucket, {E, R, erlang:get_stacktrace()}]),
             {E, R}
     end.
-
--record(qstats, {max_size = missng_max_size,
-                 dbname = missing_path,
-                 max_num_workers = missing_num_threads,
-                 item_eviction_policy = missing_eviction_policy,
-                 ephemeral_full_policy = missing_ephemeral_full_policy,
-                 ahead_threshold = missing_ahead_threshold,
-                 behind_threshold = missing_behind_threshold,
-                 ephemeral_metadata_purge_age = missing_ephemeral_metadata_purge_age,
-                 max_ttl = missing_max_ttl,
-                 compression_mode = missing_compression_mode}).
-
--spec ensure_bucket_config(port(), bucket_name(), bucket_type(),
-                           {pos_integer(), nonempty_string()}) ->
-                                  ok | no_return().
-ensure_bucket_config(Sock, Bucket, membase,
-                     {MaxSize, DBDir, NumThreads, ItemEvictionPolicy, EphemeralFullPolicy,
-                      DriftThresholds, EphemeralPurgeAge, MaxTTL, CompMode}) ->
-    {ok, #qstats{max_size = ActualMaxSize,
-                 dbname = ActualDBDir,
-                 max_num_workers = ActualNumThreads,
-                 item_eviction_policy = ActualItemEvictionPolicy,
-                 ephemeral_full_policy = ActualEphemeralFullPolicy,
-                 ahead_threshold = ActualDAT,
-                 behind_threshold = ActualDBT,
-                 ephemeral_metadata_purge_age = ActualPurgeAge,
-                 max_ttl = ActualMaxTTL,
-                 compression_mode = ActualCompMode}} =
-        mc_binary:quick_stats(
-          Sock, <<>>,
-          fun (<<"ep_max_size">>, V, QStats) ->
-                  QStats#qstats{max_size = V};
-              (<<"ep_dbname">>, V, QStats) ->
-                  QStats#qstats{dbname = V};
-              (<<"ep_max_num_workers">>, V, QStats) ->
-                  QStats#qstats{max_num_workers = V};
-              (<<"ep_item_eviction_policy">>, V, QStats) ->
-                  QStats#qstats{item_eviction_policy = V};
-              (<<"ep_ephemeral_full_policy">>, V, QStats) ->
-                  QStats#qstats{ephemeral_full_policy = V};
-              (<<"ep_hlc_drift_ahead_threshold_us">>, V, QStats) ->
-                  QStats#qstats{ahead_threshold = V};
-              (<<"ep_hlc_drift_behind_threshold_us">>, V, QStats) ->
-                  QStats#qstats{behind_threshold = V};
-              (<<"ep_ephemeral_metadata_purge_age">>, V, QStats) ->
-                  QStats#qstats{ephemeral_metadata_purge_age = V};
-              (<<"ep_max_ttl">>, V, QStats) ->
-                  QStats#qstats{max_ttl = V};
-              (<<"ep_compression_mode">>, V, QStats) ->
-                  QStats#qstats{compression_mode = V};
-              (_, _, QStats) ->
-                  QStats
-          end, #qstats{}),
-
-    ReloadBuckets = ns_config:read_key_fast(dont_reload_bucket_on_cfg_change, false) =:= false,
-
-    Out = [maybe_set_num_threads(Bucket, ReloadBuckets, NumThreads, ActualNumThreads),
-           maybe_set_item_eviction_policy(Bucket, ReloadBuckets, ItemEvictionPolicy,
-                                          ActualItemEvictionPolicy),
-           maybe_set_ephemeral_full_policy(Sock, Bucket, EphemeralFullPolicy,
-                                           ActualEphemeralFullPolicy),
-           maybe_set_ephemeral_metadata_purge_age(Sock, Bucket, EphemeralPurgeAge, ActualPurgeAge),
-           maybe_set_drift_thresholds(Sock, Bucket, DriftThresholds, ActualDAT, ActualDBT),
-           maybe_set_max_size(Sock, Bucket, MaxSize, ActualMaxSize),
-           maybe_set_db_dir(Bucket, DBDir, ActualDBDir),
-           maybe_set_max_ttl(Sock, Bucket, MaxTTL, ActualMaxTTL),
-           maybe_set_compression_mode(Sock, Bucket, CompMode, ActualCompMode)],
-
-    case lists:any(fun(RV) -> RV =:= {ok, needs_restart} end, Out) of
-        true ->
-            ale:info(?USER_LOGGER, "Restarting bucket ~p due to configuration change", [Bucket]),
-            exit({shutdown, reconfig});
-        false ->
-            ok
-    end;
-ensure_bucket_config(Sock, _Bucket, memcached, _MaxSize) ->
-    %% TODO: change max size of memcached bucket also
-    %% Make sure it's a memcached bucket
-    {ok, present} = mc_binary:quick_stats(
-                      Sock, <<>>,
-                      fun (<<"evictions">>, _, _) ->
-                              present;
-                          (_, _, CD) ->
-                              CD
-                      end, not_present),
-    ok.
-
-check_for_change(Bucket, NewVal, OldVal, Name, Body) ->
-    case NewVal of
-        OldVal ->
-            ok;
-        X when is_binary(X) ->
-            ?log_info("Changing ~p from ~s to ~s for bucket ~p",
-                      [Name, OldVal, NewVal, Bucket]),
-            Body()
-    end.
-
-maybe_needs_restart(Bucket, NewVal, OldVal, Name) ->
-    check_for_change(Bucket, NewVal, OldVal, Name,
-                     fun() -> {ok, needs_restart} end).
-
-maybe_set_engine_param(Sock, Bucket, Key, NewVal, OldVal, Name, Type) ->
-    check_for_change(Bucket, NewVal, OldVal, Name,
-                     fun() ->
-                             ok = mc_client_binary:set_engine_param(Sock, Key, NewVal, Type)
-                     end).
-
-maybe_set_num_threads(_, false, _, _) ->
-    ok;
-maybe_set_num_threads(Bucket, true, NewNumThreads, ActualNumThreadsBin) ->
-    NewNumThreadsBin = list_to_binary(integer_to_list(NewNumThreads)),
-    maybe_needs_restart(Bucket, NewNumThreadsBin, ActualNumThreadsBin, "bucket priority").
-
-maybe_set_item_eviction_policy(_, false, _, _) ->
-    ok;
-maybe_set_item_eviction_policy(_, _, undefined, _) ->
-    ok;
-maybe_set_item_eviction_policy(Bucket, true, NewPolicy, ActualPolicyBin) ->
-    NewPolicyBin = atom_to_binary(NewPolicy, latin1),
-    maybe_needs_restart(Bucket, NewPolicyBin, ActualPolicyBin, "eviction policy").
-
-maybe_set_db_dir(Bucket, NewDBDir, ActualDBDirBin) ->
-    NewDBDirBin = list_to_binary(NewDBDir),
-    maybe_needs_restart(Bucket, NewDBDirBin, ActualDBDirBin, "dbname").
-
-maybe_set_ephemeral_full_policy(_, _, undefined, _) ->
-    ok;
-maybe_set_ephemeral_full_policy(Sock, Bucket, NewPolicy, ActualPolicyBin) ->
-    NewPolicyBin = atom_to_binary(NewPolicy, latin1),
-    maybe_set_engine_param(Sock, Bucket, <<"ephemeral_full_policy">>,
-                           NewPolicyBin, ActualPolicyBin, "ephemeral full policy", flush).
-
-maybe_set_ephemeral_metadata_purge_age(_, _, undefined, _) ->
-    ok;
-maybe_set_ephemeral_metadata_purge_age(Sock, Bucket, NewPurgeAge, ActualPurgeAgeBin) ->
-    NewPurgeAgeBin = list_to_binary(integer_to_list(NewPurgeAge)),
-    maybe_set_engine_param(Sock, Bucket, <<"ephemeral_metadata_purge_age">>,
-                           NewPurgeAgeBin, ActualPurgeAgeBin,
-                           "ephemeral metadata purge age", flush).
-
-maybe_set_drift_thresholds(_Sock, _Bucket, undefined, _, _) ->
-    ok;
-maybe_set_drift_thresholds(Sock, Bucket, {DAT, DBT}, ActualDATBin, ActualDBTBin) ->
-    DATBin = list_to_binary(integer_to_list(misc:msecs_to_usecs(DAT))),
-    DBTBin = list_to_binary(integer_to_list(misc:msecs_to_usecs(DBT))),
-    maybe_set_engine_param(Sock, Bucket, <<"hlc_drift_ahead_threshold_us">>, DATBin,
-                           ActualDATBin, "drift ahead threshold", vbucket),
-    maybe_set_engine_param(Sock, Bucket, <<"hlc_drift_behind_threshold_us">>, DBTBin,
-                           ActualDBTBin, "drift behind threshold", vbucket).
-
-maybe_set_max_size(Sock, Bucket, NewMaxSize, ActualMaxSizeBin) ->
-    NewMaxSizeBin = list_to_binary(integer_to_list(NewMaxSize)),
-    maybe_set_engine_param(Sock, Bucket, <<"max_size">>, NewMaxSizeBin, ActualMaxSizeBin,
-                           "max size", flush).
-
-maybe_set_max_ttl(_Sock, _Bucket, undefined, _) ->
-    ok;
-maybe_set_max_ttl(Sock, Bucket, NewMaxTTL, ActualMaxTTLBin) ->
-    NewMaxTTLBin = list_to_binary(integer_to_list(NewMaxTTL)),
-    maybe_set_engine_param(Sock, Bucket, <<"max_ttl">>, NewMaxTTLBin, ActualMaxTTLBin,
-                           "max ttl", flush).
-
-maybe_set_compression_mode(_Sock, _Bucket, undefined, _) ->
-    ok;
-maybe_set_compression_mode(Sock, Bucket, NewCompMode, ActualCompModeBin) ->
-    NewCompModeBin = list_to_binary(atom_to_list(NewCompMode)),
-    maybe_set_engine_param(Sock, Bucket, <<"compression_mode">>, NewCompModeBin,
-                           ActualCompModeBin, "compression mode", flush).
 
 server(Bucket) ->
     list_to_atom(?MODULE_STRING ++ "-" ++ Bucket).

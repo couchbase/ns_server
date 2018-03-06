@@ -24,7 +24,6 @@
          bucket_nodes/1,
          bucket_type/1,
          replication_type/1,
-         config_string/1,
          create_bucket/3,
          credentials/1,
          delete_bucket/1,
@@ -92,78 +91,6 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
-
-%% @doc Configuration parameters to start up the bucket on a node.
-config_string(BucketName) ->
-    Config = ns_config:get(),
-    BucketConfigs = ns_config:search_prop(Config, buckets, configs),
-    BucketConfig = proplists:get_value(BucketName, BucketConfigs),
-    Engines = ns_config:search_node_prop(Config, memcached, engines),
-    MemQuota = proplists:get_value(ram_quota, BucketConfig),
-    BucketType =  proplists:get_value(type, BucketConfig),
-    EngineConfig = proplists:get_value(BucketType, Engines),
-    Engine = proplists:get_value(engine, EngineConfig),
-    BucketUUID = proplists:get_value(uuid, BucketConfig),
-    StaticConfigString =
-        proplists:get_value(
-          static_config_string, BucketConfig,
-          proplists:get_value(static_config_string, EngineConfig)),
-    ExtraConfigString =
-        proplists:get_value(
-          extra_config_string, BucketConfig,
-          proplists:get_value(extra_config_string, EngineConfig, "")),
-    {DynamicConfigString, ExtraParams, ReturnDBDir} =
-        case BucketType of
-            membase ->
-                {ok, DBSubDir} = ns_storage_conf:this_node_bucket_dbdir(BucketName),
-                AccessLog = filename:join(DBSubDir, "access.log"),
-                NumVBuckets = proplists:get_value(num_vbuckets, BucketConfig),
-                NumThreads = proplists:get_value(num_threads, BucketConfig, 3),
-                ItemEvictionPolicy = memcached_item_eviction_policy(BucketConfig),
-                EphemeralFullPolicy = memcached_ephemeral_full_policy(BucketConfig),
-                EphemeralPurgeAge = ephemeral_metadata_purge_age(BucketConfig),
-                ConflictResolutionType = conflict_resolution_type(BucketConfig),
-                DriftThresholds = drift_thresholds(BucketConfig),
-                StorageMode = storage_mode(BucketConfig),
-                MaxTTL = proplists:get_value(max_ttl, BucketConfig),
-                CompMode = proplists:get_value(compression_mode, BucketConfig),
-                %% MemQuota is our per-node bucket memory limit
-                CFG =
-                    io_lib:format(
-                      "ht_locks=~B;"
-                      "max_size=~B;"
-                      "dbname=~s;"
-                      "backend=couchdb;couch_bucket=~s;max_vbuckets=~B;"
-                      "alog_path=~s;data_traffic_enabled=false;max_num_workers=~B;"
-                      "uuid=~s;"
-                      "conflict_resolution_type=~s;"
-                      "bucket_type=~s;~s",
-                      [proplists:get_value(
-                         ht_locks, BucketConfig,
-                         misc:getenv_int("MEMBASE_HT_LOCKS", 47)),
-                       MemQuota,
-                       DBSubDir,
-                       BucketName,
-                       NumVBuckets,
-                       AccessLog,
-                       NumThreads,
-                       BucketUUID,
-                       ConflictResolutionType,
-                       storage_mode_to_bucket_type(StorageMode),
-                       eviction_policy_cfg_string(BucketConfig, ItemEvictionPolicy,
-                                                  EphemeralFullPolicy)]),
-                CFG1 = metadata_purge_age_cfg_string(EphemeralPurgeAge) ++ CFG,
-                CFG2 = ht_size_cfg_string(BucketConfig) ++ max_ttl_cfg_string(MaxTTL) ++
-                    compression_mode_cfg_string(CompMode) ++ CFG1,
-                {CFG2, {MemQuota, DBSubDir, NumThreads, ItemEvictionPolicy, EphemeralFullPolicy,
-                       DriftThresholds, EphemeralPurgeAge, MaxTTL, CompMode}, DBSubDir};
-            memcached ->
-                {io_lib:format("cache_size=~B;uuid=~s", [MemQuota, BucketUUID]),
-                 MemQuota, undefined}
-        end,
-    ConfigString = lists:flatten([DynamicConfigString, $;, StaticConfigString,
-                                  $;, ExtraConfigString]),
-    {Engine, ConfigString, BucketType, ExtraParams, ReturnDBDir}.
 
 %% @doc Return {Username, Password} for a bucket.
 -spec credentials(nonempty_string()) ->
@@ -242,90 +169,6 @@ eviction_policy(BucketConfig) ->
               end,
     proplists:get_value(eviction_policy, BucketConfig, Default).
 
-%% The policy parameter accepted by memcached for couchbase and ephemeral buckets
-%% are different. This function, memcached_eviction_policy() and
-%% memcached_ephemeral_full_policy() map between the REST API understanding of
-%% eviction policies and memcached's understanding of them.
-eviction_policy_cfg_string(BucketConfig, ItemEvictionPolicy, EphemeralFullPolicy) ->
-    case storage_mode(BucketConfig) of
-        couchstore ->
-            io_lib:format("item_eviction_policy=~s", [ItemEvictionPolicy]);
-        ephemeral ->
-            io_lib:format("ephemeral_full_policy=~s", [EphemeralFullPolicy])
-    end.
-
-%% The 'item_eviction_policy' is applicable only for couchbase buckets. Consequently,
-%% this function returns the eviction policy set in the bucket config for couchbase
-%% buckets only. For ephemeral buckets, it returns 'undefined'.
-memcached_item_eviction_policy(BucketConfig) ->
-    case storage_mode(BucketConfig) of
-        couchstore ->
-            proplists:get_value(eviction_policy, BucketConfig, value_only);
-        _ ->
-            undefined
-    end.
-
-%% The 'ephemeral_full_policy' is applicable only for ephemeral buckets. Consequently,
-%% this function maps the eviction policy set in the bucket config to the values
-%% the memcached process expects for ephemeral buckets. For couchbase buckets, it
-%% returns 'undefined'.
-memcached_ephemeral_full_policy(BucketConfig) ->
-    case storage_mode(BucketConfig) of
-        ephemeral ->
-            Policy = proplists:get_value(eviction_policy, BucketConfig, no_eviction),
-            case Policy of
-                nru_eviction -> auto_delete;
-                _ -> fail_new_data
-            end;
-        _ ->
-            undefined
-    end.
-
-ephemeral_metadata_purge_age(BucketConfig) ->
-    case storage_mode(BucketConfig) of
-        ephemeral ->
-            %% Purge interval is accepted in # of days but the ep-engine
-            %% needs it to be expressed in seconds.
-            Val = proplists:get_value(purge_interval, BucketConfig,
-                                      ?DEFAULT_EPHEMERAL_PURGE_INTERVAL_DAYS),
-            erlang:round(Val * 24 * 3600);
-        _ ->
-            undefined
-    end.
-
-metadata_purge_age_cfg_string(PurgeAge) ->
-    case PurgeAge of
-        undefined ->
-            [];
-        _ ->
-            io_lib:format("ephemeral_metadata_purge_age=~p;", [PurgeAge])
-    end.
-
-ht_size_cfg_string(BucketConfig) ->
-    case proplists:get_value(ht_size, BucketConfig,
-                             misc:getenv_int("MEMBASE_HT_SIZE", 0)) of
-        0 ->
-            [];
-        X when is_integer(X) ->
-            io_lib:format("ht_size=~B;", [X])
-    end.
-
-max_ttl_cfg_string(MaxTTL) ->
-    case MaxTTL of
-        undefined ->
-            [];
-        _ ->
-            io_lib:format("max_ttl=~B;", [MaxTTL])
-    end.
-
-compression_mode_cfg_string(CompMode) ->
-    case CompMode of
-        undefined ->
-            [];
-        _ ->
-            io_lib:format("compression_mode=~p;", [CompMode])
-    end.
-
 -spec storage_mode([{_,_}]) -> atom().
 storage_mode(BucketConfig) ->
     case bucket_type(BucketConfig) of
@@ -334,11 +177,6 @@ storage_mode(BucketConfig) ->
         membase ->
             proplists:get_value(storage_mode, BucketConfig, couchstore)
     end.
-
-storage_mode_to_bucket_type(couchstore) ->
-    persistent;
-storage_mode_to_bucket_type(ephemeral) ->
-    ephemeral.
 
 %% returns bucket ram quota multiplied by number of nodes this bucket
 %% resides on. I.e. gives amount of ram quota that will be used by
