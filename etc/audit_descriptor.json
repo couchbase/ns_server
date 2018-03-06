@@ -837,6 +837,27 @@
           "optional_fields" : {
               "sessionid" : ""
           }
+      },{
+          "id": 8240,
+          "name": "configured audit daemon",
+          "description": "loaded configuration file for audit daemon",
+          "sync": false,
+          "enabled": true,
+          "mandatory_fields": {
+              "timestamp": "",
+              "real_userid": {"source": "", "user": ""},
+              "hostname": "",
+              "version": 1
+          },
+          "optional_fields": {
+              "auditd_enabled": true,
+              "rotate_interval": 1,
+              "rotate_size": 1,
+              "log_path": "",
+              "disabled_userids": "",
+              "disabled": "",
+              "enabled": ""
+          }
       }
     ]
 }

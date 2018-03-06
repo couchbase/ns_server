@@ -67,7 +67,8 @@
          client_cert_auth/2,
          security_settings/2,
          start_log_collection/4,
-         modify_log_redaction_settings/2
+         modify_log_redaction_settings/2,
+         modify_audit_settings/2
         ]).
 
 -export([start_link/0, stats/0]).
@@ -291,7 +292,9 @@ code(security_settings) ->
 code(start_log_collection) ->
     8238;
 code(modify_log_redaction_settings) ->
-    8239.
+    8239;
+code(modify_audit_settings) ->
+    8240.
 
 to_binary({list, List}) ->
     [to_binary(A) || A <- List];
@@ -390,6 +393,10 @@ prepare(Req, Params) ->
 put(Code, Req, Params) ->
     Body = prepare(Req, Params),
     ok = gen_server:call(?MODULE, {log, Code, Body, false}).
+
+sync_put(Code, Req, Params) ->
+    Body = prepare(Req, Params),
+    ok = gen_server:call(?MODULE, {log, Code, Body, true}).
 
 send_to_memcached(Queue) ->
     case queue:out(Queue) of
@@ -714,6 +721,24 @@ start_log_collection(Req, Nodes, BaseURL, Options) ->
 modify_log_redaction_settings(Req, Settings) ->
     put(modify_log_redaction_settings, Req,
         [{log_redaction_default_cfg, {prepare_list(Settings)}}]).
+
+modify_audit_settings(Req, Settings) ->
+    case proplists:get_value(auditd_enabled, Settings, undefined) of
+        false ->
+            sync_put(modify_audit_settings, Req, [{auditd_enabled, false}]);
+        _ ->
+            put(modify_audit_settings, Req,
+                [prepare_audit_setting(S) || S <- Settings])
+    end.
+
+prepare_audit_setting({enabled, List}) ->
+    {enabled, {list, List}};
+prepare_audit_setting({disabled, List}) ->
+    {disabled, {list, List}};
+prepare_audit_setting({disabled_users, Users}) ->
+    {disabled_userids, {list, [get_user_id(U) || U <- Users]}};
+prepare_audit_setting(Setting) ->
+    Setting.
 
 print_audit_records(Queue) ->
     case queue:out(Queue) of

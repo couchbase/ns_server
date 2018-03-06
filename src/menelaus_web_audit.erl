@@ -48,11 +48,25 @@ handle_post(Req) ->
     Config = ns_config:get(),
     validator:handle(
       fun (Values) ->
-              ns_audit_cfg:set_global(
-                [{key_api_to_config(ApiK), V} ||
-                    {ApiK, V} <- pre_process_post(Config, Values)]),
+              Settings = [{key_api_to_config(ApiK), V} ||
+                             {ApiK, V} <- pre_process_post(Config, Values)],
+
+              case proplists:get_bool(auditd_enabled, Settings) of
+                  true ->
+                      ns_audit_cfg:sync_set_global(Settings),
+                      audit_modify_audit_settings(Req, Settings);
+                  false ->
+                      audit_modify_audit_settings(Req, Settings),
+                      ns_audit_cfg:set_global(Settings)
+              end,
               menelaus_util:reply(Req, 200)
       end, Req, form, validators(Config)).
+
+audit_modify_audit_settings(Req, Settings) ->
+    case cluster_compat_mode:is_cluster_vulcan() of
+        true -> ns_audit:modify_audit_settings(Req, Settings);
+        false -> ok
+    end.
 
 handle_get_descriptors(Req) ->
     menelaus_util:assert_is_enterprise(),
