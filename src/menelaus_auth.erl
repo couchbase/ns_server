@@ -365,8 +365,11 @@ verify_rest_auth(Req, Permission) ->
                 {ok, Identity, MetaHeaders} ->
                     {check_permission(Identity, Permission),
                      MetaHeaders ++ meta_headers(Identity, undefined)};
-                Other ->
-                    Other
+                {first_step, Headers} ->
+                    Req:recv_body(),
+                    {auth_failure, Headers};
+                {auth_failure, _} = AuthFailure ->
+                    AuthFailure
             end;
         _ ->
             case authenticate(Auth) of

@@ -59,12 +59,9 @@ encode_with_sid(Sid, Message) ->
 reply_error() ->
     {auth_failure, []}.
 
-reply_auth_failure(Msg) ->
-    {auth_failure, [{meta_header(), Msg}]}.
-
 reply_error(Sid, Error) ->
-    reply_auth_failure(
-      "I" ++ encode_with_sid(Sid, "e=" ++ Error)).
+    Hdr =  "I" ++ encode_with_sid(Sid, "e=" ++ Error),
+    {auth_failure, [{meta_header(), Hdr}]}.
 
 reply_success(Sid, Identity, ServerProof) ->
     {ok, Identity,
@@ -74,8 +71,9 @@ reply_success(Sid, Identity, ServerProof) ->
                 "v=" ++ base64:encode_to_string(ServerProof))}]}.
 
 reply_first_step(Sha, Sid, Msg) ->
-    reply_auth_failure("A" ++ www_authenticate_prefix(Sha) ++ " " ++
-                           encode_with_sid(Sid, Msg)).
+    Hdr = "A" ++ www_authenticate_prefix(Sha) ++ " " ++
+        encode_with_sid(Sid, Msg),
+    {first_step, [{meta_header(), Hdr}]}.
 
 www_authenticate_prefix(sha512) ->
     "SCRAM-SHA-512";
