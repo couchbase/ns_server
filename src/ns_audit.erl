@@ -93,7 +93,7 @@ terminate(_Reason, #state{queue = Queue}) ->
 
 code_change(_OldVsn, State, _) -> {ok, State}.
 
-handle_call({log, Code, Body}, _From, #state{queue = Queue} = State) ->
+handle_call({log, Code, Body, IsSync}, From, #state{queue = Queue} = State) ->
     CleanedQueue =
         case queue:len(Queue) > ns_config:read_key_fast(max_audit_queue_length, 1000) of
             true ->
@@ -105,9 +105,18 @@ handle_call({log, Code, Body}, _From, #state{queue = Queue} = State) ->
         end,
     ?log_debug("Audit ~p: ~p", [Code, ns_config_log:tag_user_data(Body)]),
     EncodedBody = ejson:encode({Body}),
-    NewQueue = queue:in({Code, EncodedBody}, CleanedQueue),
+    Continuation =
+        case IsSync of
+            true -> fun (Res) -> gen_server:reply(From, Res) end;
+            false -> fun (_) -> ok end
+        end,
+    NewQueue = queue:in({Code, EncodedBody, Continuation}, CleanedQueue),
     self() ! send,
-    {reply, ok, State#state{queue = NewQueue}};
+    case IsSync of
+        true -> {noreply, State#state{queue = NewQueue}};
+        false -> {reply, ok, State#state{queue = NewQueue}}
+    end;
+
 handle_call(stats, _From, #state{queue = Queue, retries = Retries} = State) ->
     {reply, [{queue_length, queue:len(Queue)},
              {unsuccessful_retries, Retries}], State}.
@@ -380,18 +389,19 @@ prepare(Req, Params) ->
 
 put(Code, Req, Params) ->
     Body = prepare(Req, Params),
-    ok = gen_server:call(?MODULE, {log, Code, Body}).
+    ok = gen_server:call(?MODULE, {log, Code, Body, false}).
 
 send_to_memcached(Queue) ->
     case queue:out(Queue) of
         {empty, Queue} ->
             {ok, Queue};
-        {{value, {Code, EncodedBody}}, NewQueue} ->
+        {{value, {Code, EncodedBody, Continuation}}, NewQueue} ->
             case (catch ns_memcached_sockets_pool:executing_on_socket(
                           fun (Sock) ->
                                   mc_client_binary:audit_put(Sock, code(Code), EncodedBody)
                           end)) of
                 ok ->
+                    Continuation(ok),
                     send_to_memcached(NewQueue);
                 Error ->
                     ?log_debug(
@@ -709,7 +719,8 @@ print_audit_records(Queue) ->
     case queue:out(Queue) of
         {empty, _} ->
             ok;
-        {{value, V}, NewQueue} ->
-            ?log_info("Dropped  audit entry: ~p", [V]),
+        {{value, {_, _, Continuation} = V}, NewQueue} ->
+            ?log_info("Dropped audit entry: ~p", [V]),
+            Continuation({error, dropped}),
             print_audit_records(NewQueue)
     end.
