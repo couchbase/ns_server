@@ -125,7 +125,9 @@
           reported_in_recovery = false :: boolean(),
           %% Whether we reported that we could not auto failover because there
           %% was no quorum
-          reported_orchestration_unsafe = false :: boolean()
+          reported_orchestration_unsafe = false :: boolean(),
+          %% Whether we reported why the node is considered down
+          reported_down_nodes_reason = [] :: list()
          }).
 
 %%
@@ -309,14 +311,15 @@ handle_info(tick, State0) ->
     %% incorrect.
     {value, AFOConfig} = ns_config:search(Config, auto_failover_cfg),
     FOSGs = proplists:get_value(failed_over_server_groups, AFOConfig, []),
-    State = State0#state{count = proplists:get_value(count, AFOConfig),
-                         failed_over_server_groups = FOSGs},
+    State1 = State0#state{count = proplists:get_value(count, AFOConfig),
+                          failed_over_server_groups = FOSGs},
 
     NonPendingNodes = lists:sort(ns_cluster_membership:active_nodes(Config)),
 
     NodeStatuses = ns_doctor:get_nodes(),
     {DownNodes, DownSG} = get_down_nodes(NodeStatuses,
                                          NonPendingNodes, Config),
+    State = log_down_nodes_reason(DownNodes, State1),
     CurrentlyDown = [N || {N, _} <- DownNodes],
     NodeUUIDs = ns_config:get_node_uuid_map(Config),
 
@@ -357,6 +360,31 @@ code_change(_OldVsn, State, _Extra) ->
 %%
 %% Internal functions
 %%
+
+%% The auto-fail over message reports the reason for failover.
+%% But, not all events lead to auto-failover.
+%% Sometimes auto-failover is not possible or the down node recovers before
+%% auto-failover can be triggered. In either case, it will be good to log
+%% the reason when a node is reported as down the first time. This may help
+%% in triage of issues.
+log_down_nodes_reason(DownNodes,
+                      #state{reported_down_nodes_reason = Curr} = State) ->
+    New = lists:foldl(
+            fun ({_Node, unknown}, Acc) ->
+                    Acc;
+                ({Node, {Reason, _}}, Acc) ->
+                    case lists:keyfind(Node, 1, Curr) of
+                        {Node, Reason} ->
+                            ok;
+                        _ ->
+                            %% Either this is the first time the node is down
+                            %% or the reason has changed.
+                            ?log_debug("Node ~p is considered down. Reason:~p",
+                                       [Node, Reason])
+                    end,
+                    [{Node, Reason} | Acc]
+            end, [], DownNodes),
+    State#state{reported_down_nodes_reason = New}.
 
 update_state_timeout(Timeout, #state{timeout = CurrTimeout} = State) ->
     case Timeout =/= CurrTimeout of
