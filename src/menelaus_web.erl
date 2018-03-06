@@ -389,9 +389,6 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["ui", "new-index.html"] ->
                     {ui, IsSSL, fun handle_ui_root/5, [AppRoot, Path, ?VERSION_41,
                                                        []]};
-                ["ui", "classic-index.html"] ->
-                    {ui, IsSSL, fun handle_ui_root/5, [AppRoot, Path, ?VERSION_45,
-                                                       Plugins]};
                 ["dot", Bucket] ->
                     {{[{bucket, Bucket}, settings], read}, fun menelaus_web_misc:handle_dot/2, [Bucket]};
                 ["dotsvg", Bucket] ->
@@ -843,24 +840,17 @@ serve_ui_env(Req) ->
                              {lists:ukeymerge(1, NodeSpecificUIEnv,
                                               lists:ukeymerge(1, GlobalUIEnv, UIEnvDefault))}).
 
-handle_ui_root(AppRoot, Path, UiCompatVersion, Plugins, Req)
-  when UiCompatVersion =:= ?VERSION_45;
-       UiCompatVersion =:= ?VERSION_50 ->
+handle_ui_root(AppRoot, Path, ?VERSION_50, Plugins, Req) ->
     Filename = case use_minified(Req) of
                    true ->
-                       IndexFileName =
-                           case UiCompatVersion =:= ?VERSION_50 of
-                               true -> "index.min.html";
-                               false -> "classic-index.min.html"
-                           end,
-                       filename:join([AppRoot, "ui", IndexFileName]);
+                       filename:join([AppRoot, "ui", "index.min.html"]);
                    _ ->
                        filename:join(AppRoot, Path)
                end,
     menelaus_util:reply_ok(
       Req,
       "text/html; charset=utf8",
-      menelaus_pluggable_ui:inject_head_fragments(Filename, UiCompatVersion, Plugins));
+      menelaus_pluggable_ui:inject_head_fragments(Filename, ?VERSION_50, Plugins));
 handle_ui_root(AppRoot, Path, ?VERSION_41, [], Req) ->
     menelaus_util:serve_static_file(Req, {AppRoot, Path},
                                     "text/html; charset=utf8", []).

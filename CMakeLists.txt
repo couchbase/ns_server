@@ -45,14 +45,6 @@ IF (NOT EXISTS "${COUCHDB_SRC_DIR}/src/couchdb/couch_db.hrl")
     "-DCOUCHDB_SRC_DIR=<path/to/couchdb source>")
 ENDIF (NOT EXISTS "${COUCHDB_SRC_DIR}/src/couchdb/couch_db.hrl")
 
-# Other generated files
-SET (all_img_js "${PROJECT_SOURCE_DIR}/priv/public/js/all-images.js")
-ADD_CUSTOM_COMMAND (OUTPUT "${all_img_js}"
-  COMMAND "${CMAKE_COMMAND}" -D "pubdir=${PROJECT_SOURCE_DIR}/priv/public"
-  -D "outfile=${all_img_js}"
-  -P "${PROJECT_SOURCE_DIR}/cmake_modules/build-all-images.cmake")
-ADD_CUSTOM_TARGET (all_images ALL DEPENDS "${all_img_js}")
-
 FILE (WRITE "${PROJECT_BINARY_DIR}/cluster_run.configuration"
   "prefix=\"${CMAKE_INSTALL_PREFIX}\"\n")
 
@@ -64,20 +56,12 @@ FILE (WRITE "${PROJECT_BINARY_DIR}/config.mk"
 
 SET (app_min_js "${PROJECT_BINARY_DIR}/priv/public/ui/app.min.js")
 SET (index_min_html "${PROJECT_BINARY_DIR}/priv/public/ui/index.min.html")
-SET (classic_app_min_js "${PROJECT_BINARY_DIR}/priv/public/ui/classic-app.min.js")
-SET (classic_index_min_html "${PROJECT_BINARY_DIR}/priv/public/ui/classic-index.min.html")
 ADD_CUSTOM_TARGET (minify ALL
   COMMAND "${CMAKE_COMMAND}"
     -D "PROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
     -D "INDEX_HTML_FILE=${PROJECT_SOURCE_DIR}/priv/public/ui/index.html"
     -D "APP_MIN_FILE=${app_min_js}"
     -D "INDEX_MIN_FILE=${index_min_html}"
-    -P "${PROJECT_SOURCE_DIR}/cmake_modules/minify.cmake"
-  COMMAND "${CMAKE_COMMAND}"
-    -D "PROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
-    -D "INDEX_HTML_FILE=${PROJECT_SOURCE_DIR}/priv/public/ui/classic-index.html"
-    -D "APP_MIN_FILE=${classic_app_min_js}"
-    -D "INDEX_MIN_FILE=${classic_index_min_html}"
     -P "${PROJECT_SOURCE_DIR}/cmake_modules/minify.cmake"
   DEPENDS ns_minify)
 
@@ -89,11 +73,8 @@ ADD_CUSTOM_TARGET (ns_realclean
   COMMAND "${CMAKE_COMMAND}" -E remove_directory docs
   COMMAND "${CMAKE_COMMAND}" -E remove -f rebar.config
   COMMAND "${CMAKE_COMMAND}" -E remove -f src/ns_server.app.src
-  COMMAND "${CMAKE_COMMAND}" -E remove -f ${all_img_js}
   COMMAND "${CMAKE_COMMAND}" -E remove -f ${app_min_js}
   COMMAND "${CMAKE_COMMAND}" -E remove -f ${index_min_html}
-  COMMAND "${CMAKE_COMMAND}" -E remove -f ${classic_app_min_js}
-  COMMAND "${CMAKE_COMMAND}" -E remove -f ${classic_index_min_html}
   WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
   VERBATIM)
 ADD_DEPENDENCIES (realclean ns_realclean)
