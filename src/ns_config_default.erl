@@ -228,8 +228,8 @@ default() ->
      {{node, node(), cbas_cc_client_port},
       misc:get_env_default(cbas_cc_client_port, 9113)},
 
-     {{node, node(), cbas_hyracks_console_port},
-      misc:get_env_default(cbas_hyracks_console_port, 9114)},
+     {{node, node(), cbas_console_port},
+      misc:get_env_default(cbas_console_port, 9114)},
 
      {{node, node(), cbas_cluster_port},
       misc:get_env_default(cbas_cluster_port, 9115)},

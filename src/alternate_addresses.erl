@@ -68,7 +68,7 @@ all_ports() ->
      ?define_port(cbas_cluster_port, cbasCluster, misc),
      ?define_port(cbas_cc_cluster_port, cbasCcCluster, misc),
      ?define_port(cbas_cc_client_port, cbasCcClient, misc),
-     ?define_port(cbas_hyracks_console_port, cbasHyracksConsole, misc),
+     ?define_port(cbas_console_port, cbasConsole, misc),
      ?define_port(cbas_data_port, cbasData, misc),
      ?define_port(cbas_result_port, cbasResult, misc),
      ?define_port(cbas_messaging_port, cbasMessaging, misc),
