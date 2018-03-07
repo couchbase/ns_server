@@ -125,7 +125,7 @@ generate_45(#state{buckets = Buckets,
                    roles = RoleDefinitions,
                    users = Users}) ->
     Json =
-        {[memcached_admin_json(U, Buckets) || U <-Users] ++
+        {[memcached_admin_json(U) || U <- Users] ++
              generate_json_45(Buckets, ParamValues, RoleDefinitions)},
     menelaus_util:encode_json(Json).
 
@@ -178,8 +178,8 @@ jsonify_user({UserName, Domain}, [{global, GlobalPermissions} | BucketPermission
     Global = {privileges, GlobalPermissions},
     {list_to_binary(UserName), {[Buckets, Global, {domain, Domain}]}}.
 
-memcached_admin_json(AU, Buckets) ->
-    jsonify_user({AU, local}, [{global, [all]} | [{Name, [all]} || Name <- Buckets]]).
+memcached_admin_json(AU) ->
+    jsonify_user({AU, local}, [{global, [all]}, {"*", [all]}]).
 
 generate_json_45(Buckets, ParamValues, RoleDefinitions) ->
     RolesDict = dict:new(),
@@ -197,7 +197,7 @@ jsonify_users(Users, Buckets, ParamValues, RoleDefinitions, ClusterAdmin) ->
        begin
            ?yield(object_start),
            lists:foreach(fun (U) ->
-                                 ?yield({kv, memcached_admin_json(U, Buckets)})
+                                 ?yield({kv, memcached_admin_json(U)})
                          end, Users),
 
            EmitUser =
