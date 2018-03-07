@@ -25,8 +25,8 @@
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
 
--export([start_link/0, get_global/0, set_global/1, default_audit_json_path/0,
-         get_log_path/0, get_uid/0]).
+-export([start_link/0, get_global/0, set_global/1, sync_set_global/1,
+         default_audit_json_path/0, get_log_path/0, get_uid/0]).
 
 -export([upgrade_descriptors/0, upgrade_to_vulcan/1, get_descriptors/1,
          jsonifier/1]).
@@ -93,6 +93,14 @@ get_uid() ->
 set_global(KVList) ->
     ns_config:set_sub(audit, KVList).
 
+sync_set_global(KVList) ->
+    ns_config:set_sub(audit, KVList),
+    ns_config:sync_announcements(),
+    sync().
+
+sync() ->
+    gen_server:call(?MODULE, sync, infinity).
+
 init([]) ->
     {Global, Local} = read_config(),
     CompatMode = cluster_compat_mode:get_compat_version(),
@@ -112,6 +120,7 @@ init([]) ->
                              end),
 
     write_audit_json(CompatMode, Merged),
+    self() ! notify_memcached,
     {ok, #state{global = Global, merged = Merged}}.
 
 handle_call(get_uid, _From, #state{merged = Merged} = State) ->
@@ -125,13 +134,39 @@ handle_call(get_global, _From, #state{global = Global,
             UID ->
                 [{uid, UID} | Global]
         end,
-    {reply, Return, State}.
+    {reply, Return, State};
+handle_call(sync, _From, State) ->
+    {reply, ok, State}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info(notify_memcached, #state{merged = Merged} = State) ->
-    misc:flush(notify_memcached),
+handle_info(notify_memcached, State) ->
+    notify_memcached(State),
+    {noreply, State};
+
+handle_info(update_audit_json, #state{merged = OldMerged}) ->
+    misc:flush(update_audit_json),
+    {Global, Local} = read_config(),
+    CompatMode = cluster_compat_mode:get_compat_version(),
+    Merged = prepare_params(Global, Local, CompatMode),
+    NewState = #state{global = Global, merged = Merged},
+    case Merged of
+        OldMerged ->
+            ok;
+        _ ->
+            write_audit_json(CompatMode, Merged),
+            notify_memcached(NewState)
+    end,
+    {noreply, NewState}.
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+terminate(_Reason, _State) ->
+    ok.
+
+notify_memcached(#state{merged = Merged}) ->
     ?log_debug("Instruct memcached to reload audit config"),
     ok = ns_memcached_sockets_pool:executing_on_socket(
            fun (Sock) ->
@@ -143,28 +178,7 @@ handle_info(notify_memcached, #state{merged = Merged} = State) ->
             ok;
         UID ->
             gen_event:notify(audit_events, {audit_uid_change, UID})
-    end,
-    {noreply, State};
-
-handle_info(update_audit_json, #state{merged = OldMerged}) ->
-    misc:flush(update_audit_json),
-    {Global, Local} = read_config(),
-    CompatMode = cluster_compat_mode:get_compat_version(),
-    Merged = prepare_params(Global, Local, CompatMode),
-
-    case Merged of
-        OldMerged ->
-            ok;
-        _ ->
-            write_audit_json(CompatMode, Merged)
-    end,
-    {noreply, #state{global = Global, merged = Merged}}.
-
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
-
-terminate(_Reason, _State) ->
-    ok.
+    end.
 
 default_audit_json_path() ->
     filename:join(path_config:component_path(data, "config"), "audit.json").
@@ -251,8 +265,7 @@ write_audit_json(CompatMode, Params) ->
     ?log_debug("Writing new content to ~p : ~p", [Path, Json]),
 
     Bytes = misc:ejson_encode_pretty({Json}),
-    ok = misc:atomic_write_file(Path, Bytes),
-    self() ! notify_memcached.
+    ok = misc:atomic_write_file(Path, Bytes).
 
 read_config() ->
     {case ns_config:search(audit) of
