@@ -348,7 +348,7 @@ client_auth(Sha, User, Password, Nonce) ->
 
     MetaHeader = meta_header(),
     case authenticate(ToSend) of
-        {auth_failure, [{MetaHeader, Header}]} ->
+        {first_step, [{MetaHeader, Header}]} ->
             {Sid, Salt, Iterations, ServerNonce, ServerFirstMessage} =
                 parse_server_first_response(Sha, Nonce, Header),
 
