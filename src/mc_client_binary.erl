@@ -56,7 +56,6 @@
          map_status/1,
          get_mass_dcp_docs_estimate/2,
          ext/2,
-         rev_to_mcd_ext/1,
          set_cluster_config/2,
          get_random_key/1,
          compact_vbucket/5,
