@@ -32,6 +32,7 @@
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -define(CHECK_INTERVAL, 10000).
 -define(CHECK_WARMUP_INTERVAL, 500).
@@ -126,7 +127,8 @@
          wait_for_seqno_persistence/3,
          get_keys/3,
          config_validate/1,
-         config_reload/0
+         config_reload/0,
+         get_failover_log/2
         ]).
 
 %% for ns_memcached_sockets_pool, memcached_file_refresh only
@@ -1479,3 +1481,9 @@ config_reload() ->
               {ok, Sock} = connect([{retries, 1}]),
               mc_client_binary:config_reload(Sock)
       end).
+
+-spec get_failover_log(bucket_name(), vbucket_id()) ->
+                              [{integer(), integer()}] | mc_error().
+get_failover_log(Bucket, VBucket) ->
+    ns_memcached:perform_very_long_call(
+      ?cut({reply, mc_client_binary:get_failover_log(_, VBucket)}), Bucket).

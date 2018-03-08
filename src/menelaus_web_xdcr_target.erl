@@ -60,8 +60,8 @@ reply_error(Req, Code, Error, Reason) ->
 do_handle_pre_replicate(Req, Props, Bucket) ->
     VB = proplists:get_value(vb, Props),
 
-    case xdcr_dcp_streamer:get_failover_log(Bucket, VB) of
-        {memcached_error, not_my_vbucket} ->
+    case ns_memcached:get_failover_log(Bucket, VB) of
+        {memcached_error, not_my_vbucket, _} ->
             reply_error(Req, 404, not_found, not_my_vbucket);
         FailoverLog when is_list(FailoverLog) ->
             do_handle_pre_replicate(Req, Props, Bucket, VB, FailoverLog)

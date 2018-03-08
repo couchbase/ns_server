@@ -66,7 +66,8 @@
          audit_put/3,
          audit_config_reload/1,
          refresh_rbac/1,
-         subdoc_multi_lookup/5
+         subdoc_multi_lookup/5,
+         get_failover_log/2
         ]).
 
 -type recv_callback() :: fun((_, _, _) -> any()) | undefined.
@@ -90,7 +91,8 @@
                      ?RDECR | ?RDECRQ | ?SYNC | ?CMD_CHECKPOINT_PERSISTENCE |
                      ?CMD_SEQNO_PERSISTENCE | ?CMD_GET_RANDOM_KEY |
                      ?CMD_COMPACT_DB | ?CMD_AUDIT_PUT | ?CMD_AUDIT_CONFIG_RELOAD |
-                     ?CMD_RBAC_REFRESH | ?CMD_SUBDOC_MULTI_LOOKUP.
+                     ?CMD_RBAC_REFRESH | ?CMD_SUBDOC_MULTI_LOOKUP |
+                     ?DCP_GET_FAILOVER_LOG.
 
 
 %% A memcached client that speaks binary protocol.
@@ -957,4 +959,21 @@ refresh_rbac(Sock) ->
     case process_error_response(RV) of
         {memcached_error, success, _} -> ok;
         Err -> Err
+    end.
+
+unpack_failover_log_loop(<<>>, Acc) ->
+    Acc;
+unpack_failover_log_loop(<<U:64/big, S:64/big, Rest/binary>>, Acc) ->
+    unpack_failover_log_loop(Rest, [{U, S} | Acc]).
+
+unpack_failover_log(Body) ->
+    unpack_failover_log_loop(Body, []).
+
+get_failover_log(Sock, VB) ->
+    case cmd(?DCP_GET_FAILOVER_LOG, Sock, undefined, undefined,
+             {#mc_header{vbucket = VB}, #mc_entry{}}) of
+        {ok, #mc_header{status = ?SUCCESS}, ME, _NCB} ->
+            unpack_failover_log(ME#mc_entry.data);
+        Response ->
+            process_error_response(Response)
     end.
