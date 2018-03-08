@@ -63,9 +63,6 @@ child_specs() ->
      {ns_memcached_sockets_pool, {ns_memcached_sockets_pool, start_link, []},
       permanent, 1000, worker, []},
 
-     {xdcr_dcp_sockets_pool, {xdcr_dcp_sockets_pool, start_link, []},
-      permanent, 1000, worker, []},
-
      {ns_couchdb_stats_collector, {ns_couchdb_stats_collector, start_link, []},
       permanent, 1000, worker, [ns_couchdb_stats_collector]},
 
