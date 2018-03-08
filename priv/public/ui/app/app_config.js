@@ -19,8 +19,6 @@
     ]);
 
     $qProvider.errorOnUnhandledRejections(false);
-
-    $uibModalProvider.options.backdrop = 'static';
     // When using a tooltip in an absolute positioned element,
     // you need tooltip-append-to-body="true" https://github.com/angular-ui/bootstrap/issues/4195
     $uibTooltipProvider.options({

@@ -51,6 +51,7 @@
     function dropIndex(row) {
       $uibModal.open({
         windowClass: "z-index-10001",
+        backdrop: 'static',
         templateUrl: 'app/mn_admin/mn_indexes/mn_gsi/mn_gsi_drop_confirm_dialog.html'
       }).result.then(function () {
         row.awaytingRemoval = true;
