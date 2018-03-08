@@ -152,8 +152,7 @@ handle_packet(<<Magic:8, Opcode:8, _Rest/binary>> = Packet,
               State = #state{ext_module = ExtModule,
                              ext_state = ExtState,
                              proxy_to = ProxyTo}) ->
-    case (erlang:get(suppress_logging_for_xdcr) =:= true
-          orelse suppress_logging(Packet)
+    case (suppress_logging(Packet)
           orelse not ale:is_loglevel_enabled(?NS_SERVER_LOGGER, debug)) of
         true ->
             ok;

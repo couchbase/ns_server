@@ -195,10 +195,6 @@
                                                                                             "implements consumer side of dcp replication proxy")
                                                                                 (gen-server '(dcp_producer_conn) :since "3.0"
                                                                                             "implements producer side of dcp replication proxy")))
-                                                        (gen-server '(dcp_notifier "default") :name 'dcp_notifier-default :since "3.0"
-                                                                    "note: it's part of data path. Allows xdcr-over-xmem"
-                                                                    " to check/wait until vbucket has greater seqno then xdcr consumed"
-                                                                    " Only applies to couchbase buckets")
                                                         (gen-server '(janitor_agent "default") :name 'janitor_agent-default :since "2.0"
                                                                     "applies replication and vbucket state changes
                                                                      decided by janitor and vbuckets mover")
