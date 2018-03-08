@@ -34,7 +34,7 @@
         .applyToScope("settings")
         .onSuccess(function (resp) {
           if ($scope.rbac.cluster.admin.security.write && vm.settings.prefixes.length === 0) {
-            vm.settings.prefixes.push({delimiter: '', prefix: '', path: ''});
+            vm.settings.prefixes.push({delimiter: '', prefix: '', path: 'subject.cn'});
           }
         });
     }
