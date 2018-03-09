@@ -121,7 +121,7 @@
   .content-box-dashboard.resp-sml{
     flex-wrap: wrap;
 }
-#query_wrapper.resp-small {
+.wb-main-wrapper.resp-small {
   width: 100% !important;
 }
   .cbui-table-props,
