@@ -24,7 +24,7 @@
          get_gauges/0, get_counters/0, get_computed/0, grab_stats/0,
          compute_gauges/1, get_service_gauges/0, compute_service_gauges/1,
          get_service_counters/0, process_status/1,
-         split_stat_name/1]).
+         split_stat_name/1, is_started/0]).
 
 get_status(Timeout) ->
     service_status_keeper:get_status(?MODULE, Timeout).
@@ -100,6 +100,9 @@ get_service_counters() ->
 
 get_computed() ->
     [disk_overhead_estimate].
+
+is_started() ->
+    misc:is_local_port_open(get_port(), 1000).
 
 grab_stats() ->
     rest_utils:get_json_local(indexer, "stats?async=true",

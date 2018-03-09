@@ -20,10 +20,14 @@
 -export([get_type/0, restart/0,
          get_gauges/0, get_counters/0, get_computed/0, grab_stats/0,
          compute_gauges/1, get_service_gauges/0,
-         get_service_counters/0, compute_service_gauges/1, split_stat_name/1]).
+         get_service_counters/0, compute_service_gauges/1, split_stat_name/1,
+         is_started/0]).
 
 get_type() ->
     cbas.
+
+get_port() ->
+    ns_config:read_key_fast({node, node(), cbas_admin_port}, 9110).
 
 restart() ->
     [].
@@ -43,8 +47,11 @@ get_service_gauges() ->
 get_service_counters() ->
     ['gc_count', 'gc_time', 'io_reads', 'io_writes'].
 
+is_started() ->
+    misc:is_local_port_open(get_port(), 1000).
+
 grab_stats() ->
-    Port = ns_config:read_key_fast({node, node(), cbas_admin_port}, 9110),
+    Port = get_port(),
     Timeout = ?get_timeout(stats, 30000),
     rest_utils:get_json_local(cbas, "analytics/node/stats", Port, Timeout).
 

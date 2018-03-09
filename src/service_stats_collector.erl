@@ -28,7 +28,8 @@
 %% callbacks
 -export([init/1, handle_info/2, grab_stats/1, process_stats/5]).
 
--record(state, {service :: atom(),
+-record(state, {status :: starting | started,
+                service :: atom(),
                 default_stats,
                 buckets}).
 
@@ -39,6 +40,8 @@
           sys_counters = [],
           status = []
          }).
+
+-define(CHECK_STATUS_INTERVAL, 1000).
 
 server_name(Service) ->
     list_to_atom(?MODULE_STRING "-" ++ atom_to_list(Service:get_type())).
@@ -87,8 +90,10 @@ init(Service) ->
                 || Stat <- Service:get_gauges() ++ Service:get_counters() ++
                        Service:get_computed()],
 
+    self() ! check_status,
 
-    {ok, #state{service = Service,
+    {ok, #state{status = starting,
+                service = Service,
                 buckets = Buckets,
                 default_stats = finalize_stats(Defaults)}}.
 
@@ -181,7 +186,10 @@ massage_stats(Service, Ets, [{K, V} | Rest], Acc) ->
               setelement(Pos, Acc, [{NewK, V} | element(Pos, Acc)]))
     end.
 
-grab_stats(#state{service = Service}) ->
+grab_stats(#state{status = starting}) ->
+    [];
+
+grab_stats(#state{status = started, service = Service}) ->
     case ns_cluster_membership:should_run_service(ns_config:latest(),
                                                   Service:get_type(), node()) of
         true ->
@@ -322,5 +330,27 @@ aggregate_stats_test() ->
 handle_info({buckets, NewBuckets}, State) ->
     NewBuckets1 = lists:map(fun list_to_binary/1, NewBuckets),
     {noreply, State#state{buckets = NewBuckets1}};
+
+handle_info(check_status, #state{status = starting,
+                                 service = Service} = State) ->
+    case ns_cluster_membership:should_run_service(ns_config:latest(),
+                                                  Service:get_type(), node()) of
+        true -> {noreply, check_status(State)};
+        false -> {noreply, State}
+    end;
+
 handle_info(_Info, State) ->
     {noreply, State}.
+
+check_status(#state{service = Service} = State) ->
+    ?log_debug("Checking if service ~p is started...", [Service]),
+    NewStatus =
+        case Service:is_started() of
+            true ->
+                ?log_debug("Service ~p is started", [Service]),
+                started;
+            false ->
+                erlang:send_after(?CHECK_STATUS_INTERVAL, self(), check_status),
+                starting
+        end,
+    State#state{status = NewStatus}.

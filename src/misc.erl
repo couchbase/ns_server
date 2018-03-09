@@ -1451,6 +1451,15 @@ is_good_address_when_allowed(Address) ->
             end
     end.
 
+is_local_port_open(Port, Timeout) ->
+    case gen_tcp:connect(localhost(), Port, [get_net_family()], Timeout) of
+        {ok, Socket} ->
+            gen_tcp:close(Socket),
+            true;
+        {error, _} ->
+            false
+    end.
+
 delaying_crash(DelayBy, Body) ->
     try
         Body()

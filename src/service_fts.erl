@@ -23,7 +23,8 @@
          process_status/1,
          get_gauges/0, get_counters/0, get_computed/0, grab_stats/0,
          compute_gauges/1, get_service_gauges/0,
-         compute_service_gauges/1, get_service_counters/0, split_stat_name/1]).
+         compute_service_gauges/1, get_service_counters/0, split_stat_name/1,
+         is_started/0]).
 
 get_indexes() ->
     service_status_keeper:get_items(?MODULE).
@@ -75,6 +76,9 @@ get_service_gauges() ->
 
 get_service_counters() ->
     [].
+
+is_started() ->
+    misc:is_local_port_open(get_port(), 1000).
 
 grab_stats() ->
     rest_utils:get_json_local(fts, "api/nsstats", get_port(), get_timeout()).

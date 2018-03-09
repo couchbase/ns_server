@@ -31,7 +31,8 @@
          get_service_counters/0,
          compute_gauges/1,
          compute_service_gauges/1,
-         split_stat_name/1]).
+         split_stat_name/1,
+         is_started/0]).
 
 get_functions() ->
     {ok, Functions, _, _} = service_status_keeper:get_items(?MODULE),
@@ -83,6 +84,9 @@ flatten_stats(Json) ->
                         [{[Name, Stat], Val} || {Stat, Val} <- SectionStats]
                 end, interesting_sections())
       end, Json).
+
+is_started() ->
+    misc:is_local_port_open(get_port(), 1000).
 
 grab_stats() ->
     Timeout = ?get_timeout(stats, 30000),
