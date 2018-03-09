@@ -3,11 +3,12 @@
 
   angular
     .module('mnPoolDefault', [
-      'mnPools'
+      'mnPools',
+      'ui.bootstrap'
     ])
     .factory('mnPoolDefault', mnPoolDefaultFactory);
 
-  function mnPoolDefaultFactory($http, $q, mnPools, $window, $location, $httpParamSerializerJQLike, mnHelper) {
+  function mnPoolDefaultFactory($http, $q, mnPools, $window, $location, $httpParamSerializerJQLike, mnHelper, $state) {
     var latest = {};
     var mnPoolDefault = {
       latestValue: latestValue,
@@ -128,9 +129,7 @@
         nodes = nodes.slice(0, max);
       }
       var protocol = $location.protocol();
-      var appbase = $window.location.pathname;
-      var search = $httpParamSerializerJQLike($location.search());
-      var hash = $location.hash();
+
       return _.map(nodes, function(node) {
         // ipv4/ipv6/hostname + port
         var link = parseHostname("http://" + node.hostname);
@@ -138,10 +137,14 @@
         return protocol
           + "://" + link.hostname
           + ":" + port
-          + appbase
-          + "#!" + $location.path()
-          + (search ? "?" + search : "")
-          + (hash ? "#" + hash : "");
+          + $window.location.pathname
+          + parseHostname(
+            $state.href(
+              $state.transition.to().name,
+              $state.transition.params("to"),
+              {absolute: true}
+            )
+          ).hash;
       });
     }
   }
