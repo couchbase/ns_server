@@ -60,8 +60,8 @@
             <span class="cbui-table-cell">{{row.storageMode | mnFormatStorageMode:pools.isEnterprise}}</span>
             <span class="cbui-table-cell flex-grow-half"><span ng-if="row.progress">{{row.progress}}%</span></span>
             <span class="cbui-table-cell flex-grow-1 text-right wrap" ng-if="gsiCtl.hasQueryService()" ng-click="$event.stopPropagation();">
-              <button class="outline tight" ng-click="gsiCtl.dropIndex(row)">Drop</button>
-              <button class="outline tight" ui-sref="app.admin.query.workbench({query: gsiCtl.editIndex(row)})">Edit</button>
+              <button class="outline " ng-click="gsiCtl.dropIndex(row)">Drop</button>
+              <!-- <button class="outline tight" ui-sref="app.admin.query.workbench({query: gsiCtl.editIndex(row)})">Edit</button> -->
             </span>
           </div>
           <div class="cbui-tablerow-expanded" ng-if="gsiCtl.isDetailsOpened(gsiCtl.generateIndexId(row))">
@@ -108,8 +108,8 @@
             <span class="cbui-table-cell">{{row.storageMode | mnFormatStorageMode:pools.isEnterprise}}</span>
             <span class="cbui-table-cell flex-grow-half"><span ng-if="row.progress">{{row.progress}}%</span></span>
             <span class="cbui-table-cell flex-grow-1 text-right wrap" ng-if="gsiCtl.hasQueryService()" ng-click="$event.stopPropagation();">
-              <button class="outline tight" ng-click="gsiCtl.dropIndex(row)">Drop</button>
-              <button class="outline tight" ui-sref="app.admin.query.workbench({query: gsiCtl.editIndex(row)})">Edit</button>
+              <button class="outline " ng-click="gsiCtl.dropIndex(row)">Drop</button>
+              <!-- <button class="outline tight" ui-sref="app.admin.query.workbench({query: gsiCtl.editIndex(row)})">Edit</button> -->
             </span>
           </div>
           <div class="cbui-tablerow-expanded" ng-if="gsiCtl.isDetailsOpened(gsiCtl.generateIndexId(row))">
@@ -160,8 +160,8 @@
           <span class="cbui-table-cell">{{row.storageMode | mnFormatStorageMode:pools.isEnterprise}}</span>
           <span class="cbui-table-cell flex-grow-half"><span ng-if="row.progress">{{row.progress}}%</span></span>
           <span class="cbui-table-cell flex-grow-1 text-right wrap" ng-if="gsiCtl.hasQueryService()" ng-click="$event.stopPropagation();">
-            <button class="outline tight" ng-click="gsiCtl.dropIndex(row)">Drop</button>
-            <button class="outline tight" ui-sref="app.admin.query.workbench({query: gsiCtl.editIndex(row)})">Edit</button>
+            <button class="outline " ng-click="gsiCtl.dropIndex(row)">Drop</button>
+            <!-- <button class="outline tight" ui-sref="app.admin.query.workbench({query: gsiCtl.editIndex(row)})">Edit</button> -->
           </span>
         </div>
         <div class="cbui-tablerow-expanded" ng-if="gsiCtl.isDetailsOpened(gsiCtl.generateIndexId(row))">
