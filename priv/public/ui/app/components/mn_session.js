@@ -48,7 +48,7 @@
     function get() {
       return mnPoolDefault.get().then(function (resp) {
         return {
-          uiSessionTimeout: Number(resp.uiSessionTimeout) / 60
+          uiSessionTimeout: (Number(resp.uiSessionTimeout) / 60) || 0
         };
       });
     }
