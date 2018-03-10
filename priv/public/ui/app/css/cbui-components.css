@@ -834,6 +834,9 @@ section.error {
 .columns-five {
   max-width: 888px;
 }
+.columns-five .chart-column-headers {
+  width: 20%;
+}
 
 /* MEMORY/DISK USAGE METERS --------------------------------------------- */
 .bar-usages .marker {
