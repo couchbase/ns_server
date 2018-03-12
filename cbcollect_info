@@ -309,6 +309,8 @@ class Task(object):
             if hasattr(self, 'to_stdin'):
                 p.stdin.write(self.to_stdin)
 
+            p.stdin.close()
+
         except OSError, e:
             # if use_shell is False then Popen may raise exception
             # if binary is missing. In this case we mimic what
@@ -318,7 +320,12 @@ class Task(object):
             # to some system limit".
             print >> fp, "Failed to execute %s: %s" % (self.command, e)
             return 127
-        p.stdin.close()
+
+        except IOError, e:
+            if e.errno == errno.EPIPE:
+                print >> fp, "Ignoring broken pipe on stdin for %s" % self.command
+            else:
+                raise
 
         from threading import Timer, Event
 
