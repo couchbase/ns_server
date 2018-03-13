@@ -25,7 +25,8 @@
 
 -export([get/2,
          ensure/2,
-         start_params/1]).
+         start_params/1,
+         ensure_collections/2]).
 
 params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
     StorageMode = ns_bucket:storage_mode(BucketConfig),
@@ -218,6 +219,41 @@ ensure(Sock, #cfg{type = memcached}) ->
                       end, not_present),
     ok.
 
+get_current_collection_uid(Sock) ->
+    case mc_client_binary:get_collections_manifest(Sock) of
+        {memcached_error, no_coll_manifest, _} ->
+            undefined;
+        {ok, Bin} ->
+            {Json} = ejson:decode(Bin),
+            proplists:get_value(<<"uid">>, Json)
+    end.
+
+need_update_collections_manifest(Sock, BucketConfig) ->
+    case collections:uid(BucketConfig) of
+        undefined ->
+            false;
+        Uid ->
+            case get_current_collection_uid(Sock) of
+                Uid ->
+                    false;
+                Other ->
+                    {true, Other, Uid}
+            end
+    end.
+
+ensure_collections(Sock, #cfg{name = BucketName, config = BucketConfig}) ->
+    case need_update_collections_manifest(Sock, BucketConfig) of
+        false ->
+            ok;
+        {true, Prev, Next} ->
+            Manifest = collections:for_memcached(BucketConfig),
+            ?log_debug(
+               "Applying collection manifest to bucket ~p due to id change from"
+               " ~p to ~p. Manifest = ~p",
+               [BucketName, Prev, Next, Manifest]),
+            ok = mc_client_binary:set_collections_manifest(
+                   Sock, ejson:encode(Manifest))
+    end.
 
 start_params(#cfg{config = BucketConfig,
                   params = Params,

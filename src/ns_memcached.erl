@@ -1234,43 +1234,51 @@ ensure_bucket(Sock, Bucket) ->
     Config = ns_config:get(),
     try memcached_bucket_config:get(Config, Bucket) of
         BConf ->
-            case mc_client_binary:select_bucket(Sock, Bucket) of
+            case do_ensure_bucket(Sock, Bucket, BConf) of
                 ok ->
-                    case memcached_bucket_config:ensure(Sock, BConf) of
-                        restart ->
-                            ale:info(
-                              ?USER_LOGGER,
-                              "Restarting bucket ~p due to configuration change",
-                              [Bucket]),
-                            exit({shutdown, reconfig});
-                        ok ->
-                            ok
-                    end;
-                {memcached_error, key_enoent, _} ->
-                    {ok, DBSubDir} =
-                        ns_storage_conf:this_node_bucket_dbdir(Bucket),
-                    ok = filelib:ensure_dir(DBSubDir),
-
-                    {Engine, ConfigString} =
-                        memcached_bucket_config:start_params(BConf),
-
-                    case mc_client_binary:create_bucket(Sock, Bucket, Engine,
-                                                        ConfigString) of
-                        ok ->
-                            ?log_info("Created bucket ~p with config string ~p",
-                                      [Bucket, ConfigString]),
-                            ok = mc_client_binary:select_bucket(Sock, Bucket);
-                        Error ->
-                            {error, {bucket_create_error, Error}}
-                    end;
+                    memcached_bucket_config:ensure_collections(Sock, BConf);
                 Error ->
-                    {error, {bucket_select_error, Error}}
+                    Error
             end
     catch
         E:R ->
             ?log_error("Unable to get config for bucket ~p: ~p",
                        [Bucket, {E, R, erlang:get_stacktrace()}]),
             {E, R}
+    end.
+
+do_ensure_bucket(Sock, Bucket, BConf) ->
+    case mc_client_binary:select_bucket(Sock, Bucket) of
+        ok ->
+            case memcached_bucket_config:ensure(Sock, BConf) of
+                restart ->
+                    ale:info(
+                      ?USER_LOGGER,
+                      "Restarting bucket ~p due to configuration change",
+                      [Bucket]),
+                    exit({shutdown, reconfig});
+                ok ->
+                    ok
+            end;
+        {memcached_error, key_enoent, _} ->
+            {ok, DBSubDir} =
+                ns_storage_conf:this_node_bucket_dbdir(Bucket),
+            ok = filelib:ensure_dir(DBSubDir),
+
+            {Engine, ConfigString} =
+                memcached_bucket_config:start_params(BConf),
+
+            case mc_client_binary:create_bucket(Sock, Bucket, Engine,
+                                                ConfigString) of
+                ok ->
+                    ?log_info("Created bucket ~p with config string ~p",
+                              [Bucket, ConfigString]),
+                    ok = mc_client_binary:select_bucket(Sock, Bucket);
+                Error ->
+                    {error, {bucket_create_error, Error}}
+            end;
+        Error ->
+            {error, {bucket_select_error, Error}}
     end.
 
 server(Bucket) ->

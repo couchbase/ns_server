@@ -23,6 +23,8 @@
 
 -export([start_link/0,
          enabled/0,
+         uid/1,
+         for_memcached/1,
          for_rest/1,
          create_scope/2,
          create_collection/3,
@@ -49,6 +51,37 @@ default_manifest() ->
          {collections,
           [{"_default",
             [{uid, 0}]}]}]}]}].
+
+uid(BucketCfg) ->
+    case enabled() of
+        true ->
+            extract_uid(get_manifest(BucketCfg));
+        false ->
+            undefined
+    end.
+
+extract_uid(Props) ->
+    list_to_binary(string:to_lower(
+                     integer_to_list(proplists:get_value(uid, Props), 16))).
+
+for_memcached(BucketCfg) ->
+    Manifest = get_manifest(BucketCfg),
+
+    ScopesJson =
+        lists:map(
+          fun ({ScopeName, Scope}) ->
+                  {[{name, list_to_binary(ScopeName)},
+                    {uid, extract_uid(Scope)},
+                    {collections,
+                     lists:map(
+                       fun({CollName, Coll}) ->
+                               {[{name, list_to_binary(CollName)},
+                                 {uid, extract_uid(Coll)}]}
+                       end, get_collections(Scope))}]}
+          end, get_scopes(Manifest)),
+
+    {[{uid, extract_uid(Manifest)},
+      {scopes, ScopesJson}]}.
 
 for_rest(Bucket) ->
     {ok, BucketCfg} = ns_bucket:get_bucket(Bucket),
