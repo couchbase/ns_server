@@ -120,7 +120,7 @@ rebalance(Rebalancer, Service, Type,
     ok = service_agent:prepare_rebalance(Service, AllNodes, Rebalancer,
                                          Id, Type, KeepNodesArg, EjectNodesArg),
 
-    Leader = pick_leader(NodeInfos),
+    Leader = pick_leader(NodeInfos, KeepNodes),
     ?log_debug("Using node ~p as a leader", [Leader]),
 
     ok = service_agent:start_rebalance(Service, Leader, Rebalancer,
@@ -175,15 +175,18 @@ worker_name(Service) ->
 name(Service) ->
     list_to_atom(?MODULE_STRING ++ "-" ++ atom_to_list(Service)).
 
-pick_leader(NodeInfos) ->
+pick_leader(NodeInfos, KeepNodes) ->
     Master = node(),
     {Leader, _} =
         misc:min_by(
           fun ({NodeLeft, InfoLeft}, {NodeRight, InfoRight}) ->
                   {_, PrioLeft} = lists:keyfind(priority, 1, InfoLeft),
                   {_, PrioRight} = lists:keyfind(priority, 1, InfoRight),
+                  KeepLeft = lists:member(NodeLeft, KeepNodes),
+                  KeepRight = lists:member(NodeRight, KeepNodes),
 
-                  {PrioLeft, NodeLeft =:= Master} > {PrioRight, NodeRight =:= Master}
+                  {PrioLeft, KeepLeft, NodeLeft =:= Master} >
+                      {PrioRight, KeepRight, NodeRight =:= Master}
           end, NodeInfos),
 
     Leader.
