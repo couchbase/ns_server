@@ -1357,7 +1357,7 @@ def main():
     parser.add_option("--just-upload-into", dest="just_upload_into",
                       help=optparse.SUPPRESS_HELP)
     parser.add_option("--upload-host", dest="upload_host",
-                      help="gather diagnotics and upload it for couchbase support. Gives upload host")
+                      help="gather diagnostics and upload it for couchbase support. Gives upload host")
     parser.add_option("--customer", dest="upload_customer",
                       help="specifies customer name for upload")
     parser.add_option("--ticket", dest="upload_ticket", type='ticket',
