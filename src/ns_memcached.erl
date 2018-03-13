@@ -641,9 +641,11 @@ handle_cast({connect_done, WorkersCount, RV}, #state{bucket = Bucket,
                 ok ->
                     connecting = OldStatus,
 
-                    ?log_info("Main ns_memcached connection established: ~p", [RV]),
+                    ?log_info("Main ns_memcached connection established: ~p",
+                              [RV]),
 
-                    {ok, Timer} = timer2:send_interval(?CHECK_WARMUP_INTERVAL, check_started),
+                    {ok, Timer} = timer2:send_interval(?CHECK_WARMUP_INTERVAL,
+                                                       check_started),
                     Self = self(),
                     Self ! check_started,
 
@@ -653,7 +655,8 @@ handle_cast({connect_done, WorkersCount, RV}, #state{bucket = Bucket,
                                      sock = Sock,
                                      status = init
                                     },
-                    [proc_lib:spawn_link(erlang, apply, [fun worker_init/2, [Self, InitialState]])
+                    [proc_lib:spawn_link(erlang, apply, [fun worker_init/2,
+                                                         [Self, InitialState]])
                      || _ <- lists:seq(1, WorkersCount)],
                     {noreply, InitialState};
                 Error ->
