@@ -43,14 +43,20 @@
 
     <label>Log Rotation <small>time interval & size trigger</small></label>
     <div class="row flex-left fix-width-5">
-      <div class="column form-inline fix-width-2">
-        <input
-           id="log-rotation-interval"
-           ng-model="auditCtl.state.rotateInterval"
-           ng-disabled="!auditCtl.state.auditdEnabled || !rbac.cluster.admin.security.write"
-           type="number"
-           class="input-short-1">
-        <small>day{{auditCtl.state.rotateInterval !== 1 ? "s" : ""}}</small>
+      <div class="column form-inline">
+          <input
+             id="log-rotation-interval"
+             ng-model="auditCtl.state.rotateInterval"
+             ng-disabled="!auditCtl.state.auditdEnabled || !rbac.cluster.admin.security.write"
+             class="input-short-1"
+             type="number">
+          <select
+             ng-model="auditCtl.state.rotateUnit"
+             ng-disabled="!auditCtl.state.auditdEnabled || !rbac.cluster.admin.security.write">
+            <option value="minutes">minute{{auditCtl.state.rotateInterval !== 1 ? "s" : ""}}</option>
+            <option value="hours">hour{{auditCtl.state.rotateInterval !== 1 ? "s" : ""}}</option>
+            <option value="days">day{{auditCtl.state.rotateInterval !== 1 ? "s" : ""}}</option>
+          </select>
       </div>
       <div class="column">
         <span class="form-inline">
