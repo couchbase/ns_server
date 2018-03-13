@@ -1252,7 +1252,7 @@ ensure_bucket(Sock, Bucket) ->
                     ok = filelib:ensure_dir(DBSubDir),
 
                     {Engine, ConfigString} =
-                        memcached_bucket_config:start_params(Config, BConf),
+                        memcached_bucket_config:start_params(BConf),
 
                     case mc_client_binary:create_bucket(Sock, Bucket, Engine,
                                                         ConfigString) of

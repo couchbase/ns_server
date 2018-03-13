@@ -21,11 +21,11 @@
 -include("ns_common.hrl").
 -include("cut.hrl").
 
--record(cfg, {type, name, config, params}).
+-record(cfg, {type, name, config, engine_config, params}).
 
 -export([get/2,
          ensure/2,
-         start_params/2]).
+         start_params/1]).
 
 params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
     StorageMode = ns_bucket:storage_mode(BucketConfig),
@@ -121,8 +121,12 @@ get(Config, BucketName) ->
     UUID = proplists:get_value(uuid, BucketConfig),
 
     Params = params(BucketType, BucketName, BucketConfig, MemQuota, UUID),
+
+    Engines = ns_config:search_node_prop(Config, memcached, engines),
+    EngineConfig = proplists:get_value(BucketType, Engines),
+
     #cfg{type = BucketType, name = BucketName, config = BucketConfig,
-         params = Params}.
+         params = Params, engine_config = EngineConfig}.
 
 query_stats(Sock) ->
     {ok, Stats} =
@@ -215,10 +219,9 @@ ensure(Sock, #cfg{type = memcached}) ->
     ok.
 
 
-start_params(Config, #cfg{type = BucketType, config = BucketConfig,
-                          params = Params}) ->
-    Engines = ns_config:search_node_prop(Config, memcached, engines),
-    EngineConfig = proplists:get_value(BucketType, Engines),
+start_params(#cfg{config = BucketConfig,
+                  params = Params,
+                  engine_config = EngineConfig}) ->
     Engine = proplists:get_value(engine, EngineConfig),
 
     StaticConfigString =
