@@ -47,7 +47,7 @@
   function mnServersListFilter($filter, mnFormatServicesFilter) {
     return function (nodes, searchValue, groupsByHostname) {
       return $filter('filter')(nodes, function (node) {
-        if (searchValue === "") {
+        if (searchValue === "" || searchValue === undefined) {
           return true;
         }
 

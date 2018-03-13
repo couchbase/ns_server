@@ -1,4 +1,4 @@
-<div mn-spinner="logsCollectInfoCtl.viewLoading || !logsCollectInfoCtl.state.nodes" min-height="300px" class="fix-width-7">
+<div mn-spinner="logsCollectInfoCtl.viewLoading || !logsCollectInfoCtl.state.nodes" min-height="300px" class="max-width-8">
   <div
      class="error error-field"
      ng-show="logsCollectInfoCtl.errors._">{{logsCollectInfoCtl.errors._}}
@@ -9,38 +9,17 @@
      ng-submit="logsCollectInfoCtl.submit()"
      name="collectForm"
      class="forms">
-    <input
-       type="radio"
-       name="from"
-       value="*"
-       ng-model="logsCollectInfoCtl.collect.from"
-       id="all_nodes_radio"
-       checked="checked">
-    <label for="all_nodes_radio">All Nodes</label>
-    <input
-       type="radio"
-       name="from"
-       value=""
-       ng-model="logsCollectInfoCtl.collect.from"
-       id="selected_nodes_radio">
-    <label for="selected_nodes_radio">Selected Nodes</label>
 
-    <div class="formrow indent-2">
-      <div ng-repeat="node in logsCollectInfoCtl.state.nodes track by node.otpNode"
-           class="row flex-left">
-        <div
-           class="icon margin-right-half"
-           style="width:.2rem;height:1rem;"
-           ng-class="['dynamic_' + node.status, 'dynamic_' + node.clusterMembership]"></div>
-        <input
-           type="checkbox"
-           ng-model="logsCollectInfoCtl.collect.nodes[node.otpNode]"
-           ng-value="node.otpNode"
-           ng-attr-id="collected_node_list_{{node.otpNode}}"
-           ng-checked="logsCollectInfoCtl.collect.from === '*'"
-           ng-disabled="node.status === 'unhealthy' || logsCollectInfoCtl.collect.from">
-        <label for="collected_node_list_{{node.otpNode}}">{{ node.hostname | mnStripPortHTML:logsCollectInfoCtl.state.nodes }}</label>
-      </div>
+    <div
+       class="error error-field"
+       ng-show="logsCollectInfoCtl.errors.nodes">{{logsCollectInfoCtl.errors.nodes}}</div>
+    <div
+       mn-selectable-nodes-list=""
+       class="formrow"
+       nodes="logsCollectInfoCtl.state.nodes"
+       mn-filtered-nodes-holder="logsCollectInfoCtl.mnFilteredNodesHolder"
+       mn-groups="logsCollectInfoCtl.getGroupsByHostname"
+       mn-is-node-disabled="logsCollectInfoCtl.isNodeDisabled(node)">
     </div>
 
     <div class="formrow"

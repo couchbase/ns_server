@@ -5,23 +5,31 @@
     .module('mnLogs')
     .controller('mnLogsCollectInfoController', mnLogsCollectInfoController);
 
-  function mnLogsCollectInfoController($scope, mnHelper, mnPromiseHelper, mnPoolDefault, mnLogsCollectInfoService, mnPoller, $state, $uibModal, mnLogRedactionService, permissions) {
+  function mnLogsCollectInfoController($scope, mnHelper, mnPromiseHelper, mnPoolDefault, mnLogsCollectInfoService, mnPoller, $state, $uibModal, mnLogRedactionService, permissions, mnGroupsService) {
     var vm = this;
     vm.stopCollection = stopCollection;
+    vm.isNodeDisabled = isNodeDisabled;
     vm.submit = submit;
 
     activate();
 
-    vm.collect = {
-      nodes: {},
-      from: '*',
-    };
+    vm.collect = {};
+    vm.mnFilteredNodesHolder = {nodes: []};
 
     if (mnPoolDefault.latestValue().value.isEnterprise) {
       vm.collect.uploadHost = 's3.amazonaws.com/cb-customers';
     }
 
+    function isNodeDisabled(node) {
+      return node.status === 'unhealthy';
+    }
+
     function activate() {
+      if (mnPoolDefault.export.isGroupsAvailable && permissions.cluster.server_groups.read) {
+        new mnPoller($scope, mnGroupsService.getGroupsByHostname)
+          .subscribe("getGroupsByHostname", vm)
+          .cycle();
+      }
       new mnPoller($scope, mnLogsCollectInfoService.getState)
         .subscribe(function (state) {
           vm.loadingResult = false;
@@ -52,9 +60,8 @@
       });
     }
     function submit() {
-
-      var promise = mnLogsCollectInfoService.startLogsCollection(vm.collect);
-      mnPromiseHelper(vm, promise)
+      vm.collect.nodes = _.map(_.filter(vm.mnFilteredNodesHolder.nodes, {isSelected: true}), 'otpNode');
+      mnPromiseHelper(vm, mnLogsCollectInfoService.startLogsCollection(vm.collect))
         .showSpinner()
         .catchErrors()
         .onSuccess(function () {

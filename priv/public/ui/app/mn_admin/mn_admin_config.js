@@ -34,7 +34,8 @@
     'mnDragAndDrop',
     'mnResetPasswordDialog',
     'mnResetPasswordDialogService',
-    'mnSessionService'
+    'mnSessionService',
+    'mnClusterConfigurationService'
   ]).config(mnAdminConfig);
 
   function mnAdminConfig($stateProvider, $urlRouterProvider, $urlMatcherFactoryProvider, mnHelperProvider) {

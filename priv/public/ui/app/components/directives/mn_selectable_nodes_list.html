@@ -1,0 +1,50 @@
+<div class="mn-selectable-nodes-list">
+  <div class="row margin-bottom-half">
+    <input
+       type="checkbox"
+       id="thisModule_checkall"
+       ng-disabled="!mnThisCtl.mnFilteredNodesHolder.nodes.length"
+       ng-checked="mnThisCtl.areAllChecked(false)"
+       ng-click="mnThisCtl.toggleAll()">
+    <label
+       class="checkbox"
+       for="thisModule_checkall">
+      <span ng-if="mnThisCtl.areAllChecked(false)">de</span>select all nodes
+    </label>
+    <div
+       class="row"
+       mn-placeholder="filter nodes..."
+       mn-hide-button="true"
+       mn-search="mnThisCtl.filterField">
+    </div>
+  </div>
+  <hr>
+  <section
+     class="cbui-table padding-left-half"
+     ng-repeat="node in mnThisCtl.mnFilteredNodesHolder.nodes = (mnThisCtl.nodes | mnServersListFilter:mnThisCtl.filterField:mnThisCtl.mnGroups) track by node.otpNode"
+     ng-class="['dynamic_' + node.status, 'dynamic_' + node.clusterMembership]">
+    <div class="cbui-tablerow">
+      <div class="cbui-table-cell flex-grow-2-5 cbui-tablerow-title">
+        <span class="ellipsis padding-right-min cursor-text" title="{{node.hostname | mnStripPortHTML:mnThisCtl.nodes}}" ng-click="$event.stopPropagation();">
+          <input
+             type="checkbox"
+             ng-model="node.isSelected"
+             ng-value="node.otpNode"
+             ng-attr-id="collected_node_list_{{node.otpNode}}"
+             ng-disabled="mnThisCtl.mnIsNodeDisabled({node:node})">
+          <label for="collected_node_list_{{node.otpNode}}">{{ node.hostname | mnStripPortHTML:mnThisCtl.nodes }}</label>
+        </span>
+      </div>
+      <span
+         class="cbui-table-cell flex-grow-1 resp-hide-sml"
+         ng-if="mnThisCtl.getGroupName(node)"
+         title="{{mnThisCtl.getGroupName(node)}}">
+        {{mnThisCtl.getGroupName(node) | mnLimitTo: 20}}
+      </span>
+      <span class="cbui-table-cell flex-grow-2-5 text-right resp-hide-xsml">
+        <span ng-repeat="service in node.services | mnFormatServicesArray | orderBy" class="label neutral nocaps">{{service}}</span>
+      </span>
+    </div>
+  </section>
+  <div ng-if="!mnThisCtl.mnFilteredNodesHolder.nodes.length" class="zero-content">No nodes match this filter term.</div>
+</div>

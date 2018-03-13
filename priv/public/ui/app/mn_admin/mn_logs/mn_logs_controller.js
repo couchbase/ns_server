@@ -10,7 +10,9 @@
     'mnElementCrane',
     'mnSearch',
     'mnSortableTable',
-    'mnLogRedactionService'
+    'mnLogRedactionService',
+    'mnSelectableNodesList',
+    'mnGroupsService'
   ]).controller('mnLogsController', mnLogsController);
 
   function mnLogsController($scope, mnHelper, mnLogsService) {

@@ -20,7 +20,7 @@
 
     function startLogsCollection(collect) {
       var data = {};
-      data.nodes = !collect.from ? mnHelper.checkboxesToList(collect.nodes).join(',') : '*';
+      data.nodes = collect.nodes.join(',');
       if (collect.upload) {
         data.uploadHost = collect.uploadHost;
         data.customer = collect.customer;
@@ -50,7 +50,7 @@
         mnTasksDetails.get()
       ];
       return $q.all(queries).then(function (resp) {
-        var nodes = resp[0].allNodes;
+        var nodes = _.clone(resp[0].allNodes, true);
         var tasks = resp[1].tasks;
         var logRedaction = resp[2];
         var task = _.detect(tasks, function (taskInfo) {
