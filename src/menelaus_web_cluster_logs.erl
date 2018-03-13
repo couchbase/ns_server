@@ -106,6 +106,8 @@ stringify_one_node_upload_error({not_enterprise, log_redaction}) ->
     {logRedactionLevel, "log redaction is an enterprise only feature"};
 stringify_one_node_upload_error({unknown, log_redaction}) ->
     {logRedactionLevel, "log redaction should be none or partial"};
+stringify_one_node_upload_error({salt_without_level, log_redaction}) ->
+    {logRedactionSalt, "log redaction level must be partial if salt is given"};
 stringify_one_node_upload_error({invalid_directory, R}) ->
     {R, "Must be an absolute path"}.
 
@@ -218,6 +220,27 @@ parse_validate_collect_params(Params, Config) ->
             _ ->
                 [{error, {unknown, log_redaction}}]
         end,
+    RedactSalt =
+        case RedactLevel of
+            [{redact_level, partial}] ->
+                case proplists:get_value("logRedactionSalt", Params) of
+                    undefined ->
+                        %% We override the user input here because we want to
+                        %% have a common salt for all the nodes for this log
+                        %% collection run.
+                        [{redact_salt,
+                          base64:encode_to_string(crypto:rand_bytes(32))}];
+                    Salt ->
+                        [{redact_salt, Salt}]
+                end;
+            _ ->
+                case proplists:get_value("logRedactionSalt", Params) of
+                    undefined ->
+                        [];
+                    _ ->
+                        [{error, {salt_without_level, log_redaction}}]
+                end
+        end,
 
     MaybeUpload = case [F || {F, P} <- [{upload, UploadHost},
                                         {customer, Customer}],
@@ -240,12 +263,13 @@ parse_validate_collect_params(Params, Config) ->
 
     BasicErrors = [E || {error, E} <- NodesRV ++ TmpDir ++ LogDir ++
                                       UploadProxy ++ RedactLevel ++
-                                      MaybeUpload],
+                                      RedactSalt ++ MaybeUpload],
     case BasicErrors of
         [] ->
             [{ok, Nodes}] = NodesRV,
             [{ok, Upload}] = MaybeUpload,
-            Options = RedactLevel ++ TmpDir ++ LogDir ++ UploadProxy,
+            Options = RedactLevel ++ RedactSalt ++ TmpDir ++
+                      LogDir ++ UploadProxy,
             {ok, Nodes, Upload, Options};
         _ ->
             {errors, BasicErrors}
