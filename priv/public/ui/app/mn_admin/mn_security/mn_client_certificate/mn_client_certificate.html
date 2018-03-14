@@ -93,7 +93,7 @@
        title="Add a prefix"
        ng-show="adminCtl.poolDefault.compat.atLeast51"
        ng-disabled="!rbac.cluster.admin.security.write || clientCertCtl.settings.state == 'disable'"
-       ng-click="clientCertCtl.settings.prefixes.push({delimiter: '', prefix: '', path: ''});"
+       ng-click="clientCertCtl.settings.prefixes.push({delimiter: '', prefix: '', path: 'subject.cn'});"
        type="button">+</button>
     &nbsp;
     <button
