@@ -71,7 +71,7 @@ run_failover(Nodes, AllowUnsafe) ->
                        [{unsafe, AllowUnsafe}]),
 
             case Result of
-                {leader_activities_error, _, quorum_lost} ->
+                {leader_activities_error, _, {quorum_lost, _}} ->
                     orchestration_unsafe;
                 {leader_activities_error, _, {no_quorum, _}} ->
                     orchestration_unsafe;

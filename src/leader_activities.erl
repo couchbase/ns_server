@@ -129,9 +129,9 @@ run_activity(Node, Domain, Name, Quorum, Body, Opts) ->
                     try
                         async:wait(Activity)
                     catch
-                        exit:{shutdown, Reason}
-                          when Reason =:= quorum_lost;
-                               Reason =:= local_lease_expired ->
+                        exit:{shutdown, local_lease_expired = Reason} ->
+                            report_error(Domain, Name, Reason);
+                        exit:{shutdown, {quorum_lost, _} = Reason} ->
                             report_error(Domain, Name, Reason)
                     end;
                 {error, Error} ->
@@ -465,7 +465,7 @@ handle_lease_acquired(Node, From, State) ->
 handle_lease_lost(Node, From, State) ->
     NewState0 = misc:update_field(#state.leases, State,
                                   sets:del_element(Node, _)),
-    NewState  = check_quorums(NewState0),
+    NewState  = check_quorums(NewState0, {lease_lost, Node}),
 
     gen_server2:reply(From, ok),
     NewState.
@@ -514,7 +514,7 @@ cleanup_after_internal_process(Type, State) ->
 cleanup_activities_after_internal_process(agent, State) ->
     expire_local_lease(State);
 cleanup_activities_after_internal_process(acquirer, State) ->
-    check_quorums(State#state{leases = sets:new()}).
+    check_quorums(State#state{leases = sets:new()}, acquirer_died).
 
 terminate_activities([], _Reason) ->
     ok;
@@ -592,7 +592,7 @@ check_quorum(Activity, State) ->
     Unsafe = proplists:get_bool(unsafe, get_options(Activity)),
     Unsafe orelse have_quorum(Activity#activity.quorum, State).
 
-check_quorums(#state{activities = Activities} = State) ->
+check_quorums(#state{activities = Activities} = State, Reason) ->
     {Quorum, NoQuorum} = lists:partition(check_quorum(_, State), Activities),
 
     case NoQuorum of
@@ -600,7 +600,7 @@ check_quorums(#state{activities = Activities} = State) ->
             ok;
         _ ->
             ?log_warning("Some activities lost their quorums:~n~p", [NoQuorum]),
-            terminate_activities(NoQuorum, {shutdown, quorum_lost})
+            terminate_activities(NoQuorum, {shutdown, {quorum_lost, Reason}})
     end,
 
     State#state{activities = Quorum}.
