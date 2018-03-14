@@ -176,20 +176,18 @@ handle_cast(Msg, #state{child_module = Module, child_state = ChildState} = State
 
 handle_info(replicate_newnodes_docs, #state{child_module = Module,
                                             replicator = Replicator} = State) ->
-    Producer = Module:all_docs(self()),
-    Transducer =
-        ?make_transducer(
-          pipes:foreach(
-            ?producer(),
+    Producer =
+        pipes:compose(
+          Module:all_docs(self()),
+          pipes:map(
             fun ({batch, Docs}) ->
                     ToReplicate = [Module:on_replicate_out(Doc) || Doc <- Docs],
-                    ?yield({batch, ToReplicate});
+                    {batch, ToReplicate};
                 (DocsWithIds) ->
-                    ToReplicate = [{Id, Module:on_replicate_out(Doc)} ||
-                                      {Id, Doc} <- DocsWithIds],
-                    ?yield(ToReplicate)
+                    [{Id, Module:on_replicate_out(Doc)} ||
+                        {Id, Doc} <- DocsWithIds]
             end)),
-    Replicator ! {replicate_newnodes_docs, pipes:compose(Producer, Transducer)},
+    Replicator ! {replicate_newnodes_docs, Producer},
     {noreply, State};
 handle_info(Msg, #state{child_module = Module, child_state = ChildState} = State) ->
     {noreply, NewChildState} = Module:handle_info(Msg, ChildState),

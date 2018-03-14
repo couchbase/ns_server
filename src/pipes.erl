@@ -19,10 +19,11 @@
 -module(pipes).
 
 -include("pipes.hrl").
+-include("cut.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
 -export([compose/1, compose/2, run/3, run/2,
-         fold/3, foreach/2, filter/1, collect/0, stream_list/1]).
+         fold/3, foreach/2, filter/1, map/1, collect/0, stream_list/1]).
 
 -export([read_file/1, read_file/2,
          write_file/1, write_file/2,
@@ -71,6 +72,10 @@ filter(Pred) ->
                                ok
                        end
                end)).
+
+-spec map(fun ((Event1) -> Event2)) -> transducer(Event1, Event2).
+map(Fun) ->
+    ?make_transducer(foreach(?producer(), ?cut(?yield(Fun(_))))).
 
 -spec stream_list([Elem]) -> producer(Elem).
 stream_list(List) ->
@@ -290,7 +295,9 @@ marshal_terms(Options) ->
 
     ?make_transducer(
        begin
-           Producer = run(?producer(), do_marshal_term(), buffer(BufSize)),
+           Producer = run(?producer(),
+                          map(?cut(strip_tag(term_to_binary(_)))),
+                          buffer(BufSize)),
            foreach(Producer,
                    fun (Data) ->
                            {Packed, PackedSize} = pack_to_list(Data),
@@ -300,13 +307,6 @@ marshal_terms(Options) ->
                            ?yield(Final)
                    end)
        end).
-
-do_marshal_term() ->
-    ?make_transducer(
-       foreach(?producer(),
-               fun (Term) ->
-                       ?yield(strip_tag(term_to_binary(Term)))
-               end)).
 
 unmarshal_terms() ->
     ?make_transducer(

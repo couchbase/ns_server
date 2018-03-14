@@ -383,17 +383,12 @@ filter_out_invalid_roles() ->
     Definitions = menelaus_roles:get_definitions(),
     AllPossibleValues =
         menelaus_roles:calculate_possible_param_values(ns_bucket:get_buckets()),
-    ?make_transducer(
-       begin
-           pipes:foreach(
-             ?producer(),
-             fun ({Key, Props}) ->
-                     NewProps =
-                         menelaus_users:filter_out_invalid_roles(
-                           Props, Definitions, AllPossibleValues),
-                     ?yield({Key, NewProps})
-             end)
-       end).
+    pipes:map(fun ({Key, Props}) ->
+                      NewProps =
+                          menelaus_users:filter_out_invalid_roles(
+                            Props, Definitions, AllPossibleValues),
+                      {Key, NewProps}
+              end).
 
 jsonify_users(Passwordless) ->
     ?make_transducer(
