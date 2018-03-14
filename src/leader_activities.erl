@@ -129,8 +129,10 @@ run_activity(Node, Domain, Name, Quorum, Body, Opts) ->
                     try
                         async:wait(Activity)
                     catch
-                        exit:{shutdown, quorum_lost} ->
-                            report_error(Domain, Name, quorum_lost)
+                        exit:{shutdown, Reason}
+                          when Reason =:= quorum_lost;
+                               Reason =:= local_lease_expired ->
+                            report_error(Domain, Name, Reason)
                     end;
                 {error, Error} ->
                     report_error(Domain, Name, Error)
@@ -477,11 +479,13 @@ handle_local_lease_granted(LocalLease, From, State) ->
 handle_local_lease_expired(LocalLease, From, State) ->
     true = (State#state.local_lease_holder =:= LocalLease),
 
-    NewState0 = State#state{local_lease_holder = undefined},
-    NewState  = check_quorums(NewState0),
-
+    NewState = expire_local_lease(State),
     gen_server2:reply(From, ok),
     NewState.
+
+expire_local_lease(State) ->
+    NewState = State#state{local_lease_holder = undefined},
+    terminate_all_activities(NewState, {shutdown, local_lease_expired}).
 
 set_internal_process(Type, Value, State) ->
     setelement(internal_process_type_to_field(Type), State, Value).
@@ -505,13 +509,12 @@ extract_internal_process_pid(Type, State) ->
 cleanup_after_internal_process(Type, State) ->
     functools:chain(State,
                     [set_internal_process(Type, undefined, _),
-                     cleanup_leases_after_internal_process(Type, _),
-                     check_quorums(_)]).
+                     cleanup_activities_after_internal_process(Type, _)]).
 
-cleanup_leases_after_internal_process(agent, State) ->
-    State#state{local_lease_holder = undefined};
-cleanup_leases_after_internal_process(acquirer, State) ->
-    State#state{leases = sets:new()}.
+cleanup_activities_after_internal_process(agent, State) ->
+    expire_local_lease(State);
+cleanup_activities_after_internal_process(acquirer, State) ->
+    check_quorums(State#state{leases = sets:new()}).
 
 terminate_activities([], _Reason) ->
     ok;
@@ -585,17 +588,9 @@ have_quorum(Quorums, State)
   when is_list(Quorums) ->
     lists:all(have_quorum(_, State), Quorums).
 
-have_local_lease(#state{local_lease_holder = Lease}) ->
-    Lease =/= undefined.
-
 check_quorum(Activity, State) ->
-    case have_local_lease(State) of
-        true ->
-            Unsafe = proplists:get_bool(unsafe, get_options(Activity)),
-            Unsafe orelse have_quorum(Activity#activity.quorum, State);
-        false ->
-            false
-    end.
+    Unsafe = proplists:get_bool(unsafe, get_options(Activity)),
+    Unsafe orelse have_quorum(Activity#activity.quorum, State).
 
 check_quorums(#state{activities = Activities} = State) ->
     {Quorum, NoQuorum} = lists:partition(check_quorum(_, State), Activities),
