@@ -349,8 +349,12 @@ roles_vulcan() ->
      {bucket_admin, [bucket_name],
       [{name, <<"Bucket Admin">>},
        {desc, <<"Can manage ALL bucket features for specified buckets "
-                "(incl. start/stop XDCR)">>}],
+                "(incl. start/stop XDCR). Does NOT have access to data.">>}],
       [{[{bucket, bucket_name}, xdcr], [read, execute]},
+       {[{bucket, bucket_name}, data], none},
+       {[{bucket, bucket_name}, views], none},
+       {[{bucket, bucket_name}, n1ql], none},
+       {[{bucket, bucket_name}, password], none},
        {[{bucket, bucket_name}], all},
        {[{bucket, any}, settings], [read]},
        {[{bucket, any}], none},

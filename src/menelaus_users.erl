@@ -704,6 +704,8 @@ upgrade_roles_to_vulcan(OldRoles) ->
 
 maybe_upgrade_role_to_vulcan(cluster_admin) ->
     [cluster_admin, {bucket_full_access, [any]}];
+maybe_upgrade_role_to_vulcan({bucket_admin, Buckets}) ->
+    [{bucket_admin, Buckets}, {bucket_full_access, Buckets}];
 maybe_upgrade_role_to_vulcan(Role) ->
     [Role].
 
