@@ -1698,3 +1698,240 @@ section.dynamic_unhealthy {
 .users-auth-check:hover p {
   color: #000;
 }
+
+/* workbench styles shared by query/analytics workbenches ------------------ */
+.wb-wrapper { /* wrapper for the whole workbench --------------------------- */
+  margin: 0 0 -150px 0;
+  padding: 0;
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  position: relative;
+}
+.wb-main-wrapper {} /* wrapper for query editor and results area ----------- */
+.wb-query-editor {} /* wrapper for query editor area: header, Ace, footer -- */
+.wb-query-editor-header {
+  min-height: 2rem;
+  margin-bottom: .5rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  position: relative;
+}
+.wb-ace-editor {
+  overflow: auto;
+  background-color: #f6f7f9 !important;
+  padding: 1.5rem !important;
+}
+
+/* ACE editor overrides ---------------------------------------------------- */
+.wb-ace-editor * {
+  line-height: 1.4rem !important;
+  font-size: 14px !important;
+}
+.ace_gutter {
+  background-color: #f6f7f9 !important;
+}
+.ace_print-margin {
+  display: none !important;
+}
+.ace_keyword {
+  color: green !important;
+}
+.ace_active-line {
+  background-color: #eceff2 !important;
+}
+.ace_gutter-active-line {
+  background-color: #eceff2 !important;
+}
+
+/* editor footer row: buttons + summary of query results + status ----------- */
+.wb-query-editor-footer {
+  margin-top: .5rem;
+  min-height: 1rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  position: relative;
+}
+.wb-button-execute {
+  width: 7rem;
+  min-width: 7rem;
+}
+.wb-result-summary {
+  margin: 0 1rem;
+  text-align: left;
+  -webkit-box-flex: 1;
+  flex-grow: 1;
+  font-size: .75rem;
+}
+.wb-result-status {
+  font-weight: 600;
+}
+.wb-result-status:not(.success):not(.error) {
+  white-space: nowrap;
+  color: #f5a623;
+}
+.wb-result-status.success:before {
+  font-family: FontAwesome;
+  content: "\f00c";
+  font-size: 1rem;
+  color: #56b349;
+}
+.wb-result-status.error:before {
+  font-family: FontAwesome;
+  content: "\f06a";
+  font-size: 1rem;
+  color: #e07f82;
+}
+.wb-result-summary span:first-child {
+  margin-left: 0;
+}
+
+/* query results ----------------------------------------------------------- */
+.wb-results-header {
+  min-height: 2rem;
+  margin-top: 1.5rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  position: relative;
+}
+/* the wrapper around ALL results views...followed by the specific views --- */
+.wb-results-wrapper {
+  background-color: #f6f7f9;
+  margin-top: .5rem;
+}
+/* the wrappers around the various results views --------------------------- */
+.wb-results-json,
+.wb-results-table,
+.wb-results-tree,
+.wb-results-explain,
+.wb-results-explain-text,
+.insights-sidebar {
+  overflow: auto;
+}
+.wb-results-json {
+  background-color: #f6f7f9 !important;
+  font-size: .75rem;
+  font-weight: 400;
+  padding: 1rem;
+}
+.wb-results-tree {
+  padding: .5rem .5rem .5rem 0;
+}
+.wb-results-explain {
+  padding: 0!important;
+}
+.wb-results-explain-text {
+  background-color: #f6f7f9 !important;
+}
+.wb-results-json *,
+.wb-results-explain-text * { /* wildcard style to capture ALL Ace line-height */
+  line-height: 1.4rem !important;
+}
+.ajtd-row-matched-search {
+  background-color: #d9c5ff;
+}
+.wb-results-show-anyway {
+  color: #cc2a2e;
+  font-size: .875rem;
+  padding: 1.5rem;
+}
+.wb-results-show-anyway a {
+  display: block;
+  width: 100%;
+  text-align: right;
+}
+
+/* bucket inference sidebar ------------------------------------------------- */
+.insights-sidebar { /* wrapper for sidebar area ----------------------------- */
+  -webkit-box-flex: 0;
+  flex: 0 0 auto;
+  padding-left: 2rem;
+  height: calc(100vh - 150px);
+  overflow: auto;
+}
+.insights-sidebar-body {
+  border-left: 1px solid #d1d1d1;
+  padding: .25rem 0 .5rem 1rem;
+  white-space: nowrap;
+  overflow: auto;
+}
+.insights-sidebar-body h5 {
+  line-height: 2rem;
+  font-weight: 600;
+  color: #000;
+}
+.insights-sidebar-body .row {
+  line-height: 2rem;
+  margin-bottom: .25rem;
+  padding-right: .5rem;
+}
+.insights-sidebar-body .icon {
+  cursor: pointer;
+  color: #555;
+}
+.insights-sidebar-body ul {
+  margin: .25rem 0;
+  cursor: default;
+}
+.insights-sidebar-body ul ul {
+  margin-left: .75rem;
+}
+.insights-sidebar-body li {
+  list-style-type: none;
+}
+.insights-sidebar-body section {
+  border-width: 0;
+  margin-bottom: .5rem;
+}
+.insights-sidebar-schema .indexed {
+  color: #000;
+  font-weight: 700;
+  font-style: italic;
+  font-size: .8125rem;
+  line-height: 1.7;
+}
+
+/* workbench query history -------------------------------------------------- */
+.wb-history-controls-inner {
+  margin: 0 .25rem;
+  font-size: .8125rem;
+}
+.wb-history-dialog .panel-content .filter-input-group {
+  margin-bottom: 1rem;
+}
+.wb-history-table {
+  padding: 0 0 1rem 0;
+  word-break: break-word;
+}
+.wb-history-table section {
+  display: flex;
+  min-height: 1rem;
+  align-items: stretch;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  position: relative;
+  margin: 0;
+  padding: 0;
+}
+.wb-history-table section:last-child {
+  border-width: 0;
+}
+.wb-history-table section:hover {
+  background-color: #ecf3fa;
+}
+.wb-history-table section span {
+  padding: .5rem 0;
+  min-height: 2rem;
+  cursor: pointer;
+  line-height: 1.3;
+}
+.wb-history-table section span.selected {
+  background-color: #ececec;
+}
