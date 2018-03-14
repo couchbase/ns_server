@@ -830,7 +830,7 @@ validate_roles(Name, State) ->
       fun (RawRoles) ->
               Roles = parse_roles(RawRoles),
 
-              BadRoles = [BadRole || {error, BadRole} <- Roles],
+              BadRoles = [BadRole || BadRole = {error, _} <- Roles],
               case BadRoles of
                   [] ->
                       {value, Roles};
@@ -840,7 +840,7 @@ validate_roles(Name, State) ->
                           menelaus_roles:validate_roles(GoodRoles,
                                                         ns_config:latest()),
                       {error, bad_roles_error(
-                                BadRoles ++
+                                [Raw || {error, Raw} <- BadRoles] ++
                                     [role_to_string(R) || R <- MoreBadRoles])}
               end
       end, Name, State).
