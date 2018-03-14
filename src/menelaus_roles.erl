@@ -42,6 +42,7 @@
 -include("ns_common.hrl").
 -include("ns_config.hrl").
 -include("rbac.hrl").
+-include("pipes.hrl").
 
 -include_lib("eunit/include/eunit.hrl").
 
@@ -52,10 +53,10 @@
          get_roles/1,
          get_compiled_roles/1,
          compile_roles/3,
-         get_all_assignable_roles/1,
          validate_roles/2,
          calculate_possible_param_values/1,
-         filter_out_invalid_roles/3]).
+         filter_out_invalid_roles/3,
+         produce_roles_by_permission/3]).
 
 -export([start_compiled_roles_cache/0]).
 
@@ -554,18 +555,6 @@ get_definitions(Config) ->
             roles_45()
     end.
 
-get_definitions_filtered_for_rest_api(Config) ->
-    Filter =
-        case cluster_compat_mode:is_enterprise() of
-            true ->
-                fun (Props) -> Props =/= [] end;
-            false ->
-                fun (Props) -> proplists:get_value(ce, Props, false) end
-        end,
-    [Role ||
-        {_, _, Props, _} = Role <- get_definitions(Config),
-        Filter(Props)].
-
 -spec object_match(rbac_permission_object(), rbac_permission_pattern_object()) ->
                           boolean().
 object_match(_, []) ->
@@ -802,18 +791,48 @@ get_possible_param_values(ParamDefs, AllValues) ->
     {ParamDefs, Values} = lists:keyfind(ParamDefs, 1, AllValues),
     Values.
 
--spec get_all_assignable_roles(ns_config()) -> [rbac_role()].
-get_all_assignable_roles(Config) ->
-    AllPossibleValues = calculate_possible_param_values(ns_bucket:get_buckets(Config)),
+visible_roles_filter() ->
+    case cluster_compat_mode:is_enterprise() of
+        true ->
+            pipes:filter(fun ({_, _, Props, _}) -> Props =/= [] end);
+        false ->
+            pipes:filter(fun ({_, _, Props, _}) ->
+                                 proplists:get_value(ce, Props, false)
+                         end)
+    end.
 
-    lists:foldl(fun ({Role, [], Props, _}, Acc) ->
-                        [{Role, Props} | Acc];
-                    ({Role, ParamDefs, Props, _}, Acc) ->
-                        lists:foldr(
-                          fun (Values, Acc1) ->
-                                  [{{Role, Values}, Props} | Acc1]
-                          end, Acc, get_possible_param_values(ParamDefs, AllPossibleValues))
-                end, [], get_definitions_filtered_for_rest_api(Config)).
+expand_params(AllPossibleValues) ->
+    ?make_transducer(
+       pipes:foreach(
+         ?producer(),
+         fun ({Role, [], Props, _}) ->
+                 ?yield({Role, Props});
+             ({Role, ParamDefs, Props, _}) ->
+                 lists:foreach(
+                   fun (Values) ->
+                           ?yield({{Role, Values}, Props})
+                   end, get_possible_param_values(ParamDefs, AllPossibleValues))
+         end)).
+
+filter_by_permission(undefined, _ParamValues, _Definitions) ->
+    pipes:filter(fun (_) -> true end);
+filter_by_permission(Permission, ParamValues, Definitions) ->
+    pipes:filter(
+      fun ({Role, _}) ->
+              menelaus_roles:is_allowed(
+                Permission, compile_roles([Role], Definitions, ParamValues))
+      end).
+
+-spec produce_roles_by_permission(rbac_permission(), ns_config(), list()) ->
+                                         pipes:producer(rbac_role()).
+produce_roles_by_permission(Permission, Config, Buckets) ->
+    AllValues = calculate_possible_param_values(Buckets),
+    Definitions = get_definitions(Config),
+    pipes:compose(
+      [pipes:stream_list(Definitions),
+       visible_roles_filter(),
+       expand_params(AllValues),
+       filter_by_permission(Permission, AllValues, Definitions)]).
 
 strip_id(bucket_name, {P, _Id}) ->
     P;
@@ -880,10 +899,12 @@ validate_role(Role, Params, Definitions, AllValues) ->
     end.
 
 validate_roles(Roles, Config) ->
-    Definitions = get_definitions_filtered_for_rest_api(Config),
-    AllParamValues = calculate_possible_param_values(ns_bucket:get_buckets(Config)),
+    Definitions = pipes:run(pipes:stream_list(get_definitions(Config)),
+                            visible_roles_filter(),
+                            pipes:collect()),
+    AllValues = calculate_possible_param_values(ns_bucket:get_buckets(Config)),
     lists:foldl(fun (Role, {Validated, Unknown}) ->
-                        case validate_role(Role, Definitions, AllParamValues) of
+                        case validate_role(Role, Definitions, AllValues) of
                             false ->
                                 {Validated, [Role | Unknown]};
                             {ok, R} ->

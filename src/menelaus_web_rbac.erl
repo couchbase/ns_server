@@ -184,29 +184,12 @@ role_to_json({Name, [{BucketName, _Id}]}) ->
 role_to_json({Name, [BucketName]}) ->
     [{role, Name}, {bucket_name, list_to_binary(BucketName)}].
 
-filter_roles_by_permission(Permission) ->
+get_roles_by_permission(Permission) ->
     Config = ns_config:get(),
-    Roles = menelaus_roles:get_all_assignable_roles(Config),
-    filter_roles_by_permission(Config, Permission, Roles).
-
-filter_roles_by_permission(_Config, undefined, Roles) ->
-    Roles;
-filter_roles_by_permission(Config, Permission, Roles) ->
     Buckets = ns_bucket:get_buckets(Config),
-    AllValues = menelaus_roles:calculate_possible_param_values(Buckets),
-    lists:filtermap(
-      fun ({Role, _} = RoleInfo) ->
-              Definitions = menelaus_roles:get_definitions(Config),
-              [CompiledRole] = menelaus_roles:compile_roles([Role],
-                                                            Definitions,
-                                                            AllValues),
-              case menelaus_roles:is_allowed(Permission, [CompiledRole]) of
-                  true ->
-                      {true, RoleInfo};
-                  false ->
-                      false
-              end
-      end, Roles).
+    pipes:run(
+      menelaus_roles:produce_roles_by_permission(Permission, Config, Buckets),
+      pipes:collect()).
 
 assert_api_can_be_used() ->
     menelaus_util:assert_is_45(),
@@ -223,9 +206,9 @@ handle_get_roles(Req) ->
     validator:handle(
       fun (Values) ->
               Permission = proplists:get_value(permission, Values),
-              Filtered = filter_roles_by_permission(Permission),
+              Roles = get_roles_by_permission(Permission),
               Json =
-                  [{role_to_json(Role) ++ Props} || {Role, Props} <- Filtered],
+                  [{role_to_json(Role) ++ Props} || {Role, Props} <- Roles],
               menelaus_util:reply_json(Req, Json)
       end, Req, qs, get_users_or_roles_validators()).
 
@@ -313,7 +296,7 @@ handle_get_users(Path, Domain, Req) ->
 get_roles_for_users_filtering(undefined) ->
     all;
 get_roles_for_users_filtering(Permission) ->
-    filter_roles_by_permission(Permission).
+    get_roles_by_permission(Permission).
 
 handle_get_users_with_domain(Req, DomainAtom, Path) ->
     Query = Req:parse_qs(),
