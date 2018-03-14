@@ -200,13 +200,21 @@ assert_api_can_be_used() ->
             menelaus_util:assert_is_enterprise()
     end.
 
+can_view_security(Identity) ->
+    menelaus_roles:is_allowed({[admin, security, admin], read}, Identity).
+
 handle_get_roles(Req) ->
     assert_api_can_be_used(),
 
     validator:handle(
       fun (Values) ->
               Permission = proplists:get_value(permission, Values),
-              Roles = get_roles_by_permission(Permission),
+              Roles =
+                  get_roles_by_permission(Permission) --
+                  case can_view_security(menelaus_auth:get_identity(Req)) of
+                      true -> [];
+                      false -> menelaus_roles:get_security_roles()
+                  end,
               Json =
                   [{role_to_json(Role) ++ Props} || {Role, Props} <- Roles],
               menelaus_util:reply_json(Req, Json)

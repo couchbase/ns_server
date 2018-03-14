@@ -57,7 +57,7 @@
          calculate_possible_param_values/1,
          filter_out_invalid_roles/3,
          produce_roles_by_permission/3,
-         get_security_roles/1]).
+         get_security_roles/0]).
 
 -export([start_compiled_roles_cache/0]).
 
@@ -925,6 +925,9 @@ validate_roles(Roles, Config) ->
                                 {[R | Validated], Unknown}
                         end
                 end, {[], []}, Roles).
+
+get_security_roles() ->
+    get_security_roles(ns_config:latest()).
 
 get_security_roles(Config) ->
     pipes:run(produce_roles_by_permission({[admin, security], any}, Config, []),
