@@ -56,7 +56,8 @@
          validate_roles/2,
          calculate_possible_param_values/1,
          filter_out_invalid_roles/3,
-         produce_roles_by_permission/3]).
+         produce_roles_by_permission/3,
+         get_security_roles/1]).
 
 -export([start_compiled_roles_cache/0]).
 
@@ -588,6 +589,8 @@ operation_allowed(_, all) ->
     true;
 operation_allowed(_, none) ->
     false;
+operation_allowed(any, _) ->
+    true;
 operation_allowed(Operation, AllowedOperations) ->
     lists:member(Operation, AllowedOperations).
 
@@ -911,6 +914,10 @@ validate_roles(Roles, Config) ->
                                 {[R | Validated], Unknown}
                         end
                 end, {[], []}, Roles).
+
+get_security_roles(Config) ->
+    pipes:run(produce_roles_by_permission({[admin, security], any}, Config, []),
+              pipes:collect()).
 
 %% assertEqual is used instead of assert and assertNot to avoid
 %% dialyzer warnings
