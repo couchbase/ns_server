@@ -71,7 +71,7 @@
                     quorum       :: quorum(),
                     options      :: activity_options() }).
 
--record(activity_token, { lease        :: {node(), binary()},
+-record(activity_token, { lease        :: leader | {node(), binary()},
                           domain_token :: binary(),
                           domain       :: term(),
                           name         :: [term()],
@@ -564,11 +564,13 @@ take_activity(Key, N, #state{activities = Activities} = State) ->
             {ok, A, State#state{activities = Rest}}
     end.
 
-have_local_lease(#state{local_lease_holder = Lease}) ->
-    Lease =/= undefined.
+is_leader(#state{local_lease_holder = {Node, _}}) ->
+    Node =:= node();
+is_leader(_) ->
+    false.
 
-have_lease(undefined, State) ->
-    have_local_lease(State);
+have_lease(leader, State) ->
+    is_leader(State);
 have_lease(ExpectedLease, #state{local_lease_holder = ActualLease}) ->
     ExpectedLease =:= ActualLease.
 
@@ -583,6 +585,9 @@ have_quorum({majority, Nodes}, #state{leases = Leases}) ->
 have_quorum(Quorums, State)
   when is_list(Quorums) ->
     lists:all(have_quorum(_, State), Quorums).
+
+have_local_lease(#state{local_lease_holder = Lease}) ->
+    Lease =/= undefined.
 
 check_quorum(Activity, State) ->
     case have_local_lease(State) of
@@ -748,7 +753,7 @@ make_fresh_activity_token(Domain, DomainToken) ->
     #activity_token{domain       = Domain,
                     domain_token = DomainToken,
                     name         = [],
-                    lease        = undefined,
+                    lease        = leader,
                     options      = []}.
 
 set_activity_token(Token) ->
