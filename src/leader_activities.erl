@@ -279,8 +279,8 @@ handle_info(Info, State) ->
                [Info, State]),
     {noreply, State}.
 
-terminate(_Reason, State) ->
-    terminate_all_activities(State).
+terminate(Reason, State) ->
+    terminate_all_activities(State, Reason).
 
 %% internal functions
 call_if_internal_process(Type, Pid, SubCall) ->
@@ -513,17 +513,16 @@ cleanup_leases_after_internal_process(agent, State) ->
 cleanup_leases_after_internal_process(acquirer, State) ->
     State#state{leases = sets:new()}.
 
-terminate_activities([]) ->
+terminate_activities([], _Reason) ->
     ok;
-terminate_activities(Activities) ->
+terminate_activities(Activities, Reason) ->
     ?log_debug("Terminating activities:~n~p", [Activities]),
 
     lists:foreach(?cut(erlang:demonitor(_#activity.mref, [flush])), Activities),
-    misc:terminate_and_wait([A#activity.pid || A <- Activities],
-                            {shutdown, quorum_lost}).
+    misc:terminate_and_wait([A#activity.pid || A <- Activities], Reason).
 
-terminate_all_activities(#state{activities = Activities} = State) ->
-    terminate_activities(Activities),
+terminate_all_activities(#state{activities = Activities} = State, Reason) ->
+    terminate_activities(Activities, Reason),
     State#state{activities = []}.
 
 add_activity(Token, Quorum, Opts, Pid, MRef, State) ->
@@ -606,7 +605,7 @@ check_quorums(#state{activities = Activities} = State) ->
             ok;
         _ ->
             ?log_warning("Some activities lost their quorums:~n~p", [NoQuorum]),
-            terminate_activities(NoQuorum)
+            terminate_activities(NoQuorum, {shutdown, quorum_lost})
     end,
 
     State#state{activities = Quorum}.
