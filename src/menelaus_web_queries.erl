@@ -16,7 +16,6 @@
 -module(menelaus_web_queries).
 
 -include("cut.hrl").
--include("ns_common.hrl").
 -export([handle_settings_get/1,
          handle_curl_whitelist_post/1,
          handle_curl_whitelist_get/1,
@@ -41,13 +40,8 @@ settings_post_validators() ->
      validator:unsupported(_)].
 
 validate_tmp_space_size(Name, State) ->
-    case validator:get_value(Name, State) of
-        X when X =:= 0 orelse X =:= -1 ->
-            %% zero disables the feature, and -1 implies unlimited quota
-            State;
-        _ ->
-            validator:range(Name, ?QUERY_TMP_SPACE_MIN_SIZE, infinity, State)
-    end.
+    %% zero disables the feature, and -1 implies unlimited quota
+    validator:range(Name, -1, infinity, State).
 
 update_settings(Key, Value) ->
     case query_settings_manager:update(Key, Value) of

@@ -80,7 +80,7 @@ curl_whitelist_settings_len_props() ->
 
 general_settings_defaults() ->
     [{queryTmpSpaceDir, list_to_binary(path_config:component_path(tmp))},
-     {queryTmpSpaceSize, ?QUERY_TMP_SPACE_MIN_SIZE}].
+     {queryTmpSpaceSize, ?QUERY_TMP_SPACE_DEF_SIZE}].
 
 curl_whitelist_settings_defaults() ->
     [{queryCurlWhitelist, {[{<<"all_access">>, false},
