@@ -31,7 +31,8 @@
          meta_header/0,
          get_resp_headers_from_req/1,
          hash_password/2,
-         auth_info_key/1]).
+         auth_info_key/1,
+         supported_types/0]).
 
 %% callback for token_server
 -export([init/0]).
@@ -315,10 +316,10 @@ hash_password(Type, Password) ->
     Hash = pbkdf2(Type, Password, Salt, Iterations),
     {Salt, Hash, Iterations}.
 
--ifdef(EUNIT).
-
-shas() ->
+supported_types() ->
     [sha512, sha256, sha].
+
+-ifdef(EUNIT).
 
 build_client_first_message(Sha, Nonce, User) ->
     Bare = "n=" ++ User ++ ",r=" ++ Nonce,
@@ -431,7 +432,7 @@ scram_sha_t({User, Password, Nonce, _}) ->
                {"Unknown user" ++ Postfix,
                 ?_assertEqual(first_stage_failed,
                               client_auth(Sha, "wrong", "wrong", Nonce))}]
-      end, shas()).
+      end, supported_types()).
 
 setup_t() ->
     meck:new(menelaus_users, [passthrough]),
@@ -444,7 +445,7 @@ setup_t() ->
     Password = "qwerty",
     Nonce = gen_nonce(),
 
-    Auth = menelaus_users:build_memcached_auth(Password),
+    Auth = menelaus_users:build_scram_auth(Password),
     ns_config:test_setup([{rest_creds, {User, {auth, Auth}}}]),
     {User, Password, Nonce, Pid}.
 

@@ -95,7 +95,7 @@ generate_45(#state{buckets = Buckets,
                    users = Users,
                    admin_pass = AP}) ->
     UserPasswords = [{U, AP} || U <- Users] ++ Buckets,
-    Infos = menelaus_users:build_memcached_auth_info(UserPasswords),
+    Infos = menelaus_users:build_scram_auth_info(UserPasswords),
     Json = {struct, [{<<"users">>, Infos}]},
     menelaus_util:encode_json(Json).
 
@@ -110,13 +110,14 @@ make_producer(#state{buckets = Buckets,
 
 get_admin_auth_json({User, {password, {Salt, Mac}}}) ->
     %% this happens after upgrade to 5.0, before the first password change
-    {User, menelaus_users:build_plain_memcached_auth_info(Salt, Mac)};
+    {User, menelaus_users:build_plain_auth(Salt, Mac)};
 get_admin_auth_json({User, {auth, Auth}}) ->
     {User, Auth};
 get_admin_auth_json(_) ->
     undefined.
 
-jsonify_auth([AU | Users], AP, Buckets, RestCreds) ->
+jsonify_auth(Users, AdminPass, Buckets, RestCreds) ->
+    MakeAuthInfo = fun menelaus_users:user_auth_info/2,
     ?make_transducer(
        begin
            ?yield(object_start),
@@ -128,23 +129,18 @@ jsonify_auth([AU | Users], AP, Buckets, RestCreds) ->
                    undefined ->
                        undefined;
                    {User, Auth} ->
-                       ?yield({json, {[{<<"n">>, list_to_binary(User)} | Auth]}}),
+                       ?yield({json, MakeAuthInfo(User, Auth)}),
                        User
                end,
 
-           [{AdminAuthInfo}] = menelaus_users:build_memcached_auth_info([{AU, AP}]),
-           ?yield({json, {AdminAuthInfo}}),
-           lists:foreach(fun (U) ->
-                                 UserAuthInfo = lists:keyreplace(<<"n">>, 1, AdminAuthInfo,
-                                                                 {<<"n">>, list_to_binary(U)}),
-                                 ?yield({json, {UserAuthInfo}})
-                         end, Users),
+           AdminAuth = menelaus_users:build_scram_auth(AdminPass),
+           [?yield({json, MakeAuthInfo(U, AdminAuth)}) || U <- Users],
 
            lists:foreach(
              fun ({Bucket, Password}) ->
-                     {Salt, Mac} = ns_config_auth:hash_password(Password),
-                     BucketAuth = menelaus_users:build_plain_memcached_auth_info(Salt, Mac),
-                     ?yield({json, {[{<<"n">>, list_to_binary(Bucket ++ ";legacy")} | BucketAuth]}})
+                     BucketAuth = menelaus_users:build_plain_auth(Password),
+                     AInfo = MakeAuthInfo(Bucket ++ ";legacy", BucketAuth),
+                     ?yield({json, AInfo})
              end, Buckets),
 
            pipes:foreach(
@@ -158,7 +154,7 @@ jsonify_auth([AU | Users], AP, Buckets, RestCreds) ->
                                           [TagCA]),
                              ok;
                          _ ->
-                             ?yield({json, {[{<<"n">>, list_to_binary(UserName)} | Auth]}})
+                             ?yield({json, MakeAuthInfo(UserName, Auth)})
                      end
              end),
            ?yield(array_end),

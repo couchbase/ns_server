@@ -38,9 +38,11 @@
          upgrade_to_4_5/1,
          get_password_change_timestamp/1,
          get_salt_and_mac/1,
-         build_memcached_auth/1,
-         build_memcached_auth_info/1,
-         build_plain_memcached_auth_info/2,
+         user_auth_info/2,
+         build_scram_auth/1,
+         build_scram_auth_info/1,
+         build_plain_auth/1,
+         build_plain_auth/2,
          get_users_version/0,
          get_auth_version/0,
          empty_storage/0,
@@ -221,7 +223,7 @@ select_auth_infos(KeySpec) ->
 build_auth(false, undefined) ->
     password_required;
 build_auth(false, Password) ->
-    build_memcached_auth(Password);
+    build_scram_auth(Password);
 build_auth({_, _}, undefined) ->
     same;
 build_auth({_, CurrentAuth}, Password) ->
@@ -230,12 +232,12 @@ build_auth({_, CurrentAuth}, Password) ->
         Mac ->
             case has_scram_hashes(CurrentAuth) of
                 false ->
-                    build_memcached_auth(Password);
+                    build_scram_auth(Password);
                 _ ->
                     same
             end;
         _ ->
-            build_memcached_auth(Password)
+            build_scram_auth(Password)
     end.
 
 -spec store_user(rbac_identity(), rbac_user_name(), rbac_password(), [rbac_role()]) -> run_txn_return().
@@ -463,11 +465,13 @@ get_password_change_timestamp(Identity) ->
                                       {auth, Identity},
                                       undefined).
 
-build_memcached_auth_info(UserPasswords) ->
-    [{[{<<"n">>, list_to_binary(User)} | build_memcached_auth(Password)]}
-        || {User, Password} <- UserPasswords].
+user_auth_info(User, Auth) ->
+    {[{<<"n">>, list_to_binary(User)} | Auth]}.
 
-build_memcached_auth(Password) ->
+build_scram_auth_info(UserPasswords) ->
+    [user_auth_info(U, build_scram_auth(P)) || {U, P} <- UserPasswords].
+
+build_scram_auth(Password) ->
     BuildAuth =
         fun (Type) ->
                 {S, H, I} = scram_sha:hash_password(Type, Password),
@@ -476,11 +480,14 @@ build_memcached_auth(Password) ->
                       {<<"s">>, base64:encode(S)},
                       {<<"i">>, I}]}}
         end,
-    {Salt, Hash} = ns_config_auth:hash_password(Password),
-    build_plain_memcached_auth_info(Salt, Hash) ++
-        [BuildAuth(sha), BuildAuth(sha256), BuildAuth(sha512)].
+    build_plain_auth(Password) ++
+        [BuildAuth(Sha) || Sha <- scram_sha:supported_types()].
 
-build_plain_memcached_auth_info(Salt, Mac) ->
+build_plain_auth(Password) ->
+    {Salt, Mac} = ns_config_auth:hash_password(Password),
+    build_plain_auth(Salt, Mac).
+
+build_plain_auth(Salt, Mac) ->
     SaltAndMac = <<Salt/binary, Mac/binary>>,
     [{<<"plain">>, base64:encode(SaltAndMac)}].
 
@@ -597,7 +604,7 @@ do_upgrade_to_50(Nodes, Repair) ->
         undefined ->
             ok;
         {ROAdmin, {Salt, Mac}} ->
-            Auth = build_plain_memcached_auth_info(Salt, Mac),
+            Auth = build_plain_auth(Salt, Mac),
             {commit, ok} =
                 store_user_50_with_auth({ROAdmin, local}, [{name, "Read Only User"}],
                                         Auth, [ro_admin], Config)
@@ -614,7 +621,7 @@ do_upgrade_to_50(Nodes, Repair) ->
               ok = store_user_50_validated(
                      {BucketName, local},
                      [{name, Name}, {roles, [{bucket_full_access, [{BucketName, UUID}]}]}],
-                     build_memcached_auth(Password))
+                     build_scram_auth(Password))
       end, ns_bucket:get_buckets(Config)),
 
     LdapUsers = get_users_45(Config),
