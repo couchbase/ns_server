@@ -1,228 +1,153 @@
-Developer BUILDS trial License Agreement – FREE EDITION
+Couchbase Inc. Enterprise Subscription License Agreement
 
-IMPORTANT-READ CAREFULLY: BY INSTALLING, DOWNLOADING OR OTHERWISE USING THIS
-SOFTWARE AND ANY ASSOCIATED DOCUMENTATION, YOU, ON BEHALF OF YOURSELF OR AS AN
-AUTHORIZED REPRESENTATIVE ON BEHALF OF AN ENTITY (“LICENSEE”) AGREE TO ALL THE
-TERMS OF THIS DEVELOPER PREVIEW TRIAL LICENSE AGREEMENT – FREE EDITION (THE
-“AGREEMENT”) REGARDING YOUR USE OF THE SOFTWARE.  YOU REPRESENT AND WARRANT
-THAT YOU HAVE FULL LEGAL AUTHORITY TO BIND THE LICENSEE TO THIS AGREEMENT. IF
-YOU DO NOT AGREE WITH ALL OF THESE TERMS, DO NOT INSTALL, DOWNLOAD OR
-OTHERWISE USE THE SOFTWARE. THE EFFECTIVE DATE OF THIS AGREEMENT IS THE DATE
-ON WHICH YOU FIRST INSTALL, DOWNLOAD OR USE THE SOFTWARE.
+IMPORTANT-READ CAREFULLY: BY CLICKING THE “I ACCEPT” BOX OR INSTALLING, DOWNLOADING OR OTHERWISE USING THIS SOFTWARE AND ANY ASSOCIATED DOCUMENTATION, YOU, ON BEHALF OF YOURSELF AND AS AN AUTHORIZED REPRESENTATIVE ON BEHALF OF AN ENTITY (“LICENSEE”) AGREE TO ALL THE TERMS OF THIS LICENSE AGREEMENT (THE “AGREEMENT”) REGARDING YOUR AND LICENSEE’S USE OF THE SOFTWARE.  YOU REPRESENT AND WARRANT THAT YOU HAVE FULL LEGAL AUTHORITY TO BIND THE LICENSEE TO THIS AGREEMENT. IF YOU DO NOT AGREE WITH ALL OF THESE TERMS, DO NOT SELECT THE “I ACCEPT” BOX AND DO NOT INSTALL, DOWNLOAD OR OTHERWISE USE THE SOFTWARE. THE EFFECTIVE DATE OF THIS AGREEMENT IS THE DATE ON WHICH YOU CLICK “I ACCEPT” OR OTHERWISE INSTALL, DOWNLOAD OR USE THE SOFTWARE.
 
-1. License Grant. During the Subscription Term, and subject to Licensee’s
-compliance with the terms and conditions of this Agreement, Couchbase Inc.
-hereby grants to Licensee a non-exclusive, non-transferable,
-non-sublicensable, royalty-free, limited license to install and use the
-Software only for Licensee’s own internal non-production use for the purpose
-of evaluation and/or development on an unlimited number of Licensed Servers.
+1A. License Grant as to Free Licenses. A “Free License” is allowed for non-production use of the Software, provided that no Support Services are entitled to Licensee.  During the Subscription Term, and subject to Licensee’s compliance with the terms and conditions of this Agreement, Couchbase grants to Licensee an unpaid, non-exclusive, non-transferable, non-sublicensable, non-fee bearing download license to install and use the Software only for Licensee’s own internal testing and development use.  If, at any time, Licensee uses the Software in production, or if Licensee requests Support Services, Licensee acknowledges and agrees that the license is automatically converted to an Enterprise License, which must be paid for.
 
-1A. Unique Terms for this Particular Software.
-a.  For each the third party software components (“TPC”) included within the
-b.  Couchbase may terminate the license stated in Section 1 if the owner of a
-TPC terminates Couchbase’s license for such TPC.
-c.  The duration of the license stated in Section 1 is ninety (90) days.
+1B.  License Grant as to Enterprise Licenses. An “Enterprise License” is required if Licensee makes any “Productive Use” (which means that either (a) the Software is used in production, or (b) Support Services are requested by Licensee). During the Subscription Term, and subject to Licensee’s compliance with the terms and conditions of this Agreement, Couchbase grants to Licensee either i) a non-exclusive, non-transferable, non-sublicensable, fee bearing license to install and use the Software only for Licensee’s own internal use and limited to the number of Licensed Nodes paid for by Licensee (and if stated in the Order, the number of Embedded Database Instances paid for by Licensee).
 
-2. Restrictions. Licensee will not: (a) copy or use the Software in any
-manner except as expressly permitted in this Agreement; (b) use or deploy the
-Software on any server in excess of the Licensed Servers for which Licensee
-has paid the applicable Subscription Fee unless it is covered by a valid
-license; (c) transfer, sell, rent, lease, lend, distribute, or sublicense the
-Software to any third party; (d) use the Software for providing time-sharing
-services, service bureau services or as part of an application services
-provider or as a service offering primarily designed to offer the
-functionality of the Software; (e) reverse engineer, disassemble, or decompile
-the Software (except to the extent such restrictions are prohibited by law);
-(f) alter, modify, enhance or prepare any derivative work from or of the
-Software; (g) alter or remove any proprietary notices in the Software; (h)
-make available to any third party the functionality of the Software or any
-license keys used in connection with the Software; (i) publically display or
-communicate the results of internal performance testing or other benchmarking
-or performance evaluation of the Software; or (j) export the Software in
-violation of U.S. Department of Commerce export administration rules or any
-other export laws or regulations. If Licensee does not comply with the license
-terms or the foregoing restrictions, Couchbase Inc. may terminate or suspend
-Licensee’s account and access to the Software until Licensee comes into
-compliance with such terms and restrictions.
+2. Restrictions. Licensee will not: (a) copy or use the Software in any manner except as expressly permitted in this Agreement; (b) use or deploy the Software in excess of the number of Licensed Nodes and Embedded Database Instances for which Licensee has paid the applicable Subscription Fee as to an Enterprise License; (c) transfer, sell, rent, lease, lend, distribute, or sublicense the Software to any third party; (d) use the Software for providing time-sharing services, service bureau services or as part of an application services provider or as a service offering primarily designed to offer the functionality of the Software; (e) reverse engineer, disassemble, or decompile the Software (except to the extent such restrictions are prohibited by law); (f) alter, modify, enhance or prepare any derivative work from or of the Software; (g) alter or remove any proprietary notices in the Software; or (h) export the Software in violation of U.S. Department of Commerce export administration rules or any other export laws or regulations. If Licensee does not comply with the license terms or the foregoing restrictions, Couchbase may terminate or suspend Licensee’s license to the Software (without refund or credit) until Licensee comes into compliance with such terms and restrictions.
 
-3. Proprietary Rights. The Software, and any modifications or derivatives
-thereto, is and shall remain the sole property of Couchbase Inc. and its
-licensors, and, except for the license rights granted herein, Couchbase Inc.
-and its licensors retain all right, title and interest in and to the Software,
-including all intellectual property rights therein and thereto. The Software
-may include third party open source software components. If Licensee is the
-United States Government or any contractor thereof, all licenses granted
-hereunder are subject to the following: (a) for acquisition by or on behalf of
-civil agencies, as necessary to obtain protection as “commercial computer
-software” and related documentation in accordance with the terms of this
-Agreement and as specified in Subpart 12.1212 of the Federal Acquisition
-Regulation (FAR), 48 C.F.R.12.1212, and its successors; and (b) for
-acquisition by or on behalf of the Department of Defense (DOD) and any
-agencies or units thereof, as necessary to obtain protection as “commercial
-computer software” and related documentation in accordance with the terms of
-this Agreement and as specified in Subparts 227.7202-1 and 227.7202-3 of the
-DOD FAR Supplement, 48 C.F.R.227.7202-1 and 227.7202-3, and its successors.
-Manufacturer is Couchbase, Inc.
+3. Proprietary Rights. The Software (and any modifications or derivatives thereto) and all Deliverables, are and shall remain the sole property of Couchbase and its licensors, and, except for the license rights granted herein, Couchbase and its licensors retain all right, title and interest in and to the Software, including all intellectual property rights therein and thereto. The Software may include third party open source software components. If Licensee is the United States Government or any contractor thereof, all licenses granted hereunder are subject to the following: (a) for acquisition by or on behalf of civil agencies, as necessary to obtain protection as “commercial computer software” and related documentation in accordance with the terms of this Agreement and as specified in Subpart 12.1212 of the Federal Acquisition Regulation (FAR), 48 C.F.R.12.1212, and its successors; and (b) for acquisition by or on behalf of the Department of Defense (DOD) and any agencies or units thereof, as necessary to obtain protection as “commercial computer software” and related documentation in accordance with the terms of this Agreement and as specified in Subparts 227.7202-1 and 227.7202-3 of the DOD FAR Supplement, 48 C.F.R.227.7202-1 and 227.7202-3, and its successors. Manufacturer is Couchbase, Inc.
 
-4. Support.  Couchbase Inc. will not provide any technical or other
-product support for the Software.
+4. Support. This Section applies only to Enterprise Licenses, but not to Free Licenses. Couchbase offers several levels of Support Services for the Software. Couchbase will provide Licensee with the level of Support Services indicated on the Order and paid for by Licensee. For all Licensed Nodes and Embedded Database Instances within a Production Deployment, all such nodes and instances must be at the same level of Support Services, including any instances that are used for disaster recovery or backup that are associated with the Production Deployment. Different Production Deployments can be at different levels of Support Services.  Similarly, as to instances in a development or test environment running the Software, all Licensed Nodes and Embedded Database Instances must be at the same level of Support Services – but such Licensed Nodes may be at a different support level than the Production Deployment(s). When using the Cross Data Center Replication feature, Licensee must have all Licensed Nodes at the same level of Support Services for all instances on all sides of the replication connection, including if one side of the connection is only used for disaster recovery or backup.
 
-5. Confidentiality.  Licensee and Couchbase Inc. will maintain the
-confidentiality of Confidential Information. The receiving party of any
-Confidential Information of the other party agrees not to use such
-Confidential Information for any purpose except as necessary to fulfill its
-obligations and exercise its rights under this Agreement. The receiving party
-shall protect the secrecy of and prevent disclosure and unauthorized use of
-the disclosing party's Confidential Information using the same degree of care
-that it takes to protect its own confidential information and in no event
-shall use less than reasonable care. The terms of this Confidentiality section
-shall survive termination of this Agreement. Upon termination or expiration of
-this Agreement, the receiving party will, at the disclosing party’s option,
-promptly return or destroy (and provide written certification of such
-destruction) the disclosing party’s Confidential Information.
+5. Payments. This Section applies only to Enterprise Licenses, but not to Free Licenses.  Licensee will pay Couchbase the applicable Subscription Fees and applicable fees as set forth in each Order. All payments of fees or charges under this Agreement shall be made in the currency stated on the Order and are due within thirty (30) days of the date of the invoice. Late payments will bear interest at the lesser of one and one-half percent (1½%) per month or the maximum rate allowed by law. In addition, Licensee will reimburse Couchbase for all reasonable costs and expenses incurred (including reasonable attorneys’ fees) in collecting any overdue amounts. All fees payable under this Agreement are net amounts and are payable in full, without deduction for taxes or duties of any kind. Fees are exclusive of, and Licensee is responsible for all duties and taxes (including Value Added Tax which shall be paid by Licensee, if applicable, at the rate and in the manner for the time being prescribed by law), except for taxes based on Couchbase’s net income. All fees are non-refundable, except to the extent expressly provided for in this Agreement.
 
-5A. Feedback.  Licensee agrees to provide feedback, ideas, bug reports,
-defect documentation, suggestions and modifications (collectively, “Feedback”)
-to Couchbase based on Licensee’s experience with the Software and
-documentation.  As part of the Feedback process, Licensee shall (i) notify
-Couchbase of any errors in the Software within a reasonable time after such
-discovery, in the manner specified by Couchbase; (ii) meet with Couchbase
-Contacts, upon Couchbase’s reasonable request and at a mutually agreed upon
-means (e.g. in person, teleconference or web based communication) and time to
-document such errors if any; (iii) discuss the performance of the Software and
-provide complete and comprehensive details of any defects or problems in
-either the Software or the documentation, and suggest ideas for improving its
-performance, and (iv) review the related documentation and supporting
-materials supplied by Couchbase and provide comments where appropriate to
-indicate inaccuracies, exceptions/special conditions, vagueness, typographical
-errors and incorrect material.  All Feedback provided to Couchbase by Licensee
-hereunder will be the property of Couchbase.  Licensee hereby assigns all
-right, title and interest worldwide in the Feedback and the related
-intellectual property rights to Couchbase and agrees to assist Couchbase, at
-Couchbase’s expense, in perfecting and enforcing such rights.  Licensee will
-not disclose any Feedback or any other opinions or feedback about the Software
-to any third party without Couchbase’s prior written consent.
+5A.  If Licensee sends Couchbase a purchase order (“PO”), the PO will be deemed a binding contract offer, which Couchbase can accept by signing the PO (thereby forming a mutually agreed Order governed by this Agreement); in such case the only terms listed on the accepted PO which will form part of the Order are the Commercial Details; and all other terms (whether additional or conflicting with the Agreement) on a PO will be void and without effect, even if Couchbase signs the PO.  All accepted POs will automatically be governed by this Agreement (even if the PO does not reference the Agreement). “Commercial Details” means the identified product(s), quantity (e.g, number of Licensed Nodes and/or Embedded Database Instances), price, server size metric, support level, and subscription start and end date.
 
-6. Disclaimer of Warranty. THE SOFTWARE AND ANY SERVICES PROVIDED HEREUNDER
-ARE PROVIDED “AS IS” WITHOUT WARRANTY OF ANY KIND. COUCHBASE INC. DOES NOT
-WARRANT THAT THE SOFTWARE OR THE SERVICES PROVIDED HEREUNDER WILL MEET
-LICENSEE’S REQUIREMENTS, THAT THE SOFTWARE WILL OPERATE IN THE COMBINATIONS
-LICENSEE MAY SELECT FOR USE, THAT THE OPERATION OF THE SOFTWARE WILL BE
-ERROR-FREE OR UNINTERRUPTED OR THAT ALL SOFTWARE ERRORS WILL BE CORRECTED.
-COUCHBASE INC. HEREBY DISCLAIMS ALL WARRANTIES, EITHER EXPRESSED OR IMPLIED,
-INCLUDING, BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, TITLE, AND ANY WARRANTIES
-ARISING OUT OF COURSE OF DEALING, USAGE OR TRADE.  LICENSEE UNDERSTANDS AND
-ACKNOWLEDGES THAT THE SOFTWARE MAY NOT BE A STANDALONE PRODUCT, HAS NOT
-COMPLETED COUCHBASE’S ORDINARY QUALITY ASSURANCE PROCESSES, AND IS A
-PRE-RELEASE SAMPLE OF STILL IN-DEVELOPMENT SOFTWARE DEVELOPMENT, AND AS A
-RESULT IS LIKELY TO HAVE BUGS OR ERRORS.
+6. Records Retention and Audit. Licensee shall maintain complete and accurate records to permit Couchbase to verify Licensee’s compliance with the Agreement (including the number of Licensed Nodes used by Licensee), and provide Couchbase with such records within ten (10) days of request. Upon at least thirty (30) days prior written notice, Couchbase may audit Licensee’s use of the Software to assess whether Licensee is in compliance with the terms of this Agreement. Any such audit will be conducted during regular business hours at Licensee’s facilities and will not unreasonably interfere with Licensee’s business activities. Licensee will provide Couchbase with access to the relevant Licensee records and facilities. If an audit reveals that Licensee has underpaid fees to Couchbase, then Couchbase will invoice Licensee, and Licensee will promptly pay Couchbase, for such underpaid fees based on Couchbase’s price list in effect at the time the audit is completed. If the underpaid fees exceed five percent (5%) of the Subscription Fee paid by Licensee for the Software, then Licensee will also pay Couchbase’s reasonable costs of conducting the audit.
 
-7. Agreement Term and Termination. The term of this Agreement shall begin
-on the Effective Date and will continue for the period of time noted in
-Section 1(c) above, at which time both the Agreement and the license stated
-herein shall expire. Couchbase Inc. may terminate this Agreement if Licensee
-materially breaches its obligations hereunder and, where such breach is
-curable, such breach remains uncured for ten (10) days following written
-notice of the breach. Upon termination of this Agreement, Licensee will, at
-Couchbase Inc.’s option, promptly return or destroy (and provide written
-certification of such destruction) the applicable Software and all copies and
-portions thereof, in all forms and types of media. The following sections will
-survive termination or expiration of this Agreement: Sections 2, 3, 5, 6, 7,
-8, 9, and 10.
+7. Confidentiality. Licensee and Couchbase will maintain the confidentiality of Confidential Information. The receiving party of any Confidential Information of the other party agrees not to use such Confidential Information for any purpose except as necessary to fulfill its obligations and exercise its rights under this Agreement. The receiving party shall protect the secrecy of and prevent disclosure and unauthorized use of the disclosing party’s Confidential Information using the same degree of care that it takes to protect its own confidential information and in no event shall use less than reasonable care. The terms of this Confidentiality section shall survive termination or expiration of this Agreement. Upon termination or expiration of this Agreement, the receiving party will, at the disclosing party’s option, promptly return or destroy (and provide written certification of such destruction) the disclosing party’s Confidential Information. A party may disclose the other party’s Confidential Information to the extent required by any law or regulation.
 
-8. Limitation of Liability. TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE
-LAW, IN NO EVENT WILL COUCHBASE INC. OR ITS LICENSORS BE LIABLE TO LICENSEE OR
-TO ANY THIRD PARTY FOR ANY INDIRECT, SPECIAL, INCIDENTAL, CONSEQUENTIAL OR
-EXEMPLARY DAMAGES OR FOR THE COST OF PROCURING SUBSTITUTE PRODUCTS OR SERVICES
-ARISING OUT OF OR IN ANY WAY RELATING TO OR IN CONNECTION WITH THIS AGREEMENT
-OR THE USE OF OR INABILITY TO USE THE SOFTWARE OR DOCUMENTATION OR THE
-SERVICES PROVIDED BY COUCHBASE INC. HEREUNDER INCLUDING, WITHOUT LIMITATION,
-DAMAGES OR OTHER LOSSES FOR LOSS OF USE, LOSS OF BUSINESS, LOSS OF GOODWILL,
-WORK STOPPAGE, LOST PROFITS, LOSS OF DATA, COMPUTER FAILURE OR ANY AND ALL
-OTHER COMMERCIAL DAMAGES OR LOSSES EVEN IF ADVISED OF THE POSSIBILITY THEREOF
-AND REGARDLESS OF THE LEGAL OR EQUITABLE THEORY (CONTRACT, TORT OR OTHERWISE)
-UPON WHICH THE CLAIM IS BASED. IN NO EVENT WILL COUCHBASE INC.’S OR ITS
-LICENSORS’ AGGREGATE LIABILITY TO LICENSEE, FROM ALL CAUSES OF ACTION AND
-UNDER ALL THEORIES OF LIABILITY, EXCEED ONE HUNDRED DOLLARS (US $100). The
-parties expressly acknowledge and agree that Couchbase Inc. has set its prices
-and entered into this Agreement in reliance upon the limitations of liability
-specified herein, which allocate the risk between Couchbase Inc. and Licensee
-and form a basis of the bargain between the parties.
+8. Disclaimer of Warranty. THE SOFTWARE AND ANY SERVICES PROVIDED HEREUNDER ARE PROVIDED “AS IS” WITHOUT WARRANTY OF ANY KIND. COUCHBASE DOES NOT WARRANT THAT THE SOFTWARE OR THE SERVICES PROVIDED HEREUNDER WILL MEET LICENSEE’S REQUIREMENTS, THAT THE SOFTWARE WILL OPERATE IN THE COMBINATIONS LICENSEE MAY SELECT FOR USE, THAT THE OPERATION OF THE SOFTWARE WILL BE ERROR-FREE OR UNINTERRUPTED, OR THAT ALL SOFTWARE ERRORS WILL BE CORRECTED. COUCHBASE HEREBY DISCLAIMS ALL WARRANTIES, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, TITLE, AND ANY WARRANTIES ARISING OUT OF COURSE OF DEALING, USAGE OR TRADE.
 
-9. General. Couchbase Inc. shall not be liable for any delay or failure in
-performance due to causes beyond its reasonable control. Neither party will,
-without the other party's prior written consent, make any news release, public
-announcement, denial or confirmation of this Agreement, its value, or its
-terms and conditions, or in any manner advertise or publish the fact of this
-Agreement. Notwithstanding the above, Couchbase Inc. may use Licensee's name
-and logo, consistent with Licensee's trademark policies, on customer lists so
-long as such use in no way promotes either endorsement or approval of
-Couchbase Inc. or any Couchbase Inc. products or services. Licensee may not
-assign this Agreement, in whole or in part, by operation of law or otherwise,
-without Couchbase Inc.'s prior written consent. Any attempt to assign this
-Agreement, without such consent, will be null and of no effect. Subject to the
-foregoing, this Agreement will bind and inure to the benefit of each party's
-successors and permitted assigns. If for any reason a court of competent
-jurisdiction finds any provision of this Agreement invalid or unenforceable,
-that provision of the Agreement will be enforced to the maximum extent
-permissible and the other provisions of this Agreement will remain in full
-force and effect. The failure by either party to enforce any provision of this
-Agreement will not constitute a waiver of future enforcement of that or any
-other provision. All waivers must be in writing and signed by both parties.
-All notices permitted or required under this Agreement shall be in writing and
-shall be delivered in person, by confirmed facsimile, overnight courier
-service or mailed by first class, registered or certified mail, postage
-prepaid, to the address of the party specified above or such other address as
-either party may specify in writing. Such notice shall be deemed to have been
-given upon receipt. This Agreement shall be governed by the laws of the State
-of California, U.S.A., excluding its conflicts of law rules. The parties
-expressly agree that the UN Convention for the International Sale of Goods
-(CISG) will not apply. Any legal action or proceeding arising under this
-Agreement will be brought exclusively in the federal or state courts located
-in the Northern District of California and the parties hereby irrevocably
-consent to the personal jurisdiction and venue therein. Any amendment or
-modification to the Agreement must be in writing signed by both parties. This
-Agreement constitutes the entire agreement and supersedes all prior or
-contemporaneous oral or written agreements regarding the subject matter
-hereof. To the extent there is a conflict between this Agreement and the terms
-of any "shrinkwrap" or "clickwrap" license included in any package, media, or
-electronic version of Couchbase Inc.-furnished software, the terms and
-conditions of this Agreement will control. No additional or conflicting terms
-set forth on any purchase order, order acknowledgement or other document shall
-have any force or effect and are hereby rejected unless expressly agreed upon
-by the parties’ duly authorized representatives in writing.  Each of the
-parties has caused this Agreement to be executed by its duly authorized
-representatives as of the Effective Date. Except as expressly set forth in
-this Agreement, the exercise by either party of any of its remedies under this
-Agreement will be without prejudice to its other remedies under this Agreement
-or otherwise. The parties to this Agreement are independent contractors and
-this Agreement will not establish any relationship of partnership, joint
-venture, employment, franchise, or agency between the parties. Neither party
-will have the power to bind the other or incur obligations on the other’s
-behalf without the other’s prior written consent.
+9. Indemnification of Third Party Claims.
 
-10. Definitions.  Capitalized terms used herein shall have the following
-definitions: “Confidential Information” means any proprietary information
-received by the other party during, or prior to entering into, this Agreement
-that a party should know is confidential or proprietary based on the
-circumstances surrounding the disclosure including, without limitation, the
-Software and any non-public technical and business information. Confidential
-Information does not include information that (a) is or becomes generally
-known to the public through no fault of or breach of this Agreement by the
-receiving party; (b) is rightfully known by the receiving party at the time of
-disclosure without an obligation of confidentiality; (c) is independently
-developed by the receiving party without use of the disclosing party’s
-Confidential Information; or (d) the receiving party rightfully obtains from a
-third party without restriction on use or disclosure. “Documentation” means
-any technical user guides or manuals provided by Couchbase Inc. related to the
-Software. “Licensed Server” means an instance of the Software running on one
-(1) operating system.  Each operating system instance may be running directly
-on physical hardware, in a virtual machine, or on a cloud server. “Couchbase”
-means Couchbase, Inc. “Couchbase Website” means www.Couchbase.com. “Software”
-means the object code version of the applicable elastic data management server
-software provided by Couchbase Inc. and ordered by Licensee during the
-ordering process on the Couchbase Website.
+9.1 Indemnification. Subject to Section 9, Couchbase will indemnify and defend Licensee from and against any damages finally awarded against Licensee in connection with any third party claims that the Software and Services infringe any United States patent, United States copyright or United States trademark or other intellectual property rights; provided that: (a) Licensee promptly notifies Couchbase of the claim; (b) Licensee gives Couchbase all necessary information regarding the claim and reasonably cooperates with Couchbase; and (c) allows Couchbase to control the defense and all related settlement negotiations.
 
-If you have any questions regarding this Agreement, please contact us at
-info@couchbase.com.
+9.2 Injunction. If use of the Software and Services are enjoined, or Couchbase determines that such use may be enjoined, Couchbase will, at its sole option and expense, (a) procure for Licensee the right to continue using the affected Software and Services; (b) replace or modify the affected Software and Services infringe so that they do not infringe; or (c) if either option (a) or (b) is not commercially feasible in Couchbase’s reasonable opinion, as applicable, terminate the licenses and refund Licensee a pro-rata amounts of the Subscription Fees, and terminate the Services and refund the fees for the Services that were infringing.
+
+9.3 Exclusions. Couchbase will have no liability for any infringement claim, (A) as to Software, (i) based on modifications to the Software made by a party other than Couchbase, to the extent a claim would not have occurred but for such modifications, (ii) based on the use of other than the then-current, version of the Software, unless the infringing portion is also in the then-current, unaltered release, (iii) based on the use, operation or combination of the Software with non-Couchbase programs, data, or equipment to the extent such infringement would have been avoided but for such use, operation or combination, (iv) attributable to any third party open source software components, or (v) to the extent based on Licensee’s use of the Software other than in accordance with this Agreement or the applicable Documentation; or (B) as to Services, (i) based on modifications to the Services made by a party other than Couchbase, to the extent a claim would not have occurred but for such modifications, (ii) based on Licensee’s use of the Services in violation of this Agreement, and such use causes such infringement, or (iii) based on infringement resulting from the combination of the Services, with any hardware, data or software not provided by Couchbase.
+
+9.4 Sole Remedy. THE TERMS OF THIS SECTION CONSTITUTE THE ENTIRE LIABILITY OF COUCHBASE, AND LICENSEE’S SOLE AND EXCLUSIVE REMEDY WITH RESPECT TO ANY THIRD PARTY CLAIMS OF INFRINGEMENT OR MISAPPROPRIATION OF INTELLECTUAL PROPERTY RIGHTS OF ANY KIND.
+
+9.5 Applicability.  Section 9 applies only to Enterprise Licenses, but not to Free Licenses.
+
+10. Subscription Term Termination. The Agreement shall begin on the Agreement Effective Date, and shall remain in effect until terminated by a party by sending written notice to the other party.  As to the Software, the “Subscription Term” for Enterprise Licenses shall begin on the earlier of (a) the Order effective date, and (b) the first date of Productive Use.  The Subscription Term will continue for a period of time paid for. As to Free Licenses, the Subscription Term begins on the date of download, and lasts until terminated.  Subject to Couchbase’s rights under Section 2 above, either party may terminate this Agreement or an Enterprise License prior to the end of a term if the other party materially breaches its obligations hereunder and, where such breach is curable, such breach remains uncured for thirty (30) days following written notice of the breach. Licensee’s obligation to make a payment of any outstanding, unpaid fees shall survive termination of this Agreement. Upon termination or expiration of any license, Order, or this Agreement, Licensee will promptly return or destroy (and provide written certification of such destruction) the applicable Software and all copies and portions thereof, in all forms and types of media. As to a Free License, a party may terminate such license at any time, for convenience by providing written notice to the other party.  The following sections will survive termination or expiration of this Agreement: Sections 2, 3, 5-13.
+
+11. Limitation of Liability. TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT WILL COUCHBASE OR ITS LICENSORS BE LIABLE TO LICENSEE OR TO ANY THIRD PARTY FOR ANY INDIRECT, SPECIAL, INCIDENTAL, CONSEQUENTIAL OR EXEMPLARY DAMAGES OR FOR THE COST OF PROCURING SUBSTITUTE PRODUCTS OR SERVICES ARISING OUT OF OR IN ANY WAY RELATING TO OR IN CONNECTION WITH THIS AGREEMENT OR THE USE OF OR INABILITY TO USE THE SOFTWARE, DOCUMENTATION, OR THE SERVICES PROVIDED BY COUCHBASE HEREUNDER INCLUDING, WITHOUT LIMITATION, DAMAGES OR OTHER LOSSES FOR LOSS OF USE, LOSS OF BUSINESS, LOSS OF GOODWILL, WORK STOPPAGE, LOST PROFITS, LOSS OF DATA, COMPUTER FAILURE OR ANY AND ALL OTHER COMMERCIAL DAMAGES OR LOSSES EVEN IF ADVISED OF THE POSSIBILITY THEREOF AND REGARDLESS OF THE LEGAL OR EQUITABLE THEORY (CONTRACT, TORT OR OTHERWISE) UPON WHICH THE CLAIM IS BASED. IN NO EVENT WILL COUCHBASE’S OR ITS LICENSORS’ AGGREGATE LIABILITY TO LICENSEE, FROM ALL CAUSES OF ACTION AND UNDER ALL THEORIES OF LIABILITY, EXCEED THE TOTAL AMOUNTS PAID BY LICENSEE TO COUCHBASE THAT ARE ATTRIBUTABLE TO THE ORDER FOR THE TWELVE (12) MONTH PERIOD IMMEDIATELY PRECEDING THE ACT OR OMISSION FIRST GIVING RISE TO THE LIABILITY. The parties expressly acknowledge and agree that Couchbase has set its prices and entered into this Agreement in reliance upon the limitations of liability specified herein, which allocate the risk between Couchbase and Licensee and form a basis of the bargain between the parties.
+
+12. General. Neither party shall be liable for any delay or failure in performance (except for any payment obligations) due to causes beyond its reasonable control. Neither party will, without the other party's prior written consent, make any news release, public announcement, denial or confirmation of this Agreement, its value, or its terms and conditions, or in any manner advertise or publish the fact of this Agreement. Notwithstanding the above, Couchbase may use Licensee's name and logo, consistent with Licensee's trademark policies, on customer lists so long as such use in no way promotes either endorsement or approval of Couchbase or any Couchbase products or services. Licensee may not assign this Agreement, in whole or in part, by operation of law or otherwise, without Couchbase’s prior written consent. Any attempt to assign this Agreement, without such consent, will be null and of no effect. Subject to the foregoing, this Agreement will bind and inure to the benefit of each party's successors and permitted assigns. If for any reason a court of competent jurisdiction finds any provision of this Agreement invalid or unenforceable, that provision of the Agreement will be enforced to the maximum extent permissible and the other provisions of this Agreement will remain in full force and effect. The failure by either party to enforce any provision of this Agreement will not constitute a waiver of future enforcement of that or any other provision. All waivers must be in writing and signed by both parties. All notices permitted or required under this Agreement shall be in writing and shall be delivered in person, by confirmed facsimile, overnight courier service or mailed by first class, registered or certified mail, postage prepaid, to the address of the party specified above or such other address as either party may specify in writing. Such notice shall be deemed to have been given upon receipt. This Agreement shall be governed by the laws of the State of California, U.S.A., excluding its conflicts of law rules. The parties expressly agree that the UN Convention for the International Sale of Goods will not apply. Any legal action or proceeding arising under this Agreement will be brought exclusively in the federal or state courts located in Santa Clara County, California and the parties hereby irrevocably consent to the personal jurisdiction and venue therein. Any amendment or modification to the Agreement must be in writing signed by both parties. This Agreement constitutes the entire agreement and supersedes all prior or contemporaneous oral or written agreements regarding the subject matter hereof. No additional or conflicting terms set forth on any purchase order, order acknowledgement or other document shall have any force or effect and are hereby rejected unless expressly agreed upon by the parties’ duly authorized representatives in writing. Each of the parties has caused this Agreement to be executed by its duly authorized representatives as of the Effective Date. Except as expressly set forth in this Agreement, the exercise by either party of any of its remedies under this Agreement will be without prejudice to its other remedies under this Agreement or otherwise. The parties to this Agreement are independent contractors and this Agreement will not establish any relationship of partnership, joint venture, employment, franchise, or agency between the parties. Neither party will have the power to bind the other or incur obligations on the other’s behalf without the other’s prior written consent. Licensee has not relied on the availability of any future version of the purchased product or any future product in making its decision to purchase the Software license. This Agreement may be executed in any number of counterparts, each of which shall be deemed an original, but all of which together shall constitute one instrument. Signatures transmitted electronically or by facsimile shall be deemed original signatures.  This Agreement is applicable both to use of the Software without a signed Order, but also to use of the Software pursuant to any Order signed by You or Licensee.
+
+13. Definitions. Capitalized terms used herein shall have the following definitions: “Confidential Information” means any proprietary information received by the other party during, or prior to entering into, this Agreement that a party should know is confidential or proprietary based on the circumstances surrounding the disclosure including the Software and any non-public technical and business information (including pricing).  Confidential Information does not include information that (a) is or becomes generally known to the public through no fault of or breach of this Agreement by the receiving party; (b) is rightfully known by the receiving party at the time of disclosure without an obligation of confidentiality to the disclosing party; (c) is independently developed by the receiving party without use of the disclosing party’s Confidential Information; or (d) the receiving party rightfully obtains from a third party without restriction on use or disclosure. “Embedded Database Instance” means the number of instances of the “Couchbase Lite” product storing data on a local device (such as a mobile device, laptop, etc.) which may sync with a remote server.  “Documentation” means the technical user guides or manuals provided by Couchbase related to the Software.  “Licensed Node” means an instance of the Software running on a server, including a physical server, server blade, virtual machine, software container, or cloud server.  “Software” means the object code version of the applicable Couchbase product you download or as reflected in an Order.  “Subscription Fee” means the fee applicable to use of the Software (or as specified in an Order) for the right to use the Software for up to the number of Licensed Nodes and/or Embedded Database Instances paid for.  The Subscription Fee includes fees for Support Services.  “Subscription Term” means, collectively, the initial subscription term described in Section 10.  “Support Services” means the technical support and Software maintenance services paid for (with the right to receive Software updates and upgrades made generally available by Couchbase) as described in the then-current Couchbase support policy (located at www.couchbase.com/support-policy).  “Production Deployment” means all Licensed Nodes and Embedded Database Instances within a particular cluster or clusters that are being used to support a live workload or application.  “Order” means a transaction document (such as a signed sales quote) identifying the Software licensed to Licensee, the number of Licensed Nodes and/or Embedded Database Instances, and the applicable Subscription Fee.  The term “including” means including but not limited to.  “SOW” (or Order) means a transaction document identifying Services purchased.  “Services” means the consulting service(s) and Deliverables provided by Couchbase to Licensee, using commercially reasonable efforts (a list of available consulting services can be viewed at www.couchbase.com/dos04132016).  “Deliverables” means reports, and other deliverables Couchbase may design, develop for, or deliver to Licensee during the course of providing consulting services.
+
+LA v2 20171030
+
+-----------------------------------------
+IMPORTANT CLARIFICATION:  If you use any of the Developer Preview features, the Agreement above does not apply.  Instead, the “Developer Preview Trial License Agreement – Free Edition” solely governs your use of the Developer Preview features and code.
+
+
+Developer Preview Trial License Agreement
+
+
+IMPORTANT-READ CAREFULLY: BY INSTALLING, DOWNLOADING OR OTHERWISE USING THIS SOFTWARE AND ANY ASSOCIATED DOCUMENTATION, YOU, ON BEHALF OF YOURSELF OR AS AN AUTHORIZED REPRESENTATIVE ON BEHALF OF AN ENTITY (“LICENSEE”) AGREE TO ALL THE TERMS OF THIS DEVELOPER PREVIEW TRIAL LICENSE AGREEMENT – FREE EDITION (THE “AGREEMENT”) REGARDING YOUR USE OF THE SOFTWARE. YOU REPRESENT AND WARRANT THAT YOU HAVE FULL LEGAL AUTHORITY TO BIND THE LICENSEE TO THIS AGREEMENT. IF YOU DO NOT AGREE WITH ALL OF THESE TERMS, DO NOT INSTALL, DOWNLOAD OR OTHERWISE USE THE SOFTWARE. THE “EFFECTIVE DATE” OF THIS AGREEMENT IS THE DATE ON WHICH YOU FIRST INSTALL, DOWNLOAD OR USE THE SOFTWARE.
+
+1. License Grant. Subject to Licensee’s compliance with the terms and conditions of this Agreement, Couchbase Inc. hereby grants to Licensee a, non-exclusive, non-transferable, non-sublicensable, royalty-free, limited license to install and use the Software only for Licensee’s own internal non-production use for the purpose of evaluation and/or development.
+
+2. Restrictions. Licensee will not: (a) copy or use the Software in any manner except as expressly permitted in this Agreement; (b) [intentionally omitted]; (c) transfer, sell, rent, lease, lend, distribute, or sublicense the Software to any third party; (d) use the Software for providing time-sharing services, service bureau services or as part of an application services provider or as a service offering primarily designed to offer the functionality of the Software; (e) reverse engineer, disassemble, or decompile the Software (except to the extent such restrictions are prohibited by law); (f) alter, modify, enhance or prepare any derivative work from or of the Software; (g) alter or remove any proprietary notices in the Software; (h) make available to any third party the functionality of the Software or any license keys used in connection with the Software; (i) publicly display or communicate the results of internal performance testing or other benchmarking or performance evaluation of the Software; or (j) export the Software in violation of U.S. Department of Commerce export administration rules or any other export laws or regulations. If Licensee does not comply with the license terms or the foregoing restrictions, Couchbase Inc. may terminate or suspend Licensee’s account and access to the Software until Licensee comes into compliance with such terms and restrictions.
+
+3. Proprietary Rights. The Software, and any modifications or derivatives thereto, is and shall remain the sole property of Couchbase Inc. and its licensors, and, except for the license rights granted herein, Couchbase Inc. and its licensors retain all right, title and interest in and to the Software, including all intellectual property rights therein and thereto. The Software may include third party open source software components. If Licensee is the United States Government or any contractor thereof, all licenses granted hereunder are subject to the following: (a) for acquisition by or on behalf of civil agencies, as necessary to obtain protection as “commercial computer software” and related documentation in accordance with the terms of this Agreement and as specified in Subpart 12.1212 of the Federal Acquisition Regulation (FAR), 48 C.F.R.12.1212, and its successors; and (b) for acquisition by or on behalf of the Department of Defense (DOD) and any agencies or units thereof, as necessary to obtain protection as “commercial computer software” and related documentation in accordance with the terms of this Agreement and as specified in Subparts 227.7202-1 and 227.7202-3 of the DOD FAR Supplement, 48 C.F.R.227.7202-1 and 227.7202-3, and its successors. Manufacturer is Couchbase, Inc.
+
+4. Support. Couchbase Inc. will not provide any technical or other product support for the Software.
+
+5. Confidentiality. Licensee and Couchbase Inc. will maintain the confidentiality of Confidential Information. The receiving party of any Confidential Information of the other party agrees not to use such Confidential Information for any purpose except as necessary to fulfill its obligations and exercise its rights under this Agreement. The receiving party shall protect the secrecy of and prevent disclosure and unauthorized use of the disclosing party's Confidential Information using the same degree of care that it takes to protect its own confidential information and in no event shall use less than reasonable care. The terms of this Confidentiality section shall survive termination of this Agreement. Upon termination or expiration of this Agreement, the receiving party will, at the disclosing party’s option, promptly return or destroy (and provide written certification of such destruction) the disclosing party’s Confidential Information.
+
+6. Disclaimer of Warranty. THE SOFTWARE AND ANY SERVICES PROVIDED HEREUNDER ARE PROVIDED “AS IS” WITHOUT WARRANTY OF ANY KIND. COUCHBASE INC. DOES NOT WARRANT THAT THE SOFTWARE OR THE SERVICES PROVIDED HEREUNDER WILL MEET LICENSEE’S REQUIREMENTS, THAT THE SOFTWARE WILL OPERATE IN THE COMBINATIONS LICENSEE MAY SELECT FOR USE, THAT THE OPERATION OF THE SOFTWARE WILL BE ERROR-FREE OR UNINTERRUPTED OR THAT ALL SOFTWARE ERRORS WILL BE CORRECTED. COUCHBASE INC. HEREBY DISCLAIMS ALL WARRANTIES, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, TITLE, AND ANY WARRANTIES ARISING OUT OF COURSE OF DEALING, USAGE OR TRADE.
+
+7. Agreement Term and Termination. The term of this Agreement shall begin on the Effective Date and will continue for the period of time noted in Section 1above, at which time both the Agreement and the license stated herein shall expire. Couchbase Inc. may terminate this Agreement if Licensee materially breaches its obligations hereunder and, where such breach is curable, such breach remains uncured for ten (10) days following written notice of the breach. Upon termination of this Agreement, Licensee will, at Couchbase Inc.’s option, promptly return or destroy (and provide written certification of such destruction) the applicable Software and all copies and portions thereof, in all forms and types of media. The following sections will survive termination or expiration of this Agreement: Sections 2, 3, 5, 6, 7, 8, 9, and 10.
+
+8. Limitation of Liability. TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT WILL COUCHBASE INC. OR ITS LICENSORS BE LIABLE TO LICENSEE OR TO ANY THIRD PARTY FOR ANY INDIRECT, SPECIAL, INCIDENTAL, CONSEQUENTIAL OR EXEMPLARY DAMAGES OR FOR THE COST OF PROCURING SUBSTITUTE PRODUCTS OR SERVICES ARISING OUT OF OR IN ANY WAY RELATING TO OR IN CONNECTION WITH THIS AGREEMENT OR THE USE OF OR INABILITY TO USE THE SOFTWARE OR DOCUMENTATION OR THE SERVICES PROVIDED BY COUCHBASE INC. HEREUNDER INCLUDING, WITHOUT LIMITATION, DAMAGES OR OTHER LOSSES FOR LOSS OF USE, LOSS OF BUSINESS, LOSS OF GOODWILL, WORK STOPPAGE, LOST PROFITS, LOSS OF DATA, COMPUTER FAILURE OR ANY AND ALL OTHER COMMERCIAL DAMAGES OR LOSSES EVEN IF ADVISED OF THE POSSIBILITY THEREOF AND REGARDLESS OF THE LEGAL OR EQUITABLE THEORY (CONTRACT, TORT OR OTHERWISE) UPON WHICH THE CLAIM IS BASED. IN NO EVENT WILL COUCHBASE INC.’S OR ITS LICENSORS’ AGGREGATE LIABILITY TO LICENSEE, FROM ALL CAUSES OF ACTION AND UNDER ALL THEORIES OF LIABILITY, EXCEED ONE HUNDRED DOLLARS (US $100). The parties expressly acknowledge and agree that Couchbase Inc. has set its prices and entered into this Agreement in reliance upon the limitations of liability specified herein, which allocate the risk between Couchbase Inc. and Licensee and form a basis of the bargain between the parties.
+
+9. General. Couchbase Inc. shall not be liable for any delay or failure in performance due to causes beyond its reasonable control. Neither party will, without the other party's prior written consent, make any news release, public announcement, denial or confirmation of this Agreement, its value, or its terms and conditions, or in any manner advertise or publish the fact of this Agreement. Notwithstanding the above, Couchbase Inc. may use Licensee's name and logo, consistent with Licensee's trademark policies, on customer lists so long as such use in no way promotes either endorsement or approval of Couchbase Inc. or any Couchbase Inc. products or services. Licensee may not assign this Agreement, in whole or in part, by operation of law or otherwise, without Couchbase Inc.'s prior written consent. Any attempt to assign this Agreement, without such consent, will be null and of no effect. Subject to the foregoing, this Agreement will bind and inure to the benefit of each party's successors and permitted assigns. If for any reason a court of competent jurisdiction finds any provision of this Agreement invalid or unenforceable, that provision of the Agreement will be enforced to the maximum extent permissible and the other provisions of this Agreement will remain in full force and effect. The failure by either party to enforce any provision of this Agreement will not constitute a waiver of future enforcement of that or any other provision. All waivers must be in writing and signed by both parties. All notices permitted or required under this Agreement shall be in writing and shall be delivered in person, by confirmed facsimile, overnight courier service or mailed by first class, registered or certified mail, postage prepaid, to the address of the party specified above or such other address as either party may specify in writing. Such notice shall be deemed to have been given upon receipt. This Agreement shall be governed by the laws of the State of California, U.S.A., excluding its conflicts of law rules. The parties expressly agree that the UN Convention for the International Sale of Goods (CISG) will not apply. Any legal action or proceeding arising under this Agreement will be brought exclusively in the federal or state courts located in the Northern District of California and the parties hereby irrevocably consent to the personal jurisdiction and venue therein. Any amendment or modification to the Agreement must be in writing signed by both parties. This Agreement constitutes the entire agreement and supersedes all prior or contemporaneous oral or written agreements regarding the subject matter hereof. No additional or conflicting terms set forth on any purchase order, order acknowledgement or other document shall have any force or effect and are hereby rejected unless expressly agreed upon by the parties’ duly authorized representatives in writing. Each of the parties has caused this Agreement to be executed by its duly authorized representatives as of the Effective Date. Except as expressly set forth in this Agreement, the exercise by either party of any of its remedies under this Agreement will be without prejudice to its other remedies under this Agreement or otherwise. The parties to this Agreement are independent contractors and this Agreement will not establish any relationship of partnership, joint venture, employment, franchise, or agency between the parties. Neither party will have the power to bind the other or incur obligations on the other’s behalf without the other’s prior written consent.
+
+10. Definitions. Capitalized terms used herein shall have the following definitions: “Confidential Information” means any proprietary information received by the other party during, or prior to entering into, this Agreement that a party should know is confidential or proprietary based on the circumstances surrounding the disclosure including, without limitation, the Software and any non-public technical and business information. Confidential Information does not include information that (a) is or becomes generally known to the public through no fault of or breach of this Agreement by the receiving party; (b) is rightfully known by the receiving party at the time of disclosure without an obligation of confidentiality; (c) is independently developed by the receiving party without use of the disclosing party’s Confidential Information; or (d) the receiving party rightfully obtains from a third party without restriction on use or disclosure. “Documentation” means any technical user guides or manuals provided by Couchbase Inc. related to the Software. “Couchbase” means Couchbase, Inc. “Couchbase Website” means www.Couchbase.com. “Software” means the object code version of the applicable elastic data management server software provided by Couchbase Inc. and downloaded by Licensee from the Couchbase Website or otherwise used by Licensee.
+
+
+If you have any questions regarding this Agreement, please contact us at sales@couchbase.com.
+
+-----------------------------------------
+
+* Oracle Java SE Runtime Environment (JRE) 8
+   (http://www.oracle.com/technetwork/java/javase/overview/index.html)
+
+  Oracle Binary Code License Agreement for the Java SE Platform Products and JavaFX
+
+  ORACLE AMERICA, INC. ("ORACLE"), FOR AND ON BEHALF OF ITSELF AND ITS SUBSIDIARIES AND AFFILIATES UNDER COMMON CONTROL, IS WILLING TO LICENSE THE SOFTWARE TO YOU ONLY UPON THE CONDITION THAT YOU ACCEPT ALL OF THE TERMS CONTAINED IN THIS BINARY CODE LICENSE AGREEMENT AND SUPPLEMENTAL LICENSE TERMS (COLLECTIVELY "AGREEMENT"). PLEASE READ THE AGREEMENT CAREFULLY. BY SELECTING THE "ACCEPT LICENSE AGREEMENT" (OR THE EQUIVALENT) BUTTON AND/OR BY USING THE SOFTWARE YOU ACKNOWLEDGE THAT YOU HAVE READ THE TERMS AND AGREE TO THEM. IF YOU ARE AGREEING TO THESE TERMS ON BEHALF OF A COMPANY OR OTHER LEGAL ENTITY, YOU REPRESENT THAT YOU HAVE THE LEGAL AUTHORITY TO BIND THE LEGAL ENTITY TO THESE TERMS. IF YOU DO NOT HAVE SUCH AUTHORITY, OR IF YOU DO NOT WISH TO BE BOUND BY THE TERMS, THEN SELECT THE "DECLINE LICENSE AGREEMENT" (OR THE EQUIVALENT) BUTTON AND YOU MUST NOT USE THE SOFTWARE ON THIS SITE OR ANY OTHER MEDIA ON WHICH THE SOFTWARE IS CONTAINED.
+
+  1. DEFINITIONS. "Software" means the software identified above in binary form that you selected for download, install or use (in the version You selected for download, install or use) from Oracle or its authorized licensees, any other machine readable materials (including, but not limited to, libraries, source files, header files, and data files), any updates or error corrections provided by Oracle, and any user manuals, programming guides and other documentation provided to you by Oracle under this Agreement. "General Purpose Desktop Computers and Servers" means computers, including desktop and laptop computers, or servers, used for general computing functions under end user control (such as but not specifically limited to email, general purpose Internet browsing, and office suite productivity tools). The use of Software in systems and solutions that provide dedicated functionality (other than as mentioned above) or designed for use in embedded or function-specific software applications, for example but not limited to: Software embedded in or bundled with industrial control systems, wireless mobile telephones, wireless handheld devices, kiosks, TV/STB, Blu-ray Disc devices, telematics and network control switching equipment, printers and storage management systems, and other related systems are excluded from this definition and not licensed under this Agreement. "Programs" means (a) Java technology applets and applications intended to run on the Java Platform, Standard Edition platform on Java-enabled General Purpose Desktop Computers and Servers; and (b) JavaFX technology applications intended to run on the JavaFX Runtime on JavaFX-enabled General Purpose Desktop Computers and Servers. “Commercial Features” means those features identified in Table 1-1 (Commercial Features In Java SE Product Editions) of the Java SE documentation accessible at http://www.oracle.com/technetwork/java/javase/documentation/index.html. “README File” means the README file for the Software accessible at http://www.oracle.com/technetwork/java/javase/documentation/index.html.
+
+  2. LICENSE TO USE. Subject to the terms and conditions of this Agreement including, but not limited to, the Java Technology Restrictions of the Supplemental License Terms, Oracle grants you a non-exclusive, non-transferable, limited license without license fees to reproduce and use internally the Software complete and unmodified for the sole purpose of running Programs. THE LICENSE SET FORTH IN THIS SECTION 2 DOES NOT EXTEND TO THE COMMERCIAL FEATURES. YOUR RIGHTS AND OBLIGATIONS RELATED TO THE COMMERCIAL FEATURES ARE AS SET FORTH IN THE SUPPLEMENTAL TERMS ALONG WITH ADDITIONAL LICENSES FOR DEVELOPERS AND PUBLISHERS.
+
+  3. RESTRICTIONS. Software is copyrighted. Title to Software and all associated intellectual property rights is retained by Oracle and/or its licensors. Unless enforcement is prohibited by applicable law, you may not modify, decompile, or reverse engineer Software. You acknowledge that the Software is developed for general use in a variety of information management applications; it is not developed or intended for use in any inherently dangerous applications, including applications that may create a risk of personal injury. If you use the Software in dangerous applications, then you shall be responsible to take all appropriate fail-safe, backup, redundancy, and other measures to ensure its safe use. Oracle disclaims any express or implied warranty of fitness for such uses. No right, title or interest in or to any trademark, service mark, logo or trade name of Oracle or its licensors is granted under this Agreement. Additional restrictions for developers and/or publishers licenses are set forth in the Supplemental License Terms.
+
+  4. DISCLAIMER OF WARRANTY. THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND. ORACLE FURTHER DISCLAIMS ALL WARRANTIES, EXPRESS AND IMPLIED, INCLUDING WITHOUT LIMITATION, ANY IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+
+  5. LIMITATION OF LIABILITY. IN NO EVENT SHALL ORACLE BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, PUNITIVE OR CONSEQUENTIAL DAMAGES, OR DAMAGES FOR LOSS OF PROFITS, REVENUE, DATA OR DATA USE, INCURRED BY YOU OR ANY THIRD PARTY, WHETHER IN AN ACTION IN CONTRACT OR TORT, EVEN IF ORACLE HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES. ORACLE'S ENTIRE LIABILITY FOR DAMAGES HEREUNDER SHALL IN NO EVENT EXCEED ONE THOUSAND DOLLARS (U.S. $1,000).
+
+  6. TERMINATION. This Agreement is effective until terminated. You may terminate this Agreement at any time by destroying all copies of Software. This Agreement will terminate immediately without notice from Oracle if you fail to comply with any provision of this Agreement. Either party may terminate this Agreement immediately should any Software become, or in either party's opinion be likely to become, the subject of a claim of infringement of any intellectual property right. Upon termination, you must destroy all copies of Software.
+
+  7. EXPORT REGULATIONS. You agree that U.S. export control laws and other applicable export and import laws govern your use of the Software, including technical data; additional information can be found on Oracle's Global Trade Compliance web site (http://www.oracle.com/us/products/export). You agree that neither the Software nor any direct product thereof will be exported, directly, or indirectly, in violation of these laws, or will be used for any purpose prohibited by these laws including, without limitation, nuclear, chemical, or biological weapons proliferation.
+
+  8. TRADEMARKS AND LOGOS. You acknowledge and agree as between you
+  and Oracle that Oracle owns the ORACLE and JAVA trademarks and all ORACLE- and JAVA-related trademarks, service marks, logos and other brand
+  designations ("Oracle Marks"), and you agree to comply with the Third
+  Party Usage Guidelines for Oracle Trademarks currently located at
+  http://www.oracle.com/us/legal/third-party-trademarks/index.html . Any use you make of the Oracle Marks inures to Oracle's benefit.
+
+  9. U.S. GOVERNMENT LICENSE RIGHTS. If Software is being acquired by or on behalf of the U.S. Government or by a U.S. Government prime contractor or subcontractor (at any tier), then the Government's rights in Software and accompanying documentation shall be only those set forth in this Agreement.
+
+  10. GOVERNING LAW. This agreement is governed by the substantive and procedural laws of California. You and Oracle agree to submit to the exclusive jurisdiction of, and venue in, the courts of San Francisco, or Santa Clara counties in California in any dispute arising out of or relating to this agreement.
+
+  11. SEVERABILITY. If any provision of this Agreement is held to be unenforceable, this Agreement will remain in effect with the provision omitted, unless omission would frustrate the intent of the parties, in which case this Agreement will immediately terminate.
+
+  12. INTEGRATION. This Agreement is the entire agreement between you and Oracle relating to its subject matter. It supersedes all prior or contemporaneous oral or written communications, proposals, representations and warranties and prevails over any conflicting or additional terms of any quote, order, acknowledgment, or other communication between the parties relating to its subject matter during the term of this Agreement. No modification of this Agreement will be binding, unless in writing and signed by an authorized representative of each party.
+
+  SUPPLEMENTAL LICENSE TERMS
+
+  These Supplemental License Terms add to or modify the terms of the Binary Code License Agreement. Capitalized terms not defined in these Supplemental Terms shall have the same meanings ascribed to them in the Binary Code License Agreement. These Supplemental Terms shall supersede any inconsistent or conflicting terms in the Binary Code License Agreement, or in any license contained within the Software.
+
+  A. COMMERCIAL FEATURES. You may not use the Commercial Features for running Programs, Java applets or applications in your internal business operations or for any commercial or production purpose, or for any purpose other than as set forth in Sections B, C, D and E of these Supplemental Terms. If You want to use the Commercial Features for any purpose other than as permitted in this Agreement, You must obtain a separate license from Oracle.
+
+  B. SOFTWARE INTERNAL USE FOR DEVELOPMENT LICENSE GRANT. Subject to the terms and conditions of this Agreement and restrictions and exceptions set forth in the README File incorporated herein by reference, including, but not limited to the Java Technology Restrictions of these Supplemental Terms, Oracle grants you a non-exclusive, non-transferable, limited license without fees to reproduce internally and use internally the Software complete and unmodified for the purpose of designing, developing, and testing your Programs.
+
+  C. LICENSE TO DISTRIBUTE SOFTWARE. Subject to the terms and conditions of this Agreement and restrictions and exceptions set forth in the README File, including, but not limited to the Java Technology Restrictions and Limitations on Redistribution of these Supplemental Terms, Oracle grants you a non-exclusive, non-transferable, limited license without fees to reproduce and distribute the Software, provided that (i) you distribute the Software complete and unmodified and only bundled as part of, and for the sole purpose of running, your Programs, (ii) the Programs add significant and primary functionality to the Software, (iii) you do not distribute additional software intended to replace any component(s) of the Software, (iv) you do not remove or alter any proprietary legends or notices contained in the Software, (v) you only distribute the Software subject to a license agreement that: (a) is a complete, unmodified reproduction of this Agreement; or (b) protects Oracle's interests consistent with the terms contained in this Agreement and that includes the notice set forth in Section H, and (vi) you agree to defend and indemnify Oracle and its licensors from and against any damages, costs, liabilities, settlement amounts and/or expenses (including attorneys' fees) incurred in connection with any claim, lawsuit or action by any third party that arises or results from the use or distribution of any and all Programs and/or Software. The license set forth in this Section C does not extend to the Software identified in Section G.
+
+  D. LICENSE TO DISTRIBUTE REDISTRIBUTABLES. Subject to the terms and conditions of this Agreement and restrictions and exceptions set forth in the README File, including but not limited to the Java Technology Restrictions and Limitations on Redistribution of these Supplemental Terms, Oracle grants you a non-exclusive, non-transferable, limited license without fees to reproduce and distribute those files specifically identified as redistributable in the README File ("Redistributables") provided that: (i) you distribute the Redistributables complete and unmodified, and only bundled as part of Programs, (ii) the Programs add significant and primary functionality to the Redistributables, (iii) you do not distribute additional software intended to supersede any component(s) of the Redistributables (unless otherwise specified in the applicable README File), (iv) you do not remove or alter any proprietary legends or notices contained in or on the Redistributables, (v) you only distribute the Redistributables pursuant to a license agreement that: (a) is a complete, unmodified reproduction of this Agreement; or (b) protects Oracle's interests consistent with the terms contained in the Agreement and includes the notice set forth in Section H, (vi) you agree to defend and indemnify Oracle and its licensors from and against any damages, costs, liabilities, settlement amounts and/or expenses (including attorneys' fees) incurred in connection with any claim, lawsuit or action by any third party that arises or results from the use or distribution of any and all Programs and/or Software. The license set forth in this Section D does not extend to the Software identified in Section G.
+
+  E. DISTRIBUTION BY PUBLISHERS. This section pertains to your distribution of the JavaTM SE Development Kit Software (“JDK”) with your printed book or magazine (as those terms are commonly used in the industry) relating to Java technology ("Publication"). Subject to and conditioned upon your compliance with the restrictions and obligations contained in the Agreement, Oracle hereby grants to you a non-exclusive, nontransferable limited right to reproduce complete and unmodified copies of the JDK on electronic media (the "Media") for the sole purpose of inclusion and distribution with your Publication(s), subject to the following terms: (i) You may not distribute the JDK on a stand-alone basis; it must be distributed with your Publication(s); (ii) You are responsible for downloading the JDK from the applicable Oracle web site; (iii) You must refer to the JDK as JavaTM SE Development Kit; (iv) The JDK must be reproduced in its entirety and without any modification whatsoever (including with respect to all proprietary notices) and distributed with your Publication subject to a license agreement that is a complete, unmodified reproduction of this Agreement; (v) The Media label shall include the following information: “Copyright [YEAR], Oracle America, Inc. All rights reserved. Use is subject to license terms. ORACLE and JAVA trademarks and all ORACLE- and JAVA-related trademarks, service marks, logos and other brand designations are trademarks or registered trademarks of Oracle in the U.S. and other countries.” [YEAR] is the year of Oracle's release of the Software; the year information can typically be found in the Software’s “About” box or screen. This information must be placed on the Media label in such a manner as to only apply to the JDK; (vi) You must clearly identify the JDK as Oracle's product on the Media holder or Media label, and you may not state or imply that Oracle is responsible for any third-party software contained on the Media; (vii) You may not include any third party software on the Media which is intended to be a replacement or substitute for the JDK; (viii) You agree to defend and indemnify Oracle and its licensors from and against any damages, costs, liabilities, settlement amounts and/or expenses (including attorneys' fees) incurred in connection with any claim, lawsuit or action by any third party that arises or results from the use or distribution of the JDK and/or the Publication; ; and (ix) You shall provide Oracle with a written notice for each Publication; such notice shall include the following information: (1) title of Publication, (2) author(s), (3) date of Publication, and (4) ISBN or ISSN numbers. Such notice shall be sent to Oracle America, Inc., 500 Oracle Parkway, Redwood Shores, California 94065 U.S.A , Attention: General Counsel.
+
+  F. JAVA TECHNOLOGY RESTRICTIONS. You may not create, modify, or change the behavior of, or authorize your licensees to create, modify, or change the behavior of, classes, interfaces, or subpackages that are in any way identified as "java", "javax", "sun", “oracle” or similar convention as specified by Oracle in any naming convention designation.
+
+  G. LIMITATIONS ON REDISTRIBUTION. You may not redistribute or otherwise transfer patches, bug fixes or updates made available by Oracle through Oracle Premier Support, including those made available under Oracle's Java SE Support program.
+
+  H. COMMERCIAL FEATURES NOTICE. For purpose of complying with Supplemental Term Section C.(v)(b) and D.(v)(b), your license agreement shall include the following notice, where the notice is displayed in a manner that anyone using the Software will see the notice:
+
+  Use of the Commercial Features for any commercial or production purpose requires a separate license from Oracle. “Commercial Features” means those features identified Table 1-1 (Commercial Features In Java SE Product Editions) of the Java SE documentation accessible at http://www.oracle.com/technetwork/java/javase/documentation/index.html
+
+
+
+  I. SOURCE CODE. Software may contain source code that, unless expressly licensed for other purposes, is provided solely for reference purposes pursuant to the terms of this Agreement. Source code may not be redistributed unless expressly provided for in this Agreement.
+
+  J. THIRD PARTY CODE. Additional copyright notices and license terms applicable to portions of the Software are set forth in the THIRDPARTYLICENSEREADME file accessible at http://www.oracle.com/technetwork/java/javase/documentation/index.html. In addition to any terms and conditions of any third party opensource/freeware license identified in the THIRDPARTYLICENSEREADME file, the disclaimer of warranty and limitation of liability provisions in paragraphs 4 and 5 of the Binary Code License Agreement shall apply to all Software in this distribution.
+
+  K. TERMINATION FOR INFRINGEMENT. Either party may terminate this Agreement immediately should any Software become, or in either party's opinion be likely to become, the subject of a claim of infringement of any intellectual property right.
+
+  L. INSTALLATION AND AUTO-UPDATE. The Software's installation and auto-update processes transmit a limited amount of data to Oracle (or its service provider) about those specific processes to help Oracle understand and optimize them. Oracle does not associate the data with personally identifiable information. You can find more information about the data Oracle collects as a result of your Software download at http://www.oracle.com/technetwork/java/javase/documentation/index.html.
+
+  For inquiries please contact: Oracle America, Inc., 500 Oracle Parkway,
+
+  Redwood Shores, California 94065, USA.
+
+  Last updated 02 April 2013
+---
