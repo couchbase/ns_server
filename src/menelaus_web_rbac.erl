@@ -20,6 +20,7 @@
 
 -include("ns_common.hrl").
 -include("pipes.hrl").
+-include("rbac.hrl").
 
 -include_lib("cut.hrl").
 -include_lib("eunit/include/eunit.hrl").
@@ -203,6 +204,12 @@ assert_api_can_be_used() ->
 can_view_security(Identity) ->
     menelaus_roles:is_allowed({[admin, security, admin], read}, Identity).
 
+get_security_write_permission() ->
+    {[admin, security, admin], write}.
+
+can_modify_security(Identity) ->
+    menelaus_roles:is_allowed(get_security_write_permission(), Identity).
+
 handle_get_roles(Req) ->
     assert_api_can_be_used(),
 
@@ -336,12 +343,11 @@ security_users_filter(ReqUserId) ->
         true ->
             pipes:filter(fun (_) -> true end);
         false ->
-            SecurityRoles = menelaus_roles:get_security_roles(),
+            SecurityRoles = get_security_roles(),
             pipes:filter(
               fun ({{user, _}, Props}) ->
                       Roles = proplists:get_value(roles, Props),
-                      not lists:any(fun ({R, _}) -> lists:member(R, Roles) end,
-                                    SecurityRoles)
+                      not overlap(Roles, SecurityRoles)
               end)
     end.
 
@@ -383,7 +389,7 @@ filter_by_roles(Roles) ->
     pipes:filter(
       fun ({{user, _}, Props}) ->
           UserRoles = proplists:get_value(roles, Props),
-          lists:any(fun (R) -> lists:member(R, RoleNames) end, UserRoles)
+          overlap(RoleNames, UserRoles)
       end).
 
 filter_out_invalid_roles() ->
@@ -859,8 +865,35 @@ handle_put_user_with_identity({_UserId, Domain} = Identity, Req) ->
                                         Req)
       end, Req, form, put_user_validators(Domain)).
 
+-spec is_security_related(rbac_identity() | [rbac_role()]) -> boolean().
+is_security_related({_UserId, _Domain} = Identity) ->
+    is_security_related(menelaus_users:get_roles(Identity));
+is_security_related(Roles) ->
+    overlap(Roles, get_security_roles()).
+
+overlap(List1, List2) ->
+    lists:any(fun (V) -> lists:member(V, List1) end, List2).
+
+get_security_roles() ->
+    [R || {R, _} <- menelaus_roles:get_security_roles()].
+
+is_security_related(Identity, Roles) ->
+    is_security_related(Identity) or is_security_related(Roles).
+
 handle_put_user_validated(Identity, Name, Password, Roles, Req) ->
     UniqueRoles = ordsets:to_list(ordsets:from_list(Roles)),
+    ReqUserId = menelaus_auth:get_identity(Req),
+    case can_modify_security(ReqUserId) orelse
+         not is_security_related(Identity, Roles) of
+        true ->
+            do_store_user(Identity, Name, Password, UniqueRoles, Req);
+        false ->
+            Permission = get_security_write_permission(),
+            menelaus_util:reply_json(
+              Req, menelaus_web_rbac:forbidden_response(Permission), 403)
+    end.
+
+do_store_user(Identity, Name, Password, UniqueRoles, Req) ->
     case menelaus_users:store_user(Identity, Name, Password, UniqueRoles) of
         {commit, _} ->
             ns_audit:set_user(Req, Identity, UniqueRoles, Name),
@@ -880,6 +913,17 @@ handle_put_user_validated(Identity, Name, Password, Roles, Req) ->
             erlang:error(exceeded_retries)
     end.
 
+do_delete_user(Req, Identity) ->
+    case menelaus_users:delete_user(Identity) of
+        {commit, _} ->
+            ns_audit:delete_user(Req, Identity),
+            reply_put_delete_users(Req);
+        {abort, {error, not_found}} ->
+            menelaus_util:reply_json(Req, <<"User was not found.">>, 404);
+        retry_needed ->
+            erlang:error(exceeded_retries)
+    end.
+
 handle_delete_user(Domain, UserId, Req) ->
     menelaus_util:assert_is_45(),
     assert_no_users_upgrade(),
@@ -889,15 +933,16 @@ handle_delete_user(Domain, UserId, Req) ->
             menelaus_util:reply_json(Req, <<"Unknown user domain.">>, 404);
         T ->
             Identity = {UserId, T},
-            case menelaus_users:delete_user(Identity) of
-                {commit, _} ->
-                    ns_audit:delete_user(Req, Identity),
-                    reply_put_delete_users(Req);
-                {abort, {error, not_found}} ->
-                    menelaus_util:reply_json(Req, <<"User was not found.">>,
-                                             404);
-                retry_needed ->
-                    erlang:error(exceeded_retries)
+            ReqUserId = menelaus_auth:get_identity(Req),
+            case can_modify_security(ReqUserId) orelse
+                 not is_security_related(Identity) of
+                true ->
+                    do_delete_user(Req, Identity);
+                false ->
+                    Permission = get_security_write_permission(),
+                    menelaus_util:reply_json(
+                      Req, menelaus_web_rbac:forbidden_response(Permission),
+                      403)
             end
     end.
 
