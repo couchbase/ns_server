@@ -53,6 +53,11 @@
   <div class="row flex-right">
     <span ng-show="rbac.cluster.tasks.read">
       <button
+         ng-show="!poolDefault.rebalancing && rbac.cluster.pools.write && rbac.cluster.tasks.read"
+         class="outline"
+         ng-click="serversCtl.multipleFailoverDialog()"
+         ng-disabled="adminCtl.tasks.inRecoveryMode || serversCtl.nodes.reallyActive.length === 1">Failover Multiple Nodes</button>
+      <button
          ng-show="!poolDefault.rebalancing  && rbac.cluster.pools.write"
          ng-click="serversCtl.postRebalance()"
          ng-disabled="adminCtl.tasks.inRecoveryMode || (!serversCtl.nodes.pending.length && poolDefault.balanced) || serversCtl.nodes.unhealthyActive || adminCtl.tasks.isLoadingSamples || adminCtl.tasks.isOrphanBucketTask"

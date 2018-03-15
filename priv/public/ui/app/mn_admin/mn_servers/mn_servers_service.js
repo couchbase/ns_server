@@ -81,11 +81,21 @@
       });
     }
     function postFailover(type, otpNode, allowUnsafe) {
+      var data = "";
+      if (_.isArray(otpNode)) {
+        data = otpNode.map(function (node) {
+          return "otpNode=" + encodeURIComponent(node);
+        }).join("&");
+      } else {
+        data = "otpNode=" + encodeURIComponent(otpNode);
+      }
+
+      data += "&allowUnsafe=" + (allowUnsafe ? "true" : "false");
+
       return $http({
         method: 'POST',
         url: '/controller/' + type,
-        data: {otpNode: otpNode,
-               allowUnsafe: allowUnsafe ? "true" : "false"}
+        data: data
       });
     }
     function ejectNode(data) {

@@ -28,7 +28,8 @@
       'mnTasksDetails',
       'mnWarmupProgress',
       'mnElementCrane',
-      'mnSearch'
+      'mnSearch',
+      'mnSelectableNodesList'
     ])
     .controller('mnServersController', mnServersController)
     .filter("formatFailoverWarnings", formatFailoverWarnings);
@@ -53,7 +54,8 @@
     vm.postRebalance = postRebalance;
     vm.addServer = addServer;
     vm.filterField = "";
-    vm.sortByGroup = sortByGroup
+    vm.sortByGroup = sortByGroup;
+    vm.multipleFailoverDialog = multipleFailoverDialog;
 
     function sortByGroup(node) {
       return vm.getGroupsByHostname[node.hostname] && vm.getGroupsByHostname[node.hostname].name;
@@ -96,6 +98,24 @@
 
       $scope.$on("reloadServersPoller", function () {
         vm.showSpinner = true;
+      });
+    }
+    function multipleFailoverDialog() {
+      $uibModal.open({
+        templateUrl: 'app/mn_admin/mn_servers/mn_multiple_failover_dialog.html',
+        controller: 'mnMultipleFailoverDialogController as multipleFailoverDialogCtl',
+        resolve: {
+          groups: function () {
+            return mnPoolDefault.get().then(function (poolDefault) {
+              if (poolDefault.isGroupsAvailable && permissions.cluster.server_groups.read) {
+                return mnGroupsService.getGroupsByHostname();
+              }
+            });
+          },
+          nodes: function () {
+            return vm.nodes.reallyActive;
+          }
+        }
       });
     }
     function addServer() {
