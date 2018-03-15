@@ -22,10 +22,16 @@
 -include("cut.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
+-define(SHA_DIGEST_SIZE, 20).
+-define(SHA256_DIGEST_SIZE, 32).
+-define(SHA512_DIGEST_SIZE, 64).
+
 -export([start_link/0,
          authenticate/1,
          meta_header/0,
-         get_resp_headers_from_req/1]).
+         get_resp_headers_from_req/1,
+         hash_password/2,
+         auth_info_key/1]).
 
 %% callback for token_server
 -export([init/0]).
@@ -286,11 +292,6 @@ handle_proofs(Sha, SaltedPassword, Proof, AuthMessage) ->
             calculate_server_proof(Sha, SaltedPassword, AuthMessage)
     end.
 
--ifdef(EUNIT).
-
-shas() ->
-    [sha512, sha256, sha].
-
 pbkdf2(Sha, Password, Salt, Iterations) ->
     Initial = crypto:hmac(Sha, Password, <<Salt/binary, 1:32/integer>>),
     pbkdf2_iter(Sha, Password, Salt, Iterations - 1, Initial, Initial).
@@ -301,6 +302,23 @@ pbkdf2_iter(Sha, Password, Salt, Iteration, Prev, Acc) ->
     Next = crypto:hmac(Sha, Password, Prev),
     pbkdf2_iter(Sha, Password, Salt, Iteration - 1,
                 Next, crypto:exor(Next, Acc)).
+
+hash_password(Type, Password) ->
+    Iterations = ns_config:read_key_fast(memcached_password_hash_iterations,
+                                         4000),
+    Len = case Type of
+              sha -> ?SHA_DIGEST_SIZE;
+              sha256 -> ?SHA256_DIGEST_SIZE;
+              sha512 -> ?SHA512_DIGEST_SIZE
+          end,
+    Salt = crypto:rand_bytes(Len),
+    Hash = pbkdf2(Type, Password, Salt, Iterations),
+    {Salt, Hash, Iterations}.
+
+-ifdef(EUNIT).
+
+shas() ->
+    [sha512, sha256, sha].
 
 build_client_first_message(Sha, Nonce, User) ->
     Bare = "n=" ++ User ++ ",r=" ++ Nonce,

@@ -238,10 +238,6 @@ build_auth({_, CurrentAuth}, Password) ->
             build_memcached_auth(Password)
     end.
 
-build_memcached_auth(Password) ->
-    [{MemcachedAuth}] = build_memcached_auth_info([{"x", Password}]),
-    proplists:delete(<<"n">>, MemcachedAuth).
-
 -spec store_user(rbac_identity(), rbac_user_name(), rbac_password(), [rbac_role()]) -> run_txn_return().
 store_user(Identity, Name, Password, Roles) ->
     Props = case Name of
@@ -467,26 +463,22 @@ get_password_change_timestamp(Identity) ->
                                       {auth, Identity},
                                       undefined).
 
-collect_result(Port, Acc) ->
-    receive
-        {Port, {exit_status, Status}} ->
-            {Status, lists:flatten(lists:reverse(Acc))};
-        {Port, {data, Msg}} ->
-            collect_result(Port, [Msg | Acc])
-    end.
-
 build_memcached_auth_info(UserPasswords) ->
-    Iterations = ns_config:read_key_fast(memcached_password_hash_iterations, 4000),
-    Port = ns_ports_setup:run_cbsasladm(Iterations),
-    lists:foreach(
-      fun ({User, Password}) ->
-              PasswordStr = User ++ " " ++ Password ++ "\n",
-              ok = goport:write(Port, PasswordStr)
-      end, UserPasswords),
-    ok = goport:close(Port, stdin),
-    {0, Json} = collect_result(Port, []),
-    {[{<<"users">>, Infos}]} = ejson:decode(Json),
-    Infos.
+    [{[{<<"n">>, list_to_binary(User)} | build_memcached_auth(Password)]}
+        || {User, Password} <- UserPasswords].
+
+build_memcached_auth(Password) ->
+    BuildAuth =
+        fun (Type) ->
+                {S, H, I} = scram_sha:hash_password(Type, Password),
+                {scram_sha:auth_info_key(Type),
+                    {[{<<"h">>, base64:encode(H)},
+                      {<<"s">>, base64:encode(S)},
+                      {<<"i">>, I}]}}
+        end,
+    {Salt, Hash} = ns_config_auth:hash_password(Password),
+    build_plain_memcached_auth_info(Salt, Hash) ++
+        [BuildAuth(sha), BuildAuth(sha256), BuildAuth(sha512)].
 
 build_plain_memcached_auth_info(Salt, Mac) ->
     SaltAndMac = <<Salt/binary, Mac/binary>>,

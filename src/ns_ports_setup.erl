@@ -21,8 +21,6 @@
          restart_xdcr_proxy/0, sync/0, create_erl_node_spec/4,
          shutdown_ports/0]).
 
--export([run_cbsasladm/1]).
-
 start() ->
     proc_lib:start_link(?MODULE, setup_body_tramp, []).
 
@@ -741,13 +739,3 @@ example_service_spec(Config) ->
             []
     end.
 
-run_cbsasladm(Iterations) ->
-    Args = ["-i", integer_to_list(Iterations), "pwconv", "-", "-"],
-
-    {ok, P} =
-        goport:start_link(find_executable("cbsasladm"),
-                          [exit_status, graceful_shutdown, stderr_to_stdout,
-                           stream, binary,
-                           {args, Args},
-                           {name, false}]),
-    P.
