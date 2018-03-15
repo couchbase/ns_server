@@ -387,29 +387,23 @@ client_auth(Sha, User, Password, Nonce) ->
             first_stage_failed
     end.
 
-pbkdf2_t(Sha, Password, Auth) ->
-    {Props} = proplists:get_value(auth_info_key(Sha), Auth),
-    SaltedPasswordCPP =
-        base64:decode(proplists:get_value(<<"h">>, Props)),
-    Salt = base64:decode(proplists:get_value(<<"s">>, Props)),
-    Iterations = proplists:get_value(<<"i">>, Props),
-
-    SaltedPasswordErlang =
-        pbkdf2(Sha, Password, Salt, Iterations),
-    ?assertEqual(SaltedPasswordErlang, SaltedPasswordCPP).
-
-pbkdf2_test_() ->
-    {setup,
-     fun () ->
-             ns_config:test_setup([]),
-             Password = "123456789",
-             Auth = menelaus_users:build_memcached_auth(Password),
-             {Password, Auth}
-     end,
-     fun ({Password, Auth}) ->
-             [{"pbkdf2 test for " ++ atom_to_list(Sha),
-               ?cut(pbkdf2_t(Sha, Password, Auth))} || Sha <- shas()]
-     end}.
+pbkdf2_test() ->
+    PBKDF2 = fun (T, S) ->
+                     H = pbkdf2(T, "4149a7598deb1a04e2ea7ac8d915f6c3",
+                                base64:decode(S), 4000),
+                     base64:encode_to_string(H)
+             end,
+    ?assertEqual("ZIlutBvCilUTSMtgRRHzkomuNbc=",
+                 PBKDF2(sha,
+                        "mtlJBgjGNa7S63biAXQ06EPzhXg=")),
+    ?assertEqual("ELrpMLYTEg2BrqsAE+33vpIjk/3a8mc8cBVcE06G38k=",
+                 PBKDF2(sha256,
+                        "SPPCz+lBjL6WNvsssl04Wr6FlffsYMxFXlUM+LwdiY8=")),
+    ?assertEqual("GB1lsONsRtKXyL59L84/2sYQTTVL6d7dplmhNN2dpys+"
+                 "wJr5UY3hfAj4zK3ZatjQkUZHjnlAtrZzvjpzQboNcg==",
+                 PBKDF2(sha512,
+                        "31uxbpP++gOzRdXBY3iOdIeTm/3dutkz/58VFKfZzffc"
+                        "YrNAm8D1YNDLjjf1AfUGckWFB63nQjUQHyo2fXZC/g==")).
 
 calculate_client_proof_regression_test() ->
     ?assertEqual(
