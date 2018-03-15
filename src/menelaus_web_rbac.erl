@@ -331,13 +331,29 @@ handle_get_users_45(Req) ->
              end, Users),
     menelaus_util:reply_json(Req, Json).
 
+security_users_filter(ReqUserId) ->
+    case can_view_security(ReqUserId) of
+        true ->
+            pipes:filter(fun (_) -> true end);
+        false ->
+            SecurityRoles = menelaus_roles:get_security_roles(),
+            pipes:filter(
+              fun ({{user, _}, Props}) ->
+                      Roles = proplists:get_value(roles, Props),
+                      not lists:any(fun ({R, _}) -> lists:member(R, Roles) end,
+                                    SecurityRoles)
+              end)
+    end.
+
 handle_get_all_users(Req, Pattern, Params) ->
+    ReqUserId = menelaus_auth:get_identity(Req),
     Roles = get_roles_for_users_filtering(
               proplists:get_value(permission, Params)),
     Passwordless = menelaus_users:get_passwordless(),
     pipes:run(menelaus_users:select_users(Pattern),
               [filter_out_invalid_roles(),
                filter_by_roles(Roles),
+               security_users_filter(ReqUserId),
                jsonify_users(Passwordless),
                sjson:encode_extended_json([{compact, false},
                                            {strict, false}]),
@@ -570,11 +586,13 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
     Permission = proplists:get_value(permission, Values),
     Roles = get_roles_for_users_filtering(Permission),
     Passwordless = menelaus_users:get_passwordless(),
+    ReqUserId = menelaus_auth:get_identity(Req),
 
     {PageSkews, Total} =
         pipes:run(menelaus_users:select_users({'_', DomainAtom}),
                   [filter_out_invalid_roles(),
-                   filter_by_roles(Roles)],
+                   filter_by_roles(Roles),
+                   security_users_filter(ReqUserId)],
                   ?make_consumer(
                      pipes:fold(
                        ?producer(),
