@@ -201,8 +201,11 @@ assert_api_can_be_used() ->
             menelaus_util:assert_is_enterprise()
     end.
 
+get_security_read_permission() ->
+    {[admin, security, admin], read}.
+
 can_view_security(Identity) ->
-    menelaus_roles:is_allowed({[admin, security, admin], read}, Identity).
+    menelaus_roles:is_allowed(get_security_read_permission(), Identity).
 
 get_security_write_permission() ->
     {[admin, security, admin], write}.
@@ -378,7 +381,19 @@ handle_get_user(Domain, UserId, Req) ->
                 false ->
                     menelaus_util:reply_json(Req, <<"Unknown user.">>, 404);
                 true ->
-                    menelaus_util:reply_json(Req, get_user_json(Identity))
+                    ReqUserId = menelaus_auth:get_identity(Req),
+                    case can_view_security(ReqUserId) orelse
+                         not is_security_related(Identity) of
+                        true ->
+                            menelaus_util:reply_json(
+                              Req, get_user_json(Identity));
+                        false ->
+                            Permission = get_security_read_permission(),
+                            menelaus_util:reply_json(
+                              Req,
+                              menelaus_web_rbac:forbidden_response(Permission),
+                              403)
+                    end
             end
     end.
 
