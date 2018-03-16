@@ -334,21 +334,17 @@ format_iso8601({{YYYY, MM, DD}, {Hour, Min, Sec}}, Microsecs, Offset) ->
     io_lib:format("~4.4.0w-~2.2.0w-~2.2.0wT~2.2.0w:~2.2.0w:~2.2.0w.~3.3.0w",
                   [YYYY, MM, DD, Hour, Min, Sec, Microsecs div 1000]) ++ Offset.
 
-get_user_id(undefined) ->
-    undefined;
-get_user_id({User, Domain}) ->
-    {[{source, case Domain of
-                   admin ->
-                       ns_server;
-                   ro_admin ->
-                       ns_server;
-                   Src ->
-                       Src
-               end},
-      {user, to_binary(User)}]}.
+convert_domain(admin) ->
+    ns_server;
+convert_domain(ro_admin) ->
+    ns_server;
+convert_domain(D) ->
+    D.
 
+get_identity(undefined) ->
+    undefined;
 get_identity({User, Domain}) ->
-    {[{source, Domain}, {user, to_binary(User)}]}.
+    {[{source, convert_domain(Domain)}, {user, to_binary(User)}]}.
 
 get_remote(Req) ->
     Socket = Req:get(socket),
@@ -379,7 +375,7 @@ prepare(Req, Params) ->
             undefined ->
                 {undefined, undefined, undefined};
             _ ->
-                {get_user_id(menelaus_auth:get_identity(Req)),
+                {get_identity(menelaus_auth:get_identity(Req)),
                  menelaus_auth:get_token(Req),
                  get_remote(Req)}
         end,
@@ -736,7 +732,7 @@ prepare_audit_setting({enabled, List}) ->
 prepare_audit_setting({disabled, List}) ->
     {disabled, {list, List}};
 prepare_audit_setting({disabled_users, Users}) ->
-    {disabled_userids, {list, [get_user_id(U) || U <- Users]}};
+    {disabled_userids, {list, [get_identity(U) || U <- Users]}};
 prepare_audit_setting(Setting) ->
     Setting.
 
