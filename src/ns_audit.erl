@@ -344,7 +344,7 @@ convert_domain(D) ->
 get_identity(undefined) ->
     undefined;
 get_identity({User, Domain}) ->
-    {[{source, convert_domain(Domain)}, {user, to_binary(User)}]}.
+    {[{domain, convert_domain(Domain)}, {user, to_binary(User)}]}.
 
 get_remote(Req) ->
     Socket = Req:get(socket),

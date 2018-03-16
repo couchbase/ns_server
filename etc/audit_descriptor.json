@@ -10,7 +10,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "roles" : ""
           },
@@ -40,9 +40,9 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
-              "identity" : {"source" : "", "user" : ""}
+              "identity" : {"domain" : "", "user" : ""}
           },
           "optional_fields" : {
               "sessionid" : ""
@@ -56,10 +56,10 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "identity" : {"source" : "", "user" : ""}
+              "identity" : {"domain" : "", "user" : ""}
           },
           "optional_fields" : {
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "sessionid" : ""
           }
@@ -72,7 +72,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "user" : "",
               "node" : "",
@@ -93,7 +93,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "node" : ""
           },
@@ -109,7 +109,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "nodes" : [],
               "type" : ""
@@ -126,7 +126,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "node" : "",
               "type" : ""
@@ -143,7 +143,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "known_nodes" : [],
               "ejected_nodes" : [],
@@ -161,7 +161,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "bucket_name" : "",
               "type" : "",
@@ -179,7 +179,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "bucket_name" : "",
               "type" : "",
@@ -197,7 +197,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "bucket_name" : ""
           },
@@ -217,7 +217,7 @@
               "bucket_name" : ""
           },
           "optional_fields" : {
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -229,7 +229,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "bucket_name" : ""
           },
@@ -245,7 +245,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "node" : "",
               "db_path" : "",
@@ -264,7 +264,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "node" : "",
               "hostname" : ""
@@ -281,7 +281,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "node" : "",
               "services" : ""
@@ -298,7 +298,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "quotas" : {"kv" : 1, "index" : 1, "fts" : 1, "cbas" : 1, "eventing" : 1},
               "cluster_name" : "",
               "remote" : {"ip" : "", "port" : 1}
@@ -315,7 +315,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "group_name" : "",
               "uuid" : ""
@@ -332,7 +332,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "group_name" : "",
               "uuid" : ""
@@ -349,7 +349,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "group_name" : "",
               "uuid" : "",
@@ -367,7 +367,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "demand_encription" : false,
               "hostname" : "",
@@ -386,7 +386,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "demand_encription" : false,
               "hostname" : "",
@@ -405,7 +405,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "demand_encription" : false,
               "hostname" : "",
@@ -424,7 +424,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "rep_id" : "",
               "from_bucket" : "",
@@ -444,7 +444,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "rep_id" : "",
               "settings" : ""
@@ -461,7 +461,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "rep_id" : ""
           },
@@ -477,7 +477,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "settings" : ""
           },
@@ -493,7 +493,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "timeout" : 1,
               "max_nodes" : 1
@@ -513,7 +513,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1}
           },
           "optional_fields" : {
@@ -528,7 +528,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1}
           },
           "optional_fields" : {
@@ -543,7 +543,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "sender" : "",
               "recipients" : "",
@@ -562,7 +562,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1}
           },
           "optional_fields" : {
@@ -577,7 +577,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1}
           },
           "optional_fields" : {
@@ -606,7 +606,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1}
           },
           "optional_fields" : {
@@ -621,7 +621,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "enabled" : false,
               "admins" : "",
@@ -639,7 +639,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "settings" : ""
           },
@@ -655,7 +655,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "subject" : "",
               "expires" : ""
@@ -672,7 +672,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "subject" : "",
               "expires" : ""
@@ -689,7 +689,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "storageMode" : ""
           },
@@ -705,9 +705,9 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
-              "identity" : {"source" : "", "user" : ""},
+              "identity" : {"domain" : "", "user" : ""},
               "roles" : ""
           },
           "optional_fields" : {
@@ -772,10 +772,10 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "identity" : {"source" : "", "user" : ""}
+              "identity" : {"domain" : "", "user" : ""}
           },
           "optional_fields" : {
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "sessionid" : "",
               "state": "",
@@ -793,7 +793,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "settings" : ""
           },
@@ -809,7 +809,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "nodes" : "",
               "base_url" : "",
@@ -830,7 +830,7 @@
           "enabled" : true,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : {"source" : "", "user" : ""},
+              "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "log_redaction_default_cfg" : {"redact_level" : ""}
           },
@@ -845,7 +845,7 @@
           "enabled": true,
           "mandatory_fields": {
               "timestamp": "",
-              "real_userid": {"source": "", "user": ""},
+              "real_userid": {"domain": "", "user": ""},
               "hostname": "",
               "version": 1
           },
