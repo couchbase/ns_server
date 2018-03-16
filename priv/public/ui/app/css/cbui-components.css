@@ -582,7 +582,12 @@ section.error {
   margin-right: 1rem;
 }
 
-/* medium-width modal dialog (uses .panel) ------------------------------ */
+.dialog-resizable {
+  overflow: hidden;
+  resize: both;
+}
+
+/* medium-width modal dialog (uses .panel) --------------------------------- */
 .dialog-med {
   width: 530px;
 }

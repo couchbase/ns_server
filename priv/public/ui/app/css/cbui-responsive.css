@@ -118,11 +118,12 @@
     padding-left: 0 !important;
   }
   .row.resp-sml,
+  .controls.resp-sml,
   .content-box-dashboard.resp-sml{
     flex-wrap: wrap;
 }
-.wb-main-wrapper.resp-small {
-  width: 100% !important;
+  .wb-main-wrapper.resp-small {
+    width: 100% !important;
 }
   .cbui-table-props,
   .cbui-table-bucketprops,
@@ -145,6 +146,9 @@
   }
   .forms.max-height-500 {
     max-height: 300px;
+  }
+  .dialog-resizable {
+    width: 98vw;
   }
 }
 
