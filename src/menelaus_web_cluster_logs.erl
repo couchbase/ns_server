@@ -204,7 +204,9 @@ parse_validate_collect_params(Params, Config) ->
     RedactLevel =
         case proplists:get_value("logRedactionLevel", Params) of
             undefined ->
-                [];
+                %% Use cluster default if present
+                ns_config:search(ns_config:latest(),
+                                 log_redaction_default_cfg, []);
             N when N =:= "none"; N =:= "partial" ->
                 case cluster_compat_mode:is_enterprise() of
                     true ->
