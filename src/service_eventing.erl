@@ -117,7 +117,9 @@ failures() ->
      n1ql_op_exception_count,
      timeout_count,
      doc_timer_create_failure,
-     non_doc_timer_create_failure].
+     non_doc_timer_create_failure,
+     on_update_failure,
+     on_delete_failure].
 
 get_service_gauges() ->
     [dcp_backlog | successes() ++ failures()].
