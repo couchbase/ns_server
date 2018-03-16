@@ -335,9 +335,9 @@ format_iso8601({{YYYY, MM, DD}, {Hour, Min, Sec}}, Microsecs, Offset) ->
                   [YYYY, MM, DD, Hour, Min, Sec, Microsecs div 1000]) ++ Offset.
 
 convert_domain(admin) ->
-    ns_server;
+    builtin;
 convert_domain(ro_admin) ->
-    ns_server;
+    builtin;
 convert_domain(D) ->
     D.
 
