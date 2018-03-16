@@ -175,7 +175,7 @@
         return $q.reject({username: "username is required"});
       }
       roles = prepareRolesForSaving(roles);
-      if (!roles || !roles.length) {
+      if (!resetPassword && (!roles || !roles.length)) {
         return $q.reject({roles: "at least one role should be added"});
       }
       if (isEditingMode) {
