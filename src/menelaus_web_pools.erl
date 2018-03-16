@@ -264,7 +264,7 @@ do_build_pool_info(Id, CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr) ->
             undefined ->
                 PropList2;
             AuditUID ->
-                [{audit_uid, list_to_binary(AuditUID)} | PropList2]
+                [{auditUid, list_to_binary(AuditUID)} | PropList2]
         end,
 
     PropList =
