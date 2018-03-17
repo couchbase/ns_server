@@ -439,7 +439,7 @@ handle_sasl_buckets_streaming(_PoolId, Req) ->
                 end
         end,
 
-    F = fun (_, _) ->
+    F = fun (_) ->
                 Config = ns_config:get(),
                 SASLBuckets = lists:filter(
                                 fun ({_, BucketInfo}) ->
@@ -481,7 +481,7 @@ handle_sasl_buckets_streaming(_PoolId, Req) ->
 handle_bucket_info_streaming(_PoolId, Id, Req) ->
     LocalAddr = menelaus_util:local_addr(Req),
     SendTerse = ns_config:read_key_fast(send_terse_streaming_buckets, false),
-    F = fun(_InfoLevel, _Stability) ->
+    F = fun(_Stability) ->
                 case ns_bucket:get_bucket(Id) of
                     {ok, BucketConfig} ->
                         case SendTerse of
@@ -1895,7 +1895,7 @@ serve_short_bucket_info(BucketName, Req) ->
 
 serve_streaming_short_bucket_info(BucketName, Req) ->
     handle_streaming(
-      fun (_, _) ->
+      fun (_) ->
               V = build_terse_bucket_info(BucketName),
               {just_write, {write, V}}
       end, Req).

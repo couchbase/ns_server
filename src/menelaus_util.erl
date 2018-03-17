@@ -516,7 +516,7 @@ handle_streaming(F, Req) ->
     handle_streaming(F, Req, HTTPRes, undefined).
 
 streaming_inner(F, HTTPRes, LastRes) ->
-    Res = F(normal, stable),
+    Res = F(stable),
     case Res =:= LastRes of
         true ->
             ok;
@@ -525,7 +525,7 @@ streaming_inner(F, HTTPRes, LastRes) ->
                             {just_write, Stuff} ->
                                 Stuff;
                             _ ->
-                                F(normal, unstable)
+                                F(unstable)
                         end,
             Encoded = case ResNormal of
                           {write, Bin} -> Bin;

@@ -319,8 +319,8 @@ build_one_alert({_Key, Msg, Time}) ->
 
 handle_pool_info_streaming(Id, Req) ->
     LocalAddr = local_addr(Req),
-    F = fun(InfoLevel, Stability) ->
-                build_pool_info(Id, Req, InfoLevel, Stability, LocalAddr)
+    F = fun(Stability) ->
+                build_pool_info(Id, Req, normal, Stability, LocalAddr)
         end,
     handle_streaming(F, Req).
 
