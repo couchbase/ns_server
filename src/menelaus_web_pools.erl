@@ -143,7 +143,8 @@ handle_pool_info_wait_tail(Req, Id, LocalAddr, ETag) ->
 
 
 build_pool_info(Id, Req, normal, Stability, LocalAddr) ->
-    CanIncludeOtpCookie = menelaus_auth:has_permission({[admin, internal], all}, Req),
+    CanIncludeOtpCookie =
+        menelaus_auth:has_permission({[admin, internal], all}, Req),
 
     %% NOTE: we limit our caching here for "normal" info
     %% level. Explicitly excluding UI (which InfoLevel = for_ui). This
@@ -167,45 +168,9 @@ build_pool_info(Id, _Req, InfoLevel, Stability, LocalAddr) ->
 do_build_pool_info(Id, CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr) ->
     UUID = menelaus_web:get_uuid(),
 
-    Nodes = menelaus_web_node:build_nodes_info(CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr),
+    Nodes = menelaus_web_node:build_nodes_info(CanIncludeOtpCookie, InfoLevel,
+                                               Stability, LocalAddr),
     Config = ns_config:get(),
-    BucketsVer = erlang:phash2(ns_bucket:get_bucket_names(ns_bucket:get_buckets(Config)))
-        bxor erlang:phash2([{proplists:get_value(hostname, KV),
-                             proplists:get_value(status, KV)} || {struct, KV} <- Nodes]),
-    BucketsInfo = {struct, [{uri, bin_concat_path(["pools", Id, "buckets"],
-                                                  [{"v", BucketsVer},
-                                                   {"uuid", UUID}])},
-                            {terseBucketsBase, <<"/pools/default/b/">>},
-                            {terseStreamingBucketsBase, <<"/pools/default/bs/">>}]},
-    RebalanceStatus = case ns_orchestrator:is_rebalance_running() of
-                          true -> <<"running">>;
-                          _ -> <<"none">>
-                      end,
-
-    {Alerts0, AlertsSilenceToken} = menelaus_web_alerts_srv:fetch_alerts(),
-    Alerts = build_alerts(Alerts0),
-
-    Controllers = {struct, [
-      {addNode, {struct, [{uri, <<"/controller/addNodeV2?uuid=", UUID/binary>>}]}},
-      {rebalance, {struct, [{uri, <<"/controller/rebalance?uuid=", UUID/binary>>}]}},
-      {failOver, {struct, [{uri, <<"/controller/failOver?uuid=", UUID/binary>>}]}},
-      {startGracefulFailover, {struct, [{uri, <<"/controller/startGracefulFailover?uuid=", UUID/binary>>}]}},
-      {reAddNode, {struct, [{uri, <<"/controller/reAddNode?uuid=", UUID/binary>>}]}},
-      {reFailOver, {struct, [{uri, <<"/controller/reFailOver?uuid=", UUID/binary>>}]}},
-      {ejectNode, {struct, [{uri, <<"/controller/ejectNode?uuid=", UUID/binary>>}]}},
-      {setRecoveryType, {struct, [{uri, <<"/controller/setRecoveryType?uuid=", UUID/binary>>}]}},
-      {setAutoCompaction, {struct, [
-        {uri, <<"/controller/setAutoCompaction?uuid=", UUID/binary>>},
-        {validateURI, <<"/controller/setAutoCompaction?just_validate=1">>}
-      ]}},
-      {clusterLogsCollection, {struct, [
-        {startURI, <<"/controller/startLogsCollection?uuid=", UUID/binary>>},
-        {cancelURI, <<"/controller/cancelLogsCollection?uuid=", UUID/binary>>}]}},
-      {replication, {struct, [
-        {createURI, <<"/controller/createReplication?uuid=", UUID/binary>>},
-        {validateURI, <<"/controller/createReplication?just_validate=1">>}
-      ]}}
-    ]},
 
     TasksURI = bin_concat_path(["pools", Id, "tasks"],
                                [{"v", ns_doctor:get_tasks_version()}]),
@@ -217,78 +182,140 @@ do_build_pool_info(Id, CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr) ->
 
     Cca = ns_ssl_services_setup:client_cert_auth(),
     CcaState = list_to_binary(proplists:get_value(state, Cca)),
-    PropList0 = [{name, list_to_binary(Id)},
-                 {alerts, Alerts},
-                 {alertsSilenceURL,
-                  iolist_to_binary([<<"/controller/resetAlerts?token=">>,
-                                    AlertsSilenceToken,
-                                    $&, <<"uuid=">>, UUID])},
-                 {nodes, Nodes},
-                 {buckets, BucketsInfo},
-                 {remoteClusters,
-                  {struct, [{uri, <<"/pools/default/remoteClusters?uuid=", UUID/binary>>},
-                            {validateURI, <<"/pools/default/remoteClusters?just_validate=1">>}]}},
-                 {controllers, Controllers},
-                 {rebalanceStatus, RebalanceStatus},
-                 {rebalanceProgressUri, bin_concat_path(["pools", Id, "rebalanceProgress"])},
-                 {stopRebalanceUri, <<"/controller/stopRebalance?uuid=", UUID/binary>>},
-                 {nodeStatusesUri, <<"/nodeStatuses">>},
-                 {maxBucketCount, ns_config:read_key_fast(max_bucket_count, 10)},
-                 {autoCompactionSettings, menelaus_web_autocompaction:build_global_settings(Config)},
-                 {tasks, {struct, [{uri, TasksURI}]}},
-                 {counters, {struct, ns_cluster:counters()}},
-                 {indexStatusURI, <<"/indexStatus?v=", IndexesVersion/binary>>},
-                 {checkPermissionsURI,
-                  bin_concat_path(["pools", Id, "checkPermissions"],
-                                  [{"v", menelaus_web_rbac:check_permissions_url_version(Config)}])},
-                 {serverGroupsUri, <<"/pools/default/serverGroups?v=",
-                                     (list_to_binary(integer_to_list(GroupsV)))/binary>>},
-                 {clusterName, list_to_binary(get_cluster_name())},
-                 {balanced, ns_cluster_membership:is_balanced()},
-                 {clientCertAuth, CcaState}],
-
-    PropList1 = menelaus_web_node:build_memory_quota_info(Config) ++ PropList0,
-    PropList2 =
-        case InfoLevel of
-            for_ui ->
-                [{failoverWarnings, ns_bucket:failover_warnings()},
-                 {ldapEnabled, cluster_compat_mode:is_ldap_enabled()},
-                 {uiSessionTimeout, ns_config:read_key_fast(ui_session_timeout, undefined)}
-                 | PropList1];
-            _ ->
-                PropList1
-        end,
-
-    PropList3 =
-        case ns_audit_cfg:get_uid() of
-            undefined ->
-                PropList2;
-            AuditUID ->
-                [{auditUid, list_to_binary(AuditUID)} | PropList2]
-        end,
-
     PropList =
-        case Stability of
-            stable ->
-                PropList3;
-            unstable ->
-                StorageTotals = [{Key, {struct, StoragePList}}
-                                 || {Key, StoragePList} <-
-                                        ns_storage_conf:cluster_storage_info()],
-                [{storageTotals, {struct, StorageTotals}} | PropList3]
-        end,
+        [{name, list_to_binary(Id)},
+         {nodes, Nodes},
+         build_buckets_info(Config, Id, UUID, Nodes),
+         build_uri_with_validation(remoteClusters,
+                                   "/pools/default/remoteClusters", UUID),
+         build_alerts(UUID),
+         build_controllers(UUID),
+         build_rebalance_params(Id, UUID),
+         {nodeStatusesUri, <<"/nodeStatuses">>},
+         {maxBucketCount, ns_config:read_key_fast(max_bucket_count, 10)},
+         {autoCompactionSettings,
+          menelaus_web_autocompaction:build_global_settings(Config)},
+         {tasks, {struct, [{uri, TasksURI}]}},
+         {counters, {struct, ns_cluster:counters()}},
+         {indexStatusURI, <<"/indexStatus?v=", IndexesVersion/binary>>},
+         {checkPermissionsURI,
+          bin_concat_path(
+            ["pools", Id, "checkPermissions"],
+            [{"v", menelaus_web_rbac:check_permissions_url_version(Config)}])},
+         {serverGroupsUri,
+          <<"/pools/default/serverGroups?v=",
+            (list_to_binary(integer_to_list(GroupsV)))/binary>>},
+         {clusterName, list_to_binary(get_cluster_name())},
+         {balanced, ns_cluster_membership:is_balanced()},
+         {clientCertAuth, CcaState},
+         menelaus_web_node:build_memory_quota_info(Config),
+         build_ui_params(InfoLevel),
+         case ns_audit_cfg:get_uid() of
+             undefined ->
+                 [];
+             AuditUID ->
+                 [{auditUid, list_to_binary(AuditUID)}]
+         end,
+         build_unstable_params(Stability)],
+    {struct, lists:flatten(PropList)}.
 
-    {struct, PropList}.
+build_rebalance_params(Id, UUID) ->
+    RebalanceStatus = case ns_orchestrator:is_rebalance_running() of
+                          true ->
+                              <<"running">>;
+                          _ ->
+                              <<"none">>
+                      end,
 
-build_alerts(Alerts) ->
-    [build_one_alert(Alert) || Alert <- Alerts].
+    [{rebalanceStatus, RebalanceStatus},
+     {rebalanceProgressUri,
+      bin_concat_path(["pools", Id, "rebalanceProgress"])},
+     {stopRebalanceUri, build_controller_uri("stopRebalance", UUID)}].
+
+build_ui_params(for_ui) ->
+    [{failoverWarnings, ns_bucket:failover_warnings()},
+     {ldapEnabled, cluster_compat_mode:is_ldap_enabled()},
+     {uiSessionTimeout,
+      ns_config:read_key_fast(ui_session_timeout, undefined)}];
+build_ui_params(_) ->
+    [].
+
+build_unstable_params(stable) ->
+    [];
+build_unstable_params(unstable) ->
+    [{storageTotals,
+      {[{Key, {StoragePList}} ||
+           {Key, StoragePList} <- ns_storage_conf:cluster_storage_info()]}}].
+
+build_buckets_info(Config, Id, UUID, Nodes) ->
+     BucketsVer =
+        erlang:phash2(
+          ns_bucket:get_bucket_names(ns_bucket:get_buckets(Config)))
+        bxor erlang:phash2(
+               [{proplists:get_value(hostname, KV),
+                 proplists:get_value(status, KV)} || {struct, KV} <- Nodes]),
+    {buckets, {struct,
+               [{uri, bin_concat_path(["pools", Id, "buckets"],
+                                      [{"v", BucketsVer},
+                                       {"uuid", UUID}])},
+                {terseBucketsBase, <<"/pools/default/b/">>},
+                {terseStreamingBucketsBase, <<"/pools/default/bs/">>}]}}.
+
+build_controller(Name, UUID) ->
+    build_controller(Name, atom_to_list(Name), UUID).
+
+build_controller(Name, Endpoint, UUID) ->
+    {Name, {struct, [{uri, build_controller_uri(Endpoint, UUID)}]}}.
+
+build_uri_with_validation(Name, Endpoint, UUID) ->
+    {Name, {struct, [{uri, build_uri_with_uuid(Endpoint, UUID)},
+                     {validateURI, build_validate_uri(Endpoint)}]}}.
+
+build_controller_uri(Endpoint, UUID) ->
+    build_uri_with_uuid("/controller/" ++ Endpoint, UUID).
+
+build_uri_with_uuid(Endpoint, UUID) ->
+    iolist_to_binary([Endpoint, "?uuid=", UUID]).
+
+build_validate_uri(Endpoint) ->
+    iolist_to_binary([Endpoint, "?just_validate=1"]).
+
+build_controllers(UUID) ->
+    {controllers,
+     {struct,
+      [build_controller(addNode, "addNodeV2", UUID),
+       build_controller(rebalance, UUID),
+       build_controller(failOver, UUID),
+       build_controller(startGracefulFailover, UUID),
+       build_controller(reAddNode, UUID),
+       build_controller(reFailOver, UUID),
+       build_controller(ejectNode, UUID),
+       build_controller(setRecoveryType, UUID),
+       build_uri_with_validation(setAutoCompaction,
+                                 "/controller/setAutoCompaction", UUID),
+       {clusterLogsCollection,
+        {struct,
+         [{startURI, build_controller_uri("startLogsCollection", UUID)},
+          {cancelURI, build_controller_uri("cancelLogsCollection", UUID)}]}},
+       %% TODO Why is this such a special case?
+       {replication,
+        {struct,
+         [{createURI, build_controller_uri("createReplication", UUID)},
+          {validateURI, build_validate_uri("/controller/createReplication")}]
+        }}]}}.
+
+build_alerts(UUID) ->
+    {Alerts, AlertsSilenceToken} = menelaus_web_alerts_srv:fetch_alerts(),
+    [{alerts, [build_one_alert(Alert) || Alert <- Alerts]},
+     {alertsSilenceURL,
+      iolist_to_binary([build_controller_uri("resetAlerts", UUID), "&token=",
+                        AlertsSilenceToken])}].
 
 build_one_alert({_Key, Msg, Time}) ->
     LocalTime = calendar:now_to_local_time(misc:time_to_timestamp(Time)),
     StrTime = format_server_time(LocalTime),
 
-    {struct, [{msg, Msg},
-              {serverTime, StrTime}]}.
+    {struct, [{msg, Msg}, {serverTime, StrTime}]}.
 
 handle_pool_info_streaming(Id, Req) ->
     LocalAddr = local_addr(Req),
