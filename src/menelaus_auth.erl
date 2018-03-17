@@ -22,6 +22,7 @@
 -include("rbac.hrl").
 
 -export([has_permission/2,
+         is_internal/1,
          get_accessible_buckets/2,
          extract_auth/1,
          extract_identity_from_cert/1,
@@ -234,6 +235,15 @@ parse_basic_auth_header(Value) ->
 -spec has_permission(rbac_permission(), mochiweb_request()) -> boolean().
 has_permission(Permission, Req) ->
     menelaus_roles:is_allowed(Permission, get_identity(Req)).
+
+-spec is_internal(mochiweb_request()) -> boolean().
+is_internal(Req) ->
+    case get_identity(Req) of
+        {"@" ++ _, admin} ->
+            true;
+        _ ->
+            false
+    end.
 
 -spec authenticate(error | undefined |
                    {token, auth_token()} |

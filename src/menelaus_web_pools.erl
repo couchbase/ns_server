@@ -146,7 +146,12 @@ build_pool_info(Id, Req, normal, Stability, LocalAddr) ->
     InfoLevel =
         case menelaus_auth:has_permission({[admin, internal], all}, Req) of
             true ->
-                admin;
+                case menelaus_auth:is_internal(Req) of
+                    true ->
+                        internal;
+                    false ->
+                        admin
+                end;
             false ->
                 normal
         end,
@@ -173,7 +178,7 @@ build_pool_info(Id, _Req, for_ui, Stability, LocalAddr) ->
 do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
     UUID = menelaus_web:get_uuid(),
 
-    CanIncludeOtpCookie = InfoLevel =:= admin,
+    CanIncludeOtpCookie = InfoLevel =:= admin orelse InfoLevel =:= internal,
     Nodes = menelaus_web_node:build_nodes_info(CanIncludeOtpCookie, InfoLevel,
                                                Stability, LocalAddr),
     Config = ns_config:get(),
@@ -186,8 +191,6 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
 
     GroupsV = erlang:phash2(ns_config:search(Config, server_groups)),
 
-    Cca = ns_ssl_services_setup:client_cert_auth(),
-    CcaState = list_to_binary(proplists:get_value(state, Cca)),
     PropList =
         [{name, list_to_binary(Id)},
          {nodes, Nodes},
@@ -213,15 +216,9 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
             (list_to_binary(integer_to_list(GroupsV)))/binary>>},
          {clusterName, list_to_binary(get_cluster_name())},
          {balanced, ns_cluster_membership:is_balanced()},
-         {clientCertAuth, CcaState},
          menelaus_web_node:build_memory_quota_info(Config),
          build_ui_params(InfoLevel),
-         case ns_audit_cfg:get_uid() of
-             undefined ->
-                 [];
-             AuditUID ->
-                 [{auditUid, list_to_binary(AuditUID)}]
-         end,
+         build_internal_params(InfoLevel),
          build_unstable_params(Stability)],
     {struct, lists:flatten(PropList)}.
 
@@ -237,6 +234,19 @@ build_rebalance_params(Id, UUID) ->
      {rebalanceProgressUri,
       bin_concat_path(["pools", Id, "rebalanceProgress"])},
      {stopRebalanceUri, build_controller_uri("stopRebalance", UUID)}].
+
+build_internal_params(internal) ->
+    Cca = ns_ssl_services_setup:client_cert_auth(),
+    CcaState = list_to_binary(proplists:get_value(state, Cca)),
+    [{clientCertAuth, CcaState},
+     case ns_audit_cfg:get_uid() of
+         undefined ->
+             [];
+         AuditUID ->
+             [{auditUid, list_to_binary(AuditUID)}]
+     end];
+build_internal_params(_) ->
+    [].
 
 build_ui_params(for_ui) ->
     [{failoverWarnings, ns_bucket:failover_warnings()},
