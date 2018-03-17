@@ -143,8 +143,13 @@ handle_pool_info_wait_tail(Req, Id, LocalAddr, ETag) ->
 
 
 build_pool_info(Id, Req, normal, Stability, LocalAddr) ->
-    CanIncludeOtpCookie =
-        menelaus_auth:has_permission({[admin, internal], all}, Req),
+    InfoLevel =
+        case menelaus_auth:has_permission({[admin, internal], all}, Req) of
+            true ->
+                admin;
+            false ->
+                normal
+        end,
 
     %% NOTE: we limit our caching here for "normal" info
     %% level. Explicitly excluding UI (which InfoLevel = for_ui). This
@@ -152,22 +157,23 @@ build_pool_info(Id, Req, normal, Stability, LocalAddr) ->
     %% which is important to deliver asap to UI (i.e. without any
     %% caching "staleness"). Same situation is with tasks version
     menelaus_web_cache:lookup_or_compute_with_expiration(
-      {pool_details, CanIncludeOtpCookie, Stability, LocalAddr},
+      {pool_details, InfoLevel, Stability, LocalAddr},
       fun () ->
               %% NOTE: token needs to be taken before building pool info
               Token = ns_config:config_version_token(),
-              {do_build_pool_info(Id, CanIncludeOtpCookie,
-                                  normal, Stability, LocalAddr), 1000, Token}
+              {do_build_pool_info(Id, InfoLevel, Stability, LocalAddr), 1000,
+               Token}
       end,
       fun (_Key, _Value, ConfigVersionToken) ->
               ConfigVersionToken =/= ns_config:config_version_token()
       end);
-build_pool_info(Id, _Req, InfoLevel, Stability, LocalAddr) ->
-    do_build_pool_info(Id, false, InfoLevel, Stability, LocalAddr).
+build_pool_info(Id, _Req, for_ui, Stability, LocalAddr) ->
+    do_build_pool_info(Id, for_ui, Stability, LocalAddr).
 
-do_build_pool_info(Id, CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr) ->
+do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
     UUID = menelaus_web:get_uuid(),
 
+    CanIncludeOtpCookie = InfoLevel =:= admin,
     Nodes = menelaus_web_node:build_nodes_info(CanIncludeOtpCookie, InfoLevel,
                                                Stability, LocalAddr),
     Config = ns_config:get(),
