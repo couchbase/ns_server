@@ -47,12 +47,12 @@
 
 -type lease_holder() :: {node(), binary()}.
 
--type user_quorum() :: all
-                     | majority
-                     | quorum(sets:set(node()) | [node()]).
+-type user_quorum() :: quorum(sets:set(node()) | [node()]).
 
 -type quorum() :: quorum(sets:set(node())).
--type quorum(Nodes) :: follower
+-type quorum(Nodes) :: all
+                     | follower
+                     | majority
                      | {all, Nodes}
                      | {majority, Nodes}
                      | [quorum(Nodes)].
@@ -80,6 +80,7 @@
 -record(state, { agent    :: undefined | {pid(), reference()},
                  acquirer :: undefined | {pid(), reference()},
 
+                 quorum_nodes       :: sets:set(node()),
                  leases             :: sets:set(node()),
                  local_lease_holder :: undefined | lease_holder(),
 
@@ -254,7 +255,19 @@ init([]) ->
     process_flag(priority, high),
     process_flag(trap_exit, true),
 
-    {ok, #state{leases             = sets:new(),
+    Self = self(),
+    ns_pubsub:subscribe_link(ns_config_events,
+                             case _ of
+                                 {nodes_wanted, _} ->
+                                     Self ! update_quorum_nodes;
+                                 {node, _, membership} ->
+                                     Self ! update_quorum_nodes;
+                                 _ ->
+                                     ok
+                             end),
+
+    {ok, #state{quorum_nodes       = get_quorum_nodes(),
+                leases             = sets:new(),
                 local_lease_holder = undefined,
 
                 activities = []}}.
@@ -274,8 +287,13 @@ handle_cast(Msg, State) ->
     ?log_error("Received unexpected cast ~p when state is~n~p", [Msg, State]),
     {noreply, State}.
 
+handle_info(update_quorum_nodes, State) ->
+    {noreply, handle_update_quorum_nodes(State)};
 handle_info({'DOWN', MRef, process, Pid, Reason}, State) ->
     {noreply, handle_down(MRef, Pid, Reason, State)};
+handle_info({'EXIT', _Pid, _Reason} = Exit, State) ->
+    ?log_error("Received unexpected exit message ~p. Exiting"),
+    {stop, {unexpected_exit, Exit}, State};
 handle_info(Info, State) ->
     ?log_error("Received unexpected message ~p when state is~n~p",
                [Info, State]),
@@ -579,6 +597,10 @@ have_lease(ExpectedLease, #state{local_lease_holder = ActualLease}) ->
 have_quorum(follower, State) ->
     true = (State#state.local_lease_holder =/= undefined),
     true;
+have_quorum(Tag, State)
+  when Tag =:= all;
+       Tag =:= majority ->
+    have_quorum({Tag, State#state.quorum_nodes}, State);
 have_quorum({all, Nodes}, #state{leases = Leases}) ->
     sets:is_subset(Nodes, Leases);
 have_quorum({majority, Nodes}, #state{leases = Leases}) ->
@@ -681,16 +703,12 @@ handle_activity_subcall(Request, From, State) ->
     State.
 
 -spec convert_quorum(user_quorum()) -> quorum().
-convert_quorum(UserQuorum) ->
-    convert_quorum(UserQuorum, ns_cluster_membership:active_nodes()).
-
--spec convert_quorum(user_quorum(), [node()]) -> quorum().
-convert_quorum(follower, _NodesWanted) ->
-    follower;
-convert_quorum(Tag, NodesWanted)
-  when is_atom(Tag) ->
-    {Tag, sets:from_list(NodesWanted)};
-convert_quorum({Tag, Nodes} = UserQuorum, _NodesWanted)
+convert_quorum(Tag)
+  when Tag =:= all;
+       Tag =:= follower;
+       Tag =:= majority ->
+    Tag;
+convert_quorum({Tag, Nodes} = UserQuorum)
   when Tag =:= all;
        Tag =:= majority ->
 
@@ -701,9 +719,9 @@ convert_quorum({Tag, Nodes} = UserQuorum, _NodesWanted)
             true = is_list(Nodes),
             {Tag, sets:from_list(Nodes)}
     end;
-convert_quorum(Quorums, NodesWanted)
+convert_quorum(Quorums)
   when is_list(Quorums) ->
-    lists:map(convert_quorum(_, NodesWanted), Quorums).
+    lists:map(fun convert_quorum/1, Quorums).
 
 check_activity_body(_Node, {_M, _F, _A}) ->
     ok;
@@ -846,3 +864,24 @@ merge_option(Key, ValuePred, Options, ParentOptions) ->
 merge_options(Options, ParentOptions) ->
     lists:foldl(merge_option(_, _, ParentOptions),
                 Options, inheritable_options()).
+
+get_quorum_nodes() ->
+    sets:from_list(ns_cluster_membership:active_nodes()).
+
+handle_update_quorum_nodes(#state{quorum_nodes = QuorumNodes} = State) ->
+    ?flush(update_quorum_nodes),
+
+    NewQuorumNodes = get_quorum_nodes(),
+    case QuorumNodes =:= NewQuorumNodes of
+        true ->
+            State;
+        false ->
+            Added   = sets:subtract(NewQuorumNodes, QuorumNodes),
+            Removed = sets:subtract(QuorumNodes, NewQuorumNodes),
+
+            NewState = State#state{quorum_nodes = NewQuorumNodes},
+            check_quorums(NewState,
+                          {quorum_nodes_changed,
+                           {added, sets:to_list(Added)},
+                           {removed, sets:to_list(Removed)}})
+    end.
