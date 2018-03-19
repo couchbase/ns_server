@@ -37,6 +37,56 @@
     .filter('mnLimitTo', mnLimitTo)
     .filter('jQueryLikeParamSerializer', jQueryLikeParamSerializer)
     .filter('decodeCompatVersion', decodeCompatVersion)
+    .filter('mnServersListFilter', mnServersListFilter);
+
+
+
+  //filter by multiple strictly defined fields in the node
+  //e.g filterField -> "apple 0.0.0.0 data"
+  //will return all kv nodes which run on macos 0.0.0.0 host
+  function mnServersListFilter($filter, mnFormatServicesFilter) {
+    return function (nodes, searchValue, groupsByHostname) {
+      return $filter('filter')(nodes, function (node) {
+        if (searchValue === "") {
+          return true;
+        }
+
+        var interestingFields = ["hostname", "status"];
+        var l2 = interestingFields.length;
+        var l3 = node.services.length;
+        var i2;
+        var i3;
+        var searchFiled;
+        searchValue = searchValue.toLowerCase();
+        var rv = false;
+
+        //look in services
+        if ($filter('orderBy')(node.services.map(function (node) {
+          return mnFormatServicesFilter(node).toLowerCase();
+        })).join(" ").indexOf(searchValue) > -1) {
+          rv = true;
+        }
+
+        //look in interestingFields
+        loop2:
+        for (i2 = 0; i2 < l2; i2++) {
+          searchFiled = interestingFields[i2];
+          if (node[searchFiled].toLowerCase().indexOf(searchValue) > -1) {
+            rv = true;
+            break loop2;
+          }
+        }
+
+        //look in group name
+        if (!rv && groupsByHostname && groupsByHostname[node.hostname] &&
+            groupsByHostname[node.hostname].name.toLowerCase().indexOf(searchValue) > -1) {
+          rv = true;
+        }
+
+        return rv;
+      });
+    }
+  }
 
   function decodeCompatVersion() {
     return function (version) {

@@ -30,7 +30,7 @@
       <span class="cbui-table-cell resp-hide-sml"></span>
     </div>
     <div
-       ng-repeat="node in serversCtl.nodes.allNodes | orderBy:mnSortableTable.sortableTableProperties.orderBy:mnSortableTable.sortableTableProperties.invert | filter:serversCtl.listFiter track by node.otpNode"
+       ng-repeat="node in serversCtl.nodes.allNodes | orderBy:mnSortableTable.sortableTableProperties.orderBy:mnSortableTable.sortableTableProperties.invert | mnServersListFilter:serversCtl.filterField:serversCtl.getGroupsByHostname track by node.otpNode"
        ui-view="item">
     </div>
 
