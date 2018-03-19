@@ -69,7 +69,9 @@
          start_log_collection/4,
          modify_log_redaction_settings/2,
          modify_audit_settings/2,
-         modify_index_settings/2
+         modify_index_settings/2,
+         modify_query_curl_whitelist_setting/2,
+         modify_query_settings/2
         ]).
 
 -export([start_link/0, stats/0]).
@@ -297,7 +299,9 @@ code(modify_log_redaction_settings) ->
 code(modify_audit_settings) ->
     8240;
 code(modify_index_settings) ->
-    8241.
+    8241;
+code(modify_query_settings) ->
+    8242.
 
 to_binary({list, List}) ->
     [to_binary(A) || A <- List];
@@ -751,3 +755,10 @@ print_audit_records(Queue) ->
 
 modify_index_settings(Req, Settings) ->
     put(modify_index_settings, Req, [{settings, {prepare_list(Settings)}}]).
+
+modify_query_settings(Req, Settings) ->
+    put(modify_query_settings, Req, [{settings, {prepare_list(Settings)}}]).
+
+modify_query_curl_whitelist_setting(Req, Values) ->
+    Setting = [{curl_whitelist, ejson:encode({Values})}],
+    modify_query_settings(Req, Setting).

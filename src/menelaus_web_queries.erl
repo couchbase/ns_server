@@ -57,6 +57,7 @@ handle_settings_post(Req) ->
     validator:handle(
       fun (Values) ->
               ok = update_settings(generalSettings, Values),
+              ns_audit:modify_query_settings(Req, Values),
               menelaus_util:reply_json(Req, {get_settings()})
       end, Req, form, settings_post_validators()).
 
@@ -86,6 +87,7 @@ handle_curl_whitelist_post(Req) ->
       fun (Values) ->
               ok = update_settings(curlWhitelistSettings,
                                    [{queryCurlWhitelist, {Values}}]),
+              ns_audit:modify_query_curl_whitelist_setting(Req, Values),
               menelaus_util:reply_json(Req, get_curl_whitelist_settings())
       end, Req, json, settings_curl_whitelist_validators()).
 
