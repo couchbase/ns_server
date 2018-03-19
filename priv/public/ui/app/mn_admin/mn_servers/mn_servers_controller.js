@@ -44,7 +44,7 @@
     };
   }
 
-  function mnServersController($scope, $state, $uibModal, mnPoolDefault, mnPoller, mnServersService, mnHelper, mnGroupsService, mnPromiseHelper, mnPools, mnSettingsAutoFailoverService, mnTasksDetails, permissions, mnFormatServicesFilter) {
+  function mnServersController($scope, $state, $uibModal, mnPoolDefault, mnPoller, mnServersService, mnHelper, mnGroupsService, mnPromiseHelper, mnPools, mnSettingsAutoFailoverService, mnTasksDetails, permissions, mnFormatServicesFilter, $filter) {
     var vm = this;
     vm.mnPoolDefault = mnPoolDefault.latestValue();
 
@@ -81,14 +81,10 @@
       var rv = false;
 
       //look in services
-      loop3:
-      for (i3 = 0; i3 < l3; i3++) {
-        if (mnFormatServicesFilter(node.services[i3])
-            .toLowerCase()
-            .indexOf(searchValue) > -1) {
-          rv = true;
-          break loop3;
-        }
+      if ($filter('orderBy')(node.services.map(function (node) {
+        return mnFormatServicesFilter(node).toLowerCase();
+      })).join(" ").indexOf(searchValue) > -1) {
+        rv = true;
       }
 
       //look in interestingFields
