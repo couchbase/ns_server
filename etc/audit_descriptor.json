@@ -837,7 +837,8 @@
           "optional_fields" : {
               "sessionid" : ""
           }
-      },{
+      },
+      {
           "id": 8240,
           "name": "configured audit daemon",
           "description": "loaded configuration file for audit daemon",
@@ -857,6 +858,22 @@
               "disabled_userids": "",
               "disabled": "",
               "enabled": ""
+          }
+      },
+      {
+          "id" : 8241,
+          "name": "modify index settings",
+          "description": "Index service settings were modified",
+          "sync" : false,
+          "enabled" : true,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"source" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "settings" : ""
+          },
+          "optional_fields" : {
+              "sessionid" : ""
           }
       }
     ]

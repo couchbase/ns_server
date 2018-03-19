@@ -68,7 +68,8 @@
          security_settings/2,
          start_log_collection/4,
          modify_log_redaction_settings/2,
-         modify_audit_settings/2
+         modify_audit_settings/2,
+         modify_index_settings/2
         ]).
 
 -export([start_link/0, stats/0]).
@@ -294,7 +295,9 @@ code(start_log_collection) ->
 code(modify_log_redaction_settings) ->
     8239;
 code(modify_audit_settings) ->
-    8240.
+    8240;
+code(modify_index_settings) ->
+    8241.
 
 to_binary({list, List}) ->
     [to_binary(A) || A <- List];
@@ -745,3 +748,6 @@ print_audit_records(Queue) ->
             Continuation({error, dropped}),
             print_audit_records(NewQueue)
     end.
+
+modify_index_settings(Req, Settings) ->
+    put(modify_index_settings, Req, [{settings, {prepare_list(Settings)}}]).

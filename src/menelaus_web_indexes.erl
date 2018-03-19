@@ -185,7 +185,8 @@ handle_settings_post(Req) ->
                   [] ->
                       ok;
                   _ ->
-                      ok = update_settings(generalSettings, Values1)
+                      ok = update_settings(generalSettings, Values1),
+                      ns_audit:modify_index_settings(Req, Values1)
               end,
               menelaus_util:reply_json(Req, {get_settings()})
       end, Req, form, settings_post_validators()).
