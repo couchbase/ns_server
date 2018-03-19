@@ -147,11 +147,11 @@
        ng-click="showRespMenu = !showRespMenu"
        mn-pluggable-ui-tabs
        mn-tab-bar-name="adminTab">
-      <h6 class="resp-hide-med">CLUSTER</h6>
       <a
          mn-tab="overview"
          ui-sref="app.admin.overview"
-         ui-sref-active="currentnav">Dashboard</a>
+         ui-sref-active="currentnav"
+         class="margin-bottom-half">Dashboard</a>
       <a
          mn-tab="servers"
          ui-sref-active="currentnav"
@@ -186,9 +186,8 @@
          ui-sref="app.admin.logs.list"
          ng-class="{currentnav: ('app.admin.logs' | includedByState)}"
          ng-show="rbac.cluster.logs.read"
-         class="margin-bottom-1-5">Logs</a>
+         class="margin-bottom-1">Logs</a>
 
-      <h6 class="resp-hide-med">WORKBENCH</h6>
       <nav
          mn-pluggable-ui-tabs
          mn-tab-bar-name="workbenchTab">
