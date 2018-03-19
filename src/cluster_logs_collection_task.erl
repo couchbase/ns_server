@@ -104,9 +104,10 @@ build_node_task_status(Tasks, BaseURL, Node) ->
                 _ ->
                     [{path, Path} | build_node_upload_task_status(Tasks, Node)]
             end;
-        {_, {error, Status, _Output}} ->
+        {_, {error, Status, Output}} ->
             [{status, failed},
-             {statusCode, Status}]
+             {collectionStatusCode, Status},
+             {collectionOutput, Output}]
     end.
 
 build_node_upload_task_status(Tasks, Node) ->
