@@ -109,29 +109,6 @@
 
 
   /*
-   * We need to override the 'retrievePrecedingIdentifier' which treats path
-   * expressions separated by periods as separate identifiers, when for the purpose
-   * of autocompletion, we want to treat paths as a single identifier.
-   */
-
-  var util = require("ace/autocomplete/util");
-  var ID_REGEX = /[a-z\.`:A-Z_0-9\$\-\u00A2-\uFFFF]/;
-
-  util.retrievePrecedingIdentifier = function(text, pos, regex) {
-    regex = regex || ID_REGEX;
-    var buf = [];
-    for (var i = pos-1; i >= 0; i--) {
-      if (regex.test(text[i]))
-        buf.push(text[i]);
-      else
-        break;
-    }
-
-    return buf.reverse().join("");
-  };
-
-
-  /*
    * Define the N1QL mode
    */
 
