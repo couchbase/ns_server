@@ -193,6 +193,8 @@ extract_auth(Req) ->
                             parse_basic_auth_header(Value);
                         "SCRAM-" ++ Value ->
                             {scram_sha, Value};
+                        undefined ->
+                            undefined;
                         _ ->
                             error
                     end;
