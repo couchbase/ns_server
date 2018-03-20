@@ -289,7 +289,7 @@ build_uri_with_validation(Name, Endpoint, UUID) ->
                      {validateURI, build_validate_uri(Endpoint)}]}}.
 
 build_controller_uri(Endpoint, UUID) ->
-    build_uri_with_uuid("/controller/" ++ Endpoint, UUID).
+    build_uri_with_uuid(["/controller/", Endpoint], UUID).
 
 build_uri_with_uuid(Endpoint, UUID) ->
     iolist_to_binary([Endpoint, "?uuid=", UUID]).
