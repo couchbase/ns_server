@@ -953,13 +953,18 @@ section.error {
 }
 
 /* mn-selectable-nodes-list -----------------------------------*/
-
+.mn-selectable-nodes-list {
+  margin: 0;
+}
 .mn-selectable-nodes-list .cbui-tablerow {
-  padding: 0;
+  padding: 2px 0;
 }
 .mn-selectable-nodes-list section {
   border: 0;
-  margin: 0 0 .5rem;
+  margin: 0 0 .25rem;
+}
+.mn-selectable-nodes-list label {
+  line-height: 1;
 }
 
 /* waiting spinner ------------------------------------------------------ */

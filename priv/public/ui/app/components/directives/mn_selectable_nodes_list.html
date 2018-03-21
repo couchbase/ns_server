@@ -18,23 +18,24 @@
        mn-search="mnThisCtl.filterField">
     </div>
   </div>
-  <hr>
   <section
      class="cbui-table padding-left-half"
      ng-repeat="node in mnThisCtl.mnFilteredNodesHolder.nodes = (mnThisCtl.nodes | mnServersListFilter:mnThisCtl.filterField:mnThisCtl.mnGroups) track by node.otpNode"
      ng-class="['dynamic_' + node.status, 'dynamic_' + node.clusterMembership]">
     <div class="cbui-tablerow">
-      <div class="cbui-table-cell flex-grow-2-5 cbui-tablerow-title">
-        <span class="ellipsis padding-right-min cursor-text" title="{{node.hostname | mnStripPortHTML:mnThisCtl.nodes}}" ng-click="$event.stopPropagation();">
-          <input
-             type="checkbox"
-             ng-model="node.isSelected"
-             ng-value="node.otpNode"
-             ng-attr-id="collected_node_list_{{node.otpNode}}"
-             ng-disabled="mnThisCtl.mnIsNodeDisabled({node:node})">
-          <label for="collected_node_list_{{node.otpNode}}">{{ node.hostname | mnStripPortHTML:mnThisCtl.nodes }}</label>
-        </span>
-      </div>
+      <span class="cbui-table-cell flex-grow-2-5">
+        <input
+           type="checkbox"
+           ng-model="node.isSelected"
+           ng-value="node.otpNode"
+           ng-attr-id="collected_node_list_{{node.otpNode}}"
+           ng-disabled="mnThisCtl.mnIsNodeDisabled({node:node})">
+        <label
+           title="{{node.hostname | mnStripPortHTML:mnThisCtl.nodes}}"
+           for="collected_node_list_{{node.otpNode}}">
+          {{ node.hostname | mnStripPortHTML:mnThisCtl.nodes }}
+        </label>
+      </span>
       <span
          class="cbui-table-cell flex-grow-1 resp-hide-sml"
          ng-if="mnThisCtl.getGroupName(node)"
