@@ -129,6 +129,18 @@
         nodes = nodes.slice(0, max);
       }
       var protocol = $location.protocol();
+      var search = $httpParamSerializerJQLike($location.search());
+      var hash = $location.hash();
+      var ext = $state.transition ? parseHostname(
+                                      $state.href(
+                                        $state.transition.to().name,
+                                        $state.transition.params("to"),
+                                        {absolute: true}
+                                      )
+                                    ).hash
+            : "#!" + $location.path() +
+              (search ? "?" + search : "") +
+              (hash ? "#" + hash : "");
 
       return _.map(nodes, function(node) {
         // ipv4/ipv6/hostname + port
@@ -138,13 +150,7 @@
           + "://" + link.hostname
           + ":" + port
           + $window.location.pathname
-          + parseHostname(
-            $state.href(
-              $state.transition.to().name,
-              $state.transition.params("to"),
-              {absolute: true}
-            )
-          ).hash;
+          + ext;
       });
     }
   }
