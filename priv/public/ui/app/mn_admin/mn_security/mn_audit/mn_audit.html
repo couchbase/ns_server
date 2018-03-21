@@ -131,7 +131,7 @@
     <div
        ng-if="adminCtl.poolDefault.isEnterprise && adminCtl.poolDefault.compat.atLeast55"
        class="formrow fix-width-5 margin-top-1-5">
-      <label>Ignore Events From These Users</label>
+      <label>Ignore Filterable Events From These Users</label>
       <textarea
          ng-model="auditCtl.state.disabledUsers"
          ng-disabled="!auditCtl.state.auditdEnabled || !rbac.cluster.admin.security.write"
