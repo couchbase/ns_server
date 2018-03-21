@@ -528,13 +528,13 @@ roles_vulcan() ->
        {desc, <<"Can manage Analytics buckets and shadow datasets on which "
                 "they have bucket data read permission">>}],
       [{[{bucket, bucket_name}, analytics], [manage]},
-       {[analytics], [read]},
+       {[analytics], [select]},
        {[ui], [read]},
        {[pools], [read]}]},
      {analytics_reader, [],
       [{name, <<"Analytics Reader">>},
        {desc, <<"Can query shadow datasets">>}],
-      [{[analytics], [read]},
+      [{[analytics], [select]},
        {[ui], [read]},
        {[pools], [read]}]}].
 
