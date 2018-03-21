@@ -244,4 +244,4 @@ start_params(Config, #cfg{type = BucketType, config = BucketConfig,
           end, Params),
 
     ExtraParams = [P || P <- [StaticConfigString, ExtraConfigString], P =/= ""],
-    {Engine, string:join(ExtraParams ++ DynamicParams, ";")}.
+    {Engine, string:join(DynamicParams ++ ExtraParams, ";")}.
