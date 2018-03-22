@@ -211,12 +211,8 @@ complete_topology_aware_service_failover(Config, Service) ->
     end.
 
 orchestrate_service_failover(Service, Nodes) ->
-    leader_activities:run_activity(
-      {service_janitor, Service, orchestrate_service_failover}, {all, Nodes},
-      fun () ->
-              misc:with_trap_exit(
-                ?cut(do_orchestrate_service_failover(Service, Nodes)))
-      end).
+    misc:with_trap_exit(
+      ?cut(do_orchestrate_service_failover(Service, Nodes))).
 
 do_orchestrate_service_failover(Service, Nodes) ->
     {Pid, MRef} = service_rebalancer:spawn_monitor_failover(Service, Nodes),
