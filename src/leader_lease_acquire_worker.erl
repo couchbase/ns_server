@@ -140,16 +140,18 @@ handle_lease_acquired(StartTime, LeaseProps, State) ->
                      acquire_now(_)]).
 
 update_lease_expire_ts(Start, LeaseProps, State) ->
-    Now        = time_compat:monotonic_time(millisecond),
-    TimePassed = Now - Start,
-
     {_, TimeLeft} = lists:keyfind(time_left, 1, LeaseProps),
     TimeQueued    = proplists:get_value(time_queued, LeaseProps, 0),
-    TimeInFlight  = TimePassed - TimeQueued,
-    ExpiresAfter  = TimeLeft - TimeInFlight - ?LEASE_GRACE_TIME,
+    ExpireTS      = Start + TimeQueued + TimeLeft - ?LEASE_GRACE_TIME,
 
-    add_histo(time_inflight, TimeInFlight, State),
-    State#state{lease_expire_ts = Now + ExpiresAfter}.
+    update_inflight_histo(Start, TimeQueued, State),
+    State#state{lease_expire_ts = ExpireTS}.
+
+update_inflight_histo(Start, TimeQueued, State) ->
+    Now          = time_compat:monotonic_time(millisecond),
+    TimePassed   = Now - Start,
+    TimeInFlight = TimePassed - TimeQueued,
+    add_histo(time_inflight, TimeInFlight, State).
 
 handle_lease_already_acquired(LeaseProps, State) ->
     {node, Node}          = lists:keyfind(node, 1, LeaseProps),
