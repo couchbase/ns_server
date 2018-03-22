@@ -1051,8 +1051,8 @@ set_rebalance_status(service_upgrade, Status, Pid) ->
 do_set_rebalance_status(Status, RebalancerPid, GracefulPid) ->
     ns_config:set([{rebalance_status, Status},
                    {rebalance_status_uuid, couch_uuids:random()},
-                   {rebalancer_pid, GracefulPid},
-                   {graceful_failover_pid, RebalancerPid}]).
+                   {rebalancer_pid, RebalancerPid},
+                   {graceful_failover_pid, GracefulPid}]).
 
 cancel_stop_timer(State) ->
     do_cancel_stop_timer(State#rebalancing_state.stop_timer).
