@@ -14,10 +14,11 @@
     'mnHelper'
   ]).controller('mnOverviewController', mnOverviewController);
 
-  function mnOverviewController($scope, $rootScope, mnBucketsService, mnOverviewService, mnPoller, mnPromiseHelper, mnHelper, mnXDCRService, permissions) {
+  function mnOverviewController($scope, $rootScope, mnBucketsService, mnOverviewService, mnPoller, mnPromiseHelper, mnHelper, mnXDCRService, permissions, pools) {
     var vm = this;
 
     vm.getEndings = mnHelper.getEndings;
+    vm.isIPv6 = pools.isIPv6;
 
     activate();
 

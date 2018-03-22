@@ -1,6 +1,6 @@
 <mn-element-cargo depot="header">
   <div class="about-text resp-xsml">
-    {{::adminCtl.implementationVersion | mnPrettyVersion}}
+    {{::adminCtl.implementationVersion | mnPrettyVersion}} <span ng-show="overviewCtl.isIPv6">&#8231; IPv6</span><span ng-show="!overviewCtl.isIPv6">&#8231; IPv4</span>
   </div>
 </mn-element-cargo>
 
