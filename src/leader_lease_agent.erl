@@ -36,10 +36,10 @@
 -record(lease_holder, { uuid :: binary(),
                         node :: node() }).
 
--record(lease, { holder  :: #lease_holder{},
-                 expires :: lease_ts(),
-                 timer   :: misc:timer(),
-                 state   :: lease_state() }).
+-record(lease, { holder     :: #lease_holder{},
+                 expires_at :: lease_ts(),
+                 timer      :: misc:timer(),
+                 state      :: lease_state() }).
 
 -record(state, { lease           :: undefined | #lease{},
                  persisted_lease :: undefined | list() }).
@@ -187,14 +187,14 @@ grant_lease_dont_notify(Caller, Period, From, State) ->
     grant_lease_dont_notify(Caller, Period, Reply, State).
 
 grant_lease_update_state(Caller, Period, State) ->
-    Timer   = misc:create_timer(Period, {lease_expired, Caller}),
-    Now     = time_compat:monotonic_time(millisecond),
-    Expires = Now + Period,
+    Timer     = misc:create_timer(Period, {lease_expired, Caller}),
+    Now       = time_compat:monotonic_time(millisecond),
+    ExpiresAt = Now + Period,
 
-    NewLease = #lease{holder  = Caller,
-                      expires = Expires,
-                      timer   = Timer,
-                      state   = active},
+    NewLease = #lease{holder     = Caller,
+                      expires_at = ExpiresAt,
+                      timer      = Timer,
+                      state      = active},
 
     State#state{lease = NewLease}.
 
@@ -359,11 +359,11 @@ build_lease_props(TimeLeft, #lease{holder = Holder} = Lease) ->
      {time_left, TimeLeft},
      {status,    Lease#lease.state}].
 
-time_left(Now, #lease{expires = Expires}) ->
+time_left(Now, #lease{expires_at = ExpiresAt}) ->
     %% Sometimes the expiration message may be a bit late, or maybe we're busy
     %% doing other things. Return zero in those cases. It essentially means
     %% that the lease is about to expire.
-    max(0, Expires - Now).
+    max(0, ExpiresAt - Now).
 
 parse_lease_props(Dump) ->
     misc:parse_term(Dump).
