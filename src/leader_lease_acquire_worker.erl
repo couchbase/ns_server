@@ -125,9 +125,14 @@ handle_acquire_timeout(AcquireOptions, State) ->
                      revoke_lease(_)]).
 
 handle_lease_acquired(StartTime, LeaseProps, State) ->
-    maybe_notify_lease_acquired(State),
+    NewState =
+        case State#state.have_lease of
+            true ->
+                State;
+            false ->
+                handle_fresh_lease_acquired(State)
+        end,
 
-    NewState = State#state{have_lease = true},
     functools:chain(NewState,
                     [update_lease_expire_ts(StartTime, LeaseProps, _),
                      reset_retry(_),
@@ -217,11 +222,14 @@ parent(#state{parent = Parent}) ->
 retry_acquire(State) ->
     acquire_after(get_retry_timeout(State), State).
 
-maybe_notify_lease_acquired(#state{have_lease = true}) ->
-    %% We already owned the lease, so we won't notify our parent.
-    ok;
-maybe_notify_lease_acquired(State) ->
-    ok = leader_activities:lease_acquired(parent(State), target_node(State)).
+handle_fresh_lease_acquired(#state{uuid   = LeaseUUID,
+                                   parent = Parent,
+                                   target = TargetNode} = State) ->
+    ?log_info("Acquired lease from node ~p (lease uuid: ~p)",
+              [TargetNode, LeaseUUID]),
+    ok = leader_activities:lease_acquired(Parent, TargetNode),
+
+    State#state{have_lease = true}.
 
 add_histo(Name, Value, State) ->
     FullName = {?MODULE, target_node(State), Name},
