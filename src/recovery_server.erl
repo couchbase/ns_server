@@ -149,25 +149,25 @@ handle_commit_vbucket_post_apply(Bucket, VBucket, RecoveryState, State) ->
 handle_start_recovery(Bucket, FromPid) ->
     try
         check_bucket(Bucket),
-        Servers = get_recovery_servers(),
 
-        leader_activities:register_process({recovery, Bucket}, {all, Servers}),
+        FailedOverNodes = get_failed_over_nodes(),
+        LiveNodes       = ns_node_disco:nodes_wanted() -- FailedOverNodes,
+        KVServers       = ns_cluster_membership:service_nodes(LiveNodes, kv),
 
-        ns_cluster_membership:activate(Servers),
+        leader_activities:register_process({recovery, Bucket},
+                                           [{majority, LiveNodes},
+                                            {all, KVServers}]),
 
-        sync_config(Servers, FromPid),
-        cleanup_old_buckets(Servers),
-        BucketConfig = prepare_bucket(Bucket, Servers),
-        complete_start_recovery(Bucket, BucketConfig, Servers)
+        ns_cluster_membership:activate(KVServers),
+
+        sync_config(KVServers, FromPid),
+        cleanup_old_buckets(KVServers),
+        BucketConfig = prepare_bucket(Bucket, KVServers),
+        complete_start_recovery(Bucket, BucketConfig, KVServers)
     catch
         throw:Error ->
             {stop, normal, Error, undefined}
     end.
-
-get_recovery_servers() ->
-    FailedOverNodes = get_failed_over_nodes(),
-    LiveNodes = ns_node_disco:nodes_wanted() -- FailedOverNodes,
-    ns_cluster_membership:service_nodes(LiveNodes, kv).
 
 check_bucket(Bucket) ->
     case ns_bucket:get_bucket(Bucket) of
