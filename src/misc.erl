@@ -1214,6 +1214,10 @@ executing_on_new_process_body(Fun, StartOptions, WaitOptions) ->
                   throw:{interrupted, {'EXIT', _, Reason} = Exit} ->
                       true = proplists:get_bool(interruptible, WaitOptions),
 
+                      ?log_debug("Aborting ~p (body is ~p) because "
+                                 "we are interrupted by an exit message ~p",
+                                 [A, Fun, Exit]),
+
                       async:abort(A, Reason),
                       %% will be processed by the with_trap_exit
                       self() ! Exit
