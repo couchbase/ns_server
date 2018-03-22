@@ -55,6 +55,9 @@
 -define(MIN_USERS_PAGE_SIZE, 2).
 -define(MAX_USERS_PAGE_SIZE, 100).
 
+-define(SECURITY_READ, {[admin, security, admin], read}).
+-define(SECURITY_WRITE, {[admin, security, admin], write}).
+
 assert_is_ldap_enabled() ->
     case cluster_compat_mode:is_ldap_enabled() of
         true ->
@@ -201,18 +204,6 @@ assert_api_can_be_used() ->
             menelaus_util:assert_is_enterprise()
     end.
 
-get_security_read_permission() ->
-    {[admin, security, admin], read}.
-
-can_view_security(Identity) ->
-    menelaus_roles:is_allowed(get_security_read_permission(), Identity).
-
-get_security_write_permission() ->
-    {[admin, security, admin], write}.
-
-can_modify_security(Identity) ->
-    menelaus_roles:is_allowed(get_security_write_permission(), Identity).
-
 handle_get_roles(Req) ->
     assert_api_can_be_used(),
 
@@ -221,9 +212,11 @@ handle_get_roles(Req) ->
               Permission = proplists:get_value(permission, Values),
               Roles =
                   get_roles_by_permission(Permission) --
-                  case can_view_security(menelaus_auth:get_identity(Req)) of
-                      true -> [];
-                      false -> menelaus_roles:get_security_roles()
+                  case menelaus_auth:has_permission(?SECURITY_READ, Req) of
+                      true ->
+                          [];
+                      false ->
+                          menelaus_roles:get_security_roles()
                   end,
               Json =
                   [{role_to_json(Role) ++ Props} || {Role, Props} <- Roles],
@@ -341,8 +334,8 @@ handle_get_users_45(Req) ->
              end, Users),
     menelaus_util:reply_json(Req, Json).
 
-security_users_filter(ReqUserId) ->
-    case can_view_security(ReqUserId) of
+security_users_filter(Req) ->
+    case menelaus_auth:has_permission(?SECURITY_READ, Req) of
         true ->
             pipes:filter(fun (_) -> true end);
         false ->
@@ -355,14 +348,13 @@ security_users_filter(ReqUserId) ->
     end.
 
 handle_get_all_users(Req, Pattern, Params) ->
-    ReqUserId = menelaus_auth:get_identity(Req),
     Roles = get_roles_for_users_filtering(
               proplists:get_value(permission, Params)),
     Passwordless = menelaus_users:get_passwordless(),
     pipes:run(menelaus_users:select_users(Pattern),
               [filter_out_invalid_roles(),
                filter_by_roles(Roles),
-               security_users_filter(ReqUserId),
+               security_users_filter(Req),
                jsonify_users(Passwordless),
                sjson:encode_extended_json([{compact, false},
                                            {strict, false}]),
@@ -381,19 +373,9 @@ handle_get_user(Domain, UserId, Req) ->
                 false ->
                     menelaus_util:reply_json(Req, <<"Unknown user.">>, 404);
                 true ->
-                    ReqUserId = menelaus_auth:get_identity(Req),
-                    case can_view_security(ReqUserId) orelse
-                         not is_security_related(Identity) of
-                        true ->
-                            menelaus_util:reply_json(
-                              Req, get_user_json(Identity));
-                        false ->
-                            Permission = get_security_read_permission(),
-                            menelaus_util:reply_json(
-                              Req,
-                              menelaus_web_rbac:forbidden_response(Permission),
-                              403)
-                    end
+                    perform_if_allowed(
+                      menelaus_util:reply_json(_, get_user_json(Identity)),
+                      Req, ?SECURITY_READ, menelaus_users:get_roles(Identity))
             end
     end.
 
@@ -607,13 +589,12 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
     Permission = proplists:get_value(permission, Values),
     Roles = get_roles_for_users_filtering(Permission),
     Passwordless = menelaus_users:get_passwordless(),
-    ReqUserId = menelaus_auth:get_identity(Req),
 
     {PageSkews, Total} =
         pipes:run(menelaus_users:select_users({'_', DomainAtom}),
                   [filter_out_invalid_roles(),
                    filter_by_roles(Roles),
-                   security_users_filter(ReqUserId)],
+                   security_users_filter(Req)],
                   ?make_consumer(
                      pipes:fold(
                        ?producer(),
@@ -880,11 +861,15 @@ handle_put_user_with_identity({_UserId, Domain} = Identity, Req) ->
                                         Req)
       end, Req, form, put_user_validators(Domain)).
 
--spec is_security_related(rbac_identity() | [rbac_role()]) -> boolean().
-is_security_related({_UserId, _Domain} = Identity) ->
-    is_security_related(menelaus_users:get_roles(Identity));
-is_security_related(Roles) ->
-    overlap(Roles, get_security_roles()).
+perform_if_allowed(Fun, Req, Permission, Roles) ->
+    case menelaus_auth:has_permission(Permission, Req) orelse
+        not overlap(Roles, get_security_roles()) of
+        true ->
+            Fun(Req);
+        false ->
+            menelaus_util:reply_json(
+              Req, menelaus_web_rbac:forbidden_response(Permission), 403)
+    end.
 
 overlap(List1, List2) ->
     lists:any(fun (V) -> lists:member(V, List1) end, List2).
@@ -894,16 +879,9 @@ get_security_roles() ->
 
 handle_put_user_validated(Identity, Name, Password, Roles, Req) ->
     UniqueRoles = ordsets:to_list(ordsets:from_list(Roles)),
-    ReqUserId = menelaus_auth:get_identity(Req),
-    case can_modify_security(ReqUserId) orelse
-        not is_security_related(Roles ++ menelaus_users:get_roles(Identity)) of
-        true ->
-            do_store_user(Identity, Name, Password, UniqueRoles, Req);
-        false ->
-            Permission = get_security_write_permission(),
-            menelaus_util:reply_json(
-              Req, menelaus_web_rbac:forbidden_response(Permission), 403)
-    end.
+    perform_if_allowed(
+      do_store_user(Identity, Name, Password, UniqueRoles, _),
+      Req, ?SECURITY_WRITE, UniqueRoles ++ menelaus_users:get_roles(Identity)).
 
 do_store_user(Identity, Name, Password, UniqueRoles, Req) ->
     case menelaus_users:store_user(Identity, Name, Password, UniqueRoles) of
@@ -945,17 +923,9 @@ handle_delete_user(Domain, UserId, Req) ->
             menelaus_util:reply_json(Req, <<"Unknown user domain.">>, 404);
         T ->
             Identity = {UserId, T},
-            ReqUserId = menelaus_auth:get_identity(Req),
-            case can_modify_security(ReqUserId) orelse
-                 not is_security_related(Identity) of
-                true ->
-                    do_delete_user(Req, Identity);
-                false ->
-                    Permission = get_security_write_permission(),
-                    menelaus_util:reply_json(
-                      Req, menelaus_web_rbac:forbidden_response(Permission),
-                      403)
-            end
+            perform_if_allowed(
+              do_delete_user(_, Identity), Req, ?SECURITY_WRITE,
+              menelaus_users:get_roles(Identity))
     end.
 
 reply_put_delete_users(Req) ->
