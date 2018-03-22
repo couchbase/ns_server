@@ -2285,9 +2285,11 @@ with_trap_exit(Fun) ->
 
 with_trap_exit_maybe_exit() ->
     receive
-        {'EXIT', _Pid, normal} ->
+        {'EXIT', _Pid, normal} = Exit ->
+            ?log_debug("Ignoring exit message with reason normal: ~p", [Exit]),
             with_trap_exit_maybe_exit();
-        {'EXIT', _Pid, Reason} ->
+        {'EXIT', _Pid, Reason} = Exit ->
+            ?log_debug("Terminating due to exit message ~p", [Exit]),
             exit_async(Reason)
     after
         0 ->
