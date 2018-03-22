@@ -380,8 +380,8 @@ verify_rest_auth(Req, Permission) ->
                 {first_step, Headers} ->
                     Req:recv_body(),
                     {auth_failure, Headers};
-                {auth_failure, _} = AuthFailure ->
-                    AuthFailure
+                auth_failure ->
+                    {auth_failure, []}
             end;
         _ ->
             case authenticate(Auth) of

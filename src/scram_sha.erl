@@ -32,7 +32,8 @@
          get_resp_headers_from_req/1,
          hash_password/2,
          auth_info_key/1,
-         supported_types/0]).
+         supported_types/0,
+         config_upgrade_to_vulcan/0]).
 
 %% callback for token_server
 -export([init/0]).
@@ -62,13 +63,6 @@ server_first_message(Nonce, Salt, IterationCount) ->
 encode_with_sid(Sid, Message) ->
     "sid=" ++ base64:encode_to_string(Sid) ++
         ",data=" ++ base64:encode_to_string(Message).
-
-reply_error() ->
-    {auth_failure, []}.
-
-reply_error(Sid, Error) ->
-    Hdr =  "I" ++ encode_with_sid(Sid, "e=" ++ Error),
-    {auth_failure, [{meta_header(), Hdr}]}.
 
 reply_success(Sid, Identity, ServerProof) ->
     {ok, Identity,
@@ -162,7 +156,7 @@ authenticate(AuthHeader) ->
         {Sha, Rest} ->
             case parse_authorization_header(Rest) of
                 error ->
-                    reply_error();
+                    auth_failure;
                 {EncodedSid, EncodedData} ->
                     case (catch {case EncodedSid of
                                      undefined ->
@@ -172,26 +166,26 @@ authenticate(AuthHeader) ->
                                  end,
                                  base64:decode_to_string(EncodedData)}) of
                         {'EXIT', _} ->
-                            reply_error();
+                            auth_failure;
                         {Sid, Data} ->
                             authenticate(Sha, Sid, Data)
                     end
             end;
         error ->
-            reply_error()
+            auth_failure
     end.
 
 authenticate(Sha, undefined, Data) ->
     case parse_client_first_message(Data) of
         error ->
-            reply_error();
+            auth_failure;
         {Name, Nonce, Bare} ->
             handle_client_first_message(Sha, Name, Nonce, Bare)
     end;
 authenticate(Sha, Sid, Data) ->
     case parse_client_final_message(Data) of
         error ->
-            reply_error();
+            auth_failure;
         {Nonce, Proof, ClientFinalMessage} ->
             handle_client_final_message(Sha, Sid, Nonce, Proof,
                                         ClientFinalMessage)
@@ -211,14 +205,36 @@ find_auth(Name) ->
 find_auth_info(Sha, Name) ->
     case find_auth(Name) of
         {false, _} ->
-            {error, "unknown-user"};
+            undefined;
         {AuthInfo, Domain} ->
             case proplists:get_value(auth_info_key(Sha), AuthInfo) of
                 undefined ->
-                    {error, "other-error"};
+                    undefined;
                 {Info} ->
                     {Info, Domain}
             end
+    end.
+
+get_salt_and_iterations(Sha, Name) ->
+    FallbackSaltSalt = ns_config:read_key_fast(scramsha_fallback_salt,
+                                               <<"salt">>),
+    %% calculating it here to avoid performance shortcut
+    FallbackSalt = base64:encode_to_string(
+                     crypto:hmac(Sha, Name, FallbackSaltSalt)),
+    case find_auth_info(Sha, Name) of
+        undefined ->
+            {FallbackSalt, iterations()};
+        {Props, _} ->
+            {binary_to_list(proplists:get_value(<<"s">>, Props)),
+             proplists:get_value(<<"i">>, Props)}
+    end.
+
+get_salted_password_and_domain(Sha, Name) ->
+    case find_auth_info(Sha, Name) of
+        undefined ->
+            {<<"anything">>, undefined};
+        {Props, Domain} ->
+            {base64:decode(proplists:get_value(<<"h">>, Props)), Domain}
     end.
 
 -record(memo, {auth_message,
@@ -226,22 +242,15 @@ find_auth_info(Sha, Name) ->
                nonce}).
 
 handle_client_first_message(Sha, Name, Nonce, Bare) ->
-    case find_auth_info(Sha, Name) of
-        {error, _} ->
-            reply_error();
-        {Props, _} ->
-            Salt = binary_to_list(proplists:get_value(<<"s">>, Props)),
-            IterationCount = proplists:get_value(<<"i">>, Props),
-
-            ServerNonce = Nonce ++ gen_nonce(),
-            ServerMessage =
-                server_first_message(ServerNonce, Salt, IterationCount),
-            Memo = #memo{auth_message = Bare ++ "," ++ ServerMessage,
-                         name = Name,
-                         nonce = ServerNonce},
-            Sid = token_server:generate(?MODULE, Memo),
-            reply_first_step(Sha, Sid, ServerMessage)
-    end.
+    {Salt, IterationCount} = get_salt_and_iterations(Sha, Name),
+    ServerNonce = Nonce ++ gen_nonce(),
+    ServerMessage =
+        server_first_message(ServerNonce, Salt, IterationCount),
+    Memo = #memo{auth_message = Bare ++ "," ++ ServerMessage,
+                 name = Name,
+                 nonce = ServerNonce},
+    Sid = token_server:generate(?MODULE, Memo),
+    reply_first_step(Sha, Sid, ServerMessage).
 
 calculate_client_proof(Sha, SaltedPassword, AuthMessage) ->
     ClientKey = crypto:hmac(Sha, SaltedPassword, <<"Client Key">>),
@@ -256,31 +265,21 @@ calculate_server_proof(Sha, SaltedPassword, AuthMessage) ->
 handle_client_final_message(Sha, Sid, Nonce, Proof, ClientFinalMessage) ->
     case token_server:take(?MODULE, Sid) of
         false ->
-            reply_error(Sid, "other-error");
+            auth_failure;
         {ok, #memo{auth_message = AuthMessage,
                    name = Name,
                    nonce = ServerNonce}} ->
-            case misc:compare_secure(Nonce, ServerNonce) of
-                false ->
-                    reply_error(Sid, "other-error");
-                true ->
-                    case find_auth_info(Sha, Name) of
-                        {error, Error} ->
-                            reply_error(Sid, Error);
-                        {Props, Domain} ->
-                            SaltedPassword =
-                                base64:decode(proplists:get_value(<<"h">>,
-                                                                  Props)),
-                            FullAuthMessage =
-                                AuthMessage ++ "," ++ ClientFinalMessage,
-                            case handle_proofs(Sha, SaltedPassword,
-                                               Proof, FullAuthMessage) of
-                                error ->
-                                    reply_error(Sid, "invalid-proof");
-                                ServerProof ->
-                                    reply_success(Sid, {Name, Domain}, ServerProof)
-                            end
-                    end
+            {SaltedPassword, Domain} =
+                get_salted_password_and_domain(Sha, Name),
+            FullAuthMessage = AuthMessage ++ "," ++ ClientFinalMessage,
+            ServerProof = handle_proofs(Sha, SaltedPassword, Proof,
+                                        FullAuthMessage),
+            case {misc:compare_secure(Nonce, ServerNonce), Domain,
+                  ServerProof} of
+                {true, D, P} when D =/= undefined, P =/= error ->
+                    reply_success(Sid, {Name, Domain}, ServerProof);
+                _ ->
+                    auth_failure
             end
     end.
 
@@ -305,8 +304,7 @@ pbkdf2_iter(Sha, Password, Salt, Iteration, Prev, Acc) ->
                 Next, crypto:exor(Next, Acc)).
 
 hash_password(Type, Password) ->
-    Iterations = ns_config:read_key_fast(memcached_password_hash_iterations,
-                                         4000),
+    Iterations = iterations(),
     Len = case Type of
               sha -> ?SHA_DIGEST_SIZE;
               sha256 -> ?SHA256_DIGEST_SIZE;
@@ -316,8 +314,14 @@ hash_password(Type, Password) ->
     Hash = pbkdf2(Type, Password, Salt, Iterations),
     {Salt, Hash, Iterations}.
 
+iterations() ->
+    ns_config:read_key_fast(memcached_password_hash_iterations, 4000).
+
 supported_types() ->
     [sha512, sha256, sha].
+
+config_upgrade_to_vulcan() ->
+    [{set, scramsha_fallback_salt, crypto:rand_bytes(12)}].
 
 -ifdef(EUNIT).
 
@@ -381,10 +385,10 @@ client_auth(Sha, User, Password, Nonce) ->
                     check_server_proof(Sha, Sid, SaltedPassword,
                                        ForProof, Header1),
                     ok;
-                {auth_failure, [{MetaHeader, _}]} ->
+                auth_failure ->
                     auth_failure
             end;
-        {auth_failure, []} ->
+        auth_failure ->
             first_stage_failed
     end.
 
@@ -430,7 +434,7 @@ scram_sha_t({User, Password, Nonce, _}) ->
                 ?_assertEqual(auth_failure,
                               client_auth(Sha, User, "wrong", Nonce))},
                {"Unknown user" ++ Postfix,
-                ?_assertEqual(first_stage_failed,
+                ?_assertEqual(auth_failure,
                               client_auth(Sha, "wrong", "wrong", Nonce))}]
       end, supported_types()).
 
