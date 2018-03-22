@@ -621,7 +621,12 @@ rebalance_topology_aware_service(Service, KeepNodes, EjectNodes, DeltaNodes) ->
                               EjectNodes, DeltaNodes, ProgressCallback),
 
               receive
-                  {'EXIT', _Pid, Reason} ->
+                  {'EXIT', _Pid, Reason} = Exit ->
+                      ?log_debug("Got an exit signal while waiting "
+                                 "for the service rebalance to complete. "
+                                 "Service: ~p. Exit message: ~p",
+                                 [Service, Exit]),
+
                       misc:terminate_and_wait(Pid, Reason),
                       exit(Reason);
                   {'DOWN', MRef, _, _, Reason} ->
