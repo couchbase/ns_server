@@ -155,8 +155,7 @@ handle_start_recovery(Bucket, FromPid) ->
         KVServers       = ns_cluster_membership:service_nodes(LiveNodes, kv),
 
         leader_activities:register_process({recovery, Bucket},
-                                           [{majority, LiveNodes},
-                                            {all, KVServers}]),
+                                           {majority, LiveNodes}),
 
         ns_cluster_membership:activate(KVServers),
 

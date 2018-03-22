@@ -699,7 +699,7 @@ rebalance(KeepNodes, EjectNodesAll, FailedNodesAll,
           DeltaNodes, DeltaRecoveryBuckets) ->
     ok = leader_activities:run_activity(
            rebalance,
-           {all, KeepNodes ++ EjectNodesAll},
+           {majority, KeepNodes ++ EjectNodesAll},
            ?cut(rebalance_body(KeepNodes, EjectNodesAll,
                                FailedNodesAll, BucketConfigs,
                                DeltaNodes, DeltaRecoveryBuckets))).
@@ -740,7 +740,7 @@ rebalance_body(KeepNodes,
     %% the normal quorum anymore. Obviously, it still doesn't guarantee
     %% complete safety.
     ok = ns_config_rep:ensure_config_seen_by_nodes(KeepNodes ++ EjectNodesAll),
-    ok = leader_activities:switch_quorum({all, KeepNodes}),
+    ok = leader_activities:switch_quorum({majority, KeepNodes}),
 
     eject_nodes(EjectNowNodes),
 
@@ -1365,14 +1365,8 @@ run_graceful_failover(Node) ->
     end,
     proc_lib:init_ack({ok, self()}),
 
-    AllBucketNodes =
-        lists:foldl(fun ({_, Conf}, Acc) ->
-                            Servers = proplists:get_value(servers, Conf),
-                            sets:union(Acc, sets:from_list(Servers))
-                    end, sets:new(), InterestingBuckets),
-
     ok = leader_activities:run_activity(
-           graceful_failover, [majority, {all, AllBucketNodes}],
+           graceful_failover, majority,
            fun () ->
                    ale:info(?USER_LOGGER,
                             "Starting vbucket moves for "
