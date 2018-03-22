@@ -105,8 +105,8 @@ handle_info(Info, State) ->
 
 terminate(_Reason, #state{lease = undefined}) ->
     ok;
-terminate(Reason, #state{lease = Lease}) ->
-    handle_terminate(Reason, Lease).
+terminate(Reason, #state{lease = Lease} = State) ->
+    handle_terminate(Reason, Lease#lease.state, State).
 
 %% internal functions
 handle_acquire_lease(Caller, Options, From, State) ->
@@ -176,7 +176,7 @@ grant_lease(Caller, Period, From, #state{lease = Lease} = State) ->
 grant_lease_dont_notify(Caller, Period, HandleResult, State)
   when is_function(HandleResult, 1) ->
     NewState = grant_lease_update_state(Caller, Period, State),
-    persist_lease(NewState),
+    persist_lease(Period, NewState),
     HandleResult(build_lease_props(NewState#state.lease)),
 
     NewState;
@@ -323,16 +323,16 @@ handle_expire_done(Holder, Reply, #state{lease = Lease} = State) ->
 
     {noreply, State#state{lease = undefined}}.
 
-handle_terminate(Reason, #lease{state = active} = Lease) ->
+handle_terminate(Reason, active, State) ->
     ?log_warning("Terminating with reason ~p "
                  "when we own an active lease:~n~p~n"
                  "Persisting updated lease.",
-                 [Reason, Lease]),
-    persist_lease(Lease);
-handle_terminate(Reason, #lease{state = expiring} = Lease) ->
+                 [Reason, State#state.lease]),
+    persist_lease(State);
+handle_terminate(Reason, expiring, State) ->
     ?log_warning("Terminating with reason ~p when lease is expiring:~n~p~n"
                  "Removing the persisted lease.",
-                 [Reason, Lease]),
+                 [Reason, State#state.lease]),
 
     %% Even though we haven't finished expiring the lease, it's safe to remove
     %% the persisted lease: the leader_activites process will cleanup after
@@ -342,12 +342,15 @@ handle_terminate(Reason, #lease{state = expiring} = Lease) ->
     remove_persisted_lease().
 
 build_lease_props(Lease) ->
-    build_lease_props(time_compat:monotonic_time(millisecond), Lease).
+    build_lease_props(undefined, Lease).
 
-build_lease_props(Now, #lease{holder = Holder} = Lease) ->
+build_lease_props(undefined, Lease) ->
+    Now = time_compat:monotonic_time(millisecond),
+    build_lease_props(time_left(Now, Lease), Lease);
+build_lease_props(TimeLeft, #lease{holder = Holder} = Lease) ->
     [{node,      Holder#lease_holder.node},
      {uuid,      Holder#lease_holder.uuid},
-     {time_left, time_left(Now, Lease)},
+     {time_left, TimeLeft},
      {status,    Lease#lease.state}].
 
 time_left(Now, #lease{expires = Expires}) ->
@@ -356,20 +359,21 @@ time_left(Now, #lease{expires = Expires}) ->
     %% that the lease is about to expire.
     max(0, Expires - Now).
 
-dump_lease(Lease) ->
-    misc:dump_term(build_lease_props(Lease)).
-
 parse_lease_props(Dump) ->
     misc:parse_term(Dump).
 
 lease_path() ->
     path_config:component_path(data, "leader_lease").
 
-persist_lease(#state{lease = Lease}) ->
+persist_lease(State) ->
+    persist_lease(undefined, State).
+
+persist_lease(TimeLeft, #state{lease = Lease}) ->
     true = (Lease =/= undefined),
-    persist_lease(Lease);
-persist_lease(#lease{} = Lease) ->
-    misc:create_marker(lease_path(), [dump_lease(Lease), $\n]).
+
+    LeaseProps = build_lease_props(TimeLeft, Lease),
+    misc:create_marker(lease_path(),
+                       [misc:dump_term(LeaseProps), $\n]).
 
 remove_persisted_lease() ->
     misc:remove_marker(lease_path()).
