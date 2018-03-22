@@ -43,6 +43,6 @@
   </div>
   <div ng-if="logsCollectInfoCtl.state.nodeErrors.length">
     <p class="error">Node errors:</p>
-    <div ng-repeat="node in logsCollectInfoCtl.state.nodeErrors track by node.nodeName"><strong>{{node.nodeName}}</strong> {{node.error}}</div>
+    <div ng-repeat="node in logsCollectInfoCtl.state.nodeErrors track by node.nodeName"><strong>{{node.nodeName}}</strong> <p ng-repeat="er in node.error">{{er}}</p></div>
   </div>
 </div>

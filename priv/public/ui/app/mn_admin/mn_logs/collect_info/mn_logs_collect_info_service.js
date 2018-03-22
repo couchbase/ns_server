@@ -92,8 +92,13 @@
         var nodesByStatus = _.groupBy(perNode, 'status');
 
         var nodeErrors = _.compact(_.map(perNode, function (ni) {
-          if (ni.uploadOutput) {
-            return {nodeName: ni.nodeName, error: ni.uploadOutput};
+          var rv;
+          var error;
+          if (ni.uploadOutput || ni.collectionOutput) {
+            error = [];
+            ni.uploadOutput && error.push(ni.uploadOutput);
+            ni.collectionOutput && error.push(ni.collectionOutput);
+            return {nodeName: ni.nodeName, error: error};
           }
         }));
 
