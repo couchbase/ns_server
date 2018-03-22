@@ -892,14 +892,11 @@ overlap(List1, List2) ->
 get_security_roles() ->
     [R || {R, _} <- menelaus_roles:get_security_roles()].
 
-is_security_related(Identity, Roles) ->
-    is_security_related(Identity) or is_security_related(Roles).
-
 handle_put_user_validated(Identity, Name, Password, Roles, Req) ->
     UniqueRoles = ordsets:to_list(ordsets:from_list(Roles)),
     ReqUserId = menelaus_auth:get_identity(Req),
     case can_modify_security(ReqUserId) orelse
-         not is_security_related(Identity, Roles) of
+        not is_security_related(Roles ++ menelaus_users:get_roles(Identity)) of
         true ->
             do_store_user(Identity, Name, Password, UniqueRoles, Req);
         false ->
