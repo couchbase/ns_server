@@ -200,25 +200,28 @@ grant_lease_update_state(Caller, Period, State) ->
 
 extend_lease(Period, WhenRemaining, From, State) ->
     abort_pending_extend_lease(aborted, State),
-    case WhenRemaining of
+
+    case compute_extend_after(WhenRemaining, State) of
         undefined ->
             extend_lease_now(Period, From, State);
-        _ when is_integer(WhenRemaining) ->
-            extend_lease_when_remaining(Period, WhenRemaining, From, State)
+        {Now, ExtendAfter} ->
+            schedule_pending_extend_lease(Period, Now, ExtendAfter, From),
+            State
     end.
 
-extend_lease_when_remaining(Period, WhenRemaining, From,
-                            #state{lease = Lease} = State) ->
+compute_extend_after(undefined, _State) ->
+    undefined;
+compute_extend_after(WhenRemaining, #state{lease = Lease})
+  when is_integer(WhenRemaining) ->
     Now         = time_compat:monotonic_time(millisecond),
     TimeLeft    = time_left(Now, Lease),
     ExtendAfter = TimeLeft - WhenRemaining,
 
     case ExtendAfter > 0 of
         true ->
-            schedule_pending_extend_lease(Period, Now, ExtendAfter, From),
-            State;
+            {Now, ExtendAfter};
         false ->
-            extend_lease_now(Period, From, State)
+            undefined
     end.
 
 schedule_pending_extend_lease(Period, Start, After, From) ->
