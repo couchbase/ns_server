@@ -867,8 +867,7 @@ perform_if_allowed(Fun, Req, Permission, Roles) ->
         true ->
             Fun(Req);
         false ->
-            menelaus_util:reply_json(
-              Req, menelaus_web_rbac:forbidden_response(Permission), 403)
+            menelaus_util:reply_json(Req, forbidden_response(Permission), 403)
     end.
 
 overlap(List1, List2) ->
