@@ -324,11 +324,14 @@ handle_expire_done(Holder, Reply, #state{lease = Lease} = State) ->
     {noreply, State#state{lease = undefined}}.
 
 handle_terminate(Reason, #lease{state = active} = Lease) ->
-    ?log_warning("Terminating with reason ~p when we have a lease granted:~n~p",
+    ?log_warning("Terminating with reason ~p "
+                 "when we own an active lease:~n~p~n"
+                 "Persisting updated lease.",
                  [Reason, Lease]),
     persist_lease(Lease);
 handle_terminate(Reason, #lease{state = expiring} = Lease) ->
-    ?log_warning("Terminating with reason ~p while lease ~p is still expiring",
+    ?log_warning("Terminating with reason ~p when lease is expiring:~n~p~n"
+                 "Removing the persisted lease.",
                  [Reason, Lease]),
 
     %% Even though we haven't finished expiring the lease, it's safe to remove
