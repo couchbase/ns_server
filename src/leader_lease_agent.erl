@@ -41,7 +41,8 @@
                  timer   :: misc:timer(),
                  state   :: lease_state() }).
 
--record(state, { lease :: undefined | #lease{} }).
+-record(state, { lease           :: undefined | #lease{},
+                 persisted_lease :: undefined | list() }).
 
 start_link() ->
     leader_utils:ignore_if_new_orchestraction_disabled(
@@ -175,8 +176,9 @@ grant_lease(Caller, Period, From, #state{lease = Lease} = State) ->
 
 grant_lease_dont_notify(Caller, Period, HandleResult, State)
   when is_function(HandleResult, 1) ->
-    NewState = grant_lease_update_state(Caller, Period, State),
-    persist_lease(Period, NewState),
+    NewState = functools:chain(State,
+                               [grant_lease_update_state(Caller, Period, _),
+                                persist_lease(Period, _)]),
     HandleResult(build_lease_props(NewState#state.lease)),
 
     NewState;
@@ -321,7 +323,8 @@ handle_expire_done(Holder, Reply, #state{lease = Lease} = State) ->
 
     remove_persisted_lease(),
 
-    {noreply, State#state{lease = undefined}}.
+    {noreply, State#state{lease           = undefined,
+                          persisted_lease = undefined}}.
 
 handle_terminate(Reason, active, State) ->
     ?log_warning("Terminating with reason ~p "
@@ -368,12 +371,20 @@ lease_path() ->
 persist_lease(State) ->
     persist_lease(undefined, State).
 
-persist_lease(TimeLeft, #state{lease = Lease}) ->
+persist_lease(TimeLeft, #state{lease           = Lease,
+                               persisted_lease = PersistedProps} = State) ->
     true = (Lease =/= undefined),
 
     LeaseProps = build_lease_props(TimeLeft, Lease),
-    misc:create_marker(lease_path(),
-                       [misc:dump_term(LeaseProps), $\n]).
+
+    case LeaseProps =:= PersistedProps of
+        true ->
+            State;
+        false ->
+            misc:create_marker(lease_path(),
+                               [misc:dump_term(LeaseProps), $\n]),
+            State#state{persisted_lease = LeaseProps}
+    end.
 
 remove_persisted_lease() ->
     misc:remove_marker(lease_path()).
