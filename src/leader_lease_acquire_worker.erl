@@ -20,8 +20,9 @@
 
 -export([spawn_monitor/2]).
 
--define(LEASE_TIME,       ?get_param(lease_time, 15000)).
--define(LEASE_GRACE_TIME, ?get_param(lease_grace_time, 5000)).
+-define(LEASE_TIME,        ?get_param(lease_time, 15000)).
+-define(LEASE_RENEW_AFTER, ?get_param(lease_renew_after, 5000)).
+-define(LEASE_GRACE_TIME,  ?get_param(lease_grace_time, 5000)).
 
 -record(state, { parent :: pid(),
                  target :: node(),
@@ -99,10 +100,10 @@ handle_acquire_lease(State) ->
 
 get_acquire_lease_options(Start, State) ->
     Timeout       = get_acquire_timeout(Start, State),
-    WhenRemaining = 2 * ?LEASE_TIME div 3,
+    WhenRemaining = ?LEASE_TIME - ?LEASE_RENEW_AFTER,
 
-    [{period, ?LEASE_TIME},
-     {timeout, Timeout},
+    [{timeout, Timeout},
+     {period, ?LEASE_TIME},
      {when_remaining, WhenRemaining}].
 
 call_acquire_lease(Options, #state{uuid = UUID, target = TargetNode}) ->
