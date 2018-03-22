@@ -240,10 +240,10 @@ ol ul {
   margin: 0 0 0 1.5rem;
 }
 ol ol li {
-  list-style-type: lower-alpha;
+  list-style-type: none;
 }
 ol ol ol li {
-  list-style-type: lower-roman;
+  list-style-type: none;
 }
 ul.nobullet li {
   list-style-type: none;
