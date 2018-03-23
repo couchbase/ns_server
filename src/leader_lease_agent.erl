@@ -36,10 +36,11 @@
 -record(lease_holder, { uuid :: binary(),
                         node :: node() }).
 
--record(lease, { holder     :: #lease_holder{},
-                 expires_at :: lease_ts(),
-                 timer      :: misc:timer(),
-                 state      :: lease_state() }).
+-record(lease, { holder      :: #lease_holder{},
+                 acquired_at :: lease_ts(),
+                 expires_at  :: lease_ts(),
+                 timer       :: misc:timer(),
+                 state       :: lease_state() }).
 
 -record(state, { lease           :: undefined | #lease{},
                  persisted_lease :: undefined | list() }).
@@ -178,7 +179,7 @@ grant_lease_dont_notify(Caller, Period, HandleResult, State)
   when is_function(HandleResult, 1) ->
     NewState = functools:chain(State,
                                [grant_lease_update_state(Caller, Period, _),
-                                persist_lease(Period, _)]),
+                                persist_fresh_lease(_)]),
     HandleResult(build_lease_props(NewState#state.lease)),
 
     NewState;
@@ -191,10 +192,11 @@ grant_lease_update_state(Caller, Period, State) ->
     Now       = time_compat:monotonic_time(millisecond),
     ExpiresAt = Now + Period,
 
-    NewLease = #lease{holder     = Caller,
-                      expires_at = ExpiresAt,
-                      timer      = Timer,
-                      state      = active},
+    NewLease = #lease{holder      = Caller,
+                      acquired_at = Now,
+                      expires_at  = ExpiresAt,
+                      timer       = Timer,
+                      state       = active},
 
     State#state{lease = NewLease}.
 
@@ -352,11 +354,11 @@ build_lease_props(Lease) ->
 
 build_lease_props(undefined, Lease) ->
     Now = time_compat:monotonic_time(millisecond),
-    build_lease_props(time_left(Now, Lease), Lease);
-build_lease_props(TimeLeft, #lease{holder = Holder} = Lease) ->
+    build_lease_props(Now, Lease);
+build_lease_props(Now, #lease{holder = Holder} = Lease) ->
     [{node,      Holder#lease_holder.node},
      {uuid,      Holder#lease_holder.uuid},
-     {time_left, TimeLeft},
+     {time_left, time_left(Now, Lease)},
      {status,    Lease#lease.state}].
 
 time_left(Now, #lease{expires_at = ExpiresAt}) ->
@@ -374,12 +376,11 @@ lease_path() ->
 persist_lease(State) ->
     persist_lease(undefined, State).
 
-persist_lease(TimeLeft, #state{lease           = Lease,
-                               persisted_lease = PersistedProps} = State) ->
+persist_lease(Now, #state{lease           = Lease,
+                          persisted_lease = PersistedProps} = State) ->
     true = (Lease =/= undefined),
 
-    LeaseProps = build_lease_props(TimeLeft, Lease),
-
+    LeaseProps = build_lease_props(Now, Lease),
     case LeaseProps =:= PersistedProps of
         true ->
             State;
@@ -388,6 +389,10 @@ persist_lease(TimeLeft, #state{lease           = Lease,
                                [misc:dump_term(LeaseProps), $\n]),
             State#state{persisted_lease = LeaseProps}
     end.
+
+persist_fresh_lease(#state{lease = Lease} = State) ->
+    AcquiredAt = Lease#lease.acquired_at,
+    persist_lease(AcquiredAt, State).
 
 remove_persisted_lease() ->
     misc:remove_marker(lease_path()).
