@@ -446,7 +446,7 @@ default() ->
      {replication, [{enabled, true}]},
      {log_redaction_default_cfg, [{redact_level, none}]},
 
-     {auto_failover_cfg, [{enabled, false},
+     {auto_failover_cfg, [{enabled, true},
                           % timeout is the time (in seconds) a node needs to be
                           % down before it is automatically faileovered
                           {timeout, 120},
