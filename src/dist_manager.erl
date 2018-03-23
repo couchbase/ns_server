@@ -182,6 +182,7 @@ init([]) ->
     end,
 
     State = bringup(Address, UserSupplied),
+    proc_lib:init_ack({ok, self()}),
     case misc:read_marker(ns_cluster:rename_marker_path()) of
         {ok, OldNode} ->
             ?log_debug("Found rename marker. Old Node = ~p", [OldNode]),
@@ -189,7 +190,7 @@ init([]) ->
         _ ->
             ok
     end,
-    {ok, State}.
+    gen_server:enter_loop(?MODULE, [], State).
 
 %% There are only two valid cases here:
 %% 1. Successfully started
@@ -342,6 +343,8 @@ complete_rename(OldNode) ->
     misc:remove_marker(ns_cluster:rename_marker_path()).
 
 rename_node_in_config(Old, New) ->
+    misc:wait_for_local_name(ns_config, 60000),
+    misc:wait_for_local_name(ns_config_rep, 60000),
     ns_config:update(fun ({K, V}) ->
                              NewK = misc:rewrite_value(Old, New, K),
                              NewV = misc:rewrite_value(Old, New, V),
