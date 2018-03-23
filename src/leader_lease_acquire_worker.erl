@@ -28,10 +28,11 @@
                  target :: node(),
                  uuid   :: binary(),
 
-                 have_lease      :: boolean(),
-                 lease_expire_ts :: integer(),
-                 retry_backoff   :: backoff:backoff(),
-                 acquire_timer   :: misc:timer(acquire) }).
+                 have_lease       :: boolean(),
+                 lease_acquire_ts :: integer(),
+                 lease_expire_ts  :: integer(),
+                 retry_backoff    :: backoff:backoff(),
+                 acquire_timer    :: misc:timer(acquire) }).
 
 spawn_monitor(TargetNode, UUID) ->
     Parent = self(),
@@ -142,10 +143,12 @@ handle_lease_acquired(StartTime, LeaseProps, State) ->
 update_lease_expire_ts(Start, LeaseProps, State) ->
     {_, TimeLeft} = lists:keyfind(time_left, 1, LeaseProps),
     TimeQueued    = proplists:get_value(time_queued, LeaseProps, 0),
-    ExpireTS      = Start + TimeQueued + TimeLeft - ?LEASE_GRACE_TIME,
+    AcquireTS     = Start + TimeQueued,
+    ExpireTS      = AcquireTS + TimeLeft - ?LEASE_GRACE_TIME,
 
     update_inflight_histo(Start, TimeQueued, State),
-    State#state{lease_expire_ts = ExpireTS}.
+    State#state{lease_expire_ts  = ExpireTS,
+                lease_acquire_ts = AcquireTS}.
 
 update_inflight_histo(Start, TimeQueued, State) ->
     Now          = time_compat:monotonic_time(millisecond),
