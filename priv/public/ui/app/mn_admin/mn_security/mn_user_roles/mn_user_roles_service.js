@@ -28,23 +28,6 @@
       });
     }
 
-    function sort(array) {
-      if (angular.isArray(array) && angular.isArray(array[0])) {
-        array.forEach(sort);
-        array.sort(function(a, b) {
-          var aHasTitle = angular.isArray(a[1]) || !!a[0].bucket_name;
-          var bHasTitle = angular.isArray(b[1]) || !!b[0].bucket_name;
-          if (!aHasTitle && bHasTitle) {
-            return -1;
-          }
-          if (aHasTitle && !bHasTitle) {
-            return 1;
-          }
-          return 0;
-        });
-      }
-    }
-
     function getWrapperName(name) {
       switch (name) {
       case "data": return "Data Service";
@@ -52,12 +35,72 @@
       case "query": return "Query and Index Services";
       case "fts": return "Search Service";
       case "analytics": return "Analytics Service";
-      case "undefined": return "Administrator Roles";
+      case "undefined": return "Administration & Global Roles";
       case "*": return "All Buckets (*)";
       case "replication":
       case "bucket": return undefined;
       default: return name;
       }
+    }
+
+    function sortAdminAndGlobalRoles(roles) {
+      var rv = new Array(8);
+
+      roles.forEach(function (role) {
+        switch (role.role) {
+        case "admin": rv[0] = role; break;
+        case "cluster_admin": rv[1] = role; break;
+        case "security_admin": rv[2] = role; break;
+        case "ro_admin": rv[3] = role; break;
+        case "replication_admin": rv[4] = role; break;
+        case "query_external_access": rv[5] = role; break;
+        case "query_system_catalog": rv[6] = role; break;
+        case "analytics_reader": rv[7] = role; break;
+        default: rv.push(role); break;
+        }
+      });
+
+      return rv;
+    }
+
+    function sortBucketRoles(roles) {
+      var rv = [];
+      var restRoles = new Array(5);
+
+      _.forEach(_.groupBy(roles, function (role) {
+        return role.role.split("_")[0];
+      }), function (value, key) {
+        switch(key) {
+        case "data": restRoles[0] = [getWrapperName(key), value]; break;
+        case "views": restRoles[1] = [getWrapperName(key), value]; break;
+        case "query": restRoles[2] = [getWrapperName(key), value]; break;
+        case "fts": restRoles[3] = [getWrapperName(key), value]; break;
+        case "analytics": restRoles[4] = [getWrapperName(key), value]; break;
+        case "bucket":
+        case "replication": rv = rv.concat(value); break;
+        default: restRoles[5].push([getWrapperName(key), value]); break;
+        }
+      });
+
+      return rv.concat(restRoles);
+    }
+
+    function prepareRootRoles(roles) {
+      var rv = new Array(2);
+
+      _.forEach(_.groupBy(roles, 'bucket_name'), function (value, key) {
+        switch (key) {
+        case "undefined": rv[0] = [getWrapperName(key), sortAdminAndGlobalRoles(value)]; break;
+        case "*": rv[1] = [getWrapperName(key), sortBucketRoles(value)]; break;
+        default: rv.push([getWrapperName(key), sortBucketRoles(value)]); break;
+        }
+      });
+
+      return rv;
+    }
+
+    function getRolesTree(roles) {
+      return prepareRootRoles(roles);
     }
 
     function getRoleUIID(role, isWrapper) {
@@ -74,34 +117,6 @@
       if (!isWrapper) {
         rv += ("|" + (role.bucket_name ? (role.role + '[' + role.bucket_name + ']') : role.role));
       }
-      return rv;
-    }
-
-    function getRolesTree(roles) {
-      roles = _.sortBy(roles, "name");
-      var roles1 = _.groupBy(roles, 'bucket_name');
-      var rv = [];
-
-      rv.push([getWrapperName("undefined"), roles1["undefined"]]);
-
-      _.forEach(roles1, function (array, bucketName) {
-        if (bucketName == "undefined") {
-          return;
-        }
-
-        var byRole = _.groupBy(array, function (role) {
-          return role.role.split("_")[0];
-        });
-
-        var thisBucketRoles = byRole.bucket.concat(byRole.replication);
-
-        (["data", "views", "query", "fts", "analytics"]).forEach(function (service) {
-          thisBucketRoles.push([getWrapperName(service), byRole[service]]);
-        });
-
-        rv.push([getWrapperName(bucketName), thisBucketRoles]);
-      });
-
       return rv;
     }
 

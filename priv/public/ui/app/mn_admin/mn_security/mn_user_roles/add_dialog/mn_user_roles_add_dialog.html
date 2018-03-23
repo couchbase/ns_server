@@ -101,7 +101,8 @@
       <label>Roles</label>
       <fieldset class="select-user-roles">
         <script type="text/ng-template" id="rolesTree">
-          <div ng-init="::isArray = ('isArray' | lodash:role);">
+          <div ng-init="::isArray = ('isArray' | lodash:role);
+                        isObject = ('isObject' | lodash:role) && !isArray">
             <div
                ng-if="::isArray"
                ng-init="::
@@ -110,40 +111,47 @@
                         roles = role;">
               <label
                  ng-if="!isFirstArray"
-                 ng-init="::
-                          userRolesAddDialogCtl.toggleWrappers(getUIID, true)"
                  ng-click="::userRolesAddDialogCtl.toggleWrappers(getUIID)"
                  class="disclosure initialcaps"
                  ng-class="{
-                           'disclosed': !userRolesAddDialogCtl.closedWrappers[getUIID],
-                           'has-selection': userRolesAddDialogCtl.closedWrappers[getUIID] && userRolesAddDialogCtl.containsSelected[getUIID]
+                           'disclosed': userRolesAddDialogCtl.openedWrappers[getUIID],
+                           'has-selection': !userRolesAddDialogCtl.openedWrappers[getUIID] && userRolesAddDialogCtl.containsSelected[getUIID]
                            }">
                 {{::role[0]}}
               </label>
               <div ng-class="{'indent-1': !isFirstArray}">
                 <div
-                   ng-show="!userRolesAddDialogCtl.closedWrappers[getUIID]"
+                   ng-show="userRolesAddDialogCtl.openedWrappers[getUIID]"
                    ng-repeat="role in (isFirstArray ? roles : roles[1])"
                    ng-include="'rolesTree'">
                 </div>
               </div>
             </div>
             <div
-               ng-if="::!isArray"
+               ng-if="isObject"
                ng-init="::getUIID = userRolesAddDialogCtl.getUIID(role);
                         userRolesAddDialogCtl.show(getUIID);"
-               ng-class="{'has-selection': userRolesAddDialogCtl.selectedRoles[getUIID]}">
+               ng-class="[{'has-selection': userRolesAddDialogCtl.selectedRoles[getUIID]}, 'dynamic-' + role.role, 'dynamic-' + (role.bucket_name ? role.bucket_name : 'no_bucket')]">
               <input
                  type="checkbox"
                  id="for-{{::getUIID}}"
-                 ng-disabled="(role.role !== 'admin' && userRolesAddDialogCtl.selectedRoles['Administrator Roles|admin'])"
+                 ng-disabled="(
+                              role.role !== 'admin' &&
+                              userRolesAddDialogCtl.selectedRoles[
+                              userRolesAddDialogCtl.getUIID({role: 'admin'})
+                              ]) || (
+                              role.bucket_name !== '*' &&
+                              userRolesAddDialogCtl.selectedRoles[
+                              userRolesAddDialogCtl.getUIID({role: role.role, bucket_name: '*'})
+                              ])"
                  ng-change="::userRolesAddDialogCtl.onCheckChange(role, getUIID)"
                  ng-model="userRolesAddDialogCtl.selectedRoles[getUIID]">
               <label
+                 ng-attr-title="{{role.desc}}"
                  for="for-{{::getUIID}}">
                 {{::role.name}}
                 <span
-                   ng-if="getUIID === 'Administrator Roles|query_external_access'"
+                   ng-if="getUIID === userRolesAddDialogCtl.getUIID({role: 'query_external_access'})"
                    tooltip-trigger="'mouseenter'"
                    tooltip-append-to-body="true"
                    class="fa-exclamation-circle icon orange-3"
