@@ -165,12 +165,13 @@ build_pool_info(Id, Req, normal, Stability, LocalAddr) ->
       {pool_details, InfoLevel, Stability, LocalAddr},
       fun () ->
               %% NOTE: token needs to be taken before building pool info
-              Token = ns_config:config_version_token(),
+              Vsn = {ns_config:config_version_token(), nodes()},
               {do_build_pool_info(Id, InfoLevel, Stability, LocalAddr), 1000,
-               Token}
+               Vsn}
       end,
-      fun (_Key, _Value, ConfigVersionToken) ->
+      fun (_Key, _Value, {ConfigVersionToken, Nodes}) ->
               ConfigVersionToken =/= ns_config:config_version_token()
+                  orelse Nodes =/= nodes()
       end);
 build_pool_info(Id, _Req, for_ui, Stability, LocalAddr) ->
     do_build_pool_info(Id, for_ui, Stability, LocalAddr).
