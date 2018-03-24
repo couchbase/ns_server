@@ -192,7 +192,7 @@ def erlang_args_for_node(i):
         "cbas_result_port", str(base_cbas_port + i * 15 + 7),
         "cbas_messaging_port", str(base_cbas_port + i * 15 + 8),
         "cbas_debug_port", str(base_cbas_port + i * 15 + 9),
-        "cbas_auth_port", str(base_cbas_port + i * 15 + 10),
+        "cbas_parent_port", str(base_cbas_port + i * 15 + 10),
         "cbas_admin_port", str(base_cbas_port + i * 15 + 11),
         "cbas_replication_port", str(base_cbas_port + i * 15 + 12),
         "cbas_metadata_port", str(base_cbas_port + i * 15 + 13),

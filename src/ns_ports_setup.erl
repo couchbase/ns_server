@@ -664,10 +664,10 @@ cbas_spec(Config) ->
             DataPort = ns_config:search(Config, {node, node(), cbas_data_port}, 9116),
             ResultPort = ns_config:search(Config, {node, node(), cbas_result_port}, 9117),
             MessagingPort = ns_config:search(Config, {node, node(), cbas_messaging_port}, 9118),
-            AuthPort = ns_config:search(Config, {node, node(), cbas_auth_port}, 9119),
+            MetadataCallbackPort = ns_config:search(Config, {node, node(), cbas_metadata_callback_port}, 9119),
             ReplicationPort = ns_config:search(Config, {node, node(), cbas_replication_port}, 9120),
             MetadataPort = ns_config:search(Config, {node, node(), cbas_metadata_port}, 9121),
-            MetadataCallbackPort = ns_config:search(Config, {node, node(), cbas_metadata_callback_port}, 9122),
+            ParentPort = ns_config:search(Config, {node, node(), cbas_parent_port}, 9122),
             DebugPort = ns_config:search(Config, {node, node(), cbas_debug_port}, -1),
 
             CBASDirs = [filename:join([Token], "@analytics") ||
@@ -707,7 +707,7 @@ cbas_spec(Config) ->
                      "-metadataPort=" ++ integer_to_list(MetadataPort),
                      "-metadataCallbackPort=" ++ integer_to_list(MetadataCallbackPort),
                      "-memoryQuotaMb=" ++ integer_to_list(MemoryQuota),
-                     "-authPort=" ++ integer_to_list(AuthPort),
+                     "-parentPort=" ++ integer_to_list(ParentPort),
                      "-bindReplicationPort=" ++ integer_to_list(ReplicationPort),
                      "-logDir=" ++ LogDir
                     ] ++

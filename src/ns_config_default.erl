@@ -246,8 +246,8 @@ default() ->
      {{node, node(), cbas_debug_port},
       misc:get_env_default(cbas_debug_port, -1)},
 
-     {{node, node(), cbas_auth_port},
-      misc:get_env_default(cbas_auth_port, 9119)},
+     {{node, node(), cbas_metadata_callback_port},
+      misc:get_env_default(cbas_metadata_callback_port, 9119)},
 
      {{node, node(), cbas_replication_port},
       misc:get_env_default(cbas_replication_port, 9120)},
@@ -255,8 +255,8 @@ default() ->
      {{node, node(), cbas_metadata_port},
       misc:get_env_default(cbas_metadata_port, 9121)},
 
-     {{node, node(), cbas_metadata_callback_port},
-      misc:get_env_default(cbas_metadata_callback_port, 9122)},
+     {{node, node(), cbas_parent_port},
+      misc:get_env_default(cbas_parent_port, 9122)},
 
      {{node, node(), cbas_ssl_port},
       case IsEnterprise of

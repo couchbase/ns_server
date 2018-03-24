@@ -73,7 +73,7 @@ all_ports() ->
      ?define_port(cbas_result_port, cbasResult, misc),
      ?define_port(cbas_messaging_port, cbasMessaging, misc),
      ?define_port(cbas_debug_port, cbasDebug, misc),
-     ?define_port(cbas_auth_port, cbasAuth, misc),
+     ?define_port(cbas_parent_port, cbasParent, misc),
      ?define_port(cbas_replication_port, cbasReplication, misc)].
 
 service_ports(Service) ->
