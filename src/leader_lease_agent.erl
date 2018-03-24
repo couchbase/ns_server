@@ -173,19 +173,22 @@ grant_lease(Caller, Period, From, #state{lease = Lease} = State) ->
 
     %% this is not supposed to take long, so doing this in main process
     notify_local_lease_granted(self(), Caller),
-    grant_lease_dont_notify(Caller, Period, From, State).
+    grant_lease_dont_notify(Caller, Period,
+                            grant_lease_reply(From, _),
+                            State).
+
+grant_lease_reply(From, Lease) ->
+    LeaseProps = build_lease_props(Lease#lease.acquired_at, Lease),
+    gen_server2:reply(From, {ok, LeaseProps}).
 
 grant_lease_dont_notify(Caller, Period, HandleResult, State)
   when is_function(HandleResult, 1) ->
     NewState = functools:chain(State,
                                [grant_lease_update_state(Caller, Period, _),
                                 persist_fresh_lease(_)]),
-    HandleResult(build_lease_props(NewState#state.lease)),
+    HandleResult(NewState#state.lease),
 
-    NewState;
-grant_lease_dont_notify(Caller, Period, From, State) ->
-    Reply = ?cut(gen_server2:reply(From, {ok, _})),
-    grant_lease_dont_notify(Caller, Period, Reply, State).
+    NewState.
 
 grant_lease_update_state(Caller, Period, State) ->
     Timer     = misc:create_timer(Period, {lease_expired, Caller}),
@@ -205,7 +208,9 @@ extend_lease(Period, WhenRemaining, From, State) ->
 
     case compute_extend_after(WhenRemaining, State) of
         undefined ->
-            extend_lease_now(Period, From, State);
+            extend_lease_now(Period,
+                             extend_lease_handle_result(From, State, _),
+                             State);
         {Now, ExtendAfter} ->
             schedule_pending_extend_lease(Period, Now, ExtendAfter, From),
             State
@@ -233,18 +238,34 @@ schedule_pending_extend_lease(Period, Start, After, From) ->
                                                       Start, From, _, _)).
 
 handle_pending_extend_lease(Period, Start, From, ok, State) ->
-    HandleResult = pending_extend_lease_handle_result(Start, From, _),
-    {noreply, extend_lease_now(Period, HandleResult, State)};
+    NewState =
+        extend_lease_now(Period,
+                         extend_lease_handle_result(Start, From, State, _),
+                         State),
+
+    {noreply, NewState};
 handle_pending_extend_lease(_Period, _Start, From, Error, State) ->
     gen_server2:reply(From, Error),
     {noreply, State}.
 
-pending_extend_lease_handle_result(Start, From, LeaseProps) ->
-    Now        = time_compat:monotonic_time(millisecond),
-    TimeQueued = Now - Start,
+extend_lease_handle_result(From, State, Lease) ->
+    extend_lease_handle_result(Lease#lease.acquired_at, From, State, Lease).
 
-    NewLeaseProps = [{time_queued, TimeQueued} | LeaseProps],
-    gen_server2:reply(From, {ok, NewLeaseProps}).
+extend_lease_handle_result(ReceivedAt, From, State, Lease) ->
+    AcquiredAt     = Lease#lease.acquired_at,
+    PrevLease      = State#state.lease,
+    PrevAcquiredAt = PrevLease#lease.acquired_at,
+
+    true = (ReceivedAt >= PrevAcquiredAt),
+    true = (AcquiredAt >= ReceivedAt),
+
+    LeaseProps =
+        [{received_at, ReceivedAt},
+         {acquired_at, AcquiredAt},
+         {prev_acquired_at, PrevAcquiredAt} |
+         build_lease_props(AcquiredAt, Lease)],
+
+    gen_server2:reply(From, {ok, LeaseProps}).
 
 abort_pending_extend_lease(Reason, State) ->
     gen_server2:abort_queue(pending_extend, {error, Reason}, State).
@@ -252,11 +273,11 @@ abort_pending_extend_lease(Reason, State) ->
 have_pending_extend_lease() ->
     lists:member(pending_extend, gen_server2:get_active_queues()).
 
-extend_lease_now(Period, FromOrHandleResult, #state{lease = Lease} = State)
+extend_lease_now(Period, HandleResult, #state{lease = Lease} = State)
   when Lease =/= undefined ->
     cancel_timer(Lease),
     grant_lease_dont_notify(Lease#lease.holder,
-                            Period, FromOrHandleResult, State).
+                            Period, HandleResult, State).
 
 cancel_timer(Lease) ->
     misc:update_field(#lease.timer, Lease, misc:cancel_timer(_)).

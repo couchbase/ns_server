@@ -142,13 +142,26 @@ handle_lease_acquired(StartTime, LeaseProps, State) ->
 
 update_lease_expire_ts(Start, LeaseProps, State) ->
     {_, TimeLeft} = lists:keyfind(time_left, 1, LeaseProps),
-    TimeQueued    = proplists:get_value(time_queued, LeaseProps, 0),
+    TimeQueued    = get_time_queued(LeaseProps),
     AcquireTS     = Start + TimeQueued,
     ExpireTS      = AcquireTS + TimeLeft - ?LEASE_GRACE_TIME,
 
     update_inflight_histo(Start, TimeQueued, State),
     State#state{lease_expire_ts  = ExpireTS,
                 lease_acquire_ts = AcquireTS}.
+
+get_time_queued(LeaseProps) ->
+    get_time_queued(proplists:get_value(acquired_at, LeaseProps),
+                    proplists:get_value(received_at, LeaseProps)).
+
+get_time_queued(AcquiredAt, ReceivedAt)
+  when is_integer(AcquiredAt),
+       is_integer(ReceivedAt),
+       AcquiredAt >= ReceivedAt ->
+
+    AcquiredAt - ReceivedAt;
+get_time_queued(_, _) ->
+    0.
 
 update_inflight_histo(Start, TimeQueued, State) ->
     Now          = time_compat:monotonic_time(millisecond),
