@@ -955,11 +955,17 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
     cbas_tasks = []
     cbas_port = read_guts(guts, "cbas_admin_port")
     if cbas_port:
-        url = 'http://%s:%s/analytics/node/diagnostics' % (local_url_addr, cbas_port)
-        cbas_tasks = [make_curl_task(name="CBAS /analytics/node/diagnostics: ",
+        diag_url = 'http://%s:%s/analytics/node/diagnostics' % (local_url_addr, cbas_port)
+        cbas_parent_port = read_guts(guts, "cbas_parent_port")
+        pprof_url = 'http://%s:%s/debug/pprof/goroutine?debug=1' % (local_url_addr, cbas_parent_port)
+        cbas_tasks = [make_curl_task(name="Analytics /analytics/node/diagnostics: ",
                                      user="@", password=memcached_pass,
-                                     url=url,
-                                     log_file="analytics_diag.json", no_header=True)]
+                                     url=diag_url,
+                                     log_file="analytics_diag.json", no_header=True),
+                      make_curl_task(name="Analytics Go routine dump: ",
+                                     user="@", password=memcached_pass,
+                                     url=pprof_url,
+                                     log_file="analytics_pprof.log", no_header=True)]
 
     _tasks = [
         UnixTask("Directory structure",
