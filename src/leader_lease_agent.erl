@@ -61,13 +61,7 @@ acquire_lease(WorkerNode, Node, UUID, Options) ->
     Timeout = proplists:get_value(timeout, Options),
     true = (Timeout =/= undefined),
 
-    try
-        gen_server2:call({?SERVER, WorkerNode},
-                         {acquire_lease, Node, UUID, Options}, Timeout)
-    catch
-        {exit, {timeout, _}} ->
-            {error, timeout}
-    end.
+    call_acquire_lease(WorkerNode, Node, UUID, Options, Timeout).
 
 abolish_leases(WorkerNodes, Node, UUID) ->
     gen_server2:abcast(WorkerNodes, ?SERVER, {abolish_lease, Node, UUID}).
@@ -111,6 +105,22 @@ terminate(Reason, #state{lease = Lease} = State) ->
     handle_terminate(Reason, Lease#lease.state, State).
 
 %% internal functions
+call_acquire_lease(_WorkerNode, _Node, _UUID, _Options, Timeout)
+  when Timeout =< 0 ->
+    {error, timeout};
+call_acquire_lease(WorkerNode, Node, UUID, Options, Timeout) ->
+    try
+        misc:executing_on_new_process(
+          fun () ->
+                  gen_server2:call({?SERVER, WorkerNode},
+                                   {acquire_lease, Node, UUID, Options},
+                                   infinity)
+          end, [{abort_after, Timeout}])
+    catch
+        exit:timeout ->
+            {error, timeout}
+    end.
+
 handle_acquire_lease(Caller, Options, From, State) ->
     case validate_acquire_lease_options(Options) of
         {ok, Period, WhenRemaining} ->
