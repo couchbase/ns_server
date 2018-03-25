@@ -180,6 +180,7 @@ get_start_time_estimate(Start, Now, LeaseProps, State) ->
                          "flowing at a faster pace.~n"
                          "Start: ~p, Now: ~p, TimeQueued: ~p, LeaseProps: ~p",
                          [Start, Now, TimeQueued, LeaseProps]),
+            inc_counter(start_time_estimate_in_future, State),
             undefined
     end.
 
@@ -200,13 +201,16 @@ update_inflight_histo(Start, Now, TimeQueued, State) ->
 get_prev_acquire_estimate(_Now, _LeaseProps, #state{have_lease = false}) ->
     undefined;
 get_prev_acquire_estimate(Now, LeaseProps,
-                          #state{lease_acquire_ts = PrevAcquireTS}) ->
+                          #state{lease_acquire_ts = PrevAcquireTS} = State) ->
     SincePrevAcquire = get_time_since_prev_acquire(LeaseProps),
-    get_prev_acquire_estimate(SincePrevAcquire, Now, PrevAcquireTS, LeaseProps).
+    get_prev_acquire_estimate(SincePrevAcquire,
+                              Now, PrevAcquireTS, LeaseProps, State).
 
-get_prev_acquire_estimate(undefined, _Now, _PrevAcquireTS, _LeaseProps) ->
+get_prev_acquire_estimate(undefined,
+                          _Now, _PrevAcquireTS, _LeaseProps, _State) ->
     undefined;
-get_prev_acquire_estimate(SincePrevAcquire, Now, PrevAcquireTS, LeaseProps) ->
+get_prev_acquire_estimate(SincePrevAcquire,
+                          Now, PrevAcquireTS, LeaseProps, State) ->
     Estimate = PrevAcquireTS + SincePrevAcquire,
 
     case Estimate =< Now of
@@ -219,6 +223,7 @@ get_prev_acquire_estimate(SincePrevAcquire, Now, PrevAcquireTS, LeaseProps) ->
                          "Now: ~p, PrevAcquireTS: ~p, "
                          "SincePrevAcquire: ~p, LeaseProps: ~p",
                          [Now, PrevAcquireTS, SincePrevAcquire, LeaseProps]),
+            inc_counter(prev_acquire_estimate_in_future, State),
             undefined
     end.
 
@@ -331,5 +336,10 @@ handle_fresh_lease_acquired(#state{uuid   = LeaseUUID,
     State#state{have_lease = true}.
 
 add_histo(Name, Value, State) ->
-    FullName = {?MODULE, target_node(State), Name},
-    system_stats_collector:add_histo(FullName, Value).
+    system_stats_collector:add_histo(build_stat_name(Name, State), Value).
+
+inc_counter(Name, State) ->
+    system_stats_collector:increment_counter(build_stat_name(Name, State)).
+
+build_stat_name(Name, State) ->
+    {?MODULE, target_node(State), Name}.
