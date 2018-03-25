@@ -142,13 +142,39 @@ handle_lease_acquired(StartTime, LeaseProps, State) ->
 
 update_lease_expire_ts(Start, LeaseProps, State) ->
     {_, TimeLeft} = lists:keyfind(time_left, 1, LeaseProps),
-    TimeQueued    = get_time_queued(LeaseProps),
-    AcquireTS     = Start + TimeQueued,
+    AcquireTS     = compute_new_acquire_time(Start, LeaseProps, State),
     ExpireTS      = AcquireTS + TimeLeft - ?LEASE_GRACE_TIME,
 
-    update_inflight_histo(Start, TimeQueued, State),
     State#state{lease_expire_ts  = ExpireTS,
                 lease_acquire_ts = AcquireTS}.
+
+compute_new_acquire_time(Start, LeaseProps, State) ->
+    TimeQueued = get_time_queued(LeaseProps),
+    update_inflight_histo(Start, TimeQueued, State),
+
+    StartTimeEstimate = Start + TimeQueued,
+    case State#state.have_lease of
+        false ->
+            StartTimeEstimate;
+        true ->
+            PrevAcquireTS       = State#state.lease_acquire_ts,
+            SincePrevAcquire    = get_time_since_prev_acquire(LeaseProps),
+            PrevAcquireEstimate = PrevAcquireTS + SincePrevAcquire,
+
+            update_estimate_histos(StartTimeEstimate,
+                                   PrevAcquireEstimate, State),
+
+            max(StartTimeEstimate, PrevAcquireEstimate)
+    end.
+
+update_estimate_histos(StartTimeEstimate, PrevAcquireEstimate, State) ->
+    add_histo('start_time_estimate-prev_acquire_estimate',
+              max(StartTimeEstimate - PrevAcquireEstimate, 0),
+              State),
+
+    add_histo('prev_acquire_estimate-start_time_estimate',
+              max(PrevAcquireEstimate - StartTimeEstimate, 0),
+              State).
 
 get_time_queued(LeaseProps) ->
     get_time_queued(proplists:get_value(acquired_at, LeaseProps),
@@ -161,6 +187,20 @@ get_time_queued(AcquiredAt, ReceivedAt)
 
     AcquiredAt - ReceivedAt;
 get_time_queued(_, _) ->
+    0.
+
+get_time_since_prev_acquire(LeaseProps) ->
+    AcquiredAt     = proplists:get_value(acquired_at, LeaseProps),
+    PrevAcquiredAt = proplists:get_value(prev_acquired_at, LeaseProps),
+
+    get_time_since_prev_acquire(PrevAcquiredAt, AcquiredAt).
+
+get_time_since_prev_acquire(PrevAcquiredAt, AcquiredAt)
+  when is_integer(PrevAcquiredAt),
+       is_integer(AcquiredAt),
+       AcquiredAt >= PrevAcquiredAt ->
+    AcquiredAt - PrevAcquiredAt;
+get_time_since_prev_acquire(_, _) ->
     0.
 
 update_inflight_histo(Start, TimeQueued, State) ->
