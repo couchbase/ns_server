@@ -191,7 +191,7 @@ grant_lease_dont_notify(Caller, Period, HandleResult, State)
     NewState.
 
 grant_lease_update_state(Caller, Period, State) ->
-    Now       = time_compat:monotonic_time(millisecond),
+    Now       = get_now(),
     ExpiresAt = Now + Period,
     Timer     = misc:create_timer(Period, {lease_expired, Caller}),
 
@@ -220,7 +220,7 @@ compute_extend_after(undefined, _State) ->
     undefined;
 compute_extend_after(WhenRemaining, #state{lease = Lease})
   when is_integer(WhenRemaining) ->
-    Now         = time_compat:monotonic_time(millisecond),
+    Now         = get_now(),
     TimeLeft    = time_left(Now, Lease),
     ExtendAfter = TimeLeft - WhenRemaining,
 
@@ -374,8 +374,7 @@ build_lease_props(Lease) ->
     build_lease_props(undefined, Lease).
 
 build_lease_props(undefined, Lease) ->
-    Now = time_compat:monotonic_time(millisecond),
-    build_lease_props(Now, Lease);
+    build_lease_props(get_now(), Lease);
 build_lease_props(Now, #lease{holder = Holder} = Lease) ->
     [{node,      Holder#lease_holder.node},
      {uuid,      Holder#lease_holder.uuid},
@@ -468,3 +467,6 @@ notify_local_lease_granted(Pid, Holder) ->
 notify_local_lease_expired(Pid, Holder) ->
     ok = leader_activities:local_lease_expired(Pid,
                                                unpack_lease_holder(Holder)).
+
+get_now() ->
+    time_compat:monotonic_time(millisecond).
