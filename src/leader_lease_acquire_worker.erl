@@ -110,8 +110,8 @@ call_acquire_lease(Options, #state{uuid = UUID, target = TargetNode}) ->
     leader_lease_agent:acquire_lease(TargetNode, node(), UUID, Options).
 
 handle_acquire_timeout(AcquireOptions, State) ->
-    ?log_warning("Timeout while trying to acquire lease from ~p. "
-                 "Acquire options where ~bms",
+    ?log_warning("Timeout while trying to acquire lease from ~p.~n"
+                 "Acquire options were ~p",
                  [target_node(State), AcquireOptions]),
 
     functools:chain(State,
