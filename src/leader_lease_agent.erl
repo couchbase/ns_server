@@ -191,9 +191,9 @@ grant_lease_dont_notify(Caller, Period, HandleResult, State)
     NewState.
 
 grant_lease_update_state(Caller, Period, State) ->
-    Timer     = misc:create_timer(Period, {lease_expired, Caller}),
     Now       = time_compat:monotonic_time(millisecond),
     ExpiresAt = Now + Period,
+    Timer     = misc:create_timer(Period, {lease_expired, Caller}),
 
     NewLease = #lease{holder      = Caller,
                       acquired_at = Now,
