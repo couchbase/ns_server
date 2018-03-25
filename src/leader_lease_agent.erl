@@ -191,12 +191,15 @@ grant_lease_dont_notify(Caller, Period, HandleResult, State)
     NewState.
 
 grant_lease_update_state(Caller, Period, State) ->
-    Now       = get_now(),
+    Now = get_now(),
+    grant_lease_update_state(Now, Now, Caller, Period, State).
+
+grant_lease_update_state(Now, AcquiredAt, Caller, Period, State) ->
     ExpiresAt = Now + Period,
     Timer     = misc:create_timer(Period, {lease_expired, Caller}),
 
     NewLease = #lease{holder      = Caller,
-                      acquired_at = Now,
+                      acquired_at = AcquiredAt,
                       expires_at  = ExpiresAt,
                       timer       = Timer,
                       state       = active},
@@ -252,20 +255,27 @@ extend_lease_handle_result(From, State, Lease) ->
     extend_lease_handle_result(Lease#lease.acquired_at, From, State, Lease).
 
 extend_lease_handle_result(ReceivedAt, From, State, Lease) ->
-    AcquiredAt     = Lease#lease.acquired_at,
+    AcquiredAt = Lease#lease.acquired_at,
+    true       = (AcquiredAt >= ReceivedAt),
+
+    LeaseProps0 = [{received_at, ReceivedAt},
+                   {acquired_at, AcquiredAt} |
+                   build_lease_props(AcquiredAt, Lease)],
+    LeaseProps  = maybe_add_prev_acquired_at(ReceivedAt, State, LeaseProps0),
+
+    gen_server2:reply(From, {ok, LeaseProps}).
+
+maybe_add_prev_acquired_at(ReceivedAt, State, LeaseProps) ->
     PrevLease      = State#state.lease,
     PrevAcquiredAt = PrevLease#lease.acquired_at,
 
-    true = (ReceivedAt >= PrevAcquiredAt),
-    true = (AcquiredAt >= ReceivedAt),
-
-    LeaseProps =
-        [{received_at, ReceivedAt},
-         {acquired_at, AcquiredAt},
-         {prev_acquired_at, PrevAcquiredAt} |
-         build_lease_props(AcquiredAt, Lease)],
-
-    gen_server2:reply(From, {ok, LeaseProps}).
+    case PrevAcquiredAt of
+        undefined ->
+            LeaseProps;
+        _ when is_integer(PrevAcquiredAt) ->
+            true = (ReceivedAt >= PrevAcquiredAt),
+            [{prev_acquired_at, PrevAcquiredAt} | LeaseProps]
+    end.
 
 abort_pending_extend_lease(Reason, State) ->
     gen_server2:abort_queue(pending_extend, {error, Reason}, State).
@@ -454,7 +464,7 @@ recover_lease_from_props(Props, State) ->
                            uuid = UUID},
 
     notify_local_lease_granted(self(), Holder),
-    grant_lease_update_state(Holder, TimeLeft, State).
+    grant_lease_update_state(get_now(), undefined, Holder, TimeLeft, State).
 
 unpack_lease_holder(Holder) ->
     {Holder#lease_holder.node,
