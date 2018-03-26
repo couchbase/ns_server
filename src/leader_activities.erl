@@ -94,12 +94,10 @@ start_link() ->
       end).
 
 register_acquirer(Pid) ->
-    call_if_internal_process(acquirer, undefined,
-                             {register_internal_process, acquirer, Pid}).
+    call_register_internal_process(acquirer, Pid).
 
 register_agent(Pid) ->
-    call_if_internal_process(agent, undefined,
-                             {register_internal_process, agent, Pid}).
+    call_register_internal_process(agent, Pid).
 
 lease_acquired(Pid, Node) ->
     call_if_internal_process(acquirer, Pid, {lease_acquired, Node}).
@@ -303,6 +301,10 @@ terminate(Reason, State) ->
     terminate_all_activities(State, Reason).
 
 %% internal functions
+call_register_internal_process(Type, Pid) ->
+    call_if_internal_process(Type, undefined,
+                             {register_internal_process, Type, Pid}).
+
 call_if_internal_process(Type, Pid, SubCall) ->
     call({if_internal_process, Type, Pid, SubCall}, infinity).
 
