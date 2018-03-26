@@ -16,7 +16,7 @@
     'mnAlertsService'
   ]).controller('mnGsiController', mnGsiController);
 
-  function mnGsiController($scope, mnGsiService, mnHelper, mnPoller, mnPoolDefault, $uibModal, mnPromiseHelper, mnAlertsService) {
+  function mnGsiController($scope, $rootScope, mnGsiService, mnHelper, mnPoller, mnPoolDefault, $uibModal, mnPromiseHelper, mnAlertsService) {
     var vm = this;
     vm.generateIndexId = generateIndexId;
     vm.focusindexFilter = false;
@@ -49,10 +49,13 @@
     }
 
     function dropIndex(row) {
+      var scope = $rootScope.$new();
+      scope.partitioned = row.partitioned;
       $uibModal.open({
         windowClass: "z-index-10001",
         backdrop: 'static',
-        templateUrl: 'app/mn_admin/mn_indexes/mn_gsi/mn_gsi_drop_confirm_dialog.html'
+        templateUrl: 'app/mn_admin/mn_indexes/mn_gsi/mn_gsi_drop_confirm_dialog.html',
+        scope: scope
       }).result.then(function () {
         row.awaytingRemoval = true;
         mnPromiseHelper(vm, mnGsiService.postDropIndex(row))
