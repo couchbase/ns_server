@@ -435,8 +435,7 @@ handle_register_internal_process(Type, Pid, From, State) ->
 
 handle_down(MRef, Pid, Reason, State) ->
     R = functools:alternative(
-          State, [handle_internal_process_down(agent, MRef, Pid, Reason, _),
-                  handle_internal_process_down(acquirer, MRef, Pid, Reason, _),
+          State, [handle_internal_process_down(MRef, Pid, Reason, _),
                   handle_activity_down(MRef, Pid, Reason, _)]),
 
     case R of
@@ -447,6 +446,12 @@ handle_down(MRef, Pid, Reason, State) ->
                        [{MRef, Pid, Reason}]),
             exit({unexpected_down, MRef, Pid, Reason})
     end.
+
+handle_internal_process_down(MRef, Pid, Reason, State) ->
+    functools:alternative(
+      State,
+      [handle_internal_process_down(Type, MRef, Pid, Reason, _) ||
+          Type <- [agent, acquirer]]).
 
 handle_internal_process_down(Type, MRef, Pid, Reason, State) ->
     case extract_internal_process(Type, State) =:= {Pid, MRef} of
