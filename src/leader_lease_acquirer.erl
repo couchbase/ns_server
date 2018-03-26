@@ -49,14 +49,7 @@ init([]) ->
     register(?SERVER, self()),
     proc_lib:init_ack({ok, self()}),
 
-    case cluster_compat_mode:is_cluster_vulcan() of
-        true ->
-            ok;
-        false ->
-            ?log_debug("Delaying start since cluster "
-                       "is not fully upgraded to vulcan yet."),
-            wait_cluster_is_vulcan()
-    end,
+    leader_utils:wait_cluster_is_vulcan(),
     enter_loop().
 
 enter_loop() ->
@@ -201,32 +194,4 @@ take_worker(Worker, #state{workers = Workers} = State) ->
             {ok, NodeWorker, State#state{workers = RestWorkers}};
         false ->
             not_found
-    end.
-
-wait_cluster_is_vulcan() ->
-    Self = self(),
-    Pid  = ns_pubsub:subscribe_link(
-             ns_config_events,
-             case _ of
-                 {cluster_compat_version, _} = Event ->
-                     Self ! Event;
-                 _ ->
-                     ok
-             end),
-
-    wait_cluster_is_vulcan_loop(cluster_compat_mode:get_compat_version()),
-    ns_pubsub:unsubscribe(Pid),
-
-    ?flush({cluster_compat_version, _}).
-
-wait_cluster_is_vulcan_loop(Version) ->
-    case cluster_compat_mode:is_version_vulcan(Version) of
-        true ->
-            ?log_debug("Cluster upgraded to vulcan. Starting."),
-            ok;
-        false ->
-            receive
-                {cluster_compat_version, NewVersion} ->
-                    wait_cluster_is_vulcan_loop(NewVersion)
-            end
     end.
