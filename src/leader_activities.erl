@@ -398,30 +398,35 @@ handle_if_internal_process(Type, Pid, SubCall, From, State) ->
 
     case Pid =:= ExpectedPid of
         true ->
-            handle_if_internal_process_subcall(SubCall, From, State);
+            handle_if_internal_process_subcall(Type, SubCall, From, State);
         false ->
             Reply = {error, {wrong_pid, Type, Pid, ExpectedPid}},
             gen_server2:reply(From, Reply),
             State
     end.
 
-handle_if_internal_process_subcall({register_internal_process, Type, Pid},
+handle_if_internal_process_subcall(Type,
+                                   {register_internal_process, Type, Pid},
                                    From, State) ->
     handle_register_internal_process(Type, Pid, From, State);
-handle_if_internal_process_subcall({lease_acquired, Node}, From, State) ->
+handle_if_internal_process_subcall(acquirer,
+                                   {lease_acquired, Node}, From, State) ->
     handle_lease_acquired(Node, From, State);
-handle_if_internal_process_subcall({lease_lost, Node}, From, State) ->
+handle_if_internal_process_subcall(acquirer,
+                                   {lease_lost, Node}, From, State) ->
     handle_lease_lost(Node, From, State);
-handle_if_internal_process_subcall({local_lease_granted, LocalLease},
+handle_if_internal_process_subcall(agent,
+                                   {local_lease_granted, LocalLease},
                                    From, State) ->
     handle_local_lease_granted(LocalLease, From, State);
-handle_if_internal_process_subcall({local_lease_expired, LocalLease},
+handle_if_internal_process_subcall(agent,
+                                   {local_lease_expired, LocalLease},
                                    From, State) ->
     handle_local_lease_expired(LocalLease, From, State);
-handle_if_internal_process_subcall(SubCall, From, State) ->
-    ?log_error("Received unexpected internal process "
+handle_if_internal_process_subcall(Type, SubCall, From, State) ->
+    ?log_error("Received unexpected internal process ~p "
                "subcall ~p from ~p, state =~n~p",
-               [SubCall, From, State]),
+               [Type, SubCall, From, State]),
     gen_server2:reply(From, nack),
     State.
 
