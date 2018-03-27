@@ -456,7 +456,7 @@ handle_internal_process_down(MRef, Pid, Reason, State) ->
     functools:alternative(
       State,
       [handle_internal_process_down(Type, MRef, Pid, Reason, _) ||
-          Type <- [agent, acquirer]]).
+          {Type, _} <- internal_processes()]).
 
 handle_internal_process_down(Type, MRef, Pid, Reason, State) ->
     case extract_internal_process(Type, State) =:= {Pid, MRef} of
@@ -520,10 +520,13 @@ expire_local_lease(State) ->
 set_internal_process(Type, Value, State) ->
     setelement(internal_process_type_to_field(Type), State, Value).
 
-internal_process_type_to_field(agent) ->
-    #state.agent;
-internal_process_type_to_field(acquirer) ->
-    #state.acquirer.
+internal_processes() ->
+    [{agent, #state.agent},
+     {acquirer, #state.acquirer}].
+
+internal_process_type_to_field(Type) ->
+    {Type, Field} = lists:keyfind(Type, 1, internal_processes()),
+    Field.
 
 extract_internal_process(Type, State) ->
     element(internal_process_type_to_field(Type), State).
