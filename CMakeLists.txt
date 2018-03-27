@@ -4,6 +4,7 @@ PROJECT (ns_server)
 INCLUDE (FindCouchbaseErlang)
 INCLUDE (FindCouchbaseGo)
 INCLUDE (ParseArguments)
+INCLUDE (CTest)
 
 # Global project variables
 
