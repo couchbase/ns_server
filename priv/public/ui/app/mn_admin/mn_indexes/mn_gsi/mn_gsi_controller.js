@@ -6,17 +6,17 @@
     'mnGsiService',
     'mnSortableTable',
     'mnPoll',
-    'mnPoolDefault',
     'mnSpinner',
     'mnFilters',
     'mnSearch',
     'mnElementCrane',
     'ui.bootstrap',
     'mnPromiseHelper',
-    'mnAlertsService'
+    'mnAlertsService',
+    'mnServersService'
   ]).controller('mnGsiController', mnGsiController);
 
-  function mnGsiController($scope, $rootScope, mnGsiService, mnHelper, mnPoller, mnPoolDefault, $uibModal, mnPromiseHelper, mnAlertsService) {
+  function mnGsiController($scope, $rootScope, mnGsiService, mnHelper, mnPoller, $uibModal, mnPromiseHelper, mnServersService, mnAlertsService) {
     var vm = this;
     vm.generateIndexId = generateIndexId;
     vm.focusindexFilter = false;
@@ -39,13 +39,20 @@
       .setInterval(10000)
       .subscribe("state", vm)
       .reloadOnScopeEvent("indexStatusURIChanged")
-      .cycle();
+        .cycle();
+
+      new mnPoller($scope, function () {
+        return mnServersService.getNodes();
+      })
+        .subscribe("nodes", vm)
+        .reloadOnScopeEvent(["mnPoolDefaultChanged", "reloadNodes"])
+        .cycle();
     }
 
-    // we can show Edit / Delete buttons if there is a query service
     function hasQueryService() {
-        return (mnPoolDefault.export.thisNode.services
-                .indexOf('n1ql') != -1);
+      return !!vm.nodes && !!_.find(vm.nodes.active, function (server) {
+        return _.indexOf(server.services, "n1ql") > -1;
+      });
     }
 
     function dropIndex(row) {
