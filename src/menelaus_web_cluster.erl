@@ -598,7 +598,14 @@ validate_node(NodeArg) ->
 
 parse_graceful_failover_args(Req) ->
     Params = Req:parse_post(),
-    validate_node(proplists:get_value("otpNode", Params, "undefined")).
+    case parse_otp_nodes(Params) of
+        {ok, [Node]} ->
+            {ok, Node};
+        {ok, _Nodes} ->
+            {error, "Multiple servers cannot be specified."};
+        Error ->
+            Error
+    end.
 
 parse_otp_nodes(Params) ->
     OtpNodes = proplists:lookup_all("otpNode", Params),
