@@ -42,7 +42,7 @@
             <span mn-sortable-title="storageMode | mnFormatStorageMode:pools.isEnterprise" class="sorter">storage type</span>
           </span>
           <span class="cbui-table-cell flex-grow-half">build progress</span>
-          <span class="cbui-table-cell flex-grow-1"></span>
+          <span class="cbui-table-cell flex-grow-1" ng-if="gsiCtl.hasQueryService() && rbac.cluster.bucket['.'].n1ql.select.execute"></span>
         </div>
         <section
            ng-repeat="row in group | orderBy:mnSortableTable.sortableTableProperties.orderBy:mnSortableTable.sortableTableProperties.invert | filter:gsiCtl.filterField as byServerFiltered track by gsiCtl.generateIndexId(row)"
@@ -61,7 +61,7 @@
             <span class="cbui-table-cell flex-grow-half">
               <span ng-show="row.status == 'Replicating'">Replicating</span>
               <span ng-show="row.progress">{{row.progress}}%</span></span>
-            <span class="cbui-table-cell flex-grow-1 text-right wrap" ng-if="gsiCtl.hasQueryService()" ng-click="$event.stopPropagation();">
+            <span class="cbui-table-cell flex-grow-1 text-right wrap" ng-if="gsiCtl.hasQueryService() && rbac.cluster.bucket[row.bucket].n1ql.select.execute" ng-click="$event.stopPropagation();">
               <button class="outline " ng-click="gsiCtl.dropIndex(row)">Drop</button>
             </span>
           </div>
@@ -97,7 +97,7 @@
             <span mn-sortable-title="storageMode | mnFormatStorageMode:pools.isEnterprise" class="sorter">storage type</span>
           </span>
           <span class="cbui-table-cell flex-grow-half">build progress</span>
-          <span class="cbui-table-cell flex-grow-1"></span>
+          <span class="cbui-table-cell flex-grow-1" ng-if="gsiCtl.hasQueryService() && rbac.cluster.bucket['.'].n1ql.select.execute"></span>
         </div>
         <section
            ng-repeat="row in group | orderBy:mnSortableTable.sortableTableProperties.orderBy:mnSortableTable.sortableTableProperties.invert | filter:gsiCtl.filterField as byBucketFiltered track by gsiCtl.generateIndexId(row)"
@@ -112,7 +112,7 @@
             <span class="cbui-table-cell" title="{{row.hosts.join(', ')}}">{{row.hosts.join(', ')}}</span>
             <span class="cbui-table-cell">{{row.storageMode | mnFormatStorageMode:pools.isEnterprise}}</span>
             <span class="cbui-table-cell flex-grow-half"><span ng-if="row.progress">{{row.progress}}%</span></span>
-            <span class="cbui-table-cell flex-grow-1 text-right wrap" ng-if="gsiCtl.hasQueryService()" ng-click="$event.stopPropagation();">
+            <span class="cbui-table-cell flex-grow-1 text-right wrap" ng-if="gsiCtl.hasQueryService() && rbac.cluster.bucket[bucketName].n1ql.select.execute" ng-click="$event.stopPropagation();">
               <button class="outline " ng-click="gsiCtl.dropIndex(row)">Drop</button>
               <!-- <button class="outline tight" ui-sref="app.admin.query.workbench({query: gsiCtl.editIndex(row)})">Edit</button> -->
             </span>
@@ -146,7 +146,7 @@
           <span mn-sortable-title="storageMode | mnFormatStorageMode:pools.isEnterprise" class="sorter">storage type</span>
         </span>
         <span class="cbui-table-cell flex-grow-half">build progress</span>
-        <span class="cbui-table-cell flex-grow-1"></span>
+        <span class="cbui-table-cell flex-grow-1" ng-if="gsiCtl.hasQueryService() && rbac.cluster.bucket['.'].n1ql.select.execute"></span>
       </div>
       <section
          ng-repeat="row in gsiCtl.state.indexes | orderBy:mnSortableTable.sortableTableProperties.orderBy:mnSortableTable.sortableTableProperties.invert | filter:gsiCtl.filterField as byIndexFiltered track by gsiCtl.generateIndexId(row)"
@@ -164,7 +164,7 @@
           <span class="cbui-table-cell" title="{{row.hosts.join(', ')}}">{{row.hosts.join(', ')}}</span>
           <span class="cbui-table-cell">{{row.storageMode | mnFormatStorageMode:pools.isEnterprise}}</span>
           <span class="cbui-table-cell flex-grow-half"><span ng-if="row.progress">{{row.progress}}%</span></span>
-          <span class="cbui-table-cell flex-grow-1 text-right wrap" ng-if="gsiCtl.hasQueryService()" ng-click="$event.stopPropagation();">
+          <span class="cbui-table-cell flex-grow-1 text-right wrap" ng-if="gsiCtl.hasQueryService() && rbac.cluster.bucket[row.bucket].n1ql.select.execute" ng-click="$event.stopPropagation();">
             <button class="outline " ng-click="gsiCtl.dropIndex(row)">Drop</button>
             <!-- <button class="outline tight" ui-sref="app.admin.query.workbench({query: gsiCtl.editIndex(row)})">Edit</button> -->
           </span>

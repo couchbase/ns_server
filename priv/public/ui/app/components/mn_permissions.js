@@ -23,7 +23,8 @@
         "cluster.bucket[" + name + "]!compact",
         "cluster.bucket[" + name + "].xdcr!read",
         "cluster.bucket[" + name + "].xdcr!write",
-        "cluster.bucket[" + name + "].xdcr!execute"
+        "cluster.bucket[" + name + "].xdcr!execute",
+        "cluster.bucket[" + name + "].n1ql.select!execute"
       ];
       if (name === "." || buckets.byName[name].isMembase) {
         basePermissions = basePermissions.concat([
