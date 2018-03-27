@@ -1403,7 +1403,7 @@ do_couchbase_index_stats_descriptions(BucketId, Nodes) ->
                  {struct, [{isBytes, true},
                            {title, <<"memory used">>},
                            {name, per_index_stat(Id, <<"memory_used">>)},
-                           {desc, <<"Total memory consumed by the index">>}]},
+                           {desc, <<"Total memory consumed by the index storage">>}]},
                  {struct, [{title, <<"total mutations remaining">>},
                            {name, per_index_stat(Id, <<"num_docs_pending+queued">>)},
                            {desc, <<"Number of documents pending to be indexed">>}]},
