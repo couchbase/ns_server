@@ -375,10 +375,12 @@ pull_from_one_node_directly(Node) ->
 pull_from_all_nodes(Nodes, Timeout) ->
     {Good, Bad} = ns_config_replica:get_compressed_many(Nodes, Timeout),
 
+    KVLists     = [misc:decompress(Blob) || {_, Blob} <- Good],
+    MergeResult = merge_remote_configs(KVLists),
+
     case Bad =:= [] of
         true ->
-            KVLists = [misc:decompress(Blob) || {_, Blob} <- Good],
-            merge_remote_configs(KVLists);
+            MergeResult;
         false ->
             {error, {get_compressed_failed, Bad}}
     end.
@@ -386,6 +388,8 @@ pull_from_all_nodes(Nodes, Timeout) ->
 merge_one_remote_config(KVList) ->
     merge_remote_configs([KVList]).
 
+merge_remote_configs([]) ->
+    ok;
 merge_remote_configs(KVLists) ->
     Config = ns_config:get(),
     LocalKVList = ns_config:get_kv_list_with_config(Config),
