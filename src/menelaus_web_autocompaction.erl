@@ -111,7 +111,7 @@ handle_set_global_settings(Req) ->
         {_, {errors, Errors}, _} ->
             reply_json(Req, {struct, [{errors, {struct, Errors}}]}, 400);
         {_, _, [{error, Field, Msg}]} ->
-            reply_json(Req, {struct, [{errors, {struct, {Field, Msg}}}]}, 400);
+            reply_json(Req, {struct, [{errors, {struct, [{Field, Msg}]}}]}, 400);
         {true, {ok, _ACSettings, _}, _} ->
             reply_json(Req, {struct, [{errors, {struct, []}}]}, 200);
         {false, {ok, ACSettings, MaybeIndex}, _} ->
