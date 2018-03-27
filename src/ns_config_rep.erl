@@ -49,7 +49,7 @@
          ensure_config_seen_by_nodes/1, ensure_config_seen_by_nodes/2,
          pull_and_push/1, pull_from_one_node_directly/1]).
 
--export([get_remote/2, pull_remotes/1]).
+-export([get_remote/2, pull_remotes/1, pull_remotes/2]).
 
 -record(state, {}).
 
@@ -122,8 +122,8 @@ handle_call(synchronize_everything, {Pid, _Tag} = _From,
     ?log_debug("Fully synchronized config in ~p us", [Diff]),
 
     {reply, ok, State};
-handle_call({pull_remotes, Nodes}, _From, State) ->
-    {reply, pull_from_all_nodes(Nodes), State};
+handle_call({pull_remotes, Nodes, Timeout}, _From, State) ->
+    {reply, pull_from_all_nodes(Nodes, Timeout), State};
 handle_call(Msg, _From, State) ->
     ?log_warning("Unhandled call: ~p", [Msg]),
     {reply, error, State}.
@@ -279,7 +279,10 @@ get_remote(Node, Timeout) ->
     misc:decompress(Blob).
 
 pull_remotes(Nodes) ->
-    gen_server:call(?MODULE, {pull_remotes, Nodes}, infinity).
+    pull_remotes(Nodes, ?PULL_TIMEOUT).
+
+pull_remotes(Nodes, PullTimeout) ->
+    gen_server:call(?MODULE, {pull_remotes, Nodes, PullTimeout}, infinity).
 
 %
 % Privates
@@ -369,8 +372,8 @@ pull_one_node([Node | Rest], N, Errors) ->
 pull_from_one_node_directly(Node) ->
     pull_one_node([Node], 1).
 
-pull_from_all_nodes(Nodes) ->
-    {Good, Bad} = ns_config_replica:get_compressed_many(Nodes, ?PULL_TIMEOUT),
+pull_from_all_nodes(Nodes, Timeout) ->
+    {Good, Bad} = ns_config_replica:get_compressed_many(Nodes, Timeout),
 
     case Bad =:= [] of
         true ->
