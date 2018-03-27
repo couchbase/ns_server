@@ -77,7 +77,7 @@
         <input
            type="checkbox"
            id="for-disk-failover-enable"
-           ng-disabled="!settingsAutoFailoverCtl.autoFailoverSettings.enabled"
+           ng-disabled="!settingsAutoFailoverCtl.autoFailoverSettings.enabled || !rbac.cluster.settings.write"
            ng-model="settingsAutoFailoverCtl.autoFailoverSettings.failoverOnDataDiskIssues.enabled">
         <label for="for-disk-failover-enable" class="margin-right-zero">
           Enable auto-failover for sustained data disk read/write failures
@@ -104,7 +104,7 @@
         <input
            type="checkbox"
            id="for-group-failover-enable"
-           ng-disabled="!settingsAutoFailoverCtl.autoFailoverSettings.enabled"
+           ng-disabled="!settingsAutoFailoverCtl.autoFailoverSettings.enabled || !rbac.cluster.settings.write"
            ng-model="settingsAutoFailoverCtl.autoFailoverSettings.failoverServerGroup">
         <label for="for-group-failover-enable" class="margin-right-zero">
           Enable auto-failover of server groups
@@ -140,6 +140,7 @@
         <br>
         <input
            type="checkbox"
+           ng-disabled="!rbac.cluster.settings.write"
            ng-model="settingsAutoFailoverCtl.reprovisionSettings.enabled"
            id="for-auto-reprovision-enable">
         <label for="for-auto-reprovision-enable" class="margin-right-zero">
@@ -153,7 +154,7 @@
            autocapitalize="off"
            id="for-max-nodes"
            ng-model="settingsAutoFailoverCtl.reprovisionSettings.max_nodes"
-           ng-disabled="!settingsAutoFailoverCtl.reprovisionSettings.enabled"
+           ng-disabled="!settingsAutoFailoverCtl.reprovisionSettings.enabled || !rbac.cluster.settings.write"
            class="input-small input-short-1">
            <span class="text-medium">node{{settingsAutoFailoverCtl.reprovisionSettings.max_nodes !== 1 ? "s" : ""}}</span>
         <div
