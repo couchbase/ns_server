@@ -75,6 +75,9 @@
       }
 
       acSettings = _.clone(acSettings, true);
+
+      acSettings.purgeInterval = Number(acSettings.purgeInterval);
+
       if (!acSettings.allowedTimePeriodFlag) {
         delete acSettings.allowedTimePeriod;
       }
