@@ -1524,6 +1524,9 @@ gen_password_test() ->
     ?assertEqual(true, verify_uppercase(Pass3)),
     ?assertEqual(true, verify_special(Pass3)),
     ?assertEqual(true, verify_digits(Pass3)),
+    ok.
+
+gen_password_monkey_test_() ->
     random:seed(os:timestamp()),
     GetRandomPolicy =
         fun () ->
@@ -1533,7 +1536,9 @@ gen_password_test() ->
                           [special   || random:uniform(2) == 1],
             {random:uniform(30), MustPresent}
         end,
-    [gen_password(GetRandomPolicy()) || _ <- lists:seq(1,100000)],
-    ok.
+    Test = fun () ->
+                   [gen_password(GetRandomPolicy()) || _ <- lists:seq(1,100000)]
+           end,
+    {timeout, 100, Test}.
 
 -endif.

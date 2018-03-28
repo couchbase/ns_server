@@ -207,7 +207,7 @@ compute_missing_vbuckets(Map) ->
 compute_recovery_map_test_() ->
     random:seed(os:timestamp()),
 
-    {timeout, 100,
+    {timeout, 200,
      {inparallel,
       [begin
            NumServers = random:uniform(?MAX_NUM_SERVERS - 1) + 1,
@@ -220,7 +220,7 @@ compute_recovery_map_test_() ->
            Fun = fun () ->
                          compute_recovery_map_test__(NumServers, NumCopies)
                  end,
-           {timeout, 100, {Title, Fun}}
+           {timeout, 200, {Title, Fun}}
        end || _ <- lists:seq(1, ?NUM_TEST_ATTEMPTS)]}}.
 
 compute_recovery_map_test__(NumServers, NumCopies) ->
