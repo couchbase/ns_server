@@ -131,6 +131,8 @@ run_activity(Node, Domain, Name, Quorum, Body, Opts) ->
                         exit:{shutdown, local_lease_expired = Reason} ->
                             report_error(Domain, Name, Reason);
                         exit:{shutdown, {quorum_lost, _} = Reason} ->
+                            report_error(Domain, Name, Reason);
+                        exit:{shutdown, {leader_process_died, _} = Reason} ->
                             report_error(Domain, Name, Reason)
                     end;
                 {error, Error} ->
@@ -547,7 +549,13 @@ cleanup_after_internal_process(Type, State) ->
 cleanup_activities_after_internal_process(agent, State) ->
     expire_local_lease(State);
 cleanup_activities_after_internal_process(acquirer, State) ->
-    check_quorums(State#state{leases = sets:new()}, acquirer_died).
+    NewState = State#state{leases = sets:new()},
+    cleanup_after_leader_internal_process(acquirer, NewState).
+
+cleanup_after_leader_internal_process(Type, State) ->
+    Pred = ?cut(quorum_requires_leader(_#activity.quorum)),
+    terminate_activities(Pred, State,
+                         {shutdown, {leader_process_died, Type}}).
 
 terminate_activities([], _Reason) ->
     ok;
@@ -605,8 +613,9 @@ take_activity(Key, N, #state{activities = Activities} = State) ->
             {ok, A, State#state{activities = Rest}}
     end.
 
-is_leader(#state{local_lease_holder = {Node, _}}) ->
-    Node =:= node();
+is_leader(#state{local_lease_holder = {Node, _},
+                 acquirer           = Acquirer}) ->
+    Acquirer =/= undefined andalso Node =:= node();
 is_leader(_) ->
     false.
 
@@ -631,9 +640,28 @@ have_quorum(Quorums, State)
   when is_list(Quorums) ->
     lists:all(have_quorum(_, State), Quorums).
 
+quorum_requires_leader(follower) ->
+    false;
+quorum_requires_leader(Quorum)
+  when is_list(Quorum) ->
+    lists:any(fun quorum_requires_leader/1, Quorum);
+quorum_requires_leader(_) ->
+    true.
+
+check_quorum_requires_leader(Quorum, State) ->
+    case quorum_requires_leader(Quorum) of
+        true ->
+            is_leader(State);
+        false ->
+            true
+    end.
+
 check_quorum(Activity, State) ->
     Unsafe = proplists:get_bool(unsafe, get_options(Activity)),
-    Unsafe orelse have_quorum(Activity#activity.quorum, State).
+    check_quorum(Unsafe, Activity#activity.quorum, State).
+
+check_quorum(Unsafe, Quorum, State) ->
+    Unsafe orelse have_quorum(Quorum, State).
 
 check_quorums(State, Reason) ->
     terminate_activities(?cut(not check_quorum(_, State)),
@@ -651,7 +679,12 @@ handle_wait_for_quorum(Lease,
     State.
 
 wait_for_quorum_pred(Lease, Quorum, State) ->
-    have_lease(Lease, State) andalso have_quorum(Quorum, State).
+    wait_for_quorum_pred(false, Lease, Quorum, State).
+
+wait_for_quorum_pred(Unsafe, Lease, Quorum, State) ->
+    have_lease(Lease, State)
+        andalso check_quorum_requires_leader(Quorum, State)
+        andalso check_quorum(Unsafe, Quorum, State).
 
 handle_wait_for_quorum_success(SubCall, From, State) ->
     {noreply, handle_activity_subcall(SubCall, From, State)}.
@@ -662,7 +695,7 @@ handle_wait_for_quorum_timeout(false, _, _, From,
 handle_wait_for_quorum_timeout(true, SubCall, Timeout, From,
                                RequiredLease, RequiredQuorum,
                                #state{leases = RemoteLeases} = State) ->
-    case have_lease(RequiredLease, State) of
+    case wait_for_quorum_pred(true, RequiredLease, RequiredQuorum, State) of
         true ->
             ?log_debug("Failed to acquire quorum for call ~p after ~bms. "
                        "Continuing since 'unsafe' option is set.~n"
@@ -671,7 +704,8 @@ handle_wait_for_quorum_timeout(true, SubCall, Timeout, From,
                        [SubCall, Timeout, RequiredQuorum, RemoteLeases]),
             handle_wait_for_quorum_success(SubCall, From, State);
         false ->
-            %% don't continue if we somehow don't even have the local lease
+            %% don't continue if we somehow don't even have the local
+            %% lease/required leader processes registered
             reply_no_quorum(From, RequiredLease, RequiredQuorum, State)
     end.
 
