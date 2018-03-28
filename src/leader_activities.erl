@@ -552,14 +552,20 @@ cleanup_activities_after_internal_process(acquirer, State) ->
 terminate_activities([], _Reason) ->
     ok;
 terminate_activities(Activities, Reason) ->
-    ?log_debug("Terminating activities:~n~p", [Activities]),
+    ?log_debug("Terminating activities (reason is ~p):~n~p",
+               [Reason, Activities]),
 
     lists:foreach(?cut(erlang:demonitor(_#activity.mref, [flush])), Activities),
     misc:terminate_and_wait([A#activity.pid || A <- Activities], Reason).
 
-terminate_all_activities(#state{activities = Activities} = State, Reason) ->
-    terminate_activities(Activities, Reason),
-    State#state{activities = []}.
+terminate_activities(Pred, State, Reason) ->
+    {Matching, Rest} = lists:partition(Pred, State#state.activities),
+    terminate_activities(Matching, Reason),
+
+    State#state{activities = Rest}.
+
+terminate_all_activities(State, Reason) ->
+    terminate_activities(functools:const(true), State, Reason).
 
 add_activity(Token, Quorum, Opts, Pid, MRef, State) ->
     Activity = #activity{pid          = Pid,
@@ -629,18 +635,9 @@ check_quorum(Activity, State) ->
     Unsafe = proplists:get_bool(unsafe, get_options(Activity)),
     Unsafe orelse have_quorum(Activity#activity.quorum, State).
 
-check_quorums(#state{activities = Activities} = State, Reason) ->
-    {Quorum, NoQuorum} = lists:partition(check_quorum(_, State), Activities),
-
-    case NoQuorum of
-        [] ->
-            ok;
-        _ ->
-            ?log_warning("Some activities lost their quorums:~n~p", [NoQuorum]),
-            terminate_activities(NoQuorum, {shutdown, {quorum_lost, Reason}})
-    end,
-
-    State#state{activities = Quorum}.
+check_quorums(State, Reason) ->
+    terminate_activities(?cut(not check_quorum(_, State)),
+                         State, {shutdown, {quorum_lost, Reason}}).
 
 handle_wait_for_quorum(Lease,
                        Quorum, Unsafe, SubCall, Timeout, From, State) ->
