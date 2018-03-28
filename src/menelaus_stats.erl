@@ -2360,14 +2360,14 @@ server_resources_stats_description(ServiceNodes) ->
                           "DCP requests and internal statistic gathering "
                           "(measured from curr_connections)">>}]},
        {struct, [{name, <<"rest_requests">>},
-                 {title, <<"port 8091 reqs/sec">>},
-                 {desc, <<"Rate of http requests on port 8091">>}]},
+                 {title, <<"Management port reqs/sec">>},
+                 {desc, <<"Rate of http requests on management port (usually, 8091)">>}]},
        {struct, [{name, <<"hibernated_requests">>},
                  {title, <<"idle streaming requests">>},
-                 {desc, <<"Number of streaming requests on port 8091 now idle">>}]},
+                 {desc, <<"Number of streaming requests on management port (usually, 8091) now idle">>}]},
        {struct, [{name, <<"hibernated_waked">>},
                  {title, <<"streaming wakeups/sec">>},
-                 {desc, <<"Rate of streaming request wakeups on port 8091">>}]}
+                 {desc, <<"Rate of streaming request wakeups on management port (usually, 8091)">>}]}
        | index_server_resources_stats_description(
            has_nodes(index, ServiceNodes)) ++
            fts_server_resources_stats_description(
