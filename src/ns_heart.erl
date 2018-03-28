@@ -357,6 +357,7 @@ current_status_slow_inner() ->
         ServiceStatuses ++
         [{local_tasks, Tasks},
          {memory, misc:memory()},
+         {cpu_count, misc:cpu_count()},
          {system_memory_data, memsup:get_system_memory_data()},
          {node_storage_conf, StorageConf},
          {statistics, erlang_stats()},

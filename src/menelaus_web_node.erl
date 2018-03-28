@@ -261,6 +261,7 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
     Versions = proplists:get_value(version, InfoNode, []),
     Version = proplists:get_value(ns_server, Versions, "unknown"),
     OS = proplists:get_value(system_arch, InfoNode, "unknown"),
+    CpuCount = proplists:get_value(cpu_count, InfoNode, unknown),
     HostName = build_node_hostname(Config, WantENode, LocalAddr),
 
     PortsKV0 = [{proxy, ProxyPort},
@@ -295,6 +296,7 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
           {clusterCompatibility, cluster_compat_mode:effective_cluster_compat_version()},
           {version, list_to_binary(Version)},
           {os, list_to_binary(OS)},
+          {cpuCount, CpuCount},
           {ports, {struct, PortsKV}},
           {services, ns_cluster_membership:node_services(Config, WantENode)}
          ] ++ AltAddr,

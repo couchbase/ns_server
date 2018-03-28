@@ -1484,6 +1484,10 @@ memory() ->
             notsup
     end.
 
+%% Wraps erlang:system_info(logical_processors).
+cpu_count() ->
+    erlang:system_info(logical_processors).
+
 ensure_writable_dir(Path) ->
     filelib:ensure_dir(Path),
     case filelib:is_dir(Path) of
