@@ -16,14 +16,15 @@
          ng-if="auditCtl.state.auditdEnabled"
          class="content-box fix-width-6">
         When enabled, auditing is activated for a default set of events.
-        You can expand the modules below and select your own set of events.
-        NOTE: Your cluster’s performance may be impacted in relation to the number
-        of events selected and audit logs may use significant disk space.
+        Expand the filterable events modules below to select your own
+        set of events. NOTE: Your cluster’s performance may be impacted in
+        relation to the number of events selected. NOTE: Audit logs may use
+        significant disk space.
       </div>
     </div>
 
     <div
-       class="formrow  fix-width-5">
+       class="formrow fix-width-6">
       <label for="target-log-field">Target Log Directory</label>
       <input
          type="text"
@@ -42,7 +43,7 @@
     </div>
 
     <label>Log Rotation <small>time interval & size trigger</small></label>
-    <div class="row flex-left fix-width-5">
+    <div class="row flex-left fix-width-6">
       <div class="column form-inline">
           <input
              id="log-rotation-interval"
@@ -83,32 +84,39 @@
       </div>
     </div>
 
+    <h4>Filterable Events</h4>
     <section
        ng-if="adminCtl.poolDefault.isEnterprise && adminCtl.poolDefault.compat.atLeast55"
        class="audit-module"
        ng-class="{'audit-module-open' : showModule}"
        ng-repeat="(module, descs) in auditCtl.state.eventsDescriptors">
-      <span
-         class="disclosure inline fix-width-3"
-         ng-class="{disclosed: showModule}"
-         ng-click="showModule = !showModule">
-        {{auditCtl.mapNames(module)}} Events
-      </span>
-      <span
-         class="icon"
-         ng-if="auditCtl.state.auditdEnabled"
-         ng-class="auditCtl.findEnabled(module, true) ? 'fa-check green-3' : 'fa-ban red-4'"></span>
-
+      <div class="audit-module-header fix-width-6" ng-class="{'blue-bg-8': auditCtl.findEnabled(module, true) && auditCtl.state.auditdEnabled}">
+        <span
+           class="disclosure inline"
+           ng-class="{disclosed: showModule}"
+           ng-click="showModule = !showModule">
+          {{auditCtl.mapNames(module)}}
+        </span>
+        <span
+           class="icon"
+           ng-if="auditCtl.state.auditdEnabled"
+           ng-class="auditCtl.findEnabled(module, true) ? 'fa-check green-3' : 'fa-ban red-4'"></span>
+      </div>
       <div class="audit-module-body" ng-show="showModule">
-        <input
-           type="checkbox"
-           id="thisModule_checkall_{{module}}"
-           ng-checked="!auditCtl.findEnabled(module, false)"
-           ng-disabled="!auditCtl.state.auditdEnabled || !rbac.cluster.admin.security.write"
-           ng-click="auditCtl.toggleAll(module)">
-        <label
-           class="checkbox"
-           for="thisModule_checkall_{{module}}">enable/disable all {{auditCtl.mapNames(module)}} events</label>
+        <div class="row flex-left">
+          <label
+             class="toggle-control margin-0"
+             for="thisModule_checkall_{{module}}">
+          <input
+             type="checkbox"
+             id="thisModule_checkall_{{module}}"
+             ng-checked="!auditCtl.findEnabled(module, false)"
+             ng-disabled="!auditCtl.state.auditdEnabled || !rbac.cluster.admin.security.write"
+             ng-click="auditCtl.toggleAll(module)">
+          <span class="toggle-control-body"></span>
+          </label>
+          <span class="text-smaller">&nbsp; enable all</span>
+        </div>
         <hr>
         <div
            class="row flex-left items-top"
@@ -130,7 +138,7 @@
 
     <div
        ng-if="adminCtl.poolDefault.isEnterprise && adminCtl.poolDefault.compat.atLeast55"
-       class="formrow fix-width-5 margin-top-1-5">
+       class="formrow fix-width-6 margin-top-1">
       <label>Ignore Filterable Events From These Users</label>
       <textarea
          ng-model="auditCtl.state.disabledUsers"

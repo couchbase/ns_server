@@ -25,9 +25,15 @@
       case "ns_server":
         return "Server";
       case "n1ql":
+        return "Query and Index Service";
+      case "eventing":
+        return "Eventing Service";
+      case "memcached":
+        return "Data Service";
       case "xdcr":
-      case "fts":
         return name.toUpperCase();
+      case "fts":
+        return "Search Service";
       default:
         return name.charAt(0).toUpperCase() + name.substr(1).toLowerCase();
       }
