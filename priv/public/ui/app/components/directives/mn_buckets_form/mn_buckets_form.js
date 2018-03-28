@@ -55,9 +55,9 @@
       if ($scope.rbac && $scope.rbac.cluster.admin.security.read) {
         $q.all([
           mnUserRolesService.getUsers({
-            permission: "cluster.bucket[" + getBucketName($scope) + "].data!read"}),
+            permission: "cluster.bucket[" + getBucketName($scope) + "].data.docs!read"}),
           mnUserRolesService.getUsers({
-            permission: "cluster.bucket[" + getBucketName($scope) + "].data!write"})
+            permission: "cluster.bucket[" + getBucketName($scope) + "].data.docs!write"})
         ]).then(function (resp) {
           var usersMap = {};
           var read = resp[0].data;
