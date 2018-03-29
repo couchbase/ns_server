@@ -561,6 +561,7 @@ section.error {
 .panel-content {
   padding: 1.5rem;
   font-size: .961rem;
+  z-index: 1;
 }
 .panel-footer {
   width: 100%;
@@ -570,6 +571,7 @@ section.error {
   border-top: 1px solid #ececec;
   margin-bottom: 0 !important;
   padding: .75rem 1rem;
+  z-index: 2;
 }
 .panel-footer.spaced {
   justify-content: space-between;
@@ -595,11 +597,9 @@ section.error {
   padding: 1rem 2rem 1px 2rem;
   margin-bottom: .5rem;
   position: relative;
-  z-index: 1;
 }
 .dialog-med .panel-footer {
   position: relative;
-  z-index: 2;
 }
 
 /* adds white "shadow" above footer or below header to indicate scrollability
@@ -1550,6 +1550,11 @@ section.dynamic_unhealthy {
 }
 
 /* selecting user roles ------------------------------------------------  */
+.select-user-roles {
+  height: 370px;
+  overflow-y: scroll;
+  padding: .25rem .25rem .25rem .75rem;
+}
 .select-user-roles div,
 .select-user-roles label,
 .select-user-roles input[type="checkbox"] + label {
@@ -1573,7 +1578,7 @@ section.dynamic_unhealthy {
   top: -3px;
 }
 .select-user-roles div .indent-1 {
-  margin-left: 1rem;
+  margin-left: .5rem;
 }
 .select-user-roles .has-selection {
   background-color: #ecf3fa;
@@ -1961,4 +1966,8 @@ section.dynamic_unhealthy {
 }
 .wb-history-table section span.selected {
   background-color: #ececec;
+}
+/* force scrollbars to be visible -------------------------------------- */
+.hide-track.show-scrollbar::-webkit-scrollbar-track {
+  background-color: #fff !important;
 }

@@ -23,9 +23,6 @@
   .width-6 {
     width: 100%;
   }
-  .column {
-    margin-right: 0;
-  }
   .resp-flex-column-med {
     flex-direction: column;
     justify-content: flex-start;
@@ -120,19 +117,25 @@
   .row.resp-sml,
   .controls.resp-sml,
   .content-box-dashboard.resp-sml{
-    flex-wrap: wrap;
-}
+    flex-wrap: wrap !important;
+  }
+  div[class*="width-"] {
+    width: 94vw;
+  }
   .wb-main-wrapper.resp-small {
     width: 100% !important;
-}
+  }
+  .column {
+    margin-right: 0;
+  }
   .cbui-table-props,
   .cbui-table-bucketprops,
   .cbui-table-meters {
     margin: 0 0 1.5rem 0!important;
   }
-  .allcaps {
+/*  .allcaps {
     text-transform: capitalize;
-  }
+  } */
   .cbui-tablerow.resp-sml {
     flex-flow: column-reverse;
     align-items: stretch;
@@ -141,7 +144,8 @@
   .cbui-table-cell.resp-sml {
     overflow: visible;
   }
-  .panel .dialog-med {
+  .panel .dialog-med,
+  .panel .dialog-lg {
     width: 94vw;
   }
   .forms.max-height-500 {
