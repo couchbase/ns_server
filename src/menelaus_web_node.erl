@@ -531,85 +531,20 @@ handle_node_settings_post("self", Req) ->
 handle_node_settings_post(S, Req) when is_list(S) ->
     handle_node_settings_post(list_to_existing_atom(S), Req);
 handle_node_settings_post(Node, Req) when is_atom(Node) ->
-    Params = mochiweb_request:parse_post(Req),
-
     case Node =/= node() of
         true -> exit("Setting the disk storage path for other servers is "
                      "not yet supported.");
         _ -> ok
     end,
 
-    {ok, DefaultDbPath} = ns_storage_conf:this_node_dbdir(),
-    {ok, DefaultIndexPath} = ns_storage_conf:this_node_ixdir(),
-    DbPath0 = proplists:get_value("path", Params, DefaultDbPath),
-    IxPath0 = proplists:get_value("index_path", Params, DefaultIndexPath),
-    CBASPaths0 = case [P || {"cbas_path", P} <- Params] of
-                     [] -> ns_storage_conf:this_node_cbas_dirs();
-                     Ps -> Ps
-                 end,
-
-    {Paths, Errors} =
-        lists:foldl(
-          fun({Field, Path}, {PAcc, EAcc}) ->
-                  case validate_dir_path(Field, Path) of
-                      {ok, PInfo} ->
-                          {[PInfo | PAcc], EAcc};
-                      {error, Err} ->
-                          {PAcc, [Err | EAcc]}
-                  end
-          end, {[], []},
-          [{path, DbPath0}, {index_path, IxPath0}] ++
-              [{cbas_path, P} || P <- CBASPaths0]),
-
-    Results =
-        case Errors of
-            [] ->
-                DbPath = proplists:get_value(path, Paths),
-
-                Errs = lists:filtermap(validate_ix_cbas_path(_, DbPath), Paths),
-                case Errs of
-                    [] ->
-                        IxPath = proplists:get_value(index_path, Paths),
-                        CBASPaths = proplists:get_all_values(cbas_path, Paths),
-                        do_handle_node_settings_post(Node, Req, DbPath, IxPath,
-                                                     CBASPaths, DefaultDbPath);
-                    _ ->
-                        {errors, Errs}
-                end;
-            _ ->
-                {errors, Errors}
-        end,
-
-    case Results of
+    Params = mochiweb_request:parse_post(Req),
+    case apply_node_settings(Params) of
+        not_changed -> reply(Req, 200);
         ok ->
+            ns_audit:disk_storage_conf(Req, Node, Params),
             reply(Req, 200);
-        {errors, E} = FinalErrors when E =/= []->
-            reply_json(Req, {struct, [FinalErrors]}, 400)
-    end.
-
-do_handle_node_settings_post(Node, Req, DbPath, IxPath, CBASPaths, DefDbPath) ->
-    case ns_config_auth:is_system_provisioned() andalso DbPath =/= DefDbPath of
-        true ->
-            %% MB-7344: we had 1.8.1 instructions allowing that. And
-            %% 2.0 works very differently making that original
-            %% instructions lose data. Thus we decided it's much safer
-            %% to un-support this path.
-            Msg = <<"Changing data of nodes that are part of provisioned "
-                    "cluster is not supported">>,
-            reply_json(Req, {struct, [{error, Msg}]}, 400),
-            exit(normal);
-        _ ->
-            ok
-    end,
-
-    case ns_storage_conf:setup_disk_storage_conf(DbPath, IxPath, CBASPaths) of
-        not_changed ->
-            ok;
-        ok ->
-            ns_audit:disk_storage_conf(Req, Node, DbPath, IxPath, CBASPaths),
-            ok;
         restart ->
-            ns_audit:disk_storage_conf(Req, Node, DbPath, IxPath, CBASPaths),
+            ns_audit:disk_storage_conf(Req, Node, Params),
             %% NOTE: due to required restart we need to protect
             %% ourselves from 'death signal' of parent
             erlang:process_flag(trap_exit, true),
@@ -619,9 +554,69 @@ do_handle_node_settings_post(Node, Req, DbPath, IxPath, CBASPaths, DefDbPath) ->
             {ok, _} = ns_server_cluster_sup:restart_ns_server(),
             reply(Req, 200),
             erlang:exit(normal);
-        {errors, _} = Errors ->
-            Errors
+        {error, Msgs} -> reply_json(Req, Msgs, 400)
     end.
+
+-spec apply_node_settings(Params :: [{Key :: string(), Value :: term()}]) ->
+        ok | not_changed | restart | {error, [Msg :: binary()]}.
+apply_node_settings(Params) ->
+    try
+        Paths = validate_settings_paths(extract_settings_paths(Params)),
+
+        DbPath = proplists:get_value(path, Paths),
+        IxPath = proplists:get_value(index_path, Paths),
+        CBASDirs = proplists:get_all_values(cbas_path, Paths),
+
+        {ok, DefaultDbPath} = ns_storage_conf:this_node_dbdir(),
+        DbPathChanged = DbPath =/= DefaultDbPath,
+        case ns_config_auth:is_system_provisioned() andalso DbPathChanged of
+            true ->
+                %% MB-7344: we had 1.8.1 instructions allowing that. And
+                %% 2.0 works very differently making that original
+                %% instructions lose data. Thus we decided it's much safer
+                %% to un-support this path.
+                Msg = "Changing data of nodes that are part of provisioned "
+                      "cluster is not supported",
+                erlang:throw({error, [Msg]});
+            _ ->
+                ok
+        end,
+
+        ns_storage_conf:setup_disk_storage_conf(DbPath, IxPath, CBASDirs)
+    catch
+        throw:{error, ErrorMsgs} ->
+            {error, [iolist_to_binary(M) || M <- ErrorMsgs]}
+    end.
+
+extract_settings_paths(Params) ->
+    {ok, DefaultDbPath} = ns_storage_conf:this_node_dbdir(),
+    {ok, DefaultIxPath} = ns_storage_conf:this_node_ixdir(),
+
+    CBASDirsToSet =
+        case [Dir || {"cbas_path", Dir} <- Params] of
+            [] -> ns_storage_conf:this_node_cbas_dirs();
+            Dirs -> Dirs
+        end,
+
+    [{path, proplists:get_value("path", Params, DefaultDbPath)},
+     {index_path, proplists:get_value("index_path", Params, DefaultIxPath)}] ++
+    [{cbas_path, P} || P <- CBASDirsToSet].
+
+validate_settings_paths(Paths) ->
+    ValidateRes = [validate_dir_path(K, V) || {K, V} <- Paths],
+    ValidationErrors = [E || {error, E} <- ValidateRes],
+
+    ValidationErrors == [] orelse throw({error, ValidationErrors}),
+
+    ResPaths = [P || {ok, P} <- ValidateRes],
+
+    DbPath = proplists:get_value(path, ResPaths),
+    IxCbasPathsErrors =
+        lists:filtermap(validate_ix_cbas_path(_, DbPath), ResPaths),
+
+    IxCbasPathsErrors == [] orelse throw({error, IxCbasPathsErrors}),
+
+    ResPaths.
 
 %% Basic port validation is done.
 %% The below port validations are not performed.

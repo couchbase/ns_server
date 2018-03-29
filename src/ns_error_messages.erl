@@ -29,7 +29,9 @@
          topology_limitation_error/1,
          cert_validation_error_message/1,
          reload_node_certificate_error/1,
-         node_certificate_warning/1]).
+         node_certificate_warning/1,
+         not_absolute_path/1,
+         empty_param/1]).
 
 -spec connection_error_message(term(), string(), string() | integer()) -> binary() | undefined.
 connection_error_message({Error, _}, Host, Port) ->
@@ -246,3 +248,11 @@ node_certificate_warning(expires_soon) ->
     <<"Certificate will expire soon.">>;
 node_certificate_warning(self_signed) ->
     <<"Out-of-the-box certificates are self-signed. To further secure your system, you must create new X.509 certificates signed by a trusted CA.">>.
+
+not_absolute_path(Param) ->
+    Msg = io_lib:format("An absolute path is required for ~p", [Param]),
+    iolist_to_binary(Msg).
+
+empty_param(Param) ->
+    iolist_to_binary(io_lib:format("~p cannot contain empty string", [Param])).
+

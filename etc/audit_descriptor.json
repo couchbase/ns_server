@@ -247,12 +247,12 @@
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
-              "node" : "",
-              "db_path" : "",
-              "index_path" : "",
-              "cbas_dirs" : ""
+              "node" : ""
           },
           "optional_fields" : {
+              "db_path" : "",
+              "index_path" : "",
+              "cbas_dirs" : "",
               "sessionid" : ""
           }
       },
