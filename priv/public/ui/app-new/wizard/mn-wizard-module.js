@@ -50,18 +50,6 @@ mn.modules.MnWizard =
           mnWizardService.initialValues.hostname = hostname;
         });
 
-      mnWizardService
-        .getQuerySettings()
-        .first()
-        .subscribe(function (value) {
-          newClusterConfig.get("querySettings").setValue(value);
-          mnWizardService
-            .wizardForm
-            .joinCluster
-            .get("querySettings")
-            .setValue(value);
-        });
-
       mnPoolsService
         .stream
         .isEnterprise

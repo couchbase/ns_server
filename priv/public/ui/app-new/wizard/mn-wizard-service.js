@@ -16,11 +16,6 @@ mn.services.MnWizard = (function () {
     })
   });
 
-  var querySettings =  new ng.forms.FormGroup({
-    queryTmpSpaceDir: new ng.forms.FormControl(null),
-    queryTmpSpaceSize: new ng.forms.FormControl(null),
-  });
-
   var wizardForm = {
     newCluster: new ng.forms.FormGroup({
       clusterName: new ng.forms.FormControl(null, [
@@ -39,7 +34,6 @@ mn.services.MnWizard = (function () {
     }),
     newClusterConfig: new ng.forms.FormGroup({
       clusterStorage: clusterStorage,
-      querySettings: querySettings,
       services: new ng.forms.FormGroup({
         flag: new ng.forms.FormGroup({
           kv: new ng.forms.FormControl({value: true, disabled: true}),
@@ -93,8 +87,7 @@ mn.services.MnWizard = (function () {
           cbas: new ng.forms.FormControl(false)
         })
       }),
-      clusterStorage: clusterStorage,
-      querySettings: querySettings
+      clusterStorage: clusterStorage
     })
   };
 
@@ -188,7 +181,6 @@ mn.services.MnWizard = (function () {
         poolsDefaultHttp: mnAdminService.stream.poolsDefaultHttp,
         servicesHttp: this.stream.servicesHttp,
         diskStorageHttp: this.stream.diskStorageHttp,
-        querySettingsHttp: this.stream.querySettingsHttp,
         hostnameHttp: this.stream.hostnameHttp,
         statsHttp: this.stream.statsHttp
       })

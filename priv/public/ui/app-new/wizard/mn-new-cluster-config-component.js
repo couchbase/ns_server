@@ -49,8 +49,7 @@ mn.components.MnNewClusterConfig =
         },
         diskStorageHttp:this.wizardForm.newClusterConfig.get("clusterStorage.storage").value,
         hostnameHttp: this.wizardForm.newClusterConfig.get("clusterStorage.hostname").value,
-        statsHttp: this.wizardForm.newClusterConfig.get("enableStats").value,
-        querySettingsHttp: this.wizardForm.newClusterConfig.get("querySettings").value
+        statsHttp: this.wizardForm.newClusterConfig.get("enableStats").value
       };
     }
 

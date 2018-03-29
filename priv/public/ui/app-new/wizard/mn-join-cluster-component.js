@@ -38,8 +38,7 @@ mn.components.MnJoinCluster =
 
       this.groupHttp.post({
         hostnameHttp: this.wizardForm.joinCluster.get("clusterStorage.hostname").value,
-        diskStorageHttp: this.wizardForm.joinCluster.get("clusterStorage.storage").value,
-        querySettingsHttp: this.wizardForm.joinCluster.get("querySettings").value
+        diskStorageHttp: this.wizardForm.joinCluster.get("clusterStorage.storage").value
       });
     }
 
@@ -61,8 +60,7 @@ mn.components.MnJoinCluster =
       this.groupHttp =
         new mn.helper.MnPostGroupHttp({
           hostnameHttp: this.hostnameHttp,
-          diskStorageHttp: this.diskStorageHttp,
-          querySettingsHttp: mnWizardService.stream.querySettingsHttp
+          diskStorageHttp: this.diskStorageHttp
         })
         .addLoading()
         .addSuccess();
