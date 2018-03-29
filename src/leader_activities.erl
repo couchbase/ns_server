@@ -243,9 +243,10 @@ switch_quorum_regular(NewQuorum, Opts) ->
     Activity            = get_activity_pid(),
     {ok, ActivityToken} = get_activity_token(),
 
+    EffectiveOpts = Opts ++ ActivityToken#activity_token.options,
     call_wait_for_quorum(node(),
                          ActivityToken,
-                         NewQuorum, Opts, switch_quorum, [Activity]).
+                         NewQuorum, EffectiveOpts, switch_quorum, [Activity]).
 
 switch_quorum_bypass(_NewQuorum, _Opts) ->
     ok.
