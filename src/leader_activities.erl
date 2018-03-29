@@ -33,10 +33,16 @@
 
 -export([switch_quorum/1, switch_quorum/2]).
 
+-export([activate_quorum_nodes/1, activate_quorum_nodes/2]).
+-export([deactivate_quorum_nodes/1, deactivate_quorum_nodes/2]).
+-export([update_quorum_nodes/1, update_quorum_nodes/2]).
+
 %% used only by leader_* modules only
 -export([register_acquirer/1, register_agent/1]).
 -export([lease_acquired/2, lease_lost/2]).
 -export([local_lease_granted/2, local_lease_expired/2]).
+
+-export([register_quorum_nodes_manager/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
@@ -77,10 +83,11 @@
                           name         :: [term()],
                           options      :: activity_options() }).
 
--record(state, { agent    :: undefined | {pid(), reference()},
-                 acquirer :: undefined | {pid(), reference()},
+-record(state, { agent                :: undefined | {pid(), reference()},
+                 acquirer             :: undefined | {pid(), reference()},
+                 quorum_nodes_manager :: undefined | {pid(), reference()},
 
-                 quorum_nodes       :: sets:set(node()),
+                 quorum_nodes       :: undefined | sets:set(node()),
                  leases             :: sets:set(node()),
                  local_lease_holder :: undefined | lease_holder(),
 
@@ -98,6 +105,20 @@ register_acquirer(Pid) ->
 
 register_agent(Pid) ->
     call_register_internal_process(agent, Pid).
+
+register_quorum_nodes_manager(Pid, QuorumNodes) ->
+    case call_register_internal_process(quorum_nodes_manager, Pid) of
+        {ok, _ServerPid} = Ok ->
+            case call_if_internal_process(quorum_nodes_manager, Pid,
+                                          {note_quorum_nodes, QuorumNodes}) of
+                ok ->
+                    Ok;
+                Error ->
+                    Error
+            end;
+        Error ->
+            Error
+    end.
 
 lease_acquired(Pid, Node) ->
     call_if_internal_process(acquirer, Pid, {lease_acquired, Node}).
@@ -251,23 +272,57 @@ switch_quorum_regular(NewQuorum, Opts) ->
 switch_quorum_bypass(_NewQuorum, _Opts) ->
     ok.
 
+activate_quorum_nodes(Nodes) ->
+    activate_quorum_nodes(Nodes, []).
+
+activate_quorum_nodes(Nodes, Opts) ->
+    update_quorum_nodes(?cut(lists:usort(_ ++ Nodes)), Opts).
+
+deactivate_quorum_nodes(Nodes) ->
+    deactivate_quorum_nodes(Nodes, []).
+
+deactivate_quorum_nodes(Nodes, Opts) ->
+    update_quorum_nodes(_ -- Nodes, Opts).
+
+update_quorum_nodes(Fun) ->
+    update_quorum_nodes(Fun, []).
+
+update_quorum_nodes(Fun, Opts) ->
+    pick_implementation(fun update_quorum_nodes_regular/2,
+                        fun update_quorum_nodes_bypass/2,
+                        [Fun, Opts]).
+
+update_quorum_nodes_regular(Fun, Opts) ->
+    run_activity(update_quorum_nodes, majority,
+                 fun () ->
+                         {ok, Nodes} = call(get_quorum_nodes),
+                         NewNodes    = Fun(Nodes),
+                         case switch_quorum([majority, {majority, NewNodes}]) of
+                             ok ->
+                                 call({set_quorum_nodes, Nodes, NewNodes});
+                             Error ->
+                                 Error
+                         end
+                 end, Opts).
+
+update_quorum_nodes_bypass(Fun, _Opts) ->
+    case cluster_compat_mode:is_cluster_vulcan() of
+        true ->
+            %% If we get there, it means that new orchestration is
+            %% disabled. We update the quorum nodes anyway in case in the
+            %% future the user goes back to new orchestration.
+            Nodes = leader_quorum_nodes_manager:get_quorum_nodes_unsafe(),
+            leader_quorum_nodes_manager:set_quorum_nodes_unsafe(Fun(Nodes));
+        false ->
+            ok
+    end.
+
 %% gen_server callbacks
 init([]) ->
     process_flag(priority, high),
     process_flag(trap_exit, true),
 
-    Self = self(),
-    ns_pubsub:subscribe_link(ns_config_events,
-                             case _ of
-                                 {nodes_wanted, _} ->
-                                     Self ! update_quorum_nodes;
-                                 {node, _, membership} ->
-                                     Self ! update_quorum_nodes;
-                                 _ ->
-                                     ok
-                             end),
-
-    {ok, #state{quorum_nodes       = get_quorum_nodes(),
+    {ok, #state{quorum_nodes       = undefined,
                 leases             = sets:new(),
                 local_lease_holder = undefined,
 
@@ -279,6 +334,10 @@ handle_call({wait_for_quorum,
              Lease, Quorum, Unsafe, SubCall, Timeout}, From, State) ->
     {noreply, handle_wait_for_quorum(Lease, Quorum, Unsafe,
                                      SubCall, Timeout, From, State)};
+handle_call(get_quorum_nodes, From, State) ->
+    {noreply, handle_get_quorum_nodes(From, State)};
+handle_call({set_quorum_nodes, OldNodes, NewNodes}, From, State) ->
+    {noreply, handle_set_quorum_nodes(OldNodes, NewNodes, From, State)};
 handle_call(Request, From, State) ->
     ?log_error("Received unexpected call ~p from ~p when state is~n~p",
                [Request, From, State]),
@@ -288,8 +347,6 @@ handle_cast(Msg, State) ->
     ?log_error("Received unexpected cast ~p when state is~n~p", [Msg, State]),
     {noreply, State}.
 
-handle_info(update_quorum_nodes, State) ->
-    {noreply, handle_update_quorum_nodes(State)};
 handle_info({'DOWN', MRef, process, Pid, Reason}, State) ->
     {noreply, handle_down(MRef, Pid, Reason, State)};
 handle_info({'EXIT', _Pid, _Reason} = Exit, State) ->
@@ -339,6 +396,9 @@ quorum_timeout(Opts, Unsafe) ->
         end,
 
     proplists:get_value(quorum_timeout, Opts, Default).
+
+call(Call) ->
+    call(Call, infinity).
 
 call(Call, Timeout) ->
     call(node(), Call, Timeout).
@@ -426,6 +486,10 @@ handle_if_internal_process_subcall(agent,
                                    {local_lease_expired, LocalLease},
                                    From, State) ->
     handle_local_lease_expired(LocalLease, From, State);
+handle_if_internal_process_subcall(quorum_nodes_manager,
+                                   {note_quorum_nodes, Nodes},
+                                   From, State) ->
+    handle_note_quorum_nodes(Nodes, From, State);
 handle_if_internal_process_subcall(Type, SubCall, From, State) ->
     ?log_error("Received unexpected internal process ~p "
                "subcall ~p from ~p, state =~n~p",
@@ -520,12 +584,21 @@ expire_local_lease(State) ->
     NewState = State#state{local_lease_holder = undefined},
     terminate_all_activities(NewState, {shutdown, local_lease_expired}).
 
+handle_note_quorum_nodes(QuorumNodes, From, State) ->
+    %% The quorum nodes manager will only notify us of the quorum nodes once,
+    %% right after registering. So our current quorum_nodes must be undefined.
+    undefined = State#state.quorum_nodes,
+
+    gen_server2:reply(From, ok),
+    State#state{quorum_nodes = QuorumNodes}.
+
 set_internal_process(Type, Value, State) ->
     setelement(internal_process_type_to_field(Type), State, Value).
 
 internal_processes() ->
     [{agent, #state.agent},
-     {acquirer, #state.acquirer}].
+     {acquirer, #state.acquirer},
+     {quorum_nodes_manager, #state.quorum_nodes_manager}].
 
 internal_process_type_to_field(Type) ->
     {Type, Field} = lists:keyfind(Type, 1, internal_processes()),
@@ -551,7 +624,10 @@ cleanup_activities_after_internal_process(agent, State) ->
     expire_local_lease(State);
 cleanup_activities_after_internal_process(acquirer, State) ->
     NewState = State#state{leases = sets:new()},
-    cleanup_after_leader_internal_process(acquirer, NewState).
+    cleanup_after_leader_internal_process(acquirer, NewState);
+cleanup_activities_after_internal_process(quorum_nodes_manager, State) ->
+    NewState = State#state{quorum_nodes = undefined},
+    cleanup_after_leader_internal_process(quorum_nodes_manager, NewState).
 
 cleanup_after_leader_internal_process(Type, State) ->
     Pred = ?cut(quorum_requires_leader(_#activity.quorum)),
@@ -614,9 +690,13 @@ take_activity(Key, N, #state{activities = Activities} = State) ->
             {ok, A, State#state{activities = Rest}}
     end.
 
-is_leader(#state{local_lease_holder = {Node, _},
-                 acquirer           = Acquirer}) ->
-    Acquirer =/= undefined andalso Node =:= node();
+is_leader(#state{local_lease_holder   = {Node, _},
+                 acquirer             = Acquirer,
+                 quorum_nodes_manager = QuorumNodesManager,
+                 quorum_nodes         = QuorumNodes}) ->
+    Node =:= node() andalso
+        not lists:member(undefined,
+                         [Acquirer, QuorumNodesManager, QuorumNodes]);
 is_leader(_) ->
     false.
 
@@ -631,6 +711,7 @@ have_quorum(follower, State) ->
 have_quorum(Tag, State)
   when Tag =:= all;
        Tag =:= majority ->
+    true = sets:is_set(State#state.quorum_nodes),
     have_quorum({Tag, State#state.quorum_nodes}, State);
 have_quorum({all, Nodes}, #state{leases = Leases}) ->
     sets:is_subset(Nodes, Leases);
@@ -853,6 +934,37 @@ handle_switch_quorum(Domain, Name, NewQuorum, Pid, From, State) ->
             State
     end.
 
+handle_get_quorum_nodes(From, #state{quorum_nodes = QuorumNodes} = State) ->
+    Reply =
+        case QuorumNodes of
+            undefined ->
+                {error, no_quorum_nodes};
+            _ ->
+                {ok, sets:to_list(QuorumNodes)}
+        end,
+
+    gen_server2:reply(From, Reply),
+    State.
+
+handle_set_quorum_nodes(OldNodesList, NewNodesList, From,
+                        #state{quorum_nodes         = QuorumNodes,
+                               quorum_nodes_manager = {Mgr, _}} = State) ->
+    OldNodes = sets:from_list(OldNodesList),
+    NewNodes = sets:from_list(NewNodesList),
+
+    case OldNodes =:= QuorumNodes of
+        true ->
+            ok = leader_quorum_nodes_manager:set_quorum_nodes(Mgr, NewNodes),
+            gen_server2:reply(From, ok),
+            State#state{quorum_nodes = NewNodes};
+        false ->
+            gen_server2:reply(From, {error, conflict}),
+            State
+    end;
+handle_set_quorum_nodes(_OldNodesList, _NewNodesList, From, State) ->
+    gen_server2:reply(From, {error, no_quorum_manager}),
+    State.
+
 report_error(Domain, Name, Error) ->
     ?log_error("Activity ~p failed with error ~p", [{Domain, Name}, Error]),
     {leader_activities_error, {Domain, Name}, Error}.
@@ -911,24 +1023,3 @@ merge_option(Key, ValuePred, Options, ParentOptions) ->
 merge_options(Options, ParentOptions) ->
     lists:foldl(merge_option(_, _, ParentOptions),
                 Options, inheritable_options()).
-
-get_quorum_nodes() ->
-    sets:from_list(ns_cluster_membership:active_nodes()).
-
-handle_update_quorum_nodes(#state{quorum_nodes = QuorumNodes} = State) ->
-    ?flush(update_quorum_nodes),
-
-    NewQuorumNodes = get_quorum_nodes(),
-    case QuorumNodes =:= NewQuorumNodes of
-        true ->
-            State;
-        false ->
-            Added   = sets:subtract(NewQuorumNodes, QuorumNodes),
-            Removed = sets:subtract(QuorumNodes, NewQuorumNodes),
-
-            NewState = State#state{quorum_nodes = NewQuorumNodes},
-            check_quorums(NewState,
-                          {quorum_nodes_changed,
-                           {added, sets:to_list(Added)},
-                           {removed, sets:to_list(Removed)}})
-    end.

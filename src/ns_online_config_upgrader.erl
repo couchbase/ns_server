@@ -87,7 +87,8 @@ upgrade(?VERSION_51, Config) ->
          eventing_settings_manager:config_upgrade_to_vulcan() ++
          ns_bucket:config_upgrade_to_vulcan(Config) ++
          menelaus_users:config_upgrade_to_vulcan() ++
-         ns_audit_cfg:upgrade_to_vulcan(Config)}.
+         ns_audit_cfg:upgrade_to_vulcan(Config) ++
+         leader_quorum_nodes_manager:config_upgrade_to_vulcan(Config)}.
 
 add_index_ram_alert_limit(Config) ->
     {value, Current} = ns_config:search(Config, alert_limits),

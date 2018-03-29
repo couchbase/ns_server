@@ -126,6 +126,7 @@ default() ->
                                           {min_db_file_size, 131072},
                                           {min_view_file_size, 20 * 1024 * 1024}]},
      {nodes_wanted, [node()]},
+     {quorum_nodes, [node()]},
      {server_groups, [[{uuid, <<"0">>},
                        {name, <<"Group 1">>},
                        {nodes, [node()]}]]},

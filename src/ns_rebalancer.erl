@@ -99,6 +99,8 @@ orchestrate_failover(Nodes) ->
                       "complete on some nodes:~n~p", [ErrorNodes])
     end,
 
+    ok = leader_activities:deactivate_quorum_nodes(Nodes),
+
     ns_cluster:counter_inc(failover),
     deactivate_nodes(Nodes),
 
@@ -108,13 +110,7 @@ deactivate_nodes([]) ->
     ok;
 deactivate_nodes(Nodes) ->
     ale:info(?USER_LOGGER, "Deactivating failed over nodes ~p", [Nodes]),
-    ns_cluster_membership:deactivate(Nodes),
-
-    OtherNodes = ns_node_disco:nodes_wanted() -- Nodes,
-    LiveNodes  = leader_utils:live_nodes(OtherNodes),
-
-    ns_config_rep:ensure_config_seen_by_nodes(LiveNodes,
-                                              ?FAILOVER_CONFIG_SYNC_TIMEOUT).
+    ns_cluster_membership:deactivate(Nodes).
 
 %% @doc Fail one or more nodes. Doesn't eject the node from the cluster. Takes
 %% effect immediately.
@@ -698,8 +694,7 @@ rebalance(KeepNodes, EjectNodesAll, FailedNodesAll,
           BucketConfigs,
           DeltaNodes, DeltaRecoveryBuckets) ->
     ok = leader_activities:run_activity(
-           rebalance,
-           {majority, KeepNodes ++ EjectNodesAll},
+           rebalance, majority,
            ?cut(rebalance_body(KeepNodes, EjectNodesAll,
                                FailedNodesAll, BucketConfigs,
                                DeltaNodes, DeltaRecoveryBuckets))).
@@ -716,6 +711,7 @@ rebalance_body(KeepNodes,
     ok = maybe_clear_full_recovery_type(KeepNodes),
     ok = service_janitor:cleanup(),
 
+    ok = leader_activities:activate_quorum_nodes(KeepNodes),
     ns_cluster_membership:activate(KeepNodes),
 
     pull_and_push_config(EjectNodesAll ++ KeepNodes),
@@ -727,21 +723,11 @@ rebalance_body(KeepNodes,
     rebalance_kv(KeepNodes, EjectNodesAll, BucketConfigs, DeltaRecoveryBuckets),
     rebalance_services(KeepNodes, EjectNodesAll),
 
+    ok = leader_activities:deactivate_quorum_nodes(EjectNodesAll),
+
     %% don't eject ourselves at all here; this will be handled by
     %% ns_orchestrator
     EjectNowNodes = EjectNodesAll -- [node()],
-
-    %% Deactivate the nodes first so that they are excluded from quorums.
-    ns_cluster_membership:deactivate(EjectNowNodes),
-
-    %% Generally, the nodes to be ejected are supposed to be healthy, so it's
-    %% ok to try to sync the config to them to. The intent here is to improve
-    %% the safety: we want those nodes to realize that they are not part of
-    %% the normal quorum anymore. Obviously, it still doesn't guarantee
-    %% complete safety.
-    ok = ns_config_rep:ensure_config_seen_by_nodes(KeepNodes ++ EjectNodesAll),
-    ok = leader_activities:switch_quorum({majority, KeepNodes}),
-
     eject_nodes(EjectNowNodes),
 
     ok.

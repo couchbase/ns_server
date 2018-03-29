@@ -154,9 +154,8 @@ handle_start_recovery(Bucket, FromPid) ->
         LiveNodes       = ns_node_disco:nodes_wanted() -- FailedOverNodes,
         KVServers       = ns_cluster_membership:service_nodes(LiveNodes, kv),
 
-        leader_activities:register_process({recovery, Bucket},
-                                           {majority, LiveNodes}),
-
+        leader_activities:register_process({recovery, Bucket}, majority),
+        ok = leader_activities:activate_quorum_nodes(KVServers),
         ns_cluster_membership:activate(KVServers),
 
         sync_config(KVServers, FromPid),
