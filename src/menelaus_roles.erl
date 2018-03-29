@@ -355,6 +355,7 @@ roles_vulcan() ->
        {[{bucket, any}, data], none},
        {[{bucket, any}, views], none},
        {[{bucket, any}, n1ql], none},
+       {[{bucket, any}, fts], none},
        {[{bucket, any}, password], none},
        {[n1ql, curl], none},
        {[eventing], none},
