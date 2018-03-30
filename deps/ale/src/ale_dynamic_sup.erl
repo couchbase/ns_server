@@ -74,7 +74,7 @@ delay_death(MFA, Timeout) ->
     proc_lib:start_link(?MODULE, delay_death_init, [MFA, Parent, Timeout]).
 
 delay_death_init({M, F, A}, Parent, Timeout) ->
-    Start = erlang:now(),
+    Start = erlang:monotonic_time(),
     process_flag(trap_exit, true),
 
     case erlang:apply(M, F, A) of
@@ -103,7 +103,7 @@ handle_parent_exit(Child, Reason) ->
     end.
 
 handle_child_exit(Reason, Parent, Start, Timeout) ->
-    TimeSpent = timer:now_diff(erlang:now(), Start) div 1000,
+    TimeSpent = erlang:convert_time_unit(erlang:monotonic_time() - Start, native, millisecond),
     Left = erlang:max(Timeout - TimeSpent, 0),
 
     receive

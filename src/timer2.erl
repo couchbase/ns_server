@@ -450,11 +450,8 @@ do_apply({M,F,A}) ->
 positive(X) ->
     erlang:max(X, 0).
 
-
 system_time_millis() ->
-    {M,S,U} = erlang:now(),
-    1000 * (M*1000000 + S) + U div 1000.
-
+    erlang:monotonic_time(millisecond).
 
 send([Pid, Msg]) ->
     Pid ! Msg.
