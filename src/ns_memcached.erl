@@ -65,9 +65,9 @@
           running_very_heavy = 0,
           %% NOTE: otherwise dialyzer seemingly thinks it's possible
           %% for queue fields to be undefined
-          fast_calls_queue = impossible :: queue(),
-          heavy_calls_queue = impossible :: queue(),
-          very_heavy_calls_queue = impossible :: queue(),
+          fast_calls_queue = impossible :: queue:queue(),
+          heavy_calls_queue = impossible :: queue:queue(),
+          very_heavy_calls_queue = impossible :: queue:queue(),
           status :: connecting | init | connected | warmed,
           start_time::tuple(),
           bucket::nonempty_string(),

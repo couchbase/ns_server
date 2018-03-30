@@ -27,9 +27,9 @@
 -define(MAX_CRASHES_LEN, 100).
 
 -record(state, {file_path :: file:filename(),
-                crashes :: queue(),
+                crashes :: queue:queue(),
                 crashes_len :: non_neg_integer(),
-                crashes_saved :: queue(),
+                crashes_saved :: queue:queue(),
                 consumer_from = undefined :: undefined | {pid(), reference()},
                 consumer_mref = undefined :: undefined | reference()
                }).

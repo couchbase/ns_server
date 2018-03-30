@@ -53,7 +53,7 @@
           rebalancer :: undefined | pid(),
           rebalancer_mref :: undefined | reference(),
           rebalance_worker :: undefined | pid(),
-          rebalance_waiters :: undefined | queue(),
+          rebalance_waiters :: undefined | queue:queue(),
           rebalance_observer :: undefined | pid(),
 
           tasks :: undefined | {revision(), [any()]},

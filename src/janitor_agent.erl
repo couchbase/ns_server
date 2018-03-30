@@ -38,7 +38,7 @@
                 rebalance_status = finished :: in_process | finished,
                 replicators_primed :: boolean(),
 
-                apply_vbucket_states_queue :: queue(),
+                apply_vbucket_states_queue :: queue:queue(),
                 apply_vbucket_states_worker :: undefined | pid(),
                 rebalance_subprocesses_registry :: pid()}).
 
