@@ -190,7 +190,7 @@ fetch_ddoc_ids_for_mod(Mod, BucketId) ->
                             end),
     [Id || {Id, Views} <- Pairs, Views =/= {[]}].
 
--spec get_design_doc_signatures(mapreduce_view | spatial_view, bucket_name() | binary()) -> dict().
+-spec get_design_doc_signatures(mapreduce_view | spatial_view, bucket_name() | binary()) -> dict:dict().
 get_design_doc_signatures(Mod, BucketId) ->
     DesignDocIds = try
                        fetch_ddoc_ids_for_mod(Mod, BucketId)

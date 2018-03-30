@@ -1038,7 +1038,7 @@ atomic_rename(From, To) ->
     end.
 
 %% Get an item from from a dict, if it doesnt exist return default
--spec dict_get(term(), dict(), term()) -> term().
+-spec dict_get(term(), dict:dict(), term()) -> term().
 dict_get(Key, Dict, Default) ->
     case dict:find(Key, Dict) of
         {ok, Value} ->

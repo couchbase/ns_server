@@ -276,7 +276,7 @@ check_alerts(Opaque, Hist, Stats) ->
 
 %% @doc if listening on a non localhost ip, detect differences between
 %% external listening host and current node host
--spec check(atom(), dict(), list(), [{atom(),number()}]) -> dict().
+-spec check(atom(), dict:dict(), list(), [{atom(),number()}]) -> dict:dict().
 check(ip, Opaque, _History, _Stats) ->
     {_Name, Host} = misc:node_name_host(node()),
     case can_listen(Host) of
@@ -451,7 +451,7 @@ check(communication_issue, Opaque, _History, _Stats) ->
 
 %% @doc only check for disk usage if there has been no previous
 %% errors or last error was over the timeout ago
--spec hit_rate_limit(atom(), dict()) -> true | false.
+-spec hit_rate_limit(atom(), dict:dict()) -> true | false.
 hit_rate_limit(Key, Dict) ->
     case dict:find(Key, Dict) of
         error ->
@@ -542,7 +542,7 @@ can_listen(Host) ->
 
 
 %% @doc list of buckets thats measured stats have increased
--spec stat_increased(dict(), dict()) -> list().
+-spec stat_increased(dict:dict(), dict:dict()) -> list().
 stat_increased(New, Old) ->
     [Bucket || {Bucket, Val} <- dict:to_list(New), increased(Bucket, Val, Old)].
 
@@ -581,7 +581,7 @@ expire_history(Hist) ->
 
 
 %% @doc Lookup old value and test for increase
--spec increased(string(), integer(), dict()) -> true | false.
+-spec increased(string(), integer(), dict:dict()) -> true | false.
 increased(Key, Val, Dict) ->
     case dict:find(Key, Dict) of
         error ->

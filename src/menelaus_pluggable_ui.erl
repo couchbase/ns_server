@@ -46,7 +46,7 @@
 -record(prefix_props, { port_name :: atom() }).
 -record(plugin, { name                   :: service_name(),
                   proxy_strategy         :: proxy_strategy(),
-                  rest_api_prefixes      :: dict(),
+                  rest_api_prefixes      :: dict:dict(),
                   doc_roots              :: [string()],
                   version_dirs           :: [{ui_compat_version(), string()}],
                   request_headers_filter :: {filter_op(), [string()]}}).

@@ -45,7 +45,7 @@
 -record(state, {
           service :: atom(),
 
-          node_uuid_map :: dict(),
+          node_uuid_map :: dict:dict(),
 
           conn :: undefined | pid(),
           conn_mref :: undefined | reference(),

@@ -308,7 +308,7 @@ stop_rebalance() ->
                             not_needed |
                             {error, {failed_nodes, [node()]}}
   when UUID :: binary(),
-       RecoveryMap :: dict().
+       RecoveryMap :: dict:dict().
 start_recovery(Bucket) ->
     wait_for_orchestrator(),
     gen_fsm:sync_send_event(?SERVER, {start_recovery, Bucket}).
@@ -317,7 +317,7 @@ start_recovery(Bucket) ->
   when Status :: [{bucket, bucket_name()} |
                   {uuid, binary()} |
                   {recovery_map, RecoveryMap}],
-       RecoveryMap :: dict().
+       RecoveryMap :: dict:dict().
 recovery_status() ->
     case is_recovery_running() of
         false ->
@@ -328,7 +328,7 @@ recovery_status() ->
     end.
 
 -spec recovery_map(bucket_name(), UUID) -> bad_recovery | {ok, RecoveryMap}
-  when RecoveryMap :: dict(),
+  when RecoveryMap :: dict:dict(),
        UUID :: binary().
 recovery_map(Bucket, UUID) ->
     wait_for_orchestrator(),
@@ -844,7 +844,7 @@ do_request_janitor_run(Item, Fun, FsmState, State) ->
     end,
     {next_state, FsmState, State}.
 
--spec update_progress(service(), dict()) -> ok.
+-spec update_progress(service(), dict:dict()) -> ok.
 update_progress(Service, ServiceProgress) ->
     gen_fsm:send_event(?SERVER, {update_progress, Service, ServiceProgress}).
 

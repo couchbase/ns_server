@@ -66,7 +66,7 @@
          code_change/3]).
 
 -record(state, {
-          buckets :: dict(),
+          buckets :: dict:dict(),
           %% Monitor disk failure stats only if auto-failover on
           %% disk issues is enabled.
           enabled = false :: boolean(),

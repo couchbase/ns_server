@@ -795,7 +795,7 @@ all_nodes_down_in_same_group([{SG, Nodes} | Rest], DownNodes) ->
     end.
 
 %% @doc Returns a list of nodes that should be active, but are not running.
--spec actual_down_nodes(dict(), [atom()], [{atom(), term()}]) -> [atom()].
+-spec actual_down_nodes(dict:dict(), [atom()], [{atom(), term()}]) -> [atom()].
 actual_down_nodes(NodesDict, NonPendingNodes, Config) ->
     %% Get all buckets
     BucketConfigs = ns_bucket:get_buckets(Config),

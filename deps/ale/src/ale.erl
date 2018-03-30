@@ -50,12 +50,12 @@
 -include("ale.hrl").
 
 -record(state, {compile_frozen = false :: boolean(),
-                sinks                  :: dict(),
-                loggers                :: dict()}).
+                sinks                  :: dict:dict(),
+                loggers                :: dict:dict()}).
 
 -record(logger, {name      :: atom(),
                  loglevel  :: loglevel(),
-                 sinks     :: dict(),
+                 sinks     :: dict:dict(),
                  formatter :: module()}).
 
 -record(sink, {name     :: atom(),

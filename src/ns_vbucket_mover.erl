@@ -37,7 +37,7 @@
 
 -export([inhibit_view_compaction/3]).
 
--type progress_callback() :: fun((dict()) -> any()).
+-type progress_callback() :: fun((dict:dict()) -> any()).
 
 -record(state, {bucket::nonempty_string(),
                 disco_events_subscription::pid(),

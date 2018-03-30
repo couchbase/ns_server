@@ -79,7 +79,7 @@ read_existing_map(Bucket, S, VBucketsCount, NumReplicas) ->
     end.
 
 -spec recover_map([{non_neg_integer(), node()}],
-                  dict(),
+                  dict:dict(),
                   boolean(),
                   non_neg_integer(),
                   pos_integer(),

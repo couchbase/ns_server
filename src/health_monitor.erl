@@ -37,7 +37,7 @@
          send_heartbeat/2, send_heartbeat/3]).
 
 -record(state, {
-          nodes :: dict(),
+          nodes :: dict:dict(),
           nodes_wanted :: [node()],
           monitor_module
          }).

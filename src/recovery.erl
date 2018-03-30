@@ -23,8 +23,8 @@
          is_recovery_complete/1]).
 
 -record(state, {bucket_config :: list(),
-                recovery_map :: dict(),
-                post_recovery_chains :: dict(),
+                recovery_map :: dict:dict(),
+                post_recovery_chains :: dict:dict(),
                 apply_map :: array(),
                 effective_map :: array()}).
 
@@ -32,7 +32,7 @@
                             {ok, RecoveryMap, {Servers, BucketConfig}, #state{}}
                                 | not_needed
   when BucketConfig :: list(),
-       RecoveryMap :: dict(),
+       RecoveryMap :: dict:dict(),
        Servers :: [node()].
 start_recovery(BucketConfig) ->
     NumVBuckets = proplists:get_value(num_vbuckets, BucketConfig),
@@ -92,7 +92,7 @@ start_recovery(BucketConfig) ->
                     effective_map=array:from_list(OldMap)}}
     end.
 
--spec get_recovery_map(#state{}) -> dict().
+-spec get_recovery_map(#state{}) -> dict:dict().
 get_recovery_map(#state{recovery_map=RecoveryMap}) ->
     RecoveryMap.
 

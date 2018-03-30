@@ -30,9 +30,9 @@
          get_tasks_version/0, build_tasks_list/2, wait_statuses/2]).
 
 -record(state, {
-          nodes :: dict(),
+          nodes :: dict:dict(),
           nodes_wanted :: [node()],
-          tasks_hash_nodes :: undefined | dict(),
+          tasks_hash_nodes :: undefined | dict:dict(),
           tasks_hash :: undefined | integer(),
           tasks_version :: undefined | string()
          }).

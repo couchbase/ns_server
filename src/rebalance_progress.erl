@@ -18,8 +18,8 @@
 -export([init/1, init/2, get_progress/1, update/3]).
 
 -record(progress, {
-          per_service :: dict(),
-          aggregated  :: dict()
+          per_service :: dict:dict(),
+          aggregated  :: dict:dict()
          }).
 
 init(LiveNodes) ->

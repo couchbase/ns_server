@@ -128,7 +128,7 @@
           backfills_limit :: non_neg_integer(),
           moves_before_compaction :: non_neg_integer(),
           total_in_flight = 0 :: non_neg_integer(),
-          moves_left_count_per_node :: dict(), % node() -> non_neg_integer()
+          moves_left_count_per_node :: dict:dict(), % node() -> non_neg_integer()
           moves_left :: [move()],
 
           %% pending moves when current master is undefined For them
@@ -136,13 +136,13 @@
           %% And that's first moves that we ever consider doing
           moves_from_undefineds :: [move()],
 
-          compaction_countdown_per_node :: dict(), % node() -> non_neg_integer()
-          in_flight_backfills_per_node :: dict(),  % node() -> non_neg_integer() (I.e. counts current moves)
-          in_flight_per_node :: dict(),            % node() -> non_neg_integer() (I.e. counts current moves)
+          compaction_countdown_per_node :: dict:dict(), % node() -> non_neg_integer()
+          in_flight_backfills_per_node :: dict:dict(),  % node() -> non_neg_integer() (I.e. counts current moves)
+          in_flight_per_node :: dict:dict(),            % node() -> non_neg_integer() (I.e. counts current moves)
           in_flight_compactions :: set(),          % set of nodes
 
-          initial_move_counts :: dict(),
-          left_move_counts :: dict(),
+          initial_move_counts :: dict:dict(),
+          left_move_counts :: dict:dict(),
           inflight_moves_limit :: non_neg_integer()
          }).
 

@@ -122,7 +122,7 @@ call_compute_map(BucketName) ->
       end).
 
 -spec node_vbuckets_dict(bucket_name()) ->
-                                {ok, dict()} | {error, no_map | not_present}.
+                                {ok, dict:dict()} | {error, no_map | not_present}.
 node_vbuckets_dict(BucketName) ->
     case ets:lookup(vbucket_map_mirror, BucketName) of
         [] ->
