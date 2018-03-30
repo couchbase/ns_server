@@ -44,7 +44,7 @@
                 map::array(),
                 moves_scheduler_state,
                 progress_callback::progress_callback(),
-                all_nodes_set::set()}).
+                all_nodes_set::set:set()}).
 
 %%
 %% API
