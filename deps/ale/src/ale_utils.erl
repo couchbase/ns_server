@@ -15,6 +15,7 @@
 
 -module(ale_utils).
 
+-compile(nowarn_export_all).
 -compile(export_all).
 
 -include("ale.hrl").

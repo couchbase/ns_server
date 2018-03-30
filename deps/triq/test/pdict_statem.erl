@@ -25,6 +25,7 @@
 %% use eunit
 -include_lib("eunit/include/eunit.hrl").
 
+-compile(nowarn_export_all).
 -compile(export_all).
 
 %%

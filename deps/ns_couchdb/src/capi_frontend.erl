@@ -15,6 +15,7 @@
 %%
 -module(capi_frontend).
 
+-compile(nowarn_export_all).
 -compile(export_all).
 
 -include("couch_db.hrl").

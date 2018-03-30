@@ -16,6 +16,7 @@
 -module(tty_safe_stderr_sink).
 
 -behaviour(gen_server2).
+-compile(nowarn_export_all).
 -compile(export_all).
 
 start_link(Name) ->

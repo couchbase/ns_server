@@ -43,6 +43,7 @@
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-compile(nowarn_export_all).
 -compile(export_all).
 -else.
 -export([send/2, send/3, send_blocking/2]).

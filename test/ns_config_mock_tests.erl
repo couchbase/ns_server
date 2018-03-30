@@ -15,6 +15,7 @@
 -module(ns_config_mock_tests).
 -include_lib("eunit/include/eunit.hrl").
 -include("ns_config.hrl").
+-compile(nowarn_export_all).
 -compile(export_all).
 
 %% This module contains test that mock ns_config, using meck.

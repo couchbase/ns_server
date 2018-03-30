@@ -14,6 +14,7 @@
 %% limitations under the License.
 -module(test).
 
+-compile(nowarn_export_all).
 -compile(export_all).
 -compile({parse_transform, ale_transform}).
 

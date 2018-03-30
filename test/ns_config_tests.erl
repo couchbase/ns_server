@@ -35,6 +35,7 @@
 -module(ns_config_tests).
 -include_lib("eunit/include/eunit.hrl").
 -include("ns_config.hrl").
+-compile(nowarn_export_all).
 -compile(export_all).
 
 all_test_() ->

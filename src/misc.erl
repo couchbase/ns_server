@@ -43,6 +43,7 @@
 -include("cut.hrl").
 -include("generic.hrl").
 
+-compile(nowarn_export_all).
 -compile(export_all).
 -export_type([timer/0, timer/1]).
 

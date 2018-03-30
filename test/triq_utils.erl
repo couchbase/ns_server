@@ -14,6 +14,7 @@
 %% limitations under the License.
 %%
 -module(triq_utils).
+-compile(nowarn_export_all).
 -compile(export_all).
 
 -include("triq.hrl").

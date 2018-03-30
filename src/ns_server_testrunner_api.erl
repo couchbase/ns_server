@@ -18,6 +18,7 @@
 -include("mc_constants.hrl").
 -include("mc_entry.hrl").
 
+-compile(nowarn_export_all).
 -compile(export_all).
 
 restart_memcached(Timeout) ->

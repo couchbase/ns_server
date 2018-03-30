@@ -15,6 +15,7 @@
 %%
 -module(functools).
 
+-compile(nowarn_export_all).
 -compile(export_all).
 
 %% Identity function.
