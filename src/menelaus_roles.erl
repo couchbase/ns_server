@@ -330,6 +330,7 @@ roles_vulcan() ->
        {ce, true}],
       [{[{bucket, any}, password], none},
        {[{bucket, any}, data], none},
+       {[{bucket, any}, fts], none},
        {[admin, security], [read]},
        {[admin], none},
        {[eventing], none},
