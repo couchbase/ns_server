@@ -89,7 +89,7 @@ handle_cancel_collect_logs(Req) ->
 stringify_one_node_upload_error({unknown_nodes, List}) ->
     {nodes, io_lib:format("Unknown nodes: ~p", [List])};
 stringify_one_node_upload_error(missing_nodes) ->
-    {nodes, "must be given"};
+    {nodes, "Please select at least one node."};
 stringify_one_node_upload_error({empty, F}) ->
     {F, "cannot be empty"};
 stringify_one_node_upload_error({malformed, customer}) ->
