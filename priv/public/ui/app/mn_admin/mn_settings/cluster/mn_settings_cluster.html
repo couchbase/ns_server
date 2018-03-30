@@ -166,7 +166,7 @@
               </label>
             </div>
             <div class="formrow margin-bottom-half"
-                 ng-if="settingsClusterCtl.querySettings.queryCurlWhitelist.all_access">
+                 ng-if="!settingsClusterCtl.querySettings.queryCurlWhitelist.all_access">
               <label>Allowed CURL URLs</label>
               <div
                  class="margin-bottom-half"
@@ -195,7 +195,7 @@
               </div>
             </div>
             <div class="formrow"
-                 ng-if="settingsClusterCtl.querySettings.queryCurlWhitelist.all_access">
+                 ng-if="!settingsClusterCtl.querySettings.queryCurlWhitelist.all_access">
               <label>Disallowed CURL URLs</label>
               <div
                  class="margin-bottom-half"
