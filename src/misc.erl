@@ -2213,7 +2213,6 @@ prop_dump_parse_term_binary() ->
 
 -record(timer, {tref, msg}).
 
--type timeout()   :: non_neg_integer() | infinity.
 -type timer()     :: timer(any()).
 -type timer(Type) :: #timer{tref :: undefined | reference(),
                             msg  :: Type}.
