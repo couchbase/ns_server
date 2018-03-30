@@ -311,10 +311,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "logRedaction"] ->
                     {{[settings], read}, fun menelaus_web_cluster_logs:handle_settings_log_redaction/1};
                 ["settings", "maxParallelIndexers"] ->
-                    {{[indexes], read},
+                    {{[settings, indexes], read},
                      fun menelaus_web_settings:handle_settings_max_parallel_indexers/1};
                 ["settings", "viewUpdateDaemon"] ->
-                    {{[indexes], read},
+                    {{[settings, indexes], read},
                      fun menelaus_web_settings:handle_settings_view_update_daemon/1};
                 ["settings", "autoCompaction"] ->
                     {{[settings], read},
@@ -364,9 +364,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["nodes", "self", "xdcrSSLPorts"] ->
                     {done, menelaus_web_node:handle_node_self_xdcr_ssl_ports(Req)};
                 ["indexStatus"] ->
-                    {{[indexes], read}, fun menelaus_web_indexes:handle_index_status/1};
+                    {{[{bucket, any}, n1ql, index], read}, fun menelaus_web_indexes:handle_index_status/1};
                 ["settings", "indexes"] ->
-                    {{[indexes], read}, fun menelaus_web_indexes:handle_settings_get/1};
+                    {{[settings, indexes], read}, fun menelaus_web_indexes:handle_settings_get/1};
                 ["diag"] ->
                     {{[admin, diag], read}, fun diag_handler:handle_diag/1, []};
                 ["diag", "vbuckets"] ->
@@ -488,10 +488,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[settings], write},
                      fun menelaus_web_settings:handle_settings_auto_reprovision_reset_count/1};
                 ["settings", "maxParallelIndexers"] ->
-                    {{[indexes], write},
+                    {{[settings, indexes], write},
                      fun menelaus_web_settings:handle_settings_max_parallel_indexers_post/1};
                 ["settings", "viewUpdateDaemon"] ->
-                    {{[indexes], write},
+                    {{[settings, indexes], write},
                      fun menelaus_web_settings:handle_settings_view_update_daemon_post/1};
                 ["settings", "readOnlyUser"] ->
                     {{[admin, security], write},
@@ -645,7 +645,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {no_check,
                      fun menelaus_web_rbac:handle_check_permissions_post/1};
                 ["settings", "indexes"] ->
-                    {{[indexes], write}, fun menelaus_web_indexes:handle_settings_post/1};
+                    {{[settings, indexes], write}, fun menelaus_web_indexes:handle_settings_post/1};
                 ["_cbauth"] ->
                     {no_check, fun menelaus_cbauth:handle_cbauth_post/1};
                 ["_cbauth", "extractUserFromCert"] ->
