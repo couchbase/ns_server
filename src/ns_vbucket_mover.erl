@@ -41,7 +41,7 @@
 
 -record(state, {bucket::nonempty_string(),
                 disco_events_subscription::pid(),
-                map::array(),
+                map::array:array(),
                 moves_scheduler_state,
                 progress_callback::progress_callback(),
                 all_nodes_set::set:set()}).
@@ -247,14 +247,14 @@ terminate(Reason, _State) ->
 
 %% @private
 %% @doc Convert a map array back to a map list.
--spec array_to_map(array()) -> vbucket_map().
+-spec array_to_map(array:array()) -> vbucket_map().
 array_to_map(Array) ->
     array:to_list(Array).
 
 %% @private
 %% @doc Convert a map, which is normally a list, into an array so that
 %% we can randomly access the replication chains.
--spec map_to_array(vbucket_map()) -> array().
+-spec map_to_array(vbucket_map()) -> array:array().
 map_to_array(Map) ->
     array:fix(array:from_list(Map)).
 

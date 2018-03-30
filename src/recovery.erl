@@ -25,8 +25,8 @@
 -record(state, {bucket_config :: list(),
                 recovery_map :: dict:dict(),
                 post_recovery_chains :: dict:dict(),
-                apply_map :: array(),
-                effective_map :: array()}).
+                apply_map :: array:array(),
+                effective_map :: array:array()}).
 
 -spec start_recovery(BucketConfig) ->
                             {ok, RecoveryMap, {Servers, BucketConfig}, #state{}}
