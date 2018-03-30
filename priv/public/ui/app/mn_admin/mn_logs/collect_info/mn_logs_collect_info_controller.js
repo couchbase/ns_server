@@ -14,7 +14,7 @@
     activate();
 
     vm.collect = {};
-    vm.mnFilteredNodesHolder = {nodes: []};
+    vm.mnSelectedNodesHolder = {};
 
     if (mnPoolDefault.latestValue().value.isEnterprise) {
       vm.collect.uploadHost = 's3.amazonaws.com/cb-customers';
@@ -60,7 +60,7 @@
       });
     }
     function submit() {
-      vm.collect.nodes = _.map(_.filter(vm.mnFilteredNodesHolder.nodes, {isSelected: true}), 'otpNode');
+      vm.collect.nodes = mnHelper.checkboxesToList(vm.mnSelectedNodesHolder);
       mnPromiseHelper(vm, mnLogsCollectInfoService.startLogsCollection(vm.collect))
         .showSpinner()
         .catchErrors()

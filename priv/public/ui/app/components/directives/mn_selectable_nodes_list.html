@@ -3,7 +3,7 @@
     <input
        type="checkbox"
        id="thisModule_checkall"
-       ng-disabled="!mnThisCtl.mnFilteredNodesHolder.nodes.length"
+       ng-disabled="!filteredNodes.length"
        ng-checked="mnThisCtl.areAllChecked(false)"
        ng-click="mnThisCtl.toggleAll()">
     <label
@@ -20,13 +20,13 @@
   </div>
   <section
      class="cbui-table padding-left-half"
-     ng-repeat="node in mnThisCtl.mnFilteredNodesHolder.nodes = (mnThisCtl.nodes | mnServersListFilter:mnThisCtl.filterField:mnThisCtl.mnGroups) track by node.otpNode"
+     ng-repeat="node in mnThisCtl.nodes | mnServersListFilter:mnThisCtl.filterField:mnThisCtl.mnGroups as filteredNodes track by node.otpNode"
      ng-class="['dynamic_' + node.status, 'dynamic_' + node.clusterMembership]">
     <div class="cbui-tablerow">
       <span class="cbui-table-cell flex-grow-2-5">
         <input
            type="checkbox"
-           ng-model="node.isSelected"
+           ng-model="mnThisCtl.mnSelectedNodesHolder[node.otpNode]"
            ng-value="node.otpNode"
            ng-attr-id="collected_node_list_{{node.otpNode}}"
            ng-disabled="mnThisCtl.mnIsNodeDisabled({node:node})">
@@ -47,5 +47,5 @@
       </span>
     </div>
   </section>
-  <div ng-if="!mnThisCtl.mnFilteredNodesHolder.nodes.length" class="zero-content">No nodes match this filter term.</div>
+  <div ng-if="!filteredNodes.length" class="zero-content">No nodes match this filter term.</div>
 </div>

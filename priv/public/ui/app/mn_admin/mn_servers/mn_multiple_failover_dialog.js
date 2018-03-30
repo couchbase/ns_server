@@ -5,16 +5,16 @@
     .module('mnServers')
     .controller('mnMultipleFailoverDialogController', mnMultipleFailoverDialogController);
 
-  function mnMultipleFailoverDialogController($scope, mnPoolDefault, mnServersService, mnPromiseHelper, groups, nodes, $uibModalInstance, $uibModal) {
+  function mnMultipleFailoverDialogController($scope, mnPoolDefault, mnServersService, mnPromiseHelper, groups, nodes, $uibModalInstance, $uibModal, mnHelper) {
     var vm = this;
 
     vm.nodes = nodes;
     vm.onSubmit = onSubmit;
     vm.mnGroups = groups;
-    vm.mnFilteredNodesHolder = {nodes: []};
+    vm.mnSelectedNodesHolder = {};
 
     function doPostFailover(allowUnsafe) {
-      var otpNodes = _.map(_.filter(vm.mnFilteredNodesHolder.nodes, {isSelected: true}), 'otpNode');
+      var otpNodes = mnHelper.checkboxesToList(vm.mnSelectedNodesHolder);
       var promise = mnServersService.postFailover("failOver", otpNodes, allowUnsafe);
       return mnPromiseHelper(vm, promise, $uibModalInstance)
         .showGlobalSpinner()

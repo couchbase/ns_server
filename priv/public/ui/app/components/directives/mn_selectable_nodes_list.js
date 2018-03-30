@@ -15,7 +15,7 @@
         nodes: "=",
         mnIsNodeDisabled: "&?",
         mnGroups: "=?",
-        mnFilteredNodesHolder: "="
+        mnSelectedNodesHolder: "="
       },
       templateUrl: "app/components/directives/mn_selectable_nodes_list.html",
       controller: mnSelectableNodesListController,
@@ -34,7 +34,7 @@
       vm.areAllChecked = areAllChecked;
 
       function areAllChecked(bool) {
-        return !!vm.mnFilteredNodesHolder.nodes.length && !findEnabled(bool);
+        return !!$scope.filteredNodes && !!$scope.filteredNodes.length && !findEnabled(bool);
       }
 
       function getGroupName(node) {
@@ -42,23 +42,24 @@
       }
 
       function findEnabled(bool) {
-        return !!_.find(vm.mnFilteredNodesHolder.nodes, function (node) {
+        return !!_.find($scope.filteredNodes, function (node) {
           if (vm.mnIsNodeDisabled) {
-            return !vm.mnIsNodeDisabled({node:node}) && !!node.isSelected === bool;
+            return !vm.mnIsNodeDisabled({node:node}) &&
+              (!!vm.mnSelectedNodesHolder[node.otpNode] === bool);
           } else {
-            return !!node.isSelected === bool;
+            return !!vm.mnSelectedNodesHolder[node.otpNode] === bool;
           }
         });
       }
 
       function setEnabled(bool) {
-        vm.mnFilteredNodesHolder.nodes.forEach(function (node) {
+        $scope.filteredNodes.forEach(function (node) {
           if (vm.mnIsNodeDisabled) {
             if (!vm.mnIsNodeDisabled({node:node})) {
-              node.isSelected = bool;
+              vm.mnSelectedNodesHolder[node.otpNode] = bool;
             }
           } else {
-            node.isSelected = bool;
+            vm.mnSelectedNodesHolder[node.otpNode] = bool;
           }
         });
       }
