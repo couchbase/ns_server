@@ -1941,7 +1941,7 @@ hexify_digit(15) -> $f.
 hexify_test() ->
     lists:foreach(
       fun (_) ->
-              R = crypto:rand_bytes(256),
+              R = crypto:strong_rand_bytes(256),
               Hex = hexify(R),
 
               Etalon0 = string:to_lower(integer_to_list(binary:decode_unsigned(R), 16)),
@@ -2505,3 +2505,4 @@ no_duplicates_test() ->
     ?assertEqual([],  duplicates([1,2,3,"1"])),
     ?assertEqual([1,2,2], duplicates([1,2,1,2,3,2])).
 -endif.
+

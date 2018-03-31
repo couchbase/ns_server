@@ -150,7 +150,7 @@ unset_credentials(Role) ->
     ns_config:set(get_key(Role), null).
 
 hash_password(Password) ->
-    Salt = crypto:rand_bytes(16),
+    Salt = crypto:strong_rand_bytes(16),
     {Salt, hash_password(Salt, Password)}.
 
 hash_password(Salt, Password) ->

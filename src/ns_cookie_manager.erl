@@ -87,7 +87,7 @@ do_cookie_init() ->
 do_cookie_gen() ->
     case misc:get_env_default(dont_reset_cookie, false) of
         false ->
-            binary_to_atom(misc:hexify(crypto:rand_bytes(32)), latin1);
+            binary_to_atom(misc:hexify(crypto:strong_rand_bytes(32)), latin1);
         true ->
             erlang:get_cookie()
     end.

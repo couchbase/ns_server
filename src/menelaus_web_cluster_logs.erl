@@ -229,7 +229,7 @@ parse_validate_collect_params(Params, Config) ->
                         %% have a common salt for all the nodes for this log
                         %% collection run.
                         [{redact_salt,
-                          base64:encode_to_string(crypto:rand_bytes(32))}];
+                          base64:encode_to_string(crypto:strong_rand_bytes(32))}];
                     Salt ->
                         [{redact_salt, Salt}]
                 end;

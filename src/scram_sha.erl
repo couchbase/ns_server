@@ -312,7 +312,7 @@ hash_password(Type, Password) ->
               sha256 -> ?SHA256_DIGEST_SIZE;
               sha512 -> ?SHA512_DIGEST_SIZE
           end,
-    Salt = crypto:rand_bytes(Len),
+    Salt = crypto:strong_rand_bytes(Len),
     Hash = pbkdf2(Type, Password, Salt, Iterations),
     {Salt, Hash, Iterations}.
 
@@ -323,7 +323,7 @@ supported_types() ->
     [sha512, sha256, sha].
 
 config_upgrade_to_55() ->
-    [{set, scramsha_fallback_salt, crypto:rand_bytes(12)}].
+    [{set, scramsha_fallback_salt, crypto:strong_rand_bytes(12)}].
 
 -ifdef(EUNIT).
 
