@@ -193,9 +193,9 @@ simulate_rebalance(CurrentMap, TargetMap, BackfillsLimit, MovesBeforeCompaction,
                          BackfillsLimit, MovesBeforeCompaction, MaxInflightMoves),
 
     R = lists:foldl(fun (_, R0) ->
-                            {_, R1} = random:uniform_s(R0),
+                            {_, R1} = rand:uniform_s(R0),
                             R1
-                    end, {1,2,3}, lists:duplicate(37, [])),
+                    end, rand:seed_s(exrop, {1,2,3}), lists:duplicate(37, [])),
 
     InFlight = gb_sets:empty(),
 
@@ -212,7 +212,7 @@ rnd_normal_s(R) ->
 rnd_normal_s_loop(R, 0, Acc) ->
     {Acc - 6, R};
 rnd_normal_s_loop(R, N, Acc) ->
-    {V, R1} = random:uniform_s(R),
+    {V, R1} = rand:uniform_s(R),
     rnd_normal_s_loop(R1, N-1, Acc + V).
 
 generate_action_run_time(Action, R) ->

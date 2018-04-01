@@ -1079,7 +1079,6 @@ gen_password({MinLength, _} = Policy, Retries) ->
     Letters =
         "0123456789abcdefghijklmnopqrstuvwxyz"
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%^&*?",
-    random:seed(os:timestamp()),
     Pass = get_random_string(Length, Letters),
     case is_valid_password(Pass, Policy) of
         true -> Pass;
@@ -1088,7 +1087,7 @@ gen_password({MinLength, _} = Policy, Retries) ->
 
 get_random_string(Length, AllowedChars) ->
     lists:foldl(fun(_, Acc) ->
-                        [lists:nth(random:uniform(length(AllowedChars)),
+                        [lists:nth(rand:uniform(length(AllowedChars)),
                                    AllowedChars)]
                             ++ Acc
                 end, [], lists:seq(1, Length)).
@@ -1527,14 +1526,14 @@ gen_password_test() ->
     ok.
 
 gen_password_monkey_test_() ->
-    random:seed(os:timestamp()),
+    rand:seed(exrop, os:timestamp()),
     GetRandomPolicy =
         fun () ->
-            MustPresent = [uppercase || random:uniform(2) == 1] ++
-                          [lowercase || random:uniform(2) == 1] ++
-                          [digits    || random:uniform(2) == 1] ++
-                          [special   || random:uniform(2) == 1],
-            {random:uniform(30), MustPresent}
+            MustPresent = [uppercase || rand:uniform(2) == 1] ++
+                          [lowercase || rand:uniform(2) == 1] ++
+                          [digits    || rand:uniform(2) == 1] ++
+                          [special   || rand:uniform(2) == 1],
+            {rand:uniform(30), MustPresent}
         end,
     Test = fun () ->
                    [gen_password(GetRandomPolicy()) || _ <- lists:seq(1,100000)]

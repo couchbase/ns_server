@@ -179,7 +179,7 @@ kill_silently_sync(P) ->
 
 create_table() ->
     ?TABLE = ets:new(?TABLE, [public, set, named_table]),
-    N = random:uniform(1000000),
+    N = rand:uniform(1000000),
     true = ets:insert_new(?TABLE, {?COUNTER, N}),
     ok.
 

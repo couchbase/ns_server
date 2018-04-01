@@ -297,7 +297,7 @@ take_lock_fast(Name, Lock, Iters) ->
 
 
 take_lock_slow(Name, LockName, Lock) ->
-    Iters = ?LOCK_INVALIDATE_ITERS + random:uniform(?LOCK_INVALIDATE_ITERS),
+    Iters = ?LOCK_INVALIDATE_ITERS + rand:uniform(?LOCK_INVALIDATE_ITERS),
     MaybeCurrentLock = get_one(Name, LockName),
     case take_lock_slow_loop(Name, Lock, Iters) of
         ok ->

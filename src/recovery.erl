@@ -205,13 +205,13 @@ compute_missing_vbuckets(Map) ->
 -define(MAX_NUM_SERVERS, 50).
 
 compute_recovery_map_test_() ->
-    random:seed(os:timestamp()),
+    rand:seed(exrop, os:timestamp()),
 
     {timeout, 200,
      {inparallel,
       [begin
-           NumServers = random:uniform(?MAX_NUM_SERVERS - 1) + 1,
-           NumCopies = random:uniform(4),
+           NumServers = rand:uniform(?MAX_NUM_SERVERS - 1) + 1,
+           NumCopies = rand:uniform(4),
 
            Title = lists:flatten(
                      io_lib:format("NumServers=~p, NumCopies=~p",

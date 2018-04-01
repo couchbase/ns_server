@@ -311,7 +311,7 @@ synchronize_remote(Nodes, Timeout) ->
     end.
 
 schedule_config_sync() ->
-    Frequency = 5000 + trunc(random:uniform() * 55000),
+    Frequency = 5000 + trunc(rand:uniform() * 55000),
     timer2:send_after(Frequency, self(), sync_random).
 
 extract_kvs([], _KVs, Acc) ->

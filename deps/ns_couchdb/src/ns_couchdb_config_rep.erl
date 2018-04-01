@@ -54,7 +54,7 @@ rpc_handle_update_ns_server_node_name(Node) ->
     ok.
 
 schedule_config_pull() ->
-    Frequency = 5000 + trunc(random:uniform() * 55000),
+    Frequency = 5000 + trunc(rand:uniform() * 55000),
     timer2:send_after(Frequency, self(), pull).
 
 meld_config(KVList, FromNode) ->

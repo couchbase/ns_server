@@ -105,7 +105,7 @@ webconfig() ->
 loop(Req, Config) ->
     ok = menelaus_sup:barrier_wait(),
 
-    random:seed(os:timestamp()),
+    rand:seed(exrop, os:timestamp()),
 
     try
         %% Using raw_path so encoded slash characters like %2F are handed correctly,
@@ -124,7 +124,7 @@ loop(Req, Config) ->
                           loop_inner(Req, Config, Path, PathTokens)
                   end,
                   fun (_Error, Reason) ->
-                          Retry = integer_to_list(random:uniform(10)),
+                          Retry = integer_to_list(rand:uniform(10)),
                           reply_text(Req, Reason, 503, [{"Retry-After", Retry}])
                   end)
         end

@@ -156,7 +156,7 @@ init(Bucket) ->
               self() ! Msg
       end, Archives),
     start_cascade_timers(Archives),
-    timer2:send_after(random:uniform(?BACKUP_INTERVAL), backup),
+    timer2:send_after(rand:uniform(?BACKUP_INTERVAL), backup),
 
     ns_pubsub:subscribe_link(ns_stats_event,
                              fun stats_event_handler/2,

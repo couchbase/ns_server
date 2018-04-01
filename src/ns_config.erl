@@ -1806,7 +1806,7 @@ mock_timestamp(Body) ->
         ok = meck:expect(calendar, datetime_to_gregorian_seconds,
                           fun (_) ->
                                   [{counter, Count}] = ets:lookup(Tid, counter),
-                                  NewCount = case random:uniform() < 0.3 of
+                                  NewCount = case rand:uniform() < 0.3 of
                                                  true ->
                                                      Count + 1;
                                                  false ->
@@ -1838,8 +1838,8 @@ merge_values_helper(RP, LP) ->
 merge_values_test_iter() ->
     Nodes = [a,b,c,d,e],
 
-    LocalValue = mutate(random:uniform(10), Nodes),
-    RemoteValue = mutate(random:uniform(10), Nodes),
+    LocalValue = mutate(rand:uniform(10), Nodes),
+    RemoteValue = mutate(rand:uniform(10), Nodes),
 
     R0 = merge_values_helper(RemoteValue, LocalValue),
     R1 = merge_values_helper(LocalValue, RemoteValue),

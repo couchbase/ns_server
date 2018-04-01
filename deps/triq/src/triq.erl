@@ -466,4 +466,4 @@ numtests(Num,Prop) ->
 %%
 generate_randomness() ->
     <<A:32, B:32, C:32>> = crypto:strong_rand_bytes(12),
-    random:seed({A, B, C}).
+    rand:seed(exrop, {A, B, C}).

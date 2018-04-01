@@ -197,7 +197,7 @@ grab_status(#state{service = Service,
         [] ->
             {ok, []};
         _ ->
-            Node = lists:nth(random:uniform(NodesCount), Nodes),
+            Node = lists:nth(rand:uniform(NodesCount), Nodes),
 
             try Service:get_remote_items(Node) of
                 {ok, Items, Stale, _Version} ->

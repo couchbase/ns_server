@@ -41,8 +41,8 @@ do_db_req(#httpd{path_parts=[DbName | _]} = Req, Fun) ->
                 end)
       end,
       fun (Error, Reason) ->
-              random:seed(os:timestamp()),
-              Retry = integer_to_list(random:uniform(10)),
+              rand:seed(exrop, os:timestamp()),
+              Retry = integer_to_list(rand:uniform(10)),
               couch_httpd:send_json(Req, 503, [{"Retry-After", Retry}],
                                     {[{<<"error">>, couch_util:to_binary(Error)},
                                       {<<"reason">>, couch_util:to_binary(Reason)}]})
@@ -151,8 +151,8 @@ find_node_with_vbuckets(BucketBin) ->
         0 ->
             undefined;
         _ ->
-            random:seed(os:timestamp()),
-            lists:nth(random:uniform(Len), Nodes)
+            rand:seed(exrop, os:timestamp()),
+            lists:nth(rand:uniform(Len), Nodes)
     end.
 
 send_no_active_vbuckets(CouchReq, Bucket0) ->

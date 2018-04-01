@@ -214,11 +214,11 @@ handle_info(garbage_collect, State) ->
 handle_info(sync, StateBefore) ->
     State = flush_pending(StateBefore),
     Recent = State#state.unique_recent,
-    erlang:send_after(5000 + random:uniform(55000), self(), sync),
+    erlang:send_after(5000 + rand:uniform(55000), self(), sync),
     case nodes() of
         [] -> ok;
         Nodes ->
-            Node = lists:nth(random:uniform(length(Nodes)), Nodes),
+            Node = lists:nth(rand:uniform(length(Nodes)), Nodes),
             send_sync_to(Recent, Node)
     end,
     {noreply, State, hibernate};
