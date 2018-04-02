@@ -167,10 +167,10 @@ sort_with_limit(Comparator, Limit, Items) ->
                   Limit).
 
 keys_updater_body() ->
-    {ClusterKeys, LocalKeys} = get_keys(),
+    {ClusterKeys, LocalKeys} = get_all_keys(),
     gen_server:cast(?MODULE, {set_keys, ClusterKeys, LocalKeys}).
 
-get_keys() ->
+get_all_keys() ->
     LocalKeys = get_local_keys(),
     RemoteKeys = get_remote_keys(),
     MergedKeys = merge_keys(LocalKeys, RemoteKeys),
