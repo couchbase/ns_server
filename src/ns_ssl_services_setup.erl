@@ -81,7 +81,7 @@ start_link_capi_service() ->
     end.
 
 do_start_link_capi_service(SSLPort) ->
-    ok = ssl_manager:clear_pem_cache(),
+    ok = ssl:clear_pem_cache(),
 
     Options = [{port, SSLPort},
                {ssl, true},
@@ -585,7 +585,7 @@ maybe_generate_local_cert(CertPEM, PKeyPEM, Node) ->
 apply_node_cert_data(Data) ->
     Path = ssl_cert_key_path(),
     apply_node_cert_data(Data, Path),
-    ok = ssl_manager:clear_pem_cache().
+    ok = ssl:clear_pem_cache().
 
 apply_node_cert_data({generated, CertPEM, PKeyPEM, Node}, Path) ->
     {LocalCert, LocalPKey} = maybe_generate_local_cert(CertPEM, PKeyPEM, Node),
