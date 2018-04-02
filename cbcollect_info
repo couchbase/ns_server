@@ -1047,7 +1047,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                       "http_access_internal.log", "ns_couchdb.log",
                       "goxdcr.log", "query.log", "projector.log", "indexer.log",
                       "fts.log", "metakv.log", "json_rpc.log", "eventing.log",
-                      "analytics.log", "analytics_shutdown.log", "analytics_trace.json"]],
+                      "analytics.log", "analytics_debug.log", "analytics_shutdown.log", "analytics_trace.json"]],
 
         [make_cbstats_task(kind, memcached_pass, guts)
          for kind in ["all", "allocator", "checkpoint", "config",
