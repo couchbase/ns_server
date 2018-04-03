@@ -192,18 +192,16 @@ handle_settings_post(Req) ->
       end, Req, form, settings_post_validators()).
 
 handle_index_status(Req) ->
-    AllowedBuckets = menelaus_auth:get_accessible_buckets(
-                       fun (BucketName) ->
-                               {[{bucket, BucketName}, n1ql, index], read}
-                       end, Req),
-    FilterFun = fun (Index) ->
-                        Bucket = binary_to_list(
-                                   proplists:get_value(bucket, Index)),
-                        lists:member(Bucket, AllowedBuckets)
-                end,
+    AllowedBuckets =
+        [list_to_binary(B) ||
+            B <- menelaus_auth:get_accessible_buckets(
+                   ?cut({[{bucket, _}, n1ql, index], read}), Req)],
 
     {ok, Indexes0, Stale, Version} = service_index:get_indexes(),
-    Indexes = [{Index} || Index <- Indexes0, FilterFun(Index)],
+    Indexes =
+        [{Index} ||
+            Index <- Indexes0,
+            lists:member(proplists:get_value(bucket, Index), AllowedBuckets)],
 
     Warnings =
         case Stale of
