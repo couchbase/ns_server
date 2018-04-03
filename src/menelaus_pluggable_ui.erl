@@ -48,7 +48,7 @@
                   proxy_strategy         :: proxy_strategy(),
                   rest_api_prefixes      :: dict:dict(),
                   doc_roots              :: [string()],
-                  version_dirs           :: [{ui_compat_version(), string()}],
+                  version_dirs           :: undefined | [{ui_compat_version(), string()}],
                   request_headers_filter :: {filter_op(), [string()]}}).
 -type plugin()  :: #plugin{}.
 -type plugins() :: [plugin()].
