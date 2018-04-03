@@ -155,15 +155,15 @@ multi_call(Nodes, Name, Req, Timeout) ->
 
 enter_loop(Mod, Options, State) ->
     init_state(Mod),
-    gen_server:enter_loop(Mod, Options, State).
+    gen_server:enter_loop(?MODULE, Options, State).
 
 enter_loop(Mod, Options, State, TimeoutOrServerName) ->
     init_state(Mod),
-    gen_server:enter_loop(Mod, Options, State, TimeoutOrServerName).
+    gen_server:enter_loop(?MODULE, Options, State, TimeoutOrServerName).
 
 enter_loop(Mod, Options, State, ServerName, Timeout) ->
     init_state(Mod),
-    gen_server:enter_loop(Mod, Options, State, ServerName, Timeout).
+    gen_server:enter_loop(?MODULE, Options, State, ServerName, Timeout).
 
 %% gen_server2-specific APIs
 async_job(Body, HandleResult) ->
