@@ -48,7 +48,7 @@
 -spec get_accessible_buckets(fun ((bucket_name()) -> rbac_permission()), mochiweb_request()) ->
                                     [bucket_name()].
 get_accessible_buckets(Fun, Req) ->
-    Identity = menelaus_auth:get_identity(Req),
+    Identity = get_identity(Req),
     Roles = menelaus_roles:get_compiled_roles(Identity),
 
     [BucketName ||
@@ -112,7 +112,7 @@ complete_uilogout(Req) ->
 
 -spec maybe_refresh_token(mochiweb_request()) -> [{string(), string()}].
 maybe_refresh_token(Req) ->
-    case menelaus_auth:get_token(Req) of
+    case get_token(Req) of
         undefined ->
             [];
         Token ->
