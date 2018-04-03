@@ -156,11 +156,18 @@ handle_terminate(Reason, State) ->
 abolish_all_leases(#state{nodes = Nodes, uuid  = UUID}) ->
     leader_lease_agent:abolish_leases(sets:to_list(Nodes), node(), UUID).
 
-spawn_many_workers(Nodes, State) ->
-    NewWorkers = [{N, spawn_worker(N, State)} || N <- sets:to_list(Nodes)],
-    misc:update_field(#state.workers, State, NewWorkers ++ _).
-
 spawn_worker(Node, State) ->
+    spawn_many_workers([Node], State).
+
+spawn_many_workers(Nodes, State)
+  when is_list(Nodes) ->
+    NewWorkers = [{N, spawn_worker_process(N, State)} || N <- Nodes],
+    misc:update_field(#state.workers, State, NewWorkers ++ _);
+spawn_many_workers(Nodes, State) ->
+    true = sets:is_set(Nodes),
+    spawn_many_workers(sets:to_list(Nodes), State).
+
+spawn_worker_process(Node, State) ->
     leader_lease_acquire_worker:spawn_monitor(Node, State#state.uuid).
 
 shutdown_all_workers(State) ->
