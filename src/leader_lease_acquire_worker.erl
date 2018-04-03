@@ -136,13 +136,13 @@ handle_lease_acquired(StartTime, LeaseProps, State) ->
         end,
 
     functools:chain(NewState,
-                    [update_lease_expire_ts(StartTime, LeaseProps, _),
+                    [update_lease_expire_ts(StartTime, LeaseProps, State, _),
                      reset_retry(_),
                      acquire_now(_)]).
 
-update_lease_expire_ts(Start, LeaseProps, State) ->
+update_lease_expire_ts(Start, LeaseProps, PrevState, State) ->
     {_, TimeLeft} = lists:keyfind(time_left, 1, LeaseProps),
-    AcquireTS     = compute_new_acquire_time(Start, LeaseProps, State),
+    AcquireTS     = compute_new_acquire_time(Start, LeaseProps, PrevState),
     ExpireTS      = AcquireTS + TimeLeft - ?LEASE_GRACE_TIME,
 
     State#state{lease_expire_ts  = ExpireTS,
