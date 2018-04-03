@@ -41,7 +41,7 @@ start_link() ->
       end).
 
 set_quorum_nodes(Pid, QuorumNodes) ->
-    gen_server:call(Pid, {set_quorum_nodes, QuorumNodes}, infinity).
+    gen_server2:call(Pid, {set_quorum_nodes, QuorumNodes}, infinity).
 
 config_upgrade_to_vulcan(Config) ->
     [{set, quorum_nodes,
