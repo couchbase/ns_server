@@ -37,7 +37,7 @@
 
 -record(state, {bucket :: bucket_name(),
                 event_manager :: pid(),
-                local_docs :: [#doc{}]
+                local_docs :: undefined | [#doc{}]
                }).
 
 start_link(Bucket, Replicator, ReplicationSrv) ->

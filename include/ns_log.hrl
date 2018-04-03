@@ -18,9 +18,9 @@
           tstamp      :: erlang:timestamp(),
           node        :: atom(),
           module      :: atom(),
-          code        :: integer(),
+          code        :: undefined | integer(),
           msg         :: string(),
           args        :: list(),
           cat         :: log_classification(),
-          server_time :: calendar:datetime1970()
+          server_time :: undefined | calendar:datetime1970()
          }).

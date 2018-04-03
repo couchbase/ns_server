@@ -29,8 +29,8 @@
                  uuid   :: binary(),
 
                  have_lease       :: boolean(),
-                 lease_acquire_ts :: integer(),
-                 lease_expire_ts  :: integer(),
+                 lease_acquire_ts :: undefined | integer(),
+                 lease_expire_ts  :: undefined | integer(),
                  retry_backoff    :: backoff:backoff(),
                  acquire_timer    :: misc:timer(acquire) }).
 

@@ -69,7 +69,7 @@
           heavy_calls_queue = impossible :: queue:queue(),
           very_heavy_calls_queue = impossible :: queue:queue(),
           status :: connecting | init | connected | warmed,
-          start_time::tuple(),
+          start_time :: undefined | tuple(),
           bucket::nonempty_string(),
           sock = still_connecting :: port() | still_connecting,
           timer::any(),

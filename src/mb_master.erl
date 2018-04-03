@@ -26,7 +26,7 @@
 
 -type node_info() :: {version(), node()}.
 
--record(state, {child :: pid(),
+-record(state, {child :: undefined | pid(),
                 master :: node(),
                 peers :: [node()],
                 last_heard :: integer()}).

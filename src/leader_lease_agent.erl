@@ -37,7 +37,7 @@
                         node :: node() }).
 
 -record(lease, { holder      :: #lease_holder{},
-                 acquired_at :: lease_ts(),
+                 acquired_at :: undefined | lease_ts(),
                  expires_at  :: lease_ts(),
                  timer       :: misc:timer(),
                  state       :: lease_state() }).

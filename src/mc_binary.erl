@@ -229,7 +229,7 @@ recv_data(Sock, NumBytes, Timeout) -> prim_inet:recv(Sock, NumBytes, Timeout).
 
 -record(get_keys_params, {
           start_key :: binary(),
-          end_key :: binary(),
+          end_key :: undefined | binary(),
           inclusive_end :: boolean(),
           limit :: non_neg_integer(),
           include_docs :: boolean()

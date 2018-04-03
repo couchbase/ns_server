@@ -66,7 +66,7 @@
                      timer :: misc:timer(),
                      pred  :: pred_fun(),
 
-                     on_timeout :: timeout_fun(),
+                     on_timeout :: undefined | timeout_fun(),
                      on_success :: cond_body_fun() }).
 
 %% Callbacks (all optional)

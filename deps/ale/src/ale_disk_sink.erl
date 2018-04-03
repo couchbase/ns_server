@@ -34,7 +34,7 @@
           buffer_overflow :: boolean(),
           dropped_messages :: non_neg_integer(),
           flush_timer :: undefined | reference(),
-          worker :: pid(),
+          worker :: undefined | pid(),
 
           batch_size :: pos_integer(),
           batch_timeout :: pos_integer(),
@@ -44,9 +44,9 @@
 -record(worker_state, {
           sink_name :: atom(),
           path :: string(),
-          file :: file:io_device(),
-          file_size :: integer(),
-          file_inode :: integer(),
+          file :: undefined | file:io_device(),
+          file_size :: undefined | integer(),
+          file_inode :: undefined | integer(),
           parent :: pid(),
 
           rotation_size :: non_neg_integer(),

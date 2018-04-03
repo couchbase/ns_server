@@ -60,7 +60,7 @@ get_version(Service) ->
                 num_connections,
 
                 items,
-                stale :: true | {false, non_neg_integer()},
+                stale :: undefined | true | {false, non_neg_integer()},
                 version,
 
                 restart_pending,

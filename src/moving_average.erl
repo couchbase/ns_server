@@ -24,8 +24,8 @@
 -type ts() :: non_neg_integer().
 -type ts_delta() :: integer().
 
--record(moving_average, { estimate  :: float(),
-                          timestamp :: ts(),
+-record(moving_average, { estimate  :: undefined | float(),
+                          timestamp :: undefined | ts(),
                           window    :: ts_delta() }).
 
 -type moving_average() :: #moving_average{}.

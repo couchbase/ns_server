@@ -31,7 +31,7 @@
          handle_info/2, terminate/2, code_change/3]).
 
 -record(compaction_state, {buckets_to_compact :: [binary()],
-                           compactor_pid :: pid(),
+                           compactor_pid :: undefined | pid(),
                            scheduler,
                            compactor_fun :: fun(),
                            compactor_config}).

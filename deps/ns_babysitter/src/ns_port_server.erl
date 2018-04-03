@@ -50,7 +50,7 @@
                 params :: tuple(),
                 messages,
                 logger :: atom(),
-                log_tref :: timer:tref(),
+                log_tref :: undefined | timer:tref(),
                 log_buffer = [],
                 dropped=0 :: non_neg_integer()}).
 

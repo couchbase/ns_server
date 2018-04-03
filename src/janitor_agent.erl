@@ -33,12 +33,12 @@
                 rebalance_mref :: undefined | reference(),
                 rebalance_subprocesses = [] :: [{From :: term(), Worker :: pid()}],
                 last_applied_vbucket_states :: undefined | list(),
-                rebalance_only_vbucket_states :: list(),
+                rebalance_only_vbucket_states :: undefined | list(),
                 flushseq,
                 rebalance_status = finished :: in_process | finished,
                 replicators_primed :: boolean(),
 
-                apply_vbucket_states_queue :: queue:queue(),
+                apply_vbucket_states_queue :: undefined | queue:queue(),
                 apply_vbucket_states_worker :: undefined | pid(),
                 rebalance_subprocesses_registry :: pid()}).
 

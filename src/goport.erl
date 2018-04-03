@@ -73,7 +73,7 @@
           deliver       :: boolean(),
           deliver_queue :: queue:queue(delivery()),
 
-          current_op  :: {op(), op_handler()},
+          current_op  :: undefined | {op(), op_handler()},
           pending_ops :: queue:queue({op(), op_handler()}),
 
           delivered_bytes   :: non_neg_integer(),
