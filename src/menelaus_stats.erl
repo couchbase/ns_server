@@ -191,7 +191,7 @@ handle_overview_stats(_PoolId, Req) ->
 
 %% GET /pools/{PoolID}/buckets/{Id}/stats
 handle_bucket_stats(_PoolId, Id, Req) ->
-    Params = Req:parse_qs(),
+    Params = mochiweb_request:parse_qs(Req),
     PropList1 = build_bucket_stats_ops_response(all, Id, Params, true),
     PropList2 = build_bucket_stats_hks_response(Id),
     menelaus_util:reply_json(Req, {struct, PropList1 ++ PropList2}).
@@ -205,7 +205,7 @@ handle_stats_section(_PoolId, Id, Req) ->
     end.
 
 do_handle_stats_section(Id, Req) ->
-    Params = Req:parse_qs(),
+    Params = mochiweb_request:parse_qs(Req),
     PropList1 = build_bucket_stats_ops_response(all, Id, Params, false),
     menelaus_util:reply_json(Req, {struct, PropList1}).
 
@@ -220,7 +220,7 @@ handle_bucket_node_stats(_PoolId, BucketName, HostName, Req) ->
         false ->
             menelaus_util:reply_not_found(Req);
         {ok, Node} ->
-            Params = Req:parse_qs(),
+            Params = mochiweb_request:parse_qs(Req),
             Ops = build_bucket_stats_ops_response([Node], BucketName, Params, true),
             BucketsTopKeys = case hot_keys_keeper:bucket_hot_keys(BucketName, Node) of
                                  undefined -> [];
@@ -248,7 +248,7 @@ handle_stats_section_for_node(_PoolId, Id, HostName, Req) ->
     end.
 
 do_handle_stats_section_for_node(Id, HostName, Node, Req) ->
-    Params = Req:parse_qs(),
+    Params = mochiweb_request:parse_qs(Req),
     Ops = build_bucket_stats_ops_response([Node], Id, Params, false),
     menelaus_util:reply_json(
       Req,
@@ -266,7 +266,7 @@ do_handle_stats_section_for_node(Id, HostName, Node, Req) ->
 %%                     {\"127.0.0.1:9001\": [1,2,3,4,5]}]
 %%   }">>}).
 handle_specific_stat_for_buckets(_PoolId, BucketName, StatName, Req) ->
-    Params = Req:parse_qs(),
+    Params = mochiweb_request:parse_qs(Req),
     menelaus_util:reply_json(
       Req,
       build_response_for_specific_stat(BucketName, StatName, Params, menelaus_util:local_addr(Req))).
@@ -2447,7 +2447,7 @@ parse_add_param(Param, Params) ->
     end.
 
 serve_stats_directory(_PoolId, BucketId, Req) ->
-    Params = Req:parse_qs(),
+    Params = mochiweb_request:parse_qs(Req),
     ServiceNodes =
         [{Service, parse_add_param(atom_to_list(Param), Params)} ||
             {Service, Param} <- services_add_params()],
@@ -2528,7 +2528,7 @@ grab_ui_stats(Kind, Nodes, HaveStamp, Wnd) ->
 %% new stats samples).
 %%
 serve_ui_stats(Req) ->
-    Params = Req:parse_qs(),
+    Params = mochiweb_request:parse_qs(Req),
     case lists:member(proplists:get_value("bucket", Params), ns_bucket:get_bucket_names()) of
         true ->
             case proplists:get_value("statName", Params) of

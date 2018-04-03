@@ -66,15 +66,15 @@ method_to_list(List) when is_list(List) ->
 
 get_path_info(Req) ->
     ["\"",
-     method_to_list(Req:get(method)),
+     method_to_list(mochiweb_request:get(method, Req)),
      " ",
-     Req:get(raw_path),
+     mochiweb_request:get(raw_path, Req),
      " HTTP/",
      get_version(Req),
      "\""].
 
 get_version(Req) ->
-    case Req:get(version) of
+    case mochiweb_request:get(version, Req) of
         {1, 0} -> "1.0";
         {1, 1} -> "1.1";
         {0, 9} -> "0.9";
@@ -83,7 +83,7 @@ get_version(Req) ->
     end.
 
 get_request_header_value(Req, Header) ->
-    case Req:get_header_value(Header) of
+    case mochiweb_request:get_header_value(Header, Req) of
         undefined ->
             "-";
         Value ->

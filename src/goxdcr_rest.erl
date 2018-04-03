@@ -35,7 +35,7 @@ convert_header_name(Header) when is_list(Header) ->
     Header.
 
 convert_headers(MochiReq) ->
-    HeadersList = mochiweb_headers:to_list(MochiReq:get(headers)),
+    HeadersList = mochiweb_headers:to_list(mochiweb_request:get(headers, MochiReq)),
     Headers = lists:filtermap(fun ({'Content-Length', _Value}) ->
                                       false;
                                   ({Name, Value}) ->
@@ -49,7 +49,7 @@ convert_headers(MochiReq) ->
     end.
 
 send(MochiReq, Method, Path, Headers, Body) ->
-    Params = MochiReq:parse_qs(),
+    Params = mochiweb_request:parse_qs(MochiReq),
     Timeout = list_to_integer(proplists:get_value("connection_timeout", Params, "30000")),
     send_with_timeout(Method, Path, Headers, Body, Timeout).
 
@@ -75,17 +75,17 @@ special_auth_headers() ->
                                  ns_config_auth:get_password(special)).
 
 proxy(MochiReq) ->
-    proxy(MochiReq:get(raw_path), MochiReq).
+    proxy(mochiweb_request:get(raw_path, MochiReq), MochiReq).
 
 proxy(Path, MochiReq) ->
     Headers = convert_headers(MochiReq),
-    Body = case MochiReq:recv_body() of
+    Body = case mochiweb_request:recv_body(MochiReq) of
                undefined ->
                    <<>>;
                B ->
                    B
            end,
-    {Code, RespHeaders, RespBody} = send(MochiReq, MochiReq:get(method), Path, Headers, Body),
+    {Code, RespHeaders, RespBody} = send(MochiReq, mochiweb_request:get(method, MochiReq), Path, Headers, Body),
     menelaus_util:reply(MochiReq, RespBody, Code, RespHeaders).
 
 interesting_doc_key(<<"id">>) ->

@@ -84,7 +84,7 @@ check_and_handle_pool_info(Id, Req) ->
 
 handle_pool_info(Id, Req) ->
     LocalAddr = local_addr(Req),
-    Query = Req:parse_qs(),
+    Query = mochiweb_request:parse_qs(Req),
     WaitChangeS = proplists:get_value("waitChange", Query),
     PassedETag = proplists:get_value("etag", Query),
     case WaitChangeS of

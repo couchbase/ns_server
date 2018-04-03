@@ -46,7 +46,7 @@ handle_get(Req) ->
 
 handle_post(Req) ->
     menelaus_web_rbac:assert_no_users_upgrade(),
-    Samples = mochijson2:decode(Req:recv_body()),
+    Samples = mochijson2:decode(mochiweb_request:recv_body(Req)),
 
     Errors = case validate_post_sample_buckets(Samples) of
                  ok ->

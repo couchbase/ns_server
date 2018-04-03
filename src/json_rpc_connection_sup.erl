@@ -31,8 +31,8 @@ init([]) ->
             temporary, brutal_kill, worker, dynamic}]}}.
 
 handle_rpc_connect(Req) ->
-    "/" ++ Path = Req:get(path),
-    Sock = Req:get(socket),
+    "/" ++ Path = mochiweb_request:get(path, Req),
+    Sock = mochiweb_request:get(socket, Req),
     menelaus_util:reply(Req, 200),
     ok = start_handler(Path, Sock),
     erlang:exit(normal).

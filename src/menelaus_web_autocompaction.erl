@@ -103,10 +103,10 @@ build_allowed_time_period(AllowedTimePeriod) ->
                                          {abortOutside, abort_outside}]]}.
 
 handle_set_global_settings(Req) ->
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
     SettingsRV = parse_validate_settings(Params, true),
     PurgeIntervalRV = parse_validate_purge_interval(Params),
-    ValidateOnly = (proplists:get_value("just_validate", Req:parse_qs()) =:= "1"),
+    ValidateOnly = (proplists:get_value("just_validate", mochiweb_request:parse_qs(Req)) =:= "1"),
     case {ValidateOnly, SettingsRV, PurgeIntervalRV} of
         {_, {errors, Errors}, _} ->
             reply_json(Req, {struct, [{errors, {struct, Errors}}]}, 400);

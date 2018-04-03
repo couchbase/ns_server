@@ -110,7 +110,7 @@ loop(Req, Config) ->
     try
         %% Using raw_path so encoded slash characters like %2F are handed correctly,
         %% in that we delay converting %2F's to slash characters until after we split by slashes.
-        "/" ++ RawPath = Req:get(raw_path),
+        "/" ++ RawPath = mochiweb_request:get(raw_path, Req),
         {Path, _, _} = mochiweb_util:urlsplit_path(RawPath),
         PathTokens = lists:map(fun mochiweb_util:unquote/1, string:tokens(Path, "/")),
 
@@ -136,8 +136,8 @@ loop(Req, Config) ->
             reply_text(Req, Message, StatusCode, ExtraHeaders);
         Type:What ->
             Report = ["web request failed",
-                      {path, Req:get(path)},
-                      {method, Req:get(method)},
+                      {path, mochiweb_request:get(path, Req)},
+                      {method, mochiweb_request:get(method, Req)},
                       {type, Type}, {what, What},
                       {trace, erlang:get_stacktrace()}], % todo: find a way to enable this for field info gathering
             ?log_error("Server error during processing: ~p", [Report]),
@@ -169,7 +169,7 @@ is_throttled_request(_) ->
 
 -spec get_action(mochiweb_request(), {term(), boolean(), term()}, string(), [string()]) -> action().
 get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
-    case Req:get(method) of
+    case mochiweb_request:get(method, Req) of
         Method when Method =:= 'GET'; Method =:= 'HEAD' ->
             case PathTokens of
                 [] ->
@@ -402,13 +402,13 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["couchBase" | _] -> {no_check,
                                       fun menelaus_pluggable_ui:proxy_req/4,
                                       ["couchBase",
-                                       drop_prefix(Req:get(raw_path)),
+                                       drop_prefix(mochiweb_request:get(raw_path, Req)),
                                        Plugins]};
                 ["sampleBuckets"] -> {{[samples], read}, fun menelaus_web_samples:handle_get/1};
                 ["_metakv" | _] ->
                     {{[admin, internal], all}, fun menelaus_metakv:handle_get/2, [Path]};
                 ["_goxdcr", "controller", "bucketSettings", _Bucket] ->
-                    XdcrPath = drop_prefix(Req:get(raw_path)),
+                    XdcrPath = drop_prefix(mochiweb_request:get(raw_path, Req)),
                     {{[admin, internal], all},
                      fun goxdcr_rest:proxy/2, [XdcrPath]};
                 ["_cbauth", "checkPermission"] ->
@@ -422,7 +422,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun (PReq) ->
                              menelaus_pluggable_ui:proxy_req(
                                RestPrefix,
-                               drop_rest_prefix(Req:get(raw_path)),
+                               drop_rest_prefix(mochiweb_request:get(raw_path, Req)),
                                Plugins, PReq)
                      end};
                 _ ->
@@ -658,7 +658,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      [menelaus_util:concat_url_path(
                         ["controller", "regexpValidation"])]};
                 ["_goxdcr", "controller", "bucketSettings", _Bucket] ->
-                    XdcrPath = drop_prefix(Req:get(raw_path)),
+                    XdcrPath = drop_prefix(mochiweb_request:get(raw_path, Req)),
                     {{[admin, internal], all},
                      fun goxdcr_rest:proxy/2, [XdcrPath]};
                 ["_goxdcr", "_pre_replicate", Bucket] ->
@@ -672,14 +672,14 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["couchBase" | _] ->
                     {no_check, fun menelaus_pluggable_ui:proxy_req/4,
                      ["couchBase",
-                      drop_prefix(Req:get(raw_path)),
+                      drop_prefix(mochiweb_request:get(raw_path, Req)),
                       Plugins]};
                 [?PLUGGABLE_UI, RestPrefix | _] ->
                     {no_check,
                      fun (PReq) ->
                              menelaus_pluggable_ui:proxy_req(
                                RestPrefix,
-                               drop_rest_prefix(Req:get(raw_path)),
+                               drop_rest_prefix(mochiweb_request:get(raw_path, Req)),
                                Plugins, PReq)
                      end};
                 _ ->
@@ -720,7 +720,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["couchBase" | _] -> {no_check,
                                       fun menelaus_pluggable_ui:proxy_req/4,
                                       ["couchBase",
-                                       drop_prefix(Req:get(raw_path)),
+                                       drop_prefix(mochiweb_request:get(raw_path, Req)),
                                        Plugins]};
                 ["_metakv" | _] ->
                     {{[admin, internal], all}, fun menelaus_metakv:handle_delete/2, [Path]};
@@ -729,7 +729,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun (PReq) ->
                              menelaus_pluggable_ui:proxy_req(
                                RestPrefix,
-                               drop_rest_prefix(Req:get(raw_path)),
+                               drop_rest_prefix(mochiweb_request:get(raw_path, Req)),
                                Plugins, PReq)
                      end};
                 ["node", "controller", "setupAlternateAddresses", "external"] ->
@@ -760,7 +760,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["couchBase" | _] ->
                     {no_check, fun menelaus_pluggable_ui:proxy_req/4,
                      ["couchBase",
-                      drop_prefix(Req:get(raw_path)),
+                      drop_prefix(mochiweb_request:get(raw_path, Req)),
                       Plugins]};
                 ["_metakv" | _] ->
                     {{[admin, internal], all}, fun menelaus_metakv:handle_put/2, [Path]};
@@ -769,7 +769,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun (PReq) ->
                              menelaus_pluggable_ui:proxy_req(
                                RestPrefix,
-                               drop_rest_prefix(Req:get(raw_path)),
+                               drop_rest_prefix(mochiweb_request:get(raw_path, Req)),
                                Plugins, PReq)
                      end};
                 ["node", "controller", "setupAlternateAddresses", "external"] ->
@@ -788,7 +788,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
     end.
 
 log_client_error(Req) ->
-    Body = case Req:recv_body() of
+    Body = case mochiweb_request:recv_body(Req) of
                undefined ->
                    "(nothing)";
                B ->
@@ -805,7 +805,7 @@ log_client_error(Req) ->
     ?MENELAUS_WEB_LOG(
        ?UI_SIDE_ERROR_REPORT,
        "Client-side error-report for user ~p on node ~p:~nUser-Agent:~s~n~s~n",
-       [User, node(), Req:get_header_value("user-agent"), Body]),
+       [User, node(), mochiweb_request:get_header_value("user-agent", Req), Body]),
     reply_ok(Req, "text/plain", []).
 
 serve_ui(Req, IsSSL, F, Args) ->
@@ -823,7 +823,7 @@ serve_ui(Req, IsSSL, F, Args) ->
     end.
 
 use_minified(Req) ->
-    Query = Req:parse_qs(),
+    Query = mochiweb_request:parse_qs(Req),
     %% explicity specified minified in the query params
     %% overrides the application env value
     Minified = proplists:get_value("minified", Query),
@@ -915,7 +915,7 @@ perform_action(Req, {Permission, Fun, Args}) ->
     end.
 
 check_uuid(F, Args, Req) ->
-    ReqUUID0 = proplists:get_value("uuid", Req:parse_qs()),
+    ReqUUID0 = proplists:get_value("uuid", mochiweb_request:parse_qs(Req)),
     case ReqUUID0 =/= undefined of
         true ->
             ReqUUID = list_to_binary(ReqUUID0),

@@ -33,7 +33,7 @@ handle_start_recovery(_PooldId, Bucket, Req) ->
     end.
 
 handle_recovery_status(_PoolId, Bucket, Req) ->
-    UUID = proplists:get_value("recovery_uuid", Req:parse_qs()),
+    UUID = proplists:get_value("recovery_uuid", mochiweb_request:parse_qs(Req)),
 
     case UUID of
         undefined ->
@@ -49,7 +49,7 @@ handle_recovery_status(_PoolId, Bucket, Req) ->
     end.
 
 handle_stop_recovery(_PoolId, Bucket, Req) ->
-    UUID = proplists:get_value("recovery_uuid", Req:parse_qs()),
+    UUID = proplists:get_value("recovery_uuid", mochiweb_request:parse_qs(Req)),
 
     Reply =
         case UUID of
@@ -63,8 +63,8 @@ handle_stop_recovery(_PoolId, Bucket, Req) ->
     reply_common(Req, Reply).
 
 handle_commit_vbucket(_PoolId, Bucket, Req) ->
-    UUID = proplists:get_value("recovery_uuid", Req:parse_qs()),
-    VBucket = proplists:get_value("vbucket", Req:parse_post()),
+    UUID = proplists:get_value("recovery_uuid", mochiweb_request:parse_qs(Req)),
+    VBucket = proplists:get_value("vbucket", mochiweb_request:parse_post(Req)),
 
     Reply =
         case UUID of

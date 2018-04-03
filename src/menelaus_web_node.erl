@@ -408,7 +408,7 @@ handle_node_statuses(Req) ->
     reply_json(Req, {struct, NodeStatuses}, 200).
 
 handle_node_rename(Req) ->
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
     Node = node(),
 
     Reply =
@@ -479,7 +479,7 @@ handle_node_settings_post("self", Req) ->
 handle_node_settings_post(S, Req) when is_list(S) ->
     handle_node_settings_post(list_to_atom(S), Req);
 handle_node_settings_post(Node, Req) when is_atom(Node) ->
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
 
     {ok, DefaultDbPath} = ns_storage_conf:this_node_dbdir(),
     {ok, DefaultIndexPath} = ns_storage_conf:this_node_ixdir(),
@@ -606,7 +606,7 @@ parse_validate_external_params(Params) ->
 %% For now this is fine because external is only element in alternate_addresses.
 handle_node_altaddr_external(Req) ->
     menelaus_util:assert_is_55(),
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
     External = parse_validate_external_params(Params),
     ns_config:set({node, node(), alternate_addresses}, External),
     menelaus_util:reply(Req, 200).

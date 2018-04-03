@@ -275,10 +275,10 @@ lookup_port(Name, Node) ->
     Port.
 
 get_timeout(views, Req) ->
-    Params = Req:parse_qs(),
+    Params = mochiweb_request:parse_qs(Req),
     list_to_integer(proplists:get_value("connection_timeout", Params, "30000"));
 get_timeout(_Service, Req) ->
-    case Req:get_header_value("ns-server-proxy-timeout") of
+    case mochiweb_request:get_header_value("ns-server-proxy-timeout", Req) of
         undefined ->
             ?TIMEOUT;
         Val ->
@@ -295,7 +295,7 @@ auth_token(_Service, Req) ->
     end.
 
 convert_headers(Req, Filter) ->
-    RawHeaders = mochiweb_headers:to_list(Req:get(headers)),
+    RawHeaders = mochiweb_headers:to_list(mochiweb_request:get(headers, Req)),
     Headers = [{convert_header_name(Name), Val} || {Name, Val} <- RawHeaders],
     filter_headers(Headers, Filter).
 
@@ -313,7 +313,7 @@ member(Name, Names) ->
     lists:member(string:to_lower(Name), Names).
 
 do_proxy_req({Host, Port}, Path, Headers, Timeout, Req) ->
-    Method = Req:get(method),
+    Method = mochiweb_request:get(method, Req),
     Body = get_body(Req),
     Options = [{partial_download, [{window_size, ?WINDOW_SIZE},
                                    {part_size, ?PART_SIZE}]}],
@@ -322,7 +322,7 @@ do_proxy_req({Host, Port}, Path, Headers, Timeout, Req) ->
     handle_resp(Resp, Req).
 
 get_body(Req) ->
-    case Req:recv_body() of
+    case mochiweb_request:recv_body(Req) of
         Body when is_binary(Body) ->
             Body;
         undefined ->

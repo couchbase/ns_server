@@ -157,14 +157,14 @@ response_headers(Headers) ->
 
 %% mostly extracted from mochiweb_request:maybe_redirect/3
 redirect_permanently(Path, Req) ->
-    Scheme = case Req:get(socket) of
+    Scheme = case mochiweb_request:get(socket, Req) of
                  {ssl, _} ->
                      "https://";
                  _ ->
                      "http://"
              end,
     Location =
-        case Req:get_header_value("host") of
+        case mochiweb_request:get_header_value("host", Req) of
             undefined -> Path;
             X -> Scheme ++ X ++ Path
         end,
@@ -218,8 +218,8 @@ reply_ok(Req, ContentType, Body) ->
     reply_ok(Req, ContentType, Body, []).
 
 reply_ok(Req, ContentType, Body, ExtraHeaders) ->
-    Peer = Req:get(peer),
-    Resp = Req:ok({ContentType, response_headers(Req, ExtraHeaders), Body}),
+    Peer = mochiweb_request:get(peer, Req),
+    Resp = mochiweb_request:ok({ContentType, response_headers(Req, ExtraHeaders), Body}, Req),
     log_web_hit(Peer, Req, Resp),
     Resp.
 
@@ -233,8 +233,8 @@ reply(Req, Body, Code, ExtraHeaders) ->
     respond(Req, {Code, response_headers(Req, ExtraHeaders), Body}).
 
 respond(Req, RespTuple) ->
-    Peer = Req:get(peer),
-    Resp = Req:respond(RespTuple),
+    Peer = mochiweb_request:get(peer, Req),
+    Resp = mochiweb_request:respond(RespTuple, Req),
     log_web_hit(Peer, Req, Resp),
     Resp.
 
@@ -248,7 +248,7 @@ serve_static_file(Req, File, ContentType, ExtraHeaders) ->
     case file:read_file_info(File) of
         {ok, FileInfo} ->
             LastModified = httpd_util:rfc1123_date(FileInfo#file_info.mtime),
-            case Req:get_header_value("if-modified-since") of
+            case mochiweb_request:get_header_value("if-modified-since", Req) of
                 LastModified ->
                     reply(Req, 304, ExtraHeaders);
                 _ ->
@@ -272,10 +272,10 @@ serve_file(Req, File, Root) ->
     serve_file(Req, File, Root, []).
 
 serve_file(Req, File, Root, ExtraHeaders) ->
-    Peer = Req:get(peer),
-    Resp = Req:serve_file(
+    Peer = mochiweb_request:get(peer, Req),
+    Resp = mochiweb_request:serve_file(
              File, Root,
-             response_headers(Req, ExtraHeaders ++ [{allow_cache, true}])),
+             response_headers(Req, ExtraHeaders ++ [{allow_cache, true}]), Req),
     log_web_hit(Peer, Req, Resp),
     Resp.
 
@@ -284,7 +284,7 @@ get_option(Option, Options) ->
      proplists:delete(Option, Options)}.
 
 parse_json(Req) ->
-    mochijson2:decode(Req:recv_body()).
+    mochijson2:decode(mochiweb_request:recv_body(Req)).
 
 parse_boolean(Value) ->
     case Value of
@@ -380,7 +380,7 @@ validate_email_address(Address) ->
 
 %% Extract the local address of the socket used for the request
 local_addr(Req) ->
-    Socket = Req:get(socket),
+    Socket = mochiweb_request:get(socket, Req),
     Address = case Socket of
                   {ssl, SSLSock} ->
                       {ok, {AV, _Port}} = ssl:sockname(SSLSock),
@@ -392,7 +392,7 @@ local_addr(Req) ->
     misc:maybe_add_brackets(inet:ntoa(Address)).
 
 remote_addr_and_port(Req) ->
-    case inet:peername(Req:get(socket)) of
+    case inet:peername(mochiweb_request:get(socket, Req)) of
         {ok, {Address, Port}} ->
             misc:maybe_add_brackets(inet:ntoa(Address)) ++ ":" ++ integer_to_list(Port);
         Error ->
@@ -461,7 +461,7 @@ format_server_time({{YYYY, MM, DD}, {Hour, Min, Sec}}, MicroSecs) ->
                     [YYYY, MM, DD, Hour, Min, Sec, MicroSecs div 1000])).
 
 ensure_local(Req) ->
-    case Req:get(peer) of
+    case mochiweb_request:get(peer, Req) of
         "127.0.0.1" ->
             ok;
         "::1" ->
@@ -478,8 +478,8 @@ reply_error(Req, Field, Error) ->
       Req, {struct, [{errors, {struct, [{iolist_to_binary([Field]), iolist_to_binary([Error])}]}}]}, 400).
 
 require_auth(Req) ->
-    case {Req:get_header_value("invalid-auth-response"),
-          Req:get_header_value(scram_sha:meta_header())} of
+    case {mochiweb_request:get_header_value("invalid-auth-response", Req),
+          mochiweb_request:get_header_value(scram_sha:meta_header(), Req)} of
         {"on", _} ->
             %% We need this for browsers that display auth
             %% dialog when faced with 401 with
@@ -511,7 +511,7 @@ handle_streaming(F, Req) ->
     HTTPRes = reply_ok(Req, "application/json; charset=utf-8", chunked),
     %% Register to get config state change messages.
     menelaus_event:register_watcher(self()),
-    Sock = Req:get(socket),
+    Sock = mochiweb_request:get(socket, Req),
     mochiweb_socket:setopts(Sock, [{active, true}]),
     handle_streaming(F, Req, HTTPRes, undefined).
 

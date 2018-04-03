@@ -125,7 +125,7 @@ audit_fun(Type) ->
 handle_post(Type, Req) ->
     Conf = [{CK, atom_to_list(JK), JK, Parser} ||
                {CK, JK, _, Parser} <- conf(Type)],
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
     CurrentValues = build_kvs(Type),
     {ToSet, Errors} =
         lists:foldl(
@@ -187,7 +187,7 @@ handle_settings_max_parallel_indexers(Req) ->
                               {nodes, {struct, [{node(), ThisNodeValue}]}}]}).
 
 handle_settings_max_parallel_indexers_post(Req) ->
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
     V = proplists:get_value("globalValue", Params, ""),
     case parse_validate_number(V, 1, 1024) of
         {ok, Parsed} ->
@@ -214,7 +214,7 @@ handle_settings_view_update_daemon(Req) ->
                               {replicaUpdateMinChanges, ReplicaUpdateMinChanges}]}).
 
 handle_settings_view_update_daemon_post(Req) ->
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
 
     {Props, Errors} =
         lists:foldl(
@@ -277,7 +277,7 @@ default_settings_stats_config() ->
     [{send_stats, false}].
 
 handle_settings_stats_post(Req) ->
-    PostArgs = Req:parse_post(),
+    PostArgs = mochiweb_request:parse_post(Req),
     SendStats = proplists:get_value("sendStats", PostArgs),
     case validate_settings_stats(SendStats) of
         error ->
@@ -313,8 +313,8 @@ build_settings_auto_reprovision() ->
 handle_settings_auto_reprovision_post(Req) ->
     menelaus_util:assert_is_50(),
 
-    PostArgs = Req:parse_post(),
-    ValidateOnly = proplists:get_value("just_validate", Req:parse_qs()) =:= "1",
+    PostArgs = mochiweb_request:parse_post(Req),
+    ValidateOnly = proplists:get_value("just_validate", mochiweb_request:parse_qs(Req)) =:= "1",
     Enabled = proplists:get_value("enabled", PostArgs),
     MaxNodes = proplists:get_value("maxNodes", PostArgs),
     case {ValidateOnly,
@@ -402,8 +402,8 @@ validate_settings(Port, U, P) ->
 handle_settings_web_post(Req) ->
     menelaus_web_rbac:assert_no_users_upgrade(),
 
-    PostArgs = Req:parse_post(),
-    ValidateOnly = proplists:get_value("just_validate", Req:parse_qs()) =:= "1",
+    PostArgs = mochiweb_request:parse_post(Req),
+    ValidateOnly = proplists:get_value("just_validate", mochiweb_request:parse_qs(Req)) =:= "1",
 
     Port = proplists:get_value("port", PostArgs),
     U = proplists:get_value("username", PostArgs),
@@ -445,7 +445,7 @@ do_handle_settings_web_post(Port, U, P, Req) ->
             %% No need to restart right here, as our ns_config
             %% event watcher will do it later if necessary.
     end,
-    {PureHostName, _} = misc:split_host_port(Req:get_header_value("host"), ""),
+    {PureHostName, _} = misc:split_host_port(mochiweb_request:get_header_value("host", Req), ""),
     NewHost = misc:maybe_add_brackets(PureHostName) ++ ":" ++ integer_to_list(PortInt),
     %% TODO: detect and support https when time will come
     reply_json(Req, {struct, [{newBaseUri, list_to_binary("http://" ++ NewHost ++ "/")}]}).
@@ -455,8 +455,8 @@ handle_settings_alerts(Req) ->
     reply_json(Req, {struct, menelaus_alert:build_alerts_json(Config)}).
 
 handle_settings_alerts_post(Req) ->
-    PostArgs = Req:parse_post(),
-    ValidateOnly = proplists:get_value("just_validate", Req:parse_qs()) =:= "1",
+    PostArgs = mochiweb_request:parse_post(Req),
+    ValidateOnly = proplists:get_value("just_validate", mochiweb_request:parse_qs(Req)) =:= "1",
     case {ValidateOnly, menelaus_alert:parse_settings_alerts_post(PostArgs)} of
         {false, {ok, Config}} ->
             ns_config:set(email_alerts, Config),
@@ -472,7 +472,7 @@ handle_settings_alerts_post(Req) ->
 
 %% @doc Sends a test email with the current settings
 handle_settings_alerts_send_test_email(Req) ->
-    PostArgs = Req:parse_post(),
+    PostArgs = mochiweb_request:parse_post(Req),
     Subject = proplists:get_value("subject", PostArgs),
     Body = proplists:get_value("body", PostArgs),
     PostArgs1 = [{K, V} || {K, V} <- PostArgs,
@@ -497,6 +497,6 @@ handle_settings_alerts_send_test_email(Req) ->
     end.
 
 handle_reset_alerts(Req) ->
-    Params = Req:parse_qs(),
+    Params = mochiweb_request:parse_qs(Req),
     Token = list_to_binary(proplists:get_value("token", Params, "")),
     reply_json(Req, menelaus_web_alerts_srv:consume_alerts(Token)).

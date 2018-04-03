@@ -57,7 +57,7 @@ get_accessible_buckets(Fun, Req) ->
 
 -spec get_cookies(mochiweb_request()) -> [{string(), string()}].
 get_cookies(Req) ->
-    case Req:get_header_value("Cookie") of
+    case mochiweb_request:get_header_value("Cookie", Req) of
         undefined -> [];
         RawCookies ->
             RV = mochiweb_cookies:parse_cookie(RawCookies),
@@ -75,7 +75,7 @@ ui_auth_cookie_name(Req) ->
     %% dev mode clusters where different nodes are at different ports
     %% we use different cookie names for different host:port
     %% combination.
-    case Req:get_header_value("host") of
+    case mochiweb_request:get_header_value("host", Req) of
         undefined ->
             "ui-auth";
         Host ->
@@ -84,7 +84,7 @@ ui_auth_cookie_name(Req) ->
 
 -spec extract_ui_auth_token(mochiweb_request()) -> auth_token() | undefined.
 extract_ui_auth_token(Req) ->
-    case Req:get_header_value("ns-server-auth-token") of
+    case mochiweb_request:get_header_value("ns-server-auth-token", Req) of
         undefined ->
             lookup_cookie(Req, ui_auth_cookie_name(Req));
         T ->
@@ -94,7 +94,7 @@ extract_ui_auth_token(Req) ->
 -spec generate_auth_cookie(mochiweb_request(), auth_token()) -> {string(), string()}.
 generate_auth_cookie(Req, Token) ->
     Options = [{path, "/"}, {http_only, true}],
-    SslOptions = case Req:get(socket) of
+    SslOptions = case mochiweb_request:get(socket, Req) of
                      {ssl, _} -> [{secure, true}];
                      _ -> ""
                  end,
@@ -126,10 +126,10 @@ maybe_refresh_token(Req) ->
 
 -spec assert_no_meta_headers(mochiweb_request()) -> ok.
 assert_no_meta_headers(Req) ->
-    undefined = Req:get_header_value("menelaus-auth-user"),
-    undefined = Req:get_header_value("menelaus-auth-domain"),
-    undefined = Req:get_header_value("menelaus-auth-token"),
-    undefined = Req:get_header_value(scram_sha:meta_header()),
+    undefined = mochiweb_request:get_header_value("menelaus-auth-user", Req),
+    undefined = mochiweb_request:get_header_value("menelaus-auth-domain", Req),
+    undefined = mochiweb_request:get_header_value("menelaus-auth-token", Req),
+    undefined = mochiweb_request:get_header_value(scram_sha:meta_header(), Req),
     ok.
 
 apply_headers(Req, []) ->
@@ -139,9 +139,9 @@ apply_headers(Req, Headers) ->
         lists:foldl(
           fun ({Header, Val}, H) ->
                   mochiweb_headers:enter(Header, Val, H)
-          end, Req:get(headers), Headers),
-    mochiweb_request:new(Req:get(socket), Req:get(method), Req:get(raw_path),
-                         Req:get(version), AllHeaders).
+          end, mochiweb_request:get(headers, Req), Headers),
+    mochiweb_request:new(mochiweb_request:get(socket, Req), mochiweb_request:get(method, Req), mochiweb_request:get(raw_path, Req),
+                         mochiweb_request:get(version, Req), AllHeaders).
 
 meta_headers(undefined) ->
     [];
@@ -159,8 +159,8 @@ meta_headers(Identity, Token) ->
 
 -spec get_identity(mochiweb_request()) -> rbac_identity() | undefined.
 get_identity(Req) ->
-    case {Req:get_header_value("menelaus-auth-user"),
-          Req:get_header_value("menelaus-auth-domain")} of
+    case {mochiweb_request:get_header_value("menelaus-auth-user", Req),
+          mochiweb_request:get_header_value("menelaus-auth-domain", Req)} of
         {undefined, undefined} ->
             undefined;
         {User, Domain} ->
@@ -169,11 +169,11 @@ get_identity(Req) ->
 
 -spec get_user_id(mochiweb_request()) -> rbac_user_id() | undefined.
 get_user_id(Req) ->
-    Req:get_header_value("menelaus-auth-user").
+    mochiweb_request:get_header_value("menelaus-auth-user", Req).
 
 -spec get_token(mochiweb_request()) -> auth_token() | undefined.
 get_token(Req) ->
-    Req:get_header_value("menelaus-auth-token").
+    mochiweb_request:get_header_value("menelaus-auth-token", Req).
 
 -spec extract_auth(mochiweb_request()) -> {User :: string(), Passwd :: string()}
                                               | {scram_sha, string()}
@@ -181,14 +181,14 @@ get_token(Req) ->
                                               | {client_cert_auth, string()}
                                               | undefined.
 extract_auth(Req) ->
-    case Req:get_header_value("ns-server-ui") of
+    case mochiweb_request:get_header_value("ns-server-ui", Req) of
         "yes" ->
             {token, extract_ui_auth_token(Req)};
         _ ->
-            Sock = Req:get(socket),
+            Sock = mochiweb_request:get(socket, Req),
             case ns_ssl_services_setup:get_user_name_from_client_cert(Sock) of
                 undefined ->
-                    case Req:get_header_value("authorization") of
+                    case mochiweb_request:get_header_value("authorization", Req) of
                         "Basic " ++ Value ->
                             parse_basic_auth_header(Value);
                         "SCRAM-" ++ Value ->
@@ -378,7 +378,7 @@ verify_rest_auth(Req, Permission) ->
                     {check_permission(Identity, Permission),
                      MetaHeaders ++ meta_headers(Identity, undefined)};
                 {first_step, Headers} ->
-                    Req:recv_body(),
+                    mochiweb_request:recv_body(Req),
                     {auth_failure, Headers};
                 auth_failure ->
                     {auth_failure, []}

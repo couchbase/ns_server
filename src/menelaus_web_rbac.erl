@@ -132,7 +132,7 @@ parse_validate_saslauthd_settings(Params) ->
 handle_saslauthd_auth_settings_post(Req) ->
     assert_is_ldap_enabled(),
 
-    case parse_validate_saslauthd_settings(Req:parse_post()) of
+    case parse_validate_saslauthd_settings(mochiweb_request:parse_post(Req)) of
         {ok, Props} ->
             saslauthd_auth:set_settings(Props),
             ns_audit:setup_ldap(Req, Props),
@@ -153,7 +153,7 @@ handle_validate_saslauthd_creds_post(Req) ->
             ok
     end,
 
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
     User = proplists:get_value("user", Params, ""),
     VRV = menelaus_auth:verify_login_creds(
             User, proplists:get_value("password", Params, "")),
@@ -310,7 +310,7 @@ get_roles_for_users_filtering(Permission) ->
     get_roles_by_permission(Permission).
 
 handle_get_users_with_domain(Req, DomainAtom, Path) ->
-    Query = Req:parse_qs(),
+    Query = mochiweb_request:parse_qs(Req),
     case lists:keyfind("pageSize", 1, Query) of
         false ->
             validator:handle(
@@ -1001,8 +1001,8 @@ handle_settings_read_only_admin_name(Req) ->
 handle_settings_read_only_user_post(Req) ->
     assert_no_users_upgrade(),
 
-    PostArgs = Req:parse_post(),
-    ValidateOnly = proplists:get_value("just_validate", Req:parse_qs()) =:= "1",
+    PostArgs = mochiweb_request:parse_post(Req),
+    ValidateOnly = proplists:get_value("just_validate", mochiweb_request:parse_qs(Req)) =:= "1",
     U = proplists:get_value("username", PostArgs),
     P = proplists:get_value("password", PostArgs),
     Errors0 = [{K, V} || {K, V} <- [{username, validate_cred(U, username)},
@@ -1054,7 +1054,7 @@ handle_read_only_user_reset(Req) ->
             menelaus_util:reply_json(Req,
                                      <<"Read-Only admin does not exist">>, 404);
         ROAName ->
-            ReqArgs = Req:parse_post(),
+            ReqArgs = mochiweb_request:parse_post(Req),
             NewROAPass = proplists:get_value("password", ReqArgs),
             case validate_cred(NewROAPass, password) of
                 true ->
@@ -1124,11 +1124,11 @@ handle_reset_admin_password(Req) ->
 
     menelaus_util:ensure_local(Req),
     Password =
-        case proplists:get_value("generate", Req:parse_qs()) of
+        case proplists:get_value("generate", mochiweb_request:parse_qs(Req)) of
             "1" ->
                 gen_password(get_password_policy());
             _ ->
-                PostArgs = Req:parse_post(),
+                PostArgs = mochiweb_request:parse_post(Req),
                 proplists:get_value("password", PostArgs)
         end,
     case Password of
@@ -1203,7 +1203,7 @@ parse_permissions(Body) ->
               end, RawPermissions).
 
 handle_check_permissions_post(Req) ->
-    Body = Req:recv_body(),
+    Body = mochiweb_request:recv_body(Req),
     case Body of
         undefined ->
             menelaus_util:reply_json(
@@ -1236,7 +1236,7 @@ check_permissions_url_version(Config) ->
     base64:encode(crypto:hash(sha, B)).
 
 handle_check_permission_for_cbauth(Req) ->
-    Params = Req:parse_qs(),
+    Params = mochiweb_request:parse_qs(Req),
     Identity = {proplists:get_value("user", Params),
                 list_to_existing_atom(proplists:get_value("domain", Params))},
     RawPermission = proplists:get_value("permission", Params),

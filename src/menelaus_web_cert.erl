@@ -32,7 +32,7 @@
 handle_cluster_certificate(Req) ->
     menelaus_util:assert_is_enterprise(),
 
-    case proplists:get_value("extended", Req:parse_qs()) of
+    case proplists:get_value("extended", mochiweb_request:parse_qs(Req)) of
         "true" ->
             handle_cluster_certificate_extended(Req);
         _ ->
@@ -104,7 +104,7 @@ handle_upload_cluster_ca(Req) ->
     menelaus_util:assert_is_enterprise(),
     menelaus_util:assert_is_45(),
 
-    case Req:recv_body() of
+    case mochiweb_request:recv_body(Req) of
         undefined ->
             reply_error(Req, empty_cert);
         PemEncodedCA ->
@@ -350,7 +350,7 @@ do_handle_client_cert_auth_settings_5_1_post(Req, JSON) ->
     end.
 
 do_handle_client_cert_auth_settings_5_0_post(Req) ->
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
     OldVal = ns_ssl_services_setup:client_cert_auth(),
     AccumulateChanges =
         fun({Key, Val} = Pair, Acc) ->

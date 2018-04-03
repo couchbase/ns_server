@@ -51,7 +51,7 @@ do_handle_settings_log_redaction_post_body(Req, Values) ->
     handle_settings_log_redaction(Req).
 
 handle_start_collect_logs(Req) ->
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
 
     case parse_validate_collect_params(Params, ns_config:get()) of
         {ok, Nodes, BaseURL, Options} ->

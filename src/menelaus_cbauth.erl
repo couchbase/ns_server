@@ -273,7 +273,7 @@ handle_cbauth_post(Req) ->
                                     {domain, Domain}]}).
 
 handle_extract_user_from_cert_post(Req) ->
-    CertBin = Req:recv_body(),
+    CertBin = mochiweb_request:recv_body(Req),
     try
         case menelaus_auth:extract_identity_from_cert(CertBin) of
             {User, Domain} ->

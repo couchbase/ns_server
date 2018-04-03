@@ -354,7 +354,7 @@ get_identity({User, Domain}) ->
     {[{domain, convert_domain(Domain)}, {user, to_binary(User)}]}.
 
 get_remote(Req) ->
-    Socket = Req:get(socket),
+    Socket = mochiweb_request:get(socket, Req),
     {ok, {Host, Port}} = mochiweb_socket:peername(Socket),
     {[{ip, to_binary(inet_parse:ntoa(Host))},
       {port, Port}]}.

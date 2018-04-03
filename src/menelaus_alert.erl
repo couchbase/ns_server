@@ -70,7 +70,7 @@
          }).
 
 handle_logs(Req) ->
-    reply_json(Req, {struct, [{list, build_logs(Req:parse_qs())}]}).
+    reply_json(Req, {struct, [{list, build_logs(mochiweb_request:parse_qs(Req))}]}).
 
 
 %% @doc Parse alert setting that were posted. Return either the parsed

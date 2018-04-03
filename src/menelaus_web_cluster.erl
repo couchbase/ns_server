@@ -50,7 +50,7 @@
          handle_streaming/2]).
 
 handle_engage_cluster2(Req) ->
-    Body = Req:recv_body(),
+    Body = mochiweb_request:recv_body(Req),
     {struct, NodeKVList} = mochijson2:decode(Body),
     %% a bit kludgy, but 100% correct way to protect ourselves when
     %% everything will restart.
@@ -125,7 +125,7 @@ handle_engage_cluster2(Req) ->
     exit(normal).
 
 handle_complete_join(Req) ->
-    {struct, NodeKVList} = mochijson2:decode(Req:recv_body()),
+    {struct, NodeKVList} = mochijson2:decode(mochiweb_request:recv_body(Req)),
     erlang:process_flag(trap_exit, true),
     case ns_cluster:complete_join(NodeKVList) of
         {ok, _} ->
@@ -283,7 +283,7 @@ parse_join_cluster_params(Params, ThisIsJoin) ->
     end.
 
 handle_join_clean_node(Req) ->
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
 
     case parse_join_cluster_params(Params, true) of
         {errors, Errors} ->
@@ -363,7 +363,7 @@ do_eject_myself() ->
     do_eject_myself_rec(10, 250).
 
 handle_eject_post(Req) ->
-    PostArgs = Req:parse_post(),
+    PostArgs = mochiweb_request:parse_post(Req),
     %
     % either Eject a running node, or eject a node which is down.
     %
@@ -425,7 +425,7 @@ do_handle_eject_post(Req, OtpNode) ->
     end.
 
 validate_setup_services_post(Req) ->
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
     case ns_config_auth:is_system_provisioned() of
         true ->
             {error, <<"cannot change node services after cluster is provisioned">>};
@@ -546,7 +546,7 @@ handle_add_node_to_group(GroupUUIDString, Req) ->
 
 do_handle_add_node(Req, GroupUUID) ->
     %% parameter example: hostname=epsilon.local, user=Administrator, password=asd!23
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
 
     Parsed = case parse_join_cluster_params(Params, false) of
                  {ok, ParsedKV} ->
@@ -597,7 +597,7 @@ validate_node(NodeArg) ->
     end.
 
 parse_graceful_failover_args(Req) ->
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
     case parse_otp_nodes(Params) of
         {ok, [Node]} ->
             {ok, Node};
@@ -630,7 +630,7 @@ parse_otp_nodes(Params) ->
     end.
 
 parse_hard_failover_args(Req) ->
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
     case parse_otp_nodes(Params) of
         {ok, Nodes} ->
             AllowUnsafe = proplists:get_value("allowUnsafe", Params),
@@ -706,7 +706,7 @@ handle_start_graceful_failover(Req) ->
     end.
 
 handle_rebalance(Req) ->
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
     case string:tokens(proplists:get_value("knownNodes", Params, ""),",") of
         [] ->
             reply_json(Req, {struct, [{empty_known_nodes, 1}]}, 400);
@@ -771,7 +771,7 @@ handle_rebalance_progress(_PoolId, Req) ->
     reply_json(Req, {struct, Status}, 200).
 
 handle_stop_rebalance(Req) ->
-    Params = Req:parse_qs(),
+    Params = mochiweb_request:parse_qs(Req),
     case proplists:get_value("onlyIfSafe", Params) =:= "1" of
         true ->
             case ns_cluster_membership:stop_rebalance_if_safe() of
@@ -786,11 +786,11 @@ handle_stop_rebalance(Req) ->
     end.
 
 handle_re_add_node(Req) ->
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
     do_handle_set_recovery_type(Req, full, Params).
 
 handle_re_failover(Req) ->
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
     NodeString = proplists:get_value("otpNode", Params, "undefined"),
     case ns_cluster_membership:re_failover(NodeString) of
         ok ->
@@ -819,7 +819,7 @@ decode_recovery_type(_) ->
     undefined.
 
 handle_set_recovery_type(Req) ->
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
     Type = decode_recovery_type(proplists:get_value("recoveryType", Params)),
     do_handle_set_recovery_type(Req, Type, Params).
 

@@ -70,7 +70,7 @@
 -define(MAX_BUCKET_NAME_LEN, 100).
 
 checking_bucket_uuid(Req, BucketConfig, Body) ->
-    ReqUUID0 = proplists:get_value("bucket_uuid", Req:parse_qs()),
+    ReqUUID0 = proplists:get_value("bucket_uuid", mochiweb_request:parse_qs(Req)),
     case ReqUUID0 =/= undefined of
         true ->
             ReqUUID = list_to_binary(ReqUUID0),
@@ -103,22 +103,22 @@ handle_bucket_list(Req) ->
     BucketNames = lists:sort(fun (A,B) -> A =< B end, BucketNamesUnsorted),
 
     LocalAddr = menelaus_util:local_addr(Req),
-    InfoLevel = case proplists:get_value("basic_stats", Req:parse_qs()) of
+    InfoLevel = case proplists:get_value("basic_stats", mochiweb_request:parse_qs(Req)) of
                     undefined -> normal;
                     _ -> for_ui
                 end,
-    SkipMap = proplists:get_value("skipMap", Req:parse_qs()) =:= "true",
+    SkipMap = proplists:get_value("skipMap", mochiweb_request:parse_qs(Req)) =:= "true",
     BucketsInfo = [build_bucket_info(Name, undefined, InfoLevel, LocalAddr,
                                      may_expose_bucket_auth(Name, Req), SkipMap)
                    || Name <- BucketNames],
     reply_json(Req, BucketsInfo).
 
 handle_bucket_info(_PoolId, Id, Req) ->
-    InfoLevel = case proplists:get_value("basic_stats", Req:parse_qs()) of
+    InfoLevel = case proplists:get_value("basic_stats", mochiweb_request:parse_qs(Req)) of
                     undefined -> normal;
                     _ -> for_ui
                 end,
-    SkipMap = proplists:get_value("skipMap", Req:parse_qs()) =:= "true",
+    SkipMap = proplists:get_value("skipMap", mochiweb_request:parse_qs(Req)) =:= "true",
     reply_json(Req, build_bucket_info(Id, undefined, InfoLevel,
                                       menelaus_util:local_addr(Req),
                                       may_expose_bucket_auth(Id, Req), SkipMap)).
@@ -427,7 +427,7 @@ build_bucket_capabilities(BucketConfig) ->
 
 handle_sasl_buckets_streaming(_PoolId, Req) ->
     LocalAddr = menelaus_util:local_addr(Req),
-    ForMoxi = proplists:get_value("moxi", Req:parse_qs()) =:= "1",
+    ForMoxi = proplists:get_value("moxi", mochiweb_request:parse_qs(Req)) =:= "1",
 
     GetSaslPassword =
         fun (Name, BucketInfo) ->
@@ -555,8 +555,8 @@ extract_bucket_props(BucketId, Props) ->
           cluster_version}).
 
 init_bucket_validation_context(IsNew, BucketName, Req) ->
-    ValidateOnly = (proplists:get_value("just_validate", Req:parse_qs()) =:= "1"),
-    IgnoreWarnings = (proplists:get_value("ignore_warnings", Req:parse_qs()) =:= "1"),
+    ValidateOnly = (proplists:get_value("just_validate", mochiweb_request:parse_qs(Req)) =:= "1"),
+    IgnoreWarnings = (proplists:get_value("ignore_warnings", mochiweb_request:parse_qs(Req)) =:= "1"),
     init_bucket_validation_context(IsNew, BucketName, ValidateOnly, IgnoreWarnings).
 
 init_bucket_validation_context(IsNew, BucketName, ValidateOnly, IgnoreWarnings) ->
@@ -591,7 +591,7 @@ init_bucket_validation_context(IsNew, BucketName, AllBuckets, ClusterStorageTota
 
 handle_bucket_update(_PoolId, BucketId, Req) ->
     menelaus_web_rbac:assert_no_users_upgrade(),
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
     handle_bucket_update_inner(BucketId, Req, Params, 32).
 
 handle_bucket_update_inner(_BucketId, _Req, _Params, 0) ->
@@ -711,7 +711,7 @@ do_bucket_create(Req, Name, Params, Ctx) ->
 
 handle_bucket_create(PoolId, Req) ->
     menelaus_web_rbac:assert_no_users_upgrade(),
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
     Name = proplists:get_value("name", Params),
     Ctx = init_bucket_validation_context(true, Name, Req),
 
@@ -1805,7 +1805,7 @@ handle_set_ddoc_update_min_changes(_PoolId, Bucket, DDocIdStr, Req) ->
     case ns_couchdb_api:get_doc(Bucket, DDocId) of
         {ok, #doc{body={Body}} = DDoc} ->
             {Options0} = proplists:get_value(<<"options">>, Body, {[]}),
-            Params = Req:parse_post(),
+            Params = mochiweb_request:parse_post(Req),
 
             {Options1, Errors} =
                 lists:foldl(

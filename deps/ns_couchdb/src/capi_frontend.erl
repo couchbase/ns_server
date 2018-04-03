@@ -165,14 +165,14 @@ send_no_active_vbuckets(CouchReq, Bucket0) ->
     Headers = case RedirectNode of
                   undefined -> Headers0;
                   _ ->
-                      Path = erlang:iolist_to_binary(Req:get(raw_path)),
+                      Path = erlang:iolist_to_binary(mochiweb_request:get(raw_path, Req)),
                       [{"Location", capi_utils:capi_url_bin(RedirectNode, Path, LocalAddr)}
                        | Headers0]
               end,
     Tuple = {302,
              Headers,
              <<"{\"error\":\"no_active_vbuckets\",\"reason\":\"Cannot execute view query since the node has no active vbuckets\"}">>},
-    {ok, Req:respond(Tuple)}.
+    {ok, mochiweb_request:respond(Tuple, Req)}.
 
 with_verify_bucket_auth(Req, BucketName, UUID, Fun) ->
     case verify_bucket_auth(Req, BucketName) of

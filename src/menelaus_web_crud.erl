@@ -61,7 +61,7 @@ parse_params(Params) ->
       {end_key, parse_key(proplists:get_value("endkey", Params))}]}.
 
 handle_list(BucketId, Req) ->
-    try parse_params(Req:parse_qs()) of
+    try parse_params(mochiweb_request:parse_qs(Req)) of
         Params ->
             do_handle_list(Req, BucketId, Params, 20)
     catch
@@ -242,7 +242,7 @@ do_mutate(BucketId, DocId, BodyOrUndefined, Flags) ->
     end.
 
 handle_post(BucketId, DocId, Req) ->
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
     Value = list_to_binary(proplists:get_value("value", Params, [])),
 
     Flags = case proplists:get_value("flags", Params) of

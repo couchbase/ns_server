@@ -49,7 +49,7 @@ meta_header() ->
     "menelaus-auth-scram-sha_reply".
 
 get_resp_headers_from_req(Req) ->
-    get_resp_headers(Req:get_header_value(meta_header())).
+    get_resp_headers(mochiweb_request:get_header_value(meta_header(), Req)).
 
 get_resp_headers(undefined) ->
     [];

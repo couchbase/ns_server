@@ -57,10 +57,10 @@ handle_settings_get(Req) ->
     reply_json(Req, {struct, Settings}).
 
 handle_settings_post(Req) ->
-    ValidateOnly = proplists:get_value("just_validate", Req:parse_qs()) =:= "1",
+    ValidateOnly = proplists:get_value("just_validate", mochiweb_request:parse_qs(Req)) =:= "1",
     {value, Config} = ns_config:search(ns_config:get(), auto_failover_cfg),
     case {ValidateOnly,
-          validate_settings_auto_failover(Req:parse_post(), Config)} of
+          validate_settings_auto_failover(mochiweb_request:parse_post(Req), Config)} of
         {false, false} ->
             auto_failover:disable(disable_extras(Config)),
             ns_audit:disable_auto_failover(Req),

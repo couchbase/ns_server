@@ -140,7 +140,7 @@ do_start_link_capi_service(SSLPort) ->
                     [] ->
                         ok;
                     _ ->
-                        ok = mochiweb_socket:setopts(Req:get(socket), SocketOptions)
+                        ok = mochiweb_socket:setopts(mochiweb_request:get(socket, Req), SocketOptions)
                 end,
                 apply(couch_httpd, handle_request,
                       [Req, DbFrontendModule, DefaultFun, UrlHandlers, DbUrlHandlers, DesignUrlHandlers])

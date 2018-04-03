@@ -36,7 +36,7 @@
 -include("ns_common.hrl").
 
 handle_uilogin(Req) ->
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
     User = proplists:get_value("user", Params),
     Password = proplists:get_value("password", Params),
     menelaus_auth:uilogin(Req, User, Password).
@@ -58,7 +58,7 @@ handle_dot(Bucket, Req) ->
 
 handle_dotsvg(Bucket, Req) ->
     Dot = ns_janitor_vis:graphviz(Bucket),
-    DoRefresh = case proplists:get_value("refresh", Req:parse_qs(), "") of
+    DoRefresh = case proplists:get_value("refresh", mochiweb_request:parse_qs(Req), "") of
                     "ok" -> true;
                     "yes" -> true;
                     "1" -> true;
@@ -73,7 +73,7 @@ handle_dotsvg(Bucket, Req) ->
              MaybeRefresh).
 
 handle_tasks(PoolId, Req) ->
-    RebTimeoutS = proplists:get_value("rebalanceStatusTimeout", Req:parse_qs(), "2000"),
+    RebTimeoutS = proplists:get_value("rebalanceStatusTimeout", mochiweb_request:parse_qs(Req), "2000"),
     case parse_validate_number(RebTimeoutS, 1000, 120000) of
         {ok, RebTimeout} ->
             do_handle_tasks(PoolId, Req, RebTimeout);
@@ -86,7 +86,7 @@ do_handle_tasks(PoolId, Req, RebTimeout) ->
     reply_json(Req, JSON, 200).
 
 handle_log_post(Req) ->
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
     Msg = proplists:get_value("message", Params),
     LogLevel = proplists:get_value("logLevel", Params),
     Component = proplists:get_value("component", Params),

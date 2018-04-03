@@ -32,7 +32,7 @@ handle_get(Path, Req) ->
     Key = get_key(Path),
     case is_directory(Key) of
         true ->
-            Params = Req:parse_qs(),
+            Params = mochiweb_request:parse_qs(Req),
             Continuous = proplists:get_value("feed", Params) =:= "continuous",
             case {Continuous, metakv:check_continuous_allowed(Key)} of
                 {true, false} ->
@@ -101,7 +101,7 @@ handle_put(Path, Req) ->
             ?metakv_debug("PUT is not allowed for directories. Key = ~p", [Key]),
             menelaus_util:reply(Req, 405);
         false ->
-            Params = Req:parse_post(),
+            Params = mochiweb_request:parse_post(Req),
             Value = list_to_binary(proplists:get_value("value", Params)),
             handle_mutate(Req, Key, Value, Params)
     end.
@@ -112,7 +112,7 @@ handle_delete(Path, Req) ->
         true ->
             handle_recursive_delete(Req, Key);
         false ->
-            handle_mutate(Req, Key, ?DELETED_MARKER, Req:parse_qs())
+            handle_mutate(Req, Key, ?DELETED_MARKER, mochiweb_request:parse_qs(Req))
     end.
 
 handle_recursive_delete(Req, Key) ->
@@ -132,7 +132,7 @@ handle_iterate(Req, Path, Continuous) ->
     ?metakv_debug("Starting iteration of ~s. Continuous = ~s", [Path, Continuous]),
     case Continuous of
         true ->
-            ok = mochiweb_socket:setopts(Req:get(socket), [{active, true}]);
+            ok = mochiweb_socket:setopts(mochiweb_request:get(socket, Req), [{active, true}]);
         false ->
             ok
     end,

@@ -54,7 +54,7 @@ handle_server_groups(Req) ->
 
 handle_server_groups_put(Req) ->
     menelaus_util:assert_is_enterprise(),
-    Rev = proplists:get_value("rev", Req:parse_qs()),
+    Rev = proplists:get_value("rev", mochiweb_request:parse_qs(Req)),
     JSON = menelaus_util:parse_json(Req),
     Config = ns_config:get(),
     Groups = ns_config:search(Config, server_groups, []),
@@ -238,7 +238,7 @@ parse_single_group(_NodesSet, _NonStructG) ->
 
 handle_server_groups_post(Req) ->
     menelaus_util:assert_is_enterprise(),
-    case parse_groups_post(Req:parse_post()) of
+    case parse_groups_post(mochiweb_request:parse_post(Req)) of
         {ok, Name} ->
             case do_handle_server_groups_post(Name, Req) of
                 ok ->
@@ -319,7 +319,7 @@ parse_groups_post(Params) ->
 
 handle_server_group_update(GroupUUID, Req) ->
     menelaus_util:assert_is_enterprise(),
-    case parse_groups_post(Req:parse_post()) of
+    case parse_groups_post(mochiweb_request:parse_post(Req)) of
         {ok, Name} ->
             case do_group_update(list_to_binary(GroupUUID), Name, Req) of
                 ok ->

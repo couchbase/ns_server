@@ -379,7 +379,7 @@ diag_format_log_entry(Type, Code, Module, Node, TStamp, ShortText, Text) ->
 
 handle_diag(Req) ->
     trace_memory("Starting to handle diag."),
-    Params = Req:parse_qs(),
+    Params = mochiweb_request:parse_qs(Req),
     MaybeContDisp = case proplists:get_value("mode", Params) of
                         "view" -> [];
                         _ -> [{"Content-Disposition", "attachment; filename=" ++ generate_diag_filename()}]
@@ -443,7 +443,7 @@ handle_just_diag(Req, Extra) ->
                   end, lists:keysort(#log_entry.tstamp, ns_log:recent())),
     Resp:write_chunk(<<"-------------------------------\n\n\n">>),
 
-    Nodes = case proplists:get_value("oneNode", Req:parse_qs(), "0") of
+    Nodes = case proplists:get_value("oneNode", mochiweb_request:parse_qs(Req), "0") of
                 "0" -> ns_node_disco:erlang_visible_nodes();
                 _ -> [node()]
             end,
@@ -869,7 +869,7 @@ grab_system_info() ->
     [{K, (catch erlang:system_info(K))} || K <- Kinds].
 
 handle_diag_eval(Req) ->
-    Snippet = binary_to_list(Req:recv_body()),
+    Snippet = binary_to_list(mochiweb_request:recv_body(Req)),
 
     ?log_debug("WARNING: /diag/eval:~n~n~s", [Snippet]),
 
@@ -895,7 +895,7 @@ handle_diag_eval(Req) ->
     end.
 
 handle_diag_master_events(Req) ->
-    Params = Req:parse_qs(),
+    Params = mochiweb_request:parse_qs(Req),
     case proplists:get_value("o", Params) of
         undefined ->
             do_handle_diag_master_events(Req);
@@ -907,7 +907,7 @@ handle_diag_master_events(Req) ->
 do_handle_diag_master_events(Req) ->
     Rep = menelaus_util:reply_ok(Req, "text/kind-of-json; charset=utf-8", chunked),
     Parent = self(),
-    Sock = Req:get(socket),
+    Sock = mochiweb_request:get(socket, Req),
     inet:setopts(Sock, [{active, true}]),
     spawn_link(
       fun () ->
@@ -957,7 +957,7 @@ diag_vbucket_per_node(BucketName, Node) ->
     RV2.
 
 handle_diag_vbuckets(Req) ->
-    Params = Req:parse_qs(),
+    Params = mochiweb_request:parse_qs(Req),
     BucketName = proplists:get_value("bucket", Params),
     {ok, BucketConfig} = ns_bucket:get_bucket(BucketName),
     Nodes = ns_node_disco:nodes_actual(),
@@ -974,7 +974,7 @@ handle_diag_vbuckets(Req) ->
     Hash = integer_to_list(erlang:phash2(JSON)),
     ExtraHeaders = [{"Cache-Control", "must-revalidate"},
                     {"ETag", Hash}],
-    case Req:get_header_value("if-none-match") of
+    case mochiweb_request:get_header_value("if-none-match", Req) of
         Hash ->
             menelaus_util:reply(Req, 304, ExtraHeaders);
         _ ->

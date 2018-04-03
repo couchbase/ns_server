@@ -139,7 +139,7 @@ handle_node_post(Name, Req) ->
 handle_post(Req, SettingsKey, ExtraConfigKey) ->
     KnownNames = lists:map(fun ({A, _}) -> atom_to_list(A) end,
                            supported_setting_names() ++ supported_extra_setting_names()),
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
     UnknownParams = [K || {K, _} <- Params,
                           not lists:member(K, KnownNames)],
     case UnknownParams of
