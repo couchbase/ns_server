@@ -136,8 +136,8 @@ init([Owner, Path, Opts]) ->
                            have_failed_ack = false,
                            config = Config},
             {ok, State};
-        {error, _} = Error ->
-            Error
+        {error, Reason} ->
+            {stop, Reason}
     end.
 
 handle_call({op, Op}, From, State) ->
