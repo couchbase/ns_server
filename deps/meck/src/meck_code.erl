@@ -1,5 +1,5 @@
 %%=============================================================================
-%% Copyright 2011 Adam Lindberg & Erlang Solutions Ltd.
+%% Copyright 2010-2017 Adam Lindberg, 2010-2011 Erlang Solutions Ltd
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 %% @hidden
 %% @author Adam Lindberg <eproxus@gmail.com>
-%% @copyright 2011, Adam Lindberg & Erlang Solutions Ltd
+%% @copyright 2010-2017 Adam Lindberg, 2010-2011 Erlang Solutions Ltd
 %% @doc Module wrangling helper functions.
 
 -module(meck_code).
@@ -123,5 +123,8 @@ load_binary(Name, Binary) ->
 % module, and often are not always available when compiling the forms, so
 % filter them out of the options
 filter_options (Options) ->
-    lists:filter(fun({parse_transform,_}) -> false; (_) -> true end, Options).
+    case Options of
+        undefined -> [];
+        _ -> lists:filter(fun({parse_transform,_}) -> false; (_) -> true end, Options)
+    end.
 
