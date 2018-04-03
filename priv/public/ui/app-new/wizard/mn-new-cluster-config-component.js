@@ -59,6 +59,7 @@ mn.components.MnNewClusterConfig =
         ["indexMemoryQuota", "index"],
         ["ftsMemoryQuota", "fts"],
         ["cbasMemoryQuota", "cbas"],
+        ["eventingMemoryQuota", "eventing"],
       ], getPoolsDefaultValue.bind(this), {
         clusterName: this.wizardForm.newCluster.get("clusterName").value
       });

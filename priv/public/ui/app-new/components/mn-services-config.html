@@ -198,15 +198,24 @@
         Eventing
       </label>
     </div>
-    <small *ngIf="group.value.field" class="form-inline width-6 text-center">
-      - - - - - - -
-    </small>
-
     <div
-       class="error"
-       [hidden]="!(poolsDefaultHttp.error | async)?.errors.eventingMemoryQuota">
-      {{(poolsDefaultHttp.error | async)?.errors.eventingMemoryQuota}}
+       class="form-inline width-6 text-right"
+       *ngIf="group.value.field"
+       formGroupName="field">
+      <input
+         [(mnFocus)]="!group.value.field.index && !group.value.field.kv && !group.value.field.fts && !group.value.field.cbas"
+         formControlName="eventing"
+         type="number"
+         min="0">
+      <!-- ng-disabled="config.services && !config.services.model.index || (rbac && !rbac.cluster.pools.write)" -->
+      <small>MB</small>
     </div>
+  </div>
+
+  <div
+     class="error"
+     [hidden]="!(poolsDefaultHttp.error | async)?.errors.eventingMemoryQuota">
+    {{(poolsDefaultHttp.error | async)?.errors.eventingMemoryQuota}}
   </div>
 </div>
 

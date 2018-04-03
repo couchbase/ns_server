@@ -47,7 +47,8 @@ mn.services.MnWizard = (function () {
           kv: new ng.forms.FormControl(null),
           index: new ng.forms.FormControl(null),
           fts: new ng.forms.FormControl(null),
-          cbas: new ng.forms.FormControl(null)
+          cbas: new ng.forms.FormControl(null),
+          eventing: new ng.forms.FormControl(null)
         })
       }),
       storageMode: new ng.forms.FormControl(null),

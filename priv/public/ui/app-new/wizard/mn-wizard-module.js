@@ -41,6 +41,7 @@ mn.modules.MnWizard =
           newClusterConfig.get("services.field.index").setValue(selfConfig.indexMemoryQuota);
           newClusterConfig.get("services.field.fts").setValue(selfConfig.ftsMemoryQuota);
           newClusterConfig.get("services.field.cbas").setValue(selfConfig.cbasMemoryQuota);
+          newClusterConfig.get("services.field.eventing").setValue(selfConfig.eventingMemoryQuota);
           mnWizardService
             .wizardForm
             .joinCluster
