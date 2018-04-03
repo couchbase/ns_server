@@ -100,12 +100,10 @@ handle_acquire_lease(State) ->
     end.
 
 get_acquire_lease_options(Start, State) ->
-    Timeout       = get_acquire_timeout(Start, State),
-    WhenRemaining = ?LEASE_TIME - ?LEASE_RENEW_AFTER,
+    Timeout = get_acquire_timeout(Start, State),
 
     [{timeout, Timeout},
-     {period, ?LEASE_TIME},
-     {when_remaining, WhenRemaining}].
+     {period, ?LEASE_TIME}].
 
 call_acquire_lease(Options, #state{uuid = UUID, target = TargetNode}) ->
     leader_lease_agent:acquire_lease(TargetNode, node(), UUID, Options).
@@ -135,67 +133,44 @@ handle_lease_acquired(StartTime, LeaseProps, State) ->
                 handle_fresh_lease_acquired(State)
         end,
 
-    functools:chain(NewState,
-                    [update_lease_expire_ts(StartTime, LeaseProps, State, _),
-                     reset_retry(_),
-                     acquire_now(_)]).
+    Now = time_compat:monotonic_time(millisecond),
+    update_inflight_histo(StartTime, Now, State),
 
-update_lease_expire_ts(Start, LeaseProps, PrevState, State) ->
+    functools:chain(NewState,
+                    [update_lease_expire_ts(StartTime,
+                                            Now, LeaseProps, State, _),
+                     reset_retry(_),
+                     schedule_next_acquire(Now, _)]).
+
+schedule_next_acquire(Now, #state{lease_acquire_ts = AcquireTS} = State) ->
+    true = is_integer(AcquireTS),
+
+    RenewTS  = AcquireTS + ?LEASE_RENEW_AFTER,
+    TimeLeft = max(0, RenewTS - Now),
+
+    acquire_after(TimeLeft, State).
+
+update_lease_expire_ts(Start, Now, LeaseProps, PrevState, State) ->
     {_, TimeLeft} = lists:keyfind(time_left, 1, LeaseProps),
-    AcquireTS     = compute_new_acquire_time(Start, LeaseProps, PrevState),
+    AcquireTS     = compute_new_acquire_time(Start, Now, LeaseProps, PrevState),
     ExpireTS      = AcquireTS + TimeLeft - ?LEASE_GRACE_TIME,
 
     State#state{lease_expire_ts  = ExpireTS,
                 lease_acquire_ts = AcquireTS}.
 
-compute_new_acquire_time(Start, LeaseProps, State) ->
-    Now                 = time_compat:monotonic_time(millisecond),
+compute_new_acquire_time(Start, Now, LeaseProps, State) ->
     PrevAcquireEstimate = get_prev_acquire_estimate(Now, LeaseProps, State),
-    StartTimeEstimate   = get_start_time_estimate(Start,
-                                                  Now, LeaseProps, State),
+    update_estimate_histos(Start, PrevAcquireEstimate, State),
+    pick_acquire_time_estimate(Start, PrevAcquireEstimate).
 
-    update_estimate_histos(StartTimeEstimate, PrevAcquireEstimate, State),
-    pick_acquire_time_estimate(Start, StartTimeEstimate, PrevAcquireEstimate).
-
-pick_acquire_time_estimate(Start, StartTimeEstimate, PrevAcquireEstimate) ->
+pick_acquire_time_estimate(Start, undefined) ->
+    Start;
+pick_acquire_time_estimate(Start, PrevAcquireEstimate) ->
     true = is_integer(Start),
+    max(Start, PrevAcquireEstimate).
 
-    lists:max([V || V <- [Start,
-                          StartTimeEstimate,
-                          PrevAcquireEstimate],
-                    is_integer(V)]).
-
-get_start_time_estimate(Start, Now, LeaseProps, State) ->
-    TimeQueued = get_time_queued(proplists:get_value(acquired_at, LeaseProps),
-                                 proplists:get_value(received_at, LeaseProps)),
-
-    Estimate = Start + TimeQueued,
-    case Estimate =< Now of
-        true ->
-            update_inflight_histo(Start, Now, TimeQueued, State),
-            Estimate;
-        false ->
-            ?log_warning("Lease period start time estimate is in the future. "
-                         "The time on the agent must be "
-                         "flowing at a faster pace.~n"
-                         "Start: ~p, Now: ~p, TimeQueued: ~p, LeaseProps: ~p",
-                         [Start, Now, TimeQueued, LeaseProps]),
-            inc_counter(start_time_estimate_in_future, State),
-            undefined
-    end.
-
-get_time_queued(AcquiredAt, ReceivedAt)
-  when is_integer(AcquiredAt),
-       is_integer(ReceivedAt),
-       AcquiredAt >= ReceivedAt ->
-
-    AcquiredAt - ReceivedAt;
-get_time_queued(_, _) ->
-    0.
-
-update_inflight_histo(Start, Now, TimeQueued, State) ->
-    TimePassed   = Now - Start,
-    TimeInFlight = TimePassed - TimeQueued,
+update_inflight_histo(Start, Now, State) ->
+    TimeInFlight = Now - Start,
     add_histo(time_inflight, TimeInFlight, State).
 
 get_prev_acquire_estimate(_Now, _LeaseProps, #state{have_lease = false}) ->
@@ -241,15 +216,15 @@ get_time_since_prev_acquire(PrevAcquiredAt, AcquiredAt)
 get_time_since_prev_acquire(_, _) ->
     undefined.
 
-update_estimate_histos(StartTimeEstimate, PrevAcquireEstimate, State)
-  when is_integer(StartTimeEstimate),
+update_estimate_histos(StartTime, PrevAcquireEstimate, State)
+  when is_integer(StartTime),
        is_integer(PrevAcquireEstimate) ->
-    add_histo('start_time_estimate-prev_acquire_estimate',
-              max(StartTimeEstimate - PrevAcquireEstimate, 0),
+    add_histo('start_time-prev_acquire_estimate',
+              max(StartTime - PrevAcquireEstimate, 0),
               State),
 
-    add_histo('prev_acquire_estimate-start_time_estimate',
-              max(PrevAcquireEstimate - StartTimeEstimate, 0),
+    add_histo('prev_acquire_estimate-start_time',
+              max(PrevAcquireEstimate - StartTime, 0),
               State);
 update_estimate_histos(_, _, _) ->
     ok.
