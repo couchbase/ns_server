@@ -518,7 +518,7 @@ build_link(Name, Identity, PageSize, Domain, Path, Permission) ->
             undefined ->
                 [];
             _ ->
-                PermStr = http_uri:encode(permission_to_iolist(Permission)),
+                PermStr = http_uri:encode(permission_to_binary(Permission)),
                 [io_lib:format("permission=~s", [PermStr])]
         end,
     PaginatorParams = format_paginator_params(Identity, PageSize, Domain),
@@ -1256,21 +1256,21 @@ vertex_to_iolist({Atom, any}) ->
 vertex_to_iolist({Atom, Param}) ->
     [atom_to_list(Atom), "[", Param, "]"].
 
-permission_to_iolist({Object, Operation}) ->
+permission_to_binary({Object, Operation}) ->
     FormattedVertices = ["cluster" | [vertex_to_iolist(Vertex) ||
                                          Vertex <- Object]],
-    [string:join(FormattedVertices, "."), "!", atom_to_list(Operation)].
+    iolist_to_binary(
+      [string:join(FormattedVertices, "."), "!", atom_to_list(Operation)]).
 
 format_permissions(Permissions) ->
     lists:foldl(
       fun ({Object, Operations}, Acc) when is_list(Operations) ->
               lists:foldl(
                 fun (Oper, Acc1) ->
-                        [iolist_to_binary(
-                           permission_to_iolist({Object, Oper})) | Acc1]
+                        [permission_to_binary({Object, Oper}) | Acc1]
                 end, Acc, Operations);
           (Permission, Acc) ->
-              [iolist_to_binary(permission_to_iolist(Permission)) | Acc]
+              [permission_to_binary(Permission) | Acc]
       end, [], Permissions).
 
 forbidden_response(Permissions) when is_list(Permissions) ->
