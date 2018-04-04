@@ -11,9 +11,7 @@
   function mnSaslauthdAuthDirective(mnLdapService, mnPromiseHelper) {
     var mnSaslauthdAuth = {
       restrict: 'A',
-      scope: {
-        rbac: "="
-      },
+      scope: {},
       templateUrl: 'app/components/directives/mn_saslauthd_auth/mn_saslauthd_auth.html',
       controller: controller,
       controllerAs: "saslauthdAuthCtl"
