@@ -78,30 +78,33 @@ init(Fun) ->
     Log = proplists:get_value(log, Opts),
     Params2 = erlang:setelement(4, Params, Opts2),
 
-    State =
+    Logger =
         case Log of
             undefined ->
-                #state{};
+                undefined;
             _ when is_list(Log) ->
-                Sink = Logger = Name,
+                Sink = Name,
 
                 ok = ns_server:start_disk_sink(Sink, Log),
 
-                ale:stop_logger(Logger),
-                ok = ale:start_logger(Logger, debug, ale_noop_formatter),
+                ale:stop_logger(Name),
+                ok = ale:start_logger(Name, debug, ale_noop_formatter),
 
-                ok = ale:add_sink(Logger, Sink, debug),
+                ok = ale:add_sink(Name, Sink, debug),
 
-                #state{logger=Name}
+                Name
         end,
+
+    State = #state{logger = Logger,
+                   port = undefined,
+                   params = Params2,
+                   messages = ringbuffer:new(?KEEP_MESSAGES_BYTES)},
 
     Port = case DontStart of
                false -> port_open(Params2, State);
                true -> undefined
            end,
-    {ok, State#state{port = Port,
-                     params = Params2,
-                     messages = ringbuffer:new(?KEEP_MESSAGES_BYTES)}}.
+    {ok, State#state{port = Port}}.
 
 handle_info({send_to_port, Msg}, #state{port = undefined} = State) ->
     ?log_debug("Got send_to_port when there's no port running yet. Will kill myself."),
