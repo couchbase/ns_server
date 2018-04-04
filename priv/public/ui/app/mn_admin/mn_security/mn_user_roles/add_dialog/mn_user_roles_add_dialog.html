@@ -139,17 +139,10 @@
                 <input
                    type="checkbox"
                    id="for-{{::getUIID}}"
-                   ng-disabled="(
-                                role.role !== 'admin' &&
-                                userRolesAddDialogCtl.selectedRoles[
-                                userRolesAddDialogCtl.getUIID({role: 'admin'})
-                                ]) || (
-                                role.bucket_name !== '*' &&
-                                userRolesAddDialogCtl.selectedRoles[
-                                userRolesAddDialogCtl.getUIID({role: role.role, bucket_name: '*'})
-                                ])"
+                   ng-disabled="userRolesAddDialogCtl.isRoleDisabled(role)"
                    ng-change="::userRolesAddDialogCtl.onCheckChange(role, getUIID)"
-                   ng-model="userRolesAddDialogCtl.selectedRoles[getUIID]">
+                   ng-model="userRolesAddDialogCtl.selectedRoles[getUIID]"
+                   ng-class="{'fake-select': userRolesAddDialogCtl.isRoleDisabled(role)}">
                 <label
                    ng-attr-title="{{role.desc}}"
                    for="for-{{::getUIID}}">

@@ -19,8 +19,21 @@
     vm.getUIID = mnUserRolesService.getRoleUIID;
     vm.toggleWrappers = toggleWrappers;
     vm.focusError = false;
+    vm.isRoleDisabled = isRoleDisabled;
 
     activate();
+
+    function isRoleDisabled(role) {
+      return (
+        role.role !== 'admin' &&
+          vm.selectedRoles[
+            vm.getUIID({role: 'admin'})
+          ]) || (
+            role.bucket_name !== '*' &&
+              vm.selectedRoles[
+                vm.getUIID({role: role.role, bucket_name: '*'})
+              ]);
+    }
 
     function toggleWrappers(id, value) {
       vm.openedWrappers[id] = !vm.openedWrappers[id];
@@ -55,34 +68,22 @@
 
     function onCheckChange(role, id) {
       var selectedRoles;
-      var containsSelected;
-      if (role.role === "admin") {
-        selectedRoles = {};
-        containsSelected = {};
-        if (vm.selectedRoles[id]) {
-          vm.allRoleUIIDs.forEach(function (roleID) {
-            selectedRoles[roleID] = true;
-            selectWrappers(roleID, true, containsSelected);
+      if (vm.selectedRoles[id]) {
+        if (role.role === "admin") {
+          selectedRoles = {};
+          selectedRoles[id] = true;
+          vm.selectedRoles = selectedRoles;
+        } else if (role.bucket_name === "*") {
+          vm.allRoles.forEach(function (item) {
+            if (item.bucket_name !== undefined &&
+                item.bucket_name !== "*" &&
+                item.role === role.role) {
+              vm.selectedRoles[mnUserRolesService.getRoleUIID(item)] = false;
+            }
           });
         }
-        vm.selectedRoles = selectedRoles;
-        vm.containsSelected = containsSelected;
-      } else if (role.bucket_name === "*") {
-        vm.allRoles.forEach(function (item) {
-          if (item.bucket_name !== undefined &&
-              item.bucket_name !== "*" &&
-              item.role === role.role) {
-            vm.selectedRoles[mnUserRolesService.getRoleUIID(item)] = vm.selectedRoles[id];
-          }
-        });
-        reviewSelectedWrappers();
-      } else {
-        if (vm.selectedRoles[id]) {
-          selectWrappers(id, true, vm.containsSelected);
-        } else {
-          reviewSelectedWrappers();
-        }
       }
+      reviewSelectedWrappers();
     }
 
     function activate() {
