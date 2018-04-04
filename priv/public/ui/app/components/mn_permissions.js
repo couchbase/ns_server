@@ -37,7 +37,8 @@
         basePermissions = basePermissions.concat([
           "cluster.bucket[" + name + "].data!write",
           "cluster.bucket[" + name + "].data!read",
-          "cluster.bucket[" + name + "].data.docs!read"
+          "cluster.bucket[" + name + "].data.docs!read",
+          "cluster.bucket[" + name + "].data.docs!write"
         ]);
       }
 
@@ -102,6 +103,7 @@
         get: doCheck,
         check: check,
         getFresh: getFresh,
+        getBucketPermissions: getBucketPermissions,
         export: {
           data: {},
           cluster: {},
@@ -132,6 +134,12 @@
       function getFresh() {
         clearCache();
         return mnPermissions.check();
+      }
+
+      function getBucketPermissions(bucketName) {
+        return mnBucketsService.getBucketsByType().then(function (bucketsDetails) {
+          return generateBucketPermissions(bucketName, bucketsDetails);
+        });
       }
 
       function check() {

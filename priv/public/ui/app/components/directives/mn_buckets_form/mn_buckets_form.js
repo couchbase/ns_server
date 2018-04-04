@@ -9,11 +9,12 @@
       'mnAutocompleteOff',
       'mnPromiseHelper',
       'mnBarUsage',
-      'mnUserRolesService'
+      'mnUserRolesService',
+      'mnPermissions'
     ])
     .directive('mnBucketsForm', mnBucketsFormDirective);
 
-  function mnBucketsFormDirective($http, mnBucketsDetailsDialogService, mnPromiseHelper, mnUserRolesService, $q) {
+  function mnBucketsFormDirective($http, mnBucketsDetailsDialogService, mnPromiseHelper, mnUserRolesService, $q, mnPermissions) {
 
     var mnBucketsForm = {
       restrict: 'A',
@@ -53,35 +54,30 @@
       $scope.canChangeBucketsSettings = $scope.bucketConf.isNew;
 
       if ($scope.rbac && $scope.rbac.cluster.admin.security.read) {
-        $q.all([
-          mnUserRolesService.getUsers({
-            permission: "cluster.bucket[" + getBucketName($scope) + "].data.docs!read"}),
-          mnUserRolesService.getUsers({
-            permission: "cluster.bucket[" + getBucketName($scope) + "].data.docs!write"})
-        ]).then(function (resp) {
-          var usersMap = {};
-          var read = resp[0].data;
-          var readWrite = resp[1].data;
-          function addName(user, actions) {
-            var name = "";
-
-            if (user.id.length > 16) {
-              name += (user.id.substring(0, 16) + "...");
-            } else {
-              name += user.id;
-            }
-            name += (" " + (user.domain === "local" ? "couchbase" : user.domain) + " " + actions);
-            usersMap[user.domain+user.id] = name;
-          }
-
-          read.forEach(function (user) {
-            addName(user, " (read)");
-          });
-          readWrite.forEach(function (user) {
-            addName(user, " (read/write)");
+        mnPermissions.getBucketPermissions(getBucketName($scope)).then(function (permissions) {
+          var queries = permissions.map(function (permission) {
+            return mnUserRolesService.getUsers({permission: permission});
           });
 
-          $scope.users = _.values(usersMap);
+          return $q.all(queries).then(function (resps) {
+            var uniqUsers = {};
+            var all = resps.forEach(function (resp) {
+              resp.data.forEach(function (user) {
+                var name = "";
+
+                if (user.id.length > 16) {
+                  name += (user.id.substring(0, 16) + "...");
+                } else {
+                  name += user.id;
+                }
+                name += (" (" + (user.domain === "local" ? "couchbase" : user.domain) + ")");
+
+                uniqUsers[user.domain+user.id] = name;
+              });
+            });
+
+            $scope.users = _.values(uniqUsers);
+          });
         });
       }
 
