@@ -92,7 +92,7 @@
                      ?CMD_SEQNO_PERSISTENCE | ?CMD_GET_RANDOM_KEY |
                      ?CMD_COMPACT_DB | ?CMD_AUDIT_PUT | ?CMD_AUDIT_CONFIG_RELOAD |
                      ?CMD_RBAC_REFRESH | ?CMD_SUBDOC_MULTI_LOOKUP |
-                     ?DCP_GET_FAILOVER_LOG.
+                     ?CMD_GET_FAILOVER_LOG.
 
 
 %% A memcached client that speaks binary protocol.
@@ -970,7 +970,7 @@ unpack_failover_log(Body) ->
     unpack_failover_log_loop(Body, []).
 
 get_failover_log(Sock, VB) ->
-    case cmd(?DCP_GET_FAILOVER_LOG, Sock, undefined, undefined,
+    case cmd(?CMD_GET_FAILOVER_LOG, Sock, undefined, undefined,
              {#mc_header{vbucket = VB}, #mc_entry{}}) of
         {ok, #mc_header{status = ?SUCCESS}, ME, _NCB} ->
             unpack_failover_log(ME#mc_entry.data);
