@@ -16,6 +16,7 @@
 -module(ns_node_disco).
 
 -behaviour(gen_server).
+-behavior(ns_log_categorizing).
 
 -include("ns_common.hrl").
 

@@ -1,5 +1,6 @@
 {lib_dirs, ["deps"]}.
-{erl_first_files, ["src/supervisor2.erl",
+{erl_first_files, ["src/ns_log_categorizing.erl",
+                   "src/supervisor2.erl",
                    "src/memcached_cfg.erl",
                    "src/replicated_storage.erl",
                    "src/json_settings_manager.erl",

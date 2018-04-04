@@ -19,6 +19,7 @@
 -author('Northscale <info@northscale.com>').
 
 -behaviour(supervisor).
+-behaviour(ns_log_categorizing).
 
 -define(START_OK, 1).
 -define(START_FAIL, 2).

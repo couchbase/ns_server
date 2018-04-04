@@ -20,10 +20,5 @@
 
 -module(ns_log_categorizing).
 
--export([behaviour_info/1]).
-
-behaviour_info(callbacks) ->
-    [{ns_log_cat,1},
-     {ns_log_code_string,1}];
-behaviour_info(_Other) ->
-    undefined.
+-callback ns_log_cat(Code :: integer()) -> Severity :: info | warn | crit.
+-callback ns_log_code_string(Code :: integer()) -> Description :: string().

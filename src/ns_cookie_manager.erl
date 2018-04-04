@@ -18,6 +18,7 @@
 -module(ns_cookie_manager).
 
 -behavior(gen_server).
+-behavior(ns_log_categorizing).
 
 -include("ns_common.hrl").
 

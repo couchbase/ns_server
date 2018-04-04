@@ -19,8 +19,7 @@
 
 -author('NorthScale <info@northscale.com>').
 
-% -behavior(ns_log_categorizing).
-% the above is commented out because of the way the project is structured
+-behavior(ns_log_categorizing).
 
 -include_lib("eunit/include/eunit.hrl").
 
