@@ -127,7 +127,7 @@
                 <div ng-class="{'indent-1': !isFirstArray}">
                   <div
                      ng-show="userRolesAddDialogCtl.openedWrappers[getUIID]"
-                     ng-repeat="role in (isFirstArray ? roles : roles[1])"
+                     ng-repeat="role in (isFirstArray ? roles : roles[1]) | filter:userRolesAddDialogCtl.filterEmptyRoles"
                      ng-include="'rolesTree'">
                   </div>
                 </div>

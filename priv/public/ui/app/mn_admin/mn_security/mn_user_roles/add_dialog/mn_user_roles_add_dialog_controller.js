@@ -18,6 +18,7 @@
     vm.selectedRoles = {};
     vm.getUIID = mnUserRolesService.getRoleUIID;
     vm.toggleWrappers = toggleWrappers;
+    vm.filterEmptyRoles = filterEmptyRoles;
     vm.focusError = false;
 
     activate();
@@ -83,6 +84,10 @@
           reviewSelectedWrappers();
         }
       }
+    }
+
+    function filterEmptyRoles(role) {
+      return !!role;
     }
 
     function activate() {
