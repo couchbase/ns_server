@@ -502,9 +502,9 @@ send_chunked(Req, StatusCode, ExtraHeaders) ->
                           chunked}),
            pipes:foreach(?producer(),
                          fun (Part) ->
-                                 Resp:write_chunk(Part)
+                                 mochiweb_response:write_chunk(Part, Resp)
                          end),
-           Resp:write_chunk(<<>>)
+           mochiweb_response:write_chunk(<<>>, Resp)
        end).
 
 handle_streaming(F, Req) ->
@@ -531,8 +531,8 @@ streaming_inner(F, HTTPRes, LastRes) ->
                           {write, Bin} -> Bin;
                           _ -> encode_json(ResNormal)
                       end,
-            HTTPRes:write_chunk(Encoded),
-            HTTPRes:write_chunk("\n\n\n\n")
+            mochiweb_response:write_chunk(Encoded, HTTPRes),
+            mochiweb_response:write_chunk("\n\n\n\n", HTTPRes)
     end,
     Res.
 
@@ -540,7 +540,7 @@ handle_streaming(F, Req, HTTPRes, LastRes) ->
     Res =
         try streaming_inner(F, HTTPRes, LastRes)
         catch exit:normal ->
-                HTTPRes:write_chunk(""),
+                mochiweb_response:write_chunk("", HTTPRes),
                 exit(normal)
         end,
     request_throttler:hibernate(?MODULE, handle_streaming_wakeup, [F, Req, HTTPRes, Res]).

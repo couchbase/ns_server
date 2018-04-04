@@ -25,7 +25,7 @@ format_msg(#log_info{time = Time,
      get_auth_user(Req), " ",
      get_datetime(Time), " ",
      get_path_info(Req), " ",
-     io_lib:format("~w", [Resp:get(code)]), " ",
+     io_lib:format("~w", [mochiweb_response:get(code, Resp)]), " ",
      get_size(Resp), " ",
      get_request_header_value(Req, "Referer"), " ",
      get_request_header_value(Req, "User-agent"), "\n"].
@@ -91,7 +91,7 @@ get_request_header_value(Req, Header) ->
     end.
 
 get_response_header_value(Resp, Header) ->
-    Headers = Resp:get(headers),
+    Headers = mochiweb_response:get(headers, Resp),
     case mochiweb_headers:get_value(Header, Headers) of
         undefined ->
             "-";

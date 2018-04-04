@@ -347,10 +347,10 @@ handle_resp({error, _Reason}=Error, Req) ->
 stream_body(Pid, Resp) ->
     case lhttpc:get_body_part(Pid) of
         {ok, Part} when is_binary(Part) ->
-            Resp:write_chunk(Part),
+            mochiweb_response:write_chunk(Part, Resp),
             stream_body(Pid, Resp);
         {ok, {http_eob, _Trailers}} ->
-            Resp:write_chunk(<<>>)
+            mochiweb_response:write_chunk(<<>>, Resp)
     end.
 
 server_error(Req, Service, service_not_running) ->

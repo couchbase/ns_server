@@ -389,7 +389,7 @@ handle_diag(Req) ->
             do_handle_diag(Req, MaybeContDisp);
         _ ->
             Resp = handle_just_diag(Req, MaybeContDisp),
-            Resp:write_chunk(<<>>)
+            mochiweb_response:write_chunk(<<>>, Resp)
     end,
     trace_memory("Finished handling diag.").
 
@@ -424,7 +424,7 @@ grab_per_node_diag(Remotes, Timeout) ->
 handle_just_diag(Req, Extra) ->
     Resp = menelaus_util:reply_ok(Req, "text/plain; charset=utf-8", chunked, Extra),
 
-    Resp:write_chunk(<<"logs:\n-------------------------------\n">>),
+    mochiweb_response:write_chunk(<<"logs:\n-------------------------------\n">>, Resp),
     lists:foreach(fun (#log_entry{node = Node,
                                   module = Module,
                                   code = Code,
@@ -437,11 +437,11 @@ handle_just_diag(Req, Extra) ->
                                   CodeString = ns_log:code_string(Module, Code),
                                   Type = menelaus_alert:category_bin(Cat),
                                   TStampEpoch = misc:timestamp_to_time(TStamp, millisecond),
-                                  Resp:write_chunk(iolist_to_binary(diag_format_log_entry(Type, Code, Module, Node, TStampEpoch, CodeString, S)))
+                                  mochiweb_response:write_chunk(iolist_to_binary(diag_format_log_entry(Type, Code, Module, Node, TStampEpoch, CodeString, S)), Resp)
                           catch _:_ -> ok
                           end
                   end, lists:keysort(#log_entry.tstamp, ns_log:recent())),
-    Resp:write_chunk(<<"-------------------------------\n\n\n">>),
+    mochiweb_response:write_chunk(<<"-------------------------------\n\n\n">>, Resp),
 
     Nodes = case proplists:get_value("oneNode", mochiweb_request:parse_qs(Req), "0") of
                 "0" -> ns_node_disco:erlang_visible_nodes();
@@ -460,14 +460,14 @@ handle_just_diag(Req, Extra) ->
 
     [begin
          Text = io_lib:format(Fmt ++ "~n~n", Args),
-         Resp:write_chunk(list_to_binary(Text))
+         mochiweb_response:write_chunk(list_to_binary(Text), Resp)
      end || [Fmt | Args] <- Infos],
 
     Resp.
 
 write_chunk_format(Resp, Fmt, Args) ->
     Text = io_lib:format(Fmt, Args),
-    Resp:write_chunk(list_to_binary(Text)).
+    mochiweb_response:write_chunk(list_to_binary(Text), Resp).
 
 handle_per_node_just_diag(_Resp, []) ->
     erlang:garbage_collect();
@@ -519,7 +519,7 @@ write_processes(Resp, Node, Key, Processes) ->
                 fun (Process) ->
                         write_chunk_format(Resp, "     ~p~n", [Process])
                 end, Processes),
-              Resp:write_chunk(<<"\n\n">>)
+              mochiweb_response:write_chunk(<<"\n\n">>, Resp)
       end).
 
 do_handle_per_node_processes(Resp, Node, PerNodeDiag) ->
@@ -572,7 +572,7 @@ do_handle_per_node_stats(Resp, Node, PerNodeDiag)->
                                     end, Samples)
                           end, BucketStats)
                 end, Stats),
-              Resp:write_chunk(<<"\n\n">>)
+              mochiweb_response:write_chunk(<<"\n\n">>, Resp)
       end),
 
     DiagNoStats = lists:keydelete(stats, 1, PerNodeDiag),
@@ -606,13 +606,13 @@ do_print_ets_table(Resp, Node, Key, Table, Info, Values) ->
         [] ->
             ok;
         _ ->
-            Resp:write_chunk(<<"  Values: \n">>),
+            mochiweb_response:write_chunk(<<"  Values: \n">>, Resp),
             lists:foreach(
               fun (Value) ->
                       write_chunk_format(Resp, "    ~p~n", [Value])
               end, Values)
     end,
-    Resp:write_chunk(<<"\n">>).
+    mochiweb_response:write_chunk(<<"\n">>, Resp).
 
 write_ets_tables(Resp, Node, Key, PerNodeDiag) ->
     trace_memory("Starting pretty printing ets tables for ~p", [{Node, Key}]),
@@ -650,7 +650,7 @@ do_continue_handling_per_node_just_diag(Resp, Node, Diag) ->
               write_chunk_format(Resp, "     ~p~n", [Diag])
       end),
 
-    Resp:write_chunk(<<"\n\n">>).
+    mochiweb_response:write_chunk(<<"\n\n">>, Resp).
 
 do_handle_diag(Req, Extra) ->
     Resp = handle_just_diag(Req, Extra),
@@ -674,15 +674,15 @@ do_handle_diag(Req, Extra) ->
                           handle_log(Resp, Log)
                   end, Logs),
     handle_memcached_logs(Resp),
-    Resp:write_chunk(<<"">>).
+    mochiweb_response:write_chunk(<<"">>, Resp).
 
 handle_log(Resp, LogName) ->
     LogsHeader = io_lib:format("logs_node (~s):~n"
                                "-------------------------------~n", [LogName]),
-    Resp:write_chunk(list_to_binary(LogsHeader)),
+    mochiweb_response:write_chunk(list_to_binary(LogsHeader), Resp),
     ns_log_browser:stream_logs(LogName,
-                               fun (Data) -> Resp:write_chunk(Data) end),
-    Resp:write_chunk(<<"-------------------------------\n">>).
+                               fun (Data) -> mochiweb_response:write_chunk(Data, Resp) end),
+    mochiweb_response:write_chunk(<<"-------------------------------\n">>, Resp).
 
 
 handle_memcached_logs(Resp) ->
@@ -704,7 +704,7 @@ handle_memcached_logs(Resp) ->
 
     Sorted = lists:keysort(2, lists:filter(fun (X) -> X /= deleted end, TsLogs)),
 
-    Resp:write_chunk(<<"memcached logs:\n-------------------------------\n">>),
+    mochiweb_response:write_chunk(<<"memcached logs:\n-------------------------------\n">>, Resp),
 
     lists:foreach(fun ({Log, _}) ->
                           handle_memcached_log(Resp, Log)
@@ -719,8 +719,8 @@ handle_memcached_log(Resp, Log) ->
                 file:close(File)
             end;
         Error ->
-            Resp:write_chunk(
-              list_to_binary(io_lib:format("Could not open file ~s: ~p~n", [Log, Error])))
+            mochiweb_response:write_chunk(
+              list_to_binary(io_lib:format("Could not open file ~s: ~p~n", [Log, Error])), Resp)
     end.
 
 -define(CHUNK_SIZE, 65536).
@@ -730,7 +730,7 @@ do_handle_memcached_log(Resp, File) ->
         eof ->
             ok;
         {ok, Data} ->
-            Resp:write_chunk(Data)
+            mochiweb_response:write_chunk(Data, Resp)
     end.
 
 handle_sasl_logs(LogName, Req) ->
@@ -739,7 +739,7 @@ handle_sasl_logs(LogName, Req) ->
         true ->
             Resp = menelaus_util:reply_ok(Req, "text/plain; charset=utf-8", chunked),
             handle_log(Resp, FullLogName),
-            Resp:write_chunk(<<"">>);
+            mochiweb_response:write_chunk(<<"">>, Resp);
         false ->
             menelaus_util:reply_text(Req, "Requested log file not found.\r\n", 404)
     end.
@@ -905,7 +905,7 @@ handle_diag_master_events(Req) ->
     end.
 
 do_handle_diag_master_events(Req) ->
-    Rep = menelaus_util:reply_ok(Req, "text/kind-of-json; charset=utf-8", chunked),
+    Resp = menelaus_util:reply_ok(Req, "text/kind-of-json; charset=utf-8", chunked),
     Parent = self(),
     Sock = mochiweb_request:get(socket, Req),
     inet:setopts(Sock, [{active, true}]),
@@ -931,7 +931,7 @@ do_handle_diag_master_events(Req) ->
                            %% eat & ignore
                            Loop(Loop);
                        {write_chunk, Chunk} ->
-                           Rep:write_chunk(Chunk),
+                           mochiweb_response:write_chunk(Chunk, Resp),
                            Loop(Loop)
                    end
            end,

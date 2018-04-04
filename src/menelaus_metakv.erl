@@ -146,14 +146,15 @@ handle_iterate(Req, Path, Continuous) ->
         true ->
             RV;
         false ->
-            HTTPRes:write_chunk("")
+            mochiweb_response:write_chunk("", HTTPRes)
     end.
 
 output_kv(HTTPRes, K, V, undefined) ->
     ?metakv_debug("Sent ~s", [K]),
-    HTTPRes:write_chunk(ejson:encode({[{rev, null},
-                                       {path, K},
-                                       {value, base64:encode(V)}]}));
+    mochiweb_response:write_chunk(ejson:encode({[{rev, null},
+                                                 {path, K},
+                                                 {value, base64:encode(V)}]}),
+                                  HTTPRes);
 output_kv(HTTPRes, K, V, VC) ->
     Rev0 = base64:encode(erlang:term_to_binary(VC)),
     {Rev, Value} = case V of
@@ -163,6 +164,6 @@ output_kv(HTTPRes, K, V, VC) ->
                            {Rev0, base64:encode(V)}
                    end,
     ?metakv_debug("Sent ~s rev: ~s", [K, Rev]),
-    HTTPRes:write_chunk(ejson:encode({[{rev, Rev},
-                                       {path, K},
-                                       {value, Value}]})).
+    mochiweb_response:write_chunk(ejson:encode({[{rev, Rev},
+                                                 {path, K},
+                                                 {value, Value}]}), HTTPRes).
