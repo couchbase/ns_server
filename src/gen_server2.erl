@@ -17,8 +17,6 @@
 
 -behavior(gen_server).
 
--export([behaviour_info/1]).
-
 %% Standard gen_server APIs
 -export([start/3, start/4]).
 -export([start_link/3, start_link/4]).
@@ -73,45 +71,41 @@
 
 %% Inherited from gen_server
 %%
-%% -callback init(Args :: term()) ->
-%%     {ok, State :: term()} | {ok, State :: term(), timeout() | hibernate} |
-%%     {stop, Reason :: term()} | ignore.
-%% -callback handle_call(Request :: term(), From :: {pid(), Tag :: term()},
-%%                       State :: term()) ->
-%%     {reply, Reply :: term(), NewState :: term()} |
-%%     {reply, Reply :: term(), NewState :: term(), timeout() | hibernate} |
-%%     {noreply, NewState :: term()} |
-%%     {noreply, NewState :: term(), timeout() | hibernate} |
-%%     {stop, Reason :: term(), Reply :: term(), NewState :: term()} |
-%%     {stop, Reason :: term(), NewState :: term()}.
-%% -callback handle_cast(Request :: term(), State :: term()) ->
-%%     {noreply, NewState :: term()} |
-%%     {noreply, NewState :: term(), timeout() | hibernate} |
-%%     {stop, Reason :: term(), NewState :: term()}.
-%% -callback handle_info(Info :: timeout | term(), State :: term()) ->
-%%     {noreply, NewState :: term()} |
-%%     {noreply, NewState :: term(), timeout() | hibernate} |
-%%     {stop, Reason :: term(), NewState :: term()}.
-%% -callback terminate(Reason :: (normal | shutdown | {shutdown, term()} |
-%%                                term()),
-%%                     State :: term()) ->
-%%     term().
-%% -callback code_change(OldVsn :: (term() | {down, term()}), State :: term(),
-%%                       Extra :: term()) ->
-%%     {ok, NewState :: term()} | {error, Reason :: term()}.
+-callback init(Args :: term()) ->
+    {ok, State :: term()} | {ok, State :: term(), timeout() | hibernate} |
+    {stop, Reason :: term()} | ignore.
+-callback handle_call(Request :: term(), From :: {pid(), Tag :: term()},
+                      State :: term()) ->
+    {reply, Reply :: term(), NewState :: term()} |
+    {reply, Reply :: term(), NewState :: term(), timeout() | hibernate} |
+    {noreply, NewState :: term()} |
+    {noreply, NewState :: term(), timeout() | hibernate} |
+    {stop, Reason :: term(), Reply :: term(), NewState :: term()} |
+    {stop, Reason :: term(), NewState :: term()}.
+-callback handle_cast(Request :: term(), State :: term()) ->
+    {noreply, NewState :: term()} |
+    {noreply, NewState :: term(), timeout() | hibernate} |
+    {stop, Reason :: term(), NewState :: term()}.
+-callback handle_info(Info :: timeout | term(), State :: term()) ->
+    {noreply, NewState :: term()} |
+    {noreply, NewState :: term(), timeout() | hibernate} |
+    {stop, Reason :: term(), NewState :: term()}.
+-callback terminate(Reason :: (normal | shutdown | {shutdown, term()} |
+                               term()),
+                    State :: term()) ->
+    term().
+-callback code_change(OldVsn :: (term() | {down, term()}), State :: term(),
+                      Extra :: term()) ->
+    {ok, NewState :: term()} | {error, Reason :: term()}.
 
 %% gen_server2 specific optional callbacks
 %%
-%% -callback handle_job_death(Queue :: term(), Name :: term(), Reason :: term()) ->
-%%     {continue, Reply :: term()} |
-%%     {stop, Reason :: term()}.
+-callback handle_job_death(Queue :: term(), Name :: term(), Reason :: term()) ->
+    {continue, Reply :: term()} |
+    {stop, Reason :: term()}.
 
-%% With all callbacks being optional, erlang doesn't understand anymore that
-%% this is a behavior. Having a dummy behaviour_info/1 exported fixes that.
-behaviour_info(callbacks) ->
-    [];
-behaviour_info(_Other) ->
-    undefined.
+-optional_callbacks([init/1, handle_call/3, handle_cast/2, handle_info/2,
+                     terminate/2, code_change/3, handle_job_death/3]).
 
 %% Standard gen_server APIs
 start(Module, Args, Options) ->
