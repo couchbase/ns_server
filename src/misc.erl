@@ -2511,3 +2511,20 @@ generate_crypto_seed() ->
       I3:32/unsigned-integer>> = crypto:strong_rand_bytes(12),
     {I1, I2, I3}.
 
+%% Generates N: Lo =< N < Hi
+rand_uniform(Lo, Hi) ->
+    rand:uniform(Hi - Lo) + Lo - 1.
+
+-ifdef(EUNIT).
+rand_uniform_test() ->
+    rand:seed(exrop, erlang:timestamp()),
+    NTimes = fun G(N, _) when N =< 0 -> ok;
+                 G(N, F) -> F(), G(N - 1, F)
+             end,
+
+    NTimes(10000, fun () ->
+                          R = rand_uniform(10,100),
+                          ?assert(lists:member(R, lists:seq(10,99)))
+                  end).
+-endif.
+

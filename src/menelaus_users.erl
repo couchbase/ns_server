@@ -137,7 +137,7 @@ init([]) ->
     #state{base = init_versions()}.
 
 init_versions() ->
-    Base = crypto:rand_uniform(0, 16#100000000),
+    Base = misc:rand_uniform(0, 16#100000000),
     ets:insert_new(versions_name(), [{user_version, 0, Base}, {auth_version, 0, Base}]),
     gen_event:notify(user_storage_events, {user_version, {0, Base}}),
     gen_event:notify(user_storage_events, {auth_version, {0, Base}}),

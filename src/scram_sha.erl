@@ -193,7 +193,7 @@ authenticate(Sha, Sid, Data) ->
     end.
 
 gen_nonce() ->
-    [crypto:rand_uniform(48,125) || _ <- lists:seq(1,15)].
+    [misc:rand_uniform(48,125) || _ <- lists:seq(1,15)].
 
 find_auth(Name) ->
     case ns_config_auth:get_user_and_auth(admin) of

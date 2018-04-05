@@ -1075,7 +1075,7 @@ gen_password(Policy) ->
 gen_password(Policy, 0) ->
     erlang:error({pass_gen_retries_exceeded, Policy});
 gen_password({MinLength, _} = Policy, Retries) ->
-    Length = max(MinLength, crypto:rand_uniform(8, 16)),
+    Length = max(MinLength, misc:rand_uniform(8, 16)),
     Letters =
         "0123456789abcdefghijklmnopqrstuvwxyz"
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%^&*?",

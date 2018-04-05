@@ -88,7 +88,7 @@ handle_call({interactive_update, Doc}, _From,
             #state{child_module = Module,
                    child_state = ChildState,
                    replicator = Replicator} = State) ->
-    Rand = crypto:rand_uniform(0, 16#100000000),
+    Rand = misc:rand_uniform(0, 16#100000000),
     RandBin = <<Rand:32/integer>>,
     {NewRev, FoundType} =
         case Module:find_doc(Module:get_id(Doc), ChildState) of

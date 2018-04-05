@@ -47,7 +47,7 @@ init([]) ->
                 client_cert_auth_version = client_cert_auth_version()}}.
 
 new_cert_version() ->
-    crypto:rand_uniform(0, 16#100000000).
+    misc:rand_uniform(0, 16#100000000).
 
 json_rpc_event({_, Label, _} = Event) ->
     case is_cbauth_connection(Label) of
