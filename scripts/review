@@ -94,28 +94,6 @@ EOF
     exit 1
 }
 
-SHORT_OPTS="b:u:v:r:p:sdR:I"
-LONG_OPTS="branch:,upstream:,verified:,review:,
-           port:,submit,dry-run,raw:,ignore-errors"
-
-function have_enhanced_getopt() {
-    getopt -T > /dev/null 2>&1
-    [ $? -eq 4 ]
-}
-
-function get_args() {
-    if have_enhanced_getopt; then
-        getopt -o "${SHORT_OPTS}" -l "${LONG_OPTS}" -n "$0" -- "$@"
-    else
-        getopt "${SHORT_OPTS}" "$@"
-    fi
-}
-
-ARGS=$(get_args "$@")
-if [ $? != 0 ]; then
-    usage
-fi
-
 VERIFIED=
 REVIEW=
 SUBMIT=no
@@ -126,24 +104,24 @@ UPSTREAM=
 RAW=
 IGNORE_ERRORS=
 
-eval set -- "$ARGS"
-while true; do
+while [ $# -gt 0 ]; do
     case "$1" in
+        -h|--help) usage ;; # 'usage' will exit the script
         -d|--dry-run) DRY_RUN=yes ; shift ;;
-        -v|--verified) VERIFIED="$2" ; shift 2 ;;
-        -r|--review) REVIEW="$2" ; shift 2 ;;
-        -s|--submit) SUBMIT=yes ; shift ;;
-        -b|--branch) BRANCH="$2" ; shift 2 ;;
-        -p|--port) PORT=$2 ; shift 2 ;;
-        -u|--upstream) UPSTREAM=$2 ; shift 2 ;;
-        -R|--raw) RAW="$2" ; shift 2 ;;
+        -v|--verified) VERIFIED="$2" ; shift; shift ;;
+        -r|--review) REVIEW="$2" ; shift; shift ;;
+        -s|--submit) SUBMIT=yes ; shift; shift ;;
+        -b|--branch) BRANCH="$2" ; shift; shift ;;
+        -p|--port) PORT=$2 ; shift; shift ;;
+        -u|--upstream) UPSTREAM=$2 ; shift; shift ;;
+        -R|--raw) RAW="$2" ; shift; shift ;;
         -I|--ignore-errors) IGNORE_ERRORS=yes ; shift ;;
-        --) shift ; break ;;
+        *) break ;;
     esac
 done
 
 if [ $# -ne 0 ]; then
-    usage "Got unexpected arguments: $*"
+    usage "Got unexpected argument: \"$1\""
 fi
 
 validate_arg "${PORT}" "[[:digit:]]+" || usage "Invalid value for --port"
