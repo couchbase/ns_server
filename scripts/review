@@ -164,7 +164,7 @@ if [ "${SUBMIT}" = yes ]; then
 fi
 
 if [ -z "${FLAGS}" -a -z "$RAW" ]; then
-    usage "Need at least on of --verified, --review, --submit or --raw"
+    usage "Need at least one of --verified, --review, --submit or --raw"
 fi
 
 if [ -z "${BRANCH}" ]; then
@@ -178,7 +178,7 @@ if [ -z "${UPSTREAM}" ]; then
 fi
 
 REVIEW_URL=$(get_review_url) || fail "Failed to get the review URL"
-USERNAME=$(get_review_username "${REVIEW_URL}") || fail "Failed to the username"
+USERNAME=$(get_review_username "${REVIEW_URL}") || fail "Failed to get the username"
 
 if [ -n "${RAW}" ]; then
     if [ -n "${FLAGS}" ]; then
