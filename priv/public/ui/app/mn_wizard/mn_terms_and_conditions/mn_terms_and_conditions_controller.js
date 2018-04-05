@@ -12,9 +12,6 @@
     vm.onSubmit = onSubmit;
     vm.finishWithDefault = finishWithDefault;
 
-
-    mnWizardService.getTermsAndConditionsState().version = (pools.implementationVersion || 'unknown');
-    vm.register = mnWizardService.getTermsAndConditionsState();
     activate();
     function activate() {
       var promise;
@@ -38,7 +35,7 @@
       }
 
       mnClusterConfigurationService
-        .postStats(vm.register, true).then(function () {
+        .postStats(true).then(function () {
           var services = "kv,index,fts,n1ql";
           if (vm.isEnterprise) {
             services += ",eventing";

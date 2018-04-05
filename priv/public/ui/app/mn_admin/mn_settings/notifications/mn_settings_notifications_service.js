@@ -136,7 +136,6 @@ angular.module('mnSettingsNotificationsService', [
       if (remotes && remotes.filtered) {
           stats.xdcr.remotes = remotes.filtered.map(function (remote) {
                   return {
-                      hostname: remote.hostname,
                       name: remote.name,
                       uuid: remote.uuid
                   };

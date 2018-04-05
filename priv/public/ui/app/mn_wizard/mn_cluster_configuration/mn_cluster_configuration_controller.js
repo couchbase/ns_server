@@ -119,8 +119,7 @@
       return addErrorHandler(mnClusterConfigurationService.postJoinCluster(data), "postJoinCluster");
     }
     function postStats() {
-      var user = mnWizardService.getTermsAndConditionsState();
-      var promise = mnClusterConfigurationService.postStats(user, vm.sendStats);
+      var promise = mnClusterConfigurationService.postStats(vm.sendStats);
 
       return mnPromiseHelper(vm, promise)
         .catchGlobalErrors()

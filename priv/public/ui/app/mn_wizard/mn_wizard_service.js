@@ -9,7 +9,6 @@
     var mnWizardService = {
       getNewClusterState: getNewClusterState,
       getState: getState,
-      getTermsAndConditionsState: getTermsAndConditionsState,
       getCELicense: getCELicense,
       getEELicense: getEELicense
     };
@@ -22,13 +21,6 @@
           password: '',
           verifyPassword: ''
         }
-      },
-      termsAndConditionsState: {
-        email: '',
-        firstname: '',
-        lastname: '',
-        company: '',
-        version: ''
       }
     };
 
@@ -59,10 +51,6 @@
 
     function getNewClusterState() {
       return state.newClusterState;
-    }
-
-    function getTermsAndConditionsState() {
-      return state.termsAndConditionsState;
     }
 
   }

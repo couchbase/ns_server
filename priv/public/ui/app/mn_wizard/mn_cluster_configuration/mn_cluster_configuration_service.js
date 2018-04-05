@@ -18,7 +18,6 @@
       lookup: lookup,
       getConfig: getConfig,
       postAuth: postAuth,
-      postEmail: postEmail,
       postStats: postStats,
       getQuerySettings: getQuerySettings,
       postQuerySettings: postQuerySettings,
@@ -110,21 +109,10 @@
       });
     }
 
-    function postStats(user, sendStats) {
-      user.email && postEmail(user);
+    function postStats(sendStats) {
       return doPostStats({sendStats: sendStats});
     }
 
-    function postEmail(register) {
-      var params = _.clone(register);
-      delete params.agree;
-
-      return $http({
-        method: 'JSONP',
-        url: 'https://ph.couchbase.net/email',
-        params: params
-      });
-    }
     function doPostStats(data) {
       return $http({
         method: 'POST',
