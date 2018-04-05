@@ -297,13 +297,13 @@ angular.module('mnSettingsNotificationsService', [
           $q.when(poolDefault)
         ];
 
-        if (mnPoolDefault.export.compat.atLeast40 && mnPermissions.export.cluster.indexes.read) {
+        if (mnPoolDefault.export.compat.atLeast40 && mnPermissions.export.cluster.bucket['.'].n1ql.index.read) {
           queries[4] = mnGsiService.getIndexesState(mnHttpParams);
         }
         if (mnPools.export.isEnterprise && mnPermissions.export.cluster.admin.security.read && mnPoolDefault.export.compat.atLeast40) {
           queries[5] = mnAuditService.getAuditSettings();
         }
-        if (mnPoolDefault.export.compat.atLeast40 && mnPermissions.export.cluster.indexes.read) {
+        if (mnPoolDefault.export.compat.atLeast40 && mnPermissions.export.cluster.settings.indexes.read) {
           queries[6] = mnSettingsClusterService.getIndexSettings();
         }
         if (mnPermissions.export.cluster.settings.read) {

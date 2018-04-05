@@ -26,7 +26,7 @@
       $scope.maybeDisableTimeInterval = maybeDisableTimeInterval;
       $scope.props = {};
 
-      if (mnPoolDefault.export.compat.atLeast40 && $scope.rbac.cluster.indexes.read) {
+      if (mnPoolDefault.export.compat.atLeast40 && $scope.rbac.cluster.settings.indexes.read) {
         mnPromiseHelper($scope, mnSettingsClusterService.getIndexSettings())
           .applyToScope("indexSettings");
       }

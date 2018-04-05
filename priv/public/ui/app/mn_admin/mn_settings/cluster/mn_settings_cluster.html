@@ -1,5 +1,5 @@
 <div
-   mn-spinner="settingsClusterCtl.clusterName === undefined || !settingsClusterCtl.memoryQuotaConfig || (rbac.cluster.indexes.read && poolDefault.compat.atLeast40 && !settingsClusterCtl.indexSettings) || (poolDefault.value.isEnterprise && !settingsClusterCtl.certificate)">
+   mn-spinner="settingsClusterCtl.clusterName === undefined || !settingsClusterCtl.memoryQuotaConfig || (rbac.cluster.settings.indexes.read && poolDefault.compat.atLeast40 && !settingsClusterCtl.indexSettings) || (poolDefault.value.isEnterprise && !settingsClusterCtl.certificate)">
   <form
      ng-submit="settingsClusterCtl.saveVisualInternalSettings()"
      class="forms">
@@ -38,10 +38,10 @@
 
       <div class="fix-width-6">
 
-        <label ng-show="poolDefault.compat.atLeast40 && rbac.cluster.indexes.read" class="margin-top-half">
+        <label ng-show="poolDefault.compat.atLeast40 && rbac.cluster.settings.indexes.read" class="margin-top-half">
           Index Storage Mode
         </label>
-        <div ng-show="poolDefault.compat.atLeast40 && rbac.cluster.indexes.read">
+        <div ng-show="poolDefault.compat.atLeast40 && rbac.cluster.settings.indexes.read">
           <div class="formrow">
             <mn-storage-mode
                mn-is-enterprise="adminCtl.poolDefault.isEnterprise"
@@ -73,7 +73,7 @@
             <input
                type="number"
                ng-model="settingsClusterCtl.indexSettings.indexerThreads"
-               ng-disabled="settingsClusterCtl.indexSettings.storageMode === '' || !rbac.cluster.indexes.write"
+               ng-disabled="settingsClusterCtl.indexSettings.storageMode === '' || !rbac.cluster.settings.indexes.write"
                id="index_settings_thread">
             <div
                class="error error-field"
@@ -96,7 +96,7 @@
             <input
                type="text"
                ng-model="settingsClusterCtl.indexSettings.maxRollbackPoints"
-               ng-disabled="settingsClusterCtl.indexSettings.storageMode === '' || !rbac.cluster.indexes.write"
+               ng-disabled="settingsClusterCtl.indexSettings.storageMode === '' || !rbac.cluster.settings.indexes.write"
                id="in_memory_snapshot">
             <div
                class="error error-field"
@@ -112,7 +112,7 @@
             <select
                ng-model="settingsClusterCtl.indexSettings.logLevel"
                name="logLevel"
-               ng-disabled="settingsClusterCtl.indexSettings.storageMode === '' || !rbac.cluster.indexes.write"
+               ng-disabled="settingsClusterCtl.indexSettings.storageMode === '' || !rbac.cluster.settings.indexes.write"
                id="indexer_log_level">
               <option value="silent">Silent</option>
               <option value="fatal">Fatal</option>
@@ -269,7 +269,7 @@
     <div class="margin-top-1-5">
       <button
          type="submit"
-         ng-show="rbac.cluster.pools.write || rbac.cluster.indexes.write"
+         ng-show="rbac.cluster.pools.write || rbac.cluster.settings.indexes.write"
          ng-disabled="!!settingsClusterCtl.indexSettingsErrors || !!settingsClusterCtl.memoryQuotaErrors">
         Save
       </button>

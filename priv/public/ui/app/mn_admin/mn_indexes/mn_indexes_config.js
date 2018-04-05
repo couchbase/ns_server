@@ -31,7 +31,7 @@
           }
         },
         data: {
-          permissions: "cluster.indexes.read"
+          permissions: "cluster.bucket['.'].n1ql.index.read"
         },
         controller: "mnGsiController as gsiCtl",
         templateUrl: "app/mn_admin/mn_indexes/mn_gsi/mn_gsi.html"

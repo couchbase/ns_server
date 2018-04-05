@@ -195,15 +195,15 @@
       <a
          mn-tab="indexes"
          ng-class="{currentnav: ('app.admin.indexes' | includedByState)}"
-         ng-show="rbac.cluster.bucket['.'].views.read || rbac.cluster.indexes.read"
+         ng-show="rbac.cluster.bucket['.'].views.read || rbac.cluster.bucket['.'].n1ql.index.read"
          ui-sref="app.admin.indexes.gsi"
          class="resp-hide-sml">
         <span
            ui-sref="app.admin.indexes.gsi"
-           ng-show="rbac.cluster.indexes.read">Indexes</span>
+           ng-show="rbac.cluster.bucket['.'].n1ql.index.read">Indexes</span>
         <span
            ui-sref="app.admin.indexes.views.list"
-           ng-show="rbac.cluster.indexes.read === false">Indexes</span>
+           ng-show="rbac.cluster.bucket['.'].n1ql.index.read === false">Indexes</span>
       </a>
     </nav>
 

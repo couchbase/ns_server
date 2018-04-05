@@ -24,7 +24,10 @@
         "cluster.bucket[" + name + "].xdcr!read",
         "cluster.bucket[" + name + "].xdcr!write",
         "cluster.bucket[" + name + "].xdcr!execute",
-        "cluster.bucket[" + name + "].n1ql.select!execute"
+        "cluster.bucket[" + name + "].n1ql.select!execute",
+        "cluster.bucket[" + name + "].n1ql.index!read",
+        "cluster.bucket[" + name + "].n1ql.index!write"
+
       ];
       if (name === "." || buckets.byName[name].isMembase) {
         basePermissions = basePermissions.concat([
@@ -55,7 +58,7 @@
       "cluster.settings!write",
       "cluster.stats!read",
       "cluster.tasks!read",
-      "cluster.indexes!read",
+      "cluster.settings.indexes!read",
       "cluster.admin.internal!all",
       "cluster.xdcr.settings!read",
       "cluster.xdcr.settings!write",
@@ -67,7 +70,7 @@
       "cluster.admin.settings!write",
       "cluster.logs!read",
       "cluster.pools!write",
-      "cluster.indexes!write",
+      "cluster.settings.indexes!write",
       "cluster.admin.security!write",
       "cluster.samples!read",
       "cluster.nodes!read"
