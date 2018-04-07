@@ -214,6 +214,8 @@
 -define(INDEX_STORAGE_MODE_MEMORY_OPTIMIZED, <<"memory_optimized">>).
 -define(INDEX_STORAGE_MODE_FORESTDB, <<"forestdb">>).
 -define(INDEX_STORAGE_MODE_PLASMA, <<"plasma">>).
+-define(DEFAULT_MAX_ROLLBACK_PTS_PLASMA, 2).
+-define(DEFAULT_MAX_ROLLBACK_PTS_FORESTDB, 5).
 
 %% common memcached settings are ints which is usually 32-bits wide
 -define(MC_MAXINT, 16#7FFFFFFF).

@@ -163,11 +163,19 @@ general_settings_lens_props() ->
      {maxRollbackPoints, id_lens(<<"indexer.settings.recovery.max_rollbacks">>)},
      {logLevel, id_lens(<<"indexer.settings.log_level">>)}].
 
+default_rollback_points() ->
+    case ns_config_default:init_is_enterprise() of
+        true ->
+            ?DEFAULT_MAX_ROLLBACK_PTS_PLASMA;
+        false ->
+            ?DEFAULT_MAX_ROLLBACK_PTS_FORESTDB
+    end.
+
 general_settings_defaults() ->
     [{indexerThreads, 0},
      {memorySnapshotInterval, 200},
      {stableSnapshotInterval, 5000},
-     {maxRollbackPoints, 5},
+     {maxRollbackPoints, default_rollback_points()},
      {logLevel, <<"info">>}].
 
 general_settings_lens() ->
