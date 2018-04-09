@@ -742,6 +742,10 @@ janitor_running(Msg, From, #janitor_state{cleanup_id=ID}) when ID =/= undefined 
         {cleanup_done, _, _} ->
             ok
     end,
+    %% Temporary hack to fix MB-29029.
+    %% Wait till leader_activities has a chance to cleanup activities related
+    %% to janitor processes.
+    timer:sleep(500),
     idle(Msg, From, #idle_state{}).
 
 %% Asynchronous rebalancing events
