@@ -62,7 +62,9 @@ mn.services.MnAdmin = (function () {
       .shareReplay(1);
 
     this.stream.implementationVersion =
-      this.getVersion()
+      (new Rx.BehaviorSubject())
+      .switchMap(this.getVersion.bind(this))
+      .shareReplay(1)
       .pluck("implementationVersion");
 
     this.stream.prettyVersion =
