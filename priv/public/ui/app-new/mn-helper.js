@@ -245,6 +245,49 @@ mn.helper.MnDestroyableComponent = (function () {
 
 var mn = mn || {};
 mn.helper = mn.helper || {};
+mn.helper.MnEventableComponent = (function () {
+
+  var componentLifecycleHooks = [
+    "OnChanges",
+    "OnInit",
+    "DoCheck",
+    "AfterContentInit",
+    "AfterContentChecked",
+    "AfterViewInit",
+    "AfterViewChecked",
+    "OnDestroy"
+  ];
+
+  componentLifecycleHooks.forEach(function (name) {
+    MnDestroyableComponent.prototype["ng" + name] = function (value) {
+        this["mn" + name].next(value);
+      }
+  });
+
+  return MnDestroyableComponent;
+
+  function MnDestroyableComponent() {
+    componentLifecycleHooks.forEach(createSubjects.bind(this));
+    this.mnOnDestroy.do(null, null, doOnCompleted.bind(this));
+  }
+
+  function createSubjects(name) {
+    this["mn" + name] = new Rx.Subject();
+  }
+
+  function completeSubject(name) {
+    this["mn" + name].next();
+    this["mn" + name].complete();
+  }
+
+  function doOnCompleted() {
+    componentLifecycleHooks.forEach(completeSubject.bind(this));
+  }
+
+})();
+
+var mn = mn || {};
+mn.helper = mn.helper || {};
 mn.helper.jQueryLikeParamSerializer = (function () {
 
   jQueryParam.prototype.serializeValue = serializeValue;
