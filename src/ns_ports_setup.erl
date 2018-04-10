@@ -709,6 +709,7 @@ cbas_spec(Config) ->
                      "-memoryQuotaMb=" ++ integer_to_list(MemoryQuota),
                      "-parentPort=" ++ integer_to_list(ParentPort),
                      "-bindReplicationPort=" ++ integer_to_list(ReplicationPort),
+                     "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
                      "-logDir=" ++ LogDir
                     ] ++
                         ["-dataDir=" ++ Dir || Dir <- CBASDirs] ++
