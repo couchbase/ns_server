@@ -13,7 +13,7 @@
 </mn-element-cargo>
 <div mn-spinner="!userRolesCtl.state || userRolesCtl.viewLoading" min-height="300px">
   <div
-     ng-if="adminCtl.poolDefault.isEnterprise"
+     ng-if="adminCtl.poolDefault.isEnterprise && userRolesCtl.isLdapEnabled"
      mn-saslauthd-auth=""></div>
   <div class="cbui-table" mn-sortable-table>
     <div class="cbui-table-header padding-left">
