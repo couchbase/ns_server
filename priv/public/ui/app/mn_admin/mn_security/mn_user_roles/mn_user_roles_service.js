@@ -60,6 +60,8 @@
         }
       });
 
+      rv = _.compact(rv);
+
       return rv;
     }
 
@@ -82,6 +84,8 @@
         }
       });
 
+      restRoles = _.compact(restRoles);
+
       return rv.concat(restRoles);
     }
 
@@ -95,6 +99,8 @@
         default: rv.push([getWrapperName(key), sortBucketRoles(value)]); break;
         }
       });
+
+      rv = _.compact(rv);
 
       return rv;
     }
