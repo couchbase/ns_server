@@ -27,7 +27,7 @@
 %% referenced from ns_config_default
 -export([get_minidump_dir/2, omit_missing_mcd_ports/2, ssl_minimum_protocol/2,
          is_enabled/2, client_cert_auth/2, is_snappy_enabled/2,
-         is_snappy_enabled/0]).
+         is_snappy_enabled/0, get_fallback_salt/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -112,6 +112,7 @@ is_notable_config_key(memcached_config_extra) -> true;
 is_notable_config_key(ssl_minimum_protocol) -> true;
 is_notable_config_key(cluster_compat_version) -> true;
 is_notable_config_key(client_cert_auth) -> true;
+is_notable_config_key(scramsha_fallback_salt) -> true;
 is_notable_config_key(_) ->
     false.
 
@@ -350,3 +351,6 @@ is_snappy_enabled(FeatureVersion) ->
 
     cluster_compat_mode:is_enabled(FeatureVersion) andalso
         ns_config:search_node_prop(Cfg, memcached, datatype_snappy, Default).
+
+get_fallback_salt([], _Params) ->
+    base64:encode(scram_sha:get_fallback_salt()).

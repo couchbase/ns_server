@@ -33,7 +33,8 @@
          hash_password/2,
          auth_info_key/1,
          supported_types/0,
-         config_upgrade_to_vulcan/0]).
+         config_upgrade_to_vulcan/0,
+         get_fallback_salt/0]).
 
 %% callback for token_server
 -export([init/0]).
@@ -215,12 +216,13 @@ find_auth_info(Sha, Name) ->
             end
     end.
 
+get_fallback_salt() ->
+    ns_config:read_key_fast(scramsha_fallback_salt, <<"salt">>).
+
 get_salt_and_iterations(Sha, Name) ->
-    FallbackSaltSalt = ns_config:read_key_fast(scramsha_fallback_salt,
-                                               <<"salt">>),
     %% calculating it here to avoid performance shortcut
     FallbackSalt = base64:encode_to_string(
-                     crypto:hmac(Sha, Name, FallbackSaltSalt)),
+                     crypto:hmac(Sha, Name, get_fallback_salt())),
     case find_auth_info(Sha, Name) of
         undefined ->
             {FallbackSalt, iterations()};

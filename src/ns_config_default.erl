@@ -388,6 +388,7 @@ default() ->
         {tracing_enabled, tracing_enabled},
         {datatype_snappy, {memcached_config_mgr, is_snappy_enabled, []}},
         {xattr_enabled, {memcached_config_mgr, is_enabled, [?VERSION_50]}},
+        {scramsha_fallback_salt, {memcached_config_mgr, get_fallback_salt, []}},
 
         {logger,
          {[{filename, {"~s/~s", [log_path, log_prefix]}},
