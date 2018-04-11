@@ -228,11 +228,10 @@
 -define(VERSION_46, [4, 6]).
 -define(VERSION_50, [5, 0]).
 -define(VERSION_51, [5, 1]).
-
--define(VULCAN_VERSION_NUM, [5, 5]).
+-define(VERSION_55, [5, 5]).
 
 %% Points to latest release
--define(LATEST_VERSION_NUM, ?VULCAN_VERSION_NUM).
+-define(LATEST_VERSION_NUM, ?VERSION_55).
 -define(MASTER_ADVERTISED_VERSION, [5, 5, 0]).
 
 -define(DEFAULT_UI_COMPAT_VERSION, ?VERSION_45).

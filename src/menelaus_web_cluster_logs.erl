@@ -24,7 +24,7 @@
 
 handle_settings_log_redaction(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_vulcan(),
+    menelaus_util:assert_is_55(),
 
     {value, Config} =
         ns_config:search(ns_config:get(), log_redaction_default_cfg),
@@ -33,7 +33,7 @@ handle_settings_log_redaction(Req) ->
 
 handle_settings_log_redaction_post(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_vulcan(),
+    menelaus_util:assert_is_55(),
 
     validator:handle(do_handle_settings_log_redaction_post_body(Req, _),
                      Req, form, settings_log_redaction_post_validators()).
@@ -208,7 +208,7 @@ parse_validate_collect_params(Params, Config) ->
             N when N =:= "none"; N =:= "partial" ->
                 case cluster_compat_mode:is_enterprise() of
                     true ->
-                        case cluster_compat_mode:is_cluster_vulcan() of
+                        case cluster_compat_mode:is_cluster_55() of
                             true ->
                                 [{redact_level, list_to_atom(N)}];
                             false ->

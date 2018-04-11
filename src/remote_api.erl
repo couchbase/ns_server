@@ -40,7 +40,7 @@ get_indexes(Node) ->
 get_fts_indexes(Node) ->
     do_call(Node, get_fts_indexes).
 
-%% introduced in vulcan
+%% introduced in 5.5
 get_service_remote_items(Node, Mod) ->
     do_call(Node, {get_service_remote_items, Mod}).
 

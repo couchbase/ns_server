@@ -317,8 +317,8 @@ roles_50() ->
        {[{bucket, bucket_name}, stats], [read]},
        {[pools], [read]}]}].
 
--spec roles_vulcan() -> [rbac_role_def(), ...].
-roles_vulcan() ->
+-spec roles_55() -> [rbac_role_def(), ...].
+roles_55() ->
     [{admin, [],
       [{name, <<"Admin">>},
        {desc, <<"Can manage ALL cluster features including security.">>},
@@ -561,9 +561,9 @@ get_definitions() ->
 get_definitions(Config) ->
     case cluster_compat_mode:is_cluster_50(Config) of
         true ->
-            case cluster_compat_mode:is_cluster_vulcan(Config) of
+            case cluster_compat_mode:is_cluster_55(Config) of
                 true ->
-                    roles_vulcan();
+                    roles_55();
                 false ->
                     roles_50()
             end;

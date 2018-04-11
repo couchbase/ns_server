@@ -605,7 +605,7 @@ parse_validate_external_params(Params) ->
 %% This replaces any existing alternate_addresses config of this node.
 %% For now this is fine because external is only element in alternate_addresses.
 handle_node_altaddr_external(Req) ->
-    menelaus_util:assert_is_vulcan(),
+    menelaus_util:assert_is_55(),
     Params = Req:parse_post(),
     External = parse_validate_external_params(Params),
     ns_config:set({node, node(), alternate_addresses}, External),
@@ -614,6 +614,6 @@ handle_node_altaddr_external(Req) ->
 %% Delete alternate_addresses as external is the only element in
 %% alternate_addresses.
 handle_node_altaddr_external_delete(Req) ->
-    menelaus_util:assert_is_vulcan(),
+    menelaus_util:assert_is_55(),
     ns_config:delete({node, node(), alternate_addresses}),
     menelaus_util:reply(Req, 200).

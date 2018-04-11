@@ -23,7 +23,7 @@
 -export([start_link/0,
          get_from_config/3,
          update_txn/1,
-         config_upgrade_to_vulcan/0
+         config_upgrade_to_55/0
         ]).
 
 -export([cfg_key/0,
@@ -41,7 +41,7 @@ cfg_key() ->
     {metakv, <<"/eventing/settings/config">>}.
 
 is_enabled() ->
-    cluster_compat_mode:is_cluster_vulcan().
+    cluster_compat_mode:is_cluster_55().
 
 on_update(_Key, _Value) ->
     ok.
@@ -58,6 +58,7 @@ get_from_config(Config, Key, Default) ->
 update_txn(Props) ->
     json_settings_manager:update_txn(?MODULE, Props).
 
-config_upgrade_to_vulcan() ->
+config_upgrade_to_55() ->
     [{set, cfg_key(),
-      json_settings_manager:build_settings_json(default_settings(), dict:new(), known_settings())}].
+      json_settings_manager:build_settings_json(default_settings(), dict:new(),
+                                                known_settings())}].

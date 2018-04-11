@@ -20,7 +20,7 @@
 %% API
 -export([start_link/0]).
 -export([set_quorum_nodes/2]).
--export([config_upgrade_to_vulcan/1]).
+-export([config_upgrade_to_55/1]).
 
 -export([get_quorum_nodes_unsafe/0, set_quorum_nodes_unsafe/1]).
 
@@ -43,7 +43,7 @@ start_link() ->
 set_quorum_nodes(Pid, QuorumNodes) ->
     gen_server2:call(Pid, {set_quorum_nodes, QuorumNodes}, infinity).
 
-config_upgrade_to_vulcan(Config) ->
+config_upgrade_to_55(Config) ->
     [{set, quorum_nodes,
       lists:usort(ns_cluster_membership:active_nodes(Config))}].
 
@@ -60,7 +60,7 @@ init([]) ->
     register(?SERVER, self()),
     proc_lib:init_ack({ok, self()}),
 
-    leader_utils:wait_cluster_is_vulcan(),
+    leader_utils:wait_cluster_is_55(),
     enter_loop().
 
 enter_loop() ->

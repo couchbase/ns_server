@@ -151,7 +151,7 @@ enable(Timeout, Max, Extras) ->
     %% usually selected as the master.
     %% But to be safe, if the cluster has not been fully upgraded yet,
     %% then use the old API.
-    case cluster_compat_mode:is_cluster_vulcan() of
+    case cluster_compat_mode:is_cluster_55() of
         true ->
             call({enable_auto_failover, Timeout, Max, Extras});
         false ->
@@ -161,7 +161,7 @@ enable(Timeout, Max, Extras) ->
 %% @doc Disable auto-failover
 -spec disable(Extras::list()) -> ok.
 disable(Extras) ->
-    case cluster_compat_mode:is_cluster_vulcan() of
+    case cluster_compat_mode:is_cluster_55() of
         true ->
             call({disable_auto_failover, Extras});
         false ->
@@ -281,7 +281,7 @@ handle_cast(reset_auto_failover_count, #state{count = 0} = State) ->
     {noreply, State};
 handle_cast(reset_auto_failover_count, State) ->
     ?log_debug("reset auto_failover count: ~p", [State]),
-    State1 = case cluster_compat_mode:is_cluster_vulcan() of
+    State1 = case cluster_compat_mode:is_cluster_55() of
                  true ->
                      State#state{failed_over_server_groups = []};
                  false ->

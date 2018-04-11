@@ -33,7 +33,7 @@
          hash_password/2,
          auth_info_key/1,
          supported_types/0,
-         config_upgrade_to_vulcan/0,
+         config_upgrade_to_55/0,
          get_fallback_salt/0]).
 
 %% callback for token_server
@@ -322,7 +322,7 @@ iterations() ->
 supported_types() ->
     [sha512, sha256, sha].
 
-config_upgrade_to_vulcan() ->
+config_upgrade_to_55() ->
     [{set, scramsha_fallback_salt, crypto:rand_bytes(12)}].
 
 -ifdef(EUNIT).

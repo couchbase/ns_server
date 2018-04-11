@@ -81,15 +81,15 @@ upgrade(?VERSION_50, Config) ->
          ns_bucket:config_upgrade_to_51(Config)};
 
 upgrade(?VERSION_51, Config) ->
-    {?VULCAN_VERSION_NUM,
-     menelaus_web_auto_failover:config_upgrade_to_vulcan(Config) ++
-         query_settings_manager:config_upgrade_to_vulcan() ++
-         eventing_settings_manager:config_upgrade_to_vulcan() ++
-         ns_bucket:config_upgrade_to_vulcan(Config) ++
-         menelaus_users:config_upgrade_to_vulcan() ++
-         ns_audit_cfg:upgrade_to_vulcan(Config) ++
-         leader_quorum_nodes_manager:config_upgrade_to_vulcan(Config) ++
-         scram_sha:config_upgrade_to_vulcan()}.
+    {?VERSION_55,
+     menelaus_web_auto_failover:config_upgrade_to_55(Config) ++
+         query_settings_manager:config_upgrade_to_55() ++
+         eventing_settings_manager:config_upgrade_to_55() ++
+         ns_bucket:config_upgrade_to_55(Config) ++
+         menelaus_users:config_upgrade_to_55() ++
+         ns_audit_cfg:upgrade_to_55(Config) ++
+         leader_quorum_nodes_manager:config_upgrade_to_55(Config) ++
+         scram_sha:config_upgrade_to_55()}.
 
 add_index_ram_alert_limit(Config) ->
     {value, Current} = ns_config:search(Config, alert_limits),

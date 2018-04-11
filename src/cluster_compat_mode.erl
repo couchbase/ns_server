@@ -38,9 +38,9 @@
          is_cluster_51/0,
          is_cluster_51/1,
          is_version_51/1,
-         is_cluster_vulcan/0,
-         is_cluster_vulcan/1,
-         is_version_vulcan/1,
+         is_cluster_55/0,
+         is_cluster_55/1,
+         is_version_55/1,
          is_enterprise/0,
          is_ldap_enabled/0,
          supported_compat_version/0,
@@ -132,14 +132,14 @@ is_cluster_51() ->
 is_cluster_51(Config) ->
     is_enabled(Config, ?VERSION_51).
 
-is_version_vulcan(ClusterVersion) ->
-    is_enabled_at(ClusterVersion, ?VULCAN_VERSION_NUM).
+is_version_55(ClusterVersion) ->
+    is_enabled_at(ClusterVersion, ?VERSION_55).
 
-is_cluster_vulcan() ->
-    is_cluster_vulcan(ns_config:latest()).
+is_cluster_55() ->
+    is_cluster_55(ns_config:latest()).
 
-is_cluster_vulcan(Config) ->
-    is_enabled(Config, ?VULCAN_VERSION_NUM).
+is_cluster_55(Config) ->
+    is_enabled(Config, ?VERSION_55).
 
 is_index_aware_rebalance_on() ->
     not ns_config:read_key_fast(index_aware_rebalance_disabled, false).
@@ -176,7 +176,7 @@ consider_switching_compat_mode() ->
 
 upgrades() ->
     [{?VERSION_50, users, menelaus_users, upgrade_to_50},
-     {?VULCAN_VERSION_NUM, rbac, menelaus_users, upgrade_to_vulcan}].
+     {?VERSION_55, rbac, menelaus_users, upgrade_to_55}].
 
 do_upgrades(undefined, _, _, _) ->
     %% this happens during the cluster initialization. no upgrade needed

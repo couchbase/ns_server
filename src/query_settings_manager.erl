@@ -24,7 +24,7 @@
          get/1,
          get_from_config/3,
          update/2,
-         config_upgrade_to_vulcan/0
+         config_upgrade_to_55/0
         ]).
 
 -export([cfg_key/0,
@@ -50,7 +50,7 @@ cfg_key() ->
     ?QUERY_CONFIG_KEY.
 
 is_enabled() ->
-    cluster_compat_mode:is_cluster_vulcan().
+    cluster_compat_mode:is_cluster_55().
 
 on_update(_Key, _Value) ->
     ok.
@@ -58,16 +58,16 @@ on_update(_Key, _Value) ->
 update(Key, Value) ->
     json_settings_manager:update(?MODULE, [{Key, Value}]).
 
-config_upgrade_to_vulcan() ->
+config_upgrade_to_55() ->
     [{set, ?QUERY_CONFIG_KEY,
-      json_settings_manager:build_settings_json(default_settings_for_vulcan(),
+      json_settings_manager:build_settings_json(default_settings_for_55(),
                                                 dict:new(), known_settings())}].
 
 known_settings() ->
     [{generalSettings, general_settings_lens()},
      {curlWhitelistSettings, curl_whitelist_settings_lens()}].
 
-default_settings_for_vulcan() ->
+default_settings_for_55() ->
     [{generalSettings, general_settings_defaults()},
      {curlWhitelistSettings, curl_whitelist_settings_defaults()}].
 
@@ -98,7 +98,7 @@ curl_whitelist_settings_lens() ->
 defaults_test() ->
     Keys = fun (L) -> lists:sort([K || {K, _} <- L]) end,
 
-    ?assertEqual(Keys(known_settings()), Keys(default_settings_for_vulcan())),
+    ?assertEqual(Keys(known_settings()), Keys(default_settings_for_55())),
     ?assertEqual(Keys(curl_whitelist_settings_len_props()),
                  Keys(curl_whitelist_settings_defaults())),
     ?assertEqual(Keys(general_settings_lens_props()),

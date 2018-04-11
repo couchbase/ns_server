@@ -340,7 +340,7 @@ is_snappy_enabled([], _Params) ->
     is_snappy_enabled().
 
 is_snappy_enabled() ->
-    is_snappy_enabled(?VULCAN_VERSION_NUM).
+    is_snappy_enabled(?VERSION_55).
 
 is_snappy_enabled(FeatureVersion) ->
     Cfg = ns_config:latest(),

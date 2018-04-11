@@ -306,7 +306,7 @@ update_quorum_nodes_regular(Fun, Opts) ->
                  end, Opts).
 
 update_quorum_nodes_bypass(Fun, _Opts) ->
-    case cluster_compat_mode:is_cluster_vulcan() of
+    case cluster_compat_mode:is_cluster_55() of
         true ->
             %% If we get there, it means that new orchestration is
             %% disabled. We update the quorum nodes anyway in case in the
@@ -976,7 +976,7 @@ get_options(#activity{options = Options}) ->
     Options.
 
 must_bypass_server() ->
-    not cluster_compat_mode:is_cluster_vulcan()
+    not cluster_compat_mode:is_cluster_55()
         orelse leader_utils:is_new_orchestration_disabled().
 
 pick_implementation(Regular, Bypass, Args) ->

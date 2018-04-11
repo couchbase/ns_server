@@ -24,7 +24,7 @@
 
 -export([handle_pre_replicate/2,
 
-         %% support of pre Vulcan xdcr sources, executed on ns_couchdb node
+         %% support of pre 5.5 xdcr sources, executed on ns_couchdb node
          handle_pre_replicate_legacy/3]).
 
 validators() ->
@@ -41,7 +41,7 @@ validate_commitopaque(Name, State) ->
       end, Name, State).
 
 handle_pre_replicate(Bucket, Req) ->
-    menelaus_util:assert_is_vulcan(),
+    menelaus_util:assert_is_55(),
     validator:handle(do_handle_pre_replicate(Req, _, Bucket), Req, json,
                      validators()).
 

@@ -19,9 +19,9 @@
 -export([get_missing_revs/2, update_replicated_docs/3]).
 
 %% those are referenced from capi.ini
--export([handle_pre_replicate/1, %% used by pre-Vulcan goxdcr
+-export([handle_pre_replicate/1, %% used by pre-5.5 goxdcr
          handle_commit_for_checkpoint/1, %% used by pre-5.0 goxdcr
-         handle_mass_vbopaque_check/1]). %% used by pre-Vulcan goxdcr
+         handle_mass_vbopaque_check/1]). %% used by pre-5.5 goxdcr
 
 -include("ns_common.hrl").
 -include("couch_db.hrl").

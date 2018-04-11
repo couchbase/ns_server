@@ -297,7 +297,7 @@ build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
 
                      BucketParams1 =
                          case cluster_compat_mode:is_enterprise() andalso
-                             cluster_compat_mode:is_cluster_vulcan() of
+                             cluster_compat_mode:is_cluster_55() of
                              true ->
                                  CMode = proplists:get_value(compression_mode,
                                                              BucketConfig, off),
@@ -1406,7 +1406,7 @@ parse_validate_replica_index(_ReplicaValue) -> {error, replicaIndex, <<"replicaI
 parse_validate_compression_mode(Params, BucketConfig, IsNew) ->
     CompMode = proplists:get_value("compressionMode", Params),
     do_parse_validate_compression_mode(cluster_compat_mode:is_enterprise(),
-                                       cluster_compat_mode:is_cluster_vulcan(),
+                                       cluster_compat_mode:is_cluster_55(),
                                        CompMode, BucketConfig, IsNew).
 
 do_parse_validate_compression_mode(false, _, undefined, _BucketCfg, _IsNew) ->
@@ -1418,7 +1418,7 @@ do_parse_validate_compression_mode(false, _, _CompMode, _BucketCfg, _IsNew) ->
      <<"Compression mode is supported in enterprise edition only">>};
 do_parse_validate_compression_mode(_, false, _CompMode, _BucketCfg, _IsNew) ->
     {error, compressionMode,
-     <<"Compression mode can not be set until the cluster is fully vulcan">>};
+     <<"Compression mode can not be set until the cluster is fully 5.5">>};
 do_parse_validate_compression_mode(true, true, CompMode, BucketCfg, IsNew) ->
     DefaultVal = case IsNew of
                      true -> passive;
@@ -1436,7 +1436,7 @@ parse_compression_mode(_) ->
 parse_validate_max_ttl(Params, BucketConfig, IsNew) ->
     MaxTTL = proplists:get_value("maxTTL", Params),
     parse_validate_max_ttl_inner(cluster_compat_mode:is_enterprise(),
-                                 cluster_compat_mode:is_cluster_vulcan(), MaxTTL,
+                                 cluster_compat_mode:is_cluster_55(), MaxTTL,
                                  BucketConfig, IsNew).
 
 parse_validate_max_ttl_inner(false, _, undefined, _BucketCfg, _IsNew) ->
@@ -1446,7 +1446,7 @@ parse_validate_max_ttl_inner(_, false, undefined, _BucketCfg, _IsNew) ->
 parse_validate_max_ttl_inner(false, _, _MaxTTL, _BucketCfg, _IsNew) ->
     {error, maxTTL, <<"Max TTL is supported in enterprise edition only">>};
 parse_validate_max_ttl_inner(_, false, _MaxTTL, _BucketCfg, _IsNew) ->
-    {error, maxTTL, <<"Max TTL can not be set until the cluster is fully vulcan">>};
+    {error, maxTTL, <<"Max TTL can not be set until the cluster is fully 5.5">>};
 parse_validate_max_ttl_inner(true, true, MaxTTL, BucketCfg, IsNew) ->
     DefaultVal = case IsNew of
                      true -> "0";

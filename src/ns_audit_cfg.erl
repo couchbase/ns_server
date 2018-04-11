@@ -28,7 +28,7 @@
 -export([start_link/0, get_global/0, set_global/1, sync_set_global/1,
          default_audit_json_path/0, get_log_path/0, get_uid/0]).
 
--export([upgrade_descriptors/0, upgrade_to_vulcan/1, get_descriptors/1,
+-export([upgrade_descriptors/0, upgrade_to_55/1, get_descriptors/1,
          jsonifier/1]).
 
 -record(state, {global,
@@ -48,7 +48,7 @@ jsonifier(_) ->
     fun functools:id/1.
 
 version(CompatMode) ->
-    case cluster_compat_mode:is_version_vulcan(CompatMode) of
+    case cluster_compat_mode:is_version_55(CompatMode) of
         true ->
             2;
         false ->
@@ -319,7 +319,7 @@ read_descriptors() ->
 upgrade_descriptors() ->
     [{set, audit_decriptors, lists:ukeysort(1, read_descriptors())}].
 
-upgrade_to_vulcan(Config) ->
+upgrade_to_55(Config) ->
     {value, Current} = ns_config:search(Config, audit),
     New =
         misc:update_proplist(Current, [{enabled, []}, {disabled_users, []}]),

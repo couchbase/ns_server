@@ -601,7 +601,7 @@ apply_node_cert_data({user_set, Cert, PKey, CAChain}, Path) ->
 
 -spec get_user_name_from_client_cert(term()) -> string() | undefined | failed.
 get_user_name_from_client_cert(Val) ->
-    case cluster_compat_mode:is_cluster_vulcan() of
+    case cluster_compat_mode:is_cluster_55() of
         true ->
             ClientAuth = ns_ssl_services_setup:client_cert_auth(),
             {state, State} = lists:keyfind(state, 1, ClientAuth),

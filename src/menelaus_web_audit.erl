@@ -63,14 +63,14 @@ handle_post(Req) ->
       end, Req, form, validators(Config)).
 
 audit_modify_audit_settings(Req, Settings) ->
-    case cluster_compat_mode:is_cluster_vulcan() of
+    case cluster_compat_mode:is_cluster_55() of
         true -> ns_audit:modify_audit_settings(Req, Settings);
         false -> ok
     end.
 
 handle_get_descriptors(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_vulcan(),
+    menelaus_util:assert_is_55(),
 
     Descriptors = ns_audit_cfg:get_descriptors(ns_config:latest()),
     Json =
@@ -116,24 +116,24 @@ key_config_to_api(rotate_size) ->
 key_config_to_api(log_path) ->
     logPath;
 key_config_to_api(X) ->
-    case cluster_compat_mode:is_cluster_vulcan() of
+    case cluster_compat_mode:is_cluster_55() of
         true ->
-            key_config_to_api_vulcan(X);
+            key_config_to_api_55(X);
         false ->
             undefined
     end.
 
-key_config_to_api_vulcan(actually_disabled) ->
+key_config_to_api_55(actually_disabled) ->
     disabled;
-key_config_to_api_vulcan(disabled_users) ->
+key_config_to_api_55(disabled_users) ->
     disabledUsers;
-key_config_to_api_vulcan(uid) ->
+key_config_to_api_55(uid) ->
     uid;
-key_config_to_api_vulcan(_) ->
+key_config_to_api_55(_) ->
     undefined.
 
 pre_process_get(Props) ->
-    case cluster_compat_mode:is_cluster_vulcan() of
+    case cluster_compat_mode:is_cluster_55() of
         true ->
             Enabled = proplists:get_value(enabled, Props),
             Disabled = proplists:get_value(disabled, Props),
@@ -162,7 +162,7 @@ pre_process_get(Props) ->
     end.
 
 pre_process_post(Config, Props) ->
-    case cluster_compat_mode:is_cluster_vulcan(Config) of
+    case cluster_compat_mode:is_cluster_55(Config) of
         true ->
             case proplists:get_value(disabled, Props) of
                 undefined ->
@@ -236,15 +236,15 @@ validate_users(Name, State) ->
               end
       end, Name, State).
 
-validator_vulcan(Config, State) ->
-    case cluster_compat_mode:is_cluster_vulcan(Config) of
+validator_55(Config, State) ->
+    case cluster_compat_mode:is_cluster_55(Config) of
         false ->
             State;
         true ->
-            functools:chain(State, validators_vulcan(Config))
+            functools:chain(State, validators_55(Config))
     end.
 
-validators_vulcan(Config) ->
+validators_55(Config) ->
     Descriptors = orddict:from_list(ns_audit_cfg:get_descriptors(Config)),
     [validate_events(disabled, Descriptors, _),
      validate_users(disabledUsers, _)].
@@ -267,5 +267,5 @@ validators(Config) ->
                end
        end, rotateInterval, _),
      validator:integer(rotateSize, 0, 500*1024*1024, _),
-     validator_vulcan(Config, _),
+     validator_55(Config, _),
      validator:unsupported(_)].

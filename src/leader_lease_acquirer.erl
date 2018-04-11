@@ -49,7 +49,7 @@ init([]) ->
     register(?SERVER, self()),
     proc_lib:init_ack({ok, self()}),
 
-    leader_utils:wait_cluster_is_vulcan(),
+    leader_utils:wait_cluster_is_55(),
     enter_loop().
 
 enter_loop() ->

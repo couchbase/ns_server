@@ -58,7 +58,7 @@ status_mapping() ->
     AddType = case cluster_compat_mode:is_cluster_45() of
                   true ->
                       AddType1 = [{storageMode, <<"indexType">>}],
-                      case cluster_compat_mode:is_cluster_vulcan() andalso
+                      case cluster_compat_mode:is_cluster_55() andalso
                           cluster_compat_mode:is_enterprise() of
                           true ->
                               [{instId, <<"instId">>},

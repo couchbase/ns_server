@@ -17,7 +17,7 @@
 %% leader_registry_server. This is needed for providing backward compatibility
 %% in mixed clusters. This is achieved by registering both with global and
 %% leader_registry_server when cluster compatibility version is not
-%% vulcan. Eventually, %% we'll just be able to replace leader_registry with
+%% 5.5. Eventually, %% we'll just be able to replace leader_registry with
 %% leader_registry_server once backward compatibility is not a concern
 %% anymore.
 -module(leader_registry).
@@ -51,7 +51,7 @@ backends() ->
         true ->
             [global];
         false ->
-            case cluster_compat_mode:is_cluster_vulcan() of
+            case cluster_compat_mode:is_cluster_55() of
                 true ->
                     [leader_registry_server];
                 false ->

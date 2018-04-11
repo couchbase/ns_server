@@ -38,7 +38,7 @@
                 name :: atom(),
                 revisions :: term()}).
 
-%% Backward compatibility: old doc record is used in pre-vulcan
+%% Backward compatibility: old doc record is used in pre-5.5
 -record(doc, {id :: term(),
               rev :: term(),
               deleted :: boolean(),
@@ -65,7 +65,7 @@ delete_doc(Id) ->
 update_doc(Id, Value) ->
     %% we don't want last_modified to appear on mixed clusters
     LastModified =
-        case cluster_compat_mode:is_cluster_vulcan() of
+        case cluster_compat_mode:is_cluster_55() of
             true -> [{last_modified, time_compat:os_system_time(millisecond)}];
             false -> []
         end,
@@ -231,7 +231,7 @@ do_open(Path, TableName, Tries) ->
                          {keypos, #docv2.id},
                          {file, Path}]) of
         {ok, TableName} ->
-            convert_docs_to_vulcan_in_dets(TableName),
+            convert_docs_to_55_in_dets(TableName),
             ok;
         Error ->
             ?log_error("Unable to open ~p, Error: ~p", [Path, Error]),
@@ -239,8 +239,8 @@ do_open(Path, TableName, Tries) ->
             do_open(Path, TableName, Tries - 1)
     end.
 
-convert_docs_to_vulcan_in_dets(Table) ->
-    ?log_info("Checking for pre vulcan records in dets: ~p", [Table]),
+convert_docs_to_55_in_dets(Table) ->
+    ?log_info("Checking for pre 5.5 records in dets: ~p", [Table]),
     dets:safe_fixtable(Table, true),
     %% Dialyzer thinks it's invalid spec if #doc{} is specified inside the spec
     %% looks like bug in dialyzer
@@ -251,19 +251,19 @@ convert_docs_to_vulcan_in_dets(Table) ->
     case Ids of
         [] -> ok;
         _ ->
-            ?log_info("Start converting ~p records to vulcan in dets: ~p",
+            ?log_info("Start converting ~p records to 5.5 in dets: ~p",
                       [length(Ids), Table]),
             lists:foreach(
               fun (Id) ->
                       case dets:lookup(Table, Id) of
                           [Doc] ->
-                              dets:insert(Table, convert_doc_to_vulcan(Doc));
+                              dets:insert(Table, convert_doc_to_55(Doc));
                           [] ->
                               ok
                       end
               end, Ids),
             dets:sync(Table),
-            ?log_info("Finished converting older docs to vulcan in dets: ~p",
+            ?log_info("Finished converting older docs to 5.5 in dets: ~p",
                       [Table]),
             ok
     end.
@@ -325,25 +325,25 @@ save_docs(Docs, #state{name = TableName,
     {ok, State#state{child_state = NewChildState}}.
 
 on_replicate_in(Doc) ->
-    convert_doc_to_vulcan(Doc).
+    convert_doc_to_55(Doc).
 
 on_replicate_out(Doc) ->
-    case cluster_compat_mode:is_cluster_vulcan() of
+    case cluster_compat_mode:is_cluster_55() of
         true ->
             Doc;
         false ->
-            convert_doc_to_pre_vulcan(Doc)
+            convert_doc_to_pre_55(Doc)
     end.
 
-convert_doc_to_vulcan(#docv2{} = Doc) ->
+convert_doc_to_55(#docv2{} = Doc) ->
     Doc;
-convert_doc_to_vulcan(
+convert_doc_to_55(
   #doc{id = Id, rev = Rev, deleted = Deleted, value = Value}) ->
     #docv2{id = Id,
            value = Value,
            props = [{deleted, Deleted}, {rev, Rev}]}.
 
-convert_doc_to_pre_vulcan(#docv2{id = Id, value = Value} = Doc) ->
+convert_doc_to_pre_55(#docv2{id = Id, value = Value} = Doc) ->
     #doc{id = Id,
          value = Value,
          rev = get_revision(Doc),

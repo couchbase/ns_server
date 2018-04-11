@@ -617,7 +617,7 @@ idle({delete_bucket, BucketName}, _From, State) ->
 
     {reply, Reply, idle, State};
 idle({failover, Node}, From, State) ->
-    %% calls from pre-vulcan nodes
+    %% calls from pre-5.5 nodes
     idle({failover, [Node], false}, From, State);
 idle({failover, Nodes, AllowUnsafe}, _From, State) ->
     Result = ns_rebalancer:run_failover(Nodes, AllowUnsafe),

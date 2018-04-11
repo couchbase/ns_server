@@ -70,7 +70,7 @@ get_inner(Bucket, DocId, VBucket, Options, RetriesLeft) ->
                           end,
             try
                 {ok, Rev, _MetaFlags} = get_meta(Bucket, DocId, VBucket, CAS),
-                case cluster_compat_mode:is_cluster_vulcan() of
+                case cluster_compat_mode:is_cluster_55() of
                     true ->
                         {ok, XAttrsJsonObj} = get_xattrs(Bucket, DocId,
                                                          VBucket, CAS,

@@ -21,7 +21,7 @@
          handle_settings_post/1,
          handle_settings_reset_count/1,
          get_failover_on_disk_issues/1,
-         config_upgrade_to_vulcan/1]).
+         config_upgrade_to_55/1]).
 
 -import(menelaus_util,
         [reply/2,
@@ -101,7 +101,7 @@ get_failover_on_disk_issues(Config) ->
             {Enabled, TimePeriod}
     end.
 
-config_upgrade_to_vulcan(Config) ->
+config_upgrade_to_55(Config) ->
     {value, Current} = ns_config:search(Config, auto_failover_cfg),
     [Val] = disable_failover_on_disk_issues(
               ?DEFAULT_DATA_DISK_ISSUES_TIMEPERIOD),
@@ -160,7 +160,7 @@ parse_validate_other_params(Args, Config) ->
     end.
 
 parse_validate_extras(Args, CurrRV, Config) ->
-    case cluster_compat_mode:is_cluster_vulcan() andalso
+    case cluster_compat_mode:is_cluster_55() andalso
         cluster_compat_mode:is_enterprise() of
         true ->
             parse_validate_extras_inner(Args, CurrRV, Config);
@@ -261,7 +261,7 @@ boolean_err_msg(Key) ->
     [{Key, list_to_binary(io_lib:format("The value of \"~s\" must be true or false", [Key]))}].
 
 get_extra_settings(Config) ->
-    case cluster_compat_mode:is_cluster_vulcan() andalso
+    case cluster_compat_mode:is_cluster_55() andalso
         cluster_compat_mode:is_enterprise() of
         true ->
             SGFO = proplists:get_value(?FAILOVER_SERVER_GROUP_CONFIG_KEY,
@@ -277,7 +277,7 @@ get_extra_settings(Config) ->
     end.
 
 disable_extras(Config) ->
-    case cluster_compat_mode:is_cluster_vulcan() andalso
+    case cluster_compat_mode:is_cluster_55() andalso
         cluster_compat_mode:is_enterprise() of
         true ->
             {_, CurrTP} = get_failover_on_disk_issues(Config),

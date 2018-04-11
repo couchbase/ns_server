@@ -85,7 +85,7 @@
          get_num_vbuckets/0,
          config_upgrade_to_50/1,
          config_upgrade_to_51/1,
-         config_upgrade_to_vulcan/1]).
+         config_upgrade_to_55/1]).
 
 
 %%%===================================================================
@@ -897,7 +897,7 @@ config_upgrade_to_51(Config) ->
           end, Buckets),
     [{set, buckets, [{configs, NewBuckets}]}].
 
-config_upgrade_to_vulcan(Config) ->
+config_upgrade_to_55(Config) ->
     Buckets = get_buckets(Config),
     NewBuckets =
         lists:map(
