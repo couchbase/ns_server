@@ -334,9 +334,11 @@ init([]) ->
 handle_call({if_internal_process, Type, Pid, SubCall}, From, State) ->
     {noreply, handle_if_internal_process(Type, Pid, SubCall, From, State)};
 handle_call({wait_for_preconditions,
+             Domain, DomainToken,
              Lease, Quorum, Unsafe, SubCall, Timeout}, From, State) ->
-    {noreply, handle_wait_for_preconditions(Lease, Quorum, Unsafe,
-                                            SubCall, Timeout, From, State)};
+    {noreply, handle_wait_for_preconditions(Domain, DomainToken,
+                                            Lease, Quorum, Unsafe, SubCall,
+                                            Timeout, From, State)};
 handle_call(get_quorum_nodes, From, State) ->
     {noreply, handle_get_quorum_nodes(From, State)};
 handle_call({set_quorum_nodes, OldNodes, NewNodes}, From, State) ->
@@ -388,7 +390,7 @@ call_wait_for_preconditions(Node, Token, UserQuorum, Opts, Call, Args) ->
                              DomainToken, TokenName, Quorum, Opts | Args]),
 
     call(Node, {wait_for_preconditions,
-                Lease, Quorum, Unsafe,
+                Domain, DomainToken, Lease, Quorum, Unsafe,
                 SubCall, PreconditionsTimeout}, OuterTimeout).
 
 preconditions_timeout(Opts, Unsafe) ->
@@ -411,55 +413,26 @@ call(Call, Timeout) ->
 call(Node, Call, Timeout) ->
     gen_server2:call({?SERVER, Node}, Call, Timeout).
 
-check_no_domain_conflicts(ActivityToken, From, State, OnSuccess) ->
-    #activity_token{domain       = Domain,
-                    domain_token = DomainToken} = ActivityToken,
-
-    case find_activity(Domain, #activity.domain, State) of
-        {ok, FoundActivity} ->
-            case FoundActivity#activity.domain_token =:= DomainToken of
-                true ->
-                    OnSuccess();
-                false ->
-                    ?log_error("Can't start activity ~p, "
-                               "because of token conflict with~n~p",
-                               [ActivityToken, FoundActivity]),
-                    gen_server2:reply(From, {error,
-                                             {domain_conflict,
-                                              ActivityToken, FoundActivity}}),
-                    State
-            end;
-        not_found ->
-            OnSuccess()
-    end.
-
 handle_start_activity(Async,
                       Domain,
                       DomainToken, Name, Quorum, Opts, Body, From, State) ->
     ActivityToken = make_activity_token(Domain, DomainToken, Name, Opts, State),
-    check_no_domain_conflicts(
-      ActivityToken, From, State,
-      fun () ->
-              {Pid, MRef} = async:start(
-                              fun () ->
+
+    {Pid, MRef} = async:start(fun () ->
                                       set_activity_token(ActivityToken),
                                       run_body(Body)
                               end,
                               [monitor, {adopters, [Async]}]),
-              gen_server2:reply(From, {ok, Pid}),
-              add_activity(ActivityToken, Quorum, Opts, Pid, MRef, State)
-      end).
+    gen_server2:reply(From, {ok, Pid}),
+    add_activity(ActivityToken, Quorum, Opts, Pid, MRef, State).
 
 handle_register_process(Domain,
                         DomainToken, Name, Quorum, Opts, Pid, From, State) ->
     ActivityToken = make_activity_token(Domain, DomainToken, Name, Opts, State),
-    check_no_domain_conflicts(
-      ActivityToken, From, State,
-      fun () ->
-              MRef = erlang:monitor(process, Pid),
-              gen_server2:reply(From, {ok, ActivityToken}),
-              add_activity(ActivityToken, Quorum, Opts, Pid, MRef, State)
-      end).
+
+    MRef = erlang:monitor(process, Pid),
+    gen_server2:reply(From, {ok, ActivityToken}),
+    add_activity(ActivityToken, Quorum, Opts, Pid, MRef, State).
 
 handle_if_internal_process(Type, Pid, SubCall, From, State) ->
     ExpectedPid = extract_internal_process_pid(Type, State),
@@ -784,23 +757,43 @@ check_quorums(State, Reason) ->
     terminate_activities(activity_lost_quorum_pred(_, State),
                          State, {shutdown, {quorum_lost, Reason}}).
 
-handle_wait_for_preconditions(Lease,
-                              Quorum, Unsafe, SubCall, Timeout, From, State) ->
+check_no_domain_conflicts(Domain, DomainToken, State) ->
+    case find_activity(Domain, #activity.domain, State) of
+        {ok, FoundActivity} ->
+            case FoundActivity#activity.domain_token =:= DomainToken of
+                true ->
+                    ok;
+                false ->
+                    {error, {domain_conflict,
+                             [{domain, Domain},
+                              {domain_token, Domain},
+                              {conflicting_activity, FoundActivity}]}}
+            end;
+        not_found ->
+            ok
+    end.
+
+handle_wait_for_preconditions(Domain, DomainToken, Lease, Quorum,
+                              Unsafe, SubCall, Timeout, From, State) ->
     gen_server2:conditional(
-      wait_for_preconditions_pred(Lease, Quorum, _),
+      wait_for_preconditions_pred(Domain, DomainToken, Lease, Quorum, _),
       ?cut(handle_wait_for_preconditions_success(SubCall, From, _2)),
       Timeout,
       handle_wait_for_preconditions_timeout(SubCall, Timeout,
-                                            From, Lease, Quorum, Unsafe, _)),
+                                            From,
+                                            Domain, DomainToken,
+                                            Lease, Quorum, Unsafe, _)),
 
     State.
 
-wait_for_preconditions_pred(Lease, Quorum, State) ->
-    check_preconditions(Lease, Quorum, false, State) =:= ok.
+wait_for_preconditions_pred(Domain, DomainToken, Lease, Quorum, State) ->
+    check_preconditions(Domain, DomainToken,
+                        Lease, Quorum, false, State) =:= ok.
 
-check_preconditions(Lease, Quorum, Unsafe, State) ->
+check_preconditions(Domain, DomainToken, Lease, Quorum, Unsafe, State) ->
     functools:sequence_(State,
-                        [check_lease(Lease, _),
+                        [check_no_domain_conflicts(Domain, DomainToken, _),
+                         check_lease(Lease, _),
                          check_quorum_requires_leader(Quorum, _),
                          check_quorum(Unsafe, Quorum, _)]).
 
@@ -808,9 +801,11 @@ handle_wait_for_preconditions_success(SubCall, From, State) ->
     {noreply, handle_activity_subcall(SubCall, From, State)}.
 
 handle_wait_for_preconditions_timeout(SubCall, Timeout, From,
+                                      Domain, DomainToken,
                                       RequiredLease, RequiredQuorum, Unsafe,
                                       #state{leases = RemoteLeases} = State) ->
-    case check_preconditions(RequiredLease, RequiredQuorum, Unsafe, State) of
+    case check_preconditions(Domain, DomainToken,
+                             RequiredLease, RequiredQuorum, Unsafe, State) of
         ok ->
             %% This should only be possible if Unsafe is true
             true = Unsafe,
