@@ -187,6 +187,12 @@ async_init(Parent, ParentController, Opts, Fun) ->
     set_role(controller),
     maybe_register_with_parent_async(ParentController),
 
+    MonitorPids = proplists:get_value(monitor_pids, Opts, []),
+    lists:foreach(erlang:monitor(process, _), MonitorPids),
+
+    Adopters = proplists:get_value(adopters, Opts, []),
+    lists:foreach(register_for_adoption(_), Adopters),
+
     Reply      = make_ref(),
     Controller = self(),
 
@@ -208,12 +214,6 @@ async_init(Parent, ParentController, Opts, Fun) ->
                           erlang:raise(T, E, Stack)
                   end
           end),
-
-    MonitorPids = proplists:get_value(monitor_pids, Opts, []),
-    lists:foreach(erlang:monitor(process, _), MonitorPids),
-
-    Adopters = proplists:get_value(adopters, Opts, []),
-    lists:foreach(register_for_adoption(_), Adopters),
 
     case proplists:get_value(abort_after, Opts) of
         undefined ->
