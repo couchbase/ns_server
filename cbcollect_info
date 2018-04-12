@@ -691,7 +691,7 @@ def make_os_tasks():
     programs = " ".join(["moxi", "memcached", "beam.smp",
                          "couch_compact", "godu", "sigar_port",
                          "cbq-engine", "indexer", "projector", "goxdcr",
-                         "cbft", "eventing-producer"])
+                         "cbft", "eventing-producer", "eventing-consumer"])
 
     _tasks = [
         UnixTask("uname", "uname -a"),
@@ -967,6 +967,20 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                                      url=pprof_url,
                                      log_file="analytics_pprof.log", no_header=True)]
 
+    eventing_tasks = []
+    eventing_port = read_guts(guts, "eventing_http_port")
+    if eventing_port:
+        stats_url = 'http://%s:%s/api/v1/stats' % (local_url_addr, eventing_port)
+        pprof_url = 'http://%s:%s/debug/pprof/goroutine?debug=1' % (local_url_addr, eventing_port)
+        eventing_tasks = [make_curl_task(name="Eventing /api/v1/stats: ",
+                                         user="@", password=memcached_pass,
+                                         url=stats_url,
+                                         log_file="eventing_stats.json", no_header=True),
+                          make_curl_task(name="Eventing Go routine dump: ",
+                                         user="@", password=memcached_pass,
+                                         url=pprof_url,
+                                         log_file="eventing_pprof.log", no_header=True)]
+
     _tasks = [
         UnixTask("Directory structure",
                  ["ls", "-lRai", root]),
@@ -1130,7 +1144,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
         ]
 
     _tasks = flatten([getent_tasks, lookup_tasks, query_tasks, index_tasks,
-                      projector_tasks, fts_tasks, cbas_tasks, _tasks])
+                      projector_tasks, fts_tasks, cbas_tasks, eventing_tasks, _tasks])
 
     return _tasks
 

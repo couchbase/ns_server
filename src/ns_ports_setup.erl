@@ -608,7 +608,7 @@ eventing_spec(Config) ->
         NodeUUID =/= false andalso
         ns_cluster_membership:should_run_service(Config, eventing, node()) of
         true ->
-            EventingAdminPort = ns_config:search(Config, {node, node(), eventing_http_port}, 8095),
+            EventingAdminPort = ns_config:search(Config, {node, node(), eventing_http_port}, 8096),
             LocalMemcachedPort = ns_config:search_node_prop(node(), Config, memcached, port),
             RestPort = misc:node_rest_port(Config, node()),
 
