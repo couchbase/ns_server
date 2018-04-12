@@ -25,10 +25,19 @@
         url: '/indexStatus',
         mnHttp: mnHttpParams
       }).then(function (resp) {
-        resp.data.groups = _.groupBy(resp.data.indexes, 'bucket');
-        resp.data.nodes = _.groupBy(resp.data.indexes, function (index) {
-          return index.hosts.join(", ");
+        var byNodes = {};
+        var byBucket = {};
+        resp.data.indexes.forEach(function (index) {
+          byBucket[index.bucket] = byBucket[index.bucket] || [];
+          byBucket[index.bucket].push(_.clone(index));
+
+          index.hosts.forEach(function (node) {
+            byNodes[node] = byNodes[node] || [];
+            byNodes[node].push(_.clone(index));
+          });
         });
+        resp.data.groups = byBucket;
+        resp.data.nodes = byNodes;
         return resp.data;
       });
     }
