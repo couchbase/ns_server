@@ -48,8 +48,10 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
 -define(SERVER, ?MODULE).
--define(QUORUM_TIMEOUT,        ?get_timeout(quorum_timeout, 15000)).
--define(UNSAFE_QUORUM_TIMEOUT, ?get_timeout(unsafe_quorum_timeout, 2000)).
+-define(PRECONDITIONS_TIMEOUT,
+        ?get_timeout(preconditions_timeout, 15000)).
+-define(UNSAFE_PRECONDITIONS_TIMEOUT,
+        ?get_timeout(unsafe_preconditions_timeout, 2000)).
 
 -type lease_holder() :: {node(), binary()}.
 
@@ -206,8 +208,8 @@ start_activity_with_token(Node, ActivityToken, Name, Quorum, Body, Opts) ->
 
     FinalOpts = merge_options(Opts, ActivityToken#activity_token.options),
     check_activity_body(Node, Body),
-    call_wait_for_quorum(Node, ActivityToken, Quorum, FinalOpts,
-                         start_activity, [Async, Name, Body]).
+    call_wait_for_preconditions(Node, ActivityToken, Quorum, FinalOpts,
+                                start_activity, [Async, Name, Body]).
 
 start_activity_bypass(Node, _Domain, _Name, _Quorum, Body, _Opts) ->
     AsyncBody = case Node =:= node() of
@@ -243,10 +245,10 @@ register_process(Domain, DomainToken, Name, Quorum, Opts) ->
                         [Domain, DomainToken, Name, Quorum, Opts]).
 
 register_process_regular(Domain, DomainToken, Name, Quorum, Opts) ->
-    {ok, ActivityToken} =
-        call_wait_for_quorum(node(),
-                             make_fresh_activity_token(Domain, DomainToken),
-                             Quorum, Opts, register_process, [Name, self()]),
+    {ok, ActivityToken} = call_wait_for_preconditions(
+                            node(),
+                            make_fresh_activity_token(Domain, DomainToken),
+                            Quorum, Opts, register_process, [Name, self()]),
     set_activity_token(ActivityToken).
 
 register_process_bypass(_Domain, _DomainToken, _Name, _Quorum, _Opts) ->
@@ -265,9 +267,10 @@ switch_quorum_regular(NewQuorum, Opts) ->
     {ok, ActivityToken} = get_activity_token(),
 
     EffectiveOpts = Opts ++ ActivityToken#activity_token.options,
-    call_wait_for_quorum(node(),
-                         ActivityToken,
-                         NewQuorum, EffectiveOpts, switch_quorum, [Activity]).
+    call_wait_for_preconditions(node(),
+                                ActivityToken,
+                                NewQuorum, EffectiveOpts,
+                                switch_quorum, [Activity]).
 
 switch_quorum_bypass(_NewQuorum, _Opts) ->
     ok.
@@ -330,10 +333,10 @@ init([]) ->
 
 handle_call({if_internal_process, Type, Pid, SubCall}, From, State) ->
     {noreply, handle_if_internal_process(Type, Pid, SubCall, From, State)};
-handle_call({wait_for_quorum,
+handle_call({wait_for_preconditions,
              Lease, Quorum, Unsafe, SubCall, Timeout}, From, State) ->
-    {noreply, handle_wait_for_quorum(Lease, Quorum, Unsafe,
-                                     SubCall, Timeout, From, State)};
+    {noreply, handle_wait_for_preconditions(Lease, Quorum, Unsafe,
+                                            SubCall, Timeout, From, State)};
 handle_call(get_quorum_nodes, From, State) ->
     {noreply, handle_get_quorum_nodes(From, State)};
 handle_call({set_quorum_nodes, OldNodes, NewNodes}, From, State) ->
@@ -368,10 +371,11 @@ call_register_internal_process(Type, Pid) ->
 call_if_internal_process(Type, Pid, SubCall) ->
     call({if_internal_process, Type, Pid, SubCall}, infinity).
 
-call_wait_for_quorum(Node, Token, UserQuorum, Opts, Call, Args) ->
-    Unsafe        = proplists:get_bool(unsafe, Opts),
-    QuorumTimeout = quorum_timeout(Opts, Unsafe),
-    OuterTimeout  = proplists:get_value(timeout, Opts, QuorumTimeout + 5000),
+call_wait_for_preconditions(Node, Token, UserQuorum, Opts, Call, Args) ->
+    Unsafe               = proplists:get_bool(unsafe, Opts),
+    PreconditionsTimeout = preconditions_timeout(Opts, Unsafe),
+    OuterTimeout         =
+        proplists:get_value(timeout, Opts, PreconditionsTimeout + 5000),
 
     Lease       = Token#activity_token.lease,
     Domain      = Token#activity_token.domain,
@@ -383,19 +387,20 @@ call_wait_for_quorum(Node, Token, UserQuorum, Opts, Call, Args) ->
                              Domain,
                              DomainToken, TokenName, Quorum, Opts | Args]),
 
-    call(Node, {wait_for_quorum,
-                Lease, Quorum, Unsafe, SubCall, QuorumTimeout}, OuterTimeout).
+    call(Node, {wait_for_preconditions,
+                Lease, Quorum, Unsafe,
+                SubCall, PreconditionsTimeout}, OuterTimeout).
 
-quorum_timeout(Opts, Unsafe) ->
+preconditions_timeout(Opts, Unsafe) ->
     Default =
         case Unsafe of
             true ->
-                ?UNSAFE_QUORUM_TIMEOUT;
+                ?UNSAFE_PRECONDITIONS_TIMEOUT;
             false ->
-                ?QUORUM_TIMEOUT
+                ?PRECONDITIONS_TIMEOUT
         end,
 
-    proplists:get_value(quorum_timeout, Opts, Default).
+    proplists:get_value(preconditions_timeout, Opts, Default).
 
 call(Call) ->
     call(Call, infinity).
@@ -749,42 +754,43 @@ check_quorums(State, Reason) ->
     terminate_activities(?cut(not check_quorum(_, State)),
                          State, {shutdown, {quorum_lost, Reason}}).
 
-handle_wait_for_quorum(Lease,
-                       Quorum, Unsafe, SubCall, Timeout, From, State) ->
+handle_wait_for_preconditions(Lease,
+                              Quorum, Unsafe, SubCall, Timeout, From, State) ->
     gen_server2:conditional(
-      wait_for_quorum_pred(Lease, Quorum, _),
-      ?cut(handle_wait_for_quorum_success(SubCall, From, _2)),
+      wait_for_preconditions_pred(Lease, Quorum, _),
+      ?cut(handle_wait_for_preconditions_success(SubCall, From, _2)),
       Timeout,
-      handle_wait_for_quorum_timeout(Unsafe, SubCall, Timeout,
-                                     From, Lease, Quorum, _)),
+      handle_wait_for_preconditions_timeout(Unsafe, SubCall, Timeout,
+                                            From, Lease, Quorum, _)),
 
     State.
 
-wait_for_quorum_pred(Lease, Quorum, State) ->
-    wait_for_quorum_pred(false, Lease, Quorum, State).
+wait_for_preconditions_pred(Lease, Quorum, State) ->
+    wait_for_preconditions_pred(false, Lease, Quorum, State).
 
-wait_for_quorum_pred(Unsafe, Lease, Quorum, State) ->
+wait_for_preconditions_pred(Unsafe, Lease, Quorum, State) ->
     have_lease(Lease, State)
         andalso check_quorum_requires_leader(Quorum, State)
         andalso check_quorum(Unsafe, Quorum, State).
 
-handle_wait_for_quorum_success(SubCall, From, State) ->
+handle_wait_for_preconditions_success(SubCall, From, State) ->
     {noreply, handle_activity_subcall(SubCall, From, State)}.
 
-handle_wait_for_quorum_timeout(false, _, _, From,
-                               RequiredLease, RequiredQuorum, State) ->
+handle_wait_for_preconditions_timeout(false, _, _, From,
+                                      RequiredLease, RequiredQuorum, State) ->
     reply_no_quorum(From, RequiredLease, RequiredQuorum, State);
-handle_wait_for_quorum_timeout(true, SubCall, Timeout, From,
-                               RequiredLease, RequiredQuorum,
-                               #state{leases = RemoteLeases} = State) ->
-    case wait_for_quorum_pred(true, RequiredLease, RequiredQuorum, State) of
+handle_wait_for_preconditions_timeout(true, SubCall, Timeout, From,
+                                      RequiredLease, RequiredQuorum,
+                                      #state{leases = RemoteLeases} = State) ->
+    case wait_for_preconditions_pred(true,
+                                     RequiredLease, RequiredQuorum, State) of
         true ->
             ?log_debug("Failed to acquire quorum for call ~p after ~bms. "
                        "Continuing since 'unsafe' option is set.~n"
                        "Required quorum: ~p~n"
                        "Leases: ~p",
                        [SubCall, Timeout, RequiredQuorum, RemoteLeases]),
-            handle_wait_for_quorum_success(SubCall, From, State);
+            handle_wait_for_preconditions_success(SubCall, From, State);
         false ->
             %% don't continue if we somehow don't even have the local
             %% lease/required leader processes registered
