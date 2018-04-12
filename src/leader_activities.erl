@@ -705,10 +705,25 @@ is_leader(#state{local_lease_holder   = {Node, _},
 is_leader(_) ->
     false.
 
-have_lease(leader, State) ->
-    is_leader(State);
-have_lease(ExpectedLease, #state{local_lease_holder = ActualLease}) ->
-    ExpectedLease =:= ActualLease.
+check_is_leader(State) ->
+    case is_leader(State) of
+        true ->
+            ok;
+        false ->
+            {error, not_leader}
+    end.
+
+check_lease(leader, State) ->
+    check_is_leader(State);
+check_lease(ExpectedLease, #state{local_lease_holder = ActualLease}) ->
+    case ExpectedLease =:= ActualLease of
+        true ->
+            ok;
+        false ->
+            {error, {no_lease,
+                     [{required_lease, ExpectedLease},
+                      {actual_lease, ActualLease}]}}
+    end.
 
 have_quorum(follower, State) ->
     true = (State#state.local_lease_holder =/= undefined),
@@ -738,20 +753,35 @@ quorum_requires_leader(_) ->
 check_quorum_requires_leader(Quorum, State) ->
     case quorum_requires_leader(Quorum) of
         true ->
-            is_leader(State);
+            check_is_leader(State);
         false ->
-            true
+            ok
     end.
 
-check_quorum(Activity, State) ->
-    Unsafe = proplists:get_bool(unsafe, get_options(Activity)),
-    check_quorum(Unsafe, Activity#activity.quorum, State).
-
 check_quorum(Unsafe, Quorum, State) ->
-    Unsafe orelse have_quorum(Quorum, State).
+    case Unsafe of
+        true ->
+            ok;
+        false ->
+            case have_quorum(Quorum, State) of
+                true ->
+                    ok;
+                false ->
+                    Leases = sets:to_list(State#state.leases),
+
+                    {error, {no_quorum,
+                             [{required_quorum, Quorum},
+                              {leases, Leases}]}}
+            end
+    end.
+
+activity_lost_quorum_pred(Activity, State) ->
+    Unsafe = proplists:get_bool(unsafe, get_options(Activity)),
+    Quorum = Activity#activity.quorum,
+    check_quorum(Unsafe, Quorum, State) =/= ok.
 
 check_quorums(State, Reason) ->
-    terminate_activities(?cut(not check_quorum(_, State)),
+    terminate_activities(activity_lost_quorum_pred(_, State),
                          State, {shutdown, {quorum_lost, Reason}}).
 
 handle_wait_for_preconditions(Lease,
@@ -760,52 +790,41 @@ handle_wait_for_preconditions(Lease,
       wait_for_preconditions_pred(Lease, Quorum, _),
       ?cut(handle_wait_for_preconditions_success(SubCall, From, _2)),
       Timeout,
-      handle_wait_for_preconditions_timeout(Unsafe, SubCall, Timeout,
-                                            From, Lease, Quorum, _)),
+      handle_wait_for_preconditions_timeout(SubCall, Timeout,
+                                            From, Lease, Quorum, Unsafe, _)),
 
     State.
 
 wait_for_preconditions_pred(Lease, Quorum, State) ->
-    wait_for_preconditions_pred(false, Lease, Quorum, State).
+    check_preconditions(Lease, Quorum, false, State) =:= ok.
 
-wait_for_preconditions_pred(Unsafe, Lease, Quorum, State) ->
-    have_lease(Lease, State)
-        andalso check_quorum_requires_leader(Quorum, State)
-        andalso check_quorum(Unsafe, Quorum, State).
+check_preconditions(Lease, Quorum, Unsafe, State) ->
+    functools:sequence_(State,
+                        [check_lease(Lease, _),
+                         check_quorum_requires_leader(Quorum, _),
+                         check_quorum(Unsafe, Quorum, _)]).
 
 handle_wait_for_preconditions_success(SubCall, From, State) ->
     {noreply, handle_activity_subcall(SubCall, From, State)}.
 
-handle_wait_for_preconditions_timeout(false, _, _, From,
-                                      RequiredLease, RequiredQuorum, State) ->
-    reply_no_quorum(From, RequiredLease, RequiredQuorum, State);
-handle_wait_for_preconditions_timeout(true, SubCall, Timeout, From,
-                                      RequiredLease, RequiredQuorum,
+handle_wait_for_preconditions_timeout(SubCall, Timeout, From,
+                                      RequiredLease, RequiredQuorum, Unsafe,
                                       #state{leases = RemoteLeases} = State) ->
-    case wait_for_preconditions_pred(true,
-                                     RequiredLease, RequiredQuorum, State) of
-        true ->
+    case check_preconditions(RequiredLease, RequiredQuorum, Unsafe, State) of
+        ok ->
+            %% This should only be possible if Unsafe is true
+            true = Unsafe,
+
             ?log_debug("Failed to acquire quorum for call ~p after ~bms. "
                        "Continuing since 'unsafe' option is set.~n"
                        "Required quorum: ~p~n"
                        "Leases: ~p",
                        [SubCall, Timeout, RequiredQuorum, RemoteLeases]),
             handle_wait_for_preconditions_success(SubCall, From, State);
-        false ->
-            %% don't continue if we somehow don't even have the local
-            %% lease/required leader processes registered
-            reply_no_quorum(From, RequiredLease, RequiredQuorum, State)
+        Error ->
+            gen_server2:reply(From, Error),
+            {noreply, State}
     end.
-
-reply_no_quorum(From, RequiredLease, RequiredQuorum,
-                #state{local_lease_holder = LocalLease,
-                       leases             = RemoteLeases} = State) ->
-    gen_server2:reply(From, {error, {no_quorum,
-                                     {RequiredLease,
-                                      RequiredQuorum,
-                                      LocalLease,
-                                      sets:to_list(RemoteLeases)}}}),
-    {noreply, State}.
 
 handle_activity_subcall({start_activity,
                          Domain,

@@ -84,6 +84,18 @@ sequence(Arg, [F | Rest], Acc) ->
             Other
     end.
 
+%% Same as sequence/2, but doesn't expect functions to return anything useful
+%% in ok case.
+sequence_(_Arg, []) ->
+    ok;
+sequence_(Arg, [F | Rest]) ->
+    case F(Arg) of
+        ok ->
+            sequence_(Arg, Rest);
+        Other ->
+            Other
+    end.
+
 %% some partially applied built-in operations
 add(Y) ->
     fun (X) -> X + Y end.
