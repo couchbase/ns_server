@@ -150,8 +150,7 @@
       <a
          mn-tab="overview"
          ui-sref="app.admin.overview"
-         ui-sref-active="currentnav"
-         class="margin-bottom-half">Dashboard</a>
+         ui-sref-active="currentnav">Dashboard</a>
       <a
          mn-tab="servers"
          ui-sref-active="currentnav"
@@ -185,9 +184,8 @@
          mn-tab="logs"
          ui-sref="app.admin.logs.list"
          ng-class="{currentnav: ('app.admin.logs' | includedByState)}"
-         ng-show="rbac.cluster.logs.read"
-         class="margin-bottom-1">Logs</a>
-
+         ng-show="rbac.cluster.logs.read">Logs</a>
+      <div class="margin-bottom-1"></div>
       <nav
          mn-pluggable-ui-tabs
          mn-tab-bar-name="workbenchTab">
