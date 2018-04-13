@@ -21,7 +21,6 @@ mn.components.MnTermsAndConditions =
     ];
 
     MnTermsAndConditions.prototype.onSubmit = onSubmit;
-    MnTermsAndConditions.prototype.registerChange = registerChange;
     MnTermsAndConditions.prototype.validateAgreeFlag = validateAgreeFlag;
     MnTermsAndConditions.prototype.finishWithDefaut = finishWithDefaut;
 
@@ -60,7 +59,6 @@ mn.components.MnTermsAndConditions =
       this.termsForm = mnWizardService.wizardForm.termsAndConditions;
       this.termsForm.get("agree").setValue(false);
 
-      this.registerChange();
       this.groupHttp = mnWizardService.stream.groupHttp;
       this.mnAppLoding = mnAppService.stream.loading;
 
@@ -93,13 +91,6 @@ mn.components.MnTermsAndConditions =
         .success
         .takeUntil(this.mnDestroy)
         .subscribe(function () {
-          if (mnWizardService.wizardForm.termsAndConditions.get("register").value) {
-            mnWizardService.stream.emailHttp.response.first().subscribe();
-            mnWizardService.stream.emailHttp.post([
-              mnWizardService.wizardForm.termsAndConditions.get("user").value,
-              mnWizardService.initialValues.implementationVersion
-            ]);
-          }
           uiRouter.urlRouter.sync();
         });
     }
@@ -135,10 +126,6 @@ mn.components.MnTermsAndConditions =
         hostnameHttp: this.initialValues.hostname,
         statsHttp: true
       });
-    }
-
-    function registerChange() {
-      this.termsForm.get("user")[this.termsForm.get('register').value ? "enable" : "disable"]();
     }
 
     function onSubmit(user) {

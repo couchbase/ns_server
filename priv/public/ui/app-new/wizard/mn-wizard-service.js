@@ -55,16 +55,7 @@ mn.services.MnWizard = (function () {
       enableStats: new ng.forms.FormControl(true)
     }),
     termsAndConditions: new ng.forms.FormGroup({
-      agree: new ng.forms.FormControl(false),
-      register: new ng.forms.FormControl(false),
-      user: new ng.forms.FormGroup({
-        firstname: new ng.forms.FormControl(),
-        lastname: new ng.forms.FormControl(),
-        company: new ng.forms.FormControl(),
-        email: new ng.forms.FormControl(null, [
-          ng.forms.Validators.email
-        ])
-      })
+      agree: new ng.forms.FormControl(false)
     }),
     joinCluster: new ng.forms.FormGroup({
       clusterAdmin: new ng.forms.FormGroup({
@@ -113,7 +104,6 @@ mn.services.MnWizard = (function () {
   MnWizardService.prototype.postServices = postServices;
   MnWizardService.prototype.postQuerySettings = postQuerySettings;
   MnWizardService.prototype.postStats = postStats;
-  MnWizardService.prototype.postEmail = postEmail;
   MnWizardService.prototype.postJoinCluster = postJoinCluster;
   MnWizardService.prototype.getServicesValues = getServicesValues;
   MnWizardService.prototype.getUserCreds = getUserCreds;
@@ -158,9 +148,6 @@ mn.services.MnWizard = (function () {
       new mn.helper.MnPostHttp(this.postQuerySettings.bind(this))
       .addSuccess()
       .addError();
-
-    this.stream.emailHttp =
-      new mn.helper.MnPostHttp(this.postEmail.bind(this));
 
     this.stream.indexesHttp =
       new mn.helper.MnPostHttp(this.postIndexes.bind(this))
@@ -329,15 +316,6 @@ mn.services.MnWizard = (function () {
     return this.http.post('/settings/stats', {
       sendStats: sendStats
     });
-  }
-
-  function postEmail(register) {
-    var params = new ng.common.http.HttpParams({encoder: new mn.helper.MnHttpEncoder()});
-    for (var i in register[0]) {
-      params = params.set(i, register[0][i]);
-    }
-    params = params.set("version", register[1]);
-    return this.http.jsonp('http://ph.couchbase.net/email?' + params.toString(), "callback");
   }
 
   function postServices(data) {
