@@ -1564,6 +1564,14 @@ collect_external_tool_output(Port, Acc) ->
             exit({unexpected_message, Msg})
     end.
 
+find_by(Pred, List) ->
+    case lists:dropwhile(?cut(not Pred(_)), List) of
+        [] ->
+            not_found;
+        [X | _] ->
+            {ok, X}
+    end.
+
 min_by(Less, Items) ->
     lists:foldl(
       fun (Elem, Acc) ->

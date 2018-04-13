@@ -215,9 +215,6 @@ failover_service(Config, Service, Nodes) ->
       {status, Result},
       {service, Service}] || Node <- Nodes].
 
-get_failover_vbuckets(Config, Node) ->
-    ns_config:search(Config, {node, Node, failover_vbuckets}, []).
-
 validate_autofailover(Nodes) ->
     BucketPairs = ns_bucket:get_buckets(),
     UnsafeBuckets =
@@ -1069,48 +1066,108 @@ find_delta_recovery_map(Config, AllNodes, DeltaNodes, Bucket, BucketConfig) ->
     MatchingMaps = mb_map:find_matching_past_maps(AllNodes, CurrentMap,
                                                   CurrentOptions, History),
 
-    find_delta_recovery_map_loop(MatchingMaps,
-                                 Config, Bucket, CurrentOptions, DeltaNodes).
-
-find_delta_recovery_map_loop([], _Config, _Bucket, _Options, _DeltaNodes) ->
-    false;
-find_delta_recovery_map_loop([TargetMap | Rest], Config, Bucket, Options, DeltaNodes) ->
-    {_, TargetVBucketsDict} =
-        lists:foldl(
-          fun (Chain, {V, D}) ->
-                  D1 = lists:foldl(
-                         fun (Node, Acc) ->
-                                 case lists:member(Node, Chain) of
-                                     true ->
-                                         dict:update(Node,
-                                                     fun (Vs) ->
-                                                             [V | Vs]
-                                                     end, Acc);
-                                     false ->
-                                         Acc
-                                 end
-                         end, D, DeltaNodes),
-
-                  {V+1, D1}
-          end,
-          {0, dict:from_list([{N, []} || N <- DeltaNodes])}, TargetMap),
-
-    Usable =
-        lists:all(
-          fun (Node) ->
-                  AllFailoverVBuckets = get_failover_vbuckets(Config, Node),
-                  FailoverVBuckets = proplists:get_value(Bucket, AllFailoverVBuckets),
-                  TargetVBuckets = lists:reverse(dict:fetch(Node, TargetVBucketsDict)),
-
-                  TargetVBuckets =:= FailoverVBuckets
-          end, DeltaNodes),
-
-    case Usable of
-        true ->
-            {TargetMap, Options};
-        false ->
-            find_delta_recovery_map_loop(Rest, Config, Bucket, Options, DeltaNodes)
+    FailoverVBs = bucket_failover_vbuckets(Config, Bucket, DeltaNodes),
+    case find_delta_recovery_map(CurrentMap, FailoverVBs, MatchingMaps) of
+        not_found ->
+            false;
+        {ok, Map} ->
+            {Map, CurrentOptions}
     end.
+
+find_delta_recovery_map(CurrentMap, FailoverVBs, MatchingMaps) ->
+    CurrentVBs = map_to_vbuckets_dict(CurrentMap),
+    MergeFun   = ?cut(lists:umerge(_2, _3)),
+    DesiredVBs = dict:merge(MergeFun, FailoverVBs, CurrentVBs),
+
+    Pred = ?cut(map_to_vbuckets_dict(_) =:= DesiredVBs),
+    misc:find_by(Pred, MatchingMaps).
+
+-ifdef(EUNIT).
+find_delta_recovery_map_test() ->
+    Map = [[b, undefined],
+           [b, undefined],
+           [b, undefined],
+           [b, c],
+           [c, b],
+           [c, b],
+           [d, c],
+           [d, c]],
+    FailoverVBs = dict:from_list([{a, [0, 1, 2]}]),
+
+    Matching = [[a, b],
+                [a, b],
+                [b, a],
+                [b, c],
+                [c, b],
+                [c, b],
+                [d, c],
+                [d, c]],
+
+    NonMatching1 = [[a, b],
+                    [a, b],
+                    [b, a],
+                    [b, a],
+                    [c, b],
+                    [c, b],
+                    [d, c],
+                    [d, c]],
+
+    NonMatching2 = [[a, b],
+                    [a, b],
+                    [b, a],
+                    [b, c],
+                    [c, b],
+                    [c, b],
+                    [d, b],
+                    [d, b]],
+
+    {ok, Matching} = find_delta_recovery_map(Map, FailoverVBs, [Matching]),
+
+    not_found = find_delta_recovery_map(Map, FailoverVBs, [NonMatching1]),
+    not_found = find_delta_recovery_map(Map, FailoverVBs, [NonMatching2]),
+    not_found = find_delta_recovery_map(Map, FailoverVBs,
+                                        [NonMatching1, NonMatching2]),
+
+    {ok, Matching} = find_delta_recovery_map(Map, FailoverVBs,
+                                             [NonMatching1,
+                                              Matching, NonMatching2]).
+-endif.
+
+map_to_vbuckets_dict(Map) ->
+    lists:foldr(
+      fun ({V, Chain}, Acc) ->
+              lists:foldl(fun (N, D) ->
+                                  misc:dict_update(N, [V|_], [], D)
+                          end,
+                          Acc, lists:filter(_ =/= undefined, Chain))
+      end, dict:new(), misc:enumerate(Map, 0)).
+
+-ifdef(EUNIT).
+map_to_vbuckets_dict_test() ->
+    Map = [[a, b],
+           [a, b],
+           [b, a],
+           [b, c],
+           [c, b],
+           [c, b]],
+    ?assertEqual([{a, [0, 1, 2]},
+                  {b, [0, 1, 2, 3, 4, 5]},
+                  {c, [3, 4, 5]}],
+                 lists:sort(dict:to_list(map_to_vbuckets_dict(Map)))).
+-endif.
+
+node_failover_vbuckets(Config, Node) ->
+    ns_config:search(Config, {node, Node, failover_vbuckets}, []).
+
+bucket_failover_vbuckets(Config, Bucket, DeltaNodes) ->
+    dict:from_list(
+      lists:map(
+        fun (Node) ->
+                VBs = proplists:get_value(Bucket,
+                                          node_failover_vbuckets(Config, Node),
+                                          []),
+                {Node, lists:usort(VBs)}
+        end, DeltaNodes)).
 
 membase_delta_recovery_buckets(DeltaRecoveryBuckets, MembaseBucketConfigs) ->
     MembaseBuckets = [Bucket || {Bucket, _} <- MembaseBucketConfigs],
