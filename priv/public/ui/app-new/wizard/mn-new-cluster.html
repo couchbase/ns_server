@@ -10,34 +10,34 @@
   </div>
   <form
      [formGroup]="newClusterForm"
-     (ngSubmit)="onSubmit()"
+     (ngSubmit)="onSubmit.next()"
      class="forms"
      novalidate>
 
     <div class="panel-content">
       <div class="error error-form">
         <div
-           [hidden]="!(newClusterForm.get('clusterName').touched || submitted) ||
+           [hidden]="!(newClusterForm.get('clusterName').touched || (submitted | async)) ||
                      !newClusterForm.get('clusterName').errors?.required">
           Cluster name is required
         </div>
         <div
-           [hidden]="!(newClusterForm.get('user.username').touched || submitted) ||
+           [hidden]="!(newClusterForm.get('user.username').touched || (submitted | async)) ||
                      !newClusterForm.get('user.username').errors?.required">
           Username is required
         </div>
         <div
-           [hidden]="!(newClusterForm.get('user.password').touched || submitted) ||
+           [hidden]="!(newClusterForm.get('user.password').touched || (submitted | async)) ||
                      !newClusterForm.get('user.password').errors?.required">
           Password is required
         </div>
         <div
-           [hidden]="!(newClusterForm.get('user.passwordVerify').touched || submitted) ||
+           [hidden]="!(newClusterForm.get('user.passwordVerify').touched || (submitted | async)) ||
                      !newClusterForm.errors?.passwordMismatch">
           The password and verify password fields do not match
         </div>
         <div
-           [hidden]="!(newClusterForm.get('user.password').touched || submitted) ||
+           [hidden]="!(newClusterForm.get('user.password').touched || (submitted | async)) ||
                      !newClusterForm.get('user.password').errors?.minlength">
           A password of at least six characters is required
         </div>

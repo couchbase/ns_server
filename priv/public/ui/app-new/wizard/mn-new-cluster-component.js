@@ -4,7 +4,7 @@ mn.components.MnNewCluster =
   (function () {
     "use strict";
 
-    mn.helper.extends(MnNewClusterComponent, mn.helper.MnDestroyableComponent);
+    mn.helper.extends(MnNewClusterComponent, mn.helper.MnEventableComponent);
 
     MnNewClusterComponent.annotations = [
       new ng.core.Component({
@@ -17,15 +17,15 @@ mn.components.MnNewCluster =
       window['@uirouter/angular'].UIRouter
     ];
 
-    MnNewClusterComponent.prototype.onSubmit = onSubmit;
-
     return MnNewClusterComponent;
 
     function MnNewClusterComponent(mnWizardService, uiRouter) {
-      mn.helper.MnDestroyableComponent.call(this);
+      mn.helper.MnEventableComponent.call(this);
 
+      this.onSubmit = new Rx.Subject();
       this.focusField = true;
 
+      this.submitted = this.onSubmit.mapTo(true);
       this.authHttp = mnWizardService.stream.authHttp;
       this.newClusterForm = mnWizardService.wizardForm.newCluster;
       this.newClusterForm.setValidators([mn.helper.validateEqual("user.password",
@@ -33,21 +33,25 @@ mn.components.MnNewCluster =
                                                                  "passwordMismatch")]);
       this.authHttp
         .success
-        .takeUntil(this.mnDestroy)
+        .takeUntil(this.mnOnDestroy)
         .subscribe(onSuccess.bind(this));
+
+      this.onSubmit
+        .filter(canSubmit.bind(this))
+        .map(getValues.bind(this))
+        .takeUntil(this.mnOnDestroy)
+        .subscribe(this.authHttp.post.bind(this.authHttp));
+
+      function getValues() {
+        return [this.newClusterForm.value.user, true];
+      }
+
+      function canSubmit() {
+        return !this.newClusterForm.invalid;
+      }
 
       function onSuccess() {
         uiRouter.stateService.go('app.wizard.termsAndConditions', null, {location: false});
       }
-    }
-
-    function onSubmit() {
-      this.submitted = true;
-
-      if (this.newClusterForm.invalid) {
-        return;
-      }
-
-      this.authHttp.post([this.newClusterForm.value.user, true]);
     }
   })();
