@@ -11,7 +11,7 @@
   </div>
   <form
      [formGroup]="termsForm"
-     (ngSubmit)="onSubmit()"
+     (ngSubmit)="onSubmit.next()"
      class="forms"
      novalidate>
     <div class="panel-content">
@@ -32,7 +32,7 @@
 
       <div
          class="error error-form"
-         [hidden]="!(termsForm.get('agree').touched || submitted) ||
+         [hidden]="!(termsForm.get('agree').touched || (submitted | async)) ||
                    !termsForm.get('agree').errors?.required">
         Terms and conditions need to be accepted in order to continue
       </div>
@@ -48,7 +48,8 @@
              type="checkbox"
              id="for-accept-terms"
              formControlName="agree"
-             name="agree">
+             name="agree"
+             required>
           <label class="checkbox" for="for-accept-terms">
             I accept the
             <a [attr.href]="termsHref | async" target="_blank">
@@ -68,7 +69,7 @@
         <button
            type="button"
            class="outline tight"
-           (click)="finishWithDefaut()"
+           (click)="onFinishWithDefaut.next()"
            title="All services enabled / Memory optimized for Couchbase / Default disk paths">
           Finish With Defaults
         </button>

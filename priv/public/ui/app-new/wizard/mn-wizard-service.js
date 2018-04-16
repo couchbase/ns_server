@@ -55,7 +55,7 @@ mn.services.MnWizard = (function () {
       enableStats: new ng.forms.FormControl(true)
     }),
     termsAndConditions: new ng.forms.FormGroup({
-      agree: new ng.forms.FormControl(false)
+      agree: new ng.forms.FormControl(false, [ng.forms.Validators.required])
     }),
     joinCluster: new ng.forms.FormGroup({
       clusterAdmin: new ng.forms.FormGroup({
