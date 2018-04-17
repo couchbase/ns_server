@@ -181,28 +181,37 @@ class AccessLogProcessor:
     def do(self, line):
         return self.column_parser.sub(self._repl_columns, line)
 
-class CouchbaseLogProcessor:
-    def __init__(self, salt):
-        self.salt = salt
-
-    def do(self, line):
-        if "RedactLevel" in line:
-            return 'RedactLevel:partial,HashOfSalt:%s\n' \
-                % hashlib.sha1(self.salt).hexdigest()
-        else:
-            return line
-
 class RegularLogProcessor:
+    rexes = [re.compile('(<ud>)(.+?)(</ud>)'),
+             re.compile('("--log-redaction-salt=)(.+?)(")'),
+             re.compile('({redact_salt,)(.+?)(})')]
+
     def __init__(self, salt):
         self.salt = salt
-        self.rex = re.compile('(<ud>)(.+?)(</ud>)')
 
     def _hash(self, match):
         h = hashlib.sha1(self.salt + match.group(2)).hexdigest()
         return match.group(1) + h + match.group(3)
 
+    def _process_line(self, line):
+        for rex in self.rexes:
+            line = rex.sub(self._hash, line)
+        return line
+
     def do(self, line):
-        return self.rex.sub(self._hash, line)
+        return self._process_line(line)
+
+class CouchbaseLogProcessor(RegularLogProcessor):
+    rexes = [re.compile('(--log-redaction-salt=)(.+?)( )')]
+
+    def do(self, line):
+        if "RedactLevel" in line:
+            # salt + salt to maintain consistency with other
+            # occurances of hashed salt in the logs.
+            return 'RedactLevel:partial,HashOfSalt:%s\n' \
+                % hashlib.sha1(self.salt + self.salt).hexdigest()
+        else:
+            return self._process_line(line)
 
 class LogRedactor:
     def __init__(self, salt, tmpdir, default_name):
