@@ -86,11 +86,11 @@ start_keeper() ->
 
 get_gauges() ->
     [disk_size, data_size, memory_used, num_docs_pending, num_docs_queued,
-     items_count, frag_percent, resident_percent, cache_hit_percent].
+     items_count, frag_percent, resident_percent].
 
 get_counters() ->
     [num_requests, num_rows_returned, num_docs_indexed,
-     scan_bytes_read, total_scan_duration].
+     scan_bytes_read, total_scan_duration, cache_misses, cache_hits].
 
 get_service_gauges() ->
     [memory_quota, memory_used].

@@ -752,9 +752,21 @@ computed_stats_lazy_proplist("@index-"++BucketId) ->
                                               Pending + Queued
                                       end),
 
+                  CacheMissRat = Z2(per_index_stat(Index, <<"cache_hits">>),
+                                    per_index_stat(Index, <<"cache_misses">>),
+                                    fun (Hits, Misses) ->
+                                            try
+                                                Misses * 100 / (Hits + Misses)
+                                            catch
+                                                error:badarith ->
+                                                    0
+                                            end
+                                    end),
+
                   [{per_index_stat(Index, <<"avg_item_size">>), AvgItemSize},
                    {per_index_stat(Index, <<"avg_scan_latency">>), AvgScanLatency},
-                   {per_index_stat(Index, <<"num_docs_pending+queued">>), AllPendingDocs}]
+                   {per_index_stat(Index, <<"num_docs_pending+queued">>), AllPendingDocs},
+                   {per_index_stat(Index, <<"cache_miss_ratio">>), CacheMissRat}]
           end, get_indexes(service_index, BucketId));
 computed_stats_lazy_proplist("@fts-"++BucketId) ->
     Z2 = fun (StatNameA, StatNameB, Combiner) ->
@@ -1432,9 +1444,12 @@ do_couchbase_index_stats_descriptions(BucketId, Nodes) ->
                  {struct, [{title, <<"cache resident percent">>},
                            {name, per_index_stat(Id, <<"resident_percent">>)},
                            {desc, <<"Percentage of index data resident in memory">>}]},
-                 {struct, [{title, <<"cache hit percent">>},
-                           {name, per_index_stat(Id, <<"cache_hit_percent">>)},
-                           {desc, <<"Percentage of index data served from cache">>}]}]}]}
+                 {struct, [{title, <<"index cache miss ratio">>},
+                           {name, per_index_stat(Id, <<"cache_miss_ratio">>)},
+                           {desc, <<"Percentage of accesses to this index data"
+                                    "from disk as opposed to RAM (measured from"
+                                    "cache_misses * 100 / (cache_misses +"
+                                    "cache_hits))">>}]}]}]}
      || Id <- AllIndexes].
 
 couchbase_cbas_stats_descriptions(ServiceNodes) ->
