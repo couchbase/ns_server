@@ -46,7 +46,7 @@ deps/mochiweb/ebin/*
 ebin
 ebucketmigrator
 ebucketmigrator**.tmp
-erl_crash.dump
+erl_crash.dump*
 fprof.trace
 ns_server-*.tar.gz
 priv/ip
