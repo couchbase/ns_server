@@ -292,9 +292,20 @@ default_quotas(Services, MemSupData) ->
     MinTotal = lists:sum(MinQuotas),
     MinQuotasServices = lists:zip(OrderedServices, MinQuotas),
 
-    %% we do not support machines with that little memory
-    true = MinTotal =< MemoryMax,
+    case MinTotal > MemoryMax of
+        true ->
+            %% we do not officialy support machines with that little memory
+            %% but some people (MB-29290) insist that one still should be able
+            %% to configure services manually on such machines. so we just
+            %% return minimum quotas here, despite the sum of them being
+            %% larger than available memory
+            MinQuotasServices;
+        false ->
+            calculate_remaining_default_quotas(Memory, MemoryMax, MinTotal,
+                                               MinQuotasServices)
+    end.
 
+calculate_remaining_default_quotas(Memory, MemoryMax, MinTotal, MinQuotas) ->
     {_, _, Result} =
         lists:foldl(
           fun ({Service, MinQ}, {AccMem, AccMax, AccResult}) ->
@@ -311,9 +322,7 @@ default_quotas(Services, MemSupData) ->
 
                   {AccMem1, AccMax1, AccResult1}
           end,
-          {Memory - MinTotal, MemoryMax - MinTotal, []},
-          MinQuotasServices),
-
+          {Memory - MinTotal, MemoryMax - MinTotal, []}, MinQuotas),
     Result.
 
 default_quotas_test() ->
