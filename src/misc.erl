@@ -2504,3 +2504,10 @@ no_duplicates_test() ->
     ?assertEqual([1,2,2], duplicates([1,2,1,2,3,2])).
 -endif.
 
+%% Generates a cryptographically strong seed which can be used in rand:seed/2
+generate_crypto_seed() ->
+    <<I1:32/unsigned-integer,
+      I2:32/unsigned-integer,
+      I3:32/unsigned-integer>> = crypto:strong_rand_bytes(12),
+    {I1, I2, I3}.
+

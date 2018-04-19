@@ -1079,18 +1079,21 @@ gen_password({MinLength, _} = Policy, Retries) ->
     Letters =
         "0123456789abcdefghijklmnopqrstuvwxyz"
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%^&*?",
-    Pass = get_random_string(Length, Letters),
+    Pass = crypto_random_string(Length, Letters),
     case is_valid_password(Pass, Policy) of
         true -> Pass;
         _ -> gen_password(Policy, Retries - 1)
     end.
 
-get_random_string(Length, AllowedChars) ->
-    lists:foldl(fun(_, Acc) ->
-                        [lists:nth(rand:uniform(length(AllowedChars)),
-                                   AllowedChars)]
-                            ++ Acc
-                end, [], lists:seq(1, Length)).
+crypto_random_string(Length, AllowedChars) ->
+    S = rand:seed_s(exrop, misc:generate_crypto_seed()),
+    AllowedLen = length(AllowedChars),
+    {Password, _} = lists:mapfoldl(
+        fun(_, Acc) ->
+                {Rand, NewAcc} = rand:uniform_s(AllowedLen, Acc),
+                {lists:nth(Rand, AllowedChars), NewAcc}
+        end, S, lists:seq(1, Length)),
+    Password.
 
 reset_admin_password(Password) ->
     {User, Error} =
