@@ -477,7 +477,7 @@ handle_node_self_xdcr_ssl_ports(Req) ->
 handle_node_settings_post("self", Req) ->
     handle_node_settings_post(node(), Req);
 handle_node_settings_post(S, Req) when is_list(S) ->
-    handle_node_settings_post(list_to_atom(S), Req);
+    handle_node_settings_post(list_to_existing_atom(S), Req);
 handle_node_settings_post(Node, Req) when is_atom(Node) ->
     Params = mochiweb_request:parse_post(Req),
 
