@@ -23,7 +23,8 @@
 -define(DEFAULT_TIMEOUT, ?get_timeout(default, 10000)).
 
 %% remote calls
--export([get_indexes/1, get_fts_indexes/1, get_service_remote_items/2]).
+-export([get_indexes/1, get_fts_indexes/1, get_service_remote_items/2,
+         apply_node_settings/2]).
 
 %% gen_server callbacks and functions
 -export([start_link/0]).
@@ -44,6 +45,10 @@ get_fts_indexes(Node) ->
 get_service_remote_items(Node, Mod) ->
     do_call(Node, {get_service_remote_items, Mod}).
 
+%% introduced in Mad-Hatter
+apply_node_settings(Node, Settings) ->
+    do_call(Node, {apply_node_settings, Settings}).
+
 %% gen_server callbacks and functions
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -57,6 +62,8 @@ handle_call(get_fts_indexes, _From, State) ->
     {reply, service_fts:get_indexes(), State};
 handle_call({get_service_remote_items, Mod}, _From, State) ->
     {reply, service_status_keeper:get_items(Mod), State};
+handle_call({apply_node_settings, Settings}, _From, State) ->
+    {reply, menelaus_web_node:apply_node_settings(Settings), State};
 handle_call(Request, {Pid, _} = _From, State) ->
     ?log_warning("Got unknown call ~p from ~p (node ~p)", [Request, Pid, node(Pid)]),
     {reply, unhandled, State}.

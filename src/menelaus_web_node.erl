@@ -36,7 +36,8 @@
          handle_node_altaddr_external/1,
          handle_node_altaddr_external_delete/1,
          handle_node_self_xdcr_ssl_ports/1,
-         handle_node_settings_post/2]).
+         handle_node_settings_post/2,
+         apply_node_settings/1]).
 
 -import(menelaus_util,
         [local_addr/1,
@@ -531,34 +532,36 @@ handle_node_settings_post("self", Req) ->
 handle_node_settings_post(S, Req) when is_list(S) ->
     handle_node_settings_post(list_to_existing_atom(S), Req);
 handle_node_settings_post(Node, Req) when is_atom(Node) ->
-    case Node =/= node() of
-        true -> exit("Setting the disk storage path for other servers is "
-                     "not yet supported.");
+    case cluster_compat_mode:is_cluster_madhatter() of
+        false when Node =/= node() ->
+            exit("Setting the disk storage path for other servers is "
+                 "not yet supported.");
         _ -> ok
     end,
 
     Params = mochiweb_request:parse_post(Req),
-    case apply_node_settings(Params) of
-        not_changed -> reply(Req, 200);
-        ok ->
+
+    %% NOTE: due to required restart we need to protect
+    %%       ourselves from 'death signal' of parent
+    Node == node() andalso erlang:process_flag(trap_exit, true),
+
+    case remote_api:apply_node_settings(Node, Params) of
+        not_changed ->
+            reply(Req, 200);
+        ok  ->
             ns_audit:disk_storage_conf(Req, Node, Params),
             reply(Req, 200);
-        restart ->
-            ns_audit:disk_storage_conf(Req, Node, Params),
-            %% NOTE: due to required restart we need to protect
-            %% ourselves from 'death signal' of parent
-            erlang:process_flag(trap_exit, true),
+        {error, Msgs} ->
+            reply_json(Req, Msgs, 400)
+    end,
 
-            %% performing required restart from
-            %% successfull path change
-            {ok, _} = ns_server_cluster_sup:restart_ns_server(),
-            reply(Req, 200),
-            erlang:exit(normal);
-        {error, Msgs} -> reply_json(Req, Msgs, 400)
-    end.
+    %% NOTE: we have to stop this process because in case of ns_server restart
+    %%       it becomes orphan
+    Node == node() andalso erlang:exit(normal),
+    ok.
 
 -spec apply_node_settings(Params :: [{Key :: string(), Value :: term()}]) ->
-        ok | not_changed | restart | {error, [Msg :: binary()]}.
+        ok | not_changed | {error, [Msg :: binary()]}.
 apply_node_settings(Params) ->
     try
         Paths = validate_settings_paths(extract_settings_paths(Params)),
@@ -585,7 +588,16 @@ apply_node_settings(Params) ->
                 ok
         end,
 
-        ns_storage_conf:setup_disk_storage_conf(DbPath, IxPath, CBASDirs)
+        case ns_storage_conf:setup_disk_storage_conf(DbPath, IxPath,
+                                                     CBASDirs) of
+            restart ->
+                %% performing required restart from
+                %% successfull path change
+                {ok, _} = ns_server_cluster_sup:restart_ns_server(),
+                ok;
+            Res ->
+                Res
+        end
     catch
         throw:{error, ErrorMsgs} ->
             {error, [iolist_to_binary(M) || M <- ErrorMsgs]}
