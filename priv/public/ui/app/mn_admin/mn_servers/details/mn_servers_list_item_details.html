@@ -3,14 +3,17 @@
 
   <div class="row flex-left items-top resp-sml">
     <div class="cbui-table-props cursor-text" ng-click="$event.stopPropagation();">
+      <div class="break-word">
+        <strong>Name:</strong> {{node.hostname | mnStripPortHTML:serversCtl.nodes.allNodes}}
+      </div>
+      <div>
+        <strong>Version:</strong> {{serversListItemDetailsCtl.server.details.version | mnPrettyVersion:true}}
+      </div>
       <div>
         <strong>Uptime:</strong> {{(serversListItemDetailsCtl.server.details.uptime | mnFormatUptime) || 'unknown'}}
       </div>
       <div>
         <strong>OS:</strong> {{serversListItemDetailsCtl.server.details.os}}
-      </div>
-      <div>
-        <strong>Version:</strong> {{serversListItemDetailsCtl.server.details.version | mnPrettyVersion:true}}
       </div>
       <div>
         <strong>Data Service RAM Quota:</strong> {{(serversListItemDetailsCtl.server.details.storageTotals.ram.quotaTotal | mnFormatMemSize) || 'unknown'}}
