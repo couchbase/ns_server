@@ -154,10 +154,8 @@ rm_rf_loop(DirName, [F | Files]) ->
             Error
     end.
 
-rand_str(N) ->
-  lists:map(fun(_I) ->
-      rand:uniform(26) + $a - 1
-    end, lists:seq(1,N)).
+generate_cookie() ->
+    binary_to_atom(misc:hexify(crypto:strong_rand_bytes(32)), latin1).
 
 nthreplace(N, E, List) ->
   lists:sublist(List, N-1) ++ [E] ++ lists:nthtail(N, List).
