@@ -763,10 +763,37 @@ computed_stats_lazy_proplist("@index-"++BucketId) ->
                                             end
                                     end),
 
+                  FragPercent = Z2(per_index_stat(Index, <<"disk_size">>),
+                                   per_index_stat(Index, <<"data_size">>),
+                                   fun (Disk, Data)
+                                         when Data == 0 orelse Disk < Data ->
+                                           0;
+                                       (Disk, Data) ->
+                                           try
+                                               (Disk - Data) * 100.0 / Disk
+                                           catch
+                                               error:badarith ->
+                                                   0
+                                           end
+                                   end),
+
+                  ResPercent = Z2(per_index_stat(Index, <<"recs_in_mem">>),
+                                  per_index_stat(Index, <<"recs_on_disk">>),
+                                  fun (Mem, Disk) ->
+                                          try
+                                              Mem * 100 / (Mem + Disk)
+                                          catch
+                                              error:badarith ->
+                                                  0
+                                          end
+                                  end),
+
                   [{per_index_stat(Index, <<"avg_item_size">>), AvgItemSize},
                    {per_index_stat(Index, <<"avg_scan_latency">>), AvgScanLatency},
                    {per_index_stat(Index, <<"num_docs_pending+queued">>), AllPendingDocs},
-                   {per_index_stat(Index, <<"cache_miss_ratio">>), CacheMissRat}]
+                   {per_index_stat(Index, <<"cache_miss_ratio">>), CacheMissRat},
+                   {per_index_stat(Index, <<"index_frag_percent">>), FragPercent},
+                   {per_index_stat(Index, <<"index_resident_percent">>), ResPercent}]
           end, get_indexes(service_index, BucketId));
 computed_stats_lazy_proplist("@fts-"++BucketId) ->
     Z2 = fun (StatNameA, StatNameB, Combiner) ->
@@ -1430,7 +1457,7 @@ do_couchbase_index_stats_descriptions(BucketId, Nodes) ->
                            {name, per_index_stat(Id, <<"avg_item_size">>)},
                            {desc, <<"Average size of each index item">>}]},
                  {struct, [{title, <<"% fragmentation">>},
-                           {name, per_index_stat(Id, <<"frag_percent">>)},
+                           {name, per_index_stat(Id, <<"index_frag_percent">>)},
                            {desc, <<"Percentage fragmentation of the index. Note: at small index sizes of less than a hundred kB, the static overhead of the index disk file will inflate the index fragmentation percentage">>}]},
                  {struct, [{title, <<"requests/sec">>},
                            {name, per_index_stat(Id, <<"num_requests">>)},
@@ -1442,7 +1469,7 @@ do_couchbase_index_stats_descriptions(BucketId, Nodes) ->
                            {name, per_index_stat(Id, <<"avg_scan_latency">>)},
                            {desc, <<"Average time to serve a scan request (nanoseconds)">>}]},
                  {struct, [{title, <<"cache resident percent">>},
-                           {name, per_index_stat(Id, <<"resident_percent">>)},
+                           {name, per_index_stat(Id, <<"index_resident_percent">>)},
                            {desc, <<"Percentage of index data resident in memory">>}]},
                  {struct, [{title, <<"index cache miss ratio">>},
                            {name, per_index_stat(Id, <<"cache_miss_ratio">>)},
