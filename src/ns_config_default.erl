@@ -26,7 +26,7 @@
 -define(NS_LOG, "ns_log").
 
 get_current_version() ->
-    list_to_tuple(?VERSION_50).
+    list_to_tuple(?VERSION_55).
 
 ensure_data_dir() ->
     RawDir = path_config:component_path(data),
