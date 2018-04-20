@@ -1529,7 +1529,6 @@ gen_password_test() ->
     ok.
 
 gen_password_monkey_test_() ->
-    rand:seed(exrop, os:timestamp()),
     GetRandomPolicy =
         fun () ->
             MustPresent = [uppercase || rand:uniform(2) == 1] ++

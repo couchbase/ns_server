@@ -104,8 +104,6 @@ webconfig() ->
 loop(Req, Config) ->
     ok = menelaus_sup:barrier_wait(),
 
-    rand:seed(exrop, os:timestamp()),
-
     try
         %% Using raw_path so encoded slash characters like %2F are handed correctly,
         %% in that we delay converting %2F's to slash characters until after we split by slashes.

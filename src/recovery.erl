@@ -205,8 +205,6 @@ compute_missing_vbuckets(Map) ->
 -define(MAX_NUM_SERVERS, 50).
 
 compute_recovery_map_test_() ->
-    rand:seed(exrop, os:timestamp()),
-
     {timeout, 200,
      {inparallel,
       [begin

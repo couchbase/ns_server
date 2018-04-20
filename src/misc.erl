@@ -2517,7 +2517,6 @@ rand_uniform(Lo, Hi) ->
 
 -ifdef(EUNIT).
 rand_uniform_test() ->
-    rand:seed(exrop, erlang:timestamp()),
     NTimes = fun G(N, _) when N =< 0 -> ok;
                  G(N, F) -> F(), G(N - 1, F)
              end,
