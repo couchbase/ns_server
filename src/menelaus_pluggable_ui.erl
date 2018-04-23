@@ -17,7 +17,6 @@
 
 -export([find_plugins/0,
          inject_head_fragments/3,
-         is_plugin/2,
          proxy_req/4,
          maybe_serve_file/4]).
 
