@@ -55,7 +55,7 @@
 -spec find_plugins() -> plugins().
 find_plugins() ->
     SpecFiles = find_plugin_spec_files(),
-    [view_plugin() | read_and_validate_plugin_specs(SpecFiles)].
+    read_and_validate_plugin_specs(SpecFiles, [view_plugin()]).
 
 view_plugin() ->
     ViewPortName = port_name_by_service_name(views),
@@ -99,8 +99,8 @@ find_plugin_spec_files_from_env() ->
             []
     end.
 
-read_and_validate_plugin_specs(SpecFiles) ->
-    lists:foldl(fun read_and_validate_plugin_spec/2, [], SpecFiles).
+read_and_validate_plugin_specs(SpecFiles, InitPlugins) ->
+    lists:foldl(fun read_and_validate_plugin_spec/2, InitPlugins, SpecFiles).
 
 read_and_validate_plugin_spec(File, Acc) ->
     {ok, Bin} = file:read_file(File),
