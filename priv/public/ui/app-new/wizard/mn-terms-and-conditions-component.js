@@ -80,6 +80,7 @@ mn.components.MnTermsAndConditions =
         .do(this.groupHttp.clearErrors.bind(this.groupHttp))
         .filter(isValid.bind(this))
         .filter(isNotLoading.bind(this))
+        .withLatestFrom(mnPoolsService.stream.isEnterprise)
         .map(getValues.bind(this))
         .takeUntil(this.mnOnDestroy)
         .subscribe(this.groupHttp.post.bind(this.groupHttp));
@@ -115,13 +116,13 @@ mn.components.MnTermsAndConditions =
         };
       }
 
-      function getValues() {
+      function getValues(isEnterprise) {
         return {
           poolsDefaultHttp: [{
             clusterName: this.wizardForm.newCluster.get("clusterName").value
           }, false],
           servicesHttp: {
-            services: 'kv,index,fts,n1ql,eventing',
+            services: 'kv,index,fts,n1ql' + (isEnterprise[1] ? ',eventing' : ''),
             setDefaultMemQuotas : true
           },
           diskStorageHttp: this.initialValues.clusterStorage,
