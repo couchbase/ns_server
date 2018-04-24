@@ -4,7 +4,7 @@ mn.components.MnNewClusterConfig =
   (function () {
     "use strict";
 
-    mn.helper.extends(MnNewClusterConfig, mn.helper.MnDestroyableComponent);
+    mn.helper.extends(MnNewClusterConfig, mn.helper.MnEventableComponent);
 
     MnNewClusterConfig.annotations = [
       new ng.core.Component({
@@ -21,63 +21,13 @@ mn.components.MnNewClusterConfig =
       window['@uirouter/angular'].UIRouter
     ];
 
-    MnNewClusterConfig.prototype.onSubmit = onSubmit;
-    MnNewClusterConfig.prototype.getWizardValues = getWizardValues;
-    MnNewClusterConfig.prototype.getPoolsDefaultValues = getPoolsDefaultValues;
-
     return MnNewClusterConfig;
 
-    function onSubmit() {
-      if (this.mnAppLoding.getValue()) {
-        return;
-      }
-
-      this.groupHttp.clearErrors();
-      this.groupHttp.post(this.getWizardValues());
-    }
-
-    function getWizardValues() {
-      return {
-        poolsDefaultHttp: [
-          this.getPoolsDefaultValues(),
-          false
-        ],
-        servicesHttp: {
-          services: this.getServicesValues(
-            this.wizardForm.newClusterConfig.get("services.flag")
-          ).join(","),
-        },
-        diskStorageHttp:this.wizardForm.newClusterConfig.get("clusterStorage.storage").value,
-        hostnameHttp: this.wizardForm.newClusterConfig.get("clusterStorage.hostname").value,
-        statsHttp: this.wizardForm.newClusterConfig.get("enableStats").value
-      };
-    }
-
-    function getPoolsDefaultValues() {
-      return _.reduce([
-        ["memoryQuota", "kv"],
-        ["indexMemoryQuota", "index"],
-        ["ftsMemoryQuota", "fts"],
-        ["cbasMemoryQuota", "cbas"],
-        ["eventingMemoryQuota", "eventing"],
-      ], getPoolsDefaultValue.bind(this), {
-        clusterName: this.wizardForm.newCluster.get("clusterName").value
-      });
-    }
-
-    function getPoolsDefaultValue(result, names) {
-      var service = this.wizardForm.newClusterConfig.get("services.flag." + names[1]);
-      if (service && service.value) {
-        result[names[0]] =
-          this.wizardForm.newClusterConfig.get("services.field." + names[1]).value;
-      }
-      return result;
-    }
-
     function MnNewClusterConfig(mnWizardService, mnAdminService, mnPoolsService, mnAppService, mnAuthService, uiRouter) {
-      mn.helper.MnDestroyableComponent.call(this);
+      mn.helper.MnEventableComponent.call(this);
 
       this.focusField = true;
+      this.onSubmit = new Rx.Subject();
 
       this.wizardForm = mnWizardService.wizardForm;
 
@@ -104,12 +54,12 @@ mn.components.MnNewClusterConfig =
       mnWizardService.stream.groupHttp
         .loading
         .merge(mnWizardService.stream.secondGroupHttp.loading)
-        .takeUntil(this.mnDestroy)
+        .takeUntil(this.mnOnDestroy)
         .subscribe(this.mnAppLoding.next.bind(this.mnAppLoding));
 
       mnWizardService.stream.groupHttp
         .success
-        .takeUntil(this.mnDestroy)
+        .takeUntil(this.mnOnDestroy)
         .subscribe(function (result) {
           mnWizardService.stream.secondGroupHttp.post({
             indexesHttp: {
@@ -121,14 +71,14 @@ mn.components.MnNewClusterConfig =
 
       mnWizardService.stream.secondGroupHttp
         .success
-        .takeUntil(this.mnDestroy)
+        .takeUntil(this.mnOnDestroy)
         .subscribe(function () {
           mnAuthService.stream.loginHttp.post(mnWizardService.getUserCreds());
         })
 
       mnAuthService.stream.loginHttp
         .success
-        .takeUntil(this.mnDestroy)
+        .takeUntil(this.mnOnDestroy)
         .subscribe(function () {
           if (mnWizardService.wizardForm.termsAndConditions.get("register").value) {
             mnWizardService.stream.emailHttp.response.first().subscribe();
@@ -139,5 +89,58 @@ mn.components.MnNewClusterConfig =
           }
           uiRouter.urlRouter.sync();
         });
+
+      this.onSubmit
+        .do(this.groupHttp.clearErrors.bind(this.groupHttp))
+        .filter(isNotLoading.bind(this))
+        .withLatestFrom(mnPoolsService.stream.isEnterprise)
+        .map(getWizardValues.bind(this))
+        .takeUntil(this.mnOnDestroy)
+        .subscribe(this.groupHttp.post.bind(this.groupHttp));
+
+      function isNotLoading() {
+        return !this.mnAppLoding.getValue();
+      }
+
+      function getWizardValues(isEnterprise) {
+        return {
+          poolsDefaultHttp: [
+            getPoolsDefaultValues.bind(this)(isEnterprise[1]),
+            false
+          ],
+          servicesHttp: {
+            services: this.getServicesValues(
+              this.wizardForm.newClusterConfig.get("services.flag")
+            ).join(","),
+          },
+          diskStorageHttp: this.wizardForm.newClusterConfig.get("clusterStorage.storage").value,
+          hostnameHttp: this.wizardForm.newClusterConfig.get("clusterStorage.hostname").value,
+          statsHttp: this.wizardForm.newClusterConfig.get("enableStats").value
+        };
+      }
+
+      function getPoolsDefaultValues(isEnterprise) {
+        var services = [
+          ["memoryQuota", "kv"],
+          ["indexMemoryQuota", "index"],
+          ["ftsMemoryQuota", "fts"],
+          ["cbasMemoryQuota", "cbas"]
+        ];
+        if (isEnterprise) {
+          services.push(["eventingMemoryQuota", "eventing"]);
+        }
+        return _.reduce(services, getPoolsDefaultValue.bind(this), {
+          clusterName: this.wizardForm.newCluster.get("clusterName").value
+        });
+      }
+
+      function getPoolsDefaultValue(result, names) {
+        var service = this.wizardForm.newClusterConfig.get("services.flag." + names[1]);
+        if (service && service.value) {
+          result[names[0]] =
+            this.wizardForm.newClusterConfig.get("services.field." + names[1]).value;
+        }
+        return result;
+      }
     }
   })();

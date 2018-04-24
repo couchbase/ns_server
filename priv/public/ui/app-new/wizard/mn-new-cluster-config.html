@@ -12,7 +12,7 @@
   <form
      class="forms"
      [formGroup]="newClusterConfigForm"
-     (ngSubmit)="onSubmit(mnForm)"
+     (ngSubmit)="onSubmit.next()"
      novalidate>
     <div class="panel-content">
       <mn-node-storage-config
