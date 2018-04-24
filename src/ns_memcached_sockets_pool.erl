@@ -69,9 +69,17 @@ executing_on_socket(Fun, Bucket, Options) ->
       fun () ->
               case take_socket(Bucket, Options) of
                   {ok, Sock} ->
-                      Result = Fun(Sock),
-                      put_socket(Sock, Options),
-                      Result;
+                      {ok, SockName} = inet:sockname(Sock),
+                      try
+                          Result = Fun(Sock),
+                          put_socket(Sock, Options),
+                          Result
+                      catch T:E ->
+                                Stack = erlang:get_stacktrace(),
+                                ?log_debug("Exception while executing on socket ~p: ~p~n",
+                                           [SockName, {T, E, Stack}]),
+                                erlang:raise(T, E, Stack)
+                      end;
                   Error ->
                       Error
               end
