@@ -41,6 +41,9 @@
          is_cluster_55/0,
          is_cluster_55/1,
          is_version_55/1,
+         is_cluster_madhatter/0,
+         is_cluster_madhatter/1,
+         is_version_madhatter/1,
          is_enterprise/0,
          is_ldap_enabled/0,
          supported_compat_version/0,
@@ -140,6 +143,15 @@ is_cluster_55() ->
 
 is_cluster_55(Config) ->
     is_enabled(Config, ?VERSION_55).
+
+is_version_madhatter(ClusterVersion) ->
+    is_enabled_at(ClusterVersion, ?VERSION_MADHATTER).
+
+is_cluster_madhatter() ->
+    is_cluster_madhatter(ns_config:latest()).
+
+is_cluster_madhatter(Config) ->
+    is_enabled(Config, ?VERSION_MADHATTER).
 
 is_index_aware_rebalance_on() ->
     not ns_config:read_key_fast(index_aware_rebalance_disabled, false).
