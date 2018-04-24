@@ -36,11 +36,11 @@
                    !termsForm.get('agree').errors?.required">
         Terms and conditions need to be accepted in order to continue
       </div>
-      <!-- <div -->
-      <!--    class="error error-form" -->
-      <!--    [hidden]="!(errors | async)"> -->
-      <!--   {{errors[0]}} -->
-      <!-- </div> -->
+      <div
+         class="error error-form"
+         [hidden]="!(servicesHttp.error | async)">
+        <div *ngFor="let error of (servicesHttp.error | async)">{{error}}</div>
+      </div>
 
       <div class="row">
         <div class="formrow">

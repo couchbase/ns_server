@@ -40,6 +40,8 @@ mn.components.MnTermsAndConditions =
 
       this.groupHttp = mnWizardService.stream.groupHttp;
       this.secondGroupHttp = mnWizardService.stream.secondGroupHttp;
+      this.servicesHttp = mnWizardService.stream.servicesHttp;
+
       this.mnAppLoding = mnAppService.stream.loading;
 
       this.license = mnPoolsService.stream.isEnterprise.switchMap(getLicense);
