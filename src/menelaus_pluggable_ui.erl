@@ -39,7 +39,7 @@
                                          "transfer-encoding",
                                          "www-authenticate"]}).
 -type service_name()   :: atom().
--type proxy_strategy() :: local.
+-type proxy_strategy() :: local | sticky.
 -type filter_op()      :: keep | drop.
 -type ui_compat_version() :: [integer()].
 -record(prefix_props, { port_name :: atom() }).
@@ -188,8 +188,8 @@ get_opt_element(Key, KVs) ->
             undefined
     end.
 
-decode_proxy_strategy(<<"local">>) ->
-    local.
+decode_proxy_strategy(<<"sticky">>) -> sticky;
+decode_proxy_strategy(<<"local">>) -> local.
 
 %% When run from cluster_run doc-root may be a list of directories.
 %% DocRoot has to be a list in order for mochiweb to be able to guess
@@ -223,35 +223,55 @@ decode_request_headers_filter({[{Op, BinNames}]}) ->
 %%%
 proxy_req(RestPrefix, Path, Plugins, Req) ->
     case find_plugin_by_prefix(RestPrefix, Plugins) of
-        #plugin{name = Service, proxy_strategy = ProxyStrategy,
+        #plugin{name = Service,
                 request_headers_filter = HdrFilter,
-                rest_api_prefixes = Prefixes} ->
+                rest_api_prefixes = Prefixes} = Plugin ->
             {ok, PrefixProps} = dict:find(RestPrefix, Prefixes),
-            case address_and_port_for(Service, PrefixProps, ProxyStrategy) of
-                {ok, HostPort} ->
+            case choose_node(Plugin, Req) of
+                {ok, Node} ->
+                    HostPort = address_and_port(PrefixProps, Node),
                     Timeout = get_timeout(Service, Req),
-                    AuthToken = auth_token(Service, Req),
+                    AuthToken = auth_token(Req),
                     Headers = AuthToken ++ convert_headers(Req, HdrFilter),
                     do_proxy_req(HostPort, Path, Headers, Timeout, Req);
                 {error, Error} ->
-                    server_error(Req, Service, Error)
+                    server_error(Req, Error)
             end;
         false ->
-            send_server_error(Req, <<"Not found.">>)
+            server_error(Req, service_not_found)
     end.
 
-address_and_port_for(Service, Props, local) ->
-    case should_run_service(Service, node()) of
-        true ->
-            {ok, address_and_port(Props, node())};
-        false ->
-            {error, service_not_running}
+choose_node(#plugin{name = views} = Plugin, Req) ->
+    choose_node(Plugin#plugin{name = kv}, Req);
+choose_node(#plugin{name = Service, proxy_strategy = local}, _Req) ->
+    case ns_cluster_membership:should_run_service(Service, node()) of
+        true -> {ok, node()};
+        false -> {error, {service_not_running, Service}}
+    end;
+choose_node(#plugin{name = Service, proxy_strategy = sticky}, Req) ->
+    case service_nodes(Service) of
+        [] -> {error, {service_not_running, Service}};
+        Nodes ->
+            case lists:member(node(), Nodes) of
+                true -> {ok, node()};
+                false ->
+                    Token = menelaus_auth:extract_ui_auth_token(Req),
+                    Memo = menelaus_ui_auth:check(Token),
+                    Peer = mochiweb_request:get(peer, Req),
+                    N = erlang:phash2({Memo, Peer}, length(Nodes)) + 1,
+                    {ok, lists:nth(N, Nodes)}
+            end
     end.
 
-should_run_service(views, Node) ->
-    should_run_service(kv, Node);
-should_run_service(Service, Node) ->
-    ns_cluster_membership:should_run_service(Service, Node).
+%% We don't want to proxy requests to nodes of different versions
+%% because "ui <-> service" protocol might change
+service_nodes(Service) ->
+    Nodes = ns_cluster_membership:service_active_nodes(Service),
+    NodesInfoDict = ns_doctor:get_nodes(),
+    Versions = dict:map(?cut(proplists:get_value(advertised_version, _2)),
+                        NodesInfoDict),
+    {ok, LocalVsn} = dict:find(node(), Versions),
+    lists:usort([N || N <- Nodes, {ok, LocalVsn} =:= dict:find(N, Versions)]).
 
 address_and_port(Props, Node) ->
     Addr = node_address(Node),
@@ -284,13 +304,14 @@ get_timeout(_Service, Req) ->
             list_to_integer(Val)
     end.
 
-auth_token(_Service, Req) ->
+auth_token(Req) ->
     case menelaus_auth:extract_ui_auth_token(Req) of
         undefined ->
             [];
         Token ->
+            NodeToken = menelaus_ui_auth:set_token_node(Token, node()),
             [{"ns-server-ui","yes"},
-             {"ns-server-auth-token", Token}]
+             {"ns-server-auth-token", NodeToken}]
     end.
 
 convert_headers(Req, Filter) ->
@@ -352,10 +373,12 @@ stream_body(Pid, Resp) ->
             mochiweb_response:write_chunk(<<>>, Resp)
     end.
 
-server_error(Req, Service, service_not_running) ->
+server_error(Req, {service_not_running, Service}) ->
     Msg = list_to_binary("Service " ++ atom_to_list(Service)
                          ++ " not running on this node"),
-    send_server_error(Req, Msg).
+    send_server_error(Req, Msg);
+server_error(Req, service_not_found) ->
+    send_server_error(Req, <<"Not found">>).
 
 send_server_error(Req, Msg) ->
     menelaus_util:reply_text(Req, Msg, 404).

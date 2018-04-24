@@ -22,7 +22,7 @@
 -export([init/0]).
 
 -export([generate_token/1, maybe_refresh/1,
-         check/1, reset/0, logout/1]).
+         check/1, reset/0, logout/1, set_token_node/2]).
 
 start_link() ->
     token_server:start_link(?MODULE, 1024, ?UI_AUTH_EXPIRATION_SECONDS).
@@ -35,9 +35,38 @@ generate_token(Memo) ->
 maybe_refresh(Token) ->
     token_server:maybe_refresh(?MODULE, Token).
 
+-spec set_token_node(auth_token(), atom()) -> auth_token().
+set_token_node(Token, Node) ->
+    iolist_to_binary([atom_to_list(Node), ":", Token]).
+
+-spec get_token_node(auth_token() | undefined) ->
+        {ok, {Node :: atom(), auth_token() | undefined}} |
+        {error, Reason :: term()}.
+get_token_node(undefined) ->
+    {ok, {undefined, undefined}};
+get_token_node(Token) when is_list(Token) ->
+    get_token_node(list_to_binary(Token));
+get_token_node(Token) when is_binary(Token) ->
+    case binary:split(Token, <<":">>) of
+        [Token] -> {ok, {undefined, Token}};
+        [NodeBin, CleanToken] ->
+            try erlang:binary_to_existing_atom(NodeBin, latin1) of
+                Node -> {ok, {Node, CleanToken}}
+            catch
+                error:badarg -> {error, badarg}
+            end
+    end.
+
 -spec check(auth_token() | undefined) -> false | {ok, term()}.
 check(Token) ->
-    token_server:check(?MODULE, Token).
+    case get_token_node(Token) of
+        {ok, {undefined, T}} ->
+            token_server:check(?MODULE, T);
+        {ok, {Node, T}} ->
+            token_server:check(?MODULE, T, Node);
+        {error, _} ->
+            false
+    end.
 
 -spec reset() -> ok.
 reset() ->
