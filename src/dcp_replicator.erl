@@ -26,8 +26,10 @@
          handle_info/2, terminate/2, code_change/3]).
 
 -export([start_link/3,
-         get_partitions/2,
+         start_link_takeover_replicator/4,
+         get_partitions/1,
          setup_replication/3,
+         takeover/2,
          takeover/3,
          wait_for_data_move/3,
          get_docs_estimate/3,
@@ -42,14 +44,13 @@
 -define(VBUCKET_POLL_INTERVAL, 100).
 -define(SHUT_CONSUMER_TIMEOUT, ns_config:get_timeout(dcp_shut_consumer, 60000)).
 
-init({ProducerNode, Bucket, XAttr}) ->
+init({ConsumerNode, ProducerNode, Bucket, ConnName, XAttr}) ->
     process_flag(trap_exit, true),
 
-    ConnName = get_connection_name(node(), ProducerNode, Bucket),
-    {ok, ConsumerConn} = dcp_consumer_conn:start_link(ConnName, Bucket, XAttr),
-    {ok, ProducerConn} = dcp_producer_conn:start_link(ConnName, ProducerNode, Bucket, XAttr),
-
-    erlang:register(consumer_server_name(ProducerNode, Bucket), ConsumerConn),
+    {ok, ConsumerConn} = dcp_consumer_conn:start_link(ConnName,
+                                                      ConsumerNode, Bucket, XAttr),
+    {ok, ProducerConn} = dcp_producer_conn:start_link(ConnName,
+                                                      ProducerNode, Bucket, XAttr),
 
     Proxies = dcp_proxy:connect_proxies(ConsumerConn, ProducerConn),
 
@@ -67,14 +68,23 @@ init({ProducerNode, Bucket, XAttr}) ->
            }}.
 
 start_link(ProducerNode, Bucket, XAttr) ->
-    gen_server:start_link({local, server_name(ProducerNode, Bucket)}, ?MODULE,
-                          {ProducerNode, Bucket, XAttr}, []).
+    ConsumerNode = node(),
+    ConnName     = get_connection_name(ConsumerNode, ProducerNode, Bucket),
+    gen_server:start_link({local, server_name(ProducerNode, Bucket)},
+                          ?MODULE,
+                          {ConsumerNode, ProducerNode, Bucket, ConnName, XAttr}, []).
+
+start_link_takeover_replicator(ConsumerNode, ProducerNode, Bucket, VBucket) ->
+    XAttr    = cluster_compat_mode:is_cluster_50(),
+    ConnName = get_takeover_connection_name(ConsumerNode,
+                                            ProducerNode, Bucket, VBucket),
+
+    gen_server:start_link(?MODULE,
+                          {ConsumerNode,
+                           ProducerNode, Bucket, ConnName, XAttr}, []).
 
 server_name(ProducerNode, Bucket) ->
     list_to_atom(?MODULE_STRING "-" ++ Bucket ++ "-" ++ atom_to_list(ProducerNode)).
-
-consumer_server_name(ProducerNode, Bucket) ->
-    list_to_atom("dcp_consumer_conn-" ++ Bucket ++ "-" ++ atom_to_list(ProducerNode)).
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
@@ -118,21 +128,28 @@ handle_call({takeover, Partition}, _From, #state{consumer_conn = Pid} = State) -
                         end),
     {reply, RV, State};
 
+handle_call(get_partitions, _From, #state{consumer_conn = Pid} = State) ->
+    {reply, gen_server:call(Pid, get_partitions, infinity), State};
+
 handle_call(Command, _From, State) ->
     ?rebalance_warning("Unexpected handle_call(~p, ~p)", [Command, State]),
     {reply, refused, State}.
 
-get_partitions(ProducerNode, Bucket) ->
-    try gen_server:call(consumer_server_name(ProducerNode, Bucket), get_partitions, infinity) of
-        Result ->
-            Result
-    catch exit:{noproc, _} ->
+get_partitions(Pid) ->
+    try
+        gen_server:call(Pid, get_partitions, infinity)
+    catch
+        exit:{noproc, _} ->
             not_running
     end.
 
 setup_replication(ProducerNode, Bucket, Partitions) ->
     gen_server:call(server_name(ProducerNode, Bucket),
                     {setup_replication, Partitions}, infinity).
+
+takeover(Replicator, Partition)
+  when is_pid(Replicator) ->
+    gen_server:call(Replicator, {takeover, Partition}, infinity).
 
 takeover(ProducerNode, Bucket, Partition) ->
     gen_server:call(server_name(ProducerNode, Bucket),
@@ -184,7 +201,18 @@ get_docs_estimate(Bucket, Partition, ConsumerNode) ->
     ns_memcached:get_dcp_docs_estimate(Bucket, Partition, Connection).
 
 get_connection_name(ConsumerNode, ProducerNode, Bucket) ->
-    "replication:" ++ atom_to_list(ProducerNode) ++ "->" ++ atom_to_list(ConsumerNode) ++ ":" ++ Bucket.
+    lists:concat(["replication:",
+                  atom_to_list(ProducerNode), "->",
+                  atom_to_list(ConsumerNode), ":",
+                  Bucket]).
+
+get_takeover_connection_name(ConsumerNode, ProducerNode, Bucket, VBucket) ->
+    lists:concat(["replication:takeover:",
+                  binary_to_list(couch_uuids:random()), ":",
+                  atom_to_list(ProducerNode), "->",
+                  atom_to_list(ConsumerNode), ":",
+                  Bucket, ":",
+                  integer_to_list(VBucket)]).
 
 get_connections(Bucket) ->
     {ok, Connections} =

@@ -417,7 +417,8 @@ default() ->
      {{request_limit, rest}, undefined},
      {{request_limit, capi}, undefined},
      {drop_request_memory_threshold_mib, undefined},
-     {password_policy, [{min_length, 6}, {must_present, []}]}].
+     {password_policy, [{min_length, 6}, {must_present, []}]}] ++
+        project_intact:default_config().
 
 %% Recursively replace all strings in a hierarchy that start
 %% with a given Prefix with a ReplacementPrefix.  For example,

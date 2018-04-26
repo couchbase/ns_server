@@ -226,7 +226,7 @@
 
 %% Points to latest release
 -define(LATEST_VERSION_NUM, ?VERSION_51).
--define(MASTER_ADVERTISED_VERSION, [5, 1, 0]).
+-define(MASTER_ADVERTISED_VERSION, [5, 1, 0, 'MP3']).
 
 -define(DEFAULT_UI_COMPAT_VERSION, ?VERSION_45).
 

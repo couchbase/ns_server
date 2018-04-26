@@ -306,6 +306,41 @@ cleanup_old_streams(Bucket, Nodes, RebalancerPid, VBucket) ->
       end).
 
 dcp_takeover(Bucket, Parent, OldMaster, NewMaster, VBucket) ->
+    case project_intact:is_node_vulnerable(OldMaster) of
+        true ->
+            dcp_takeover_project_intact(Bucket, Parent,
+                                        OldMaster, NewMaster, VBucket);
+        false ->
+            dcp_takeover_normal(Bucket, Parent, OldMaster, NewMaster, VBucket)
+    end.
+
+dcp_takeover_project_intact(Bucket, Parent, OldMaster, NewMaster, VBucket) ->
+    ?log_info("Performing special takeover~n"
+              "Bucket = ~p, VBucket = ~p~n"
+              "OldMaster = ~p, NewMaster = ~p",
+              [Bucket, VBucket, OldMaster, NewMaster]),
+
+    ?log_info("Tearing down replication for vbucket ~p (bucket ~p) from ~p to ~p",
+              [VBucket, Bucket, OldMaster, NewMaster]),
+    set_vbucket_state(Bucket, NewMaster, Parent,
+                      VBucket, pending, passive, undefined),
+
+    ?log_info("Spawning takeover replicator for vbucket ~p (bucket ~p) from ~p to ~p",
+              [VBucket, Bucket, OldMaster, NewMaster]),
+    {ok, Pid} =
+        dcp_replicator:start_link_takeover_replicator(NewMaster, OldMaster,
+                                                      Bucket, VBucket),
+    cleanup_list_add(Pid),
+    spawn_and_wait(
+      fun () ->
+              ?log_info("Starting takeover for vbucket ~p (bucket ~p) from ~p to ~p",
+                        [VBucket, Bucket, OldMaster, NewMaster]),
+              ok = dcp_replicator:takeover(Pid, VBucket),
+              ?log_info("Takeover for vbucket ~p (bucket ~p) from ~p to ~p finished",
+                        [VBucket, Bucket, OldMaster, NewMaster])
+      end).
+
+dcp_takeover_normal(Bucket, Parent, OldMaster, NewMaster, VBucket) ->
     spawn_and_wait(
       fun () ->
               ok = janitor_agent:dcp_takeover(Bucket, Parent, OldMaster, NewMaster, VBucket)

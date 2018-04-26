@@ -39,8 +39,9 @@ init([]) ->
           []}}.
 
 get_children(Bucket) ->
-    [{Node, C, T, M} ||
-        {{Node, _XAttr}, C, T, M} <- supervisor:which_children(server_name(Bucket))].
+    [{Node, C, T, M} || {{Node, _XAttr}, C, T, M} <-
+                            supervisor:which_children(server_name(Bucket)),
+                        is_pid(C)].
 
 build_child_spec(Bucket, {ProducerNode, XAttr} = ChildId) ->
     {ChildId,
