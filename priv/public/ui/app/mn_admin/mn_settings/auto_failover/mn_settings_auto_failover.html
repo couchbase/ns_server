@@ -19,11 +19,12 @@
       <label class="inline">Failover Nodes Automatically</label>
       <span
          class="fa-stack icon-info"
-         uib-tooltip="After the timeout period set here — and up to limit of actionable events — a node which is detected as unresponsive or malfunctioning will be failed over.
-         Any replica copies of data, indexes, or query engines will be promoted to active elsewhere in the cluster. After it has recovered,
-         a failed-over node can be brought back into the cluster with a rebalance or you may choose to take other actions such as replacing
-         it with a new node. Please note that this feature is only available when 3 or more nodes are present in the cluster and that many
-         other factors determine whether or not an auto-failover will take place."
+         uib-tooltip="After the timeout period set here—and up to limit of actionable events—an unresponsive
+         or malfunctioning node will be failed over. Any replica copies of data, indexes, or query engines will
+         be promoted to active elsewhere in the cluster. Please note that this feature is only available when 3
+         or more nodes are present in the cluster and that many other factors determine whether or not an auto-failover
+         will take place. After it has recovered, a failed-over node can be brought back into the cluster with a
+         rebalance or replaced with a new node."
          tooltip-placement="right">
         <span class="icon fa-circle-thin fa-stack-2x"></span>
         <span class="icon fa-info fa-stack-1x"></span>
