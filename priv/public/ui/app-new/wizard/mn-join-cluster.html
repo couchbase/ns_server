@@ -11,7 +11,7 @@
   <form
      class="forms"
      [formGroup]="joinClusterForm"
-     (ngSubmit)="onSubmit()"
+     (ngSubmit)="onSubmit.next()"
      novalidate>
     <div class="panel-content">
       <div
@@ -21,17 +21,17 @@
       </div>
       <div class="error error-form">
         <div
-           [hidden]="!(joinClusterForm.get('clusterAdmin.hostname').touched || submitted) ||
+           [hidden]="!(joinClusterForm.get('clusterAdmin.hostname').touched || (submitted | async)) ||
                      !joinClusterForm.get('clusterAdmin.hostname').errors?.required">
           Cluster name is required
         </div>
         <div
-           [hidden]="!(joinClusterForm.get('clusterAdmin.user').touched || submitted) ||
+           [hidden]="!(joinClusterForm.get('clusterAdmin.user').touched || (submitted | async)) ||
                      !joinClusterForm.get('clusterAdmin.user').errors?.required">
           Username is required
         </div>
         <div
-           [hidden]="!(joinClusterForm.get('clusterAdmin.password').touched || submitted) ||
+           [hidden]="!(joinClusterForm.get('clusterAdmin.password').touched || (submitted | async)) ||
                      !joinClusterForm.get('clusterAdmin.password').errors?.required">
           Password is required
         </div>

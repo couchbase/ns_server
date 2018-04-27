@@ -4,7 +4,7 @@ mn.components.MnJoinCluster =
   (function () {
     "use strict";
 
-    mn.helper.extends(MnJoinCluster, mn.helper.MnDestroyableComponent);
+    mn.helper.extends(MnJoinCluster, mn.helper.MnEventableComponent);
 
     MnJoinCluster.annotations = [
       new ng.core.Component({
@@ -19,36 +19,16 @@ mn.components.MnJoinCluster =
       window['@uirouter/angular'].UIRouter
     ];
 
-    MnJoinCluster.prototype.onSubmit = onSubmit;
-
     return MnJoinCluster;
 
-    function onSubmit() {
-      this.submitted = true;
-
-      if (this.mnAppLoding.getValue()) {
-        return;
-      }
-
-      this.groupHttp.clearErrors();
-
-      if (this.joinClusterForm.invalid) {
-        return;
-      }
-
-      this.groupHttp.post({
-        hostnameHttp: this.wizardForm.joinCluster.get("clusterStorage.hostname").value,
-        diskStorageHttp: this.wizardForm.joinCluster.get("clusterStorage.storage").value
-      });
-    }
-
     function MnJoinCluster(mnWizardService, mnAppService, mnAuthService, uiRouter) {
-      mn.helper.MnDestroyableComponent.call(this);
+      mn.helper.MnEventableComponent.call(this);
 
       this.focusField = true;
+      this.onSubmit = new Rx.Subject();
+      this.submitted = this.onSubmit.mapTo(true);
 
       this.wizardForm = mnWizardService.wizardForm;
-
       this.mnAppLoding = mnAppService.stream.loading;
 
       this.joinClusterForm = mnWizardService.wizardForm.joinCluster;
@@ -68,12 +48,12 @@ mn.components.MnJoinCluster =
       this.groupHttp
         .loading
         .merge(this.joinClusterHttp.loading)
-        .takeUntil(this.mnDestroy)
+        .takeUntil(this.mnOnDestroy)
         .subscribe(this.mnAppLoding.next.bind(this.mnAppLoding));
 
       this.groupHttp
         .success
-        .takeUntil(this.mnDestroy)
+        .takeUntil(this.mnOnDestroy)
         .subscribe((function () {
           var data = mnWizardService.wizardForm.joinCluster.get("clusterAdmin").value;
           data.services =
@@ -85,7 +65,7 @@ mn.components.MnJoinCluster =
 
       this.joinClusterHttp
         .success
-        .takeUntil(this.mnDestroy)
+        .takeUntil(this.mnOnDestroy)
         .subscribe(function () {
           var data = mnWizardService.wizardForm.joinCluster.get("clusterAdmin").value;
           mnAuthService.stream.loginHttp.post(data);
@@ -93,9 +73,32 @@ mn.components.MnJoinCluster =
 
       mnAuthService.stream.loginHttp
         .success
-        .takeUntil(this.mnDestroy)
+        .takeUntil(this.mnOnDestroy)
         .subscribe(function () {
           uiRouter.urlRouter.sync();
         });
+
+      this.onSubmit
+        .do(this.groupHttp.clearErrors.bind(this.groupHttp))
+        .filter(isValid.bind(this))
+        .filter(isNotLoading.bind(this))
+        .map(getValues.bind(this))
+        .takeUntil(this.mnOnDestroy)
+        .subscribe(this.groupHttp.post.bind(this.groupHttp));
+
+      function isNotLoading() {
+        return !this.mnAppLoding.getValue();
+      }
+
+      function isValid() {
+        return !this.joinClusterForm.invalid;
+      }
+
+      function getValues() {
+        return {
+          hostnameHttp: this.wizardForm.joinCluster.get("clusterStorage.hostname").value,
+          diskStorageHttp: this.wizardForm.joinCluster.get("clusterStorage.storage").value
+        };
+      }
     }
   })();
