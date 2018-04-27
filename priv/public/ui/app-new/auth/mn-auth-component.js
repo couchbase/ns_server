@@ -4,7 +4,7 @@ mn.components.MnAuth =
   (function () {
     "use strict";
 
-    mn.helper.extends(MnAuthComponent, mn.helper.MnDestroyableComponent);
+    mn.helper.extends(MnAuthComponent, mn.helper.MnEventableComponent);
 
     MnAuthComponent.annotations = [
       new ng.core.Component({
@@ -18,21 +18,20 @@ mn.components.MnAuth =
       ng.forms.FormBuilder
     ];
 
-    MnAuthComponent.prototype.onSubmit = onSubmit;
-
     return MnAuthComponent;
 
     function MnAuthComponent(mnAuthService, uiRouter, formBuilder) {
-      mn.helper.MnDestroyableComponent.call(this);
+      mn.helper.MnEventableComponent.call(this);
 
       this.focusField = true;
+      this.onSubmit = new Rx.Subject();
 
       this.loginHttp = mnAuthService.stream.loginHttp;
       this.logoutHttp = mnAuthService.stream.logoutHttp;
 
       this.loginHttp
         .success
-        .takeUntil(this.mnDestroy)
+        .takeUntil(this.mnOnDestroy)
         .subscribe(function () {
           uiRouter.urlRouter.sync();
         });
@@ -42,9 +41,15 @@ mn.components.MnAuth =
           user: ['', ng.forms.Validators.required],
           password: ['', ng.forms.Validators.required]
         });
+
+      this.onSubmit
+        .takeUntil(this.mnOnDestroy)
+        .map(getValues.bind(this))
+        .subscribe(this.loginHttp.post.bind(this.loginHttp));
+
+      function getValues() {
+        return this.authForm.value;
+      }
     }
 
-    function onSubmit(user) {
-      this.loginHttp.post(this.authForm.value);
-    }
   })();

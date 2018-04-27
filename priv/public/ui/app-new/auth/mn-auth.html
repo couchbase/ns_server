@@ -12,7 +12,7 @@
     </div>
     <form
        [formGroup]="authForm"
-       (ngSubmit)="onSubmit()"
+       (ngSubmit)="onSubmit.next()"
        class="forms"
        novalidate>
 
