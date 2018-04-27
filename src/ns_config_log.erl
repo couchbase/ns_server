@@ -119,6 +119,11 @@ tag_user_tuples_fun({doc, {user, {U, D}}, _, _, V} = Doc) ->
     {stop, setelement(5, T, generic:transformt(
                               ?transform({name, N},
                                          {name, do_tag_user_name(N)}), V))};
+tag_user_tuples_fun({docv2, {user, {U, D}}, V, _} = Doc) ->
+    T = setelement(2, Doc, {user, {do_tag_user_name(U), D}}),
+    {stop, setelement(3, T, generic:transformt(
+                              ?transform({name, N},
+                                         {name, do_tag_user_name(N)}), V))};
 tag_user_tuples_fun({full_name, FullName}) when is_binary(FullName) ->
     {ok, Val} = do_tag_user_name(FullName),
     {stop, {full_name, Val}};
