@@ -25,10 +25,10 @@
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
 
--export([start_link/2,
+-export([start_link/2, start_link/5,
          get_partitions/1,
-         setup_replication/3,
-         takeover/3,
+         setup_replication/2, setup_replication/3,
+         takeover/2, takeover/3,
          wait_for_data_move/3,
          get_docs_estimate/3,
          get_connections/1]).
@@ -42,12 +42,13 @@
 -define(VBUCKET_POLL_INTERVAL, 100).
 -define(SHUT_CONSUMER_TIMEOUT, ns_config:get_timeout(dcp_shut_consumer, 60000)).
 
-init({ProducerNode, Bucket}) ->
+init({ConsumerNode, ProducerNode, Bucket, ConnName}) ->
     process_flag(trap_exit, true),
 
-    ConnName = get_connection_name(node(), ProducerNode, Bucket),
-    {ok, ConsumerConn} = dcp_consumer_conn:start_link(ConnName, Bucket),
-    {ok, ProducerConn} = dcp_producer_conn:start_link(ConnName, ProducerNode, Bucket),
+    {ok, ConsumerConn} = dcp_consumer_conn:start_link(ConnName,
+                                                      ConsumerNode, Bucket),
+    {ok, ProducerConn} = dcp_producer_conn:start_link(ConnName,
+                                                      ProducerNode, Bucket),
 
     Proxies = dcp_proxy:connect_proxies(ConsumerConn, ProducerConn),
 
@@ -64,9 +65,24 @@ init({ProducerNode, Bucket}) ->
             bucket = Bucket
            }}.
 
+start_link(Name, ConsumerNode, ProducerNode, Bucket, ConnName) ->
+    %% We (and ep-engine actually) depend on this naming.
+    true = lists:prefix("replication:", ConnName),
+
+    Args0 = [?MODULE, {ConsumerNode, ProducerNode, Bucket, ConnName}, []],
+    Args  = case Name of
+                undefined ->
+                    Args0;
+                _ ->
+                    [{local, Name} | Args0]
+            end,
+    erlang:apply(gen_server, start_link, Args).
+
 start_link(ProducerNode, Bucket) ->
-    gen_server:start_link({local, server_name(ProducerNode, Bucket)}, ?MODULE,
-                          {ProducerNode, Bucket}, []).
+    ConsumerNode = node(),
+    ConnName     = get_connection_name(ConsumerNode, ProducerNode, Bucket),
+    start_link(server_name(ProducerNode, Bucket),
+               ConsumerNode, ProducerNode, Bucket, ConnName).
 
 server_name(ProducerNode, Bucket) ->
     list_to_atom(?MODULE_STRING "-" ++ Bucket ++ "-" ++ atom_to_list(ProducerNode)).
@@ -128,14 +144,17 @@ get_partitions(Pid) ->
             not_running
     end.
 
+setup_replication(Pid, Partitions) ->
+    gen_server:call(Pid, {setup_replication, Partitions}, infinity).
+
 setup_replication(ProducerNode, Bucket, Partitions) ->
-    gen_server:call(server_name(ProducerNode, Bucket),
-                    {setup_replication, Partitions}, infinity).
+    setup_replication(whereis(server_name(ProducerNode, Bucket)), Partitions).
+
+takeover(Replicator, Partition) ->
+    gen_server:call(Replicator, {takeover, Partition}, infinity).
 
 takeover(ProducerNode, Bucket, Partition) ->
-    gen_server:call(server_name(ProducerNode, Bucket),
-                    {takeover, Partition},
-                    infinity).
+    takeover(whereis(server_name(ProducerNode, Bucket)), Partition).
 
 wait_for_data_move(Nodes, Bucket, Partition) ->
     DoneLimit = ns_config:read_key_fast(dcp_move_done_limit, 1000),
