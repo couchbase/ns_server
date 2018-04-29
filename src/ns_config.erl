@@ -77,7 +77,8 @@
          latest/0,
          merge_dynamic_and_static/0,
          search_node_with_default/2,
-         search_node_with_default/3]).
+         search_node_with_default/3,
+         search_node_with_default/4]).
 
 -export([compute_global_rev/1]).
 
@@ -528,8 +529,11 @@ search_node_with_default(Key, Default) ->
     search_node_with_default(ns_config:latest(), Key, Default).
 
 search_node_with_default(Config, Key, Default) ->
-    case search_node(Config, Key) of
-        {value, V}->
+    search_node_with_default(node(), Config, Key, Default).
+
+search_node_with_default(Node, Config, Key, Default) ->
+    case search_node(Node, Config, Key) of
+        {value, V} ->
             V;
         false ->
             Default
