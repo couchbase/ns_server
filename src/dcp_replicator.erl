@@ -26,7 +26,7 @@
          handle_info/2, terminate/2, code_change/3]).
 
 -export([start_link/2,
-         get_partitions/2,
+         get_partitions/1,
          setup_replication/3,
          takeover/3,
          wait_for_data_move/3,
@@ -49,8 +49,6 @@ init({ProducerNode, Bucket}) ->
     {ok, ConsumerConn} = dcp_consumer_conn:start_link(ConnName, Bucket),
     {ok, ProducerConn} = dcp_producer_conn:start_link(ConnName, ProducerNode, Bucket),
 
-    erlang:register(consumer_server_name(ProducerNode, Bucket), ConsumerConn),
-
     Proxies = dcp_proxy:connect_proxies(ConsumerConn, ProducerConn),
 
     ?log_debug("initiated new dcp replication with consumer side: ~p and producer side: ~p", [ConsumerConn, ProducerConn]),
@@ -72,9 +70,6 @@ start_link(ProducerNode, Bucket) ->
 
 server_name(ProducerNode, Bucket) ->
     list_to_atom(?MODULE_STRING "-" ++ Bucket ++ "-" ++ atom_to_list(ProducerNode)).
-
-consumer_server_name(ProducerNode, Bucket) ->
-    list_to_atom("dcp_consumer_conn-" ++ Bucket ++ "-" ++ atom_to_list(ProducerNode)).
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
@@ -118,15 +113,18 @@ handle_call({takeover, Partition}, _From, #state{consumer_conn = Pid} = State) -
                         end),
     {reply, RV, State};
 
+handle_call(get_partitions, _From, #state{consumer_conn = Pid} = State) ->
+    {reply, gen_server:call(Pid, get_partitions, infinity), State};
+
 handle_call(Command, _From, State) ->
     ?rebalance_warning("Unexpected handle_call(~p, ~p)", [Command, State]),
     {reply, refused, State}.
 
-get_partitions(ProducerNode, Bucket) ->
-    try gen_server:call(consumer_server_name(ProducerNode, Bucket), get_partitions, infinity) of
-        Result ->
-            Result
-    catch exit:{noproc, _} ->
+get_partitions(Pid) ->
+    try
+        gen_server:call(Pid, get_partitions, infinity)
+    catch
+        exit:{noproc, _} ->
             not_running
     end.
 

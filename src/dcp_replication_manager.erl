@@ -87,14 +87,14 @@ handle_call({manage_replicators, NeededNodes}, _From, Bucket) ->
     dcp_sup:manage_replicators(Bucket, NeededNodes),
     {reply, ok, Bucket};
 handle_call(get_actual_replications, _From, Bucket) ->
-    Reps = lists:sort([{Node, dcp_replicator:get_partitions(Node, Bucket)} ||
-                          {Node, _, _, _} <- dcp_sup:get_children(Bucket)]),
+    Reps = lists:sort([{Node, dcp_replicator:get_partitions(Pid)} ||
+                          {Node, Pid, _, _} <- dcp_sup:get_children(Bucket)]),
     {reply, Reps, Bucket};
 handle_call({get_replicator_pid, Partition}, _From, Bucket) ->
     ChildrenTail =
-        lists:dropwhile(fun ({Node, _, _, _}) ->
+        lists:dropwhile(fun ({_, Pid, _, _}) ->
                                 not lists:member(Partition,
-                                                 dcp_replicator:get_partitions(Node, Bucket))
+                                                 dcp_replicator:get_partitions(Pid))
                         end, dcp_sup:get_children(Bucket)),
     RV = case ChildrenTail of
              [{_, Pid, _, _} | _] ->
