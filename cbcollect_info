@@ -140,23 +140,29 @@ class AccessLogProcessor:
         self.column_parser = re.compile(
             r'(^\S* \S* )(\S*)( \[.*\] \"\S* )(\S*)( .*$)')
         self.urls_to_redact = [['/settings/rbac/users',
-                                re.compile(r'\/(?P<user>[^\/\s#&]+)([#&]|$)')],
+                                re.compile(r'\/(?P<user>[^\/\s#&]+)([#&]|$)'),
+                                self._process_user, "user"],
                                ['/_cbauth/checkPermission',
-                                re.compile(r'user=(?P<user>[^\s&#]+)')]]
+                                re.compile(r'user=(?P<user>[^\s&#]+)'),
+                                self._process_user, "user"],
+                               ['/pools/default/buckets',
+                                re.compile(r'\/(?:[^\/\s#&]+)\/docs\/'
+                                            '(?P<docid>[^\/\s#&]+)$'),
+                                self._process_docid, "docid"]]
 
     def _process_url(self, surl):
         for conf in self.urls_to_redact:
             prefix = conf[0]
             if surl[:len(prefix)] == prefix:
-                return prefix + self._process_url_tail(conf[1],
+                return prefix + self._process_url_tail(conf[1], conf[2],
+                                                       conf[3],
                                                        surl[len(prefix):])
         return surl
 
-    def _process_url_tail(self, rex, s):
+    def _process_url_tail(self, rex, fn, key, s):
         m = rex.search(s)
         if m != None:
-            return s[:m.start("user")] + self._process_user(m.group("user")) + \
-                s[m.end("user"):]
+            return s[:m.start(key)] + fn(m.group(key)) + s[m.end(key):]
         else:
             return s
 
@@ -167,6 +173,9 @@ class AccessLogProcessor:
             return self._hash(user[:-3]) + "/UI"
         else:
             return self._hash(user)
+
+    def _process_docid(self, docid):
+        return self._hash(docid)
 
     def _hash(self, token):
         return hashlib.sha1(self.salt + token).hexdigest()
