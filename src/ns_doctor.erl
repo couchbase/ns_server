@@ -235,33 +235,33 @@ build_tasks_list(PoolId, RebStatusTimeout) ->
     do_build_tasks_list(NodesDict, PoolId, AllRepDocs, Buckets, RebStatusTimeout).
 
 wait_statuses(Nodes0, Timeout) ->
-    Nodes = lists:usort(Nodes0),
+    Nodes = sets:from_list(Nodes0),
 
     misc:executing_on_new_process(
       fun () ->
               Statuses = gen_server:call(?MODULE, get_nodes),
-              Got = lists:usort(dict:fetch_keys(Statuses)),
-              Missing = ordsets:subtract(Nodes, Got),
+              Got      = sets:from_list(dict:fetch_keys(Statuses)),
+              Missing  = sets:subtract(Nodes, Got),
 
-              case Missing of
-                  [] ->
+              case sets:size(Missing) of
+                  0 ->
                       {ok, Statuses};
                   _ ->
                       TRef = make_ref(),
                       erlang:send_after(Timeout, self(), TRef),
 
                       ns_pubsub:subscribe_link(ns_doctor_events),
-                      wait_statuses_loop(Statuses, sets:from_list(Missing), TRef)
+                      wait_statuses_loop(Statuses, Nodes, Missing, TRef)
               end
       end).
 
-wait_statuses_loop(Statuses, Missing, TRef) ->
+wait_statuses_loop(Statuses, Interesting, Missing, TRef) ->
     receive
         TRef ->
             ?log_error("Couldn't get statuses for ~p", [sets:to_list(Missing)]),
             {error, timeout};
         {node_status, Node, Status} ->
-            case sets:is_element(Node, Missing) of
+            case sets:is_element(Node, Interesting) of
                 true ->
                     NewStatuses = dict:store(Node, Status, Statuses),
                     NewMissing = sets:del_element(Node, Missing),
@@ -270,10 +270,11 @@ wait_statuses_loop(Statuses, Missing, TRef) ->
                         true ->
                             {ok, NewStatuses};
                         false ->
-                            wait_statuses_loop(NewStatuses, NewMissing, TRef)
+                            wait_statuses_loop(NewStatuses,
+                                               Interesting, NewMissing, TRef)
                     end;
                 false ->
-                    wait_statuses_loop(Statuses, Missing, TRef)
+                    wait_statuses_loop(Statuses, Interesting, Missing, TRef)
             end
     end.
 
