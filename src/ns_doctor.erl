@@ -239,9 +239,13 @@ wait_statuses(Nodes0, Timeout) ->
 
     misc:executing_on_new_process(
       fun () ->
-              Statuses = gen_server:call(?MODULE, get_nodes),
-              Got      = sets:from_list(dict:fetch_keys(Statuses)),
-              Missing  = sets:subtract(Nodes, Got),
+              Statuses0 = gen_server:call(?MODULE, get_nodes),
+              Statuses  = dict:filter(
+                            fun (_, Status) ->
+                                    not proplists:get_bool(down, Status)
+                            end, Statuses0),
+              Got       = sets:from_list(dict:fetch_keys(Statuses)),
+              Missing   = sets:subtract(Nodes, Got),
 
               case sets:size(Missing) of
                   0 ->
