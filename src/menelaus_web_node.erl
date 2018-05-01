@@ -19,6 +19,7 @@
 -module(menelaus_web_node).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -export([handle_node/2,
          build_full_node_info/2,
@@ -472,6 +473,19 @@ handle_node_self_xdcr_ssl_ports(Req) ->
             reply_json(Req, {struct, Ports})
     end.
 
+validate_ix_cbas_path({"path", _}, _) ->
+    false;
+validate_ix_cbas_path({Param, Path}, DbPath) ->
+    case misc:string_prefix(Path, DbPath) of
+        X when X =:= nomatch orelse X =:= [] ->
+            false;
+        _ ->
+            {true, iolist_to_binary(
+                      io_lib:format("'~p' (~s) must not be a sub-directory "
+                                    "of 'data_path' (~s)",
+                                    [Param, Path, DbPath]))}
+    end.
+
 validate_dir_path(Field, []) ->
     {error, iolist_to_binary(
               io_lib:format("~p cannot contain empty string", [Field]))};
@@ -535,16 +549,24 @@ handle_node_settings_post(Node, Req) when is_atom(Node) ->
           [{path, DbPath0}, {index_path, IxPath0}] ++
               [{cbas_path, P} || P <- CBASPaths0]),
 
-    Results = case Errors of
-                  [] ->
-                      DbPath = proplists:get_value(path, Paths),
-                      IxPath = proplists:get_value(index_path, Paths),
-                      CBASPaths = proplists:get_all_values(cbas_path, Paths),
-                      do_handle_node_settings_post(Node, Req, DbPath, IxPath,
-                                                   CBASPaths, DefaultDbPath);
-                  _ ->
-                      {errors, Errors}
-              end,
+    Results =
+        case Errors of
+            [] ->
+                DbPath = proplists:get_value(path, Paths),
+
+                Errs = lists:filtermap(validate_ix_cbas_path(_, DbPath), Paths),
+                case Errs of
+                    [] ->
+                        IxPath = proplists:get_value(index_path, Paths),
+                        CBASPaths = proplists:get_all_values(cbas_path, Paths),
+                        do_handle_node_settings_post(Node, Req, DbPath, IxPath,
+                                                     CBASPaths, DefaultDbPath);
+                    _ ->
+                        {errors, Errs}
+                end;
+            _ ->
+                {errors, Errors}
+        end,
 
     case Results of
         ok ->
