@@ -259,7 +259,7 @@ wait_statuses_loop(Statuses, Interesting, Missing, TRef) ->
     receive
         TRef ->
             ?log_error("Couldn't get statuses for ~p", [sets:to_list(Missing)]),
-            {error, timeout};
+            {error, {timeout, sets:to_list(Missing)}};
         {node_status, Node, Status} ->
             case sets:is_element(Node, Interesting) of
                 true ->
