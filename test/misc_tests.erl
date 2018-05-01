@@ -164,9 +164,9 @@ test_symlink_loop() ->
     Dir = test_dir(),
     Cycle = filename:join(Dir, "cycle"),
     file:make_symlink(Cycle, Cycle),
-    ?assertMatch({error, symlinks_limit_reached, _, _},
+    ?assertMatch({error, symlinks_limit_reached, _, _, _},
                  misc:realpath(Cycle, "/")),
-    ?assertMatch({error, symlinks_limit_reached, _, _},
+    ?assertMatch({error, symlinks_limit_reached, _, _, _},
                  misc:realpath(Cycle, "/bin")),
     ok.
 

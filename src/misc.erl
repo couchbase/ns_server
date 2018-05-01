@@ -897,7 +897,7 @@ rpc_multicall_with_plist_result(Nodes, M, F, A) ->
     rpc_multicall_with_plist_result(Nodes, M, F, A, infinity).
 
 -spec realpath(string(), string()) -> {ok, string()} |
-                                      {error, atom(), string(), any()}.
+                                      {error, atom(), string(), list(), any()}.
 realpath(Path, BaseDir) ->
     case erlang:system_info(system_architecture) of
         "win32" ->
@@ -910,7 +910,7 @@ realpath(Path, BaseDir) ->
 
 -spec realpath_full(string(), string(), integer()) ->
                            {ok, string(), integer()} |
-                           {error, atom(), string(), any()}.
+                           {error, atom(), string(), list(), any()}.
 realpath_full(Path, BaseDir, SymlinksLimit) ->
     NormalizedPath = filename:join([Path]),
     Tokens = string:tokens(NormalizedPath, "/"),
@@ -928,27 +928,27 @@ realpath_full(Path, BaseDir, SymlinksLimit) ->
 %% it if it's symlink.
 -spec realpath_rec_check(string(), [string()], integer()) ->
                                 {ok, string(), integer()} |
-                                {error, atom(), string(), any()}.
+                                {error, atom(), string(), list(), any()}.
 realpath_rec_check(Current, Tokens, SymlinksLimit) ->
     case file:read_link_info(Current) of
         {ok, Info} ->
             realpath_rec_info(Info, Current, Tokens, SymlinksLimit);
-        Crap -> {error, read_file_info, Current, Crap}
+        Crap -> {error, read_file_info, Current, Tokens, Crap}
     end.
 
 %% this implements 'meat' of path name lookup
 -spec realpath_rec_info(tuple(), string(), [string()], integer()) ->
                                {ok, string(), integer()} |
-                               {error, atom(), string(), any()}.
+                               {error, atom(), string(), list(), any()}.
 %% this case handles Current being symlink. Symlink is recursively
 %% expanded and we continue path name walking from expanded place
 realpath_rec_info(Info, Current, Tokens, SymlinksLimit)
   when Info#file_info.type =:= symlink ->
     case file:read_link(Current) of
-        {error, _} = Crap -> {error, read_link, Current, Crap};
+        {error, _} = Crap -> {error, read_link, Current, Tokens, Crap};
         {ok, LinkDestination} ->
             case SymlinksLimit of
-                0 -> {error, symlinks_limit_reached, Current, undefined};
+                0 -> {error, symlinks_limit_reached, Current, Tokens, undefined};
                 _ ->
                     case realpath_full(LinkDestination,
                                        filename:dirname(Current),
