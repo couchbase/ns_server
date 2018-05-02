@@ -24,7 +24,7 @@
          handle_info/2, terminate/2, code_change/3]).
 
 -export([generate/2, maybe_refresh/2,
-         check/2, reset_all/1, remove/2,
+         check/3, check/2, reset_all/1, remove/2,
          purge/2, take/2]).
 
 start_link(Module, MaxTokens, ExpirationSeconds) ->
@@ -42,10 +42,19 @@ generate(Module, Memo) ->
 maybe_refresh(Module, Token) ->
     gen_server:call(Module, {maybe_refresh, tok2bin(Token)}, infinity).
 
-check(_, undefined) ->
-    false;
+
 check(Module, Token) ->
-    gen_server:call(Module, {check, tok2bin(Token)}, infinity).
+    check(Module, Token, node()).
+
+check(_, undefined, _) ->
+    false;
+check(Module, Token, Node) ->
+    case lists:member(Node, ns_node_disco:nodes_actual()) of
+        true ->
+            gen_server:call({Module, Node}, {check, tok2bin(Token)}, infinity);
+        false ->
+            false
+    end.
 
 reset_all(Module) ->
     gen_server:call(Module, reset_all, infinity).
