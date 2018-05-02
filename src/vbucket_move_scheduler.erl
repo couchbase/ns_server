@@ -154,62 +154,43 @@ prepare(CurrentMap, TargetMap, Quirks,
     MapTriples = lists:zip3(lists:seq(0, length(CurrentMap) - 1),
                             CurrentMap,
                             TargetMap),
-    {Moves, UndefinedMoves, TrivialMoves} =
-        misc:letrec(
-          [MapTriples, [], [], 0],
-          fun (Rec, MapTriples0, MovesAcc, UndefinedMoves0, TrivialMoves0) ->
-                  case MapTriples0 of
-                      [] ->
-                          {MovesAcc, UndefinedMoves0, TrivialMoves0};
-                      [{V, C1, C2} | RestMapTriples] ->
-                          OldMaster = hd(C1),
-                          if
-                              OldMaster =:= undefined ->
-                                  Move = {V, C1, C2, []},
-                                  Rec(Rec, RestMapTriples, MovesAcc, [Move | UndefinedMoves0], TrivialMoves0);
-                              C1 =:= C2 ->
-                                  Rec(Rec, RestMapTriples, MovesAcc, UndefinedMoves0, TrivialMoves0 + 1);
-                              true ->
-                                  MoveQuirks = rebalance_quirks:get_node_quirks(OldMaster, Quirks),
-                                  Move = {V, C1, C2, MoveQuirks},
-                                  Rec(Rec, RestMapTriples, [Move | MovesAcc], UndefinedMoves0, TrivialMoves0)
-                          end
-                  end
-          end),
 
-    NewDict = dict:new(),
+    {Moves, UndefinedMoves, TrivialMoves} =
+        lists:foldl(
+          fun ({V, C1, C2}, {MovesAcc, UndefinedMovesAcc, TrivialMovesAcc}) ->
+                  OldMaster = hd(C1),
+                  if
+                      OldMaster =:= undefined ->
+                          Move = {V, C1, C2, []},
+                          {MovesAcc, [Move | UndefinedMovesAcc], TrivialMovesAcc};
+                      C1 =:= C2 ->
+                          {MovesAcc, UndefinedMovesAcc, TrivialMovesAcc + 1};
+                      true ->
+                          MoveQuirks = rebalance_quirks:get_node_quirks(OldMaster, Quirks),
+                          Move = {V, C1, C2, MoveQuirks},
+                          {[Move | MovesAcc], UndefinedMovesAcc, TrivialMovesAcc}
+                  end
+          end, {[], [], 0}, MapTriples),
 
     MovesPerNode =
-        misc:letrec(
-          [Moves, NewDict],
-          fun (_Rec, [] = _Moves, MovesPerNode0) ->
-                  MovesPerNode0;
-              (Rec, [{_V, [Src|_], [Dst|_], _} | RestMoves], MovesPerNode0) ->
-                  MovesPerNode1 = case Src =:= Dst of
-                                      true ->
-                                          %% no index changes will be done here
-                                          MovesPerNode0;
-                                      _ ->
-                                          D = dict:update_counter(Src, 1, MovesPerNode0),
-                                          dict:update_counter(Dst, 1, D)
-                                  end,
-                  Rec(Rec, RestMoves, MovesPerNode1)
-          end),
+        lists:foldl(
+          fun ({_V, [Src|_], [Dst|_], _}, Acc) ->
+                  case Src =:= Dst of
+                      true ->
+                          %% no index changes will be done here
+                          Acc;
+                      _ ->
+                          D = dict:update_counter(Src, 1, Acc),
+                          dict:update_counter(Dst, 1, D)
+                  end
+          end, dict:new(), Moves),
 
     InitialMoveCounts =
-        misc:letrec(
-          [Moves, NewDict],
-          fun (Rec, Moves0, InitialMoveCounts0) ->
-                  case Moves0 of
-                      [] ->
-                          InitialMoveCounts0;
-                      [Move | RestMoves] ->
-                          {_V, [Src|_], [Dst|_], _} = Move,
-                          D = dict:update_counter(Src, 1, InitialMoveCounts0),
-                          InitialMoveCounts1 = dict:update_counter(Dst, 1, D),
-                          Rec(Rec, RestMoves, InitialMoveCounts1)
-                  end
-          end),
+        lists:foldl(
+          fun ({_V, [Src|_], [Dst|_], _}, Acc) ->
+                  D = dict:update_counter(Src, 1, Acc),
+                  dict:update_counter(Dst, 1, D)
+          end, dict:new(), Moves),
 
     CompactionCountdownPerNode = dict:map(fun (_K, _V) ->
                                                   MovesBeforeCompaction
@@ -291,13 +272,8 @@ choose_action(State) ->
                                   end, CompactionCountdownPerNode, Nodes)
                         end),
     {OtherActions, NewState2} = choose_action_not_compaction(NewState1),
-    Actions = misc:letrec(
-                [Nodes],
-                fun (_Rec, []) ->
-                        OtherActions;
-                    (Rec, [N | RestNodes]) ->
-                        [{compact, N} | Rec(Rec, RestNodes)]
-                end),
+    Actions = [{compact, N} || N <- Nodes] ++ OtherActions,
+
     {Actions, NewState2}.
 
 sortby(List, KeyFn, LessEqFn) ->
