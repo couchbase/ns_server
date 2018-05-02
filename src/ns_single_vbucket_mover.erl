@@ -261,6 +261,9 @@ mover_inner_dcp(Parent, Bucket, VBucket,
     {ReplicaNodes, JustBackfillNodes} =
         get_replica_and_backfill_nodes(OldMaster, NewChain),
 
+    maybe_reset_replicas(Bucket, Parent, VBucket,
+                         ReplicaNodes ++ JustBackfillNodes, Quirks),
+
     %% setup replication streams to replicas from the existing master
     set_initial_vbucket_state(Bucket, Parent, VBucket, OldMaster, ReplicaNodes, JustBackfillNodes),
 
@@ -369,6 +372,23 @@ mover_inner_dcp(Parent, Bucket, VBucket,
             CleanupNodes = lists:subtract(OldReplicaNodes, ReplicaNodes) ++
                 ReplicaNodes,
             cleanup_old_streams(Bucket, CleanupNodes, Parent, VBucket)
+    end.
+
+maybe_reset_replicas(Bucket, RebalancerPid, VBucket, Nodes, Quirks) ->
+    case rebalance_quirks:is_enabled(reset_replicas, Quirks) of
+        true ->
+            ?log_info("Resetting replicas for "
+                      "bucket ~p, vbucket ~p on nodes ~p",
+                      [Bucket, VBucket, Nodes]),
+
+            cleanup_old_streams(Bucket, Nodes, RebalancerPid, VBucket),
+            spawn_and_wait(
+              fun () ->
+                      ok = janitor_agent:delete_vbucket_copies(
+                             Bucket, RebalancerPid, Nodes, VBucket)
+              end);
+        false ->
+            ok
     end.
 
 set_vbucket_state(Bucket, Node, RebalancerPid, VBucket,

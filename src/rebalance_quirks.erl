@@ -23,7 +23,8 @@
 -export_type([quirk/0]).
 
 -type quirk() :: takeover_via_orchestrator |
-                 disable_old_master.
+                 disable_old_master |
+                 reset_replicas.
 
 %% APIs
 get_quirks(Nodes) ->
@@ -121,7 +122,9 @@ get_version(Status) ->
 
 -spec all_quirks() -> [quirk()].
 all_quirks() ->
-    [takeover_via_orchestrator, disable_old_master].
+    [takeover_via_orchestrator,
+     disable_old_master,
+     reset_replicas].
 
 quirks_for_version(Version) ->
     [Quirk || Quirk <- all_quirks(),
@@ -130,7 +133,9 @@ quirks_for_version(Version) ->
 is_quirk_required(takeover_via_orchestrator, Version) ->
     Version < [5, 1, 0];
 is_quirk_required(disable_old_master, Version) ->
-    Version < [4, 6, 3].
+    Version < [4, 6, 3];
+is_quirk_required(_, _) ->
+    false.
 
 has_project_intact_patches(Node, Config) ->
     not ns_config:search(Config, project_intact_vulnerable_key(Node), true).
