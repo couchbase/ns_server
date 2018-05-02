@@ -26,7 +26,7 @@
 -define(NS_LOG, "ns_log").
 
 get_current_version() ->
-    list_to_tuple(?VERSION_45).
+    {4, 6, 5}.
 
 ensure_data_dir() ->
     RawDir = path_config:component_path(data),
@@ -390,7 +390,8 @@ default() ->
      {{request_limit, rest}, undefined},
      {{request_limit, capi}, undefined},
      {drop_request_memory_threshold_mib, undefined},
-     {roles_definitions, menelaus_roles:preconfigured_roles()}].
+     {roles_definitions, menelaus_roles:preconfigured_roles()}] ++
+        rebalance_quirks:default_config().
 
 %% Recursively replace all strings in a hierarchy that start
 %% with a given Prefix with a ReplacementPrefix.  For example,
@@ -434,8 +435,11 @@ upgrade_config(Config) ->
             [{set, {node, node(), config_version}, {4,1,1}} |
              upgrade_config_from_4_0_to_4_1_1(Config)];
         {value, {4,1,1}} ->
-            [{set, {node, node(), config_version}, CurrentVersion} |
+            [{set, {node, node(), config_version}, {4,5}} |
              upgrade_config_from_4_1_1_to_4_5()];
+        {value, {4,5}} ->
+            [{set, {node, node(), config_version}, CurrentVersion} |
+             upgrade_config_from_4_5_to_4_6_5()];
         V0 ->
             OldVersion =
                 case V0 of
@@ -596,6 +600,9 @@ do_upgrade_config_from_4_1_1_to_4_5(DefaultConfig) ->
     [{set, ConfKey, McdConfig},
      {set, DefaultsKey, McdDefaults},
      {set, CompactionDaemonKey, CompactionDaemonCfg}].
+
+upgrade_config_from_4_5_to_4_6_5() ->
+    rebalance_quirks:upgrade_config_to_4_6_5().
 
 encrypt_config_val(Val) ->
     {ok, Encrypted} = encryption_service:encrypt(term_to_binary(Val)),

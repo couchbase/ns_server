@@ -140,13 +140,17 @@ init({Bucket, OldMap, NewMap, ProgressCallback}) ->
 
     {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
 
+    Quirks = rebalance_quirks:get_quirks(sets:to_list(AllNodesSet)),
+    SchedulerState = vbucket_move_scheduler:prepare(
+                       OldMap, NewMap, Quirks,
+                       ?MAX_MOVES_PER_NODE, ?MOVES_BEFORE_COMPACTION,
+                       ?MAX_INFLIGHT_MOVES_PER_NODE,
+                       fun (Msg, Args) -> ?log_debug(Msg, Args) end),
+
     {ok, #state{bucket=Bucket,
                 disco_events_subscription=Subscription,
                 map = map_to_array(OldMap),
-                moves_scheduler_state = vbucket_move_scheduler:prepare(OldMap, NewMap,
-                                                                       ?MAX_MOVES_PER_NODE, ?MOVES_BEFORE_COMPACTION,
-                                                                       ?MAX_INFLIGHT_MOVES_PER_NODE,
-                                                                       fun (Msg, Args) -> ?log_debug(Msg, Args) end),
+                moves_scheduler_state = SchedulerState,
                 progress_callback=ProgressCallback,
                 all_nodes_set=AllNodesSet,
                 replication_type=ns_bucket:replication_type(BucketConfig)}}.
@@ -175,12 +179,15 @@ handle_info({compaction_done, N}, #state{moves_scheduler_state = SubState} = Sta
     ?log_debug("noted compaction done: ~p", [A]),
     SubState2 = vbucket_move_scheduler:note_compaction_done(SubState, A),
     spawn_workers(State#state{moves_scheduler_state = SubState2});
-handle_info({move_done, {_VBucket, _OldChain, _NewChain} = Tuple}, State) ->
+handle_info({move_done,
+             {_VBucket, _OldChain, _NewChain, _Quirks} = Tuple}, State) ->
     {noreply, State1} = on_backfill_done(Tuple, State),
     on_move_done(Tuple, State1);
-handle_info({move_done_new_style, {_VBucket, _OldChain, _NewChain} = Tuple}, State) ->
+handle_info({move_done_new_style,
+             {_VBucket, _OldChain, _NewChain, _Quirks} = Tuple}, State) ->
     on_move_done(Tuple, State);
-handle_info({backfill_done, {_VBucket, _OldChain, _NewChain} = Tuple}, State) ->
+handle_info({backfill_done,
+             {_VBucket, _OldChain, _NewChain, _Quirks} = Tuple}, State) ->
     on_backfill_done(Tuple, State);
 handle_info({ns_node_disco_events, OldNodes, NewNodes} = Event,
             #state{all_nodes_set=AllNodesSet} = State) ->
@@ -238,15 +245,16 @@ report_progress(#state{moves_scheduler_state = SubState,
     Progress = vbucket_move_scheduler:extract_progress(SubState),
     Callback(Progress).
 
-on_backfill_done({VBucket, OldChain, NewChain}, #state{moves_scheduler_state = SubState} = State) ->
-    Move = {move, {VBucket, OldChain, NewChain}},
+on_backfill_done(Tuple, #state{moves_scheduler_state = SubState} = State) ->
+    Move = {move, Tuple},
     NextState = State#state{moves_scheduler_state = vbucket_move_scheduler:note_backfill_done(SubState, Move)},
     ?log_debug("noted backfill done: ~p", [Move]),
     {noreply, _} = spawn_workers(NextState).
 
-on_move_done({VBucket, OldChain, NewChain}, #state{bucket = Bucket,
-                                                   map = Map,
-                                                   moves_scheduler_state = SubState} = State) ->
+on_move_done({VBucket, _OldChain, NewChain, _} = Tuple,
+             #state{bucket = Bucket,
+                    map = Map,
+                    moves_scheduler_state = SubState} = State) ->
     %% Pull the new chain from the target map
     %% Update the current map
     Map1 = array:set(VBucket, NewChain, Map),
@@ -261,7 +269,7 @@ on_move_done({VBucket, OldChain, NewChain}, #state{bucket = Bucket,
             ?log_error("Config replication sync failed: ~p", [RepSyncRV])
     end,
 
-    Move = {move, {VBucket, OldChain, NewChain}},
+    Move = {move, Tuple},
     NextState = State#state{moves_scheduler_state = vbucket_move_scheduler:note_move_completed(SubState, Move),
                             map = Map1},
 
@@ -326,12 +334,10 @@ spawn_workers(#state{bucket=Bucket,
     {Actions, NewSubState} = vbucket_move_scheduler:choose_action(SubState),
     ?log_debug("Got actions: ~p", [Actions]),
     [case A of
-         {move, {V, OldChain, NewChain}} ->
-             Pid = ns_single_vbucket_mover:spawn_mover(Bucket,
-                                                       V,
-                                                       OldChain,
-                                                       NewChain,
-                                                       ReplType),
+         {move, {V, OldChain, NewChain, Quirks}} ->
+             Pid = ns_single_vbucket_mover:spawn_mover(Bucket, V,
+                                                       OldChain, NewChain,
+                                                       ReplType, Quirks),
              register_child_process(Pid);
          {compact, N} ->
              case (cluster_compat_mode:is_index_aware_rebalance_on()
