@@ -159,16 +159,21 @@ prepare(CurrentMap, TargetMap, Quirks,
         lists:foldl(
           fun ({V, C1, C2}, {MovesAcc, UndefinedMovesAcc, TrivialMovesAcc}) ->
                   OldMaster = hd(C1),
-                  if
-                      OldMaster =:= undefined ->
+                  case OldMaster of
+                      undefined ->
                           Move = {V, C1, C2, []},
                           {MovesAcc, [Move | UndefinedMovesAcc], TrivialMovesAcc};
-                      C1 =:= C2 ->
-                          {MovesAcc, UndefinedMovesAcc, TrivialMovesAcc + 1};
-                      true ->
-                          MoveQuirks = rebalance_quirks:get_node_quirks(OldMaster, Quirks),
-                          Move = {V, C1, C2, MoveQuirks},
-                          {[Move | MovesAcc], UndefinedMovesAcc, TrivialMovesAcc}
+                      _ ->
+                          MoveQuirks   = rebalance_quirks:get_node_quirks(OldMaster, Quirks),
+                          TrivialMoves = rebalance_quirks:is_enabled(trivial_moves, MoveQuirks),
+
+                          case C1 =:= C2 andalso not TrivialMoves of
+                              true ->
+                                  {MovesAcc, UndefinedMovesAcc, TrivialMovesAcc + 1};
+                              false ->
+                                  Move = {V, C1, C2, MoveQuirks},
+                                  {[Move | MovesAcc], UndefinedMovesAcc, TrivialMovesAcc}
+                          end
                   end
           end, {[], [], 0}, MapTriples),
 

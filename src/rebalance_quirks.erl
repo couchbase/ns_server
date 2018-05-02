@@ -24,7 +24,8 @@
 
 -type quirk() :: takeover_via_orchestrator |
                  disable_old_master |
-                 reset_replicas.
+                 reset_replicas |
+                 trivial_moves.
 
 %% APIs
 get_quirks(Nodes) ->
@@ -124,7 +125,8 @@ get_version(Status) ->
 all_quirks() ->
     [takeover_via_orchestrator,
      disable_old_master,
-     reset_replicas].
+     reset_replicas,
+     trivial_moves].
 
 quirks_for_version(Version) ->
     [Quirk || Quirk <- all_quirks(),
