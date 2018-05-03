@@ -29,7 +29,7 @@
 -record(state, {buckets=[]}).
 
 %% state sanitization
--export([format_status/2, tag_user_data/1, tag_user_name/1]).
+-export([format_status/2, tag_user_data/1, tag_user_name/1, tag_doc_id/1]).
 
 format_status(_Opt, [_PDict, State]) ->
     sanitize(State).
@@ -119,6 +119,11 @@ tag_user_tuples_fun({doc, {user, {U, D}}, _, _, V} = Doc) ->
     {stop, setelement(5, T, generic:transformt(
                               ?transform({name, N},
                                          {name, do_tag_user_name(N)}), V))};
+tag_user_tuples_fun({docv2, {user, {U, D}}, V, _} = Doc) ->
+    T = setelement(2, Doc, {user, {do_tag_user_name(U), D}}),
+    {stop, setelement(3, T, generic:transformt(
+                              ?transform({name, N},
+                                         {name, do_tag_user_name(N)}), V))};
 tag_user_tuples_fun({full_name, FullName}) when is_binary(FullName) ->
     {ok, Val} = do_tag_user_name(FullName),
     {stop, {full_name, Val}};
@@ -136,6 +141,18 @@ tag_user_tuples_fun(_Other) ->
 
 tag_user_name(UserName) ->
     {ok, Val} = do_tag_user_name(UserName),
+    Val.
+
+do_tag_doc_id(DocId) when is_list(DocId) ->
+    {ok, "<ud>" ++ DocId ++ "</ud>"};
+do_tag_doc_id(DocId) when is_binary(DocId) ->
+    {ok, Val} = do_tag_doc_id(binary_to_list(DocId)),
+    {ok, list_to_binary(Val)};
+do_tag_doc_id(_) ->
+    continue.
+
+tag_doc_id(DocId) ->
+    {ok, Val} = do_tag_doc_id(DocId),
     Val.
 
 rewrite_tuples_with_vclock(Fun, Config) ->

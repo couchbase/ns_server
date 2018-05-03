@@ -96,7 +96,7 @@ read_path_from_conf(Config, Node, Key, SubKey) ->
         DBDir ->
             {ok, Base} = file:get_cwd(),
             case misc:realpath(DBDir, Base) of
-                {error, Atom, _, _} -> {error, Atom};
+                {error, Atom, _, _, _} -> {error, Atom};
                 {ok, _} = X -> X
             end
     end.

@@ -19,6 +19,7 @@
 -module(menelaus_web_node).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -export([handle_node/2,
          build_full_node_info/2,
@@ -472,6 +473,45 @@ handle_node_self_xdcr_ssl_ports(Req) ->
             reply_json(Req, {struct, Ports})
     end.
 
+validate_ix_cbas_path({"path", _}, _) ->
+    false;
+validate_ix_cbas_path({Param, Path}, DbPath) ->
+    case misc:string_prefix(Path, DbPath) of
+        X when X =:= nomatch orelse X =:= [] ->
+            false;
+        _ ->
+            {true, iolist_to_binary(
+                      io_lib:format("'~p' (~s) must not be a sub-directory "
+                                    "of 'data_path' (~s)",
+                                    [Param, Path, DbPath]))}
+    end.
+
+validate_dir_path(Field, []) ->
+    {error, iolist_to_binary(
+              io_lib:format("~p cannot contain empty string", [Field]))};
+validate_dir_path(Field, Path) ->
+    case misc:is_absolute_path(Path) of
+        true ->
+            case misc:realpath(Path, "/") of
+                {ok, RP} ->
+                    {ok, {Field, RP}};
+                {error, _, ExpandedSubPath, RemPathComps, {error, enoent}} ->
+                    %% We get here if a sub-directory hierarchy is not present
+                    %% in the path. We create a path using the expanded sub-path
+                    %% and the remaining path components.
+                    NewPath = filename:join([ExpandedSubPath | RemPathComps]),
+                    {ok, {Field, NewPath}};
+                Err ->
+                    {error,
+                     iolist_to_binary(
+                      io_lib:format("Path expansion failed for ~p: ~p",
+                                    [Field, Err]))}
+            end;
+        false ->
+            {error, iolist_to_binary(
+                      io_lib:format("An absolute path is required for ~p",
+                                    [Field]))}
+    end.
 
 -spec handle_node_settings_post(string() | atom(), any()) -> no_return().
 handle_node_settings_post("self", Req) ->
@@ -481,90 +521,94 @@ handle_node_settings_post(S, Req) when is_list(S) ->
 handle_node_settings_post(Node, Req) when is_atom(Node) ->
     Params = mochiweb_request:parse_post(Req),
 
-    {ok, DefaultDbPath} = ns_storage_conf:this_node_dbdir(),
-    {ok, DefaultIndexPath} = ns_storage_conf:this_node_ixdir(),
-    DbPath = proplists:get_value("path", Params, DefaultDbPath),
-    IxPath = proplists:get_value("index_path", Params, DefaultIndexPath),
-
-    CBASDirs =
-        case [Dir || {"cbas_path", Dir} <- Params] of
-            [] ->
-                ns_storage_conf:this_node_cbas_dirs();
-            Dirs ->
-                Dirs
-        end,
-
     case Node =/= node() of
-        true -> exit('Setting the disk storage path for other servers is not yet supported.');
+        true -> exit("Setting the disk storage path for other servers is "
+                     "not yet supported.");
         _ -> ok
     end,
 
-    case ns_config_auth:is_system_provisioned() andalso DbPath =/= DefaultDbPath of
+    {ok, DefaultDbPath} = ns_storage_conf:this_node_dbdir(),
+    {ok, DefaultIndexPath} = ns_storage_conf:this_node_ixdir(),
+    DbPath0 = proplists:get_value("path", Params, DefaultDbPath),
+    IxPath0 = proplists:get_value("index_path", Params, DefaultIndexPath),
+    CBASPaths0 = case [P || {"cbas_path", P} <- Params] of
+                     [] -> ns_storage_conf:this_node_cbas_dirs();
+                     Ps -> Ps
+                 end,
+
+    {Paths, Errors} =
+        lists:foldl(
+          fun({Field, Path}, {PAcc, EAcc}) ->
+                  case validate_dir_path(Field, Path) of
+                      {ok, PInfo} ->
+                          {[PInfo | PAcc], EAcc};
+                      {error, Err} ->
+                          {PAcc, [Err | EAcc]}
+                  end
+          end, {[], []},
+          [{path, DbPath0}, {index_path, IxPath0}] ++
+              [{cbas_path, P} || P <- CBASPaths0]),
+
+    Results =
+        case Errors of
+            [] ->
+                DbPath = proplists:get_value(path, Paths),
+
+                Errs = lists:filtermap(validate_ix_cbas_path(_, DbPath), Paths),
+                case Errs of
+                    [] ->
+                        IxPath = proplists:get_value(index_path, Paths),
+                        CBASPaths = proplists:get_all_values(cbas_path, Paths),
+                        do_handle_node_settings_post(Node, Req, DbPath, IxPath,
+                                                     CBASPaths, DefaultDbPath);
+                    _ ->
+                        {errors, Errs}
+                end;
+            _ ->
+                {errors, Errors}
+        end,
+
+    case Results of
+        ok ->
+            reply(Req, 200);
+        {errors, E} = FinalErrors when E =/= []->
+            reply_json(Req, {struct, [FinalErrors]}, 400)
+    end.
+
+do_handle_node_settings_post(Node, Req, DbPath, IxPath, CBASPaths, DefDbPath) ->
+    case ns_config_auth:is_system_provisioned() andalso DbPath =/= DefDbPath of
         true ->
             %% MB-7344: we had 1.8.1 instructions allowing that. And
             %% 2.0 works very differently making that original
             %% instructions lose data. Thus we decided it's much safer
             %% to un-support this path.
-            reply_json(
-              Req, {struct, [{error, <<"Changing data of nodes that are part of provisioned cluster is not supported">>}]}, 400),
+            Msg = <<"Changing data of nodes that are part of provisioned "
+                    "cluster is not supported">>,
+            reply_json(Req, {struct, [{error, Msg}]}, 400),
             exit(normal);
         _ ->
             ok
     end,
 
-    Results0 =
-        lists:usort(
-          lists:map(
-            fun ({Param, Path}) ->
-                    case Path of
-                        [] ->
-                            iolist_to_binary(io_lib:format("~p cannot contain empty string", [Param]));
-                        Path ->
-                            case misc:is_absolute_path(Path) of
-                                false ->
-                                    iolist_to_binary(
-                                      io_lib:format("An absolute path is required for ~p",
-                                                    [Param]));
-                                _ -> ok
-                            end
-                    end
-            end,
-            [{path, DbPath}, {index_path, IxPath}] ++ [{cbas_path, Dir} || Dir <- CBASDirs])),
-
-    Results1 =
-        case Results0 of
-            [ok] ->
-                case ns_storage_conf:setup_disk_storage_conf(DbPath, IxPath, CBASDirs) of
-                    not_changed ->
-                        ok;
-                    ok ->
-                        ns_audit:disk_storage_conf(Req, Node, DbPath, IxPath, CBASDirs),
-                        ok;
-                    restart ->
-                        ns_audit:disk_storage_conf(Req, Node, DbPath, IxPath, CBASDirs),
-                        %% NOTE: due to required restart we need to protect
-                        %% ourselves from 'death signal' of parent
-                        erlang:process_flag(trap_exit, true),
-
-                        %% performing required restart from
-                        %% successfull path change
-                        {ok, _} = ns_server_cluster_sup:restart_ns_server(),
-                        reply(Req, 200),
-                        erlang:exit(normal);
-                    {errors, Msgs} ->
-                        Msgs
-                end;
-            _ ->
-                Results0
-        end,
-
-    case Results1 of
+    case ns_storage_conf:setup_disk_storage_conf(DbPath, IxPath, CBASPaths) of
+        not_changed ->
+            ok;
         ok ->
-            reply(Req, 200);
-        Errs ->
-            ErrsFiltered = [E || E <- Errs, E =/= ok],
-            true = ErrsFiltered =/= [],
-            reply_json(Req, ErrsFiltered, 400)
+            ns_audit:disk_storage_conf(Req, Node, DbPath, IxPath, CBASPaths),
+            ok;
+        restart ->
+            ns_audit:disk_storage_conf(Req, Node, DbPath, IxPath, CBASPaths),
+            %% NOTE: due to required restart we need to protect
+            %% ourselves from 'death signal' of parent
+            erlang:process_flag(trap_exit, true),
+
+            %% performing required restart from
+            %% successfull path change
+            {ok, _} = ns_server_cluster_sup:restart_ns_server(),
+            reply(Req, 200),
+            erlang:exit(normal);
+        {errors, _} = Errors ->
+            Errors
     end.
 
 %% Basic port validation is done.

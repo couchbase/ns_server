@@ -85,7 +85,9 @@ get_inner(Bucket, DocId, VBucket, Options, RetriesLeft) ->
 
             catch
                 _:Reason ->
-                    ?log_error("Error during retrieving doc for ~p/~p: ~p", [Bucket, DocId, Reason]),
+                    ?log_error("Error during retrieving doc for ~p/~p: ~p",
+                               [Bucket, ns_config_log:tag_doc_id(DocId),
+                                Reason]),
                     get_inner(Bucket, DocId, VBucket, Options, RetriesLeft-1)
             end;
         ?KEY_ENOENT ->
