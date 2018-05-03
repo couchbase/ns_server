@@ -16,16 +16,18 @@
 
 -module(ns_single_vbucket_mover).
 
--export([spawn_mover/4, mover/5]).
+-export([spawn_mover/5, mover/6]).
 
 -include("ns_common.hrl").
 
-spawn_mover(Bucket, VBucket, OldChain, NewChain) ->
+spawn_mover(Bucket, VBucket, OldChain, NewChain, Quirks) ->
     Parent = self(),
     Pid = proc_lib:spawn_link(ns_single_vbucket_mover, mover,
-                              [Parent, Bucket, VBucket, OldChain, NewChain]),
+                              [Parent, Bucket,
+                               VBucket, OldChain, NewChain, Quirks]),
     ?rebalance_debug("Spawned single vbucket mover: ~p (~p)",
-                     [[Parent, Bucket, VBucket, OldChain, NewChain], Pid]),
+                     [[Parent, Bucket, VBucket,
+                       OldChain, NewChain, Quirks], Pid]),
     Pid.
 
 get_cleanup_list() ->
@@ -46,7 +48,8 @@ cleanup_list_del(Pid) ->
 
 %% We do a no-op here rather than filtering these out so that the
 %% replication update will still work properly.
-mover(Parent, Bucket, VBucket, [undefined | _] = OldChain, [NewNode | _] = NewChain) ->
+mover(Parent, Bucket,
+      VBucket, [undefined | _] = OldChain, [NewNode | _] = NewChain, Quirks) ->
     misc:try_with_maybe_ignorant_after(
       fun () ->
               process_flag(trap_exit, true),
@@ -57,15 +60,16 @@ mover(Parent, Bucket, VBucket, [undefined | _] = OldChain, [NewNode | _] = NewCh
       fun () ->
               misc:sync_shutdown_many_i_am_trapping_exits(get_cleanup_list())
       end),
-    Parent ! {move_done, {VBucket, OldChain, NewChain}};
+    Parent ! {move_done, {VBucket, OldChain, NewChain, Quirks}};
 
-mover(Parent, Bucket, VBucket, OldChain, NewChain) ->
+mover(Parent, Bucket, VBucket, OldChain, NewChain, Quirks) ->
     master_activity_events:note_vbucket_mover(self(), Bucket, hd(OldChain), VBucket, OldChain, NewChain),
     IndexAware = cluster_compat_mode:is_index_aware_rebalance_on(),
     misc:try_with_maybe_ignorant_after(
       fun () ->
               process_flag(trap_exit, true),
-              mover_inner_dcp(Parent, Bucket, VBucket, OldChain, NewChain, IndexAware),
+              mover_inner_dcp(Parent, Bucket, VBucket,
+                              OldChain, NewChain, IndexAware, Quirks),
               on_move_done(Parent, Bucket, VBucket, OldChain, NewChain)
       end,
       fun () ->
@@ -74,9 +78,10 @@ mover(Parent, Bucket, VBucket, OldChain, NewChain) ->
 
     case IndexAware of
         false ->
-            Parent ! {move_done, {VBucket, OldChain, NewChain}};
+            Parent ! {move_done, {VBucket, OldChain, NewChain, Quirks}};
         true ->
-            Parent ! {move_done_new_style, {VBucket, OldChain, NewChain}}
+            Parent ! {move_done_new_style, {VBucket,
+                                            OldChain, NewChain, Quirks}}
     end.
 
 spawn_and_wait(Body) ->
@@ -163,12 +168,16 @@ maybe_initiate_indexing(Bucket, Parent, JustBackfillNodes, ReplicaNodes, VBucket
     master_activity_events:note_indexing_initiated(Bucket, JustBackfillNodes, VBucket).
 
 mover_inner_dcp(Parent, Bucket, VBucket,
-                [OldMaster|OldReplicas] = OldChain, [NewMaster|_] = NewChain, IndexAware) ->
+                [OldMaster|OldReplicas] = OldChain,
+                [NewMaster|_] = NewChain, IndexAware, Quirks) ->
     maybe_inhibit_view_compaction(Parent, OldMaster, Bucket, NewMaster, IndexAware),
 
     %% build new chain as replicas of existing master
     {ReplicaNodes, JustBackfillNodes} =
         get_replica_and_backfill_nodes(OldMaster, NewChain),
+
+    maybe_reset_replicas(Bucket, Parent, VBucket,
+                         ReplicaNodes ++ JustBackfillNodes, Quirks),
 
     %% setup replication streams to replicas from the existing master
     set_initial_vbucket_state(Bucket, Parent, VBucket, OldMaster, ReplicaNodes, JustBackfillNodes),
@@ -185,7 +194,7 @@ mover_inner_dcp(Parent, Bucket, VBucket,
 
     %% notify parent that the backfill is done, so it can start rebalancing
     %% next vbucket
-    Parent ! {backfill_done, {VBucket, OldChain, NewChain}},
+    Parent ! {backfill_done, {VBucket, OldChain, NewChain, Quirks}},
 
     %% grab the seqno from the old master and wait till this seqno is
     %% persisted on all the replicas
@@ -219,7 +228,8 @@ mover_inner_dcp(Parent, Bucket, VBucket,
             end,
 
             master_activity_events:note_takeover_started(Bucket, VBucket, OldMaster, NewMaster),
-            dcp_takeover(Bucket, Parent, OldMaster, NewMaster, VBucket),
+            dcp_takeover(Bucket, Parent,
+                         OldMaster, NewMaster, ReplicaNodes, VBucket, Quirks),
             master_activity_events:note_takeover_ended(Bucket, VBucket, OldMaster, NewMaster)
     end,
 
@@ -279,6 +289,23 @@ mover_inner_dcp(Parent, Bucket, VBucket,
             cleanup_old_streams(Bucket, CleanupNodes, Parent, VBucket)
     end.
 
+maybe_reset_replicas(Bucket, RebalancerPid, VBucket, Nodes, Quirks) ->
+    case rebalance_quirks:is_enabled(reset_replicas, Quirks) of
+        true ->
+            ?log_info("Resetting replicas for "
+                      "bucket ~p, vbucket ~p on nodes ~p",
+                      [Bucket, VBucket, Nodes]),
+
+            cleanup_old_streams(Bucket, Nodes, RebalancerPid, VBucket),
+            spawn_and_wait(
+              fun () ->
+                      ok = janitor_agent:delete_vbucket_copies(
+                             Bucket, RebalancerPid, Nodes, VBucket)
+              end);
+        false ->
+            ok
+    end.
+
 set_vbucket_state(Bucket, Node, RebalancerPid, VBucket,
                   VBucketState, VBucketRebalanceState, ReplicateFrom) ->
     spawn_and_wait(
@@ -305,7 +332,81 @@ cleanup_old_streams(Bucket, Nodes, RebalancerPid, VBucket) ->
               ok = janitor_agent:bulk_set_vbucket_state(Bucket, RebalancerPid, VBucket, Changes)
       end).
 
-dcp_takeover(Bucket, Parent, OldMaster, NewMaster, VBucket) ->
+dcp_takeover(Bucket, Parent,
+             OldMaster, NewMaster, ReplicaNodes, VBucket, Quirks) ->
+    case rebalance_quirks:is_enabled(takeover_via_orchestrator, Quirks) of
+        true ->
+            dcp_takeover_via_orchestrator(Bucket, Parent,
+                                          OldMaster, NewMaster,
+                                          ReplicaNodes, VBucket, Quirks);
+        false ->
+            dcp_takeover_regular(Bucket, Parent, OldMaster, NewMaster, VBucket)
+    end.
+
+dcp_takeover_via_orchestrator(Bucket, Parent,
+                              OldMaster, NewMaster,
+                              ReplicaNodes, VBucket, Quirks) ->
+    ?log_info("Performing special takeover~n"
+              "Bucket = ~p, VBucket = ~p~n"
+              "OldMaster = ~p, NewMaster = ~p",
+              [Bucket, VBucket, OldMaster, NewMaster]),
+
+    ?log_info("Tearing down replication for "
+              "vbucket ~p (bucket ~p) from ~p to ~p",
+              [VBucket, Bucket, OldMaster, NewMaster]),
+    set_vbucket_state(Bucket, NewMaster, Parent,
+                      VBucket, pending, passive, undefined),
+
+    case rebalance_quirks:is_enabled(disable_old_master, Quirks) of
+        true ->
+            %% The subsequent vbucket state change on the old master will
+            %% result in these replications being terminated anyway. But that
+            %% will happen asynchronously. So once we create post-rebalance
+            %% replications, we won't be able to reliably know that
+            %% replications don't exist anymore (or rather, that ep-engine
+            %% processed the stream_end messages sent by the old
+            %% master). That's why we terminate these replications in advance
+            %% synchronously.
+            ?log_info("Terminating replications for "
+                      "vbucket ~p (bucket ~p) from ~p to nodes ~p",
+                      [VBucket, Bucket, OldMaster, ReplicaNodes]),
+            cleanup_old_streams(Bucket, ReplicaNodes, Parent, VBucket),
+
+            ?log_info("Disabling vbucket ~p (bucket ~p) on ~p",
+                      [VBucket, Bucket, OldMaster]),
+            set_vbucket_state(Bucket, OldMaster, Parent,
+                              VBucket, replica, passive, undefined);
+        false ->
+            ok
+    end,
+
+    ?log_info("Spawning takeover replicator for vbucket ~p (bucket ~p) from ~p to ~p",
+              [VBucket, Bucket, OldMaster, NewMaster]),
+    Pid = start_takeover_replicator(NewMaster, OldMaster, Bucket, VBucket),
+    cleanup_list_add(Pid),
+    spawn_and_wait(
+      fun () ->
+              ?log_info("Starting takeover for vbucket ~p (bucket ~p) from ~p to ~p",
+                        [VBucket, Bucket, OldMaster, NewMaster]),
+              ok = dcp_replicator:takeover(Pid, VBucket),
+              ?log_info("Takeover for vbucket ~p (bucket ~p) from ~p to ~p finished",
+                        [VBucket, Bucket, OldMaster, NewMaster])
+      end).
+
+start_takeover_replicator(NewMaster, OldMaster, Bucket, VBucket) ->
+    ConnName = lists:concat(["replication:takeover:",
+                             binary_to_list(couch_uuids:random()), ":",
+                             atom_to_list(OldMaster), "->",
+                             atom_to_list(NewMaster), ":",
+                             Bucket, ":",
+                             integer_to_list(VBucket)]),
+
+    XAttr = cluster_compat_mode:is_cluster_50(),
+    {ok, Pid} = dcp_replicator:start_link(undefined, NewMaster,
+                                          OldMaster, Bucket, ConnName, XAttr),
+    Pid.
+
+dcp_takeover_regular(Bucket, Parent, OldMaster, NewMaster, VBucket) ->
     spawn_and_wait(
       fun () ->
               ok = janitor_agent:dcp_takeover(Bucket, Parent, OldMaster, NewMaster, VBucket)
