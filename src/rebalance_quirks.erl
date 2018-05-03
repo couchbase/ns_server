@@ -19,7 +19,7 @@
         ns_config:get_timeout({?MODULE, wait_statuses}, 15000)).
 
 -export([get_quirks/1, is_enabled/2, get_node_quirks/2,
-         default_config/0, upgrade_config_to_4_6_5/0]).
+         default_config/0, upgrade_config_project_intact_patched/0]).
 -export_type([quirk/0]).
 
 -type quirk() :: takeover_via_orchestrator |
@@ -63,7 +63,7 @@ get_node_quirks(Node, Quirks) ->
 default_config() ->
     [{project_intact_vulnerable_key(), false}].
 
-upgrade_config_to_4_6_5() ->
+upgrade_config_project_intact_patched() ->
     [{set, project_intact_vulnerable_key(), false}].
 
 %% internal

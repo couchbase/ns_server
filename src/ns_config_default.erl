@@ -26,7 +26,7 @@
 -define(NS_LOG, "ns_log").
 
 get_current_version() ->
-    list_to_tuple(?VERSION_50).
+    {5,1,1}.
 
 ensure_data_dir() ->
     RawDir = path_config:component_path(data),
@@ -467,8 +467,11 @@ upgrade_config(Config) ->
             [{set, {node, node(), config_version}, {4,6,5}} |
              upgrade_config_from_4_5_to_4_6_5()];
         {value, {4,6,5}} ->
-            [{set, {node, node(), config_version}, CurrentVersion} |
+            [{set, {node, node(), config_version}, {5,0}} |
              upgrade_config_from_4_6_5_to_5_0(Config)];
+        {value, {5,0}} ->
+            [{set, {node, node(), config_version}, CurrentVersion},
+             upgrade_config_from_5_0_to_5_1_1()];
         V0 ->
             OldVersion =
                 case V0 of
@@ -603,7 +606,7 @@ do_upgrade_config_from_4_1_1_to_4_5(DefaultConfig) ->
      {set, CompactionDaemonKey, CompactionDaemonCfg}].
 
 upgrade_config_from_4_5_to_4_6_5() ->
-    rebalance_quirks:upgrade_config_to_4_6_5().
+    rebalance_quirks:upgrade_config_project_intact_patched().
 
 upgrade_config_from_4_6_5_to_5_0(Config) ->
     do_upgrade_config_from_4_6_5_to_5_0(Config, default()).
@@ -626,6 +629,9 @@ do_upgrade_config_from_4_6_5_to_5_0(Config, DefaultConfig) ->
     [{set, McdKey, NewMcdConfig},
      {set, DefaultsKey, McdDefaults},
      {set, JTKey, DefaultJsonTemplateConfig}].
+
+upgrade_config_from_5_0_to_5_1_1() ->
+    rebalance_quirks:upgrade_config_project_intact_patched().
 
 encrypt_config_val(Val) ->
     {ok, Encrypted} = encryption_service:encrypt(term_to_binary(Val)),
