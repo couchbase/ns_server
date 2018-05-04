@@ -107,7 +107,7 @@
 
 -include("ns_common.hrl").
 
--export([prepare/6,
+-export([prepare/7,
          is_done/1,
          choose_action/1,
          extract_progress/1,
@@ -117,7 +117,8 @@
 
 -type move() :: {VBucket :: vbucket_id(),
                  ChainBefore :: [node() | undefined],
-                 ChainAfter :: [node() | undefined]}.
+                 ChainAfter :: [node() | undefined],
+                 Quirks :: [rebalance_quirks:quirk()]}.
 
 %% all possible types of actions are moves and compactions
 -type action() :: {move, move()} |
@@ -147,63 +148,54 @@
          }).
 
 %% @doc prepares state (list of moves etc) based on current and target map
-prepare(CurrentMap, TargetMap, BackfillsLimit, MovesBeforeCompaction, MaxInflightMoves, InfoLogger) ->
+prepare(CurrentMap, TargetMap, Quirks,
+        BackfillsLimit, MovesBeforeCompaction, MaxInflightMoves, InfoLogger) ->
     %% Dictionary mapping old node to vbucket and new node
     MapTriples = lists:zip3(lists:seq(0, length(CurrentMap) - 1),
                             CurrentMap,
                             TargetMap),
+
     {Moves, UndefinedMoves, TrivialMoves} =
-        misc:letrec(
-          [MapTriples, [], [], 0],
-          fun (Rec, MapTriples0, MovesAcc, UndefinedMoves0, TrivialMoves0) ->
-                  case MapTriples0 of
-                      [] ->
-                          {MovesAcc, UndefinedMoves0, TrivialMoves0};
-                      [{_V, C1, C2} = Move | RestMapTriples] ->
-                          if
-                              hd(C1) =:= undefined ->
-                                  Rec(Rec, RestMapTriples, MovesAcc, [Move | UndefinedMoves0], TrivialMoves0);
-                              C1 =:= C2 ->
-                                  Rec(Rec, RestMapTriples, MovesAcc, UndefinedMoves0, TrivialMoves0 + 1);
+        lists:foldl(
+          fun ({V, C1, C2}, {MovesAcc, UndefinedMovesAcc, TrivialMovesAcc}) ->
+                  OldMaster = hd(C1),
+                  case OldMaster of
+                      undefined ->
+                          Move = {V, C1, C2, []},
+                          {MovesAcc, [Move | UndefinedMovesAcc], TrivialMovesAcc};
+                      _ ->
+                          MoveQuirks   = rebalance_quirks:get_node_quirks(OldMaster, Quirks),
+                          TrivialMoves = rebalance_quirks:is_enabled(trivial_moves, MoveQuirks),
+
+                          case C1 =:= C2 andalso not TrivialMoves of
                               true ->
-                                  Rec(Rec, RestMapTriples, [Move | MovesAcc], UndefinedMoves0, TrivialMoves0)
+                                  {MovesAcc, UndefinedMovesAcc, TrivialMovesAcc + 1};
+                              false ->
+                                  Move = {V, C1, C2, MoveQuirks},
+                                  {[Move | MovesAcc], UndefinedMovesAcc, TrivialMovesAcc}
                           end
                   end
-          end),
-
-    NewDict = dict:new(),
+          end, {[], [], 0}, MapTriples),
 
     MovesPerNode =
-        misc:letrec(
-          [Moves, NewDict],
-          fun (_Rec, [] = _Moves, MovesPerNode0) ->
-                  MovesPerNode0;
-              (Rec, [{_V, [Src|_], [Dst|_]} | RestMoves], MovesPerNode0) ->
-                  MovesPerNode1 = case Src =:= Dst of
-                                      true ->
-                                          %% no index changes will be done here
-                                          MovesPerNode0;
-                                      _ ->
-                                          D = dict:update_counter(Src, 1, MovesPerNode0),
-                                          dict:update_counter(Dst, 1, D)
-                                  end,
-                  Rec(Rec, RestMoves, MovesPerNode1)
-          end),
+        lists:foldl(
+          fun ({_V, [Src|_], [Dst|_], _}, Acc) ->
+                  case Src =:= Dst of
+                      true ->
+                          %% no index changes will be done here
+                          Acc;
+                      _ ->
+                          D = dict:update_counter(Src, 1, Acc),
+                          dict:update_counter(Dst, 1, D)
+                  end
+          end, dict:new(), Moves),
 
     InitialMoveCounts =
-        misc:letrec(
-          [Moves, NewDict],
-          fun (Rec, Moves0, InitialMoveCounts0) ->
-                  case Moves0 of
-                      [] ->
-                          InitialMoveCounts0;
-                      [Move | RestMoves] ->
-                          {_V, [Src|_], [Dst|_]} = Move,
-                          D = dict:update_counter(Src, 1, InitialMoveCounts0),
-                          InitialMoveCounts1 = dict:update_counter(Dst, 1, D),
-                          Rec(Rec, RestMoves, InitialMoveCounts1)
-                  end
-          end),
+        lists:foldl(
+          fun ({_V, [Src|_], [Dst|_], _}, Acc) ->
+                  D = dict:update_counter(Src, 1, Acc),
+                  dict:update_counter(Dst, 1, D)
+          end, dict:new(), Moves),
 
     CompactionCountdownPerNode = dict:map(fun (_K, _V) ->
                                                   MovesBeforeCompaction
@@ -285,13 +277,8 @@ choose_action(State) ->
                                   end, CompactionCountdownPerNode, Nodes)
                         end),
     {OtherActions, NewState2} = choose_action_not_compaction(NewState1),
-    Actions = misc:letrec(
-                [Nodes],
-                fun (_Rec, []) ->
-                        OtherActions;
-                    (Rec, [N | RestNodes]) ->
-                        [{compact, N} | Rec(Rec, RestNodes)]
-                end),
+    Actions = [{compact, N} || N <- Nodes] ++ OtherActions,
+
     {Actions, NewState2}.
 
 sortby(List, KeyFn, LessEqFn) ->
@@ -330,7 +317,7 @@ choose_action_not_compaction(#state{
                                 moves_left = MovesLeft,
                                 compaction_countdown_per_node = CompactionCountdown} = State) ->
     PossibleMoves =
-        lists:flatmap(fun ({_V, [Src|_], [Dst|_]} = Move) ->
+        lists:flatmap(fun ({_V, [Src|_], [Dst|_], _} = Move) ->
                               Can1 = move_is_possible(Src, Dst, BackfillsLimit, NowBackfills,
                                                       CompactionCountdown,
                                                       NowInFlight, MaxInflightMoves),
@@ -346,7 +333,7 @@ choose_action_not_compaction(#state{
                       end, MovesLeft),
 
     GoodnessFn =
-        fun ({Vb, [Src | _], [Dst | _]}) ->
+        fun ({Vb, [Src | _], [Dst | _], _}) ->
                 case Src =:= Dst of
                     true ->
                         %% we under-prioritize moves that
@@ -396,7 +383,7 @@ choose_action_not_compaction(#state{
     {SelectedMoves, NewNowBackfills, NewCompactionCountdown, NewNowInFlight, NewLeftCount} =
         misc:letrec(
           [SortedMoves, NowBackfills, CompactionCountdown, NowInFlight, LeftCount, []],
-          fun (Rec, [{_V, [Src|_], [Dst|_]} = Move | RestMoves],
+          fun (Rec, [{_V, [Src|_], [Dst|_], _} = Move | RestMoves],
                NowBackfills0, CompactionCountdown0, NowInFlight0, LeftCount0, Acc) ->
                   case move_is_possible(Src, Dst, BackfillsLimit, NowBackfills0,
                                         CompactionCountdown0, NowInFlight0, MaxInflightMoves) of
@@ -443,9 +430,9 @@ extract_progress(#state{initial_move_counts = InitialCounts,
 %% @doc marks backfill phase of previously started move as done. Users
 %% of this code will call it when backfill is done to update state so
 %% that next moves can be started.
-note_backfill_done(State, {move, {_V, [undefined|_], [_Dst|_]}}) ->
+note_backfill_done(State, {move, {_V, [undefined|_], [_Dst|_], _}}) ->
     State;
-note_backfill_done(State, {move, {_V, [Src|_], [Dst|_]}}) ->
+note_backfill_done(State, {move, {_V, [Src|_], [Dst|_], _}}) ->
     updatef(State, #state.in_flight_backfills_per_node,
             fun (NowBackfills) ->
                     NowBackfills1 = dict:update_counter(Src, -1, NowBackfills),
@@ -461,9 +448,9 @@ note_backfill_done(State, {move, {_V, [Src|_], [Dst|_]}}) ->
 %% assumes that backfill phase of this move was previously marked as
 %% done. Users of this code will call it when move is done to update
 %% state so that next moves and/or compactions can be started.
-note_move_completed(State, {move, {_V, [undefined|_], [_Dst|_]}}) ->
+note_move_completed(State, {move, {_V, [undefined|_], [_Dst|_], _}}) ->
     updatef(State, #state.total_in_flight, fun (V) -> V - 1 end);
-note_move_completed(State, {move, {_V, [Src|_], [Dst|_]}}) ->
+note_move_completed(State, {move, {_V, [Src|_], [Dst|_], _}}) ->
     State1 =
         updatef(State, #state.in_flight_per_node,
                 fun (NowInFlight) ->

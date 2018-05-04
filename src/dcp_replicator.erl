@@ -25,10 +25,10 @@
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
 
--export([start_link/3,
-         get_partitions/2,
-         setup_replication/3,
-         takeover/3,
+-export([start_link/3, start_link/6,
+         get_partitions/1,
+         setup_replication/2, setup_replication/3,
+         takeover/2, takeover/3,
          wait_for_data_move/3,
          get_docs_estimate/3,
          get_connections/1]).
@@ -42,16 +42,13 @@
 -define(VBUCKET_POLL_INTERVAL, 100).
 -define(SHUT_CONSUMER_TIMEOUT, ?get_timeout(dcp_shut_consumer, 60000)).
 
-init({ProducerNode, Bucket, RepFeatures}) ->
+init({ConsumerNode, ProducerNode, Bucket, ConnName, RepFeatures}) ->
     process_flag(trap_exit, true),
 
-    ConnName = get_connection_name(node(), ProducerNode, Bucket),
-    {ok, ConsumerConn} = dcp_consumer_conn:start_link(ConnName, Bucket,
-                                                      RepFeatures),
+    {ok, ConsumerConn} = dcp_consumer_conn:start_link(ConnName, ConsumerNode,
+                                                      Bucket, RepFeatures),
     {ok, ProducerConn} = dcp_producer_conn:start_link(ConnName, ProducerNode,
                                                       Bucket, RepFeatures),
-
-    erlang:register(consumer_server_name(ProducerNode, Bucket), ConsumerConn),
 
     Proxies = dcp_proxy:connect_proxies(ConsumerConn, ProducerConn),
 
@@ -68,15 +65,28 @@ init({ProducerNode, Bucket, RepFeatures}) ->
             bucket = Bucket
            }}.
 
+start_link(Name, ConsumerNode, ProducerNode, Bucket, ConnName, RepFeatures) ->
+    %% We (and ep-engine actually) depend on this naming.
+    true = lists:prefix("replication:", ConnName),
+
+    Args0 = [?MODULE, {ConsumerNode,
+                       ProducerNode, Bucket, ConnName, RepFeatures}, []],
+    Args  = case Name of
+                undefined ->
+                    Args0;
+                _ ->
+                    [{local, Name} | Args0]
+            end,
+    erlang:apply(gen_server, start_link, Args).
+
 start_link(ProducerNode, Bucket, RepFeatures) ->
-    gen_server:start_link({local, server_name(ProducerNode, Bucket)}, ?MODULE,
-                          {ProducerNode, Bucket, RepFeatures}, []).
+    ConsumerNode = node(),
+    ConnName     = get_connection_name(ConsumerNode, ProducerNode, Bucket),
+    start_link(server_name(ProducerNode, Bucket),
+               ConsumerNode, ProducerNode, Bucket, ConnName, RepFeatures).
 
 server_name(ProducerNode, Bucket) ->
     list_to_atom(?MODULE_STRING "-" ++ Bucket ++ "-" ++ atom_to_list(ProducerNode)).
-
-consumer_server_name(ProducerNode, Bucket) ->
-    list_to_atom("dcp_consumer_conn-" ++ Bucket ++ "-" ++ atom_to_list(ProducerNode)).
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
@@ -120,26 +130,32 @@ handle_call({takeover, Partition}, _From, #state{consumer_conn = Pid} = State) -
                         end),
     {reply, RV, State};
 
+handle_call(get_partitions, _From, #state{consumer_conn = Pid} = State) ->
+    {reply, gen_server:call(Pid, get_partitions, infinity), State};
+
 handle_call(Command, _From, State) ->
     ?rebalance_warning("Unexpected handle_call(~p, ~p)", [Command, State]),
     {reply, refused, State}.
 
-get_partitions(ProducerNode, Bucket) ->
-    try gen_server:call(consumer_server_name(ProducerNode, Bucket), get_partitions, infinity) of
-        Result ->
-            Result
-    catch exit:{noproc, _} ->
+get_partitions(Pid) ->
+    try
+        gen_server:call(Pid, get_partitions, infinity)
+    catch
+        exit:{noproc, _} ->
             not_running
     end.
 
+setup_replication(Pid, Partitions) ->
+    gen_server:call(Pid, {setup_replication, Partitions}, infinity).
+
 setup_replication(ProducerNode, Bucket, Partitions) ->
-    gen_server:call(server_name(ProducerNode, Bucket),
-                    {setup_replication, Partitions}, infinity).
+    setup_replication(whereis(server_name(ProducerNode, Bucket)), Partitions).
+
+takeover(Replicator, Partition) ->
+    gen_server:call(Replicator, {takeover, Partition}, infinity).
 
 takeover(ProducerNode, Bucket, Partition) ->
-    gen_server:call(server_name(ProducerNode, Bucket),
-                    {takeover, Partition},
-                    infinity).
+    takeover(whereis(server_name(ProducerNode, Bucket)), Partition).
 
 wait_for_data_move(Nodes, Bucket, Partition) ->
     DoneLimit = ns_config:read_key_fast(dcp_move_done_limit, 1000),

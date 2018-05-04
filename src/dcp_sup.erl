@@ -24,6 +24,7 @@
 -export([start_link/1, init/1]).
 
 -export([get_children/1, manage_replicators/2, nuke/1]).
+-export([get_replication_features/0]).
 
 start_link(Bucket) ->
     supervisor:start_link({local, server_name(Bucket)}, ?MODULE, []).
@@ -40,8 +41,9 @@ init([]) ->
 
 get_children(Bucket) ->
     [{Node, C, T, M} ||
-        {{Node, _RepFeatures}, C, T, M} <-
-            supervisor:which_children(server_name(Bucket))].
+        {{Node, _RepFeatures}, C, T, M}
+            <- supervisor:which_children(server_name(Bucket)),
+        is_pid(C)].
 
 build_child_spec(Bucket, {ProducerNode, RepFeatures} = ChildId) ->
     {ChildId,
