@@ -21,7 +21,7 @@
 -include("mc_constants.hrl").
 -include("mc_entry.hrl").
 
--export([start_link/3,
+-export([start_link/4,
          setup_streams/2, takeover/2, maybe_close_stream/2, shut_connection/2]).
 
 -export([init/2, handle_packet/5, handle_call/4, handle_cast/3]).
@@ -46,9 +46,9 @@
                 partitions :: [vbucket_id()]
                }).
 
-start_link(ConnName, Bucket, RepFeatures) ->
-    dcp_proxy:start_link(consumer, ConnName, node(), Bucket,
-                         ?MODULE, [RepFeatures]).
+start_link(ConnName, ConsumerNode, Bucket, RepFeatures) ->
+    dcp_proxy:start_link(consumer, ConnName,
+                         ConsumerNode, Bucket, ?MODULE, [RepFeatures]).
 
 init([RepFeatures], ParentState) ->
     {#state{

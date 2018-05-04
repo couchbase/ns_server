@@ -20,6 +20,7 @@
 
 -include("ns_common.hrl").
 -include("cut.hrl").
+-include_lib("eunit/include/eunit.hrl").
 
 -export([handle_node/2,
          build_full_node_info/2,
@@ -473,18 +474,29 @@ handle_node_self_xdcr_ssl_ports(Req) ->
             reply_json(Req, {struct, Ports})
     end.
 
-validate_ix_cbas_path({"path", _}, _) ->
+validate_ix_cbas_path({_Param, DbPath}, DbPath) ->
     false;
 validate_ix_cbas_path({Param, Path}, DbPath) ->
-    case string:prefix(Path, DbPath) of
-        X when X =:= nomatch orelse X =:= [] ->
-            false;
-        _ ->
+    PathTokens = filename:split(Path),
+    DbPathTokens = filename:split(DbPath),
+    case lists:prefix(DbPathTokens, PathTokens) of
+        true ->
             {true, iolist_to_binary(
                       io_lib:format("'~p' (~s) must not be a sub-directory "
                                     "of 'data_path' (~s)",
-                                    [Param, Path, DbPath]))}
+                                    [Param, Path, DbPath]))};
+        false -> false
     end.
+
+-ifdef(EUNIT).
+validate_ix_cbas_path_test() ->
+    ?assertEqual(false, validate_ix_cbas_path({path, "/abc/def"}, "/abc/def")),
+    ?assertEqual(false, validate_ix_cbas_path({path2, "/abc/def"}, "/abc/def")),
+    ?assertMatch({true, _}, validate_ix_cbas_path({path2, "/ab/de"}, "/ab")),
+    ?assertMatch({true, _}, validate_ix_cbas_path({path2, "/ab/de/f"}, "/ab")),
+    ?assertEqual(false, validate_ix_cbas_path({path2, "/abc/def"}, "/abc/de")),
+    ?assertEqual(false, validate_ix_cbas_path({path2, "/abc"}, "/abc/hi")).
+-endif.
 
 validate_dir_path(Field, []) ->
     {error, iolist_to_binary(

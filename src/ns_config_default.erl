@@ -471,7 +471,8 @@ default() ->
      {{request_limit, rest}, undefined},
      {{request_limit, capi}, undefined},
      {drop_request_memory_threshold_mib, undefined},
-     {password_policy, [{min_length, 6}, {must_present, []}]}].
+     {password_policy, [{min_length, 6}, {must_present, []}]}] ++
+        rebalance_quirks:default_config().
 
 %% Recursively replace all strings in a hierarchy that start
 %% with a given Prefix with a ReplacementPrefix.  For example,
@@ -508,11 +509,17 @@ upgrade_config(Config) ->
             [{set, {node, node(), config_version}, {4,5}} |
              upgrade_config_from_4_1_1_to_4_5()];
         {value, {4,5}} ->
+            [{set, {node, node(), config_version}, {4,6,5}} |
+             upgrade_config_from_4_5_to_4_6_5()];
+        {value, {4,6,5}} ->
             [{set, {node, node(), config_version}, {5,0}} |
-             upgrade_config_from_4_5_to_5_0(Config)];
+             upgrade_config_from_4_6_5_to_5_0(Config)];
         {value, {5,0}} ->
+            [{set, {node, node(), config_version}, {5,1,1}},
+             upgrade_config_from_5_0_to_5_1_1()];
+        {value, {5,1,1}} ->
             [{set, {node, node(), config_version}, CurrentVersion} |
-             upgrade_config_from_5_0_to_5_5(Config)];
+             upgrade_config_from_5_1_1_to_5_5(Config)];
         V0 ->
             OldVersion =
                 case V0 of
@@ -577,19 +584,25 @@ do_upgrade_config_from_4_1_1_to_4_5(DefaultConfig) ->
      upgrade_key(memcached_defaults, DefaultConfig),
      upgrade_key(compaction_daemon, DefaultConfig)].
 
-upgrade_config_from_4_5_to_5_0(Config) ->
-    do_upgrade_config_from_4_5_to_5_0(Config, default()).
+upgrade_config_from_4_5_to_4_6_5() ->
+    rebalance_quirks:upgrade_config_project_intact_patched().
 
-do_upgrade_config_from_4_5_to_5_0(Config, DefaultConfig) ->
+upgrade_config_from_4_6_5_to_5_0(Config) ->
+    do_upgrade_config_from_4_6_5_to_5_0(Config, default()).
+
+do_upgrade_config_from_4_6_5_to_5_0(Config, DefaultConfig) ->
     [upgrade_sub_keys(memcached, [rbac_file], Config, DefaultConfig),
      upgrade_key(memcached_defaults, DefaultConfig),
      upgrade_key(memcached_config, DefaultConfig)].
 
-upgrade_config_from_5_0_to_5_5(Config) ->
-    DefaultConfig = default(),
-    do_upgrade_config_from_5_0_to_5_5(Config, DefaultConfig).
+upgrade_config_from_5_0_to_5_1_1() ->
+    rebalance_quirks:upgrade_config_project_intact_patched().
 
-do_upgrade_config_from_5_0_to_5_5(Config, DefaultConfig) ->
+upgrade_config_from_5_1_1_to_5_5(Config) ->
+    DefaultConfig = default(),
+    do_upgrade_config_from_5_1_1_to_5_5(Config, DefaultConfig).
+
+do_upgrade_config_from_5_1_1_to_5_5(Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
      upgrade_key(memcached_defaults, DefaultConfig),
      upgrade_sub_keys(memcached, [other_users], Config, DefaultConfig)].
@@ -659,7 +672,7 @@ upgrade_4_1_1_to_4_5_test() ->
                   {set, {node, _, compaction_daemon}, compaction_daemon_config}],
                  do_upgrade_config_from_4_1_1_to_4_5(Default)).
 
-upgrade_4_5_to_5_0_test() ->
+upgrade_4_6_5_to_5_0_test() ->
     Cfg = [[{some_key, some_value},
             {{node, node(), memcached},
              [{old, info}]},
@@ -676,9 +689,9 @@ upgrade_4_5_to_5_0_test() ->
                   {set, {node, _, memcached_defaults}, [{some, stuff},
                                                {new_field, enable}]},
                   {set, {node, _, memcached_config}, new_memcached_config}],
-                 do_upgrade_config_from_4_5_to_5_0(Cfg, Default)).
+                 do_upgrade_config_from_4_6_5_to_5_0(Cfg, Default)).
 
-upgrade_5_0_to_5_5_test() ->
+upgrade_5_1_1_to_5_5_test() ->
     Cfg = [[{some_key, some_value},
             {{node, node(), memcached}, [{old, info}, {other_users, old}]},
             {{node, node(), memcached_defaults}, old_memcached_defaults},
@@ -693,7 +706,7 @@ upgrade_5_0_to_5_5_test() ->
                   {set, {node, _, memcached_defaults}, [{some, stuff},
                                                         {new_field, enable}]},
                   {set, {node, _, memcached}, [{old, info}, {other_users, new}]}],
-                 do_upgrade_config_from_5_0_to_5_5(Cfg, Default)).
+                 do_upgrade_config_from_5_1_1_to_5_5(Cfg, Default)).
 
 no_upgrade_on_current_version_test() ->
     ?assertEqual([], upgrade_config([[{{node, node(), config_version}, get_current_version()}]])).
