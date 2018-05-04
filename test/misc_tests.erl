@@ -199,7 +199,3 @@ split_binary_at_char_test() ->
     ?assertEqual({<<"asd">>, <<"123">>}, misc:split_binary_at_char(<<"asd:123">>, $:)),
     ?assertEqual({<<"asd">>, <<"123:567">>}, misc:split_binary_at_char(<<"asd:123:567">>, $:)).
 
-string_prefix_test() ->
-    ?assertEqual("def", misc:string_prefix("abcdef", "abc")),
-    ?assertEqual([], misc:string_prefix("abc", "abc")),
-    ?assertEqual(nomatch, misc:string_prefix("abcdef", "ac")).

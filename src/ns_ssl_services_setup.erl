@@ -673,7 +673,7 @@ extract_user_name([Val | Rest], Prefix, Delimiters) ->
     end.
 
 do_extract_user_name(Name, Prefix, Delimiters) ->
-    Name1 = misc:string_prefix(Name, Prefix),
+    Name1 = string:prefix(Name, Prefix),
 
     case Name1 of
         nomatch ->

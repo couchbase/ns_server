@@ -476,7 +476,7 @@ handle_node_self_xdcr_ssl_ports(Req) ->
 validate_ix_cbas_path({"path", _}, _) ->
     false;
 validate_ix_cbas_path({Param, Path}, DbPath) ->
-    case misc:string_prefix(Path, DbPath) of
+    case string:prefix(Path, DbPath) of
         X when X =:= nomatch orelse X =:= [] ->
             false;
         _ ->

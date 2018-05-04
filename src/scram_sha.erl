@@ -334,7 +334,7 @@ build_client_first_message(Sha, Nonce, User) ->
 
 parse_server_first_response(Sha, Nonce, Header) ->
     Prefix = "A" ++ www_authenticate_prefix(Sha) ++ " ",
-    Message = misc:string_prefix(Header, Prefix),
+    Message = string:prefix(Header, Prefix),
     ["sid=" ++ Sid, "data=" ++ Data] = string:tokens(Message, ","),
 
     DecodedData = base64:decode_to_string(Data),
@@ -342,7 +342,7 @@ parse_server_first_response(Sha, Nonce, Header) ->
     ["r=" ++ ServerNonce, "s=" ++ Salt, "i=" ++ Iter] =
         string:tokens(DecodedData, ","),
 
-    ?assertNotEqual(nomatch, misc:string_prefix(ServerNonce, Nonce)),
+    ?assertNotEqual(nomatch, string:prefix(ServerNonce, Nonce)),
     {Sid, base64:decode(Salt), list_to_integer(Iter), ServerNonce, DecodedData}.
 
 build_client_final_message(Sha, Sid, Nonce, SaltedPassword, Message) ->
@@ -361,7 +361,7 @@ build_client_final_message(Sha, Sid, Nonce, SaltedPassword, Message) ->
 check_server_proof(Sha, Sid, SaltedPassword, Message, Header) ->
     Prefix = "Isid=" ++ Sid ++ ",data=",
     "v=" ++ ProofFromServer =
-        base64:decode_to_string(misc:string_prefix(Header, Prefix)),
+        base64:decode_to_string(string:prefix(Header, Prefix)),
 
     Proof = calculate_server_proof(Sha, SaltedPassword, Message),
     ?assertEqual(ProofFromServer, base64:encode_to_string(Proof)).
