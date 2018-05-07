@@ -470,7 +470,7 @@ upgrade_config(Config) ->
             [{set, {node, node(), config_version}, {5,0}} |
              upgrade_config_from_4_6_5_to_5_0(Config)];
         {value, {5,0}} ->
-            [{set, {node, node(), config_version}, CurrentVersion},
+            [{set, {node, node(), config_version}, CurrentVersion} |
              upgrade_config_from_5_0_to_5_1_1()];
         V0 ->
             OldVersion =
