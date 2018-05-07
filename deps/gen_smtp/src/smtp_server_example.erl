@@ -7,7 +7,8 @@
 
 -export([init/4, handle_HELO/2, handle_EHLO/3, handle_MAIL/2, handle_MAIL_extension/2,
 	handle_RCPT/2, handle_RCPT_extension/2, handle_DATA/4, handle_RSET/1, handle_VRFY/2,
-	handle_other/3, handle_AUTH/4, code_change/3, terminate/2]).
+	handle_other/3, handle_AUTH/4, handle_STARTTLS/1, handle_info/2,
+	code_change/3, terminate/2]).
 
 -define(RELAY, true).
 
@@ -131,7 +132,7 @@ handle_DATA(_From, _To, <<>>, State) ->
 	{error, "552 Message too small", State};
 handle_DATA(From, To, Data, State) ->
 	% some kind of unique id
-	Reference = lists:flatten([io_lib:format("~2.16.0b", [X]) || <<X>> <= erlang:md5(term_to_binary({erlang:monotonic_time(), erlang:unique_integer()}))]),
+    Reference = lists:flatten([io_lib:format("~2.16.0b", [X]) || <<X>> <= erlang:md5(term_to_binary(unique_id()))]),
 	% if RELAY is true, then relay email to email address, else send email data to console
 	case proplists:get_value(relay, State#state.options, false) of
 		true -> relay(From, To, Data);
@@ -195,6 +196,20 @@ handle_AUTH('cram-md5', <<"username">>, {Digest, Seed}, State) ->
 handle_AUTH(_Type, _Username, _Password, _State) ->
 	error.
 
+%% this callback is OPTIONAL
+%% it only gets called if you add STARTTLS to your ESMTP extensions
+-spec handle_STARTTLS(#state{}) -> #state{}.
+handle_STARTTLS(State) ->
+    io:format("TLS Started~n"),
+    State.
+
+-spec handle_info(Info :: term(), State :: term()) ->
+    {noreply, NewState :: term()} |
+    {noreply, NewState :: term(), timeout() | hibernate} |
+    {stop, Reason :: term(), NewState :: term()}.
+handle_info(_Info, State) ->
+	{noreply, State}.
+
 -spec code_change(OldVsn :: any(), State :: #state{}, Extra :: any()) -> {ok, #state{}}.
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
@@ -205,11 +220,19 @@ terminate(Reason, State) ->
 
 %%% Internal Functions %%%
 
+-ifdef(deprecated_now).
+unique_id() ->
+    erlang:unique_integer().
+-else.
+unique_id() ->
+    erlang:now().
+-endif.
+
+-spec relay(binary(), [binary()], binary()) -> ok.
 relay(_, [], _) ->
 	ok;
 relay(From, [To|Rest], Data) ->
 	% relay message to email address
-	[_User, Host] = string:tokens(To, "@"),
+	[_User, Host] = string:tokens(binary_to_list(To), "@"),
 	gen_smtp_client:send({From, [To], erlang:binary_to_list(Data)}, [{relay, Host}]),
 	relay(From, Rest, Data).
-

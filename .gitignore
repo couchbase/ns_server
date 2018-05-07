@@ -54,3 +54,4 @@ priv/isasl.pw
 test/log
 tmp
 .rebar/
+/deps/gen_smtp/src/smtp_rfc822_parse.erl
