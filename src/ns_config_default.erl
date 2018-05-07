@@ -474,21 +474,6 @@ default() ->
      {password_policy, [{min_length, 6}, {must_present, []}]}] ++
         rebalance_quirks:default_config().
 
-%% Recursively replace all strings in a hierarchy that start
-%% with a given Prefix with a ReplacementPrefix.  For example,
-%% use it like: prefix_replace("/opt/membase/bin", "/opt/couchbase/bin", ConfigKVItem).
-prefix_replace(Prefix, ReplacementPrefix, L) when is_list(L) ->
-    case lists:prefix(Prefix, L) of
-         true  -> ReplacementPrefix ++ lists:nthtail(length(Prefix), L);
-         false -> lists:map(fun (X) ->
-                                prefix_replace(Prefix, ReplacementPrefix, X)
-                            end,
-                            L)
-    end;
-prefix_replace(Prefix, ReplacementPrefix, T) when is_tuple(T) ->
-    list_to_tuple(prefix_replace(Prefix, ReplacementPrefix, tuple_to_list(T)));
-prefix_replace(_Prefix, _ReplacementPrefix, X) -> X.
-
 %% returns list of changes to config to upgrade it to current version.
 %% This will be invoked repeatedly by ns_config until list is empty.
 %%
@@ -710,14 +695,3 @@ upgrade_5_1_1_to_5_5_test() ->
 
 no_upgrade_on_current_version_test() ->
     ?assertEqual([], upgrade_config([[{{node, node(), config_version}, get_current_version()}]])).
-
-prefix_replace_test() ->
-    ?assertEqual("", prefix_replace("/foo", "/bar", "")),
-    ?assertEqual(foo, prefix_replace("/foo", "/bar", foo)),
-    ?assertEqual([], prefix_replace("/foo", "/bar", [])),
-    ?assertEqual([foo], prefix_replace("/foo", "/bar", [foo])),
-    ?assertEqual("/bar/x", prefix_replace("/foo", "/bar", "/foo/x")),
-    ?assertEqual([1, "/bar/x", 2], prefix_replace("/foo", "/bar", [1, "/foo/x", 2])),
-    ?assertEqual({1, "/bar/x", 2}, prefix_replace("/foo", "/bar", {1, "/foo/x", 2})),
-    ?assertEqual([1, "/bar/x", {"/bar/x"}],
-                 prefix_replace("/foo", "/bar", [1, "/foo/x", {"/foo/x"}])).
