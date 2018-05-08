@@ -191,6 +191,9 @@ setup_paths() ->
     [ets:insert(path_config_override, {K, TmpDir})
      || K <- [path_config_tmpdir, path_config_datadir,
               path_config_libdir, path_config_etcdir]],
+
+    application:set_env(ns_server, error_logger_mf_dir, TmpDir),
+
     ok.
 
 spawn_listener() ->
