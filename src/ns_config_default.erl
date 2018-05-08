@@ -28,11 +28,6 @@
 get_current_version() ->
     list_to_tuple(?VERSION_55).
 
-ensure_data_dir() ->
-    RawDir = path_config:component_path(data),
-    ok = misc:mkdir_p(RawDir),
-    RawDir.
-
 get_data_dir() ->
     RawDir = path_config:component_path(data),
     case misc:realpath(RawDir, "/") of
@@ -81,8 +76,8 @@ init_ldap_enabled() ->
     IsForced orelse IsLinux.
 
 default() ->
-    ensure_data_dir(),
     DataDir = get_data_dir(),
+    ok = misc:mkdir_p(DataDir),
 
     DefaultQuotas = memory_quota:default_quotas([kv, cbas, fts]),
     {_, KvQuota} = lists:keyfind(kv, 1, DefaultQuotas),
