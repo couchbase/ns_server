@@ -88,7 +88,7 @@
 % Exported for tests only
 -export([save_file/3, load_config/3,
          load_file/2, send_config/2,
-         test_setup/1]).
+         test_setup/1, upgrade_config/2]).
 
 % A static config file is often hand edited.
 % potentially with in-line manual comments.

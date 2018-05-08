@@ -16,6 +16,7 @@
 -module(ns_config_default).
 
 -include("ns_common.hrl").
+-include("ns_config.hrl").
 
 -include_lib("eunit/include/eunit.hrl").
 
@@ -690,3 +691,16 @@ upgrade_5_1_1_to_5_5_test() ->
 
 no_upgrade_on_current_version_test() ->
     ?assertEqual([], upgrade_config([[{{node, node(), config_version}, get_current_version()}]])).
+
+all_upgrades_test() ->
+    Default = default(),
+    KVs = misc:update_proplist(Default,
+                               [{{node, node(), config_version}, {4,0}}]),
+    Cfg = #config{dynamic = [KVs], uuid = <<"uuid">>},
+    UpgradedCfg = ns_config:upgrade_config(Cfg, fun upgrade_config/1),
+
+    UpgradedKVs = [{K, ns_config:strip_metadata(V)} ||
+                      {K, V} <- hd(UpgradedCfg#config.dynamic)],
+
+    ?assertEqual([], UpgradedKVs -- Default),
+    ?assertEqual([], Default -- UpgradedKVs).
