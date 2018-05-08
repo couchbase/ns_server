@@ -226,9 +226,6 @@ child_specs() ->
      {cluster_logs_sup, {cluster_logs_sup, start_link, []},
       permanent, infinity, supervisor, []},
 
-     {remote_api, {remote_api, start_link, []},
-      permanent, 1000, worker, [remote_api]},
-
      %% Starts mb_master_sup, which has all processes that start on the master
      %% node.
      restartable:spec(

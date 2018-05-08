@@ -66,7 +66,9 @@ init([]) ->
             [json_rpc_connection_sup]},
            restartable:spec(
              {ns_server_nodes_sup, {ns_server_nodes_sup, start_link, []},
-              permanent, infinity, supervisor, [ns_server_nodes_sup]})
+              permanent, infinity, supervisor, [ns_server_nodes_sup]}),
+           {remote_api, {remote_api, start_link, []},
+            permanent, 1000, worker, [remote_api]}
           ]}}.
 
 %% @doc Start ns_server and couchdb
