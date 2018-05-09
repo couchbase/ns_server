@@ -325,31 +325,13 @@ spawn_compaction_uninhibitor(Bucket, Node, MRef) ->
               Parent ! {compaction_done, Node}
       end).
 
-get_node_version(Node) ->
-    case ets:lookup(node_versions_for_rebalance, Node) of
-        [] ->
-            [0, 0, 0];
-        [{Node, Version}] ->
-            Version
-    end.
-
 -spec uninhibit_view_compaction(bucket_name(), pid(), node(), reference()) -> ok | nack.
 uninhibit_view_compaction(Bucket, Rebalancer, Node, MRef) ->
-    case get_node_version(Node) >= [3, 0, 0] of
-        true ->
-            janitor_agent:uninhibit_view_compaction(Bucket, Rebalancer, Node, MRef);
-        false ->
-            compaction_daemon:uninhibit_view_compaction(Bucket, Node, MRef)
-    end.
+    janitor_agent:uninhibit_view_compaction(Bucket, Rebalancer, Node, MRef).
 
 -spec inhibit_view_compaction(bucket_name(), pid(), node()) -> {ok, reference()} | nack.
 inhibit_view_compaction(Bucket, Rebalancer, Node) ->
-    case get_node_version(Node) >= [3, 0, 0] of
-        true ->
-            janitor_agent:inhibit_view_compaction(Bucket, Rebalancer, Node);
-        false ->
-            compaction_daemon:inhibit_view_compaction(Bucket, Node, Rebalancer)
-    end.
+    janitor_agent:inhibit_view_compaction(Bucket, Rebalancer, Node).
 
 %% @doc Spawn workers up to the per-node maximum.
 -spec spawn_workers(#state{}) -> {noreply, #state{}} | {stop, normal, #state{}}.

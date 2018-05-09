@@ -83,20 +83,8 @@ multi_call(Request) ->
     Results =
         misc:parallel_map(
           fun (Node) ->
-                  case rpc:call(Node, ?MODULE, handle_call, [RequestBin], ?RPC_TIMEOUT) of
-                      {badrpc, {'EXIT', Reason}} = RV ->
-                          case misc:is_undef_exit(?MODULE, handle_call, [RequestBin], Reason) of
-                              true ->
-                                  %% backwards compat with pre 3.0 nodes
-                                  gen_fsm:sync_send_all_state_event({compaction_daemon, Node},
-                                                                    RequestBin,
-                                                                    ?RPC_TIMEOUT);
-                              false ->
-                                  RV
-                          end;
-                      RV ->
-                          RV
-                  end
+                  rpc:call(Node, ?MODULE, handle_call, [RequestBin],
+                           ?RPC_TIMEOUT)
           end, Nodes, infinity),
 
     case lists:filter(

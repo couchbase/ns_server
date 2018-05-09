@@ -220,9 +220,6 @@ child_specs() ->
      {services_stats_sup, {services_stats_sup, start_link, []},
       permanent, infinity, supervisor, []},
 
-     {compaction_daemon, {compaction_daemon, start_link, []},
-      permanent, 1000, worker, [compaction_daemon]},
-
      {compaction_new_daemon, {compaction_new_daemon, start_link, []},
       {permanent, 4}, 86400000, worker, [compaction_new_daemon]},
 
