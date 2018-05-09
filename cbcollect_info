@@ -1104,8 +1104,14 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
 
         [AllOsTask("fts mossScope (%s)" % path,
                    ["mossScope", "stats", "diag", path],
-                   log_file="fts_mossScope_stats.log")
-         for path in glob.glob(os.path.join(viewdir, "@fts", "*.pindex", "store"))],
+                   log_file="fts_store_stats.log")
+         for path in glob.glob(os.path.join(viewdir, "@fts", "*.pindex", "store"))
+            if any(".moss" in entry for entry in os.listdir(path))],
+
+        [AllOsTask("fts scorch zap (%s)" % path,
+                   ["cbft-bleve", "zap", "footer", path],
+                   log_file="fts_store_stats.log")
+         for path in glob.glob(os.path.join(viewdir, "@fts", "*.pindex", "store", "*.zap"))],
 
         [AllOsTask("ddocs for %s (%s)" % (bucket, path),
                    ["couch_dbdump", path],
