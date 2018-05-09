@@ -179,6 +179,7 @@ handle_register_name(Name, Pid, From, State) ->
             State;
         not_found ->
             cache_name(Name, Pid),
+            maybe_register_with_global(Name, Pid),
             reply(From, yes),
             State
     end.
@@ -296,4 +297,12 @@ get_cached_name(Name) ->
     catch
         error:badarg ->
             not_running
+    end.
+
+maybe_register_with_global(Name, Pid) ->
+    case cluster_compat_mode:is_cluster_55() of
+        true ->
+            ok;
+        false ->
+            yes = global:register_name(Name, Pid)
     end.
