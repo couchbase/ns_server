@@ -21,6 +21,7 @@
 
 -include("ns_common.hrl").
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("cut.hrl").
 
 %% Constants and definitions
 -define(HEARTBEAT_INTERVAL, 2000).
@@ -234,7 +235,7 @@ candidate(info, send_heartbeat, #state{peers=Peers} = StateData) ->
         false ->
             keep_state_and_data
     end;
-candidate(cast, {heartbeat, NodeInfo, master, _H},
+candidate(info, {heartbeat, NodeInfo, master, _H},
           #state{peers=Peers} = State) ->
     Node = node_info_to_node(NodeInfo),
 
@@ -287,7 +288,7 @@ candidate(cast, {heartbeat, NodeInfo, master, _H},
             {keep_state, NewState}
     end;
 
-candidate(cast, {heartbeat, NodeInfo, candidate, _H},
+candidate(info, {heartbeat, NodeInfo, candidate, _H},
           #state{peers=Peers} = State) ->
     Node = node_info_to_node(NodeInfo),
 
@@ -330,7 +331,7 @@ master(info, send_heartbeat, StateData) ->
 
     send_heartbeat_with_peers(ns_node_disco:nodes_wanted(), master, StateData#state.peers),
     keep_state_and_data;
-master(cast, {heartbeat, NodeInfo, master, _H}, #state{peers=Peers} = State) ->
+master(info, {heartbeat, NodeInfo, master, _H}, #state{peers=Peers} = State) ->
     Node = node_info_to_node(NodeInfo),
 
     case lists:member(Node, Peers) of
@@ -355,7 +356,7 @@ master(cast, {heartbeat, NodeInfo, master, _H}, #state{peers=Peers} = State) ->
             keep_state_and_data
     end;
 
-master(cast, {heartbeat, NodeInfo, candidate, _H}, #state{peers=Peers} = State) ->
+master(info, {heartbeat, NodeInfo, candidate, _H}, #state{peers=Peers} = State) ->
     Node = node_info_to_node(NodeInfo),
 
     case lists:member(Node, Peers) of
@@ -378,7 +379,7 @@ handle_event({call, From}, master_node, _State, StateData) ->
 %% Backward compitibility: handle heartbeats from nodes that are older than
 %%                         Mad-Hatter where gen_fsm is running
 handle_event(info, {'$gen_event', Event}, State, StateData) ->
-    erlang:apply(?MODULE, State, [cast, Event, StateData]);
+    erlang:apply(?MODULE, State, [info, Event, StateData]);
 handle_event(Type, Msg, State, StateData) ->
     ?log_warning("Got unexpected event ~p of type ~p in state ~p with data ~p",
                  [Msg, Type, State, StateData]),
@@ -397,22 +398,19 @@ send_heartbeat_with_peers(Nodes, StateName, Peers) ->
             [{peers, Peers},
              {versioning, true}]},
     try
+        %% we try to avoid sending event to nodes that are
+        %% down. Because send call inside gen_fsm will try to
+        %% establish connection each time we try to send.
+        %% + also exclude local node here
+        AliveNodes = lists:filter(lists:member(_, nodes()), Nodes),
+        IsMadHatter = cluster_compat_mode:is_cluster_madhatter(),
         misc:parallel_map(
-          fun (Node) ->
-                  %% we try to avoid sending event to nodes that are
-                  %% down. Because send call inside gen_statem will try to
-                  %% establish connection each time we try to send.
-                  case lists:member(Node, nodes()) of
-                      true ->
-                          case cluster_compat_mode:is_cluster_madhatter() of
-                              true ->
-                                  gen_statem:cast({?MODULE, Node}, Args);
-                              false ->
-                                  gen_fsm:send_event({?MODULE, Node}, Args)
-                          end;
-                      _ -> ok
-                  end
-          end, Nodes, 2000)
+          fun (Node) when IsMadHatter ->
+                  catch erlang:send({?MODULE, Node}, Args, [noconnect]);
+              (Node) ->
+                  gen_fsm:send_event({?MODULE, Node}, Args)
+          end, AliveNodes, 2000),
+        ok
     catch exit:timeout ->
             ?log_warning("send heartbeat timed out~n", [])
     end.
