@@ -12,11 +12,8 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
-%%
-%% @doc compaction daemon for 3.0. should be renamed to compaction_daemon after
-%% compatibility with pre 3.0 nodes will be dropped
-%%
--module(compaction_new_daemon).
+
+-module(compaction_daemon).
 
 -behaviour(gen_server).
 

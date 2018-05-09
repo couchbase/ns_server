@@ -99,7 +99,7 @@ multi_call(Request) ->
     ok.
 
 handle_call(Request) ->
-    gen_server:call(compaction_new_daemon, Request, infinity).
+    gen_server:call(compaction_daemon, Request, infinity).
 
 log_failed({force_compact_bucket, Bucket}, Failed) ->
     ale:error(?USER_LOGGER,
