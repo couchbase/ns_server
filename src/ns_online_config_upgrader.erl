@@ -91,7 +91,7 @@ upgrade(?VERSION_51, Config) ->
          leader_quorum_nodes_manager:config_upgrade_to_55(Config) ++
          scram_sha:config_upgrade_to_55()};
 
-upgrade(?VERSION_55, Config) ->
+upgrade(?VERSION_55, _Config) ->
     {?VERSION_MADHATTER, []}.
 
 add_index_ram_alert_limit(Config) ->
