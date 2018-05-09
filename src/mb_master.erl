@@ -17,6 +17,8 @@
 
 -behaviour(gen_statem).
 
+-compile({nowarn_deprecated_function, [{gen_fsm,send_event,2}]}).
+
 -include("ns_common.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
@@ -373,6 +375,10 @@ handle_event(info, {'EXIT', _From, Reason} = Msg, _, _) ->
     exit(Reason);
 handle_event({call, From}, master_node, _State, StateData) ->
     {keep_state_and_data, [{reply, From, StateData#state.master}]};
+%% Backward compitibility: handle heartbeats from nodes that are older than
+%%                         Mad-Hatter where gen_fsm is running
+handle_event(info, {'$gen_event', Event}, State, StateData) ->
+    erlang:apply(?MODULE, State, [cast, Event, StateData]);
 handle_event(Type, Msg, State, StateData) ->
     ?log_warning("Got unexpected event ~p of type ~p in state ~p with data ~p",
                  [Msg, Type, State, StateData]),
@@ -398,7 +404,12 @@ send_heartbeat_with_peers(Nodes, StateName, Peers) ->
                   %% establish connection each time we try to send.
                   case lists:member(Node, nodes()) of
                       true ->
-                          gen_statem:cast({?MODULE, Node}, Args);
+                          case cluster_compat_mode:is_cluster_madhatter() of
+                              true ->
+                                  gen_statem:cast({?MODULE, Node}, Args);
+                              false ->
+                                  gen_fsm:send_event({?MODULE, Node}, Args)
+                          end;
                       _ -> ok
                   end
           end, Nodes, 2000)
