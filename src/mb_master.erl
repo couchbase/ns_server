@@ -15,7 +15,7 @@
 %%
 -module(mb_master).
 
--behaviour(gen_fsm).
+-behaviour(gen_statem).
 
 -include("ns_common.hrl").
 -include_lib("eunit/include/eunit.hrl").
@@ -37,17 +37,15 @@
          master_node/0]).
 
 
-%% gen_fsm callbacks
+%% gen_statem callbacks
 -export([code_change/4,
          init/1,
-         handle_event/3,
-         handle_info/3,
-         handle_sync_event/4,
+         callback_mode/0,
          terminate/3]).
 
 %% States
--export([candidate/2,
-         master/2]).
+-export([candidate/3,
+         master/3]).
 
 %%
 %% API
@@ -55,18 +53,19 @@
 
 start_link() ->
     maybe_invalidate_current_master(),
-    gen_fsm:start_link({local, ?MODULE}, ?MODULE, [], []).
-
+    gen_statem:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 %% @doc Returns the master node for the cluster, or undefined if it's
 %% not known yet.
 master_node() ->
-    gen_fsm:sync_send_all_state_event(?MODULE, master_node).
-
+    gen_statem:call(?MODULE, master_node).
 
 %%
-%% gen_fsm handlers
+%% gen_statem handlers
 %%
+
+callback_mode() ->
+    state_functions.
 
 init([]) ->
     Self = self(),
@@ -176,17 +175,34 @@ check_master_takeover_needed(Peers) ->
             end
     end.
 
-handle_event(Event, StateName, StateData) ->
-    ?log_warning("Got unexpected event ~p in state ~p with data ~p",
-                 [Event, StateName, StateData]),
-    {next_state, StateName, StateData}.
+code_change(_OldVsn, StateName, StateData, _Extra) ->
+    {ok, StateName, StateData}.
 
 
-handle_info({'EXIT', _From, Reason} = Msg, _, _) ->
-    ?log_info("Dying because of linked process exit: ~p~n", [Msg]),
-    exit(Reason);
+terminate(_Reason, _StateName, StateData) ->
+    case StateData of
+        #state{child=Child} when is_pid(Child) ->
+            ?log_info("Synchronously shutting down child mb_master_sup"),
+            misc:unlink_terminate_and_wait(Child, shutdown);
+        _ ->
+            ok
+    end.
 
-handle_info(send_heartbeat, candidate, #state{peers=Peers} = StateData) ->
+
+%%
+%% States
+%%
+
+candidate(info, {peers, Peers}, StateData) ->
+    S = update_peers(StateData, Peers),
+    case Peers of
+        [N] when N == node() ->
+            ale:info(?USER_LOGGER, "I'm now the only node, so I'm the master.", []),
+            {next_state, master, start_master(S)};
+        _ ->
+            {keep_state, S}
+    end;
+candidate(info, send_heartbeat, #state{peers=Peers} = StateData) ->
     case misc:flush(send_heartbeat) of
         0 -> ok;
         Eaten ->
@@ -214,79 +230,17 @@ handle_info(send_heartbeat, candidate, #state{peers=Peers} = StateData) ->
                      "a master, so I'm taking over.", []),
             {next_state, master, start_master(StateData)};
         false ->
-            {next_state, candidate, StateData}
+            keep_state_and_data
     end;
-
-handle_info(send_heartbeat, master, StateData) ->
-    case misc:flush(send_heartbeat) of
-        0 -> ok;
-        Eaten ->
-            ?log_warning("Skipped ~p heartbeats~n", [Eaten])
-    end,
-
-    send_heartbeat_with_peers(ns_node_disco:nodes_wanted(), master, StateData#state.peers),
-    {next_state, master, StateData};
-
-handle_info({peers, Peers}, master, StateData) ->
-    S = update_peers(StateData, Peers),
-    case lists:member(node(), Peers) of
-        true ->
-            {next_state, master, S};
-        false ->
-            ?log_info("Master has been demoted. Peers = ~p", [Peers]),
-            NewState = shutdown_master_sup(S),
-            {next_state, candidate, NewState}
-    end;
-
-handle_info({peers, Peers}, candidate, StateData) ->
-    S = update_peers(StateData, Peers),
-    case Peers of
-        [N] when N == node() ->
-            ale:info(?USER_LOGGER, "I'm now the only node, so I'm the master.", []),
-            {next_state, master, start_master(S)};
-        _ ->
-            {next_state, candidate, S}
-    end;
-
-handle_info(Info, StateName, StateData) ->
-    ?log_warning("Unexpected handle_info(~p, ~p, ~p)",
-                 [Info, StateName, StateData]),
-    {next_state, StateName, StateData}.
-
-
-handle_sync_event(master_node, _From, StateName, StateData) ->
-    {reply, StateData#state.master, StateName, StateData};
-
-handle_sync_event(_, _, StateName, StateData) ->
-    {reply, unhandled, StateName, StateData}.
-
-
-code_change(_OldVsn, StateName, StateData, _Extra) ->
-    {ok, StateName, StateData}.
-
-
-terminate(_Reason, _StateName, StateData) ->
-    case StateData of
-        #state{child=Child} when is_pid(Child) ->
-            ?log_info("Synchronously shutting down child mb_master_sup"),
-            misc:unlink_terminate_and_wait(Child, shutdown);
-        _ ->
-            ok
-    end.
-
-
-%%
-%% States
-%%
-
-candidate({heartbeat, NodeInfo, master, _H}, #state{peers=Peers} = State) ->
+candidate(cast, {heartbeat, NodeInfo, master, _H},
+          #state{peers=Peers} = State) ->
     Node = node_info_to_node(NodeInfo),
 
     case lists:member(Node, Peers) of
         false ->
             ?log_warning("Candidate got master heartbeat from node ~p "
                          "which is not in peers ~p", [Node, Peers]),
-            {next_state, candidate, State};
+            keep_state_and_data;
         true ->
             %% If master is of strongly lower priority than we are, then we send fake
             %% mastership hertbeat to force previous master to surrender. Thus
@@ -328,10 +282,11 @@ candidate({heartbeat, NodeInfo, master, _H}, #state{peers=Peers} = State) ->
                               [OldMaster, NewMaster]),
                     announce_leader(NewMaster)
             end,
-            {next_state, candidate, NewState}
+            {keep_state, NewState}
     end;
 
-candidate({heartbeat, NodeInfo, candidate, _H}, #state{peers=Peers} = State) ->
+candidate(cast, {heartbeat, NodeInfo, candidate, _H},
+          #state{peers=Peers} = State) ->
     Node = node_info_to_node(NodeInfo),
 
     case lists:member(Node, Peers) of
@@ -339,24 +294,41 @@ candidate({heartbeat, NodeInfo, candidate, _H}, #state{peers=Peers} = State) ->
             case higher_priority_node(NodeInfo) of
                 true ->
                     %% Higher priority node
-                    {next_state, candidate, State#state{last_heard=time_compat:monotonic_time()}};
+                    {keep_state, State#state{last_heard=time_compat:monotonic_time()}};
                 false ->
                     %% Lower priority, so ignore it
-                    {next_state, candidate, State}
+                    keep_state_and_data
             end;
         false ->
             ?log_warning("Candidate got candidate heartbeat from node ~p which "
                          "is not in peers ~p", [Node, Peers]),
-            {next_state, candidate, State}
+            keep_state_and_data
+
     end;
 
-candidate(Event, State) ->
-    ?log_warning("Got unexpected event ~p as candidate with state ~p",
-                 [Event, State]),
-    {next_state, candidate, State}.
+candidate(Type, Msg, State) ->
+    handle_event(Type, Msg, candidate, State).
 
+master(info, {peers, Peers}, StateData) ->
+    S = update_peers(StateData, Peers),
+    case lists:member(node(), Peers) of
+        true ->
+            {keep_state, S};
+        false ->
+            ?log_info("Master has been demoted. Peers = ~p", [Peers]),
+            NewState = shutdown_master_sup(S),
+            {next_state, candidate, NewState}
+    end;
+master(info, send_heartbeat, StateData) ->
+    case misc:flush(send_heartbeat) of
+        0 -> ok;
+        Eaten ->
+            ?log_warning("Skipped ~p heartbeats~n", [Eaten])
+    end,
 
-master({heartbeat, NodeInfo, master, _H}, #state{peers=Peers} = State) ->
+    send_heartbeat_with_peers(ns_node_disco:nodes_wanted(), master, StateData#state.peers),
+    keep_state_and_data;
+master(cast, {heartbeat, NodeInfo, master, _H}, #state{peers=Peers} = State) ->
     Node = node_info_to_node(NodeInfo),
 
     case lists:member(Node, Peers) of
@@ -373,15 +345,15 @@ master({heartbeat, NodeInfo, master, _H}, #state{peers=Peers} = State) ->
                 false ->
                     ?log_info("Got master heartbeat from ~p when I'm master",
                               [Node]),
-                    {next_state, master, State#state{last_heard=Now}}
+                    {keep_state, State#state{last_heard=Now}}
             end;
         false ->
             ?log_warning("Master got master heartbeat from node ~p which is "
                          "not in peers ~p", [Node, Peers]),
-            {next_state, master, State}
+            keep_state_and_data
     end;
 
-master({heartbeat, NodeInfo, candidate, _H}, #state{peers=Peers} = State) ->
+master(cast, {heartbeat, NodeInfo, candidate, _H}, #state{peers=Peers} = State) ->
     Node = node_info_to_node(NodeInfo),
 
     case lists:member(Node, Peers) of
@@ -391,12 +363,20 @@ master({heartbeat, NodeInfo, candidate, _H}, #state{peers=Peers} = State) ->
             ?log_warning("Master got candidate heartbeat from node ~p which is "
                          "not in peers ~p", [Node, Peers])
     end,
-    {next_state, master, State#state{last_heard=time_compat:monotonic_time()}};
+    {keep_state, State#state{last_heard=time_compat:monotonic_time()}};
 
-master(Event, State) ->
-    ?log_warning("Got unexpected event ~p as master with state ~p",
-                 [Event, State]),
-    {next_state, master, State}.
+master(Type, Msg, State) ->
+    handle_event(Type, Msg, master, State).
+
+handle_event(info, {'EXIT', _From, Reason} = Msg, _, _) ->
+    ?log_info("Dying because of linked process exit: ~p~n", [Msg]),
+    exit(Reason);
+handle_event({call, From}, master_node, _State, StateData) ->
+    {keep_state_and_data, [{reply, From, StateData#state.master}]};
+handle_event(Type, Msg, State, StateData) ->
+    ?log_warning("Got unexpected event ~p of type ~p in state ~p with data ~p",
+                 [Msg, Type, State, StateData]),
+    keep_state_and_data.
 
 %%
 %% Internal functions
@@ -414,11 +394,11 @@ send_heartbeat_with_peers(Nodes, StateName, Peers) ->
         misc:parallel_map(
           fun (Node) ->
                   %% we try to avoid sending event to nodes that are
-                  %% down. Because send call inside gen_fsm will try to
+                  %% down. Because send call inside gen_statem will try to
                   %% establish connection each time we try to send.
                   case lists:member(Node, nodes()) of
                       true ->
-                          gen_fsm:send_event({?MODULE, Node}, Args);
+                          gen_statem:cast({?MODULE, Node}, Args);
                       _ -> ok
                   end
           end, Nodes, 2000)
