@@ -28,13 +28,13 @@
 -export([register_name/2, unregister_name/1, whereis_name/1, send/2]).
 
 register_name(Name, Pid) ->
-    wrap_regisry_api(register_name, [Name, Pid]).
+    wrap_registry_api(register_name, [Name, Pid]).
 
 unregister_name(Name) ->
-    wrap_regisry_api(unregister_name, [Name]).
+    wrap_registry_api(unregister_name, [Name]).
 
 whereis_name(Name) ->
-    wrap_regisry_api(whereis_name, [Name]).
+    wrap_registry_api(whereis_name, [Name]).
 
 send(Name, Msg) ->
     case whereis_name(Name) of
@@ -59,7 +59,7 @@ backends() ->
             end
     end.
 
-wrap_regisry_api(Name, Args) ->
+wrap_registry_api(Name, Args) ->
     Empty = make_ref(),
     lists:foldl(
       fun (Mod, PrevResult) ->
