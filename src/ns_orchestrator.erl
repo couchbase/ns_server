@@ -365,12 +365,7 @@ init([]) ->
     self() ! janitor,
     timer2:send_interval(?JANITOR_INTERVAL, janitor),
 
-    try
-        consider_switching_compat_mode()
-    catch exit:normal ->
-            %% There's no need to restart us here. So if we've changed compat mode in init suppress exit
-            ok
-    end,
+    consider_switching_compat_mode_dont_exit(),
 
     {ok, idle, #idle_state{}}.
 

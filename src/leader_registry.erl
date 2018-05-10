@@ -14,12 +14,9 @@
 %% limitations under the License.
 
 %% This module provides a wrapper around global and
-%% leader_registry_server. This is needed for providing backward compatibility
-%% in mixed clusters. This is achieved by registering both with global and
-%% leader_registry_server when cluster compatibility version is not
-%% 5.5. Eventually, %% we'll just be able to replace leader_registry with
-%% leader_registry_server once backward compatibility is not a concern
-%% anymore.
+%% leader_registry_server. Normally, leader_registry_server is called. But if
+%% the end user chooses to disable new orchestration, the module will revert
+%% to using global.
 -module(leader_registry).
 
 -include("ns_common.hrl").
@@ -28,56 +25,25 @@
 -export([register_name/2, unregister_name/1, whereis_name/1, send/2]).
 
 register_name(Name, Pid) ->
-    wrap_regisry_api(register_name, [Name, Pid]).
+    wrap_registry_api(register_name, [Name, Pid]).
 
 unregister_name(Name) ->
-    wrap_regisry_api(unregister_name, [Name]).
+    wrap_registry_api(unregister_name, [Name]).
 
 whereis_name(Name) ->
-    wrap_regisry_api(whereis_name, [Name]).
+    wrap_registry_api(whereis_name, [Name]).
 
 send(Name, Msg) ->
-    case whereis_name(Name) of
-        Pid when is_pid(Pid) ->
-            Pid ! Msg,
-            Pid;
-        undefined ->
-            exit({badarg, {Name, Msg}})
-    end.
+    wrap_registry_api(send, [Name, Msg]).
 
 %% internal
-backends() ->
+backend() ->
     case leader_utils:is_new_orchestration_disabled() of
         true ->
-            [global];
+            global;
         false ->
-            case cluster_compat_mode:is_cluster_55() of
-                true ->
-                    [leader_registry_server];
-                false ->
-                    [global, leader_registry_server]
-            end
+            leader_registry_server
     end.
 
-wrap_regisry_api(Name, Args) ->
-    Empty = make_ref(),
-    lists:foldl(
-      fun (Mod, PrevResult) ->
-              Result = erlang:apply(Mod, Name, Args),
-
-              case PrevResult =:= Empty orelse PrevResult =:= Result of
-                  true ->
-                      ok;
-                  false ->
-                      ?log_error("Leader registry backend ~p:~p(~p) "
-                                 "result '~p' is different "
-                                 "from the previous '~p'",
-                                 [Mod, Name, Args, Result, PrevResult]),
-                      exit({leader_registry_results_dont_match,
-                            {Mod, Name, Args},
-                            Result,
-                            PrevResult})
-              end,
-
-              Result
-      end, Empty, backends()).
+wrap_registry_api(Name, Args) ->
+    erlang:apply(backend(), Name, Args).

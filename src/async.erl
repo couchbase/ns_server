@@ -181,7 +181,6 @@ get_identity() ->
 
 %% internal
 async_init(Parent, ParentController, Opts, Fun) ->
-    process_flag(trap_exit, true),
     erlang:monitor(process, Parent),
 
     set_role(controller),
@@ -192,6 +191,8 @@ async_init(Parent, ParentController, Opts, Fun) ->
 
     Adopters = proplists:get_value(adopters, Opts, []),
     lists:foreach(register_for_adoption(_), Adopters),
+
+    process_flag(trap_exit, true),
 
     Reply      = make_ref(),
     Controller = self(),
