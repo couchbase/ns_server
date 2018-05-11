@@ -19,7 +19,7 @@
     function link($scope, $element, $attr) {
       if ($attr.mnAutocompleteOff === "enforce" || !$rootScope.ENV || $rootScope.ENV.disable_autocomplete) {
         //avoiding autocomplete via additional input
-        var input = angular.element('<input style="display:none" readonly disabled>');
+        var input = angular.element('<input style="display:none" readonly disabled autocomplete="off">');
         input.attr("type", $attr.type);
         input.attr("name", $attr.name);
         $element.parent()[0].insertBefore(input[0], $element[0]);
