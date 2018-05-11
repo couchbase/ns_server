@@ -18,12 +18,13 @@
         Data
       </label>
     </div>
-    <div class="form-inline width-7 text-right">
+    <div class="row width-6 flex-right">
       <input
          type="number"
          mn-focus
          ng-disabled="config.services && !config.services.model.kv || (rbac && !rbac.cluster.pools.write)"
-         ng-model="config.memoryQuota">
+         ng-model="config.memoryQuota"
+         class="margin-right-half">
       <small>MB</small>
     </div>
   </div>
@@ -50,13 +51,14 @@
         Index
       </label>
     </div>
-    <div class="form-inline width-7 text-right">
+    <div class="row width-6 flex-right">
       <input
          type="number"
          min="0"
          ng-disabled="config.services && !config.services.model.index || (rbac && !rbac.cluster.pools.write)"
          mn-focus="config.services.model.kv === false"
-         ng-model="config.indexMemoryQuota">
+         ng-model="config.indexMemoryQuota"
+         class="margin-right-half">
       <small>MB</small>
     </div>
   </div>
@@ -83,12 +85,13 @@
         Search
       </label>
     </div>
-    <div class="form-inline width-7 text-right">
+    <div class="row width-6 flex-right">
       <input
          type="number"
          mn-focus="config.services.model.kv === false && config.services.model.index  === false"
          ng-disabled="config.services && !config.services.model.fts || (rbac && !rbac.cluster.pools.write)"
-         ng-model="config.ftsMemoryQuota">
+         ng-model="config.ftsMemoryQuota"
+         class="margin-right-half">
       <small>MB</small>
     </div>
   </div>
@@ -121,12 +124,13 @@
         </span>
       </label>
     </div>
-    <div class="form-inline width-7 text-right">
+    <div class="row width-6 flex-right">
       <input
          type="number"
          mn-focus="config.services.model.kv === false && config.services.model.index  === false"
          ng-disabled="config.services && !config.services.model.cbas || (rbac && !rbac.cluster.pools.write)"
-         ng-model="config.cbasMemoryQuota">
+         ng-model="config.cbasMemoryQuota"
+         class="margin-right-half">
       <small>MB</small>
     </div>
   </div>
@@ -154,7 +158,7 @@
       </label>
     </div>
     <small class="form-inline width-7 text-center">
-      - - - - - - -
+      - - - - - - - - -
     </small>
   </div>
 
@@ -180,12 +184,13 @@
         Eventing
       </label>
     </div>
-    <div class="form-inline width-6 text-right">
+    <div class="row width-6 flex-right">
       <input
          type="number"
          mn-focus="config.services.model.kv === false && config.services.model.index  === false"
          ng-disabled="config.services && !config.services.model.eventing || (rbac && !rbac.cluster.pools.write)"
-         ng-model="config.eventingMemoryQuota">
+         ng-model="config.eventingMemoryQuota"
+         class="margin-right-half">
       <small>MB</small>
     </div>
   </div>
