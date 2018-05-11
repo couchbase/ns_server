@@ -1033,6 +1033,8 @@ validate_moxi_port(Ctx, Params) ->
 
 do_validate_moxi_port(_Ctx, undefined) ->
     ignore;
+do_validate_moxi_port(_Ctx, "none") ->
+    {ok, moxi_port, undefined};
 do_validate_moxi_port(#bv_ctx{bucket_name = BucketName}, ProxyPort) ->
     case (catch menelaus_util:parse_validate_port_number(ProxyPort)) of
         {error, [Error]} ->
