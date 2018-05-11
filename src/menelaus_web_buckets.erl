@@ -1036,16 +1036,22 @@ do_validate_moxi_port(_Ctx, undefined) ->
 do_validate_moxi_port(_Ctx, "none") ->
     {ok, moxi_port, undefined};
 do_validate_moxi_port(#bv_ctx{bucket_name = BucketName}, ProxyPort) ->
-    case (catch menelaus_util:parse_validate_port_number(ProxyPort)) of
-        {error, [Error]} ->
-            {error, proxyPort, Error};
-        PP ->
-            case ns_bucket:is_port_free(BucketName, PP) of
-                true ->
-                    {ok, moxi_port, PP};
-                false ->
-                    {error, proxyPort,
-                     <<"port is already in use">>}
+    case cluster_compat_mode:is_cluster_55() of
+        true ->
+            {error, proxyPort,
+             <<"Setting proxy port is not allowed on this version of "
+               "the cluster">>};
+        false ->
+            case (catch menelaus_util:parse_validate_port_number(ProxyPort)) of
+                {error, [Error]} ->
+                    {error, proxyPort, Error};
+                PP ->
+                    case ns_bucket:is_port_free(BucketName, PP) of
+                        true ->
+                            {ok, moxi_port, PP};
+                        false ->
+                            {error, proxyPort, <<"port is already in use">>}
+                    end
             end
     end.
 
