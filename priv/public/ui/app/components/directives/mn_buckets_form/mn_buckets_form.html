@@ -102,12 +102,13 @@
           <label for="for-enable-replicas">Enable</label>
         </span>
         <div ng-if="replicaNumberEnabled" class="row flex-left width-8">
-          <select
-             class="width-3 margin-right-half"
-             name="replicaNumber"
-             ng-model="bucketConf.replicaNumber"
-             ng-options="number for number in [1,2,3]">
-          </select>
+          <div class="simple-select margin-right-half">
+            <select
+               name="replicaNumber"
+               ng-model="bucketConf.replicaNumber"
+               ng-options="number for number in [1,2,3]">
+            </select>
+          </div>
           <small>Number of replica (backup) copies</small>
         </div>
       </div>
@@ -160,7 +161,7 @@
              type="text"
              ng-model="bucketConf.maxTTL"
              ng-disabled="!bucketConf.enableMaxTTL"
-             class="margin-right-half width-5">
+             class="margin-right-half width-3">
           <small> second{{bucketConf.maxTTL == 1 ? "" : "s"}}</small>
         </span>
       </div>

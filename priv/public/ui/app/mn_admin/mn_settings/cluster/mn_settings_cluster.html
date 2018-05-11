@@ -109,21 +109,23 @@
             <label for="indexer_log_level">
               Indexer Log Level
             </label>
-            <select
-               ng-model="settingsClusterCtl.indexSettings.logLevel"
-               name="logLevel"
-               ng-disabled="settingsClusterCtl.indexSettings.storageMode === '' || !rbac.cluster.settings.indexes.write"
-               id="indexer_log_level">
-              <option value="silent">Silent</option>
-              <option value="fatal">Fatal</option>
-              <option value="error">Error</option>
-              <option value="warn">Warn</option>
-              <option value="info">Info</option>
-              <option value="verbose">Verbose</option>
-              <option value="timing">Timing</option>
-              <option value="debug">Debug</option>
-              <option value="trace">Trace</option>
-            </select>
+            <div class="simple-select">
+              <select
+                 ng-model="settingsClusterCtl.indexSettings.logLevel"
+                 name="logLevel"
+                 ng-disabled="settingsClusterCtl.indexSettings.storageMode === '' || !rbac.cluster.settings.indexes.write"
+                 id="indexer_log_level">
+                <option value="silent">Silent</option>
+                <option value="fatal">Fatal</option>
+                <option value="error">Error</option>
+                <option value="warn">Warn</option>
+                <option value="info">Info</option>
+                <option value="verbose">Verbose</option>
+                <option value="timing">Timing</option>
+                <option value="debug">Debug</option>
+                <option value="trace">Trace</option>
+              </select>
+            </div>
             <div
                class="error error-field"
                ng-show="settingsClusterCtl.indexSettingsErrors.logLevel">
