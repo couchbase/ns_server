@@ -682,8 +682,8 @@ cbas_spec(Config) ->
                                 [];
                             Port ->
                                 ["-bindHttpsPort=" ++ integer_to_list(Port),
-                                 "-tlsCertFile=" ++ ns_ssl_services_setup:ssl_cert_key_path(),
-                                 "-tlsKeyFile=" ++ ns_ssl_services_setup:ssl_cert_key_path()]
+                                 "-tlsCertFile=" ++ ns_ssl_services_setup:memcached_cert_path(),
+                                 "-tlsKeyFile=" ++ ns_ssl_services_setup:memcached_key_path()]
                         end,
             {ok, MemoryQuota} = memory_quota:get_quota(Config, cbas),
             Spec = {cbas, Cmd,
