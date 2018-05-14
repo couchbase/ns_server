@@ -17,6 +17,7 @@
 
 -include("ns_common.hrl").
 -include("rbac.hrl").
+-include_lib("eunit/include/eunit.hrl").
 
 -export([start_link/0]).
 -export([init/0]).
@@ -37,35 +38,42 @@ maybe_refresh(Token) ->
 
 -spec set_token_node(auth_token(), atom()) -> auth_token().
 set_token_node(Token, Node) ->
-    iolist_to_binary([atom_to_list(Node), ":", Token]).
+    base64:encode(erlang:term_to_binary({Node, Token})).
 
 -spec get_token_node(auth_token() | undefined) ->
-        {ok, {Node :: atom(), auth_token() | undefined}} |
-        {error, Reason :: term()}.
+        {Node :: atom(), auth_token() | undefined}.
 get_token_node(undefined) ->
-    {ok, {undefined, undefined}};
-get_token_node(Token) when is_list(Token) ->
-    get_token_node(list_to_binary(Token));
-get_token_node(Token) when is_binary(Token) ->
-    case binary:split(Token, <<":">>) of
-        [Token] -> {ok, {undefined, Token}};
-        [NodeBin, CleanToken] ->
-            try erlang:binary_to_existing_atom(NodeBin, latin1) of
-                Node -> {ok, {Node, CleanToken}}
-            catch
-                error:badarg -> {error, badarg}
-            end
+    {undefined, undefined};
+get_token_node(Token) ->
+    try
+        erlang:binary_to_term(base64:decode(Token), [safe])
+    catch
+        _:_ -> {undefined, Token}
     end.
+
+-ifdef(EUNIT).
+
+set_and_get_token_node_test() ->
+    ?assertEqual({undefined, undefined}, get_token_node(undefined)),
+    ?assertEqual({undefined, <<"token">>}, get_token_node(<<"token">>)),
+    ?assertEqual({undefined, "token"}, get_token_node("token")),
+    [?assertEqual({Node, Token}, get_token_node(set_token_node(Token, Node)))
+        || _    <- lists:seq(1,1000),
+           Node <- ['n_0@192.168.0.1',
+                    'n_0@::1',
+                    'n_0@2001:db8:0:0:0:ff00:42:8329',
+                    'n_0@crazy*host%name;'],
+           Token <- [couch_uuids:random(),
+                     binary_to_list(couch_uuids:random())]].
+
+-endif.
 
 -spec check(auth_token() | undefined) -> false | {ok, term()}.
 check(Token) ->
-    case get_token_node(Token) of
-        {ok, {undefined, T}} ->
-            token_server:check(?MODULE, T);
-        {ok, {Node, T}} ->
-            token_server:check(?MODULE, T, Node);
-        {error, _} ->
-            false
+    {Node, CleanToken} = get_token_node(Token),
+    case Node of
+        undefined -> token_server:check(?MODULE, CleanToken);
+        _ -> token_server:check(?MODULE, CleanToken, Node)
     end.
 
 -spec reset() -> ok.
