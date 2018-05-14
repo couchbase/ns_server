@@ -235,10 +235,18 @@ wait_child(P, Node, Subtask) ->
 do_run_node_collection(Node, BaseURL, TimestampS, Options) ->
     get_token(collect_throttle),
     ?log_debug("Starting collection task for: ~p", [{Node, BaseURL, TimestampS, Options}]),
+    OptionsWithSalt =
+        case proplists:get_value(redact_salt_fun, Options) of
+            undefined ->
+                Options;
+            Fun ->
+                [{redact_salt, Fun()} | Options]
+        end,
+
     {ok, P, Path} = start_subtask(Node, collection,
                                   cluster_logs_collection_task,
                                   start_collection_per_node,
-                                  [TimestampS, self(), Options]),
+                                  [TimestampS, self(), OptionsWithSalt]),
     update_ets_status({{Node, collection}, started, Path}),
     case wait_child(P, Node, collection) of
         ok ->
