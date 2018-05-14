@@ -60,10 +60,8 @@ handle_start_collect_logs(Req) ->
                     case cluster_logs_sup:start_collect_logs(Nodes, BaseURL,
                                                              Options) of
                         ok ->
-                            %% We don't want to expose salt in audit logs.
-                            O = lists:keydelete(redact_salt_fun, 1, Options),
                             ns_audit:start_log_collection(Req, Nodes, BaseURL,
-                                                          O),
+                                                          Options),
                             menelaus_util:reply_json(Req, [], 200);
                         already_started ->
                             menelaus_util:reply_json(
@@ -230,10 +228,10 @@ parse_validate_collect_params(Params, Config) ->
                         %% We override the user input here because we want to
                         %% have a common salt for all the nodes for this log
                         %% collection run.
-                        S = base64:encode_to_string(crypto:rand_bytes(32)),
-                        [{redact_salt_fun, ?cut(S)}];
+                        [{redact_salt,
+                          base64:encode_to_string(crypto:rand_bytes(32))}];
                     Salt ->
-                        [{redact_salt_fun, ?cut(Salt)}]
+                        [{redact_salt, Salt}]
                 end;
             _ ->
                 case proplists:get_value("logRedactionSalt", Params) of

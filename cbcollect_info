@@ -192,7 +192,8 @@ class AccessLogProcessor:
 
 class RegularLogProcessor:
     rexes = [re.compile('(<ud>)(.+?)(</ud>)'),
-             re.compile('("--log-redaction-salt=)(.+?)(")')]
+             re.compile('("--log-redaction-salt=)(.+?)(")'),
+             re.compile('({redact_salt,)(.+?)(})')]
 
     def __init__(self, salt):
         self.salt = salt

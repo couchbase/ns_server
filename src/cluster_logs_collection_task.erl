@@ -16,7 +16,6 @@
 -module(cluster_logs_collection_task).
 
 -include("ns_common.hrl").
--include("cut.hrl").
 
 -export([start_link/3, start_link_ets_holder/0]).
 
@@ -274,10 +273,10 @@ start_collection_per_node(TimestampS, Parent, Options) ->
     {UploadFilename, MaybeLogRedaction} =
         case proplists:get_value(redact_level, Options) of
             partial ->
-                SaltFn = proplists:get_value(redact_salt_fun, Options),
                 {filename:join(LogPath, Basename ++ "-redacted" ++ ".zip"),
                  ["--log-redaction-level=partial",
-                  "--log-redaction-salt=" ++ SaltFn()]};
+                  "--log-redaction-salt=" ++
+                   proplists:get_value(redact_salt, Options)]};
             _ ->
                 {Filename, []}
         end,
