@@ -103,7 +103,7 @@
         mnServersService.getNodes(),
         mnPoolDefault.get()
       ]).then(function (resp) {
-        var activeServersLength = resp[0].active.length;
+        var activeServersLength = resp[0].reallyActiveData.length;
         var totals = resp[1].storageTotals;
         var bucketConf = _.clone(bucketsFormConfiguration);
         bucketConf.isNew = true;
