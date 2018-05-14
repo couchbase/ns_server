@@ -82,7 +82,7 @@
         <p ng-show="row.hosts.length > 1"><strong>Nodes</strong><br>{{row.hosts.join(', ')}}</p>
         <button
            class="outline"
-           ui-sref="app.admin.query.workbench({query: mnGsiTableCtl.editIndex(row)})">
+           ui-sref="app.admin.query.workbench({query: row.definition})">
           Open in Workbench
         </button>
       </div>
