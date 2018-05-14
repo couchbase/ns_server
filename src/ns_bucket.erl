@@ -550,10 +550,18 @@ new_bucket_default_params(memcached) ->
      {map, []},
      {ram_quota, 0}].
 
-cleanup_bucket_props(Props) ->
+cleanup_bucket_props_pre_50(Props) ->
     case proplists:get_value(auth_type, Props) of
         sasl -> lists:keydelete(moxi_port, 1, Props);
         none -> lists:keydelete(sasl_password, 1, Props)
+    end.
+
+cleanup_bucket_props(Props) ->
+    case proplists:get_value(moxi_port, Props) of
+        undefined ->
+            lists:keydelete(moxi_port, 1, Props);
+        _ ->
+            Props
     end.
 
 generate_sasl_password() ->
@@ -575,7 +583,7 @@ create_bucket(BucketType, BucketName, NewConfig) ->
                     true ->
                         generate_sasl_password(MergedConfig0);
                     false ->
-                        cleanup_bucket_props(MergedConfig0)
+                        cleanup_bucket_props_pre_50(MergedConfig0)
                 end,
             BucketUUID = couch_uuids:random(),
             MergedConfig = [{repl_type, dcp} |
@@ -674,9 +682,9 @@ update_bucket_props(BucketName, Props) ->
                                           end, OldProps, Props),
                              case cluster_compat_mode:is_cluster_50() of
                                  true ->
-                                     NewProps;
+                                     cleanup_bucket_props(NewProps);
                                  false ->
-                                     cleanup_bucket_props(NewProps)
+                                     cleanup_bucket_props_pre_50(NewProps)
                              end
                      end),
               case RV of
