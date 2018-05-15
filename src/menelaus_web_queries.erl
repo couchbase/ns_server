@@ -14,7 +14,7 @@
 %% limitations under the License.
 %%
 -module(menelaus_web_queries).
-
+-include("ns_common.hrl").
 -include("cut.hrl").
 -export([handle_settings_get/1,
          handle_curl_whitelist_post/1,
@@ -62,12 +62,12 @@ handle_settings_post(Req) ->
       end, Req, form, settings_post_validators()).
 
 validate_array(Array) when is_list(Array) ->
-    case lists:all(fun is_binary/1, Array) of
-        false -> {error, "Invalid array"};
+    case lists:all(?cut(is_binary(_1) andalso _1 =/= <<>>), Array) of
+        false -> {error, "Invalid content: Entries must be non-empty strings"};
         true -> {value, Array}
     end;
 validate_array(_) ->
-    {error, "Invalid array"}.
+    {error, "Invalid type: Must be a list of non-empty strings"}.
 
 settings_curl_whitelist_validators() ->
     [validator:required(all_access, _),
