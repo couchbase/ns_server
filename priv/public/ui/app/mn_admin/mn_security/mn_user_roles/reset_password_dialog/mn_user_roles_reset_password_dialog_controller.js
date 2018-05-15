@@ -16,7 +16,14 @@
       if (vm.form.$invalid) {
         return;
       }
-      mnPromiseHelper(vm, mnUserRolesService.addUser(vm.user, vm.user.roles, true, true), $uibModalInstance)
+      mnPromiseHelper(vm, mnUserRolesService.addUser(
+        vm.user,
+        vm.user.roles.map(function (role) {
+          return (role.bucket_name ? (role.role + '[' + role.bucket_name + ']') : role.role);
+        }),
+        true,
+        true
+      ), $uibModalInstance)
         .showGlobalSpinner()
         .catchErrors()
         .broadcast("reloadRolesPoller")

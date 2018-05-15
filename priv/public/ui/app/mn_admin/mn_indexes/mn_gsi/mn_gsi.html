@@ -12,12 +12,13 @@
     <span class="text-smaller">
       view by
     </span>
-    <select ng-model="viewby" ng-init="viewby = 'viewby_node'" class="margin-left-half">
-      <option value="viewby_node">server node</option>
-      <option value="viewby_bucket">bucket</option>
-      <option value="viewby_index">index</option>
-    </select>
-
+    <div class="simple-select">
+      <select ng-model="viewby" ng-init="viewby = 'viewby_node'" class="margin-left-half">
+        <option value="viewby_node">server node</option>
+        <option value="viewby_bucket">bucket</option>
+        <option value="viewby_index">index</option>
+      </select>
+    </div>
     <div
        class="row  margin-left-1"
        mn-placeholder="filter indexes..."

@@ -87,10 +87,12 @@
     </div>
   </div>
   <div class="row pagination" ng-show="poolDefault.compat.atLeast50">
-    <select
-       ng-change="userRolesCtl.pageSizeChanged()"
-       ng-model="userRolesCtl.pageSize"
-       ng-options="o as o for o in [10,20,50,100]"></select>
+    <div class="simple-select">
+      <select
+         ng-change="userRolesCtl.pageSizeChanged()"
+         ng-model="userRolesCtl.pageSize"
+         ng-options="o as o for o in [10,20,50,100]"></select>
+    </div>
     <span>
       <a
          ng-hide="userRolesCtl.state.skipped == 0"
