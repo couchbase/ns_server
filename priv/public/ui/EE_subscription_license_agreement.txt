@@ -42,7 +42,7 @@ IMPORTANT-READ CAREFULLY: BY CLICKING THE “I ACCEPT” BOX OR INSTALLING, DOWN
 
 13. Definitions. Capitalized terms used herein shall have the following definitions: “Confidential Information” means any proprietary information received by the other party during, or prior to entering into, this Agreement that a party should know is confidential or proprietary based on the circumstances surrounding the disclosure including the Software and any non-public technical and business information (including pricing).  Confidential Information does not include information that (a) is or becomes generally known to the public through no fault of or breach of this Agreement by the receiving party; (b) is rightfully known by the receiving party at the time of disclosure without an obligation of confidentiality to the disclosing party; (c) is independently developed by the receiving party without use of the disclosing party’s Confidential Information; or (d) the receiving party rightfully obtains from a third party without restriction on use or disclosure. “Embedded Database Instance” means the number of instances of the “Couchbase Lite” product storing data on a local device (such as a mobile device, laptop, etc.) which may sync with a remote server.  “Documentation” means the technical user guides or manuals provided by Couchbase related to the Software.  “Licensed Node” means an instance of the Software running on a server, including a physical server, server blade, virtual machine, software container, or cloud server.  “Software” means the object code version of the applicable Couchbase product you download or as reflected in an Order.  “Subscription Fee” means the fee applicable to use of the Software (or as specified in an Order) for the right to use the Software for up to the number of Licensed Nodes and/or Embedded Database Instances paid for.  The Subscription Fee includes fees for Support Services.  “Subscription Term” means, collectively, the initial subscription term described in Section 10.  “Support Services” means the technical support and Software maintenance services paid for (with the right to receive Software updates and upgrades made generally available by Couchbase) as described in the then-current Couchbase support policy (located at www.couchbase.com/support-policy).  “Production Deployment” means all Licensed Nodes and Embedded Database Instances within a particular cluster or clusters that are being used to support a live workload or application.  “Order” means a transaction document (such as a signed sales quote) identifying the Software licensed to Licensee, the number of Licensed Nodes and/or Embedded Database Instances, and the applicable Subscription Fee.  The term “including” means including but not limited to.  “SOW” (or Order) means a transaction document identifying Services purchased.  “Services” means the consulting service(s) and Deliverables provided by Couchbase to Licensee, using commercially reasonable efforts (a list of available consulting services can be viewed at www.couchbase.com/dos04132016).  “Deliverables” means reports, and other deliverables Couchbase may design, develop for, or deliver to Licensee during the course of providing consulting services.
 
-LA v2 20171030
+LA v3 20180430
 
 -----------------------------------------
 IMPORTANT CLARIFICATION:  If you use any of the Developer Preview features, the Agreement above does not apply.  Instead, the “Developer Preview Trial License Agreement – Free Edition” solely governs your use of the Developer Preview features and code.
@@ -150,4 +150,13 @@ If you have any questions regarding this Agreement, please contact us at sales@c
   Redwood Shores, California 94065, USA.
 
   Last updated 02 April 2013
+
+End of JRE license
 ---
+
+Couchbase Inc. Enterprise Subscription License Agreement
+LA v3 20180430
+
+If you have any questions regarding this Agreement, please contact us at sales@couchbase.com.
+
+-----------------------------------------
