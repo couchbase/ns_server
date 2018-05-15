@@ -484,6 +484,7 @@ roles_55() ->
                 "access. This user cannot read data.">>}],
       [{[{bucket, bucket_name}, stats], [read]},
        {[{bucket, bucket_name}, settings], [read]},
+       {[tasks], [read]},
        {[pools], [read]}]},
      {fts_admin, [bucket_name],
       [{name, <<"Search Admin">>},

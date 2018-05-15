@@ -28,7 +28,6 @@
       vm.generateIndexId = generateIndexId;
       vm.hasQueryService = hasQueryService;
       vm.dropIndex = dropIndex;
-      vm.editIndex = editIndex;
 
       mnHelper.initializeDetailsHashObserver(vm, 'openedIndex', 'app.admin.indexes.gsi');
 
@@ -69,10 +68,6 @@
         });
       }
 
-      // to edit an index, we create a 'CREATE' query to send to the query workbench
-      function editIndex(row) {
-        return (row.definition + '\nWITH {"nodes": ' + row.hosts.join(', ') + '}');
-      }
     }
   }
 })();
