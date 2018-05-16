@@ -65,9 +65,12 @@
         <span ng-show="row.progress">{{row.progress}}%</span></span>
       <span
          class="cbui-table-cell flex-grow-1 text-right wrap"
-         ng-if="mnGsiTableCtl.hasQueryService() && mnGsiTableCtl.rbac.cluster.bucket[row.bucket].n1ql.select.execute"
+         ng-if="mnGsiTableCtl.hasQueryService() &&
+                mnGsiTableCtl.rbac.cluster.bucket[row.bucket].n1ql.select.execute"
          ng-click="$event.stopPropagation();">
+        <!-- blank spaces in index name mean replica, can't drop -->
         <button
+           ng-show="row.index.indexOf(' ') == -1"
            class="outline"
            ng-click="mnGsiTableCtl.dropIndex(row)">Drop</button>
       </span>
