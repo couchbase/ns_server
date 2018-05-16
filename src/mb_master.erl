@@ -378,8 +378,8 @@ handle_event({call, From}, master_node, _State, StateData) ->
     {keep_state_and_data, [{reply, From, StateData#state.master}]};
 %% Backward compitibility: handle heartbeats from nodes that are older than
 %%                         Mad-Hatter where gen_fsm is running
-handle_event(info, {'$gen_event', Event}, State, StateData) ->
-    erlang:apply(?MODULE, State, [info, Event, StateData]);
+handle_event(info, {'$gen_event', Event}, _State, _StateData) ->
+    {keep_state_and_data, [{next_event, info, Event}]};
 handle_event(Type, Msg, State, StateData) ->
     ?log_warning("Got unexpected event ~p of type ~p in state ~p with data ~p",
                  [Msg, Type, State, StateData]),
