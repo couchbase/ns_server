@@ -279,7 +279,7 @@ start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets) ->
       ?SERVER,
       {maybe_start_rebalance, KnownNodes, EjectNodes, DeltaRecoveryBuckets}).
 
--spec start_graceful_failover(node()) ->
+-spec start_graceful_failover([node()]) ->
                                      ok | in_progress | in_recovery |
                                      non_kv_node | not_graceful | unknown_node |
                                      last_node | {config_sync_failed, any()} |
@@ -289,9 +289,9 @@ start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets) ->
                                      %% to be an impossible return value if
                                      %% all other options are also covered
                                      any().
-start_graceful_failover(Node) ->
+start_graceful_failover(Nodes) ->
     wait_for_orchestrator(),
-    gen_statem:call(?SERVER, {start_graceful_failover, Node}).
+    gen_statem:call(?SERVER, {start_graceful_failover, Nodes}).
 
 -spec stop_rebalance() -> ok | not_rebalancing.
 stop_rebalance() ->
@@ -673,15 +673,19 @@ idle({try_autofailover, Nodes}, From, _State) ->
             {keep_state_and_data,
              [{next_event, {call, From}, {failover, Nodes, false}}]}
     end;
-idle({start_graceful_failover, Node}, From, _State) ->
-    case ns_rebalancer:start_link_graceful_failover(Node) of
+idle({start_graceful_failover, Node}, From, _State) when is_atom(Node) ->
+    %% calls from pre-madhatter nodes
+    {keep_state_and_data,
+     [{next_event, {call, From}, {start_graceful_failover, [Node], false}}]};
+idle({start_graceful_failover, Nodes}, From, _State) ->
+    case ns_rebalancer:start_link_graceful_failover(Nodes) of
         {ok, Pid} ->
             Type = graceful_failover,
             ns_cluster:counter_inc(Type, start),
             set_rebalance_status(Type, running, Pid),
 
-            Nodes = ns_cluster_membership:active_nodes(),
-            Progress = rebalance_progress:init(Nodes, [kv]),
+            ActiveNodes = ns_cluster_membership:active_nodes(),
+            Progress = rebalance_progress:init(ActiveNodes, [kv]),
 
             {next_state, rebalancing,
              #rebalancing_state{rebalancer=Pid,

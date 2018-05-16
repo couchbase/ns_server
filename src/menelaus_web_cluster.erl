@@ -598,14 +598,7 @@ validate_node(NodeArg) ->
 
 parse_graceful_failover_args(Req) ->
     Params = mochiweb_request:parse_post(Req),
-    case parse_otp_nodes(Params) of
-        {ok, [Node]} ->
-            {ok, Node};
-        {ok, _Nodes} ->
-            {error, "Multiple servers cannot be specified."};
-        Error ->
-            Error
-    end.
+    parse_otp_nodes(Params).
 
 parse_otp_nodes(Params) ->
     OtpNodes = proplists:lookup_all("otpNode", Params),
@@ -672,8 +665,8 @@ handle_failover(Req) ->
 
 handle_start_graceful_failover(Req) ->
     case parse_graceful_failover_args(Req) of
-        {ok, Node} ->
-            Msg = case ns_orchestrator:start_graceful_failover(Node) of
+        {ok, Nodes} ->
+            Msg = case ns_orchestrator:start_graceful_failover(Nodes) of
                       ok ->
                           [];
                       in_progress ->
@@ -696,7 +689,7 @@ handle_start_graceful_failover(Req) ->
                   end,
             case Msg of
                 [] ->
-                    ns_audit:failover_nodes(Req, [Node], graceful),
+                    ns_audit:failover_nodes(Req, Nodes, graceful),
                     reply(Req, 200);
                 {Code, Text} ->
                     reply_text(Req, Text, Code)

@@ -400,7 +400,7 @@ handle_node_statuses(Req) ->
                                         {replication, average_failover_safenesses(N, OldStatuses, BucketsAll)}]};
                           false ->
                               GracefulFailoverPossible =
-                                  case ns_rebalancer:check_graceful_failover_possible(N, BucketsAll) of
+                                  case ns_rebalancer:check_graceful_failover_possible([N], BucketsAll) of
                                       true -> true;
                                       {false, _} -> false
                                   end,

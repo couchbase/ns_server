@@ -1367,14 +1367,14 @@ get_delta_recovery_nodes(Config, Nodes) ->
           ns_cluster_membership:get_cluster_membership(N, Config) =:= inactiveAdded
               andalso ns_cluster_membership:get_recovery_type(Config, N) =:= delta].
 
-start_link_graceful_failover(Node) ->
-    proc_lib:start_link(erlang, apply, [fun run_graceful_failover/1, [Node]]).
+start_link_graceful_failover(Nodes) ->
+    proc_lib:start_link(erlang, apply, [fun run_graceful_failover/1, [Nodes]]).
 
-run_graceful_failover(Node) ->
+run_graceful_failover(Nodes) ->
     ok = check_no_tap_buckets(),
     pull_and_push_config(ns_node_disco:nodes_wanted()),
 
-    case check_failover_possible([Node]) of
+    case check_failover_possible(Nodes) of
         ok ->
             ok;
         Error ->
@@ -1394,7 +1394,7 @@ run_graceful_failover(Node) ->
                                 proplists:get_value(map, Conf, []) =/= []],
     NumBuckets = length(InterestingBuckets),
 
-    case check_graceful_failover_possible(Node, InterestingBuckets) of
+    case check_graceful_failover_possible(Nodes, InterestingBuckets) of
         true -> ok;
         {false, Type} ->
             erlang:exit(Type)
@@ -1406,58 +1406,61 @@ run_graceful_failover(Node) ->
            fun () ->
                    ale:info(?USER_LOGGER,
                             "Starting vbucket moves for "
-                            "graceful failover of ~p", [Node]),
+                            "graceful failover of ~p", [Nodes]),
 
                    lists:foldl(
                      fun ({BucketName, BucketConfig}, I) ->
-                             do_run_graceful_failover_moves(Node,
+                             do_run_graceful_failover_moves(Nodes,
                                                             BucketName,
                                                             BucketConfig,
                                                             I / NumBuckets,
                                                             NumBuckets),
                              I+1
                      end, 0, InterestingBuckets),
-                   orchestrate_failover([Node]),
+                   orchestrate_failover(Nodes),
 
                    ok
            end).
 
-do_run_graceful_failover_moves(Node, BucketName, BucketConfig, I, N) ->
+do_run_graceful_failover_moves(Nodes, BucketName, BucketConfig, I, N) ->
     run_janitor_pre_rebalance(BucketName),
 
     Map = proplists:get_value(map, BucketConfig, []),
-    Map1 = mb_map:promote_replicas_for_graceful_failover(Map, Node),
+    Map1 = mb_map:promote_replicas_for_graceful_failover(Map, Nodes),
 
     ProgressFun = make_progress_fun(I, N),
     run_mover(BucketName, BucketConfig,
               proplists:get_value(servers, BucketConfig),
               ProgressFun, Map, Map1).
 
-check_graceful_failover_possible(Node, BucketsAll) ->
-    Services = ns_cluster_membership:node_services(Node),
-    case lists:member(kv, Services) of
+check_graceful_failover_possible(Nodes, BucketsAll) ->
+    %% No graceful failovers for non KV node
+    case lists:all(?cut(lists:member(kv, ns_cluster_membership:node_services(_))),
+                   Nodes) of
         true ->
-            check_graceful_failover_possible_rec(Node, BucketsAll);
+            check_graceful_failover_possible_rec(Nodes, BucketsAll);
         false ->
             {false, non_kv_node}
     end.
 
-check_graceful_failover_possible_rec(_Node, []) ->
+check_graceful_failover_possible_rec(_Nodes, []) ->
     true;
-check_graceful_failover_possible_rec(Node, [{_BucketName, BucketConfig} | RestBucketConfigs]) ->
+check_graceful_failover_possible_rec(Nodes, [{_BucketName, BucketConfig} | RestBucketConfigs]) ->
     Map = proplists:get_value(map, BucketConfig, []),
     Servers = proplists:get_value(servers, BucketConfig, []),
-    case lists:member(Node, Servers) of
+    case lists:any(lists:member(_, Servers), Nodes) of
         true ->
-            Map1 = mb_map:promote_replicas_for_graceful_failover(Map, Node),
-            case lists:any(fun (Chain) -> hd(Chain) =:= Node end, Map1) of
+            Map1 = mb_map:promote_replicas_for_graceful_failover(Map, Nodes),
+            %% Do not allow graceful failover if the returned map, Map1, has any
+            %% of the nodes to be removed as the head of Chain in vbucket map.
+            case lists:any(?cut(lists:member(hd(_), Nodes)), Map1) of
                 true ->
                     {false, not_graceful};
                 false ->
-                    check_graceful_failover_possible_rec(Node, RestBucketConfigs)
+                    check_graceful_failover_possible_rec(Nodes, RestBucketConfigs)
             end;
         false ->
-            check_graceful_failover_possible_rec(Node, RestBucketConfigs)
+            check_graceful_failover_possible_rec(Nodes, RestBucketConfigs)
     end.
 
 check_failover_possible(Nodes) ->

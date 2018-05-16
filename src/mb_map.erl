@@ -20,6 +20,7 @@
 
 -module(mb_map).
 
+-include("cut.hrl").
 -include("ns_common.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
@@ -60,18 +61,15 @@ promote_replica(Chain, RemapNodes) ->
                                          end, Chain1),
     Rest ++ Undefineds.
 
-promote_replicas_for_graceful_failover(Map, RemoveNode) ->
-    [promote_replicas_for_graceful_failover_for_chain(Chain, RemoveNode) || Chain <- Map].
+promote_replicas_for_graceful_failover(Map, RemoveNodes) ->
+    [promote_replicas_for_graceful_failover_for_chain(Chain, RemoveNodes) || Chain <- Map].
 
-promote_replicas_for_graceful_failover_for_chain(Chain, RemoveNode) ->
+promote_replicas_for_graceful_failover_for_chain(Chain, RemoveNodes) ->
     {RealChain, Undefineds} = lists:partition(fun (N) -> N =/= undefined end, Chain),
-    ChangedChain = case RealChain of
-                       [RemoveNode | Rest = [_|_]] ->
-                           Rest ++ [RemoveNode];
-                       _ ->
-                           RealChain
-                   end,
-    ChangedChain ++ Undefineds.
+    {RemoveNodesChain, ChangedChain} = lists:partition(
+                                         lists:member(_, RemoveNodes),
+                                         RealChain),
+    ChangedChain ++ RemoveNodesChain ++ Undefineds.
 
 vbucket_movements_rec(AccMasters, AccReplicas, [], []) ->
     {AccMasters, AccReplicas};
@@ -1180,16 +1178,25 @@ promote_replicas_for_graceful_failover_test() ->
          [b, c, a],
          [c, a, b],
          [b, c, undefined]],
-    M2 = promote_replicas_for_graceful_failover(M, a),
+    M2 = promote_replicas_for_graceful_failover(M, [a]),
     ?assertEqual([[b, c, a],
                   [b, a, undefined],
                   [b, c, a],
-                  [c, a, b],
+                  [c, b, a],
                   [b, c, undefined]],
                  M2),
 
-    ?assertEqual([[a]], promote_replicas_for_graceful_failover([[a]], a)),
-    ?assertEqual([[a, undefined]], promote_replicas_for_graceful_failover([[a, undefined]], a)).
+    M3 = promote_replicas_for_graceful_failover(M, [a, b]),
+    ?assertEqual([[c, a, b],
+                  [a, b, undefined],
+                  [c, b, a],
+                  [c, a, b],
+                  [c, b, undefined]],
+                 M3),
+    ?assertEqual([[a]],
+                 promote_replicas_for_graceful_failover([[a]], [a])),
+    ?assertEqual([[a, undefined]],
+                 promote_replicas_for_graceful_failover([[a, undefined]], [a])).
 
 find_matching_past_maps_test() ->
     History1 = [{[[a,d,c],
