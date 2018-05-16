@@ -204,7 +204,7 @@ run_cleanup(Parent, Requests) ->
 do_run_cleanup(services, _Options) ->
     service_janitor:cleanup();
 do_run_cleanup({bucket, Bucket}, Options) ->
-    ns_janitor:cleanup(Bucket, [consider_stopping_rebalance_status | Options]).
+    ns_janitor:cleanup(Bucket, [consider_resetting_rebalance_status | Options]).
 
 get_unsafe_nodes_from_reprovision_list(ReprovisionList) ->
     %% It is possible that when the janitor cleanup is working its way through

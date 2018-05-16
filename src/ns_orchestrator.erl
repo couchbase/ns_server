@@ -753,7 +753,7 @@ idle({move_vbuckets, Bucket, Moves}, From, _State) ->
                         type=Type},
      [{reply, From, ok}]};
 idle(stop_rebalance, From, _State) ->
-    ns_janitor:stop_rebalance_status(
+    ns_janitor:reset_rebalance_status(
       fun () ->
               ale:info(?USER_LOGGER,
                        "Resetting rebalance status since rebalance stop "

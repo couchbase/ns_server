@@ -22,7 +22,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--export([cleanup/2, stop_rebalance_status/1]).
+-export([cleanup/2, reset_rebalance_status/1]).
 
 -spec cleanup(Bucket::bucket_name(), Options::list()) ->
                      ok |
@@ -200,7 +200,7 @@ cleanup_apply_config_body(Bucket, Servers,
                                                             IgnoredVBuckets,
                                                             ApplyTimeout),
 
-    maybe_stop_rebalance_status(Options),
+    maybe_reset_rebalance_status(Options),
 
     case janitor_agent:mark_bucket_warmed(Bucket, Servers) of
         ok ->
@@ -270,7 +270,7 @@ data_loss_possible(VBucket, Chain, States) ->
             false
     end.
 
-stop_rebalance_status(Fn) ->
+reset_rebalance_status(Fn) ->
     Fun = fun ({rebalance_status, Value}) ->
                   case Value of
                       running ->
@@ -287,15 +287,15 @@ stop_rebalance_status(Fn) ->
 
     ok = ns_config:update(Fun).
 
-maybe_stop_rebalance_status(Options) ->
-    case proplists:get_bool(consider_stopping_rebalance_status, Options) of
+maybe_reset_rebalance_status(Options) ->
+    case proplists:get_bool(consider_resetting_rebalance_status, Options) of
         true ->
-            maybe_stop_rebalance_status();
+            maybe_reset_rebalance_status();
         false ->
             ok
     end.
 
-maybe_stop_rebalance_status() ->
+maybe_reset_rebalance_status() ->
     Status = try ns_orchestrator:rebalance_progress_full()
              catch E:T ->
                      ?log_error("cannot reach orchestrator: ~p:~p", [E,T]),
@@ -306,7 +306,7 @@ maybe_stop_rebalance_status() ->
         %% orchestrator, we'll consider checking config and seeing if
         %% we should unmark is at not running
         not_running ->
-            stop_rebalance_status(
+            reset_rebalance_status(
               fun () ->
                       ale:info(?USER_LOGGER,
                                "Resetting rebalance status "
