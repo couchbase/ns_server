@@ -404,25 +404,9 @@ sanify_chain(Bucket, States, Chain, FutureChain, VBucket) ->
     end.
 
 construct_vbucket_states(VBucket, Chain, States) ->
-    NodeStates = [{N, S} || {N, V, S} <- States, V == VBucket],
-    ChainStates = lists:map(
-                    fun (N) ->
-                            case lists:keyfind(N, 1, NodeStates) of
-                                %% NOTE: cannot use code below
-                                %% due to "stupid" warning by
-                                %% dialyzer. Yes indeed our
-                                %% Zombies is always [] as of
-                                %% now
-                                %%
-                                %% false -> {N, case lists:member(N, Zombies) of
-                                %%                  true -> zombie;
-                                %%                  _ -> missing
-                                %%              end};
-                                false ->
-                                    {N, missing};
-                                X -> X
-                            end
-                    end, Chain),
+    NodeStates  = [{N, S} || {N, V, S} <- States, V == VBucket],
+    ChainStates = [{N, proplists:get_value(N,
+                                           NodeStates, missing)} || N <- Chain],
     ExtraStates = [X || X = {N, _} <- NodeStates,
                         not lists:member(N, Chain)],
     {NodeStates, ChainStates, ExtraStates}.
