@@ -138,7 +138,7 @@ handle_call({get_node, Node}, _From, #state{nodes=Nodes} = State) ->
              {ok, Status} ->
                  LiveNodes = [node() | nodes()],
                  annotate_status(Node, Status,
-                                 time_compat:monotonic_time(),
+                                 erlang:monotonic_time(),
                                  LiveNodes);
              _ ->
                  []
@@ -146,7 +146,7 @@ handle_call({get_node, Node}, _From, #state{nodes=Nodes} = State) ->
     {reply, RV, State};
 
 handle_call(get_nodes, _From, #state{nodes=Nodes} = State) ->
-    Now = time_compat:monotonic_time(),
+    Now = erlang:monotonic_time(),
     LiveNodes = [node()|nodes()],
     Nodes1 = dict:map(
                fun (Node, Status) ->
@@ -296,7 +296,7 @@ is_significant_buckets_change(OldStatus, NewStatus) ->
         orelse OldReadyBuckets =/= NewReadyBuckets.
 
 update_status(Name, Status0, Dict) ->
-    TS = time_compat:monotonic_time(),
+    TS = erlang:monotonic_time(),
     Status = [{last_heard, TS} | Status0],
     PrevStatus = case dict:find(Name, Dict) of
                      {ok, V} -> V;

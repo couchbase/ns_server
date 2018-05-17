@@ -97,7 +97,7 @@ handle_info(refresh, Statuses, NodesWanted) ->
                                              %% Do not update the timestamp.
                                              OldStatus;
                                          _ ->
-                                             {NewState, time_compat:monotonic_time()}
+                                             {NewState, erlang:monotonic_time()}
                                      end,
                             dict:store(Node, Status, Acc)
                     end, dict:new(), NodesWanted),

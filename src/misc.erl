@@ -2149,12 +2149,12 @@ maybe_add_brackets(Address) ->
 
 %% Convert OTP-18+ style time to the traditional now()-like timestamp.
 %%
-%% Time should be the system time (as returned by time_compat:system_time/1)
+%% Time should be the system time (as returned by erlang:system_time/1)
 %% to be converted.
 %%
 %% Unit specifies the unit used.
 time_to_timestamp(Time, Unit) ->
-    Micro = time_compat:convert_time_unit(Time, Unit, microsecond),
+    Micro = erlang:convert_time_unit(Time, Unit, microsecond),
 
     Sec = Micro div 1000000,
     Mega = Sec div 1000000,
@@ -2168,7 +2168,7 @@ time_to_timestamp(Time) ->
 %% Unit designates the unit to convert to.
 timestamp_to_time({MegaSec, Sec, MicroSec}, Unit) ->
     Time = MicroSec + 1000000 * (Sec + 1000000 * MegaSec),
-    time_compat:convert_time_unit(Time, microsecond, Unit).
+    erlang:convert_time_unit(Time, microsecond, Unit).
 
 timestamp_to_time(TimeStamp) ->
     timestamp_to_time(TimeStamp, native).
@@ -2185,7 +2185,7 @@ time_to_epoch_float(_) ->
 %% Shortcut convert_time_unit/3. Always assumes that time to convert
 %% is in native units.
 convert_time_unit(Time, TargetUnit) ->
-    time_compat:convert_time_unit(Time, native, TargetUnit).
+    erlang:convert_time_unit(Time, native, TargetUnit).
 
 update_field(Field, Record, Fun) ->
     setelement(Field, Record, Fun(element(Field, Record))).

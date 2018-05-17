@@ -367,7 +367,7 @@ diag_format_timestamp(EpochMilliseconds) ->
     ale_default_formatter:format_time(AsNow).
 
 generate_diag_filename() ->
-    SystemTime = time_compat:timestamp(),
+    SystemTime = erlang:timestamp(),
     {{YYYY, MM, DD}, {Hour, Min, Sec}} = calendar:now_to_local_time(SystemTime),
     io_lib:format("ns-diag-~4.4.0w~2.2.0w~2.2.0w~2.2.0w~2.2.0w~2.2.0w.txt",
                   [YYYY, MM, DD, Hour, Min, Sec]).

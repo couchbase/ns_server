@@ -81,7 +81,7 @@ handle_cast(_Msg, State) ->
 handle_info(refresh_stats, #state{bucket = Bucket,
                                   last_ts = LastTS,
                                   last_view_stats = LastViewStats} = State) ->
-    TS = time_compat:monotonic_time(millisecond),
+    TS = erlang:monotonic_time(millisecond),
 
     Config = ns_config:get(),
     MinFileSize = ns_config:search_node_prop(Config,
@@ -93,7 +93,7 @@ handle_info(refresh_stats, #state{bucket = Bucket,
                                                              LastViewStats, MinFileSize),
     ets:insert(server(Bucket), {stuff, ProcessedSamples}),
 
-    NowTS = time_compat:monotonic_time(millisecond),
+    NowTS = erlang:monotonic_time(millisecond),
     Delta = min(?SAMPLE_INTERVAL, NowTS - TS),
     timer2:send_after(?SAMPLE_INTERVAL - Delta, refresh_stats),
 

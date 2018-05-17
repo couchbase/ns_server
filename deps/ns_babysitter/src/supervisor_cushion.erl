@@ -38,7 +38,7 @@ init([Name, Delay, ShutdownTimeout, M, F, A]) ->
     process_flag(trap_exit, true),
     ?log_debug("starting ~p with delay of ~p", [M, Delay]),
 
-    Started = time_compat:monotonic_time(),
+    Started = erlang:monotonic_time(),
     case apply(M, F, A) of
         {ok, Pid} ->
             {ok, #state{name=Name, delay=Delay, started=Started,
@@ -73,7 +73,7 @@ handle_info(Info, State) ->
 
 die_slowly(Reason, State) ->
     %% How long (in microseconds) has this service been running?
-    Lifetime0 = time_compat:monotonic_time() - State#state.started,
+    Lifetime0 = erlang:monotonic_time() - State#state.started,
     Lifetime  = misc:convert_time_unit(Lifetime0, millisecond),
 
     %% If the restart was too soon, slow down a bit.

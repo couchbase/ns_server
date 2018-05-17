@@ -175,8 +175,8 @@ handle_call(fetch_alert, _From, #state{queue=Alerts0, change_counter=Counter}=St
 handle_call({add_alert, Key, Val}, _, #state{queue=Msgs, history=Hist, change_counter=Counter}=State) ->
     case lists:keyfind(Key, 1, Hist) of
         false ->
-            Time   = time_compat:monotonic_time(),
-            Offset = time_compat:time_offset(),
+            Time   = erlang:monotonic_time(),
+            Offset = erlang:time_offset(),
 
             MsgTuple = {Key, Val, Time, Offset},
             maybe_send_out_email_alert(Key, Val),
@@ -319,7 +319,7 @@ check(disk, Opaque, _History, _Stats) ->
                           Err = fmt_to_bin(errors(disk), [Disk, Host, Used]),
                           global_alert(disk, Err),
 
-                          Time = time_compat:monotonic_time(),
+                          Time = erlang:monotonic_time(),
                           dict:store(Key, Time, Acc);
                       true ->
                           Acc
@@ -423,9 +423,9 @@ check(communication_issue, Opaque, _History, _Stats) ->
       fun ({Node, Status}) ->
               case Status of
                   {{_, [{_,{potential_network_partition, Nodes}}]}, TS} ->
-                      Now = time_compat:monotonic_time(),
-                      TimeElapsed = time_compat:convert_time_unit(Now - TS,
-                                                                  native, second),
+                      Now = erlang:monotonic_time(),
+                      TimeElapsed = erlang:convert_time_unit(Now - TS,
+                                                             native, second),
 
                       case TimeElapsed > ?COMMUNICATION_ISSUE_TIMEOUT of
                           true ->
@@ -457,10 +457,9 @@ hit_rate_limit(Key, Dict) ->
         error ->
             false;
         {ok, LastTime} ->
-            TimeNow    = time_compat:monotonic_time(),
-            TimePassed = time_compat:convert_time_unit(TimeNow - LastTime,
-                                                       native,
-                                                       second),
+            TimeNow    = erlang:monotonic_time(),
+            TimePassed = erlang:convert_time_unit(TimeNow - LastTime,
+                                                  native, second),
 
             TimePassed < ?DISK_USAGE_TIMEOUT
     end.
@@ -574,8 +573,8 @@ fetch_bucket_stat(Stats, Bucket, StatName) ->
 %% the same message repeatedly
 -spec expire_history(list()) -> list().
 expire_history(Hist) ->
-    Now     = time_compat:monotonic_time(),
-    Timeout = time_compat:convert_time_unit(?ALERT_TIMEOUT, second, native),
+    Now     = erlang:monotonic_time(),
+    Timeout = erlang:convert_time_unit(?ALERT_TIMEOUT, second, native),
 
     [ Item || Item = {_Key, _Msg, Time, _Offset} <- Hist, Now - Time < Timeout ].
 

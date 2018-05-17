@@ -128,7 +128,7 @@ remove_token_with_predecessor(Token, State) ->
     ok.
 
 get_now() ->
-    time_compat:monotonic_time(second).
+    erlang:monotonic_time(second).
 
 do_generate_token(ReplacedToken, Memo,
                   #state{table_by_token = Table,

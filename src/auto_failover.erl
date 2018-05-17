@@ -800,7 +800,7 @@ actual_down_nodes(NodesDict, NonPendingNodes, Config) ->
     %% Get all buckets
     BucketConfigs = ns_bucket:get_buckets(Config),
     actual_down_nodes_inner(NonPendingNodes, BucketConfigs, NodesDict,
-                            time_compat:monotonic_time()).
+                            erlang:monotonic_time()).
 
 actual_down_nodes_inner(NonPendingNodes, BucketConfigs, NodesDict, Now) ->
     BucketsServers = [{Name, lists:sort(proplists:get_value(servers, BC, []))}
@@ -811,9 +811,8 @@ actual_down_nodes_inner(NonPendingNodes, BucketConfigs, NodesDict, Now) ->
               case dict:find(Node, NodesDict) of
                   {ok, Info} ->
                       LastHeard = proplists:get_value(last_heard, Info),
-                      Diff      = time_compat:convert_time_unit(Now - LastHeard,
-                                                                native,
-                                                                millisecond),
+                      Diff      = erlang:convert_time_unit(Now - LastHeard,
+                                                           native, millisecond),
 
                       Diff > (?HEART_BEAT_PERIOD + ?STATS_TIMEOUT) orelse
                           begin

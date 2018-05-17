@@ -75,7 +75,7 @@ start_link() ->
 init([]) ->
     erlang:process_flag(trap_exit, true),
 
-    Now = time_compat:monotonic_time(millisecond),
+    Now = erlang:monotonic_time(millisecond),
     {ok, #state{last_tstamp = Now - ?MIN_LOG_INTERVAL}}.
 
 %%--------------------------------------------------------------------
@@ -96,7 +96,7 @@ handle_call(_, _From, _State) ->
     erlang:error(unsupported).
 
 maybe_spawn_diag(Error, #state{last_tstamp = TStamp} = State) ->
-    Now = time_compat:monotonic_time(millisecond),
+    Now = erlang:monotonic_time(millisecond),
 
     NewState =
         case Now - TStamp >= ?MIN_LOG_INTERVAL of
@@ -157,7 +157,7 @@ handle_info({'EXIT', Pid, Reason}, #state{diag_pid = Pid} = State) ->
 
     case Reason of
         normal ->
-            Now = time_compat:monotonic_time(millisecond),
+            Now = erlang:monotonic_time(millisecond),
             {noreply, State0#state{last_tstamp = Now}};
         _ ->
             ?log_warning("Diag process died unexpectedly: ~p", [Reason]),

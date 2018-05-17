@@ -96,7 +96,7 @@ get_nodes() ->
     gen_server:call(?MODULE, get_nodes).
 
 annotate_status(Status) ->
-    {Status, {recv_ts, time_compat:monotonic_time()}}.
+    {Status, {recv_ts, erlang:monotonic_time()}}.
 
 %% Internal functions
 

@@ -80,7 +80,7 @@ revoke_lease(State) ->
     retry_acquire(State#state{have_lease = false}).
 
 handle_acquire_lease(State) ->
-    Start   = time_compat:monotonic_time(millisecond),
+    Start   = erlang:monotonic_time(millisecond),
     Options = get_acquire_lease_options(Start, State),
 
     try call_acquire_lease(Options, State) of
@@ -133,7 +133,7 @@ handle_lease_acquired(StartTime, LeaseProps, State) ->
                 handle_fresh_lease_acquired(State)
         end,
 
-    Now = time_compat:monotonic_time(millisecond),
+    Now = erlang:monotonic_time(millisecond),
     update_inflight_histo(StartTime, Now, State),
 
     functools:chain(NewState,

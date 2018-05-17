@@ -182,14 +182,14 @@ eat_earlier_slow_updates(TS) ->
 
 update_current_status(#state{slow_status = []} = State) ->
     %% we don't have slow status at all; so compute it synchronously
-    TS = time_compat:monotonic_time(),
+    TS = erlang:monotonic_time(),
     QuickStatus = current_status_quick(TS),
     SlowStatus = current_status_slow(TS),
     NewState = State#state{slow_status = SlowStatus,
                            slow_status_ts = TS},
     {QuickStatus ++ SlowStatus, NewState};
 update_current_status(State) ->
-    TS = time_compat:monotonic_time(),
+    TS = erlang:monotonic_time(),
     ns_heart_slow_status_updater ! {req, TS, self()},
     QuickStatus = current_status_quick(TS),
 
@@ -249,7 +249,7 @@ slow_updater_loop() ->
 current_status_slow(TS) ->
     Status0 = current_status_slow_inner(),
 
-    Now  = time_compat:monotonic_time(),
+    Now  = erlang:monotonic_time(),
     Diff = misc:convert_time_unit(Now - TS, microsecond),
 
     system_stats_collector:add_histo(status_latency, Diff),

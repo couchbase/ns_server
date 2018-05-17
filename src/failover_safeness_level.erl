@@ -88,7 +88,7 @@ init([BucketName]) ->
 
     {ok, #state{bucket_name = BucketName,
                 dcp_info = DcpInfo,
-                last_update_local_clock = time_compat:monotonic_time()}}.
+                last_update_local_clock = erlang:monotonic_time()}}.
 
 terminate(_Reason, _State)     -> ok.
 code_change(_OldVsn, State, _) -> {ok, State}.
@@ -103,7 +103,7 @@ handle_event({stats, StatsBucket, #stat_entry{timestamp = TS, values = Values}},
                            DcpInfo),
 
     {ok, State#state{dcp_info = NewDcpInfo,
-                     last_update_local_clock = time_compat:monotonic_time()}};
+                     last_update_local_clock = erlang:monotonic_time()}};
 
 handle_event(_, State) ->
     {ok, State}.
@@ -163,10 +163,8 @@ new_safeness_info(_, _, _, Info) ->
 
 handle_call(get_level, #state{last_update_local_clock = UpdateTS,
                               dcp_info = #safeness_info{safeness_level = DcpLevel}} = State) ->
-    Now        = time_compat:monotonic_time(),
-    TimePassed = time_compat:convert_time_unit(Now - UpdateTS,
-                                               native,
-                                               millisecond),
+    Now        = erlang:monotonic_time(),
+    TimePassed = erlang:convert_time_unit(Now - UpdateTS, native, millisecond),
 
     RV = case TimePassed > ?STALENESS_THRESHOLD of
              true ->

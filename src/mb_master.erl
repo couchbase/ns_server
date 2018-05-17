@@ -82,7 +82,7 @@ init([]) ->
       end, empty),
     erlang:process_flag(trap_exit, true),
     {ok, _} = timer2:send_interval(?HEARTBEAT_INTERVAL, send_heartbeat),
-    Now = time_compat:monotonic_time(),
+    Now = erlang:monotonic_time(),
     case ns_node_disco:nodes_wanted() of
         [N] = P when N == node() ->
             ale:info(?USER_LOGGER, "I'm the only node, so I'm the master.", []),
@@ -212,7 +212,7 @@ candidate(info, send_heartbeat, #state{peers=Peers} = StateData) ->
             ?log_warning("Skipped ~p heartbeats~n", [Eaten])
     end,
 
-    StartTS = time_compat:monotonic_time(),
+    StartTS = erlang:monotonic_time(),
 
     MostOfTimeout = ?TIMEOUT * 4 div 5,
 
@@ -220,11 +220,11 @@ candidate(info, send_heartbeat, #state{peers=Peers} = StateData) ->
     send_heartbeat_with_peers(Peers, candidate, Peers),
     diag_handler:disarm_timeout(Armed),
 
-    SpentOnSending = time_compat:convert_time_unit(time_compat:monotonic_time() - StartTS,
-                                                   native, millisecond),
+    SpentOnSending = erlang:convert_time_unit(erlang:monotonic_time() - StartTS,
+                                              native, millisecond),
 
-    SinceHeard  = time_compat:convert_time_unit(StartTS - StateData#state.last_heard,
-                                                native, millisecond),
+    SinceHeard  = erlang:convert_time_unit(StartTS - StateData#state.last_heard,
+                                           native, millisecond),
 
     case SinceHeard >= ?TIMEOUT andalso SpentOnSending < MostOfTimeout of
         true ->
@@ -253,7 +253,7 @@ candidate(info, {heartbeat, NodeInfo, master, _H},
             NewState =
                 case strongly_lower_priority_node(NodeInfo) of
                     false ->
-                        State#state{last_heard=time_compat:monotonic_time(), master=Node};
+                        State#state{last_heard=erlang:monotonic_time(), master=Node};
                     true ->
                         case ns_config:search(rebalance_status) of
                             {value, running} ->
@@ -263,7 +263,7 @@ candidate(info, {heartbeat, NodeInfo, master, _H},
                                          "But I won't try to take over since "
                                          "rebalance seems to be running",
                                          [Node]),
-                                State#state{last_heard=time_compat:monotonic_time(), master=Node};
+                                State#state{last_heard=erlang:monotonic_time(), master=Node};
                             _ ->
                                 ale:info(?USER_LOGGER,
                                          "Candidate got master heartbeat from "
@@ -297,7 +297,7 @@ candidate(info, {heartbeat, NodeInfo, candidate, _H},
             case higher_priority_node(NodeInfo) of
                 true ->
                     %% Higher priority node
-                    {keep_state, State#state{last_heard=time_compat:monotonic_time()}};
+                    {keep_state, State#state{last_heard=erlang:monotonic_time()}};
                 false ->
                     %% Lower priority, so ignore it
                     keep_state_and_data
@@ -336,7 +336,7 @@ master(info, {heartbeat, NodeInfo, master, _H}, #state{peers=Peers} = State) ->
 
     case lists:member(Node, Peers) of
         true ->
-            Now = time_compat:monotonic_time(),
+            Now = erlang:monotonic_time(),
 
             case higher_priority_node(NodeInfo) of
                 true ->
@@ -366,7 +366,7 @@ master(info, {heartbeat, NodeInfo, candidate, _H}, #state{peers=Peers} = State) 
             ?log_warning("Master got candidate heartbeat from node ~p which is "
                          "not in peers ~p", [Node, Peers])
     end,
-    {keep_state, State#state{last_heard=time_compat:monotonic_time()}};
+    {keep_state, State#state{last_heard=erlang:monotonic_time()}};
 
 master(Type, Msg, State) ->
     handle_event(Type, Msg, master, State).

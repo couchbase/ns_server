@@ -416,4 +416,4 @@ notify_local_lease_expired(Pid, Holder) ->
                                                unpack_lease_holder(Holder)).
 
 get_now() ->
-    time_compat:monotonic_time(millisecond).
+    erlang:monotonic_time(millisecond).

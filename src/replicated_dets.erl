@@ -66,7 +66,7 @@ update_doc(Id, Value) ->
     %% we don't want last_modified to appear on mixed clusters
     LastModified =
         case cluster_compat_mode:is_cluster_55() of
-            true -> [{last_modified, time_compat:os_system_time(millisecond)}];
+            true -> [{last_modified, os:system_time(millisecond)}];
             false -> []
         end,
     #docv2{id = Id, value = Value,
@@ -214,7 +214,7 @@ open(#state{path = Path, name = TableName}) ->
         ok ->
             ok;
         error ->
-            Time = time_compat:os_system_time(microsecond),
+            Time = os:system_time(microsecond),
             Backup = lists:flatten(
                        io_lib:format("~s.~b.bak", [Path, Time])),
             ?log_error("Renaming possibly corrupted dets file ~p to ~p", [Path, Backup]),

@@ -129,7 +129,7 @@ handle_info(check_liveliness,
     %% Alternatively, we can also attach the timestamp in
     %% dcp_traffic_monitor:node_alive(). But, node_alive is an async operation
     %% so I prefer to attach the timestamp here.
-    Now = time_compat:monotonic_time(),
+    Now = erlang:monotonic_time(),
     dcp_traffic_monitor:node_alive(Node, {Bucket, Now, self()}),
     erlang:send_after(?LIVELINESS_UPDATE_INTERVAL, self(), check_liveliness),
     {noreply, State#state{connection_alive = false}, ?HIBERNATE_TIMEOUT};
