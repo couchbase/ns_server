@@ -210,7 +210,9 @@ ADD_DEPENDENCIES (ns_dialyzer_obsessive ns_server_all)
 # Install
 #
 INSTALL (DIRECTORY ebin DESTINATION "${INST_LIBDIR}/ns_server")
-INSTALL (DIRECTORY priv/public DESTINATION "${INST_LIBDIR}/ns_server/priv")
+INSTALL (DIRECTORY priv/public
+         DESTINATION "${INST_LIBDIR}/ns_server/priv"
+         PATTERN "*_license_agreement.txt" EXCLUDE)
 
 INSTALL (PROGRAMS cbbrowse_logs cbcollect_info DESTINATION bin)
 INSTALL (PROGRAMS scripts/cbdump-config scripts/dump-guts DESTINATION bin)
