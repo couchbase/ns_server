@@ -952,19 +952,22 @@ section.error {
   background-color: #e07f82; /* .red-3 */
 }
 
-/* mn-selectable-nodes-list -----------------------------------*/
-.mn-selectable-nodes-list {
+/* minimum presentation of nodes list with checkboxes -----------------------*/
+.selectable-nodes-list {
   margin: 0;
 }
-.mn-selectable-nodes-list .cbui-tablerow {
+.selectable-nodes-list .cbui-tablerow {
   padding: 2px 0;
 }
-.mn-selectable-nodes-list section {
+.selectable-nodes-list section {
   border: 0;
   margin: 0 0 .25rem;
 }
-.mn-selectable-nodes-list label {
+.selectable-nodes-list label {
   line-height: 1;
+}
+.hide-select-all .nodes-list-select-all{
+  display: none;
 }
 
 /* waiting spinner ------------------------------------------------------ */
