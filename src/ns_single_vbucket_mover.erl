@@ -357,7 +357,8 @@ dcp_takeover_via_orchestrator(Bucket, Parent,
     set_vbucket_state(Bucket, NewMaster, Parent,
                       VBucket, pending, passive, undefined),
 
-    case rebalance_quirks:is_enabled(disable_old_master, Quirks) of
+    DisableOldMaster = rebalance_quirks:is_enabled(disable_old_master, Quirks),
+    case DisableOldMaster of
         true ->
             %% The subsequent vbucket state change on the old master will
             %% result in these replications being terminated anyway. But that
@@ -388,7 +389,7 @@ dcp_takeover_via_orchestrator(Bucket, Parent,
       fun () ->
               ?log_info("Starting takeover for vbucket ~p (bucket ~p) from ~p to ~p",
                         [VBucket, Bucket, OldMaster, NewMaster]),
-              ok = dcp_replicator:takeover(Pid, VBucket),
+              do_takeover(DisableOldMaster, Pid, Bucket, VBucket),
               ?log_info("Takeover for vbucket ~p (bucket ~p) from ~p to ~p finished",
                         [VBucket, Bucket, OldMaster, NewMaster])
       end).
@@ -405,6 +406,21 @@ start_takeover_replicator(NewMaster, OldMaster, Bucket, VBucket) ->
     {ok, Pid} = dcp_replicator:start_link(undefined, NewMaster,
                                           OldMaster, Bucket, ConnName, XAttr),
     Pid.
+
+do_takeover(false, Pid, _Bucket, VBucket) ->
+    do_takeover(Pid, VBucket);
+do_takeover(true, Pid, Bucket, VBucket) ->
+    Timeout = ns_config:get_timeout(takeover_via_orchestrator, 10000),
+    {ok, TRef} = timer2:exit_after(Timeout,
+                                   {takeover_timeout, Bucket, VBucket}),
+    try
+        do_takeover(Pid, VBucket)
+    after
+        timer2:cancel(TRef)
+    end.
+
+do_takeover(Pid, VBucket) ->
+    ok = dcp_replicator:takeover(Pid, VBucket).
 
 dcp_takeover_regular(Bucket, Parent, OldMaster, NewMaster, VBucket) ->
     spawn_and_wait(

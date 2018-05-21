@@ -134,8 +134,6 @@ quirks_for_version(Version) ->
 
 is_quirk_required(takeover_via_orchestrator, Version) ->
     Version < [5, 1, 0];
-is_quirk_required(disable_old_master, Version) ->
-    Version < [4, 6, 3];
 is_quirk_required(_, _) ->
     false.
 
