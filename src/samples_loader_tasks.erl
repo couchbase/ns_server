@@ -153,7 +153,7 @@ perform_loading_task(Name, Quota) ->
     BinDir = path_config:component_path(bin),
 
     Cmd = BinDir ++ "/cbdocloader",
-    Args = ["-n", misc:maybe_add_brackets(Host) ++ ":" ++ integer_to_list(Port),
+    Args = ["-n", misc:join_host_port(Host, Port),
             "-b", Name,
             "-s", integer_to_list(Quota),
             "-t", "2",

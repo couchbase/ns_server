@@ -241,7 +241,7 @@ build_node_hostname(Config, Node, LocalAddr) ->
                {_, "::1"} -> LocalAddr;
                {_Name, H} -> H
            end,
-    misc:maybe_add_brackets(Host) ++ ":" ++ integer_to_list(misc:node_rest_port(Config, Node)).
+    misc:join_host_port(Host, misc:node_rest_port(Config, Node)).
 
 construct_ext_mochijson(undefined, []) ->
     [];

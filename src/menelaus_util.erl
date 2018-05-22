@@ -394,7 +394,7 @@ local_addr(Req) ->
 remote_addr_and_port(Req) ->
     case inet:peername(Req:get(socket)) of
         {ok, {Address, Port}} ->
-            misc:maybe_add_brackets(inet:ntoa(Address)) ++ ":" ++ integer_to_list(Port);
+            misc:join_host_port(inet:ntoa(Address), Port);
         Error ->
             ?log_error("remote_addr failed: ~p", Error),
             "unknown"

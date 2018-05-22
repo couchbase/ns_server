@@ -446,7 +446,7 @@ do_handle_settings_web_post(Port, U, P, Req) ->
             %% event watcher will do it later if necessary.
     end,
     {PureHostName, _} = misc:split_host_port(Req:get_header_value("host"), ""),
-    NewHost = misc:maybe_add_brackets(PureHostName) ++ ":" ++ integer_to_list(PortInt),
+    NewHost = misc:join_host_port(PureHostName, PortInt),
     %% TODO: detect and support https when time will come
     reply_json(Req, {struct, [{newBaseUri, list_to_binary("http://" ++ NewHost ++ "/")}]}).
 

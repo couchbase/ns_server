@@ -164,8 +164,8 @@ call_compute_node_base_url(Node, User, Password) ->
                                       true -> Port;
                                       false -> false
                                   end,
-                      Host = misc:maybe_add_brackets(H),
-                      Url = iolist_to_binary([Schema, Auth, Host, $:, integer_to_list(Port)]),
+                      HostPort = misc:join_host_port(H, Port),
+                      Url = iolist_to_binary([Schema, Auth, HostPort]),
                       ets:insert(vbucket_map_mirror, {{Node, User, Password}, Url, StorePort}),
                       Url
               end
