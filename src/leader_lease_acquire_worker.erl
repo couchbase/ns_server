@@ -193,11 +193,12 @@ get_prev_acquire_estimate(SincePrevAcquire,
             Estimate;
         false ->
             ?log_warning("Lease period start time estimate is in the future. "
-                         "The time on the agent must be "
+                         "The time on the agent node ~p must be "
                          "flowing at a faster pace.~n"
                          "Now: ~p, PrevAcquireTS: ~p, "
                          "SincePrevAcquire: ~p, LeaseProps: ~p",
-                         [Now, PrevAcquireTS, SincePrevAcquire, LeaseProps]),
+                         [target_node(State), Now,
+                          PrevAcquireTS, SincePrevAcquire, LeaseProps]),
             inc_counter(prev_acquire_estimate_in_future, State),
             undefined
     end.
