@@ -66,13 +66,6 @@
 
 -define(SERVER, {via, leader_registry, ?MODULE}).
 
--define(REBALANCE_SUCCESSFUL, 1).
--define(REBALANCE_FAILED, 2).
--define(REBALANCE_NOT_STARTED, 3).
--define(REBALANCE_STARTED, 4).
--define(REBALANCE_PROGRESS, 5).
--define(REBALANCE_STOPPED, 7).
-
 -define(DELETE_BUCKET_TIMEOUT,  ?get_timeout(delete_bucket, 30000)).
 -define(FLUSH_BUCKET_TIMEOUT,   ?get_timeout(flush_bucket, 60000)).
 -define(CREATE_BUCKET_TIMEOUT,  ?get_timeout(create_bucket, 5000)).
@@ -709,19 +702,19 @@ idle({start_rebalance, KeepNodes, EjectNodes,
         {ok, Pid} ->
             case DeltaNodes =/= [] of
                 true ->
-                    ?user_log(?REBALANCE_STARTED,
-                              "Starting rebalance, KeepNodes = ~p, "
-                              "EjectNodes = ~p, Failed over and being ejected "
-                              "nodes = ~p, Delta recovery nodes = ~p, "
-                              " Delta recovery buckets = ~p",
-                              [KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
-                               DeltaRecoveryBuckets]);
+                    ale:info(?USER_LOGGER,
+                             "Starting rebalance, KeepNodes = ~p, "
+                             "EjectNodes = ~p, Failed over and being ejected "
+                             "nodes = ~p, Delta recovery nodes = ~p, "
+                             " Delta recovery buckets = ~p",
+                             [KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
+                              DeltaRecoveryBuckets]);
                 _ ->
-                    ?user_log(?REBALANCE_STARTED,
-                              "Starting rebalance, KeepNodes = ~p, "
-                              "EjectNodes = ~p, Failed over and being ejected "
-                              "nodes = ~p; no delta recovery nodes~n",
-                              [KeepNodes, EjectNodes, FailedNodes])
+                    ale:info(?USER_LOGGER,
+                             "Starting rebalance, KeepNodes = ~p, "
+                             "EjectNodes = ~p, Failed over and being ejected "
+                             "nodes = ~p; no delta recovery nodes~n",
+                             [KeepNodes, EjectNodes, FailedNodes])
             end,
 
             Type = rebalance,
@@ -766,10 +759,10 @@ idle({move_vbuckets, Bucket, Moves}, From, _State) ->
 idle(stop_rebalance, From, _State) ->
     ns_janitor:stop_rebalance_status(
       fun () ->
-              ?user_log(?REBALANCE_STOPPED,
-                        "Resetting rebalance status since rebalance stop "
-                        "was requested but rebalance isn't orchestrated on "
-                        "our node"),
+              ale:info(?USER_LOGGER,
+                       "Resetting rebalance status since rebalance stop "
+                       "was requested but rebalance isn't orchestrated on "
+                       "our node"),
               none
       end),
     {keep_state_and_data, [{reply, From, not_rebalancing}]};
@@ -836,8 +829,8 @@ rebalancing({timeout, _Tref, stop_timeout},
 rebalancing({start_rebalance, _KeepNodes, _EjectNodes,
              _FailedNodes, _DeltaNodes, _DeltaRecoveryBuckets},
             From, _State) ->
-    ?user_log(?REBALANCE_NOT_STARTED,
-              "Not rebalancing because rebalance is already in progress.~n"),
+    ale:info(?USER_LOGGER,
+             "Not rebalancing because rebalance is already in progress.~n"),
     {keep_state_and_data, [{reply, From, in_progress}]};
 rebalancing({start_graceful_failover, _}, From, _State) ->
     {keep_state_and_data, [{reply, From, in_progress}]};
