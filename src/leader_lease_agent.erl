@@ -213,13 +213,13 @@ cancel_timer(Lease) ->
 
 extend_lease_handle_result(From, State, Lease) ->
     AcquiredAt  = Lease#lease.acquired_at,
-    LeaseProps0 = [{acquired_at, AcquiredAt} |
-                   build_lease_props(AcquiredAt, Lease)],
-    LeaseProps  = maybe_add_prev_acquired_at(AcquiredAt, State, LeaseProps0),
+    LeaseProps0 = build_lease_props(AcquiredAt, Lease),
+    LeaseProps  = maybe_add_time_since_prev_acquire(AcquiredAt,
+                                                    State, LeaseProps0),
 
     gen_server2:reply(From, {ok, LeaseProps}).
 
-maybe_add_prev_acquired_at(AcquiredAt, State, LeaseProps) ->
+maybe_add_time_since_prev_acquire(AcquiredAt, State, LeaseProps) ->
     PrevLease      = State#state.lease,
     PrevAcquiredAt = PrevLease#lease.acquired_at,
 
@@ -228,7 +228,8 @@ maybe_add_prev_acquired_at(AcquiredAt, State, LeaseProps) ->
             LeaseProps;
         _ when is_integer(PrevAcquiredAt) ->
             true = (AcquiredAt >= PrevAcquiredAt),
-            [{prev_acquired_at, PrevAcquiredAt} | LeaseProps]
+            SincePrevAcquire = AcquiredAt - PrevAcquiredAt,
+            [{time_since_prev_acquire, SincePrevAcquire} | LeaseProps]
     end.
 
 handle_get_current_lease(From, #state{lease = Lease} = State) ->

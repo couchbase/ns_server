@@ -204,18 +204,12 @@ get_prev_acquire_estimate(SincePrevAcquire,
     end.
 
 get_time_since_prev_acquire(LeaseProps) ->
-    AcquiredAt     = proplists:get_value(acquired_at, LeaseProps),
-    PrevAcquiredAt = proplists:get_value(prev_acquired_at, LeaseProps),
-
-    get_time_since_prev_acquire(PrevAcquiredAt, AcquiredAt).
-
-get_time_since_prev_acquire(PrevAcquiredAt, AcquiredAt)
-  when is_integer(PrevAcquiredAt),
-       is_integer(AcquiredAt),
-       AcquiredAt >= PrevAcquiredAt ->
-    AcquiredAt - PrevAcquiredAt;
-get_time_since_prev_acquire(_, _) ->
-    undefined.
+    case proplists:get_value(time_since_prev_acquire, LeaseProps) of
+        Value when is_integer(Value), Value >= 0 ->
+            Value;
+        _ ->
+            undefined
+    end.
 
 update_estimate_histos(StartTime, PrevAcquireEstimate, State)
   when is_integer(StartTime),
