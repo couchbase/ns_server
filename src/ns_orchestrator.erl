@@ -136,7 +136,8 @@ update_bucket(BucketType, StorageMode, BucketName, UpdatedProps) ->
 %% and {exit, ...} if bucket does not really exists
 -spec delete_bucket(bucket_name()) ->
                            ok | rebalance_running | in_recovery |
-                           {shutdown_failed, [node()]} | {exit, {not_found, bucket_name()}, _}.
+                           {shutdown_failed, [node()]} |
+                           {exit, {not_found, bucket_name()}, _}.
 delete_bucket(BucketName) ->
     wait_for_orchestrator(),
     gen_statem:call(?SERVER, {delete_bucket, BucketName}, infinity).
@@ -197,7 +198,8 @@ service_needs_rebalance(Service, NodesWanted) ->
         topology_aware_service_needs_rebalance(Service, ActiveServiceNodes).
 
 topology_aware_service_needs_rebalance(Service, ServiceNodes) ->
-    case lists:member(Service, ns_cluster_membership:topology_aware_services()) of
+    case lists:member(Service,
+                      ns_cluster_membership:topology_aware_services()) of
         true ->
             %% TODO: consider caching this
             Statuses = ns_doctor:get_nodes(),
@@ -225,7 +227,9 @@ buckets_need_rebalance(NodesWanted) ->
 rebalance_progress_full() ->
     gen_statem:call(?SERVER, rebalance_progress, 2000).
 
--spec rebalance_progress_full(non_neg_integer()) -> {running, [{atom(), float()}]} | not_running.
+-spec rebalance_progress_full(non_neg_integer()) ->
+                                     {running, [{atom(), float()}]} |
+                                     not_running.
 rebalance_progress_full(Timeout) ->
     gen_statem:call(?SERVER, rebalance_progress, Timeout).
 
@@ -272,12 +276,13 @@ ensure_janitor_run(Item) ->
 start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets) ->
     wait_for_orchestrator(),
     gen_statem:call(
-      ?SERVER, {maybe_start_rebalance, KnownNodes, EjectNodes, DeltaRecoveryBuckets}).
+      ?SERVER,
+      {maybe_start_rebalance, KnownNodes, EjectNodes, DeltaRecoveryBuckets}).
 
 -spec start_graceful_failover(node()) ->
-                                     ok | in_progress | in_recovery | non_kv_node |
-                                     not_graceful | unknown_node | last_node |
-                                     {config_sync_failed, any()} |
+                                     ok | in_progress | in_recovery |
+                                     non_kv_node | not_graceful | unknown_node |
+                                     last_node | {config_sync_failed, any()} |
                                      %% the following is needed just to trick
                                      %% the dialyzer; otherwise it wouldn't
                                      %% let the callers cover what it believes
@@ -300,17 +305,17 @@ stop_rebalance() ->
                             not_present |
                             not_needed |
                             {error, {failed_nodes, [node()]}}
-  when UUID :: binary(),
-       RecoveryMap :: dict:dict().
+                                when UUID :: binary(),
+                                     RecoveryMap :: dict:dict().
 start_recovery(Bucket) ->
     wait_for_orchestrator(),
     gen_statem:call(?SERVER, {start_recovery, Bucket}).
 
 -spec recovery_status() -> not_in_recovery | {ok, Status}
-  when Status :: [{bucket, bucket_name()} |
-                  {uuid, binary()} |
-                  {recovery_map, RecoveryMap}],
-       RecoveryMap :: dict:dict().
+                               when Status :: [{bucket, bucket_name()} |
+                                               {uuid, binary()} |
+                                               {recovery_map, RecoveryMap}],
+                                    RecoveryMap :: dict:dict().
 recovery_status() ->
     case is_recovery_running() of
         false ->
@@ -321,8 +326,8 @@ recovery_status() ->
     end.
 
 -spec recovery_map(bucket_name(), UUID) -> bad_recovery | {ok, RecoveryMap}
-  when RecoveryMap :: dict:dict(),
-       UUID :: binary().
+                                               when RecoveryMap :: dict:dict(),
+                                                    UUID :: binary().
 recovery_map(Bucket, UUID) ->
     wait_for_orchestrator(),
     gen_statem:call(?SERVER, {recovery_map, Bucket, UUID}).
@@ -331,13 +336,13 @@ recovery_map(Bucket, UUID) ->
                             ok | recovery_completed |
                             vbucket_not_found | bad_recovery |
                             {error, {failed_nodes, [node()]}}
-  when UUID :: binary().
+                                when UUID :: binary().
 commit_vbucket(Bucket, UUID, VBucket) ->
     wait_for_orchestrator(),
     gen_statem:call(?SERVER, {commit_vbucket, Bucket, UUID, VBucket}).
 
 -spec stop_recovery(bucket_name(), UUID) -> ok | bad_recovery
-  when UUID :: binary().
+                                                when UUID :: binary().
 stop_recovery(Bucket, UUID) ->
     wait_for_orchestrator(),
     gen_statem:call(?SERVER, {stop_recovery, Bucket, UUID}).
@@ -410,17 +415,22 @@ handle_event({call, From},
             MaybeKeepNodes = KnownNodes -- EjectedNodes,
             FailedNodes =
                 [N || N <- KnownNodes,
-                      ns_cluster_membership:get_cluster_membership(N, Config) =:= inactiveFailed],
+                      ns_cluster_membership:get_cluster_membership(N, Config)
+                          =:= inactiveFailed],
             KeepNodes = MaybeKeepNodes -- FailedNodes,
-            DeltaNodes = ns_rebalancer:get_delta_recovery_nodes(Config, KeepNodes),
+            DeltaNodes = ns_rebalancer:get_delta_recovery_nodes(Config,
+                                                                KeepNodes),
             case KeepNodes of
                 [] ->
-                    {keep_state_and_data, [{reply, From, no_active_nodes_left}]};
+                    {keep_state_and_data,
+                     [{reply, From, no_active_nodes_left}]};
                 _ ->
                     StartEvent = {start_rebalance,
                                   KeepNodes,
                                   EjectedNodes -- FailedNodes,
-                                  FailedNodes, DeltaNodes, DeltaRecoveryBuckets},
+                                  FailedNodes,
+                                  DeltaNodes,
+                                  DeltaRecoveryBuckets},
                     {keep_state_and_data,
                      [{next_event, {call, From}, StartEvent}]}
             end;
@@ -457,10 +467,11 @@ handle_event({call, From}, Event, StateName, StateData) ->
 handle_info(janitor, idle, _State) ->
     misc:verify_name(?MODULE), % MB-3180: Make sure we're still registered
     consider_switching_compat_mode(),
-    {ok, ID} = ns_janitor_server:start_cleanup(fun(Pid, UnsafeNodes, CleanupID) ->
-                                                       Pid ! {cleanup_done, UnsafeNodes, CleanupID},
-                                                       ok
-                                               end),
+    {ok, ID} = ns_janitor_server:start_cleanup(
+                 fun(Pid, UnsafeNodes, CleanupID) ->
+                         Pid ! {cleanup_done, UnsafeNodes, CleanupID},
+                         ok
+                 end),
     {next_state, janitor_running, #janitor_state{cleanup_id = ID}};
 
 handle_info(janitor, StateName, _StateData) ->
@@ -481,14 +492,15 @@ handle_info({cleanup_done, UnsafeNodes, ID}, janitor_running,
     %% If we get here we don't expect the IDs to be different.
     ID = CleanupID,
 
-    %% If any 'unsafe nodes' were found then trigger an auto_reprovision operation
-    %% via the orchestrator.
+    %% If any 'unsafe nodes' were found then trigger an auto_reprovision
+    %% operation via the orchestrator.
     case UnsafeNodes =/= [] of
         true ->
             %% The unsafe nodes only affect the ephemeral buckets.
             Buckets = ns_bucket:get_bucket_names_of_type(membase, ephemeral),
             RV = auto_reprovision:reprovision_buckets(Buckets, UnsafeNodes),
-            ?log_info("auto_reprovision status = ~p (Buckets = ~p, UnsafeNodes = ~p)",
+            ?log_info("auto_reprovision status = ~p "
+                      "(Buckets = ~p, UnsafeNodes = ~p)",
                       [RV, Buckets, UnsafeNodes]),
 
             %% Trigger the janitor cleanup immediately as the buckets need to be
@@ -550,26 +562,35 @@ janitor_running(_Event, _State) ->
 idle({create_bucket, BucketType, BucketName, NewConfig}, From, _State) ->
     Reply = case ns_bucket:name_conflict(BucketName) of
                 false ->
-                    {Results, FailedNodes} = rpc:multicall(ns_node_disco:nodes_wanted(), ns_memcached, active_buckets, [], ?CREATE_BUCKET_TIMEOUT),
+                    {Results, FailedNodes} =
+                        rpc:multicall(ns_node_disco:nodes_wanted(),
+                                      ns_memcached, active_buckets, [],
+                                      ?CREATE_BUCKET_TIMEOUT),
                     case FailedNodes of
                         [] -> ok;
                         _ ->
-                            ?log_warning("Best-effort check for presense of bucket failed to be made on following nodes: ~p", [FailedNodes])
+                            ?log_warning("Best-effort check for presense of "
+                                         "bucket failed to be made on "
+                                         "following nodes: ~p", [FailedNodes])
                     end,
-                    case lists:any(fun (StartedBucket) ->
-                                           ns_bucket:names_conflict(StartedBucket, BucketName)
-                                   end, lists:append(Results)) of
+                    case lists:any(
+                           fun (StartedBucket) ->
+                                   ns_bucket:names_conflict(StartedBucket,
+                                                            BucketName)
+                           end, lists:append(Results)) of
                         true ->
                             {error, {still_exists, BucketName}};
                         _ ->
-                            ns_bucket:create_bucket(BucketType, BucketName, NewConfig)
-                        end;
+                            ns_bucket:create_bucket(BucketType, BucketName,
+                                                    NewConfig)
+                    end;
                 true ->
                     {error, {already_exists, BucketName}}
             end,
     case Reply of
         ok ->
-            master_activity_events:note_bucket_creation(BucketName, BucketType, NewConfig),
+            master_activity_events:note_bucket_creation(BucketName, BucketType,
+                                                        NewConfig),
             request_janitor_run({bucket, BucketName});
         _ -> ok
     end,
@@ -579,7 +600,8 @@ idle({flush_bucket, BucketName}, From, _State) ->
     case RV of
         ok -> ok;
         _ ->
-            ale:info(?USER_LOGGER, "Flushing ~p failed with error: ~n~p", [BucketName, RV])
+            ale:info(?USER_LOGGER, "Flushing ~p failed with error: ~n~p",
+                     [BucketName, RV])
     end,
     {keep_state_and_data, [{reply, From, RV}]};
 idle({delete_bucket, BucketName}, From, _State) ->
@@ -615,12 +637,13 @@ idle({delete_bucket, BucketName}, From, _State) ->
                 LiveNodes = Nodes -- LeftoverNodes,
 
                 ?log_info("Restarting moxi on nodes ~p", [LiveNodes]),
-                case multicall_moxi_restart(LiveNodes, ?DELETE_BUCKET_TIMEOUT) of
+                case multicall_moxi_restart(LiveNodes,
+                                            ?DELETE_BUCKET_TIMEOUT) of
                     ok ->
                         ok;
                     FailedNodes ->
-                        ?log_warning("Failed to restart moxi on following nodes ~p",
-                                     [FailedNodes])
+                        ?log_warning("Failed to restart moxi on following "
+                                     "nodes ~p", [FailedNodes])
                 end,
                 case LeftoverNodes of
                     [] ->
@@ -630,7 +653,7 @@ idle({delete_bucket, BucketName}, From, _State) ->
                 end;
             _ ->
                 DeleteRV
-    end,
+        end,
 
     {keep_state_and_data, [{reply, From, Reply}]};
 idle({failover, Node}, From, _State) ->
@@ -677,17 +700,23 @@ idle(rebalance_progress, From, _State) ->
 idle({start_rebalance, KeepNodes, EjectNodes,
       FailedNodes, DeltaNodes, DeltaRecoveryBuckets}, From, _State) ->
     case ns_rebalancer:start_link_rebalance(KeepNodes, EjectNodes,
-                                            FailedNodes, DeltaNodes, DeltaRecoveryBuckets) of
+                                            FailedNodes, DeltaNodes,
+                                            DeltaRecoveryBuckets) of
         {ok, Pid} ->
             case DeltaNodes =/= [] of
                 true ->
                     ?user_log(?REBALANCE_STARTED,
-                              "Starting rebalance, KeepNodes = ~p, EjectNodes = ~p, Failed over and being ejected nodes = ~p, Delta recovery nodes = ~p, "
+                              "Starting rebalance, KeepNodes = ~p, "
+                              "EjectNodes = ~p, Failed over and being ejected "
+                              "nodes = ~p, Delta recovery nodes = ~p, "
                               " Delta recovery buckets = ~p",
-                              [KeepNodes, EjectNodes, FailedNodes, DeltaNodes, DeltaRecoveryBuckets]);
+                              [KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
+                               DeltaRecoveryBuckets]);
                 _ ->
                     ?user_log(?REBALANCE_STARTED,
-                              "Starting rebalance, KeepNodes = ~p, EjectNodes = ~p, Failed over and being ejected nodes = ~p; no delta recovery nodes~n",
+                              "Starting rebalance, KeepNodes = ~p, "
+                              "EjectNodes = ~p, Failed over and being ejected "
+                              "nodes = ~p; no delta recovery nodes~n",
                               [KeepNodes, EjectNodes, FailedNodes])
             end,
 
@@ -697,7 +726,8 @@ idle({start_rebalance, KeepNodes, EjectNodes,
 
             {next_state, rebalancing,
              #rebalancing_state{rebalancer=Pid,
-                                progress=rebalance_progress:init(KeepNodes ++ EjectNodes),
+                                progress=rebalance_progress:init(
+                                           KeepNodes ++ EjectNodes),
                                 keep_nodes=KeepNodes,
                                 eject_nodes=EjectNodes,
                                 failed_nodes=FailedNodes,
@@ -733,8 +763,9 @@ idle(stop_rebalance, From, _State) ->
     ns_janitor:stop_rebalance_status(
       fun () ->
               ?user_log(?REBALANCE_STOPPED,
-                        "Resetting rebalance status since rebalance stop was "
-                        "requested but rebalance isn't orchestrated on our node"),
+                        "Resetting rebalance status since rebalance stop "
+                        "was requested but rebalance isn't orchestrated on "
+                        "our node"),
               none
       end),
     {keep_state_and_data, [{reply, From, not_rebalancing}]};
@@ -815,7 +846,8 @@ rebalancing(stop_rebalance, From,
      [{reply, From, ok}]};
 rebalancing(rebalance_progress, From,
             #rebalancing_state{progress = Progress}) ->
-    AggregatedProgress = dict:to_list(rebalance_progress:get_progress(Progress)),
+    AggregatedProgress =
+        dict:to_list(rebalance_progress:get_progress(Progress)),
     {keep_state_and_data, [{reply, From, {running, AggregatedProgress}}]};
 rebalancing(Event, From, _State) ->
     ?log_warning("Got event ~p while rebalancing.", [Event]),
@@ -912,35 +944,35 @@ wait_for_nodes_check_pred(Status, Pred) ->
                      timeout()) -> ok | {timeout, [node()]}.
 wait_for_nodes(Nodes, Pred, Timeout) ->
     misc:executing_on_new_process(
-        fun () ->
-                Self = self(),
+      fun () ->
+              Self = self(),
 
-                ns_pubsub:subscribe_link(
-                  buckets_events,
-                  fun ({significant_buckets_change, Node}) ->
-                          Status = ns_doctor:get_node(Node),
+              ns_pubsub:subscribe_link(
+                buckets_events,
+                fun ({significant_buckets_change, Node}) ->
+                        Status = ns_doctor:get_node(Node),
 
-                          case wait_for_nodes_check_pred(Status, Pred) of
-                              false ->
-                                  ok;
-                              true ->
-                                  Self ! {done, Node}
-                          end;
-                      (_) ->
-                          ok
-                  end),
+                        case wait_for_nodes_check_pred(Status, Pred) of
+                            false ->
+                                ok;
+                            true ->
+                                Self ! {done, Node}
+                        end;
+                    (_) ->
+                        ok
+                end),
 
-                Statuses = ns_doctor:get_nodes(),
-                Nodes1 =
-                    lists:filter(
-                      fun (N) ->
-                              Status = ns_doctor:get_node(N, Statuses),
-                              not wait_for_nodes_check_pred(Status, Pred)
-                      end, Nodes),
+              Statuses = ns_doctor:get_nodes(),
+              Nodes1 =
+                  lists:filter(
+                    fun (N) ->
+                            Status = ns_doctor:get_node(N, Statuses),
+                            not wait_for_nodes_check_pred(Status, Pred)
+                    end, Nodes),
 
-                erlang:send_after(Timeout, Self, timeout),
-                wait_for_nodes_loop(Nodes1)
-        end).
+              erlang:send_after(Timeout, Self, timeout),
+              wait_for_nodes_loop(Nodes1)
+      end).
 
 %% quickly and _without_ communication to potentially remote
 %% ns_orchestrator find out if rebalance is running.
@@ -975,7 +1007,8 @@ perform_bucket_flushing(BucketName) ->
         {ok, BucketConfig} ->
             case proplists:get_value(flush_enabled, BucketConfig, false) of
                 true ->
-                    perform_bucket_flushing_with_config(BucketName, BucketConfig);
+                    perform_bucket_flushing_with_config(BucketName,
+                                                        BucketConfig);
                 false ->
                     flush_disabled
             end
@@ -983,7 +1016,8 @@ perform_bucket_flushing(BucketName) ->
 
 
 perform_bucket_flushing_with_config(BucketName, BucketConfig) ->
-    ale:info(?MENELAUS_LOGGER, "Flushing bucket ~p from node ~p", [BucketName, erlang:node()]),
+    ale:info(?MENELAUS_LOGGER, "Flushing bucket ~p from node ~p",
+             [BucketName, erlang:node()]),
     case ns_bucket:bucket_type(BucketConfig) =:= memcached of
         true ->
             do_flush_old_style(BucketName, BucketConfig);
@@ -991,12 +1025,15 @@ perform_bucket_flushing_with_config(BucketName, BucketConfig) ->
             RV = do_flush_bucket(BucketName, BucketConfig),
             case RV of
                 ok ->
-                    ?log_info("Requesting janitor run to actually revive bucket ~p after flush", [BucketName]),
-                    JanitorRV = ns_janitor:cleanup(BucketName, [{query_states_timeout, 1000}]),
+                    ?log_info("Requesting janitor run to actually "
+                              "revive bucket ~p after flush", [BucketName]),
+                    JanitorRV = ns_janitor:cleanup(
+                                  BucketName, [{query_states_timeout, 1000}]),
                     case JanitorRV of
                         ok -> ok;
                         _ ->
-                            ?log_error("Flusher's janitor run failed: ~p", [JanitorRV])
+                            ?log_error("Flusher's janitor run failed: ~p",
+                                       [JanitorRV])
                     end,
                     RV;
                 _ ->
@@ -1026,7 +1063,8 @@ do_flush_bucket(BucketName, BucketConfig) ->
 
 continue_flush_bucket(BucketName, BucketConfig, Nodes) ->
     OldFlushCount = proplists:get_value(flushseq, BucketConfig, 0),
-    NewConfig = lists:keystore(flushseq, 1, BucketConfig, {flushseq, OldFlushCount + 1}),
+    NewConfig = lists:keystore(flushseq, 1, BucketConfig,
+                               {flushseq, OldFlushCount + 1}),
     ns_bucket:set_bucket_config(BucketName, NewConfig),
     case ns_config_rep:ensure_config_seen_by_nodes(Nodes) of
         ok ->
@@ -1036,7 +1074,8 @@ continue_flush_bucket(BucketName, BucketConfig, Nodes) ->
     end.
 
 finalize_flush_bucket(BucketName, Nodes) ->
-    {_GoodNodes, FailedCalls, FailedNodes} = janitor_agent:complete_flush(BucketName, Nodes, ?FLUSH_BUCKET_TIMEOUT),
+    {_GoodNodes, FailedCalls, FailedNodes} =
+        janitor_agent:complete_flush(BucketName, Nodes, ?FLUSH_BUCKET_TIMEOUT),
     case FailedCalls =:= [] andalso FailedNodes =:= [] of
         true ->
             ok;
@@ -1046,8 +1085,9 @@ finalize_flush_bucket(BucketName, Nodes) ->
 
 do_flush_old_style(BucketName, BucketConfig) ->
     Nodes = ns_bucket:bucket_nodes(BucketConfig),
-    {Results, BadNodes} = rpc:multicall(Nodes, ns_memcached, flush, [BucketName],
-                                        ?MULTICALL_DEFAULT_TIMEOUT),
+    {Results, BadNodes} =
+        rpc:multicall(Nodes, ns_memcached, flush, [BucketName],
+                      ?MULTICALL_DEFAULT_TIMEOUT),
     case BadNodes =:= [] andalso lists:all(fun(A) -> A =:= ok end, Results) of
         true ->
             ok;
@@ -1060,9 +1100,10 @@ do_flush_old_style(BucketName, BucketConfig) ->
 %% their moxis
 -spec multicall_moxi_restart([node()], _) -> ok | [{node(), _} | node()].
 multicall_moxi_restart(Nodes, Timeout) ->
-    {Results, FailedNodes} = rpc:multicall(Nodes, ns_ports_setup, restart_moxi, [],
-                                           Timeout),
-    BadResults = [Pair || {_N, R} = Pair <- lists:zip(Nodes -- FailedNodes, Results),
+    {Results, FailedNodes} = rpc:multicall(Nodes, ns_ports_setup, restart_moxi,
+                                           [], Timeout),
+    BadResults = [Pair || {_N, R} = Pair <- lists:zip(Nodes -- FailedNodes,
+                                                      Results),
                           R =/= ok],
     case BadResults =:= [] andalso FailedNodes =:= [] of
         true ->
@@ -1198,7 +1239,8 @@ reason2status(_Error, Type) ->
 maybe_start_service_upgrader(normal, unchanged, _State) ->
     not_needed;
 maybe_start_service_upgrader(normal, {changed, OldVersion, NewVersion},
-                             #rebalancing_state{keep_nodes = KeepNodes} = State) ->
+                             #rebalancing_state{keep_nodes = KeepNodes}
+                             = State) ->
     Old = ns_cluster_membership:topology_aware_services_for_version(OldVersion),
     New = ns_cluster_membership:topology_aware_services_for_version(NewVersion),
 
@@ -1209,7 +1251,8 @@ maybe_start_service_upgrader(normal, {changed, OldVersion, NewVersion},
             not_needed;
         _ ->
             ale:info(?USER_LOGGER,
-                     "Starting upgrade for the following services: ~p", [Services]),
+                     "Starting upgrade for the following services: ~p",
+                     [Services]),
             Pid = start_service_upgrader(KeepNodes, Services),
 
             Type = service_upgrade,
