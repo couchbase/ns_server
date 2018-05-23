@@ -522,7 +522,7 @@ idle({create_bucket, BucketType, BucketName, NewConfig}, _From, State) ->
                     case FailedNodes of
                         [] -> ok;
                         _ ->
-                            ?log_warning("Best-effort check for presense of bucket failed to be made on following nodes: ~p", FailedNodes)
+                            ?log_warning("Best-effort check for presense of bucket failed to be made on following nodes: ~p", [FailedNodes])
                     end,
                     case lists:any(fun (StartedBucket) ->
                                            ns_bucket:names_conflict(StartedBucket, BucketName)
