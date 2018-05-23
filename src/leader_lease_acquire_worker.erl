@@ -160,14 +160,27 @@ update_lease_expire_ts(Start, Now, LeaseProps, PrevState, State) ->
 
 compute_new_acquire_time(Start, Now, LeaseProps, State) ->
     PrevAcquireEstimate = get_prev_acquire_estimate(Now, LeaseProps, State),
-    update_estimate_histos(Start, PrevAcquireEstimate, State),
-    pick_acquire_time_estimate(Start, PrevAcquireEstimate).
+    pick_acquire_time_estimate(Start, PrevAcquireEstimate, State).
 
-pick_acquire_time_estimate(Start, undefined) ->
+pick_acquire_time_estimate(Start, undefined, _State) ->
     Start;
-pick_acquire_time_estimate(Start, PrevAcquireEstimate) ->
+pick_acquire_time_estimate(Start, PrevAcquireEstimate, State) ->
     true = is_integer(Start),
-    max(Start, PrevAcquireEstimate).
+
+    if
+        Start > PrevAcquireEstimate ->
+            inc_counter(used_start_estimate, State),
+            add_histo('start_time-prev_acquire_estimate',
+                      Start - PrevAcquireEstimate, State),
+            Start;
+        PrevAcquireEstimate > Start ->
+            inc_counter(used_prev_acquire_estimate, State),
+            add_histo('prev_acquire_estimate-start_time',
+                      PrevAcquireEstimate - Start, State),
+            PrevAcquireEstimate;
+        true ->
+            Start
+    end.
 
 update_inflight_histo(Start, Now, State) ->
     TimeInFlight = Now - Start,
@@ -210,19 +223,6 @@ get_time_since_prev_acquire(LeaseProps) ->
         _ ->
             undefined
     end.
-
-update_estimate_histos(StartTime, PrevAcquireEstimate, State)
-  when is_integer(StartTime),
-       is_integer(PrevAcquireEstimate) ->
-    add_histo('start_time-prev_acquire_estimate',
-              max(StartTime - PrevAcquireEstimate, 0),
-              State),
-
-    add_histo('prev_acquire_estimate-start_time',
-              max(PrevAcquireEstimate - StartTime, 0),
-              State);
-update_estimate_histos(_, _, _) ->
-    ok.
 
 handle_lease_already_acquired(LeaseProps, State) ->
     {node, Node}          = lists:keyfind(node, 1, LeaseProps),
