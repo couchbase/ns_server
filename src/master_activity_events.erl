@@ -352,7 +352,7 @@ format_simple_value(Value) ->
     end.
 
 format_mcd_pair({Host, Port}) ->
-    iolist_to_binary([Host, $:, integer_to_list(Port)]).
+    list_to_binary(misc:join_host_port(Host, Port)).
 
 node_to_host(undefined, _Config) ->
     <<"">>;

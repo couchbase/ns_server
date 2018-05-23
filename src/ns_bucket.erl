@@ -386,7 +386,7 @@ json_map_with_full_config(LocalAddr, BucketConfig, Config) ->
                                    {_Name, "::1"} -> LocalAddr;
                                    {_Name, H} -> H
                                end,
-                        list_to_binary(misc:maybe_add_brackets(Host) ++ ":" ++ integer_to_list(Port))
+                        list_to_binary(misc:join_host_port(Host, Port))
                 end, ENodes),
     {_, NodesToPositions0}
         = lists:foldl(fun (N, {Pos,Dict}) ->

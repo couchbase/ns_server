@@ -2138,7 +2138,7 @@ split_host_port(HostPort, DefaultPort, _) ->
             end
     end.
 
--spec maybe_add_brackets(list()) -> list().
+-spec maybe_add_brackets(string()) -> string().
 maybe_add_brackets("[" ++ _Rest = Address) ->
     Address;
 maybe_add_brackets(Address) ->
@@ -2146,6 +2146,19 @@ maybe_add_brackets(Address) ->
         true -> "[" ++ Address ++ "]";
         false -> Address
     end.
+
+-spec join_host_port(string(), string() | integer()) -> string().
+join_host_port(Host, Port) when is_integer(Port) ->
+    join_host_port(Host, integer_to_list(Port));
+join_host_port(Host, Port) ->
+    maybe_add_brackets(Host) ++ ":" ++ Port.
+
+-ifdef(EUNIT).
+join_host_port_test() ->
+    ?assertEqual("127.0.0.1:1234", join_host_port("127.0.0.1", 1234)),
+    ?assertEqual("abc.xyz.com:1234", join_host_port("abc.xyz.com", "1234")),
+    ?assertEqual("[fc00::11]:1234", join_host_port("fc00::11", 1234)).
+-endif.
 
 %% Convert OTP-18+ style time to the traditional now()-like timestamp.
 %%

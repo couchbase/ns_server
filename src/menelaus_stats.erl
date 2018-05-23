@@ -2772,7 +2772,7 @@ do_get_indexes(Service, BucketId0, Nodes) ->
         [begin
              {_, Host} = misc:node_name_host(N),
              Port = misc:node_rest_port(N),
-             iolist_to_binary([Host, $:, integer_to_list(Port)])
+             list_to_binary(misc:join_host_port(Host, Port))
          end || N <- Nodes],
     WantedHosts = lists:usort(WantedHosts0),
 

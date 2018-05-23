@@ -1,16 +1,18 @@
-<div class="mn-selectable-nodes-list">
+<div class="selectable-nodes-list">
   <div class="row margin-bottom-half">
-    <input
-       type="checkbox"
-       id="thisModule_checkall"
-       ng-disabled="!filteredNodes.length"
-       ng-checked="mnThisCtl.areAllChecked(false)"
-       ng-click="mnThisCtl.toggleAll()">
-    <label
-       class="checkbox"
-       for="thisModule_checkall">
-      <span ng-if="mnThisCtl.areAllChecked(false)">de</span>select all nodes
-    </label>
+    <span class="nodes-list-select-all">
+      <input
+         type="checkbox"
+         id="thisModule_checkall"
+         ng-disabled="!filteredNodes.length"
+         ng-checked="mnThisCtl.areAllChecked(false)"
+         ng-click="mnThisCtl.toggleAll()">
+      <label
+         class="checkbox"
+         for="thisModule_checkall">
+        select all nodes
+      </label>
+    </span>
     <div
        class="row"
        mn-placeholder="filter nodes..."

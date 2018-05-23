@@ -30,7 +30,7 @@
 rest_url(Host, Port, Path, Scheme) when is_integer(Port) ->
     rest_url(Host, integer_to_list(Port), Path, Scheme);
 rest_url(Host, Port, Path, Scheme) ->
-    Scheme ++ "://" ++ misc:maybe_add_brackets(Host) ++ ":" ++ Port ++ Path.
+    Scheme ++ "://" ++ misc:join_host_port(Host, Port) ++ Path.
 
 rest_url(Host, Port, Path) ->
     rest_url(Host, Port, Path, "http").

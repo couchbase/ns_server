@@ -731,7 +731,7 @@ example_service_spec(Config) ->
             Port = misc:node_rest_port(Config, node()) + 20000,
             {_, Host} = misc:node_name_host(node()),
             Args = ["-node-id", binary_to_list(NodeUUID),
-                    "-host", Host ++ ":" ++ integer_to_list(Port)],
+                    "-host", misc:join_host_port(Host, Port)],
             Spec = {example, CacheCmd, Args,
                     [via_goport, exit_status, stderr_to_stdout,
                      {env, build_go_env_vars(Config, example)}]},
@@ -739,4 +739,3 @@ example_service_spec(Config) ->
         false ->
             []
     end.
-
