@@ -503,6 +503,25 @@ handle_info({cleanup_done, UnsafeNodes, ID}, janitor_running,
 handle_info({timeout, _TRef, stop_timeout} = Msg, rebalancing, StateData) ->
     ?MODULE:rebalancing(Msg, StateData);
 
+%% Backward compitibility: handle messages from nodes that are older than
+%%                         Mad-Hatter which use gen_fsm api's
+%%
+%% Here we rely on the fact that gen_fsm:reply/2 and gen_statem:reply/2
+%% do essentially the same thing, so when we accept call from gen_fsm
+%% we actually can reply using gen_statem:reply/2 and that'll work.
+%% This assumption needs to be re-evaluated on the new erlang upgrade.
+%% This warning can be removed when vulcan support is dropped.
+
+handle_info({'$gen_sync_all_state_event', From, Event}, _StateName,
+            _StateData) ->
+    {keep_state_and_data, [{next_event, {call, From}, Event}]};
+handle_info({'$gen_sync_event', From, Event}, _StateName, _StateData) ->
+    {keep_state_and_data, [{next_event, {call, From}, Event}]};
+handle_info({'$gen_event', Event}, _StateName, _StateData) ->
+    {keep_state_and_data, [{next_event, cast, Event}]};
+
+%% end of backward compatibility code
+
 handle_info(Msg, StateName, StateData) ->
     ?log_warning("Got unexpected message ~p in state ~p with data ~p",
                  [Msg, StateName, StateData]),
