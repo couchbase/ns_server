@@ -71,9 +71,11 @@
             .getPromise();
 
         promise5 = mnPromiseHelper(vm, mnClusterConfigurationService.postCurlWhitelist(
-          vm.querySettings.queryCurlWhitelist
+          vm.querySettings.queryCurlWhitelist,
+          vm.initialCurlWhitelist
         ))
           .catchErrors("curlWhitelistErrors")
+          .applyToScope("initialCurlWhitelist")
           .getPromise();
 
         queries.push(promise3);
@@ -110,10 +112,14 @@
 
       if (mnPoolDefault.export.compat.atLeast55 && $scope.rbac.cluster.settings.read) {
         mnPromiseHelper(vm, mnClusterConfigurationService.getQuerySettings())
-          .applyToScope("querySettings")
-          .onSuccess(function () {
-            maybeSetInititalValue(vm.querySettings.queryCurlWhitelist.allowed_urls, "");
-            maybeSetInititalValue(vm.querySettings.queryCurlWhitelist.disallowed_urls, "");
+          .onSuccess(function (querySettings) {
+            var queryCurl = querySettings.queryCurlWhitelist;
+            queryCurl.allowed_urls = queryCurl.allowed_urls || [];
+            queryCurl.disallowed_urls = queryCurl.disallowed_urls || [];
+            maybeSetInititalValue(queryCurl.allowed_urls, "");
+            maybeSetInititalValue(queryCurl.disallowed_urls, "");
+            vm.initialCurlWhitelist = _.cloneDeep(queryCurl);
+            vm.querySettings = querySettings;
           });
       }
 
