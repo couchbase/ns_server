@@ -2141,7 +2141,7 @@ split_host_port(HostPort, DefaultPort, _) ->
             end
     end.
 
--spec maybe_add_brackets(list()) -> list().
+-spec maybe_add_brackets(string()) -> string().
 maybe_add_brackets("[" ++ _Rest = Address) ->
     Address;
 maybe_add_brackets(Address) ->
