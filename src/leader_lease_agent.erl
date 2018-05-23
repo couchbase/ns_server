@@ -188,9 +188,10 @@ grant_lease_update_state(Caller, Period, State) ->
     Now = get_now(),
     grant_lease_update_state(Now, Now, Caller, Period, State).
 
-grant_lease_update_state(Now, AcquiredAt, Caller, Period, State) ->
+grant_lease_update_state(Now, AcquiredAt, Caller, PeriodMs, State) ->
+    Period    = time_compat:convert_time_unit(PeriodMs, millisecond, native),
     ExpiresAt = Now + Period,
-    Timer     = misc:create_timer(Period, {lease_expired, Caller}),
+    Timer     = misc:create_timer(PeriodMs, {lease_expired, Caller}),
 
     NewLease = #lease{holder      = Caller,
                       acquired_at = AcquiredAt,
@@ -228,8 +229,12 @@ maybe_add_time_since_prev_acquire(AcquiredAt, State, LeaseProps) ->
             LeaseProps;
         _ when is_integer(PrevAcquiredAt) ->
             true = (AcquiredAt >= PrevAcquiredAt),
-            SincePrevAcquire = AcquiredAt - PrevAcquiredAt,
-            [{time_since_prev_acquire, SincePrevAcquire} | LeaseProps]
+
+            SincePrevAcquire   = AcquiredAt - PrevAcquiredAt,
+            SincePrevAcquireMs =
+                misc:convert_time_unit(SincePrevAcquire, millisecond),
+
+            [{time_since_prev_acquire, SincePrevAcquireMs} | LeaseProps]
     end.
 
 handle_get_current_lease(From, #state{lease = Lease} = State) ->
@@ -326,14 +331,16 @@ build_lease_props(undefined, Lease) ->
 build_lease_props(Now, #lease{holder = Holder} = Lease) ->
     [{node,      Holder#lease_holder.node},
      {uuid,      Holder#lease_holder.uuid},
-     {time_left, time_left(Now, Lease)},
+     {time_left, time_left_ms(Now, Lease)},
      {status,    Lease#lease.state}].
 
-time_left(Now, #lease{expires_at = ExpiresAt}) ->
+time_left_ms(Now, #lease{expires_at = ExpiresAt}) ->
+    TimeLeft = misc:convert_time_unit(ExpiresAt - Now, millisecond),
+
     %% Sometimes the expiration message may be a bit late, or maybe we're busy
     %% doing other things. Return zero in those cases. It essentially means
     %% that the lease is about to expire.
-    max(0, ExpiresAt - Now).
+    max(0, TimeLeft).
 
 parse_lease_props(Dump) ->
     misc:parse_term(Dump).
@@ -417,4 +424,4 @@ notify_local_lease_expired(Pid, Holder) ->
                                                unpack_lease_holder(Holder)).
 
 get_now() ->
-    time_compat:monotonic_time(millisecond).
+    time_compat:monotonic_time().
