@@ -418,14 +418,21 @@ handle_event({call, From},
                     {keep_state_and_data,
                      [{reply, From, no_active_nodes_left}]};
                 _ ->
-                    StartEvent = {start_rebalance,
-                                  KeepNodes,
-                                  EjectedNodes -- FailedNodes,
-                                  FailedNodes,
-                                  DeltaNodes,
-                                  DeltaRecoveryBuckets},
-                    {keep_state_and_data,
-                     [{next_event, {call, From}, StartEvent}]}
+                    case check_for_moxi_buckets(Config) of
+                        ok ->
+                            StartEvent = {start_rebalance,
+                                          KeepNodes,
+                                          EjectedNodes -- FailedNodes,
+                                          FailedNodes,
+                                          DeltaNodes,
+                                          DeltaRecoveryBuckets},
+                            {keep_state_and_data,
+                             [{next_event, {call, From}, StartEvent}]};
+                        {error, Msg} ->
+                            set_rebalance_status(rebalance, {none, Msg},
+                                                 undefined),
+                            {keep_state_and_data, [{reply, From, ok}]}
+                    end
             end;
         _ ->
             {keep_state_and_data, [{reply, From, nodes_mismatch}]}
@@ -1304,3 +1311,20 @@ call_recovery_server(State, Call) ->
 
 call_recovery_server(#recovery_state{pid = Pid}, Call, Args) ->
     erlang:apply(recovery_server, Call, [Pid | Args]).
+
+check_for_moxi_buckets(Config) ->
+    case cluster_compat_mode:is_cluster_madhatter(Config) of
+        true ->
+            ok;
+        false ->
+            case [Name || {Name, BucketConfig} <- ns_bucket:get_buckets(Config),
+                          ns_bucket:moxi_port(BucketConfig) =/= undefined] of
+                [] ->
+                    ok;
+                Buckets ->
+                    BucketsStr = string:join(Buckets, ","),
+                    Msg = io_lib:format("Please remove proxy ports from the "
+                                        "following buckets: ~s", [BucketsStr]),
+                    {error, Msg}
+            end
+    end.
