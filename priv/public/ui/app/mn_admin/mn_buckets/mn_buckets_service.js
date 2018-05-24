@@ -7,6 +7,7 @@
     var mnBucketsService = {
       getBucketsByType: getBucketsByType,
       clearCache: clearCache,
+      findMoxiBucket: findMoxiBucket,
       export: {}
     };
     var cache;
@@ -16,6 +17,14 @@
     function clearCache() {
       mnBucketsStats.clearCache();
       cache = null
+    }
+
+    function findMoxiBucket(mnHttpParams) {
+      return mnBucketsStats.get(mnHttpParams).then(function (resp) {
+        return _.find(resp.data, function (bucket) {
+          return bucket.proxyPort > 0;
+        });
+      });
     }
 
     function getBucketsByType(mnHttpParams) {
