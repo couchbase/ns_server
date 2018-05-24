@@ -160,14 +160,27 @@ update_lease_expire_ts(Start, Now, LeaseProps, PrevState, State) ->
 
 compute_new_acquire_time(Start, Now, LeaseProps, State) ->
     PrevAcquireEstimate = get_prev_acquire_estimate(Now, LeaseProps, State),
-    update_estimate_histos(Start, PrevAcquireEstimate, State),
-    pick_acquire_time_estimate(Start, PrevAcquireEstimate).
+    pick_acquire_time_estimate(Start, PrevAcquireEstimate, State).
 
-pick_acquire_time_estimate(Start, undefined) ->
+pick_acquire_time_estimate(Start, undefined, _State) ->
     Start;
-pick_acquire_time_estimate(Start, PrevAcquireEstimate) ->
+pick_acquire_time_estimate(Start, PrevAcquireEstimate, State) ->
     true = is_integer(Start),
-    max(Start, PrevAcquireEstimate).
+
+    if
+        Start > PrevAcquireEstimate ->
+            inc_counter(used_start_estimate, State),
+            add_histo('start_time-prev_acquire_estimate',
+                      Start - PrevAcquireEstimate, State),
+            Start;
+        PrevAcquireEstimate > Start ->
+            inc_counter(used_prev_acquire_estimate, State),
+            add_histo('prev_acquire_estimate-start_time',
+                      PrevAcquireEstimate - Start, State),
+            PrevAcquireEstimate;
+        true ->
+            Start
+    end.
 
 update_inflight_histo(Start, Now, State) ->
     TimeInFlight = Now - Start,
@@ -193,41 +206,23 @@ get_prev_acquire_estimate(SincePrevAcquire,
             Estimate;
         false ->
             ?log_warning("Lease period start time estimate is in the future. "
-                         "The time on the agent must be "
+                         "The time on the agent node ~p must be "
                          "flowing at a faster pace.~n"
                          "Now: ~p, PrevAcquireTS: ~p, "
                          "SincePrevAcquire: ~p, LeaseProps: ~p",
-                         [Now, PrevAcquireTS, SincePrevAcquire, LeaseProps]),
+                         [target_node(State), Now,
+                          PrevAcquireTS, SincePrevAcquire, LeaseProps]),
             inc_counter(prev_acquire_estimate_in_future, State),
             undefined
     end.
 
 get_time_since_prev_acquire(LeaseProps) ->
-    AcquiredAt     = proplists:get_value(acquired_at, LeaseProps),
-    PrevAcquiredAt = proplists:get_value(prev_acquired_at, LeaseProps),
-
-    get_time_since_prev_acquire(PrevAcquiredAt, AcquiredAt).
-
-get_time_since_prev_acquire(PrevAcquiredAt, AcquiredAt)
-  when is_integer(PrevAcquiredAt),
-       is_integer(AcquiredAt),
-       AcquiredAt >= PrevAcquiredAt ->
-    AcquiredAt - PrevAcquiredAt;
-get_time_since_prev_acquire(_, _) ->
-    undefined.
-
-update_estimate_histos(StartTime, PrevAcquireEstimate, State)
-  when is_integer(StartTime),
-       is_integer(PrevAcquireEstimate) ->
-    add_histo('start_time-prev_acquire_estimate',
-              max(StartTime - PrevAcquireEstimate, 0),
-              State),
-
-    add_histo('prev_acquire_estimate-start_time',
-              max(PrevAcquireEstimate - StartTime, 0),
-              State);
-update_estimate_histos(_, _, _) ->
-    ok.
+    case proplists:get_value(time_since_prev_acquire, LeaseProps) of
+        Value when is_integer(Value), Value >= 0 ->
+            Value;
+        _ ->
+            undefined
+    end.
 
 handle_lease_already_acquired(LeaseProps, State) ->
     {node, Node}          = lists:keyfind(node, 1, LeaseProps),

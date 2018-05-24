@@ -188,9 +188,10 @@ grant_lease_update_state(Caller, Period, State) ->
     Now = get_now(),
     grant_lease_update_state(Now, Now, Caller, Period, State).
 
-grant_lease_update_state(Now, AcquiredAt, Caller, Period, State) ->
+grant_lease_update_state(Now, AcquiredAt, Caller, PeriodMs, State) ->
+    Period    = erlang:convert_time_unit(PeriodMs, millisecond, native),
     ExpiresAt = Now + Period,
-    Timer     = misc:create_timer(Period, {lease_expired, Caller}),
+    Timer     = misc:create_timer(PeriodMs, {lease_expired, Caller}),
 
     NewLease = #lease{holder      = Caller,
                       acquired_at = AcquiredAt,
@@ -213,13 +214,13 @@ cancel_timer(Lease) ->
 
 extend_lease_handle_result(From, State, Lease) ->
     AcquiredAt  = Lease#lease.acquired_at,
-    LeaseProps0 = [{acquired_at, AcquiredAt} |
-                   build_lease_props(AcquiredAt, Lease)],
-    LeaseProps  = maybe_add_prev_acquired_at(AcquiredAt, State, LeaseProps0),
+    LeaseProps0 = build_lease_props(AcquiredAt, Lease),
+    LeaseProps  = maybe_add_time_since_prev_acquire(AcquiredAt,
+                                                    State, LeaseProps0),
 
     gen_server2:reply(From, {ok, LeaseProps}).
 
-maybe_add_prev_acquired_at(AcquiredAt, State, LeaseProps) ->
+maybe_add_time_since_prev_acquire(AcquiredAt, State, LeaseProps) ->
     PrevLease      = State#state.lease,
     PrevAcquiredAt = PrevLease#lease.acquired_at,
 
@@ -228,7 +229,12 @@ maybe_add_prev_acquired_at(AcquiredAt, State, LeaseProps) ->
             LeaseProps;
         _ when is_integer(PrevAcquiredAt) ->
             true = (AcquiredAt >= PrevAcquiredAt),
-            [{prev_acquired_at, PrevAcquiredAt} | LeaseProps]
+
+            SincePrevAcquire   = AcquiredAt - PrevAcquiredAt,
+            SincePrevAcquireMs =
+                misc:convert_time_unit(SincePrevAcquire, millisecond),
+
+            [{time_since_prev_acquire, SincePrevAcquireMs} | LeaseProps]
     end.
 
 handle_get_current_lease(From, #state{lease = Lease} = State) ->
@@ -325,14 +331,16 @@ build_lease_props(undefined, Lease) ->
 build_lease_props(Now, #lease{holder = Holder} = Lease) ->
     [{node,      Holder#lease_holder.node},
      {uuid,      Holder#lease_holder.uuid},
-     {time_left, time_left(Now, Lease)},
+     {time_left, time_left_ms(Now, Lease)},
      {status,    Lease#lease.state}].
 
-time_left(Now, #lease{expires_at = ExpiresAt}) ->
+time_left_ms(Now, #lease{expires_at = ExpiresAt}) ->
+    TimeLeft = misc:convert_time_unit(ExpiresAt - Now, millisecond),
+
     %% Sometimes the expiration message may be a bit late, or maybe we're busy
     %% doing other things. Return zero in those cases. It essentially means
     %% that the lease is about to expire.
-    max(0, ExpiresAt - Now).
+    max(0, TimeLeft).
 
 parse_lease_props(Dump) ->
     misc:parse_term(Dump).
@@ -416,4 +424,4 @@ notify_local_lease_expired(Pid, Holder) ->
                                                unpack_lease_holder(Holder)).
 
 get_now() ->
-    erlang:monotonic_time(millisecond).
+    erlang:monotonic_time().
