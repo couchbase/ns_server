@@ -399,9 +399,13 @@ handle_node_statuses(Req) ->
                                         {dataless, Dataless},
                                         {replication, average_failover_safenesses(N, OldStatuses, BucketsAll)}]};
                           false ->
+                              GracefulFailoverPossible =
+                                  case ns_rebalancer:check_graceful_failover_possible(N, BucketsAll) of
+                                      true -> true;
+                                      {false, _} -> false
+                                  end,
                               {struct, [{status, healthy},
-                                        {gracefulFailoverPossible,
-                                         ns_rebalancer:check_graceful_failover_possible(N, BucketsAll)},
+                                        {gracefulFailoverPossible, GracefulFailoverPossible},
                                         {otpNode, N},
                                         {dataless, Dataless},
                                         {replication, average_failover_safenesses(N, FreshStatuses, BucketsAll)}]}

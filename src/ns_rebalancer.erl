@@ -1374,13 +1374,6 @@ run_graceful_failover(Node) ->
     ok = check_no_tap_buckets(),
     pull_and_push_config(ns_node_disco:nodes_wanted()),
 
-    %% No graceful failovers for non KV node
-    case lists:member(kv, ns_cluster_membership:node_services(Node)) of
-        true ->
-            ok;
-        false ->
-            erlang:exit(non_kv_node)
-    end,
     case check_failover_possible([Node]) of
         ok ->
             ok;
@@ -1403,8 +1396,8 @@ run_graceful_failover(Node) ->
 
     case check_graceful_failover_possible(Node, InterestingBuckets) of
         true -> ok;
-        false ->
-            erlang:exit(not_graceful)
+        {false, Type} ->
+            erlang:exit(Type)
     end,
     proc_lib:init_ack({ok, self()}),
 
@@ -1444,17 +1437,14 @@ check_graceful_failover_possible(Node, BucketsAll) ->
     Services = ns_cluster_membership:node_services(Node),
     case lists:member(kv, Services) of
         true ->
-            case check_graceful_failover_possible_rec(Node, BucketsAll) of
-                false -> false;
-                _ -> true
-            end;
+            check_graceful_failover_possible_rec(Node, BucketsAll);
         false ->
-            false
+            {false, non_kv_node}
     end.
 
 check_graceful_failover_possible_rec(_Node, []) ->
-    [];
-check_graceful_failover_possible_rec(Node, [{BucketName, BucketConfig} | RestBucketConfigs]) ->
+    true;
+check_graceful_failover_possible_rec(Node, [{_BucketName, BucketConfig} | RestBucketConfigs]) ->
     Map = proplists:get_value(map, BucketConfig, []),
     Servers = proplists:get_value(servers, BucketConfig, []),
     case lists:member(Node, Servers) of
@@ -1462,12 +1452,9 @@ check_graceful_failover_possible_rec(Node, [{BucketName, BucketConfig} | RestBuc
             Map1 = mb_map:promote_replicas_for_graceful_failover(Map, Node),
             case lists:any(fun (Chain) -> hd(Chain) =:= Node end, Map1) of
                 true ->
-                    false;
+                    {false, not_graceful};
                 false ->
-                    case check_graceful_failover_possible_rec(Node, RestBucketConfigs) of
-                        false -> false;
-                        RecRV -> [BucketName | RecRV]
-                    end
+                    check_graceful_failover_possible_rec(Node, RestBucketConfigs)
             end;
         false ->
             check_graceful_failover_possible_rec(Node, RestBucketConfigs)
