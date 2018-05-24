@@ -96,7 +96,12 @@
       });
     }
 
-    function postCurlWhitelist(data) {
+    function postCurlWhitelist(data, initData) {
+      if (data.all_access && initData) {
+        var data = _.clone(data);
+        data.allowed_urls = initData.allowed_urls;
+        data.disallowed_urls = initData.disallowed_urls;
+      }
       return $http({
         method: 'POST',
         mnHttp: {

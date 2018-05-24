@@ -98,6 +98,10 @@
     margin-right: -1rem;
     margin-left: -1rem;
   }
+
+  .qm-stats {
+    display: none !important;
+  }
 }
 
 /* responsive small ------------------------------------- */

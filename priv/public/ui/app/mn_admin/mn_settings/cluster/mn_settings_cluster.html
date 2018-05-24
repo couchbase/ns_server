@@ -188,6 +188,11 @@
                    type="button">-</button>
               </div>
               <div class="row flex-right items-top">
+                <div
+                   class="error error-form"
+                   ng-show="!!settingsClusterCtl.curlWhitelistErrors.allowed_urls">
+                  {{settingsClusterCtl.curlWhitelistErrors.allowed_urls}}
+                </div>
                 <button
                    class="outline btn-small margin-quarter"
                    title="Add field"
@@ -217,6 +222,11 @@
                    type="button">-</button>
               </div>
               <div class="row flex-right items-top">
+                <div
+                   class="error error-form"
+                   ng-show="!!settingsClusterCtl.curlWhitelistErrors.disallowed_urls">
+                  {{settingsClusterCtl.curlWhitelistErrors.disallowed_urls}}
+                </div>
                 <button
                    class="outline btn-small margin-quarter"
                    title="Add field"

@@ -65,9 +65,6 @@
       this.$rules = {
           "start" : [ {
             token : "comment",
-            regex : "--.*$"
-          },  {
-            token : "comment",
             start : "/\\*",
             end : "\\*/"
           }, {
@@ -176,8 +173,6 @@
     oop.inherits(Mode, TextMode);
 
     (function() {
-
-      this.lineCommentStart = "--";
 
       this.getCompletions = function(state, session, pos, prefix) {
         return this.$completer.getCompletions(state, session, pos, prefix);

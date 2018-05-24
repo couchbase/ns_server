@@ -60,7 +60,7 @@
       var configData = {};
       (["indexerThreads", "logLevel", "maxRollbackPoints", "storageMode"])
         .forEach(function (name) {
-          if (data[name]) {
+          if (data[name] !== undefined) {
             configData[name] = data[name];
           }
         });
