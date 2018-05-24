@@ -228,8 +228,13 @@ mover_inner_dcp(Parent, Bucket, VBucket,
             end,
 
             master_activity_events:note_takeover_started(Bucket, VBucket, OldMaster, NewMaster),
+
+            AllReplicaNodes =
+                lists:usort(ReplicaNodes ++ OldReplicas) -- [undefined],
             dcp_takeover(Bucket, Parent,
-                         OldMaster, NewMaster, ReplicaNodes, VBucket, Quirks),
+                         OldMaster, NewMaster,
+                         AllReplicaNodes, VBucket, Quirks),
+
             master_activity_events:note_takeover_ended(Bucket, VBucket, OldMaster, NewMaster)
     end,
 
