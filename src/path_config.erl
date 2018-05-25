@@ -16,7 +16,7 @@
 -module(path_config).
 
 -export([component_path/1, component_path/2,
-         tempfile/2, tempfile/3, minidump_dir/0]).
+         tempfile/2, tempfile/3, minidump_dir/0, ensure_directories/0]).
 
 %% used by ns_config_default
 -export([default_memcached_config_path/0]).
@@ -35,20 +35,8 @@ component_path(NameAtom) ->
         _ ->
             erlang:error({empty_for, NameAtom})
     catch error:badarg ->
-            {ok, RV} = application:get_env(ns_server, component_path_key(NameAtom)),
-            NeedWritable =
-                case NameAtom of
-                    tmp ->
-                        true;
-                    _ ->
-                        false
-                end,
-            case NeedWritable of
-                true ->
-                    ok = misc:ensure_writable_dir(RV);
-                _ ->
-                    ok
-            end,
+            {ok, RV} = application:get_env(ns_server,
+                                           component_path_key(NameAtom)),
             RV
     end.
 
@@ -72,3 +60,7 @@ default_memcached_config_path() ->
 
 minidump_dir() ->
     path_config:component_path(data, "crash").
+
+ensure_directories() ->
+    ok = misc:mkdir_p(component_path(data)),
+    ok = misc:ensure_writable_dir(component_path(tmp)).

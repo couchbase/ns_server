@@ -78,7 +78,6 @@ init_ldap_enabled() ->
 
 default() ->
     DataDir = get_data_dir(),
-    ok = misc:mkdir_p(DataDir),
 
     DefaultQuotas = memory_quota:default_quotas([kv, cbas, fts]),
     {_, KvQuota} = lists:keyfind(kv, 1, DefaultQuotas),
