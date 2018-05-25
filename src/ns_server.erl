@@ -80,6 +80,8 @@ start(_Type, _Args) ->
             ok
     end,
 
+    path_config:ensure_directories(),
+
     ns_server_cluster_sup:start_link().
 
 get_config_path() ->
