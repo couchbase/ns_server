@@ -17,7 +17,7 @@
 -include("ns_common.hrl").
 
 -export([start/0, setup_body_tramp/0,
-         restart_port_by_name/1, restart_moxi/0, restart_memcached/0,
+         restart_port_by_name/1, restart_memcached/0,
          restart_xdcr_proxy/0, sync/0, create_erl_node_spec/4,
          shutdown_ports/0]).
 
@@ -61,11 +61,6 @@ setup_body() ->
                              end),
     Children = dynamic_children(normal),
     set_children_and_loop(Children, undefined, normal).
-
-%% rpc:called (2.0.2+) after any bucket is deleted
-restart_moxi() ->
-    {ok, _} = restart_port_by_name(moxi),
-    ok.
 
 restart_memcached() ->
     {ok, _} = restart_port_by_name(memcached),

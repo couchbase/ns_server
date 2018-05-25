@@ -634,17 +634,6 @@ idle({delete_bucket, BucketName}, From, _State) ->
                             LeftoverNodes0
                     end,
 
-                LiveNodes = Nodes -- LeftoverNodes,
-
-                ?log_info("Restarting moxi on nodes ~p", [LiveNodes]),
-                case multicall_moxi_restart(LiveNodes,
-                                            ?DELETE_BUCKET_TIMEOUT) of
-                    ok ->
-                        ok;
-                    FailedNodes ->
-                        ?log_warning("Failed to restart moxi on following "
-                                     "nodes ~p", [FailedNodes])
-                end,
                 case LeftoverNodes of
                     [] ->
                         ok;
@@ -1097,23 +1086,6 @@ do_flush_old_style(BucketName, BucketConfig) ->
             ok;
         false ->
             {old_style_flush_failed, Results, BadNodes}
-    end.
-
-%% NOTE: 2.0.1 and earlier nodes only had
-%% ns_port_sup. I believe it's harmless not to clean
-%% their moxis
--spec multicall_moxi_restart([node()], _) -> ok | [{node(), _} | node()].
-multicall_moxi_restart(Nodes, Timeout) ->
-    {Results, FailedNodes} = rpc:multicall(Nodes, ns_ports_setup, restart_moxi,
-                                           [], Timeout),
-    BadResults = [Pair || {_N, R} = Pair <- lists:zip(Nodes -- FailedNodes,
-                                                      Results),
-                          R =/= ok],
-    case BadResults =:= [] andalso FailedNodes =:= [] of
-        true ->
-            ok;
-        _ ->
-            FailedNodes ++ BadResults
     end.
 
 set_rebalance_status(_Type, Status, undefined) ->
