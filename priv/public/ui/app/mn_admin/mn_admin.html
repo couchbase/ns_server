@@ -190,19 +190,19 @@
          mn-pluggable-ui-tabs
          mn-tab-bar-name="workbenchTab">
       </nav>
-      <a
+      <span
          mn-tab="indexes"
          ng-class="{currentnav: ('app.admin.indexes' | includedByState)}"
          ng-show="rbac.cluster.bucket['.'].views.read || rbac.cluster.bucket['.'].n1ql.index.read"
-         ui-sref="app.admin.indexes.gsi"
          class="resp-hide-sml">
-        <span
+        <a
            ui-sref="app.admin.indexes.gsi"
-           ng-show="rbac.cluster.bucket['.'].n1ql.index.read">Indexes</span>
-        <span
-           ui-sref="app.admin.indexes.views.list"
-           ng-show="rbac.cluster.bucket['.'].n1ql.index.read === false">Indexes</span>
-      </a>
+           ng-show="rbac.cluster.bucket['.'].n1ql.index.read">Indexes</a>
+        <a
+           ui-state="'app.admin.indexes.views.list'"
+           ui-state-params="{bucket: rbac.bucketNames['.views!read'][0] || null}"
+           ng-show="rbac.cluster.bucket['.'].n1ql.index.read === false">Indexes</a>
+      </span>
     </nav>
 
     <!-- all page content goes here -->
