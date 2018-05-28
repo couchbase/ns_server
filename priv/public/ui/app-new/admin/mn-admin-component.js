@@ -180,7 +180,8 @@ mn.modules.MnAdmin =
             mn.components.MnAdmin,
             OverviewComponent,
             ServersComponent,
-            mn.components.MnBarUsage
+            mn.components.MnBarUsage,
+            mn.components.MnWarmupProgress
           ],
           imports: [
             window['@uirouter/angular'].UIRouterModule.forChild({

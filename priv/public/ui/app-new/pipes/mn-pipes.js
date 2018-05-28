@@ -254,6 +254,38 @@ mn.pipes.MnFormatQuantity =
 
 
 var mn = mn || {};
+mn.pipes = mn.pipes || {};
+mn.pipes.MnFormatWarmupMessage =
+  (function () {
+    "use strict";
+
+    MnFormatWarmupMessage.annotations = [
+      new ng.core.Pipe({
+        name: "mnFormatWarmupMessage"
+      })
+    ];
+
+    MnFormatWarmupMessage.prototype.transform = transform;
+
+    return MnFormatWarmupMessage;
+
+    function MnFormatWarmupMessage() {}
+
+    function transform(task) {
+      var message = task.stats.ep_warmup_state;
+      switch (message) {
+      case "loading keys":
+        return message + " (" + task.stats.ep_warmup_key_count + " / " + task.stats.ep_warmup_estimated_key_count + ")";
+      case "loading data":
+        return message + " (" + task.stats.ep_warmup_value_count + " / " + task.stats.ep_warmup_estimated_value_count + ")";
+      default:
+        return message;
+      }
+    }
+  })();
+
+
+var mn = mn || {};
 mn.modules = mn.modules || {};
 mn.modules.MnPipesModule =
   (function () {
@@ -266,14 +298,16 @@ mn.modules.MnPipesModule =
           mn.pipes.MnParseVersion,
           mn.pipes.MnPrettyVersion,
           mn.pipes.MnFormatProgressMessage,
-          mn.pipes.MnFormatQuantity
+          mn.pipes.MnFormatQuantity,
+          mn.pipes.MnFormatWarmupMessage
         ],
         exports: [
           mn.pipes.MnFormatStorageModeError,
           mn.pipes.MnParseVersion,
           mn.pipes.MnPrettyVersion,
           mn.pipes.MnFormatProgressMessage,
-          mn.pipes.MnFormatQuantity
+          mn.pipes.MnFormatQuantity,
+          mn.pipes.MnFormatWarmupMessage
         ],
         imports: [],
         providers: [
