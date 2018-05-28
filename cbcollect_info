@@ -987,7 +987,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
     eventing_tasks = []
     eventing_port = read_guts(guts, "eventing_http_port")
     if eventing_port:
-        stats_url = 'http://%s:%s/api/v1/stats' % (local_url_addr, eventing_port)
+        stats_url = 'http://%s:%s/api/v1/stats?type=full' % (local_url_addr, eventing_port)
         pprof_url = 'http://%s:%s/debug/pprof/goroutine?debug=1' % (local_url_addr, eventing_port)
         eventing_tasks = [make_curl_task(name="Eventing /api/v1/stats: ",
                                          user="@", password=memcached_pass,
