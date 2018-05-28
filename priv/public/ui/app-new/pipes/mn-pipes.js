@@ -169,6 +169,91 @@ mn.pipes.MnFormatStorageModeError =
   })();
 
 var mn = mn || {};
+mn.pipes = mn.pipes || {};
+mn.pipes.MnPrepareQuantity =
+  (function () {
+    "use strict";
+
+    MnPrepareQuantity.annotations = [
+      new ng.core.Pipe({
+        name: "mnPrepareQuantity"
+      })
+    ];
+
+    MnPrepareQuantity.prototype.transform = transform;
+
+    return MnPrepareQuantity;
+
+    function MnPrepareQuantity() {
+    }
+
+    function transform(value, K) {
+      K = K || 1024;
+
+      var M = K*K;
+      var G = M*K;
+      var T = G*K;
+
+      if (K !== 1024 && K !== 1000) {
+        throw new Error("Unknown number system");
+      }
+
+      var t = _.detect([[T,'T'],[G,'G'],[M,'M'],[K,'K']], function (t) {
+        return value >= t[0];
+      }) || [1, ''];
+
+      if (K === 1024) {
+        t[1] += 'B';
+      }
+
+      return t;
+    }
+  })();
+
+var mn = mn || {};
+mn.pipes = mn.pipes || {};
+mn.pipes.MnFormatQuantity =
+  (function () {
+    "use strict";
+
+    MnFormatQuantity.annotations = [
+      new ng.core.Pipe({
+        name: "mnFormatQuantity"
+      })
+    ];
+
+    MnFormatQuantity.parameters = [
+      mn.pipes.MnPrepareQuantity,
+      ng.common.DecimalPipe
+    ];
+
+    MnFormatQuantity.prototype.transform = transform;
+
+    return MnFormatQuantity;
+
+    function MnFormatQuantity(mnPrepareQuantity, decimalPipe) {
+      this.mnPrepareQuantity = mnPrepareQuantity;
+      this.decimalPipe = decimalPipe;
+    }
+
+    function transform(value, spacing, numberSystem) {
+      if (!value && !_.isNumber(value)) {
+        return value;
+      }
+      if (spacing == null) {
+        spacing = '';
+      }
+      if (numberSystem === 1000 && value <= 9999 && value % 1 === 0) { // MB-11784
+        return value;
+      }
+
+      var t = this.mnPrepareQuantity.transform(value, numberSystem);
+      return [this.decimalPipe.transform(value/t[0]), spacing, t[1]].join('');
+    }
+  })();
+
+
+var mn = mn || {};
 mn.modules = mn.modules || {};
 mn.modules.MnPipesModule =
   (function () {
@@ -180,18 +265,22 @@ mn.modules.MnPipesModule =
           mn.pipes.MnFormatStorageModeError,
           mn.pipes.MnParseVersion,
           mn.pipes.MnPrettyVersion,
-          mn.pipes.MnFormatProgressMessage
+          mn.pipes.MnFormatProgressMessage,
+          mn.pipes.MnFormatQuantity
         ],
         exports: [
           mn.pipes.MnFormatStorageModeError,
           mn.pipes.MnParseVersion,
           mn.pipes.MnPrettyVersion,
-          mn.pipes.MnFormatProgressMessage
+          mn.pipes.MnFormatProgressMessage,
+          mn.pipes.MnFormatQuantity
         ],
         imports: [],
         providers: [
           mn.pipes.MnParseVersion,
-          mn.pipes.MnPrettyVersion
+          mn.pipes.MnPrettyVersion,
+          mn.pipes.MnPrepareQuantity,
+          ng.common.DecimalPipe
         ]
       })
     ];

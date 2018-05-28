@@ -1,0 +1,19 @@
+.bar-usages .usage {
+  background-color: #efebe0;
+  height: .75rem;
+  margin-bottom: .25rem;
+  overflow: hidden;
+}
+.bar-usages .usage .item {
+  position: relative;
+  float:left;
+}
+.bar-usages .usage .usage-item-0 {
+  background-color: #8eb7e6; /* .blue-3 */
+}
+.bar-usages .usage .usage-item-1 {
+  background-color: #b3cfef; /* .blue-4 */
+}
+.bar-usages .usage .usage-item-2 {
+  background-color: #d8dde4;  /* .gray-blue-3 */
+}

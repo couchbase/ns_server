@@ -179,7 +179,8 @@ mn.modules.MnAdmin =
             mn.directives.MnDraggable,
             mn.components.MnAdmin,
             OverviewComponent,
-            ServersComponent
+            ServersComponent,
+            mn.components.MnBarUsage
           ],
           imports: [
             window['@uirouter/angular'].UIRouterModule.forChild({
