@@ -3,7 +3,8 @@ mn.services = mn.services || {};
 mn.services.MnPermissions = (function () {
   "use strict";
 
-  var bucketSpecificPermissions = [function (name, buckets) {
+  var bucketSpecificPermissions = [function (bucket) {
+    var name = bucket.name;
     var basePermissions = [
       "cluster.bucket[" + name + "].settings!write",
       "cluster.bucket[" + name + "].settings!read",
@@ -15,20 +16,24 @@ mn.services.MnPermissions = (function () {
       "cluster.bucket[" + name + "]!compact",
       "cluster.bucket[" + name + "].xdcr!read",
       "cluster.bucket[" + name + "].xdcr!write",
-      "cluster.bucket[" + name + "].xdcr!execute"
+      "cluster.bucket[" + name + "].xdcr!execute",
+      "cluster.bucket[" + name + "].n1ql.select!execute",
+      "cluster.bucket[" + name + "].n1ql.index!read",
+      "cluster.bucket[" + name + "].n1ql.index!write"
     ];
-    if (name === "." || buckets.byName[name].isMembase) {
+    if (bucket.name === "." || (bucket.bucketType === "membase")) {
       basePermissions = basePermissions.concat([
         "cluster.bucket[" + name + "].views!read",
         "cluster.bucket[" + name + "].views!write",
         "cluster.bucket[" + name + "].views!compact"
       ]);
     }
-    if (name === "." || !buckets.byName[name].isMemcached) {
+    if (bucket.name === "." || (bucket.bucketType !== "memcached")) {
       basePermissions = basePermissions.concat([
         "cluster.bucket[" + name + "].data!write",
         "cluster.bucket[" + name + "].data!read",
-        "cluster.bucket[" + name + "].data.docs!read"
+        "cluster.bucket[" + name + "].data.docs!read",
+        "cluster.bucket[" + name + "].data.docs!upsert"
       ]);
     }
 
@@ -45,7 +50,7 @@ mn.services.MnPermissions = (function () {
     "cluster.settings!write",
     "cluster.stats!read",
     "cluster.tasks!read",
-    "cluster.indexes!read",
+    "cluster.settings.indexes!read",
     "cluster.admin.internal!all",
     "cluster.xdcr.settings!read",
     "cluster.xdcr.settings!write",
@@ -57,14 +62,14 @@ mn.services.MnPermissions = (function () {
     "cluster.admin.settings!write",
     "cluster.logs!read",
     "cluster.pools!write",
-    "cluster.indexes!write",
+    "cluster.settings.indexes!write",
     "cluster.admin.security!write",
     "cluster.samples!read",
     "cluster.nodes!read"
   ];
 
   interestingPermissions =
-    interestingPermissions.concat(generateBucketPermissions("."));
+    interestingPermissions.concat(generateBucketPermissions({name: "."}));
 
   MnPermissionsService.annotations = [
     new ng.core.Injectable()
@@ -100,7 +105,7 @@ mn.services.MnPermissions = (function () {
       .getSuccess
       .map(function (rv) {
         return _.reduce(rv, function (acc, bucket) {
-          return acc.concat(generateBucketPermissions(bucket.name, rv));
+          return acc.concat(generateBucketPermissions(bucket));
         }, []);
       })
       .combineLatest(this.stream
@@ -156,6 +161,10 @@ mn.services.MnPermissions = (function () {
   }
 
   function doGet(urlAndPermissions) {
-    return this.http.post(urlAndPermissions[1], urlAndPermissions[0].join(','));
+    return this.http
+      .post(urlAndPermissions[1], urlAndPermissions[0].join(','))
+      .map(function (rv) {
+        return JSON.parse(rv);
+    });
   }
 })();
