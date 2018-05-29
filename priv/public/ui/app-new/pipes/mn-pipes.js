@@ -286,6 +286,41 @@ mn.pipes.MnFormatWarmupMessage =
 
 
 var mn = mn || {};
+mn.pipes = mn.pipes || {};
+mn.pipes.MnBucketsType =
+  (function () {
+    "use strict";
+
+    MnBucketsType.annotations = [
+      new ng.core.Pipe({
+        name: "mnBucketsType"
+      })
+    ];
+
+    MnBucketsType.prototype.transform = transform;
+
+    return MnBucketsType;
+
+    function MnBucketsType() {
+    }
+
+    function transform(type) {
+      switch (type) {
+      case "membase":
+        return "Couchbase";
+      case "ephemeral":
+      case "memcached":
+        return type.charAt(0).toUpperCase() + type.slice(1);
+      }
+    }
+  })();
+
+mn.pipes.MnIsMembase = mn.helper.createBucketTypePipe("membase")
+mn.pipes.MnIsEphemeral = mn.helper.createBucketTypePipe("ephemeral");
+mn.pipes.MnIsMemcached = mn.helper.createBucketTypePipe("memcached");
+
+
+var mn = mn || {};
 mn.modules = mn.modules || {};
 mn.modules.MnPipesModule =
   (function () {
@@ -299,6 +334,10 @@ mn.modules.MnPipesModule =
           mn.pipes.MnPrettyVersion,
           mn.pipes.MnFormatProgressMessage,
           mn.pipes.MnFormatQuantity,
+          mn.pipes.MnBucketsType,
+          mn.pipes.MnIsMembase,
+          mn.pipes.MnIsMemcached,
+          mn.pipes.MnIsEphemeral,
           mn.pipes.MnFormatWarmupMessage
         ],
         exports: [
@@ -307,6 +346,10 @@ mn.modules.MnPipesModule =
           mn.pipes.MnPrettyVersion,
           mn.pipes.MnFormatProgressMessage,
           mn.pipes.MnFormatQuantity,
+          mn.pipes.MnBucketsType,
+          mn.pipes.MnIsMembase,
+          mn.pipes.MnIsMemcached,
+          mn.pipes.MnIsEphemeral,
           mn.pipes.MnFormatWarmupMessage
         ],
         imports: [],

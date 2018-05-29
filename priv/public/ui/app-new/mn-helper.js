@@ -79,6 +79,34 @@ mn.helper.invert = (function () {
 
 var mn = mn || {};
 mn.helper = mn.helper || {};
+mn.helper.createBucketTypePipe = (function () {
+  "use strict";
+
+  return function (bucketType) {
+    var capitalize = bucketType.charAt(0).toUpperCase() + bucketType.slice(1);
+
+    MnBucketType.annotations = [
+      new ng.core.Pipe({
+        name: "mnIs" + capitalize
+      })
+    ];
+
+    MnBucketType.prototype.transform = transform;
+
+    return MnBucketType;
+
+    function MnBucketType() {
+    }
+
+    function transform(bucket) {
+      return bucket.bucketType === bucketType;
+    }
+  }
+})();
+
+
+var mn = mn || {};
+mn.helper = mn.helper || {};
 mn.helper.errorToStream = (function () {
   return function (err) {
     return Rx.Observable.of(err);
