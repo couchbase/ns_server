@@ -105,6 +105,77 @@ mn.helper.createBucketTypePipe = (function () {
 })();
 
 
+
+var mn = mn || {};
+mn.helper = mn.helper || {};
+mn.helper.DetailsHashObserver = (function () {
+
+  DetailsHashObserver.prototype.isOpened = isOpened;
+  DetailsHashObserver.prototype.getNewHashValue = getNewHashValue;
+  DetailsHashObserver.prototype.setUndefinedHashValue = setUndefinedHashValue;
+  DetailsHashObserver.prototype.setNewHashValue = setNewHashValue;
+
+  return DetailsHashObserver;
+
+  function DetailsHashObserver(uiRouter, stateName, hashKey, mnOnDestroy, initialValueStream) {
+    this.uiRouter = uiRouter;
+    this.hashKey = hashKey;
+    this.stateName = stateName;
+    this.mnOnDestroy = mnOnDestroy;
+
+    this.stream = {};
+    this.stream.toggleDetails = new Rx.Subject();
+
+    this.stream.openedDetailsHash =
+      this.uiRouter
+      .globals
+      .params$
+      .pluck(this.hashKey)
+      .map(this.setUndefinedHashValue.bind(this));
+
+    this.stream.isOpened =
+      initialValueStream
+      .distinctUntilChanged()
+      .merge(this.stream.toggleDetails)
+      .combineLatest(this.stream.openedDetailsHash)
+      .map(this.isOpened.bind(this));
+
+    this.stream.newHashValue =
+      this.stream.toggleDetails
+      .withLatestFrom(this.stream.openedDetailsHash)
+      .map(this.getNewHashValue.bind(this));
+
+    this.stream.newHashValue
+      .takeUntil(this.mnOnDestroy)
+      .subscribe(this.setNewHashValue.bind(this));
+  }
+
+  function setNewHashValue(newHashValue) {
+    var stateParams = {};
+    stateParams[this.hashKey] = newHashValue;
+    this.uiRouter.stateService.go(this.stateName, stateParams);
+  }
+
+  function setUndefinedHashValue(v) {
+    return v || [];
+  }
+
+  function getNewHashValue(values) {
+    values[1] = _.clone(values[1]);
+    if (this.isOpened(values)) {
+      return _.difference(values[1], [String(values[0])])
+    } else {
+      values[1].push(values[0]);
+      return values[1];
+    }
+  }
+
+  function isOpened(values) {
+    return values[1].indexOf(values[0]) > -1;
+  }
+
+})();
+
 var mn = mn || {};
 mn.helper = mn.helper || {};
 mn.helper.errorToStream = (function () {
