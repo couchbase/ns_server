@@ -34,7 +34,7 @@
          terminate/2, code_change/3]).
 
 start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+    proc_lib:start_link(?MODULE, init, [[]]).
 
 -record(state, {
           port_pid :: pid(),
@@ -42,6 +42,7 @@ start_link() ->
          }).
 
 init([]) ->
+    register(?MODULE, self()),
     proc_lib:init_ack({ok, self()}),
     ?log_debug("waiting for completion of initial ns_ports_setup round"),
     ns_ports_setup:sync(),
