@@ -224,7 +224,16 @@ connect(Type, ConnName, Node, Bucket, RepFeatures) ->
     Username = ns_config:search_node_prop(Node, Cfg, memcached, admin_user),
     Password = ns_config:search_node_prop(Node, Cfg, memcached, admin_pass),
 
-    {Host, Port} = ns_memcached:host_port(Node),
+    {Host0, Port} = ns_memcached:host_port(Node),
+
+    %% 'Node' can be different in situations where we are upgrading from pre-5.1
+    %% clusters. In such situations, the orchestrator node will be proxying the
+    %% takeover operation.
+    Host = case Node =:= node() of
+               true  -> misc:localhost();
+               false -> Host0
+           end,
+
     {ok, Sock} = gen_tcp:connect(Host, Port,
                                  [misc:get_net_family(), binary,
                                   {packet, raw}, {active, false},
