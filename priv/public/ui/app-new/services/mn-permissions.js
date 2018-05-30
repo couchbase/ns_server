@@ -85,6 +85,7 @@ mn.services.MnPermissions = (function () {
   MnPermissionsService.prototype.set = set;
   MnPermissionsService.prototype.setBucketSpecific = setBucketSpecific;
   MnPermissionsService.prototype.doGet = doGet;
+  MnPermissionsService.prototype.createPermissionStream = createPermissionStream;
 
   return MnPermissionsService;
 
@@ -134,6 +135,23 @@ mn.services.MnPermissions = (function () {
           rv[bucketPermission].push(bucketName);
         }
       }, {}));
+  }
+
+  function createPermissionStream(permission, name) {
+    if (name instanceof Rx.Observable) {
+      return this.stream
+        .getBucketsPermissions
+        .withLatestFrom(name)
+        .map(function (values) {
+          return values[0]["cluster.bucket[" + values[1] + "]." + permission];
+        })
+        .distinctUntilChanged();
+    } else {
+      return this.stream
+        .getSuccess
+        .pluck("cluster." + (name ? ("bucket[" + name + "].") : "") + permission)
+        .distinctUntilChanged();
+    }
   }
 
   function generateBucketPermissions(bucketName, buckets) {

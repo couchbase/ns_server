@@ -13,7 +13,7 @@
     <nav class="nav-header">
       <a (click)="toggleProgressBar()"
          class="activities"
-         *ngIf="(tasksReadPermission | async)">
+         *ngIf="(tasksRead | async)">
         Activity
         <span
            [hidden]="!(tasksToDisplay| async)?.length > 0"
@@ -23,7 +23,7 @@
       </a>
       <div
          class="relative inline"
-         *ngIf="(tasksReadPermission | async)">
+         *ngIf="(tasksRead | async)">
         <div
            class="tasks-progress dialog-small"
            mnDraggable

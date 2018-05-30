@@ -62,6 +62,11 @@ mn.components.MnAdmin =
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
       this.whomiId = mnAdminService.stream.whomi.pluck("id");
 
+      this.tasksRead =
+        mnPermissionsService.createPermissionStream("tasks!read");
+      this.bucketSettingsAnyRead =
+        mnPermissionsService.createPermissionStream("settings!read", ".");
+
       this.stateService = uiRouter.stateService;
 
       mnAdminService
@@ -88,13 +93,6 @@ mn.components.MnAdmin =
         .getPoolsDefault
         .pluck("clusterName");
 
-      this.tasksReadPermission =
-        mnPermissionsService
-        .stream
-        .getSuccess
-        .pluck("cluster.tasks!read")
-        .distinctUntilChanged();
-
       this.enableResetButton =
         Rx.Observable.combineLatest(
           mnPoolsService.stream.isEnterprise,
@@ -109,13 +107,10 @@ mn.components.MnAdmin =
         mnAdminService
         .stream
         .enableInternalSettings
-        .combineLatest(mnPermissionsService
-                       .stream
-                       .getSuccess
-                       .pluck("cluster.admin.settings!write"))
+        .combineLatest(mnPermissionsService.createPermissionStream("admin.settings!write"))
         .map(_.curry(_.every)(_, Boolean));
 
-      this.tasksReadPermission
+      this.tasksRead
         .switchMap(function (canRead) {
           return canRead ?
             mnTasksService.stream.extractNextInterval :
