@@ -1090,7 +1090,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                       "runtimes", "scheduler",
                       "tasks",
                       "timings", "uuid",
-                      "vbucket", "vbucket-details", "vbucket-seqno",
+                      "vbucket-details", "vbucket-seqno",
                       "warmup", "workload"]],
 
         [AllOsTask("memcached mcstat %s" % kind,
