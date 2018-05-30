@@ -54,6 +54,24 @@ mn.services.MnTasks = (function () {
       .publishReplay(1)
       .refCount();
 
+    var tasks = this.stream.getSuccess;
+
+    this.stream.tasksWarmingUp =
+      tasks
+      .map(function (tasks) {
+        return _.filter(tasks, function (task) {
+          return task.type === 'warming_up' && task.status === 'running';
+        });
+      });
+
+    this.stream.tasksBucketCompaction =
+      tasks
+      .map(function (tasks) {
+        return _.filter(tasks, function (task) {
+          return task.type === 'bucket_compaction';
+        });
+      });
+
     this.stream.extractNextInterval =
       this.stream
       .getSuccess

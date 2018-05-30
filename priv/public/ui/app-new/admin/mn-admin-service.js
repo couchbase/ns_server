@@ -62,6 +62,20 @@ mn.services.MnAdmin = (function () {
       .switchMap(this.getPoolsDefault.bind(this))
       .shareReplay(1);
 
+    this.stream.isRebalancing =
+      this.stream
+      .getPoolsDefault
+      .map(function (rv) {
+        return rv.rebalanceStatus !== "none";
+      });
+
+    this.stream.maxBucketCount =
+      this.stream
+      .getPoolsDefault
+      .map(function (rv) {
+        return rv.maxBucketCount;
+      });
+
     this.stream.implementationVersion =
       (new Rx.BehaviorSubject())
       .switchMap(this.getVersion.bind(this))

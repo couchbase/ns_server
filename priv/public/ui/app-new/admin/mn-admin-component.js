@@ -175,6 +175,9 @@ mn.modules.MnAdmin =
             mn.components.MnAdmin,
             OverviewComponent,
             ServersComponent,
+            mn.components.MnBuckets,
+            mn.components.MnBucketsItem,
+            mn.components.MnBucketsItemDetails,
             mn.components.MnBarUsage,
             mn.components.MnWarmupProgress
           ],
@@ -197,6 +200,21 @@ mn.modules.MnAdmin =
                 },
                 data: {
                   title: "Servers"
+                }
+              }, {
+                name: "app.admin.buckets",
+                url: "buckets?openedBuckets",
+                params: {
+                  openedBuckets: {
+                    array: true,
+                    dynamic: true
+                  }
+                },
+                views: {
+                  "main@app.admin": mn.components.MnBuckets
+                },
+                data: {
+                  title: "Buckets"
                 }
               }]
             }),

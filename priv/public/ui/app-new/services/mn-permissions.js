@@ -103,7 +103,7 @@ mn.services.MnPermissions = (function () {
     this.stream.getBucketsPermissions =
       mnBucketsService
       .stream
-      .getSuccess
+      .buckets
       .map(function (rv) {
         return _.reduce(rv, function (acc, bucket) {
           return acc.concat(generateBucketPermissions(bucket));
