@@ -145,8 +145,6 @@
 %%
 
 start_link(Bucket) ->
-    %% Use proc_lib so that start_link doesn't fail if we can't
-    %% connect.
     gen_server:start_link({local, server(Bucket)}, ?MODULE, Bucket, []).
 
 
@@ -164,18 +162,17 @@ init(Bucket) ->
                    end,
     Self = self(),
     proc_lib:spawn_link(erlang, apply, [fun run_connect_phase/3, [Self, Bucket, WorkersCount]]),
-    proc_lib:init_ack({ok, Self}),
-    gen_server:enter_loop(?MODULE, [],
-                          #state{
-                                  status = connecting,
-                                  bucket = Bucket,
-                                  work_requests = [],
-                                  fast_calls_queue = Q,
-                                  heavy_calls_queue = Q,
-                                  very_heavy_calls_queue = Q,
-                                  running_fast = WorkersCount
-                                }),
-    erlang:error(impossible).
+
+    State = #state{
+                status = connecting,
+                bucket = Bucket,
+                work_requests = [],
+                fast_calls_queue = Q,
+                heavy_calls_queue = Q,
+                very_heavy_calls_queue = Q,
+                running_fast = WorkersCount
+            },
+    {ok, State}.
 
 run_connect_phase(Parent, Bucket, WorkersCount) ->
     ?log_debug("Started 'connecting' phase of ns_memcached-~s. Parent is ~p", [Bucket, Parent]),
