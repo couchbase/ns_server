@@ -38,9 +38,12 @@ get(Name, Id) ->
     end.
 
 start_link(Name, CacheSize, Get, GetEvents, GetVersion) ->
-    gen_server:start_link({local, Name}, ?MODULE, [Name, CacheSize, Get, GetEvents, GetVersion], []).
+    proc_lib:start_link(?MODULE, init,
+                        [[Name, CacheSize, Get, GetEvents, GetVersion]]).
+
 
 init([Name, CacheSize, Get, GetEvents, GetVersion]) ->
+    register(Name, self()),
     ?log_debug("Starting versioned cache ~p", [Name]),
     mru_cache:new(Name, CacheSize),
     Pid = self(),

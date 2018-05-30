@@ -42,8 +42,8 @@
                }).
 
 start_link(Name, Module, InitParams, Replicator) ->
-    gen_server:start_link({local, Name}, ?MODULE,
-                          [Module, InitParams, Replicator], []).
+    proc_lib:start_link(?MODULE, init,
+                        [[Name, Module, InitParams, Replicator]]).
 
 start_link_remote(Node, Name, Module, InitParams, Replicator) ->
     misc:start_link(Node, misc, turn_into_gen_server,
@@ -71,7 +71,8 @@ anounce_startup(Pid) ->
 sync_to_me(Name, Timeout) ->
     gen_server:call(Name, {sync_to_me, Timeout}, infinity).
 
-init([Module, InitParams, Replicator]) ->
+init([Name, Module, InitParams, Replicator]) ->
+    register(Name, self()),
     Self = self(),
     ChildState1 = Module:init(InitParams),
     Self ! replicate_newnodes_docs,

@@ -40,7 +40,7 @@
 -define(WAIT_FOR_ADDRESS_SLEEP, 1000).
 
 start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+    proc_lib:start_link(?MODULE, init, [[]]).
 
 ip_config_path() ->
     path_config:component_path(data, "ip").
@@ -155,6 +155,7 @@ save_node(NodeName) ->
     end.
 
 init([]) ->
+    register(?MODULE, self()),
     net_kernel:stop(),
 
     {Address, UserSupplied} =

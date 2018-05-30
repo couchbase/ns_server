@@ -42,7 +42,7 @@ label_to_name(Label) when is_list(Label)  ->
     list_to_atom(?PREFIX ++ Label).
 
 start_link(Label, GetSocket) ->
-    gen_server:start_link(?MODULE, {Label, GetSocket}, []).
+    proc_lib:start_link(?MODULE, init, [{Label, GetSocket}]).
 
 perform_call(Label, Name, EJsonArg, Timeout) ->
     EJsonArgThunk = fun () -> EJsonArg end,
