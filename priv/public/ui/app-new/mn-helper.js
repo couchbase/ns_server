@@ -352,7 +352,8 @@ mn.helper.MnEventableComponent = (function () {
   }
 
   function createSubjects(name) {
-    this["mn" + name] = new Rx.Subject();
+    //OnChanges triggers before OnInit, so we should keep current value
+    this["mn" + name] = (name === "OnChanges") ? new Rx.BehaviorSubject() : new Rx.Subject();
   }
 
   function completeSubject(name) {
