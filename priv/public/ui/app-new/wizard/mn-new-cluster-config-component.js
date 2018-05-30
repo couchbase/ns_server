@@ -80,13 +80,6 @@ mn.components.MnNewClusterConfig =
         .success
         .takeUntil(this.mnOnDestroy)
         .subscribe(function () {
-          if (mnWizardService.wizardForm.termsAndConditions.get("register").value) {
-            mnWizardService.stream.emailHttp.response.first().subscribe();
-            mnWizardService.stream.emailHttp.post([
-              mnWizardService.wizardForm.termsAndConditions.get("user").value,
-              mnWizardService.initialValues.implementationVersion
-            ]);
-          }
           uiRouter.urlRouter.sync();
         });
 
