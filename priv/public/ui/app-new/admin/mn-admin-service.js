@@ -57,6 +57,7 @@ mn.services.MnAdmin = (function () {
       .map(function (state) {
         return state.to().name === "app.admin.overview" ? 3000 : 10000;
       })
+      .distinctUntilChanged()
       .combineLatest(this.stream.etag)
       .switchMap(this.getPoolsDefault.bind(this))
       .shareReplay(1);
