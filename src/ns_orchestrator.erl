@@ -418,7 +418,7 @@ handle_event({call, From},
                     {keep_state_and_data,
                      [{reply, From, no_active_nodes_left}]};
                 _ ->
-                    case check_for_moxi_buckets(Config) of
+                    case rebalance_allowed(Config) of
                         ok ->
                             StartEvent = {start_rebalance,
                                           KeepNodes,
@@ -1312,19 +1312,38 @@ call_recovery_server(State, Call) ->
 call_recovery_server(#recovery_state{pid = Pid}, Call, Args) ->
     erlang:apply(recovery_server, Call, [Pid | Args]).
 
-check_for_moxi_buckets(Config) ->
+rebalance_allowed(Config) ->
     case cluster_compat_mode:is_cluster_madhatter(Config) of
         true ->
             ok;
         false ->
-            case [Name || {Name, BucketConfig} <- ns_bucket:get_buckets(Config),
-                          ns_bucket:moxi_port(BucketConfig) =/= undefined] of
-                [] ->
-                    ok;
-                Buckets ->
-                    BucketsStr = string:join(Buckets, ","),
-                    Msg = io_lib:format("Please remove proxy ports from the "
-                                        "following buckets: ~s", [BucketsStr]),
-                    {error, Msg}
+            functools:sequence_(Config, [fun check_for_passwordless_default/1,
+                                         fun check_for_moxi_buckets/1])
+    end.
+
+check_for_moxi_buckets(Config) ->
+    case [Name || {Name, BucketConfig} <- ns_bucket:get_buckets(Config),
+                  ns_bucket:moxi_port(BucketConfig) =/= undefined] of
+        [] ->
+            ok;
+        Buckets ->
+            BucketsStr = string:join(Buckets, ","),
+            Msg = io_lib:format("Please remove proxy ports from the "
+                                "following buckets: ~s", [BucketsStr]),
+            {error, Msg}
+    end.
+
+check_for_passwordless_default(Config) ->
+    case cluster_compat_mode:is_cluster_50(Config) of
+        false ->
+            ok;
+        true ->
+            case lists:member({"default", local},
+                              menelaus_users:get_passwordless()) andalso
+                lists:keymember("default", 1, ns_bucket:get_buckets(Config)) of
+                true ->
+                    {error, "Please reset password for user 'default'"};
+                false ->
+                    ok
             end
     end.
