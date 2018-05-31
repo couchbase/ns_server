@@ -466,7 +466,7 @@ roles_55() ->
        {[admin, memcached, idle], [write]},
        {[pools], [read]}]},
      {data_backup, [bucket_name],
-      [{name, <<"Data Backup">>},
+      [{name, <<"Data Backup & Restore">>},
        {desc, <<"Can backup and restore a given bucket’s data. This user "
                 "cannot access the web console and is intended only for "
                 "application access. This user can read data.">>}],
