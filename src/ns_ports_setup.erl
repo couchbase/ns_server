@@ -129,8 +129,7 @@ children_loop_continue(Children, Sup, Status) ->
 do_children_loop_continue(Children, Sup, Status) ->
     %% this sets bound on frequency of checking of port_servers
     %% configuration updates. NOTE: this thing also depends on other
-    %% config variables. Particularly moxi's environment variables
-    %% need admin credentials. So we're forced to react on any config
+    %% config variables. So we're forced to react on any config
     %% change
     timer:sleep(50),
     misc:flush(check_children_update),
@@ -183,48 +182,6 @@ create_erl_node_spec(Type, Args, EnvArgsVar, ErlangArgs) ->
 
     {Type, ErlPath, AllArgs, Options}.
 
-per_bucket_moxi_specs(Config) ->
-    case ns_cluster_membership:should_run_service(Config, kv, node()) of
-        true ->
-            do_per_bucket_moxi_specs(Config);
-        false ->
-            []
-    end.
-
-do_per_bucket_moxi_specs(Config) ->
-    BucketConfigs = ns_bucket:get_buckets(Config),
-    RestPort = ns_config:search_node_prop(Config, rest, port),
-    Command = path_config:component_path(bin, "moxi"),
-    lists:foldl(
-      fun ({BucketName, BucketConfig}, Acc) ->
-              case proplists:get_value(moxi_port, BucketConfig) of
-                  undefined ->
-                      Acc;
-                  Port ->
-                      Path = "/pools/default/bucketsStreaming/" ++ BucketName,
-                      LittleZ = misc:local_url(RestPort, Path, []),
-                      BigZ =
-                          lists:flatten(
-                            io_lib:format(
-                              "port_listen=~B,downstream_max=1024,downstream_conn_max=4,"
-                              "connect_max_errors=5,connect_retry_interval=30000,"
-                              "connect_timeout=400,"
-                              "auth_timeout=100,cycle=200,"
-                              "downstream_conn_queue_timeout=200,"
-                              "downstream_timeout=5000,wait_queue_timeout=200",
-                              [Port])),
-                      Args = ["-B", "auto", "-z", LittleZ, "-Z", BigZ,
-                              "-p", "0", "-Y", "y", "-O", "stderr"],
-                      Passwd = proplists:get_value(sasl_password, BucketConfig,
-                                                   ""),
-                      Opts = [use_stdio, stderr_to_stdout,
-                              {env, [{"MOXI_SASL_PLAIN_USR", BucketName},
-                                     {"MOXI_SASL_PLAIN_PWD", Passwd},
-                                     {"http_proxy", ""}]}],
-                      [{{moxi, BucketName}, Command, Args, Opts}|Acc]
-              end
-      end, [], BucketConfigs).
-
 dynamic_children(Mode) ->
     Config = ns_config:get(),
 
@@ -233,18 +190,14 @@ dynamic_children(Mode) ->
 
 do_dynamic_children(shutdown, Config) ->
     [memcached_spec(),
-     moxi_spec(Config),
-     saslauthd_port_spec(Config),
-     per_bucket_moxi_specs(Config)];
+     saslauthd_port_spec(Config)];
 do_dynamic_children(normal, Config) ->
     [memcached_spec(),
-     moxi_spec(Config),
      kv_node_projector_spec(Config),
      index_node_spec(Config),
      query_node_spec(Config),
      saslauthd_port_spec(Config),
      goxdcr_spec(Config),
-     per_bucket_moxi_specs(Config),
      fts_spec(Config),
      eventing_spec(Config),
      cbas_spec(Config),
@@ -459,50 +412,6 @@ format(Config, Name, Format, Keys) ->
                            (Key) -> ns_config:search_node_prop(Config, Name, Key)
                        end, Keys),
     lists:flatten(io_lib:format(Format, Values)).
-
-default_is_passwordless(Config) ->
-    lists:member({"default", local}, menelaus_users:get_passwordless()) andalso
-        lists:keymember("default", 1, ns_bucket:get_buckets(Config)).
-
-should_run_moxi(Config) ->
-    ns_cluster_membership:should_run_service(Config, kv, node())
-        andalso
-          ((not cluster_compat_mode:is_cluster_50(Config)) orelse
-           default_is_passwordless(Config)).
-
-moxi_spec(Config) ->
-    case should_run_moxi(Config) of
-        true ->
-            do_moxi_spec();
-        false ->
-            []
-    end.
-
-do_moxi_spec() ->
-    {moxi, path_config:component_path(bin, "moxi"),
-     ["-Z", {"port_listen=~B,default_bucket_name=default,downstream_max=1024,downstream_conn_max=4,"
-             "connect_max_errors=5,connect_retry_interval=30000,"
-             "connect_timeout=400,"
-             "auth_timeout=100,cycle=200,"
-             "downstream_conn_queue_timeout=200,"
-             "downstream_timeout=5000,wait_queue_timeout=200",
-             [port]},
-      "-z", "url=" ++ misc:local_url(misc:this_node_rest_port(),
-                                     "/pools/default/saslBucketsStreaming?moxi=1", []),
-      "-p", "0",
-      "-Y", "y",
-      "-O", "stderr",
-      {"~s", [verbosity]}
-     ],
-     [{env, [{"EVENT_NOSELECT", "1"},
-             {"MOXI_SASL_PLAIN_USR", {"~s", [{ns_moxi_sup, rest_user, []}]}},
-             {"MOXI_SASL_PLAIN_PWD", {"~s", [{ns_moxi_sup, rest_pass, []}]}},
-             {"http_proxy", ""}
-            ]},
-      use_stdio, exit_status,
-      stderr_to_stdout,
-      stream]
-    }.
 
 memcached_spec() ->
     {memcached, path_config:component_path(bin, "memcached"),
