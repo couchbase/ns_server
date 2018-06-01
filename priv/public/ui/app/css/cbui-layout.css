@@ -3,12 +3,6 @@
 html, body, .root-container {
   height: 100%;
 }
-/* creates a slot for the footer ---------------------------------------- */
-.page-wrap {
-  min-height: 100%;
-  margin-bottom: -24px;
-  padding-bottom: 24px;
-}
 /* utility links at page top -------------------------------------------- */
 .nav-header {
   display: flex;
@@ -69,6 +63,9 @@ footer {
   color: #555;
   background-color: #ecf3fa;
   font-size: .688rem;
+  position: fixed;
+  bottom: 0;
+  left: 0;
 }
 /* basic flex component for horizontal layout --------------------------- */
 .row {

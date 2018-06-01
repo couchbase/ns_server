@@ -1,4 +1,3 @@
-<div class="page-wrap">
   <div
      ng-if="rbac.cluster.settings.read"
      mn-launchpad
@@ -9,7 +8,6 @@
   </div>
 
   <div class="row">
-    <span class="red-1 nowrap text-smaller" style="padding-left:1.6rem;">BETA BUILD</span>
     <nav class="nav-header">
       <a ng-click="adminCtl.toggleProgressBar()" class="activities" ng-if="rbac.cluster.tasks.read">
         Activity
@@ -208,6 +206,3 @@
     <!-- all page content goes here -->
     <div ui-view="main" autoscroll="false" class="main-content min-width-zero" mn-spinner="showMainSpinner" opacity="true"></div>
   </main>
-</div>
-
-<footer>Copyright &copy; 2018 <a href="http://couchbase.com" target="_blank">Couchbase, Inc.</a> All rights reserved.</footer>
