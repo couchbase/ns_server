@@ -666,8 +666,6 @@ do_bucket_create(Req, Name, ParsedProps) ->
             {errors, [{name, <<"Bucket with given name already exists">>}]};
         {error, {still_exists, _}} ->
             {errors_500, [{'_', <<"Bucket with given name still exists">>}]};
-        {error, {port_conflict, _}} ->
-            {errors, [{proxyPort, <<"A bucket is already using this port">>}]};
         {error, {invalid_name, _}} ->
             {errors, [{name, <<"Name is invalid.">>}]};
         rebalance_running ->
@@ -940,7 +938,7 @@ validate_common_params(#bv_ctx{bucket_name = BucketName,
 validate_version_specific_params(#bv_ctx{cluster_version = Version} = Ctx, Params) ->
     case cluster_compat_mode:is_version_50(Version) of
         true ->
-            [validate_moxi_port(Ctx, Params)];
+            [validate_moxi_port(Params)];
         false ->
             AuthType = proplists:get_value("authType", Params),
             true = AuthType =/= undefined,
@@ -1012,7 +1010,8 @@ validate_bucket_name(false = _IsNew, BucketConfig, _BucketName, _AllBuckets) ->
     true = (BucketConfig =/= false),
     {ok, currentBucket, BucketConfig}.
 
-validate_auth_params_46(none = _AuthType, #bv_ctx{bucket_config = BucketConfig} = Ctx, Params) ->
+validate_auth_params_46(none = _AuthType, #bv_ctx{bucket_config = BucketConfig},
+                        Params) ->
     case proplists:get_value("proxyPort", Params) of
         undefined when BucketConfig =/= false ->
             case ns_bucket:auth_type(BucketConfig) of
@@ -1022,38 +1021,23 @@ validate_auth_params_46(none = _AuthType, #bv_ctx{bucket_config = BucketConfig} 
                     {error, proxyPort, <<"port is missing">>}
             end;
         ProxyPort ->
-            do_validate_moxi_port(Ctx, ProxyPort)
+            do_validate_moxi_port(ProxyPort)
     end;
 validate_auth_params_46(sasl = _AuthType, #bv_ctx{new = IsNew}, Params) ->
     validate_with_missing(proplists:get_value("saslPassword", Params), "",
                           IsNew, fun validate_bucket_password/1).
 
-validate_moxi_port(Ctx, Params) ->
-    do_validate_moxi_port(Ctx, proplists:get_value("proxyPort", Params)).
+validate_moxi_port(Params) ->
+    do_validate_moxi_port(proplists:get_value("proxyPort", Params)).
 
-do_validate_moxi_port(_Ctx, undefined) ->
+do_validate_moxi_port(undefined) ->
     ignore;
-do_validate_moxi_port(_Ctx, "none") ->
+do_validate_moxi_port("none") ->
+    %% needed for pre-MadHatter clusters only
     {ok, moxi_port, undefined};
-do_validate_moxi_port(#bv_ctx{bucket_name = BucketName}, ProxyPort) ->
-    case cluster_compat_mode:is_cluster_55() of
-        true ->
-            {error, proxyPort,
-             <<"Setting proxy port is not allowed on this version of "
-               "the cluster">>};
-        false ->
-            case (catch menelaus_util:parse_validate_port_number(ProxyPort)) of
-                {error, [Error]} ->
-                    {error, proxyPort, Error};
-                PP ->
-                    case ns_bucket:is_port_free(BucketName, PP) of
-                        true ->
-                            {ok, moxi_port, PP};
-                        false ->
-                            {error, proxyPort, <<"port is already in use">>}
-                    end
-            end
-    end.
+do_validate_moxi_port(_) ->
+    {error, proxyPort,
+     <<"Setting proxy port is not allowed on this version of the cluster">>}.
 
 get_bucket_type(false = _IsNew, BucketConfig, _Params)
   when is_list(BucketConfig) ->

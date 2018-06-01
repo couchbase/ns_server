@@ -39,7 +39,6 @@
          get_buckets/1,
          is_persistent/1,
          is_port_free/1,
-         is_port_free/2,
          is_valid_bucket_name/1,
          json_map_from_config/2,
          json_map_with_full_config/3,
