@@ -1729,9 +1729,9 @@ upgrade_config_testgen(InitialList, Changes, ExpectedList) ->
 upgrade_config_test_() ->
     T = [{[{a, 1}, {b, 2}], [{set, a, 2}, {set, c, 3}], [{a, 2}, {b, 2}, {c, 3}]},
          {[{b, 2}, {a, 1}], [{set, a, 2}, {set, c, 3}], [{a, 2}, {b, 2}, {c, 3}]},
-         {[{b, 2}, {a, [{moxi, "asd"}, {memcached, "ffd"}]}, {c, 0}],
-          [{set, a, [{moxi, "new"}, {memcached, "newff"}]}, {set, c, 3}],
-          [{a, [{moxi, "new"}, {memcached, "newff"}]}, {b, 2}, {c, 3}]}
+         {[{b, 2}, {a, [{key1, "asd"}, {key2, "ffd"}]}, {c, 0}],
+          [{set, a, [{key1, "new"}, {key2, "newff"}]}, {set, c, 3}],
+          [{a, [{key1, "new"}, {key2, "newff"}]}, {b, 2}, {c, 3}]}
         ],
     [upgrade_config_testgen(I, C, E) || {I,C,E} <- T].
 
