@@ -10,7 +10,7 @@
   <div class="row">
     <nav class="nav-header">
       <a ng-click="adminCtl.toggleProgressBar()" class="activities" ng-if="rbac.cluster.tasks.read">
-        Activity
+        activity
         <span
            ng-if="adminCtl.filterTasks(adminCtl.tasks.running).length > 0"
            class="label badge">
@@ -60,12 +60,21 @@
          ng-show="adminCtl.enableInternalSettings && rbac.cluster.admin.settings.write">
         Edit internal settings
       </a>
-      <a ng-href="https://developer.couchbase.com/documentation/server/{{::(adminCtl.implementationVersion | parseVersion)[0].split('.').splice(0,2).join('.')}}/introduction/whats-new.html" target="_blank">
-        Documentation
-      </a>
-      <a ng-href="{{adminCtl.poolDefault.isEnterprise  ? 'http://support.couchbase.com' : 'http://www.couchbase.com/communities/'}}" target="cbforums">
-        Support
-      </a>
+      <span uib-dropdown>
+        <a uib-dropdown-toggle>
+          help
+        </a>
+        <div uib-dropdown-menu class="dropdown-menu-select-like">
+          <a ng-href="https://developer.couchbase.com/documentation/server/{{::(adminCtl.implementationVersion | parseVersion)[0].split('.').splice(0,2).join('.')}}/introduction/whats-new.html" target="_blank">
+            Documentation<br>
+            <desc>For version {{::(adminCtl.implementationVersion | parseVersion)[0].split('.').splice(0,2).join('.')}}</desc>
+          </a>
+          <a ng-href="{{adminCtl.poolDefault.isEnterprise  ? 'http://support.couchbase.com' : 'http://www.couchbase.com/communities/'}}" target="cbforums">
+            Couchbase Support<br>
+            <desc>For Enterprise Edition subscription customers</desc>
+          </a>
+        </div>
+      </span>
       <span uib-dropdown>
         <a uib-dropdown-toggle class="nowrap ellipsis max-width-3">
           {{adminCtl.user.id}}
