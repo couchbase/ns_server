@@ -386,10 +386,6 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["ui", "new-index.html"] ->
                     {ui, IsSSL, fun handle_ui_root/5, [AppRoot, Path, ?VERSION_41,
                                                        []]};
-                ["dot", Bucket] ->
-                    {{[{bucket, Bucket}, settings], read}, fun menelaus_web_misc:handle_dot/2, [Bucket]};
-                ["dotsvg", Bucket] ->
-                    {{[{bucket, Bucket}, settings], read}, fun menelaus_web_misc:handle_dotsvg/2, [Bucket]};
                 ["sasl_logs"] ->
                     {{[admin, logs], read}, fun diag_handler:handle_sasl_logs/1, []};
                 ["sasl_logs", LogName] ->

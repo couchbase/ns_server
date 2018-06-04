@@ -20,8 +20,6 @@
 -export([handle_uilogin/1,
          handle_uilogout/1,
          handle_versions/1,
-         handle_dot/2,
-         handle_dotsvg/2,
          handle_tasks/2,
          handle_log_post/1]).
 
@@ -30,7 +28,6 @@
          reply_json/3,
          reply_ok/3,
          reply_ok/4,
-         insecure_pipe_through_command/2,
          parse_validate_number/3]).
 
 -include("ns_common.hrl").
@@ -52,25 +49,6 @@ handle_uilogout(Req) ->
 
 handle_versions(Req) ->
     reply_json(Req, {struct, menelaus_web_cache:versions_response()}).
-
-handle_dot(Bucket, Req) ->
-    reply_ok(Req, "text/plain; charset=utf-8", ns_janitor_vis:graphviz(Bucket)).
-
-handle_dotsvg(Bucket, Req) ->
-    Dot = ns_janitor_vis:graphviz(Bucket),
-    DoRefresh = case proplists:get_value("refresh", mochiweb_request:parse_qs(Req), "") of
-                    "ok" -> true;
-                    "yes" -> true;
-                    "1" -> true;
-                    _ -> false
-                end,
-    MaybeRefresh = if DoRefresh ->
-                           [{"refresh", 1}];
-                      true -> []
-                   end,
-    reply_ok(Req, "image/svg+xml",
-             insecure_pipe_through_command("dot -Tsvg", Dot),
-             MaybeRefresh).
 
 handle_tasks(PoolId, Req) ->
     RebTimeoutS = proplists:get_value("rebalanceStatusTimeout", mochiweb_request:parse_qs(Req), "2000"),

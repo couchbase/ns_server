@@ -53,7 +53,6 @@
          parse_validate_number/4,
          parse_validate_port_number/1,
          validate_email_address/1,
-         insecure_pipe_through_command/2,
          encode_json/1,
          is_valid_positive_integer/1,
          is_valid_positive_integer_in_range/3,
@@ -399,29 +398,6 @@ remote_addr_and_port(Req) ->
             ?log_error("remote_addr failed: ~p", Error),
             "unknown"
     end.
-
-pipe_through_command_rec(Port, Acc) ->
-    receive
-        {Port, {data, Data}} ->
-            pipe_through_command_rec(Port, [Data | Acc]);
-        {Port, {exit_status, _}} ->
-            lists:reverse(Acc);
-        X when is_tuple(X) andalso element(1, X) =:= Port ->
-            io:format("ignoring port message: ~p~n", [X]),
-            pipe_through_command_rec(Port, Acc)
-    end.
-
-%% this is NOT secure, because I cannot make erlang ports work as
-%% popen. We're missing ability to close write side of the port.
-insecure_pipe_through_command(Command, IOList) ->
-    TmpFile = path_config:tempfile("pipethrough.", ""),
-    ok = misc:write_file(TmpFile, IOList),
-    Port = open_port({spawn, Command ++ " <" ++
-                          mochiweb_util:shell_quote(TmpFile)},
-                     [binary, in, exit_status]),
-    RV = pipe_through_command_rec(Port, []),
-    file:delete(TmpFile),
-    RV.
 
 strip_json_struct({struct, Pairs}) -> {strip_json_struct(Pairs)};
 strip_json_struct(List) when is_list(List) -> [strip_json_struct(E) || E <- List];
