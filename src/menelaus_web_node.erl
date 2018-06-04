@@ -282,8 +282,7 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
                         end
                 end, PortsKV0, PortKeys),
     {ExtHostname, ExtPorts} = alternate_addresses:get_external(WantENode, Config),
-    WantedPorts = [moxi_port,
-                   memcached_port,
+    WantedPorts = [memcached_port,
                    ssl_capi_port,
                    capi_port,
                    ssl_rest_port,

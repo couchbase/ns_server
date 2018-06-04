@@ -41,7 +41,6 @@ all_ports() ->
      ?define_port(capi_port, capi, kv),
      ?define_port(ssl_capi_port, capiSSL, kv),
      ?define_port(projector_port, projector, kv),
-     ?define_port(moxi_port, moxi, kv),
      %% query service ports
      ?define_port(query_port, n1ql, n1ql),
      ?define_port(ssl_query_port, n1qlSSL, n1ql),

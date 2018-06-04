@@ -257,7 +257,7 @@ node_bucket_info(Node, Config, Bucket, BucketUUID, BucketConfig) ->
     Ports = {[{proxy, ns_config:search_node_prop(Node, Config, moxi, port)},
               {direct, ns_config:search_node_prop(Node, Config, memcached, port)}]},
     {ExtHostname, ExtPorts} = alternate_addresses:get_external(Node, Config),
-    WantedPorts = [rest_port, moxi_port, memcached_port],
+    WantedPorts = [rest_port, memcached_port],
     External = construct_ext_json(
                  ExtHostname,
                  alternate_addresses:filter_rename_ports(ExtPorts, WantedPorts)),
