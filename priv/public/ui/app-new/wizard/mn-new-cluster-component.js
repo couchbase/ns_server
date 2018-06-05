@@ -23,7 +23,7 @@ mn.components.MnNewCluster =
       mn.helper.MnEventableComponent.call(this);
 
       this.onSubmit = new Rx.Subject();
-      this.focusField = true;
+      this.focusFieldSubject = new Rx.BehaviorSubject("clusterName");
 
       this.submitted = this.onSubmit.mapTo(true);
       this.authHttp = mnWizardService.stream.authHttp;

@@ -24,7 +24,7 @@ mn.components.MnJoinCluster =
     function MnJoinCluster(mnWizardService, mnAppService, mnAuthService, uiRouter) {
       mn.helper.MnEventableComponent.call(this);
 
-      this.focusField = true;
+      this.focusFieldSubject = new Rx.BehaviorSubject("hostname");
       this.onSubmit = new Rx.Subject();
       this.submitted = this.onSubmit.mapTo(true);
 

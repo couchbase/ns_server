@@ -32,7 +32,7 @@ mn.components.MnPathField =
     }
 
     function MnPathField(mnWizardService) {
-      this.focusField = true;
+      this.focusFieldSubject = new Rx.BehaviorSubject(true);
       this.createLookUpStream = mnWizardService.createLookUpStream.bind(mnWizardService);
     }
   })();

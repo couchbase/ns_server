@@ -25,7 +25,7 @@ mn.components.MnTermsAndConditions =
     function MnTermsAndConditions(mnWizardService, mnPoolsService, mnAppService, mnAuthService, uiRouter) {
       mn.helper.MnEventableComponent.call(this);
 
-      this.focusField = true;
+      this.focusFieldSubject = new Rx.BehaviorSubject(true);
       this.onSubmit = new Rx.Subject();
       this.onFinishWithDefaut = new Rx.Subject();
 

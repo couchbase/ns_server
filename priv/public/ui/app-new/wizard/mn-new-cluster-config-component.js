@@ -26,7 +26,6 @@ mn.components.MnNewClusterConfig =
     function MnNewClusterConfig(mnWizardService, mnAdminService, mnPoolsService, mnAppService, mnAuthService, uiRouter) {
       mn.helper.MnEventableComponent.call(this);
 
-      this.focusField = true;
       this.onSubmit = new Rx.Subject();
 
       this.wizardForm = mnWizardService.wizardForm;

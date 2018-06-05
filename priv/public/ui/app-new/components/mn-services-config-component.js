@@ -34,6 +34,13 @@ mn.components.MnServicesConfig =
         .valueChanges
         .map(calculateTotal.bind(this));
 
+      this.focusFieldSubject = new Rx.BehaviorSubject(
+        (this.group.value.field.kv ? "kv" :
+         this.group.value.field.index ? "index" :
+         this.group.value.field.fts ? "fts" :
+         this.group.value.field.cbas ? "cbas" : "eventing")
+      );
+
       createToggleFieldStream.bind(this)("kv");
       createToggleFieldStream.bind(this)("index");
       createToggleFieldStream.bind(this)("fts");
@@ -110,7 +117,6 @@ mn.components.MnServicesConfig =
     }
 
     function MnServicesConfig(mnWizardService, mnAdminService) {
-      this.focusField = true;
       this.destroy = new Rx.Subject();
       this.poolsDefaultHttp = mnAdminService.stream.poolsDefaultHttp;
     }

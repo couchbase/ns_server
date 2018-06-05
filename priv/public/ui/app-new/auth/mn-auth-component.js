@@ -23,7 +23,7 @@ mn.components.MnAuth =
     function MnAuthComponent(mnAuthService, uiRouter, formBuilder) {
       mn.helper.MnEventableComponent.call(this);
 
-      this.focusField = true;
+      this.focusFieldSubject = new Rx.BehaviorSubject(true);
       this.onSubmit = new Rx.Subject();
 
       this.loginHttp = mnAuthService.stream.loginHttp;

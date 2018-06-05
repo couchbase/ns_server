@@ -17,7 +17,7 @@ mn.components.MnWelcome =
     return MnWelcomeComponent;
 
     function MnWelcomeComponent(mnAdmin) {
-      this.focusField = true;
+      this.focusFieldSubject = new Rx.BehaviorSubject(true);
 
       this.prettyVersion =
         mnAdmin

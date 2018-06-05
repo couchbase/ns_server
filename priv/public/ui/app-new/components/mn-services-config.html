@@ -29,7 +29,7 @@
       <input
          type="number"
          formControlName="kv"
-         [(mnFocus)]="focusField">
+         [mnFocus]="focusFieldSubject">
       <!-- ng-disabled="config.services && !config.services.model.kv || (rbac && !rbac.cluster.pools.write)" -->
       <!-- ng-model="config.memoryQuota" -->
       <small>MB</small>
@@ -64,7 +64,7 @@
        *ngIf="group.value.field"
        formGroupName="field">
       <input
-         [(mnFocus)]="!group.value.field.kv"
+         [mnFocus]="focusFieldSubject"
          formControlName="index"
          type="number"
          min="0">
@@ -102,7 +102,7 @@
        *ngIf="group.value.field"
        formGroupName="field">
       <input
-         [(mnFocus)]="!group.value.field.index && !group.value.field.kv"
+         [mnFocus]="focusFieldSubject"
          formControlName="fts"
          type="number">
       <!-- ng-disabled="config.services && !config.services.model.fts || (rbac && !rbac.cluster.pools.write)" -->
@@ -138,7 +138,7 @@
        *ngIf="group.value.field"
        formGroupName="field">
       <input
-         [(mnFocus)]="!group.value.field.index && !group.value.field.kv && !group.value.field.fts"
+         [mnFocus]="focusFieldSubject"
          formControlName="cbas"
          type="number"
          min="0">
@@ -203,7 +203,7 @@
        *ngIf="group.value.field"
        formGroupName="field">
       <input
-         [(mnFocus)]="!group.value.field.index && !group.value.field.kv && !group.value.field.fts && !group.value.field.cbas"
+         [mnFocus]="focusFieldSubject"
          formControlName="eventing"
          type="number"
          min="0">

@@ -43,7 +43,7 @@ mn.components.MnNodeStorageConfig =
     }
 
     function MnNodeStorageConfig(mnWizardService) {
-      this.focusField = true;
+      this.focusFieldSubject = new Rx.BehaviorSubject(true);
       this.hostnameHttp = mnWizardService.stream.hostnameHttp;
       this.diskStorageHttp = mnWizardService.stream.diskStorageHttp;
     }
