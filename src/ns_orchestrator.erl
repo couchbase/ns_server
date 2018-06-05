@@ -111,7 +111,8 @@ create_bucket(BucketType, BucketName, NewConfig) ->
 -spec update_bucket(memcached|membase, undefined|couchstore|ephemeral,
                     nonempty_string(), list()) ->
                            ok | {exit, {not_found, nonempty_string()}, []}
-                               | rebalance_running.
+                               | rebalance_running
+                               | in_recovery.
 update_bucket(BucketType, StorageMode, BucketName, UpdatedProps) ->
     wait_for_orchestrator(),
     gen_statem:call(?SERVER, {update_bucket, BucketType,
@@ -363,38 +364,6 @@ init([]) ->
 
     {ok, idle, #idle_state{}}.
 
-%% In the mixed mode, depending upon the node from which the update bucket
-%% request is being sent, the length of the message could vary. In order to
-%% be backward compatible we need to field both types of messages.
-
-handle_event({call, From}, {update_bucket, memcached, BucketName, UpdatedProps},
-             _StateName, _State) ->
-    {keep_state_and_data,
-     [{next_event, {call, From},
-       {update_bucket, memcached, undefined, BucketName, UpdatedProps}}]};
-
-handle_event({call, From}, {update_bucket, membase, BucketName, UpdatedProps},
-             _StateName, _State) ->
-    {keep_state_and_data,
-     [{next_event, {call, From},
-       {update_bucket, membase, couchstore, BucketName, UpdatedProps}}]};
-
-handle_event({call, From}, {update_bucket, _, _, _, _}, rebalancing, _State) ->
-    {keep_state_and_data, [{reply, From, rebalance_running}]};
-
-handle_event({call, From},
-             {update_bucket, BucketType, StorageMode, BucketName, UpdatedProps},
-             _StateName, _State) ->
-    Reply = ns_bucket:update_bucket_props(BucketType, StorageMode,
-                                          BucketName, UpdatedProps),
-    case Reply of
-        ok ->
-            %% request janitor run to fix map if the replica # has changed
-            request_janitor_run({bucket, BucketName});
-        _ -> ok
-    end,
-    {keep_state_and_data, [{reply, From, Reply}]};
-
 handle_event({call, From},
              {maybe_start_rebalance, KnownNodes, EjectedNodes,
               DeltaRecoveryBuckets},
@@ -644,6 +613,30 @@ idle({delete_bucket, BucketName}, From, _State) ->
                 DeleteRV
         end,
 
+    {keep_state_and_data, [{reply, From, Reply}]};
+
+%% In the mixed mode, depending upon the node from which the update bucket
+%% request is being sent, the length of the message could vary. In order to
+%% be backward compatible we need to field both types of messages.
+idle({update_bucket, memcached, BucketName, UpdatedProps}, From, State) ->
+    {keep_state_and_data,
+     [{next_event, {call, From},
+       {update_bucket, memcached, undefined, BucketName, UpdatedProps}}]};
+idle({update_bucket, membase, BucketName, UpdatedProps}, From, State) ->
+    {keep_state_and_data,
+     [{next_event, {call, From},
+       {update_bucket, membase, couchstore, BucketName, UpdatedProps}}]};
+idle({update_bucket,
+      BucketType, StorageMode, BucketName, UpdatedProps}, From, State) ->
+    Reply = ns_bucket:update_bucket_props(BucketType, StorageMode,
+                                          BucketName, UpdatedProps),
+    case Reply of
+        ok ->
+            %% request janitor run to fix map if the replica # has changed
+            request_janitor_run({bucket, BucketName});
+        _ ->
+            ok
+    end,
     {keep_state_and_data, [{reply, From, Reply}]};
 idle({failover, Node}, From, _State) ->
     %% calls from pre-5.5 nodes

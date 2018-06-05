@@ -614,6 +614,10 @@ handle_bucket_update_inner(BucketId, Req, Params, Limit) ->
                     reply_text(Req,
                                "Cannot update bucket "
                                "while rebalance is running.", 503);
+                in_recovery ->
+                    reply_text(Req,
+                               "Cannot update bucket "
+                               "while recovery is in progress.", 503);
                 {exit, {not_found, _}, _} ->
                     %% if this happens then our validation raced, so repeat everything
                     handle_bucket_update_inner(BucketId, Req, Params, Limit-1)
