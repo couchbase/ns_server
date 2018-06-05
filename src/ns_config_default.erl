@@ -27,7 +27,7 @@
 -define(NS_LOG, "ns_log").
 
 get_current_version() ->
-    list_to_tuple(?VERSION_55).
+    list_to_tuple(?VERSION_MADHATTER).
 
 get_data_dir() ->
     RawDir = path_config:component_path(data),
@@ -400,14 +400,6 @@ default() ->
      %% Secure headers config
      {secure_headers, []},
 
-     %% Moxi config. This is
-     %% per-node so command
-     %% line override
-     %% doesn't propagate
-     {{node, node(), moxi}, [{port, misc:get_env_default(moxi_port, 11211)},
-                             {verbosity, ""}
-                            ]},
-
      %% removed since 4.0
      {{node, node(), port_servers}, []},
 
@@ -498,8 +490,12 @@ upgrade_config(Config) ->
             [{set, {node, node(), config_version}, {5,1,1}} |
              upgrade_config_from_5_0_to_5_1_1()];
         {value, {5,1,1}} ->
-            [{set, {node, node(), config_version}, CurrentVersion} |
+            [{set, {node, node(), config_version}, {5,5}} |
              upgrade_config_from_5_1_1_to_5_5(Config)];
+        {value, {5,5}} ->
+            [{set, {node, node(), config_version}, CurrentVersion} |
+             upgrade_config_from_5_5_to_madhatter()];
+
         V0 ->
             OldVersion =
                 case V0 of
@@ -586,6 +582,9 @@ do_upgrade_config_from_5_1_1_to_5_5(Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
      upgrade_key(memcached_defaults, DefaultConfig),
      upgrade_sub_keys(memcached, [other_users], Config, DefaultConfig)].
+
+upgrade_config_from_5_5_to_madhatter() ->
+    [{delete, {node, node(), moxi}}].
 
 encrypt_config_val(Val) ->
     {ok, Encrypted} = encryption_service:encrypt(term_to_binary(Val)),
@@ -687,6 +686,10 @@ upgrade_5_1_1_to_5_5_test() ->
                                                         {new_field, enable}]},
                   {set, {node, _, memcached}, [{old, info}, {other_users, new}]}],
                  do_upgrade_config_from_5_1_1_to_5_5(Cfg, Default)).
+
+upgrade_5_5_to_madhatter_test() ->
+    ?assertMatch([{delete, {node, _, moxi}}],
+                 upgrade_config_from_5_5_to_madhatter()).
 
 no_upgrade_on_current_version_test() ->
     ?assertEqual([], upgrade_config([[{{node, node(), config_version}, get_current_version()}]])).
