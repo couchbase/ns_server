@@ -144,8 +144,7 @@ build_services(Node, Config, EnabledServices) ->
                      GetPort(capi_port, capi) ++
                      GetPortFromProp(memcached, ssl_port, kvSSL) ++
                      GetPort(projector_port, projector) ++
-                     GetPortFromProp(memcached, port, kv) ++
-                     GetPortFromProp(moxi, port, moxi);
+                     GetPortFromProp(memcached, port, kv);
              n1ql ->
                  [{n1ql, query_rest:get_query_port(Config, Node)}] ++
                      case query_rest:get_ssl_query_port(Config, Node) of
