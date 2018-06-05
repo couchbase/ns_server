@@ -19,6 +19,7 @@
 -module(menelaus_web_cluster).
 
 -include_lib("eunit/include/eunit.hrl").
+-include("cut.hrl").
 -include("ns_common.hrl").
 -include("menelaus_web.hrl").
 
@@ -771,17 +772,20 @@ handle_rebalance_progress(_PoolId, Req) ->
     reply_json(Req, {struct, Status}, 200).
 
 handle_stop_rebalance(Req) ->
-    Params = Req:parse_qs(),
-    case proplists:get_value("onlyIfSafe", Params) =:= "1" of
-        true ->
-            case ns_cluster_membership:stop_rebalance_if_safe() of
-                unsafe ->
-                    reply(Req, 400);
-                _ -> %% ok | not_rebalancing
-                    reply(Req, 200)
-            end;
+    validator:handle(handle_stop_rebalance(Req, _),
+                     Req, form, [validator:boolean(allowUnsafe, _)]).
+
+handle_stop_rebalance(Req, Params) ->
+    AllowUnsafe = proplists:get_value(allowUnsafe, Params, false),
+    case ns_cluster_membership:stop_rebalance(AllowUnsafe) of
+        unsafe ->
+            reply_text(Req,
+                       "Cannot communicate to the orchestrator node. "
+                       "Stopping rebalance is unsafe. "
+                       "This can be overriden by passing allowUnsafe=true "
+                       "in the POST form.",
+                       504);
         _ ->
-            ns_cluster_membership:stop_rebalance(),
             reply(Req, 200)
     end.
 
