@@ -611,7 +611,9 @@ handle_bucket_update_inner(BucketId, Req, Params, Limit) ->
                               lists:keydelete(sasl_password, 1, UpdatedProps)]),
                     reply(Req, 200);
                 rebalance_running ->
-                    reply_text(Req, "\"cannot update bucket while rebalance is running\"", 503);
+                    reply_text(Req,
+                               "Cannot update bucket "
+                               "while rebalance is running.", 503);
                 {exit, {not_found, _}, _} ->
                     %% if this happens then our validation raced, so repeat everything
                     handle_bucket_update_inner(BucketId, Req, Params, Limit-1)
