@@ -260,15 +260,11 @@ is_xdcr_over_ssl_allowed() ->
 build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
 
     DirectPort = ns_config:search_node_prop(WantENode, Config, memcached, port),
-    ProxyPort = ns_config:search_node_prop(WantENode, Config, moxi, port),
     Versions = proplists:get_value(version, InfoNode, []),
     Version = proplists:get_value(ns_server, Versions, "unknown"),
     OS = proplists:get_value(system_arch, InfoNode, "unknown"),
     CpuCount = proplists:get_value(cpu_count, InfoNode, unknown),
     HostName = build_node_hostname(Config, WantENode, LocalAddr),
-
-    PortsKV0 = [{proxy, ProxyPort},
-                {direct, DirectPort}],
 
     %% this is used by xdcr over ssl since 2.5.0
     PortKeys = [{ssl_capi_port, httpsCAPI},
@@ -280,7 +276,7 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
                             {value, Value} when Value =/= undefined -> [{JKey, Value} | Acc];
                             _ -> Acc
                         end
-                end, PortsKV0, PortKeys),
+                end, [{direct, DirectPort}], PortKeys),
     {ExtHostname, ExtPorts} = alternate_addresses:get_external(WantENode, Config),
     WantedPorts = [memcached_port,
                    ssl_capi_port,

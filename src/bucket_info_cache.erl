@@ -72,9 +72,6 @@ cleaner_loop({rest, _Value}, State) ->
 cleaner_loop({{node, _, memcached}, _Value}, State) ->
     submit_full_reset(),
     State;
-cleaner_loop({{node, _, moxi}, _Value}, State) ->
-    submit_full_reset(),
-    State;
 cleaner_loop({{node, _, membership}, _Value}, State) ->
     submit_full_reset(),
     State;
@@ -253,8 +250,8 @@ construct_ext_json(Hostname, Ports) ->
 node_bucket_info(Node, Config, Bucket, BucketUUID, BucketConfig) ->
     HostName = menelaus_web_node:build_node_hostname(Config, Node,
                                                      ?LOCALHOST_MARKER_STRING),
-    Ports = {[{proxy, ns_config:search_node_prop(Node, Config, moxi, port)},
-              {direct, ns_config:search_node_prop(Node, Config, memcached, port)}]},
+    Ports = {[{direct,
+               ns_config:search_node_prop(Node, Config, memcached, port)}]},
     {ExtHostname, ExtPorts} = alternate_addresses:get_external(Node, Config),
     WantedPorts = [rest_port, memcached_port],
     External = construct_ext_json(

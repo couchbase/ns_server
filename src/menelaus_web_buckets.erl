@@ -381,7 +381,6 @@ build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
     {struct, [{name, list_to_binary(Id)},
               {bucketType, external_bucket_type(BucketType, BucketConfig)},
               {authType, misc:expect_prop_value(auth_type, BucketConfig)},
-              {proxyPort, proplists:get_value(moxi_port, BucketConfig, 0)},
               {uri, BuildUUIDURI(["pools", "default", "buckets", Id])},
               {streamingUri, BuildUUIDURI(["pools", "default", "bucketsStreaming", Id])},
               {localRandomKeyUri, bin_concat_path(["pools", "default",
@@ -443,10 +442,10 @@ handle_sasl_buckets_streaming(_PoolId, Req) ->
                                            list_to_binary(
                                              menelaus_web_node:build_node_hostname(Config, N, LocalAddr)),
                                        DirectPort = ns_config:search_node_prop(N, Config, memcached, port),
-                                       ProxyPort = ns_config:search_node_prop(N, Config, moxi, port),
                                        {struct, [{hostname, Hostname},
-                                                 {ports, {struct, [{direct, DirectPort},
-                                                                   {proxy, ProxyPort}]}}]}
+                                                 {ports,
+                                                  {struct,
+                                                   [{direct, DirectPort}]}}]}
                                    end || N <- ns_bucket:bucket_nodes(BucketInfo)],
                               VBM = case ns_bucket:bucket_type(BucketInfo) of
                                         membase ->
