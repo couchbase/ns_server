@@ -755,7 +755,12 @@ do_upgrade_config(#config{uuid = UUID} = Config, Changes, Upgrader) ->
 
                   case lists:keyfind(K, 1, Acc) of
                       false ->
-                          [{K, attach_vclock(V, UUID)} | Acc];
+                          case V of
+                              ?DELETED_MARKER ->
+                                  Acc;
+                              _ ->
+                                  [{K, attach_vclock(V, UUID)} | Acc]
+                          end;
                       {K, OldV} ->
                           NewV = upgrade_vclock(V, OldV, UUID),
                           lists:keyreplace(K, 1, Acc, {K, NewV})
