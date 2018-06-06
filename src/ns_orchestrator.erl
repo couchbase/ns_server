@@ -618,16 +618,16 @@ idle({delete_bucket, BucketName}, From, _State) ->
 %% In the mixed mode, depending upon the node from which the update bucket
 %% request is being sent, the length of the message could vary. In order to
 %% be backward compatible we need to field both types of messages.
-idle({update_bucket, memcached, BucketName, UpdatedProps}, From, State) ->
+idle({update_bucket, memcached, BucketName, UpdatedProps}, From, _State) ->
     {keep_state_and_data,
      [{next_event, {call, From},
        {update_bucket, memcached, undefined, BucketName, UpdatedProps}}]};
-idle({update_bucket, membase, BucketName, UpdatedProps}, From, State) ->
+idle({update_bucket, membase, BucketName, UpdatedProps}, From, _State) ->
     {keep_state_and_data,
      [{next_event, {call, From},
        {update_bucket, membase, couchstore, BucketName, UpdatedProps}}]};
 idle({update_bucket,
-      BucketType, StorageMode, BucketName, UpdatedProps}, From, State) ->
+      BucketType, StorageMode, BucketName, UpdatedProps}, From, _State) ->
     Reply = ns_bucket:update_bucket_props(BucketType, StorageMode,
                                           BucketName, UpdatedProps),
     case Reply of
