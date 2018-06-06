@@ -723,48 +723,46 @@ upgrade_config(Config) ->
 upgrade_config(Config, Upgrader) ->
     do_upgrade_config(Config, Upgrader(Config), Upgrader).
 
+upgrade_vclock(V, OldV, UUID) when is_list(OldV) ->
+    case proplists:get_value(?METADATA_VCLOCK, OldV) of
+        undefined ->
+            %% we encountered plenty of upgrade problems coming from the fact
+            %% that both old and new values miss vclock;
+            %% in this case the new value can be reverted by the old value
+            %% replicated from not yet updated node;
+            %% we solve this by attaching vclock to new value;
+            attach_vclock(V, UUID);
+        _ ->
+            increment_vclock(V, OldV, UUID)
+    end;
+upgrade_vclock(V, _, UUID) ->
+    attach_vclock(V, UUID).
+
 do_upgrade_config(Config, [], _Upgrader) -> Config;
 do_upgrade_config(#config{uuid = UUID} = Config, Changes, Upgrader) ->
-    ?log_debug("Upgrading config by changes:~n~p~n", [ns_config_log:sanitize(Changes)]),
+    ?log_debug("Upgrading config by changes:~n~p~n",
+               [ns_config_log:sanitize(Changes)]),
     ConfigList = config_dynamic(Config),
     NewList =
-        lists:foldl(fun (Change, Acc) ->
-                            {K, V} = case Change of
-                                         {set, K0, V0} ->
-                                             {K0, V0};
-                                         {delete, K0} ->
-                                             {K0, ?DELETED_MARKER}
-                                     end,
+        lists:foldl(
+          fun (Change, Acc) ->
+                  {K, V} = case Change of
+                               {set, K0, V0} ->
+                                   {K0, V0};
+                               {delete, K0} ->
+                                   {K0, ?DELETED_MARKER}
+                           end,
 
-                            case lists:keyfind(K, 1, Acc) of
-                                false ->
-                                    [{K, attach_vclock(V, UUID)} | Acc];
-                                {K, OldV} ->
-                                    NewV =
-                                        case is_list(OldV) of
-                                            true ->
-                                                case proplists:get_value(?METADATA_VCLOCK, OldV) of
-                                                    undefined ->
-                                                        %% we encountered plenty of upgrade
-                                                        %% problems coming from the fact that
-                                                        %% both old and new values miss vclock;
-                                                        %% in this case the new value can be
-                                                        %% reverted by the old value replicated
-                                                        %% from not yet updated node;
-                                                        %% we solve this by attaching vclock to
-                                                        %% new value;
-                                                        attach_vclock(V, UUID);
-                                                    _ ->
-                                                        increment_vclock(V, OldV, UUID)
-                                                end;
-                                            _ ->
-                                                attach_vclock(V, UUID)
-                                        end,
-                                    lists:keyreplace(K, 1, Acc, {K, NewV})
-                            end
-                    end,
-                    ConfigList,
-                    Changes),
+                  case lists:keyfind(K, 1, Acc) of
+                      false ->
+                          [{K, attach_vclock(V, UUID)} | Acc];
+                      {K, OldV} ->
+                          NewV = upgrade_vclock(V, OldV, UUID),
+                          lists:keyreplace(K, 1, Acc, {K, NewV})
+                  end
+          end,
+          ConfigList,
+          Changes),
     NewConfig = Config#config{dynamic=[NewList]},
     do_upgrade_config(NewConfig, Upgrader(NewConfig), Upgrader).
 
