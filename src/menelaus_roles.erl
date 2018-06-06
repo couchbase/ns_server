@@ -346,6 +346,7 @@ roles_55() ->
                 "console. This user cannot read data.">>}],
       [{[admin, security, admin], none},
        {[admin, security], all},
+       {[admin, logs], none},
        {[{bucket, any}, data], none},
        {[{bucket, any}, views], none},
        {[{bucket, any}, n1ql], none},
