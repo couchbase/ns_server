@@ -119,7 +119,7 @@ gfold(Fun, State, Term) ->
                 Term
         end).
 
-%% Apply a transformation to direct childrent of a term.
+%% Apply a transformation to direct children of a term.
 gmap(Fun, State, Term) ->
     gfold(fun (Children, S, Recover) ->
                   {NewChildren, NewState} =
@@ -131,8 +131,7 @@ gmap(Fun, State, Term) ->
                   {Recover(lists:reverse(NewChildren)), NewState}
           end, State, Term).
 
-%% Run a query on all direct children of a term. Return results in as
-%% a list.
+%% Run a query on all direct children of a term. Return results as a list.
 gmapq(Fun, Term) ->
     {Result, unused} = gfold(fun (Children, State, _Recover) ->
                                      {lists:map(Fun, Children), State}
