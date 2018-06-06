@@ -13,6 +13,13 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 %%
+%% Generic programming framework loosely based on the paper "Scrap Your
+%% Boilerplate: A Practical Design Pattern for Generic Programming" by Ralf
+%% Lammel and Simon Peyton Jones.
+%%
+%% Link to the paper:
+%% https://www.microsoft.com/en-us/research/wp-content/uploads/2003/01/hmap.pdf
+%%
 -module(generic).
 
 -include("generic.hrl").
