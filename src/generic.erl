@@ -97,10 +97,9 @@ maybe_transform(Fun, Term) ->
                               {Action, NewT, S}
                       end, Term).
 
-%% Run a query on the term. The 'Fun' is called on each element in the
-%% term and these values are then recombined by 'K'. Ideally, 'K'
-%% should not depend on the order of traversal, that is it has to be
-%% associative and commutative.
+%% Run a query on the term. The 'Fun' is called on each element in the term
+%% and these values are then recombined by 'K'. The traversal order is
+%% top-down, left-to-right.
 query(K, Fun, Term) ->
     lists:foldl(K, Fun(Term),
                 gmapq(fun (T) ->
