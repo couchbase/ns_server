@@ -506,7 +506,7 @@ handle_info({'$gen_event', Event}, _StateName, _StateData) ->
 handle_info(Msg, StateName, StateData) ->
     ?log_warning("Got unexpected message ~p in state ~p with data ~p",
                  [Msg, StateName, StateData]),
-    {next_state, StateName, StateData}.
+    keep_state_and_data.
 
 terminate(_Reason, _StateName, _StateData) ->
     ok.
