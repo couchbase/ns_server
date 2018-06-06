@@ -656,8 +656,9 @@ handle_single_extended_cut({call, Line, {remote, _,
     {'fun', Line, {clauses, [{clause, Line, Pattern, [], [NewExpr]}]}}.
 
 find_cut_vars_deep(CutLine, Expr) ->
-    Vars = generic:query(fun lists:append/2,
-                         ?query(Var, fun is_placeholder/1, [Var], []), Expr),
+    Vars = lists:reverse(
+             generic:query(fun lists:append/2,
+                           ?query(Var, fun is_placeholder/1, [Var], []), Expr)),
     {Pattern, NewVars} = handle_vars(Vars, CutLine, Expr),
 
     {NewExpr, _} = generic:transformb(fun (T, Vs) ->
