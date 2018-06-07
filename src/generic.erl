@@ -107,23 +107,28 @@ query(K, Fun, Term) ->
                       end, Term)).
 
 %% internal
-gfold(Fun, State, [H|T]) ->
-    Fun([H, T], State,
-        fun ([NewH, NewT]) ->
-                [NewH | NewT]
-        end);
-gfold(Fun, State, Tuple) when is_tuple(Tuple) ->
-    Fun(tuple_to_list(Tuple), State,
-        fun (NewTupleList) ->
-                NewTuple = list_to_tuple(NewTupleList),
-                true = (tuple_size(Tuple) =:= tuple_size(NewTuple)),
-                NewTuple
-        end);
 gfold(Fun, State, Term) ->
-    Fun([], State,
-        fun ([]) ->
-                Term
+    {Type, Children} = term_destructure(Term),
+    Fun(Children, State,
+        fun (NewChildren) ->
+                term_recover(Type, NewChildren)
         end).
+
+term_destructure([H|T]) ->
+    {cons, [H,T]};
+term_destructure(Tuple) when is_tuple(Tuple) ->
+    {{tuple, tuple_size(Tuple)}, tuple_to_list(Tuple)};
+term_destructure(Term) ->
+    {{simple, Term}, []}.
+
+term_recover(cons, [H,T]) ->
+    [H|T];
+term_recover({tuple, Size}, List) ->
+    Tuple = list_to_tuple(List),
+    Size  = tuple_size(Tuple),
+    Tuple;
+term_recover({simple, Term}, []) ->
+    Term.
 
 %% Apply a transformation to direct children of a term.
 gmap(Fun, State, Term) ->
