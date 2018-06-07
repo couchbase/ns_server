@@ -155,16 +155,23 @@
         .broadcast("reloadServersPoller")
         .showErrorsSensitiveSpinner();
     }
+    function doPostStopRebalance(allowUnsafe) {
+      return mnPromiseHelper(vm, mnServersService.stopRebalance(allowUnsafe))
+        .showErrorsSensitiveSpinner()
+        .broadcast("reloadServersPoller");
+    }
     function stopRebalance() {
-      mnPromiseHelper(vm, mnServersService.stopRebalance())
-        .onSuccess(function (resp) {
-          (resp === 400) && $uibModal.open({
-            templateUrl: 'app/mn_admin/mn_servers/stop_rebalance_dialog/mn_servers_stop_rebalance_dialog.html',
-            controller: 'mnServersStopRebalanceDialogController as serversStopRebalanceDialogCtl'
-          });
-        })
-        .broadcast("reloadServersPoller")
-        .showErrorsSensitiveSpinner();
+      doPostStopRebalance()
+        .getPromise()
+        .then(null, function (resp) {
+          if (resp.status === 504) {
+            return $uibModal.open({
+              templateUrl: 'app/mn_admin/mn_servers/stop_rebalance_dialog/mn_servers_stop_rebalance_dialog.html'
+            }).result.then(function () {
+              return doPostStopRebalance(true);
+            });
+          }
+        });
     }
   }
 })();
