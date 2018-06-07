@@ -68,10 +68,11 @@
         data: data
       });
     }
-    function stopRebalance() {
+    function stopRebalance(allowUnsafe) {
       return $http({
         method: 'POST',
-        url: '/controller/stopRebalance'
+        url: '/controller/stopRebalance',
+        data: "allowUnsafe=" + (allowUnsafe ? "true" : "false")
       });
     }
     function stopRecovery(url) {

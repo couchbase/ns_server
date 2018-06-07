@@ -38,9 +38,7 @@
          re_failover/1,
          system_joinable/0,
          start_rebalance/3,
-         stop_rebalance/0,
-         stop_rebalance_if_safe/0,
-         is_stop_rebalance_safe/0,
+         stop_rebalance/1,
          get_rebalance_status/0,
          is_balanced/0,
          get_recovery_type/2,
@@ -161,6 +159,14 @@ is_stop_rebalance_safe() ->
             PidNode = node(Pid),
             MasterNode = mb_master:master_node(),
             PidNode =:= MasterNode
+    end.
+
+stop_rebalance(AllowUnsafe) ->
+    case AllowUnsafe of
+        true ->
+            stop_rebalance();
+        false ->
+            stop_rebalance_if_safe()
     end.
 
 stop_rebalance() ->
