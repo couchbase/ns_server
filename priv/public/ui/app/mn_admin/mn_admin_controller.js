@@ -120,7 +120,7 @@
         }
 
         var version = mnPrettyVersionFilter(pools.implementationVersion);
-        $rootScope.mnTitle = "Couchbase Console " + (version ? version : '') + (vm.tabName ? ' - ' + vm.tabName : '');
+        $rootScope.mnTitle = vm.tabName + (version ? (' - ' + version) : '');
 
         if (previous && previous.tasks.uri != resp.tasks.uri) {
           $rootScope.$broadcast("reloadTasksPoller");

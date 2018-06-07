@@ -45,7 +45,7 @@
     $http({method: "GET", url: "/versions"}).then(function (resp) {
       var pools = resp.data;
       var version = mnPrettyVersionFilter(pools.implementationVersion);
-      $rootScope.mnTitle = "Couchbase Console" + (version ? ' ' + version : '');
+      $rootScope.mnTitle = "Couchbase Server";
     });
 
     mnPools.get().then(function (pools) {
