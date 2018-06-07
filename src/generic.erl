@@ -111,7 +111,17 @@ gfold(Fun, State, Term) ->
     {Type, Children} = term_destructure(Term),
     Fun(Children, State,
         fun (NewChildren) ->
-                term_recover(Type, NewChildren)
+                try
+                    term_recover(Type, NewChildren)
+                catch
+                    T:E ->
+                        error({term_recover_failed,
+                               {T, E, erlang:get_stacktrace()},
+                               {term, Term},
+                               {type, Type},
+                               {children, Children},
+                               {new_children, NewChildren}})
+                end
         end).
 
 term_destructure([H|T]) ->
