@@ -27,6 +27,7 @@
 
 -export([transformb/2, transformb/3,
          transformt/2, transformt/3,
+         matching/2, matching/3,
          universe/1, universe/2,
          maybe_transform/2, maybe_transform/3,
          query/3]).
