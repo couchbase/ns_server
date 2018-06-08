@@ -128,6 +128,8 @@ term_destructure([H|T]) ->
     {cons, [H,T]};
 term_destructure(Tuple) when is_tuple(Tuple) ->
     {{tuple, tuple_size(Tuple)}, tuple_to_list(Tuple)};
+term_destructure(Map) when is_map(Map) ->
+    {map, lists:append([[K, V] || {K, V} <- maps:to_list(Map)])};
 term_destructure(Term) ->
     {{simple, Term}, []}.
 
@@ -137,8 +139,15 @@ term_recover({tuple, Size}, List) ->
     Tuple = list_to_tuple(List),
     Size  = tuple_size(Tuple),
     Tuple;
+term_recover(map, Values) ->
+    maps:from_list(pairs(Values));
 term_recover({simple, Term}, []) ->
     Term.
+
+pairs([]) ->
+    [];
+pairs([K, V | Rest]) ->
+    [{K, V} | pairs(Rest)].
 
 %% Apply a transformation to direct children of a term.
 gmap(Fun, State, Term) ->
@@ -171,22 +180,32 @@ do_ignoring_state(BaseFun, WrappedFun, Term) ->
 
 %% test-related helpers
 random_term([]) ->
-    oneof([{}, []]);
+    oneof([{}, [], #{}]);
 random_term([X]) ->
-    oneof([[X], {X}, X]);
-random_term(Items) when is_list(Items) ->
+    oneof([[X], {X}, X, #{key => X}]);
+random_term([X, Y | Rest] = Items) ->
     frequency([{2, Items},
                {2, list_to_tuple(Items)},
+               {2, glue_terms(#{X => Y}, random_term(Rest))},
                {6, random_term_split(Items)}]).
 
 random_term_split(Items) ->
     ?LET(N, choose(0, length(Items)),
          begin
              {Front, Rear} = lists:split(N, Items),
-             oneof([{random_term(Front), random_term(Rear)},
-                    [random_term(Front), random_term(Rear)],
-                    [random_term(Front) | random_term(Rear)]])
+             glue_terms(random_term(Front), random_term(Rear))
          end).
+
+glue_terms(X, Y) ->
+    oneof([{X, Y}, [X, Y], [X | Y], singleton_map(X, Y)]).
+
+singleton_map(KSpec, VSpec) ->
+    %% Typically triq instantiates the random specs lazily by walking through
+    %% the spec at the very end. But at the time of this writing, it doesn't
+    %% know how to deal with maps. So we need to explicitly instantiate the
+    %% subterms when constructing maps.
+    ?LET(K, KSpec,
+         ?LET(V, VSpec, #{K => V})).
 
 safe_idiv(X) ->
     case X =/= 0 of
