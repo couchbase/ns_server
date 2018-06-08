@@ -13,11 +13,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 %%
-%% @doc - This module contains the logic to reprovision a bucket when
-%% the active vbuckets are found to be in "missing" state. Typically,
-%% such a scenario would arise in case of ephemeral buckets when the
-%% memcached process on a node restarts within the auto-failover
-%% timeout.
+%% @doc - This module contains tests for cut transformations
 -module(cut_tests).
 
 -include("cut.hrl").
