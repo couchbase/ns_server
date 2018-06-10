@@ -92,8 +92,7 @@
 
 -record(state,
         { auto_failover_logic_state,
-          %% Reference to the ns_tick_event. If it is nil, auto-failover is
-          %% disabled.
+          %% Reference to the tick timer.
           tick_ref = nil :: nil | timer:tref(),
           %% Time a node needs to be down until it is automatically failovered
           timeout = nil :: nil | integer(),

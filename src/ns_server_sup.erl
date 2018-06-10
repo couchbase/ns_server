@@ -96,7 +96,6 @@ child_specs() ->
      {bucket_info_cache, {bucket_info_cache, start_link, []},
       permanent, brutal_kill, worker, []},
 
-     %% Start ns_tick_event before mb_master as auto_failover needs it
      {ns_tick_event, {gen_event, start_link, [{local, ns_tick_event}]},
       permanent, 1000, worker, dynamic},
 
