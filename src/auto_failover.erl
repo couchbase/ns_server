@@ -90,8 +90,8 @@
 %% @doc Minimum number of active server groups needed for server group failover
 -define(MIN_ACTIVE_SERVER_GROUPS, 3).
 
--record(state, {
-          auto_failover_logic_state,
+-record(state,
+        { auto_failover_logic_state,
           %% Reference to the ns_tick_event. If it is nil, auto-failover is
           %% disabled.
           tick_ref = nil :: nil | timer:tref(),
@@ -128,7 +128,7 @@
           reported_orchestration_unsafe = false :: boolean(),
           %% Whether we reported why the node is considered down
           reported_down_nodes_reason = [] :: list()
-         }).
+        }).
 
 %%
 %% API
