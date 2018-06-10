@@ -115,11 +115,11 @@ mn.components.MnNewClusterConfig =
         var services = [
           ["memoryQuota", "kv"],
           ["indexMemoryQuota", "index"],
-          ["ftsMemoryQuota", "fts"],
-          ["cbasMemoryQuota", "cbas"]
+          ["ftsMemoryQuota", "fts"]
         ];
         if (isEnterprise) {
           services.push(["eventingMemoryQuota", "eventing"]);
+          services.push(["cbasMemoryQuota", "cbas"]);
         }
         return _.reduce(services, getPoolsDefaultValue.bind(this), {
           clusterName: this.wizardForm.newCluster.get("clusterName").value

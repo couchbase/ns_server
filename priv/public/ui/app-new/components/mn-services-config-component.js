@@ -17,7 +17,8 @@ mn.components.MnServicesConfig =
 
     MnServicesConfig.parameters = [
       mn.services.MnWizard,
-      mn.services.MnAdmin
+      mn.services.MnAdmin,
+      mn.services.MnPools
     ];
 
     MnServicesConfig.prototype.ngOnInit = ngOnInit;
@@ -30,8 +31,7 @@ mn.components.MnServicesConfig =
         return
       }
       this.total =
-        this.group
-        .valueChanges
+        this.group.valueChanges
         .map(calculateTotal.bind(this));
 
       this.focusFieldSubject = new Rx.BehaviorSubject(
@@ -116,8 +116,9 @@ mn.components.MnServicesConfig =
       this.destroy.complete();
     }
 
-    function MnServicesConfig(mnWizardService, mnAdminService) {
+    function MnServicesConfig(mnWizardService, mnAdminService, mnPoolsService) {
       this.destroy = new Rx.Subject();
       this.poolsDefaultHttp = mnAdminService.stream.poolsDefaultHttp;
+      this.isEnterprise = mnPoolsService.stream.isEnterprise;
     }
   })();

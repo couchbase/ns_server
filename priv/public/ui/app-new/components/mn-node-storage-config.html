@@ -51,7 +51,7 @@
       </mn-path-field>
     </div>
 
-    <div class="formrow">
+    <div class="formrow" *ngIf="isEnterprise | async">
       <div class="row">
         <label for="setup_cbas_path_input0">Analytics Disk Paths</label>
         <small class="text-smaller">Paths cannot be changed after setup</small>
@@ -68,7 +68,7 @@
       </div>
     </div>
 
-    <div class="row formrow flex-right margin-top-neg-2">
+    <div class="row formrow flex-right margin-top-neg-2" [hidden]="!(isEnterprise | async)">
       <button
          class="outline btn-small"
          title="Add field"

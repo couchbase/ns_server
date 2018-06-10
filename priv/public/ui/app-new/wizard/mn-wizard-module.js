@@ -17,10 +17,8 @@ mn.modules.MnWizard =
     ];
 
     function MnWizardComponent(mnWizardService, mnPoolsService, mnAdminService) {
-      var newClusterConfig =
-          mnWizardService
-          .wizardForm
-          .newClusterConfig;
+      var newClusterConfig = mnWizardService.wizardForm.newClusterConfig;
+      var joinCluster = mnWizardService.wizardForm.joinCluster;
 
       mnAdminService
         .stream
@@ -42,11 +40,7 @@ mn.modules.MnWizard =
           newClusterConfig.get("services.field.fts").setValue(selfConfig.ftsMemoryQuota);
           newClusterConfig.get("services.field.cbas").setValue(selfConfig.cbasMemoryQuota);
           newClusterConfig.get("services.field.eventing").setValue(selfConfig.eventingMemoryQuota);
-          mnWizardService
-            .wizardForm
-            .joinCluster
-            .get("clusterStorage.hostname")
-            .setValue(hostname);
+          joinCluster.get("clusterStorage.hostname").setValue(hostname);
 
           mnWizardService.initialValues.hostname = hostname;
         });
@@ -58,6 +52,19 @@ mn.modules.MnWizard =
           var storageMode = isEnterprise ? "plasma" : "forestdb";
           newClusterConfig.get("storageMode").setValue(storageMode);
 
+          if (!isEnterprise) {
+            (["cbas", "eventing"]).forEach(function (service) {
+              newClusterConfig.get("services.flag." + service).setValue(false);
+              newClusterConfig.get("services.flag." + service).disable({onlySelf: true});
+              newClusterConfig.get("services.field." + service).setValue(null);
+              newClusterConfig.get("services.field." + service).disable({onlySelf: true});
+              joinCluster.get("services.flag." + service).setValue(false);
+              joinCluster.get("services.flag." + service).disable({onlySelf: true});
+              joinCluster.get("clusterStorage.storage.cbas_path").disable({onlySelf: true});
+              newClusterConfig.get("clusterStorage.storage.cbas_path").disable({onlySelf: true});
+            });
+          }
+
           mnWizardService.initialValues.storageMode = storageMode;
         });
 
@@ -67,11 +74,7 @@ mn.modules.MnWizard =
         .first()
         .subscribe(function (initHdd) {
           newClusterConfig.get("clusterStorage.storage").patchValue(initHdd);
-          mnWizardService
-            .wizardForm
-            .joinCluster
-            .get("clusterStorage.storage")
-            .patchValue(initHdd);
+          joinCluster.get("clusterStorage.storage").patchValue(initHdd);
 
           mnWizardService.initialValues.clusterStorage = initHdd;
         });

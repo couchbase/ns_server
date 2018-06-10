@@ -228,7 +228,7 @@ mn.services.MnWizard = (function () {
 
   function getServicesValues(servicesGroup) {
     return _.reduce(
-      ["kv", "index", "fts", "n1ql", "eventing"],
+      ["kv", "index", "fts", "n1ql", "eventing", "cbas"],
       function (result, serviceName) {
         var service = servicesGroup.get(serviceName);
         if (service && service.value) {

@@ -15,7 +15,8 @@ mn.components.MnNodeStorageConfig =
     ];
 
     MnNodeStorageConfig.parameters = [
-      mn.services.MnWizard
+      mn.services.MnWizard,
+      mn.services.MnPools
     ];
 
     MnNodeStorageConfig.prototype.ngOnInit = ngOnInit;
@@ -42,9 +43,10 @@ mn.components.MnNodeStorageConfig =
       this.group.get('storage.cbas_path').removeAt(last);
     }
 
-    function MnNodeStorageConfig(mnWizardService) {
+    function MnNodeStorageConfig(mnWizardService, mnPoolsService) {
       this.focusFieldSubject = new Rx.BehaviorSubject(true);
       this.hostnameHttp = mnWizardService.stream.hostnameHttp;
       this.diskStorageHttp = mnWizardService.stream.diskStorageHttp;
+      this.isEnterprise = mnPoolsService.stream.isEnterprise;
     }
   })();
