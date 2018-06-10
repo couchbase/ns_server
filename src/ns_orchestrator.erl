@@ -434,7 +434,6 @@ handle_event({call, From}, Event, StateName, StateData) ->
     ?MODULE:StateName(Event, From, StateData).
 
 handle_info(janitor, idle, _State) ->
-    misc:verify_name(?MODULE), % MB-3180: Make sure we're still registered
     consider_switching_compat_mode(),
     {ok, ID} = ns_janitor_server:start_cleanup(
                  fun(Pid, UnsafeNodes, CleanupID) ->
