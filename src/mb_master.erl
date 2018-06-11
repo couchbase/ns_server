@@ -452,19 +452,7 @@ update_peers(StateData, Peers) ->
 
 shutdown_master_sup(State) ->
     Pid = State#state.child,
-    exit(Pid, shutdown),
-    receive
-        {'EXIT', Pid, _Reason} ->
-            ok
-    after 10000 ->
-            ?log_debug("Killing runaway child supervisor: ~p~n", [Pid]),
-            exit(Pid, kill),
-            receive
-                {'EXIT', Pid, _Reason} ->
-                    ok
-            end
-    end,
-
+    misc:unlink_terminate_and_wait(Pid, shutdown),
     announce_leader(undefined),
     State#state{child = undefined,
                 master = undefined}.
