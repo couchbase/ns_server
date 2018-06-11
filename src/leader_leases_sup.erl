@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2017-2018 Couchbase, Inc.
+%% @copyright 2018 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 %%
--module(leader_services_sup).
+-module(leader_leases_sup).
 
 -behaviour(supervisor).
 
@@ -24,13 +24,13 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 init([]) ->
-    {ok, {{one_for_one,
+    {ok, {{rest_for_one,
            misc:get_env_default(max_r, 3),
            misc:get_env_default(max_t, 10)},
-          child_specs()}}.
+         child_specs()}}.
 
 child_specs() ->
-    [{leader_leases_sup, {leader_leases_sup, start_link, []},
-      permanent, infinity, supervisor, []},
-     {leader_registry_sup, {leader_registry_sup, start_link, []},
-      permanent, infinity, supervisor, []}].
+    [{leader_activities, {leader_activities, start_link, []},
+      permanent, 10000, worker, []},
+     {leader_lease_agent, {leader_lease_agent, start_link, []},
+      permanent, 1000, worker, []}].
