@@ -225,6 +225,11 @@ child_specs() ->
      {cluster_logs_sup, {cluster_logs_sup, start_link, []},
       permanent, infinity, supervisor, []},
 
+     %% Note to the users of leader_events. The events are announced
+     %% synchronously, make sure not to block mb_master for too long.
+     {leader_events, {gen_event, start_link, [{local, leader_events}]},
+      permanent, 1000, worker, dynamic},
+
      %% Starts mb_master_sup, which has all processes that start on the master
      %% node.
      restartable:spec(

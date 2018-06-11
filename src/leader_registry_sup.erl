@@ -30,11 +30,7 @@ init([]) ->
          child_specs()}}.
 
 child_specs() ->
-    %% Note to the users of leader_events. The events are announced
-    %% synchronously, make sure not to block mb_master for too long.
-    [{leader_events, {gen_event, start_link, [{local, leader_events}]},
-      permanent, 1000, worker, dynamic},
-     {leader_registry_server, {leader_registry_server, start_link, []},
+    [{leader_registry_server, {leader_registry_server, start_link, []},
       permanent, 1000, worker, [leader_registry_server]},
      {mb_master, {mb_master, start_link, []},
       permanent, infinity, supervisor, [mb_master]}].
