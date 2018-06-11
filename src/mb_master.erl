@@ -269,7 +269,7 @@ terminate(_Reason, _StateName, StateData) ->
     case StateData of
         #state{child=Child} when is_pid(Child) ->
             ?log_info("Synchronously shutting down child mb_master_sup"),
-            misc:unlink_terminate_and_wait(Child, shutdown);
+            shutdown_master_sup(StateData);
         _ ->
             ok
     end.
