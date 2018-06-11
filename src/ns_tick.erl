@@ -19,7 +19,6 @@
 
 -behaviour(gen_server).
 
--define(EVENT_MANAGER, ns_tick_event).
 -define(INTERVAL, 1000).
 -define(SERVER, {via, leader_registry, ?MODULE}).
 
@@ -66,11 +65,9 @@ handle_cast(Msg, State) ->
 
 %% Called once per second on the node where the gen_server runs
 handle_info(tick, State) ->
-    misc:verify_name(?MODULE), % MB-3180: make sure we're still registered
     Now = os:system_time(millisecond),
-    lists:foreach(fun (Node) ->
-                          gen_event:notify({?EVENT_MANAGER, Node}, {tick, Now})
-                  end, [node() | nodes()]),
+    ns_tick_agent:send_tick(ns_node_disco:nodes_actual(), Now),
+
     {noreply, State#state{time=Now}};
 handle_info(_, State) ->
     {noreply, State}.

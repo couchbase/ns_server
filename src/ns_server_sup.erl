@@ -236,6 +236,10 @@ child_specs() ->
        {leader_services_sup, {leader_services_sup, start_link, []},
         permanent, infinity, supervisor, []}),
 
+     %% Needs mb_master and leader_events.
+     {ns_tick_agent, {ns_tick_agent, start_link, []},
+      permanent, 1000, worker, []},
+
      {master_activity_events_ingress, {gen_event, start_link, [{local, master_activity_events_ingress}]},
       permanent, brutal_kill, worker, dynamic},
 
