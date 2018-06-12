@@ -788,7 +788,7 @@ do_build_rebalance_task(Timeout) ->
         {value, undefined} -> [];
         {value, Id} -> [{statusId, Id}]
     end ++
-        case (catch ns_orchestrator:rebalance_progress_full(Timeout)) of
+        case (catch ns_orchestrator:rebalance_progress(Timeout)) of
             {running, PerNode} ->
                 DetailedProgress = get_detailed_progress(),
 
