@@ -1079,8 +1079,11 @@ find_delta_recovery_map(CurrentMap, FailoverVBs, MatchingMaps) ->
     MergeFun   = ?cut(lists:umerge(_2, _3)),
     DesiredVBs = dict:merge(MergeFun, FailoverVBs, CurrentVBs),
 
-    Pred = ?cut(map_to_vbuckets_dict(_) =:= DesiredVBs),
+    Pred = ?cut(compare_vb_dict(map_to_vbuckets_dict(_), DesiredVBs)),
     misc:find_by(Pred, MatchingMaps).
+
+compare_vb_dict(D1, D2) ->
+    lists:sort(dict:to_list(D1)) =:= lists:sort(dict:to_list(D2)).
 
 -ifdef(EUNIT).
 find_delta_recovery_map_test() ->
@@ -1130,7 +1133,44 @@ find_delta_recovery_map_test() ->
 
     {ok, Matching} = find_delta_recovery_map(Map, FailoverVBs,
                                              [NonMatching1,
-                                              Matching, NonMatching2]).
+                                              Matching, NonMatching2]),
+
+    %% This test is essentially for compare_vb_dict, and this fun was
+    %% introduced as dict's don't support proper comparison, i.e., D1 =:= D2
+    %% is not an accurate comparison.
+    Map2 = [['n_0@10.17.2.22', 'n_1@127.0.0.1'],
+            ['n_0@10.17.2.22', 'n_2@127.0.0.1'],
+            ['n_1@127.0.0.1', 'n_0@10.17.2.22'],
+            ['n_1@127.0.0.1', undefined],
+            ['n_2@127.0.0.1', 'n_0@10.17.2.22'],
+            ['n_2@127.0.0.1', undefined],
+            ['n_1@127.0.0.1', undefined],
+            ['n_2@127.0.0.1', undefined]],
+    MatchingMaps = [['n_0@10.17.2.22', 'n_1@127.0.0.1'],
+                    ['n_0@10.17.2.22', 'n_2@127.0.0.1'],
+                    ['n_1@127.0.0.1', 'n_0@10.17.2.22'],
+                    ['n_1@127.0.0.1', 'n_3@127.0.0.1'],
+                    ['n_2@127.0.0.1', 'n_0@10.17.2.22'],
+                    ['n_2@127.0.0.1', 'n_3@127.0.0.1'],
+                    ['n_3@127.0.0.1', 'n_1@127.0.0.1'],
+                    ['n_3@127.0.0.1', 'n_2@127.0.0.1']],
+    FailoverVBs2 = dict:from_list([{'n_3@127.0.0.1', [3, 5, 6, 7]}]),
+    {ok, MatchingMaps} = find_delta_recovery_map(Map2, FailoverVBs2, [MatchingMaps]).
+
+compare_vb_dict_test() ->
+    List1 = [{aa2, [0, 1, 2]}, {c, [0, 1, 2]}, {aa1, [0, 1, 2]}],
+    List2 = [{aa3, [0, 1, 2]}],
+
+    D1 = dict:from_list(List1),
+    D2 = dict:from_list(List2),
+    DMerge = dict:merge(fun (_K, _V1, _V2) -> [] end, D1, D2),
+
+    ListAll = lists:sort(List1 ++ List2),
+    DAll = dict:from_list(ListAll),
+
+    ?assertEqual(false, DAll =:= DMerge),
+    ?assertEqual(true, compare_vb_dict(DAll,DMerge)).
+
 -endif.
 
 map_to_vbuckets_dict(Map) ->
