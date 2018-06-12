@@ -211,33 +211,37 @@ query_node_spec(Config) ->
         false ->
             [];
         _ ->
-            RestPort = misc:node_rest_port(Config, node()),
-            Command = path_config:component_path(bin, "cbq-engine"),
-            DataStoreArg = "--datastore=" ++ misc:local_url(RestPort, []),
-            CnfgStoreArg = "--configstore=" ++ misc:local_url(RestPort, []),
-            HttpArg = "--http=:" ++ integer_to_list(query_rest:get_query_port(Config, node())),
-            EntArg = "--enterprise=" ++ atom_to_list(cluster_compat_mode:is_enterprise()),
-            Ipv6 = "--ipv6=" ++ atom_to_list(misc:is_ipv6()),
-
-            HttpsArgs = case query_rest:get_ssl_query_port(Config, node()) of
-                            undefined ->
-                                [];
-                            Port ->
-                                ["--https=:" ++ integer_to_list(Port),
-                                 "--certfile=" ++ ns_ssl_services_setup:memcached_cert_path(),
-                                 "--keyfile=" ++ ns_ssl_services_setup:memcached_key_path(),
-                                 "--ssl_minimum_protocol=" ++
-                                     atom_to_list(ns_ssl_services_setup:ssl_minimum_protocol())]
-                        end,
-            Spec = {'query', Command,
-                    [DataStoreArg, HttpArg, CnfgStoreArg, EntArg, Ipv6] ++ HttpsArgs,
-                    [via_goport, exit_status, stderr_to_stdout,
-                     {env, build_go_env_vars(Config, 'cbq-engine') ++
-                          build_tls_config_env_var(Config)},
-                     {log, ?QUERY_LOG_FILENAME}]},
-
-            [Spec]
+            [build_query_node_spec(Config)]
     end.
+
+build_query_node_spec(Config) ->
+    RestPort = misc:node_rest_port(Config, node()),
+    Command = path_config:component_path(bin, "cbq-engine"),
+    DataStoreArg = "--datastore=" ++ misc:local_url(RestPort, []),
+    CnfgStoreArg = "--configstore=" ++ misc:local_url(RestPort, []),
+    HttpArg = "--http=:" ++
+        integer_to_list(query_rest:get_query_port(Config, node())),
+    EntArg = "--enterprise=" ++
+        atom_to_list(cluster_compat_mode:is_enterprise()),
+    Ipv6 = "--ipv6=" ++ atom_to_list(misc:is_ipv6()),
+
+    HttpsArgs =
+        case query_rest:get_ssl_query_port(Config, node()) of
+            undefined ->
+                [];
+            Port ->
+                ["--https=:" ++ integer_to_list(Port),
+                 "--certfile=" ++ ns_ssl_services_setup:memcached_cert_path(),
+                 "--keyfile=" ++ ns_ssl_services_setup:memcached_key_path(),
+                 "--ssl_minimum_protocol=" ++
+                     atom_to_list(ns_ssl_services_setup:ssl_minimum_protocol())]
+        end,
+    {'query', Command,
+     [DataStoreArg, HttpArg, CnfgStoreArg, EntArg, Ipv6] ++ HttpsArgs,
+     [via_goport, exit_status, stderr_to_stdout,
+      {env, build_go_env_vars(Config, 'cbq-engine') ++
+           build_tls_config_env_var(Config)},
+      {log, ?QUERY_LOG_FILENAME}]}.
 
 find_executable(Name) ->
     K = list_to_atom("ns_ports_setup-" ++ Name ++ "-available"),
