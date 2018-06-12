@@ -39,7 +39,6 @@
          system_joinable/0,
          start_rebalance/3,
          stop_rebalance/1,
-         get_rebalance_status/0,
          is_balanced/0,
          get_recovery_type/2,
          update_recovery_type/2
@@ -134,9 +133,6 @@ get_node_server_group_inner(Node, [SG | Rest]) ->
 
 system_joinable() ->
     ns_node_disco:nodes_wanted() =:= [node()].
-
-get_rebalance_status() ->
-    ns_orchestrator:rebalance_progress().
 
 start_rebalance(KnownNodes, EjectedNodes, DeltaRecoveryBuckets) ->
     ns_orchestrator:start_rebalance(KnownNodes, EjectedNodes, DeltaRecoveryBuckets).

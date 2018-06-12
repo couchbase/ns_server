@@ -47,7 +47,6 @@
          try_autofailover/1,
          needs_rebalance/0,
          request_janitor_run/1,
-         rebalance_progress/0,
          rebalance_progress_full/0,
          rebalance_progress_full/1,
          start_link/0,
@@ -226,16 +225,6 @@ rebalance_progress_full() ->
                                      not_running.
 rebalance_progress_full(Timeout) ->
     gen_statem:call(?SERVER, rebalance_progress, Timeout).
-
--spec rebalance_progress() -> {running, [{atom(), float()}]} | not_running.
-rebalance_progress() ->
-    try rebalance_progress_full()
-    catch
-        Type:Err ->
-            ?log_error("Couldn't talk to orchestrator: ~p", [{Type, Err}]),
-            not_running
-    end.
-
 
 -spec request_janitor_run(janitor_item()) -> ok.
 request_janitor_run(Item) ->
