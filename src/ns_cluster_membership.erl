@@ -195,7 +195,8 @@ re_failover_possible(NodeString) ->
             Membership = ns_config:search(ns_config:latest(), {node, Node, membership}),
             Ok = (lists:member(Node, ns_node_disco:nodes_wanted())
                   andalso RecoveryType =/= none
-                  andalso Membership =:= {value, inactiveAdded}),
+                  andalso Membership =:= {value, inactiveAdded}
+                  andalso not ns_orchestrator:is_rebalance_running()),
             case Ok of
                 true ->
                     {ok, Node};
@@ -231,8 +232,8 @@ update_recovery_type(Node, NewType) ->
 
                    case ((Membership =:= {value, inactiveAdded}
                           andalso get_recovery_type(Config, Node) =/= none)
-                         orelse Membership =:= {value, inactiveFailed}) of
-
+                         orelse Membership =:= {value, inactiveFailed})
+                        andalso not ns_orchestrator:is_rebalance_running() of
                        true ->
                            Config1 = Set({node, Node, membership}, inactiveAdded, Config),
                            {commit,

@@ -705,7 +705,7 @@ rebalance_body(KeepNodes,
     ok = drop_old_2i_indexes(KeepNodes),
     ok = apply_delta_recovery_buckets(DeltaRecoveryBuckets,
                                       KVDeltaNodes, BucketConfigs),
-    ok = maybe_clear_full_recovery_type(KeepNodes),
+    ok = maybe_clear_recovery_type(KeepNodes),
     ok = service_janitor:cleanup(),
 
     ok = leader_activities:activate_quorum_nodes(KeepNodes),
@@ -1307,8 +1307,7 @@ apply_delta_recovery_buckets(DeltaRecoveryBuckets, DeltaNodes, CurrentBuckets) -
                    CurrentBuckets,
                    [{Bucket, BucketConfig} ||
                        {Bucket, BucketConfig, _} <- DeltaRecoveryBuckets]),
-    NodeChanges = [[{{node, N, recovery_type}, none},
-                    {{node, N, failover_vbuckets}, []},
+    NodeChanges = [[{{node, N, failover_vbuckets}, []},
                     {{node, N, membership}, active}] || N <- DeltaNodes],
     BucketChanges = {buckets, [{configs, NewBuckets}]},
 
@@ -1329,12 +1328,10 @@ apply_delta_recovery_buckets(DeltaRecoveryBuckets, DeltaNodes, CurrentBuckets) -
 
     ok.
 
-maybe_clear_full_recovery_type(Nodes) ->
-    Cfg = ns_config:latest(),
+maybe_clear_recovery_type(Nodes) ->
     NodeChanges = [[{{node, N, recovery_type}, none},
                     {{node, N, failover_vbuckets}, []}]
-                   || N <- Nodes,
-                      ns_cluster_membership:get_recovery_type(Cfg, N) =:= full],
+                   || N <- Nodes],
     ok = ns_config:set(lists:flatten(NodeChanges)).
 
 wait_for_bucket(Bucket, Nodes) ->

@@ -196,6 +196,8 @@ get_not_ready_buckets([{_OtherNode, _, OtherNodeView} | Rest], Node,
                                          false;
                                      {Bucket, ready} ->
                                          false;
+                                     {Bucket, delta_recovery_pending} ->
+                                         false;
                                      _ ->
                                          true
                                  end
@@ -259,7 +261,7 @@ local_node_status(Buckets) ->
         [] ->
             Buckets;
         GetBuckets ->
-            MoreBuckets = lists:keysort(1, get_buckets(GetBuckets)),
+            MoreBuckets = lists:keysort(1, get_buckets_status(GetBuckets)),
             %% It is possible to have duplicate entries in MoreBuckets
             %% and Buckets. E.g. an "inactive" bucket in Buckets.
             %% In such a case, we pick from MoreBuckets.
@@ -267,7 +269,7 @@ local_node_status(Buckets) ->
                                MoreBuckets, Buckets)
     end.
 
-get_buckets(Buckets) ->
+get_buckets_status(Buckets) ->
     ReadyBuckets = ns_memcached:warmed_buckets(?NS_MEMCACHED_TIMEOUT),
     NotReadyBuckets = Buckets -- ReadyBuckets,
     case NotReadyBuckets =/= [] of
@@ -276,7 +278,14 @@ get_buckets(Buckets) ->
         _ ->
             ok
     end,
-    [{B, not_ready} || B <- NotReadyBuckets] ++
+    %% If node is being Delta recovered we shouldn't considered any buckets as
+    %% not_ready.
+    TrueStatus = case ns_cluster_membership:get_recovery_type(
+                        ns_config:latest(), node()) of
+                     delta -> delta_recovery_pending;
+                     _ -> not_ready
+                 end,
+    [{B, TrueStatus} || B <- NotReadyBuckets] ++
         [{B, ready} || B <- ReadyBuckets, lists:member(B, Buckets)].
 
 check_for_io_failure(Statuses) ->
