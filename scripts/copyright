@@ -69,13 +69,13 @@ function comment_style() {
     local style
     case "$ext" in
         sh | bash | rb | py | awk)
-            style=shell;;
+            style="shell";;
         erl | hrl)
-            style=erlang;;
+            style="erlang";;
         go)
-            style=c99;;
+            style="c99";;
         el)
-            style=elisp;;
+            style="elisp";;
     esac
 
     if [ -n "$style" ]; then
@@ -84,9 +84,9 @@ function comment_style() {
     fi
 
     if shebang_matches "$shebang" 'bash|sh|g?awk|python[2-3]?|ruby'; then
-        style=shell
+        style="shell"
     elif shebang_matches "$shebang" "escript"; then
-        style=erlang
+        style="erlang"
     fi
 
     if [ -z "$style" ]; then
