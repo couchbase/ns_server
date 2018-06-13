@@ -161,22 +161,29 @@ function sponge() {
 
 # Terminal output control (http://www.termsys.demon.co.uk/vtansi.htm)
 TC='\e['
-Rst="${TC}0m"
+RST="${TC}0m"
 
-Green="${TC}32m"
-Yellow="${TC}33m"
-White="${TC}37m"
+GREEN="${TC}32m"
+YELLOW="${TC}33m"
+WHITE="${TC}37m"
+
+function color_echo() {
+    local color="$1"
+    shift
+
+    echo -en "$color" && echo -e "$@" && echo -en "${RST}"
+}
 
 function msg() {
-    echo -en "${White}$1${Rst}"
+    color_echo "$WHITE" "$@"
 }
 
 function ok() {
-    echo -en "${Green}$1${Rst}"
+    color_echo "$GREEN" "$@"
 }
 
 function warn() {
-    echo -en "${Yellow}$1${Rst}"
+    color_echo "$YELLOW" "$@"
 }
 
 declare -a REVIEW_FILES
@@ -185,32 +192,32 @@ declare -a ERROR_FILES
 function process_file() {
     local file="$1"
 
-    msg "Processing '$file' -> "
+    msg -n "Processing '$file' -> "
 
     if ! is_tracked "$file"; then
-        warn "not under source control\n"
+        warn "not under source control"
         return
     fi
 
     if [ -z "$FORCE_ALLOW_MODIFIED" ] && is_modified "$file"; then
-        warn "file modified\n"
+        warn "file modified"
         return
     fi
 
     if ! is_text "$file"; then
-        warn "not a text file\n"
+        warn "not a text file"
         return
     fi
 
     if ! get_comment_seqs "$file"; then
-        warn "unrecognized file\n"
+        warn "unrecognized file"
         return
     fi
 
     if ! get_range "$file"; then
         ERROR_FILES+=("$file")
 
-        warn "unknown error\n"
+        warn "unknown error"
         return
     fi
 
@@ -421,15 +428,15 @@ EOF
 
     case $? in
         0)
-            ok "OK\n"
+            ok "OK"
             ;;
         42)
             REVIEW_FILES+=("$file")
-            warn "attention required\n"
+            warn "attention required"
             ;;
         *)
             ERROR_FILES+=("$file")
-            warn "unknown error\n"
+            warn "unknown error"
     esac
 }
 
@@ -451,19 +458,19 @@ for file in "$@"; do
 done
 
 if [ ${#REVIEW_FILES[@]} -ne 0 ]; then
-    warn "\nThe following files seem to already have incompatible headers:\n\n"
+    warn "\nThe following files seem to already have incompatible headers:\n"
 
     for file in "${REVIEW_FILES[@]}"; do
-        msg "    $file\n"
+        msg "    $file"
     done
 fi
 
 if [ ${#ERROR_FILES[@]} -ne 0 ]; then
-    warn "\nEncountered unexpected errors while processing these files:\n\n"
+    warn "\nEncountered unexpected errors while processing these files:\n"
 
     for file in "${ERROR_FILES[@]}"; do
-        msg "    $file\n"
+        msg "    $file"
     done
 fi
 
-ok "\nAll done\n"
+ok "\nAll done"
