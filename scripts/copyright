@@ -444,7 +444,7 @@ done
 if [ ${#REVIEW_FILES[@]} -ne 0 ]; then
     warn "\nThe following files seem to already have incompatible headers:\n\n"
 
-    for file in ${REVIEW_FILES[@]}; do
+    for file in "${REVIEW_FILES[@]}"; do
         msg "    $file\n"
     done
 fi
@@ -452,7 +452,7 @@ fi
 if [ ${#ERROR_FILES[@]} -ne 0 ]; then
     warn "\nEncountered unexpected errors while processing these files:\n\n"
 
-    for file in ${ERROR_FILES[@]}; do
+    for file in "${ERROR_FILES[@]}"; do
         msg "    $file\n"
     done
 fi
