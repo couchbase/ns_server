@@ -43,8 +43,11 @@ function get_range() {
 }
 
 function get_extension() {
-    local name=$(basename "$1")
-    local ext="${name##*.}"
+    local name
+    local ext
+
+    name=$(basename "$1") || return 1
+    ext="${name##*.}"
 
     if [ "$name" = "$ext" ]; then
         echo ""
@@ -63,8 +66,8 @@ function shebang_matches() {
 
 function comment_style() {
     local file="$1"
-    local ext=$(get_extension "$file")
-    local shebang=$(get_shebang "$file")
+    local ext
+    ext=$(get_extension "$file") || return 1
 
     local style
     case "$ext" in
@@ -83,6 +86,9 @@ function comment_style() {
         return 0
     fi
 
+    local shebang
+    shebang=$(get_shebang "$file") || return 1
+
     if shebang_matches "$shebang" 'bash|sh|g?awk|python[2-3]?|ruby'; then
         style="shell"
     elif shebang_matches "$shebang" "escript"; then
@@ -90,7 +96,6 @@ function comment_style() {
     fi
 
     if [ -z "$style" ]; then
-        echo '<unknown>'
         return 1
     fi
 
@@ -137,8 +142,11 @@ function get_comment_seqs() {
 
 function sponge() {
     local file="$1"
-    local name=$(basename "$file")
-    local tmpfile=$(mktemp -t "$name"_XXXXXXXXX)
+    local name
+    local tmpfile
+
+    name=$(basename "$file") || return 1
+    tmpfile=$(mktemp -t "$name"_XXXXXXXXX) || return 1
 
     trap 'rm -f "$tmpfile"' EXIT
 
@@ -223,7 +231,8 @@ $HEADER_SEQ See the License for the specific language governing permissions and
 $HEADER_SEQ limitations under the License.
 "
 
-    local awk_script=$(cat <<'EOF'
+    local awk_script
+    awk_script=$(cat <<'EOF'
 BEGIN {
     false = 0
     true  = 1
@@ -401,7 +410,7 @@ END {
 }
 
 EOF
-)
+) || exit 1                     # <- exit whole script if anything goes wrong
 
     sponge "$file" gawk  -v COMMENT_SEQ="$COMMENT_SEQ" \
                          -v HEADER_SEQ="$HEADER_SEQ"   \
