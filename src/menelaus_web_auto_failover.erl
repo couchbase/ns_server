@@ -21,6 +21,8 @@
          handle_settings_post/1,
          handle_settings_reset_count/1,
          get_failover_on_disk_issues/1,
+         config_check_can_abort_rebalance/0,
+         config_upgrade_to_madhatter/1,
          config_upgrade_to_55/1]).
 
 -import(menelaus_util,
@@ -35,6 +37,7 @@
 -define(AUTO_FAILLOVER_MIN_CE_TIMEOUT, 30).
 -define(AUTO_FAILLOVER_MAX_TIMEOUT, 3600).
 
+-define(CAN_ABORT_REBALANCE_CONFIG_KEY, can_abort_rebalance).
 -define(DATA_DISK_ISSUES_CONFIG_KEY, failover_on_data_disk_issues).
 -define(MIN_DATA_DISK_ISSUES_TIMEPERIOD, 5). %% seconds
 -define(MAX_DATA_DISK_ISSUES_TIMEPERIOD, 3600). %% seconds
@@ -129,6 +132,12 @@ config_upgrade_to_55(Config) ->
                          {failed_over_server_groups, []}),
     [{set, auto_failover_cfg, New}].
 
+config_upgrade_to_madhatter(Config) ->
+    {value, Current} = ns_config:search(Config, auto_failover_cfg),
+    New = lists:keystore(?CAN_ABORT_REBALANCE_CONFIG_KEY, 1, Current,
+                         {?CAN_ABORT_REBALANCE_CONFIG_KEY, true}),
+    [{set, auto_failover_cfg, New}].
+
 %% Internal Functions
 
 validate_settings_auto_failover(Args, Config) ->
@@ -175,13 +184,38 @@ parse_validate_extras_inner(Args, CurrRV, Config) ->
         {error, _}  ->
             NewRV0;
         _ ->
-            NewRV = parse_validate_failover_disk_issues(Args, NewRV0, Config),
-            case NewRV of
+            NewRV1 = parse_validate_failover_disk_issues(Args, NewRV0, Config),
+            case NewRV1 of
                 {error, _} ->
-                    NewRV;
+                    NewRV1;
                 _ ->
-                    parse_validate_server_group_failover(Args, NewRV)
+                    NewRV2 = parse_validate_server_group_failover(Args, NewRV1),
+                    case NewRV2 of
+                        {error, _} ->
+                            NewRV2;
+                        _ ->
+                            parse_validate_can_abort_rebalance(Args, NewRV2)
+                    end
             end
+    end.
+
+parse_validate_can_abort_rebalance(Args, CurrRV) ->
+    case cluster_compat_mode:is_cluster_madhatter() of
+        true ->
+            parse_validate_can_abort_rebalance_inner(Args, CurrRV);
+        false ->
+            CurrRV
+    end.
+
+parse_validate_can_abort_rebalance_inner(Args, CurrRV) ->
+    StrKey = "canAbortRebalance",
+    case parse_validate_boolean_field(StrKey, '_', Args) of
+        [] ->
+            CurrRV;
+        [{ok, _, Value}] ->
+            add_extras([{?CAN_ABORT_REBALANCE_CONFIG_KEY, Value}], CurrRV);
+        [{error, _, _}] ->
+            {error, boolean_err_msg(StrKey)}
     end.
 
 parse_validate_max_count(Args, CurrRV, Config) ->
@@ -260,6 +294,10 @@ range_err_msg(Key, Min, Max) ->
 boolean_err_msg(Key) ->
     [{Key, list_to_binary(io_lib:format("The value of \"~s\" must be true or false", [Key]))}].
 
+config_check_can_abort_rebalance() ->
+    {value, Cfg} = ns_config:search(ns_config:get(), auto_failover_cfg),
+    proplists:get_value(?CAN_ABORT_REBALANCE_CONFIG_KEY, Cfg, false).
+
 get_extra_settings(Config) ->
     case cluster_compat_mode:is_cluster_55() andalso
         cluster_compat_mode:is_enterprise() of
@@ -268,10 +306,19 @@ get_extra_settings(Config) ->
                                        Config),
             Max = proplists:get_value(?MAX_EVENTS_CONFIG_KEY, Config),
             {Enabled, TimePeriod} = get_failover_on_disk_issues(Config),
+            CanAbortRebalance =
+                case cluster_compat_mode:is_cluster_madhatter() of
+                    true ->
+                        V = proplists:get_value(
+                              ?CAN_ABORT_REBALANCE_CONFIG_KEY, Config),
+                        [{canAbortRebalance, V}];
+                    false ->
+                        []
+                end,
             [{failoverOnDataDiskIssues,
               {struct, [{enabled, Enabled}, {timePeriod, TimePeriod}]}},
              {failoverServerGroup, SGFO},
-             {maxCount, Max}];
+             {maxCount, Max}] ++ CanAbortRebalance;
         false ->
             []
     end.
@@ -280,8 +327,15 @@ disable_extras(Config) ->
     case cluster_compat_mode:is_cluster_55() andalso
         cluster_compat_mode:is_enterprise() of
         true ->
+            CanAbortRebalance =
+                case cluster_compat_mode:is_cluster_madhatter() of
+                    true ->
+                        [{?CAN_ABORT_REBALANCE_CONFIG_KEY, false}];
+                    false ->
+                        []
+                end,
             {_, CurrTP} = get_failover_on_disk_issues(Config),
-            disable_failover_on_disk_issues(CurrTP) ++
+            disable_failover_on_disk_issues(CurrTP) ++ CanAbortRebalance ++
                 [{?FAILOVER_SERVER_GROUP_CONFIG_KEY, false}];
         false ->
             []

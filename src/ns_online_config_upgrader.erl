@@ -91,8 +91,9 @@ upgrade(?VERSION_51, Config) ->
          leader_quorum_nodes_manager:config_upgrade_to_55(Config) ++
          scram_sha:config_upgrade_to_55()};
 
-upgrade(?VERSION_55, _Config) ->
-    {?VERSION_MADHATTER, []}.
+upgrade(?VERSION_55, Config) ->
+    {?VERSION_MADHATTER,
+     menelaus_web_auto_failover:config_upgrade_to_madhatter(Config)}.
 
 add_index_ram_alert_limit(Config) ->
     {value, Current} = ns_config:search(Config, alert_limits),

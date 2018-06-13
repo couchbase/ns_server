@@ -813,7 +813,8 @@ rebalancing({timeout, _Tref, stop_timeout},
 
 %% Synchronous rebalancing events
 rebalancing({try_autofailover, Nodes}, From, State) ->
-    case cluster_compat_mode:is_cluster_madhatter() of
+    case cluster_compat_mode:is_cluster_madhatter() andalso
+         menelaus_web_auto_failover:config_check_can_abort_rebalance() of
         false ->
             {keep_state_and_data, [{reply, From, rebalance_running}]};
         true ->
