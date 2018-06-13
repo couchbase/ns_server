@@ -171,7 +171,7 @@ function color_echo() {
     local color="$1"
     shift
 
-    echo -en "$color" && echo -e "$@" && echo -en "${RST}"
+    echo -en "$color" && echo "$@" && echo -en "${RST}"
 }
 
 function msg() {
@@ -458,7 +458,9 @@ for file in "$@"; do
 done
 
 if [ ${#REVIEW_FILES[@]} -ne 0 ]; then
-    warn "\nThe following files seem to already have incompatible headers:\n"
+    warn
+    warn "The following files seem to already have incompatible headers:"
+    warn
 
     for file in "${REVIEW_FILES[@]}"; do
         msg "    $file"
@@ -466,11 +468,14 @@ if [ ${#REVIEW_FILES[@]} -ne 0 ]; then
 fi
 
 if [ ${#ERROR_FILES[@]} -ne 0 ]; then
-    warn "\nEncountered unexpected errors while processing these files:\n"
+    warn
+    warn "Encountered unexpected errors while processing these files:"
+    warn
 
     for file in "${ERROR_FILES[@]}"; do
         msg "    $file"
     done
 fi
 
-ok "\nAll done"
+ok
+ok "All done"
