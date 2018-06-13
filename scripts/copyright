@@ -36,10 +36,18 @@ function get_years() {
 }
 
 function get_range() {
-    set -- $(get_years "$1" | sed -n '1p; $p')
+    local years_raw
+    years_raw=$(get_years "$1" | sed -n '1p; $p' | tr '\n' ' ') || return 1
 
-    FIRST="$1"
-    LAST="$2"
+    local -a years
+    read -ra years <<< "$years_raw"
+
+    if [ ${#years[@]} -ne 2 ]; then
+        return 1
+    fi
+
+    FIRST=${years[0]}
+    LAST=${years[1]}
 }
 
 function get_extension() {
