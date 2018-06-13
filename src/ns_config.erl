@@ -46,7 +46,6 @@
 -define(DEFAULT_TIMEOUT, 15000).
 -define(TERMINATE_SAVE_TIMEOUT, 10000).
 
-%% log codes
 -export([eval/1,
          uuid/0, uuid/1,
          start_link/2, start_link/1,
