@@ -30,7 +30,8 @@
                             eject_nodes,
                             failed_nodes,
                             stop_timer,
-                            type}).
+                            type,
+                            abort_reason = undefined}).
 
 -record(recovery_state, {pid :: pid()}).
 
@@ -68,7 +69,7 @@
 -define(CREATE_BUCKET_TIMEOUT,  ?get_timeout(create_bucket, 5000)).
 -define(JANITOR_RUN_TIMEOUT,    ?get_timeout(ensure_janitor_run, 30000)).
 -define(JANITOR_INTERVAL,       ?get_param(janitor_interval, 5000)).
--define(STOP_REBALANCE_TIMEOUT, ?get_timeout(stop_rebalance, 60000)).
+-define(STOP_REBALANCE_TIMEOUT, ?get_timeout(stop_rebalance, 10000)).
 
 %% gen_statem callbacks
 -export([code_change/4,
@@ -166,6 +167,7 @@ failover(Nodes, AllowUnsafe) ->
 
 -spec try_autofailover(list()) -> ok |
                                   rebalance_running |
+                                  retry_aborting_rebalance |
                                   in_recovery |
                                   orchestration_unsafe |
                                   {autofailover_unsafe, [bucket_name()]}.
@@ -666,6 +668,7 @@ idle({start_graceful_failover, Nodes}, From, _State) ->
                                 eject_nodes = [],
                                 keep_nodes = [],
                                 failed_nodes = [],
+                                abort_reason = undefined,
                                 progress=Progress,
                                 type=Type},
              [{reply, From, ok}]};
@@ -709,6 +712,7 @@ idle({start_rebalance, KeepNodes, EjectNodes,
                                 keep_nodes=KeepNodes,
                                 eject_nodes=EjectNodes,
                                 failed_nodes=FailedNodes,
+                                abort_reason=undefined,
                                 type=Type},
              [{reply, From, ok}]};
         {error, no_kv_nodes_left} ->
@@ -735,6 +739,7 @@ idle({move_vbuckets, Bucket, Moves}, From, _State) ->
                         keep_nodes=ns_node_disco:nodes_wanted(),
                         eject_nodes=[],
                         failed_nodes=[],
+                        abort_reason=undefined,
                         type=Type},
      [{reply, From, ok}]};
 idle(stop_rebalance, From, _State) ->
@@ -807,6 +812,22 @@ rebalancing({timeout, _Tref, stop_timeout},
     handle_rebalance_completion(Reason, State).
 
 %% Synchronous rebalancing events
+rebalancing({try_autofailover, Nodes}, From, State) ->
+    case cluster_compat_mode:is_cluster_madhatter() of
+        false ->
+            {keep_state_and_data, [{reply, From, rebalance_running}]};
+        true ->
+            case stop_rebalance(State, {try_autofailover, From, Nodes}) of
+                State ->
+                    %% Unlikely event, that a user has stopped rebalance and
+                    %% before rebalance has terminated we get an autofailover
+                    %% request.
+                    {keep_state_and_data,
+                     [{reply, From, retry_aborting_rebalance}]};
+                NewState ->
+                    {keep_state, NewState}
+            end
+    end;
 rebalancing({start_rebalance, _KeepNodes, _EjectNodes,
              _FailedNodes, _DeltaNodes, _DeltaRecoveryBuckets},
             From, _State) ->
@@ -818,10 +839,7 @@ rebalancing({start_graceful_failover, _}, From, _State) ->
 rebalancing(stop_rebalance, From,
             #rebalancing_state{rebalancer=Pid} = State) ->
     ?log_debug("Sending stop to rebalancer: ~p", [Pid]),
-    exit(Pid, {shutdown, stop}),
-    TRef = erlang:start_timer(?STOP_REBALANCE_TIMEOUT, self(), stop_timeout),
-    {keep_state, State#rebalancing_state{stop_timer = TRef},
-     [{reply, From, ok}]};
+    {keep_state, stop_rebalance(State, user_stop), [{reply, From, ok}]};
 rebalancing(rebalance_progress, From,
             #rebalancing_state{progress = Progress}) ->
     AggregatedProgress =
@@ -873,6 +891,14 @@ recovery(_Event, From, _State) ->
 %%
 %% Internal functions
 %%
+stop_rebalance(#rebalancing_state{rebalancer = Pid,
+                                  abort_reason = undefined} = State, Reason) ->
+    exit(Pid, {shutdown, stop}),
+    TRef = erlang:start_timer(?STOP_REBALANCE_TIMEOUT, self(), stop_timeout),
+    State#rebalancing_state{stop_timer = TRef, abort_reason = Reason};
+stop_rebalance(State, _Reason) ->
+    %% Do nothing someone has already tried to stop rebalance.
+    State.
 
 do_request_janitor_run(Item, FsmState, State) ->
     do_request_janitor_run(Item, fun(_Reason) -> ok end,
@@ -1080,22 +1106,31 @@ do_cancel_stop_timer(TRef) when is_reference(TRef) ->
     after 0 -> ok
     end.
 
-handle_rebalance_completion(Reason, State) ->
+rebalance_completed_next_state({try_autofailover, From, Nodes}) ->
+    {next_state, idle, #idle_state{},
+     [{next_event, {call, From}, {try_autofailover, Nodes}}]};
+rebalance_completed_next_state(_) ->
+    {next_state, idle, #idle_state{}}.
+
+handle_rebalance_completion(ExitReason, State) ->
     cancel_stop_timer(State),
-    maybe_reset_autofailover_count(Reason, State),
-    maybe_reset_reprovision_count(Reason, State),
-    log_rebalance_completion(Reason, State),
-    update_rebalance_counters(Reason, State),
-    update_rebalance_status(Reason, State),
+    maybe_reset_autofailover_count(ExitReason, State),
+    maybe_reset_reprovision_count(ExitReason, State),
+    log_rebalance_completion(ExitReason, State),
+    update_rebalance_counters(ExitReason, State),
+    update_rebalance_status(ExitReason, State),
     rpc:eval_everywhere(diag_handler, log_all_dcp_stats, []),
 
     R = compat_mode_manager:consider_switching_compat_mode(),
-    case maybe_start_service_upgrader(Reason, R, State) of
+    case maybe_start_service_upgrader(ExitReason, R, State) of
         {started, NewState} ->
             {next_state, rebalancing, NewState};
         not_needed ->
-            maybe_eject_myself(Reason, State),
-            {next_state, idle, #idle_state{}}
+            maybe_eject_myself(ExitReason, State),
+            %% Use the reason for aborting rebalance here, and not the reason
+            %% for exit, we should base our next state and following activities
+            %% based on the reason for aborting rebalance.
+            rebalance_completed_next_state(State#rebalancing_state.abort_reason)
     end.
 
 maybe_eject_myself(Reason, State) ->
@@ -1126,18 +1161,28 @@ maybe_reset_reprovision_count(normal, #rebalancing_state{type = rebalance}) ->
 maybe_reset_reprovision_count(_, _) ->
     ok.
 
-log_rebalance_completion(Reason, #rebalancing_state{type = Type}) ->
-    do_log_rebalance_completion(Reason, Type).
+log_rebalance_completion(
+  ExitReason, #rebalancing_state{type = Type, abort_reason = AbortReason}) ->
+    do_log_rebalance_completion(ExitReason, Type, AbortReason).
 
-do_log_rebalance_completion(normal, Type) ->
+do_log_rebalance_completion(normal, Type, _) ->
     ale:info(?USER_LOGGER,
              "~s completed successfully.", [rebalance_type2text(Type)]);
-do_log_rebalance_completion({shutdown, stop}, Type) ->
-    ale:info(?USER_LOGGER,
-             "~s stopped by user.", [rebalance_type2text(Type)]);
-do_log_rebalance_completion(Error, Type) ->
+do_log_rebalance_completion({shutdown, stop}, Type, AbortReason) ->
+    log_abort_reason(AbortReason, Type);
+do_log_rebalance_completion(Error, Type, undefined) ->
     ale:error(?USER_LOGGER,
-              "~s exited with reason ~p", [rebalance_type2text(Type), Error]).
+              "~s exited with reason ~p", [rebalance_type2text(Type), Error]);
+do_log_rebalance_completion(_Error, Type, AbortReason) ->
+    log_abort_reason(AbortReason, Type).
+
+log_abort_reason({try_autofailover, _, Nodes}, Type) ->
+    ale:info(?USER_LOGGER,
+             "~s interrupted due to auto-failover of nodes ~p.",
+             [rebalance_type2text(Type), Nodes]);
+log_abort_reason(user_stop, Type) ->
+    ale:info(?USER_LOGGER,
+             "~s stopped by user.", [rebalance_type2text(Type)]).
 
 rebalance_type2text(rebalance) ->
     <<"Rebalance">>;
