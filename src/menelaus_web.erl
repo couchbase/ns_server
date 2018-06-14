@@ -38,7 +38,7 @@
          restart/0,
          get_uuid/0]).
 
--export([ns_log_cat/1, ns_log_code_string/1, alert_key/1]).
+-export([ns_log_cat/1, ns_log_code_string/1]).
 
 -import(menelaus_util,
         [redirect_permanently/2,
@@ -974,11 +974,6 @@ ns_log_code_string(?NODE_EJECTED) ->
     "node was ejected";
 ns_log_code_string(?UI_SIDE_ERROR_REPORT) ->
     "client-side error report".
-
-alert_key(?BUCKET_CREATED)  -> bucket_created;
-alert_key(?BUCKET_DELETED)  -> bucket_deleted;
-alert_key(_) -> all.
-
 
 nth_path_tail(Path, N) when N > 0 ->
     nth_path_tail(path_tail(Path), N-1);

@@ -64,7 +64,6 @@
          counter_inc/1,
          counter_inc/2]).
 
--export([alert_key/1]).
 -record(state, {}).
 
 %%
@@ -383,10 +382,6 @@ shun(RemoteNode) ->
             ?cluster_debug("Asked to shun myself. Leaving cluster.", []),
             leave()
     end.
-
-alert_key(?NODE_JOINED) -> server_joined;
-alert_key(?NODE_EJECTED) -> server_left;
-alert_key(_) -> all.
 
 check_host_connectivity(OtherHost) ->
     %% connect to epmd at other side

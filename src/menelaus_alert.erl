@@ -286,29 +286,6 @@ category_bin(warn) -> <<"warning">>;
 category_bin(crit) -> <<"critical">>;
 category_bin(_)    -> <<"info">>.
 
-% The defined alert_key() responses are...
-%
-%  server_down
-%  server_unresponsive
-%  server_up
-%  server_joined
-%  server_left
-%  bucket_created
-%  bucket_deleted
-%  bucket_auth_failed
-%
-% auto_failover_node
-% auto_failover_maximum_reached
-% auto_failover_other_nodes_down
-% auto_failover_cluster_too_small
-% auto_failover_disabled
-
-alert_key(ns_node_disco, 0005) -> server_down;
-alert_key(ns_node_disco, 0014) -> server_unresponsive;
-alert_key(ns_node_disco, 0004) -> server_up;
-alert_key(mc_pool, 0006)       -> bucket_auth_failed;
-alert_key(menelaus_web, Code) -> menelaus_web:alert_key(Code);
-alert_key(ns_cluster, Code) -> ns_cluster:alert_key(Code);
 alert_key(auto_failover, Code) -> auto_failover:alert_key(Code);
 alert_key(_Module, _Code) -> all.
 
