@@ -20,7 +20,7 @@ all:
 
 TEST_TARGETS = test test_eunit test_triq
 
-.PHONY: $(TEST_TARGETS) ui_test docs
+.PHONY: $(TEST_TARGETS) ui_test
 
 clean clean_all:
 	cd build && $(MAKE) --no-print-directory clean ns_realclean
@@ -30,7 +30,7 @@ install:
 
 $(TEST_TARGETS): edts_hack_clean
 
-dataclean distclean $(TEST_TARGETS) ui_test docs dialyzer dialyzer_obsessive:
+dataclean distclean $(TEST_TARGETS) ui_test dialyzer dialyzer_obsessive:
 	cd build && $(MAKE) --no-print-directory ns_$@
 
 minify:

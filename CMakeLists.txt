@@ -71,7 +71,6 @@ ADD_CUSTOM_TARGET (ns_realclean
   COMMAND "${CMAKE_COMMAND}" -E remove -f cov.html erl_crash.dump deps/vbmap/vbmap
   COMMAND "${CMAKE_COMMAND}" -E remove_directory test/log
   COMMAND "${CMAKE_COMMAND}" -E remove_directory ebin
-  COMMAND "${CMAKE_COMMAND}" -E remove_directory docs
   COMMAND "${CMAKE_COMMAND}" -E remove -f rebar.config
   COMMAND "${CMAKE_COMMAND}" -E remove -f src/ns_server.app.src
   COMMAND "${CMAKE_COMMAND}" -E remove -f ${app_min_js}
@@ -156,11 +155,6 @@ NS_SERVER_TEST (NAME ns_test_triq TEST_TARGET start_triq EXPLICIT)
 # make (and not via directly invoking ctest).
 ADD_CUSTOM_TARGET(ns_ui_test COMMAND karma start karma.conf.js --single-run
          WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/priv/public/ui)
-
-
-# Docs
-ADD_CUSTOM_TARGET (ns_docs COMMAND priv/erldocs ./docs/erldocs
-  WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}" VERBATIM)
 
 #
 # Dialyzer targets
