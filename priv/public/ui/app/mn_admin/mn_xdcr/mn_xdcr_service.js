@@ -98,6 +98,7 @@
         delete cluster.clientCertificate;
         delete cluster.clientKey;
       }
+      delete cluster.secureType;
       return $http.post('/pools/default/remoteClusters' + (name ? ("/" + encodeURIComponent(name)) : ""), cluster);
     }
     function deleteClusterReference(name) {
