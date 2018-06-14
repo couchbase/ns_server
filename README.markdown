@@ -7,7 +7,7 @@ smart services.  It is an application in the Erlang OTP sense.
 
 Build dependencies include:
 
-* erlang R16B03
+* erlang 20.3
 
 Building:
 
