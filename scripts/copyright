@@ -175,12 +175,38 @@ GREEN="${TC}32m"
 YELLOW="${TC}33m"
 WHITE="${TC}37m"
 
-function color_echo() {
-    local color="$1"
-    shift
+function use_colors() {
+    local stdout=1
 
-    echo -en "$color" && echo "$@" && echo -en "${RST}"
+    if ! [ -t "$stdout" ]; then
+        # stdout is not a tty
+        return 1
+    fi
+
+    local numcolors
+    numcolors=$(tput colors) || return 1
+
+    # require at least 8 colors
+    if [ "$numcolors" -ge 8 ];  then
+        return 0
+    fi
+
+    return 1
 }
+
+if use_colors; then
+    function color_echo() {
+        local color="$1"
+        shift
+
+        echo -en "$color" && echo "$@" && echo -en "${RST}"
+    }
+else
+    function color_echo() {
+        shift
+        echo "$@"
+    }
+fi
 
 function msg() {
     color_echo "$WHITE" "$@"
