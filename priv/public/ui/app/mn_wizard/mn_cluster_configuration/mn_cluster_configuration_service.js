@@ -97,10 +97,16 @@
     }
 
     function postCurlWhitelist(data, initData) {
+      data = _.clone(data);
       if (data.all_access && initData) {
-        var data = _.clone(data);
         data.allowed_urls = initData.allowed_urls;
         data.disallowed_urls = initData.disallowed_urls;
+      }
+      if (data.allowed_urls.length == 1 && data.allowed_urls[0] === "") {
+        delete data.allowed_urls;
+      }
+      if (data.disallowed_urls.length == 1 && data.disallowed_urls[0] === "") {
+        delete data.disallowed_urls;
       }
       return $http({
         method: 'POST',
