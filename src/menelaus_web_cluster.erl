@@ -29,6 +29,7 @@
          serve_node_services/1,
          serve_node_services_streaming/1,
          handle_setup_services_post/1,
+         handle_rebalance_progress/2,
          handle_eject_post/1,
          handle_add_node/1,
          handle_add_node_to_group/2,
@@ -746,6 +747,22 @@ do_handle_rebalance(Req, KnownNodesS, EjectedNodesS, DeltaRecoveryBuckets) ->
             ns_audit:rebalance_initiated(Req, KnownNodes, EjectedNodes, DeltaRecoveryBuckets),
             reply(Req, 200)
     end.
+
+handle_rebalance_progress(_PoolId, Req) ->
+    Status = case ns_cluster_membership:get_rebalance_status() of
+                 {running, PerNode} ->
+                     [{status, <<"running">>}
+                      | [{atom_to_binary(Node, latin1),
+                          {struct, [{progress, Progress}]}} || {Node, Progress} <- PerNode]];
+                 _ ->
+                     case ns_config:search(rebalance_status) of
+                         {value, {none, ErrorMessage}} ->
+                             [{status, <<"none">>},
+                              {errorMessage, iolist_to_binary(ErrorMessage)}];
+                         _ -> [{status, <<"none">>}]
+                     end
+             end,
+    reply_json(Req, {struct, Status}, 200).
 
 handle_stop_rebalance(Req) ->
     validator:handle(handle_stop_rebalance(Req, _),

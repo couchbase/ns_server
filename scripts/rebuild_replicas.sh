@@ -48,7 +48,7 @@ GetChainsFromBucket =
 
 WaitForRebalance =
   fun (Rec) ->
-    case (catch ns_orchestrator:rebalance_progress()) of
+    case (catch ns_orchestrator:rebalance_progress_full()) of
       not_running ->
         ok;
       _ ->
