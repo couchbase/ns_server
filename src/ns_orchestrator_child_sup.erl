@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2017 Couchbase, Inc.
+%% @copyright 2017-2018 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 init([]) ->
-    {ok, {{one_for_all, 0, 1}, child_specs()}}.
+    {ok, {{one_for_all, 3, 10}, child_specs()}}.
 
 child_specs() ->
     [{ns_janitor_server, {ns_janitor_server, start_link, []},
