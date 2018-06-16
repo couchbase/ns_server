@@ -357,8 +357,6 @@ init([]) ->
     self() ! janitor,
     timer2:send_interval(?JANITOR_INTERVAL, janitor),
 
-    consider_switching_compat_mode(),
-
     {ok, idle, #idle_state{}}.
 
 handle_event({call, From},
@@ -962,19 +960,7 @@ is_rebalance_running() ->
     ns_config:search(rebalance_status) =:= {value, running}.
 
 consider_switching_compat_mode() ->
-    OldVersion = cluster_compat_mode:get_compat_version(),
-
-    case cluster_compat_mode:consider_switching_compat_mode() of
-        changed ->
-            NewVersion = cluster_compat_mode:get_compat_version(),
-            ale:warn(?USER_LOGGER, "Changed cluster compat mode from ~p to ~p",
-                     [OldVersion, NewVersion]),
-            gen_event:notify(compat_mode_events,
-                             {compat_mode_changed, OldVersion, NewVersion}),
-            {changed, OldVersion, NewVersion};
-        ok ->
-            unchanged
-    end.
+    compat_mode_manager:consider_switching_compat_mode().
 
 perform_bucket_flushing(BucketName) ->
     case ns_bucket:get_bucket(BucketName) of
