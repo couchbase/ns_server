@@ -53,6 +53,7 @@
 
 -behaviour(gen_server).
 
+-include("cut.hrl").
 -include("ns_common.hrl").
 -include("ns_heart.hrl").
 
@@ -188,6 +189,8 @@ alert_keys() ->
 %%
 
 init([]) ->
+    restart_on_compat_mode_change(),
+
     {value, Config} = ns_config:search(ns_config:get(), auto_failover_cfg),
     ?log_debug("init auto_failover.", []),
     Timeout = proplists:get_value(timeout, Config),
@@ -902,6 +905,16 @@ attach_node_uuids(Nodes, UUIDDict) ->
                       {Node, undefined}
               end
       end, Nodes).
+
+restart_on_compat_mode_change() ->
+    Self = self(),
+    ns_pubsub:subscribe_link(compat_mode_events,
+                             case _ of
+                                 {compat_mode_changed, _, _} = Event ->
+                                     exit(Self, {shutdown, Event});
+                                 _ ->
+                                     ok
+                             end).
 
 -ifdef(EUNIT).
 

@@ -357,7 +357,7 @@ init([]) ->
     self() ! janitor,
     timer2:send_interval(?JANITOR_INTERVAL, janitor),
 
-    consider_switching_compat_mode_dont_exit(),
+    consider_switching_compat_mode(),
 
     {ok, idle, #idle_state{}}.
 
@@ -962,14 +962,6 @@ is_rebalance_running() ->
     ns_config:search(rebalance_status) =:= {value, running}.
 
 consider_switching_compat_mode() ->
-    case consider_switching_compat_mode_dont_exit() of
-        {changed, _, _} ->
-            exit(normal);
-        unchanged ->
-            ok
-    end.
-
-consider_switching_compat_mode_dont_exit() ->
     OldVersion = cluster_compat_mode:get_compat_version(),
 
     case cluster_compat_mode:consider_switching_compat_mode() of
@@ -977,6 +969,8 @@ consider_switching_compat_mode_dont_exit() ->
             NewVersion = cluster_compat_mode:get_compat_version(),
             ale:warn(?USER_LOGGER, "Changed cluster compat mode from ~p to ~p",
                      [OldVersion, NewVersion]),
+            gen_event:notify(compat_mode_events,
+                             {compat_mode_changed, OldVersion, NewVersion}),
             {changed, OldVersion, NewVersion};
         ok ->
             unchanged
@@ -1114,13 +1108,12 @@ handle_rebalance_completion(Reason, State) ->
     update_rebalance_status(Reason, State),
     rpc:eval_everywhere(diag_handler, log_all_dcp_stats, []),
 
-    R = consider_switching_compat_mode_dont_exit(),
+    R = consider_switching_compat_mode(),
     case maybe_start_service_upgrader(Reason, R, State) of
         {started, NewState} ->
             {next_state, rebalancing, NewState};
         not_needed ->
             maybe_eject_myself(Reason, State),
-            maybe_exit(R, State),
             {next_state, idle, #idle_state{}}
     end.
 
@@ -1248,24 +1241,6 @@ start_service_upgrader(KeepNodes, Services) ->
               _ = ns_rebalancer:rebalance_topology_aware_services(
                     Config, Services, KeepNodes, EjectNodes)
       end).
-
-maybe_exit(SwitchCompatResult, #rebalancing_state{type = Type}) ->
-    case need_exit(SwitchCompatResult, Type) of
-        true ->
-            exit(normal);
-        false ->
-            ok
-    end.
-
-need_exit({changed, _, _}, _Type) ->
-    %% switched compat version, but didn't have to upgrade services
-    true;
-need_exit(_, service_upgrade) ->
-    %% needed to upgrade the services, so we need to exit because we must have
-    %% upgraded the compat version just before that
-    true;
-need_exit(_, _) ->
-    false.
 
 call_recovery_server(State, Call) ->
     call_recovery_server(State, Call, []).
