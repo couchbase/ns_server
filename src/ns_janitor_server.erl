@@ -201,6 +201,8 @@ run_cleanup(Parent, Requests) ->
     %% Return the individual cleanup status back to the parent.
     ok = gen_server:cast(Parent, {cleanup_complete, RequestsRV, UnsafeNodes}).
 
+do_run_cleanup(compat_mode, _Options) ->
+    compat_mode_manager:consider_switching_compat_mode();
 do_run_cleanup(services, _Options) ->
     service_janitor:cleanup();
 do_run_cleanup({bucket, Bucket}, Options) ->
@@ -227,7 +229,7 @@ get_janitor_items() ->
                            B <- ns_bucket:get_bucket_names_of_type(membase,
                                                                    ephemeral)],
     Buckets = MembaseBuckets ++ EphemeralBuckets,
-    [services | Buckets].
+    [compat_mode, services | Buckets].
 
 do_request_janitor_run(Request, #state{janitor_requests=Requests} = State) ->
     {Oper, NewRequests} = add_janitor_request(Request, Requests),

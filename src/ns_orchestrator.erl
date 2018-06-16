@@ -429,7 +429,6 @@ handle_event({call, From}, Event, StateName, StateData) ->
     ?MODULE:StateName(Event, From, StateData).
 
 handle_info(janitor, idle, _State) ->
-    consider_switching_compat_mode(),
     {ok, ID} = ns_janitor_server:start_cleanup(
                  fun(Pid, UnsafeNodes, CleanupID) ->
                          Pid ! {cleanup_done, UnsafeNodes, CleanupID},
@@ -472,7 +471,6 @@ handle_info({cleanup_done, UnsafeNodes, ID}, janitor_running,
         false ->
             ok
     end,
-    consider_switching_compat_mode(),
     {next_state, idle, #idle_state{}};
 
 handle_info({timeout, _TRef, stop_timeout} = Msg, rebalancing, StateData) ->
@@ -959,9 +957,6 @@ wait_for_nodes(Nodes, Pred, Timeout) ->
 is_rebalance_running() ->
     ns_config:search(rebalance_status) =:= {value, running}.
 
-consider_switching_compat_mode() ->
-    compat_mode_manager:consider_switching_compat_mode().
-
 perform_bucket_flushing(BucketName) ->
     case ns_bucket:get_bucket(BucketName) of
         not_present ->
@@ -1094,7 +1089,7 @@ handle_rebalance_completion(Reason, State) ->
     update_rebalance_status(Reason, State),
     rpc:eval_everywhere(diag_handler, log_all_dcp_stats, []),
 
-    R = consider_switching_compat_mode(),
+    R = compat_mode_manager:consider_switching_compat_mode(),
     case maybe_start_service_upgrader(Reason, R, State) of
         {started, NewState} ->
             {next_state, rebalancing, NewState};
