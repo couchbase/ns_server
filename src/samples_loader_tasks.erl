@@ -117,18 +117,6 @@ maybe_pass_token(#state{token_pid = undefined,
 maybe_pass_token(State) ->
     State.
 
-wait_for_exit(Port, Name) ->
-    receive
-        {Port, {exit_status, Status}} ->
-            Status;
-        {Port, {data, Msg}} ->
-            ?log_debug("output from ~s: ~p", [Name, Msg]),
-            wait_for_exit(Port, Name);
-        Unknown ->
-            ?log_error("Got unexpected message: ~p", [Unknown]),
-            exit({unexpected_message, Unknown})
-    end.
-
 start_new_loading_task(Name, Quota) ->
     proc_lib:spawn_link(?MODULE, perform_loading_task, [Name, Quota]).
 
@@ -149,15 +137,13 @@ perform_loading_task(Name, Quota) ->
             "-v",
             filename:join([BinDir, "..", "samples", Name ++ ".zip"])],
 
-    EPort = open_port({spawn_executable, Cmd},
-                      [exit_status,
-                       {env, [{"CB_USERNAME", "@ns_server"},
-                              {"CB_PASSWORD", ns_config_auth:get_password(special)}]},
-                       {args, Args},
-                       stderr_to_stdout]),
-    case wait_for_exit(EPort, Name) of
+    Env = [{"CB_USERNAME", "@ns_server"},
+           {"CB_PASSWORD", ns_config_auth:get_password(special)}],
+
+    {Status, _} = misc:run_external_tool(Cmd, Args, Env),
+    case Status of
         0 ->
             ok;
-        Status ->
+        _ ->
             exit({failed_to_load_samples_with_status, Status})
     end.
