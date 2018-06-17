@@ -1256,32 +1256,6 @@ of utilites used by cbcollect_info'''
 
     sys.exit(0)
 
-def stdin_watcher():
-    fd = sys.stdin.fileno()
-
-    while True:
-        try:
-            buf = os.read(fd, 1024)
-            # stdin closed
-            if not buf:
-                break
-
-            if buf.find('\n') != -1:
-                break
-        except OSError, e:
-            if e.errno != errno.EINTR:
-                raise
-
-def setup_stdin_watcher():
-    def _in_thread():
-        try:
-            stdin_watcher()
-        finally:
-            AltExit.exit(2)
-    th = threading.Thread(target = _in_thread)
-    th.setDaemon(True)
-    th.start()
-
 class CurlKiller:
     def __init__(self, p):
         self.p = p
@@ -1386,9 +1360,6 @@ def main():
                       action="store_true", default=False)
     parser.add_option("-d", action="callback", callback=dump_utilities,
                       help="dump a list of commands that cbcollect_info needs")
-    parser.add_option("--watch-stdin", dest="watch_stdin",
-                      action="store_true", default=False,
-                      help=optparse.SUPPRESS_HELP)
     parser.add_option("--initargs", dest="initargs", help="server 'initargs' path")
     parser.add_option("--multi-node-diag", dest="multi_node_diag",
                       action="store_true", default=False,
@@ -1423,9 +1394,6 @@ def main():
 
     if len(args) != 1:
         parser.error("incorrect number of arguments. Expecting filename to collect diagnostics into")
-
-    if options.watch_stdin:
-        setup_stdin_watcher()
 
     zip_filename = args[0]
     if zip_filename[-4:] != '.zip':

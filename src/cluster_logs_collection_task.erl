@@ -302,7 +302,7 @@ start_collection_per_node(TimestampS, Parent, Options) ->
                       Value -> ["--tmp-dir=" ++ Value]
                   end,
 
-    Args0 = ["--watch-stdin"] ++ MaybeSingleNode ++ MaybeLogRedaction ++
+    Args0 = MaybeSingleNode ++ MaybeLogRedaction ++
         MaybeTmpDir ++ ["--initargs=" ++ InitargsFilename, Filename],
 
     ExtraArgs = ns_config:search_node_with_default(cbcollect_info_extra_args, []),
