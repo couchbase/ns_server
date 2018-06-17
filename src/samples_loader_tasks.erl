@@ -74,20 +74,16 @@ handle_info({'EXIT', Pid, Reason} = Msg, #state{tasks = Tasks,
             case Reason of
                 normal ->
                     ale:info(?USER_LOGGER, "Completed loading sample bucket ~s", [Name]);
+                {failed_to_load_samples, Status, Output} ->
+                    ale:error(?USER_LOGGER,
+                              "Loading sample bucket ~s failed. "
+                              "Samples loader exited with status ~b.~n"
+                              "Loader's output was:~n~n~s",
+                              [Name, Status, Output]);
                 _ ->
-                    NodesWanted = ns_node_disco:nodes_wanted(),
-                    IndexNodes = ns_cluster_membership:service_nodes(NodesWanted, index),
-                    QueryNodes = ns_cluster_membership:service_nodes(NodesWanted, n1ql),
-                    case IndexNodes =:= [] orelse QueryNodes =:= [] of
-                        true ->
-                            ale:error(?USER_LOGGER, "Loading sample bucket ~s failed. This is "
-                                      "because either the index service or the query service "
-                                      "is not running.",
-                                      [Name]);
-                        false ->
-                            ale:error(?USER_LOGGER, "Loading sample bucket ~s failed: ~p",
-                                      [Name, Reason])
-                    end
+                    ale:error(?USER_LOGGER,
+                              "Loading sample bucket ~s failed: ~p",
+                              [Name, Reason])
             end,
             NewTokenPid = case Pid =:= TokenPid of
                               true ->
@@ -140,10 +136,10 @@ perform_loading_task(Name, Quota) ->
     Env = [{"CB_USERNAME", "@ns_server"},
            {"CB_PASSWORD", ns_config_auth:get_password(special)}],
 
-    {Status, _} = misc:run_external_tool(Cmd, Args, Env),
+    {Status, Output} = misc:run_external_tool(Cmd, Args, Env),
     case Status of
         0 ->
             ok;
         _ ->
-            exit({failed_to_load_samples_with_status, Status})
+            exit({failed_to_load_samples, Status, Output})
     end.
