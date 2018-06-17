@@ -74,10 +74,6 @@ handle_info({'EXIT', Pid, Reason} = Msg, #state{tasks = Tasks,
             case Reason of
                 normal ->
                     ale:info(?USER_LOGGER, "Completed loading sample bucket ~s", [Name]);
-                {failed_waiting_bucket, Reason} ->
-                    ale:error(?USER_LOGGER,
-                              "Loading sample bucket ~s failed because the "
-                              "bucket is busy with: ~p", [Name, Reason]);
                 _ ->
                     NodesWanted = ns_node_disco:nodes_wanted(),
                     IndexNodes = ns_cluster_membership:service_nodes(NodesWanted, index),
@@ -139,13 +135,6 @@ start_new_loading_task(Name, Quota) ->
 perform_loading_task(Name, Quota) ->
     receive
         allowed_to_go -> ok
-    end,
-
-    case ns_orchestrator:ensure_janitor_run({bucket, Name}) of
-        ok ->
-            ok;
-        NotOK ->
-            exit({failed_waiting_bucket, NotOK})
     end,
 
     {_Name, Host} = misc:node_name_host(node()),

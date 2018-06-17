@@ -64,48 +64,18 @@ handle_post(Req) ->
     end.
 
 start_loading_samples(Req, Samples) ->
-    Errors = [start_loading_sample(Req, binary_to_list(Sample))
-              || Sample <- Samples],
-    case [X || X <- Errors, X =/= ok] of
-        [] ->
-            ok;
-        X ->
-            lists:flatten(X)
-    end.
+    lists:foreach(fun (Sample) ->
+                          start_loading_sample(Req, binary_to_list(Sample))
+                  end, Samples).
 
 start_loading_sample(Req, Name) ->
-    Params = [{"threadsNumber", "3"},
-              {"replicaIndex", "0"},
-              {"replicaNumber", "1"},
-              {"saslPassword", ""},
-              {"authType", "sasl"},
-              {"ramQuotaMB", integer_to_list(?SAMPLE_BUCKET_QUOTA_MB) },
-              {"bucketType", "membase"},
-              {"name", Name}],
-    case menelaus_web_buckets:create_bucket(Req, Name, Params) of
-        ok ->
-            start_loading_sample_task(Req, Name);
-        {_, Code} when Code < 300 ->
-            start_loading_sample_task(Req, Name);
-        {{struct, [{errors, {struct, Errors}}, _]}, _} ->
-            ?log_debug("Failed to create sample bucket: ~p", [Errors]),
-            [{error, <<"Failed to create bucket!">>} | [{error, Msg} || {_, Msg} <- Errors]];
-        {{struct, [{'_', Error}]}, _} ->
-            ?log_debug("Failed to create sample bucket: ~p", [Error]),
-            [{error, Error}];
-        X ->
-            ?log_debug("Failed to create sample bucket: ~p", [X]),
-            X
-    end.
-
-start_loading_sample_task(Req, Name) ->
-    case samples_loader_tasks:start_loading_sample(Name, ?SAMPLE_BUCKET_QUOTA_MB) of
+    case samples_loader_tasks:start_loading_sample(Name,
+                                                   ?SAMPLE_BUCKET_QUOTA_MB) of
         ok ->
             ns_audit:start_loading_sample(Req, Name);
         already_started ->
             ok
-    end,
-    ok.
+    end.
 
 list_sample_files() ->
     BinDir = path_config:component_path(bin),
