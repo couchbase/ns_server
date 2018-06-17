@@ -1540,17 +1540,20 @@ run_external_tool(Path, Args) ->
 run_external_tool(Path, Args, Env) ->
     executing_on_new_process(
       fun () ->
-              Port = erlang:open_port({spawn_executable, Path},
-                                      [stderr_to_stdout, binary,
-                                       stream, exit_status, hide,
-                                       {args, Args},
-                                       {env, Env}]),
+              {ok, Port} = goport:start_link(Path,
+                                             [stderr_to_stdout, binary,
+                                              stream, exit_status,
+                                              {args, Args},
+                                              {env, Env},
+                                              {name, false}]),
+              goport:deliver(Port),
               collect_external_tool_output(Port, [])
       end).
 
 collect_external_tool_output(Port, Acc) ->
     receive
         {Port, {data, Data}} ->
+            goport:deliver(Port),
             collect_external_tool_output(Port, [Data | Acc]);
         {Port, {exit_status, Status}} ->
             {Status, iolist_to_binary(lists:reverse(Acc))};
