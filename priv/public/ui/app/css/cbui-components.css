@@ -571,6 +571,8 @@ section.error {
   border-top: 1px solid #ececec;
   margin-bottom: 0 !important;
   padding: .75rem 1rem;
+  position: relative;
+  background-color: #fff;
   z-index: 2;
 }
 .panel-footer.spaced {
@@ -588,7 +590,14 @@ section.error {
   overflow: hidden;
   resize: both;
 }
-
+.dialog-resizable .panel-footer {
+  pointer-events: none;
+  margin-bottom: .75rem !important;
+  padding: .75rem 1rem 0 1rem;
+}
+.dialog-resizable .panel-footer button {
+  pointer-events: all;
+}
 /* medium-width modal dialog (uses .panel) --------------------------------- */
 .dialog-med {
   width: 530px;
@@ -596,10 +605,6 @@ section.error {
 .dialog-med .panel-content {
   padding: 1rem 2rem 1px 2rem;
   margin-bottom: .5rem;
-  position: relative;
-}
-.dialog-med .panel-footer {
-  position: relative;
 }
 
 /* adds white "shadow" above footer or below header to indicate scrollability
@@ -1941,6 +1946,9 @@ section.dynamic_unhealthy {
 }
 .wb-history-dialog .panel-content .filter-input-group {
   margin-bottom: 1rem;
+}
+.wb-history-dialog .filter-input {
+  width: 100%;
 }
 .wb-history-table {
   padding: 0 0 1rem 0;
