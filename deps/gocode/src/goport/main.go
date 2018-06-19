@@ -99,7 +99,10 @@ func (p *port) closeAll(files []io.Closer) {
 }
 
 func (p *port) startChild() error {
+	// files we'll need after fork
 	keepFiles := ([]io.Closer)(nil)
+
+	// files we need to close after fork
 	closeFiles := ([]io.Closer)(nil)
 
 	defer func() {
@@ -107,28 +110,34 @@ func (p *port) startChild() error {
 		p.closeAll(files)
 	}()
 
-	keepClose := func(keep io.Closer, close io.Closer) {
-		keepFiles = append(keepFiles, keep)
-		closeFiles = append(closeFiles, close)
+	keepFile := func(file io.Closer) {
+		keepFiles = append(keepFiles, file)
+	}
+
+	closeFile := func(file io.Closer) {
+		closeFiles = append(closeFiles, file)
 	}
 
 	stdinR, stdinW, err := os.Pipe()
 	if err != nil {
 		return err
 	}
-	keepClose(stdinW, stdinR)
+	keepFile(stdinW)
+	closeFile(stdinR)
 
 	stdoutR, stdoutW, err := os.Pipe()
 	if err != nil {
 		return err
 	}
-	keepClose(stdoutR, stdoutW)
+	keepFile(stdoutR)
+	closeFile(stdoutW)
 
 	stderrR, stderrW, err := os.Pipe()
 	if err != nil {
 		return err
 	}
-	keepClose(stderrR, stderrW)
+	keepFile(stderrR)
+	closeFile(stderrW)
 
 	child := exec.Command(p.childSpec.cmd, p.childSpec.args...)
 	child.Stdin = stdinR
