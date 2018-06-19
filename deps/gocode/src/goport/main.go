@@ -32,83 +32,6 @@ import (
 	"time"
 )
 
-type write struct {
-	data [][]byte
-	err  chan error
-}
-
-type writer struct {
-	jobs chan *write
-	dst  VectorWriter
-
-	*Canceler
-}
-
-func newWriter(dst VectorWriter) *writer {
-	w := &writer{
-		jobs:     make(chan *write),
-		dst:      dst,
-		Canceler: NewCanceler(),
-	}
-
-	go w.loop()
-	return w
-}
-
-func (w *writer) loop() {
-	defer w.Follower().Done()
-
-	for {
-		select {
-		case job := <-w.jobs:
-			done := make(chan error, 1)
-
-			go func() {
-				done <- w.dst.Writev(job.data...)
-				close(done)
-			}()
-
-			var err error
-			stop := false
-
-			select {
-			case <-w.Follower().Cancel():
-				err = ErrCanceled
-				stop = true
-			case err = <-done:
-			}
-
-			job.err <- err
-			close(job.err)
-
-			if stop {
-				return
-			}
-
-		case <-w.Follower().Cancel():
-			return
-		}
-	}
-}
-
-func (w *writer) writev(data ...[]byte) <-chan error {
-	err := make(chan error, 1)
-	job := &write{data, err}
-
-	go func() {
-		select {
-		case w.jobs <- job:
-			return
-		case <-w.Follower().Cancel():
-			err <- ErrCanceled
-			close(err)
-			// loop will call Done
-		}
-	}()
-
-	return err
-}
-
 type op struct {
 	name string
 	arg  []byte
@@ -238,10 +161,10 @@ type port struct {
 
 	opsReader *opsReader
 
-	parentWriter       *writer
+	parentWriter       *AsyncWriter
 	parentWriterStream *NetStringWriter
 
-	childStdin  *writer
+	childStdin  *AsyncWriter
 	childStdout *AsyncReader
 	childStderr *AsyncReader
 
@@ -376,9 +299,9 @@ func (p *port) startWorkers() {
 	p.opsReader = newOpsReader(packetReader)
 
 	p.parentWriterStream = NewNetStringWriter(os.Stdout)
-	p.parentWriter = newWriter(p.parentWriterStream)
+	p.parentWriter = NewAsyncWriter(p.parentWriterStream)
 
-	p.childStdin = newWriter(&SimpleVectorWriter{p.stdinPipe})
+	p.childStdin = NewAsyncWriter(&SimpleVectorWriter{p.stdinPipe})
 	p.childStdout = NewAsyncReader(p.stdoutPipe)
 	p.childStderr = NewAsyncReader(p.stderrPipe)
 }
@@ -457,7 +380,7 @@ func (p *port) getChildStream(tag string) <-chan []byte {
 }
 
 func (p *port) parentSyncWrite(data ...[]byte) error {
-	return <-p.parentWriter.writev(data...)
+	return <-p.parentWriter.Writev(data...)
 }
 
 func (p *port) proxyChildOutput(tag string, data []byte) {
@@ -466,7 +389,7 @@ func (p *port) proxyChildOutput(tag string, data []byte) {
 }
 
 func (p *port) doProxyChildOutput(tag string, data []byte) <-chan error {
-	return p.parentWriter.writev([]byte(tag), []byte(":"), data)
+	return p.parentWriter.Writev([]byte(tag), []byte(":"), data)
 }
 
 func (p *port) flushChildStream(tag string) {
@@ -556,7 +479,7 @@ func (p *port) handleShutdown() <-chan error {
 }
 
 func (p *port) handleWrite(data []byte) <-chan error {
-	return p.childStdin.writev(data)
+	return p.childStdin.Writev(data)
 }
 
 func (p *port) handleAck(data []byte) <-chan error {

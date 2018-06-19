@@ -43,3 +43,85 @@ func (w *SimpleVectorWriter) Writev(data ...[]byte) error {
 
 	return nil
 }
+
+// AsyncWriter writes to an underlying VectorWriter in a goroutine.
+type AsyncWriter struct {
+	jobs chan *write
+	dst  VectorWriter
+
+	*Canceler
+}
+
+type write struct {
+	data [][]byte
+	err  chan error
+}
+
+// NewAsyncWriter creates an AsyncWriter that writes to a provided
+// VectorWriter.
+func NewAsyncWriter(dst VectorWriter) *AsyncWriter {
+	w := &AsyncWriter{
+		jobs:     make(chan *write),
+		dst:      dst,
+		Canceler: NewCanceler(),
+	}
+
+	go w.loop()
+	return w
+}
+
+func (w *AsyncWriter) loop() {
+	defer w.Follower().Done()
+
+	for {
+		select {
+		case job := <-w.jobs:
+			done := make(chan error, 1)
+
+			go func() {
+				done <- w.dst.Writev(job.data...)
+				close(done)
+			}()
+
+			var err error
+			stop := false
+
+			select {
+			case <-w.Follower().Cancel():
+				err = ErrCanceled
+				stop = true
+			case err = <-done:
+			}
+
+			job.err <- err
+			close(job.err)
+
+			if stop {
+				return
+			}
+
+		case <-w.Follower().Cancel():
+			return
+		}
+	}
+}
+
+// Writev submits a vector of data chunks to be written to AsyncWriter. When
+// the write is completed the result is put into the returned channel.
+func (w *AsyncWriter) Writev(data ...[]byte) <-chan error {
+	err := make(chan error, 1)
+	job := &write{data, err}
+
+	go func() {
+		select {
+		case w.jobs <- job:
+			return
+		case <-w.Follower().Cancel():
+			err <- ErrCanceled
+			close(err)
+			// loop will call Done
+		}
+	}()
+
+	return err
+}
