@@ -1,5 +1,5 @@
 // @author Couchbase <info@couchbase.com>
-// @copyright 2017 Couchbase, Inc.
+// @copyright 2017-2018 Couchbase, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,22 +26,32 @@ import (
 	"sync"
 )
 
-var (
-	ErrInvalidNetString = errors.New("invalid netstring data")
-)
-
+// PacketReader defines an interface for sources of data that have packetized
+// nature.
 type PacketReader interface {
+	// ReadPacket reads a single complete packet from the data source.
 	ReadPacket() ([]byte, error)
 }
 
+var (
+	// ErrInvalidNetString is returned by the NetStringReader when it
+	// cannot decode the data from an underlying io.Reader.
+	ErrInvalidNetString = errors.New("invalid netstring data")
+)
+
+// NetStringReader reads packets of data encoded as netstrings from io.Reader.
 type NetStringReader struct {
 	reader *bufio.Reader
 }
 
+// NewNetStringReader creates a NetStringReader that reads from the provided
+// io.Reader.
 func NewNetStringReader(r io.Reader) *NetStringReader {
 	return &NetStringReader{bufio.NewReader(r)}
 }
 
+// ReadPacket reads a single netstring encoded packet from the provided
+// io.Reader.
 func (n *NetStringReader) ReadPacket() ([]byte, error) {
 	rawLength, err := n.reader.ReadSlice(':')
 	switch err {
@@ -78,18 +88,24 @@ func (n *NetStringReader) ReadPacket() ([]byte, error) {
 	}
 }
 
+// NetStringWriter encodes packets of data as netstrings and writes the
+// results to the specified io.Writer.
 type NetStringWriter struct {
 	writer *bufio.Writer
 }
 
+// NewNetStringWriter creates a NetStringWriter that writes to the provided
+// io.Writer.
 func NewNetStringWriter(w io.Writer) *NetStringWriter {
 	return &NetStringWriter{bufio.NewWriter(w)}
 }
 
+// WritePacket encodes and writes a single packet of data.
 func (n *NetStringWriter) WritePacket(data []byte) error {
 	return n.WritePacketV(data)
 }
 
+// WritePacketV writes a sequence of data chunks as a single packet.
 func (n *NetStringWriter) WritePacketV(data ...[]byte) error {
 	totalLen := 0
 	for _, chunk := range data {
@@ -127,9 +143,13 @@ func (n *NetStringWriter) WritePacketV(data ...[]byte) error {
 }
 
 var (
+	// ErrCanceled is an error used as indication that operation of
+	// interest was canceled.
 	ErrCanceled = errors.New("canceled")
 )
 
+// Canceler provides a generic way to cancel and wait for termination of an
+// active object (object that is backed by a goroutine).
 type Canceler struct {
 	cancel     chan struct{}
 	cancelOnce *sync.Once
@@ -138,8 +158,11 @@ type Canceler struct {
 	doneOnce *sync.Once
 }
 
+// CancelFollower exposes APIs that must only be used by the active object
+// itself.
 type CancelFollower Canceler
 
+// NewCanceler creates a new Canceler object.
 func NewCanceler() *Canceler {
 	return &Canceler{
 		cancel:     make(chan struct{}),
@@ -150,31 +173,41 @@ func NewCanceler() *Canceler {
 	}
 }
 
+// Cancel orders the underlying active object to cancel whatever its doing.
 func (c *Canceler) Cancel() {
 	c.cancelOnce.Do(func() { close(c.cancel) })
 }
 
+// Wait waits for the active object to finish.
 func (c *Canceler) Wait() {
 	<-c.done
 }
 
+// Follower can be used by the active object to gain access to the
+// active-object-only interface to of the Canceler.
 func (c *Canceler) Follower() *CancelFollower {
 	return (*CancelFollower)(c)
 }
 
+// Done indicates that the active object finished its operation.
 func (f *CancelFollower) Done() {
 	f.doneOnce.Do(func() { close(f.done) })
 }
 
+// Cancel returns a channel that the active object should monitor for the
+// orders to cancel its operation.
 func (f *CancelFollower) Cancel() <-chan struct{} {
 	return f.cancel
 }
 
+// CloseOnce wraps an os.File and ensures that the file is only closed once.
 type CloseOnce struct {
 	*os.File
 	once sync.Once
 }
 
+// Close closes the underlying file. But only on the first
+// invocation. Subsequent invocations simply return success.
 func (c *CloseOnce) Close() error {
 	var err error
 	c.once.Do(func() { err = c.File.Close() })
