@@ -17,7 +17,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -31,90 +30,6 @@ import (
 	"syscall"
 	"time"
 )
-
-type op struct {
-	name string
-	arg  []byte
-}
-
-type opsReader struct {
-	packetStream PacketReader
-
-	ops <-chan *op
-	err error
-
-	*Canceler
-}
-
-func newOpsReader(stream PacketReader) *opsReader {
-	ops := make(chan *op)
-
-	or := &opsReader{
-		packetStream: stream,
-
-		ops: ops,
-		err: nil,
-
-		Canceler: NewCanceler(),
-	}
-
-	go or.loop(ops)
-	return or
-}
-
-func (or *opsReader) loop(out chan *op) {
-	defer or.Follower().Done()
-
-	for {
-		var packet []byte
-		done := make(chan error)
-
-		go func() {
-			var err error
-			packet, err = or.packetStream.ReadPacket()
-
-			done <- err
-			close(done)
-		}()
-
-		var err error
-
-		select {
-		case <-or.Follower().Cancel():
-			err = ErrCanceled
-		case err = <-done:
-			if err == nil {
-				op := or.parseOp(packet)
-				select {
-				case out <- op:
-				case <-or.Follower().Cancel():
-					err = ErrCanceled
-				}
-			}
-		}
-
-		if err != nil {
-			or.err = err
-			close(out)
-			return
-		}
-	}
-}
-
-func (or *opsReader) parseOp(packet []byte) *op {
-	switch i := bytes.IndexByte(packet, ':'); i {
-	case -1:
-		return &op{string(packet), nil}
-	default:
-		name := string(packet[0:i])
-		arg := packet[i+1:]
-		if len(arg) == 0 {
-			arg = nil
-		}
-
-		return &op{name, arg}
-	}
-}
 
 type childExitedError int
 
@@ -144,9 +59,7 @@ type portSpec struct {
 
 type loopState struct {
 	unackedBytes int
-
-	ops       <-chan *op
-	pendingOp <-chan error
+	pendingOp    <-chan error
 
 	childStreams map[string]*AsyncReader
 	pendingWrite <-chan error
@@ -159,7 +72,7 @@ type port struct {
 	child     *exec.Cmd
 	childSpec portSpec
 
-	opsReader *opsReader
+	opsReader *OpsReader
 
 	parentWriter       *AsyncWriter
 	parentWriterStream *NetStringWriter
@@ -296,7 +209,7 @@ func (p *port) startWorkers() {
 		packetReader = newInteractiveReader()
 	}
 
-	p.opsReader = newOpsReader(packetReader)
+	p.opsReader = NewOpsReader(packetReader)
 
 	p.parentWriterStream = NewNetStringWriter(os.Stdout)
 	p.parentWriter = NewAsyncWriter(p.parentWriterStream)
@@ -336,7 +249,6 @@ func (p *port) closePipes() {
 
 func (p *port) initLoopState() {
 	p.state.unackedBytes = 0
-	p.state.ops = p.opsReader.ops
 	p.state.pendingOp = nil
 
 	p.state.childStreams = make(map[string]*AsyncReader)
@@ -346,7 +258,7 @@ func (p *port) initLoopState() {
 	p.state.shuttingDown = false
 }
 
-func (p *port) getOps() <-chan *op {
+func (p *port) getOps() <-chan *Op {
 	if p.state.shuttingDown {
 		return nil
 	}
@@ -355,7 +267,7 @@ func (p *port) getOps() <-chan *op {
 		return nil
 	}
 
-	return p.state.ops
+	return p.opsReader.GetOpsChan()
 }
 
 func (p *port) getChildStream(tag string) <-chan []byte {
@@ -436,20 +348,20 @@ func (p *port) flushChildStreams() {
 	p.flushChildStream(stdout)
 }
 
-func (p *port) handleOp(op *op) {
+func (p *port) handleOp(op *Op) {
 	var ch <-chan error
 
-	switch op.name {
+	switch op.Name {
 	case "ack":
-		ch = p.handleAck(op.arg)
+		ch = p.handleAck(op.Arg)
 	case "write":
-		ch = p.handleWrite(op.arg)
+		ch = p.handleWrite(op.Arg)
 	case "close":
-		ch = p.handleCloseStream(op.arg)
+		ch = p.handleCloseStream(op.Arg)
 	case "shutdown":
 		ch = p.handleShutdown()
 	default:
-		ch = p.handleUnknown(op.name)
+		ch = p.handleUnknown(op.Name)
 	}
 
 	p.state.pendingOp = ch
@@ -590,12 +502,12 @@ func (p *port) loop() error {
 		select {
 		case op, ok := <-p.getOps():
 			if !ok {
-				if p.opsReader.err == io.EOF {
+				err := p.opsReader.GetError()
+				if err == io.EOF {
 					return nil
 				}
 
-				return fmt.Errorf(
-					"read failed: %s", p.opsReader.err)
+				return fmt.Errorf("read failed: %s", err)
 			}
 
 			p.handleOp(op)
