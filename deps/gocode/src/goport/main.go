@@ -37,19 +37,17 @@ type write struct {
 	err  chan error
 }
 
-type writeFunc func(...[]byte) error
-
 type writer struct {
-	jobs    chan *write
-	doWrite writeFunc
+	jobs chan *write
+	dst  VectorWriter
 
 	*Canceler
 }
 
-func newWriter(fn writeFunc) *writer {
+func newWriter(dst VectorWriter) *writer {
 	w := &writer{
 		jobs:     make(chan *write),
-		doWrite:  fn,
+		dst:      dst,
 		Canceler: NewCanceler(),
 	}
 
@@ -66,7 +64,7 @@ func (w *writer) loop() {
 			done := make(chan error, 1)
 
 			go func() {
-				done <- w.doWrite(job.data...)
+				done <- w.dst.Writev(job.data...)
 				close(done)
 			}()
 
@@ -378,18 +376,9 @@ func (p *port) startWorkers() {
 	p.opsReader = newOpsReader(packetReader)
 
 	p.parentWriterStream = NewNetStringWriter(os.Stdout)
-	p.parentWriter = newWriter(p.parentWriterStream.WritePacketV)
+	p.parentWriter = newWriter(p.parentWriterStream)
 
-	p.childStdin = newWriter(func(data ...[]byte) error {
-		for _, chunk := range data {
-			_, err := p.stdinPipe.Write(chunk)
-			if err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
+	p.childStdin = newWriter(&SimpleVectorWriter{p.stdinPipe})
 	p.childStdout = NewAsyncReader(p.stdoutPipe)
 	p.childStderr = NewAsyncReader(p.stderrPipe)
 }

@@ -100,8 +100,8 @@ func NewNetStringWriter(w io.Writer) *NetStringWriter {
 	return &NetStringWriter{bufio.NewWriter(w)}
 }
 
-// WritePacketV writes a sequence of data chunks as a single packet.
-func (n *NetStringWriter) WritePacketV(data ...[]byte) error {
+// Writev writes a sequence of data chunks as a single packet.
+func (n *NetStringWriter) Writev(data ...[]byte) error {
 	totalLen := 0
 	for _, chunk := range data {
 		totalLen += len(chunk)
