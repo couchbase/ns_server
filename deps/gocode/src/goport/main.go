@@ -1,5 +1,5 @@
 // @author Couchbase <info@couchbase.com>
-// @copyright 2015-2017 Couchbase, Inc.
+// @copyright 2015-2018 Couchbase, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -31,79 +31,6 @@ import (
 	"syscall"
 	"time"
 )
-
-const (
-	childReaderBufferSize = 64 * 1024
-)
-
-type childReader struct {
-	stream *bufio.Reader
-
-	reads <-chan []byte
-	err   error
-
-	*Canceler
-}
-
-func newChildReader(stream io.Reader) *childReader {
-	reads := make(chan []byte)
-
-	cr := &childReader{
-		stream:   bufio.NewReaderSize(stream, childReaderBufferSize),
-		reads:    reads,
-		err:      nil,
-		Canceler: NewCanceler(),
-	}
-
-	go cr.loop(reads)
-	return cr
-}
-
-func (cr *childReader) loop(out chan []byte) {
-	defer cr.Follower().Done()
-
-	buffer := make([]byte, childReaderBufferSize)
-	for {
-		done := make(chan struct {
-			n   int
-			err error
-		}, 1)
-
-		go func() {
-			n, err := cr.stream.Read(buffer)
-			done <- struct {
-				n   int
-				err error
-			}{n, err}
-			close(done)
-		}()
-
-		var err error
-		select {
-		case <-cr.Follower().Cancel():
-			err = ErrCanceled
-		case result := <-done:
-			if result.n != 0 {
-				cp := make([]byte, result.n)
-				copy(cp, buffer)
-
-				select {
-				case out <- cp:
-				case <-cr.Follower().Cancel():
-					err = ErrCanceled
-				}
-			}
-
-			err = result.err
-		}
-
-		if err != nil {
-			cr.err = err
-			close(out)
-			return
-		}
-	}
-}
 
 type write struct {
 	data [][]byte
@@ -300,7 +227,7 @@ type loopState struct {
 	ops       <-chan *op
 	pendingOp <-chan error
 
-	childStreams map[string]*childReader
+	childStreams map[string]*AsyncReader
 	pendingWrite <-chan error
 
 	childDone    <-chan error
@@ -317,8 +244,8 @@ type port struct {
 	parentWriterStream *NetStringWriter
 
 	childStdin  *writer
-	childStdout *childReader
-	childStderr *childReader
+	childStdout *AsyncReader
+	childStderr *AsyncReader
 
 	stdinPipe  io.WriteCloser
 	stdoutPipe io.ReadCloser
@@ -463,8 +390,8 @@ func (p *port) startWorkers() {
 
 		return nil
 	})
-	p.childStdout = newChildReader(p.stdoutPipe)
-	p.childStderr = newChildReader(p.stderrPipe)
+	p.childStdout = NewAsyncReader(p.stdoutPipe)
+	p.childStderr = NewAsyncReader(p.stderrPipe)
 }
 
 func (p *port) terminateWorkers() {
@@ -500,7 +427,7 @@ func (p *port) initLoopState() {
 	p.state.ops = p.opsReader.ops
 	p.state.pendingOp = nil
 
-	p.state.childStreams = make(map[string]*childReader)
+	p.state.childStreams = make(map[string]*AsyncReader)
 	p.state.childStreams[stdout] = p.childStdout
 	p.state.childStreams[stderr] = p.childStderr
 	p.state.pendingWrite = nil
@@ -534,7 +461,7 @@ func (p *port) getChildStream(tag string) <-chan []byte {
 
 	stream := p.state.childStreams[tag]
 	if stream != nil {
-		return stream.reads
+		return stream.GetReadChan()
 	}
 
 	return nil
@@ -564,7 +491,7 @@ func (p *port) flushChildStream(tag string) {
 		timeout := time.After(500 * time.Millisecond)
 
 		select {
-		case data, ok := <-stream.reads:
+		case data, ok := <-stream.GetReadChan():
 			if !ok {
 				return
 			}
@@ -714,7 +641,7 @@ func (p *port) noteShuttingDown() {
 func (p *port) handleChildRead(tag string, data []byte, ok bool) error {
 	if !ok {
 		stream := p.state.childStreams[tag]
-		err := stream.err
+		err := stream.GetError()
 
 		if err == io.EOF {
 			// stream closed
