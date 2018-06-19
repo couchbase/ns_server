@@ -194,7 +194,7 @@ func (p *port) terminateChild() error {
 			return err
 		}
 	} else {
-		err := Kill(p.child)
+		err := KillPgroup(p.child)
 		if err != nil {
 			return err
 		}

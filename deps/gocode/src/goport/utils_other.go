@@ -1,5 +1,5 @@
 // @author Couchbase <info@couchbase.com>
-// @copyright 2015-2017 Couchbase, Inc.
+// @copyright 2015-2018 Couchbase, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,9 +21,9 @@ import (
 	"os/exec"
 )
 
-func SetPgid(_ *exec.Cmd) {
+func doSetPgid(_ *exec.Cmd) {
 }
 
-func Kill(cmd *exec.Cmd) error {
+func doKillPgroup(cmd *exec.Cmd) error {
 	return cmd.Process.Kill()
 }

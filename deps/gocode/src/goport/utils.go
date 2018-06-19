@@ -18,6 +18,7 @@ package main
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"sync"
 )
 
@@ -92,4 +93,15 @@ func (c *CloseOnce) Close() error {
 	c.once.Do(func() { err = c.File.Close() })
 
 	return err
+}
+
+// SetPgid changes exec.Cmd attributes to start the process in its own process
+// group.
+func SetPgid(cmd *exec.Cmd) {
+	doSetPgid(cmd)
+}
+
+// KillPgroup kills an entire process group if the platform supports this.
+func KillPgroup(cmd *exec.Cmd) error {
+	return doKillPgroup(cmd)
 }
