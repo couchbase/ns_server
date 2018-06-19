@@ -100,11 +100,6 @@ func NewNetStringWriter(w io.Writer) *NetStringWriter {
 	return &NetStringWriter{bufio.NewWriter(w)}
 }
 
-// WritePacket encodes and writes a single packet of data.
-func (n *NetStringWriter) WritePacket(data []byte) error {
-	return n.WritePacketV(data)
-}
-
 // WritePacketV writes a sequence of data chunks as a single packet.
 func (n *NetStringWriter) WritePacketV(data ...[]byte) error {
 	totalLen := 0
