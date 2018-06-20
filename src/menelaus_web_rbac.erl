@@ -529,16 +529,15 @@ build_link(Name, Identity, PageSize, Domain, Path, Permission) ->
 format_paginator_params(noparams, PageSize, _DomainAtom) ->
     [io_lib:format("pageSize=~p", [PageSize])];
 format_paginator_params({User, Domain}, PageSize, '_') ->
-    [io_lib:format("startFrom=~s", [User]),
+    [io_lib:format("startFrom=~s", [http_uri:encode(User)]),
      io_lib:format("startFromDomain=~p", [Domain]),
      io_lib:format("pageSize=~p", [PageSize])];
 format_paginator_params({User, _Domain}, PageSize, _DomainAtom) ->
-    [io_lib:format("startFrom=~s", [User]),
+    [io_lib:format("startFrom=~s", [http_uri:encode(User)]),
      io_lib:format("pageSize=~p", [PageSize])].
 
 seed_links(Pairs) ->
-    [{Name, {http_uri:encode(User), Domain}} ||
-        {Name, {User, Domain}} <- Pairs].
+    [{Name, Object} || {Name, Object} <- Pairs, Object =/= undefined].
 
 build_links(Links, PageSize, DomainAtom, Path, Permission) ->
     Json = [build_link(Name, Identity, PageSize, DomainAtom, Path, Permission)
