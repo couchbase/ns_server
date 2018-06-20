@@ -530,7 +530,11 @@ func (p *port) loop() error {
 			if p.state.shuttingDown {
 				return nil
 			}
-		case <-p.getChildDone():
+		case err := <-p.getChildDone():
+			if err != nil {
+				return err
+			}
+
 			status := getExitStatus(p.child)
 			if status == 0 {
 				return nil
