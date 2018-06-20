@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"syscall"
 )
 
 var (
@@ -104,4 +105,39 @@ func SetPgid(cmd *exec.Cmd) {
 // KillPgroup kills an entire process group if the platform supports this.
 func KillPgroup(cmd *exec.Cmd) error {
 	return doKillPgroup(cmd)
+}
+
+// different platforms define different types to represent process wait
+// status, but most of them have these methods
+type processStatus interface {
+	Exited() bool
+	Signaled() bool
+	Signal() syscall.Signal
+	ExitStatus() int
+}
+
+// GetExitStatus returns an exit status of a terminated process.
+func GetExitStatus(cmd *exec.Cmd) int {
+	status, ok := cmd.ProcessState.Sys().(processStatus)
+
+	if !ok {
+		if cmd.ProcessState.Success() {
+			return 0
+		}
+
+		return 1
+	}
+
+	if !status.Signaled() && !status.Exited() {
+		panic("process neither exited nor signaled")
+	}
+
+	if status.Signaled() {
+		sig := status.Signal()
+		// convert to exit status the way Linux does it
+		return 128 + int(sig)
+	}
+
+	// exited
+	return status.ExitStatus()
 }

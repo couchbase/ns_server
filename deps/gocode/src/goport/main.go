@@ -27,7 +27,6 @@ import (
 	"os/exec"
 	"path"
 	"strconv"
-	"syscall"
 	"time"
 )
 
@@ -535,7 +534,7 @@ func (p *port) loop() error {
 				return err
 			}
 
-			status := getExitStatus(p.child)
+			status := GetExitStatus(p.child)
 			if status == 0 {
 				return nil
 			}
@@ -594,40 +593,6 @@ func (c *cmdFlag) Set(v string) error {
 	}
 
 	return nil
-}
-
-// different platforms define different types to represent process wait
-// status, but most of them have these methods
-type processStatus interface {
-	Exited() bool
-	Signaled() bool
-	Signal() syscall.Signal
-	ExitStatus() int
-}
-
-func getExitStatus(cmd *exec.Cmd) int {
-	status, ok := cmd.ProcessState.Sys().(processStatus)
-
-	if !ok {
-		if cmd.ProcessState.Success() {
-			return 0
-		}
-
-		return 1
-	}
-
-	if !status.Signaled() && !status.Exited() {
-		panic("process neither exited nor signaled")
-	}
-
-	if status.Signaled() {
-		sig := status.Signal()
-		// convert to exit status the way Linux does it
-		return 128 + int(sig)
-	}
-
-	// exited
-	return status.ExitStatus()
 }
 
 func getCmdFromEnv() (string, []string) {
