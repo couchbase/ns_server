@@ -160,8 +160,8 @@ call_compute_node_base_url(Node, User, Password) ->
                              end,
 
                       {_, H} = misc:node_name_host(RealNode),
-                      StorePort = case H =:= "127.0.0.1" orelse H =:= "::1" of
-                                      true -> Port;
+                      StorePort = case misc:is_localhost(H) of
+                                      true  -> Port;
                                       false -> false
                                   end,
                       HostPort = misc:join_host_port(H, Port),

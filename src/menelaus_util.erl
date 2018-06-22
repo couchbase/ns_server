@@ -437,12 +437,11 @@ format_server_time({{YYYY, MM, DD}, {Hour, Min, Sec}}, MicroSecs) ->
                     [YYYY, MM, DD, Hour, Min, Sec, MicroSecs div 1000])).
 
 ensure_local(Req) ->
-    case mochiweb_request:get(peer, Req) of
-        "127.0.0.1" ->
+    Host = mochiweb_request:get(peer, Req),
+    case misc:is_localhost(Host) of
+        true ->
             ok;
-        "::1" ->
-            ok;
-        _ ->
+        false ->
             erlang:throw({web_exception, 400, <<"API is accessible from localhost only">>, []})
     end.
 

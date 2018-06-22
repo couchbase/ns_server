@@ -1349,6 +1349,17 @@ get_proto_dist_type() ->
             "inet_tcp"
     end.
 
+-spec is_localhost(string()) -> true | false.
+is_localhost(Addr) ->
+    case inet:parse_address(Addr) of
+        {ok, {127,0,0,1}} ->
+            true;
+        {ok, {0,0,0,0,0,0,0,1}} ->
+            true;
+        _ ->
+            false
+    end.
+
 -spec localhost() -> string().
 localhost() ->
     localhost([]).

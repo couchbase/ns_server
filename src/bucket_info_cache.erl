@@ -201,10 +201,10 @@ build_services(Node, Config, EnabledServices) ->
      | lists:append([MgmtSSL | OptServices])].
 
 maybe_build_ext_hostname(Node) ->
-    case misc:node_name_host(Node) of
-        {_, "127.0.0.1"} -> [];
-        {_, "::1"} -> [];
-        {_, H} -> [{hostname, list_to_binary(H)}]
+    {_, H} = misc:node_name_host(Node),
+    case misc:is_localhost(H) of
+        true  -> [];
+        false -> [{hostname, list_to_binary(H)}]
     end.
 
 build_nodes_ext([] = _Nodes, _Config, NodesExtAcc) ->

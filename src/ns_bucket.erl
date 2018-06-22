@@ -380,10 +380,10 @@ json_map_with_full_config(LocalAddr, BucketConfig, Config) ->
                 fun (ENode) ->
                         Port = ns_config:search_node_prop(ENode, Config,
                                                           memcached, port),
-                        Host = case misc:node_name_host(ENode) of
-                                   {_Name, "127.0.0.1"} -> LocalAddr;
-                                   {_Name, "::1"} -> LocalAddr;
-                                   {_Name, H} -> H
+                        {_, H} = misc:node_name_host(ENode),
+                        Host = case misc:is_localhost(H) of
+                                   true  -> LocalAddr;
+                                   false -> H
                                end,
                         list_to_binary(misc:join_host_port(Host, Port))
                 end, ENodes),

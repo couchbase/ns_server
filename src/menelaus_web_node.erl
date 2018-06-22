@@ -237,10 +237,10 @@ build_extra_node_info(Config, Node, InfoNode, _BucketsAll, Append) ->
      | Append].
 
 build_node_hostname(Config, Node, LocalAddr) ->
-    Host = case misc:node_name_host(Node) of
-               {_, "127.0.0.1"} -> LocalAddr;
-               {_, "::1"} -> LocalAddr;
-               {_Name, H} -> H
+    {_, H} = misc:node_name_host(Node),
+    Host = case misc:is_localhost(H) of
+               true  -> LocalAddr;
+               false -> H
            end,
     misc:join_host_port(Host, misc:node_rest_port(Config, Node)).
 
