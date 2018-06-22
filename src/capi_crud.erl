@@ -108,7 +108,7 @@ get_meta(Bucket, DocId, VBucket, CAS) ->
 get_xattrs(Bucket, DocId, VBucket, CAS, Permissions) ->
     case ns_memcached:get_xattrs(Bucket, DocId, VBucket, Permissions) of
         {ok, CAS, XAttrs} -> {ok, {[{<<"xattrs">>, {XAttrs}}]}};
-        {ok, _, _} -> throw(bad_cas);
+        {ok, _, _} -> {error, bad_cas};
         Error -> Error
     end.
 
