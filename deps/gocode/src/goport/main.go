@@ -240,20 +240,6 @@ func (p *port) terminateWorkers() {
 	p.childStderr.Wait()
 }
 
-func (p *port) closePipes() {
-	p.stdinPipe.Close()
-
-	// Note that we don't close stdout and stderr. That is because we
-	// might still have goroutines spawned by child readers blocked in
-	// read. Internally File.Close sets fd to -1 without synchronization,
-	// so it would be raceful. But files do have finilizers attached to
-	// them. So we just let the runtime to close the files, once they
-	// garbage collected.
-	//
-	// p.stdoutPipe.Close()
-	// p.stderrPipe.Close()
-}
-
 func (p *port) initLoopState() {
 	p.state.unackedBytes = 0
 	p.state.pendingOp = nil
@@ -492,7 +478,6 @@ func (p *port) loop() error {
 	if err != nil {
 		return fmt.Errorf("failed to start child: %s", err.Error())
 	}
-	defer p.closePipes()
 	defer p.terminateChild()
 
 	p.startWorkers()
