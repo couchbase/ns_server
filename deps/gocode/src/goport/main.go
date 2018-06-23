@@ -168,8 +168,7 @@ func (p *port) startChildObserver() {
 
 	go func() {
 		err := p.child.Wait()
-		switch err.(type) {
-		case *exec.ExitError:
+		if p.child.ProcessState != nil {
 			err = nil
 		}
 
