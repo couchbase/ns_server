@@ -68,7 +68,7 @@ type loopState struct {
 }
 
 type port struct {
-	child     *exec.Cmd
+	child     *Process
 	childSpec portSpec
 
 	opsReader *OpsReader
@@ -80,10 +80,6 @@ type port struct {
 	childStdout *AsyncReader
 	childStderr *AsyncReader
 
-	stdinPipe  io.WriteCloser
-	stdoutPipe io.ReadCloser
-	stderrPipe io.ReadCloser
-
 	state loopState
 }
 
@@ -91,72 +87,13 @@ func newPort(spec portSpec) *port {
 	return &port{childSpec: spec}
 }
 
-func (p *port) closeAll(files []io.Closer) {
-	for _, f := range files {
-		f.Close()
-	}
-}
-
 func (p *port) startChild() error {
-	// files we'll need after fork
-	keepFiles := ([]io.Closer)(nil)
-
-	// files we need to close after fork
-	closeFiles := ([]io.Closer)(nil)
-
-	defer func() {
-		files := append(keepFiles, closeFiles...)
-		p.closeAll(files)
-	}()
-
-	keepFile := func(file io.Closer) {
-		keepFiles = append(keepFiles, file)
-	}
-
-	closeFile := func(file io.Closer) {
-		closeFiles = append(closeFiles, file)
-	}
-
-	stdinR, stdinW, err := os.Pipe()
+	child, err := StartProcess(p.childSpec.cmd, p.childSpec.args)
 	if err != nil {
 		return err
 	}
-	keepFile(stdinW)
-	closeFile(stdinR)
-
-	stdoutR, stdoutW, err := os.Pipe()
-	if err != nil {
-		return err
-	}
-	keepFile(stdoutR)
-	closeFile(stdoutW)
-
-	stderrR, stderrW, err := os.Pipe()
-	if err != nil {
-		return err
-	}
-	keepFile(stderrR)
-	closeFile(stderrW)
-
-	child := exec.Command(p.childSpec.cmd, p.childSpec.args...)
-	child.Stdin = stdinR
-	child.Stdout = stdoutW
-	child.Stderr = stderrW
-
-	SetPgid(child)
-
-	err = child.Start()
-	if err != nil {
-		return err
-	}
-
-	// don't close fds that we need
-	keepFiles = nil
 
 	p.child = child
-	p.stdinPipe = &CloseOnce{File: stdinW}
-	p.stdoutPipe = &CloseOnce{File: stdoutR}
-	p.stderrPipe = &CloseOnce{File: stderrR}
 
 	p.startChildObserver()
 
@@ -167,12 +104,7 @@ func (p *port) startChildObserver() {
 	done := make(chan error)
 
 	go func() {
-		err := p.child.Wait()
-		if p.child.ProcessState != nil {
-			err = nil
-		}
-
-		done <- err
+		done <- p.child.Wait()
 		close(done)
 	}()
 
@@ -196,12 +128,12 @@ func (p *port) terminateChild() error {
 
 	// all the worker goroutines must be stopped at this point
 	if p.childSpec.gracefulShutdown {
-		err := p.stdinPipe.Close()
+		err := p.child.Close()
 		if err != nil {
 			return err
 		}
 	} else {
-		err := KillPgroup(p.child)
+		err := p.child.Kill()
 		if err != nil {
 			return err
 		}
@@ -221,9 +153,9 @@ func (p *port) startWorkers() {
 	p.parentWriterStream = NewNetStringWriter(os.Stdout)
 	p.parentWriter = NewAsyncWriter(p.parentWriterStream)
 
-	p.childStdin = NewAsyncWriter(&SimpleVectorWriter{p.stdinPipe})
-	p.childStdout = NewAsyncReader(p.stdoutPipe)
-	p.childStderr = NewAsyncReader(p.stderrPipe)
+	p.childStdin = NewAsyncWriter(&SimpleVectorWriter{p.child})
+	p.childStdout = NewAsyncReader(p.child.GetStdout())
+	p.childStderr = NewAsyncReader(p.child.GetStderr())
 }
 
 func (p *port) terminateWorkers() {
@@ -418,7 +350,7 @@ func (p *port) handleCloseStream(data []byte) <-chan error {
 	case stdin:
 		p.childStdin.Cancel()
 		p.childStdin.Wait()
-		err := p.stdinPipe.Close()
+		err := p.child.Close()
 		ch <- err
 	default:
 		ch <- fmt.Errorf("unknown stream '%s'", stream)
@@ -518,7 +450,7 @@ func (p *port) loop() error {
 				return err
 			}
 
-			status := GetExitStatus(p.child)
+			status := p.child.GetExitStatus()
 			if status == 0 {
 				return nil
 			}
