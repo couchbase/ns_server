@@ -37,8 +37,7 @@
           exit_status :: boolean(),
           line :: undefined | pos_integer(),
 
-          window_size :: pos_integer(),
-          graceful_shutdown :: boolean()}).
+          window_size :: pos_integer()}).
 
 -record(decoding_context, {
           data = <<>> :: binary(),
@@ -275,15 +274,11 @@ goport_env(Config) ->
 
 goport_args(Config) ->
     WindowSize = Config#config.window_size,
-    GracefulShutdown = Config#config.graceful_shutdown,
-
-    ["-graceful-shutdown=" ++ atom_to_list(GracefulShutdown),
-     "-window-size=" ++ integer_to_list(WindowSize)].
+    ["-window-size=" ++ integer_to_list(WindowSize)].
 
 build_config(Cmd, Opts) ->
     Args = proplists:get_value(args, Opts, []),
     WindowSize = proplists:get_value(window_size, Opts, ?DEFAULT_WINDOW_SIZE),
-    GracefulShutdown = proplists:get_bool(graceful_shutdown, Opts),
 
     StderrToStdout = proplists:get_bool(stderr_to_stdout, Opts),
     Env = proplists:get_value(env, Opts, []),
@@ -306,7 +301,7 @@ build_config(Cmd, Opts) ->
 
     LeftoverOpts = [Opt || {Name, _} = Opt <- proplists:unfold(Opts),
                            not lists:member(Name,
-                                            [window_size, graceful_shutdown,
+                                            [window_size,
                                              stderr_to_stdout, env, cd,
                                              exit_status, line, args, name,
                                              binary, stream])],
@@ -320,8 +315,7 @@ build_config(Cmd, Opts) ->
                              cd = Cd,
                              exit_status = ExitStatus,
                              line = Line,
-                             window_size = WindowSize,
-                             graceful_shutdown = GracefulShutdown},
+                             window_size = WindowSize},
             {ok, Config};
         _ ->
             {error, {unsupported_opts, proplists:get_keys(LeftoverOpts)}}

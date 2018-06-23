@@ -50,9 +50,7 @@ type portSpec struct {
 	cmd  string
 	args []string
 
-	windowSize       int
-	gracefulShutdown bool
-
+	windowSize  int
 	interactive bool
 }
 
@@ -126,17 +124,9 @@ func (p *port) terminateChild() error {
 	default:
 	}
 
-	// all the worker goroutines must be stopped at this point
-	if p.childSpec.gracefulShutdown {
-		err := p.child.Close()
-		if err != nil {
-			return err
-		}
-	} else {
-		err := p.child.Kill()
-		if err != nil {
-			return err
-		}
+	err := p.child.Kill()
+	if err != nil {
+		return err
 	}
 
 	return <-p.state.childDone
@@ -554,7 +544,6 @@ func (r *interactiveReader) ReadPacket() ([]byte, error) {
 }
 
 func main() {
-	var gracefulShutdown bool
 	var windowSize int
 
 	var cmd string
@@ -563,8 +552,6 @@ func main() {
 	var interactive bool
 
 	flag.IntVar(&windowSize, "window-size", 64*1024, "window size")
-	flag.BoolVar(&gracefulShutdown, "graceful-shutdown", false,
-		"shutdown the child gracefully")
 	flag.BoolVar(&interactive, "interactive", false,
 		"run in interactive mode")
 	flag.Var((*cmdFlag)(&cmd), "cmd", "command to execute")
@@ -584,11 +571,10 @@ func main() {
 	log.SetPrefix(fmt.Sprintf("[goport(%s)] ", cmd))
 
 	port := newPort(portSpec{
-		cmd:              cmd,
-		args:             args,
-		windowSize:       windowSize,
-		gracefulShutdown: gracefulShutdown,
-		interactive:      interactive,
+		cmd:         cmd,
+		args:        args,
+		windowSize:  windowSize,
+		interactive: interactive,
 	})
 
 	err := port.loop()
