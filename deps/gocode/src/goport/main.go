@@ -39,12 +39,6 @@ func (e childExitedError) exitStatus() int {
 	return int(e)
 }
 
-const (
-	stdin  = "stdin"
-	stdout = "stdout"
-	stderr = "stderr"
-)
-
 type portSpec struct {
 	cmd  string
 	args []string
@@ -56,26 +50,19 @@ type portSpec struct {
 type loopState struct {
 	unackedBytes int
 	pendingOp    <-chan error
-
-	childStreams map[string]*AsyncReader
 	pendingWrite <-chan error
-
-	childDone    <-chan error
 	shuttingDown bool
 }
 
 type port struct {
-	child     *Process
-	childSpec portSpec
+	child       *Process
+	childWorker *ProcessWorker
+	childSpec   portSpec
 
 	opsReader *OpsReader
 
 	parentWriter       *AsyncWriter
 	parentWriterStream *NetStringWriter
-
-	childStdin  *AsyncWriter
-	childStdout *AsyncReader
-	childStderr *AsyncReader
 
 	state loopState
 }
@@ -91,31 +78,7 @@ func (p *port) startChild() error {
 	}
 
 	p.child = child
-
-	p.startChildObserver()
-
 	return nil
-}
-
-func (p *port) startChildObserver() {
-	done := make(chan error)
-
-	go func() {
-		done <- p.child.Wait()
-		close(done)
-	}()
-
-	p.state.childDone = done
-}
-
-func (p *port) getChildDone() <-chan error {
-	// this makes sure that stderr and stdout are read to completion
-	// before we report the child dead
-	if len(p.state.childStreams) != 0 {
-		return nil
-	}
-
-	return p.state.childDone
 }
 
 func (p *port) startWorkers() {
@@ -129,32 +92,22 @@ func (p *port) startWorkers() {
 	p.parentWriterStream = NewNetStringWriter(os.Stdout)
 	p.parentWriter = NewAsyncWriter(p.parentWriterStream)
 
-	p.childStdin = NewAsyncWriter(&SimpleVectorWriter{p.child})
-	p.childStdout = NewAsyncReader(p.child.GetStdout())
-	p.childStderr = NewAsyncReader(p.child.GetStderr())
+	p.childWorker = NewProcessWorker(p.child)
 }
 
 func (p *port) terminateWorkers() {
 	p.opsReader.Cancel()
 	p.parentWriter.Cancel()
-	p.childStdin.Cancel()
-	p.childStdout.Cancel()
-	p.childStderr.Cancel()
+	p.childWorker.Cancel()
 
 	p.opsReader.Wait()
 	p.parentWriter.Wait()
-	p.childStdin.Wait()
-	p.childStdout.Wait()
-	p.childStderr.Wait()
+	p.childWorker.Wait()
 }
 
 func (p *port) initLoopState() {
 	p.state.unackedBytes = 0
 	p.state.pendingOp = nil
-
-	p.state.childStreams = make(map[string]*AsyncReader)
-	p.state.childStreams[stdout] = p.childStdout
-	p.state.childStreams[stderr] = p.childStderr
 	p.state.pendingWrite = nil
 	p.state.shuttingDown = false
 }
@@ -175,7 +128,7 @@ func (p *port) isWindowFull() bool {
 	return p.state.unackedBytes >= p.childSpec.windowSize
 }
 
-func (p *port) getChildStream(tag string) <-chan []byte {
+func (p *port) getChildEventsChan() <-chan interface{} {
 	if p.state.pendingWrite != nil {
 		return nil
 	}
@@ -186,12 +139,7 @@ func (p *port) getChildStream(tag string) <-chan []byte {
 		return nil
 	}
 
-	stream, ok := p.state.childStreams[tag]
-	if ok {
-		return stream.GetReadChan()
-	}
-
-	return nil
+	return p.childWorker.GetEventsChan()
 }
 
 func (p *port) parentWrite(data ...[]byte) {
@@ -202,15 +150,49 @@ func (p *port) parentSyncWrite(data ...[]byte) error {
 	return <-p.parentWriter.Writev(data...)
 }
 
-func (p *port) proxyChildOutput(tag string, data []byte) {
-	p.state.unackedBytes += len(data)
-	p.parentWrite([]byte(tag), []byte(":"), data)
-}
-
 func (p *port) abortPendingOp() {
 	if p.state.pendingOp != nil {
 		p.handleOpResult(errors.New("child exited"))
 	}
+}
+
+func (p *port) handleChildEvent(event interface{}) error {
+	switch event.(type) {
+	case *ProcessStreamData:
+		p.handleStreamData(event.(*ProcessStreamData))
+	case *ProcessStreamError:
+		p.handleStreamError(event.(*ProcessStreamError))
+	case *ProcessExited:
+		return p.handleProcessExited(event.(*ProcessExited))
+	default:
+		panic(fmt.Errorf("unknown event %v", event))
+	}
+
+	return nil
+}
+
+func (p *port) handleStreamData(event *ProcessStreamData) {
+	p.state.unackedBytes += len(event.Data)
+	p.parentWrite([]byte(event.Stream), []byte(":"), event.Data)
+}
+
+func (p *port) handleStreamError(event *ProcessStreamError) {
+	msg := [][]byte{[]byte("eof:"), []byte(event.Stream)}
+	if event.Error != io.EOF {
+		msg = append(msg, []byte(":"), []byte(event.Error.Error()))
+	}
+
+	p.parentWrite(msg...)
+}
+
+func (p *port) handleProcessExited(event *ProcessExited) childExitedError {
+	if p.state.shuttingDown {
+		// respond to the shutdown request
+		p.handleOpResult(nil)
+		p.noteOpDone()
+	}
+
+	return childExitedError(event.Status)
 }
 
 func (p *port) handleOp(op *Op) {
@@ -249,7 +231,7 @@ func (p *port) handleShutdown() <-chan error {
 }
 
 func (p *port) handleWrite(data []byte) <-chan error {
-	return p.childStdin.Writev(data)
+	return p.childWorker.Write(data)
 }
 
 func (p *port) handleAck(data []byte) <-chan error {
@@ -280,10 +262,8 @@ func (p *port) handleCloseStream(data []byte) <-chan error {
 	stream := string(data)
 
 	switch stream {
-	case stdin:
-		p.childStdin.Cancel()
-		p.childStdin.Wait()
-		err := p.child.Close()
+	case StreamStdin:
+		err := p.childWorker.Close()
 		ch <- err
 	default:
 		ch <- fmt.Errorf("unknown stream '%s'", stream)
@@ -320,26 +300,6 @@ func (p *port) noteShuttingDown() {
 	p.state.shuttingDown = true
 }
 
-func (p *port) handleChildRead(tag string, data []byte, ok bool) {
-	if !ok {
-		stream := p.state.childStreams[tag]
-		delete(p.state.childStreams, tag)
-		p.reportEOF(tag, stream.GetError())
-		return
-	}
-
-	p.proxyChildOutput(tag, data)
-}
-
-func (p *port) reportEOF(tag string, reason error) {
-	msg := [][]byte{[]byte("eof:"), []byte(tag)}
-	if reason != io.EOF {
-		msg = append(msg, []byte(":"), []byte(reason.Error()))
-	}
-
-	p.parentWrite(msg...)
-}
-
 func (p *port) loop() error {
 	err := p.startChild()
 	if err != nil {
@@ -373,26 +333,17 @@ func (p *port) loop() error {
 				return fmt.Errorf(
 					"failed to write to parent: %s", err.Error())
 			}
-		case err := <-p.getChildDone():
+		case event, ok := <-p.getChildEventsChan():
+			if !ok {
+				return fmt.Errorf(
+					"unexpected child error: %v",
+					p.childWorker.GetError())
+			}
+
+			err = p.handleChildEvent(event)
 			if err != nil {
 				return err
 			}
-
-			if p.state.shuttingDown {
-				// respond to the shutdown request
-				p.handleOpResult(nil)
-				p.noteOpDone()
-			}
-
-			status := p.child.GetExitStatus()
-			if status == 0 {
-				return nil
-			}
-			return childExitedError(status)
-		case data, ok := <-p.getChildStream(stdout):
-			p.handleChildRead(stdout, data, ok)
-		case data, ok := <-p.getChildStream(stderr):
-			p.handleChildRead(stderr, data, ok)
 		case err := <-p.state.pendingWrite:
 			p.noteWriteDone()
 			if err != nil {
@@ -517,14 +468,16 @@ func main() {
 
 	err := port.loop()
 	if err != nil {
-		status := 1
+		var exitStatus int
 
-		childError, ok := err.(childExitedError)
-		if ok {
-			status = childError.exitStatus()
+		switch err.(type) {
+		case childExitedError:
+			exitStatus = err.(childExitedError).exitStatus()
+		default:
+			log.Print(err.Error())
+			exitStatus = 1
 		}
 
-		log.Print(err.Error())
-		os.Exit(status)
+		os.Exit(exitStatus)
 	}
 }

@@ -22,6 +22,18 @@ import (
 	"sync"
 )
 
+const (
+	// StreamStdin is a constant used to designate process' standard
+	// input.
+	StreamStdin = "stdin"
+	// StreamStdout is a constant used to designate process' standard
+	// output.
+	StreamStdout = "stdout"
+	// StreamStderr is a constant used to designate process' standard
+	// error.
+	StreamStderr = "stderr"
+)
+
 var (
 	// ErrClosed is an error returned by Process methods on attempt to do
 	// something with a stream that is already closed.
@@ -174,5 +186,210 @@ func (p *Process) GetExitStatus() int {
 func closeAll(files []io.Closer) {
 	for _, f := range files {
 		f.Close()
+	}
+}
+
+// ProcessWorker provides a higher level API around the Process.
+type ProcessWorker struct {
+	process *Process
+
+	stdinWriter  *AsyncWriter
+	stdoutReader *AsyncReader
+	stderrReader *AsyncReader
+
+	events     chan interface{}
+	observerCh chan error
+
+	activeStreams map[string]*AsyncReader
+
+	err error
+
+	*Canceler
+}
+
+// ProcessStreamData is returned via the events channel whenever the process
+// writes something on either standard output or standard error.
+type ProcessStreamData struct {
+	// Stream is either StreamStdout or StreamStderr.
+	Stream string
+	// Data is that data that was produced on the corresponding stream.
+	Data []byte
+}
+
+// ProcessStreamError is returned via the events channel whenever the
+// ProcessWorker encounters an error while reading from any of the process'
+// streams.
+type ProcessStreamError struct {
+	// Stream is either StreamStdout or StreamStderr.
+	Stream string
+	// Error indicates the nature of the error. Most commonly, io.EOF.
+	Error error
+}
+
+// ProcessExited is returned via the events channel when the process
+// exits. It's always the last message returned before the events channel is
+// closed (unless something abnormal happens, in which case, there might not
+// be ProcessExited event queued at all).
+type ProcessExited struct {
+	// Status is the exit code with which the process has exited.
+	Status int
+}
+
+// NewProcessWorker creates a worker for the passed Process.
+func NewProcessWorker(process *Process) *ProcessWorker {
+	w := &ProcessWorker{
+		process:  process,
+		events:   make(chan interface{}),
+		Canceler: NewCanceler(),
+	}
+
+	w.startWorkers()
+	w.startObserver()
+
+	go w.loop()
+
+	return w
+}
+
+// GetError returns an error which caused the abnormal termination of the
+// ProcessWorker. It can only safely be used once the events channel was
+// closed.
+func (w *ProcessWorker) GetError() error {
+	return w.err
+}
+
+// GetEventsChan returns the channel used to expose read/exit events about the
+// corresponding process.
+func (w *ProcessWorker) GetEventsChan() <-chan interface{} {
+	return w.events
+}
+
+// Close closes a standard input of the underlying process.
+func (w *ProcessWorker) Close() error {
+	w.stdinWriter.Cancel()
+	w.stdinWriter.Wait()
+
+	return w.process.Close()
+}
+
+// Write writes to the standard input of the underlying process.
+func (w *ProcessWorker) Write(data []byte) <-chan error {
+	return w.stdinWriter.Writev(data)
+}
+
+func (w *ProcessWorker) loop() {
+	defer w.Follower().Done()
+	defer w.terminateWorkers()
+	defer close(w.events)
+
+	for {
+		select {
+		case <-w.Follower().Cancel():
+			w.err = ErrCanceled
+			return
+		default:
+			select {
+			case data, ok := <-w.getStream(StreamStdout):
+				w.handleRead(StreamStdout, data, ok)
+			case data, ok := <-w.getStream(StreamStderr):
+				w.handleRead(StreamStderr, data, ok)
+			case err := <-w.getChildDone():
+				if err != nil {
+					w.err = err
+					return
+				}
+
+				ok := w.handleProcessExit()
+				if ok {
+					return
+				}
+			}
+		}
+	}
+}
+
+func (w *ProcessWorker) startWorkers() {
+	w.stdinWriter = NewAsyncWriter(&SimpleVectorWriter{w.process})
+	w.stdoutReader = NewAsyncReader(w.process.GetStdout())
+	w.stderrReader = NewAsyncReader(w.process.GetStderr())
+
+	w.activeStreams = make(map[string]*AsyncReader)
+	w.activeStreams[StreamStdout] = w.stdoutReader
+	w.activeStreams[StreamStderr] = w.stderrReader
+}
+
+func (w *ProcessWorker) terminateWorkers() {
+	w.stdinWriter.Cancel()
+	w.stdoutReader.Cancel()
+	w.stderrReader.Cancel()
+
+	w.stdinWriter.Wait()
+	w.stdoutReader.Wait()
+	w.stderrReader.Wait()
+}
+
+func (w *ProcessWorker) getStream(stream string) <-chan []byte {
+	reader, ok := w.activeStreams[stream]
+	if !ok {
+		return nil
+	}
+
+	return reader.GetReadChan()
+}
+
+func (w *ProcessWorker) startObserver() {
+	ch := make(chan error)
+
+	go func() {
+		ch <- w.process.Wait()
+		close(ch)
+	}()
+
+	w.observerCh = ch
+}
+
+func (w *ProcessWorker) getChildDone() <-chan error {
+	// this makes sure that stderr and stdout are read to completion
+	// before we report the child dead
+	if len(w.activeStreams) != 0 {
+		return nil
+	}
+
+	return w.observerCh
+}
+
+func (w *ProcessWorker) handleRead(stream string, data []byte, ok bool) {
+	if !ok {
+		reader := w.activeStreams[stream]
+		delete(w.activeStreams, stream)
+
+		event := &ProcessStreamError{
+			Stream: stream,
+			Error:  reader.GetError(),
+		}
+		w.queueEvent(event)
+		return
+	}
+
+	event := &ProcessStreamData{
+		Stream: stream,
+		Data:   data,
+	}
+	w.queueEvent(event)
+}
+
+func (w *ProcessWorker) handleProcessExit() bool {
+	event := &ProcessExited{
+		Status: w.process.GetExitStatus(),
+	}
+	return w.queueEvent(event)
+}
+
+func (w *ProcessWorker) queueEvent(event interface{}) bool {
+	select {
+	case w.events <- event:
+		return true
+	case <-w.Follower().Cancel():
+		return false
 	}
 }
