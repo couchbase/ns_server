@@ -198,8 +198,8 @@ func (p *port) getChildStream(tag string) <-chan []byte {
 		return nil
 	}
 
-	stream := p.state.childStreams[tag]
-	if stream != nil {
+	stream, ok := p.state.childStreams[tag]
+	if ok {
 		return stream.GetReadChan()
 	}
 
@@ -221,10 +221,6 @@ func (p *port) doProxyChildOutput(tag string, data []byte) <-chan error {
 
 func (p *port) flushChildStream(tag string) {
 	stream := p.state.childStreams[tag]
-
-	if stream == nil {
-		return
-	}
 
 	for {
 		timeout := time.After(500 * time.Millisecond)
@@ -259,8 +255,9 @@ func (p *port) flushChildStreams() {
 		p.state.pendingWrite = nil
 	}
 
-	p.flushChildStream(stderr)
-	p.flushChildStream(stdout)
+	for stream := range p.state.childStreams {
+		p.flushChildStream(stream)
+	}
 }
 
 func (p *port) handleOp(op *Op) {
@@ -384,7 +381,7 @@ func (p *port) handleChildRead(tag string, data []byte, ok bool) error {
 
 		if err == io.EOF {
 			// stream closed
-			p.state.childStreams[tag] = nil
+			delete(p.state.childStreams, tag)
 			return nil
 		}
 
