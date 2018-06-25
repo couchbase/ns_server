@@ -20,6 +20,7 @@
 
 -export([map_port/2,
          service_ports/1,
+         service_ports_config_name/1,
          filter_rename_ports/2,
          get_external/0,
          get_external/2]).
@@ -77,7 +78,11 @@ all_ports() ->
      ?define_port(cbas_replication_port, cbasReplication, misc)].
 
 service_ports(Service) ->
-    [P#port.config || P <- all_ports(), P#port.service =:= Service].
+    [{P#port.config, P#port.rest} ||
+     P <- all_ports(), P#port.service =:= Service].
+
+service_ports_config_name(Service) ->
+    [C || {C, _} <- service_ports(Service)].
 
 map_port(from_rest, Port) ->
     map_port(Port, #port.rest, #port.config);

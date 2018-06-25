@@ -115,10 +115,25 @@ submit_full_reset() ->
               gen_event:notify(bucket_info_cache_invalidations, '*')
       end).
 
+get_service_ports(Node, Config, Service) ->
+    ServicePorts = alternate_addresses:service_ports(Service),
+    lists:filtermap(fun ({ConfigKey, RestKey}) ->
+                            case ns_config:search(Config,
+                                                  {node, Node, ConfigKey},
+                                                  undefined) of
+                                undefined ->
+                                    false;
+                                Port ->
+                                    {true, {RestKey, Port}}
+                            end
+                    end, ServicePorts).
+
 build_services(Node, Config, EnabledServices) ->
-    GetPort = fun (ConfigKey, JKey) ->
+    GetPort = fun (ConfigKey) ->
                       case ns_config:search_node(Node, Config, ConfigKey) of
                           {value, Value} when Value =/= undefined ->
+                              JKey = alternate_addresses:map_port(from_config,
+                                                                   ConfigKey),
                               [{JKey, Value}];
                           _ ->
                               []
@@ -137,68 +152,26 @@ build_services(Node, Config, EnabledServices) ->
     OptServices =
         [case S of
              kv ->
-                 GetPort(ssl_capi_port, capiSSL) ++
-                     GetPort(capi_port, capi) ++
-                     GetPortFromProp(memcached, ssl_port, kvSSL) ++
-                     GetPort(projector_port, projector) ++
-                     GetPortFromProp(memcached, port, kv);
-             n1ql ->
-                 [{n1ql, query_rest:get_query_port(Config, Node)}] ++
-                     case query_rest:get_ssl_query_port(Config, Node) of
-                         undefined ->
-                             [];
-                         Port ->
-                             [{n1qlSSL, Port}]
-                     end;
-             index ->
-                 [
-                  {indexAdmin, ns_config:search(Config, {node, Node, indexer_admin_port}, undefined)},
-                  {indexScan, ns_config:search(Config, {node, Node, indexer_scan_port}, undefined)},
-                  {indexHttp, ns_config:search(Config, {node, Node, indexer_http_port}, undefined)},
-                  {indexStreamInit, ns_config:search(Config, {node, Node, indexer_stinit_port}, undefined)},
-                  {indexStreamCatchup, ns_config:search(Config, {node, Node, indexer_stcatchup_port}, undefined)},
-                  {indexStreamMaint, ns_config:search(Config, {node, Node, indexer_stmaint_port}, undefined)}
-                 ] ++ case ns_config:search(Config, {node, Node, indexer_https_port}, undefined) of
-                          undefined ->
-                              [];
-                          Port ->
-                              [{indexHttps, Port}]
-                      end;
-             fts ->
-                 [{fts, ns_config:search(Config, {node, Node, fts_http_port}, undefined)}] ++
-                     case ns_config:search(Config, {node, Node, fts_ssl_port}, undefined) of
-                         undefined ->
-                             [];
-                         Port ->
-                             [{ftsSSL, Port}]
-                     end;
-             eventing ->
-                 [{eventingAdminPort,
-                   ns_config:search(Config, {node, Node, eventing_http_port}, undefined)}] ++
-                     case ns_config:search(Config, {node, Node, eventing_https_port}, undefined) of
-                         undefined ->
-                             [];
-                         Port ->
-                             [{eventingSSL, Port}]
-                     end;
-             cbas ->
-                 [
-                  {cbas, ns_config:search(Config, {node, Node, cbas_http_port}, undefined)},
-                  {cbasCc, ns_config:search(Config, {node, Node, cbas_cc_http_port}, undefined)},
-                  {cbasAdmin, ns_config:search(Config, {node, Node, cbas_admin_port}, undefined)}
-                 ] ++ case ns_config:search(Config, {node, Node, cbas_ssl_port}, undefined) of
-                         undefined ->
-                             [];
-                         Port ->
-                             [{cbasSSL, Port}]
-                     end;
+                 %% Special handling needed for kv service.
+                 GetPort(ssl_capi_port) ++
+                     GetPort(capi_port) ++
+                     GetPort(projector_port) ++
+                     GetPortFromProp(memcached, ssl_port,
+                                     alternate_addresses:map_port(
+                                       from_config, memcached_ssl_port)) ++
+                     GetPortFromProp(memcached, port,
+                                     alternate_addresses:map_port(
+                                       from_config, memcached_port));
              example ->
-                 []
+                 [];
+             Service ->
+                 get_service_ports(Node, Config, Service)
          end || S <- EnabledServices],
 
-    MgmtSSL = GetPort(ssl_rest_port, mgmtSSL),
-    [{mgmt, misc:node_rest_port(Config, Node)}
-     | lists:append([MgmtSSL | OptServices])].
+    MgmtSSL = GetPort(ssl_rest_port),
+    Mgmt = {alternate_addresses:map_port(from_config, rest_port),
+                 misc:node_rest_port(Config, Node)},
+    [Mgmt | lists:append([MgmtSSL | OptServices])].
 
 maybe_build_ext_hostname(Node) ->
     {_, H} = misc:node_name_host(Node),
@@ -220,7 +193,9 @@ build_nodes_ext([Node | RestNodes], Config, NodesExtAcc) ->
           end,
     {ExtHostname, ExtPorts} = alternate_addresses:get_external(Node, Config),
     ReqServices = [rest | Services],
-    WantedPorts = lists:flatmap(fun alternate_addresses:service_ports/1, ReqServices),
+    WantedPorts = lists:flatmap(
+                    fun alternate_addresses:service_ports_config_name/1,
+                    ReqServices),
     External = construct_ext_json(
                  ExtHostname,
                  alternate_addresses:filter_rename_ports(ExtPorts, WantedPorts)),
