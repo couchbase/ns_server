@@ -240,7 +240,7 @@ do_compute_bucket_info(Bucket, Config) ->
             not_present
     end.
 
-construct_ext_json(undefined, []) ->
+construct_ext_json(undefined, _Ports) ->
     [];
 construct_ext_json(Hostname, []) ->
     [{external, {[{hostname, list_to_binary(Hostname)}]}}];

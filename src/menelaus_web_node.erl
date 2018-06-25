@@ -244,10 +244,8 @@ build_node_hostname(Config, Node, LocalAddr) ->
            end,
     misc:join_host_port(Host, misc:node_rest_port(Config, Node)).
 
-construct_ext_mochijson(undefined, []) ->
+construct_ext_mochijson(undefined, _Ports) ->
     [];
-construct_ext_mochijson(undefined, Ports) ->
-    [{external, {struct, [{ports, {struct, Ports}}]}}];
 construct_ext_mochijson(Hostname, []) ->
     [{external, {struct, [{hostname, list_to_binary(Hostname)}]}}];
 construct_ext_mochijson(Hostname, Ports) ->
@@ -452,6 +450,10 @@ handle_node_rename(Req) ->
             reply_json(Req, [Error], Status)
     end.
 
+construct_ext_ports_mochijson([]) -> [];
+construct_ext_ports_mochijson(Ports) ->
+    [{external, {struct, [{ports, {struct, Ports}}]}}].
+
 handle_node_self_xdcr_ssl_ports(Req) ->
     case is_xdcr_over_ssl_allowed() of
         false ->
@@ -462,8 +464,7 @@ handle_node_self_xdcr_ssl_ports(Req) ->
             {_, ExtPorts} = alternate_addresses:get_external(),
             WantedPorts = [ssl_capi_port,
                            ssl_rest_port],
-            External = construct_ext_mochijson(
-                         undefined,
+            External = construct_ext_ports_mochijson(
                          alternate_addresses:filter_rename_ports(ExtPorts, WantedPorts)),
             AltAddr = case External of
                           [] -> [];

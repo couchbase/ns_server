@@ -89,6 +89,11 @@ map_port(Port, FromField, ToField) ->
         Tuple -> element(ToField, Tuple)
     end.
 
+get_internal_ports(Node, Config) ->
+    Services = ns_cluster_membership:node_active_services(Config, Node),
+    IntPorts = bucket_info_cache:build_services(Node, Config, Services),
+    [{map_port(from_rest, atom_to_binary(P, latin1)), PN} || {P, PN} <- IntPorts].
+
 get_external() ->
     get_external(node(), ns_config:latest()).
 get_external(Node, Config) ->
@@ -96,7 +101,12 @@ get_external(Node, Config) ->
                                           alternate_addresses, external,
                                           []),
     Hostname = proplists:get_value(hostname, External),
-    Ports    = proplists:get_value(ports, External, []),
+    Ports    = case proplists:get_value(ports, External, []) of
+                   [] when Hostname =/= undefined ->
+                       get_internal_ports(Node, Config);
+                   P ->
+                       P
+               end,
     {Hostname, Ports}.
 
 filter_rename_ports([], _WantedPorts) -> [];
