@@ -47,11 +47,19 @@ type portSpec struct {
 	interactive bool
 }
 
+type processState int
+
+const (
+	processStateRunning      = processState(0)
+	processStateShuttingDown = iota
+)
+
 type loopState struct {
 	unackedBytes int
 	pendingOp    <-chan error
 	pendingWrite <-chan error
-	shuttingDown bool
+
+	processState processState
 }
 
 type port struct {
@@ -109,7 +117,7 @@ func (p *port) initLoopState() {
 	p.state.unackedBytes = 0
 	p.state.pendingOp = nil
 	p.state.pendingWrite = nil
-	p.state.shuttingDown = false
+	p.state.processState = processStateRunning
 }
 
 func (p *port) getOps() <-chan *Op {
@@ -131,7 +139,7 @@ func (p *port) getChildEventsChan() <-chan interface{} {
 
 	if p.isWindowFull() &&
 		// shutdown request implicitly acks everything
-		!p.state.shuttingDown {
+		!p.isShuttingDown() {
 		return nil
 	}
 
@@ -182,7 +190,7 @@ func (p *port) handleStreamError(event *ProcessStreamError) {
 }
 
 func (p *port) handleProcessExited(event *ProcessExited) childExitedError {
-	if p.state.shuttingDown {
+	if p.isShuttingDown() {
 		// respond to the shutdown request
 		p.handleOpResult(nil)
 		p.noteOpDone()
@@ -293,7 +301,11 @@ func (p *port) noteWriteDone() {
 }
 
 func (p *port) noteShuttingDown() {
-	p.state.shuttingDown = true
+	p.state.processState = processStateShuttingDown
+}
+
+func (p *port) isShuttingDown() bool {
+	return p.state.processState == processStateShuttingDown
 }
 
 func (p *port) loop() error {
