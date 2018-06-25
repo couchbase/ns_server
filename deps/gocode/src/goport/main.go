@@ -113,10 +113,6 @@ func (p *port) initLoopState() {
 }
 
 func (p *port) getOps() <-chan *Op {
-	if p.state.shuttingDown {
-		return nil
-	}
-
 	if p.state.pendingOp != nil {
 		return nil
 	}
