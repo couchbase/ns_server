@@ -400,7 +400,7 @@ func (p *port) loop() error {
 	if err != nil {
 		return fmt.Errorf("failed to start child: %s", err.Error())
 	}
-	defer p.terminateChild()
+	defer p.child.Kill()
 
 	p.startWorkers()
 	defer p.terminateWorkers()
