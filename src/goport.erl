@@ -563,9 +563,22 @@ process_port_packet(<<"stdout">>, Data, State) ->
     handle_port_output(stdout, Data, State);
 process_port_packet(<<"stderr">>, Data, State) ->
     handle_port_output(stderr, Data, State);
+process_port_packet(<<"eof">>, Data, State) ->
+    handle_eof(Data, State);
 process_port_packet(Type, Arg, State) ->
     ?log_warning("Unrecognized packet from port:~nType: ~s~nArg: ~s",
                  [Type, Arg]),
+    State.
+
+handle_eof(Data, State) ->
+    case binary:split(Data, <<":">>) of
+        [Stream] ->
+            ?log_debug("Stream '~s' closed", [Stream]);
+        [Stream, Error] ->
+            ?log_warning("Stream '~s' closed with error: ~s", [Stream, Error]),
+            exit({stream_error, Stream, Error})
+    end,
+
     State.
 
 handle_op_response(Response, #state{current_op = {Op, Handler}} = State) ->

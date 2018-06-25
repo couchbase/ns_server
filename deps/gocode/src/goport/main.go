@@ -374,22 +374,24 @@ func (p *port) noteShuttingDown() {
 	p.state.shuttingDown = true
 }
 
-func (p *port) handleChildRead(tag string, data []byte, ok bool) error {
+func (p *port) handleChildRead(tag string, data []byte, ok bool) {
 	if !ok {
 		stream := p.state.childStreams[tag]
-		err := stream.GetError()
-
-		if err == io.EOF {
-			// stream closed
-			delete(p.state.childStreams, tag)
-			return nil
-		}
-
-		return fmt.Errorf("failed to read from child: %s", err.Error())
+		delete(p.state.childStreams, tag)
+		p.reportEOF(tag, stream.GetError())
+		return
 	}
 
 	p.proxyChildOutput(tag, data)
-	return nil
+}
+
+func (p *port) reportEOF(tag string, reason error) {
+	msg := [][]byte{[]byte("eof:"), []byte(tag)}
+	if reason != io.EOF {
+		msg = append(msg, []byte(":"), []byte(reason.Error()))
+	}
+
+	p.state.pendingWrite = p.parentWriter.Writev(msg...)
 }
 
 func (p *port) loop() error {
@@ -443,15 +445,9 @@ func (p *port) loop() error {
 			}
 			return childExitedError(status)
 		case data, ok := <-p.getChildStream(stdout):
-			err := p.handleChildRead(stdout, data, ok)
-			if err != nil {
-				return err
-			}
+			p.handleChildRead(stdout, data, ok)
 		case data, ok := <-p.getChildStream(stderr):
-			err := p.handleChildRead(stderr, data, ok)
-			if err != nil {
-				return err
-			}
+			p.handleChildRead(stderr, data, ok)
 		case err := <-p.state.pendingWrite:
 			p.noteWriteDone()
 			if err != nil {
