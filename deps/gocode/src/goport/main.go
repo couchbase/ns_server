@@ -27,7 +27,6 @@ import (
 	"os/exec"
 	"path"
 	"strconv"
-	"time"
 )
 
 type childExitedError int
@@ -110,26 +109,13 @@ func (p *port) startChildObserver() {
 }
 
 func (p *port) getChildDone() <-chan error {
-	if p.state.shuttingDown {
+	// this makes sure that stderr and stdout are read to completion
+	// before we report the child dead
+	if len(p.state.childStreams) != 0 {
 		return nil
 	}
 
 	return p.state.childDone
-}
-
-func (p *port) terminateChild() error {
-	select {
-	case err := <-p.state.childDone:
-		return err
-	default:
-	}
-
-	err := p.child.Kill()
-	if err != nil {
-		return err
-	}
-
-	return <-p.state.childDone
 }
 
 func (p *port) startWorkers() {
@@ -185,16 +171,18 @@ func (p *port) getOps() <-chan *Op {
 	return p.opsReader.GetOpsChan()
 }
 
-func (p *port) getChildStream(tag string) <-chan []byte {
-	if p.state.shuttingDown {
-		return nil
-	}
+func (p *port) isWindowFull() bool {
+	return p.state.unackedBytes >= p.childSpec.windowSize
+}
 
+func (p *port) getChildStream(tag string) <-chan []byte {
 	if p.state.pendingWrite != nil {
 		return nil
 	}
 
-	if p.state.unackedBytes >= p.childSpec.windowSize {
+	if p.isWindowFull() &&
+		// shutdown request implicitly acks everything
+		!p.state.shuttingDown {
 		return nil
 	}
 
@@ -206,57 +194,22 @@ func (p *port) getChildStream(tag string) <-chan []byte {
 	return nil
 }
 
+func (p *port) parentWrite(data ...[]byte) {
+	p.state.pendingWrite = p.parentWriter.Writev(data...)
+}
+
 func (p *port) parentSyncWrite(data ...[]byte) error {
 	return <-p.parentWriter.Writev(data...)
 }
 
 func (p *port) proxyChildOutput(tag string, data []byte) {
 	p.state.unackedBytes += len(data)
-	p.state.pendingWrite = p.doProxyChildOutput(tag, data)
-}
-
-func (p *port) doProxyChildOutput(tag string, data []byte) <-chan error {
-	return p.parentWriter.Writev([]byte(tag), []byte(":"), data)
-}
-
-func (p *port) flushChildStream(tag string) {
-	stream := p.state.childStreams[tag]
-
-	for {
-		timeout := time.After(500 * time.Millisecond)
-
-		select {
-		case data, ok := <-stream.GetReadChan():
-			if !ok {
-				return
-			}
-			<-p.doProxyChildOutput(tag, data)
-		case <-timeout:
-			// This shouldn't happen as long as the child
-			// terminates properly. But if the child creates new
-			// process group and we don't terminate all processes
-			// (which we don't do at least on windows), then we'll
-			// have to wait forever here.
-			log.Printf("Timeout while flushing %s", tag)
-			return
-		}
-	}
+	p.parentWrite([]byte(tag), []byte(":"), data)
 }
 
 func (p *port) abortPendingOp() {
 	if p.state.pendingOp != nil {
 		p.handleOpResult(errors.New("child exited"))
-	}
-}
-
-func (p *port) flushChildStreams() {
-	if p.state.pendingWrite != nil {
-		<-p.state.pendingWrite
-		p.state.pendingWrite = nil
-	}
-
-	for stream := range p.state.childStreams {
-		p.flushChildStream(stream)
 	}
 }
 
@@ -282,23 +235,16 @@ func (p *port) handleOp(op *Op) {
 func (p *port) handleShutdown() <-chan error {
 	ch := make(chan error, 1)
 
-	// before we can call terminateChild we need to stop child stdin
-	// worker
-	p.childStdin.Cancel()
-	p.childStdin.Wait()
-
-	err := p.terminateChild()
+	err := p.child.Kill()
 	if err != nil {
 		ch <- err
-	} else {
-		p.flushChildStreams()
-		ch <- nil
+		return ch
 	}
 
-	// even if got the error from terminateChild, there's not much we can
-	// do
 	p.noteShuttingDown()
 
+	// Note that the channel is empty. The operation is responded to once
+	// we see the child terminate.
 	return ch
 }
 
@@ -391,7 +337,7 @@ func (p *port) reportEOF(tag string, reason error) {
 		msg = append(msg, []byte(":"), []byte(reason.Error()))
 	}
 
-	p.state.pendingWrite = p.parentWriter.Writev(msg...)
+	p.parentWrite(msg...)
 }
 
 func (p *port) loop() error {
@@ -406,10 +352,6 @@ func (p *port) loop() error {
 
 	p.initLoopState()
 	defer p.abortPendingOp()
-
-	// try to shudown the child gracefully first, this will attempt to
-	// flush the child streams, so the workers need to be alive
-	defer func() { <-p.handleShutdown() }()
 
 	for {
 		select {
@@ -431,12 +373,15 @@ func (p *port) loop() error {
 				return fmt.Errorf(
 					"failed to write to parent: %s", err.Error())
 			}
-			if p.state.shuttingDown {
-				return nil
-			}
 		case err := <-p.getChildDone():
 			if err != nil {
 				return err
+			}
+
+			if p.state.shuttingDown {
+				// respond to the shutdown request
+				p.handleOpResult(nil)
+				p.noteOpDone()
 			}
 
 			status := p.child.GetExitStatus()
