@@ -83,11 +83,13 @@ loop(GetNodes, StorageFrontend, RemoteNodes) ->
                 ?log_debug("Received sync_token from ~p", [From]),
                 gen_server:reply(From, ok),
                 RemoteNodes;
-            {'$gen_call', From, {sync_to_me, Timeout}} ->
-                ?log_debug("Received sync_to_me with timeout = ~p", [Timeout]),
+            {'$gen_call', From, {sync_to_me, NodesWanted, Timeout}} ->
+                ?log_debug("Received sync_to_me with timeout = ~p, nodes = ~p",
+                           [Timeout, NodesWanted]),
                 proc_lib:spawn_link(
                   fun () ->
-                          handle_sync_to_me(From, StorageFrontend, RemoteNodes, Timeout)
+                          handle_sync_to_me(From, StorageFrontend, NodesWanted,
+                                            Timeout)
                   end),
                 RemoteNodes;
             {'DOWN', _Ref, _Type, {Server, RemoteNode}, Error} ->

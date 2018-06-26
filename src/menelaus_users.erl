@@ -585,7 +585,7 @@ do_upgrade_to_50(Nodes, Repair) ->
     case Repair of
         true ->
             %% in case if aborted upgrade left some junk
-            replicated_storage:sync_to_me(storage_name(),
+            replicated_storage:sync_to_me(storage_name(), Nodes,
                                           ?get_timeout(users_upgrade, 60000)),
             replicated_dets:delete_all(storage_name());
         false ->
@@ -728,7 +728,7 @@ do_upgrade_to_55(Nodes) ->
     ok = ns_config_rep:ensure_config_seen_by_nodes(Nodes),
 
     replicated_storage:sync_to_me(
-      storage_name(), ?get_timeout(rbac_55_upgrade_key(), 60000)),
+      storage_name(), Nodes, ?get_timeout(rbac_55_upgrade_key(), 60000)),
 
     UpdateUsers = fetch_users_for_55_upgrade(),
     lists:foreach(fun (Identity) ->
