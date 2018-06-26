@@ -16,7 +16,6 @@
 -module(goport).
 
 -include("ns_common.hrl").
--include("triq.hrl").
 
 -behavior(gen_server).
 
@@ -635,7 +634,7 @@ mark_delivery_wanted(#state{deliver = false} = State) ->
 
 netstring_decode(#decoding_context{length = undefined,
                                    data = Data} = Ctx) ->
-    TrimmedData = trim_spaces(Data),
+    TrimmedData = string:trim(Data, leading),
     case get_length(TrimmedData) of
         {ok, Len, RestData} ->
             NewCtx = Ctx#decoding_context{length = Len,
@@ -710,40 +709,6 @@ extract_length(Pos, Data, DataSize) ->
         error:badarg ->
             {error, invalid_netstring}
     end.
-
-trim_spaces(Binary) ->
-    do_trim_spaces(Binary, 0, byte_size(Binary)).
-
-do_trim_spaces(_Binary, Size, Size) ->
-    <<>>;
-do_trim_spaces(Binary, P, Size) ->
-    case is_space(binary:at(Binary, P)) of
-        true ->
-            do_trim_spaces(Binary, P+1, Size);
-        false ->
-            binary:part(Binary, P, Size - P)
-    end.
-
-is_space($\t) ->
-    true;
-is_space($\s) ->
-    true;
-is_space($\r) ->
-    true;
-is_space($\n) ->
-    true;
-is_space(_) ->
-    false.
-
-prop_trim_spaces_() ->
-    {?FORALL(Str, list(oneof("\r\s\t\nabcdef")),
-             begin
-                 Binary = list_to_binary(Str),
-
-                 binary_to_list(trim_spaces(Binary)) =:=
-                     misc:remove_leading_whitespace(Str)
-             end),
-     [{iters, 1000}]}.
 
 process_name(Path, Opts) ->
     case proplists:get_value(name, Opts) of
