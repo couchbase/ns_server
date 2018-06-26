@@ -15,6 +15,7 @@
 %%
 -module(goport).
 
+-include("cut.hrl").
 -include("ns_common.hrl").
 
 -behavior(gen_server).
@@ -474,11 +475,12 @@ handle_port_erlang_exit(Reason, State) ->
     NewState#state{port = undefined}.
 
 flush_everything(State) ->
-    State1 = maybe_interrupt_pending_ops(State),
-    State2 = flush_packet_context(stdout, State1),
-    State3 = flush_packet_context(stderr, State2),
-    State4 = maybe_flush_invalid_data(State3),
-    flush_queue(State4).
+    functools:chain(State,
+                    [maybe_interrupt_pending_ops(_),
+                     flush_packet_context(stdout, _),
+                     flush_packet_context(stderr, _),
+                     maybe_flush_invalid_data(_),
+                     flush_queue(_)]).
 
 flush_queue(#state{deliver_queue = Queue} = State) ->
     lists:foreach(
