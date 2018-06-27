@@ -220,12 +220,18 @@ terminate(_Reason, #state{port = undefined}) ->
 terminate(Reason, #state{port = Port} = State) when is_port(Port) ->
     case misc:is_normal_termination(Reason) of
         true ->
-            ok;
+            {ok, PortReason, _} = terminate_port(State),
+            case PortReason of
+                normal ->
+                    ok;
+                _ ->
+                    exit(PortReason)
+            end;
         false ->
             ?log_warning("Terminating with reason ~p "
-                         "when port is still alive.", [Reason])
-    end,
-    {ok, _, _} = terminate_port(State).
+                         "when port is still alive.", [Reason]),
+            catch port_close(Port)
+    end.
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
