@@ -79,7 +79,6 @@
           unacked_bytes     :: non_neg_integer(),
           pending_ack_bytes :: non_neg_integer(),
           have_pending_ack  :: boolean(),
-          have_failed_ack   :: boolean(),
 
           config :: #config{}}).
 
@@ -132,7 +131,6 @@ init([Owner, Path, Opts]) ->
                            delivered_bytes = 0,
                            pending_ack_bytes = 0,
                            have_pending_ack = false,
-                           have_failed_ack = false,
                            config = Config},
             {ok, State};
         {error, Reason} ->
@@ -161,24 +159,11 @@ handle_cast({ack_result, Bytes, ok},
 
     NewState = State#state{unacked_bytes = Unacked - Bytes,
                            pending_ack_bytes = Pending - Bytes,
-                           have_pending_ack = false,
-                           have_failed_ack = false},
+                           have_pending_ack = false},
     {noreply, maybe_send_ack(NewState)};
 handle_cast({ack_result, Bytes, Error}, State) ->
     ?log_warning("Failed to ACK ~b bytes: ~p", [Bytes, Error]),
-
-    %% This obviously is not supposed to happen. But we'll try one more time
-    %% just in case.
-    case State#state.have_failed_ack of
-        true ->
-            {stop, {ack_failed, Error}, State};
-        false ->
-            ?log_debug("Retrying ACK"),
-
-            NewState = State#state{have_failed_ack = true,
-                                   have_pending_ack = false},
-            {noreply, maybe_send_ack(NewState)}
-    end;
+    {stop, {ack_failed, Error}, State};
 handle_cast(Cast, State) ->
     ?log_debug("Unexpected cast ~p", [Cast]),
     {noreply, State}.
