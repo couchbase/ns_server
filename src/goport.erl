@@ -422,17 +422,16 @@ wait_for_exit(#state{port = Port} = State, Reason) ->
             NewReason = handle_shutdown_result(Result, State),
             wait_for_exit(State, NewReason);
         {Port, {data, Data}} ->
-            NewState0 = append_data(Data, State),
-            NewState =
-                case handle_port_data(NewState0) of
-                    {ok, S} ->
-                        S;
-                    {stop, StopReason, StopState} ->
-                        {ok, pick_exit_reason(Reason, StopReason), StopState};
-                    {{error, _}, S} ->
-                        mark_decoding_error(S)
-                end,
-            wait_for_exit(NewState, Reason);
+            NewState = append_data(Data, State),
+            case handle_port_data(NewState) of
+                {ok, S} ->
+                    wait_for_exit(S, Reason);
+                {stop, StopReason, StopState} ->
+                    {ok, pick_exit_reason(Reason, StopReason), StopState};
+                {{error, _} = Error, S} ->
+                    {ok, {invalid_data, Data, Error},
+                     mark_decoding_error(S)}
+            end;
         {Port, {exit_status, _} = Exit} ->
             NewState = handle_port_os_exit(Exit, State),
             wait_for_exit(NewState, Reason);
