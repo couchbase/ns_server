@@ -51,8 +51,10 @@ const (
 
 type loopState struct {
 	unackedBytes int
-	pendingOp    <-chan error
 	pendingWrite <-chan error
+
+	pendingOp     string
+	pendingOpChan <-chan error
 
 	processState processState
 }
@@ -110,13 +112,16 @@ func (p *port) terminateWorkers() {
 
 func (p *port) initLoopState() {
 	p.state.unackedBytes = 0
-	p.state.pendingOp = nil
 	p.state.pendingWrite = nil
 	p.state.processState = processStateRunning
+
+	p.state.pendingOp = ""
+	p.state.pendingOpChan = nil
+
 }
 
 func (p *port) getOpsChan() <-chan *Op {
-	if p.state.pendingOp != nil {
+	if p.state.pendingOpChan != nil {
 		return nil
 	}
 
@@ -128,7 +133,7 @@ func (p *port) getPendingOpChan() <-chan error {
 		return nil
 	}
 
-	return p.state.pendingOp
+	return p.state.pendingOpChan
 }
 
 func (p *port) isWindowFull() bool {
@@ -233,7 +238,8 @@ func (p *port) handleOp(op *Op) {
 		ch = p.handleUnknown(op.Name)
 	}
 
-	p.state.pendingOp = ch
+	p.state.pendingOp = op.Name
+	p.state.pendingOpChan = ch
 }
 
 func (p *port) handleOpNoProcess() <-chan error {
@@ -318,7 +324,8 @@ func (p *port) handleOpResult(err error) error {
 }
 
 func (p *port) noteOpDone() {
-	p.state.pendingOp = nil
+	p.state.pendingOp = ""
+	p.state.pendingOpChan = nil
 }
 
 func (p *port) noteWriteDone() {
