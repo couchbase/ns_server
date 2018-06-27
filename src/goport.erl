@@ -189,6 +189,8 @@ handle_info({Port, {data, Data}}, #state{port = Port} = State) ->
     case handle_port_data(NewState) of
         {ok, NewState1} ->
             {noreply, NewState1};
+        {stop, _Reason, _NewState} = Stop ->
+            Stop;
         {{error, _} = Error, NewState1} ->
             NewState2 = mark_decoding_error(NewState1),
 
@@ -432,6 +434,8 @@ wait_for_exit(#state{port = Port} = State, Reason, TRef) ->
                 case handle_port_data(NewState0) of
                     {ok, S} ->
                         S;
+                    {stop, StopReason, StopState} ->
+                        {ok, pick_exit_reason(Reason, StopReason), StopState};
                     {{error, _}, S} ->
                         mark_decoding_error(S)
                 end,
@@ -554,8 +558,12 @@ do_handle_port_data(#state{ctx = Ctx} = State) ->
 
     case Result of
         {ok, Packet} ->
-            NewState1 = handle_port_packet(Packet, NewState),
-            do_handle_port_data(NewState1);
+            case handle_port_packet(Packet, NewState) of
+                {ok, NewState1} ->
+                    do_handle_port_data(NewState1);
+                {stop, _, _} = Stop ->
+                    Stop
+            end;
         {error, need_more_data} ->
             {ok, NewState};
         {error, _} = Error ->
@@ -583,29 +591,28 @@ process_port_packet(<<"eof">>, Data, State) ->
 process_port_packet(Type, Arg, State) ->
     ?log_warning("Unrecognized packet from port:~nType: ~s~nArg: ~s",
                  [Type, Arg]),
-    State.
+    {stop, {unrecognized_packet, Type, Arg}, State}.
 
 handle_eof(Data, State) ->
     case binary:split(Data, <<":">>) of
         [Stream] ->
-            ?log_debug("Stream '~s' closed", [Stream]);
+            ?log_debug("Stream '~s' closed", [Stream]),
+            {ok, State};
         [Stream, Error] ->
             ?log_warning("Stream '~s' closed with error: ~s", [Stream, Error]),
-            exit({stream_error, Stream, Error})
-    end,
-
-    State.
+            {stop, {stream_error, Stream, Error}, State}
+    end.
 
 handle_op_response(Response, #state{current_op = {Op, Handler}} = State) ->
     Handler(Op, Response),
     NewState = State#state{current_op = undefined},
-    maybe_send_next_op(NewState).
+    {ok, maybe_send_next_op(NewState)}.
 
 handle_port_output(Stream, Data, State) ->
     {Packets, NewState0} = packetize(Stream, Data,
                                      update_unacked_bytes(Data, State)),
     NewState = queue_packets(Stream, Packets, NewState0),
-    maybe_deliver_queued(NewState).
+    {ok, maybe_deliver_queued(NewState)}.
 
 update_unacked_bytes(Data, #state{unacked_bytes = Unacked} = State) ->
     State#state{unacked_bytes = Unacked + byte_size(Data)}.
