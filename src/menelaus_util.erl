@@ -43,7 +43,6 @@
          parse_boolean/1,
          get_option/2,
          local_addr/1,
-         remote_addr_and_port/1,
          concat_url_path/1,
          concat_url_path/2,
          bin_concat_path/1,
@@ -389,15 +388,6 @@ local_addr(Req) ->
                       AV
               end,
     misc:maybe_add_brackets(inet:ntoa(Address)).
-
-remote_addr_and_port(Req) ->
-    case inet:peername(mochiweb_request:get(socket, Req)) of
-        {ok, {Address, Port}} ->
-            misc:join_host_port(inet:ntoa(Address), Port);
-        Error ->
-            ?log_error("remote_addr failed: ~p", Error),
-            "unknown"
-    end.
 
 strip_json_struct({struct, Pairs}) -> {strip_json_struct(Pairs)};
 strip_json_struct(List) when is_list(List) -> [strip_json_struct(E) || E <- List];
