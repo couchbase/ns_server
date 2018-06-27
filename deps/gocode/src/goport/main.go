@@ -128,6 +128,14 @@ func (p *port) getOpsChan() <-chan *Op {
 	return p.opsReader.GetOpsChan()
 }
 
+func (p *port) getPendingOpChan() <-chan error {
+	if p.state.pendingWrite != nil {
+		return nil
+	}
+
+	return p.state.pendingOp
+}
+
 func (p *port) isWindowFull() bool {
 	return p.state.unackedBytes >= p.childSpec.windowSize
 }
@@ -147,10 +155,18 @@ func (p *port) getChildEventsChan() <-chan interface{} {
 }
 
 func (p *port) parentWrite(data ...[]byte) {
+	if p.state.pendingWrite != nil {
+		panic("pending write is non-nil")
+	}
+
 	p.state.pendingWrite = p.parentWriter.Writev(data...)
 }
 
 func (p *port) parentSyncWrite(data ...[]byte) error {
+	if p.state.pendingWrite != nil {
+		panic("pending write is non-nil")
+	}
+
 	return <-p.parentWriter.Writev(data...)
 }
 
@@ -334,7 +350,7 @@ func (p *port) loop() error {
 			}
 
 			p.handleOp(op)
-		case err := <-p.state.pendingOp:
+		case err := <-p.getPendingOpChan():
 			p.noteOpDone()
 			err = p.handleOpResult(err)
 			if err != nil {
