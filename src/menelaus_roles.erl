@@ -689,7 +689,7 @@ compile_params(ParamDefs, Params, AllParamValues) ->
         false ->
             false;
         Values ->
-            strip_ids(ParamDefs, Values)
+            Values
     end.
 
 compile_roles(CompileRole, Roles, Definitions, AllParamValues) ->
@@ -722,7 +722,8 @@ compile_roles(_Roles, undefined, _AllParamValues) ->
 compile_roles(Roles, Definitions, AllParamValues) ->
     compile_roles(
       fun (_Name, Params, ParamDefs, Permissions) ->
-              substitute_params(Params, ParamDefs, Permissions)
+              substitute_params(strip_ids(ParamDefs, Params),
+                                ParamDefs, Permissions)
       end, Roles, Definitions, AllParamValues).
 
 -spec get_roles(rbac_identity()) -> [rbac_role()].
@@ -981,6 +982,22 @@ get_security_roles() ->
 get_security_roles(Config) ->
     pipes:run(produce_roles_by_permission({[admin, security], any}, Config, []),
               pipes:collect()).
+
+filter_out_invalid_roles_test() ->
+    Roles = [{role1, [{"bucket1", <<"id1">>}]},
+             {role2, [{"bucket2", <<"id2">>}]}],
+    Definitions = [{role1, [bucket_name],
+                    [{name,<<"">>},{desc, <<"">>}],
+                    [{[{bucket,bucket_name},settings],[read]}]},
+                   {role2, [bucket_name],
+                    [{name,<<"">>},{desc, <<"">>}],
+                    [{[{bucket,bucket_name},n1ql,update],[execute]}]}],
+    PossibleValues = [{[],[[]]},
+                      {[bucket_name],
+                       [[any],
+                       [{"bucket1",<<"id1">>}]]}],
+    ?assertEqual([{role1, [{"bucket1", <<"id1">>}]}],
+                 filter_out_invalid_roles(Roles, Definitions, PossibleValues)).
 
 %% assertEqual is used instead of assert and assertNot to avoid
 %% dialyzer warnings
