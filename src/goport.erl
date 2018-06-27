@@ -198,9 +198,6 @@ handle_info({Port, {data, Data}}, #state{port = Port} = State) ->
                               {invalid_data, Data, Error}),
             {noreply, mark_decoding_error(NewState1)}
     end;
-handle_info({Port, {exit_status, _} = Exit}, #state{port = Port} = State) ->
-    %% we won't terminate until we see the EXIT message
-    {noreply, handle_port_os_exit(Exit, State)};
 handle_info({invalid_data, Data, Error} = Msg, State) ->
     ?log_error("Can't decode port data: ~p. "
                "Terminating. Data:~n~s", [Error, Data]),
@@ -244,7 +241,7 @@ goport_spec(Config) ->
     Env = goport_env(Config),
     Cd = Config#config.cd,
 
-    Spec = [stream, binary, exit_status, hide,
+    Spec = [stream, binary, hide,
             stderr_to_stdout,
             use_stdio,
             {args, Args},
@@ -431,9 +428,6 @@ wait_for_exit(#state{port = Port} = State, Reason) ->
                     {ok, {invalid_data, Data, Error},
                      mark_decoding_error(S)}
             end;
-        {Port, {exit_status, _} = Exit} ->
-            NewState = handle_port_os_exit(Exit, State),
-            wait_for_exit(NewState, Reason);
         {'EXIT', Port, PortReason} ->
             {ok, pick_exit_reason(Reason, PortReason),
              handle_port_erlang_exit(PortReason, State)}
@@ -452,20 +446,6 @@ handle_shutdown_result(Other, #state{port = Port}) ->
     R = (catch port_close(Port)),
     ?log_debug("port_close result: ~p", [R]),
     {shutdown_failed, Other}.
-
-handle_port_os_exit({_, Status} = Exit, State) ->
-    NewState = flush_everything(State),
-    maybe_deliver_exit_status(Exit, NewState),
-    ?log_info("Port exited with status ~b", [Status]),
-    NewState.
-
-maybe_deliver_exit_status(Exit, #state{config = Config} = State) ->
-    case Config#config.exit_status of
-        true ->
-            deliver_message(Exit, State);
-        false ->
-            ok
-    end.
 
 handle_port_erlang_exit(Reason, State) ->
     case Reason =/= normal of
@@ -577,10 +557,33 @@ process_port_packet(<<"stderr">>, Data, State) ->
     handle_port_output(stderr, Data, State);
 process_port_packet(<<"eof">>, Data, State) ->
     handle_eof(Data, State);
+process_port_packet(<<"exit">>, Data, State) ->
+    handle_process_exit(Data, State);
 process_port_packet(Type, Arg, State) ->
     ?log_warning("Unrecognized packet from port:~nType: ~s~nArg: ~s",
                  [Type, Arg]),
     {stop, {unrecognized_packet, Type, Arg}, State}.
+
+handle_process_exit(StatusBinary, #state{port = Port} = State) ->
+    Status = binary_to_integer(StatusBinary),
+
+    NewState = flush_everything(State),
+    maybe_deliver_exit_status(Status, NewState),
+    ?log_info("Port exited with status ~b.", [Status]),
+
+    port_close(Port),
+    receive
+        {'EXIT', Port, Reason} ->
+            {stop, Reason, NewState#state{port = undefined}}
+    end.
+
+maybe_deliver_exit_status(Status, #state{config = Config} = State) ->
+    case Config#config.exit_status of
+        true ->
+            deliver_message({exit_status, Status}, State);
+        false ->
+            ok
+    end.
 
 handle_eof(Data, State) ->
     case binary:split(Data, <<":">>) of

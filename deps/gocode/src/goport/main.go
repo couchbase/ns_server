@@ -29,15 +29,9 @@ import (
 	"strconv"
 )
 
-type childExitedError int
-
-func (e childExitedError) Error() string {
-	return fmt.Sprintf("child process exited with status %d", int(e))
-}
-
-func (e childExitedError) exitStatus() int {
-	return int(e)
-}
+var (
+	errProcessExited = errors.New("process exited")
+)
 
 type portSpec struct {
 	cmd  string
@@ -52,6 +46,7 @@ type processState int
 const (
 	processStateRunning      = processState(0)
 	processStateShuttingDown = iota
+	processStateExited       = iota
 )
 
 type loopState struct {
@@ -151,6 +146,10 @@ func (p *port) getChildEventsChan() <-chan interface{} {
 		return nil
 	}
 
+	if p.hasProcessExited() {
+		return nil
+	}
+
 	return p.childWorker.GetEventsChan()
 }
 
@@ -168,12 +167,6 @@ func (p *port) parentSyncWrite(data ...[]byte) error {
 	}
 
 	return <-p.parentWriter.Writev(data...)
-}
-
-func (p *port) abortPendingOp() {
-	if p.state.pendingOp != nil {
-		p.handleOpResult(errors.New("child exited"))
-	}
 }
 
 func (p *port) handleChildEvent(event interface{}) error {
@@ -205,33 +198,49 @@ func (p *port) handleStreamError(event *ProcessStreamError) {
 	p.parentWrite(msg...)
 }
 
-func (p *port) handleProcessExited(event *ProcessExited) childExitedError {
+func (p *port) handleProcessExited(event *ProcessExited) error {
 	if p.isShuttingDown() {
 		// respond to the shutdown request
-		p.handleOpResult(nil)
+		err := p.handleOpResult(nil)
+		if err != nil {
+			return err
+		}
+
 		p.noteOpDone()
 	}
 
-	return childExitedError(event.Status)
+	p.noteProcessExited()
+	p.parentWrite([]byte("exit:"), []byte(strconv.Itoa(event.Status)))
+
+	return nil
 }
 
 func (p *port) handleOp(op *Op) {
 	var ch <-chan error
 
-	switch op.Name {
-	case "ack":
+	switch {
+	case p.hasProcessExited():
+		ch = p.handleOpNoProcess()
+	case op.Name == "ack":
 		ch = p.handleAck(op.Arg)
-	case "write":
+	case op.Name == "write":
 		ch = p.handleWrite(op.Arg)
-	case "close":
+	case op.Name == "close":
 		ch = p.handleCloseStream(op.Arg)
-	case "shutdown":
+	case op.Name == "shutdown":
 		ch = p.handleShutdown()
 	default:
 		ch = p.handleUnknown(op.Name)
 	}
 
 	p.state.pendingOp = ch
+}
+
+func (p *port) handleOpNoProcess() <-chan error {
+	ch := make(chan error, 1)
+	ch <- errProcessExited
+
+	return ch
 }
 
 func (p *port) handleShutdown() <-chan error {
@@ -324,6 +333,14 @@ func (p *port) isShuttingDown() bool {
 	return p.state.processState == processStateShuttingDown
 }
 
+func (p *port) noteProcessExited() {
+	p.state.processState = processStateExited
+}
+
+func (p *port) hasProcessExited() bool {
+	return p.state.processState == processStateExited
+}
+
 func (p *port) loop() error {
 	err := p.startChild()
 	if err != nil {
@@ -335,7 +352,6 @@ func (p *port) loop() error {
 	defer p.terminateWorkers()
 
 	p.initLoopState()
-	defer p.abortPendingOp()
 
 	for {
 		select {
@@ -492,16 +508,6 @@ func main() {
 
 	err := port.loop()
 	if err != nil {
-		var exitStatus int
-
-		switch err.(type) {
-		case childExitedError:
-			exitStatus = err.(childExitedError).exitStatus()
-		default:
-			log.Print(err.Error())
-			exitStatus = 1
-		}
-
-		os.Exit(exitStatus)
+		log.Fatal(err)
 	}
 }
