@@ -142,8 +142,7 @@ init([Owner, Path, Opts]) ->
 handle_call({op, Op}, From, State) ->
     {noreply, handle_op(Op, From, State)};
 handle_call(shutdown, _From, State) ->
-    {ok, _, NewState} = terminate_port(State),
-    {stop, normal, ok, NewState};
+    {stop, normal, ok, State};
 handle_call(Call, From, State) ->
     ?log_debug("Unexpected call ~p from ~p", [Call, From]),
     {reply, nack, State}.
