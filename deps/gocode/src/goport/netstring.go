@@ -63,7 +63,9 @@ func (n *NetStringReader) ReadPacket() ([]byte, error) {
 	}
 
 	var length uint
-	_, err = fmt.Sscanf(strings.TrimSpace(string(rawLength)), "%9d:", &length)
+	lengthStr := strings.TrimSpace(string(rawLength))
+
+	_, err = fmt.Sscanf(lengthStr, "%9d:", &length)
 	if err != nil {
 		return nil, ErrInvalidNetString
 	}

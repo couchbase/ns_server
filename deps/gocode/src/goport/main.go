@@ -388,7 +388,8 @@ func (p *port) loop() error {
 			err = p.handleOpResult(err)
 			if err != nil {
 				return fmt.Errorf(
-					"failed to write to parent: %s", err.Error())
+					"failed to write to parent: %s",
+					err.Error())
 			}
 		case event, ok := <-p.getChildEventsChan():
 			if !ok {
@@ -438,7 +439,10 @@ func (c *cmdFlag) Set(v string) error {
 	} else {
 		abs, err := exec.LookPath(v)
 		if err != nil {
-			return fmt.Errorf("failed to find '%s' in path: %s", v, err.Error())
+			return fmt.Errorf(
+				"failed to find '%s' in path: %s",
+				v,
+				err.Error())
 		}
 
 		*c = cmdFlag(abs)
@@ -457,7 +461,10 @@ func getCmdFromEnv() (string, []string) {
 
 	err := json.Unmarshal([]byte(rawArgs), &args)
 	if err != nil {
-		log.Fatalf("couldn't unmarshal GOPORT_ARGS(%s): %s", rawArgs, err.Error())
+		log.Fatalf(
+			"couldn't unmarshal GOPORT_ARGS(%s): %s",
+			rawArgs,
+			err.Error())
 	}
 
 	if len(args) < 1 {
