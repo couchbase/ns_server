@@ -223,33 +223,24 @@ handle_get_roles(Req) ->
               menelaus_util:reply_json(Req, Json)
       end, Req, qs, get_users_or_roles_validators()).
 
-get_user_json(Identity, Props, Passwordless) ->
-    Roles = proplists:get_value(roles, Props, []),
+user_to_json({Id, Domain}, Props) ->
+    Roles = proplists:get_value(roles, Props),
     Name = proplists:get_value(name, Props),
-    get_user_json(Identity, Name, Passwordless, Roles).
-
-get_user_json({Id, Domain} = Identity, Name, Passwordless, Roles) ->
-    PasswordJson =
-        case Passwordless of
-            false ->
-                case menelaus_users:get_password_change_timestamp(Identity) of
-                    undefined -> [];
-                    PasswordChangeTime ->
-                        Timestamp = misc:time_to_timestamp(PasswordChangeTime,
-                                                           millisecond),
-                        Local = calendar:now_to_local_time(Timestamp),
-                        BinTime = menelaus_util:format_server_time(Local),
-                        [{password_change_date, BinTime}]
-                end;
-            _ ->
-                [{passwordless, true}]
-        end,
+    Passwordless = proplists:get_value(passwordless, Props),
+    PassChangeTime = format_password_change_time(
+                       proplists:get_value(password_change_timestamp, Props)),
 
     {[{id, list_to_binary(Id)},
       {domain, Domain},
-      {roles, [{role_to_json(Role)} || Role <- Roles]}] ++
+      {roles, [{role_to_json(Role)} || Roles =/= undefined, Role <- Roles]}] ++
      [{name, list_to_binary(Name)} || Name =/= undefined] ++
-     PasswordJson}.
+     [{passwordless, Passwordless} || Passwordless == true] ++
+     [{password_change_date, PassChangeTime} || PassChangeTime =/= undefined]}.
+
+format_password_change_time(undefined) -> undefined;
+format_password_change_time(TS) ->
+    Local = calendar:now_to_local_time(misc:time_to_timestamp(TS, millisecond)),
+    menelaus_util:format_server_time(Local).
 
 handle_get_users(Path, Req) ->
     assert_api_can_be_used(),
@@ -327,10 +318,7 @@ handle_get_users_45(Req) ->
     Users = menelaus_users:get_users_45(ns_config:latest()),
     Json = lists:map(
              fun ({{LdapUser, saslauthd}, Props}) ->
-                     Roles = proplists:get_value(roles, Props, []),
-                     get_user_json({LdapUser, external},
-                                   proplists:get_value(name, Props),
-                                   false, Roles)
+                     user_to_json({LdapUser, external}, Props)
              end, Users),
     menelaus_util:reply_json(Req, Json).
 
@@ -350,12 +338,11 @@ security_users_filter(Req) ->
 handle_get_all_users(Req, Pattern, Params) ->
     Roles = get_roles_for_users_filtering(
               proplists:get_value(permission, Params)),
-    Passwordless = menelaus_users:get_passwordless(),
     pipes:run(menelaus_users:select_users(Pattern),
-              [filter_out_invalid_roles(),
+              [filter_out_invalid_roles_filter(),
                filter_by_roles(Roles),
                security_users_filter(Req),
-               jsonify_users(Passwordless),
+               jsonify_users(),
                sjson:encode_extended_json([{compact, true},
                                            {strict, false}]),
                pipes:simple_buffer(2048)],
@@ -389,7 +376,7 @@ filter_by_roles(Roles) ->
           overlap(RoleNames, UserRoles)
       end).
 
-filter_out_invalid_roles() ->
+filter_out_invalid_roles_filter() ->
     Definitions = menelaus_roles:get_definitions(),
     AllPossibleValues =
         menelaus_roles:calculate_possible_param_values(ns_bucket:get_buckets()),
@@ -400,17 +387,21 @@ filter_out_invalid_roles() ->
                       {Key, NewProps}
               end).
 
-jsonify_users(Passwordless) ->
+filter_out_invalid_roles(Props) ->
+    Definitions = menelaus_roles:get_definitions(),
+    AllPossibleValues =
+        menelaus_roles:calculate_possible_param_values(ns_bucket:get_buckets()),
+    menelaus_users:filter_out_invalid_roles(Props, Definitions,
+                                            AllPossibleValues).
+
+jsonify_users() ->
     ?make_transducer(
        begin
            ?yield(array_start),
            pipes:foreach(
              ?producer(),
              fun ({{user, Identity}, Props}) ->
-                     ?yield(
-                        {json,
-                         get_user_json(Identity, Props,
-                                       lists:member(Identity, Passwordless))})
+                     ?yield({json, user_to_json(Identity, Props)})
              end),
            ?yield(array_end)
        end).
@@ -587,11 +578,10 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
     PageSize = proplists:get_value(pageSize, Values),
     Permission = proplists:get_value(permission, Values),
     Roles = get_roles_for_users_filtering(Permission),
-    Passwordless = menelaus_users:get_passwordless(),
 
     {PageSkews, Total} =
         pipes:run(menelaus_users:select_users({'_', DomainAtom}),
-                  [filter_out_invalid_roles(),
+                  [filter_out_invalid_roles_filter(),
                    filter_by_roles(Roles),
                    security_users_filter(Req)],
                   ?make_consumer(
@@ -600,12 +590,8 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
                        fun ({{user, Identity}, Props}, {Skews, T}) ->
                                {add_to_skews({Identity, Props}, Skews), T + 1}
                        end, {create_skews(Start, PageSize), 0}))),
-    UserJson =
-        fun ({Identity, Props}) ->
-                get_user_json(Identity, Props,
-                              lists:member(Identity, Passwordless))
-        end,
 
+    UserJson = fun ({Identity, Props}) -> user_to_json(Identity, Props) end,
     {JsonFromSkews, Links} = json_from_skews(PageSkews, PageSize, UserJson),
     LinksJson = build_links(Links, PageSize, DomainAtom, Path, Permission),
     Json = {[{total, Total}, LinksJson | JsonFromSkews]},
@@ -613,19 +599,14 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
 
 handle_whoami(Req) ->
     Identity = menelaus_auth:get_identity(Req),
-    menelaus_util:reply_json(Req, get_user_json(Identity)).
+    Props = menelaus_users:get_user_props(Identity, [name, passwordless]),
+    Roles = menelaus_roles:get_roles(Identity),
+    Props2 = filter_out_invalid_roles([{roles, Roles} | Props]),
+    menelaus_util:reply_json(Req, user_to_json(Identity, Props2)).
 
 get_user_json(Identity) ->
-    Passwordless = menelaus_users:get_passwordless(),
-    Definitions = menelaus_roles:get_definitions(),
-    AllPossibleValues =
-        menelaus_roles:calculate_possible_param_values(ns_bucket:get_buckets()),
-
-    Roles =
-        menelaus_roles:filter_out_invalid_roles(
-          menelaus_roles:get_roles(Identity), Definitions, AllPossibleValues),
-    Name = menelaus_users:get_user_name(Identity),
-    get_user_json(Identity, Name, lists:member(Identity, Passwordless), Roles).
+    Props = menelaus_users:get_user_props(Identity),
+    user_to_json(Identity, filter_out_invalid_roles(Props)).
 
 parse_until(Str, Delimeters) ->
     lists:splitwith(fun (Char) ->

@@ -27,6 +27,7 @@
 
 -export([get_users_45/1,
          select_users/1,
+         select_users/2,
          select_auth_infos/1,
          store_user/4,
          delete_user/1,
@@ -36,9 +37,10 @@
          user_exists/1,
          get_user_name/1,
          upgrade_to_4_5/1,
-         get_password_change_timestamp/1,
          get_salt_and_mac/1,
          user_auth_info/2,
+         get_user_props/1,
+         get_user_props/2,
          build_scram_auth/1,
          build_scram_auth_info/1,
          build_plain_auth/1,
@@ -65,6 +67,7 @@
 -export([get_auth_info_on_ns_server/1]).
 
 -define(MAX_USERS_ON_CE, 20).
+-define(DEFAULT_PROPS, [name, roles, passwordless, password_change_timestamp]).
 
 -record(state, {base, passwordless}).
 
@@ -215,7 +218,34 @@ get_users_45(Config) ->
     ns_config:search(Config, user_roles, []).
 
 select_users(KeySpec) ->
-    replicated_dets:select(storage_name(), {user, KeySpec}, 100).
+    select_users(KeySpec, ?DEFAULT_PROPS).
+
+select_users(KeySpec, ItemList) ->
+    pipes:compose([replicated_dets:select(storage_name(), {user, KeySpec}, 100),
+                   make_props_transducer(ItemList)]).
+
+make_props_transducer(ItemList) ->
+    Passwordless = lists:member(passwordless, ItemList) andalso
+                       menelaus_users:get_passwordless(),
+    pipes:map(fun ({{user, Id}, Props}) ->
+                      {{user, Id}, make_props(Id, Props, ItemList,
+                                              Passwordless)}
+              end).
+
+make_props(Id, Props, ItemList) ->
+    Passwordless = lists:member(passwordless, ItemList) andalso
+                       menelaus_users:get_passwordless(),
+    make_props(Id, Props, ItemList, Passwordless).
+make_props(Id, Props, ItemList, Passwordless) ->
+    lists:map(
+      fun (password_change_timestamp = Name) ->
+              {Name, replicated_dets:get_last_modified(
+                       storage_name(), {auth, Id}, undefined)};
+          (passwordless = Name) ->
+              {Name, lists:member(Id, Passwordless)};
+          (Name) ->
+              {Name, proplists:get_value(Name, Props)}
+      end, ItemList).
 
 select_auth_infos(KeySpec) ->
     replicated_dets:select(storage_name(), {auth, KeySpec}, 100).
@@ -271,7 +301,7 @@ store_user_45({UserName, external}, Props, Roles) ->
       end).
 
 count_users() ->
-    pipes:run(menelaus_users:select_users('_'),
+    pipes:run(menelaus_users:select_users('_', []),
               ?make_consumer(
                  pipes:fold(?producer(),
                             fun (_, Acc) ->
@@ -436,34 +466,34 @@ get_user_props_45({User, external}) ->
     ns_config:search_prop(ns_config:latest(), user_roles, {User, saslauthd}, []).
 
 get_user_props(Identity) ->
-    case cluster_compat_mode:is_cluster_50() of
-        true ->
-            replicated_dets:get(storage_name(), {user, Identity}, []);
-        false ->
-            get_user_props_45(Identity)
-    end.
+    get_user_props(Identity, ?DEFAULT_PROPS).
+
+get_user_props(Identity, ItemList) ->
+    Props =
+        case cluster_compat_mode:is_cluster_50() of
+            true -> replicated_dets:get(storage_name(), {user, Identity}, []);
+            false -> get_user_props_45(Identity)
+        end,
+    make_props(Identity, Props, ItemList).
 
 -spec user_exists(rbac_identity()) -> boolean().
 user_exists(Identity) ->
-    get_user_props(Identity) =/= [].
+    case cluster_compat_mode:is_cluster_50() of
+        true ->
+            false =/= replicated_dets:get(storage_name(), {user, Identity});
+        false ->
+            get_user_props_45(Identity) =/= []
+    end.
 
 -spec get_roles(rbac_identity()) -> [rbac_role()].
 get_roles(Identity) ->
-    proplists:get_value(roles, get_user_props(Identity), []).
+    proplists:get_value(roles, get_user_props(Identity, [roles]), []).
 
 -spec get_user_name(rbac_identity()) -> rbac_user_name().
 get_user_name({_, Domain} = Identity) when Domain =:= local orelse Domain =:= external ->
-    proplists:get_value(name, get_user_props(Identity));
+    proplists:get_value(name, get_user_props(Identity, [name]));
 get_user_name(_) ->
     undefined.
-
--spec get_password_change_timestamp(rbac_identity()) -> undefined | integer().
-get_password_change_timestamp({_, external}) ->
-    undefined;
-get_password_change_timestamp(Identity) ->
-    replicated_dets:get_last_modified(storage_name(),
-                                      {auth, Identity},
-                                      undefined).
 
 user_auth_info(User, Auth) ->
     {[{<<"n">>, list_to_binary(User)} | Auth]}.
@@ -663,8 +693,8 @@ cleanup_bucket_roles(BucketName) ->
 
     UpdateFun =
         fun ({user, Key}, Props) ->
-                case menelaus_users:filter_out_invalid_roles(Props, Definitions,
-                                                             AllPossibleValues) of
+                case filter_out_invalid_roles(Props, Definitions,
+                                              AllPossibleValues) of
                     Props ->
                         skip;
                     NewProps ->
@@ -718,7 +748,7 @@ user_roles_require_upgrade({{user, _Identity}, Props}) ->
     lists:any(?cut(maybe_upgrade_role_to_55(_1) =/= [_1]), Roles).
 
 fetch_users_for_55_upgrade() ->
-    pipes:run(menelaus_users:select_users({'_', '_'}),
+    pipes:run(menelaus_users:select_users({'_', '_'}, [roles]),
               [pipes:filter(fun user_roles_require_upgrade/1),
                pipes:map(fun ({{user, I}, _}) -> I end)],
               pipes:collect()).
@@ -732,7 +762,7 @@ do_upgrade_to_55(Nodes) ->
 
     UpdateUsers = fetch_users_for_55_upgrade(),
     lists:foreach(fun (Identity) ->
-                          OldProps = get_user_props(Identity),
+                          OldProps = get_user_props(Identity, [roles]),
                           NewProps = upgrade_user_roles_to_55(OldProps),
                           store_user_50_validated(Identity, NewProps, same)
                   end, UpdateUsers).

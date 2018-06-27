@@ -248,7 +248,7 @@ make_producer(#state{buckets = Buckets,
                      roles = RoleDefinitions,
                      users = Users,
                      cluster_admin = ClusterAdmin}) ->
-    pipes:compose([menelaus_users:select_users('_'),
+    pipes:compose([menelaus_users:select_users('_', [roles]),
                    jsonify_users(Users, Buckets, ParamValues, RoleDefinitions, ClusterAdmin),
                    sjson:encode_extended_json([{compact, false},
                                                {strict, false}])]).
