@@ -503,40 +503,34 @@ create_skews(Start, PageSize) ->
 add_to_skews(El, Skews) ->
     [add_to_skew(El, Skew) || Skew <- Skews].
 
-build_link(Name, Identity, PageSize, Domain, Path, Permission) ->
-    PermissionParams =
-        case Permission of
-            undefined ->
-                [];
-            _ ->
-                PermStr = http_uri:encode(permission_to_binary(Permission)),
-                [io_lib:format("permission=~s", [PermStr])]
-        end,
-    PaginatorParams = format_paginator_params(Identity, PageSize, Domain),
-    Params = PermissionParams ++ PaginatorParams,
-    Link = io_lib:format("/~s?~s", [Path, string:join(Params, "&")]),
-    {Name, iolist_to_binary(Link)}.
+build_user_links(Links, PageSize, NeedDomain, Path, Permission) ->
+    Extra = [{permission, permission_to_binary(Permission)}
+                || Permission =/= undefined],
+    Json = lists:map(
+             fun ({LinkName, noparams = UName}) ->
+                     {LinkName, build_pager_link(Path, UName, PageSize, Extra)};
+                 ({LinkName, {UName, Domain}}) ->
+                     DomainParams = [{startFromDomain, Domain} || NeedDomain],
+                     {LinkName, build_pager_link(Path, UName, PageSize,
+                                                 Extra ++ DomainParams)}
+             end, Links),
+    {Json}.
 
-format_paginator_params(noparams, PageSize, _DomainAtom) ->
-    [io_lib:format("pageSize=~p", [PageSize])];
-format_paginator_params({User, Domain}, PageSize, '_') ->
-    [io_lib:format("startFrom=~s", [http_uri:encode(User)]),
-     io_lib:format("startFromDomain=~p", [Domain]),
-     io_lib:format("pageSize=~p", [PageSize])];
-format_paginator_params({User, _Domain}, PageSize, _DomainAtom) ->
-    [io_lib:format("startFrom=~s", [http_uri:encode(User)]),
-     io_lib:format("pageSize=~p", [PageSize])].
+build_pager_link(Path, StartObj, PageSize, ExtraParams) ->
+    PaginatorParams = format_paginator_params(StartObj, PageSize),
+    Params = mochiweb_util:urlencode(ExtraParams ++ PaginatorParams),
+    iolist_to_binary(io_lib:format("/~s?~s", [Path, Params])).
+
+format_paginator_params(noparams, PageSize) ->
+    [{pageSize, PageSize}];
+format_paginator_params(ObjName, PageSize) ->
+    [{pageSize, PageSize}, {startFrom, ObjName}].
 
 seed_links(Pairs) ->
     [{Name, Object} || {Name, Object} <- Pairs, Object =/= undefined].
 
-build_links(Links, PageSize, DomainAtom, Path, Permission) ->
-    Json = [build_link(Name, Identity, PageSize, DomainAtom, Path, Permission)
-                || {Name, Identity} <- Links],
-    {links, {Json}}.
-
-json_from_skews([SkewPrev, SkewThis, SkewLast], PageSize, UserJson) ->
-    {Users, Next} =
+page_data_from_skews([SkewPrev, SkewThis, SkewLast], PageSize) ->
+    {Objects, Next} =
         case skew_size(SkewThis) of
             Size when Size =:= PageSize + 1 ->
                 {{N, _}, NewSkew} = skew_out(SkewThis),
@@ -562,8 +556,8 @@ json_from_skews([SkewPrev, SkewThis, SkewLast], PageSize, UserJson) ->
                         {L, Next}
                 end
         end,
-    {[{skipped, skew_skipped(SkewThis)},
-      {users, [UserJson(El) || El <- Users]}],
+    {Objects,
+     skew_skipped(SkewThis),
      seed_links([{first, First}, {prev, Prev},
                  {next, CorrectedNext}, {last, Last}])}.
 
@@ -592,9 +586,15 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
                        end, {create_skews(Start, PageSize), 0}))),
 
     UserJson = fun ({Identity, Props}) -> user_to_json(Identity, Props) end,
-    {JsonFromSkews, Links} = json_from_skews(PageSkews, PageSize, UserJson),
-    LinksJson = build_links(Links, PageSize, DomainAtom, Path, Permission),
-    Json = {[{total, Total}, LinksJson | JsonFromSkews]},
+
+    {Users, Skipped, Links} = page_data_from_skews(PageSkews, PageSize),
+    UsersJson = [UserJson(O) || O <- Users],
+    LinksJson = build_user_links(Links, PageSize, DomainAtom == '_',
+                                 Path, Permission),
+    Json = {[{total, Total},
+             {links, LinksJson},
+             {skipped, Skipped},
+             {users, UsersJson}]},
     menelaus_util:reply_json(Req, Json).
 
 handle_whoami(Req) ->
@@ -1362,14 +1362,14 @@ toy_users(First, Last) ->
         U <- lists:seq(First, Last)].
 
 process_toy_users(Users, Start, PageSize) ->
-    {JsonFromSkews, Links} =
-        json_from_skews(
+    {PageUsers, Skipped, Links} =
+        page_data_from_skews(
           lists:foldl(
             fun (U, Skews) ->
                     add_to_skews(U, Skews)
             end, create_skews(Start, PageSize), Users),
-          PageSize, fun (U) -> U end),
-    {lists:sort(JsonFromSkews), lists:sort(Links)}.
+          PageSize),
+    {[{skipped, Skipped}, {users, PageUsers}], lists:sort(Links)}.
 
 toy_result(Params, Links) ->
     {lists:sort(Params), lists:sort(seed_links(Links))}.
