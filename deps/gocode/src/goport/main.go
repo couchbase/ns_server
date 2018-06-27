@@ -120,7 +120,7 @@ func (p *port) initLoopState() {
 	p.state.processState = processStateRunning
 }
 
-func (p *port) getOps() <-chan *Op {
+func (p *port) getOpsChan() <-chan *Op {
 	if p.state.pendingOp != nil {
 		return nil
 	}
@@ -323,7 +323,7 @@ func (p *port) loop() error {
 
 	for {
 		select {
-		case op, ok := <-p.getOps():
+		case op, ok := <-p.getOpsChan():
 			if !ok {
 				err := p.opsReader.GetError()
 				if err == io.EOF {
