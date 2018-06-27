@@ -413,18 +413,19 @@ netstring_encode(Data) ->
     [integer_to_list(Size), $:, Data, $,].
 
 terminate_port(State) ->
-    wait_for_exit(send_shutdown(State), make_ref()).
+    wait_for_exit(send_shutdown(State), undefined, make_ref()).
 
 try_wait_for_exit(State, Timeout) ->
     TRef = make_ref(),
     erlang:send_after(Timeout, self(), TRef),
-    wait_for_exit(State, TRef).
+    wait_for_exit(State, undefined, TRef).
 
-wait_for_exit(#state{port = Port} = State, TRef) ->
+wait_for_exit(#state{port = Port} = State, Reason, TRef) ->
     receive
         {shutdown_result, Result} ->
-            handle_shutdown_result(Result, State),
-            wait_for_exit(State, TRef);
+            undefined = Reason,
+            NewReason = handle_shutdown_result(Result, State),
+            wait_for_exit(State, NewReason, TRef);
         {Port, {data, Data}} ->
             NewState0 = append_data(Data, State),
             NewState =
@@ -434,23 +435,30 @@ wait_for_exit(#state{port = Port} = State, TRef) ->
                     {{error, _}, S} ->
                         mark_decoding_error(S)
                 end,
-            wait_for_exit(NewState, TRef);
+            wait_for_exit(NewState, Reason, TRef);
         {Port, {exit_status, _} = Exit} ->
             NewState = handle_port_os_exit(Exit, State),
-            wait_for_exit(NewState, TRef);
-        {'EXIT', Port, Reason} ->
-            {ok, Reason, handle_port_erlang_exit(Reason, State)};
+            wait_for_exit(NewState, Reason, TRef);
+        {'EXIT', Port, PortReason} ->
+            {ok, pick_exit_reason(Reason, PortReason),
+             handle_port_erlang_exit(PortReason, State)};
         TRef ->
             {timeout, State}
     end.
 
+pick_exit_reason(undefined, PortReason) ->
+    PortReason;
+pick_exit_reason(Reason, _PortReason) ->
+    Reason.
+
 handle_shutdown_result(ok, _State) ->
-    ok;
+    undefined;
 handle_shutdown_result(Other, #state{port = Port}) ->
     ?log_error("Port returned an error to shutdown request: ~p. "
                "Forcefully closing the port.", [Other]),
     R = (catch port_close(Port)),
-    ?log_debug("port_close result: ~p", [R]).
+    ?log_debug("port_close result: ~p", [R]),
+    {shutdown_failed, Other}.
 
 handle_port_os_exit({_, Status} = Exit, State) ->
     NewState = flush_everything(State),
