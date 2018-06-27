@@ -140,18 +140,28 @@ func (p *port) isWindowFull() bool {
 	return p.state.unackedBytes >= p.childSpec.windowSize
 }
 
+func (p *port) isFlowControlBlocked() bool {
+	// shutdown request implicitly acks everything
+	if p.isShuttingDown() {
+		return false
+	}
+
+	// This is a stop-gap measure to prevent deadlocks if the supervised
+	// process stops reading from its stdin if it can't write to
+	// stdout/stderr. Since there's currently no way to acknowledge reads
+	// while there's a blocked operation, we have to open the flow control
+	// gate.
+	if p.state.pendingOp == "write" {
+		return false
+	}
+
+	return p.isWindowFull()
+}
+
 func (p *port) getChildEventsChan() <-chan interface{} {
-	if p.state.pendingWrite != nil {
-		return nil
-	}
-
-	if p.isWindowFull() &&
-		// shutdown request implicitly acks everything
-		!p.isShuttingDown() {
-		return nil
-	}
-
-	if p.hasProcessExited() {
+	if p.state.pendingWrite != nil ||
+		p.hasProcessExited() ||
+		p.isFlowControlBlocked() {
 		return nil
 	}
 
