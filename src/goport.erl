@@ -192,22 +192,20 @@ handle_info({Port, {data, Data}}, #state{port = Port} = State) ->
         {stop, _Reason, _NewState} = Stop ->
             Stop;
         {{error, _} = Error, NewState1} ->
-            NewState2 = mark_decoding_error(NewState1),
-
             %% typically this means that the process just terminated, so we
             %% wait a little bit just in case; otherwise we'd likely get epipe
             %% when trying to send shutdown to the process
-            case try_wait_for_exit(NewState2, ?TRY_WAIT_FOR_EXIT_TIMEOUT) of
-                {ok, Reason, NewState3} ->
-                    {stop, Reason, NewState3};
-                {timeout, NewState3} ->
-                    ?log_error("Can't decode port data: ~p. Terminating.", [Error]),
-                    {stop, invalid_data, NewState3}
-            end
+            erlang:send_after(?TRY_WAIT_FOR_EXIT_TIMEOUT, self(),
+                              {invalid_data, Data, Error}),
+            {noreply, mark_decoding_error(NewState1)}
     end;
 handle_info({Port, {exit_status, _} = Exit}, #state{port = Port} = State) ->
     %% we won't terminate until we see the EXIT message
     {noreply, handle_port_os_exit(Exit, State)};
+handle_info({invalid_data, Data, Error} = Msg, State) ->
+    ?log_error("Can't decode port data: ~p. "
+               "Terminating. Data:~n~s", [Error, Data]),
+    {stop, Msg, State};
 handle_info({Port, Msg}, #state{port = Port} = State) ->
     ?log_warning("Received unexpected message from port: ~p", [Msg]),
     {noreply, State};
@@ -415,19 +413,14 @@ netstring_encode(Data) ->
     [integer_to_list(Size), $:, Data, $,].
 
 terminate_port(State) ->
-    wait_for_exit(send_shutdown(State), undefined, make_ref()).
+    wait_for_exit(send_shutdown(State), undefined).
 
-try_wait_for_exit(State, Timeout) ->
-    TRef = make_ref(),
-    erlang:send_after(Timeout, self(), TRef),
-    wait_for_exit(State, undefined, TRef).
-
-wait_for_exit(#state{port = Port} = State, Reason, TRef) ->
+wait_for_exit(#state{port = Port} = State, Reason) ->
     receive
         {shutdown_result, Result} ->
             undefined = Reason,
             NewReason = handle_shutdown_result(Result, State),
-            wait_for_exit(State, NewReason, TRef);
+            wait_for_exit(State, NewReason);
         {Port, {data, Data}} ->
             NewState0 = append_data(Data, State),
             NewState =
@@ -439,15 +432,13 @@ wait_for_exit(#state{port = Port} = State, Reason, TRef) ->
                     {{error, _}, S} ->
                         mark_decoding_error(S)
                 end,
-            wait_for_exit(NewState, Reason, TRef);
+            wait_for_exit(NewState, Reason);
         {Port, {exit_status, _} = Exit} ->
             NewState = handle_port_os_exit(Exit, State),
-            wait_for_exit(NewState, Reason, TRef);
+            wait_for_exit(NewState, Reason);
         {'EXIT', Port, PortReason} ->
             {ok, pick_exit_reason(Reason, PortReason),
-             handle_port_erlang_exit(PortReason, State)};
-        TRef ->
-            {timeout, State}
+             handle_port_erlang_exit(PortReason, State)}
     end.
 
 pick_exit_reason(undefined, PortReason) ->
