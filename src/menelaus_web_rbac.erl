@@ -339,8 +339,7 @@ handle_get_all_users(Req, Pattern, Params) ->
     Roles = get_roles_for_users_filtering(
               proplists:get_value(permission, Params)),
     pipes:run(menelaus_users:select_users(Pattern),
-              [filter_out_invalid_roles_filter(),
-               filter_by_roles(Roles),
+              [filter_by_roles(Roles),
                security_users_filter(Req),
                jsonify_users(),
                sjson:encode_extended_json([{compact, true},
@@ -375,24 +374,6 @@ filter_by_roles(Roles) ->
           UserRoles = proplists:get_value(roles, Props),
           overlap(RoleNames, UserRoles)
       end).
-
-filter_out_invalid_roles_filter() ->
-    Definitions = menelaus_roles:get_definitions(),
-    AllPossibleValues =
-        menelaus_roles:calculate_possible_param_values(ns_bucket:get_buckets()),
-    pipes:map(fun ({Key, Props}) ->
-                      NewProps =
-                          menelaus_users:filter_out_invalid_roles(
-                            Props, Definitions, AllPossibleValues),
-                      {Key, NewProps}
-              end).
-
-filter_out_invalid_roles(Props) ->
-    Definitions = menelaus_roles:get_definitions(),
-    AllPossibleValues =
-        menelaus_roles:calculate_possible_param_values(ns_bucket:get_buckets()),
-    menelaus_users:filter_out_invalid_roles(Props, Definitions,
-                                            AllPossibleValues).
 
 jsonify_users() ->
     ?make_transducer(
@@ -575,8 +556,7 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
 
     {PageSkews, Total} =
         pipes:run(menelaus_users:select_users({'_', DomainAtom}),
-                  [filter_out_invalid_roles_filter(),
-                   filter_by_roles(Roles),
+                  [filter_by_roles(Roles),
                    security_users_filter(Req)],
                   ?make_consumer(
                      pipes:fold(
@@ -601,12 +581,11 @@ handle_whoami(Req) ->
     Identity = menelaus_auth:get_identity(Req),
     Props = menelaus_users:get_user_props(Identity, [name, passwordless]),
     Roles = menelaus_roles:get_roles(Identity),
-    Props2 = filter_out_invalid_roles([{roles, Roles} | Props]),
-    menelaus_util:reply_json(Req, user_to_json(Identity, Props2)).
+    JSON = user_to_json(Identity, [{roles, Roles}|Props]),
+    menelaus_util:reply_json(Req, JSON).
 
 get_user_json(Identity) ->
-    Props = menelaus_users:get_user_props(Identity),
-    user_to_json(Identity, filter_out_invalid_roles(Props)).
+    user_to_json(Identity, menelaus_users:get_user_props(Identity)).
 
 parse_until(Str, Delimeters) ->
     lists:splitwith(fun (Char) ->

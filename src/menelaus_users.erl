@@ -225,27 +225,44 @@ select_users(KeySpec, ItemList) ->
                    make_props_transducer(ItemList)]).
 
 make_props_transducer(ItemList) ->
-    Passwordless = lists:member(passwordless, ItemList) andalso
-                       menelaus_users:get_passwordless(),
+    PropsState = make_props_state(ItemList),
     pipes:map(fun ({{user, Id}, Props}) ->
-                      {{user, Id}, make_props(Id, Props, ItemList,
-                                              Passwordless)}
+                      {{user, Id}, make_props(Id, Props, ItemList, PropsState)}
               end).
 
 make_props(Id, Props, ItemList) ->
-    Passwordless = lists:member(passwordless, ItemList) andalso
-                       menelaus_users:get_passwordless(),
-    make_props(Id, Props, ItemList, Passwordless).
-make_props(Id, Props, ItemList, Passwordless) ->
+    make_props(Id, Props, ItemList, make_props_state(ItemList)).
+
+make_props(Id, Props, ItemList, {Passwordless, Definitions,
+                                 AllPossibleValues}) ->
     lists:map(
       fun (password_change_timestamp = Name) ->
               {Name, replicated_dets:get_last_modified(
                        storage_name(), {auth, Id}, undefined)};
+          (roles = Name) ->
+              UserRoles = menelaus_roles:filter_out_invalid_roles(
+                            proplists:get_value(roles, Props, []),
+                            Definitions, AllPossibleValues),
+              {Name, UserRoles};
           (passwordless = Name) ->
               {Name, lists:member(Id, Passwordless)};
           (Name) ->
               {Name, proplists:get_value(Name, Props)}
       end, ItemList).
+
+make_props_state(ItemList) ->
+    Passwordless = lists:member(passwordless, ItemList) andalso
+                       menelaus_users:get_passwordless(),
+    {Definitions, AllPossibleValues} =
+        case lists:member(roles, ItemList) orelse
+             lists:member(user_roles, ItemList) orelse
+             lists:member(group_roles, ItemList) of
+            true -> {menelaus_roles:get_definitions(),
+                     menelaus_roles:calculate_possible_param_values(
+                       ns_bucket:get_buckets())};
+            false -> {undefined, undefined}
+        end,
+    {Passwordless, Definitions, AllPossibleValues}.
 
 select_auth_infos(KeySpec) ->
     replicated_dets:select(storage_name(), {auth, KeySpec}, 100).
