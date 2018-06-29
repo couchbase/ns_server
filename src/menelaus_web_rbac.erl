@@ -192,6 +192,16 @@ role_to_json({Name, [{BucketName, _Id}]}) ->
 role_to_json({Name, [BucketName]}) ->
     [{role, Name}, {bucket_name, list_to_binary(BucketName)}].
 
+role_to_json(Role, Origins) ->
+    role_to_json(Role) ++
+    [{origins, [role_origin_to_json(O) || O <- Origins]}
+        || Origins =/= []].
+
+role_origin_to_json(user) ->
+    {[{type, user}]};
+role_origin_to_json(O) ->
+    {[{type, group}, {name, list_to_binary(O)}]}.
+
 get_roles_by_permission(Permission) ->
     Config = ns_config:get(),
     Buckets = ns_bucket:get_buckets(Config),
@@ -228,9 +238,7 @@ handle_get_roles(Req) ->
       end, Req, qs, get_users_or_roles_validators()).
 
 user_to_json({Id, Domain}, Props) ->
-    Roles = proplists:get_value(roles, Props),
-    UserRoles = proplists:get_value(user_roles, Props),
-    GroupRoles = format_group_roles(proplists:get_value(group_roles, Props)),
+    RolesJson = format_roles(Props),
     Name = proplists:get_value(name, Props),
     Groups = proplists:get_value(groups, Props),
     Passwordless = proplists:get_value(passwordless, Props),
@@ -238,23 +246,33 @@ user_to_json({Id, Domain}, Props) ->
                        proplists:get_value(password_change_timestamp, Props)),
 
     {[{id, list_to_binary(Id)},
-      {domain, Domain}] ++
-     [{roles, [{role_to_json(Role)} || Role <- Roles]}
-           || Roles =/= undefined] ++
-     [{user_roles, [{role_to_json(Role)} || Role <- UserRoles]}
-           || UserRoles =/= undefined] ++
-     [{group_roles, GroupRoles} || GroupRoles =/= undefined] ++
+      {domain, Domain},
+      {roles, RolesJson}] ++
      [{groups, [list_to_binary(G) || G <- Groups]} || Groups =/= undefined] ++
      [{name, list_to_binary(Name)} || Name =/= undefined] ++
      [{passwordless, Passwordless} || Passwordless == true] ++
      [{password_change_date, PassChangeTime} || PassChangeTime =/= undefined]}.
 
-format_group_roles(undefined) -> undefined;
-format_group_roles(GroupRoles) ->
-    lists:map(
-      fun ({G, Roles}) ->
-              {[{list_to_binary(G), [{role_to_json(Role)} || Role <- Roles]}]}
-      end, GroupRoles).
+format_roles(Props) ->
+    Roles = proplists:get_value(roles, Props, []),
+    UserRoles = proplists:get_value(user_roles, Props, []),
+    GroupRoles = proplists:get_value(group_roles, Props, []),
+    Map = maps:from_list([{R, []} || R <- Roles]),
+    AddOrigin =
+        fun (Origin, List, AccMap) ->
+                lists:foldl(
+                  fun (R, Acc) ->
+                          maps:put(R, [Origin|maps:get(R, Acc, [])], Acc)
+                  end, AccMap, List)
+        end,
+    Map2 = lists:foldl(
+             fun ({G, R}, Acc) ->
+                AddOrigin(G, R, Acc)
+             end, Map, [{user, UserRoles} | GroupRoles]),
+    maps:fold(
+       fun (Role, Origins, Acc) ->
+           [{role_to_json(Role, Origins)}|Acc]
+       end, [], Map2).
 
 format_password_change_time(undefined) -> undefined;
 format_password_change_time(TS) ->
