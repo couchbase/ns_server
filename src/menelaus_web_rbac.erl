@@ -356,7 +356,7 @@ handle_get_all_users(Req, Pattern, Params) ->
                filter_by_roles(Roles),
                security_users_filter(Req),
                jsonify_users(Passwordless),
-               sjson:encode_extended_json([{compact, false},
+               sjson:encode_extended_json([{compact, true},
                                            {strict, false}]),
                pipes:simple_buffer(2048)],
               menelaus_util:send_chunked(
@@ -609,8 +609,7 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
     {JsonFromSkews, Links} = json_from_skews(PageSkews, PageSize, UserJson),
     LinksJson = build_links(Links, PageSize, DomainAtom, Path, Permission),
     Json = {[{total, Total}, LinksJson | JsonFromSkews]},
-    menelaus_util:reply_ok(Req, "application/json",
-                           misc:ejson_encode_pretty(Json)).
+    menelaus_util:reply_json(Req, Json).
 
 handle_whoami(Req) ->
     Identity = menelaus_auth:get_identity(Req),
