@@ -53,6 +53,7 @@
          domain_to_atom/1,
          handle_put_group/2,
          handle_delete_group/2,
+         handle_get_groups/1,
          handle_get_group/2]).
 
 -define(MIN_USERS_PAGE_SIZE, 2).
@@ -325,14 +326,14 @@ handle_get_users_45(Req) ->
              end, Users),
     menelaus_util:reply_json(Req, Json).
 
-security_users_filter(Req) ->
+security_filter(Req) ->
     case menelaus_auth:has_permission(?SECURITY_READ, Req) of
         true ->
             pipes:filter(fun (_) -> true end);
         false ->
             SecurityRoles = get_security_roles(),
             pipes:filter(
-              fun ({{user, _}, Props}) ->
+              fun ({_, Props}) ->
                       Roles = proplists:get_value(roles, Props),
                       not overlap(Roles, SecurityRoles)
               end)
@@ -343,7 +344,7 @@ handle_get_all_users(Req, Pattern, Params) ->
               proplists:get_value(permission, Params)),
     pipes:run(menelaus_users:select_users(Pattern),
               [filter_by_roles(Roles),
-               security_users_filter(Req),
+               security_filter(Req),
                jsonify_users(),
                sjson:encode_extended_json([{compact, true},
                                            {strict, false}]),
@@ -560,7 +561,7 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
     {PageSkews, Total} =
         pipes:run(menelaus_users:select_users({'_', DomainAtom}),
                   [filter_by_roles(Roles),
-                   security_users_filter(Req)],
+                   security_filter(Req)],
                   ?make_consumer(
                      pipes:fold(
                        ?producer(),
@@ -1348,6 +1349,29 @@ do_delete_group(GroupId, Req) ->
         {error, not_found} ->
             menelaus_util:reply_json(Req, <<"Group was not found.">>, 404)
     end.
+
+handle_get_groups(Req) ->
+    menelaus_util:assert_is_madhatter(),
+    pipes:run(menelaus_users:select_groups('_'),
+              [security_filter(Req),
+               jsonify_groups(),
+               sjson:encode_extended_json([{compact, true},
+                                           {strict, false}]),
+               pipes:simple_buffer(2048)],
+              menelaus_util:send_chunked(
+                Req, 200, [{"Content-Type", "application/json"}])).
+
+jsonify_groups() ->
+    ?make_transducer(
+       begin
+           ?yield(array_start),
+           pipes:foreach(
+             ?producer(),
+             fun ({{group, GroupId}, Props}) ->
+                     ?yield({json, group_to_json(GroupId, Props)})
+             end),
+           ?yield(array_end)
+       end).
 
 handle_get_group(GroupId, Req) ->
     menelaus_util:assert_is_madhatter(),

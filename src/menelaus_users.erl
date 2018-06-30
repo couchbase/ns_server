@@ -45,6 +45,7 @@
 %% Group management:
          store_group/3,
          delete_group/1,
+         select_groups/1,
          get_group_roles/1,
          get_group_props/1,
          group_exists/1,
@@ -82,6 +83,7 @@
 
 -define(MAX_USERS_ON_CE, 20).
 -define(DEFAULT_PROPS, [name, roles, passwordless, password_change_timestamp]).
+-define(DEFAULT_GROUP_PROPS, [description, roles]).
 
 -record(state, {base, passwordless}).
 
@@ -558,8 +560,22 @@ delete_group(GroupId) ->
         {not_found, _} -> {error, not_found}
     end.
 
+select_groups(KeySpec) ->
+    select_groups(KeySpec, ?DEFAULT_GROUP_PROPS).
+
+select_groups(KeySpec, Items) ->
+    pipes:compose(
+        [replicated_dets:select(storage_name(), {group, KeySpec}, 100),
+         make_group_props_transducer(Items)]).
+
+make_group_props_transducer(Items) ->
+    PropsState = make_props_state(Items),
+    pipes:map(fun ({Id, Props}) ->
+                      {Id, make_group_props(Props, Items, PropsState)}
+              end).
+
 get_group_props(GroupId) ->
-    get_group_props(GroupId, [description, roles]).
+    get_group_props(GroupId, ?DEFAULT_GROUP_PROPS).
 
 get_group_props(GroupId, Items) ->
     Props = replicated_dets:get(storage_name(), {group, GroupId}, []),

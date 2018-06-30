@@ -347,6 +347,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "rbac", "users", Domain, UserId] ->
                     {{[admin, security], read},
                      fun menelaus_web_rbac:handle_get_user/3, [Domain, UserId]};
+                ["settings", "rbac", "groups"] ->
+                    {{[admin, security], read},
+                     fun menelaus_web_rbac:handle_get_groups/1, []};
                 ["settings", "rbac", "groups", GroupId] ->
                     {{[admin, security], read},
                      fun menelaus_web_rbac:handle_get_group/2, [GroupId]};
