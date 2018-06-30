@@ -229,17 +229,32 @@ handle_get_roles(Req) ->
 
 user_to_json({Id, Domain}, Props) ->
     Roles = proplists:get_value(roles, Props),
+    UserRoles = proplists:get_value(user_roles, Props),
+    GroupRoles = format_group_roles(proplists:get_value(group_roles, Props)),
     Name = proplists:get_value(name, Props),
+    Groups = proplists:get_value(groups, Props),
     Passwordless = proplists:get_value(passwordless, Props),
     PassChangeTime = format_password_change_time(
                        proplists:get_value(password_change_timestamp, Props)),
 
     {[{id, list_to_binary(Id)},
-      {domain, Domain},
-      {roles, [{role_to_json(Role)} || Roles =/= undefined, Role <- Roles]}] ++
+      {domain, Domain}] ++
+     [{roles, [{role_to_json(Role)} || Role <- Roles]}
+           || Roles =/= undefined] ++
+     [{user_roles, [{role_to_json(Role)} || Role <- UserRoles]}
+           || UserRoles =/= undefined] ++
+     [{group_roles, GroupRoles} || GroupRoles =/= undefined] ++
+     [{groups, [list_to_binary(G) || G <- Groups]} || Groups =/= undefined] ++
      [{name, list_to_binary(Name)} || Name =/= undefined] ++
      [{passwordless, Passwordless} || Passwordless == true] ++
      [{password_change_date, PassChangeTime} || PassChangeTime =/= undefined]}.
+
+format_group_roles(undefined) -> undefined;
+format_group_roles(GroupRoles) ->
+    lists:map(
+      fun ({G, Roles}) ->
+              {[{list_to_binary(G), [{role_to_json(Role)} || Role <- Roles]}]}
+      end, GroupRoles).
 
 format_password_change_time(undefined) -> undefined;
 format_password_change_time(TS) ->
@@ -334,8 +349,13 @@ security_filter(Req) ->
             SecurityRoles = get_security_roles(),
             pipes:filter(
               fun ({_, Props}) ->
-                      Roles = proplists:get_value(roles, Props),
-                      not overlap(Roles, SecurityRoles)
+                      Roles = proplists:get_value(roles, Props, []),
+                      UserRoles = proplists:get_value(user_roles, Props, []),
+                      GroupsWRoles =
+                          proplists:get_value(group_roles, Props, []),
+                      GroupRoles = lists:concat([R || {_, R} <- GroupsWRoles]),
+                      AllRoles = lists:usort(Roles ++ UserRoles ++ GroupRoles),
+                      not overlap(AllRoles, SecurityRoles)
               end)
     end.
 
@@ -375,8 +395,10 @@ filter_by_roles(Roles) ->
     RoleNames = [Name || {Name, _} <- Roles],
     pipes:filter(
       fun ({{user, _}, Props}) ->
-          UserRoles = proplists:get_value(roles, Props),
-          overlap(RoleNames, UserRoles)
+          UserRoles = proplists:get_value(user_roles, Props, []),
+          GroupsAndRoles = proplists:get_value(group_roles, Props, []),
+          GroupRoles = lists:concat([R || {_, R} <- GroupsAndRoles]),
+          overlap(RoleNames, lists:usort(UserRoles ++ GroupRoles))
       end).
 
 jsonify_users() ->
@@ -784,6 +806,7 @@ validate_password(State) ->
 
 put_user_validators(Domain) ->
     [validator:touch(name, _),
+     validate_user_groups(groups, _),
      validator:required(roles, _),
      validate_roles(roles, _)] ++
         case Domain of
@@ -799,6 +822,26 @@ bad_roles_error(BadRoles) ->
     io_lib:format(
       "Cannot assign roles to user because the following roles are unknown,"
       " malformed or role parameters are undefined: [~s]", [Str]).
+
+validate_user_groups(Name, State) ->
+    validator:validate(
+      fun (GroupsRaw) ->
+              Groups = parse_groups(GroupsRaw),
+              case lists:filter(?cut(not menelaus_users:group_exists(_)),
+                                Groups) of
+                  [] -> {value, Groups};
+                  BadGroups ->
+                      BadGroupsStr = string:join(BadGroups, ","),
+                      ErrorStr = io_lib:format("Groups do not exist: ~s",
+                                               [BadGroupsStr]),
+                      {error, ErrorStr}
+              end
+      end, Name, State).
+
+parse_groups(undefined) -> [];
+parse_groups(GroupsStr) ->
+    GroupsTokens = string:tokens(GroupsStr, ","),
+    [string:trim(G) || G <- GroupsTokens].
 
 validate_roles(Name, State) ->
     validator:validate(
@@ -827,6 +870,7 @@ handle_put_user_with_identity({_UserId, Domain} = Identity, Req) ->
                                         proplists:get_value(name, Values),
                                         proplists:get_value(password, Values),
                                         proplists:get_value(roles, Values),
+                                        proplists:get_value(groups, Values),
                                         Req)
       end, Req, form, put_user_validators(Domain)).
 
@@ -845,14 +889,18 @@ overlap(List1, List2) ->
 get_security_roles() ->
     [R || {R, _} <- menelaus_roles:get_security_roles()].
 
-handle_put_user_validated(Identity, Name, Password, Roles, Req) ->
-    UniqueRoles = ordsets:to_list(ordsets:from_list(Roles)),
+handle_put_user_validated(Identity, Name, Password, Roles, Groups, Req) ->
+    GroupRoles = lists:concat([menelaus_users:get_group_roles(G)
+                                   || Groups =/= undefined, G <- Groups]),
+    UniqueRoles = lists:usort(Roles),
+    OldRoles = menelaus_users:get_roles(Identity),
     perform_if_allowed(
-      do_store_user(Identity, Name, Password, UniqueRoles, _),
-      Req, ?SECURITY_WRITE, UniqueRoles ++ menelaus_users:get_roles(Identity)).
+      do_store_user(Identity, Name, Password, UniqueRoles, Groups, _),
+      Req, ?SECURITY_WRITE, lists:usort(GroupRoles ++ Roles ++ OldRoles)).
 
-do_store_user(Identity, Name, Password, UniqueRoles, Req) ->
-    case menelaus_users:store_user(Identity, Name, Password, UniqueRoles) of
+do_store_user(Identity, Name, Password, UniqueRoles, Groups, Req) ->
+    case menelaus_users:store_user(Identity, Name, Password,
+                                   UniqueRoles, Groups) of
         {commit, _} ->
             ns_audit:set_user(Req, Identity, UniqueRoles, Name),
             reply_put_delete_users(Req);

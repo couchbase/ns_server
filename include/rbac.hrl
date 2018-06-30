@@ -33,6 +33,8 @@
 -type rbac_role() :: rbac_role_name() | {rbac_role_name(), nonempty_list(rbac_role_param())}.
 -type rbac_user_name() :: string() | undefined.
 
+-type rbac_group_id() :: string().
+
 -type rbac_operation() :: atom().
 -type rbac_permission_pattern_operations() :: none | all | nonempty_list(rbac_operation()).
 -type rbac_permission_pattern_vertex_param_raw() :: atom().

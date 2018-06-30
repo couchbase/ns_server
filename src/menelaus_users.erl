@@ -27,7 +27,7 @@
 
 -export([
 %% User management:
-         store_user/4,
+         store_user/5,
          delete_user/1,
          select_users/1,
          select_users/2,
@@ -82,7 +82,8 @@
 -export([get_auth_info_on_ns_server/1]).
 
 -define(MAX_USERS_ON_CE, 20).
--define(DEFAULT_PROPS, [name, roles, passwordless, password_change_timestamp]).
+-define(DEFAULT_PROPS, [name, user_roles, group_roles, passwordless,
+                        password_change_timestamp, groups]).
 -define(DEFAULT_GROUP_PROPS, [description, roles]).
 
 -record(state, {base, passwordless}).
@@ -274,13 +275,28 @@ make_props(Id, Props, ItemList, {Passwordless, Definitions,
       fun (password_change_timestamp = Name) ->
               {Name, replicated_dets:get_last_modified(
                        storage_name(), {auth, Id}, undefined)};
-          (roles = Name) ->
+          (group_roles = Name) ->
+              {Name, get_user_groups_and_roles(Props, Definitions,
+                                               AllPossibleValues)};
+          (user_roles = Name) ->
               UserRoles = menelaus_roles:filter_out_invalid_roles(
                             proplists:get_value(roles, Props, []),
                             Definitions, AllPossibleValues),
               {Name, UserRoles};
+          (roles = Name) ->
+              UserRoles = menelaus_roles:filter_out_invalid_roles(
+                            proplists:get_value(roles, Props, []),
+                            Definitions,
+                            AllPossibleValues),
+              Groups = get_user_groups_and_roles(Props, Definitions,
+                                                 AllPossibleValues),
+              GroupRoles = lists:concat([R || {_, R} <- Groups]),
+              {Name, lists:usort(UserRoles ++ GroupRoles)};
           (passwordless = Name) ->
               {Name, lists:member(Id, Passwordless)};
+          (groups = Name) ->
+              Groups = proplists:get_value(Name, Props, []),
+              {Name, lists:filter(group_exists(_), Groups)};
           (Name) ->
               {Name, proplists:get_value(Name, Props)}
       end, ItemList).
@@ -322,14 +338,11 @@ build_auth({_, CurrentAuth}, Password) ->
             build_scram_auth(Password)
     end.
 
--spec store_user(rbac_identity(), rbac_user_name(), rbac_password(), [rbac_role()]) -> run_txn_return().
-store_user(Identity, Name, Password, Roles) ->
-    Props = case Name of
-                undefined ->
-                    [];
-                _ ->
-                    [{name, Name}]
-            end,
+-spec store_user(rbac_identity(), rbac_user_name(), rbac_password(),
+                 [rbac_role()], [rbac_group_id()]) -> run_txn_return().
+store_user(Identity, Name, Password, Roles, Groups) ->
+    Props = [{name, Name} || Name =/= undefined] ++
+            [{groups, Groups} || Groups =/= undefined],
     case cluster_compat_mode:is_cluster_50() of
         true ->
             store_user_50(Identity, Props, Password, Roles, ns_config:get());
@@ -555,6 +568,26 @@ store_group(Identity, Description, Roles) ->
     end.
 
 delete_group(GroupId) ->
+    UpdateFun =
+        fun ({user, Key}, Props) ->
+                Groups = proplists:get_value(groups, Props, []),
+                case lists:member(GroupId, Groups) of
+                    true ->
+                        NewProps = misc:key_update(groups, Props,
+                                                   lists:delete(GroupId, _)),
+                        ?log_debug("Updating user ~p groups: ~p -> ~p",
+                                   [Key, Props, NewProps]),
+                        {update, NewProps};
+                    false ->
+                        skip
+                end
+        end,
+
+    case replicated_dets:select_with_update(storage_name(), {user, '_'},
+                                            100, UpdateFun) of
+        [] -> ok;
+        Error -> ?log_warning("Failed to remove users from group: ~p", [Error])
+    end,
     case replicated_dets:delete(storage_name(), {group, GroupId}) of
         ok -> ok;
         {not_found, _} -> {error, not_found}
@@ -581,11 +614,19 @@ get_group_props(GroupId, Items) ->
     Props = replicated_dets:get(storage_name(), {group, GroupId}, []),
     make_group_props(Props, Items).
 
+get_group_props(GroupId, Items, Definitions, AllPossibleValues) ->
+    Props = replicated_dets:get(storage_name(), {group, GroupId}, []),
+    make_group_props(Props, Items, {[], Definitions, AllPossibleValues}).
+
 group_exists(GroupId) ->
     false =/= replicated_dets:get(storage_name(), {group, GroupId}).
 
 get_group_roles(GroupId) ->
     proplists:get_value(roles, get_group_props(GroupId, [roles]), []).
+
+get_group_roles(GroupId, Definitions, AllPossibleValues) ->
+    Props = get_group_props(GroupId, [roles], Definitions, AllPossibleValues),
+    proplists:get_value(roles, Props, []).
 
 make_group_props(Props, Items) ->
     make_group_props(Props, Items, make_props_state(Items)).
@@ -600,6 +641,10 @@ make_group_props(Props, Items, {_, Definitions, AllPossibleValues}) ->
           (Name) ->
               {Name, proplists:get_value(Name, Props)}
       end, Items).
+
+get_user_groups_and_roles(UserProps, Definitions, AllPossibleValues) ->
+    Groups = proplists:get_value(groups, UserProps, []),
+    [{G, get_group_roles(G, Definitions, AllPossibleValues)} || G <- Groups].
 
 -spec get_user_name(rbac_identity()) -> rbac_user_name().
 get_user_name({_, Domain} = Identity) when Domain =:= local orelse Domain =:= external ->
@@ -855,17 +900,17 @@ maybe_upgrade_role_to_55(Role) ->
     [Role].
 
 upgrade_user_roles_to_55(Props) ->
-    OldRoles = proplists:get_value(roles, Props),
+    OldRoles = proplists:get_value(user_roles, Props),
     %% Convert roles and remove duplicates.
     NewRoles = lists:usort(upgrade_roles_to_55(OldRoles)),
     [{roles, NewRoles} | lists:keydelete(roles, 1, Props)].
 
 user_roles_require_upgrade({{user, _Identity}, Props}) ->
-    Roles = proplists:get_value(roles, Props),
+    Roles = proplists:get_value(user_roles, Props),
     lists:any(?cut(maybe_upgrade_role_to_55(_1) =/= [_1]), Roles).
 
 fetch_users_for_55_upgrade() ->
-    pipes:run(menelaus_users:select_users({'_', '_'}, [roles]),
+    pipes:run(menelaus_users:select_users({'_', '_'}, [user_roles]),
               [pipes:filter(fun user_roles_require_upgrade/1),
                pipes:map(fun ({{user, I}, _}) -> I end)],
               pipes:collect()).
@@ -879,7 +924,7 @@ do_upgrade_to_55(Nodes) ->
 
     UpdateUsers = fetch_users_for_55_upgrade(),
     lists:foreach(fun (Identity) ->
-                          OldProps = get_user_props(Identity, [roles]),
+                          OldProps = get_user_props(Identity, [user_roles]),
                           NewProps = upgrade_user_roles_to_55(OldProps),
                           store_user_50_validated(Identity, NewProps, same)
                   end, UpdateUsers).
