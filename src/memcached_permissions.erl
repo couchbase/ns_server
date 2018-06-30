@@ -78,6 +78,8 @@ filter_event({buckets, _V}) ->
     true;
 filter_event({cluster_compat_version, _V}) ->
     true;
+filter_event({group_version, _V}) ->
+    true;
 filter_event({user_version, _V}) ->
     true;
 filter_event({rest_creds, _V}) ->
@@ -95,6 +97,8 @@ handle_event({buckets, V}, #state{buckets = Buckets, param_values = ParamValues}
             {changed, State#state{buckets = NewBuckets, param_values = NewParamValues}}
     end;
 handle_event({user_version, _V}, State) ->
+    {changed, State};
+handle_event({group_version, _V}, State) ->
     {changed, State};
 handle_event({cluster_compat_version, _V}, #state{roles = Roles} = State) ->
     case menelaus_roles:get_definitions() of

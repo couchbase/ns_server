@@ -750,6 +750,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "rbac", "users", Domain, UserId] ->
                     {{[admin, security], write},
                      fun menelaus_web_rbac:handle_put_user/3, [Domain, UserId]};
+                ["settings", "rbac", "groups", GroupId] ->
+                    {{[admin, security], write},
+                     fun menelaus_web_rbac:handle_put_group/2, [GroupId]};
                 ["couchBase" | _] ->
                     {no_check, fun menelaus_pluggable_ui:proxy_req/4,
                      ["couchBase",

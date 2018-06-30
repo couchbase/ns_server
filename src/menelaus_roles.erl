@@ -772,6 +772,8 @@ start_compiled_roles_cache() ->
     UsersFilter =
         fun ({user_version, _V}) ->
                 true;
+            ({group_version, _V}) ->
+                true;
             (_) ->
                 false
         end,

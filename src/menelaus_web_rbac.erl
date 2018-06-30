@@ -50,7 +50,8 @@
          handle_get_password_policy/1,
          handle_post_password_policy/1,
          assert_no_users_upgrade/0,
-         domain_to_atom/1]).
+         domain_to_atom/1,
+         handle_put_group/2]).
 
 -define(MIN_USERS_PAGE_SIZE, 2).
 -define(MAX_USERS_PAGE_SIZE, 100).
@@ -1294,6 +1295,42 @@ assert_no_users_upgrade() ->
                           503,
                           "Not allowed during cluster upgrade.",
                           []})
+    end.
+
+handle_put_group(GroupId, Req) ->
+    menelaus_util:assert_is_madhatter(),
+
+    case validate_id(GroupId, <<"Group name">>) of
+        true ->
+            validator:handle(
+              fun (Values) ->
+                      Description = proplists:get_value(description, Values),
+                      Roles = proplists:get_value(roles, Values),
+                      UniqueRoles = lists:usort(Roles),
+                      perform_if_allowed(
+                          do_store_group(GroupId, Description, UniqueRoles, _),
+                          Req, ?SECURITY_WRITE,
+                          UniqueRoles ++
+                          menelaus_users:get_group_roles(GroupId))
+              end, Req, form, put_group_validators());
+        Error ->
+            menelaus_util:reply_global_error(Req, Error)
+    end.
+
+put_group_validators() ->
+    [validator:touch(description, _),
+     validator:required(roles, _),
+     validate_roles(roles, _),
+     validator:unsupported(_)].
+
+do_store_group(GroupId, Description, UniqueRoles, Req) ->
+    case menelaus_users:store_group(GroupId, Description, UniqueRoles) of
+        ok ->
+            menelaus_util:reply_json(Req, <<>>, 200);
+        {error, {roles_validation, UnknownRoles}} ->
+            menelaus_util:reply_error(
+              Req, "roles",
+              bad_roles_error([role_to_string(UR) || UR <- UnknownRoles]))
     end.
 
 -ifdef(EUNIT).

@@ -25,38 +25,50 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--export([get_users_45/1,
+-export([
+%% User management:
+         store_user/4,
+         delete_user/1,
          select_users/1,
          select_users/2,
          select_auth_infos/1,
-         store_user/4,
-         delete_user/1,
-         change_password/2,
-         authenticate/2,
-         get_roles/1,
          user_exists/1,
+         get_roles/1,
          get_user_name/1,
-         upgrade_to_4_5/1,
-         get_salt_and_mac/1,
-         user_auth_info/2,
+         get_users_version/0,
+         get_auth_version/0,
+         get_auth_info/1,
          get_user_props/1,
          get_user_props/2,
+         change_password/2,
+
+%% Group management:
+         store_group/3,
+         get_group_roles/1,
+         get_group_props/1,
+         get_groups_version/0,
+
+%% Actions:
+         authenticate/2,
          build_scram_auth/1,
          build_scram_auth_info/1,
          build_plain_auth/1,
          build_plain_auth/2,
-         get_users_version/0,
-         get_auth_version/0,
          empty_storage/0,
+         cleanup_bucket_roles/1,
+         get_passwordless/0,
+         get_salt_and_mac/1,
+         user_auth_info/2,
+
+%% Backward compatibility:
+         get_users_45/1,
+         upgrade_to_4_5/1,
          upgrade_to_50/2,
          upgrade_to_55/2,
          config_upgrade_to_50/0,
          config_upgrade_to_55/0,
-         upgrade_status/0,
-         get_passwordless/0,
-         filter_out_invalid_roles/3,
-         cleanup_bucket_roles/1,
-         get_auth_info/1]).
+         upgrade_status/0
+        ]).
 
 %% callbacks for replicated_dets
 -export([init/1, on_save/2, on_empty/1, handle_call/4, handle_info/2]).
@@ -98,6 +110,17 @@ get_users_version() ->
             rpc:call(ns_node_disco:ns_server_node(), ?MODULE, get_users_version, [])
     end.
 
+get_groups_version() ->
+    case ns_node_disco:couchdb_node() == node() of
+        false ->
+            [{group_version, V, Base}] = ets:lookup(versions_name(),
+                                                    group_version),
+            {V, Base};
+        true ->
+            rpc:call(ns_node_disco:ns_server_node(), ?MODULE,
+                     get_groups_version, [])
+    end.
+
 get_auth_version() ->
     case ns_node_disco:couchdb_node() == node() of
         false ->
@@ -127,7 +150,9 @@ start_auth_cache() ->
               dist_manager:wait_for_node(fun ns_node_disco:ns_server_node/0),
               [{{user_storage_events, ns_node_disco:ns_server_node()}, fun (_) -> true end}]
       end,
-      fun () -> {get_auth_version(), get_users_version()} end).
+      fun () ->
+              {get_auth_version(), get_users_version(), get_groups_version()}
+      end).
 
 empty_storage() ->
     replicated_dets:empty(storage_name()).
@@ -141,8 +166,11 @@ init([]) ->
 
 init_versions() ->
     Base = misc:rand_uniform(0, 16#100000000),
-    ets:insert_new(versions_name(), [{user_version, 0, Base}, {auth_version, 0, Base}]),
+    ets:insert_new(versions_name(), [{user_version, 0, Base},
+                                     {auth_version, 0, Base},
+                                     {group_version, 0, Base}]),
     gen_event:notify(user_storage_events, {user_version, {0, Base}}),
+    gen_event:notify(user_storage_events, {group_version, {0, Base}}),
     gen_event:notify(user_storage_events, {auth_version, {0, Base}}),
     Base.
 
@@ -151,6 +179,9 @@ on_save(Docs, State) ->
         lists:foldl(
           fun (Doc, {MessagesAcc, StateAcc}) ->
                   case replicated_dets:get_id(Doc) of
+                      {group, _} ->
+                          {sets:add_element({change_version, group_version},
+                                            MessagesAcc), StateAcc};
                       {user, _} ->
                           {sets:add_element({change_version, user_version}, MessagesAcc), StateAcc};
                       {auth, Identity} ->
@@ -506,6 +537,43 @@ user_exists(Identity) ->
 get_roles(Identity) ->
     proplists:get_value(roles, get_user_props(Identity, [roles]), []).
 
+%% Groups functions
+
+store_group(Identity, Description, Roles) ->
+    case menelaus_roles:validate_roles(Roles, ns_config:get()) of
+        {NewRoles, []} ->
+            Props = [{description, Description} || Description =/= undefined] ++
+                    [{roles, NewRoles}],
+            ok = replicated_dets:set(storage_name(), {group, Identity}, Props),
+            ok;
+        {_, BadRoles} ->
+            {error, {roles_validation, BadRoles}}
+    end.
+
+get_group_props(GroupId) ->
+    get_group_props(GroupId, [description, roles]).
+
+get_group_props(GroupId, Items) ->
+    Props = replicated_dets:get(storage_name(), {group, GroupId}, []),
+    make_group_props(Props, Items).
+
+get_group_roles(GroupId) ->
+    proplists:get_value(roles, get_group_props(GroupId, [roles]), []).
+
+make_group_props(Props, Items) ->
+    make_group_props(Props, Items, make_props_state(Items)).
+
+make_group_props(Props, Items, {_, Definitions, AllPossibleValues}) ->
+    lists:map(
+      fun (roles = Name) ->
+              Roles = proplists:get_value(roles, Props, []),
+              Roles2 = menelaus_roles:filter_out_invalid_roles(
+                         Roles, Definitions, AllPossibleValues),
+              {Name, Roles2};
+          (Name) ->
+              {Name, proplists:get_value(Name, Props)}
+      end, Items).
+
 -spec get_user_name(rbac_identity()) -> rbac_user_name().
 get_user_name({_, Domain} = Identity) when Domain =:= local orelse Domain =:= external ->
     proplists:get_value(name, get_user_props(Identity, [name]));
@@ -709,22 +777,27 @@ cleanup_bucket_roles(BucketName) ->
     AllPossibleValues = menelaus_roles:calculate_possible_param_values(Buckets),
 
     UpdateFun =
-        fun ({user, Key}, Props) ->
+        fun ({Type, Key}, Props) when Type == user; Type == group ->
                 case filter_out_invalid_roles(Props, Definitions,
                                               AllPossibleValues) of
                     Props ->
                         skip;
                     NewProps ->
-                        ?log_debug("Changing properties of ~p from ~p to ~p due to deletion of ~p",
-                                   [Key, Props, NewProps, BucketName]),
+                        ?log_debug("Changing properties of ~p ~p from ~p "
+                                   "to ~p due to deletion of ~p",
+                                   [Type, Key, Props, NewProps, BucketName]),
                         {update, NewProps}
                 end
         end,
-    case replicated_dets:select_with_update(storage_name(), {user, '_'}, 100, UpdateFun) of
-        [] ->
-            ok;
-        Errors ->
-            ?log_warning("Failed to cleanup some roles: ~p", [Errors]),
+
+    UpdateRecords = replicated_dets:select_with_update(storage_name(), _, 100,
+                                                       UpdateFun),
+
+    case {UpdateRecords({user, '_'}), UpdateRecords({group, '_'})} of
+        {[], []} -> ok;
+        {UserErrors, GroupErrors} ->
+            ?log_warning("Failed to cleanup some roles: ~p ~p",
+                         [UserErrors, GroupErrors]),
             ok
     end.
 
