@@ -47,6 +47,7 @@
          delete_group/1,
          get_group_roles/1,
          get_group_props/1,
+         group_exists/1,
          get_groups_version/0,
 
 %% Actions:
@@ -563,6 +564,9 @@ get_group_props(GroupId) ->
 get_group_props(GroupId, Items) ->
     Props = replicated_dets:get(storage_name(), {group, GroupId}, []),
     make_group_props(Props, Items).
+
+group_exists(GroupId) ->
+    false =/= replicated_dets:get(storage_name(), {group, GroupId}).
 
 get_group_roles(GroupId) ->
     proplists:get_value(roles, get_group_props(GroupId, [roles]), []).

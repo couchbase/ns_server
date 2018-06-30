@@ -52,7 +52,8 @@
          assert_no_users_upgrade/0,
          domain_to_atom/1,
          handle_put_group/2,
-         handle_delete_group/2]).
+         handle_delete_group/2,
+         handle_get_group/2]).
 
 -define(MIN_USERS_PAGE_SIZE, 2).
 -define(MAX_USERS_PAGE_SIZE, 100).
@@ -1347,6 +1348,27 @@ do_delete_group(GroupId, Req) ->
         {error, not_found} ->
             menelaus_util:reply_json(Req, <<"Group was not found.">>, 404)
     end.
+
+handle_get_group(GroupId, Req) ->
+    menelaus_util:assert_is_madhatter(),
+    case menelaus_users:group_exists(GroupId) of
+        false ->
+            menelaus_util:reply_json(Req, <<"Unknown group.">>, 404);
+        true ->
+            perform_if_allowed(
+              menelaus_util:reply_json(_, get_group_json(GroupId)),
+              Req, ?SECURITY_READ, menelaus_users:get_group_roles(GroupId))
+    end.
+
+get_group_json(GroupId) ->
+    group_to_json(GroupId, menelaus_users:get_group_props(GroupId)).
+
+group_to_json(GroupId, Props) ->
+    Description = proplists:get_value(description, Props),
+    {[{id, list_to_binary(GroupId)},
+      {roles, [{role_to_json(R)} || R <- proplists:get_value(roles, Props)]}] ++
+         [{description, list_to_binary(Description)}
+          || Description =/= undefined]}.
 
 -ifdef(EUNIT).
 %% Tests
