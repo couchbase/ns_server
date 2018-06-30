@@ -51,7 +51,8 @@
          handle_post_password_policy/1,
          assert_no_users_upgrade/0,
          domain_to_atom/1,
-         handle_put_group/2]).
+         handle_put_group/2,
+         handle_delete_group/2]).
 
 -define(MIN_USERS_PAGE_SIZE, 2).
 -define(MAX_USERS_PAGE_SIZE, 100).
@@ -1331,6 +1332,20 @@ do_store_group(GroupId, Description, UniqueRoles, Req) ->
             menelaus_util:reply_error(
               Req, "roles",
               bad_roles_error([role_to_string(UR) || UR <- UnknownRoles]))
+    end.
+
+handle_delete_group(GroupId, Req) ->
+    menelaus_util:assert_is_madhatter(),
+    perform_if_allowed(
+      do_delete_group(GroupId, _), Req, ?SECURITY_WRITE,
+      menelaus_users:get_group_roles(GroupId)).
+
+do_delete_group(GroupId, Req) ->
+    case menelaus_users:delete_group(GroupId) of
+        ok ->
+            menelaus_util:reply_json(Req, <<>>, 200);
+        {error, not_found} ->
+            menelaus_util:reply_json(Req, <<"Group was not found.">>, 404)
     end.
 
 -ifdef(EUNIT).

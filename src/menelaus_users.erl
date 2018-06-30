@@ -44,6 +44,7 @@
 
 %% Group management:
          store_group/3,
+         delete_group/1,
          get_group_roles/1,
          get_group_props/1,
          get_groups_version/0,
@@ -548,6 +549,12 @@ store_group(Identity, Description, Roles) ->
             ok;
         {_, BadRoles} ->
             {error, {roles_validation, BadRoles}}
+    end.
+
+delete_group(GroupId) ->
+    case replicated_dets:delete(storage_name(), {group, GroupId}) of
+        ok -> ok;
+        {not_found, _} -> {error, not_found}
     end.
 
 get_group_props(GroupId) ->
