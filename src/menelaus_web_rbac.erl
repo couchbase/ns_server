@@ -53,7 +53,7 @@
          domain_to_atom/1,
          handle_put_group/2,
          handle_delete_group/2,
-         handle_get_groups/1,
+         handle_get_groups/2,
          handle_get_group/2]).
 
 -define(MIN_USERS_PAGE_SIZE, 2).
@@ -487,6 +487,10 @@ create_skews(Start, PageSize) ->
 
 add_to_skews(El, Skews) ->
     [add_to_skew(El, Skew) || Skew <- Skews].
+
+build_group_links(Links, PageSize, Path) ->
+    {[{LinkName, build_pager_link(Path, StartFrom, PageSize, [])}
+         || {LinkName, StartFrom} <- Links]}.
 
 build_user_links(Links, PageSize, NeedDomain, Path, Permission) ->
     Extra = [{permission, permission_to_binary(Permission)}
@@ -1350,8 +1354,47 @@ do_delete_group(GroupId, Req) ->
             menelaus_util:reply_json(Req, <<"Group was not found.">>, 404)
     end.
 
-handle_get_groups(Req) ->
+handle_get_groups(Path, Req) ->
     menelaus_util:assert_is_madhatter(),
+    Query = mochiweb_request:parse_qs(Req),
+    case lists:keyfind("pageSize", 1, Query) of
+        false ->
+            handle_get_all_groups(Req);
+        _ ->
+            validator:handle(
+              handle_get_groups_page(Req, Path, _),
+              Req, Query, get_groups_page_validators())
+    end.
+
+get_groups_page_validators() ->
+    [validator:integer(pageSize, ?MIN_USERS_PAGE_SIZE, ?MAX_USERS_PAGE_SIZE, _),
+     validator:touch(startFrom, _)].
+
+handle_get_groups_page(Req, Path, Values) ->
+    Start = proplists:get_value(startFrom, Values),
+    PageSize = proplists:get_value(pageSize, Values),
+
+    {PageSkews, Total} =
+        pipes:run(menelaus_users:select_groups('_'),
+                  [security_filter(Req)],
+                  ?make_consumer(
+                     pipes:fold(
+                       ?producer(),
+                       fun ({{group, Identity}, Props}, {Skews, T}) ->
+                               {add_to_skews({Identity, Props}, Skews), T + 1}
+                       end, {create_skews(Start, PageSize), 0}))),
+
+    {Groups, Skipped, Links} = page_data_from_skews(PageSkews, PageSize),
+    GroupsJson = [group_to_json(Id, Props) || {Id, Props} <- Groups],
+    LinksJson = build_group_links(Links, PageSize, Path),
+    Json = {[{total, Total},
+             {links, LinksJson},
+             {skipped, Skipped},
+             {groups, GroupsJson}]},
+
+    menelaus_util:reply_json(Req, Json).
+
+handle_get_all_groups(Req) ->
     pipes:run(menelaus_users:select_groups('_'),
               [security_filter(Req),
                jsonify_groups(),
