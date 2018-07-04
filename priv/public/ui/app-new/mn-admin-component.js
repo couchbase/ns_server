@@ -6,7 +6,7 @@ mn.components.MnAdmin =
 
     MnAdminComponent.annotations = [
       new ng.core.Component({
-        templateUrl: "app-new/admin/mn-admin.html",
+        templateUrl: "app-new/mn-admin.html",
         animations: [
           ng.animations.trigger(
             'mnMinimize', [

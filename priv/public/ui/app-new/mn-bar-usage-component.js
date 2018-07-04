@@ -7,7 +7,7 @@ mn.components.MnBarUsage =
     MnBarUsageComponent.annotations = [
       new ng.core.Component({
         selector: "mn-bar-usage",
-        templateUrl: "app-new/components/mn-bar-usage.html",
+        templateUrl: "app-new/mn-bar-usage.html",
         inputs: [
           "baseInfo",
           "total"

@@ -8,7 +8,7 @@ mn.components.MnAuth =
 
     MnAuthComponent.annotations = [
       new ng.core.Component({
-        templateUrl: "app-new/auth/mn-auth.html",
+        templateUrl: "app-new/mn-auth.html",
       })
     ];
 

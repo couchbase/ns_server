@@ -7,7 +7,7 @@ mn.components.MnNodeStorageConfig =
     MnNodeStorageConfig.annotations = [
       new ng.core.Component({
         selector: "mn-node-storage-config",
-        templateUrl: "app-new/components/mn-node-storage-config.html",
+        templateUrl: "app-new/mn-node-storage-config.html",
         inputs: [
           "group"
         ]

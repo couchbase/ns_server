@@ -7,7 +7,7 @@ mn.components.MnPathField =
     MnPathField.annotations = [
       new ng.core.Component({
         selector: "mn-path-field",
-        templateUrl: "app-new/components/mn-path-field.html",
+        templateUrl: "app-new/mn-path-field.html",
         inputs: [
           "control",
           "controlName"

@@ -6,7 +6,7 @@ mn.modules.MnWizard =
 
     MnWizardComponent.annotations = [
       new ng.core.Component({
-        templateUrl: 'app-new/wizard/mn-wizard.html'
+        templateUrl: 'app-new/mn-wizard.html'
       })
     ];
 

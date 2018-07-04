@@ -8,7 +8,7 @@ mn.components.MnJoinCluster =
 
     MnJoinCluster.annotations = [
       new ng.core.Component({
-        templateUrl: "app-new/wizard/mn-join-cluster.html"
+        templateUrl: "app-new/mn-join-cluster.html"
       })
     ];
 

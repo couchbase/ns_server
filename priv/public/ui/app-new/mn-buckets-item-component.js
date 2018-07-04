@@ -9,7 +9,7 @@ mn.components.MnBucketsItem =
     MnBucketsItem.annotations = [
       new ng.core.Component({
         selector: "mn-buckets-item",
-        templateUrl: "app-new/admin/mn-buckets/mn-buckets-item.html",
+        templateUrl: "app-new/mn-buckets-item.html",
         inputs: [
           "bucket"
         ]

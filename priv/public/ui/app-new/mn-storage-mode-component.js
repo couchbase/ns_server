@@ -7,7 +7,7 @@ mn.components.MnStorageMode =
     MnStorageMode.annotations = [
       new ng.core.Component({
         selector: "mn-storage-mode",
-        templateUrl: "app-new/components/mn-storage-mode.html",
+        templateUrl: "app-new/mn-storage-mode.html",
         inputs: [
           "control",
           "indexFlagChanges",

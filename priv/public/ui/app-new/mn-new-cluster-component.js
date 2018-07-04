@@ -8,7 +8,7 @@ mn.components.MnNewCluster =
 
     MnNewClusterComponent.annotations = [
       new ng.core.Component({
-        templateUrl: "app-new/wizard/mn-new-cluster.html"
+        templateUrl: "app-new/mn-new-cluster.html"
       })
     ];
 

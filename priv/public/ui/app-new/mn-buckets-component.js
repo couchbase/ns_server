@@ -8,7 +8,7 @@ mn.components.MnBuckets =
 
     MnBuckets.annotations = [
       new ng.core.Component({
-        templateUrl: "app-new/admin/mn-buckets/mn-buckets.html"
+        templateUrl: "app-new/mn-buckets.html"
       })
     ];
 

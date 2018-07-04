@@ -9,7 +9,7 @@ mn.components.MnWarmupProgress =
     MnWarmupProgressComponent.annotations = [
       new ng.core.Component({
         selector: "mn-warmup-progress",
-        templateUrl: "app-new/components/mn-warmup-progress.html",
+        templateUrl: "app-new/mn-warmup-progress.html",
         inputs: [
           "mnTasks", //observable
           "mnSortBy" //string

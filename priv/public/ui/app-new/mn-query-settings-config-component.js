@@ -7,7 +7,7 @@ mn.components.MnQuerySettingsConfig =
     MnQuerySettingsConfig.annotations = [
       new ng.core.Component({
         selector: "mn-query-settings-config",
-        templateUrl: "app-new/components/mn-query-settings-config.html",
+        templateUrl: "app-new/mn-query-settings-config.html",
         inputs: [
           "group"
         ]

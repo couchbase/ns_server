@@ -7,7 +7,7 @@ mn.components.MnServicesConfig =
     MnServicesConfig.annotations = [
       new ng.core.Component({
         selector: "mn-services-config",
-        templateUrl: "app-new/components/mn-services-config.html",
+        templateUrl: "app-new/mn-services-config.html",
         inputs: [
           "group",
           "servicesOnly"
