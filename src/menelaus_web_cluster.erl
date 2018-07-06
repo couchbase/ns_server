@@ -518,7 +518,7 @@ validate_add_node_params(User, Password) ->
 %% erlang R15B03 has http_uri:parse/2 that does the job
 %% reimplement after support of R14B04 will be dropped
 parse_hostname(Hostname) ->
-    do_parse_hostname(misc:trim(Hostname)).
+    do_parse_hostname(string:trim(Hostname)).
 
 do_parse_hostname([]) ->
     throw({error, [<<"Hostname is required.">>]});

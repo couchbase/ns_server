@@ -81,7 +81,7 @@ extract_user_list(undefined) ->
 extract_user_list(String) ->
     StringNoCR = [C || C <- String, C =/= $\r],
     Strings = string:tokens(StringNoCR, "\n"),
-    [B || B <- [list_to_binary(misc:trim(S)) || S <- Strings],
+    [B || B <- [list_to_binary(string:trim(S)) || S <- Strings],
           B =/= <<>>].
 
 parse_validate_saslauthd_settings(Params) ->
@@ -658,7 +658,7 @@ parse_roles(undefined) ->
     [];
 parse_roles(RolesStr) ->
     RolesRaw = string:tokens(RolesStr, ","),
-    [parse_role(misc:trim(RoleRaw)) || RoleRaw <- RolesRaw].
+    [parse_role(string:trim(RoleRaw)) || RoleRaw <- RolesRaw].
 
 role_to_string(Role) when is_atom(Role) ->
     atom_to_list(Role);
@@ -1196,7 +1196,7 @@ parse_vertices(_, _) ->
 parse_permissions(Body) ->
     RawPermissions = string:tokens(Body, ","),
     lists:map(fun (RawPermission) ->
-                      Trimmed = misc:trim(RawPermission),
+                      Trimmed = string:trim(RawPermission),
                       {Trimmed, parse_permission(Trimmed)}
               end, RawPermissions).
 
@@ -1238,7 +1238,7 @@ handle_check_permission_for_cbauth(Req) ->
     Identity = {proplists:get_value("user", Params),
                 list_to_existing_atom(proplists:get_value("domain", Params))},
     RawPermission = proplists:get_value("permission", Params),
-    Permission = parse_permission(misc:trim(RawPermission)),
+    Permission = parse_permission(string:trim(RawPermission)),
 
     case menelaus_roles:is_allowed(Permission, Identity) of
         true ->

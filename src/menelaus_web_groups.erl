@@ -283,7 +283,7 @@ parse_groups_post(Params) ->
                     undefined ->
                         {error, <<"is missing">>};
                     Name ->
-                        case misc:trim(Name) of
+                        case string:trim(Name) of
                             "" ->
                                 {error, <<"cannot be empty">>};
                             Trimmed ->

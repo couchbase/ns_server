@@ -140,9 +140,9 @@ is_field_valid(ticket, Ticket) ->
     re:run(Ticket, <<"^[0-9]*$">>) =/= nomatch andalso length(Ticket) =< 7.
 
 parse_validate_upload_url(UploadHost0, Customer0, Ticket0) ->
-    UploadHost = misc:trim(UploadHost0),
-    Customer = misc:trim(Customer0),
-    Ticket = misc:trim(Ticket0),
+    UploadHost = string:trim(UploadHost0),
+    Customer = string:trim(Customer0),
+    Ticket = string:trim(Ticket0),
     E0 = [{error, {malformed, K}} || {K, V} <- [{customer, Customer},
                                                 {ticket, Ticket}],
                                      not is_field_valid(K, V)],

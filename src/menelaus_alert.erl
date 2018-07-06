@@ -165,13 +165,13 @@ parse_settings_alerts_param("emailEncrypt", "true") ->
 parse_settings_alerts_param("emailEncrypt", _) ->
     [{email_encrypt, error}];
 parse_settings_alerts_param("emailHost", Host) ->
-    [{email_host, misc:trim(Host)}];
+    [{email_host, string:trim(Host)}];
 parse_settings_alerts_param("emailPort", Port) ->
     [{email_port, try list_to_integer(Port) catch error:badarg -> error end}];
 parse_settings_alerts_param("emailPass", Password) ->
     [{email_pass, Password}];
 parse_settings_alerts_param("emailUser", User) ->
-    [{email_user, misc:trim(User)}];
+    [{email_user, string:trim(User)}];
 parse_settings_alerts_param("enabled", "false") ->
     [{enabled, false}];
 parse_settings_alerts_param("enabled", "true") ->
@@ -179,9 +179,9 @@ parse_settings_alerts_param("enabled", "true") ->
 parse_settings_alerts_param("enabled", _) ->
     [{enabled, error}];
 parse_settings_alerts_param("recipients", Rcpts) ->
-    [{recipients, [misc:trim(R) || R <- string:tokens(Rcpts, ",")]}];
+    [{recipients, [string:trim(R) || R <- string:tokens(Rcpts, ",")]}];
 parse_settings_alerts_param("sender", Sender) ->
-    [{sender, misc:trim(Sender)}];
+    [{sender, string:trim(Sender)}];
 parse_settings_alerts_param(Key, _Value) ->
     [{error, "Unsupported paramater " ++ Key ++ " was specified"}].
 

@@ -677,7 +677,7 @@ parse_validate_external_params(Params) ->
                    undefined ->
                        throw({web_exception, 400, "hostname should be specified", []});
                    HostNm ->
-                       misc:trim(HostNm)
+                       string:trim(HostNm)
                end,
     Ports = parse_validate_ports(proplists:delete("hostname", Params)),
     [{external, [{hostname, Hostname}, {ports, Ports}]}].
