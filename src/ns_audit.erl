@@ -25,7 +25,7 @@
          login_failure/1,
          delete_user/2,
          password_change/2,
-         set_user/4,
+         set_user/5,
          add_node/7,
          remove_node/2,
          failover_nodes/3,
@@ -71,7 +71,9 @@
          modify_audit_settings/2,
          modify_index_settings/2,
          modify_query_curl_whitelist_setting/2,
-         modify_query_settings/2
+         modify_query_settings/2,
+         set_user_group/4,
+         delete_user_group/2
         ]).
 
 -export([start_link/0, stats/0]).
@@ -301,7 +303,11 @@ code(modify_audit_settings) ->
 code(modify_index_settings) ->
     8241;
 code(modify_query_settings) ->
-    8242.
+    8242;
+code(set_user_group) ->
+    8243;
+code(delete_user_group) ->
+    8244.
 
 to_binary({list, List}) ->
     [to_binary(A) || A <- List];
@@ -448,10 +454,12 @@ delete_user(Req, Identity) ->
 password_change(Req, Identity) ->
     put(password_change, Req, [{identity, get_identity(Identity)}]).
 
-set_user(Req, Identity, Roles, Name) ->
+set_user(Req, Identity, Roles, Name, Groups) ->
     put(set_user, Req, [{identity, get_identity(Identity)},
                         {roles, {list, [menelaus_web_rbac:role_to_string(Role) || Role <- Roles]}},
-                        {full_name, Name}]).
+                        {full_name, Name},
+                        {groups, {list, [G || Groups =/= undefined,
+                                              G <- Groups]}}]).
 
 add_node(Req, Hostname, Port, User, GroupUUID, Services, Node) ->
     put(add_node, Req, [{node, Node},
@@ -769,3 +777,13 @@ modify_query_settings(Req, Settings) ->
 modify_query_curl_whitelist_setting(Req, Values) ->
     Setting = [{curl_whitelist, ejson:encode({Values})}],
     modify_query_settings(Req, Setting).
+
+set_user_group(Req, Id, Roles, Description) ->
+    put(set_user_group, Req,
+        [{id, Id},
+         {roles, {list, [menelaus_web_rbac:role_to_string(Role)
+                            || Role <- Roles]}},
+         {description, Description}]).
+
+delete_user_group(Req, Id) ->
+    put(delete_user_group, Req, [{id, Id}]).

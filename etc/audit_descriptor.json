@@ -709,7 +709,8 @@
               "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "identity" : {"domain" : "", "user" : ""},
-              "roles" : ""
+              "roles" : "",
+              "groups": ""
           },
           "optional_fields" : {
               "sessionid" : "",
@@ -888,6 +889,40 @@
               "real_userid" : {"source" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "settings" : ""
+          },
+          "optional_fields" : {
+              "sessionid" : ""
+          }
+      },
+      {
+          "id" : 8243,
+          "name" : "set user group",
+          "description" : "User group was added or updated",
+          "sync" : false,
+          "enabled" : true,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"domain" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "id" : {"domain" : "", "user" : ""},
+              "roles" : ""
+          },
+          "optional_fields" : {
+              "sessionid" : "",
+              "description" : ""
+          }
+      },
+      {
+          "id" : 8244,
+          "name" : "delete user group",
+          "description" : "User group was deleted",
+          "sync" : false,
+          "enabled" : true,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"domain" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "id" : {"domain" : "", "user" : ""}
           },
           "optional_fields" : {
               "sessionid" : ""

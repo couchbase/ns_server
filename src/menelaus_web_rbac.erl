@@ -920,7 +920,7 @@ do_store_user(Identity, Name, Password, UniqueRoles, Groups, Req) ->
     case menelaus_users:store_user(Identity, Name, Password,
                                    UniqueRoles, Groups) of
         {commit, _} ->
-            ns_audit:set_user(Req, Identity, UniqueRoles, Name),
+            ns_audit:set_user(Req, Identity, UniqueRoles, Name, Groups),
             reply_put_delete_users(Req);
         {abort, {error, roles_validation, UnknownRoles}} ->
             menelaus_util:reply_error(
@@ -1399,6 +1399,7 @@ put_group_validators() ->
 do_store_group(GroupId, Description, UniqueRoles, Req) ->
     case menelaus_users:store_group(GroupId, Description, UniqueRoles) of
         ok ->
+            ns_audit:set_user_group(Req, GroupId, UniqueRoles, Description),
             menelaus_util:reply_json(Req, <<>>, 200);
         {error, {roles_validation, UnknownRoles}} ->
             menelaus_util:reply_error(
@@ -1415,6 +1416,7 @@ handle_delete_group(GroupId, Req) ->
 do_delete_group(GroupId, Req) ->
     case menelaus_users:delete_group(GroupId) of
         ok ->
+            ns_audit:delete_user_group(Req, GroupId),
             menelaus_util:reply_json(Req, <<>>, 200);
         {error, not_found} ->
             menelaus_util:reply_json(Req, <<"Group was not found.">>, 404)
