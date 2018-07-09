@@ -528,7 +528,10 @@ authenticate_with_info(Auth, Password) ->
     misc:compare_secure(ns_config_auth:hash_password(Salt, Password), Mac).
 
 get_user_props_45({User, external}) ->
-    ns_config:search_prop(ns_config:latest(), user_roles, {User, saslauthd}, []).
+    ns_config:search_prop(ns_config:latest(), user_roles,
+                          {User, saslauthd}, []);
+get_user_props_45(_) ->
+    [].
 
 get_user_props(Identity) ->
     get_user_props(Identity, ?DEFAULT_PROPS).

@@ -238,7 +238,8 @@ handle_get_roles(Req) ->
       end, Req, qs, get_users_or_roles_validators()).
 
 user_to_json({Id, Domain}, Props) ->
-    RolesJson = user_roles_to_json(Props),
+    IsMadHatter = cluster_compat_mode:is_cluster_madhatter(),
+    RolesJson = user_roles_to_json(Props, IsMadHatter),
     Name = proplists:get_value(name, Props),
     Groups = proplists:get_value(groups, Props),
     Passwordless = proplists:get_value(passwordless, Props),
@@ -248,12 +249,13 @@ user_to_json({Id, Domain}, Props) ->
     {[{id, list_to_binary(Id)},
       {domain, Domain},
       {roles, RolesJson}] ++
-     [{groups, [list_to_binary(G) || G <- Groups]} || Groups =/= undefined] ++
+     [{groups, [list_to_binary(G) || G <- Groups]} || Groups =/= undefined,
+                                                      IsMadHatter] ++
      [{name, list_to_binary(Name)} || Name =/= undefined] ++
      [{passwordless, Passwordless} || Passwordless == true] ++
      [{password_change_date, PassChangeTime} || PassChangeTime =/= undefined]}.
 
-user_roles_to_json(Props) ->
+user_roles_to_json(Props, true) ->
     UserRoles = proplists:get_value(user_roles, Props, []),
     GroupRoles = proplists:get_value(group_roles, Props, []),
     AddOrigin =
@@ -270,7 +272,10 @@ user_roles_to_json(Props) ->
     maps:fold(
        fun (Role, Origins, Acc) ->
            [{role_to_json(Role, Origins)}|Acc]
-       end, [], Map).
+       end, [], Map);
+user_roles_to_json(Props, false) ->
+    UserRoles = proplists:get_value(user_roles, Props, []),
+    [{role_to_json(Role)} || Role <- UserRoles].
 
 format_password_change_time(undefined) -> undefined;
 format_password_change_time(TS) ->
@@ -353,7 +358,10 @@ handle_get_users_45(Req) ->
     Users = menelaus_users:get_users_45(ns_config:latest()),
     Json = lists:map(
              fun ({{LdapUser, saslauthd}, Props}) ->
-                     user_to_json({LdapUser, external}, Props)
+                     NewProps = lists:map(fun ({roles, R}) -> {user_roles, R};
+                                              (P) -> P
+                                          end, Props),
+                     user_to_json({LdapUser, external}, NewProps)
              end, Users),
     menelaus_util:reply_json(Req, Json).
 
@@ -625,7 +633,9 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
 
 handle_whoami(Req) ->
     Identity = menelaus_auth:get_identity(Req),
-    Props = menelaus_users:get_user_props(Identity, [name, passwordless]),
+    Props = menelaus_users:get_user_props(Identity,
+                                          [name, passwordless,
+                                           password_change_timestamp]),
     {JSON} = user_to_json(Identity, Props),
     Roles = menelaus_roles:get_roles(Identity),
     RolesJSON = [{roles, [{role_to_json(R)} || R <- Roles]}],
@@ -841,8 +851,9 @@ bad_roles_error(BadRoles) ->
       " malformed or role parameters are undefined: [~s]", [Str]).
 
 validate_user_groups(Name, State) ->
+    IsMadHatter = cluster_compat_mode:is_cluster_madhatter(),
     validator:validate(
-      fun (GroupsRaw) ->
+      fun (GroupsRaw) when IsMadHatter ->
               Groups = parse_groups(GroupsRaw),
               case lists:filter(?cut(not menelaus_users:group_exists(_)),
                                 Groups) of
@@ -852,10 +863,11 @@ validate_user_groups(Name, State) ->
                       ErrorStr = io_lib:format("Groups do not exist: ~s",
                                                [BadGroupsStr]),
                       {error, ErrorStr}
-              end
+              end;
+          (_) ->
+              {error, "User groups are not supported in mixed version clusters"}
       end, Name, State).
 
-parse_groups(undefined) -> [];
 parse_groups(GroupsStr) ->
     GroupsTokens = string:tokens(GroupsStr, ","),
     [string:trim(G) || G <- GroupsTokens].
