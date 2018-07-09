@@ -516,7 +516,6 @@ handle_include_docs(Sock, TRef, FetchLimit, Params, KeysAndVBuckets, Heap) ->
                                        NewKeysAndVBuckets, NewHeap)
     end.
 
-get_xattrs(_Sock, _DocId, _VBucket, []) -> {ok, undefined, []};
 get_xattrs(Sock, DocId, VBucket, Permissions) ->
     try
         {Keys, CAS} = try_get_xattr(Sock, DocId, VBucket, <<"$XTOC">>),
