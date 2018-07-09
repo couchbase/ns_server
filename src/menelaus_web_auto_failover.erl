@@ -134,8 +134,9 @@ config_upgrade_to_55(Config) ->
 
 config_upgrade_to_madhatter(Config) ->
     {value, Current} = ns_config:search(Config, auto_failover_cfg),
+    CanAbortRebalance = cluster_compat_mode:is_enterprise(),
     New = lists:keystore(?CAN_ABORT_REBALANCE_CONFIG_KEY, 1, Current,
-                         {?CAN_ABORT_REBALANCE_CONFIG_KEY, true}),
+                         {?CAN_ABORT_REBALANCE_CONFIG_KEY, CanAbortRebalance}),
     [{set, auto_failover_cfg, New}].
 
 %% Internal Functions
