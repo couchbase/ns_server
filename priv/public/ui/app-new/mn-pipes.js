@@ -43,6 +43,48 @@ mn.pipes.MnParseVersion =
 
 var mn = mn || {};
 mn.pipes = mn.pipes || {};
+mn.pipes.MnMBtoBytes =
+  (function () {
+    "use strict";
+
+    MnMBtoBytes.annotations = [
+      new ng.core.Pipe({
+        name: "mnMBtoBytes"
+      })
+    ];
+
+    MnMBtoBytes.prototype.transform = transform;
+
+    return MnMBtoBytes;
+    function MnMBtoBytes(mnParseVersion) {}
+    function transform(MB) {
+      return MB * mn.helper.IEC.Mi;
+    }
+  })();
+
+var mn = mn || {};
+mn.pipes = mn.pipes || {};
+mn.pipes.MnBytesToMB =
+  (function () {
+    "use strict";
+
+    MnBytesToMB.annotations = [
+      new ng.core.Pipe({
+        name: "mnBytesToMB"
+      })
+    ];
+
+    MnBytesToMB.prototype.transform = transform;
+
+    return MnBytesToMB;
+    function MnBytesToMB() {}
+    function transform(bytes) {
+      return Math.floor(bytes / mn.helper.IEC.Mi);
+    }
+  })();
+
+var mn = mn || {};
+mn.pipes = mn.pipes || {};
 mn.pipes.MnPrettyVersion =
   (function () {
     "use strict";
@@ -357,6 +399,7 @@ mn.modules.MnPipesModule =
           mn.pipes.MnParseVersion,
           mn.pipes.MnPrettyVersion,
           mn.pipes.MnPrepareQuantity,
+          mn.pipes.MnBytesToMB,
           ng.common.DecimalPipe
         ]
       })

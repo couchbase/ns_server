@@ -1,30 +1,30 @@
 <div
    class="usage-label label-top label-top-0 with-square"
-   *ngIf="baseInfo.topLeft">
+   *ngIf="baseInfo?.topLeft">
   {{baseInfo.topLeft.name}} ({{baseInfo.topLeft.value | mnFormatQuantity}})
 </div>
 <div
    class="usage-label label-top label-top-1"
-   *ngIf="baseInfo.topRight">
+   *ngIf="baseInfo?.topRight">
   {{baseInfo.topRight.name}} ({{baseInfo.topRight.value | mnFormatQuantity}})
 </div>
 <div class="usage">
   <div
      class="item"
-     *ngFor="let item of baseInfo.items; index as i"
+     *ngFor="let item of baseInfo?.items; index as i"
      [ngStyle]="{'width': (item.value / total * 100) + '%'}"
      [ngClass]="'usage-item-' + i"></div>
 </div>
 <div class="row">
   <span
      class="usage-label label-bottom with-square"
-     *ngFor="let tditem of baseInfo.items; index as i"
+     *ngFor="let tditem of baseInfo?.items; index as i"
      [ngClass]="'label-bottom-' + i">
     {{tditem.name}} ({{ tditem.value | mnFormatQuantity }})
   </span>
   <span
      class="usage-label label-bottom label-bottom-2 with-square"
-     *ngIf="baseInfo.bottomLeft">
+     *ngIf="baseInfo?.bottomLeft">
     {{baseInfo.bottomLeft.name}} ({{baseInfo.bottomLeft.value | mnFormatQuantity}})
   </span>
 </div>

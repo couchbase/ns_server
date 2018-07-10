@@ -15,12 +15,16 @@ mn.services.MnBuckets = (function () {
   MnBucketsService.prototype.get = get;
   MnBucketsService.prototype.getBucketRamGuageConfig = getBucketRamGuageConfig;
   MnBucketsService.prototype.getGuageConfig = getGuageConfig;
+  MnBucketsService.prototype.postBucket = postBucket;
+  MnBucketsService.prototype.prepareBucketConfigForSaving = prepareBucketConfigForSaving;
 
   return MnBucketsService;
 
   function MnBucketsService(http, mnAdminService) {
     this.http = http;
     this.stream = {};
+
+    this.stream.updateBucketsPoller = new Rx.BehaviorSubject();
 
     var bucketsUri =
         mnAdminService
@@ -31,7 +35,7 @@ mn.services.MnBuckets = (function () {
 
     this.stream.bucketsWithTimer =
       bucketsUri
-      .combineLatest(Rx.Observable.timer(0, 4000))
+      .combineLatest(Rx.Observable.timer(0, 4000), this.stream.updateBucketsPoller)
       .pluck("0")
       .switchMap(this.get.bind(this))
       .shareReplay(1);
@@ -41,6 +45,17 @@ mn.services.MnBuckets = (function () {
       .switchMap(this.get.bind(this))
       .shareReplay(1);
 
+    this.stream.bucketHttp =
+      new mn.helper.MnPostHttp(this.postBucket.bind(this))
+      .addSuccess()
+      .addError();
+
+  }
+
+  function postBucket(bucket) {
+    return this.http.post(bucket[2] || "/pools/default/buckets", bucket[0], {
+      params: new ng.common.http.HttpParams().set("just_validate", bucket[1] ? 1 : 0)
+    });
   }
 
   function get(url) {
@@ -49,6 +64,63 @@ mn.services.MnBuckets = (function () {
         .set("basic_stats", true)
         .set("skipMap", true)
     });
+  }
+
+  function prepareBucketConfigForSaving(values, isEnterprise, compatVersion, isNew) {
+    var conf = {};
+    function copyProperty(property) {
+      if (values[property] !== undefined) {
+        conf[property] = values[property];
+      }
+    }
+    function copyProperties(properties) {
+      properties.forEach(copyProperty);
+    }
+    if (isNew) {
+      copyProperties(["name", "bucketType"]);
+    }
+    if (values.bucketType === "membase") {
+      copyProperties(["autoCompactionDefined", "evictionPolicy"]);
+    }
+    if (values.bucketType === "ephemeral") {
+      copyProperty("purgeInterval");
+      conf["evictionPolicy"] = values["evictionPolicyEphemeral"];
+    }
+    if (values.bucketType === "membase" ||
+        values.bucketType === "ephemeral") {
+      copyProperties(["threadsNumber", "replicaNumber"]);
+      if (isEnterprise && compatVersion.atLeast55) {
+        copyProperties(["compressionMode", "maxTTL"]);
+      }
+      if (isNew) {
+        if (values.bucketType !== "ephemeral") {
+          conf.replicaIndex = values.replicaIndex ? 1 : 0
+        }
+
+        if (isEnterprise && compatVersion.atLeast46) {
+          copyProperty("conflictResolutionType");
+        }
+      }
+
+      if (values.autoCompactionDefined) {
+        _.extend(conf, mnSettingsAutoCompactionService.prepareSettingsForSaving(autoCompactionSettings));
+      }
+    }
+    if (!compatVersion.atLeast50) {
+      if (values.authType === "sasl") {
+        copyProperty("saslPassword");
+      }
+      if (values.authType === "none") {
+        copyProperty("proxyPort");
+      }
+      copyProperty("authType");
+    }
+
+    conf.flushEnabled = values.flushEnabled ? 1 : 0
+
+    copyProperties(["ramQuotaMB"]);
+
+    return conf;
   }
 
   function getBucketRamGuageConfig(ramSummary) {

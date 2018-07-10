@@ -10,15 +10,15 @@
     <p>Attention: Maximum number of buckets has been reached. For optimal performance, no more than {{maxBucketCount | async}} buckets are allowed.</p>
   </div>
 </mn-element-cargo>
-<!-- <mn-element-cargo depot="actions"> -->
-<!--   <div class="header-controls resp-xsml"> -->
-<!--     <a -->
-<!--        ng-hide="bucketsCtl.isCreateNewDataBucketDisabled() || !rbac.cluster.buckets.create" -->
-<!--        ng-click="bucketsCtl.addBucket()"> -->
-<!--       ADD BUCKET -->
-<!--     </a> -->
-<!--   </div> -->
-<!-- </mn-element-cargo> -->
+<mn-element-cargo depot="actions">
+  <div class="header-controls resp-xsml">
+    <a
+       [hidden]="maybeHideAddBucketBuctton | async"
+       (click)="onAddBucketClick.next()">
+      ADD BUCKET
+    </a>
+  </div>
+</mn-element-cargo>
 
 <!-- <div mn-spinner="!buckets.details" min-height="300px"> -->
 <!--   <div -->

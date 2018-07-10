@@ -31,6 +31,30 @@ mn.helper.validateEqual = (function () {
 
 var mn = mn || {};
 mn.helper = mn.helper || {};
+mn.helper.daysOfWeek = (function () {
+  return [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday'
+  ];
+})();
+
+var mn = mn || {};
+mn.helper = mn.helper || {};
+mn.helper.IEC = (function () {
+  return {
+    Ki: 1024,
+    Mi: 1024 * 1024,
+    Gi: 1024 * 1024 * 1024
+  };
+})();
+
+var mn = mn || {};
+mn.helper = mn.helper || {};
 mn.helper.httpErrorScenario = (function () {
   return function (obs) {
     return obs
@@ -99,8 +123,15 @@ mn.helper.createBucketTypePipe = (function () {
     }
 
     function transform(bucket) {
-      return bucket.bucketType === bucketType;
+      if (bucket instanceof ng.forms.FormGroup) {
+        return bucket.get("bucketType").value === bucketType;
+      } else if (bucket instanceof Object) {
+        return bucket.bucketType === bucketType;
+      } else {
+        return bucket === bucketType;
+      }
     }
+
   }
 })();
 
@@ -462,9 +493,3 @@ mn.helper.MnHttpEncoder = (function (_super) {
     return v;
   }
 })(ng.common.http.HttpUrlEncodingCodec);
-
-mn.helper.IEC = {
-  Ki: 1024,
-  Mi: 1048576,
-  Gi: 1073741824
-};

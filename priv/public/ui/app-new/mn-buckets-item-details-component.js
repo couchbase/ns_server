@@ -21,7 +21,8 @@ mn.components.MnBucketsItemDetails =
       mn.services.MnPermissions,
       mn.services.MnTasks,
       window['@uirouter/angular'].UIRouter,
-      mn.services.MnAdmin
+      mn.services.MnAdmin,
+      ngb.NgbModal
     ];
 
     MnBucketsItemDetails.prototype.getWarmUpTasks = getWarmUpTasks;
@@ -30,13 +31,16 @@ mn.components.MnBucketsItemDetails =
 
     return MnBucketsItemDetails;
 
-    function MnBucketsItemDetails(mnBucketsService, mnPermissionsService, mnTasksService, uiRouter, mnAdminService) {
+    function MnBucketsItemDetails(mnBucketsService, mnPermissionsService, mnTasksService, uiRouter, mnAdminService, modalService) {
       mn.helper.MnEventableComponent.call(this);
+      this.editButtonClickEvent = new Rx.Subject();
+      this.isRebalancing = mnAdminService.stream.isRebalancing;
 
       var bucketCurrentValue = this.mnOnChanges.pluck("bucket", "currentValue");
+      var bucketName = bucketCurrentValue.pluck("name");
+
       var thisBucketCompactionTask =
-          bucketCurrentValue
-          .pluck("name")
+          bucketName
           .distinctUntilChanged()
           .combineLatest(mnTasksService.stream.tasksBucketCompaction)
           .map(function (values) {
@@ -44,6 +48,13 @@ mn.components.MnBucketsItemDetails =
               return task.bucket === values[0];
             });
           });
+
+      this.editButtonClickEvent
+        .takeUntil(this.mnOnDestroy)
+        .subscribe(function (bucket) {
+          var ref = modalService.open(mn.components.MnBucketsDialog);
+          ref.componentInstance.bucket = bucket;
+        });
 
       this.thisBucketCompactionProgress =
         thisBucketCompactionTask
@@ -58,6 +69,9 @@ mn.components.MnBucketsItemDetails =
         mnTasksService.stream.tasksWarmingUp
         .withLatestFrom(bucketCurrentValue)
         .map(this.getWarmUpTasks.bind(this));
+
+      this.bucketSettingsWrite =
+        mnPermissionsService.createPermissionStream("settings!write", bucketName);
 
       this.bucketRamGuageConfig =
         bucketCurrentValue

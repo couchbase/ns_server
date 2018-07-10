@@ -80,9 +80,12 @@ mn.components.MnBuckets =
           return !rv[0] && !rv[1] && rv[2];
         });
 
-      // mnBucketsService.stream.isRebalancing.subscribe(function (a) {
-      //   console.log(a)
-      // })
+      this.onAddBucketClick
+        .takeUntil(this.mnOnDestroy)
+        .subscribe(function (rv) {
+          var ref = modalService.open(mn.components.MnBucketsDialog);
+          ref.componentInstance.bucket = null;
+        });
     }
 
   })();

@@ -115,6 +115,23 @@ mn.services.MnAdmin = (function () {
       .addSuccess()
       .addError();
 
+    this.stream.activateNodes =
+      this.stream.getPoolsDefault
+      .pluck("nodes")
+      .map(function (nodes) {
+        return nodes.filter(function (node) {
+          return node.clusterMembership === 'active';
+        });
+      });
+
+    this.stream.activateKvNodes =
+      this.stream.activateNodes
+      .map(function (nodes) {
+        return nodes.filter(function (node) {
+          return node.services.indexOf("kv") > -1;
+        });
+      });
+
   }
 
   function getVersion() {

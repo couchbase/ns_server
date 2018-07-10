@@ -77,32 +77,32 @@
      class="margin-bottom-1">
   </mn-warmup-progress>
 
-  <!-- <div class="row flex-right"> -->
-  <!--   <span> -->
-  <!--     <button -->
-  <!--        class="outline" -->
-  <!--        ng-disabled="poolDefault.rebalancing" -->
-  <!--        ng-show="rbac.cluster.bucket[bucket.name].delete" -->
-  <!--        ng-click="$event.stopPropagation();bucketsDetailsCtl.deleteBucket(bucketsDetailsCtl.bucketDetails)">Delete</button> -->
-  <!--     <button -->
-  <!--        class="outline" -->
-  <!--        ng-show="!bucketsDetailsCtl.compactionTasks.thisBucketCompactionTask.cancelURI && bucket.isMembase && rbac.cluster.tasks.read && rbac.cluster.bucket[bucket.name].compact" -->
-  <!--        ng-disabled="bucketsDetailsCtl.compactionTasks.disableCompact" -->
-  <!--        ng-click="$event.stopPropagation();bucketsDetailsCtl.registerCompactionAsTriggeredAndPost(bucketsDetailsCtl.bucketDetails.controllers.compactAll, 'disableCompact')">Compact</button> -->
-  <!--     <button -->
-  <!--        class="orange" -->
-  <!--        ng-show="bucketsDetailsCtl.compactionTasks.thisBucketCompactionTask.cancelURI && rbac.cluster.tasks.read && rbac.cluster.bucket[bucket.name].compact" -->
-  <!--        ng-disabled="bucketsDetailsCtl.compactionTasks.disableCancel" -->
-  <!--        ng-click="$event.stopPropagation();bucketsDetailsCtl.registerCompactionAsTriggeredAndPost(bucketsDetailsCtl.compactionTasks.thisBucketCompactionTask.cancelURI, 'disableCancel')">Cancel Compaction</button> -->
-  <!--     <button -->
-  <!--        class="outline" -->
-  <!--        ng-disabled="poolDefault.rebalancing" -->
-  <!--        ng-show="bucketsDetailsCtl.bucketDetails.controllers !== undefined && bucketsDetailsCtl.bucketDetails.controllers.flush !== undefined && rbac.cluster.bucket[bucket.name].flush" -->
-  <!--        ng-click="$event.stopPropagation();bucketsDetailsCtl.flushBucket(bucketsDetailsCtl.bucketDetails)">Flush</button> -->
-  <!--    <button -->
-  <!--       ng-disabled="poolDefault.rebalancing" -->
-  <!--       ng-click="$event.stopPropagation();bucketsDetailsCtl.editBucket(bucketsDetailsCtl.bucketDetails)" -->
-  <!--       ng-show="rbac.cluster.bucket[bucket.name].settings.write">Edit</button> -->
-  <!--   </span> -->
-  <!-- </div> -->
+  <div class="row flex-right">
+    <span>
+      <!-- <button -->
+      <!--    class="outline" -->
+      <!--    ng-disabled="poolDefault.rebalancing" -->
+      <!--    ng-show="rbac.cluster.bucket[bucket.name].delete" -->
+      <!--    ng-click="$event.stopPropagation();bucketsDetailsCtl.deleteBucket(bucketsDetailsCtl.bucketDetails)">Delete</button> -->
+      <!-- <button -->
+      <!--    class="outline" -->
+      <!--    ng-show="!bucketsDetailsCtl.compactionTasks.thisBucketCompactionTask.cancelURI && bucket.isMembase && rbac.cluster.tasks.read && rbac.cluster.bucket[bucket.name].compact" -->
+      <!--    ng-disabled="bucketsDetailsCtl.compactionTasks.disableCompact" -->
+      <!--    ng-click="$event.stopPropagation();bucketsDetailsCtl.registerCompactionAsTriggeredAndPost(bucketsDetailsCtl.bucketDetails.controllers.compactAll, 'disableCompact')">Compact</button> -->
+      <!-- <button -->
+      <!--    class="orange" -->
+      <!--    ng-show="bucketsDetailsCtl.compactionTasks.thisBucketCompactionTask.cancelURI && rbac.cluster.tasks.read && rbac.cluster.bucket[bucket.name].compact" -->
+      <!--    ng-disabled="bucketsDetailsCtl.compactionTasks.disableCancel" -->
+      <!--    ng-click="$event.stopPropagation();bucketsDetailsCtl.registerCompactionAsTriggeredAndPost(bucketsDetailsCtl.compactionTasks.thisBucketCompactionTask.cancelURI, 'disableCancel')">Cancel Compaction</button> -->
+      <!-- <button -->
+      <!--    class="outline" -->
+      <!--    ng-disabled="poolDefault.rebalancing" -->
+      <!--    ng-show="bucketsDetailsCtl.bucketDetails.controllers !== undefined && bucketsDetailsCtl.bucketDetails.controllers.flush !== undefined && rbac.cluster.bucket[bucket.name].flush" -->
+      <!--    ng-click="$event.stopPropagation();bucketsDetailsCtl.flushBucket(bucketsDetailsCtl.bucketDetails)">Flush</button> -->
+     <button
+        [disabled]="(isRebalancing | async)"
+        (click)="$event.stopPropagation();editButtonClickEvent.next(bucket)"
+        [hidden]="!(bucketSettingsWrite | async)">Edit</button>
+    </span>
+  </div>
 </div>

@@ -179,7 +179,8 @@ mn.modules.MnAdmin =
             mn.components.MnBucketsItem,
             mn.components.MnBucketsItemDetails,
             mn.components.MnBarUsage,
-            mn.components.MnWarmupProgress
+            mn.components.MnWarmupProgress,
+            mn.components.MnBucketsDialog
           ],
           imports: [
             window['@uirouter/angular'].UIRouterModule.forChild({
@@ -218,6 +219,8 @@ mn.modules.MnAdmin =
                 }
               }]
             }),
+            ng.forms.ReactiveFormsModule,
+            mn.modules.MnShared,
             mn.modules.MnElementModule,
             mn.modules.MnPipesModule,
             ng.platformBrowser.BrowserModule,
@@ -226,6 +229,9 @@ mn.modules.MnAdmin =
           ],
           providers: [
             mn.services.MnAdmin
+          ],
+          entryComponents: [
+            mn.components.MnBucketsDialog
           ]
         })
     ];
