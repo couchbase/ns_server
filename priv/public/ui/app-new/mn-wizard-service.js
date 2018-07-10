@@ -108,6 +108,7 @@ mn.services.MnWizard = (function () {
   MnWizardService.prototype.getServicesValues = getServicesValues;
   MnWizardService.prototype.getUserCreds = getUserCreds;
   MnWizardService.prototype.getQuerySettings = getQuerySettings;
+  MnWizardService.prototype.getIndexes = getIndexes;
 
   return MnWizardService;
 
@@ -186,6 +187,11 @@ mn.services.MnWizard = (function () {
     this.stream.getSelfConfig =
       (new Rx.BehaviorSubject())
       .switchMap(this.getSelfConfig.bind(this))
+      .shareReplay(1);
+
+    this.stream.getIndexes =
+      (new Rx.BehaviorSubject())
+      .switchMap(this.getIndexes.bind(this))
       .shareReplay(1);
 
     this.stream.preprocessPath =
@@ -328,6 +334,10 @@ mn.services.MnWizard = (function () {
 
   function postIndexes(data) {
     return this.http.post('/settings/indexes', data);
+  }
+
+  function getIndexes() {
+    return this.http.get('/settings/indexes');
   }
 
   function postAuth(user) {

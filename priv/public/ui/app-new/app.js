@@ -74,7 +74,7 @@
       declarations: [
         AppComponent,
         // ServersComponent,
-        // OverviewComponent,
+        // OverviewComponent
       ],
       imports: [
         mn.modules.MnElementModule,
@@ -129,7 +129,8 @@
         }),
       ],
       bootstrap: [window["@uirouter/angular"].UIView],
-      entryComponents: [],
+      entryComponents: [
+      ],
       providers: [
         mn.services.MnTasks,
         mn.services.MnPools,

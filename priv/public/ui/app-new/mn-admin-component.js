@@ -180,7 +180,8 @@ mn.modules.MnAdmin =
             mn.components.MnBucketsItemDetails,
             mn.components.MnBarUsage,
             mn.components.MnWarmupProgress,
-            mn.components.MnBucketsDialog
+            mn.components.MnBucketsDialog,
+            mn.components.MnAutocompactionForm
           ],
           imports: [
             window['@uirouter/angular'].UIRouterModule.forChild({
