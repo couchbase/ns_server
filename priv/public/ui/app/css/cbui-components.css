@@ -590,13 +590,15 @@ section.error {
   overflow: hidden;
   resize: both;
 }
-.dialog-resizable .panel-footer {
+.dialog-resizable .panel-footer { /* disable the click events so drag resize works */
   pointer-events: none;
   margin-bottom: .75rem !important;
   padding: .75rem 1rem 0 1rem;
 }
-.dialog-resizable .panel-footer button {
-  pointer-events: all;
+.dialog-resizable .panel-footer button,
+.dialog-resizable .panel-footer a
+ {
+  pointer-events: all; /* re-enable pointer events for just these items */
 }
 /* medium-width modal dialog (uses .panel) --------------------------------- */
 .dialog-med {
