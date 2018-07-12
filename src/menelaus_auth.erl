@@ -41,7 +41,7 @@
 
 %% rpc from ns_couchdb node
 -export([authenticate/1,
-         saslauthd_authenticate/2]).
+         authenticate_external/2]).
 
 %% External API
 
@@ -294,17 +294,22 @@ authenticate({client_cert_auth, Username} = Param) ->
 authenticate({Username, Password}) ->
     case ns_config_auth:authenticate(Username, Password) of
         false ->
-            saslauthd_authenticate(Username, Password);
+            authenticate_external(Username, Password);
         Ok ->
             Ok
     end.
 
--spec saslauthd_authenticate(rbac_user_id(), rbac_password()) ->
+-spec authenticate_external(rbac_user_id(), rbac_password()) ->
                                     false | {ok, rbac_identity()} | {error, term()}.
-saslauthd_authenticate(Username, Password) ->
+authenticate_external(Username, Password) ->
     case ns_node_disco:couchdb_node() == node() of
         false ->
-            case saslauthd_auth:authenticate(Username, Password) of
+            Res =
+                case saslauthd_auth:authenticate(Username, Password) of
+                    false -> ldap_auth:authenticate(Username, Password);
+                    Else -> Else
+                end,
+            case Res of
                 true ->
                     Identity = {Username, external},
                     case menelaus_users:user_exists(Identity) of
@@ -323,8 +328,8 @@ saslauthd_authenticate(Username, Password) ->
                     {error, Error}
             end;
         true ->
-            rpc:call(ns_node_disco:ns_server_node(), ?MODULE, saslauthd_authenticate,
-                     [Username, Password])
+            rpc:call(ns_node_disco:ns_server_node(), ?MODULE,
+                     authenticate_external, [Username, Password])
     end.
 
 -spec verify_login_creds(rbac_user_id(), rbac_password()) ->
