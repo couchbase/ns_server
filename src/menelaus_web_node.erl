@@ -76,6 +76,8 @@ storage_conf_to_json(S) ->
 location_prop_to_json({path, L}) -> {path, list_to_binary(L)};
 location_prop_to_json({index_path, L}) -> {index_path, list_to_binary(L)};
 location_prop_to_json({cbas_dirs, L}) -> {cbas_dirs, [list_to_binary(El) || El <- L]};
+location_prop_to_json({java_home, undefined}) -> {java_home, <<>>};
+location_prop_to_json({java_home, L}) -> {java_home, list_to_binary(L)};
 location_prop_to_json({quotaMb, none}) -> {quotaMb, none};
 location_prop_to_json({state, ok}) -> {state, ok};
 location_prop_to_json(KV) -> KV.

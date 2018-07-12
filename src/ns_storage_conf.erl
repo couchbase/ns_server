@@ -220,7 +220,10 @@ node_cbas_dirs(Config, Node) ->
     end.
 
 this_node_java_home() ->
-    ns_config:search_node_with_default(java_home, undefined).
+    node_java_home(ns_config:latest(), node()).
+
+node_java_home(Config, Node) ->
+    ns_config:search_node_with_default(Node, Config, java_home, undefined).
 
 update_java_home(not_changed) ->
     not_changed;
@@ -265,6 +268,7 @@ storage_conf_from_node_status(Node, NodeStatus) ->
                       [{path, DBDir},
                        {index_path, proplists:get_value(index_path, StorageConf, DBDir)},
                        {cbas_dirs, node_cbas_dirs(ns_config:latest(), Node)},
+                       {java_home, node_java_home(ns_config:latest(), Node)},
                        {quotaMb, none},
                        {state, ok}]
               end,
