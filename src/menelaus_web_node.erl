@@ -498,6 +498,10 @@ validate_ix_cbas_path_test() ->
     ?assertEqual(false, validate_ix_cbas_path({path2, "/abc"}, "/abc/hi")).
 -endif.
 
+validate_dir_path(java_home, []) ->
+    {ok, {java_home, []}};
+validate_dir_path(java_home, not_changed) ->
+    {ok, {java_home, not_changed}};
 validate_dir_path(Field, []) ->
     {error, iolist_to_binary(
               io_lib:format("~p cannot contain empty string", [Field]))};
@@ -548,6 +552,8 @@ handle_node_settings_post(Node, Req) when is_atom(Node) ->
                      Ps -> Ps
                  end,
 
+    JavaHome0 = proplists:get_value("java_home", Params, not_changed),
+
     {Paths, Errors} =
         lists:foldl(
           fun({Field, Path}, {PAcc, EAcc}) ->
@@ -558,20 +564,23 @@ handle_node_settings_post(Node, Req) when is_atom(Node) ->
                           {PAcc, [Err | EAcc]}
                   end
           end, {[], []},
-          [{path, DbPath0}, {index_path, IxPath0}] ++
+          [{path, DbPath0}, {index_path, IxPath0}, {java_home, JavaHome0}] ++
               [{cbas_path, P} || P <- CBASPaths0]),
 
     Results =
         case Errors of
             [] ->
                 DbPath = proplists:get_value(path, Paths),
+                JavaHome = proplists:get_value(java_home, Paths),
 
-                Errs = lists:filtermap(validate_ix_cbas_path(_, DbPath), Paths),
+                Errs = lists:filtermap(validate_ix_cbas_path(_, DbPath),
+                                       proplists:delete(java_home, Paths)),
                 case Errs of
                     [] ->
                         IxPath = proplists:get_value(index_path, Paths),
                         CBASPaths = proplists:get_all_values(cbas_path, Paths),
                         do_handle_node_settings_post(Node, Req, DbPath, IxPath,
+                                                     JavaHome,
                                                      CBASPaths, DefaultDbPath);
                     _ ->
                         {errors, Errs}
@@ -587,7 +596,8 @@ handle_node_settings_post(Node, Req) when is_atom(Node) ->
             reply_json(Req, {struct, [FinalErrors]}, 400)
     end.
 
-do_handle_node_settings_post(Node, Req, DbPath, IxPath, CBASPaths, DefDbPath) ->
+do_handle_node_settings_post(Node, Req, DbPath, IxPath, JavaHome, CBASPaths,
+                             DefDbPath) ->
     case ns_config_auth:is_system_provisioned() andalso DbPath =/= DefDbPath of
         true ->
             %% MB-7344: we had 1.8.1 instructions allowing that. And
@@ -600,6 +610,13 @@ do_handle_node_settings_post(Node, Req, DbPath, IxPath, CBASPaths, DefDbPath) ->
             exit(normal);
         _ ->
             ok
+    end,
+
+    case ns_storage_conf:update_java_home(JavaHome) of
+        not_changed ->
+            ok;
+        ok ->
+            ns_audit:set_java_home(Req, Node, JavaHome)
     end,
 
     case ns_storage_conf:setup_disk_storage_conf(DbPath, IxPath, CBASPaths) of

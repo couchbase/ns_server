@@ -31,7 +31,9 @@
          delete_unused_buckets_db_files/0,
          delete_old_2i_indexes/0,
          setup_db_and_ix_paths/0,
-         this_node_cbas_dirs/0]).
+         this_node_cbas_dirs/0,
+         this_node_java_home/0,
+         update_java_home/1]).
 
 -export([cluster_storage_info/0, nodes_storage_info/1]).
 
@@ -215,6 +217,26 @@ node_cbas_dirs(Config, Node) ->
         false ->
             {ok, Default} = this_node_ixdir(),
             [Default]
+    end.
+
+this_node_java_home() ->
+    ns_config:search_node_with_default(java_home, undefined).
+
+update_java_home(not_changed) ->
+    not_changed;
+update_java_home([]) ->
+    case this_node_java_home() of
+        undefined ->
+            not_changed;
+        _ ->
+            ns_config:delete({node, node(), java_home})
+    end;
+update_java_home(JavaHome) ->
+    case this_node_java_home() of
+        JavaHome ->
+            not_changed;
+        _ ->
+            ns_config:set({node, node(), java_home}, JavaHome)
     end.
 
 % Returns a proplist of lists of proplists.

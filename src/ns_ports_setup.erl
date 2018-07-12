@@ -673,6 +673,8 @@ cbas_spec(Config) ->
             CBASDirs = [filename:join([Token], "@analytics") ||
                            Token <- ns_storage_conf:this_node_cbas_dirs()],
 
+            JavaHome = ns_storage_conf:this_node_java_home(),
+
             ok = misc:ensure_writable_dirs(CBASDirs),
 
             {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
@@ -713,6 +715,7 @@ cbas_spec(Config) ->
                      "-logDir=" ++ LogDir
                     ] ++
                         ["-dataDir=" ++ Dir || Dir <- CBASDirs] ++
+                        ["-javaHome=" ++ JavaHome || JavaHome =/= undefined] ++
                         HttpsOptions,
                     [via_goport, exit_status, stderr_to_stdout,
                      {log, ?CBAS_LOG_FILENAME},
