@@ -1517,6 +1517,12 @@ def main():
                 for dump in glob.glob(os.path.join(indexer_breakpad_minidump_dir, "*.dmp")):
                     runner.collect_file(dump)
 
+    fts_port = read_guts(guts, "fts_http_port")
+    if fts_port:
+        idx_dir = read_guts(guts, "idx_dir")
+        for dump in glob.glob(os.path.join(idx_dir, "@fts", "dumps", "*.dump.txt")):
+            runner.collect_file(dump)
+
     addr = zip_node.split("@")[-1]
     if addr == "127.0.0.1" or addr == "::1":
         zip_node = '@'.join(zip_node.split("@")[:-1] + [find_primary_addr(ipv6, addr)])
