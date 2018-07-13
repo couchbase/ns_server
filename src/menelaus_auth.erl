@@ -310,22 +310,9 @@ authenticate_external(Username, Password) ->
                     Else -> Else
                 end,
             case Res of
-                true ->
-                    Identity = {Username, external},
-                    case menelaus_users:user_exists(Identity) of
-                        false ->
-                            TagUName = ns_config_log:tag_user_name(Username),
-                            ?log_debug("User ~p succesfully authenticated with "
-                                       "saslauthd, but it is not a configured "
-                                       "user", [TagUName]),
-                            false;
-                        true ->
-                            {ok, Identity}
-                    end;
-                false ->
-                    false;
-                {error, Error} ->
-                    {error, Error}
+                true -> {ok, {Username, external}};
+                false -> false;
+                {error, Error} -> {error, Error}
             end;
         true ->
             rpc:call(ns_node_disco:ns_server_node(), ?MODULE,
