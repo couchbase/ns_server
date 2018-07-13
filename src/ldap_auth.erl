@@ -2,7 +2,7 @@
 
 -include("ns_common.hrl").
 
--export([authenticate/2]).
+-export([authenticate/2, build_settings/0, set_settings/1]).
 
 authenticate(Username, Password) ->
     case get_setting(authentication_enabled, false) of
@@ -42,6 +42,17 @@ get_user_DN(Username) ->
                [ns_config_log:tag_user_name(DN),
                 ns_config_log:tag_user_name(Username)]),
     DN.
+
+build_settings() ->
+    case ns_config:search(ldap_settings) of
+        {value, Settings} ->
+            Settings;
+        false ->
+            []
+    end.
+
+set_settings(Settings) ->
+    ns_config:set(ldap_settings, Settings).
 
 get_setting(Prop, Default) ->
     ns_config:search_prop(ns_config:latest(), ldap_settings, Prop, Default).

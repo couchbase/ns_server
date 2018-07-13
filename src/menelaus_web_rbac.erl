@@ -54,7 +54,9 @@
          handle_put_group/2,
          handle_delete_group/2,
          handle_get_groups/2,
-         handle_get_group/2]).
+         handle_get_group/2,
+         handle_ldap_settings/1,
+         handle_ldap_settings_post/1]).
 
 -define(MIN_USERS_PAGE_SIZE, 2).
 -define(MAX_USERS_PAGE_SIZE, 100).
@@ -1515,6 +1517,54 @@ group_to_json(GroupId, Props) ->
       {roles, [{role_to_json(R)} || R <- proplists:get_value(roles, Props)]}] ++
          [{description, list_to_binary(Description)}
           || Description =/= undefined]}.
+
+handle_ldap_settings(Req) ->
+    menelaus_util:assert_is_madhatter(),
+    Settings =
+        lists:map(
+          fun ({hosts, Hosts}) ->
+                  {hosts, [list_to_binary(H) || H <- Hosts]};
+              ({user_dn_template, T}) ->
+                  {user_dn_template, list_to_binary(T)};
+              (KeyValue) ->
+                  KeyValue
+          end, ldap_auth:build_settings()),
+    menelaus_util:reply_json(Req, {Settings}).
+
+handle_ldap_settings_post(Req) ->
+    menelaus_util:assert_is_madhatter(),
+    validator:handle(
+      fun (Props) ->
+              ?log_debug("Saving ldap settings: ~p", [Props]),
+              OldProps = ldap_auth:build_settings(),
+              ldap_auth:set_settings(misc:update_proplist(OldProps, Props)),
+              handle_ldap_settings(Req)
+      end, Req, form, ldap_settings_validators()).
+
+ldap_settings_validators() ->
+    [
+        validator:boolean(authentication_enabled, _),
+        validate_ldap_hosts(hosts, _),
+        validator:integer(port, 0, 65535, _),
+        validator:boolean(ssl, _),
+        validate_user_dn_template(user_dn_template, _),
+        validator:unsupported(_)
+    ].
+
+validate_ldap_hosts(Name, State) ->
+    validator:validate(
+      fun (HostsRaw) ->
+              {value, [string:trim(T) || T <- string:tokens(HostsRaw, ",")]}
+      end, Name, State).
+
+validate_user_dn_template(Name, State) ->
+    validator:validate(
+      fun (Str) ->
+              case string:str(Str, "%u") of
+                  0 -> {error, "user_dn_template must contain \"%u\""};
+                  _ -> {value, Str}
+              end
+      end, Name, State).
 
 -ifdef(EUNIT).
 %% Tests
