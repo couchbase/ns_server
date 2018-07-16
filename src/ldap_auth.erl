@@ -10,22 +10,29 @@ authenticate(Username, Password) ->
             UserDN = get_user_DN(Username),
             Hosts = get_setting(hosts, []),
             Port = get_setting(port, 389),
-            SSL = get_setting(ssl, true),
-            check_creds(Hosts, Port, SSL, UserDN, Password);
+            Encryption = get_setting(encryption, tls),
+            check_creds(Hosts, Port, Encryption, UserDN, Password);
         false ->
             ?log_debug("LDAP authentication is disabled"),
             false
     end.
 
-check_creds(Hosts, Port, SSL, DN, Password) ->
+check_creds(Hosts, Port, Encryption, DN, Password) ->
+    SSL = Encryption == ssl,
     case eldap:open(Hosts, [{port, Port}, {ssl, SSL}, {timeout, 1000}]) of
         {ok, Handle} ->
             ?log_debug("Connected to LDAP server"),
             try
-                Bind = eldap:simple_bind(Handle, DN, Password),
-                ?log_debug("Bind for dn ~p: ~p",
-                           [ns_config_log:tag_user_name(DN), Bind]),
-                ok =:= Bind
+                case Encryption == tls andalso eldap:start_tls(Handle, []) of
+                    Res when Res == ok; Res == false ->
+                        Bind = eldap:simple_bind(Handle, DN, Password),
+                        ?log_debug("Bind for dn ~p: ~p",
+                                   [ns_config_log:tag_user_name(DN), Bind]),
+                        ok =:= Bind;
+                    {error, Reason} ->
+                        ?log_error("LDAP TLS start failed: ~p", [Reason]),
+                        false
+                end
             after
                 eldap:close(Handle)
             end;
