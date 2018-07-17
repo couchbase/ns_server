@@ -27,7 +27,7 @@ mn.directives.MnFocus =
     return MnFocusDirective;
 
     function blur() {
-      this.mnFocus.next(false);
+      // this.mnFocus.next(false);
     }
 
     function MnFocusDirective(el) {
