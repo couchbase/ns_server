@@ -64,6 +64,8 @@ mn.components.MnAdmin =
 
       this.tasksRead =
         mnPermissionsService.createPermissionStream("tasks!read");
+      this.securityRead =
+        mnPermissionsService.createPermissionStream("tasks!read");
       this.bucketSettingsAnyRead =
         mnPermissionsService.createPermissionStream("settings!read", ".");
 
@@ -169,72 +171,83 @@ mn.modules.MnAdmin =
     }
 
     MnAdminModule.annotations = [
-        new ng.core.NgModule({
-          declarations: [
-            mn.directives.MnDraggable,
-            mn.components.MnAdmin,
-            OverviewComponent,
-            ServersComponent,
-            mn.components.MnBuckets,
-            mn.components.MnBucketsItem,
-            mn.components.MnBucketsItemDetails,
-            mn.components.MnBarUsage,
-            mn.components.MnWarmupProgress,
-            mn.components.MnBucketsDialog,
-            mn.components.MnAutocompactionForm
-          ],
-          imports: [
-            window['@uirouter/angular'].UIRouterModule.forChild({
-              states: [{
-                name: "app.admin.overview",
-                url: "overview",
-                views: {
-                  "main@app.admin": OverviewComponent
-                },
-                data: {
-                  title: "Dashboard"
+      new ng.core.NgModule({
+        declarations: [
+          mn.directives.MnDraggable,
+          mn.components.MnAdmin,
+          OverviewComponent,
+          ServersComponent,
+          mn.components.MnBuckets,
+          mn.components.MnBucketsItem,
+          mn.components.MnBucketsItemDetails,
+          mn.components.MnBarUsage,
+          mn.components.MnWarmupProgress,
+          mn.components.MnBucketsDialog,
+          mn.components.MnAutocompactionForm,
+          mn.components.MnSecurity
+        ],
+        imports: [
+          window['@uirouter/angular'].UIRouterModule.forChild({
+            states: [{
+              name: "app.admin.overview",
+              url: "overview",
+              views: {
+                "main@app.admin": OverviewComponent
+              },
+              data: {
+                title: "Dashboard"
+              }
+            }, {
+              name: "app.admin.servers",
+              url: "servers",
+              views: {
+                "main@app.admin": ServersComponent
+              },
+              data: {
+                title: "Servers"
+              }
+            }, {
+              name: "app.admin.buckets",
+              url: "buckets?openedBuckets",
+              params: {
+                openedBuckets: {
+                  array: true,
+                  dynamic: true
                 }
-              }, {
-                name: "app.admin.servers",
-                url: "servers",
-                views: {
-                  "main@app.admin": ServersComponent
-                },
-                data: {
-                  title: "Servers"
-                }
-              }, {
-                name: "app.admin.buckets",
-                url: "buckets?openedBuckets",
-                params: {
-                  openedBuckets: {
-                    array: true,
-                    dynamic: true
-                  }
-                },
-                views: {
-                  "main@app.admin": mn.components.MnBuckets
-                },
-                data: {
-                  title: "Buckets"
-                }
-              }]
-            }),
-            ng.forms.ReactiveFormsModule,
-            mn.modules.MnShared,
-            mn.modules.MnElementModule,
-            mn.modules.MnPipesModule,
-            ng.platformBrowser.BrowserModule,
-            ngb.NgbModule,
-            ng.platformBrowser.animations.BrowserAnimationsModule
-          ],
-          providers: [
-            mn.services.MnAdmin
-          ],
-          entryComponents: [
-            mn.components.MnBucketsDialog
-          ]
-        })
+              },
+              views: {
+                "main@app.admin": mn.components.MnBuckets
+              },
+              data: {
+                title: "Buckets"
+              }
+            }, {
+              name: "app.admin.security",
+              url: "security",
+              views: {
+                "main@app.admin": mn.components.MnSecurity
+              },
+              data: {
+                title: "Security"
+              }
+            }]
+          }),
+          ng.forms.ReactiveFormsModule,
+          mn.modules.MnShared,
+          mn.modules.MnSecurity,
+          mn.modules.MnElementModule,
+          mn.modules.MnPipesModule,
+          ng.platformBrowser.BrowserModule,
+          ngb.NgbModule,
+          ng.platformBrowser.animations.BrowserAnimationsModule
+        ],
+        providers: [
+          mn.services.MnAdmin
+        ],
+        entryComponents: [
+          mn.components.MnBucketsDialog
+        ]
+      })
     ];
 
     return MnAdminModule;

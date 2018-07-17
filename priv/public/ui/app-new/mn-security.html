@@ -1,0 +1,32 @@
+<mn-element-cargo depot="subnav">
+  <nav
+     class="sub-nav resp-hide-sml">
+    <!-- mn-pluggable-ui-tabs -->
+    <!-- mn-tab-bar-name="securityTab" -->
+    <a
+       ng-show="poolDefault.compat.atLeast50 && rbac.cluster.admin.security.read"
+       uiSref="app.admin.security.userRoles"
+       uiSrefActive="selected">Users</a>
+    <!-- <a -->
+    <!--    ng-show="pools.isEnterprise" -->
+    <!--    ui-sref="app.admin.security.rootCertificate" -->
+    <!--    ui-sref-active="selected">Root Certificate</a> -->
+    <!-- <a -->
+    <!--    ng-show="pools.isEnterprise && poolDefault.compat.atLeast50 && rbac.cluster.admin.security.read" -->
+    <!--    ui-sref="app.admin.security.clientCert" -->
+    <!--    ui-sref-active="selected">Client Certificate</a> -->
+    <!-- <a -->
+    <!--    ng-show="rbac.cluster.admin.security.read && poolDefault.compat.atLeast40 && pools.isEnterprise" -->
+    <!--    ui-sref="app.admin.security.audit" -->
+    <!--    ui-sref-active="selected">Audit</a> -->
+    <!-- <a -->
+    <!--   ng-show="pools.isEnterprise && poolDefault.compat.atLeast55 && rbac.cluster.admin.security.read" -->
+    <!--   ui-sref="app.admin.security.redaction" -->
+    <!--   ui-sref-active="selected">Log Redaction</a> -->
+    <!-- <a -->
+    <!--    ui-sref="app.admin.security.session" -->
+    <!--    ui-sref-active="selected">Session</a> -->
+  </nav>
+</mn-element-cargo>
+
+<ui-view class="margin-top-half padding-left-1"></ui-view>

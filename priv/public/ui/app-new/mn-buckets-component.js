@@ -36,32 +36,9 @@ mn.components.MnBuckets =
       this.onAddBucketClick = new Rx.Subject();
       this.onSortByClick = new Rx.BehaviorSubject("name");
 
-      var isAsc =
-          this.onSortByClick
-          .scan(function (total, e) {
-            return total + 1;
-          }, 0)
-          .map(function (val) {
-            return !!(val % 2);
-          });
-
       this.buckets =
         mnBucketsService.stream.bucketsWithTimer
-      //sorting functionality
-        .combineLatest(this.onSortByClick.zip(isAsc))
-        .map(function (values) {
-          var buckets = values[0].slice();
-          var sortBy = values[1][0];
-          var isAsc = values[1][1];
-          buckets = _.sortBy(buckets, sortBy);
-
-          if (!isAsc) {
-            return buckets.reverse();
-          } else {
-            return buckets;
-          }
-        })
-        .shareReplay(1);
+        .let(mn.helper.sortByStream(this.onSortByClick));
 
       this.maybeShowMaxBucketCountWarning =
         mnAdminService

@@ -3,11 +3,6 @@ mn.services = mn.services || {};
 mn.services.MnAdmin = (function () {
   "use strict";
 
-  var version25 = encodeCompatVersion(2, 5);
-  var version30 = encodeCompatVersion(3, 0);
-  var version40 = encodeCompatVersion(4, 0);
-  var version45 = encodeCompatVersion(4, 5);
-  var version46 = encodeCompatVersion(4, 6);
   var version50 = encodeCompatVersion(5, 0);
   var version55 = encodeCompatVersion(5, 5);
 
@@ -72,9 +67,14 @@ mn.services.MnAdmin = (function () {
     this.stream.maxBucketCount =
       this.stream
       .getPoolsDefault
-      .map(function (rv) {
-        return rv.maxBucketCount;
-      });
+      .pluck("maxBucketCount");
+
+    this.stream.ldapEnabled =
+      this.stream
+      .getPoolsDefault
+      .pluck("ldapEnabled")
+      .distinctUntilChanged()
+      .shareReplay(1);
 
     this.stream.implementationVersion =
       (new Rx.BehaviorSubject())
@@ -100,11 +100,6 @@ mn.services.MnAdmin = (function () {
       .map(function (thisNode) {
         var compat = thisNode.clusterCompatibility;
         return {
-          atLeast25: compat >= version25,
-          atLeast30: compat >= version30,
-          atLeast40: compat >= version40,
-          atLeast45: compat >= version45,
-          atLeast46: compat >= version46,
           atLeast50: compat >= version50,
           atLeast55: compat >= version55
         };

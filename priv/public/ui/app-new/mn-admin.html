@@ -180,6 +180,12 @@
          [hidden]="!(bucketSettingsAnyRead | async)"
          uiSrefActive="currentnav"
          uiSref="app.admin.buckets">Buckets</a>
+      <a
+         mn-tab="security"
+         [hidden]="!(bucketSettingsAnyRead | async)"
+         uiSrefActive="currentnav"
+         ng-show="rbac.cluster.admin.security.read"
+         uiSref="app.admin.security">Security</a>
       <!-- <a -->
       <!--    mn-tab="buckets" -->
       <!--    ng-show="rbac.cluster.bucket['.'].settings.read" -->

@@ -143,7 +143,7 @@ mn.helper.DetailsHashObserver = (function () {
 
   DetailsHashObserver.prototype.isOpened = isOpened;
   DetailsHashObserver.prototype.getNewHashValue = getNewHashValue;
-  DetailsHashObserver.prototype.setUndefinedHashValue = setUndefinedHashValue;
+  DetailsHashObserver.prototype.prepareHashValue = prepareHashValue;
   DetailsHashObserver.prototype.setNewHashValue = setNewHashValue;
 
   return DetailsHashObserver;
@@ -162,7 +162,8 @@ mn.helper.DetailsHashObserver = (function () {
       .globals
       .params$
       .pluck(this.hashKey)
-      .map(this.setUndefinedHashValue.bind(this));
+      .distinctUntilChanged()
+      .map(this.prepareHashValue.bind(this));
 
     this.stream.isOpened =
       initialValueStream
@@ -187,8 +188,8 @@ mn.helper.DetailsHashObserver = (function () {
     this.uiRouter.stateService.go(this.stateName, stateParams);
   }
 
-  function setUndefinedHashValue(v) {
-    return v || [];
+  function prepareHashValue(v) {
+    return (v || []).map(decodeURIComponent);
   }
 
   function getNewHashValue(values) {
@@ -225,6 +226,35 @@ mn.helper.isJson = (function () {
       return false;
     }
     return true;
+  }
+})();
+
+var mn = mn || {};
+mn.helper = mn.helper || {};
+mn.helper.sortByStream = (function () {
+  return function (sortByStream) {
+    return function (arrayStream) {
+      var isAsc =
+          sortByStream
+          .scan(function (total) {
+            return !total;
+          }, false);
+      return arrayStream
+        .combineLatest(sortByStream.zip(isAsc))
+        .map(function (values) {
+          var copyArray = values[0].slice();
+          var sortBy = values[1][0];
+          var isAsc = values[1][1];
+          copyArray = _.sortBy(copyArray, sortBy);
+
+          if (!isAsc) {
+            return copyArray.reverse();
+          } else {
+            return copyArray;
+          }
+        })
+        .shareReplay(1);
+    }
   }
 })();
 
