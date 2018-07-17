@@ -476,6 +476,30 @@ handle_node_self_xdcr_ssl_ports(Req) ->
             reply_json(Req, {struct, Ports})
     end.
 
+validate_path({java_home, JavaHome}, _) ->
+    validate_java_home(JavaHome);
+validate_path(PathTuple, DbPath) ->
+    validate_ix_cbas_path(PathTuple, DbPath).
+
+validate_java_home([]) ->
+    false;
+validate_java_home(not_changed) ->
+    false;
+validate_java_home(JavaHome) ->
+    case misc:run_external_tool(
+           path_config:component_path(bin, "cbas"),
+           ["-validateJavaHome", "-javaHome", JavaHome], []) of
+        {0, _} ->
+            false;
+        {Code, Output} ->
+            ?log_debug("Java home validation of ~p failed with code=~p, ~p",
+                       [JavaHome, Code, Output]),
+            {true, iolist_to_binary(
+                     io_lib:format(
+                       "'~s' has incorrect version of java or is not a "
+                       "java home directory", [JavaHome]))}
+    end.
+
 validate_ix_cbas_path({_Param, DbPath}, DbPath) ->
     false;
 validate_ix_cbas_path({Param, Path}, DbPath) ->
@@ -500,14 +524,14 @@ validate_ix_cbas_path_test() ->
     ?assertEqual(false, validate_ix_cbas_path({path2, "/abc"}, "/abc/hi")).
 -endif.
 
-validate_dir_path(java_home, []) ->
+validate_and_expand_path(java_home, []) ->
     {ok, {java_home, []}};
-validate_dir_path(java_home, not_changed) ->
+validate_and_expand_path(java_home, not_changed) ->
     {ok, {java_home, not_changed}};
-validate_dir_path(Field, []) ->
+validate_and_expand_path(Field, []) ->
     {error, iolist_to_binary(
               io_lib:format("~p cannot contain empty string", [Field]))};
-validate_dir_path(Field, Path) ->
+validate_and_expand_path(Field, Path) ->
     case misc:is_absolute_path(Path) of
         true ->
             case misc:realpath(Path, "/") of
@@ -559,7 +583,7 @@ handle_node_settings_post(Node, Req) when is_atom(Node) ->
     {Paths, Errors} =
         lists:foldl(
           fun({Field, Path}, {PAcc, EAcc}) ->
-                  case validate_dir_path(Field, Path) of
+                  case validate_and_expand_path(Field, Path) of
                       {ok, PInfo} ->
                           {[PInfo | PAcc], EAcc};
                       {error, Err} ->
@@ -575,8 +599,7 @@ handle_node_settings_post(Node, Req) when is_atom(Node) ->
                 DbPath = proplists:get_value(path, Paths),
                 JavaHome = proplists:get_value(java_home, Paths),
 
-                Errs = lists:filtermap(validate_ix_cbas_path(_, DbPath),
-                                       proplists:delete(java_home, Paths)),
+                Errs = lists:filtermap(validate_path(_, DbPath), Paths),
                 case Errs of
                     [] ->
                         IxPath = proplists:get_value(index_path, Paths),
