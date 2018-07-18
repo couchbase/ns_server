@@ -564,9 +564,12 @@ handle_node_settings_post(Node, Req) when is_atom(Node) ->
     Params = Req:parse_post(),
 
     case Node =/= node() of
-        true -> exit("Setting the disk storage path for other servers is "
-                     "not yet supported.");
-        _ -> ok
+        true ->
+            throw({web_exception, 400,
+                   <<"Setting the disk storage path for other servers is "
+                     "not yet supported.">>, []});
+        _ ->
+            ok
     end,
 
     {ok, DefaultDbPath} = ns_storage_conf:this_node_dbdir(),
