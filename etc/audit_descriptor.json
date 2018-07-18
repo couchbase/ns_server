@@ -891,7 +891,7 @@
           "optional_fields" : {
               "sessionid" : ""
           }
-      }
+      },
       {
           "id" : 8243,
           "name" : "set java home",
@@ -908,6 +908,6 @@
           "optional_fields" : {
               "sessionid" : ""
           }
-      },
+      }
     ]
 }
