@@ -637,21 +637,29 @@ do_handle_node_settings_post(Node, Req, DbPath, IxPath, JavaHome, CBASPaths,
             ok
     end,
 
-    case ns_storage_conf:update_java_home(JavaHome) of
-        not_changed ->
-            ok;
-        ok ->
-            ns_audit:set_java_home(Req, Node, JavaHome)
-    end,
+    RV1 = ns_storage_conf:setup_disk_storage_conf(DbPath, IxPath, CBASPaths),
+    RV2 =
+        case RV1 of
+            {errors, _} ->
+                RV1;
+            _ ->
+                {RV1, ns_storage_conf:update_java_home(JavaHome)}
+        end,
 
-    case ns_storage_conf:setup_disk_storage_conf(DbPath, IxPath, CBASPaths) of
-        not_changed ->
-            ok;
-        ok ->
-            ns_audit:disk_storage_conf(Req, Node, DbPath, IxPath, CBASPaths),
-            ok;
-        restart ->
-            ns_audit:disk_storage_conf(Req, Node, DbPath, IxPath, CBASPaths),
+    RV3 =
+        case RV2 of
+            {not_changed, not_changed} ->
+                ok;
+            {errors, Errors} ->
+                Errors;
+            _ ->
+                ns_audit:disk_storage_conf(Req, Node, DbPath, IxPath, CBASPaths,
+                                           JavaHome),
+                ok
+        end,
+
+    case RV2 of
+        {restart, _} ->
             %% NOTE: due to required restart we need to protect
             %% ourselves from 'death signal' of parent
             erlang:process_flag(trap_exit, true),
@@ -661,9 +669,10 @@ do_handle_node_settings_post(Node, Req, DbPath, IxPath, JavaHome, CBASPaths,
             {ok, _} = ns_server_cluster_sup:restart_ns_server(),
             reply(Req, 200),
             erlang:exit(normal);
-        {errors, _} = Errors ->
-            Errors
-    end.
+        _ ->
+            ok
+    end,
+    RV3.
 
 %% Basic port validation is done.
 %% The below port validations are not performed.

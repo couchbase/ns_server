@@ -891,23 +891,6 @@
           "optional_fields" : {
               "sessionid" : ""
           }
-      },
-      {
-          "id" : 8243,
-          "name" : "set java home",
-          "description" : "Java home was set",
-          "sync" : false,
-          "enabled" : true,
-          "mandatory_fields" : {
-              "timestamp" : "",
-              "real_userid" : {"domain" : "", "user" : ""},
-              "remote" : {"ip" : "", "port" : 1},
-              "node" : "",
-              "java_home" : ""
-          },
-          "optional_fields" : {
-              "sessionid" : ""
-          }
       }
     ]
 }

@@ -36,7 +36,7 @@
          delete_bucket/2,
          flush_bucket/2,
          start_loading_sample/2,
-         disk_storage_conf/5,
+         disk_storage_conf/6,
          rename_node/3,
          setup_node_services/3,
          cluster_settings/3,
@@ -71,8 +71,7 @@
          modify_audit_settings/2,
          modify_index_settings/2,
          modify_query_curl_whitelist_setting/2,
-         modify_query_settings/2,
-         set_java_home/3
+         modify_query_settings/2
         ]).
 
 -export([start_link/0, stats/0]).
@@ -302,9 +301,7 @@ code(modify_audit_settings) ->
 code(modify_index_settings) ->
     8241;
 code(modify_query_settings) ->
-    8242;
-code(set_java_home) ->
-    8243.
+    8242.
 
 to_binary({list, List}) ->
     [to_binary(A) || A <- List];
@@ -518,10 +515,11 @@ flush_bucket(Req, Name) ->
 start_loading_sample(Req, Name) ->
     put(start_loading_sample, Req, [{bucket_name, Name}]).
 
-disk_storage_conf(Req, Node, DbPath, IxPath, CBASDirs) ->
+disk_storage_conf(Req, Node, DbPath, IxPath, CBASDirs, JavaHome) ->
     put(disk_storage_conf, Req, [{node, Node},
                                  {db_path, DbPath},
                                  {index_path, IxPath},
+                                 {java_home, JavaHome},
                                  {cbas_dirs, {list, CBASDirs}}]).
 
 rename_node(Req, Node, Hostname) ->
@@ -765,6 +763,3 @@ modify_query_settings(Req, Settings) ->
 modify_query_curl_whitelist_setting(Req, Values) ->
     Setting = [{curl_whitelist, ejson:encode({Values})}],
     modify_query_settings(Req, Setting).
-
-set_java_home(Req, Node, JavaHome) ->
-    put(set_java_home, Req, [{node, Node}, {java_home, JavaHome}]).
