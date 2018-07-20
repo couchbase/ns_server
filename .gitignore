@@ -55,3 +55,5 @@ test/log
 tmp
 .rebar/
 /deps/gen_smtp/src/smtp_rfc822_parse.erl
+/src/ldap_rfc4515_lexer.erl
+/src/ldap_rfc4515_parser.erl
