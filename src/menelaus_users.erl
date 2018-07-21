@@ -46,6 +46,7 @@
          store_group/3,
          delete_group/1,
          select_groups/1,
+         select_groups/2,
          get_group_roles/1,
          get_group_props/1,
          group_exists/1,
@@ -276,19 +277,14 @@ make_props(Id, Props, ItemList, {Passwordless, Definitions,
               {Name, replicated_dets:get_last_modified(
                        storage_name(), {auth, Id}, undefined)};
           (group_roles = Name) ->
-              {Name, get_user_groups_and_roles(Props, Definitions,
+              {Name, get_user_groups_and_roles(Id, Props, Definitions,
                                                AllPossibleValues)};
           (user_roles = Name) ->
-              UserRoles = menelaus_roles:filter_out_invalid_roles(
-                            proplists:get_value(roles, Props, []),
-                            Definitions, AllPossibleValues),
+              UserRoles = get_user_roles(Props, Definitions, AllPossibleValues),
               {Name, UserRoles};
           (roles = Name) ->
-              UserRoles = menelaus_roles:filter_out_invalid_roles(
-                            proplists:get_value(roles, Props, []),
-                            Definitions,
-                            AllPossibleValues),
-              Groups = get_user_groups_and_roles(Props, Definitions,
+              UserRoles = get_user_roles(Props, Definitions, AllPossibleValues),
+              Groups = get_user_groups_and_roles(Id, Props, Definitions,
                                                  AllPossibleValues),
               GroupRoles = lists:concat([R || {_, R} <- Groups]),
               {Name, lists:usort(UserRoles ++ GroupRoles)};
@@ -645,9 +641,44 @@ make_group_props(Props, Items, {_, Definitions, AllPossibleValues}) ->
               {Name, proplists:get_value(Name, Props)}
       end, Items).
 
-get_user_groups_and_roles(UserProps, Definitions, AllPossibleValues) ->
-    Groups = proplists:get_value(groups, UserProps, []),
-    [{G, get_group_roles(G, Definitions, AllPossibleValues)} || G <- Groups].
+get_user_roles(UserProps, Definitions, AllPossibleValues) ->
+    menelaus_roles:filter_out_invalid_roles(
+      proplists:get_value(roles, UserProps, []),
+      Definitions, AllPossibleValues).
+
+get_user_groups_and_roles(Id, UserProps, Definitions, AllPossibleValues) ->
+    Groups1 = proplists:get_value(groups, UserProps, []),
+    Groups2 =
+        case Id of
+            {_, local} -> [];
+            {User, external} ->
+                case ldap_auth:get_setting(authorization_enabled, false) of
+                    true -> get_ldap_groups(User);
+                    false -> []
+                end
+        end,
+    [{G, get_group_roles(G, Definitions, AllPossibleValues)}
+        || G <- lists:usort(Groups1 ++ Groups2)].
+
+get_ldap_groups(User) ->
+    case ldap_auth:user_groups(User) of
+        {ok, []} -> [];
+        {ok, LDAPGroups} ->
+            GroupFilter =
+                fun ({_, Props}) ->
+                        case proplists:get_value(ldap_group_ref, Props) of
+                            undefined -> false;
+                            V -> lists:member(V, LDAPGroups)
+                        end
+                end,
+            pipes:run(select_groups('_', [ldap_group_ref]),
+                      [pipes:filter(GroupFilter),
+                       pipes:map(fun ({{group, G}, _}) -> G end)],
+                      pipes:collect());
+        {error, Error} ->
+            ?log_error("Failed to get ldap groups: ~p", [Error]),
+            []
+    end.
 
 -spec get_user_name(rbac_identity()) -> rbac_user_name().
 get_user_name({_, Domain} = Identity) when Domain =:= local orelse Domain =:= external ->
