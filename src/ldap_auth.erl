@@ -3,9 +3,10 @@
 -include("ns_common.hrl").
 
 -include_lib("eldap/include/eldap.hrl").
+-include_lib("eunit/include/eunit.hrl").
 
 -export([authenticate/2, build_settings/0, set_settings/1, user_groups/1,
-         get_setting/2]).
+         get_setting/2, parse_url/1]).
 
 authenticate(Username, Password) ->
     case get_setting(authentication_enabled, false) of
@@ -150,3 +151,112 @@ search(Handle, Base, Attributes, Scope, Filter) ->
             ?log_error("LDAP search failed ~p: ~p", [SearchProps, Reason]),
             {error, Reason}
     end.
+
+%% RFC4516 ldap url parsing
+parse_url(Str) ->
+    SchemeValidator = fun ("ldap") -> valid;
+                          (S) -> {error, {invalid_scheme, S}}
+                      end,
+    try
+        {Scheme, _UserInfo, Host, Port, "/" ++ EncodedDN, Query} =
+            case http_uri:parse(string:to_lower(Str),
+                                [{scheme_defaults, [{ldap, 389}]},
+                                 {scheme_validation_fun, SchemeValidator}]) of
+                {ok, R} -> R;
+                {error, Reason} -> throw({error, Reason})
+            end,
+
+        [[], AttrsStr, Scope, Filter, Extensions | _] =
+            string:split(Query ++ "?????", "?", all),
+        Attrs = [mochiweb_util:unquote(A) || A <- string:tokens(AttrsStr, ",")],
+
+        DN = mochiweb_util:unquote(EncodedDN),
+        case eldap:parse_dn(DN) of
+            {ok, _} -> ok;
+            {parse_error, _, _} -> throw({error, {invalid_dn, DN}})
+        end,
+
+        try
+            Scope == "" orelse parse_scope(Scope)
+        catch
+            _:_ -> throw({error, {invalid_scope, Scope}})
+        end,
+
+        {ok,
+         [{scheme, Scheme}] ++
+         [{host, Host} || Host =/= ""] ++
+         [{port, Port}] ++
+         [{dn, DN} || DN =/= ""] ++
+         [{attributes, Attrs} || Attrs =/= []] ++
+         [{scope, Scope} || Scope =/= ""] ++
+         [{filter, mochiweb_util:unquote(Filter)} || Filter =/= ""] ++
+         [{extensions, Extensions} || Extensions =/= ""]
+        }
+    catch
+        throw:{error, _} = Error -> Error
+    end.
+
+parse_url_test_() ->
+    Parse = fun (S) -> {ok, R} = parse_url(S), R end,
+    [
+        ?_assertEqual([{scheme, ldap}, {port, 389}], Parse("ldap://")),
+        ?_assertEqual([{scheme, ldap}, {host, "127.0.0.1"}, {port, 389}],
+                      Parse("ldap://127.0.0.1")),
+        ?_assertEqual([{scheme, ldap}, {host, "127.0.0.1"}, {port, 636}],
+                      Parse("ldap://127.0.0.1:636")),
+        ?_assertEqual([{scheme, ldap}, {host, "127.0.0.1"}, {port, 636},
+                       {dn,"uid=al,ou=users,dc=example"}],
+                      Parse("ldap://127.0.0.1:636"
+                            "/uid%3Dal%2Cou%3Dusers%2Cdc%3Dexample")),
+        ?_assertEqual([{scheme, ldap}, {host, "127.0.0.1"}, {port, 636},
+                       {dn,"uid=al,ou=users,dc=example"}],
+                      Parse("ldap://127.0.0.1:636"
+                            "/uid%3Dal%2Cou%3Dusers%2Cdc%3Dexample")),
+        ?_assertEqual([{scheme, ldap}, {host, "127.0.0.1"}, {port, 636},
+                       {dn,"uid=al,ou=users,dc=example"},
+                       {attributes, ["attr1", "attr2"]}],
+                      Parse("ldap://127.0.0.1:636"
+                            "/uid%3Dal%2Cou%3Dusers%2Cdc%3Dexample"
+                            "?attr1,attr2")),
+        ?_assertEqual([{scheme, ldap}, {host, "127.0.0.1"}, {port, 636},
+                       {dn,"uid=al,ou=users,dc=example"},
+                       {attributes, ["attr1", "attr2"]},
+                       {scope, "base"},
+                       {filter, "(!(&(uid=%u)(email=%u@%d)))"}],
+                      Parse("ldap://127.0.0.1:636"
+                            "/uid%3Dal%2Cou%3Dusers%2Cdc%3Dexample?attr1,attr2"
+                            "?base?%28%21%28%26%28uid%3D%25u%29%28"
+                            "email%3D%25u%40%25d%29%29%29")),
+
+%% Tests from RFC4516 examples:
+        ?_assertEqual([{scheme, ldap}, {port, 389},
+                       {dn, "o=university of michigan,c=us"}],
+                      Parse("ldap:///o=University%20of%20Michigan,c=US")),
+        ?_assertEqual([{scheme, ldap}, {host, "ldap1.example.net"}, {port, 389},
+                       {dn, "o=university of michigan,c=us"}],
+                      Parse("ldap://ldap1.example.net"
+                            "/o=University%20of%20Michigan,c=US")),
+        ?_assertEqual([{scheme, ldap}, {host, "ldap1.example.net"}, {port, 389},
+                       {dn, "o=university of michigan,c=us"},
+                       {scope, "sub"}, {filter, "(cn=babs jensen)"}],
+                      Parse("ldap://ldap1.example.net/o=University%20of%2"
+                             "0Michigan,c=US??sub?(cn=Babs%20Jensen)")),
+        ?_assertEqual([{scheme, ldap}, {host, "ldap1.example.com"}, {port, 389},
+                       {dn, "c=gb"}, {attributes, ["objectclass"]},
+                       {scope, "one"}],
+                      Parse("LDAP://ldap1.example.com/c=GB?objectClass?ONE")),
+        ?_assertEqual([{scheme, ldap}, {host, "ldap2.example.com"}, {port, 389},
+                       {dn, "o=question?,c=us"}, {attributes, ["mail"]}],
+                      Parse("ldap://ldap2.example.com"
+                            "/o=Question%3f,c=US?mail")),
+        ?_assertEqual([{scheme, ldap}, {host, "ldap3.example.com"}, {port, 389},
+                       {dn, "o=babsco,c=us"},
+                       {filter, "(four-octet=\\00\\00\\00\\04)"}],
+                      Parse("ldap://ldap3.example.com/o=Babsco,c=US"
+                            "???(four-octet=%5c00%5c00%5c00%5c04)")),
+        ?_assertEqual([{scheme, ldap}, {host, "ldap.example.com"}, {port, 389},
+                       {dn, "o=an example\\2c inc.,c=us"}],
+                      Parse("ldap://ldap.example.com"
+                            "/o=An%20Example%5C2C%20Inc.,c=US"))
+    ].
+
