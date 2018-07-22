@@ -1393,8 +1393,10 @@ handle_put_group(GroupId, Req) ->
                       Description = proplists:get_value(description, Values),
                       Roles = proplists:get_value(roles, Values),
                       UniqueRoles = lists:usort(Roles),
+                      LDAPGroup = proplists:get_value(ldap_group_ref, Values),
                       perform_if_allowed(
-                          do_store_group(GroupId, Description, UniqueRoles, _),
+                          do_store_group(GroupId, Description, UniqueRoles,
+                                         LDAPGroup, _),
                           Req, ?SECURITY_WRITE,
                           UniqueRoles ++
                           menelaus_users:get_group_roles(GroupId))
@@ -1407,12 +1409,28 @@ put_group_validators() ->
     [validator:touch(description, _),
      validator:required(roles, _),
      validate_roles(roles, _),
+     validate_ldap_ref(ldap_group_ref, _),
      validator:unsupported(_)].
 
-do_store_group(GroupId, Description, UniqueRoles, Req) ->
-    case menelaus_users:store_group(GroupId, Description, UniqueRoles) of
+validate_ldap_ref(Name, State) ->
+    validator:validate(
+      fun (undefined) -> undefined;
+          (DN) ->
+              case eldap:parse_dn(DN) of
+                  {ok, _} ->
+                      {value, DN};
+                  {parse_error, Reason, _} ->
+                      {error, io_lib:format("Should be valid LDAP DN: ~p",
+                                            [Reason])}
+              end
+      end, Name, State).
+
+do_store_group(GroupId, Description, UniqueRoles, LDAPGroup, Req) ->
+    case menelaus_users:store_group(GroupId, Description, UniqueRoles,
+                                    LDAPGroup) of
         ok ->
-            ns_audit:set_user_group(Req, GroupId, UniqueRoles, Description),
+            ns_audit:set_user_group(Req, GroupId, UniqueRoles, Description,
+                                    LDAPGroup),
             menelaus_util:reply_json(Req, <<>>, 200);
         {error, {roles_validation, UnknownRoles}} ->
             menelaus_util:reply_error(
@@ -1513,8 +1531,11 @@ get_group_json(GroupId) ->
 
 group_to_json(GroupId, Props) ->
     Description = proplists:get_value(description, Props),
+    LDAPGroup = proplists:get_value(ldap_group_ref, Props),
     {[{id, list_to_binary(GroupId)},
       {roles, [{role_to_json(R)} || R <- proplists:get_value(roles, Props)]}] ++
+         [{ldap_group_ref, list_to_binary(LDAPGroup)}
+          || LDAPGroup =/= undefined] ++
          [{description, list_to_binary(Description)}
           || Description =/= undefined]}.
 

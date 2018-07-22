@@ -909,7 +909,8 @@
           },
           "optional_fields" : {
               "sessionid" : "",
-              "description" : ""
+              "description" : "",
+              "ldap_group_ref" : ""
           }
       },
       {

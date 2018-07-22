@@ -43,7 +43,7 @@
          change_password/2,
 
 %% Group management:
-         store_group/3,
+         store_group/4,
          delete_group/1,
          select_groups/1,
          select_groups/2,
@@ -85,7 +85,7 @@
 -define(MAX_USERS_ON_CE, 20).
 -define(DEFAULT_PROPS, [name, user_roles, group_roles, passwordless,
                         password_change_timestamp, groups]).
--define(DEFAULT_GROUP_PROPS, [description, roles]).
+-define(DEFAULT_GROUP_PROPS, [description, roles, ldap_group_ref]).
 
 -record(state, {base, passwordless}).
 
@@ -555,10 +555,11 @@ get_roles(Identity) ->
 
 %% Groups functions
 
-store_group(Identity, Description, Roles) ->
+store_group(Identity, Description, Roles, LDAPGroup) ->
     case menelaus_roles:validate_roles(Roles, ns_config:get()) of
         {NewRoles, []} ->
             Props = [{description, Description} || Description =/= undefined] ++
+                    [{ldap_group_ref, LDAPGroup} || LDAPGroup =/= undefined] ++
                     [{roles, NewRoles}],
             ok = replicated_dets:set(storage_name(), {group, Identity}, Props),
             ok;

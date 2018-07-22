@@ -72,7 +72,7 @@
          modify_index_settings/2,
          modify_query_curl_whitelist_setting/2,
          modify_query_settings/2,
-         set_user_group/4,
+         set_user_group/5,
          delete_user_group/2
         ]).
 
@@ -778,11 +778,12 @@ modify_query_curl_whitelist_setting(Req, Values) ->
     Setting = [{curl_whitelist, ejson:encode({Values})}],
     modify_query_settings(Req, Setting).
 
-set_user_group(Req, Id, Roles, Description) ->
+set_user_group(Req, Id, Roles, Description, LDAPGroup) ->
     put(set_user_group, Req,
         [{id, Id},
          {roles, {list, [menelaus_web_rbac:role_to_string(Role)
                             || Role <- Roles]}},
+         {ldap_group_ref, LDAPGroup},
          {description, Description}]).
 
 delete_user_group(Req, Id) ->
