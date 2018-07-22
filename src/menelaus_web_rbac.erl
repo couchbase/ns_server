@@ -709,20 +709,23 @@ get_password_policy() ->
 validate_cred(undefined, _) -> <<"Field must be given">>;
 validate_cred(P, password) ->
     is_valid_password(P, get_password_policy());
-validate_cred([], username) ->
-    <<"Username must not be empty">>;
-validate_cred(Username, username) when length(Username) > 128 ->
-    <<"Username may not exceed 128 characters">>;
 validate_cred(Username, username) ->
+    validate_id(Username, <<"Username">>).
+
+validate_id([], Fieldname) ->
+    <<Fieldname/binary, " must not be empty">>;
+validate_id(Id, Fieldname) when length(Id) > 128 ->
+    <<Fieldname/binary, " may not exceed 128 characters">>;
+validate_id(Id, Fieldname) ->
     V = lists:all(
           fun (C) ->
                   C > 32 andalso C =/= 127 andalso
                       not lists:member(C, "()<>@,;:\\\"/[]?={}")
-          end, Username)
-        andalso couch_util:validate_utf8(Username),
+          end, Id)
+        andalso couch_util:validate_utf8(Id),
 
     V orelse
-        <<"The username must not contain spaces, control or any of "
+        <<Fieldname/binary, " must not contain spaces, control or any of "
           "()<>@,;:\\\"/[]?={} characters and must be valid utf8">>.
 
 is_valid_password(P, {MinLength, MustPresent}) ->
