@@ -1546,13 +1546,23 @@ group_to_json(GroupId, Props) ->
 handle_ldap_settings(Req) ->
     assert_groups_and_ldap_enabled(),
     Settings =
-        lists:map(
+        lists:filtermap(
           fun ({hosts, Hosts}) ->
-                  {hosts, [list_to_binary(H) || H <- Hosts]};
+                  {true, {hosts, [list_to_binary(H) || H <- Hosts]}};
               ({user_dn_template, T}) ->
-                  {user_dn_template, list_to_binary(T)};
+                  {true, {user_dn_template, list_to_binary(T)}};
+              ({query_dn, DN}) ->
+                  {true, {query_dn, list_to_binary(DN)}};
+              ({query_pass, _}) ->
+                  false;
+              ({groups_query, {user_filter, Orig, _Base, _Scope, _Filter}}) ->
+                  {true, {groups_query, list_to_binary(Orig)}};
+              ({groups_query, {user_attributes, Orig, _AttrName}}) ->
+                  {true, {groups_query, list_to_binary(Orig)}};
+              ({groups_query, _}) ->
+                  {true, {groups_query, <<"">>}};
               (KeyValue) ->
-                  KeyValue
+                  {true, KeyValue}
           end, ldap_auth:build_settings()),
     menelaus_util:reply_json(Req, {Settings}).
 
@@ -1569,11 +1579,15 @@ handle_ldap_settings_post(Req) ->
 ldap_settings_validators() ->
     [
         validator:boolean(authentication_enabled, _),
+        validator:boolean(authorization_enabled, _),
         validate_ldap_hosts(hosts, _),
         validator:integer(port, 0, 65535, _),
         validator:one_of(encryption, ["ssl", "tls", "false"], _),
         validator:convert(encryption, fun list_to_atom/1, _),
         validate_user_dn_template(user_dn_template, _),
+        validate_ldap_dn(query_dn, _),
+        validator:touch(query_pass, _),
+        validate_ldap_groups_query(groups_query, _),
         validator:unsupported(_)
     ].
 
@@ -1589,6 +1603,42 @@ validate_user_dn_template(Name, State) ->
               case string:str(Str, "%u") of
                   0 -> {error, "user_dn_template must contain \"%u\""};
                   _ -> {value, Str}
+              end
+      end, Name, State).
+
+validate_ldap_dn(Name, State) ->
+    validator:validate(
+      fun (DN) ->
+              case eldap:parse_dn(DN) of
+                  {ok, _} -> {value, DN};
+                  {parse_error, Reason, _} ->
+                      Msg = io_lib:format("Should be valid LDAP DN: ~p",
+                                          [Reason]),
+                      {error, Msg}
+              end
+      end, Name, State).
+
+validate_ldap_groups_query(Name, State) ->
+    validator:validate(
+      fun (Query) ->
+              case ldap_auth:parse_url("ldap:///" ++ Query) of
+                  {ok, URLProps} ->
+                      case proplists:get_value(attributes, URLProps, []) of
+                          [] ->
+                              Base = proplists:get_value(dn, URLProps, ""),
+                              Scope = proplists:get_value(scope, URLProps,
+                                                          "base"),
+                              Filter = proplists:get_value(filter, URLProps,
+                                                           "(objectClass=*)"),
+                              {value,
+                               {user_filter, Query, Base, Scope, Filter}};
+                          [Attr] ->
+                              {value, {user_attributes, Query, Attr}};
+                          _ ->
+                              {error, "Only one attribute can be specified"}
+                      end;
+                  {error, _} ->
+                      {error, "Invalid ldap URL"}
               end
       end, Name, State).
 
