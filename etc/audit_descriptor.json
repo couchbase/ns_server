@@ -253,6 +253,7 @@
               "db_path" : "",
               "index_path" : "",
               "cbas_dirs" : "",
+              "java_home" : "",
               "sessionid" : ""
           }
       },
