@@ -419,17 +419,6 @@ index_node_spec(Config) ->
             {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
             IdxDir2 = filename:join(IdxDir, "@2i"),
             MinidumpDir = path_config:minidump_dir(),
-            AddSM = case cluster_compat_mode:is_cluster_45() of
-                        true ->
-                            StorageMode =
-                                index_settings_manager:get_from_config(Config,
-                                                                       storageMode,
-                                                                       undefined),
-                            true = StorageMode =/= undefined,
-                            ["-storageMode=" ++ binary_to_list(StorageMode)];
-                        false ->
-                            []
-                    end,
             NodeUUID = binary_to_list(ns_config:uuid()),
             HttpsArgs = case ns_config:search(Config, {node, node(), indexer_https_port}, undefined) of
                             undefined ->
@@ -452,7 +441,7 @@ index_node_spec(Config) ->
                      "-storageDir=" ++ IdxDir2,
                      "-diagDir=" ++ MinidumpDir,
                      "-nodeUUID=" ++ NodeUUID,
-                     "-isEnterprise=" ++ atom_to_list(cluster_compat_mode:is_enterprise())] ++ AddSM ++ HttpsArgs,
+                     "-isEnterprise=" ++ atom_to_list(cluster_compat_mode:is_enterprise())] ++ HttpsArgs,
                     [via_goport, exit_status, stderr_to_stdout,
                      {log, ?INDEXER_LOG_FILENAME},
                      {env, build_go_env_vars(Config, index)}]},
