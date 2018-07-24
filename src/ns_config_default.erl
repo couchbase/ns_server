@@ -515,11 +515,8 @@ upgrade_config(Config) ->
             [{set, {node, node(), config_version}, {5,1,1}} |
              upgrade_config_from_5_0_to_5_1_1()];
         {value, {5,1,1}} ->
-            [{set, {node, node(), config_version}, {5,5}} |
-             upgrade_config_from_5_1_1_to_5_5(Config)];
-        {value, {5,5}} ->
             [{set, {node, node(), config_version}, CurrentVersion} |
-             upgrade_config_from_5_5_to_6_0()];
+             upgrade_config_from_5_1_1_to_5_5(Config)];
         V0 ->
             OldVersion =
                 case V0 of
@@ -606,11 +603,6 @@ do_upgrade_config_from_5_1_1_to_5_5(Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
      upgrade_key(memcached_defaults, DefaultConfig),
      upgrade_sub_keys(memcached, [other_users], Config, DefaultConfig)].
-
-upgrade_config_from_5_5_to_6_0() ->
-    DefaultConfig = default(),
-    [upgrade_key(memcached_config, DefaultConfig),
-     upgrade_key(memcached_defaults, DefaultConfig)].
 
 encrypt_config_val(Val) ->
     {ok, Encrypted} = encryption_service:encrypt(term_to_binary(Val)),
