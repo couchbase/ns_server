@@ -120,6 +120,20 @@
       </div>
 
       <div class="formrow">
+        <div class="row">
+          <label for="setup_java_runtime_path_input">Java Runtime Path</label>
+          <small class="text-smaller">optional</small>
+        </div>
+        <input
+           type="text"
+           autocorrect="off"
+           spellcheck="false"
+           autocapitalize="off"
+           id="setup_java_runtime_path_input"
+           ng-model="clusterConfigurationCtl.config.java_home">
+      </div>
+
+      <div class="formrow">
         <div class="row formrow">
           <label>Service Memory Quotas</label>
           <small class="text-smaller">Per service / per node</small>

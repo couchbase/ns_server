@@ -104,7 +104,8 @@
     function postDiskStorage() {
       var data = {
         path: vm.config.dbPath,
-        index_path: vm.config.indexPath
+        index_path: vm.config.indexPath,
+        java_home: vm.config.java_home
       };
       if (pools.isEnterprise) {
         data.cbas_path = vm.config.cbasDirs;
