@@ -103,39 +103,6 @@
   </div>
 </div>
 
-<div ng-if="config.displayedServices.cbas && mnIsEnterprise">
-  <div class="row formrow">
-    <div class="width-5">
-      <input
-         ng-if="config.services"
-         ng-model="config.services.model.cbas"
-         ng-disabled="config.services.disabled.cbas"
-         type="checkbox"
-         id="cbas_ram_quota">
-      <label
-         for="cbas_ram_quota"
-         class="checkbox">
-        Analytics
-      </label>
-    </div>
-    <div class="row width-6 flex-right">
-      <input
-         type="number"
-         mn-focus="config.services.model.kv === false && config.services.model.index  === false"
-         ng-disabled="config.services && !config.services.model.cbas || (rbac && !rbac.cluster.pools.write)"
-         ng-model="config.cbasMemoryQuota"
-         class="margin-right-half">
-      <small>MB</small>
-    </div>
-  </div>
-
-  <div
-     class="error"
-     ng-show="errors.cbasMemoryQuota">
-    {{errors.cbasMemoryQuota}}
-  </div>
-</div>
-
 <div ng-if="config.displayedServices.n1ql">
   <div class="row formrow">
     <div class="width-5">
@@ -193,6 +160,39 @@
      class="error"
      ng-show="errors.eventingMemoryQuota">
     {{errors.eventingMemoryQuota}}
+  </div>
+</div>
+
+<div ng-if="config.displayedServices.cbas && mnIsEnterprise">
+  <div class="row formrow">
+    <div class="width-5">
+      <input
+         ng-if="config.services"
+         ng-model="config.services.model.cbas"
+         ng-disabled="config.services.disabled.cbas"
+         type="checkbox"
+         id="cbas_ram_quota">
+      <label
+         for="cbas_ram_quota"
+         class="checkbox">
+        Analytics
+      </label>
+    </div>
+    <div class="row width-6 flex-right">
+      <input
+         type="number"
+         mn-focus="config.services.model.kv === false && config.services.model.index  === false"
+         ng-disabled="config.services && !config.services.model.cbas || (rbac && !rbac.cluster.pools.write)"
+         ng-model="config.cbasMemoryQuota"
+         class="margin-right-half">
+      <small>MB</small>
+    </div>
+  </div>
+
+  <div
+     class="error"
+     ng-show="errors.cbasMemoryQuota">
+    {{errors.cbasMemoryQuota}}
   </div>
 </div>
 
