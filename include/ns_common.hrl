@@ -229,10 +229,11 @@
 -define(VERSION_50, [5, 0]).
 -define(VERSION_51, [5, 1]).
 -define(VERSION_55, [5, 5]).
+-define(VERSION_60, [6, 0]).
 
 %% Points to latest release
--define(LATEST_VERSION_NUM, ?VERSION_55).
--define(MASTER_ADVERTISED_VERSION, [5, 5, 0]).
+-define(LATEST_VERSION_NUM, ?VERSION_60).
+-define(MASTER_ADVERTISED_VERSION, [6, 0, 0]).
 
 -define(DEFAULT_UI_COMPAT_VERSION, ?VERSION_45).
 
