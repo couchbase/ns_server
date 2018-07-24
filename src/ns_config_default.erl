@@ -269,6 +269,9 @@ default() ->
           _ -> undefined
       end},
 
+     {{node, node(), eventing_debug_port},
+      misc:get_env_default(eventing_debug_port, 9140)},
+
      %% Default config for metakv index settings in minimum supported version,
      %% VERSION_40.
      index_settings_manager:config_default_40(),

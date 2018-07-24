@@ -229,6 +229,7 @@
 -define(VERSION_50, [5, 0]).
 -define(VERSION_51, [5, 1]).
 -define(VERSION_55, [5, 5]).
+-define(VERSION_60, [6, 0]).
 -define(VERSION_MADHATTER, [6, 5]).
 
 %% Points to latest release

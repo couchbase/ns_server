@@ -517,6 +517,7 @@ eventing_spec(Config) ->
             EventingAdminPort = ns_config:search(Config, {node, node(), eventing_http_port}, 8096),
             LocalMemcachedPort = ns_config:search_node_prop(node(), Config, memcached, port),
             RestPort = misc:node_rest_port(Config, node()),
+            DebugPort = ns_config:search(Config, {node, node(), eventing_debug_port}, 9140),
 
             {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
             EventingDir = filename:join(IdxDir, "@eventing"),
@@ -541,6 +542,7 @@ eventing_spec(Config) ->
                      "-uuid=" ++ binary_to_list(NodeUUID),
                      "-diagdir=" ++ MinidumpDir,
                      "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
+                     "-debugPort=" ++ integer_to_list(DebugPort),
                      "-vbuckets=" ++ integer_to_list(ns_bucket:get_num_vbuckets())] ++ BindHttps,
                     [via_goport, exit_status, stderr_to_stdout,
                      {env, build_go_env_vars(Config, eventing) ++ build_tls_config_env_var(Config)},

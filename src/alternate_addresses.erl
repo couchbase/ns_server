@@ -58,6 +58,7 @@ all_ports() ->
      %% eventing service ports
      ?define_port(eventing_http_port, eventingAdminPort, eventing),
      ?define_port(eventing_https_port, eventingSSL, eventing),
+     ?define_port(eventing_debug_port, eventingDebug, eventing),
      %% cbas service ports
      ?define_port(cbas_http_port, cbas, cbas),
      ?define_port(cbas_admin_port, cbasAdmin, cbas),
