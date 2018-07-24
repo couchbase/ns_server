@@ -43,6 +43,8 @@
       }, function (resp) {
         if (resp.status === 401) {
           return $q.reject("Incorrect user password");
+        } else {
+          return $q.reject(resp);
         }
       });
     }
