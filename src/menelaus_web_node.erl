@@ -77,6 +77,8 @@ storage_conf_to_json(S) ->
 location_prop_to_json({path, L}) -> {path, list_to_binary(L)};
 location_prop_to_json({index_path, L}) -> {index_path, list_to_binary(L)};
 location_prop_to_json({cbas_dirs, L}) -> {cbas_dirs, [list_to_binary(El) || El <- L]};
+location_prop_to_json({java_home, undefined}) -> {java_home, <<>>};
+location_prop_to_json({java_home, L}) -> {java_home, list_to_binary(L)};
 location_prop_to_json({quotaMb, none}) -> {quotaMb, none};
 location_prop_to_json({state, ok}) -> {state, ok};
 location_prop_to_json(KV) -> KV.
@@ -475,6 +477,30 @@ handle_node_self_xdcr_ssl_ports(Req) ->
             reply_json(Req, {struct, Ports})
     end.
 
+validate_path({java_home, JavaHome}, _) ->
+    validate_java_home(JavaHome);
+validate_path(PathTuple, DbPath) ->
+    validate_ix_cbas_path(PathTuple, DbPath).
+
+validate_java_home([]) ->
+    false;
+validate_java_home(not_changed) ->
+    false;
+validate_java_home(JavaHome) ->
+    case misc:run_external_tool(
+           path_config:component_path(bin, "cbas"),
+           ["-validateJavaHome", "-javaHome", JavaHome], []) of
+        {0, _} ->
+            false;
+        {Code, Output} ->
+            ?log_debug("Java home validation of ~p failed with code=~p, ~p",
+                       [JavaHome, Code, Output]),
+            {true, iolist_to_binary(
+                     io_lib:format(
+                       "'~s' has incorrect version of java or is not a "
+                       "java home directory", [JavaHome]))}
+    end.
+
 validate_ix_cbas_path({_Param, DbPath}, DbPath) ->
     false;
 validate_ix_cbas_path({Param, Path}, DbPath) ->
@@ -499,10 +525,14 @@ validate_ix_cbas_path_test() ->
     ?assertEqual(false, validate_ix_cbas_path({path2, "/abc"}, "/abc/hi")).
 -endif.
 
-validate_dir_path(Field, []) ->
+validate_and_expand_path(java_home, []) ->
+    {ok, {java_home, []}};
+validate_and_expand_path(java_home, not_changed) ->
+    {ok, {java_home, not_changed}};
+validate_and_expand_path(Field, []) ->
     {error, iolist_to_binary(
               io_lib:format("~p cannot contain empty string", [Field]))};
-validate_dir_path(Field, Path) ->
+validate_and_expand_path(Field, Path) ->
     case misc:is_absolute_path(Path) of
         true ->
             case misc:realpath(Path, "/") of
@@ -538,9 +568,11 @@ handle_node_settings_post(NodeStr, Req) when is_list(NodeStr) ->
 handle_node_settings_post(Node, Req) when is_atom(Node) ->
     case cluster_compat_mode:is_cluster_madhatter() of
         false when Node =/= node() ->
-            exit("Setting the disk storage path for other servers is "
-                 "not yet supported.");
-        _ -> ok
+            throw({web_exception, 400,
+                   <<"Setting the disk storage path for other servers is "
+                     "not yet supported.">>, []});
+        _ ->
+            ok
     end,
 
     Params = mochiweb_request:parse_post(Req),
@@ -583,6 +615,7 @@ apply_node_settings(Params) ->
         DbPath = proplists:get_value(path, Paths),
         IxPath = proplists:get_value(index_path, Paths),
         CBASDirs = proplists:get_all_values(cbas_path, Paths),
+        JavaHome = proplists:get_value(java_home, Paths),
 
         {ok, DefaultDbPath} = ns_storage_conf:this_node_dbdir(),
         DbPathChanged = DbPath =/= DefaultDbPath,
@@ -602,15 +635,33 @@ apply_node_settings(Params) ->
                 ok
         end,
 
-        case ns_storage_conf:setup_disk_storage_conf(DbPath, IxPath,
-                                                     CBASDirs) of
-            restart ->
-                %% performing required restart from
-                %% successfull path change
-                {ok, _} = ns_server_cluster_sup:restart_ns_server(),
-                ok;
-            Res ->
-                Res
+        RV1 =
+            case ns_storage_conf:setup_disk_storage_conf(DbPath, IxPath,
+                                                         CBASDirs) of
+                restart ->
+                    %% performing required restart from
+                    %% successfull path change
+                    {ok, _} = ns_server_cluster_sup:restart_ns_server(),
+                    ok;
+                Other ->
+                    Other
+            end,
+
+        RV2 =
+            case RV1 of
+                {errors, _} ->
+                    RV1;
+                _ ->
+                    {RV1, ns_storage_conf:update_java_home(JavaHome)}
+            end,
+
+        case RV2 of
+            {not_changed, not_changed} ->
+                not_changed;
+            {errors, Errors} ->
+                {error, Errors};
+            _ ->
+                ok
         end
     catch
         throw:{error, ErrorMsgs} ->
@@ -628,11 +679,12 @@ extract_settings_paths(Params) ->
         end,
 
     [{path, proplists:get_value("path", Params, DefaultDbPath)},
-     {index_path, proplists:get_value("index_path", Params, DefaultIxPath)}] ++
-    [{cbas_path, P} || P <- CBASDirsToSet].
+     {index_path, proplists:get_value("index_path", Params, DefaultIxPath)},
+     {java_home, proplists:get_value("java_home", Params, not_changed)}] ++
+        [{cbas_path, P} || P <- CBASDirsToSet].
 
 validate_settings_paths(Paths) ->
-    ValidateRes = [validate_dir_path(K, V) || {K, V} <- Paths],
+    ValidateRes = [validate_and_expand_path(K, V) || {K, V} <- Paths],
     ValidationErrors = [E || {error, E} <- ValidateRes],
 
     ValidationErrors == [] orelse throw({error, ValidationErrors}),
@@ -640,10 +692,10 @@ validate_settings_paths(Paths) ->
     ResPaths = [P || {ok, P} <- ValidateRes],
 
     DbPath = proplists:get_value(path, ResPaths),
-    IxCbasPathsErrors =
-        lists:filtermap(validate_ix_cbas_path(_, DbPath), ResPaths),
+    ValidationErrors1 =
+        lists:filtermap(validate_path(_, DbPath), ResPaths),
 
-    IxCbasPathsErrors == [] orelse throw({error, IxCbasPathsErrors}),
+    ValidationErrors1 == [] orelse throw({error, ValidationErrors1}),
 
     ResPaths.
 
