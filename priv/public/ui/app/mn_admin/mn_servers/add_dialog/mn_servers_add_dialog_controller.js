@@ -14,8 +14,7 @@
           kv: true,
           index: true,
           n1ql: true,
-          fts: true,
-          cbas: false
+          fts: true
         }
       },
       credentials: {
@@ -25,6 +24,7 @@
       }
     };
     if ($scope.poolDefault.isEnterprise) {
+      vm.addNodeConfig.services.model.cbas = true;
       vm.addNodeConfig.services.model.eventing = true;
     }
     vm.isGroupsAvailable = !!groups;
