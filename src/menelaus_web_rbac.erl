@@ -854,8 +854,14 @@ bad_roles_error(BadRoles) ->
 
 validate_user_groups(Name, State) ->
     IsMadHatter = cluster_compat_mode:is_cluster_madhatter(),
+    IsEnterprise = cluster_compat_mode:is_enterprise(),
     validator:validate(
-      fun (GroupsRaw) when IsMadHatter ->
+      fun (_) when not IsEnterprise ->
+              {error, "User groups require enterprise edition"};
+          (_) when not IsMadHatter ->
+              {error, "User groups are not supported in "
+                      "mixed version clusters"};
+          (GroupsRaw) ->
               Groups = parse_groups(GroupsRaw),
               case lists:filter(?cut(not menelaus_users:group_exists(_)),
                                 Groups) of
@@ -865,9 +871,7 @@ validate_user_groups(Name, State) ->
                       ErrorStr = io_lib:format("Groups do not exist: ~s",
                                                [BadGroupsStr]),
                       {error, ErrorStr}
-              end;
-          (_) ->
-              {error, "User groups are not supported in mixed version clusters"}
+              end
       end, Name, State).
 
 parse_groups(GroupsStr) ->
@@ -1384,7 +1388,7 @@ assert_no_users_upgrade() ->
     end.
 
 handle_put_group(GroupId, Req) ->
-    menelaus_util:assert_is_madhatter(),
+    assert_groups_and_ldap_enabled(),
 
     case validate_id(GroupId, <<"Group name">>) of
         true ->
@@ -1439,7 +1443,7 @@ do_store_group(GroupId, Description, UniqueRoles, LDAPGroup, Req) ->
     end.
 
 handle_delete_group(GroupId, Req) ->
-    menelaus_util:assert_is_madhatter(),
+    assert_groups_and_ldap_enabled(),
     perform_if_allowed(
       do_delete_group(GroupId, _), Req, ?SECURITY_WRITE,
       menelaus_users:get_group_roles(GroupId)).
@@ -1454,7 +1458,7 @@ do_delete_group(GroupId, Req) ->
     end.
 
 handle_get_groups(Path, Req) ->
-    menelaus_util:assert_is_madhatter(),
+    assert_groups_and_ldap_enabled(),
     Query = mochiweb_request:parse_qs(Req),
     case lists:keyfind("pageSize", 1, Query) of
         false ->
@@ -1516,7 +1520,7 @@ jsonify_groups() ->
        end).
 
 handle_get_group(GroupId, Req) ->
-    menelaus_util:assert_is_madhatter(),
+    assert_groups_and_ldap_enabled(),
     case menelaus_users:group_exists(GroupId) of
         false ->
             menelaus_util:reply_json(Req, <<"Unknown group.">>, 404);
@@ -1540,7 +1544,7 @@ group_to_json(GroupId, Props) ->
           || Description =/= undefined]}.
 
 handle_ldap_settings(Req) ->
-    menelaus_util:assert_is_madhatter(),
+    assert_groups_and_ldap_enabled(),
     Settings =
         lists:map(
           fun ({hosts, Hosts}) ->
@@ -1553,7 +1557,7 @@ handle_ldap_settings(Req) ->
     menelaus_util:reply_json(Req, {Settings}).
 
 handle_ldap_settings_post(Req) ->
-    menelaus_util:assert_is_madhatter(),
+    assert_groups_and_ldap_enabled(),
     validator:handle(
       fun (Props) ->
               ?log_debug("Saving ldap settings: ~p", [Props]),
@@ -1587,6 +1591,10 @@ validate_user_dn_template(Name, State) ->
                   _ -> {value, Str}
               end
       end, Name, State).
+
+assert_groups_and_ldap_enabled() ->
+    menelaus_util:assert_is_enterprise(),
+    menelaus_util:assert_is_madhatter().
 
 -ifdef(EUNIT).
 %% Tests
