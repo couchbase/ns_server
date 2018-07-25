@@ -56,7 +56,7 @@
          alerts/2,
          modify_compaction_settings/2,
          regenerate_certificate/1,
-         setup_ldap/2,
+         setup_saslauthd/2,
          internal_settings/2,
          upload_cluster_ca/3,
          reload_node_certificate/3,
@@ -272,7 +272,7 @@ code(modify_compaction_settings) ->
     8225;
 code(regenerate_certificate) ->
     8226;
-code(setup_ldap) ->
+code(setup_saslauthd) ->
     8227;
 code(internal_settings) ->
     8228;
@@ -673,16 +673,16 @@ modify_compaction_settings(Req, Settings) ->
 regenerate_certificate(Req) ->
     put(regenerate_certificate, Req, []).
 
-build_ldap_users(asterisk) ->
+build_saslauthd_users(asterisk) ->
     default;
-build_ldap_users(List) ->
+build_saslauthd_users(List) ->
     {list, List}.
 
-setup_ldap(Req, Props) ->
-    put(setup_ldap, Req,
+setup_saslauthd(Req, Props) ->
+    put(setup_saslauthd, Req,
         [{enabled, misc:expect_prop_value(enabled, Props)},
-         {admins, build_ldap_users(misc:expect_prop_value(admins, Props))},
-         {ro_admins, build_ldap_users(misc:expect_prop_value(roAdmins, Props))}]).
+         {admins, build_saslauthd_users(misc:expect_prop_value(admins, Props))},
+         {ro_admins, build_saslauthd_users(misc:expect_prop_value(roAdmins, Props))}]).
 
 internal_settings(Req, Settings) ->
     put(internal_settings, Req, [{settings, {prepare_list(Settings)}}]).

@@ -616,8 +616,8 @@
       },
       {
           "id" : 8227,
-          "name" : "setup ldap",
-          "description" : "LDAP Auth settings were modified",
+          "name" : "setup saslauthd",
+          "description" : "Saslauthd settings were modified",
           "sync" : false,
           "enabled" : true,
           "mandatory_fields" : {

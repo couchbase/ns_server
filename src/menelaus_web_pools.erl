@@ -248,7 +248,7 @@ build_internal_params(_) ->
 
 build_ui_params(for_ui) ->
     [{failoverWarnings, ns_bucket:failover_warnings()},
-     {ldapEnabled, cluster_compat_mode:is_ldap_enabled()},
+     {saslauthdEnabled, cluster_compat_mode:is_saslauthd_enabled()},
      {uiSessionTimeout,
       ns_config:read_key_fast(ui_session_timeout, undefined)}];
 build_ui_params(_) ->

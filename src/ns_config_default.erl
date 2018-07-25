@@ -70,8 +70,8 @@ init_is_enterprise() ->
             is_forced("FORCE_ENTERPRISE")
     end.
 
-init_ldap_enabled() ->
-    IsForced = is_forced("FORCE_LDAP"),
+init_saslauthd_enabled() ->
+    IsForced = is_forced("FORCE_SASLAUTHD"),
     IsLinux = os:type() =:= {unix, linux},
 
     IsForced orelse IsLinux.
@@ -96,7 +96,7 @@ default() ->
     ok = misc:mkdir_p(BreakpadMinidumpDir),
 
     IsEnterprise = init_is_enterprise(),
-    LdapEnabled = init_ldap_enabled(),
+    SASLAuthdEnabled = init_saslauthd_enabled(),
 
     {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
 
@@ -111,7 +111,7 @@ default() ->
     [{{node, node(), config_version}, get_current_version()},
      {directory, path_config:component_path(data, "config")},
      {{node, node(), is_enterprise}, IsEnterprise},
-     {{node, node(), ldap_enabled}, LdapEnabled},
+     {{node, node(), saslauthd_enabled}, SASLAuthdEnabled},
      {index_aware_rebalance_disabled, false},
      {max_bucket_count, 10},
      {autocompaction, [{database_fragmentation_threshold, {30, undefined}},
@@ -373,7 +373,8 @@ upgrade_config(Config) ->
              upgrade_config_from_5_5_to_5_5_3()];
         {value, {5,5,3}} ->
             [{set, {node, node(), config_version}, CurrentVersion} |
-             upgrade_config_from_5_5_3_to_madhatter()];
+             upgrade_config_from_5_5_3_to_madhatter(Config)];
+
         V0 ->
             OldVersion =
                 case V0 of
@@ -421,6 +422,17 @@ do_upgrade_sub_keys(SubKeys, Props, DefaultProps) ->
               lists:keystore(SubKey, 1, Acc, Val)
       end, Props, SubKeys).
 
+rename_key(OldKey, NewKey, Config) ->
+    WholeOldKey = {node, node(), OldKey},
+    WholeNewKey = {node, node(), NewKey},
+    case ns_config:search(Config, WholeOldKey) of
+        {value, Val} ->
+            [{delete, WholeOldKey},
+             {set, WholeNewKey, Val}];
+        false ->
+            []
+    end.
+
 upgrade_config_from_4_0_to_4_1_1(Config) ->
     ?log_info("Upgrading config from 4.0 to 4.1.1"),
     do_upgrade_config_from_4_0_to_4_1_1(Config, default()).
@@ -461,13 +473,14 @@ do_upgrade_config_from_5_1_1_to_5_5(Config, DefaultConfig) ->
      upgrade_key(memcached_defaults, DefaultConfig),
      upgrade_sub_keys(memcached, [other_users], Config, DefaultConfig)].
 
-upgrade_config_from_5_5_3_to_madhatter() ->
+upgrade_config_from_5_5_3_to_madhatter(Config) ->
     DefaultConfig = default(),
-    do_upgrade_config_from_5_5_3_to_madhatter(DefaultConfig).
+    do_upgrade_config_from_5_5_3_to_madhatter(Config, DefaultConfig).
 
-do_upgrade_config_from_5_5_3_to_madhatter(DefaultConfig) ->
+do_upgrade_config_from_5_5_3_to_madhatter(Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
-     {delete, {node, node(), moxi}}].
+     {delete, {node, node(), moxi}} |
+        rename_key(ldap_enabled, saslauthd_enabled, Config)].
 
 upgrade_config_from_5_5_to_5_5_3() ->
     DefaultConfig = default(),
@@ -578,10 +591,18 @@ upgrade_5_1_1_to_5_5_test() ->
                  do_upgrade_config_from_5_1_1_to_5_5(Cfg, Default)).
 
 upgrade_5_5_3_to_madhatter_test() ->
+    Cfg1 = [[{some_key, some_value},
+            {{node, node(), ldap_enabled}, true}]],
     Default = [{{node, node(), memcached_config}, new_memcached_config}],
     ?assertMatch([{set, {node, _, memcached_config}, new_memcached_config},
+                  {delete, {node, _, moxi}},
+                  {delete, {node, _, ldap_enabled}},
+                  {set, {node, _, saslauthd_enabled}, true}],
+                 do_upgrade_config_from_5_5_3_to_madhatter(Cfg1, Default)),
+    Cfg2 = [[{some_key, some_value}]],
+    ?assertMatch([{set, {node, _, memcached_config}, new_memcached_config},
                   {delete, {node, _, moxi}}],
-                 do_upgrade_config_from_5_5_3_to_madhatter(Default)).
+                 do_upgrade_config_from_5_5_3_to_madhatter(Cfg2, Default)).
 
 upgrade_5_5_to_5_5_3_test() ->
     Default = [{some_key, some_other_value},
