@@ -238,7 +238,7 @@ handle_get_roles(Req) ->
       end, Req, qs, get_users_or_roles_validators()).
 
 user_to_json({Id, Domain}, Props) ->
-    RolesJson = format_roles(Props),
+    RolesJson = user_roles_to_json(Props),
     Name = proplists:get_value(name, Props),
     Groups = proplists:get_value(groups, Props),
     Passwordless = proplists:get_value(passwordless, Props),
@@ -253,11 +253,9 @@ user_to_json({Id, Domain}, Props) ->
      [{passwordless, Passwordless} || Passwordless == true] ++
      [{password_change_date, PassChangeTime} || PassChangeTime =/= undefined]}.
 
-format_roles(Props) ->
-    Roles = proplists:get_value(roles, Props, []),
+user_roles_to_json(Props) ->
     UserRoles = proplists:get_value(user_roles, Props, []),
     GroupRoles = proplists:get_value(group_roles, Props, []),
-    Map = maps:from_list([{R, []} || R <- Roles]),
     AddOrigin =
         fun (Origin, List, AccMap) ->
                 lists:foldl(
@@ -265,14 +263,14 @@ format_roles(Props) ->
                           maps:put(R, [Origin|maps:get(R, Acc, [])], Acc)
                   end, AccMap, List)
         end,
-    Map2 = lists:foldl(
+    Map = lists:foldl(
              fun ({G, R}, Acc) ->
                 AddOrigin(G, R, Acc)
-             end, Map, [{user, UserRoles} | GroupRoles]),
+             end, #{}, [{user, UserRoles} | GroupRoles]),
     maps:fold(
        fun (Role, Origins, Acc) ->
            [{role_to_json(Role, Origins)}|Acc]
-       end, [], Map2).
+       end, [], Map).
 
 format_password_change_time(undefined) -> undefined;
 format_password_change_time(TS) ->
@@ -628,9 +626,10 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
 handle_whoami(Req) ->
     Identity = menelaus_auth:get_identity(Req),
     Props = menelaus_users:get_user_props(Identity, [name, passwordless]),
+    {JSON} = user_to_json(Identity, Props),
     Roles = menelaus_roles:get_roles(Identity),
-    JSON = user_to_json(Identity, [{roles, Roles}|Props]),
-    menelaus_util:reply_json(Req, JSON).
+    RolesJSON = [{roles, [{role_to_json(R)} || R <- Roles]}],
+    menelaus_util:reply_json(Req, {misc:update_proplist(JSON, RolesJSON)}).
 
 get_user_json(Identity) ->
     user_to_json(Identity, menelaus_users:get_user_props(Identity)).
