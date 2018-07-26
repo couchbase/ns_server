@@ -55,38 +55,6 @@ mn.helper.IEC = (function () {
 
 var mn = mn || {};
 mn.helper = mn.helper || {};
-mn.helper.httpErrorScenario = (function () {
-  return function (obs) {
-    return obs
-      .switchMap(function (rv) {
-        if (rv instanceof ng.common.http.HttpErrorResponse) {
-          return Rx.Observable.of(rv);
-        } else if (mn.helper.isJson(rv)) {
-          return Rx.Observable.of(new ng.common.http.HttpErrorResponse({error: rv}));
-        } else {
-          return Rx.Observable.never();
-        }
-      })
-      .pluck("error")
-      .map(JSON.parse)
-      .share();
-  }
-})();
-
-var mn = mn || {};
-mn.helper = mn.helper || {};
-mn.helper.httpSuccessScenario = (function () {
-  return function (obs) {
-    return obs
-      .filter(function (rv) {
-        return !(rv instanceof ng.common.http.HttpErrorResponse);
-      })
-      .share();
-  }
-})();
-
-var mn = mn || {};
-mn.helper = mn.helper || {};
 mn.helper.calculateMaxMemorySize = (function () {
   return function (totalRAMMegs) {
     return Math.floor(Math.max(totalRAMMegs * 0.8, totalRAMMegs - 1024));
@@ -139,7 +107,7 @@ mn.helper.createBucketTypePipe = (function () {
 
 var mn = mn || {};
 mn.helper = mn.helper || {};
-mn.helper.DetailsHashObserver = (function () {
+mn.helper.DetailsHashObserver = (function (Rx) {
 
   DetailsHashObserver.prototype.isOpened = isOpened;
   DetailsHashObserver.prototype.getNewHashValue = getNewHashValue;
@@ -158,27 +126,31 @@ mn.helper.DetailsHashObserver = (function () {
     this.stream.toggleDetails = new Rx.Subject();
 
     this.stream.openedDetailsHash =
-      this.uiRouter
-      .globals
-      .params$
-      .pluck(this.hashKey)
-      .distinctUntilChanged()
-      .map(this.prepareHashValue.bind(this));
+      this.uiRouter.globals.params$.pipe(
+        Rx.operators.pluck(this.hashKey),
+        Rx.operators.distinctUntilChanged(),
+        Rx.operators.map(this.prepareHashValue.bind(this))
+      );
 
     this.stream.isOpened =
-      initialValueStream
-      .distinctUntilChanged()
-      .merge(this.stream.toggleDetails)
-      .combineLatest(this.stream.openedDetailsHash)
-      .map(this.isOpened.bind(this));
+      Rx.combineLatest(
+        Rx.merge(
+          initialValueStream
+            .pipe(Rx.operators.distinctUntilChanged()),
+          this.stream.toggleDetails
+        ),
+        this.stream.openedDetailsHash
+      )
+      .pipe(Rx.operators.map(this.isOpened.bind(this)));
 
     this.stream.newHashValue =
-      this.stream.toggleDetails
-      .withLatestFrom(this.stream.openedDetailsHash)
-      .map(this.getNewHashValue.bind(this));
+      this.stream.toggleDetails.pipe(
+        Rx.operators.withLatestFrom(this.stream.openedDetailsHash),
+        Rx.operators.map(this.getNewHashValue.bind(this))
+      );
 
     this.stream.newHashValue
-      .takeUntil(this.mnOnDestroy)
+      .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
       .subscribe(this.setNewHashValue.bind(this));
   }
 
@@ -206,15 +178,15 @@ mn.helper.DetailsHashObserver = (function () {
     return values[1].indexOf(values[0]) > -1;
   }
 
-})();
+})(window.rxjs);
 
 var mn = mn || {};
 mn.helper = mn.helper || {};
-mn.helper.errorToStream = (function () {
+mn.helper.errorToStream = (function (Rx) {
   return function (err) {
-    return Rx.Observable.of(err);
+    return Rx.of(err);
   }
-})();
+})(window.rxjs);
 
 var mn = mn || {};
 mn.helper = mn.helper || {};
@@ -231,34 +203,39 @@ mn.helper.isJson = (function () {
 
 var mn = mn || {};
 mn.helper = mn.helper || {};
-mn.helper.sortByStream = (function () {
+mn.helper.sortByStream = (function (Rx) {
   return function (sortByStream) {
     return function (arrayStream) {
-      var isAsc =
-          sortByStream
-          .scan(function (total) {
-            return !total;
-          }, false);
-      return arrayStream
-        .combineLatest(sortByStream.zip(isAsc))
-        .map(function (values) {
-          var copyArray = values[0].slice();
-          var sortBy = values[1][0];
-          var isAsc = values[1][1];
-          copyArray = _.sortBy(copyArray, sortBy);
+      var isAsc = sortByStream.pipe(Rx.operators.scan(mn.helper.invert, false));
 
-          if (!isAsc) {
-            return copyArray.reverse();
-          } else {
-            return copyArray;
-          }
-        })
-        .shareReplay(1);
+      return Rx.combineLatest(
+        arrayStream,
+        Rx.zip(
+          sortByStream,
+          isAsc
+        )
+      ).pipe(
+        Rx.operators.map(doSort),
+        Rx.operators.shareReplay(1)
+      );
+
+      function doSort(values) {
+        var copyArray = values[0].slice();
+        var sortBy = values[1][0];
+        var isAsc = values[1][1];
+        copyArray = _.sortBy(copyArray, sortBy);
+
+        if (!isAsc) {
+          return copyArray.reverse();
+        } else {
+          return copyArray;
+        }
+      }
     }
   }
-})();
+})(window.rxjs);
 
-mn.helper.MnPostGroupHttp = (function () {
+mn.helper.MnPostGroupHttp = (function (Rx) {
 
   MnPostGroupHttp.prototype.post = post;
   MnPostGroupHttp.prototype.addSuccess = addSuccess;
@@ -281,14 +258,14 @@ mn.helper.MnPostGroupHttp = (function () {
 
   function addSuccess() {
     this.success =
-      Rx.Observable
-      .zip
-      .apply(null, this.getHttpGroupStreams("response"))
-      .filter(function (responses) {
-        return !_.find(responses, function (resp) {
-          return resp instanceof ng.common.http.HttpErrorResponse;
-        });
-      });
+      Rx.zip.apply(null, this.getHttpGroupStreams("response"))
+      .pipe(
+        Rx.operators.filter(function (responses) {
+          return !_.find(responses, function (resp) {
+            return resp instanceof ng.common.http.HttpErrorResponse;
+          });
+        })
+      );
     return this;
   }
 
@@ -308,17 +285,20 @@ mn.helper.MnPostGroupHttp = (function () {
 
   function addLoading() {
     this.loading =
-      Rx.Observable
-      .zip
-      .apply(null, this.getHttpGroupStreams("response"))
-      .mapTo(false)
-      .merge(this.request.mapTo(true));
+      Rx.merge(
+        Rx.zip.apply(null, this.getHttpGroupStreams("response")).pipe(
+          Rx.operators.mapTo(false)
+        ),
+        this.request.pipe(
+          Rx.operators.mapTo(true)
+        )
+      );
     return this;
   }
 
-})();
+})(window.rxjs);
 
-mn.helper.MnPostHttp = (function () {
+mn.helper.MnPostHttp = (function (Rx) {
 
   MnPostHttp.prototype.addResponse = addResponse;
   MnPostHttp.prototype.addSuccess = addSuccess;
@@ -341,19 +321,37 @@ mn.helper.MnPostHttp = (function () {
   }
 
   function addResponse(call) {
-    this.response = this._dataSubject.switchMap(function (data) {
-      return call(data).catch(mn.helper.errorToStream);
-    }).shareReplay(1);
+    this.response =
+      this._dataSubject.pipe(
+        Rx.operators.switchMap(function (data) {
+          return call(data).pipe(Rx.operators.catchError(mn.helper.errorToStream));
+        }),
+        Rx.operators.shareReplay(1)
+      );
     return this;
   }
 
   function addError(modify) {
     var error =
-        this.response
-        .let(mn.helper.httpErrorScenario)
-        .merge(this._errorSubject);
+        Rx.merge(
+          this.response.pipe(
+            Rx.operators.switchMap(function (rv) {
+              if (rv instanceof ng.common.http.HttpErrorResponse) {
+                return Rx.of(rv);
+              } else if (mn.helper.isJson(rv)) {
+                return Rx.of(new ng.common.http.HttpErrorResponse({error: rv}));
+              } else {
+                return Rx.NEVER;
+              }
+            }),
+            Rx.operators.pluck("error"),
+            Rx.operators.map(JSON.parse),
+            Rx.operators.share()
+          ),
+          this._errorSubject
+        );
     if (modify) {
-      error = error.let(modify);
+      error = error.pipe(modify);
     }
     this.error = error;
     return this;
@@ -361,18 +359,24 @@ mn.helper.MnPostHttp = (function () {
 
   function addLoading() {
     this.loading =
-      this._loadingSubject
-      .merge(this.response.mapTo(false));
+      Rx.merge(
+        this._loadingSubject,
+        this.response.pipe(Rx.operators.mapTo(false))
+      );
 
     return this;
   }
 
   function addSuccess(modify) {
     var success =
-        this.response
-        .let(mn.helper.httpSuccessScenario);
+        this.response.pipe(
+          Rx.operators.filter(function (rv) {
+            return !(rv instanceof ng.common.http.HttpErrorResponse);
+          }),
+          Rx.operators.share()
+        );
     if (modify) {
-      success = success.let(modify);
+      success = success.pipe(modify);
     }
     this.success = success;
     return this;
@@ -382,11 +386,11 @@ mn.helper.MnPostHttp = (function () {
     this._loadingSubject.next(true);
     this._dataSubject.next(data);
   }
-})();
+})(window.rxjs);
 
 var mn = mn || {};
 mn.helper = mn.helper || {};
-mn.helper.MnEventableComponent = (function () {
+mn.helper.MnEventableComponent = (function (Rx) {
 
   var componentLifecycleHooks = [
     "OnChanges",
@@ -400,16 +404,21 @@ mn.helper.MnEventableComponent = (function () {
   ];
 
   componentLifecycleHooks.forEach(function (name) {
-    MnDestroyableComponent.prototype["ng" + name] = function (value) {
+    if (name === "OnDestroy") {
+      MnDestroyableComponent.prototype["ng" + name] = function (value) {
+        this["mn" + name].complete(value);
+      }
+    } else {
+      MnDestroyableComponent.prototype["ng" + name] = function (value) {
         this["mn" + name].next(value);
       }
+    }
   });
 
   return MnDestroyableComponent;
 
   function MnDestroyableComponent() {
     componentLifecycleHooks.forEach(createSubjects.bind(this));
-    this.mnOnDestroy.do(null, null, doOnCompleted.bind(this));
   }
 
   function createSubjects(name) {
@@ -417,16 +426,7 @@ mn.helper.MnEventableComponent = (function () {
     this["mn" + name] = (name === "OnChanges") ? new Rx.BehaviorSubject() : new Rx.Subject();
   }
 
-  function completeSubject(name) {
-    this["mn" + name].next();
-    this["mn" + name].complete();
-  }
-
-  function doOnCompleted() {
-    componentLifecycleHooks.forEach(completeSubject.bind(this));
-  }
-
-})();
+})(window.rxjs);
 
 var mn = mn || {};
 mn.helper = mn.helper || {};

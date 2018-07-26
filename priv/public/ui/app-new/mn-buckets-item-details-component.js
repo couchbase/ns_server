@@ -1,7 +1,7 @@
 var mn = mn || {};
 mn.components = mn.components || {};
 mn.components.MnBucketsItemDetails =
-  (function () {
+  (function (Rx) {
     "use strict";
 
     mn.helper.extends(MnBucketsItemDetails, mn.helper.MnEventableComponent);
@@ -36,52 +36,59 @@ mn.components.MnBucketsItemDetails =
       this.editButtonClickEvent = new Rx.Subject();
       this.isRebalancing = mnAdminService.stream.isRebalancing;
 
-      var bucketCurrentValue = this.mnOnChanges.pluck("bucket", "currentValue");
-      var bucketName = bucketCurrentValue.pluck("name");
+      var bucketCurrentValue = this.mnOnChanges.pipe(Rx.operators.pluck("bucket", "currentValue"));
+      var bucketName = bucketCurrentValue.pipe(Rx.operators.pluck("name"));
 
       var thisBucketCompactionTask =
-          bucketName
-          .distinctUntilChanged()
-          .combineLatest(mnTasksService.stream.tasksBucketCompaction)
-          .map(function (values) {
-            return _.find(values[1], function (task) {
-              return task.bucket === values[0];
-            });
-          });
+          Rx.combineLatest(
+            bucketName.pipe(Rx.operators.distinctUntilChanged()),
+            mnTasksService.stream.tasksBucketCompaction
+          ).pipe(
+            Rx.operators.map(function (values) {
+              return _.find(values[1], function (task) {
+                return task.bucket === values[0];
+              });
+            })
+          );
 
-      this.editButtonClickEvent
-        .takeUntil(this.mnOnDestroy)
-        .subscribe(function (bucket) {
-          var ref = modalService.open(mn.components.MnBucketsDialog);
-          ref.componentInstance.bucket = bucket;
-        });
+      this.editButtonClickEvent.pipe(
+        Rx.operators.takeUntil(this.mnOnDestroy)
+      ).subscribe(function (bucket) {
+        var ref = modalService.open(mn.components.MnBucketsDialog);
+        ref.componentInstance.bucket = bucket;
+      });
+
 
       this.thisBucketCompactionProgress =
-        thisBucketCompactionTask
-        .map(function (task) {
-          return task ? (task.progress + "% complete") : "Not active";
-        });
+        thisBucketCompactionTask.pipe(
+          Rx.operators.map(function (task) {
+            return task ? (task.progress + "% complete") : "Not active";
+          })
+        );
 
       this.compatVersion = mnAdminService.stream.compatVersion;
       this.tasksRead = mnPermissionsService.createPermissionStream("tasks!read");
 
       this.warmUpTasks =
-        mnTasksService.stream.tasksWarmingUp
-        .withLatestFrom(bucketCurrentValue)
-        .map(this.getWarmUpTasks.bind(this));
+        mnTasksService.stream.tasksWarmingUp.pipe(
+          Rx.operators.withLatestFrom(bucketCurrentValue),
+          Rx.operators.map(this.getWarmUpTasks.bind(this))
+        );
 
       this.bucketSettingsWrite =
         mnPermissionsService.createPermissionStream("settings!write", bucketName);
 
       this.bucketRamGuageConfig =
-        bucketCurrentValue
-        .map(this.getBucketRamGuageConfigParams.bind(this))
-        .map(mnBucketsService.getBucketRamGuageConfig)
+        bucketCurrentValue.pipe(
+          Rx.operators.map(this.getBucketRamGuageConfigParams.bind(this)),
+          Rx.operators.map(mnBucketsService.getBucketRamGuageConfig)
+        );
 
       this.bucketDiskGuageConfig =
-        bucketCurrentValue
-        .map(this.getGuageConfig.bind(this))
-        .map(mnBucketsService.getGuageConfig)
+        bucketCurrentValue.pipe(
+          Rx.operators.map(this.getGuageConfig.bind(this)),
+          Rx.operators.map(mnBucketsService.getGuageConfig)
+        );
 
     }
 
@@ -122,4 +129,4 @@ mn.components.MnBucketsItemDetails =
       };
     }
 
-  })();
+  })(window.rxjs);

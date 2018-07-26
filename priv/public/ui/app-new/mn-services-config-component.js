@@ -1,7 +1,7 @@
 var mn = mn || {};
 mn.components = mn.components || {};
 mn.components.MnServicesConfig =
-  (function () {
+  (function (Rx) {
     "use strict";
 
     MnServicesConfig.annotations = [
@@ -31,8 +31,7 @@ mn.components.MnServicesConfig =
         return
       }
       this.total =
-        this.group.valueChanges
-        .map(calculateTotal.bind(this));
+        this.group.valueChanges.pipe(Rx.operators.map(calculateTotal.bind(this)));
 
       this.focusFieldSubject = new Rx.BehaviorSubject(
         (this.group.value.field.kv ? "kv" :
@@ -47,12 +46,13 @@ mn.components.MnServicesConfig =
       createToggleFieldStream.bind(this)("cbas");
       createToggleFieldStream.bind(this)("eventing");
 
-      this.group
-        .valueChanges
-        .debounce(function () {
-          return Rx.Observable.interval(300);
-        })
-        .takeUntil(this.destroy)
+      this.group.valueChanges
+        .pipe(
+          Rx.operators.debounce(function () {
+            return Rx.interval(300);
+          }),
+          Rx.operators.takeUntil(this.destroy)
+        )
         .subscribe(validate.bind(this))
 
       //trigger servicesGroup.valueChanges in order to calculate total
@@ -93,9 +93,8 @@ mn.components.MnServicesConfig =
     function createToggleFieldStream(serviceGroupName) {
       var group = this.group.get("flag." + serviceGroupName);
       if (group) {
-        group
-          .valueChanges
-          .takeUntil(this.destroy)
+        group.valueChanges
+          .pipe(Rx.operators.takeUntil(this.destroy))
           .subscribe(toggleFields(serviceGroupName).bind(this));
       }
     }
@@ -121,4 +120,4 @@ mn.components.MnServicesConfig =
       this.poolsDefaultHttp = mnAdminService.stream.poolsDefaultHttp;
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
     }
-  })();
+  })(window.rxjs);

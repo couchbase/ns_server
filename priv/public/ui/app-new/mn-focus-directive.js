@@ -1,7 +1,7 @@
 var mn = mn || {};
 mn.directives = mn.directives || {};
 mn.directives.MnFocus =
-  (function () {
+  (function (Rx) {
     "use strict";
 
     mn.helper.extends(MnFocusDirective, mn.helper.MnEventableComponent);
@@ -35,20 +35,20 @@ mn.directives.MnFocus =
 
       var elementName = el.nativeElement.getAttribute("formControlName");
 
-      this.mnOnInit
-        .switchMap((function () {
+      this.mnOnInit.pipe(
+        Rx.operators.switchMap((function () {
           return this.mnFocus;
-        }).bind(this))
-        .filter(function (value) {
+        }).bind(this)),
+        Rx.operators.filter(function (value) {
           if (typeof value === "string") {
             return value === elementName;
           } else {
             return value; //Boolean
           }
-        })
-        .takeUntil(this.mnOnDestroy)
-        .subscribe(function (value) {
-          el.nativeElement.focus();
-        });
+        }),
+        Rx.operators.takeUntil(this.mnOnDestroy)
+      ).subscribe(function (value) {
+        el.nativeElement.focus();
+      });
     }
-  })();
+  })(window.rxjs);

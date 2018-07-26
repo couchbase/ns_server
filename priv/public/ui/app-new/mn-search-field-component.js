@@ -1,7 +1,7 @@
 var mn = mn || {};
 mn.components = mn.components || {};
 mn.components.MnSearchField =
-  (function () {
+  (function (Rx) {
     "use strict";
 
     mn.helper.extends(MnSearchFieldComponent, mn.helper.MnEventableComponent);
@@ -28,7 +28,7 @@ mn.components.MnSearchField =
       mn.helper.MnEventableComponent.call(this);
 
       this.mnOnInit
-        .takeUntil(this.mnOnDestroy)
+        .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
         .subscribe(this.onInit.bind(this));
     }
 
@@ -37,20 +37,20 @@ mn.components.MnSearchField =
       this.mnFocusStream = this.mnFocusStream || Rx.Observable.never();
       this.mnClearStream = this.mnClearStream || Rx.Observable.never();
 
-      this.onClearClick
-        .merge(this.mnClearStream)
-        .takeUntil(this.mnOnDestroy)
+      Rx.merge(this.onClearClick, this.mnClearStream)
+        .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
         .subscribe(this.clearSearchTerm.bind(this));
 
       this.isSearchPresent =
-        this.mnFormGroup.valueChanges
-        .pluck("searchTerm")
-        .map(Boolean)
-        .shareReplay(1);
+        this.mnFormGroup.valueChanges.pipe(
+          Rx.operators.pluck("searchTerm"),
+          Rx.operators.map(Boolean),
+          Rx.operators.shareReplay(1)
+        );
 
     }
 
     function clearSearchTerm() {
       this.mnFormGroup.patchValue({searchTerm: ""});
     }
-  })();
+  })(window.rxjs);

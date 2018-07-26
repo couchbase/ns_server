@@ -1,6 +1,6 @@
 var mn = mn || {};
 mn.services = mn.services || {};
-mn.services.MnSecurity = (function () {
+mn.services.MnSecurity = (function (Rx) {
   "use strict";
 
   MnSecurityService.annotations = [
@@ -21,13 +21,14 @@ mn.services.MnSecurity = (function () {
     this.stream = {};
 
     this.stream.getSaslauthdAuth =
-      (new Rx.BehaviorSubject())
-      .switchMap(this.getSaslauthdAuth.bind(this))
-      .shareReplay(1);
+      (new Rx.BehaviorSubject()).pipe(
+        Rx.operators.switchMap(this.getSaslauthdAuth.bind(this)),
+        Rx.operators.shareReplay(1)
+      );
   }
 
   function getSaslauthdAuth() {
     return this.http.get("/settings/saslauthdAuth");
   }
 
-})();
+})(window.rxjs);

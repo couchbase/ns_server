@@ -1,6 +1,6 @@
 var mn = mn || {};
 mn.services = mn.services || {};
-mn.services.MnUserRoles = (function () {
+mn.services.MnUserRoles = (function (Rx) {
   "use strict";
 
   MnUserRolesService.annotations = [
@@ -22,10 +22,11 @@ mn.services.MnUserRoles = (function () {
     this.stream = {};
 
     this.stream.getRolesByRole =
-      (new Rx.BehaviorSubject())
-      .switchMap(this.getRoles.bind(this))
-      .map(this.doRolesByRole.bind(this))
-      .shareReplay(1);
+      (new Rx.BehaviorSubject()).pipe(
+        Rx.operators.switchMap(this.getRoles.bind(this)),
+        Rx.operators.map(this.doRolesByRole.bind(this)),
+        Rx.operators.shareReplay(1)
+      );
   }
 
   function doRolesByRole(roles) {
@@ -45,25 +46,27 @@ mn.services.MnUserRoles = (function () {
       params:  _.reduce(params, function (params1, value, key) {
         return params1.set(key, value);
       }, new ng.common.http.HttpParams())
-    }).map(function (resp) {
-      var i;
-      for (i in resp.links) {
-        resp.links[i] = resp.links[i].split("?")[1]
-          .split("&")
-          .reduce(function(prev, curr, i, arr) {
-            var p = curr.split("=");
-            prev[decodeURIComponent(p[0])] = decodeURIComponent(p[1]);
-            return prev;
-          }, {});
-      }
-      if (!resp.users) {//in oreder to support compatibility mode
-        return {
-          users: resp
-        };
-      } else {
-        return resp;
-      }
-    });
+    }).pipe(
+      Rx.operators.map(function (resp) {
+        var i;
+        for (i in resp.links) {
+          resp.links[i] = resp.links[i].split("?")[1]
+            .split("&")
+            .reduce(function(prev, curr, i, arr) {
+              var p = curr.split("=");
+              prev[decodeURIComponent(p[0])] = decodeURIComponent(p[1]);
+              return prev;
+            }, {});
+        }
+        if (!resp.users) {//in oreder to support compatibility mode
+          return {
+            users: resp
+          };
+        } else {
+          return resp;
+        }
+      })
+    );
   }
 
-})();
+})(window.rxjs);

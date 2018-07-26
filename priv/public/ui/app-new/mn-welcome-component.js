@@ -1,7 +1,7 @@
 var mn = mn || {};
 mn.components = mn.components || {};
 mn.components.MnWelcome =
-  (function () {
+  (function (Rx) {
     "use strict";
 
     MnWelcomeComponent.annotations = [
@@ -24,4 +24,4 @@ mn.components.MnWelcome =
         .stream
         .prettyVersion;
     }
-  })();
+  })(window.rxjs);

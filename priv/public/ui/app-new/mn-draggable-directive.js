@@ -1,7 +1,7 @@
 var mn = mn || {};
 mn.directives = mn.directives || {};
 mn.directives.MnDraggable =
-  (function () {
+  (function (Rx) {
     "use strict";
 
     MnFocusDirective.annotations = [
@@ -41,9 +41,8 @@ mn.directives.MnDraggable =
       this.stream.mousedown = new Rx.Subject();;
       this.destroy = new Rx.Subject();
 
-      that.stream
-        .mousedown
-        .map(function (e) {
+      that.stream.mousedown.pipe(
+        Rx.operators.map(function (e) {
           var target = e.currentTarget;
           var startX = target.offsetLeft;
 
@@ -56,13 +55,11 @@ mn.directives.MnDraggable =
             mouseX: e.clientX,
             mouseY: e.clientY
           };
-        }).switchMap(function (init) {
-          return that.stream
-            .mousemove
-            .takeUntil(that
-                       .stream
-                       .mouseup)
-            .map(function (e) {
+        }),
+        Rx.operators.switchMap(function (init) {
+          return that.stream.mousemove.pipe(
+            Rx.operators.takeUntil(that.stream.mouseup),
+            Rx.operators.map(function (e) {
               var dx = e.clientX - init.mouseX;
               var dy = e.clientY - init.mouseY;
               var rv = {
@@ -77,9 +74,11 @@ mn.directives.MnDraggable =
                 rv.left = init.startX + dx + 'px';
               }
               return rv;
-            });
-        })
-        .takeUntil(this.destroy)
+            })
+          );
+        }),
+        Rx.operators.takeUntil(this.destroy)
+      )
         .subscribe(function (css) {
           that.top = css.top;
           that.bottom = css.bottom;
@@ -106,4 +105,4 @@ mn.directives.MnDraggable =
       this.destroy.next();
       this.destroy.complete();
     }
-  })();
+  })(window.rxjs);

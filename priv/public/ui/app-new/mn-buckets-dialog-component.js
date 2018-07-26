@@ -1,7 +1,7 @@
 var mn = mn || {};
 mn.components = mn.components || {};
 mn.components.MnBucketsDialog =
-  (function () {
+  (function (Rx) {
     "use strict";
 
     mn.helper.extends(MnBucketsDialogComponent, mn.helper.MnEventableComponent);
@@ -62,73 +62,78 @@ mn.components.MnBucketsDialog =
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
 
       var ramSummary =
-          this.bucketHttp.success
-          .merge(this.bucketHttp.error)
-          .pluck("summaries", "ramSummary")
-          .filter(Boolean);
+          this.bucketHttp.success.pipe(
+            Rx.operators.merge(this.bucketHttp.error),
+            Rx.operators.pluck("summaries", "ramSummary"),
+            Rx.operators.filter(Boolean)
+          );
 
       var bucketFormChanges =
-          bucketsDialogForm
-          .valueChanges
-          .takeUntil(this.mnOnDestroy);
+          bucketsDialogForm.valueChanges.pipe(
+            Rx.operators.takeUntil(this.mnOnDestroy)
+          );
 
       var bucketFormHelperChanges =
-          bucketsDialogHelperForm
-          .valueChanges
-          .takeUntil(this.mnOnDestroy);
+          bucketsDialogHelperForm.valueChanges.pipe(
+            Rx.operators.takeUntil(this.mnOnDestroy)
+          );
 
 
       this.bucketRamGuage =
-        ramSummary
-        .map(mnBucketsService.getBucketRamGuageConfig);
+        ramSummary.pipe(
+          Rx.operators.map(mnBucketsService.getBucketRamGuageConfig)
+        );
 
       this.bucketTotalRamGuage =
-        this.bucketRamGuage
-        .map(getBucketTotalRamGuage);
+        this.bucketRamGuage.pipe(
+          Rx.operators.map(getBucketTotalRamGuage)
+        );
 
-      bucketFormChanges
-        .map(bucketsDialogForm.getRawValue.bind(bucketsDialogForm))
-        .withLatestFrom(
+      bucketFormChanges.pipe(
+        Rx.operators.map(bucketsDialogForm.getRawValue.bind(bucketsDialogForm)),
+        Rx.operators.withLatestFrom(
           mnPoolsService.stream.isEnterprise,
           mnAdminService.stream.compatVersion
-        )
-        .debounceTime(0) //wait until all values are setted and stabilized
-        .subscribe(validateBucketForm.bind(this));
+        ),
+        Rx.operators.debounceTime(0) //wait until all values are setted and stabilized
+      ).subscribe(validateBucketForm.bind(this));
 
-      bucketFormHelperChanges
-        .pluck("maxTTLEnabled")
-        .subscribe(toggleMaxTTl.bind(this));
+      bucketFormHelperChanges.pipe(
+        Rx.operators.pluck("maxTTLEnabled")
+      ).subscribe(toggleMaxTTl.bind(this));
 
-      bucketFormHelperChanges
-        .pluck("replicaNumberEnabled")
-        .subscribe(toggleReplicaIndex.bind(this));
+      bucketFormHelperChanges.pipe(
+        Rx.operators.pluck("replicaNumberEnabled")
+      ).subscribe(toggleReplicaIndex.bind(this));
 
-      this.mnOnInit
-        .withLatestFrom(
+      this.mnOnInit.pipe(
+        Rx.operators.withLatestFrom(
           mnAdminService.stream.getPoolsDefault,
           mnAdminService.stream.activateKvNodes
-        )
-        .takeUntil(this.mnOnDestroy)
-        .subscribe(setInitialValues.bind(this));
+        ),
+        Rx.operators.takeUntil(this.mnOnDestroy)
+      ).subscribe(setInitialValues.bind(this));
 
-      this.onSubmit
-        .map(bucketsDialogForm.getRawValue.bind(bucketsDialogForm))
-        .withLatestFrom(
+      this.onSubmit.pipe(
+        Rx.operators.map(bucketsDialogForm.getRawValue.bind(bucketsDialogForm)),
+        Rx.operators.withLatestFrom(
           mnPoolsService.stream.isEnterprise,
           mnAdminService.stream.compatVersion
-        )
-        .takeUntil(this.mnOnDestroy)
-        .subscribe(saveAutoCompaction.bind(this));
+        ),
+        Rx.operators.takeUntil(this.mnOnDestroy)
+      ).subscribe(saveAutoCompaction.bind(this));
 
-      this.onSubmit
-        .switchMap(getFirstSuccess.bind(this))
-        .subscribe(function () {
-          activeModal.dismiss();
-          mnBucketsService.stream.updateBucketsPoller.next();
-        });
+      this.onSubmit.pipe(
+        Rx.operators.switchMap(getFirstSuccess.bind(this))
+      ).subscribe(function () {
+        activeModal.dismiss();
+        mnBucketsService.stream.updateBucketsPoller.next();
+      });
 
       function getFirstSuccess() {
-        return this.bucketHttp.success.first();
+        return this.bucketHttp.success.pipe(
+          Rx.operators.first()
+        );
       }
 
       function toggleMaxTTl(isMaxTTLEnabled) {
@@ -142,16 +147,17 @@ mn.components.MnBucketsDialog =
       function threadsEvictionWarning(fieldName) {
         var initValue = bucketsDialogForm.get(fieldName).value;
         this[fieldName + "Warning"] =
-          bucketFormChanges
-          .pluck(fieldName)
-          .map(function (value) {
-            return (value != initValue) ?
-              ('Changing ' + (fieldName === 'evictionPolicy' ?
-                              'eviction policy' :
-                              'bucket priority')  +
-               ' will restart the bucket. This will lead to closing all' +
-               ' open connections and some downtime') : "";
-          });
+          bucketFormChanges.pipe(
+            Rx.operators.pluck(fieldName),
+            Rx.operators.map(function (value) {
+              return (value != initValue) ?
+                ('Changing ' + (fieldName === 'evictionPolicy' ?
+                                'eviction policy' :
+                                'bucket priority')  +
+                 ' will restart the bucket. This will lead to closing all' +
+                 ' open connections and some downtime') : "";
+            })
+          );
       }
 
       function toggleReplicaIndex(replicaNumberEnabled) {
@@ -231,4 +237,4 @@ mn.components.MnBucketsDialog =
         }
       }
     }
-  })();
+  })(window.rxjs);

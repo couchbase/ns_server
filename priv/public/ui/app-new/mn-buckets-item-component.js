@@ -1,7 +1,7 @@
 var mn = mn || {};
 mn.components = mn.components || {};
 mn.components.MnBucketsItem =
-  (function () {
+  (function (Rx) {
     "use strict";
 
     mn.helper.extends(MnBucketsItem, mn.helper.MnEventableComponent);
@@ -36,13 +36,13 @@ mn.components.MnBucketsItem =
     function MnBucketsItem(mnAdminService, mnBucketsService, mnPermissionsService, mnTasksService, uiRouter) {
       mn.helper.MnEventableComponent.call(this);
 
-      var bucketCurrentValue = this.mnOnChanges.pluck("bucket", "currentValue");
-      var bucketNodes = bucketCurrentValue.pluck("nodes");
-      var bucketName = bucketCurrentValue.pluck("name");
+      var bucketCurrentValue = this.mnOnChanges.pipe(Rx.operators.pluck("bucket", "currentValue"));
+      var bucketNodes = bucketCurrentValue.pipe(Rx.operators.pluck("nodes"));
+      var bucketName = bucketCurrentValue.pipe(Rx.operators.pluck("name"));
 
       this.compatVersion = mnAdminService.stream.compatVersion;
-      this.statusClass = bucketNodes.map(this.getNodesStatusClass.bind(this));
-      this.residentRatio = bucketCurrentValue.map(this.getResidentRatio.bind(this));
+      this.statusClass = bucketNodes.pipe(Rx.operators.map(this.getNodesStatusClass.bind(this)));
+      this.residentRatio = bucketCurrentValue.pipe(Rx.operators.map(this.getResidentRatio.bind(this)));
 
       this.detailsHashObserver =
         new mn.helper.DetailsHashObserver(
@@ -63,16 +63,16 @@ mn.components.MnBucketsItem =
         mnPermissionsService.createPermissionStream("tasks!read");
 
       this.nodesCountByStatusMessage =
-        bucketNodes
-        .map(this.getNodesCountByStatus.bind(this))
-        .map(this.getNodesCountByStatusMessage.bind(this));
+        bucketNodes.pipe(
+          Rx.operators.map(this.getNodesCountByStatus.bind(this)),
+          Rx.operators.map(this.getNodesCountByStatusMessage.bind(this))
+        );
 
       this.warmUpProgress =
-        mnTasksService
-        .stream
-        .tasksWarmingUp
-        .withLatestFrom(bucketCurrentValue)
-        .map(this.getWarmUpProgress.bind(this));
+        mnTasksService.stream.tasksWarmingUp.pipe(
+          Rx.operators.withLatestFrom(bucketCurrentValue),
+          Rx.operators.map(this.getWarmUpProgress.bind(this))
+        );
 
     }
 
@@ -178,4 +178,4 @@ mn.components.MnBucketsItem =
       return exists ? (totalPercent / bucket.nodes.length) : false;
     }
 
-  })();
+  })(window.rxjs);

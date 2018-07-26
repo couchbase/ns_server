@@ -1,7 +1,7 @@
 var mn = mn || {};
 mn.components = mn.components || {};
 mn.components.MnAuth =
-  (function () {
+  (function (Rx) {
     "use strict";
 
     mn.helper.extends(MnAuthComponent, mn.helper.MnEventableComponent);
@@ -29,12 +29,11 @@ mn.components.MnAuth =
       this.loginHttp = mnAuthService.stream.loginHttp;
       this.logoutHttp = mnAuthService.stream.logoutHttp;
 
-      this.loginHttp
-        .success
-        .takeUntil(this.mnOnDestroy)
-        .subscribe(function () {
-          uiRouter.urlRouter.sync();
-        });
+      this.loginHttp.success.pipe(
+        Rx.operators.takeUntil(this.mnOnDestroy)
+      ).subscribe(function () {
+        uiRouter.urlRouter.sync();
+      });
 
       this.authForm =
         formBuilder.group({
@@ -42,14 +41,14 @@ mn.components.MnAuth =
           password: ['', ng.forms.Validators.required]
         });
 
-      this.onSubmit
-        .takeUntil(this.mnOnDestroy)
-        .map(getValues.bind(this))
-        .subscribe(this.loginHttp.post.bind(this.loginHttp));
+      this.onSubmit.pipe(
+        Rx.operators.takeUntil(this.mnOnDestroy),
+        Rx.operators.map(getValues.bind(this))
+      ).subscribe(this.loginHttp.post.bind(this.loginHttp));
 
       function getValues() {
         return this.authForm.value;
       }
     }
 
-  })();
+  })(window.rxjs);

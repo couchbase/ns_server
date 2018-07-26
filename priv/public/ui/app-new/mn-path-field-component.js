@@ -1,7 +1,7 @@
 var mn = mn || {};
 mn.components = mn.components || {};
 mn.components.MnPathField =
-  (function () {
+  (function (Rx) {
     "use strict";
 
     MnPathField.annotations = [
@@ -35,4 +35,4 @@ mn.components.MnPathField =
       this.focusFieldSubject = new Rx.BehaviorSubject(true);
       this.createLookUpStream = mnWizardService.createLookUpStream.bind(mnWizardService);
     }
-  })();
+  })(window.rxjs);

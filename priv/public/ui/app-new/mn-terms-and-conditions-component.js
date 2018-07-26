@@ -1,7 +1,7 @@
 var mn = mn || {};
 mn.components = mn.components || {};
 mn.components.MnTermsAndConditions =
-  (function () {
+  (function (Rx) {
     "use strict";
 
     mn.helper.extends(MnTermsAndConditions, mn.helper.MnEventableComponent);
@@ -29,7 +29,13 @@ mn.components.MnTermsAndConditions =
       this.onSubmit = new Rx.Subject();
       this.onFinishWithDefaut = new Rx.Subject();
 
-      this.submitted = this.onSubmit.merge(this.onFinishWithDefaut).mapTo(true);
+      this.submitted =
+        Rx.merge(
+          this.onSubmit,
+          this.onFinishWithDefaut
+        )
+        .pipe(Rx.operators.mapTo(true));
+
       this.uiRouter = uiRouter;
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
       this.wizardForm = mnWizardService.wizardForm;
@@ -44,47 +50,59 @@ mn.components.MnTermsAndConditions =
 
       this.mnAppLoding = mnAppService.stream.loading;
 
-      this.license = mnPoolsService.stream.isEnterprise.switchMap(getLicense);
-      this.termsHref = mnPoolsService.stream.isEnterprise.map(getTermsAndCond);
+      this.license = mnPoolsService.stream.isEnterprise.pipe(Rx.operators.switchMap(getLicense));
+      this.termsHref = mnPoolsService.stream.isEnterprise.pipe(Rx.operators.map(getTermsAndCond));
 
-      this.groupHttp
-        .loading
-        .merge(this.secondGroupHttp.loading)
-        .takeUntil(this.mnOnDestroy)
+
+      Rx
+        .merge(
+          this.groupHttp.loading,
+          this.secondGroupHttp.loading
+        )
+        .pipe(
+          Rx.operators.takeUntil(this.mnOnDestroy)
+        )
         .subscribe(this.mnAppLoding.next.bind(this.mnAppLoding));
 
-      this.groupHttp
-        .success
-        .map(getSecondValues.bind(this))
-        .takeUntil(this.mnOnDestroy)
+      this.groupHttp.success
+        .pipe(
+          Rx.operators.map(getSecondValues.bind(this)),
+          Rx.operators.takeUntil(this.mnOnDestroy)
+        )
         .subscribe(this.secondGroupHttp.post.bind(this.secondGroupHttp));
 
-      this.secondGroupHttp
-        .success
-        .takeUntil(this.mnOnDestroy)
+      this.secondGroupHttp.success
+        .pipe(
+          Rx.operators.takeUntil(this.mnOnDestroy)
+        )
         .subscribe(function () {
           mnAuthService.stream.loginHttp.post(mnWizardService.getUserCreds());
         });
 
-      mnAuthService.stream.loginHttp
-        .success
-        .takeUntil(this.mnOnDestroy)
+      mnAuthService.stream.loginHttp.success
+        .pipe(
+          Rx.operators.takeUntil(this.mnOnDestroy)
+        )
         .subscribe(function () {
           uiRouter.urlRouter.sync();
         });
 
       this.onSubmit
-        .filter(isValid.bind(this))
-        .takeUntil(this.mnOnDestroy)
+        .pipe(
+          Rx.operators.filter(isValid.bind(this)),
+          Rx.operators.takeUntil(this.mnOnDestroy)
+        )
         .subscribe(onSuccess);
 
       this.onFinishWithDefaut
-        .do(this.groupHttp.clearErrors.bind(this.groupHttp))
-        .filter(isValid.bind(this))
-        .filter(isNotLoading.bind(this))
-        .withLatestFrom(mnPoolsService.stream.isEnterprise)
-        .map(getValues.bind(this))
-        .takeUntil(this.mnOnDestroy)
+        .pipe(
+          Rx.operators.tap(this.groupHttp.clearErrors.bind(this.groupHttp)),
+          Rx.operators.filter(isValid.bind(this)),
+          Rx.operators.filter(isNotLoading.bind(this)),
+          Rx.operators.withLatestFrom(mnPoolsService.stream.isEnterprise),
+          Rx.operators.map(getValues.bind(this)),
+          Rx.operators.takeUntil(this.mnOnDestroy)
+        )
         .subscribe(this.groupHttp.post.bind(this.groupHttp));
 
       function onSuccess() {
@@ -134,4 +152,4 @@ mn.components.MnTermsAndConditions =
       }
 
     }
-  })();
+  })(window.rxjs);

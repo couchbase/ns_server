@@ -1,4 +1,4 @@
-(function () {
+(function (Rx) {
 
   MnHttpInterceptor.annotations = [
     new ng.core.Injectable()
@@ -44,13 +44,15 @@
     }
 
     return next
-      .handle(mnReq)
-      .do(function (event) {
-        that.httpClientResponse.next(event);
-      }).catch(function (event) {
-        that.httpClientResponse.next(event);
-        return Rx.Observable.throw(event);
-      });
+      .handle(mnReq).pipe(
+        Rx.operators.tap(function (event) {
+          that.httpClientResponse.next(event);
+        }),
+        Rx.operators.catchError(function (event) {
+          that.httpClientResponse.next(event);
+          return Rx.throwError(event);
+        })
+      );
   }
 
   AppComponent.annotations = [
@@ -167,15 +169,12 @@
         error && mnExceptionHandlerService.handleError(error);
       });
 
-    mnAppService
-      .stream
-      .http401
-      .merge(mnAuthService
-             .stream
-             .logoutHttp.response)
-      .subscribe(function () {
-        uiRouter.stateService.go('app.auth', null, {location: false});
-      });
+    Rx.merge(
+      mnAppService.stream.http401,
+      mnAuthService.stream.logoutHttp.response
+    ).subscribe(function () {
+      uiRouter.stateService.go('app.auth', null, {location: false});
+    });
 
     mnAppService
       .stream
@@ -201,4 +200,4 @@
       .bootstrapModule(AppModule);
   });
 
-})();
+})(window.rxjs);

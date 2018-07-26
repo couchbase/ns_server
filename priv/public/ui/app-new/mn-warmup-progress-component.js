@@ -1,7 +1,7 @@
 var mn = mn || {};
 mn.components = mn.components || {};
 mn.components.MnWarmupProgress =
-  (function () {
+  (function (Rx) {
     "use strict";
 
     mn.helper.extends(MnWarmupProgressComponent, mn.helper.MnEventableComponent);
@@ -34,27 +34,30 @@ mn.components.MnWarmupProgress =
       this.onToggle = new Rx.Subject();
       this.limitTo = new Rx.BehaviorSubject(this.limit);
 
-      var tasksCurrentValue = this.mnOnChanges.switchMap(this.getTasks.bind(this));
+      var tasksCurrentValue = this.mnOnChanges.pipe(Rx.operators.switchMap(this.getTasks.bind(this)));
 
       this.tasks =
-        tasksCurrentValue
-        .combineLatest(this.limitTo)
-        .map(this.slice)
-        .map(this.sortBy.bind(this));
+        Rx.combineLatest(
+          tasksCurrentValue,
+          this.limitTo
+        ).pipe(
+          Rx.operators.map(this.slice),
+          Rx.operators.map(this.sortBy.bind(this))
+        );
 
       this.isTasksLessThanLimit =
-        tasksCurrentValue
-        .map(this.isLessThanLimit.bind(this));
+        tasksCurrentValue.pipe(Rx.operators.map(this.isLessThanLimit.bind(this)));
 
       this.toggleText =
-        this.limitTo
-        .map(toggleText);
+        this.limitTo.pipe(Rx.operators.map(toggleText));
 
       this.onToggle
-        .do(this.stopPropagation)
-        .withLatestFrom(this.limitTo)
-        .map(this.toggle.bind(this))
-        .takeUntil(this.mnOnDestroy)
+        .pipe(
+          Rx.operators.tap(this.stopPropagation),
+          Rx.operators.withLatestFrom(this.limitTo),
+          Rx.operators.map(this.toggle.bind(this)),
+          Rx.operators.takeUntil(this.mnOnDestroy)
+        )
         .subscribe(this.limitTo);
     }
 
@@ -86,4 +89,4 @@ mn.components.MnWarmupProgress =
       return tasks.length <= this.limit;
     }
 
-  })();
+  })(window.rxjs);

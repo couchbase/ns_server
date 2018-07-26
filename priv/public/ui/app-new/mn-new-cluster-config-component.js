@@ -1,7 +1,7 @@
 var mn = mn || {};
 mn.components = mn.components || {};
 mn.components.MnNewClusterConfig =
-  (function () {
+  (function (Rx) {
     "use strict";
 
     mn.helper.extends(MnNewClusterConfig, mn.helper.MnEventableComponent);
@@ -44,51 +44,49 @@ mn.components.MnNewClusterConfig =
       this.initialValues = mnWizardService.initialValues;
 
       this.isButtonDisabled =
-        mnAdminService.stream.poolsDefaultHttp
-        .error
-        .map(function (error) {
-          return error && !_.isEmpty(error.errors);
+        mnAdminService.stream.poolsDefaultHttp.error.pipe(
+          Rx.operators.map(function (error) {
+            return error && !_.isEmpty(error.errors);
+          })
+        );
+
+      Rx.merge(
+        mnWizardService.stream.groupHttp.loading,
+        mnWizardService.stream.secondGroupHttp.loading
+      ).pipe(
+        Rx.operators.takeUntil(this.mnOnDestroy)
+      ).subscribe(this.mnAppLoding.next.bind(this.mnAppLoding));
+
+      mnWizardService.stream.groupHttp.success.pipe(
+        Rx.operators.takeUntil(this.mnOnDestroy)
+      ).subscribe(function (result) {
+        mnWizardService.stream.secondGroupHttp.post({
+          indexesHttp: {
+            storageMode: mnWizardService.wizardForm.newClusterConfig.get("storageMode").value
+          },
+          authHttp: [mnWizardService.wizardForm.newCluster.value.user, false]
         });
+      });
 
-      mnWizardService.stream.groupHttp
-        .loading
-        .merge(mnWizardService.stream.secondGroupHttp.loading)
-        .takeUntil(this.mnOnDestroy)
-        .subscribe(this.mnAppLoding.next.bind(this.mnAppLoding));
+      mnWizardService.stream.secondGroupHttp.success.pipe(
+        Rx.operators.takeUntil(this.mnOnDestroy)
+      ).subscribe(function () {
+        mnAuthService.stream.loginHttp.post(mnWizardService.getUserCreds());
+      });
 
-      mnWizardService.stream.groupHttp
-        .success
-        .takeUntil(this.mnOnDestroy)
-        .subscribe(function (result) {
-          mnWizardService.stream.secondGroupHttp.post({
-            indexesHttp: {
-              storageMode: mnWizardService.wizardForm.newClusterConfig.get("storageMode").value
-            },
-            authHttp: [mnWizardService.wizardForm.newCluster.value.user, false]
-          });
-        });
+      mnAuthService.stream.loginHttp.success.pipe(
+        Rx.operators.takeUntil(this.mnOnDestroy)
+      ).subscribe(function () {
+        uiRouter.urlRouter.sync();
+      });
 
-      mnWizardService.stream.secondGroupHttp
-        .success
-        .takeUntil(this.mnOnDestroy)
-        .subscribe(function () {
-          mnAuthService.stream.loginHttp.post(mnWizardService.getUserCreds());
-        })
-
-      mnAuthService.stream.loginHttp
-        .success
-        .takeUntil(this.mnOnDestroy)
-        .subscribe(function () {
-          uiRouter.urlRouter.sync();
-        });
-
-      this.onSubmit
-        .do(this.groupHttp.clearErrors.bind(this.groupHttp))
-        .filter(isNotLoading.bind(this))
-        .withLatestFrom(mnPoolsService.stream.isEnterprise)
-        .map(getWizardValues.bind(this))
-        .takeUntil(this.mnOnDestroy)
-        .subscribe(this.groupHttp.post.bind(this.groupHttp));
+      this.onSubmit.pipe(
+        Rx.operators.tap(this.groupHttp.clearErrors.bind(this.groupHttp)),
+        Rx.operators.filter(isNotLoading.bind(this)),
+        Rx.operators.withLatestFrom(mnPoolsService.stream.isEnterprise),
+        Rx.operators.map(getWizardValues.bind(this)),
+        Rx.operators.takeUntil(this.mnOnDestroy)
+      ).subscribe(this.groupHttp.post.bind(this.groupHttp));
 
       function isNotLoading() {
         return !this.mnAppLoding.getValue();
@@ -135,4 +133,4 @@ mn.components.MnNewClusterConfig =
         return result;
       }
     }
-  })();
+  })(window.rxjs);

@@ -1,6 +1,6 @@
 var mn = mn || {};
 mn.services = mn.services || {};
-mn.services.MnWizard = (function () {
+mn.services.MnWizard = (function (Rx) {
   "use strict";
 
   var clusterStorage = new ng.forms.FormGroup({
@@ -185,51 +185,53 @@ mn.services.MnWizard = (function () {
       .addSuccess();
 
     this.stream.getSelfConfig =
-      (new Rx.BehaviorSubject())
-      .switchMap(this.getSelfConfig.bind(this))
-      .shareReplay(1);
+      (new Rx.BehaviorSubject()).pipe(
+        Rx.operators.switchMap(this.getSelfConfig.bind(this)),
+        Rx.operators.shareReplay(1)
+      );
 
     this.stream.getIndexes =
-      (new Rx.BehaviorSubject())
-      .switchMap(this.getIndexes.bind(this))
-      .shareReplay(1);
+      (new Rx.BehaviorSubject()).pipe(
+        Rx.operators.switchMap(this.getIndexes.bind(this)),
+        Rx.operators.shareReplay(1)
+      );
 
     this.stream.preprocessPath =
-      this.stream
-      .getSelfConfig
-      .map(chooseOSPathPreprocessor);
+      this.stream.getSelfConfig.pipe(
+        Rx.operators.map(chooseOSPathPreprocessor)
+      );
 
     this.stream.availableHddStorage =
-      this.stream
-      .getSelfConfig
-      .pluck("availableStorage", "hdd")
-      .map(function (hdd) {
-        return hdd.sort(function (a, b) {
-          return b.path.length - a.path.length;
-        });
-      });
+      this.stream.getSelfConfig.pipe(
+        Rx.operators.pluck("availableStorage", "hdd"),
+        Rx.operators.map(function (hdd) {
+          return hdd.sort(function (a, b) {
+            return b.path.length - a.path.length;
+          })
+        })
+      );
 
     this.stream.initHddStorage =
-      this.stream
-      .getSelfConfig
-      .pluck("storage", "hdd", 0)
-      .map(function (rv) {
-        rv.cbas_path = rv.cbas_dirs;
-        delete rv.cbas_dirs;
-        return rv;
-      });
+      this.stream.getSelfConfig.pipe(
+        Rx.operators.pluck("storage", "hdd", 0),
+        Rx.operators.map(function (rv) {
+          rv.cbas_path = rv.cbas_dirs;
+          delete rv.cbas_dirs;
+          return rv;
+        })
+      );
 
     this.stream.totalRAMMegs =
-      this.stream
-      .getSelfConfig
-      .map(function (nodeConfig) {
-        return Math.floor(nodeConfig.storageTotals.ram.total / mn.helper.IEC.Mi);
-      });
+      this.stream.getSelfConfig.pipe(
+        Rx.operators.map(function (nodeConfig) {
+          return Math.floor(nodeConfig.storageTotals.ram.total / mn.helper.IEC.Mi);
+        })
+      );
 
     this.stream.maxRAMMegs =
-      this.stream
-      .totalRAMMegs
-      .map(mn.helper.calculateMaxMemorySize);
+      this.stream.totalRAMMegs.pipe(
+        Rx.operators.map(mn.helper.calculateMaxMemorySize)
+      );
   }
 
   function getServicesValues(servicesGroup) {
@@ -253,12 +255,14 @@ mn.services.MnWizard = (function () {
   }
 
   function createLookUpStream(subject) {
-    return Rx.Observable.combineLatest(
+    return Rx.combineLatest(
       this.stream.availableHddStorage,
       this.stream.preprocessPath,
-      subject)
-      .map(lookupPathResource)
-      .map(updateTotal);
+      subject
+    ).pipe(
+      Rx.operators.map(lookupPathResource),
+      Rx.operators.map(updateTotal)
+    );
   }
 
   function updateTotal(pathResource) {
@@ -362,4 +366,4 @@ mn.services.MnWizard = (function () {
     return this.http.post('/node/controller/doJoinCluster', clusterMember)
   }
 
-})();
+})(window.rxjs);

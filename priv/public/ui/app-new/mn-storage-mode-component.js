@@ -1,7 +1,7 @@
 var mn = mn || {};
 mn.components = mn.components || {};
 mn.components.MnStorageMode =
-  (function () {
+  (function (Rx) {
     "use strict";
 
     MnStorageMode.annotations = [
@@ -34,38 +34,38 @@ mn.components.MnStorageMode =
 
     function ngOnInit() {
       var isNotEnterprise =
-          this.isEnterprise
-          .map(mn.helper.invert);
+          this.isEnterprise.pipe(Rx.operators.map(mn.helper.invert));
 
       var isFirstValueForestDB =
-          this.control
-          .valueChanges
-          .first()
-          .map(function (v) {
-            return v === 'forestdb'
-          })
+          this.control.valueChanges.pipe(
+            Rx.operators.first(),
+            Rx.operators.map(function (v) {
+              return v === 'forestdb'
+            })
+          );
 
       this.showForestDB =
-        Rx.Observable.combineLatest(
+        Rx.combineLatest(
           isNotEnterprise,
           isFirstValueForestDB
         )
-        .map(_.curry(_.some)(_, Boolean));
+        .pipe(Rx.operators.map(_.curry(_.some)(_, Boolean)));
 
       this.showPlasma =
-        Rx.Observable.combineLatest(
+        Rx.combineLatest(
           this.isEnterprise,
-          this.isAtLeast50 || Rx.Observable.of(true)
+          this.isAtLeast50 || Rx.of(true)
         )
-        .map(_.curry(_.every)(_, Boolean))
+        .pipe(Rx.operators.map(_.curry(_.every)(_, Boolean)));
 
-      Rx.Observable.combineLatest(
+      Rx.combineLatest(
         isNotEnterprise,
-        (this.indexFlagChanges || Rx.Observable.of(true)).map(mn.helper.invert),
-        (this.permissionsIndexWrite || Rx.Observable.of(true)).map(mn.helper.invert)
-      )
-        .map(_.curry(_.some)(_, Boolean))
-        .takeUntil(this.destroy).subscribe(doDisableControl.bind(this));
+        (this.indexFlagChanges || Rx.of(true)).pipe(Rx.operators.map(mn.helper.invert)),
+        (this.permissionsIndexWrite || Rx.of(true)).pipe(Rx.operators.map(mn.helper.invert))
+      ).pipe(
+        Rx.operators.map(_.curry(_.some)(_, Boolean)),
+        Rx.operators.takeUntil(this.destroy)
+      ).subscribe(doDisableControl.bind(this));
     }
 
     function doDisableControl(value) {
@@ -78,4 +78,4 @@ mn.components.MnStorageMode =
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
     }
 
-  })();
+  })(window.rxjs);

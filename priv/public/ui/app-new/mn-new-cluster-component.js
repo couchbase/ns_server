@@ -1,7 +1,7 @@
 var mn = mn || {};
 mn.components = mn.components || {};
 mn.components.MnNewCluster =
-  (function () {
+  (function (Rx) {
     "use strict";
 
     mn.helper.extends(MnNewClusterComponent, mn.helper.MnEventableComponent);
@@ -25,22 +25,21 @@ mn.components.MnNewCluster =
       this.onSubmit = new Rx.Subject();
       this.focusFieldSubject = new Rx.BehaviorSubject("clusterName");
 
-      this.submitted = this.onSubmit.mapTo(true);
+      this.submitted = this.onSubmit.pipe(Rx.operators.mapTo(true));
       this.authHttp = mnWizardService.stream.authHttp;
       this.newClusterForm = mnWizardService.wizardForm.newCluster;
       this.newClusterForm.setValidators([mn.helper.validateEqual("user.password",
                                                                  "user.passwordVerify",
                                                                  "passwordMismatch")]);
-      this.authHttp
-        .success
-        .takeUntil(this.mnOnDestroy)
-        .subscribe(onSuccess.bind(this));
+      this.authHttp.success.pipe(
+        Rx.operators.takeUntil(this.mnOnDestroy)
+      ).subscribe(onSuccess.bind(this));
 
-      this.onSubmit
-        .filter(canSubmit.bind(this))
-        .map(getValues.bind(this))
-        .takeUntil(this.mnOnDestroy)
-        .subscribe(this.authHttp.post.bind(this.authHttp));
+      this.onSubmit.pipe(
+        Rx.operators.filter(canSubmit.bind(this)),
+        Rx.operators.map(getValues.bind(this)),
+        Rx.operators.takeUntil(this.mnOnDestroy)
+      ).subscribe(this.authHttp.post.bind(this.authHttp));
 
       function getValues() {
         return [this.newClusterForm.value.user, true];
@@ -54,4 +53,4 @@ mn.components.MnNewCluster =
         uiRouter.stateService.go('app.wizard.termsAndConditions', null, {location: false});
       }
     }
-  })();
+  })(window.rxjs);

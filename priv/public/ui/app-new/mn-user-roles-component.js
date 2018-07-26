@@ -1,7 +1,7 @@
 var mn = mn || {};
 mn.components = mn.components || {};
 mn.components.MnUserRoles =
-  (function () {
+  (function (Rx) {
     "use strict";
 
     mn.helper.extends(MnUserRoles, mn.helper.MnEventableComponent);
@@ -38,64 +38,69 @@ mn.components.MnUserRoles =
       this.onSortByClick = new Rx.BehaviorSubject("id");
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
       this.ldapEnabled = mnAdminService.stream.ldapEnabled;
-      this.isSaslauthdAuthEnabled = mnSecurityService.stream.getSaslauthdAuth.pluck("enabled");
+      this.isSaslauthdAuthEnabled = mnSecurityService.stream.getSaslauthdAuth.pipe(Rx.operators.pluck("enabled"));
       this.securityWrite = mnPermissionsService.createPermissionStream("admin.security!write");
 
       var routerParams =
-          uiRouter.globals
-          .params$
-          .map(this.filterRouterParams.bind(this))
-          .distinctUntilChanged(_.isEqual);
+          uiRouter.globals.params$.pipe(
+            Rx.operators.map(this.filterRouterParams.bind(this)),
+            Rx.operators.distinctUntilChanged(_.isEqual)
+          );
 
       var pageSizeFormValue =
-          this.userRolesFieldsGroup
-          .valueChanges
-          .pluck("pageSize")
-          .distinctUntilChanged();
+          this.userRolesFieldsGroup.valueChanges.pipe(
+            Rx.operators.pluck("pageSize"),
+            Rx.operators.distinctUntilChanged()
+          );
 
       var searchTermFormValue =
-          this.userRolesFieldsGroup
-          .valueChanges
-          .pluck("searchTerm")
-          .distinctUntilChanged();
+          this.userRolesFieldsGroup.valueChanges.pipe(
+            Rx.operators.pluck("searchTerm"),
+            Rx.operators.distinctUntilChanged()
+          );
 
       this.users =
-        routerParams
-        .combineLatest(Rx.Observable.timer(0, 10000))
-        .pluck("0")
-        .switchMap(mnUserRolesService.getUsers.bind(mnUserRolesService))
-        .shareReplay(1);
+        Rx.combineLatest(
+          routerParams,
+          Rx.timer(0, 10000)
+        ).pipe(
+          Rx.operators.pluck("0"),
+          Rx.operators.switchMap(mnUserRolesService.getUsers.bind(mnUserRolesService)),
+          Rx.operators.shareReplay(1)
+        );
 
       this.filteredUsers =
-        this.users
-        .pluck("users")
-        .combineLatest(searchTermFormValue)
-        .map(function (resp) {
-          return resp[0].filter(listFiter(resp[1]));
-        })
-        .let(mn.helper.sortByStream(this.onSortByClick));
+        Rx.combineLatest(
+          this.users.pipe(Rx.operators.pluck("users")),
+          searchTermFormValue
+        ).pipe(
+          Rx.operators.map(function (resp) {
+            return resp[0].filter(listFiter(resp[1]));
+          })
+        ).pipe(mn.helper.sortByStream(this.onSortByClick));
 
       this.firstPageParams =
-        pageSizeFormValue
-        .map(function (pageSize) {
-          return {
-            pageSize: pageSize,
-            startFromDomain: null,
-            startFrom: null
-          };
-        });
+        pageSizeFormValue.pipe(
+          Rx.operators.map(function (pageSize) {
+            return {
+              pageSize: pageSize,
+              startFromDomain: null,
+              startFrom: null
+            };
+          })
+        );
 
-      pageSizeFormValue
-        .takeUntil(this.mnOnDestroy)
-        .subscribe(function (pageSize) {
-          uiRouter.stateService.go('.', {pageSize: pageSize});
-        });
+      pageSizeFormValue.pipe(
+        Rx.operators.takeUntil(this.mnOnDestroy)
+      ).subscribe(function (pageSize) {
+        uiRouter.stateService.go('.', {pageSize: pageSize});
+      });
 
-      routerParams
-        .first()
-        .subscribe(function (params) {
-          userRolesFieldsGroup.patchValue({pageSize: params.pageSize || 10});
-        });
+      routerParams.pipe(
+        Rx.operators.first()
+      ).subscribe(function (params) {
+        userRolesFieldsGroup.patchValue({pageSize: params.pageSize || 10});
+      });
     }
 
     function listFiter(searchValue) {
@@ -161,4 +166,4 @@ mn.components.MnUserRoles =
       }, {});
     }
 
-  })();
+  })(window.rxjs);

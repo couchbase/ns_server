@@ -1,6 +1,6 @@
 var mn = mn || {};
 mn.services = mn.services || {};
-mn.services.MnBuckets = (function () {
+mn.services.MnBuckets = (function (Rx) {
   "use strict";
 
   MnBucketsService.annotations = [
@@ -27,23 +27,27 @@ mn.services.MnBuckets = (function () {
     this.stream.updateBucketsPoller = new Rx.BehaviorSubject();
 
     var bucketsUri =
-        mnAdminService
-        .stream
-        .getPoolsDefault
-        .pluck("buckets", "uri")
-        .distinctUntilChanged();
+        mnAdminService.stream.getPoolsDefault.pipe(
+          Rx.operators.pluck("buckets", "uri"),
+          Rx.operators.distinctUntilChanged()
+        );
 
     this.stream.bucketsWithTimer =
-      bucketsUri
-      .combineLatest(Rx.Observable.timer(0, 4000), this.stream.updateBucketsPoller)
-      .pluck("0")
-      .switchMap(this.get.bind(this))
-      .shareReplay(1);
+      Rx.combineLatest(
+        bucketsUri,
+        Rx.timer(0, 4000),
+        this.stream.updateBucketsPoller
+      ).pipe(
+        Rx.operators.pluck("0"),
+        Rx.operators.switchMap(this.get.bind(this)),
+        Rx.operators.shareReplay(1)
+      );
 
     this.stream.buckets =
-      bucketsUri
-      .switchMap(this.get.bind(this))
-      .shareReplay(1);
+      bucketsUri.pipe(
+        Rx.operators.switchMap(this.get.bind(this)),
+        Rx.operators.shareReplay(1)
+      );
 
     this.stream.bucketHttp =
       new mn.helper.MnPostHttp(this.postBucket.bind(this))
@@ -183,4 +187,4 @@ mn.services.MnBuckets = (function () {
     return guageConfig;
   }
 
-})();
+})(window.rxjs);

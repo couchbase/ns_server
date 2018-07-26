@@ -1,7 +1,7 @@
 var mn = mn || {};
 mn.components = mn.components || {};
 mn.components.MnAdmin =
-  (function () {
+  (function (Rx) {
     "use strict";
 
     MnAdminComponent.annotations = [
@@ -60,7 +60,9 @@ mn.components.MnAdmin =
       this.majorMinorVersion = mnPoolsService.stream.majorMinorVersion;
       this.tasksToDisplay = mnTasksService.stream.tasksToDisplay;
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
-      this.whomiId = mnAdminService.stream.whomi.pluck("id");
+      this.whomiId = mnAdminService.stream.whomi.pipe(
+        Rx.operators.pluck("id")
+      );
 
       this.tasksRead =
         mnPermissionsService.createPermissionStream("tasks!read");
@@ -71,10 +73,10 @@ mn.components.MnAdmin =
 
       this.stateService = uiRouter.stateService;
 
-      mnAdminService
-        .stream
-        .getPoolsDefault
-        .takeUntil(this.destroy)
+      mnAdminService.stream.getPoolsDefault
+        .pipe(
+          Rx.operators.takeUntil(this.destroy)
+        )
         .subscribe(function (rv) {
           mnAdminService.stream.etag.next(rv.etag);
         }, function (rv) {
@@ -84,41 +86,43 @@ mn.components.MnAdmin =
         });
 
       this.isAdminRootReady =
-        mnAdminService
-        .stream
-        .getPoolsDefault
-        .map(Boolean);
+        mnAdminService.stream.getPoolsDefault.pipe(
+          Rx.operators.map(Boolean)
+        );
 
       this.clusterName =
-        mnAdminService
-        .stream
-        .getPoolsDefault
-        .pluck("clusterName");
+        mnAdminService.stream.getPoolsDefault.pipe(
+          Rx.operators.pluck("clusterName")
+        );
 
       this.enableResetButton =
-        Rx.Observable.combineLatest(
+        Rx.combineLatest(
           mnPoolsService.stream.isEnterprise,
-          mnAdminService.stream.compatVersion.pluck("atLeast50"),
-          mnAdminService.stream.whomi.map(function (my) {
-            return my.domain === 'local' || my.domain === 'admin';
-          })
-        )
-        .map(_.curry(_.every)(_, Boolean));
+          mnAdminService.stream.compatVersion.pipe(Rx.operators.pluck("atLeast50")),
+          mnAdminService.stream.whomi.pipe(
+            Rx.operators.map(function (my) {
+              return my.domain === 'local' || my.domain === 'admin';
+            })
+          )
+        ).pipe(
+          Rx.operators.map(_.curry(_.every)(_, Boolean))
+        );
 
       this.enableInternalSettings =
-        mnAdminService
-        .stream
-        .enableInternalSettings
-        .combineLatest(mnPermissionsService.createPermissionStream("admin.settings!write"))
-        .map(_.curry(_.every)(_, Boolean));
+        Rx.combineLatest(
+          mnAdminService.stream.enableInternalSettings,
+          mnPermissionsService.createPermissionStream("admin.settings!write")
+        ).pipe(
+          Rx.operators.map(_.curry(_.every)(_, Boolean))
+        );
 
       this.tasksRead
-        .switchMap(function (canRead) {
-          return canRead ?
-            mnTasksService.stream.extractNextInterval :
-            Rx.Observable.never();
-        })
-        .takeUntil(this.destroy)
+        .pipe(
+          Rx.operators.switchMap(function (canRead) {
+            return canRead ? mnTasksService.stream.extractNextInterval : Rx.NEVER;
+          }),
+          Rx.operators.takeUntil(this.destroy)
+        )
         .subscribe(function (interval) {
           mnTasksService.stream.interval.next(interval);
         });
@@ -145,7 +149,7 @@ mn.components.MnAdmin =
     function toggleProgressBar() {
       this.isProgressBarClosed.next(!this.isProgressBarClosed.getValue());
     }
-  })();
+  })(window.rxjs);
 
 
 var mn = mn || {};

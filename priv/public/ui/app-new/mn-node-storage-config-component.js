@@ -1,7 +1,7 @@
 var mn = mn || {};
 mn.components = mn.components || {};
 mn.components.MnNodeStorageConfig =
-  (function () {
+  (function (Rx) {
     "use strict";
 
     MnNodeStorageConfig.annotations = [
@@ -49,4 +49,4 @@ mn.components.MnNodeStorageConfig =
       this.diskStorageHttp = mnWizardService.stream.diskStorageHttp;
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
     }
-  })();
+  })(window.rxjs);

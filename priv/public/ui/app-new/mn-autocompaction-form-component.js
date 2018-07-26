@@ -1,7 +1,7 @@
 var mn = mn || {};
 mn.components = mn.components || {};
 mn.components.MnAutocompactionForm =
-  (function () {
+  (function (Rx) {
     "use strict";
 
     mn.helper.extends(MnAutocompactionForm, mn.helper.MnEventableComponent);
@@ -40,82 +40,84 @@ mn.components.MnAutocompactionForm =
       var settingsIndexesWrite =
           mnPermissionsService.createPermissionStream("settings.indexes!read");
 
-      this.mnOnInit
-        .takeUntil(this.mnOnDestroy)
-        .subscribe(onInit.bind(this));
+      this.mnOnInit.pipe(
+        Rx.operators.takeUntil(this.mnOnDestroy)
+      ).subscribe(onInit.bind(this));
 
       function onInit() {
-        settingsWrite
-          .combineLatest(this.group.valueChanges)
-          .takeUntil(this.mnOnDestroy)
-          .subscribe(function () {
-            var settingsWritePermission = value[0];
-            var formGroup = value[1];
+        Rx.combineLatest(
+          settingsWrite,
+          this.group.valueChanges
+        ).pipe(
+          Rx.operators.takeUntil(this.mnOnDestroy)
+        ).subscribe(function () {
+          var settingsWritePermission = value[0];
+          var formGroup = value[1];
 
-            if (!settingsWritePermission) {
-              this.group.get("allowedTimePeriodFlag")
-                .disable({onlySelf: true});
-              this.group.get("parallelDBAndViewCmopaction")
-                .disable({onlySelf: true});
-              this.group.get("indexCircularCompactionFlag")
-                .disable({onlySelf: true});
-              this.group.get("purgeInterval")
-                .disable({onlySelf: true});
-            }
+          if (!settingsWritePermission) {
+            this.group.get("allowedTimePeriodFlag")
+              .disable({onlySelf: true});
+            this.group.get("parallelDBAndViewCmopaction")
+              .disable({onlySelf: true});
+            this.group.get("indexCircularCompactionFlag")
+              .disable({onlySelf: true});
+            this.group.get("purgeInterval")
+              .disable({onlySelf: true});
+          }
 
-            (["viewFragmentationThreshold", "databaseFragmentationThreshold"])
-              .forEach(forEachFieldName.bind(this));
+          (["viewFragmentationThreshold", "databaseFragmentationThreshold"])
+            .forEach(forEachFieldName.bind(this));
 
-            this.daysOfWeek.forEach(function (day) {
-              toggleIfCondition(!this.group.get("indexCircularCompactionFlag").value ||
-                                !settingsWritePermission,
-                                "indexCircularCompactionDaysOfWeek." + day);
-            });
-
-            var isFragmentationProvided =
-                isFragmentationProvided(this.group.get("viewFragmentationThreshold")) ||
-                isFragmentationProvided(this.group.get("databaseFragmentationThreshold"));
-
-            toggleIfCondition(
-              !isFragmentationProvided || !settingsWritePermission, "allowedTimePeriodFlag");
-
-            if (!isFragmentationProvided) {
-              this.group.get("allowedTimePeriodFlag").setValue(false);
-            }
-
-            toggleIfCondition(this.group.get("indexCircularCompactionFlag").value ||
+          this.daysOfWeek.forEach(function (day) {
+            toggleIfCondition(!this.group.get("indexCircularCompactionFlag").value ||
                               !settingsWritePermission,
-                              "indexFragmentationThreshold.percentage");
-
-            function maybeDisableFragmentationFields(groupName) {
-              (["percentage", "size"]).forEach(forEachfieldName.bind(this))
-
-              function forEachFieldName(fieldName) {
-                if (!settingsWritePermission) {
-                  this.group.get(groupName + "." + fieldName + "Flag")
-                    .disable({onlySelf: true});
-                }
-                toggleIfCondition(
-                  !this.group.get(groupName + "." + fieldName + "Flag").value ||
-                    !settingsWritePermission,
-                  groupName + "." + fieldName
-                );
-              }
-            }
-
-            function isFragmentationProvided(group) {
-              return (group.get("percentageFlag").value && group.get("percentage").value) ||
-                (group.get("sizeFlag").value && group.get("size").value);
-            }
-
-            function toggleIfCondition(condition, field) {
-              if (condition) {
-                this.group.get(field).disable({onlySelf: true});
-              } else {
-                this.group.get(field).enable({onlySelf: true});
-              }
-            }
+                              "indexCircularCompactionDaysOfWeek." + day);
           });
+
+          var isFragmentationProvided =
+              isFragmentationProvided(this.group.get("viewFragmentationThreshold")) ||
+              isFragmentationProvided(this.group.get("databaseFragmentationThreshold"));
+
+          toggleIfCondition(
+            !isFragmentationProvided || !settingsWritePermission, "allowedTimePeriodFlag");
+
+          if (!isFragmentationProvided) {
+            this.group.get("allowedTimePeriodFlag").setValue(false);
+          }
+
+          toggleIfCondition(this.group.get("indexCircularCompactionFlag").value ||
+                            !settingsWritePermission,
+                            "indexFragmentationThreshold.percentage");
+
+          function maybeDisableFragmentationFields(groupName) {
+            (["percentage", "size"]).forEach(forEachfieldName.bind(this))
+
+            function forEachFieldName(fieldName) {
+              if (!settingsWritePermission) {
+                this.group.get(groupName + "." + fieldName + "Flag")
+                  .disable({onlySelf: true});
+              }
+              toggleIfCondition(
+                !this.group.get(groupName + "." + fieldName + "Flag").value ||
+                  !settingsWritePermission,
+                groupName + "." + fieldName
+              );
+            }
+          }
+
+          function isFragmentationProvided(group) {
+            return (group.get("percentageFlag").value && group.get("percentage").value) ||
+              (group.get("sizeFlag").value && group.get("size").value);
+          }
+
+          function toggleIfCondition(condition, field) {
+            if (condition) {
+              this.group.get(field).disable({onlySelf: true});
+            } else {
+              this.group.get(field).enable({onlySelf: true});
+            }
+          }
+        });
       }
 
       // $scope.daysOfWeek = daysOfWeek;
@@ -139,4 +141,4 @@ mn.components.MnAutocompactionForm =
       // }
     }
 
-  })();
+  })(window.rxjs);

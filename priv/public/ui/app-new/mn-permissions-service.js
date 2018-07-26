@@ -1,6 +1,6 @@
 var mn = mn || {};
 mn.services = mn.services || {};
-mn.services.MnPermissions = (function () {
+mn.services.MnPermissions = (function (Rx) {
   "use strict";
 
   var bucketSpecificPermissions = [function (bucket) {
@@ -94,63 +94,63 @@ mn.services.MnPermissions = (function () {
     this.stream = {};
 
     this.stream.url =
-      mnAdminService
-      .stream
-      .getPoolsDefault
-      .pluck("checkPermissionsURI")
-      .distinctUntilChanged();
+      mnAdminService.stream.getPoolsDefault.pipe(
+        Rx.operators.pluck("checkPermissionsURI"),
+        Rx.operators.distinctUntilChanged()
+      );
 
     this.stream.getBucketsPermissions =
-      mnBucketsService
-      .stream
-      .buckets
-      .map(function (rv) {
-        return _.reduce(rv, function (acc, bucket) {
-          return acc.concat(generateBucketPermissions(bucket));
-        }, []);
-      })
-      .combineLatest(this.stream
-                     .url)
-      .switchMap(this.doGet.bind(this))
-      .shareReplay(1);
+      Rx.combineLatest(
+        mnBucketsService.stream.buckets.pipe(
+          Rx.operators.map(function (rv) {
+            return _.reduce(rv, function (acc, bucket) {
+              return acc.concat(generateBucketPermissions(bucket));
+            }, []);
+          })),
+        this.stream.url
+      ).pipe(
+        Rx.operators.switchMap(this.doGet.bind(this)),
+        Rx.operators.shareReplay(1)
+      );
 
     this.stream.getSuccess =
-      this.stream
-      .url
-      .map(function (url) {
-        return [getAll(), url];
-      })
-      .switchMap(this.doGet.bind(this))
-      .shareReplay(1);
+      this.stream.url.pipe(
+        Rx.operators.map(function (url) {
+          return [getAll(), url];
+        }),
+        Rx.operators.switchMap(this.doGet.bind(this)),
+        Rx.operators.shareReplay(1)
+      );
 
     this.stream.permissionByBucketNames =
-      this.stream
-      .getBucketsPermissions
-      .map(_.curry(_.reduce)(_, function (rv, value, key, permissions) {
-        var splitKey = key.split(/bucket\[|\]/);
-        var bucketPermission = splitKey[2];
-        var bucketName = splitKey[1];
-        if (bucketPermission) {
-          rv[bucketPermission] = rv[bucketPermission] || [];
-          rv[bucketPermission].push(bucketName);
-        }
-      }, {}));
+      this.stream.getBucketsPermissions.pipe(
+        Rx.operators.map(_.curry(_.reduce)(_, function (rv, value, key, permissions) {
+          var splitKey = key.split(/bucket\[|\]/);
+          var bucketPermission = splitKey[2];
+          var bucketName = splitKey[1];
+          if (bucketPermission) {
+            rv[bucketPermission] = rv[bucketPermission] || [];
+            rv[bucketPermission].push(bucketName);
+          }
+        }, {}))
+      );
+
   }
 
   function createPermissionStream(permission, name) {
     if (name instanceof Rx.Observable) {
-      return this.stream
-        .getBucketsPermissions
-        .withLatestFrom(name)
-        .map(function (values) {
+      return this.stream.getBucketsPermissions.pipe(
+        Rx.operators.withLatestFrom(name),
+        Rx.operators.map(function (values) {
           return values[0]["cluster.bucket[" + values[1] + "]." + permission];
-        })
-        .distinctUntilChanged();
+        }),
+        Rx.operators.distinctUntilChanged()
+      );
     } else {
-      return this.stream
-        .getSuccess
-        .pluck("cluster." + (name ? ("bucket[" + name + "].") : "") + permission)
-        .distinctUntilChanged();
+      return this.stream.getSuccess.pipe(
+        Rx.operators.pluck("cluster." + (name ? ("bucket[" + name + "].") : "") + permission),
+        Rx.operators.distinctUntilChanged()
+      );
     }
   }
 
@@ -180,9 +180,10 @@ mn.services.MnPermissions = (function () {
 
   function doGet(urlAndPermissions) {
     return this.http
-      .post(urlAndPermissions[1], urlAndPermissions[0].join(','))
-      .map(function (rv) {
-        return JSON.parse(rv);
-    });
+      .post(urlAndPermissions[1], urlAndPermissions[0].join(',')).pipe(
+        Rx.operators.map(function (rv) {
+          return JSON.parse(rv);
+        })
+      );
   }
-})();
+})(window.rxjs);

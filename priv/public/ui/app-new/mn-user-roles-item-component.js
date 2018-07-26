@@ -1,7 +1,7 @@
 var mn = mn || {};
 mn.components = mn.components || {};
 mn.components.MnUserRolesItem =
-  (function () {
+  (function (Rx) {
     "use strict";
 
     mn.helper.extends(MnUserRolesItemComponent, mn.helper.MnEventableComponent);
@@ -27,29 +27,31 @@ mn.components.MnUserRolesItem =
     function MnUserRolesItemComponent(mnPermissionsService, mnUserRolesService, uiRouter) {
       mn.helper.MnEventableComponent.call(this);
 
-      var userCurrentValue = this.mnOnChanges.pluck("user", "currentValue");
+      var userCurrentValue = this.mnOnChanges.pipe(Rx.operators.pluck("user", "currentValue"));
 
-      var userId = userCurrentValue.map(function (user) {
+      var userId = userCurrentValue.pipe(Rx.operators.map(function (user) {
         return user.id + user.domain;
-      });
+      }));
 
       this.securityWrite =
         mnPermissionsService.createPermissionStream("admin.security!write");
 
       this.userRoles =
-        mnUserRolesService.stream
-        .getRolesByRole
-        .combineLatest(userCurrentValue)
-        .map(function (resp) {
-          var rolesByRole = resp[0];
-          var user = resp[1];
-          user.roles.forEach(function (role, index) {
-            var roleId = role.role + (role.bucket_name || '');
-            user.roles[index].desc = rolesByRole[roleId].desc;
-            user.roles[index].name = rolesByRole[roleId].name;
-          });
-          return user.roles;
-        });
+        Rx.combineLatest(
+          mnUserRolesService.stream.getRolesByRole,
+          userCurrentValue
+        ).pipe(
+          Rx.operators.map(function (resp) {
+            var rolesByRole = resp[0];
+            var user = resp[1];
+            user.roles.forEach(function (role, index) {
+              var roleId = role.role + (role.bucket_name || '');
+              user.roles[index].desc = rolesByRole[roleId].desc;
+              user.roles[index].name = rolesByRole[roleId].name;
+            });
+            return user.roles;
+          })
+        );
 
       this.detailsHashObserver =
         new mn.helper.DetailsHashObserver(
@@ -61,4 +63,4 @@ mn.components.MnUserRolesItem =
         );
     }
 
-  })();
+  })(window.rxjs);

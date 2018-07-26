@@ -1,6 +1,6 @@
 var mn = mn || {};
 mn.services = mn.services || {};
-mn.services.MnPools = (function () {
+mn.services.MnPools = (function (Rx) {
   "use strict";
 
   var launchID =  (new Date()).valueOf() + '-' + ((Math.random() * 65536) >> 0);
@@ -24,34 +24,33 @@ mn.services.MnPools = (function () {
 
     this.stream.getSuccess =
       (new Rx.BehaviorSubject())
-      .switchMap(this.get.bind(this))
-      .shareReplay(1);
+      .pipe(
+        Rx.operators.switchMap(this.get.bind(this)),
+        Rx.operators.shareReplay(1)
+      );
 
     this.stream.isEnterprise =
-      this.stream
-      .getSuccess
-      .pluck("isEnterprise");
+      this.stream.getSuccess.pipe(Rx.operators.pluck("isEnterprise"));
 
     this.stream.implementationVersion =
-      this.stream
-      .getSuccess
-      .pluck("implementationVersion");
+      this.stream.getSuccess.pipe(Rx.operators.pluck("implementationVersion"));
 
     this.stream.majorMinorVersion =
-      this.stream
-      .implementationVersion
-      .map(mnParseVersionPipe.transform.bind(mnParseVersionPipe))
-      .map(function (rv) {
-        return rv[0].split('.').splice(0,2).join('.');
-      });
+      this.stream.implementationVersion.pipe(
+        Rx.operators.map(mnParseVersionPipe.transform.bind(mnParseVersionPipe)),
+        Rx.operators.map(function (rv) {
+          return rv[0].split('.').splice(0,2).join('.');
+        })
+      );
   }
 
   function get(mnHttpParams) {
-    return this.http
-      .get('/pools').map(function (pools) {
+    return this.http.get('/pools').pipe(
+      Rx.operators.map(function (pools) {
         pools.isInitialized = !!pools.pools.length;
         pools.launchID = pools.uuid + '-' + launchID;
         return pools;
-      });
+      })
+    );
   }
-})();
+})(window.rxjs);

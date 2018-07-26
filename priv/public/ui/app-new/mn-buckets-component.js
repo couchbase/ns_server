@@ -1,7 +1,7 @@
 var mn = mn || {};
 mn.components = mn.components || {};
 mn.components.MnBuckets =
-  (function () {
+  (function (Rx) {
     "use strict";
 
     mn.helper.extends(MnBuckets, mn.helper.MnEventableComponent);
@@ -38,31 +38,35 @@ mn.components.MnBuckets =
 
       this.buckets =
         mnBucketsService.stream.bucketsWithTimer
-        .let(mn.helper.sortByStream(this.onSortByClick));
+        .pipe(mn.helper.sortByStream(this.onSortByClick));
 
       this.maybeShowMaxBucketCountWarning =
-        mnAdminService
-        .stream
-        .maxBucketCount
-        .combineLatest(this.buckets)
-        .map(function (rv) {
-          return rv[1].length >= rv[0];
-        });
+        Rx.combineLatest(
+          mnAdminService.stream.maxBucketCount,
+          this.buckets
+        ).pipe(
+          Rx.operators.map(function (rv) {
+            return rv[1].length >= rv[0];
+          })
+        );
 
       this.maybeShowAddBucketBuctton =
-        this.maybeShowMaxBucketCountWarning
-        .combineLatest(this.isRebalancing,
-                       mnPermissionsService.createPermissionStream("buckets!create"))
-        .map(function (rv) {
-          return !rv[0] && !rv[1] && rv[2];
-        });
+        Rx.combineLatest(
+          this.maybeShowMaxBucketCountWarning,
+          this.isRebalancing,
+          mnPermissionsService.createPermissionStream("buckets!create")
+        ).pipe(
+          Rx.operators.map(function (rv) {
+            return !rv[0] && !rv[1] && rv[2];
+          })
+        );
 
-      this.onAddBucketClick
-        .takeUntil(this.mnOnDestroy)
-        .subscribe(function (rv) {
-          var ref = modalService.open(mn.components.MnBucketsDialog);
-          ref.componentInstance.bucket = null;
-        });
+      this.onAddBucketClick.pipe(
+        Rx.operators.takeUntil(this.mnOnDestroy)
+      ).subscribe(function (rv) {
+        var ref = modalService.open(mn.components.MnBucketsDialog);
+        ref.componentInstance.bucket = null;
+      });
     }
 
-  })();
+  })(window.rxjs);
