@@ -37,7 +37,8 @@
          handle_node_altaddr_external_delete/1,
          handle_node_self_xdcr_ssl_ports/1,
          handle_node_settings_post/2,
-         apply_node_settings/1]).
+         apply_node_settings/1,
+         alternate_addresses_json/3]).
 
 -import(menelaus_util,
         [local_addr/1,
@@ -246,11 +247,18 @@ build_node_hostname(Config, Node, LocalAddr) ->
            end,
     misc:join_host_port(Host, misc:node_rest_port(Config, Node)).
 
-construct_ext_mochijson(undefined, _Ports) ->
+alternate_addresses_json(Node, Config, WantedPorts) ->
+    {ExtHostname, ExtPorts} =
+        alternate_addresses:get_external_host_and_ports(
+          Node, Config, WantedPorts),
+    External = construct_ext_json(ExtHostname, ExtPorts),
+    [{alternateAddresses, {struct, External}} || External =/= []].
+
+construct_ext_json(undefined, _Ports) ->
     [];
-construct_ext_mochijson(Hostname, []) ->
+construct_ext_json(Hostname, []) ->
     [{external, {struct, [{hostname, list_to_binary(Hostname)}]}}];
-construct_ext_mochijson(Hostname, Ports) ->
+construct_ext_json(Hostname, Ports) ->
     [{external, {struct, [{hostname, list_to_binary(Hostname)},
                           {ports, {struct, Ports}}]}}].
 
@@ -277,19 +285,13 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
                             _ -> Acc
                         end
                 end, [{direct, DirectPort}], PortKeys),
-    {ExtHostname, ExtPorts} = alternate_addresses:get_external(WantENode, Config),
+
     WantedPorts = [memcached_port,
                    ssl_capi_port,
                    capi_port,
                    ssl_rest_port,
                    rest_port],
-    External = construct_ext_mochijson(
-                 ExtHostname,
-                 alternate_addresses:filter_rename_ports(ExtPorts, WantedPorts)),
-    AltAddr = case External of
-                  [] -> [];
-                  _ -> [{alternateAddresses, {struct, External}}]
-              end,
+
     RV = [{hostname, list_to_binary(HostName)},
           {clusterCompatibility, cluster_compat_mode:effective_cluster_compat_version()},
           {version, list_to_binary(Version)},
@@ -297,7 +299,7 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
           {cpuCount, CpuCount},
           {ports, {struct, PortsKV}},
           {services, ns_cluster_membership:node_services(Config, WantENode)}
-         ] ++ AltAddr,
+         ] ++ alternate_addresses_json(WantENode, Config, WantedPorts),
     case WantENode =:= node() of
         true ->
             [{thisNode, true} | RV];
@@ -452,10 +454,6 @@ handle_node_rename(Req) ->
             reply_json(Req, [Error], Status)
     end.
 
-construct_ext_ports_mochijson([]) -> [];
-construct_ext_ports_mochijson(Ports) ->
-    [{external, {struct, [{ports, {struct, Ports}}]}}].
-
 handle_node_self_xdcr_ssl_ports(Req) ->
     case is_xdcr_over_ssl_allowed() of
         false ->
@@ -463,17 +461,10 @@ handle_node_self_xdcr_ssl_ports(Req) ->
         true ->
             {value, RESTSSL} = ns_config:search_node(ssl_rest_port),
             {value, CapiSSL} = ns_config:search_node(ssl_capi_port),
-            {_, ExtPorts} = alternate_addresses:get_external(),
-            WantedPorts = [ssl_capi_port,
-                           ssl_rest_port],
-            External = construct_ext_ports_mochijson(
-                         alternate_addresses:filter_rename_ports(ExtPorts, WantedPorts)),
-            AltAddr = case External of
-                          [] -> [];
-                          _ -> [{alternateAddresses, {struct, External}}]
-                      end,
             Ports = [{httpsMgmt, RESTSSL},
-                     {httpsCAPI, CapiSSL}] ++ AltAddr,
+                     {httpsCAPI, CapiSSL}] ++
+                alternate_addresses_json(node(), ns_config:latest(),
+                                         [ssl_capi_port, ssl_rest_port]),
             reply_json(Req, {struct, Ports})
     end.
 

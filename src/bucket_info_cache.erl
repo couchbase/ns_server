@@ -180,6 +180,10 @@ maybe_build_ext_hostname(Node) ->
         false -> [{hostname, list_to_binary(H)}]
     end.
 
+alternate_addresses_json(Node, Config, WantedPorts) ->
+    menelaus_util:strip_json_struct(
+      menelaus_web_node:alternate_addresses_json(Node, Config, WantedPorts)).
+
 build_nodes_ext([] = _Nodes, _Config, NodesExtAcc) ->
     lists:reverse(NodesExtAcc);
 build_nodes_ext([Node | RestNodes], Config, NodesExtAcc) ->
@@ -191,19 +195,12 @@ build_nodes_ext([Node | RestNodes], Config, NodesExtAcc) ->
               _ ->
                   NI1
           end,
-    {ExtHostname, ExtPorts} = alternate_addresses:get_external(Node, Config),
     ReqServices = [rest | Services],
     WantedPorts = lists:flatmap(
                     fun alternate_addresses:service_ports_config_name/1,
                     ReqServices),
-    External = construct_ext_json(
-                 ExtHostname,
-                 alternate_addresses:filter_rename_ports(ExtPorts, WantedPorts)),
-    AltAddr = case External of
-                  [] -> [];
-                  _ -> [{alternateAddresses, {External}}]
-              end,
-    NI3 = NI2 ++ AltAddr,
+
+    NI3 = NI2 ++ alternate_addresses_json(Node, Config, WantedPorts),
     NodeInfo = {[{services, {build_services(Node, Config, Services)}} | NI3]},
     build_nodes_ext(RestNodes, Config, [NodeInfo | NodesExtAcc]).
 
@@ -215,29 +212,16 @@ do_compute_bucket_info(Bucket, Config) ->
             not_present
     end.
 
-construct_ext_json(undefined, _Ports) ->
-    [];
-construct_ext_json(Hostname, []) ->
-    [{external, {[{hostname, list_to_binary(Hostname)}]}}];
-construct_ext_json(Hostname, Ports) ->
-    [{external, {[{hostname, list_to_binary(Hostname)}, {ports, {Ports}}]}}].
-
 node_bucket_info(Node, Config, Bucket, BucketUUID, BucketConfig) ->
     HostName = menelaus_web_node:build_node_hostname(Config, Node,
                                                      ?LOCALHOST_MARKER_STRING),
     Ports = {[{direct,
                ns_config:search_node_prop(Node, Config, memcached, port)}]},
-    {ExtHostname, ExtPorts} = alternate_addresses:get_external(Node, Config),
     WantedPorts = [rest_port, memcached_port],
-    External = construct_ext_json(
-                 ExtHostname,
-                 alternate_addresses:filter_rename_ports(ExtPorts, WantedPorts)),
-    AltAddr = case External of
-                  [] -> [];
-                  _ -> [{alternateAddresses, {External}}]
-              end,
+
     Info0 = [{hostname, list_to_binary(HostName)},
-             {ports, Ports}] ++ AltAddr,
+             {ports, Ports}] ++
+        alternate_addresses_json(Node, Config, WantedPorts),
     Info = case ns_bucket:bucket_type(BucketConfig) of
                membase ->
                    Url = capi_utils:capi_bucket_url_bin(

@@ -21,9 +21,7 @@
 -export([map_port/2,
          service_ports/1,
          service_ports_config_name/1,
-         filter_rename_ports/2,
-         get_external/0,
-         get_external/2]).
+         get_external_host_and_ports/3]).
 
 -include("ns_common.hrl").
 
@@ -100,20 +98,18 @@ get_internal_ports(Node, Config) ->
     IntPorts = bucket_info_cache:build_services(Node, Config, Services),
     [{map_port(from_rest, atom_to_binary(P, latin1)), PN} || {P, PN} <- IntPorts].
 
-get_external() ->
-    get_external(node(), ns_config:latest()).
-get_external(Node, Config) ->
+get_external_host_and_ports(Node, Config, WantedPorts) ->
     External = ns_config:search_node_prop(Node, Config,
                                           alternate_addresses, external,
                                           []),
     Hostname = proplists:get_value(hostname, External),
-    Ports    = case proplists:get_value(ports, External, []) of
-                   [] when Hostname =/= undefined ->
-                       get_internal_ports(Node, Config);
-                   P ->
-                       P
-               end,
-    {Hostname, Ports}.
+    Ports = case proplists:get_value(ports, External, []) of
+                [] when Hostname =/= undefined ->
+                    get_internal_ports(Node, Config);
+                P ->
+                    P
+            end,
+    {Hostname, filter_rename_ports(Ports, WantedPorts)}.
 
 filter_rename_ports([], _WantedPorts) -> [];
 filter_rename_ports(Ports, WantedPorts) ->

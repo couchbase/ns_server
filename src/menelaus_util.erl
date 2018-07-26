@@ -67,7 +67,8 @@
          assert_is_45/0,
          assert_is_50/0,
          assert_is_55/0,
-         assert_is_madhatter/0]).
+         assert_is_madhatter/0,
+         strip_json_struct/1]).
 
 %% used by parse_validate_number
 -export([list_to_integer/1, list_to_float/1]).
