@@ -5,7 +5,7 @@
     .module('mnServers')
     .controller('mnServersAddDialogController', mnServersAddDialogController)
 
-  function mnServersAddDialogController($scope, $rootScope, $q, $uibModal, mnServersService, $uibModalInstance, mnHelper, mnPromiseHelper, groups, ) {
+  function mnServersAddDialogController($scope, $rootScope, $q, $uibModal, mnServersService, $uibModalInstance, mnHelper, mnPromiseHelper, groups) {
     var vm = this;
 
     vm.addNodeConfig = {
