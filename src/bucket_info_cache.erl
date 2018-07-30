@@ -132,8 +132,7 @@ build_services(Node, Config, EnabledServices) ->
     GetPort = fun (ConfigKey) ->
                       case ns_config:search_node(Node, Config, ConfigKey) of
                           {value, Value} when Value =/= undefined ->
-                              JKey = service_ports:map_port(from_config,
-                                                            ConfigKey),
+                              JKey = service_ports:rest_name(ConfigKey),
                               [{JKey, Value}];
                           _ ->
                               []
@@ -157,11 +156,11 @@ build_services(Node, Config, EnabledServices) ->
                      GetPort(capi_port) ++
                      GetPort(projector_port) ++
                      GetPortFromProp(memcached, ssl_port,
-                                     service_ports:map_port(
-                                       from_config, memcached_ssl_port)) ++
+                                     service_ports:rest_name(
+                                       memcached_ssl_port)) ++
                      GetPortFromProp(memcached, port,
-                                     service_ports:map_port(
-                                       from_config, memcached_port));
+                                     service_ports:rest_name(
+                                       memcached_port));
              example ->
                  [];
              Service ->
@@ -169,7 +168,7 @@ build_services(Node, Config, EnabledServices) ->
          end || S <- EnabledServices],
 
     MgmtSSL = GetPort(ssl_rest_port),
-    Mgmt = {service_ports:map_port(from_config, rest_port),
+    Mgmt = {service_ports:rest_name(rest_port),
             misc:node_rest_port(Config, Node)},
     [Mgmt | lists:append([MgmtSSL | OptServices])].
 

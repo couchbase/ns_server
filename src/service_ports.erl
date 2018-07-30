@@ -17,7 +17,8 @@
 
 -module(service_ports).
 
--export([map_port/2,
+-export([find_by_rest_name/1,
+         rest_name/1,
          service_ports/1,
          service_ports_config_name/1,
          get_external_host_and_ports/3]).
@@ -81,21 +82,30 @@ service_ports(Service) ->
 service_ports_config_name(Service) ->
     [C || {C, _} <- service_ports(Service)].
 
-map_port(from_rest, Port) ->
-    map_port(Port, #port.rest, #port.config);
-map_port(from_config, Port) ->
-    map_port(Port, #port.config, #port.rest).
-
-map_port(Port, FromField, ToField) ->
-    case lists:keyfind(Port, FromField, all_ports()) of
-        false -> throw({error, [<<"No such port">>]});
-        Tuple -> element(ToField, Tuple)
+find_by_rest_name(RestName) when is_atom(RestName) ->
+    find_by_rest_name(atom_to_binary(RestName, latin1));
+find_by_rest_name(RestName) when is_list(RestName) ->
+    find_by_rest_name(list_to_binary(RestName));
+find_by_rest_name(RestName) when is_binary(RestName) ->
+    case lists:keyfind(RestName, #port.rest, all_ports()) of
+        false ->
+            undefined;
+        Port ->
+            Port#port.config
     end.
+
+rest_name(Key) ->
+    Port = lists:keyfind(Key, #port.config, all_ports()),
+    Port#port.rest.
 
 get_internal_ports(Node, Config) ->
     Services = ns_cluster_membership:node_active_services(Config, Node),
-    IntPorts = bucket_info_cache:build_services(Node, Config, Services),
-    [{map_port(from_rest, atom_to_binary(P, latin1)), PN} || {P, PN} <- IntPorts].
+    lists:map(
+      fun ({P, PN}) ->
+              PortKey = find_by_rest_name(P),
+              true = PortKey =/= undefined,
+              {PortKey, PN}
+      end, bucket_info_cache:build_services(Node, Config, Services)).
 
 get_external_host_and_ports(Node, Config, WantedPorts) ->
     External = ns_config:search_node_prop(Node, Config,
@@ -117,8 +127,7 @@ filter_rename_ports(Ports, WantedPorts) ->
               case lists:keyfind(ConfigName, 1, Ports) of
                   false ->
                       false;
-                  {_ConfigName, Value} ->
-                      RestName = map_port(from_config, ConfigName),
-                      {true, {RestName, Value}}
+                  {ConfigName, Value} ->
+                      {true, {rest_name(ConfigName), Value}}
               end
       end, WantedPorts).

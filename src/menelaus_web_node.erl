@@ -703,10 +703,15 @@ parse_validate_ports(Params) ->
     lists:foldl(
       fun ({RestName, Value}, Acc) ->
               try
-                  ConfigName = service_ports:map_port(
-                                 from_rest, list_to_binary(RestName)),
+                  PortKey =
+                      case service_ports:find_by_rest_name(RestName) of
+                          undefined ->
+                              throw({error, [<<"No such port.">>]});
+                          P ->
+                              P
+                      end,
                   Port = menelaus_util:parse_validate_port_number(Value),
-                  [{ConfigName, Port} | Acc]
+                  [{PortKey, Port} | Acc]
               catch
                   throw:{error, [Msg]} ->
                       ErrorMsg = io_lib:format("Invalid Port ~p : ~s",
