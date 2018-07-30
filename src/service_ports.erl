@@ -17,7 +17,9 @@
 
 -module(service_ports).
 
--export([find_by_rest_name/1,
+-export([default/2,
+         default_config/1,
+         find_by_rest_name/1,
          rest_name/1,
          service_ports/1,
          service_ports_config_name/1,
@@ -25,11 +27,16 @@
 
 -include("ns_common.hrl").
 
--record(port, {config, rest, service}).
--define(define_port(ConfName, RestName, Service),
+-record(port, {config, rest, service, default, secure}).
+-define(define_port(ConfName, RestName, Service, Default, Sec),
         #port{config  = ConfName,
               rest    = rest_name_to_bin(RestName),
-              service = Service}).
+              service = Service,
+              default = Default,
+              secure  = Sec}).
+
+-define(define_port(ConfName, RestName, Service, Default),
+        ?define_port(ConfName, RestName, Service, Default, unsecure)).
 
 rest_name_to_bin(undefined) ->
     undefined;
@@ -38,48 +45,95 @@ rest_name_to_bin(RestName) ->
 
 all_ports() ->
     [%% rest service ports
-     ?define_port(rest_port, mgmt, rest),
-     ?define_port(ssl_rest_port, mgmtSSL, rest),
+     ?define_port(rest_port,     mgmt,    rest, 8091),
+     ?define_port(ssl_rest_port, mgmtSSL, rest, 18091, secure),
+     %% xdcr ports
+     ?define_port(xdcr_rest_port, undefined, xdcr, 9998),
      %% kv service ports
-     ?define_port(memcached_port, kv, kv),
-     ?define_port(memcached_ssl_port, kvSSL, kv),
-     ?define_port(capi_port, capi, kv),
-     ?define_port(ssl_capi_port, capiSSL, kv),
-     ?define_port(projector_port, projector, kv),
+     ?define_port(memcached_port,           kv,        kv, 11210),
+     ?define_port(memcached_ssl_port,       kvSSL,     kv, 11207, secure),
+     ?define_port(memcached_dedicated_port, undefined, kv, 11209),
+     ?define_port(capi_port,                capi,      kv, 8092),
+     ?define_port(ssl_capi_port,            capiSSL,   kv, 18092, secure),
+     ?define_port(projector_port,           projector, kv, 9999),
      %% query service ports
-     ?define_port(query_port, n1ql, n1ql),
-     ?define_port(ssl_query_port, n1qlSSL, n1ql),
+     ?define_port(query_port,     n1ql,    n1ql, 8093),
+     ?define_port(ssl_query_port, n1qlSSL, n1ql, 18093, secure),
      %% index service ports
-     ?define_port(indexer_admin_port, indexAdmin, index),
-     ?define_port(indexer_scan_port, indexScan, index),
-     ?define_port(indexer_http_port, indexHttp, index),
-     ?define_port(indexer_https_port, indexHttps, index),
-     ?define_port(indexer_stinit_port, indexStreamInit, index),
-     ?define_port(indexer_stcatchup_port, indexStreamCatchup, index),
-     ?define_port(indexer_stmaint_port, indexStreamMaint, index),
+     ?define_port(indexer_admin_port,     indexAdmin,         index, 9100),
+     ?define_port(indexer_scan_port,      indexScan,          index, 9101),
+     ?define_port(indexer_http_port,      indexHttp,          index, 9102),
+     ?define_port(indexer_stinit_port,    indexStreamInit,    index, 9103),
+     ?define_port(indexer_stcatchup_port, indexStreamCatchup, index, 9104),
+     ?define_port(indexer_stmaint_port,   indexStreamMaint,   index, 9105),
+     ?define_port(indexer_https_port,     indexHttps,         index, 19102,
+                  secure),
      %% fts service ports
-     ?define_port(fts_http_port, fts, fts),
-     ?define_port(fts_ssl_port, ftsSSL, fts),
+     ?define_port(fts_http_port, fts,    fts, 8094),
+     ?define_port(fts_ssl_port,  ftsSSL, fts, 18094, secure),
      %% eventing service ports
-     ?define_port(eventing_http_port, eventingAdminPort, eventing),
-     ?define_port(eventing_https_port, eventingSSL, eventing),
-     ?define_port(eventing_debug_port, eventingDebug, eventing),
+     ?define_port(eventing_http_port,  eventingAdminPort, eventing, 8096),
+     ?define_port(eventing_debug_port, eventingDebug,     eventing, 9140),
+     ?define_port(eventing_https_port, eventingSSL,       eventing, 18096,
+                  secure),
      %% cbas service ports
-     ?define_port(cbas_http_port, cbas, cbas),
-     ?define_port(cbas_admin_port, cbasAdmin, cbas),
-     ?define_port(cbas_cc_http_port, cbasCc, cbas),
-     ?define_port(cbas_ssl_port, cbasSSL, cbas),
+     ?define_port(cbas_http_port,    cbas,      cbas, 8095),
+     ?define_port(cbas_admin_port,   cbasAdmin, cbas, 9110),
+     ?define_port(cbas_cc_http_port, cbasCc,    cbas, 9111),
+     ?define_port(cbas_ssl_port,     cbasSSL,   cbas, 18095, secure),
      %% miscellaneous cbas ports
-     ?define_port(cbas_cluster_port, cbasCluster, misc),
-     ?define_port(cbas_cc_cluster_port, cbasCcCluster, misc),
-     ?define_port(cbas_cc_client_port, cbasCcClient, misc),
-     ?define_port(cbas_console_port, cbasConsole, misc),
-     ?define_port(cbas_data_port, cbasData, misc),
-     ?define_port(cbas_result_port, cbasResult, misc),
-     ?define_port(cbas_messaging_port, cbasMessaging, misc),
-     ?define_port(cbas_debug_port, cbasDebug, misc),
-     ?define_port(cbas_parent_port, cbasParent, misc),
-     ?define_port(cbas_replication_port, cbasReplication, misc)].
+     ?define_port(cbas_cc_cluster_port,        cbasCcCluster,   misc, 9112),
+     ?define_port(cbas_cc_client_port,         cbasCcClient,    misc, 9113),
+     ?define_port(cbas_console_port,           cbasConsole,     misc, 9114),
+     ?define_port(cbas_cluster_port,           cbasCluster,     misc, 9115),
+     ?define_port(cbas_data_port,              cbasData,        misc, 9116),
+     ?define_port(cbas_result_port,            cbasResult,      misc, 9117),
+     ?define_port(cbas_messaging_port,         cbasMessaging,   misc, 9118),
+     ?define_port(cbas_metadata_callback_port, undefined,       misc, 9119),
+     ?define_port(cbas_replication_port,       cbasReplication, misc, 9120),
+     ?define_port(cbas_metadata_port,          undefined,       misc, 9121),
+     ?define_port(cbas_parent_port,            cbasParent,      misc, 9122),
+     ?define_port(cbas_debug_port,             cbasDebug,       misc, -1)
+    ].
+
+complex_config_key(memcached_port) ->
+    true;
+complex_config_key(memcached_ssl_port) ->
+    true;
+complex_config_key(memcached_dedicated_port) ->
+    true;
+complex_config_key(_) ->
+    false.
+
+default(Key, IsEnterprise) ->
+    default(Key, lists:keyfind(Key, #port.config, all_ports()), IsEnterprise).
+
+default(_Key, #port{secure = secure}, false = _IsEnterprise) ->
+    undefined;
+default(Key, #port{default = Default}, _IsEnterprise) ->
+    misc:get_env_default(Key, Default).
+
+default_config(#port{config = rest_port, default = Default}, _IsEnterprise) ->
+    PortMeta = case application:get_env(rest_port) of
+                   {ok, _Port} -> local;
+                   undefined -> global
+               end,
+    [{rest, [{port, Default}]},
+     {{node, node(), rest},
+      [{port, misc:get_env_default(rest_port, Default)},
+       {port_meta, PortMeta}]}];
+default_config(#port{config = Key} = P, IsEnterprise) ->
+    [{{node, node(), Key}, default(Key, P, IsEnterprise)}].
+
+default_config(IsEnterprise) ->
+    lists:flatmap(fun (#port{config = Key} = P) ->
+                          case complex_config_key(Key) of
+                              true ->
+                                  [];
+                              false ->
+                                  default_config(P, IsEnterprise)
+                          end
+                  end, all_ports()).
 
 service_ports(Service) ->
     [{P#port.config, P#port.rest} ||

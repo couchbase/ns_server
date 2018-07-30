@@ -84,11 +84,6 @@ default() ->
     {_, FTSQuota} = lists:keyfind(fts, 1, DefaultQuotas),
     {_, CBASQuota} = lists:keyfind(cbas, 1, DefaultQuotas),
 
-    PortMeta = case application:get_env(rest_port) of
-                   {ok, _Port} -> local;
-                   undefined -> global
-               end,
-
     BreakpadMinidumpDir = path_config:minidump_dir(),
     ok = misc:mkdir_p(BreakpadMinidumpDir),
 
@@ -136,141 +131,8 @@ default() ->
      %%
      %% Modifiers: menelaus REST API
      %% Listeners: some menelaus module that configures/reconfigures mochiweb
-     {rest,
-      [{port, 8091}]},
-
      {{couchdb, max_parallel_indexers}, 4},
      {{couchdb, max_parallel_replica_indexers}, 2},
-
-     {{node, node(), rest},
-      [{port, misc:get_env_default(rest_port, 8091)}, % Port number of the REST admin API and UI.
-       {port_meta, PortMeta}]},
-
-     {{node, node(), ssl_rest_port},
-      case IsEnterprise of
-          true -> misc:get_env_default(ssl_rest_port, 18091);
-          _ -> undefined
-      end},
-
-     {{node, node(), capi_port},
-      misc:get_env_default(capi_port, 8092)},
-
-     {{node, node(), ssl_capi_port},
-      case IsEnterprise of
-          true -> misc:get_env_default(ssl_capi_port, 18092);
-          _ -> undefined
-      end},
-
-     {{node, node(), query_port},
-      misc:get_env_default(query_port, 8093)},
-
-     {{node, node(), ssl_query_port},
-      case IsEnterprise of
-          true -> misc:get_env_default(ssl_query_port, 18093);
-          _ -> undefined
-      end},
-
-     {{node, node(), projector_port},
-      misc:get_env_default(projector_port, 9999)},
-
-     {{node, node(), xdcr_rest_port},
-      misc:get_env_default(xdcr_rest_port, 9998)},
-
-     {{node, node(), indexer_admin_port},
-      misc:get_env_default(indexer_admin_port, 9100)},
-
-     {{node, node(), indexer_scan_port},
-      misc:get_env_default(indexer_scan_port, 9101)},
-
-     {{node, node(), indexer_http_port},
-      misc:get_env_default(indexer_http_port, 9102)},
-
-     {{node, node(), indexer_https_port},
-            case IsEnterprise of
-                true -> misc:get_env_default(indexer_https_port, 19102);
-                _ -> undefined
-            end},
-
-     {{node, node(), indexer_stinit_port},
-      misc:get_env_default(indexer_stinit_port, 9103)},
-
-     {{node, node(), indexer_stcatchup_port},
-      misc:get_env_default(indexer_stcatchup_port, 9104)},
-
-     {{node, node(), indexer_stmaint_port},
-      misc:get_env_default(indexer_stmaint_port, 9105)},
-
-     {{node, node(), fts_http_port},
-      misc:get_env_default(fts_http_port, 8094)},
-
-     {{node, node(), fts_ssl_port},
-      case IsEnterprise of
-          true -> misc:get_env_default(fts_ssl_port, 18094);
-          _ -> undefined
-      end},
-
-     {{node, node(), cbas_http_port},
-      misc:get_env_default(cbas_http_port, 8095)},
-
-     {{node, node(), cbas_admin_port},
-      misc:get_env_default(cbas_admin_port, 9110)},
-
-     {{node, node(), cbas_cc_http_port},
-      misc:get_env_default(cbas_cc_http_port, 9111)},
-
-     {{node, node(), cbas_cc_cluster_port},
-      misc:get_env_default(cbas_cc_cluster_port, 9112)},
-
-     {{node, node(), cbas_cc_client_port},
-      misc:get_env_default(cbas_cc_client_port, 9113)},
-
-     {{node, node(), cbas_console_port},
-      misc:get_env_default(cbas_console_port, 9114)},
-
-     {{node, node(), cbas_cluster_port},
-      misc:get_env_default(cbas_cluster_port, 9115)},
-
-     {{node, node(), cbas_data_port},
-      misc:get_env_default(cbas_data_port, 9116)},
-
-     {{node, node(), cbas_result_port},
-      misc:get_env_default(cbas_result_port, 9117)},
-
-     {{node, node(), cbas_messaging_port},
-      misc:get_env_default(cbas_messaging_port, 9118)},
-
-     {{node, node(), cbas_debug_port},
-      misc:get_env_default(cbas_debug_port, -1)},
-
-     {{node, node(), cbas_metadata_callback_port},
-      misc:get_env_default(cbas_metadata_callback_port, 9119)},
-
-     {{node, node(), cbas_replication_port},
-      misc:get_env_default(cbas_replication_port, 9120)},
-
-     {{node, node(), cbas_metadata_port},
-      misc:get_env_default(cbas_metadata_port, 9121)},
-
-     {{node, node(), cbas_parent_port},
-      misc:get_env_default(cbas_parent_port, 9122)},
-
-     {{node, node(), cbas_ssl_port},
-      case IsEnterprise of
-          true -> misc:get_env_default(cbas_ssl_port, 18095);
-          _ -> undefined
-      end},
-
-     {{node, node(), eventing_http_port},
-      misc:get_env_default(eventing_http_port, 8096)},
-
-     {{node, node(), eventing_https_port},
-      case IsEnterprise of
-          true -> misc:get_env_default(eventing_https_port, 18096);
-          _ -> undefined
-      end},
-
-     {{node, node(), eventing_debug_port},
-      misc:get_env_default(eventing_debug_port, 9140)},
 
      %% Default config for metakv index settings in minimum supported version,
      %% VERSION_40.
@@ -312,12 +174,10 @@ default() ->
 
      %% Memcached config
      {{node, node(), memcached},
-      [{port, misc:get_env_default(memcached_port, 11210)},
-       {dedicated_port, misc:get_env_default(memcached_dedicated_port, 11209)},
-       {ssl_port, case IsEnterprise of
-                      true -> misc:get_env_default(memcached_ssl_port, 11207);
-                      _ -> undefined
-                  end},
+      [{port, service_ports:default(memcached_port, IsEnterprise)},
+       {dedicated_port,
+        service_ports:default(memcached_dedicated_port, IsEnterprise)},
+       {ssl_port, service_ports:default(memcached_ssl_port, IsEnterprise)},
        {admin_user, "@ns_server"},
        {other_users, ["@cbq-engine", "@projector", "@goxdcr", "@index", "@fts", "@eventing", "@cbas"]},
        {admin_pass, binary_to_list(couch_uuids:random())},
@@ -464,6 +324,7 @@ default() ->
      {{request_limit, capi}, undefined},
      {drop_request_memory_threshold_mib, undefined},
      {password_policy, [{min_length, 6}, {must_present, []}]}] ++
+        service_ports:default_config(IsEnterprise) ++
         rebalance_quirks:default_config().
 
 %% returns list of changes to config to upgrade it to current version.
