@@ -25,8 +25,6 @@
 
 -export([build_node_services/0]).
 
--export([build_services/3]).
-
 %% for diagnostics
 -export([submit_full_reset/0]).
 
@@ -115,69 +113,6 @@ submit_full_reset() ->
               gen_event:notify(bucket_info_cache_invalidations, '*')
       end).
 
-get_service_ports(Node, Config, Service) ->
-    ServicePorts = service_ports:service_ports(Service),
-    lists:filtermap(fun ({_, undefined}) ->
-                            false;
-                        ({ConfigKey, RestKey}) ->
-                            case ns_config:search(Config,
-                                                  {node, Node, ConfigKey},
-                                                  undefined) of
-                                undefined ->
-                                    false;
-                                Port ->
-                                    {true, {RestKey, Port}}
-                            end
-                    end, ServicePorts).
-
-build_services(Node, Config, EnabledServices) ->
-    GetPort = fun (ConfigKey) ->
-                      case ns_config:search_node(Node, Config, ConfigKey) of
-                          {value, Value} when Value =/= undefined ->
-                              case service_ports:rest_name(ConfigKey) of
-                                  undefined ->
-                                      [];
-                                  JKey ->
-                                      [{JKey, Value}]
-                              end;
-                          _ ->
-                              []
-                      end
-              end,
-
-    GetPortFromProp = fun (ConfigKey, ConfigSubKey, JKey) ->
-                              case ns_config:search_node_prop(Node, Config, ConfigKey, ConfigSubKey) of
-                                  undefined ->
-                                      [];
-                                  Port ->
-                                      [{JKey, Port}]
-                              end
-                      end,
-
-    OptServices =
-        [case S of
-             kv ->
-                 %% Special handling needed for kv service.
-                 GetPort(ssl_capi_port) ++
-                     GetPort(capi_port) ++
-                     GetPort(projector_port) ++
-                     GetPortFromProp(memcached, ssl_port,
-                                     service_ports:rest_name(
-                                       memcached_ssl_port)) ++
-                     GetPortFromProp(memcached, port,
-                                     service_ports:rest_name(
-                                       memcached_port));
-             example ->
-                 [];
-             Service ->
-                 get_service_ports(Node, Config, Service)
-         end || S <- EnabledServices],
-
-    MgmtSSL = GetPort(ssl_rest_port),
-    Mgmt = {service_ports:rest_name(rest_port),
-            misc:node_rest_port(Config, Node)},
-    [Mgmt | lists:append([MgmtSSL | OptServices])].
-
 maybe_build_ext_hostname(Node) ->
     {_, H} = misc:node_name_host(Node),
     case misc:is_localhost(H) of
@@ -206,7 +141,8 @@ build_nodes_ext([Node | RestNodes], Config, NodesExtAcc) ->
                     ReqServices),
 
     NI3 = NI2 ++ alternate_addresses_json(Node, Config, WantedPorts),
-    NodeInfo = {[{services, {build_services(Node, Config, Services)}} | NI3]},
+    NodeInfo = {[{services, {service_ports:get_ports_for_services(
+                               Node, Config, Services)}} | NI3]},
     build_nodes_ext(RestNodes, Config, [NodeInfo | NodesExtAcc]).
 
 do_compute_bucket_info(Bucket, Config) ->

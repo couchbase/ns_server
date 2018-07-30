@@ -20,10 +20,9 @@
 -export([default/2,
          default_config/1,
          find_by_rest_name/1,
-         rest_name/1,
-         service_ports/1,
          service_ports_config_name/1,
-         get_external_host_and_ports/3]).
+         get_external_host_and_ports/3,
+         get_ports_for_services/3]).
 
 -include("ns_common.hrl").
 
@@ -165,7 +164,7 @@ get_internal_ports(Node, Config) ->
               PortKey = find_by_rest_name(P),
               true = PortKey =/= undefined,
               {PortKey, PN}
-      end, bucket_info_cache:build_services(Node, Config, Services)).
+      end, get_ports_for_services(Node, Config, Services)).
 
 get_external_host_and_ports(Node, Config, WantedPorts) ->
     External = ns_config:search_node_prop(Node, Config,
@@ -191,3 +190,60 @@ filter_rename_ports(Ports, WantedPorts) ->
                       {true, {rest_name(ConfigName), Value}}
               end
       end, WantedPorts).
+
+get_ports_for_services(Node, Config, Services) ->
+    GetPort = fun (ConfigKey) ->
+                      case ns_config:search_node(Node, Config, ConfigKey) of
+                          {value, Value} when Value =/= undefined ->
+                              case rest_name(ConfigKey) of
+                                  undefined ->
+                                      [];
+                                  JKey ->
+                                      [{JKey, Value}]
+                              end;
+                          _ ->
+                              []
+                      end
+              end,
+
+    GetPortFromProp = fun (ConfigKey, ConfigSubKey, JKey) ->
+                              case ns_config:search_node_prop(Node, Config, ConfigKey, ConfigSubKey) of
+                                  undefined ->
+                                      [];
+                                  Port ->
+                                      [{JKey, Port}]
+                              end
+                      end,
+
+    OptServices =
+        [case S of
+             kv ->
+                 %% Special handling needed for kv service.
+                 GetPort(ssl_capi_port) ++
+                     GetPort(capi_port) ++
+                     GetPort(projector_port) ++
+                     GetPortFromProp(memcached, ssl_port,
+                                     rest_name(memcached_ssl_port)) ++
+                     GetPortFromProp(memcached, port,
+                                     rest_name(memcached_port));
+             example ->
+                 [];
+             Service ->
+                 ServicePorts = service_ports(Service),
+                 lists:filtermap(
+                   fun ({_, undefined}) ->
+                           false;
+                       ({ConfigKey, RestKey}) ->
+                           case ns_config:search(
+                                  Config, {node, Node, ConfigKey}, undefined) of
+                               undefined ->
+                                   false;
+                               Port ->
+                                   {true, {RestKey, Port}}
+                           end
+                   end, ServicePorts)
+         end || S <- Services],
+
+    MgmtSSL = GetPort(ssl_rest_port),
+    Mgmt = {rest_name(rest_port), misc:node_rest_port(Config, Node)},
+    [Mgmt | lists:append([MgmtSSL | OptServices])].

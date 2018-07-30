@@ -203,7 +203,8 @@ build_node_info(_N, undefined, _Config) ->
     undefined;
 build_node_info(N, User, Config) ->
     ActiveServices = ns_cluster_membership:node_active_services(Config, N),
-    Ports0 = [Port || {_Key, Port} <- bucket_info_cache:build_services(N, Config, ActiveServices)],
+    Ports0 = [Port || {_Key, Port} <- service_ports:get_ports_for_services(
+                                        N, Config, ActiveServices)],
 
     Ports =
         case N =:= node() andalso not lists:member(kv, ActiveServices) of
