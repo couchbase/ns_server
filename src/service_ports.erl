@@ -13,10 +13,9 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
-%% @doc implementation of alternate_addresses functions that serve
-%% alternate_addresses information stored in ns_config.
+%% @doc helpers related to ports exposed by various revices
 
--module(alternate_addresses).
+-module(service_ports).
 
 -export([map_port/2,
          service_ports/1,

@@ -116,7 +116,7 @@ submit_full_reset() ->
       end).
 
 get_service_ports(Node, Config, Service) ->
-    ServicePorts = alternate_addresses:service_ports(Service),
+    ServicePorts = service_ports:service_ports(Service),
     lists:filtermap(fun ({ConfigKey, RestKey}) ->
                             case ns_config:search(Config,
                                                   {node, Node, ConfigKey},
@@ -132,8 +132,8 @@ build_services(Node, Config, EnabledServices) ->
     GetPort = fun (ConfigKey) ->
                       case ns_config:search_node(Node, Config, ConfigKey) of
                           {value, Value} when Value =/= undefined ->
-                              JKey = alternate_addresses:map_port(from_config,
-                                                                   ConfigKey),
+                              JKey = service_ports:map_port(from_config,
+                                                            ConfigKey),
                               [{JKey, Value}];
                           _ ->
                               []
@@ -157,10 +157,10 @@ build_services(Node, Config, EnabledServices) ->
                      GetPort(capi_port) ++
                      GetPort(projector_port) ++
                      GetPortFromProp(memcached, ssl_port,
-                                     alternate_addresses:map_port(
+                                     service_ports:map_port(
                                        from_config, memcached_ssl_port)) ++
                      GetPortFromProp(memcached, port,
-                                     alternate_addresses:map_port(
+                                     service_ports:map_port(
                                        from_config, memcached_port));
              example ->
                  [];
@@ -169,8 +169,8 @@ build_services(Node, Config, EnabledServices) ->
          end || S <- EnabledServices],
 
     MgmtSSL = GetPort(ssl_rest_port),
-    Mgmt = {alternate_addresses:map_port(from_config, rest_port),
-                 misc:node_rest_port(Config, Node)},
+    Mgmt = {service_ports:map_port(from_config, rest_port),
+            misc:node_rest_port(Config, Node)},
     [Mgmt | lists:append([MgmtSSL | OptServices])].
 
 maybe_build_ext_hostname(Node) ->
@@ -197,7 +197,7 @@ build_nodes_ext([Node | RestNodes], Config, NodesExtAcc) ->
           end,
     ReqServices = [rest | Services],
     WantedPorts = lists:flatmap(
-                    fun alternate_addresses:service_ports_config_name/1,
+                    fun service_ports:service_ports_config_name/1,
                     ReqServices),
 
     NI3 = NI2 ++ alternate_addresses_json(Node, Config, WantedPorts),

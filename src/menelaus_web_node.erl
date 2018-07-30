@@ -249,7 +249,7 @@ build_node_hostname(Config, Node, LocalAddr) ->
 
 alternate_addresses_json(Node, Config, WantedPorts) ->
     {ExtHostname, ExtPorts} =
-        alternate_addresses:get_external_host_and_ports(
+        service_ports:get_external_host_and_ports(
           Node, Config, WantedPorts),
     External = construct_ext_json(ExtHostname, ExtPorts),
     [{alternateAddresses, {struct, External}} || External =/= []].
@@ -703,7 +703,7 @@ parse_validate_ports(Params) ->
     lists:foldl(
       fun ({RestName, Value}, Acc) ->
               try
-                  ConfigName = alternate_addresses:map_port(
+                  ConfigName = service_ports:map_port(
                                  from_rest, list_to_binary(RestName)),
                   Port = menelaus_util:parse_validate_port_number(Value),
                   [{ConfigName, Port} | Acc]
