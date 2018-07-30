@@ -71,13 +71,12 @@ start_link() ->
 
 start_link_capi_service() ->
     ok = ns_couchdb_config_rep:pull(),
-    case ns_config:search_node(ns_node_disco:ns_server_node(),
-                               ns_config:latest(),
-                               ssl_capi_port) of
-        {value, SSLPort} when SSLPort =/= undefined ->
-            do_start_link_capi_service(SSLPort);
-        _ ->
-            ignore
+    case service_ports:get_port(ssl_capi_port, ns_config:latest(),
+                                ns_node_disco:ns_server_node()) of
+        undefined ->
+            ignore;
+        SSLPort ->
+            do_start_link_capi_service(SSLPort)
     end.
 
 do_start_link_capi_service(SSLPort) ->
@@ -311,16 +310,16 @@ start_link_rest_service() ->
     Config0 = menelaus_web:webconfig(),
     Config1 = lists:keydelete(port, 1, Config0),
     Config2 = lists:keydelete(name, 1, Config1),
-    case ns_config:search_node(ssl_rest_port) of
-        {value, SSLPort} when SSLPort =/= undefined ->
+    case service_ports:get_port(ssl_rest_port) of
+        undefined ->
+            ignore;
+        SSLPort ->
             Config3 = [{ssl, true},
                        {name, menelaus_web_ssl},
                        {ssl_opts, ssl_server_opts()},
                        {port, SSLPort}
                        | Config2],
-            menelaus_web:start_link(Config3);
-        _ ->
-            ignore
+            menelaus_web:start_link(Config3)
     end.
 
 ssl_cert_key_path() ->

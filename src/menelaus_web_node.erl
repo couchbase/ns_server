@@ -245,7 +245,7 @@ build_node_hostname(Config, Node, LocalAddr) ->
                true  -> LocalAddr;
                false -> H
            end,
-    misc:join_host_port(Host, misc:node_rest_port(Config, Node)).
+    misc:join_host_port(Host, service_ports:get_port(rest_port, Config, Node)).
 
 alternate_addresses_json(Node, Config, WantedPorts) ->
     {ExtHostname, ExtPorts} =
@@ -266,25 +266,26 @@ is_xdcr_over_ssl_allowed() ->
     cluster_compat_mode:is_enterprise().
 
 build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
-
-    DirectPort = ns_config:search_node_prop(WantENode, Config, memcached, port),
     Versions = proplists:get_value(version, InfoNode, []),
     Version = proplists:get_value(ns_server, Versions, "unknown"),
     OS = proplists:get_value(system_arch, InfoNode, "unknown"),
     CpuCount = proplists:get_value(cpu_count, InfoNode, unknown),
     HostName = build_node_hostname(Config, WantENode, LocalAddr),
 
-    %% this is used by xdcr over ssl since 2.5.0
-    PortKeys = [{ssl_capi_port, httpsCAPI},
+    PortKeys = [{memcached_port, direct},
+                %% this is used by xdcr over ssl since 2.5.0
+                {ssl_capi_port, httpsCAPI},
                 {ssl_rest_port, httpsMgmt}],
 
-    PortsKV = lists:foldl(
-                fun ({ConfigKey, JKey}, Acc) ->
-                        case ns_config:search_node(WantENode, Config, ConfigKey) of
-                            {value, Value} when Value =/= undefined -> [{JKey, Value} | Acc];
-                            _ -> Acc
+    PortsKV = lists:filtermap(
+                fun ({Key, JKey}) ->
+                        case service_ports:get_port(Key, Config, WantENode) of
+                            undefined ->
+                                false;
+                            Value ->
+                                {true, {JKey, Value}}
                         end
-                end, [{direct, DirectPort}], PortKeys),
+                end, PortKeys),
 
     WantedPorts = [memcached_port,
                    ssl_capi_port,
@@ -459,10 +460,8 @@ handle_node_self_xdcr_ssl_ports(Req) ->
         false ->
             reply_json(Req, [], 403);
         true ->
-            {value, RESTSSL} = ns_config:search_node(ssl_rest_port),
-            {value, CapiSSL} = ns_config:search_node(ssl_capi_port),
-            Ports = [{httpsMgmt, RESTSSL},
-                     {httpsCAPI, CapiSSL}] ++
+            Ports = [{httpsMgmt, service_ports:get_port(ssl_rest_port)},
+                     {httpsCAPI, service_ports:get_port(ssl_capi_port)}] ++
                 alternate_addresses_json(node(), ns_config:latest(),
                                          [ssl_capi_port, ssl_rest_port]),
             reply_json(Req, {struct, Ports})

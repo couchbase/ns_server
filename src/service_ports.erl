@@ -17,7 +17,10 @@
 
 -module(service_ports).
 
--export([default/2,
+-export([get_port/1,
+         get_port/2,
+         get_port/3,
+         default/2,
          default_config/1,
          find_by_rest_name/1,
          service_ports_config_name/1,
@@ -95,14 +98,17 @@ all_ports() ->
      ?define_port(cbas_debug_port,             cbasDebug,       misc, -1)
     ].
 
-complex_config_key(memcached_port) ->
-    true;
-complex_config_key(memcached_ssl_port) ->
-    true;
-complex_config_key(memcached_dedicated_port) ->
-    true;
-complex_config_key(_) ->
-    false.
+config_key(memcached_port) ->
+    {memcached, port};
+config_key(memcached_ssl_port) ->
+    {memcached, ssl_port};
+config_key(memcached_dedicated_port) ->
+    {memcached, dedicated_port};
+config_key(Key) ->
+    Key.
+
+complex_config_key(Key) ->
+    config_key(Key) =/= Key.
 
 default(Key, IsEnterprise) ->
     default(Key, lists:keyfind(Key, #port.config, all_ports()), IsEnterprise).
@@ -133,6 +139,27 @@ default_config(IsEnterprise) ->
                                   default_config(P, IsEnterprise)
                           end
                   end, all_ports()).
+
+get_port(Key) ->
+    get_port(Key, ns_config:latest()).
+
+get_port(Key, Config) ->
+    get_port(Key, Config, node()).
+
+get_port(rest_port, Config, Node) ->
+    case ns_config:search_node_prop(Node, Config, rest, port_meta, local) of
+        local ->
+            ns_config:search_node_prop(Node, Config, rest, port, 8091);
+        global ->
+            ns_config:search_prop(Config, rest, port, 8091)
+    end;
+get_port(Key, Config, Node) ->
+    case config_key(Key) of
+        {K, S} ->
+            ns_config:search_node_prop(Node, Config, K, S);
+        K ->
+            ns_config:search_node_with_default(Node, Config, K, undefined)
+    end.
 
 service_ports(Service) ->
     [{P#port.config, P#port.rest} ||
@@ -192,58 +219,18 @@ filter_rename_ports(Ports, WantedPorts) ->
       end, WantedPorts).
 
 get_ports_for_services(Node, Config, Services) ->
-    GetPort = fun (ConfigKey) ->
-                      case ns_config:search_node(Node, Config, ConfigKey) of
-                          {value, Value} when Value =/= undefined ->
-                              case rest_name(ConfigKey) of
-                                  undefined ->
-                                      [];
-                                  JKey ->
-                                      [{JKey, Value}]
-                              end;
-                          _ ->
-                              []
-                      end
-              end,
-
-    GetPortFromProp = fun (ConfigKey, ConfigSubKey, JKey) ->
-                              case ns_config:search_node_prop(Node, Config, ConfigKey, ConfigSubKey) of
-                                  undefined ->
-                                      [];
-                                  Port ->
-                                      [{JKey, Port}]
-                              end
-                      end,
-
-    OptServices =
-        [case S of
-             kv ->
-                 %% Special handling needed for kv service.
-                 GetPort(ssl_capi_port) ++
-                     GetPort(capi_port) ++
-                     GetPort(projector_port) ++
-                     GetPortFromProp(memcached, ssl_port,
-                                     rest_name(memcached_ssl_port)) ++
-                     GetPortFromProp(memcached, port,
-                                     rest_name(memcached_port));
-             example ->
-                 [];
-             Service ->
-                 ServicePorts = service_ports(Service),
-                 lists:filtermap(
-                   fun ({_, undefined}) ->
-                           false;
-                       ({ConfigKey, RestKey}) ->
-                           case ns_config:search(
-                                  Config, {node, Node, ConfigKey}, undefined) of
-                               undefined ->
-                                   false;
-                               Port ->
-                                   {true, {RestKey, Port}}
-                           end
-                   end, ServicePorts)
-         end || S <- Services],
-
-    MgmtSSL = GetPort(ssl_rest_port),
-    Mgmt = {rest_name(rest_port), misc:node_rest_port(Config, Node)},
-    [Mgmt | lists:append([MgmtSSL | OptServices])].
+    lists:flatmap(
+      fun (Service) ->
+              ServicePorts = service_ports(Service),
+              lists:filtermap(
+                fun ({_, undefined}) ->
+                        false;
+                    ({Key, RestKey}) ->
+                        case get_port(Key, Config, Node) of
+                            undefined ->
+                                false;
+                            Port ->
+                                {true, {RestKey, Port}}
+                        end
+                end, ServicePorts)
+      end, [rest | Services]).

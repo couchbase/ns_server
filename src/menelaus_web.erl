@@ -87,8 +87,9 @@ webconfig(Config) ->
          end,
     Port = case os:getenv("MOCHIWEB_PORT") of
                false ->
-                   misc:node_rest_port(Config, node());
-               P -> list_to_integer(P)
+                   service_ports:get_port(rest_port, Config);
+               P ->
+                   list_to_integer(P)
            end,
     WebConfig = [{ip, Ip},
                  {name, ?MODULE},

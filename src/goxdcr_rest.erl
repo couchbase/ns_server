@@ -26,9 +26,6 @@
          stats/1,
          get_replications_with_remote_info/0]).
 
-get_rest_port() ->
-    ns_config:read_key_fast({node, node(), xdcr_rest_port}, 9998).
-
 convert_header_name(Header) when is_atom(Header) ->
     atom_to_list(Header);
 convert_header_name(Header) when is_list(Header) ->
@@ -54,7 +51,7 @@ send(MochiReq, Method, Path, Headers, Body) ->
     send_with_timeout(Method, Path, Headers, Body, Timeout).
 
 send_with_timeout(Method, Path, Headers, Body, Timeout) ->
-    URL = misc:local_url(get_rest_port(), Path, []),
+    URL = misc:local_url(service_ports:get_port(xdcr_rest_port), Path, []),
 
     {ok, {{Code, _}, RespHeaders, RespBody}} =
         rest_utils:request(goxdcr, URL, Method, Headers, Body, Timeout),

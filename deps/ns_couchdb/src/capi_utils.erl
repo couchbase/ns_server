@@ -27,16 +27,10 @@
 
 %% returns capi port for given node or undefined if node doesn't have CAPI
 compute_capi_port({ssl, Node}) ->
-    ns_config:search(ns_config:latest(), {node, Node, ssl_capi_port}, undefined);
+    service_ports:get_port(ssl_capi_port, ns_config:latest(), Node);
 
 compute_capi_port(Node) ->
-    ns_config:search(ns_config:latest(), {node, Node, capi_port}, undefined).
-
-get_capi_port(Node, Config) ->
-    case ns_config:search(Config, {node, Node, capi_port}) of
-        false -> undefined;
-        {value, X} -> X
-    end.
+    service_ports:get_port(capi_port, ns_config:latest(), Node).
 
 %% returns http url to capi on given node with given path
 -spec capi_url_bin(node() | {ssl, node()}, iolist() | binary(), iolist() | binary()) -> undefined | binary().

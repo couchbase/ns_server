@@ -39,7 +39,7 @@ get_type() ->
     index.
 
 get_port() ->
-    ns_config:read_key_fast({node, node(), indexer_http_port}, 9102).
+    service_ports:get_port(indexer_http_port).
 
 get_timeout() ->
     ?get_timeout(rest_request, 10000).

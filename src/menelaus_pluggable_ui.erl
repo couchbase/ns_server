@@ -275,7 +275,9 @@ service_nodes(Service) ->
 
 address_and_port(Props, Node) ->
     Addr = node_address(Node),
-    Port = lookup_port(Props#prefix_props.port_name, Node),
+    Port = service_ports:get_port(Props#prefix_props.port_name,
+                                  ns_config:latest(), Node),
+    true = Port =/= undefined,
     {Addr, Port}.
 
 node_address(Node) ->
@@ -287,11 +289,6 @@ port_name_by_service_name(cbas) -> cbas_http_port;
 port_name_by_service_name(n1ql) -> query_port;
 port_name_by_service_name(views) -> capi_port;
 port_name_by_service_name(eventing) -> eventing_http_port.
-
-lookup_port(Name, Node) ->
-    {value, Port} = ns_config:search(ns_config:latest(),
-                                     {node, Node, Name}),
-    Port.
 
 get_timeout(views, Req) ->
     Params = mochiweb_request:parse_qs(Req),

@@ -2771,7 +2771,7 @@ do_get_indexes(Service, BucketId0, Nodes) ->
     WantedHosts0 =
         [begin
              {_, Host} = misc:node_name_host(N),
-             Port = misc:node_rest_port(N),
+             Port = service_ports:get_port(rest_port, ns_config:latest(), N),
              list_to_binary(misc:join_host_port(Host, Port))
          end || N <- Nodes],
     WantedHosts = lists:usort(WantedHosts0),

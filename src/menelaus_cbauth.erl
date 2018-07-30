@@ -209,7 +209,7 @@ build_node_info(N, User, Config) ->
     Ports =
         case N =:= node() andalso not lists:member(kv, ActiveServices) of
             true ->
-                [ns_config:search_node_prop(node(), Config, memcached, port) | Ports0];
+                [service_ports:get_port(memcached_port, Config) | Ports0];
             false ->
                 Ports0
         end,
@@ -242,7 +242,7 @@ build_auth_info(#state{cert_version = CertVersion,
 
     CcaState = proplists:get_value(state,
                                    ns_ssl_services_setup:client_cert_auth()),
-    Port = misc:node_rest_port(Config, node()),
+    Port = service_ports:get_port(rest_port, Config),
     AuthCheckURL = misc:local_url(Port, "/_cbauth", []),
     PermissionCheckURL = misc:local_url(Port, "/_cbauth/checkPermission", []),
     PermissionsVersion = menelaus_web_rbac:check_permissions_url_version(Config),

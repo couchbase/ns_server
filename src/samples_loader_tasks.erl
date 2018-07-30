@@ -122,7 +122,7 @@ perform_loading_task(Name, Quota) ->
     end,
 
     {_Name, Host} = misc:node_name_host(node()),
-    Port = misc:node_rest_port(ns_config:get(), node()),
+    Port = service_ports:get_port(rest_port),
     BinDir = path_config:component_path(bin),
 
     Cmd = BinDir ++ "/cbdocloader",

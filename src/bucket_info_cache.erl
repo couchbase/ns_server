@@ -156,8 +156,7 @@ do_compute_bucket_info(Bucket, Config) ->
 node_bucket_info(Node, Config, Bucket, BucketUUID, BucketConfig) ->
     HostName = menelaus_web_node:build_node_hostname(Config, Node,
                                                      ?LOCALHOST_MARKER_STRING),
-    Ports = {[{direct,
-               ns_config:search_node_prop(Node, Config, memcached, port)}]},
+    Ports = {[{direct, service_ports:get_port(memcached_port, Config, Node)}]},
     WantedPorts = [rest_port, memcached_port],
 
     Info0 = [{hostname, list_to_binary(HostName)},

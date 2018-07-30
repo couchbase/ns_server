@@ -33,7 +33,7 @@ get_type() ->
     fts.
 
 get_port() ->
-    ns_config:read_key_fast({node, node(), fts_http_port}, 8094).
+    service_ports:get_port(fts_http_port).
 
 get_timeout() ->
     ?get_timeout(rest_request, 10000).

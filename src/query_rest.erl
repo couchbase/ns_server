@@ -25,10 +25,10 @@
          get_stats/0]).
 
 get_query_port(Config, Node) ->
-    ns_config:search(Config, {node, Node, query_port}, undefined).
+    service_ports:get_port(query_port, Config, Node).
 
 get_ssl_query_port(Config, Node) ->
-    ns_config:search(Config, {node, Node, ssl_query_port}, undefined).
+    service_ports:get_port(ssl_query_port, Config, Node).
 
 get_stats() ->
     case ns_cluster_membership:should_run_service(ns_config:latest(), n1ql, node()) of

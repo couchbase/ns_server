@@ -441,7 +441,9 @@ handle_sasl_buckets_streaming(_PoolId, Req) ->
                                        Hostname =
                                            list_to_binary(
                                              menelaus_web_node:build_node_hostname(Config, N, LocalAddr)),
-                                       DirectPort = ns_config:search_node_prop(N, Config, memcached, port),
+                                       DirectPort =
+                                           service_ports:get_port(
+                                             memcached_port, Config, N),
                                        {struct, [{hostname, Hostname},
                                                  {ports,
                                                   {struct,

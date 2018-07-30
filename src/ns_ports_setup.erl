@@ -215,7 +215,7 @@ query_node_spec(Config) ->
     end.
 
 build_query_node_spec(Config) ->
-    RestPort = misc:node_rest_port(Config, node()),
+    RestPort = service_ports:get_port(rest_port, Config),
     Command = path_config:component_path(bin, "cbq-engine"),
     DataStoreArg = "--datastore=" ++ misc:local_url(RestPort, []),
     CnfgStoreArg = "--configstore=" ++ misc:local_url(RestPort, []),
@@ -261,9 +261,9 @@ kv_node_projector_spec(Config) ->
             [];
         _ ->
             % Projector is a component that is required by 2i
-            ProjectorPort = ns_config:search(Config, {node, node(), projector_port}, 9999),
-            RestPort = misc:node_rest_port(Config, node()),
-            LocalMemcachedPort = ns_config:search_node_prop(node(), Config, memcached, port),
+            ProjectorPort = service_ports:get_port(projector_port, Config),
+            RestPort = service_ports:get_port(rest_port, Config),
+            LocalMemcachedPort = service_ports:get_port(memcached_port, Config),
             MinidumpDir = path_config:minidump_dir(),
 
             Args = ["-kvaddrs=" ++ misc:local_url(LocalMemcachedPort, [no_scheme]),
@@ -289,7 +289,7 @@ goxdcr_spec(Config) ->
 
 create_goxdcr_spec(Config, Cmd) ->
     AdminPort = "-sourceKVAdminPort=" ++
-        integer_to_list(misc:node_rest_port(Config, node())),
+        integer_to_list(service_ports:get_port(rest_port, Config)),
     XdcrRestPort = "-xdcrRestPort=" ++
         integer_to_list(ns_config:search(Config, {node, node(), xdcr_rest_port}, 9998)),
     IsEnterprise = "-isEnterprise=" ++ atom_to_list(cluster_compat_mode:is_enterprise()),
@@ -307,13 +307,14 @@ index_node_spec(Config) ->
             [];
         _ ->
             IndexerCmd = path_config:component_path(bin, "indexer"),
-            RestPort = misc:node_rest_port(Config, node()),
-            AdminPort = ns_config:search(Config, {node, node(), indexer_admin_port}, 9100),
-            ScanPort = ns_config:search(Config, {node, node(), indexer_scan_port}, 9101),
-            HttpPort = ns_config:search(Config, {node, node(), indexer_http_port}, 9102),
-            StInitPort = ns_config:search(Config, {node, node(), indexer_stinit_port}, 9103),
-            StCatchupPort = ns_config:search(Config, {node, node(), indexer_stcatchup_port}, 9104),
-            StMaintPort = ns_config:search(Config, {node, node(), indexer_stmaint_port}, 9105),
+            RestPort = service_ports:get_port(rest_port, Config),
+            AdminPort = service_ports:get_port(indexer_admin_port, Config),
+            ScanPort = service_ports:get_port(indexer_scan_port, Config),
+            HttpPort = service_ports:get_port(indexer_http_port, Config),
+            StInitPort = service_ports:get_port(indexer_stinit_port, Config),
+            StCatchupPort = service_ports:get_port(indexer_stcatchup_port,
+                                                   Config),
+            StMaintPort = service_ports:get_port(indexer_stmaint_port, Config),
             {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
             IdxDir2 = filename:join(IdxDir, "@2i"),
             MinidumpDir = path_config:minidump_dir(),
@@ -360,7 +361,7 @@ build_tls_config_env_var(Config) ->
 
 build_cbauth_env_vars(Config, RPCService) ->
     true = (RPCService =/= undefined),
-    RestPort = misc:node_rest_port(Config, node()),
+    RestPort = service_ports:get_port(rest_port, Config),
     User = mochiweb_util:quote_plus(ns_config_auth:get_user(special)),
     Password = mochiweb_util:quote_plus(ns_config_auth:get_password(special)),
     URL = misc:local_url(RestPort, atom_to_list(RPCService), [{user_info, {User, Password}}]),
@@ -438,23 +439,27 @@ fts_spec(Config) ->
         false ->
             [];
         _ ->
-            NsRestPort = misc:node_rest_port(Config, node()),
-            FtRestPort = ns_config:search(Config, {node, node(), fts_http_port}, 8094),
+            NsRestPort = service_ports:get_port(rest_port, Config),
+            FtRestPort = service_ports:get_port(fts_http_port, Config),
             {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
             FTSIdxDir = filename:join(IdxDir, "@fts"),
             ok = misc:ensure_writable_dir(FTSIdxDir),
             {_, Host} = misc:node_name_host(node()),
-            BindHttp = io_lib:format("~s:~b,~s:~b", [misc:maybe_add_brackets(Host), FtRestPort,
-                                                     misc:inaddr_any([url]),
-                                                     FtRestPort]),
-            BindHttps = case ns_config:search(Config, {node, node(), fts_ssl_port}, undefined) of
-                            undefined ->
-                                [];
-                            Port ->
-                                ["-bindHttps=:" ++ integer_to_list(Port),
-                                 "-tlsCertFile=" ++ ns_ssl_services_setup:memcached_cert_path(),
-                                 "-tlsKeyFile=" ++ ns_ssl_services_setup:memcached_key_path()]
-                        end,
+            BindHttp = io_lib:format("~s:~b,~s:~b",
+                                     [misc:maybe_add_brackets(Host), FtRestPort,
+                                      misc:inaddr_any([url]),
+                                      FtRestPort]),
+            BindHttps =
+                case service_ports:get_port(fts_ssl_port, Config) of
+                    undefined ->
+                        [];
+                    Port ->
+                        ["-bindHttps=:" ++ integer_to_list(Port),
+                         "-tlsCertFile=" ++
+                             ns_ssl_services_setup:memcached_cert_path(),
+                         "-tlsKeyFile=" ++
+                             ns_ssl_services_setup:memcached_key_path()]
+                end,
             {ok, FTSMemoryQuota} = memory_quota:get_quota(Config, fts),
             MaxReplicasAllowed = case cluster_compat_mode:is_enterprise() of
                                      true -> 3;
@@ -503,10 +508,11 @@ eventing_spec(Config) ->
         NodeUUID =/= false andalso
         ns_cluster_membership:should_run_service(Config, eventing, node()) of
         true ->
-            EventingAdminPort = ns_config:search(Config, {node, node(), eventing_http_port}, 8096),
-            LocalMemcachedPort = ns_config:search_node_prop(node(), Config, memcached, port),
-            RestPort = misc:node_rest_port(Config, node()),
-            DebugPort = ns_config:search(Config, {node, node(), eventing_debug_port}, 9140),
+            EventingAdminPort = service_ports:get_port(eventing_http_port,
+                                                       Config),
+            LocalMemcachedPort = service_ports:get_port(memcached_port, Config),
+            RestPort = service_ports:get_port(rest_port, Config),
+            DebugPort = service_ports:get_port(eventing_debug_port, Config),
 
             {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
             EventingDir = filename:join(IdxDir, "@eventing"),
@@ -514,13 +520,15 @@ eventing_spec(Config) ->
             MinidumpDir = path_config:minidump_dir(),
 
             BindHttps =
-                case ns_config:search(Config, {node, node(), eventing_https_port}, undefined) of
+                case service_ports:get_port(eventing_https_port, Config) of
                     undefined ->
                         [];
                     Port ->
                         ["-adminsslport=" ++ integer_to_list(Port),
-                         "-certfile=" ++ ns_ssl_services_setup:memcached_cert_path(),
-                         "-keyfile=" ++ ns_ssl_services_setup:memcached_key_path()]
+                         "-certfile=" ++
+                             ns_ssl_services_setup:memcached_cert_path(),
+                         "-keyfile=" ++
+                             ns_ssl_services_setup:memcached_key_path()]
                 end,
 
             Spec = {eventing, Command,
@@ -550,22 +558,25 @@ cbas_spec(Config) ->
         false ->
             [];
         _ ->
-            NsRestPort = misc:node_rest_port(Config, node()),
-            HttpPort = ns_config:search(Config, {node, node(), cbas_http_port}, 8095),
-            AdminPort = ns_config:search(Config, {node, node(), cbas_admin_port}, 9110),
-            CCHttpPort = ns_config:search(Config, {node, node(), cbas_cc_http_port}, 9111),
-            CCClusterPort = ns_config:search(Config, {node, node(), cbas_cc_cluster_port}, 9112),
-            CCClientPort = ns_config:search(Config, {node, node(), cbas_cc_client_port}, 9113),
-            ConsolePort = ns_config:search(Config, {node, node(), cbas_console_port}, 9114),
-            ClusterPort = ns_config:search(Config, {node, node(), cbas_cluster_port}, 9115),
-            DataPort = ns_config:search(Config, {node, node(), cbas_data_port}, 9116),
-            ResultPort = ns_config:search(Config, {node, node(), cbas_result_port}, 9117),
-            MessagingPort = ns_config:search(Config, {node, node(), cbas_messaging_port}, 9118),
-            MetadataCallbackPort = ns_config:search(Config, {node, node(), cbas_metadata_callback_port}, 9119),
-            ReplicationPort = ns_config:search(Config, {node, node(), cbas_replication_port}, 9120),
-            MetadataPort = ns_config:search(Config, {node, node(), cbas_metadata_port}, 9121),
-            ParentPort = ns_config:search(Config, {node, node(), cbas_parent_port}, 9122),
-            DebugPort = ns_config:search(Config, {node, node(), cbas_debug_port}, -1),
+            NsRestPort = service_ports:get_port(rest_port, Config),
+            HttpPort = service_ports:get_port(cbas_http_port, Config),
+            AdminPort = service_ports:get_port(cbas_admin_port, Config),
+            CCHttpPort = service_ports:get_port(cbas_cc_http_port, Config),
+            CCClusterPort = service_ports:get_port(cbas_cc_cluster_port,
+                                                   Config),
+            CCClientPort = service_ports:get_port(cbas_cc_client_port, Config),
+            ConsolePort = service_ports:get_port(cbas_console_port, Config),
+            ClusterPort = service_ports:get_port(cbas_cluster_port, Config),
+            DataPort = service_ports:get_port(cbas_data_port, Config),
+            ResultPort = service_ports:get_port(cbas_result_port, Config),
+            MessagingPort = service_ports:get_port(cbas_messaging_port, Config),
+            MetadataCallbackPort = service_ports:get_port(
+                                     cbas_metadata_callback_port, Config),
+            ReplicationPort = service_ports:get_port(cbas_replication_port,
+                                                     Config),
+            MetadataPort = service_ports:get_port(cbas_metadata_port, Config),
+            ParentPort = service_ports:get_port(cbas_parent_port, Config),
+            DebugPort = service_ports:get_port(cbas_debug_port, Config),
 
             CBASDirs = [filename:join([Token], "@analytics") ||
                            Token <- ns_storage_conf:this_node_cbas_dirs()],
@@ -576,14 +587,17 @@ cbas_spec(Config) ->
 
             {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
             {_, Host} = misc:node_name_host(node()),
-            HttpsOptions = case ns_config:search(Config, {node, node(), cbas_ssl_port}, undefined) of
-                            undefined ->
-                                [];
-                            Port ->
-                                ["-bindHttpsPort=" ++ integer_to_list(Port),
-                                 "-tlsCertFile=" ++ ns_ssl_services_setup:memcached_cert_path(),
-                                 "-tlsKeyFile=" ++ ns_ssl_services_setup:memcached_key_path()]
-                        end,
+            HttpsOptions =
+                case service_ports:get_port(cbas_ssl_port, Config) of
+                    undefined ->
+                        [];
+                    Port ->
+                        ["-bindHttpsPort=" ++ integer_to_list(Port),
+                         "-tlsCertFile=" ++
+                             ns_ssl_services_setup:memcached_cert_path(),
+                         "-tlsKeyFile=" ++
+                             ns_ssl_services_setup:memcached_key_path()]
+                end,
             {ok, MemoryQuota} = memory_quota:get_quota(Config, cbas),
             Spec = {cbas, Cmd,
                     [
@@ -628,7 +642,7 @@ example_service_spec(Config) ->
         NodeUUID =/= false andalso
         ns_cluster_membership:should_run_service(Config, example, node()) of
         true ->
-            Port = misc:node_rest_port(Config, node()) + 20000,
+            Port = service_ports:get_port(rest_port, Config) + 20000,
             {_, Host} = misc:node_name_host(node()),
             Args = ["-node-id", binary_to_list(NodeUUID),
                     "-host", misc:join_host_port(Host, Port)],

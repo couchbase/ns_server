@@ -1057,7 +1057,7 @@ get_vbucket_details_stats(Bucket, VBucket) ->
 -spec host_port(node(), any()) ->
                            {nonempty_string(), pos_integer() | undefined}.
 host_port(Node, Config) ->
-    DefaultPort = ns_config:search_node_prop(Node, Config, memcached, port),
+    DefaultPort = service_ports:get_port(memcached_port, Config, Node),
     Port = ns_config:search_node_prop(Node, Config,
                                       memcached, dedicated_port, DefaultPort),
     {_Name, Host} = misc:node_name_host(Node),
@@ -1191,7 +1191,7 @@ connect(Options) ->
 
 connect(Options, Tries) ->
     Config = ns_config:get(),
-    Port = ns_config:search_node_prop(Config, memcached, dedicated_port),
+    Port = service_ports:get_port(memcached_dedicated_port, Config),
     User = ns_config:search_node_prop(Config, memcached, admin_user),
     Pass = ns_config:search_node_prop(Config, memcached, admin_pass),
     try

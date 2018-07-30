@@ -45,7 +45,7 @@ get_type() ->
     eventing.
 
 get_port() ->
-    ns_config:read_key_fast({node, node(), eventing_http_port}, 8096).
+    service_ports:get_port(eventing_http_port).
 
 get_local_status() ->
     Timeout = ?get_timeout(status, 30000),

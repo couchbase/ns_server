@@ -27,7 +27,7 @@ get_type() ->
     cbas.
 
 get_port() ->
-    ns_config:read_key_fast({node, node(), cbas_admin_port}, 9110).
+    service_ports:get_port(cbas_admin_port).
 
 restart() ->
     [].

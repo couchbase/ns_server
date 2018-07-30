@@ -378,8 +378,8 @@ json_map_with_full_config(LocalAddr, BucketConfig, Config) ->
                                                                 EMap]))),
     Servers = lists:map(
                 fun (ENode) ->
-                        Port = ns_config:search_node_prop(ENode, Config,
-                                                          memcached, port),
+                        Port = service_ports:get_port(memcached_port, Config,
+                                                      ENode),
                         {_, H} = misc:node_name_host(ENode),
                         Host = case misc:is_localhost(H) of
                                    true  -> LocalAddr;
@@ -496,20 +496,18 @@ is_port_free(BucketName, Port, Config) ->
                        _ ->
                            proplists:get_value(port, menelaus_web:webconfig(Config))
                    end,
-    SSLCapiPort = ns_config:search(Config, {node, node(), ssl_capi_port}, undefined),
-    SSLRestPort = ns_config:search(Config, {node, node(), ssl_rest_port}, undefined),
-
-    Port =/= ns_config:search_node_prop(Config, memcached, port)
-        andalso Port =/= ns_config:search_node_prop(Config, memcached, dedicated_port)
-        andalso Port =/= ns_config:search_node_prop(Config, memcached, ssl_port)
+    Port =/= service_ports:get_port(memcached_port, Config)
+        andalso Port =/= service_ports:get_port(memcached_dedicated_port,
+                                                Config)
+        andalso Port =/= service_ports:get_port(memcached_ssl_port, Config)
         andalso Port =/= ns_config:search_node_prop(Config, moxi, port)
-        andalso Port =/= capi_utils:get_capi_port(node(), Config)
+        andalso Port =/= service_ports:get_port(capi_port, Config)
         andalso Port =/= TakenWebPort
         andalso Port =/= 4369 %% default epmd port
         andalso is_not_a_bucket_port(BucketName, Port)
         andalso is_not_a_kernel_port(Port)
-        andalso Port =/= SSLCapiPort
-        andalso Port =/= SSLRestPort.
+        andalso Port =/= service_ports:get_port(ssl_capi_port, Config)
+        andalso Port =/= service_ports:get_port(ssl_rest_port, Config).
 
 validate_bucket_config(BucketName, NewConfig) ->
     case is_valid_bucket_name(BucketName) of
