@@ -160,6 +160,8 @@ h1 a:active {
   text-align: right;
   white-space: nowrap;
   border-right: 2px solid #fff;
+  opacity: 1;
+  transition: all 0.3s;
 }
 .nav-sidebar a:hover {
   border-right: 2px solid #d9e7f7;

@@ -33,6 +33,7 @@ main {
   padding: 1rem;
   margin: 0;
   width: 100vw;
+  position: relative;
 }
 /* nav element for child pages, positioned under header ----------------- */
 nav.sub-nav {
@@ -47,6 +48,33 @@ nav.nav-sidebar {
   padding: .25rem 0 2rem 0;
   margin: 0 2rem 120px 0;
   text-align: right;
+  width: 104px;
+  transition: all 0.5s;
+}
+.nav-sidebar:hover .hidden {
+  display: block!important;
+}
+.nav-sidebar-hidden {
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow: clip;
+  width: 0px!important;
+  margin: 0 1rem!important;
+  transition: all 0.5s;
+}
+.nav-sidebar-hidden a {
+  opacity: 0!important;
+  transition: all 0.5s;
+}
+.sidebar-hidden-control {
+  position: absolute;
+  left: 6px;
+  top: 12px;
+  cursor: pointer;
+  color: #d1d1d1;
+}
+.sidebar-hidden-control:hover {
+  color: #999;
 }
 /* wrapper for all content in <main> besides sidebar -------------------- */
 .main-content {
