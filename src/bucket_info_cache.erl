@@ -117,7 +117,9 @@ submit_full_reset() ->
 
 get_service_ports(Node, Config, Service) ->
     ServicePorts = service_ports:service_ports(Service),
-    lists:filtermap(fun ({ConfigKey, RestKey}) ->
+    lists:filtermap(fun ({_, undefined}) ->
+                            false;
+                        ({ConfigKey, RestKey}) ->
                             case ns_config:search(Config,
                                                   {node, Node, ConfigKey},
                                                   undefined) of
@@ -132,8 +134,12 @@ build_services(Node, Config, EnabledServices) ->
     GetPort = fun (ConfigKey) ->
                       case ns_config:search_node(Node, Config, ConfigKey) of
                           {value, Value} when Value =/= undefined ->
-                              JKey = service_ports:rest_name(ConfigKey),
-                              [{JKey, Value}];
+                              case service_ports:rest_name(ConfigKey) of
+                                  undefined ->
+                                      [];
+                                  JKey ->
+                                      [{JKey, Value}]
+                              end;
                           _ ->
                               []
                       end

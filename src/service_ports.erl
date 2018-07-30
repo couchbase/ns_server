@@ -28,8 +28,14 @@
 -record(port, {config, rest, service}).
 -define(define_port(ConfName, RestName, Service),
         #port{config  = ConfName,
-              rest    = <<??RestName>>,
+              rest    = rest_name_to_bin(RestName),
               service = Service}).
+
+rest_name_to_bin(undefined) ->
+    undefined;
+rest_name_to_bin(RestName) ->
+    atom_to_binary(RestName, latin1).
+
 all_ports() ->
     [%% rest service ports
      ?define_port(rest_port, mgmt, rest),
