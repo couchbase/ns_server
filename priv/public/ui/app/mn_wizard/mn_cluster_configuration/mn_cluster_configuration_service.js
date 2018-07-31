@@ -62,9 +62,9 @@
     if (mnPools.export.isEnterprise) {
       newConfig.displayedServices.cbas = true;
       newConfig.services.disabled.cbas = false;
-      newConfig.services.model.cbas = false;
+      newConfig.services.model.cbas = true;
       joinClusterConfig.services.disabled.cbas = false;
-      joinClusterConfig.services.model.cbas = false;
+      joinClusterConfig.services.model.cbas = true;
       newConfig.showCBASMemoryQuota = true;
 
       newConfig.displayedServices.eventing = true;
@@ -170,6 +170,7 @@
         rv.hostname = selfConfig.hostname;
         rv.dbPath = selfConfig.storage.hdd[0].path;
         rv.indexPath = selfConfig.storage.hdd[0].index_path;
+        rv.java_home = selfConfig.storage.hdd[0].java_home;
         return rv;
       });
     }
