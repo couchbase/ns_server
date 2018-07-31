@@ -29,9 +29,9 @@
 
 -include("ns_common.hrl").
 
--record(port, {config, rest, service, default, secure}).
--define(define_port(ConfName, RestName, Service, Default, Sec),
-        #port{config  = ConfName,
+-record(port, {key, rest, service, default, secure}).
+-define(define_port(Key, RestName, Service, Default, Sec),
+        #port{key     = Key,
               rest    = rest_name_to_bin(RestName),
               service = Service,
               default = Default,
@@ -111,14 +111,14 @@ complex_config_key(Key) ->
     config_key(Key) =/= Key.
 
 default(Key, IsEnterprise) ->
-    default(Key, lists:keyfind(Key, #port.config, all_ports()), IsEnterprise).
+    default(Key, lists:keyfind(Key, #port.key, all_ports()), IsEnterprise).
 
 default(_Key, #port{secure = secure}, false = _IsEnterprise) ->
     undefined;
 default(Key, #port{default = Default}, _IsEnterprise) ->
     misc:get_env_default(Key, Default).
 
-default_config(#port{config = rest_port, default = Default}, _IsEnterprise) ->
+default_config(#port{key = rest_port, default = Default}, _IsEnterprise) ->
     PortMeta = case application:get_env(rest_port) of
                    {ok, _Port} -> local;
                    undefined -> global
@@ -127,11 +127,11 @@ default_config(#port{config = rest_port, default = Default}, _IsEnterprise) ->
      {{node, node(), rest},
       [{port, misc:get_env_default(rest_port, Default)},
        {port_meta, PortMeta}]}];
-default_config(#port{config = Key} = P, IsEnterprise) ->
+default_config(#port{key = Key} = P, IsEnterprise) ->
     [{{node, node(), Key}, default(Key, P, IsEnterprise)}].
 
 default_config(IsEnterprise) ->
-    lists:flatmap(fun (#port{config = Key} = P) ->
+    lists:flatmap(fun (#port{key = Key} = P) ->
                           case complex_config_key(Key) of
                               true ->
                                   [];
@@ -162,7 +162,7 @@ get_port(Key, Config, Node) ->
     end.
 
 service_ports(Service) ->
-    [{P#port.config, P#port.rest} ||
+    [{P#port.key, P#port.rest} ||
      P <- all_ports(), P#port.service =:= Service].
 
 service_ports_config_name(Service) ->
@@ -177,11 +177,11 @@ find_by_rest_name(RestName) when is_binary(RestName) ->
         false ->
             undefined;
         Port ->
-            Port#port.config
+            Port#port.key
     end.
 
 rest_name(Key) ->
-    Port = lists:keyfind(Key, #port.config, all_ports()),
+    Port = lists:keyfind(Key, #port.key, all_ports()),
     Port#port.rest.
 
 get_internal_ports(Node, Config) ->
@@ -209,12 +209,12 @@ get_external_host_and_ports(Node, Config, WantedPorts) ->
 filter_rename_ports([], _WantedPorts) -> [];
 filter_rename_ports(Ports, WantedPorts) ->
     lists:filtermap(
-      fun (ConfigName) ->
-              case lists:keyfind(ConfigName, 1, Ports) of
+      fun (Key) ->
+              case lists:keyfind(Key, 1, Ports) of
                   false ->
                       false;
-                  {ConfigName, Value} ->
-                      {true, {rest_name(ConfigName), Value}}
+                  {Key, Value} ->
+                      {true, {rest_name(Key), Value}}
               end
       end, WantedPorts).
 
