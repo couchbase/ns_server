@@ -135,10 +135,7 @@ build_nodes_ext([Node | RestNodes], Config, NodesExtAcc) ->
               _ ->
                   NI1
           end,
-    ReqServices = [rest | Services],
-    WantedPorts = lists:flatmap(
-                    fun service_ports:service_ports_config_name/1,
-                    ReqServices),
+    WantedPorts = service_ports:services_port_keys([rest | Services]),
 
     NI3 = NI2 ++ alternate_addresses_json(Node, Config, WantedPorts),
     NodeInfo = {[{services, {service_ports:get_ports_for_services(

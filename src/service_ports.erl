@@ -23,7 +23,7 @@
          default/2,
          default_config/1,
          find_by_rest_name/1,
-         service_ports_config_name/1,
+         services_port_keys/1,
          get_external_host_and_ports/3,
          get_ports_for_services/3]).
 
@@ -161,12 +161,9 @@ get_port(Key, Config, Node) ->
             ns_config:search_node_with_default(Node, Config, K, undefined)
     end.
 
-service_ports(Service) ->
-    [{P#port.key, P#port.rest} ||
-     P <- all_ports(), P#port.service =:= Service].
-
-service_ports_config_name(Service) ->
-    [C || {C, _} <- service_ports(Service)].
+services_port_keys(Services) ->
+    AllPorts = all_ports(),
+    [P#port.key || P <- AllPorts, lists:member(P#port.service, Services)].
 
 find_by_rest_name(RestName) when is_atom(RestName) ->
     find_by_rest_name(atom_to_binary(RestName, latin1));
@@ -180,57 +177,56 @@ find_by_rest_name(RestName) when is_binary(RestName) ->
             Port#port.key
     end.
 
-rest_name(Key) ->
-    Port = lists:keyfind(Key, #port.key, all_ports()),
-    Port#port.rest.
-
 get_internal_ports(Node, Config) ->
     Services = ns_cluster_membership:node_active_services(Config, Node),
-    lists:map(
-      fun ({P, PN}) ->
-              PortKey = find_by_rest_name(P),
-              true = PortKey =/= undefined,
-              {PortKey, PN}
-      end, get_ports_for_services(Node, Config, Services)).
+    get_ports_for_services_int(Node, Config, Services).
 
 get_external_host_and_ports(Node, Config, WantedPorts) ->
     External = ns_config:search_node_prop(Node, Config,
                                           alternate_addresses, external,
                                           []),
     Hostname = proplists:get_value(hostname, External),
-    Ports = case proplists:get_value(ports, External, []) of
-                [] when Hostname =/= undefined ->
-                    get_internal_ports(Node, Config);
-                P ->
-                    P
-            end,
-    {Hostname, filter_rename_ports(Ports, WantedPorts)}.
+    Ports =
+        case proplists:get_value(ports, External, []) of
+            [] when Hostname =/= undefined ->
+                [{Rest, Value} ||
+                    {#port{key = Key, rest = Rest}, Value} <-
+                        get_internal_ports(Node, Config),
+                    lists:member(Key, WantedPorts)];
+            ExtPorts ->
+                AllPorts = all_ports(),
+                lists:filtermap(
+                  fun (Key) ->
+                          case lists:keyfind(Key, 1, ExtPorts) of
+                              false ->
+                                  false;
+                              {Key, Value} ->
+                                  P = lists:keyfind(Key, #port.key, AllPorts),
+                                  {true, {P#port.rest, Value}}
+                          end
+                  end, WantedPorts)
+        end,
+    {Hostname, Ports}.
 
-filter_rename_ports([], _WantedPorts) -> [];
-filter_rename_ports(Ports, WantedPorts) ->
-    lists:filtermap(
-      fun (Key) ->
-              case lists:keyfind(Key, 1, Ports) of
-                  false ->
-                      false;
-                  {Key, Value} ->
-                      {true, {rest_name(Key), Value}}
-              end
-      end, WantedPorts).
-
-get_ports_for_services(Node, Config, Services) ->
+get_ports_for_services_int(Node, Config, Services) ->
+    AllPorts = all_ports(),
     lists:flatmap(
       fun (Service) ->
-              ServicePorts = service_ports(Service),
+              ServicePorts = [P || P <- AllPorts, P#port.service =:= Service],
               lists:filtermap(
-                fun ({_, undefined}) ->
+                fun (#port{rest = undefined}) ->
                         false;
-                    ({Key, RestKey}) ->
+                    (#port{key = Key} = P) ->
                         case get_port(Key, Config, Node) of
                             undefined ->
                                 false;
                             Port ->
-                                {true, {RestKey, Port}}
+                                {true, {P, Port}}
                         end
                 end, ServicePorts)
       end, [rest | Services]).
+
+get_ports_for_services(Node, Config, Services) ->
+    [{RestKey, Port} ||
+        {#port{rest = RestKey}, Port}
+            <- get_ports_for_services_int(Node, Config, Services)].
