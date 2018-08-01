@@ -22,7 +22,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -define(MAX_MOVES_PER_NODE,
-        ns_config:read_key_fast(rebalance_moves_per_node, 1)).
+        ns_config:read_key_fast(rebalance_moves_per_node, 4)).
 -define(MOVES_BEFORE_COMPACTION,
         ns_config:read_key_fast(rebalance_moves_before_compaction, 64)).
 -define(MAX_INFLIGHT_MOVES_PER_NODE,

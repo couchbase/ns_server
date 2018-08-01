@@ -87,7 +87,7 @@ conf(internal) ->
      {rebalance_index_waiting_disabled, rebalanceIndexWaitingDisabled, false, fun get_bool/1},
      {index_pausing_disabled, rebalanceIndexPausingDisabled, false, fun get_bool/1},
      {rebalance_ignore_view_compactions, rebalanceIgnoreViewCompactions, false, fun get_bool/1},
-     {rebalance_moves_per_node, rebalanceMovesPerNode, 1, get_number(1, 1024)},
+     {rebalance_moves_per_node, rebalanceMovesPerNode, 4, get_number(1, 1024)},
      {rebalance_moves_before_compaction, rebalanceMovesBeforeCompaction, 64, get_number(1, 1024)},
      {{couchdb, max_parallel_indexers}, maxParallelIndexers, <<>>, get_number(1, 1024)},
      {{couchdb, max_parallel_replica_indexers}, maxParallelReplicaIndexers, <<>>, get_number(1, 1024)},
