@@ -180,15 +180,20 @@ mover_inner_dcp(Parent, Bucket, VBucket,
     %% wait for backfill on all the opened streams
     AllBuiltNodes = JustBackfillNodes ++ ReplicaNodes,
     wait_dcp_data_move(Bucket, Parent, OldMaster, AllBuiltNodes, VBucket),
+
+    %% grab the seqno from the old master and wait till this seqno is
+    %% persisted on all the replicas
+    wait_master_seqno_persisted_on_replicas(Bucket, VBucket, Parent,
+                                            OldMaster, AllBuiltNodes),
+
+    ?rebalance_debug("Backfill of vBucket ~p completed after waiting for "
+                     "persistence of high sequence number.", [VBucket]),
+
     master_activity_events:note_backfill_phase_ended(Bucket, VBucket),
 
     %% notify parent that the backfill is done, so it can start rebalancing
     %% next vbucket
     Parent ! {backfill_done, {VBucket, OldChain, NewChain, Quirks}},
-
-    %% grab the seqno from the old master and wait till this seqno is
-    %% persisted on all the replicas
-    wait_master_seqno_persisted_on_replicas(Bucket, VBucket, Parent, OldMaster, AllBuiltNodes),
 
     case OldMaster =:= NewMaster of
         true ->
