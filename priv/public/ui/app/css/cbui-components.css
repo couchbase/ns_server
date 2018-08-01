@@ -161,7 +161,7 @@ h1 a:active {
   white-space: nowrap;
   border-right: 2px solid #fff;
   opacity: 1;
-  transition: all 0.3s;
+  transition: all 1.2s;
 }
 .nav-sidebar a:hover {
   border-right: 2px solid #d9e7f7;
