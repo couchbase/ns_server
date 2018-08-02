@@ -582,18 +582,18 @@ roles_55() ->
        {[pools], [read]}]},
      {analytics_manager, [bucket_name],
       [{name, <<"Analytics Manager">>},
-       {desc, <<"Can manage Analytics buckets and shadow datasets on which "
-                "they also have bucket data read permission. This user can "
-                "access the web console and read some data.">>}],
+       {desc, <<"Can manage Analytics links. Can manage datasets on a given bucket. "
+                "Can query datasets. This user can access the web console and read "
+                "some data.">>}],
       [{[{bucket, bucket_name}, analytics], [manage]},
        {[analytics], [select]},
        {[ui], [read]},
        {[pools], [read]}]},
      {analytics_reader, [],
       [{name, <<"Analytics Reader">>},
-       {desc, <<"Can query shadow datasets. This is a global role as shadow "
-                "datasets may be created on different buckets. This "
-                "user can access the web console and read some data.">>}],
+       {desc, <<"Can query datasets. This is a global role as datasets may "
+                "be created on different buckets. This user can access the "
+                "web console and read some data.">>}],
       [{[analytics], [select]},
        {[ui], [read]},
        {[pools], [read]}]}].
