@@ -148,18 +148,27 @@
   </div>
 
   <main>
+    <div
+       class="sidebar-opener"
+       ng-class="{'show' : hideNavSidebar}"
+       ng-click="hideNavSidebar = false">
+      <span class="icon fa-chevron-right"></span>
+    </div>
+
     <nav
        class="nav-sidebar"
        ng-class="{'resp-show-menu' : showRespMenu, 'nav-sidebar-hidden' : hideNavSidebar}"
        ng-click="showRespMenu = !showRespMenu"
        mn-pluggable-ui-tabs
        mn-tab-bar-name="adminTab">
-      <div
-         class="sidebar-hidden-control"
-         ng-show="hideNavSidebar"
-         ng-click="hideNavSidebar = false">
-        <span class="icon fa-navicon fa-1-5x"></span>
-      </div>
+
+        <div class="sidebar-closer-wrapper">
+       <div
+          class="sidebar-closer"
+          ng-click="hideNavSidebar = true">
+         <span class="icon fa-chevron-left"></span>
+       </div>
+       </div>
       <a
          mn-tab="overview"
          ui-sref="app.admin.overview"
@@ -231,13 +240,8 @@
           Indexes
          </a>
       </span>
-      <div class="margin-top-1 hidden">
-        <a ng-click="hideNavSidebar = true">
-          << hide
-        </a>
-      </div>
     </nav>
 
     <!-- all page content goes here -->
-    <div ui-view="main" autoscroll="false" class="main-content min-width-zero" mn-spinner="showMainSpinner" opacity="true"></div>
+    <div ui-view="main" autoscroll="false" class="main-content min-width-zero width-12" mn-spinner="showMainSpinner" opacity="true"></div>
   </main>

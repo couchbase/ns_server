@@ -55,6 +55,14 @@
   .header-controls:empty {
     height: 0;
   }
+  nav.nav-sidebar.nav-sidebar-hidden {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+    width: 192px!important;
+    margin-right: 0;
+    transform: translateX(198px)!important;
+  }
   nav.nav-sidebar {
     position: fixed;
     width: 192px;
@@ -69,6 +77,12 @@
     z-index: 10;
     transition: transform 0.25s;
     transform: translateX(198px);
+  }
+  .nav-sidebar:hover .sidebar-closer-wrapper {
+    opacity: 0!important;
+  }
+  .sidebar-opener {
+    display: none;
   }
   nav.nav-sidebar a {
     padding: .25rem .125rem .25rem .75rem;
@@ -230,8 +244,9 @@
   .resp-show {
     display: block;
   }
-  nav.resp-show-menu {
-    transform: translateX(0);
+  nav.resp-show-menu,
+  nav.nav-sidebar.nav-sidebar-hidden.resp-show-menu {
+    transform: translateX(0)!important;
   }
   .resp-show-flex {
     display: flex;
