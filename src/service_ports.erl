@@ -165,12 +165,9 @@ services_port_keys(Services) ->
     AllPorts = all_ports(),
     [P#port.key || P <- AllPorts, lists:member(P#port.service, Services)].
 
-find_by_rest_name(RestName) when is_atom(RestName) ->
-    find_by_rest_name(atom_to_binary(RestName, latin1));
 find_by_rest_name(RestName) when is_list(RestName) ->
-    find_by_rest_name(list_to_binary(RestName));
-find_by_rest_name(RestName) when is_binary(RestName) ->
-    case lists:keyfind(RestName, #port.rest, all_ports()) of
+    RestNameBin = list_to_binary(RestName),
+    case lists:keyfind(RestNameBin, #port.rest, all_ports()) of
         false ->
             undefined;
         Port ->
