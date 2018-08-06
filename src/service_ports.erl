@@ -176,7 +176,7 @@ find_by_rest_name(RestName) when is_list(RestName) ->
 
 get_internal_ports(Node, Config) ->
     Services = ns_cluster_membership:node_active_services(Config, Node),
-    get_ports_for_services_int(Node, Config, Services).
+    get_ports_for_services_int(Node, Config, [rest | Services]).
 
 get_external_host_and_ports(Node, Config, WantedPorts) ->
     External = ns_config:search_node_prop(Node, Config,
@@ -221,7 +221,7 @@ get_ports_for_services_int(Node, Config, Services) ->
                                 {true, {P, Port}}
                         end
                 end, ServicePorts)
-      end, [rest | Services]).
+      end, Services).
 
 get_ports_for_services(Node, Config, Services) ->
     [{RestKey, Port} ||

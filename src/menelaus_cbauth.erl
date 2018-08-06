@@ -202,7 +202,8 @@ build_node_info(N, Config) ->
 build_node_info(_N, undefined, _Config) ->
     undefined;
 build_node_info(N, User, Config) ->
-    ActiveServices = ns_cluster_membership:node_active_services(Config, N),
+    ActiveServices = [rest |
+                      ns_cluster_membership:node_active_services(Config, N)],
     Ports0 = [Port || {_Key, Port} <- service_ports:get_ports_for_services(
                                         N, Config, ActiveServices)],
 
