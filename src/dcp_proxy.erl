@@ -29,7 +29,7 @@
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
 
--export([start_link/6, maybe_connect/1, maybe_connect/2,
+-export([start_link/6, maybe_connect/2,
          connect_proxies/2, nuke_connection/4, terminate_and_wait/2]).
 
 -export([get_socket/1, get_partner/1, get_conn_name/1, get_bucket/1]).
@@ -200,9 +200,6 @@ suppress_logging(<<_:8, ?DCP_NOP:8, _Rest/binary>>) ->
     true;
 suppress_logging(_) ->
     false.
-
-maybe_connect(State) ->
-    maybe_connect(State, false).
 
 maybe_connect(#state{sock = undefined,
                      connect_info = {Type, ConnName, Node, Bucket}} = State,
