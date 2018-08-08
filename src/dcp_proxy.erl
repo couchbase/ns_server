@@ -253,6 +253,7 @@ connect(Type, ConnName, Node, Bucket, RepFeatures) ->
 negotiate_features(Sock, Type, ConnName, RepFeatures) ->
     Features = [<<V:16>> || {F, V} <-
                                 [{xattr, ?MC_FEATURE_XATTR},
+                                 {collections, ?MC_FEATURE_COLLECTIONS},
                                  {snappy, ?MC_FEATURE_SNAPPY}],
                             proplists:get_bool(F, RepFeatures)],
 
@@ -268,8 +269,8 @@ negotiate_features(Sock, Type, ConnName, RepFeatures) ->
                     ok
             end,
 
-            %% We don't expect the XAttr negotiation to fail.
-            false = lists:member(<<?MC_FEATURE_XATTR:16>>, FailedFeatures),
+            %% We don't expect negotiation of other features to fail.
+            [] = FailedFeatures -- [<<?MC_FEATURE_SNAPPY:16>>],
             ok
     end.
 
