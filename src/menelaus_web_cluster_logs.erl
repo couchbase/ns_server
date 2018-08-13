@@ -229,9 +229,8 @@ parse_validate_collect_params(Params, Config) ->
                         %% We override the user input here because we want to
                         %% have a common salt for all the nodes for this log
                         %% collection run.
-                        [{redact_salt_fun,
-                          ?cut(base64:encode_to_string(
-                                 crypto:rand_bytes(32)))}];
+                        S = base64:encode_to_string(crypto:rand_bytes(32)),
+                        [{redact_salt_fun, ?cut(S)}];
                     Salt ->
                         [{redact_salt_fun, ?cut(Salt)}]
                 end;
