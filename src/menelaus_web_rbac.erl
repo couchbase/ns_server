@@ -1283,6 +1283,7 @@ check_permissions_url_version(Config) ->
     B = term_to_binary(
           [cluster_compat_mode:get_compat_version(Config),
            menelaus_users:get_users_version(),
+           menelaus_users:get_groups_version(),
            [{Name, proplists:get_value(uuid, BucketConfig)} ||
                {Name, BucketConfig} <- ns_bucket:get_buckets(Config)],
            ns_config_auth:get_no_auth_buckets(Config)]),

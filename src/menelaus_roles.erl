@@ -791,6 +791,7 @@ start_compiled_roles_cache() ->
         fun () ->
                 {cluster_compat_mode:get_compat_version(ns_config:latest()),
                  menelaus_users:get_users_version(),
+                 menelaus_users:get_groups_version(),
                  ns_config_auth:is_system_provisioned(),
                  [{Name, proplists:get_value(uuid, BucketConfig)} ||
                      {Name, BucketConfig} <- ns_bucket:get_buckets(ns_config:latest())]}
