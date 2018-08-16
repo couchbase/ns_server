@@ -1,0 +1,36 @@
+<div
+   class="forms fix-width-7">
+  <div class="content-box">
+    <p>
+      This cluster is currently using a <strong>{{certType | async}}</strong> SSL/TLS certificate.
+    </p>
+  </div>
+  <div [hidden]="!(certSubject | async)">
+    Subject: {{(certSubject | async)}}
+  </div>
+  <div [hidden]="!(certExpires | async)">
+    Expires: {{(certExpires | async)}}
+  </div>
+
+  <div [formGroup]="formGroup">
+    <textarea
+       formControlName="pem"
+       rows="15"
+       autocorrect="off"
+       autocapitalize="off"
+       spellcheck="false"
+       readonly="readonly"> </textarea>
+  </div>
+
+  <div
+     class="error margin-top-half"
+     [hidden]="!(certWarnings | async)?.length">
+    Warning:
+    <div *ngFor="let warn of (certWarnings | async)">
+      -
+      <span [hidden]="!warn.node">{{warn.node}}:</span>
+      {{warn.message}}
+      <span [hidden]="!warn.expires">{{warn.expires}}</span>
+    </div>
+  </div>
+</div>

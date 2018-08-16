@@ -13,13 +13,17 @@ mn.components.MnSecurity =
     ];
 
     MnSecurity.parameters = [
-
+      mn.services.MnPermissions,
+      mn.services.MnPools
     ];
 
     return MnSecurity;
 
-    function MnSecurity() {
+    function MnSecurity(mnPermissionsService, mnPoolsService) {
       mn.helper.MnEventableComponent.call(this);
+
+      this.securityRead = mnPermissionsService.createPermissionStream("admin.security!read");
+      this.isEnterprise = mnPoolsService.stream.isEnterprise;
     }
 
   })();
@@ -37,7 +41,8 @@ mn.modules.MnSecurity =
           mn.components.MnUserRoles,
           mn.components.MnUserRolesItem,
           mn.components.MnSearch,
-          mn.components.MnSearchField
+          mn.components.MnSearchField,
+          mn.components.MnRootCertificate
         ],
         imports: [
           window['@uirouter/angular'].UIRouterModule.forChild({
@@ -67,14 +72,14 @@ mn.modules.MnSecurity =
                 // data: {
                 //   compat: "atLeast50"
                 // }
-              }
-              // , {
-                // url: "/rootCertificate",
-                // component: mn.components.MnRootCertificate,
+              }, {
+                name: "app.admin.security.rootCertificate",
+                url: "/rootCertificate",
+                component: mn.components.MnRootCertificate,
                 // data: {
                 //   enterprise: true
                 // }
-              // }
+              }
             ]
           }),
           ng.forms.ReactiveFormsModule,

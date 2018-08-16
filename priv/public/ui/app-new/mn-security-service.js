@@ -12,6 +12,7 @@ mn.services.MnSecurity = (function (Rx) {
   ];
 
   MnSecurityService.prototype.getSaslauthdAuth = getSaslauthdAuth;
+  MnSecurityService.prototype.getDefaultCertificate = getDefaultCertificate;
 
   return MnSecurityService;
 
@@ -25,10 +26,22 @@ mn.services.MnSecurity = (function (Rx) {
         Rx.operators.switchMap(this.getSaslauthdAuth.bind(this)),
         Rx.operators.shareReplay(1)
       );
+
+    this.stream.getDefaultCertificate =
+      (new Rx.BehaviorSubject()).pipe(
+        Rx.operators.switchMap(this.getDefaultCertificate.bind(this)),
+        Rx.operators.shareReplay(1)
+      );
   }
 
   function getSaslauthdAuth() {
     return this.http.get("/settings/saslauthdAuth");
+  }
+
+  function getDefaultCertificate() {
+    return this.http.get("/pools/default/certificate", {
+      params: new ng.common.http.HttpParams().set("extended", true)
+    });
   }
 
 })(window.rxjs);
