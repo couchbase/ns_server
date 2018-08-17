@@ -1207,7 +1207,7 @@ connect(Options, Tries) ->
                                         list_to_binary(Pass)}}),
         S of
         Sock ->
-            Features = [O || O <- Options, lists:member(O, [xattr])],
+            Features = [O || O <- Options, lists:member(O, [xattr, duplex])],
             {ok, Negotiated} =
                 mc_client_binary:hello(Sock, "regular", Features),
             Failed = Features -- Negotiated,

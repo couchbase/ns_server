@@ -209,6 +209,7 @@
 -define(MC_FEATURE_XATTR,       16#06).
 -define(MC_FEATURE_COLLECTIONS, 16#09).
 -define(MC_FEATURE_SNAPPY,      16#0A).
+-define(MC_FEATURE_DUPLEX,      16#0C).
 
 %% DCP Open Connection flags.
 -define(DCP_CONNECTION_FLAG_CONSUMER,       16#00).

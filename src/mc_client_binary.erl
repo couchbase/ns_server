@@ -264,7 +264,8 @@ flush(Sock) ->
 hello(Sock, AgentName, ClientFeatures) ->
     FeaturesMap = [{xattr, ?MC_FEATURE_XATTR},
                    {collections, ?MC_FEATURE_COLLECTIONS},
-                   {snappy, ?MC_FEATURE_SNAPPY}],
+                   {snappy, ?MC_FEATURE_SNAPPY},
+                   {duplex, ?MC_FEATURE_DUPLEX}],
     Features = [<<V:16>> || {F, V} <- FeaturesMap,
                             proplists:get_bool(F, ClientFeatures)],
     %% AgentName is the name of the client issuing the hello command.
