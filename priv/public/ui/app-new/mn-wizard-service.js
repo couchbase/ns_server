@@ -41,7 +41,7 @@ mn.services.MnWizard = (function (Rx) {
           fts: new ng.forms.FormControl(true),
           n1ql: new ng.forms.FormControl(true),
           eventing: new ng.forms.FormControl(true),
-          cbas: new ng.forms.FormControl(false)
+          cbas: new ng.forms.FormControl(true)
         }),
         field: new ng.forms.FormGroup({
           kv: new ng.forms.FormControl(null),
@@ -76,7 +76,7 @@ mn.services.MnWizard = (function (Rx) {
           fts: new ng.forms.FormControl(true),
           n1ql: new ng.forms.FormControl(true),
           eventing: new ng.forms.FormControl(true),
-          cbas: new ng.forms.FormControl(false)
+          cbas: new ng.forms.FormControl(true)
         })
       }),
       clusterStorage: clusterStorage
