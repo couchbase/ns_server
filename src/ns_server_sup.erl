@@ -159,6 +159,9 @@ child_specs() ->
      {ns_memcached_sockets_pool, {ns_memcached_sockets_pool, start_link, []},
       permanent, 1000, worker, []},
 
+     {memcached_auth_server, {memcached_auth_server, start_link, []},
+      permanent, 1000, worker, []},
+
      {ns_audit_cfg, {ns_audit_cfg, start_link, []},
       {permanent, 4}, 1000, worker, []},
 
