@@ -206,7 +206,6 @@
 -define(MC_DATATYPE_COMPRESSED_JSON,16#03).
 
 %% hello features
--define(MC_FEATURE_DATATYPE,    16#01).
 -define(MC_FEATURE_XATTR,       16#06).
 -define(MC_FEATURE_COLLECTIONS, 16#09).
 -define(MC_FEATURE_SNAPPY,      16#0A).
