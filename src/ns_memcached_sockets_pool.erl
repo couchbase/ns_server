@@ -35,8 +35,7 @@ take_socket(Options) ->
         {ok, Sock} ->
             {ok, Sock};
         no_socket ->
-            NeedXattr = proplists:get_bool(xattrs, Options),
-            ns_memcached:connect([{xattrs, NeedXattr}])
+            ns_memcached:connect(Options)
     end.
 
 take_socket(undefined, Options) ->

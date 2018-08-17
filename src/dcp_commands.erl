@@ -23,8 +23,8 @@
 
 -export([open_connection/4, open_connection/5,
          add_stream/4, close_stream/3, stream_request/8,
-         setup_flow_control/2, negotiate_xattr/2,
-         process_response/2, format_packet_nicely/1, command_2_atom/1]).
+         setup_flow_control/2, process_response/2, format_packet_nicely/1,
+         command_2_atom/1]).
 
 -spec process_response(#mc_header{}, #mc_entry{}) -> any().
 process_response(#mc_header{opcode = ?DCP_ADD_STREAM, status = ?SUCCESS} = Header, Body) ->
@@ -74,16 +74,6 @@ open_connection(Sock, ConnName, Type, RepFeatures, Logger) ->
       mc_client_binary:cmd_vocal(?DCP_OPEN, Sock,
                                  {#mc_header{},
                                   #mc_entry{key = ConnName,ext = Extra}})).
-
-negotiate_xattr(Sock, AgentName) ->
-    Data = <<?MC_FEATURE_XATTR:16>>,
-    case mc_client_binary:hello(Sock, AgentName, Data) of
-        {ok, RV} ->
-            {ok, Data =:= RV};
-        Error ->
-            ?log_debug("XATTR negotiation failed. Reason = ~p", [Error]),
-            Error
-    end.
 
 -spec add_stream(port(), vbucket_id(), integer(), add | takeover) -> {ok, quiet}.
 add_stream(Sock, Partition, Opaque, Type) ->

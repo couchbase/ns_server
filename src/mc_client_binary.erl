@@ -261,13 +261,23 @@ flush(Sock) ->
         Response -> process_error_response(Response)
     end.
 
-hello(Sock, AgentName, Data) ->
+hello(Sock, AgentName, ClientFeatures) ->
+    FeaturesMap = [{xattr, ?MC_FEATURE_XATTR},
+                   {collections, ?MC_FEATURE_COLLECTIONS},
+                   {snappy, ?MC_FEATURE_SNAPPY}],
+    Features = [<<V:16>> || {F, V} <- FeaturesMap,
+                            proplists:get_bool(F, ClientFeatures)],
     %% AgentName is the name of the client issuing the hello command.
     case cmd(?CMD_HELLO, Sock, undefined, undefined,
              {#mc_header{},
-              #mc_entry{key = AgentName, data = Data}}) of
+              #mc_entry{key = AgentName, data = list_to_binary(Features)}}) of
+        {ok, #mc_header{status=?SUCCESS}, #mc_entry{data = undefined}, _NCB} ->
+            {ok, []};
         {ok, #mc_header{status=?SUCCESS}, #mc_entry{data = RetData}, _NCB} ->
-            {ok, RetData};
+            Negotiated = [V || <<V:16>> <= RetData],
+            NegotiatedNames = [Name || {Name, Code} <- FeaturesMap,
+                                       lists:member(Code, Negotiated)],
+            {ok, NegotiatedNames};
         Response ->
             process_error_response(Response)
     end.

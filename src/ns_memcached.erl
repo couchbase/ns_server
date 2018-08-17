@@ -960,7 +960,7 @@ get_xattrs(Bucket, Key, VBucket, Permissions) ->
     perform_very_long_call(
       fun (Sock) ->
               {reply, mc_binary:get_xattrs(Sock, Key, VBucket, Permissions)}
-      end, Bucket, [xattrs]).
+      end, Bucket, [xattr]).
 
 %% @doc send an subdoc multi lookup command to memcached
 -spec subdoc_multi_lookup(bucket_name(), binary(), integer(),
@@ -973,7 +973,7 @@ subdoc_multi_lookup(Bucket, Key, VBucket, Paths, Options) ->
       fun (Sock) ->
               {reply, mc_client_binary:subdoc_multi_lookup(Sock, Key, VBucket,
                                                            Paths, Options)}
-      end, Bucket, [xattrs]).
+      end, Bucket, [xattr]).
 
 %% @doc send a set command to memcached instance
 -spec delete(bucket_name(), binary(), integer(), integer()) ->
@@ -1207,15 +1207,11 @@ connect(Options, Tries) ->
                                         list_to_binary(Pass)}}),
         S of
         Sock ->
-            case proplists:get_bool(xattrs, Options) of
-                true ->
-                    case dcp_commands:negotiate_xattr(Sock, "regular") of
-                        {ok, true} -> ok;
-                        {ok, false} -> error(xattr_negotiation_error)
-                    end;
-                false ->
-                    ok
-            end,
+            Features = [O || O <- Options, lists:member(O, [xattr])],
+            {ok, Negotiated} =
+                mc_client_binary:hello(Sock, "regular", Features),
+            Failed = Features -- Negotiated,
+            Failed == [] orelse error({feature_negotiation_failed, Failed}),
             {ok, Sock}
     catch
         E:R ->

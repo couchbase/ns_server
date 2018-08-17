@@ -250,18 +250,14 @@ connect(Type, ConnName, Node, Bucket, RepFeatures) ->
     ok = dcp_commands:open_connection(Sock, ConnName, Type, RepFeatures),
     Sock.
 
-negotiate_features(Sock, Type, ConnName, RepFeatures) ->
-    Features = [<<V:16>> || {F, V} <-
-                                [{xattr, ?MC_FEATURE_XATTR},
-                                 {collections, ?MC_FEATURE_COLLECTIONS},
-                                 {snappy, ?MC_FEATURE_SNAPPY}],
-                            proplists:get_bool(F, RepFeatures)],
-
-    case do_negotiate_features(Sock, Type, ConnName, Features) of
+negotiate_features(Sock, Type, ConnName, Features) ->
+    HelloFeatures = [F || F <- Features, lists:member(F,[xattr, collections,
+                                                         snappy])],
+    case do_negotiate_features(Sock, Type, ConnName, HelloFeatures) of
         ok ->
             ok;
         {error, FailedFeatures} ->
-            case lists:member(<<?MC_FEATURE_SNAPPY:16>>, FailedFeatures) of
+            case lists:member(snappy, FailedFeatures) of
                 true ->
                     ?log_debug("Snappy negotiation failed for connection ~p:~p",
                                [ConnName, Type]);
@@ -269,24 +265,19 @@ negotiate_features(Sock, Type, ConnName, RepFeatures) ->
                     ok
             end,
 
-            %% We don't expect negotiation of other features to fail.
-            [] = FailedFeatures -- [<<?MC_FEATURE_SNAPPY:16>>],
+            %% We don't expect the XAttr negotiation to fail.
+            [] = FailedFeatures -- [snappy],
             ok
     end.
 
 do_negotiate_features(_Sock, _Type, _ConnName, []) ->
     ok;
 do_negotiate_features(Sock, Type, ConnName, Features) ->
-    case mc_client_binary:hello(Sock, "proxy", list_to_binary(Features)) of
-        {ok, undefined} ->
-            {error, Features};
-        {ok, RV} ->
-            Negotiated = [<<V:16>> || <<V:16>> <= RV],
+    case mc_client_binary:hello(Sock, "proxy", Features) of
+        {ok, Negotiated} ->
             case Features -- Negotiated of
-                [] ->
-                    ok;
-                Val ->
-                    {error, Val}
+                [] -> ok;
+                Val -> {error, Val}
             end;
         Error ->
             ?log_debug("HELLO cmd failed for connection ~p:~p, features = ~p,"
@@ -347,24 +338,24 @@ process_data_loop(Data, PacketLen, State) ->
 negotiate_features_test() ->
     meck:new(mc_client_binary, [passthrough]),
 
-    V = [<<?MC_FEATURE_XATTR:16>>, <<?MC_FEATURE_SNAPPY:16>>],
+    V = [xattr, snappy],
     meck:expect(mc_client_binary, hello,
-                fun(_, _, _) -> {ok, list_to_binary(V)} end),
+                fun(_, _, _) -> {ok, V} end),
     ?assertEqual(ok, do_negotiate_features([], type, "xyz", V)),
 
     meck:expect(mc_client_binary, hello,
-                fun(_, _, _) -> {ok, <<?MC_FEATURE_SNAPPY:16>>} end),
-    ?assertEqual({error, [<<?MC_FEATURE_XATTR:16>>]},
+                fun(_, _, _) -> {ok, [snappy]} end),
+    ?assertEqual({error, [xattr]},
                  do_negotiate_features([], type, "xyz", V)),
     ?assertEqual(ok, do_negotiate_features([], type, "xyz",
-                                           [<<?MC_FEATURE_SNAPPY:16>>])),
+                                           [snappy])),
 
     meck:expect(mc_client_binary, hello,
-                fun(_, _, _) -> {ok, <<?MC_FEATURE_XATTR:16>>} end),
-    ?assertEqual({error, [<<?MC_FEATURE_SNAPPY:16>>]},
+                fun(_, _, _) -> {ok, [xattr]} end),
+    ?assertEqual({error, [snappy]},
                  do_negotiate_features([], type, "xyz", V)),
     ?assertEqual(ok, do_negotiate_features([], type, "xyz",
-                                           [<<?MC_FEATURE_XATTR:16>>])),
+                                           [xattr])),
 
     meck:expect(mc_client_binary, hello, fun(_, _, _) -> error end),
     ?assertEqual({error, V}, do_negotiate_features([], type, "xyz", V)),
