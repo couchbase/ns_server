@@ -23,7 +23,7 @@
 
 -export([bin/1, recv/2, recv/3, send/4, encode/3, quick_stats/4,
          quick_stats/5, quick_stats_append/3,
-         decode_packet/1,
+         decode_packet/1, decode_packet_ext/1,
          get_keys/4, get_xattrs/4]).
 
 -define(RECV_TIMEOUT,             ?get_timeout(recv, 120000)).
@@ -203,11 +203,22 @@ decode_header(res, <<?RES_MAGIC:8, Opcode:8, KeyLen:16, ExtLen:8,
                 keylen = KeyLen, extlen = ExtLen, bodylen = BodyLen},
      #mc_entry{datatype = DataType, cas = CAS}}.
 
-decode_packet(<<HeaderBin:?HEADER_LEN/binary, Body/binary>>) ->
-    {#mc_header{extlen = ExtLen, keylen = KeyLen} = Header, Entry} =
-        decode_header(HeaderBin),
-    <<Ext:ExtLen/binary, Key:KeyLen/binary, Data/binary>> = Body,
-    {Header, Entry#mc_entry{ext = Ext, key = Key, data = Data}}.
+decode_packet(Bin) ->
+    {H, B, <<>>} = decode_packet_ext(Bin),
+    {H, B}.
+
+decode_packet_ext(<<HeaderBin:?HEADER_LEN/binary, Body/binary>>) ->
+    {Header, Entry} = decode_header(HeaderBin),
+    #mc_header{extlen = ExtLen, keylen = KeyLen, bodylen = BodyLen} = Header,
+    DataLen = BodyLen - KeyLen - ExtLen,
+    case Body of
+        <<Ext:ExtLen/binary, Key:KeyLen/binary, Data:DataLen/binary,
+          Rest/binary>> ->
+            {Header, Entry#mc_entry{ext = Ext, key = Key, data = Data}, Rest};
+        _ ->
+            need_more_data
+    end;
+decode_packet_ext(_) -> need_more_data.
 
 bin(undefined) -> <<>>;
 bin(X)         -> iolist_to_binary(X).
