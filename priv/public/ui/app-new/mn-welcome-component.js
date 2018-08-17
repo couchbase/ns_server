@@ -7,6 +7,7 @@ mn.components.MnWelcome =
     MnWelcomeComponent.annotations = [
       new ng.core.Component({
         templateUrl: "app-new/mn-welcome.html",
+        changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
     ];
 
@@ -18,10 +19,6 @@ mn.components.MnWelcome =
 
     function MnWelcomeComponent(mnAdmin) {
       this.focusFieldSubject = new Rx.BehaviorSubject(true);
-
-      this.prettyVersion =
-        mnAdmin
-        .stream
-        .prettyVersion;
+      this.prettyVersion = mnAdmin.stream.prettyVersion;
     }
   })(window.rxjs);

@@ -8,7 +8,8 @@ mn.components.MnNewClusterConfig =
 
     MnNewClusterConfig.annotations = [
       new ng.core.Component({
-        templateUrl: "app-new/mn-new-cluster-config.html"
+        templateUrl: "app-new/mn-new-cluster-config.html",
+        changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
     ];
 

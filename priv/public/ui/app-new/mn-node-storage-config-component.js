@@ -10,7 +10,8 @@ mn.components.MnNodeStorageConfig =
         templateUrl: "app-new/mn-node-storage-config.html",
         inputs: [
           "group"
-        ]
+        ],
+        changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
     ];
 
@@ -19,16 +20,10 @@ mn.components.MnNodeStorageConfig =
       mn.services.MnPools
     ];
 
-    MnNodeStorageConfig.prototype.ngOnInit = ngOnInit;
     MnNodeStorageConfig.prototype.addCbasPathField = addCbasPathField;
     MnNodeStorageConfig.prototype.removeCbasPathField = removeCbasPathField;
 
     return MnNodeStorageConfig;
-
-    function ngOnInit() {
-      //trigger storageGroup.valueChanges for lookUpIndexPath,lookUpDBPath
-      this.group.patchValue(this.group.value);
-    }
 
     function addCbasPathField() {
       var last = this.group.get('storage.cbas_path').length - 1;
