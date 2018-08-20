@@ -19,7 +19,7 @@
 
 -behaviour(memcached_cfg).
 
--export([start_link/0, sync/0]).
+-export([start_link/0, sync/0, jsonify_user/3]).
 
 %% callbacks
 -export([init/0, filter_event/1, handle_event/2, producer/1, refresh/0]).
@@ -146,10 +146,14 @@ global_permissions(CompiledRoles) ->
                     {Permission, MemcachedPermission} <- global_permissions_to_check(),
                     menelaus_roles:is_allowed(Permission, CompiledRoles)]).
 
+format_permissions(Buckets, CompiledRoles) ->
+    [{global, global_permissions(CompiledRoles)} |
+     [{Bucket, bucket_permissions(Bucket, CompiledRoles)}
+         || Bucket <- Buckets]].
+
 permissions_for_role(Buckets, ParamValues, RoleDefinitions, Role) ->
     CompiledRoles = menelaus_roles:compile_roles([Role], RoleDefinitions, ParamValues),
-    [{global, global_permissions(CompiledRoles)} |
-     [{Bucket, bucket_permissions(Bucket, CompiledRoles)} || Bucket <- Buckets]].
+    format_permissions(Buckets, CompiledRoles).
 
 permissions_for_role(Buckets, ParamValues, RoleDefinitions, Role, RolesDict) ->
     case dict:find(Role, RolesDict) of
@@ -175,6 +179,9 @@ permissions_for_user(Roles, Buckets, ParamValues, RoleDefinitions, RolesDict) ->
                     end, {Acc0, RolesDict}, Roles),
     MergedPermissions = [{Bucket, lists:umerge(Perm)} || {Bucket, Perm} <- ZippedPermissions],
     {MergedPermissions, NewRolesDict}.
+
+jsonify_user(Identity, CompiledRoles, Buckets) ->
+    jsonify_user(Identity, format_permissions(Buckets, CompiledRoles)).
 
 jsonify_user({UserName, Domain}, [{global, GlobalPermissions} | BucketPermissions]) ->
     Buckets = {buckets, {[{list_to_binary(BucketName), Permissions} ||
