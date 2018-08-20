@@ -38,7 +38,6 @@
          eject_nodes/1,
          maybe_cleanup_old_buckets/1,
          get_delta_recovery_nodes/2,
-         verify_replication/3,
          start_link_graceful_failover/1,
          generate_vbucket_map_options/2,
          run_failover/2,
@@ -826,7 +825,7 @@ rebalance_membase_bucket(BucketName, BucketConfig, ProgressFun,
     ns_bucket:update_bucket_props(BucketName,
                                   [{deltaRecoveryMap, undefined}]),
     master_activity_events:note_bucket_rebalance_ended(BucketName),
-    run_verify_replication(BucketName, KeepKVNodes, NewMap).
+    verify_replication(BucketName, KeepKVNodes, NewMap).
 
 run_janitor_pre_rebalance(BucketName) ->
     case ns_janitor:cleanup(BucketName,
@@ -959,12 +958,6 @@ eject_nodes(Nodes) ->
                           ns_cluster_membership:deactivate([N]),
                           ns_cluster:leave(N)
                   end, LeaveNodes).
-
-run_verify_replication(Bucket, Nodes, Map) ->
-    Pid = proc_lib:spawn_link(?MODULE, verify_replication, [Bucket, Nodes, Map]),
-    ?log_debug("Spawned verify_replication worker: ~p", [Pid]),
-    {trap_exit, false} = erlang:process_info(self(), trap_exit),
-    misc:wait_for_process(Pid, infinity).
 
 verify_replication(Bucket, Nodes, Map) ->
     ExpectedReplicators0 = ns_bucket:map_to_replicas(Map),
