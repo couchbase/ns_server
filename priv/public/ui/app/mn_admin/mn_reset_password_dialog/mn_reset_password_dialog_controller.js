@@ -18,6 +18,9 @@
     };
 
     function submit() {
+      if (vm.form.$invalid) {
+        return;
+      }
       var promise = mnResetPasswordDialogService.post(vm.user);
 
       mnPromiseHelper(vm, promise)
