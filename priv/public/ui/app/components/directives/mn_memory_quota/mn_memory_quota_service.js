@@ -8,12 +8,13 @@
     ])
     .factory('mnMemoryQuotaService', mnMemoryQuotaServiceFactory);
 
-  function mnMemoryQuotaServiceFactory($http, mnPoolDefault, mnHelper, IEC) {
+  function mnMemoryQuotaServiceFactory($http, $window, mnPoolDefault, mnHelper, IEC) {
     var mnMemoryQuotaService = {
       prepareClusterQuotaSettings: prepareClusterQuotaSettings,
       isOnlyOneNodeWithService: isOnlyOneNodeWithService,
       memoryQuotaConfig: memoryQuotaConfig,
-      getFirstTimeAddedServices: getFirstTimeAddedServices
+      getFirstTimeAddedServices: getFirstTimeAddedServices,
+      handleAltAndClick: handleAltAndClick
     };
 
     return mnMemoryQuotaService;
@@ -72,5 +73,39 @@
         return mnMemoryQuotaService.prepareClusterQuotaSettings(poolsDefault, displayedServices, calculateMaxMemory, calculateTotal);
       });
     }
+
+    function toggleServices(service, bool, config) {
+      _.forEach(config.services.model, function (_, service1) {
+        if ((config.services.disabled && config.services.disabled[service1]) ||
+            (config.displayedServices && !config.displayedServices[service1])
+           ) {
+          return;
+        }
+        config.services.model[service1] = bool;
+      });
+    }
+
+    function isThereOther(service, config) {
+      return _.keys(config.services.model)
+        .some(function (service1) {
+          return (!config.displayedServices || config.displayedServices[service1]) &&
+            (!config.services.disabled || !config.services.disabled[service1]) &&
+            config.services.model[service1] &&
+            service1 !== service;
+        });
+    }
+
+    function handleAltAndClick(service, config) {
+      if (!$window.event.altKey) {
+        return;
+      }
+      if (isThereOther(service, config)) {
+        toggleServices(service, false, config);
+      } else {
+        toggleServices(service, true, config);
+      }
+      config.services.model[service] = true;
+    }
+
   }
 })();

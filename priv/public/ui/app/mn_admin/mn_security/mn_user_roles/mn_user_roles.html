@@ -29,6 +29,9 @@
       <span class="cbui-table-cell resp-hide-xsml">
         <span mn-sortable-title="domain" class="sorter">auth domain</span>
       </span>
+      <span class="cbui-table-cell resp-hide-xsml">
+        <span mn-sortable-title="password_change_date" class="sorter">password</span>
+      </span>
     </div>
     <section
        class="has-hover"
@@ -63,6 +66,9 @@
         </span>
         <span class="cbui-table-cell resp-hide-xsml">
           {{user.domain === "local" ? "Couchbase" : "External"}}
+        </span>
+        <span class="cbui-table-cell resp-hide-xsml" title="{{:: user.password_change_date}}">
+          {{user.password_change_date | date:"MM-dd-y"}}
         </span>
       </div>
       <div

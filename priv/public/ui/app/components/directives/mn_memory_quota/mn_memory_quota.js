@@ -4,11 +4,12 @@
   angular
     .module('mnMemoryQuota', [
       'mnServices',
-      'mnFocus'
+      'mnFocus',
+      'mnMemoryQuotaService'
     ])
     .directive('mnMemoryQuota', mnMemoryQuotaDirective);
 
-  function mnMemoryQuotaDirective() {
+  function mnMemoryQuotaDirective($window, mnMemoryQuotaService) {
     var mnMemoryQuota = {
       restrict: 'A',
       scope: {
@@ -27,6 +28,8 @@
       //hack for avoiding access to $parent scope from child scope via propery "$parent"
       //should be removed after implementation of Controller As syntax
       $scope.mnMemoryQuotaController = $scope;
+
+      $scope.change = mnMemoryQuotaService.handleAltAndClick;
     }
   }
 })();
