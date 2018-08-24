@@ -12,7 +12,8 @@ mn.components.MnUserRolesItem =
         templateUrl: "app-new/mn-user-roles-item.html",
         inputs: [
           "user"
-        ]
+        ],
+        changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
     ];
 

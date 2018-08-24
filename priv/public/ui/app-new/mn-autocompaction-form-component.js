@@ -12,7 +12,8 @@ mn.components.MnAutocompactionForm =
         inputs: [
           "group",
           "isBucketsSettings"
-        ]
+        ],
+        changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
     ];
 
@@ -28,6 +29,7 @@ mn.components.MnAutocompactionForm =
 
     function MnAutocompactionForm(mnAdminService, mnBucketsService, mnPermissionsService, mnPoolsService, mnWizardService) {
       mn.helper.MnEventableComponent.call(this);
+      this.mnAdminService = mnAdminService;
 
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
       this.compatVersion = mnAdminService.stream.compatVersion;

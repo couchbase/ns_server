@@ -11,7 +11,8 @@ mn.components.MnPathField =
         inputs: [
           "control",
           "controlName"
-        ]
+        ],
+        changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
     ];
 

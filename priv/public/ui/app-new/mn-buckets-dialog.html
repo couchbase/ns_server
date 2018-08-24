@@ -40,8 +40,8 @@
         <mn-bar-usage
            class="bar-usages bucket-add"
            [ngClass]="{overcommitted: !!(bucketRamGuage | async)?.topLeft}"
-           [total]="(bucketTotalRamGuage | async)"
-           [baseInfo]="bucketRamGuage | async">
+           [total]="bucketTotalRamGuage"
+           [baseInfo]="bucketRamGuage">
         </mn-bar-usage>
         <div
            class="error"

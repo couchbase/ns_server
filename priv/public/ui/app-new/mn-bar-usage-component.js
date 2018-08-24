@@ -12,6 +12,7 @@ mn.components.MnBarUsage =
           "baseInfo",
           "total"
         ],
+        changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
     ];
 

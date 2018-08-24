@@ -44,6 +44,7 @@ mn.components.MnElementCargo =
         inputs: [
           "depot"
         ],
+        changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
     ];
 
@@ -87,6 +88,7 @@ mn.components.MnElementDepot =
         inputs: [
           "name"
         ],
+        changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
     ];
 

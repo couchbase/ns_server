@@ -15,24 +15,21 @@ mn.components.MnSearchField =
           "mnFocusStream",
           "mnClearStream",
           "mnPlaceholder"
-        ]
+        ],
+        changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
     ];
 
     MnSearchFieldComponent.prototype.clearSearchTerm = clearSearchTerm;
-    MnSearchFieldComponent.prototype.onInit = onInit;
+    MnSearchFieldComponent.prototype.ngOnInit = ngOnInit;
 
     return MnSearchFieldComponent;
 
     function MnSearchFieldComponent() {
       mn.helper.MnEventableComponent.call(this);
-
-      this.mnOnInit
-        .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
-        .subscribe(this.onInit.bind(this));
     }
 
-    function onInit() {
+    function ngOnInit() {
       this.onClearClick = new Rx.Subject();
       this.mnFocusStream = this.mnFocusStream || Rx.Observable.never();
       this.mnClearStream = this.mnClearStream || Rx.Observable.never();

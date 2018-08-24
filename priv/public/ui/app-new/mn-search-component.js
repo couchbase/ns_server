@@ -11,7 +11,8 @@ mn.components.MnSearch =
         inputs: [
           "mnFormGroup",
           "mnPlaceholder"
-        ]
+        ],
+        changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
     ];
 

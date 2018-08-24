@@ -13,7 +13,8 @@ mn.components.MnWarmupProgress =
         inputs: [
           "mnTasks", //observable
           "mnSortBy" //string
-        ]
+        ],
+        changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
     ];
 
@@ -23,7 +24,7 @@ mn.components.MnWarmupProgress =
     MnWarmupProgressComponent.prototype.toggle = toggle;
     MnWarmupProgressComponent.prototype.toggleText = toggleText;
     MnWarmupProgressComponent.prototype.isLessThanLimit = isLessThanLimit;
-    MnWarmupProgressComponent.prototype.getTasks = getTasks;
+    MnWarmupProgressComponent.prototype.ngOnInit = ngOnInit;
 
     return MnWarmupProgressComponent;
 
@@ -33,12 +34,12 @@ mn.components.MnWarmupProgress =
       this.limit = 3;
       this.onToggle = new Rx.Subject();
       this.limitTo = new Rx.BehaviorSubject(this.limit);
+    }
 
-      var tasksCurrentValue = this.mnOnChanges.pipe(Rx.operators.switchMap(this.getTasks.bind(this)));
-
+    function ngOnInit() {
       this.tasks =
         Rx.combineLatest(
-          tasksCurrentValue,
+          this.mnTasks,
           this.limitTo
         ).pipe(
           Rx.operators.map(this.slice),
@@ -46,10 +47,10 @@ mn.components.MnWarmupProgress =
         );
 
       this.isTasksLessThanLimit =
-        tasksCurrentValue.pipe(Rx.operators.map(this.isLessThanLimit.bind(this)));
+        this.mnTasks.pipe(Rx.operators.map(this.isLessThanLimit.bind(this)));
 
       this.toggleText =
-        this.limitTo.pipe(Rx.operators.map(toggleText));
+        this.limitTo.pipe(Rx.operators.map(this.toggleText));
 
       this.onToggle
         .pipe(
@@ -59,10 +60,6 @@ mn.components.MnWarmupProgress =
           Rx.operators.takeUntil(this.mnOnDestroy)
         )
         .subscribe(this.limitTo);
-    }
-
-    function getTasks() {
-      return this.mnTasks;
     }
 
     function stopPropagation($event) {

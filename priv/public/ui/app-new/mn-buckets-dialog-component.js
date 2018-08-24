@@ -81,12 +81,14 @@ mn.components.MnBucketsDialog =
 
       this.bucketRamGuage =
         ramSummary.pipe(
-          Rx.operators.map(mnBucketsService.getBucketRamGuageConfig)
+          Rx.operators.map(mnBucketsService.getBucketRamGuageConfig),
+          Rx.operators.shareReplay(1)
         );
 
       this.bucketTotalRamGuage =
         this.bucketRamGuage.pipe(
-          Rx.operators.map(getBucketTotalRamGuage)
+          Rx.operators.map(getBucketTotalRamGuage),
+          Rx.operators.shareReplay(1)
         );
 
       bucketFormChanges.pipe(

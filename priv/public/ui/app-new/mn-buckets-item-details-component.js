@@ -12,7 +12,8 @@ mn.components.MnBucketsItemDetails =
         templateUrl: "app-new/mn-buckets-item-details.html",
         inputs: [
           "bucket"
-        ]
+        ],
+        changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
     ];
 
@@ -81,14 +82,26 @@ mn.components.MnBucketsItemDetails =
       this.bucketRamGuageConfig =
         bucketCurrentValue.pipe(
           Rx.operators.map(this.getBucketRamGuageConfigParams.bind(this)),
-          Rx.operators.map(mnBucketsService.getBucketRamGuageConfig)
+          Rx.operators.map(mnBucketsService.getBucketRamGuageConfig),
+          Rx.operators.shareReplay(1)
         );
+
+      this.bucketRamGuageConfigTotal = this.bucketRamGuageConfig.pipe(
+        Rx.operators.pluck("topRight", "value"),
+        Rx.operators.shareReplay(1)
+      );
 
       this.bucketDiskGuageConfig =
         bucketCurrentValue.pipe(
           Rx.operators.map(this.getGuageConfig.bind(this)),
-          Rx.operators.map(mnBucketsService.getGuageConfig)
+          Rx.operators.map(mnBucketsService.getGuageConfig),
+          Rx.operators.shareReplay(1)
         );
+
+      this.bucketDiskGuageConfigTotal = this.bucketDiskGuageConfig.pipe(
+        Rx.operators.pluck("topRight", "value"),
+        Rx.operators.shareReplay(1)
+      );
 
     }
 

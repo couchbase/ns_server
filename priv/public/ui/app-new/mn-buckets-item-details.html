@@ -55,8 +55,8 @@
       <hr>
       <mn-bar-usage
          class="bar-usages"
-         [total]="(bucketRamGuageConfig | async)?.topRight.value"
-         [baseInfo]="bucketRamGuageConfig | async">
+         [total]="bucketRamGuageConfigTotal"
+         [baseInfo]="bucketRamGuageConfig">
       </mn-bar-usage>
     </div>
     <div class="cbui-table-meters buckets" *ngIf="(bucket | mnIsMembase)">
@@ -64,8 +64,8 @@
       <hr>
       <mn-bar-usage
          class="bar-usages"
-         [total]="(bucketDiskGuageConfig | async)?.topRight.value"
-         [baseInfo]="bucketDiskGuageConfig | async">
+         [total]="bucketDiskGuageConfigTotal"
+         [baseInfo]="bucketDiskGuageConfig">
       </mn-bar-usage>
     </div>
   </div>

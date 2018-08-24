@@ -12,13 +12,13 @@ mn.components.MnBucketsItem =
         templateUrl: "app-new/mn-buckets-item.html",
         inputs: [
           "bucket"
-        ]
+        ],
+        changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
     ];
 
     MnBucketsItem.parameters = [
       mn.services.MnAdmin,
-      mn.services.MnBuckets,
       mn.services.MnPermissions,
       mn.services.MnTasks,
       window['@uirouter/angular'].UIRouter
@@ -33,7 +33,7 @@ mn.components.MnBucketsItem =
 
     return MnBucketsItem;
 
-    function MnBucketsItem(mnAdminService, mnBucketsService, mnPermissionsService, mnTasksService, uiRouter) {
+    function MnBucketsItem(mnAdminService, mnPermissionsService, mnTasksService, uiRouter) {
       mn.helper.MnEventableComponent.call(this);
 
       var bucketCurrentValue = this.mnOnChanges.pipe(Rx.operators.pluck("bucket", "currentValue"));

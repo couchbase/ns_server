@@ -10,7 +10,8 @@ mn.components.MnQuerySettingsConfig =
         templateUrl: "app-new/mn-query-settings-config.html",
         inputs: [
           "group"
-        ]
+        ],
+        changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
     ];
 
