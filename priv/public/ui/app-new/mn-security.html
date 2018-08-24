@@ -19,10 +19,10 @@
     <!--    ng-show="rbac.cluster.admin.security.read && poolDefault.compat.atLeast40 && pools.isEnterprise" -->
     <!--    ui-sref="app.admin.security.audit" -->
     <!--    ui-sref-active="selected">Audit</a> -->
-    <!-- <a -->
-    <!--   ng-show="pools.isEnterprise && poolDefault.compat.atLeast55 && rbac.cluster.admin.security.read" -->
-    <!--   ui-sref="app.admin.security.redaction" -->
-    <!--   ui-sref-active="selected">Log Redaction</a> -->
+    <a
+       [hidden]="!(isEnterprise | async) && !(atLeast55 | async) && !(securityRead | async)"
+       uiSref="app.admin.security.logRedaction"
+       uiSrefActive="selected">Log Redaction</a>
     <!-- <a -->
     <!--    ui-sref="app.admin.security.session" -->
     <!--    ui-sref-active="selected">Session</a> -->

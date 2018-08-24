@@ -13,6 +13,8 @@ mn.services.MnSecurity = (function (Rx) {
 
   MnSecurityService.prototype.getSaslauthdAuth = getSaslauthdAuth;
   MnSecurityService.prototype.getDefaultCertificate = getDefaultCertificate;
+  MnSecurityService.prototype.getLogRedaction = getLogRedaction;
+  MnSecurityService.prototype.postLogRedaction = postLogRedaction;
 
   return MnSecurityService;
 
@@ -32,10 +34,29 @@ mn.services.MnSecurity = (function (Rx) {
         Rx.operators.switchMap(this.getDefaultCertificate.bind(this)),
         Rx.operators.shareReplay(1)
       );
+
+    this.stream.getLogRedaction =
+      (new Rx.BehaviorSubject()).pipe(
+        Rx.operators.switchMap(this.getLogRedaction.bind(this)),
+        Rx.operators.shareReplay(1)
+      );
+
+    this.stream.postLogRedaction =
+      new mn.helper.MnPostHttp(this.postLogRedaction.bind(this))
+      .addSuccess()
+      .addError();
   }
 
   function getSaslauthdAuth() {
     return this.http.get("/settings/saslauthdAuth");
+  }
+
+  function getLogRedaction() {
+    return this.http.get("/settings/logRedaction");
+  }
+
+  function postLogRedaction(data) {
+    return this.http.post("/settings/logRedaction", data);
   }
 
   function getDefaultCertificate() {
