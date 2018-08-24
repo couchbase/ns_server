@@ -4,6 +4,8 @@ mn.components.MnStorageMode =
   (function (Rx) {
     "use strict";
 
+    mn.helper.extends(MnStorageMode, mn.helper.MnEventableComponent);
+
     MnStorageMode.annotations = [
       new ng.core.Component({
         selector: "mn-storage-mode",
@@ -13,7 +15,8 @@ mn.components.MnStorageMode =
           "indexFlagChanges",
           "permissionsIndexWrite",
           "isAtLeast50"
-        ]
+        ],
+        changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
     ];
 
@@ -23,13 +26,14 @@ mn.components.MnStorageMode =
     ];
 
     MnStorageMode.prototype.ngOnInit = ngOnInit;
-    MnStorageMode.prototype.ngOnDestroy = ngOnDestroy;
+    MnStorageMode.prototype.doDisableControl = doDisableControl;
 
     return MnStorageMode;
 
-    function ngOnDestroy() {
-      this.destroy.next();
-      this.destroy.complete();
+    function MnStorageMode(mnWizardService, mnPoolsService) {
+      mn.helper.MnEventableComponent.call(this);
+      this.indexesHttp = mnWizardService.stream.indexesHttp;
+      this.isEnterprise = mnPoolsService.stream.isEnterprise;
     }
 
     function ngOnInit() {
@@ -40,7 +44,7 @@ mn.components.MnStorageMode =
           this.control.valueChanges.pipe(
             Rx.operators.first(),
             Rx.operators.map(function (v) {
-              return v === 'forestdb'
+              return v === 'forestdb';
             })
           );
 
@@ -64,18 +68,12 @@ mn.components.MnStorageMode =
         (this.permissionsIndexWrite || Rx.of(true)).pipe(Rx.operators.map(mn.helper.invert))
       ).pipe(
         Rx.operators.map(_.curry(_.some)(_, Boolean)),
-        Rx.operators.takeUntil(this.destroy)
-      ).subscribe(doDisableControl.bind(this));
+        Rx.operators.takeUntil(this.mnOnDestroy)
+      ).subscribe(this.doDisableControl.bind(this));
     }
 
     function doDisableControl(value) {
       this.control[value ? "disable" : "enable"]();
-    }
-
-    function MnStorageMode(mnWizardService, mnPoolsService) {
-      this.destroy = new Rx.Subject();
-      this.indexesHttp = mnWizardService.stream.indexesHttp;
-      this.isEnterprise = mnPoolsService.stream.isEnterprise;
     }
 
   })(window.rxjs);
