@@ -135,6 +135,7 @@
       ],
       providers: [
         mn.services.MnTasks,
+        mn.services.MnAlerts,
         mn.services.MnPools,
         mn.services.MnExceptionHandler,
         mn.services.MnPermissions,

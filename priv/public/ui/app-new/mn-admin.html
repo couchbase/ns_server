@@ -146,17 +146,17 @@
   <!--    ng-show="adminCtl.lostConnState.isActivated"> -->
   <!--   <p>Difficulties communicating with the cluster. Displaying cached information.</p> -->
   <!-- </div> -->
-
-  <!-- <div -->
-  <!--    ng-repeat="alert in adminCtl.alerts" -->
-  <!--    class="animate-alert alert enable-ng-animation" -->
-  <!--    ng-class="{ -->
-  <!--              'alert-error': alert.type !== 'success', -->
-  <!--              'alert-success': alert.type === 'success' -->
-  <!--              }"> -->
-  <!--   <p>{{alert.msg}}</p> -->
-  <!--   <a ng-click="adminCtl.closeAlert(alert)" class="close">X</a> -->
-  <!-- </div> -->
+    <div
+       *ngFor="let alert of (mnAlerts | async);"
+       @mnAnimateHeight
+       class="alert"
+       [ngClass]="{
+                  'alert-error': alert.type !== 'success',
+                  'alert-success': alert.type === 'success'
+                  }">
+      <p>{{alert.message}}</p>
+      <a [hidden]="alert.timeout" (click)="closeAlert(alert)" class="close">X</a>
+    </div>
 
   <main>
     <!-- <nav -->

@@ -22,6 +22,25 @@ mn.components.MnAdmin =
                 ng.animations.animation('500ms',
                                         ng.animations.style({opacity: '0', height: '0'}))
               )
+            ]),
+          ng.animations.trigger(
+            'mnAnimateHeight', [
+
+              ng.animations.transition(':enter', [
+                ng.animations.style({opacity: 0, height: 0}),  // initial
+                ng.animations.animate('0.4s ease',
+                        ng.animations.style({opacity: 1, height: '*' }))  // final
+              ]),
+
+              ng.animations.transition(':leave', [
+                ng.animations.style({opacity: 1, height: '*' }),
+                ng.animations.animate('0.4s ease',
+                        ng.animations.style({
+                          opacity: 0,
+                          height: '0px'
+                        }))
+              ])
+
             ]
           )
         ]
@@ -34,6 +53,7 @@ mn.components.MnAdmin =
       mn.services.MnPools,
       mn.services.MnPermissions,
       mn.services.MnTasks,
+      mn.services.MnAlerts,
       window['@uirouter/angular'].UIRouter
     ];
 
@@ -49,6 +69,7 @@ mn.components.MnAdmin =
                               mnPoolsService,
                               mnPermissionsService,
                               mnTasksService,
+                              mnAlertsService,
                               uiRouter
                              ) {
       this.logoutHttp = mnAuthService.stream.logoutHttp;
@@ -63,6 +84,8 @@ mn.components.MnAdmin =
       this.whomiId = mnAdminService.stream.whomi.pipe(
         Rx.operators.pluck("id")
       );
+
+      this.mnAlerts = mnAlertsService.stream.alerts;
 
       this.tasksRead =
         mnPermissionsService.createPermissionStream("tasks!read");
