@@ -4,6 +4,8 @@ mn.components.MnServicesConfig =
   (function (Rx) {
     "use strict";
 
+    mn.helper.extends(MnServicesConfig, mn.helper.MnEventableComponent);
+
     MnServicesConfig.annotations = [
       new ng.core.Component({
         selector: "mn-services-config",
@@ -11,91 +13,92 @@ mn.components.MnServicesConfig =
         inputs: [
           "group",
           "servicesOnly"
-        ]
+        ],
+        changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
     ];
 
     MnServicesConfig.parameters = [
-      mn.services.MnWizard,
       mn.services.MnAdmin,
       mn.services.MnPools
     ];
 
     MnServicesConfig.prototype.ngOnInit = ngOnInit;
-    MnServicesConfig.prototype.ngOnDestroy = ngOnDestroy;
+    MnServicesConfig.prototype.validate = validate;
+    MnServicesConfig.prototype.selectInitialFocus = selectInitialFocus;
+    MnServicesConfig.prototype.calculateTotal = calculateTotal;
+    MnServicesConfig.prototype.packQuotas = packQuotas;
+    MnServicesConfig.prototype.getQuota= getQuota;
+    MnServicesConfig.prototype.createToggleFieldStream = createToggleFieldStream;
+    MnServicesConfig.prototype.toggleFields = toggleFields;
+    MnServicesConfig.prototype.triggerUpdate = triggerUpdate;
 
     return MnServicesConfig;
 
+    function MnServicesConfig(mnAdminService, mnPoolsService) {
+      mn.helper.MnEventableComponent.call(this);
+      this.poolsDefaultHttp = mnAdminService.stream.poolsDefaultHttp;
+      this.isEnterprise = mnPoolsService.stream.isEnterprise;
+      this.quotaServices = ["kv", "index", "fts", "cbas", "eventing"];
+    }
+
     function ngOnInit() {
       if (this.servicesOnly) {
-        return
+        return;
       }
-      this.total =
-        this.group.valueChanges.pipe(Rx.operators.map(calculateTotal.bind(this)));
-
       this.focusFieldSubject = new Rx.BehaviorSubject(
-        (this.group.value.field.kv ? "kv" :
-         this.group.value.field.index ? "index" :
-         this.group.value.field.fts ? "fts" :
-         this.group.value.field.cbas ? "cbas" : "eventing")
+        this.quotaServices.find(this.selectInitialFocus.bind(this))
       );
+      this.total = this.group.valueChanges.pipe(
+        Rx.operators.map(this.calculateTotal.bind(this))
+      );
+      this.quotaServices.forEach(this.createToggleFieldStream.bind(this))
 
-      createToggleFieldStream.bind(this)("kv");
-      createToggleFieldStream.bind(this)("index");
-      createToggleFieldStream.bind(this)("fts");
-      createToggleFieldStream.bind(this)("cbas");
-      createToggleFieldStream.bind(this)("eventing");
-
-      this.group.valueChanges
-        .pipe(
-          Rx.operators.debounce(function () {
-            return Rx.interval(300);
-          }),
-          Rx.operators.takeUntil(this.destroy)
-        )
-        .subscribe(validate.bind(this))
+      this.group.valueChanges.pipe(
+        Rx.operators.debounce(function () {
+          return Rx.interval(300);
+        }),
+        Rx.operators.takeUntil(this.mnOnDestroy)
+      ).subscribe(this.validate.bind(this));
 
       //trigger servicesGroup.valueChanges in order to calculate total
-      setTimeout(triggerUpdate.bind(this), 0);
+      setTimeout(this.triggerUpdate.bind(this), 0);
+    }
+
+    function selectInitialFocus(service) {
+      return this.group.value.field[service];
+    }
+
+    function calculateTotal() {
+      return this.quotaServices.reduce(this.getQuota.bind(this), 0);
     }
 
     function validate() {
-      var data = {};
-      maybeAddQuota.bind(this)(data, "memoryQuota", "kv");
-      maybeAddQuota.bind(this)(data, "indexMemoryQuota", "index");
-      maybeAddQuota.bind(this)(data, "ftsMemoryQuota", "fts");
-      maybeAddQuota.bind(this)(data, "cbasMemoryQuota", "cbas");
-      maybeAddQuota.bind(this)(data, "eventingMemoryQuota", "eventing");
-      this.poolsDefaultHttp.post([data, true]);
+      this.poolsDefaultHttp.post([
+        this.quotaServices.reduce(this.packQuotas.bind(this), {}), true]);
     }
 
-    function maybeAddQuota(data, name, serviceName) {
-      var service = this.group.get("flag." + serviceName);
+    function packQuotas(acc, name) {
+      var service = this.group.get("flag." + name);
+      var keyName = (name == "kv" ? "m" : (name + "M")) + "emoryQuota";
       if (service && service.value) {
-        data[name] = this.group.get("field." + serviceName).value;
+        acc[keyName] = this.group.get("field." + name).value;
       }
+      return acc;
     }
 
-    function calculateTotal(value) {
-      return getFieldValue("kv", this.group) +
-        getFieldValue("index", this.group) +
-        getFieldValue("fts", this.group) +
-        getFieldValue("cbas", this.group) +
-        getFieldValue("eventing", this.group);
-    }
-
-    function getFieldValue(serviceName, group) {
-      var flag = group.get("flag." + serviceName);
-      var field = group.get("field." + serviceName);
-      return (flag && flag.value && field.value) || 0;
+    function getQuota(acc, name) {
+      var flag = this.group.get("flag." + name);
+      var field = this.group.get("field." + name);
+      return acc + ((flag && flag.value && field.value) || 0);
     }
 
     function createToggleFieldStream(serviceGroupName) {
       var group = this.group.get("flag." + serviceGroupName);
       if (group) {
         group.valueChanges
-          .pipe(Rx.operators.takeUntil(this.destroy))
-          .subscribe(toggleFields(serviceGroupName).bind(this));
+          .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
+          .subscribe(this.toggleFields(serviceGroupName).bind(this));
       }
     }
 
@@ -110,14 +113,4 @@ mn.components.MnServicesConfig =
       this.group.patchValue(this.group.value);
     }
 
-    function ngOnDestroy() {
-      this.destroy.next();
-      this.destroy.complete();
-    }
-
-    function MnServicesConfig(mnWizardService, mnAdminService, mnPoolsService) {
-      this.destroy = new Rx.Subject();
-      this.poolsDefaultHttp = mnAdminService.stream.poolsDefaultHttp;
-      this.isEnterprise = mnPoolsService.stream.isEnterprise;
-    }
   })(window.rxjs);
