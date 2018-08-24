@@ -14,7 +14,8 @@ mn.directives.MnFocus =
         ],
         host: {
           '(blur)': 'blur()'
-        }
+        },
+        changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
     ];
 
@@ -23,32 +24,38 @@ mn.directives.MnFocus =
     ];
 
     MnFocusDirective.prototype.blur = blur;
+    MnFocusDirective.prototype.ngOnInit = ngOnInit;
+    MnFocusDirective.prototype.maybePrevent = maybePrevent;
+    MnFocusDirective.prototype.doFocus = doFocus;
 
     return MnFocusDirective;
 
-    function blur() {
-      // this.mnFocus.next(false);
-    }
-
     function MnFocusDirective(el) {
       mn.helper.MnEventableComponent.call(this);
+      this.el = el.nativeElement;
+      this.formControlName = this.el.getAttribute("formControlName");
+    }
 
-      var elementName = el.nativeElement.getAttribute("formControlName");
-
-      this.mnOnInit.pipe(
-        Rx.operators.switchMap((function () {
-          return this.mnFocus;
-        }).bind(this)),
-        Rx.operators.filter(function (value) {
-          if (typeof value === "string") {
-            return value === elementName;
-          } else {
-            return value; //Boolean
-          }
-        }),
+    function ngOnInit() {
+      this.mnFocus.pipe(
+        Rx.operators.filter(this.maybePrevent.bind(this)),
         Rx.operators.takeUntil(this.mnOnDestroy)
-      ).subscribe(function (value) {
-        el.nativeElement.focus();
-      });
+      ).subscribe(this.doFocus.bind(this));
+    }
+
+    function doFocus(value) {
+      this.el.focus();
+    }
+
+    function maybePrevent(value) {
+      if (typeof value === "string") {
+        return value === this.formControlName;
+      } else {
+        return value; //Boolean
+      }
+    }
+
+    function blur() {
+      // this.mnFocus.next(false);
     }
   })(window.rxjs);
