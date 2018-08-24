@@ -4,6 +4,8 @@ mn.directives.MnDraggable =
   (function (Rx) {
     "use strict";
 
+    mn.helper.extends(MnFocusDirective, mn.helper.MnEventableComponent);
+
     MnFocusDirective.annotations = [
       new ng.core.Directive({
         selector: "[mnDraggable]",
@@ -17,74 +19,82 @@ mn.directives.MnDraggable =
           '[style.bottom]': 'bottom',
           '(mousedown)': 'mousedown($event)',
           '(document:mousemove)': 'mousemove($event)',
-          '(document:mouseup)': 'mouseup($event)',
-        }
+          '(document:mouseup)': 'mouseup($event)'
+        },
+        changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
     ];
 
-    MnFocusDirective.parameters =[
-      ng.core.ElementRef
-    ];
-
+    MnFocusDirective.prototype.ngOnInit = ngOnInit;
     MnFocusDirective.prototype.mousedown = mousedown;
     MnFocusDirective.prototype.mouseup = mouseup;
     MnFocusDirective.prototype.mousemove = mousemove;
-    MnFocusDirective.prototype.ngOnDestroy = ngOnDestroy;
+    MnFocusDirective.prototype.getNewCoordinates = getNewCoordinates;
+    MnFocusDirective.prototype.setNewCoordinates = setNewCoordinates;
+    MnFocusDirective.prototype.getInitCoordinates = getInitCoordinates;
 
     return MnFocusDirective;
 
-    function MnFocusDirective(el) {
-      var that = this;
-      this.stream = {};
-      this.stream.mouseup = new Rx.Subject();;
-      this.stream.mousemove = new Rx.Subject();;
-      this.stream.mousedown = new Rx.Subject();;
-      this.destroy = new Rx.Subject();
-
-      that.stream.mousedown.pipe(
-        Rx.operators.map(function (e) {
-          var target = e.currentTarget;
-          var startX = target.offsetLeft;
-
-          if (that.baseCornerRight) {
-            startX += target.clientWidth;
-          }
-          return {
-            startX: startX,
-            startY: target.offsetTop,
-            mouseX: e.clientX,
-            mouseY: e.clientY
-          };
-        }),
-        Rx.operators.switchMap(function (init) {
-          return that.stream.mousemove.pipe(
-            Rx.operators.takeUntil(that.stream.mouseup),
-            Rx.operators.map(function (e) {
-              var dx = e.clientX - init.mouseX;
-              var dy = e.clientY - init.mouseY;
-              var rv = {
-                top: init.startY + dy + 'px',
-                bottom: 'auto'
-              };
-              if (that.baseCornerRight) {
-                rv.right = -(init.startX + dx) + 'px';
-                rv.left = "auto";
-              } else {
-                rv.right = "auto";
-                rv.left = init.startX + dx + 'px';
-              }
-              return rv;
-            })
+    function ngOnInit() {
+      this.stream.mousedown.pipe(
+        Rx.operators.map(this.getInitCoordinates.bind(this)),
+        Rx.operators.switchMap((function (init) {
+          return this.stream.mousemove.pipe(
+            Rx.operators.takeUntil(this.stream.mouseup),
+            Rx.operators.map(this.getNewCoordinates(init).bind(this))
           );
-        }),
-        Rx.operators.takeUntil(this.destroy)
-      )
-        .subscribe(function (css) {
-          that.top = css.top;
-          that.bottom = css.bottom;
-          that.left = css.left;
-          that.right = css.right;
-        });
+        }).bind(this)),
+        Rx.operators.takeUntil(this.mnOnDestroy)
+      ).subscribe(this.setNewCoordinates.bind(this));
+    }
+
+    function MnFocusDirective() {
+      mn.helper.MnEventableComponent.call(this);
+      this.stream = {};
+      this.stream.mouseup = new Rx.Subject();
+      this.stream.mousemove = new Rx.Subject();
+      this.stream.mousedown = new Rx.Subject();
+    }
+
+    function setNewCoordinates(css) {
+      this.top = css.top;
+      this.bottom = css.bottom;
+      this.left = css.left;
+      this.right = css.right;
+    }
+
+    function getNewCoordinates(init) {
+      return function (e) {
+        var dx = e.clientX - init.mouseX;
+        var dy = e.clientY - init.mouseY;
+        var rv = {
+          top: init.startY + dy + 'px',
+          bottom: 'auto'
+        };
+        if (this.baseCornerRight) {
+          rv.right = -(init.startX + dx) + 'px';
+          rv.left = "auto";
+        } else {
+          rv.right = "auto";
+          rv.left = init.startX + dx + 'px';
+        }
+        return rv;
+      }
+    }
+
+    function getInitCoordinates(e) {
+      var target = e.currentTarget;
+      var startX = target.offsetLeft;
+
+      if (this.baseCornerRight) {
+        startX += target.clientWidth;
+      }
+      return {
+        startX: startX,
+        startY: target.offsetTop,
+        mouseX: e.clientX,
+        mouseY: e.clientY
+      };
     }
 
     function mousedown(e) {
@@ -99,10 +109,5 @@ mn.directives.MnDraggable =
     function mousemove(e) {
       this.stream.mousemove.next(e);
       return false;
-    }
-
-    function ngOnDestroy() {
-      this.destroy.next();
-      this.destroy.complete();
     }
   })(window.rxjs);
