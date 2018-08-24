@@ -101,10 +101,6 @@
     border-left: 4px solid #d9e7f7;
     color: #555;
   }
-  input.filter-input {
-    width: auto;
-    padding-right: 2rem;
-  }
   .content-box-dashboard {
     margin-left: .25rem;
   }
@@ -131,6 +127,9 @@
   }
   .padding-left-1 {
     padding-left: 0 !important;
+  }
+  .margin-left-neg-1 {
+    margin-left: 0 !important;
   }
   .row.resp-sml,
   .controls.resp-sml,
@@ -171,6 +170,15 @@
   }
   .dialog-resizable {
     width: 98vw;
+  }
+  .filter-server input.filter-input {
+    width: 94vw;
+  }
+  .filter-server {
+    order: 3;
+  }
+  .filter-server {
+    margin: .25rem 0 0 0 !important;
   }
 }
 
@@ -236,6 +244,12 @@
     padding: 0 .75rem;
     line-height: normal;
     font-size: .961rem;
+  }
+  input.filter-input {
+    width: 94vw;
+  }
+  .filter-input-group {
+    margin-top: .25rem;
   }
 }
 

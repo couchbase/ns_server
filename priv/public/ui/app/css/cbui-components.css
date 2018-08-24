@@ -268,11 +268,12 @@ h1 a:active {
 /* search/filter control ------------------------------------------------ */
 .filter-input-group {
   position: relative;
-  flex: 0 1 auto;
 }
 input.filter-input {
   width: 256px;
-  padding-right: 2rem;
+}
+.filter-server {
+  margin: .25rem;
 }
 /* inserts magnifying glass inside filter input field ------------------- */
 .filter-input-group .fa-search-minus {
@@ -1737,10 +1738,8 @@ section.dynamic_unhealthy {
 
 /* External Auth check for Security > Users -------------------------------- */
 .users-auth-check {
-  margin: -1rem 0 .5rem 0;
   display: flex;
-  justify-content: flex-end;
-  align-items: center;
+  margin: .25rem 0;
 }
 .users-auth-check p {
   margin: 0;

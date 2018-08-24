@@ -1,14 +1,10 @@
-<mn-element-cargo depot="actions">
-  <div class="header-controls resp-sml">
-    <div
-       class="row borderless"
-       mn-search="logsListCtl.filterField"
-       mn-placeholder="filter logs list">
-    </div>
-  </div>
-</mn-element-cargo>
-
 <div mn-spinner="!logsListCtl.logs" min-height="300px">
+  <div
+     class="row flex-right margin-bottom-half"
+     mn-search="logsListCtl.filterField"
+     mn-placeholder="filter logs..."
+     mn-hide-button="true">
+  </div>
   <div class="cbui-table" mn-sortable-table>
     <div class="cbui-table-header padding-left resp-hide-sml">
       <span class="cbui-table-cell flex-grow-3">

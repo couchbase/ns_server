@@ -352,6 +352,9 @@ footer {
 .margin-quarter:last-child {
   margin: .25rem 0 !important;
 }
+.margin-top-neg-half {
+  margin-top: -.5rem !important;
+}
 .margin-top-neg-1 {
   margin-top: -1rem !important;
 }
@@ -386,6 +389,9 @@ footer {
 }
 .margin-right-0 {
   margin-right: 0 !important;
+}
+.margin-right-quarter {
+  margin-right: .25rem !important;
 }
 .margin-right-half {
   margin-right: .5rem !important;
@@ -453,6 +459,9 @@ footer {
 }
 .margin-left-3, .indent-3 {
   margin-left: 3rem !important;
+}
+.margin-left-neg-1 {
+  margin-left: -1rem !important;
 }
 
 /* padding ------------------------------------------------------------- */

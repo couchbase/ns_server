@@ -1,20 +1,27 @@
 <mn-element-cargo depot="actions">
   <div class="header-controls">
-    <div
-       class="row borderless"
-       mn-placeholder="filter users list"
-       mn-search="userRolesCtl.filterField">
-    </div>
     <a ng-show="rbac.cluster.admin.security.write"
        ng-click="userRolesCtl.addUser()">
       ADD USER
     </a>
   </div>
 </mn-element-cargo>
-<div mn-spinner="!userRolesCtl.state || userRolesCtl.viewLoading" min-height="300px">
-  <div
-     ng-if="adminCtl.poolDefault.isEnterprise && userRolesCtl.isLdapEnabled"
-     mn-saslauthd-auth=""></div>
+<div
+   mn-spinner="!userRolesCtl.state || userRolesCtl.viewLoading"
+   min-height="300px"
+   class="margin-top-neg-half margin-left-neg-1">
+  <div class="row resp-sml margin-bottom-half">
+    <div
+       ng-if="adminCtl.poolDefault.isEnterprise && userRolesCtl.isLdapEnabled"
+       mn-saslauthd-auth="">
+    </div>
+    <div
+       class="row"
+       mn-placeholder="filter users..."
+       mn-hide-button="true"
+       mn-search="userRolesCtl.filterField">
+    </div>
+  </div>
   <div class="cbui-table" mn-sortable-table>
     <div class="cbui-table-header padding-left">
       <span class="cbui-table-cell">
