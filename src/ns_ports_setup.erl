@@ -536,7 +536,14 @@ fts_spec(Config) ->
             FtRestPort = ns_config:search(Config, {node, node(), fts_http_port}, 8094),
             {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
             FTSIdxDir = filename:join(IdxDir, "@fts"),
-            ok = misc:ensure_writable_dir(FTSIdxDir),
+            case misc:ensure_writable_dir(FTSIdxDir) of
+                ok ->
+                    ok;
+                _ ->
+                    ?log_debug("Service fts's directory (~p) is not writable "
+                               "on node ~p", [FTSIdxDir, node()])
+            end,
+
             {_, Host} = misc:node_name_host(node()),
             BindHttp = io_lib:format("~s:~b,~s:~b", [misc:maybe_add_brackets(Host), FtRestPort,
                                                      misc:inaddr_any([url]),
@@ -663,10 +670,15 @@ cbas_spec(Config) ->
 
             CBASDirs = [filename:join([Token], "@analytics") ||
                            Token <- ns_storage_conf:this_node_cbas_dirs()],
+            case misc:ensure_writable_dirs(CBASDirs) of
+                ok ->
+                    ok;
+                _ ->
+                    ?log_debug("Service cbas's directories (~p) are not "
+                               "writable on node ~p", [CBASDirs, node()])
+            end,
 
             JavaHome = ns_storage_conf:this_node_java_home(),
-
-            ok = misc:ensure_writable_dirs(CBASDirs),
 
             {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
             {_, Host} = misc:node_name_host(node()),
