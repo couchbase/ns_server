@@ -336,7 +336,7 @@ input.filter-input {
   flex-wrap: nowrap;
   justify-content: space-between;
   position: relative;
-  padding: .75rem 1rem;/*center items using padding
+  padding: .25rem 1rem;/*center items using padding
   since min-height and align-items doesn't work well in IE11*/
   margin: 0;
 }
@@ -409,7 +409,6 @@ input.filter-input {
 }
 section.has-hover:hover {
   background-color: #f6fafd;
-  transition: all linear 0.2s;
   cursor: pointer;
 }
 .cbui-tablerow-expanded {
@@ -963,21 +962,20 @@ section.error {
   background-color: #e07f82; /* .red-3 */
 }
 
-/* minimum presentation of nodes list with checkboxes -----------------------*/
+/* minimum presentation of nodes list with checkboxes ----------------------- */
 .selectable-nodes-list {
   margin: 0;
 }
-.selectable-nodes-list .cbui-tablerow {
-  padding: 2px 0;
-}
 .selectable-nodes-list section {
-  border: 0;
-  margin: 0 0 .25rem;
+  margin: 0;
+}
+.selectable-nodes-list section:last-child {
+  border-bottom: 0;
 }
 .selectable-nodes-list label {
   line-height: 1;
 }
-.hide-select-all .nodes-list-select-all{
+.hide-select-all .nodes-list-select-all {
   display: none;
 }
 
@@ -1524,7 +1522,7 @@ input[type="checkbox"].fake-select + label:before {
 }
 
 /* DYNAMIC STATUSES - SERVERS/BUCKETS/SERVICES -------------------------- */
-/* old-style background colors ------------------------------------------ */
+/* old-style background colors ------------------------------------------
 .dynamic_inactive {
   background-color: #a1a1a1;
 }
@@ -1537,29 +1535,28 @@ input[type="checkbox"].fake-select + label:before {
 }
 .dynamic_unhealthy {
   background-color: #e07f82;
-}
+}  */
 
 /* new-style border colors ---------------------------------------------- */
 .service-widget.dynamic_inactive,
-section.dynamic_inactive {
+.dynamic_inactive {
   background-color: #fff;
   border-left: 8px solid #a1a1a1;  /* gray-3 */
 }
 .service-widget.dynamic_healthy,
-section.dynamic_healthy {
+.dynamic_healthy {
   border-left: 8px solid #80c677;  /* green-3 */
-  background-color: #fff;
 }
 .service-widget.dynamic_warmup,
 .service-widget.dynamic_inactiveFailed,
-section.dynamic_inactiveAdded,
-section.dynamic_warmup {
+.dynamic_inactiveAdded,
+.dynamic_warmup {
   border-left: 8px solid #f7a623;  /* orange-1 */
   background-color: #fff;
 }
 .service-widget.dynamic_unhealthy,
-section.dynamic_inactiveFailed,
-section.dynamic_unhealthy {
+.dynamic_inactiveFailed,
+.dynamic_unhealthy {
   border-left: 8px solid #d65558; /* red-2 */
   background-color: #fff;
   animation: pulse_unhealthy 3s infinite;

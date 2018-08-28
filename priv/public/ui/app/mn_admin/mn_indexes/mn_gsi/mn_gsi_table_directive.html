@@ -24,9 +24,6 @@
          class="sorter">storage type</span>
     </span>
     <span class="cbui-table-cell flex-grow-half">build progress</span>
-    <span
-       class="cbui-table-cell flex-grow-1"
-       ng-if="mnGsiTableCtl.hasQueryService() && mnGsiTableCtl.rbac.cluster.bucket['.'].n1ql.select.execute"></span>
   </div>
   <section
      ng-repeat="row in mnGsiTableCtl.list
@@ -37,12 +34,17 @@
                 track by mnGsiTableCtl.generateIndexId(row)"
      ng-class="{
                'disabled-tag': row.awaitingRemoval,
-               'dynamic_healthy': row.status == 'Ready',
-               'dynamic_unhealthy': row.status !== 'Ready'
+               'dynamic_healthy': row.status == 'Ready' && mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row)),
+               'dynamic_unhealthy': row.status !== 'Ready' && mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row))
                }"
      ng-click="mnGsiTableCtl.toggleDetails(mnGsiTableCtl.generateIndexId(row))"
      class="has-hover">
-    <div class="cbui-tablerow">
+    <div
+       class="cbui-tablerow"
+       ng-class="{
+                 'dynamic_healthy': row.status == 'Ready' && !mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row)),
+                 'dynamic_unhealthy': row.status !== 'Ready' && !mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row))
+                 }">
       <span
          class="cbui-table-cell flex-grow-1-5"
          title="{{row.index}}">
@@ -62,17 +64,7 @@
         {{row.storageMode | mnFormatStorageMode:mnGsiTableCtl.pools.isEnterprise}}</span>
       <span class="cbui-table-cell flex-grow-half">
         <span ng-show="row.status == 'Replicating'">Replicating</span>
-        <span ng-show="row.progress">{{row.progress}}%</span></span>
-      <span
-         class="cbui-table-cell flex-grow-1 text-right wrap"
-         ng-if="mnGsiTableCtl.hasQueryService() &&
-                mnGsiTableCtl.rbac.cluster.bucket[row.bucket].n1ql.select.execute"
-         ng-click="$event.stopPropagation();">
-        <!-- blank spaces in index name mean replica, can't drop -->
-        <button
-           ng-show="row.index.indexOf(' ') == -1"
-           class="outline"
-           ng-click="mnGsiTableCtl.dropIndex(row)">Drop</button>
+        <span ng-show="row.progress">{{row.progress}}%</span>
       </span>
     </div>
     <div
@@ -88,6 +80,15 @@
            ui-sref="app.admin.query.workbench({query: row.definition})">
           Open in Workbench
         </button>
+        <span
+           ng-if="mnGsiTableCtl.hasQueryService() &&
+                  mnGsiTableCtl.rbac.cluster.bucket[row.bucket].n1ql.select.execute">
+          <!-- blank spaces in index name mean replica, can't drop -->
+          <button
+             ng-show="row.index.indexOf(' ') == -1"
+             class="outline"
+             ng-click="mnGsiTableCtl.dropIndex(row)">Drop</button>
+        </span>
       </div>
     </div>
   </section>

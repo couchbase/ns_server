@@ -1,17 +1,19 @@
 <div class="selectable-nodes-list">
   <div class="row margin-bottom-half">
-    <span class="nodes-list-select-all">
-      <input
-         type="checkbox"
-         id="thisModule_checkall"
-         ng-disabled="!filteredNodes.length"
-         ng-checked="mnThisCtl.areAllChecked(false)"
-         ng-click="mnThisCtl.toggleAll()">
+    <span class="row nodes-list-select-all">
       <label
-         class="checkbox"
+         class="toggle-control margin-0"
          for="thisModule_checkall">
-        select all nodes
+        <input
+          type="checkbox"
+          id="thisModule_checkall"
+          ng-disabled="!filteredNodes.length"
+          ng-checked="mnThisCtl.areAllChecked(false)"
+          ng-click="mnThisCtl.toggleAll()">
+        <span class="toggle-control-body"></span>
       </label>
+      <span class="text-smaller">&nbsp; select all nodes</span>
+
     </span>
     <div
        class="row"
@@ -21,10 +23,9 @@
     </div>
   </div>
   <section
-     class="cbui-table padding-left-half"
-     ng-repeat="node in mnThisCtl.nodes | mnServersListFilter:mnThisCtl.filterField:mnThisCtl.mnGroups as filteredNodes track by node.otpNode"
-     ng-class="['dynamic_' + node.status, 'dynamic_' + node.clusterMembership]">
-    <div class="cbui-tablerow">
+     class="cbui-table"
+     ng-repeat="node in mnThisCtl.nodes | mnServersListFilter:mnThisCtl.filterField:mnThisCtl.mnGroups as filteredNodes track by node.otpNode">
+    <div class="cbui-tablerow padding-left-half" ng-class="['dynamic_' + node.status, 'dynamic_' + node.clusterMembership]">
       <span class="cbui-table-cell flex-grow-2-5">
         <input
            type="checkbox"

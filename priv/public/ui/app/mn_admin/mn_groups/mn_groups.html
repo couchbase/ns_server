@@ -34,7 +34,7 @@
   <div
      ng-repeat="group in groupsCtl.state.groups | orderBy:'name'"
      class="margin-bottom-1">
-    <div class="cbui-table-header flex-left">
+    <section class="row flex-left">
       <h4 class="ellipsis">{{group.name}}&nbsp;
         <a
            class="text-smaller"
@@ -42,47 +42,43 @@
            ng-click="groupsCtl.createGroup(group)"
            >edit name</a>
       </h4>
-    </div>
+    </section>
 
 <!-- group list of servers ********************** -->
-    <section
-       class="row flex-left"
-       ng-repeat="server in group.nodes">
-      <section
-         class="cbui-table-cell status"
-         ng-class="['dynamic_' + server.status, 'dynamic_' + server.clusterMembership]">
-      </section>
-      <span class="cbui-table-cell">
-        {{server.hostname | mnStripPortHTML:group.nodes}}
-      </span>
-      <span class="cbui-table-cell flex-grow-1-5">
-        <span
-           ng-repeat="service in server.services | mnFormatServicesArray | orderBy"
-           class="label neutral">{{service}}
-        </span>
-      </span>
-      <span class="cbui-table-cell wrap flex-grow-1-5 text-right">
-        <div uib-dropdown ng-show="!server.toGroupPending && groupsCtl.state.groups.length > 1">
-          <div uib-dropdown-toggle class="menu-toggle">move to <span class="icon fa-caret-down"></span></div>
-          <div uib-dropdown-menu class="dropdown-menu-select-like">
-            <a
-               ng-show="groupNew.name !== group.name"
-               ng-repeat="groupNew in groupsCtl.state.groups | orderBy:'name'"
-               ng-click="groupsCtl.changeNodeGroup(group.name, groupNew.name, server)">{{groupNew.name}}</a>
-          </div>
-        </div>
-        <small ng-show="server.toGroupPending" class="row success">
-          <span>
-            <span class="icon fa-check"></span>
-            pending move to {{server.toGroupPending}}
+    <section ng-repeat="server in group.nodes">
+      <span
+       class="cbui-tablerow"
+       ng-class="['dynamic_' + server.status, 'dynamic_' + server.clusterMembership]">
+        <span class="cbui-tablerow-title ellipsis flex-grow-1-5">
+          {{server.hostname | mnStripPortHTML:group.nodes}}
+          <span
+             ng-repeat="service in server.services | mnFormatServicesArray | orderBy"
+             class="label neutral">{{service}}
           </span>
-          <a
-             class="indent-1"
-             ng-click="groupsCtl.changeNodeGroup(server.toGroupPending, group.name, server)">
-            cancel
-          </a>
-        </small>
-      </span>
+        </span>
+        <span class="cbui-table-cell wrap text-right">
+          <div uib-dropdown ng-show="!server.toGroupPending && groupsCtl.state.groups.length > 1">
+            <div uib-dropdown-toggle class="menu-toggle">move to <span class="icon fa-caret-down"></span></div>
+            <div uib-dropdown-menu class="dropdown-menu-select-like">
+              <a
+                 ng-show="groupNew.name !== group.name"
+                 ng-repeat="groupNew in groupsCtl.state.groups | orderBy:'name'"
+                 ng-click="groupsCtl.changeNodeGroup(group.name, groupNew.name, server)">{{groupNew.name}}</a>
+            </div>
+          </div>
+          <small ng-show="server.toGroupPending" class="row success">
+            <span>
+              <span class="icon fa-check"></span>
+              pending move to {{server.toGroupPending}}
+            </span>
+            <a
+               class="indent-1"
+               ng-click="groupsCtl.changeNodeGroup(server.toGroupPending, group.name, server)">
+              cancel move
+            </a>
+          </small>
+        </span>
+</span>
     </section>
 
 <!-- zero content *********************** -->

@@ -1,8 +1,8 @@
 <section
    class="has-hover"
    ng-click="rbac.cluster.nodes.read && serversCtl.toggleDetails(node.hostname)"
-   ng-class="['dynamic_' + node.status, 'dynamic_' + node.clusterMembership]">
-  <div class="cbui-tablerow">
+   ng-class="{['dynamic_' + node.status] : serversCtl.isDetailsOpened(node.hostname), ['dynamic_' + node.clusterMembership] : serversCtl.isDetailsOpened(node.hostname)}">
+  <div class="cbui-tablerow" ng-class="{['dynamic_' + node.status] : !serversCtl.isDetailsOpened(node.hostname), ['dynamic_' + node.clusterMembership] : !serversCtl.isDetailsOpened(node.hostname)}">
     <span class="cbui-table-cell flex-grow-2-5 cbui-tablerow-title flex-left">
       <span class="ellipsis padding-right-min" title="{{node.hostname | mnStripPortHTML:serversCtl.nodes.allNodes}}">
       {{node.hostname | mnStripPortHTML:serversCtl.nodes.allNodes}}

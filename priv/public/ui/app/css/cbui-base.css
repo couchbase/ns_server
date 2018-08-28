@@ -1170,7 +1170,6 @@ form .error-form {
 /* COLORS -> BACKGROUNDS ----------------------------------- */
 .has-hover:hover {
   background-color: #ecf3fa;
-  transition: all linear 0.2s;
   cursor: pointer;
 }
 
