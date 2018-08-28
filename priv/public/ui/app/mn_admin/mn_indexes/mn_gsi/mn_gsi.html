@@ -8,16 +8,16 @@
 
 <div mn-spinner="!gsiCtl.state">
 
-  <div class="row resp-sml">
+  <div class="row margin-bottom-half resp-sml relative">
     <span>
-    <span class="text-smaller">
+    <div class="simple-select-inside-label">
       view by
-    </span>
+    </div>
       <div class="simple-select">
-        <select ng-model="viewby" ng-init="viewby = 'viewby_node'" class="margin-left-quarter">
-          <option value="viewby_node">server node</option>
-          <option value="viewby_bucket">bucket</option>
+        <select ng-model="viewby" ng-init="viewby = 'viewby_index'">
           <option value="viewby_index">index</option>
+          <option value="viewby_bucket">bucket</option>
+          <option value="viewby_node">server node</option>
         </select>
       </div>
     </span>

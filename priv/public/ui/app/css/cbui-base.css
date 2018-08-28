@@ -732,9 +732,9 @@ input[type="checkbox"] {
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
-  padding-right: 1.5rem;
-  border: 1px solid #d1d1d1;
+  padding: 0 1.5rem 0 0;
   min-width: 4rem;
+
 }
 .simple-select:after {
   font-family: FontAwesome;
@@ -746,6 +746,17 @@ input[type="checkbox"] {
   top: .25rem;
   right: .5rem;
   pointer-events: none;
+}
+.simple-select-inside-label {
+  position: absolute;
+  left: .5rem;
+  top: 6px;
+  z-index: 10;
+  font-size: .875rem;
+  color: #333;
+}
+.simple-select-inside-label + .simple-select select {
+  padding-left: 3.7rem;
 }
 /* hail mary to kill auto-fill crap -- probably doesn't work ---------------- */
 input:-webkit-autofill,
