@@ -1,8 +1,13 @@
+<!-- the "dynamic_ + X" style is added w/ ng-class to either the section container or the cbui-tablerow depending on node status and whether the row is expanded or not -->
 <section
    class="has-hover"
    ng-click="rbac.cluster.nodes.read && serversCtl.toggleDetails(node.hostname)"
-   ng-class="{['dynamic_' + node.status] : serversCtl.isDetailsOpened(node.hostname), ['dynamic_' + node.clusterMembership] : serversCtl.isDetailsOpened(node.hostname)}">
-  <div class="cbui-tablerow" ng-class="{['dynamic_' + node.status] : !serversCtl.isDetailsOpened(node.hostname), ['dynamic_' + node.clusterMembership] : !serversCtl.isDetailsOpened(node.hostname)}">
+   ng-class="{['dynamic_' + node.clusterMembership] : serversCtl.isDetailsOpened(node.hostname) || serversItemCtl.isNodeInactiveFailed || serversItemCtl.isNodeInactiveAdded || serversItemCtl.isNodeUnhealthy || (adminCtl.tasks.inRebalance && adminCtl.tasks.tasksRebalance.status === 'running' && rbac.cluster.tasks.read),
+              ['dynamic_' + node.status] : serversCtl.isDetailsOpened(node.hostname) || serversItemCtl.isNodeInactiveFailed || serversItemCtl.isNodeInactiveAdded || serversItemCtl.isNodeUnhealthy || (adminCtl.tasks.inRebalance && adminCtl.tasks.tasksRebalance.status === 'running' && rbac.cluster.tasks.read)}">
+  <div
+     class="cbui-tablerow"
+     ng-class="{['dynamic_' + node.status] : !serversCtl.isDetailsOpened(node.hostname) && !(serversItemCtl.isNodeInactiveFailed || serversItemCtl.isNodeInactiveAdded || serversItemCtl.isNodeUnhealthy || (adminCtl.tasks.inRebalance && adminCtl.tasks.tasksRebalance.status === 'running' && rbac.cluster.tasks.read)),
+                ['dynamic_' + node.clusterMembership] : !serversCtl.isDetailsOpened(node.hostname) && !(serversItemCtl.isNodeInactiveFailed || serversItemCtl.isNodeInactiveAdded || serversItemCtl.isNodeUnhealthy || (adminCtl.tasks.inRebalance && adminCtl.tasks.tasksRebalance.status === 'running' && rbac.cluster.tasks.read))}">
     <span class="cbui-table-cell flex-grow-2-5 cbui-tablerow-title flex-left">
       <span class="ellipsis padding-right-min" title="{{node.hostname | mnStripPortHTML:serversCtl.nodes.allNodes}}">
       {{node.hostname | mnStripPortHTML:serversCtl.nodes.allNodes}}
@@ -143,7 +148,7 @@
        ng-show="rbac.cluster.pools.write">
       <span ng-click="serversItemCtl.reAddNode('full', node.otpNode);$event.stopPropagation()">
         <button class="outline" ng-show="serversItemCtl.isKVNode">Add Back: Full Recovery</button>
-        <button class="outline" ng-show="!serversItemCtl.isKVNode">Recovery</button>
+        <button class="outline" ng-show="!serversItemCtl.isKVNode">Add Back</button>
       </span>
       <span
          ng-show="serversItemCtl.isKVNode"
@@ -169,17 +174,12 @@
   </div>
 
 
-  <!-- rebalance task progress metering -->
+  <!-- rebalance progress metering -->
   <div
      class="row row-min items-bottom"
      ng-show="adminCtl.tasks.inRebalance && adminCtl.tasks.tasksRebalance.status === 'running' && rbac.cluster.tasks.read">
-    <div class="task-progress-row">
-      <div
-         ng-style="{width: (serversItemCtl.getRebalanceProgress | mnTruncateTo3Digits) + '%'}"
-         class="task-progress-row-meter"></div>
-    </div>
-    <div class="task-progress-row-text flex-right">
-      {{serversItemCtl.getRebalanceProgress | mnTruncateTo3Digits}}% complete
+    <div class="task-progress-row-text indent-1">
+      rebalance {{serversItemCtl.getRebalanceProgress | mnTruncateTo3Digits}}% complete
     </div>
   </div>
 
