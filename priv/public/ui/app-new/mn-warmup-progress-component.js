@@ -22,7 +22,7 @@ mn.components.MnWarmupProgress =
     MnWarmupProgressComponent.prototype.sortBy = sortBy;
     MnWarmupProgressComponent.prototype.slice = slice;
     MnWarmupProgressComponent.prototype.toggle = toggle;
-    MnWarmupProgressComponent.prototype.toggleText = toggleText;
+    MnWarmupProgressComponent.prototype.doToggleText = doToggleText;
     MnWarmupProgressComponent.prototype.isLessThanLimit = isLessThanLimit;
     MnWarmupProgressComponent.prototype.ngOnInit = ngOnInit;
 
@@ -50,7 +50,7 @@ mn.components.MnWarmupProgress =
         this.mnTasks.pipe(Rx.operators.map(this.isLessThanLimit.bind(this)));
 
       this.toggleText =
-        this.limitTo.pipe(Rx.operators.map(this.toggleText));
+        this.limitTo.pipe(Rx.operators.map(this.doToggleText));
 
       this.onToggle
         .pipe(
@@ -78,7 +78,7 @@ mn.components.MnWarmupProgress =
       return !!limit[1] ? undefined : this.limit;
     }
 
-    function toggleText(limit) {
+    function doToggleText(limit) {
       return !!limit ? '... more' : 'less';
     }
 
