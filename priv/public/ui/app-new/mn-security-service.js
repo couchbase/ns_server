@@ -15,6 +15,8 @@ mn.services.MnSecurity = (function (Rx) {
   MnSecurityService.prototype.getDefaultCertificate = getDefaultCertificate;
   MnSecurityService.prototype.getLogRedaction = getLogRedaction;
   MnSecurityService.prototype.postLogRedaction = postLogRedaction;
+  MnSecurityService.prototype.getClientCertAuth = getClientCertAuth;
+  MnSecurityService.prototype.postClientCertAuth = postClientCertAuth;
 
   return MnSecurityService;
 
@@ -44,14 +46,36 @@ mn.services.MnSecurity = (function (Rx) {
         Rx.operators.refCount()
       );
 
+    this.stream.getClientCertAuth =
+      (new Rx.BehaviorSubject()).pipe(
+        Rx.operators.switchMap(this.getClientCertAuth.bind(this)),
+        Rx.operators.multicast(mn.helper.createReplaySubject),
+        Rx.operators.refCount()
+      );
+
     this.stream.postLogRedaction =
       new mn.helper.MnPostHttp(this.postLogRedaction.bind(this))
+      .addSuccess()
+      .addError();
+
+    this.stream.postClientCertAuth =
+      new mn.helper.MnPostHttp(this.postClientCertAuth.bind(this))
       .addSuccess()
       .addError();
   }
 
   function getSaslauthdAuth() {
     return this.http.get("/settings/saslauthdAuth");
+  }
+
+  function getClientCertAuth() {
+    return this.http.get("/settings/clientCertAuth");
+  }
+
+  function postClientCertAuth(data) {
+    return this.http.post("/settings/clientCertAuth", data[0], {
+      headers: new ng.common.http.HttpHeaders().set("isNotForm", data[1])
+    });
   }
 
   function getLogRedaction() {

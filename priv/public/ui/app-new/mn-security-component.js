@@ -45,6 +45,7 @@ mn.modules.MnSecurity =
           mn.components.MnSearch,
           mn.components.MnSearchField,
           mn.components.MnRootCertificate,
+          mn.components.MnClientCertificate,
           mn.components.MnLogRedaction
         ],
         imports: [
@@ -89,6 +90,14 @@ mn.modules.MnSecurity =
                 // data: {
                 // compat: "atLeast55",
                 // enterprise: true
+                // }
+              }, {
+                name: 'app.admin.security.clientCert',
+                url: '/clientCert',
+                component: mn.components.MnClientCertificate,
+                // data: {
+                //   compat: "atLeast50",
+                //   enterprise: true
                 // }
               }
             ]

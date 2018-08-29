@@ -11,10 +11,10 @@
        [hidden]="!(isEnterprise | async)"
        uiSref="app.admin.security.rootCertificate"
        uiSrefActive="selected">Root Certificate</a>
-    <!-- <a -->
-    <!--    ng-show="pools.isEnterprise && poolDefault.compat.atLeast50 && rbac.cluster.admin.security.read" -->
-    <!--    ui-sref="app.admin.security.clientCert" -->
-    <!--    ui-sref-active="selected">Client Certificate</a> -->
+    <a
+       [hidden]="!(isEnterprise | async) && !(atLeast50 | async) && !(securityRead | async)"
+       uiSref="app.admin.security.clientCert"
+       uiSrefActive="selected">Client Certificate</a>
     <!-- <a -->
     <!--    ng-show="rbac.cluster.admin.security.read && poolDefault.compat.atLeast40 && pools.isEnterprise" -->
     <!--    ui-sref="app.admin.security.audit" -->

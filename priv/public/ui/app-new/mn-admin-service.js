@@ -4,6 +4,7 @@ mn.services.MnAdmin = (function (Rx) {
   "use strict";
 
   var version50 = encodeCompatVersion(5, 0);
+  var version51 = encodeCompatVersion(5, 1);
   var version55 = encodeCompatVersion(5, 5);
 
   // counterpart of ns_heart:effective_cluster_compat_version/0
@@ -110,6 +111,7 @@ mn.services.MnAdmin = (function (Rx) {
           var compat = thisNode.clusterCompatibility;
           return {
             atLeast50: compat >= version50,
+            atLeast51: compat >= version51,
             atLeast55: compat >= version55
           };
         })

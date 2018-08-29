@@ -27,20 +27,27 @@
     });
 
     var params;
+    var headers;
 
-    if (req.method === 'POST' || req.method === 'PUT') {
-      if (_.isObject(mnReq.body) && !_.isArray(mnReq.body)) {
-        params = new ng.common.http.HttpParams({
-          fromString: new mn.helper.jQueryLikeParamSerializer(mnReq.body).toString()
-        });
-      } else {
-        params = mnReq.body;
+    if ((req.method === 'POST' || req.method === 'PUT')) {
+      if (!req.headers.get('isNotForm')) {
+        if (_.isObject(mnReq.body) && !_.isArray(mnReq.body)) {
+          params = new ng.common.http.HttpParams({
+            fromString: new mn.helper.jQueryLikeParamSerializer(mnReq.body).toString()
+          });
+        } else {
+          params = mnReq.body;
+        }
+        mnReq = mnReq.clone({
+          body: params,
+          responseType: 'text',
+          headers: mnReq.headers.set(
+            'Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8')});
       }
-      mnReq = mnReq.clone({
-        body: params,
-        responseType: 'text',
-        headers: mnReq.headers.set(
-          'Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8')});
+      if (req.headers.has('isNotForm')) {
+        headers = mnReq.headers.delete('isNotForm');
+        mnReq = mnReq.clone({headers: headers, responseType: 'text'});
+      }
     }
 
     return next
