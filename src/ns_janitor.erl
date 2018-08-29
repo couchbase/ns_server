@@ -22,7 +22,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--export([cleanup/2, reset_rebalance_status/1]).
+-export([cleanup/2, reset_rebalance_status/1, cleanup_apply_config/5]).
 
 -spec cleanup(Bucket::bucket_name(), Options::list()) ->
                      ok |

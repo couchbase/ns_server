@@ -1325,8 +1325,11 @@ apply_delta_recovery_buckets(DeltaRecoveryBuckets, DeltaNodes, CurrentBuckets) -
     end,
 
     lists:foreach(
-      fun ({Bucket, _, _}) ->
-              ok = wait_for_bucket(Bucket, DeltaNodes)
+      fun ({Bucket, BucketConfig, _}) ->
+              ok = wait_for_bucket(Bucket, DeltaNodes),
+              ok = ns_janitor:cleanup_apply_config(
+                     Bucket, DeltaNodes, BucketConfig, [],
+                     [{apply_config_timeout, ?REBALANCER_APPLY_CONFIG_TIMEOUT}])
       end, DeltaRecoveryBuckets),
 
     ok.
