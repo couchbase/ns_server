@@ -390,11 +390,21 @@ handle_info(Msg, #state{child_module = ChildModule,
     {noreply, State#state{child_state = NewChildState}}.
 
 select_from_dets(Name, MatchSpec, N, Yield) ->
-    {ok, TableName} = gen_server:call(Name, suspend, infinity),
+    Key = {suspended, ?MODULE, Name},
+    {Locked, TableName} =
+        case erlang:get(Key) of
+            undefined ->
+                {ok, Table} = gen_server:call(Name, suspend, infinity),
+                erlang:put(Key, Table),
+                {true, Table};
+            Table ->
+                {false, Table}
+        end,
     try
         select_from_dets_locked(TableName, MatchSpec, N, Yield)
     after
-        Name ! release
+        Locked andalso erlang:erase(Key),
+        Locked andalso (Name ! release)
     end.
 
 select_from_dets_locked(TableName, MatchSpec, N, Yield) ->
