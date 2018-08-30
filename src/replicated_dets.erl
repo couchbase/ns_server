@@ -391,9 +391,11 @@ handle_info(Msg, #state{child_module = ChildModule,
 
 select_from_dets(Name, MatchSpec, N, Yield) ->
     {ok, TableName} = gen_server:call(Name, suspend, infinity),
-    RV = select_from_dets_locked(TableName, MatchSpec, N, Yield),
-    Name ! release,
-    RV.
+    try
+        select_from_dets_locked(TableName, MatchSpec, N, Yield)
+    after
+        Name ! release
+    end.
 
 select_from_dets_locked(TableName, MatchSpec, N, Yield) ->
     ?log_debug("Starting select with ~p", [{TableName, MatchSpec, N}]),
