@@ -261,7 +261,9 @@ default() ->
         {logger,
          {[{filename, {"~s/~s", [log_path, log_prefix]}},
            {cyclesize, log_cyclesize},
-           {sleeptime, log_sleeptime}]}}
+           {sleeptime, log_sleeptime}]}},
+
+        {external_auth_service, true}
        ]}},
 
      {memory_quota, KvQuota},
