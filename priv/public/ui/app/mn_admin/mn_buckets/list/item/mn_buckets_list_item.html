@@ -1,8 +1,10 @@
 <section
    class="has-hover"
    ng-click="bucketsListCtl.toggleDetails(bucket.name)"
-   ng-class="{['dynamic_' + bucketsItemCtl.bucketStatus.statusClass] : bucketsListCtl.isDetailsOpened(bucket.name)}">
-  <div class="cbui-tablerow" ng-class="{['dynamic_' + bucketsItemCtl.bucketStatus.statusClass] : !bucketsListCtl.isDetailsOpened(bucket.name)}">
+   ng-class="{['dynamic_' + bucketsItemCtl.bucketStatus.statusClass] : bucketsListCtl.isDetailsOpened(bucket.name) || (bucketsItemCtl.getWarmUpProgress(bucket, adminCtl.tasks) !== false && rbac.cluster.tasks.read) || bucketsItemCtl.bucketStatus.statusClass !== 'healthy'}">
+  <div
+     class="cbui-tablerow"
+     ng-class="{['dynamic_' + bucketsItemCtl.bucketStatus.statusClass] : !bucketsListCtl.isDetailsOpened(bucket.name) && !(bucketsItemCtl.getWarmUpProgress(bucket, adminCtl.tasks) !== false && rbac.cluster.tasks.read) && bucketsItemCtl.bucketStatus.statusClass == 'healthy'}">
     <span class="cbui-table-cell flex-grow-3 row">
       <div class="cbui-tablerow-title ellipsis">{{bucket.name}}</div>
       <span class="label lt-blue" ng-show="bucket.isMemcached">
