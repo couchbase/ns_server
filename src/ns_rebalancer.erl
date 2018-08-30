@@ -702,6 +702,10 @@ rebalance_body(KeepNodes,
     KVDeltaNodes = ns_cluster_membership:service_nodes(DeltaNodes, kv),
 
     ok = drop_old_2i_indexes(KeepNodes),
+
+    %% wait till all bucket shutdowns are done on nodes we're
+    %% adding (or maybe adding).
+    do_wait_buckets_shutdown(KeepNodes),
     ok = apply_delta_recovery_buckets(DeltaRecoveryBuckets,
                                       KVDeltaNodes, BucketConfigs),
     ok = maybe_clear_recovery_type(KeepNodes),
@@ -743,10 +747,6 @@ update_kv_progress(Nodes, Progress) ->
     update_kv_progress(dict:from_list([{N, Progress} || N <- Nodes])).
 
 rebalance_kv(KeepNodes, EjectNodes, BucketConfigs, DeltaRecoveryBuckets) ->
-    %% wait when all bucket shutdowns are done on nodes we're
-    %% adding (or maybe adding)
-    do_wait_buckets_shutdown(KeepNodes),
-
     NumBuckets = length(BucketConfigs),
     ?rebalance_debug("BucketConfigs = ~p", [sanitize(BucketConfigs)]),
 
