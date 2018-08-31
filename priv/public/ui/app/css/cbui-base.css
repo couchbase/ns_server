@@ -732,7 +732,7 @@ input[type="checkbox"] {
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
-  padding: 0 1.5rem 0 0;
+  padding-right: 1.5rem;
   min-width: 4rem;
 
 }
