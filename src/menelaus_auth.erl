@@ -307,7 +307,7 @@ authenticate_external(Username, Password) ->
         false ->
             Res =
                 case saslauthd_auth:authenticate(Username, Password) of
-                    false -> ldap_auth:authenticate(Username, Password);
+                    false -> ldap_auth_cache:authenticate(Username, Password);
                     Else -> Else
                 end,
             case Res of

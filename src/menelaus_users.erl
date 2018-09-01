@@ -662,9 +662,9 @@ get_user_groups_and_roles(Id, UserProps, Definitions, AllPossibleValues) ->
         || G <- lists:usort(Groups1 ++ Groups2)].
 
 get_ldap_groups(User) ->
-    case ldap_auth:user_groups(User) of
-        {ok, []} -> [];
-        {ok, LDAPGroups} ->
+    try ldap_auth_cache:user_groups(User) of
+        [] -> [];
+        LDAPGroups ->
             GroupFilter =
                 fun ({_, Props}) ->
                         case proplists:get_value(ldap_group_ref, Props) of
@@ -675,8 +675,9 @@ get_ldap_groups(User) ->
             pipes:run(select_groups('_', [ldap_group_ref]),
                       [pipes:filter(GroupFilter),
                        pipes:map(fun ({{group, G}, _}) -> G end)],
-                      pipes:collect());
-        {error, Error} ->
+                      pipes:collect())
+    catch
+        error:Error ->
             ?log_error("Failed to get ldap groups: ~p", [Error]),
             []
     end.

@@ -1637,6 +1637,9 @@ ldap_settings_validators() ->
         validate_ldap_dn(query_dn, _),
         validator:touch(query_pass, _),
         validate_ldap_groups_query(groups_query, _),
+        validator:integer(max_parallel_connections, 1, 1000, _),
+        validator:integer(max_cache_size, 0, 10000, _),
+        validator:integer(cache_value_lifetime, 0, infinity, _),
         validator:unsupported(_)
     ].
 

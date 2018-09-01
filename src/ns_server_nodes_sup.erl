@@ -68,6 +68,9 @@ child_specs() ->
       {ns_ssl_services_sup, start_link, []},
       permanent, infinity, supervisor, []},
 
+     {ldap_auth_cache, {ldap_auth_cache, start_link, []},
+      permanent, 1000, worker, []},
+
      {users_sup,
       {users_sup, start_link, []},
       permanent, infinity, supervisor, []},
