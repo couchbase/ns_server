@@ -26,7 +26,8 @@ mn.services.MnPools = (function (Rx) {
       (new Rx.BehaviorSubject())
       .pipe(
         Rx.operators.switchMap(this.get.bind(this)),
-        Rx.operators.shareReplay(1)
+        Rx.operators.multicast(mn.helper.createReplaySubject),
+        Rx.operators.refCount()
       );
 
     this.stream.isEnterprise =

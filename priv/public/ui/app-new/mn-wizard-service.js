@@ -187,13 +187,15 @@ mn.services.MnWizard = (function (Rx) {
     this.stream.getSelfConfig =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getSelfConfig.bind(this)),
-        Rx.operators.shareReplay(1)
+        Rx.operators.multicast(mn.helper.createReplaySubject),
+        Rx.operators.refCount()
       );
 
     this.stream.getIndexes =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getIndexes.bind(this)),
-        Rx.operators.shareReplay(1)
+        Rx.operators.multicast(mn.helper.createReplaySubject),
+        Rx.operators.refCount()
       );
 
     this.stream.preprocessPath =

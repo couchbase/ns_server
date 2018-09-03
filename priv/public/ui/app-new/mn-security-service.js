@@ -26,19 +26,22 @@ mn.services.MnSecurity = (function (Rx) {
     this.stream.getSaslauthdAuth =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getSaslauthdAuth.bind(this)),
-        Rx.operators.shareReplay(1)
+        Rx.operators.multicast(mn.helper.createReplaySubject),
+        Rx.operators.refCount()
       );
 
     this.stream.getDefaultCertificate =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getDefaultCertificate.bind(this)),
-        Rx.operators.shareReplay(1)
+        Rx.operators.multicast(mn.helper.createReplaySubject),
+        Rx.operators.refCount()
       );
 
     this.stream.getLogRedaction =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getLogRedaction.bind(this)),
-        Rx.operators.shareReplay(1)
+        Rx.operators.multicast(mn.helper.createReplaySubject),
+        Rx.operators.refCount()
       );
 
     this.stream.postLogRedaction =

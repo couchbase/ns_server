@@ -42,7 +42,8 @@ mn.components.MnSearchField =
         this.mnFormGroup.valueChanges.pipe(
           Rx.operators.pluck("searchTerm"),
           Rx.operators.map(Boolean),
-          Rx.operators.shareReplay(1)
+          Rx.operators.multicast(mn.helper.createReplaySubject),
+          Rx.operators.refCount()
         );
 
     }

@@ -66,7 +66,8 @@ mn.components.MnUserRoles =
         ).pipe(
           Rx.operators.pluck("0"),
           Rx.operators.switchMap(mnUserRolesService.getUsers.bind(mnUserRolesService)),
-          Rx.operators.shareReplay(1)
+          Rx.operators.multicast(mn.helper.createReplaySubject),
+          Rx.operators.refCount()
         );
 
       this.filteredUsers =

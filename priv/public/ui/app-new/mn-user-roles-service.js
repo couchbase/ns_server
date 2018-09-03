@@ -25,7 +25,8 @@ mn.services.MnUserRoles = (function (Rx) {
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getRoles.bind(this)),
         Rx.operators.map(this.doRolesByRole.bind(this)),
-        Rx.operators.shareReplay(1)
+        Rx.operators.multicast(mn.helper.createReplaySubject),
+        Rx.operators.refCount()
       );
   }
 

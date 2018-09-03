@@ -63,6 +63,14 @@ mn.helper.calculateMaxMemorySize = (function () {
 
 var mn = mn || {};
 mn.helper = mn.helper || {};
+mn.helper.createReplaySubject = (function (Rx) {
+  return function () {
+    return new Rx.ReplaySubject(1);
+  }
+})(window.rxjs);
+
+var mn = mn || {};
+mn.helper = mn.helper || {};
 mn.helper.invert = (function () {
   return function (v) {
     return !v;
@@ -216,7 +224,8 @@ mn.helper.sortByStream = (function (Rx) {
         )
       ).pipe(
         Rx.operators.map(doSort),
-        Rx.operators.shareReplay(1)
+        Rx.operators.multicast(mn.helper.createReplaySubject),
+        Rx.operators.refCount()
       );
 
       function doSort(values) {
@@ -326,7 +335,8 @@ mn.helper.MnPostHttp = (function (Rx) {
         Rx.operators.switchMap(function (data) {
           return call(data).pipe(Rx.operators.catchError(mn.helper.errorToStream));
         }),
-        Rx.operators.shareReplay(1)
+        Rx.operators.multicast(mn.helper.createReplaySubject),
+        Rx.operators.refCount()
       );
     return this;
   }
@@ -406,6 +416,7 @@ mn.helper.MnEventableComponent = (function (Rx) {
   componentLifecycleHooks.forEach(function (name) {
     if (name === "OnDestroy") {
       MnDestroyableComponent.prototype["ng" + name] = function (value) {
+        this["mn" + name].next();
         this["mn" + name].complete(value);
       }
     } else {
