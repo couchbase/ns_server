@@ -2377,7 +2377,11 @@ cbas_server_resources_stats_description(true) ->
                {desc, <<"Number of disk bytes read on Analytics node per second">>}]},
      {struct, [{name, <<"cbas_io_writes">>},
                {title, <<"analytics bytes written/sec">>},
-               {desc, <<"Number of disk bytes written on Analytics node per second">>}]}].
+               {desc, <<"Number of disk bytes written on Analytics node per second">>}]},
+     {struct, [{isBytes, true},
+               {name, <<"cbas_disk_used">>},
+               {title, <<"analytics total disk size">>},
+               {desc, <<"The total disk size used by Analytics">>}]}].
 
 server_resources_stats_description(ServiceNodes) ->
     [{blockName, <<"Server Resources">>},

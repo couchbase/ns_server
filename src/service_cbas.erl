@@ -42,7 +42,7 @@ get_computed() ->
     [].
 
 get_service_gauges() ->
-    ['heap_used', 'system_load_average', 'thread_count'].
+    ['heap_used', 'system_load_average', 'thread_count', 'disk_used'].
 
 get_service_counters() ->
     ['gc_count', 'gc_time', 'io_reads', 'io_writes'].
