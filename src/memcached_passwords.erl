@@ -103,7 +103,7 @@ make_producer(#state{buckets = Buckets,
                      users = Users,
                      admin_pass = AP,
                      rest_creds = RestCreds}) ->
-    pipes:compose([menelaus_users:select_auth_infos('_'),
+    pipes:compose([menelaus_users:select_auth_infos({'_', local}),
                    jsonify_auth(Users, AP, Buckets, RestCreds),
                    sjson:encode_extended_json([{compact, false},
                                                {strict, false}])]).
