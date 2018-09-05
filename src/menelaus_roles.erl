@@ -819,6 +819,8 @@ start_compiled_roles_cache() ->
       GetEvents, GetVersion).
 
 -spec get_compiled_roles(rbac_identity()) -> [rbac_compiled_role()].
+get_compiled_roles({_, external} = Identity) ->
+    build_compiled_roles(Identity);
 get_compiled_roles(Identity) ->
     versioned_cache:get(compiled_roles_cache_name(), Identity).
 
