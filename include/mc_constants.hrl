@@ -15,6 +15,8 @@
 -define(HEADER_LEN, 24).
 -define(REQ_MAGIC, 16#80).
 -define(RES_MAGIC, 16#81).
+-define(SERVER_REQ_MAGIC,  16#82).
+-define(SERVER_RESP_MAGIC, 16#83).
 
 % Command codes.
 -define(GET,         16#00).

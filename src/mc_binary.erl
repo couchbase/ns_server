@@ -171,6 +171,8 @@ encode(req, Header, Entry) ->
     encode(?REQ_MAGIC, Header, Entry);
 encode(res, Header, Entry) ->
     encode(?RES_MAGIC, Header, Entry);
+encode(server_res, Header, Entry) ->
+    encode(?SERVER_RESP_MAGIC, Header, Entry);
 encode(Magic,
        #mc_header{opcode = Opcode, opaque = Opaque,
                   vbucket = VBucket},
@@ -185,12 +187,22 @@ encode(Magic,
 
 decode_header(<<?REQ_MAGIC:8, _Rest/binary>> = Header) ->
     decode_header(req, Header);
+decode_header(<<?SERVER_REQ_MAGIC:8, _Rest/binary>> = Header) ->
+    decode_header(server_req, Header);
 decode_header(<<?RES_MAGIC:8, _Rest/binary>> = Header) ->
     decode_header(res, Header).
 
 decode_header(req, <<?REQ_MAGIC:8, Opcode:8, KeyLen:16, ExtLen:8,
                      DataType:8, Reserved:16, BodyLen:32,
                      Opaque:32, CAS:64>>) ->
+    {#mc_header{opcode = Opcode, status = Reserved, opaque = Opaque,
+                keylen = KeyLen, extlen = ExtLen, bodylen = BodyLen,
+                vbucket = Reserved},
+     #mc_entry{datatype = DataType, cas = CAS}};
+
+decode_header(server_req, <<?SERVER_REQ_MAGIC:8, Opcode:8, KeyLen:16, ExtLen:8,
+                            DataType:8, Reserved:16, BodyLen:32,
+                            Opaque:32, CAS:64>>) ->
     {#mc_header{opcode = Opcode, status = Reserved, opaque = Opaque,
                 keylen = KeyLen, extlen = ExtLen, bodylen = BodyLen,
                 vbucket = Reserved},
