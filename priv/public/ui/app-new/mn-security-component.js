@@ -46,7 +46,9 @@ mn.modules.MnSecurity =
           mn.components.MnSearchField,
           mn.components.MnRootCertificate,
           mn.components.MnClientCertificate,
-          mn.components.MnLogRedaction
+          mn.components.MnLogRedaction,
+          mn.components.MnAudit,
+          mn.components.MnAuditItem
         ],
         imports: [
           window['@uirouter/angular'].UIRouterModule.forChild({
@@ -99,6 +101,13 @@ mn.modules.MnSecurity =
                 //   compat: "atLeast50",
                 //   enterprise: true
                 // }
+              }, {
+                name: 'app.admin.security.audit',
+                url: '/audit',
+                component: mn.components.MnAudit
+                // data: {
+                //   enterprise: true,
+                //   compat: "atLeast40"
               }
             ]
           }),

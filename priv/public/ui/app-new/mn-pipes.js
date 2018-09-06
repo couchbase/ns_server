@@ -85,6 +85,33 @@ mn.pipes.MnBytesToMB =
 
 var mn = mn || {};
 mn.pipes = mn.pipes || {};
+mn.pipes.MnObjectKeys =
+  (function () {
+    "use strict";
+
+    MnObjectKeys.annotations = [
+      new ng.core.Pipe({
+        name: "mnObjectKeys"
+      })
+    ];
+
+    MnObjectKeys.prototype.transform = transform;
+
+    return MnObjectKeys;
+
+    function MnObjectKeys() {}
+
+    function transform(object) {
+      if (object) {
+        return Object.keys(object);
+      } else {
+        return [];
+      }
+    }
+  })();
+
+var mn = mn || {};
+mn.pipes = mn.pipes || {};
 mn.pipes.MnPrettyVersion =
   (function () {
     "use strict";
@@ -121,7 +148,6 @@ mn.pipes.MnPrettyVersion =
       return [a[3], "Edition", a[0], "build",  a[1] + suffix].join(' ');
     }
   })();
-
 
 var mn = mn || {};
 mn.pipes = mn.pipes || {};
@@ -380,7 +406,8 @@ mn.modules.MnPipesModule =
           mn.pipes.MnIsMembase,
           mn.pipes.MnIsMemcached,
           mn.pipes.MnIsEphemeral,
-          mn.pipes.MnFormatWarmupMessage
+          mn.pipes.MnFormatWarmupMessage,
+          mn.pipes.MnObjectKeys
         ],
         exports: [
           mn.pipes.MnFormatStorageModeError,
@@ -392,7 +419,8 @@ mn.modules.MnPipesModule =
           mn.pipes.MnIsMembase,
           mn.pipes.MnIsMemcached,
           mn.pipes.MnIsEphemeral,
-          mn.pipes.MnFormatWarmupMessage
+          mn.pipes.MnFormatWarmupMessage,
+          mn.pipes.MnObjectKeys
         ],
         imports: [],
         providers: [

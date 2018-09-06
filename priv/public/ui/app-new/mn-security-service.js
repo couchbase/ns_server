@@ -17,6 +17,10 @@ mn.services.MnSecurity = (function (Rx) {
   MnSecurityService.prototype.postLogRedaction = postLogRedaction;
   MnSecurityService.prototype.getClientCertAuth = getClientCertAuth;
   MnSecurityService.prototype.postClientCertAuth = postClientCertAuth;
+  MnSecurityService.prototype.getAuditDescriptors = getAuditDescriptors;
+  MnSecurityService.prototype.getAudit = getAudit;
+  MnSecurityService.prototype.postAudit = postAudit;
+
 
   return MnSecurityService;
 
@@ -62,6 +66,44 @@ mn.services.MnSecurity = (function (Rx) {
       new mn.helper.MnPostHttp(this.postClientCertAuth.bind(this))
       .addSuccess()
       .addError();
+
+    this.stream.getAudit =
+      (new Rx.BehaviorSubject()).pipe(
+        Rx.operators.switchMap(this.getAudit.bind(this)),
+        Rx.operators.multicast(mn.helper.createReplaySubject),
+        Rx.operators.refCount()
+      );
+
+    this.stream.getAuditDescriptors =
+      (new Rx.BehaviorSubject()).pipe(
+        Rx.operators.switchMap(this.getAuditDescriptors.bind(this)),
+        Rx.operators.multicast(mn.helper.createReplaySubject),
+        Rx.operators.refCount()
+      );
+
+    this.stream.postAuditValidation =
+      new mn.helper.MnPostHttp(this.postAudit.bind(this))
+      .addSuccess()
+      .addError();
+
+    this.stream.postAudit =
+      new mn.helper.MnPostHttp(this.postAudit.bind(this))
+      .addSuccess()
+      .addError();
+  }
+
+  function postAudit(data) {
+    return this.http.post("/settings/audit", data[0], {
+      params: new ng.common.http.HttpParams().set("just_validate", data[1] ? 1 : 0)
+    });
+  }
+
+  function getAuditDescriptors() {
+    return this.http.get("/settings/audit/descriptors");
+  }
+
+  function getAudit() {
+    return this.http.get("/settings/audit");
   }
 
   function getSaslauthdAuth() {

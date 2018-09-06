@@ -15,10 +15,10 @@
        [hidden]="!(isEnterprise | async) && !(atLeast50 | async) && !(securityRead | async)"
        uiSref="app.admin.security.clientCert"
        uiSrefActive="selected">Client Certificate</a>
-    <!-- <a -->
-    <!--    ng-show="rbac.cluster.admin.security.read && poolDefault.compat.atLeast40 && pools.isEnterprise" -->
-    <!--    ui-sref="app.admin.security.audit" -->
-    <!--    ui-sref-active="selected">Audit</a> -->
+    <a
+       [hidden]="!(isEnterprise | async) && !(securityRead | async)"
+       uiSref="app.admin.security.audit"
+       uiSrefActive="selected">Audit</a>
     <a
        [hidden]="!(isEnterprise | async) && !(atLeast55 | async) && !(securityRead | async)"
        uiSref="app.admin.security.logRedaction"
