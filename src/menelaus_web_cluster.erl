@@ -684,7 +684,7 @@ handle_start_graceful_failover(Req) ->
                       not_graceful ->
                           {400, "Failover cannot be done gracefully (would lose vbuckets)."};
                       non_kv_node ->
-                          {400, "Failover cannot be done gracefully for a node without data. Use hard failover."};
+                          {400, "Failover cannot be done gracefully for a node without data service. Use hard failover."};
                       unknown_node ->
                           {400, "Unknown server given."};
                       last_node ->
