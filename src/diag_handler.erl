@@ -869,6 +869,10 @@ grab_system_info() ->
     [{K, (catch erlang:system_info(K))} || K <- Kinds].
 
 handle_diag_eval(Req) ->
+    case ns_config:read_key_fast(allow_nonlocal_eval, false) of
+        true -> ok;
+        false -> menelaus_util:ensure_local(Req)
+    end,
     Snippet = binary_to_list(mochiweb_request:recv_body(Req)),
 
     ?log_debug("WARNING: /diag/eval:~n~n~s", [Snippet]),
