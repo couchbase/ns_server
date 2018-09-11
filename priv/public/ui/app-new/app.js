@@ -143,6 +143,7 @@
       providers: [
         mn.services.MnTasks,
         mn.services.MnAlerts,
+        mn.services.MnSession,
         mn.services.MnPools,
         mn.services.MnExceptionHandler,
         mn.services.MnPermissions,
@@ -165,10 +166,11 @@
     mn.services.MnApp,
     mn.services.MnAuth,
     window['@uirouter/angular'].UIRouter,
-    mn.services.MnAdmin
+    mn.services.MnAdmin,
+    ngb.NgbModal
   ];
 
-  function AppModule(mnExceptionHandlerService, title, mnAppService, mnAuthService, uiRouter, mnAdminService) {
+  function AppModule(mnExceptionHandlerService, title, mnAppService, mnAuthService, uiRouter, mnAdminService, ngbModalService) {
 
     mnAppService
       .stream
@@ -182,6 +184,10 @@
       mnAuthService.stream.logoutHttp.response
     ).subscribe(function () {
       uiRouter.stateService.go('app.auth', null, {location: false});
+    });
+
+    mnAuthService.stream.logoutHttp.response.subscribe(function () {
+      ngbModalService.dismissAll();
     });
 
     mnAppService

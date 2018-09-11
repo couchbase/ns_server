@@ -20,7 +20,7 @@ mn.services.MnSecurity = (function (Rx) {
   MnSecurityService.prototype.getAuditDescriptors = getAuditDescriptors;
   MnSecurityService.prototype.getAudit = getAudit;
   MnSecurityService.prototype.postAudit = postAudit;
-
+  MnSecurityService.prototype.postSession = postSession;
 
   return MnSecurityService;
 
@@ -62,6 +62,11 @@ mn.services.MnSecurity = (function (Rx) {
       .addSuccess()
       .addError();
 
+    this.stream.postSession =
+      new mn.helper.MnPostHttp(this.postSession.bind(this))
+      .addSuccess()
+      .addError();
+
     this.stream.postClientCertAuth =
       new mn.helper.MnPostHttp(this.postClientCertAuth.bind(this))
       .addSuccess()
@@ -96,6 +101,10 @@ mn.services.MnSecurity = (function (Rx) {
     return this.http.post("/settings/audit", data[0], {
       params: new ng.common.http.HttpParams().set("just_validate", data[1] ? 1 : 0)
     });
+  }
+
+  function postSession(data) {
+    return this.http.post("/settings/security", data);
   }
 
   function getAuditDescriptors() {

@@ -26,6 +26,7 @@ mn.components.MnSecurity =
       this.securityRead = mnPermissionsService.createPermissionStream("admin.security!read");
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
       this.atLeast55 = mnAdminService.stream.compatVersion.pipe(Rx.operators.pluck("atLeast55"));
+      this.atLeast50 = mnAdminService.stream.compatVersion.pipe(Rx.operators.pluck("atLeast50"));
     }
 
   })(window.rxjs);
@@ -48,7 +49,8 @@ mn.modules.MnSecurity =
           mn.components.MnClientCertificate,
           mn.components.MnLogRedaction,
           mn.components.MnAudit,
-          mn.components.MnAuditItem
+          mn.components.MnAuditItem,
+          mn.components.MnSession
         ],
         imports: [
           window['@uirouter/angular'].UIRouterModule.forChild({
@@ -108,6 +110,15 @@ mn.modules.MnSecurity =
                 // data: {
                 //   enterprise: true,
                 //   compat: "atLeast40"
+              },
+
+              {
+                name: "app.admin.security.session",
+                url: '/session',
+                component: mn.components.MnSession,
+                // data: {
+                //   permissions: "cluster.admin.security.read"
+                // }
               }
             ]
           }),

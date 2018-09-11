@@ -12,20 +12,20 @@
        uiSref="app.admin.security.rootCertificate"
        uiSrefActive="selected">Root Certificate</a>
     <a
-       [hidden]="!(isEnterprise | async) && !(atLeast50 | async) && !(securityRead | async)"
+       [hidden]="!(isEnterprise | async) || !(atLeast50 | async) || !(securityRead | async)"
        uiSref="app.admin.security.clientCert"
        uiSrefActive="selected">Client Certificate</a>
     <a
-       [hidden]="!(isEnterprise | async) && !(securityRead | async)"
+       [hidden]="!(isEnterprise | async) || !(securityRead | async)"
        uiSref="app.admin.security.audit"
        uiSrefActive="selected">Audit</a>
     <a
-       [hidden]="!(isEnterprise | async) && !(atLeast55 | async) && !(securityRead | async)"
+       [hidden]="!(isEnterprise | async) || !(atLeast55 | async) || !(securityRead | async)"
        uiSref="app.admin.security.logRedaction"
        uiSrefActive="selected">Log Redaction</a>
-    <!-- <a -->
-    <!--    ui-sref="app.admin.security.session" -->
-    <!--    ui-sref-active="selected">Session</a> -->
+    <a
+       uiSref="app.admin.security.session"
+       uiSrefActive="selected">Session</a>
   </nav>
 </mn-element-cargo>
 

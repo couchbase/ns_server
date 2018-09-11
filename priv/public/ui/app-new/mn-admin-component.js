@@ -54,6 +54,7 @@ mn.components.MnAdmin =
       mn.services.MnPermissions,
       mn.services.MnTasks,
       mn.services.MnAlerts,
+      mn.services.MnSession,
       window['@uirouter/angular'].UIRouter
     ];
 
@@ -70,6 +71,7 @@ mn.components.MnAdmin =
                               mnPermissionsService,
                               mnTasksService,
                               mnAlertsService,
+                              mnSessionService,
                               uiRouter
                              ) {
       this.logoutHttp = mnAuthService.stream.logoutHttp;
@@ -86,6 +88,9 @@ mn.components.MnAdmin =
       );
 
       this.mnAlerts = mnAlertsService.stream.alerts;
+
+
+      mnSessionService.activate(this.destroy);
 
       this.tasksRead =
         mnPermissionsService.createPermissionStream("tasks!read");
@@ -210,6 +215,7 @@ mn.modules.MnAdmin =
           mn.components.MnBarUsage,
           mn.components.MnWarmupProgress,
           mn.components.MnBucketsDialog,
+          mn.components.MnSessionTimeoutDialog,
           mn.components.MnAutocompactionForm,
           mn.components.MnSecurity
         ],
@@ -272,6 +278,7 @@ mn.modules.MnAdmin =
           mn.services.MnAdmin
         ],
         entryComponents: [
+          mn.components.MnSessionTimeoutDialog,
           mn.components.MnBucketsDialog
         ]
       })

@@ -76,6 +76,11 @@ mn.services.MnAdmin = (function (Rx) {
         Rx.operators.pluck("maxBucketCount")
       );
 
+    this.stream.uiSessionTimeout =
+      this.stream.getPoolsDefault
+      .pipe(Rx.operators.pluck("uiSessionTimeout"),
+            Rx.operators.distinctUntilChanged());
+
     this.stream.ldapEnabled =
       this.stream.getPoolsDefault.pipe(
         Rx.operators.pluck("ldapEnabled"),

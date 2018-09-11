@@ -45,8 +45,6 @@ mn.components.MnBucketsDialog =
         purgeInterval: new ng.forms.FormControl(1)
       });
 
-      window.bucketsDialogForm = bucketsDialogForm
-
       var bucketsDialogHelperForm = new ng.forms.FormGroup({
         replicaNumberEnabled: new ng.forms.FormControl(null),
         maxTTLEnabled: new ng.forms.FormControl(null)
