@@ -32,7 +32,7 @@ child_specs() ->
       permanent, 1000, worker, dynamic},
      {compat_mode_manager,
       {compat_mode_manager, start_link, []},
-       permanent, 1000, worker, [compat_mode_manager]},
+      permanent, 1000, worker, [compat_mode_manager]},
      {ns_orchestrator_child_sup, {ns_orchestrator_child_sup, start_link, []},
       permanent, infinity, supervisor, [ns_orchestrator_child_sup]},
      {auto_failover, {auto_failover, start_link, []},
