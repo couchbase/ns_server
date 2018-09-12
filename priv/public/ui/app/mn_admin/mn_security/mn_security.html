@@ -32,7 +32,7 @@
       ui-sref="app.admin.security.redaction"
       ui-sref-active="selected">Log Redaction</a>
     <a
-       ng-show="pools.isEnterprise && securityCtl.poolDefault.ldapEnabled && poolDefault.compat.atLeast40 && !poolDefault.compat.atLeast45 && rbac.cluster.admin.security.read"
+       ng-show="pools.isEnterprise && securityCtl.poolDefault.saslauthdEnabled && poolDefault.compat.atLeast40 && !poolDefault.compat.atLeast45 && rbac.cluster.admin.security.read"
        ui-sref="app.admin.security.ldap"
        ui-sref-active="selected">LDAP Auth Setup</a>
     <a

@@ -27,7 +27,7 @@
         redirectTo: function (trans) {
           var mnPoolDefault = trans.injector().get("mnPoolDefault");
           var isEnterprise = trans.injector().get("mnPools").export.isEnterprise;
-          var ldapEnabled = mnPoolDefault.export.ldapEnabled;
+          var ldapEnabled = mnPoolDefault.export.saslauthdEnabled;
           var atLeast50 = mnPoolDefault.export.compat.atLeast50;
           var atLeast45 = mnPoolDefault.export.compat.atLeast45;
 

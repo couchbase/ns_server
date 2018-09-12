@@ -29,7 +29,7 @@
     vm.rolesFilter = rolesFilter;
     vm.filterField = "";
 
-    vm.isLdapEnabled = poolDefault.ldapEnabled;
+    vm.isLdapEnabled = poolDefault.saslauthdEnabled;
 
     vm.pageSize = $state.params.pageSize;
     vm.pageSizeChanged = pageSizeChanged;
@@ -118,7 +118,7 @@
         controller: 'mnUserRolesAddDialogController as userRolesAddDialogCtl',
         resolve: {
           user: mnHelper.wrapInFunction(user),
-          isLdapEnabled: mnHelper.wrapInFunction(poolDefault.ldapEnabled)
+          isLdapEnabled: mnHelper.wrapInFunction(poolDefault.saslauthdEnabled)
         }
       });
     }
@@ -128,7 +128,7 @@
         controller: 'mnUserRolesAddDialogController as userRolesAddDialogCtl',
         resolve: {
           user: mnHelper.wrapInFunction(undefined),
-          isLdapEnabled: mnHelper.wrapInFunction(poolDefault.ldapEnabled)
+          isLdapEnabled: mnHelper.wrapInFunction(poolDefault.saslauthdEnabled)
         }
       });
     }

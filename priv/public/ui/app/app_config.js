@@ -195,7 +195,7 @@
     }, function (trans) {
       var mnPoolDefault = trans.injector().get('mnPoolDefault');
       return mnPoolDefault.get().then(function(value) {
-        return value.ldapEnabled;
+        return value.saslauthdEnabled;
       });
     });
     $transitionsProvider.onStart({
