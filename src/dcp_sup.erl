@@ -80,7 +80,7 @@ kill_replicator(Bucket, {ProducerNode, RepFeatures} = ChildId) ->
 get_replication_features() ->
     FeatureSet = [{xattr, cluster_compat_mode:is_cluster_50()},
                   {snappy, memcached_config_mgr:is_snappy_enabled()},
-                  {collections, memcached_config_mgr:collections_enabled()},
+                  {collections, cluster_compat_mode:is_cluster_madhatter()},
                   {del_times, cluster_compat_mode:is_cluster_55()}],
     misc:canonical_proplist(FeatureSet).
 
