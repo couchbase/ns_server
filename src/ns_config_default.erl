@@ -247,7 +247,7 @@ default() ->
         {datatype_snappy, {memcached_config_mgr, is_snappy_enabled, []}},
         {xattr_enabled, {memcached_config_mgr, is_enabled, [?VERSION_50]}},
         {scramsha_fallback_salt, {memcached_config_mgr, get_fallback_salt, []}},
-        {collections_prototype,
+        {collections_enabled,
          {memcached_config_mgr, collections_enabled, []}},
 
         {logger,
