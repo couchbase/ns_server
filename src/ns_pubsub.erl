@@ -31,7 +31,8 @@
          terminate/2]).
 
 %% called by proc_lib:start from subscribe_link/3
--export([do_subscribe_link/4]).
+-export([do_subscribe_link/4,
+         do_subscribe_link_continue/3]).
 
 
 %%
@@ -121,6 +122,10 @@ do_subscribe_link(Name, Fun, State, Parent) ->
 
     proc_lib:init_ack(Parent, self()),
 
+    proc_lib:hibernate(?MODULE, do_subscribe_link_continue,
+                       [Name, Parent, Handler]).
+
+do_subscribe_link_continue(Name, Parent, Handler) ->
     ExitReason =
         receive
             unsubscribe ->
