@@ -1546,26 +1546,27 @@ group_to_json(GroupId, Props) ->
 
 handle_ldap_settings(Req) ->
     assert_groups_and_ldap_enabled(),
-    Settings =
-        lists:filtermap(
-          fun ({hosts, Hosts}) ->
-                  {true, {hosts, [list_to_binary(H) || H <- Hosts]}};
-              ({user_dn_template, T}) ->
-                  {true, {user_dn_template, list_to_binary(T)}};
-              ({query_dn, DN}) ->
-                  {true, {query_dn, list_to_binary(DN)}};
-              ({query_pass, _}) ->
-                  false;
-              ({groups_query, {user_filter, Orig, _Base, _Scope, _Filter}}) ->
-                  {true, {groups_query, list_to_binary(Orig)}};
-              ({groups_query, {user_attributes, Orig, _AttrName}}) ->
-                  {true, {groups_query, list_to_binary(Orig)}};
-              ({groups_query, _}) ->
-                  {true, {groups_query, <<"">>}};
-              (KeyValue) ->
-                  {true, KeyValue}
-          end, ldap_auth:build_settings()),
-    menelaus_util:reply_json(Req, {Settings}).
+    Settings = ldap_auth:build_settings(),
+    menelaus_util:reply_json(Req, {prepare_ldap_settings(Settings)}).
+
+prepare_ldap_settings(Settings) ->
+    Fun =
+      fun (hosts, Hosts) ->
+              [list_to_binary(H) || H <- Hosts];
+          (user_dn_template, T) ->
+              list_to_binary(T);
+          (query_dn, DN) ->
+              list_to_binary(DN);
+          (query_pass, _) ->
+              <<"**********">>;
+          (groups_query, {user_filter, Orig, _Base, _Scope, _Filter}) ->
+              list_to_binary(Orig);
+          (groups_query, {user_attributes, Orig, _AttrName}) ->
+              list_to_binary(Orig);
+          (_, Value) ->
+              Value
+      end,
+    [{K, Fun(K, V)} || {K, V} <- Settings].
 
 handle_ldap_settings_post(Req) ->
     assert_groups_and_ldap_enabled(),
@@ -1573,6 +1574,7 @@ handle_ldap_settings_post(Req) ->
       fun (Props) ->
               NewProps = build_new_ldap_settings(Props),
               ?log_debug("Saving ldap settings: ~p", [Props]),
+              ns_audit:ldap_settings(Req, prepare_ldap_settings(NewProps)),
               ldap_auth:set_settings(NewProps),
               handle_ldap_settings(Req)
       end, Req, form, ldap_settings_validators()).

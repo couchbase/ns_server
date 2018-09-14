@@ -73,7 +73,8 @@
          modify_query_curl_whitelist_setting/2,
          modify_query_settings/2,
          set_user_group/5,
-         delete_user_group/2
+         delete_user_group/2,
+         ldap_settings/2
         ]).
 
 -export([start_link/0, stats/0]).
@@ -307,7 +308,9 @@ code(modify_query_settings) ->
 code(set_user_group) ->
     8243;
 code(delete_user_group) ->
-    8244.
+    8244;
+code(ldap_settings) ->
+    8245.
 
 to_binary({list, List}) ->
     [to_binary(A) || A <- List];
@@ -788,3 +791,9 @@ set_user_group(Req, Id, Roles, Description, LDAPGroup) ->
 
 delete_user_group(Req, Id) ->
     put(delete_user_group, Req, [{id, Id}]).
+
+ldap_settings(Req, Settings) ->
+    put(ldap_settings, Req, [prepare_ldap_setting(S) || S <- Settings]).
+
+prepare_ldap_setting({hosts, List}) -> {hosts, {list, List}};
+prepare_ldap_setting(Default) -> Default.
