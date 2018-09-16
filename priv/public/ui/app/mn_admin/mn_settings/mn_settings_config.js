@@ -39,23 +39,19 @@
       })
       .state('app.admin.settings.cluster', {
         url: '/cluster',
-        controller: 'mnSettingsClusterController as settingsClusterCtl',
-        templateUrl: 'app/mn_admin/mn_settings/cluster/mn_settings_cluster.html'
-      })
-      .state('app.admin.settings.notifications', {
-        url: '/notifications',
-        controller: 'mnSettingsNotificationsController as settingsNotificationsCtl',
-        templateUrl: 'app/mn_admin/mn_settings/notifications/mn_settings_notifications.html',
-        data: {
-          permissions: 'cluster.settings.read'
-        }
-      })
-      .state('app.admin.settings.autoFailover', {
-        url: '/autoFailover',
-        controller: 'mnSettingsAutoFailoverController as settingsAutoFailoverCtl',
-        templateUrl: 'app/mn_admin/mn_settings/auto_failover/mn_settings_auto_failover.html',
-        data: {
-          permissions: 'cluster.settings.read'
+        views: {
+          "": {
+            controller: 'mnSettingsClusterController as settingsClusterCtl',
+            templateUrl: 'app/mn_admin/mn_settings/cluster/mn_settings_cluster.html'
+          },
+          "autofailover@app.admin.settings.cluster": {
+            controller: 'mnSettingsAutoFailoverController as settingsAutoFailoverCtl',
+            templateUrl: 'app/mn_admin/mn_settings/auto_failover/mn_settings_auto_failover.html'
+          },
+          "notifications@app.admin.settings.cluster": {
+            controller: 'mnSettingsNotificationsController as settingsNotificationsCtl',
+            templateUrl: 'app/mn_admin/mn_settings/notifications/mn_settings_notifications.html'
+          }
         }
       })
       .state('app.admin.settings.alerts', {

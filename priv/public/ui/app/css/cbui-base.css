@@ -716,6 +716,11 @@ select {
   margin-bottom: 0;
   color: #333;
 }
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
 input[type="radio"],
 input[type="checkbox"] {
   font-size: .938rem;
@@ -757,6 +762,17 @@ input[type="checkbox"] {
 }
 .simple-select-inside-label + .simple-select select {
   padding-left: 3.7rem;
+}
+.inside-label {
+  position: absolute;
+  right: .5rem;
+  top: 7px;
+  z-index: 10;
+  font-size: .75rem;
+  color: #999;
+}
+.inside-label + .input-inside-label input {
+  padding-right: 3.7rem;
 }
 /* hail mary to kill auto-fill crap -- probably doesn't work ---------------- */
 input:-webkit-autofill,
@@ -971,17 +987,20 @@ legend {
   display: inline-block;
 }
 
-input.input-small {
+input .input-small {
   font-size: .875rem;
   padding: 0 .5rem;
   height: 28px;
-  line-height:normal;
+  line-height: normal;
 }
-input.input-short-1,
+input .input-short-1,
 .forms input.input-short-1 {
   width: 4rem !important;
 }
-select.select-small {
+.input-short-half {
+  width: 2.5rem !important;
+}
+select .select-small {
   font-size: .75rem;
   height: 28px;
   padding: 0;

@@ -5,7 +5,7 @@
 </div>
 <div ng-if="config.displayedServices.kv">
   <div class="row formrow">
-    <div class="width-5">
+    <div class="width-6">
       <input
          ng-if="config.services"
          ng-change="mnMemoryQuotaController.change('kv', config)"
@@ -14,19 +14,18 @@
          type="checkbox"
          id="kv_ram_quota">
       <label
-         for="kv_ram_quota"
-         class="checkbox">
+         for="kv_ram_quota">
         Data
       </label>
     </div>
-    <div class="row width-6 flex-right">
+    <div class="row width-6 flex-right relative">
+      <div class="inside-label">MB</div>
       <input
          type="number"
          mn-focus
          ng-disabled="config.services && !config.services.model.kv || (rbac && !rbac.cluster.pools.write)"
          ng-model="config.memoryQuota"
-         class="margin-right-half">
-      <small>MB</small>
+         class="input-inside-label">
     </div>
   </div>
 
@@ -39,7 +38,7 @@
 
 <div ng-if="config.displayedServices.index">
   <div class="row formrow">
-    <div class="width-5">
+    <div class="width-6">
       <input
          ng-if="config.services"
          ng-change="mnMemoryQuotaController.change('index', config)"
@@ -48,20 +47,19 @@
          type="checkbox"
          id="index_ram_quota">
       <label
-         for="index_ram_quota"
-         class="checkbox">
+         for="index_ram_quota">
         Index
       </label>
     </div>
     <div class="row width-6 flex-right">
+      <div class="inside-label">MB</div>
       <input
          type="number"
          min="0"
          ng-disabled="config.services && !config.services.model.index || (rbac && !rbac.cluster.pools.write)"
          mn-focus="config.services.model.kv === false"
          ng-model="config.indexMemoryQuota"
-         class="margin-right-half">
-      <small>MB</small>
+         class="input-inside-label">
     </div>
   </div>
 
@@ -74,7 +72,7 @@
 
 <div ng-if="config.displayedServices.fts">
   <div class="row formrow">
-    <div class="width-5">
+    <div class="width-6">
       <input
          ng-if="config.services"
          ng-model="config.services.model.fts"
@@ -83,19 +81,18 @@
          ng-change="mnMemoryQuotaController.change('fts', config)"
          id="fts_ram_quota">
       <label
-         for="fts_ram_quota"
-         class="checkbox">
+         for="fts_ram_quota">
         Search
       </label>
     </div>
     <div class="row width-6 flex-right">
+      <div class="inside-label">MB</div>
       <input
          type="number"
          mn-focus="config.services.model.kv === false && config.services.model.index  === false"
          ng-disabled="config.services && !config.services.model.fts || (rbac && !rbac.cluster.pools.write)"
          ng-model="config.ftsMemoryQuota"
-         class="margin-right-half">
-      <small>MB</small>
+         class="input-inside-label">
     </div>
   </div>
 
@@ -117,8 +114,7 @@
          ng-disabled="config.services.disabled.n1ql"
          id="n1ql_ram_quota">
       <label
-         for="n1ql_ram_quota"
-         class="checkbox">
+         for="n1ql_ram_quota">
         Query
       </label>
     </div>
@@ -136,7 +132,7 @@
 
 <div ng-if="config.displayedServices.eventing && mnIsEnterprise">
   <div class="row formrow">
-    <div class="width-5">
+    <div class="width-6">
       <input
          ng-if="config.services"
          ng-model="config.services.model.eventing"
@@ -145,19 +141,18 @@
          ng-disabled="config.services.disabled.eventing"
          id="eventing_ram_quota">
       <label
-         for="eventing_ram_quota"
-         class="checkbox">
+         for="eventing_ram_quota">
         Eventing
       </label>
     </div>
     <div class="row width-6 flex-right">
+      <div class="inside-label">MB</div>
       <input
          type="number"
          mn-focus="config.services.model.kv === false && config.services.model.index  === false"
          ng-disabled="config.services && !config.services.model.eventing || (rbac && !rbac.cluster.pools.write)"
          ng-model="config.eventingMemoryQuota"
-         class="margin-right-half">
-      <small>MB</small>
+         class="input-inside-label">
     </div>
   </div>
 
@@ -170,7 +165,7 @@
 
 <div ng-if="config.displayedServices.cbas && mnIsEnterprise">
   <div class="row formrow">
-    <div class="width-5">
+    <div class="width-6">
       <input
          ng-if="config.services"
          ng-model="config.services.model.cbas"
@@ -179,19 +174,18 @@
          ng-change="mnMemoryQuotaController.change('cbas', config)"
          id="cbas_ram_quota">
       <label
-         for="cbas_ram_quota"
-         class="checkbox">
+         for="cbas_ram_quota">
         Analytics
       </label>
     </div>
     <div class="row width-6 flex-right">
+      <div class="inside-label">MB</div>
       <input
          type="number"
          mn-focus="config.services.model.kv === false && config.services.model.index  === false"
          ng-disabled="config.services && !config.services.model.cbas || (rbac && !rbac.cluster.pools.write)"
          ng-model="config.cbasMemoryQuota"
-         class="margin-right-half">
-      <small>MB</small>
+         class="input-inside-label">
     </div>
   </div>
 

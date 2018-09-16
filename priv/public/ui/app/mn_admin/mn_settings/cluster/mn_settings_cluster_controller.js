@@ -82,6 +82,10 @@
         queries.push(promise5);
       }
 
+      queries = queries.concat(mnSettingsClusterService.getSubmitCallbacks().map(function (cb) {
+        return cb();
+      }));
+
       var promiseAll = $q.all(queries);
       mnPromiseHelper(vm, promiseAll)
         .showGlobalSpinner()
@@ -114,6 +118,8 @@
       vm.querySettings = querySettings;
     }
     function activate() {
+      mnSettingsClusterService.clearSubmitCallbacks();
+
       mnPromiseHelper(vm, mnPoolDefault.get())
         .applyToScope(function (resp) {
           vm.clusterName = resp.clusterName;

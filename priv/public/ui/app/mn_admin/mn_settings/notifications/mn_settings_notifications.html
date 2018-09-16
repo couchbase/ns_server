@@ -1,9 +1,7 @@
-<div mn-spinner="settingsNotificationsCtl.viewLoading || !settingsNotificationsCtl.updates">
-  <form
-     class="forms width-680"
-     ng-submit="settingsNotificationsCtl.submit()">
-    <p>
-      You are running Couchbase Server {{settingsNotificationsCtl.implementationVersion | mnPrettyVersion}}.
+<div>
+  <div class="forms">
+    <p class="text-medium">
+      You are running Couchbase Server {{settingsNotificationsCtl.implementationVersion | mnPrettyVersion}}
     </p>
     <div ng-if="settingsNotificationsCtl.updates.sendStats">
       <p
@@ -14,7 +12,7 @@
       <p ng-if="settingsNotificationsCtl.updates.newVersion === false">
         <em>No updates available.</em>
       </p>
-      <p ng-if="settingsNotificationsCtl.updates.newVersion">
+      <p ng-if="settingsNotificationsCtl.updates.newVersion" class="text-medium">
         {{settingsNotificationsCtl.updates.newVersion}} is available.<br>
         New features and improvements in this release can be found in the
         <a href="{{settingsNotificationsCtl.updates.links.release}}" target="_blank">release notes</a>.
@@ -51,13 +49,10 @@
       <span
          class="fa-stack icon-info"
          uib-tooltip="Enabling software update notifications allows notification in the Couchbase web console when a new version of Couchbase Server is available. Configuration information transferred in the update check is anonymous and does not include any stored key-value data."
-         tooltip-placement="right">
+         tooltip-placement="auto right">
         <span class="icon fa-circle-thin fa-stack-2x"></span>
         <span class="icon fa-info fa-stack-1x"></span>
       </span>
     </div>
-    <button
-       ng-show="rbac.cluster.settings.write"
-       type="submit">Save</button>
-  </form>
+  </div>
 </div>

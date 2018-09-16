@@ -4,13 +4,14 @@
   angular.module('mnSettingsAutoFailover', [
     'mnSettingsAutoFailoverService',
     'mnHelper',
-    'mnPromiseHelper'
+    'mnPromiseHelper',
+    "mnSettingsClusterService"
   ]).controller('mnSettingsAutoFailoverController', mnSettingsAutoFailoverController);
 
-  function mnSettingsAutoFailoverController($scope, $q, mnHelper, mnPromiseHelper, mnSettingsAutoFailoverService, mnPoolDefault) {
+  function mnSettingsAutoFailoverController($scope, $q, mnHelper, mnPromiseHelper, mnSettingsAutoFailoverService, mnPoolDefault, mnSettingsClusterService) {
     var vm = this;
 
-    vm.submit = submit;
+    mnSettingsClusterService.registerSubmitCallback(submit);
 
     activate();
 
@@ -41,7 +42,10 @@
           return;
         }
         mnPromiseHelper(vm, mnSettingsAutoFailoverService[method](dataFunc(), {just_validate: 1}))
-          .catchErrorsFromSuccess(method + "Errors");
+          .catchErrorsFromSuccess(function (rv) {
+            vm[method + "Errors"] = rv;
+            $scope.settingsClusterCtl[method + "Errors"] = rv;
+          });
       }
     }
 
@@ -89,10 +93,7 @@
         );
       }
 
-      mnPromiseHelper(vm, $q.all(queries))
-        .catchErrors()
-        .showGlobalSpinner()
-        .showGlobalSuccess("Settings saved successfully!");
+      return $q.all(queries);
     };
   }
 })();

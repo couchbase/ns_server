@@ -4,14 +4,15 @@
   angular
     .module('mnSettingsNotifications', [
       'mnSettingsNotificationsService',
-      'mnPromiseHelper'
+      'mnPromiseHelper',
+      'mnSettingsClusterService'
     ])
     .controller('mnSettingsNotificationsController', mnSettingsNotificationsController);
 
-  function mnSettingsNotificationsController($scope, mnPromiseHelper, mnSettingsNotificationsService, pools) {
+  function mnSettingsNotificationsController($scope, mnPromiseHelper, mnSettingsNotificationsService, pools, mnSettingsClusterService) {
     var vm = this;
 
-    vm.submit = submit;
+    mnSettingsClusterService.registerSubmitCallback(submit);
     vm.implementationVersion = pools.implementationVersion;
 
     activate();
@@ -22,10 +23,9 @@
     }
 
     function submit() {
-      mnPromiseHelper(vm, mnSettingsNotificationsService.saveSendStatsFlag(vm.updates.enabled))
-        .showGlobalSpinner()
+      return mnPromiseHelper(vm, mnSettingsNotificationsService.saveSendStatsFlag(vm.updates.enabled))
         .catchGlobalErrors('An error occured, update notifications settings were not saved.')
-        .showGlobalSuccess("Settings saved successfully!");
+        .getPromise();
     }
   }
 })();

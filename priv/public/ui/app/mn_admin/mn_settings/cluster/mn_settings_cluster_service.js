@@ -9,10 +9,27 @@
     var mnSettingsClusterService = {
       postPoolsDefault: postPoolsDefault,
       getIndexSettings: getIndexSettings,
-      postIndexSettings: postIndexSettings
+      postIndexSettings: postIndexSettings,
+      registerSubmitCallback: registerSubmitCallback,
+      clearSubmitCallbacks: clearSubmitCallbacks,
+      getSubmitCallbacks: getSubmitCallbacks
     };
 
+    var childSubmitCallbacks = [];
+
     return mnSettingsClusterService;
+
+    function getSubmitCallbacks() {
+      return childSubmitCallbacks;
+    }
+
+    function clearSubmitCallbacks (cb) {
+      childSubmitCallbacks = [];
+    }
+
+    function registerSubmitCallback(cb) {
+      childSubmitCallbacks.push(cb);
+    }
 
     function maybeSetQuota(data, memory, service, key) {
       if (!memory.services || memory.services.model[service]) {

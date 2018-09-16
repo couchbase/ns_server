@@ -134,6 +134,9 @@ footer {
   white-space: normal;
   overflow: visible;
 }
+.line-height-1-5 {
+  line-height:1.5!important;
+}
 
 /* FLEX HELPERS --------------------------------------------------------- */
 .flex-left {
@@ -144,6 +147,9 @@ footer {
 }
 .flex-center {
   justify-content: center;
+}
+.flex-wrap {
+  flex-wrap: wrap
 }
 .items-top {
   align-items: flex-start;
@@ -454,6 +460,9 @@ footer {
 }
 .margin-left-1, .indent-1 {
   margin-left: 1rem !important;
+}
+.margin-left-1-5, .indent-1-5 {
+  margin-left: 1.5rem !important;
 }
 .margin-left-2, .indent-2 {
   margin-left: 2rem !important;

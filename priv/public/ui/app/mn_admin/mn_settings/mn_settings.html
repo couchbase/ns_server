@@ -6,31 +6,19 @@
     <a
        id="settings_cluster"
        ui-sref="app.admin.settings.cluster"
-       ui-sref-active="selected">Cluster</a>
-    <a
-       id="settings_update_notifications"
-       ui-sref="app.admin.settings.notifications"
-       ui-sref-active="selected"
-       class="casper_settings_update_notifications resp-hide-sml"
-       ng-show="rbac.cluster.settings.read">Software Updates</a>
-    <a
-       id="settings_auto_failover"
-       class="casper_settings_auto_failover"
-       ng-show="rbac.cluster.settings.read"
-       ui-sref="app.admin.settings.autoFailover"
-       ui-sref-active="selected">Node Availability</a>
-    <a
-       id="settings_alerts"
-       class="casper_settings_alerts"
-       ng-show="rbac.cluster.settings.read"
-       ui-sref="app.admin.settings.alerts"
-       ui-sref-active="selected">Email Alerts</a>
+       ui-sref-active="selected">General</a>
     <a
        id="settings_compaction"
        class="casper_settings_compaction resp-hide-sml"
        ng-show="rbac.cluster.settings.read"
        ui-sref="app.admin.settings.autoCompaction"
        ui-sref-active="selected">Auto-Compaction</a>
+    <a
+       id="settings_alerts"
+       class="casper_settings_alerts"
+       ng-show="rbac.cluster.settings.read"
+       ui-sref="app.admin.settings.alerts"
+       ui-sref-active="selected">Email Alerts</a>
     <a
        id="settings_sample_buckets"
        class="casper_settings_sample_buckets resp-hide-sml"

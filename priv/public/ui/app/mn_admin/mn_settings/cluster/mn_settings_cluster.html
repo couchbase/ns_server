@@ -6,9 +6,9 @@
 
     <div class="row flex-left items-stretch resp-flex-column-med">
 
-      <div class="fix-width-5">
+      <div class="width-5">
         <div class="formrow margin-bottom-2">
-          <label>Cluster Name &nbsp <small>0 — 256 chars</small></label>
+          <label>Cluster Name</label>
           <input
              id="cluster-name-field"
              type="text"
@@ -22,7 +22,8 @@
 
         <div>
           <div class="formrow">
-            <label>Service Memory Quotas &nbsp;<small>in megabytes per server node</small></label>
+            <label>Memory Quotas &nbsp;<small>per server node</small></label>
+            <p class="desc">Note: Total Couchbase RAM allocation for each node cannot exceed 90% of its available memory.</p>
           </div>
           <div
              mn-is-enterprise="adminCtl.poolDefault.isEnterprise"
@@ -36,9 +37,15 @@
 
       <div style="border-left: 1px solid #d1d1d1; margin: 0 40px; flex-basis: 1;" class="resp-hide-med">&nbsp;</div>
 
-      <div class="fix-width-6">
+      <div class="width-6 margin-bottom-2">
 
-        <label ng-show="poolDefault.compat.atLeast40 && rbac.cluster.settings.indexes.read" class="margin-top-half">
+        <div ui-view="notifications"></div>
+
+        <div ui-view="autofailover"></div>
+
+        <label
+           ng-show="poolDefault.compat.atLeast40 && rbac.cluster.settings.indexes.read"
+           class="margin-top-half">
           Index Storage Mode
         </label>
         <div ng-show="poolDefault.compat.atLeast40 && rbac.cluster.settings.indexes.read">
@@ -54,19 +61,20 @@
           </div>
         </div>
         <p
-           class="disclosure margin-bottom-half"
+           class="disclosure"
            ng-class="{disclosed: settingsClusterCtl.showAdvancedSettings}"
            ng-click="settingsClusterCtl.showAdvancedSettings = !settingsClusterCtl.showAdvancedSettings">
           Advanced Index Settings
         </p>
-
-        <div ng-show="settingsClusterCtl.showAdvancedSettings" class="fix-width-4">
+        <div ng-show="settingsClusterCtl.showAdvancedSettings" class="indent-1-5">
           <div class="formrow">
-            <label for="index_settings_thread" class="inline">Indexer Threads</label>
+            <label for="index_settings_thread" class="inline">
+              Indexer Threads
+            </label>
             <span
                class="fa-stack icon-info"
                uib-tooltip="Number of dedicated threads the indexer uses. On multi-core machines increasing this number will increase the indexer's CPU utilization. Defaults to 0 which instructs the indexer to use all available machine cores."
-               tooltip-placement="right">
+               tooltip-placement="auto right">
               <span class="icon fa-circle-thin fa-stack-2x"></span>
               <span class="icon fa-info fa-stack-1x"></span>
             </span>
@@ -74,14 +82,12 @@
                type="number"
                ng-model="settingsClusterCtl.indexSettings.indexerThreads"
                ng-disabled="settingsClusterCtl.indexSettings.storageMode === '' || !rbac.cluster.settings.indexes.write"
-               id="index_settings_thread">
-            <div
-               class="error error-field"
-               ng-show="settingsClusterCtl.indexSettingsErrors.indexerThreads">
+               id="index_settings_thread"
+               class="input-small input-short-1">
+            <div class="error error-field" ng-show="settingsClusterCtl.indexSettingsErrors.indexerThreads">
               {{settingsClusterCtl.indexSettingsErrors.indexerThreads}}
             </div>
           </div>
-
           <div class="formrow" ng-hide="adminCtl.poolDefault.isEnterprise">
             <label for="in_memory_snapshot" class="inline">
               Max Rollback Points
@@ -89,7 +95,7 @@
             <span
                class="fa-stack icon-info"
                uib-tooltip="The maximum number of committed rollback points."
-               tooltip-placement="right">
+               tooltip-placement="auto right">
               <span class="icon fa-circle-thin fa-stack-2x"></span>
               <span class="icon fa-info fa-stack-1x"></span>
             </span>
@@ -98,13 +104,10 @@
                ng-model="settingsClusterCtl.indexSettings.maxRollbackPoints"
                ng-disabled="settingsClusterCtl.indexSettings.storageMode === '' || !rbac.cluster.settings.indexes.write"
                id="in_memory_snapshot">
-            <div
-               class="error error-field"
-               ng-show="settingsClusterCtl.indexSettingsErrors.maxRollbackPoints">
+            <div class="error error-field" ng-show="settingsClusterCtl.indexSettingsErrors.maxRollbackPoints">
               {{settingsClusterCtl.indexSettingsErrors.maxRollbackPoints}}
             </div>
           </div>
-
           <div class="formrow">
             <label for="indexer_log_level">
               Indexer Log Level
@@ -126,23 +129,21 @@
                 <option value="trace">Trace</option>
               </select>
             </div>
-            <div
-               class="error error-field"
-               ng-show="settingsClusterCtl.indexSettingsErrors.logLevel">
+            <div class="error error-field" ng-show="settingsClusterCtl.indexSettingsErrors.logLevel">
               {{settingsClusterCtl.indexSettingsErrors.logLevel}}
             </div>
           </div>
         </div>
 
         <div ng-if="poolDefault.compat.atLeast55 && rbac.cluster.settings.read" class="margin-top-1-5">
+          <label>Query Settings</label>
           <p
              class="disclosure margin-bottom-half"
              ng-class="{disclosed: settingsClusterCtl.showAdvancedN1QLSettings}"
              ng-click="settingsClusterCtl.showAdvancedN1QLSettings = !settingsClusterCtl.showAdvancedN1QLSettings">
             Advanced Query Settings
           </p>
-          <div
-             ng-show="settingsClusterCtl.showAdvancedN1QLSettings">
+          <div ng-show="settingsClusterCtl.showAdvancedN1QLSettings" class="indent-1-5">
             <div class="formrow">
               <label>CURL() Function Access</label>
               <input
@@ -250,16 +251,20 @@
                      ng-model="settingsClusterCtl.querySettings.queryTmpSpaceDir">
                 </div>
                 <div class="width-3">
-                  <label for="setup_query_gb_input">Quota &nbsp;<small>in MB</small></label>
-                  <input
-                     type="text"
-                     autocorrect="off"
-                     spellcheck="false"
-                     autocapitalize="off"
-                     id="setup_query_gb_input"
-                     ng-init="5"
-                     ng-disabled="!rbac.cluster.settings.write"
-                     ng-model="settingsClusterCtl.querySettings.queryTmpSpaceSize">
+                  <label for="setup_query_gb_input">Quota</label>
+                  <div class="relative">
+                    <div class="inside-label">MB</div>
+                    <input
+                       type="text"
+                       autocorrect="off"
+                       spellcheck="false"
+                       autocapitalize="off"
+                       id="setup_query_gb_input"
+                       ng-init="5"
+                       ng-disabled="!rbac.cluster.settings.write"
+                       ng-model="settingsClusterCtl.querySettings.queryTmpSpaceSize"
+                       class="input-inside-label">
+                  </div>
                 </div>
               </div>
               <div
@@ -275,14 +280,15 @@
             </div>
           </div>
         </div>
-
       </div>
     </div>
-    <div class="margin-top-1-5">
+    <div class="footer-save">
+      <a class="text-medium margin-right-2">Cancel/Reset</a>
       <button
          type="submit"
          ng-show="rbac.cluster.pools.write || rbac.cluster.settings.indexes.write"
-         ng-disabled="!!settingsClusterCtl.indexSettingsErrors || !!settingsClusterCtl.memoryQuotaErrors">
+         ng-disabled="!!settingsClusterCtl.indexSettingsErrors || !!settingsClusterCtl.memoryQuotaErrors || !!settingsClusterCtl.saveAutoFailoverSettingsErrors || !!settingsClusterCtl.postAutoReprovisionSettingsErrors"
+         class="margin-right-2">
         Save
       </button>
     </div>

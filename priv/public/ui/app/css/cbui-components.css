@@ -218,13 +218,13 @@ h1 a:active {
 /* inserts right-caret triangle & down-caret before items with .disclosure */
 .disclosure {
   position: relative;
-  padding-left: 1.25rem;
+  padding-left: 1.5rem;
   cursor: pointer;
   text-decoration: none;
 }
 .disclosed {
   position: relative;
-  padding-left: 1.25rem;
+  padding-left: 1.5rem;
   cursor: pointer;
   text-decoration: none;
 }
@@ -2145,4 +2145,20 @@ nav.nav-sidebar-hidden {
 .sidebar-closer:hover {
   color: #333;
   box-shadow: 2px 1px 2px 0 rgba(0,0,0,0.15);
+}
+/*  fixed footer for saving forms  */
+.footer-save {
+  position: fixed;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  bottom: 0;
+  left: 0;
+  height: 3rem;
+  background-color: #fff;
+  z-index: 99;
+  box-shadow: 0px -3px 8px 0px rgba(0,0,0,0.08);
+  border: 1px solid #e1e1e1;
+  border-width: 1px 0 0 0;
 }
