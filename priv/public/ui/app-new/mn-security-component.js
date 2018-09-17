@@ -50,7 +50,8 @@ mn.modules.MnSecurity =
           mn.components.MnLogRedaction,
           mn.components.MnAudit,
           mn.components.MnAuditItem,
-          mn.components.MnSession
+          mn.components.MnSession,
+          mn.components.MnSecurity
         ],
         imports: [
           window['@uirouter/angular'].UIRouterModule.forChild({

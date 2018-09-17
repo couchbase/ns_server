@@ -143,7 +143,7 @@ mn.services.MnSession = (function (Rx) {
   }
 
   function createTimer(t) {
-    return t ? Rx.timer(t) : Rx.NEVER;
+    return t && t > 0 ? Rx.timer(t) : Rx.NEVER;
   }
 
   function logout() {

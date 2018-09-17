@@ -218,15 +218,15 @@
       <!--    ui-sref="app.admin.security"> -->
       <!--   Security -->
       <!-- </a> -->
-      <!-- <a -->
-      <!--    mn-tab="settings" -->
-      <!--    ng-class="{currentnav: ('app.admin.settings' | includedByState)}" -->
-      <!--    ui-sref="app.admin.settings.cluster"> -->
-      <!--   <span -->
-      <!--      ng-show="adminCtl.updates.sendStats && !!adminCtl.updates.newVersion" -->
-      <!--      class="label neutral badge notify">i</span> -->
-      <!--   Settings -->
-      <!-- </a> -->
+      <a
+         mn-tab="settings"
+         uiSrefActive="currentnav"
+         uiSref="app.admin.settings">
+        <span
+           class="label neutral badge notify">i</span>
+        <!-- [hidden]="adminCtl.updates.sendStats && !!adminCtl.updates.newVersion" -->
+        Settings
+      </a>
       <!-- <a -->
       <!--    mn-tab="logs" -->
       <!--    ui-sref="app.admin.logs.list" -->

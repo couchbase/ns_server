@@ -216,8 +216,7 @@ mn.modules.MnAdmin =
           mn.components.MnWarmupProgress,
           mn.components.MnBucketsDialog,
           mn.components.MnSessionTimeoutDialog,
-          mn.components.MnAutocompactionForm,
-          mn.components.MnSecurity
+          mn.components.MnAutocompactionForm
         ],
         imports: [
           window['@uirouter/angular'].UIRouterModule.forChild({
@@ -263,11 +262,21 @@ mn.modules.MnAdmin =
               data: {
                 title: "Security"
               }
+            }, {
+              name: "app.admin.settings",
+              url: "settings",
+              views: {
+                "main@app.admin": mn.components.MnSettings
+              },
+              data: {
+                title: "Settingsy"
+              }
             }]
           }),
           ng.forms.ReactiveFormsModule,
           mn.modules.MnShared,
           mn.modules.MnSecurity,
+          mn.modules.MnSettings,
           mn.modules.MnElementModule,
           mn.modules.MnPipesModule,
           ng.platformBrowser.BrowserModule,

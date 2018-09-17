@@ -10,6 +10,7 @@ mn.components.MnSessionTimeoutDialog =
       new ng.core.Component({
         selector: "mn-session-timeout-dialog-component",
         templateUrl: "app-new/mn-session-timeout-dialog.html",
+        changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
     ];
 
@@ -24,6 +25,7 @@ mn.components.MnSessionTimeoutDialog =
       this.activeModal = activeModal;
 
       var time = (Number(localStorage.getItem("uiSessionTimeout")) - 30000) / 1000;
+
 
       this.formGroup = new ng.forms.FormGroup({});
 
