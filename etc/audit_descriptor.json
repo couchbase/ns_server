@@ -968,7 +968,8 @@
               "user_dn_template": "",
               "query_dn": "",
               "query_pass": "",
-              "groups_query": ""
+              "groups_query": "",
+              "request_timeout": 1
           }
       }
     ]

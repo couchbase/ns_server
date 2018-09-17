@@ -16,6 +16,8 @@
          parse_url/1,
          format_error/1]).
 
+-define(DEFAULT_TIMEOUT, 5000).
+
 authenticate(Username, Password) ->
     authenticate(Username, Password, build_settings()).
 
@@ -36,13 +38,23 @@ authenticate(Username, Password, Settings) ->
 with_connection(Settings, Fun) ->
     Hosts = proplists:get_value(hosts, Settings, []),
     Port = proplists:get_value(port, Settings, 389),
+    Timeout = proplists:get_value(request_timeout, Settings, ?DEFAULT_TIMEOUT),
     Encryption = proplists:get_value(encryption, Settings, tls),
     SSL = Encryption == ssl,
-    case eldap:open(Hosts, [{port, Port}, {ssl, SSL}, {timeout, 1000}]) of
+    %% Note: timeout option sets not only connect timeout but a timeout for any
+    %%       request to ldap server
+    case eldap:open(Hosts, [{port, Port}, {ssl, SSL}, {timeout, Timeout}]) of
         {ok, Handle} ->
             ?log_debug("Connected to LDAP server"),
             try
-                case Encryption == tls andalso eldap:start_tls(Handle, []) of
+                %% The upgrade is done in two phases: first the server is asked
+                %% for permission to upgrade. Second, if the request is
+                %% acknowledged, the upgrade to tls is performed.
+                %% The Timeout parameter is for the actual tls upgrade (phase 2)
+                %% while the timeout in eldap:open/2 is used for the initial
+                %% negotiation about upgrade (phase 1).
+                case Encryption == tls andalso
+                     eldap:start_tls(Handle, [], Timeout) of
                     Res when Res == ok; Res == false ->
                         Fun(Handle);
                     {error, Reason} ->
@@ -107,8 +119,9 @@ user_groups(User, Settings) ->
 get_groups(_Handle, _Username, _Settings, undefined) ->
     {ok, []};
 get_groups(Handle, Username, Settings, {user_attributes, _, AttrName}) ->
+    Timeout = proplists:get_value(request_timeout, Settings, ?DEFAULT_TIMEOUT),
     case search(Handle, get_user_DN(Username, Settings), [AttrName],
-                eldap:baseObject(), eldap:present("objectClass")) of
+                eldap:baseObject(), eldap:present("objectClass"), Timeout) of
         {ok, [#eldap_entry{attributes = Attrs}]} ->
             Groups = proplists:get_value(AttrName, Attrs, []),
             ?log_debug("Groups search for ~p: ~p",
@@ -123,7 +136,9 @@ get_groups(Handle, Username, Settings, {user_filter, _, Base, Scope, Filter}) ->
                                                             {"%D", DNFun}]),
     {ok, FilterEldap} = ldap_filter_parser:parse(Filter2),
     ScopeEldap = parse_scope(Scope),
-    case search(Handle, Base2, ["objectClass"], ScopeEldap, FilterEldap) of
+    Timeout = proplists:get_value(request_timeout, Settings, ?DEFAULT_TIMEOUT),
+    case search(Handle, Base2, ["objectClass"], ScopeEldap, FilterEldap,
+                Timeout) of
         {ok, Entries} ->
             Groups = [DN || #eldap_entry{object_name = DN} <- Entries],
             ?log_debug("Groups search for ~p: ~p",
@@ -153,9 +168,12 @@ parse_scope("base") -> eldap:baseObject();
 parse_scope("one") -> eldap:singleLevel();
 parse_scope("sub") -> eldap:wholeSubtree().
 
-search(Handle, Base, Attributes, Scope, Filter) ->
+search(Handle, Base, Attributes, Scope, Filter, Timeout) ->
+    %% The timeout option in the SearchOptions is for the ldap server,
+    %% while the timeout in eldap:open/2 is used for each individual request
+    %% in the search operation
     SearchProps = [{base, Base}, {attributes, Attributes}, {scope, Scope},
-                   {filter, Filter}],
+                   {filter, Filter}, {timeout, Timeout}],
 
     case eldap:search(Handle, SearchProps) of
         {ok, #eldap_search_result{
