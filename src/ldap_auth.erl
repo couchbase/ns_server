@@ -4,6 +4,7 @@
 
 -include_lib("eldap/include/eldap.hrl").
 -include_lib("eunit/include/eunit.hrl").
+-include("cut.hrl").
 
 -export([with_connection/2,
          authenticate/2,
@@ -73,7 +74,8 @@ with_connection(Settings, Fun) ->
 with_authenticated_connection(DN, Password, Settings, Fun) ->
     with_connection(Settings,
                     fun (Handle) ->
-                            Bind = eldap:simple_bind(Handle, DN, Password),
+                            PasswordBin = iolist_to_binary(Password),
+                            Bind = eldap:simple_bind(Handle, DN, PasswordBin),
                             ?log_debug("Bind for dn ~p: ~p",
                                        [ns_config_log:tag_user_name(DN), Bind]),
                             case Bind of
@@ -84,10 +86,10 @@ with_authenticated_connection(DN, Password, Settings, Fun) ->
 
 get_user_DN(Username, Settings) ->
     Template = proplists:get_value(user_dn_template, Settings, "%u"),
-    DN = re:replace(Template, "%u", Username, [{return,list}]),
+    [DN] = replace_expressions([Template], [{"%u", escape(Username)}]),
     ?log_debug("Built LDAP DN ~p by username ~p",
                [ns_config_log:tag_user_name(DN),
-                ns_config_log:tag_user_name(Username)]),
+                ns_config_log:tag_user_name(escape(Username))]),
     DN.
 
 build_settings() ->
@@ -132,8 +134,9 @@ get_groups(Handle, Username, Settings, {user_attributes, _, AttrName}) ->
     end;
 get_groups(Handle, Username, Settings, {user_filter, _, Base, Scope, Filter}) ->
     DNFun = fun () -> get_user_DN(Username, Settings) end,
-    [Base2, Filter2] = replace_expressions([Base, Filter], [{"%u", Username},
-                                                            {"%D", DNFun}]),
+    [Base2, Filter2] = replace_expressions([Base, Filter],
+                                           [{"%u", escape(Username)},
+                                            {"%D", DNFun}]),
     {ok, FilterEldap} = ldap_filter_parser:parse(Filter2),
     ScopeEldap = parse_scope(Scope),
     Timeout = proplists:get_value(request_timeout, Settings, ?DEFAULT_TIMEOUT),
@@ -161,7 +164,15 @@ replace([Str | Tail], Re, Value, Res) when is_function(Value) ->
         nomatch -> replace(Tail, Re, Value, [Str | Res])
     end;
 replace([Str | Tail], Re, Value, Res) ->
-    ResStr = re:replace(Str, Re, Value, [global, {return, list}]),
+    %% Replace \ with \\ to prevent re skipping all hex bytes from Value
+    %% which are specified as \\XX according to LDAP RFC. Example:
+    %%   Str = "(uid=%u)",
+    %%   Re  = "%u",
+    %%   Value = "abc\\23def",
+    %%   Without replacing the result is "(uid=abcdef)"
+    %%   With replacing it is "(uid=abc\\23def)"
+    Value2 = re:replace(Value, "\\\\", "\\\\\\\\", [{return, list}, global]),
+    ResStr = re:replace(Str, Re, Value2, [global, {return, list}]),
     replace(Tail, Re, Value, [ResStr | Res]).
 
 parse_scope("base") -> eldap:baseObject();
@@ -245,6 +256,46 @@ format_error({start_tls_failed, _}) ->
 format_error(Error) ->
     io_lib:format("~p", [Error]).
 
+
+-define(ALLOWED_CHARS, "abcdefghijklmnopqrstuvwxyz"
+                       "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                       "0123456789=: ").
+
+%% Escapes any special chars (RFC 4515) from a string representing a
+%% a search filter assertion value
+%% Based on https://ldap.com/2018/05/04/understanding-and-defending-against-ldap-injection-attacks/
+escape(Input) ->
+    Characters = unicode:characters_to_list(iolist_to_binary(Input)),
+    S = lists:map(
+          fun (C) ->
+                  case lists:member(C, ?ALLOWED_CHARS) of
+                      true -> C;
+                      false ->
+                          Hex = misc:hexify(unicode:characters_to_binary([C])),
+                          [[$\\, H, L] || <<H:8, L:8>> <= Hex]
+                  end
+          end, Characters),
+
+    FlatStr = lists:flatten(S),
+
+    %% If a value has any leading or trailing spaces, then you should escape
+    %% those spaces by prefixing them with a backslash or as \20. Spaces in
+    %% the middle of a value don’t need to be escaped.
+    {Trail, Rest} = lists:splitwith(_ =:= $\s, lists:reverse(FlatStr)),
+    {Lead, Rest2} = lists:splitwith(_ =:= $\s, lists:reverse(Rest)),
+    lists:flatten(["\\20" || _ <- Lead] ++ Rest2 ++ ["\\20" || _ <- Trail]).
+
+-ifdef(EUNIT).
+
+escape_test() ->
+%% Examples from RFC 4515
+    ?assertEqual("Parens R Us \\28for all your parenthetical needs\\29",
+                 escape("Parens R Us (for all your parenthetical needs)")),
+    ?assertEqual("\\2a", escape("*")),
+    ?assertEqual("C:\\5cMyFile", escape("C:\\MyFile")),
+    ?assertEqual("\\00\\00\\00\\04", escape([16#00, 16#00, 16#00, 16#04])),
+    ?assertEqual("Lu\\c4\\8di\\c4\\87", escape(<<"Lučić"/utf8>>)).
+
 parse_url_test_() ->
     Parse = fun (S) -> {ok, R} = parse_url(S), R end,
     [
@@ -309,3 +360,4 @@ parse_url_test_() ->
                             "/o=An%20Example%5C2C%20Inc.,c=US"))
     ].
 
+-endif.
