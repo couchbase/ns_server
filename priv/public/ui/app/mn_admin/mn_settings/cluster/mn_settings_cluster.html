@@ -4,10 +4,10 @@
      ng-submit="settingsClusterCtl.saveVisualInternalSettings()"
      class="forms">
 
-    <div class="row flex-left items-stretch resp-flex-column-med">
+    <div class="row flex-left items-stretch resp-flex-column-med margin-bottom-2">
 
       <div class="width-5">
-        <div class="formrow margin-bottom-2">
+        <div class="formrow">
           <label>Cluster Name</label>
           <input
              id="cluster-name-field"
@@ -28,7 +28,6 @@
           <div
              mn-is-enterprise="adminCtl.poolDefault.isEnterprise"
              rbac="rbac"
-             class="margin-bottom-2"
              mn-memory-quota="settingsClusterCtl.memoryQuotaConfig"
              errors="settingsClusterCtl.memoryQuotaErrors">
           </div>
@@ -37,7 +36,7 @@
 
       <div style="border-left: 1px solid #d1d1d1; margin: 0 40px; flex-basis: 1;" class="resp-hide-med">&nbsp;</div>
 
-      <div class="width-6 margin-bottom-2">
+      <div class="width-6">
 
         <div ui-view="notifications"></div>
 

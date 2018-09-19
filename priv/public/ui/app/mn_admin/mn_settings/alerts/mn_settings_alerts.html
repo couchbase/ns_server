@@ -124,7 +124,7 @@
          ng-click="settingsAlertsCtl.testEmail()">Send Test Email</button>
     </div>
 
-    <div class="formrow">
+    <div class="margin-bottom-2">
       <h4>Available Alerts</h4>
 
       <div class="indent-1">
@@ -141,12 +141,15 @@
         </span>
       </div>
     </div>
-    <button
-       ng-show="rbac.cluster.settings.write"
-       ng-disabled="settingsAlertsCtl.errors"
-       type="submit">
-      Save
-    </button>
-
+    <div class="footer-save">
+     <a class="text-medium margin-right-2">Cancel/Reset</a>
+     <button
+        type="submit"
+        ng-show="rbac.cluster.settings.write"
+        ng-disabled="settingsAlertsCtl.errors"
+        class="margin-right-2">
+       Save
+     </button>
+    </div>
   </form>
 </div>

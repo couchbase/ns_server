@@ -13,12 +13,15 @@
        mn-auto-compaction-form
        auto-compaction-settings="settingsAutoCompactionCtl.autoCompactionSettings"
        validation-errors="settingsAutoCompactionCtl.errors"></div>
-
-    <button
-       ng-disabled="settingsAutoCompactionCtl.errors"
-       ng-show="rbac.cluster.settings.write"
-       type="submit">
-      Save
-    </button>
+    <div class="footer-save">
+     <a class="text-medium margin-right-2">Cancel/Reset</a>
+     <button
+        type="submit"
+        ng-disabled="settingsAutoCompactionCtl.errors"
+        ng-show="rbac.cluster.settings.write"
+        class="margin-right-2">
+       Save
+     </button>
+    </div>
   </form>
 </div>
