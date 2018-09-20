@@ -215,8 +215,7 @@ mn.modules.MnAdmin =
           mn.components.MnBarUsage,
           mn.components.MnWarmupProgress,
           mn.components.MnBucketsDialog,
-          mn.components.MnSessionTimeoutDialog,
-          mn.components.MnAutocompactionForm
+          mn.components.MnSessionTimeoutDialog
         ],
         imports: [
           window['@uirouter/angular'].UIRouterModule.forChild({

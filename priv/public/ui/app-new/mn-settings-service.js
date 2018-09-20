@@ -14,6 +14,8 @@ mn.services.MnSettings = (function (Rx) {
   MnSettingsService.prototype.postTestEmail = postTestEmail;
   MnSettingsService.prototype.postAlerts = postAlerts;
   MnSettingsService.prototype.getAlerts = getAlerts;
+  MnSettingsService.prototype.getAutoCompaction = getAutoCompaction;
+  MnSettingsService.prototype.postAutoCompaction = postAutoCompaction;
 
   return MnSettingsService;
 
@@ -28,6 +30,36 @@ mn.services.MnSettings = (function (Rx) {
         Rx.operators.multicast(mn.helper.createReplaySubject),
         Rx.operators.refCount()
       );
+
+    this.stream.getAutoCompaction =
+      (new Rx.BehaviorSubject()).pipe(
+        Rx.operators.switchMap(this.getAutoCompaction.bind(this)),
+        Rx.operators.map(function (v) {
+          var ac = v.autoCompactionSettings;
+          ac.indexCircularCompaction.daysOfWeek =
+            ac.indexCircularCompaction.daysOfWeek.split(",").reduce(function (acc, day) {
+              acc[day] = true;
+              return acc;
+            }, {});
+          ac.purgeInterval = v.purgeInterval;
+          return ac;
+        }),
+        Rx.operators.multicast(mn.helper.createReplaySubject),
+        Rx.operators.refCount()
+      );
+
+    this.stream.getAutoCompactionFirst =
+      this.stream.getAutoCompaction.pipe(Rx.operators.first());
+
+    this.stream.postAutoCompaction =
+      new mn.helper.MnPostHttp(this.postAutoCompaction.bind(this))
+      .addSuccess()
+      .addError();
+
+    this.stream.postAutoCompactionValidation =
+      new mn.helper.MnPostHttp(this.postAutoCompaction.bind(this))
+      .addSuccess()
+      .addError();
 
     this.stream.postTestEmail =
       new mn.helper.MnPostHttp(this.postTestEmail.bind(this))
@@ -46,7 +78,6 @@ mn.services.MnSettings = (function (Rx) {
   }
 
   function postAlerts(data) {
-    console.log(data)
     return this.http.post("/settings/alerts", data[0], {
       params: new ng.common.http.HttpParams().set("just_validate", data[1] ? 1 : 0)
     });
@@ -58,6 +89,16 @@ mn.services.MnSettings = (function (Rx) {
 
   function getAlerts() {
     return this.http.get("/settings/alerts");
+  }
+
+  function getAutoCompaction(data) {
+    return this.http.get("/settings/autoCompaction");
+  }
+
+  function postAutoCompaction(data) {
+    return this.http.post("/controller/setAutoCompaction", data[0], {
+      params: new ng.common.http.HttpParams().set("just_validate", data[1] ? 1 : 0)
+    });
   }
 
 })(window.rxjs);

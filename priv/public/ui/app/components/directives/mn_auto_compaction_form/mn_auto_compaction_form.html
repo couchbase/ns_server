@@ -124,8 +124,8 @@
   </div>
 
   <h4 ng-if="!isBucketsSettings && poolDefault.compat.atLeast40 && indexSettings && indexSettings.storageMode !== 'memory_optimized' && poolDefault.isEnterprise === false">Index Fragmentation</h4>
-  <div
-     ng-if="!isBucketsSettings && poolDefault.compat.atLeast40 && indexSettings && indexSettings.storageMode !== 'memory_optimized' && poolDefault.isEnterprise === false">
+  <!-- <div -->
+  <!--    ng-if="!isBucketsSettings && poolDefault.compat.atLeast40 && indexSettings && indexSettings.storageMode !== 'memory_optimized' && poolDefault.isEnterprise === false"> -->
     <div class="formrow form-inline checkbox-list">
       <input
          type="radio"
@@ -172,7 +172,7 @@
        rbac="rbac"
        errors="validationErrors">
     </div>
-  </div>
+  <!-- </div> -->
 
   <div class="formrow">
     <label class="inline">Tombstone Purge Interval</label>

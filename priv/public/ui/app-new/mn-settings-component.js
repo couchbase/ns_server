@@ -23,7 +23,7 @@ mn.components.MnSettings =
     function MnSettings(mnPermissionsService, mnPoolsService, mnAdminService) {
       mn.helper.MnEventableComponent.call(this);
 
-      this.settingsRead = mnPermissionsService.createPermissionStream("admin.settings!read");
+      this.settingsRead = mnPermissionsService.createPermissionStream("settings!read");
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
     }
 
@@ -40,7 +40,8 @@ mn.modules.MnSettings =
       new ng.core.NgModule({
         declarations: [
           mn.components.MnSettings,
-          mn.components.MnEmailAlerts
+          mn.components.MnEmailAlerts,
+          mn.components.MnAutoCompaction
         ],
         imports: [
           window['@uirouter/angular'].UIRouterModule.forChild({
@@ -54,14 +55,14 @@ mn.modules.MnSettings =
                 // }
               },
 
-              // {
-              //   name: "app.admin.security.session",
-              //   url: '/session',
-              //   component: mn.components.MnSession,
-              //   // data: {
-              //   //   permissions: "cluster.admin.security.read"
-              //   // }
-              // }
+              {
+                name: "app.admin.settings.autoCompaction",
+                url: '/autoCompaction',
+                component: mn.components.MnAutoCompaction,
+                // data: {
+                //   permissions: "cluster.admin.security.read"
+                // }
+              }
             ]
           }),
           ng.forms.ReactiveFormsModule,

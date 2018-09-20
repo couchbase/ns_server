@@ -7,10 +7,18 @@ mn.modules.MnShared =
     MnSharedModule.annotations = [
       new ng.core.NgModule({
         declarations: [
-          mn.directives.MnFocus
+          mn.directives.MnFocus,
+          mn.components.MnAutoCompactionForm,
+          mn.components.MnPeriod
         ],
         exports: [
-          mn.directives.MnFocus
+          mn.directives.MnFocus,
+          mn.components.MnAutoCompactionForm
+        ],
+        imports: [
+          ng.forms.ReactiveFormsModule,
+          ng.platformBrowser.BrowserModule,
+          ngb.NgbModule,
         ]
       })
     ];

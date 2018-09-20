@@ -16,6 +16,10 @@
     <!--    ui-sref-active="selected">Auto-Compaction</a> -->
     <a
        [hidden]="!(settingsRead | async)"
+       uiSref="app.admin.settings.autoCompaction"
+       uiSrefActive="selected">Auto-Compaction</a>
+    <a
+       [hidden]="!(settingsRead | async)"
        uiSref="app.admin.settings.emailAlerts"
        uiSrefActive="selected">Email Alerts</a>
     <!-- <a -->
