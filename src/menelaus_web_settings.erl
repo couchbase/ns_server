@@ -96,7 +96,7 @@ conf(internal) ->
      {{request_limit, capi}, capiRequestLimit, undefined, get_number(0, 99999, undefined)},
      {drop_request_memory_threshold_mib, dropRequestMemoryThresholdMiB, undefined,
       get_number(0, 99999, undefined)},
-     {gotraceback, gotraceback, <<"crash">>, fun get_string/1},
+     {gotraceback, gotraceback, <<"single">>, fun get_string/1},
      {{auto_failover_disabled, index}, indexAutoFailoverDisabled, true, fun get_bool/1},
      {{cert, use_sha1}, certUseSha1, false, fun get_bool/1}].
 
