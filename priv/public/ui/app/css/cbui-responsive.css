@@ -108,9 +108,11 @@
     margin-right: -1rem;
     margin-left: -1rem;
   }
-
   .qm-stats {
     display: none !important;
+  }
+  .simple-select-inside-label {
+    top: 6px !important;
   }
 }
 
@@ -150,9 +152,6 @@
   .cbui-table-meters {
     margin: 0 0 1.5rem 0!important;
   }
-/*  .allcaps {
-    text-transform: capitalize;
-  } */
   .cbui-tablerow.resp-sml {
     flex-flow: column-reverse;
     align-items: stretch;
@@ -171,14 +170,12 @@
   .dialog-resizable {
     width: 98vw;
   }
+  input.filter-input,
   .filter-server input.filter-input {
+    width: 66vw!important;
+  }
+  .filter-log input.filter-input {
     width: 94vw;
-  }
-  .filter-server {
-    order: 3;
-  }
-  .filter-server {
-    margin: .25rem 0 0 0 !important;
   }
 }
 
@@ -245,11 +242,11 @@
     line-height: normal;
     font-size: .961rem;
   }
-  input.filter-input {
-    width: 94vw;
+  .filter-server input.filter-input {
+    width: 60vw;
   }
-  .filter-input-group {
-    margin-top: .25rem;
+  .filter-index input.filter-input {
+    width: 50vw;
   }
 }
 

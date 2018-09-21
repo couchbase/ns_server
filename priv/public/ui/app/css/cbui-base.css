@@ -737,8 +737,9 @@ input[type="checkbox"] {
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
-  padding-right: 1.5rem;
+  padding-right: 2rem;
   min-width: 4rem;
+  line-height: 1.8rem;
 
 }
 .simple-select:after {
@@ -749,20 +750,22 @@ input[type="checkbox"] {
   color: #999;
   position: absolute;
   top: .25rem;
-  right: .5rem;
+  right: .75rem;
   pointer-events: none;
 }
+/* this is for select menu with a static label inside it on the left */
 .simple-select-inside-label {
   position: absolute;
-  left: .5rem;
-  top: 6px;
+  left: .75rem;
+  top: 5px;
   z-index: 10;
   font-size: .875rem;
   color: #333;
 }
 .simple-select-inside-label + .simple-select select {
-  padding-left: 3.7rem;
+  padding-left: 3.9rem;
 }
+/* this is for an input text field with a static label inside it on the right */
 .inside-label {
   position: absolute;
   right: .5rem;

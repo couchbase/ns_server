@@ -39,6 +39,13 @@
       GROUPS
     </a>
     <a
+       ng-show="!poolDefault.rebalancing && rbac.cluster.pools.write && rbac.cluster.tasks.read"
+       ng-click="serversCtl.multipleFailoverDialog()"
+       ng-disabled="adminCtl.tasks.inRecoveryMode || serversCtl.nodes.reallyActive.length === 1"
+       class="resp-hide-sml">
+      FAILOVER
+    </a>
+    <a
        ng-show="poolDefault && !poolDefault.rebalancing && rbac.cluster.pools.write"
        ng-click="serversCtl.addServer()"
        class="resp-hide-sml">
@@ -50,18 +57,19 @@
 <div
    mn-spinner="!serversCtl.nodes || (rbac.cluster.tasks.read && !adminCtl.tasks) || (rbac.cluster.server_groups.read && !serversCtl.getGroupsByHostname)"
    min-height="300px">
-  <div class="row resp-sml flex-right">
-    <div ng-show="rbac.cluster.tasks.read" class="margin-right-2">
-      <button
-         ng-show="!poolDefault.rebalancing && rbac.cluster.pools.write && rbac.cluster.tasks.read"
-         class="outline"
-         ng-click="serversCtl.multipleFailoverDialog()"
-         ng-disabled="adminCtl.tasks.inRecoveryMode || serversCtl.nodes.reallyActive.length === 1">Failover Multiple Nodes</button>
+  <div class="row">
+    <div
+       class="row filter-server"
+       mn-placeholder="filter servers..."
+       mn-search="serversCtl.filterField"
+       mn-hide-button="true">
+    </div>
+    <div ng-show="rbac.cluster.tasks.read">
       <button
          ng-show="!poolDefault.rebalancing  && rbac.cluster.pools.write"
          ng-click="serversCtl.postRebalance()"
          ng-disabled="adminCtl.tasks.inRecoveryMode || (!serversCtl.nodes.pending.length && poolDefault.balanced) || serversCtl.nodes.unhealthyActive || adminCtl.tasks.isLoadingSamples || adminCtl.tasks.isOrphanBucketTask"
-         class="orange">Rebalance</button>
+         class="orange margin-left-half resp-sml">Rebalance</button>
       <button
          class="orange"
          ng-show="poolDefault.rebalancing && rbac.cluster.pools.write"
@@ -73,12 +81,6 @@
          ng-click="serversCtl.onStopRecovery()"
          ng-show="adminCtl.tasks.inRecoveryMode && rbac.cluster.bucket[adminCtl.tasks.tasksRecovery.bucket].recovery.write"
          class="orange">Stop Recovery</button>
-    </div>
-    <div
-       class="row filter-server"
-       mn-placeholder="filter servers..."
-       mn-search="serversCtl.filterField"
-       mn-hide-button="true">
     </div>
   </div>
   <div ui-view></div>

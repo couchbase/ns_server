@@ -270,10 +270,7 @@ h1 a:active {
   position: relative;
 }
 input.filter-input {
-  width: 256px;
-}
-.filter-server {
-  margin: .25rem;
+  width: 320px !important;
 }
 /* inserts magnifying glass inside filter input field ------------------- */
 .filter-input-group .fa-search-minus {
