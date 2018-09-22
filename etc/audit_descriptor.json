@@ -965,7 +965,7 @@
               "hosts": [],
               "port": 1,
               "encryption": "",
-              "user_dn_template": "",
+              "user_dn_mapping": "",
               "query_dn": "",
               "query_pass": "",
               "groups_query": "",

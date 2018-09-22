@@ -1554,8 +1554,16 @@ prepare_ldap_settings(Settings) ->
     Fun =
       fun (hosts, Hosts) ->
               [list_to_binary(H) || H <- Hosts];
-          (user_dn_template, T) ->
-              list_to_binary(T);
+          (user_dn_mapping, L) ->
+              JSON = lists:map(
+                       fun ({Re, {'query', Q}}) ->
+                               {[{re, iolist_to_binary(Re)},
+                                 {'query', iolist_to_binary(Q)}]};
+                           ({Re, {template, T}}) ->
+                               {[{re, iolist_to_binary(Re)},
+                                 {template, iolist_to_binary(T)}]}
+                       end, L),
+              ejson:encode(JSON);
           (query_dn, DN) ->
               list_to_binary(DN);
           (query_pass, _) ->
@@ -1633,7 +1641,7 @@ ldap_settings_validators() ->
         validator:integer(port, 0, 65535, _),
         validator:one_of(encryption, ["ssl", "tls", "false"], _),
         validator:convert(encryption, fun list_to_atom/1, _),
-        validate_user_dn_template(user_dn_template, _),
+        validate_user_dn_mapping(user_dn_mapping, _),
         validate_ldap_dn(query_dn, _),
         validator:touch(query_pass, _),
         validate_ldap_groups_query(groups_query, _),
@@ -1657,14 +1665,63 @@ validate_ldap_hosts(Name, State) ->
               {value, [string:trim(T) || T <- string:tokens(HostsRaw, ",")]}
       end, Name, State).
 
-validate_user_dn_template(Name, State) ->
+validate_user_dn_mapping(Name, State) ->
     validator:validate(
       fun (Str) ->
-              case string:str(Str, "%u") of
-                  0 -> {error, "user_dn_template must contain \"%u\""};
-                  _ -> {value, Str}
+              Parse = ?cut(parse_user_dn_mapping_record(lists:usort(_))),
+              try
+                  Map = try ejson:decode(Str) of
+                            M when is_list(M) -> M;
+                            _ -> throw({error, "Should be a list"})
+                        catch _:_ ->
+                            throw({error, "Invalid JSON"})
+                        end,
+                  {value, [Parse(Props) || {Props} <- Map]}
+              catch
+                  throw:{error, _} = Err -> Err
               end
       end, Name, State).
+
+parse_user_dn_mapping_record([{<<"re">>, Re}, {<<"template">>, Template}]) ->
+    DN = re:replace(Template, "\\{\\d+\\}", "placeholder",
+                    [{return, list}, global]),
+    case eldap:parse_dn(DN) of
+        {ok, _} -> ok;
+        {parse_error, Reason, _} ->
+            throw({error, io_lib:format("Template is not a valid ldap DN: ~p",
+                                        [Reason])})
+    end,
+    {validate_re(Re), {template, validate_placeholders(Template)}};
+parse_user_dn_mapping_record([{<<"query">>, QueryTempl}, {<<"re">>, Re}]) ->
+    Query = re:replace(QueryTempl, "\\{\\d+\\}", "placeholder",
+                       [{return, list}, global]),
+    case ldap_auth:parse_url("ldap:///" ++ Query) of
+        {ok, _} -> ok;
+        {error, Reason} ->
+            throw({error, io_lib:format(
+                            "Invalid ldap query '~s': ~s",
+                            [Query, ldap_auth:format_error(Reason)])})
+    end,
+    {validate_re(Re), {'query', validate_placeholders(QueryTempl)}};
+parse_user_dn_mapping_record(Props) ->
+    throw({error, io_lib:format("Invalid record: ~p",
+                                [ejson:encode({Props})])}).
+
+validate_placeholders(Str) ->
+    case re:run(Str, "\\{\\d+\\}", []) of
+        {match, _} -> Str;
+        nomatch ->
+            throw({error, "Template or query should contain at least one "
+                          "placeholder, like \"{0}\""})
+    end.
+
+validate_re(Re) ->
+    case re:compile(Re) of
+        {ok, _} -> Re;
+        {error, {ErrStr, Pos}} ->
+            throw({error, io_lib:format("Invalid regular expression ~s: ~s "
+                                        "at ~b", [Re, ErrStr, Pos])})
+    end.
 
 validate_ldap_dn(Name, State) ->
     validator:validate(
