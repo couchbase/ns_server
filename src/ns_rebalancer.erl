@@ -706,6 +706,16 @@ rebalance_body(KeepNodes,
     %% wait till all bucket shutdowns are done on nodes we're
     %% adding (or maybe adding).
     do_wait_buckets_shutdown(KeepNodes),
+
+    %% We run the janitor here to make sure that the vbucket map is in sync
+    %% with the vbucket states.
+    %% Unfortunately, we need to run it once more in rebalance_kv after
+    %% the server list for the bucket is updated. So that the states of the
+    %% vbucket on newly added nodes are applied.
+    lists:foreach(fun ({Bucket, _BucketConfig}) ->
+                          run_janitor_pre_rebalance(Bucket)
+                  end, BucketConfigs),
+
     ok = apply_delta_recovery_buckets(DeltaRecoveryBuckets,
                                       KVDeltaNodes, BucketConfigs),
     ok = maybe_clear_recovery_type(KeepNodes),
@@ -831,7 +841,7 @@ run_janitor_pre_rebalance(BucketName) ->
         ok ->
             ok;
         {error, _, BadNodes} ->
-            exit({pre_rebalance_janitor_run_failed, BadNodes})
+            exit({pre_rebalance_janitor_run_failed, BucketName, BadNodes})
     end.
 
 %% @doc Rebalance the cluster. Operates on a single bucket. Will
