@@ -109,6 +109,10 @@ merger_loop() ->
     merger_loop().
 
 handle_call(synchronize, _From, State) ->
+    %% Need to sync with merger too because in case of incoming config change
+    %% merger pushes changes to couchdb node
+    sync_done = gen_server:call(ns_config_rep_merger, sync,
+                                ?SYNCHRONIZE_TIMEOUT),
     {reply, ok, State};
 handle_call(synchronize_everything, {Pid, _Tag} = _From,
             State) ->
