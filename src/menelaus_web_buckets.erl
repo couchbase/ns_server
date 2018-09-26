@@ -404,8 +404,10 @@ build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
               | Suffix5]}.
 
 build_bucket_capabilities(BucketConfig) ->
-    MoreCaps = [C || {C, true} <-
-                         [{xattr, cluster_compat_mode:is_cluster_50()}]],
+    MoreCaps =
+        [C || {C, true} <-
+                  [{xattr, cluster_compat_mode:is_cluster_50()},
+                   {collections, cluster_compat_mode:is_cluster_madhatter()}]],
 
     Caps =
         case ns_bucket:bucket_type(BucketConfig) of
