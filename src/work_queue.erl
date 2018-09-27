@@ -19,6 +19,7 @@
 
 %% API
 -export([start_link/0, start_link/1, start_link/2,
+         start_singleton/1, start_singleton/2,
          submit_work/2, submit_sync_work/2, sync_work/1]).
 
 %% gen_server callbacks
@@ -35,6 +36,12 @@ start_link(InitFun) when is_function(InitFun) ->
 
 start_link(Name, InitFun) ->
     gen_server:start_link({local, Name}, ?MODULE, InitFun, []).
+
+start_singleton(Name) ->
+    start_singleton(Name, fun nothing/0).
+
+start_singleton(Name, InitFun) ->
+    misc:start_singleton(gen_server, Name, ?MODULE, InitFun, []).
 
 submit_work(Name, Fun) ->
     gen_server:cast(Name, Fun).

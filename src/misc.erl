@@ -696,9 +696,12 @@ comm_test() ->
     {[], [], []} = comm([], []).
 
 
-
 start_singleton(Module, Name, Args, Opts) ->
-    case Module:start_link({via, leader_registry, Name}, Name, Args, Opts) of
+    start_singleton(Module, Name, Name, Args, Opts).
+
+start_singleton(Module, Name, InitModule, Args, Opts) ->
+    case Module:start_link({via, leader_registry, Name}, InitModule,
+                           Args, Opts) of
         {error, {already_started, Pid}} ->
             ?log_warning("start_singleton(~p, ~p, ~p, ~p) -> already started:"
                          " monitoring ~p from ~p",
