@@ -98,6 +98,11 @@ create_ns_couchdb_spec() ->
                        ["-couch_ini" | Values]
                end,
 
+    %% These are always passed down from the babysitter during startup.
+    %% Passing it down to couchdb VM to restrict its listening port range.
+    {ok, ListenMin} = application:get_env(kernel, inet_dist_listen_min),
+    {ok, ListenMax} = application:get_env(kernel, inet_dist_listen_max),
+
     ErlangArgs = CouchIni ++
         ["-setcookie", atom_to_list(ns_server:get_babysitter_cookie()),
          "-name", atom_to_list(ns_node_disco:couchdb_node()),
@@ -105,6 +110,8 @@ create_ns_couchdb_spec() ->
          "+P", "327680",
          "+K", "true",
          "-kernel", "error_logger", "false",
+         "inet_dist_listen_min", integer_to_list(ListenMin),
+         "inet_dist_listen_max", integer_to_list(ListenMax),
          "-sasl", "sasl_error_logger", "false",
          "-nouser",
          "-hidden",
