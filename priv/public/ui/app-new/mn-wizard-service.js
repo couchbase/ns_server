@@ -110,6 +110,7 @@ mn.services.MnWizard = (function (Rx) {
   MnWizardService.prototype.getQuerySettings = getQuerySettings;
   MnWizardService.prototype.getIndexes = getIndexes;
 
+
   return MnWizardService;
 
   function MnWizardService(http, mnAdminService) {
@@ -191,6 +192,12 @@ mn.services.MnWizard = (function (Rx) {
         Rx.operators.refCount()
       );
 
+    this.stream.getSelfConfigFirst =
+      this.stream.getSelfConfig.pipe(Rx.operators.first());
+
+    this.stream.memoryQuotasFirst =
+      this.stream.getSelfConfigFirst.pipe(Rx.operators.map(mn.helper.pluckMemoryQuotas));
+
     this.stream.getIndexes =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getIndexes.bind(this)),
@@ -237,8 +244,7 @@ mn.services.MnWizard = (function (Rx) {
   }
 
   function getServicesValues(servicesGroup) {
-    return _.reduce(
-      ["kv", "index", "fts", "n1ql", "eventing", "cbas"],
+    return mn.helper.services.reduce(
       function (result, serviceName) {
         var service = servicesGroup.get(serviceName);
         if (service && service.value) {

@@ -8,7 +8,9 @@ mn.services.MnSettings = (function (Rx) {
   ];
 
   MnSettingsService.parameters = [
-    ng.common.http.HttpClient
+    ng.common.http.HttpClient,
+    mn.services.MnPools,
+    mn.services.MnAdmin
   ];
 
   MnSettingsService.prototype.postTestEmail = postTestEmail;
@@ -16,11 +18,14 @@ mn.services.MnSettings = (function (Rx) {
   MnSettingsService.prototype.getAlerts = getAlerts;
   MnSettingsService.prototype.getAutoCompaction = getAutoCompaction;
   MnSettingsService.prototype.postAutoCompaction = postAutoCompaction;
+  MnSettingsService.prototype.getStats = getStats;
+  MnSettingsService.prototype.getPhoneHome = getPhoneHome;
+  MnSettingsService.prototype.getAutoFailover = getAutoFailover;
+  MnSettingsService.prototype.getAutoReprovision = getAutoReprovision;
 
   return MnSettingsService;
 
-  function MnSettingsService(http) {
-
+  function MnSettingsService(http, mnPoolsService, mnAdminService) {
     this.http = http;
     this.stream = {};
 
@@ -51,6 +56,34 @@ mn.services.MnSettings = (function (Rx) {
     this.stream.getAutoCompactionFirst =
       this.stream.getAutoCompaction.pipe(Rx.operators.first());
 
+    this.stream.getStats =
+      (new Rx.BehaviorSubject()).pipe(
+        Rx.operators.switchMap(this.getStats.bind(this)),
+        Rx.operators.multicast(mn.helper.createReplaySubject),
+        Rx.operators.refCount()
+      );
+
+    this.stream.getAutoFailover =
+      (new Rx.BehaviorSubject()).pipe(
+        Rx.operators.switchMap(this.getAutoFailover.bind(this)),
+        Rx.operators.multicast(mn.helper.createReplaySubject),
+        Rx.operators.refCount()
+      );
+
+    this.stream.getAutoReprovision =
+      (new Rx.BehaviorSubject()).pipe(
+        Rx.operators.switchMap(this.getAutoReprovision.bind(this)),
+        Rx.operators.multicast(mn.helper.createReplaySubject),
+        Rx.operators.refCount()
+      );
+
+    this.stream.getPhoneHome =
+      mnPoolsService.stream.getSuccess
+      .pipe(Rx.operators.withLatestFrom(mnAdminService.stream.implementationVersion),
+            Rx.operators.switchMap(this.getPhoneHome.bind(this)),
+            Rx.operators.multicast(mn.helper.createReplaySubject),
+            Rx.operators.refCount());
+
     this.stream.postAutoCompaction =
       new mn.helper.MnPostHttp(this.postAutoCompaction.bind(this))
       .addSuccess()
@@ -77,6 +110,16 @@ mn.services.MnSettings = (function (Rx) {
       .addError();
   }
 
+  function getPhoneHome(data) {
+    return this.http.jsonp('https://ph.couchbase.net/v2' +
+                           '?launchID=' + data[0].launchID +
+                           '&version=' + data[1], "callback");
+  }
+
+  function getStats() {
+    return this.http.get('/settings/stats');
+  }
+
   function postAlerts(data) {
     return this.http.post("/settings/alerts", data[0], {
       params: new ng.common.http.HttpParams().set("just_validate", data[1] ? 1 : 0)
@@ -89,6 +132,14 @@ mn.services.MnSettings = (function (Rx) {
 
   function getAlerts() {
     return this.http.get("/settings/alerts");
+  }
+
+  function getAutoReprovision() {
+    return this.http.get("/settings/autoReprovision");
+  }
+
+  function getAutoFailover() {
+    return this.http.get("/settings/autoFailover");
   }
 
   function getAutoCompaction(data) {

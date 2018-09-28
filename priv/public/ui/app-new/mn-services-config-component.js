@@ -12,7 +12,7 @@ mn.components.MnServicesConfig =
         templateUrl: "app-new/mn-services-config.html",
         inputs: [
           "group",
-          "servicesOnly"
+          "initDataStream"
         ],
         changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
@@ -31,7 +31,10 @@ mn.components.MnServicesConfig =
     MnServicesConfig.prototype.getQuota= getQuota;
     MnServicesConfig.prototype.createToggleFieldStream = createToggleFieldStream;
     MnServicesConfig.prototype.toggleFields = toggleFields;
-    MnServicesConfig.prototype.triggerUpdate = triggerUpdate;
+    MnServicesConfig.prototype.getServiceName = mn.helper.getServiceVisibleName;
+    MnServicesConfig.prototype.getServiceErrorName = mn.helper.getServiceQuotaName;
+    MnServicesConfig.prototype.getFlag = getFlag;
+    MnServicesConfig.prototype.getField = getField;
 
     return MnServicesConfig;
 
@@ -39,30 +42,38 @@ mn.components.MnServicesConfig =
       mn.helper.MnEventableComponent.call(this);
       this.poolsDefaultHttp = mnAdminService.stream.poolsDefaultHttp;
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
-      this.quotaServices = ["kv", "index", "fts", "cbas", "eventing"];
+      this.quotaServices = mn.helper.quotaServices;
+      this.allServices = mn.helper.services;
     }
 
     function ngOnInit() {
-      if (this.servicesOnly) {
+      this.isWithFlag = !!this.group.get("flag");
+      this.isWithField = !!this.group.get("field");
+      if (!this.isWithField) {
         return;
       }
       this.focusFieldSubject = new Rx.BehaviorSubject(
         this.quotaServices.find(this.selectInitialFocus.bind(this))
       );
-      this.total = this.group.valueChanges.pipe(
-        Rx.operators.map(this.calculateTotal.bind(this))
-      );
-      this.quotaServices.forEach(this.createToggleFieldStream.bind(this))
+      if (this.isWithFlag && this.isWithField) {
+        this.total = Rx
+          .merge(this.group.valueChanges, this.initDataStream)
+          .pipe(Rx.operators.map(this.calculateTotal.bind(this))
+        );
+      }
+      if (this.isWithFlag) {
+        this.quotaServices.forEach(this.createToggleFieldStream.bind(this))
+      }
 
-      this.group.valueChanges.pipe(
-        Rx.operators.debounce(function () {
-          return Rx.interval(300);
-        }),
-        Rx.operators.takeUntil(this.mnOnDestroy)
-      ).subscribe(this.validate.bind(this));
+      this.group.valueChanges
+        .pipe(Rx.operators.throttleTime(500, undefined, {leading: true, trailing: true}),
+              Rx.operators.takeUntil(this.mnOnDestroy))
+        .subscribe(this.validate.bind(this));
 
-      //trigger servicesGroup.valueChanges in order to calculate total
-      setTimeout(this.triggerUpdate.bind(this), 0);
+      this.initDataStream
+        .subscribe(function (memoryQuota) {
+          this.group.get("field").patchValue(memoryQuota, {emitEvent: false});
+        }.bind(this));
     }
 
     function selectInitialFocus(service) {
@@ -79,22 +90,22 @@ mn.components.MnServicesConfig =
     }
 
     function packQuotas(acc, name) {
-      var service = this.group.get("flag." + name);
+      var service = this.getFlag(name);
       var keyName = (name == "kv" ? "m" : (name + "M")) + "emoryQuota";
-      if (service && service.value) {
-        acc[keyName] = this.group.get("field." + name).value;
+      if (!this.isWithFlag || (service && service.value)) {
+        acc[keyName] = this.getField(name).value;
       }
       return acc;
     }
 
     function getQuota(acc, name) {
-      var flag = this.group.get("flag." + name);
-      var field = this.group.get("field." + name);
-      return acc + ((flag && flag.value && field.value) || 0);
+      var flag = this.getFlag(name);
+      var field = this.getField(name);
+      return acc + (((!flag || flag.value) && field.value) || 0);
     }
 
     function createToggleFieldStream(serviceGroupName) {
-      var group = this.group.get("flag." + serviceGroupName);
+      var group = this.getFlag(name);
       if (group) {
         group.valueChanges
           .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
@@ -102,15 +113,18 @@ mn.components.MnServicesConfig =
       }
     }
 
-    function toggleFields(serviceGroupName) {
+    function toggleFields(name) {
       return function () {
-        this.group.get("field." + serviceGroupName)
-        [this.group.get("flag." + serviceGroupName).value ? "enable" : "disable"]({onlySelf: true});
+        this.getField(name)[this.getFlag(name).value ? "enable" : "disable"]({onlySelf: true});
       }
     }
 
-    function triggerUpdate() {
-      this.group.patchValue(this.group.value);
+    function getFlag(name) {
+      return this.group.get("flag." + name);
+    }
+
+    function getField(name) {
+      return this.group.get("field." + name);
     }
 
   })(window.rxjs);

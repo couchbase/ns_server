@@ -41,7 +41,8 @@ mn.modules.MnSettings =
         declarations: [
           mn.components.MnSettings,
           mn.components.MnEmailAlerts,
-          mn.components.MnAutoCompaction
+          mn.components.MnAutoCompaction,
+          mn.components.MnGeneralSettings
         ],
         imports: [
           window['@uirouter/angular'].UIRouterModule.forChild({
@@ -62,6 +63,12 @@ mn.modules.MnSettings =
                 // data: {
                 //   permissions: "cluster.admin.security.read"
                 // }
+              },
+
+              {
+                name: 'app.admin.settings.generalSettings',
+                url: '/cluster',
+                component: mn.components.MnGeneralSettings
               }
             ]
           }),

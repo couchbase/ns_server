@@ -45,6 +45,53 @@ mn.helper.daysOfWeek = (function () {
 
 var mn = mn || {};
 mn.helper = mn.helper || {};
+mn.helper.quotaServices = (function () {
+  return ["kv", "index", "fts", "eventing", "cbas"];
+})();
+
+var mn = mn || {};
+mn.helper = mn.helper || {};
+mn.helper.services = (function () {
+  return ["kv", "index", "fts", "n1ql", "eventing", "cbas"];
+})();
+
+var mn = mn || {};
+mn.helper = mn.helper || {};
+mn.helper.getServiceVisibleName = (function () {
+  return function (service) {
+    switch (service) {
+    case "kv": return "Data";
+    case "index": return "Index";
+    case "fts": return "Search";
+    case "n1ql": return "Query";
+    case "eventing": return "Eventing";
+    case "cbas": return "Analytics";
+    }
+  }
+})();
+
+var mn = mn || {};
+mn.helper = mn.helper || {};
+mn.helper.getServiceQuotaName = (function () {
+  return function (service) {
+    switch (service) {
+    case "kv": return "memoryQuota";
+    default: return service + "MemoryQuota";
+    }
+  }
+})();
+
+mn.helper.pluckMemoryQuotas = (function () {
+  return function (source) {
+    return mn.helper.quotaServices.reduce(function (acc, service) {
+      acc[service] = source[mn.helper.getServiceQuotaName(service)];
+      return acc;
+    }, {});
+  }
+})();
+
+var mn = mn || {};
+mn.helper = mn.helper || {};
 mn.helper.IEC = (function () {
   return {
     Ki: 1024,

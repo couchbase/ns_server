@@ -118,10 +118,7 @@ mn.components.MnAdmin =
           Rx.operators.map(Boolean)
         );
 
-      this.clusterName =
-        mnAdminService.stream.getPoolsDefault.pipe(
-          Rx.operators.pluck("clusterName")
-        );
+      this.clusterName = mnAdminService.stream.clusterName;
 
       this.enableResetButton =
         Rx.combineLatest(

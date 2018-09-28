@@ -28,6 +28,7 @@
         <div *ngFor="let error of (servicesHttp.error | async)">{{error}}</div>
       </div>
       <mn-services-config
+         [initDataStream]="memoryQuotasFirst"
          [group]="newClusterConfigForm.get('services')">
       </mn-services-config>
       <div class="content-box text-center margin-top-1">

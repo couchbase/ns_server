@@ -110,6 +110,12 @@ mn.services.MnAdmin = (function (Rx) {
         })
       );
 
+    this.stream.memoryQuotas =
+      this.stream.getPoolsDefault.pipe(Rx.operators.map(mn.helper.pluckMemoryQuotas));
+
+    this.stream.clusterName =
+      this.stream.getPoolsDefault.pipe(Rx.operators.pluck("clusterName"));
+
     this.stream.compatVersion =
       this.stream.thisNode.pipe(
         Rx.operators.map(function (thisNode) {

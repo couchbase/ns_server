@@ -26,20 +26,13 @@ mn.modules.MnWizard =
         mnWizardService.initialValues.implementationVersion = implementationVersion;
       });
 
-      mnWizardService.stream.getSelfConfig.pipe(
-        Rx.operators.first()
-      ).subscribe(function (selfConfig) {
-        var hostname = selfConfig['otpNode'].split('@')[1] || '127.0.0.1';
-        newClusterConfig.get("clusterStorage.hostname").setValue(hostname);
-        newClusterConfig.get("services.field.kv").setValue(selfConfig.memoryQuota);
-        newClusterConfig.get("services.field.index").setValue(selfConfig.indexMemoryQuota);
-        newClusterConfig.get("services.field.fts").setValue(selfConfig.ftsMemoryQuota);
-        newClusterConfig.get("services.field.cbas").setValue(selfConfig.cbasMemoryQuota);
-        newClusterConfig.get("services.field.eventing").setValue(selfConfig.eventingMemoryQuota);
-        joinCluster.get("clusterStorage.hostname").setValue(hostname);
-
-        mnWizardService.initialValues.hostname = hostname;
-      });
+      mnWizardService.stream.getSelfConfigFirst
+        .subscribe(function (selfConfig) {
+          var hostname = selfConfig['otpNode'].split('@')[1] || '127.0.0.1';
+          newClusterConfig.get("clusterStorage.hostname").setValue(hostname);
+          joinCluster.get("clusterStorage.hostname").setValue(hostname);
+          mnWizardService.initialValues.hostname = hostname;
+        });
 
       mnPoolsService.stream.isEnterprise
         .subscribe(function (isEnterprise) {
@@ -82,7 +75,6 @@ mn.modules.MnWizard =
           mn.components.MnWelcome,
           mn.components.MnNodeStorageConfig,
           mn.components.MnQuerySettingsConfig,
-          mn.components.MnServicesConfig,
           mn.components.MnStorageMode,
           mn.components.MnJoinCluster,
           mn.components.MnPathField

@@ -4,12 +4,12 @@
      <!--     mn-pluggable-ui-tabs -->
      <!-- mn-tab-bar-name="settingsTab" -->
 
-    <!-- <a -->
-    <!--    id="settings_cluster" -->
-    <!--    ui-sref="app.admin.settings.cluster" -->
-    <!--    ui-sref-active="selected">General</a> -->
-    <!-- <a -->
-    <!--    id="settings_compaction" -->
+     <a
+        [hidden]="!(settingsRead | async)"
+        uiSref="app.admin.settings.generalSettings"
+        uiSrefActive="selected">General</a>
+     <!-- <a -->
+     <!--    id="settings_compaction" -->
     <!--    class="casper_settings_compaction resp-hide-sml" -->
     <!--    ng-show="rbac.cluster.settings.read" -->
     <!--    ui-sref="app.admin.settings.autoCompaction" -->

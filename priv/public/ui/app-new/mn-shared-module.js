@@ -9,9 +9,11 @@ mn.modules.MnShared =
         declarations: [
           mn.directives.MnFocus,
           mn.components.MnAutoCompactionForm,
-          mn.components.MnPeriod
+          mn.components.MnPeriod,
+          mn.components.MnServicesConfig
         ],
         exports: [
+          mn.components.MnServicesConfig,
           mn.directives.MnFocus,
           mn.components.MnAutoCompactionForm
         ],

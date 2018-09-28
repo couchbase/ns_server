@@ -39,6 +39,7 @@ mn.components.MnNewClusterConfig =
 
       this.totalRAMMegs = mnWizardService.stream.totalRAMMegs;
       this.maxRAMMegs = mnWizardService.stream.maxRAMMegs;
+      this.memoryQuotasFirst = mnWizardService.stream.memoryQuotasFirst;
 
       this.servicesHttp = mnWizardService.stream.servicesHttp;
       this.groupHttp = mnWizardService.stream.groupHttp;
