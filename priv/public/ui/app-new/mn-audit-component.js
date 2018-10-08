@@ -1,10 +1,10 @@
 var mn = mn || {};
 mn.components = mn.components || {};
 mn.components.MnAudit =
-  (function (Rx, IEC) {
+  (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnAudit, mn.helper.MnEventableComponent);
+    mn.core.extend(MnAudit, mn.core.MnEventableComponent);
 
     MnAudit.annotations = [
       new ng.core.Component({
@@ -14,6 +14,7 @@ mn.components.MnAudit =
     ];
 
     MnAudit.parameters = [
+      mn.services.MnHelper,
       mn.services.MnSecurity,
       mn.services.MnPermissions,
       mn.services.MnAlerts,
@@ -35,8 +36,10 @@ mn.components.MnAudit =
 
     return MnAudit;
 
-    function MnAudit(mnSecurityService, mnPermissionsService, mnAlertsService, mnAdminService, mnPoolsService) {
-      mn.helper.MnEventableComponent.call(this);
+    function MnAudit(mnHelperService, mnSecurityService, mnPermissionsService, mnAlertsService, mnAdminService, mnPoolsService) {
+      mn.core.MnEventableComponent.call(this);
+
+      this.IEC = mnHelperService.IEC;
 
       this.onSubmit = new Rx.Subject();
 
@@ -68,8 +71,7 @@ mn.components.MnAudit =
       this.maybeItIsPlural =
         this.auditForm.get("rotateInterval").valueChanges
         .pipe(Rx.operators.map(this.getEnding.bind(this)),
-              Rx.operators.multicast(mn.helper.createReplaySubject),
-              Rx.operators.refCount());
+              Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount());
 
       Rx.combineLatest(this.auditForm.get("auditdEnabled").valueChanges, this.securityWrite)
         .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
@@ -87,7 +89,7 @@ mn.components.MnAudit =
       this.descriptorsByModule =
         Rx.combineLatest(this.getAuditDescriptors, disabledByID)
         .pipe(Rx.operators.map(this.getDescriptorsByModule.bind(this)),
-              Rx.operators.multicast(mn.helper.createReplaySubject),
+              Rx.operators.publishReplay(1),
               Rx.operators.refCount());
 
       this.getAudit
@@ -150,7 +152,7 @@ mn.components.MnAudit =
         result.rotateSize = data.rotateSize;
       }
       if (data.rotateSize) {
-        result.rotateSize = data.rotateSize * IEC.Mi;
+        result.rotateSize = data.rotateSize * this.IEC.Mi;
       }
       return result;
     }
@@ -216,7 +218,7 @@ mn.components.MnAudit =
         data.rotateUnit = 'minutes';
       }
       if (data.rotateSize) {
-        data.rotateSize = data.rotateSize / mn.helper.IEC.Mi;
+        data.rotateSize = data.rotateSize / this.IEC.Mi;
       }
       if (data.disabledUsers) {
         data.disabledUsers = data.disabledUsers.map(function (user) {
@@ -226,4 +228,4 @@ mn.components.MnAudit =
       return data;
     }
 
-  })(window.rxjs, mn.helper.IEC);
+  })(window.rxjs);

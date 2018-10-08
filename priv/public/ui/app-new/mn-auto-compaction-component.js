@@ -4,7 +4,7 @@ mn.components.MnAutoCompaction =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnAutoCompaction, mn.helper.MnEventableComponent);
+    mn.core.extend(MnAutoCompaction, mn.core.MnEventableComponent);
 
     MnAutoCompaction.annotations = [
       new ng.core.Component({
@@ -14,6 +14,7 @@ mn.components.MnAutoCompaction =
     ];
 
     MnAutoCompaction.parameters = [
+      mn.services.MnHelper,
       mn.services.MnSettings,
       mn.services.MnPermissions,
       mn.services.MnAlerts
@@ -25,8 +26,8 @@ mn.components.MnAutoCompaction =
 
     return MnAutoCompaction;
 
-    function MnAutoCompaction(mnSettingsService, mnPermissionsService, mnAlertsService) {
-      mn.helper.MnEventableComponent.call(this);
+    function MnAutoCompaction(mnHelperService, mnSettingsService, mnPermissionsService, mnAlertsService) {
+      mn.core.MnEventableComponent.call(this);
 
       this.onSubmit = new Rx.Subject();
 
@@ -51,7 +52,7 @@ mn.components.MnAutoCompaction =
         }),
         indexCircularCompaction: new ng.forms.FormGroup({
           daysOfWeek: new ng.forms.FormGroup(
-            mn.helper.daysOfWeek.reduce(function (acc, day) {
+            mnHelperService.daysOfWeek.reduce(function (acc, day) {
               acc[day] = new ng.forms.FormControl(false);
               return acc;
             }, {})

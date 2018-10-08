@@ -4,7 +4,7 @@ mn.components.MnWarmupProgress =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnWarmupProgressComponent, mn.helper.MnEventableComponent);
+    mn.core.extend(MnWarmupProgressComponent, mn.core.MnEventableComponent);
 
     MnWarmupProgressComponent.annotations = [
       new ng.core.Component({
@@ -29,7 +29,7 @@ mn.components.MnWarmupProgress =
     return MnWarmupProgressComponent;
 
     function MnWarmupProgressComponent() {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
 
       this.limit = 3;
       this.onToggle = new Rx.Subject();

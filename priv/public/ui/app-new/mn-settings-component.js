@@ -4,7 +4,7 @@ mn.components.MnSettings =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnSettings, mn.helper.MnEventableComponent);
+    mn.core.extend(MnSettings, mn.core.MnEventableComponent);
 
     MnSettings.annotations = [
       new ng.core.Component({
@@ -21,7 +21,7 @@ mn.components.MnSettings =
     return MnSettings;
 
     function MnSettings(mnPermissionsService, mnPoolsService, mnAdminService) {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
 
       this.settingsRead = mnPermissionsService.createPermissionStream("settings!read");
       this.isEnterprise = mnPoolsService.stream.isEnterprise;

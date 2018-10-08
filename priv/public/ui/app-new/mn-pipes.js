@@ -53,12 +53,18 @@ mn.pipes.MnMBtoBytes =
       })
     ];
 
+    MnMBtoBytes.parameters = [
+      mn.services.MnHelper
+    ];
+
     MnMBtoBytes.prototype.transform = transform;
 
     return MnMBtoBytes;
-    function MnMBtoBytes(mnParseVersion) {}
+    function MnMBtoBytes(mnHelperService) {
+      this.IEC = mnHelperService.IEC;
+    }
     function transform(MB) {
-      return MB * mn.helper.IEC.Mi;
+      return MB * this.IEC.Mi;
     }
   })();
 
@@ -74,12 +80,18 @@ mn.pipes.MnBytesToMB =
       })
     ];
 
+    MnBytesToMB.parameters = [
+      mn.services.MnHelper
+    ];
+
     MnBytesToMB.prototype.transform = transform;
 
     return MnBytesToMB;
-    function MnBytesToMB() {}
+    function MnBytesToMB(mnHelperService) {
+      this.IEC = mnHelperService.IEC;
+    }
     function transform(bytes) {
-      return Math.floor(bytes / mn.helper.IEC.Mi);
+      return Math.floor(bytes / this.IEC.Mi);
     }
   })();
 

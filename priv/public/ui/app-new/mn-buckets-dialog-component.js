@@ -4,7 +4,7 @@ mn.components.MnBucketsDialog =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnBucketsDialogComponent, mn.helper.MnEventableComponent);
+    mn.core.extend(MnBucketsDialogComponent, mn.core.MnEventableComponent);
 
     MnBucketsDialogComponent.annotations = [
       new ng.core.Component({
@@ -27,7 +27,7 @@ mn.components.MnBucketsDialog =
     return MnBucketsDialogComponent;
 
     function MnBucketsDialogComponent(activeModal, mnBucketsService, mnPoolsService, mnAdminService, mnBytesToMB) {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
 
       var bucketsDialogForm = new ng.forms.FormGroup({
         name: new ng.forms.FormControl({value: null, disabled: false}),
@@ -80,15 +80,13 @@ mn.components.MnBucketsDialog =
       this.bucketRamGuage =
         ramSummary.pipe(
           Rx.operators.map(mnBucketsService.getBucketRamGuageConfig),
-          Rx.operators.multicast(mn.helper.createReplaySubject),
-          Rx.operators.refCount()
+          Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
         );
 
       this.bucketTotalRamGuage =
         this.bucketRamGuage.pipe(
           Rx.operators.map(getBucketTotalRamGuage),
-          Rx.operators.multicast(mn.helper.createReplaySubject),
-          Rx.operators.refCount()
+          Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
         );
 
       bucketFormChanges.pipe(

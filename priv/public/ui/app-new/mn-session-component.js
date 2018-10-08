@@ -4,7 +4,7 @@ mn.components.MnSession =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnSession, mn.helper.MnEventableComponent);
+    mn.core.extend(MnSession, mn.core.MnEventableComponent);
 
     MnSession.annotations = [
       new ng.core.Component({
@@ -27,7 +27,7 @@ mn.components.MnSession =
     return MnSession;
 
     function MnSession(mnSecurityService, mnPermissionsService, mnAlertsService, mnAdminService) {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
 
       this.onSubmit = new Rx.Subject();
       this.sessionForm = new ng.forms.FormGroup({

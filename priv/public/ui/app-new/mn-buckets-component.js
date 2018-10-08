@@ -4,7 +4,7 @@ mn.components.MnBuckets =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnBuckets, mn.helper.MnEventableComponent);
+    mn.core.extend(MnBuckets, mn.core.MnEventableComponent);
 
     MnBuckets.annotations = [
       new ng.core.Component({
@@ -13,7 +13,7 @@ mn.components.MnBuckets =
     ];
 
     MnBuckets.parameters = [
-      // window['@uirouter/angular'].UIRouter,
+      mn.services.MnHelper,
       mn.services.MnAdmin,
       mn.services.MnBuckets,
       mn.services.MnPermissions,
@@ -28,8 +28,8 @@ mn.components.MnBuckets =
       return bucket.name;
     }
 
-    function MnBuckets(mnAdminService, mnBucketsService, mnPermissionsService, modalService) {
-      mn.helper.MnEventableComponent.call(this);
+    function MnBuckets(mnHelperService, mnAdminService, mnBucketsService, mnPermissionsService, modalService) {
+      mn.core.MnEventableComponent.call(this);
 
       this.isRebalancing = mnAdminService.stream.isRebalancing;
       this.maxBucketCount = mnAdminService.stream.maxBucketCount;
@@ -38,7 +38,7 @@ mn.components.MnBuckets =
 
       this.buckets =
         mnBucketsService.stream.bucketsWithTimer
-        .pipe(mn.helper.sortByStream(this.onSortByClick));
+        .pipe(mnHelperService.sortByStream(this.onSortByClick));
 
       this.maybeShowMaxBucketCountWarning =
         Rx.combineLatest(

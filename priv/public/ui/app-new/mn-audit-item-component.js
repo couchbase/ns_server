@@ -4,7 +4,7 @@ mn.components.MnAuditItem =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnAuditItem, mn.helper.MnEventableComponent);
+    mn.core.extend(MnAuditItem, mn.core.MnEventableComponent);
 
     MnAuditItem.annotations = [
       new ng.core.Component({
@@ -36,14 +36,13 @@ mn.components.MnAuditItem =
     return MnAuditItem;
 
     function MnAuditItem(mnPermissionsService, mnTasksService, uiRouter) {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
 
       this.onToggleClick = new Rx.Subject();
       this.toggleSection =
         this.onToggleClick
         .pipe(Rx.operators.scan(mn.helper.invert, false),
-              Rx.operators.multicast(mn.helper.createReplaySubject),
-              Rx.operators.refCount());
+              Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount());
 
     }
 
@@ -75,8 +74,7 @@ mn.components.MnAuditItem =
           Rx.operators.map(function (a) {
             return Object.values(a).includes(true);
           }),
-          Rx.operators.multicast(mn.helper.createReplaySubject),
-          Rx.operators.refCount()
+          Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
         );
 
       this.thisModuleChanges.pipe(

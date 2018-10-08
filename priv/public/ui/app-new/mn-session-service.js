@@ -64,8 +64,7 @@ mn.services.MnSession = (function (Rx) {
         Rx.operators.map(this.isDialogOpened.bind(this)),
         Rx.operators.filter(mn.helper.invert),
         Rx.operators.map(this.getUiSessionTimeout.bind(this)),
-        Rx.operators.multicast(mn.helper.createReplaySubject),
-        Rx.operators.refCount()
+        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
       );
   }
 

@@ -4,7 +4,7 @@ mn.components.MnSessionTimeoutDialog =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnSessionTimeoutDialog, mn.helper.MnEventableComponent);
+    mn.core.extend(MnSessionTimeoutDialog, mn.core.MnEventableComponent);
 
     MnSessionTimeoutDialog.annotations = [
       new ng.core.Component({
@@ -21,7 +21,7 @@ mn.components.MnSessionTimeoutDialog =
     return MnSessionTimeoutDialog;
 
     function MnSessionTimeoutDialog(activeModal) {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
       this.activeModal = activeModal;
 
       var time = (Number(localStorage.getItem("uiSessionTimeout")) - 30000) / 1000;

@@ -4,7 +4,7 @@ mn.components.MnGeneralSettings =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnGeneralSettings, mn.helper.MnEventableComponent);
+    mn.core.extend(MnGeneralSettings, mn.core.MnEventableComponent);
 
     MnGeneralSettings.annotations = [
       new ng.core.Component({
@@ -23,7 +23,7 @@ mn.components.MnGeneralSettings =
     return MnGeneralSettings;
 
     function MnGeneralSettings(mnPermissionsService, mnAdminService, mnSettingsService, mnPoolsService) {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
 
       this.formGroup = new ng.forms.FormGroup({
         clusterName: new ng.forms.FormControl(),
@@ -58,8 +58,7 @@ mn.components.MnGeneralSettings =
       this.toggleSection =
         this.onToggleClick
         .pipe(Rx.operators.scan(mn.helper.invert, false),
-              Rx.operators.multicast(mn.helper.createReplaySubject),
-              Rx.operators.refCount());
+              Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount());
 
       this.prettyVersion = mnAdminService.stream.prettyVersion;
       this.getStats = mnSettingsService.stream.getStats;

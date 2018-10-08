@@ -33,7 +33,7 @@
       if (!req.headers.get('isNotForm')) {
         if (_.isObject(mnReq.body) && !_.isArray(mnReq.body)) {
           params = new ng.common.http.HttpParams({
-            fromString: new mn.helper.jQueryLikeParamSerializer(mnReq.body).toString()
+            fromString: new mn.core.jQueryLikeParamSerializer(mnReq.body).toString()
           });
         } else {
           params = mnReq.body;
@@ -141,6 +141,7 @@
       entryComponents: [
       ],
       providers: [
+        mn.services.MnHelper,
         mn.services.MnTasks,
         mn.services.MnAlerts,
         mn.services.MnSession,

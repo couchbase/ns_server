@@ -4,7 +4,7 @@ mn.components.MnUserRolesItem =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnUserRolesItemComponent, mn.helper.MnEventableComponent);
+    mn.core.extend(MnUserRolesItemComponent, mn.core.MnEventableComponent);
 
     MnUserRolesItemComponent.annotations = [
       new ng.core.Component({
@@ -26,7 +26,7 @@ mn.components.MnUserRolesItem =
     return MnUserRolesItemComponent;
 
     function MnUserRolesItemComponent(mnPermissionsService, mnUserRolesService, uiRouter) {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
 
       var userCurrentValue = this.mnOnChanges.pipe(Rx.operators.pluck("user", "currentValue"));
 
@@ -55,7 +55,7 @@ mn.components.MnUserRolesItem =
         );
 
       this.detailsHashObserver =
-        new mn.helper.DetailsHashObserver(
+        new mn.core.DetailsHashObserver(
           uiRouter,
           "app.admin.security.userRoles",
           "openedUsers",

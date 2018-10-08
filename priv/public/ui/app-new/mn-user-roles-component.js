@@ -4,7 +4,7 @@ mn.components.MnUserRoles =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnUserRoles, mn.helper.MnEventableComponent);
+    mn.core.extend(MnUserRoles, mn.core.MnEventableComponent);
 
     MnUserRoles.annotations = [
       new ng.core.Component({
@@ -13,6 +13,7 @@ mn.components.MnUserRoles =
     ];
 
     MnUserRoles.parameters = [
+      mn.services.MnHelper,
       mn.services.MnPools,
       mn.services.MnAdmin,
       mn.services.MnSecurity,
@@ -26,8 +27,8 @@ mn.components.MnUserRoles =
 
     return MnUserRoles;
 
-    function MnUserRoles(mnPoolsService, mnAdminService, mnSecurityService, mnUserRolesService, mnPermissionsService, uiRouter) {
-      mn.helper.MnEventableComponent.call(this);
+    function MnUserRoles(mnHelperService, mnPoolsService, mnAdminService, mnSecurityService, mnUserRolesService, mnPermissionsService, uiRouter) {
+      mn.core.MnEventableComponent.call(this);
 
       var userRolesFieldsGroup = new ng.forms.FormGroup({
         searchTerm: new ng.forms.FormControl(""),
@@ -66,8 +67,7 @@ mn.components.MnUserRoles =
         ).pipe(
           Rx.operators.pluck("0"),
           Rx.operators.switchMap(mnUserRolesService.getUsers.bind(mnUserRolesService)),
-          Rx.operators.multicast(mn.helper.createReplaySubject),
-          Rx.operators.refCount()
+          Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
         );
 
       this.filteredUsers =
@@ -77,8 +77,9 @@ mn.components.MnUserRoles =
         ).pipe(
           Rx.operators.map(function (resp) {
             return resp[0].filter(listFiter(resp[1]));
-          })
-        ).pipe(mn.helper.sortByStream(this.onSortByClick));
+          }),
+          mnHelperService.sortByStream(this.onSortByClick)
+        );
 
       this.firstPageParams =
         pageSizeFormValue.pipe(

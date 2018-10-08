@@ -21,6 +21,7 @@ mn.services.MnAdmin = (function (Rx) {
   ];
 
   MnAdminService.parameters = [
+    mn.services.MnHelper,
     window['@uirouter/angular'].UIRouter,
     ng.common.http.HttpClient,
     mn.pipes.MnPrettyVersion
@@ -33,7 +34,7 @@ mn.services.MnAdmin = (function (Rx) {
 
   return MnAdminService;
 
-  function MnAdminService(uiRouter, http, mnPrettyVersionPipe) {
+  function MnAdminService(mnHelperService, uiRouter, http, mnPrettyVersionPipe) {
     this.stream = {};
     this.http = http;
     this.stream.etag = new Rx.BehaviorSubject();
@@ -45,8 +46,7 @@ mn.services.MnAdmin = (function (Rx) {
     this.stream.whomi =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getWhoami.bind(this)),
-        Rx.operators.multicast(mn.helper.createReplaySubject),
-        Rx.operators.refCount()
+        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
       );
 
     this.stream.getPoolsDefault =
@@ -60,8 +60,7 @@ mn.services.MnAdmin = (function (Rx) {
         this.stream.etag
       ).pipe(
         Rx.operators.switchMap(this.getPoolsDefault.bind(this)),
-        Rx.operators.multicast(mn.helper.createReplaySubject),
-        Rx.operators.refCount()
+        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
       );
 
     this.stream.isRebalancing =
@@ -85,16 +84,14 @@ mn.services.MnAdmin = (function (Rx) {
       this.stream.getPoolsDefault.pipe(
         Rx.operators.pluck("ldapEnabled"),
         Rx.operators.distinctUntilChanged(),
-        Rx.operators.multicast(mn.helper.createReplaySubject),
-        Rx.operators.refCount()
+        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
       );
 
     this.stream.implementationVersion =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getVersion.bind(this)),
         Rx.operators.pluck("implementationVersion"),
-        Rx.operators.multicast(mn.helper.createReplaySubject),
-        Rx.operators.refCount()
+        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
       );
 
     this.stream.prettyVersion =
@@ -111,7 +108,8 @@ mn.services.MnAdmin = (function (Rx) {
       );
 
     this.stream.memoryQuotas =
-      this.stream.getPoolsDefault.pipe(Rx.operators.map(mn.helper.pluckMemoryQuotas));
+      this.stream.getPoolsDefault
+      .pipe(Rx.operators.map(mnHelperService.pluckMemoryQuotas.bind(mnHelperService)));
 
     this.stream.clusterName =
       this.stream.getPoolsDefault.pipe(Rx.operators.pluck("clusterName"));
@@ -129,7 +127,7 @@ mn.services.MnAdmin = (function (Rx) {
       );
 
     this.stream.poolsDefaultHttp =
-      new mn.helper.MnPostHttp(this.postPoolsDefault.bind(this))
+      new mn.core.MnPostHttp(this.postPoolsDefault.bind(this))
       .addSuccess()
       .addError();
 
@@ -169,9 +167,7 @@ mn.services.MnAdmin = (function (Rx) {
   function postPoolsDefault(data) {
     return this.http.post('/pools/default', data[0], {
       params: new ng.common.http.HttpParams().set("just_validate", data[1] ? 1 : 0)
-    }).pipe(
-      Rx.operators.catchError(mn.helper.errorToStream)
-    );
+    });
   }
 
   function getWhoami() {

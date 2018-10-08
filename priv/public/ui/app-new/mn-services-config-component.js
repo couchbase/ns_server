@@ -4,7 +4,7 @@ mn.components.MnServicesConfig =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnServicesConfig, mn.helper.MnEventableComponent);
+    mn.core.extend(MnServicesConfig, mn.core.MnEventableComponent);
 
     MnServicesConfig.annotations = [
       new ng.core.Component({
@@ -19,6 +19,7 @@ mn.components.MnServicesConfig =
     ];
 
     MnServicesConfig.parameters = [
+      mn.services.MnHelper,
       mn.services.MnAdmin,
       mn.services.MnPools
     ];
@@ -31,19 +32,19 @@ mn.components.MnServicesConfig =
     MnServicesConfig.prototype.getQuota= getQuota;
     MnServicesConfig.prototype.createToggleFieldStream = createToggleFieldStream;
     MnServicesConfig.prototype.toggleFields = toggleFields;
-    MnServicesConfig.prototype.getServiceName = mn.helper.getServiceVisibleName;
-    MnServicesConfig.prototype.getServiceErrorName = mn.helper.getServiceQuotaName;
     MnServicesConfig.prototype.getFlag = getFlag;
     MnServicesConfig.prototype.getField = getField;
 
     return MnServicesConfig;
 
-    function MnServicesConfig(mnAdminService, mnPoolsService) {
-      mn.helper.MnEventableComponent.call(this);
+    function MnServicesConfig(mnHelperService, mnAdminService, mnPoolsService) {
+      mn.core.MnEventableComponent.call(this);
       this.poolsDefaultHttp = mnAdminService.stream.poolsDefaultHttp;
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
-      this.quotaServices = mn.helper.quotaServices;
-      this.allServices = mn.helper.services;
+      this.quotaServices = mnHelperService.quotaServices;
+      this.allServices = mnHelperService.services;
+      this.getServiceName = mnHelperService.getServiceVisibleName;
+      this.getServiceErrorName = mnHelperService.getServiceQuotaName;
     }
 
     function ngOnInit() {
@@ -105,7 +106,7 @@ mn.components.MnServicesConfig =
     }
 
     function createToggleFieldStream(serviceGroupName) {
-      var group = this.getFlag(name);
+      var group = this.getFlag(serviceGroupName);
       if (group) {
         group.valueChanges
           .pipe(Rx.operators.takeUntil(this.mnOnDestroy))

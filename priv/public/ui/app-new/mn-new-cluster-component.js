@@ -4,7 +4,7 @@ mn.components.MnNewCluster =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnNewClusterComponent, mn.helper.MnEventableComponent);
+    mn.core.extend(MnNewClusterComponent, mn.core.MnEventableComponent);
 
     MnNewClusterComponent.annotations = [
       new ng.core.Component({
@@ -14,14 +14,15 @@ mn.components.MnNewCluster =
     ];
 
     MnNewClusterComponent.parameters = [
+      mn.services.MnHelper,
       mn.services.MnWizard,
       window['@uirouter/angular'].UIRouter
     ];
 
     return MnNewClusterComponent;
 
-    function MnNewClusterComponent(mnWizardService, uiRouter) {
-      mn.helper.MnEventableComponent.call(this);
+    function MnNewClusterComponent(mnHelperService, mnWizardService, uiRouter) {
+      mn.core.MnEventableComponent.call(this);
 
       this.onSubmit = new Rx.Subject();
       this.focusFieldSubject = new Rx.BehaviorSubject("clusterName");
@@ -29,7 +30,7 @@ mn.components.MnNewCluster =
       this.submitted = this.onSubmit.pipe(Rx.operators.mapTo(true));
       this.authHttp = mnWizardService.stream.authHttp;
       this.newClusterForm = mnWizardService.wizardForm.newCluster;
-      this.newClusterForm.setValidators([mn.helper.validateEqual("user.password",
+      this.newClusterForm.setValidators([mnHelperService.validateEqual("user.password",
                                                                  "user.passwordVerify",
                                                                  "passwordMismatch")]);
       this.authHttp.success.pipe(

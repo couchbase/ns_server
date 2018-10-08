@@ -89,7 +89,8 @@ mn.services.MnWizard = (function (Rx) {
 
   MnWizardService.parameters = [
     ng.common.http.HttpClient,
-    mn.services.MnAdmin
+    mn.services.MnAdmin,
+    mn.services.MnHelper
   ];
 
 
@@ -109,13 +110,16 @@ mn.services.MnWizard = (function (Rx) {
   MnWizardService.prototype.getUserCreds = getUserCreds;
   MnWizardService.prototype.getQuerySettings = getQuerySettings;
   MnWizardService.prototype.getIndexes = getIndexes;
+  MnWizardService.prototype.updateTotal = updateTotal;
 
 
   return MnWizardService;
 
-  function MnWizardService(http, mnAdminService) {
+  function MnWizardService(http, mnAdminService, mnHelperService) {
     this.http = http;
     this.wizardForm = wizardForm;
+    this.allServices = mnHelperService.services;
+    this.IEC = mnHelperService.IEC;
 
     this.stream = {};
     this.initialValues = {
@@ -126,48 +130,48 @@ mn.services.MnWizard = (function (Rx) {
     };
 
     this.stream.joinClusterHttp =
-      new mn.helper.MnPostHttp(this.postJoinCluster.bind(this))
+      new mn.core.MnPostHttp(this.postJoinCluster.bind(this))
       .addSuccess()
       .addLoading()
       .addError();
 
     this.stream.diskStorageHttp =
-      new mn.helper.MnPostHttp(this.postDiskStorage.bind(this))
+      new mn.core.MnPostHttp(this.postDiskStorage.bind(this))
       .addSuccess()
       .addError();
 
     this.stream.hostnameHttp =
-      new mn.helper.MnPostHttp(this.postHostname.bind(this))
+      new mn.core.MnPostHttp(this.postHostname.bind(this))
       .addSuccess()
       .addError();
 
     this.stream.authHttp =
-      new mn.helper.MnPostHttp(this.postAuth.bind(this))
+      new mn.core.MnPostHttp(this.postAuth.bind(this))
       .addSuccess()
       .addError();
 
     this.stream.querySettingsHttp =
-      new mn.helper.MnPostHttp(this.postQuerySettings.bind(this))
+      new mn.core.MnPostHttp(this.postQuerySettings.bind(this))
       .addSuccess()
       .addError();
 
     this.stream.indexesHttp =
-      new mn.helper.MnPostHttp(this.postIndexes.bind(this))
+      new mn.core.MnPostHttp(this.postIndexes.bind(this))
       .addSuccess()
       .addError();
 
     this.stream.servicesHttp =
-      new mn.helper.MnPostHttp(this.postServices.bind(this))
+      new mn.core.MnPostHttp(this.postServices.bind(this))
       .addSuccess()
       .addError();
 
     this.stream.statsHttp =
-      new mn.helper.MnPostHttp(this.postStats.bind(this))
+      new mn.core.MnPostHttp(this.postStats.bind(this))
       .addSuccess()
       .addError();
 
     this.stream.groupHttp =
-      new mn.helper.MnPostGroupHttp({
+      new mn.core.MnPostGroupHttp({
         poolsDefaultHttp: mnAdminService.stream.poolsDefaultHttp,
         servicesHttp: this.stream.servicesHttp,
         diskStorageHttp: this.stream.diskStorageHttp,
@@ -178,7 +182,7 @@ mn.services.MnWizard = (function (Rx) {
       .addSuccess();
 
     this.stream.secondGroupHttp =
-      new mn.helper.MnPostGroupHttp({
+      new mn.core.MnPostGroupHttp({
         indexesHttp: this.stream.indexesHttp,
         authHttp: this.stream.authHttp
       })
@@ -188,21 +192,20 @@ mn.services.MnWizard = (function (Rx) {
     this.stream.getSelfConfig =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getSelfConfig.bind(this)),
-        Rx.operators.multicast(mn.helper.createReplaySubject),
-        Rx.operators.refCount()
+        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
       );
 
     this.stream.getSelfConfigFirst =
       this.stream.getSelfConfig.pipe(Rx.operators.first());
 
     this.stream.memoryQuotasFirst =
-      this.stream.getSelfConfigFirst.pipe(Rx.operators.map(mn.helper.pluckMemoryQuotas));
+      this.stream.getSelfConfigFirst
+      .pipe(Rx.operators.map(mnHelperService.pluckMemoryQuotas.bind(mnHelperService)));
 
     this.stream.getIndexes =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getIndexes.bind(this)),
-        Rx.operators.multicast(mn.helper.createReplaySubject),
-        Rx.operators.refCount()
+        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
       );
 
     this.stream.preprocessPath =
@@ -233,18 +236,18 @@ mn.services.MnWizard = (function (Rx) {
     this.stream.totalRAMMegs =
       this.stream.getSelfConfig.pipe(
         Rx.operators.map(function (nodeConfig) {
-          return Math.floor(nodeConfig.storageTotals.ram.total / mn.helper.IEC.Mi);
-        })
+          return Math.floor(nodeConfig.storageTotals.ram.total / this.IEC.Mi);
+        }.bind(this))
       );
 
     this.stream.maxRAMMegs =
       this.stream.totalRAMMegs.pipe(
-        Rx.operators.map(mn.helper.calculateMaxMemorySize)
+        Rx.operators.map(mnHelperService.calculateMaxMemorySize)
       );
   }
 
   function getServicesValues(servicesGroup) {
-    return mn.helper.services.reduce(
+    return this.allServices.reduce(
       function (result, serviceName) {
         var service = servicesGroup.get(serviceName);
         if (service && service.value) {
@@ -269,13 +272,13 @@ mn.services.MnWizard = (function (Rx) {
       subject
     ).pipe(
       Rx.operators.map(lookupPathResource),
-      Rx.operators.map(updateTotal)
+      Rx.operators.map(this.updateTotal.bind(this))
     );
   }
 
   function updateTotal(pathResource) {
     return Math.floor(
-      pathResource.sizeKBytes * (100 - pathResource.usagePercent) / 100 / mn.helper.IEC.Mi
+      pathResource.sizeKBytes * (100 - pathResource.usagePercent) / 100 / this.IEC.Mi
     ) + ' GB';
   }
 

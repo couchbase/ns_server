@@ -4,7 +4,7 @@ mn.components.MnAuth =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnAuthComponent, mn.helper.MnEventableComponent);
+    mn.core.extend(MnAuthComponent, mn.core.MnEventableComponent);
 
     MnAuthComponent.annotations = [
       new ng.core.Component({
@@ -21,7 +21,7 @@ mn.components.MnAuth =
     return MnAuthComponent;
 
     function MnAuthComponent(mnAuthService, uiRouter, formBuilder) {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
 
       this.focusFieldSubject = new Rx.BehaviorSubject(true);
       this.onSubmit = new Rx.Subject();

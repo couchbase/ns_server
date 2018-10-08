@@ -4,7 +4,7 @@ mn.components.MnPeriod =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnPeriod, mn.helper.MnEventableComponent);
+    mn.core.extend(MnPeriod, mn.core.MnEventableComponent);
 
     MnPeriod.annotations = [
       new ng.core.Component({
@@ -24,7 +24,7 @@ mn.components.MnPeriod =
     return MnPeriod;
 
     function MnPeriod() {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
       this.componentID = Math.random();
     }
   })(window.rxjs);

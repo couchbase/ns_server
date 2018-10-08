@@ -32,8 +32,7 @@ mn.services.MnSettings = (function (Rx) {
     this.stream.getAlerts =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getAlerts.bind(this)),
-        Rx.operators.multicast(mn.helper.createReplaySubject),
-        Rx.operators.refCount()
+        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
       );
 
     this.stream.getAutoCompaction =
@@ -49,8 +48,7 @@ mn.services.MnSettings = (function (Rx) {
           ac.purgeInterval = v.purgeInterval;
           return ac;
         }),
-        Rx.operators.multicast(mn.helper.createReplaySubject),
-        Rx.operators.refCount()
+        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
       );
 
     this.stream.getAutoCompactionFirst =
@@ -59,53 +57,50 @@ mn.services.MnSettings = (function (Rx) {
     this.stream.getStats =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getStats.bind(this)),
-        Rx.operators.multicast(mn.helper.createReplaySubject),
-        Rx.operators.refCount()
+        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
       );
 
     this.stream.getAutoFailover =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getAutoFailover.bind(this)),
-        Rx.operators.multicast(mn.helper.createReplaySubject),
-        Rx.operators.refCount()
+        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
       );
 
     this.stream.getAutoReprovision =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getAutoReprovision.bind(this)),
-        Rx.operators.multicast(mn.helper.createReplaySubject),
-        Rx.operators.refCount()
+        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
       );
 
     this.stream.getPhoneHome =
       mnPoolsService.stream.getSuccess
       .pipe(Rx.operators.withLatestFrom(mnAdminService.stream.implementationVersion),
             Rx.operators.switchMap(this.getPhoneHome.bind(this)),
-            Rx.operators.multicast(mn.helper.createReplaySubject),
-            Rx.operators.refCount());
+            Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+           );
 
     this.stream.postAutoCompaction =
-      new mn.helper.MnPostHttp(this.postAutoCompaction.bind(this))
+      new mn.core.MnPostHttp(this.postAutoCompaction.bind(this))
       .addSuccess()
       .addError();
 
     this.stream.postAutoCompactionValidation =
-      new mn.helper.MnPostHttp(this.postAutoCompaction.bind(this))
+      new mn.core.MnPostHttp(this.postAutoCompaction.bind(this))
       .addSuccess()
       .addError();
 
     this.stream.postTestEmail =
-      new mn.helper.MnPostHttp(this.postTestEmail.bind(this))
+      new mn.core.MnPostHttp(this.postTestEmail.bind(this))
       .addSuccess()
       .addError();
 
     this.stream.postAlerts =
-      new mn.helper.MnPostHttp(this.postAlerts.bind(this))
+      new mn.core.MnPostHttp(this.postAlerts.bind(this))
       .addSuccess()
       .addError();
 
     this.stream.postAlertsValidation =
-      new mn.helper.MnPostHttp(this.postAlerts.bind(this))
+      new mn.core.MnPostHttp(this.postAlerts.bind(this))
       .addSuccess()
       .addError();
   }

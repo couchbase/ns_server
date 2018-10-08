@@ -4,7 +4,7 @@ mn.components.MnBucketsItem =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnBucketsItem, mn.helper.MnEventableComponent);
+    mn.core.extend(MnBucketsItem, mn.core.MnEventableComponent);
 
     MnBucketsItem.annotations = [
       new ng.core.Component({
@@ -34,7 +34,7 @@ mn.components.MnBucketsItem =
     return MnBucketsItem;
 
     function MnBucketsItem(mnAdminService, mnPermissionsService, mnTasksService, uiRouter) {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
 
       var bucketCurrentValue = this.mnOnChanges.pipe(Rx.operators.pluck("bucket", "currentValue"));
       var bucketNodes = bucketCurrentValue.pipe(Rx.operators.pluck("nodes"));
@@ -45,7 +45,7 @@ mn.components.MnBucketsItem =
       this.residentRatio = bucketCurrentValue.pipe(Rx.operators.map(this.getResidentRatio.bind(this)));
 
       this.detailsHashObserver =
-        new mn.helper.DetailsHashObserver(
+        new mn.core.DetailsHashObserver(
           uiRouter,
           "app.admin.buckets",
           "openedBuckets",

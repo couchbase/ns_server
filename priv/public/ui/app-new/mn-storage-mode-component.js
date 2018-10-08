@@ -4,7 +4,7 @@ mn.components.MnStorageMode =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnStorageMode, mn.helper.MnEventableComponent);
+    mn.core.extend(MnStorageMode, mn.core.MnEventableComponent);
 
     MnStorageMode.annotations = [
       new ng.core.Component({
@@ -31,7 +31,7 @@ mn.components.MnStorageMode =
     return MnStorageMode;
 
     function MnStorageMode(mnWizardService, mnPoolsService) {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
       this.indexesHttp = mnWizardService.stream.indexesHttp;
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
     }

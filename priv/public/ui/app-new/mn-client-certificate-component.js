@@ -4,7 +4,7 @@ mn.components.MnClientCertificate =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnClientCertificate, mn.helper.MnEventableComponent);
+    mn.core.extend(MnClientCertificate, mn.core.MnEventableComponent);
 
     MnClientCertificate.annotations = [
       new ng.core.Component({
@@ -29,7 +29,7 @@ mn.components.MnClientCertificate =
     return MnClientCertificate;
 
     function MnClientCertificate(mnSecurityService, mnPermissionsService, mnAlertsService, mnAdminService) {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
 
       this.onSubmit = new Rx.Subject();
       this.clientCertificateForm = new ng.forms.FormGroup({

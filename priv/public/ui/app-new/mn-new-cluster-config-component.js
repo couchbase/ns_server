@@ -4,7 +4,7 @@ mn.components.MnNewClusterConfig =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnNewClusterConfig, mn.helper.MnEventableComponent);
+    mn.core.extend(MnNewClusterConfig, mn.core.MnEventableComponent);
 
     MnNewClusterConfig.annotations = [
       new ng.core.Component({
@@ -25,7 +25,7 @@ mn.components.MnNewClusterConfig =
     return MnNewClusterConfig;
 
     function MnNewClusterConfig(mnWizardService, mnAdminService, mnPoolsService, mnAppService, mnAuthService, uiRouter) {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
 
       this.onSubmit = new Rx.Subject();
 
@@ -35,7 +35,7 @@ mn.components.MnNewClusterConfig =
 
       this.newClusterConfigForm = mnWizardService.wizardForm.newClusterConfig;
 
-      this.getServicesValues = mnWizardService.getServicesValues;
+      this.getServicesValues = mnWizardService.getServicesValues.bind(mnWizardService);
 
       this.totalRAMMegs = mnWizardService.stream.totalRAMMegs;
       this.maxRAMMegs = mnWizardService.stream.maxRAMMegs;

@@ -4,7 +4,7 @@ mn.components.MnAutoCompactionForm =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnAutoCompactionForm, mn.helper.MnEventableComponent);
+    mn.core.extend(MnAutoCompactionForm, mn.core.MnEventableComponent);
 
     MnAutoCompactionForm.annotations = [
       new ng.core.Component({
@@ -19,6 +19,7 @@ mn.components.MnAutoCompactionForm =
     ];
 
     MnAutoCompactionForm.parameters = [
+      mn.services.MnHelper,
       mn.services.MnAdmin,
       mn.services.MnBuckets,
       mn.services.MnPermissions,
@@ -37,8 +38,8 @@ mn.components.MnAutoCompactionForm =
 
     return MnAutoCompactionForm;
 
-    function MnAutoCompactionForm(mnAdminService, mnBucketsService, mnPermissionsService, mnPoolsService, mnWizardService, mnSettingsService) {
-      mn.helper.MnEventableComponent.call(this);
+    function MnAutoCompactionForm(mnHelperService, mnAdminService, mnBucketsService, mnPermissionsService, mnPoolsService, mnWizardService, mnSettingsService) {
+      mn.core.MnEventableComponent.call(this);
 
       this.formGroupHelper = new ng.forms.FormGroup({
         viewSize: new ng.forms.FormControl(),
@@ -52,7 +53,7 @@ mn.components.MnAutoCompactionForm =
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
       this.compatVersion = mnAdminService.stream.compatVersion;
       this.getIndexes = mnWizardService.stream.getIndexes;
-      this.daysOfWeek = mn.helper.daysOfWeek;
+      this.daysOfWeek = mnHelperService.daysOfWeek;
 
       this.settingsWrite =
         mnPermissionsService.createPermissionStream("settings!write");

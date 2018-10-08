@@ -4,7 +4,7 @@ mn.components.MnEmailAlerts =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnEmailAlerts, mn.helper.MnEventableComponent);
+    mn.core.extend(MnEmailAlerts, mn.core.MnEventableComponent);
 
     MnEmailAlerts.annotations = [
       new ng.core.Component({
@@ -48,7 +48,7 @@ mn.components.MnEmailAlerts =
     return MnEmailAlerts;
 
     function MnEmailAlerts(mnSettingsService, mnPermissionsService, mnAlertsService, mnAdminService) {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
 
       this.onSubmit = new Rx.Subject();
       this.onTestEmail = new Rx.Subject();

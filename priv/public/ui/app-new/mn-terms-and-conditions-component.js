@@ -4,7 +4,7 @@ mn.components.MnTermsAndConditions =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnTermsAndConditions, mn.helper.MnEventableComponent);
+    mn.core.extend(MnTermsAndConditions, mn.core.MnEventableComponent);
 
     MnTermsAndConditions.annotations = [
       new ng.core.Component({
@@ -23,7 +23,7 @@ mn.components.MnTermsAndConditions =
     return MnTermsAndConditions;
 
     function MnTermsAndConditions(mnWizardService, mnPoolsService, mnAppService, mnAuthService, uiRouter) {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
 
       this.focusFieldSubject = new Rx.BehaviorSubject(true);
       this.onSubmit = new Rx.Subject();

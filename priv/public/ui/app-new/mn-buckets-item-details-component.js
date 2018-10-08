@@ -4,7 +4,7 @@ mn.components.MnBucketsItemDetails =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnBucketsItemDetails, mn.helper.MnEventableComponent);
+    mn.core.extend(MnBucketsItemDetails, mn.core.MnEventableComponent);
 
     MnBucketsItemDetails.annotations = [
       new ng.core.Component({
@@ -33,7 +33,7 @@ mn.components.MnBucketsItemDetails =
     return MnBucketsItemDetails;
 
     function MnBucketsItemDetails(mnBucketsService, mnPermissionsService, mnTasksService, uiRouter, mnAdminService, modalService) {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
       this.editButtonClickEvent = new Rx.Subject();
       this.isRebalancing = mnAdminService.stream.isRebalancing;
 
@@ -83,28 +83,24 @@ mn.components.MnBucketsItemDetails =
         bucketCurrentValue.pipe(
           Rx.operators.map(this.getBucketRamGuageConfigParams.bind(this)),
           Rx.operators.map(mnBucketsService.getBucketRamGuageConfig),
-          Rx.operators.multicast(mn.helper.createReplaySubject),
-          Rx.operators.refCount()
+          Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
         );
 
       this.bucketRamGuageConfigTotal = this.bucketRamGuageConfig.pipe(
         Rx.operators.pluck("topRight", "value"),
-        Rx.operators.multicast(mn.helper.createReplaySubject),
-        Rx.operators.refCount()
+        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
       );
 
       this.bucketDiskGuageConfig =
         bucketCurrentValue.pipe(
           Rx.operators.map(this.getGuageConfig.bind(this)),
           Rx.operators.map(mnBucketsService.getGuageConfig),
-          Rx.operators.multicast(mn.helper.createReplaySubject),
-          Rx.operators.refCount()
+          Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
         );
 
       this.bucketDiskGuageConfigTotal = this.bucketDiskGuageConfig.pipe(
         Rx.operators.pluck("topRight", "value"),
-        Rx.operators.multicast(mn.helper.createReplaySubject),
-        Rx.operators.refCount()
+        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
       );
 
     }

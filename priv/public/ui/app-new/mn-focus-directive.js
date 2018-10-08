@@ -4,7 +4,7 @@ mn.directives.MnFocus =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnFocusDirective, mn.helper.MnEventableComponent);
+    mn.core.extend(MnFocusDirective, mn.core.MnEventableComponent);
 
     MnFocusDirective.annotations = [
       new ng.core.Directive({
@@ -31,7 +31,7 @@ mn.directives.MnFocus =
     return MnFocusDirective;
 
     function MnFocusDirective(el) {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
       this.el = el.nativeElement;
       this.formControlName = this.el.getAttribute("formControlName");
     }

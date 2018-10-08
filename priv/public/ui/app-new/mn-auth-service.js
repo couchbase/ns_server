@@ -23,12 +23,12 @@ mn.services.MnAuth = (function () {
     this.stream = {};
 
     this.stream.loginHttp =
-      new mn.helper.MnPostHttp(this.login.bind(this))
+      new mn.core.MnPostHttp(this.login.bind(this))
       .addSuccess()
       .addError();
 
     this.stream.logoutHttp =
-      new mn.helper.MnPostHttp(this.logout.bind(this))
+      new mn.core.MnPostHttp(this.logout.bind(this))
   }
 
   function whoami() {

@@ -4,7 +4,7 @@ mn.components.MnRootCertificate =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnRootCertificate, mn.helper.MnEventableComponent);
+    mn.core.extend(MnRootCertificate, mn.core.MnEventableComponent);
 
     MnRootCertificate.annotations = [
       new ng.core.Component({
@@ -22,7 +22,7 @@ mn.components.MnRootCertificate =
     return MnRootCertificate;
 
     function MnRootCertificate(mnSecurityService) {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
 
       var getDefaultCertificate = mnSecurityService.stream.getDefaultCertificate;
       var cert = getDefaultCertificate.pipe(Rx.operators.pluck("cert"));

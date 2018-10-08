@@ -4,7 +4,7 @@ mn.components.MnJoinCluster =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnJoinCluster, mn.helper.MnEventableComponent);
+    mn.core.extend(MnJoinCluster, mn.core.MnEventableComponent);
 
     MnJoinCluster.annotations = [
       new ng.core.Component({
@@ -23,7 +23,7 @@ mn.components.MnJoinCluster =
     return MnJoinCluster;
 
     function MnJoinCluster(mnWizardService, mnAppService, mnAuthService, uiRouter) {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
 
       this.focusFieldSubject = new Rx.BehaviorSubject("hostname");
       this.onSubmit = new Rx.Subject();
@@ -39,7 +39,7 @@ mn.components.MnJoinCluster =
       this.joinClusterHttp = mnWizardService.stream.joinClusterHttp;
 
       this.groupHttp =
-        new mn.helper.MnPostGroupHttp({
+        new mn.core.MnPostGroupHttp({
           hostnameHttp: this.hostnameHttp,
           diskStorageHttp: this.diskStorageHttp
         })

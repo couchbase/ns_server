@@ -4,7 +4,7 @@ mn.components.MnLogRedaction =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnLogRedaction, mn.helper.MnEventableComponent);
+    mn.core.extend(MnLogRedaction, mn.core.MnEventableComponent);
 
     MnLogRedaction.annotations = [
       new ng.core.Component({
@@ -26,7 +26,7 @@ mn.components.MnLogRedaction =
     return MnLogRedaction;
 
     function MnLogRedaction(mnSecurityService, mnPermissionsService, mnAlertsService) {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
 
       var postLogRedaction = mnSecurityService.stream.postLogRedaction;
 

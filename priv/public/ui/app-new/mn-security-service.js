@@ -32,67 +32,61 @@ mn.services.MnSecurity = (function (Rx) {
     this.stream.getSaslauthdAuth =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getSaslauthdAuth.bind(this)),
-        Rx.operators.multicast(mn.helper.createReplaySubject),
-        Rx.operators.refCount()
+        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
       );
 
     this.stream.getDefaultCertificate =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getDefaultCertificate.bind(this)),
-        Rx.operators.multicast(mn.helper.createReplaySubject),
-        Rx.operators.refCount()
+        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
       );
 
     this.stream.getLogRedaction =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getLogRedaction.bind(this)),
-        Rx.operators.multicast(mn.helper.createReplaySubject),
-        Rx.operators.refCount()
+        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
       );
 
     this.stream.getClientCertAuth =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getClientCertAuth.bind(this)),
-        Rx.operators.multicast(mn.helper.createReplaySubject),
-        Rx.operators.refCount()
+        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
       );
 
     this.stream.postLogRedaction =
-      new mn.helper.MnPostHttp(this.postLogRedaction.bind(this))
+      new mn.core.MnPostHttp(this.postLogRedaction.bind(this))
       .addSuccess()
       .addError();
 
     this.stream.postSession =
-      new mn.helper.MnPostHttp(this.postSession.bind(this))
+      new mn.core.MnPostHttp(this.postSession.bind(this))
       .addSuccess()
       .addError();
 
     this.stream.postClientCertAuth =
-      new mn.helper.MnPostHttp(this.postClientCertAuth.bind(this))
+      new mn.core.MnPostHttp(this.postClientCertAuth.bind(this))
       .addSuccess()
       .addError();
 
     this.stream.getAudit =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getAudit.bind(this)),
-        Rx.operators.multicast(mn.helper.createReplaySubject),
-        Rx.operators.refCount()
+        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
       );
 
     this.stream.getAuditDescriptors =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getAuditDescriptors.bind(this)),
-        Rx.operators.multicast(mn.helper.createReplaySubject),
-        Rx.operators.refCount()
+        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
       );
 
     this.stream.postAuditValidation =
-      new mn.helper.MnPostHttp(this.postAudit.bind(this))
+      new mn.core.MnPostHttp(this.postAudit.bind(this))
       .addSuccess()
       .addError();
 
     this.stream.postAudit =
-      new mn.helper.MnPostHttp(this.postAudit.bind(this))
+      new mn.core.MnPostHttp(this.postAudit.bind(this))
       .addSuccess()
       .addError();
   }

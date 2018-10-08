@@ -4,7 +4,7 @@ mn.directives.MnDraggable =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnFocusDirective, mn.helper.MnEventableComponent);
+    mn.core.extend(MnFocusDirective, mn.core.MnEventableComponent);
 
     MnFocusDirective.annotations = [
       new ng.core.Directive({
@@ -49,7 +49,7 @@ mn.directives.MnDraggable =
     }
 
     function MnFocusDirective() {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
       this.stream = {};
       this.stream.mouseup = new Rx.Subject();
       this.stream.mousemove = new Rx.Subject();

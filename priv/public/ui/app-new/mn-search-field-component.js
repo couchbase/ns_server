@@ -4,7 +4,7 @@ mn.components.MnSearchField =
   (function (Rx) {
     "use strict";
 
-    mn.helper.extends(MnSearchFieldComponent, mn.helper.MnEventableComponent);
+    mn.core.extend(MnSearchFieldComponent, mn.core.MnEventableComponent);
 
     MnSearchFieldComponent.annotations = [
       new ng.core.Component({
@@ -26,7 +26,7 @@ mn.components.MnSearchField =
     return MnSearchFieldComponent;
 
     function MnSearchFieldComponent() {
-      mn.helper.MnEventableComponent.call(this);
+      mn.core.MnEventableComponent.call(this);
     }
 
     function ngOnInit() {
@@ -42,8 +42,7 @@ mn.components.MnSearchField =
         this.mnFormGroup.valueChanges.pipe(
           Rx.operators.pluck("searchTerm"),
           Rx.operators.map(Boolean),
-          Rx.operators.multicast(mn.helper.createReplaySubject),
-          Rx.operators.refCount()
+          Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
         );
 
     }
