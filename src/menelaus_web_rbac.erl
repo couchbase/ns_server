@@ -374,17 +374,47 @@ security_filter(Req) ->
             pipes:filter(fun (_) -> true end);
         false ->
             SecurityRoles = get_security_roles(),
-            pipes:filter(
-              fun ({_, Props}) ->
-                      Roles = proplists:get_value(roles, Props, []),
-                      UserRoles = proplists:get_value(user_roles, Props, []),
-                      GroupsWRoles =
-                          proplists:get_value(group_roles, Props, []),
-                      GroupRoles = lists:concat([R || {_, R} <- GroupsWRoles]),
-                      AllRoles = lists:usort(Roles ++ UserRoles ++ GroupRoles),
-                      not overlap(AllRoles, SecurityRoles)
-              end)
+            Check =
+                fun ({_, Props}, Cache) ->
+                      UserRoles = proplists:get_value(user_roles, Props, []) ++
+                                      proplists:get_value(roles, Props, []),
+
+                      case overlap(UserRoles, SecurityRoles) of
+                          true -> {false, Cache};
+                          false ->
+                              Groups = proplists:get_value(groups, Props, []),
+                              security_filter_groups(Groups, SecurityRoles,
+                                                     Cache)
+                      end
+                end,
+            ?make_transducer(
+              pipes:fold(?producer(),
+                         fun (User, Cache) ->
+                                 case Check(User, Cache) of
+                                     {true, NewCache} ->
+                                         ?yield(User),
+                                         NewCache;
+                                     {false, NewCache} ->
+                                         NewCache
+                                 end
+                         end, #{}))
     end.
+
+security_filter_groups([], _, Cache) -> {true, Cache};
+security_filter_groups([G|T], SecurityRoles, Cache) ->
+    case maps:find(G, Cache) of
+        {ok, false} -> {false, Cache};
+        {ok, true} -> security_filter_groups(T, SecurityRoles, Cache);
+        error ->
+            Roles = menelaus_users:get_group_roles(G),
+            case overlap(Roles, SecurityRoles) of
+                true ->
+                    {false, Cache#{G => false}};
+                false ->
+                    security_filter_groups(T, SecurityRoles, Cache#{G => true})
+            end
+    end.
+
 
 handle_get_all_users(Req, Pattern, Params) ->
     Roles = get_roles_for_users_filtering(
@@ -420,13 +450,42 @@ filter_by_roles(all) ->
     pipes:filter(fun (_) -> true end);
 filter_by_roles(Roles) ->
     RoleNames = [Name || {Name, _} <- Roles],
-    pipes:filter(
-      fun ({{user, _}, Props}) ->
-          UserRoles = proplists:get_value(user_roles, Props, []),
-          GroupsAndRoles = proplists:get_value(group_roles, Props, []),
-          GroupRoles = lists:concat([R || {_, R} <- GroupsAndRoles]),
-          overlap(RoleNames, lists:usort(UserRoles ++ GroupRoles))
-      end).
+    Check =
+        fun ({_, Props}, Cache) ->
+            UserRoles = proplists:get_value(user_roles, Props, []),
+            case overlap(RoleNames, UserRoles) of
+                true -> {true, Cache};
+                false ->
+                    Groups = proplists:get_value(groups, Props, []),
+                    filter_groups_by_roles(Groups, RoleNames, Cache)
+            end
+        end,
+    ?make_transducer(
+      pipes:fold(?producer(),
+                 fun (User, Cache) ->
+                         case Check(User, Cache) of
+                             {true, NewCache} ->
+                                 ?yield(User),
+                                 NewCache;
+                             {false, NewCache} ->
+                                 NewCache
+                         end
+                 end, #{})).
+
+filter_groups_by_roles([], _, Cache) -> {false, Cache};
+filter_groups_by_roles([G|T], RoleNames, Cache) ->
+    case maps:find(G, Cache) of
+        {ok, true} -> {true, Cache};
+        {ok, false} -> filter_groups_by_roles(T, RoleNames, Cache);
+        error ->
+            GroupRoles = menelaus_users:get_group_roles(G),
+            case overlap(RoleNames, GroupRoles) of
+                true ->
+                    {true, Cache#{G => true}};
+                false ->
+                    filter_groups_by_roles(T, RoleNames, Cache#{G => false})
+            end
+    end.
 
 jsonify_users() ->
     ?make_transducer(
@@ -612,7 +671,8 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
     Roles = get_roles_for_users_filtering(Permission),
 
     {PageSkews, Total} =
-        pipes:run(menelaus_users:select_users({'_', DomainAtom}),
+        pipes:run(menelaus_users:select_users({'_', DomainAtom},
+                                              [user_roles, groups]),
                   [filter_by_roles(Roles),
                    security_filter(Req)],
                   ?make_consumer(
@@ -622,7 +682,10 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
                                {add_to_skews({Identity, Props}, Skews), T + 1}
                        end, {create_skews(Start, PageSize), 0}))),
 
-    UserJson = fun ({Identity, Props}) -> user_to_json(Identity, Props) end,
+    UserJson = fun ({Identity, _}) ->
+                       Props = menelaus_users:get_user_props(Identity),
+                       user_to_json(Identity, Props)
+               end,
 
     {Users, Skipped, Links} = page_data_from_skews(PageSkews, PageSize),
     UsersJson = [UserJson(O) || O <- Users],
