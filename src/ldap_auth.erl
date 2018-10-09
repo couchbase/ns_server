@@ -177,7 +177,9 @@ get_groups(Handle, Username, Settings, {user_attributes, _, AttrName}) ->
             case search(Handle, DN, [AttrName], "base",
                         "(objectClass=*)", Timeout) of
                 {ok, [#eldap_entry{attributes = Attrs}]} ->
-                    Groups = proplists:get_value(AttrName, Attrs, []),
+                    AttrsLower = [{string:to_lower(K), V} || {K, V} <- Attrs],
+                    Groups = proplists:get_value(string:to_lower(AttrName),
+                                                 AttrsLower, []),
                     ?log_debug("Groups search for ~p: ~p",
                                [ns_config_log:tag_user_name(Username), Groups]),
                     {ok, Groups};
