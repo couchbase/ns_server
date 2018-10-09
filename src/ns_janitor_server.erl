@@ -179,11 +179,10 @@ code_change(_OldVsn, State, _Extra) ->
 run_cleanup(Parent, Requests) ->
     true = register(cleanup_process, self()),
 
-    Options = auto_reprovision:get_cleanup_options(),
     {RequestsRV, Reprovision} =
         lists:foldl(
           fun({Item, _}, {OAcc, RAcc}) ->
-                  case do_run_cleanup(Item, Options) of
+                  case do_run_cleanup(Item) of
                       {error, unsafe_nodes, Nodes} ->
                           {OAcc, [{Item, Nodes} | RAcc]};
                       RV ->
@@ -201,12 +200,12 @@ run_cleanup(Parent, Requests) ->
     %% Return the individual cleanup status back to the parent.
     ok = gen_server:cast(Parent, {cleanup_complete, RequestsRV, UnsafeNodes}).
 
-do_run_cleanup(compat_mode, _Options) ->
+do_run_cleanup(compat_mode) ->
     compat_mode_manager:consider_switching_compat_mode();
-do_run_cleanup(services, _Options) ->
+do_run_cleanup(services) ->
     service_janitor:cleanup();
-do_run_cleanup({bucket, Bucket}, Options) ->
-    ns_janitor:cleanup(Bucket, [consider_resetting_rebalance_status | Options]).
+do_run_cleanup({bucket, Bucket}) ->
+    ns_janitor:cleanup(Bucket, [consider_resetting_rebalance_status]).
 
 get_unsafe_nodes_from_reprovision_list(ReprovisionList) ->
     %% It is possible that when the janitor cleanup is working its way through

@@ -45,12 +45,17 @@ cleanup(Bucket, Options) ->
     end.
 
 cleanup_membase_bucket(Bucket, Options, BucketConfig, FullConfig) ->
+    %% We always want to check for unsafe nodes, as we want to honor the
+    %% auto-reprovisioning settings for ephemeral buckets. That is, we do not
+    %% want to simply activate any bucket on a restarted node and lose the data
+    %% instead of promoting the replicas.
+    AllOptions = Options ++ auto_reprovision:get_cleanup_options(),
     {ok, RV} =
         leader_activities:run_activity(
           {ns_janitor, Bucket, cleanup}, majority,
           fun () ->
                   {ok, cleanup_with_membase_bucket_check_servers(Bucket,
-                                                                 Options,
+                                                                 AllOptions,
                                                                  BucketConfig,
                                                                  FullConfig)}
           end,
