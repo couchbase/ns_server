@@ -271,30 +271,49 @@ make_props(Id, Props, ItemList) ->
 
 make_props(Id, Props, ItemList, {Passwordless, Definitions,
                                  AllPossibleValues}) ->
-    lists:map(
-      fun (password_change_timestamp = Name) ->
-              {Name, replicated_dets:get_last_modified(
-                       storage_name(), {auth, Id}, undefined)};
-          (group_roles = Name) ->
-              {Name, get_user_groups_and_roles(Id, Props, Definitions,
-                                               AllPossibleValues)};
-          (user_roles = Name) ->
+
+    %% Groups calculation might be heavy, so we want to make sure they
+    %% are calculated only once
+    GetGroups = fun (#{groups := Groups} = Cache) ->
+                        {Groups, Cache};
+                    (Cache) ->
+                        Groups = get_groups(Id, Props),
+                        {Groups, Cache#{groups => Groups}}
+                end,
+
+    EvalProp =
+      fun (password_change_timestamp, Cache) ->
+              {replicated_dets:get_last_modified(
+                 storage_name(), {auth, Id}, undefined), Cache};
+          (group_roles, Cache) ->
+              {Groups, NewCache} = GetGroups(Cache),
+              Roles = get_groups_roles(Groups, Definitions, AllPossibleValues),
+              {Roles, NewCache};
+          (user_roles, Cache) ->
               UserRoles = get_user_roles(Props, Definitions, AllPossibleValues),
-              {Name, UserRoles};
-          (roles = Name) ->
+              {UserRoles, Cache};
+          (roles, Cache) ->
+              {Groups, NewCache} = GetGroups(Cache),
               UserRoles = get_user_roles(Props, Definitions, AllPossibleValues),
-              Groups = get_user_groups_and_roles(Id, Props, Definitions,
-                                                 AllPossibleValues),
-              GroupRoles = lists:concat([R || {_, R} <- Groups]),
-              {Name, lists:usort(UserRoles ++ GroupRoles)};
-          (passwordless = Name) ->
-              {Name, lists:member(Id, Passwordless)};
-          (groups = Name) ->
-              Groups = proplists:get_value(Name, Props, []),
-              {Name, lists:filter(group_exists(_), Groups)};
-          (Name) ->
-              {Name, proplists:get_value(Name, Props)}
-      end, ItemList).
+              GroupsAndRoles = get_groups_roles(Groups, Definitions,
+                                                AllPossibleValues),
+              GroupRoles = lists:concat([R || {_, R} <- GroupsAndRoles]),
+              {lists:usort(UserRoles ++ GroupRoles), NewCache};
+          (passwordless, Cache) ->
+              {lists:member(Id, Passwordless), Cache};
+          (groups, Cache) ->
+              {Groups, NewCache} = GetGroups(Cache),
+              {Groups, NewCache};
+          (Name, Cache) ->
+              {proplists:get_value(Name, Props), Cache}
+        end,
+
+    {Res, _} = lists:mapfoldl(
+                   fun (Key, Cache) ->
+                           {Value, NewCache} = EvalProp(Key, Cache),
+                           {{Key, Value}, NewCache}
+                   end, #{}, ItemList),
+    Res.
 
 make_props_state(ItemList) ->
     Passwordless = lists:member(passwordless, ItemList) andalso
@@ -646,19 +665,21 @@ get_user_roles(UserProps, Definitions, AllPossibleValues) ->
       proplists:get_value(roles, UserProps, []),
       Definitions, AllPossibleValues).
 
-get_user_groups_and_roles(Id, UserProps, Definitions, AllPossibleValues) ->
-    Groups1 = proplists:get_value(groups, UserProps, []),
-    Groups2 =
-        case Id of
-            {_, local} -> [];
-            {User, external} ->
-                case ldap_auth:get_setting(authorization_enabled, false) of
-                    true -> get_ldap_groups(User);
-                    false -> []
-                end
-        end,
+get_groups(Id, Props) ->
+    Groups = lists:filter(group_exists(_),
+                          proplists:get_value(groups, Props, [])),
+    case Id of
+        {_, local} -> Groups;
+        {User, external} ->
+            case ldap_auth:get_setting(authorization_enabled, false) of
+                true -> lists:usort(Groups ++ get_ldap_groups(User));
+                false -> Groups
+            end
+    end.
+
+get_groups_roles(Groups, Definitions, AllPossibleValues) ->
     [{G, get_group_roles(G, Definitions, AllPossibleValues)}
-        || G <- lists:usort(Groups1 ++ Groups2)].
+        || G <- Groups].
 
 get_ldap_groups(User) ->
     try ldap_auth_cache:user_groups(User) of
