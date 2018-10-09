@@ -104,8 +104,7 @@ auth_cache_name() ->
 start_storage() ->
     Replicator = erlang:whereis(replicator_name()),
     Path = filename:join(path_config:component_path(data, "config"), "users.dets"),
-    CacheSize = ns_config:read_key_fast(menelaus_users_cache_size, 256),
-    replicated_dets:start_link(?MODULE, [], storage_name(), Path, Replicator, CacheSize).
+    replicated_dets:start_link(?MODULE, [], storage_name(), Path, Replicator).
 
 get_users_version() ->
     case ns_node_disco:couchdb_node() == node() of

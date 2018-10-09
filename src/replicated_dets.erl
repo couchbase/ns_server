@@ -23,7 +23,7 @@
 
 -behaviour(replicated_storage).
 
--export([start_link/6, set/3, delete/2, delete_all/1, get/2, get/3,
+-export([start_link/5, set/3, delete/2, delete_all/1, get/2, get/3,
          get_last_modified/3, select/3, select/4, empty/1,
          select_with_update/4]).
 
@@ -48,9 +48,9 @@
                 value :: term(),
                 props :: [{atom(), term()}] | '_'}).
 
-start_link(ChildModule, InitParams, Name, Path, Replicator, CacheSize) ->
+start_link(ChildModule, InitParams, Name, Path, Replicator) ->
     replicated_storage:start_link(Name, ?MODULE,
-                                  [Name, ChildModule, InitParams, Path, Replicator, CacheSize],
+                                  [Name, ChildModule, InitParams, Path, Replicator],
                                   Replicator).
 
 set(Name, Id, Value) ->
@@ -88,7 +88,7 @@ empty(Name) ->
     gen_server:call(Name, empty, infinity).
 
 with_live_doc(TableName, Id, Default, Fun) ->
-    case dets:lookup(TableName, Id) of
+    case ets:lookup(TableName, Id) of
         [Doc] ->
             case is_deleted(Doc) of
                 false ->
@@ -101,16 +101,10 @@ with_live_doc(TableName, Id, Default, Fun) ->
     end.
 
 get(TableName, Id) ->
-    case mru_cache:lookup(TableName, Id) of
-        {ok, V} ->
-            {Id, V};
-        false ->
-            with_live_doc(TableName, Id, false,
-                          fun (#docv2{value = Value}) ->
-                                  TableName ! {cache, Id},
-                                  {Id, Value}
-                          end)
-    end.
+    with_live_doc(TableName, Id, false,
+                  fun (#docv2{value = Value}) ->
+                          {Id, Value}
+                  end).
 
 get(Name, Id, Default) ->
     case get(Name, Id) of
@@ -174,10 +168,10 @@ handle_mass_update({Name, KeySpec, N, UpdateFun}, Updater, _State) ->
     Errors = [{Id, Error} || {#docv2{id = Id}, Error} <- RawErrors],
     {Errors, ParentState}.
 
-init([Name, ChildModule, InitParams, Path, Replicator, CacheSize]) ->
+init([Name, ChildModule, InitParams, Path, Replicator]) ->
     replicated_storage:anounce_startup(Replicator),
     ChildState = ChildModule:init(InitParams),
-    mru_cache:new(Name, CacheSize),
+    ets:new(Name, [named_table, set, protected, {keypos, #docv2.id}]),
     #state{name = Name,
            path = Path,
            child_module = ChildModule,
@@ -232,6 +226,7 @@ do_open(Path, TableName, Tries) ->
                          {file, Path}]) of
         {ok, TableName} ->
             convert_docs_to_55_in_dets(TableName),
+            TableName = dets:to_ets(TableName, TableName),
             ok;
         Error ->
             ?log_error("Unable to open ~p, Error: ~p", [Path, Error]),
@@ -275,7 +270,7 @@ get_value(#docv2{value = Value}) ->
     Value.
 
 find_doc(Id, #state{name = TableName}) ->
-    case dets:lookup(TableName, Id) of
+    case ets:lookup(TableName, Id) of
         [Doc] ->
             Doc;
         [] ->
@@ -311,16 +306,9 @@ save_docs(Docs, #state{name = TableName,
                        child_state = ChildState,
                        revisions = Revisions} = State) ->
     ok = dets:insert(TableName, Docs),
+    true = ets:insert(TableName, Docs),
     true = ets:insert(Revisions,
                       [{Doc#docv2.id, get_revision(Doc)} || Doc <- Docs]),
-    lists:foreach(fun (#docv2{id = Id, value = Value} = Doc) ->
-                          case is_deleted(Doc) of
-                              true ->
-                                  _ = mru_cache:delete(TableName, Id);
-                              false ->
-                                  _ = mru_cache:update(TableName, Id, Value)
-                          end
-                  end, Docs),
     NewChildState = ChildModule:on_save(Docs, ChildState),
     {ok, State#state{child_state = NewChildState}}.
 
@@ -367,8 +355,8 @@ handle_call(empty, _From, #state{name = TableName,
                                  child_state = ChildState,
                                  revisions = Revisions} = State) ->
     ok = dets:delete_all_objects(TableName),
+    true = ets:delete_all_objects(TableName),
     true = ets:delete_all_objects(Revisions),
-    mru_cache:flush(TableName),
     NewChildState = ChildModule:on_empty(ChildState),
     {reply, ok, State#state{child_state = NewChildState}};
 handle_call(Msg, From, #state{name = TableName,
@@ -377,13 +365,6 @@ handle_call(Msg, From, #state{name = TableName,
     {reply, RV, NewChildState} = ChildModule:handle_call(Msg, From, TableName, ChildState),
     {reply, RV, State#state{child_state = NewChildState}}.
 
-handle_info({cache, Id} = Msg, #state{name = TableName} = State) ->
-    with_live_doc(TableName, Id, ok,
-                  fun (#docv2{value = Value}) ->
-                          _ = mru_cache:add(TableName, Id, Value)
-                  end),
-    misc:flush(Msg),
-    {noreply, State};
 handle_info(Msg, #state{child_module = ChildModule,
                         child_state = ChildState} = State) ->
     {noreply, NewChildState} = ChildModule:handle_info(Msg, ChildState),
@@ -409,13 +390,13 @@ select_from_dets(Name, MatchSpec, N, Yield) ->
 
 select_from_dets_locked(TableName, MatchSpec, N, Yield) ->
     ?log_debug("Starting select with ~p", [{TableName, MatchSpec, N}]),
-    dets:safe_fixtable(TableName, true),
+    ets:safe_fixtable(TableName, true),
     do_select_from_dets(TableName, MatchSpec, N, Yield),
-    dets:safe_fixtable(TableName, false),
+    ets:safe_fixtable(TableName, false),
     ok.
 
 do_select_from_dets(TableName, MatchSpec, N, Yield) ->
-    case dets:select(TableName, MatchSpec, N) of
+    case ets:select(TableName, MatchSpec, N) of
         {Selection, Continuation} when is_list(Selection) ->
             do_select_from_dets_continue(Selection, Continuation, Yield);
         '$end_of_table' ->
@@ -424,7 +405,7 @@ do_select_from_dets(TableName, MatchSpec, N, Yield) ->
 
 do_select_from_dets_continue(Selection, Continuation, Yield) ->
     Yield(Selection),
-    case dets:select(Continuation) of
+    case ets:select(Continuation) of
         {Selection2, Continuation2} when is_list(Selection2) ->
             do_select_from_dets_continue(Selection2, Continuation2, Yield);
         '$end_of_table' ->
