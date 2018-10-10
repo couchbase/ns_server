@@ -274,11 +274,19 @@ make_props(Id, Props, ItemList, {Passwordless, Definitions,
 
     %% Groups calculation might be heavy, so we want to make sure they
     %% are calculated only once
+    GetDirtyGroups = fun (#{dirty_groups := Groups} = Cache) ->
+                             {Groups, Cache};
+                         (Cache) ->
+                             Groups = get_dirty_groups(Id, Props),
+                             {Groups, Cache#{dirty_groups => Groups}}
+                     end,
+
     GetGroups = fun (#{groups := Groups} = Cache) ->
                         {Groups, Cache};
                     (Cache) ->
-                        Groups = get_groups(Id, Props),
-                        {Groups, Cache#{groups => Groups}}
+                        {DirtyGroups, NewCache} = GetDirtyGroups(Cache),
+                        Groups = clean_groups(DirtyGroups),
+                        {Groups, NewCache#{groups => Groups}}
                 end,
 
     EvalProp =
@@ -293,9 +301,9 @@ make_props(Id, Props, ItemList, {Passwordless, Definitions,
               UserRoles = get_user_roles(Props, Definitions, AllPossibleValues),
               {UserRoles, Cache};
           (roles, Cache) ->
-              {Groups, NewCache} = GetGroups(Cache),
+              {DirtyGroups, NewCache} = GetDirtyGroups(Cache),
               UserRoles = get_user_roles(Props, Definitions, AllPossibleValues),
-              GroupsAndRoles = get_groups_roles(Groups, Definitions,
+              GroupsAndRoles = get_groups_roles(DirtyGroups, Definitions,
                                                 AllPossibleValues),
               GroupRoles = lists:concat([R || {_, R} <- GroupsAndRoles]),
               {lists:usort(UserRoles ++ GroupRoles), NewCache};
@@ -304,6 +312,9 @@ make_props(Id, Props, ItemList, {Passwordless, Definitions,
           (groups, Cache) ->
               {Groups, NewCache} = GetGroups(Cache),
               {Groups, NewCache};
+          (dirty_groups, Cache) ->
+              {DirtyGroups, NewCache} = GetDirtyGroups(Cache),
+              {DirtyGroups, NewCache};
           (Name, Cache) ->
               {proplists:get_value(Name, Props), Cache}
         end,
@@ -665,9 +676,11 @@ get_user_roles(UserProps, Definitions, AllPossibleValues) ->
       proplists:get_value(roles, UserProps, []),
       Definitions, AllPossibleValues).
 
-get_groups(Id, Props) ->
-    Groups = lists:filter(group_exists(_),
-                          proplists:get_value(groups, Props, [])),
+clean_groups(DirtyGroups) ->
+    lists:filter(group_exists(_), DirtyGroups).
+
+get_dirty_groups(Id, Props) ->
+    Groups = proplists:get_value(groups, Props, []),
     case Id of
         {_, local} -> Groups;
         {User, external} ->

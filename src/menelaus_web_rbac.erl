@@ -382,7 +382,8 @@ security_filter(Req) ->
                       case overlap(UserRoles, SecurityRoles) of
                           true -> {false, Cache};
                           false ->
-                              Groups = proplists:get_value(groups, Props, []),
+                              Groups = proplists:get_value(dirty_groups, Props,
+                                                           []),
                               security_filter_groups(Groups, SecurityRoles,
                                                      Cache)
                       end
@@ -456,7 +457,7 @@ filter_by_roles(Roles) ->
             case overlap(RoleNames, UserRoles) of
                 true -> {true, Cache};
                 false ->
-                    Groups = proplists:get_value(groups, Props, []),
+                    Groups = proplists:get_value(dirty_groups, Props, []),
                     filter_groups_by_roles(Groups, RoleNames, Cache)
             end
         end,
@@ -672,7 +673,7 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
 
     {PageSkews, Total} =
         pipes:run(menelaus_users:select_users({'_', DomainAtom},
-                                              [user_roles, groups]),
+                                              [user_roles, dirty_groups]),
                   [filter_by_roles(Roles),
                    security_filter(Req)],
                   ?make_consumer(
