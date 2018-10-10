@@ -31,7 +31,8 @@
     renew_timer_ref,
     value_lifetime,
     renew_interval,
-    module
+    module,
+    generation_ref
 }).
 
 %%%===================================================================
@@ -80,7 +81,8 @@ init([Name, Module, Args, Opts]) ->
                    max_parallel_procs = MaxParallel,
                    value_lifetime = ValueLifetime,
                    renew_interval = RenewInterval,
-                   module = Module},
+                   module = Module,
+                   generation_ref = erlang:make_ref()},
             {ok, restart_renew_timer(restart_cleanup_timer(S))};
         {stop, Reason} -> {stop, Reason};
         ignore -> ignore
@@ -95,7 +97,8 @@ handle_call({cache, Key, GetValue}, From, #s{table_name = Name} = State) ->
 handle_call(Request, _From, State) ->
     {reply, {unhandled, Request}, State}.
 
-handle_cast({reload_opts, Opts}, #s{module = Module} = State) ->
+handle_cast({reload_opts, Opts}, #s{module = Module,
+                                    table_name = Name} = State) ->
     Opts2 = Module:translate_options(Opts),
     NewState =
         lists:foldl(fun ({max_size, V}, S) ->
@@ -107,7 +110,9 @@ handle_cast({reload_opts, Opts}, #s{module = Module} = State) ->
                         ({max_parallel_procs, V}, S) ->
                             S#s{max_parallel_procs = V}
                     end, State, Opts2),
-    {noreply, NewState};
+    ets:delete_all_objects(Name),
+    ?log_error("Clearing the ~p cache", [Name]),
+    {noreply, NewState#s{generation_ref = erlang:make_ref()}};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -137,21 +142,23 @@ code_change(_OldVsn, State, _Extra) ->
 
 timestamp() -> erlang:monotonic_time(millisecond).
 
-handle_req(Key, GetValue, From, #s{max_parallel_procs = MaxParallel} = State) ->
-    Job = fun () -> worker(Key, GetValue) end,
+handle_req(Key, GetValue, From, #s{max_parallel_procs = MaxParallel,
+                                   generation_ref = Ref} = State) ->
+    Job = fun () -> worker(Ref, Key, GetValue) end,
     gen_server2:async_job(erlang:phash2(Key, MaxParallel), Key,
                           Job, fun (Res, S) -> handle_res(Res, From, S) end),
     State.
 
-worker(Key, GetValue) ->
+worker(Ref, Key, GetValue) ->
     Res = try
               {ok, GetValue()}
           catch
               C:E -> {exception, {C, E, erlang:get_stacktrace()}}
           end,
-    {Key, GetValue, Res}.
+    {Ref, Key, GetValue, Res}.
 
-handle_res({Key, GetValue, Res}, From, #s{table_name = Name} = State) ->
+handle_res({Ref, Key, GetValue, Res}, From, #s{table_name = Name,
+                                               generation_ref = Ref} = State) ->
     maybe_evict(State),
     case ets:update_element(Name, Key, {2, Res}) of
         false when From =/= undefined ->
@@ -159,7 +166,13 @@ handle_res({Key, GetValue, Res}, From, #s{table_name = Name} = State) ->
         _ -> ok
     end,
     From == undefined orelse gen_server2:reply(From, Res),
-    {noreply, State}.
+    {noreply, State};
+
+handle_res({_, Key, GetValue, _}, From, State) ->
+    %% Received result with wrong generation_ref
+    %% It means the request was spawned before the opts change. In order to
+    %% get proper result we spawn new job for that request
+    {noreply, handle_req(Key, GetValue, From, State)}.
 
 renew(#s{table_name = Name} = State) ->
     ?log_debug("Starting ~p cache renewal", [Name]),
@@ -292,6 +305,30 @@ cleanup_test() ->
           ?assertEqual(0, ets:info(test_cache, size))
       end).
 
+change_opts_test() ->
+    with_cache_settings(
+      test_cache, [{renew_interval, infinity}, {max_parallel_procs, 2}],
+      fun () ->
+          Self = self(),
+          Ref = make_ref(),
+          P = spawn(
+                fun () ->
+                       get_value(test_cache, key1,
+                                 fun () ->
+                                        Self ! Ref,
+                                        timer:sleep(1000),
+                                        Self ! Ref
+                                 end)
+                end),
+          receive Ref -> ok end,
+          reload_opts(test_cache, [{max_parallel_procs, 3}]),
+          ok = misc:wait_for_process(P, 3000),
+          receive Ref -> ok end,
+          %% One more Ref means worker was restarted
+          receive Ref -> ok end,
+          misc:flush(Ref)
+      end).
+
 with_cache_settings(Name, Settings, Fun) ->
     meck:new(ns_config, [passthrough]),
     meck:expect(ns_config, read_key_fast,
@@ -302,6 +339,7 @@ with_cache_settings(Name, Settings, Fun) ->
     meck:expect(ns_pubsub, subscribe_link, fun (_, _) -> ok end),
     meck:new(test_mod, [non_strict]),
     meck:expect(test_mod, init, fun (_) -> ok end),
+    meck:expect(test_mod, translate_options, fun (Opts) -> Opts end),
     {ok, Pid} = start_link(Name, test_mod, [], Settings),
     try
         Fun()
