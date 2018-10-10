@@ -19,6 +19,7 @@
 
 -export([handle_uilogin/1,
          handle_uilogout/1,
+         handle_can_use_cert_for_auth/1,
          handle_versions/1,
          handle_dot/2,
          handle_dotsvg/2,
@@ -49,6 +50,10 @@ handle_uilogout(Req) ->
             menelaus_ui_auth:logout(Token)
     end,
     menelaus_auth:complete_uilogout(Req).
+
+handle_can_use_cert_for_auth(Req) ->
+    RV = menelaus_auth:can_use_cert_for_auth(Req),
+    menelaus_util:reply_json(Req, {[{cert_for_auth, RV}]}).
 
 handle_versions(Req) ->
     reply_json(Req, {struct, menelaus_web_cache:versions_response()}).

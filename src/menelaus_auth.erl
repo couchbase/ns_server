@@ -28,6 +28,7 @@
          extract_identity_from_cert/1,
          extract_ui_auth_token/1,
          uilogin/3,
+         can_use_cert_for_auth/1,
          complete_uilogout/1,
          maybe_refresh_token/1,
          get_identity/1,
@@ -365,6 +366,24 @@ uilogin(Req, User, Password) ->
               apply_headers(Req, meta_headers(Identity))),
             menelaus_util:reply_json(
               Req, menelaus_web_rbac:forbidden_response(Permission), 403)
+    end.
+
+-spec can_use_cert_for_auth(mochiweb_request()) ->
+                                   can_use | cannot_use | must_use.
+can_use_cert_for_auth(Req) ->
+    case Req:get(socket) of
+        {ssl, SSLSock} ->
+            CCAState = ns_ssl_services_setup:client_cert_auth_state(),
+            case {ssl:peercert(SSLSock), CCAState} of
+                {_, "mandatory"} ->
+                    must_use;
+                {{ok, _Cert}, "enable"} ->
+                    can_use;
+                _ ->
+                    cannot_use
+            end;
+        _ ->
+            cannot_use
     end.
 
 -spec verify_rest_auth(mochiweb_request(), rbac_permission() | no_check) ->
