@@ -38,9 +38,7 @@
 
 handle_uilogin(Req) ->
     Params = Req:parse_post(),
-    User = proplists:get_value("user", Params),
-    Password = proplists:get_value("password", Params),
-    menelaus_auth:uilogin(Req, User, Password).
+    menelaus_auth:uilogin(Req, Params).
 
 handle_uilogout(Req) ->
     case menelaus_auth:extract_ui_auth_token(Req) of

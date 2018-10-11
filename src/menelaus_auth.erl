@@ -27,7 +27,7 @@
          extract_auth/1,
          extract_identity_from_cert/1,
          extract_ui_auth_token/1,
-         uilogin/3,
+         uilogin/2,
          can_use_cert_for_auth/1,
          complete_uilogout/1,
          maybe_refresh_token/1,
@@ -328,11 +328,8 @@ saslauthd_authenticate(Username, Password) ->
                      [Username, Password])
     end.
 
--spec verify_login_creds(rbac_user_id(), rbac_password()) ->
-                                auth_failure | {forbidden, rbac_identity(), rbac_permission()} |
-                                {ok, rbac_identity()} | {error, term()}.
-verify_login_creds(Username, Password) ->
-    case authenticate({Username, Password}) of
+verify_login_creds(Auth) ->
+    case authenticate(Auth) of
         {ok, Identity} ->
             UIPermission = {[ui], read},
             case check_permission(Identity, UIPermission) of
@@ -347,10 +344,34 @@ verify_login_creds(Username, Password) ->
             Other
     end.
 
--spec uilogin(mochiweb_request(), rbac_user_id(), rbac_password()) ->
-                     mochiweb_response().
-uilogin(Req, User, Password) ->
-    case verify_login_creds(User, Password) of
+-spec verify_login_creds(rbac_user_id(), rbac_password()) ->
+                                auth_failure |
+                                {forbidden, rbac_identity(),
+                                 rbac_permission()} |
+                                {ok, rbac_identity()} | {error, term()}.
+verify_login_creds(Username, Password) ->
+    verify_login_creds({Username, Password}).
+
+-spec uilogin(mochiweb_request(), list()) -> mochiweb_response().
+uilogin(Req, Params) ->
+    CertAuth = proplists:get_value("use_cert_for_auth", Req:parse_qs()) =:= "1",
+    {User, AuthStatus} =
+        case CertAuth of
+            true ->
+                S = Req:get(socket),
+                case ns_ssl_services_setup:get_user_name_from_client_cert(S) of
+                    X when X =:= undefined; X =:= failed ->
+                        {invalid_client_cert, auth_failure};
+                    UName ->
+                        {UName, verify_login_creds({client_cert_auth, UName})}
+                end;
+            false ->
+                Usr = proplists:get_value("user", Params),
+                Password = proplists:get_value("password", Params),
+                {Usr, verify_login_creds({Usr, Password})}
+        end,
+
+    case AuthStatus of
         {ok, Identity} ->
             Token = menelaus_ui_auth:generate_token(Identity),
             CookieHeader = generate_auth_cookie(Req, Token),
