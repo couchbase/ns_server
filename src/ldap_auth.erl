@@ -280,13 +280,15 @@ eldap_search(Handle, SearchProps) ->
 
 %% RFC4516 ldap url parsing
 parse_url(Str) ->
-    SchemeValidator = fun ("ldap") -> valid;
-                          (S) -> {error, {invalid_scheme, S}}
+    SchemeValidator = fun (S) ->
+                              case string:to_lower(S) of
+                                  "ldap" -> valid;
+                                  _ -> {error, {invalid_scheme, S}}
+                              end
                       end,
     try
         {Scheme, _UserInfo, Host, Port, "/" ++ EncodedDN, Query} =
-            case http_uri:parse(string:to_lower(Str),
-                                [{scheme_defaults, [{ldap, 389}]},
+            case http_uri:parse(Str, [{scheme_defaults, [{ldap, 389}]},
                                  {scheme_validation_fun, SchemeValidator}]) of
                 {ok, R} -> R;
                 {error, _} -> throw({error, malformed_url})
@@ -302,8 +304,9 @@ parse_url(Str) ->
             {parse_error, _, _} -> throw({error, {invalid_dn, DN}})
         end,
 
+        ScopeLower = string:to_lower(Scope),
         try
-            Scope =:= "" orelse parse_scope(Scope)
+            ScopeLower =:= "" orelse parse_scope(ScopeLower)
         catch
             _:_ -> throw({error, {invalid_scope, Scope}})
         end,
@@ -322,7 +325,7 @@ parse_url(Str) ->
          [{port, Port}] ++
          [{dn, DN} || DN =/= ""] ++
          [{attributes, Attrs} || Attrs =/= []] ++
-         [{scope, Scope} || Scope =/= ""] ++
+         [{scope, ScopeLower} || ScopeLower =/= ""] ++
          [{filter, Filter} || Filter =/= ""] ++
          [{extensions, Extensions} || Extensions =/= ""]
         }
@@ -435,32 +438,32 @@ parse_url_test_() ->
 
 %% Tests from RFC4516 examples:
         ?_assertEqual([{scheme, ldap}, {port, 389},
-                       {dn, "o=university of michigan,c=us"}],
+                       {dn, "o=University of Michigan,c=US"}],
                       Parse("ldap:///o=University%20of%20Michigan,c=US")),
         ?_assertEqual([{scheme, ldap}, {host, "ldap1.example.net"}, {port, 389},
-                       {dn, "o=university of michigan,c=us"}],
+                       {dn, "o=University of Michigan,c=US"}],
                       Parse("ldap://ldap1.example.net"
                             "/o=University%20of%20Michigan,c=US")),
         ?_assertEqual([{scheme, ldap}, {host, "ldap1.example.net"}, {port, 389},
-                       {dn, "o=university of michigan,c=us"},
-                       {scope, "sub"}, {filter, "(cn=babs jensen)"}],
+                       {dn, "o=University of Michigan,c=US"},
+                       {scope, "sub"}, {filter, "(cn=Babs Jensen)"}],
                       Parse("ldap://ldap1.example.net/o=University%20of%2"
                              "0Michigan,c=US??sub?(cn=Babs%20Jensen)")),
         ?_assertEqual([{scheme, ldap}, {host, "ldap1.example.com"}, {port, 389},
-                       {dn, "c=gb"}, {attributes, ["objectclass"]},
+                       {dn, "c=GB"}, {attributes, ["objectClass"]},
                        {scope, "one"}],
                       Parse("LDAP://ldap1.example.com/c=GB?objectClass?ONE")),
         ?_assertEqual([{scheme, ldap}, {host, "ldap2.example.com"}, {port, 389},
-                       {dn, "o=question?,c=us"}, {attributes, ["mail"]}],
+                       {dn, "o=Question?,c=US"}, {attributes, ["mail"]}],
                       Parse("ldap://ldap2.example.com"
                             "/o=Question%3f,c=US?mail")),
         ?_assertEqual([{scheme, ldap}, {host, "ldap3.example.com"}, {port, 389},
-                       {dn, "o=babsco,c=us"},
+                       {dn, "o=Babsco,c=US"},
                        {filter, "(four-octet=\\00\\00\\00\\04)"}],
                       Parse("ldap://ldap3.example.com/o=Babsco,c=US"
                             "???(four-octet=%5c00%5c00%5c00%5c04)")),
         ?_assertEqual([{scheme, ldap}, {host, "ldap.example.com"}, {port, 389},
-                       {dn, "o=an example\\2c inc.,c=us"}],
+                       {dn, "o=An Example\\2C Inc.,c=US"}],
                       Parse("ldap://ldap.example.com"
                             "/o=An%20Example%5C2C%20Inc.,c=US"))
     ].
