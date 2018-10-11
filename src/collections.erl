@@ -22,6 +22,7 @@
 -include("ns_common.hrl").
 
 -export([start_link/0,
+         enabled/0,
          for_rest/1,
          create_scope/2,
          create_collection/3,
@@ -32,6 +33,10 @@
 
 start_link() ->
     work_queue:start_singleton(?MODULE).
+
+enabled() ->
+    cluster_compat_mode:is_enabled(?VERSION_MADHATTER) andalso
+        os:getenv("ENABLE_COLLECTIONS") =/= false.
 
 default_manifest() ->
     [{uid, 0},
