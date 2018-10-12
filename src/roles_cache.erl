@@ -48,6 +48,8 @@ init([]) ->
                  P =:= external_user_roles_cache_expiration_timeout;
                  P =:= external_auth_polling_interval ->
                 active_cache:reload_opts(?MODULE, [Event]);
+            ({ldap_settings, _}) ->
+                active_cache:renew_cache(?MODULE);
             (_) -> ok
         end,
     ns_pubsub:subscribe_link(ns_config_events, EventHandler),

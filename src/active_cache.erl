@@ -10,7 +10,8 @@
 -export([start_link/4,
          get_value_and_touch/3,
          get_value/3,
-         reload_opts/2]).
+         reload_opts/2,
+         renew_cache/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -63,6 +64,9 @@ get_value(Name, Key, GetValue) ->
 
 reload_opts(Name, Opts) ->
     gen_server2:cast(Name, {reload_opts, Opts}).
+
+renew_cache(Name) ->
+    Name ! renew.
 
 %%%===================================================================
 %%% gen_server2 callbacks
