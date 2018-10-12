@@ -83,6 +83,7 @@
 -export([get_auth_info_on_ns_server/1]).
 
 -define(MAX_USERS_ON_CE, 20).
+-define(LDAP_GROUPS_CACHE_SIZE, 1000).
 -define(DEFAULT_PROPS, [name, user_roles, group_roles, passwordless,
                         password_change_timestamp, groups]).
 -define(DEFAULT_GROUP_PROPS, [description, roles, ldap_group_ref]).
@@ -167,6 +168,7 @@ get_passwordless() ->
 
 init([]) ->
     _ = ets:new(versions_name(), [protected, named_table]),
+    mru_cache:new(ldap_groups_cache, ?LDAP_GROUPS_CACHE_SIZE),
     #state{base = init_versions()}.
 
 init_versions() ->
@@ -197,6 +199,10 @@ on_save(Docs, State) ->
                           {sets:add_element({change_version, auth_version}, MessagesAcc), NState}
                   end
           end, {sets:new(), State}, Docs),
+    case sets:is_element({change_version, group_version}, MessagesToSend) of
+        true -> mru_cache:flush(ldap_groups_cache);
+        false -> ok
+    end,
     lists:foreach(fun (Msg) ->
                           self() ! Msg
                   end, sets:to_list(MessagesToSend)),
@@ -696,23 +702,35 @@ get_groups_roles(Groups, Definitions, AllPossibleValues) ->
 
 get_ldap_groups(User) ->
     try ldap_auth_cache:user_groups(User) of
-        [] -> [];
         LDAPGroups ->
-            GroupFilter =
-                fun ({_, Props}) ->
-                        case proplists:get_value(ldap_group_ref, Props) of
-                            undefined -> false;
-                            V -> lists:member(V, LDAPGroups)
-                        end
-                end,
-            pipes:run(select_groups('_', [ldap_group_ref]),
-                      [pipes:filter(GroupFilter),
-                       pipes:map(fun ({{group, G}, _}) -> G end)],
-                      pipes:collect())
+            GroupsMap =
+                lists:foldl(
+                  fun (LDAPGroup, Acc) ->
+                          Groups = get_groups_by_ldap_group(LDAPGroup),
+                          lists:foldl(?cut(_2#{_1 => true}), Acc, Groups)
+                  end, #{}, LDAPGroups),
+            maps:keys(GroupsMap)
     catch
         error:Error ->
-            ?log_error("Failed to get ldap groups: ~p", [Error]),
+            ?log_error("Failed to get ldap groups for ~p: ~p",
+                       [ns_config_log:tag_user_name(User), Error]),
             []
+    end.
+
+get_groups_by_ldap_group(LDAPGroup) ->
+    case mru_cache:lookup(ldap_groups_cache, LDAPGroup) of
+        {ok, Value} -> Value;
+        false ->
+            GroupFilter =
+                fun ({_, Props}) ->
+                        LDAPGroup == proplists:get_value(ldap_group_ref, Props)
+                end,
+            Groups = pipes:run(select_groups('_', [ldap_group_ref]),
+                               [pipes:filter(GroupFilter),
+                                pipes:map(fun ({{group, G}, _}) -> G end)],
+                               pipes:collect()),
+            mru_cache:add(ldap_groups_cache, LDAPGroup, Groups),
+            Groups
     end.
 
 -spec get_user_name(rbac_identity()) -> rbac_user_name().
