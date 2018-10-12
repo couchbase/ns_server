@@ -901,7 +901,6 @@ validate_password(State) ->
 put_user_validators(Domain) ->
     [validator:touch(name, _),
      validate_user_groups(groups, _),
-     validator:required(roles, _),
      validate_roles(roles, _)] ++
         case Domain of
             local ->
@@ -969,7 +968,7 @@ handle_put_user_with_identity({_UserId, Domain} = Identity, Req) ->
               handle_put_user_validated(Identity,
                                         proplists:get_value(name, Values),
                                         proplists:get_value(password, Values),
-                                        proplists:get_value(roles, Values),
+                                        proplists:get_value(roles, Values, []),
                                         proplists:get_value(groups, Values),
                                         Req)
       end, Req, form, put_user_validators(Domain)).
