@@ -33,6 +33,8 @@
          integer/4,
          range/4,
          range/5,
+         length/4,
+         string/4,
          dir/2,
          has_params/1,
          unsupported/1,
@@ -225,6 +227,33 @@ range(Name, Min, Max0, ErrorFun, State) ->
                       ok;
                   false ->
                       {error, ErrorFun()}
+              end
+      end, Name, State).
+
+length(Name, Min, Max, State) ->
+    validate(
+      fun (Value) ->
+              Length = size(unicode:characters_to_binary(
+                              list_to_binary(Value), utf8, utf32)) div 4,
+              case Length < Min orelse Length > Max of
+                  true ->
+                      {error,
+                       io_lib:format("Length must be in range from ~p to ~p",
+                                     [Min, Max])};
+                  false ->
+                      ok
+              end
+      end, Name, State).
+
+string(Name, Regex, ErrorStr, State) ->
+    validate(
+      fun (Value) ->
+              StringValue = (catch simple_term_to_list(Value)),
+              case re:run(StringValue, Regex) of
+                  {match, _} ->
+                      ok;
+                  nomatch ->
+                      {error, ErrorStr}
               end
       end, Name, State).
 

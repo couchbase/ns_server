@@ -40,6 +40,9 @@ handle_post_scope(Bucket, Req) ->
               handle_rv(collections:create_scope(Bucket, Name), Req)
       end, Req, form,
       [validator:required(name, _),
+       validator:length(name, 1, 30, _),
+       name_validator(_),
+       name_first_char_validator(_),
        validator:unsupported(_)]).
 
 handle_post_collection(Bucket, Scope, Req) ->
@@ -51,6 +54,9 @@ handle_post_collection(Bucket, Scope, Req) ->
               handle_rv(collections:create_collection(Bucket, Scope, Name), Req)
       end, Req, form,
       [validator:required(name, _),
+       validator:length(name, 1, 30, _),
+       name_validator(_),
+       name_first_char_validator(_),
        validator:unsupported(_)]).
 
 handle_delete_scope(Bucket, Name, Req) ->
@@ -71,6 +77,23 @@ assert_api_available(Bucket) ->
             erlang:throw({web_exception, 400,
                           "Not allowed on this type of bucket", []})
     end.
+
+name_first_char_validator(State) ->
+    validator:validate(
+      fun ([Char | _]) ->
+              case lists:member(Char, "_%") of
+                  true ->
+                      {error, "First character must not be _ or %"};
+                  false ->
+                      ok
+              end
+      end, name, State).
+
+name_validator(State) ->
+    validator:string(
+      name, "^[0-9A-Za-z_%\-]+$",
+      "Can only contain characters A-Z, a-z, 0-9 and the following symbols "
+      "_ - %", State).
 
 handle_rv({ok, Uid}, Req) ->
     menelaus_util:reply_json(Req, {[{uid, Uid}]}, 200);
