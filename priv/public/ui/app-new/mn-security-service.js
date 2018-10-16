@@ -12,7 +12,7 @@ mn.services.MnSecurity = (function (Rx) {
   ];
 
   MnSecurityService.prototype.getSaslauthdAuth = getSaslauthdAuth;
-  MnSecurityService.prototype.getDefaultCertificate = getDefaultCertificate;
+  MnSecurityService.prototype.getCertificate = getCertificate;
   MnSecurityService.prototype.getLogRedaction = getLogRedaction;
   MnSecurityService.prototype.postLogRedaction = postLogRedaction;
   MnSecurityService.prototype.getClientCertAuth = getClientCertAuth;
@@ -35,9 +35,9 @@ mn.services.MnSecurity = (function (Rx) {
         Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
       );
 
-    this.stream.getDefaultCertificate =
+    this.stream.getCertificate =
       (new Rx.BehaviorSubject()).pipe(
-        Rx.operators.switchMap(this.getDefaultCertificate.bind(this)),
+        Rx.operators.switchMap(this.getCertificate.bind(this)),
         Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
       );
 
@@ -131,7 +131,7 @@ mn.services.MnSecurity = (function (Rx) {
     return this.http.post("/settings/logRedaction", data);
   }
 
-  function getDefaultCertificate() {
+  function getCertificate() {
     return this.http.get("/pools/default/certificate", {
       params: new ng.common.http.HttpParams().set("extended", true)
     });

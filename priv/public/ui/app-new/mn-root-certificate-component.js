@@ -4,8 +4,6 @@ mn.components.MnRootCertificate =
   (function (Rx) {
     "use strict";
 
-    mn.core.extend(MnRootCertificate, mn.core.MnEventableComponent);
-
     MnRootCertificate.annotations = [
       new ng.core.Component({
         templateUrl: "app-new/mn-root-certificate.html",
@@ -14,35 +12,19 @@ mn.components.MnRootCertificate =
     ];
 
     MnRootCertificate.parameters = [
-      mn.services.MnSecurity
+      mn.services.MnSecurity,
+      mn.services.MnForm
     ];
-
-    MnRootCertificate.prototype.setCertPem = setCertPem;
 
     return MnRootCertificate;
 
-    function MnRootCertificate(mnSecurityService) {
-      mn.core.MnEventableComponent.call(this);
+    function MnRootCertificate(mnSecurityService, mnFormService) {
 
-      var getDefaultCertificate = mnSecurityService.stream.getDefaultCertificate;
-      var cert = getDefaultCertificate.pipe(Rx.operators.pluck("cert"));
+      this.cert = mnSecurityService.stream.getCertificate;
 
-      this.formGroup = new ng.forms.FormGroup({
-        pem: new ng.forms.FormControl(null)
-      });
-
-      this.certType = cert.pipe(Rx.operators.map(function (cert) {
-        return cert.type === "generated" ? "self-signed" : "signed";
-      }));
-
-      this.certSubject = cert.pipe(Rx.operators.pluck("subject"));
-      this.certExpires = cert.pipe(Rx.operators.pluck("expires"));
-      this.certWarnings = getDefaultCertificate.pipe(Rx.operators.pluck("warnings"));
-      cert.pipe(Rx.operators.first()).subscribe(this.setCertPem.bind(this));
-    }
-
-    function setCertPem(cert) {
-      this.formGroup.patchValue(cert);
+      this.form = mnFormService.create()
+        .setFormGroup({pem: ""})
+        .setSource(this.cert.pipe(Rx.operators.pluck("cert")));
     }
 
   })(window.rxjs);
