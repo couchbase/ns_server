@@ -1,4 +1,4 @@
-<form (ngSubmit)="onSubmit.next()" [formGroup]="clientCertificateForm">
+<form (ngSubmit)="form.submit.next()" [formGroup]="form.group">
   <div class="formrow">
     <h4>Require Client Certificate</h4>
     <input
@@ -34,16 +34,16 @@
 
   <div class="error error-field"
        [hidden]="!(isErrorString | async) || (isStateDisabled | async)">
-    <span>{{(postClientCertAuth.error | async)}}</span>
+    <span>{{(form.postRequest.error | async)}}</span>
   </div>
   <div class="error error-field"
-       *ngFor="let error of (postClientCertAuth.error | async)"
+       *ngFor="let error of (form.postRequest.error | async)"
        [hidden]="(isErrorString | async) || (isStateDisabled | async)">
     <span>{{error}}</span>
   </div>
   <div class="forms"
        formArrayName="prefixes"
-       *ngFor="let control of clientCertificateForm.get('prefixes').controls; index as i;">
+       *ngFor="let control of form.group.get('prefixes').controls; index as i;">
     <div class="row fix-width-5" formGroupName="{{i}}">
       <div class="width-5 margin-right-half">
         <label [attr.for]="'client_cert_path_' + 'i'">Path</label>
@@ -72,11 +72,11 @@
         <input
            placeholder="e.g.  ."
            formControlName="delimiter"
+           [attr.id]="'client_cert_delimiter_' + 'i'"
            type="text"
            autocorrect="off"
            spellcheck="false"
-           autocapitalize="off"
-           [attr.id]="'client_cert_delimiter_' + 'i'">
+           autocapitalize="off">
       </div>
     </div>
   </div>
