@@ -141,6 +141,7 @@
       entryComponents: [
       ],
       providers: [
+        mn.services.MnForm,
         mn.services.MnHelper,
         mn.services.MnTasks,
         mn.services.MnAlerts,
