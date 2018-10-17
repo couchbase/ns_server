@@ -78,6 +78,14 @@ init_ldap_enabled() ->
 
 default() ->
     DataDir = get_data_dir(),
+    InterfacesIPFields = case misc:is_ipv6() of
+                             true ->
+                                 [{ipv4, <<"optional">>},
+                                  {ipv6, <<"required">>}];
+                             false ->
+                                 [{ipv4, <<"required">>},
+                                  {ipv6, <<"optional">>}]
+                         end,
 
     DefaultQuotas = memory_quota:default_quotas([kv, cbas, fts]),
     {_, KvQuota} = lists:keyfind(kv, 1, DefaultQuotas),
@@ -213,17 +221,18 @@ default() ->
           [
            {[{host, <<"*">>},
              {port, port},
-             {maxconn, maxconn}]},
+             {maxconn, maxconn}] ++ InterfacesIPFields},
 
            {[{host, <<"*">>},
              {port, dedicated_port},
-             {maxconn, dedicated_port_maxconn}]},
+             {maxconn, dedicated_port_maxconn}] ++ InterfacesIPFields},
 
            {[{host, <<"*">>},
              {port, ssl_port},
              {maxconn, maxconn},
              {ssl, {[{key, list_to_binary(ns_ssl_services_setup:memcached_key_path())},
-                     {cert, list_to_binary(ns_ssl_services_setup:memcached_cert_path())}]}}]}
+                     {cert, list_to_binary(ns_ssl_services_setup:memcached_cert_path())}]}}]
+             ++ InterfacesIPFields}
           ]}},
 
         {ssl_cipher_list, {"~s", [ssl_cipher_list]}},
@@ -358,9 +367,11 @@ upgrade_config(Config) ->
             [{set, {node, node(), config_version}, {5,5}} |
              upgrade_config_from_5_1_1_to_5_5(Config)];
         {value, {5,5}} ->
+            [{set, {node, node(), config_version}, {5,5,3}} |
+             upgrade_config_from_5_5_to_5_5_3()];
+        {value, {5,5,3}} ->
             [{set, {node, node(), config_version}, CurrentVersion} |
-             upgrade_config_from_5_5_to_madhatter()];
-
+             upgrade_config_from_5_5_3_to_madhatter()];
         V0 ->
             OldVersion =
                 case V0 of
@@ -448,13 +459,20 @@ do_upgrade_config_from_5_1_1_to_5_5(Config, DefaultConfig) ->
      upgrade_key(memcached_defaults, DefaultConfig),
      upgrade_sub_keys(memcached, [other_users], Config, DefaultConfig)].
 
-upgrade_config_from_5_5_to_madhatter() ->
+upgrade_config_from_5_5_3_to_madhatter() ->
     DefaultConfig = default(),
-    do_upgrade_config_from_5_5_to_madhatter(DefaultConfig).
+    do_upgrade_config_from_5_5_3_to_madhatter(DefaultConfig).
 
-do_upgrade_config_from_5_5_to_madhatter(DefaultConfig) ->
+do_upgrade_config_from_5_5_3_to_madhatter(DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
      {delete, {node, node(), moxi}}].
+
+upgrade_config_from_5_5_to_5_5_3() ->
+    DefaultConfig = default(),
+    do_upgrade_config_from_5_5_to_5_5_3(DefaultConfig).
+
+do_upgrade_config_from_5_5_to_5_5_3(DefaultConfig) ->
+    [upgrade_key(memcached_config, DefaultConfig)].
 
 encrypt_config_val(Val) ->
     {ok, Encrypted} = encryption_service:encrypt(term_to_binary(Val)),
@@ -557,11 +575,19 @@ upgrade_5_1_1_to_5_5_test() ->
                   {set, {node, _, memcached}, [{old, info}, {other_users, new}]}],
                  do_upgrade_config_from_5_1_1_to_5_5(Cfg, Default)).
 
-upgrade_5_5_to_madhatter_test() ->
+upgrade_5_5_3_to_madhatter_test() ->
     Default = [{{node, node(), memcached_config}, new_memcached_config}],
     ?assertMatch([{set, {node, _, memcached_config}, new_memcached_config},
                   {delete, {node, _, moxi}}],
-                 do_upgrade_config_from_5_5_to_madhatter(Default)).
+                 do_upgrade_config_from_5_5_3_to_madhatter(Default)).
+
+upgrade_5_5_to_5_5_3_test() ->
+    Default = [{some_key, some_other_value},
+               {{node, node(), memcached}, [{some, stuff}, {other_users, new}]},
+               {{node, node(), memcached_config}, new_memcached_config}],
+
+    ?assertMatch([{set, {node, _, memcached_config}, new_memcached_config}],
+                 do_upgrade_config_from_5_5_to_5_5_3(Default)).
 
 no_upgrade_on_current_version_test() ->
     ?assertEqual([], upgrade_config([[{{node, node(), config_version}, get_current_version()}]])).
