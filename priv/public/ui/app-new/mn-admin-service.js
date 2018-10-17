@@ -3,10 +3,6 @@ mn.services = mn.services || {};
 mn.services.MnAdmin = (function (Rx) {
   "use strict";
 
-  var version50 = encodeCompatVersion(5, 0);
-  var version51 = encodeCompatVersion(5, 1);
-  var version55 = encodeCompatVersion(5, 5);
-
   // counterpart of ns_heart:effective_cluster_compat_version/0
   function encodeCompatVersion(major, minor) {
     if (major < 2) {
@@ -114,17 +110,10 @@ mn.services.MnAdmin = (function (Rx) {
     this.stream.clusterName =
       this.stream.getPoolsDefault.pipe(Rx.operators.pluck("clusterName"));
 
-    this.stream.compatVersion =
-      this.stream.thisNode.pipe(
-        Rx.operators.map(function (thisNode) {
-          var compat = thisNode.clusterCompatibility;
-          return {
-            atLeast50: compat >= version50,
-            atLeast51: compat >= version51,
-            atLeast55: compat >= version55
-          };
-        })
-      );
+    this.stream.compatVersion51 =
+      this.stream.thisNode.pipe(mnHelperService.compatVersionPipe(encodeCompatVersion(5, 1)));
+    this.stream.compatVersion55 =
+      this.stream.thisNode.pipe(mnHelperService.compatVersionPipe(encodeCompatVersion(5, 5)));
 
     this.stream.poolsDefaultHttp =
       new mn.core.MnPostHttp(this.postPoolsDefault.bind(this))

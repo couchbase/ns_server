@@ -18,7 +18,6 @@ mn.components.MnBucketsItem =
     ];
 
     MnBucketsItem.parameters = [
-      mn.services.MnAdmin,
       mn.services.MnPermissions,
       mn.services.MnTasks,
       window['@uirouter/angular'].UIRouter
@@ -33,14 +32,13 @@ mn.components.MnBucketsItem =
 
     return MnBucketsItem;
 
-    function MnBucketsItem(mnAdminService, mnPermissionsService, mnTasksService, uiRouter) {
+    function MnBucketsItem(mnPermissionsService, mnTasksService, uiRouter) {
       mn.core.MnEventableComponent.call(this);
 
       var bucketCurrentValue = this.mnOnChanges.pipe(Rx.operators.pluck("bucket", "currentValue"));
       var bucketNodes = bucketCurrentValue.pipe(Rx.operators.pluck("nodes"));
       var bucketName = bucketCurrentValue.pipe(Rx.operators.pluck("name"));
 
-      this.compatVersion = mnAdminService.stream.compatVersion;
       this.statusClass = bucketNodes.pipe(Rx.operators.map(this.getNodesStatusClass.bind(this)));
       this.residentRatio = bucketCurrentValue.pipe(Rx.operators.map(this.getResidentRatio.bind(this)));
 

@@ -52,7 +52,7 @@ mn.components.MnAudit =
       });
 
       this.securityWrite = mnPermissionsService.createPermissionStream("admin.security!write");
-      this.atLeast55 = mnAdminService.stream.compatVersion.pipe(Rx.operators.pluck("atLeast55"));
+      this.compatVersion55 = mnAdminService.stream.compatVersion55;
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
       this.getAuditDescriptors = mnSecurityService.stream.getAuditDescriptors;
       this.getAudit = mnSecurityService.stream.getAudit;
@@ -61,7 +61,7 @@ mn.components.MnAudit =
 
       this.httpError = Rx.merge(this.postAudit.error, this.postAuditValidation.error);
 
-      Rx.combineLatest(this.atLeast55, this.isEnterprise)
+      Rx.combineLatest(this.compatVersion55, this.isEnterprise)
         .pipe(Rx.operators.first(),
               Rx.operators.filter(function (value) {
                 return value.every(Boolean);

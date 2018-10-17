@@ -13,8 +13,7 @@ mn.components.MnStorageMode =
         inputs: [
           "control",
           "indexFlagChanges",
-          "permissionsIndexWrite",
-          "isAtLeast50"
+          "permissionsIndexWrite"
         ],
         changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
@@ -55,12 +54,7 @@ mn.components.MnStorageMode =
         )
         .pipe(Rx.operators.map(_.curry(_.some)(_, Boolean)));
 
-      this.showPlasma =
-        Rx.combineLatest(
-          this.isEnterprise,
-          this.isAtLeast50 || Rx.of(true)
-        )
-        .pipe(Rx.operators.map(_.curry(_.every)(_, Boolean)));
+      this.showPlasma = this.isEnterprise;
 
       Rx.combineLatest(
         isNotEnterprise,

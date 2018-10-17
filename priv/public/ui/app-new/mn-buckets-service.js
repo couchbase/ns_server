@@ -70,7 +70,7 @@ mn.services.MnBuckets = (function (Rx) {
     });
   }
 
-  function prepareBucketConfigForSaving(values, isEnterprise, compatVersion, isNew) {
+  function prepareBucketConfigForSaving(values, isEnterprise, compatVersion55, isNew) {
     var conf = {};
     function copyProperty(property) {
       if (values[property] !== undefined) {
@@ -93,7 +93,7 @@ mn.services.MnBuckets = (function (Rx) {
     if (values.bucketType === "membase" ||
         values.bucketType === "ephemeral") {
       copyProperties(["threadsNumber", "replicaNumber"]);
-      if (isEnterprise && compatVersion.atLeast55) {
+      if (isEnterprise && compatVersion55) {
         copyProperties(["compressionMode", "maxTTL"]);
       }
       if (isNew) {
@@ -101,7 +101,7 @@ mn.services.MnBuckets = (function (Rx) {
           conf.replicaIndex = values.replicaIndex ? 1 : 0
         }
 
-        if (isEnterprise && compatVersion.atLeast46) {
+        if (isEnterprise) {
           copyProperty("conflictResolutionType");
         }
       }
@@ -109,15 +109,6 @@ mn.services.MnBuckets = (function (Rx) {
       if (values.autoCompactionDefined) {
         _.extend(conf, mnSettingsAutoCompactionService.prepareSettingsForSaving(autoCompactionSettings));
       }
-    }
-    if (!compatVersion.atLeast50) {
-      if (values.authType === "sasl") {
-        copyProperty("saslPassword");
-      }
-      if (values.authType === "none") {
-        copyProperty("proxyPort");
-      }
-      copyProperty("authType");
     }
 
     conf.flushEnabled = values.flushEnabled ? 1 : 0

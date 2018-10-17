@@ -67,7 +67,6 @@ mn.components.MnBucketsItemDetails =
           })
         );
 
-      this.compatVersion = mnAdminService.stream.compatVersion;
       this.tasksRead = mnPermissionsService.createPermissionStream("tasks!read");
 
       this.warmUpTasks =

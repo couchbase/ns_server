@@ -25,8 +25,7 @@ mn.components.MnSecurity =
 
       this.securityRead = mnPermissionsService.createPermissionStream("admin.security!read");
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
-      this.atLeast55 = mnAdminService.stream.compatVersion.pipe(Rx.operators.pluck("atLeast55"));
-      this.atLeast50 = mnAdminService.stream.compatVersion.pipe(Rx.operators.pluck("atLeast50"));
+      this.compatVersion55 = mnAdminService.stream.compatVersion55;
     }
 
   })(window.rxjs);

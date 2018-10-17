@@ -63,8 +63,7 @@ mn.components.MnGeneralSettings =
       this.prettyVersion = mnAdminService.stream.prettyVersion;
       this.getStats = mnSettingsService.stream.getStats;
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
-      this.atLeast55 = mnAdminService.stream.compatVersion.pipe(Rx.operators.pluck("atLeast55"));
-      this.atLeast50 = mnAdminService.stream.compatVersion.pipe(Rx.operators.pluck("atLeast50"));
+      this.compatVersion55 = mnAdminService.stream.compatVersion55;
       this.poolsWrite = mnPermissionsService.createPermissionStream("pools!write");
       this.settingsIndexesWrite =
         mnPermissionsService.createPermissionStream("settings.indexes!write");

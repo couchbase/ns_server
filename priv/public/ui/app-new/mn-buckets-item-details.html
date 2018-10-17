@@ -21,12 +21,6 @@
         <strong>Replicas:</strong>
         {{(bucket.replicaNumber != 0) ? bucket.replicaNumber : 'disabled'}}
       </div>
-      <div
-         [hidden]="(compatVersion | async)?.atLeast50">
-        <strong>Access Control:</strong>
-        {{bucket.authType === 'none' ? ('Port: ' + bucket.proxyPort) :
-        (bucket.name === 'default' ? 'None' : 'Authentication')}}
-      </div>
       <div class="nowrap">
          <strong>Server Nodes: </strong> {{ bucket.nodes.length }}
        </div>

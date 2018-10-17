@@ -158,7 +158,7 @@
                  class="input-small input-short-1">
               <!-- ng-disabled="!settingsAutoFailoverCtl.autoFailoverSettings.enabled || !rbac.cluster.settings.write" -->
               &nbsp;seconds&nbsp;
-              <span [hidden]="!(atLeast55 | async) || !(isEnterprise | async)"
+              <span [hidden]="!(compatVersion55 | async) || !(isEnterprise | async)"
                     class="row">
                 for up to&nbsp;
                 <input
@@ -184,7 +184,7 @@
             <!--   {{settingsAutoFailoverCtl.saveAutoFailoverSettingsErrors.maxCount}} -->
             <!-- </div> -->
             <div
-               [hidden]="!(atLeast55 | async) || !(isEnterprise | async)"
+               [hidden]="!(compatVersion55 | async) || !(isEnterprise | async)"
                class="row flex-left text-medium flex-wrap"
                formGroupName="failoverOnDataDiskIssues">
               <input
@@ -215,7 +215,7 @@
               <!-- </div> -->
             </div>
             <div
-               [hidden]="!(atLeast55 | async) || !(isEnterprise | async)">
+               [hidden]="!(compatVersion55 | async) || !(isEnterprise | async)">
               <input
                  type="checkbox"
                  id="for-group-failover-enable"
@@ -235,7 +235,7 @@
           </div>
         </div>
 
-        <div class="margin-top2 margin-bottom-1" [hidden]="!(atLeast50 | async)">
+        <div class="margin-top2 margin-bottom-1">
           <span
              class="disclosure text-medium"
              [ngClass]="{disclosed: (toggleSection | async)}"
@@ -377,7 +377,7 @@
         <!--   </div> -->
         <!-- </div> -->
 
-        <!--     <div [hidden]="!(atLeast55 | async) || !(settingsRead | async)" -->
+        <!--     <div [hidden]="!(compatVersion55 | async) || !(settingsRead | async)" -->
         <!--          class="margin-top-1-5"> -->
         <!--       <label>Query Settings</label> -->
         <!--       <p -->

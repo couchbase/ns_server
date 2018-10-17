@@ -14,10 +14,10 @@
       {{bucket.basicStats.itemCount | number}}
     </span>
     <span class="cbui-table-cell">
-      <span [hidden]="!(bucket | mnIsMembase) || !(compatVersion | async)?.atLeast50">
+      <span [hidden]="!(bucket | mnIsMembase)">
         {{residentRatio | async | number}}%
       </span>
-      <span [hidden]="(bucket | mnIsMembase) && (compatVersion | async)?.atLeast50">
+      <span [hidden]="(bucket | mnIsMembase)">
         &#8212;
       </span>
     </span>

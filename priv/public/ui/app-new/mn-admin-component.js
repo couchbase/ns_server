@@ -123,7 +123,6 @@ mn.components.MnAdmin =
       this.enableResetButton =
         Rx.combineLatest(
           mnPoolsService.stream.isEnterprise,
-          mnAdminService.stream.compatVersion.pipe(Rx.operators.pluck("atLeast50")),
           mnAdminService.stream.whomi.pipe(
             Rx.operators.map(function (my) {
               return my.domain === 'local' || my.domain === 'admin';

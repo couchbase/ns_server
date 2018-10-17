@@ -59,6 +59,7 @@ mn.services.MnHelper = (function (Rx) {
   MnHelper.prototype.calculateMaxMemorySize = calculateMaxMemorySize;
   MnHelper.prototype.isJson = isJson;
   MnHelper.prototype.sortByStream = sortByStream;
+  MnHelper.prototype.compatVersionPipe = compatVersionPipe;
 
   return MnHelper;
 
@@ -115,6 +116,14 @@ mn.services.MnHelper = (function (Rx) {
         return rv;
       }
     }
+  }
+
+  function compatVersionPipe(version) {
+    return Rx.pipe(
+      Rx.operators.map(R.pipe(R.path(["clusterCompatibility"]),
+                              R.flip(R.gte)(version))),
+      Rx.operators.distinctUntilChanged()
+    );
   }
 
   function sortByStream(sortByStream) {

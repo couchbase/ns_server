@@ -20,7 +20,6 @@ mn.components.MnAutoCompactionForm =
 
     MnAutoCompactionForm.parameters = [
       mn.services.MnHelper,
-      mn.services.MnAdmin,
       mn.services.MnBuckets,
       mn.services.MnPermissions,
       mn.services.MnPools,
@@ -38,7 +37,7 @@ mn.components.MnAutoCompactionForm =
 
     return MnAutoCompactionForm;
 
-    function MnAutoCompactionForm(mnHelperService, mnAdminService, mnBucketsService, mnPermissionsService, mnPoolsService, mnWizardService, mnSettingsService) {
+    function MnAutoCompactionForm(mnHelperService, mnBucketsService, mnPermissionsService, mnPoolsService, mnWizardService, mnSettingsService) {
       mn.core.MnEventableComponent.call(this);
 
       this.formGroupHelper = new ng.forms.FormGroup({
@@ -51,7 +50,6 @@ mn.components.MnAutoCompactionForm =
 
       this.mnSettingsService = mnSettingsService;
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
-      this.compatVersion = mnAdminService.stream.compatVersion;
       this.getIndexes = mnWizardService.stream.getIndexes;
       this.daysOfWeek = mnHelperService.daysOfWeek;
 

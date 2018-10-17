@@ -32,10 +32,9 @@ mn.components.MnClientCertificate =
       mn.core.MnEventableComponent.call(this);
 
       this.securityWrite = mnPermissionsService.createPermissionStream("admin.security!write");
-      this.atLeast50 = mnAdminService.stream.compatVersion.pipe(Rx.operators.pluck("atLeast50"));
-      this.atLeast51 = mnAdminService.stream.compatVersion.pipe(Rx.operators.pluck("atLeast51"));
+      this.compatVersion51 = mnAdminService.stream.compatVersion51;
 
-      var getValue = Rx.pipe(Rx.operators.withLatestFrom(this.atLeast50, this.atLeast51),
+      var getValue = Rx.pipe(Rx.operators.withLatestFrom(this.compatVersion51),
                              Rx.operators.map(this.getValue.bind(this)));
 
       this.form = mnFormService.create(this);
@@ -83,7 +82,7 @@ mn.components.MnClientCertificate =
     function getValue(value) {
       var state =  this.form.group.get("state");
       var prefixes = this.form.group.get("prefixes");
-      if (!value[1] && value[0]) {
+      if (!value[1]) {
         return [{
           state: state.value,
           path: prefixes.value[0].path,

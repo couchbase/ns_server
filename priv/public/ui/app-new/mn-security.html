@@ -12,7 +12,7 @@
        uiSref="app.admin.security.rootCertificate"
        uiSrefActive="selected">Root Certificate</a>
     <a
-       [hidden]="!(isEnterprise | async) || !(atLeast50 | async) || !(securityRead | async)"
+       [hidden]="!(isEnterprise | async) || !(securityRead | async)"
        uiSref="app.admin.security.clientCert"
        uiSrefActive="selected">Client Certificate</a>
     <a
@@ -20,7 +20,7 @@
        uiSref="app.admin.security.audit"
        uiSrefActive="selected">Audit</a>
     <a
-       [hidden]="!(isEnterprise | async) || !(atLeast55 | async) || !(securityRead | async)"
+       [hidden]="!(isEnterprise | async) || !(compatVersion55 | async) || !(securityRead | async)"
        uiSref="app.admin.security.logRedaction"
        uiSrefActive="selected">Log Redaction</a>
     <a

@@ -85,14 +85,14 @@
     <button
        class="outline btn-small"
        title="Add a prefix"
-       [hidden]="!(atLeast51 | async)"
+       [hidden]="!(compatVersion51 | async)"
        [disabled]="(maybeDisableControls | async)"
        (click)="addItem({delimiter: '', prefix: '', path: 'subject.cn'});"
        type="button">+</button>
     &nbsp;
     <button
        class="outline btn-small"
-       [hidden]="!(atLeast51 | async)"
+       [hidden]="!(compatVersion51 | async)"
        [disabled]="(maybeDisableControls | async) || (isLastPrefix | async)"
        title="Remove a prefix"
        (click)="removeField()"

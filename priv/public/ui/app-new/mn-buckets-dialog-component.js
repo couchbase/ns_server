@@ -56,7 +56,7 @@ mn.components.MnBucketsDialog =
       this.bucketsDialogForm = bucketsDialogForm;
       this.bucketsDialogHelperForm = bucketsDialogHelperForm;
       this.bucketHttp = mnBucketsService.stream.bucketHttp;
-      this.compatVersion = mnAdminService.stream.compatVersion;
+      this.compatVersion55 = mnAdminService.stream.compatVersion55;
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
 
       var ramSummary =
@@ -93,7 +93,7 @@ mn.components.MnBucketsDialog =
         Rx.operators.map(bucketsDialogForm.getRawValue.bind(bucketsDialogForm)),
         Rx.operators.withLatestFrom(
           mnPoolsService.stream.isEnterprise,
-          mnAdminService.stream.compatVersion
+          mnAdminService.stream.compatVersion55
         ),
         Rx.operators.debounceTime(0) //wait until all values are setted and stabilized
       ).subscribe(validateBucketForm.bind(this));
@@ -118,7 +118,7 @@ mn.components.MnBucketsDialog =
         Rx.operators.map(bucketsDialogForm.getRawValue.bind(bucketsDialogForm)),
         Rx.operators.withLatestFrom(
           mnPoolsService.stream.isEnterprise,
-          mnAdminService.stream.compatVersion
+          mnAdminService.stream.compatVersion55
         ),
         Rx.operators.takeUntil(this.mnOnDestroy)
       ).subscribe(saveAutoCompaction.bind(this));

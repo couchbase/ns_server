@@ -65,13 +65,11 @@
            id="for-bucket-type-memcached">
         <label for="for-bucket-type-memcached">Memcached</label>
         <input
-           [hidden]="!(compatVersion | async)?.atLeast50"
            type="radio"
            value="ephemeral"
            formControlName="bucketType"
            id="for-bucket-type-ephemeral">
         <label
-           [hidden]="!(compatVersion | async)?.atLeast50"
            for="for-bucket-type-ephemeral">Ephemeral</label>
       </div>
 
@@ -133,7 +131,7 @@
         <div
            class="formrow"
            [hidden]="!((isEnterprise | async) &&
-                     (compatVersion | async)?.atLeast55 &&
+                     (compatVersion55 | async) &&
                      ((bucketsDialogForm | mnIsMembase) ||
                      (bucketsDialogForm | mnIsEphemeral)))">
           <label class="inline">Bucket Max Time-To-Live</label>
@@ -188,7 +186,7 @@
         <div
            class="formrow"
            [hidden]="!((isEnterprise | async) &&
-                     (compatVersion | async)?.atLeast55 &&
+                     (compatVersion55 | async) &&
                      ((bucketsDialogForm | mnIsMembase) ||
                      (bucketsDialogForm | mnIsEphemeral)))">
           <label class="inline">Compression Mode</label>
@@ -228,7 +226,6 @@
         </div>
 
         <div [hidden]="!((isEnterprise | async) &&
-                       (compatVersion | async)?.atLeast46 &&
                        ((bucketsDialogForm | mnIsMembase) ||
                        (bucketsDialogForm | mnIsEphemeral)))">
           <label class="inline">Conflict Resolution</label>
