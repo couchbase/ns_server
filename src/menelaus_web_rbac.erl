@@ -1610,7 +1610,7 @@ group_to_json(GroupId, Props) ->
 
 handle_ldap_settings(Req) ->
     assert_groups_and_ldap_enabled(),
-    Settings = ldap_auth:build_settings(),
+    Settings = ldap_util:build_settings(),
     menelaus_util:reply_json(Req, {prepare_ldap_settings(Settings)}).
 
 prepare_ldap_settings(Settings) ->
@@ -1647,12 +1647,12 @@ handle_ldap_settings_post(Req) ->
               NewProps = build_new_ldap_settings(Props),
               ?log_debug("Saving ldap settings: ~p", [Props]),
               ns_audit:ldap_settings(Req, prepare_ldap_settings(NewProps)),
-              ldap_auth:set_settings(NewProps),
+              ldap_util:set_settings(NewProps),
               handle_ldap_settings(Req)
       end, Req, form, ldap_settings_validators()).
 
 build_new_ldap_settings(Props) ->
-    misc:update_proplist(ldap_auth:build_settings(), Props).
+    misc:update_proplist(ldap_util:build_settings(), Props).
 
 handle_ldap_settings_validate_post(Type, Req) when Type =:= "connectivity";
                                                    Type =:= "authentication";
@@ -1669,7 +1669,7 @@ handle_ldap_settings_validate_post(_Type, Req) ->
     menelaus_util:reply_json(Req, <<"Unknown validation type">>, 404).
 
 validate_ldap_settings("connectivity", Settings) ->
-    case ldap_auth:with_connection(Settings, fun (_) -> ok end) of
+    case ldap_util:with_connection(Settings, fun (_) -> ok end) of
         ok ->
             [{result, success}];
         {error, Error} ->
@@ -1758,7 +1758,7 @@ parse_user_dn_mapping_record([{<<"re">>, Re}, {<<"template">>, Template}]) ->
 parse_user_dn_mapping_record([{<<"query">>, QueryTempl}, {<<"re">>, Re}]) ->
     Query = re:replace(QueryTempl, "\\{\\d+\\}", "placeholder",
                        [{return, list}, global]),
-    case ldap_auth:parse_url("ldap:///" ++ Query) of
+    case ldap_util:parse_url("ldap:///" ++ Query) of
         {ok, _} -> ok;
         {error, Reason} ->
             throw({error, io_lib:format(
@@ -1801,7 +1801,7 @@ validate_ldap_dn(Name, State) ->
 validate_ldap_groups_query(Name, State) ->
     validator:validate(
       fun (Query) ->
-              case ldap_auth:parse_url("ldap:///" ++ Query) of
+              case ldap_util:parse_url("ldap:///" ++ Query) of
                   {ok, URLProps} ->
                       case proplists:get_value(attributes, URLProps, []) of
                           [] ->

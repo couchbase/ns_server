@@ -3,32 +3,26 @@
 -include("ns_common.hrl").
 
 -include_lib("eldap/include/eldap.hrl").
--include_lib("eunit/include/eunit.hrl").
 -include("cut.hrl").
 
--export([with_connection/2,
-         authenticate/2,
+-export([authenticate/2,
          authenticate/3,
-         build_settings/0,
-         set_settings/1,
          user_groups/1,
          user_groups/2,
-         get_setting/2,
-         parse_url/1,
          format_error/1]).
 
 -define(DEFAULT_TIMEOUT, 5000).
 
 authenticate(Username, Password) ->
-    authenticate(Username, Password, build_settings()).
+    authenticate(Username, Password, ldap_util:build_settings()).
 
 authenticate(Username, Password, Settings) ->
     case proplists:get_value(authentication_enabled, Settings, false) of
         true ->
             case get_user_DN(Username, Settings) of
                 {ok, DN} ->
-                    case with_authenticated_connection(DN, Password, Settings,
-                                                       fun (_) -> ok end) of
+                    case ldap_util:with_authenticated_connection(
+                           DN, Password, Settings, fun (_) -> ok end) of
                         ok -> true;
                         {error, _} -> false
                     end;
@@ -39,58 +33,10 @@ authenticate(Username, Password, Settings) ->
             false
     end.
 
-with_connection(Settings, Fun) ->
-    Hosts = proplists:get_value(hosts, Settings, []),
-    Port = proplists:get_value(port, Settings, 389),
-    Timeout = proplists:get_value(request_timeout, Settings, ?DEFAULT_TIMEOUT),
-    Encryption = proplists:get_value(encryption, Settings, tls),
-    SSL = Encryption == ssl,
-    %% Note: timeout option sets not only connect timeout but a timeout for any
-    %%       request to ldap server
-    case eldap:open(Hosts, [{port, Port}, {ssl, SSL}, {timeout, Timeout}]) of
-        {ok, Handle} ->
-            ?log_debug("Connected to LDAP server"),
-            try
-                %% The upgrade is done in two phases: first the server is asked
-                %% for permission to upgrade. Second, if the request is
-                %% acknowledged, the upgrade to tls is performed.
-                %% The Timeout parameter is for the actual tls upgrade (phase 2)
-                %% while the timeout in eldap:open/2 is used for the initial
-                %% negotiation about upgrade (phase 1).
-                case Encryption == tls andalso
-                     eldap:start_tls(Handle, [], Timeout) of
-                    Res when Res == ok; Res == false ->
-                        Fun(Handle);
-                    {error, Reason} ->
-                        ?log_error("LDAP TLS start failed: ~p", [Reason]),
-                        {error, {start_tls_failed, Reason}}
-                end
-            after
-                eldap:close(Handle)
-            end;
-        {error, Reason} ->
-            ?log_error("Connect to ldap {~p, ~p, ~p} failed: ~p",
-                       [Hosts, Port, SSL, Reason]),
-            {error, {connect_failed, Reason}}
-    end.
-
 with_query_connection(Settings, Fun) ->
     DN = proplists:get_value(query_dn, Settings, undefined),
     Pass = proplists:get_value(query_pass, Settings, undefined),
-    with_authenticated_connection(DN, Pass, Settings, Fun).
-
-with_authenticated_connection(DN, Password, Settings, Fun) ->
-    with_connection(Settings,
-                    fun (Handle) ->
-                            PasswordBin = iolist_to_binary(Password),
-                            Bind = eldap:simple_bind(Handle, DN, PasswordBin),
-                            ?log_debug("Bind for dn ~p: ~p",
-                                       [ns_config_log:tag_user_name(DN), Bind]),
-                            case Bind of
-                                ok -> Fun(Handle);
-                                _ -> {error, {bind_failed, Bind}}
-                            end
-                    end).
+    ldap_util:with_authenticated_connection(DN, Pass, Settings, Fun).
 
 get_user_DN(Username, Settings) ->
     Map = proplists:get_value(user_dn_mapping, Settings, []),
@@ -112,7 +58,7 @@ map_user_to_DN(Username, Settings, [{Re, {Type, Template}}|T]) ->
         nomatch -> map_user_to_DN(Username, Settings, T);
         {match, Captured} ->
             ReplaceRe = ?cut(lists:flatten(io_lib:format("\\{~b\\}", [_]))),
-            Subs = [{ReplaceRe(N), escape(S)} ||
+            Subs = [{ReplaceRe(N), ldap_util:escape(S)} ||
                         {N, S} <- misc:enumerate(Captured, 0)],
             [Res] = replace_expressions([Template], Subs),
             case Type of
@@ -130,12 +76,13 @@ dn_query(Query, Settings) ->
       end).
 
 dn_query(Handle, Query, Timeout) ->
-    case parse_url("ldap:///" ++ Query) of
+    case ldap_util:parse_url("ldap:///" ++ Query) of
         {ok, URLProps} ->
             Base = proplists:get_value(dn, URLProps, ""),
             Scope = proplists:get_value(scope, URLProps, "one"),
             Filter = proplists:get_value(filter, URLProps, "(objectClass=*)"),
-            case search(Handle, Base, ["objectClass"], Scope, Filter, Timeout) of
+            case ldap_util:search(Handle, Base, ["objectClass"], Scope, Filter,
+                                  Timeout) of
                 {ok, [#eldap_entry{object_name = DN}]} -> {ok, DN};
                 {ok, []} -> {error, dn_not_found};
                 {ok, [_|_]} -> {error, not_unique_username};
@@ -145,22 +92,8 @@ dn_query(Handle, Query, Timeout) ->
             {error, {ldap_url_parse_error, Query, Error}}
     end.
 
-build_settings() ->
-    case ns_config:search(ldap_settings) of
-        {value, Settings} ->
-            Settings;
-        false ->
-            []
-    end.
-
-set_settings(Settings) ->
-    ns_config:set(ldap_settings, Settings).
-
-get_setting(Prop, Default) ->
-    ns_config:search_prop(ns_config:latest(), ldap_settings, Prop, Default).
-
 user_groups(User) ->
-    user_groups(User, build_settings()).
+    user_groups(User, ldap_util:build_settings()).
 user_groups(User, Settings) ->
     with_query_connection(
       Settings,
@@ -175,8 +108,8 @@ get_groups(Handle, Username, Settings, {user_attributes, _, AttrName}) ->
     Timeout = proplists:get_value(request_timeout, Settings, ?DEFAULT_TIMEOUT),
     case get_user_DN(Username, Settings) of
         {ok, DN} ->
-            case search(Handle, DN, [AttrName], "base",
-                        "(objectClass=*)", Timeout) of
+            case ldap_util:search(Handle, DN, [AttrName], "base",
+                                  "(objectClass=*)", Timeout) of
                 {ok, [#eldap_entry{attributes = Attrs}]} ->
                     AttrsLower = [{string:to_lower(K), V} || {K, V} <- Attrs],
                     Groups = proplists:get_value(string:to_lower(AttrName),
@@ -200,14 +133,15 @@ get_groups(Handle, Username, Settings, {user_filter, _, Base, Scope, Filter}) ->
                 end
         end,
     try
-        [Base2, Filter2] = replace_expressions([Base, Filter],
-                                               [{"%u", escape(Username)},
-                                                {"%D", DNFun}]),
+        [Base2, Filter2] = replace_expressions(
+                             [Base, Filter],
+                             [{"%u", ldap_util:escape(Username)},
+                              {"%D", DNFun}]),
         Timeout = proplists:get_value(request_timeout, Settings,
                                       ?DEFAULT_TIMEOUT),
         Entries =
-            case search(Handle, Base2, ["objectClass"], Scope, Filter2,
-                        Timeout) of
+            case ldap_util:search(Handle, Base2, ["objectClass"], Scope,
+                                  Filter2, Timeout) of
                 {ok, L} -> L;
                 {error, Reason} -> throw({error, {ldap_search_failed, Reason}})
             end,
@@ -243,97 +177,6 @@ replace([Str | Tail], Re, Value, Res) ->
     ResStr = re:replace(Str, Re, Value2, [global, {return, list}]),
     replace(Tail, Re, Value, [ResStr | Res]).
 
-parse_scope("base") -> eldap:baseObject();
-parse_scope("one") -> eldap:singleLevel();
-parse_scope("sub") -> eldap:wholeSubtree().
-
-search(Handle, Base, Attributes, Scope, Filter, Timeout) ->
-    case ldap_filter_parser:parse(Filter) of
-        {ok, EldapFilter} ->
-            %% The timeout option in the SearchOptions is for the ldap server,
-            %% while the timeout in eldap:open/2 is used for each individual
-            %% request in the search operation
-            SearchProps = [{base, Base}, {attributes, Attributes},
-                           {scope, parse_scope(Scope)}, {filter, EldapFilter},
-                           {timeout, Timeout}],
-            eldap_search(Handle, SearchProps);
-        {error, E} ->
-            {error, {invalid_filter, Filter, E}}
-    end.
-
-eldap_search(Handle, SearchProps) ->
-    case eldap:search(Handle, SearchProps) of
-        {ok, #eldap_search_result{
-                entries = Entries,
-                referrals = Refs}} ->
-            Refs == [] orelse ?log_error("LDAP search continuations are not "
-                                         "supported yet, ignoring: ~p", [Refs]),
-            ?log_debug("LDAP search res ~p: ~p", [SearchProps, Entries]),
-            {ok, Entries};
-        {ok, {referral, Refs}} ->
-            ?log_error("LDAP referrals are not supported yet, ignoring: ~p",
-                       [Refs]),
-            {ok, []};
-        {error, Reason} ->
-            ?log_error("LDAP search failed ~p: ~p", [SearchProps, Reason]),
-            {error, Reason}
-    end.
-
-%% RFC4516 ldap url parsing
-parse_url(Str) ->
-    SchemeValidator = fun (S) ->
-                              case string:to_lower(S) of
-                                  "ldap" -> valid;
-                                  _ -> {error, {invalid_scheme, S}}
-                              end
-                      end,
-    try
-        {Scheme, _UserInfo, Host, Port, "/" ++ EncodedDN, Query} =
-            case http_uri:parse(Str, [{scheme_defaults, [{ldap, 389}]},
-                                 {scheme_validation_fun, SchemeValidator}]) of
-                {ok, R} -> R;
-                {error, _} -> throw({error, malformed_url})
-            end,
-
-        [[], AttrsStr, Scope, FilterEncoded, Extensions | _] =
-            string:split(Query ++ "?????", "?", all),
-        Attrs = [mochiweb_util:unquote(A) || A <- string:tokens(AttrsStr, ",")],
-
-        DN = mochiweb_util:unquote(EncodedDN),
-        case eldap:parse_dn(DN) of
-            {ok, _} -> ok;
-            {parse_error, _, _} -> throw({error, {invalid_dn, DN}})
-        end,
-
-        ScopeLower = string:to_lower(Scope),
-        try
-            ScopeLower =:= "" orelse parse_scope(ScopeLower)
-        catch
-            _:_ -> throw({error, {invalid_scope, Scope}})
-        end,
-
-        Filter = mochiweb_util:unquote(FilterEncoded),
-        case Filter =:= "" orelse ldap_filter_parser:parse(Filter) of
-            true -> ok;
-            {ok, _} -> ok;
-            {error, Reason2} ->
-                throw({error, {invalid_filter, Filter, Reason2}})
-        end,
-
-        {ok,
-         [{scheme, Scheme}] ++
-         [{host, Host} || Host =/= ""] ++
-         [{port, Port}] ++
-         [{dn, DN} || DN =/= ""] ++
-         [{attributes, Attrs} || Attrs =/= []] ++
-         [{scope, ScopeLower} || ScopeLower =/= ""] ++
-         [{filter, Filter} || Filter =/= ""] ++
-         [{extensions, Extensions} || Extensions =/= ""]
-        }
-    catch
-        throw:{error, _} = Error -> Error
-    end.
-
 format_error({ldap_search_failed, Reason}) ->
     io_lib:format("LDAP search returned error: ~s", [format_error(Reason)]);
 format_error({connect_failed, _}) ->
@@ -364,109 +207,3 @@ format_error({invalid_scope, Scope}) ->
                   "base or sub", [Scope]);
 format_error(Error) ->
     io_lib:format("~p", [Error]).
-
-
--define(ALLOWED_CHARS, "abcdefghijklmnopqrstuvwxyz"
-                       "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                       "0123456789=: ").
-
-%% Escapes any special chars (RFC 4515) from a string representing a
-%% a search filter assertion value
-%% Based on https://ldap.com/2018/05/04/understanding-and-defending-against-ldap-injection-attacks/
-escape(Input) ->
-    Characters = unicode:characters_to_list(iolist_to_binary(Input)),
-    S = lists:map(
-          fun (C) ->
-                  case lists:member(C, ?ALLOWED_CHARS) of
-                      true -> C;
-                      false ->
-                          Hex = misc:hexify(unicode:characters_to_binary([C])),
-                          [[$\\, H, L] || <<H:8, L:8>> <= Hex]
-                  end
-          end, Characters),
-
-    FlatStr = lists:flatten(S),
-
-    %% If a value has any leading or trailing spaces, then you should escape
-    %% those spaces by prefixing them with a backslash or as \20. Spaces in
-    %% the middle of a value don’t need to be escaped.
-    {Trail, Rest} = lists:splitwith(_ =:= $\s, lists:reverse(FlatStr)),
-    {Lead, Rest2} = lists:splitwith(_ =:= $\s, lists:reverse(Rest)),
-    lists:flatten(["\\20" || _ <- Lead] ++ Rest2 ++ ["\\20" || _ <- Trail]).
-
--ifdef(EUNIT).
-
-escape_test() ->
-%% Examples from RFC 4515
-    ?assertEqual("Parens R Us \\28for all your parenthetical needs\\29",
-                 escape("Parens R Us (for all your parenthetical needs)")),
-    ?assertEqual("\\2a", escape("*")),
-    ?assertEqual("C:\\5cMyFile", escape("C:\\MyFile")),
-    ?assertEqual("\\00\\00\\00\\04", escape([16#00, 16#00, 16#00, 16#04])),
-    ?assertEqual("Lu\\c4\\8di\\c4\\87", escape(<<"Lučić"/utf8>>)).
-
-parse_url_test_() ->
-    Parse = fun (S) -> {ok, R} = parse_url(S), R end,
-    [
-        ?_assertEqual([{scheme, ldap}, {port, 389}], Parse("ldap://")),
-        ?_assertEqual([{scheme, ldap}, {host, "127.0.0.1"}, {port, 389}],
-                      Parse("ldap://127.0.0.1")),
-        ?_assertEqual([{scheme, ldap}, {host, "127.0.0.1"}, {port, 636}],
-                      Parse("ldap://127.0.0.1:636")),
-        ?_assertEqual([{scheme, ldap}, {host, "127.0.0.1"}, {port, 636},
-                       {dn,"uid=al,ou=users,dc=example"}],
-                      Parse("ldap://127.0.0.1:636"
-                            "/uid%3Dal%2Cou%3Dusers%2Cdc%3Dexample")),
-        ?_assertEqual([{scheme, ldap}, {host, "127.0.0.1"}, {port, 636},
-                       {dn,"uid=al,ou=users,dc=example"}],
-                      Parse("ldap://127.0.0.1:636"
-                            "/uid%3Dal%2Cou%3Dusers%2Cdc%3Dexample")),
-        ?_assertEqual([{scheme, ldap}, {host, "127.0.0.1"}, {port, 636},
-                       {dn,"uid=al,ou=users,dc=example"},
-                       {attributes, ["attr1", "attr2"]}],
-                      Parse("ldap://127.0.0.1:636"
-                            "/uid%3Dal%2Cou%3Dusers%2Cdc%3Dexample"
-                            "?attr1,attr2")),
-        ?_assertEqual([{scheme, ldap}, {host, "127.0.0.1"}, {port, 636},
-                       {dn,"uid=al,ou=users,dc=example"},
-                       {attributes, ["attr1", "attr2"]},
-                       {scope, "base"},
-                       {filter, "(!(&(uid=%u)(email=%u@%d)))"}],
-                      Parse("ldap://127.0.0.1:636"
-                            "/uid%3Dal%2Cou%3Dusers%2Cdc%3Dexample?attr1,attr2"
-                            "?base?%28%21%28%26%28uid%3D%25u%29%28"
-                            "email%3D%25u%40%25d%29%29%29")),
-
-%% Tests from RFC4516 examples:
-        ?_assertEqual([{scheme, ldap}, {port, 389},
-                       {dn, "o=University of Michigan,c=US"}],
-                      Parse("ldap:///o=University%20of%20Michigan,c=US")),
-        ?_assertEqual([{scheme, ldap}, {host, "ldap1.example.net"}, {port, 389},
-                       {dn, "o=University of Michigan,c=US"}],
-                      Parse("ldap://ldap1.example.net"
-                            "/o=University%20of%20Michigan,c=US")),
-        ?_assertEqual([{scheme, ldap}, {host, "ldap1.example.net"}, {port, 389},
-                       {dn, "o=University of Michigan,c=US"},
-                       {scope, "sub"}, {filter, "(cn=Babs Jensen)"}],
-                      Parse("ldap://ldap1.example.net/o=University%20of%2"
-                             "0Michigan,c=US??sub?(cn=Babs%20Jensen)")),
-        ?_assertEqual([{scheme, ldap}, {host, "ldap1.example.com"}, {port, 389},
-                       {dn, "c=GB"}, {attributes, ["objectClass"]},
-                       {scope, "one"}],
-                      Parse("LDAP://ldap1.example.com/c=GB?objectClass?ONE")),
-        ?_assertEqual([{scheme, ldap}, {host, "ldap2.example.com"}, {port, 389},
-                       {dn, "o=Question?,c=US"}, {attributes, ["mail"]}],
-                      Parse("ldap://ldap2.example.com"
-                            "/o=Question%3f,c=US?mail")),
-        ?_assertEqual([{scheme, ldap}, {host, "ldap3.example.com"}, {port, 389},
-                       {dn, "o=Babsco,c=US"},
-                       {filter, "(four-octet=\\00\\00\\00\\04)"}],
-                      Parse("ldap://ldap3.example.com/o=Babsco,c=US"
-                            "???(four-octet=%5c00%5c00%5c00%5c04)")),
-        ?_assertEqual([{scheme, ldap}, {host, "ldap.example.com"}, {port, 389},
-                       {dn, "o=An Example\\2C Inc.,c=US"}],
-                      Parse("ldap://ldap.example.com"
-                            "/o=An%20Example%5C2C%20Inc.,c=US"))
-    ].
-
--endif.

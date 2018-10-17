@@ -58,7 +58,7 @@ translate_options(_) -> opts().
 %%%===================================================================
 
 opts() ->
-    Get = fun (K, D) -> ldap_auth:get_setting(K, D) end,
+    Get = fun (K, D) -> ldap_util:get_setting(K, D) end,
     PollingInterval = menelaus_roles:external_auth_polling_interval(),
     [{renew_interval, infinity},
      {max_size, Get(max_cache_size, ?DEFAULT_MAX_CACHE_SIZE)},
