@@ -26,10 +26,10 @@ authenticate(Username, Pass) ->
     Fun = fun () -> ldap_auth:authenticate(Username, Pass) end,
     active_cache:get_value(?MODULE, Key, Fun).
 
-user_groups(User) ->
-    Key = {groups, User},
+user_groups(Username) ->
+    Key = {groups, Username},
     Fun = fun () ->
-                  case ldap_auth:user_groups(User) of
+                  case ldap_auth:user_groups(Username) of
                       {ok, L} -> L;
                       {error, Reason} -> erlang:error(Reason)
                   end

@@ -74,6 +74,11 @@ with_connection(Settings, Fun) ->
             {error, {connect_failed, Reason}}
     end.
 
+with_query_connection(Settings, Fun) ->
+    DN = proplists:get_value(query_dn, Settings, undefined),
+    Pass = proplists:get_value(query_pass, Settings, undefined),
+    with_authenticated_connection(DN, Pass, Settings, Fun).
+
 with_authenticated_connection(DN, Password, Settings, Fun) ->
     with_connection(Settings,
                     fun (Handle) ->
@@ -117,11 +122,9 @@ map_user_to_DN(Username, Settings, [{Re, {Type, Template}}|T]) ->
     end.
 
 dn_query(Query, Settings) ->
-    QueryDN = proplists:get_value(query_dn, Settings, undefined),
-    QueryPass = proplists:get_value(query_pass, Settings, undefined),
     Timeout = proplists:get_value(request_timeout, Settings, ?DEFAULT_TIMEOUT),
-    with_authenticated_connection(
-      QueryDN, QueryPass, Settings,
+    with_query_connection(
+      Settings,
       fun (Handle) ->
               dn_query(Handle, Query, Timeout)
       end).
@@ -159,10 +162,8 @@ get_setting(Prop, Default) ->
 user_groups(User) ->
     user_groups(User, build_settings()).
 user_groups(User, Settings) ->
-    QueryDN = proplists:get_value(query_dn, Settings, undefined),
-    QueryPass = proplists:get_value(query_pass, Settings, undefined),
-    with_authenticated_connection(
-      QueryDN, QueryPass, Settings,
+    with_query_connection(
+      Settings,
       fun (Handle) ->
               Query = proplists:get_value(groups_query, Settings, undefined),
               get_groups(Handle, User, Settings, Query)
