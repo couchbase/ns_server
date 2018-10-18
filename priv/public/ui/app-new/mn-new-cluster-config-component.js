@@ -46,7 +46,7 @@ mn.components.MnNewClusterConfig =
       this.initialValues = mnWizardService.initialValues;
 
       this.isButtonDisabled =
-        mnAdminService.stream.poolsDefaultHttp.error.pipe(
+        mnAdminService.stream.postPoolsDefault.error.pipe(
           Rx.operators.map(function (error) {
             return error && !_.isEmpty(error.errors);
           })
@@ -96,7 +96,7 @@ mn.components.MnNewClusterConfig =
 
       function getWizardValues(isEnterprise) {
         return {
-          poolsDefaultHttp: [
+          postPoolsDefault: [
             getPoolsDefaultValues.bind(this)(isEnterprise[1]),
             false
           ],

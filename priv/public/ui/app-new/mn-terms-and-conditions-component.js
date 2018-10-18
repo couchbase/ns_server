@@ -138,7 +138,7 @@ mn.components.MnTermsAndConditions =
 
       function getValues(isEnterprise) {
         return {
-          poolsDefaultHttp: [{
+          postPoolsDefault: [{
             clusterName: this.wizardForm.newCluster.get("clusterName").value
           }, false],
           servicesHttp: {

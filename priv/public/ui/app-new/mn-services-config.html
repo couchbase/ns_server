@@ -1,8 +1,8 @@
 <div [formGroup]="group">
   <div
      class="error"
-     [hidden]="!(poolsDefaultHttp.error | async)?.errors._">
-    {{(poolsDefaultHttp.error | async)?.errors._}}
+     [hidden]="!(postPoolsDefault.error | async)?.errors._">
+    {{(postPoolsDefault.error | async)?.errors._}}
   </div>
 
   <div *ngFor="let service of allServices">
@@ -52,8 +52,8 @@
 
     <div
        class="error"
-       [hidden]="!(poolsDefaultHttp.error | async)?.errors[getServiceErrorName(service)]">
-      {{(poolsDefaultHttp.error | async)?.errors[getServiceErrorName(service)]}}
+       [hidden]="!(postPoolsDefault.error | async)?.errors[getServiceErrorName(service)]">
+      {{(postPoolsDefault.error | async)?.errors[getServiceErrorName(service)]}}
     </div>
   </div>
 </div>

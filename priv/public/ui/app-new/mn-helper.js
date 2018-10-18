@@ -122,8 +122,7 @@ mn.services.MnHelper = (function (Rx) {
     return Rx.pipe(
       Rx.operators.map(R.pipe(R.path(["clusterCompatibility"]),
                               R.flip(R.gte)(version))),
-      Rx.operators.distinctUntilChanged()
-    );
+      Rx.operators.distinctUntilChanged());
   }
 
   function sortByStream(sortByStream) {

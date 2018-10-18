@@ -39,7 +39,7 @@ mn.components.MnServicesConfig =
 
     function MnServicesConfig(mnHelperService, mnAdminService, mnPoolsService) {
       mn.core.MnEventableComponent.call(this);
-      this.poolsDefaultHttp = mnAdminService.stream.poolsDefaultHttp;
+      this.postPoolsDefault = mnAdminService.stream.postPoolsDefault;
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
       this.quotaServices = mnHelperService.quotaServices;
       this.allServices = mnHelperService.services;
@@ -86,7 +86,7 @@ mn.components.MnServicesConfig =
     }
 
     function validate() {
-      this.poolsDefaultHttp.post([
+      this.postPoolsDefault.post([
         this.quotaServices.reduce(this.packQuotas.bind(this), {}), true]);
     }
 

@@ -172,7 +172,7 @@ mn.services.MnWizard = (function (Rx) {
 
     this.stream.groupHttp =
       new mn.core.MnPostGroupHttp({
-        poolsDefaultHttp: mnAdminService.stream.poolsDefaultHttp,
+        postPoolsDefault: mnAdminService.stream.postPoolsDefault,
         servicesHttp: this.stream.servicesHttp,
         diskStorageHttp: this.stream.diskStorageHttp,
         hostnameHttp: this.stream.hostnameHttp,
