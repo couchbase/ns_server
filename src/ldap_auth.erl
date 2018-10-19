@@ -5,14 +5,25 @@
 -include_lib("eldap/include/eldap.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
--export([authenticate/2, build_settings/0, set_settings/1, user_groups/1,
-         get_setting/2, parse_url/1]).
+-export([with_connection/2,
+         authenticate/2,
+         authenticate/3,
+         build_settings/0,
+         set_settings/1,
+         user_groups/1,
+         user_groups/2,
+         get_setting/2,
+         parse_url/1]).
 
 authenticate(Username, Password) ->
-    case get_setting(authentication_enabled, false) of
+    authenticate(Username, Password, build_settings()).
+
+authenticate(Username, Password, Settings) ->
+    case proplists:get_value(authentication_enabled, Settings, false) of
         true ->
-            DN = get_user_DN(Username),
-            case with_connection(DN, Password, fun (_) -> ok end) of
+            DN = get_user_DN(Username, Settings),
+            case with_authenticated_connection(DN, Password, Settings,
+                                               fun (_) -> ok end) of
                 ok -> true;
                 {error, _} -> false
             end;
@@ -21,10 +32,10 @@ authenticate(Username, Password) ->
             false
     end.
 
-with_connection(DN, Password, Fun) ->
-    Hosts = get_setting(hosts, []),
-    Port = get_setting(port, 389),
-    Encryption = get_setting(encryption, tls),
+with_connection(Settings, Fun) ->
+    Hosts = proplists:get_value(hosts, Settings, []),
+    Port = proplists:get_value(port, Settings, 389),
+    Encryption = proplists:get_value(encryption, Settings, tls),
     SSL = Encryption == ssl,
     case eldap:open(Hosts, [{port, Port}, {ssl, SSL}, {timeout, 1000}]) of
         {ok, Handle} ->
@@ -32,13 +43,7 @@ with_connection(DN, Password, Fun) ->
             try
                 case Encryption == tls andalso eldap:start_tls(Handle, []) of
                     Res when Res == ok; Res == false ->
-                        Bind = eldap:simple_bind(Handle, DN, Password),
-                        ?log_debug("Bind for dn ~p: ~p",
-                                   [ns_config_log:tag_user_name(DN), Bind]),
-                        case Bind of
-                            ok -> Fun(Handle);
-                            _ -> {error, {bind_failed, Bind}}
-                        end;
+                        Fun(Handle);
                     {error, Reason} ->
                         ?log_error("LDAP TLS start failed: ~p", [Reason]),
                         {error, {start_tls_failed, Reason}}
@@ -52,8 +57,20 @@ with_connection(DN, Password, Fun) ->
             {error, {connect_failed, Reason}}
     end.
 
-get_user_DN(Username) ->
-    Template = get_setting(user_dn_template, "%u"),
+with_authenticated_connection(DN, Password, Settings, Fun) ->
+    with_connection(Settings,
+                    fun (Handle) ->
+                            Bind = eldap:simple_bind(Handle, DN, Password),
+                            ?log_debug("Bind for dn ~p: ~p",
+                                       [ns_config_log:tag_user_name(DN), Bind]),
+                            case Bind of
+                                ok -> Fun(Handle);
+                                _ -> {error, {bind_failed, Bind}}
+                            end
+                    end).
+
+get_user_DN(Username, Settings) ->
+    Template = proplists:get_value(user_dn_template, Settings, "%u"),
     DN = re:replace(Template, "%u", Username, [{return,list}]),
     ?log_debug("Built LDAP DN ~p by username ~p",
                [ns_config_log:tag_user_name(DN),
@@ -75,17 +92,21 @@ get_setting(Prop, Default) ->
     ns_config:search_prop(ns_config:latest(), ldap_settings, Prop, Default).
 
 user_groups(User) ->
-    QueryDN = get_setting(query_dn, undefined),
-    QueryPass = get_setting(query_pass, undefined),
-    with_connection(QueryDN, QueryPass,
-        fun (Handle) ->
-            get_groups(Handle, User, get_setting(groups_query, undefined))
-        end).
+    user_groups(User, build_settings()).
+user_groups(User, Settings) ->
+    QueryDN = proplists:get_value(query_dn, Settings, undefined),
+    QueryPass = proplists:get_value(query_pass, Settings, undefined),
+    with_authenticated_connection(
+      QueryDN, QueryPass, Settings,
+      fun (Handle) ->
+              Query = proplists:get_value(groups_query, Settings, undefined),
+              get_groups(Handle, User, Settings, Query)
+      end).
 
-get_groups(_Handle, _Username, undefined) ->
+get_groups(_Handle, _Username, _Settings, undefined) ->
     {ok, []};
-get_groups(Handle, Username, {user_attributes, _, AttrName}) ->
-    case search(Handle, get_user_DN(Username), [AttrName],
+get_groups(Handle, Username, Settings, {user_attributes, _, AttrName}) ->
+    case search(Handle, get_user_DN(Username, Settings), [AttrName],
                 eldap:baseObject(), eldap:present("objectClass")) of
         {ok, [#eldap_entry{attributes = Attrs}]} ->
             Groups = proplists:get_value(AttrName, Attrs, []),
@@ -95,8 +116,8 @@ get_groups(Handle, Username, {user_attributes, _, AttrName}) ->
         {error, Reason} ->
             {error, {ldap_search_failed, Reason}}
     end;
-get_groups(Handle, Username, {user_filter, _, Base, Scope, Filter}) ->
-    DNFun = fun () -> get_user_DN(Username) end,
+get_groups(Handle, Username, Settings, {user_filter, _, Base, Scope, Filter}) ->
+    DNFun = fun () -> get_user_DN(Username, Settings) end,
     [Base2, Filter2] = replace_expressions([Base, Filter], [{"%u", Username},
                                                             {"%D", DNFun}]),
     {ok, FilterEldap} = ldap_filter_parser:parse(Filter2),
