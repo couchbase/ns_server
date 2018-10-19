@@ -509,6 +509,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "ldapSettings"] ->
                     {{[admin, security], write},
                      fun menelaus_web_rbac:handle_ldap_settings_post/1};
+                ["settings", "ldapSettings", "validate", Type] ->
+                    {{[admin, security], write},
+                     fun menelaus_web_rbac:handle_ldap_settings_validate_post/2,
+                     [Type]};
                 ["settings", "clientCertAuth"] ->
                     {{[admin, security], write},
                      fun menelaus_web_cert:handle_client_cert_auth_settings_post/1};

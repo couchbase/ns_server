@@ -13,7 +13,8 @@
          user_groups/1,
          user_groups/2,
          get_setting/2,
-         parse_url/1]).
+         parse_url/1,
+         format_error/1]).
 
 authenticate(Username, Password) ->
     authenticate(Username, Password, build_settings()).
@@ -216,6 +217,15 @@ parse_url(Str) ->
     catch
         throw:{error, _} = Error -> Error
     end.
+
+format_error({ldap_search_failed, Reason}) ->
+    io_lib:format("LDAP search returned error: ~p", [Reason]);
+format_error({connect_failed, _}) ->
+    "Connot connect to the server";
+format_error({start_tls_failed, _}) ->
+    "Failed to use StartTLS extension";
+format_error(Error) ->
+    io_lib:format("~p", [Error]).
 
 parse_url_test_() ->
     Parse = fun (S) -> {ok, R} = parse_url(S), R end,
