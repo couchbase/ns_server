@@ -13,7 +13,7 @@ mn.services.MnAuth = (function () {
   ];
 
   MnAuthService.prototype.login = login;
-  MnAuthService.prototype.logout = logout;
+  MnAuthService.prototype.postUILogout = postUILogout;
   MnAuthService.prototype.whoami = whoami;
 
   return MnAuthService;
@@ -27,8 +27,8 @@ mn.services.MnAuth = (function () {
       .addSuccess()
       .addError();
 
-    this.stream.logoutHttp =
-      new mn.core.MnPostHttp(this.logout.bind(this))
+    this.stream.postUILogout =
+      new mn.core.MnPostHttp(this.postUILogout.bind(this))
   }
 
   function whoami() {
@@ -52,7 +52,7 @@ mn.services.MnAuth = (function () {
     // });
   }
 
-  function logout() {
+  function postUILogout() {
     return this.http.post("/uilogout");
     // .do(function () {
     // $uibModalStack.dismissAll("uilogout");

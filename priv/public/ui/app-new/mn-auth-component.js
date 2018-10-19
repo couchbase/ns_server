@@ -27,7 +27,6 @@ mn.components.MnAuth =
       this.onSubmit = new Rx.Subject();
 
       this.loginHttp = mnAuthService.stream.loginHttp;
-      this.logoutHttp = mnAuthService.stream.logoutHttp;
 
       this.loginHttp.success.pipe(
         Rx.operators.takeUntil(this.mnOnDestroy)

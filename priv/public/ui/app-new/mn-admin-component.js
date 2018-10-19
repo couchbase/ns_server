@@ -4,6 +4,8 @@ mn.components.MnAdmin =
   (function (Rx) {
     "use strict";
 
+    mn.core.extend(MnAdminComponent, mn.core.MnEventableComponent);
+
     MnAdminComponent.annotations = [
       new ng.core.Component({
         templateUrl: "app-new/mn-admin.html",
@@ -58,11 +60,12 @@ mn.components.MnAdmin =
       window['@uirouter/angular'].UIRouter
     ];
 
-    MnAdminComponent.prototype.ngOnDestroy = ngOnDestroy;
     MnAdminComponent.prototype.onLogout = onLogout;
     MnAdminComponent.prototype.runInternalSettingsDialog = runInternalSettingsDialog;
     MnAdminComponent.prototype.showResetPasswordDialog = showResetPasswordDialog;
     MnAdminComponent.prototype.toggleProgressBar = toggleProgressBar;
+    MnAdminComponent.prototype.handleGetPoolsDefaultSuccess = handleGetPoolsDefaultSuccess;
+    MnAdminComponent.prototype.handleGetPoolsDefaultError = handleGetPoolsDefaultError;
 
     return MnAdminComponent;
 
@@ -74,92 +77,74 @@ mn.components.MnAdmin =
                               mnSessionService,
                               uiRouter
                              ) {
-      this.logoutHttp = mnAuthService.stream.logoutHttp;
-      this.destroy = new Rx.Subject();
+      mn.core.MnEventableComponent.call(this);
+      mnSessionService.activate(this.mnOnDestroy);
+
+      this.postUILogout = mnAuthService.stream.postUILogout;
       this.isProgressBarClosed = new Rx.BehaviorSubject(true);
-      this.mnAdminService = mnAdminService;
+      this.getPoolsDefaultEtag = mnAdminService.stream.etag;
       this.showRespMenu = false;
 
       this.majorMinorVersion = mnPoolsService.stream.majorMinorVersion;
       this.tasksToDisplay = mnTasksService.stream.tasksToDisplay;
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
-      this.whomiId = mnAdminService.stream.whomi.pipe(
-        Rx.operators.pluck("id")
-      );
-
+      this.whomiId = mnAdminService.stream.whomi.pipe(Rx.operators.pluck("id"));
       this.mnAlerts = mnAlertsService.stream.alerts;
+      this.stateService = uiRouter.stateService;
 
+      this.tasksRead = mnPermissionsService.createPermissionStream("tasks!read");
+      this.securityRead = mnPermissionsService.createPermissionStream("tasks!read");
+      this.extractNextInterval = mnTasksService.stream.extractNextInterval;
+      this.clusterName = mnAdminService.stream.clusterName;
 
-      mnSessionService.activate(this.destroy);
-
-      this.tasksRead =
-        mnPermissionsService.createPermissionStream("tasks!read");
-      this.securityRead =
-        mnPermissionsService.createPermissionStream("tasks!read");
       this.bucketSettingsAnyRead =
         mnPermissionsService.createPermissionStream("settings!read", ".");
 
-      this.stateService = uiRouter.stateService;
-
       mnAdminService.stream.getPoolsDefault
-        .pipe(
-          Rx.operators.takeUntil(this.destroy)
-        )
-        .subscribe(function (rv) {
-          mnAdminService.stream.etag.next(rv.etag);
-        }, function (rv) {
-          if ((rv instanceof ng.common.http.HttpErrorResponse) && (rv.status === 404)) {
-            uiRouter.stateService.go('app.wizard.welcome', null, {location: false});
-          }
-        });
+        .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
+        .subscribe(R.pipe(R.path(['etag']),
+                          this.handleGetPoolsDefaultSuccess.bind(this)),
+                   this.handleGetPoolsDefaultError.bind(this));
 
       this.isAdminRootReady =
-        mnAdminService.stream.getPoolsDefault.pipe(
-          Rx.operators.map(Boolean)
-        );
-
-      this.clusterName = mnAdminService.stream.clusterName;
+        mnAdminService.stream.getPoolsDefault.pipe(Rx.operators.map(Boolean));
 
       this.enableResetButton =
-        Rx.combineLatest(
-          mnPoolsService.stream.isEnterprise,
-          mnAdminService.stream.whomi.pipe(
-            Rx.operators.map(function (my) {
-              return my.domain === 'local' || my.domain === 'admin';
-            })
-          )
-        ).pipe(
-          Rx.operators.map(_.curry(_.every)(_, Boolean))
-        );
+        Rx.combineLatest(mnPoolsService.stream.isEnterprise,
+                         mnAdminService.stream.whomi
+                         .pipe(Rx.operators.map(R.anyPass([R.propEq('domain', 'local'),
+                                                           R.propEq('domain', 'admin')]))))
+        .pipe(Rx.operators.map(R.all(R.equals(true))));
 
       this.enableInternalSettings =
-        Rx.combineLatest(
-          mnAdminService.stream.enableInternalSettings,
-          mnPermissionsService.createPermissionStream("admin.settings!write")
-        ).pipe(
-          Rx.operators.map(_.curry(_.every)(_, Boolean))
-        );
+        Rx.combineLatest(mnAdminService.stream.enableInternalSettings,
+                         mnPermissionsService.createPermissionStream("admin.settings!write"))
+        .pipe(Rx.operators.map(R.all(R.equals(true))));
 
       this.tasksRead
-        .pipe(
-          Rx.operators.switchMap(function (canRead) {
-            return canRead ? mnTasksService.stream.extractNextInterval : Rx.NEVER;
-          }),
-          Rx.operators.takeUntil(this.destroy)
-        )
+        .pipe(Rx.operators.switchMap(R.ifElse(R.equals(true),
+                                              R.always(this.extractNextInterval),
+                                              R.always(Rx.NEVER))),
+              Rx.operators.takeUntil(this.mnOnDestroy))
         .subscribe(function (interval) {
           mnTasksService.stream.interval.next(interval);
         });
+
+      this.mnOnDestroy.subscribe(this.handleGetPoolsDefaultSuccess.bind(this));
     }
 
-    function ngOnDestroy() {
-      this.destroy.next();
-      this.destroy.complete();
-      this.mnAdminService.stream.etag.next();
+    function handleGetPoolsDefaultSuccess(v) {
+      this.getPoolsDefaultEtag.next(v);
+    }
+
+    function handleGetPoolsDefaultError(rv) {
+      if ((rv instanceof ng.common.http.HttpErrorResponse) && (rv.status === 404)) {
+        this.stateService.go('app.wizard.welcome', null, {location: false});
+      }
     }
 
     function onLogout() {
-      this.logoutHttp.post(true);
+      this.postUILogout.post(true);
     }
 
     function runInternalSettingsDialog() {

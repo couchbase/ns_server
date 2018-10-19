@@ -3,6 +3,10 @@ mn.services = mn.services || {};
 mn.services.MnAlerts = (function (Rx) {
   "use strict";
 
+  function scrollTop() {
+    window.scrollTo(0, 0);
+  }
+
   MnAlertsService.annotations = [
     new ng.core.Injectable()
   ];
@@ -21,12 +25,9 @@ mn.services.MnAlerts = (function (Rx) {
     this.stream = {};
     this.stream.alert = new Rx.Subject();
 
-    this.stream.alerts = this.stream.alert.pipe(
-      Rx.operators.tap(function () {
-        window.scrollTo(0, 0);
-      }),
-      Rx.operators.map(this.setAlert.bind(this))
-    );
+    this.stream.alerts =
+      this.stream.alert.pipe(Rx.operators.tap(scrollTop),
+                             Rx.operators.map(this.setAlert.bind(this)));
   }
 
   function success(message) {
@@ -46,7 +47,7 @@ mn.services.MnAlerts = (function (Rx) {
   }
 
   function removeItem(item) {
-    var index = _.indexOf(this.alerts, item);
+    var index = R.indexOf(item, this.alerts);
     item.timeout && clearTimeout(item.timeout);
     this.alerts.splice(index, 1);
   }
@@ -55,10 +56,10 @@ mn.services.MnAlerts = (function (Rx) {
   function setAlert(alert) {
     //in case we get alert with the same message
     //but different id find and remove it
-    var findedItem = _.find(this.alerts, {
-      type: alert.type,
-      message: alert.message
-    });
+    var sameType = R.propEq('type', alert.type);
+    var sameMessage = R.propEq('message', alert.message);
+    var byTypeAndMessage = R.allPass([sameType, sameMessage]);
+    var findedItem = R.find(byTypeAndMessage)(this.alerts);
 
     findedItem && this.removeItem(findedItem);
     alert.timeout && (alert.timeout = this.startTimer(alert, alert.timeout));

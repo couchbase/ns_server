@@ -33,7 +33,7 @@ mn.services.MnSession = (function (Rx) {
   function MnSessionService(http, mnAuthService, mnAdminService, modalService) {
     this.http = http;
     this.modalService = modalService;
-    this.logoutHttp = mnAuthService.stream.logoutHttp;
+    this.postUILogout = mnAuthService.stream.postUILogout;
 
     this.stream = {};
 
@@ -146,7 +146,7 @@ mn.services.MnSession = (function (Rx) {
   }
 
   function logout() {
-    this.logoutHttp.post();
+    this.postUILogout.post();
   }
 
 })(window.rxjs);

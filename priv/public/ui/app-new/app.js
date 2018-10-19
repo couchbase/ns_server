@@ -31,7 +31,7 @@
 
     if ((req.method === 'POST' || req.method === 'PUT')) {
       if (!req.headers.get('isNotForm')) {
-        if (_.isObject(mnReq.body) && !_.isArray(mnReq.body)) {
+        if (R.is(Object, mnReq.body) && !Array.isArray(mnReq.body)) {
           params = new ng.common.http.HttpParams({
             fromString: new mn.core.jQueryLikeParamSerializer(mnReq.body).toString()
           });
@@ -181,14 +181,13 @@
         error && mnExceptionHandlerService.handleError(error);
       });
 
-    Rx.merge(
-      mnAppService.stream.http401,
-      mnAuthService.stream.logoutHttp.response
-    ).subscribe(function () {
-      uiRouter.stateService.go('app.auth', null, {location: false});
-    });
+    Rx.merge(mnAppService.stream.http401,
+             mnAuthService.stream.postUILogout.response)
+      .subscribe(function () {
+        uiRouter.stateService.go('app.auth', null, {location: false});
+      });
 
-    mnAuthService.stream.logoutHttp.response.subscribe(function () {
+    mnAuthService.stream.postUILogout.response.subscribe(function () {
       ngbModalService.dismissAll();
     });
 
