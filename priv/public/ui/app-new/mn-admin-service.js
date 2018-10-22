@@ -42,7 +42,7 @@ mn.services.MnAdmin = (function (Rx) {
     this.stream.whomi =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getWhoami.bind(this)),
-        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+        mn.core.rxOperatorsShareReplay(1)
       );
 
     this.stream.getPoolsDefault =
@@ -50,7 +50,7 @@ mn.services.MnAdmin = (function (Rx) {
                        uiRouter.globals.success$.pipe(Rx.operators.map(getPoolsDefaultInterval),
                                                       Rx.operators.distinctUntilChanged()))
       .pipe(Rx.operators.switchMap(this.getPoolsDefault.bind(this)),
-            Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount());
+            mn.core.rxOperatorsShareReplay(1));
 
     this.stream.isRebalancing =
       this.stream.getPoolsDefault.pipe(
@@ -66,12 +66,12 @@ mn.services.MnAdmin = (function (Rx) {
     this.stream.ldapEnabled =
       this.stream.getPoolsDefault.pipe(Rx.operators.pluck("ldapEnabled"),
                                        Rx.operators.distinctUntilChanged(),
-                                       Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount());
+                                       mn.core.rxOperatorsShareReplay(1));
 
     this.stream.implementationVersion =
       (new Rx.BehaviorSubject()).pipe(Rx.operators.switchMap(this.getVersion.bind(this)),
                                       Rx.operators.pluck("implementationVersion"),
-                                      Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount());
+                                      mn.core.rxOperatorsShareReplay(1));
 
     this.stream.prettyVersion =
       this.stream.implementationVersion.pipe(

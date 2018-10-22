@@ -32,25 +32,23 @@ mn.services.MnSecurity = (function (Rx) {
     this.stream.getSaslauthdAuth =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getSaslauthdAuth.bind(this)),
-        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
-      );
+        mn.core.rxOperatorsShareReplay(1));
 
     this.stream.getCertificate =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getCertificate.bind(this)),
-        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
-      );
+        mn.core.rxOperatorsShareReplay(1));
 
     this.stream.getLogRedaction =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getLogRedaction.bind(this)),
-        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+        mn.core.rxOperatorsShareReplay(1)
       );
 
     this.stream.getClientCertAuth =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getClientCertAuth.bind(this)),
-        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+        mn.core.rxOperatorsShareReplay(1)
       );
 
     this.stream.postLogRedaction =
@@ -71,13 +69,13 @@ mn.services.MnSecurity = (function (Rx) {
     this.stream.getAudit =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getAudit.bind(this)),
-        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+        mn.core.rxOperatorsShareReplay(1)
       );
 
     this.stream.getAuditDescriptors =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getAuditDescriptors.bind(this)),
-        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+        mn.core.rxOperatorsShareReplay(1)
       );
 
     this.stream.postAuditValidation =

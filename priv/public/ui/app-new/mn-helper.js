@@ -133,7 +133,7 @@ mn.services.MnHelper = (function (Rx) {
         .combineLatest(arrayStream,
                        Rx.zip(sortByStream, isAsc))
         .pipe(Rx.operators.map(doSort),
-              Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+              mn.core.rxOperatorsShareReplay(1)
              );
 
       function doSort(values) {

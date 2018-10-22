@@ -42,7 +42,7 @@ mn.components.MnSearchField =
         this.mnFormGroup.valueChanges.pipe(
           Rx.operators.pluck("searchTerm"),
           Rx.operators.map(Boolean),
-          Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+          mn.core.rxOperatorsShareReplay(1)
         );
 
     }

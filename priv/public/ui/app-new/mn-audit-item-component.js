@@ -42,7 +42,7 @@ mn.components.MnAuditItem =
       this.toggleSection =
         this.onToggleClick
         .pipe(Rx.operators.scan(mn.helper.invert, false),
-              Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount());
+              mn.core.rxOperatorsShareReplay(1));
 
     }
 
@@ -74,7 +74,7 @@ mn.components.MnAuditItem =
           Rx.operators.map(function (a) {
             return Object.values(a).includes(true);
           }),
-          Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+          mn.core.rxOperatorsShareReplay(1)
         );
 
       this.thisModuleChanges.pipe(

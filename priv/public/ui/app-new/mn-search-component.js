@@ -30,7 +30,7 @@ mn.components.MnSearch =
           showToTrue,
           hideToFalse
         ).pipe(
-          Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()//do not calculate toggleFilter on each subscription
+          mn.core.rxOperatorsShareReplay(1)//do not calculate toggleFilter on each subscription
         );
 
       this.mnFocusStream =

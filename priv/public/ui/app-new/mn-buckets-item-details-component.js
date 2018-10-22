@@ -82,24 +82,24 @@ mn.components.MnBucketsItemDetails =
         bucketCurrentValue.pipe(
           Rx.operators.map(this.getBucketRamGuageConfigParams.bind(this)),
           Rx.operators.map(mnBucketsService.getBucketRamGuageConfig),
-          Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+          mn.core.rxOperatorsShareReplay(1)
         );
 
       this.bucketRamGuageConfigTotal = this.bucketRamGuageConfig.pipe(
         Rx.operators.pluck("topRight", "value"),
-        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+        mn.core.rxOperatorsShareReplay(1)
       );
 
       this.bucketDiskGuageConfig =
         bucketCurrentValue.pipe(
           Rx.operators.map(this.getGuageConfig.bind(this)),
           Rx.operators.map(mnBucketsService.getGuageConfig),
-          Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+          mn.core.rxOperatorsShareReplay(1)
         );
 
       this.bucketDiskGuageConfigTotal = this.bucketDiskGuageConfig.pipe(
         Rx.operators.pluck("topRight", "value"),
-        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+        mn.core.rxOperatorsShareReplay(1)
       );
 
     }

@@ -110,7 +110,7 @@ mn.services.MnPermissions = (function (Rx) {
         this.stream.url
       ).pipe(
         Rx.operators.switchMap(this.doGet.bind(this)),
-        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+        mn.core.rxOperatorsShareReplay(1)
       );
 
     this.stream.getSuccess =
@@ -119,7 +119,7 @@ mn.services.MnPermissions = (function (Rx) {
           return [getAll(), url];
         }),
         Rx.operators.switchMap(this.doGet.bind(this)),
-        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+        mn.core.rxOperatorsShareReplay(1)
       );
 
     this.stream.permissionByBucketNames =

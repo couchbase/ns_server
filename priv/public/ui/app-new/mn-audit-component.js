@@ -71,7 +71,7 @@ mn.components.MnAudit =
       this.maybeItIsPlural =
         this.auditForm.get("rotateInterval").valueChanges
         .pipe(Rx.operators.map(this.getEnding.bind(this)),
-              Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount());
+              mn.core.rxOperatorsShareReplay(1));
 
       Rx.combineLatest(this.auditForm.get("auditdEnabled").valueChanges, this.securityWrite)
         .pipe(Rx.operators.takeUntil(this.mnOnDestroy))

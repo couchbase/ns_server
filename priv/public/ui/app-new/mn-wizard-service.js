@@ -192,7 +192,7 @@ mn.services.MnWizard = (function (Rx) {
     this.stream.getSelfConfig =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getSelfConfig.bind(this)),
-        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+        mn.core.rxOperatorsShareReplay(1)
       );
 
     this.stream.getSelfConfigFirst =
@@ -205,7 +205,7 @@ mn.services.MnWizard = (function (Rx) {
     this.stream.getIndexes =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getIndexes.bind(this)),
-        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+        mn.core.rxOperatorsShareReplay(1)
       );
 
     this.stream.preprocessPath =

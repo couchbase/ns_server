@@ -52,7 +52,7 @@ mn.services.MnTasks = (function (Rx) {
         setupInterval
       ).pipe(
         Rx.operators.switchMap(this.get.bind(this)),
-        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+        mn.core.rxOperatorsShareReplay(1)
       );
 
     var tasks = this.stream.getSuccess;

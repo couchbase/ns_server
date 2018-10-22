@@ -32,7 +32,7 @@ mn.services.MnSettings = (function (Rx) {
     this.stream.getAlerts =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getAlerts.bind(this)),
-        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+        mn.core.rxOperatorsShareReplay(1)
       );
 
     this.stream.getAutoCompaction =
@@ -48,7 +48,7 @@ mn.services.MnSettings = (function (Rx) {
           ac.purgeInterval = v.purgeInterval;
           return ac;
         }),
-        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+        mn.core.rxOperatorsShareReplay(1)
       );
 
     this.stream.getAutoCompactionFirst =
@@ -57,26 +57,26 @@ mn.services.MnSettings = (function (Rx) {
     this.stream.getStats =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getStats.bind(this)),
-        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+        mn.core.rxOperatorsShareReplay(1)
       );
 
     this.stream.getAutoFailover =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getAutoFailover.bind(this)),
-        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+        mn.core.rxOperatorsShareReplay(1)
       );
 
     this.stream.getAutoReprovision =
       (new Rx.BehaviorSubject()).pipe(
         Rx.operators.switchMap(this.getAutoReprovision.bind(this)),
-        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+        mn.core.rxOperatorsShareReplay(1)
       );
 
     this.stream.getPhoneHome =
       mnPoolsService.stream.getSuccess
       .pipe(Rx.operators.withLatestFrom(mnAdminService.stream.implementationVersion),
             Rx.operators.switchMap(this.getPhoneHome.bind(this)),
-            Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+            mn.core.rxOperatorsShareReplay(1)
            );
 
     this.stream.postAutoCompaction =

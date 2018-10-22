@@ -12,6 +12,16 @@ mn.core.extend = (function () {
   return __extends;
 })();
 
+mn.core.rxOperatorsShareReplay = (function (Rx) {
+  return function () {
+    return Rx.pipe(
+      Rx.operators.multicast(function () {
+        return new Rx.ReplaySubject(1);
+      }),
+      Rx.operators.refCount());
+  }
+})(window.rxjs);
+
 mn.core.MnEventableComponent = (function (Rx) {
   var componentLifecycleHooks = [
     "OnChanges",
@@ -210,7 +220,7 @@ mn.core.MnPostHttp = (function (Rx) {
             return Rx.of(err);
           }));
         }),
-        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+        mn.core.rxOperatorsShareReplay(1)
       );
     return this;
   }
@@ -230,7 +240,7 @@ mn.core.MnPostHttp = (function (Rx) {
             }),
             Rx.operators.pluck("error"),
             Rx.operators.map(JSON.parse),
-            Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+            mn.core.rxOperatorsShareReplay(1)
           ),
           this._errorSubject
         );
@@ -257,7 +267,7 @@ mn.core.MnPostHttp = (function (Rx) {
           Rx.operators.filter(function (rv) {
             return !(rv instanceof ng.common.http.HttpErrorResponse);
           }),
-          Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+          mn.core.rxOperatorsShareReplay(1)
         );
     if (modify) {
       success = success.pipe(modify);

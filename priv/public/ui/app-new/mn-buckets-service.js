@@ -40,13 +40,13 @@ mn.services.MnBuckets = (function (Rx) {
       ).pipe(
         Rx.operators.pluck("0"),
         Rx.operators.switchMap(this.get.bind(this)),
-        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+        mn.core.rxOperatorsShareReplay(1)
       );
 
     this.stream.buckets =
       bucketsUri.pipe(
         Rx.operators.switchMap(this.get.bind(this)),
-        Rx.operators.multicast(function () {return new Rx.ReplaySubject(1);}),Rx.operators.refCount()
+        mn.core.rxOperatorsShareReplay(1)
       );
 
     this.stream.bucketHttp =
