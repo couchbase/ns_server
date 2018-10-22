@@ -15,10 +15,13 @@ mn.services.MnForm = (function (Rx) {
 
   Form.prototype.setFormGroup = setFormGroup;
   Form.prototype.setSource = setSource;
-  Form.prototype.submittable = submittable;
+  Form.prototype.setPostRequest = setPostRequest;
   Form.prototype.clearErrors = clearErrors;
   Form.prototype.message = message;
   Form.prototype.disableFields = disableFields;
+  Form.prototype.setValidation = setValidation;
+  Form.prototype.setUnpackPipe = setUnpackPipe;
+  Form.prototype.setPackPipe = setPackPipe;
 
   return MnForm;
 
@@ -43,11 +46,14 @@ mn.services.MnForm = (function (Rx) {
   }
 
   function setSource(source) {
-    source
-      .pipe(Rx.operators.first())
-      .subscribe(function (v) {
-        this.group.patchValue(v, {emitEvent: false});
-      }.bind(this));
+    this.sourcePipe = source.pipe(Rx.operators.first(),
+                                  this.unpackPipe || Rx.operators.tap());
+
+    this.changes = Rx.merge(this.group.valueChanges, this.sourcePipe);
+
+    this.sourcePipe.subscribe(function (v) {
+      this.group.patchValue(v, {emitEvent: false});
+    }.bind(this));
     return this;
   }
 
@@ -64,12 +70,12 @@ mn.services.MnForm = (function (Rx) {
     }.bind(this);
   }
 
-  function submittable(postRequest, getValueStream) {
+  function setPostRequest(postRequest) {
     this.postRequest = postRequest;
     this.submit = new Rx.Subject();
 
     this.submit
-      .pipe(getValueStream,
+      .pipe(this.packPipe || Rx.operators.tap(),
             Rx.operators.takeUntil(this.component.mnOnDestroy))
       .subscribe(function (v) {
         this.postRequest.post(v);
@@ -82,6 +88,30 @@ mn.services.MnForm = (function (Rx) {
       .pipe(Rx.operators.takeUntil(this.component.mnOnDestroy))
       .subscribe(function () {
         this.postRequest.clearError();
+      }.bind(this));
+    return this;
+  }
+
+  function setUnpackPipe(unpackPipe) {
+    this.unpackPipe = unpackPipe;
+    return this;
+  }
+
+  function setPackPipe(packPipe) {
+    this.packPipe = packPipe;
+    return this;
+  }
+
+  function setValidation(validationPostRequest, permissionStream) {
+    permissionStream
+      .pipe(Rx.operators.switchMap(function (v) {
+        return v ? this.group.valueChanges : Rx.NEVER;
+      }.bind(this)),
+            Rx.operators.debounceTime(0),
+            this.packPipe || Rx.operators.tap(),
+            Rx.operators.takeUntil(this.component.mnOnDestroy))
+      .subscribe(function (v) {
+        validationPostRequest.post(v);
       }.bind(this));
     return this;
   }

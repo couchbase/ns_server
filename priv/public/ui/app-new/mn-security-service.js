@@ -79,20 +79,22 @@ mn.services.MnSecurity = (function (Rx) {
       );
 
     this.stream.postAuditValidation =
-      new mn.core.MnPostHttp(this.postAudit.bind(this))
+      new mn.core.MnPostHttp(this.postAudit(true).bind(this))
       .addSuccess()
       .addError();
 
     this.stream.postAudit =
-      new mn.core.MnPostHttp(this.postAudit.bind(this))
+      new mn.core.MnPostHttp(this.postAudit(false).bind(this))
       .addSuccess()
       .addError();
   }
 
-  function postAudit(data) {
-    return this.http.post("/settings/audit", data[0], {
-      params: new ng.common.http.HttpParams().set("just_validate", data[1] ? 1 : 0)
-    });
+  function postAudit(validate) {
+    return function (data) {
+      return this.http.post("/settings/audit", data, {
+        params: new ng.common.http.HttpParams().set("just_validate", validate ? 1 : 0)
+      });
+    }.bind(this)
   }
 
   function postSession(data) {

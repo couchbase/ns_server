@@ -34,24 +34,25 @@ mn.components.MnClientCertificate =
       this.securityWrite = mnPermissionsService.createPermissionStream("admin.security!write");
       this.compatVersion51 = mnAdminService.stream.compatVersion51;
 
-      var getValue = Rx.pipe(Rx.operators.withLatestFrom(this.compatVersion51),
-                             Rx.operators.map(this.getValue.bind(this)));
-
       this.form = mnFormService.create(this);
 
       this.form
         .setFormGroup({state: false, prefixes: this.form.builder.array([])})
-        .submittable(mnSecurityService.stream.postClientCertAuth, getValue)
+        .setSource(mnSecurityService.stream.getClientCertAuth)
+        .setPackPipe(Rx.pipe(Rx.operators.withLatestFrom(this.compatVersion51),
+                             Rx.operators.map(this.getValue.bind(this))))
+        .setPostRequest(mnSecurityService.stream.postClientCertAuth)
         .clearErrors()
         .message("Settings saved successfully!");
 
-      var initData = mnSecurityService.stream.getClientCertAuth.pipe(Rx.operators.first());
-      var formValues = Rx.merge(this.form.group.valueChanges, initData);
+      var formValues = Rx.merge(this.form.group.valueChanges, this.form.sourcePipe);
 
       this.isErrorString =
         this.form.postRequest.error.pipe(Rx.operators.map(R.is(String)));
+
       this.isStateDisabled =
         formValues.pipe(Rx.operators.map(R.pipe(R.path(["state"]), R.equals("disable"))));
+
       this.isLastPrefix =
         formValues.pipe(Rx.operators.map(R.pipe(R.path(["prefixes", "length"]), R.equals(1))));
 
@@ -64,10 +65,11 @@ mn.components.MnClientCertificate =
         .pipe(Rx.operators.map(R.pipe(R.equals([false, true]), R.not)));
 
       this.maybeDisableControls
-        .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
+        .pipe(Rx.operators.takeUntil(this.mnOnDestroy),
+              Rx.operators.tap(console.log))
         .subscribe(this.form.disableFields("prefixes"));
 
-      initData.subscribe(this.setInitialValue.bind(this));
+      this.form.sourcePipe.subscribe(this.setInitialValue.bind(this));
     }
 
     function removeField() {
@@ -103,7 +105,6 @@ mn.components.MnClientCertificate =
       } else {
         this.addItem({delimiter: '', prefix: '', path: 'subject.cn'});
       }
-      this.form.group.get("state").patchValue(value.state);
     }
 
   })(window.rxjs);

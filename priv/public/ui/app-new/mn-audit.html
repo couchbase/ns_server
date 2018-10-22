@@ -1,8 +1,8 @@
 <div>
   <!-- mn-spinner="auditCtl.viewLoading || !auditCtl.state" -->
   <form
-     (ngSubmit)="onSubmit.next()"
-     [formGroup]="auditForm"
+     (ngSubmit)="form.submit.next()"
+     [formGroup]="form.group"
      class="forms">
 
     <div class="formrow">
@@ -13,7 +13,7 @@
       <label for="audit-enable-flag">Audit events & write them to a log</label>
 
       <div
-         [hidden]="!auditForm.get('auditdEnabled').value"
+         [hidden]="!form.group.get('auditdEnabled').value"
          class="content-box fix-width-6">
         When enabled, auditing is activated for a default set of events.
         Expand the filterable events modules below to select your own
@@ -89,7 +89,7 @@
          *ngFor="let moduleName of (descriptorsByModule | async | mnObjectKeys);">
 
         <mn-audit-item
-           [auditForm]="auditForm"
+           [form]="form"
            [descriptors]="descriptorsByModule"
            moduleName="{{moduleName}}"
            ></mn-audit-item>

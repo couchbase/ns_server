@@ -14,6 +14,7 @@ mn.components.MnAudit =
     ];
 
     MnAudit.parameters = [
+      mn.services.MnForm,
       mn.services.MnHelper,
       mn.services.MnSecurity,
       mn.services.MnPermissions,
@@ -23,34 +24,19 @@ mn.components.MnAudit =
     ];
 
     MnAudit.prototype.unpackGetAudit = unpackGetAudit;
-    MnAudit.prototype.setInitialValue = setInitialValue;
     MnAudit.prototype.maybeDisableFields = maybeDisableFields;
     MnAudit.prototype.disableEnableFiled = disableEnableFiled;
     MnAudit.prototype.getDescriptorsByModule = getDescriptorsByModule;
-    MnAudit.prototype.maybeAddDescriptorsFields = maybeAddDescriptorsFields;
     MnAudit.prototype.getDisabledByID = getDisabledByID;
     MnAudit.prototype.getEnding = getEnding;
     MnAudit.prototype.prepareDataForSending = prepareDataForSending;
-    MnAudit.prototype.doAuditPost = doAuditPost;
-    MnAudit.prototype.getFormValue = getFormValue;
 
     return MnAudit;
 
-    function MnAudit(mnHelperService, mnSecurityService, mnPermissionsService, mnAlertsService, mnAdminService, mnPoolsService) {
+    function MnAudit(mnFormService, mnHelperService, mnSecurityService, mnPermissionsService, mnAlertsService, mnAdminService, mnPoolsService) {
       mn.core.MnEventableComponent.call(this);
 
       this.IEC = mnHelperService.IEC;
-
-      this.onSubmit = new Rx.Subject();
-
-      this.auditForm = new ng.forms.FormGroup({
-        auditdEnabled: new ng.forms.FormControl(),
-        logPath: new ng.forms.FormControl(),
-        rotateInterval: new ng.forms.FormControl(),
-        rotateSize: new ng.forms.FormControl(),
-        rotateUnit: new ng.forms.FormControl()
-      });
-
       this.securityWrite = mnPermissionsService.createPermissionStream("admin.security!write");
       this.compatVersion55 = mnAdminService.stream.compatVersion55;
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
@@ -59,21 +45,36 @@ mn.components.MnAudit =
       this.postAudit = mnSecurityService.stream.postAudit;
       this.postAuditValidation = mnSecurityService.stream.postAuditValidation;
 
+      this.form = mnFormService.create(this);
+      this.form
+        .setFormGroup({auditdEnabled: false,
+                       logPath: "",
+                       rotateInterval: 0,
+                       rotateSize: 0,
+                       rotateUnit: "",
+                       descriptors: this.form.builder.group({}),
+                       disabledUsers: ""})
+        .setUnpackPipe(Rx.pipe(Rx.operators.map(this.unpackGetAudit.bind(this))))
+        .setPackPipe(Rx.pipe(Rx.operators.withLatestFrom(this.compatVersion55,this.isEnterprise),
+                             Rx.operators.map(this.prepareDataForSending.bind(this))))
+        .setSource(this.getAudit)
+        .setPostRequest(this.postAudit)
+        .setValidation(this.postAuditValidation, this.securityWrite)
+        .clearErrors()
+        .message("Settings saved successfully!");
+
       this.httpError = Rx.merge(this.postAudit.error, this.postAuditValidation.error);
 
-      Rx.combineLatest(this.compatVersion55, this.isEnterprise)
-        .pipe(Rx.operators.first(),
-              Rx.operators.filter(function (value) {
-                return value.every(Boolean);
-              }))
-        .subscribe(this.maybeAddDescriptorsFields.bind(this));
-
       this.maybeItIsPlural =
-        this.auditForm.get("rotateInterval").valueChanges
-        .pipe(Rx.operators.map(this.getEnding.bind(this)),
-              mn.core.rxOperatorsShareReplay(1));
+        this.form.changes.pipe(Rx.operators.pluck("rotateInterval"),
+                               Rx.operators.distinctUntilChanged(),
+                               Rx.operators.map(this.getEnding.bind(this)),
+                               mn.core.rxOperatorsShareReplay(1));
 
-      Rx.combineLatest(this.auditForm.get("auditdEnabled").valueChanges, this.securityWrite)
+      Rx.combineLatest(
+        this.form.changes.pipe(Rx.operators.pluck("auditdEnabled"),
+                               Rx.operators.distinctUntilChanged()),
+        this.securityWrite)
         .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
         .subscribe(this.maybeDisableFields.bind(this));
 
@@ -89,33 +90,7 @@ mn.components.MnAudit =
       this.descriptorsByModule =
         Rx.combineLatest(this.getAuditDescriptors, disabledByID)
         .pipe(Rx.operators.map(this.getDescriptorsByModule.bind(this)),
-              Rx.operators.publishReplay(1),
-              Rx.operators.refCount());
-
-      this.getAudit
-        .pipe(Rx.operators.map(this.unpackGetAudit.bind(this)),
-              Rx.operators.takeUntil(this.mnOnDestroy))
-        .subscribe(this.setInitialValue.bind(this));
-
-      this.securityWrite
-        .pipe(Rx.operators.switchMap(function (v) {
-          return v ? this.auditForm.valueChanges : Rx.NEVER;
-        }.bind(this)),
-              Rx.operators.debounceTime(0),
-              Rx.operators.map(this.prepareDataForSending.bind(this)),
-              Rx.operators.takeUntil(this.mnOnDestroy))
-        .subscribe(this.doAuditPost(true).bind(this));
-
-      this.onSubmit
-        .pipe(Rx.operators.tap(this.postAudit.clearError.bind(this.postAudit)),
-              Rx.operators.map(this.getFormValue.bind(this)),
-              Rx.operators.map(this.prepareDataForSending.bind(this)),
-              Rx.operators.takeUntil(this.mnOnDestroy))
-        .subscribe(this.doAuditPost(false).bind(this));
-
-      this.postAudit.success
-        .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
-        .subscribe(mnAlertsService.success("Settings saved successfully!"));
+              mn.core.rxOperatorsShareReplay(1));
     }
 
     function formatTimeUnit(unit) {
@@ -126,41 +101,35 @@ mn.components.MnAudit =
       }
     }
 
-    function getFormValue() {
-      return this.auditForm.value;
-    }
+    function prepareDataForSending(parameters) {
+      var value = this.form.group.value;
+      var result = {auditdEnabled: value.auditdEnabled};
+      var compatVersion55 = parameters[1];
+      var isEnterprise = parameters[2];
 
-    function prepareDataForSending(data) {
-      var result = {
-        auditdEnabled: data.auditdEnabled
-      };
-      if (data.descriptors) {
-        result.disabled = [];
-        Object.keys(data.descriptors).forEach(function(key) {
-          Object.keys(data.descriptors[key]).forEach(function (id) {
-            !data.descriptors[key][id] && result.disabled.push(id);
+      if (compatVersion55 && isEnterprise) {
+        if (value.descriptors) {
+          result.disabled = [];
+          Object.keys(value.descriptors).forEach(function(key) {
+            Object.keys(value.descriptors[key]).forEach(function (id) {
+              !value.descriptors[key][id] && result.disabled.push(id);
+            });
           });
-        });
-        result.disabled = result.disabled.join(',');
+          result.disabled = result.disabled.join(',');
+        }
+        if (value.disabledUsers) {
+          result.disabledUsers = value.disabledUsers.replace(/\/couchbase/gi,"/local");
+        }
       }
-      if (data.disabledUsers) {
-        result.disabledUsers = data.disabledUsers.replace(/\/couchbase/gi,"/local");
+      if (value.auditdEnabled) {
+        result.rotateInterval = value.rotateInterval * formatTimeUnit(value.rotateUnit);
+        result.logPath = value.logPath;
+        result.rotateSize = value.rotateSize;
       }
-      if (data.auditdEnabled) {
-        result.rotateInterval = data.rotateInterval * formatTimeUnit(data.rotateUnit);
-        result.logPath = data.logPath;
-        result.rotateSize = data.rotateSize;
-      }
-      if (data.rotateSize) {
-        result.rotateSize = data.rotateSize * this.IEC.Mi;
+      if (value.rotateSize) {
+        result.rotateSize = value.rotateSize * this.IEC.Mi;
       }
       return result;
-    }
-
-    function doAuditPost(validate) {
-      return function (data) {
-        this[validate ? "postAuditValidation" : "postAudit"].post([data, validate]);
-      };
     }
 
     function getDisabledByID(disabled) {
@@ -174,11 +143,6 @@ mn.components.MnAudit =
       return value !== 1 ? "s" : "";
     }
 
-    function maybeAddDescriptorsFields() {
-      this.auditForm.addControl("descriptors", new ng.forms.FormGroup({}));
-      this.auditForm.addControl("disabledUsers", new ng.forms.FormControl());
-    }
-
     function getDescriptorsByModule(data) {
       return data[0].reduce(function (acc, item) {
         acc[item.module] = acc[item.module] || [];
@@ -190,20 +154,17 @@ mn.components.MnAudit =
 
     function disableEnableFiled(value) {
       var method = value ? "enable" : "disable";
-      this.auditForm.get("auditdEnabled")[method]({onlySelf: true, emitEvent: false});
+      this.form.group.get("auditdEnabled")[method]({emitEvent: false});
     }
+
     function maybeDisableFields(values) {
-      var settings = {onlySelf: true, emitEvent: false};
+      var settings = {emitEvent: false};
       var method = (values[1] && values[0]) ? "enable" : "disable";
-      this.auditForm.get("logPath")[method](settings);
-      this.auditForm.get("rotateInterval")[method](settings);
-      this.auditForm.get("rotateSize")[method](settings);
-      this.auditForm.get("rotateUnit")[method](settings);
-      this.auditForm.get("descriptors")[method](settings);
-      this.auditForm.get("disabledUsers")[method](settings);
-    }
-    function setInitialValue(value) {
-      this.auditForm.patchValue(value);
+      this.form.group.get("logPath")[method](settings);
+      this.form.group.get("rotateInterval")[method](settings);
+      this.form.group.get("rotateSize")[method](settings);
+      this.form.group.get("rotateUnit")[method](settings);
+      this.form.group.get("disabledUsers")[method](settings);
     }
 
     function unpackGetAudit(data) {

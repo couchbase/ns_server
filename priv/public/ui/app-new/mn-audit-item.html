@@ -31,7 +31,7 @@
     <hr>
     <div
        class="row flex-left items-top"
-       [formGroup]="auditForm.get('descriptors').get(moduleName)"
+       [formGroup]="form.group.get('descriptors').get(moduleName)"
        *ngFor="let desc of (thisDescriptors | async);">
       <span class="fix-width-5">
         <input

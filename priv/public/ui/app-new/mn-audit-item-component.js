@@ -11,19 +11,12 @@ mn.components.MnAuditItem =
         selector: "mn-audit-item",
         templateUrl: "app-new/mn-audit-item.html",
         inputs: [
-          "auditForm",
+          "form",
           "descriptors",
           "moduleName"
         ],
-        // changeDetection: ng.core.ChangeDetectionStrategy.OnPush
+        changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
-    ];
-
-    MnAuditItem.parameters = [
-      // mn.services.MnAdmin,
-      // mn.services.MnPermissions
-      // mn.services.MnTasks,
-      // window['@uirouter/angular'].UIRouter,
     ];
 
     MnAuditItem.prototype.ngOnInit = ngOnInit;
@@ -31,23 +24,18 @@ mn.components.MnAuditItem =
     MnAuditItem.prototype.generateForm = generateForm;
     MnAuditItem.prototype.doToggleAll = doToggleAll;
     MnAuditItem.prototype.setToggleAllValue = setToggleAllValue;
-    MnAuditItem.prototype.maybeDisableToggleAll = maybeDisableToggleAll;
+    MnAuditItem.prototype.maybeDisableFields = maybeDisableFields;
 
     return MnAuditItem;
 
-    function MnAuditItem(mnPermissionsService, mnTasksService, uiRouter) {
+    function MnAuditItem() {
       mn.core.MnEventableComponent.call(this);
-
       this.onToggleClick = new Rx.Subject();
-      this.toggleSection =
-        this.onToggleClick
-        .pipe(Rx.operators.scan(mn.helper.invert, false),
-              mn.core.rxOperatorsShareReplay(1));
-
+      this.toggleSection = this.onToggleClick.pipe(Rx.operators.scan(R.not, false),
+                                                   mn.core.rxOperatorsShareReplay(1));
     }
 
     function ngOnInit() {
-      this.auditForm.get()
       this.formHelper = new ng.forms.FormGroup({
         toggleAll: new ng.forms.FormControl()
       });
@@ -56,49 +44,45 @@ mn.components.MnAuditItem =
         .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
         .subscribe(this.generateForm.bind(this));
 
-      var thisModuleGroup = this.auditForm.get("descriptors").get(this.moduleName);
-      var auditdEnabledCtrl = this.auditForm.get("auditdEnabled");
+      var thisModuleGroup = this.form.group.get("descriptors").get(this.moduleName);
 
       this.thisModuleChanges =
         thisModuleGroup.valueChanges.pipe(Rx.operators.startWith(thisModuleGroup.value));
 
       this.isAuditEnabled =
-        auditdEnabledCtrl.valueChanges.pipe(Rx.operators.startWith(auditdEnabledCtrl.value));
+        this.form.changes.pipe(Rx.operators.pluck("auditdEnabled"),
+                               Rx.operators.distinctUntilChanged());
 
       this.isAuditEnabled
         .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
-        .subscribe(this.maybeDisableToggleAll.bind(this));
+        .subscribe(this.maybeDisableFields.bind(this));
 
       this.isThereEnabledField =
-        this.thisModuleChanges.pipe(
-          Rx.operators.map(function (a) {
-            return Object.values(a).includes(true);
-          }),
-          mn.core.rxOperatorsShareReplay(1)
-        );
+        this.thisModuleChanges.pipe(Rx.operators.map(R.pipe(Object.values, R.contains(true))),
+                                    mn.core.rxOperatorsShareReplay(1));
 
-      this.thisModuleChanges.pipe(
-        Rx.operators.map(function (a) {
-          return Object.values(a).every(Boolean);
-        }),
-        Rx.operators.takeUntil(this.mnOnDestroy)
-      ).subscribe(this.setToggleAllValue.bind(this));
+      this.thisModuleChanges
+        .pipe(Rx.operators.tap(console.log),
+              Rx.operators.map(R.pipe(Object.values, R.all(R.equals(true)))),
+              Rx.operators.takeUntil(this.mnOnDestroy))
+        .subscribe(this.setToggleAllValue.bind(this));
 
       this.formHelper.get("toggleAll").valueChanges
         .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
         .subscribe(this.doToggleAll.bind(this));
 
-
     }
-    function maybeDisableToggleAll(value) {
+    function maybeDisableFields(value) {
       var method = value ? "enable" : "disable";
-      this.formHelper.get("toggleAll")[method]({onlySelf: true, emitEvent: false});
+      this.formHelper.get("toggleAll")[method]({emitEvent: false});
+      this.form.group.get("descriptors")[method]({emitEvent: false});
     }
     function setToggleAllValue(value) {
+      console.log(value)
       this.formHelper.get("toggleAll").setValue(value, {emitEvent: false});
     }
     function doToggleAll(value) {
-      var thisModule = this.auditForm.get("descriptors").get(this.moduleName);
+      var thisModule = this.form.group.get("descriptors").get(this.moduleName);
       var ids = Object.keys(thisModule.value);
       thisModule.patchValue(ids.reduce(function (acc, key) {
         acc[key] = value;
@@ -107,12 +91,12 @@ mn.components.MnAuditItem =
     }
 
     function generateForm(descriptors) {
-      this.auditForm.get("descriptors")
+      this.form.group.get("descriptors")
         .addControl(this.moduleName, new ng.forms.FormGroup(
           descriptors.reduce(function (acc, item) {
-            acc[item.id] = new ng.forms.FormControl(item.value)
+            acc[item.id] = new ng.forms.FormControl(item.value);
             return acc;
-          }, {})
+          }.bind(this), {})
         ));
     }
 
