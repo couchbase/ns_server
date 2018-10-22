@@ -697,24 +697,24 @@ comm_test() ->
 
 
 start_singleton(Module, Name, Args, Opts) ->
-    start_singleton(Module, Name, Name, Args, Opts).
+    start_singleton(Module, start_link,
+                    [{via, leader_registry, Name}, Name, Args, Opts]).
 
-start_singleton(Module, Name, InitModule, Args, Opts) ->
-    case Module:start_link({via, leader_registry, Name}, InitModule,
-                           Args, Opts) of
+start_singleton(M, F, A) ->
+    case erlang:apply(M, F, A) of
         {error, {already_started, Pid}} ->
-            ?log_warning("start_singleton(~p, ~p, ~p, ~p) -> already started:"
+            ?log_warning("start_singleton(~p, ~p, ~p) -> already started:"
                          " monitoring ~p from ~p",
-                         [Module, Name, Args, Opts, Pid, node()]),
+                         [M, F, A, Pid, node()]),
             {ok, spawn_link(fun () ->
                                     misc:wait_for_process(Pid, infinity),
-                                    ?log_info("~p saw ~p exit (was pid ~p).",
-                                              [self(), Name, Pid])
+                                    ?log_info("~p saw ~p exit.",
+                                              [self(), Pid])
                             end)};
         {ok, Pid} = X ->
-            ?log_info("start_singleton(~p, ~p, ~p, ~p):"
+            ?log_info("start_singleton(~p, ~p, ~p):"
                       " started as ~p on ~p~n",
-                      [Module, Name, Args, Opts, Pid, node()]),
+                      [M, F, A, Pid, node()]),
             X;
         X -> X
     end.

@@ -34,7 +34,7 @@
 -define(SERVER, {via, leader_registry, ?MODULE}).
 
 start_link() ->
-    work_queue:start_singleton(?MODULE).
+    misc:start_singleton(work_queue, start_link, [?SERVER]).
 
 enabled() ->
     cluster_compat_mode:is_enabled(?VERSION_MADHATTER) andalso
