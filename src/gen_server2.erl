@@ -44,11 +44,8 @@
                           {stop, Reason :: any(), NewState :: any()}.
 
 -type body_fun()          :: fun  (() -> Result :: any()).
--type handle_result_fun() :: fun ((Result :: any(), State  :: any()) ->
-                                         handler_result()).
 
 -record(async_job, { body          :: body_fun(),
-                     handle_result :: handle_result_fun(),
                      queue         :: term(),
                      name          :: term(),
 
@@ -173,17 +170,30 @@ async_job(Queue, Name, Body, HandleResult) ->
     Queue.
 
 abort_queue(Queue) ->
-    _ = abort_jobs(Queue),
+    Jobs = abort_jobs(Queue),
+    update_state(handle_result_funs,
+      fun (Map) ->
+              lists:foldl(
+                fun (#async_job{queue = Q, name = Name}, Acc) ->
+                        maps:remove({Q, Name}, Acc)
+                end, Map, Jobs)
+      end, #{}),
     ok.
 
 abort_queue(Queue, AbortMarker, State) ->
     Jobs = abort_jobs(Queue),
-    lists:foreach(
-      fun (Job) ->
-              %% assuming that aborted jobs can't modify the state
-              {noreply, State} =
-                  (Job#async_job.handle_result)(AbortMarker, State)
-      end, Jobs).
+    update_state(handle_result_funs,
+      fun (Map) ->
+              lists:foldl(
+                fun (#async_job{queue = Q, name = Name}, Acc) ->
+                        HandleResultFuns =
+                            lists:reverse(maps:get({Q, Name}, Acc, [])),
+                        %% assuming that aborted jobs can't modify the state
+                        [F(AbortMarker, State) || F <- HandleResultFuns],
+                        maps:remove({Q, Name}, Acc)
+                end, Map, Jobs)
+      end, #{}),
+    ok.
 
 get_active_queues() ->
     lists:map(_#async_job.queue, get_active_jobs()).
@@ -310,13 +320,22 @@ take_active_job(Queue) ->
 
 enqueue_job(Queue, Name, Body, HandleResult) ->
     Job = #async_job{body          = Body,
-                     handle_result = HandleResult,
                      queue         = Queue,
                      name          = Name},
 
-    update_state({queue, Queue},
-                 queue:in(Job, _),
-                 queue:new()).
+    update_state(
+      handle_result_funs,
+      fun (Map) ->
+              case maps:find({Queue, Name}, Map) of
+                  {ok, L} ->
+                      Map#{{Queue, Name} => [HandleResult|L]};
+                  error ->
+                      update_state({queue, Queue},
+                                   queue:in(Job, _),
+                                   queue:new()),
+                      Map#{{Queue, Name} => [HandleResult]}
+              end
+      end, #{}).
 
 set_queue(Queue, Value) ->
     case queue:is_empty(Value) of
@@ -336,29 +355,6 @@ dequeue_job(Queue) ->
             set_queue(Queue, NewQ),
 
             {ok, Job}
-    end.
-
-dequeue_same_name_jobs(Name, Queue) ->
-    Jobs = get_state({queue, Queue}, queue:new()),
-
-    {Matching, Rest} = out_while(?cut(_#async_job.name =:= Name), Jobs),
-    set_queue(Queue, Rest),
-    queue:to_list(Matching).
-
-out_while(Pred, Q) ->
-    out_while(Pred, Q, queue:new()).
-
-out_while(Pred, Q, AccQ) ->
-    case queue:out(Q) of
-        {empty, _} ->
-            {AccQ, Q};
-        {{value, V}, NewQ} ->
-            case Pred(V) of
-                true ->
-                    out_while(Pred, NewQ, queue:in(V, AccQ));
-                false ->
-                    {AccQ, Q}
-            end
     end.
 
 maybe_start_job(Queue) ->
@@ -385,8 +381,8 @@ start_job(Queue, #async_job{body = Body} = Job) ->
 
 chain_handle_results([], _Result, State) ->
     {noreply, State};
-chain_handle_results([Job | Rest], Result, State) ->
-    case (Job#async_job.handle_result)(Result, State) of
+chain_handle_results([F | Rest], Result, State) ->
+    case F(Result, State) of
         {noreply, NewState} ->
             chain_handle_results(Rest, Result, NewState);
         {stop, _, _} = Stop ->
@@ -413,15 +409,15 @@ call_handle_job_death(#async_job{queue = Queue, name = Name} = Job, Reason) ->
                   {stop, {async_job_died, Job, Reason}}).
 
 handle_job_result(Queue, Result, State) ->
-    {ok, Job} = take_active_job(Queue),
+    {ok, #async_job{name = Name, queue = Q} = Job} = take_active_job(Queue),
     erlang:demonitor(Job#async_job.mref, [flush]),
 
-    %% reuse the result for all following jobs with the same name on the same
-    %% queue
-    MoreJobs = dequeue_same_name_jobs(Job#async_job.name, Queue),
     maybe_start_job(Queue),
+    Map = get_state(handle_result_funs, #{}),
+    HandleResultFuns = maps:get({Q, Name}, Map, []),
+    set_state(handle_result_funs, maps:remove({Q, Name}, Map)),
 
-    chain_handle_results([Job | MoreJobs], Result, State).
+    chain_handle_results(lists:reverse(HandleResultFuns), Result, State).
 
 add_condition(Pred, OnSuccess, Timeout, OnTimeout) ->
     Id = make_ref(),
