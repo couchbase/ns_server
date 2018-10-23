@@ -36,6 +36,7 @@
          delete_vbucket/2,
          sync_delete_vbucket/2,
          flush/1,
+         hello_features/1,
          hello/3,
          get_vbucket/2,
          list_buckets/1,
@@ -266,11 +267,18 @@ flush(Sock) ->
         Response -> process_error_response(Response)
     end.
 
+hello_features_map() ->
+    [{xattr, ?MC_FEATURE_XATTR},
+     {collections, ?MC_FEATURE_COLLECTIONS},
+     {snappy, ?MC_FEATURE_SNAPPY},
+     {duplex, ?MC_FEATURE_DUPLEX}].
+
+hello_features(Features) ->
+    FeaturesMap = hello_features_map(),
+    [F || F <- Features, proplists:is_defined(F, FeaturesMap)].
+
 hello(Sock, AgentName, ClientFeatures) ->
-    FeaturesMap = [{xattr, ?MC_FEATURE_XATTR},
-                   {collections, ?MC_FEATURE_COLLECTIONS},
-                   {snappy, ?MC_FEATURE_SNAPPY},
-                   {duplex, ?MC_FEATURE_DUPLEX}],
+    FeaturesMap = hello_features_map(),
     Features = [<<V:16>> || {F, V} <- FeaturesMap,
                             proplists:get_bool(F, ClientFeatures)],
     %% AgentName is the name of the client issuing the hello command.

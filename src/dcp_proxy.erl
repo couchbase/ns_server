@@ -251,8 +251,7 @@ connect(Type, ConnName, Node, Bucket, RepFeatures) ->
     Sock.
 
 negotiate_features(Sock, Type, ConnName, Features) ->
-    HelloFeatures = [F || F <- Features, lists:member(F,[xattr, collections,
-                                                         snappy])],
+    HelloFeatures = mc_client_binary:hello_features(Features),
     case do_negotiate_features(Sock, Type, ConnName, HelloFeatures) of
         ok ->
             ok;
@@ -265,7 +264,6 @@ negotiate_features(Sock, Type, ConnName, Features) ->
                     ok
             end,
 
-            %% We don't expect the XAttr negotiation to fail.
             [] = FailedFeatures -- [snappy],
             ok
     end.
