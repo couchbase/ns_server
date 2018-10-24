@@ -209,6 +209,7 @@
 -define(MC_AUTH_PROVIDER,             16#F8).
 -define(MC_UPDATE_USER_PERMISSIONS,   16#F6).
 -define(MC_AUTH_REQUEST,              16#02).
+-define(MC_ACTIVE_EXTERNAL_USERS,     16#03).
 
 %% datatypes enum
 -define(MC_DATATYPE_RAW_BYTES,      16#00).

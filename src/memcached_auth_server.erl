@@ -18,7 +18,8 @@
 -record(s, {
     mcd_socket = undefined,
     data = <<>>,
-    buckets = []
+    buckets = [],
+    rbac_updater_ref = undefined
 }).
 
 -define(RECONNECT_TIMEOUT, 1000).
@@ -78,6 +79,9 @@ handle_info({tcp_error, Sock, Reason}, #s{mcd_socket = Sock} = State) ->
                [Reason]),
     {noreply, reconnect(State)};
 
+handle_info({'DOWN', Ref, _, _, _}, #s{rbac_updater_ref = {_, Ref}} = State) ->
+    {noreply, State#s{rbac_updater_ref = undefined}};
+
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -94,16 +98,16 @@ code_change(_OldVsn, State, _Extra) ->
 process_data(#s{mcd_socket = Sock, data = Data} = State) ->
     case mc_binary:decode_packet_ext(Data) of
         {Header, Entry, Rest} ->
-            {RespHeader, RespEntry} = process_req(Header, Entry, State),
+            {RespHeader, RespEntry, State2} = process_req(Header, Entry, State),
             case mc_binary:send(Sock, server_res, RespHeader, RespEntry) of
-                ok -> process_data(State#s{data = Rest});
-                _ -> reconnect(State)
+                ok -> process_data(State2#s{data = Rest});
+                _ -> reconnect(State2)
             end;
         need_more_data -> State
     end.
 
 process_req(#mc_header{opcode = ?MC_AUTH_REQUEST} = Header,
-            #mc_entry{data = Data}, State) ->
+            #mc_entry{data = Data}, #s{buckets = Buckets} = State) ->
     {AuthReq} = ejson:decode(Data),
     ErrorResp =
         fun (Msg) ->
@@ -113,7 +117,8 @@ process_req(#mc_header{opcode = ?MC_AUTH_REQUEST} = Header,
                 Json = {[{error, {[{context, <<"Authentication failed">>},
                                    {ref, UUID}]}}]},
                 {Header#mc_header{status = ?MC_AUTH_ERROR},
-                 #mc_entry{data = ejson:encode(Json)}}
+                 #mc_entry{data = ejson:encode(Json)},
+                 State}
         end,
     case proplists:get_value(<<"mechanism">>, AuthReq) of
         <<"PLAIN">> ->
@@ -124,10 +129,11 @@ process_req(#mc_header{opcode = ?MC_AUTH_REQUEST} = Header,
                         {ok, Id} ->
                             ?log_debug("Successful ext authentication for ~p",
                                        [ns_config_log:tag_user_name(Username)]),
-                            JSON = get_user_rbac_record_json(Id, State),
+                            JSON = get_user_rbac_record_json(Id, Buckets),
                             Resp = {[{rbac, JSON}]},
                             {Header#mc_header{status = ?SUCCESS},
-                             #mc_entry{data = ejson:encode(Resp)}};
+                             #mc_entry{data = ejson:encode(Resp)},
+                             State};
                         _ ->
                             ErrorResp("Invalid username or password")
                     end;
@@ -140,10 +146,27 @@ process_req(#mc_header{opcode = ?MC_AUTH_REQUEST} = Header,
             ErrorResp(io_lib:format("Unknown mechanism: ~p", [Unknown]))
     end;
 
-process_req(Header, _, _) ->
-    {Header#mc_header{status = ?UNKNOWN_COMMAND}, #mc_entry{}}.
+process_req(#mc_header{opcode = ?MC_ACTIVE_EXTERNAL_USERS} = Header,
+            #mc_entry{data = Data},
+            #s{buckets = Buckets, rbac_updater_ref = undefined} = State) ->
+    ?log_debug("Received active external users: ~p", [Data]),
+    Ids = [{binary_to_list(User), external} || User <- ejson:decode(Data)],
+    Ref = spawn_opt(
+            fun () -> update_mcd_rbac(Ids, Buckets) end, [link, monitor]),
+    {Header#mc_header{status = ?SUCCESS}, #mc_entry{},
+     State#s{rbac_updater_ref = Ref}};
 
-get_user_rbac_record_json(Identity, #s{buckets = Buckets}) ->
+process_req(#mc_header{opcode = ?MC_ACTIVE_EXTERNAL_USERS} = Header,
+            #mc_entry{data = Data},
+            #s{rbac_updater_ref = {Pid, _}} = State) when is_pid(Pid) ->
+    ?log_warning("Received active external users: ~p. Skipping rbac update "
+                 "because we already have one handler spawned", [Data]),
+    {Header#mc_header{status = ?SUCCESS}, #mc_entry{}, State};
+
+process_req(Header, _, State) ->
+    {Header#mc_header{status = ?UNKNOWN_COMMAND}, #mc_entry{}, State}.
+
+get_user_rbac_record_json(Identity, Buckets) ->
     Roles = menelaus_roles:get_compiled_roles(Identity),
     {[memcached_permissions:jsonify_user(Identity, Roles, Buckets)]}.
 
@@ -206,6 +229,27 @@ sasl_decode_plain_challenge(Challenge) ->
         _:_ -> error
     end.
 
+update_mcd_rbac([], _) -> ok;
+update_mcd_rbac([Id|Tail], Buckets) ->
+    RBACJson = get_user_rbac_record_json(Id, Buckets),
+    ?log_debug("Updating rbac record for user ~p",
+               [ns_config_log:tag_user_data(Id)]),
+    case mcd_update_user_permissions(RBACJson) of
+        ok -> ok;
+        Error -> ?log_error("Failed to update permissions for ~p: ~p",
+                            [ns_config_log:tag_user_data(Id), Error])
+    end,
+    update_mcd_rbac(Tail, Buckets).
+
+mcd_update_user_permissions(RBACJson) ->
+    ns_memcached_sockets_pool:executing_on_socket(
+      fun (Sock) ->
+              try
+                  mc_client_binary:update_user_permissions(Sock, RBACJson)
+              catch
+                  _:E -> {error, E}
+              end
+      end).
 
 -ifdef(EUNIT).
 
