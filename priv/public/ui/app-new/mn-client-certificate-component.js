@@ -65,8 +65,7 @@ mn.components.MnClientCertificate =
         .pipe(Rx.operators.map(R.pipe(R.equals([false, true]), R.not)));
 
       this.maybeDisableControls
-        .pipe(Rx.operators.takeUntil(this.mnOnDestroy),
-              Rx.operators.tap(console.log))
+        .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
         .subscribe(this.form.disableFields("prefixes"));
 
       this.form.sourcePipe.subscribe(this.setInitialValue.bind(this));

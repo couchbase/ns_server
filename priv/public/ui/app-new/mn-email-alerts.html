@@ -1,8 +1,8 @@
 <div>
   <!-- mn-spinner="settingsAlertsCtl.viewLoading || !settingsAlertsCtl.state" -->
   <form
-     [formGroup]="formGroup"
-     (submit)="onSubmit.next()"
+     [formGroup]="form.group"
+     (submit)="form.submit.next()"
      class="forms">
     <div class="formrow checkbox-list">
       <input

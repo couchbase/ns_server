@@ -95,12 +95,12 @@ mn.services.MnSettings = (function (Rx) {
       .addError();
 
     this.stream.postAlerts =
-      new mn.core.MnPostHttp(this.postAlerts.bind(this))
+      new mn.core.MnPostHttp(this.postAlerts(false).bind(this))
       .addSuccess()
       .addError();
 
     this.stream.postAlertsValidation =
-      new mn.core.MnPostHttp(this.postAlerts.bind(this))
+      new mn.core.MnPostHttp(this.postAlerts(true).bind(this))
       .addSuccess()
       .addError();
   }
@@ -114,11 +114,12 @@ mn.services.MnSettings = (function (Rx) {
   function getStats() {
     return this.http.get('/settings/stats');
   }
-
-  function postAlerts(data) {
-    return this.http.post("/settings/alerts", data[0], {
-      params: new ng.common.http.HttpParams().set("just_validate", data[1] ? 1 : 0)
-    });
+  function postAlerts(validate) {
+    return function (data) {
+      return this.http.post("/settings/alerts", data, {
+        params: new ng.common.http.HttpParams().set("just_validate", validate ? 1 : 0)
+      });
+    }.bind(this);
   }
 
   function postTestEmail(data) {

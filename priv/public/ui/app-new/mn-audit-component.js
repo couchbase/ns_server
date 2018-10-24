@@ -47,13 +47,13 @@ mn.components.MnAudit =
 
       this.form = mnFormService.create(this);
       this.form
-        .setFormGroup({auditdEnabled: false,
-                       logPath: "",
-                       rotateInterval: 0,
-                       rotateSize: 0,
-                       rotateUnit: "",
+        .setFormGroup({auditdEnabled: null,
+                       logPath: null,
+                       rotateInterval: null,
+                       rotateSize: null,
+                       rotateUnit: null,
                        descriptors: this.form.builder.group({}),
-                       disabledUsers: ""})
+                       disabledUsers: null})
         .setUnpackPipe(Rx.pipe(Rx.operators.map(this.unpackGetAudit.bind(this))))
         .setPackPipe(Rx.pipe(Rx.operators.withLatestFrom(this.compatVersion55,this.isEnterprise),
                              Rx.operators.map(this.prepareDataForSending.bind(this))))
@@ -83,9 +83,8 @@ mn.components.MnAudit =
         .subscribe(this.disableEnableFiled.bind(this));
 
       var disabledByID =
-          this.getAudit
-          .pipe(Rx.operators.pluck("disabled"),
-                Rx.operators.map(this.getDisabledByID.bind(this)));
+          this.getAudit.pipe(Rx.operators.pluck("disabled"),
+                             Rx.operators.map(this.getDisabledByID.bind(this)));
 
       this.descriptorsByModule =
         Rx.combineLatest(this.getAuditDescriptors, disabledByID)

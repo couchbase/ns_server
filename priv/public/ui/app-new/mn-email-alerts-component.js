@@ -14,20 +14,18 @@ mn.components.MnEmailAlerts =
     ];
 
     MnEmailAlerts.parameters = [
+      mn.services.MnForm,
       mn.services.MnSettings,
       mn.services.MnPermissions,
       mn.services.MnAlerts,
       mn.services.MnAdmin
     ];
 
-    MnEmailAlerts.prototype.setInitFormValue = setInitFormValue;
     MnEmailAlerts.prototype.maybeDisableFields = maybeDisableFields;
     MnEmailAlerts.prototype.disableEnableFiled = disableEnableFiled
     MnEmailAlerts.prototype.unpack = unpack;
     MnEmailAlerts.prototype.getAlertDescription = getAlertDescription;
-    MnEmailAlerts.prototype.generateAlertsGroup = generateAlertsGroup;
     MnEmailAlerts.prototype.prepareDataForSending = prepareDataForSending;
-    MnEmailAlerts.prototype.doAlertsPost = doAlertsPost;
 
     var alerts = ["auto_failover_node",
                   "auto_failover_maximum_reached",
@@ -47,108 +45,78 @@ mn.components.MnEmailAlerts =
 
     return MnEmailAlerts;
 
-    function MnEmailAlerts(mnSettingsService, mnPermissionsService, mnAlertsService, mnAdminService) {
+    function MnEmailAlerts(mnFormService, mnSettingsService, mnPermissionsService, mnAlertsService, mnAdminService) {
       mn.core.MnEventableComponent.call(this);
 
-      this.onSubmit = new Rx.Subject();
-      this.onTestEmail = new Rx.Subject();
-      this.formGroup = new ng.forms.FormGroup({
-        enabled: new ng.forms.FormControl(),
-        emailServer: new ng.forms.FormGroup({
-          user: new ng.forms.FormControl(),
-          pass: new ng.forms.FormControl(),
-          host: new ng.forms.FormControl(),
-          port: new ng.forms.FormControl(),
-          encrypt: new ng.forms.FormControl()
-        }),
-        recipients: new ng.forms.FormControl(),
-        sender: new ng.forms.FormControl(),
-        alerts: new ng.forms.FormGroup({})
-      });
-
       this.alerts = alerts;
-
-      this.alerts.forEach(this.generateAlertsGroup.bind(this));
-
-      this.enabledValueChanges = this.formGroup.get("enabled").valueChanges;
-
-      var initValue =
-          mnSettingsService.stream.getAlerts
-          .pipe(Rx.operators.first());
-
-      initValue.pipe(Rx.operators.map(this.unpack.bind(this)))
-        .subscribe(this.setInitFormValue.bind(this));
-
       this.postAlerts = mnSettingsService.stream.postAlerts;
       this.postAlertsValidation = mnSettingsService.stream.postAlertsValidation;
-      this.httpError = Rx.merge(this.postAlerts.error, this.postAlertsValidation.error);
-
       this.postTestEmail = mnSettingsService.stream.postTestEmail;
       this.settingsWrite = mnPermissionsService.createPermissionStream("admin.settings!write");
 
-      Rx.combineLatest(this.enabledValueChanges, this.settingsWrite)
+      this.form = mnFormService.create(this);
+      this.form
+        .setFormGroup({
+          enabled: null,
+          emailServer: this.form.builder.group({
+            user: null,
+            pass: null,
+            host: null,
+            port: null,
+            encrypt: null
+          }),
+          recipients: null,
+          sender: null,
+          alerts: this.form.builder.group(alerts.reduce(function (acc, key) {
+            return R.assoc(key, null, acc);
+          }, {}))
+        })
+        .setUnpackPipe(Rx.pipe(Rx.operators.map(this.unpack.bind(this))))
+        .setPackPipe(Rx.pipe(Rx.operators.map(this.prepareDataForSending.bind(this))))
+        .setSource(mnSettingsService.stream.getAlerts)
+        .setPostRequest(this.postAlerts)
+        .setValidation(this.postAlertsValidation, this.settingsWrite)
+        .clearErrors()
+        .successMessage("Settings saved successfully!");
+
+      this.onTestEmail = new Rx.Subject();
+
+      this.httpError = Rx.merge(this.postAlerts.error, this.postAlertsValidation.error);
+
+      Rx.combineLatest(
+        this.form.changes.pipe(Rx.operators.pluck("enabled"),
+                               Rx.operators.distinctUntilChanged()),
+        this.settingsWrite)
         .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
         .subscribe(this.maybeDisableFields.bind(this));
 
       this.settingsWrite
         .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
         .subscribe(this.disableEnableFiled.bind(this));
-
-      this.postAlerts.success
-        .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
-        .subscribe(mnAlertsService.success("Settings saved successfully!"));
-
-      this.settingsWrite
-        .pipe(Rx.operators.switchMap(function (v) {
-          return v ? this.formGroup.valueChanges : Rx.NEVER;
-        }.bind(this)),
-              Rx.operators.debounceTime(0),
-              Rx.operators.map(this.prepareDataForSending.bind(this)),
-              Rx.operators.takeUntil(this.mnOnDestroy))
-        .subscribe(this.doAlertsPost(true).bind(this));
-
-      this.onSubmit.pipe(
-        Rx.operators.tap(this.postAlerts.clearError.bind(this.postAlerts)),
-        Rx.operators.map(this.prepareDataForSending.bind(this)),
-        Rx.operators.takeUntil(this.mnOnDestroy)
-      ).subscribe(this.doAlertsPost(false).bind(this));
-    }
-
-    function doAlertsPost(validate) {
-      return function (data) {
-        this[validate ? "postAlertsValidation" : "postAlerts"].post([data, validate]);
-      };
     }
 
     function prepareDataForSending(data) {
-      var result = {
-        alerts: []
-      };
-      result.enabled = this.formGroup.get("enabled").value;
-      result.sender = this.formGroup.get("sender").value;
-      result.recipients = this.formGroup.get("recipients").value.replace(/\s+/g, ',');
-      result.emailUser = this.formGroup.get("emailServer.user").value;
-      result.emailPass = this.formGroup.get("emailServer.pass").value;
-      result.emailHost = this.formGroup.get("emailServer.host").value;
-      result.emailPort = this.formGroup.get("emailServer.port").value;
-      result.emailEncrypt = this.formGroup.get("emailServer.encrypt").value;
-
-      var alerts = this.formGroup.get("alerts").value;
-      Object.keys(alerts).forEach(function(key) {
-        !!alerts[key] && result.alerts.push(key);
-      });
-
-      result.alerts = result.alerts.join(',');
+      var result = {};
+      result.enabled = this.form.group.get("enabled").value;
+      result.sender = this.form.group.get("sender").value;
+      result.recipients = this.form.group.get("recipients").value.replace(/\s+/g, ',');
+      result.emailUser = this.form.group.get("emailServer.user").value;
+      result.emailPass = this.form.group.get("emailServer.pass").value;
+      result.emailHost = this.form.group.get("emailServer.host").value;
+      result.emailPort = this.form.group.get("emailServer.port").value;
+      result.emailEncrypt = this.form.group.get("emailServer.encrypt").value;
+      result.alerts =
+        Object.keys(R.pickBy(R.equals(true), this.form.group.get("alerts").value)).join(',');
       return result;
     }
 
     function unpack(v) {
-      v.recipients = v.recipients.join('\n');
-      v.alerts = v.alerts.reduce(function (acc, item) {
-        acc[item] = true;
-        return acc;
+      var copy = Object.assign({}, v);
+      copy.recipients = v.recipients.join('\n');
+      copy.alerts = v.alerts.reduce(function (acc, key) {
+        return R.assoc(key, true, acc);
       }, {})
-      return v;
+      return copy;
     }
 
     function getAlertDescription(name) {
@@ -170,25 +138,17 @@ mn.components.MnEmailAlerts =
       }
     }
 
-    function setInitFormValue(v) {
-      this.formGroup.patchValue(v);
-    }
-
-    function generateAlertsGroup(alertName) {
-      this.formGroup.get("alerts").addControl(alertName, new ng.forms.FormControl());
-    }
-
     function disableEnableFiled(value) {
       var method = value ? "enable" : "disable";
-      this.formGroup.get("enabled")[method]({onlySelf: true, emitEvent: false});
+      this.form.group.get("enabled")[method]({emitEvent: false});
     }
     function maybeDisableFields(values) {
-      var settings = {onlySelf: true, emitEvent: false};
+      var settings = {emitEvent: false};
       var method = (values[1] && values[0]) ? "enable" : "disable";
-      this.formGroup.get("emailServer")[method](settings);
-      this.formGroup.get("recipients")[method](settings);
-      this.formGroup.get("sender")[method](settings);
-      this.formGroup.get("alerts")[method](settings);
+      this.form.group.get("emailServer")[method](settings);
+      this.form.group.get("recipients")[method](settings);
+      this.form.group.get("sender")[method](settings);
+      this.form.group.get("alerts")[method](settings);
     }
 
   })(window.rxjs);

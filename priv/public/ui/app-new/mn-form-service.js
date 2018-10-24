@@ -23,7 +23,6 @@ mn.services.MnForm = (function (Rx) {
   Form.prototype.setUnpackPipe = setUnpackPipe;
   Form.prototype.setPackPipe = setPackPipe;
   Form.prototype.getFormValue = getFormValue;
-  Form.prototype.getFormValue = getFormValue;
   Form.prototype.success = success;
 
   return MnForm;
@@ -54,8 +53,8 @@ mn.services.MnForm = (function (Rx) {
   }
 
   function setSource(source) {
-    this.sourcePipe = source.pipe(Rx.operators.first(),
-                                  this.unpackPipe || Rx.operators.tap());
+    this.sourcePipe = source.pipe(this.unpackPipe || Rx.operators.tap(),
+                                  Rx.operators.first());
 
     this.changes = Rx.merge(this.group.valueChanges, this.sourcePipe);
 

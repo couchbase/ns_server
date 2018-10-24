@@ -42,9 +42,8 @@ mn.components.MnBuckets =
 
       this.maybeShowMaxBucketCountWarning =
         Rx.combineLatest(
-          mnAdminService.stream.maxBucketCount,
-          this.buckets
-        ).pipe(
+          mnAdminService.stream.maxBucketCount, this.buckets)
+        .pipe(
           Rx.operators.map(function (rv) {
             return rv[1].length >= rv[0];
           })
