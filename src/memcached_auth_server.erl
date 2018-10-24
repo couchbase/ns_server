@@ -163,7 +163,9 @@ process_req(#mc_header{opcode = ?MC_ACTIVE_EXTERNAL_USERS} = Header,
                  "because we already have one handler spawned", [Data]),
     {Header#mc_header{status = ?SUCCESS}, #mc_entry{}, State};
 
-process_req(Header, _, State) ->
+process_req(Header, Data, State) ->
+    ?log_error("Received unknown auth command from memcached: ~p ~p",
+               [Header, Data]),
     {Header#mc_header{status = ?UNKNOWN_COMMAND}, #mc_entry{}, State}.
 
 get_user_rbac_record_json(Identity, Buckets) ->
