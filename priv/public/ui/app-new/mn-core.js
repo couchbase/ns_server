@@ -238,8 +238,10 @@ mn.core.MnPostHttp = (function (Rx) {
                 return Rx.NEVER;
               }
             }),
-            Rx.operators.pluck("error"),
-            Rx.operators.map(JSON.parse),
+            Rx.operators.map(R.ifElse(
+              R.pipe(R.path(["error"]), Boolean),
+              R.pipe(R.path(["error"]), JSON.parse),
+              R.pick(["status"]))),
             mn.core.rxOperatorsShareReplay(1)
           ),
           this._errorSubject

@@ -76,10 +76,10 @@ mn.components.MnTermsAndConditions =
           Rx.operators.takeUntil(this.mnOnDestroy)
         )
         .subscribe(function () {
-          mnAuthService.stream.loginHttp.post(mnWizardService.getUserCreds());
+          mnAuthService.stream.postUILogin.post(mnWizardService.getUserCreds());
         });
 
-      mnAuthService.stream.loginHttp.success
+      mnAuthService.stream.postUILogin.success
         .pipe(
           Rx.operators.takeUntil(this.mnOnDestroy)
         )

@@ -12,7 +12,7 @@ mn.services.MnAuth = (function () {
     ng.common.http.HttpClient
   ];
 
-  MnAuthService.prototype.login = login;
+  MnAuthService.prototype.postUILogin = postUILogin;
   MnAuthService.prototype.postUILogout = postUILogout;
   MnAuthService.prototype.whoami = whoami;
 
@@ -22,22 +22,21 @@ mn.services.MnAuth = (function () {
     this.http = http;
     this.stream = {};
 
-    this.stream.loginHttp =
-      new mn.core.MnPostHttp(this.login.bind(this))
+    this.stream.postUILogin =
+      new mn.core.MnPostHttp(this.postUILogin.bind(this))
       .addSuccess()
       .addError();
 
     this.stream.postUILogout =
-      new mn.core.MnPostHttp(this.postUILogout.bind(this))
+      new mn.core.MnPostHttp(this.postUILogout.bind(this));
   }
 
   function whoami() {
     return this.http.get('/whoami');
   }
 
-  function login(user) {
-    return this.http
-      .post('/uilogin', user || {});
+  function postUILogin(user) {
+    return this.http.post('/uilogin', user || {});
     // should be moved into app.admin alerts
     // we should say something like you are using cached vesrion, reload the tab
     // return that.mnPoolsService

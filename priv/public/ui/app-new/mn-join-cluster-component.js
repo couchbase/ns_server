@@ -68,10 +68,10 @@ mn.components.MnJoinCluster =
         Rx.operators.takeUntil(this.mnOnDestroy)
       ).subscribe(function () {
         var data = mnWizardService.wizardForm.joinCluster.get("clusterAdmin").value;
-        mnAuthService.stream.loginHttp.post(data);
+        mnAuthService.stream.postUILogin.post(data);
       });
 
-      mnAuthService.stream.loginHttp.success.pipe(
+      mnAuthService.stream.postUILogin.success.pipe(
         Rx.operators.takeUntil(this.mnOnDestroy)
       ).subscribe(function () {
         uiRouter.urlRouter.sync();

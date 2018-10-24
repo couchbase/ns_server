@@ -13,41 +13,25 @@ mn.components.MnAuth =
     ];
 
     MnAuthComponent.parameters = [
+      mn.services.MnForm,
       mn.services.MnAuth,
       window['@uirouter/angular'].UIRouter,
-      ng.forms.FormBuilder
     ];
 
     return MnAuthComponent;
 
-    function MnAuthComponent(mnAuthService, uiRouter, formBuilder) {
+    function MnAuthComponent(mnFormService, mnAuthService, uiRouter) {
       mn.core.MnEventableComponent.call(this);
 
       this.focusFieldSubject = new Rx.BehaviorSubject(true);
-      this.onSubmit = new Rx.Subject();
+      this.postUILogin = mnAuthService.stream.postUILogin;
 
-      this.loginHttp = mnAuthService.stream.loginHttp;
-
-      this.loginHttp.success.pipe(
-        Rx.operators.takeUntil(this.mnOnDestroy)
-      ).subscribe(function () {
-        uiRouter.urlRouter.sync();
-      });
-
-      this.authForm =
-        formBuilder.group({
+      this.form = mnFormService.create(this)
+        .setFormGroup({
           user: ['', ng.forms.Validators.required],
-          password: ['', ng.forms.Validators.required]
-        });
-
-      this.onSubmit.pipe(
-        Rx.operators.takeUntil(this.mnOnDestroy),
-        Rx.operators.map(getValues.bind(this))
-      ).subscribe(this.loginHttp.post.bind(this.loginHttp));
-
-      function getValues() {
-        return this.authForm.value;
-      }
+          password: ['', ng.forms.Validators.required]})
+        .setPostRequest(this.postUILogin)
+        .success(uiRouter.urlRouter.sync.bind(uiRouter.urlRouter));
     }
 
   })(window.rxjs);

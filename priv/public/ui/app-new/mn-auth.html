@@ -11,16 +11,16 @@
       <h2>Couchbase Server</h2>
     </div>
     <form
-       [formGroup]="authForm"
-       (ngSubmit)="onSubmit.next()"
+       [formGroup]="form.group"
+       (ngSubmit)="form.submit.next()"
        class="forms"
        novalidate>
 
       <div class="panel-content">
         <div
            class="error error-form"
-           [hidden]="!((loginHttp.error | async)?.status)"
-           [ngSwitch]="(loginHttp.error | async)?.status">
+           [hidden]="!((postUILogin.error | async)?.status)"
+           [ngSwitch]="(postUILogin.error | async)?.status">
           <span *ngSwitchCase="'initialized'">
             This cluster has been initialized.
           </span>
@@ -50,9 +50,9 @@
              formControlName="user"
              [mnFocus]="focusFieldSubject">
           <div
-             [hidden]="!authForm.get('user').dirty"
+             [hidden]="!form.group.get('user').dirty"
              class="error error-field">
-            <div [hidden]="!authForm.get('user').errors?.required">Username is required.</div>
+            <div [hidden]="!form.group.get('user').errors?.required">Username is required.</div>
           </div>
         </div>
 
@@ -67,15 +67,15 @@
         <!-- mn-autocomplete-off -->
 
         <div
-           [hidden]="!authForm.get('password').dirty"
+           [hidden]="!form.group.get('password').dirty"
            class="error error-field">
-          <div [hidden]="!authForm.get('password').errors?.required">Password is required.</div>
+          <div [hidden]="!form.group.get('password').errors?.required">Password is required.</div>
         </div>
 
       </div>
       <div class="panel-footer">
         <button
-           [disabled]="authForm.invalid"
+           [disabled]="form.group.invalid"
            type="submit">
           Sign In</button>
       </div>

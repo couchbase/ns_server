@@ -61,7 +61,7 @@ mn.components.MnAudit =
         .setPostRequest(this.postAudit)
         .setValidation(this.postAuditValidation, this.securityWrite)
         .clearErrors()
-        .message("Settings saved successfully!");
+        .successMessage("Settings saved successfully!");
 
       this.httpError = Rx.merge(this.postAudit.error, this.postAuditValidation.error);
 

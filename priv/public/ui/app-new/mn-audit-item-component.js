@@ -62,8 +62,7 @@ mn.components.MnAuditItem =
                                     mn.core.rxOperatorsShareReplay(1));
 
       this.thisModuleChanges
-        .pipe(Rx.operators.tap(console.log),
-              Rx.operators.map(R.pipe(Object.values, R.all(R.equals(true)))),
+        .pipe(Rx.operators.map(R.pipe(Object.values, R.all(R.equals(true)))),
               Rx.operators.takeUntil(this.mnOnDestroy))
         .subscribe(this.setToggleAllValue.bind(this));
 
@@ -78,7 +77,6 @@ mn.components.MnAuditItem =
       this.form.group.get("descriptors")[method]({emitEvent: false});
     }
     function setToggleAllValue(value) {
-      console.log(value)
       this.formHelper.get("toggleAll").setValue(value, {emitEvent: false});
     }
     function doToggleAll(value) {

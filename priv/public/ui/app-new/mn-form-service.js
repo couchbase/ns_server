@@ -17,11 +17,14 @@ mn.services.MnForm = (function (Rx) {
   Form.prototype.setSource = setSource;
   Form.prototype.setPostRequest = setPostRequest;
   Form.prototype.clearErrors = clearErrors;
-  Form.prototype.message = message;
+  Form.prototype.successMessage = successMessage;
   Form.prototype.disableFields = disableFields;
   Form.prototype.setValidation = setValidation;
   Form.prototype.setUnpackPipe = setUnpackPipe;
   Form.prototype.setPackPipe = setPackPipe;
+  Form.prototype.getFormValue = getFormValue;
+  Form.prototype.getFormValue = getFormValue;
+  Form.prototype.success = success;
 
   return MnForm;
 
@@ -38,6 +41,11 @@ mn.services.MnForm = (function (Rx) {
     this.builder = builder;
     this.component = component;
     this.mnAlertsService = mnAlertsService;
+    this.packPipe = Rx.pipe(Rx.operators.map(this.getFormValue.bind(this)));
+  }
+
+  function getFormValue() {
+    return this.group.value;
   }
 
   function setFormGroup(formDescription) {
@@ -57,10 +65,15 @@ mn.services.MnForm = (function (Rx) {
     return this;
   }
 
-  function message(message) {
+  function success(fn) {
     this.postRequest.success
       .pipe(Rx.operators.takeUntil(this.component.mnOnDestroy))
-      .subscribe(this.mnAlertsService.success(message));
+      .subscribe(fn);
+    return this;
+  }
+
+  function successMessage(message) {
+    this.success(this.mnAlertsService.success(message));
     return this;
   }
 
@@ -75,7 +88,7 @@ mn.services.MnForm = (function (Rx) {
     this.submit = new Rx.Subject();
 
     this.submit
-      .pipe(this.packPipe || Rx.operators.tap(),
+      .pipe(this.packPipe,
             Rx.operators.takeUntil(this.component.mnOnDestroy))
       .subscribe(function (v) {
         this.postRequest.post(v);

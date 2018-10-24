@@ -43,7 +43,7 @@ mn.components.MnClientCertificate =
                              Rx.operators.map(this.getValue.bind(this))))
         .setPostRequest(mnSecurityService.stream.postClientCertAuth)
         .clearErrors()
-        .message("Settings saved successfully!");
+        .successMessage("Settings saved successfully!");
 
       var formValues = Rx.merge(this.form.group.valueChanges, this.form.sourcePipe);
 

@@ -73,10 +73,10 @@ mn.components.MnNewClusterConfig =
       mnWizardService.stream.secondGroupHttp.success.pipe(
         Rx.operators.takeUntil(this.mnOnDestroy)
       ).subscribe(function () {
-        mnAuthService.stream.loginHttp.post(mnWizardService.getUserCreds());
+        mnAuthService.stream.postUILogin.post(mnWizardService.getUserCreds());
       });
 
-      mnAuthService.stream.loginHttp.success.pipe(
+      mnAuthService.stream.postUILogin.success.pipe(
         Rx.operators.takeUntil(this.mnOnDestroy)
       ).subscribe(function () {
         uiRouter.urlRouter.sync();
