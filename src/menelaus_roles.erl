@@ -46,6 +46,8 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-define(DEFAULT_EXTERNAL_ROLES_POLLING_INTERVAL, 10*60*1000).
+
 -export([get_definitions/0,
          get_definitions/1,
          roles_45/0,
@@ -57,7 +59,8 @@
          calculate_possible_param_values/1,
          filter_out_invalid_roles/3,
          produce_roles_by_permission/3,
-         get_security_roles/0]).
+         get_security_roles/0,
+         external_auth_polling_interval/0]).
 
 -export([start_compiled_roles_cache/0]).
 
@@ -985,6 +988,10 @@ get_security_roles() ->
 get_security_roles(Config) ->
     pipes:run(produce_roles_by_permission({[admin, security], any}, Config, []),
               pipes:collect()).
+
+external_auth_polling_interval() ->
+    ns_config:read_key_fast(external_auth_polling_interval,
+                            ?DEFAULT_EXTERNAL_ROLES_POLLING_INTERVAL).
 
 filter_out_invalid_roles_test() ->
     Roles = [{role1, [{"bucket1", <<"id1">>}]},
