@@ -54,14 +54,25 @@ mn.services.MnAdmin = (function (Rx) {
 
     this.stream.isRebalancing =
       this.stream.getPoolsDefault.pipe(
-        Rx.operators.map(R.pipe(R.propEq('rebalanceStatus', 'none'), R.not)));
+        Rx.operators.map(R.pipe(R.propEq('rebalanceStatus', 'none'), R.not)),
+        Rx.operators.distinctUntilChanged());
+
+    this.stream.isBalanced =
+      this.stream.getPoolsDefault.pipe(Rx.operators.pluck("balanced"),
+                                       Rx.operators.distinctUntilChanged());
 
     this.stream.maxBucketCount =
-      this.stream.getPoolsDefault.pipe(Rx.operators.pluck("maxBucketCount"));
+      this.stream.getPoolsDefault.pipe(Rx.operators.pluck("maxBucketCount"),
+                                       Rx.operators.distinctUntilChanged());
 
     this.stream.uiSessionTimeout =
       this.stream.getPoolsDefault.pipe(Rx.operators.pluck("uiSessionTimeout"),
-                                       Rx.operators.distinctUntilChanged());
+                                        Rx.operators.distinctUntilChanged());
+
+    this.stream.failoverWarnings =
+      this.stream.getPoolsDefault.pipe(Rx.operators.pluck("failoverWarnings"),
+                                       Rx.operators.distinctUntilChanged(R.equals),
+                                       mn.core.rxOperatorsShareReplay(1));
 
     this.stream.ldapEnabled =
       this.stream.getPoolsDefault.pipe(Rx.operators.pluck("ldapEnabled"),
@@ -72,7 +83,6 @@ mn.services.MnAdmin = (function (Rx) {
       (new Rx.BehaviorSubject()).pipe(Rx.operators.switchMap(this.getVersion.bind(this)),
                                       Rx.operators.pluck("implementationVersion"),
                                       mn.core.rxOperatorsShareReplay(1));
-
     this.stream.prettyVersion =
       this.stream.implementationVersion.pipe(
         Rx.operators.map(mnPrettyVersionPipe.transform.bind(mnPrettyVersionPipe)));
@@ -80,7 +90,6 @@ mn.services.MnAdmin = (function (Rx) {
     this.stream.thisNode =
       this.stream.getPoolsDefault.pipe(Rx.operators.pluck("nodes"),
                                        Rx.operators.map(R.find(R.propEq('thisNode', true))));
-
     this.stream.memoryQuotas =
       this.stream.getPoolsDefault.pipe(
         Rx.operators.map(mnHelperService.pluckMemoryQuotas.bind(mnHelperService)));
@@ -88,22 +97,31 @@ mn.services.MnAdmin = (function (Rx) {
     this.stream.clusterName =
       this.stream.getPoolsDefault.pipe(Rx.operators.pluck("clusterName"));
 
+    this.stream.clusterCompatibility =
+      this.stream.thisNode.pipe(Rx.operators.pluck("clusterCompatibility"),
+                                Rx.operators.distinctUntilChanged());
+
+    this.stream.prettyClusterCompat =
+      this.stream.clusterCompatibility.pipe(Rx.operators.map(function (version) {
+        var major = Math.floor(version / 0x10000);
+        var minor = version - (major * 0x10000);
+        return major.toString() + "." + minor.toString();
+      }));
+
     this.stream.compatVersion51 =
-      this.stream.thisNode.pipe(mnHelperService.compatVersionPipe(encodeCompatVersion(5, 1)));
+      this.stream.clusterCompatibility.pipe(
+        Rx.operators.map(R.flip(R.gte)(encodeCompatVersion(5, 1))));
+
     this.stream.compatVersion55 =
-      this.stream.thisNode.pipe(mnHelperService.compatVersionPipe(encodeCompatVersion(5, 5)));
+      this.stream.clusterCompatibility.pipe(
+        Rx.operators.map(R.flip(R.gte)(encodeCompatVersion(5, 5))));
+
+    this.stream.isNotCompatMode =
+      Rx.combineLatest(this.stream.compatVersion51, this.stream.compatVersion55)
+      .pipe(Rx.operators.map(R.all(R.equals(true))));
 
     this.stream.postPoolsDefault =
       new mn.core.MnPostHttp(this.postPoolsDefault.bind(this)).addSuccess().addError();
-
-    this.stream.activateNodes =
-      this.stream.getPoolsDefault.pipe(Rx.operators.pluck("nodes"),
-                                       Rx.operators.map(
-                                         R.filter(R.propEq('clusterMembership', 'active'))));
-
-    this.stream.activateKvNodes =
-      this.stream.activateNodes.pipe(Rx.operators.map(R.filter(R.pipe(R.path(["services"]),
-                                                                      R.contains("kv")))));
 
   }
 

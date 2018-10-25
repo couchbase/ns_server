@@ -31,8 +31,8 @@ mn.components.MnSearchField =
 
     function ngOnInit() {
       this.onClearClick = new Rx.Subject();
-      this.mnFocusStream = this.mnFocusStream || Rx.Observable.never();
-      this.mnClearStream = this.mnClearStream || Rx.Observable.never();
+      this.mnFocusStream = this.mnFocusStream || Rx.NEVER;
+      this.mnClearStream = this.mnClearStream || Rx.NEVER;
 
       Rx.merge(this.onClearClick, this.mnClearStream)
         .pipe(Rx.operators.takeUntil(this.mnOnDestroy))

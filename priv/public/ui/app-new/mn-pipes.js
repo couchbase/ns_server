@@ -292,6 +292,47 @@ mn.pipes.MnPrepareQuantity =
 
 var mn = mn || {};
 mn.pipes = mn.pipes || {};
+mn.pipes.MnFormatUptime =
+  (function () {
+    "use strict";
+
+    MnFormatUptime.annotations = [
+      new ng.core.Pipe({
+        name: "mnFormatUptime"
+      })
+    ];
+
+    MnFormatUptime.prototype.transform = transform;
+
+    return MnFormatUptime;
+
+    function MnFormatUptime() {
+    }
+    function transform(seconds, precision) {
+      precision = precision || 8;
+
+      var arr = [[86400, "days", "day"],
+                 [3600, "hours", "hour"],
+                 [60, "minutes", "minute"],
+                 [1, "seconds", "second"]];
+
+      var rv = [];
+
+      _.each(arr, function (item) {
+        var period = item[0];
+        var value = (seconds / period) >> 0;
+        seconds -= value * period;
+        if (value) {
+            rv.push(String(value) + ' ' + (value > 1 ? item[1] : item[2]));
+          }
+          return !!--precision;
+        });
+        return rv.join(', ');
+    }
+  })();
+
+var mn = mn || {};
+mn.pipes = mn.pipes || {};
 mn.pipes.MnFormatQuantity =
   (function () {
     "use strict";
@@ -329,6 +370,41 @@ mn.pipes.MnFormatQuantity =
 
       var t = this.mnPrepareQuantity.transform(value, numberSystem);
       return [this.decimalPipe.transform(value/t[0]), spacing, t[1]].join('');
+    }
+  })();
+
+
+var mn = mn || {};
+mn.pipes = mn.pipes || {};
+mn.pipes.MnLeftEllipsis =
+  (function () {
+    "use strict";
+
+    MnLeftEllipsis.annotations = [
+      new ng.core.Pipe({
+        name: "mnLeftEllipsis"
+      })
+    ];
+
+    MnLeftEllipsis.prototype.transform = transform;
+
+    return MnLeftEllipsis;
+
+    function MnLeftEllipsis() {}
+
+    function transform(text, length) {
+      if (!text) {
+        return;
+      }
+      if (length <= 3) {
+        // asking for stupidly short length will cause this to do
+        // nothing
+        return text;
+      }
+      if (text.length > length) {
+        return "..." + text.slice(3-length);
+      }
+      return text;
     }
   })();
 
@@ -419,9 +495,13 @@ mn.modules.MnPipesModule =
           mn.pipes.MnIsMemcached,
           mn.pipes.MnIsEphemeral,
           mn.pipes.MnFormatWarmupMessage,
-          mn.pipes.MnObjectKeys
+          mn.pipes.MnObjectKeys,
+          mn.pipes.MnFormatUptime,
+          mn.pipes.MnLeftEllipsis
         ],
         exports: [
+          mn.pipes.MnLeftEllipsis,
+          mn.pipes.MnFormatUptime,
           mn.pipes.MnFormatStorageModeError,
           mn.pipes.MnParseVersion,
           mn.pipes.MnPrettyVersion,
@@ -440,7 +520,8 @@ mn.modules.MnPipesModule =
           mn.pipes.MnPrettyVersion,
           mn.pipes.MnPrepareQuantity,
           mn.pipes.MnBytesToMB,
-          ng.common.DecimalPipe
+          mn.pipes.MnFormatQuantity,
+          ng.common.DecimalPipe,
         ]
       })
     ];

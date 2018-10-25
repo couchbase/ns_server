@@ -18,12 +18,14 @@ mn.services.MnForm = (function (Rx) {
   Form.prototype.setPostRequest = setPostRequest;
   Form.prototype.clearErrors = clearErrors;
   Form.prototype.successMessage = successMessage;
+  Form.prototype.errorMessage = errorMessage;
   Form.prototype.disableFields = disableFields;
   Form.prototype.setValidation = setValidation;
   Form.prototype.setUnpackPipe = setUnpackPipe;
   Form.prototype.setPackPipe = setPackPipe;
   Form.prototype.getFormValue = getFormValue;
   Form.prototype.success = success;
+  Form.prototype.error = error;
 
   return MnForm;
 
@@ -71,8 +73,20 @@ mn.services.MnForm = (function (Rx) {
     return this;
   }
 
+  function error(fn) {
+    this.postRequest.error
+      .pipe(Rx.operators.takeUntil(this.component.mnOnDestroy))
+      .subscribe(fn);
+    return this;
+  }
+
   function successMessage(message) {
     this.success(this.mnAlertsService.success(message));
+    return this;
+  }
+
+  function errorMessage(message) {
+    this.error(this.mnAlertsService.error(message));
     return this;
   }
 
@@ -87,7 +101,7 @@ mn.services.MnForm = (function (Rx) {
     this.submit = new Rx.Subject();
 
     this.submit
-      .pipe(this.packPipe,
+      .pipe(this.group ? this.packPipe : Rx.operators.tap(),
             Rx.operators.takeUntil(this.component.mnOnDestroy))
       .subscribe(function (v) {
         this.postRequest.post(v);
@@ -119,8 +133,9 @@ mn.services.MnForm = (function (Rx) {
       .pipe(Rx.operators.switchMap(function (v) {
         return v ? this.group.valueChanges : Rx.NEVER;
       }.bind(this)),
+            // Rx.operators.throttleTime(500, undefined, {leading: true, trailing: true})
             Rx.operators.debounceTime(0),
-            this.packPipe || Rx.operators.tap(),
+            this.packPipe,
             Rx.operators.takeUntil(this.component.mnOnDestroy))
       .subscribe(function (v) {
         validationPostRequest.post(v);

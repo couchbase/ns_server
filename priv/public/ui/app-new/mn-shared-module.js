@@ -10,12 +10,16 @@ mn.modules.MnShared =
           mn.directives.MnFocus,
           mn.components.MnAutoCompactionForm,
           mn.components.MnPeriod,
-          mn.components.MnServicesConfig
+          mn.components.MnServicesConfig,
+          mn.components.MnSearch,
+          mn.components.MnSearchField
         ],
         exports: [
           mn.components.MnServicesConfig,
           mn.directives.MnFocus,
-          mn.components.MnAutoCompactionForm
+          mn.components.MnAutoCompactionForm,
+          mn.components.MnSearch,
+          mn.components.MnSearchField
         ],
         imports: [
           ng.forms.ReactiveFormsModule,

@@ -71,8 +71,8 @@ mn.components.MnEmailAlerts =
             return R.assoc(key, null, acc);
           }, {}))
         })
-        .setUnpackPipe(Rx.pipe(Rx.operators.map(this.unpack.bind(this))))
-        .setPackPipe(Rx.pipe(Rx.operators.map(this.prepareDataForSending.bind(this))))
+        .setUnpackPipe(Rx.operators.map(this.unpack.bind(this)))
+        .setPackPipe(Rx.operators.map(this.prepareDataForSending.bind(this)))
         .setSource(mnSettingsService.stream.getAlerts)
         .setPostRequest(this.postAlerts)
         .setValidation(this.postAlertsValidation, this.settingsWrite)

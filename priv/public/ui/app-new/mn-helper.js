@@ -59,7 +59,7 @@ mn.services.MnHelper = (function (Rx) {
   MnHelper.prototype.calculateMaxMemorySize = calculateMaxMemorySize;
   MnHelper.prototype.isJson = isJson;
   MnHelper.prototype.sortByStream = sortByStream;
-  MnHelper.prototype.compatVersionPipe = compatVersionPipe;
+  MnHelper.prototype.createToggle = createToggle;
 
   return MnHelper;
 
@@ -118,11 +118,10 @@ mn.services.MnHelper = (function (Rx) {
     }
   }
 
-  function compatVersionPipe(version) {
-    return Rx.pipe(
-      Rx.operators.map(R.pipe(R.path(["clusterCompatibility"]),
-                              R.flip(R.gte)(version))),
-      Rx.operators.distinctUntilChanged());
+  function createToggle(version) {
+    this.click = new Rx.Subject();
+    this.state = this.click.pipe(Rx.operators.scan(R.not, false),
+                                 mn.core.rxOperatorsShareReplay(1));
   }
 
   function sortByStream(sortByStream) {
@@ -133,8 +132,7 @@ mn.services.MnHelper = (function (Rx) {
         .combineLatest(arrayStream,
                        Rx.zip(sortByStream, isAsc))
         .pipe(Rx.operators.map(doSort),
-              mn.core.rxOperatorsShareReplay(1)
-             );
+              mn.core.rxOperatorsShareReplay(1));
 
       function doSort(values) {
         var copyArray = values[0].slice();

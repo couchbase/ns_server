@@ -189,7 +189,9 @@ mn.modules.MnAdmin =
           mn.directives.MnDraggable,
           mn.components.MnAdmin,
           OverviewComponent,
-          ServersComponent,
+          mn.components.MnServers,
+          mn.components.MnServersItem,
+          mn.components.MnServersItemDetails,
           mn.components.MnBuckets,
           mn.components.MnBucketsItem,
           mn.components.MnBucketsItemDetails,
@@ -211,9 +213,15 @@ mn.modules.MnAdmin =
               }
             }, {
               name: "app.admin.servers",
-              url: "servers",
+              url: "servers?openedServers",
+              params: {
+                openedServers: {
+                  array: true,
+                  dynamic: true
+                }
+              },
               views: {
-                "main@app.admin": ServersComponent
+                "main@app.admin": mn.components.MnServers
               },
               data: {
                 title: "Servers"
@@ -264,7 +272,8 @@ mn.modules.MnAdmin =
           ng.platformBrowser.animations.BrowserAnimationsModule
         ],
         providers: [
-          mn.services.MnAdmin
+          mn.services.MnAdmin,
+          mn.services.MnServers
         ],
         entryComponents: [
           mn.components.MnSessionTimeoutDialog,

@@ -17,6 +17,7 @@ mn.services.MnAlerts = (function (Rx) {
   MnAlertsService.prototype.removeItem = removeItem;
   MnAlertsService.prototype.startTimer = startTimer
   MnAlertsService.prototype.success = success;
+  MnAlertsService.prototype.error = error;
 
   return MnAlertsService;
 
@@ -35,6 +36,16 @@ mn.services.MnAlerts = (function (Rx) {
       this.stream.alert.next({
         message: message,
         type: "success",
+        timeout: 4000
+      })
+    }.bind(this)
+  }
+
+  function error(message) {
+    return function () {
+      this.stream.alert.next({
+        message: message,
+        type: "error",
         timeout: 4000
       })
     }.bind(this)

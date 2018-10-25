@@ -65,7 +65,7 @@
   </div>
 
   <mn-warmup-progress
-     *ngIf="(warmUpTasks | async)?.length && (tasksRead | async)"
+     *ngIf="(tasksRead | async) && (warmUpTasks | async)?.length"
      [mnTasks]="warmUpTasks"
      mnSortBy="hostname"
      class="margin-bottom-1">

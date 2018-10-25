@@ -22,6 +22,8 @@ mn.services.MnSettings = (function (Rx) {
   MnSettingsService.prototype.getPhoneHome = getPhoneHome;
   MnSettingsService.prototype.getAutoFailover = getAutoFailover;
   MnSettingsService.prototype.getAutoReprovision = getAutoReprovision;
+  MnSettingsService.prototype.postAutoFailoverReset = postAutoFailoverReset;
+  MnSettingsService.prototype.postAutoReprovisionReset = postAutoReprovisionReset;
 
   return MnSettingsService;
 
@@ -103,6 +105,16 @@ mn.services.MnSettings = (function (Rx) {
       new mn.core.MnPostHttp(this.postAlerts(true).bind(this))
       .addSuccess()
       .addError();
+
+    this.stream.postAutoFailoverReset =
+      new mn.core.MnPostHttp(this.postAutoFailoverReset.bind(this))
+      .addSuccess()
+      .addError();
+
+    this.stream.postAutoReprovisionReset =
+      new mn.core.MnPostHttp(this.postAutoReprovisionReset.bind(this))
+      .addSuccess()
+      .addError();
   }
 
   function getPhoneHome(data) {
@@ -124,6 +136,14 @@ mn.services.MnSettings = (function (Rx) {
 
   function postTestEmail(data) {
     return this.http.post("/settings/alerts/testEmail", data);
+  }
+
+  function postAutoFailoverReset() {
+    return this.http.post("/settings/autoFailover/resetCount");
+  }
+
+  function postAutoReprovisionReset() {
+    return this.http.post("/settings/autoReprovision/resetCount");
   }
 
   function getAlerts() {

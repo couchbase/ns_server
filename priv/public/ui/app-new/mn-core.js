@@ -132,6 +132,7 @@ mn.core.DetailsHashObserver = (function (Rx) {
 mn.core.MnPostGroupHttp = (function (Rx) {
   MnPostGroupHttp.prototype.post = post;
   MnPostGroupHttp.prototype.addSuccess = addSuccess;
+  MnPostGroupHttp.prototype.addError = addError;
   MnPostGroupHttp.prototype.addLoading = addLoading;
   MnPostGroupHttp.prototype.clearErrors = clearErrors;
   MnPostGroupHttp.prototype.getHttpGroupStreams = getHttpGroupStreams;
@@ -149,6 +150,19 @@ mn.core.MnPostGroupHttp = (function (Rx) {
     });
   }
 
+  function addError() {
+    this.error =
+      Rx.zip.apply(null, this.getHttpGroupStreams("response"))
+      .pipe(
+        Rx.operators.filter(function (responses) {
+          return _.find(responses, function (resp) {
+            return resp instanceof ng.common.http.HttpErrorResponse;
+          });
+        })
+      );
+    return this;
+  }
+
   function addSuccess() {
     this.success =
       Rx.zip.apply(null, this.getHttpGroupStreams("response"))
@@ -163,6 +177,7 @@ mn.core.MnPostGroupHttp = (function (Rx) {
   }
 
   function post(data) {
+    data = data || {};
     this.request.next();
     _.forEach(this.httpMap, function (value, key) {
       value.post(data[key]);

@@ -33,47 +33,45 @@ mn.services.MnTasks = (function (Rx) {
     };
 
     var setupInterval =
-        this.stream.interval.pipe(
-          Rx.operators.startWith(0),
-          Rx.operators.switchMap(function (interval) {
-            return Rx.timer(interval);
-          })
-        );
-
+        this.stream.interval.pipe(Rx.operators.startWith(0),
+                                  Rx.operators.switchMap(function (interval) {
+                                    return Rx.timer(interval);
+                                  }));
     var getUrl =
-        mnAdminService.stream.getPoolsDefault.pipe(
-          Rx.operators.pluck("tasks", "uri"),
-          Rx.operators.distinctUntilChanged()
-        );
+        mnAdminService.stream.getPoolsDefault.pipe(Rx.operators.pluck("tasks", "uri"),
+                                                   Rx.operators.distinctUntilChanged());
 
     this.stream.getSuccess =
-      Rx.combineLatest(
-        getUrl,
-        setupInterval
-      ).pipe(
-        Rx.operators.switchMap(this.get.bind(this)),
-        mn.core.rxOperatorsShareReplay(1)
-      );
+      Rx.combineLatest(getUrl, setupInterval)
+      .pipe(Rx.operators.switchMap(this.get.bind(this)),
+            mn.core.rxOperatorsShareReplay(1));
 
     var tasks = this.stream.getSuccess;
 
     this.stream.tasksWarmingUp =
-      tasks.pipe(
-        Rx.operators.map(function (tasks) {
-          return _.filter(tasks, function (task) {
-            return task.type === 'warming_up' && task.status === 'running';
-          });
-        })
-      );
+      tasks.pipe(Rx.operators.map(R.filter(R.allPass([R.propEq("type", "warming_up"),
+                                                      R.propEq("status", "running")]))));
+    this.stream.isLoadingSampleBucket =
+      tasks.pipe(Rx.operators.map(
+        R.pipe(R.find(R.allPass([R.propEq("type", "loadingSampleBucket"),
+                                 R.propEq("status", "running")])), Boolean)),
+                 Rx.operators.distinctUntilChanged());
 
     this.stream.tasksBucketCompaction =
-      tasks.pipe(
-        Rx.operators.map(function (tasks) {
-          return _.filter(tasks, function (task) {
-            return task.type === 'bucket_compaction';
-          });
-        })
-      );
+      tasks.pipe(Rx.operators.map(R.filter(R.propEq("type", "bucket_compaction"))));
+
+    this.stream.tasksRecovery =
+      tasks.pipe(Rx.operators.map(R.find(R.propEq("type", "recovery"))));
+
+    this.stream.isSubtypeGraceful =
+      tasks.pipe(Rx.operators.map(R.find(R.allPass([R.propEq("subtype", "gracefulFailover"),
+                                                    R.propEq("type", "rebalance")]))));
+    this.stream.isRecoveryMode =
+      this.stream.tasksRecovery.pipe(Rx.operators.map(Boolean),
+                                     Rx.operators.distinctUntilChanged());
+
+    this.stream.tasksRebalance =
+      tasks.pipe(Rx.operators.map(R.find(R.propEq("type", "rebalance"))));
 
     this.stream.extractNextInterval =
       this.stream.getSuccess.pipe(
@@ -87,18 +85,15 @@ mn.services.MnTasks = (function (Rx) {
       );
 
     this.stream.running =
-      this.stream.getSuccess.pipe(
-        Rx.operators.map(_.curry(_.filter)(_, function (task) {
-          return task.status === "running";
-        }))
-      );
+      this.stream.getSuccess.pipe(Rx.operators.map(R.filter(R.propEq("status", "running"))));
 
     this.stream.tasksToDisplay =
-      this.stream.running.pipe(
-        Rx.operators.map(_.curry(_.filter)(_, function (task) {
-          return tasksTypesToDisplay[task.type];
-        }))
-      );
+      this.stream.running.pipe(Rx.operators.map(
+        R.filter(R.pipe(R.path(["type"]), R.flip(R.prop)(tasksTypesToDisplay)))));
+
+    this.stream.isOrphanBucket =
+      this.stream.getSuccess.pipe(Rx.operators.map(
+        R.pipe(R.find(R.propEq("type", "orphanBucket")), Boolean)));
 
   }
 

@@ -42,8 +42,6 @@ mn.modules.MnSecurity =
         declarations: [
           mn.components.MnUserRoles,
           mn.components.MnUserRolesItem,
-          mn.components.MnSearch,
-          mn.components.MnSearchField,
           mn.components.MnRootCertificate,
           mn.components.MnClientCertificate,
           mn.components.MnLogRedaction,
