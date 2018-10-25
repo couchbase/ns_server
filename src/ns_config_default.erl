@@ -263,7 +263,9 @@ default() ->
            {cyclesize, log_cyclesize},
            {sleeptime, log_sleeptime}]}},
 
-        {external_auth_service, true}
+        {external_auth_service, true},
+        {active_external_users_push_interval,
+            {memcached_config_mgr, get_external_users_push_interval, []}}
        ]}},
 
      {memory_quota, KvQuota},
