@@ -11,8 +11,16 @@
     vm.loginFailed = false;
     vm.submit = submit;
 
-    if ($state.transition.$from().includes["app.wizard"]) {
-      error({status: "initialized"})
+    activate();
+
+    function activate() {
+      if ($state.transition.$from().includes["app.wizard"]) {
+        error({status: "initialized"})
+      }
+
+      mnAuthService.canUseCertForAuth().then(function (data) {
+        vm.canUseCert = data.cert_for_auth;
+      });
     }
 
     function error(resp) {
@@ -27,9 +35,9 @@
         $urlRouter.sync();
       }
     }
-    function submit() {
+    function submit(useCertForAuth) {
       mnAuthService
-        .login(vm.user)
+        .login(vm.user, useCertForAuth)
         .then(success, error);
     }
   }

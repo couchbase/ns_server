@@ -669,6 +669,29 @@ section.error {
   z-index: 1;
 }
 
+/* additional styles for login with client certificate */
+.cert-signin {
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+.cert-signin-or-container {
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .725rem;
+  color: #999;
+}
+.cert-signin-line {
+  height: 1px;
+  border-top: 1px solid #d1d1d1;
+  flex: 1 0 auto;
+  margin: 0 1rem;
+}
+.cert-signin button {
+  margin: 0 auto;
+}
+
 /* large-width modal dialog (uses .panel) ------------------------------- */
 .dialog-lg {
   width: 640px;
