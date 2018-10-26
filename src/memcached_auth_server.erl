@@ -109,41 +109,22 @@ process_data(#s{mcd_socket = Sock, data = Data} = State) ->
 process_req(#mc_header{opcode = ?MC_AUTH_REQUEST} = Header,
             #mc_entry{data = Data}, #s{buckets = Buckets} = State) ->
     {AuthReq} = ejson:decode(Data),
-    ErrorResp =
-        fun (Msg) ->
-                UUID = misc:hexify(crypto:strong_rand_bytes(16)),
-                ?log_info("Auth failed with reason: '~s' (UUID: ~s)",
-                          [Msg, UUID]),
-                Json = {[{error, {[{context, <<"Authentication failed">>},
-                                   {ref, UUID}]}}]},
-                {Header#mc_header{status = ?MC_AUTH_ERROR},
-                 #mc_entry{data = ejson:encode(Json)},
-                 State}
-        end,
-    case proplists:get_value(<<"mechanism">>, AuthReq) of
-        <<"PLAIN">> ->
-            Challenge = proplists:get_value(<<"challenge">>, AuthReq),
-            case sasl_decode_plain_challenge(Challenge) of
-                {ok, {"", Username, Password}} ->
-                    case menelaus_auth:authenticate({Username, Password}) of
-                        {ok, Id} ->
-                            ?log_debug("Successful ext authentication for ~p",
-                                       [ns_config_log:tag_user_name(Username)]),
-                            JSON = get_user_rbac_record_json(Id, Buckets),
-                            Resp = {[{rbac, JSON}]},
-                            {Header#mc_header{status = ?SUCCESS},
-                             #mc_entry{data = ejson:encode(Resp)},
-                             State};
-                        _ ->
-                            ErrorResp("Invalid username or password")
-                    end;
-                {ok, {_Authzid, _, _}} ->
-                    ErrorResp("Authzid is not supported");
-                error ->
-                    ErrorResp("Invalid challenge")
-            end;
-        Unknown ->
-            ErrorResp(io_lib:format("Unknown mechanism: ~p", [Unknown]))
+    Mechanism = proplists:get_value(<<"mechanism">>, AuthReq),
+    case authenticate(Mechanism, AuthReq) of
+        {ok, Id} ->
+            Resp = [{rbac, get_user_rbac_record_json(Id, Buckets)}],
+            {Header#mc_header{status = ?SUCCESS},
+             #mc_entry{data = ejson:encode({Resp})},
+             State};
+        {error, ReasonStr} ->
+            UUID = misc:hexify(crypto:strong_rand_bytes(16)),
+            ?log_info("Auth failed with reason: '~s' (UUID: ~s)",
+                      [ReasonStr, UUID]),
+            Json = {[{error, {[{context, <<"Authentication failed">>},
+                               {ref, UUID}]}}]},
+            {Header#mc_header{status = ?MC_AUTH_ERROR},
+             #mc_entry{data = ejson:encode(Json)},
+             State}
     end;
 
 process_req(#mc_header{opcode = ?MC_ACTIVE_EXTERNAL_USERS} = Header,
@@ -167,6 +148,26 @@ process_req(Header, Data, State) ->
     ?log_error("Received unknown auth command from memcached: ~p ~p",
                [Header, Data]),
     {Header#mc_header{status = ?UNKNOWN_COMMAND}, #mc_entry{}, State}.
+
+authenticate(<<"PLAIN">>, AuthReq) ->
+    Challenge = proplists:get_value(<<"challenge">>, AuthReq),
+    case sasl_decode_plain_challenge(Challenge) of
+        {ok, {"", Username, Password}} ->
+            case menelaus_auth:authenticate({Username, Password}) of
+                {ok, Id} ->
+                    ?log_debug("Successful ext authentication for ~p",
+                               [ns_config_log:tag_user_name(Username)]),
+                    {ok, Id};
+                _ ->
+                    {error, "Invalid username or password"}
+            end;
+        {ok, {_Authzid, _, _}} ->
+            {error, "Authzid is not supported"};
+        error ->
+            {error, "Invalid challenge"}
+    end;
+authenticate(Unknown, _) ->
+    {error, io_lib:format("Unknown mechanism: ~p", [Unknown])}.
 
 get_user_rbac_record_json(Identity, Buckets) ->
     Roles = menelaus_roles:get_compiled_roles(Identity),
