@@ -110,9 +110,10 @@ process_req(#mc_header{opcode = ?MC_AUTH_REQUEST} = Header,
             #mc_entry{data = Data}, #s{buckets = Buckets} = State) ->
     {AuthReq} = ejson:decode(Data),
     Mechanism = proplists:get_value(<<"mechanism">>, AuthReq),
+    NeedRBAC = not proplists:get_bool(<<"authentication-only">>, AuthReq),
     case authenticate(Mechanism, AuthReq) of
         {ok, Id} ->
-            Resp = [{rbac, get_user_rbac_record_json(Id, Buckets)}],
+            Resp = [{rbac, get_user_rbac_record_json(Id, Buckets)} || NeedRBAC],
             {Header#mc_header{status = ?SUCCESS},
              #mc_entry{data = ejson:encode({Resp})},
              State};
