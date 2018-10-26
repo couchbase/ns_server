@@ -12,7 +12,8 @@
     var mnAuthService = {
       login: login,
       logout: logout,
-      whoami: whoami
+      whoami: whoami,
+      canUseCertForAuth: canUseCertForAuth
     };
 
     return mnAuthService;
@@ -27,16 +28,34 @@
       });
     }
 
-    function login(user) {
-      user = user || {};
+    function canUseCertForAuth() {
       return $http({
+        method: 'GET',
+        url: '/_ui/canUseCertForAuth'
+      }).then(function (r) {
+        return r.data;
+      });
+    }
+
+    function login(user, useCertForAuth) {
+      var config = {
         method: 'POST',
-        url: '/uilogin',
-        data: {
+        url: '/uilogin'
+      }
+
+      if (useCertForAuth) {
+        config.params = {
+          use_cert_for_auth: 1
+        };
+      } else {
+        user = user || {};
+        config.data = {
           user: user.username,
           password: user.password
-        }
-      }).then(function (resp) {
+        };
+      }
+
+      return $http(config).then(function (resp) {
         return mnPools.get().then(function (cachedPools) {
           mnPools.clearCache();
           return mnPools.get().then(function (newPools) {

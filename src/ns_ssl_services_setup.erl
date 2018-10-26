@@ -31,6 +31,7 @@
          ssl_minimum_protocol/0,
          ssl_minimum_protocol/1,
          client_cert_auth/0,
+         client_cert_auth_state/0,
          get_user_name_from_client_cert/1,
          set_node_certificate_chain/4,
          ciphers_strength/1,
@@ -218,6 +219,9 @@ client_cert_auth() ->
                        false -> [{state, "disable"}]
                    end,
     ns_config:search(ns_config:latest(), client_cert_auth, DefaultValue).
+
+client_cert_auth_state() ->
+    proplists:get_value(state, client_cert_auth()).
 
 upgrade_client_cert_auth_to_51(Config) ->
     Cca = ns_config:search(Config, client_cert_auth, []),

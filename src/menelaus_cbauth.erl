@@ -239,8 +239,7 @@ build_auth_info(#state{cert_version = CertVersion,
                                 end
                         end, [], ns_node_disco:nodes_wanted(Config)),
 
-    CcaState = proplists:get_value(state,
-                                   ns_ssl_services_setup:client_cert_auth()),
+    CcaState = ns_ssl_services_setup:client_cert_auth_state(),
     Port = misc:node_rest_port(Config, node()),
     AuthCheckURL = misc:local_url(Port, "/_cbauth", []),
     PermissionCheckURL = misc:local_url(Port, "/_cbauth/checkPermission", []),
