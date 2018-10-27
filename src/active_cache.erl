@@ -286,6 +286,32 @@ cache_max_size_test() ->
           ?assertEqual(3, ets:info(test_cache, size))
       end).
 
+chaos_test() ->
+    NumReq = 10000,
+    NumProcs = 50,
+    with_cache_settings(
+      test_cache, [{max_parallel_procs, 40}, {max_size, 499},
+                   {renew_interval, 1000}, {value_lifetime, 1000}],
+      fun () ->
+          List = [rand:uniform(500) || _ <- lists:seq(1, NumReq)],
+          Self = self(),
+          Ref = make_ref(),
+          F = fun () ->
+                      Res = [get_value_and_touch(test_cache, K, fun () -> K end)
+                                || K <- List],
+                      Self ! {Ref, self(), List == Res}
+              end,
+          Procs = [spawn(F) || _ <- lists:seq(1, NumProcs)],
+          [misc:wait_for_process(P, 10000) || P <- Procs],
+          lists:foreach(fun (P) ->
+                                receive
+                                    {Ref, P, Res} -> ?assertEqual(true, Res)
+                                after 0 -> erlang:error(no_message)
+                                end
+                        end, Procs),
+          ok
+      end).
+
 active_cache_test() ->
     with_cache_settings(
       test_cache, [{renew_interval, 100}, {value_lifetime, 10000}],
