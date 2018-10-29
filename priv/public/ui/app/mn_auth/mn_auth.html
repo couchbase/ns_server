@@ -14,8 +14,7 @@
        name="loginForm"
        class="forms"
        novalidate=""
-       ng-submit="!loginForm.$invalid && authCtl.submit()">
-
+       ng-submit="!loginForm.$invalid && authCtl.submit(false)">
       <div class="panel-content">
         <div
            ng-messages="authCtl.error"
@@ -37,50 +36,71 @@
             The client's version does not match the server's. Please reload the tab.
           </span>
         </div>
+        <div ng-if="authCtl.canUseCert === 'cannot_use' ||
+                    authCtl.canUseCert ===  'can_use'">
+          <div class="formrow">
+            <input
+               autocorrect="off"
+               spellcheck="false"
+               autocapitalize="off"
+               type="text"
+               id="auth-username-input"
+               ng-model="authCtl.user.username"
+               ng-model-options="{updateOn: 'default'}"
+               name="username"
+               placeholder="Username"
+               required
+               mn-focus>
+            <div
+               ng-messages="loginForm.username.$error"
+               ng-show="loginForm.username.$dirty"
+               class="error error-field">
+              <div ng-message="required">Username is required.</div>
+            </div>
+          </div>
 
-        <div class="formrow">
           <input
+             type="password"
              autocorrect="off"
              spellcheck="false"
-             autocapitalize="off"
-             type="text"
-             id="auth-username-input"
-             ng-model="authCtl.user.username"
+             id="auth-password-input"
+             ng-model="authCtl.user.password"
              ng-model-options="{updateOn: 'default'}"
-             name="username"
-             placeholder="Username"
+             name="password"
+             placeholder="Password"
              required
-             mn-focus>
+             mn-autocomplete-off>
           <div
-             ng-messages="loginForm.username.$error"
-             ng-show="loginForm.username.$dirty"
+             ng-messages="loginForm.password.$error"
+             ng-show="loginForm.password.$dirty"
              class="error error-field">
-            <div ng-message="required">Username is required.</div>
+            <div ng-message="required">Password is required.</div>
           </div>
         </div>
-
-        <input
-           type="password"
-           autocorrect="off"
-           spellcheck="false"
-           id="auth-password-input"
-           ng-model="authCtl.user.password"
-           ng-model-options="{updateOn: 'default'}"
-           name="password"
-           placeholder="Password"
-           required
-           mn-autocomplete-off>
-        <div
-           ng-messages="loginForm.password.$error"
-           ng-show="loginForm.password.$dirty"
-           class="error error-field">
-          <div ng-message="required">Password is required.</div>
-        </div>
       </div>
-      <div class="panel-footer">
+
+      <div ng-if="authCtl.canUseCert === 'cannot_use' ||
+                  authCtl.canUseCert ===  'can_use'"
+           class="panel-footer">
         <button
            type="submit"
            ng-disabled="loginForm.$invalid">Sign In</button>
+      </div>
+
+      <div ng-if="authCtl.canUseCert ===  'can_use'"
+           class="cert-signin-or-container">
+        <div class="cert-signin-line"></div>
+        <div>or</div>
+        <div class="cert-signin-line"></div>
+      </div>
+
+      <div ng-if="authCtl.canUseCert === 'must_use' ||
+                  authCtl.canUseCert ===  'can_use'"
+           class="cert-signin">
+        <button
+           type="button"
+           mn-focus
+           ng-click="authCtl.submit(true)">Sign In With Certificate</button>
       </div>
     </form>
   </div>

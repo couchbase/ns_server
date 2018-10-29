@@ -19,6 +19,7 @@
 
 -export([handle_uilogin/1,
          handle_uilogout/1,
+         handle_can_use_cert_for_auth/1,
          handle_versions/1,
          handle_tasks/2,
          handle_log_post/1]).
@@ -33,10 +34,8 @@
 -include("ns_common.hrl").
 
 handle_uilogin(Req) ->
-    Params = mochiweb_request:parse_post(Req),
-    User = proplists:get_value("user", Params),
-    Password = proplists:get_value("password", Params),
-    menelaus_auth:uilogin(Req, User, Password).
+    Params = Req:parse_post(),
+    menelaus_auth:uilogin(Req, Params).
 
 handle_uilogout(Req) ->
     case menelaus_auth:extract_ui_auth_token(Req) of
@@ -46,6 +45,10 @@ handle_uilogout(Req) ->
             menelaus_ui_auth:logout(Token)
     end,
     menelaus_auth:complete_uilogout(Req).
+
+handle_can_use_cert_for_auth(Req) ->
+    RV = menelaus_auth:can_use_cert_for_auth(Req),
+    menelaus_util:reply_json(Req, {[{cert_for_auth, RV}]}).
 
 handle_versions(Req) ->
     reply_json(Req, {struct, menelaus_web_cache:versions_response()}).
