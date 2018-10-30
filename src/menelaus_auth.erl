@@ -346,11 +346,12 @@ verify_login_creds(Username, Password) ->
 
 -spec uilogin(mochiweb_request(), list()) -> mochiweb_response().
 uilogin(Req, Params) ->
-    CertAuth = proplists:get_value("use_cert_for_auth", Req:parse_qs()) =:= "1",
+    CertAuth = proplists:get_value("use_cert_for_auth",
+                                   mochiweb_request:parse_qs(Req)) =:= "1",
     {User, AuthStatus} =
         case CertAuth of
             true ->
-                S = Req:get(socket),
+                S = mochiweb_request:get(socket, Req),
                 case ns_ssl_services_setup:get_user_name_from_client_cert(S) of
                     X when X =:= undefined; X =:= failed ->
                         {invalid_client_cert, auth_failure};
@@ -384,7 +385,7 @@ uilogin(Req, Params) ->
 -spec can_use_cert_for_auth(mochiweb_request()) ->
                                    can_use | cannot_use | must_use.
 can_use_cert_for_auth(Req) ->
-    case Req:get(socket) of
+    case mochiweb_request:get(socket, Req) of
         {ssl, SSLSock} ->
             CCAState = ns_ssl_services_setup:client_cert_auth_state(),
             case {ssl:peercert(SSLSock), CCAState} of

@@ -34,7 +34,7 @@
 -include("ns_common.hrl").
 
 handle_uilogin(Req) ->
-    Params = Req:parse_post(),
+    Params = mochiweb_request:parse_post(Req),
     menelaus_auth:uilogin(Req, Params).
 
 handle_uilogout(Req) ->
