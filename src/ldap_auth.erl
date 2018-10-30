@@ -60,7 +60,7 @@ map_user_to_DN(Username, Settings, [{Re, {Type, Template}}|T]) ->
             ReplaceRe = ?cut(lists:flatten(io_lib:format("\\{~b\\}", [_]))),
             Subs = [{ReplaceRe(N), ldap_util:escape(S)} ||
                         {N, S} <- misc:enumerate(Captured, 0)],
-            [Res] = replace_expressions([Template], Subs),
+            [Res] = ldap_util:replace_expressions([Template], Subs),
             case Type of
                 template -> {ok, Res};
                 'query' -> dn_query(Res, Settings)
@@ -99,32 +99,18 @@ user_groups(User, Settings) ->
       Settings,
       fun (Handle) ->
               Query = proplists:get_value(groups_query, Settings, undefined),
-              get_groups(Handle, User, Settings, Query)
+              Res = get_groups(Handle, User, Settings, Query),
+              ?log_debug("Groups search for ~p: ~p",
+                         [ns_config_log:tag_user_name(User), Res]),
+              Res
       end).
 
 get_groups(_Handle, _Username, _Settings, undefined) ->
     {ok, []};
-get_groups(Handle, Username, Settings, {user_attributes, _, AttrName}) ->
+
+get_groups(Handle, Username, Settings, Query) ->
     Timeout = proplists:get_value(request_timeout, Settings, ?DEFAULT_TIMEOUT),
-    case get_user_DN(Username, Settings) of
-        {ok, DN} ->
-            case ldap_util:search(Handle, DN, [AttrName], "base",
-                                  "(objectClass=*)", Timeout) of
-                {ok, [#eldap_entry{attributes = Attrs}]} ->
-                    AttrsLower = [{string:to_lower(K), V} || {K, V} <- Attrs],
-                    Groups = proplists:get_value(string:to_lower(AttrName),
-                                                 AttrsLower, []),
-                    ?log_debug("Groups search for ~p: ~p",
-                               [ns_config_log:tag_user_name(Username), Groups]),
-                    {ok, Groups};
-                {error, Reason} ->
-                    {error, {ldap_search_failed, Reason}}
-            end;
-        {error, Reason} ->
-            {error, {username_to_dn_map_failed, Reason}}
-    end;
-get_groups(Handle, Username, Settings, {user_filter, _, Base, Scope, Filter}) ->
-    DNFun =
+    GetDN =
         fun () ->
                 case get_user_DN(Username, Settings) of
                     {ok, DN} -> DN;
@@ -133,49 +119,42 @@ get_groups(Handle, Username, Settings, {user_filter, _, Base, Scope, Filter}) ->
                 end
         end,
     try
-        [Base2, Filter2] = replace_expressions(
-                             [Base, Filter],
-                             [{"%u", ldap_util:escape(Username)},
-                              {"%D", DNFun}]),
-        Timeout = proplists:get_value(request_timeout, Settings,
-                                      ?DEFAULT_TIMEOUT),
-        Entries =
-            case ldap_util:search(Handle, Base2, ["objectClass"], Scope,
-                                  Filter2, Timeout) of
-                {ok, L} -> L;
-                {error, Reason} -> throw({error, {ldap_search_failed, Reason}})
+        EscapedUser = ldap_util:escape(Username),
+        URLProps =
+            case ldap_util:parse_url("ldap:///" ++ Query,
+                                     [{"%u", EscapedUser}, {"%D", GetDN}]) of
+                {ok, Props} -> Props;
+                {error, Reason} ->
+                    throw({error, {invalid_groups_query, Query, Reason}})
             end,
-        Groups = [DN || #eldap_entry{object_name = DN} <- Entries],
-        ?log_debug("Groups search for ~p: ~p",
-                   [ns_config_log:tag_user_name(Username), Groups]),
-        {ok, Groups}
+
+        Base = proplists:get_value(dn, URLProps, ""),
+        Scope = proplists:get_value(scope, URLProps, "base"),
+        Attrs = proplists:get_value(attributes, URLProps, ["objectClass"]),
+        Filter = proplists:get_value(filter, URLProps, "(objectClass=*)"),
+        case ldap_util:search(Handle, Base, Attrs, Scope, Filter, Timeout) of
+            {ok, L} -> groups_search_res(L, search_type(URLProps));
+            {error, Reason2} -> {error, {ldap_search_failed, Reason2}}
+        end
     catch
         throw:{error, _} = Error -> Error
     end.
 
-replace_expressions(Strings, Substitutes) ->
-    lists:foldl(
-        fun ({Re, ValueFun}, Acc) ->
-            replace(Acc, Re, ValueFun, [])
-        end, Strings, Substitutes).
+groups_search_res([], {attribute, _}) -> {ok, []};
+groups_search_res([#eldap_entry{attributes = Attrs}], {attribute, GroupAttr}) ->
+    AttrsLower = [{string:to_lower(K), V} || {K, V} <- Attrs],
+    {ok, proplists:get_value(string:to_lower(GroupAttr), AttrsLower, [])};
+groups_search_res([_|_], {attribute, _}) ->
+    {error, not_unique_username};
+groups_search_res(Entries, entries) when is_list(Entries) ->
+    Groups = [DN || #eldap_entry{object_name = DN} <- Entries],
+    {ok, Groups}.
 
-replace([], _, _, Res) -> lists:reverse(Res);
-replace([Str | Tail], Re, Value, Res) when is_function(Value) ->
-    case re:run(Str, Re, [{capture, none}]) of
-        match -> replace([Str | Tail], Re, Value(), Res);
-        nomatch -> replace(Tail, Re, Value, [Str | Res])
-    end;
-replace([Str | Tail], Re, Value, Res) ->
-    %% Replace \ with \\ to prevent re skipping all hex bytes from Value
-    %% which are specified as \\XX according to LDAP RFC. Example:
-    %%   Str = "(uid=%u)",
-    %%   Re  = "%u",
-    %%   Value = "abc\\23def",
-    %%   Without replacing the result is "(uid=abcdef)"
-    %%   With replacing it is "(uid=abc\\23def)"
-    Value2 = re:replace(Value, "\\\\", "\\\\\\\\", [{return, list}, global]),
-    ResStr = re:replace(Str, Re, Value2, [global, {return, list}]),
-    replace(Tail, Re, Value, [ResStr | Res]).
+search_type(URLProps) ->
+    case proplists:get_value(attributes, URLProps, []) of
+        [] -> entries;
+        [Attr] -> {attribute, Attr}
+    end.
 
 format_error({ldap_search_failed, Reason}) ->
     io_lib:format("LDAP search returned error: ~s", [format_error(Reason)]);
@@ -191,7 +170,7 @@ format_error({dn_search_failed, Reason}) ->
 format_error(dn_not_found) ->
     "LDAP DN not found";
 format_error(not_unique_username) ->
-    "Search returned more than one DN for given username";
+    "Search returned more than one entry for given username";
 format_error({invalid_filter, Filter, Reason}) ->
     io_lib:format("Invalid ldap filter ~p (~s)", [Filter, Reason]);
 format_error({username_to_dn_map_failed, R}) ->

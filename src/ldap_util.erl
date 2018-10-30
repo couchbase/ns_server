@@ -9,10 +9,12 @@
          with_authenticated_connection/4,
          search/6,
          parse_url/1,
+         parse_url/2,
          escape/1,
          get_setting/2,
          build_settings/0,
-         set_settings/1]).
+         set_settings/1,
+         replace_expressions/2]).
 
 -define(DEFAULT_TIMEOUT, 5000).
 
@@ -114,6 +116,10 @@ eldap_search(Handle, SearchProps) ->
             {error, Reason}
     end.
 
+parse_url(Template, ReplacePairs) ->
+    [URL] = replace_expressions([Template], ReplacePairs),
+    parse_url(URL).
+
 %% RFC4516 ldap url parsing
 parse_url(Str) ->
     SchemeValidator = fun (S) ->
@@ -196,6 +202,30 @@ escape(Input) ->
     {Trail, Rest} = lists:splitwith(_ =:= $\s, lists:reverse(FlatStr)),
     {Lead, Rest2} = lists:splitwith(_ =:= $\s, lists:reverse(Rest)),
     lists:flatten(["\\20" || _ <- Lead] ++ Rest2 ++ ["\\20" || _ <- Trail]).
+
+replace_expressions(Strings, Substitutes) ->
+    lists:foldl(
+        fun ({Re, ValueFun}, Acc) ->
+            replace(Acc, Re, ValueFun, [])
+        end, Strings, Substitutes).
+
+replace([], _, _, Res) -> lists:reverse(Res);
+replace([Str | Tail], Re, Value, Res) when is_function(Value) ->
+    case re:run(Str, Re, [{capture, none}]) of
+        match -> replace([Str | Tail], Re, Value(), Res);
+        nomatch -> replace(Tail, Re, Value, [Str | Res])
+    end;
+replace([Str | Tail], Re, Value, Res) ->
+    %% Replace \ with \\ to prevent re skipping all hex bytes from Value
+    %% which are specified as \\XX according to LDAP RFC. Example:
+    %%   Str = "(uid=%u)",
+    %%   Re  = "%u",
+    %%   Value = "abc\\23def",
+    %%   Without replacing the result is "(uid=abcdef)"
+    %%   With replacing it is "(uid=abc\\23def)"
+    Value2 = re:replace(Value, "\\\\", "\\\\\\\\", [{return, list}, global]),
+    ResStr = re:replace(Str, Re, Value2, [global, {return, list}]),
+    replace(Tail, Re, Value, [ResStr | Res]).
 
 -ifdef(EUNIT).
 

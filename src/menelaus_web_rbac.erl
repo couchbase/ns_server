@@ -1631,9 +1631,7 @@ prepare_ldap_settings(Settings) ->
               list_to_binary(DN);
           (query_pass, _) ->
               <<"**********">>;
-          (groups_query, {user_filter, Orig, _Base, _Scope, _Filter}) ->
-              list_to_binary(Orig);
-          (groups_query, {user_attributes, Orig, _AttrName}) ->
+          (groups_query, Orig) ->
               list_to_binary(Orig);
           (_, Value) ->
               Value
@@ -1756,14 +1754,13 @@ parse_user_dn_mapping_record([{<<"re">>, Re}, {<<"template">>, Template}]) ->
     end,
     {validate_re(Re), {template, validate_placeholders(Template)}};
 parse_user_dn_mapping_record([{<<"query">>, QueryTempl}, {<<"re">>, Re}]) ->
-    Query = re:replace(QueryTempl, "\\{\\d+\\}", "placeholder",
-                       [{return, list}, global]),
-    case ldap_util:parse_url("ldap:///" ++ Query) of
+    case ldap_util:parse_url("ldap:///" ++ QueryTempl,
+                             [{"\\{\\d+\\}", "placeholder"}]) of
         {ok, _} -> ok;
         {error, Reason} ->
             throw({error, io_lib:format(
                             "Invalid ldap query '~s': ~s",
-                            [Query, ldap_auth:format_error(Reason)])})
+                            [QueryTempl, ldap_auth:format_error(Reason)])})
     end,
     {validate_re(Re), {'query', validate_placeholders(QueryTempl)}};
 parse_user_dn_mapping_record(Props) ->
@@ -1801,21 +1798,19 @@ validate_ldap_dn(Name, State) ->
 validate_ldap_groups_query(Name, State) ->
     validator:validate(
       fun (Query) ->
-              case ldap_util:parse_url("ldap:///" ++ Query) of
+              case ldap_util:parse_url(
+                     "ldap:///" ++ Query,
+                     [{"%u", "test_user"}, {"%D", "uid=testdn"}]) of
                   {ok, URLProps} ->
-                      case proplists:get_value(attributes, URLProps, []) of
-                          [] ->
-                              Base = proplists:get_value(dn, URLProps, ""),
-                              Scope = proplists:get_value(scope, URLProps,
-                                                          "base"),
-                              Filter = proplists:get_value(filter, URLProps,
-                                                           "(objectClass=*)"),
-                              {value,
-                               {user_filter, Query, Base, Scope, Filter}};
-                          [Attr] ->
-                              {value, {user_attributes, Query, Attr}};
-                          _ ->
-                              {error, "Only one attribute can be specified"}
+                      Base = proplists:get_value(dn, URLProps, ""),
+                      Attrs = proplists:get_value(attributes, URLProps, []),
+                      if
+                          length(Attrs) > 1 ->
+                              {error, "Only one attribute can be specified"};
+                          Base == "" ->
+                              {error, "Search base cannot be empty"};
+                          true ->
+                              ok
                       end;
                   {error, _} ->
                       {error, "Invalid ldap URL"}
