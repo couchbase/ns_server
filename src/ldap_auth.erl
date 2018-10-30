@@ -105,10 +105,7 @@ user_groups(User, Settings) ->
               Res
       end).
 
-get_groups(_Handle, _Username, _Settings, undefined) ->
-    {ok, []};
-
-get_groups(Handle, Username, Settings, Query) ->
+get_groups(Handle, Username, Settings, QueryStr) ->
     Timeout = proplists:get_value(request_timeout, Settings, ?DEFAULT_TIMEOUT),
     GetDN =
         fun () ->
@@ -118,37 +115,62 @@ get_groups(Handle, Username, Settings, Query) ->
                         throw({error, {username_to_dn_map_failed, Reason}})
                 end
         end,
+    QueryFun =
+        fun (G) ->
+                Replace = [{"%D", G},
+                           {"%u", ?cut(throw({error, user_placeholder}))}],
+                run_query(Handle, QueryStr, Replace, Timeout)
+        end,
+    EscapedUser = ldap_util:escape(Username),
+    MaxDepth = proplists:get_value(nested_groups_max_depth, Settings, 10),
+    NestedEnabled = proplists:get_bool(nested_groups_enabled, Settings),
     try
-        EscapedUser = ldap_util:escape(Username),
-        URLProps =
-            case ldap_util:parse_url("ldap:///" ++ Query,
-                                     [{"%u", EscapedUser}, {"%D", GetDN}]) of
-                {ok, Props} -> Props;
-                {error, Reason} ->
-                    throw({error, {invalid_groups_query, Query, Reason}})
-            end,
-
-        Base = proplists:get_value(dn, URLProps, ""),
-        Scope = proplists:get_value(scope, URLProps, "base"),
-        Attrs = proplists:get_value(attributes, URLProps, ["objectClass"]),
-        Filter = proplists:get_value(filter, URLProps, "(objectClass=*)"),
-        case ldap_util:search(Handle, Base, Attrs, Scope, Filter, Timeout) of
-            {ok, L} -> groups_search_res(L, search_type(URLProps));
-            {error, Reason2} -> {error, {ldap_search_failed, Reason2}}
+        UserGroups = run_query(Handle, QueryStr, [{"%u", EscapedUser},
+                                                  {"%D", GetDN}], Timeout),
+        case NestedEnabled of
+            true -> {ok, get_nested_groups(QueryFun, UserGroups,
+                                           UserGroups, MaxDepth)};
+            false -> {ok, UserGroups}
         end
     catch
         throw:{error, _} = Error -> Error
     end.
 
+get_nested_groups(_QueryFun, [], Discovered, _MaxDepth) -> Discovered;
+get_nested_groups(_QueryFun, _, _, 0) -> throw({error, max_depth});
+get_nested_groups(QueryFun, Groups, Discovered, MaxDepth) ->
+    NewGroups = lists:flatmap(QueryFun, Groups),
+    NewUniqueGroups = lists:usort(NewGroups) -- Discovered,
+    ?log_debug("Discovered new groups: ~p (~p)", [NewUniqueGroups, Discovered]),
+    get_nested_groups(QueryFun, NewUniqueGroups,
+                      NewUniqueGroups ++ Discovered, MaxDepth - 1).
+
+run_query(_Handle, undefined, _ReplacePairs, _Timeout) -> [];
+run_query(Handle, Query, ReplacePairs, Timeout) ->
+    URLProps =
+        case ldap_util:parse_url("ldap:///" ++ Query, ReplacePairs) of
+            {ok, Props} -> Props;
+            {error, Reason} ->
+                throw({error, {invalid_groups_query, Query, Reason}})
+        end,
+
+    Base = proplists:get_value(dn, URLProps, ""),
+    Scope = proplists:get_value(scope, URLProps, "base"),
+    Attrs = proplists:get_value(attributes, URLProps, ["objectClass"]),
+    Filter = proplists:get_value(filter, URLProps, "(objectClass=*)"),
+    case ldap_util:search(Handle, Base, Attrs, Scope, Filter, Timeout) of
+        {ok, L} -> groups_search_res(L, search_type(URLProps));
+        {error, Reason2} -> throw({error, {ldap_search_failed, Reason2}})
+    end.
+
 groups_search_res([], {attribute, _}) -> {ok, []};
 groups_search_res([#eldap_entry{attributes = Attrs}], {attribute, GroupAttr}) ->
     AttrsLower = [{string:to_lower(K), V} || {K, V} <- Attrs],
-    {ok, proplists:get_value(string:to_lower(GroupAttr), AttrsLower, [])};
+    proplists:get_value(string:to_lower(GroupAttr), AttrsLower, []);
 groups_search_res([_|_], {attribute, _}) ->
-    {error, not_unique_username};
+    throw({error, not_unique_username});
 groups_search_res(Entries, entries) when is_list(Entries) ->
-    Groups = [DN || #eldap_entry{object_name = DN} <- Entries],
-    {ok, Groups}.
+    [DN || #eldap_entry{object_name = DN} <- Entries].
 
 search_type(URLProps) ->
     case proplists:get_value(attributes, URLProps, []) of
@@ -184,5 +206,9 @@ format_error({invalid_dn, DN}) ->
 format_error({invalid_scope, Scope}) ->
     io_lib:format("Invalid ldap scope: ~p, possible values are one, "
                   "base or sub", [Scope]);
+format_error(user_placeholder) ->
+    "%u placeholder is not allowed in nested groups search";
+format_error(max_depth) ->
+    "Nested search max depth has been reached";
 format_error(Error) ->
     io_lib:format("~p", [Error]).

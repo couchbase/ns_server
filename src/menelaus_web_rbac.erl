@@ -1710,6 +1710,8 @@ ldap_settings_validators() ->
         validator:integer(max_cache_size, 0, 10000, _),
         validator:integer(cache_value_lifetime, 0, infinity, _),
         validator:integer(request_timeout, 0, infinity, _),
+        validator:boolean(nested_groups_enabled, _),
+        validator:integer(nested_groups_max_depth, 1, 100, _),
         validator:unsupported(_)
     ].
 
