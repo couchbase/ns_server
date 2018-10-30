@@ -36,4 +36,3 @@
               {buffer_size_max, 52428800}]}]}.
 
 {net_kernel_verbosity, 10}.
-{ipv6, false}.
