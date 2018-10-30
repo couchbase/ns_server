@@ -27,7 +27,8 @@
          terminate/2, code_change/3]).
 
 -export([adjust_my_address/3, read_address_config/0, save_address_config/1,
-         ip_config_path/0, using_user_supplied_address/0, reset_address/0, wait_for_node/1]).
+         ip_config_path/0, using_user_supplied_address/0, reset_address/0,
+         wait_for_node/1, update_dist_config/1]).
 
 %% used by babysitter and ns_couchdb
 -export([configure_net_kernel/0]).
@@ -48,11 +49,31 @@ ip_config_path() ->
 ip_start_config_path() ->
     path_config:component_path(data, "ip_start").
 
+dist_config_path(DataDir) ->
+    filename:join([DataDir, "config", "dist_cfg"]).
+
 using_user_supplied_address() ->
     gen_server:call(?MODULE, using_user_supplied_address).
 
 reset_address() ->
     gen_server:call(?MODULE, reset_address).
+
+update_dist_config(NewAFamily) ->
+    CurrDistType = misc:get_proto_dist_type(),
+    NewDistType = case NewAFamily of
+                      "ipv4" -> "inet_tcp";
+                      "ipv6" -> "inet6_tcp"
+                  end,
+
+    case NewDistType of
+        CurrDistType ->
+            ok;
+        _ ->
+            DCfgFile = dist_config_path(path_config:component_path(data)),
+            ?log_debug("Saving new networking mode (~s) to config file: ~s",
+                       [NewDistType, DCfgFile]),
+            misc:atomic_write_file(DCfgFile, CurrDistType ++ "," ++ NewDistType)
+    end.
 
 strip_full(String) ->
     String2 = string:strip(String),
