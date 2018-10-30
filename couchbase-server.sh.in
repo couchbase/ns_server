@@ -125,10 +125,8 @@ _check_inet_mode() {
 }
 
 _prepare_datadir () {
-    datadir="@PREFIX@/var/lib/couchbase"
-
-    test -d "$datadir" || mkdir -p "$datadir"
-    cd "$datadir"
+    test -d "$CB_DATA_DIR" || mkdir -p "$CB_DATA_DIR"
+    cd "$CB_DATA_DIR"
 }
 
 _maybe_start_epmd () {
