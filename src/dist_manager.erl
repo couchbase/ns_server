@@ -28,7 +28,10 @@
 
 -export([adjust_my_address/3, read_address_config/0, save_address_config/1,
          ip_config_path/0, using_user_supplied_address/0, reset_address/0,
-         wait_for_node/1, update_dist_config/1]).
+         wait_for_node/1, dist_config_path/1, update_dist_config/1]).
+
+%% used by the service init script.
+-export([get_proto_dist_type/1]).
 
 %% used by babysitter and ns_couchdb
 -export([configure_net_kernel/0]).
@@ -75,6 +78,34 @@ update_dist_config(NewAFamily) ->
             misc:atomic_write_file(DCfgFile, CurrDistType ++ "," ++ NewDistType)
     end.
 
+%% This function will be called by the init script to determine
+%% the networking mode to start with.
+get_proto_dist_type(Params) ->
+    [DataDir, StartStop] = Params,
+    DCfgFile = dist_config_path(DataDir),
+
+    ExitStatus =
+        case read_from_file(DCfgFile) of
+            {error, Err} ->
+                io:format("Couldn't determine proto_dist value. Failed to "
+                          "read from `~s` file: ~p", [DCfgFile, Err]),
+                1;
+            undefined ->
+                io:format("inet_tcp"),
+                0;
+            Cfg ->
+                Modes = string:tokens(Cfg, ","),
+                RV = case StartStop of
+                         "start" -> lists:last(Modes);
+                         "stop"  -> hd(Modes)
+                     end,
+
+                io:format("~s", [RV]),
+                0
+        end,
+
+    init:stop(ExitStatus).
+
 strip_full(String) ->
     String2 = string:strip(String),
     String3 = string:strip(String2, both, $\n),
@@ -105,6 +136,15 @@ read_address_config() ->
 
 read_address_config_from_path(Path) ->
     ?log_info("Reading ip config from ~p", [Path]),
+    case read_from_file(Path) of
+        {error, Error} ->
+            ?log_error("Failed to read ip config from `~s`: ~p",
+                       [Path, Error]);
+        RV ->
+            RV
+    end.
+
+read_from_file(Path) ->
     case file:read_file(Path) of
         {ok, BinaryContents} ->
             case strip_full(binary_to_list(BinaryContents)) of
@@ -115,10 +155,8 @@ read_address_config_from_path(Path) ->
             end;
         {error, enoent} ->
             undefined;
-        {error, Error} ->
-            ?log_error("Failed to read ip config from `~s`: ~p",
-                       [Path, Error]),
-            read_error
+        Error ->
+            Error
     end.
 
 wait_for_address(Address) ->
