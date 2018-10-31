@@ -896,6 +896,24 @@
       },
       {
           "id" : 8243,
+          "name": "mutate document",
+          "description": "Document was mutated",
+          "sync" : false,
+          "enabled" : true,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"source" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "operation" : "",
+              "bucket_name" : "",
+              "doc_id" : ""
+          },
+          "optional_fields" : {
+              "sessionid" : ""
+          }
+      },
+      {
+          "id" : 8244,
           "name" : "set user group",
           "description" : "User group was added or updated",
           "sync" : false,
@@ -914,7 +932,7 @@
           }
       },
       {
-          "id" : 8244,
+          "id" : 8245,
           "name" : "delete user group",
           "description" : "User group was deleted",
           "sync" : false,
@@ -930,7 +948,7 @@
           }
       },
       {
-          "id" : 8245,
+          "id" : 8246,
           "name" : "modify ldap settings",
           "description" : "Ldap settings were modified",
           "sync" : false,

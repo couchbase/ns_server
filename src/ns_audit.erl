@@ -72,6 +72,7 @@
          modify_index_settings/2,
          modify_query_curl_whitelist_setting/2,
          modify_query_settings/2,
+         mutate_doc/4,
          set_user_group/5,
          delete_user_group/2,
          ldap_settings/2
@@ -305,12 +306,14 @@ code(modify_index_settings) ->
     8241;
 code(modify_query_settings) ->
     8242;
-code(set_user_group) ->
+code(mutate_doc) ->
     8243;
-code(delete_user_group) ->
+code(set_user_group) ->
     8244;
+code(delete_user_group) ->
+    8245;
 code(ldap_settings) ->
-    8245.
+    8246.
 
 to_binary({list, List}) ->
     [to_binary(A) || A <- List];
@@ -780,6 +783,11 @@ modify_query_settings(Req, Settings) ->
 modify_query_curl_whitelist_setting(Req, Values) ->
     Setting = [{curl_whitelist, ejson:encode({Values})}],
     modify_query_settings(Req, Setting).
+
+mutate_doc(Req, Oper, BucketName, DocId) ->
+    put(mutate_doc, Req, [{bucket_name, BucketName},
+                          {doc_id, ns_config_log:tag_user_name(DocId)},
+                          {operation, Oper}]).
 
 set_user_group(Req, Id, Roles, Description, LDAPGroup) ->
     put(set_user_group, Req,
