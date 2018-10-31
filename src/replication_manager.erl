@@ -26,6 +26,7 @@
          get_incoming_replication_map/1,
          set_incoming_replication_map/2,
          change_vbucket_replication/3,
+         teardown_replications/2,
          remove_undesired_replications/2,
          dcp_takeover/3]).
 
@@ -50,6 +51,11 @@ get_incoming_replication_map(Bucket) ->
 set_incoming_replication_map(Bucket, DesiredReps) ->
     gen_server:call(server_name(Bucket), {set_desired_replications, DesiredReps}, infinity).
 
+-spec teardown_replications(bucket_name(), [node()]) -> ok.
+teardown_replications(Bucket, Nodes) ->
+    gen_server:call(server_name(Bucket), {teardown_replications, Nodes},
+                    infinity).
+
 -spec remove_undesired_replications(bucket_name(), [{node(), [vbucket_id(),...]}]) -> ok.
 remove_undesired_replications(Bucket, DesiredReps) ->
     gen_server:call(server_name(Bucket), {remove_undesired_replications, DesiredReps}, infinity).
@@ -73,6 +79,13 @@ terminate(Reason, State) ->
 
 handle_info(_Msg, State) ->
     {noreply, State}.
+
+handle_call({teardown_replications, Nodes}, From, State) ->
+    CurrentReps = get_actual_replications_as_list(State),
+    {_, DesiredReps} = lists:partition(fun ({N, _}) ->
+                                               lists:member(N, Nodes)
+                                       end, CurrentReps),
+    handle_call({set_desired_replications, DesiredReps}, From, State);
 
 handle_call({remove_undesired_replications, FutureReps}, From, State) ->
     %% Sometimes the state in the replication manager can be out of sync.
