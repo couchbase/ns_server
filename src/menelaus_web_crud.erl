@@ -223,29 +223,26 @@ get_xattrs_permissions(BucketId, Req) ->
     UserPerm = menelaus_auth:has_permission(UserPrivilage, Req),
     [server_read||ServerPerm] ++ [user_read||UserPerm].
 
-do_mutate(BucketId, DocId, BodyOrUndefined, Flags) ->
+mutate(Req, Oper, BucketId, DocId, Body, Flags) ->
     BinaryBucketId = list_to_binary(BucketId),
     BinaryDocId = list_to_binary(DocId),
-    case BodyOrUndefined of
-        undefined ->
-            attempt(BinaryBucketId,
-                    BinaryDocId,
-                    capi_crud, delete, [BinaryBucketId, BinaryDocId]);
-        _ ->
-            Args = case cluster_compat_mode:is_cluster_50() of
-                       true ->
-                           [BinaryBucketId, BinaryDocId, BodyOrUndefined, Flags];
-                       false ->
-                           [BinaryBucketId, BinaryDocId, BodyOrUndefined]
-                   end,
-            attempt(BinaryBucketId, BinaryDocId, capi_crud, set, Args)
+
+    Args =
+        [X || X <- [BinaryBucketId, BinaryDocId, Body, Flags], X =/= undefined],
+    case attempt(BinaryBucketId, BinaryDocId, capi_crud, Oper, Args) of
+        ok ->
+            ns_audit:mutate_doc(Req, Oper, BucketId, DocId),
+            ok;
+        Other ->
+            Other
     end.
 
-handle_post(BucketId, DocId, Req) ->
-    Params = Req:parse_post(),
-    Value = list_to_binary(proplists:get_value("value", Params, [])),
-
-    Flags = case proplists:get_value("flags", Params) of
+extract_flags(Params) ->
+    case cluster_compat_mode:is_cluster_50() of
+        false ->
+            undefined;
+        true ->
+            case proplists:get_value("flags", Params) of
                 undefined ->
                     ?COMMON_FLAGS_JSON;
                 Val ->
@@ -253,24 +250,28 @@ handle_post(BucketId, DocId, Req) ->
                         Int when is_integer(Int) andalso Int > 0 ->
                             Int;
                         _ ->
-                            {error, <<"'flags' must be a valid positive integer">>}
+                            erlang:throw(
+                              {web_exception, 400,
+                               <<"'flags' must be a valid positive integer">>,
+                               []})
                     end
-            end,
-
-    case Flags of
-        {error, Msg} ->
-            menelaus_util:reply_text(Req, Msg, 400);
-        _ ->
-            case do_mutate(BucketId, DocId, Value, Flags) of
-                ok ->
-                    menelaus_util:reply_json(Req, []);
-                {error, Msg} ->
-                    menelaus_util:reply_json(Req, construct_error_reply(Msg), 400)
             end
     end.
 
+handle_post(BucketId, DocId, Req) ->
+    Params = Req:parse_post(),
+    Value = list_to_binary(proplists:get_value("value", Params, [])),
+    Flags = extract_flags(Params),
+
+    case mutate(Req, set, BucketId, DocId, Value, Flags) of
+        ok ->
+            menelaus_util:reply_json(Req, []);
+        {error, Msg} ->
+            menelaus_util:reply_json(Req, construct_error_reply(Msg), 400)
+    end.
+
 handle_delete(BucketId, DocId, Req) ->
-    case  do_mutate(BucketId, DocId, undefined, undefined) of
+    case mutate(Req, delete, BucketId, DocId, undefined, undefined) of
         ok ->
             menelaus_util:reply_json(Req, []);
         {error, Msg} ->

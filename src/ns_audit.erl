@@ -71,7 +71,8 @@
          modify_audit_settings/2,
          modify_index_settings/2,
          modify_query_curl_whitelist_setting/2,
-         modify_query_settings/2
+         modify_query_settings/2,
+         mutate_doc/4
         ]).
 
 -export([start_link/0, stats/0]).
@@ -301,7 +302,9 @@ code(modify_audit_settings) ->
 code(modify_index_settings) ->
     8241;
 code(modify_query_settings) ->
-    8242.
+    8242;
+code(mutate_doc) ->
+    8243.
 
 to_binary({list, List}) ->
     [to_binary(A) || A <- List];
@@ -762,3 +765,8 @@ modify_query_settings(Req, Settings) ->
 modify_query_curl_whitelist_setting(Req, Values) ->
     Setting = [{curl_whitelist, ejson:encode({Values})}],
     modify_query_settings(Req, Setting).
+
+mutate_doc(Req, Oper, BucketName, DocId) ->
+    put(mutate_doc, Req, [{bucket_name, BucketName},
+                          {doc_id, ns_config_log:tag_user_name(DocId)},
+                          {operation, Oper}]).
