@@ -976,9 +976,9 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
     cbas_tasks = []
     cbas_port = read_guts(guts, "cbas_admin_port")
     if cbas_port:
-        diag_url = 'http://%s:%s/analytics/node/diagnostics' % (local_url_addr, cbas_port)
+        cbas_diag_url = 'http://%s:%s/analytics/node/diagnostics' % (local_url_addr, cbas_port)
         cbas_parent_port = read_guts(guts, "cbas_parent_port")
-        pprof_url = 'http://%s:%s/debug/pprof/goroutine?debug=1' % (local_url_addr, cbas_parent_port)
+        cbas_pprof_url = 'http://%s:%s/debug/pprof/goroutine?debug=1' % (local_url_addr, cbas_parent_port)
         def make_cbas(statement):
             return make_query_task(statement, user="@",
                                    password=memcached_pass,
@@ -986,11 +986,11 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
 
         cbas_tasks = [make_curl_task(name="Analytics /analytics/node/diagnostics: ",
                                      user="@", password=memcached_pass,
-                                     url=diag_url,
+                                     url=cbas_diag_url,
                                      log_file="analytics_diag.json", no_header=True),
                       make_curl_task(name="Analytics Go routine dump: ",
                                      user="@", password=memcached_pass,
-                                     url=pprof_url,
+                                     url=cbas_pprof_url,
                                      log_file="analytics_pprof.log", no_header=True),
                       make_cbas("select * from `Metadata`.`Dataverse`"),
                       make_cbas("select * from `Metadata`.`Dataset`"),
@@ -1002,14 +1002,14 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
     eventing_port = read_guts(guts, "eventing_http_port")
     if eventing_port:
         stats_url = 'http://%s:%s/api/v1/stats?type=full' % (local_url_addr, eventing_port)
-        pprof_url = 'http://%s:%s/debug/pprof/goroutine?debug=1' % (local_url_addr, eventing_port)
+        eventing_pprof_url = 'http://%s:%s/debug/pprof/goroutine?debug=1' % (local_url_addr, eventing_port)
         eventing_tasks = [make_curl_task(name="Eventing /api/v1/stats: ",
                                          user="@", password=memcached_pass,
                                          url=stats_url,
                                          log_file="eventing_stats.json", no_header=True),
                           make_curl_task(name="Eventing Go routine dump: ",
                                          user="@", password=memcached_pass,
-                                         url=pprof_url,
+                                         url=eventing_pprof_url,
                                          log_file="eventing_pprof.log", no_header=True)]
 
     _tasks = [
