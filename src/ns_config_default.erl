@@ -186,7 +186,8 @@ default() ->
         service_ports:default(memcached_dedicated_port, IsEnterprise)},
        {ssl_port, service_ports:default(memcached_ssl_port, IsEnterprise)},
        {admin_user, "@ns_server"},
-       {other_users, ["@cbq-engine", "@projector", "@goxdcr", "@index", "@fts", "@eventing", "@cbas"]},
+       {other_users, ["@cbq-engine", "@projector", "@goxdcr", "@index", "@fts",
+                      "@eventing", "@cbas", "@mobile"]},
        {admin_pass, binary_to_list(couch_uuids:random())},
        {engines,
         [{membase,
@@ -487,6 +488,7 @@ upgrade_config_from_5_5_3_to_madhatter(Config) ->
 
 do_upgrade_config_from_5_5_3_to_madhatter(Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
+     upgrade_sub_keys(memcached, [other_users], Config, DefaultConfig),
      upgrade_key(moxi, DefaultConfig) |
      rename_key(ldap_enabled, saslauthd_enabled, Config)].
 
@@ -600,16 +602,23 @@ upgrade_5_1_1_to_5_5_test() ->
 
 upgrade_5_5_3_to_madhatter_test() ->
     Cfg1 = [[{some_key, some_value},
-            {{node, node(), ldap_enabled}, true}]],
+             {{node, node(), memcached}, [{old, info}, {other_users, old}]},
+             {{node, node(), ldap_enabled}, true}]],
     Default = [{{node, node(), memcached_config}, new_memcached_config},
+               {{node, node(), memcached}, [{some, stuff}, {other_users, new}]},
                {{node, node(), moxi}, new_moxi_value}],
     ?assertMatch([{set, {node, _, memcached_config}, new_memcached_config},
+                  {set, {node, _, memcached}, [{old, info},
+                                               {other_users, new}]},
                   {set, {node, _, moxi}, new_moxi_value},
                   {delete, {node, _, ldap_enabled}},
                   {set, {node, _, saslauthd_enabled}, true}],
                  do_upgrade_config_from_5_5_3_to_madhatter(Cfg1, Default)),
-    Cfg2 = [[{some_key, some_value}]],
+    Cfg2 = [[{some_key, some_value},
+             {{node, node(), memcached}, [{old, info}, {other_users, old}]}]],
     ?assertMatch([{set, {node, _, memcached_config}, new_memcached_config},
+                  {set, {node, _, memcached}, [{old, info},
+                                               {other_users, new}]},
                   {set, {node, _, moxi}, new_moxi_value}],
                  do_upgrade_config_from_5_5_3_to_madhatter(Cfg2, Default)).
 

@@ -51,7 +51,7 @@
 -type dcp_conn_name() :: nonempty_string().
 -type dcp_conn_type() :: consumer | producer | notifier.
 
--type service() :: kv | index | n1ql | fts | eventing | cbas | example.
+-type service() :: kv | index | n1ql | fts | eventing | cbas | mobile | example.
 
 -define(MULTICALL_DEFAULT_TIMEOUT, 30000).
 
@@ -82,6 +82,7 @@
 -define(JSON_RPC_LOG_FILENAME, "json_rpc.log").
 -define(EVENTING_LOG_FILENAME, "eventing.log").
 -define(CBAS_LOG_FILENAME, "analytics_info.log").
+-define(MOBILE_LOG_FILENAME, "mobile.log").
 
 -define(NS_SERVER_LOGGER, ns_server).
 -define(COUCHDB_LOGGER, couchdb).
