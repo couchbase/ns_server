@@ -193,53 +193,11 @@ do_dynamic_children(shutdown, Config) ->
      saslauthd_port_spec(Config)];
 do_dynamic_children(normal, Config) ->
     [memcached_spec(),
-     kv_node_projector_spec(Config),
-     index_node_spec(Config),
-     query_node_spec(Config),
-     saslauthd_port_spec(Config),
-     goxdcr_spec(Config),
-     fts_spec(Config),
-     eventing_spec(Config),
-     cbas_spec(Config),
-     example_service_spec(Config)].
+     saslauthd_port_spec(Config)] ++
+        build_goport_specs(Config).
 
 expand_specs(Specs, Config) ->
     [expand_args(S, Config) || S <- Specs].
-
-query_node_spec(Config) ->
-    case ns_cluster_membership:should_run_service(Config, n1ql, node()) of
-        false ->
-            [];
-        _ ->
-            [build_query_node_spec(Config)]
-    end.
-
-build_query_node_spec(Config) ->
-    RestPort = service_ports:get_port(rest_port, Config),
-    Command = path_config:component_path(bin, "cbq-engine"),
-    DataStoreArg = "--datastore=" ++ misc:local_url(RestPort, []),
-    CnfgStoreArg = "--configstore=" ++ misc:local_url(RestPort, []),
-    HttpArg = "--http=:" ++
-        integer_to_list(query_rest:get_query_port(Config, node())),
-    EntArg = "--enterprise=" ++
-        atom_to_list(cluster_compat_mode:is_enterprise()),
-    Ipv6 = "--ipv6=" ++ atom_to_list(misc:is_ipv6()),
-
-    HttpsArgs =
-        case query_rest:get_ssl_query_port(Config, node()) of
-            undefined ->
-                [];
-            Port ->
-                ["--https=:" ++ integer_to_list(Port),
-                 "--certfile=" ++ ns_ssl_services_setup:memcached_cert_path(),
-                 "--keyfile=" ++ ns_ssl_services_setup:memcached_key_path()]
-        end,
-    {'query', Command,
-     [DataStoreArg, HttpArg, CnfgStoreArg, EntArg, Ipv6] ++ HttpsArgs,
-     [via_goport, exit_status, stderr_to_stdout,
-      {env, build_go_env_vars(Config, 'cbq-engine') ++
-           build_tls_config_env_var(Config)},
-      {log, ?QUERY_LOG_FILENAME}]}.
 
 find_executable(Name) ->
     K = list_to_atom("ns_ports_setup-" ++ Name ++ "-available"),
@@ -253,101 +211,6 @@ find_executable(Name) ->
             V
     end.
 
-kv_node_projector_spec(Config) ->
-    ProjectorCmd = find_executable("projector"),
-    case ProjectorCmd =/= false andalso
-        ns_cluster_membership:should_run_service(Config, kv, node()) of
-        false ->
-            [];
-        _ ->
-            % Projector is a component that is required by 2i
-            ProjectorPort = service_ports:get_port(projector_port, Config),
-            RestPort = service_ports:get_port(rest_port, Config),
-            LocalMemcachedPort = service_ports:get_port(memcached_port, Config),
-            MinidumpDir = path_config:minidump_dir(),
-
-            Args = ["-kvaddrs=" ++ misc:local_url(LocalMemcachedPort, [no_scheme]),
-                    "-adminport=:" ++ integer_to_list(ProjectorPort),
-                    "-diagDir=" ++ MinidumpDir,
-                    "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
-                    misc:local_url(RestPort, [no_scheme])],
-
-            Spec = {'projector', ProjectorCmd, Args,
-                    [via_goport, exit_status, stderr_to_stdout,
-                     {log, ?PROJECTOR_LOG_FILENAME},
-                     {env, build_go_env_vars(Config, projector)}]},
-            [Spec]
-    end.
-
-goxdcr_spec(Config) ->
-    case find_executable("goxdcr") of
-        false ->
-            [];
-        Cmd ->
-            create_goxdcr_spec(Config, Cmd)
-    end.
-
-create_goxdcr_spec(Config, Cmd) ->
-    AdminPort = "-sourceKVAdminPort=" ++
-        integer_to_list(service_ports:get_port(rest_port, Config)),
-    XdcrRestPort = "-xdcrRestPort=" ++
-        integer_to_list(ns_config:search(Config, {node, node(), xdcr_rest_port}, 9998)),
-    IsEnterprise = "-isEnterprise=" ++ atom_to_list(cluster_compat_mode:is_enterprise()),
-    IsIpv6 = "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
-    Args = [AdminPort, XdcrRestPort, IsEnterprise, IsIpv6],
-
-    [{'goxdcr', Cmd, Args,
-      [via_goport, exit_status, stderr_to_stdout,
-       {log, ?GOXDCR_LOG_FILENAME},
-       {env, build_go_env_vars(Config, goxdcr)}]}].
-
-index_node_spec(Config) ->
-    case ns_cluster_membership:should_run_service(Config, index, node()) of
-        false ->
-            [];
-        _ ->
-            IndexerCmd = path_config:component_path(bin, "indexer"),
-            RestPort = service_ports:get_port(rest_port, Config),
-            AdminPort = service_ports:get_port(indexer_admin_port, Config),
-            ScanPort = service_ports:get_port(indexer_scan_port, Config),
-            HttpPort = service_ports:get_port(indexer_http_port, Config),
-            StInitPort = service_ports:get_port(indexer_stinit_port, Config),
-            StCatchupPort = service_ports:get_port(indexer_stcatchup_port,
-                                                   Config),
-            StMaintPort = service_ports:get_port(indexer_stmaint_port, Config),
-            {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
-            IdxDir2 = filename:join(IdxDir, "@2i"),
-            MinidumpDir = path_config:minidump_dir(),
-            NodeUUID = binary_to_list(ns_config:uuid()),
-            HttpsArgs = case ns_config:search(Config, {node, node(), indexer_https_port}, undefined) of
-                            undefined ->
-                                [];
-                            Port ->
-                                ["--httpsPort=" ++ integer_to_list(Port),
-                                 "--certFile=" ++ ns_ssl_services_setup:memcached_cert_path(),
-                                 "--keyFile=" ++ ns_ssl_services_setup:memcached_key_path()]
-                        end,
-
-            Spec = {'indexer', IndexerCmd,
-                    ["-vbuckets=" ++ integer_to_list(ns_bucket:get_num_vbuckets()),
-                     "-cluster=" ++ misc:local_url(RestPort, [no_scheme]),
-                     "-adminPort=" ++ integer_to_list(AdminPort),
-                     "-scanPort=" ++ integer_to_list(ScanPort),
-                     "-httpPort=" ++ integer_to_list(HttpPort),
-                     "-streamInitPort=" ++ integer_to_list(StInitPort),
-                     "-streamCatchupPort=" ++ integer_to_list(StCatchupPort),
-                     "-streamMaintPort=" ++ integer_to_list(StMaintPort),
-                     "-storageDir=" ++ IdxDir2,
-                     "-diagDir=" ++ MinidumpDir,
-                     "-nodeUUID=" ++ NodeUUID,
-                     "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
-                     "-isEnterprise=" ++ atom_to_list(cluster_compat_mode:is_enterprise())] ++ HttpsArgs,
-                    [via_goport, exit_status, stderr_to_stdout,
-                     {log, ?INDEXER_LOG_FILENAME},
-                     {env, build_go_env_vars(Config, index)}]},
-            [Spec]
-    end.
-
 build_go_env_vars(Config, RPCService) ->
     GoTraceBack0 = ns_config:search(ns_config:latest(), gotraceback, <<"single">>),
     GoTraceBack = binary_to_list(GoTraceBack0),
@@ -359,9 +222,10 @@ build_tls_config_env_var(Config) ->
                       (Code) -> iolist_to_binary(["0x", misc:hexify(Code)])
                   end, ns_ssl_services_setup:supported_ciphers(cbauth, Config)),
     [{"CBAUTH_TLS_CONFIG",
-      binary_to_list(ejson:encode(
-                       {[{minTLSVersion, ns_ssl_services_setup:ssl_minimum_protocol(Config)},
-                         {ciphers, Ciphers}]}))}].
+      binary_to_list(
+        ejson:encode(
+          {[{minTLSVersion, ns_ssl_services_setup:ssl_minimum_protocol(Config)},
+            {ciphers, Ciphers}]}))}].
 
 build_cbauth_env_vars(Config, RPCService) ->
     true = (RPCService =/= undefined),
@@ -370,17 +234,6 @@ build_cbauth_env_vars(Config, RPCService) ->
     Password = mochiweb_util:quote_plus(ns_config_auth:get_password(special)),
     URL = misc:local_url(RestPort, atom_to_list(RPCService), [{user_info, {User, Password}}]),
     [{"CBAUTH_REVRPC_URL", URL}].
-
-saslauthd_port_spec(Config) ->
-    Cmd = find_executable("saslauthd-port"),
-    case Cmd =/= false of
-        true ->
-            [{saslauthd_port, Cmd, [],
-              [use_stdio, exit_status, stderr_to_stdout,
-               {env, build_go_env_vars(Config, saslauthd)}]}];
-        _ ->
-            []
-    end.
 
 expand_args({Name, Cmd, ArgsIn, OptsIn}, Config) ->
     %% Expand arguments
@@ -409,6 +262,352 @@ format(Config, Name, Format, Keys) ->
                        end, Keys),
     lists:flatten(io_lib:format(Format, Values)).
 
+-record(def, {id, exe, service, rpc, log, tls = false}).
+
+goport_defs() ->
+    [#def{id = indexer,
+          exe = "indexer",
+          service = index,
+          rpc = index,
+          log = ?INDEXER_LOG_FILENAME},
+     #def{id = projector,
+          exe = "projector",
+          service = kv,
+          rpc = projector,
+          log = ?PROJECTOR_LOG_FILENAME},
+     #def{id = goxdcr,
+          exe = "goxdcr",
+          rpc = goxdcr,
+          log = ?GOXDCR_LOG_FILENAME},
+     #def{id = 'query',
+          exe = "cbq-engine",
+          service = n1ql,
+          rpc = 'cbq-engine',
+          log = ?QUERY_LOG_FILENAME,
+          tls = true},
+     #def{id = fts,
+          exe = "cbft",
+          service = fts,
+          rpc = fts,
+          log = ?FTS_LOG_FILENAME,
+          tls = true},
+     #def{id = cbas,
+          exe = "cbas",
+          service = cbas,
+          rpc = cbas,
+          log = ?CBAS_LOG_FILENAME},
+     #def{id = eventing,
+          exe = "eventing-producer",
+          service = eventing,
+          rpc = eventing,
+          log = ?EVENTING_LOG_FILENAME,
+          tls = true},
+     #def{id = example,
+          exe = "cache-service",
+          service = example,
+          rpc = example}].
+
+build_goport_spec(#def{id = SpecId,
+                       exe = Executable,
+                       service = Service,
+                       rpc = RPCService,
+                       log = Log,
+                       tls = Tls}, Config) ->
+    Cmd = find_executable(Executable),
+    NodeUUID = ns_config:search(Config, {node, node(), uuid}, false),
+    case Cmd =/= false andalso
+        NodeUUID =/= false andalso
+        (Service =:= undefined orelse
+         ns_cluster_membership:should_run_service(Config, Service, node())) of
+        false ->
+            [];
+        _ ->
+            EnvVars = build_go_env_vars(Config, RPCService),
+            EnvVars1 = case Tls of
+                           true ->
+                               EnvVars ++ build_tls_config_env_var(Config);
+                           false ->
+                               EnvVars
+                       end,
+            Args = goport_args(SpecId, Config, Cmd, NodeUUID),
+            [{SpecId, Cmd, Args,
+              [via_goport, exit_status, stderr_to_stdout, {env, EnvVars1}] ++
+                  [{log, Log} || Log =/= undefined]}]
+    end.
+
+build_goport_specs(Config) ->
+    [build_goport_spec(Def, Config) || Def <- goport_defs()].
+
+goport_args('query', Config, _Cmd, _NodeUUID) ->
+    RestPort = service_ports:get_port(rest_port, Config),
+    DataStoreArg = "--datastore=" ++ misc:local_url(RestPort, []),
+    CnfgStoreArg = "--configstore=" ++ misc:local_url(RestPort, []),
+    HttpArg = "--http=:" ++
+        integer_to_list(query_rest:get_query_port(Config, node())),
+    EntArg = "--enterprise=" ++
+        atom_to_list(cluster_compat_mode:is_enterprise()),
+    Ipv6 = "--ipv6=" ++ atom_to_list(misc:is_ipv6()),
+
+    HttpsArgs =
+        case query_rest:get_ssl_query_port(Config, node()) of
+            undefined ->
+                [];
+            Port ->
+                ["--https=:" ++ integer_to_list(Port),
+                 "--certfile=" ++ ns_ssl_services_setup:memcached_cert_path(),
+                 "--keyfile=" ++ ns_ssl_services_setup:memcached_key_path()]
+        end,
+    [DataStoreArg, HttpArg, CnfgStoreArg, EntArg, Ipv6] ++ HttpsArgs;
+
+goport_args(projector, Config, _Cmd, _NodeUUID) ->
+    %% Projector is a component that is required by 2i
+    ProjectorPort = service_ports:get_port(projector_port, Config),
+    RestPort = service_ports:get_port(rest_port, Config),
+    LocalMemcachedPort = service_ports:get_port(memcached_port, Config),
+    MinidumpDir = path_config:minidump_dir(),
+
+    ["-kvaddrs=" ++ misc:local_url(LocalMemcachedPort, [no_scheme]),
+     "-adminport=:" ++ integer_to_list(ProjectorPort),
+     "-diagDir=" ++ MinidumpDir,
+     "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
+     misc:local_url(RestPort, [no_scheme])];
+
+goport_args(goxdcr, Config, _Cmd, _NodeUUID) ->
+    AdminPort = "-sourceKVAdminPort=" ++
+        integer_to_list(service_ports:get_port(rest_port, Config)),
+    XdcrRestPort = "-xdcrRestPort=" ++
+        integer_to_list(
+          ns_config:search(Config, {node, node(), xdcr_rest_port}, 9998)),
+    IsEnterprise = "-isEnterprise=" ++
+        atom_to_list(cluster_compat_mode:is_enterprise()),
+    IsIpv6 = "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
+    [AdminPort, XdcrRestPort, IsEnterprise, IsIpv6];
+
+goport_args(indexer, Config, _Cmd, NodeUUID) ->
+    RestPort = service_ports:get_port(rest_port, Config),
+    AdminPort = service_ports:get_port(indexer_admin_port, Config),
+    ScanPort = service_ports:get_port(indexer_scan_port, Config),
+    HttpPort = service_ports:get_port(indexer_http_port, Config),
+    StInitPort = service_ports:get_port(indexer_stinit_port, Config),
+    StCatchupPort = service_ports:get_port(indexer_stcatchup_port,
+                                                   Config),
+    StMaintPort = service_ports:get_port(indexer_stmaint_port, Config),
+    {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
+    IdxDir2 = filename:join(IdxDir, "@2i"),
+    MinidumpDir = path_config:minidump_dir(),
+    HttpsArgs = case ns_config:search(Config, {node, node(), indexer_https_port}, undefined) of
+                    undefined ->
+                        [];
+                    Port ->
+                        ["--httpsPort=" ++ integer_to_list(Port),
+                         "--certFile=" ++ ns_ssl_services_setup:memcached_cert_path(),
+                         "--keyFile=" ++ ns_ssl_services_setup:memcached_key_path()]
+                end,
+
+    ["-vbuckets=" ++ integer_to_list(ns_bucket:get_num_vbuckets()),
+     "-cluster=" ++ misc:local_url(RestPort, [no_scheme]),
+     "-adminPort=" ++ integer_to_list(AdminPort),
+     "-scanPort=" ++ integer_to_list(ScanPort),
+     "-httpPort=" ++ integer_to_list(HttpPort),
+     "-streamInitPort=" ++ integer_to_list(StInitPort),
+     "-streamCatchupPort=" ++ integer_to_list(StCatchupPort),
+     "-streamMaintPort=" ++ integer_to_list(StMaintPort),
+     "-storageDir=" ++ IdxDir2,
+     "-diagDir=" ++ MinidumpDir,
+     "-nodeUUID=" ++ NodeUUID,
+     "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
+     "-isEnterprise=" ++ atom_to_list(cluster_compat_mode:is_enterprise())] ++ HttpsArgs;
+
+goport_args(fts, Config, _Cmd, NodeUUID) ->
+    NsRestPort = service_ports:get_port(rest_port, Config),
+    FtRestPort = service_ports:get_port(fts_http_port, Config),
+    {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
+    FTSIdxDir = filename:join(IdxDir, "@fts"),
+    case misc:ensure_writable_dir(FTSIdxDir) of
+        ok ->
+            ok;
+        _ ->
+            ?log_debug("Service fts's directory (~p) is not writable "
+                       "on node ~p", [FTSIdxDir, node()])
+    end,
+
+    {_, Host} = misc:node_name_host(node()),
+    BindHttp = io_lib:format("~s:~b,~s:~b",
+                             [misc:maybe_add_brackets(Host), FtRestPort,
+                              misc:inaddr_any([url]),
+                              FtRestPort]),
+    BindHttps =
+        case service_ports:get_port(fts_ssl_port, Config) of
+            undefined ->
+                [];
+            Port ->
+                ["-bindHttps=:" ++ integer_to_list(Port),
+                 "-tlsCertFile=" ++
+                     ns_ssl_services_setup:memcached_cert_path(),
+                 "-tlsKeyFile=" ++
+                     ns_ssl_services_setup:memcached_key_path()]
+        end,
+    {ok, FTSMemoryQuota} = memory_quota:get_quota(Config, fts),
+    MaxReplicasAllowed = case cluster_compat_mode:is_enterprise() of
+                             true -> 3;
+                             false -> 0
+                         end,
+    BucketTypesAllowed = case cluster_compat_mode:is_enterprise() of
+                             true -> "membase:ephemeral";
+                             false -> "membase"
+                         end,
+    Options = "startCheckServer=skip," ++
+        "slowQueryLogTimeout=5s," ++
+        "defaultMaxPartitionsPerPIndex=171," ++
+        "bleveMaxResultWindow=10000," ++
+        "failoverAssignAllPrimaries=false," ++
+        "hideUI=true," ++
+        "cbaudit=" ++ atom_to_list(cluster_compat_mode:is_enterprise()) ++ "," ++
+        "ipv6=" ++ atom_to_list(misc:is_ipv6()) ++ "," ++
+        "ftsMemoryQuota=" ++ integer_to_list(FTSMemoryQuota * 1024000) ++ "," ++
+        "maxReplicasAllowed=" ++ integer_to_list(MaxReplicasAllowed) ++ "," ++
+        "bucketTypesAllowed=" ++ BucketTypesAllowed ++ "," ++
+        "http2=" ++ atom_to_list(cluster_compat_mode:is_enterprise()) ++ "," ++
+        "vbuckets=" ++ integer_to_list(ns_bucket:get_num_vbuckets()),
+    [
+     "-cfg=metakv",
+     "-uuid=" ++ NodeUUID,
+     "-server=" ++ misc:local_url(NsRestPort, []),
+     "-bindHttp=" ++ BindHttp,
+     "-dataDir=" ++ FTSIdxDir,
+     "-tags=feed,janitor,pindex,queryer,cbauth_service",
+     "-auth=cbauth",
+     "-extra=" ++ io_lib:format("~s:~b", [Host, NsRestPort]),
+     "-options=" ++ Options
+    ] ++ BindHttps;
+
+goport_args(eventing, Config, _Cmd, NodeUUID) ->
+    EventingAdminPort = service_ports:get_port(eventing_http_port,
+                                               Config),
+    LocalMemcachedPort = service_ports:get_port(memcached_port, Config),
+    RestPort = service_ports:get_port(rest_port, Config),
+    DebugPort = service_ports:get_port(eventing_debug_port, Config),
+
+    {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
+    EventingDir = filename:join(IdxDir, "@eventing"),
+
+    MinidumpDir = path_config:minidump_dir(),
+
+    BindHttps =
+        case service_ports:get_port(eventing_https_port, Config) of
+            undefined ->
+                [];
+            Port ->
+                ["-adminsslport=" ++ integer_to_list(Port),
+                 "-certfile=" ++
+                     ns_ssl_services_setup:memcached_cert_path(),
+                 "-keyfile=" ++
+                     ns_ssl_services_setup:memcached_key_path()]
+        end,
+
+    ["-adminport=" ++ integer_to_list(EventingAdminPort),
+     "-dir=" ++ EventingDir,
+     "-kvport=" ++ integer_to_list(LocalMemcachedPort),
+     "-restport=" ++ integer_to_list(RestPort),
+     "-uuid=" ++ binary_to_list(NodeUUID),
+     "-diagdir=" ++ MinidumpDir,
+     "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
+     "-debugPort=" ++ integer_to_list(DebugPort),
+     "-vbuckets=" ++ integer_to_list(ns_bucket:get_num_vbuckets())] ++ BindHttps;
+
+goport_args(cbas, Config, Cmd, NodeUUID) ->
+    NsRestPort = service_ports:get_port(rest_port, Config),
+    HttpPort = service_ports:get_port(cbas_http_port, Config),
+    AdminPort = service_ports:get_port(cbas_admin_port, Config),
+    CCHttpPort = service_ports:get_port(cbas_cc_http_port, Config),
+    CCClusterPort = service_ports:get_port(cbas_cc_cluster_port,
+                                           Config),
+    CCClientPort = service_ports:get_port(cbas_cc_client_port, Config),
+    ConsolePort = service_ports:get_port(cbas_console_port, Config),
+    ClusterPort = service_ports:get_port(cbas_cluster_port, Config),
+    DataPort = service_ports:get_port(cbas_data_port, Config),
+    ResultPort = service_ports:get_port(cbas_result_port, Config),
+    MessagingPort = service_ports:get_port(cbas_messaging_port, Config),
+    MetadataCallbackPort = service_ports:get_port(
+                             cbas_metadata_callback_port, Config),
+    ReplicationPort = service_ports:get_port(cbas_replication_port,
+                                             Config),
+    MetadataPort = service_ports:get_port(cbas_metadata_port, Config),
+    ParentPort = service_ports:get_port(cbas_parent_port, Config),
+    DebugPort = service_ports:get_port(cbas_debug_port, Config),
+
+    CBASDirs = [filename:join([Token], "@analytics") ||
+                   Token <- ns_storage_conf:this_node_cbas_dirs()],
+    case misc:ensure_writable_dirs(CBASDirs) of
+        ok ->
+            ok;
+        _ ->
+            ?log_debug("Service cbas's directories (~p) are not "
+                       "writable on node ~p", [CBASDirs, node()])
+    end,
+
+    JavaHome = ns_storage_conf:this_node_java_home(),
+
+    {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
+    {_, Host} = misc:node_name_host(node()),
+    HttpsOptions =
+        case service_ports:get_port(cbas_ssl_port, Config) of
+            undefined ->
+                [];
+            Port ->
+                ["-bindHttpsPort=" ++ integer_to_list(Port),
+                 "-tlsCertFile=" ++
+                     ns_ssl_services_setup:memcached_cert_path(),
+                 "-tlsKeyFile=" ++
+                     ns_ssl_services_setup:memcached_key_path()]
+        end,
+    {ok, MemoryQuota} = memory_quota:get_quota(Config, cbas),
+    [
+     "-uuid=" ++ binary_to_list(NodeUUID),
+     "-serverAddress=" ++ misc:localhost(),
+     "-serverPort=" ++ integer_to_list(NsRestPort),
+     "-bindHttpAddress=" ++ Host,
+     "-bindHttpPort=" ++ integer_to_list(HttpPort),
+     "-bindAdminPort=" ++ integer_to_list(AdminPort),
+     "-cbasExecutable=" ++ Cmd,
+     "-debugPort=" ++ integer_to_list(DebugPort),
+     "-ccHttpPort=" ++ integer_to_list(CCHttpPort),
+     "-ccClusterPort=" ++ integer_to_list(CCClusterPort),
+     "-ccClientPort=" ++ integer_to_list(CCClientPort),
+     "-consolePort=" ++ integer_to_list(ConsolePort),
+     "-clusterPort=" ++ integer_to_list(ClusterPort),
+     "-dataPort=" ++ integer_to_list(DataPort),
+     "-resultPort=" ++ integer_to_list(ResultPort),
+     "-messagingPort=" ++ integer_to_list(MessagingPort),
+     "-metadataPort=" ++ integer_to_list(MetadataPort),
+     "-metadataCallbackPort=" ++ integer_to_list(MetadataCallbackPort),
+     "-memoryQuotaMb=" ++ integer_to_list(MemoryQuota),
+     "-parentPort=" ++ integer_to_list(ParentPort),
+     "-bindReplicationPort=" ++ integer_to_list(ReplicationPort),
+     "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
+     "-logDir=" ++ LogDir
+    ] ++
+        ["-dataDir=" ++ Dir || Dir <- CBASDirs] ++
+        ["-javaHome=" ++ JavaHome || JavaHome =/= undefined] ++
+        HttpsOptions;
+
+goport_args(example, Config, _Cmd, NodeUUID) ->
+    Port = service_ports:get_port(rest_port, Config) + 20000,
+    {_, Host} = misc:node_name_host(node()),
+    ["-node-id", binary_to_list(NodeUUID),
+     "-host", misc:join_host_port(Host, Port)].
+
+saslauthd_port_spec(Config) ->
+    Cmd = find_executable("saslauthd-port"),
+    case Cmd =/= false of
+        true ->
+            [{saslauthd_port, Cmd, [],
+              [use_stdio, exit_status, stderr_to_stdout,
+               {env, build_go_env_vars(Config, saslauthd)}]}];
+        _ ->
+            []
+    end.
+
 memcached_spec() ->
     {memcached, path_config:component_path(bin, "memcached"),
      ["-C", {"~s", [{memcached, config_path}]}],
@@ -433,239 +632,3 @@ memcached_spec() ->
       port_server_dont_start,
       stream]
     }.
-
-fts_spec(Config) ->
-    FtCmd = find_executable("cbft"),
-    NodeUUID = ns_config:search(Config, {node, node(), uuid}, false),
-    case FtCmd =/= false andalso
-        NodeUUID =/= false andalso
-        ns_cluster_membership:should_run_service(Config, fts, node()) of
-        false ->
-            [];
-        _ ->
-            NsRestPort = service_ports:get_port(rest_port, Config),
-            FtRestPort = service_ports:get_port(fts_http_port, Config),
-            {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
-            FTSIdxDir = filename:join(IdxDir, "@fts"),
-            case misc:ensure_writable_dir(FTSIdxDir) of
-                ok ->
-                    ok;
-                _ ->
-                    ?log_debug("Service fts's directory (~p) is not writable "
-                               "on node ~p", [FTSIdxDir, node()])
-            end,
-
-            {_, Host} = misc:node_name_host(node()),
-            BindHttp = io_lib:format("~s:~b,~s:~b",
-                                     [misc:maybe_add_brackets(Host), FtRestPort,
-                                      misc:inaddr_any([url]),
-                                      FtRestPort]),
-            BindHttps =
-                case service_ports:get_port(fts_ssl_port, Config) of
-                    undefined ->
-                        [];
-                    Port ->
-                        ["-bindHttps=:" ++ integer_to_list(Port),
-                         "-tlsCertFile=" ++
-                             ns_ssl_services_setup:memcached_cert_path(),
-                         "-tlsKeyFile=" ++
-                             ns_ssl_services_setup:memcached_key_path()]
-                end,
-            {ok, FTSMemoryQuota} = memory_quota:get_quota(Config, fts),
-            MaxReplicasAllowed = case cluster_compat_mode:is_enterprise() of
-                                     true -> 3;
-                                     false -> 0
-                                 end,
-            BucketTypesAllowed = case cluster_compat_mode:is_enterprise() of
-                                     true -> "membase:ephemeral";
-                                     false -> "membase"
-                                 end,
-            Options = "startCheckServer=skip," ++
-                      "slowQueryLogTimeout=5s," ++
-                      "defaultMaxPartitionsPerPIndex=171," ++
-                      "bleveMaxResultWindow=10000," ++
-                      "failoverAssignAllPrimaries=false," ++
-                      "hideUI=true," ++
-                      "cbaudit=" ++ atom_to_list(cluster_compat_mode:is_enterprise()) ++ "," ++
-                      "ipv6=" ++ atom_to_list(misc:is_ipv6()) ++ "," ++
-                      "ftsMemoryQuota=" ++ integer_to_list(FTSMemoryQuota * 1024000) ++ "," ++
-                      "maxReplicasAllowed=" ++ integer_to_list(MaxReplicasAllowed) ++ "," ++
-                      "bucketTypesAllowed=" ++ BucketTypesAllowed ++ "," ++
-                      "http2=" ++ atom_to_list(cluster_compat_mode:is_enterprise()) ++ "," ++
-                      "vbuckets=" ++ integer_to_list(ns_bucket:get_num_vbuckets()),
-            Spec = {fts, FtCmd,
-                    [
-                     "-cfg=metakv",
-                     "-uuid=" ++ NodeUUID,
-                     "-server=" ++ misc:local_url(NsRestPort, []),
-                     "-bindHttp=" ++ BindHttp,
-                     "-dataDir=" ++ FTSIdxDir,
-                     "-tags=feed,janitor,pindex,queryer,cbauth_service",
-                     "-auth=cbauth",
-                     "-extra=" ++ io_lib:format("~s:~b", [Host, NsRestPort]),
-                     "-options=" ++ Options
-                    ] ++ BindHttps,
-                    [via_goport, exit_status, stderr_to_stdout,
-                     {log, ?FTS_LOG_FILENAME},
-                     {env, build_go_env_vars(Config, fts) ++ build_tls_config_env_var(Config)}]},
-            [Spec]
-    end.
-
-eventing_spec(Config) ->
-    Command = path_config:component_path(bin, "eventing-producer"),
-    NodeUUID = ns_config:search(Config, {node, node(), uuid}, false),
-
-    case Command =/= false andalso
-        NodeUUID =/= false andalso
-        ns_cluster_membership:should_run_service(Config, eventing, node()) of
-        true ->
-            EventingAdminPort = service_ports:get_port(eventing_http_port,
-                                                       Config),
-            LocalMemcachedPort = service_ports:get_port(memcached_port, Config),
-            RestPort = service_ports:get_port(rest_port, Config),
-            DebugPort = service_ports:get_port(eventing_debug_port, Config),
-
-            {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
-            EventingDir = filename:join(IdxDir, "@eventing"),
-
-            MinidumpDir = path_config:minidump_dir(),
-
-            BindHttps =
-                case service_ports:get_port(eventing_https_port, Config) of
-                    undefined ->
-                        [];
-                    Port ->
-                        ["-adminsslport=" ++ integer_to_list(Port),
-                         "-certfile=" ++
-                             ns_ssl_services_setup:memcached_cert_path(),
-                         "-keyfile=" ++
-                             ns_ssl_services_setup:memcached_key_path()]
-                end,
-
-            Spec = {eventing, Command,
-                    ["-adminport=" ++ integer_to_list(EventingAdminPort),
-                     "-dir=" ++ EventingDir,
-                     "-kvport=" ++ integer_to_list(LocalMemcachedPort),
-                     "-restport=" ++ integer_to_list(RestPort),
-                     "-uuid=" ++ binary_to_list(NodeUUID),
-                     "-diagdir=" ++ MinidumpDir,
-                     "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
-                     "-debugPort=" ++ integer_to_list(DebugPort),
-                     "-vbuckets=" ++ integer_to_list(ns_bucket:get_num_vbuckets())] ++ BindHttps,
-                    [via_goport, exit_status, stderr_to_stdout,
-                     {env, build_go_env_vars(Config, eventing) ++ build_tls_config_env_var(Config)},
-                     {log, ?EVENTING_LOG_FILENAME}]},
-            [Spec];
-        false ->
-            []
-    end.
-
-cbas_spec(Config) ->
-    Cmd = find_executable("cbas"),
-    NodeUUID = ns_config:search(Config, {node, node(), uuid}, false),
-    case Cmd =/= false andalso
-        NodeUUID =/= false andalso
-        ns_cluster_membership:should_run_service(Config, cbas, node()) of
-        false ->
-            [];
-        _ ->
-            NsRestPort = service_ports:get_port(rest_port, Config),
-            HttpPort = service_ports:get_port(cbas_http_port, Config),
-            AdminPort = service_ports:get_port(cbas_admin_port, Config),
-            CCHttpPort = service_ports:get_port(cbas_cc_http_port, Config),
-            CCClusterPort = service_ports:get_port(cbas_cc_cluster_port,
-                                                   Config),
-            CCClientPort = service_ports:get_port(cbas_cc_client_port, Config),
-            ConsolePort = service_ports:get_port(cbas_console_port, Config),
-            ClusterPort = service_ports:get_port(cbas_cluster_port, Config),
-            DataPort = service_ports:get_port(cbas_data_port, Config),
-            ResultPort = service_ports:get_port(cbas_result_port, Config),
-            MessagingPort = service_ports:get_port(cbas_messaging_port, Config),
-            MetadataCallbackPort = service_ports:get_port(
-                                     cbas_metadata_callback_port, Config),
-            ReplicationPort = service_ports:get_port(cbas_replication_port,
-                                                     Config),
-            MetadataPort = service_ports:get_port(cbas_metadata_port, Config),
-            ParentPort = service_ports:get_port(cbas_parent_port, Config),
-            DebugPort = service_ports:get_port(cbas_debug_port, Config),
-
-            CBASDirs = [filename:join([Token], "@analytics") ||
-                           Token <- ns_storage_conf:this_node_cbas_dirs()],
-            case misc:ensure_writable_dirs(CBASDirs) of
-                ok ->
-                    ok;
-                _ ->
-                    ?log_debug("Service cbas's directories (~p) are not "
-                               "writable on node ~p", [CBASDirs, node()])
-            end,
-
-            JavaHome = ns_storage_conf:this_node_java_home(),
-
-            {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
-            {_, Host} = misc:node_name_host(node()),
-            HttpsOptions =
-                case service_ports:get_port(cbas_ssl_port, Config) of
-                    undefined ->
-                        [];
-                    Port ->
-                        ["-bindHttpsPort=" ++ integer_to_list(Port),
-                         "-tlsCertFile=" ++
-                             ns_ssl_services_setup:memcached_cert_path(),
-                         "-tlsKeyFile=" ++
-                             ns_ssl_services_setup:memcached_key_path()]
-                end,
-            {ok, MemoryQuota} = memory_quota:get_quota(Config, cbas),
-            Spec = {cbas, Cmd,
-                    [
-                     "-uuid=" ++ binary_to_list(NodeUUID),
-                     "-serverAddress=" ++ misc:localhost(),
-                     "-serverPort=" ++ integer_to_list(NsRestPort),
-                     "-bindHttpAddress=" ++ Host,
-                     "-bindHttpPort=" ++ integer_to_list(HttpPort),
-                     "-bindAdminPort=" ++ integer_to_list(AdminPort),
-                     "-cbasExecutable=" ++ Cmd,
-                     "-debugPort=" ++ integer_to_list(DebugPort),
-                     "-ccHttpPort=" ++ integer_to_list(CCHttpPort),
-                     "-ccClusterPort=" ++ integer_to_list(CCClusterPort),
-                     "-ccClientPort=" ++ integer_to_list(CCClientPort),
-                     "-consolePort=" ++ integer_to_list(ConsolePort),
-                     "-clusterPort=" ++ integer_to_list(ClusterPort),
-                     "-dataPort=" ++ integer_to_list(DataPort),
-                     "-resultPort=" ++ integer_to_list(ResultPort),
-                     "-messagingPort=" ++ integer_to_list(MessagingPort),
-                     "-metadataPort=" ++ integer_to_list(MetadataPort),
-                     "-metadataCallbackPort=" ++ integer_to_list(MetadataCallbackPort),
-                     "-memoryQuotaMb=" ++ integer_to_list(MemoryQuota),
-                     "-parentPort=" ++ integer_to_list(ParentPort),
-                     "-bindReplicationPort=" ++ integer_to_list(ReplicationPort),
-                     "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
-                     "-logDir=" ++ LogDir
-                    ] ++
-                        ["-dataDir=" ++ Dir || Dir <- CBASDirs] ++
-                        ["-javaHome=" ++ JavaHome || JavaHome =/= undefined] ++
-                        HttpsOptions,
-                    [via_goport, exit_status, stderr_to_stdout,
-                     {log, ?CBAS_LOG_FILENAME},
-                     {env, build_go_env_vars(Config, cbas)}]},
-            [Spec]
-    end.
-
-example_service_spec(Config) ->
-    CacheCmd = find_executable("cache-service"),
-    NodeUUID = ns_config:search(Config, {node, node(), uuid}, false),
-
-    case CacheCmd =/= false andalso
-        NodeUUID =/= false andalso
-        ns_cluster_membership:should_run_service(Config, example, node()) of
-        true ->
-            Port = service_ports:get_port(rest_port, Config) + 20000,
-            {_, Host} = misc:node_name_host(node()),
-            Args = ["-node-id", binary_to_list(NodeUUID),
-                    "-host", misc:join_host_port(Host, Port)],
-            Spec = {example, CacheCmd, Args,
-                    [via_goport, exit_status, stderr_to_stdout,
-                     {env, build_go_env_vars(Config, example)}]},
-            [Spec];
-        false ->
-            []
-    end.
