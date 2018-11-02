@@ -275,6 +275,17 @@ build_https_args(PortName, PortArg, PortPrefix, CertArg, KeyArg, Config) ->
              KeyArg ++ "=" ++ ns_ssl_services_setup:memcached_key_path()]
     end.
 
+build_port_arg(ArgName, PortName, Config) ->
+    build_port_arg(ArgName, "", PortName, Config).
+
+build_port_arg(ArgName, PortPrefix, PortName, Config) ->
+    Port = service_ports:get_port(PortName, Config),
+    {PortName, true} = {PortName, Port =/= undefined},
+    ArgName ++ "=" ++ PortPrefix ++ integer_to_list(Port).
+
+build_port_args(Args, Config) ->
+    [build_port_arg(ArgName, PortName, Config) || {ArgName, PortName} <- Args].
+
 -record(def, {id, exe, service, rpc, log, tls = false}).
 
 goport_defs() ->
@@ -355,8 +366,7 @@ goport_args('query', Config, _Cmd, _NodeUUID) ->
     RestPort = service_ports:get_port(rest_port, Config),
     DataStoreArg = "--datastore=" ++ misc:local_url(RestPort, []),
     CnfgStoreArg = "--configstore=" ++ misc:local_url(RestPort, []),
-    HttpArg = "--http=:" ++
-        integer_to_list(service_ports:get_port(query_port, Config, node())),
+    HttpArg = build_port_arg("--http", ":", query_port, Config),
     EntArg = "--enterprise=" ++
         atom_to_list(cluster_compat_mode:is_enterprise()),
     Ipv6 = "--ipv6=" ++ atom_to_list(misc:is_ipv6()),
@@ -367,56 +377,46 @@ goport_args('query', Config, _Cmd, _NodeUUID) ->
 
 goport_args(projector, Config, _Cmd, _NodeUUID) ->
     %% Projector is a component that is required by 2i
-    ProjectorPort = service_ports:get_port(projector_port, Config),
     RestPort = service_ports:get_port(rest_port, Config),
     LocalMemcachedPort = service_ports:get_port(memcached_port, Config),
     MinidumpDir = path_config:minidump_dir(),
 
     ["-kvaddrs=" ++ misc:local_url(LocalMemcachedPort, [no_scheme]),
-     "-adminport=:" ++ integer_to_list(ProjectorPort),
+     build_port_arg("-adminport", ":", projector_port, Config),
      "-diagDir=" ++ MinidumpDir,
      "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
      misc:local_url(RestPort, [no_scheme])];
 
 goport_args(goxdcr, Config, _Cmd, _NodeUUID) ->
-    AdminPort = "-sourceKVAdminPort=" ++
-        integer_to_list(service_ports:get_port(rest_port, Config)),
-    XdcrRestPort = "-xdcrRestPort=" ++
-        integer_to_list(
-          ns_config:search(Config, {node, node(), xdcr_rest_port}, 9998)),
     IsEnterprise = "-isEnterprise=" ++
         atom_to_list(cluster_compat_mode:is_enterprise()),
     IsIpv6 = "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
-    [AdminPort, XdcrRestPort, IsEnterprise, IsIpv6];
+    build_port_args([{"-sourceKVAdminPort", rest_port},
+                     {"-xdcrRestPort", xdcr_rest_port}], Config) ++
+        [IsEnterprise, IsIpv6];
 
 goport_args(indexer, Config, _Cmd, NodeUUID) ->
     RestPort = service_ports:get_port(rest_port, Config),
-    AdminPort = service_ports:get_port(indexer_admin_port, Config),
-    ScanPort = service_ports:get_port(indexer_scan_port, Config),
-    HttpPort = service_ports:get_port(indexer_http_port, Config),
-    StInitPort = service_ports:get_port(indexer_stinit_port, Config),
-    StCatchupPort = service_ports:get_port(indexer_stcatchup_port,
-                                                   Config),
-    StMaintPort = service_ports:get_port(indexer_stmaint_port, Config),
     {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
     IdxDir2 = filename:join(IdxDir, "@2i"),
-    MinidumpDir = path_config:minidump_dir(),
-    HttpsArgs = build_https_args(indexer_https_port, "--httpsPort",
-                                 "--certFile", "--keyFile", Config),
 
-    ["-vbuckets=" ++ integer_to_list(ns_bucket:get_num_vbuckets()),
-     "-cluster=" ++ misc:local_url(RestPort, [no_scheme]),
-     "-adminPort=" ++ integer_to_list(AdminPort),
-     "-scanPort=" ++ integer_to_list(ScanPort),
-     "-httpPort=" ++ integer_to_list(HttpPort),
-     "-streamInitPort=" ++ integer_to_list(StInitPort),
-     "-streamCatchupPort=" ++ integer_to_list(StCatchupPort),
-     "-streamMaintPort=" ++ integer_to_list(StMaintPort),
-     "-storageDir=" ++ IdxDir2,
-     "-diagDir=" ++ MinidumpDir,
-     "-nodeUUID=" ++ NodeUUID,
-     "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
-     "-isEnterprise=" ++ atom_to_list(cluster_compat_mode:is_enterprise())] ++ HttpsArgs;
+    build_port_args([{"-adminPort",         indexer_admin_port},
+                     {"-scanPort",          indexer_scan_port},
+                     {"-httpPort",          indexer_http_port},
+                     {"-streamInitPort",    indexer_stinit_port},
+                     {"-streamCatchupPort", indexer_stcatchup_port},
+                     {"-streamMaintPort",   indexer_stmaint_port}], Config) ++
+
+        build_https_args(indexer_https_port, "--httpsPort",
+                         "--certFile", "--keyFile", Config) ++
+
+        ["-vbuckets=" ++ integer_to_list(ns_bucket:get_num_vbuckets()),
+         "-cluster=" ++ misc:local_url(RestPort, [no_scheme]),
+         "-storageDir=" ++ IdxDir2,
+         "-diagDir=" ++ path_config:minidump_dir(),
+         "-nodeUUID=" ++ NodeUUID,
+         "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
+         "-isEnterprise=" ++ atom_to_list(cluster_compat_mode:is_enterprise())];
 
 goport_args(fts, Config, _Cmd, NodeUUID) ->
     NsRestPort = service_ports:get_port(rest_port, Config),
@@ -448,13 +448,15 @@ goport_args(fts, Config, _Cmd, NodeUUID) ->
                              true -> "membase:ephemeral";
                              false -> "membase"
                          end,
-    Options = "startCheckServer=skip," ++
+    Options =
+        "startCheckServer=skip," ++
         "slowQueryLogTimeout=5s," ++
         "defaultMaxPartitionsPerPIndex=171," ++
         "bleveMaxResultWindow=10000," ++
         "failoverAssignAllPrimaries=false," ++
         "hideUI=true," ++
-        "cbaudit=" ++ atom_to_list(cluster_compat_mode:is_enterprise()) ++ "," ++
+        "cbaudit=" ++ atom_to_list(cluster_compat_mode:is_enterprise()) ++
+        "," ++
         "ipv6=" ++ atom_to_list(misc:is_ipv6()) ++ "," ++
         "ftsMemoryQuota=" ++ integer_to_list(FTSMemoryQuota * 1024000) ++ "," ++
         "maxReplicasAllowed=" ++ integer_to_list(MaxReplicasAllowed) ++ "," ++
@@ -474,51 +476,22 @@ goport_args(fts, Config, _Cmd, NodeUUID) ->
     ] ++ BindHttps;
 
 goport_args(eventing, Config, _Cmd, NodeUUID) ->
-    EventingAdminPort = service_ports:get_port(eventing_http_port,
-                                               Config),
-    LocalMemcachedPort = service_ports:get_port(memcached_port, Config),
-    RestPort = service_ports:get_port(rest_port, Config),
-    DebugPort = service_ports:get_port(eventing_debug_port, Config),
-
     {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
-    EventingDir = filename:join(IdxDir, "@eventing"),
+    build_port_args([{"-adminport", eventing_http_port},
+                     {"-kvport", memcached_port},
+                     {"-restport", rest_port},
+                     {"-debugPort", eventing_debug_port}], Config) ++
 
-    MinidumpDir = path_config:minidump_dir(),
+        build_https_args(eventing_https_port, "-adminsslport",
+                         "-certfile", "-keyfile", Config) ++
 
-    BindHttps = build_https_args(eventing_https_port, "-adminsslport",
-                                 "-certfile", "-keyfile", Config),
-
-    ["-adminport=" ++ integer_to_list(EventingAdminPort),
-     "-dir=" ++ EventingDir,
-     "-kvport=" ++ integer_to_list(LocalMemcachedPort),
-     "-restport=" ++ integer_to_list(RestPort),
-     "-uuid=" ++ binary_to_list(NodeUUID),
-     "-diagdir=" ++ MinidumpDir,
-     "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
-     "-debugPort=" ++ integer_to_list(DebugPort),
-     "-vbuckets=" ++ integer_to_list(ns_bucket:get_num_vbuckets())] ++ BindHttps;
+        ["-dir=" ++ filename:join(IdxDir, "@eventing"),
+         "-uuid=" ++ binary_to_list(NodeUUID),
+         "-diagdir=" ++ path_config:minidump_dir(),
+         "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
+         "-vbuckets=" ++ integer_to_list(ns_bucket:get_num_vbuckets())];
 
 goport_args(cbas, Config, Cmd, NodeUUID) ->
-    NsRestPort = service_ports:get_port(rest_port, Config),
-    HttpPort = service_ports:get_port(cbas_http_port, Config),
-    AdminPort = service_ports:get_port(cbas_admin_port, Config),
-    CCHttpPort = service_ports:get_port(cbas_cc_http_port, Config),
-    CCClusterPort = service_ports:get_port(cbas_cc_cluster_port,
-                                           Config),
-    CCClientPort = service_ports:get_port(cbas_cc_client_port, Config),
-    ConsolePort = service_ports:get_port(cbas_console_port, Config),
-    ClusterPort = service_ports:get_port(cbas_cluster_port, Config),
-    DataPort = service_ports:get_port(cbas_data_port, Config),
-    ResultPort = service_ports:get_port(cbas_result_port, Config),
-    MessagingPort = service_ports:get_port(cbas_messaging_port, Config),
-    MetadataCallbackPort = service_ports:get_port(
-                             cbas_metadata_callback_port, Config),
-    ReplicationPort = service_ports:get_port(cbas_replication_port,
-                                             Config),
-    MetadataPort = service_ports:get_port(cbas_metadata_port, Config),
-    ParentPort = service_ports:get_port(cbas_parent_port, Config),
-    DebugPort = service_ports:get_port(cbas_debug_port, Config),
-
     CBASDirs = [filename:join([Token], "@analytics") ||
                    Token <- ns_storage_conf:this_node_cbas_dirs()],
     case misc:ensure_writable_dirs(CBASDirs) of
@@ -533,37 +506,38 @@ goport_args(cbas, Config, Cmd, NodeUUID) ->
 
     {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
     {_, Host} = misc:node_name_host(node()),
-    HttpsOptions = build_https_args(cbas_ssl_port, "-bindHttpsPort",
-                                    "-tlsCertFile", "-tlsKeyFile", Config),
     {ok, MemoryQuota} = memory_quota:get_quota(Config, cbas),
-    [
-     "-uuid=" ++ binary_to_list(NodeUUID),
-     "-serverAddress=" ++ misc:localhost(),
-     "-serverPort=" ++ integer_to_list(NsRestPort),
-     "-bindHttpAddress=" ++ Host,
-     "-bindHttpPort=" ++ integer_to_list(HttpPort),
-     "-bindAdminPort=" ++ integer_to_list(AdminPort),
-     "-cbasExecutable=" ++ Cmd,
-     "-debugPort=" ++ integer_to_list(DebugPort),
-     "-ccHttpPort=" ++ integer_to_list(CCHttpPort),
-     "-ccClusterPort=" ++ integer_to_list(CCClusterPort),
-     "-ccClientPort=" ++ integer_to_list(CCClientPort),
-     "-consolePort=" ++ integer_to_list(ConsolePort),
-     "-clusterPort=" ++ integer_to_list(ClusterPort),
-     "-dataPort=" ++ integer_to_list(DataPort),
-     "-resultPort=" ++ integer_to_list(ResultPort),
-     "-messagingPort=" ++ integer_to_list(MessagingPort),
-     "-metadataPort=" ++ integer_to_list(MetadataPort),
-     "-metadataCallbackPort=" ++ integer_to_list(MetadataCallbackPort),
-     "-memoryQuotaMb=" ++ integer_to_list(MemoryQuota),
-     "-parentPort=" ++ integer_to_list(ParentPort),
-     "-bindReplicationPort=" ++ integer_to_list(ReplicationPort),
-     "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
-     "-logDir=" ++ LogDir
-    ] ++
+
+    build_port_args([{"-serverPort",           rest_port},
+                     {"-bindHttpPort",         cbas_http_port},
+                     {"-bindAdminPort",        cbas_admin_port},
+                     {"-debugPort",            cbas_debug_port},
+                     {"-ccHttpPort",           cbas_cc_http_port},
+                     {"-ccClusterPort",        cbas_cc_cluster_port},
+                     {"-ccClientPort",         cbas_cc_client_port},
+                     {"-consolePort",          cbas_console_port},
+                     {"-clusterPort",          cbas_cluster_port},
+                     {"-dataPort",             cbas_data_port},
+                     {"-resultPort",           cbas_result_port},
+                     {"-messagingPort",        cbas_messaging_port},
+                     {"-metadataPort",         cbas_metadata_port},
+                     {"-metadataCallbackPort", cbas_metadata_callback_port},
+                     {"-parentPort",           cbas_parent_port},
+                     {"-bindReplicationPort",  cbas_replication_port}],
+                    Config) ++
+        build_https_args(cbas_ssl_port, "-bindHttpsPort",
+                         "-tlsCertFile", "-tlsKeyFile", Config) ++
+        [
+         "-uuid=" ++ binary_to_list(NodeUUID),
+         "-serverAddress=" ++ misc:localhost(),
+         "-bindHttpAddress=" ++ Host,
+         "-cbasExecutable=" ++ Cmd,
+         "-memoryQuotaMb=" ++ integer_to_list(MemoryQuota),
+         "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
+         "-logDir=" ++ LogDir
+        ] ++
         ["-dataDir=" ++ Dir || Dir <- CBASDirs] ++
-        ["-javaHome=" ++ JavaHome || JavaHome =/= undefined] ++
-        HttpsOptions;
+        ["-javaHome=" ++ JavaHome || JavaHome =/= undefined];
 
 goport_args(example, Config, _Cmd, NodeUUID) ->
     Port = service_ports:get_port(rest_port, Config) + 20000,
