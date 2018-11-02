@@ -262,6 +262,19 @@ format(Config, Name, Format, Keys) ->
                        end, Keys),
     lists:flatten(io_lib:format(Format, Values)).
 
+build_https_args(PortName, PortArg, CertArg, KeyArg, Config) ->
+    build_https_args(PortName, PortArg, "", CertArg, KeyArg, Config).
+
+build_https_args(PortName, PortArg, PortPrefix, CertArg, KeyArg, Config) ->
+    case service_ports:get_port(PortName, Config) of
+        undefined ->
+            [];
+        Port ->
+            [PortArg ++ "=" ++ PortPrefix ++ integer_to_list(Port),
+             CertArg ++ "=" ++ ns_ssl_services_setup:memcached_cert_path(),
+             KeyArg ++ "=" ++ ns_ssl_services_setup:memcached_key_path()]
+    end.
+
 -record(def, {id, exe, service, rpc, log, tls = false}).
 
 goport_defs() ->
@@ -343,20 +356,13 @@ goport_args('query', Config, _Cmd, _NodeUUID) ->
     DataStoreArg = "--datastore=" ++ misc:local_url(RestPort, []),
     CnfgStoreArg = "--configstore=" ++ misc:local_url(RestPort, []),
     HttpArg = "--http=:" ++
-        integer_to_list(query_rest:get_query_port(Config, node())),
+        integer_to_list(service_ports:get_port(query_port, Config, node())),
     EntArg = "--enterprise=" ++
         atom_to_list(cluster_compat_mode:is_enterprise()),
     Ipv6 = "--ipv6=" ++ atom_to_list(misc:is_ipv6()),
 
-    HttpsArgs =
-        case query_rest:get_ssl_query_port(Config, node()) of
-            undefined ->
-                [];
-            Port ->
-                ["--https=:" ++ integer_to_list(Port),
-                 "--certfile=" ++ ns_ssl_services_setup:memcached_cert_path(),
-                 "--keyfile=" ++ ns_ssl_services_setup:memcached_key_path()]
-        end,
+    HttpsArgs = build_https_args(ssl_query_port, "--https", ":",
+                                 "--certfile", "--keyfile", Config),
     [DataStoreArg, HttpArg, CnfgStoreArg, EntArg, Ipv6] ++ HttpsArgs;
 
 goport_args(projector, Config, _Cmd, _NodeUUID) ->
@@ -395,14 +401,8 @@ goport_args(indexer, Config, _Cmd, NodeUUID) ->
     {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
     IdxDir2 = filename:join(IdxDir, "@2i"),
     MinidumpDir = path_config:minidump_dir(),
-    HttpsArgs = case ns_config:search(Config, {node, node(), indexer_https_port}, undefined) of
-                    undefined ->
-                        [];
-                    Port ->
-                        ["--httpsPort=" ++ integer_to_list(Port),
-                         "--certFile=" ++ ns_ssl_services_setup:memcached_cert_path(),
-                         "--keyFile=" ++ ns_ssl_services_setup:memcached_key_path()]
-                end,
+    HttpsArgs = build_https_args(indexer_https_port, "--httpsPort",
+                                 "--certFile", "--keyFile", Config),
 
     ["-vbuckets=" ++ integer_to_list(ns_bucket:get_num_vbuckets()),
      "-cluster=" ++ misc:local_url(RestPort, [no_scheme]),
@@ -437,16 +437,8 @@ goport_args(fts, Config, _Cmd, NodeUUID) ->
                               misc:inaddr_any([url]),
                               FtRestPort]),
     BindHttps =
-        case service_ports:get_port(fts_ssl_port, Config) of
-            undefined ->
-                [];
-            Port ->
-                ["-bindHttps=:" ++ integer_to_list(Port),
-                 "-tlsCertFile=" ++
-                     ns_ssl_services_setup:memcached_cert_path(),
-                 "-tlsKeyFile=" ++
-                     ns_ssl_services_setup:memcached_key_path()]
-        end,
+        build_https_args(fts_ssl_port, "-bindHttps", ":",
+                         "-tlsCertFile", "-tlsKeyFile", Config),
     {ok, FTSMemoryQuota} = memory_quota:get_quota(Config, fts),
     MaxReplicasAllowed = case cluster_compat_mode:is_enterprise() of
                              true -> 3;
@@ -493,17 +485,8 @@ goport_args(eventing, Config, _Cmd, NodeUUID) ->
 
     MinidumpDir = path_config:minidump_dir(),
 
-    BindHttps =
-        case service_ports:get_port(eventing_https_port, Config) of
-            undefined ->
-                [];
-            Port ->
-                ["-adminsslport=" ++ integer_to_list(Port),
-                 "-certfile=" ++
-                     ns_ssl_services_setup:memcached_cert_path(),
-                 "-keyfile=" ++
-                     ns_ssl_services_setup:memcached_key_path()]
-        end,
+    BindHttps = build_https_args(eventing_https_port, "-adminsslport",
+                                 "-certfile", "-keyfile", Config),
 
     ["-adminport=" ++ integer_to_list(EventingAdminPort),
      "-dir=" ++ EventingDir,
@@ -550,17 +533,8 @@ goport_args(cbas, Config, Cmd, NodeUUID) ->
 
     {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
     {_, Host} = misc:node_name_host(node()),
-    HttpsOptions =
-        case service_ports:get_port(cbas_ssl_port, Config) of
-            undefined ->
-                [];
-            Port ->
-                ["-bindHttpsPort=" ++ integer_to_list(Port),
-                 "-tlsCertFile=" ++
-                     ns_ssl_services_setup:memcached_cert_path(),
-                 "-tlsKeyFile=" ++
-                     ns_ssl_services_setup:memcached_key_path()]
-        end,
+    HttpsOptions = build_https_args(cbas_ssl_port, "-bindHttpsPort",
+                                    "-tlsCertFile", "-tlsKeyFile", Config),
     {ok, MemoryQuota} = memory_quota:get_quota(Config, cbas),
     [
      "-uuid=" ++ binary_to_list(NodeUUID),

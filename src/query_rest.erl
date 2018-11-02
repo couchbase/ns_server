@@ -20,15 +20,7 @@
 
 -include("ns_common.hrl").
 
--export([get_query_port/2,
-         get_ssl_query_port/2,
-         get_stats/0]).
-
-get_query_port(Config, Node) ->
-    service_ports:get_port(query_port, Config, Node).
-
-get_ssl_query_port(Config, Node) ->
-    service_ports:get_port(ssl_query_port, Config, Node).
+-export([get_stats/0]).
 
 get_stats() ->
     case ns_cluster_membership:should_run_service(ns_config:latest(), n1ql, node()) of
@@ -39,7 +31,7 @@ get_stats() ->
     end.
 
 do_get_stats() ->
-    Port = get_query_port(ns_config:latest(), node()),
+    Port = service_ports:get_port(query_port, ns_config:latest(), node()),
     Timeout = ?get_timeout(stats, 30000),
     case rest_utils:get_json_local(n1ql, "/admin/stats", Port, Timeout) of
         {ok, {Stats}} ->
