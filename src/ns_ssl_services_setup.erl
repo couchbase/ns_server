@@ -56,7 +56,8 @@
 -record(state, {cert_state,
                 reload_state,
                 min_ssl_ver,
-                client_cert_auth}).
+                client_cert_auth,
+                ciphers}).
 
 -record(cert_state, {cert,
                      pkey,
@@ -434,6 +435,7 @@ init([]) ->
     {ok, #state{cert_state = build_cert_state(Data),
                 reload_state = RetrySvc,
                 min_ssl_ver = ssl_minimum_protocol(),
+                ciphers = supported_ciphers(),
                 client_cert_auth = client_cert_auth()}}.
 
 format_status(_Opt, [_PDict, #state{cert_state = CertState} = State]) ->
@@ -451,6 +453,9 @@ config_change_detector_loop({ssl_minimum_protocol, _}, Parent) ->
     Parent;
 config_change_detector_loop({client_cert_auth, _}, Parent) ->
     Parent ! client_cert_auth_changed,
+    Parent;
+config_change_detector_loop({cipher_suites, _}, Parent) ->
+    Parent ! cipher_suites_changed,
     Parent;
 config_change_detector_loop(_OtherEvent, Parent) ->
     Parent.
@@ -504,6 +509,22 @@ handle_info(ssl_minimum_protocol_changed, #state{reload_state = ReloadState,
             {noreply, #state{min_ssl_ver = Other,
                              reload_state =
                                  lists:umerge(lists:sort(ReloadServices), lists:sort(ReloadState))}}
+    end;
+handle_info(cipher_suites_changed, #state{reload_state = ReloadState,
+                                          ciphers = CurrentCiphers} = State) ->
+    misc:flush(cipher_suites_changed),
+    case supported_ciphers() of
+        CurrentCiphers -> {noreply, State};
+        NewCiphers ->
+            misc:create_marker(marker_path()),
+            self() ! notify_services,
+            ReloadServices = [ssl_service, capi_ssl_service],
+            ?log_debug("Notify services ~p about ciphers list change",
+                       [ReloadServices]),
+            NewReloadState = lists:umerge(lists:sort(ReloadServices),
+                                          lists:sort(ReloadState)),
+            {noreply, #state{ciphers = NewCiphers,
+                             reload_state = NewReloadState}}
     end;
 handle_info(client_cert_auth_changed, #state{reload_state = ReloadState,
                                              client_cert_auth = Auth} = State) ->
