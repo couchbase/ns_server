@@ -1,6 +1,6 @@
 -module(ciphers).
 
--export([is_valid_name/1]).
+-export([is_valid_name/1, code/1]).
 
 -record(cipher,{code :: binary(),
                 dtls_ok :: boolean(),
@@ -9,6 +9,12 @@
 
 is_valid_name(Bin) when is_binary(Bin) ->
     maps:is_key(Bin, all()).
+
+code(Name) ->
+    case maps:get(Name, all(), undefined) of
+        undefined -> undefined;
+        #cipher{code = Bytes} -> Bytes
+    end.
 
 %% https://www.iana.org/assignments/tls-parameters/tls-parameters.txt
 all() ->

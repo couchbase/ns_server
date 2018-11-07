@@ -278,11 +278,16 @@ low_security_ciphers() ->
     [EC || C <- Ciphers, {ok, EC} <- [openssl_cipher_to_erlang(C)]].
 
 supported_ciphers() ->
-    case application:get_env(ssl_ciphers) of
-        {ok, Ciphers} ->
-            Ciphers;
-        undefined ->
-            ssl:cipher_suites() -- low_security_ciphers()
+    case ns_config:read_key_fast(cipher_suites, []) of
+        [] ->
+            case application:get_env(ssl_ciphers) of
+                {ok, Ciphers} ->
+                    Ciphers;
+                undefined ->
+                    ssl:cipher_suites() -- low_security_ciphers()
+            end;
+        CipherNames ->
+            [V || C <- CipherNames, V <- [ciphers:code(C)], V =/= undefined]
     end.
 
 ciphers_strength(Config) ->
