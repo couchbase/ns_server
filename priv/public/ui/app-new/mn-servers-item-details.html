@@ -1,7 +1,7 @@
 <!-- mn-spinner="!serversListItemDetailsCtl.server.getMemoryCacheConfig || !serversListItemDetailsCtl.server.getDiskStorageConfig" -->
 <div>
 
-  <div class="row flex-left items-top resp-sml">
+  <div class="row flex-left items-top resp-sml" style="min-height:250px;">
     <div class="cbui-table-props cursor-text" (click)="$event.stopPropagation();">
       <div class="break-word">
         <strong>Name:</strong> {{hostname | async}}
@@ -128,7 +128,7 @@
               (isNodeInactiveAdded | async) ||
               (isNodeInactiveFailed | async) ||
               (isNodeUnhealthy | async) ||
-              node.pendingEject ||
+              ((ejectedNodesByUI | async) && (ejectedNodesByUI | async)[node.otpNode]) ||
               !(poolsWrite | async)"
     class="row flex-right">
     <span>
@@ -137,8 +137,8 @@
         [disabled]="(isLastActiveKVNode | async) ||
                     (((isNodeActive | async) || (isNodeInactiveFailed | async)) &&
                     (isNodeUnhealthy | async)) ||
-                    (isRecoveryMode | async)">
-        <!-- (click)="$event.stopPropagation(); serversItemCtl.ejectServer(node)"> -->
+                    (isRecoveryMode | async)"
+        (click)="$event.stopPropagation(); onEjectServer.next()">
         Remove
       </button>
       <button

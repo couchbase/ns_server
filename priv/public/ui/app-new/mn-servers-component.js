@@ -20,7 +20,9 @@ mn.components.MnServers =
       mn.services.MnSettings,
       mn.services.MnForm,
       mn.services.MnTasks,
-      mn.services.MnServers
+      mn.services.MnServers,
+      mn.services.MnPools,
+      ngb.NgbModal
     ];
 
     MnServers.prototype.trackByFn = trackByFn
@@ -31,33 +33,35 @@ mn.components.MnServers =
       return node.otpNode;
     }
 
-    function MnServers(mnAdminService, mnHelperService, mnPermissionsService, mnSettingsService, mnFormService, mnTasksService, mnServersService) {
+    function MnServers(mnAdminService, mnHelperService, mnPermissionsService, mnSettingsService, mnFormService, mnTasksService, mnServersService, mnPoolsService, modalService) {
       mn.core.MnEventableComponent.call(this)
 
       this.formHelper = new ng.forms.FormGroup({
         searchTerm: new ng.forms.FormControl("")
       });
 
-      this.onSortByClick = new Rx.BehaviorSubject("name");
-      this.toggleFailover = new mnHelperService.createToggle();
+      this.onSortByClick = new Rx.BehaviorSubject("hostname");
       this.tasksRead = mnPermissionsService.createPermissionStream("tasks!read");
       this.poolsWrite = mnPermissionsService.createPermissionStream("pools!write");
       this.settingsWrite = mnPermissionsService.createPermissionStream("settings!write");
       this.settingsRead = mnPermissionsService.createPermissionStream("settings!read");
+      this.serverGroupsRead = mnPermissionsService.createPermissionStream("server_groups!read");
+      this.bucketRecoveryWrite = mnPermissionsService.createPermissionStream("recovery!write",
+                                                                             bucketName);
       this.failoverWarnings = mnAdminService.stream.failoverWarnings;
       this.isRebalancing = mnAdminService.stream.isRebalancing;
+      this.isEnterprise = mnPoolsService.stream.isEnterprise;
       this.isNotCompatMode = mnAdminService.stream.isNotCompatMode;
       this.prettyClusterCompat = mnAdminService.stream.prettyClusterCompat;
       this.getAutoFailover = mnSettingsService.stream.getAutoFailover;
       this.isLoadingSampleBucket = mnTasksService.stream.isLoadingSampleBucket;
-      this.activateNodesWithoutEjected = mnServersService.stream.activateNodesWithoutEjected;
+      this.activeNodesWithoutEjected = mnServersService.stream.activeNodesWithoutEjected;
       this.isRecoveryMode = mnTasksService.stream.isRecoveryMode;
       this.ejectedNodesLength = mnServersService.stream.ejectedNodesLength;
       this.isBalanced = mnAdminService.stream.isBalanced;
       this.isSubtypeGraceful = mnTasksService.stream.isSubtypeGraceful;
+      this.toggleFailoverWarning = mnServersService.stream.toggleFailoverWarning;
       var bucketName = mnTasksService.stream.tasksRecovery.pipe(Rx.operators.pluck("bucket"));
-      this.bucketRecoveryWrite = mnPermissionsService.createPermissionStream("recovery!write",
-                                                                             bucketName);
       this.nodes = mnServersService.stream.nodes
         .pipe(mnHelperService.sortByStream(this.onSortByClick));
 
@@ -69,7 +73,33 @@ mn.components.MnServers =
         .successMessage("Auto-failover quota reset successfully!")
         .errorMessage('Unable to reset Auto-failover quota!');
 
-      mnServersService.stream.ejectedNodes
+      this.postRebalance = mnFormService.create(this)
+        .setPackPipe(
+          Rx.operators.withLatestFrom(
+            mnServersService.stream.nodes,
+            mnServersService.stream.ejectedNodesByUI))
+        .setUnpackErrorPipe(mnServersService.humanReadableRebalanceErrorsPipe)
+        .setPostRequest(mnServersService.stream.postRebalance)
+        .errorMessage();
+
+      this.stopRebalance = mnFormService.create(this)
+        .setPostRequest(mnServersService.stream.stopRebalance)
+
+      mnServersService.stream.stopRebalance.error
+        .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
+        .subscribe(function (resp) {
+          if (resp.status === 504) {
+            modalService
+              .open(mn.components.MnServersStopRebalanceDialog)
+              .result
+              .then(function () {
+                this.stopRebalance.submit.next(true);
+              }.bind(this));
+          }
+        }.bind(this));
+
+
+      mnServersService.stream.updateEjectedNodes
         .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
         .subscribe(mnServersService.stream.ejectedNodesByUI);
 

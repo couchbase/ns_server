@@ -21,12 +21,13 @@ mn.components.MnBucketsDialog =
       mn.services.MnBuckets,
       mn.services.MnPools,
       mn.services.MnAdmin,
+      mn.services.MnServers,
       mn.pipes.MnBytesToMB
     ];
 
     return MnBucketsDialogComponent;
 
-    function MnBucketsDialogComponent(activeModal, mnBucketsService, mnPoolsService, mnAdminService, mnBytesToMB) {
+    function MnBucketsDialogComponent(activeModal, mnBucketsService, mnPoolsService, mnAdminService, mnServersService, mnBytesToMB) {
       mn.core.MnEventableComponent.call(this);
 
       var bucketsDialogForm = new ng.forms.FormGroup({
@@ -109,7 +110,7 @@ mn.components.MnBucketsDialog =
       this.mnOnInit.pipe(
         Rx.operators.withLatestFrom(
           mnAdminService.stream.getPoolsDefault,
-          mnAdminService.stream.activateKvNodes
+          mnServersService.stream.kvActiveNodes
         ),
         Rx.operators.takeUntil(this.mnOnDestroy)
       ).subscribe(setInitialValues.bind(this));

@@ -154,14 +154,14 @@
                 (isNodeInactiveAdded | async) ||
                 (isNodeUnhealthy | async) ||
                 !(tasksRead | async) ||
-                !node.pendingEject">
+                !((ejectedNodesByUI | async) && (ejectedNodesByUI | async)[node.otpNode])">
       <span class="error">Node flagged for removal | Still taking traffic | REMOVAL pending rebalance</span>
 
       <button
         [hidden]="!(poolsWrite | async)"
         class="outline"
-        [disabled]="!(isRecoveryMode | async)">
-        <!-- (click)="$event.stopPropagation(); serversItemCtl.cancelEjectServer(node)" -->
+        [disabled]="(isRecoveryMode | async)"
+        (click)="$event.stopPropagation(); doCancelEjectNode.next(node)">
         Cancel Remove
       </button>
     </div>

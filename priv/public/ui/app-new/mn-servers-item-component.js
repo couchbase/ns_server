@@ -33,6 +33,7 @@ mn.components.MnServersItem =
     function MnServersItem(mnPermissionsService, uiRouter, mnAdminService, mnServersService, mnHelperService, ngDecimalPipe, mnFormatQuantityPipe, mnTasksService) {
       mn.core.MnEventableComponent.call(this);
 
+      this.doCancelEjectNode = new Rx.Subject();
       this.nodesRead = mnPermissionsService.createPermissionStream("nodes!read");
       this.statsRead = mnPermissionsService.createPermissionStream("stats!read");
       this.tasksRead = mnPermissionsService.createPermissionStream("tasks!read");
@@ -41,6 +42,7 @@ mn.components.MnServersItem =
       this.bucketAnyStatsRead = mnPermissionsService.createPermissionStream("stats!read",
                                                                              ".");
       this.isRebalancing = mnAdminService.stream.isRebalancing;
+      this.ejectedNodesByUI = mnServersService.stream.ejectedNodesByUI;
 
       this.isNodeInactiveFailed =
         this.nodeStream.pipe(Rx.operators.map(R.propEq("clusterMembership", "inactiveFailed")));
@@ -56,7 +58,6 @@ mn.components.MnServersItem =
       this.isKVNode = this.nodeStream.pipe(Rx.operators.map(R.pipe(R.prop("services"),
                                                                    R.indexOf("kv"),
                                                                    R.gt(-1))));
-
       this.runningTasksRebalance =
         mnTasksService.stream.tasksRebalance.pipe(
           Rx.operators.map(R.propEq("status", "running")));
@@ -110,6 +111,10 @@ mn.components.MnServersItem =
         this.nodeStream.pipe(Rx.operators.map(R.pipe(R.prop("services"),
                                                      R.map(mnHelperService.getServiceVisibleName),
                                                      R.invoker(0, 'sort'))));
+
+      this.doCancelEjectNode
+        .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
+        .subscribe(mnServersService.removePendingEject.bind(mnServersService));
 
       this.detailsHashObserver =
         new mn.core.DetailsHashObserver(

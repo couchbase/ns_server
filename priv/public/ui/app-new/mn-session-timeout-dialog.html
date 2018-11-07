@@ -1,7 +1,7 @@
 <div class="dialog-small">
   <div class="panel-header">
     <h2>Session Ending</h2>
-    <a class="ui-dialog-titlebar-close modal-close" (click)="activeModal.close()">X</a>
+    <a class="ui-dialog-titlebar-close modal-close" (click)="activeModal.dismiss()">X</a>
   </div>
   <form (ngSubmit)="activeModal.close()" [formGroup]="formGroup">
     <div class="panel-content">

@@ -22,6 +22,7 @@ mn.services.MnForm = (function (Rx) {
   Form.prototype.disableFields = disableFields;
   Form.prototype.setValidation = setValidation;
   Form.prototype.setUnpackPipe = setUnpackPipe;
+  Form.prototype.setUnpackErrorPipe = setUnpackErrorPipe;
   Form.prototype.setPackPipe = setPackPipe;
   Form.prototype.getFormValue = getFormValue;
   Form.prototype.success = success;
@@ -42,7 +43,7 @@ mn.services.MnForm = (function (Rx) {
     this.builder = builder;
     this.component = component;
     this.mnAlertsService = mnAlertsService;
-    this.packPipe = Rx.pipe(Rx.operators.map(this.getFormValue.bind(this)));
+    this.defaultPackPipe = Rx.operators.map(this.getFormValue.bind(this));
   }
 
   function getFormValue() {
@@ -75,7 +76,8 @@ mn.services.MnForm = (function (Rx) {
 
   function error(fn) {
     this.postRequest.error
-      .pipe(Rx.operators.takeUntil(this.component.mnOnDestroy))
+      .pipe(this.unpackErrorPipe || Rx.operators.tap(),
+            Rx.operators.takeUntil(this.component.mnOnDestroy))
       .subscribe(fn);
     return this;
   }
@@ -101,7 +103,7 @@ mn.services.MnForm = (function (Rx) {
     this.submit = new Rx.Subject();
 
     this.submit
-      .pipe(this.group ? this.packPipe : Rx.operators.tap(),
+      .pipe(this.packPipe || (this.group ? this.defaultPackPipe : Rx.operators.tap()),
             Rx.operators.takeUntil(this.component.mnOnDestroy))
       .subscribe(function (v) {
         this.postRequest.post(v);
@@ -116,6 +118,11 @@ mn.services.MnForm = (function (Rx) {
         this.postRequest.clearError();
       }.bind(this));
     return this;
+  }
+
+  function setUnpackErrorPipe(unpackErrorPipe) {
+    this.unpackErrorPipe = unpackErrorPipe;
+    return this
   }
 
   function setUnpackPipe(unpackPipe) {
@@ -135,7 +142,7 @@ mn.services.MnForm = (function (Rx) {
       }.bind(this)),
             // Rx.operators.throttleTime(500, undefined, {leading: true, trailing: true})
             Rx.operators.debounceTime(0),
-            this.packPipe,
+            this.packPipe || this.defaultPackPipe,
             Rx.operators.takeUntil(this.component.mnOnDestroy))
       .subscribe(function (v) {
         validationPostRequest.post(v);

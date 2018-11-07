@@ -23,7 +23,8 @@ mn.components.MnServersItemDetails =
       mn.pipes.MnPrettyVersion,
       mn.services.MnTasks,
       mn.services.MnPermissions,
-      mn.services.MnAdmin
+      mn.services.MnAdmin,
+      ngb.NgbModal
       // mn.services.MnPermissions,
       // mn.services.MnTasks,
       // window['@uirouter/angular'].UIRouter,
@@ -35,13 +36,15 @@ mn.components.MnServersItemDetails =
 
     return MnServersItemDetails;
 
-    function MnServersItemDetails(mnServersService, mnPrettyVersionPipe, mnTasksService, mnPermissionsService, mnAdminService) {
+    function MnServersItemDetails(mnServersService, mnPrettyVersionPipe, mnTasksService, mnPermissionsService, mnAdminService, modalService) {
       mn.core.MnEventableComponent.call(this);
 
+      this.onEjectServer = new Rx.Subject();
       this.tasksRead = mnPermissionsService.createPermissionStream("tasks!read");
       this.poolsWrite = mnPermissionsService.createPermissionStream("pools!write");
       this.isRebalancing = mnAdminService.stream.isRebalancing;
       this.isRecoveryMode = mnTasksService.stream.isRecoveryMode;
+      this.ejectedNodesByUI = mnServersService.stream.ejectedNodesByUI;
 
       var nodeStream = this.mnOnChanges.pipe(Rx.operators.pluck("node", "currentValue"));
 
@@ -56,10 +59,10 @@ mn.components.MnServersItemDetails =
 
       this.isKVNode = nodeStream.pipe(Rx.operators.map(R.pipe(R.prop("services"),
                                                               R.indexOf("kv"),
-                                                              R.gt(-1))));
+                                                              R.lt(-1))));
       this.isLastActiveKVNode =
         Rx.combineLatest(
-          mnServersService.stream.activateKVNodesWithoutEjected
+          mnServersService.stream.kvActiveNodesWithoutEjected
             .pipe(Rx.operators.map(R.pipe(R.prop("length"), R.equals(1)))),
           this.isKVNode
         ).pipe(Rx.operators.map(R.all(R.equals(true))));
@@ -107,6 +110,13 @@ mn.components.MnServersItemDetails =
               return task.node === source[1].otpNode;
             });
           }));
+
+      this.onEjectServer
+        .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
+        .subscribe(function () {
+          var ref = modalService.open(mn.components.MnServersEjectDialog);
+          ref.componentInstance.nodeStream = nodeStream;
+        });
     }
 
     function getBaseConfig(totals) {

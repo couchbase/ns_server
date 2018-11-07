@@ -1,0 +1,30 @@
+<div class="dialog-med">
+  <div class="panel-header">
+    <h2>Confirm Server Removal</h2>
+    <a class="ui-dialog-titlebar-close modal-close" (click)="activeModal.dismiss()">X</a>
+  </div>
+  <div
+    class="panel-content">
+    <!-- mn-spinner="serversEjectDialogCtl.viewLoading" -->
+    <div class="row flex-left">
+      <span class="icon fa-warning fa-2x red-3"></span>
+      <p>Warning: Removing this server will...</p>
+    </div>
+    <div class="indent-3">
+      <ul class="margin-bottom0">
+        <li [hidden]="!(bucketAnyN1qlIndexRead | async) || !(isThereIndex | async)">Remove indexes from the cluster and may cause queries to fail if there are no replica indexes</li>
+        <li [hidden]="!(bucketAnyN1qlIndexRead | async) || !(isThereIndex | async)">May cause some replica indexes to be lost</li>
+        <li [hidden]="!(indexIsLast | async)">Remove the last index node from the cluster so new indexes can’t be created</li>
+        <li [hidden]="!(queryIsLast | async)">Remove the last query node from the cluster so queries can’t be run</li>
+        <li [hidden]="!(ftsIsLast | async)">Remove the last full text node from the cluster so full text search can’t be run</li>
+        <li [hidden]="!(cbasIsLast | async)"><p>Remove the last analytics node from the cluster so analytics can’t be run</li>
+        <li [hidden]="!(eventingIsLast | async)"><p>Remove the last eventing node from the cluster so eventing can’t be run</li>
+        <li [hidden]="!(isKVNode | async)">Reduce cache capacity across all data buckets</li>
+      </ul>
+    </div>
+  </div>
+  <div class="panel-footer">
+    <a (click)="activeModal.dismiss()">Cancel</a>
+    <button (click)="doEjectNode.next()">Remove Server</button>
+  </div>
+</div>

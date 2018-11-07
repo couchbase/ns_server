@@ -78,16 +78,12 @@ mn.core.DetailsHashObserver = (function (Rx) {
       this.uiRouter.globals.params$.pipe(
         Rx.operators.pluck(this.hashKey),
         Rx.operators.distinctUntilChanged(),
-        Rx.operators.map(this.prepareHashValue.bind(this))
-      );
+        Rx.operators.map(this.prepareHashValue.bind(this)));
 
     this.stream.isOpened =
       Rx.combineLatest(
-        Rx.merge(
-          initialValueStream
-            .pipe(Rx.operators.distinctUntilChanged()),
-          this.stream.toggleDetails
-        ),
+        Rx.merge(initialValueStream.pipe(Rx.operators.distinctUntilChanged()),
+                 this.stream.toggleDetails),
         this.stream.openedDetailsHash
       )
       .pipe(Rx.operators.map(this.isOpened.bind(this)));
@@ -95,8 +91,7 @@ mn.core.DetailsHashObserver = (function (Rx) {
     this.stream.newHashValue =
       this.stream.toggleDetails.pipe(
         Rx.operators.withLatestFrom(this.stream.openedDetailsHash),
-        Rx.operators.map(this.getNewHashValue.bind(this))
-      );
+        Rx.operators.map(this.getNewHashValue.bind(this)));
 
     this.stream.newHashValue
       .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
@@ -245,6 +240,7 @@ mn.core.MnPostHttp = (function (Rx) {
         Rx.merge(
           this.response.pipe(
             Rx.operators.switchMap(function (rv) {
+              console.log(rv)
               if (rv instanceof ng.common.http.HttpErrorResponse) {
                 return Rx.of(rv);
               } else if (mn.services.MnHelper.prototype.isJson(rv)) {
@@ -254,8 +250,11 @@ mn.core.MnPostHttp = (function (Rx) {
               }
             }),
             Rx.operators.map(R.ifElse(
-              R.pipe(R.path(["error"]), Boolean),
-              R.pipe(R.path(["error"]), JSON.parse),
+              R.allPass([
+                R.pipe(R.prop("error"), Boolean),
+                R.pipe(R.prop("error"), mn.services.MnHelper.prototype.isJson)
+              ]),
+              R.pipe(R.prop("error"), JSON.parse),
               R.pick(["status"]))),
             mn.core.rxOperatorsShareReplay(1)
           ),

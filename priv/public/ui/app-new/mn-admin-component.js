@@ -198,7 +198,9 @@ mn.modules.MnAdmin =
           mn.components.MnBarUsage,
           mn.components.MnWarmupProgress,
           mn.components.MnBucketsDialog,
-          mn.components.MnSessionTimeoutDialog
+          mn.components.MnSessionTimeoutDialog,
+          mn.components.MnServersEjectDialog,
+          mn.components.MnServersStopRebalanceDialog
         ],
         imports: [
           window['@uirouter/angular'].UIRouterModule.forChild({
@@ -273,11 +275,14 @@ mn.modules.MnAdmin =
         ],
         providers: [
           mn.services.MnAdmin,
-          mn.services.MnServers
+          mn.services.MnServers,
+          mn.services.MnGSI
         ],
         entryComponents: [
           mn.components.MnSessionTimeoutDialog,
-          mn.components.MnBucketsDialog
+          mn.components.MnBucketsDialog,
+          mn.components.MnServersEjectDialog,
+          mn.components.MnServersStopRebalanceDialog
         ]
       })
     ];

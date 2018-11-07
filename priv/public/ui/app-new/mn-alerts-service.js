@@ -41,10 +41,10 @@ mn.services.MnAlerts = (function (Rx) {
     }.bind(this)
   }
 
-  function error(message) {
-    return function () {
+  function error(staticMessage) {
+    return function (serverError) {
       this.stream.alert.next({
-        message: message,
+        message: staticMessage || serverError,
         type: "error",
         timeout: 4000
       })
