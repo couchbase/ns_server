@@ -18,6 +18,7 @@
 -module(menelaus_web_settings).
 
 -include("ns_common.hrl").
+-include_lib("cut.hrl").
 
 -export([build_kvs/1,
          handle_get/2,
@@ -86,12 +87,26 @@ get_tls_version(SV) ->
         false -> invalid
     end.
 
+get_cuipher_suites(Str) ->
+    try ejson:decode(Str) of
+        L when is_list(L) ->
+            InvalidNames = lists:filter(?cut(not ciphers:is_valid_name(_)), L),
+            case InvalidNames of
+                [] -> {ok, L};
+                _ -> invalid
+            end;
+        _ -> invalid
+    catch
+        _:_ -> invalid
+    end.
+
 conf(security) ->
     [{disable_ui_over_http, disableUIOverHttp, false, fun get_bool/1},
      {disable_ui_over_https, disableUIOverHttps, false, fun get_bool/1},
      {ui_session_timeout, uiSessionTimeout, undefined,
       get_number(60, 1000000, undefined)},
-     {ssl_minimum_protocol, tlsMinVersion, undefined, fun get_tls_version/1}];
+     {ssl_minimum_protocol, tlsMinVersion, undefined, fun get_tls_version/1},
+     {cipher_suites, cipherSuites, undefined, fun get_cuipher_suites/1}];
 conf(internal) ->
     [{index_aware_rebalance_disabled, indexAwareRebalanceDisabled, false, fun get_bool/1},
      {rebalance_index_waiting_disabled, rebalanceIndexWaitingDisabled, false, fun get_bool/1},

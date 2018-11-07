@@ -735,7 +735,11 @@ client_cert_auth(Req, ClientCertAuth) ->
     put(client_cert_auth, Req, Val).
 
 security_settings(Req, Settings) ->
-    put(security_settings, Req, [{settings, {prepare_list(Settings)}}]).
+    Format = fun ({cipher_suites, List}) -> {cipher_suites, {list, List}};
+                 (KV) -> KV
+             end,
+    put(security_settings, Req,
+        [{settings, {prepare_list([Format(S) || S <- Settings])}}]).
 
 start_log_collection(Req, Nodes, BaseURL, Options) ->
     put(start_log_collection, Req,
