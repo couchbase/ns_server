@@ -36,7 +36,7 @@ export PATH
 ERL_LIBS="@PREFIX@/lib/ns_server/erlang/lib:@PREFIX@/lib/couchdb/erlang/lib:@PREFIX@/lib/couchdb/plugins"
 export ERL_LIBS
 
-CB_EBIN_PATH="@PREFIX@/lib/ns_server/erlang/lib/ns_babysitter/ebin"
+NS_EBIN_PATH="@PREFIX@/lib/ns_server/erlang/lib/ns_server/ebin"
 
 DEFAULT_CONFIG_DIR="@PREFIX@/etc/couchdb/default.d"
 DEFAULT_CONFIG_FILE="@PREFIX@/etc/couchdb/default.ini"
@@ -47,6 +47,7 @@ PIDFILE="@PREFIX@/var/lib/couchbase/couchbase-server.pid"
 COOKIEFILE="@PREFIX@/var/lib/couchbase/couchbase-server.babysitter.cookie"
 NODEFILE="@PREFIX@/var/lib/couchbase/couchbase-server.babysitter.node"
 STATIC_CONFIG_PATH="@PREFIX@/etc/couchbase/static_config"
+CB_DATA_DIR="@PREFIX@/var/lib/couchbase"
 
 couch_start_arguments=""
 
@@ -96,37 +97,36 @@ EOF
 }
 
 _check_inet_mode() {
-    OUTPUT=`erl \
-            -pa $CB_EBIN_PATH \
-            -noshell \
-            -setcookie nocookie \
-            -run ns_babysitter_bootstrap ipv6_from_static_config $STATIC_CONFIG_PATH`
+    CMD=$1
+    PROTO_DIST=`erl \
+                -pa "$NS_EBIN_PATH" \
+                -noshell   \
+                -setcookie nocookie \
+                -run dist_manager get_proto_dist_type "$CB_DATA_DIR" $CMD`
     if [ $? -ne 0 ]
     then
-        echo $OUTPUT
+        echo $PROTO_DIST
         exit 1
     fi
 
-    if [ $OUTPUT == "true" ]; then
+    if [ $PROTO_DIST == "inet6_tcp" ]; then
         if [ x"${ENTERPRISE}" = "xtrue" ]
         then
             VM_NAME='babysitter_of_ns_1@::1'
-            PROTO_DIST='inet6_tcp'
+            IPV6=true
         else
             echo "IPv6 is supported only in enterprise edition"
             exit 1
         fi
     else
         VM_NAME='babysitter_of_ns_1@127.0.0.1'
-        PROTO_DIST='inet_tcp'
+        IPV6=false
     fi
 }
 
 _prepare_datadir () {
-    datadir="@PREFIX@/var/lib/couchbase"
-
-    test -d "$datadir" || mkdir -p "$datadir"
-    cd "$datadir"
+    test -d "$CB_DATA_DIR" || mkdir -p "$CB_DATA_DIR"
+    cd "$CB_DATA_DIR"
 }
 
 _maybe_start_epmd () {
@@ -177,6 +177,8 @@ _start() {
     _maybe_start_epmd
     _load_config
 
+    _check_inet_mode "start"
+
     # note: we depend on pwd being $datadir from _prepare_datadir
     _drop_old_crashdumps
 
@@ -199,11 +201,14 @@ _start() {
         -ns_babysitter cookiefile "\"$COOKIEFILE\"" \
         -ns_babysitter nodefile "\"$NODEFILE\"" \
         -ns_babysitter pidfile "\"$PIDFILE\"" \
-        -ns_server config_path "\"$STATIC_CONFIG_PATH\""
+        -ns_server config_path "\"$STATIC_CONFIG_PATH\"" \
+        -ns_server ipv6 $IPV6
 }
 
 _stop() {
     [ -f "$COOKIEFILE" -a -f "$NODEFILE" ] || return 1
+
+    _check_inet_mode "stop"
 
     cookie=`cat "$COOKIEFILE"`
     node=`cat "$NODEFILE"`
@@ -283,5 +288,4 @@ _parse_options () {
     _start $*
 }
 
-_check_inet_mode
 _parse_options $*
