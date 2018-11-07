@@ -78,10 +78,20 @@ get_number(Min, Max, Default) ->
 get_string(SV) ->
     {ok, list_to_binary(string:strip(SV))}.
 
+get_tls_version(SV) ->
+    Supported = proplists:get_value(supported, ssl:versions(), []),
+    SupportedStr = [atom_to_list(S) || S <- Supported],
+    case lists:member(SV, SupportedStr) of
+        true -> {ok, list_to_atom(SV)};
+        false -> invalid
+    end.
+
 conf(security) ->
     [{disable_ui_over_http, disableUIOverHttp, false, fun get_bool/1},
      {disable_ui_over_https, disableUIOverHttps, false, fun get_bool/1},
-     {ui_session_timeout, uiSessionTimeout, undefined, get_number(60, 1000000, undefined)}];
+     {ui_session_timeout, uiSessionTimeout, undefined,
+      get_number(60, 1000000, undefined)},
+     {ssl_minimum_protocol, tlsMinVersion, undefined, fun get_tls_version/1}];
 conf(internal) ->
     [{index_aware_rebalance_disabled, indexAwareRebalanceDisabled, false, fun get_bool/1},
      {rebalance_index_waiting_disabled, rebalanceIndexWaitingDisabled, false, fun get_bool/1},
