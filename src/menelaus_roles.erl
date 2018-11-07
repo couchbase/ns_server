@@ -480,6 +480,7 @@ roles_55() ->
        {[{bucket, bucket_name}, stats], [read]},
        {[{bucket, bucket_name}, settings], [read]},
        {[{bucket, bucket_name}, n1ql, index], [create, list, build]},
+       {[eventing, functions], [manage]},
        {[pools], [read]}]},
      {data_monitoring, [bucket_name],
       [{name, <<"Data Monitor">>},

@@ -38,7 +38,8 @@
          handle_node_self_xdcr_ssl_ports/1,
          handle_node_settings_post/2,
          apply_node_settings/1,
-         alternate_addresses_json/3]).
+         alternate_addresses_json/3,
+         handle_setup_net_config/1]).
 
 -import(menelaus_util,
         [local_addr/1,
@@ -744,3 +745,57 @@ handle_node_altaddr_external_delete(Req) ->
     menelaus_util:assert_is_55(),
     ns_config:delete({node, node(), alternate_addresses}),
     menelaus_util:reply(Req, 200).
+
+is_raw_addr_node(Node) ->
+    {_, Host} = misc:node_name_host(Node),
+    inet:parse_address(Host) =/= {error, einval}.
+
+check_for_raw_addr(State) ->
+    CurrAFamily = case misc:is_ipv6() of
+                      true  -> "ipv6";
+                      false -> "ipv4"
+                  end,
+
+    case validator:get_value(afamily, State) of
+        CurrAFamily ->
+            State;
+        _ ->
+            %% Fail the request if the cluster is provisioned and has any node
+            %% setup with raw IP address.
+            case ns_config_auth:is_system_provisioned() of
+                true ->
+                    RawAddrNodes = lists:filter(fun is_raw_addr_node/1,
+                                                ns_node_disco:nodes_wanted()),
+                    case RawAddrNodes of
+                        [] ->
+                            State;
+                        _ ->
+                            M = io_lib:format("Can't change address family when "
+                                              "nodes are configured with raw IP "
+                                              "addresses: ~p", [RawAddrNodes]),
+                            validator:return_error("_", M, State)
+                    end;
+                false ->
+                    State
+            end
+    end.
+
+net_config_validators() ->
+    [validator:has_params(_),
+     validator:one_of(afamily, ["ipv4", "ipv6"], _),
+     check_for_raw_addr(_),
+     validator:unsupported(_)].
+
+handle_setup_net_config(Req) ->
+    validator:handle(
+      fun(Values) ->
+              AFamily = proplists:get_value(afamily, Values),
+              case dist_manager:update_dist_config(AFamily) of
+                  ok ->
+                      menelaus_util:reply(Req, 200);
+                  {error, Err} ->
+                      M = io_lib:format("Couldn't store net config: ~p", [Err]),
+                      menelaus_util:reply_json(Req, {struct, [{errors, M}]},
+                                               400)
+              end
+      end, Req, form, net_config_validators()).
