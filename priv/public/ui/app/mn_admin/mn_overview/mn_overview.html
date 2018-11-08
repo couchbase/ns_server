@@ -123,6 +123,22 @@
       </div>
     </div>
     <div
+       ng-if="adminCtl.poolDefault.isEnterprise"
+       class="service-widget"
+       ui-sref="app.admin.mobile.workbench"
+       ng-class="['dynamic_' + overviewCtl.nodes.mobile.statusClass]">
+      <b class="text-small">Mobile</b>
+      <a ng-click="$event.stopPropagation()" ui-sref="app.admin.servers.list">
+        {{overviewCtl.nodes.mobile.length || '0'}}
+        node{{overviewCtl.getEndings(overviewCtl.nodes.mobile.length)}}
+      </a>
+      <div
+         class="error"
+         ng-repeat="(nodeStatuses, count) in overviewCtl.nodes.mobile.nodesByStatuses">
+        {{count + ' node' + overviewCtl.getEndings(count) + ' ' + nodeStatuses}}
+      </div>
+    </div>
+    <div
        ng-show="rbac.cluster.xdcr.remote_clusters.read"
        ui-sref="app.admin.replications"
        class="service-widget"

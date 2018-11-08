@@ -73,6 +73,12 @@
       joinClusterConfig.services.disabled.eventing = false;
       joinClusterConfig.services.model.eventing = true;
       newConfig.showEventingMemoryQuota = true;
+
+      newConfig.displayedServices.mobile = true;
+      newConfig.services.disabled.mobile = false;
+      newConfig.services.model.mobile = true;
+      joinClusterConfig.services.disabled.mobile = false;
+      joinClusterConfig.services.model.mobile = true;
     }
 
     return mnClusterConfigurationService;

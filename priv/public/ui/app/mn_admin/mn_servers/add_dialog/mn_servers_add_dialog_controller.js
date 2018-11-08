@@ -26,6 +26,7 @@
     if ($scope.poolDefault.isEnterprise) {
       vm.addNodeConfig.services.model.cbas = true;
       vm.addNodeConfig.services.model.eventing = true;
+      vm.addNodeConfig.services.model.mobile = true;
     }
     vm.isGroupsAvailable = !!groups;
     vm.onSubmit = onSubmit;

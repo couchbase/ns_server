@@ -38,7 +38,7 @@
         .postStats(true).then(function () {
           var services = "kv,index,fts,n1ql";
           if (vm.isEnterprise) {
-            services += ",eventing,cbas";
+            services += ",eventing,cbas,mobile";
           }
           var setupServicesPromise =
               mnServersService.setupServices({

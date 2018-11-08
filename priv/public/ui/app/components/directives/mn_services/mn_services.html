@@ -70,3 +70,15 @@
     Analytics
   </label>
 </div>
+<div class="checkbox-service" ng-if="mnServicesCtl.mnIsEnterprise">
+  <input
+     type="checkbox"
+     value="mobile"
+     id="for-mobile-service"
+     ng-change="mnServicesCtl.change('mobile', mnServicesCtl.config)"
+     ng-model="mnServicesCtl.config.services.model.mobile"
+     ng-disabled="mnServicesCtl.config.services.disabled.mobile">
+  <label for="for-mobile-service">
+    Mobile
+  </label>
+</div>

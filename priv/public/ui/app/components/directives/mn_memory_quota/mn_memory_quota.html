@@ -196,6 +196,33 @@
   </div>
 </div>
 
+<div ng-if="config.displayedServices.mobile && mnIsEnterprise">
+  <div class="row formrow">
+    <div class="width-6">
+      <input
+         ng-if="config.services"
+         ng-model="config.services.model.mobile"
+         type="checkbox"
+         ng-change="mnMemoryQuotaController.change('mobile', config)"
+         ng-disabled="config.services.disabled.mobile"
+         id="mobile_ram_quota">
+      <label
+         for="mobile_ram_quota">
+        Mobile
+      </label>
+    </div>
+    <small class="form-inline width-7 text-center">
+      - - - - - - - - -
+    </small>
+  </div>
+
+  <div
+     class="error"
+     ng-show="errors.mobileMemoryQuota">
+    {{errors.mobileMemoryQuota}}
+  </div>
+</div>
+
 <div
    ng-if="config.calculateTotal"
    class="text-small text-right nowrap margin-right-1">

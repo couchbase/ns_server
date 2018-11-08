@@ -140,6 +140,7 @@
       if (mnPoolDefault.export.isEnterprise) {
         services.cbas = mnPoolDefault.export.compat.atLeast55;
         services.eventing = mnPoolDefault.export.compat.atLeast55;
+        services.mobile = mnPoolDefault.export.compat.atLeast65;
       }
 
       mnPromiseHelper(vm, mnMemoryQuotaService.memoryQuotaConfig(services, false, false))
