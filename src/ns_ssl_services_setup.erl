@@ -34,8 +34,8 @@
          client_cert_auth_state/0,
          get_user_name_from_client_cert/1,
          set_node_certificate_chain/4,
-         ciphers_strength/1,
-         upgrade_client_cert_auth_to_51/1]).
+         upgrade_client_cert_auth_to_51/1,
+         supported_ciphers/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -278,21 +278,33 @@ low_security_ciphers() ->
     Ciphers = low_security_ciphers_openssl(),
     [EC || C <- Ciphers, {ok, EC} <- [openssl_cipher_to_erlang(C)]].
 
-supported_ciphers() ->
-    case ns_config:read_key_fast(cipher_suites, []) of
+supported_ciphers() -> supported_ciphers(ns_server, ns_config:latest()).
+
+%% Due to backward compatibility we have to support separate functions
+%% for ns_server and services
+supported_ciphers(ns_server, Config) ->
+    case configured_ciphers(Config) of
         [] ->
+            %% Backward compatibility
+            %% ssl_ciphers is obsolete and should not be used in
+            %% new installations
             case application:get_env(ssl_ciphers) of
                 {ok, Ciphers} ->
                     Ciphers;
                 undefined ->
                     ssl:cipher_suites() -- low_security_ciphers()
             end;
-        CipherNames ->
-            [V || C <- CipherNames, V <- [ciphers:code(C)], V =/= undefined]
+        List -> List
+    end;
+supported_ciphers(cbauth, Config) ->
+    case configured_ciphers(Config) of
+        [] -> ns_config:read_key_fast(ssl_ciphers_strength, [high]);
+        List -> List
     end.
 
-ciphers_strength(Config) ->
-    ns_config:search(Config, ssl_ciphers_strength, [high]).
+configured_ciphers(Config) ->
+    Names = ns_config:search(Config, cipher_suites, []),
+    [V || C <- Names, V <- [ciphers:code(C)], V =/= undefined].
 
 ssl_auth_options() ->
     Val = list_to_atom(proplists:get_value(state, client_cert_auth())),
