@@ -169,7 +169,6 @@ default() ->
      {{node, node(), memcached_defaults},
       [{maxconn, 30000},
        {dedicated_port_maxconn, 5000},
-       {ssl_cipher_list, "HIGH"},
        {connection_idle_time, 0},
        {verbosity, 0},
        {privilege_debug, false},
@@ -235,7 +234,7 @@ default() ->
              ++ InterfacesIPFields}
           ]}},
 
-        {ssl_cipher_list, {"~s", [ssl_cipher_list]}},
+        {ssl_cipher_list, {memcached_config_mgr, get_ssl_cipher_list, []}},
         {client_cert_auth, {memcached_config_mgr, client_cert_auth, []}},
         {ssl_minimum_protocol, {memcached_config_mgr, ssl_minimum_protocol, []}},
 

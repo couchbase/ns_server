@@ -300,6 +300,15 @@ supported_ciphers(cbauth, Config) ->
     case configured_ciphers(Config) of
         [] -> ns_config:read_key_fast(ssl_ciphers_strength, [high]);
         List -> List
+    end;
+supported_ciphers(openssl, Config) ->
+    case configured_ciphers(Config) of
+        [] -> undefined;
+        List ->
+            OpenSSLNames = [Name || C <- List,
+                                    Name <- [ciphers:openssl_name(C)],
+                                    Name =/= undefined],
+            iolist_to_binary(lists:join(":", OpenSSLNames))
     end.
 
 configured_ciphers(Config) ->
