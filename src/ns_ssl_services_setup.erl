@@ -495,52 +495,36 @@ handle_info(cert_and_pkey_changed, #state{cert_state = OldCertState} = State) ->
             {noreply, #state{cert_state = NewCertState,
                              reload_state = all_services()}}
     end;
-handle_info(ssl_minimum_protocol_changed, #state{reload_state = ReloadState,
-                                                 min_ssl_ver = MinSslVer} = State) ->
+handle_info(ssl_minimum_protocol_changed,
+            #state{min_ssl_ver = MinSslVer} = State) ->
     misc:flush(ssl_minimum_protocol_changed),
     case ssl_minimum_protocol() of
         MinSslVer ->
             {noreply, State};
         Other ->
-            misc:create_marker(marker_path()),
-            self() ! notify_services,
-            ReloadServices = [ssl_service, capi_ssl_service],
-            ?log_debug("Notify services ~p about ssl_minimum_protocol change", [ReloadServices]),
-            {noreply, #state{min_ssl_ver = Other,
-                             reload_state =
-                                 lists:umerge(lists:sort(ReloadServices), lists:sort(ReloadState))}}
+            {noreply, trigger_ssl_reload(ssl_minimum_protocol,
+                                         State#state{min_ssl_ver = Other})}
     end;
-handle_info(cipher_suites_changed, #state{reload_state = ReloadState,
-                                          ciphers = CurrentCiphers} = State) ->
+handle_info(cipher_suites_changed, #state{ciphers = CurrentCiphers} = State) ->
     misc:flush(cipher_suites_changed),
     case supported_ciphers() of
-        CurrentCiphers -> {noreply, State};
+        CurrentCiphers ->
+            {noreply, State};
         NewCiphers ->
-            misc:create_marker(marker_path()),
-            self() ! notify_services,
-            ReloadServices = [ssl_service, capi_ssl_service],
-            ?log_debug("Notify services ~p about ciphers list change",
-                       [ReloadServices]),
-            NewReloadState = lists:umerge(lists:sort(ReloadServices),
-                                          lists:sort(ReloadState)),
-            {noreply, #state{ciphers = NewCiphers,
-                             reload_state = NewReloadState}}
+            {noreply, trigger_ssl_reload(cipher_suites,
+                                         State#state{ciphers = NewCiphers})}
     end;
-handle_info(client_cert_auth_changed, #state{reload_state = ReloadState,
-                                             client_cert_auth = Auth} = State) ->
+handle_info(client_cert_auth_changed,
+            #state{client_cert_auth = Auth} = State) ->
     misc:flush(client_cert_auth_changed),
     case client_cert_auth() of
         Auth ->
             {noreply, State};
         Other ->
-            misc:create_marker(marker_path()),
-            self() ! notify_services,
-            ReloadServices = [ssl_service, capi_ssl_service],
-            ?log_debug("Notify services ~p about client_cert_auth change", [ReloadServices]),
-            {noreply, #state{client_cert_auth = Other,
-                             reload_state =
-                                 lists:umerge(lists:sort(ReloadServices), lists:sort(ReloadState))}}
+            {noreply, trigger_ssl_reload(client_cert_auth,
+                                         State#state{client_cert_auth = Other})}
     end;
+
 handle_info(notify_services, #state{reload_state = []} = State) ->
     misc:flush(notify_services),
     {noreply, State};
@@ -583,6 +567,13 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+trigger_ssl_reload(Event, #state{reload_state = ReloadState} = State) ->
+    misc:create_marker(marker_path()),
+    self() ! notify_services,
+    Services = [ssl_service, capi_ssl_service],
+    ?log_debug("Notify services ~p about ~p change", [Services, Event]),
+    State#state{reload_state = lists:usort(Services ++ ReloadState)}.
 
 do_generate_local_cert(CertPEM, PKeyPEM, Node) ->
     {_, Host} = misc:node_name_host(node()),
