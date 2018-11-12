@@ -218,7 +218,7 @@ buckets_need_rebalance(NodesWanted) ->
 
 -spec rebalance_progress_full() -> {running, [{atom(), float()}]} | not_running.
 rebalance_progress_full() ->
-    gen_statem:call(?SERVER, rebalance_progress, 2000).
+    rebalance_progress_full(2000).
 
 -spec rebalance_progress_full(non_neg_integer()) ->
                                      {running, [{atom(), float()}]} |
