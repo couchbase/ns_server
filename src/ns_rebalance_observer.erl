@@ -20,7 +20,10 @@
 
 -include("ns_common.hrl").
 
--export([start_link/1, get_detailed_progress/0]).
+-export([start_link/3,
+         get_detailed_progress/0,
+         get_aggregated_progress/1,
+         update_progress/2]).
 
 %% gen_server callbacks
 -export([code_change/3, init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -41,21 +44,35 @@
 -record(state, {bucket :: bucket_name() | undefined,
                 buckets_count :: pos_integer(),
                 bucket_number :: non_neg_integer(),
+                progress :: rebalance_progress:progress(),
+                nodes_info :: [{atom(), [node()]}],
+                type :: atom(),
                 done_moves :: [#move_state{}],
                 current_moves :: [#move_state{}],
                 pending_moves :: [#move_state{}]
                }).
 
-start_link(BucketsCount) ->
-    gen_server:start_link(?SERVER, ?MODULE, BucketsCount, []).
+start_link(Services, NodesInfo, Type) ->
+    gen_server:start_link(?SERVER, ?MODULE, {Services, NodesInfo, Type}, []).
 
-get_detailed_progress() ->
+generic_get_call(Call) ->
+    generic_get_call(Call, 10000).
+generic_get_call(Call, Timeout) ->
     try
-        gen_server:call(?SERVER, get_detailed_progress, 10000)
+        gen_server:call(?SERVER, Call, Timeout)
     catch
         exit:_Reason ->
             not_running
     end.
+
+get_detailed_progress() ->
+    generic_get_call(get_detailed_progress).
+
+get_aggregated_progress(Timeout) ->
+    generic_get_call(get_aggregated_progress, Timeout).
+
+update_progress(Service, ServiceProgress) ->
+    gen_server:cast(?SERVER, {update_progress, Service, ServiceProgress}).
 
 is_interesting_master_event({_, bucket_rebalance_started, _Bucket, _Pid}) ->
     fun handle_bucket_rebalance_started/2;
@@ -68,8 +85,7 @@ is_interesting_master_event({_, vbucket_move_done, _BucketName, _VBucketId}) ->
 is_interesting_master_event(_) ->
     undefined.
 
-
-init(BucketsCount) ->
+init({Services, NodesInfo, Type}) ->
     Self = self(),
     ns_pubsub:subscribe_link(master_activity_events,
                              fun (Event, _Ignored) ->
@@ -81,11 +97,17 @@ init(BucketsCount) ->
                                      end
                              end, []),
 
+    {active_nodes, ActiveNodes} = lists:keyfind(active_nodes, 1, NodesInfo),
+    Progress = rebalance_progress:init(ActiveNodes, Services),
+    BucketsCount = length(ns_bucket:get_buckets()),
     proc_lib:spawn_link(erlang, apply, [fun docs_left_updater_init/1, [Self]]),
 
     {ok, #state{bucket = undefined,
                 buckets_count = BucketsCount,
                 bucket_number = 0,
+                progress = Progress,
+                nodes_info = NodesInfo,
+                type = Type,
                 done_moves  = [],
                 current_moves = [],
                 pending_moves = []}}.
@@ -94,6 +116,9 @@ handle_call(get, _From, State) ->
     {reply, State, State};
 handle_call(get_detailed_progress, _From, State) ->
     {reply, do_get_detailed_progress(State), State};
+handle_call(get_aggregated_progress, _From,
+            #state{progress = Progress} = State) ->
+    {reply, dict:to_list(rebalance_progress:get_progress(Progress)), State};
 handle_call(Req, From, State) ->
     ?log_error("Got unknown request: ~p from ~p", [Req, From]),
     {reply, unknown_request, State}.
@@ -146,6 +171,11 @@ handle_cast({update_stats, VBucket, NodeToDocsLeft}, State) ->
                              end || Stat <- Move#move_state.stats],
                         Move#move_state{stats = NewStats}
                 end)};
+
+handle_cast({update_progress, Service, ServiceProgress},
+            #state{progress = Old} = State) ->
+    NewProgress = rebalance_progress:update(Service, ServiceProgress, Old),
+    {noreply, State#state{progress = NewProgress}};
 
 handle_cast(Req, _State) ->
     ?log_error("Got unknown cast: ~p", [Req]),

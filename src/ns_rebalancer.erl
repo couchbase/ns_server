@@ -607,7 +607,7 @@ rebalance_topology_aware_services(Config, Services, KeepNodesAll, EjectNodesAll)
 rebalance_topology_aware_service(Service, KeepNodes, EjectNodes, DeltaNodes) ->
     ProgressCallback =
         fun (Progress) ->
-                ns_orchestrator:update_progress(Service, Progress)
+                ns_rebalance_observer:update_progress(Service, Progress)
         end,
 
     misc:with_trap_exit(
@@ -758,7 +758,7 @@ make_progress_fun(BucketCompletion, NumBuckets) ->
     end.
 
 update_kv_progress(Progress) ->
-    ns_orchestrator:update_progress(kv, Progress).
+    ns_rebalance_observer:update_progress(kv, Progress).
 
 update_kv_progress(Nodes, Progress) ->
     update_kv_progress(dict:from_list([{N, Progress} || N <- Nodes])).
@@ -777,8 +777,6 @@ rebalance_kv(KeepNodes, EjectNodes, BucketConfigs, DeltaRecoveryBuckets) ->
             exit(Error)
     end,
 
-    {ok, RebalanceObserver} = ns_rebalance_observer:start_link(length(BucketConfigs)),
-
     lists:foreach(fun ({I, {BucketName, BucketConfig}}) ->
                           BucketCompletion = I / NumBuckets,
                           update_kv_progress(LiveKVNodes, BucketCompletion),
@@ -788,8 +786,7 @@ rebalance_kv(KeepNodes, EjectNodes, BucketConfigs, DeltaRecoveryBuckets) ->
                                            KeepKVNodes, EjectNodes, DeltaRecoveryBuckets)
                   end, misc:enumerate(BucketConfigs, 0)),
 
-    update_kv_progress(LiveKVNodes, 1.0),
-    misc:unlink_terminate_and_wait(RebalanceObserver, shutdown).
+    update_kv_progress(LiveKVNodes, 1.0).
 
 rebalance_bucket(BucketName, BucketConfig, ProgressFun,
                  KeepKVNodes, EjectNodes, DeltaRecoveryBuckets) ->

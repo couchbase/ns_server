@@ -25,7 +25,7 @@
 -record(janitor_state, {cleanup_id = undefined :: undefined | pid()}).
 
 -record(rebalancing_state, {rebalancer,
-                            progress,
+                            rebalance_observer = undefined,
                             keep_nodes,
                             eject_nodes,
                             failed_nodes,
@@ -53,7 +53,6 @@
          start_rebalance/3,
          start_rebalance/4,
          stop_rebalance/0,
-         update_progress/2,
          is_rebalance_running/0,
          start_recovery/1,
          stop_recovery/2,
@@ -226,7 +225,20 @@ rebalance_progress_full() ->
                                      {running, [{atom(), float()}]} |
                                      not_running.
 rebalance_progress_full(Timeout) ->
-    gen_statem:call(?SERVER, rebalance_progress, Timeout).
+    case ns_config:search(rebalancer_pid) of
+        false ->
+            not_running;
+        {value, undefined} ->
+            not_running;
+        {value, Pid} when is_pid(Pid) ->
+            case ns_rebalance_observer:get_aggregated_progress(Timeout) of
+                not_running ->
+                    ?log_error("Couldn't reach ns_rebalance_observer"),
+                    not_running;
+                Aggr ->
+                    {running, Aggr}
+            end
+    end.
 
 -spec rebalance_progress() -> {running, [{atom(), float()}]} | not_running.
 rebalance_progress() ->
@@ -463,6 +475,10 @@ handle_info({'EXIT', Pid, Reason}, rebalancing,
             #rebalancing_state{rebalancer = Pid} = State) ->
     handle_rebalance_completion(Reason, State);
 
+handle_info({'EXIT', ObserverPid, Reason}, rebalancing,
+            #rebalancing_state{rebalance_observer = ObserverPid} = State) ->
+    {keep_state, stop_rebalance(State, {rebalance_observer_terminated, Reason})};
+
 handle_info({'EXIT', Pid, Reason}, recovery, #recovery_state{pid = Pid}) ->
     ale:error(?USER_LOGGER,
               "Recovery process ~p terminated unexpectedly: ~p", [Pid, Reason]),
@@ -671,6 +687,15 @@ idle({start_graceful_failover, Node}, From, _State) when is_atom(Node) ->
     {keep_state_and_data,
      [{next_event, {call, From}, {start_graceful_failover, [Node]}}]};
 idle({start_graceful_failover, Nodes}, From, _State) ->
+    ActiveNodes = ns_cluster_membership:active_nodes(),
+    NodesInfo = [{active_nodes, ActiveNodes}],
+    Services = [kv],
+    Type = graceful_failover,
+    {ok, ObserverPid} = ns_rebalance_observer:start_link(
+                          Services,
+                          NodesInfo,
+                          Type),
+
     case ns_rebalancer:start_link_graceful_failover(Nodes) of
         {ok, Pid} ->
             Id = couch_uuids:random(),
@@ -681,20 +706,18 @@ idle({start_graceful_failover, Nodes}, From, _State) ->
             ns_cluster:counter_inc(Type, start),
             set_rebalance_status(Type, running, Pid),
 
-            ActiveNodes = ns_cluster_membership:active_nodes(),
-            Progress = rebalance_progress:init(ActiveNodes, [kv]),
-
             {next_state, rebalancing,
              #rebalancing_state{rebalancer = Pid,
+                                rebalance_observer = ObserverPid,
                                 eject_nodes = [],
                                 keep_nodes = [],
                                 failed_nodes = [],
                                 abort_reason = undefined,
-                                progress = Progress,
                                 type = Type,
                                 rebalance_id = Id},
              [{reply, From, ok}]};
         {error, RV} ->
+            misc:unlink_terminate_and_wait(ObserverPid, kill),
             {keep_state_and_data, [{reply, From, RV}]}
     end;
 idle(rebalance_progress, From, _State) ->
@@ -702,6 +725,17 @@ idle(rebalance_progress, From, _State) ->
 %% NOTE: this is not remotely called but is used by maybe_start_rebalance
 idle({start_rebalance, KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
       DeltaRecoveryBuckets, RebalanceId}, From, _State) ->
+    NodesInfo = [{active_nodes, KeepNodes ++ EjectNodes},
+                 {keep_nodes, KeepNodes},
+                 {eject_nodes, EjectNodes},
+                 {delta_nodes, DeltaNodes},
+                 {failed_nodes, FailedNodes}],
+    Type = rebalance,
+    Services = [kv] ++ ns_cluster_membership:topology_aware_services(),
+    {ok, ObserverPid} = ns_rebalance_observer:start_link(
+                          Services,
+                          NodesInfo,
+                          Type),
     case ns_rebalancer:start_link_rebalance(KeepNodes, EjectNodes,
                                             FailedNodes, DeltaNodes,
                                             DeltaRecoveryBuckets) of
@@ -725,14 +759,12 @@ idle({start_rebalance, KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
                              [KeepNodes, EjectNodes, FailedNodes, RebalanceId])
             end,
 
-            Type = rebalance,
             ns_cluster:counter_inc(Type, start),
             set_rebalance_status(Type, running, Pid),
 
             {next_state, rebalancing,
              #rebalancing_state{rebalancer = Pid,
-                                progress = rebalance_progress:init(
-                                             KeepNodes ++ EjectNodes),
+                                rebalance_observer = ObserverPid,
                                 keep_nodes = KeepNodes,
                                 eject_nodes = EjectNodes,
                                 failed_nodes = FailedNodes,
@@ -741,11 +773,22 @@ idle({start_rebalance, KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
                                 rebalance_id = RebalanceId},
              [{reply, From, ok}]};
         {error, no_kv_nodes_left} ->
+            misc:unlink_terminate_and_wait(ObserverPid, kill),
             {keep_state_and_data, [{reply, From, no_kv_nodes_left}]};
         {error, delta_recovery_not_possible} ->
+            misc:unlink_terminate_and_wait(ObserverPid, kill),
             {keep_state_and_data, [{reply, From, delta_recovery_not_possible}]}
     end;
 idle({move_vbuckets, Bucket, Moves}, From, _State) ->
+    KeepNodes = ns_node_disco:nodes_wanted(),
+    Type = move_vbuckets,
+    NodesInfo = [{active_nodes, ns_cluster_membership:active_nodes()},
+                 {keep_nodes, KeepNodes}],
+    Services = [kv],
+    {ok, ObserverPid} = ns_rebalance_observer:start_link(
+                          Services,
+                          NodesInfo,
+                          Type),
     Pid = spawn_link(
             fun () ->
                     ns_rebalancer:move_vbuckets(Bucket, Moves)
@@ -754,16 +797,12 @@ idle({move_vbuckets, Bucket, Moves}, From, _State) ->
     Id = couch_uuids:random(),
     ?log_debug("Moving vBuckets in bucket ~p. Moves ~p. "
                "Operation Id = ~s", [Bucket, Moves, Id]),
-    Type = move_vbuckets,
     ns_cluster:counter_inc(Type, start),
     set_rebalance_status(Type, running, Pid),
 
-    Nodes = ns_cluster_membership:active_nodes(),
-    Progress = rebalance_progress:init(Nodes, [kv]),
-
     {next_state, rebalancing,
      #rebalancing_state{rebalancer = Pid,
-                        progress = Progress,
+                        rebalance_observer = ObserverPid,
                         keep_nodes = ns_node_disco:nodes_wanted(),
                         eject_nodes = [],
                         failed_nodes = [],
@@ -821,11 +860,6 @@ janitor_running(Msg, From, #janitor_state{cleanup_id = ID})
     {next_state, idle, #idle_state{}, [{next_event, {call, From}, Msg}]}.
 
 %% Asynchronous rebalancing events
-rebalancing({update_progress, Service, ServiceProgress},
-            #rebalancing_state{progress = Old} = State) ->
-    NewProgress = rebalance_progress:update(Service, ServiceProgress, Old),
-    {next_state, rebalancing,
-     State#rebalancing_state{progress = NewProgress}};
 rebalancing({timeout, _Tref, stop_timeout},
             #rebalancing_state{rebalancer = Pid} = State) ->
     ?log_debug("Stop rebalance timeout, brutal kill pid = ~p", [Pid]),
@@ -870,11 +904,12 @@ rebalancing(stop_rebalance, From,
             #rebalancing_state{rebalancer = Pid} = State) ->
     ?log_debug("Sending stop to rebalancer: ~p", [Pid]),
     {keep_state, stop_rebalance(State, user_stop), [{reply, From, ok}]};
-rebalancing(rebalance_progress, From,
-            #rebalancing_state{progress = Progress}) ->
-    AggregatedProgress =
-        dict:to_list(rebalance_progress:get_progress(Progress)),
-    {keep_state_and_data, [{reply, From, {running, AggregatedProgress}}]};
+rebalancing(rebalance_progress, From, _State) ->
+    %% Only expect this call if we are pre-madhatter.
+    false = cluster_compat_mode:is_cluster_madhatter(),
+    {keep_state_and_data,
+     [{reply, From,
+       {running, ns_rebalance_observer:get_aggregated_progress(2000)}}]};
 rebalancing(Event, From, _State) ->
     ?log_warning("Got event ~p while rebalancing.", [Event]),
     {keep_state_and_data, [{reply, From, rebalance_running}]}.
@@ -943,10 +978,6 @@ do_request_janitor_run(Item, Fun, FsmState, State) ->
             ok
     end,
     {next_state, FsmState, State}.
-
--spec update_progress(service(), dict:dict()) -> ok.
-update_progress(Service, ServiceProgress) ->
-    gen_statem:cast(?SERVER, {update_progress, Service, ServiceProgress}).
 
 wait_for_nodes_loop(Nodes) ->
     receive
@@ -1142,8 +1173,14 @@ rebalance_completed_next_state({try_autofailover, From, Nodes}) ->
 rebalance_completed_next_state(_) ->
     {next_state, idle, #idle_state{}}.
 
+terminate_observer(#rebalancing_state{rebalance_observer = undefined}) ->
+    ok;
+terminate_observer(#rebalancing_state{rebalance_observer = ObserverPid}) ->
+    misc:unlink_terminate_and_wait(ObserverPid, kill).
+
 handle_rebalance_completion(ExitReason, State) ->
     cancel_stop_timer(State),
+    terminate_observer(State),
     maybe_reset_autofailover_count(ExitReason, State),
     maybe_reset_reprovision_count(ExitReason, State),
     log_rebalance_completion(ExitReason, State),
@@ -1214,6 +1251,11 @@ log_abort_reason({try_autofailover, _, Nodes}, Type, Id) ->
              "~s interrupted due to auto-failover of nodes ~p. "
              "Operation Id = ~s",
              [rebalance_type2text(Type), Nodes, Id]);
+log_abort_reason({rebalance_observer_terminated, Reason}, Type, Id) ->
+    ale:error(?USER_LOGGER,
+              "~s interrupted as observer exited with reason ~p. "
+              "Operation Id = ~s",
+              [rebalance_type2text(Type), Reason, Id]);
 log_abort_reason(user_stop, Type, Id) ->
     ale:info(?USER_LOGGER,
              "~s stopped by user. Operation Id = ~s",
@@ -1272,15 +1314,19 @@ maybe_start_service_upgrader(normal, {changed, OldVersion, NewVersion},
             ale:info(?USER_LOGGER,
                      "Starting upgrade for the following services: ~p",
                      [Services]),
+            Type = service_upgrade,
+            NodesInfo = [{active_nodes, KeepNodes},
+                         {keep_nodes, KeepNodes}],
+            {ok, ObserverPid} = ns_rebalance_observer:start_link(
+                                  Services,
+                                  NodesInfo,
+                                  Type),
             Pid = start_service_upgrader(KeepNodes, Services),
 
-            Type = service_upgrade,
             set_rebalance_status(Type, running, Pid),
             ns_cluster:counter_inc(Type, start),
-            Progress = rebalance_progress:init(KeepNodes, Services),
-
             NewState = State#rebalancing_state{type = Type,
-                                               progress = Progress,
+                                               rebalance_observer = ObserverPid,
                                                rebalancer = Pid},
 
             {started, NewState}

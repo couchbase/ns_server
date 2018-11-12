@@ -15,15 +15,15 @@
 %%
 -module(rebalance_progress).
 
--export([init/1, init/2, get_progress/1, update/3]).
+-export([init/2, get_progress/1, update/3]).
+-export_type([progress/0]).
 
 -record(progress, {
           per_service :: dict:dict(),
           aggregated  :: dict:dict()
          }).
 
-init(LiveNodes) ->
-    init(LiveNodes, [kv] ++ ns_cluster_membership:topology_aware_services()).
+-type progress() :: #progress{}.
 
 init(LiveNodes, Services) ->
     do_init([{S, ns_cluster_membership:service_nodes(LiveNodes, S)} ||
