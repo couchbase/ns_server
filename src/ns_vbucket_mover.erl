@@ -294,6 +294,12 @@ spawn_compaction_uninhibitor(Bucket, Node, MRef) ->
                               master_activity_events:note_compaction_uninhibit_done(Bucket, Node),
                               ok;
                           nack ->
+                              Msg = io_lib:format(
+                                      "failed to initiate compaction for "
+                                      "bucket ~p on node ~p",
+                                      [Bucket, Node]),
+                              master_activity_events:note_rebalance_stage_event(
+                                kv, Msg),
                               erlang:exit({failed_to_initiate_compaction, Bucket, Node, MRef})
                       end;
                   _ ->

@@ -59,13 +59,30 @@
          note_set_service_map/2,
          note_autofailover_node_state_change/4,
          note_autofailover_server_group_state_change/4,
-         note_autofailover_done/2
+         note_autofailover_done/2,
+         note_rebalance_stage_started/1,
+         note_rebalance_stage_completed/1,
+         note_rebalance_stage_event/2
         ]).
 
 -export([stream_events/2]).
 
 submit_cast(Arg) ->
     (catch gen_event:notify(master_activity_events_ingress, {submit_master_event, Arg})).
+
+get_stage_list(Stage) when is_atom(Stage) ->
+    [Stage];
+get_stage_list(Stage) when is_list(Stage) ->
+    Stage.
+
+note_rebalance_stage_started(Stage) ->
+    submit_cast({rebalance_stage_started, get_stage_list(Stage)}).
+
+note_rebalance_stage_completed(Stage) ->
+    submit_cast({rebalance_stage_completed, get_stage_list(Stage)}).
+
+note_rebalance_stage_event(Stage, Text) ->
+    submit_cast({rebalance_stage_event, get_stage_list(Stage), Text}).
 
 note_vbucket_state_change(Bucket, Node, VBucketId, NewState) ->
     submit_cast({vbucket_state_change, Bucket, Node, VBucketId, NewState}).
@@ -374,6 +391,22 @@ maybe_get_pids_node(Pid) when is_pid(Pid) ->
     erlang:node(Pid);
 maybe_get_pids_node(_PerhapsBinary) ->
     skip_this_pair_please.
+
+event_to_jsons({TS, rebalance_stage_started, Stage}) ->
+    [format_simple_plist_as_json([{type, rebalanceStageStarted},
+                                  {ts, misc:time_to_epoch_float(TS)},
+                                  {stage, {list, Stage}}])];
+
+event_to_jsons({TS, rebalance_stage_completed, Stage}) ->
+    [format_simple_plist_as_json([{type, rebalanceStageCompleted},
+                                  {ts, misc:time_to_epoch_float(TS)},
+                                  {stage, {list, Stage}}])];
+
+event_to_jsons({TS, rebalance_stage_event, Stage, Text}) ->
+    [format_simple_plist_as_json([{type, rebalanceStageEvent},
+                                  {ts, misc:time_to_epoch_float(TS)},
+                                  {stage, {list, Stage}},
+                                  {event, Text}])];
 
 event_to_jsons({TS, vbucket_state_change, Bucket, Node, VBucketId, NewState}) ->
     [format_simple_plist_as_json([{type, vbucketStateChange},

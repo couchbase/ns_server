@@ -540,9 +540,13 @@ rebalance_simple_services(Config, Services, KeepNodes) ->
         true ->
             lists:filtermap(
               fun (Service) ->
+                      master_activity_events:note_rebalance_stage_started(
+                        Service),
                       ServiceNodes = ns_cluster_membership:service_nodes(KeepNodes, Service),
                       Updated = update_service_map_with_config(Config, Service, ServiceNodes),
 
+                      master_activity_events:note_rebalance_stage_completed(
+                        Service),
                       case Updated of
                           false ->
                               false;
@@ -596,10 +600,14 @@ rebalance_topology_aware_services(Config, Services, KeepNodesAll, EjectNodesAll)
                   [] ->
                       false;
                   _ ->
+                      master_activity_events:note_rebalance_stage_started(
+                        Service),
                       update_service_map_with_config(Config, Service, AllNodes),
                       ok = rebalance_topology_aware_service(Service, KeepNodes,
                                                             EjectNodes, DeltaNodes),
                       update_service_map(Service, AllNodes, KeepNodes),
+                      master_activity_events:note_rebalance_stage_completed(
+                        Service),
                       {true, {Service, os:timestamp()}}
               end
       end, Services).
@@ -708,6 +716,7 @@ rebalance_body(KeepNodes,
 
     ok = drop_old_2i_indexes(KeepNodes),
 
+    master_activity_events:note_rebalance_stage_started(kv),
     %% wait till all bucket shutdowns are done on nodes we're
     %% adding (or maybe adding).
     do_wait_buckets_shutdown(KeepNodes),
@@ -721,9 +730,13 @@ rebalance_body(KeepNodes,
                           run_janitor_pre_rebalance(Bucket)
                   end, BucketConfigs),
 
+    master_activity_events:note_rebalance_stage_started(
+      [kv, kv_delta_recovery]),
     ok = apply_delta_recovery_buckets(DeltaRecoveryBuckets,
                                       KVDeltaNodes, BucketConfigs),
     ok = maybe_clear_recovery_type(KeepNodes),
+    master_activity_events:note_rebalance_stage_completed(
+      [kv, kv_delta_recovery]),
     ok = service_janitor:cleanup(),
 
     ok = leader_activities:activate_quorum_nodes(KeepNodes),
@@ -738,6 +751,7 @@ rebalance_body(KeepNodes,
     ok = check_test_condition(rebalance_cluster_nodes_active),
 
     rebalance_kv(KeepNodes, EjectNodesAll, BucketConfigs, DeltaRecoveryBuckets),
+    master_activity_events:note_rebalance_stage_completed(kv),
     rebalance_services(KeepNodes, EjectNodesAll),
 
     ok = leader_activities:deactivate_quorum_nodes(EjectNodesAll),
@@ -1357,10 +1371,13 @@ do_run_graceful_failover_moves(Nodes, BucketName, BucketConfig, I, N) ->
     Map = proplists:get_value(map, BucketConfig, []),
     Map1 = mb_map:promote_replicas_for_graceful_failover(Map, Nodes),
 
+    master_activity_events:note_rebalance_stage_started(kv),
     ProgressFun = make_progress_fun(I, N),
-    run_mover(BucketName, BucketConfig,
-              proplists:get_value(servers, BucketConfig),
-              ProgressFun, Map, Map1).
+    RV = run_mover(BucketName, BucketConfig,
+                   proplists:get_value(servers, BucketConfig),
+                   ProgressFun, Map, Map1),
+    master_activity_events:note_rebalance_stage_completed(kv),
+    RV.
 
 check_graceful_failover_possible(Nodes, BucketsAll) ->
     %% No graceful failovers for non KV node
