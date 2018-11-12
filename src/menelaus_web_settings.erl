@@ -106,7 +106,8 @@ conf(security) ->
      {ui_session_timeout, uiSessionTimeout, undefined,
       get_number(60, 1000000, undefined)},
      {ssl_minimum_protocol, tlsMinVersion, undefined, fun get_tls_version/1},
-     {cipher_suites, cipherSuites, undefined, fun get_cuipher_suites/1}];
+     {cipher_suites, cipherSuites, undefined, fun get_cuipher_suites/1},
+     {honor_cipher_order, honorCipherOrder, undefined, fun get_bool/1}];
 conf(internal) ->
     [{index_aware_rebalance_disabled, indexAwareRebalanceDisabled, false, fun get_bool/1},
      {rebalance_index_waiting_disabled, rebalanceIndexWaitingDisabled, false, fun get_bool/1},

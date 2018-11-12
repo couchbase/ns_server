@@ -290,30 +290,38 @@ supported_ciphers(ns_server, Config) ->
             %% new installations
             case application:get_env(ssl_ciphers) of
                 {ok, Ciphers} ->
-                    Ciphers;
+                    {Ciphers, honor_cipher_order(true)};
                 undefined ->
-                    ssl:cipher_suites() -- low_security_ciphers()
+                    {ssl:cipher_suites() -- low_security_ciphers(),
+                     honor_cipher_order(false)}
             end;
-        List -> List
+        List -> {List, honor_cipher_order(true)}
     end;
 supported_ciphers(cbauth, Config) ->
     case configured_ciphers(Config) of
-        [] -> ns_config:read_key_fast(ssl_ciphers_strength, [high]);
-        List -> List
+        [] ->
+            {ns_config:read_key_fast(ssl_ciphers_strength, [high]),
+             honor_cipher_order(false)};
+        List ->
+            {List, honor_cipher_order(true)}
     end;
 supported_ciphers(openssl, Config) ->
     case configured_ciphers(Config) of
-        [] -> undefined;
+        [] -> {undefined, honor_cipher_order(false)};
         List ->
+            Ordered = honor_cipher_order(true),
             OpenSSLNames = [Name || C <- List,
                                     Name <- [ciphers:openssl_name(C)],
                                     Name =/= undefined],
-            iolist_to_binary(lists:join(":", OpenSSLNames))
+            {iolist_to_binary(lists:join(":", OpenSSLNames)), Ordered}
     end.
 
 configured_ciphers(Config) ->
     Names = ns_config:search(Config, cipher_suites, []),
     [V || C <- Names, V <- [ciphers:code(C)], V =/= undefined].
+
+honor_cipher_order(Default) ->
+    ns_config:read_key_fast(honor_cipher_order, Default).
 
 ssl_auth_options() ->
     Val = list_to_atom(proplists:get_value(state, client_cert_auth())),
@@ -329,13 +337,15 @@ ssl_auth_options() ->
 
 ssl_server_opts() ->
     Path = ssl_cert_key_path(),
+    {CipherSuites, Order} = supported_ciphers(),
     ssl_auth_options() ++
         [{keyfile, Path},
          {certfile, Path},
          {versions, supported_versions(ssl_minimum_protocol())},
          {cacertfile, ssl_cacert_key_path()},
          {dh, dh_params_der()},
-         {ciphers, supported_ciphers()}].
+         {ciphers, CipherSuites},
+         {honor_cipher_order, Order}].
 
 start_link_rest_service() ->
     Config0 = menelaus_web:webconfig(),
@@ -476,6 +486,9 @@ config_change_detector_loop({client_cert_auth, _}, Parent) ->
     Parent ! client_cert_auth_changed,
     Parent;
 config_change_detector_loop({cipher_suites, _}, Parent) ->
+    Parent ! cipher_suites_changed,
+    Parent;
+config_change_detector_loop({honor_cipher_order, _}, Parent) ->
     Parent ! cipher_suites_changed,
     Parent;
 config_change_detector_loop(_OtherEvent, Parent) ->

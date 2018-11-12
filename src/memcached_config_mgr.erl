@@ -28,7 +28,8 @@
 -export([get_minidump_dir/2, omit_missing_mcd_ports/2, ssl_minimum_protocol/2,
          is_enabled/2, client_cert_auth/2, is_snappy_enabled/2,
          is_snappy_enabled/0, collections_enabled/2, get_fallback_salt/2,
-         get_external_users_push_interval/2, get_ssl_cipher_list/2]).
+         get_external_users_push_interval/2, get_ssl_cipher_list/2,
+         get_ssl_cipher_order/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -117,6 +118,7 @@ is_notable_config_key(client_cert_auth) -> true;
 is_notable_config_key(scramsha_fallback_salt) -> true;
 is_notable_config_key(external_auth_polling_interval) -> true;
 is_notable_config_key(cipher_suites) -> true;
+is_notable_config_key(honor_cipher_order) -> true;
 is_notable_config_key(_) ->
     false.
 
@@ -367,10 +369,16 @@ get_external_users_push_interval([], _Params) ->
 
 get_ssl_cipher_list([], Params) ->
     Cfg = ns_config:latest(),
-    Ciphers =
-        case ns_ssl_services_setup:supported_ciphers(openssl, Cfg) of
+    {Ciphers, _} = ns_ssl_services_setup:supported_ciphers(openssl, Cfg),
+    Ciphers2 =
+        case Ciphers of
             undefined -> proplists:get_value(ssl_cipher_list, Params, "HIGH");
             Str -> Str
         end,
-    iolist_to_binary(Ciphers).
+    iolist_to_binary(Ciphers2).
+
+get_ssl_cipher_order([], _Params) ->
+    {_, Order} = ns_ssl_services_setup:supported_ciphers(openssl,
+                                                         ns_config:latest()),
+    Order.
 

@@ -236,6 +236,7 @@ default() ->
           ]}},
 
         {ssl_cipher_list, {memcached_config_mgr, get_ssl_cipher_list, []}},
+        {ssl_cipher_order, {memcached_config_mgr, get_ssl_cipher_order, []}},
         {client_cert_auth, {memcached_config_mgr, client_cert_auth, []}},
         {ssl_minimum_protocol, {memcached_config_mgr, ssl_minimum_protocol, []}},
 
