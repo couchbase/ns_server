@@ -443,7 +443,7 @@ handle_info(janitor, StateName, _StateData) ->
     keep_state_and_data;
 
 handle_info({'EXIT', Pid, Reason}, rebalancing,
-            #rebalancing_state{rebalancer=Pid} = State) ->
+            #rebalancing_state{rebalancer = Pid} = State) ->
     handle_rebalance_completion(Reason, State);
 
 handle_info({'EXIT', Pid, Reason}, recovery, #recovery_state{pid = Pid}) ->
@@ -664,13 +664,13 @@ idle({start_graceful_failover, Nodes}, From, _State) ->
             Progress = rebalance_progress:init(ActiveNodes, [kv]),
 
             {next_state, rebalancing,
-             #rebalancing_state{rebalancer=Pid,
+             #rebalancing_state{rebalancer = Pid,
                                 eject_nodes = [],
                                 keep_nodes = [],
                                 failed_nodes = [],
                                 abort_reason = undefined,
-                                progress=Progress,
-                                type=Type},
+                                progress = Progress,
+                                type = Type},
              [{reply, From, ok}]};
         {error, RV} ->
             {keep_state_and_data, [{reply, From, RV}]}
@@ -706,14 +706,14 @@ idle({start_rebalance, KeepNodes, EjectNodes,
             set_rebalance_status(Type, running, Pid),
 
             {next_state, rebalancing,
-             #rebalancing_state{rebalancer=Pid,
-                                progress=rebalance_progress:init(
-                                           KeepNodes ++ EjectNodes),
-                                keep_nodes=KeepNodes,
-                                eject_nodes=EjectNodes,
-                                failed_nodes=FailedNodes,
-                                abort_reason=undefined,
-                                type=Type},
+             #rebalancing_state{rebalancer = Pid,
+                                progress = rebalance_progress:init(
+                                             KeepNodes ++ EjectNodes),
+                                keep_nodes = KeepNodes,
+                                eject_nodes = EjectNodes,
+                                failed_nodes = FailedNodes,
+                                abort_reason = undefined,
+                                type = Type},
              [{reply, From, ok}]};
         {error, no_kv_nodes_left} ->
             {keep_state_and_data, [{reply, From, no_kv_nodes_left}]};
@@ -734,13 +734,13 @@ idle({move_vbuckets, Bucket, Moves}, From, _State) ->
     Progress = rebalance_progress:init(Nodes, [kv]),
 
     {next_state, rebalancing,
-     #rebalancing_state{rebalancer=Pid,
-                        progress=Progress,
-                        keep_nodes=ns_node_disco:nodes_wanted(),
-                        eject_nodes=[],
-                        failed_nodes=[],
-                        abort_reason=undefined,
-                        type=Type},
+     #rebalancing_state{rebalancer = Pid,
+                        progress = Progress,
+                        keep_nodes = ns_node_disco:nodes_wanted(),
+                        eject_nodes = [],
+                        failed_nodes = [],
+                        abort_reason = undefined,
+                        type = Type},
      [{reply, From, ok}]};
 idle(stop_rebalance, From, _State) ->
     ns_janitor:reset_rebalance_status(
@@ -793,10 +793,10 @@ janitor_running(Msg, From, #janitor_state{cleanup_id = ID})
 
 %% Asynchronous rebalancing events
 rebalancing({update_progress, Service, ServiceProgress},
-            #rebalancing_state{progress=Old} = State) ->
+            #rebalancing_state{progress = Old} = State) ->
     NewProgress = rebalance_progress:update(Service, ServiceProgress, Old),
     {next_state, rebalancing,
-     State#rebalancing_state{progress=NewProgress}};
+     State#rebalancing_state{progress = NewProgress}};
 rebalancing({timeout, _Tref, stop_timeout},
             #rebalancing_state{rebalancer = Pid} = State) ->
     ?log_debug("Stop rebalance timeout, brutal kill pid = ~p", [Pid]),
@@ -838,7 +838,7 @@ rebalancing({start_rebalance, _KeepNodes, _EjectNodes,
 rebalancing({start_graceful_failover, _}, From, _State) ->
     {keep_state_and_data, [{reply, From, in_progress}]};
 rebalancing(stop_rebalance, From,
-            #rebalancing_state{rebalancer=Pid} = State) ->
+            #rebalancing_state{rebalancer = Pid} = State) ->
     ?log_debug("Sending stop to rebalancer: ~p", [Pid]),
     {keep_state, stop_rebalance(State, user_stop), [{reply, From, ok}]};
 rebalancing(rebalance_progress, From,
