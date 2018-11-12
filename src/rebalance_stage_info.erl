@@ -13,50 +13,51 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 %%
--module(rebalance_progress).
+-module(rebalance_stage_info).
 
--export([init/2, get_progress/1, update/3]).
--export_type([progress/0]).
+-export([init/2, get_progress/1, update_progress/3]).
+-export_type([stage_info/0]).
 
--record(progress, {
-          per_service :: dict:dict(),
+-record(stage_info, {
+          per_stage_progress :: dict:dict(),
           aggregated  :: dict:dict()
          }).
 
--type progress() :: #progress{}.
+-type stage_info() :: #stage_info{}.
 
-init(LiveNodes, Services) ->
+init(LiveNodes, Stages) ->
     do_init([{S, ns_cluster_membership:service_nodes(LiveNodes, S)} ||
-                S <- Services]).
+             S <- Stages]).
 
-do_init(Services) ->
-    aggregate(init_per_service(Services)).
+do_init(Stages) ->
+    aggregate(init_per_stage(Stages)).
 
-init_per_service(Services) ->
-    dict:from_list([{Service, init_service(Nodes)} ||
-                       {Service, Nodes} <- Services]).
+init_per_stage(Stages) ->
+    dict:from_list([{Stage, init_stage(Nodes)} ||
+                    {Stage, Nodes} <- Stages]).
 
-init_service(Nodes) ->
+init_stage(Nodes) ->
     dict:from_list([{N, 0} || N <- Nodes]).
 
-get_progress(#progress{aggregated = Aggregated}) ->
+get_progress(#stage_info{aggregated = Aggregated}) ->
     Aggregated.
 
-update(Service, ServiceProgress, #progress{per_service = PerService}) ->
-    aggregate(do_update(Service, ServiceProgress, PerService)).
+update_progress(Stage, StageProgress,
+                #stage_info{per_stage_progress = PerStage}) ->
+    aggregate(do_update_progress(Stage, StageProgress, PerStage)).
 
-do_update(Service, ServiceProgress, PerService) ->
-    dict:update(Service,
-                fun (OldServiceProgress) ->
+do_update_progress(Stage, StageProgress, PerStage) ->
+    dict:update(Stage,
+                fun (OldStageProgress) ->
                         dict:merge(fun (_, _, New) ->
                                            New
-                                   end, OldServiceProgress, ServiceProgress)
-                end, PerService).
+                                   end, OldStageProgress, StageProgress)
+                end, PerStage).
 
-aggregate(PerService) ->
+aggregate(PerStage) ->
     Aggregated0 =
         dict:fold(
-          fun (_, ServiceProgress, AggAcc) ->
+          fun (_, StageProgress, AggAcc) ->
                   dict:fold(
                     fun (Node, NodeProgress, Acc) ->
                             misc:dict_update(
@@ -64,13 +65,13 @@ aggregate(PerService) ->
                               fun ({Count, Sum}) ->
                                       {Count + 1, Sum + NodeProgress}
                               end, {0, 0}, Acc)
-                    end, AggAcc, ServiceProgress)
-          end, dict:new(), PerService),
+                    end, AggAcc, StageProgress)
+          end, dict:new(), PerStage),
 
     Aggregated =
         dict:map(fun (_, {Count, Sum}) ->
                          Sum / Count
                  end, Aggregated0),
 
-    #progress{per_service = PerService,
-              aggregated = Aggregated}.
+    #stage_info{per_stage_progress = PerStage,
+                aggregated = Aggregated}.
