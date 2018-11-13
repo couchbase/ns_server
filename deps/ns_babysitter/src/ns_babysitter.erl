@@ -64,9 +64,9 @@ start(_, _) ->
 
 save_dist_config() ->
     DCfgFile = dist_manager:dist_config_path(path_config:component_path(data)),
-    DType = misc:get_proto_dist_type(),
     filelib:ensure_dir(DCfgFile),
-    misc:atomic_write_file(DCfgFile, DType).
+    dist_manager:store_dist_config(DCfgFile, misc:get_proto_dist_type(),
+                                   undefined).
 
 maybe_write_file(Env, Content, Name) ->
     case application:get_env(Env) of
