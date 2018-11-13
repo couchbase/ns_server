@@ -23,6 +23,8 @@
 -export([start_link/3,
          get_detailed_progress/0,
          get_aggregated_progress/1,
+         get_stage_info/0,
+         update_stage_info/2,
          update_progress/2]).
 
 %% gen_server callbacks
@@ -71,8 +73,14 @@ get_detailed_progress() ->
 get_aggregated_progress(Timeout) ->
     generic_get_call(get_aggregated_progress, Timeout).
 
+get_stage_info() ->
+    generic_get_call(get_stage_info).
+
 update_progress(Stage, StageProgress) ->
     gen_server:cast(?SERVER, {update_progress, Stage, StageProgress}).
+
+update_stage_info(Stage, StageInfo) ->
+    gen_server:cast(?SERVER, {update_stage_info, Stage, StageInfo}).
 
 is_interesting_master_event({_, bucket_rebalance_started, _Bucket, _Pid}) ->
     fun handle_bucket_rebalance_started/2;
@@ -82,10 +90,39 @@ is_interesting_master_event({_, vbucket_move_start, _Pid, _BucketName, _Node, _V
     fun handle_vbucket_move_start/2;
 is_interesting_master_event({_, vbucket_move_done, _BucketName, _VBucketId}) ->
     fun handle_vbucket_move_done/2;
+is_interesting_master_event({_, rebalance_stage_started, _Stage}) ->
+    fun handle_rebalance_stage_started/2;
+is_interesting_master_event({_, rebalance_stage_completed, _Stage}) ->
+    fun handle_rebalance_stage_completed/2;
+is_interesting_master_event({_, rebalance_stage_event, _Stage, _Event}) ->
+    fun handle_rebalance_stage_event/2;
 is_interesting_master_event(_) ->
     undefined.
 
-init({Stages, NodesInfo, Type}) ->
+possible_substages(kv, NodesInfo) ->
+    case proplists:get_value(delta_nodes, NodesInfo, []) of
+        [] ->
+            [];
+        DeltaNodes ->
+            [{kv_delta_recovery, DeltaNodes, []}]
+    end;
+possible_substages(_,_) ->
+    [].
+
+get_stage_nodes(Services, NodesInfo) ->
+    ActiveNodes = proplists:get_value(active_nodes, NodesInfo, []),
+    lists:filtermap(
+      fun (Service) ->
+              case ns_cluster_membership:service_nodes(ActiveNodes, Service) of
+                  [] ->
+                      false;
+                  Nodes ->
+                      SubStages = possible_substages(Service, NodesInfo),
+                      {true, {Service, Nodes, SubStages}}
+              end
+      end, lists:usort(Services)).
+
+init({Services, NodesInfo, Type}) ->
     Self = self(),
     ns_pubsub:subscribe_link(master_activity_events,
                              fun (Event, _Ignored) ->
@@ -97,8 +134,7 @@ init({Stages, NodesInfo, Type}) ->
                                      end
                              end, []),
 
-    {active_nodes, ActiveNodes} = lists:keyfind(active_nodes, 1, NodesInfo),
-    StageInfo = rebalance_stage_info:init(ActiveNodes, Stages),
+    StageInfo = rebalance_stage_info:init(get_stage_nodes(Services, NodesInfo)),
     BucketsCount = length(ns_bucket:get_buckets()),
     proc_lib:spawn_link(erlang, apply, [fun docs_left_updater_init/1, [Self]]),
 
@@ -119,6 +155,9 @@ handle_call(get_detailed_progress, _From, State) ->
 handle_call(get_aggregated_progress, _From,
             #state{stage_info = StageInfo} = State) ->
     {reply, dict:to_list(rebalance_stage_info:get_progress(StageInfo)), State};
+handle_call(get_stage_info, _From,
+            #state{stage_info = StageInfo} = State) ->
+    {reply, rebalance_stage_info:get_stage_info(StageInfo), State};
 handle_call(Req, From, State) ->
     ?log_error("Got unknown request: ~p from ~p", [Req, From]),
     {reply, unknown_request, State}.
@@ -177,6 +216,10 @@ handle_cast({update_progress, Stage, StageProgress},
     NewStageInfo = rebalance_stage_info:update_progress(
                      Stage, StageProgress, Old),
     {noreply, State#state{stage_info = NewStageInfo}};
+handle_cast({update_stage_info, Stage, StageInfo},
+            #state{stage_info = Old} = State) ->
+    New = rebalance_stage_info:update_stage_info(Stage, StageInfo, Old),
+    {noreply, State#state{stage_info = New}};
 
 handle_cast(Req, _State) ->
     ?log_error("Got unknown cast: ~p", [Req]),
@@ -265,6 +308,23 @@ initiate_bucket_rebalance(BucketName, OldState) ->
                    done_moves = [],
                    current_moves = [],
                    pending_moves = Moves}.
+
+handle_rebalance_stage_started({TS, rebalance_stage_started, Stage},
+                               #state{stage_info = Old} = State) ->
+    New = rebalance_stage_info:update_stage_info(Stage, {started, TS}, Old),
+    {noreply, State#state{stage_info = New}}.
+
+handle_rebalance_stage_completed({TS, rebalance_stage_completed, Stage},
+                                 #state{stage_info = Old} = State) ->
+    New = rebalance_stage_info:update_stage_info(Stage, {completed, TS}, Old),
+    {noreply, State#state{stage_info = New}}.
+
+handle_rebalance_stage_event({TS, rebalance_stage_event, Stage, Text},
+                             #state{stage_info = Old} = State) ->
+    New = rebalance_stage_info:update_stage_info(Stage,
+                                                 {notable_event, TS, Text},
+                                                 Old),
+    {noreply, State#state{stage_info = New}}.
 
 handle_bucket_rebalance_started({_, bucket_rebalance_started, _BucketName, _Pid},
                                 #state{bucket_number = Number} = State) ->
