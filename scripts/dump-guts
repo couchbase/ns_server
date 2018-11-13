@@ -599,7 +599,8 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
                   {cbas, cbas_admin_port, 9110},
                   {cbas, cbas_parent_port, 9122},
                   {eventing, eventing_http_port, 8096}],
-    OtherPorts = find_ports(NSConfig, Node, Services, Candidates),
+    OtherPorts = [find_port(NSConfig, Node, xdcr_rest_port, 9998) |
+                  find_ports(NSConfig, Node, Services, Candidates)],
 
     {_, DataDir} = lists:keyfind(path_config_datadir, 1, StaticTerms),
     StatsDir = filename:join(DataDir, "stats"),

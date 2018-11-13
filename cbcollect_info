@@ -964,6 +964,14 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                                           user="@", password=memcached_pass,
                                           url=proj_url, log_file="projector_pprof.log")]
 
+    goxdcr_tasks = []
+    goxdcr_port = read_guts(guts, "xdcr_rest_port")
+    if goxdcr_port:
+        goxdcr_url = 'http://%s:%s/debug/pprof/goroutine?debug=1' % (local_url_addr, goxdcr_port)
+        goxdcr_tasks = [make_curl_task(name="GoXDCR Go routine dump ",
+                                       user="@", password=memcached_pass,
+                                       url=goxdcr_url, log_file="goxdcr_pprof.log")]
+
     fts_tasks = []
     fts_port = read_guts(guts, "fts_http_port")
     if fts_port:
@@ -1183,7 +1191,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
         ]
 
     _tasks = flatten([getent_tasks, lookup_tasks, query_tasks, index_tasks,
-                      projector_tasks, fts_tasks, cbas_tasks, eventing_tasks, _tasks])
+                      projector_tasks, fts_tasks, cbas_tasks, eventing_tasks, goxdcr_tasks, _tasks])
 
     return _tasks
 
