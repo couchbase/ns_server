@@ -40,6 +40,7 @@
          note_seqno_waiting_ended/4,
          note_takeover_started/4,
          note_takeover_ended/4,
+         note_backfill_phase_started/2,
          note_backfill_phase_ended/2,
          note_wait_index_updated_started/3,
          note_wait_index_updated_ended/3,
@@ -162,6 +163,9 @@ note_takeover_started(BucketName, VBucket, OldMaster, NewMaster) ->
 
 note_takeover_ended(BucketName, VBucket, OldMaster, NewMaster) ->
     submit_cast({takeover_ended, BucketName, VBucket, OldMaster, NewMaster}).
+
+note_backfill_phase_started(BucketName, VBucket) ->
+    submit_cast({backfill_phase_started, BucketName, VBucket}).
 
 note_backfill_phase_ended(BucketName, VBucket) ->
     submit_cast({backfill_phase_ended, BucketName, VBucket}).
@@ -547,6 +551,12 @@ event_to_jsons({TS, indexing_initated, BucketName, Node, VBucket}) ->
     [format_simple_plist_as_json([{type, indexingInitiated},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {node, node_to_host(Node, ns_config:get())},
+                                  {bucket, BucketName},
+                                  {vbucket, VBucket}])];
+
+event_to_jsons({TS, backfill_phase_started, BucketName, VBucket}) ->
+    [format_simple_plist_as_json([{type, backfillPhaseStarted},
+                                  {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, BucketName},
                                   {vbucket, VBucket}])];
 

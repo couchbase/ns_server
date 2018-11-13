@@ -177,6 +177,7 @@ mover_inner_dcp(Parent, Bucket, VBucket,
     %% ep-engine guarantees that it can support indexing
     maybe_initiate_indexing(Bucket, Parent, JustBackfillNodes, ReplicaNodes, VBucket, IndexAware),
 
+    master_activity_events:note_backfill_phase_started(Bucket, VBucket),
     %% wait for backfill on all the opened streams
     AllBuiltNodes = JustBackfillNodes ++ ReplicaNodes,
     wait_dcp_data_move(Bucket, Parent, OldMaster, AllBuiltNodes, VBucket),
