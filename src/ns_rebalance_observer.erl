@@ -38,10 +38,10 @@
                                  docs_total :: non_neg_integer(),
                                  docs_left :: non_neg_integer()}).
 
--record(move_state, {vbucket :: vbucket_id(),
-                     before_chain :: [node()],
-                     after_chain :: [node()],
-                     stats :: [#replica_building_stats{}]}).
+-record(vbucket_info, {vbucket :: vbucket_id(),
+                       before_chain :: [node()],
+                       after_chain :: [node()],
+                       stats :: [#replica_building_stats{}]}).
 
 -record(state, {bucket :: bucket_name() | undefined,
                 buckets_count :: pos_integer(),
@@ -49,9 +49,9 @@
                 stage_info :: rebalance_progress:stage_info(),
                 nodes_info :: [{atom(), [node()]}],
                 type :: atom(),
-                done_moves :: [#move_state{}],
-                current_moves :: [#move_state{}],
-                pending_moves :: [#move_state{}]
+                done_moves :: [#vbucket_info{}],
+                current_moves :: [#vbucket_info{}],
+                pending_moves :: [#vbucket_info{}]
                }).
 
 start_link(Stages, NodesInfo, Type) ->
@@ -207,8 +207,8 @@ handle_cast({update_stats, VBucket, NodeToDocsLeft}, State) ->
                                      end;
                                  false ->
                                      Stat
-                             end || Stat <- Move#move_state.stats],
-                        Move#move_state{stats = NewStats}
+                             end || Stat <- Move#vbucket_info.stats],
+                        Move#vbucket_info{stats = NewStats}
                 end)};
 
 handle_cast({update_progress, Stage, StageProgress},
@@ -296,10 +296,10 @@ initiate_bucket_rebalance(BucketName, OldState) ->
                   end || Replica <- ChainAfter,
                          Replica =/= undefined,
                          Replica =/= MasterNode],
-             #move_state{vbucket = VB,
-                         before_chain = ChainBefore,
-                         after_chain = ChainAfter,
-                         stats = RBStats}
+             #vbucket_info{vbucket = VB,
+                           before_chain = ChainBefore,
+                           after_chain = ChainAfter,
+                           stats = RBStats}
          end || {VB, [MasterNode|_] = ChainBefore, ChainAfter} <- Diff],
 
     ?log_debug("Moves:~n~p", [Moves]),
@@ -346,10 +346,10 @@ handle_vbucket_move_start({_, vbucket_move_start, _Pid, _BucketName, _Node, VBuc
 
 handle_vbucket_move_done({_, vbucket_move_done, _BucketName, VBucket} = Ev, State) ->
     State1 = update_move(State, VBucket,
-                         fun (#move_state{stats=Stats} = Move) ->
+                         fun (#vbucket_info{stats=Stats} = Move) ->
                                  Stats1 = [S#replica_building_stats{docs_left=0} ||
                                               S <- Stats],
-                                 Move#move_state{stats=Stats1}
+                                 Move#vbucket_info{stats=Stats1}
                          end),
     case ensure_not_current(State1, VBucket) of
         State1 ->
@@ -361,7 +361,7 @@ handle_vbucket_move_done({_, vbucket_move_done, _BucketName, VBucket} = Ev, Stat
     end.
 
 move_the_move(State, VBucketId, From, To) ->
-    case lists:keytake(VBucketId, #move_state.vbucket, erlang:element(From, State)) of
+    case lists:keytake(VBucketId, #vbucket_info.vbucket, erlang:element(From, State)) of
         false ->
             State;
         {value, Move, RestFrom} ->
@@ -378,7 +378,7 @@ ensure_not_current(State, VBucketId) ->
 
 update_move(#state{current_moves = Moves} = State, VBucket, Fun) ->
     NewCurrent =
-        [case Move#move_state.vbucket =:= VBucket of
+        [case Move#vbucket_info.vbucket =:= VBucket of
              false ->
                  Move;
              _ ->
@@ -416,15 +416,15 @@ docs_left_updater_loop(Parent) ->
             docs_left_updater_loop(Parent)
     end.
 
-get_docs_estimate(BucketName, #move_state{vbucket = VBucket,
-                                          before_chain = [MasterNode|_],
-                                          stats = RStats}) ->
+get_docs_estimate(BucketName, #vbucket_info{vbucket = VBucket,
+                                            before_chain = [MasterNode|_],
+                                            stats = RStats}) ->
     ReplicaNodes = [S#replica_building_stats.node || S <- RStats],
     janitor_agent:get_dcp_docs_estimate(BucketName, MasterNode, VBucket, ReplicaNodes).
 
 update_docs_left_for_move(Parent, BucketName,
-                          #move_state{vbucket = VBucket,
-                                      stats = RStats} = MoveState) ->
+                          #vbucket_info{vbucket = VBucket,
+                                        stats = RStats} = MoveState) ->
     try get_docs_estimate(BucketName, MoveState) of
         NewLefts ->
             Stuff =
@@ -488,8 +488,8 @@ do_get_detailed_progress(#state{bucket=Bucket,
 
     {MovesInActive, MovesOutActive, MovesInReplica, MovesOutReplica} =
         lists:foldl(
-          fun (#move_state{before_chain=[OldMaster|OldReplicas],
-                           after_chain=[NewMaster|NewReplicas]},
+          fun (#vbucket_info{before_chain=[OldMaster|OldReplicas],
+                             after_chain=[NewMaster|NewReplicas]},
                {AccInA, AccOutA, AccInR, AccOutR}) ->
                   {AccInA1, AccOutA1} =
                       case OldMaster =:= NewMaster of
@@ -548,8 +548,8 @@ do_get_detailed_progress(#state{bucket=Bucket,
 
 moves_stats(Moves) ->
     lists:foldl(
-      fun (#move_state{stats=Stats,
-                       before_chain=[OldMaster|_]}, Acc) ->
+      fun (#vbucket_info{stats=Stats,
+                         before_chain=[OldMaster|_]}, Acc) ->
               true = (OldMaster =/= undefined),
 
               lists:foldl(
