@@ -607,7 +607,7 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
     IndexerMDD = filename:join(DataDir, "crash"),
 
     UsersStoragePath = filename:join([DataDir, "config", "users.dets"]),
-    {_, Ipv6} = lists:keyfind(ipv6, 1, StaticTerms),
+    Ipv6 = is_net_config_ipv6(filename:join([DataDir, "config", "dist_cfg"])),
 
     Pairs = OtherPorts ++
         [{ns_config, iolist_to_binary(io_lib:format("~p", [sanitize_config(NSConfig)]))},
@@ -643,6 +643,32 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
 
     %% not sure why but output to tty is sometimes truncated otherwise
     timer:sleep(100).
+
+is_net_config_ipv6(DistCfgPath) ->
+    RV = case file:consult(DistCfgPath) of
+             {error, enoent} ->
+                 undefined;
+             {ok, Val} ->
+                 lists:keyfind(dist_type, 1, Val);
+             Error ->
+                 Error
+         end,
+
+    case RV of
+        {error, _} = Err ->
+            io:format(standard_error,
+                      "Failed to read dist_cfg file '~s': ~p~n",
+                      [filename:absname(DistCfgPath), Err]),
+            init:stop(1);
+        X when X =:= undefined; X =:= false ->
+            false;
+        Cfg ->
+            Mode = case Cfg of
+                       {dist_type, M, _} -> M;
+                       {dist_type, M}    -> M
+                   end,
+            Mode =:= inet6_tcp
+    end.
 
 read_ns_log(Path) ->
     {ok, B} = file:read_file(Path),

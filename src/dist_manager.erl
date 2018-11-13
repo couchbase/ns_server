@@ -28,7 +28,8 @@
 
 -export([adjust_my_address/3, read_address_config/0, save_address_config/1,
          ip_config_path/0, using_user_supplied_address/0, reset_address/0,
-         wait_for_node/1, dist_config_path/1, update_dist_config/1]).
+         wait_for_node/1, dist_config_path/1, store_dist_config/3,
+         update_dist_config/1]).
 
 %% used by the service init script.
 -export([get_proto_dist_type/1]).
@@ -61,6 +62,19 @@ using_user_supplied_address() ->
 reset_address() ->
     gen_server:call(?MODULE, reset_address).
 
+store_dist_config(DCfgFile, Cfg) ->
+    Data = io_lib:format("~p.~n", [Cfg]),
+    misc:atomic_write_file(DCfgFile, Data).
+
+store_dist_config(DCfgFile, CurrDistType, undefined) ->
+    Cfg = {dist_type, list_to_atom(CurrDistType)},
+    store_dist_config(DCfgFile, Cfg);
+store_dist_config(DCfgFile, CurrDistType, NewDistType) ->
+    Cfg = {dist_type,
+           list_to_atom(CurrDistType),
+           list_to_atom(NewDistType)},
+    store_dist_config(DCfgFile, Cfg).
+
 update_dist_config(NewAFamily) ->
     CurrDistType = misc:get_proto_dist_type(),
     NewDistType = case NewAFamily of
@@ -75,7 +89,7 @@ update_dist_config(NewAFamily) ->
             DCfgFile = dist_config_path(path_config:component_path(data)),
             ?log_debug("Saving new networking mode (~s) to config file: ~s",
                        [NewDistType, DCfgFile]),
-            misc:atomic_write_file(DCfgFile, CurrDistType ++ "," ++ NewDistType)
+            store_dist_config(DCfgFile, CurrDistType, NewDistType)
     end.
 
 %% This function will be called by the init script to determine
@@ -85,16 +99,23 @@ get_proto_dist_type(Params) ->
     DCfgFile = dist_config_path(DataDir),
 
     ExitStatus =
-        case read_from_file(DCfgFile) of
+        case file:consult(DCfgFile) of
+            {error, enoent} ->
+                io:format("inet_tcp"),
+                0;
             {error, Err} ->
                 io:format("Couldn't determine proto_dist value. Failed to "
                           "read from `~s` file: ~p", [DCfgFile, Err]),
                 1;
-            undefined ->
+            {ok, []} ->
                 io:format("inet_tcp"),
                 0;
-            Cfg ->
-                Modes = string:tokens(Cfg, ","),
+            {ok, Val} ->
+                DistCfg = lists:keyfind(dist_type, 1, Val),
+                Modes = case DistCfg of
+                            {dist_type, C, N} -> [C, N];
+                            {dist_type, C}    -> [C]
+                        end,
                 RV = case StartStop of
                          "start" -> lists:last(Modes);
                          "stop"  -> hd(Modes)
