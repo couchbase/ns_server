@@ -366,8 +366,11 @@ get_external_users_push_interval([], _Params) ->
     max(menelaus_roles:external_auth_polling_interval() div 1000, 1).
 
 get_ssl_cipher_list([], Params) ->
-    case ns_ssl_services_setup:supported_ciphers(openssl, ns_config:latest()) of
-        undefined -> proplists:get_value(ssl_cipher_list, Params, "HIGH");
-        Str -> iolist_to_binary(Str)
-    end.
+    Cfg = ns_config:latest(),
+    Ciphers =
+        case ns_ssl_services_setup:supported_ciphers(openssl, Cfg) of
+            undefined -> proplists:get_value(ssl_cipher_list, Params, "HIGH");
+            Str -> Str
+        end,
+    iolist_to_binary(Ciphers).
 
