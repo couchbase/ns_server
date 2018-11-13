@@ -40,7 +40,7 @@
     {name:"function", tokens: builtinFunctions_array},
     {name:"role", tokens: roles_array},
     {name:"system-catalog", tokens: sysCatalogs_array}
-  ];
+    ];
 
   //
   // language tokens
@@ -144,8 +144,8 @@
 
         for (var i=0; i<terms.length; i++)
           for (var t=0; t<terms[i].tokens.length; t++)
-              if (_.startsWith(terms[i].tokens[t].toLocaleUpperCase(),prefix_upper))
-                  results.push({value: terms[i].tokens[t], meta: terms[i].name, score: 1});
+            if (_.startsWith(terms[i].tokens[t].toLocaleUpperCase(),prefix_upper))
+              results.push({value: terms[i].tokens[t], meta: terms[i].name, score: 1});
 
         return results;
       };
@@ -166,9 +166,205 @@
     var N1qlCompletions = require("./n1ql_completions").N1qlCompletions;
     var Range = require("../range").Range;
 
+    //////////////////////////////////////////////////////////////////////////////////////
+    // format N1QL queries. Code borrowed and extended from vkbeautify
+    //////////////////////////////////////////////////////////////////////////////////////
+
+    // certain keywords will get formatted onto their own line, some with indenting
+    var newline_before = "SELECT|FROM|WHERE|GROUP BY|HAVING|ORDER|LIMIT";
+    var newline_before_and_after = "UNION";
+    var newline_before_plus_indent = "AND|OR|JOIN|SET|LET";
+    var newline_before_plus_2_indent = "THEN|WHEN|ELSE";
+
+    var newline_keywords = newline_before + '|' + newline_before_and_after + '|' + newline_before_plus_indent
+    + '|' + newline_before_plus_2_indent;
+
+    // regexes must ignore keywords inside strings or comments, make a prefix to match strings or comments
+    var prefix = "\"(?:[^\"\\\\]|\\\\.)*\"|'(?:[^'\\\\]|\\\\.)*'|(?:\\/\\*[\\s\\S]*?\\*\\/)|`(?:[^`])*`"
+
+      // we want to detect all keywords above, so make a regex that matches them
+      var match_string = new RegExp(prefix,'ig');
+    var newline_before_regex = new RegExp(prefix + '|\\b(' + newline_before + ')\\b','ig');
+    var newline_before_and_after_regex = new RegExp(prefix + '|\\b(' + newline_before_and_after + ')\\b','ig');
+    var newline_before_plus_indent_regex = new RegExp(prefix + '|\\b(' + newline_before_plus_indent + '|\\s{0,}\\(\\s{0,}SELECT\\s{0,})\\b','ig');
+    var newline_before_plus_2_indent_regex = new RegExp(prefix + '|\\b(' + newline_before_plus_2_indent + ')\\b','ig');
+
+    var kw_regex_str = prefix + '|\\b(?:' + sysCatalogs + ')|\\b(' + keywords + '|' + roles + '|' + builtinConstants + '|' + builtinFunctions + ')\\b';
+    var kw_regex = new RegExp(kw_regex_str,'ig');
+
+    var comma_not_in_parens_regex = /(?:\([^\)]*\))|(\,)/ig;
+
+    //
+    //
+    //
+
+    function createShiftArr(step) {
+
+      var space = '    ';
+
+      if ( isNaN(parseInt(step)) ) {  // argument is string
+        space = step;
+      } else { // argument is integer
+        switch(step) {
+        case 1: space = ' '; break;
+        case 2: space = '  '; break;
+        case 3: space = '   '; break;
+        case 4: space = '    '; break;
+        case 5: space = '     '; break;
+        case 6: space = '      '; break;
+        case 7: space = '       '; break;
+        case 8: space = '        '; break;
+        case 9: space = '         '; break;
+        case 10: space = '          '; break;
+        case 11: space = '           '; break;
+        case 12: space = '            '; break;
+        }
+      }
+
+      var shift = ['\n']; // array of shifts
+      for(var ix=0;ix<100;ix++){
+        shift.push(shift[ix]+space);
+      }
+      return shift;
+    }
+
+    function isSubquery(str, parenthesisLevel) {
+      return  parenthesisLevel - (str.replace(/\(/g,'').length - str.replace(/\)/g,'').length )
+    }
+
+    //
+    // if we have commas delimiting projection lists, let statements, etc, we want a newline
+    // and indentation after each comma. But we don't want newlines for comma-delimited items in function
+    // calls, e.g. max(a,b,c)
+    //
+
+    function replace_top_level_commas(text,tab,parenDepth) {
+      var items = [];
+      var start = 0;
+
+      for (var i=0; i < text.length; i++) {
+        switch (text.charAt(i)) {
+        case '(': parenDepth.depth++; break;
+        case ')': parenDepth.depth--; break;
+        case ',':
+          if (parenDepth.depth <= 0) {
+            items.push((items.length ? tab : '') + text.substring(start,i+1));
+            while (i++ < text.length && /\s/.exec(text.charAt(i))); // skip any whitespace after the comma
+            start = i;
+            i--; // don't overshoot
+          }
+          break;
+        }
+      }
+
+      // get the last one
+      items.push((items.length ? tab : '') + text.substring(start,text.length));
+      return(items);
+    }
+
+    // split query into an array of lines, with strings separate entries so we won't try to
+    // parse their contents
+    function split_n1ql(str, tab) {
+
+      var str2 = str.replace(/\s{1,}/g," "); // simplify whitespace to single spaces
+      str2 = str2.replace(match_string, function(match) {return "~::~" + match + "~::~"});
+      str2 = str2.replace(kw_regex, function(match,p1) {if (p1) return p1.toUpperCase(); else return match}); // upper case all keywords
+      str2 = str2.replace(newline_before_regex, function(match,p1) {if (p1) return "~::~" + p1; else return match});
+      str2 = str2.replace(newline_before_and_after_regex, function(match,p1) {if (p1) return "~::~" + p1 + "~::~"; else return match});
+      str2 = str2.replace(newline_before_plus_indent_regex, function(match,p1) {if (p1) return "~::~" + tab + p1; else return match});
+      str2 = str2.replace(newline_before_plus_2_indent_regex, function(match,p1) {if (p1) return "~::~" + tab + tab + p1; else return match});
+      str2 = str2.replace(/~::~w{1,}/g,"~::~"); // remove blank lines
+      str2 = str2.replace(/~::~ /ig,'~::~');
+
+      // get an array of lines, based on the above breaks, then make a new array where we also split on comma-delimited lists
+      var arr =  str2.split('~::~');
+      var arr2 = [];
+
+      var lastWasSpecial = false;
+      var parenDepth = {depth:0};
+      arr.forEach(function (s) {
+        if (isSpecialString(s)) { // special strings don't get new lines
+          arr2.push(s);
+          lastWasSpecial = true;
+        }
+        else {
+          if (!lastWasSpecial)
+            parenDepth.depth = 0; // reset paren depth for a new line
+          arr2 = arr2.concat(replace_top_level_commas(s,tab,parenDepth));
+          lastWasSpecial = false;
+        }
+      });
+
+      return(arr2);
+    }
+
+    // some text is special: comments, quoted strings, and we don't want to look inside them for formatting
+    function isSpecialString(str) {
+      return((str.startsWith('"') || str.startsWith("'") ||
+            (str.startsWith('/*') && str.endsWith('*/')) ||
+            (str.startsWith('`') && str.endsWith('`'))));
+    }
+
+    //
+    // format a N1QL string
+    //
+
+    function n1ql(text,step) {
+
+      var tab = this.step,
+      ar = split_n1ql(text,tab),
+      deep = 0,
+      parenthesisLevel = 0,
+      str = '',
+      ix = 0,
+      shift = step ? createShiftArr(step) : this.shift;
+
+      // loop through the array of query elements.
+      // Some will be strings, so we will just add those to the query string
+      // Others need to be checked for nesting level
+      var len = ar.length;
+      var prev_was_string = false;
+
+      for(ix=0;ix<len;ix++) {
+        // remove blank lines
+        if (ar[ix].trim().length == 0)
+          continue;
+
+        // handle strings and comments and literal identifiers
+        if (isSpecialString(ar[ix])) {
+          str += ar[ix];
+          prev_was_string = true;
+          continue;
+        }
+
+        // strings got put into separate array elements, so we could avoid parsing them
+        // usually that means no newline after strings, unless the string matches a keyword that requires one
+        var force_newline = newline_before_regex.exec(ar[ix]) || newline_before_and_after_regex.exec(ar[ix]) ||
+          newline_before_plus_indent_regex.exec(ar[ix]) || newline_before_plus_indent_regex.exec(ar[ix]);
+        //console.log("Got line: " + ar[ix] + ', prev: ' + prev_was_string + ", force: " + JSON.stringify(force_newline));
+        if (prev_was_string && !force_newline)
+          str += (ar[ix].startsWith(',') ? '':' ') + ar[ix];
+        else
+          str += shift[parenthesisLevel]+ar[ix];
+
+        // see if nesting is going up or down.
+        parenthesisLevel = isSubquery(ar[ix], parenthesisLevel);
+
+        prev_was_string = false;
+      }
+
+      str = str.replace(/^\n{1,}/,'').replace(/\n{1,}/g,"\n");
+      return str;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////
+
     var Mode = function() {
       this.HighlightRules = N1qlHighlightRules;
       this.$completer = new N1qlCompletions();
+      this.step = '  '; // 2 spaces
+      this.shift = createShiftArr(this.step);
+      this.format = n1ql;
     };
     oop.inherits(Mode, TextMode);
 
@@ -182,6 +378,7 @@
     }).call(Mode.prototype);
 
     exports.Mode = Mode;
+    exports.Instance = new Mode();
 
   });
 
