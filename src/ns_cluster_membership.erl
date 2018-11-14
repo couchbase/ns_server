@@ -352,7 +352,7 @@ get_service_map(Config, Service) ->
     ns_config:search(Config, {service_map, Service}, []).
 
 failover_service_nodes(Config, Service, Nodes) ->
-    Map = ns_cluster_membership:get_service_map(Config, Service),
+    Map = get_service_map(Config, Service),
     NewMap = Map -- Nodes,
     ok = ns_config:set([{{service_map, Service}, NewMap},
                         {{service_failover_pending, Service}, true}]).
@@ -387,10 +387,10 @@ should_run_service(Service, Node) ->
 
 should_run_service(Config, Service, Node) ->
     case ns_config_auth:is_system_provisioned()
-        andalso ns_cluster_membership:get_cluster_membership(Node, Config) =:= active  of
+        andalso get_cluster_membership(Node, Config) =:= active  of
         false -> false;
         true ->
-            Svcs = ns_cluster_membership:node_services(Config, Node),
+            Svcs = node_services(Config, Node),
             lists:member(Service, Svcs)
     end.
 
