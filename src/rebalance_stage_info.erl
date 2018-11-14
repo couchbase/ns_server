@@ -16,7 +16,7 @@
 -module(rebalance_stage_info).
 
 -export([init/1,
-         get_stage_info/1,
+         get_stage_info/2,
          get_progress/1,
          update_progress/3,
          update_stage_info/3,
@@ -104,8 +104,8 @@ aggregate(PerStage) ->
                      Sum / Count
              end, TmpAggr).
 
-get_stage_info(StageInfo) ->
-    {get_per_stage_info(StageInfo)}.
+get_stage_info(StageInfo, AllStageDetails) ->
+    {get_per_stage_info(StageInfo, AllStageDetails)}.
 
 diff_timestamp(false, false) ->
     false;
@@ -121,17 +121,19 @@ binarify_timestamp(Time) ->
 
 get_per_stage_info(#stage_info{
                       per_stage_progress = PerStageProgress,
-                      per_stage_info = PerStageInfo}) ->
+                      per_stage_info = PerStageInfo}, AllStageDetails) ->
     AllStageProgress = get_per_stage_progress(PerStageProgress),
     lists:map(
       fun ({Stage, StageInfo}) ->
               construct_per_stage_json(AllStageProgress,
+                                       AllStageDetails,
                                        Stage,
                                        StageInfo)
       end, PerStageInfo).
 
-construct_per_stage_json(AllStageProgress, Stage, StageInfo) ->
+construct_per_stage_json(AllStageProgress, AllStageDetails, Stage, StageInfo) ->
     {ok, PerNodeProgress} = dict:find(Stage, AllStageProgress),
+    StageDetails = construct_per_stage_details_json(Stage, AllStageDetails),
     TotalStageProgress = case lists:foldl(fun ({_, P}, {Total, Count}) ->
                                                   {Total + P, Count + 1}
                                           end, {0, 0}, PerNodeProgress) of
@@ -143,8 +145,10 @@ construct_per_stage_json(AllStageProgress, Stage, StageInfo) ->
     ProgressInfoJson = construct_per_stage_progress_json(TotalStageProgress,
                                                          PerNodeProgress,
                                                          StageInfo),
-    StageInfoJson = construct_per_stage_info_json(StageInfo, AllStageProgress),
-    {get_stage_name(Stage), {ProgressInfoJson ++ StageInfoJson}}.
+    StageInfoJson = construct_per_stage_info_json(StageInfo, AllStageProgress,
+                                                  AllStageDetails),
+    {get_stage_name(Stage), {ProgressInfoJson ++ StageInfoJson ++
+                             StageDetails}}.
 
 get_stage_name(Stage) ->
     Stages = [{kv, data},
@@ -157,6 +161,14 @@ get_stage_name(Stage) ->
     case lists:keyfind(Stage, 1, Stages) of
         {Stage, Val} -> Val;
         false -> Stage
+    end.
+
+construct_per_stage_details_json(Stage, AllStageDetails) ->
+    case lists:keyfind(Stage, 1, AllStageDetails) of
+        {Stage, StageDetails} ->
+            [{details, StageDetails}];
+        false ->
+            []
     end.
 
 construct_per_stage_progress_json(
@@ -176,11 +188,12 @@ construct_per_stage_info_json(#stage_details{
                                  complete_time = EndTime,
                                  sub_stages = SubStages,
                                  notable_events = NotableEvents},
-                              AllStageProgress) ->
+                              AllStageProgress, AllStageDetails) ->
     SubStagesInfo = case SubStages of
                         [] -> [];
                         _ -> [{subStages,
                                {[construct_per_stage_json(AllStageProgress,
+                                                          AllStageDetails,
                                                           SubStage,
                                                           SubStageInfo) ||
                                  {SubStage, SubStageInfo} <- SubStages]}}]

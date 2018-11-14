@@ -84,7 +84,7 @@ get_aggregated_progress(Timeout) ->
     generic_get_call(get_aggregated_progress, Timeout).
 
 get_stage_info() ->
-    generic_get_call(get_stage_info).
+    generic_get_call({get_stage_info, []}).
 
 update_progress(Stage, StageProgress) ->
     gen_server:cast(?SERVER, {update_progress, Stage, StageProgress}).
@@ -167,9 +167,11 @@ handle_call(get_detailed_progress, _From, State) ->
 handle_call(get_aggregated_progress, _From,
             #state{stage_info = StageInfo} = State) ->
     {reply, dict:to_list(rebalance_stage_info:get_progress(StageInfo)), State};
-handle_call(get_stage_info, _From,
+handle_call({get_stage_info, Options}, _From,
             #state{stage_info = StageInfo} = State) ->
-    {reply, rebalance_stage_info:get_stage_info(StageInfo), State};
+    StageDetails = get_all_stage_rebalance_details(State, Options),
+    {reply, rebalance_stage_info:get_stage_info(StageInfo, StageDetails),
+     State};
 handle_call(Req, From, State) ->
     ?log_error("Got unknown request: ~p from ~p", [Req, From]),
     {reply, unknown_request, State}.
@@ -659,4 +661,79 @@ update_vbucket_level_info_inner(
                                                NewTotalInfo),
             BucketLevelInfo#bucket_level_info{
               vbucket_level_info = NewVBLevelInfo}
+    end.
+
+construct_bucket_level_info_json(
+  #bucket_level_info{bucket_name = BucketName,
+                     vbucket_level_info = VBLevelInfo}, Options) ->
+    case dict:is_empty(VBLevelInfo#vbucket_level_info.vbucket_info) of
+        true ->
+            undefined;
+        false ->
+            {BucketName, {[{vbucketLevelInfo,
+                            construct_vbucket_level_info_json(VBLevelInfo,
+                                                              Options)}]}}
+    end.
+
+construct_stat_info_json(#stat_info{start_time = false}) ->
+    {[{startTime, rebalance_stage_info:binarify_timestamp(false)}]};
+construct_stat_info_json(#stat_info{start_time = ST,
+                                    end_time = ET}) ->
+    {[{startTime, rebalance_stage_info:binarify_timestamp(ST)},
+      {endTime, rebalance_stage_info:binarify_timestamp(ET)},
+      {timeTaken, rebalance_stage_info:diff_timestamp(ET, ST)}]}.
+
+average(_, 0) ->
+    0;
+average(Total, Count) ->
+    Total/Count.
+
+construct_total_stat_info_json(#total_stat_info{total_time = TT,
+                                                completed_count = CC}) ->
+    {[{averageTime, average(TT, CC)}]}.
+
+construct_replica_building_stats_json(#replica_building_stats{node = Node,
+                                                              docs_total = DT,
+                                                              docs_left = DL}) ->
+    {Node, {[{node, Node},
+             {docsTotal, DT},
+             {docsLeft, DL}]}}.
+
+construct_vbucket_info_json(Id, #vbucket_info{before_chain = BC,
+                                              after_chain = AC,
+                                              stats = RBS,
+                                              move = Move}) ->
+    {[{id, Id},
+      {beforeChain, BC},
+      {afterChain, AC},
+      {stats, {[construct_replica_building_stats_json(X) || X <- RBS]}},
+      {move, construct_stat_info_json(Move)}]}.
+
+construct_vbucket_level_info_json(
+  #vbucket_level_info{move = Move,
+                      vbucket_info = AllVBInfo}, Options) ->
+    VBI = case proplists:get_bool(add_vbucket_info, Options) of
+              true ->
+                  [{vbucketInfo,
+                    dict:fold(fun (VB, Info, Acc) ->
+                                      [construct_vbucket_info_json(VB, Info) | Acc]
+                              end, [], AllVBInfo)}];
+              _ ->
+                  []
+          end,
+    {[{move, construct_total_stat_info_json(Move)}]
+     ++ VBI}.
+
+get_all_stage_rebalance_details(#state{bucket_info = BucketLevelInfo},
+                                Options) ->
+    RV = dict:fold(
+           fun (_Key, BLI, Acc) ->
+                   case construct_bucket_level_info_json(BLI, Options) of
+                       undefined -> Acc;
+                       Val -> [Val | Acc]
+                   end
+           end, [], BucketLevelInfo),
+    case RV of
+        [] -> [];
+        _ -> [{kv, {RV}}]
     end.
