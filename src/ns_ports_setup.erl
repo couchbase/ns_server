@@ -286,6 +286,17 @@ build_port_arg(ArgName, PortPrefix, PortName, Config) ->
 build_port_args(Args, Config) ->
     [build_port_arg(ArgName, PortName, Config) || {ArgName, PortName} <- Args].
 
+get_writable_ix_subdir(SubDir) ->
+    {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
+    Dir = filename:join(IdxDir, SubDir),
+    case misc:ensure_writable_dir(Dir) of
+        ok ->
+            ok;
+        _ ->
+            ?log_debug("Directory ~p is not writable", [Dir])
+    end,
+    Dir.
+
 -record(def, {id, exe, service, rpc, log, tls = false}).
 
 goport_defs() ->
@@ -421,15 +432,7 @@ goport_args(indexer, Config, _Cmd, NodeUUID) ->
 goport_args(fts, Config, _Cmd, NodeUUID) ->
     NsRestPort = service_ports:get_port(rest_port, Config),
     FtRestPort = service_ports:get_port(fts_http_port, Config),
-    {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
-    FTSIdxDir = filename:join(IdxDir, "@fts"),
-    case misc:ensure_writable_dir(FTSIdxDir) of
-        ok ->
-            ok;
-        _ ->
-            ?log_debug("Service fts's directory (~p) is not writable "
-                       "on node ~p", [FTSIdxDir, node()])
-    end,
+    FTSIdxDir = get_writable_ix_subdir("@fts"),
 
     {_, Host} = misc:node_name_host(node()),
     BindHttp = io_lib:format("~s:~b,~s:~b",
