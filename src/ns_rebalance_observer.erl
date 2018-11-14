@@ -53,7 +53,11 @@
 -record(vbucket_level_info, {move = #total_stat_info{},
                              vbucket_info = dict:new()}).
 
+-record(compaction_info, {per_node = [] :: [{node(), #total_stat_info{}}],
+                          in_progress = [] :: [{node(), #stat_info{}}]}).
+
 -record(bucket_level_info, {bucket_name,
+                            compaction_info = #compaction_info{},
                             vbucket_level_info = #vbucket_level_info{}}).
 
 -record(state, {bucket :: bucket_name() | undefined,
@@ -106,6 +110,10 @@ is_interesting_master_event({_, rebalance_stage_completed, _Stage}) ->
     fun handle_rebalance_stage_completed/2;
 is_interesting_master_event({_, rebalance_stage_event, _Stage, _Event}) ->
     fun handle_rebalance_stage_event/2;
+is_interesting_master_event({_, compaction_uninhibit_started, _BucketName, _}) ->
+    fun handle_compaction_uninhibit/2;
+is_interesting_master_event({_, compaction_uninhibit_done, _BucketName, _}) ->
+    fun handle_compaction_uninhibit/2;
 is_interesting_master_event(_) ->
     undefined.
 
@@ -363,6 +371,9 @@ handle_vbucket_move_done({TS, vbucket_move_done, BucketName, VBucket},
     {noreply, update_info(vbucket_move_done, State1,
                           {TS, BucketName, VBucket})}.
 
+handle_compaction_uninhibit({TS, Event, BucketName, Node}, State) ->
+    {noreply, update_info(Event, State, {TS, BucketName, Node})}.
+
 update_move(State, BucketName, VBucket, Fun) ->
     update_all_vb_info(State, BucketName,
                        dict:update(VBucket, Fun,
@@ -573,10 +584,60 @@ update_info(Event,
     NewBucketLevelInfo =
         dict:update(
           BucketName,
-          fun (BLI) ->
-                  update_vbucket_level_info(Event, BLI, UpdateArgs)
+          fun (BLI0) ->
+                  BLI1 = update_bucket_level_info(Event, BLI0, UpdateArgs),
+                  update_vbucket_level_info(Event, BLI1, UpdateArgs)
           end, OldBucketLevelInfo),
     State#state{bucket_info = NewBucketLevelInfo}.
+
+update_bucket_level_info(compaction_uninhibit_started,
+                         BucketLevelInfo,
+                         {TS, _Bucket, Node}) ->
+    Compaction = BucketLevelInfo#bucket_level_info.compaction_info,
+    InProgress = Compaction#compaction_info.in_progress,
+    case lists:keyfind(Node, 1, InProgress) of
+        false ->
+            NewInprogress = [{Node, #stat_info{start_time = TS}} | InProgress],
+            NewCompaction = Compaction#compaction_info{
+                              in_progress = NewInprogress},
+            BucketLevelInfo#bucket_level_info{compaction_info = NewCompaction};
+        _ ->
+            BucketLevelInfo
+    end;
+update_bucket_level_info(compaction_uninhibit_done,
+                         BucketLevelInfo,
+                         {TS, _Bucket, Node}) ->
+    Compaction = BucketLevelInfo#bucket_level_info.compaction_info,
+    InProgress = Compaction#compaction_info.in_progress,
+    case lists:keytake(Node, 1, InProgress) of
+        false ->
+            BucketLevelInfo;
+        {value, {Node, CompactionStat}, NewInprogress} ->
+            BucketLevelInfo#bucket_level_info{
+              compaction_info = update_on_compaction_end(
+                                  Compaction, Node,
+                                  CompactionStat#stat_info{end_time = TS},
+                                  NewInprogress)}
+    end;
+update_bucket_level_info(_, BLI, _) ->
+    BLI.
+
+update_on_compaction_end(#compaction_info{per_node = OldPerNode},
+                         Node,
+                         NewCompactionStat,
+                         NewInprogress) ->
+    NewPerNode = case lists:keytake(Node, 1, OldPerNode) of
+                     {value, {Node, TotalStat}, PerNode} ->
+                         NewTotalStat = update_total_stat(TotalStat,
+                                                          NewCompactionStat),
+                         [{Node, NewTotalStat} | PerNode];
+                    false ->
+                         NewTotalStat = update_total_stat(#total_stat_info{},
+                                                          NewCompactionStat),
+                         [{Node, NewTotalStat} | OldPerNode]
+                 end,
+    #compaction_info{per_node = NewPerNode,
+                     in_progress = NewInprogress}.
 
 get_all_vb_info(_, undefined) ->
     dict:new();
@@ -665,14 +726,27 @@ update_vbucket_level_info_inner(
 
 construct_bucket_level_info_json(
   #bucket_level_info{bucket_name = BucketName,
+                     compaction_info = CompactionInfo,
                      vbucket_level_info = VBLevelInfo}, Options) ->
-    case dict:is_empty(VBLevelInfo#vbucket_level_info.vbucket_info) of
-        true ->
-            undefined;
-        false ->
-            {BucketName, {[{vbucketLevelInfo,
-                            construct_vbucket_level_info_json(VBLevelInfo,
-                                                              Options)}]}}
+    case construct_compaction_info_json(CompactionInfo) ++
+         construct_vbucket_level_info_json(VBLevelInfo, Options) of
+        [] -> [];
+        BLI -> [{BucketName, {BLI}}]
+    end.
+
+construct_compaction_info_json(#compaction_info{per_node = PerNode,
+                                                in_progress = InProgress}) ->
+    InProgressElem = {inProgress,
+                      {[{Node, construct_stat_info_json(StatInfo)} ||
+                        {Node, StatInfo} <- InProgress]}},
+    PerNodeElem = {perNode,
+                   {[{Node, construct_total_stat_info_json(TotalStatInfo)} ||
+                   {Node, TotalStatInfo} <- PerNode]}},
+    case {PerNode, InProgress} of
+        {[], []} -> [];
+        {[], _} -> [{compactionInfo, {[InProgressElem]}}];
+        {_, []} -> [{compactionInfo, {[PerNodeElem]}}];
+        _ -> [{compactionInfo, {[InProgressElem, PerNodeElem]}}]
     end.
 
 construct_stat_info_json(#stat_info{start_time = false}) ->
@@ -709,7 +783,16 @@ construct_vbucket_info_json(Id, #vbucket_info{before_chain = BC,
       {stats, {[construct_replica_building_stats_json(X) || X <- RBS]}},
       {move, construct_stat_info_json(Move)}]}.
 
-construct_vbucket_level_info_json(
+construct_vbucket_level_info_json(VBLevelInfo, Options) ->
+    case dict:is_empty(VBLevelInfo#vbucket_level_info.vbucket_info) of
+        true ->
+            [];
+        false ->
+            [{vbucketLevelInfo,
+              construct_vbucket_level_info_json_inner(VBLevelInfo, Options)}]
+    end.
+
+construct_vbucket_level_info_json_inner(
   #vbucket_level_info{move = Move,
                       vbucket_info = AllVBInfo}, Options) ->
     VBI = case proplists:get_bool(add_vbucket_info, Options) of
@@ -728,10 +811,7 @@ get_all_stage_rebalance_details(#state{bucket_info = BucketLevelInfo},
                                 Options) ->
     RV = dict:fold(
            fun (_Key, BLI, Acc) ->
-                   case construct_bucket_level_info_json(BLI, Options) of
-                       undefined -> Acc;
-                       Val -> [Val | Acc]
-                   end
+                   construct_bucket_level_info_json(BLI, Options) ++ Acc
            end, [], BucketLevelInfo),
     case RV of
         [] -> [];
