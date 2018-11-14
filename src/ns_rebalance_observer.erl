@@ -45,12 +45,14 @@
 -record(vbucket_info, {before_chain :: [node()],
                        after_chain :: [node()],
                        stats :: [#replica_building_stats{}],
-                       move = #stat_info{}}).
+                       move = #stat_info{},
+                       backfill = #stat_info{}}).
 
 -record(total_stat_info, {total_time = 0,
                           completed_count = 0}).
 
 -record(vbucket_level_info, {move = #total_stat_info{},
+                             backfill = #total_stat_info{},
                              vbucket_info = dict:new()}).
 
 -record(compaction_info, {per_node = [] :: [{node(), #total_stat_info{}}],
@@ -114,6 +116,10 @@ is_interesting_master_event({_, compaction_uninhibit_started, _BucketName, _}) -
     fun handle_compaction_uninhibit/2;
 is_interesting_master_event({_, compaction_uninhibit_done, _BucketName, _}) ->
     fun handle_compaction_uninhibit/2;
+is_interesting_master_event({_, backfill_phase_started, _BucketName, _VBucketId}) ->
+    fun handle_generic_vb_stat_event/2;
+is_interesting_master_event({_, backfill_phase_ended, _BucketName, _VBucketId}) ->
+    fun handle_generic_vb_stat_event/2;
 is_interesting_master_event(_) ->
     undefined.
 
@@ -373,6 +379,9 @@ handle_vbucket_move_done({TS, vbucket_move_done, BucketName, VBucket},
 
 handle_compaction_uninhibit({TS, Event, BucketName, Node}, State) ->
     {noreply, update_info(Event, State, {TS, BucketName, Node})}.
+
+handle_generic_vb_stat_event({TS, Event, BucketName, VBucket}, State) ->
+    {noreply, update_info(Event, State, {TS, BucketName, VBucket})}.
 
 update_move(State, BucketName, VBucket, Fun) ->
     update_all_vb_info(State, BucketName,
@@ -679,7 +688,12 @@ find_event_action(Event) ->
                    {vbucket_move_start, undefined,
                     #vbucket_info.move, start_time},
                    {vbucket_move_done, #vbucket_level_info.move,
-                    #vbucket_info.move, end_time}
+                    #vbucket_info.move, end_time},
+
+                   {backfill_phase_started, undefined,
+                    #vbucket_info.backfill, start_time},
+                   {backfill_phase_ended, #vbucket_level_info.backfill,
+                    #vbucket_info.backfill, end_time}
                   ],
     lists:keyfind(Event, 1, EventAction).
 
@@ -776,12 +790,14 @@ construct_replica_building_stats_json(#replica_building_stats{node = Node,
 construct_vbucket_info_json(Id, #vbucket_info{before_chain = BC,
                                               after_chain = AC,
                                               stats = RBS,
-                                              move = Move}) ->
+                                              move = Move,
+                                              backfill = Backfill}) ->
     {[{id, Id},
       {beforeChain, BC},
       {afterChain, AC},
       {stats, {[construct_replica_building_stats_json(X) || X <- RBS]}},
-      {move, construct_stat_info_json(Move)}]}.
+      {move, construct_stat_info_json(Move)},
+      {backfill, construct_stat_info_json(Backfill)}]}.
 
 construct_vbucket_level_info_json(VBLevelInfo, Options) ->
     case dict:is_empty(VBLevelInfo#vbucket_level_info.vbucket_info) of
@@ -794,6 +810,7 @@ construct_vbucket_level_info_json(VBLevelInfo, Options) ->
 
 construct_vbucket_level_info_json_inner(
   #vbucket_level_info{move = Move,
+                      backfill = Backfill,
                       vbucket_info = AllVBInfo}, Options) ->
     VBI = case proplists:get_bool(add_vbucket_info, Options) of
               true ->
@@ -804,7 +821,8 @@ construct_vbucket_level_info_json_inner(
               _ ->
                   []
           end,
-    {[{move, construct_total_stat_info_json(Move)}]
+    {[{move, construct_total_stat_info_json(Move)},
+      {backfill, construct_total_stat_info_json(Backfill)}]
      ++ VBI}.
 
 get_all_stage_rebalance_details(#state{bucket_info = BucketLevelInfo},
