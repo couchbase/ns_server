@@ -47,13 +47,22 @@
                        stats :: [#replica_building_stats{}],
                        move = #stat_info{}}).
 
+-record(total_stat_info, {total_time = 0,
+                          completed_count = 0}).
+
+-record(vbucket_level_info, {move = #total_stat_info{},
+                             vbucket_info = dict:new()}).
+
+-record(bucket_level_info, {bucket_name,
+                            vbucket_level_info = #vbucket_level_info{}}).
+
 -record(state, {bucket :: bucket_name() | undefined,
                 buckets_count :: pos_integer(),
                 bucket_number :: non_neg_integer(),
                 stage_info :: rebalance_progress:stage_info(),
                 nodes_info :: [{atom(), [node()]}],
                 type :: atom(),
-                moves :: dict:dict()}).
+                bucket_info :: dict:dict()}).
 
 start_link(Stages, NodesInfo, Type) ->
     gen_server:start_link(?SERVER, ?MODULE, {Stages, NodesInfo, Type}, []).
@@ -136,7 +145,11 @@ init({Services, NodesInfo, Type}) ->
                              end, []),
 
     StageInfo = rebalance_stage_info:init(get_stage_nodes(Services, NodesInfo)),
-    BucketsCount = length(ns_bucket:get_bucket_names()),
+    Buckets = ns_bucket:get_bucket_names(),
+    BucketsCount = length(Buckets),
+    BucketLevelInfo = dict:from_list([{BN,
+                                       #bucket_level_info{bucket_name = BN}} ||
+                                      BN <- Buckets]),
     proc_lib:spawn_link(erlang, apply, [fun docs_left_updater_init/1, [Self]]),
 
     {ok, #state{bucket = undefined,
@@ -145,7 +158,7 @@ init({Services, NodesInfo, Type}) ->
                 stage_info = StageInfo,
                 nodes_info = NodesInfo,
                 type = Type,
-                moves = dict:new()}}.
+                bucket_info = BucketLevelInfo}}.
 
 handle_call(get, _From, State) ->
     {reply, State, State};
@@ -165,10 +178,10 @@ handle_cast({note, Fun, Ev}, State) ->
     {noreply, NewState} = Fun(Ev, State),
     {noreply, NewState};
 
-handle_cast({update_stats, VBucket, NodeToDocsLeft}, State) ->
+handle_cast({update_stats, BucketName, VBucket, NodeToDocsLeft}, State) ->
     ?log_debug("Got update_stats: ~p, ~p", [VBucket, NodeToDocsLeft]),
     {noreply, update_move(
-                State, VBucket,
+                State, BucketName, VBucket,
                 fun (Move) ->
                         NewStats =
                             [case lists:keyfind(Stat#replica_building_stats.node, 1, NodeToDocsLeft) of
@@ -301,8 +314,8 @@ initiate_bucket_rebalance(BucketName, OldState) ->
          end || {VB, [MasterNode|_] = ChainBefore, ChainAfter} <- Diff],
 
     ?log_debug("Moves:~n~p", [Moves]),
-    OldState#state{bucket = BucketName,
-                   moves = dict:from_list(Moves)}.
+    TmpState = update_all_vb_info(OldState, BucketName, dict:from_list(Moves)),
+    TmpState#state{bucket = BucketName}.
 
 handle_rebalance_stage_started({TS, rebalance_stage_started, Stage},
                                #state{stage_info = Old} = State) ->
@@ -329,16 +342,16 @@ handle_bucket_rebalance_started({_, bucket_rebalance_started, _BucketName, _Pid}
 handle_set_ff_map({_, set_ff_map, BucketName, _Diff}, State) ->
     {noreply, initiate_bucket_rebalance(BucketName, State)}.
 
-handle_vbucket_move_start({TS, vbucket_move_start, _Pid, _BucketName,
+handle_vbucket_move_start({TS, vbucket_move_start, _Pid, BucketName,
                            _Node, VBucketId, _, _},
                           State) ->
     ?log_debug("Noted vbucket move start (vbucket ~p)", [VBucketId]),
     {noreply, update_info(vbucket_move_start, State,
-                          {TS, VBucketId})}.
+                          {TS, BucketName, VBucketId})}.
 
-handle_vbucket_move_done({TS, vbucket_move_done, _BucketName, VBucket},
+handle_vbucket_move_done({TS, vbucket_move_done, BucketName, VBucket},
                          State) ->
-    State1 = update_move(State, VBucket,
+    State1 = update_move(State, BucketName, VBucket,
                          fun (#vbucket_info{stats=Stats} = Move) ->
                                  Stats1 = [S#replica_building_stats{docs_left=0} ||
                                               S <- Stats],
@@ -346,10 +359,12 @@ handle_vbucket_move_done({TS, vbucket_move_done, _BucketName, VBucket},
                          end),
     ?log_debug("Noted vbucket move end (vbucket ~p)", [VBucket]),
     {noreply, update_info(vbucket_move_done, State1,
-                          {TS, VBucket})}.
+                          {TS, BucketName, VBucket})}.
 
-update_move(State, VBucket, Fun) ->
-    update_all_vb_info(State, dict:update(VBucket, Fun, get_all_vb_info(State))).
+update_move(State, BucketName, VBucket, Fun) ->
+    update_all_vb_info(State, BucketName,
+                       dict:update(VBucket, Fun,
+                                   get_all_vb_info(State, BucketName))).
 
 handle_info(Msg, State) ->
     ?log_error("Got unexpected message: ~p", [Msg]),
@@ -368,7 +383,7 @@ docs_left_updater_init(Parent) ->
 docs_left_updater_loop(Parent) ->
     State = gen_server:call(Parent, get, infinity),
     BucketName = State#state.bucket,
-    Moves = dict:to_list(get_all_vb_info(State)),
+    Moves = dict:to_list(get_all_vb_info(State, BucketName)),
     case BucketName of
         undefined ->
             ok;
@@ -413,7 +428,8 @@ update_docs_left_for_move(Parent, BucketName, VBucket,
                 [] ->
                     ok;
                 _ ->
-                    gen_server:cast(Parent, {update_stats, VBucket, Stuff})
+                    gen_server:cast(Parent,
+                                    {update_stats, BucketName, VBucket, Stuff})
             end
     catch error:{janitor_agent_servant_died, _} ->
             ?log_debug("Apparently move of ~p is already done", [VBucket]),
@@ -437,7 +453,7 @@ do_get_detailed_progress(#state{bucket = undefined}) ->
 do_get_detailed_progress(#state{bucket = Bucket,
                                 buckets_count = BucketsCount,
                                 bucket_number = BucketNumber} = State) ->
-    AllMoves = get_all_vb_info(State),
+    AllMoves = get_all_vb_info(State, Bucket),
     {CurrentMoves, PendingMoves} =
         dict:fold(
           fun (_, #vbucket_info{move = MoveStat} = VBInfo, {CM, PM}) ->
@@ -549,19 +565,98 @@ moves_stats(Moves) ->
                 end, Acc, Stats)
       end, {dict:new(), dict:new()}, Moves).
 
-update_info(vbucket_move_done, State, {TS, VB}) ->
-    update_move(State, VB,
-                fun (#vbucket_info{move = Move} = VBInfo) ->
-                        VBInfo#vbucket_info{move = Move#stat_info{end_time = TS}}
-                end);
-update_info(vbucket_move_start, State, {TS, VB}) ->
-    update_move(State, VB,
-                fun (VBInfo) ->
-                        VBInfo#vbucket_info{move = #stat_info{start_time = TS}}
-                end).
+update_info(Event,
+            #state{bucket_info = OldBucketLevelInfo} = State,
+            {_TS, BucketName, _VB} = UpdateArgs) ->
+    NewBucketLevelInfo =
+        dict:update(
+          BucketName,
+          fun (BLI) ->
+                  update_vbucket_level_info(Event, BLI, UpdateArgs)
+          end, OldBucketLevelInfo),
+    State#state{bucket_info = NewBucketLevelInfo}.
 
-get_all_vb_info(#state{moves = Moves}) ->
-    Moves.
+get_all_vb_info(_, undefined) ->
+    dict:new();
+get_all_vb_info(#state{bucket_info = BucketInfo}, BucketName) ->
+    {ok, BucketLevelInfo} = dict:find(BucketName, BucketInfo),
+    get_all_vb_info(BucketLevelInfo).
 
-update_all_vb_info(State, NewMoves) ->
-    State#state{moves = NewMoves}.
+get_all_vb_info(BucketLevelInfo) ->
+    BucketLevelInfo#bucket_level_info.vbucket_level_info#vbucket_level_info.vbucket_info.
+
+update_all_vb_info(#state{bucket_info = OldBucketLevelInfo} = State, BucketName,
+                   NewAllVBInfo) ->
+    NewBucketLevelInfo = dict:update(BucketName,
+                                     ?cut(update_all_vb_info(_, NewAllVBInfo)),
+                                     OldBucketLevelInfo),
+    State#state{bucket_info = NewBucketLevelInfo}.
+
+update_all_vb_info(#bucket_level_info{
+                      vbucket_level_info = VBLevelInfo} = BucketLevelInfo,
+                   AllVBInfo) ->
+    NewVBLevelInfo = VBLevelInfo#vbucket_level_info{vbucket_info = AllVBInfo},
+    BucketLevelInfo#bucket_level_info{vbucket_level_info = NewVBLevelInfo}.
+
+update_vbucket_level_info(Event, BucketLevelInfo,
+                          {_TS, _BucketName, VB} = UpdateArgs) ->
+    AllVBInfo = get_all_vb_info(BucketLevelInfo),
+    case dict:find(VB, AllVBInfo) of
+        {ok, VBInfo} ->
+            NewVBInfo = update_vbucket_info(Event, VBInfo, UpdateArgs),
+            BLI = update_vbucket_level_info_inner(Event, BucketLevelInfo, NewVBInfo),
+            update_all_vb_info(BLI, dict:store(VB, NewVBInfo, AllVBInfo));
+        _ ->
+            BucketLevelInfo
+    end.
+
+find_event_action(Event) ->
+    %% {Event, TotalElement, StatElement, stat_op}
+    EventAction = [
+                   {vbucket_move_start, undefined,
+                    #vbucket_info.move, start_time},
+                   {vbucket_move_done, #vbucket_level_info.move,
+                    #vbucket_info.move, end_time}
+                  ],
+    lists:keyfind(Event, 1, EventAction).
+
+update_stat(start_time, _, TS) ->
+    #stat_info{start_time = TS};
+update_stat(end_time, Stat, TS) ->
+    Stat#stat_info{end_time = TS}.
+
+update_vbucket_info(Event, VBInfo, {TS, _Bucket, _VB}) ->
+    case find_event_action(Event) of
+        false ->
+            VBInfo;
+        {Event, _TotalElement, StatElement, StatOp} ->
+            misc:update_field(StatElement, VBInfo,
+                              ?cut(update_stat(StatOp, _, TS)))
+    end.
+
+update_total_stat(TotalStat, #stat_info{end_time = false}) ->
+    TotalStat;
+update_total_stat(#total_stat_info{total_time = TT, completed_count = C},
+                  #stat_info{start_time = ST, end_time = ET}) ->
+    NewTime = rebalance_stage_info:diff_timestamp(ET, ST),
+    #total_stat_info{total_time = TT + NewTime,
+                     completed_count = C + 1}.
+
+update_vbucket_level_info_inner(
+  Event,
+  #bucket_level_info{vbucket_level_info = VBLevelInfo} = BucketLevelInfo,
+  NewVBInfo) ->
+    case find_event_action(Event) of
+        false ->
+            BucketLevelInfo;
+        {_, undefined, _, _} ->
+            BucketLevelInfo;
+        {Event, TotalElement, StatElement, _StatOp} ->
+            Stat = erlang:element(StatElement, NewVBInfo),
+            TotalInfo = erlang:element(TotalElement, VBLevelInfo),
+            NewTotalInfo = update_total_stat(TotalInfo, Stat),
+            NewVBLevelInfo = erlang:setelement(TotalElement, VBLevelInfo,
+                                               NewTotalInfo),
+            BucketLevelInfo#bucket_level_info{
+              vbucket_level_info = NewVBLevelInfo}
+    end.
