@@ -37,8 +37,7 @@ start_link() ->
     misc:start_singleton(work_queue, start_link, [?SERVER]).
 
 enabled() ->
-    cluster_compat_mode:is_enabled(?VERSION_MADHATTER) andalso
-        os:getenv("ENABLE_COLLECTIONS") =/= false.
+    cluster_compat_mode:is_enabled(?VERSION_MADHATTER).
 
 default_manifest() ->
     [{uid, 0},
