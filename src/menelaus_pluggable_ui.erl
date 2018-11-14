@@ -61,7 +61,7 @@ view_plugin() ->
     ViewPortName = port_name_by_service_name(views),
     Prefixes = [{"couchBase", #prefix_props{port_name = ViewPortName}}],
     #plugin{name = views,
-            proxy_strategy = local,
+            proxy_strategy = sticky,
             rest_api_prefixes = dict:from_list(Prefixes),
             doc_roots = [],
             request_headers_filter = {keep, ["accept",
