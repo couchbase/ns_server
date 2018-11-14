@@ -35,21 +35,8 @@ mn.services.MnWizard = (function (Rx) {
     newClusterConfig: new ng.forms.FormGroup({
       clusterStorage: clusterStorage,
       services: new ng.forms.FormGroup({
-        flag: new ng.forms.FormGroup({
-          kv: new ng.forms.FormControl({value: true, disabled: true}),
-          index: new ng.forms.FormControl(true),
-          fts: new ng.forms.FormControl(true),
-          n1ql: new ng.forms.FormControl(true),
-          eventing: new ng.forms.FormControl(true),
-          cbas: new ng.forms.FormControl(true)
-        }),
-        field: new ng.forms.FormGroup({
-          kv: new ng.forms.FormControl(null),
-          index: new ng.forms.FormControl(null),
-          fts: new ng.forms.FormControl(null),
-          cbas: new ng.forms.FormControl(null),
-          eventing: new ng.forms.FormControl(null)
-        })
+        // flag
+        // field
       }),
       storageMode: new ng.forms.FormControl(null),
       enableStats: new ng.forms.FormControl(true)
@@ -70,14 +57,7 @@ mn.services.MnWizard = (function (Rx) {
         ])
       }),
       services: new ng.forms.FormGroup({
-        flag: new ng.forms.FormGroup({
-          kv: new ng.forms.FormControl(true),
-          index: new ng.forms.FormControl(true),
-          fts: new ng.forms.FormControl(true),
-          n1ql: new ng.forms.FormControl(true),
-          eventing: new ng.forms.FormControl(true),
-          cbas: new ng.forms.FormControl(true)
-        })
+        // flag
       }),
       clusterStorage: clusterStorage
     })
@@ -90,7 +70,8 @@ mn.services.MnWizard = (function (Rx) {
   MnWizardService.parameters = [
     ng.common.http.HttpClient,
     mn.services.MnAdmin,
-    mn.services.MnHelper
+    mn.services.MnHelper,
+    mn.services.MnPools
   ];
 
 
@@ -115,10 +96,9 @@ mn.services.MnWizard = (function (Rx) {
 
   return MnWizardService;
 
-  function MnWizardService(http, mnAdminService, mnHelperService) {
+  function MnWizardService(http, mnAdminService, mnHelperService, mnPoolsService) {
     this.http = http;
     this.wizardForm = wizardForm;
-    this.allServices = mnHelperService.services;
     this.IEC = mnHelperService.IEC;
 
     this.stream = {};
@@ -200,7 +180,8 @@ mn.services.MnWizard = (function (Rx) {
 
     this.stream.memoryQuotasFirst =
       this.stream.getSelfConfigFirst
-      .pipe(Rx.operators.map(mnHelperService.pluckMemoryQuotas.bind(mnHelperService)));
+      .pipe(Rx.operators.withLatestFrom(mnPoolsService.stream.quotaServices),
+            Rx.operators.map(mnHelperService.pluckMemoryQuotas.bind(mnHelperService)));
 
     this.stream.getIndexes =
       (new Rx.BehaviorSubject()).pipe(
@@ -247,14 +228,18 @@ mn.services.MnWizard = (function (Rx) {
   }
 
   function getServicesValues(servicesGroup) {
-    return this.allServices.reduce(
-      function (result, serviceName) {
-        var service = servicesGroup.get(serviceName);
-        if (service && service.value) {
-          result.push(serviceName);
-        }
-        return result;
-      }, []);
+    return Object
+      .keys(servicesGroup.controls)
+      .filter(function (serviceName) {
+        return Boolean(servicesGroup.get(serviceName).value);
+      });
+    //   reduce(function (result, serviceName) {
+    //   var service = servicesGroup.get(serviceName);
+    //   if (service && service.value) {
+    //     result.push(serviceName);
+    //   }
+    //   return result;
+    // }, []);
   }
 
   function getUserCreds() {

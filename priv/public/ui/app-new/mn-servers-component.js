@@ -40,6 +40,7 @@ mn.components.MnServers =
         searchTerm: new ng.forms.FormControl("")
       });
 
+      this.onAddServer = new Rx.Subject();
       this.onSortByClick = new Rx.BehaviorSubject("hostname");
       this.tasksRead = mnPermissionsService.createPermissionStream("tasks!read");
       this.poolsWrite = mnPermissionsService.createPermissionStream("pools!write");
@@ -83,25 +84,30 @@ mn.components.MnServers =
         .errorMessage();
 
       this.stopRebalance = mnFormService.create(this)
-        .setPostRequest(mnServersService.stream.stopRebalance)
+        .setPostRequest(mnServersService.stream.stopRebalance);
 
       mnServersService.stream.stopRebalance.error
         .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
         .subscribe(function (resp) {
-          if (resp.status === 504) {
+          if (resp && resp.status === 504) {
             modalService
               .open(mn.components.MnServersStopRebalanceDialog)
               .result
-              .then(function () {
+              .then(function (a) {
                 this.stopRebalance.submit.next(true);
-              }.bind(this));
+              }.bind(this), function () {});
           }
         }.bind(this));
-
 
       mnServersService.stream.updateEjectedNodes
         .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
         .subscribe(mnServersService.stream.ejectedNodesByUI);
+
+      this.onAddServer
+        .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
+        .subscribe(function () {
+          modalService.open(mn.components.MnServersAddDialog);
+        });
 
     }
   })(window.rxjs);

@@ -20,11 +20,11 @@ mn.modules.MnWizard =
       var newClusterConfig = mnWizardService.wizardForm.newClusterConfig;
       var joinCluster = mnWizardService.wizardForm.joinCluster;
 
-      mnAdminService.stream.implementationVersion.pipe(
-        Rx.operators.first()
-      ).subscribe(function (implementationVersion) {
-        mnWizardService.initialValues.implementationVersion = implementationVersion;
-      });
+      mnAdminService.stream.implementationVersion
+        .pipe(Rx.operators.first())
+        .subscribe(function (implementationVersion) {
+          mnWizardService.initialValues.implementationVersion = implementationVersion;
+        });
 
       mnWizardService.stream.getSelfConfigFirst
         .subscribe(function (selfConfig) {
@@ -34,35 +34,50 @@ mn.modules.MnWizard =
           mnWizardService.initialValues.hostname = hostname;
         });
 
+      function servicesToGroup(services, value) {
+        return new ng.forms.FormGroup(services
+                                      .reduce(function (acc, name) {
+                                        acc[name] = new ng.forms.FormControl(value);
+                                        return acc;
+                                      }, {}));
+      }
+
+      mnPoolsService.stream.mnServices
+        .pipe(Rx.operators.first())
+        .subscribe(function (services) {
+          newClusterConfig.get("services").addControl("flag", servicesToGroup(services, true));
+          joinCluster.get("services").addControl("flag", servicesToGroup(services, true));
+          newClusterConfig.get("services.flag.kv").disable({onlySelf: true});
+        });
+
+      mnPoolsService.stream.quotaServices
+        .pipe(Rx.operators.first())
+        .subscribe(function (services) {
+          newClusterConfig.get("services").addControl("field", servicesToGroup(services, null));
+        });
+
       mnPoolsService.stream.isEnterprise
+        .pipe(Rx.operators.first())
         .subscribe(function (isEnterprise) {
           var storageMode = isEnterprise ? "plasma" : "forestdb";
           newClusterConfig.get("storageMode").setValue(storageMode);
 
           if (!isEnterprise) {
-            (["cbas", "eventing"]).forEach(function (service) {
-              newClusterConfig.get("services.flag." + service).setValue(false);
-              newClusterConfig.get("services.flag." + service).disable({onlySelf: true});
-              newClusterConfig.get("services.field." + service).setValue(null);
-              newClusterConfig.get("services.field." + service).disable({onlySelf: true});
-              joinCluster.get("services.flag." + service).setValue(false);
-              joinCluster.get("services.flag." + service).disable({onlySelf: true});
-              joinCluster.get("clusterStorage.storage.cbas_path").disable({onlySelf: true});
-              newClusterConfig.get("clusterStorage.storage.cbas_path").disable({onlySelf: true});
-            });
+            joinCluster.get("clusterStorage.storage.cbas_path").disable({onlySelf: true});
+            newClusterConfig.get("clusterStorage.storage.cbas_path").disable({onlySelf: true});
           }
 
           mnWizardService.initialValues.storageMode = storageMode;
         });
 
-      mnWizardService.stream.initHddStorage.pipe(
-        Rx.operators.first()
-      ).subscribe(function (initHdd) {
-        newClusterConfig.get("clusterStorage.storage").patchValue(initHdd);
-        joinCluster.get("clusterStorage.storage").patchValue(initHdd);
+      mnWizardService.stream.initHddStorage
+        .pipe(Rx.operators.first())
+        .subscribe(function (initHdd) {
+          newClusterConfig.get("clusterStorage.storage").patchValue(initHdd);
+          joinCluster.get("clusterStorage.storage").patchValue(initHdd);
 
-        mnWizardService.initialValues.clusterStorage = initHdd;
-      });
+          mnWizardService.initialValues.clusterStorage = initHdd;
+        });
     }
 
     MnWizardModule.annotations = [

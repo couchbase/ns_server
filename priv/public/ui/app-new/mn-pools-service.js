@@ -30,7 +30,8 @@ mn.services.MnPools = (function (Rx) {
       );
 
     this.stream.isEnterprise =
-      this.stream.getSuccess.pipe(Rx.operators.pluck("isEnterprise"));
+      this.stream.getSuccess.pipe(Rx.operators.pluck("isEnterprise"),
+                                  Rx.operators.distinctUntilChanged());
 
     this.stream.implementationVersion =
       this.stream.getSuccess.pipe(Rx.operators.pluck("implementationVersion"));
@@ -42,6 +43,22 @@ mn.services.MnPools = (function (Rx) {
           return rv[0].split('.').splice(0,2).join('.');
         })
       );
+
+    this.stream.mnServices =
+      this.stream.isEnterprise
+      .pipe(Rx.operators.map(function (isEnterprise) {
+        return isEnterprise ?
+          ["kv", "index", "fts", "n1ql", "eventing", "cbas"] :
+          ["kv", "index", "fts", "n1ql"];
+      }), mn.core.rxOperatorsShareReplay(1));
+
+    this.stream.quotaServices =
+      this.stream.isEnterprise
+      .pipe(Rx.operators.map(function (isEnterprise) {
+        return isEnterprise ?
+          ["kv", "index", "fts", "eventing", "cbas"] :
+          ["kv", "index", "fts"];
+      }), mn.core.rxOperatorsShareReplay(1));
   }
 
   function get(mnHttpParams) {

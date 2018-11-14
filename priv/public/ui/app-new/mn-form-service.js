@@ -27,6 +27,7 @@ mn.services.MnForm = (function (Rx) {
   Form.prototype.getFormValue = getFormValue;
   Form.prototype.success = success;
   Form.prototype.error = error;
+  Form.prototype.hasNoHandler = hasNoHandler;
 
   return MnForm;
 
@@ -108,6 +109,13 @@ mn.services.MnForm = (function (Rx) {
       .subscribe(function (v) {
         this.postRequest.post(v);
       }.bind(this));
+    return this;
+  }
+
+  function hasNoHandler() {
+    this.postRequest.success
+      .pipe(Rx.operators.takeUntil(this.component.mnOnDestroy))
+      .subscribe();
     return this;
   }
 

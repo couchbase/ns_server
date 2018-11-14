@@ -62,8 +62,9 @@ mn.components.MnServersItemDetails =
                                                               R.lt(-1))));
       this.isLastActiveKVNode =
         Rx.combineLatest(
-          mnServersService.stream.kvActiveNodesWithoutEjected
-            .pipe(Rx.operators.map(R.pipe(R.prop("length"), R.equals(1)))),
+          mnServersService.stream.serviceSpecificActiveNodesWithoutEjected
+            .pipe(Rx.operators.switchMap(R.prop("kv")),
+                  Rx.operators.map(R.pipe(R.prop("length"), R.equals(1)))),
           this.isKVNode
         ).pipe(Rx.operators.map(R.all(R.equals(true))));
 

@@ -46,44 +46,42 @@ mn.components.MnJoinCluster =
         .addLoading()
         .addSuccess();
 
-      Rx.merge(
-        this.groupHttp.loading,
-        this.joinClusterHttp.loading
-      ).pipe(
-        Rx.operators.takeUntil(this.mnOnDestroy)
-      ).subscribe(this.mnAppLoding.next.bind(this.mnAppLoding));
+      Rx
+        .merge(this.groupHttp.loading, this.joinClusterHttp.loading)
+        .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
+        .subscribe(this.mnAppLoding.next.bind(this.mnAppLoding));
 
-      this.groupHttp.success.pipe(
-        Rx.operators.takeUntil(this.mnOnDestroy)
-      ).subscribe((function () {
-        var data = mnWizardService.wizardForm.joinCluster.get("clusterAdmin").value;
-        data.services =
-          mnWizardService.getServicesValues(
-            mnWizardService.wizardForm.joinCluster.get("services.flag")).join(",");
+      this.groupHttp.success
+        .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
+        .subscribe((function () {
+          var data = mnWizardService.wizardForm.joinCluster.get("clusterAdmin").value;
+          data.services =
+            mnWizardService.getServicesValues(
+              mnWizardService.wizardForm.joinCluster.get("services.flag")).join(",");
 
-        mnWizardService.stream.joinClusterHttp.post(data);
-      }).bind(this));
+          mnWizardService.stream.joinClusterHttp.post(data);
+        }).bind(this));
 
-      this.joinClusterHttp.success.pipe(
-        Rx.operators.takeUntil(this.mnOnDestroy)
-      ).subscribe(function () {
-        var data = mnWizardService.wizardForm.joinCluster.get("clusterAdmin").value;
-        mnAuthService.stream.postUILogin.post(data);
-      });
+      this.joinClusterHttp.success
+        .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
+        .subscribe(function () {
+          var data = mnWizardService.wizardForm.joinCluster.get("clusterAdmin").value;
+          mnAuthService.stream.postUILogin.post(data);
+        });
 
-      mnAuthService.stream.postUILogin.success.pipe(
-        Rx.operators.takeUntil(this.mnOnDestroy)
-      ).subscribe(function () {
-        uiRouter.urlRouter.sync();
-      });
+      mnAuthService.stream.postUILogin.success
+        .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
+        .subscribe(function () {
+          uiRouter.urlRouter.sync();
+        });
 
-      this.onSubmit.pipe(
-        Rx.operators.tap(this.groupHttp.clearErrors.bind(this.groupHttp)),
-        Rx.operators.filter(isValid.bind(this)),
-        Rx.operators.filter(isNotLoading.bind(this)),
-        Rx.operators.map(getValues.bind(this)),
-        Rx.operators.takeUntil(this.mnOnDestroy)
-      ).subscribe(this.groupHttp.post.bind(this.groupHttp));
+      this.onSubmit
+        .pipe(Rx.operators.tap(this.groupHttp.clearErrors.bind(this.groupHttp)),
+              Rx.operators.filter(isValid.bind(this)),
+              Rx.operators.filter(isNotLoading.bind(this)),
+              Rx.operators.map(getValues.bind(this)),
+              Rx.operators.takeUntil(this.mnOnDestroy))
+        .subscribe(this.groupHttp.post.bind(this.groupHttp));
 
       function isNotLoading() {
         return !this.mnAppLoding.getValue();

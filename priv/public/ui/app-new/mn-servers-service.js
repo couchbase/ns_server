@@ -10,7 +10,8 @@ mn.services.MnServers = (function (Rx) {
   MnServersService.parameters = [
     mn.services.MnAdmin,
     ng.common.http.HttpClient,
-    mn.services.MnHelper
+    mn.services.MnHelper,
+    mn.services.MnPools
   ];
 
   MnServersService.prototype.isStillEjected = isStillEjected;
@@ -19,10 +20,12 @@ mn.services.MnServers = (function (Rx) {
   MnServersService.prototype.removePendingEject = removePendingEject;
   MnServersService.prototype.postRebalance = postRebalance;
   MnServersService.prototype.stopRebalance = stopRebalance;
+  MnServersService.prototype.addNode = addNode;
+  MnServersService.prototype.ejectNode = ejectNode;
 
   return MnServersService;
 
-  function MnServersService(mnAdminService, http, mnHelperService) {
+  function MnServersService(mnAdminService, http, mnHelperService, mnPoolsService) {
     this.http = http;
     this.stream = {};
     this.stream.ejectedNodesByUI = new Rx.BehaviorSubject({});
@@ -32,6 +35,12 @@ mn.services.MnServers = (function (Rx) {
 
     this.stream.stopRebalance =
       new mn.core.MnPostHttp(this.stopRebalance.bind(this)).addSuccess().addError();
+
+    this.stream.addNode =
+      new mn.core.MnPostHttp(this.addNode.bind(this)).addSuccess().addError();
+
+    this.stream.ejectNode =
+      new mn.core.MnPostHttp(this.ejectNode.bind(this)).addSuccess().addError();
 
     var getPoolsDefault = mnAdminService.stream.getPoolsDefault;
     this.stream.nodes = getPoolsDefault.pipe(Rx.operators.pluck("nodes"));
@@ -71,20 +80,29 @@ mn.services.MnServers = (function (Rx) {
                                                            R.test(/:8091$/)))),
                              mn.core.rxOperatorsShareReplay(1));
 
-    mnHelperService.services.forEach(function (service) {
-      this.stream[service + "ActiveNodes"] =
-        this.stream.activeNodes.pipe(
-          Rx.operators.map(R.filter(R.pipe(R.prop("services"), R.contains(service)))),
-          mn.core.rxOperatorsShareReplay(1));
-    }.bind(this));
+    this.stream.serviceSpecificActiveNodes =
+      mnPoolsService.stream.mnServices
+      .pipe(Rx.operators.map(function (services) {
+        return services.reduce(function (acc, service) {
+          acc[service] = this.stream.activeNodes.pipe(
+            Rx.operators.map(R.filter(R.pipe(R.prop("services"), R.contains(service)))),
+            mn.core.rxOperatorsShareReplay(1));
+          return acc;
+        }.bind(this), {});
+      }.bind(this)));
 
-    mnHelperService.services.forEach(function (service) {
-      this.stream[service + "ActiveNodesWithoutEjected"] =
-        Rx.combineLatest(
-          this.stream[service + "ActiveNodes"],
-          this.stream.ejectedNodesByUI
-        ).pipe(filterEjectedNodes);
-    }.bind(this));
+    this.stream.serviceSpecificActiveNodesWithoutEjected =
+      mnPoolsService.stream.mnServices
+      .pipe(Rx.operators.map(function (services) {
+        return services.reduce(function (acc, service) {
+          acc[service] = Rx.combineLatest(
+            this.stream.serviceSpecificActiveNodes
+              .pipe(Rx.operators.switchMap(R.prop(service))),
+            this.stream.ejectedNodesByUI
+          ).pipe(filterEjectedNodes);
+          return acc;
+        }.bind(this), {});
+      }.bind(this)));
 
     this.stream.isUnhealthyActiveNodesWithoutEjected =
       this.stream.activeNodesWithoutEjected
@@ -110,6 +128,14 @@ mn.services.MnServers = (function (Rx) {
       }
       return acc;
     }, {});
+  }
+
+  function addNode(source) {
+    return this.http.post(source[0], source[1]);
+  }
+
+  function ejectNode(node) {
+    return this.http.post('/controller/ejectNode', {otpNode: node.otpNode});
   }
 
   function postRebalance(source) {

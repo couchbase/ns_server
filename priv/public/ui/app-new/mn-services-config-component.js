@@ -41,8 +41,8 @@ mn.components.MnServicesConfig =
       mn.core.MnEventableComponent.call(this);
       this.postPoolsDefault = mnAdminService.stream.postPoolsDefault;
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
-      this.quotaServices = mnHelperService.quotaServices;
-      this.allServices = mnHelperService.services;
+      this.quotaServices = mnPoolsService.stream.quotaServices;
+      this.mnServices = mnPoolsService.stream.mnServices;
       this.getServiceName = mnHelperService.getServiceVisibleName;
       this.getServiceErrorName = mnHelperService.getServiceQuotaName;
     }
@@ -53,21 +53,29 @@ mn.components.MnServicesConfig =
       if (!this.isWithField) {
         return;
       }
-      this.focusFieldSubject = new Rx.BehaviorSubject(
-        this.quotaServices.find(this.selectInitialFocus.bind(this))
-      );
+      this.focusFieldSubject =
+        this.quotaServices.pipe(Rx.operators.map(function (quotaServices) {
+          return quotaServices.find(this.selectInitialFocus.bind(this))
+        }.bind(this)))
+
       if (this.isWithFlag && this.isWithField) {
         this.total = Rx
           .merge(this.group.valueChanges, this.initDataStream)
-          .pipe(Rx.operators.map(this.calculateTotal.bind(this))
+          .pipe(Rx.operators.withLatestFrom(this.quotaServices),
+                Rx.operators.map(this.calculateTotal.bind(this))
         );
       }
       if (this.isWithFlag) {
-        this.quotaServices.forEach(this.createToggleFieldStream.bind(this))
+        this.quotaServices
+          .pipe(Rx.operators.first())
+          .subscribe(function (services) {
+            services.forEach(this.createToggleFieldStream.bind(this))
+          }.bind(this));
       }
 
       this.group.valueChanges
         .pipe(Rx.operators.throttleTime(500, undefined, {leading: true, trailing: true}),
+              Rx.operators.withLatestFrom(this.quotaServices),
               Rx.operators.takeUntil(this.mnOnDestroy))
         .subscribe(this.validate.bind(this));
 
@@ -81,13 +89,13 @@ mn.components.MnServicesConfig =
       return this.group.value.field[service];
     }
 
-    function calculateTotal() {
-      return this.quotaServices.reduce(this.getQuota.bind(this), 0);
+    function calculateTotal(source) {
+      return source[1].reduce(this.getQuota.bind(this), 0);
     }
 
-    function validate() {
+    function validate(source) {
       this.postPoolsDefault.post([
-        this.quotaServices.reduce(this.packQuotas.bind(this), {}), true]);
+        source[1].reduce(this.packQuotas.bind(this), {}), true]);
     }
 
     function packQuotas(acc, name) {

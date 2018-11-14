@@ -66,8 +66,8 @@
 
     <a
       [hidden]="(isRebalancing | async) || !(poolsWrite | async)"
-      class="resp-hide-sml">
-      <!-- (click)="addServer" -->
+      class="resp-hide-sml"
+      (click)="onAddServer.next()">
       ADD SERVER
     </a>
   </div>

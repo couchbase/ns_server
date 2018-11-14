@@ -14,10 +14,10 @@ mn.components.MnAutoCompaction =
     ];
 
     MnAutoCompaction.parameters = [
-      mn.services.MnHelper,
       mn.services.MnSettings,
       mn.services.MnPermissions,
-      mn.services.MnAlerts
+      mn.services.MnAlerts,
+      mn.services.MnHelper
     ];
 
     MnAutoCompaction.prototype.setInitFormValue = setInitFormValue;
@@ -26,7 +26,7 @@ mn.components.MnAutoCompaction =
 
     return MnAutoCompaction;
 
-    function MnAutoCompaction(mnHelperService, mnSettingsService, mnPermissionsService, mnAlertsService) {
+    function MnAutoCompaction(mnSettingsService, mnPermissionsService, mnAlertsService, mnHelperService) {
       mn.core.MnEventableComponent.call(this);
 
       this.onSubmit = new Rx.Subject();

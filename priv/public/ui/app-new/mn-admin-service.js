@@ -21,7 +21,8 @@ mn.services.MnAdmin = (function (Rx) {
     mn.services.MnHelper,
     window['@uirouter/angular'].UIRouter,
     ng.common.http.HttpClient,
-    mn.pipes.MnPrettyVersion
+    mn.pipes.MnPrettyVersion,
+    mn.services.MnPools
   ];
 
   MnAdminService.prototype.getVersion = getVersion;
@@ -31,7 +32,7 @@ mn.services.MnAdmin = (function (Rx) {
 
   return MnAdminService;
 
-  function MnAdminService(mnHelperService, uiRouter, http, mnPrettyVersionPipe) {
+  function MnAdminService(mnHelperService, uiRouter, http, mnPrettyVersionPipe, mnPoolsService) {
     this.stream = {};
     this.http = http;
     this.stream.etag = new Rx.BehaviorSubject();
@@ -92,6 +93,7 @@ mn.services.MnAdmin = (function (Rx) {
                                        Rx.operators.map(R.find(R.propEq('thisNode', true))));
     this.stream.memoryQuotas =
       this.stream.getPoolsDefault.pipe(
+        Rx.operators.withLatestFrom(mnPoolsService.stream.quotaServices),
         Rx.operators.map(mnHelperService.pluckMemoryQuotas.bind(mnHelperService)));
 
     this.stream.clusterName =

@@ -118,8 +118,8 @@
                 !(isNodeInactiveAdded | async) ||
                 !(isNodeRecoveryNone | async)"
       class="outline"
-      [disabled]="(isRecoveryMode | async)">
-      <!-- ng-click="$event.stopPropagation(); serversItemCtl.ejectServer(node)"> -->
+      [disabled]="(isRecoveryMode | async)"
+      (click)="$event.stopPropagation(); ejectNode.submit.next(node)">
       Cancel Add
     </button>
   </div>

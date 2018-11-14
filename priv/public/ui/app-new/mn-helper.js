@@ -65,8 +65,6 @@ mn.services.MnHelper = (function (Rx) {
 
   function MnHelper() {
     this.daysOfWeek = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-    this.quotaServices = ["kv", "index", "fts", "eventing", "cbas"];
-    this.services = ["kv", "index", "fts", "n1ql", "eventing", "cbas"];
     this.IEC = {Ki: 1024, Mi: 1024 * 1024, Gi: 1024 * 1024 * 1024};
   }
 
@@ -84,8 +82,8 @@ mn.services.MnHelper = (function (Rx) {
   }
 
   function pluckMemoryQuotas(source) {
-    return this.quotaServices.reduce(function (acc, service) {
-      acc[service] = source[this.getServiceQuotaName(service)];
+    return source[1].reduce(function (acc, service) {
+      acc[service] = source[0][this.getServiceQuotaName(service)];
       return acc;
     }.bind(this), {});
   }

@@ -25,12 +25,13 @@ mn.components.MnServersItem =
       mn.services.MnHelper,
       ng.common.DecimalPipe,
       mn.pipes.MnFormatQuantity,
-      mn.services.MnTasks
+      mn.services.MnTasks,
+      mn.services.MnForm
     ];
 
     return MnServersItem;
 
-    function MnServersItem(mnPermissionsService, uiRouter, mnAdminService, mnServersService, mnHelperService, ngDecimalPipe, mnFormatQuantityPipe, mnTasksService) {
+    function MnServersItem(mnPermissionsService, uiRouter, mnAdminService, mnServersService, mnHelperService, ngDecimalPipe, mnFormatQuantityPipe, mnTasksService, mnFormService) {
       mn.core.MnEventableComponent.call(this);
 
       this.doCancelEjectNode = new Rx.Subject();
@@ -115,6 +116,10 @@ mn.components.MnServersItem =
       this.doCancelEjectNode
         .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
         .subscribe(mnServersService.removePendingEject.bind(mnServersService));
+
+      this.ejectNode = mnFormService.create(this)
+        .setPostRequest(mnServersService.stream.ejectNode)
+        .hasNoHandler();
 
       this.detailsHashObserver =
         new mn.core.DetailsHashObserver(

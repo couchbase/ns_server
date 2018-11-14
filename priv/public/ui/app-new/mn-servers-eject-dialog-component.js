@@ -20,28 +20,40 @@ mn.components.MnServersEjectDialog =
     MnServersEjectDialog.parameters = [
       ngb.NgbActiveModal,
       mn.services.MnServers,
-      mn.services.MnHelper,
       mn.services.MnPools,
       mn.services.MnGSI,
       mn.services.MnPermissions
     ];
 
     MnServersEjectDialog.prototype.ngOnInit = ngOnInit;
+    MnServersEjectDialog.prototype.readFromStream = readFromStream;
 
     return MnServersEjectDialog;
+
+    function readFromStream(service) {
+      return this.isLastService.pipe(Rx.operators.switchMap(R.prop(service)));
+    }
 
     function ngOnInit() {
       this.doEjectNode = new Rx.Subject();
 
-      this.mnHelperService.services.forEach(function (service) {
-        this[service + "IsLast"] =
-          Rx.combineLatest(
-            this.mnServersService.stream[service + "ActiveNodesWithoutEjected"]
-              .pipe(Rx.operators.map(R.pipe(R.prop("length"), R.equals(1)))),
-            this.nodeStream
-              .pipe(Rx.operators.map(R.pipe(R.prop("services"), R.indexOf(service), R.lt(-1))))
-          ).pipe(Rx.operators.map(R.all(R.equals(true))));
-      }.bind(this));
+      this.isLastService =
+        this.mnServices.pipe(Rx.operators.map(function (services) {
+          return services.reduce(function (acc, service) {
+            acc[service] =
+              Rx.combineLatest(
+                this.mnServersService.stream.serviceSpecificActiveNodesWithoutEjected
+                  .pipe(Rx.operators.switchMap(R.prop(service)),
+                        Rx.operators.map(R.pipe(R.prop("length"),
+                                                R.equals(1)))),
+                this.nodeStream
+                  .pipe(Rx.operators.map(R.pipe(R.prop("services"),
+                                                R.indexOf(service),
+                                                R.lt(-1))))
+              ).pipe(Rx.operators.map(R.all(R.equals(true))));
+            return acc;
+          }.bind(this), {});
+        }.bind(this)));
 
       this.isKVNode =
         this.nodeStream.pipe(Rx.operators.map(R.pipe(R.prop("services"),
@@ -64,12 +76,12 @@ mn.components.MnServersEjectDialog =
                                  }))
     }
 
-    function MnServersEjectDialog(activeModal, mnServersService, mnHelperService, mnPoolsService, mnGSIService, mnPermissionsService) {
+    function MnServersEjectDialog(activeModal, mnServersService, mnPoolsService, mnGSIService, mnPermissionsService) {
       mn.core.MnEventableComponent.call(this);
 
       this.activeModal = activeModal;
       this.mnServersService = mnServersService;
-      this.mnHelperService = mnHelperService;
+      this.mnServices = mnPoolsService.stream.mnServices;
       this.isEnterprise = mnPoolsService.stream.isEnterprise;
       this.bucketAnyN1qlIndexRead =
         mnPermissionsService.createPermissionStream("n1ql.index!read", ".");

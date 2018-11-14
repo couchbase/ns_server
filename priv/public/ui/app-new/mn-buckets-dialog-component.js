@@ -110,7 +110,8 @@ mn.components.MnBucketsDialog =
       this.mnOnInit.pipe(
         Rx.operators.withLatestFrom(
           mnAdminService.stream.getPoolsDefault,
-          mnServersService.stream.kvActiveNodes
+          mnServersService.stream.serviceSpecificActiveNodes
+            .pipe(Rx.operators.switchMap(R.prop("kv")))
         ),
         Rx.operators.takeUntil(this.mnOnDestroy)
       ).subscribe(setInitialValues.bind(this));
@@ -214,7 +215,6 @@ mn.components.MnBucketsDialog =
           bucket.ramQuotaMB = mnBytesToMB.transform(bucket.quota.ram);
           bucket.evictionPolicyEphemeral = bucket.evictionPolicy;
           bucket.threadsNumber = bucket.threadsNumber.toString();
-          console.log(bucket.flushEnabled);
           bucket.flushEnabled = !!bucket.controllers.flush;
           bucket.replicaIndex = !!bucket.replicaIndex;
           bucketsDialogForm.patchValue(bucket);
