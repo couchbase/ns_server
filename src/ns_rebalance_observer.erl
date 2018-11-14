@@ -46,13 +46,15 @@
                        after_chain :: [node()],
                        stats :: [#replica_building_stats{}],
                        move = #stat_info{},
-                       backfill = #stat_info{}}).
+                       backfill = #stat_info{},
+                       takeover = #stat_info{}}).
 
 -record(total_stat_info, {total_time = 0,
                           completed_count = 0}).
 
 -record(vbucket_level_info, {move = #total_stat_info{},
                              backfill = #total_stat_info{},
+                             takeover = #total_stat_info{},
                              vbucket_info = dict:new()}).
 
 -record(compaction_info, {per_node = [] :: [{node(), #total_stat_info{}}],
@@ -116,6 +118,10 @@ is_interesting_master_event({_, compaction_uninhibit_started, _BucketName, _}) -
     fun handle_compaction_uninhibit/2;
 is_interesting_master_event({_, compaction_uninhibit_done, _BucketName, _}) ->
     fun handle_compaction_uninhibit/2;
+is_interesting_master_event({_, takeover_started, _BucketName, _VBucketId, _, _}) ->
+    fun handle_takeover/2;
+is_interesting_master_event({_, takeover_ended, _BucketName, _VBucketId, _, _}) ->
+    fun handle_takeover/2;
 is_interesting_master_event({_, backfill_phase_started, _BucketName, _VBucketId}) ->
     fun handle_generic_vb_stat_event/2;
 is_interesting_master_event({_, backfill_phase_ended, _BucketName, _VBucketId}) ->
@@ -379,6 +385,9 @@ handle_vbucket_move_done({TS, vbucket_move_done, BucketName, VBucket},
 
 handle_compaction_uninhibit({TS, Event, BucketName, Node}, State) ->
     {noreply, update_info(Event, State, {TS, BucketName, Node})}.
+
+handle_takeover({TS, Event, BucketName, VBucket, _, _}, State) ->
+    {noreply, update_info(Event, State, {TS, BucketName, VBucket})}.
 
 handle_generic_vb_stat_event({TS, Event, BucketName, VBucket}, State) ->
     {noreply, update_info(Event, State, {TS, BucketName, VBucket})}.
@@ -693,7 +702,12 @@ find_event_action(Event) ->
                    {backfill_phase_started, undefined,
                     #vbucket_info.backfill, start_time},
                    {backfill_phase_ended, #vbucket_level_info.backfill,
-                    #vbucket_info.backfill, end_time}
+                    #vbucket_info.backfill, end_time},
+
+                   {takeover_started, undefined,
+                    #vbucket_info.takeover, start_time},
+                   {takeover_ended, #vbucket_level_info.takeover,
+                    #vbucket_info.takeover, end_time}
                   ],
     lists:keyfind(Event, 1, EventAction).
 
@@ -791,13 +805,15 @@ construct_vbucket_info_json(Id, #vbucket_info{before_chain = BC,
                                               after_chain = AC,
                                               stats = RBS,
                                               move = Move,
-                                              backfill = Backfill}) ->
+                                              backfill = Backfill,
+                                              takeover = Takeover}) ->
     {[{id, Id},
       {beforeChain, BC},
       {afterChain, AC},
       {stats, {[construct_replica_building_stats_json(X) || X <- RBS]}},
       {move, construct_stat_info_json(Move)},
-      {backfill, construct_stat_info_json(Backfill)}]}.
+      {backfill, construct_stat_info_json(Backfill)},
+      {takeover, construct_stat_info_json(Takeover)}]}.
 
 construct_vbucket_level_info_json(VBLevelInfo, Options) ->
     case dict:is_empty(VBLevelInfo#vbucket_level_info.vbucket_info) of
@@ -811,6 +827,7 @@ construct_vbucket_level_info_json(VBLevelInfo, Options) ->
 construct_vbucket_level_info_json_inner(
   #vbucket_level_info{move = Move,
                       backfill = Backfill,
+                      takeover = Takeover,
                       vbucket_info = AllVBInfo}, Options) ->
     VBI = case proplists:get_bool(add_vbucket_info, Options) of
               true ->
@@ -822,7 +839,8 @@ construct_vbucket_level_info_json_inner(
                   []
           end,
     {[{move, construct_total_stat_info_json(Move)},
-      {backfill, construct_total_stat_info_json(Backfill)}]
+      {backfill, construct_total_stat_info_json(Backfill)},
+      {takeover, construct_total_stat_info_json(Takeover)}]
      ++ VBI}.
 
 get_all_stage_rebalance_details(#state{bucket_info = BucketLevelInfo},
