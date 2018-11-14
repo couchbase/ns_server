@@ -54,7 +54,8 @@
          external_bucket_type/1,
          maybe_cleanup_old_buckets/0,
          serve_short_bucket_info/2,
-         serve_streaming_short_bucket_info/2]).
+         serve_streaming_short_bucket_info/2,
+         get_ddocs_list/2]).
 
 -import(menelaus_util,
         [reply/2,
@@ -1767,15 +1768,31 @@ basic_bucket_params_screening_test() ->
 -endif.
 
 handle_ddocs_list(PoolId, BucketName, Req) ->
-    FoundBucket = lists:member(node(), ns_bucket:bucket_view_nodes(BucketName)),
-    case FoundBucket of
-        true ->
-            do_handle_ddocs_list(PoolId, BucketName, Req);
-        _ ->
-            reply_json(Req, {[{error, no_ddocs_service}]}, 400)
+    Nodes = ns_bucket:bucket_view_nodes(BucketName),
+    case run_on_node({?MODULE, get_ddocs_list, [PoolId, BucketName]},
+                     Nodes, Req) of
+        {ok, DDocs} -> reply_json(Req, DDocs);
+        {error, nonodes} -> reply_json(Req, {[{error, no_ddocs_service}]}, 400)
     end.
 
-do_handle_ddocs_list(PoolId, Bucket, Req) ->
+run_on_node({M, F, A}, Nodes, Req) ->
+    case lists:member(node(), Nodes) of
+        true -> {ok, erlang:apply(M, F, A)};
+        _ when Nodes == [] -> {error, nonodes};
+        _ ->
+            case cluster_compat_mode:is_cluster_madhatter() of
+                true ->
+                    Node = menelaus_util:choose_node_consistently(Req, Nodes),
+                    case rpc:call(Node, M, F, A) of
+                        {badrpc, _} = Error -> {error, Error};
+                        Docs -> {ok, Docs}
+                    end;
+                false -> {error, nonodes}
+            end
+    end.
+
+%% The function might be rpc'ed beginning from Mad-Hatter
+get_ddocs_list(PoolId, Bucket) ->
     DDocs = capi_utils:sort_by_doc_id(capi_utils:full_live_ddocs(Bucket)),
     RV =
         [begin
@@ -1790,7 +1807,7 @@ do_handle_ddocs_list(PoolId, Bucket, Req) ->
                                     "ddocs", Id, "controller",
                                     "setUpdateMinChanges"])}]}}]}
          end || Doc <- DDocs],
-    reply_json(Req, {[{rows, RV}]}).
+    {[{rows, RV}]}.
 
 handle_set_ddoc_update_min_changes(_PoolId, Bucket, DDocIdStr, Req) ->
     DDocId = list_to_binary(DDocIdStr),
@@ -1851,7 +1868,10 @@ complete_update_ddoc_options(Req, Bucket, #doc{body={Body0}}= DDoc, Options0) ->
     reply_json(Req, Options).
 
 handle_local_random_key(_PoolId, Bucket, Req) ->
-    case ns_memcached:get_random_key(Bucket) of
+    Nodes = ns_cluster_membership:service_active_nodes(kv),
+    {ok, Res} = run_on_node({ns_memcached, get_random_key, [Bucket]},
+                            Nodes, Req),
+    case Res of
         {ok, Key} ->
             reply_json(Req, {struct,
                              [{ok, true},

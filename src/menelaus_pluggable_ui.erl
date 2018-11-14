@@ -255,11 +255,7 @@ choose_node(#plugin{name = Service, proxy_strategy = sticky}, Req) ->
             case lists:member(node(), Nodes) of
                 true -> {ok, node()};
                 false ->
-                    Token = menelaus_auth:extract_ui_auth_token(Req),
-                    Memo = menelaus_ui_auth:check(Token),
-                    Peer = mochiweb_request:get(peer, Req),
-                    N = erlang:phash2({Memo, Peer}, length(Nodes)) + 1,
-                    {ok, lists:nth(N, Nodes)}
+                    {ok, menelaus_util:choose_node_consistently(Req, Nodes)}
             end
     end.
 

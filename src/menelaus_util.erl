@@ -69,7 +69,8 @@
          assert_is_50/0,
          assert_is_55/0,
          assert_is_madhatter/0,
-         strip_json_struct/1]).
+         strip_json_struct/1,
+         choose_node_consistently/2]).
 
 %% used by parse_validate_number
 -export([list_to_integer/1, list_to_float/1]).
@@ -559,6 +560,13 @@ assert_cluster_version(Fun) ->
                           "This http API endpoint isn't supported in mixed version clusters",
                           []})
     end.
+
+choose_node_consistently(Req, Nodes) ->
+    Token = menelaus_auth:extract_ui_auth_token(Req),
+    Memo = menelaus_ui_auth:check(Token),
+    Peer = mochiweb_request:get(peer, Req),
+    N = erlang:phash2({Memo, Peer}, length(Nodes)) + 1,
+    lists:nth(N, Nodes).
 
 -ifdef(EUNIT).
 
