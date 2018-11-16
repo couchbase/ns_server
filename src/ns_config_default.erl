@@ -276,6 +276,13 @@ default() ->
      %% Secure headers config
      {secure_headers, []},
 
+     %% This is needed, because we want REST API's on pre MadHatter nodes
+     %% to return proxy as 0, not as "undefined", so it doesn't break golang
+     %% components on those nodes, which expect numerical value
+     %% To be removed after the support of pre MadHatter nodes will be
+     %% discontinued
+     {{node, node(), moxi}, [{port, 0}]},
+
      %% removed since 4.0
      {{node, node(), port_servers}, []},
 
