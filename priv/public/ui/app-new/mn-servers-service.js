@@ -22,6 +22,10 @@ mn.services.MnServers = (function (Rx) {
   MnServersService.prototype.stopRebalance = stopRebalance;
   MnServersService.prototype.addNode = addNode;
   MnServersService.prototype.ejectNode = ejectNode;
+  MnServersService.prototype.getNodeStatuses = getNodeStatuses;
+  MnServersService.prototype.postFailover = postFailover;
+  MnServersService.prototype.postSetRecoveryType = postSetRecoveryType;
+  MnServersService.prototype.postReFailover = postReFailover;
 
   return MnServersService;
 
@@ -33,6 +37,9 @@ mn.services.MnServers = (function (Rx) {
     this.stream.postRebalance =
       new mn.core.MnPostHttp(this.postRebalance.bind(this)).addSuccess().addError();
 
+    this.stream.postFailover =
+      new mn.core.MnPostHttp(this.postFailover.bind(this)).addSuccess().addError();
+
     this.stream.stopRebalance =
       new mn.core.MnPostHttp(this.stopRebalance.bind(this)).addSuccess().addError();
 
@@ -42,8 +49,19 @@ mn.services.MnServers = (function (Rx) {
     this.stream.ejectNode =
       new mn.core.MnPostHttp(this.ejectNode.bind(this)).addSuccess().addError();
 
+    this.stream.postSetRecoveryType =
+      new mn.core.MnPostHttp(this.postSetRecoveryType.bind(this)).addSuccess().addError();
+
+    this.stream.postReFailover =
+      new mn.core.MnPostHttp(this.postReFailover.bind(this)).addSuccess().addError();
+
     var getPoolsDefault = mnAdminService.stream.getPoolsDefault;
     this.stream.nodes = getPoolsDefault.pipe(Rx.operators.pluck("nodes"));
+
+    this.stream.getNodeStatuses =
+      (new Rx.BehaviorSubject()).pipe(
+        Rx.operators.switchMap(this.getNodeStatuses.bind(this)),
+        mn.core.rxOperatorsShareReplay(1));
 
     this.stream.updateEjectedNodes =
       this.stream.nodes.pipe(Rx.operators.withLatestFrom(this.stream.ejectedNodesByUI),
@@ -134,6 +152,19 @@ mn.services.MnServers = (function (Rx) {
     return this.http.post(source[0], source[1]);
   }
 
+  function postSetRecoveryType(source) {
+    return this.http.post('/controller/setRecoveryType', {
+      otpNode: source[1],
+      recoveryType: source[0]
+    });
+  }
+
+  function postReFailover(otpNode) {
+    return this.http.post('/controller/reFailOver', {
+      otpNode: otpNode
+    });
+  }
+
   function ejectNode(node) {
     return this.http.post('/controller/ejectNode', {otpNode: node.otpNode});
   }
@@ -147,12 +178,34 @@ mn.services.MnServers = (function (Rx) {
       });
   }
 
+  function postFailover(source) {
+    // var data = "";
+    // if (_.isArray(otpNode)) {
+    //   data = otpNode.map(function (node) {
+    //     return "otpNode=" + encodeURIComponent(node);
+    //   }).join("&");
+    // } else {
+    //   data = "otpNode=" + encodeURIComponent(otpNode);
+    // }
+
+    // data += "&allowUnsafe=" + (allowUnsafe ? "true" : "false");
+
+    return this.http.post('/controller/' + source[0], {
+      allowUnsafe: !!source[2],
+      otpNode: source[1]
+    });
+  }
+
   function stopRebalance(allowUnsafe) {
     return this.http.post('/controller/stopRebalance', {
       allowUnsafe: !!allowUnsafe
     }, {
       responseType: 'text'
     });
+  }
+
+  function getNodeStatuses(hostname) {
+    return this.http.get('/nodeStatuses');
   }
 
   function getNodes(otpNode) {

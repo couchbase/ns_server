@@ -8,7 +8,7 @@ mn.components.MnServersStopRebalanceDialog =
 
     MnServersStopRebalanceDialog.annotations = [
       new ng.core.Component({
-        templateUrl: "app-new/mn-stop-rebalance-dialog.html",
+        templateUrl: "app-new/mn-servers-stop-reb-conf.html",
         changeDetection: ng.core.ChangeDetectionStrategy.OnPush
       })
     ];

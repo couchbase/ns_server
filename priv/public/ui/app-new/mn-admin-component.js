@@ -201,7 +201,9 @@ mn.modules.MnAdmin =
           mn.components.MnSessionTimeoutDialog,
           mn.components.MnServersEjectDialog,
           mn.components.MnServersStopRebalanceDialog,
-          mn.components.MnServersAddDialog
+          mn.components.MnServersAddDialog,
+          mn.components.MnServersFailoverDialog,
+          mn.components.MnServersFailoverConfirmationDialog
         ],
         imports: [
           window['@uirouter/angular'].UIRouterModule.forChild({
@@ -285,7 +287,9 @@ mn.modules.MnAdmin =
           mn.components.MnBucketsDialog,
           mn.components.MnServersEjectDialog,
           mn.components.MnServersStopRebalanceDialog,
-          mn.components.MnServersAddDialog
+          mn.components.MnServersAddDialog,
+          mn.components.MnServersFailoverDialog,
+          mn.components.MnServersFailoverConfirmationDialog
         ]
       })
     ];

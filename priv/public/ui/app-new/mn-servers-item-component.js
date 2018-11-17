@@ -58,7 +58,7 @@ mn.components.MnServersItem =
 
       this.isKVNode = this.nodeStream.pipe(Rx.operators.map(R.pipe(R.prop("services"),
                                                                    R.indexOf("kv"),
-                                                                   R.gt(-1))));
+                                                                   R.lt(-1))));
       this.runningTasksRebalance =
         mnTasksService.stream.tasksRebalance.pipe(
           Rx.operators.map(R.propEq("status", "running")));
@@ -119,6 +119,14 @@ mn.components.MnServersItem =
 
       this.ejectNode = mnFormService.create(this)
         .setPostRequest(mnServersService.stream.ejectNode)
+        .hasNoHandler();
+
+      this.postSetRecoveryType = mnFormService.create(this)
+        .setPostRequest(mnServersService.stream.postSetRecoveryType)
+        .hasNoHandler();
+
+      this.postReFailover = mnFormService.create(this)
+        .setPostRequest(mnServersService.stream.postReFailover)
         .hasNoHandler();
 
       this.detailsHashObserver =

@@ -8,7 +8,8 @@ mn.services.MnForm = (function (Rx) {
 
   MnForm.parameters = [
     ng.forms.FormBuilder,
-    mn.services.MnAlerts
+    mn.services.MnAlerts,
+    ngb.NgbModal
   ];
 
   MnForm.prototype.create = create;
@@ -28,12 +29,14 @@ mn.services.MnForm = (function (Rx) {
   Form.prototype.success = success;
   Form.prototype.error = error;
   Form.prototype.hasNoHandler = hasNoHandler;
+  Form.prototype.confirmation504 = confirmation504;
 
   return MnForm;
 
-  function MnForm(formBuilder, mnAlertsService) {
+  function MnForm(formBuilder, mnAlertsService, modalService) {
     this.formBuilder = formBuilder;
     this.mnAlertsService = mnAlertsService;
+    this.modalService = modalService;
   }
 
   function create(component) {
@@ -140,6 +143,22 @@ mn.services.MnForm = (function (Rx) {
 
   function setPackPipe(packPipe) {
     this.packPipe = packPipe;
+    return this;
+  }
+
+  function confirmation504(dialog) {
+    this.postRequest.error
+      .pipe(Rx.operators.takeUntil(this.component.mnOnDestroy))
+      .subscribe(function (resp) {
+        if (resp && resp.status === 504) {
+          this.modalService
+            .open(dialog)
+            .result
+            .then(function (a) {
+              this.submit.next(true);
+            }.bind(this), function () {});
+        }
+      }.bind(this));
     return this;
   }
 

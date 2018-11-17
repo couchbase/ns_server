@@ -25,11 +25,6 @@ mn.components.MnServersItemDetails =
       mn.services.MnPermissions,
       mn.services.MnAdmin,
       ngb.NgbModal
-      // mn.services.MnPermissions,
-      // mn.services.MnTasks,
-      // window['@uirouter/angular'].UIRouter,
-      // mn.services.MnAdmin,
-      // ngb.NgbModal
     ];
 
     MnServersItemDetails.prototype.getBaseConfig = getBaseConfig;
@@ -40,6 +35,7 @@ mn.components.MnServersItemDetails =
       mn.core.MnEventableComponent.call(this);
 
       this.onEjectServer = new Rx.Subject();
+      this.onFailoverServer = new Rx.Subject();
       this.tasksRead = mnPermissionsService.createPermissionStream("tasks!read");
       this.poolsWrite = mnPermissionsService.createPermissionStream("pools!write");
       this.isRebalancing = mnAdminService.stream.isRebalancing;
@@ -111,6 +107,13 @@ mn.components.MnServersItemDetails =
               return task.node === source[1].otpNode;
             });
           }));
+
+      this.onFailoverServer
+        .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
+        .subscribe(function () {
+          var ref = modalService.open(mn.components.MnServersFailoverDialog);
+          ref.componentInstance.nodeStream = nodeStream;
+        });
 
       this.onEjectServer
         .pipe(Rx.operators.takeUntil(this.mnOnDestroy))

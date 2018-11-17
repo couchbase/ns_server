@@ -1,6 +1,4 @@
 <!-- the "dynamic_ + X" style is added w/ ng-class to either the section container or the cbui-tablerow depending on node status and whether the row is expanded or not -->
-
-<!-- ng-click="nodesRead && serversCtl.toggleDetails(node.hostname)" -->
 <section
   class="has-hover"
   (click)="detailsHashObserver.stream.toggleDetails.next(node.hostname)"
@@ -64,7 +62,7 @@
       <span>
         {{(isNodeInactiveAdded | async) && (isNodeRecoveryNone | async) ?
         'New node' :
-        'Node'}}</span>
+        'Node '}}</span>
       <span [hidden]="!(isNodeUnhealthy | async)">unresponsive</span>
       <span [hidden]="!(isNodeUnhealthy | async) ||
                       (!(isNodeInactiveFailed | async) &&
@@ -98,21 +96,22 @@
     <button
       [hidden]="!(isNodeInactiveAdded | async) ||
                 (isNodeRecoveryNone | async) ||
-                (poolsWrite | async)"
+                !(poolsWrite | async)"
       class="outline"
-      [disabled]="(isRecoveryMode | async)">
-      <!-- (click)="$event.stopPropagation(); serversItemCtl.cancelFailOverNode(node.otpNode)" -->
+      [disabled]="(isRecoveryMode | async)"
+      (click)="$event.stopPropagation(); postReFailover.submit.next(node.otpNode)">
       Cancel Add Back
     </button>
-    <button
-      [hidden]="!(isNodeUnhealthy | async) ||
-                !(poolsWrite | async) ||
-                (isNodeInactiveFailed | async) ||
-                (isNodeInactiveAdded | async) ||
-                !(isNodeRecoveryNone | async)">
-      <!-- ng-click="serversItemCtl.failOverNode(node);$event.stopPropagation();"> -->
-      Failover
-    </button>
+    <!-- looks like we don't need this button since we have it in item-details -->
+    <!-- <button -->
+    <!--   [hidden]="!(isNodeUnhealthy | async) || -->
+    <!--             !(poolsWrite | async) || -->
+    <!--             (isNodeInactiveFailed | async) || -->
+    <!--             (isNodeInactiveAdded | async) || -->
+    <!--             !(isNodeRecoveryNone | async)"> -->
+    <!--   <\!-- ng-click="serversItemCtl.failOverNode(node);$event.stopPropagation();"> -\-> -->
+    <!--   Failover -->
+    <!-- </button> -->
     <button
       [hidden]="!(poolsWrite | async) ||
                 !(isNodeInactiveAdded | async) ||
@@ -127,24 +126,28 @@
   <div
     class="cbui-tablerow"
     [hidden]="!(isNodeInactiveFailed | async) || (isNodeUnhealthy | async)">
-    <span>
+    <div>
       This server is now reachable. Do you want to add it back to the cluster on the next rebalance?
-    </span>
+    </div>
 
-    <span
+    <div
       class="nowrap"
       [hidden]="!(poolsWrite | async)">
-      <span>
-        <!-- (click)="serversItemCtl.reAddNode('full', node.otpNode);$event.stopPropagation()"> -->
-        <button class="outline" [hidden]="!(isKVNode | async)">Add Back: Full Recovery</button>
-        <button class="outline" [hidden]="(isKVNode | async)">Add Back</button>
-      </span>
-      <span
-        [hidden]="!(isKVNode | async)">
-        <!-- ng-click="serversItemCtl.reAddNode('delta', node.otpNode); $event.stopPropagation()"> -->
-        <button class="outline">Add Back: Delta Recovery</button>
-      </span>
-    </span>
+      <button
+        type="button"
+        class="outline"
+        (click)="postSetRecoveryType.submit.next(['full', node.otpNode]);$event.stopPropagation()">
+        <span [hidden]="!(isKVNode | async)">Add Back: Full Recovery</span>
+        <span [hidden]="(isKVNode | async)">Add Back</span>
+      </button>
+      <button
+        type="button"
+        class="outline"
+        [hidden]="!(isKVNode | async)"
+        (click)="postSetRecoveryType.submit.next(['delta', node.otpNode]);$event.stopPropagation()">
+        Add Back: Delta Recovery
+      </button>
+    </div>
   </div>
 
   <!-- <\!-- active node flagged for removal -\-> -->

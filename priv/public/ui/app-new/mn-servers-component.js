@@ -84,20 +84,8 @@ mn.components.MnServers =
         .errorMessage();
 
       this.stopRebalance = mnFormService.create(this)
-        .setPostRequest(mnServersService.stream.stopRebalance);
-
-      mnServersService.stream.stopRebalance.error
-        .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
-        .subscribe(function (resp) {
-          if (resp && resp.status === 504) {
-            modalService
-              .open(mn.components.MnServersStopRebalanceDialog)
-              .result
-              .then(function (a) {
-                this.stopRebalance.submit.next(true);
-              }.bind(this), function () {});
-          }
-        }.bind(this));
+        .setPostRequest(mnServersService.stream.stopRebalance)
+        .confirmation504(mn.components.MnServersStopRebalanceDialog);
 
       mnServersService.stream.updateEjectedNodes
         .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
