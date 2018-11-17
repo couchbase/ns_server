@@ -28,15 +28,14 @@
          select_with_update/4]).
 
 -export([init/1, init_after_ack/1, handle_call/3, handle_info/2,
-         get_id/1, get_value/1, find_doc/2, find_doc_rev/2, all_docs/1,
+         get_id/1, get_value/1, find_doc/2, all_docs/1,
          get_revision/1, set_revision/2, is_deleted/1, save_docs/2,
          handle_mass_update/3, on_replicate_in/1, on_replicate_out/1]).
 
 -record(state, {child_module :: atom(),
                 child_state :: term(),
                 path :: string(),
-                name :: atom(),
-                revisions :: term()}).
+                name :: atom()}).
 
 %% Backward compatibility: old doc record is used in pre-5.5
 -record(doc, {id :: term(),
@@ -178,29 +177,13 @@ init([Name, ChildModule, InitParams, Path, Replicator]) ->
            child_state = ChildState}.
 
 init_after_ack(State = #state{name = TableName}) ->
-    ok = open(State),
-    Revisions = ets:new(ok, [set, private]),
-    MatchSpec = ets:fun2ms(fun (#docv2{id = Id, props = Props}) ->
-                                   {Id, Props}
-                           end),
-
     Start = os:timestamp(),
-    ExtractRev =
-        fun ({Id, Props}) ->
-                {Id, proplists:get_value(rev, Props)}
-        end,
-    select_from_dets_locked(TableName, MatchSpec, 100,
-                            fun (Selection) ->
-                                    ets:insert_new(
-                                      Revisions,
-                                      lists:map(ExtractRev, Selection))
-                            end),
+    ok = open(State),
     ?log_debug("Loading ~p items, ~p words took ~pms",
-               [ets:info(Revisions, size),
-                ets:info(Revisions, memory),
+               [ets:info(TableName, size),
+                ets:info(TableName, memory),
                 timer:now_diff(os:timestamp(), Start) div 1000]),
-
-    State#state{revisions = Revisions}.
+    State.
 
 open(#state{path = Path, name = TableName}) ->
     ?log_debug("Opening file ~p", [Path]),
@@ -277,14 +260,6 @@ find_doc(Id, #state{name = TableName}) ->
             false
     end.
 
-find_doc_rev(Id, #state{revisions = Revisions}) ->
-    case ets:lookup(Revisions, Id) of
-        [{Id, Rev}] ->
-            Rev;
-        [] ->
-            false
-    end.
-
 all_docs(Pid) ->
     ?make_producer(select_from_dets(Pid, [{'_', [], ['$_']}], 500,
                                     fun (Batch) -> ?yield({batch, Batch}) end)).
@@ -303,12 +278,9 @@ is_deleted(#docv2{props = Props}) ->
 
 save_docs(Docs, #state{name = TableName,
                        child_module = ChildModule,
-                       child_state = ChildState,
-                       revisions = Revisions} = State) ->
+                       child_state = ChildState} = State) ->
     ok = dets:insert(TableName, Docs),
     true = ets:insert(TableName, Docs),
-    true = ets:insert(Revisions,
-                      [{Doc#docv2.id, get_revision(Doc)} || Doc <- Docs]),
     NewChildState = ChildModule:on_save(Docs, ChildState),
     {ok, State#state{child_state = NewChildState}}.
 
@@ -352,11 +324,9 @@ handle_call(suspend, {Pid, _} = From, #state{name = TableName} = State) ->
     end;
 handle_call(empty, _From, #state{name = TableName,
                                  child_module = ChildModule,
-                                 child_state = ChildState,
-                                 revisions = Revisions} = State) ->
+                                 child_state = ChildState} = State) ->
     ok = dets:delete_all_objects(TableName),
     true = ets:delete_all_objects(TableName),
-    true = ets:delete_all_objects(Revisions),
     NewChildState = ChildModule:on_empty(ChildState),
     {reply, ok, State#state{child_state = NewChildState}};
 handle_call(Msg, From, #state{name = TableName,
