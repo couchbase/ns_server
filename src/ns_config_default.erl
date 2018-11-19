@@ -487,8 +487,8 @@ upgrade_config_from_5_5_3_to_madhatter(Config) ->
 
 do_upgrade_config_from_5_5_3_to_madhatter(Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
-     {delete, {node, node(), moxi}} |
-        rename_key(ldap_enabled, saslauthd_enabled, Config)].
+     upgrade_key(moxi, DefaultConfig) |
+     rename_key(ldap_enabled, saslauthd_enabled, Config)].
 
 upgrade_config_from_5_5_to_5_5_3() ->
     DefaultConfig = default(),
@@ -601,15 +601,16 @@ upgrade_5_1_1_to_5_5_test() ->
 upgrade_5_5_3_to_madhatter_test() ->
     Cfg1 = [[{some_key, some_value},
             {{node, node(), ldap_enabled}, true}]],
-    Default = [{{node, node(), memcached_config}, new_memcached_config}],
+    Default = [{{node, node(), memcached_config}, new_memcached_config},
+               {{node, node(), moxi}, new_moxi_value}],
     ?assertMatch([{set, {node, _, memcached_config}, new_memcached_config},
-                  {delete, {node, _, moxi}},
+                  {set, {node, _, moxi}, new_moxi_value},
                   {delete, {node, _, ldap_enabled}},
                   {set, {node, _, saslauthd_enabled}, true}],
                  do_upgrade_config_from_5_5_3_to_madhatter(Cfg1, Default)),
     Cfg2 = [[{some_key, some_value}]],
     ?assertMatch([{set, {node, _, memcached_config}, new_memcached_config},
-                  {delete, {node, _, moxi}}],
+                  {set, {node, _, moxi}, new_moxi_value}],
                  do_upgrade_config_from_5_5_3_to_madhatter(Cfg2, Default)).
 
 upgrade_5_5_to_5_5_3_test() ->
