@@ -46,9 +46,18 @@ handle_pools(Req) ->
     %% TODO RBAC for the time being let's tell the UI that the user is admin
     %% later there will be an API to test the permissions
 
+    Enterprise = cluster_compat_mode:is_enterprise(),
+    AllowedServices =
+        ns_cluster_membership:allowed_services(case Enterprise of
+                                                   true ->
+                                                       enterprise;
+                                                   false ->
+                                                       community
+                                               end),
     RV1 = [{isAdminCreds, true},
            {isROAdminCreds, false},
-           {isEnterprise, cluster_compat_mode:is_enterprise()},
+           {isEnterprise, Enterprise},
+           {allowedServices, AllowedServices},
            {isIPv6, misc:is_ipv6()}
            | get_content_for_provisioned_system()],
     RV = RV1 ++ menelaus_web_cache:versions_response(),
