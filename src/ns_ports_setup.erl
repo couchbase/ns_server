@@ -216,19 +216,6 @@ build_go_env_vars(Config, RPCService) ->
     GoTraceBack = binary_to_list(GoTraceBack0),
     [{"GOTRACEBACK", GoTraceBack} | build_cbauth_env_vars(Config, RPCService)].
 
-build_tls_config_env_var(Config) ->
-    {Ciphers, Order} = ns_ssl_services_setup:supported_ciphers(cbauth, Config),
-    CiphersEncoded =
-        lists:map(fun (Strength) when is_atom(Strength) -> Strength;
-                      (Code) -> iolist_to_binary(["0x", misc:hexify(Code)])
-                  end, Ciphers),
-    [{"CBAUTH_TLS_CONFIG",
-      binary_to_list(
-        ejson:encode(
-          {[{minTLSVersion, ns_ssl_services_setup:ssl_minimum_protocol(Config)},
-            {cipherOrder, Order},
-            {ciphers, CiphersEncoded}]}))}].
-
 build_cbauth_env_vars(Config, RPCService) ->
     true = (RPCService =/= undefined),
     RestPort = service_ports:get_port(rest_port, Config),
@@ -299,7 +286,7 @@ get_writable_ix_subdir(SubDir) ->
     end,
     Dir.
 
--record(def, {id, exe, service, rpc, log, tls = false}).
+-record(def, {id, exe, service, rpc, log}).
 
 goport_defs() ->
     [#def{id = indexer,
@@ -320,14 +307,12 @@ goport_defs() ->
           exe = "cbq-engine",
           service = n1ql,
           rpc = 'cbq-engine',
-          log = ?QUERY_LOG_FILENAME,
-          tls = true},
+          log = ?QUERY_LOG_FILENAME},
      #def{id = fts,
           exe = "cbft",
           service = fts,
           rpc = fts,
-          log = ?FTS_LOG_FILENAME,
-          tls = true},
+          log = ?FTS_LOG_FILENAME},
      #def{id = cbas,
           exe = "cbas",
           service = cbas,
@@ -337,8 +322,7 @@ goport_defs() ->
           exe = "eventing-producer",
           service = eventing,
           rpc = eventing,
-          log = ?EVENTING_LOG_FILENAME,
-          tls = true},
+          log = ?EVENTING_LOG_FILENAME},
      #def{id = mobile,
           exe = "mobile-service",
           service = mobile,
@@ -353,8 +337,7 @@ build_goport_spec(#def{id = SpecId,
                        exe = Executable,
                        service = Service,
                        rpc = RPCService,
-                       log = Log,
-                       tls = Tls}, Config) ->
+                       log = Log}, Config) ->
     Cmd = find_executable(Executable),
     NodeUUID = ns_config:search(Config, {node, node(), uuid}, false),
     case Cmd =/= false andalso
@@ -365,15 +348,9 @@ build_goport_spec(#def{id = SpecId,
             [];
         _ ->
             EnvVars = build_go_env_vars(Config, RPCService),
-            EnvVars1 = case Tls of
-                           true ->
-                               EnvVars ++ build_tls_config_env_var(Config);
-                           false ->
-                               EnvVars
-                       end,
             Args = goport_args(SpecId, Config, Cmd, NodeUUID),
             [{SpecId, Cmd, Args,
-              [via_goport, exit_status, stderr_to_stdout, {env, EnvVars1}] ++
+              [via_goport, exit_status, stderr_to_stdout, {env, EnvVars}] ++
                   [{log, Log} || Log =/= undefined]}]
     end.
 
