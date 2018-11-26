@@ -92,6 +92,9 @@ is_interesting({cluster_compat_version, _}) -> true;
 is_interesting({{node, _, is_enterprise}, _}) -> true;
 is_interesting({user_roles, _}) -> true;
 is_interesting({buckets, _}) -> true;
+is_interesting({cipher_suites, _}) -> true;
+is_interesting({honor_cipher_order, _}) -> true;
+is_interesting({ssl_minimum_protocol, _}) -> true;
 is_interesting(_) -> false.
 
 handle_call(_Msg, _From, State) ->
@@ -247,6 +250,12 @@ build_auth_info(#state{cert_version = CertVersion,
     PermissionCheckURL = misc:local_url(Port, "/_cbauth/checkPermission", []),
     PermissionsVersion = menelaus_web_rbac:check_permissions_url_version(Config),
     EUserFromCertURL = misc:local_url(Port, "/_cbauth/extractUserFromCert", []),
+    {Ciphers, Order} = ns_ssl_services_setup:supported_ciphers(cbauth, Config),
+    CiphersEncoded =
+        lists:map(fun (Strength) when is_atom(Strength) -> Strength;
+                      (Code) -> iolist_to_binary(["0x", misc:hexify(Code)])
+                  end, Ciphers),
+    MinTLSVsn = ns_ssl_services_setup:ssl_minimum_protocol(Config),
 
     [{nodes, Nodes},
      {authCheckURL, list_to_binary(AuthCheckURL)},
@@ -256,7 +265,10 @@ build_auth_info(#state{cert_version = CertVersion,
      {certVersion, CertVersion},
      {extractUserFromCertURL, list_to_binary(EUserFromCertURL)},
      {clientCertAuthState, list_to_binary(CcaState)},
-     {clientCertAuthVersion, ClientCertAuthVersion}].
+     {clientCertAuthVersion, ClientCertAuthVersion},
+     {tlsConfig, {[{minTLSVersion, MinTLSVsn},
+                   {cipherOrder, Order},
+                   {ciphers, CiphersEncoded}]}}].
 
 auth_version(Config) ->
     B = term_to_binary(
