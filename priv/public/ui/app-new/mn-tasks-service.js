@@ -32,6 +32,8 @@ mn.services.MnTasks = (function (Rx) {
       clusterLogsCollection: true
     };
 
+    this.stream.updateTasks = new Rx.BehaviorSubject();
+
     var setupInterval =
         this.stream.interval.pipe(Rx.operators.startWith(0),
                                   Rx.operators.switchMap(function (interval) {
@@ -42,7 +44,7 @@ mn.services.MnTasks = (function (Rx) {
                                                    Rx.operators.distinctUntilChanged());
 
     this.stream.getSuccess =
-      Rx.combineLatest(getUrl, setupInterval)
+      Rx.combineLatest(getUrl, setupInterval, this.stream.updateTasks)
       .pipe(Rx.operators.switchMap(this.get.bind(this)),
             mn.core.rxOperatorsShareReplay(1));
 
@@ -62,6 +64,9 @@ mn.services.MnTasks = (function (Rx) {
 
     this.stream.tasksRecovery =
       tasks.pipe(Rx.operators.map(R.find(R.propEq("type", "recovery"))));
+
+    this.stream.tasksXDCR =
+      tasks.pipe(Rx.operators.map(R.filter(R.propEq("type", "xdcr"))));
 
     this.stream.isSubtypeGraceful =
       tasks.pipe(Rx.operators.map(R.find(R.allPass([R.propEq("subtype", "gracefulFailover"),

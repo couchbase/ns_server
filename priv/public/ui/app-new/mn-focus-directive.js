@@ -37,6 +37,7 @@ mn.directives.MnFocus =
     }
 
     function ngOnInit() {
+      this.mnFocus = this.mnFocus || new Rx.BehaviorSubject(true);
       this.mnFocus.pipe(
         Rx.operators.filter(this.maybePrevent.bind(this)),
         Rx.operators.takeUntil(this.mnOnDestroy)

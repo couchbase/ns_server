@@ -57,7 +57,7 @@ mn.components.MnGeneralSettings =
       this.onToggleClick = new Rx.Subject();
       this.toggleSection =
         this.onToggleClick
-        .pipe(Rx.operators.scan(mn.helper.invert, false),
+        .pipe(Rx.operators.scan(R.not, false),
               mn.core.rxOperatorsShareReplay(1));
 
       this.prettyVersion = mnAdminService.stream.prettyVersion;

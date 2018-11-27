@@ -151,8 +151,9 @@
        @mnAnimateHeight
        class="alert"
        [ngClass]="{
-                  'alert-error': alert.type !== 'success',
-                  'alert-success': alert.type === 'success'
+                  'alert-error': alert.type === 'error',
+                  'alert-success': alert.type === 'success',
+                  'alert-warning': alert.type === 'warning'
                   }">
       <p>{{alert.message}}</p>
       <a [hidden]="alert.timeout" (click)="closeAlert(alert)" class="close">X</a>
@@ -204,12 +205,12 @@
       <!--      ui-sref="app.admin.indexes.views.list" -->
       <!--      ng-show="rbac.cluster.indexes.read === false">Indexes</span> -->
       <!-- </a> -->
-      <!-- <a -->
-      <!--    ng-show="rbac.cluster.tasks.read" -->
-      <!--    mn-tab="replications" -->
-      <!--    ui-sref-active="currentnav" -->
-      <!--    ui-sref="app.admin.replications" -->
-      <!--    class="margin-bottom-1">XDCR</a> -->
+      <a
+        [hidden]="!(tasksRead | async)"
+        mn-tab="replications"
+        uiSrefActive="currentnav"
+        uiSref="app.admin.replications"
+        class="margin-bottom-1">XDCR</a>
 
       <!-- <a -->
       <!--    mn-tab="security" -->

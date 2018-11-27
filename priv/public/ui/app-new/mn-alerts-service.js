@@ -18,6 +18,7 @@ mn.services.MnAlerts = (function (Rx) {
   MnAlertsService.prototype.startTimer = startTimer
   MnAlertsService.prototype.success = success;
   MnAlertsService.prototype.error = error;
+  MnAlertsService.prototype.warning = warning;
 
   return MnAlertsService;
 
@@ -46,6 +47,16 @@ mn.services.MnAlerts = (function (Rx) {
       this.stream.alert.next({
         message: staticMessage || serverError,
         type: "error",
+        timeout: 4000
+      })
+    }.bind(this)
+  }
+
+  function warning(staticMessage) {
+    return function (serverError) {
+      this.stream.alert.next({
+        message: staticMessage || serverError,
+        type: "warning",
         timeout: 4000
       })
     }.bind(this)

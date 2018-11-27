@@ -84,6 +84,7 @@ mn.components.MnAdmin =
       this.isProgressBarClosed = new Rx.BehaviorSubject(true);
       this.getPoolsDefaultEtag = mnAdminService.stream.etag;
       this.showRespMenu = false;
+      this.closeAlert = mnAlertsService.removeItem.bind(mnAlertsService);
 
       this.majorMinorVersion = mnPoolsService.stream.majorMinorVersion;
       this.tasksToDisplay = mnTasksService.stream.tasksToDisplay;
@@ -93,7 +94,7 @@ mn.components.MnAdmin =
       this.stateService = uiRouter.stateService;
 
       this.tasksRead = mnPermissionsService.createPermissionStream("tasks!read");
-      this.securityRead = mnPermissionsService.createPermissionStream("tasks!read");
+      this.securityRead = mnPermissionsService.createPermissionStream("security!read");
       this.extractNextInterval = mnTasksService.stream.extractNextInterval;
       this.clusterName = mnAdminService.stream.clusterName;
 
@@ -193,6 +194,7 @@ mn.modules.MnAdmin =
           mn.components.MnServersItem,
           mn.components.MnServersItemDetails,
           mn.components.MnBuckets,
+          mn.components.MnXDCR,
           mn.components.MnBucketsItem,
           mn.components.MnBucketsItemDetails,
           mn.components.MnBarUsage,
@@ -203,7 +205,14 @@ mn.modules.MnAdmin =
           mn.components.MnServersStopRebalanceDialog,
           mn.components.MnServersAddDialog,
           mn.components.MnServersFailoverDialog,
-          mn.components.MnServersFailoverConfirmationDialog
+          mn.components.MnServersFailoverConfirmationDialog,
+          mn.components.MnXDCRAddReference,
+          mn.components.MnXDCRDeleteReference,
+          mn.components.MnXDCRItem,
+          mn.components.MnXDCRAddReplication,
+          mn.components.MnXDCRSettings,
+          mn.components.MnXDCRDelete,
+          mn.components.MnXDCREdit
         ],
         imports: [
           window['@uirouter/angular'].UIRouterModule.forChild({
@@ -247,6 +256,15 @@ mn.modules.MnAdmin =
                 title: "Buckets"
               }
             }, {
+              name: 'app.admin.replications',
+              url: 'replications',
+              views: {
+                "main@app.admin": mn.components.MnXDCR
+              },
+              data: {
+                title: "XDCR"
+              }
+            }, {
               name: "app.admin.security",
               url: "security",
               views: {
@@ -280,6 +298,7 @@ mn.modules.MnAdmin =
           mn.services.MnAdmin,
           mn.services.MnServers,
           mn.services.MnGSI,
+          mn.services.MnXDCR,
           mn.services.MnGroups
         ],
         entryComponents: [
@@ -289,7 +308,12 @@ mn.modules.MnAdmin =
           mn.components.MnServersStopRebalanceDialog,
           mn.components.MnServersAddDialog,
           mn.components.MnServersFailoverDialog,
-          mn.components.MnServersFailoverConfirmationDialog
+          mn.components.MnServersFailoverConfirmationDialog,
+          mn.components.MnXDCRAddReference,
+          mn.components.MnXDCRDeleteReference,
+          mn.components.MnXDCRAddReplication,
+          mn.components.MnXDCRDelete,
+          mn.components.MnXDCREdit
         ]
       })
     ];

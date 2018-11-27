@@ -55,7 +55,8 @@ mn.services.MnForm = (function (Rx) {
   }
 
   function setFormGroup(formDescription) {
-    this.group = this.builder.group(formDescription);
+    this.group = (formDescription instanceof ng.forms.FormGroup) ?
+      formDescription : this.builder.group(formDescription);
     return this;
   }
 
@@ -65,9 +66,11 @@ mn.services.MnForm = (function (Rx) {
 
     this.changes = Rx.merge(this.group.valueChanges, this.sourcePipe);
 
-    this.sourcePipe.subscribe(function (v) {
-      this.group.patchValue(v, {emitEvent: false});
-    }.bind(this));
+    this.sourcePipe
+      .pipe(Rx.operators.takeUntil(this.component.mnOnDestroy))
+      .subscribe(function (v) {
+        this.group.patchValue(v, {emitEvent: false});
+      }.bind(this));
     return this;
   }
 
@@ -163,12 +166,17 @@ mn.services.MnForm = (function (Rx) {
   }
 
   function setValidation(validationPostRequest, permissionStream) {
-    permissionStream
+    validationPostRequest.response
+      .pipe(Rx.operators.takeUntil(this.component.mnOnDestroy))
+      .subscribe(function () {
+        validationPostRequest.clearError();
+      });
+    (permissionStream || new Rx.BehaviorSubject(true))
       .pipe(Rx.operators.switchMap(function (v) {
         return v ? this.group.valueChanges : Rx.NEVER;
       }.bind(this)),
-            // Rx.operators.throttleTime(500, undefined, {leading: true, trailing: true})
-            Rx.operators.debounceTime(0),
+            Rx.operators.throttleTime(500, undefined, {leading: true, trailing: true}),
+            // Rx.operators.debounceTime(0),
             this.packPipe || this.defaultPackPipe,
             Rx.operators.takeUntil(this.component.mnOnDestroy))
       .subscribe(function (v) {

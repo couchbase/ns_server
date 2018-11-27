@@ -49,6 +49,12 @@ mn.services.MnBuckets = (function (Rx) {
         mn.core.rxOperatorsShareReplay(1)
       );
 
+    this.stream.bucketsMembaseEphemeral =
+      this.stream.buckets.pipe(Rx.operators.map(R.filter(R.anyPass([
+        R.propEq('bucketType', 'membase'),
+        R.propEq('bucketType', 'ephemeral')
+      ]))));
+
     this.stream.bucketHttp =
       new mn.core.MnPostHttp(this.postBucket.bind(this))
       .addSuccess()

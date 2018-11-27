@@ -240,10 +240,9 @@ mn.core.MnPostHttp = (function (Rx) {
         Rx.merge(
           this.response.pipe(
             Rx.operators.switchMap(function (rv) {
-              console.log(rv)
               if (rv instanceof ng.common.http.HttpErrorResponse) {
                 return Rx.of(rv);
-              } else if (mn.services.MnHelper.prototype.isJson(rv)) {
+              } else if (mn.services.MnHelper.prototype.isJson(rv) && rv.includes("errors")) {
                 return Rx.of(new ng.common.http.HttpErrorResponse({error: rv}));
               } else {
                 return Rx.NEVER;
