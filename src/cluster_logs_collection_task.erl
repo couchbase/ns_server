@@ -334,8 +334,7 @@ start_upload_per_node(Path, BaseURL, Parent, Options) ->
                            V -> ["--upload-proxy=" ++ V]
                        end,
 
-    Args = MaybeUploadProxy ++
-        ["--watch-stdin", "--just-upload-into=" ++ URL, Path],
+    Args = MaybeUploadProxy ++ ["--just-upload-into=" ++ URL, Path],
     ?log_debug("Spawning upload cbcollect_info: ~p", [Args]),
     {Status, Output} =
         misc:run_external_tool(path_config:component_path(bin, "cbcollect_info"),
