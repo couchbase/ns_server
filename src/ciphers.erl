@@ -17,8 +17,8 @@ code(Name) ->
         #cipher{code = Bytes} -> Bytes
     end.
 
-openssl_name(Code) ->
-    maps:get(Code, openssl_ciphers(), undefined).
+openssl_name(Name) ->
+    maps:get(code(Name), openssl_ciphers(), undefined).
 
 high() ->
     [<<"TLS_RSA_WITH_AES_128_CBC_SHA">>,

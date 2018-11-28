@@ -251,7 +251,10 @@ build_auth_info(#state{cert_version = CertVersion,
     PermissionsVersion = menelaus_web_rbac:check_permissions_url_version(Config),
     EUserFromCertURL = misc:local_url(Port, "/_cbauth/extractUserFromCert", []),
     {Ciphers, Order} = ns_ssl_services_setup:supported_ciphers(cbauth, Config),
-    CipherInts = lists:map(fun (<<I:16/unsigned-integer>>) -> I end, Ciphers),
+    CipherInts = lists:map(fun (<<I:16/unsigned-integer>>) -> I end,
+                           [ciphers:code(N) || N <- Ciphers]),
+    CipherOpenSSLNames = [N2 || N <- Ciphers, N2 <- [ciphers:openssl_name(N)],
+                                N2 =/= undefined],
     MinTLSVsn = ns_ssl_services_setup:ssl_minimum_protocol(Config),
 
     [{nodes, Nodes},
@@ -265,7 +268,9 @@ build_auth_info(#state{cert_version = CertVersion,
      {clientCertAuthVersion, ClientCertAuthVersion},
      {tlsConfig, {[{minTLSVersion, MinTLSVsn},
                    {cipherOrder, Order},
-                   {ciphers, CipherInts}]}}].
+                   {ciphers, CipherInts},
+                   {cipherNames, Ciphers},
+                   {cipherOpenSSLNames, CipherOpenSSLNames}]}}].
 
 auth_version(Config) ->
     B = term_to_binary(
