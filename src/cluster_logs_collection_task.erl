@@ -353,7 +353,7 @@ preflight_base_url(false) ->
     ok;
 preflight_base_url(BaseURL) ->
     ?log_debug("Doing preflight_base_url(~s)", [BaseURL]),
-    case httpc:request(head, {BaseURL, []}, [{timeout, 20000}], []) of
+    case lhttpc:request(BaseURL, head, [], 20000) of
         {ok, Result} ->
             ?log_debug("Got some result: ~p", [Result]),
             ok;
