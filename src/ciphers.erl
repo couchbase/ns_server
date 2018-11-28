@@ -1,6 +1,7 @@
 -module(ciphers).
 
--export([is_valid_name/1, code/1, openssl_name/1]).
+-export([is_valid_name/1, code/1, openssl_name/1, high/0, medium/0,
+         only_known/1]).
 
 -record(cipher,{code :: binary(),
                 dtls_ok :: boolean(),
@@ -18,6 +19,22 @@ code(Name) ->
 
 openssl_name(Code) ->
     maps:get(Code, openssl_ciphers(), undefined).
+
+high() ->
+    [<<"TLS_RSA_WITH_AES_128_CBC_SHA">>,
+     <<"TLS_RSA_WITH_AES_256_CBC_SHA">>,
+     <<"TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA">>,
+     <<"TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA">>,
+     <<"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256">>,
+     <<"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256">>].
+
+medium() ->
+    [<<"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA">>,
+     <<"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA">>,
+     <<"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256">>].
+
+only_known(Names) ->
+    [N || N <- Names, V <- [ciphers:code(N)], V =/= undefined].
 
 %% https://www.iana.org/assignments/tls-parameters/tls-parameters.txt
 all() ->

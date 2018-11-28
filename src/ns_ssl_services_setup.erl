@@ -300,7 +300,7 @@ supported_ciphers(ns_server, Config) ->
 supported_ciphers(cbauth, Config) ->
     case configured_ciphers(Config) of
         [] ->
-            {ns_config:read_key_fast(ssl_ciphers_strength, [high]),
+            {default_cbauth_ciphers(),
              honor_cipher_order(false)};
         List ->
             {List, honor_cipher_order(true)}
@@ -318,7 +318,14 @@ supported_ciphers(openssl, Config) ->
 
 configured_ciphers(Config) ->
     Names = ns_config:search(Config, cipher_suites, []),
-    [V || C <- Names, V <- [ciphers:code(C)], V =/= undefined].
+    [ciphers:code(N) || N <- ciphers:only_known(Names)].
+
+default_cbauth_ciphers() ->
+    Names = lists:flatmap(
+              fun (high) -> ciphers:high();
+                  (medium) -> ciphers:medium()
+               end, ns_config:read_key_fast(ssl_ciphers_strength, [high])),
+    [ciphers:code(N) || N <- ciphers:only_known(Names)].
 
 honor_cipher_order(Default) ->
     ns_config:read_key_fast(honor_cipher_order, Default).
