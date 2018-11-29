@@ -1270,7 +1270,7 @@ letrec(Args, F) ->
 
 -spec is_ipv6() -> true | false.
 is_ipv6() ->
-    get_env_default(ns_server, ipv6, false).
+    get_proto_dist_type() =:= "inet6_tcp".
 
 -spec get_net_family() -> inet:address_family().
 get_net_family() ->
@@ -1283,10 +1283,10 @@ get_net_family() ->
 
 -spec get_proto_dist_type() -> string().
 get_proto_dist_type() ->
-    case is_ipv6() of
-        true ->
-            "inet6_tcp";
-        false ->
+    case init:get_argument(proto_dist) of
+        {ok, [[Proto]]} ->
+            Proto;
+        error ->
             "inet_tcp"
     end.
 

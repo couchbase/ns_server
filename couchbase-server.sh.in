@@ -113,14 +113,12 @@ _check_inet_mode() {
         if [ x"${ENTERPRISE}" = "xtrue" ]
         then
             VM_NAME='babysitter_of_ns_1@::1'
-            IPV6=true
         else
             echo "IPv6 is supported only in enterprise edition"
             exit 1
         fi
     else
         VM_NAME='babysitter_of_ns_1@127.0.0.1'
-        IPV6=false
     fi
 }
 
@@ -204,8 +202,7 @@ _start() {
         -ns_babysitter cookiefile "\"$COOKIEFILE\"" \
         -ns_babysitter nodefile "\"$NODEFILE\"" \
         -ns_babysitter pidfile "\"$PIDFILE\"" \
-        -ns_server config_path "\"$STATIC_CONFIG_PATH\"" \
-        -ns_server ipv6 $IPV6
+        -ns_server config_path "\"$STATIC_CONFIG_PATH\""
 }
 
 _stop() {
