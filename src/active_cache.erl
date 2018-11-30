@@ -11,7 +11,8 @@
          get_value_and_touch/3,
          get_value/3,
          reload_opts/2,
-         renew_cache/1]).
+         renew_cache/1,
+         flush/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -65,6 +66,9 @@ get_value(Name, Key, GetValue) ->
 reload_opts(Name, Opts) ->
     gen_server2:cast(Name, {reload_opts, Opts}).
 
+flush(Name) ->
+    gen_server2:call(Name, flush).
+
 renew_cache(Name) ->
     Name ! renew.
 
@@ -98,25 +102,15 @@ handle_call({cache, Key, GetValue}, From, #s{table_name = Name} = State) ->
         [{_, V, _, _}] -> {reply, V, State}
     end;
 
+handle_call(flush, _From, State) ->
+    {reply, ok, clean(State)};
+
 handle_call(Request, _From, State) ->
     {reply, {unhandled, Request}, State}.
 
-handle_cast({reload_opts, Opts}, #s{module = Module,
-                                    table_name = Name} = State) ->
+handle_cast({reload_opts, Opts}, #s{module = Module} = State) ->
     Opts2 = Module:translate_options(Opts),
-    NewState =
-        lists:foldl(fun ({max_size, V}, S) ->
-                            S#s{max_size = V};
-                        ({value_lifetime, V}, S) ->
-                            restart_cleanup_timer(S#s{value_lifetime = V});
-                        ({renew_interval, V}, S) ->
-                            restart_renew_timer(S#s{renew_interval = V});
-                        ({max_parallel_procs, V}, S) ->
-                            S#s{max_parallel_procs = V}
-                    end, State, Opts2),
-    ets:delete_all_objects(Name),
-    ?log_error("Clearing the ~p cache", [Name]),
-    {noreply, NewState#s{generation_ref = erlang:make_ref()}};
+    {noreply, reconfigure(Opts2, State)};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -143,6 +137,24 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+reconfigure(Opts, State) ->
+    NewState =
+        lists:foldl(fun ({max_size, V}, S) ->
+                            S#s{max_size = V};
+                        ({value_lifetime, V}, S) ->
+                            restart_cleanup_timer(S#s{value_lifetime = V});
+                        ({renew_interval, V}, S) ->
+                            restart_renew_timer(S#s{renew_interval = V});
+                        ({max_parallel_procs, V}, S) ->
+                            S#s{max_parallel_procs = V}
+                    end, State, Opts),
+    clean(NewState).
+
+clean(#s{table_name = Name} = State) ->
+    ets:delete_all_objects(Name),
+    ?log_debug("Clearing the ~p cache", [Name]),
+    State#s{generation_ref = erlang:make_ref()}.
 
 timestamp() -> erlang:monotonic_time(millisecond).
 

@@ -49,6 +49,10 @@ init([]) ->
                  P =:= external_auth_polling_interval ->
                 active_cache:reload_opts(?MODULE, [Event]);
             ({ldap_settings, _}) ->
+                %% Ldap cache might receive this notification later
+                %% but we need to make sure it is flushed before
+                %% we renew the upper level cache
+                ldap_auth_cache:flush(),
                 active_cache:renew_cache(?MODULE);
             (_) -> ok
         end,

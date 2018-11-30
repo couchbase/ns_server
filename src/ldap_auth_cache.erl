@@ -3,7 +3,7 @@
 -behaviour(active_cache).
 
 %% API
--export([start_link/0, authenticate/2, user_groups/1]).
+-export([start_link/0, authenticate/2, user_groups/1, flush/0]).
 
 %% gen_server callbacks
 -export([init/1, translate_options/1]).
@@ -35,6 +35,9 @@ user_groups(Username) ->
                   end
           end,
     active_cache:get_value(?MODULE, Key, Fun).
+
+flush() ->
+    active_cache:flush(?MODULE).
 
 %%%===================================================================
 %%% callbacks
