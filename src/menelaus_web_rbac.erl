@@ -1619,15 +1619,14 @@ prepare_ldap_settings(Settings) ->
           (hosts, Hosts) ->
               [list_to_binary(H) || H <- Hosts];
           (user_dn_mapping, L) ->
-              JSON = lists:map(
-                       fun ({Re, {'query', Q}}) ->
-                               {[{re, iolist_to_binary(Re)},
-                                 {'query', iolist_to_binary(Q)}]};
-                           ({Re, {template, T}}) ->
-                               {[{re, iolist_to_binary(Re)},
-                                 {template, iolist_to_binary(T)}]}
-                       end, L),
-              ejson:encode(JSON);
+              lists:map(
+                fun ({Re, {'query', Q}}) ->
+                        {[{re, iolist_to_binary(Re)},
+                          {'query', iolist_to_binary(Q)}]};
+                    ({Re, {template, T}}) ->
+                        {[{re, iolist_to_binary(Re)},
+                          {template, iolist_to_binary(T)}]}
+                end, L);
           (query_dn, DN) ->
               list_to_binary(DN);
           (query_pass, _) ->

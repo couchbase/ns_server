@@ -808,4 +808,5 @@ ldap_settings(Req, Settings) ->
     put(ldap_settings, Req, [prepare_ldap_setting(S) || S <- Settings]).
 
 prepare_ldap_setting({hosts, List}) -> {hosts, {list, List}};
+prepare_ldap_setting({user_dn_mapping = K, JSON}) -> {K, ejson:encode(JSON)};
 prepare_ldap_setting(Default) -> Default.
