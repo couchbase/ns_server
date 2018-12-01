@@ -690,7 +690,7 @@ get_dirty_groups(Id, Props) ->
     case Id of
         {_, local} -> Groups;
         {User, external} ->
-            case ldap_util:get_setting(authorization_enabled, false) of
+            case ldap_util:get_setting(authorization_enabled) of
                 true -> lists:usort(Groups ++ get_ldap_groups(User));
                 false -> Groups
             end

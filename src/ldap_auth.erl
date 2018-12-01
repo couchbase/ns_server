@@ -11,13 +11,11 @@
          user_groups/2,
          format_error/1]).
 
--define(DEFAULT_TIMEOUT, 5000).
-
 authenticate(Username, Password) ->
     authenticate(Username, Password, ldap_util:build_settings()).
 
 authenticate(Username, Password, Settings) ->
-    case proplists:get_value(authentication_enabled, Settings, false) of
+    case proplists:get_value(authentication_enabled, Settings) of
         true ->
             case get_user_DN(Username, Settings) of
                 {ok, DN} ->
@@ -34,12 +32,12 @@ authenticate(Username, Password, Settings) ->
     end.
 
 with_query_connection(Settings, Fun) ->
-    DN = proplists:get_value(query_dn, Settings, undefined),
-    Pass = proplists:get_value(query_pass, Settings, undefined),
+    DN = proplists:get_value(query_dn, Settings),
+    Pass = proplists:get_value(query_pass, Settings),
     ldap_util:with_authenticated_connection(DN, Pass, Settings, Fun).
 
 get_user_DN(Username, Settings) ->
-    Map = proplists:get_value(user_dn_mapping, Settings, []),
+    Map = proplists:get_value(user_dn_mapping, Settings),
     case map_user_to_DN(Username, Settings, Map) of
         {ok, DN} ->
             ?log_debug("Built LDAP DN ~p for username ~p",
@@ -68,7 +66,7 @@ map_user_to_DN(Username, Settings, [{Re, {Type, Template}}|T]) ->
     end.
 
 dn_query(Query, Settings) ->
-    Timeout = proplists:get_value(request_timeout, Settings, ?DEFAULT_TIMEOUT),
+    Timeout = proplists:get_value(request_timeout, Settings),
     with_query_connection(
       Settings,
       fun (Handle) ->
@@ -98,7 +96,7 @@ user_groups(User, Settings) ->
     with_query_connection(
       Settings,
       fun (Handle) ->
-              Query = proplists:get_value(groups_query, Settings, undefined),
+              Query = proplists:get_value(groups_query, Settings),
               Res = get_groups(Handle, User, Settings, Query),
               ?log_debug("Groups search for ~p: ~p",
                          [ns_config_log:tag_user_name(User), Res]),
@@ -106,7 +104,7 @@ user_groups(User, Settings) ->
       end).
 
 get_groups(Handle, Username, Settings, QueryStr) ->
-    Timeout = proplists:get_value(request_timeout, Settings, ?DEFAULT_TIMEOUT),
+    Timeout = proplists:get_value(request_timeout, Settings),
     GetDN =
         fun () ->
                 case get_user_DN(Username, Settings) of
@@ -122,7 +120,7 @@ get_groups(Handle, Username, Settings, QueryStr) ->
                 run_query(Handle, QueryStr, Replace, Timeout)
         end,
     EscapedUser = ldap_util:escape(Username),
-    MaxDepth = proplists:get_value(nested_groups_max_depth, Settings, 10),
+    MaxDepth = proplists:get_value(nested_groups_max_depth, Settings),
     NestedEnabled = proplists:get_bool(nested_groups_enabled, Settings),
     try
         UserGroups = run_query(Handle, QueryStr, [{"%u", EscapedUser},

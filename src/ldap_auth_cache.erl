@@ -11,9 +11,6 @@
 -include("ns_common.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
--define(DEFAULT_MAX_PARALLEL_CONNECTIONS, 100).
--define(DEFAULT_MAX_CACHE_SIZE, 10000).
-
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -61,10 +58,8 @@ translate_options(_) -> opts().
 %%%===================================================================
 
 opts() ->
-    Get = fun (K, D) -> ldap_util:get_setting(K, D) end,
-    PollingInterval = menelaus_roles:external_auth_polling_interval(),
+    Get = fun (K) -> ldap_util:get_setting(K) end,
     [{renew_interval, infinity},
-     {max_size, Get(max_cache_size, ?DEFAULT_MAX_CACHE_SIZE)},
-     {value_lifetime, Get(cache_value_lifetime, round(0.5*PollingInterval))},
-     {max_parallel_procs, Get(max_parallel_connections,
-                              ?DEFAULT_MAX_PARALLEL_CONNECTIONS)}].
+     {max_size, Get(max_cache_size)},
+     {value_lifetime, Get(cache_value_lifetime)},
+     {max_parallel_procs, Get(max_parallel_connections)}].

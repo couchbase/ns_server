@@ -1615,7 +1615,8 @@ handle_ldap_settings(Req) ->
 
 prepare_ldap_settings(Settings) ->
     Fun =
-      fun (hosts, Hosts) ->
+      fun (_, undefined) -> undefined;
+          (hosts, Hosts) ->
               [list_to_binary(H) || H <- Hosts];
           (user_dn_mapping, L) ->
               JSON = lists:map(
@@ -1636,16 +1637,15 @@ prepare_ldap_settings(Settings) ->
           (_, Value) ->
               Value
       end,
-    [{K, Fun(K, V)} || {K, V} <- Settings].
+    [{K, Fun(K, V)} || {K, V} <- Settings, V =/= undefined].
 
 handle_ldap_settings_post(Req) ->
     assert_groups_and_ldap_enabled(),
     validator:handle(
       fun (Props) ->
-              NewProps = build_new_ldap_settings(Props),
               ?log_debug("Saving ldap settings: ~p", [Props]),
-              ns_audit:ldap_settings(Req, prepare_ldap_settings(NewProps)),
-              ldap_util:set_settings(NewProps),
+              ns_audit:ldap_settings(Req, prepare_ldap_settings(Props)),
+              ldap_util:set_settings(Props),
               handle_ldap_settings(Req)
       end, Req, form, ldap_settings_validators()).
 

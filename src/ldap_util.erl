@@ -11,18 +11,16 @@
          parse_url/1,
          parse_url/2,
          escape/1,
-         get_setting/2,
+         get_setting/1,
          build_settings/0,
          set_settings/1,
          replace_expressions/2]).
 
--define(DEFAULT_TIMEOUT, 5000).
-
 with_connection(Settings, Fun) ->
-    Hosts = proplists:get_value(hosts, Settings, []),
-    Port = proplists:get_value(port, Settings, 389),
-    Timeout = proplists:get_value(request_timeout, Settings, ?DEFAULT_TIMEOUT),
-    Encryption = proplists:get_value(encryption, Settings, tls),
+    Hosts = proplists:get_value(hosts, Settings),
+    Port = proplists:get_value(port, Settings),
+    Timeout = proplists:get_value(request_timeout, Settings),
+    Encryption = proplists:get_value(encryption, Settings),
     SSL = Encryption == ssl,
     %% Note: timeout option sets not only connect timeout but a timeout for any
     %%       request to ldap server
@@ -66,19 +64,38 @@ with_authenticated_connection(DN, Password, Settings, Fun) ->
                             end
                     end).
 
-get_setting(Prop, Default) ->
-    ns_config:search_prop(ns_config:latest(), ldap_settings, Prop, Default).
+get_setting(Prop) ->
+    proplists:get_value(Prop, build_settings()).
+
+default_settings() ->
+    [{authentication_enabled, false},
+     {authorization_enabled, false},
+     {hosts, []},
+     {port, 389},
+     {encryption, tls},
+     {user_dn_mapping, []},
+     {query_dn, undefined},
+     {query_pass, undefined},
+     {groups_query, undefined},
+     {max_parallel_connections, 100},
+     {max_cache_size, 10000},
+     {request_timeout, 5000},
+     {nested_groups_enabled, false},
+     {nested_groups_max_depth, 10},
+     {cache_value_lifetime,
+      round(0.5*menelaus_roles:external_auth_polling_interval())}].
 
 build_settings() ->
     case ns_config:search(ldap_settings) of
         {value, Settings} ->
-            Settings;
+            misc:update_proplist(default_settings(), Settings);
         false ->
-            []
+            default_settings()
     end.
 
 set_settings(Settings) ->
-    ns_config:set(ldap_settings, Settings).
+    OldProps = ns_config:read_key_fast(ldap_settings, []),
+    ns_config:set(ldap_settings, misc:update_proplist(OldProps, Settings)).
 
 parse_scope("base") -> eldap:baseObject();
 parse_scope("one") -> eldap:singleLevel();
