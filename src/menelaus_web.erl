@@ -522,6 +522,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, security], write},
                      fun menelaus_web_rbac:handle_ldap_settings_validate_post/2,
                      [Type]};
+                ["settings", "invalidateLDAPCache"] ->
+                    {{[admin, security], write},
+                     fun menelaus_web_rbac:handle_invalidate_ldap_cache/1};
                 ["settings", "clientCertAuth"] ->
                     {{[admin, security], write},
                      fun menelaus_web_cert:handle_client_cert_auth_settings_post/1};

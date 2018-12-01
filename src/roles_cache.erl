@@ -3,7 +3,7 @@
 -behaviour(active_cache).
 
 %% API
--export([start_link/0, build_compiled_roles/1]).
+-export([start_link/0, build_compiled_roles/1, renew/0]).
 
 %% callbacks
 -export([init/1, translate_options/1]).
@@ -35,6 +35,9 @@ build_compiled_roles(Identity) ->
     Key = {?FUNCTION_NAME, Identity},
     Fun = fun () -> menelaus_roles:build_compiled_roles(Identity) end,
     active_cache:get_value_and_touch(?MODULE, Key, Fun).
+
+renew() ->
+    active_cache:renew_cache(?MODULE).
 
 %%%===================================================================
 %%% callbacks
