@@ -177,6 +177,14 @@
   .filter-log input.filter-input {
     width: 94vw;
   }
+  .wb-query-editor-footer {
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .wb-result-summary {
+    margin: .25rem 0;
+  }
 }
 
 /* responsive extra-small ------------------------------- */
