@@ -23,7 +23,8 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -export([compose/1, compose/2, run/3, run/2,
-         fold/3, foreach/2, filter/1, map/1, collect/0, stream_list/1]).
+         fold/3, foreach/2, filter/1, filterfold/2, map/1, collect/0,
+         stream_list/1]).
 
 -export([read_file/1, read_file/2,
          write_file/1, write_file/2,
@@ -72,6 +73,21 @@ filter(Pred) ->
                                ok
                        end
                end)).
+
+-spec filterfold(fun ((Event, Acc :: term()) -> {boolean(), NewAcc :: term()}),
+                 InitAcc :: term()) -> transducer(Event, Event).
+filterfold(Fun, AccInit) ->
+    ?make_transducer(
+       pipes:fold(?producer(),
+                  fun (User, Acc) ->
+                          case Fun(User, Acc) of
+                              {true, NewAcc} ->
+                                  ?yield(User),
+                                  NewAcc;
+                              {false, NewAcc} ->
+                                  NewAcc
+                          end
+                  end, AccInit)).
 
 -spec map(fun ((Event1) -> Event2)) -> transducer(Event1, Event2).
 map(Fun) ->

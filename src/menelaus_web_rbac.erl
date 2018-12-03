@@ -375,48 +375,12 @@ security_filter(Req) ->
             pipes:filter(fun (_) -> true end);
         false ->
             SecurityRoles = get_security_roles(),
-            Check =
-                fun ({_, Props}, Cache) ->
-                      UserRoles = proplists:get_value(user_roles, Props, []) ++
-                                      proplists:get_value(roles, Props, []),
-
-                      case overlap(UserRoles, SecurityRoles) of
-                          true -> {false, Cache};
-                          false ->
-                              Groups = proplists:get_value(dirty_groups, Props,
-                                                           []),
-                              security_filter_groups(Groups, SecurityRoles,
-                                                     Cache)
-                      end
-                end,
-            ?make_transducer(
-              pipes:fold(?producer(),
-                         fun (User, Cache) ->
-                                 case Check(User, Cache) of
-                                     {true, NewCache} ->
-                                         ?yield(User),
-                                         NewCache;
-                                     {false, NewCache} ->
-                                         NewCache
-                                 end
-                         end, #{}))
+            pipes:filterfold(
+              fun (User, Cache) ->
+                  {Res, NewCache} = has_role(User, SecurityRoles, Cache),
+                  {not Res, NewCache}
+              end, #{})
     end.
-
-security_filter_groups([], _, Cache) -> {true, Cache};
-security_filter_groups([G|T], SecurityRoles, Cache) ->
-    case maps:find(G, Cache) of
-        {ok, false} -> {false, Cache};
-        {ok, true} -> security_filter_groups(T, SecurityRoles, Cache);
-        error ->
-            Roles = menelaus_users:get_group_roles(G),
-            case overlap(Roles, SecurityRoles) of
-                true ->
-                    {false, Cache#{G => false}};
-                false ->
-                    security_filter_groups(T, SecurityRoles, Cache#{G => true})
-            end
-    end.
-
 
 handle_get_all_users(Req, Pattern, Params) ->
     Roles = get_roles_for_users_filtering(
@@ -452,40 +416,30 @@ filter_by_roles(all) ->
     pipes:filter(fun (_) -> true end);
 filter_by_roles(Roles) ->
     RoleNames = [Name || {Name, _} <- Roles],
-    Check =
-        fun ({_, Props}, Cache) ->
-            UserRoles = proplists:get_value(user_roles, Props, []),
-            case overlap(RoleNames, UserRoles) of
-                true -> {true, Cache};
-                false ->
-                    Groups = proplists:get_value(dirty_groups, Props, []),
-                    filter_groups_by_roles(Groups, RoleNames, Cache)
-            end
-        end,
-    ?make_transducer(
-      pipes:fold(?producer(),
-                 fun (User, Cache) ->
-                         case Check(User, Cache) of
-                             {true, NewCache} ->
-                                 ?yield(User),
-                                 NewCache;
-                             {false, NewCache} ->
-                                 NewCache
-                         end
-                 end, #{})).
+    pipes:filterfold(?cut(has_role(_1, RoleNames, _2)), #{}).
 
-filter_groups_by_roles([], _, Cache) -> {false, Cache};
-filter_groups_by_roles([G|T], RoleNames, Cache) ->
+has_role({_, Props}, Roles, Cache) ->
+    UserRoles = proplists:get_value(user_roles, Props, []) ++
+                    proplists:get_value(roles, Props, []),
+    case overlap(UserRoles, Roles) of
+        true -> {true, Cache};
+        false ->
+            Groups = proplists:get_value(dirty_groups, Props, []),
+            has_role_in_groups(Groups, Roles, Cache)
+    end.
+
+has_role_in_groups([], _, Cache) -> {false, Cache};
+has_role_in_groups([G|T], Roles, Cache) ->
     case maps:find(G, Cache) of
         {ok, true} -> {true, Cache};
-        {ok, false} -> filter_groups_by_roles(T, RoleNames, Cache);
+        {ok, false} -> has_role_in_groups(T, Roles, Cache);
         error ->
             GroupRoles = menelaus_users:get_group_roles(G),
-            case overlap(RoleNames, GroupRoles) of
+            case overlap(GroupRoles, Roles) of
                 true ->
                     {true, Cache#{G => true}};
                 false ->
-                    filter_groups_by_roles(T, RoleNames, Cache#{G => false})
+                    has_role_in_groups(T, Roles, Cache#{G => false})
             end
     end.
 
