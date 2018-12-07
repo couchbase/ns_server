@@ -28,6 +28,7 @@
       vm.generateIndexId = generateIndexId;
       vm.hasQueryService = hasQueryService;
       vm.dropIndex = dropIndex;
+      vm.getStatusClass = getStatusClass;
 
       mnHelper.initializeDetailsHashObserver(vm, 'openedIndex', 'app.admin.indexes.gsi');
 
@@ -40,6 +41,16 @@
       function hasQueryService() {
         return (mnPoolDefault.export.thisNode.services
                 .indexOf('n1ql') != -1);
+      }
+
+      function getStatusClass(row) {
+        row = row || {};
+        switch (row.status) {
+        case 'Ready': return 'dynamic_healthy';
+        case 'Not Available':
+        case 'Error': return 'dynamic_unhealthy';
+        default: return 'dynamic_warmup';
+        }
       }
 
       function dropIndex(row) {

@@ -32,19 +32,15 @@
                 | filter:mnGsiTableCtl.filterField
                 as listFiltered
                 track by mnGsiTableCtl.generateIndexId(row)"
-     ng-class="{
-               'disabled-tag': row.awaitingRemoval,
-               'dynamic_healthy': row.status == 'Ready' && mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row)),
-               'dynamic_unhealthy': row.status !== 'Ready' && mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row))
-               }"
+     ng-class="[(row.awaitingRemoval ? 'disabled-tag' : ''),
+               (mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row)) ?
+               mnGsiTableCtl.getStatusClass(row) : '')]"
      ng-click="mnGsiTableCtl.toggleDetails(mnGsiTableCtl.generateIndexId(row))"
      class="has-hover">
     <div
        class="cbui-tablerow"
-       ng-class="{
-                 'dynamic_healthy': row.status == 'Ready' && !mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row)),
-                 'dynamic_unhealthy': row.status !== 'Ready' && !mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row))
-                 }">
+       ng-class="[(!mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row)) ?
+                 mnGsiTableCtl.getStatusClass(row) : '')]">
       <span
          class="cbui-table-cell flex-grow-1-5"
          title="{{row.index}}">
