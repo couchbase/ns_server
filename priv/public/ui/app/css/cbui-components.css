@@ -1993,19 +1993,18 @@ input[type="checkbox"].fake-select + label:before {
 }
 .insights-sidebar-body .row {
   line-height: 2rem;
-  margin-bottom: .25rem;
-  padding-right: .5rem;
+  
 }
 /*.insights-sidebar-body .icon {
   cursor: pointer;
   color: #555;
 } */
 .insights-sidebar-body ul {
-  margin: .25rem 0;
+  margin: .25rem 0 0 0;
   cursor: default;
 }
 .insights-sidebar-body ul ul {
-  margin-left: .75rem;
+  margin-left: 1.5rem;
 }
 .insights-sidebar-body li {
   list-style-type: none;
@@ -2013,6 +2012,10 @@ input[type="checkbox"].fake-select + label:before {
 .insights-sidebar-body section {
   border-width: 0;
   margin-bottom: .5rem;
+}
+.insights-sidebar-body .disclosure:before,
+.insights-sidebar-body .disclosed:before {
+  font-size: 1rem !important;
 }
 .insights-sidebar-schema .indexed {
   color: #000;
@@ -2062,7 +2065,7 @@ input[type="checkbox"].fake-select + label:before {
 .wb-history-table section span.selected {
   background-color: #ececec;
 }
-/* force scrollbars to be visible -------------------------------------- */
+/* force scrollbars to be visible ------------------------------------------- */
 .hide-track.show-scrollbar::-webkit-scrollbar-track {
   background-color: #fff !important;
 }
@@ -2109,7 +2112,7 @@ input:checked + .toggle-control-body:before {
   transform: translateX(24px);
 }
 
-/* controls & styles for hiding and showing the navigation sidebar */
+/* controls & styles for hiding and showing the navigation sidebar ---------- */
 .sidebar-closer-wrapper {
   position: absolute;
   left: 103px;
@@ -2170,8 +2173,12 @@ nav.nav-sidebar-hidden {
   color: #333;
   box-shadow: 2px 1px 2px 0 rgba(0,0,0,0.15);
 }
+<<<<<<< Updated upstream
 
 /*  fixed footer for saving forms  */
+=======
+/*  fixed footer for saving forms ------------------------------------------- */
+>>>>>>> Stashed changes
 .footer-save {
   position: fixed;
   width: 100%;
