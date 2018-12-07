@@ -1839,6 +1839,9 @@ input[type="checkbox"].fake-select + label:before {
   width: 7rem;
   min-width: 7rem;
 }
+.wb-button-wrapper {
+  margin-right: 1rem;
+}
 .wb-result-summary {
   text-align: left;
   -webkit-box-flex: 1;
@@ -1967,7 +1970,6 @@ input[type="checkbox"].fake-select + label:before {
 .insights-sidebar-expand {
   cursor: pointer;
   color: #d1d1d1;
-  margin-right: 2.5rem;
 }
 .insights-sidebar-close:hover,
 .insights-sidebar-open:hover,
@@ -2168,6 +2170,7 @@ nav.nav-sidebar-hidden {
   color: #333;
   box-shadow: 2px 1px 2px 0 rgba(0,0,0,0.15);
 }
+
 /*  fixed footer for saving forms  */
 .footer-save {
   position: fixed;
@@ -2183,4 +2186,12 @@ nav.nav-sidebar-hidden {
   box-shadow: 0px -3px 8px 0px rgba(0,0,0,0.08);
   border: 1px solid #e1e1e1;
   border-width: 1px 0 0 0;
+}
+/*  pipe delimiter style  ------------------------------------------ */
+.pipe:before {
+  content: '\007C';
+  color: #d1d1d1;
+}
+.pipe:nth-child(2):before {
+  content: none !important;
 }

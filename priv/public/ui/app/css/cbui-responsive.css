@@ -135,7 +135,8 @@
   }
   .row.resp-sml,
   .controls.resp-sml,
-  .content-box-dashboard.resp-sml{
+  .content-box-dashboard.resp-sml,
+  .wb-query-editor-footer {
     flex-wrap: wrap !important;
   }
   div[class*="width-"] {
