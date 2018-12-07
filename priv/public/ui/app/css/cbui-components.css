@@ -1832,12 +1832,14 @@ input[type="checkbox"].fake-select + label:before {
   justify-content: space-between;
   position: relative;
 }
+.wb-button-wrapper {
+  margin-right: 1rem;
+}
 .wb-button-execute {
   width: 7rem;
   min-width: 7rem;
 }
 .wb-result-summary {
-  margin: 0 1rem;
   text-align: left;
   -webkit-box-flex: 1;
   flex-grow: 1;
