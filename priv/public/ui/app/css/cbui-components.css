@@ -1993,7 +1993,7 @@ input[type="checkbox"].fake-select + label:before {
 }
 .insights-sidebar-body .row {
   line-height: 2rem;
-  
+
 }
 /*.insights-sidebar-body .icon {
   cursor: pointer;
@@ -2173,12 +2173,7 @@ nav.nav-sidebar-hidden {
   color: #333;
   box-shadow: 2px 1px 2px 0 rgba(0,0,0,0.15);
 }
-<<<<<<< Updated upstream
-
-/*  fixed footer for saving forms  */
-=======
 /*  fixed footer for saving forms ------------------------------------------- */
->>>>>>> Stashed changes
 .footer-save {
   position: fixed;
   width: 100%;
