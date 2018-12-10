@@ -1,247 +1,247 @@
-  <div
-     ng-if="rbac.cluster.settings.read"
-     mn-launchpad
-     launchpad-source="adminCtl.launchpadSource"
-     launchpad-id="adminCtl.launchpadId"></div>
-  <div
-     ui-view="lostConnection">
-  </div>
+<div
+  ng-if="rbac.cluster.settings.read"
+  mn-launchpad
+  launchpad-source="adminCtl.launchpadSource"
+  launchpad-id="adminCtl.launchpadId"></div>
+<div
+  ui-view="lostConnection">
+</div>
 
-  <div class="row">
-    <nav class="nav-header">
-      <a ng-click="adminCtl.toggleProgressBar()" class="activities" ng-if="rbac.cluster.tasks.read">
-        activity
-        <span
-           ng-if="adminCtl.filterTasks(adminCtl.tasks.running).length > 0"
-           class="label badge">
-          {{adminCtl.filterTasks(adminCtl.tasks.running).length}}
-        </span>
-      </a>
-      <div class="relative inline" ng-if="rbac.cluster.tasks.read">
-        <div
-           mn-drag-and-drop
-           base-corner-right="true"
-           class="tasks-progress dialog-small enable-ng-animation"
-           ng-if="!adminCtl.isProgressBarClosed">
-          <div class="close-tasks">
-            <span ng-click="adminCtl.toggleProgressBar()">X</span>
+<div class="row">
+  <nav class="nav-header">
+    <a ng-click="adminCtl.toggleProgressBar()" class="activities" ng-if="rbac.cluster.tasks.read">
+      activity
+      <span
+        ng-if="adminCtl.filterTasks(adminCtl.tasks.running).length > 0"
+        class="label badge">
+        {{adminCtl.filterTasks(adminCtl.tasks.running).length}}
+      </span>
+    </a>
+    <div class="relative inline" ng-if="rbac.cluster.tasks.read">
+      <div
+        mn-drag-and-drop
+        base-corner-right="true"
+        class="tasks-progress dialog-small enable-ng-animation"
+        ng-if="!adminCtl.isProgressBarClosed">
+        <div class="close-tasks">
+          <span ng-click="adminCtl.toggleProgressBar()">X</span>
+        </div>
+        <div class="panel-content">
+          <div
+            class="text-small margin-bottom-1"
+            ng-show="!adminCtl.filterTasks(adminCtl.tasks.running).length">
+            No active processes to display
           </div>
-          <div class="panel-content">
-            <div
-               class="text-small margin-bottom-1"
-               ng-show="!adminCtl.filterTasks(adminCtl.tasks.running).length">
-              No active processes to display
+          <div ng-repeat="task in adminCtl.filterTasks(adminCtl.tasks.running)">
+            <div class="text-small text-left">
+              {{task | formatProgressMessage}}
+              <span ng-if="task.progress != undefined">{{(task.progress | number:1) + '%'}}</span>
             </div>
-            <div ng-repeat="task in adminCtl.filterTasks(adminCtl.tasks.running)">
-              <div class="text-small text-left">
-                {{task | formatProgressMessage}}
-                <span ng-if="task.progress != undefined">{{(task.progress | number:1) + '%'}}</span>
+            <div
+              class="bar-wrapper"
+              ng-show="task.type !== 'loadingSampleBucket' && task.type !== 'orphanBucket'">
+              <div
+                class="bar positive"
+                ng-style="{'width': task.progress + '%'}">
+                <div></div>
               </div>
               <div
-                 class="bar-wrapper"
-                 ng-show="task.type !== 'loadingSampleBucket' && task.type !== 'orphanBucket'">
-                <div
-                   class="bar positive"
-                   ng-style="{'width': task.progress + '%'}">
-                  <div></div>
-                </div>
-                <div
-                   class="bar negative"
-                   ng-style="{'width': (100 - task.progress) + '%'}">
-                  <div></div>
-                </div>
+                class="bar negative"
+                ng-style="{'width': (100 - task.progress) + '%'}">
+                <div></div>
               </div>
             </div>
           </div>
         </div>
       </div>
-      <a
-         ng-click="adminCtl.runInternalSettingsDialog();"
-         ng-show="adminCtl.enableInternalSettings && rbac.cluster.admin.settings.write">
-        Edit internal settings
-      </a>
-      <span uib-dropdown>
-        <a uib-dropdown-toggle>
-          help
-        </a>
-        <div uib-dropdown-menu class="dropdown-menu-select-like">
-          <a ng-href="https://developer.couchbase.com/documentation/server/{{::(adminCtl.implementationVersion | parseVersion)[0].split('.').splice(0,2).join('.')}}/introduction/whats-new.html" target="_blank">
-            Documentation<br>
-            <desc>For version {{::(adminCtl.implementationVersion | parseVersion)[0].split('.').splice(0,2).join('.')}}</desc>
-          </a>
-          <a ng-href="{{adminCtl.poolDefault.isEnterprise  ? 'http://support.couchbase.com' : 'http://www.couchbase.com/communities/'}}" target="cbforums">
-            Couchbase Support<br>
-            <desc>For Enterprise Edition subscription customers</desc>
-          </a>
-        </div>
-      </span>
-      <span uib-dropdown>
-        <a uib-dropdown-toggle class="nowrap ellipsis max-width-3">
-          {{adminCtl.user.id}}
-          <span class="has-menu">&nbsp;</span>
-        </a>
-        <div uib-dropdown-menu class="dropdown-menu-select-like">
-          <a
-             ng-show="pools.isEnterprise && poolDefault.compat.atLeast50 && (adminCtl.user.domain === 'local' || adminCtl.user.domain === 'admin')"
-             ng-click="adminCtl.showResetPasswordDialog()">
-            Reset password
-          </a>
-          <a
-             ng-click="adminCtl.logout()"
-             class="ellipsis max-width-4">
-            Sign out {{adminCtl.user.id}}
-          </a>
-        </div>
-      </span>
-    </nav>
-  </div>
-
-  <header>
-    <a ui-sref="app.admin.overview" class="logobug-wrapper">
-      <img src="../cb_logo_bug_white_2.svg" width="48" height="48" alt="Couchbase Server" class="logobug" title="Couchbase Server {{::adminCtl.implementationVersion | mnPrettyVersion}}">
+    </div>
+    <a
+      ng-click="adminCtl.runInternalSettingsDialog();"
+      ng-show="adminCtl.enableInternalSettings && rbac.cluster.admin.settings.write">
+      Edit internal settings
     </a>
-    <h1>
-      <a ui-sref="app.admin.overview" class="resp-txt-xsml ellipsis">
-        {{adminCtl.tabName}} <!-- the cluster name -->
+    <span uib-dropdown>
+      <a uib-dropdown-toggle>
+        help
       </a>
-      <span class="resp-hide-xsml" ng-show="adminCtl.tabName">
-        <span class="icon fa-angle-right"></span>
-      </span>
-      <span ng-if="adminCtl.$state.current.data.child">
-        <a
-           ui-state="adminCtl.$state.current.data.child"
-           ui-state-params="('merge' | lodash:{}:adminCtl.$state.params:adminCtl.$state.current.data.childParams)">
-          {{adminCtl.$state.get(adminCtl.$state.current.data.child).data.title}} <!-- the back-to-parent page name -->
+      <div uib-dropdown-menu class="dropdown-menu-select-like">
+        <a ng-href="https://developer.couchbase.com/documentation/server/{{::(adminCtl.implementationVersion | parseVersion)[0].split('.').splice(0,2).join('.')}}/introduction/whats-new.html" target="_blank">
+          Documentation<br>
+          <desc>For version {{::(adminCtl.implementationVersion | parseVersion)[0].split('.').splice(0,2).join('.')}}</desc>
         </a>
-      </span>
-      <span ng-if="adminCtl.$state.current.data.child" class="icon fa-angle-right"></span>
-      <span>
-        {{adminCtl.$state.current.data.title}} <!-- the current page name -->
-      </span>
-    </h1>
+        <a ng-href="{{adminCtl.poolDefault.isEnterprise  ? 'http://support.couchbase.com' : 'http://www.couchbase.com/communities/'}}" target="cbforums">
+          Couchbase Support<br>
+          <desc>For Enterprise Edition subscription customers</desc>
+        </a>
+      </div>
+    </span>
+    <span uib-dropdown>
+      <a uib-dropdown-toggle class="nowrap ellipsis max-width-3">
+        {{adminCtl.user.id}}
+        <span class="has-menu">&nbsp;</span>
+      </a>
+      <div uib-dropdown-menu class="dropdown-menu-select-like">
+        <a
+          ng-show="pools.isEnterprise && poolDefault.compat.atLeast50 && (adminCtl.user.domain === 'local' || adminCtl.user.domain === 'admin')"
+          ng-click="adminCtl.showResetPasswordDialog()">
+          Reset password
+        </a>
+        <a
+          ng-click="adminCtl.logout()"
+          class="ellipsis max-width-4">
+          Sign out {{adminCtl.user.id}}
+        </a>
+      </div>
+    </span>
+  </nav>
+</div>
 
-    <!-- Depots are the placeholders for page-specific controls/content -->
-    <div class="row flex-right">
-      <mn-element-depot name="header"></mn-element-depot>
-      <mn-element-depot name="actions"></mn-element-depot>
-      <span class="menu-icon" ng-click="showRespMenu = !showRespMenu">
-        <span class="icon fa-navicon"></span>
-      </span>
-    </div>
-  </header>
+<header>
+  <a ui-sref="app.admin.overview" class="logobug-wrapper">
+    <img src="../cb_logo_bug_white_2.svg" width="48" height="48" alt="Couchbase Server" class="logobug" title="Couchbase Server {{::adminCtl.implementationVersion | mnPrettyVersion}}">
+  </a>
+  <h1>
+    <a ui-sref="app.admin.overview" class="resp-txt-xsml ellipsis">
+      {{adminCtl.tabName}} <!-- the cluster name -->
+    </a>
+    <span class="resp-hide-xsml" ng-show="adminCtl.tabName">
+      <span class="icon fa-angle-right"></span>
+    </span>
+    <span ng-if="adminCtl.$state.current.data.child">
+      <a
+        ui-state="adminCtl.$state.current.data.child"
+        ui-state-params="('merge' | lodash:{}:adminCtl.$state.params:adminCtl.$state.current.data.childParams)">
+        {{adminCtl.$state.get(adminCtl.$state.current.data.child).data.title}} <!-- the back-to-parent page name -->
+      </a>
+    </span>
+    <span ng-if="adminCtl.$state.current.data.child" class="icon fa-angle-right"></span>
+    <span>
+      {{adminCtl.$state.current.data.title}} <!-- the current page name -->
+    </span>
+  </h1>
 
-  <mn-element-depot name="subnav"></mn-element-depot>
-  <mn-element-depot name="alerts"></mn-element-depot>
+  <!-- Depots are the placeholders for page-specific controls/content -->
+  <div class="row flex-right">
+    <mn-element-depot name="header"></mn-element-depot>
+    <mn-element-depot name="actions"></mn-element-depot>
+    <span class="menu-icon" ng-click="showRespMenu = !showRespMenu">
+      <span class="icon fa-navicon"></span>
+    </span>
+  </div>
+</header>
 
+<mn-element-depot name="subnav"></mn-element-depot>
+<mn-element-depot name="alerts"></mn-element-depot>
+
+<div
+  class="alert alert-warning"
+  ng-show="adminCtl.lostConnState.isActivated">
+  <p>Difficulties communicating with the cluster. Displaying cached information.</p>
+</div>
+
+<div
+  ng-repeat="alert in adminCtl.alerts"
+  class="animate-alert alert enable-ng-animation"
+  ng-class="['alert-' + alert.type]">
+  <p>{{alert.msg}}</p>
+  <a ng-click="adminCtl.closeAlert(alert)" class="close">X</a>
+</div>
+
+<main>
   <div
-     class="alert alert-warning"
-     ng-show="adminCtl.lostConnState.isActivated">
-    <p>Difficulties communicating with the cluster. Displaying cached information.</p>
+    class="sidebar-opener"
+    ng-class="{'show' : hideNavSidebar}"
+    ng-click="hideNavSidebar = false">
+    <span class="icon fa-chevron-right"></span>
   </div>
 
-  <div
-     ng-repeat="alert in adminCtl.alerts"
-     class="animate-alert alert enable-ng-animation"
-     ng-class="['alert-' + alert.type]">
-    <p>{{alert.msg}}</p>
-    <a ng-click="adminCtl.closeAlert(alert)" class="close">X</a>
-  </div>
+  <nav
+    class="nav-sidebar"
+    ng-class="{'resp-show-menu' : showRespMenu, 'nav-sidebar-hidden' : hideNavSidebar}"
+    ng-click="showRespMenu = !showRespMenu"
+    mn-pluggable-ui-tabs
+    mn-tab-bar-name="adminTab">
 
-  <main>
-    <div
-       class="sidebar-opener"
-       ng-class="{'show' : hideNavSidebar}"
-       ng-click="hideNavSidebar = false">
-      <span class="icon fa-chevron-right"></span>
+    <div class="sidebar-closer-wrapper">
+      <div
+        class="sidebar-closer"
+        ng-click="hideNavSidebar = true">
+        <span class="icon fa-chevron-left"></span>
+      </div>
     </div>
-
-    <nav
-       class="nav-sidebar"
-       ng-class="{'resp-show-menu' : showRespMenu, 'nav-sidebar-hidden' : hideNavSidebar}"
-       ng-click="showRespMenu = !showRespMenu"
-       mn-pluggable-ui-tabs
-       mn-tab-bar-name="adminTab">
-
-        <div class="sidebar-closer-wrapper">
-       <div
-          class="sidebar-closer"
-          ng-click="hideNavSidebar = true">
-         <span class="icon fa-chevron-left"></span>
-       </div>
-       </div>
-      <a
-         mn-tab="overview"
-         ui-sref="app.admin.overview"
-         ui-sref-active="currentnav">
-         Dashboard
-      </a>
-      <a
-         mn-tab="servers"
-         ui-sref-active="currentnav"
-         ui-sref="app.admin.servers.list">
-        Servers
-      </a>
-      <a
-         mn-tab="buckets"
-         ng-show="rbac.cluster.bucket['.'].settings.read"
-         ui-sref="app.admin.buckets"
-         ui-sref-active="currentnav">
-        Buckets
-      </a>
-      <a
-         ng-show="rbac.cluster.tasks.read"
-         mn-tab="replications"
-         ui-sref-active="currentnav"
-         ui-sref="app.admin.replications">
-        XDCR
-      </a>
-      <a
-         ng-show="rbac.cluster.admin.security.read"
-         mn-tab="security"
-         ng-class="{currentnav: ('app.admin.security' | includedByState)}"
-         ui-sref="app.admin.security">
-        Security
-      </a>
-      <a
-         mn-tab="settings"
-         ng-class="{currentnav: ('app.admin.settings' | includedByState)}"
-         ui-sref="app.admin.settings.cluster">
-        <span
-           ng-show="adminCtl.updates.sendStats && !!adminCtl.updates.newVersion"
-           class="label neutral badge notify">i</span>
-        Settings
-      </a>
-      <a
-         mn-tab="logs"
-         ui-sref="app.admin.logs.list"
-         ng-class="{currentnav: ('app.admin.logs' | includedByState)}"
-         ng-show="rbac.cluster.logs.read">
-        Logs
-      </a>
-      <div class="margin-bottom-1"></div>
-      <nav
-         mn-pluggable-ui-tabs
-         mn-tab-bar-name="workbenchTab">
-      </nav>
+    <a
+      mn-tab="overview"
+      ui-sref="app.admin.overview"
+      ui-sref-active="currentnav">
+      Dashboard
+    </a>
+    <a
+      mn-tab="servers"
+      ui-sref-active="currentnav"
+      ui-sref="app.admin.servers.list">
+      Servers
+    </a>
+    <a
+      mn-tab="buckets"
+      ng-show="rbac.cluster.bucket['.'].settings.read"
+      ui-sref="app.admin.buckets"
+      ui-sref-active="currentnav">
+      Buckets
+    </a>
+    <a
+      ng-show="rbac.cluster.tasks.read"
+      mn-tab="replications"
+      ui-sref-active="currentnav"
+      ui-sref="app.admin.replications">
+      XDCR
+    </a>
+    <a
+      ng-show="rbac.cluster.admin.security.read"
+      mn-tab="security"
+      ng-class="{currentnav: ('app.admin.security' | includedByState)}"
+      ui-sref="app.admin.security">
+      Security
+    </a>
+    <a
+      mn-tab="settings"
+      ng-class="{currentnav: ('app.admin.settings' | includedByState)}"
+      ui-sref="app.admin.settings.cluster">
       <span
-         mn-tab="indexes"
-         ng-class="{currentnav: ('app.admin.indexes' | includedByState)}"
-         ng-show="rbac.cluster.bucket['.'].views.read || rbac.cluster.bucket['.'].n1ql.index.read"
-         class="resp-hide-sml">
-        <a
-           ui-sref="app.admin.indexes.gsi"
-           ng-show="rbac.cluster.bucket['.'].n1ql.index.read">
-          Indexes
-        </a>
-        <a
-           ui-state="'app.admin.indexes.views.list'"
-           ui-state-params="{bucket: rbac.bucketNames['.views!read'][0] || null}"
-           ng-show="rbac.cluster.bucket['.'].n1ql.index.read === false">
-          Indexes
-         </a>
-      </span>
+        ng-show="adminCtl.updates.sendStats && !!adminCtl.updates.newVersion"
+        class="label neutral badge notify">i</span>
+      Settings
+    </a>
+    <a
+      mn-tab="logs"
+      ui-sref="app.admin.logs.list"
+      ng-class="{currentnav: ('app.admin.logs' | includedByState)}"
+      ng-show="rbac.cluster.logs.read">
+      Logs
+    </a>
+    <div class="margin-bottom-1"></div>
+    <nav
+      mn-pluggable-ui-tabs
+      mn-tab-bar-name="workbenchTab">
     </nav>
+    <span
+      mn-tab="indexes"
+      ng-class="{currentnav: ('app.admin.indexes' | includedByState)}"
+      ng-show="rbac.cluster.bucket['.'].views.read || rbac.cluster.bucket['.'].n1ql.index.read"
+      class="resp-hide-sml">
+      <a
+        ui-sref="app.admin.indexes.gsi"
+        ng-show="rbac.cluster.bucket['.'].n1ql.index.read">
+        Indexes
+      </a>
+      <a
+        ui-state="'app.admin.indexes.views.list'"
+        ui-state-params="{bucket: rbac.bucketNames['.views!read'][0] || null}"
+        ng-show="rbac.cluster.bucket['.'].n1ql.index.read === false">
+        Indexes
+      </a>
+    </span>
+  </nav>
 
-    <!-- all page content goes here -->
-    <div ui-view="main" autoscroll="false" class="main-content min-width-zero width-12" mn-spinner="showMainSpinner" opacity="true"></div>
-  </main>
+  <!-- all page content goes here -->
+  <div ui-view="main" autoscroll="false" class="main-content min-width-zero width-12" mn-spinner="showMainSpinner" opacity="true"></div>
+</main>
