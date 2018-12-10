@@ -223,23 +223,15 @@
       mn-pluggable-ui-tabs
       mn-tab-bar-name="workbenchTab">
     </nav>
-    <span
-      mn-tab="indexes"
-      ng-class="{currentnav: ('app.admin.indexes' | includedByState)}"
-      ng-show="rbac.cluster.bucket['.'].views.read || rbac.cluster.bucket['.'].n1ql.index.read"
-      class="resp-hide-sml">
-      <a
-        ui-sref="app.admin.indexes.gsi"
-        ng-show="rbac.cluster.bucket['.'].n1ql.index.read">
-        Indexes
-      </a>
-      <a
-        ui-state="'app.admin.indexes.views.list'"
-        ui-state-params="{bucket: rbac.bucketNames['.views!read'][0] || null}"
-        ng-show="rbac.cluster.bucket['.'].n1ql.index.read === false">
-        Indexes
-      </a>
-    </span>
+    <a
+      ng-show="rbac.cluster.bucket['.'].settings.read && rbac.cluster.bucket['.'].views.read"
+      ui-state="'app.admin.views.list'"
+      ui-state-params="{bucket: rbac.bucketNames['.views!read'][0] || null}"
+      ng-class="{currentnav: ('app.admin.views' | includedByState)}">Views</a>
+    <a
+      ng-show="rbac.cluster.bucket['.'].n1ql.index.read"
+      ui-sref="app.admin.gsi"
+      ng-class="{currentnav: ('app.admin.gsi' | includedByState)}">Indexes</a>
   </nav>
 
   <!-- all page content goes here -->

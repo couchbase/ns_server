@@ -10,19 +10,7 @@
 
   function mnIndexesConfig($stateProvider, mnHelperProvider) {
     $stateProvider
-      .state('app.admin.indexes', {
-        abstract: true,
-        views: {
-          "main@app.admin": {
-            controller: "mnIndexesController as indexesCtl",
-            templateUrl: "app/mn_admin/mn_indexes/mn_indexes.html"
-          }
-        },
-        data: {
-          title: "Indexes"
-        }
-      })
-      .state('app.admin.indexes.gsi', {
+      .state('app.admin.gsi', {
         url: "/index?openedIndex",
         params: {
           openedIndex: {
@@ -31,14 +19,18 @@
           }
         },
         data: {
+          title: "Indexes",
           permissions: "cluster.bucket['.'].n1ql.index.read"
         },
-        controller: "mnGsiController as gsiCtl",
-        templateUrl: "app/mn_admin/mn_indexes/mn_gsi/mn_gsi.html"
+        views: {
+          "main@app.admin": {
+            controller: "mnGsiController as gsiCtl",
+            templateUrl: "app/mn_admin/mn_indexes/mn_gsi/mn_gsi.html"
+          }
+        }
       });
 
-    addViewsStates("app.admin.indexes");
-    addViewsStates("app.admin.buckets");
+    addViewsStates("app.admin");
 
     function addViewsStates(parent) {
       var viewsState = {
@@ -50,19 +42,15 @@
           }
         },
         data: {
+          title: "Views",
           permissions: "cluster.bucket['.'].settings.read && cluster.bucket['.'].views.read"
         },
-        views: {}
-      };
-
-      if (parent !== "app.admin.indexes") {
-        viewsState.data.title = "Views";
-        viewsState.data.child = parent;
-      }
-
-      viewsState.views[parent !== "app.admin.indexes" ? "main@app.admin" : ""] = {
-        templateUrl: 'app/mn_admin/mn_indexes/mn_views/mn_views.html',
-        controller: 'mnViewsController as viewsCtl'
+        views: {
+          "main@app.admin": {
+            templateUrl: 'app/mn_admin/mn_indexes/mn_views/mn_views.html',
+            controller: 'mnViewsController as viewsCtl'
+          }
+        }
       };
 
       $stateProvider

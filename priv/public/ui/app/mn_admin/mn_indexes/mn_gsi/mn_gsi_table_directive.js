@@ -30,7 +30,7 @@
       vm.dropIndex = dropIndex;
       vm.getStatusClass = getStatusClass;
 
-      mnHelper.initializeDetailsHashObserver(vm, 'openedIndex', 'app.admin.indexes.gsi');
+      mnHelper.initializeDetailsHashObserver(vm, 'openedIndex', 'app.admin.gsi');
 
 
       function generateIndexId(row) {
