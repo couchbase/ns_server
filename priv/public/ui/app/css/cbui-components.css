@@ -2008,6 +2008,7 @@ input[type="checkbox"].fake-select + label:before {
 }
 .insights-sidebar-body li {
   list-style-type: none;
+  font-size: .8125rem;
 }
 .insights-sidebar-body section {
   border-width: 0;
@@ -2017,6 +2018,7 @@ input[type="checkbox"].fake-select + label:before {
 .insights-sidebar-body .disclosure:before,
 .insights-sidebar-body .disclosed:before {
   font-size: 1rem !important;
+  top: 0;
 }
 .insights-sidebar-schema .indexed {
   color: #000;
