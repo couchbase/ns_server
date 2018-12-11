@@ -45,21 +45,9 @@ this_node_memory_data() ->
             {RAMBytes, 0, 0}
     end.
 
-read_int_from_file(File) ->
-    %% file:read_file/1 doesn't work for some reason for /sys/fs files
-    case misc:with_file(File, [read], fun (FD) -> file:read(FD, 1024) end) of
-        {ok, Data} ->
-            try
-                list_to_integer(string:strip(Data, right, $\n))
-            catch
-                _:_ -> undefined
-            end;
-        _ -> undefined
-    end.
-
 cgroup_memory_data() ->
-    {read_int_from_file(?CGROUP_MEM_LIMIT_FILE),
-     read_int_from_file(?CGROUP_MEM_USAGE_FILE)}.
+    {misc:read_int_from_file(?CGROUP_MEM_LIMIT_FILE, undefined),
+     misc:read_int_from_file(?CGROUP_MEM_USAGE_FILE, undefined)}.
 
 memory_data() ->
     {TotalMemory, _, ProcInfo} = MemSupData = memsup:get_memory_data(),
