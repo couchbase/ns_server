@@ -779,19 +779,14 @@ trunc_ts(TS, N) ->
 %% http://groups.google.com/group/erlang-programming/browse_thread/thread/fd1ec67ff690d8eb
 %% for more information. This piece of code was borrowed from above mentioned URL.
 raw_read_file(Path) ->
-    case file:open(Path, [read, binary]) of
-        {ok, File} -> raw_read_loop(File, []);
-        Crap -> Crap
-    end.
+    with_file(Path, [read, binary], raw_read_loop(_, [])).
 raw_read_loop(File, Acc) ->
     case file:read(File, 16384) of
         {ok, Bytes} ->
             raw_read_loop(File, [Acc | Bytes]);
         eof ->
-            file:close(File),
             {ok, iolist_to_binary(Acc)};
         {error, Reason} ->
-            file:close(File),
             erlang:error(Reason)
     end.
 
