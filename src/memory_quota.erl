@@ -31,7 +31,9 @@
          set_quotas/2,
          default_quotas/1,
          service_to_json_name/1,
-         aware_services/1]).
+         aware_services/1,
+         cgroup_memory_data/0,
+         choose_limit/3]).
 
 -define(CGROUP_MEM_USAGE_FILE, "/sys/fs/cgroup/memory/memory.usage_in_bytes").
 -define(CGROUP_MEM_LIMIT_FILE, "/sys/fs/cgroup/memory/memory.limit_in_bytes").
@@ -49,15 +51,18 @@ cgroup_memory_data() ->
     {misc:read_int_from_file(?CGROUP_MEM_LIMIT_FILE, undefined),
      misc:read_int_from_file(?CGROUP_MEM_USAGE_FILE, undefined)}.
 
+choose_limit(Limit, Usage, {undefined, _}) -> {Limit, Usage};
+choose_limit(Limit, Usage, {_, undefined}) -> {Limit, Usage};
+choose_limit(Limit, Usage, {0, _}) -> {Limit, Usage};
+choose_limit(Limit, Usage, {CGroupLimit, _}) when Limit < CGroupLimit ->
+    {Limit, Usage};
+choose_limit(_, _, CGroupMemData) -> CGroupMemData.
+
 memory_data() ->
-    {TotalMemory, _, ProcInfo} = MemSupData = memsup:get_memory_data(),
-    case cgroup_memory_data() of
-        {undefined, _} -> MemSupData;
-        {_, undefined} -> MemSupData;
-        {0, _} -> MemSupData;
-        {CgroupLimit, _} when TotalMemory < CgroupLimit -> MemSupData;
-        {CgroupLimit, CgroupUsage} -> {CgroupLimit, CgroupUsage, ProcInfo}
-    end.
+    {Total, Used, ProcInfo} = memsup:get_memory_data(),
+    {TotalMemory, TotalUsed} = choose_limit(Total, Used,
+                                            cgroup_memory_data()),
+    {TotalMemory, TotalUsed, ProcInfo}.
 
 get_total_buckets_ram_quota(Config) ->
     AllBuckets = ns_bucket:get_buckets(Config),

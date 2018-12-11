@@ -107,7 +107,7 @@ recv_data_with_length(Port, Acc, WantedLength) ->
             end
     end.
 
-unpack_data(Bin, PrevSample, State) ->
+unpack_data({Bin, LocalStats}, PrevSample, State) ->
     <<Version:32/native,
       StructSize:32/native,
       CPULocalMS:64/native,
@@ -143,12 +143,21 @@ unpack_data(Bin, PrevSample, State) ->
                 NowSamplesProcs0
         end,
 
+    #{cgroup_mem := CGroupMem, cpu_count := CPUcount} = LocalStats,
+    {MemLimit, _} = memory_quota:choose_limit(MemTotal, MemUsed, CGroupMem),
+    CoresAvailable = case CPUcount of
+                         unknown -> 0;
+                         N -> N
+                     end,
+
     RawStatsGlobal = [{cpu_local_ms, CPULocalMS},
                       {cpu_idle_ms, CPUIdleMS},
+                      {cpu_cores_available, CoresAvailable},
                       {swap_total, SwapTotal},
                       {swap_used, SwapUsed},
                       %% {swap_page_in, SwapPageIn},
                       %% {swap_page_out, SwapPageOut},
+                      {mem_limit, MemLimit},
                       {mem_total, MemTotal},
                       {mem_used_sys, MemUsed},
                       {mem_actual_used, MemActualUsed},
@@ -292,7 +301,11 @@ log_system_stats(TS) ->
 
 grab_stats(#state{port = Port}) ->
     port_command(Port, <<0:32/native>>),
-    recv_data(Port).
+    {recv_data(Port), grab_local_stats()}.
+
+grab_local_stats() ->
+    #{cgroup_mem => memory_quota:cgroup_memory_data(),
+      cpu_count => misc:cpu_count()}.
 
 process_stats(TS, Binary, PrevSample, _, State) ->
     {{Stats0, ProcStats}, NewPrevSample} = unpack_data(Binary, PrevSample, State),
