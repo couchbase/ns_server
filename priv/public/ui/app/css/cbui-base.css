@@ -270,6 +270,10 @@ small {
   font-size: .875rem;
   font-weight: 400;
 }
+/* 16px base = 13px --------------------------------------------------------- */
+.text-smallish {
+  font-size: .8125rem;
+}
 /* 16px base = 12px --------------------------------------------------------- */
 .text-smaller {
   font-size: .75rem;
