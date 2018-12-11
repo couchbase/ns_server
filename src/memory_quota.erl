@@ -35,6 +35,7 @@
          cgroup_memory_data/0,
          choose_limit/3]).
 
+%% based on https://www.kernel.org/doc/Documentation/cgroup-v1/memory.txt
 -define(CGROUP_MEM_USAGE_FILE, "/sys/fs/cgroup/memory/memory.usage_in_bytes").
 -define(CGROUP_MEM_LIMIT_FILE, "/sys/fs/cgroup/memory/memory.limit_in_bytes").
 
