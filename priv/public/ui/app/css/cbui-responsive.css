@@ -186,6 +186,9 @@
   .wb-result-summary {
     margin: .25rem 0;
   }
+  .icon-info {
+    display: none !important;
+  }
 }
 
 /* responsive extra-small ------------------------------- */
