@@ -32,6 +32,64 @@
             ng-show="!adminCtl.filterTasks(adminCtl.tasks.running).length">
             No active processes to display
           </div>
+          <div ng-if="adminCtl.tasks.tasksRebalance">
+            <div>
+              start: {{adminCtl.tasks.tasksRebalance.stageInfo.startTime | date:'yyyy-MM-dd HH:mm:ss Z'}}
+            </div>
+            <div>
+              status: {{adminCtl.tasks.tasksRebalance.status == "running" ? "in progress" :
+              adminCtl.tasks.tasksRebalance.errorMessage ? "failed" : "completed"}}
+            </div>
+            <div>
+              complete: {{adminCtl.tasks.tasksRebalance.stageInfo.completedTime.status ? (adminCtl.tasks.tasksRebalance.stageInfo.completedTime.time | date:'yyyy-MM-dd HH:mm:ss Z') : '- - - -'}}
+            </div>
+            <div class="cbui-tablerow">
+              <div class="cbui-table-cell"
+                   style="padding: 0;"
+                   ng-repeat="(key, service) in adminCtl.tasks.tasksRebalance.stageInfo.services">
+                <div>{{key}}</div>
+                <div
+                  style="height: 5px; background: blue;"
+                  ng-style="{'width': (service.totalProgress ? service.totalProgress : 0) + '%'}"></div>
+              </div>
+            </div>
+            <div ng-repeat="(key, service) in adminCtl.tasks.tasksRebalance.stageInfo.services">
+              <div ng-click="showModule = !showModule"
+                   ng-class="{disclosed: showModule && key == 'data', disclosure: key == 'data'}">
+                <span>{{key}}</span>
+                <span ng-if="service.timeTaken">
+                  {{service.timeTaken | mnMsToTime}}
+                  <span ng-show="service.completedTime">
+                    V
+                  </span>
+                </span>
+                <span ng-show="!service.timeTaken">
+                  - - -
+                </span>
+              </div>
+              <div ng-if="showModule">
+                <div ng-repeat="(bucketName, bucketInfo) in service.details">
+                  <div ng-click="showBucket = !showBucket"
+                       class="disclosure"
+                       ng-class="{disclosed: showBucket}">
+                    <span>{{bucketName}}</span>
+                  </div>
+                  <div ng-if="showBucket && bucketInfo.vbucketLevelInfo">
+                    <div class="cbui-tablerow"
+                         ng-repeat="(key, v) in bucketInfo.vbucketLevelInfo"
+                         ng-if="key !== 'vbucketInfo'">
+                      <div class="cbui-table-cell">{{key}}</div>
+                      <div class="cbui-table-cell">
+                        {{bucketInfo.vbucketLevelInfo.vbucketInfo.length}}
+                      </div>
+                      <div class="cbui-table-cell">{{v.completedCount}}</div>
+                      <div class="cbui-table-cell">{{v.totalTime | mnMsToTime}}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
           <div ng-repeat="task in adminCtl.filterTasks(adminCtl.tasks.running)">
             <div class="text-small text-left">
               {{task | formatProgressMessage}}

@@ -131,7 +131,7 @@
           $rootScope.$broadcast("reloadPermissions");
         }
       })
-      .cycle();
+          .cycle();
 
       if (mnPermissions.export.cluster.tasks.read) {
         var tasksPoller = new mnPoller($scope, function () {
@@ -145,6 +145,7 @@
               if (!_.isEqual(tasks, prevTask)) {
                 $rootScope.$broadcast("mnTasksDetailsChanged");
               }
+
               var isRebalanceFinished =
                   tasks.tasksRebalance && tasks.tasksRebalance.status !== 'running' &&
                   prevTask && prevTask.tasksRebalance && prevTask.tasksRebalance.status === "running";
@@ -154,20 +155,58 @@
 
               if (!vm.isProgressBarClosed &&
                   !filterTasks(tasks.running).length &&
+                  !tasks.tasksRebalance.stageInfo &&
                   prevTask && filterTasks(prevTask.running).length) {
                 vm.isProgressBarClosed = true;
               }
 
-                if (tasks.inRebalance) {
-                  if (!prevTask) {
-                    vm.isProgressBarClosed = false;
-                  } else {
-                    if (!prevTask.tasksRebalance ||
-                        prevTask.tasksRebalance.status !== "running") {
-                      vm.isProgressBarClosed = false;
+              var stageInfo = {
+                services: {},
+                startTime: null,
+                completedTime: {
+                  status: true
+                }
+              };
+              var serverStageInfo = tasks.tasksRebalance.stageInfo ||
+                  (tasks.tasksRebalance.previousRebalance &&
+                   tasks.tasksRebalance.previousRebalance.stageInfo);
+
+              if (serverStageInfo) {
+                Object
+                  .keys(serverStageInfo)
+                  .forEach(function(key) {
+                    var value = serverStageInfo[key];
+                    if (value.startTime) {
+                      if (!stageInfo.startTime ||
+                          stageInfo.startTime > new Date(value.startTime)) {
+                        stageInfo.startTime = new Date(value.startTime);
+                      }
                     }
+                    if (value.completedTime) {
+                      value.completedTime = new Date(value.completedTime);
+                      if (!stageInfo.completedTime.time ||
+                          (stageInfo.completedTime.time < value.completedTime)) {
+                        stageInfo.completedTime.time = new Date(value.completedTime);
+                      }
+                    } else {
+                      stageInfo.completedTime.status = false;
+                    }
+
+                  });
+                stageInfo.services = Object.assign({}, serverStageInfo);
+                tasks.tasksRebalance.stageInfo = stageInfo;
+              }
+
+              if (tasks.inRebalance) {
+                if (!prevTask) {
+                  vm.isProgressBarClosed = false;
+                } else {
+                  if (!prevTask.tasksRebalance ||
+                      prevTask.tasksRebalance.status !== "running") {
+                    vm.isProgressBarClosed = false;
                   }
                 }
+              }
 
               if (tasks.tasksRebalance.errorMessage && mnAlertsService.isNewAlert({id: tasks.tasksRebalance.statusId})) {
                 mnAlertsService.setAlert("error", tasks.tasksRebalance.errorMessage, null, tasks.tasksRebalance.statusId);

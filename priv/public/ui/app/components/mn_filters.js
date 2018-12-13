@@ -37,6 +37,7 @@
     .filter('mnLimitTo', mnLimitTo)
     .filter('jQueryLikeParamSerializer', jQueryLikeParamSerializer)
     .filter('decodeCompatVersion', decodeCompatVersion)
+    .filter('mnMsToTime', mnMsToTime)
     .filter('mnServersListFilter', mnServersListFilter);
 
 
@@ -261,9 +262,6 @@
         return "orphan bucket: " + task.bucket;
       case "clusterLogsCollection":
         return "collecting logs from " + addNodeCount(task.perNode);
-      case "rebalance":
-        var serversCount = (_.keys(task.perNode) || []).length;
-        return (task.subtype == 'gracefulFailover') ? "failing over 1 node" : ("rebalancing " + addNodeCount(task.perNode));
       }
     };
   }
@@ -517,6 +515,21 @@
     return function (value) {
       return mnFormatQuantityFilter(value, null, ' ');
     };
+  }
+  function mnMsToTime() {
+    return function (ms) {
+      var d, h, m, s;
+      s = Math.floor(ms / 1000);
+      m = Math.floor(s / 60);
+      s = s % 60;
+      h = Math.floor(m / 60);
+      m = m % 60;
+      d = Math.floor(h / 24);
+      h = h % 24;
+
+      return (h ? (h + ':') : '') +
+        ((m > 9) ? m : ("0" + m)) + ":"  + ((s > 9) ? s : ("0" + s));
+    }
   }
   function mnFormatUptime() {
     return function (seconds, precision) {
