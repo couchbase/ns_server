@@ -112,10 +112,10 @@ do_update(Bucket, Operation) ->
     ?log_debug("Performing operation ~p on bucket ~p", [Operation, Bucket]),
     RV =
         case leader_activities:run_activity(
-               {?MODULE, Bucket}, majority,
+               {?MODULE, Bucket}, {?MODULE, Bucket}, majority,
                fun () ->
                        do_update_as_leader(Bucket, Operation)
-               end) of
+               end, []) of
             {leader_activities_error, _, Err} ->
                 {unsafe, Err};
             Res ->
