@@ -76,7 +76,8 @@
          set_user_group/5,
          delete_user_group/2,
          ldap_settings/2,
-         developer_preview_settings/2
+         developer_preview_settings/2,
+         license_settings/2
         ]).
 
 -export([start_link/0, stats/0]).
@@ -316,7 +317,9 @@ code(delete_user_group) ->
 code(ldap_settings) ->
     8246;
 code(developer_preview_settings) ->
-    8247.
+    8247;
+code(license_settings) ->
+    8248.
 
 to_binary({list, List}) ->
     [to_binary(A) || A <- List];
@@ -743,6 +746,10 @@ security_settings(Req, Settings) ->
              end,
     put(security_settings, Req,
         [{settings, {prepare_list([Format(S) || S <- Settings])}}]).
+
+license_settings(Req, Settings) ->
+    put(license_settings, Req,
+        [{settings, {prepare_list(Settings)}}]).
 
 start_log_collection(Req, Nodes, BaseURL, Options) ->
     put(start_log_collection, Req,
