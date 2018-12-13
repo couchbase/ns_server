@@ -150,14 +150,14 @@
 <main>
   <div
     class="sidebar-opener"
-    ng-class="{'show' : hideNavSidebar}"
-    ng-click="hideNavSidebar = false">
+    ng-class="{'show' : poolDefault.hideNavSidebar}"
+    ng-click="adminCtl.hideNavSidebar(false)">
     <span class="icon fa-chevron-right"></span>
   </div>
 
   <nav
     class="nav-sidebar"
-    ng-class="{'resp-show-menu' : showRespMenu, 'nav-sidebar-hidden' : hideNavSidebar}"
+    ng-class="{'resp-show-menu' : showRespMenu, 'nav-sidebar-hidden' : poolDefault.hideNavSidebar}"
     ng-click="showRespMenu = !showRespMenu"
     mn-pluggable-ui-tabs
     mn-tab-bar-name="adminTab">
@@ -165,7 +165,7 @@
     <div class="sidebar-closer-wrapper">
       <div
         class="sidebar-closer"
-        ng-click="hideNavSidebar = true">
+        ng-click="adminCtl.hideNavSidebar(true)">
         <span class="icon fa-chevron-left"></span>
       </div>
     </div>

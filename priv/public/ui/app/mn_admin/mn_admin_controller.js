@@ -28,6 +28,7 @@
     vm.clientAlerts = mnAlertsService.clientAlerts;
     vm.alerts = mnAlertsService.alerts;
     vm.closeAlert = mnAlertsService.removeItem;
+    vm.setHideNavSidebar = mnPoolDefault.setHideNavSidebar;
 
     $rootScope.rbac = mnPermissions.export;
     $rootScope.poolDefault = mnPoolDefault.export;

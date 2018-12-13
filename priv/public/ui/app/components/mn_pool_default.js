@@ -15,9 +15,11 @@
       get: get,
       clearCache: clearCache,
       getFresh: getFresh,
+      setHideNavSidebar: setHideNavSidebar,
       getUrlsRunningService: getUrlsRunningService,
       export: {
-        compat: undefined
+        compat: undefined,
+        hideNavSidebar: false
       }
     };
     var version40 = encodeCompatVersion(4, 0);
@@ -31,6 +33,10 @@
     var request;
 
     return mnPoolDefault;
+
+    function setHideNavSidebar(value) {
+      mnPoolDefault.export.hideNavSidebar = value;
+    }
 
     function latestValue() {
       return latest;
