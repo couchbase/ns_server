@@ -151,7 +151,7 @@
   <div
     class="sidebar-opener"
     ng-class="{'show' : poolDefault.hideNavSidebar}"
-    ng-click="adminCtl.hideNavSidebar(false)">
+    ng-click="adminCtl.setHideNavSidebar(false)">
     <span class="icon fa-chevron-right"></span>
   </div>
 
@@ -165,7 +165,7 @@
     <div class="sidebar-closer-wrapper">
       <div
         class="sidebar-closer"
-        ng-click="adminCtl.hideNavSidebar(true)">
+        ng-click="adminCtl.setHideNavSidebar(true)">
         <span class="icon fa-chevron-left"></span>
       </div>
     </div>
