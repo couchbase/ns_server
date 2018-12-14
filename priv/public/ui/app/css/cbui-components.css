@@ -1967,13 +1967,14 @@ input[type="checkbox"].fake-select + label:before {
   z-index: 1;
   transition: all 1s;
 }
-.insights-sidebar-expand {
+.insights-sidebar-expand,
+.wb-fullscreen {
   cursor: pointer;
   color: #d1d1d1;
+  padding: 0 .5rem;
 }
-.insights-sidebar-close:hover,
-.insights-sidebar-open:hover,
-.insights-sidebar-expand:hover {
+.insights-sidebar-expand:hover,
+.wb-fullscreen:hover {
   color: #333;
 }
 .insights-sidebar-body {

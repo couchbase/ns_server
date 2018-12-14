@@ -20,9 +20,6 @@
   .resp-wrap-med {
     flex-wrap: wrap;
   }
-  .width-6 {
-    width: 100%;
-  }
   .resp-flex-column-med {
     flex-direction: column;
     justify-content: flex-start;
