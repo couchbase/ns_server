@@ -790,6 +790,7 @@ net_config_validators() ->
      validator:unsupported(_)].
 
 handle_setup_net_config(Req) ->
+    menelaus_util:assert_is_enterprise(),
     validator:handle(
       fun(Values) ->
               AFamily = proplists:get_value(afamily, Values),
