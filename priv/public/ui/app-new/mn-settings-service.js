@@ -136,8 +136,8 @@ mn.services.MnSettings = (function (Rx) {
 
   function postAutoCompaction(validate) {
     return function (data) {
-      return this.http.post("/controller/setAutoCompaction", data[0], {
-        params: new ng.common.http.HttpParams().set("just_validate", data[1] ? 1 : 0)
+      return this.http.post("/controller/setAutoCompaction", data, {
+        params: new ng.common.http.HttpParams().set("just_validate", validate ? 1 : 0)
       });
     }
   }

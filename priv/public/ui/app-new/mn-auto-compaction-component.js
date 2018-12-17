@@ -90,7 +90,7 @@ mn.components.MnAutoCompaction =
     }
 
     function getValue() {
-      var v = Object.assign({}, this.form.group.value, true);
+      var v = JSON.parse(JSON.stringify(this.form.group.value));
       var icc = v.indexCircularCompaction;
       if (icc) {
         icc.daysOfWeek = Object

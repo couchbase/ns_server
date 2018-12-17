@@ -134,19 +134,22 @@ mn.components.MnAutoCompactionForm =
       var viewSize = v[0].viewSize && v[1];
       var allowedPeriod = v[0].allowedTimePeriod && v[1];
 
-      this.group.get(data + ".percentage")[action(dataPercentage)]();
-      this.group.get(data + ".size")[action(dataSize)]();
-      this.group.get(view + ".percentage")[action(viewPercentage)]();
-      this.group.get(view + ".size")[action(viewSize)]();
-      this.group.get(period)[action(allowedPeriod)]();
+      this.group.get(data + ".percentage")[action(dataPercentage)](event);
+      this.group.get(data + ".size")[action(dataSize)](event);
+      this.group.get(view + ".percentage")[action(viewPercentage)](event);
+      this.group.get(view + ".size")[action(viewSize)](event);
+      this.group.get(period)[action(allowedPeriod)](event);
 
       if (!dataPercentage && !dataSize && !viewPercentage && !viewSize) {
         this.formGroupHelper.get("allowedTimePeriod").disable(event);
         if (v[0].allowedTimePeriod) {
-          this.formGroupHelper.get("allowedTimePeriod").setValue(false);
+          this.formGroupHelper.get("allowedTimePeriod").setValue(false, event);
         }
       } else {
         this.formGroupHelper.get("allowedTimePeriod").enable(event);
       }
+
+      //trigger validation once
+      this.group.updateValueAndValidity({onlySelf: true, emitEvent: true});
     }
   })(window.rxjs);
