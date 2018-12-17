@@ -1,7 +1,7 @@
 <div class="margin-bottom-2">
   <form
      class="forms"
-     (ngSubmit)="onSubmit.next()" [formGroup]="formGroup">
+     (ngSubmit)="form.submit.next()" [formGroup]="form.group">
     <!-- mn-spinner="settingsAutoCompactionCtl.viewLoading || !settingsAutoCompactionCtl.autoCompactionSettings" -->
     <p>
       Auto-Compaction settings trigger the compaction process.<br>
@@ -11,7 +11,7 @@
     <mn-auto-compaction-form
        class="margin-bottom-2"
        [error]="formError"
-       [group]="formGroup">
+       [group]="form.group">
     </mn-auto-compaction-form>
 
     <!-- ng-disabled="settingsAutoCompactionCtl.errors" -->

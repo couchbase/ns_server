@@ -82,12 +82,12 @@ mn.services.MnSettings = (function (Rx) {
            );
 
     this.stream.postAutoCompaction =
-      new mn.core.MnPostHttp(this.postAutoCompaction.bind(this))
+      new mn.core.MnPostHttp(this.postAutoCompaction(false).bind(this))
       .addSuccess()
       .addError();
 
     this.stream.postAutoCompactionValidation =
-      new mn.core.MnPostHttp(this.postAutoCompaction.bind(this))
+      new mn.core.MnPostHttp(this.postAutoCompaction(true).bind(this))
       .addSuccess()
       .addError();
 
@@ -134,6 +134,14 @@ mn.services.MnSettings = (function (Rx) {
     }.bind(this);
   }
 
+  function postAutoCompaction(validate) {
+    return function (data) {
+      return this.http.post("/controller/setAutoCompaction", data[0], {
+        params: new ng.common.http.HttpParams().set("just_validate", data[1] ? 1 : 0)
+      });
+    }
+  }
+
   function postTestEmail(data) {
     return this.http.post("/settings/alerts/testEmail", data);
   }
@@ -160,12 +168,6 @@ mn.services.MnSettings = (function (Rx) {
 
   function getAutoCompaction(data) {
     return this.http.get("/settings/autoCompaction");
-  }
-
-  function postAutoCompaction(data) {
-    return this.http.post("/controller/setAutoCompaction", data[0], {
-      params: new ng.common.http.HttpParams().set("just_validate", data[1] ? 1 : 0)
-    });
   }
 
 })(window.rxjs);
