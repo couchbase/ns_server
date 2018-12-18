@@ -286,7 +286,10 @@ cache_max_size_test() ->
           ?assertEqual(3, ets:info(test_cache, size))
       end).
 
-chaos_test() ->
+chaos_test_() ->
+    {timeout, 20, fun chaos_testing/0}.
+
+chaos_testing() ->
     NumReq = 10000,
     NumProcs = 50,
     with_cache_settings(
