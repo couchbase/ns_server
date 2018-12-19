@@ -272,6 +272,8 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
     OS = proplists:get_value(system_arch, InfoNode, "unknown"),
     CpuCount = proplists:get_value(cpu_count, InfoNode, unknown),
     HostName = build_node_hostname(Config, WantENode, LocalAddr),
+    NodeUUID = ns_config:search_node_with_default(WantENode, Config, uuid,
+                                                  undefined),
 
     PortKeys = [{memcached_port, direct},
                 %% this is used by xdcr over ssl since 2.5.0
@@ -295,6 +297,7 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
                    rest_port],
 
     RV = [{hostname, list_to_binary(HostName)},
+          {nodeUUID, NodeUUID},
           {clusterCompatibility, cluster_compat_mode:effective_cluster_compat_version()},
           {version, list_to_binary(Version)},
           {os, list_to_binary(OS)},
