@@ -1654,7 +1654,7 @@ ldap_settings_validators() ->
         validator:boolean(authorization_enabled, _),
         validate_ldap_hosts(hosts, _),
         validator:integer(port, 0, 65535, _),
-        validator:one_of(encryption, ["ssl", "tls", "false"], _),
+        validator:one_of(encryption, ["TLS", "StartTLSExtension", "false"], _),
         validator:convert(encryption, fun list_to_atom/1, _),
         validate_user_dn_mapping(user_dn_mapping, _),
         validate_ldap_dn(query_dn, _),

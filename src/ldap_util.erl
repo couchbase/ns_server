@@ -21,7 +21,7 @@ with_connection(Settings, Fun) ->
     Port = proplists:get_value(port, Settings),
     Timeout = proplists:get_value(request_timeout, Settings),
     Encryption = proplists:get_value(encryption, Settings),
-    SSL = Encryption == ssl,
+    SSL = Encryption == 'TLS',
     %% Note: timeout option sets not only connect timeout but a timeout for any
     %%       request to ldap server
     case eldap:open(Hosts, [{port, Port}, {ssl, SSL}, {timeout, Timeout}]) of
@@ -34,7 +34,7 @@ with_connection(Settings, Fun) ->
                 %% The Timeout parameter is for the actual tls upgrade (phase 2)
                 %% while the timeout in eldap:open/2 is used for the initial
                 %% negotiation about upgrade (phase 1).
-                case Encryption == tls andalso
+                case Encryption == 'StartTLSExtension' andalso
                      eldap:start_tls(Handle, [], Timeout) of
                     Res when Res == ok; Res == false ->
                         Fun(Handle);
@@ -72,7 +72,7 @@ default_settings() ->
      {authorization_enabled, false},
      {hosts, []},
      {port, 389},
-     {encryption, tls},
+     {encryption, false},
      {user_dn_mapping, []},
      {query_dn, undefined},
      {query_pass, undefined},
