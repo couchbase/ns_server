@@ -156,20 +156,19 @@ h1 a:active {
 .nav-sidebar a {
   font-size: 1rem;
   display: block;
-
   padding: .25rem .75rem .25rem 0;
   text-align: right;
   white-space: nowrap;
-  border-right: 2px solid #fff;
+  border-right: 4px solid #fff;
   opacity: 1;
-  transition: all .8s;
+  transition: all .5s;
 }
 .nav-sidebar a:hover {
-  border-right: 2px solid #d9e7f7;
+  border-right: 4px solid #c6dbf2;
 }
 .nav-sidebar a.currentnav,
 .nav-sidebar .currentnav a {
-  border-right: 2px solid #d9e7f7;
+  border-right: 4px solid #c6dbf2;
   color: #555;
 }
 
@@ -2117,38 +2116,31 @@ input:checked + .toggle-control-body:before {
 }
 
 /* controls & styles for hiding and showing the navigation sidebar ---------- */
-.sidebar-closer-wrapper {
-  position: absolute;
-  left: 103px;
-  top: 220px;
-  white-space: nowrap;
-  overflow: hidden;
-  width: 24px;
-  opacity: 0;
-  transition: all .6s;
-}
 .sidebar-closer {
-  position: relative;
-  left: -18px;
+  position: absolute;
+  top: 480px;
+  left: -76px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  width: 40px;
+  width: 100px;
   height: 40px;
-  padding-right: 7px;
+  padding-right: 16px;
   cursor: pointer;
   color: #d1d1d1;
   border: 1px solid #d1d1d1;
-  border-radius: 50%;
+  border-radius: 0 20px 20px 0;
+  opacity: 0;
+  transition: all .6s;
 }
-.nav-sidebar:hover .sidebar-closer-wrapper {
+.nav-sidebar:hover .sidebar-closer {
   opacity: 1!important;
 }
 nav.nav-sidebar-hidden {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: clip;
-  width: 0px;
+  width: 0;
   margin-right: 1rem;
   transform: translateX(-104px);
 }
@@ -2157,16 +2149,16 @@ nav.nav-sidebar-hidden {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  left: -17px;
-  top: 236px;
-  width: 40px;
+  top: 494px;
+  left: -76px;
+  width: 100px;
   height: 40px;
   padding-right: 7px;
   opacity: 0;
   cursor: pointer;
   color: #d1d1d1;
   border: 1px solid #d1d1d1;
-  border-radius: 50%;
+  border-radius: 0 20px 20px 0;
   transition: all .6s;
 }
 .sidebar-opener.show {
@@ -2177,6 +2169,10 @@ nav.nav-sidebar-hidden {
   color: #333;
   box-shadow: 2px 1px 2px 0 rgba(0,0,0,0.15);
 }
+.sidebar-closer:hover {
+  left: -32px;
+}
+
 /*  fixed footer for saving forms ------------------------------------------- */
 .footer-save {
   position: fixed;
@@ -2193,7 +2189,7 @@ nav.nav-sidebar-hidden {
   border: 1px solid #e1e1e1;
   border-width: 1px 0 0 0;
 }
-/*  pipe delimiter style  ------------------------------------------ */
+/*  pipe delimiter style  -------------------------------------------------- */
 .pipe:before {
   content: '\007C';
   color: #d1d1d1;

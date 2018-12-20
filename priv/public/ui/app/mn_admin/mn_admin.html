@@ -148,12 +148,6 @@
 </div>
 
 <main>
-  <div
-    class="sidebar-opener"
-    ng-class="{'show' : poolDefault.hideNavSidebar}"
-    ng-click="poolDefault.hideNavSidebar = false">
-    <span class="icon fa-chevron-right"></span>
-  </div>
 
   <nav
     class="nav-sidebar"
@@ -162,13 +156,6 @@
     mn-pluggable-ui-tabs
     mn-tab-bar-name="adminTab">
 
-    <div class="sidebar-closer-wrapper">
-      <div
-        class="sidebar-closer"
-        ng-click="poolDefault.hideNavSidebar = true">
-        <span class="icon fa-chevron-left"></span>
-      </div>
-    </div>
     <a
       mn-tab="overview"
       ui-sref="app.admin.overview"
@@ -232,7 +219,23 @@
       ng-show="rbac.cluster.bucket['.'].n1ql.index.read"
       ui-sref="app.admin.gsi"
       ng-class="{currentnav: ('app.admin.gsi' | includedByState)}">Indexes</a>
+
+    <div
+       class="sidebar-closer"
+       title="hide sidebar"
+       ng-click="poolDefault.hideNavSidebar = true">
+      <span class="icon fa-chevron-left"></span>
+    </div>
+
   </nav>
+
+  <div
+     class="sidebar-opener"
+     title="show sidebar"
+     ng-class="{'show' : poolDefault.hideNavSidebar}"
+     ng-click="poolDefault.hideNavSidebar = false">
+    <span class="icon fa-chevron-right"></span>
+  </div>
 
   <!-- all page content goes here -->
   <div ui-view="main" autoscroll="false" class="main-content min-width-zero width-12" mn-spinner="showMainSpinner" opacity="true"></div>
