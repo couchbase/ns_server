@@ -16,16 +16,55 @@
          set_settings/1,
          replace_expressions/2]).
 
+ssl_options(Host, Settings) ->
+    case proplists:get_value(server_cert_validation, Settings) of
+        true ->
+            [{verify, verify_peer}, {cacerts, get_cacerts(Settings)},
+             {server_name_indication, Host}];
+        false ->
+            [{verify, verify_none}]
+    end.
+
+get_cacerts(Settings) ->
+    case proplists:get_value(cacert, Settings) of
+        {_Cert, DecodedCert} -> [DecodedCert];
+        undefined ->
+            case ns_server_cert:cluster_ca() of
+                {_, _} -> []; %% No point in using self signed cert
+                {UploadedCAProps, _, _} ->
+                    Pem = proplists:get_value(pem, UploadedCAProps),
+                    [ns_server_cert:decode_single_certificate(Pem)]
+            end
+    end.
+
+%% Can't just pass the list of hosts to eldap:open/2 because it is impossible
+%% to get the peer's hostname later, so we have to iterate over the list
+%% of hosts and memorize the one we were able to connect.
+%% We need the peer's hostname information for server name validation
+%% later in StartTLS
+open_ldap_connection([], _Port, _SSL, _Timeout, _Settings) ->
+    {error,"connect failed"};
+open_ldap_connection([Host|Hosts], Port, SSL, Timeout, Settings) ->
+    SSLOpts = case SSL of
+                  true -> [{ssl, true}, {sslopts, ssl_options(Host, Settings)}];
+                  false -> []
+              end,
+    %% Note: timeout option sets not only connect timeout but a timeout for any
+    %%       request to ldap server
+    case eldap:open([Host], [{port, Port}, {timeout, Timeout} | SSLOpts]) of
+        {ok, Handle} -> {ok, Handle, Host};
+        {error, _} -> open_ldap_connection(Hosts, Port, SSL, Timeout, Settings)
+    end.
+
 with_connection(Settings, Fun) ->
     Hosts = proplists:get_value(hosts, Settings),
     Port = proplists:get_value(port, Settings),
     Timeout = proplists:get_value(request_timeout, Settings),
     Encryption = proplists:get_value(encryption, Settings),
     SSL = Encryption == 'TLS',
-    %% Note: timeout option sets not only connect timeout but a timeout for any
-    %%       request to ldap server
-    case eldap:open(Hosts, [{port, Port}, {ssl, SSL}, {timeout, Timeout}]) of
-        {ok, Handle} ->
+
+    case open_ldap_connection(Hosts, Port, SSL, Timeout, Settings) of
+        {ok, Handle, Host} ->
             ?log_debug("Connected to LDAP server"),
             try
                 %% The upgrade is done in two phases: first the server is asked
@@ -35,7 +74,9 @@ with_connection(Settings, Fun) ->
                 %% while the timeout in eldap:open/2 is used for the initial
                 %% negotiation about upgrade (phase 1).
                 case Encryption == 'StartTLSExtension' andalso
-                     eldap:start_tls(Handle, [], Timeout) of
+                     eldap:start_tls(Handle,
+                                     ssl_options(Host, Settings),
+                                     Timeout) of
                     Res when Res == ok; Res == false ->
                         Fun(Handle);
                     {error, Reason} ->
@@ -83,7 +124,9 @@ default_settings() ->
      {nested_groups_enabled, false},
      {nested_groups_max_depth, 10},
      {cache_value_lifetime,
-      round(0.5*menelaus_roles:external_auth_polling_interval())}].
+      round(0.5*menelaus_roles:external_auth_polling_interval())},
+     {cacert, undefined},
+     {server_cert_validation, true}].
 
 build_settings() ->
     case ns_config:search(ldap_settings) of

@@ -1588,6 +1588,8 @@ prepare_ldap_settings(Settings) ->
               <<"**********">>;
           (groups_query, Orig) ->
               list_to_binary(Orig);
+          (cacert, {CA, _Decoded}) ->
+              CA;
           (_, Value) ->
               Value
       end,
@@ -1666,8 +1668,21 @@ ldap_settings_validators() ->
         validator:integer(request_timeout, 0, infinity, _),
         validator:boolean(nested_groups_enabled, _),
         validator:integer(nested_groups_max_depth, 1, 100, _),
+        validator:boolean(server_cert_validation, _),
+        validate_cert(cacert, _),
         validator:unsupported(_)
     ].
+
+validate_cert(Name, State) ->
+    validator:validate(
+      fun ("") -> {value, undefined};
+          (Cert) ->
+              BinCert = iolist_to_binary(Cert),
+              case ns_server_cert:decode_single_certificate(BinCert) of
+                  {error, _} -> {error, "invalid ca certificate"};
+                  Decoded -> {value, {BinCert, Decoded}}
+              end
+      end, Name, State).
 
 ldap_settings_validator_validators("connectivity") -> [];
 ldap_settings_validator_validators("authentication") ->
