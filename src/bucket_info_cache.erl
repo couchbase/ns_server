@@ -177,16 +177,14 @@ build_services(Node, Config, EnabledServices) ->
                              [{ftsSSL, Port}]
                      end;
              eventing ->
-                 [{eventingAdminPort,
-                   ns_config:search(Config, {node, Node, eventing_http_port}, undefined)},
-                  {eventingDebug,
-                   ns_config:search(Config, {node, Node, eventing_debug_port}, undefined)}] ++
-                     case ns_config:search(Config, {node, Node, eventing_https_port}, undefined) of
-                         undefined ->
-                             [];
-                         Port ->
-                             [{eventingSSL, Port}]
-                     end;
+                 lists:merge(
+                   [case ns_config:search(Config, {node, Node, CK}) of
+                        false -> [];
+                        {value, Port} -> [{RK, Port}]
+                    end || {CK, RK} <-
+                               [{eventing_http_port, eventingAdminPort},
+                                {eventing_debug_port, eventingDebug},
+                                {eventing_https_port, eventingSSL}]]);
              cbas ->
                  [
                   {cbas, ns_config:search(Config, {node, Node, cbas_http_port}, undefined)},
