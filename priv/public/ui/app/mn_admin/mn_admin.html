@@ -131,21 +131,6 @@
 </header>
 
 <mn-element-depot name="subnav"></mn-element-depot>
-<mn-element-depot name="alerts"></mn-element-depot>
-
-<div
-  class="alert alert-warning"
-  ng-show="adminCtl.lostConnState.isActivated">
-  <p>Difficulties communicating with the cluster. Displaying cached information.</p>
-</div>
-
-<div
-  ng-repeat="alert in adminCtl.alerts"
-  class="animate-alert alert enable-ng-animation"
-  ng-class="['alert-' + alert.type]">
-  <p>{{alert.msg}}</p>
-  <a ng-click="adminCtl.closeAlert(alert)" class="close">X</a>
-</div>
 
 <main>
 
@@ -242,3 +227,19 @@
   <!-- all page content goes here -->
   <div ui-view="main" autoscroll="false" class="main-content min-width-zero width-12" mn-spinner="showMainSpinner" opacity="true"></div>
 </main>
+
+<div class="alert-wrapper">
+  <mn-element-depot name="alerts"></mn-element-depot>
+  <div
+    class="alert alert-warning"
+    ng-show="adminCtl.lostConnState.isActivated">
+    <p>Difficulties communicating with the cluster. Displaying cached information.</p>
+  </div>
+  <div
+    ng-repeat="alert in adminCtl.alerts"
+    class="animate-alert alert enable-ng-animation"
+    ng-class="['alert-' + alert.type]">
+    <p>{{alert.msg}}</p>
+    <!-- <a ng-click="adminCtl.closeAlert(alert)" class="close">X</a> -->
+  </div>
+</div>
