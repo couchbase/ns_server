@@ -748,6 +748,10 @@ section.error {
   left: 0;
   top: -2px;
 }
+.badge.notify:hover {
+  background-color: #d8dde4;
+  color: #000;
+}
 .badge.red-3 {
   color: #fff;
   background-color: #e07f82;

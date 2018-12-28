@@ -195,7 +195,10 @@
       ui-sref="app.admin.settings.cluster">
       <span
         ng-show="adminCtl.updates.sendStats && !!adminCtl.updates.newVersion"
-        class="label neutral badge notify">i</span>
+        class="label neutral badge notify"
+        uib-tooltip="A newer version of Couchbase Server is available on the General Settings page..."
+        tooltip-placement="auto right"
+        tooltip-append-to-body="true">i</span>
       Settings
     </a>
     <a
