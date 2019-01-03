@@ -1,5 +1,5 @@
 %% @author Couchbase, Inc <info@couchbase.com>
-%% @copyright 2011-2018 Couchbase, Inc.
+%% @copyright 2011-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -194,6 +194,8 @@ mover_inner_dcp(Parent, Bucket, VBucket,
     %% notify parent that the backfill is done, so it can start rebalancing
     %% next vbucket
     Parent ! {backfill_done, {VBucket, OldChain, NewChain, Quirks}},
+
+    ok = ns_rebalancer:check_test_condition(backfill_done, Bucket),
 
     case OldMaster =:= NewMaster of
         true ->

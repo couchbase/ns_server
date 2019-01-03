@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2010-2018 Couchbase, Inc.
+%% @copyright 2010-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -41,6 +41,7 @@
          start_link_graceful_failover/1,
          generate_vbucket_map_options/2,
          run_failover/2,
+         check_test_condition/2,
          rebalance_topology_aware_services/4]).
 
 -export([wait_local_buckets_shutdown_complete/0]). % used via rpc:multicall
@@ -575,6 +576,7 @@ rebalance_topology_aware_services(Config, Services, KeepNodesAll, EjectNodesAll)
 
     lists:filtermap(
       fun (Service) ->
+              ok = check_test_condition(service_rebalance_start, Service),
               KeepNodes = ns_cluster_membership:service_nodes(Config, KeepNodesAll, Service),
               DeltaNodes = ns_cluster_membership:service_nodes(Config, DeltaNodesAll, Service),
 
@@ -689,6 +691,7 @@ do_maybe_delay_eject_nodes(Timestamps, EjectNodes) ->
 rebalance(KeepNodes, EjectNodesAll, FailedNodesAll,
           BucketConfigs,
           DeltaNodes, DeltaRecoveryBuckets) ->
+    ok = check_test_condition(rebalance_start),
     ok = leader_activities:run_activity(
            rebalance, majority,
            ?cut(rebalance_body(KeepNodes, EjectNodesAll,
@@ -977,6 +980,8 @@ verify_replication(Bucket, Nodes, Map) ->
             ale:error(?USER_LOGGER, "Rebalance is done, but failed to verify replications on following nodes:~p", [BadNodes]),
             exit(bad_replicas_due_to_bad_results)
     end,
+
+    ok = check_test_condition(verify_replication, Bucket),
 
     case misc:comm(ExpectedReplicators, ActualReplicators) of
         {[], [], _} ->
@@ -1324,6 +1329,7 @@ apply_delta_recovery_buckets(DeltaRecoveryBuckets, DeltaNodes, CurrentBuckets) -
             exit({delta_recovery_config_synchronization_failed, SyncFailedNodes})
     end,
 
+    ok = check_test_condition(apply_delta_recovery),
     lists:foreach(
       fun ({Bucket, BucketConfig, _}) ->
               ok = wait_for_bucket(Bucket, DeltaNodes),
@@ -1579,3 +1585,101 @@ check_no_tap_buckets() ->
                       "Non-dcp buckets: ~p", [BadBuckets]),
             {error, {found_non_dcp_buckets, BadBuckets}}
     end.
+
+%%
+%% Check whether user wants us to fail or delay the specified step
+%% during rebalance.
+%%
+%% There are following 3 types of rebalance test conditions:
+%%  1. Applicable to a bucket or service. E.g. the service_rebalance_start
+%%      test condition can be used to fail or delay the start of rebalance
+%%      of any topology aware service.
+%%  2. Applicable to certain step during vBucket move for specified bucket.
+%%  3. Applicable to entire rebalance. E.g. delay rebalance at the start.
+%%
+%% The delay can be used to inject other failures. E.g. Introduce a delay
+%% of 60s during rebalance of a bucket. During those 60s, user can
+%% SIGSTOP memcached on a node.
+%%
+%% 'Kind' can be a bucket or a service.
+%%
+check_test_condition(Step) ->
+    check_test_condition(Step, []).
+
+check_test_condition(Step, Kind) ->
+    case testconditions:get(Step) of
+        fail ->
+            %% E.g. fail rebalance at the start.
+            %% Triggered by: testconditions:set(rebalance_start, fail)
+            trigger_failure(Step, []);
+        {delay, Sleep} ->
+            %% E.g. delay rebalance by 60s at the start.
+            %% Triggered by:
+            %%  testconditions:set(rebalance_start, {delay, 60000})
+            trigger_delay(Step, [], Sleep);
+        {fail, Kind} ->
+            %% E.g. fail verify_replication for bucket "test".
+            %% Triggered by:
+            %%  testconditions:set(verify_replication, {fail, “test”})
+            trigger_failure(Step, Kind);
+        {delay, Kind, Sleep} ->
+            %% E.g. delay service_rebalance_start by 1s for index service.
+            %% Triggered by:
+            %%  testconditions:set(service_rebalance_start,
+            %%                     {delay, index, 1000})
+            trigger_delay(Step, Kind, Sleep);
+        {for_vb_move, Kind, N, Condition} ->
+            %% Trigger the test condition for Nth vBucket move.
+            %% Note it is NOT vBucket #N, but rather the Nth vBucket
+            %% that is being moved. The actual vBucket # may be anything.
+            %% This is done because generally rebalance does not move all
+            %% vBuckets and normally users don’t know which vBuckets will
+            %% move during a particular rebalance.
+            %% E.g. during a rebalance, users may not know whether
+            %% vBucket #678 will move. So, instead they can set the
+            %% test condition to fail rebalance during say 10th vBucket move.
+            %% The 10th vBucket to move may be any vBucket e.g. vBucket #348.
+            %% E.g. fail rebalance after backfill for 5th vBucket,
+            %% bucket "test".
+            %% Triggered by:
+            %%  testconditions:set(backfill_done,
+            %%                     {for_vb_move, "test", 5, fail}).
+            trigger_condition_for_Nth_move(Step, Kind, N, Condition);
+        _ ->
+            ok
+    end.
+
+trigger_failure(Step, Kind) ->
+    Msg = case Kind of
+              [] ->
+                  io_lib:format("Failure triggered by test during ~p", [Step]);
+              _ ->
+                  io_lib:format("Failure triggered by test during ~p for ~p",
+                                [Step, Kind])
+          end,
+    ?rebalance_error("~s", [lists:flatten(Msg)]),
+    testconditions:delete(Step),
+    fail_by_test_condition.
+
+trigger_delay(Step, Kind, Sleep) ->
+    Msg = case Kind of
+              [] ->
+                  io_lib:format("Delay triggered by test during ~p. "
+                                "Sleeping for ~p ms", [Step, Sleep]);
+              _ ->
+                  io_lib:format("Delay triggered by test during ~p for ~p. "
+                                "Sleeping for ~p ms", [Step, Kind, Sleep])
+          end,
+    ?rebalance_error("~s", [lists:flatten(Msg)]),
+    testconditions:delete(Step),
+    timer:sleep(Sleep).
+
+trigger_condition_for_Nth_move(Step, Kind, 1, Condition) ->
+    case Condition of
+        fail ->
+            trigger_failure(Step, Kind);
+        {delay, Sleep} ->
+            trigger_delay(Step, Kind, Sleep)
+    end;
+trigger_condition_for_Nth_move(Step, Kind, N, Condition) ->
+    testconditions:set(Step, {for_vb_move, Kind, N - 1, Condition}).
