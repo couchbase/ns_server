@@ -3,11 +3,10 @@
      class="forms"
      ng-submit="settingsAutoCompactionCtl.submit()"
      mn-spinner="settingsAutoCompactionCtl.viewLoading || !settingsAutoCompactionCtl.autoCompactionSettings">
-    <p>
-      Auto-Compaction settings trigger the compaction process.<br>
-      This process compacts databases and their respective view indexes when the following conditions are met.
+    <h4>Auto-Compaction</h4>
+    <p class="text-small margin-bottom-1-5">
+      Auto-Compaction settings trigger the compaction process, compacting databases and their respective view indexes when the following conditions are met:
     </p>
-    <br>
     <div
        class="margin-bottom-2"
        mn-auto-compaction-form

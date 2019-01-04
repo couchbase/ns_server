@@ -22,15 +22,15 @@
      class="forms"
      ng-submit="settingsSampleBucketsCtl.installSampleBuckets()"
      mn-spinner="!settingsSampleBucketsCtl.state || settingsSampleBucketsCtl.viewLoading">
-    <p>
-      Sample buckets contain example data and Couchbase views.<br>
-      You can provision one or more sample buckets to help you discover the power of Couchbase Server.
+    <h4>Sample Buckets</h4>
+    <p class="text-small">
+      Sample buckets contain example data, views, and indexes for your experimentation.
     </p>
-    <p class="red-1">
-      Sample buckets (like all buckets in Couchbase Server 5.0+) can only be accessed by a user with privileges for that bucket.
+    <p class="text-small red-1">
+      Sample buckets &mdash; like all buckets in Couchbase Server 5.0+ &mdash; can only be accessed by a user with privileges for that bucket.
     </p>
 
-    <div class="row width-480 items-top margin-top-2">
+    <div class="row width-480 items-top margin-top-1-5">
       <div class="column">
         <h4>Available Samples</h4>
         <div class="formrow checkbox-list">

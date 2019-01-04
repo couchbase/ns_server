@@ -1,9 +1,8 @@
 <div
    class="cbui-table"
    mn-sortable-table>
-  <div class="cbui-table-header">
-    <span
-       class="cbui-table-cell flex-grow-3">
+  <div class="cbui-table-header" ng-if="buckets.length">
+    <span class="cbui-table-cell flex-grow-3">
       <span
          mn-sortable-title="name"
          sort-by-default="true"

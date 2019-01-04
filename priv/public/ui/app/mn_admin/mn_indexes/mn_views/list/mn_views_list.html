@@ -1,5 +1,5 @@
 <mn-element-cargo depot="actions">
-  <div class="header-controls">
+  <div class="header-controls resp-hide-sml">
     <a
        ng-show="viewsListCtl.showViewCreationButtons() && rbac.cluster.bucket[viewsCtl.currentBucketName].views.write"
        ng-click="viewsListCtl.showSpatialCreationDialog()">
@@ -17,7 +17,7 @@
   <div
      ng-if="viewsListCtl.ddocs.status && rbac.bucketNames['.views!read'].length"
      ng-switch="viewsListCtl.ddocs.status"
-     class="interim alert alert-warning">
+     class="alert alert-warning">
     <p ng-switch-when="_404">Bucket name should be specified.</p>
     <p ng-switch-when="400">Error 400: Either this bucket is not Couchbase bucket or is hosted on another node.</p>
     <p ng-switch-when="404">Error 404: This bucket does not exist.</p>
@@ -27,13 +27,13 @@
 </mn-element-cargo>
 
 <div>
-  <div class="row">
+  <div class="row resp-sml">
     <ui-select
        ng-model="viewsCtl.currentBucketName"
        on-select="viewsCtl.onSelectBucket($item)"
        theme="selectize"
        ng-disabled="!rbac.bucketNames['.views!read'].length"
-       class="cbui-select">
+       class="cbui-select margin-bottom-half">
       <ui-select-match
          class="ui-select-match">{{$select.selected}}</ui-select-match>
       <ui-select-choices
@@ -42,7 +42,7 @@
         <span class="select-item ellipsis" ng-bind-html="name | highlight: $select.search" ></span>
       </ui-select-choices>
     </ui-select>
-    <span class="pills">
+    <span class="pills nowrap">
       <a
          ui-sref="{ type: 'development' }"
          ui-sref-active="selected">Development Views</a>

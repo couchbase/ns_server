@@ -38,7 +38,9 @@ main {
 /* nav element for child pages, positioned under header ----------------- */
 nav.sub-nav {
   display: flex;
+  position: relative;
   justify-content: center;
+  align-items: center;
   background-color: #669ee0;
 }
 /* nav element for main navigation, on left side or hidden for mobile --- */
@@ -158,7 +160,7 @@ footer {
   align-items: flex-end;
 }
 .items-center {
-  justify-content: center;
+  align-items: center;
 }
 .items-space-around {
   justify-content: space-around;

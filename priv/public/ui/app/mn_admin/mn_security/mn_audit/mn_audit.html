@@ -5,13 +5,19 @@
      class="forms">
 
     <div class="formrow">
-      <input
-         type="checkbox"
-         id="audit-enable-flag"
-         ng-disabled="!rbac.cluster.admin.security.write"
-         ng-model="auditCtl.state.auditdEnabled">
-      <label for="audit-enable-flag">Audit events & write them to a log</label>
-
+      <div class="row flex-left margin-bottom-half">
+        <label
+           class="toggle-control margin-0"
+           for="audit-enable-flag">
+          <input
+             type="checkbox"
+             id="audit-enable-flag"
+             ng-disabled="!rbac.cluster.admin.security.write"
+             ng-model="auditCtl.state.auditdEnabled">
+          <span class="toggle-control-body"></span>
+        </label>
+        <span class="text-small">&nbsp; Audit events & write them to a log</span>
+      </div>
       <div
          ng-if="auditCtl.state.auditdEnabled"
          class="content-box fix-width-6">
@@ -121,9 +127,9 @@
         </div>
         <hr>
         <div
-           class="row flex-left items-top"
+           class="cbui-tablerow items-top padding-left-0 resp-sml"
            ng-repeat="desc in descs">
-          <span class="fix-width-5">
+          <span class="cbui-table-cell">
             <input
                type="checkbox"
                id="thisModule_{{module}}_{{desc.id}}"
@@ -133,7 +139,7 @@
                class="checkbox"
                for="thisModule_{{module}}_{{desc.id}}">{{desc.name}}</label>
           </span>
-          <p>{{desc.description}}</p>
+          <p class="cbui-table-cell">{{desc.description}}</p>
         </div>
       </div>
     </section>

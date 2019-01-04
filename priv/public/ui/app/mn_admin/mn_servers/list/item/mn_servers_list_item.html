@@ -5,7 +5,7 @@
    ng-class="{['dynamic_' + node.clusterMembership] : serversCtl.isDetailsOpened(node.hostname) || serversItemCtl.isNodeInactiveFailed || serversItemCtl.isNodeInactiveAdded || serversItemCtl.isNodeUnhealthy || (adminCtl.tasks.inRebalance && adminCtl.tasks.tasksRebalance.status === 'running' && rbac.cluster.tasks.read),
               ['dynamic_' + node.status] : serversCtl.isDetailsOpened(node.hostname) || serversItemCtl.isNodeInactiveFailed || serversItemCtl.isNodeInactiveAdded || serversItemCtl.isNodeUnhealthy || (adminCtl.tasks.inRebalance && adminCtl.tasks.tasksRebalance.status === 'running' && rbac.cluster.tasks.read)}">
   <div
-     class="cbui-tablerow"
+     class="cbui-tablerow resp-sml"
      ng-class="{['dynamic_' + node.status] : !serversCtl.isDetailsOpened(node.hostname) && !(serversItemCtl.isNodeInactiveFailed || serversItemCtl.isNodeInactiveAdded || serversItemCtl.isNodeUnhealthy || (adminCtl.tasks.inRebalance && adminCtl.tasks.tasksRebalance.status === 'running' && rbac.cluster.tasks.read)),
                 ['dynamic_' + node.clusterMembership] : !serversCtl.isDetailsOpened(node.hostname) && !(serversItemCtl.isNodeInactiveFailed || serversItemCtl.isNodeInactiveAdded || serversItemCtl.isNodeUnhealthy || (adminCtl.tasks.inRebalance && adminCtl.tasks.tasksRebalance.status === 'running' && rbac.cluster.tasks.read))}">
     <span class="cbui-table-cell flex-grow-2-5 cbui-tablerow-title flex-left">
@@ -71,7 +71,7 @@
 
   <!-- InactiveFailed, InactiveAdded and Unhealthy states-->
   <div
-     class="cbui-tablerow error"
+     class="cbui-tablerow resp-xsml error items-center"
      ng-show="!adminCtl.tasks.inRebalance && rbac.cluster.tasks.read &&
               (serversItemCtl.isNodeInactiveFailed || serversItemCtl.isNodeInactiveAdded || serversItemCtl.isNodeUnhealthy)">
     <span>

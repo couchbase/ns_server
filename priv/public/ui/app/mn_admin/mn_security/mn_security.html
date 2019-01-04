@@ -1,6 +1,6 @@
 <mn-element-cargo depot="subnav">
   <nav
-     class="sub-nav resp-hide-sml"
+     class="sub-nav"
      mn-pluggable-ui-tabs
      mn-tab-bar-name="securityTab">
     <a
@@ -18,11 +18,13 @@
     <a
        ng-show="pools.isEnterprise"
        ui-sref="app.admin.security.rootCertificate"
-       ui-sref-active="selected">Root Certificate</a>
+       ui-sref-active="selected"
+       class="resp-hide-sml">Root Certificate</a>
     <a
        ng-show="pools.isEnterprise && poolDefault.compat.atLeast50 && rbac.cluster.admin.security.read"
        ui-sref="app.admin.security.clientCert"
-       ui-sref-active="selected">Client Certificate</a>
+       ui-sref-active="selected"
+       class="resp-hide-sml">Client Certificate</a>
     <a
        ng-show="rbac.cluster.admin.security.read && poolDefault.compat.atLeast40 && pools.isEnterprise"
        ui-sref="app.admin.security.audit"
@@ -30,14 +32,54 @@
     <a
       ng-show="pools.isEnterprise && poolDefault.compat.atLeast55 && rbac.cluster.admin.security.read"
       ui-sref="app.admin.security.redaction"
-      ui-sref-active="selected">Log Redaction</a>
+      ui-sref-active="selected"
+      class="resp-hide-sml">Log Redaction</a>
     <a
        ng-show="pools.isEnterprise && securityCtl.poolDefault.saslauthdEnabled && poolDefault.compat.atLeast40 && !poolDefault.compat.atLeast45 && rbac.cluster.admin.security.read"
        ui-sref="app.admin.security.ldap"
-       ui-sref-active="selected">LDAP Auth Setup</a>
+       ui-sref-active="selected"
+       class="resp-hide-sml">LDAP Auth Setup</a>
     <a
        ui-sref="app.admin.security.session"
-       ui-sref-active="selected">Session</a>
+       ui-sref-active="selected"
+       class="resp-hide-sml">Session</a>
+
+<!-- for smaller screens, hide some subnav links and show them in this menu -->
+    <span uib-dropdown class="hidden resp-show-sml">
+      <a uib-dropdown-toggle class="toggle-subnav">
+        <span class="icon fa-ellipsis-v"></span>
+      </a>
+      <div uib-dropdown-menu class="dropdown-menu-select-like">
+        <a
+           ng-show="!poolDefault.compat.atLeast50 && poolDefault.compat.atLeast45 && rbac.cluster.admin.security.read"
+           ui-sref="app.admin.security.externalRoles"
+           ui-sref-active="selected">External User/Roles</a>
+        <a
+           ng-show="rbac.cluster.admin.security.read && !poolDefault.compat.atLeast50"
+           ui-sref="app.admin.security.internalRoles"
+           ui-sref-active="selected">Internal User/Roles</a>
+        <a
+           ng-show="pools.isEnterprise"
+           ui-sref="app.admin.security.rootCertificate"
+           ui-sref-active="selected">Root Certificate</a>
+        <a
+           ng-show="pools.isEnterprise && poolDefault.compat.atLeast50 && rbac.cluster.admin.security.read"
+           ui-sref="app.admin.security.clientCert"
+           ui-sref-active="selected">Client Certificate</a>
+        <a
+           ng-show="pools.isEnterprise && poolDefault.compat.atLeast55 && rbac.cluster.admin.security.read"
+           ui-sref="app.admin.security.redaction"
+           ui-sref-active="selected">Log Redaction</a>
+        <a
+           ng-show="pools.isEnterprise && securityCtl.poolDefault.saslauthdEnabled && poolDefault.compat.atLeast40 && !poolDefault.compat.atLeast45 && rbac.cluster.admin.security.read"
+           ui-sref="app.admin.security.ldap"
+           ui-sref-active="selected">LDAP Auth Setup</a>
+        <a
+           ui-sref="app.admin.security.session"
+           ui-sref-active="selected"
+           class="resp-hide-sml">Session</a>
+      </div>
+    </span>
   </nav>
 </mn-element-cargo>
 

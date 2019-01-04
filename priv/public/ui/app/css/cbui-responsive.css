@@ -62,7 +62,7 @@
   }
   nav.nav-sidebar {
     position: fixed;
-    width: 192px;
+    width: 152px;
     padding: 1rem 1rem 1rem .5rem;
     margin: 0;
     background-color: #fff;
@@ -73,7 +73,7 @@
     text-align: left;
     z-index: 11;
     transition: transform 0.25s;
-    transform: translateX(198px);
+    transform: translateX(158px);
   }
   .nav-sidebar:hover .sidebar-closer-wrapper {
     opacity: 0!important;
@@ -133,7 +133,8 @@
   .row.resp-sml,
   .controls.resp-sml,
   .content-box-dashboard.resp-sml,
-  .wb-query-editor-footer {
+  .wb-query-editor-footer,
+  .row.flex-wrap {
     flex-wrap: wrap !important;
   }
   div[class*="width-"] {
@@ -151,15 +152,20 @@
     margin: 0 0 1.5rem 0!important;
   }
   .cbui-tablerow.resp-sml {
-    flex-flow: column-reverse;
-    align-items: stretch;
-    word-break: break-all;
+    padding-right: 0;
   }
+  /* not sure what this was for:
+     flex-flow: column-reverse;
+      align-items: stretch;
+      word-break: break-all;  */
+
   .cbui-table-cell.resp-sml {
     overflow: visible;
   }
   .panel .dialog-med,
-  .panel .dialog-lg {
+  .dialog-med,
+  .panel .dialog-lg,
+  .dialog-lg {
     width: 94vw;
   }
   .forms.max-height-500 {
@@ -186,10 +192,32 @@
   .icon-info {
     display: none !important;
   }
+  .about-text.resp-sml {
+    position: absolute;
+    top: 46px;
+    right: 0;
+    z-index: 1;
+    color: #555;
+  }
+  .service-widget-row {
+    display: block;
+    columns: 2 120px;
+    margin-top: 1.5rem;
+    min-height: 0;
+  }
+  .service-widget {
+    margin-bottom: .5rem;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
 }
 
 /* responsive extra-small ------------------------------- */
 @media (max-width: 520px) {
+
+  main {
+    padding: .5rem;
+  }
   .resp-hide-xsml {
     display: none !important;
   }
@@ -208,10 +236,10 @@
     width: 94vw;
   }
   nav.nav-header {
-    padding: 0 .5rem 0 0;
+    padding: 0 .25rem 0 0;
   }
   header {
-    padding: 0 1rem;
+    padding: 0 .5rem;
   }
   header h1 {
     margin: .5rem 0 0 0;
@@ -221,41 +249,49 @@
     min-width: 40px;
     max-width: 40px;
   }
-  .panel .dialog-small {
+  .dialog {
+    top: 1.5rem!important;
+  }
+  .dialog-small,
+  .panel.dialog-small,
+  .tasks-progress.dialog-small {
     width: 94vw;
   }
-  .about-text.resp-xsml {
-    position: absolute;
-    top: 46px;
-    right: 0;
-    z-index: 1;
-    color: #555;
-  }
+  .tasks-progress.dialog-small {
+    position:fixed;
+    left: 3vw;
+    }
   .content-box-dashboard.resp-xsml {
     margin-top: 1rem;
   }
-  .service-widget-row {
-    display: block;
-    columns: 120px 2;
-    margin-top: 1.5rem;
-    min-height: 0;
-  }
-  .service-widget {
-    margin-bottom: .5rem;
-    page-break-inside: avoid;
-    break-inside: avoid;
-  }
   button.outline {
-    min-width: 0;
+    min-width: 6rem;
     padding: 0 .75rem;
     line-height: normal;
-    font-size: .961rem;
+    font-size: .875rem;
   }
   .filter-server input.filter-input {
     width: 60vw;
   }
   .filter-index input.filter-input {
     width: 50vw;
+  }
+  .server-actions {
+    width: 40vw!important;
+    text-align: right;
+  }
+  .server-actions button {
+    padding: 0 .75rem;
+    min-width: 0;
+    width: 100%;
+    margin-left: .25rem;
+  }
+  .cbui-tablerow.resp-xsml {
+    padding-right: 0;
+  }
+  .audit-module-body {
+    padding: .5rem .75rem;
+    line-height: 1.8;
   }
 }
 

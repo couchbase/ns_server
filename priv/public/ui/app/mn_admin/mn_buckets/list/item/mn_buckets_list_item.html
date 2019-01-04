@@ -3,7 +3,7 @@
    ng-click="bucketsListCtl.toggleDetails(bucket.name)"
    ng-class="{['dynamic_' + bucketsItemCtl.bucketStatus.statusClass] : bucketsListCtl.isDetailsOpened(bucket.name) || (bucketsItemCtl.getWarmUpProgress(bucket, adminCtl.tasks) !== false && rbac.cluster.tasks.read) || bucketsItemCtl.bucketStatus.statusClass !== 'healthy'}">
   <div
-     class="cbui-tablerow"
+     class="cbui-tablerow resp-xsml"
      ng-class="{['dynamic_' + bucketsItemCtl.bucketStatus.statusClass] : !bucketsListCtl.isDetailsOpened(bucket.name) && !(bucketsItemCtl.getWarmUpProgress(bucket, adminCtl.tasks) !== false && rbac.cluster.tasks.read) && bucketsItemCtl.bucketStatus.statusClass == 'healthy'}">
     <span class="cbui-table-cell flex-grow-3 row">
       <div class="cbui-tablerow-title ellipsis">{{bucket.name}}</div>
