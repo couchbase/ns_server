@@ -2210,6 +2210,3 @@ nav.nav-sidebar-hidden {
   content: '\007C';
   color: #d1d1d1;
 }
-.pipe:nth-child(2):before {
-  content: none !important;
-}
