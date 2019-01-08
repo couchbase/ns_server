@@ -68,7 +68,8 @@
          assert_is_enterprise/0,
          assert_is_45/0,
          assert_is_50/0,
-         assert_is_55/0]).
+         assert_is_55/0,
+         compute_sec_headers/0]).
 
 %% used by parse_validate_number
 -export([list_to_integer/1, list_to_float/1]).
