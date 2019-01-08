@@ -20,7 +20,7 @@ ssl_options(Host, Settings) ->
     case proplists:get_value(server_cert_validation, Settings) of
         true ->
             [{verify, verify_peer}, {cacerts, get_cacerts(Settings)},
-             {server_name_indication, Host}];
+             {server_name_indication, Host}, {log_alert, false}];
         false ->
             [{verify, verify_none}]
     end.
