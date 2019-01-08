@@ -70,7 +70,8 @@
          assert_is_55/0,
          assert_is_madhatter/0,
          strip_json_struct/1,
-         choose_node_consistently/2]).
+         choose_node_consistently/2,
+         compute_sec_headers/0]).
 
 %% used by parse_validate_number
 -export([list_to_integer/1, list_to_float/1]).

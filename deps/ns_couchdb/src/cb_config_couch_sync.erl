@@ -64,6 +64,14 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Request, State) ->
     {noreply, State}.
 
+handle_info({notable_change, secure_headers = Key}, State) ->
+    flush_for_key(Key),
+
+    ValueRaw = menelaus_util:compute_sec_headers(),
+    Value = lists:flatten(io_lib:format("~p", [ValueRaw])),
+
+    apply_to_couch_config(httpd, extra_headers, Value, false),
+    {noreply, State};
 handle_info({notable_change, Key}, State) ->
     flush_for_key(Key),
 
@@ -80,6 +88,14 @@ handle_info({notable_change, Key}, State) ->
                 {couchdb, SK}
         end,
 
+    apply_to_couch_config(CouchSectionAtom, CouchKeyAtom, Value, true),
+    {noreply, State};
+handle_info(_Event, State) ->
+    {noreply, State}.
+
+%% Auxiliary functions.
+
+apply_to_couch_config(CouchSectionAtom, CouchKeyAtom, Value, Persist) ->
     CouchSection = atom_to_list(CouchSectionAtom),
     CouchKey     = atom_to_list(CouchKeyAtom),
 
@@ -88,17 +104,12 @@ handle_info({notable_change, Key}, State) ->
         true ->
             ok;
         false ->
-            ok = couch_config:set(CouchSection, CouchKey, Value)
-    end,
-
-    {noreply, State};
-handle_info(_Event, State) ->
-    {noreply, State}.
-
-%% Auxiliary functions.
+            ok = couch_config:set(CouchSection, CouchKey, Value, Persist)
+    end.
 
 is_notable_key({couchdb, _}) -> true;
 is_notable_key({{node, Node, {couchdb, _}}}) when Node =:= node() -> true;
+is_notable_key(secure_headers) -> true;
 is_notable_key(_) -> false.
 
 handle_config_event({Key, _Value}) ->
@@ -112,6 +123,8 @@ handle_config_event(_) ->
     ok.
 
 to_global_key({couchdb, _} = Key) ->
+    Key;
+to_global_key(secure_headers = Key) ->
     Key;
 to_global_key({node, Node, {couchdb, _} = Key}) when Node =:= node() ->
     Key.
