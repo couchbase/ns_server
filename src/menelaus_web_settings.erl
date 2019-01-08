@@ -43,7 +43,9 @@
          handle_settings_max_parallel_indexers_post/1,
 
          handle_settings_view_update_daemon/1,
-         handle_settings_view_update_daemon_post/1]).
+         handle_settings_view_update_daemon_post/1,
+
+         handle_reset_ciphers_suites/1]).
 
 -import(menelaus_util,
         [parse_validate_number/3,
@@ -543,3 +545,7 @@ handle_reset_alerts(Req) ->
     Params = mochiweb_request:parse_qs(Req),
     Token = list_to_binary(proplists:get_value("token", Params, "")),
     reply_json(Req, menelaus_web_alerts_srv:consume_alerts(Token)).
+
+handle_reset_ciphers_suites(Req) ->
+    ns_config:set(cipher_suites, []),
+    reply_json(Req, {[]}).

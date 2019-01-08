@@ -618,6 +618,8 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_cluster_logs:handle_cancel_collect_logs/1};
                 ["controller", "resetAdminPassword"] ->
                     {local, fun menelaus_web_rbac:handle_reset_admin_password/1};
+                ["controller", "resetCipherSuites"] ->
+                    {local, fun menelaus_web_settings:handle_reset_ciphers_suites/1};
                 ["controller", "changePassword"] ->
                     {no_check, fun menelaus_web_rbac:handle_change_password/1};
                 ["pools", "default", "buckets", Id] ->
