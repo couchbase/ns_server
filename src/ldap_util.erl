@@ -65,7 +65,7 @@ with_connection(Settings, Fun) ->
 
     case open_ldap_connection(Hosts, Port, SSL, Timeout, Settings) of
         {ok, Handle, Host} ->
-            ?log_debug("Connected to LDAP server"),
+            ?log_debug("Connected to LDAP server: ~p", [Host]),
             try
                 %% The upgrade is done in two phases: first the server is asked
                 %% for permission to upgrade. Second, if the request is

@@ -40,21 +40,27 @@ get_user_DN(Username, Settings) ->
     Map = proplists:get_value(user_dn_mapping, Settings),
     case map_user_to_DN(Username, Settings, Map) of
         {ok, DN} ->
-            ?log_debug("Built LDAP DN ~p for username ~p",
+            ?log_debug("Username->DN: Constructed DN: ~p for ~p",
                        [ns_config_log:tag_user_name(DN),
                         ns_config_log:tag_user_name(Username)]),
             {ok, DN};
         {error, Error} ->
-            ?log_error("Build LDAP DN failed for username ~p: ~p",
+            ?log_error("Username->DN: Mapping username to LDAP DN failed for "
+                       "username ~p with reason ~p",
                        [ns_config_log:tag_user_name(Username), Error]),
             {error, Error}
     end.
 
-map_user_to_DN(Username, _Settings, []) -> {ok, Username};
-map_user_to_DN(Username, Settings, [{Re, {Type, Template}}|T]) ->
+map_user_to_DN(Username, _Settings, []) ->
+    ?log_debug("Username->DN: rule not found for ~p",
+               [ns_config_log:tag_user_name(Username)]),
+    {ok, Username};
+map_user_to_DN(Username, Settings, [{Re, {Type, Template}} = Rule|T]) ->
     case re:run(Username, Re, [{capture, all_but_first, list}]) of
         nomatch -> map_user_to_DN(Username, Settings, T);
         {match, Captured} ->
+            ?log_debug("Username->DN: using rule ~p for ~p",
+                       [Rule, ns_config_log:tag_user_name(Username)]),
             ReplaceRe = ?cut(lists:flatten(io_lib:format("\\{~b\\}", [_]))),
             Subs = [{ReplaceRe(N), ldap_util:escape(S)} ||
                         {N, S} <- misc:enumerate(Captured, 0)],
