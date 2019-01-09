@@ -733,6 +733,8 @@ rebalance_body(KeepNodes,
     FailedNodes = FailedNodesAll -- [node()],
     eject_nodes(FailedNodes),
 
+    ok = check_test_condition(rebalance_cluster_nodes_active),
+
     rebalance_kv(KeepNodes, EjectNodesAll, BucketConfigs, DeltaRecoveryBuckets),
     rebalance_services(KeepNodes, EjectNodesAll),
 
