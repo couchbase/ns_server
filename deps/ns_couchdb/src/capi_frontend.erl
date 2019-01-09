@@ -158,20 +158,22 @@ send_no_active_vbuckets(CouchReq, Bucket0) ->
     Req = CouchReq#httpd.mochi_req,
     Bucket = iolist_to_binary(Bucket0),
     LocalAddr = menelaus_util:local_addr(Req),
-    Headers0 = [{"Content-Type", "application/json"},
-                {"Cache-Control", "must-revalidate"}],
     RedirectNode = find_node_with_vbuckets(Bucket),
-    Headers = case RedirectNode of
-                  undefined -> Headers0;
-                  _ ->
-                      Path = erlang:iolist_to_binary(Req:get(raw_path)),
-                      [{"Location", capi_utils:capi_url_bin(RedirectNode, Path, LocalAddr)}
-                       | Headers0]
-              end,
-    Tuple = {302,
-             Headers,
-             <<"{\"error\":\"no_active_vbuckets\",\"reason\":\"Cannot execute view query since the node has no active vbuckets\"}">>},
-    {ok, Req:respond(Tuple)}.
+    Headers =
+        case RedirectNode of
+            undefined ->
+                [];
+            _ ->
+                Path = erlang:iolist_to_binary(
+                         mochiweb_request:get(raw_path, Req)),
+                [{"Location",
+                  capi_utils:capi_url_bin(RedirectNode, Path, LocalAddr)}]
+        end,
+    RespJson = {[{error, <<"no_active_vbuckets">>},
+                 {reason, <<"Cannot execute view query since the "
+                            "node has no active vbuckets">>}]},
+
+    {ok, couch_httpd:send_json(CouchReq, 302, Headers, RespJson)}.
 
 with_verify_bucket_auth(Req, BucketName, UUID, Fun) ->
     case verify_bucket_auth(Req, BucketName) of
