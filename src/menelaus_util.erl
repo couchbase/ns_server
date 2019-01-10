@@ -80,8 +80,6 @@
 %% External API
 
 -define(CACHE_CONTROL, "Cache-Control").  %% TODO: Move to an HTTP header file.
-%% TODO: Validate adding {"Content-Security-Policy", "script-src 'self'"} to
-%% BASE_HEADERS does not break anything.
 -define(BASE_HEADERS, [{"Server", "Couchbase Server"}]).
 -define(SEC_HEADERS,  [{"X-Content-Type-Options", "nosniff"},
                        {"X-Frame-Options", "DENY"},
@@ -91,38 +89,18 @@
                            {"Expires", "Thu, 01 Jan 1970 00:00:00 GMT"},
                            {"Pragma", "no-cache"}]).
 
-maybe_get_sec_hdrs(SCfg, Body) ->
-     case lists:keysearch(enabled, 1, SCfg) of
-         {value, {enabled, false}} ->
-             [];
-         _ ->
-             Body()
-     end.
-
-%% Here we get the values for secure headers from the ns_config.
-%% Default values are as below:
-%% {"X-Content-Type-Options", "nosniff"},
-%% {"X-Frame-Options", "DENY"},
-%% {"X-Permitted-Cross-Domain-Policies", "none"},
-%% {"X-XSS-Protection", "1; mode=block"}]).
-%%
-%% These can be overridden by the user.
 compute_sec_headers() ->
-     {value, SCfg} = ns_config:search(ns_config:latest(), secure_headers),
-     maybe_get_sec_hdrs(SCfg,
-          fun() ->
-                  lists:foldl(
-                    fun({Hdr, DefVal}, Acc) ->
-                            case lists:keysearch(Hdr, 1, SCfg) of
-                                false ->
-                                    [{Hdr, DefVal} | Acc];
-                                {value, {Hdr, disable}} ->
-                                    Acc;
-                                {value, {Hdr, X}} ->
-                                    [{Hdr, X} | Acc]
-                            end
-                    end, [], ?SEC_HEADERS)
-          end).
+    {value, Headers} = ns_config:search(secure_headers),
+    compute_sec_headers(Headers).
+
+compute_sec_headers(Headers) ->
+    case proplists:get_value(enabled, Headers, true) of
+        false ->
+            [];
+        true ->
+            H1 = misc:update_proplist(?SEC_HEADERS, Headers),
+            [{K, V} || {K, V} <- H1, V =/= disable, K =/= enabled]
+    end.
 
 response_headers(Req, Headers) ->
     response_headers(
@@ -592,10 +570,27 @@ assert_cluster_version(Fun) ->
 
 -ifdef(EUNIT).
 
+compute_sec_headers_test() ->
+    ?assertEqual(lists:sort(?SEC_HEADERS), lists:sort(compute_sec_headers([]))),
+    ?assertEqual(lists:sort([{"hdr", "val"} | ?SEC_HEADERS]),
+                 lists:sort(compute_sec_headers([{"hdr", "val"}]))),
+    ?assertEqual(lists:sort(
+                   lists:keystore("X-Frame-Options", 1, ?SEC_HEADERS,
+                                  {"X-Frame-Options", "OTHER"})),
+                 lists:sort(
+                   compute_sec_headers([{"X-Frame-Options", "OTHER"}]))),
+    ?assertEqual(lists:sort(
+                   lists:keydelete("X-Frame-Options", 1, ?SEC_HEADERS)),
+                 lists:sort(
+                   compute_sec_headers([{"X-Frame-Options", disable}]))),
+    ?assertEqual([], compute_sec_headers([{enabled, false}])),
+    ?assertEqual(lists:sort(?SEC_HEADERS),
+                 lists:sort(compute_sec_headers([{enabled, true}]))).
+
 response_headers_test() ->
     meck:new(ns_config, [passthrough]),
     meck:expect(ns_config, latest, fun() -> [] end),
-    meck:expect(ns_config, search, fun(_, _) -> {value, []} end),
+    meck:expect(ns_config, search, fun(_) -> {value, []} end),
     ?assertEqual(lists:keysort(1, ?NO_CACHE_HEADERS ++ ?BASE_HEADERS ++ ?SEC_HEADERS),
                  response_headers([])),
     ?assertEqual(lists:keysort(1, ?NO_CACHE_HEADERS ++ ?BASE_HEADERS ++ ?SEC_HEADERS),
@@ -612,7 +607,7 @@ response_headers_test() ->
                                    {allow_cache, true}])),
     ?assertEqual(lists:keysort( 1, [{"Duplicate", "first"}] ++ ?NO_CACHE_HEADERS ++ ?BASE_HEADERS ++ ?SEC_HEADERS),
                  response_headers([{"Duplicate", "first"}, {"Duplicate", "second"}])),
-    meck:expect(ns_config, search, fun(_, _) -> {value, [{enabled, false}]} end),
+    meck:expect(ns_config, search, fun(_) -> {value, [{enabled, false}]} end),
     ?assertEqual(lists:keysort( 1, [{"Duplicate", "first"}] ++ ?NO_CACHE_HEADERS ++ ?BASE_HEADERS),
                  response_headers([{"Duplicate", "first"}, {"Duplicate", "second"}])),
     true = meck:validate(ns_config),
