@@ -87,9 +87,10 @@
                        {"X-Frame-Options", "DENY"},
                        {"X-Permitted-Cross-Domain-Policies", "none"},
                        {"X-XSS-Protection", "1; mode=block"}]).
--define(NO_CACHE_HEADERS, [{?CACHE_CONTROL, "no-cache,no-store,must-revalidate"},
-                           {"Expires", "Thu, 01 Jan 1970 00:00:00 GMT"},
-                           {"Pragma", "no-cache"}]).
+-define(NO_CACHE_HEADERS,
+        [{?CACHE_CONTROL, "no-cache,no-store,must-revalidate"},
+         {"Expires", "Thu, 01 Jan 1970 00:00:00 GMT"},
+         {"Pragma", "no-cache"}]).
 
 compute_sec_headers() ->
     {value, Headers} = ns_config:search(secure_headers),
@@ -118,7 +119,8 @@ response_headers(Req, Headers) ->
 %%   {allow_cache, false} -- Disables cache via multiple headers
 %% If neither allow_cache or the "Cache-Control" header are specified
 %% {allow_cache, false} is applied.
--spec response_headers([{string(),string()}|{atom(), atom()}]) -> [{string(), string()}].
+-spec response_headers([{string(),string()}|{atom(), atom()}]) ->
+                              [{string(), string()}].
 response_headers(Headers) ->
     {Expanded, _} =
         lists:foldl(
@@ -133,7 +135,8 @@ response_headers(Headers) ->
              ({Header, Value}, {Acc, CacheControl}) when is_list(Header) ->
                   {[{Header, Value} | Acc], CacheControl}
           end, {[], false},
-          Headers ++ [{allow_cache, false} | ?BASE_HEADERS] ++ compute_sec_headers()),
+          Headers ++ [{allow_cache, false} | ?BASE_HEADERS] ++
+              compute_sec_headers()),
     lists:ukeysort(1, lists:reverse(Expanded)).
 
 %% mostly extracted from mochiweb_request:maybe_redirect/3
@@ -158,7 +161,8 @@ redirect_permanently(Path, Req) ->
            "<p>The document has moved <a href=\"">>,
     Bottom = <<">here</a>.</p></body></html>\n">>,
     Body = <<Top/binary, LocationBin/binary, Bottom/binary>>,
-    reply(Req, Body, 301, [{"Location", Location}, {"Content-Type", "text/html"}]).
+    reply(Req, Body, 301, [{"Location", Location},
+                           {"Content-Type", "text/html"}]).
 
 reply_not_found(Req) ->
     reply_not_found(Req, []).
@@ -179,7 +183,8 @@ reply_json(Req, Body, Code) ->
     reply(Req, encode_json(Body), Code, [{"Content-Type", "application/json"}]).
 
 reply_json(Req, Body, Code, ExtraHeaders) ->
-    reply(Req, encode_json(Body), Code, [{"Content-Type", "application/json"} | ExtraHeaders]).
+    reply(Req, encode_json(Body), Code,
+          [{"Content-Type", "application/json"} | ExtraHeaders]).
 
 log_web_hit(Peer, Req, Resp) ->
     Level = case menelaus_auth:get_user_id(Req) of
@@ -200,7 +205,8 @@ reply_ok(Req, ContentType, Body) ->
 
 reply_ok(Req, ContentType, Body, ExtraHeaders) ->
     Peer = mochiweb_request:get(peer, Req),
-    Resp = mochiweb_request:ok({ContentType, response_headers(Req, ExtraHeaders), Body}, Req),
+    Resp = mochiweb_request:ok(
+             {ContentType, response_headers(Req, ExtraHeaders), Body}, Req),
     log_web_hit(Peer, Req, Resp),
     Resp.
 
@@ -224,7 +230,8 @@ respond(Req, RespTuple) ->
 %% Originally from mochiweb_request.erl maybe_serve_file/2
 %% and modified to handle user-defined content-type
 serve_static_file(Req, {DocRoot, Path}, ContentType, ExtraHeaders) ->
-    serve_static_file(Req, filename:join(DocRoot, Path), ContentType, ExtraHeaders);
+    serve_static_file(Req, filename:join(DocRoot, Path),
+                      ContentType, ExtraHeaders);
 serve_static_file(Req, File, ContentType, ExtraHeaders) ->
     case file:read_file_info(File) of
         {ok, FileInfo} ->
@@ -309,11 +316,14 @@ parse_validate_boolean_field(JSONName, CfgName, Params) ->
         undefined -> [];
         "true" -> [{ok, CfgName, true}];
         "false" -> [{ok, CfgName, false}];
-        _ -> [{error, JSONName, iolist_to_binary(io_lib:format("~s is invalid", [JSONName]))}]
+        _ -> [{error, JSONName,
+               iolist_to_binary(io_lib:format("~s is invalid", [JSONName]))}]
     end.
 
--spec parse_validate_number(string(), (integer() | undefined), (integer() | undefined)) ->
-                                   invalid | too_small | too_large | {ok, integer()}.
+-spec parse_validate_number(string(), (integer() | undefined),
+                            (integer() | undefined)) ->
+                                   invalid | too_small | too_large |
+                                   {ok, integer()}.
 parse_validate_number(String, Min, Max) ->
     parse_validate_number(String, Min, Max, list_to_integer).
 
@@ -324,9 +334,11 @@ list_to_float(A) -> try erlang:list_to_integer(A)
                             erlang:list_to_float(A)
                     end.
 
--spec parse_validate_number(string(), (number() | undefined), (number() | undefined),
+-spec parse_validate_number(string(), (number() | undefined),
+                            (number() | undefined),
                             list_to_integer | list_to_float) ->
-                                   invalid | too_small | too_large | {ok, integer()}.
+                                   invalid | too_small | too_large |
+                                   {ok, integer()}.
 parse_validate_number(String, Min, Max, Fun) ->
     Parsed = (catch menelaus_util:Fun(string:strip(String))),
     if
@@ -347,12 +359,15 @@ parse_validate_port_number(StringPort) ->
         invalid ->
             throw({error, [<<"Port must be a number.">>]});
         _ ->
-            throw({error, [<<"The port number must be greater than 1023 and less than 65536.">>]})
+            throw({error,
+                   [<<"The port number must be greater than 1023 and less "
+                      "than 65536.">>]})
     end.
 
 %% does a simple email address validation
 validate_email_address(Address) ->
-    {ok, RE} = re:compile("^[^@]+@.+$", [multiline]), %%" "hm, even erlang-mode is buggy :("),
+    %%" "hm, even erlang-mode is buggy :("),
+    {ok, RE} = re:compile("^[^@]+@.+$", [multiline]),
     RV = re:run(Address, RE),
     case RV of
         {match, _} -> true;
@@ -373,7 +388,8 @@ local_addr(Req) ->
     misc:maybe_add_brackets(inet:ntoa(Address)).
 
 strip_json_struct({struct, Pairs}) -> {strip_json_struct(Pairs)};
-strip_json_struct(List) when is_list(List) -> [strip_json_struct(E) || E <- List];
+strip_json_struct(List) when is_list(List) ->
+    [strip_json_struct(E) || E <- List];
 strip_json_struct({Key, Value}) -> {Key, strip_json_struct(Value)};
 strip_json_struct(Other) -> Other.
 
@@ -415,7 +431,8 @@ ensure_local(Req) ->
         true ->
             ok;
         false ->
-            erlang:throw({web_exception, 400, <<"API is accessible from localhost only">>, []})
+            erlang:throw({web_exception, 400,
+                          <<"API is accessible from localhost only">>, []})
     end.
 
 reply_global_error(Req, Error) ->
@@ -423,7 +440,8 @@ reply_global_error(Req, Error) ->
 
 reply_error(Req, Field, Error) ->
     reply_json(
-      Req, {struct, [{errors, {struct, [{iolist_to_binary([Field]), iolist_to_binary([Error])}]}}]}, 400).
+      Req, {struct, [{errors, {struct, [{iolist_to_binary([Field]),
+                                         iolist_to_binary([Error])}]}}]}, 400).
 
 require_auth(Req) ->
     case {mochiweb_request:get_header_value("invalid-auth-response", Req),
@@ -434,8 +452,9 @@ require_auth(Req) ->
             %% WWW-Authenticate header response, even via XHR
             reply(Req, 401);
         {_, undefined} ->
-            reply(Req, 401, [{"WWW-Authenticate",
-                              "Basic realm=\"Couchbase Server Admin / REST\""}]);
+            reply(Req, 401,
+                  [{"WWW-Authenticate",
+                    "Basic realm=\"Couchbase Server Admin / REST\""}]);
         _ ->
             %% scram sha meta header will be converted later on to scram sha
             %% related auth headers
@@ -491,7 +510,8 @@ handle_streaming(F, Req, HTTPRes, LastRes) ->
                 mochiweb_response:write_chunk("", HTTPRes),
                 exit(normal)
         end,
-    request_throttler:hibernate(?MODULE, handle_streaming_wakeup, [F, Req, HTTPRes, Res]).
+    request_throttler:hibernate(?MODULE, handle_streaming_wakeup,
+                                [F, Req, HTTPRes, Res]).
 
 handle_streaming_wakeup(F, Req, HTTPRes, Res) ->
     receive
@@ -534,10 +554,12 @@ assert_cluster_version(Fun) ->
         true ->
             ok;
         false ->
-            erlang:throw({web_exception,
-                          400,
-                          "This http API endpoint isn't supported in mixed version clusters",
-                          []})
+            erlang:throw(
+              {web_exception,
+               400,
+               "This http API endpoint isn't supported in mixed version "
+               "clusters",
+               []})
     end.
 
 choose_node_consistently(Req, Nodes) ->
@@ -567,28 +589,36 @@ compute_sec_headers_test() ->
                  lists:sort(compute_sec_headers([{enabled, true}]))).
 
 response_headers_test() ->
+    BaseSecHeaders = ?BASE_HEADERS ++ ?SEC_HEADERS,
+    AllHeaders = ?NO_CACHE_HEADERS ++ BaseSecHeaders,
     meck:new(ns_config, [passthrough]),
     meck:expect(ns_config, latest, fun() -> [] end),
     meck:expect(ns_config, search, fun(_) -> {value, []} end),
-    ?assertEqual(lists:keysort(1, ?NO_CACHE_HEADERS ++ ?BASE_HEADERS ++ ?SEC_HEADERS),
+    ?assertEqual(lists:keysort(1, AllHeaders),
                  response_headers([])),
-    ?assertEqual(lists:keysort(1, ?NO_CACHE_HEADERS ++ ?BASE_HEADERS ++ ?SEC_HEADERS),
+    ?assertEqual(lists:keysort(1, AllHeaders),
                  response_headers([{allow_cache, false}])),
     ?assertEqual(lists:keysort(1, [{"Extra", "header"}, {"Foo", "bar"}] ++
-                                   ?NO_CACHE_HEADERS ++ ?BASE_HEADERS ++ ?SEC_HEADERS),
+                                   AllHeaders),
                  response_headers([{"Foo", "bar"}, {"Extra", "header"}])),
-    ?assertEqual(lists:keysort(1, [{"Cache-Control", "max-age=30000000"}] ++ ?BASE_HEADERS ++ ?SEC_HEADERS),
+    ?assertEqual(lists:keysort(1, [{"Cache-Control", "max-age=30000000"}] ++
+                                   BaseSecHeaders),
                  response_headers([{allow_cache, true}])),
-    ?assertEqual(lists:keysort( 1, [{"Cache-Control", "max-age=10"}] ++ ?BASE_HEADERS ++ ?SEC_HEADERS),
+    ?assertEqual(lists:keysort( 1, [{"Cache-Control", "max-age=10"}] ++
+                                    BaseSecHeaders),
                  response_headers([{?CACHE_CONTROL, "max-age=10"}])),
-    ?assertEqual(lists:keysort(1, [{"Cache-Control", "max-age=10"}] ++ ?BASE_HEADERS ++ ?SEC_HEADERS),
+    ?assertEqual(lists:keysort(1, [{"Cache-Control", "max-age=10"}] ++
+                                   BaseSecHeaders),
                  response_headers([{?CACHE_CONTROL, "max-age=10"},
                                    {allow_cache, true}])),
-    ?assertEqual(lists:keysort( 1, [{"Duplicate", "first"}] ++ ?NO_CACHE_HEADERS ++ ?BASE_HEADERS ++ ?SEC_HEADERS),
-                 response_headers([{"Duplicate", "first"}, {"Duplicate", "second"}])),
+    ?assertEqual(lists:keysort( 1, [{"Duplicate", "first"}] ++ AllHeaders),
+                 response_headers([{"Duplicate", "first"},
+                                   {"Duplicate", "second"}])),
     meck:expect(ns_config, search, fun(_) -> {value, [{enabled, false}]} end),
-    ?assertEqual(lists:keysort( 1, [{"Duplicate", "first"}] ++ ?NO_CACHE_HEADERS ++ ?BASE_HEADERS),
-                 response_headers([{"Duplicate", "first"}, {"Duplicate", "second"}])),
+    ?assertEqual(lists:keysort( 1, [{"Duplicate", "first"}] ++
+                                    ?NO_CACHE_HEADERS ++ ?BASE_HEADERS),
+                 response_headers([{"Duplicate", "first"},
+                                   {"Duplicate", "second"}])),
     true = meck:validate(ns_config),
     meck:unload(ns_config).
 
