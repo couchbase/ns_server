@@ -58,7 +58,8 @@
          handle_ldap_settings/1,
          handle_ldap_settings_post/1,
          handle_ldap_settings_validate_post/2,
-         handle_invalidate_ldap_cache/1]).
+         handle_invalidate_ldap_cache/1,
+         invalidate_ldap_cache/0]).
 
 -define(MIN_USERS_PAGE_SIZE, 2).
 -define(MAX_USERS_PAGE_SIZE, 100).
@@ -1793,9 +1794,16 @@ assert_groups_and_ldap_enabled() ->
     menelaus_util:assert_is_madhatter().
 
 handle_invalidate_ldap_cache(Req) ->
+    case remote_api:invalidate_ldap_cache(ns_node_disco:nodes_actual()) of
+        {_, []} -> menelaus_util:reply_json(Req, {[]});
+        {_, BadNodes} ->
+            Msg = io_lib:format("Invalidation failed on nodes: ~p", [BadNodes]),
+            menelaus_util:reply_json(Req, iolist_to_binary(Msg), 500)
+    end.
+
+invalidate_ldap_cache() ->
     ldap_auth_cache:flush(),
-    roles_cache:renew(),
-    menelaus_util:reply_json(Req, {[]}).
+    roles_cache:renew().
 
 -ifdef(EUNIT).
 %% Tests
