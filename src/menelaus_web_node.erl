@@ -753,15 +753,15 @@ is_raw_addr_node(Node) ->
     {_, Host} = misc:node_name_host(Node),
     inet:parse_address(Host) =/= {error, einval}.
 
-check_for_raw_addr(State) ->
+check_for_raw_addr(AFamily) ->
     CurrAFamily = case misc:is_ipv6() of
                       true  -> "ipv6";
                       false -> "ipv4"
                   end,
 
-    case validator:get_value(afamily, State) of
+    case AFamily of
         CurrAFamily ->
-            State;
+            ok;
         _ ->
             %% Fail the request if the cluster is provisioned and has any node
             %% setup with raw IP address.
@@ -771,22 +771,22 @@ check_for_raw_addr(State) ->
                                                 ns_node_disco:nodes_wanted()),
                     case RawAddrNodes of
                         [] ->
-                            State;
+                            ok;
                         _ ->
                             M = io_lib:format("Can't change address family when "
                                               "nodes are configured with raw IP "
                                               "addresses: ~p", [RawAddrNodes]),
-                            validator:return_error("_", M, State)
+                            {error, M}
                     end;
                 false ->
-                    State
+                    ok
             end
     end.
 
 net_config_validators() ->
     [validator:has_params(_),
      validator:one_of(afamily, ["ipv4", "ipv6"], _),
-     check_for_raw_addr(_),
+     validator:validate(fun check_for_raw_addr/1, afamily, _),
      validator:unsupported(_)].
 
 handle_setup_net_config(Req) ->
