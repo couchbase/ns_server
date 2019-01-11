@@ -40,4 +40,7 @@ child_specs() ->
       permanent, infinity, supervisor, []},
 
      {compiled_roles_cache, {menelaus_roles, start_compiled_roles_cache, []},
-      permanent, 1000, worker, [versioned_cache]}].
+      permanent, 1000, worker, [versioned_cache]},
+
+     {roles_cache, {roles_cache, start_link, []},
+      permanent, 1000, worker, []}].

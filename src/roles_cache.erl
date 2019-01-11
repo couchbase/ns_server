@@ -57,9 +57,14 @@ init([]) ->
                 %% we renew the upper level cache
                 ldap_auth_cache:flush(),
                 active_cache:renew_cache(?MODULE);
+            ({group_version, _}) ->
+                active_cache:renew_cache(?MODULE);
+            ({user_version, _}) ->
+                active_cache:renew_cache(?MODULE);
             (_) -> ok
         end,
     ns_pubsub:subscribe_link(ns_config_events, EventHandler),
+    ns_pubsub:subscribe_link(user_storage_events, EventHandler),
     ok.
 
 translate_options([Opt]) -> [opt(Opt)].
