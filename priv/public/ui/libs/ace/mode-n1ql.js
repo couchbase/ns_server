@@ -189,8 +189,11 @@
     var newline_before_plus_indent_regex = new RegExp(prefix + '|\\b(' + newline_before_plus_indent + '|\\s{0,}\\(\\s{0,}SELECT\\s{0,})\\b','ig');
     var newline_before_plus_2_indent_regex = new RegExp(prefix + '|\\b(' + newline_before_plus_2_indent + ')\\b','ig');
 
-    var kw_regex_str = prefix + '|\\b(?:' + sysCatalogs + ')|\\b(' + keywords + '|' + roles + '|' + builtinConstants + '|' + builtinFunctions + ')\\b';
+    var kw_regex_str = prefix + '|\\b(?:' + sysCatalogs + ')|\\b(' + keywords + '|' + roles + '|' + builtinConstants + ')\\b';
     var kw_regex = new RegExp(kw_regex_str,'ig');
+
+    var function_regex_str = prefix + '|\\b(' + builtinFunctions + ')\\s*\\(';
+    var function_regex = new RegExp(function_regex_str,'ig');
 
     var comma_not_in_parens_regex = /(?:\([^\)]*\))|(\,)/ig;
 
@@ -269,6 +272,7 @@
       var str2 = str.replace(/\s{1,}/g," "); // simplify whitespace to single spaces
       str2 = str2.replace(match_string, function(match) {return "~::~" + match + "~::~"});
       str2 = str2.replace(kw_regex, function(match,p1) {if (p1) return p1.toUpperCase(); else return match}); // upper case all keywords
+      str2 = str2.replace(function_regex, function(match,p1) {if (p1) return p1.toUpperCase() + '('; else return match}); // upper case all keywords
       str2 = str2.replace(newline_before_regex, function(match,p1) {if (p1) return "~::~" + p1; else return match});
       str2 = str2.replace(newline_before_and_after_regex, function(match,p1) {if (p1) return "~::~" + p1 + "~::~"; else return match});
       str2 = str2.replace(newline_before_plus_indent_regex, function(match,p1) {if (p1) return "~::~" + tab + p1; else return match});
