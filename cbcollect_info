@@ -903,6 +903,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
     root = os.path.abspath(os.path.join(initargs_path, "..", "..", "..", ".."))
     dbdir = os.path.realpath(read_guts(guts, "db_dir"))
     viewdir = os.path.realpath(read_guts(guts, "idx_dir"))
+    rebdir = os.path.realpath(os.path.join(read_guts(guts, "log_path"), "rebalance"))
     nodes = correct_split(read_guts(guts, "nodes"), ",")
 
     diag_url = "http://%s:%s/diag?noLogs=1" % (local_url_addr, read_guts(guts, "rest_port"))
@@ -1183,6 +1184,9 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
          for stat in ([], ["subdoc_execute"])],
 
         CollectFile("Users storage", read_guts(guts, "users_storage_path")),
+
+        [CollectFile("Rebalance Report: %s" % path, path)
+         for path in glob.glob(os.path.join(rebdir, "rebalance_report*"))],
 
         make_stats_archives_task(guts, initargs_path),
         AllOsTask("Phosphor Trace",
