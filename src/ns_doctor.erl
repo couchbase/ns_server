@@ -624,7 +624,7 @@ pick_latest_cluster_collect_task(AllNodeTasks) ->
                 case proplists:get_value(timestamp, Task) of
                     undefined -> [];
                     TS ->
-                        [{ts, iolist_to_binary(misc:iso_8601_fmt(TS))}]
+                        [{ts, iolist_to_binary(format_time(TS))}]
                 end,
 
             StatusProp = case lists:keyfind(status, 1, Task) of
@@ -657,6 +657,9 @@ pick_latest_cluster_collect_task(AllNodeTasks) ->
             [FinalTask]
     end.
 
+format_time({{Year,Month,Day},{Hour,Min,Sec}}) ->
+    io_lib:format("~4.10.0B-~2.10.0B-~2.10.0B ~2.10.0B:~2.10.0B:~2.10.0B",
+                  [Year, Month, Day, Hour, Min, Sec]).
 
 do_build_tasks_list(NodesDict, PoolId, AllRepDocs, Buckets, RebStatusTimeout) ->
     AllNodeTasks =
