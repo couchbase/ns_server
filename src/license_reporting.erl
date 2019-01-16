@@ -60,8 +60,10 @@ init([]) ->
                     (_) -> ok
                 end,
             ns_pubsub:subscribe_link(ns_config_events, EventHandler),
-            State = #s{reporting_interval = get_setting(reporting_interval),
-                       enabled = get_setting(reporting_enabled)},
+            Settings = build_settings(),
+            State = #s{reporting_interval = get_setting(reporting_interval,
+                                                        Settings),
+                       enabled = get_setting(reporting_enabled, Settings)},
             {ok, restart_timer(State), hibernate};
         false ->
             ignore
@@ -76,7 +78,7 @@ handle_cast(Msg, State) ->
     {noreply, State}.
 
 handle_info(report, State) ->
-    send_report(),
+    send_report(build_settings()),
     {noreply, restart_timer(State), hibernate};
 
 handle_info({license_settings, _},
@@ -109,13 +111,42 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-send_report() ->
-    Report = create_report(),
-    ?log_info("Sending license report:~n~p", [Report]),
-    ok.
+send_report(Settings) ->
+    Report = create_report(Settings),
+    ?log_info("Sending on-demand pricing report:~n~p", [Report]),
+    User = get_setting(contract_id, Settings),
+    {password, Pass} = get_setting(customer_token, Settings),
+    URL = get_setting(reporting_endpoint, Settings),
+    BasicAuth = base64:encode_to_string(User ++ ":" ++ Pass),
+    Timeout = get_setting(reporting_timeout, Settings),
+    Headers = [{"Content-Type", "application/json"},
+               {"Authorization", "Basic " ++ BasicAuth}],
+    Body = ejson:encode(Report),
+    try lhttpc:request(URL, "POST", Headers, Body, Timeout,
+                       [{connect_timeout, Timeout}]) of
+        {ok, {{Status, _}, _RespHeaders, _RespBody}} when Status == 200;
+                                                          Status == 201 ->
+            ?log_debug("On-demand pricing report sent successfuly"),
+            ok;
+        {ok, {{Status, Reason}, _RespHeaders, RespBody}} ->
+            ?log_error("Sending on-demand pricing report failed. "
+                       "Remote server returned ~p ~p:~n~p",
+                       [Status, Reason, RespBody]),
+            {error, {http_resp, Status}};
+        {error, Reason} ->
+            ?log_error("Sending on-demand pricing report failed. Error: ~p",
+                       [Reason]),
+            {error, Reason}
+    catch
+        _:Error ->
+            ?log_error("Sending on-demand pricing report crashed with error: ~p"
+                       "~nStacktrace: ~p",
+                       [Error, erlang:get_stacktrace()]),
+            {error, Error}
+    end.
 
-get_setting(Prop) ->
-    proplists:get_value(Prop, build_settings()).
+get_setting(Prop, Settings) ->
+    proplists:get_value(Prop, Settings).
 
 restart_timer(#s{report_timer_ref = Ref,
                  enabled = Enabled,
@@ -132,9 +163,11 @@ defaults() ->
     [{reporting_enabled, false},
      {reporting_interval, 3600000}, % 1 hour
      {contract_id, ""},
-     {customer_token, {password, ""}}].
+     {customer_token, {password, ""}},
+     {reporting_endpoint, "https://ph.couchbase.net/odp"},
+     {reporting_timeout, 5000}].
 
-create_report() ->
+create_report(Settings) ->
     Nodes = ns_node_disco:nodes_actual(),
     NodesData =
         lists:map(
@@ -152,6 +185,6 @@ create_report() ->
 
     {[{timestamp, iolist_to_binary(misc:timestamp_utc_iso8601())},
       {cluster_uuid, ns_config:read_key_fast(uuid, 1)},
-      {contract_id, iolist_to_binary(get_setting(contract_id))},
+      {contract_id, iolist_to_binary(get_setting(contract_id, Settings))},
       {cluster_size, length(Nodes)},
       {nodes, NodesData}]}.
