@@ -219,7 +219,7 @@
 
 %% hello features
 -define(MC_FEATURE_XATTR,       16#06).
--define(MC_FEATURE_COLLECTIONS, 16#09).
+-define(MC_FEATURE_COLLECTIONS, 16#12).
 -define(MC_FEATURE_SNAPPY,      16#0A).
 -define(MC_FEATURE_DUPLEX,      16#0C).
 
