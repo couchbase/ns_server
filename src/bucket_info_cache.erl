@@ -187,7 +187,8 @@ compute_bucket_info_with_config(Bucket, Config, BucketConfig) ->
 
     BucketBin = list_to_binary(Bucket),
 
-    Caps = menelaus_web_buckets:build_bucket_capabilities(BucketConfig),
+    Caps = menelaus_web_buckets:build_bucket_capabilities(BucketConfig) ++
+             build_cluster_capabilities(Config),
 
     MaybeVBMapDDocs =
         case lists:keyfind(type, 1, BucketConfig) of
@@ -289,12 +290,22 @@ call_build_node_services() ->
               end
       end).
 
+build_cluster_capabilities(Config) ->
+    case cluster_compat_mode:get_cluster_capabilities(Config) of
+        [] ->
+            [];
+        Caps ->
+            [{clusterCapabilitiesVer, [1, 0]},
+             {clusterCapabilities, {Caps}}]
+    end.
+
 do_build_node_services() ->
     Config = ns_config:get(),
     NEIs = build_nodes_ext(ns_cluster_membership:active_nodes(Config),
                            Config, []),
+    Caps = build_cluster_capabilities(Config),
     J = {[{rev, ns_config:compute_global_rev(Config)},
-          {nodesExt, NEIs}]},
+          {nodesExt, NEIs}] ++ Caps},
     ejson:encode(J).
 
 terse_bucket_info_with_local_addr(BucketName, LocalAddr) ->

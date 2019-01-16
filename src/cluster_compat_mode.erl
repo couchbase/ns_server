@@ -56,13 +56,21 @@
          have_non_dcp_buckets/0,
          have_non_dcp_buckets/1,
          is_developer_preview/0,
-         is_developer_preview/1]).
+         is_developer_preview/1,
+         get_cluster_capabilities/1]).
 
 %% NOTE: this is rpc:call-ed by mb_master
 -export([mb_master_advertised_version/0]).
 
 -export([pre_force_compat_version/0, post_force_compat_version/0]).
 
+cluster_capabilities(?VERSION_MADHATTER) ->
+    [{n1ql, [enhanced_prepared_statements]}];
+cluster_capabilities(_) ->
+    [].
+
+get_cluster_capabilities(Config) ->
+    cluster_capabilities(get_compat_version(Config)).
 
 get_compat_version() ->
     get_compat_version(ns_config:latest()).
