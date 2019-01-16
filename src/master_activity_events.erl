@@ -68,8 +68,19 @@
 
 -export([stream_events/2]).
 
-submit_cast(Arg) ->
-    (catch gen_event:notify(master_activity_events_ingress, {submit_master_event, Arg})).
+submit_cast(Event) ->
+    try
+        %% Doing a cast to ns_rebalance_observer for interested events instead
+        %% of the bunny hop from master_activity_events_ingress to
+        %% master_activity_events to cast in ns_rebalance_observer as was done
+        %% previously, to prevent delays as much as possible. This is extremely
+        %% ugly but effective and easy to maintain, I think.
+        ns_rebalance_observer:submit_master_event(Event),
+        gen_event:notify(master_activity_events_ingress,
+                         {submit_master_event, Event})
+    catch T:E ->
+              ?log_debug("Failed to send master activity event: ~p", [{T,E}])
+    end.
 
 get_stage_list(Stage) when is_atom(Stage) ->
     [Stage];
@@ -114,6 +125,7 @@ note_became_master() ->
 note_set_ff_map(BucketName, undefined, _OldMap) ->
     submit_cast({set_ff_map, BucketName, undefined});
 note_set_ff_map(BucketName, NewMap, OldMap) ->
+    ns_rebalance_observer:submit_master_event({set_ff_map, BucketName, NewMap}),
     Work = fun () ->
                    {set_ff_map, BucketName,
                     misc:compute_map_diff(NewMap, OldMap)}
