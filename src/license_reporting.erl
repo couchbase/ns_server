@@ -122,12 +122,23 @@ send_report(Settings) ->
     Headers = [{"Content-Type", "application/json"},
                {"Authorization", "Basic " ++ BasicAuth}],
     Body = ejson:encode(Report),
+    post(URL, Headers, Body, Timeout, 10).
+
+post(_URL, _Headers, _Body, _Timeout, 0) ->
+    ?log_error("Sending on-demand pricing report failed. Too many redirects"),
+    {error, too_many_redirects};
+post(URL, Headers, Body, Timeout, RedirectsLeft) ->
     try lhttpc:request(URL, "POST", Headers, Body, Timeout,
                        [{connect_timeout, Timeout}]) of
         {ok, {{Status, _}, _RespHeaders, _RespBody}} when Status == 200;
                                                           Status == 201 ->
             ?log_debug("On-demand pricing report sent successfuly"),
             ok;
+        {ok, {{Status, _}, RespHeaders, _}} when Status == 301; Status == 302;
+                                                 Status == 307; Status == 308->
+            Location = proplists:get_value("Location", RespHeaders),
+            ?log_debug("On-demand pricing report redirected to ~p", [Location]),
+            post(Location, Headers, Body, Timeout, RedirectsLeft - 1);
         {ok, {{Status, Reason}, _RespHeaders, RespBody}} ->
             ?log_error("Sending on-demand pricing report failed. "
                        "Remote server returned ~p ~p:~n~p",
