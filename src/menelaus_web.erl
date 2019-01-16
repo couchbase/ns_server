@@ -333,7 +333,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "saslauthdAuth"] ->
                     {{[admin, security], read},
                      fun menelaus_web_rbac:handle_saslauthd_auth_settings/1};
-                ["settings", "ldapSettings"] ->
+                ["settings", "ldap"] ->
                     {{[admin, security], read},
                      fun menelaus_web_rbac:handle_ldap_settings/1};
                 ["settings", "clientCertAuth"] ->
@@ -515,10 +515,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "saslauthdAuth"] ->
                     {{[admin, security], write},
                      fun menelaus_web_rbac:handle_saslauthd_auth_settings_post/1};
-                ["settings", "ldapSettings"] ->
+                ["settings", "ldap"] ->
                     {{[admin, security], write},
                      fun menelaus_web_rbac:handle_ldap_settings_post/1};
-                ["settings", "ldapSettings", "validate", Type] ->
+                ["settings", "ldap", "validate", Type] ->
                     {{[admin, security], write},
                      fun menelaus_web_rbac:handle_ldap_settings_validate_post/2,
                      [Type]};
