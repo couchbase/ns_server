@@ -76,7 +76,7 @@ handle_cast(Msg, State) ->
     {noreply, State}.
 
 handle_info(report, State) ->
-    send_report(build_settings()),
+    send_report(),
     {noreply, restart_timer(State), hibernate};
 
 handle_info({license_settings, _},
@@ -109,9 +109,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-send_report(Settings) ->
-    Id = proplists:get_value(contract_id, Settings),
-    ?log_debug("Sending license report for id: ~p", [Id]),
+send_report() ->
+    Report = create_report(),
+    ?log_info("Sending license report:~n~p", [Report]),
     ok.
 
 get_setting(Prop) ->
@@ -133,3 +133,25 @@ defaults() ->
      {reporting_interval, 3600000}, % 1 hour
      {contract_id, ""},
      {customer_token, {password, ""}}].
+
+create_report() ->
+    Nodes = ns_node_disco:nodes_actual(),
+    NodesData =
+        lists:map(
+          fun (Node) ->
+              Props = ns_doctor:get_node(Node),
+              SystemStats = proplists:get_value(system_stats, Props, []),
+              MemLimit = proplists:get_value(mem_limit, SystemStats),
+              Cores = proplists:get_value(cpu_cores_available, SystemStats),
+              {_, Hostname} = misc:node_name_host(Node),
+              {[{node, Node},
+                {hostname, iolist_to_binary(Hostname)},
+                {cpu_cores_available, Cores},
+                {mem_limit, MemLimit}]}
+          end, Nodes),
+
+    {[{timestamp, iolist_to_binary(misc:timestamp_utc_iso8601())},
+      {cluster_uuid, ns_config:read_key_fast(uuid, 1)},
+      {contract_id, iolist_to_binary(get_setting(contract_id))},
+      {cluster_size, length(Nodes)},
+      {nodes, NodesData}]}.
