@@ -253,7 +253,4 @@ child_specs() ->
       permanent, brutal_kill, worker, dynamic},
 
      {health_monitor_sup, {health_monitor_sup, start_link, []},
-      permanent, infinity, supervisor, [health_monitor_sup]},
-
-     {license_reporting, {license_reporting, start_link, []},
-      permanent, 1000, worker, []}].
+      permanent, infinity, supervisor, [health_monitor_sup]}].

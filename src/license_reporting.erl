@@ -52,6 +52,7 @@ build_settings() ->
 %%%===================================================================
 
 init([]) ->
+    ?log_debug("Starting license_reporting server"),
     case cluster_compat_mode:is_enterprise() of
         true ->
             Self = self(),

@@ -51,4 +51,6 @@ child_specs() ->
      {ns_orchestrator_sup, {ns_orchestrator_sup, start_link, []},
       permanent, infinity, supervisor, [ns_orchestrator_sup]},
      {collections, {collections, start_link, []},
-      permanent, 1000, worker, [collections]}].
+      permanent, 1000, worker, [collections]},
+     {license_reporting, {license_reporting, start_link, []},
+      permanent, 1000, worker, []}].
