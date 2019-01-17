@@ -43,6 +43,7 @@
          noop/1,
          select_bucket/2,
          set_vbucket/3,
+         set_vbucket/4,
          stats/1,
          stats/4,
          sync/4,
@@ -269,7 +270,8 @@ hello_features_map() ->
     [{xattr, ?MC_FEATURE_XATTR},
      {collections, ?MC_FEATURE_COLLECTIONS},
      {snappy, ?MC_FEATURE_SNAPPY},
-     {duplex, ?MC_FEATURE_DUPLEX}].
+     {duplex, ?MC_FEATURE_DUPLEX},
+     {json, ?MC_FEATURE_JSON}].
 
 hello_features(Features) ->
     FeaturesMap = hello_features_map(),
@@ -390,18 +392,25 @@ set_engine_param(Sock, Key, Value, Type) ->
             process_error_response(Response)
     end.
 
+encode_vbucket_state(active)  -> <<?VB_STATE_ACTIVE:8>>;
+encode_vbucket_state(replica) -> <<?VB_STATE_REPLICA:8>>;
+encode_vbucket_state(pending) -> <<?VB_STATE_PENDING:8>>;
+encode_vbucket_state(dead)    -> <<?VB_STATE_DEAD:8>>.
+
 set_vbucket(Sock, VBucket, VBucketState) ->
-    State = case VBucketState of
-                active  -> ?VB_STATE_ACTIVE;
-                replica -> ?VB_STATE_REPLICA;
-                pending -> ?VB_STATE_PENDING;
-                dead    -> ?VB_STATE_DEAD
+    set_vbucket(Sock, VBucket, VBucketState, undefined).
+
+set_vbucket(Sock, VBucket, VBucketState, VBInfo) ->
+    State = encode_vbucket_state(VBucketState),
+    Header = #mc_header{vbucket = VBucket},
+    Entry = case VBInfo of
+                undefined -> #mc_entry{ext = State};
+                _ -> #mc_entry{data = ejson:encode(VBInfo),
+                               ext = State,
+                               datatype = ?MC_DATATYPE_JSON}
             end,
-    case cmd(?CMD_SET_VBUCKET, Sock, undefined, undefined,
-             {#mc_header{vbucket = VBucket},
-              #mc_entry{data = <<State:32>>}}) of
-        {ok, #mc_header{status=?SUCCESS}, _ME, _NCB} ->
-            ok;
+    case cmd(?CMD_SET_VBUCKET, Sock, undefined, undefined, {Header, Entry}) of
+        {ok, #mc_header{status=?SUCCESS}, _ME, _NCB} -> ok;
         Response -> process_error_response(Response)
     end.
 

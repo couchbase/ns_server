@@ -192,7 +192,7 @@ worker_init(Parent, ParentState) ->
     worker_loop(Parent, ParentState1, #state.running_fast).
 
 do_worker_init(State) ->
-    {ok, Sock} = connect(),
+    {ok, Sock} = connect([json]),
 
     {ok, SockName} = inet:sockname(Sock),
     erlang:put(sockname, SockName),
@@ -363,7 +363,7 @@ verify_report_long_call(StartTS, ActualStartTS, State, Msg, RV) ->
 assign_queue({delete_vbucket, _}) -> #state.very_heavy_calls_queue;
 assign_queue({sync_delete_vbucket, _}) -> #state.very_heavy_calls_queue;
 assign_queue(flush) -> #state.very_heavy_calls_queue;
-assign_queue({set_vbucket, _, _}) -> #state.heavy_calls_queue;
+assign_queue({set_vbucket, _, _, _}) -> #state.heavy_calls_queue;
 assign_queue({add, _Key, _VBucket, _Value}) -> #state.heavy_calls_queue;
 assign_queue({get, _Key, _VBucket}) -> #state.heavy_calls_queue;
 assign_queue({get_from_replica, _Key, _VBucket}) -> #state.heavy_calls_queue;
@@ -553,10 +553,12 @@ do_handle_call({get_from_replica, Key, VBucket}, _From, State) ->
 do_handle_call({sync, Key, VBucket, CAS}, _From, State) ->
     {reply, mc_client_binary:sync(State#state.sock, VBucket, Key, CAS), State};
 
-do_handle_call({set_vbucket, VBucket, VBState}, _From,
+do_handle_call({set_vbucket, VBucket, VBState, Topology}, _From,
             #state{sock=Sock} = State) ->
-    (catch master_activity_events:note_vbucket_state_change(State#state.bucket, node(), VBucket, VBState)),
-    Reply = mc_client_binary:set_vbucket(Sock, VBucket, VBState),
+    VBInfoJson = construct_vbucket_info_json(Topology),
+    (catch master_activity_events:note_vbucket_state_change(
+             State#state.bucket, node(), VBucket, VBState, VBInfoJson)),
+    Reply = mc_client_binary:set_vbucket(Sock, VBucket, VBState, VBInfoJson),
     case Reply of
         ok ->
             ?log_info("Changed vbucket ~p state to ~p", [VBucket, VBState]);
@@ -1119,16 +1121,13 @@ list_vbuckets_multi(Nodes, Bucket) ->
     {Replies, Zombies ++ DeadNodes}.
 
 
--spec set_vbucket(bucket_name(), vbucket_id(), vbucket_state()) ->
-                         ok | mc_error().
 set_vbucket(Bucket, VBucket, VBState) ->
-    do_call(server(Bucket), {set_vbucket, VBucket, VBState}, ?TIMEOUT_HEAVY).
+    set_vbucket(Bucket, VBucket, VBState, undefined).
 
-
--spec set_vbucket(node(), bucket_name(), vbucket_id(), vbucket_state()) ->
-                         ok | mc_error().
-set_vbucket(Node, Bucket, VBucket, VBState) ->
-    do_call({server(Bucket), Node}, {set_vbucket, VBucket, VBState},
+-spec set_vbucket(bucket_name(), vbucket_id(), vbucket_state(),
+                  [[node()]] | undefined) -> ok | mc_error().
+set_vbucket(Bucket, VBucket, VBState, Topology) ->
+    do_call(server(Bucket), {set_vbucket, VBucket, VBState, Topology},
             ?TIMEOUT_HEAVY).
 
 
@@ -1508,3 +1507,18 @@ get_failover_log(Bucket, VBucket) ->
 set_cluster_config(Rev, Blob) ->
     perform_very_long_call(
       ?cut({reply, mc_client_binary:set_cluster_config(_, "", Rev, Blob)})).
+
+construct_topology(Topology) ->
+    [lists:map(fun (undefined) ->
+                       null;
+                   (Node) ->
+                       Node
+               end, Chain) || Chain <- Topology].
+
+construct_topology_json(Topology) ->
+    {[{topology, construct_topology(Topology)}]}.
+
+construct_vbucket_info_json(undefined) ->
+    undefined;
+construct_vbucket_info_json(Topology) ->
+    construct_topology_json(Topology).

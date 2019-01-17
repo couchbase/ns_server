@@ -19,7 +19,7 @@
 -include("ns_common.hrl").
 
 -export([start_link_timestamper/0,
-         note_vbucket_state_change/4,
+         note_vbucket_state_change/5,
          note_bucket_creation/3,
          note_bucket_deletion/1,
          note_rebalance_start/5,
@@ -96,8 +96,9 @@ note_rebalance_stage_completed(Stage) ->
 note_rebalance_stage_event(Stage, Text) ->
     submit_cast({rebalance_stage_event, get_stage_list(Stage), Text}).
 
-note_vbucket_state_change(Bucket, Node, VBucketId, NewState) ->
-    submit_cast({vbucket_state_change, Bucket, Node, VBucketId, NewState}).
+note_vbucket_state_change(Bucket, Node, VBucketId, NewState, VBucketInfoJson) ->
+    submit_cast({vbucket_state_change, Bucket, Node, VBucketId, NewState,
+                 VBucketInfoJson}).
 
 note_bucket_creation(BucketName, BucketType, NewConfig) ->
     submit_cast({create_bucket, BucketName, BucketType, NewConfig}).
@@ -380,6 +381,8 @@ format_simple_value(Value) ->
             Value;
         {list, List} ->
             lists:map(fun format_simple_value/1, List);
+        {json, Json} ->
+            Json;
         _ ->
             iolist_to_binary(io_lib:format("~p", [Value]))
     end.
@@ -425,13 +428,18 @@ event_to_jsons({TS, rebalance_stage_event, Stage, Text}) ->
                                   {stage, {list, Stage}},
                                   {event, Text}])];
 
-event_to_jsons({TS, vbucket_state_change, Bucket, Node, VBucketId, NewState}) ->
+event_to_jsons({TS, vbucket_state_change, Bucket, Node, VBucketId, NewState,
+                VBucketInfoJson}) ->
     [format_simple_plist_as_json([{type, vbucketStateChange},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, Bucket},
                                   {host, node_to_host(Node, ns_config:latest())},
                                   {vbucket, VBucketId},
-                                  {state, NewState}])];
+                                  {state, NewState},
+                                  {changes, case VBucketInfoJson of
+                                                undefined -> undefined;
+                                                _ -> {json, VBucketInfoJson}
+                                            end}])];
 
 event_to_jsons({TS, set_ff_map, BucketName, undefined}) ->
     [format_simple_plist_as_json([{type, resetFastForwardMap},
