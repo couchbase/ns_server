@@ -71,8 +71,9 @@ all_ports() ->
      ?define_port(indexer_https_port,     indexHttps,         index, 19102,
                   secure),
      %% fts service ports
-     ?define_port(fts_http_port, fts,    fts, 8094),
-     ?define_port(fts_ssl_port,  ftsSSL, fts, 18094, secure),
+     ?define_port(fts_http_port, fts,     fts, 8094),
+     ?define_port(fts_ssl_port,  ftsSSL,  fts, 18094, secure),
+     ?define_port(fts_grpc_port, ftsGRPC, fts, 19130, secure),
      %% eventing service ports
      ?define_port(eventing_http_port,  eventingAdminPort, eventing, 8096),
      ?define_port(eventing_debug_port, eventingDebug,     eventing, 9140),

@@ -415,6 +415,8 @@ goport_args(indexer, Config, _Cmd, NodeUUID) ->
 goport_args(fts, Config, _Cmd, NodeUUID) ->
     NsRestPort = service_ports:get_port(rest_port, Config),
     FtRestPort = service_ports:get_port(fts_http_port, Config),
+    FtGrpcPort = service_ports:get_port(fts_grpc_port, Config),
+
     FTSIdxDir = get_writable_ix_subdir("@fts"),
 
     {_, Host} = misc:node_name_host(node()),
@@ -425,6 +427,12 @@ goport_args(fts, Config, _Cmd, NodeUUID) ->
     BindHttps =
         build_https_args(fts_ssl_port, "-bindHttps", ":",
                          "-tlsCertFile", "-tlsKeyFile", Config),
+
+    BindGrpc = io_lib:format("~s:~b,~s:~b",
+                             [misc:maybe_add_brackets(Host), FtGrpcPort,
+                              misc:inaddr_any([url]),
+                              FtGrpcPort]),
+
     {ok, FTSMemoryQuota} = memory_quota:get_quota(Config, fts),
     MaxReplicasAllowed = case cluster_compat_mode:is_enterprise() of
                              true -> 3;
@@ -454,6 +462,7 @@ goport_args(fts, Config, _Cmd, NodeUUID) ->
      "-uuid=" ++ NodeUUID,
      "-server=" ++ misc:local_url(NsRestPort, []),
      "-bindHttp=" ++ BindHttp,
+     "-bindGrpc=" ++ BindGrpc,
      "-dataDir=" ++ FTSIdxDir,
      "-tags=feed,janitor,pindex,queryer,cbauth_service",
      "-auth=cbauth",
