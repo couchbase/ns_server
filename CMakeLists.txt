@@ -171,15 +171,7 @@ SET (COUCHBASE_PLT "${_couchbase_plt}" CACHE FILEPATH
   "Full path to couchbase.plt for dialyzer targets" ${_force_plt})
 MESSAGE (STATUS "COUCHBASE_PLT set to ${COUCHBASE_PLT}")
 
-# Find OTP version
-EXECUTE_PROCESS (COMMAND "${ERL_EXECUTABLE}" -noshell -eval
-  "io:format(\"~s~n\", [erlang:system_info(otp_release)]), erlang:halt()."
-  OUTPUT_VARIABLE OTP_RELEASE)
-
 SET (dialyzer_args -Wno_return -Wno_improper_lists)
-IF (OTP_RELEASE MATCHES "^R?1[5-9].*$$")
-  LIST (APPEND dialyzer_args -Wno_undefined_callbacks)
-ENDIF ()
 ADD_CUSTOM_TARGET (ns_dialyzer
   COMMAND "${CMAKE_COMMAND}" -D "COUCHDB_BIN_DIR=${COUCHDB_BIN_DIR}"
   -D "DIALYZER_EXECUTABLE=${DIALYZER_EXECUTABLE}"
