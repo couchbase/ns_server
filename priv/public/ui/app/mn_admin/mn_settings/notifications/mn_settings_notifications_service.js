@@ -45,6 +45,12 @@ angular.module('mnSettingsNotificationsService', [
       var remotes = source[9];
       var xdcr_tasks = source[10];
 
+      // Eventing
+      var eventing = source[11];
+
+      // Analytics
+      var analytics = source[12];
+
       function getAvgPerItem(items, filter) {
         var avgs = [];
         _.each(items, function (item, key) {
@@ -155,6 +161,23 @@ angular.module('mnSettingsNotificationsService', [
                   };
               });
       }
+
+      // eventing - functions and nodes
+      if (eventing) {
+          stats.eventing = {num_eventing_nodes: eventing.num_eventing_nodes};
+          if (eventing.apps) {
+              stats.eventing.num_apps = eventing.apps.length;
+              stats.eventing.apps = eventing.apps.map(function (app) {
+                  return {
+                      composite_status: app.composite_status,
+                      num_deployed_nodes: app.num_deployed_nodes
+                  };
+              });
+          }
+      }
+
+      // analytics
+      stats.analytics = analytics;
 
       for(i in poolsDefault.nodes) {
         stats.nodes.os.push(poolsDefault.nodes[i].os);
@@ -319,8 +342,37 @@ angular.module('mnSettingsNotificationsService', [
         if (mnPermissions.export.cluster.tasks.read)
            queries[10] = mnTasksDetails.get(mnHttpParams);
 
+        // do we have an eventing service? If so, see how it is used
+        if (_.indexOf(poolDefault.thisNode.services, 'eventing') > -1)
+            queries[11] = mnSettingsNotificationsService.getEventingData();
+
+        // do we have an analytics service? If so, get some information about it.
+        if (_.indexOf(poolDefault.thisNode.services, 'cbas') > -1)
+            queries[12] = mnSettingsNotificationsService.getCbasData();
+
         return $q.all(queries).then(buildPhoneHomeThingy);
       });
+    };
+
+    mnSettingsNotificationsService.getCbasData = function() {
+      return $http.post('/_p/cbas/query/service',
+          {statement:
+            'with user_datasets as (select value d from Metadata.`Dataset` d ' +
+              'where d.DataverseName <> "Metadata") select ' +
+                '(select value count(*) from user_datasets d group by d.BucketName) as datasets_per_bucket, ' +
+                '(select value count(*) from user_datasets d group by d.DataverseName) as datasets_per_dataverse, ' +
+                '(select value count(distinct d.UUID) from Metadata.`Bucket` d where d.IsRunning) as connected_buckets;'})
+            .then(function (resp) {
+                if (resp && resp.data && _.isArray(resp.data.results) && resp.data.results[0])
+                    return(resp.data.results[0]);
+            })
+            .catch(angular.noop);
+    };
+
+    mnSettingsNotificationsService.getEventingData = function() {
+      return $http.get('/_p/event/api/v1/status')
+        .then(function (resp) {if (resp && resp.data) return resp.data})
+        .catch(angular.noop);
     };
 
     mnSettingsNotificationsService.getUpdates = function (data, mnHttpParams) {
