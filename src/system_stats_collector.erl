@@ -53,6 +53,7 @@ init([]) ->
     increment_counter(prev_request_leaves_rest, 0),
     increment_counter(prev_request_leaves_hibernate, 0),
     increment_counter(log_counter, 0),
+    increment_counter(odp_report_failed, 0),
     _ = spawn_link(fun stale_histo_epoch_cleaner/0),
     Path = path_config:component_path(bin, "sigar_port"),
     Port =
@@ -310,9 +311,12 @@ add_ets_stats(Stats) ->
     RestRate = NowRestLeaves - PrevRestLeaves,
     WakeupRate = NowHibernateLeaves - PrevHibernateLeaves,
     HibernatedCounter = NowHibernateEnters - NowHibernateLeaves,
+    [{_, ODPReportFailed}] = ets:lookup(ns_server_system_stats,
+                                        odp_report_failed),
     lists:umerge(Stats, lists:sort([{rest_requests, RestRate},
                                     {hibernated_requests, HibernatedCounter},
-                                    {hibernated_waked, WakeupRate}])).
+                                    {hibernated_waked, WakeupRate},
+                                    {odp_report_failed, ODPReportFailed}])).
 
 log_system_stats(TS) ->
     NSServerStats = lists:sort(ets:tab2list(ns_server_system_stats)),

@@ -40,7 +40,8 @@ mn.components.MnEmailAlerts =
                   "audit_dropped_events",
                   "indexer_ram_max_usage",
                   "ep_clock_cas_drift_threshold_exceeded",
-                  "communication_issue"
+                  "communication_issue",
+                  "odp_report_failed"
                  ];
 
     return MnEmailAlerts;
@@ -135,6 +136,7 @@ mn.components.MnEmailAlerts =
       case this.alerts[11]: return 'Approaching full Indexer RAM warning';
       case this.alerts[12]: return 'Remote mutation timestamp exceeded drift threshold';
       case this.alerts[13]: return 'Communication issues among some nodes in the cluster';
+      case this.alerts[14]: return 'On-demand pricing reporting issues';
       }
     }
 

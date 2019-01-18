@@ -90,7 +90,14 @@ handle_cast(Msg, State) ->
     {noreply, State}.
 
 handle_info(report, State) ->
-    send_report(build_settings(), []),
+    case send_report(build_settings(), []) of
+        ok -> ok;
+        {error, Error} ->
+            Msg = format_bin("On-demand pricing report send failed "
+                             "with reason: ~s", [Error]),
+            system_stats_collector:increment_counter(odp_report_failed),
+            menelaus_web_alerts_srv:global_alert(odp_report_failed, Msg)
+    end,
     {noreply, restart_timer(State), hibernate};
 
 handle_info({license_settings, _},
@@ -155,15 +162,16 @@ post(URL, Headers, Body, Timeout, RedirectsLeft) ->
             ?log_error("Sending on-demand pricing report failed. "
                        "Remote server returned ~p ~p:~n~p",
                        [Status, Reason, RespBody]),
-            Error =
+            RespBodyFormatted =
                 case RespBody of
-                    undefined ->
-                        format_bin("server returned ~p ~p", [Status, Reason]);
-                    _ ->
-                        format_bin("server returned ~p ~p: ~s",
-                                   [Status, Reason, RespBody])
+                    undefined -> "";
+                    Bin when is_binary(Bin) andalso size(Bin) > 100 ->
+                        format_bin(" ~100s...", [Bin]);
+                    Bin when is_binary(Bin) ->
+                        format_bin(" ~s", [Bin])
                 end,
-            {error, Error};
+            {error, format_bin("server returned ~p ~p~s",
+                               [Status, Reason, RespBodyFormatted])};
         {error, Reason} ->
             ?log_error("Sending on-demand pricing report failed. Error: ~p",
                        [Reason]),
