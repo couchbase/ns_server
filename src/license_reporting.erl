@@ -22,7 +22,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, build_settings/0]).
+-export([start_link/0, build_settings/0, validate_settings/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -36,16 +36,27 @@
     report_timer_ref :: undefined | reference()
 }).
 
+-define(SERVER, {via, leader_registry, ?MODULE}).
+-define(PROTECTIVE_TIMEOUT, 5000).
+
 %%%===================================================================
 %%% API
 %%%===================================================================
 
 start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+    misc:start_singleton(gen_server, start_link, [?SERVER, ?MODULE, [], []]).
 
 build_settings() ->
     Settings = ns_config:read_key_fast(license_settings, []),
     misc:update_proplist(defaults(), Settings).
+
+validate_settings(Settings) ->
+    Timeout = get_setting(reporting_timeout, Settings) + ?PROTECTIVE_TIMEOUT,
+    try
+        gen_server:call(?SERVER, {validate_settings, Settings}, Timeout)
+    catch
+        exit:{timeout, _} -> {error, <<"timeout">>}
+    end.
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -53,22 +64,22 @@ build_settings() ->
 
 init([]) ->
     ?log_debug("Starting license_reporting server"),
-    case cluster_compat_mode:is_enterprise() of
-        true ->
-            Self = self(),
-            EventHandler =
-                fun ({license_settings, _} = E) -> Self ! E;
-                    (_) -> ok
-                end,
-            ns_pubsub:subscribe_link(ns_config_events, EventHandler),
-            Settings = build_settings(),
-            State = #s{reporting_interval = get_setting(reporting_interval,
-                                                        Settings),
-                       enabled = get_setting(reporting_enabled, Settings)},
-            {ok, restart_timer(State), hibernate};
-        false ->
-            ignore
-    end.
+    %% We can't check for enterprise version and return ignore here
+    %% because leader_registry_server does not support unregistering
+    Self = self(),
+    EventHandler =
+        fun ({license_settings, _} = E) -> Self ! E;
+            (_) -> ok
+        end,
+    ns_pubsub:subscribe_link(ns_config_events, EventHandler),
+    Settings = build_settings(),
+    State = #s{reporting_interval = get_setting(reporting_interval,
+                                                Settings),
+               enabled = get_setting(reporting_enabled, Settings)},
+    {ok, restart_timer(State), hibernate}.
+
+handle_call({validate_settings, Settings}, _From, State) ->
+    {reply, send_report(Settings, [{validation, true}]), State};
 
 handle_call(Request, _From, State) ->
     ?log_error("Unhandled call: ~p", [Request]),
@@ -79,7 +90,7 @@ handle_cast(Msg, State) ->
     {noreply, State}.
 
 handle_info(report, State) ->
-    send_report(build_settings()),
+    send_report(build_settings(), []),
     {noreply, restart_timer(State), hibernate};
 
 handle_info({license_settings, _},
@@ -112,8 +123,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-send_report(Settings) ->
-    Report = create_report(Settings),
+send_report(Settings, Extra) ->
+    Report = create_report(Settings, Extra),
     ?log_info("Sending on-demand pricing report:~n~p", [Report]),
     User = get_setting(contract_id, Settings),
     {password, Pass} = get_setting(customer_token, Settings),
@@ -127,7 +138,7 @@ send_report(Settings) ->
 
 post(_URL, _Headers, _Body, _Timeout, 0) ->
     ?log_error("Sending on-demand pricing report failed. Too many redirects"),
-    {error, too_many_redirects};
+    {error, <<"too many redirects">>};
 post(URL, Headers, Body, Timeout, RedirectsLeft) ->
     try lhttpc:request(URL, "POST", Headers, Body, Timeout,
                        [{connect_timeout, Timeout}]) of
@@ -144,18 +155,36 @@ post(URL, Headers, Body, Timeout, RedirectsLeft) ->
             ?log_error("Sending on-demand pricing report failed. "
                        "Remote server returned ~p ~p:~n~p",
                        [Status, Reason, RespBody]),
-            {error, {http_resp, Status}};
+            Error =
+                case RespBody of
+                    undefined ->
+                        format_bin("server returned ~p ~p", [Status, Reason]);
+                    _ ->
+                        format_bin("server returned ~p ~p: ~s",
+                                   [Status, Reason, RespBody])
+                end,
+            {error, Error};
         {error, Reason} ->
             ?log_error("Sending on-demand pricing report failed. Error: ~p",
                        [Reason]),
-            {error, Reason}
+            Reason2 =
+                case Reason of
+                    %% In some cases it returns {Reason, Stack} here, but we
+                    %% don't realy need the stack
+                    {R, [_|_]} -> R;
+                    R -> R
+                end,
+            {error, format_bin("~p", [Reason2])}
     catch
         _:Error ->
             ?log_error("Sending on-demand pricing report crashed with error: ~p"
                        "~nStacktrace: ~p",
                        [Error, erlang:get_stacktrace()]),
-            {error, Error}
+            {error, format_bin("http client crashed with reason ~p", [Error])}
     end.
+
+format_bin(F, A) ->
+    iolist_to_binary(io_lib:format(F, A)).
 
 get_setting(Prop, Settings) ->
     proplists:get_value(Prop, Settings).
@@ -179,7 +208,7 @@ defaults() ->
      {reporting_endpoint, "https://ph.couchbase.net/odp"},
      {reporting_timeout, 5000}].
 
-create_report(Settings) ->
+create_report(Settings, Extra) ->
     Nodes = ns_node_disco:nodes_actual(),
     NodesData =
         lists:map(
@@ -199,4 +228,4 @@ create_report(Settings) ->
       {cluster_uuid, ns_config:read_key_fast(uuid, 1)},
       {contract_id, iolist_to_binary(get_setting(contract_id, Settings))},
       {cluster_size, length(Nodes)},
-      {nodes, NodesData}]}.
+      {nodes, NodesData} | Extra]}.

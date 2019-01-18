@@ -22,7 +22,8 @@
 -include_lib("cut.hrl").
 
 -export([handle_settings_get/1,
-         handle_settings_post/1]).
+         handle_settings_post/1,
+         handle_settings_validate_post/1]).
 
 handle_settings_get(Req) ->
     menelaus_util:assert_is_enterprise(),
@@ -36,6 +37,18 @@ handle_settings_post(Req) ->
               set_settings(Props),
               ns_audit:license_settings(Req, prepare_settings(Props)),
               handle_settings_get(Req)
+      end, Req, form, settings_validators()).
+
+handle_settings_validate_post(Req) ->
+    menelaus_util:assert_is_enterprise(),
+    validator:handle(
+      fun (Props) ->
+              Settings = misc:update_proplist(
+                           license_reporting:build_settings(), Props),
+              case license_reporting:validate_settings(Settings) of
+                  ok -> menelaus_util:reply_json(Req, {[]});
+                  {error, Reason} -> menelaus_util:reply_json(Req, Reason, 400)
+              end
       end, Req, form, settings_validators()).
 
 settings_validators() ->
