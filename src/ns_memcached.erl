@@ -93,6 +93,7 @@
          sync_delete_vbucket/2,
          get_vbucket/3,
          get_vbucket_details_stats/2,
+         get_single_vbucket_details_stats/3,
          host_ports/1,
          host_ports/2,
          list_vbuckets/1, list_vbuckets/2,
@@ -482,20 +483,8 @@ do_handle_call({sync_delete_vbucket, VBucket}, _From, #state{sock=Sock} = State)
 do_handle_call({get_vbucket, VBucket}, _From, State) ->
     Reply = mc_client_binary:get_vbucket(State#state.sock, VBucket),
     {reply, Reply, State};
-do_handle_call({get_vbucket_details_stats, VBucket}, _From, State) ->
-    VBucketStr = integer_to_list(VBucket),
-    Prefix = list_to_binary(VBucketStr),
-    Reply = mc_binary:quick_stats(
-              State#state.sock,
-              iolist_to_binary([<<"vbucket-details ">>, VBucketStr]),
-              fun (<<"vb_", K/binary>>, V, Acc) ->
-                      case binary:split(K, [<<":">>]) of
-                          [Prefix, Key] ->
-                              [{binary_to_list(Key), binary_to_list(V)} | Acc];
-                          _ ->
-                              Acc
-                      end
-              end, []),
+do_handle_call({get_vbucket_details_stats, VBucket, Keys}, _From, State) ->
+    Reply = get_vbucket_details(State#state.sock, VBucket, Keys),
     {reply, Reply, State};
 do_handle_call(list_buckets, _From, State) ->
     Reply = mc_client_binary:list_buckets(State#state.sock),
@@ -1056,10 +1045,35 @@ sync_delete_vbucket(Bucket, VBucket) ->
 get_vbucket(Node, Bucket, VBucket) ->
     do_call({server(Bucket), Node}, {get_vbucket, VBucket}, ?TIMEOUT).
 
--spec get_vbucket_details_stats(bucket_name(), vbucket_id()) ->
-                                       {ok, [{nonempty_string(),nonempty_string()}]} | mc_error().
-get_vbucket_details_stats(Bucket, VBucket) ->
-    do_call(server(Bucket), {get_vbucket_details_stats, VBucket}, ?TIMEOUT).
+-spec get_single_vbucket_details_stats(bucket_name(), vbucket_id(),
+                                       all | [nonempty_string()]) ->
+    {ok, [{nonempty_string(), nonempty_string()}]} | mc_error().
+get_single_vbucket_details_stats(Bucket, VBucket, ReqdKeys) ->
+    case get_vbucket_details_stats(Bucket, VBucket, ReqdKeys) of
+        {ok, Dict} ->
+            case dict:find(VBucket, Dict) of
+                {ok, Val} ->
+                    {ok, Val};
+                _ ->
+                    %% In case keys aren't present in the memcached return
+                    %% value.
+                    {ok, []}
+            end;
+        Err ->
+            Err
+    end.
+
+-spec get_vbucket_details_stats(bucket_name(), all | [nonempty_string()]) ->
+    {ok, dict:dict()} | mc_error().
+get_vbucket_details_stats(Bucket, ReqdKeys) ->
+    get_vbucket_details_stats(Bucket, all, ReqdKeys).
+
+-spec get_vbucket_details_stats(bucket_name(), all | vbucket_id(),
+                                all | [nonempty_string()]) ->
+    {ok, dict:dict()} | mc_error().
+get_vbucket_details_stats(Bucket, VBucket, ReqdKeys) ->
+    do_call(server(Bucket), {get_vbucket_details_stats, VBucket, ReqdKeys},
+            ?TIMEOUT).
 
 -spec host_ports(node(), any()) ->
                         {nonempty_string(),
@@ -1522,3 +1536,31 @@ construct_vbucket_info_json(undefined) ->
     undefined;
 construct_vbucket_info_json(Topology) ->
     construct_topology_json(Topology).
+
+get_vbucket_details(Sock, all, ReqdKeys) ->
+    get_vbucket_details_inner(Sock, <<"vbucket-details">>, ReqdKeys);
+get_vbucket_details(Sock, VBucket, ReqdKeys) when is_integer(VBucket) ->
+    VBucketStr = integer_to_list(VBucket),
+    get_vbucket_details_inner(
+      Sock, iolist_to_binary([<<"vbucket-details ">>, VBucketStr]), ReqdKeys).
+
+get_vbucket_details_inner(Sock, DetailsKey, ReqdKeys) ->
+    mc_binary:quick_stats(
+      Sock, DetailsKey,
+      fun (<<"vb_", VBKey/binary>>, BinVal, Dict) ->
+              {VB, Key} = case binary:split(VBKey, [<<":">>]) of
+                              [BinVB, BinK] -> {BinVB, binary_to_list(BinK)};
+                              [BinVB] -> {BinVB, "state"}
+                          end,
+              case ReqdKeys =:= all orelse lists:member(Key, ReqdKeys) of
+                  true ->
+                      VBucket = list_to_integer(binary_to_list(VB)),
+                      NewVal = [{Key, binary_to_list(BinVal)}],
+                      dict:update(VBucket,
+                                  fun (OldVal) ->
+                                          NewVal ++ OldVal
+                                  end, NewVal, Dict);
+                  false ->
+                      Dict
+              end
+      end, dict:new()).

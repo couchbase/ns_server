@@ -704,7 +704,8 @@ vbucket_needs_compaction({DataSize, FileSize}, Config) ->
     file_needs_compaction(DataSize, FileSize, FragThreshold, MinFileSize).
 
 get_db_size_info(Bucket, VBucket) ->
-    case ns_memcached:get_vbucket_details_stats(Bucket, VBucket) of
+    case ns_memcached:get_single_vbucket_details_stats(
+           Bucket, VBucket, ["db_data_size", "db_file_size"]) of
         {ok, Props} ->
             {ok, {list_to_integer(proplists:get_value("db_data_size", Props)),
                   list_to_integer(proplists:get_value("db_file_size", Props))}};
