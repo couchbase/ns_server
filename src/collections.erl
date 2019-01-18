@@ -23,6 +23,7 @@
 
 -export([start_link/0,
          enabled/0,
+         enabled/1,
          uid/1,
          for_memcached/1,
          for_rest/1,
@@ -39,6 +40,9 @@ start_link() ->
 enabled() ->
     cluster_compat_mode:is_enabled(?VERSION_MADHATTER).
 
+enabled(BucketConfig) ->
+    enabled() andalso ns_bucket:bucket_type(BucketConfig) =:= membase.
+
 default_manifest() ->
     [{uid, 0},
      {next_uid, 0},
@@ -52,7 +56,7 @@ default_manifest() ->
             [{uid, 0}]}]}]}]}].
 
 uid(BucketCfg) ->
-    case enabled() of
+    case enabled(BucketCfg) of
         true ->
             extract_uid(get_manifest(BucketCfg));
         false ->

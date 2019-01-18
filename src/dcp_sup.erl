@@ -80,6 +80,9 @@ kill_replicator(Bucket, {ProducerNode, RepFeatures} = ChildId) ->
 get_replication_features() ->
     FeatureSet = [{xattr, cluster_compat_mode:is_cluster_50()},
                   {snappy, memcached_config_mgr:is_snappy_enabled()},
+                  %% this function is called for membase buckets only
+                  %% so we can assume that if collections are enabled globally
+                  %% they cannot be disabled for particular bucket
                   {collections, collections:enabled()},
                   {del_times, cluster_compat_mode:is_cluster_55()}],
     misc:canonical_proplist(FeatureSet).

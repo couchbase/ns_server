@@ -70,10 +70,10 @@ handle_delete_collection(Bucket, Scope, Name, Req) ->
 assert_api_available(Bucket) ->
     menelaus_util:assert_cluster_version(fun collections:enabled/0),
     {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
-    case ns_bucket:bucket_type(BucketConfig) of
-        membase ->
+    case collections:enabled(BucketConfig) of
+        true ->
             ok;
-        memcached ->
+        false ->
             erlang:throw({web_exception, 400,
                           "Not allowed on this type of bucket", []})
     end.
