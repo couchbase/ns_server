@@ -70,7 +70,7 @@ handle_call({get_service_remote_items, Mod}, _From, State) ->
 handle_call({apply_node_settings, Settings}, _From, State) ->
     {reply, menelaus_web_node:apply_node_settings(Settings), State};
 handle_call(invalidate_ldap_cache, _From, State) ->
-    {reply, menelaus_web_rbac:invalidate_ldap_cache(), State};
+    {reply, menelaus_web_ldap:invalidate_ldap_cache(), State};
 handle_call(Request, {Pid, _} = _From, State) ->
     ?log_warning("Got unknown call ~p from ~p (node ~p)", [Request, Pid, node(Pid)]),
     {reply, unhandled, State}.
