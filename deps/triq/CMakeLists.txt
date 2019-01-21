@@ -1,3 +1,2 @@
 REBAR (TARGET triq)
 ADD_DEPENDENCIES (ns_realclean triq-clean)
-INSTALL (DIRECTORY ebin DESTINATION "${INST_LIBDIR}/triq")

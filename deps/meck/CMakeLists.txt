@@ -1,3 +1,2 @@
 REBAR (TARGET meck)
 ADD_DEPENDENCIES (ns_realclean meck-clean)
-INSTALL (DIRECTORY ebin DESTINATION "${INST_LIBDIR}/meck")
