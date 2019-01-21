@@ -1,7 +1,7 @@
 {application, ale,
  [
   {description, "Another Logger for Erlang"},
-  {vsn, "@ALE_VERSION@"},
+  {vsn, "0.0.0"},
   {registered, []},
   {applications, [
                   kernel,
