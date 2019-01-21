@@ -307,7 +307,7 @@ input.filter-input {
   font-size: 1.125rem;
   color: #2ca01c;
   position: absolute;
-  left: 1rem;
+  left: .5rem;
 }
 /* alert warning icon --------------------------------------------------- */
 .alert.alert-warning p:before {
@@ -316,7 +316,7 @@ input.filter-input {
   font-size: 1.125rem;
   color: #f5a623;
   position: absolute;
-  left: 1rem;
+  left: .5rem;
 }
 /* alert error icon ----------------------------------------------------- */
 .alert.alert-error p:before {
@@ -325,7 +325,7 @@ input.filter-input {
   font-size: 1rem;
   color: #d65558;
   position: absolute;
-  left: 1rem;
+  left: .5rem;
 }
 
 /* CBUI FLEXBOX TABLES -------------------------------------------------  */
@@ -788,10 +788,9 @@ section.error {
   position: fixed;
   bottom: 0;
   z-index: 99;
+  max-width: 320px;
 }
 .alert {
-  overflow: hidden;
-  text-align: center;
   font-size: .75rem;
   font-weight: 600;
   display: block;
@@ -800,16 +799,16 @@ section.error {
 }
 .alert .close {
   position: absolute;
-  right: 1rem;
-  top: 1rem;
+  right: .5rem;
+  top: .75rem;
   font-size: 1rem;
 }
 .alert p {
   margin: 0;
   display: inline-block;
   position: relative;
-  line-height: 3.5rem;
-  padding: 0 3rem 0 3rem;
+  line-height: 1rem;
+  padding: 1rem 2rem;
 }
 .alert a {
   font-weight: 600;
