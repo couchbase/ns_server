@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2010-2018 Couchbase, Inc.
+%% @copyright 2010-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -42,8 +42,6 @@
 %% The following gives us 300 lines/second in bursts up to 60 lines
 -define(MAX_MESSAGES, 60). % Max messages per interval
 -define(INTERVAL, 200). % Interval over which to throttle
-
--include_lib("eunit/include/eunit.hrl").
 
 %% Server state
 -record(state, {port :: port() | pid() | undefined,

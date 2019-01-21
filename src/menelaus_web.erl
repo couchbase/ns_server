@@ -21,8 +21,6 @@
 
 -behavior(ns_log_categorizing).
 
--include_lib("eunit/include/eunit.hrl").
-
 -include("menelaus_web.hrl").
 -include("ns_common.hrl").
 -include("ns_heart.hrl").

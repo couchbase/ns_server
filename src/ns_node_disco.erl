@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2018 Couchbase, Inc.
+%% @copyright 2009-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -53,8 +53,6 @@
           we_were_shunned = false :: boolean(),
           node_renaming_txn_mref :: undefined | reference()
          }).
-
--include_lib("eunit/include/eunit.hrl").
 
 % Node Discovery and monitoring.
 %

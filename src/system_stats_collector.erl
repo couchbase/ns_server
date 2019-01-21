@@ -17,10 +17,7 @@
 %%
 -module(system_stats_collector).
 
--include_lib("eunit/include/eunit.hrl").
-
 -include("ns_common.hrl").
-
 -include("ns_stats.hrl").
 
 -define(ETS_LOG_INTVL, 180).

@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2018 Couchbase, Inc.
+%% @copyright 2009-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -33,7 +33,6 @@
 
 -record(state, {webconfig, watchers = []}).
 
--include_lib("eunit/include/eunit.hrl").
 -include("ns_common.hrl").
 
 % Noop process to get initialized in the supervision tree.

@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2018 Couchbase, Inc.
+%% @copyright 2018-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 -module(eventing_settings_manager).
 
 -include("ns_common.hrl").
--include_lib("eunit/include/eunit.hrl").
 
 -behavior(json_settings_manager).
 

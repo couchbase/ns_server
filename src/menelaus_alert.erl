@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2018 Couchbase, Inc.
+%% @copyright 2009-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -20,12 +20,6 @@
 
 -include("ns_log.hrl").
 -include("ns_common.hrl").
-
--include_lib("eunit/include/eunit.hrl").
-
--ifdef(EUNIT).
--export([test/0]).
--endif.
 
 -export([handle_logs/1,
          build_logs/1,
@@ -296,11 +290,3 @@ common_params(Params) ->
                 L -> list_to_integer(L)
             end,
     {MinTStamp, Limit}.
-
--ifdef(EUNIT).
-
-test() ->
-    eunit:test({module, ?MODULE},
-               [verbose]).
-
--endif.

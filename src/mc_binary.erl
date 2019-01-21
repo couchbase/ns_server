@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2018 Couchbase, Inc.
+%% @copyright 2009-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -14,8 +14,6 @@
 %% limitations under the License.
 %%
 -module(mc_binary).
-
--include_lib("eunit/include/eunit.hrl").
 
 -include("ns_common.hrl").
 -include("mc_constants.hrl").

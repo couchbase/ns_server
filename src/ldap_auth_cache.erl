@@ -23,7 +23,6 @@
 -export([init/1, translate_options/1]).
 
 -include("ns_common.hrl").
--include_lib("eunit/include/eunit.hrl").
 
 %%%===================================================================
 %%% API

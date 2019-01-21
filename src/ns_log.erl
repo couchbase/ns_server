@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2018 Couchbase, Inc.
+%% @copyright 2009-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -40,7 +40,6 @@
 
 -export([ns_log_cat/1, ns_log_code_string/1]).
 
--include_lib("eunit/include/eunit.hrl").
 -include("ns_common.hrl").
 
 -record(state, {unique_recent,
@@ -326,21 +325,3 @@ ns_log_code_string(1) ->
     "logging could not foobar";
 ns_log_code_string(2) ->
     "logging hit max baz".
-
-%% ------------------------------------------
-
-%% TODO make this work
--ifdef(nothing).
-
-log_test() ->
-    ok = log(?MODULE, 1, "not ready log"),
-
-    {ok, Pid} = gen_server:start(?MODULE, [], []),
-    ok = log(?MODULE, 1, "test log 1"),
-    ok = log(?MODULE, 2, "test log 2 ~p ~p", [x, y]),
-    ok = log(?MODULE, 3, "test log 3 ~p ~p", [x, y]),
-    ok = log(?MODULE, 4, "test log 4 ~p ~p", [x, y]),
-
-    exit(Pid, exiting),
-    ok.
--endif.

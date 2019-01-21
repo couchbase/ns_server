@@ -25,7 +25,6 @@
 -include("cut.hrl").
 -include("ns_common.hrl").
 -include("ns_config.hrl").
--include_lib("eunit/include/eunit.hrl").
 
 -define(DEFAULT_MAX_PARALLEL_PROCESSES, 100).
 -define(DEFAULT_MAX_CACHE_SIZE, 10000).
