@@ -652,7 +652,7 @@ idle({try_autofailover, Nodes}, From, _State) ->
 idle({start_graceful_failover, Node}, From, _State) when is_atom(Node) ->
     %% calls from pre-madhatter nodes
     {keep_state_and_data,
-     [{next_event, {call, From}, {start_graceful_failover, [Node], false}}]};
+     [{next_event, {call, From}, {start_graceful_failover, [Node]}}]};
 idle({start_graceful_failover, Nodes}, From, _State) ->
     case ns_rebalancer:start_link_graceful_failover(Nodes) of
         {ok, Pid} ->
