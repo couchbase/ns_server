@@ -21,7 +21,9 @@
 -include("ns_stats.hrl").
 -include("ns_common.hrl").
 
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([handle_bucket_stats/3,
          handle_stats_section/3,
@@ -1081,47 +1083,6 @@ join_samples([A | TailA], [B | TailB], Acc, Count) ->
 join_samples(_, _, Acc, _) ->
     Acc.
 
-join_samples_test() ->
-    A = [
-         {stat_entry, 1, [{key1, 1},
-                          {key2, 2}]},
-         {stat_entry, 2, [{key1, 3},
-                          {key2, 4}]},
-         {stat_entry, 3, [{key1, 5},
-                          {key2, 6}]}],
-    B = [
-         {stat_entry, 2, [{key3, 1},
-                          {key4, 2}]},
-         {stat_entry, 3, [{key3, 3},
-                          {key4, 4}]},
-         {stat_entry, 4, [{key3, 5},
-                          {key4, 6}]}],
-
-    R1 = [
-          {stat_entry, 2, [{key1, 3},
-                           {key2, 4},
-                           {key3, 1},
-                           {key4, 2}]},
-          {stat_entry, 3, [{key1, 5},
-                           {key2, 6},
-                           {key3, 3},
-                           {key4, 4}]}],
-
-    R2 = [
-          {stat_entry, 2, [{key3, 1},
-                           {key4, 2},
-                           {key1, 3},
-                           {key2, 4}]},
-          {stat_entry, 3, [{key3, 3},
-                           {key4, 4},
-                           {key1, 5},
-                           {key2, 6}]}],
-
-    ?assertEqual(R1, join_samples(A, B, 2)),
-    ?assertEqual(R2, join_samples(B, A, 2)),
-    ?assertEqual(tl(R2), join_samples(B, A, 1)).
-
-
 build_bucket_stats_ops_response(Nodes, BucketName, Params, WithSystemStats) ->
     {ClientTStamp, {Step, Period, Count} = Window} = parse_stats_params(Params),
 
@@ -1245,30 +1206,6 @@ aggregate_stat_kv_pairs([{AK, AV} = APair | ARest] = A,
         _ ->
             aggregate_stat_kv_pairs(A, BRest, [BPair | Acc])
     end.
-
-aggregate_stat_kv_pairs_test() ->
-    ?assertEqual([{a, 3}, {b, undefined}, {c, 1}, {d,1}, {e, 1}],
-                 aggregate_stat_kv_pairs([{a, 1}, {b, undefined}, {c,1}, {d, 1}],
-                                         [{a, 2}, {b, undefined}, {d, undefined}, {e,1}],
-                                         [])),
-    ?assertEqual([{a, 3}, {b, undefined}, {ba, 123}, {c, 1}, {d,1}],
-                 aggregate_stat_kv_pairs([{a, 1}, {b, undefined}, {c,1}, {d, 1}],
-                                         [{a, 2}, {b, undefined}, {ba, 123}],
-                                         [])),
-    ?assertEqual([{a, 3}, {b, undefined}, {c, 1}, {d,1}, {e, 1}],
-                 aggregate_stat_kv_pairs([{a, 1}, {b, undefined}, {c,1}, {d, 1}],
-                                         [{a, 2}, {c,0}, {d, undefined}, {e,1}],
-                                         [])),
-    ?assertEqual([{couch_views_ops, 3},
-                  {<<"views/A1/accesses">>, 4},
-                  {<<"views/A1/blah">>, 3}],
-                 aggregate_stat_kv_pairs([{couch_views_ops, 1},
-                                          {<<"views/A1/accesses">>, 4},
-                                          {<<"views/A1/blah">>, 1}],
-                                         [{couch_views_ops, 3},
-                                          {<<"views/A1/accesses">>, 2},
-                                          {<<"views/A1/blah">>, 2}],
-                                         [])).
 
 aggregate_stat_entries(A, B) ->
     true = (B#stat_entry.timestamp =:= A#stat_entry.timestamp),
@@ -2789,3 +2726,70 @@ do_get_indexes(Service, BucketId0, Nodes) ->
             proplists:get_value(bucket, I) =:= BucketId,
             not(ordsets:is_disjoint(WantedHosts,
                                     lists:usort(proplists:get_value(hosts, I))))].
+
+
+-ifdef(TEST).
+join_samples_test() ->
+    A = [
+         {stat_entry, 1, [{key1, 1},
+                          {key2, 2}]},
+         {stat_entry, 2, [{key1, 3},
+                          {key2, 4}]},
+         {stat_entry, 3, [{key1, 5},
+                          {key2, 6}]}],
+    B = [
+         {stat_entry, 2, [{key3, 1},
+                          {key4, 2}]},
+         {stat_entry, 3, [{key3, 3},
+                          {key4, 4}]},
+         {stat_entry, 4, [{key3, 5},
+                          {key4, 6}]}],
+
+    R1 = [
+          {stat_entry, 2, [{key1, 3},
+                           {key2, 4},
+                           {key3, 1},
+                           {key4, 2}]},
+          {stat_entry, 3, [{key1, 5},
+                           {key2, 6},
+                           {key3, 3},
+                           {key4, 4}]}],
+
+    R2 = [
+          {stat_entry, 2, [{key3, 1},
+                           {key4, 2},
+                           {key1, 3},
+                           {key2, 4}]},
+          {stat_entry, 3, [{key3, 3},
+                           {key4, 4},
+                           {key1, 5},
+                           {key2, 6}]}],
+
+    ?assertEqual(R1, join_samples(A, B, 2)),
+    ?assertEqual(R2, join_samples(B, A, 2)),
+    ?assertEqual(tl(R2), join_samples(B, A, 1)).
+
+aggregate_stat_kv_pairs_test() ->
+    ?assertEqual([{a, 3}, {b, undefined}, {c, 1}, {d,1}, {e, 1}],
+                 aggregate_stat_kv_pairs([{a, 1}, {b, undefined}, {c,1}, {d, 1}],
+                                         [{a, 2}, {b, undefined}, {d, undefined}, {e,1}],
+                                         [])),
+    ?assertEqual([{a, 3}, {b, undefined}, {ba, 123}, {c, 1}, {d,1}],
+                 aggregate_stat_kv_pairs([{a, 1}, {b, undefined}, {c,1}, {d, 1}],
+                                         [{a, 2}, {b, undefined}, {ba, 123}],
+                                         [])),
+    ?assertEqual([{a, 3}, {b, undefined}, {c, 1}, {d,1}, {e, 1}],
+                 aggregate_stat_kv_pairs([{a, 1}, {b, undefined}, {c,1}, {d, 1}],
+                                         [{a, 2}, {c,0}, {d, undefined}, {e,1}],
+                                         [])),
+    ?assertEqual([{couch_views_ops, 3},
+                  {<<"views/A1/accesses">>, 4},
+                  {<<"views/A1/blah">>, 3}],
+                 aggregate_stat_kv_pairs([{couch_views_ops, 1},
+                                          {<<"views/A1/accesses">>, 4},
+                                          {<<"views/A1/blah">>, 1}],
+                                         [{couch_views_ops, 3},
+                                          {<<"views/A1/accesses">>, 2},
+                                          {<<"views/A1/blah">>, 2}],
+                                         [])).
+-endif.

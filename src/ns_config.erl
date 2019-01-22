@@ -1,4 +1,4 @@
-% Copyright (c) 2009-2018, Couchbase, Inc.
+% Copyright (c) 2009-2019, Couchbase, Inc.
 % Copyright (c) 2008, Cliff Moon
 % Copyright (c) 2008, Powerset, Inc
 %
@@ -39,9 +39,11 @@
 
 -behaviour(gen_server).
 
--include_lib("eunit/include/eunit.hrl").
-
 -include("ns_common.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -define(DEFAULT_TIMEOUT, 15000).
 -define(TERMINATE_SAVE_TIMEOUT, 10000).
@@ -85,9 +87,11 @@
 -export([save_config_sync/1, save_config_sync/2, do_not_save_config/1]).
 
 % Exported for tests only
+-ifdef(TEST).
 -export([save_file/3, load_config/3,
          load_file/2, send_config/2,
          test_setup/1, upgrade_config/2]).
+-endif.
 
 % A static config file is often hand edited.
 % potentially with in-line manual comments.
@@ -844,11 +848,6 @@ duplicate_node_keys(KVList, FromNode, ToNode) ->
                           [Other]
                   end, KVList).
 
-test_setup(KVPairs) ->
-    (catch ets:new(ns_config_ets_dup, [public, set, named_table])),
-    ets:delete_all_objects(ns_config_ets_dup),
-    update_ets_dup(KVPairs).
-
 -spec wait_saver(#config{}, infinity | non_neg_integer()) -> {ok, #config{}} | timeout.
 wait_saver(State, Timeout) ->
     case State#config.saver_pid of
@@ -1389,7 +1388,13 @@ sync_announcements() ->
 latest() ->
     'latest-config-marker'.
 
--ifdef(EUNIT).
+
+-ifdef(TEST).
+%% used in test/ns_config_tests.erl
+test_setup(KVPairs) ->
+    (catch ets:new(ns_config_ets_dup, [public, set, named_table])),
+    ets:delete_all_objects(ns_config_ets_dup),
+    update_ets_dup(KVPairs).
 
 all_test_() ->
     [{spawn, [{"test_update_config", fun test_update_config/0},
@@ -1858,5 +1863,4 @@ merge_values_test_iter() ->
     %% merge result is independent on the node and the time
     %% when merge was done
     ?assertEqual(R0, R2).
-
 -endif.

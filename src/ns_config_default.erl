@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2018 Couchbase, Inc.
+%% @copyright 2009-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -18,7 +18,9 @@
 -include("ns_common.hrl").
 -include("ns_config.hrl").
 
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([default/0, upgrade_config/1, get_current_version/0, encrypt_and_save/1, decrypt/1,
          init_is_enterprise/0]).
@@ -43,12 +45,6 @@ detect_enterprise_version(NsServerVersion) ->
         _ ->
             true
     end.
-
-%% dialyzer proves that statically and complains about impossible code
-%% path if I use ?assert... Sucker
-detect_enterprise_version_test() ->
-    true = detect_enterprise_version(<<"1.8.0r-9-ga083a1e-enterprise">>),
-    true = not detect_enterprise_version(<<"1.8.0r-9-ga083a1e-comm">>).
 
 is_forced(EnvVar) ->
     case os:getenv(EnvVar) of
@@ -540,6 +536,8 @@ decrypt(Config) ->
                                 continue
                         end, Config).
 
+
+-ifdef(TEST).
 upgrade_4_0_to_4_1_1_test() ->
     Cfg = [[{some_key, some_value},
             {{node, node(), memcached}, old_memcached_config},
@@ -657,3 +655,10 @@ all_upgrades_test() ->
 
     ?assertEqual([], UpgradedKVs -- Default),
     ?assertEqual([], Default -- UpgradedKVs).
+
+%% dialyzer proves that statically and complains about impossible code
+%% path if I use ?assert... Sucker
+detect_enterprise_version_test() ->
+    true = detect_enterprise_version(<<"1.8.0r-9-ga083a1e-enterprise">>),
+    true = not detect_enterprise_version(<<"1.8.0r-9-ga083a1e-comm">>).
+-endif.

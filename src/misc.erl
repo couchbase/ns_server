@@ -37,11 +37,13 @@
 -include("ns_common.hrl").
 -include_lib("kernel/include/file.hrl").
 
--include("triq.hrl").
--include_lib("eunit/include/eunit.hrl").
-
 -include("cut.hrl").
 -include("generic.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-include("triq.hrl").
+-endif.
 
 -compile(nowarn_export_all).
 -compile(export_all).
@@ -254,6 +256,7 @@ wait_for_process(PidOrName, Timeout) ->
             {error, timeout}
     end.
 
+-ifdef(TEST).
 wait_for_process_test_() ->
     {spawn,
      fun () ->
@@ -268,6 +271,7 @@ wait_for_process_test_() ->
              ok = wait_for_process(Pid, 100),
              ok = wait_for_process(Pid, 100)
      end}.
+-endif.
 
 -spec terminate_and_wait(Processes :: pid() | [pid()], Reason :: term()) -> ok.
 terminate_and_wait(Process, Reason) when is_pid(Process) ->
@@ -395,6 +399,7 @@ poll_for_condition(Condition, Timeout, Sleep) ->
             end,
     poll_for_condition_rec(Condition, Sleep, Times).
 
+-ifdef(TEST).
 poll_for_condition_test() ->
     true = poll_for_condition(fun () -> true end, 0, 10),
     timeout = poll_for_condition(fun () -> false end, 100, 10),
@@ -416,7 +421,7 @@ poll_for_condition_test() ->
     after 0 ->
             erlang:error(should_not_happen)
     end.
-
+-endif.
 
 %% Remove matching messages from the inbox.
 %% Returns a count of messages removed.
@@ -447,10 +452,12 @@ uniqc([H,H|T], Count, Acc) ->
 uniqc([H1,H2|T], Count, Acc) ->
     uniqc([H2|T], 1, [{H1, Count}|Acc]).
 
+-ifdef(TEST).
 uniqc_test() ->
     [{a, 2}, {b, 5}] = uniqc([a, a, b, b, b, b, b]),
     [] = uniqc([]),
     [{c, 1}] = uniqc([c]).
+-endif.
 
 unique(Xs) ->
     [X || {X, _} <- uniqc(Xs)].
@@ -462,7 +469,7 @@ groupby_map(Fun, List) ->
 groupby(Fun, List) ->
     groupby_map(?cut({Fun(_1), _1}), List).
 
--ifdef(EUNIT).
+-ifdef(TEST).
 groupby_map_test() ->
     List = [{a, 1}, {a, 2}, {b, 2}, {b, 3}],
     ?assertEqual([{a, [1, 2]}, {b, [2, 3]}],
@@ -490,10 +497,12 @@ keygroup(Index, [H|T], Groups) ->
     {G, Rest} = lists:splitwith(fun (Elem) -> element(Index, Elem) == Key end, T),
     keygroup(Index, Rest, [{Key, [H|G]}|Groups]).
 
+-ifdef(TEST).
 keygroup_test() ->
     [{a, [{a, 1}, {a, 2}]},
      {b, [{b, 2}, {b, 3}]}] = keygroup(1, [{a, 1}, {a, 2}, {b, 2}, {b, 3}]),
     [] = keygroup(1, []).
+-endif.
 
 sort_and_keygroup(Index, List) ->
     keygroup(Index, lists:keysort(Index, List)).
@@ -512,10 +521,12 @@ rotate([[H|T]|Rest], Heads, Tails, Acc) ->
 rotate(_, [], [], Acc) ->
     lists:reverse(Acc).
 
+-ifdef(TEST).
 rotate_test() ->
     [[1, 4, 7], [2, 5, 8], [3, 6, 9]] =
         rotate([[1, 2, 3], [4, 5, 6], [7, 8, 9]]),
     [] = rotate([]).
+-endif.
 
 rewrite(Fun, Term) ->
     generic:maybe_transform(
@@ -528,6 +539,7 @@ rewrite(Fun, Term) ->
               end
       end, Term).
 
+-ifdef(TEST).
 rewrite_correctly_callbacks_on_tuples_test() ->
     executing_on_new_process(
       fun () ->
@@ -551,6 +563,7 @@ rewrite_correctly_callbacks_on_tuples_test() ->
                     end),
               [{a, b, c}, a, b, c] = Terms
       end).
+-endif.
 
 rewrite_value(Old, New, Struct) ->
     generic:transformb(?transform(Old, New), Struct).
@@ -570,6 +583,7 @@ rewrite_tuples(Fun, Struct) ->
       end,
       Struct).
 
+-ifdef(TEST).
 rewrite_value_test() ->
     x = rewrite_value(a, b, x),
     b = rewrite_value(a, b, a),
@@ -615,6 +629,7 @@ rewrite_key_value_tuple_test() ->
                         end, Orig),
 
     X1 = [{a_string, xxx}, {"b string", 4, {a, x, y}, {a, xxx}, {a, xxx}}].
+-endif.
 
 sanitize_url(Url) when is_binary(Url) ->
     list_to_binary(sanitize_url(binary_to_list(Url)));
@@ -636,11 +651,13 @@ sanitize_url(Url) when is_list(Url) ->
 sanitize_url(Url) ->
     Url.
 
+-ifdef(TEST).
 sanitize_url_test() ->
     "blah.com/a/b/c" = sanitize_url("blah.com/a/b/c"),
     "ftp://blah.com" = sanitize_url("ftp://blah.com"),
     "http://*****@blah.com" = sanitize_url("http://user:password@blah.com"),
     "*****@blah.com" = sanitize_url("user:password@blah.com").
+-endif.
 
 ukeymergewith(Fun, N, L1, L2) ->
     ukeymergewith(Fun, N, L1, L2, []).
@@ -663,6 +680,7 @@ ukeymergewith(Fun, N, L1 = [T1|R1], L2 = [T2|R2], Out) ->
             ukeymergewith(Fun, N, L1, R2, [T2|Out])
     end.
 
+-ifdef(TEST).
 ukeymergewith_test() ->
     Fun = fun ({K, A}, {_, B}) ->
                   {K, A + B}
@@ -670,7 +688,7 @@ ukeymergewith_test() ->
     [{a, 3}] = ukeymergewith(Fun, 1, [{a, 1}], [{a, 2}]),
     [{a, 3}, {b, 1}] = ukeymergewith(Fun, 1, [{a, 1}], [{a, 2}, {b, 1}]),
     [{a, 1}, {b, 3}] = ukeymergewith(Fun, 1, [{b, 1}], [{a, 1}, {b, 2}]).
-
+-endif.
 
 %% Given two sorted lists, return a 3-tuple containing the elements
 %% that appear only in the first list, only in the second list, or are
@@ -690,11 +708,12 @@ comm(L1, L2) when L1 == []; L2 == [] ->
     {L1, L2, []}.
 
 
+-ifdef(TEST).
 comm_test() ->
     {[1], [2], [3]} = comm([1,3], [2,3]),
     {[1,2,3], [], []} = comm([1,2,3], []),
     {[], [], []} = comm([], []).
-
+-endif.
 
 start_singleton(Module, Name, Args, Opts) ->
     start_singleton(Module, start_link,
@@ -750,9 +769,11 @@ update_proplist(OldPList, NewPList) ->
                              end
                      end, OldPList).
 
+-ifdef(TEST).
 update_proplist_test() ->
     [{a, 1}, {b, 2}, {c,3}] =:= update_proplist([{a,2}, {c,3}],
                                                 [{a,1}, {b,2}]).
+-endif.
 
 %% get proplist value or fail
 expect_prop_value(K, List) ->
@@ -1039,7 +1060,7 @@ parse_base_version(BaseVersionStr) ->
     {lists:map(fun list_to_integer/1,
                string:tokens(NumericVersion, ".")), Type}.
 
--ifdef(EUNIT).
+-ifdef(TEST).
 parse_version_test() ->
     ?assertEqual({[1,7,0],release,252},
                  parse_version("1.7.0_252_g1e1c2c0")),
@@ -1159,7 +1180,7 @@ executing_on_new_process_body(Fun, StartOptions, WaitOptions) ->
               end
       end).
 
--ifdef(EUNIT).
+-ifdef(TEST).
 executing_on_new_process_test() ->
     lists:foreach(
       fun (_) ->
@@ -1474,7 +1495,7 @@ parse_cpuset_cpus(Str) ->
         _:_ -> erlang:error(badarg)
     end.
 
--ifdef(EUNIT).
+-ifdef(TEST).
 parse_cpuset_cpus_test() ->
     ?assertEqual([], parse_cpuset_cpus("")),
     ?assertEqual([2], parse_cpuset_cpus("2")),
@@ -1780,8 +1801,7 @@ multi_call_collect(Nodes, GotNodes, AccGood, AccBad, Ref) ->
             {AccGood, BadNodes}
     end.
 
--ifdef(EUNIT).
-
+-ifdef(TEST).
 multi_call_test_() ->
     {setup, fun multi_call_test_setup/0, fun multi_call_test_teardown/1,
      [fun do_test_multi_call/0]}.
@@ -1906,7 +1926,6 @@ do_test_multi_call_ok_pred() ->
     multi_call_test_assert_results(R3, OkNodes, ok),
     multi_call_test_assert_bad_nodes(Bad3, BadNodes ++ ErrorNodes),
     multi_call_test_assert_results(Bad3, ErrorNodes, error).
-
 -endif.
 
 intersperse([], _) ->
@@ -1916,7 +1935,7 @@ intersperse([_] = List, _) ->
 intersperse([X | Rest], Sep) ->
     [X, Sep | intersperse(Rest, Sep)].
 
--ifdef(EUNIT).
+-ifdef(TEST).
 intersperse_test() ->
     ?assertEqual([], intersperse([], x)),
     ?assertEqual([a], intersperse([a], x)),
@@ -1944,7 +1963,7 @@ hexify_digit(13) -> $d;
 hexify_digit(14) -> $e;
 hexify_digit(15) -> $f.
 
--ifdef(EUNIT).
+-ifdef(TEST).
 hexify_test() ->
     lists:foreach(
       fun (_) ->
@@ -1974,7 +1993,7 @@ iolist_is_empty([H|T]) ->
 iolist_is_empty(_) ->
     false.
 
--ifdef(EUNIT).
+-ifdef(TEST).
 iolist_is_empty_test() ->
     ?assertEqual(iolist_is_empty(""), true),
     ?assertEqual(iolist_is_empty(<<>>), true),
@@ -2000,6 +2019,7 @@ do_upermutations([]) ->
 do_upermutations(Xs) ->
     [[X|Ys] || X <- unique(Xs), Ys <- do_upermutations(Xs -- [X])].
 
+-ifdef(TEST).
 prop_upermutations() ->
     ?FORALL(Xs, resize(10, list(int(0,5))),
             begin
@@ -2025,6 +2045,7 @@ prop_upermutations() ->
 
                 NoDups andalso ProperPerms andalso ProperSize
             end).
+-endif.
 
 fact(0) ->
     1;
@@ -2071,8 +2092,7 @@ proplist_keyfilter_pred(Tuple, Pred)
 proplist_keyfilter_pred(Key, Pred) ->
     Pred(Key).
 
--ifdef(EUNIT).
-
+-ifdef(TEST).
 compact_test() ->
     ?assertEqual([a, c], compact_proplist([{a,true}, {b,false}, {c,true}])),
     ?assertEqual(["b", {a,b}], compact_proplist([{"b",true}, {a,b}])).
@@ -2087,7 +2107,6 @@ proplist_keyfilter_test() ->
                  proplist_keyfilter(
                    lists:member(_, [a, c, e]),
                    [{a, 0}, b, a, {b, 23}, {c, 2}, d, {e, 4}])).
-
 -endif.
 
 compress(Term) ->
@@ -2143,7 +2162,7 @@ join_host_port(Host, Port) when is_integer(Port) ->
 join_host_port(Host, Port) ->
     maybe_add_brackets(Host) ++ ":" ++ Port.
 
--ifdef(EUNIT).
+-ifdef(TEST).
 join_host_port_test() ->
     ?assertEqual("127.0.0.1:1234", join_host_port("127.0.0.1", 1234)),
     ?assertEqual("abc.xyz.com:1234", join_host_port("abc.xyz.com", "1234")),
@@ -2213,6 +2232,7 @@ do_parse_term(Term) ->
     {ok, Parsed} = erl_parse:parse_term(Tokens),
     Parsed.
 
+-ifdef(TEST).
 forall_recoverable_terms(Body) ->
     ?FORALL(T, ?SUCHTHAT(T1, any(), can_recover_term(T1)), Body(T)).
 
@@ -2221,6 +2241,7 @@ prop_dump_parse_term() ->
 
 prop_dump_parse_term_binary() ->
     forall_recoverable_terms(?cut(_1 =:= parse_term(iolist_to_binary(dump_term(_1))))).
+-endif.
 
 -record(timer, {tref, msg}).
 
@@ -2325,7 +2346,7 @@ exit_async(Reason) ->
     wait_for_process(Pid, infinity),
     exit(must_not_happen).
 
--ifdef(EUNIT).
+-ifdef(TEST).
 with_trap_exit_test_() ->
     {spawn,
      fun () ->
@@ -2407,7 +2428,7 @@ unlink_terminate_and_wait(Pid, Reason) ->
     %% wants to kill us quickly, we let them
     wait_for_process(Pid, infinity).
 
--ifdef(EUNIT).
+-ifdef(TEST).
 unlink_terminate_and_wait_simple_test() ->
     Pid = proc_lib:spawn_link(fun () -> timer:sleep(10000) end),
     unlink_terminate_and_wait(Pid, kill),
@@ -2508,7 +2529,7 @@ bin_bxor(<<Bin1/binary>>, <<Bin2/binary>>) ->
 duplicates(List) when is_list(List) ->
     List -- lists:usort(List).
 
--ifdef(EUNIT).
+-ifdef(TEST).
 no_duplicates_test() ->
     ?assertEqual([],  duplicates([])),
     ?assertEqual([],  duplicates([1])),
@@ -2527,7 +2548,7 @@ generate_crypto_seed() ->
 rand_uniform(Lo, Hi) ->
     rand:uniform(Hi - Lo) + Lo - 1.
 
--ifdef(EUNIT).
+-ifdef(TEST).
 rand_uniform_test() ->
     NTimes = fun G(N, _) when N =< 0 -> ok;
                  G(N, F) -> F(), G(N - 1, F)

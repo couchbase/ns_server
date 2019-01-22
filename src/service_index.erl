@@ -1,5 +1,5 @@
 %% @author Couchbase, Inc <info@couchbase.com>
-%% @copyright 2015-2018 Couchbase, Inc.
+%% @copyright 2015-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -16,7 +16,10 @@
 -module(service_index).
 
 -include("ns_common.hrl").
+
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([start_keeper/0, get_status/1, get_indexes/0, get_indexes_version/0]).
 
@@ -163,6 +166,8 @@ compute_disk_overhead_estimates(Stats) ->
               end
       end, [], Dict).
 
+
+-ifdef(TEST).
 compute_disk_overhead_estimates_test() ->
     In = [{{<<"a">>, <<"idx1">>, <<"disk_size">>}, 100},
           {{<<"a">>, <<"idx1">>, <<"frag_percent">>}, 0},
@@ -179,3 +184,4 @@ compute_disk_overhead_estimates_test() ->
     Expected = lists:keysort(1, Expected0),
 
     ?assertEqual(Expected, Out).
+-endif.

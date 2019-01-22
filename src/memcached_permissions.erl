@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2016-2018 Couchbase, Inc.
+%% @copyright 2016-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -27,7 +27,9 @@
 -include("ns_common.hrl").
 -include("pipes.hrl").
 
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -record(state, {buckets,
                 param_values,
@@ -264,6 +266,8 @@ make_producer(#state{buckets = Buckets,
                    sjson:encode_extended_json([{compact, false},
                                                {strict, false}])]).
 
+
+-ifdef(TEST).
 generate_json_45_test() ->
     RoleDefinitions = menelaus_roles:roles_45(),
     BucketsConfig = [{"default", [{uuid, <<"default_id">>}]}, {"test", [{uuid, <<"test_id">>}]}],
@@ -290,3 +294,4 @@ generate_json_45_test() ->
             {privileges,[]},
             {domain, local}]}}],
     ?assertEqual(Json, generate_json_45(Buckets, ParamValues, RoleDefinitions)).
+-endif.

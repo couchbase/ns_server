@@ -44,7 +44,9 @@
 -include("rbac.hrl").
 -include("pipes.hrl").
 
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -define(DEFAULT_EXTERNAL_ROLES_POLLING_INTERVAL, 10*60*1000).
 
@@ -997,6 +999,8 @@ external_auth_polling_interval() ->
     ns_config:read_key_fast(external_auth_polling_interval,
                             ?DEFAULT_EXTERNAL_ROLES_POLLING_INTERVAL).
 
+
+-ifdef(TEST).
 filter_out_invalid_roles_test() ->
     Roles = [{role1, [{"bucket1", <<"id1">>}]},
              {role2, [{"bucket2", <<"id2">>}]}],
@@ -1150,3 +1154,4 @@ validate_role_test() ->
     ?assertEqual(false, validate_role({admin, ["test"]}, Definitions, AllParamValues)),
     ?assertEqual(false, validate_role(bucket_admin, Definitions, AllParamValues)),
     ?assertEqual(false, validate_role({bucket_admin, ["test", "test"]}, Definitions, AllParamValues)).
+-endif.

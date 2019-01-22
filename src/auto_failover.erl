@@ -1,5 +1,5 @@
 %% @author Couchbase, Inc <info@couchbase.com>
-%% @copyright 2011-2018 Couchbase, Inc.
+%% @copyright 2011-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -49,13 +49,15 @@
 
 -module(auto_failover).
 
--include_lib("eunit/include/eunit.hrl").
-
 -behaviour(gen_server).
 
 -include("cut.hrl").
 -include("ns_common.hrl").
 -include("ns_heart.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 %% API
 -export([start_link/0, enable/3, disable/1, reset_count/0, reset_count_async/0]).
@@ -920,8 +922,8 @@ restart_on_compat_mode_change() ->
                                      ok
                              end).
 
--ifdef(EUNIT).
 
+-ifdef(TEST).
 actual_down_nodes_inner_test() ->
     PList0 = [{a, ["bucket1", "bucket2"]},
               {b, ["bucket1"]},
@@ -978,5 +980,4 @@ reported_test() ->
     ?assertEqual(should_report(?FLAG, State4), true),
 
     ok.
-
 -endif.

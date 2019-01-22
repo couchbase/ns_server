@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2016-2018 Couchbase, Inc.
+%% @copyright 2016-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -22,8 +22,11 @@
 -module(sjson).
 
 -include("pipes.hrl").
+
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -include("triq.hrl").
+-endif.
 
 -export([stream_json/1,
          encode_json/0, encode_json/1,
@@ -384,7 +387,8 @@ encode_string(String) ->
     {true, String} = {is_string(String), String},
     ejson:encode(String).
 
--ifdef(EUNIT).
+
+-ifdef(TEST).
 do_test_stream_json(Json, Expected) ->
     Result = pipes:run(stream_json(Json), pipes:collect()),
     ?assertEqual(Expected, Result).
@@ -533,5 +537,4 @@ json_object() ->
 
 json_object_kv() ->
     {json_string(), smaller_json()}.
-
 -endif.

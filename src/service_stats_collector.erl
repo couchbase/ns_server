@@ -1,5 +1,5 @@
 %% @author Couchbase, Inc <info@couchbase.com>
-%% @copyright 2015-2018 Couchbase, Inc.
+%% @copyright 2015-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -15,11 +15,12 @@
 %%
 -module(service_stats_collector).
 
--include_lib("eunit/include/eunit.hrl").
-
 -include("ns_common.hrl").
-
 -include("ns_stats.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 %% API
 -export([start_link/1, service_prefix/1, service_event_name/1,
@@ -300,33 +301,6 @@ do_aggregate_bucket_stats(_Service, Acc, _, Stats) ->
 finalize_stats(Acc) ->
     lists:keysort(1, Acc).
 
-aggregate_stats_test() ->
-    In = [{{<<"a">>, <<"idx1">>, <<"m1">>}, 1},
-          {{<<"a">>, <<"idx1">>, <<"m2">>}, 2},
-          {{<<"b">>, <<"idx2">>, <<"m1">>}, 3},
-          {{<<"b">>, <<"idx2">>, <<"m2">>}, 4},
-          {{<<"b">>, <<"idx3">>, <<"m1">>}, 5},
-          {{<<"b">>, <<"idx3">>, <<"m2">>}, 6}],
-    Out = aggregate_stats(service_index, In, [], []),
-
-    AStats0 = [{<<"index/idx1/m1">>, 1},
-               {<<"index/idx1/m2">>, 2},
-               {<<"index/m1">>, 1},
-               {<<"index/m2">>, 2}],
-    BStats0 = [{<<"index/idx2/m1">>, 3},
-               {<<"index/idx2/m2">>, 4},
-               {<<"index/idx3/m1">>, 5},
-               {<<"index/idx3/m2">>, 6},
-               {<<"index/m1">>, 3+5},
-               {<<"index/m2">>, 4+6}],
-
-    AStats = lists:keysort(1, AStats0),
-    BStats = lists:keysort(1, BStats0),
-
-    ?assertEqual(Out,
-                 [{<<"b">>, BStats},
-                  {<<"a">>, AStats}]).
-
 handle_info({buckets, NewBuckets}, State) ->
     NewBuckets1 = lists:map(fun list_to_binary/1, NewBuckets),
     {noreply, State#state{buckets = NewBuckets1}};
@@ -354,3 +328,33 @@ check_status(#state{service = Service} = State) ->
                 starting
         end,
     State#state{status = NewStatus}.
+
+
+-ifdef(TEST).
+aggregate_stats_test() ->
+    In = [{{<<"a">>, <<"idx1">>, <<"m1">>}, 1},
+          {{<<"a">>, <<"idx1">>, <<"m2">>}, 2},
+          {{<<"b">>, <<"idx2">>, <<"m1">>}, 3},
+          {{<<"b">>, <<"idx2">>, <<"m2">>}, 4},
+          {{<<"b">>, <<"idx3">>, <<"m1">>}, 5},
+          {{<<"b">>, <<"idx3">>, <<"m2">>}, 6}],
+    Out = aggregate_stats(service_index, In, [], []),
+
+    AStats0 = [{<<"index/idx1/m1">>, 1},
+               {<<"index/idx1/m2">>, 2},
+               {<<"index/m1">>, 1},
+               {<<"index/m2">>, 2}],
+    BStats0 = [{<<"index/idx2/m1">>, 3},
+               {<<"index/idx2/m2">>, 4},
+               {<<"index/idx3/m1">>, 5},
+               {<<"index/idx3/m2">>, 6},
+               {<<"index/m1">>, 3+5},
+               {<<"index/m2">>, 4+6}],
+
+    AStats = lists:keysort(1, AStats0),
+    BStats = lists:keysort(1, BStats0),
+
+    ?assertEqual(Out,
+                 [{<<"b">>, BStats},
+                  {<<"a">>, AStats}]).
+-endif.

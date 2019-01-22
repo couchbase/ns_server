@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2012-2018 Couchbase, Inc.
+%% @copyright 2012-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -16,7 +16,10 @@
 -module(cluster_compat_mode).
 
 -include("ns_common.hrl").
+
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([get_compat_version/0,
          get_compat_version/1,
@@ -332,9 +335,6 @@ have_non_dcp_buckets(Config) ->
             {true, BadBuckets}
     end.
 
-mb_master_advertised_version_test() ->
-    true = mb_master_advertised_version() >= ?LATEST_VERSION_NUM ++ [0].
-
 get_pretend_version() ->
     case application:get_env(ns_server, pretend_version) of
         undefined ->
@@ -343,3 +343,9 @@ get_pretend_version() ->
             {[A, B | _], _, _} = misc:parse_version(VersionString),
             [A, B]
     end.
+
+
+-ifdef(TEST).
+mb_master_advertised_version_test() ->
+    true = mb_master_advertised_version() >= ?LATEST_VERSION_NUM ++ [0].
+-endif.

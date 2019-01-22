@@ -16,9 +16,11 @@
 -module(ns_ssl_services_setup).
 
 -include("ns_common.hrl").
-
--include_lib("eunit/include/eunit.hrl").
 -include_lib("public_key/include/public_key.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([start_link/0,
          start_link_capi_service/0,
@@ -806,8 +808,7 @@ do_notify_service(event) ->
     gen_event:notify(ssl_service_events, cert_changed).
 
 
--ifdef(EUNIT).
-
+-ifdef(TEST).
 extract_user_name_test() ->
     ?assertEqual(extract_user_name(["www.abc.com"], "www.", ";,."), "abc"),
     ?assertEqual(extract_user_name(["xyz.abc.com", "qwerty", "www.abc.com"],
@@ -817,5 +818,4 @@ extract_user_name_test() ->
     ?assertEqual(extract_user_name(["xyz.abc.com"],
                                    "www.", "."), {error, not_found}),
     ?assertEqual(extract_user_name(["xyz.abc.com"], "", "-"), "xyz.abc.com").
-
 -endif.

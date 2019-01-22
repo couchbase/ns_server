@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2011-2018 Couchbase, Inc.
+%% @copyright 2011-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -28,7 +28,9 @@
 -include("mc_entry.hrl").
 -include("mc_constants.hrl").
 
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -define(SLOW_THRESHOLD_SECONDS, 180).
 
@@ -298,12 +300,6 @@ is_uuid_stat_key(K) ->
             false
     end.
 
-is_uuid_stat_key_test() ->
-    true = is_uuid_stat_key(<<"vb_5:uuid">>),
-    false = is_uuid_stat_key(<<"vb_5:seqno">>),
-    false = is_uuid_stat_key(<<>>),
-    false = is_uuid_stat_key(<<"a">>).
-
 mass_vbopaque_check_loop([{K1, Vb, VO} | RestExpected] = Expected,
                          [{K2, Value} | RestStats] = Stats,
                          AccMatch, AccMismatch, AccMissing) ->
@@ -329,16 +325,6 @@ mass_vbopaque_check_loop([] = _Expected, _Stats, AccMatch, AccMismatch, AccMissi
     {AccMatch, AccMismatch, AccMissing};
 mass_vbopaque_check_loop([{_, Vb, _} | RestExpected], [] = _Stats, AccMatch, AccMismatch, AccMissing) ->
     mass_vbopaque_check_loop(RestExpected, [], AccMatch, AccMismatch, [Vb | AccMissing]).
-
-mass_vbopaque_check_loop_test() ->
-    Expected = [{100, 0, 0},
-                {110, 1, 21},
-                {120, 2, 3},
-                {130, 3, 4}],
-    Stats = [{110, <<"21">>},
-             {115, <<"a">>},
-             {120, <<"33">>}],
-    {[1, a], [{2, 33}, b], [3, 0, c]} = mass_vbopaque_check_loop(Expected, Stats, [a], [b], [c]).
 
 get_vbucket_seqno_stats(BucketName, Vb) ->
     KV = ns_memcached:get_seqno_stats(BucketName, Vb),
@@ -389,3 +375,22 @@ do_checkpoint_commit(Bucket, VB) ->
 
     TimeAfter = erlang:monotonic_time(microsecond),
     system_stats_collector:add_histo(xdcr_checkpoint_commit_time, TimeAfter - TimeBefore).
+
+
+-ifdef(TEST).
+is_uuid_stat_key_test() ->
+    true = is_uuid_stat_key(<<"vb_5:uuid">>),
+    false = is_uuid_stat_key(<<"vb_5:seqno">>),
+    false = is_uuid_stat_key(<<>>),
+    false = is_uuid_stat_key(<<"a">>).
+
+mass_vbopaque_check_loop_test() ->
+    Expected = [{100, 0, 0},
+                {110, 1, 21},
+                {120, 2, 3},
+                {130, 3, 4}],
+    Stats = [{110, <<"21">>},
+             {115, <<"a">>},
+             {120, <<"33">>}],
+    {[1, a], [{2, 33}, b], [3, 0, c]} = mass_vbopaque_check_loop(Expected, Stats, [a], [b], [c]).
+-endif.

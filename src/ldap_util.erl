@@ -16,8 +16,11 @@
 
 -include("ns_common.hrl").
 -include_lib("eldap/include/eldap.hrl").
--include_lib("eunit/include/eunit.hrl").
 -include("cut.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([with_connection/2,
          with_authenticated_connection/4,
@@ -301,8 +304,8 @@ replace([Str | Tail], Re, Value, Res) ->
     ResStr = re:replace(Str, Re, Value2, [global, {return, list}]),
     replace(Tail, Re, Value, [ResStr | Res]).
 
--ifdef(EUNIT).
 
+-ifdef(TEST).
 escape_test() ->
 %% Examples from RFC 4515
     ?assertEqual("Parens R Us \\28for all your parenthetical needs\\29",
@@ -375,5 +378,4 @@ parse_url_test_() ->
                       Parse("ldap://ldap.example.com"
                             "/o=An%20Example%5C2C%20Inc.,c=US"))
     ].
-
 -endif.

@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2013-2018 Couchbase, Inc.
+%% @copyright 2013-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -17,7 +17,10 @@
 
 -include("ns_common.hrl").
 -include("rbac.hrl").
+
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([start_link/0]).
 -export([init/0]).
@@ -51,23 +54,6 @@ get_token_node(Token) ->
         _:_ -> {undefined, Token}
     end.
 
--ifdef(EUNIT).
-
-set_and_get_token_node_test() ->
-    ?assertEqual({undefined, undefined}, get_token_node(undefined)),
-    ?assertEqual({undefined, <<"token">>}, get_token_node(<<"token">>)),
-    ?assertEqual({undefined, "token"}, get_token_node("token")),
-    [?assertEqual({Node, Token}, get_token_node(set_token_node(Token, Node)))
-        || _    <- lists:seq(1,1000),
-           Node <- ['n_0@192.168.0.1',
-                    'n_0@::1',
-                    'n_0@2001:db8:0:0:0:ff00:42:8329',
-                    'n_0@crazy*host%name;'],
-           Token <- [couch_uuids:random(),
-                     binary_to_list(couch_uuids:random())]].
-
--endif.
-
 -spec check(auth_token() | undefined) -> false | {ok, term()}.
 check(Token) ->
     {Node, CleanToken} = get_token_node(Token),
@@ -98,3 +84,19 @@ ns_config_event_handler({read_only_user_creds, _}) ->
     revoke(ro_admin);
 ns_config_event_handler(_Evt) ->
     ok.
+
+
+-ifdef(TEST).
+set_and_get_token_node_test() ->
+    ?assertEqual({undefined, undefined}, get_token_node(undefined)),
+    ?assertEqual({undefined, <<"token">>}, get_token_node(<<"token">>)),
+    ?assertEqual({undefined, "token"}, get_token_node("token")),
+    [?assertEqual({Node, Token}, get_token_node(set_token_node(Token, Node)))
+        || _    <- lists:seq(1,1000),
+           Node <- ['n_0@192.168.0.1',
+                    'n_0@::1',
+                    'n_0@2001:db8:0:0:0:ff00:42:8329',
+                    'n_0@crazy*host%name;'],
+           Token <- [couch_uuids:random(),
+                     binary_to_list(couch_uuids:random())]].
+-endif.

@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2010-2018 Couchbase, Inc.
+%% @copyright 2010-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -18,10 +18,12 @@
 %
 -module(ns_storage_conf).
 
--include_lib("eunit/include/eunit.hrl").
-
 -include("ns_common.hrl").
 -include("ns_config.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([setup_disk_storage_conf/3,
          storage_conf_from_node_status/2,
@@ -521,7 +523,8 @@ delete_old_2i_indexes() ->
     Dir = filename:join(IxDir, "@2i"),
     misc:rm_rf(Dir).
 
--ifdef(EUNIT).
+
+-ifdef(TEST).
 extract_disk_stats_for_path_test() ->
     DiskSupStats = [{"/",297994252,97},
              {"/lib/init/rw",1921120,1},
@@ -540,6 +543,4 @@ extract_disk_stats_for_path_test() ->
                  extract_disk_stats_for_path(DiskSupStats, "/dev/sh")),
     ?assertEqual({ok, {"/dev", 10240, 2}},
                  extract_disk_stats_for_path(DiskSupStats, "/dev")).
-
-
 -endif.

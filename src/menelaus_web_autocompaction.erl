@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2017-2018 Couchbase, Inc.
+%% @copyright 2017-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -18,8 +18,11 @@
 
 -module(menelaus_web_autocompaction).
 
--include_lib("eunit/include/eunit.hrl").
 -include("ns_common.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([handle_get_global_settings/1,
          handle_set_global_settings/1,
@@ -385,8 +388,8 @@ parse_validate_settings(Params, ExpectIndex) ->
             {errors, Errors}
     end.
 
--ifdef(EUNIT).
 
+-ifdef(TEST).
 basic_parse_validate_settings_test() ->
     %% TODO: Need to mock cluster_compat_mode:is_cluster_***
     {ok, Stuff0, []} =
@@ -440,5 +443,4 @@ extra_field_parse_validate_settings_test() ->
     ?assertEqual([{<<"_">>, <<"Got unsupported fields: databaseFragmentationThreshold">>}],
                  Stuff1),
     ok.
-
 -endif.

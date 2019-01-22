@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2015-2018 Couchbase, Inc.
+%% @copyright 2015-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -16,7 +16,10 @@
 -module(query_settings_manager).
 
 -include("ns_common.hrl").
+
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -behavior(json_settings_manager).
 
@@ -93,8 +96,8 @@ general_settings_lens() ->
 curl_whitelist_settings_lens() ->
     json_settings_manager:props_lens(curl_whitelist_settings_len_props()).
 
--ifdef(EUNIT).
 
+-ifdef(TEST).
 defaults_test() ->
     Keys = fun (L) -> lists:sort([K || {K, _} <- L]) end,
 
@@ -103,5 +106,4 @@ defaults_test() ->
                  Keys(curl_whitelist_settings_defaults())),
     ?assertEqual(Keys(general_settings_lens_props()),
                  Keys(general_settings_defaults())).
-
 -endif.

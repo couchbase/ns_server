@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2018 Couchbase, Inc.
+%% @copyright 2018-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -14,7 +14,9 @@
 %% limitations under the License.
 -module(ldap_filter_parser).
 
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([
     parse/1
@@ -79,6 +81,8 @@ parse_value(Str, Line) ->
                    T =/= {str, Line, ""}],
     {lists:reverse(Tokens), Rest}.
 
+
+-ifdef(TEST).
 parse_test_() ->
     Parse = fun (Str) ->
                     {ok, Filter} = parse(Str),
@@ -138,3 +142,4 @@ parse_test_() ->
         ?_assertEqual(eldap:equalityMatch("cn", "uid=al,dc=example,dc=com"),
                       Parse("(cn=uid=al,dc=example,dc=com)"))
     ].
+-endif.

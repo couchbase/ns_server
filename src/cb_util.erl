@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2011-2016 Couchbase, Inc.
+%% @copyright 2011-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -13,6 +13,10 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 -module(cb_util).
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([vbucket_from_id/2, vbucket_from_id_fastforward/2]).
 
@@ -55,8 +59,7 @@ vbucket_from_id(Map, NumVBuckets, Id) ->
     {Index, Master}.
 
 
--include_lib("eunit/include/eunit.hrl").
-
+-ifdef(TEST).
 %% Sanity checks against vbucket lookup, checks against results from
 %% curl http://127.0.0.1:9000/pools/default/buckets/default
 %%     | ../libvbucket/vbuckettool - test foo bar test%2Fing _design/test $
@@ -109,4 +112,4 @@ map_16_3() ->
      ['n_1@192.168.1.66'], ['n_2@192.168.1.66'],
      ['n_2@192.168.1.66'], ['n_2@192.168.1.66'],
      ['n_2@192.168.1.66'], ['n_2@192.168.1.66']].
-
+-endif.

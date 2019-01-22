@@ -20,7 +20,10 @@
 
 -include("ns_common.hrl").
 -include("cut.hrl").
+
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([handle_node/2,
          build_full_node_info/2,
@@ -509,16 +512,6 @@ validate_ix_cbas_path({Param, Path}, DbPath) ->
         false -> false
     end.
 
--ifdef(EUNIT).
-validate_ix_cbas_path_test() ->
-    ?assertEqual(false, validate_ix_cbas_path({path, "/abc/def"}, "/abc/def")),
-    ?assertEqual(false, validate_ix_cbas_path({path2, "/abc/def"}, "/abc/def")),
-    ?assertMatch({true, _}, validate_ix_cbas_path({path2, "/ab/de"}, "/ab")),
-    ?assertMatch({true, _}, validate_ix_cbas_path({path2, "/ab/de/f"}, "/ab")),
-    ?assertEqual(false, validate_ix_cbas_path({path2, "/abc/def"}, "/abc/de")),
-    ?assertEqual(false, validate_ix_cbas_path({path2, "/abc"}, "/abc/hi")).
--endif.
-
 validate_and_expand_path(java_home, []) ->
     {ok, {java_home, []}};
 validate_and_expand_path(java_home, not_changed) ->
@@ -803,3 +796,14 @@ handle_setup_net_config(Req) ->
                                                400)
               end
       end, Req, form, net_config_validators()).
+
+
+-ifdef(TEST).
+validate_ix_cbas_path_test() ->
+    ?assertEqual(false, validate_ix_cbas_path({path, "/abc/def"}, "/abc/def")),
+    ?assertEqual(false, validate_ix_cbas_path({path2, "/abc/def"}, "/abc/def")),
+    ?assertMatch({true, _}, validate_ix_cbas_path({path2, "/ab/de"}, "/ab")),
+    ?assertMatch({true, _}, validate_ix_cbas_path({path2, "/ab/de/f"}, "/ab")),
+    ?assertEqual(false, validate_ix_cbas_path({path2, "/abc/def"}, "/abc/de")),
+    ?assertEqual(false, validate_ix_cbas_path({path2, "/abc"}, "/abc/hi")).
+-endif.

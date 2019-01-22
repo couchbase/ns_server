@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2018 Couchbase, Inc.
+%% @copyright 2009-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -21,7 +21,9 @@
 -include("ns_log.hrl").
 -include_lib("kernel/include/file.hrl").
 
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([do_diag_per_node_binary/0,
          handle_diag/1,
@@ -997,8 +999,8 @@ trace_memory(Format, Params) ->
     ?log_debug(Format ++ " Process Memory: ~p, Erlang Memory: ~p",
                Params ++ [PMem, erlang:memory()]).
 
--ifdef(EUNIT).
 
+-ifdef(TEST).
 split_incremental(Binary, Separator) ->
     R = split_fold_incremental(Binary, Separator,
                                fun (Part, Acc) ->
@@ -1016,5 +1018,4 @@ split_incremental_test() ->
     ?assertEqual(Split1a, split_incremental(String1, <<"\n">>)),
     ?assertEqual(Split2a, split_incremental(String2, <<"\n">>)),
     ?assertEqual(Split3a, split_incremental(String3, <<"\n">>)).
-
 -endif.

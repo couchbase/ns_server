@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2014 Couchbase, Inc.
+%% @copyright 2014-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License"); you may not
 %% use this file except in compliance with the License. You may obtain a copy of
@@ -28,9 +28,11 @@
 -module(new_concurrency_throttle).
 -behaviour(gen_server).
 
--include_lib("eunit/include/eunit.hrl").
-
 -include("ns_common.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([send_back_when_can_go/2, send_back_when_can_go/3, is_done/1]).
 -export([change_tokens/2]).
@@ -352,8 +354,8 @@ get_waiters_and_monitors(T) ->
           end, Monitors0),
     {Waiters, Monitors, SystemMonitorRecords}.
 
--ifdef(EUNIT).
 
+-ifdef(TEST).
 basic_test_() ->
     {spawn, fun do_basic_test_run/0}.
 
@@ -608,5 +610,4 @@ do_waiter_crash_test_run() ->
     end,
     {_, _, SystemMonitorRecords2} = get_waiters_and_monitors(T),
     ?assertEqual({avail, 1}, lists:keyfind(avail, 1, SystemMonitorRecords2)).
-
 -endif.

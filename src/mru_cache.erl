@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2017-2018 Couchbase, Inc.
+%% @copyright 2017-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -15,7 +15,9 @@
 
 -module(mru_cache).
 
+-ifdef(TEST).
 -include("triq.hrl").
+-endif.
 
 -export([new/2, dispose/1,
          lookup/2, add/3, update/3, delete/2,
@@ -367,7 +369,9 @@ get_one(Table, Key) ->
 update_item(Table, Key, Value) ->
     ets:update_element(Table, Key, {2, Value}).
 
-%% triq stuff
+
+-ifdef(TEST).
+
 -define(CACHE, test_cache).
 -define(CACHE_SIZE, 8).
 -define(KEYS, [list_to_atom([C]) || C <- lists:seq($a, $a + 2 * ?CACHE_SIZE)]).
@@ -737,3 +741,4 @@ prop_invariants_concurrent_() ->
 prop_concurrent_() ->
     {?FORALL(Ops, ops_conc(), check_model(Ops)),
      [{iters, 1000}]}.
+-endif.

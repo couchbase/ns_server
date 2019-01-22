@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2018 Couchbase, Inc.
+%% @copyright 2009-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -17,7 +17,10 @@
 
 -include("cut.hrl").
 -include("ns_common.hrl").
+
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([get_nodes_with_status/1,
          get_nodes_with_status/2,
@@ -304,17 +307,6 @@ filter_services_by_version(Version, Services) ->
 supported_services_for_version(ClusterVersion) ->
     filter_services_by_version(ClusterVersion, services_by_version()).
 
--ifdef(EUNIT).
-supported_services_for_version_test() ->
-    ?assertEqual([kv], supported_services_for_version(?VERSION_25)),
-    ?assertEqual([kv], supported_services_for_version(?VERSION_30)),
-    ?assertEqual(lists:sort([kv,index,n1ql]),
-                 lists:sort(supported_services_for_version(?VERSION_40))),
-    ?assertEqual(lists:sort([kv,index,n1ql]),
-                 lists:sort(supported_services_for_version(?VERSION_41))),
-    ?assertEqual(lists:sort([fts,kv,index,n1ql]),
-                 lists:sort(supported_services_for_version(?VERSION_45))).
--endif.
 
 cluster_supported_services() ->
     supported_services_for_version(cluster_compat_mode:get_compat_version()).
@@ -327,17 +319,6 @@ topology_aware_services_for_version(Version) ->
 
 topology_aware_services() ->
     topology_aware_services_for_version(cluster_compat_mode:get_compat_version()).
-
--ifdef(EUNIT).
-topology_aware_services_for_version_test() ->
-    ?assertEqual([], topology_aware_services_for_version(?VERSION_25)),
-    ?assertEqual([], topology_aware_services_for_version(?VERSION_30)),
-    ?assertEqual([], topology_aware_services_for_version(?VERSION_40)),
-    ?assertEqual(lists:sort([fts]),
-                 lists:sort(topology_aware_services_for_version(?VERSION_45))),
-    ?assertEqual(lists:sort([fts,index]),
-                 lists:sort(topology_aware_services_for_version(?VERSION_50))).
--endif.
 
 set_service_map(kv, _Nodes) ->
     %% kv is special; it's dealt with using different set of functions
@@ -433,3 +414,25 @@ user_friendly_service_name(cbas) ->
     "analytics";
 user_friendly_service_name(Service) ->
     atom_to_list(Service).
+
+
+-ifdef(TEST).
+supported_services_for_version_test() ->
+    ?assertEqual([kv], supported_services_for_version(?VERSION_25)),
+    ?assertEqual([kv], supported_services_for_version(?VERSION_30)),
+    ?assertEqual(lists:sort([kv,index,n1ql]),
+                 lists:sort(supported_services_for_version(?VERSION_40))),
+    ?assertEqual(lists:sort([kv,index,n1ql]),
+                 lists:sort(supported_services_for_version(?VERSION_41))),
+    ?assertEqual(lists:sort([fts,kv,index,n1ql]),
+                 lists:sort(supported_services_for_version(?VERSION_45))).
+
+topology_aware_services_for_version_test() ->
+    ?assertEqual([], topology_aware_services_for_version(?VERSION_25)),
+    ?assertEqual([], topology_aware_services_for_version(?VERSION_30)),
+    ?assertEqual([], topology_aware_services_for_version(?VERSION_40)),
+    ?assertEqual(lists:sort([fts]),
+                 lists:sort(topology_aware_services_for_version(?VERSION_45))),
+    ?assertEqual(lists:sort([fts,index]),
+                 lists:sort(topology_aware_services_for_version(?VERSION_50))).
+-endif.

@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2012-2018 Couchbase, Inc.
+%% @copyright 2012-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -20,7 +20,9 @@
 
 -include("ns_common.hrl").
 
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([read_existing_map/4,
          align_replicas/2]).
@@ -119,8 +121,8 @@ align_chain_replicas([H|T] = _Chain, ReplicasLeft) ->
 align_chain_replicas([] = _Chain, ReplicasLeft) ->
     lists:duplicate(ReplicasLeft, undefined).
 
--ifdef(EUNIT).
 
+-ifdef(TEST).
 align_replicas_test() ->
     [[a, b, c],
      [d, e, undefined],
@@ -186,5 +188,4 @@ recover_map_test() ->
       [e,d,b],
       [b,e,d],
       [undefined,b,e]], true} = Result3.
-
 -endif.

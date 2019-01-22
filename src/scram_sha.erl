@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2018 Couchbase, Inc.
+%% @copyright 2009-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -20,7 +20,10 @@
 -module(scram_sha).
 
 -include("cut.hrl").
+
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -define(SHA_DIGEST_SIZE, 20).
 -define(SHA256_DIGEST_SIZE, 32).
@@ -325,8 +328,8 @@ supported_types() ->
 config_upgrade_to_55() ->
     [{set, scramsha_fallback_salt, crypto:strong_rand_bytes(12)}].
 
--ifdef(EUNIT).
 
+-ifdef(TEST).
 build_client_first_message(Sha, Nonce, User) ->
     Bare = "n=" ++ User ++ ",r=" ++ Nonce,
     "SCRAM-" ++ Prefix  = www_authenticate_prefix(Sha),
@@ -462,5 +465,4 @@ cleanup_t({_, _, _, Pid}) ->
 
 scram_sha_test_() ->
     {setup, fun setup_t/0, fun cleanup_t/1, fun scram_sha_t/1}.
-
 -endif.

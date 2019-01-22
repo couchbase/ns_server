@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2018 Couchbase, Inc.
+%% @copyright 2009-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -20,7 +20,9 @@
 -include("cut.hrl").
 -include("ns_common.hrl").
 
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([cleanup/2, reset_rebalance_status/1, cleanup_apply_config/5]).
 
@@ -519,6 +521,8 @@ do_sanify_chain(Bucket, States, Chain, FutureChain, VBucket) ->
             Chain
     end.
 
+
+-ifdef(TEST).
 sanify_basic_test() ->
     %% normal case when everything matches vb map
     [a, b] = do_sanify_chain("B", [{a, 0, active}, {b, 0, replica}],
@@ -579,3 +583,4 @@ sanify_doesnt_lose_replicas_on_stopped_rebalance_test() ->
     [c] = do_sanify_chain("B", [{a, 0, dead}, {b, 0, replica},
                                 {c, 0, active}, {d, 0, replica}],
                           [a, b], [], 0).
+-endif.

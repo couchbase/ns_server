@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2018 Couchbase, Inc.
+%% @copyright 2009-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -15,9 +15,11 @@
 
 -module(stats_collector).
 
--include_lib("eunit/include/eunit.hrl").
-
 -include("ns_common.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -define(LOG_FREQ, 100).     % Dump every n collections to the log
 -define(WIDTH, 30).         % Width of the key part of the formatted logs
@@ -355,8 +357,7 @@ parse_timings(TS, Timings, LastTS, LastTimingCounters) ->
                         end).
 
 
-%% Tests
-
+-ifdef(TEST).
 parse_stats_test() ->
     Now = erlang:monotonic_time(millisecond),
     Input =
@@ -526,3 +527,4 @@ parse_stats_test() ->
     A = lists:keysort(1, ActualValues),
     ?log_debug("Expected: ~p~nActual:~p", [E, A]),
     true = (E == A).
+-endif.

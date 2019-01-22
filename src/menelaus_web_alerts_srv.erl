@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2011-2018 Couchbase, Inc.
+%% @copyright 2011-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -17,9 +17,12 @@
 -include("ns_common.hrl").
 -include("ns_stats.hrl").
 
--include_lib("eunit/include/eunit.hrl").
 %% needed to mock ns_config in tests
 -include("ns_config.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -behaviour(gen_server).
 -define(SERVER, ?MODULE).
@@ -629,9 +632,10 @@ alert_keys() ->
      ep_clock_cas_drift_threshold_exceeded,
      communication_issue].
 
+
+-ifdef(TEST).
 %% Cant currently test the alert timeouts as would need to mock
 %% calls to the archiver
-
 run_basic_test_do() ->
     MyNode = node(),
 
@@ -665,3 +669,4 @@ basic_test() ->
     after
         misc:unlink_terminate_and_wait(Pid, shutdown)
     end.
+-endif.

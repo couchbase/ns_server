@@ -23,7 +23,9 @@
 -include("pipes.hrl").
 -include("cut.hrl").
 
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([
 %% User management:
@@ -796,31 +798,6 @@ upgrade_to_4_5(Config) ->
             end
     end.
 
-upgrade_to_4_5_test() ->
-    Config = [[{saslauthd_auth_settings,
-                [{enabled,true},
-                 {admins,[<<"user1">>, <<"user2">>, <<"user1">>, <<"user3">>]},
-                 {roAdmins,[<<"user4">>, <<"user1">>]}]}]],
-    UserRoles = [{{"user1", saslauthd}, [{roles, [admin, ro_admin]}]},
-                 {{"user2", saslauthd}, [{roles, [admin]}]},
-                 {{"user3", saslauthd}, [{roles, [admin]}]},
-                 {{"user4", saslauthd}, [{roles, [ro_admin]}]}],
-    Upgraded = upgrade_to_4_5(Config),
-    ?assertMatch([{set, user_roles, _}], Upgraded),
-    [{set, user_roles, UpgradedUserRoles}] = Upgraded,
-    ?assertMatch(UserRoles, lists:sort(UpgradedUserRoles)).
-
-upgrade_to_4_5_asterisk_test() ->
-    Config = [[{saslauthd_auth_settings,
-                [{enabled,true},
-                 {admins, asterisk},
-                 {roAdmins,[<<"user1">>]}]}]],
-    UserRoles = [{{"user1", saslauthd}, [{roles, [ro_admin]}]}],
-    Upgraded = upgrade_to_4_5(Config),
-    ?assertMatch([{set, user_roles, _}], Upgraded),
-    [{set, user_roles, UpgradedUserRoles}] = Upgraded,
-    ?assertMatch(UserRoles, lists:sort(UpgradedUserRoles)).
-
 upgrade_to_50(Config, Nodes) ->
     try
         Repair =
@@ -1015,3 +992,31 @@ do_upgrade_to_55(Nodes) ->
                           NewProps = upgrade_user_roles_to_55(OldProps),
                           store_user_50_validated(Identity, NewProps, same)
                   end, UpdateUsers).
+
+
+-ifdef(TEST).
+upgrade_to_4_5_test() ->
+    Config = [[{saslauthd_auth_settings,
+                [{enabled,true},
+                 {admins,[<<"user1">>, <<"user2">>, <<"user1">>, <<"user3">>]},
+                 {roAdmins,[<<"user4">>, <<"user1">>]}]}]],
+    UserRoles = [{{"user1", saslauthd}, [{roles, [admin, ro_admin]}]},
+                 {{"user2", saslauthd}, [{roles, [admin]}]},
+                 {{"user3", saslauthd}, [{roles, [admin]}]},
+                 {{"user4", saslauthd}, [{roles, [ro_admin]}]}],
+    Upgraded = upgrade_to_4_5(Config),
+    ?assertMatch([{set, user_roles, _}], Upgraded),
+    [{set, user_roles, UpgradedUserRoles}] = Upgraded,
+    ?assertMatch(UserRoles, lists:sort(UpgradedUserRoles)).
+
+upgrade_to_4_5_asterisk_test() ->
+    Config = [[{saslauthd_auth_settings,
+                [{enabled,true},
+                 {admins, asterisk},
+                 {roAdmins,[<<"user1">>]}]}]],
+    UserRoles = [{{"user1", saslauthd}, [{roles, [ro_admin]}]}],
+    Upgraded = upgrade_to_4_5(Config),
+    ?assertMatch([{set, user_roles, _}], Upgraded),
+    [{set, user_roles, UpgradedUserRoles}] = Upgraded,
+    ?assertMatch(UserRoles, lists:sort(UpgradedUserRoles)).
+-endif.

@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2011-2018 Couchbase, Inc.
+%% @copyright 2011-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -22,7 +22,10 @@
 
 -include("cut.hrl").
 -include("ns_common.hrl").
+
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([promote_replicas/2,
          promote_replica/2,
@@ -956,119 +959,6 @@ decode_vbmap_status(0) -> ok;
 decode_vbmap_status(1) -> no_solution;
 decode_vbmap_status(_) -> error.
 
-%%
-%% Tests
-%%
-
-balance_test_() ->
-    MapSizes = [1,2,1024,4096],
-    NodeNums = [1,2,3,4,5,10,100],
-    CopySizes = [1,2,3],
-    SlaveNums = [1,2,10],
-    {timeout, 120,
-     [{inparallel,
-       [balance_test_gen(MapSize, CopySize, NumNodes, NumSlaves)
-        || NumSlaves <- SlaveNums,
-           CopySize <- CopySizes,
-           NumNodes <- NodeNums,
-           MapSize <- MapSizes,
-           trunc(trunc(MapSize/NumNodes) /
-                     NumSlaves)
-               > 0]}]}.
-
-balance_test_gen(MapSize, CopySize, NumNodes, NumSlaves) ->
-    Title = lists:flatten(
-              io_lib:format(
-                "MapSize: ~p, NumNodes: ~p, CopySize: ~p, NumSlaves: ~p~n",
-                [MapSize, NumNodes, CopySize, NumSlaves])),
-    Fun = fun () ->
-                  Map1 = random_map(MapSize, CopySize, NumNodes),
-                  Nodes = testnodes(NumNodes),
-                  Opts = [{max_slaves, NumSlaves}],
-                  Map2 = balance(Map1, Nodes, Opts),
-                  ?assert(is_balanced(Map2, Nodes, Opts))
-          end,
-    {timeout, 300, {Title, Fun}}.
-
-
-validate_test() ->
-    ?assertEqual(is_valid([]), empty),
-    ?assertEqual(is_valid([[]]), empty).
-
-do_failover_and_rebalance_back_trial(NodesCount, FailoverIndex, VBucketCount, ReplicaCount) ->
-    Nodes = testnodes(NodesCount),
-    InitialMap = lists:duplicate(VBucketCount, lists:duplicate(ReplicaCount+1, undefined)),
-    SlavesOptions = [{max_slaves, 10}],
-    FirstMap = generate_map_old(InitialMap, Nodes, SlavesOptions),
-    true = is_balanced(FirstMap, Nodes, SlavesOptions),
-    FailedNode = lists:nth(FailoverIndex, Nodes),
-    FailoverMap = promote_replicas(FirstMap, [FailedNode]),
-    LiveNodes = lists:sublist(Nodes, FailoverIndex-1) ++ lists:nthtail(FailoverIndex, Nodes),
-    false = lists:member(FailedNode, LiveNodes),
-    true = lists:member(FailedNode, Nodes),
-    ?assertEqual(NodesCount, length(LiveNodes) + 1),
-    ?assertEqual(NodesCount, length(lists:usort(LiveNodes)) + 1),
-    false = is_balanced(FailoverMap, LiveNodes, SlavesOptions),
-    true = (lists:sort(LiveNodes) =:= lists:sort(sets:to_list(map_nodes_set(FailoverMap)))),
-    RebalanceBackMap = generate_map_old(FailoverMap, Nodes, [{maps_history, [{FirstMap, SlavesOptions}]} | SlavesOptions]),
-    true = (RebalanceBackMap =/= generate_map_old(FailoverMap, Nodes, [{maps_history, [{FirstMap, lists:keyreplace(max_slaves, 1, SlavesOptions, {max_slaves, 3})}]} | SlavesOptions])),
-    ?assertEqual(FirstMap, RebalanceBackMap).
-
-failover_and_rebalance_back_one_replica_test() ->
-    do_failover_and_rebalance_back_trial(4, 1, 32, 1),
-    do_failover_and_rebalance_back_trial(6, 2, 1260, 1),
-    do_failover_and_rebalance_back_trial(12, 7, 1260, 2).
-
-do_replace_nodes_rebalance_trial(NodesCount, RemoveIndexes, AddIndexes, VBucketCount, ReplicaCount) ->
-    Nodes = testnodes(NodesCount),
-    RemoveIndexes = RemoveIndexes -- AddIndexes,
-    AddIndexes = AddIndexes -- RemoveIndexes,
-    AddedNodes = [lists:nth(I, Nodes) || I <- AddIndexes],
-    RemovedNodes = [lists:nth(I, Nodes) || I <- RemoveIndexes],
-    InitialNodes = Nodes -- AddedNodes,
-    ReplacementNodes = Nodes -- RemovedNodes,
-    InitialMap = lists:duplicate(VBucketCount, lists:duplicate(ReplicaCount+1, undefined)),
-    SlavesOptions = [{max_slaves, 10}],
-    FirstMap = generate_map_old(InitialMap, InitialNodes, SlavesOptions),
-    ReplaceMap = generate_map_old(FirstMap, ReplacementNodes, [{maps_history, [{FirstMap, SlavesOptions}]} | SlavesOptions]),
-    ?log_debug("FirstMap:~n~p~nReplaceMap:~n~p~n", [FirstMap, ReplaceMap]),
-    %% we expect all change to be just some rename (i.e. mapping
-    %% from/to) RemovedNodes to AddedNodes. We can find it by finding
-    %% matching 'master_signature'-s. I.e. lists of vbuckets where
-    %% certain node is master. We know it'll uniquely identify node
-    %% 'inside' map structurally. So it can be used as 100% precise
-    %% guard for our isomorphizm search.
-    AddedNodesSignature0 = [{N, master_vbucket_signature(ReplaceMap, N)} || N <- AddedNodes],
-    ?log_debug("AddedNodesSignature0:~n~p~n", [AddedNodesSignature0]),
-    RemovedNodesSignature0 = [{N, master_vbucket_signature(FirstMap, N)} || N <- RemovedNodes],
-    ?log_debug("RemovedNodesSignature0:~n~p~n", [RemovedNodesSignature0]),
-    AddedNodesSignature = lists:keysort(2, AddedNodesSignature0),
-    RemovedNodesSignature = lists:keysort(2, RemovedNodesSignature0),
-    Mapping = [{Rem, Add} || {{Rem, _}, {Add, _}} <- lists:zip(RemovedNodesSignature, AddedNodesSignature)],
-    ?log_debug("Discovered mapping: ~p~n", [Mapping]),
-    %% now rename according to mapping and check
-    ReplaceMap2 = lists:foldl(
-                    fun ({Rem, Add}, Map) ->
-                            misc:rewrite_value(Rem, Add, Map)
-                    end, FirstMap, Mapping),
-    ?assertEqual(ReplaceMap2, ReplaceMap).
-
-replace_nodes_rebalance_test() ->
-    do_replace_nodes_rebalance_trial(9, [7, 3], [5, 1], 32, 1),
-    do_replace_nodes_rebalance_trial(10, [2, 4], [5, 1], 1260, 2),
-    do_replace_nodes_rebalance_trial(19, [2, 4, 19, 17], [5, 1, 9, 7], 1260, 3),
-    do_replace_nodes_rebalance_trial(51, [23], [37], 1440, 2).
-
-
-master_vbucket_signature(Map, Node) ->
-    master_vbucket_signature_rec(Map, Node, [], 0).
-
-master_vbucket_signature_rec([], _Node, Acc, _Idx) ->
-    Acc;
-master_vbucket_signature_rec([[Node | _] | Rest], Node, Acc, Idx) ->
-    master_vbucket_signature_rec(Rest, Node, [Idx | Acc], Idx+1);
-master_vbucket_signature_rec([_ | Rest], Node, Acc, Idx) ->
-    master_vbucket_signature_rec(Rest, Node, Acc, Idx+1).
 
 simple_movements(MapFrom, MapTo) ->
     lists:sum([length(lists:usort(ChainTo -- ChainFrom) -- [undefined])
@@ -1171,6 +1061,117 @@ is_balanced_sort_of_strongly(Map, Nodes, Options) ->
                     end
             end
     end.
+
+
+-ifdef(TEST).
+balance_test_() ->
+    MapSizes = [1,2,1024,4096],
+    NodeNums = [1,2,3,4,5,10,100],
+    CopySizes = [1,2,3],
+    SlaveNums = [1,2,10],
+    {timeout, 120,
+     [{inparallel,
+       [balance_test_gen(MapSize, CopySize, NumNodes, NumSlaves)
+        || NumSlaves <- SlaveNums,
+           CopySize <- CopySizes,
+           NumNodes <- NodeNums,
+           MapSize <- MapSizes,
+           trunc(trunc(MapSize/NumNodes) /
+                     NumSlaves)
+               > 0]}]}.
+
+balance_test_gen(MapSize, CopySize, NumNodes, NumSlaves) ->
+    Title = lists:flatten(
+              io_lib:format(
+                "MapSize: ~p, NumNodes: ~p, CopySize: ~p, NumSlaves: ~p~n",
+                [MapSize, NumNodes, CopySize, NumSlaves])),
+    Fun = fun () ->
+                  Map1 = random_map(MapSize, CopySize, NumNodes),
+                  Nodes = testnodes(NumNodes),
+                  Opts = [{max_slaves, NumSlaves}],
+                  Map2 = balance(Map1, Nodes, Opts),
+                  ?assert(is_balanced(Map2, Nodes, Opts))
+          end,
+    {timeout, 300, {Title, Fun}}.
+
+
+validate_test() ->
+    ?assertEqual(is_valid([]), empty),
+    ?assertEqual(is_valid([[]]), empty).
+
+do_failover_and_rebalance_back_trial(NodesCount, FailoverIndex, VBucketCount, ReplicaCount) ->
+    Nodes = testnodes(NodesCount),
+    InitialMap = lists:duplicate(VBucketCount, lists:duplicate(ReplicaCount+1, undefined)),
+    SlavesOptions = [{max_slaves, 10}],
+    FirstMap = generate_map_old(InitialMap, Nodes, SlavesOptions),
+    true = is_balanced(FirstMap, Nodes, SlavesOptions),
+    FailedNode = lists:nth(FailoverIndex, Nodes),
+    FailoverMap = promote_replicas(FirstMap, [FailedNode]),
+    LiveNodes = lists:sublist(Nodes, FailoverIndex-1) ++ lists:nthtail(FailoverIndex, Nodes),
+    false = lists:member(FailedNode, LiveNodes),
+    true = lists:member(FailedNode, Nodes),
+    ?assertEqual(NodesCount, length(LiveNodes) + 1),
+    ?assertEqual(NodesCount, length(lists:usort(LiveNodes)) + 1),
+    false = is_balanced(FailoverMap, LiveNodes, SlavesOptions),
+    true = (lists:sort(LiveNodes) =:= lists:sort(sets:to_list(map_nodes_set(FailoverMap)))),
+    RebalanceBackMap = generate_map_old(FailoverMap, Nodes, [{maps_history, [{FirstMap, SlavesOptions}]} | SlavesOptions]),
+    true = (RebalanceBackMap =/= generate_map_old(FailoverMap, Nodes, [{maps_history, [{FirstMap, lists:keyreplace(max_slaves, 1, SlavesOptions, {max_slaves, 3})}]} | SlavesOptions])),
+    ?assertEqual(FirstMap, RebalanceBackMap).
+
+failover_and_rebalance_back_one_replica_test() ->
+    do_failover_and_rebalance_back_trial(4, 1, 32, 1),
+    do_failover_and_rebalance_back_trial(6, 2, 1260, 1),
+    do_failover_and_rebalance_back_trial(12, 7, 1260, 2).
+
+do_replace_nodes_rebalance_trial(NodesCount, RemoveIndexes, AddIndexes, VBucketCount, ReplicaCount) ->
+    Nodes = testnodes(NodesCount),
+    RemoveIndexes = RemoveIndexes -- AddIndexes,
+    AddIndexes = AddIndexes -- RemoveIndexes,
+    AddedNodes = [lists:nth(I, Nodes) || I <- AddIndexes],
+    RemovedNodes = [lists:nth(I, Nodes) || I <- RemoveIndexes],
+    InitialNodes = Nodes -- AddedNodes,
+    ReplacementNodes = Nodes -- RemovedNodes,
+    InitialMap = lists:duplicate(VBucketCount, lists:duplicate(ReplicaCount+1, undefined)),
+    SlavesOptions = [{max_slaves, 10}],
+    FirstMap = generate_map_old(InitialMap, InitialNodes, SlavesOptions),
+    ReplaceMap = generate_map_old(FirstMap, ReplacementNodes, [{maps_history, [{FirstMap, SlavesOptions}]} | SlavesOptions]),
+    ?log_debug("FirstMap:~n~p~nReplaceMap:~n~p~n", [FirstMap, ReplaceMap]),
+    %% we expect all change to be just some rename (i.e. mapping
+    %% from/to) RemovedNodes to AddedNodes. We can find it by finding
+    %% matching 'master_signature'-s. I.e. lists of vbuckets where
+    %% certain node is master. We know it'll uniquely identify node
+    %% 'inside' map structurally. So it can be used as 100% precise
+    %% guard for our isomorphizm search.
+    AddedNodesSignature0 = [{N, master_vbucket_signature(ReplaceMap, N)} || N <- AddedNodes],
+    ?log_debug("AddedNodesSignature0:~n~p~n", [AddedNodesSignature0]),
+    RemovedNodesSignature0 = [{N, master_vbucket_signature(FirstMap, N)} || N <- RemovedNodes],
+    ?log_debug("RemovedNodesSignature0:~n~p~n", [RemovedNodesSignature0]),
+    AddedNodesSignature = lists:keysort(2, AddedNodesSignature0),
+    RemovedNodesSignature = lists:keysort(2, RemovedNodesSignature0),
+    Mapping = [{Rem, Add} || {{Rem, _}, {Add, _}} <- lists:zip(RemovedNodesSignature, AddedNodesSignature)],
+    ?log_debug("Discovered mapping: ~p~n", [Mapping]),
+    %% now rename according to mapping and check
+    ReplaceMap2 = lists:foldl(
+                    fun ({Rem, Add}, Map) ->
+                            misc:rewrite_value(Rem, Add, Map)
+                    end, FirstMap, Mapping),
+    ?assertEqual(ReplaceMap2, ReplaceMap).
+
+replace_nodes_rebalance_test() ->
+    do_replace_nodes_rebalance_trial(9, [7, 3], [5, 1], 32, 1),
+    do_replace_nodes_rebalance_trial(10, [2, 4], [5, 1], 1260, 2),
+    do_replace_nodes_rebalance_trial(19, [2, 4, 19, 17], [5, 1, 9, 7], 1260, 3),
+    do_replace_nodes_rebalance_trial(51, [23], [37], 1440, 2).
+
+master_vbucket_signature(Map, Node) ->
+    master_vbucket_signature_rec(Map, Node, [], 0).
+
+master_vbucket_signature_rec([], _Node, Acc, _Idx) ->
+    Acc;
+master_vbucket_signature_rec([[Node | _] | Rest], Node, Acc, Idx) ->
+    master_vbucket_signature_rec(Rest, Node, [Idx | Acc], Idx+1);
+master_vbucket_signature_rec([_ | Rest], Node, Acc, Idx) ->
+    master_vbucket_signature_rec(Rest, Node, Acc, Idx+1).
 
 promote_replicas_for_graceful_failover_test() ->
     M = [[a, b, c],
@@ -1375,3 +1376,4 @@ find_matching_past_maps_test() ->
                                           {c, tag1},
                                           {d, tag2}]}],
                                  History2, [trivial]).
+-endif.

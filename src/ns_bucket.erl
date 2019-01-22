@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2018 Couchbase, Inc.
+%% @copyright 2009-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -17,7 +17,10 @@
 
 -include("ns_common.hrl").
 -include("ns_config.hrl").
+
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 %% API
 -export([auth_type/1,
@@ -915,14 +918,8 @@ config_upgrade_to_55(Config) ->
           end, Buckets),
     [{set, buckets, [{configs, NewBuckets}]}].
 
-%%
-%% Internal functions
-%%
 
-%%
-%% Tests
-%%
-
+-ifdef(TEST).
 min_live_copies_test() ->
     ?assertEqual(min_live_copies([node1], []), undefined),
     ?assertEqual(min_live_copies([node1], [{map, undefined}]), undefined),
@@ -933,3 +930,4 @@ min_live_copies_test() ->
     Map2 = [[undefined, node2], [node2, node1]],
     ?assertEqual(1, min_live_copies([node1, node2], [{map, Map2}])),
     ?assertEqual(0, min_live_copies([node1, node3], [{map, Map2}])).
+-endif.

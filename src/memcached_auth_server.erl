@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2018 Couchbase, Inc.
+%% @copyright 2018-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -16,11 +16,13 @@
 
 -behaviour(gen_server).
 
--include_lib("eunit/include/eunit.hrl").
-
 -include("ns_common.hrl").
 -include("mc_constants.hrl").
 -include("mc_entry.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 %% API
 -export([start_link/0]).
@@ -269,8 +271,8 @@ mcd_update_user_permissions(RBACJson) ->
               end
       end).
 
--ifdef(EUNIT).
 
+-ifdef(TEST).
 process_data_test() ->
     Roles = [[{[admin, security], all},
               {[{bucket, any}], [read]}],
@@ -371,5 +373,4 @@ with_mocked_users(Users, Fun) ->
         meck:unload(mc_binary)
     end,
     ok.
-
 -endif.

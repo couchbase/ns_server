@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2013-2018 Couchbase, Inc.
+%% @copyright 2013-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -19,11 +19,13 @@
 
 -behaviour(gen_server).
 
--include_lib("eunit/include/eunit.hrl").
-
 -include("ns_common.hrl").
 -include("mc_constants.hrl").
 -include("mc_entry.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -331,8 +333,8 @@ process_data_loop(Data, PacketLen, State) ->
             process_data_loop(Rest, undefined, NewState)
     end.
 
--ifdef(EUNIT).
 
+-ifdef(TEST).
 negotiate_features_test() ->
     meck:new(mc_client_binary, [passthrough]),
 
@@ -360,5 +362,4 @@ negotiate_features_test() ->
 
     true = meck:validate(mc_client_binary),
     meck:unload(mc_client_binary).
-
 -endif.

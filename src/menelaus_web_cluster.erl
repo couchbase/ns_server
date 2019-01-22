@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2017-2018 Couchbase, Inc.
+%% @copyright 2017-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -18,10 +18,13 @@
 
 -module(menelaus_web_cluster).
 
--include_lib("eunit/include/eunit.hrl").
 -include("cut.hrl").
 -include("ns_common.hrl").
 -include("menelaus_web.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([handle_engage_cluster2/1,
          handle_complete_join/1,
@@ -179,13 +182,6 @@ parse_validate_services_list(ServicesList) ->
                     {ok, RV}
             end
     end.
-
-parse_validate_services_list_test() ->
-    {error, _} = parse_validate_services_list(""),
-    ?assertEqual({ok, [index, kv, n1ql]}, parse_validate_services_list("n1ql,kv,index")),
-    {ok, [kv]} = parse_validate_services_list("kv"),
-    {error, _} = parse_validate_services_list("n1ql,kv,s"),
-    ?assertMatch({error, _}, parse_validate_services_list("neeql,kv")).
 
 parse_join_cluster_params(Params, ThisIsJoin) ->
     Version = proplists:get_value("version", Params, "3.0"),
@@ -870,7 +866,14 @@ do_handle_set_recovery_type(Req, Type, Params) ->
             reply_json(Req, {struct, Errors}, 400)
     end.
 
--ifdef(EUNIT).
+
+-ifdef(TEST).
+parse_validate_services_list_test() ->
+    {error, _} = parse_validate_services_list(""),
+    ?assertEqual({ok, [index, kv, n1ql]}, parse_validate_services_list("n1ql,kv,index")),
+    {ok, [kv]} = parse_validate_services_list("kv"),
+    {error, _} = parse_validate_services_list("n1ql,kv,s"),
+    ?assertMatch({error, _}, parse_validate_services_list("neeql,kv")).
 
 hostname_parsing_test() ->
     Urls = [" \t\r\nhttp://host:1025\n\r\t ",
@@ -901,5 +904,4 @@ hostname_parsing_test() ->
 
     ?assertEqual(ExpectedResults, Results),
     ok.
-
 -endif.

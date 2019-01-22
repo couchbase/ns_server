@@ -17,6 +17,10 @@
 
 -behaviour(gen_server2).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -callback init([term()]) -> ok | {stop, Reason :: term()} | ignore.
 -callback translate_options(term()) -> [{atom(), term()}].
 
@@ -33,7 +37,6 @@
          terminate/2, code_change/3]).
 
 -include("ns_common.hrl").
--include_lib("eunit/include/eunit.hrl").
 
 -define(MIN_CLEANUP_INTERVAL, 1000).
 -define(MAX_CLEANUP_INTERVAL, 600000).
@@ -255,8 +258,8 @@ restart_cleanup_timer(#s{cleanup_timer_ref = Ref,
     NewRef = erlang:send_after(Timeout, self(), cleanup),
     State#s{cleanup_timer_ref = NewRef}.
 
--ifdef(EUNIT).
 
+-ifdef(TEST).
 basic_cache_test() ->
     with_cache_settings(
       test_cache, [],
@@ -410,5 +413,4 @@ with_cache_settings(Name, Settings, Fun) ->
         meck:unload(ns_pubsub),
         meck:unload(ns_config)
     end.
-
 -endif.

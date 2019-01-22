@@ -24,10 +24,8 @@
 -include("couch_db.hrl").
 -include("ns_stats.hrl").
 
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
-
--ifdef(EUNIT).
--export([test/0]).
 -endif.
 
 -export([checking_bucket_uuid/3,
@@ -1630,143 +1628,6 @@ handle_cancel_view_compaction(_PoolId, Bucket, DDocId, Req) ->
     ok = compaction_api:cancel_forced_view_compaction(Bucket, DDocId),
     reply(Req, 200).
 
-%% for test
-basic_bucket_params_screening(IsNew, Name, Params, AllBuckets) ->
-    Ctx = init_bucket_validation_context(IsNew, Name, AllBuckets, undefined,
-                                         false, false, ?VERSION_46),
-    basic_bucket_params_screening(Ctx, Params).
-
--ifdef(EUNIT).
-basic_bucket_params_screening_test() ->
-    AllBuckets = [{"mcd",
-                   [{type, memcached},
-                    {num_vbuckets, 16},
-                    {num_replicas, 1},
-                    {ram_quota, 76 * ?MIB},
-                    {auth_type, none},
-                    {moxi_port, 33333}]},
-                  {"default",
-                   [{type, membase},
-                    {num_vbuckets, 16},
-                    {num_replicas, 1},
-                    {ram_quota, 512 * ?MIB},
-                    {auth_type, sasl},
-                    {sasl_password, ""}]},
-                  {"third",
-                   [{type, membase},
-                    {num_vbuckets, 16},
-                    {num_replicas, 1},
-                    {ram_quota, 768 * ?MIB},
-                    {auth_type, sasl},
-                    {sasl_password, "asdasd"}]}],
-    %% it is possible to create bucket with ok params
-    {OK1, E1} = basic_bucket_params_screening(true, "mcd",
-                                              [{"bucketType", "membase"},
-                                               {"authType", "sasl"}, {"saslPassword", ""},
-                                               {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
-                                              tl(AllBuckets)),
-    [] = E1,
-    %% missing fields have their defaults set
-    true = proplists:is_defined(num_threads, OK1),
-    true = proplists:is_defined(eviction_policy, OK1),
-    true = proplists:is_defined(replica_index, OK1),
-
-    %% it is not possible to create bucket with duplicate name
-    {_OK2, E2} = basic_bucket_params_screening(true, "mcd",
-                                               [{"bucketType", "membase"},
-                                                {"authType", "sasl"}, {"saslPassword", ""},
-                                                {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
-                                               AllBuckets),
-    true = lists:member(name, proplists:get_keys(E2)), % mcd is already present
-
-    %% it is not possible to update missing bucket. And specific format of errors
-    {OK3, E3} = basic_bucket_params_screening(false, "missing",
-                                              [{"bucketType", "membase"},
-                                               {"authType", "sasl"}, {"saslPassword", ""},
-                                               {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
-                                              AllBuckets),
-    [] = OK3,
-    [name] = proplists:get_keys(E3),
-
-    %% it is not possible to update missing bucket. And specific format of errors
-    {OK4, E4} = basic_bucket_params_screening(false, "missing",
-                                              [],
-                                              AllBuckets),
-    [] = OK4,
-    [name] = proplists:get_keys(E4),
-
-    %% it is not possible to update missing bucket. And specific format of errors
-    {OK5, E5} = basic_bucket_params_screening(false, "missing",
-                                              [{"authType", "some"}],
-                                              AllBuckets),
-    [] = OK5,
-    [name] = proplists:get_keys(E5),
-
-    %% it is possible to update only some fields
-    {OK6, E6} = basic_bucket_params_screening(false, "third",
-                                              [{"bucketType", "membase"},
-                                               {"saslPassword", "password"}],
-                                              AllBuckets),
-    {sasl_password, "password"} = lists:keyfind(sasl_password, 1, OK6),
-    {auth_type, sasl} = lists:keyfind(auth_type, 1, OK6),
-    [] = E6,
-    ?assertEqual(false, lists:keyfind(num_threads, 1, OK6)),
-    ?assertEqual(false, lists:keyfind(eviction_policy, 1, OK6)),
-    ?assertEqual(false, lists:keyfind(replica_index, 1, OK6)),
-
-    %% its not possible to update memcached bucket ram quota
-    {_OK7, E7} = basic_bucket_params_screening(false, "mcd",
-                                               [{"bucketType", "membase"},
-                                                {"authType", "sasl"}, {"saslPassword", ""},
-                                                {"ramQuotaMB", "1024"}, {"replicaNumber", "2"}],
-                                               AllBuckets),
-    ?assertEqual(true, lists:member(ramQuotaMB, proplists:get_keys(E7))),
-
-    {_OK8, E8} = basic_bucket_params_screening(true, undefined,
-                                               [{"bucketType", "membase"},
-                                                {"authType", "sasl"}, {"saslPassword", ""},
-                                                {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
-                                               AllBuckets),
-    ?assertEqual([{name, <<"Bucket name needs to be specified">>}], E8),
-
-    {_OK9, E9} = basic_bucket_params_screening(false, undefined,
-                                               [{"bucketType", "membase"},
-                                                {"authType", "sasl"}, {"saslPassword", ""},
-                                                {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
-                                               AllBuckets),
-    ?assertEqual([{name, <<"Bucket with given name doesn't exist">>}], E9),
-
-    %% it is not possible to create bucket with duplicate name in different register
-    {_OK10, E10} = basic_bucket_params_screening(true, "Mcd",
-                                                 [{"bucketType", "membase"},
-                                                  {"authType", "sasl"}, {"saslPassword", ""},
-                                                  {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
-                                                 AllBuckets),
-    ?assertEqual([{name, <<"Bucket with given name already exists">>}], E10),
-
-    %% it is not possible to create bucket with name longer than 100 characters
-    {_OK11, E11} = basic_bucket_params_screening(true, "12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901",
-                                                 [{"bucketType", "membase"},
-                                                  {"authType", "sasl"}, {"saslPassword", ""},
-                                                  {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
-                                                 AllBuckets),
-    ?assertEqual([{name, ?l2b(io_lib:format("Bucket name cannot exceed ~p characters",
-                                            [?MAX_BUCKET_NAME_LEN]))}], E11),
-
-    %% it is possible to update optional fields
-    {OK12, E12} = basic_bucket_params_screening(false, "third",
-                                                [{"bucketType", "membase"},
-                                                 {"threadsNumber", "8"},
-                                                 {"evictionPolicy", "fullEviction"}],
-                                                AllBuckets),
-    [] = E12,
-    ?assertEqual(8, proplists:get_value(num_threads, OK12)),
-    ?assertEqual(full_eviction, proplists:get_value(eviction_policy, OK12)),
-
-    ok.
-
--endif.
-
 handle_ddocs_list(PoolId, BucketName, Req) ->
     Nodes = ns_bucket:bucket_view_nodes(BucketName),
     case run_on_node({?MODULE, get_ddocs_list, [PoolId, BucketName]},
@@ -1913,11 +1774,141 @@ serve_streaming_short_bucket_info(BucketName, Req) ->
               {just_write, {write, V}}
       end, Req).
 
--ifdef(EUNIT).
 
-test() ->
-    eunit:test({module, ?MODULE},
-               [verbose]).
+-ifdef(TEST).
+%% for test
+basic_bucket_params_screening(IsNew, Name, Params, AllBuckets) ->
+    Ctx = init_bucket_validation_context(IsNew, Name, AllBuckets, undefined,
+                                         false, false, ?VERSION_46),
+    basic_bucket_params_screening(Ctx, Params).
+
+basic_bucket_params_screening_test() ->
+    AllBuckets = [{"mcd",
+                   [{type, memcached},
+                    {num_vbuckets, 16},
+                    {num_replicas, 1},
+                    {ram_quota, 76 * ?MIB},
+                    {auth_type, none},
+                    {moxi_port, 33333}]},
+                  {"default",
+                   [{type, membase},
+                    {num_vbuckets, 16},
+                    {num_replicas, 1},
+                    {ram_quota, 512 * ?MIB},
+                    {auth_type, sasl},
+                    {sasl_password, ""}]},
+                  {"third",
+                   [{type, membase},
+                    {num_vbuckets, 16},
+                    {num_replicas, 1},
+                    {ram_quota, 768 * ?MIB},
+                    {auth_type, sasl},
+                    {sasl_password, "asdasd"}]}],
+    %% it is possible to create bucket with ok params
+    {OK1, E1} = basic_bucket_params_screening(true, "mcd",
+                                              [{"bucketType", "membase"},
+                                               {"authType", "sasl"}, {"saslPassword", ""},
+                                               {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
+                                              tl(AllBuckets)),
+    [] = E1,
+    %% missing fields have their defaults set
+    true = proplists:is_defined(num_threads, OK1),
+    true = proplists:is_defined(eviction_policy, OK1),
+    true = proplists:is_defined(replica_index, OK1),
+
+    %% it is not possible to create bucket with duplicate name
+    {_OK2, E2} = basic_bucket_params_screening(true, "mcd",
+                                               [{"bucketType", "membase"},
+                                                {"authType", "sasl"}, {"saslPassword", ""},
+                                                {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
+                                               AllBuckets),
+    true = lists:member(name, proplists:get_keys(E2)), % mcd is already present
+
+    %% it is not possible to update missing bucket. And specific format of errors
+    {OK3, E3} = basic_bucket_params_screening(false, "missing",
+                                              [{"bucketType", "membase"},
+                                               {"authType", "sasl"}, {"saslPassword", ""},
+                                               {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
+                                              AllBuckets),
+    [] = OK3,
+    [name] = proplists:get_keys(E3),
+
+    %% it is not possible to update missing bucket. And specific format of errors
+    {OK4, E4} = basic_bucket_params_screening(false, "missing",
+                                              [],
+                                              AllBuckets),
+    [] = OK4,
+    [name] = proplists:get_keys(E4),
+
+    %% it is not possible to update missing bucket. And specific format of errors
+    {OK5, E5} = basic_bucket_params_screening(false, "missing",
+                                              [{"authType", "some"}],
+                                              AllBuckets),
+    [] = OK5,
+    [name] = proplists:get_keys(E5),
+
+    %% it is possible to update only some fields
+    {OK6, E6} = basic_bucket_params_screening(false, "third",
+                                              [{"bucketType", "membase"},
+                                               {"saslPassword", "password"}],
+                                              AllBuckets),
+    {sasl_password, "password"} = lists:keyfind(sasl_password, 1, OK6),
+    {auth_type, sasl} = lists:keyfind(auth_type, 1, OK6),
+    [] = E6,
+    ?assertEqual(false, lists:keyfind(num_threads, 1, OK6)),
+    ?assertEqual(false, lists:keyfind(eviction_policy, 1, OK6)),
+    ?assertEqual(false, lists:keyfind(replica_index, 1, OK6)),
+
+    %% its not possible to update memcached bucket ram quota
+    {_OK7, E7} = basic_bucket_params_screening(false, "mcd",
+                                               [{"bucketType", "membase"},
+                                                {"authType", "sasl"}, {"saslPassword", ""},
+                                                {"ramQuotaMB", "1024"}, {"replicaNumber", "2"}],
+                                               AllBuckets),
+    ?assertEqual(true, lists:member(ramQuotaMB, proplists:get_keys(E7))),
+
+    {_OK8, E8} = basic_bucket_params_screening(true, undefined,
+                                               [{"bucketType", "membase"},
+                                                {"authType", "sasl"}, {"saslPassword", ""},
+                                                {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
+                                               AllBuckets),
+    ?assertEqual([{name, <<"Bucket name needs to be specified">>}], E8),
+
+    {_OK9, E9} = basic_bucket_params_screening(false, undefined,
+                                               [{"bucketType", "membase"},
+                                                {"authType", "sasl"}, {"saslPassword", ""},
+                                                {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
+                                               AllBuckets),
+    ?assertEqual([{name, <<"Bucket with given name doesn't exist">>}], E9),
+
+    %% it is not possible to create bucket with duplicate name in different register
+    {_OK10, E10} = basic_bucket_params_screening(true, "Mcd",
+                                                 [{"bucketType", "membase"},
+                                                  {"authType", "sasl"}, {"saslPassword", ""},
+                                                  {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
+                                                 AllBuckets),
+    ?assertEqual([{name, <<"Bucket with given name already exists">>}], E10),
+
+    %% it is not possible to create bucket with name longer than 100 characters
+    {_OK11, E11} = basic_bucket_params_screening(true, "12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901",
+                                                 [{"bucketType", "membase"},
+                                                  {"authType", "sasl"}, {"saslPassword", ""},
+                                                  {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
+                                                 AllBuckets),
+    ?assertEqual([{name, ?l2b(io_lib:format("Bucket name cannot exceed ~p characters",
+                                            [?MAX_BUCKET_NAME_LEN]))}], E11),
+
+    %% it is possible to update optional fields
+    {OK12, E12} = basic_bucket_params_screening(false, "third",
+                                                [{"bucketType", "membase"},
+                                                 {"threadsNumber", "8"},
+                                                 {"evictionPolicy", "fullEviction"}],
+                                                AllBuckets),
+    [] = E12,
+    ?assertEqual(8, proplists:get_value(num_threads, OK12)),
+    ?assertEqual(full_eviction, proplists:get_value(eviction_policy, OK12)),
+
+    ok.
 
 basic_parse_validate_bucket_auto_compaction_settings_test() ->
     Value0 = parse_validate_bucket_auto_compaction_settings([{"not_autoCompactionDefined", "false"},
@@ -1960,5 +1951,4 @@ basic_parse_validate_bucket_auto_compaction_settings_test() ->
                   {view_fragmentation_threshold, {20, undefined}}],
                  Stuff1),
     ok.
-
 -endif.

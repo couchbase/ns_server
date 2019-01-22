@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2018 Couchbase, Inc.
+%% @copyright 2018-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -19,8 +19,10 @@
 -include("cut.hrl").
 -include("couch_db.hrl").
 -include("ns_common.hrl").
--include_lib("eunit/include/eunit.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([handle_pre_replicate/2,
 
@@ -107,6 +109,8 @@ validate_commit(FailoverLog, [CommitUUID, CommitSeq]) ->
                       end, ValidnessFailoverLog)
     end.
 
+
+-ifdef(TEST).
 validate_commit_test() ->
     FailoverLog = [{13685158163256569856, 0},
                    {4598340681889701145, 48}],
@@ -114,3 +118,4 @@ validate_commit_test() ->
     CommitSeq = 27,
     false = validate_commit(FailoverLog, [CommitUUID, CommitSeq]),
     true = validate_commit(FailoverLog, [13685158163256569856, CommitSeq]).
+-endif.

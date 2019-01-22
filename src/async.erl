@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2017-2018 Couchbase, Inc.
+%% @copyright 2017-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -17,7 +17,10 @@
 
 -include("cut.hrl").
 -include("ns_common.hrl").
+
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([start/1, start/2,
          start_many/2, start_many/3,
@@ -478,7 +481,8 @@ maybe_log_down_message({'DOWN', _MRef, process, Pid, Reason}) ->
                          "terminated abnormally (reason = ~p)", [Pid, Reason])
     end.
 
--ifdef(EUNIT).
+
+-ifdef(TEST).
 abort_after_test() ->
     A1 = async:start(?cut(timer:sleep(10000)), [{abort_after, 100}]),
     ?assertExit(timeout, async:wait(A1)),

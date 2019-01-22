@@ -18,11 +18,13 @@
 -module(menelaus_util).
 -author('Northscale <info@northscale.com>').
 
--include_lib("eunit/include/eunit.hrl").
-
 -include("ns_common.hrl").
 -include("menelaus_web.hrl").
 -include("pipes.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([redirect_permanently/2,
          reply/2,
@@ -569,8 +571,8 @@ choose_node_consistently(Req, Nodes) ->
     N = erlang:phash2({Memo, Peer}, length(Nodes)) + 1,
     lists:nth(N, Nodes).
 
--ifdef(EUNIT).
 
+-ifdef(TEST).
 compute_sec_headers_test() ->
     ?assertEqual(lists:sort(?SEC_HEADERS), lists:sort(compute_sec_headers([]))),
     ?assertEqual(lists:sort([{"hdr", "val"} | ?SEC_HEADERS]),
@@ -621,5 +623,4 @@ response_headers_test() ->
                                    {"Duplicate", "second"}])),
     true = meck:validate(ns_config),
     meck:unload(ns_config).
-
 -endif.

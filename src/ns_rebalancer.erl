@@ -25,7 +25,9 @@
 -include("ns_common.hrl").
 -include("ns_stats.hrl").
 
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([orchestrate_failover/1,
          check_graceful_failover_possible/2,
@@ -1095,93 +1097,6 @@ find_delta_recovery_map(CurrentMap, FailoverVBs, MatchingMaps) ->
 compare_vb_dict(D1, D2) ->
     lists:sort(dict:to_list(D1)) =:= lists:sort(dict:to_list(D2)).
 
--ifdef(EUNIT).
-find_delta_recovery_map_test() ->
-    Map = [[b, undefined],
-           [b, undefined],
-           [b, undefined],
-           [b, c],
-           [c, b],
-           [c, b],
-           [d, c],
-           [d, c]],
-    FailoverVBs = dict:from_list([{a, [0, 1, 2]}]),
-
-    Matching = [[a, b],
-                [a, b],
-                [b, a],
-                [b, c],
-                [c, b],
-                [c, b],
-                [d, c],
-                [d, c]],
-
-    NonMatching1 = [[a, b],
-                    [a, b],
-                    [b, a],
-                    [b, a],
-                    [c, b],
-                    [c, b],
-                    [d, c],
-                    [d, c]],
-
-    NonMatching2 = [[a, b],
-                    [a, b],
-                    [b, a],
-                    [b, c],
-                    [c, b],
-                    [c, b],
-                    [d, b],
-                    [d, b]],
-
-    {ok, Matching} = find_delta_recovery_map(Map, FailoverVBs, [Matching]),
-
-    not_found = find_delta_recovery_map(Map, FailoverVBs, [NonMatching1]),
-    not_found = find_delta_recovery_map(Map, FailoverVBs, [NonMatching2]),
-    not_found = find_delta_recovery_map(Map, FailoverVBs,
-                                        [NonMatching1, NonMatching2]),
-
-    {ok, Matching} = find_delta_recovery_map(Map, FailoverVBs,
-                                             [NonMatching1,
-                                              Matching, NonMatching2]),
-
-    %% This test is essentially for compare_vb_dict, and this fun was
-    %% introduced as dict's don't support proper comparison, i.e., D1 =:= D2
-    %% is not an accurate comparison.
-    Map2 = [['n_0@10.17.2.22', 'n_1@127.0.0.1'],
-            ['n_0@10.17.2.22', 'n_2@127.0.0.1'],
-            ['n_1@127.0.0.1', 'n_0@10.17.2.22'],
-            ['n_1@127.0.0.1', undefined],
-            ['n_2@127.0.0.1', 'n_0@10.17.2.22'],
-            ['n_2@127.0.0.1', undefined],
-            ['n_1@127.0.0.1', undefined],
-            ['n_2@127.0.0.1', undefined]],
-    MatchingMaps = [['n_0@10.17.2.22', 'n_1@127.0.0.1'],
-                    ['n_0@10.17.2.22', 'n_2@127.0.0.1'],
-                    ['n_1@127.0.0.1', 'n_0@10.17.2.22'],
-                    ['n_1@127.0.0.1', 'n_3@127.0.0.1'],
-                    ['n_2@127.0.0.1', 'n_0@10.17.2.22'],
-                    ['n_2@127.0.0.1', 'n_3@127.0.0.1'],
-                    ['n_3@127.0.0.1', 'n_1@127.0.0.1'],
-                    ['n_3@127.0.0.1', 'n_2@127.0.0.1']],
-    FailoverVBs2 = dict:from_list([{'n_3@127.0.0.1', [3, 5, 6, 7]}]),
-    {ok, MatchingMaps} = find_delta_recovery_map(Map2, FailoverVBs2, [MatchingMaps]).
-
-compare_vb_dict_test() ->
-    List1 = [{aa2, [0, 1, 2]}, {c, [0, 1, 2]}, {aa1, [0, 1, 2]}],
-    List2 = [{aa3, [0, 1, 2]}],
-
-    D1 = dict:from_list(List1),
-    D2 = dict:from_list(List2),
-    DMerge = dict:merge(fun (_K, _V1, _V2) -> [] end, D1, D2),
-
-    ListAll = lists:sort(List1 ++ List2),
-    DAll = dict:from_list(ListAll),
-
-    ?assertEqual(false, DAll =:= DMerge),
-    ?assertEqual(true, compare_vb_dict(DAll,DMerge)).
-
--endif.
 
 map_to_vbuckets_dict(Map) ->
     lists:foldr(
@@ -1191,20 +1106,6 @@ map_to_vbuckets_dict(Map) ->
                           end,
                           Acc, lists:filter(_ =/= undefined, Chain))
       end, dict:new(), misc:enumerate(Map, 0)).
-
--ifdef(EUNIT).
-map_to_vbuckets_dict_test() ->
-    Map = [[a, b],
-           [a, b],
-           [b, a],
-           [b, c],
-           [c, b],
-           [c, b]],
-    ?assertEqual([{a, [0, 1, 2]},
-                  {b, [0, 1, 2, 3, 4, 5]},
-                  {c, [3, 4, 5]}],
-                 lists:sort(dict:to_list(map_to_vbuckets_dict(Map)))).
--endif.
 
 node_failover_vbuckets(Config, Node) ->
     ns_config:search(Config, {node, Node, failover_vbuckets}, []).
@@ -1289,26 +1190,6 @@ build_delta_recovery_buckets_loop(MappedConfigs, DeltaRecoveryBuckets, Acc) ->
                     build_delta_recovery_buckets_loop(RestMapped, DeltaRecoveryBuckets, Acc)
             end
     end.
-
-membase_delta_recovery_buckets_test() ->
-    MembaseBuckets = [{"b1", conf}, {"b3", conf}],
-    ["b1", "b3"] = membase_delta_recovery_buckets(["b1", "b2", "b3", "b4"], MembaseBuckets),
-    ["b1", "b3"] = membase_delta_recovery_buckets(all, MembaseBuckets).
-
-build_delta_recovery_buckets_loop_test() ->
-    MappedConfigs = [{"b1", conf1, {map, opts}},
-                     {"b2", conf2, false}],
-    All = membase_delta_recovery_buckets(all, [{"b1", conf}, {"b2", conf}]),
-
-    {ok, []} = build_delta_recovery_buckets_loop([], All, []),
-    {error, not_possible} = build_delta_recovery_buckets_loop(MappedConfigs, All, []),
-    {error, not_possible} = build_delta_recovery_buckets_loop(MappedConfigs, ["b2"], []),
-    {error, not_possible} = build_delta_recovery_buckets_loop(MappedConfigs, ["b1", "b2"], []),
-    {ok, []} = build_delta_recovery_buckets_loop(MappedConfigs, [], []),
-    ?assertEqual({ok, [{"b1", conf1, {map, opts}}]},
-                 build_delta_recovery_buckets_loop(MappedConfigs, ["b1"], [])),
-    ?assertEqual({ok, [{"b1", conf1, {map, opts}}]},
-                 build_delta_recovery_buckets_loop([hd(MappedConfigs)], All, [])).
 
 apply_delta_recovery_buckets([], _DeltaNodes, _CurrentBuckets) ->
     ok;
@@ -1685,3 +1566,123 @@ trigger_condition_for_Nth_move(Step, Kind, 1, Condition) ->
     end;
 trigger_condition_for_Nth_move(Step, Kind, N, Condition) ->
     testconditions:set(Step, {for_vb_move, Kind, N - 1, Condition}).
+
+
+-ifdef(TEST).
+find_delta_recovery_map_test() ->
+    Map = [[b, undefined],
+           [b, undefined],
+           [b, undefined],
+           [b, c],
+           [c, b],
+           [c, b],
+           [d, c],
+           [d, c]],
+    FailoverVBs = dict:from_list([{a, [0, 1, 2]}]),
+
+    Matching = [[a, b],
+                [a, b],
+                [b, a],
+                [b, c],
+                [c, b],
+                [c, b],
+                [d, c],
+                [d, c]],
+
+    NonMatching1 = [[a, b],
+                    [a, b],
+                    [b, a],
+                    [b, a],
+                    [c, b],
+                    [c, b],
+                    [d, c],
+                    [d, c]],
+
+    NonMatching2 = [[a, b],
+                    [a, b],
+                    [b, a],
+                    [b, c],
+                    [c, b],
+                    [c, b],
+                    [d, b],
+                    [d, b]],
+
+    {ok, Matching} = find_delta_recovery_map(Map, FailoverVBs, [Matching]),
+
+    not_found = find_delta_recovery_map(Map, FailoverVBs, [NonMatching1]),
+    not_found = find_delta_recovery_map(Map, FailoverVBs, [NonMatching2]),
+    not_found = find_delta_recovery_map(Map, FailoverVBs,
+                                        [NonMatching1, NonMatching2]),
+
+    {ok, Matching} = find_delta_recovery_map(Map, FailoverVBs,
+                                             [NonMatching1,
+                                              Matching, NonMatching2]),
+
+    %% This test is essentially for compare_vb_dict, and this fun was
+    %% introduced as dict's don't support proper comparison, i.e., D1 =:= D2
+    %% is not an accurate comparison.
+    Map2 = [['n_0@10.17.2.22', 'n_1@127.0.0.1'],
+            ['n_0@10.17.2.22', 'n_2@127.0.0.1'],
+            ['n_1@127.0.0.1', 'n_0@10.17.2.22'],
+            ['n_1@127.0.0.1', undefined],
+            ['n_2@127.0.0.1', 'n_0@10.17.2.22'],
+            ['n_2@127.0.0.1', undefined],
+            ['n_1@127.0.0.1', undefined],
+            ['n_2@127.0.0.1', undefined]],
+    MatchingMaps = [['n_0@10.17.2.22', 'n_1@127.0.0.1'],
+                    ['n_0@10.17.2.22', 'n_2@127.0.0.1'],
+                    ['n_1@127.0.0.1', 'n_0@10.17.2.22'],
+                    ['n_1@127.0.0.1', 'n_3@127.0.0.1'],
+                    ['n_2@127.0.0.1', 'n_0@10.17.2.22'],
+                    ['n_2@127.0.0.1', 'n_3@127.0.0.1'],
+                    ['n_3@127.0.0.1', 'n_1@127.0.0.1'],
+                    ['n_3@127.0.0.1', 'n_2@127.0.0.1']],
+    FailoverVBs2 = dict:from_list([{'n_3@127.0.0.1', [3, 5, 6, 7]}]),
+    {ok, MatchingMaps} = find_delta_recovery_map(Map2, FailoverVBs2, [MatchingMaps]).
+
+compare_vb_dict_test() ->
+    List1 = [{aa2, [0, 1, 2]}, {c, [0, 1, 2]}, {aa1, [0, 1, 2]}],
+    List2 = [{aa3, [0, 1, 2]}],
+
+    D1 = dict:from_list(List1),
+    D2 = dict:from_list(List2),
+    DMerge = dict:merge(fun (_K, _V1, _V2) -> [] end, D1, D2),
+
+    ListAll = lists:sort(List1 ++ List2),
+    DAll = dict:from_list(ListAll),
+
+    ?assertEqual(false, DAll =:= DMerge),
+    ?assertEqual(true, compare_vb_dict(DAll,DMerge)).
+
+map_to_vbuckets_dict_test() ->
+    Map = [[a, b],
+           [a, b],
+           [b, a],
+           [b, c],
+           [c, b],
+           [c, b]],
+    ?assertEqual([{a, [0, 1, 2]},
+                  {b, [0, 1, 2, 3, 4, 5]},
+                  {c, [3, 4, 5]}],
+                 lists:sort(dict:to_list(map_to_vbuckets_dict(Map)))).
+
+membase_delta_recovery_buckets_test() ->
+    MembaseBuckets = [{"b1", conf}, {"b3", conf}],
+    ["b1", "b3"] = membase_delta_recovery_buckets(["b1", "b2", "b3", "b4"], MembaseBuckets),
+    ["b1", "b3"] = membase_delta_recovery_buckets(all, MembaseBuckets).
+
+build_delta_recovery_buckets_loop_test() ->
+    MappedConfigs = [{"b1", conf1, {map, opts}},
+                     {"b2", conf2, false}],
+    All = membase_delta_recovery_buckets(all, [{"b1", conf}, {"b2", conf}]),
+
+    {ok, []} = build_delta_recovery_buckets_loop([], All, []),
+    {error, not_possible} = build_delta_recovery_buckets_loop(MappedConfigs, All, []),
+    {error, not_possible} = build_delta_recovery_buckets_loop(MappedConfigs, ["b2"], []),
+    {error, not_possible} = build_delta_recovery_buckets_loop(MappedConfigs, ["b1", "b2"], []),
+    {ok, []} = build_delta_recovery_buckets_loop(MappedConfigs, [], []),
+    ?assertEqual({ok, [{"b1", conf1, {map, opts}}]},
+                 build_delta_recovery_buckets_loop(MappedConfigs, ["b1"], [])),
+    ?assertEqual({ok, [{"b1", conf1, {map, opts}}]},
+                 build_delta_recovery_buckets_loop([hd(MappedConfigs)], All, [])).
+-endif.

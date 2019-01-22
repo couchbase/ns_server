@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2018 Couchbase, Inc.
+%% @copyright 2009-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -26,9 +26,11 @@
 
 -behaviour(gen_server).
 
--include_lib("eunit/include/eunit.hrl").
-
 -include("ns_common.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -define(PULL_TIMEOUT, ?get_timeout(pull, 10000)).
 -define(SELF_PULL_TIMEOUT, ?get_timeout(self_pull, 30000)).
@@ -149,24 +151,6 @@ accumulate_X(Acc, X) ->
 
 accumulate_pull_and_push(Nodes) ->
     accumulate_X(lists:sort(Nodes), pull_and_push).
-
-accumulate_pull_and_push_test() ->
-    receive
-        {pull_and_push, _} -> exit(bad)
-    after 0 -> ok
-    end,
-
-    L1 = [a,b],
-    L2 = [b,c,e],
-    L3 = [a,d],
-    self() ! {pull_and_push, L2},
-    self() ! {pull_and_push, L3},
-    ?assertEqual([a,b,c,d,e],
-                 accumulate_pull_and_push(L1)),
-    receive
-        {pull_and_push, _} -> exit(bad)
-    after 0 -> ok
-    end.
 
 accumulate_push_keys(InitialKeys) ->
     accumulate_X(lists:sort(InitialKeys), push_keys).
@@ -422,3 +406,24 @@ merge_remote_configs(KVLists) ->
 do_merge_one_remote_config(UUID, RemoteKVList, AccKVList, AccTouched) ->
     {Merged, Touched} = ns_config:merge_kv_pairs(RemoteKVList, AccKVList, UUID),
     {Merged, ordsets:union(AccTouched, Touched)}.
+
+
+-ifdef(TEST).
+accumulate_pull_and_push_test() ->
+    receive
+        {pull_and_push, _} -> exit(bad)
+    after 0 -> ok
+    end,
+
+    L1 = [a,b],
+    L2 = [b,c,e],
+    L3 = [a,d],
+    self() ! {pull_and_push, L2},
+    self() ! {pull_and_push, L3},
+    ?assertEqual([a,b,c,d,e],
+                 accumulate_pull_and_push(L1)),
+    receive
+        {pull_and_push, _} -> exit(bad)
+    after 0 -> ok
+    end.
+-endif.

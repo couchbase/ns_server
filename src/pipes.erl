@@ -20,7 +20,10 @@
 
 -include("pipes.hrl").
 -include("cut.hrl").
+
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([compose/1, compose/2, run/3, run/2,
          fold/3, foreach/2, filter/1, filterfold/2, map/1, collect/0,
@@ -399,8 +402,8 @@ with_state(Body, InitState) ->
         erlang:erase(Ref)
     end.
 
--ifdef(EUNIT).
 
+-ifdef(TEST).
 even(I) ->
     I rem 2 =/= 0.
 
@@ -513,5 +516,4 @@ do_test_buffer(Binary, ChunkSize, BufferSize, Validator) ->
       fun (Chunk) ->
               Validator(Chunk)
       end, Chunks).
-
 -endif.

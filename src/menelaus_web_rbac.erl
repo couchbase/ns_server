@@ -23,7 +23,9 @@
 -include("pipes.hrl").
 -include("rbac.hrl").
 
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([handle_saslauthd_auth_settings/1,
          handle_saslauthd_auth_settings_post/1,
@@ -1604,8 +1606,7 @@ assert_groups_and_ldap_enabled() ->
     menelaus_util:assert_is_enterprise(),
     menelaus_util:assert_is_madhatter().
 
--ifdef(EUNIT).
-%% Tests
+-ifdef(TEST).
 parse_roles_test() ->
     Res = parse_roles("admin, bucket_admin[test.test], bucket_admin[*], "
                       "no_such_atom, bucket_admin[default"),
@@ -1822,5 +1823,4 @@ gen_password_monkey_test_() ->
                    [gen_password(GetRandomPolicy()) || _ <- lists:seq(1,100000)]
            end,
     {timeout, 100, Test}.
-
 -endif.

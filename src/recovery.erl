@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2013-2018 Couchbase, Inc.
+%% @copyright 2013-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -16,7 +16,10 @@
 -module(recovery).
 
 -include("ns_common.hrl").
+
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([start_recovery/1,
          get_recovery_map/1, commit_vbucket/2, note_commit_vbucket_done/2,
@@ -199,7 +202,8 @@ compute_missing_vbuckets(Map) ->
               end
       end, [], misc:enumerate(Map, 0)).
 
--ifdef(EUNIT).
+
+-ifdef(TEST).
 
 -define(NUM_TEST_ATTEMPTS, 200).
 -define(MAX_NUM_SERVERS, 50).
@@ -243,5 +247,4 @@ compute_recovery_map_test__(NumServers, NumCopies) ->
 
               AccMap1
       end, Map, FailoverServers).
-
 -endif.

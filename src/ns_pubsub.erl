@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2018 Couchbase, Inc.
+%% @copyright 2009-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -15,11 +15,13 @@
 
 -module(ns_pubsub).
 
--include("ns_common.hrl").
-
 -behaviour(gen_event).
 
+-include("ns_common.hrl").
+
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -record(state, {func, func_state}).
 
@@ -165,8 +167,8 @@ do_subscribe_link_continue(Name, Parent, Handler) ->
 
     exit(ExitReason).
 
-%% Tests
--ifdef(EUNIT).
+
+-ifdef(TEST).
 
 -define(N, 100).
 -define(TABLE, ns_pubsub_test_table).
@@ -386,5 +388,4 @@ test_parent_crash() ->
 simply_sleep() ->
     timer:sleep(10000),
     simply_sleep().
-
 -endif.

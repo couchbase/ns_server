@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2017-2018 Couchbase, Inc.
+%% @copyright 2017-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -23,7 +23,10 @@
 -module(generic).
 
 -include("generic.hrl").
+
+-ifdef(TEST).
 -include("triq.hrl").
+-endif.
 
 -export([transformb/2, transformb/3,
          transformt/2, transformt/3,
@@ -179,6 +182,8 @@ do_ignoring_state(BaseFun, WrappedFun, Term) ->
     {NewTerm, unused} = BaseFun(WrappedFun, unused, Term),
     NewTerm.
 
+
+-ifdef(TEST).
 %% test-related helpers
 random_term([]) ->
     oneof([{}, [], #{}]);
@@ -309,3 +314,4 @@ prop_query_sum() ->
 forall_terms(Prop) ->
     ?FORALL(Items, list(int()),
             ?FORALL(Term, random_term(Items), Prop(Items, Term))).
+-endif.

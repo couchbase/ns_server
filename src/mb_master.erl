@@ -21,7 +21,10 @@
 
 -include("cut.hrl").
 -include("ns_common.hrl").
+
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 %% Constants and definitions
 -define(HEARTBEAT_INTERVAL, 2000).
@@ -494,8 +497,8 @@ strongly_lower_priority_node({SelfVersion, _SelfNode},
 announce_leader(Node) ->
     gen_event:sync_notify(leader_events, {new_leader, Node}).
 
--ifdef(EUNIT).
 
+-ifdef(TEST).
 priority_test() ->
     ?assertEqual(true,
                  higher_priority_node({misc:parse_version("1.7.1"),
@@ -516,5 +519,4 @@ priority_test() ->
                                              'ns_2@192.168.1.1'},
                                             {misc:parse_version("2.0"),
                                              'ns_1@192.168.1.1'})).
-
 -endif.

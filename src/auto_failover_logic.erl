@@ -1,5 +1,5 @@
 %% @author Couchbase, Inc <info@couchbase.com>
-%% @copyright 2011-2018 Couchbase, Inc.
+%% @copyright 2011-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -15,9 +15,11 @@
 %%
 -module(auto_failover_logic).
 
--include_lib("eunit/include/eunit.hrl").
-
 -include("ns_common.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([process_frame/5,
          init_state/1,
@@ -268,9 +270,6 @@ process_group_down_state(DownSG,
                               state = nearly_down}
     end.
 
-%% TODO - temp to make eunit happy. Update eunit tests.
-process_frame(Nodes, DownNodes, State, SvcConfig) ->
-    process_frame(Nodes, DownNodes, State, SvcConfig, []).
 process_frame(Nodes, DownNodes, State, SvcConfig, DownSG) ->
     SortedNodes = ordsets:from_list(Nodes),
     SortedDownNodes = ordsets:from_list(DownNodes),
@@ -539,14 +538,18 @@ service_failover_min_node_count(mobile) ->
 service_failover_min_node_count(example) ->
     ?AUTO_FAILOVER_EXAMPLE_NODE_COUNT.
 
--ifdef(EUNIT).
 
+-ifdef(TEST).
 service_failover_min_node_count_test() ->
     Services = ns_cluster_membership:supported_services(),
     lists:foreach(
       fun (Service) ->
               true = is_integer(service_failover_min_node_count(Service))
       end, Services).
+
+%% TODO - temp to make eunit happy. Update eunit tests.
+process_frame(Nodes, DownNodes, State, SvcConfig) ->
+    process_frame(Nodes, DownNodes, State, SvcConfig, []).
 
 process_frame_no_action(0, _Nodes, _DownNodes, State, _SvcConfig) ->
     State;
@@ -663,5 +666,4 @@ mail_down_warning_down_up_down_test() ->
     State4 = process_frame_no_action(1, Nodes, [], State3, SvcConfig),
     State5 = process_frame_no_action(2, Nodes, DownNode1, State4, SvcConfig),
     {[{mail_down_warning, DN}], _} = process_frame(Nodes, DownNode2, State5, SvcConfig).
-
 -endif.
