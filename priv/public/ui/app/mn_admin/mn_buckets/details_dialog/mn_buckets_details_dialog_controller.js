@@ -14,6 +14,7 @@
     vm.bucketConf = bucketConf;
     vm.validationKeeper = {};
     vm.onSubmit = onSubmit;
+    vm.$uibModalInstance = $uibModalInstance;
 
     function onSubmit() {
       var data = mnBucketsDetailsDialogService.prepareBucketConfigForSaving(vm.bucketConf, vm.autoCompactionSettings, $scope.poolDefault, $scope.pools);

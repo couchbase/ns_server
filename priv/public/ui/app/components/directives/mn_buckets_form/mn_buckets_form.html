@@ -1,16 +1,25 @@
 <div class="forms">
   <div class="formrow">
     <div class="row">
-    <label>Name</label>
-    <a
-       ng-if="rbac && rbac.cluster.admin.security.read"
-       class="cursor-pointer"
-       uib-tooltip-html="users.join('<br>')"
-       tooltip-append-to-body="true"
-       tooltip-placement="right">
-      <span class="text-smaller">authorized users ({{users.length}})</span>
-    </a>
-  </div>
+      <label>Name</label>
+      <script type="text/ng-template" id="users-tooltip.html">
+       <div ng-if="users.length > 3">
+       <div ng-repeat="user in users.slice(0, 3)">{{user}}</div>
+       <a ng-click="goToUsersPage()">more ...</a>
+       </div>
+       <div ng-if="users.length < 4">
+       <div ng-repeat="user in users">{{user}}</div>
+       </div>
+      </script>
+      <a
+        ng-if="rbac && rbac.cluster.admin.security.read"
+        class="cursor-pointer"
+        uib-tooltip-template="'users-tooltip.html'"
+        tooltip-append-to-body="true"
+        tooltip-placement="right">
+        <span class="text-smaller">authorized users</span>
+      </a>
+    </div>
 
     <input
        type="text"

@@ -281,6 +281,9 @@
     <script id="template/tooltip/tooltip-popup.html" type="text/ng-template">
       <div class="tooltip-inner" ng-bind="content"></div>
     </script>
+    <script id="template/tooltip/tooltip-template-popup.html" type="text/ng-template">
+      <div class="tooltip-inner" uib-tooltip-template-transclude="contentExp()" tooltip-template-transclude-scope="originScope()"></div>
+    </script>
     <script id="template/tooltip/tooltip-html-popup.html" type="text/ng-template">
       <div class="tooltip-inner" ng-bind-html="contentExp()"></div>
     </script>

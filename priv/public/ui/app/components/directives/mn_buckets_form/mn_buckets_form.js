@@ -14,7 +14,7 @@
     ])
     .directive('mnBucketsForm', mnBucketsFormDirective);
 
-  function mnBucketsFormDirective($http, mnBucketsDetailsDialogService, mnPromiseHelper, mnUserRolesService, $q, mnPermissions) {
+  function mnBucketsFormDirective($http, mnBucketsDetailsDialogService, mnPromiseHelper, mnUserRolesService, $q, mnPermissions, $state) {
 
     var mnBucketsForm = {
       restrict: 'A',
@@ -24,7 +24,8 @@
         validation: '=',
         poolDefault: '=?',
         pools: '=',
-        rbac: '='
+        rbac: '=',
+        uibModal: '=?'
       },
       isolate: false,
       replace: true,
@@ -39,7 +40,7 @@
       scope.$watch('bucketConf.' + value, function (newValue) {
         if (initialValue != newValue) {
           scope[value + 'Warning'] = 'Changing ' + (value === 'evictionPolicy' ? 'eviction policy' : 'bucket priority')  +
-                                     ' will restart the bucket. This will lead to closing all open connections and some downtime';
+            ' will restart the bucket. This will lead to closing all open connections and some downtime';
         } else {
           scope[value + 'Warning'] = ''
         }
@@ -50,19 +51,23 @@
     }
 
     function controller($scope) {
+      $scope.goToUsersPage = function () {
+        $scope.uibModal.dismiss();
+        $state.go("app.admin.security.userRoles");
+      };
       $scope.replicaNumberEnabled = $scope.bucketConf.replicaNumber != 0;
       $scope.canChangeBucketsSettings = $scope.bucketConf.isNew;
 
       if ($scope.rbac && $scope.rbac.cluster.admin.security.read) {
         mnPermissions.getBucketPermissions(getBucketName($scope)).then(function (permissions) {
           var queries = permissions.map(function (permission) {
-            return mnUserRolesService.getUsers({permission: permission});
+            return mnUserRolesService.getUsers({permission: permission, pageSize: 4});
           });
 
           return $q.all(queries).then(function (resps) {
             var uniqUsers = {};
-            var all = resps.forEach(function (resp) {
-              resp.data.forEach(function (user) {
+            resps.forEach(function (resp) {
+              resp.data.users.forEach(function (user) {
                 var name = "";
 
                 if (user.id.length > 16) {
@@ -116,11 +121,11 @@
             ignore_warnings: $scope.bucketConf.ignoreWarnings ? 1 : 0
           }
         }))
-        .getPromise()
-        .then(adaptValidationResult, adaptValidationResult)
-        .then(function (result) {
-          $scope.validation.result = result;
-        });
+          .getPromise()
+          .then(adaptValidationResult, adaptValidationResult)
+          .then(function (result) {
+            $scope.validation.result = result;
+          });
       }, true);
     }
   }
