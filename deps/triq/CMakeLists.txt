@@ -1,2 +1,1 @@
-REBAR (TARGET triq)
-ADD_DEPENDENCIES (ns_realclean triq-clean)
+REBAR (TARGET triq CLEAN_HOOK ns_realclean)

@@ -70,7 +70,6 @@ ADD_CUSTOM_TARGET (minify ALL
 ADD_CUSTOM_TARGET (ns_realclean
   COMMAND "${CMAKE_COMMAND}" -E remove -f cov.html erl_crash.dump deps/vbmap/vbmap
   COMMAND "${CMAKE_COMMAND}" -E remove_directory test/log
-  COMMAND "${CMAKE_COMMAND}" -E remove_directory ebin
   COMMAND "${CMAKE_COMMAND}" -E remove -f rebar.config
   COMMAND "${CMAKE_COMMAND}" -E remove -f src/ns_server.app.src
   COMMAND "${CMAKE_COMMAND}" -E remove -f ${app_min_js}
@@ -111,7 +110,7 @@ ADD_CUSTOM_TARGET (ns_distclean)
 ADD_DEPENDENCIES (ns_distclean ns_realclean ns_dataclean)
 
 ADD_SUBDIRECTORY (deps)
-REBAR (TARGET ns_server NOCLEAN DEPENDS ns_cfg ale triq meck)
+REBAR (TARGET ns_server CLEAN_HOOK ns_realclean DEPENDS ns_cfg ale triq meck)
 
 ADD_CUSTOM_TARGET (erlang_deps
   DEPENDS gen_smtp ale ns_babysitter ns_couchdb triq meck)

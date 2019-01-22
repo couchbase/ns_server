@@ -1,2 +1,1 @@
-REBAR (TARGET meck)
-ADD_DEPENDENCIES (ns_realclean meck-clean)
+REBAR (TARGET meck CLEAN_HOOK ns_realclean)

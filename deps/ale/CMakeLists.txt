@@ -1,3 +1,2 @@
-REBAR (TARGET ale)
-ADD_DEPENDENCIES (ns_realclean ale-clean)
+REBAR (TARGET ale CLEAN_HOOK ns_realclean)
 INSTALL (DIRECTORY ebin DESTINATION "${INST_LIBDIR}/ale")
