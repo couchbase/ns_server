@@ -17,97 +17,115 @@
         {{adminCtl.filterTasks(adminCtl.tasks.running).length}}
       </span>
     </a>
+<!-- rebalance menu ******************************************************** -->
     <div class="relative inline" ng-if="rbac.cluster.tasks.read">
       <div
         mn-drag-and-drop
         base-corner-right="true"
-        class="tasks-progress dialog-small enable-ng-animation"
+        class="tasks-progress panel dialog-med rebalance-panel enable-ng-animation"
         ng-if="!adminCtl.isProgressBarClosed">
-        <div class="close-tasks">
-          <span ng-click="adminCtl.toggleProgressBar()">X</span>
+        <div class="row">
+          <h3>Rebalance</h3>
+          <span ng-click="adminCtl.toggleProgressBar()" class="cursor-pointer">X</span>
         </div>
-        <div class="panel-content">
-          <div
-            class="text-small margin-bottom-1"
-            ng-show="!adminCtl.filterTasks(adminCtl.tasks.running).length">
-            No active processes to display
-          </div>
-          <div ng-if="adminCtl.tasks.tasksRebalance">
-            <div>
-              start: {{adminCtl.tasks.tasksRebalance.stageInfo.startTime | date:'yyyy-MM-dd HH:mm:ss Z'}}
-            </div>
-            <div>
+        <div ng-if="adminCtl.tasks.tasksRebalance">
+          <p class="desc">
+            <span class="nowrap">
+              start: {{adminCtl.tasks.tasksRebalance.stageInfo.startTime | date:'d MMM HH:mm:ss Z'}}
+            </span>
+            <span ng-show="adminCtl.tasks.tasksRebalance.stageInfo.completedTime.status" class="nowrap pipe">
+              complete: {{adminCtl.tasks.tasksRebalance.stageInfo.completedTime.time | date:'d MMM HH:mm:ss Z'}}
+            </span>
+            <span class="nowrap pipe">
               status: {{adminCtl.tasks.tasksRebalance.status == "running" ? "in progress" :
               adminCtl.tasks.tasksRebalance.errorMessage ? "failed" : "completed"}}
+            </span>
+          </p>
+<!-- rebalance timeline **************************************************** -->
+          <div class="timeline">
+            <div
+               class="timeline-stage"
+               ng-class="{highlight: service.timeTaken}"
+               ng-repeat="(key, service) in adminCtl.tasks.tasksRebalance.stageInfo.services">
+              <label>{{key}}</label>
+              <div class="timeline-dot"></div>
             </div>
-            <div>
-              complete: {{adminCtl.tasks.tasksRebalance.stageInfo.completedTime.status ? (adminCtl.tasks.tasksRebalance.stageInfo.completedTime.time | date:'yyyy-MM-dd HH:mm:ss Z') : '- - - -'}}
-            </div>
-            <div class="cbui-tablerow">
-              <div class="cbui-table-cell"
-                   style="padding: 0;"
-                   ng-repeat="(key, service) in adminCtl.tasks.tasksRebalance.stageInfo.services">
-                <div>{{key}}</div>
-                <div
-                  style="height: 5px; background: blue;"
-                  ng-style="{'width': (service.totalProgress ? service.totalProgress : 0) + '%'}"></div>
-              </div>
-            </div>
-            <div ng-repeat="(key, service) in adminCtl.tasks.tasksRebalance.stageInfo.services">
-              <div ng-click="showModule = !showModule"
-                   ng-class="{disclosed: showModule && key == 'data', disclosure: key == 'data'}">
-                <span>{{key}}</span>
-                <span ng-if="service.timeTaken">
-                  {{service.timeTaken | mnMsToTime}}
-                  <span ng-show="service.completedTime">
-                    V
-                  </span>
+          </div>
+<!-- rebalance per stage info ********************************************** -->
+          <div ng-repeat="(key, service) in adminCtl.tasks.tasksRebalance.stageInfo.services">
+            <div class="row">
+              <label
+                 class="initialcaps"
+                 ng-click="showModule = !showModule"
+                 ng-class="{disclosed: showModule && key == 'data',
+                            disclosure: key == 'data',
+                            'cursor-pointer': key == 'data',
+                            'indent-1': key !== 'data'}">
+                {{key}}
+              </label>
+              <span ng-if="service.timeTaken" class="rebalance-stage-status">
+                <span ng-show="service.completedTime" class="rebalance-stage-success">
+                  completed
                 </span>
-                <span ng-show="!service.timeTaken">
-                  - - -
+                <span ng-show="!service.completedTime" class="rebalance-stage-inprogress">
+                  elapsed
                 </span>
-              </div>
-              <div ng-if="showModule">
-                <div ng-repeat="(bucketName, bucketInfo) in service.details">
-                  <div ng-click="showBucket = !showBucket"
-                       class="disclosure"
-                       ng-class="{disclosed: showBucket}">
-                    <span>{{bucketName}}</span>
+                {{service.timeTaken | mnMsToTime}}
+              </span>
+              <span ng-show="!service.timeTaken">- - -</span>
+            </div>
+<!-- per bucket info ******************************************************* -->
+            <div ng-if="showModule">
+              <div ng-repeat="(bucketName, bucketInfo) in service.details" class="indent-1">
+                <label
+                   ng-click="hideBucket = !hideBucket"
+                   class="reverse disclosed cursor-pointer"
+                   ng-class="{disclosure: hideBucket}">
+                    {{bucketName}}
+                  </label>
+                <div ng-if="!hideBucket && bucketInfo.vbucketLevelInfo" class="rebalance-stage-details">
+                  <div class="cbui-table-header padding-left">
+                    <div class="cbui-table-cell">vBuckets</div>
+                    <div class="cbui-table-cell">total</div>
+                    <div class="cbui-table-cell">complete</div>
+                    <div class="cbui-table-cell">elapsed</div>
                   </div>
-                  <div ng-if="showBucket && bucketInfo.vbucketLevelInfo">
-                    <div class="cbui-tablerow"
-                         ng-repeat="(key, v) in bucketInfo.vbucketLevelInfo"
-                         ng-if="key !== 'vbucketInfo'">
-                      <div class="cbui-table-cell">{{key}}</div>
-                      <div class="cbui-table-cell">
-                        {{bucketInfo.vbucketLevelInfo.vbucketInfo.length}}
-                      </div>
-                      <div class="cbui-table-cell">{{v.completedCount}}</div>
-                      <div class="cbui-table-cell">{{v.totalTime | mnMsToTime}}</div>
+                  <div class="cbui-tablerow"
+                       ng-repeat="(key, v) in bucketInfo.vbucketLevelInfo"
+                       ng-if="key !== 'vbucketInfo'">
+                    <div class="cbui-table-cell initialcaps">{{key}}</div>
+                    <div class="cbui-table-cell">
+                      {{bucketInfo.vbucketLevelInfo.vbucketInfo.length}}
+                    </div>
+                    <div class="cbui-table-cell">
+                      {{v.completedCount}}
+                    </div>
+                    <div class="cbui-table-cell">
+                      {{v.totalTime | mnMsToTime}}
                     </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-          <div ng-repeat="task in adminCtl.filterTasks(adminCtl.tasks.running)">
-            <div class="text-small text-left">
-              {{task | formatProgressMessage}}
-              <span ng-if="task.progress != undefined">{{(task.progress | number:1) + '%'}}</span>
+        </div>
+        <div ng-repeat="task in adminCtl.filterTasks(adminCtl.tasks.running)" class="zero-content margin-top-1">
+          <div class="text-small text-left">
+            {{task | formatProgressMessage}}
+            <span ng-if="task.progress != undefined">{{(task.progress | number:1) + '%'}}</span>
+          </div>
+          <div
+            class="bar-wrapper"
+            ng-show="task.type !== 'loadingSampleBucket' && task.type !== 'orphanBucket'">
+            <div
+              class="bar positive"
+              ng-style="{'width': task.progress + '%'}">
+              <div></div>
             </div>
             <div
-              class="bar-wrapper"
-              ng-show="task.type !== 'loadingSampleBucket' && task.type !== 'orphanBucket'">
-              <div
-                class="bar positive"
-                ng-style="{'width': task.progress + '%'}">
-                <div></div>
-              </div>
-              <div
-                class="bar negative"
-                ng-style="{'width': (100 - task.progress) + '%'}">
-                <div></div>
-              </div>
+              class="bar negative"
+              ng-style="{'width': (100 - task.progress) + '%'}">
+              <div></div>
             </div>
           </div>
         </div>
