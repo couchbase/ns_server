@@ -68,7 +68,7 @@ ADD_CUSTOM_TARGET (minify ALL
 
 # Various cleaning targets
 ADD_CUSTOM_TARGET (ns_realclean
-  COMMAND "${CMAKE_COMMAND}" -E remove -f cov.html erl_crash.dump deps/vbmap/vbmap
+  COMMAND "${CMAKE_COMMAND}" -E remove -f cov.html erl_crash.dump
   COMMAND "${CMAKE_COMMAND}" -E remove_directory test/log
   COMMAND "${CMAKE_COMMAND}" -E remove -f rebar.config
   COMMAND "${CMAKE_COMMAND}" -E remove -f src/ns_server.app.src
