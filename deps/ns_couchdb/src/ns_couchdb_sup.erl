@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2014-2018 Couchbase, Inc.
+%% @copyright 2014-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -18,9 +18,7 @@
 
 -module(ns_couchdb_sup).
 
-%% TODO: replace with supervisor2 when we will figure out how to build
-%% supervisor2 before ns_couchdb_sup
--behaviour(supervisor).
+-behaviour(supervisor2).
 
 %% API
 -export([start_link/0, restart_capi_ssl_service/0]).
