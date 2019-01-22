@@ -21,13 +21,14 @@
     };
     return mnElementCargo;
   }
-  function mnElementCraneFactory() {
+  function mnElementCraneFactory($timeout) {
     var depots = {};
 
     var mnElementCraneService = {
       deliverCargo: deliverCargo,
       registerDepot: registerDepot
     };
+
     return mnElementCraneService;
 
     function registerDepot(scope, element, attrs) {
@@ -35,10 +36,14 @@
     }
 
     function deliverCargo(scope, element, attrs) {
-      var depotElement = depots[attrs.depot];
-      depotElement.append(element.contents());
-      element.remove();
-      scope.$on('$destroy', depotElement.empty.bind(depotElement));
+      //should be in the end of call stack to make sure that
+      //depotElement has been registered
+      $timeout(function () {
+        var depotElement = depots[attrs.depot];
+        depotElement.append(element.contents());
+        element.remove();
+        scope.$on('$destroy', depotElement.empty.bind(depotElement));
+      });
     }
   }
 })();
