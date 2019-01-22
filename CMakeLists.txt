@@ -110,12 +110,26 @@ ADD_CUSTOM_TARGET (ns_distclean)
 ADD_DEPENDENCIES (ns_distclean ns_realclean ns_dataclean)
 
 ADD_SUBDIRECTORY (deps)
-REBAR (TARGET ns_server CLEAN_HOOK ns_realclean DEPENDS ns_cfg ale triq meck)
+REBAR(TARGET ns_server
+  DEPENDS ns_cfg ale
+  EUNIT
+  EUNIT_DEPENDS triq meck
+  CLEAN_HOOK ns_realclean)
 
-ADD_CUSTOM_TARGET (erlang_deps
-  DEPENDS gen_smtp ale ns_babysitter ns_couchdb triq meck)
-
+ADD_CUSTOM_TARGET (erlang_deps DEPENDS gen_smtp ale ns_babysitter ns_couchdb)
 ADD_CUSTOM_TARGET (ns_server_all DEPENDS ns_server erlang_deps)
+ADD_CUSTOM_TARGET (ns_server_tests
+  DEPENDS ns_server-eunit ns_couchdb-eunit erlang_deps)
+
+# CMake won't let you add a build target as a dependency to a test. But you
+# can add another test as a dependency. So this is a fake test that actually
+# simply builds ns_server_tests target. Note, this is only needed when the
+# tests are run in CMake way (make -C build/ test). Simple "make test" in
+# ns_server directory calls a custom target ns_test which can properly depend
+# on other targets.
+ADD_TEST(ns_server_tests_build_for_idiotic_cmake
+  "${CMAKE_COMMAND}" --build "${CMAKE_BINARY_DIR}"
+                     --target ns_server_tests)
 
 MACRO (NS_SERVER_TEST)
   PARSE_ARGUMENTS (NS_SERVER_TEST "" "NAME;TEST_TARGET" "EXPLICIT" ${ARGN})
@@ -139,11 +153,13 @@ MACRO (NS_SERVER_TEST)
   IF (NOT NS_SERVER_TEST_EXPLICIT)
     # Test invocation
     ADD_TEST(NAME ${_name} COMMAND ${_cmd} WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    SET_TESTS_PROPERTIES(${_name} PROPERTIES
+      DEPENDS ns_server_tests_build_for_idiotic_cmake)
   ENDIF ()
 
   # Also create a custom target
   ADD_CUSTOM_TARGET (${_name} COMMAND ${_cmd} WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
-  ADD_DEPENDENCIES (${_name} ns_server_all)
+  ADD_DEPENDENCIES (${_name} ns_server_tests)
 ENDMACRO(NS_SERVER_TEST)
 
 NS_SERVER_TEST (NAME ns_test TEST_TARGET start)

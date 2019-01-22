@@ -8,9 +8,15 @@ IF (NOT DEFINED TEST_TARGET)
 ENDIF (NOT DEFINED TEST_TARGET)
 
 FILE (GLOB ebindirs RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
-  deps/*/ebin deps/*/deps/*/ebin)
+  ebin deps/*/ebin deps/*/deps/*/ebin)
 # Bug in CMake?
 STRING (REGEX REPLACE "//" "/" ebindirs "${ebindirs}")
+
+FILE (GLOB eunitdirs
+  RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
+  .eunit deps/*/.eunit)
+# Bug in CMake?
+STRING (REGEX REPLACE "//" "/" eunitdirs "${eunitdirs}")
 
 STRING (RANDOM LENGTH 16 NODE_NAME_RANDOM)
 SET (NODE_NAME "test-${NODE_NAME_RANDOM}")
@@ -20,7 +26,8 @@ SET (NODE_NAME "test-${NODE_NAME_RANDOM}")
 # invoked. Yes, this is annoying.
 EXECUTE_PROCESS(COMMAND "${CMAKE_COMMAND}" -E echo
   "${ERL_EXECUTABLE}"
-  -pa ./ebin ${ebindirs} "${COUCHDB_BIN_DIR}/src/couchdb"
+  -pa ${ebindirs} ${eunitdirs}
+  -pa "${COUCHDB_BIN_DIR}/src/couchdb"
   -pa "${COUCHDB_BIN_DIR}/src/mochiweb"
   -pa "${COUCHDB_BIN_DIR}/src/ejson"
   -pa "${COUCHDB_BIN_DIR}/src/couch_index_merger/ebin"
@@ -31,7 +38,9 @@ EXECUTE_PROCESS(COMMAND "${CMAKE_COMMAND}" -E echo
 
 EXECUTE_PROCESS(RESULT_VARIABLE _failure
   COMMAND "${ERL_EXECUTABLE}"
-  -pa ./ebin ${ebindirs} "${COUCHDB_BIN_DIR}/src/couchdb"
+  # prefer eunitdirs
+  -pa ${ebindirs} ${eunitdirs}
+  -pa "${COUCHDB_BIN_DIR}/src/couchdb"
   -pa "${COUCHDB_BIN_DIR}/src/mochiweb"
   -pa "${COUCHDB_BIN_DIR}/src/ejson"
   -pa "${COUCHDB_BIN_DIR}/src/couch_index_merger/ebin"

@@ -1,6 +1,6 @@
 % Copyright (c) 2008, Cliff Moon
 % Copyright (c) 2008, Powerset, Inc
-% Copyright (c) 2009-2018, Couchbase, Inc.
+% Copyright (c) 2009-2019, Couchbase, Inc.
 %
 % All rights reserved.
 %
@@ -89,7 +89,7 @@ get_modules() ->
             true ->
                 Wildcard ++ Ext;
             false ->
-                filename:join(["**", "ebin", Wildcard]) ++ Ext
+                filename:join(["**", ".eunit", Wildcard]) ++ Ext
         end,
 
     Files = filelib:wildcard(FullWildcard, config(root_dir)),
