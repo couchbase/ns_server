@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2017-2018 Couchbase, Inc.
+%% @copyright 2017-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 -module(menelaus_web_settings).
 
 -include("ns_common.hrl").
--include_lib("cut.hrl").
+-include("cut.hrl").
 
 -export([build_kvs/1,
          handle_get/2,

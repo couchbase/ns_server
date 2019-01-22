@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2010-2018 Couchbase, Inc.
+%% @copyright 2010-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -19,9 +19,9 @@
 
 -compile({nowarn_deprecated_function, [{gen_fsm,send_event,2}]}).
 
+-include("cut.hrl").
 -include("ns_common.hrl").
 -include_lib("eunit/include/eunit.hrl").
--include_lib("cut.hrl").
 
 %% Constants and definitions
 -define(HEARTBEAT_INTERVAL, 2000).

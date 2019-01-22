@@ -18,11 +18,11 @@
 
 -module(menelaus_web_rbac).
 
+-include("cut.hrl").
 -include("ns_common.hrl").
 -include("pipes.hrl").
 -include("rbac.hrl").
 
--include_lib("cut.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
 -export([handle_saslauthd_auth_settings/1,

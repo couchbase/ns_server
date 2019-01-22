@@ -18,7 +18,7 @@
 -module(menelaus_web_ldap).
 
 -include("ns_common.hrl").
--include_lib("cut.hrl").
+-include("cut.hrl").
 
 -export([handle_ldap_settings/1,
          handle_ldap_settings_post/1,
