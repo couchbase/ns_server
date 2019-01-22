@@ -108,7 +108,7 @@ ADD_CUSTOM_COMMAND(OUTPUT "${rebar_config}"
   VERBATIM)
 
 ADD_CUSTOM_TARGET (ns_distclean)
-ADD_DEPENDENCIES (ns_distclean realclean ns_dataclean)
+ADD_DEPENDENCIES (ns_distclean ns_realclean ns_dataclean)
 
 ADD_SUBDIRECTORY (deps)
 REBAR (TARGET ns_server NOCLEAN DEPENDS ns_cfg ale triq meck)
