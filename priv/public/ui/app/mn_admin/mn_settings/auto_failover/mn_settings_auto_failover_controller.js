@@ -26,6 +26,10 @@
         settings.failoverServerGroup = vm.autoFailoverSettings.failoverServerGroup;
         settings.maxCount = vm.autoFailoverSettings.maxCount;
       }
+      if (mnPoolDefault.export.compat.atLeast65 &&
+          mnPoolDefault.export.isEnterprise) {
+        settings.canAbortRebalance = vm.autoFailoverSettings.canAbortRebalance;
+      }
       return settings;
     }
 
