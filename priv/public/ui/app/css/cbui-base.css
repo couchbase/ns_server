@@ -298,6 +298,10 @@ em,
 i {
   font-style: italic;
 }
+.disabled {
+  opacity: .55;
+  filter: alpha(opacity=55);
+}
 /* capitalization ----------------------------------------------------------- */
 .allcaps {
   text-transform: uppercase;

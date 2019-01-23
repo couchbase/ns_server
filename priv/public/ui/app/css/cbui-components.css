@@ -785,8 +785,6 @@ section.error {
   max-height: 4rem;
 }
 .alert-wrapper {
-  position: fixed;
-  bottom: 0;
   z-index: 99;
   max-width: 320px;
 }
@@ -1999,6 +1997,7 @@ input[type="checkbox"].fake-select + label:before {
   padding: 0 .5rem .5rem .5rem;
   white-space: nowrap;
   overflow: auto;
+  height: 100%;
 }
 .insights-sidebar.fix-width-0 .insights-sidebar-body {
   border-width: 0!important;

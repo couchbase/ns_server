@@ -139,6 +139,16 @@ footer {
 .line-height-1-5 {
   line-height:1.5!important;
 }
+.fix-position-br {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+}
+.fix-position-bl {
+  position: fixed;
+  bottom: 1rem;
+  left: 1rem;
+}
 
 /* FLEX HELPERS --------------------------------------------------------- */
 .flex-left {
