@@ -298,7 +298,12 @@ get_users_or_roles_validators() ->
 
 get_users_page_validators(DomainAtom, HasStartFrom) ->
     [validator:integer(pageSize, ?MIN_USERS_PAGE_SIZE, ?MAX_USERS_PAGE_SIZE, _),
-     validator:touch(startFrom, _)] ++
+     validator:touch(startFrom, _),
+     validator:one_of(sortBy, ["id", "name", "domain",
+                               "password_change_timestamp"], _),
+     validator:convert(sortBy, fun list_to_atom/1, _),
+     validator:one_of(order, ["asc", "desc"], _),
+     validator:convert(order, fun list_to_atom/1, _)] ++
         case HasStartFrom of
             false ->
                 [];
@@ -454,6 +459,8 @@ jsonify_users() ->
 
 -record(skew, {skew, size, less_fun, filter, skipped = 0}).
 
+skew_compare(El1, El2, #skew{less_fun = LessFun}) -> LessFun(El1, El2).
+
 add_to_skew(_El, undefined) ->
     undefined;
 add_to_skew(El, #skew{skew = CouchSkew,
@@ -508,16 +515,36 @@ skew_min(#skew{skew = CouchSkew}) ->
 skew_skipped(#skew{skipped = Skipped}) ->
     Skipped.
 
-create_skews(Start, PageSize) ->
+create_skews(Start, PageSize, SortProp, Order) ->
+
+    LessFun =
+        case {SortProp, Order} of
+            {id, asc} -> fun ({A, _}, {B, _}) -> A >= B end;
+            {id, desc} -> fun ({A, _}, {B, _}) -> B >= A end;
+            {domain, asc} ->
+                fun ({{N1, D1}, _}, {{N2, D2}, _}) -> {D1, N1} >= {D2, N2} end;
+            {domain, desc} ->
+                fun ({{N1, D1}, _}, {{N2, D2}, _}) -> {D2, N2} >= {D1, N1} end;
+            {P, O} ->
+                fun ({AId, AProps}, {BId, BProps}) ->
+                        %% compare props first
+                        %% if they are equal compare ids
+                        A = {proplists:get_value(P, AProps), AId},
+                        B = {proplists:get_value(P, BProps), BId},
+                        case O of
+                            asc -> A >= B;
+                            desc -> B >= A
+                        end
+                end
+        end,
+
     SkewThis =
         #skew{
            skew = couch_skew:new(),
            size = PageSize + 1,
-           less_fun = fun ({A, _}, {B, _}) ->
-                              A >= B
-                      end,
-           filter = fun (El, LessFun) ->
-                            Start =:= undefined orelse LessFun(El, {Start, x})
+           less_fun = LessFun,
+           filter = fun (El, Less) ->
+                            Start =:= undefined orelse Less(El, Start)
                     end},
     SkewPrev =
         case Start of
@@ -527,20 +554,16 @@ create_skews(Start, PageSize) ->
                 #skew{
                    skew = couch_skew:new(),
                    size = PageSize,
-                   less_fun = fun ({A, _}, {B, _}) ->
-                                      A < B
-                              end,
-                   filter = fun (El, LessFun) ->
-                                    LessFun(El, {Start, x})
+                   less_fun = fun (A, B) -> not LessFun(A, B) end,
+                   filter = fun (El, Less) ->
+                                    Less(El, Start)
                             end}
         end,
     SkewLast =
         #skew{
            skew = couch_skew:new(),
            size = PageSize,
-           less_fun = fun ({A, _}, {B, _}) ->
-                              A < B
-                      end,
+           less_fun = fun (A, B) -> not LessFun(A, B) end,
            filter = fun (_El, _LessFun) ->
                             true
                     end},
@@ -549,41 +572,37 @@ create_skews(Start, PageSize) ->
 add_to_skews(El, Skews) ->
     [add_to_skew(El, Skew) || Skew <- Skews].
 
-build_group_links(Links, PageSize, Path) ->
-    {[{LinkName, build_pager_link(Path, StartFrom, PageSize, [])}
+build_group_links(Links, Path, Params) ->
+    {[{LinkName, build_pager_link(Path, StartFrom, Params)}
          || {LinkName, StartFrom} <- Links]}.
 
-build_user_links(Links, PageSize, NeedDomain, Path, Permission) ->
-    Extra = [{permission, permission_to_binary(Permission)}
-                || Permission =/= undefined],
+build_user_links(Links, NeedDomain, Path, Params) ->
     Json = lists:map(
              fun ({LinkName, noparams = UName}) ->
-                     {LinkName, build_pager_link(Path, UName, PageSize, Extra)};
+                     {LinkName, build_pager_link(Path, UName, Params)};
                  ({LinkName, {UName, Domain}}) ->
                      DomainParams = [{startFromDomain, Domain} || NeedDomain],
-                     {LinkName, build_pager_link(Path, UName, PageSize,
-                                                 Extra ++ DomainParams)}
+                     {LinkName, build_pager_link(Path, UName,
+                                                 Params ++ DomainParams)}
              end, Links),
     {Json}.
 
-build_pager_link(Path, StartObj, PageSize, ExtraParams) ->
-    PaginatorParams = format_paginator_params(StartObj, PageSize),
+build_pager_link(Path, StartObj, ExtraParams) ->
+    PaginatorParams = format_paginator_params(StartObj),
     Params = mochiweb_util:urlencode(ExtraParams ++ PaginatorParams),
     iolist_to_binary(io_lib:format("/~s?~s", [Path, Params])).
 
-format_paginator_params(noparams, PageSize) ->
-    [{pageSize, PageSize}];
-format_paginator_params(ObjName, PageSize) ->
-    [{pageSize, PageSize}, {startFrom, ObjName}].
+format_paginator_params(noparams) -> [];
+format_paginator_params(ObjName) -> [{startFrom, ObjName}].
 
 seed_links(Pairs) ->
     [{Name, Object} || {Name, Object} <- Pairs, Object =/= undefined].
 
 page_data_from_skews([SkewPrev, SkewThis, SkewLast], PageSize) ->
-    {Objects, Next} =
+    {Objects, NextObj} =
         case skew_size(SkewThis) of
             Size when Size =:= PageSize + 1 ->
-                {{N, _}, NewSkew} = skew_out(SkewThis),
+                {N, NewSkew} = skew_out(SkewThis),
                 {skew_to_list(NewSkew), N};
             _ ->
                 {skew_to_list(SkewThis), undefined}
@@ -594,38 +613,42 @@ page_data_from_skews([SkewPrev, SkewThis, SkewLast], PageSize) ->
                         {P, _} ->
                             {noparams, P}
                     end,
-    {Last, CorrectedNext} =
-        case Next of
+    {Last, Next} =
+        case NextObj of
             undefined ->
-                {undefined, Next};
+                {undefined, undefined};
             _ ->
-                case skew_min(SkewLast) of
-                    {L, _} when L < Next ->
-                        {L, L};
-                    {L, _} ->
-                        {L, Next}
+                {L, _} = LastObj = skew_min(SkewLast),
+                case skew_compare(LastObj, NextObj, SkewLast) of
+                    false -> {L, element(1, NextObj)};
+                    true -> {L, L}
                 end
         end,
     {Objects,
      skew_skipped(SkewThis),
      seed_links([{first, First}, {prev, Prev},
-                 {next, CorrectedNext}, {last, Last}])}.
+                 {next, Next}, {last, Last}])}.
 
 handle_get_users_page(Req, DomainAtom, Path, Values) ->
+    SortAndFilteringProps = [user_roles, dirty_groups, name,
+                             password_change_timestamp],
     Start =
         case proplists:get_value(startFrom, Values) of
             undefined ->
                 undefined;
             U ->
-                {U, proplists:get_value(startFromDomain, Values)}
+                Id = {U, proplists:get_value(startFromDomain, Values)},
+                {Id, menelaus_users:get_user_props(Id, SortAndFilteringProps)}
         end,
     PageSize = proplists:get_value(pageSize, Values),
     Permission = proplists:get_value(permission, Values),
     Roles = get_roles_for_users_filtering(Permission),
+    Order = proplists:get_value(order, Values, asc),
+    Sort = proplists:get_value(sortBy, Values, id),
 
     {PageSkews, Total} =
         pipes:run(menelaus_users:select_users({'_', DomainAtom},
-                                              [user_roles, dirty_groups]),
+                                              SortAndFilteringProps),
                   [filter_by_roles(Roles),
                    security_filter(Req)],
                   ?make_consumer(
@@ -633,7 +656,7 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
                        ?producer(),
                        fun ({{user, Identity}, Props}, {Skews, T}) ->
                                {add_to_skews({Identity, Props}, Skews), T + 1}
-                       end, {create_skews(Start, PageSize), 0}))),
+                       end, {create_skews(Start, PageSize, Sort, Order), 0}))),
 
     UserJson = fun ({Identity, _}) ->
                        Props = menelaus_users:get_user_props(Identity),
@@ -642,8 +665,12 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
 
     {Users, Skipped, Links} = page_data_from_skews(PageSkews, PageSize),
     UsersJson = [UserJson(O) || O <- Users],
-    LinksJson = build_user_links(Links, PageSize, DomainAtom == '_',
-                                 Path, Permission),
+    LinksParams = [{permission, permission_to_binary(Permission)}
+                        || Permission =/= undefined] ++
+                  [{pageSize, PageSize},
+                   {sortBy, Sort},
+                   {order, Order}],
+    LinksJson = build_user_links(Links, DomainAtom == '_', Path, LinksParams),
     Json = {[{total, Total},
              {links, LinksJson},
              {skipped, Skipped},
@@ -1488,11 +1515,22 @@ handle_get_groups(Path, Req) ->
 
 get_groups_page_validators() ->
     [validator:integer(pageSize, ?MIN_USERS_PAGE_SIZE, ?MAX_USERS_PAGE_SIZE, _),
-     validator:touch(startFrom, _)].
+     validator:touch(startFrom, _),
+     validator:one_of(sortBy,
+                      ["id", "description", "roles", "ldap_group_ref"], _),
+     validator:convert(sortBy, fun list_to_atom/1, _),
+     validator:one_of(order, ["asc", "desc"], _),
+     validator:convert(order, fun list_to_atom/1, _)].
 
 handle_get_groups_page(Req, Path, Values) ->
-    Start = proplists:get_value(startFrom, Values),
+    StartId = proplists:get_value(startFrom, Values),
+    Start = case StartId of
+                undefined -> undefined;
+                _ -> {StartId, menelaus_users:get_group_props(StartId)}
+            end,
     PageSize = proplists:get_value(pageSize, Values),
+    Order = proplists:get_value(order, Values, asc),
+    Sort = proplists:get_value(sortBy, Values, id),
 
     {PageSkews, Total} =
         pipes:run(menelaus_users:select_groups('_'),
@@ -1502,11 +1540,13 @@ handle_get_groups_page(Req, Path, Values) ->
                        ?producer(),
                        fun ({{group, Identity}, Props}, {Skews, T}) ->
                                {add_to_skews({Identity, Props}, Skews), T + 1}
-                       end, {create_skews(Start, PageSize), 0}))),
+                       end, {create_skews(Start, PageSize, Sort, Order), 0}))),
 
     {Groups, Skipped, Links} = page_data_from_skews(PageSkews, PageSize),
     GroupsJson = [group_to_json(Id, Props) || {Id, Props} <- Groups],
-    LinksJson = build_group_links(Links, PageSize, Path),
+    LinksJson = build_group_links(Links, Path, [{pageSize, PageSize},
+                                                {sortBy, Sort},
+                                                {order, Order}]),
     Json = {[{total, Total},
              {links, LinksJson},
              {skipped, Skipped},
@@ -1608,8 +1648,11 @@ format_permissions_test() ->
        lists:sort(format_permissions(Permissions))).
 
 toy_users(First, Last) ->
-    [{{lists:flatten(io_lib:format("a~b", [U])), local}, []} ||
-        U <- lists:seq(First, Last)].
+    [toy_user(U) || U <- lists:seq(First, Last)].
+
+toy_user(U) ->
+    {{lists:flatten(io_lib:format("a~b", [U])), local},
+     [{p, lists:flatten(io_lib:format("p~b", [1000 - U]))}]}.
 
 process_toy_users(Users, Start, PageSize) ->
     {PageUsers, Skipped, Links} =
@@ -1617,8 +1660,15 @@ process_toy_users(Users, Start, PageSize) ->
           lists:foldl(
             fun (U, Skews) ->
                     add_to_skews(U, Skews)
-            end, create_skews(Start, PageSize), Users),
+            end, create_skews(Start, PageSize, id, asc), Users),
           PageSize),
+    ?assertEqual({PageUsers, Skipped, Links},
+                 page_data_from_skews(
+                   lists:foldl(
+                     fun (U, Skews) ->
+                             add_to_skews(U, Skews)
+                     end, create_skews(Start, PageSize, p, desc), Users),
+                   PageSize)),
     {[{skipped, Skipped}, {users, PageUsers}], lists:sort(Links)}.
 
 toy_result(Params, Links) ->
@@ -1638,7 +1688,7 @@ no_users_page_test() ->
          [{skipped, 0},
           {users, []}],
          []),
-       process_toy_users([], {"a14", local}, 3)).
+       process_toy_users([], toy_user(14), 3)).
 
 one_user_no_params_page_test() ->
     ?assertEqual(
@@ -1664,7 +1714,7 @@ first_page_with_params_test() ->
           {users, toy_users(10, 12)}],
          [{last, {"a28", local}},
           {next, {"a13", local}}]),
-       process_toy_users(toy_users(10, 30), {"a10", local}, 3)).
+       process_toy_users(toy_users(10, 30), toy_user(10), 3)).
 
 middle_page_test() ->
     ?assertEqual(
@@ -1675,7 +1725,7 @@ middle_page_test() ->
           {prev, {"a11", local}},
           {last, {"a28", local}},
           {next, {"a17", local}}]),
-       process_toy_users(toy_users(10, 30), {"a14", local}, 3)).
+       process_toy_users(toy_users(10, 30), toy_user(14), 3)).
 
 middle_page_non_existent_user_test() ->
     ?assertEqual(
@@ -1686,7 +1736,8 @@ middle_page_non_existent_user_test() ->
           {prev, {"a12", local}},
           {last, {"a28", local}},
           {next, {"a18", local}}]),
-       process_toy_users(toy_users(10, 30), {"a14b", local}, 3)).
+       process_toy_users(toy_users(10, 30),
+                         {{"a14b", local}, [{p, "p985b"}]}, 3)).
 
 near_the_end_page_test() ->
     ?assertEqual(
@@ -1697,7 +1748,7 @@ near_the_end_page_test() ->
           {prev, {"a24", local}},
           {last, {"a28", local}},
           {next, {"a28", local}}]),
-       process_toy_users(toy_users(10, 30), {"a27", local}, 3)).
+       process_toy_users(toy_users(10, 30), toy_user(27), 3)).
 
 at_the_end_page_test() ->
     ?assertEqual(
@@ -1706,7 +1757,7 @@ at_the_end_page_test() ->
           {users, toy_users(29, 30)}],
          [{first, noparams},
           {prev, {"a26", local}}]),
-       process_toy_users(toy_users(10, 30), {"a29", local}, 3)).
+       process_toy_users(toy_users(10, 30), toy_user(29), 3)).
 
 after_the_end_page_test() ->
     ?assertEqual(
@@ -1715,7 +1766,8 @@ after_the_end_page_test() ->
           {users, []}],
          [{first, noparams},
           {prev, {"a28", local}}]),
-       process_toy_users(toy_users(10, 30), {"b29", local}, 3)).
+       process_toy_users(toy_users(10, 30),
+                         {{"b29", local}, [{p, "o971"}]}, 3)).
 
 validate_cred_username_test() ->
     LongButValid = "Username_that_is_127_characters_XXXXXXXXXXXXXXXXXXXXXXXXXX"
