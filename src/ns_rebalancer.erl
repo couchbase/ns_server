@@ -482,9 +482,10 @@ start_link_rebalance(KeepNodes, EjectNodes,
       erlang, apply,
       [fun () ->
                ok = check_no_tap_buckets(),
+               FailKvChk = check_test_condition(no_kv_nodes_left) =/= ok,
 
                KVKeep = ns_cluster_membership:service_nodes(KeepNodes, kv),
-               case KVKeep =:= [] of
+               case KVKeep =:= [] orelse FailKvChk of
                    true ->
                        proc_lib:init_ack({error, no_kv_nodes_left}),
                        exit(normal);
@@ -737,6 +738,7 @@ rebalance_body(KeepNodes,
       [kv, kv_delta_recovery], KVDeltaNodes),
     ok = apply_delta_recovery_buckets(DeltaRecoveryBuckets,
                                       KVDeltaNodes, BucketConfigs),
+    ok = check_test_condition(after_apply_delta_recovery),
     ok = maybe_clear_recovery_type(KeepNodes),
     master_activity_events:note_rebalance_stage_completed(
       [kv, kv_delta_recovery]),
