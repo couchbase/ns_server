@@ -31,6 +31,7 @@
                             failed_nodes,
                             stop_timer,
                             type,
+                            rebalance_id = undefined,
                             abort_reason = undefined}).
 
 -record(recovery_state, {pid :: pid()}).
@@ -50,6 +51,7 @@
          rebalance_progress_full/1,
          start_link/0,
          start_rebalance/3,
+         start_rebalance/4,
          stop_rebalance/0,
          update_progress/2,
          is_rebalance_running/0,
@@ -267,10 +269,16 @@ ensure_janitor_run(Item) ->
                              in_recovery | delta_recovery_not_possible |
                              no_kv_nodes_left.
 start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets) ->
+    maybe_start_rebalance({maybe_start_rebalance, KnownNodes, EjectNodes,
+                           DeltaRecoveryBuckets}).
+
+start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets, RebalanceId) ->
+    maybe_start_rebalance({maybe_start_rebalance, KnownNodes, EjectNodes,
+                           DeltaRecoveryBuckets, RebalanceId}).
+
+maybe_start_rebalance(Call) ->
     wait_for_orchestrator(),
-    gen_statem:call(
-      ?SERVER,
-      {maybe_start_rebalance, KnownNodes, EjectNodes, DeltaRecoveryBuckets}).
+    gen_statem:call(?SERVER, Call).
 
 -spec start_graceful_failover([node()]) ->
                                      ok | in_progress | in_recovery |
@@ -363,7 +371,15 @@ init([]) ->
 
 handle_event({call, From},
              {maybe_start_rebalance, KnownNodes, EjectedNodes,
-              DeltaRecoveryBuckets},
+              DeltaRecoveryBuckets}, _StateName, _State) ->
+    {keep_state_and_data,
+     [{next_event, {call, From},
+       {maybe_start_rebalance, KnownNodes, EjectedNodes,
+        DeltaRecoveryBuckets, couch_uuids:random()}}]};
+
+handle_event({call, From},
+             {maybe_start_rebalance, KnownNodes, EjectedNodes,
+              DeltaRecoveryBuckets, RebalanceId},
              _StateName, _State) ->
     case {EjectedNodes -- KnownNodes,
           lists:sort(ns_node_disco:nodes_wanted()),
@@ -391,7 +407,8 @@ handle_event({call, From},
                                           EjectedNodes -- FailedNodes,
                                           FailedNodes,
                                           DeltaNodes,
-                                          DeltaRecoveryBuckets},
+                                          DeltaRecoveryBuckets,
+                                          RebalanceId},
                             {keep_state_and_data,
                              [{next_event, {call, From}, StartEvent}]};
                         {error, Msg} ->
@@ -656,6 +673,10 @@ idle({start_graceful_failover, Node}, From, _State) when is_atom(Node) ->
 idle({start_graceful_failover, Nodes}, From, _State) ->
     case ns_rebalancer:start_link_graceful_failover(Nodes) of
         {ok, Pid} ->
+            Id = couch_uuids:random(),
+            ale:info(?USER_LOGGER,
+                     "Starting graceful failover of nodes ~p. "
+                     "Operation Id = ~s", [Nodes, Id]),
             Type = graceful_failover,
             ns_cluster:counter_inc(Type, start),
             set_rebalance_status(Type, running, Pid),
@@ -670,7 +691,8 @@ idle({start_graceful_failover, Nodes}, From, _State) ->
                                 failed_nodes = [],
                                 abort_reason = undefined,
                                 progress = Progress,
-                                type = Type},
+                                type = Type,
+                                rebalance_id = Id},
              [{reply, From, ok}]};
         {error, RV} ->
             {keep_state_and_data, [{reply, From, RV}]}
@@ -678,8 +700,8 @@ idle({start_graceful_failover, Nodes}, From, _State) ->
 idle(rebalance_progress, From, _State) ->
     {keep_state_and_data, [{reply, From, not_running}]};
 %% NOTE: this is not remotely called but is used by maybe_start_rebalance
-idle({start_rebalance, KeepNodes, EjectNodes,
-      FailedNodes, DeltaNodes, DeltaRecoveryBuckets}, From, _State) ->
+idle({start_rebalance, KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
+      DeltaRecoveryBuckets, RebalanceId}, From, _State) ->
     case ns_rebalancer:start_link_rebalance(KeepNodes, EjectNodes,
                                             FailedNodes, DeltaNodes,
                                             DeltaRecoveryBuckets) of
@@ -690,15 +712,17 @@ idle({start_rebalance, KeepNodes, EjectNodes,
                              "Starting rebalance, KeepNodes = ~p, "
                              "EjectNodes = ~p, Failed over and being ejected "
                              "nodes = ~p, Delta recovery nodes = ~p, "
-                             " Delta recovery buckets = ~p",
+                             " Delta recovery buckets = ~p; "
+                             "Operation Id = ~s",
                              [KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
-                              DeltaRecoveryBuckets]);
+                              DeltaRecoveryBuckets, RebalanceId]);
                 _ ->
                     ale:info(?USER_LOGGER,
                              "Starting rebalance, KeepNodes = ~p, "
                              "EjectNodes = ~p, Failed over and being ejected "
-                             "nodes = ~p; no delta recovery nodes~n",
-                             [KeepNodes, EjectNodes, FailedNodes])
+                             "nodes = ~p; no delta recovery nodes; "
+                             "Operation Id = ~s",
+                             [KeepNodes, EjectNodes, FailedNodes, RebalanceId])
             end,
 
             Type = rebalance,
@@ -713,7 +737,8 @@ idle({start_rebalance, KeepNodes, EjectNodes,
                                 eject_nodes = EjectNodes,
                                 failed_nodes = FailedNodes,
                                 abort_reason = undefined,
-                                type = Type},
+                                type = Type,
+                                rebalance_id = RebalanceId},
              [{reply, From, ok}]};
         {error, no_kv_nodes_left} ->
             {keep_state_and_data, [{reply, From, no_kv_nodes_left}]};
@@ -726,6 +751,9 @@ idle({move_vbuckets, Bucket, Moves}, From, _State) ->
                     ns_rebalancer:move_vbuckets(Bucket, Moves)
             end),
 
+    Id = couch_uuids:random(),
+    ?log_debug("Moving vBuckets in bucket ~p. Moves ~p. "
+               "Operation Id = ~s", [Bucket, Moves, Id]),
     Type = move_vbuckets,
     ns_cluster:counter_inc(Type, start),
     set_rebalance_status(Type, running, Pid),
@@ -740,7 +768,8 @@ idle({move_vbuckets, Bucket, Moves}, From, _State) ->
                         eject_nodes = [],
                         failed_nodes = [],
                         abort_reason = undefined,
-                        type = Type},
+                        type = Type,
+                        rebalance_id = Id},
      [{reply, From, ok}]};
 idle(stop_rebalance, From, _State) ->
     ns_janitor:reset_rebalance_status(
@@ -830,7 +859,7 @@ rebalancing({try_autofailover, Nodes}, From, State) ->
             end
     end;
 rebalancing({start_rebalance, _KeepNodes, _EjectNodes,
-             _FailedNodes, _DeltaNodes, _DeltaRecoveryBuckets},
+             _FailedNodes, _DeltaNodes, _DeltaRecoveryBuckets, _RebalanceId},
             From, _State) ->
     ale:info(?USER_LOGGER,
              "Not rebalancing because rebalance is already in progress.~n"),
@@ -1163,27 +1192,32 @@ maybe_reset_reprovision_count(_, _) ->
     ok.
 
 log_rebalance_completion(
-  ExitReason, #rebalancing_state{type = Type, abort_reason = AbortReason}) ->
-    do_log_rebalance_completion(ExitReason, Type, AbortReason).
+  ExitReason, #rebalancing_state{type = Type, abort_reason = AbortReason,
+                                 rebalance_id = RebalanceId}) ->
+    do_log_rebalance_completion(ExitReason, Type, AbortReason, RebalanceId).
 
-do_log_rebalance_completion(normal, Type, _) ->
+do_log_rebalance_completion(normal, Type, _, Id) ->
     ale:info(?USER_LOGGER,
-             "~s completed successfully.", [rebalance_type2text(Type)]);
-do_log_rebalance_completion({shutdown, stop}, Type, AbortReason) ->
-    log_abort_reason(AbortReason, Type);
-do_log_rebalance_completion(Error, Type, undefined) ->
+             "~s completed successfully. Operation Id = ~s",
+             [rebalance_type2text(Type), Id]);
+do_log_rebalance_completion({shutdown, stop}, Type, AbortReason, Id) ->
+    log_abort_reason(AbortReason, Type, Id);
+do_log_rebalance_completion(Error, Type, undefined, Id) ->
     ale:error(?USER_LOGGER,
-              "~s exited with reason ~p", [rebalance_type2text(Type), Error]);
-do_log_rebalance_completion(_Error, Type, AbortReason) ->
-    log_abort_reason(AbortReason, Type).
+              "~s exited with reason ~p. Operation Id = ~s",
+              [rebalance_type2text(Type), Error, Id]);
+do_log_rebalance_completion(_Error, Type, AbortReason, Id) ->
+    log_abort_reason(AbortReason, Type, Id).
 
-log_abort_reason({try_autofailover, _, Nodes}, Type) ->
+log_abort_reason({try_autofailover, _, Nodes}, Type, Id) ->
     ale:info(?USER_LOGGER,
-             "~s interrupted due to auto-failover of nodes ~p.",
-             [rebalance_type2text(Type), Nodes]);
-log_abort_reason(user_stop, Type) ->
+             "~s interrupted due to auto-failover of nodes ~p. "
+             "Operation Id = ~s",
+             [rebalance_type2text(Type), Nodes, Id]);
+log_abort_reason(user_stop, Type, Id) ->
     ale:info(?USER_LOGGER,
-             "~s stopped by user.", [rebalance_type2text(Type)]).
+             "~s stopped by user. Operation Id = ~s",
+             [rebalance_type2text(Type), Id]).
 
 rebalance_type2text(rebalance) ->
     <<"Rebalance">>;
