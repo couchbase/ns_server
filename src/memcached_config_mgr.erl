@@ -22,8 +22,6 @@
 %% API
 -export([start_link/0]).
 
--export([expand_memcached_config/2]).
-
 %% referenced from ns_config_default
 -export([get_minidump_dir/2, omit_missing_mcd_ports/2, ssl_minimum_protocol/2,
          is_enabled/2, client_cert_auth/2, is_snappy_enabled/2,
@@ -316,7 +314,7 @@ get_minidump_dir([], Params) ->
     list_to_binary(proplists:get_value(breakpad_minidump_dir_path, Params,  proplists:get_value(log_path, Params))).
 
 omit_missing_mcd_ports(Interfaces, MCDParams) ->
-    Expanded = memcached_config_mgr:expand_memcached_config(Interfaces, MCDParams),
+    Expanded = expand_memcached_config(Interfaces, MCDParams),
     [Obj || Obj <- Expanded,
             case Obj of
                 {Props} ->
