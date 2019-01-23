@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2017-2018 Couchbase, Inc.
+%% @copyright 2017-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -32,5 +32,7 @@ child_specs() ->
       permanent, 1000, worker, [ns_janitor_server]},
      {auto_reprovision, {auto_reprovision, start_link, []},
       permanent, 1000, worker, [auto_reprovision]},
+     {auto_rebalance, {auto_rebalance, start_link, []},
+      permanent, 1000, worker, [auto_rebalance]},
      {ns_orchestrator, {ns_orchestrator, start_link, []},
       permanent, 1000, worker, [ns_orchestrator]}].

@@ -29,6 +29,8 @@
                             keep_nodes,
                             eject_nodes,
                             failed_nodes,
+                            delta_recov_bkts,
+                            retry_check = undefined,
                             stop_timer,
                             type,
                             rebalance_id = undefined,
@@ -51,7 +53,7 @@
          rebalance_progress_full/1,
          start_link/0,
          start_rebalance/3,
-         start_rebalance/4,
+         retry_rebalance/5,
          stop_rebalance/0,
          is_rebalance_running/0,
          start_recovery/1,
@@ -284,9 +286,10 @@ start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets) ->
     maybe_start_rebalance({maybe_start_rebalance, KnownNodes, EjectNodes,
                            DeltaRecoveryBuckets}).
 
-start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets, RebalanceId) ->
+retry_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets, RebalanceId,
+                RetryChk) ->
     maybe_start_rebalance({maybe_start_rebalance, KnownNodes, EjectNodes,
-                           DeltaRecoveryBuckets, RebalanceId}).
+                           DeltaRecoveryBuckets, RebalanceId, RetryChk}).
 
 maybe_start_rebalance(Call) ->
     wait_for_orchestrator(),
@@ -384,14 +387,15 @@ init([]) ->
 handle_event({call, From},
              {maybe_start_rebalance, KnownNodes, EjectedNodes,
               DeltaRecoveryBuckets}, _StateName, _State) ->
+    auto_rebalance:cancel_any_pending_retry_async("manual rebalance"),
     {keep_state_and_data,
      [{next_event, {call, From},
        {maybe_start_rebalance, KnownNodes, EjectedNodes,
-        DeltaRecoveryBuckets, couch_uuids:random()}}]};
+        DeltaRecoveryBuckets, couch_uuids:random(), undefined}}]};
 
 handle_event({call, From},
              {maybe_start_rebalance, KnownNodes, EjectedNodes,
-              DeltaRecoveryBuckets, RebalanceId},
+              DeltaRecoveryBuckets, RebalanceId, RetryChk},
              _StateName, _State) ->
     case {EjectedNodes -- KnownNodes,
           lists:sort(ns_node_disco:nodes_wanted()),
@@ -414,15 +418,22 @@ handle_event({call, From},
                 _ ->
                     case rebalance_allowed(Config) of
                         ok ->
-                            StartEvent = {start_rebalance,
-                                          KeepNodes,
-                                          EjectedNodes -- FailedNodes,
-                                          FailedNodes,
-                                          DeltaNodes,
-                                          DeltaRecoveryBuckets,
-                                          RebalanceId},
-                            {keep_state_and_data,
-                             [{next_event, {call, From}, StartEvent}]};
+                            case retry_ok(Config, FailedNodes, RetryChk) of
+                                false ->
+                                    {keep_state_and_data,
+                                     [{reply, From, retry_check_failed}]};
+                                NewChk ->
+                                    StartEvent = {start_rebalance,
+                                                  KeepNodes,
+                                                  EjectedNodes -- FailedNodes,
+                                                  FailedNodes,
+                                                  DeltaNodes,
+                                                  DeltaRecoveryBuckets,
+                                                  RebalanceId,
+                                                  NewChk},
+                                    {keep_state_and_data,
+                                     [{next_event, {call, From}, StartEvent}]}
+                            end;
                         {error, Msg} ->
                             set_rebalance_status(rebalance, {none, Msg},
                                                  undefined),
@@ -670,6 +681,7 @@ idle({failover, Node}, From, _State) ->
     {keep_state_and_data,
      [{next_event, {call, From}, {failover, [Node], false}}]};
 idle({failover, Nodes, AllowUnsafe}, From, _State) ->
+    auto_rebalance:cancel_any_pending_retry_async("failover"),
     Result = ns_rebalancer:run_failover(Nodes, AllowUnsafe),
 
     {keep_state_and_data, [{reply, From, Result}]};
@@ -687,6 +699,7 @@ idle({start_graceful_failover, Node}, From, _State) when is_atom(Node) ->
     {keep_state_and_data,
      [{next_event, {call, From}, {start_graceful_failover, [Node]}}]};
 idle({start_graceful_failover, Nodes}, From, _State) ->
+    auto_rebalance:cancel_any_pending_retry_async("graceful failover"),
     ActiveNodes = ns_cluster_membership:active_nodes(),
     NodesInfo = [{active_nodes, ActiveNodes}],
     Services = [kv],
@@ -712,6 +725,8 @@ idle({start_graceful_failover, Nodes}, From, _State) ->
                                 eject_nodes = [],
                                 keep_nodes = [],
                                 failed_nodes = [],
+                                delta_recov_bkts = [],
+                                retry_check = undefined,
                                 abort_reason = undefined,
                                 type = Type,
                                 rebalance_id = Id},
@@ -724,7 +739,7 @@ idle(rebalance_progress, From, _State) ->
     {keep_state_and_data, [{reply, From, not_running}]};
 %% NOTE: this is not remotely called but is used by maybe_start_rebalance
 idle({start_rebalance, KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
-      DeltaRecoveryBuckets, RebalanceId}, From, _State) ->
+      DeltaRecoveryBuckets, RebalanceId, RetryChk}, From, _State) ->
     NodesInfo = [{active_nodes, KeepNodes ++ EjectNodes},
                  {keep_nodes, KeepNodes},
                  {eject_nodes, EjectNodes},
@@ -768,6 +783,8 @@ idle({start_rebalance, KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
                                 keep_nodes = KeepNodes,
                                 eject_nodes = EjectNodes,
                                 failed_nodes = FailedNodes,
+                                delta_recov_bkts = DeltaRecoveryBuckets,
+                                retry_check = RetryChk,
                                 abort_reason = undefined,
                                 type = Type,
                                 rebalance_id = RebalanceId},
@@ -806,6 +823,8 @@ idle({move_vbuckets, Bucket, Moves}, From, _State) ->
                         keep_nodes = ns_node_disco:nodes_wanted(),
                         eject_nodes = [],
                         failed_nodes = [],
+                        delta_recov_bkts = [],
+                        retry_check = undefined,
                         abort_reason = undefined,
                         type = Type,
                         rebalance_id = Id},
@@ -1184,6 +1203,7 @@ handle_rebalance_completion(ExitReason, State) ->
     maybe_reset_autofailover_count(ExitReason, State),
     maybe_reset_reprovision_count(ExitReason, State),
     log_rebalance_completion(ExitReason, State),
+    maybe_retry_rebalance(ExitReason, State),
     update_rebalance_counters(ExitReason, State),
     update_rebalance_status(ExitReason, State),
     rpc:eval_everywhere(diag_handler, log_all_dcp_stats, []),
@@ -1199,6 +1219,127 @@ handle_rebalance_completion(ExitReason, State) ->
             %% based on the reason for aborting rebalance.
             rebalance_completed_next_state(State#rebalancing_state.abort_reason)
     end.
+
+maybe_retry_rebalance(ExitReason,
+                      #rebalancing_state{rebalance_id = ID} = State) ->
+    case retry_rebalance(ExitReason, State) of
+        true ->
+            ok;
+        false ->
+            %% Cancel retry if there is one pending from previous failure.
+            auto_rebalance:cancel_pending_retry_async(ID, "rebalance")
+    end.
+
+retry_rebalance(normal, _State) ->
+    false;
+retry_rebalance({shutdown, stop}, _State) ->
+    false;
+%% TODO: handle graceful failover retry
+retry_rebalance(_, #rebalancing_state{type = rebalance,
+                                      keep_nodes = KNs,
+                                      eject_nodes = ENs,
+                                      failed_nodes = FNs,
+                                      delta_recov_bkts = DRBkts,
+                                      retry_check = Chk,
+                                      rebalance_id = Id}) ->
+    case lists:member(node(), FNs) of
+        true ->
+            ?log_debug("Orchestrator is one of the failed nodes "
+                       "and may be ejected. "
+                       "Failed rebalance with Id = ~s will not be retried.",
+                       [Id]),
+            false;
+        false ->
+            %% Restore the KnownNodes & EjectedNodes to the way they were
+            %% at the start of this rebalance.
+            EjectedNodes0 = FNs ++ ENs,
+            KnownNodes0 = EjectedNodes0 ++ KNs,
+
+            %% Rebalance may have ejected some nodes before failing.
+            EjectedByReb = KnownNodes0 -- ns_node_disco:nodes_wanted(),
+
+            %% KnownNodes0 was equal to ns_node_disco:nodes_wanted()
+            %% at the start of this rebalance. So, EjectedByReb
+            %% will be the nodes that have been ejected by this rebalance.
+            %% These will be the nodes in either the failed nodes or eject
+            %% nodes list.
+            %% As an extra sanity check verify that there are no
+            %% additional nodes in EjectedByReb.
+            case EjectedByReb -- EjectedNodes0 of
+                [] ->
+                    KnownNodes = KnownNodes0 -- EjectedByReb,
+                    EjectedNodes = EjectedNodes0 -- EjectedByReb,
+
+                    NewChk = update_retry_check(EjectedByReb, Chk),
+
+                    auto_rebalance:retry_rebalance(KnownNodes, EjectedNodes,
+                                                   DRBkts, Id, NewChk);
+                Extras ->
+                    ale:info(?USER_LOGGER,
+                             "~p nodes have been removed from the "
+                             "nodes_wanted() list. This is not expected. "
+                             "Rebalance with Id ~s will not be retried.",
+                             [Extras, Id]),
+                    false
+            end
+    end;
+retry_rebalance(_, _) ->
+    false.
+
+%% Fail the retry if there are newly failed over nodes,
+%% server group configuration has changed or buckets have been added
+%% or deleted or their replica count changed.
+retry_ok(Config, FailedNodes, undefined) ->
+    get_retry_check(Config, FailedNodes);
+retry_ok(Config, FailedNodes, RetryChk) ->
+    retry_ok(RetryChk, get_retry_check(Config, FailedNodes)).
+
+retry_ok([], NewChk) ->
+    NewChk;
+retry_ok([{Key, Val} | Rest], NewChk) ->
+    case proplists:get_value(Key, NewChk) =:= Val of
+        true ->
+            retry_ok(Rest, NewChk);
+        false ->
+            ?log_debug("Retry check failed for ~p", [Key]),
+            false
+    end.
+
+get_retry_check(Config, FailedNodes) ->
+    SGs = ns_config:search(Config, server_groups, []),
+    [{failed_nodes, lists:sort(FailedNodes)},
+     {server_groups, groups_chk(SGs, fun (Nodes) -> Nodes end)},
+     {buckets, buckets_chk(Config)}].
+
+buckets_chk(Config) ->
+    Bkts = lists:map(fun({B, BC}) ->
+                             {B, proplists:get_value(num_replicas, BC),
+                              proplists:get_value(uuid, BC)}
+                     end, ns_bucket:get_buckets(Config)),
+    erlang:phash2(Bkts).
+
+groups_chk(SGs, UpdateFn) ->
+    lists:map(
+      fun (SG) ->
+              Nodes = lists:sort(proplists:get_value(nodes, SG, [])),
+              lists:keyreplace(nodes, 1, SG, {nodes, UpdateFn(Nodes)})
+      end, SGs).
+
+update_retry_check([], Chk0) ->
+    Chk0;
+update_retry_check(EjectedByReb, Chk0) ->
+    ENs = lists:sort(EjectedByReb),
+    FNs = proplists:get_value(failed_nodes, Chk0) -- ENs,
+    Chk1 = lists:keyreplace(failed_nodes, 1, Chk0, {failed_nodes, FNs}),
+
+    %% User may have changed server group configuration during rebalance.
+    %% In that case, we want to fail the retry.
+    %% So, we save the server group configuration at the start of rebalance
+    %% However, we need to account for nodes ejected by rebalance itself.
+    SGs0 = proplists:get_value(server_groups, Chk1),
+    UpdateFn = fun (Nodes) -> Nodes -- ENs end,
+    lists:keyreplace(server_groups, 1, Chk1,
+                     {server_groups, groups_chk(SGs0, UpdateFn)}).
 
 maybe_eject_myself(Reason, State) ->
     case need_eject_myself(Reason, State) of
