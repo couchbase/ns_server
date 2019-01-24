@@ -135,6 +135,8 @@ do_start_link_capi_service(SSLPort) ->
 
     DbFrontendModule = list_to_atom(couch_config:get("httpd", "db_frontend", "couch_db_frontend")),
 
+    ExtraHeaders = menelaus_util:compute_sec_headers(),
+
     Loop =
         fun(Req)->
                 case SocketOptions of
@@ -144,7 +146,8 @@ do_start_link_capi_service(SSLPort) ->
                         ok = mochiweb_socket:setopts(Req:get(socket), SocketOptions)
                 end,
                 apply(couch_httpd, handle_request,
-                      [Req, DbFrontendModule, DefaultFun, UrlHandlers, DbUrlHandlers, DesignUrlHandlers])
+                      [Req, DbFrontendModule, DefaultFun, UrlHandlers,
+                       DbUrlHandlers, DesignUrlHandlers, ExtraHeaders])
         end,
 
     %% set mochiweb options
@@ -448,6 +451,9 @@ config_change_detector_loop({ssl_minimum_protocol, _}, Parent) ->
 config_change_detector_loop({client_cert_auth, _}, Parent) ->
     Parent ! client_cert_auth_changed,
     Parent;
+config_change_detector_loop({secure_headers, _}, Parent) ->
+    Parent ! secure_headers_changed,
+    Parent;
 config_change_detector_loop(_OtherEvent, Parent) ->
     Parent.
 
@@ -486,36 +492,30 @@ handle_info(cert_and_pkey_changed, #state{cert_state = OldCertState} = State) ->
             {noreply, #state{cert_state = NewCertState,
                              reload_state = all_services()}}
     end;
-handle_info(ssl_minimum_protocol_changed, #state{reload_state = ReloadState,
-                                                 min_ssl_ver = MinSslVer} = State) ->
+handle_info(ssl_minimum_protocol_changed, #state{min_ssl_ver = MinSslVer} = State) ->
     misc:flush(ssl_minimum_protocol_changed),
     case ssl_minimum_protocol() of
         MinSslVer ->
             {noreply, State};
         Other ->
-            misc:create_marker(marker_path()),
-            self() ! notify_services,
-            ReloadServices = [ssl_service, capi_ssl_service],
-            ?log_debug("Notify services ~p about ssl_minimum_protocol change", [ReloadServices]),
-            {noreply, #state{min_ssl_ver = Other,
-                             reload_state =
-                                 lists:umerge(lists:sort(ReloadServices), lists:sort(ReloadState))}}
+            {noreply, trigger_ssl_reload(ssl_minimum_protocol,
+                                         [ssl_service, capi_ssl_service],
+                                         State#state{min_ssl_ver = Other})}
     end;
-handle_info(client_cert_auth_changed, #state{reload_state = ReloadState,
-                                             client_cert_auth = Auth} = State) ->
+handle_info(client_cert_auth_changed, #state{client_cert_auth = Auth} = State) ->
     misc:flush(client_cert_auth_changed),
     case client_cert_auth() of
         Auth ->
             {noreply, State};
         Other ->
-            misc:create_marker(marker_path()),
-            self() ! notify_services,
-            ReloadServices = [ssl_service, capi_ssl_service],
-            ?log_debug("Notify services ~p about client_cert_auth change", [ReloadServices]),
-            {noreply, #state{client_cert_auth = Other,
-                             reload_state =
-                                 lists:umerge(lists:sort(ReloadServices), lists:sort(ReloadState))}}
+            {noreply, trigger_ssl_reload(client_cert_auth,
+                                         [ssl_service, capi_ssl_service],
+                                         State#state{client_cert_auth = Other})}
     end;
+handle_info(secure_headers_changed, State) ->
+    misc:flush(secure_headers_changed),
+    {noreply, trigger_ssl_reload(secure_headers_changed, [capi_ssl_service],
+                                 State)};
 handle_info(notify_services, #state{reload_state = []} = State) ->
     misc:flush(notify_services),
     {noreply, State};
@@ -558,6 +558,12 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+trigger_ssl_reload(Event, Services, #state{reload_state = ReloadState} = State) ->
+    misc:create_marker(marker_path()),
+    self() ! notify_services,
+    ?log_debug("Notify services ~p about ~p change", [Services, Event]),
+    State#state{reload_state = lists:usort(Services ++ ReloadState)}.
 
 do_generate_local_cert(CertPEM, PKeyPEM, Node) ->
     {_, Host} = misc:node_name_host(node()),
