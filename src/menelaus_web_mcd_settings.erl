@@ -32,6 +32,8 @@
 supported_setting_names() ->
     [{maxconn, {int, 1000, ?MC_MAXINT}},
      {dedicated_port_maxconn, {int, 1000, ?MC_MAXINT}},
+     {max_connections, {int, 2000, ?MC_MAXINT}},
+     {system_connections, {int, 1000, ?MC_MAXINT}},
      {verbosity, {int, 0, ?MC_MAXINT}},
      {ssl_cipher_list, string},
      {connection_idle_time, {int, 0, ?MC_MAXINT}},

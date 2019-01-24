@@ -169,6 +169,8 @@ default() ->
      {{node, node(), memcached_defaults},
       [{maxconn, 30000},
        {dedicated_port_maxconn, 5000},
+       {max_connections, 65000},
+       {system_connections, 5000},
        {connection_idle_time, 0},
        {verbosity, 0},
        {privilege_debug, false},
@@ -220,16 +222,13 @@ default() ->
          {memcached_config_mgr, omit_missing_mcd_ports,
           [
            {[{host, <<"*">>},
-             {port, port},
-             {maxconn, maxconn}] ++ InterfacesIPFields},
+             {port, port}] ++ InterfacesIPFields},
 
            {[{host, <<"*">>},
-             {port, dedicated_port},
-             {maxconn, dedicated_port_maxconn}] ++ InterfacesIPFields},
+             {port, dedicated_port}] ++ InterfacesIPFields},
 
            {[{host, <<"*">>},
              {port, ssl_port},
-             {maxconn, maxconn},
              {ssl, {[{key, list_to_binary(ns_ssl_services_setup:memcached_key_path())},
                      {cert, list_to_binary(ns_ssl_services_setup:memcached_cert_path())}]}}]
              ++ InterfacesIPFields}
@@ -258,6 +257,8 @@ default() ->
         {xattr_enabled, {memcached_config_mgr, is_enabled, [?VERSION_50]}},
         {scramsha_fallback_salt, {memcached_config_mgr, get_fallback_salt, []}},
         {collections_enabled, {memcached_config_mgr, collections_enabled, []}},
+        {max_connections, max_connections},
+        {system_connections, system_connections},
 
         {logger,
          {[{filename, {"~s/~s", [log_path, log_prefix]}},
@@ -496,6 +497,7 @@ upgrade_config_from_5_5_3_to_madhatter(Config) ->
 
 do_upgrade_config_from_5_5_3_to_madhatter(Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
+     upgrade_key(memcached_defaults, DefaultConfig),
      upgrade_sub_keys(memcached, [other_users], Config, DefaultConfig),
      upgrade_key(moxi, DefaultConfig) |
      rename_key(ldap_enabled, saslauthd_enabled, Config)].
@@ -612,11 +614,20 @@ upgrade_5_5_to_5_5_3_test() ->
 upgrade_5_5_3_to_madhatter_test() ->
     Cfg1 = [[{some_key, some_value},
              {{node, node(), memcached}, [{old, info}, {other_users, old}]},
+             {{node, node(), memcached_defaults}, [{k1, v1}]},
+             {{node, node(), memcached_config}, [{interfaces,
+                                                  [{[{x, y},
+                                                     {maxconn, 1}]}]}]},
              {{node, node(), ldap_enabled}, true}]],
-    Default = [{{node, node(), memcached_config}, new_memcached_config},
+    Default = [{{node, node(), memcached_config}, [{interfaces,
+                                                    [{[{x, y}]}]}]},
                {{node, node(), memcached}, [{some, stuff}, {other_users, new}]},
+               {{node, node(), memcached_defaults}, [{k1, v1}, {k2, v2}]},
                {{node, node(), moxi}, new_moxi_value}],
-    ?assertMatch([{set, {node, _, memcached_config}, new_memcached_config},
+
+    ?assertMatch([{set, {node, _, memcached_config}, [{interfaces,
+                                                       [{[{x, y}]}]}]},
+                  {set, {node, _, memcached_defaults}, [{k1, v1}, {k2, v2}]},
                   {set, {node, _, memcached}, [{old, info},
                                                {other_users, new}]},
                   {set, {node, _, moxi}, new_moxi_value},
@@ -625,7 +636,9 @@ upgrade_5_5_3_to_madhatter_test() ->
                  do_upgrade_config_from_5_5_3_to_madhatter(Cfg1, Default)),
     Cfg2 = [[{some_key, some_value},
              {{node, node(), memcached}, [{old, info}, {other_users, old}]}]],
-    ?assertMatch([{set, {node, _, memcached_config}, new_memcached_config},
+    ?assertMatch([{set, {node, _, memcached_config}, [{interfaces,
+                                                       [{[{x, y}]}]}]},
+                  {set, {node, _, memcached_defaults}, [{k1, v1}, {k2, v2}]},
                   {set, {node, _, memcached}, [{old, info},
                                                {other_users, new}]},
                   {set, {node, _, moxi}, new_moxi_value}],
