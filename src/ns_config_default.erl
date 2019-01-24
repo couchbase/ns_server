@@ -350,47 +350,40 @@ default() ->
 -spec upgrade_config([[{term(), term()}]]) -> [{set, term(), term()}].
 upgrade_config(Config) ->
     assert_no_tap_buckets(Config),
-
     CurrentVersion = get_current_version(),
-    case ns_config:search_node(node(), Config, config_version) of
-        {value, CurrentVersion} ->
+    ConfigVersion = ns_config:search_node_with_default(node(), Config,
+                                                       config_version, {1, 7}),
+    assert_not_developer_preview(CurrentVersion, ConfigVersion, Config),
+    case ConfigVersion of
+        CurrentVersion ->
             [];
-        {value, {4,0}} ->
+        {4,0} ->
             [{set, {node, node(), config_version}, {4,1,1}} |
              upgrade_config_from_4_0_to_4_1_1(Config)];
-        {value, {4,1,1}} ->
+        {4,1,1} ->
             [{set, {node, node(), config_version}, {4,5}} |
              upgrade_config_from_4_1_1_to_4_5()];
-        {value, {4,5}} ->
+        {4,5} ->
             [{set, {node, node(), config_version}, {4,6,5}} |
              upgrade_config_from_4_5_to_4_6_5()];
-        {value, {4,6,5}} ->
+        {4,6,5} ->
             [{set, {node, node(), config_version}, {5,0}} |
              upgrade_config_from_4_6_5_to_5_0(Config)];
-        {value, {5,0}} ->
+        {5,0} ->
             [{set, {node, node(), config_version}, {5,1,1}} |
              upgrade_config_from_5_0_to_5_1_1()];
-        {value, {5,1,1}} ->
+        {5,1,1} ->
             [{set, {node, node(), config_version}, {5,5}} |
              upgrade_config_from_5_1_1_to_5_5(Config)];
-        {value, {5,5}} ->
+        {5,5} ->
             [{set, {node, node(), config_version}, {5,5,3}} |
              upgrade_config_from_5_5_to_5_5_3()];
-        {value, {5,5,3}} ->
+        {5,5,3} ->
             [{set, {node, node(), config_version}, CurrentVersion} |
              upgrade_config_from_5_5_3_to_madhatter(Config)];
-
-        V0 ->
-            OldVersion =
-                case V0 of
-                    false ->
-                        {1, 7};
-                    {value, V1} ->
-                        V1
-                end,
-
-            ?log_error("Detected an attempt to offline upgrade "
-                       "from unsupported version ~p. Terminating.", [OldVersion]),
+        OldVersion ->
+            ?log_error("Detected an attempt to offline upgrade from "
+                       "unsupported version ~p. Terminating.", [OldVersion]),
             catch ale:sync_all_sinks(),
             misc:halt(1)
     end.
@@ -402,6 +395,17 @@ assert_no_tap_buckets(Config) ->
         {true, BadBuckets} ->
             ?log_error("Can't offline upgrade since there're non-dcp buckets: ~p",
                        [BadBuckets]),
+            catch ale:sync_all_sinks(),
+            misc:halt(1)
+    end.
+
+assert_not_developer_preview(CurrentVsn, ConfigVsn, Config) ->
+    case cluster_compat_mode:is_developer_preview(Config) of
+        false -> ok;
+        true when CurrentVsn == ConfigVsn -> ok;
+        true ->
+            ?log_error("Can't offline upgrade from a developer preview cluster"),
+            catch ale:sync_all_sinks(),
             misc:halt(1)
     end.
 

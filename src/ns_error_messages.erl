@@ -31,7 +31,8 @@
          reload_node_certificate_error/1,
          node_certificate_warning/1,
          not_absolute_path/1,
-         empty_param/1]).
+         empty_param/1,
+         preview_cluster_join_error/0]).
 
 -spec connection_error_message(term(), string(), string() | integer()) -> binary() | undefined.
 connection_error_message({Error, _}, Host, Port) ->
@@ -256,3 +257,5 @@ not_absolute_path(Param) ->
 empty_param(Param) ->
     iolist_to_binary(io_lib:format("~p cannot contain empty string", [Param])).
 
+preview_cluster_join_error() ->
+    <<"Can't join a developer preview cluster">>.

@@ -535,6 +535,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "security"] ->
                     {{[admin, security], write},
                      fun menelaus_web_settings:handle_post/2, [security]};
+                ["settings", "developerPreview"] ->
+                    {{[admin, setup], write},
+                     fun menelaus_web_settings:handle_post/2, [developer_preview]};
                 ["validateCredentials"] ->
                     {{[admin, security], write},
                      fun menelaus_web_rbac:handle_validate_saslauthd_creds_post/1};

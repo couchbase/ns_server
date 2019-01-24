@@ -75,7 +75,8 @@
          mutate_doc/4,
          set_user_group/5,
          delete_user_group/2,
-         ldap_settings/2
+         ldap_settings/2,
+         developer_preview_settings/2
         ]).
 
 -export([start_link/0, stats/0]).
@@ -313,7 +314,9 @@ code(set_user_group) ->
 code(delete_user_group) ->
     8245;
 code(ldap_settings) ->
-    8246.
+    8246;
+code(developer_preview_settings) ->
+    8247.
 
 to_binary({list, List}) ->
     [to_binary(A) || A <- List];
@@ -810,3 +813,7 @@ ldap_settings(Req, Settings) ->
 prepare_ldap_setting({hosts, List}) -> {hosts, {list, List}};
 prepare_ldap_setting({user_dn_mapping = K, JSON}) -> {K, ejson:encode(JSON)};
 prepare_ldap_setting(Default) -> Default.
+
+developer_preview_settings(Req, Settings) ->
+    put(developer_preview_settings, Req,
+        [{settings, {prepare_list(Settings)}}]).

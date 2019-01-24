@@ -971,6 +971,22 @@
               "groups_query": "",
               "request_timeout": 1
           }
+      },
+      {
+          "id" : 8247,
+          "name" : "developer preview settings",
+          "description" : "Developer preview settings",
+          "sync" : false,
+          "enabled" : true,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"domain" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "settings" : ""
+          },
+          "optional_fields" : {
+              "sessionid" : ""
+          }
       }
     ]
 }

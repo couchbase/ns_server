@@ -525,8 +525,10 @@ do_add_node_allowed(RemoteAddr, RestPort, Auth, GroupUUID, Services) ->
 do_add_node_with_connectivity(RemoteAddr, RestPort, Auth, GroupUUID, Services) ->
     {struct, NodeInfo} = menelaus_web_node:build_full_node_info(node(),
                                                                 misc:localhost()),
+    IsPreviewCluster = cluster_compat_mode:is_developer_preview(),
     Props = [{<<"requestedTargetNodeHostname">>, list_to_binary(RemoteAddr)},
-             {<<"requestedServices">>, Services}]
+             {<<"requestedServices">>, Services},
+             {<<"isDeveloperPreview">>, IsPreviewCluster}]
         ++ NodeInfo,
 
     Props1 =
@@ -834,13 +836,22 @@ do_engage_cluster_check_compat_version(Node, Version, NodeKVList) ->
     MinSupportedCompatVersion = cluster_compat_mode:min_supported_compat_version(),
     MinSupportedCompatibility =
         cluster_compat_mode:effective_cluster_compat_version_for(MinSupportedCompatVersion),
+    IsPreviewCluster =
+        proplists:get_value(<<"isDeveloperPreview">>, NodeKVList, false),
+    SupportedVsn = cluster_compat_mode:supported_compat_version(),
+    WantedCompatibility =
+        cluster_compat_mode:effective_cluster_compat_version_for(SupportedVsn),
 
-    case ActualCompatibility < MinSupportedCompatibility of
-        true ->
+    if
+        ActualCompatibility < MinSupportedCompatibility ->
             {error, incompatible_cluster_version,
              ns_error_messages:too_old_version_error(Node, Version),
              incompatible_cluster_version};
-        false ->
+        IsPreviewCluster and (WantedCompatibility > ActualCompatibility) ->
+            {error, incompatible_cluster_version,
+             ns_error_messages:preview_cluster_join_error(),
+             incompatible_cluster_version};
+        true ->
             do_engage_cluster_check_services(NodeKVList)
     end.
 

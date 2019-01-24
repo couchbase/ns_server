@@ -61,6 +61,9 @@ get_bool("false") ->
 get_bool(_) ->
     invalid.
 
+only_true("true") -> {ok, true};
+only_true(_) -> invalid.
+
 get_number(Min, Max) ->
     fun (SV) ->
             parse_validate_number(SV, Min, Max)
@@ -124,7 +127,9 @@ conf(internal) ->
       get_number(0, 99999, undefined)},
      {gotraceback, gotraceback, <<"single">>, fun get_string/1},
      {{auto_failover_disabled, index}, indexAutoFailoverDisabled, true, fun get_bool/1},
-     {{cert, use_sha1}, certUseSha1, false, fun get_bool/1}].
+     {{cert, use_sha1}, certUseSha1, false, fun get_bool/1}];
+conf(developer_preview) ->
+    [{developer_preview_enabled, enabled, false, fun only_true/1}].
 
 build_kvs(Type) ->
     Conf = conf(Type),
