@@ -715,7 +715,8 @@ cbas_spec(Config) ->
                      "-parentPort=" ++ integer_to_list(ParentPort),
                      "-bindReplicationPort=" ++ integer_to_list(ReplicationPort),
                      "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
-                     "-logDir=" ++ LogDir
+                     "-logDir=" ++ LogDir,
+                     "-tmpDir=" ++ path_config:component_path(tmp)
                     ] ++
                         ["-dataDir=" ++ Dir || Dir <- CBASDirs] ++
                         ["-javaHome=" ++ JavaHome || JavaHome =/= undefined] ++
