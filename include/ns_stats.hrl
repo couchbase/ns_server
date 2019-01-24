@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2018 Couchbase, Inc.
+%% @copyright 2009-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -235,10 +235,8 @@
         ep_replica_ahead_exceptions
 ).
 
-%% atom() timestamps and values are used by archiver for internal mnesia-related
-%% things
--record(stat_entry, {timestamp :: integer() | atom(),
-                     values :: [{atom(), number()}] | '_'}).
+-record(stat_entry, {timestamp :: integer(),
+                     values :: [{binary() | atom(), number() | undefined}]}).
 
 -record(dcp_stream_stats, {count = 0,
                            items_remaining = 0,
