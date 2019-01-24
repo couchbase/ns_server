@@ -343,12 +343,14 @@ angular.module('mnSettingsNotificationsService', [
            queries[10] = mnTasksDetails.get(mnHttpParams);
 
         // do we have an eventing service? If so, see how it is used
-        if (_.indexOf(poolDefault.thisNode.services, 'eventing') > -1)
-            queries[11] = mnSettingsNotificationsService.getEventingData();
+        if (poolDefault.nodes.some(function(node) {
+               return(_.indexOf(node.services, 'eventing') > -1);}))
+          queries[11] = mnSettingsNotificationsService.getEventingData();
 
         // do we have an analytics service? If so, get some information about it.
-        if (_.indexOf(poolDefault.thisNode.services, 'cbas') > -1)
-            queries[12] = mnSettingsNotificationsService.getCbasData();
+        if (poolDefault.nodes.some(function(node) {
+          return(_.indexOf(node.services, 'cbas') > -1);}))
+          queries[12] = mnSettingsNotificationsService.getCbasData();
 
         return $q.all(queries).then(buildPhoneHomeThingy);
       });
