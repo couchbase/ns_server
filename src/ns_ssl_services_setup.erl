@@ -135,6 +135,8 @@ do_start_link_capi_service(SSLPort) ->
 
     DbFrontendModule = list_to_atom(couch_config:get("httpd", "db_frontend", "couch_db_frontend")),
 
+    ExtraHeaders = menelaus_util:compute_sec_headers(),
+
     Loop =
         fun(Req)->
                 case SocketOptions of
@@ -144,7 +146,8 @@ do_start_link_capi_service(SSLPort) ->
                         ok = mochiweb_socket:setopts(mochiweb_request:get(socket, Req), SocketOptions)
                 end,
                 apply(couch_httpd, handle_request,
-                      [Req, DbFrontendModule, DefaultFun, UrlHandlers, DbUrlHandlers, DesignUrlHandlers, []])
+                      [Req, DbFrontendModule, DefaultFun, UrlHandlers,
+                       DbUrlHandlers, DesignUrlHandlers, ExtraHeaders])
         end,
 
     %% set mochiweb options
@@ -500,6 +503,9 @@ config_change_detector_loop({cipher_suites, _}, Parent) ->
 config_change_detector_loop({honor_cipher_order, _}, Parent) ->
     Parent ! cipher_suites_changed,
     Parent;
+config_change_detector_loop({secure_headers, _}, Parent) ->
+    Parent ! secure_headers_changed,
+    Parent;
 config_change_detector_loop(_OtherEvent, Parent) ->
     Parent.
 
@@ -546,6 +552,7 @@ handle_info(ssl_minimum_protocol_changed,
             {noreply, State};
         Other ->
             {noreply, trigger_ssl_reload(ssl_minimum_protocol,
+                                         [ssl_service, capi_ssl_service],
                                          State#state{min_ssl_ver = Other})}
     end;
 handle_info(cipher_suites_changed, #state{ciphers = CurrentCiphers} = State) ->
@@ -555,6 +562,7 @@ handle_info(cipher_suites_changed, #state{ciphers = CurrentCiphers} = State) ->
             {noreply, State};
         NewCiphers ->
             {noreply, trigger_ssl_reload(cipher_suites,
+                                         [ssl_service, capi_ssl_service],
                                          State#state{ciphers = NewCiphers})}
     end;
 handle_info(client_cert_auth_changed,
@@ -565,8 +573,13 @@ handle_info(client_cert_auth_changed,
             {noreply, State};
         Other ->
             {noreply, trigger_ssl_reload(client_cert_auth,
+                                         [ssl_service, capi_ssl_service],
                                          State#state{client_cert_auth = Other})}
     end;
+handle_info(secure_headers_changed, State) ->
+    misc:flush(secure_headers_changed),
+    {noreply, trigger_ssl_reload(secure_headers_changed, [capi_ssl_service],
+                                 State)};
 
 handle_info(notify_services, #state{reload_state = []} = State) ->
     misc:flush(notify_services),
@@ -611,10 +624,9 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-trigger_ssl_reload(Event, #state{reload_state = ReloadState} = State) ->
+trigger_ssl_reload(Event, Services, #state{reload_state = ReloadState} = State) ->
     misc:create_marker(marker_path()),
     self() ! notify_services,
-    Services = [ssl_service, capi_ssl_service],
     ?log_debug("Notify services ~p about ~p change", [Services, Event]),
     State#state{reload_state = lists:usort(Services ++ ReloadState)}.
 
