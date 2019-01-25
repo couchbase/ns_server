@@ -261,4 +261,5 @@ handle_invalidate_ldap_cache(Req) ->
 
 invalidate_ldap_cache() ->
     ldap_auth_cache:flush(),
-    roles_cache:renew().
+    roles_cache:renew(),
+    memcached_permissions:refresh().
