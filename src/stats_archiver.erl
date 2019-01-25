@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2018 Couchbase, Inc.
+%% @copyright 2009-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -98,16 +98,17 @@ ensure_stats_storage() ->
 %% @doc Compute the average of a list of entries.
 -spec avg(atom() | integer(), list()) -> #stat_entry{}.
 avg(TS, [First|Rest]) ->
-    Sum = fun(_K, null, B) -> B;
-             (_K, A, null) -> A;
-             (_K, A, B)    -> A + B
-          end,
-    Merge = fun(E, Acc) -> orddict:merge(Sum, Acc, E#stat_entry.values) end,
+    Merge = fun(E, Acc) ->
+                    orddict:merge(fun (_Key, A, B) ->
+                                          A + B
+                                  end,
+                                  Acc, E#stat_entry.values)
+            end,
     Sums = lists:foldl(Merge, First#stat_entry.values, Rest),
     Count = 1 + length(Rest),
     #stat_entry{timestamp = TS,
-                values = orddict:map(fun (_Key, null) -> null;
-                                         (_Key, Value) -> Value / Count
+                values = orddict:map(fun (_Key, Value) ->
+                                             Value / Count
                                      end, Sums)}.
 
 %% @doc Fetch the latest stats sample
