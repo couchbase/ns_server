@@ -499,6 +499,25 @@ maybe_log_down_message({'DOWN', _MRef, process, Pid, Reason}) ->
 
 
 -ifdef(TEST).
+race_test() ->
+    0 = ?flush(_),
+
+    {_, Result} = race(?cut(a), ?cut(b)),
+    ?assert(lists:member(Result, [a, b])),
+
+    WaitFun = fun () ->
+                      Ref = make_ref(),
+                      receive
+                          Ref ->
+                              ok
+                      end
+              end,
+
+    ?assertEqual({left, a}, race(?cut(a), WaitFun)),
+    ?assertEqual({right, b}, race(WaitFun, ?cut(b))),
+
+    0 = ?flush(_).
+
 abort_after_test() ->
     A1 = async:start(?cut(timer:sleep(10000)), [{abort_after, 100}]),
     ?assertExit(timeout, async:wait(A1)),
