@@ -305,6 +305,7 @@ get_users_page_validators(DomainAtom, HasStartFrom) ->
                                "password_change_timestamp"], _),
      validator:convert(sortBy, fun list_to_atom/1, _),
      validator:one_of(order, ["asc", "desc"], _),
+     validator:touch(substr, _),
      validator:convert(order, fun list_to_atom/1, _)] ++
         case HasStartFrom of
             false ->
@@ -385,6 +386,29 @@ security_filter(Req) ->
                   {not Res, NewCache}
               end, #{})
     end.
+
+substr_filter(undefined, _) -> pipes:filter(fun (_) -> true end);
+substr_filter(Substr, PropsToCheck) ->
+    LowerSubstr = string:to_lower(Substr),
+    CheckProps =
+        fun (Props) ->
+            lists:any(
+                fun (P) ->
+                    case proplists:get_value(P, Props) of
+                        undefined -> false;
+                        V when is_list(V) ->
+                            string:str(string:to_lower(V), LowerSubstr) > 0
+                    end
+                end, PropsToCheck)
+        end,
+    pipes:filter(
+      fun ({{user, {Id, _}}, Props}) ->
+              (string:str(string:to_lower(Id), LowerSubstr) > 0) orelse
+                  CheckProps(Props);
+          ({{group, Id}, Props}) ->
+              (string:str(string:to_lower(Id), LowerSubstr) > 0) orelse
+                  CheckProps(Props)
+      end).
 
 handle_get_all_users(Req, Pattern, Params) ->
     Roles = get_roles_for_users_filtering(
@@ -647,12 +671,14 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
     Roles = get_roles_for_users_filtering(Permission),
     Order = proplists:get_value(order, Values, asc),
     Sort = proplists:get_value(sortBy, Values, id),
+    Substr = proplists:get_value(substr, Values, undefined),
 
     {PageSkews, Total} =
         pipes:run(menelaus_users:select_users({'_', DomainAtom},
                                               SortAndFilteringProps),
                   [filter_by_roles(Roles),
-                   security_filter(Req)],
+                   security_filter(Req),
+                   substr_filter(Substr, [name])],
                   ?make_consumer(
                      pipes:fold(
                        ?producer(),
@@ -669,6 +695,7 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
     UsersJson = [UserJson(O) || O <- Users],
     LinksParams = [{permission, permission_to_binary(Permission)}
                         || Permission =/= undefined] ++
+                  [{substr, Substr} || Substr =/= undefined] ++
                   [{pageSize, PageSize},
                    {sortBy, Sort},
                    {order, Order}],
@@ -1522,7 +1549,9 @@ get_groups_page_validators() ->
                       ["id", "description", "roles", "ldap_group_ref"], _),
      validator:convert(sortBy, fun list_to_atom/1, _),
      validator:one_of(order, ["asc", "desc"], _),
-     validator:convert(order, fun list_to_atom/1, _)].
+     validator:touch(substr, _),
+     validator:convert(order, fun list_to_atom/1, _),
+     validator:unsupported(_)].
 
 handle_get_groups_page(Req, Path, Values) ->
     StartId = proplists:get_value(startFrom, Values),
@@ -1533,10 +1562,12 @@ handle_get_groups_page(Req, Path, Values) ->
     PageSize = proplists:get_value(pageSize, Values),
     Order = proplists:get_value(order, Values, asc),
     Sort = proplists:get_value(sortBy, Values, id),
+    Substr = proplists:get_value(substr, Values, undefined),
 
     {PageSkews, Total} =
         pipes:run(menelaus_users:select_groups('_'),
-                  [security_filter(Req)],
+                  [security_filter(Req),
+                   substr_filter(Substr, [description])],
                   ?make_consumer(
                      pipes:fold(
                        ?producer(),
@@ -1546,9 +1577,11 @@ handle_get_groups_page(Req, Path, Values) ->
 
     {Groups, Skipped, Links} = page_data_from_skews(PageSkews, PageSize),
     GroupsJson = [group_to_json(Id, Props) || {Id, Props} <- Groups],
-    LinksJson = build_group_links(Links, Path, [{pageSize, PageSize},
-                                                {sortBy, Sort},
-                                                {order, Order}]),
+    LinksJson = build_group_links(Links, Path,
+                                  [{pageSize, PageSize},
+                                   {sortBy, Sort},
+                                   {order, Order}] ++
+                                  [{substr, Substr} || Substr =/= undefined]),
     Json = {[{total, Total},
              {links, LinksJson},
              {skipped, Skipped},
