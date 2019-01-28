@@ -8,160 +8,19 @@ define("ace/ext/cb-searchbox",["require","exports","module","ace/lib/dom","ace/l
 var dom = require("../lib/dom");
 var lang = require("../lib/lang");
 var event = require("../lib/event");
-var searchboxCss = "\
-.ace_search {\
-background-color: #ddd;\
-border: 1px solid #cbcbcb;\
-border-top: 0 none;\
-max-width: 325px;\
-overflow: hidden;\
-margin: 0;\
-padding: 4px;\
-padding-right: 6px;\
-padding-bottom: 0;\
-position: absolute;\
-top: 0px;\
-z-index: 99;\
-white-space: normal;\
-}\
-.ace_search.left {\
-border-left: 0 none;\
-border-radius: 0px 0px 5px 0px;\
-left: 0;\
-}\
-.ace_search.right {\
-border-radius: 0px 0px 0px 5px;\
-border-right: 0 none;\
-right: 0;\
-}\
-.ace_search_form, .ace_replace_form {\
-border-radius: 3px;\
-border: 1px solid #cbcbcb;\
-float: left;\
-margin-bottom: 4px;\
-overflow: hidden;\
-}\
-.ace_search_form.ace_nomatch {\
-outline: 1px solid red;\
-}\
-.ace_search_field {\
-background-color: white;\
-border-right: 1px solid #cbcbcb;\
-border: 0 none;\
--webkit-box-sizing: border-box;\
--moz-box-sizing: border-box;\
-box-sizing: border-box;\
-float: left;\
-height: 22px;\
-outline: 0;\
-padding: 0 7px;\
-width: 214px;\
-margin: 0;\
-}\
-.ace_searchbtn,\
-.ace_replacebtn {\
-background: #fff;\
-border: 0 none;\
-border-left: 1px solid #dcdcdc;\
-cursor: pointer;\
-float: left;\
-height: 22px;\
-margin: 0;\
-position: relative;\
-}\
-.ace_searchbtn:last-child,\
-.ace_replacebtn:last-child {\
-border-top-right-radius: 3px;\
-border-bottom-right-radius: 3px;\
-}\
-.ace_searchbtn:disabled {\
-background: none;\
-cursor: default;\
-}\
-.ace_searchbtn {\
-background-position: 50% 50%;\
-background-repeat: no-repeat;\
-width: 27px;\
-}\
-.ace_searchbtn.prev {\
-background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAFCAYAAAB4ka1VAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAADFJREFUeNpiSU1NZUAC/6E0I0yACYskCpsJiySKIiY0SUZk40FyTEgCjGgKwTRAgAEAQJUIPCE+qfkAAAAASUVORK5CYII=);    \
-}\
-.ace_searchbtn.next {\
-background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAFCAYAAAB4ka1VAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAADRJREFUeNpiTE1NZQCC/0DMyIAKwGJMUAYDEo3M/s+EpvM/mkKwCQxYjIeLMaELoLMBAgwAU7UJObTKsvAAAAAASUVORK5CYII=);    \
-}\
-.ace_searchbtn_close {\
-background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAcCAYAAABRVo5BAAAAZ0lEQVR42u2SUQrAMAhDvazn8OjZBilCkYVVxiis8H4CT0VrAJb4WHT3C5xU2a2IQZXJjiQIRMdkEoJ5Q2yMqpfDIo+XY4k6h+YXOyKqTIj5REaxloNAd0xiKmAtsTHqW8sR2W5f7gCu5nWFUpVjZwAAAABJRU5ErkJggg==) no-repeat 50% 0;\
-border-radius: 50%;\
-border: 0 none;\
-color: #656565;\
-cursor: pointer;\
-float: right;\
-font: 16px/16px Arial;\
-height: 14px;\
-margin: 5px 1px 9px 5px;\
-padding: 0;\
-text-align: center;\
-width: 14px;\
-}\
-.ace_searchbtn_close:hover {\
-background-color: #656565;\
-background-position: 50% 100%;\
-color: white;\
-}\
-.ace_replacebtn.prev {\
-width: 54px\
-}\
-.ace_replacebtn.next {\
-width: 27px\
-}\
-.ace_button {\
-margin-left: 2px;\
-cursor: pointer;\
--webkit-user-select: none;\
--moz-user-select: none;\
--o-user-select: none;\
--ms-user-select: none;\
-user-select: none;\
-overflow: hidden;\
-opacity: 0.7;\
-border: 1px solid rgba(100,100,100,0.23);\
-padding: 1px;\
--moz-box-sizing: border-box;\
-box-sizing:    border-box;\
-color: black;\
-}\
-.ace_button:hover {\
-background-color: #eee;\
-opacity:1;\
-}\
-.ace_button:active {\
-background-color: #ddd;\
-}\
-.ace_button.checked {\
-border-color: #3399ff;\
-opacity:1;\
-}\
-.ace_search_options{\
-margin-bottom: 3px;\
-text-align: right;\
--webkit-user-select: none;\
--moz-user-select: none;\
--o-user-select: none;\
--ms-user-select: none;\
-user-select: none;\
-}";
+//var searchboxCss = ""
+
 var HashHandler = require("../keyboard/hash_handler").HashHandler;
 var keyUtil = require("../lib/keys");
 
-dom.importCssString(searchboxCss, "ace_searchbox");
+//dom.importCssString(searchboxCss, "ace_searchbox");
 
-var html = '<div class="ace_search right">\
-    <button type="button" action="hide" class="ace_searchbtn_close"></button>\
-    <div class="ace_search_form">\
-        <input class="ace_search_field" placeholder="Search for" spellcheck="false"></input>\
-        <button type="button" action="findNext" class="ace_searchbtn next"></button>\
-        <button type="button" action="findPrev" class="ace_searchbtn prev"></button>\
-        <button type="button" action="findAll" class="ace_searchbtn" title="Alt-Enter">All</button>\
+var html = '<div class="ace_search">\
+    <div class="ace_search_form row">\
+        <input type="text" class="ace_search_field" placeholder="Search for" spellcheck="false"></input>\
+        <span action="findPrev" class="icon fa-angle-left"></span>\
+        <span action="findNext" class="icon fa-angle-right"></span>\
+        <span action="hide" class="ace_searchbtn_close">X</span>\
     </div>\
     <div class="ace_replace_form">\
         <input class="ace_search_field" placeholder="Replace with" spellcheck="false"></input>\

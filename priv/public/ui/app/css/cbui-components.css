@@ -1896,6 +1896,16 @@ input[type="checkbox"].fake-select + label:before {
   justify-content: space-between;
   position: relative;
 }
+.wb-results-header .icon {
+  cursor: pointer;
+  color: #d1d1d1;
+  padding: 0 .5rem;
+  font-size: 1.15rem;
+  transition: all .25s;
+}
+.wb-results-header .icon:hover {
+  color: #333;
+}
 /* the wrapper around ALL results views...followed by the specific views --- */
 .wb-results-wrapper {
   background-color: #f6f7f9;
@@ -1941,6 +1951,56 @@ input[type="checkbox"].fake-select + label:before {
   display: block;
   width: 100%;
   text-align: right;
+}
+/* -- ACE search modifications --------------------------------------------- */
+.ace_search {
+  background-color: #fff;
+  border: 1px solid #d1d1d1;
+  max-width: 325px;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  border-radius: 3px;
+  box-shadow: 0px 1px 1px 1px rgba(0,0,0,0.25);
+  z-index: 99;
+  white-space: normal;
+}
+.ace_search_form .icon {
+  display: inline-block;
+  font-size: 1.5rem;
+  padding: .5rem 1rem;
+  cursor: pointer;
+  height: 100%;
+}
+.ace_search_form .icon:hover {
+  background-color: #ececec;
+}
+.ace_search_form {
+  border: 1px solid #fff;
+  border-radius: 3px;
+}
+.ace_search_form.ace_nomatch {
+  border: 1px solid #e07f82;
+}
+.ace_search_field {
+  width: 100%;
+  border-width: 0!important;
+  font-size: .8125rem;
+}
+.ace_searchbtn_close {
+  font-size: 1rem;
+  padding: .625rem 1rem .5rem 1rem;
+  cursor: pointer;
+  line-height: 1;
+}
+.ace_searchbtn_close:hover {
+  background-color: #ececec;
+}
+.ace_search_options{
+  display: none
 }
 
 /* bucket inference sidebar ------------------------------------------------- */
@@ -2054,7 +2114,7 @@ input[type="checkbox"].fake-select + label:before {
   margin-bottom: 1rem;
 }
 .wb-history-dialog .filter-input {
-  width: 100%;
+  width: 100%!important;
 }
 .wb-history-table {
   padding: 0 0 1rem 0;
