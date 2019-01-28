@@ -35,7 +35,8 @@
     mcd_socket = undefined,
     data = <<>>,
     buckets = [],
-    rbac_updater_ref = undefined
+    rbac_updater_ref = undefined,
+    enabled = false
 }).
 
 -define(RECONNECT_TIMEOUT, 1000).
@@ -58,14 +59,20 @@ init([]) ->
     Self ! reconnect,
 
     EventHandler =
-        fun ({buckets, _V} = Event) -> gen_server:cast(Self, Event);
+        fun ({buckets, _V} = Event) ->
+                gen_server:cast(Self, Event);
+            ({ldap_settings, _} = Event) ->
+                gen_server:cast(Self, Event);
+            ({saslauthd_auth_settings, _} = Event) ->
+                gen_server:cast(Self, Event);
             (_) -> ok
         end,
     ns_pubsub:subscribe_link(ns_config_events, EventHandler),
 
     Config = ns_config:get(),
     Buckets = ns_bucket:get_buckets(Config),
-    {ok, #s{buckets = ns_bucket:get_bucket_names(Buckets)}}.
+    {ok, #s{buckets = ns_bucket:get_bucket_names(Buckets),
+            enabled = memcached_config_mgr:is_external_auth_service_enabled()}}.
 
 handle_call(_Request, _From, State) ->
    {reply, unhandled, State}.
@@ -74,6 +81,15 @@ handle_cast({buckets, V}, State) ->
     Configs = proplists:get_value(configs, V),
     NewBuckets = ns_bucket:get_bucket_names(Configs),
     {noreply, State#s{buckets = NewBuckets}};
+
+handle_cast({Prop, _}, #s{enabled = Enabled} = State)
+        when Prop =:= ldap_settings;
+             Prop =:= saslauthd_auth_settings ->
+    NewEnabled = memcached_config_mgr:is_external_auth_service_enabled(),
+    case NewEnabled =:= Enabled of
+        true -> {noreply, State};
+        false -> {noreply, reconnect(State#s{enabled = NewEnabled})}
+    end;
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -201,14 +217,21 @@ cmd_auth_provider(Sock) ->
             {error, {Status, ErrorBin}}
     end.
 
-reconnect(State = #s{mcd_socket = OldSock}) ->
+reconnect(State = #s{mcd_socket = OldSock, enabled = Enabled}) ->
     catch gen_tcp:close(OldSock),
     NewState = State#s{mcd_socket = undefined, data = <<>>},
-    case connect() of
-        {ok, Socket} ->
-            NewState#s{mcd_socket = Socket};
-        {error, _} ->
-            timer:send_after(?RECONNECT_TIMEOUT, self(), reconnect),
+    case Enabled of
+        true ->
+            case connect() of
+                {ok, Socket} ->
+                    NewState#s{mcd_socket = Socket};
+                {error, _} ->
+                    timer:send_after(?RECONNECT_TIMEOUT, self(), reconnect),
+                    NewState
+            end;
+        false ->
+            ?log_debug("Skipping creation of 'Auth provider' connection "
+                       "because external users are disabled"),
             NewState
     end.
 
