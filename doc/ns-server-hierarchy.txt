@@ -35,7 +35,6 @@
                         (gen-server 'cb_config_couch_sync :since "2.0"
                                     "syncs important ns_config variables into couch config"
                                     (pubsub-link nil :to 'ns_config_events)))
-            (worker 'vbucket_filter_changes_registry)
             (supervisor 'ns_server_sup :mode :one_for_one
                         (transient 'setup_babysitter_node '(ns_server setup_babysitter_node)
                                    "Runs ns_server:setup_babysitter_node once which sets application environment
