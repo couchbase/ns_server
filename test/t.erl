@@ -95,13 +95,44 @@ get_modules() ->
     Files = filelib:wildcard(FullWildcard, config(root_dir)),
     [list_to_atom(filename:basename(F, Ext)) || F <- Files].
 
-run_eunit_tests(Modules) ->
+run_eunit_tests(Modules0) ->
+    %% eunit:test(module) will also run tests defined in module_tests. This
+    %% will filter _tests modules out to avoid running tests twice.
+    Modules  = filter_out_unneeded_tests_modules(Modules0),
     Listener = spawn_listener(),
     eunit:test(Modules, [verbose, {report, Listener}]),
 
     receive
         {failed_tests, FailedTests} ->
             FailedTests
+    end.
+
+filter_out_unneeded_tests_modules(Modules) ->
+    Set0 = sets:from_list(Modules),
+    Set1 = sets:filter(
+             fun (Module) ->
+                     case is_tests_module(Module) of
+                         {true, MainModule} ->
+                             %% only filter the module out if the
+                             %% corresponding main module is in the set of
+                             %% modules to test
+                             not sets:is_element(MainModule, Set0);
+                         false ->
+                             true
+                     end
+             end, Set0),
+
+    sets:to_list(Set1).
+
+is_tests_module(Module0) ->
+    Suffix = "_tests",
+    Module = atom_to_list(Module0),
+    case lists:suffix(Suffix, Module) of
+        true ->
+            {Main, _} = lists:split(length(Module) - length(Suffix), Module),
+            {true, list_to_atom(Main)};
+        false ->
+            false
     end.
 
 -define(TRIQ_ITERS, 100).
