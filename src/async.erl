@@ -24,7 +24,6 @@
 
 -export([start/1, start/2,
          start_many/2, start_many/3,
-         perform/1, perform/2,
          abort/1, abort/2,
          abort_many/1, abort_many/2,
          send/2,
@@ -56,12 +55,6 @@ start(Fun, Opts) ->
       fun () ->
               async_init(Parent, ParentController, Opts, Fun)
       end).
-
-perform(Fun) ->
-    perform(Fun, [monitor]).
-
-perform(Fun, Opts) ->
-    start(Fun, Opts ++ [{type, perform}]).
 
 start_many(Fun, Args) ->
     start_many(Fun, Args, []).
@@ -221,8 +214,7 @@ async_init(Parent, ParentController, Opts, Fun) ->
             erlang:send_after(AbortAfter, self(), abort_after_expired)
     end,
 
-    Type = proplists:get_value(type, Opts, wait),
-    async_loop_wait_result(Type, Child, Reply, []).
+    async_loop_wait_result(Child, Reply, []).
 
 maybe_register_with_parent_async(undefined) ->
     ok;
@@ -239,14 +231,13 @@ register_with_async(Pid) ->
             exit(normal)
     end.
 
-async_loop_wait_result(Type, Child, Reply, ChildAsyncs) ->
+async_loop_wait_result(Child, Reply, ChildAsyncs) ->
     receive
         {'DOWN', _MRef, process, _Pid, Reason} = Down ->
             maybe_log_down_message(Down),
             terminate_now(Child, ChildAsyncs, Reason);
         {'EXIT', Child, Reason} ->
-            terminate_on_query(Type,
-                               undefined, ChildAsyncs, {child_died, Reason});
+            terminate_on_query(undefined, ChildAsyncs, {child_died, Reason});
         %% note, we don't assume that this comes from the parent, because we
         %% can be terminated by parent async, for example, which is not the
         %% actual parent of our process
@@ -254,14 +245,14 @@ async_loop_wait_result(Type, Child, Reply, ChildAsyncs) ->
             terminate_now(Child, ChildAsyncs, Reason);
         {'$async_req', From, {register_child_async, Pid}} ->
             reply(From, {ok, Child}),
-            async_loop_wait_result(Type, Child, Reply, [Pid | ChildAsyncs]);
+            async_loop_wait_result(Child, Reply, [Pid | ChildAsyncs]);
         {Reply, Result} ->
-            async_loop_handle_result(Type, Child, ChildAsyncs, Result);
+            async_loop_handle_result(Child, ChildAsyncs, Result);
         {'$async_msg', Msg} ->
             Child ! Msg,
-            async_loop_wait_result(Type, Child, Reply, ChildAsyncs);
+            async_loop_wait_result(Child, Reply, ChildAsyncs);
         abort_after_expired ->
-            terminate_on_query(Type, Child, ChildAsyncs, timeout)
+            terminate_on_query(Child, ChildAsyncs, timeout)
     end.
 
 maybe_terminate_child(undefined, _Reason) ->
@@ -302,33 +293,21 @@ terminate_now(Child, ChildAsyncs, Reason) ->
     terminate_children(Child, ChildAsyncs, Reason),
     exit(Reason).
 
-terminate_on_query(perform, Child, ChildAsyncs, Reason) ->
-    terminate_now(Child, ChildAsyncs, Reason);
-terminate_on_query(wait, Child, ChildAsyncs, Reason) ->
+terminate_on_query(Child, ChildAsyncs, Reason) ->
     terminate_children(Child, ChildAsyncs, Reason),
     async_loop_with_result({die, Reason}).
 
-async_loop_handle_result(Type, Child, ChildAsyncs, Result) ->
+async_loop_handle_result(Child, ChildAsyncs, Result) ->
     unlink(Child),
     ?flush({'EXIT', Child, _}),
 
     terminate_children(ChildAsyncs, shutdown),
 
-    case Type of
-        perform ->
-            case Result of
-                {raised, {T, E, Stack}} ->
-                    erlang:raise(T, E, Stack);
-                {ok, _} ->
-                    exit(normal)
-            end;
-        wait ->
-            case Result of
-                {ok, Success} ->
-                    async_loop_with_result({reply, Success});
-                {raised, _} = Raised ->
-                    async_loop_with_result({die, Raised})
-            end
+    case Result of
+        {ok, Success} ->
+            async_loop_with_result({reply, Success});
+        {raised, _} = Raised ->
+            async_loop_with_result({die, Raised})
     end.
 
 -spec async_loop_with_result({die, any()} | {reply, any()}) -> no_return().
@@ -527,12 +506,7 @@ abort_after_test() ->
     ?assertExit(timeout, async:wait(A2)),
 
     ok = async:with(?cut(timer:sleep(100)),
-                    [{abort_after, 200}], async:wait(_)),
-
-
-    {A3, MRef} = async:perform(?cut(timer:sleep(1000)),
-                               [monitor, {abort_after, 100}]),
-    ?must_flush({'DOWN', MRef, process, A3, timeout}).
+                    [{abort_after, 200}], async:wait(_)).
 
 async_trap_exit_test() ->
     %% Test that we can abort an async (A), whose body traps exits and spawns
