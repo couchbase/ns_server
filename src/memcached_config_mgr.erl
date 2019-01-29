@@ -77,7 +77,8 @@ init([]) ->
                 delete_prev_config_file(),
                 McdConfigPath = get_memcached_config_path(),
                 ok = misc:atomic_write_file(McdConfigPath, WantedMcdConfig),
-                ?log_debug("wrote memcached config to ~s. Will activate memcached port server",
+                ?log_debug("wrote memcached config to ~s. Will activate "
+                           "memcached port server",
                            [McdConfigPath]),
                 ok = ns_port_server:activate(Pid),
                 ?log_debug("activated memcached port server"),
@@ -128,7 +129,8 @@ find_port_pid_loop(Tries, Delay) when Tries > 0 ->
             ?log_debug("Found memcached port ~p", [Pid1]),
             Pid1;
         Other ->
-            ?log_debug("Failed to obtain memcached port pid (~p). Will retry", [Other]),
+            ?log_debug("Failed to obtain memcached port pid (~p). Will retry",
+                       [Other]),
             timer:sleep(Delay),
             find_port_pid_loop(Tries - 1, Delay)
     end.
@@ -148,8 +150,10 @@ handle_info(do_check, #state{memcached_config = CurrentMcdConfig} = State) ->
         DifferentConfig ->
             apply_changed_memcached_config(DifferentConfig, State)
     end;
-handle_info({remote_monitor_down, Pid, Reason}, #state{port_pid = Pid} = State) ->
-    ?log_debug("Got DOWN with reason: ~p from memcached port server: ~p. Shutting down", [Reason, Pid]),
+handle_info({remote_monitor_down, Pid, Reason},
+            #state{port_pid = Pid} = State) ->
+    ?log_debug("Got DOWN with reason: ~p from memcached port server: ~p. "
+               "Shutting down", [Reason, Pid]),
     {stop, {shutdown, {memcached_port_server_down, Pid, Reason}}, State};
 handle_info(Other, State) ->
     ?log_debug("Got unknown message: ~p", [Other]),
@@ -169,24 +173,29 @@ apply_changed_memcached_config(DifferentConfig, State) ->
             {noreply, State#state{memcached_config = DifferentConfig}};
         {memcached_error, einval, _} ->
             ?log_debug("Memcached config is not hot-reloadable"),
-            RestartMemcached = case ns_config:search_node(node(),
-                                                          ns_config:latest(),
-                                                          auto_restart_memcached) of
-                                   {value, RestartMemcachedBool} ->
-                                       true = is_boolean(RestartMemcachedBool),
-                                       RestartMemcachedBool;
-                                   _ -> false
-                               end,
-            ale:info(?USER_LOGGER, "Got memcached.json config change that's not hot-reloadable. Changed keys: ~p",
-                     [changed_keys(State#state.memcached_config, DifferentConfig)]),
+            RestartMemcached =
+                case ns_config:search_node(node(), ns_config:latest(),
+                                           auto_restart_memcached) of
+                    {value, RestartMemcachedBool} ->
+                        true = is_boolean(RestartMemcachedBool),
+                        RestartMemcachedBool;
+                    _ -> false
+                end,
+            ale:info(?USER_LOGGER, "Got memcached.json config change that's "
+                     "not hot-reloadable. Changed keys: ~p",
+                     [changed_keys(State#state.memcached_config,
+                                   DifferentConfig)]),
             case RestartMemcached of
                 false ->
-                    ?log_debug("will not restart memcached because new config is not hot-reloadable and auto_restart_memcached is not enabled"),
+                    ?log_debug("will not restart memcached because new config "
+                               "isn't hot-reloadable & auto_restart_memcached "
+                               "is not enabled"),
                     {noreply, State};
                 _ ->
                     ?log_debug("will auto-restart memcached"),
                     ok = ns_ports_setup:restart_memcached(),
-                    ale:info(?USER_LOGGER, "auto-restarted memcached for config change"),
+                    ale:info(?USER_LOGGER,
+                             "auto-restarted memcached for config change"),
                     {stop, {shutdown, restarting_memcached}, State}
             end
     end.
@@ -204,15 +213,19 @@ changed_keys(BlobBefore, BlobAfter) ->
     end.
 
 hot_reload_config(NewMcdConfig, State, Tries, LastErr) when Tries < 1 ->
-    ale:error(?USER_LOGGER, "Unable to apply memcached config update that was supposed to succeed. Error: ~p."
-              " Giving up. Restart memcached to apply that config change. Updated keys: ~p",
-              [LastErr, changed_keys(State#state.memcached_config, NewMcdConfig)]);
+    ale:error(?USER_LOGGER,
+              "Unable to apply memcached config update that was supposed to "
+              "succeed. Error: ~p. Giving up. Restart memcached to apply that "
+              "config change. Updated keys: ~p",
+              [LastErr, changed_keys(State#state.memcached_config,
+                                     NewMcdConfig)]);
 hot_reload_config(NewMcdConfig, State, Tries, _LastErr) ->
     FilePath = get_memcached_config_path(),
     PrevFilePath = FilePath ++ ".prev",
 
     %% lets double check everything
-    {active, CurrentMcdConfig} = read_current_memcached_config(State#state.port_pid),
+    {active, CurrentMcdConfig} =
+        read_current_memcached_config(State#state.port_pid),
     true = (CurrentMcdConfig =:= State#state.memcached_config),
 
     %% now we save currently active config to .prev
@@ -224,17 +237,21 @@ hot_reload_config(NewMcdConfig, State, Tries, _LastErr) ->
     case ns_memcached:config_reload() of
         ok ->
             delete_prev_config_file(),
-            ale:info(?USER_LOGGER, "Hot-reloaded memcached.json for config change of the following keys: ~p",
+            ale:info(?USER_LOGGER,
+                     "Hot-reloaded memcached.json for config change of the "
+                     "following keys: ~p",
                      [changed_keys(CurrentMcdConfig, NewMcdConfig)]),
             ok;
         Err ->
-            ?log_error("Failed to reload memcached config. Will retry. Error: ~p", [Err]),
+            ?log_error("Failed to reload memcached config. "
+                       "Will retry. Error: ~p", [Err]),
             timer:sleep(1000),
             hot_reload_config(NewMcdConfig, State, Tries - 1, Err)
     end.
 
 get_memcached_config_path() ->
-    Path = ns_config:search_node_prop(ns_config:latest(), memcached, config_path),
+    Path = ns_config:search_node_prop(ns_config:latest(), memcached,
+                                      config_path),
     true = is_list(Path),
     Path.
 
@@ -243,36 +260,42 @@ read_current_memcached_config(McdPortServer) ->
         true ->
             FilePath = get_memcached_config_path(),
             PrevFilePath = FilePath ++ ".prev",
-            {ok, Contents} = do_read_current_memcached_config([PrevFilePath, FilePath]),
+            {ok, Contents} = do_read_current_memcached_config([PrevFilePath,
+                                                               FilePath]),
             {active, Contents};
         false ->
             inactive
     end.
 
 do_read_current_memcached_config([]) ->
-    ?log_debug("Failed to read any memcached config. Assuming it does not exist"),
+    ?log_debug("Failed to read any memcached config. Assuming it "
+               "does not exist"),
     missing;
 do_read_current_memcached_config([Path | Rest]) ->
     case file:read_file(Path) of
         {ok, Contents} ->
             {ok, Contents};
         {error, Error} ->
-            ?log_debug("Got ~p while trying to read active memcached config from ~s", [Error, Path]),
+            ?log_debug("Got ~p while trying to read active "
+                       "memcached config from ~s", [Error, Path]),
             do_read_current_memcached_config(Rest)
     end.
 
 memcached_config(Config) ->
     {value, McdParams0} = ns_config:search(Config, {node, node(), memcached}),
-    {value, McdConf} = ns_config:search(Config, {node, node(), memcached_config}),
+    {value, McdConf} = ns_config:search(Config, {node, node(),
+                                                 memcached_config}),
 
     GlobalMcdParams = ns_config:search(Config, memcached, []),
 
-    DefaultMcdParams = ns_config:search(Config, {node, node(), memcached_defaults}, []),
+    DefaultMcdParams = ns_config:search(Config,
+                                        {node, node(), memcached_defaults}, []),
 
     McdParams = McdParams0 ++ GlobalMcdParams ++ DefaultMcdParams,
 
     {Props} = expand_memcached_config(McdConf, McdParams),
-    ExtraProps = ns_config:search(Config, {node, node(), memcached_config_extra}, []),
+    ExtraProps = ns_config:search(Config,
+                                  {node, node(), memcached_config_extra}, []),
     ExtraPropsG = ns_config:search(Config, memcached_config_extra, []),
 
     BinPrefix = filename:dirname(path_config:component_path(bin)),
@@ -311,7 +334,8 @@ expand_memcached_config(Verbatim, _Params) ->
     Verbatim.
 
 get_minidump_dir([], Params) ->
-    list_to_binary(proplists:get_value(breakpad_minidump_dir_path, Params,  proplists:get_value(log_path, Params))).
+    list_to_binary(proplists:get_value(breakpad_minidump_dir_path, Params,
+                                       proplists:get_value(log_path, Params))).
 
 omit_missing_mcd_ports(Interfaces, MCDParams) ->
     Expanded = expand_memcached_config(Interfaces, MCDParams),
@@ -379,4 +403,3 @@ get_ssl_cipher_order([], _Params) ->
     {_, Order} = ns_ssl_services_setup:supported_ciphers(openssl,
                                                          ns_config:latest()),
     Order.
-
