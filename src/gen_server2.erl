@@ -371,13 +371,32 @@ maybe_start_job(Queue) ->
     end.
 
 start_job(Queue, #async_job{body = Body} = Job) ->
-    Self = self(),
-    {Pid, MRef} = async:perform(
-                    fun () ->
-                            Self ! {'$gen_server2', job_result, Queue, Body()}
-                    end),
+    Parent = self(),
+    {Pid, MRef} =
+        misc:spawn_monitor(
+          fun () ->
+                  Watcher = spawn_job_watcher(Parent),
+                  Parent ! {'$gen_server2', job_result, Queue, Body()},
+                  misc:terminate_and_wait(Watcher, kill)
+          end),
 
     set_active_job(Queue, Job#async_job{pid = Pid, mref = MRef}).
+
+spawn_job_watcher(Parent) ->
+    Job = self(),
+    spawn(fun () ->
+                  ParentMRef = erlang:monitor(process, Parent),
+                  JobMRef    = erlang:monitor(process, Job),
+
+                  receive
+                      {'DOWN', ParentMRef, process, _, Reason} ->
+                          %% parent terminated without terminating the job first
+                          misc:terminate_and_wait(Job, Reason);
+                      {'DOWN', JobMRef, process, _, _} ->
+                          %% job terminated whithout killing the watcher
+                          ok
+                  end
+          end).
 
 chain_handle_results([], _Result, State) ->
     {noreply, State};
