@@ -483,6 +483,13 @@ do_upgrade_config_from_5_1_1_to_5_5(Config, DefaultConfig) ->
      upgrade_key(memcached_defaults, DefaultConfig),
      upgrade_sub_keys(memcached, [other_users], Config, DefaultConfig)].
 
+upgrade_config_from_5_5_to_5_5_3() ->
+    DefaultConfig = default(),
+    do_upgrade_config_from_5_5_to_5_5_3(DefaultConfig).
+
+do_upgrade_config_from_5_5_to_5_5_3(DefaultConfig) ->
+    [upgrade_key(memcached_config, DefaultConfig)].
+
 upgrade_config_from_5_5_3_to_madhatter(Config) ->
     DefaultConfig = default(),
     do_upgrade_config_from_5_5_3_to_madhatter(Config, DefaultConfig).
@@ -492,13 +499,6 @@ do_upgrade_config_from_5_5_3_to_madhatter(Config, DefaultConfig) ->
      upgrade_sub_keys(memcached, [other_users], Config, DefaultConfig),
      upgrade_key(moxi, DefaultConfig) |
      rename_key(ldap_enabled, saslauthd_enabled, Config)].
-
-upgrade_config_from_5_5_to_5_5_3() ->
-    DefaultConfig = default(),
-    do_upgrade_config_from_5_5_to_5_5_3(DefaultConfig).
-
-do_upgrade_config_from_5_5_to_5_5_3(DefaultConfig) ->
-    [upgrade_key(memcached_config, DefaultConfig)].
 
 encrypt_config_val(Val) ->
     {ok, Encrypted} = encryption_service:encrypt(term_to_binary(Val)),
@@ -601,6 +601,14 @@ upgrade_5_1_1_to_5_5_test() ->
                   {set, {node, _, memcached}, [{old, info}, {other_users, new}]}],
                  do_upgrade_config_from_5_1_1_to_5_5(Cfg, Default)).
 
+upgrade_5_5_to_5_5_3_test() ->
+    Default = [{some_key, some_other_value},
+               {{node, node(), memcached}, [{some, stuff}, {other_users, new}]},
+               {{node, node(), memcached_config}, new_memcached_config}],
+
+    ?assertMatch([{set, {node, _, memcached_config}, new_memcached_config}],
+                 do_upgrade_config_from_5_5_to_5_5_3(Default)).
+
 upgrade_5_5_3_to_madhatter_test() ->
     Cfg1 = [[{some_key, some_value},
              {{node, node(), memcached}, [{old, info}, {other_users, old}]},
@@ -622,14 +630,6 @@ upgrade_5_5_3_to_madhatter_test() ->
                                                {other_users, new}]},
                   {set, {node, _, moxi}, new_moxi_value}],
                  do_upgrade_config_from_5_5_3_to_madhatter(Cfg2, Default)).
-
-upgrade_5_5_to_5_5_3_test() ->
-    Default = [{some_key, some_other_value},
-               {{node, node(), memcached}, [{some, stuff}, {other_users, new}]},
-               {{node, node(), memcached_config}, new_memcached_config}],
-
-    ?assertMatch([{set, {node, _, memcached_config}, new_memcached_config}],
-                 do_upgrade_config_from_5_5_to_5_5_3(Default)).
 
 no_upgrade_on_current_version_test() ->
     ?assertEqual([], upgrade_config([[{{node, node(), config_version}, get_current_version()}]])).
