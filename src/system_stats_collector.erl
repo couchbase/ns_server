@@ -141,49 +141,25 @@ unpack_data({Bin, LocalStats}, PrevSample, State) ->
                 NowSamplesProcs0
         end,
 
-    #{cgroup_mem := CGroupMem,
-      cpu_count := CPUcount,
-      cluster_size := ClusterSize,
-      cluster_data := ClusterData}  = LocalStats,
-
+    #{cgroup_mem := CGroupMem, cpu_count := CPUcount} = LocalStats,
     {MemLimit, _} = memory_quota:choose_limit(MemTotal, MemUsed, CGroupMem),
-
-    {ClusterMemData, ClusterCoresData} = lists:unzip(ClusterData),
-
     CoresAvailable = case CPUcount of
                          unknown -> 0;
                          N -> N
                      end,
-    ClusterCoresAvailable =
-        case lists:all(fun (M) -> is_number(M) and (M > 0) end,
-                       [CoresAvailable | ClusterCoresData]) of
-            true -> lists:sum(ClusterCoresData) + CoresAvailable;
-            false -> 0
-        end,
-
-    ClusterMemLimit =
-        case lists:all(fun (M) -> is_number(M) and (M > 0) end,
-                       [MemLimit|ClusterMemData]) of
-            true -> lists:sum(ClusterMemData) + MemLimit;
-            false -> 0
-        end,
-
 
     RawStatsGlobal = [{cpu_local_ms, CPULocalMS},
                       {cpu_idle_ms, CPUIdleMS},
                       {cpu_cores_available, CoresAvailable},
-                      {cluster_cpu_cores_available, ClusterCoresAvailable},
                       {swap_total, SwapTotal},
                       {swap_used, SwapUsed},
                       %% {swap_page_in, SwapPageIn},
                       %% {swap_page_out, SwapPageOut},
                       {mem_limit, MemLimit},
-                      {cluster_mem_limit, ClusterMemLimit},
                       {mem_total, MemTotal},
                       {mem_used_sys, MemUsed},
                       {mem_actual_used, MemActualUsed},
-                      {mem_actual_free, MemActualFree},
-                      {cluster_size, ClusterSize}],
+                      {mem_actual_free, MemActualFree}],
 
     NowSamplesGlobal =
         case PrevSampleGlobal of
@@ -329,20 +305,8 @@ grab_stats(#state{port = Port}) ->
     {recv_data(Port), grab_local_stats()}.
 
 grab_local_stats() ->
-    Nodes = ns_node_disco:nodes_actual(),
-    ClusterData =
-        lists:map(
-          fun (N) ->
-              Props = ns_doctor:get_node(N),
-              SystemStats = proplists:get_value(system_stats, Props, []),
-              Mem = proplists:get_value(mem_limit, SystemStats),
-              Cores = proplists:get_value(cpu_cores_available, SystemStats),
-              {Mem, Cores}
-          end, Nodes -- [node()]),
     #{cgroup_mem => memory_quota:cgroup_memory_data(),
-      cpu_count => misc:cpu_count(),
-      cluster_size => length(Nodes),
-      cluster_data => ClusterData}.
+      cpu_count => misc:cpu_count()}.
 
 process_stats(TS, Binary, PrevSample, _, State) ->
     {{Stats0, ProcStats}, NewPrevSample} = unpack_data(Binary, PrevSample, State),
