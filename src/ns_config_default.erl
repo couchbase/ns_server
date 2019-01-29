@@ -167,9 +167,7 @@ default() ->
      {memcached, []},
 
      {{node, node(), memcached_defaults},
-      [{maxconn, 30000},
-       {dedicated_port_maxconn, 5000},
-       {max_connections, 65000},
+      [{max_connections, 65000},
        {system_connections, 5000},
        {connection_idle_time, 0},
        {verbosity, 0},
