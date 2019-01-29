@@ -153,10 +153,10 @@ foreach(Fun, List) ->
       end).
 
 run_with_timeout(Fun, Timeout) ->
-    case race(Fun, fun () -> receive after Timeout -> timeout end end) of
-        {left, R} ->
-            {ok, R};
-        {right, timeout} ->
+    try
+        with(Fun, [{abort_after, Timeout}], ?cut({ok, wait(_)}))
+    catch
+        exit:timeout ->
             {error, timeout}
     end.
 
@@ -506,7 +506,15 @@ abort_after_test() ->
     ?assertExit(timeout, async:wait(A2)),
 
     ok = async:with(?cut(timer:sleep(100)),
-                    [{abort_after, 200}], async:wait(_)).
+                    [{abort_after, 200}], async:wait(_)),
+
+    ok = async:with(?cut(timer:sleep(100)),
+                    [{abort_after, infinity}], async:wait(_)).
+
+run_with_timeout_test() ->
+    {ok, good} = run_with_timeout(?cut(good), 1000),
+    {ok, good} = run_with_timeout(?cut(good), infinity),
+    {error, timeout} = run_with_timeout(?cut(timer:sleep(1000)), 100).
 
 async_trap_exit_test() ->
     %% Test that we can abort an async (A), whose body traps exits and spawns
