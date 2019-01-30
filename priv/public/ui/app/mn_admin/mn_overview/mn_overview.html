@@ -62,21 +62,6 @@
     </div>
     <div
        class="service-widget"
-       ui-sref="app.admin.search.fts_list"
-       ng-class="['dynamic_' + overviewCtl.nodes.fts.statusClass]">
-      <b class="text-small">Search</b>
-      <a ng-click="$event.stopPropagation()" ui-sref="app.admin.servers.list">
-        {{overviewCtl.nodes.fts.length || '0'}}
-        node{{overviewCtl.getEndings(overviewCtl.nodes.fts.length)}}
-      </a>
-      <div
-         class="error"
-         ng-repeat="(nodeStatuses, count) in overviewCtl.nodes.fts.nodesByStatuses">
-        {{count + ' node' + overviewCtl.getEndings(count) + ' ' + nodeStatuses}}
-      </div>
-    </div>
-    <div
-       class="service-widget"
        ui-sref="app.admin.query.workbench"
        ng-class="['dynamic_' + overviewCtl.nodes.n1ql.statusClass]">
       <b class="text-small">Query</b>
@@ -91,18 +76,17 @@
       </div>
     </div>
     <div
-       ng-if="adminCtl.poolDefault.isEnterprise"
        class="service-widget"
-       ui-sref="app.admin.eventing.summary"
-       ng-class="['dynamic_' + overviewCtl.nodes.eventing.statusClass]">
-      <b class="text-small">Eventing</b>
+       ui-sref="app.admin.search.fts_list"
+       ng-class="['dynamic_' + overviewCtl.nodes.fts.statusClass]">
+      <b class="text-small">Search</b>
       <a ng-click="$event.stopPropagation()" ui-sref="app.admin.servers.list">
-        {{overviewCtl.nodes.eventing.length || '0'}}
-        node{{overviewCtl.getEndings(overviewCtl.nodes.eventing.length)}}
+        {{overviewCtl.nodes.fts.length || '0'}}
+        node{{overviewCtl.getEndings(overviewCtl.nodes.fts.length)}}
       </a>
       <div
          class="error"
-         ng-repeat="(nodeStatuses, count) in overviewCtl.nodes.eventing.nodesByStatuses">
+         ng-repeat="(nodeStatuses, count) in overviewCtl.nodes.fts.nodesByStatuses">
         {{count + ' node' + overviewCtl.getEndings(count) + ' ' + nodeStatuses}}
       </div>
     </div>
@@ -125,16 +109,16 @@
     <div
        ng-if="adminCtl.poolDefault.isEnterprise"
        class="service-widget"
-       ui-sref="app.admin.mobile.workbench"
-       ng-class="['dynamic_' + overviewCtl.nodes.mobile.statusClass]">
-      <b class="text-small">Mobile</b>
+       ui-sref="app.admin.eventing.summary"
+       ng-class="['dynamic_' + overviewCtl.nodes.eventing.statusClass]">
+      <b class="text-small">Eventing</b>
       <a ng-click="$event.stopPropagation()" ui-sref="app.admin.servers.list">
-        {{overviewCtl.nodes.mobile.length || '0'}}
-        node{{overviewCtl.getEndings(overviewCtl.nodes.mobile.length)}}
+        {{overviewCtl.nodes.eventing.length || '0'}}
+        node{{overviewCtl.getEndings(overviewCtl.nodes.eventing.length)}}
       </a>
       <div
          class="error"
-         ng-repeat="(nodeStatuses, count) in overviewCtl.nodes.mobile.nodesByStatuses">
+         ng-repeat="(nodeStatuses, count) in overviewCtl.nodes.eventing.nodesByStatuses">
         {{count + ' node' + overviewCtl.getEndings(count) + ' ' + nodeStatuses}}
       </div>
     </div>

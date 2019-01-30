@@ -20,7 +20,9 @@
         {{serversCtl.getGroupsByHostname[node.hostname].name | mnLimitTo: 20}}
     </span>
     <span class="cbui-table-cell flex-grow-3 wrap resp-hide-xsml">
-      <span ng-repeat="service in node.services | mnFormatServicesArray | orderBy" class="label neutral nocaps">{{service}}</span>
+      <span ng-repeat="service in node.services | mnFormatServicesArray | orderBy" class="label neutral nocaps">
+        {{service}}
+      </span>
     </span>
     <span class="cbui-table-cell flex-grow-half flex-basis-2 resp-hide-sml">
       <span ng-show="!serversItemCtl.getCpuUsageConf.exist">

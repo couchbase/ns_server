@@ -76,7 +76,6 @@
         if (mnPoolDefault.export.isEnterprise) {
           rv.cbas = getNodesByService("cbas", nodes);
           rv.eventing = getNodesByService("eventing", nodes);
-          rv.mobile = getNodesByService("mobile", nodes);
         }
         return rv;
       });

@@ -62,11 +62,36 @@
          class="input-inside-label">
     </div>
   </div>
-
   <div
      class="error"
      ng-show="errors.indexMemoryQuota">
     {{errors.indexMemoryQuota}}
+  </div>
+</div>
+
+<div ng-if="config.displayedServices.n1ql">
+  <div class="row formrow">
+    <div class="width-5">
+      <input
+         ng-if="config.services"
+         ng-model="config.services.model.n1ql"
+         type="checkbox"
+         ng-change="mnMemoryQuotaController.change('n1ql', config)"
+         ng-disabled="config.services.disabled.n1ql"
+         id="n1ql_ram_quota">
+      <label
+         for="n1ql_ram_quota">
+        Query
+      </label>
+    </div>
+    <small class="form-inline width-7 text-center">
+      - - - - - - - - -
+    </small>
+  </div>
+  <div
+     class="error"
+     ng-show="errors.n1qlMemoryQuota">
+    {{errors.n1qlMemoryQuota}}
   </div>
 </div>
 
@@ -95,71 +120,10 @@
          class="input-inside-label">
     </div>
   </div>
-
   <div
      class="error"
      ng-show="errors.ftsMemoryQuota">
     {{errors.ftsMemoryQuota}}
-  </div>
-</div>
-
-<div ng-if="config.displayedServices.n1ql">
-  <div class="row formrow">
-    <div class="width-5">
-      <input
-         ng-if="config.services"
-         ng-model="config.services.model.n1ql"
-         type="checkbox"
-         ng-change="mnMemoryQuotaController.change('n1ql', config)"
-         ng-disabled="config.services.disabled.n1ql"
-         id="n1ql_ram_quota">
-      <label
-         for="n1ql_ram_quota">
-        Query
-      </label>
-    </div>
-    <small class="form-inline width-7 text-center">
-      - - - - - - - - -
-    </small>
-  </div>
-
-  <div
-     class="error"
-     ng-show="errors.n1qlMemoryQuota">
-    {{errors.n1qlMemoryQuota}}
-  </div>
-</div>
-
-<div ng-if="config.displayedServices.eventing && mnIsEnterprise">
-  <div class="row formrow">
-    <div class="width-6">
-      <input
-         ng-if="config.services"
-         ng-model="config.services.model.eventing"
-         type="checkbox"
-         ng-change="mnMemoryQuotaController.change('eventing', config)"
-         ng-disabled="config.services.disabled.eventing"
-         id="eventing_ram_quota">
-      <label
-         for="eventing_ram_quota">
-        Eventing
-      </label>
-    </div>
-    <div class="row width-6 flex-right">
-      <div class="inside-label">MB</div>
-      <input
-         type="number"
-         mn-focus="config.services.model.kv === false && config.services.model.index  === false"
-         ng-disabled="config.services && !config.services.model.eventing || (rbac && !rbac.cluster.pools.write)"
-         ng-model="config.eventingMemoryQuota"
-         class="input-inside-label">
-    </div>
-  </div>
-
-  <div
-     class="error"
-     ng-show="errors.eventingMemoryQuota">
-    {{errors.eventingMemoryQuota}}
   </div>
 </div>
 
@@ -188,7 +152,6 @@
          class="input-inside-label">
     </div>
   </div>
-
   <div
      class="error"
      ng-show="errors.cbasMemoryQuota">
@@ -196,30 +159,35 @@
   </div>
 </div>
 
-<div ng-if="config.displayedServices.mobile && mnIsEnterprise">
+<div ng-if="config.displayedServices.eventing && mnIsEnterprise">
   <div class="row formrow">
     <div class="width-6">
       <input
          ng-if="config.services"
-         ng-model="config.services.model.mobile"
+         ng-model="config.services.model.eventing"
          type="checkbox"
-         ng-change="mnMemoryQuotaController.change('mobile', config)"
-         ng-disabled="config.services.disabled.mobile"
-         id="mobile_ram_quota">
+         ng-change="mnMemoryQuotaController.change('eventing', config)"
+         ng-disabled="config.services.disabled.eventing"
+         id="eventing_ram_quota">
       <label
-         for="mobile_ram_quota">
-        Mobile
+         for="eventing_ram_quota">
+        Eventing
       </label>
     </div>
-    <small class="form-inline width-7 text-center">
-      - - - - - - - - -
-    </small>
+    <div class="row width-6 flex-right">
+      <div class="inside-label">MB</div>
+      <input
+         type="number"
+         mn-focus="config.services.model.kv === false && config.services.model.index  === false"
+         ng-disabled="config.services && !config.services.model.eventing || (rbac && !rbac.cluster.pools.write)"
+         ng-model="config.eventingMemoryQuota"
+         class="input-inside-label">
+    </div>
   </div>
-
   <div
      class="error"
-     ng-show="errors.mobileMemoryQuota">
-    {{errors.mobileMemoryQuota}}
+     ng-show="errors.eventingMemoryQuota">
+    {{errors.eventingMemoryQuota}}
   </div>
 </div>
 

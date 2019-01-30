@@ -600,7 +600,6 @@
         case 'fts': return 'Search';
         case 'eventing': return 'Eventing';
         case 'cbas': return 'Analytics';
-        case 'mobile': return 'Mobile';
       }
     }
   }

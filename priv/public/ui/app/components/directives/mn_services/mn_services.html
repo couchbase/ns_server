@@ -25,18 +25,6 @@
 <div class="checkbox-service">
   <input
      type="checkbox"
-     value="fts"
-     id="for-fts-service"
-     ng-change="mnServicesCtl.change('fts', mnServicesCtl.config)"
-     ng-model="mnServicesCtl.config.services.model.fts"
-     ng-disabled="mnServicesCtl.config.services.disabled.fts">
-  <label for="for-fts-service">
-    Search
-  </label>
-</div>
-<div class="checkbox-service">
-  <input
-     type="checkbox"
      value="n1ql"
      id="for-query-service"
      ng-change="mnServicesCtl.change('n1ql', mnServicesCtl.config)"
@@ -46,16 +34,16 @@
     Query
   </label>
 </div>
-<div class="checkbox-service" ng-if="mnServicesCtl.mnIsEnterprise">
+<div class="checkbox-service">
   <input
      type="checkbox"
-     value="eventing"
-     id="for-eventing-service"
-     ng-change="mnServicesCtl.change('eventing', mnServicesCtl.config)"
-     ng-model="mnServicesCtl.config.services.model.eventing"
-     ng-disabled="mnServicesCtl.config.services.disabled.eventing">
-  <label for="for-eventing-service">
-    Eventing
+     value="fts"
+     id="for-fts-service"
+     ng-change="mnServicesCtl.change('fts', mnServicesCtl.config)"
+     ng-model="mnServicesCtl.config.services.model.fts"
+     ng-disabled="mnServicesCtl.config.services.disabled.fts">
+  <label for="for-fts-service">
+    Search
   </label>
 </div>
 <div class="checkbox-service" ng-if="mnServicesCtl.mnIsEnterprise">
@@ -73,12 +61,12 @@
 <div class="checkbox-service" ng-if="mnServicesCtl.mnIsEnterprise">
   <input
      type="checkbox"
-     value="mobile"
-     id="for-mobile-service"
-     ng-change="mnServicesCtl.change('mobile', mnServicesCtl.config)"
-     ng-model="mnServicesCtl.config.services.model.mobile"
-     ng-disabled="mnServicesCtl.config.services.disabled.mobile">
-  <label for="for-mobile-service">
-    Mobile
+     value="eventing"
+     id="for-eventing-service"
+     ng-change="mnServicesCtl.change('eventing', mnServicesCtl.config)"
+     ng-model="mnServicesCtl.config.services.model.eventing"
+     ng-disabled="mnServicesCtl.config.services.disabled.eventing">
+  <label for="for-eventing-service">
+    Eventing
   </label>
 </div>
