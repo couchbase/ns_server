@@ -233,9 +233,16 @@ register_with_async(Pid) ->
 
 async_loop_wait_result(Child, Reply, ChildAsyncs) ->
     receive
-        {'DOWN', _MRef, process, _Pid, Reason} = Down ->
+        {'DOWN', _MRef, process, Pid, Reason} = Down ->
             maybe_log_down_message(Down),
-            terminate_now(Child, ChildAsyncs, Reason);
+
+            %% We change the reason to a {shutdown, _} because we want to
+            %% avoid polluting logs with crash reports. Since the process that
+            %% died must have already produced a crash report and since it's
+            %% not our process that is the cause of the problem, we suppress
+            %% the crash report here.
+            terminate_now(Child, ChildAsyncs,
+                          {shutdown, {monitored_process_died, Pid, Reason}});
         {'EXIT', Child, Reason} ->
             terminate_on_query(undefined, ChildAsyncs, {child_died, Reason});
         %% note, we don't assume that this comes from the parent, because we
@@ -313,9 +320,11 @@ async_loop_handle_result(Child, ChildAsyncs, Result) ->
 -spec async_loop_with_result({die, any()} | {reply, any()}) -> no_return().
 async_loop_with_result(Result) ->
     receive
-        {'DOWN', _MRef, process, _Pid, Reason} = Down ->
+        {'DOWN', _MRef, process, Pid, Reason} = Down ->
             maybe_log_down_message(Down),
-            exit(Reason);
+
+            %% {shutdown, _} so we don't produce a crash report.
+            exit({shutdown, {monitored_process_died, Pid, Reason}});
         {'EXIT', _, Reason} ->
             exit(Reason);
         {'$async_req', From, get_result} ->
