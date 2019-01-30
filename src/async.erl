@@ -347,7 +347,9 @@ handle_get_result(From, {reply, Result}) ->
     reply(From, Result),
     exit(normal);
 handle_get_result(_From, {die, Reason}) ->
-    exit(Reason).
+    %% Wrapping the reason in {shutdown, _} so we don't produce an unneeded
+    %% crash report.
+    exit({shutdown, {async_died, Reason}}).
 
 call(Pid, Req) ->
     call(Pid, Req, []).
@@ -414,6 +416,11 @@ recv_resp(MRef, Interruptible) ->
             throw({interrupted, Exit})
     end.
 
+recv_resp_handle_down({shutdown, {async_died, Reason}}) ->
+    recv_resp_handle_down(Reason);
+%% The following clause can only occur when called recursively by the one
+%% above. But keeping it in place in case we need to wait on an async running
+%% older code.
 recv_resp_handle_down({raised, {T, E, Stack}}) ->
     erlang:raise(T, E, Stack);
 recv_resp_handle_down(Reason) ->
