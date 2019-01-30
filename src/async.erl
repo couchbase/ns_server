@@ -262,20 +262,17 @@ async_loop_wait_result(Child, Reply, ChildAsyncs) ->
             terminate_on_query(Child, ChildAsyncs, timeout)
     end.
 
-maybe_terminate_child(undefined, _Reason) ->
+maybe_terminate_child(undefined) ->
     ok;
-maybe_terminate_child(Child, Reason)
+maybe_terminate_child(Child)
   when is_pid(Child) ->
-    misc:unlink_terminate(Child, Reason).
+    misc:unlink_terminate(Child, shutdown).
 
-terminate_children(ChildAsyncs, Reason) ->
-    terminate_children(undefined, ChildAsyncs, Reason).
-
-terminate_children(Child, ChildAsyncs, Reason) ->
+terminate_children(Child, ChildAsyncs) ->
     MRefs = [erlang:monitor(process, Pid) || Pid <- [Child | ChildAsyncs],
                                              Pid =/= undefined],
-    maybe_terminate_child(Child, Reason),
-    lists:foreach(misc:terminate(_, Reason), ChildAsyncs),
+    maybe_terminate_child(Child),
+    lists:foreach(misc:terminate(_, shutdown), ChildAsyncs),
     terminate_children_loop(MRefs).
 
 terminate_children_loop([]) ->
@@ -297,18 +294,15 @@ terminate_children_loop([MRef | Rest] = MRefs) ->
     end.
 
 terminate_now(Child, ChildAsyncs, Reason) ->
-    terminate_children(Child, ChildAsyncs, Reason),
+    terminate_children(Child, ChildAsyncs),
     exit(Reason).
 
 terminate_on_query(Child, ChildAsyncs, Reason) ->
-    terminate_children(Child, ChildAsyncs, Reason),
+    terminate_children(Child, ChildAsyncs),
     async_loop_with_result({die, Reason}).
 
 async_loop_handle_result(Child, ChildAsyncs, Result) ->
-    unlink(Child),
-    ?flush({'EXIT', Child, _}),
-
-    terminate_children(ChildAsyncs, shutdown),
+    terminate_children(Child, ChildAsyncs),
 
     case Result of
         {ok, Success} ->
