@@ -620,6 +620,19 @@ grab_aggregate_op_stats(Bucket, Nodes, ClientTStamp, Window, StatList) ->
     RV = merge_all_samples_normally(MainSamples, [S || {_,S} <- Replies]),
     lists:reverse(RV).
 
+find_zoom(ZoomStr) ->
+    try
+        Zoom = erlang:list_to_existing_atom(ZoomStr),
+        case lists:keyfind(Zoom, 1, stats_archiver:archives()) of
+            false ->
+                undefined;
+            T ->
+                T
+        end
+    catch error:badarg ->
+            undefined
+    end.
+
 parse_stats_params(Params) ->
     ClientTStamp = case proplists:get_value("haveTStamp", Params) of
                        undefined -> undefined;
@@ -629,16 +642,12 @@ parse_stats_params(Params) ->
                                 _:_ -> undefined
                             end
                    end,
-    {Period, Count} = case proplists:get_value("zoom", Params) of
-                           "minute" -> {minute, 60};
-                           "hour" -> {hour, 900};
-                           "day" -> {day, 1440};
-                           "week" -> {week, 1152};
-                           "month" -> {month, 1488};
-                           "year" -> {year, 1464};
-                           undefined -> {minute, 60}
-                       end,
-    {ClientTStamp, {1, Period, Count}}.
+    case find_zoom(proplists:get_value("zoom", Params, "minute")) of
+        undefined ->
+            erlang:throw({web_exception, 400, "incorrect zoom value", []});
+        {Period, _, Count} ->
+            {ClientTStamp, {1, Period, Count}}
+    end.
 
 global_index_stat(StatName) ->
     service_stats_collector:global_stat(service_index, StatName).
@@ -2480,17 +2489,12 @@ serve_ui_stats(Req) ->
 
 extract_ui_stats_params(Params) ->
     Bucket = proplists:get_value("bucket", Params),
-    {HaveStamp} = ejson:decode(list_to_binary(proplists:get_value("haveTStamp", Params, "{}"))),
-    {Step, Period} = case proplists:get_value("zoom", Params) of
-                         "minute" -> {1, minute};
-                         "hour" -> {60, hour};
-                         "day" -> {1440, day};
-                         "week" -> {11520, week};
-                         "month" -> {44640, month};
-                         "year" -> {527040, year}
-                     end,
-    Wnd = {Step, Period, 60},
-    {Bucket, HaveStamp, Wnd}.
+    {HaveStamp} =
+        ejson:decode(list_to_binary(
+                       proplists:get_value("haveTStamp", Params, "{}"))),
+
+    {Period, Seconds, Count} = find_zoom(proplists:get_value("zoom", Params)),
+    {Bucket, HaveStamp, {Seconds * Count div 60, Period, 60}}.
 
 should_grab_service_stats(all, ServiceNodes) ->
     ServiceNodes =/= [];
