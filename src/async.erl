@@ -525,6 +525,13 @@ run_with_timeout_test() ->
     {ok, good} = run_with_timeout(?cut(good), infinity),
     {error, timeout} = run_with_timeout(?cut(timer:sleep(1000)), 100).
 
+exceptions_rethrown_test() ->
+    ?assertThrow(test, with(?cut(throw(test)), wait(_))),
+    ?assertThrow(test2,
+                 with(fun () ->
+                              with(?cut(throw(test2)), ?cut(wait(_)))
+                      end, wait(_))).
+
 async_trap_exit_test() ->
     %% Test that we can abort an async (A), whose body traps exits and spawns
     %% another async (B) that tries to register with A after A has received a
