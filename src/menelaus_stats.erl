@@ -629,20 +629,16 @@ parse_stats_params(Params) ->
                                 _:_ -> undefined
                             end
                    end,
-    {Step0, Period, Count0} = case proplists:get_value("zoom", Params) of
-                                  "minute" -> {1, minute, 60};
-                                  "hour" -> {60, hour, 900};
-                                  "day" -> {1440, day, 1440};
-                                  "week" -> {11520, week, 1152};
-                                  "month" -> {44640, month, 1488};
-                                  "year" -> {527040, year, 1464};
-                                  undefined -> {1, minute, 60}
-                              end,
-    {Step, Count} = case proplists:get_value("resampleForUI", Params) of
-                        undefined -> {1, Count0};
-                        _ -> {Step0, 60}
-                    end,
-    {ClientTStamp, {Step, Period, Count}}.
+    {Period, Count} = case proplists:get_value("zoom", Params) of
+                           "minute" -> {minute, 60};
+                           "hour" -> {hour, 900};
+                           "day" -> {day, 1440};
+                           "week" -> {week, 1152};
+                           "month" -> {month, 1488};
+                           "year" -> {year, 1464};
+                           undefined -> {minute, 60}
+                       end,
+    {ClientTStamp, {1, Period, Count}}.
 
 global_index_stat(StatName) ->
     service_stats_collector:global_stat(service_index, StatName).
