@@ -55,7 +55,8 @@ mover(Parent, Bucket,
     misc:try_with_maybe_ignorant_after(
       fun () ->
               process_flag(trap_exit, true),
-              set_vbucket_state(Bucket, NewNode, Parent, VBucket, active, undefined, undefined),
+              set_vbucket_state(Bucket, NewNode, Parent, VBucket,
+                                active, undefined, undefined, undefined),
 
               on_move_done(Parent, Bucket, VBucket, OldChain, NewChain)
       end,
@@ -200,10 +201,21 @@ mover_inner_dcp(Parent, Bucket, VBucket,
 
     ok = ns_rebalancer:check_test_condition(backfill_done, Bucket),
 
+    SetTopology = cluster_compat_mode:is_cluster_madhatter(),
+    MaybeSetTopology = fun (Topology) ->
+                               case SetTopology of
+                                   true -> Topology;
+                                   false -> undefined
+                               end
+                       end,
     case OldMaster =:= NewMaster of
         true ->
             %% if there's nothing to move, we're done
-            ok;
+            %% we're safe if old and new masters are the same; basically our
+            %% replication streams are already established
+            maybe_set_dual_topology(Bucket, OldMaster, Parent, VBucket, undefined,
+                                    MaybeSetTopology([OldChain, NewChain]),
+                                    AllBuiltNodes);
         false ->
             case IndexAware of
                 true ->
@@ -211,8 +223,9 @@ mover_inner_dcp(Parent, Bucket, VBucket,
                     case cluster_compat_mode:is_index_pausing_on() of
                         true ->
                             system_stats_collector:increment_counter(index_pausing_runs, 1),
-                            set_vbucket_state(Bucket, OldMaster, Parent, VBucket, active,
-                                              paused, undefined),
+                            set_vbucket_state(Bucket, OldMaster, Parent, VBucket,
+                                              active, paused, undefined,
+                                              MaybeSetTopology([OldChain])),
                             wait_master_seqno_persisted_on_replicas(Bucket, VBucket, Parent, OldMaster,
                                                                     AllBuiltNodes);
                         false ->
@@ -227,27 +240,24 @@ mover_inner_dcp(Parent, Bucket, VBucket,
                     ok
             end,
 
-            master_activity_events:note_takeover_started(Bucket, VBucket, OldMaster, NewMaster),
+            maybe_set_dual_topology(Bucket, OldMaster, Parent, VBucket, paused,
+                                    MaybeSetTopology([OldChain, NewChain]),
+                                    AllBuiltNodes),
 
-            AllReplicaNodes =
-                lists:usort(ReplicaNodes ++ OldReplicas) -- [undefined],
+            master_activity_events:note_takeover_started(Bucket, VBucket, OldMaster,
+                                                         NewMaster),
+
+            AllReplicaNodes = lists:usort(ReplicaNodes ++ OldReplicas) -- [undefined],
             dcp_takeover(Bucket, Parent,
                          OldMaster, NewMaster,
                          AllReplicaNodes, VBucket, Quirks),
 
-            master_activity_events:note_takeover_ended(Bucket, VBucket, OldMaster, NewMaster)
-    end,
+            master_activity_events:note_takeover_ended(Bucket, VBucket, OldMaster, NewMaster),
 
-    %% set new master to active state
-    set_vbucket_state(Bucket, NewMaster, Parent, VBucket, active,
-                      undefined, undefined),
+            set_vbucket_state(Bucket, NewMaster, Parent, VBucket,
+                              active, undefined, undefined,
+                              undefined),
 
-    %% we're safe if old and new masters are the same; basically our
-    %% replication streams are already established
-    case OldMaster =:= NewMaster of
-        true ->
-            ok;
-        false ->
             %% Vbucket on the old master is dead.
             %% Cleanup replication streams from the old master to the
             %% new and old replica nodes.
@@ -311,12 +321,40 @@ maybe_reset_replicas(Bucket, RebalancerPid, VBucket, Nodes, Quirks) ->
             ok
     end.
 
+maybe_set_dual_topology(_Bucket, _ActiveNode, _RebalancerPid, _VBucket,
+                        _VBucketRebalanceState, undefined, _AllBuiltNodes) ->
+    ok;
+maybe_set_dual_topology(Bucket, ActiveNode, RebalancerPid, VBucket,
+                        VBucketRebalanceState, Topology, AllBuiltNodes) ->
+    true = (length(Topology) =:= 2),
+    set_vbucket_state(Bucket, ActiveNode, RebalancerPid, VBucket,
+                      active, VBucketRebalanceState, undefined,
+                      Topology),
+    %% We wait for seqno because we may not have sync write on NewChain
+    %% but have been committed on the OldChain.
+    wait_master_seqno_persisted_on_replicas(Bucket, VBucket, RebalancerPid,
+                                            ActiveNode, AllBuiltNodes).
+
 set_vbucket_state(Bucket, Node, RebalancerPid, VBucket,
-                  VBucketState, VBucketRebalanceState, ReplicateFrom) ->
+                  VBucketState, VBucketRebalanceState, ReplicateFrom,
+                  undefined) ->
     spawn_and_wait(
       fun () ->
-              ok = janitor_agent:set_vbucket_state(Bucket, Node, RebalancerPid, VBucket,
-                                                   VBucketState, VBucketRebalanceState, ReplicateFrom)
+              %% Use old API ignoring Topology.
+              ok = janitor_agent:set_vbucket_state(
+                     Bucket, Node, RebalancerPid, VBucket,
+                     VBucketState, VBucketRebalanceState, ReplicateFrom)
+      end);
+set_vbucket_state(Bucket, Node, RebalancerPid, VBucket,
+                  VBucketState, VBucketRebalanceState, ReplicateFrom,
+                  Topology) ->
+    spawn_and_wait(
+      fun () ->
+              %% Use new API.
+              ok = janitor_agent:set_vbucket_state(
+                     Bucket, Node, RebalancerPid, VBucket,
+                     VBucketState, VBucketRebalanceState, ReplicateFrom,
+                     Topology)
       end).
 
 %% This ensures that all streams into new set of replicas (either replica
@@ -360,7 +398,7 @@ dcp_takeover_via_orchestrator(Bucket, Parent,
               "vbucket ~p (bucket ~p) from ~p to ~p",
               [VBucket, Bucket, OldMaster, NewMaster]),
     set_vbucket_state(Bucket, NewMaster, Parent,
-                      VBucket, pending, passive, undefined),
+                      VBucket, pending, passive, undefined, undefined),
 
     DisableOldMaster = rebalance_quirks:is_enabled(disable_old_master, Quirks),
     case DisableOldMaster of
@@ -381,7 +419,7 @@ dcp_takeover_via_orchestrator(Bucket, Parent,
             ?log_info("Disabling vbucket ~p (bucket ~p) on ~p",
                       [VBucket, Bucket, OldMaster]),
             set_vbucket_state(Bucket, OldMaster, Parent,
-                              VBucket, replica, passive, undefined);
+                              VBucket, replica, passive, undefined, undefined);
         false ->
             ok
     end,
@@ -521,8 +559,19 @@ on_move_done(RebalancerPid, Bucket, VBucket, OldChain, NewChain) ->
                                 VBucket, OldChain, NewChain)
       end).
 
-on_move_done_body(RebalancerPid, Bucket, VBucket, OldChain, NewChain) ->
+on_move_done_body(RebalancerPid, Bucket, VBucket, OldChain,
+                  [NewMaster | _] = NewChain) ->
     update_replication_post_move(RebalancerPid, Bucket, VBucket, OldChain, NewChain),
+
+    case cluster_compat_mode:is_cluster_madhatter() of
+        true ->
+            %% Set topology on the NewMaster.
+            janitor_agent:set_vbucket_state(
+              Bucket, NewMaster, RebalancerPid, VBucket,
+              active, undefined, undefined, [NewChain]);
+        false ->
+            ok
+    end,
 
     OldCopies0 = OldChain -- NewChain,
     OldCopies = [OldCopyNode || OldCopyNode <- OldCopies0,

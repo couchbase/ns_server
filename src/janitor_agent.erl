@@ -52,6 +52,7 @@
          this_node_replicator_triples/1,
          bulk_set_vbucket_state/4,
          set_vbucket_state/7,
+         set_vbucket_state/8,
          get_src_dst_vbucket_replications/2,
          get_src_dst_vbucket_replications/3,
          initiate_indexing/5,
@@ -340,8 +341,13 @@ this_node_replicator_triples(Bucket) ->
 bulk_set_vbucket_state(Bucket, RebalancerPid, VBucket, NodeVBucketStateRebalanceStateReplicateFromS) ->
     ?rebalance_info("Doing bulk vbucket ~p state change~n~p", [VBucket, NodeVBucketStateRebalanceStateReplicateFromS]),
     RVs = misc:parallel_map(
-            fun ({Node, VBucketState, VBucketRebalanceState, ReplicateFrom}) ->
-                    {Node, (catch set_vbucket_state(Bucket, Node, RebalancerPid, VBucket, VBucketState, VBucketRebalanceState, ReplicateFrom))}
+            fun ({Node, active, _, _}) ->
+                    {Node, unexpected_state_active};
+                ({Node, VBucketState, VBucketRebalanceState, ReplicateFrom}) ->
+                    {Node, (catch set_vbucket_state(
+                                    Bucket, Node, RebalancerPid, VBucket,
+                                    VBucketState, VBucketRebalanceState,
+                                    ReplicateFrom))}
             end, NodeVBucketStateRebalanceStateReplicateFromS, infinity),
     NonOks = [Pair || {_Node, R} = Pair <- RVs,
                       R =/= ok],
@@ -352,12 +358,23 @@ bulk_set_vbucket_state(Bucket, RebalancerPid, VBucket, NodeVBucketStateRebalance
             erlang:error({bulk_set_vbucket_state_failed, NonOks})
     end.
 
-set_vbucket_state(Bucket, Node, RebalancerPid, VBucket, VBucketState, VBucketRebalanceState, ReplicateFrom) ->
-    ?rebalance_info("Doing vbucket ~p state change: ~p", [VBucket, {Node, VBucketState, VBucketRebalanceState, ReplicateFrom}]),
+set_vbucket_state(Bucket, Node, RebalancerPid, VBucket, VBucketState,
+                  VBucketRebalanceState, ReplicateFrom) ->
+    SubCall = {update_vbucket_state, VBucket, VBucketState,
+               VBucketRebalanceState, ReplicateFrom},
+    set_vbucket_state_inner(Bucket, Node, RebalancerPid, VBucket, SubCall).
+
+set_vbucket_state(Bucket, Node, RebalancerPid, VBucket, VBucketState,
+                  VBucketRebalanceState, ReplicateFrom, Topology) ->
+    SubCall = {update_vbucket_state, VBucket, VBucketState,
+               VBucketRebalanceState, ReplicateFrom, Topology},
+    set_vbucket_state_inner(Bucket, Node, RebalancerPid, VBucket, SubCall).
+
+set_vbucket_state_inner(Bucket, Node, RebalancerPid, VBucket, SubCall) ->
+    ?rebalance_info("Doing vbucket ~p state change: ~p",
+                    [VBucket, {Node, SubCall}]),
     ok = gen_server:call(server_name(Bucket, Node),
-                         {if_rebalance, RebalancerPid,
-                          {update_vbucket_state,
-                           VBucket, VBucketState, VBucketRebalanceState, ReplicateFrom}},
+                         {if_rebalance, RebalancerPid, SubCall},
                          ?SET_VBUCKET_STATE_TIMEOUT).
 
 get_src_dst_vbucket_replications(Bucket, Nodes) ->
@@ -538,9 +555,14 @@ handle_call({if_rebalance, RebalancerPid, Subcall},
                        [RebalancerPid, RealRebalancerPid]),
             {reply, wrong_rebalancer_pid, State}
     end;
-handle_call({update_vbucket_state, VBucket, NormalState, RebalanceState, _} = Call,
-            From, State) ->
-    NewState = apply_new_vbucket_state(VBucket, NormalState, RebalanceState, State),
+handle_call({update_vbucket_state, VBucket, NormalState, RebalanceState,
+             ReplicateFrom}, From, State) ->
+    handle_call({update_vbucket_state, VBucket, NormalState, RebalanceState,
+                 ReplicateFrom, undefined}, From, State);
+handle_call({update_vbucket_state, VBucket, NormalState, RebalanceState,
+             _ReplicateFrom, _Json} = Call, From, State) ->
+    NewState = apply_new_vbucket_state(VBucket, NormalState, RebalanceState,
+                                       State),
     delegate_apply_vbucket_state(Call, From, NewState);
 handle_call({delete_vbucket, VBucket} = Call, From, State) ->
     NewState = apply_new_vbucket_state(VBucket, missing, undefined, State),
@@ -984,11 +1006,11 @@ apply_vbucket_states_worker_loop() ->
             apply_vbucket_states_worker_loop()
     end.
 
-handle_apply_vbucket_state({update_vbucket_state,
-                            VBucket, NormalState, _RebalanceState, ReplicateFrom},
-                            #state{bucket_name = BucketName} = AgentState) ->
+handle_apply_vbucket_state({update_vbucket_state, VBucket, NormalState,
+                            _RebalanceState, ReplicateFrom, Topology},
+                           #state{bucket_name = BucketName} = AgentState) ->
     %% TODO: consider infinite timeout. It's local memcached after all
-    ok = ns_memcached:set_vbucket(BucketName, VBucket, NormalState),
+    ok = ns_memcached:set_vbucket(BucketName, VBucket, NormalState, Topology),
     ok = replication_manager:change_vbucket_replication(BucketName,
                                                         VBucket, ReplicateFrom),
     pass_vbucket_states_to_set_view_manager(AgentState),
