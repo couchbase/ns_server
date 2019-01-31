@@ -546,7 +546,8 @@ extract_bucket_props(BucketId, Props) ->
           bucket_config,
           all_buckets,
           cluster_storage_totals,
-          cluster_version}).
+          cluster_version,
+          is_enterprise}).
 
 init_bucket_validation_context(IsNew, BucketName, Req) ->
     ValidateOnly = (proplists:get_value("just_validate", mochiweb_request:parse_qs(Req)) =:= "1"),
@@ -555,11 +556,15 @@ init_bucket_validation_context(IsNew, BucketName, Req) ->
 
 init_bucket_validation_context(IsNew, BucketName, ValidateOnly, IgnoreWarnings) ->
     init_bucket_validation_context(IsNew, BucketName,
-                                   ns_bucket:get_buckets(), extended_cluster_storage_info(),
-                                   ValidateOnly, IgnoreWarnings, cluster_compat_mode:get_compat_version()).
+                                   ns_bucket:get_buckets(),
+                                   extended_cluster_storage_info(),
+                                   ValidateOnly, IgnoreWarnings,
+                                   cluster_compat_mode:get_compat_version(),
+                                   cluster_compat_mode:is_enterprise()).
 
 init_bucket_validation_context(IsNew, BucketName, AllBuckets, ClusterStorageTotals,
-                               ValidateOnly, IgnoreWarnings, ClusterVersion) ->
+                               ValidateOnly, IgnoreWarnings,
+                               ClusterVersion, IsEnterprise) ->
     {BucketConfig, ExtendedTotals} =
         case lists:keyfind(BucketName, 1, AllBuckets) of
             false -> {false, ClusterStorageTotals};
@@ -580,7 +585,8 @@ init_bucket_validation_context(IsNew, BucketName, AllBuckets, ClusterStorageTota
        all_buckets = AllBuckets,
        bucket_config = BucketConfig,
        cluster_storage_totals = ExtendedTotals,
-       cluster_version = ClusterVersion
+       cluster_version = ClusterVersion,
+       is_enterprise = IsEnterprise
       }.
 
 handle_bucket_update(_PoolId, BucketId, Req) ->
@@ -913,14 +919,11 @@ basic_bucket_params_screening_auth_46(#bv_ctx{bucket_config = BucketConfig} = Ct
               Ctx, lists:keystore("authType", 1, Params, {"authType", AuthType}))
     end.
 
-basic_bucket_params_screening_tail(#bv_ctx{bucket_config = BucketConfig,
-                                           new = IsNew} = Ctx, Params) ->
-    BucketType = get_bucket_type(IsNew, BucketConfig, Params),
+basic_bucket_params_screening_tail(Ctx, Params) ->
     CommonParams = validate_common_params(Ctx, Params),
     VersionSpecificParams = validate_version_specific_params(Ctx, Params),
     TypeSpecificParams =
-        validate_bucket_type_specific_params(CommonParams, Params, BucketType,
-                                             IsNew, BucketConfig),
+        validate_bucket_type_specific_params(CommonParams, Params, Ctx),
     Candidates = CommonParams ++ VersionSpecificParams ++ TypeSpecificParams,
     assert_candidates(Candidates),
     {[{K,V} || {ok, K, V} <- Candidates],
@@ -946,12 +949,29 @@ validate_version_specific_params(#bv_ctx{cluster_version = Version} = Ctx, Param
              validate_auth_params_46(AuthType, Ctx, Params)]
     end.
 
-validate_bucket_type_specific_params(CommonParams, _Params, memcached, IsNew,
-                                     BucketConfig) ->
+validate_bucket_type_specific_params(CommonParams, Params,
+                                     #bv_ctx{new = IsNew,
+                                             bucket_config = BucketConfig,
+                                             cluster_version = Version,
+                                             is_enterprise = IsEnterprise}) ->
+    BucketType = get_bucket_type(IsNew, BucketConfig, Params),
+
+    case BucketType of
+        memcached ->
+            validate_memcached_bucket_params(CommonParams, IsNew, BucketConfig);
+        membase ->
+            validate_membase_bucket_params(CommonParams, Params, IsNew,
+                                           BucketConfig, Version, IsEnterprise);
+        _ ->
+            validate_unknown_bucket_params(Params)
+    end.
+
+validate_memcached_bucket_params(CommonParams, IsNew, BucketConfig) ->
     [{ok, bucketType, memcached},
-     quota_size_error(CommonParams, memcached, IsNew, BucketConfig)];
-validate_bucket_type_specific_params(CommonParams, Params, membase, IsNew,
-                                     BucketConfig) ->
+     quota_size_error(CommonParams, memcached, IsNew, BucketConfig)].
+
+validate_membase_bucket_params(CommonParams, Params,
+                               IsNew, BucketConfig, Version, IsEnterprise) ->
     ReplicasNumResult = validate_replicas_number(Params, IsNew),
     BucketParams =
         [{ok, bucketType, membase},
@@ -961,15 +981,17 @@ validate_bucket_type_specific_params(CommonParams, Params, membase, IsNew,
          parse_validate_eviction_policy(Params, BucketConfig, IsNew),
          quota_size_error(CommonParams, membase, IsNew, BucketConfig),
          get_storage_mode(Params, BucketConfig, IsNew),
-         parse_validate_max_ttl(Params, BucketConfig, IsNew),
-         parse_validate_compression_mode(Params, BucketConfig, IsNew)
+         parse_validate_max_ttl(Params, BucketConfig,
+                                IsNew, Version, IsEnterprise),
+         parse_validate_compression_mode(Params, BucketConfig,
+                                         IsNew, Version, IsEnterprise)
          | validate_bucket_auto_compaction_settings(Params)],
 
     validate_bucket_purge_interval(Params, BucketConfig, IsNew) ++
         get_conflict_resolution_type_and_thresholds(Params, BucketConfig, IsNew) ++
-        BucketParams;
-validate_bucket_type_specific_params(_CommonParams, Params, _BucketType,
-                                     _IsNew, _BucketConfig) ->
+        BucketParams.
+
+validate_unknown_bucket_params(Params) ->
     [{error, bucketType, <<"invalid bucket type">>}
      | validate_bucket_auto_compaction_settings(Params)].
 
@@ -1395,11 +1417,13 @@ parse_validate_replica_index("0") -> {ok, replica_index, false};
 parse_validate_replica_index("1") -> {ok, replica_index, true};
 parse_validate_replica_index(_ReplicaValue) -> {error, replicaIndex, <<"replicaIndex can only be 1 or 0">>}.
 
-parse_validate_compression_mode(Params, BucketConfig, IsNew) ->
+parse_validate_compression_mode(Params, BucketConfig, IsNew,
+                                Version, IsEnterprise) ->
     CompMode = proplists:get_value("compressionMode", Params),
-    do_parse_validate_compression_mode(cluster_compat_mode:is_enterprise(),
-                                       cluster_compat_mode:is_cluster_55(),
-                                       CompMode, BucketConfig, IsNew).
+    do_parse_validate_compression_mode(
+      IsEnterprise,
+      cluster_compat_mode:is_version_55(Version),
+      CompMode, BucketConfig, IsNew).
 
 do_parse_validate_compression_mode(false, _, undefined, _BucketCfg, _IsNew) ->
     {ok, compression_mode, off};
@@ -1425,11 +1449,11 @@ parse_compression_mode(_) ->
     {error, compressionMode,
      <<"compressionMode can be set to 'off', 'passive' or 'active'">>}.
 
-parse_validate_max_ttl(Params, BucketConfig, IsNew) ->
+parse_validate_max_ttl(Params, BucketConfig, IsNew, Version, IsEnterprise) ->
     MaxTTL = proplists:get_value("maxTTL", Params),
-    parse_validate_max_ttl_inner(cluster_compat_mode:is_enterprise(),
-                                 cluster_compat_mode:is_cluster_55(), MaxTTL,
-                                 BucketConfig, IsNew).
+    parse_validate_max_ttl_inner(IsEnterprise,
+                                 cluster_compat_mode:is_version_55(Version),
+                                 MaxTTL, BucketConfig, IsNew).
 
 parse_validate_max_ttl_inner(false, _, undefined, _BucketCfg, _IsNew) ->
     {ok, max_ttl, 0};
@@ -1779,7 +1803,8 @@ serve_streaming_short_bucket_info(BucketName, Req) ->
 %% for test
 basic_bucket_params_screening(IsNew, Name, Params, AllBuckets) ->
     Ctx = init_bucket_validation_context(IsNew, Name, AllBuckets, undefined,
-                                         false, false, ?VERSION_46),
+                                         false, false,
+                                         ?VERSION_46, true),
     basic_bucket_params_screening(Ctx, Params).
 
 basic_bucket_params_screening_test() ->
