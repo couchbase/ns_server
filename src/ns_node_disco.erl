@@ -21,7 +21,6 @@
 -include("ns_common.hrl").
 
 -define(PING_FREQ, 60000).
--define(NODE_CHANGE_DELAY, 5000).
 -define(SYNC_TIMEOUT, 5000).
 
 -define(NODE_UP, 4).
