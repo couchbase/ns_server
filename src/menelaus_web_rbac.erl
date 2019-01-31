@@ -245,6 +245,7 @@ user_to_json({Id, Domain}, Props) ->
     RolesJson = user_roles_to_json(Props, IsMadHatter),
     Name = proplists:get_value(name, Props),
     Groups = proplists:get_value(groups, Props),
+    ExtGroups = proplists:get_value(external_groups, Props),
     Passwordless = proplists:get_value(passwordless, Props),
     PassChangeTime = format_password_change_time(
                        proplists:get_value(password_change_timestamp, Props)),
@@ -254,6 +255,8 @@ user_to_json({Id, Domain}, Props) ->
       {roles, RolesJson}] ++
      [{groups, [list_to_binary(G) || G <- Groups]} || Groups =/= undefined,
                                                       IsMadHatter] ++
+     [{external_groups, [list_to_binary(G) || G <- ExtGroups]}
+          || ExtGroups =/= undefined, IsMadHatter] ++
      [{name, list_to_binary(Name)} || Name =/= undefined] ++
      [{passwordless, Passwordless} || Passwordless == true] ++
      [{password_change_date, PassChangeTime} || PassChangeTime =/= undefined]}.
@@ -452,8 +455,9 @@ has_role({_, Props}, Roles, Cache) ->
     case overlap(UserRoles, Roles) of
         true -> {true, Cache};
         false ->
-            Groups = proplists:get_value(dirty_groups, Props, []),
-            has_role_in_groups(Groups, Roles, Cache)
+            {LocalGroups, ExtGroups} =
+                proplists:get_value(dirty_groups, Props, {[], []}),
+            has_role_in_groups(LocalGroups ++ ExtGroups, Roles, Cache)
     end.
 
 has_role_in_groups([], _, Cache) -> {false, Cache};

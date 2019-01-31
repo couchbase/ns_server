@@ -87,7 +87,7 @@
 -define(MAX_USERS_ON_CE, 20).
 -define(LDAP_GROUPS_CACHE_SIZE, 1000).
 -define(DEFAULT_PROPS, [name, user_roles, group_roles, passwordless,
-                        password_change_timestamp, groups]).
+                        password_change_timestamp, groups, external_groups]).
 -define(DEFAULT_GROUP_PROPS, [description, roles, ldap_group_ref]).
 
 -record(state, {base, passwordless}).
@@ -318,8 +318,11 @@ make_props(Id, Props, ItemList, {Passwordless, Definitions,
           (passwordless, Cache) ->
               {lists:member(Id, Passwordless), Cache};
           (groups, Cache) ->
-              {Groups, NewCache} = GetGroups(Cache),
+              {{Groups, _}, NewCache} = GetGroups(Cache),
               {Groups, NewCache};
+          (external_groups, Cache) ->
+              {{_, ExtGroups}, NewCache} = GetGroups(Cache),
+              {ExtGroups, NewCache};
           (dirty_groups, Cache) ->
               {DirtyGroups, NewCache} = GetDirtyGroups(Cache),
               {DirtyGroups, NewCache};
@@ -684,23 +687,26 @@ get_user_roles(UserProps, Definitions, AllPossibleValues) ->
       proplists:get_value(roles, UserProps, []),
       Definitions, AllPossibleValues).
 
-clean_groups(DirtyGroups) ->
-    lists:filter(group_exists(_), DirtyGroups).
+clean_groups({DirtyLocalGroups, DirtyExtGroups}) ->
+    {lists:filter(group_exists(_), DirtyLocalGroups),
+     lists:filter(group_exists(_), DirtyExtGroups)}.
 
 get_dirty_groups(Id, Props) ->
-    Groups = proplists:get_value(groups, Props, []),
-    case Id of
-        {_, local} -> Groups;
-        {User, external} ->
-            case ldap_util:get_setting(authorization_enabled) of
-                true -> lists:usort(Groups ++ get_ldap_groups(User));
-                false -> Groups
-            end
-    end.
+    LocalGroups = proplists:get_value(groups, Props, []),
+    ExternalGroups =
+        case Id of
+            {_, local} -> [];
+            {User, external} ->
+                case ldap_util:get_setting(authorization_enabled) of
+                    true -> get_ldap_groups(User);
+                    false -> []
+                end
+        end,
+    {LocalGroups, ExternalGroups}.
 
-get_groups_roles(Groups, Definitions, AllPossibleValues) ->
+get_groups_roles({LocalGroups, ExtGroups}, Definitions, AllPossibleValues) ->
     [{G, get_group_roles(G, Definitions, AllPossibleValues)}
-        || G <- Groups].
+        || G <- LocalGroups ++ ExtGroups].
 
 get_ldap_groups(User) ->
     try ldap_auth_cache:user_groups(User) of
