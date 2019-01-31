@@ -100,7 +100,7 @@ run_eunit_tests(Modules0) ->
     %% will filter _tests modules out to avoid running tests twice.
     Modules  = filter_out_unneeded_tests_modules(Modules0),
     Listener = spawn_listener(),
-    eunit:test(Modules, [verbose, {report, Listener}]),
+    eunit:test([{spawn, M} || M <- Modules], [verbose, {report, Listener}]),
 
     receive
         {failed_tests, FailedTests} ->
