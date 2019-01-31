@@ -25,6 +25,7 @@
 -export([handle/4,
          touch/2,
          validate/3,
+         validate_relative/4,
          get_value/2,
          convert/3,
          one_of/3,
@@ -144,6 +145,17 @@ validate(Fun, Name, State0) ->
                     return_error(Name, Error, State)
             end
     end.
+
+validate_relative(Fun, Name, NameRel, State) ->
+    validate(
+      fun (V) ->
+              case get_value(NameRel, State) of
+                  undefined ->
+                      ok;
+                  VRel ->
+                      Fun(V, VRel)
+              end
+      end, Name, State).
 
 convert(Name, Fun, State) ->
     validate(?cut({value, Fun(_)}), Name, State).

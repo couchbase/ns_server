@@ -20,6 +20,7 @@
 
 -include("ns_stats.hrl").
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -34,9 +35,10 @@
          basic_stats/1,
          bucket_disk_usage/1,
          bucket_ram_usage/1,
-         serve_stats_directory/3]).
+         serve_stats_directory/3,
+         serve_ui_stats/1,
+         handle_ui_stats_v2/1]).
 
--export([serve_ui_stats/1]).
 
 %% External API
 bucket_disk_usage(BucketName) ->
@@ -388,7 +390,7 @@ get_samples_from_one_of_kind([], _, _, _) ->
     %% We do not know which Kind the stat belongs to and the
     %% nodes relevant for that Kind i.e. its section_nodes().
     %% So, return empty sample with local node.
-    {[[]], [node()]};
+    {{[[]], [node()]}, undefined};
 get_samples_from_one_of_kind([Kind | RestKinds], StatName, ClientTStamp, Window) ->
     case section_nodes(Kind) of
         [] ->
@@ -405,12 +407,15 @@ get_samples_for_kind(Kind, RestKinds, ForNodes, StatName, ClientTStamp, Window) 
         true ->
             get_samples_from_one_of_kind(RestKinds, StatName, ClientTStamp, Window);
         false ->
-            RV
+            {RV, Kind}
     end.
 
-get_samples_for_system_or_bucket_stat(BucketName, StatName, ClientTStamp, Window) ->
+get_samples_for_system_or_bucket_stat(BucketName, StatName,
+                                      ClientTStamp, Window) ->
     SearchList = get_stats_search_order(StatName, BucketName),
-    get_samples_from_one_of_kind(SearchList, StatName, ClientTStamp, Window).
+    {RV, _} = get_samples_from_one_of_kind(SearchList, StatName,
+                                           ClientTStamp, Window),
+    RV.
 
 %% For many stats, their section can be identified by their prefix.
 guess_sections_by_pefix(StatName, BucketName) ->
@@ -2727,6 +2732,140 @@ do_get_indexes(Service, BucketId0, Nodes) ->
             not(ordsets:is_disjoint(WantedHosts,
                                     lists:usort(proplists:get_value(hosts, I))))].
 
+-record(params, {bucket, stat, start_ts, end_ts}).
+
+filter_samples(Samples, StartTS, EndTS) ->
+    S1 = lists:dropwhile(fun ({T, _}) -> T < StartTS end, Samples),
+    lists:takewhile(fun ({T, _}) -> T < EndTS end, S1).
+
+merge_samples(Samples, undefined, StartTS, EndTS) ->
+    [filter_samples(S, StartTS, EndTS) || S <- Samples];
+merge_samples(Samples, AccSamples, StartTS, EndTS) ->
+    [do_merge_samples(S, A, StartTS, EndTS) ||
+        {S, A} <- lists:zip(Samples, AccSamples)].
+
+do_merge_samples(Samples, [], StartTS, EndTS) ->
+    filter_samples(Samples, StartTS, EndTS);
+do_merge_samples(Samples, [{EndTS, _} | _] = AccSamples, StartTS, _) ->
+    filter_samples(Samples, StartTS, EndTS) ++ AccSamples.
+
+latest_start_timestamp(Samples, StartTS) ->
+    lists:foldl(
+      fun ([{T, _} | _], LatestT) when T > LatestT ->
+              T;
+          (_, LatestT) ->
+              LatestT
+      end, StartTS, Samples).
+
+retrive_samples_from_all_archives(Params) ->
+    {S, N, _, _} =
+        lists:foldl(?cut(retrive_samples_from_archive(_1, Params, _2)),
+                         {undefined, undefined, undefined, true},
+                         stats_archiver:archives()),
+    {S, N}.
+
+retrive_samples_from_archive(_Archive, _Params,
+                             {_AccSamples, _AccNodes, _Kind, false} = Acc) ->
+    Acc;
+retrive_samples_from_archive(Archive, Params = #params{start_ts = StartTS,
+                                                       end_ts = EndTS},
+                             {AccSamples, AccNodes, Kind, Continue}) ->
+    case do_retrive_samples_from_archive(Archive, Params, Kind) of
+        {{[[]], [N]}, undefined} ->
+            %% stat most likely doesn't exist, no need to continue
+            %% to other archives
+            {[[]], [N], undefined, false};
+        {{[[]], [_]}, _} ->
+            %% no results for this stat in current archive
+            %% no need to proceed to less detailed archives
+            {AccSamples, AccNodes, Kind, false};
+        {{Samples, Nodes}, NewKind} ->
+            true = AccNodes =:= undefined orelse Nodes =:= AccNodes,
+            NewContinue =
+                case latest_start_timestamp(Samples, StartTS) > StartTS of
+                    true ->
+                        Continue;
+                    false ->
+                        %% we got all the samples we wanted, time to
+                        %% stop retrieveing
+                        false
+                end,
+
+            {merge_samples(Samples, AccSamples, StartTS, EndTS),
+             Nodes, NewKind, NewContinue}
+    end.
+
+do_retrive_samples_from_archive({Period, _Seconds, Count},
+                                #params{bucket = BucketName,
+                                        stat = StatName,
+                                        start_ts = StartTS}, Kind) ->
+    Wnd = {1, Period, Count},
+
+    case Kind of
+        undefined ->
+            SearchList = get_stats_search_order(StatName, BucketName),
+            get_samples_from_one_of_kind(SearchList, StatName,
+                                         StartTS, Wnd);
+        _ ->
+            ForNodes = section_nodes(Kind),
+            {get_samples_for_stat(Kind, StatName, ForNodes, StartTS, Wnd),
+             Kind}
+    end.
+
+-define(MAX_TS, 9999999999999).
+
+handle_ui_stats_v2(Req) ->
+    validator:handle(
+      fun (Values) ->
+              Params =
+                  #params{
+                     bucket = proplists:get_value(bucket, Values),
+                     stat = proplists:get_value(statName, Values),
+                     start_ts = proplists:get_value(startTS, Values, 0),
+                     end_ts = proplists:get_value(endTS, Values, ?MAX_TS)},
+              {Samples, Nodes} = retrive_samples_from_all_archives(Params),
+              output_ui_stats_v2(Req, Params, Samples, Nodes)
+      end, Req, qs, ui_stats_v2_validators()).
+
+ui_stats_v2_validators() ->
+    [validator:required(bucket, _),
+     validate_bucket(bucket, _),
+     validator:required(statName, _),
+     validator:integer(startTS, 0, ?MAX_TS, _),
+     validator:integer(endTS, 0, ?MAX_TS, _),
+     validator:validate_relative(
+       fun (StartTS, EndTS) when StartTS > EndTS ->
+               {error, io_lib:format("should not be greater than ~p", [EndTS])};
+           (_, _) ->
+               ok
+       end, startTS, endTS, _)].
+
+validate_bucket(Name, State) ->
+    validator:validate(
+      fun (BucketName) ->
+              case lists:member(BucketName,
+                                ns_bucket:get_bucket_names()) of
+                  true ->
+                      ok;
+                  false ->
+                      {error, "Bucket not found"}
+              end
+      end, Name, State).
+
+output_ui_stats_v2(Req, #params{bucket = Bucket, stat = Stat}, Stats, Nodes) ->
+    LocalAddr = menelaus_util:local_addr(Req),
+    StatsJson =
+        lists:map(
+          fun({S, N}) ->
+                  Host = menelaus_web_node:build_node_hostname(
+                           ns_config:latest(), N, LocalAddr),
+                  {Timestamps, Samples} = lists:unzip(S),
+                  {Host, {[{samples, Samples}, {timestamps, Timestamps}]}}
+          end, lists:zip(Stats, Nodes)),
+    menelaus_util:reply_json(
+      Req, {[{bucket, list_to_binary(Bucket)},
+             {statName, list_to_binary(Stat)},
+             {stats, {StatsJson}}]}).
 
 -ifdef(TEST).
 join_samples_test() ->
