@@ -47,7 +47,7 @@ authenticate(Username, Password, Settings) ->
 
 with_query_connection(Settings, Fun) ->
     DN = proplists:get_value(query_dn, Settings),
-    Pass = proplists:get_value(query_pass, Settings),
+    {password, Pass} = proplists:get_value(query_pass, Settings),
     ldap_util:with_authenticated_connection(DN, Pass, Settings, Fun).
 
 get_user_DN(Username, Settings) ->

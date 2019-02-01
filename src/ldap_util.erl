@@ -133,7 +133,7 @@ default_settings() ->
      {encryption, false},
      {user_dn_mapping, []},
      {query_dn, undefined},
-     {query_pass, undefined},
+     {query_pass, {password, undefined}},
      {groups_query, undefined},
      {max_parallel_connections, 100},
      {max_cache_size, 10000},

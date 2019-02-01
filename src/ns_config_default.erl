@@ -516,6 +516,8 @@ encrypt(Config) ->
                                 {stop, {cookie, encrypt_config_val(Cookie)}};
                             ({pass, Pass}) ->
                                 {stop, {pass, encrypt_config_val(Pass)}};
+                            ({password, Pass}) ->
+                                {stop, {password, encrypt_config_val(Pass)}};
                             (_) ->
                                 continue
                         end, Config).

@@ -47,7 +47,9 @@ prepare_ldap_settings(Settings) ->
                 end, L);
           (query_dn, DN) ->
               list_to_binary(DN);
-          (query_pass, _) ->
+          (query_pass, {password, undefined}) ->
+              undefined;
+          (query_pass, {password, _}) ->
               <<"**********">>;
           (groups_query, Orig) ->
               list_to_binary(Orig);
@@ -62,7 +64,6 @@ handle_ldap_settings_post(Req) ->
     menelaus_web_rbac:assert_groups_and_ldap_enabled(),
     validator:handle(
       fun (Props) ->
-              ?log_debug("Saving ldap settings: ~p", [Props]),
               ns_audit:ldap_settings(Req, prepare_ldap_settings(Props)),
               ldap_util:set_settings(Props),
               handle_ldap_settings(Req)
@@ -124,6 +125,7 @@ ldap_settings_validators() ->
         validate_user_dn_mapping(user_dn_mapping, _),
         validate_ldap_dn(query_dn, _),
         validator:touch(query_pass, _),
+        validator:convert(query_pass, ?cut({password, _}), _),
         validate_ldap_groups_query(groups_query, _),
         validator:integer(max_parallel_connections, 1, 1000, _),
         validator:integer(max_cache_size, 0, 10000, _),
