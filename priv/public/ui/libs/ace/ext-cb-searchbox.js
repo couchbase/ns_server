@@ -18,8 +18,8 @@ var keyUtil = require("../lib/keys");
 var html = '<div class="ace_search">\
     <div class="ace_search_form row">\
         <input type="text" class="ace_search_field" placeholder="Search for" spellcheck="false"></input>\
-        <span action="findPrev" class="icon fa-angle-left"></span>\
-        <span action="findNext" class="icon fa-angle-right"></span>\
+        <span action="findPrev" class="icon angle-icon up"></span>\
+        <span action="findNext" class="icon angle-icon down"></span>\
         <span action="hide" class="ace_searchbtn_close">X</span>\
     </div>\
     <div class="ace_replace_form">\
@@ -117,15 +117,6 @@ var SearchBox = function(editor, range, showReplaceForm) {
     }]);
     this.$searchBarKb = new HashHandler();
     this.$searchBarKb.bindKeys({
-        "Ctrl-f|Command-f": function(sb) {
-            var isReplace = sb.isReplace = !sb.isReplace;
-            sb.replaceBox.style.display = isReplace ? "" : "none";
-            sb.searchInput.focus();
-        },
-        "Ctrl-H|Command-Option-F": function(sb) {
-            sb.replaceBox.style.display = "";
-            sb.replaceInput.focus();
-        },
         "Ctrl-G|Command-G": function(sb) {
             sb.findNext();
         },
