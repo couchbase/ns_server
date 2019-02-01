@@ -46,7 +46,7 @@ handle_settings_validate_post(Req) ->
               Settings = misc:update_proplist(
                            license_reporting:build_settings(), Props),
               case license_reporting:validate_settings(Settings) of
-                  ok -> menelaus_util:reply_json(Req, {[]});
+                  {ok, Report} -> menelaus_util:reply_json(Req, Report);
                   {error, Reason} -> menelaus_util:reply_json(Req, Reason, 400)
               end
       end, Req, form, settings_validators()).

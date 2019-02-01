@@ -91,7 +91,7 @@ handle_cast(Msg, State) ->
 
 handle_info(report, State) ->
     case send_report(build_settings(), []) of
-        ok -> ok;
+        {ok, _} -> ok;
         {error, Error} ->
             Msg = format_bin("On-demand pricing report send failed "
                              "with reason: ~s", [Error]),
@@ -141,7 +141,10 @@ send_report(Settings, Extra) ->
     Headers = [{"Content-Type", "application/json"},
                {"Authorization", "Basic " ++ BasicAuth}],
     Body = ejson:encode(Report),
-    post(URL, Headers, Body, Timeout, 10).
+    case post(URL, Headers, Body, Timeout, 10) of
+        ok -> {ok, Report};
+        {error, Reason} -> {error, Reason}
+    end.
 
 post(_URL, _Headers, _Body, _Timeout, 0) ->
     ?log_error("Sending on-demand pricing report failed. Too many redirects"),
