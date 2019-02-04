@@ -23,7 +23,7 @@
 
 -export([open_connection/5,
          add_stream/4, close_stream/3, stream_request/8,
-         setup_flow_control/2, process_response/2, format_packet_nicely/1,
+         process_response/2, format_packet_nicely/1,
          command_2_atom/1]).
 
 -spec process_response(#mc_header{}, #mc_entry{}) -> any().
@@ -116,15 +116,6 @@ stream_request(Sock, Partition, Opaque, StartSeqNo, EndSeqNo,
                                              {#mc_header{opaque = Opaque,
                                                          vbucket = Partition},
                                               #mc_entry{ext = Extra}}).
-
--spec setup_flow_control(port(), non_neg_integer()) -> ok | dcp_error().
-setup_flow_control(Sock, ConnectionBufferSize) ->
-    Body = iolist_to_binary([integer_to_list(ConnectionBufferSize), 0]),
-    Resp = mc_client_binary:cmd_vocal(?DCP_CONTROL, Sock,
-                                      {#mc_header{},
-                                       #mc_entry{key = <<"connection_buffer_size">>,
-                                                 data = Body}}),
-    process_response(Resp).
 
 -spec command_2_atom(integer()) -> atom().
 command_2_atom(?DCP_OPEN) ->
