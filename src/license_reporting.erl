@@ -132,7 +132,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 send_report(Settings, Extra) ->
     Report = create_report(Settings, Extra),
-    ?log_info("Sending on-demand pricing report:~n~p", [Report]),
+    ?log_info("Generated on-demand pricing report:~n~p", [Report]),
     User = get_setting(contract_id, Settings),
     {password, Pass} = get_setting(customer_token, Settings),
     URL = get_setting(reporting_endpoint, Settings),
@@ -141,9 +141,14 @@ send_report(Settings, Extra) ->
     Headers = [{"Content-Type", "application/json"},
                {"Authorization", "Basic " ++ BasicAuth}],
     Body = ejson:encode(Report),
-    case post(URL, Headers, Body, Timeout, 10) of
-        ok -> {ok, Report};
-        {error, Reason} -> {error, Reason}
+    case proplists:get_bool(generation_only, Settings) of
+        false ->
+            case post(URL, Headers, Body, Timeout, 10) of
+                ok -> {ok, Report};
+                {error, Reason} -> {error, Reason}
+            end;
+        true ->
+            {ok, Report}
     end.
 
 post(_URL, _Headers, _Body, _Timeout, 0) ->

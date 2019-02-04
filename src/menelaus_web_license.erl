@@ -49,7 +49,8 @@ handle_settings_validate_post(Req) ->
                   {ok, Report} -> menelaus_util:reply_json(Req, Report);
                   {error, Reason} -> menelaus_util:reply_json(Req, Reason, 400)
               end
-      end, Req, form, settings_validators()).
+      end, Req, form, [validator:boolean(generation_only, _)|
+                       settings_validators()]).
 
 settings_validators() ->
     [
