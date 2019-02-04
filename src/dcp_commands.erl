@@ -21,7 +21,7 @@
 -include("mc_constants.hrl").
 -include("mc_entry.hrl").
 
--export([open_connection/4,
+-export([open_connection/5,
          add_stream/4, close_stream/3, stream_request/8,
          setup_flow_control/2, process_response/2, format_packet_nicely/1,
          command_2_atom/1]).
@@ -39,9 +39,9 @@ process_response(#mc_header{status=Status}, #mc_entry{data=Msg}) ->
 process_response({ok, Header, Body}) ->
     process_response(Header, Body).
 
--spec open_connection(port(), dcp_conn_name(), dcp_conn_type(),
-                      list()) -> ok | dcp_error().
-open_connection(Sock, ConnName, Type, RepFeatures) ->
+-spec open_connection(port(), dcp_conn_name(), dcp_conn_type(), list(),
+                      node()) -> ok | dcp_error().
+open_connection(Sock, ConnName, Type, RepFeatures, Node) ->
     Flags = case Type of
                 consumer ->
                     ?DCP_CONNECTION_FLAG_CONSUMER;
@@ -63,12 +63,24 @@ open_connection(Sock, ConnName, Type, RepFeatures) ->
 
     Extra = <<0:32, NewFlags:32>>,
 
-    ?log_debug("Open ~p connection ~p on socket ~p",
-               [Type, ConnName, Sock]),
+    {Datatype, Encoded} = case proplists:get_bool(json, RepFeatures)
+                               andalso proplists:get_bool(set_consumer_name,
+                                                          RepFeatures)
+                               andalso Type =:= consumer of
+                              true ->
+                                  {?MC_DATATYPE_JSON,
+                                   ejson:encode({[{"consumer_name", Node}]})};
+                              false ->
+                                  {?MC_DATATYPE_RAW_BYTES, undefined}
+                          end,
+    ?log_debug("Open ~p connection ~p on socket ~p: Body ~p",
+               [Type, ConnName, Sock, Encoded]),
     process_response(
       mc_client_binary:cmd_vocal(?DCP_OPEN, Sock,
-                                 {#mc_header{},
-                                  #mc_entry{key = ConnName,ext = Extra}})).
+                                 {#mc_header{}, #mc_entry{key = ConnName,
+                                                          ext = Extra,
+                                                          datatype = Datatype,
+                                                          data = Encoded}})).
 
 -spec add_stream(port(), vbucket_id(), integer(), add | takeover) -> {ok, quiet}.
 add_stream(Sock, Partition, Opaque, Type) ->

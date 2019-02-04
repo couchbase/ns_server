@@ -244,7 +244,7 @@ connect(Type, ConnName, Node, Bucket, RepFeatures) ->
     %% Negotiate XAttr and Snappy features if they are to be enabled.
     negotiate_features(Sock, Type, ConnName, RepFeatures),
 
-    ok = dcp_commands:open_connection(Sock, ConnName, Type, RepFeatures),
+    ok = dcp_commands:open_connection(Sock, ConnName, Type, RepFeatures, Node),
     Sock.
 
 connect_inner(Cfg, Node, RepFeatures) ->

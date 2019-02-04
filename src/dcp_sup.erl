@@ -85,7 +85,9 @@ get_replication_features() ->
                   %% they cannot be disabled for particular bucket
                   {collections, collections:enabled()},
                   {del_times, cluster_compat_mode:is_cluster_55()},
-                  {ssl, misc:should_data_rep_be_encrypted()}],
+                  {ssl, misc:should_data_rep_be_encrypted()},
+                  {set_consumer_name, cluster_compat_mode:is_cluster_madhatter()},
+                  {json, cluster_compat_mode:is_cluster_madhatter()}],
     misc:canonical_proplist(FeatureSet).
 
 manage_replicators(Bucket, NeededNodes) ->
