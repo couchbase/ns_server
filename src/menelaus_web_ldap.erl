@@ -47,8 +47,8 @@ prepare_ldap_settings(Settings) ->
                 end, L);
           (query_dn, DN) ->
               list_to_binary(DN);
-          (query_pass, {password, undefined}) ->
-              undefined;
+          (query_pass, {password, ""}) ->
+              <<>>;
           (query_pass, {password, _}) ->
               <<"**********">>;
           (groups_query, Orig) ->
