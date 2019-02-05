@@ -520,7 +520,8 @@ goport_args(cbas, Config, Cmd, NodeUUID) ->
          "-cbasExecutable=" ++ Cmd,
          "-memoryQuotaMb=" ++ integer_to_list(MemoryQuota),
          "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
-         "-logDir=" ++ LogDir
+         "-logDir=" ++ LogDir,
+         "-tmpDir=" ++ path_config:component_path(tmp)
         ] ++
         ["-dataDir=" ++ Dir || Dir <- CBASDirs] ++
         ["-javaHome=" ++ JavaHome || JavaHome =/= undefined];
