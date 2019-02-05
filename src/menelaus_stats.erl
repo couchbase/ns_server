@@ -2732,7 +2732,7 @@ do_get_indexes(Service, BucketId0, Nodes) ->
             not(ordsets:is_disjoint(WantedHosts,
                                     lists:usort(proplists:get_value(hosts, I))))].
 
--record(params, {bucket, stat, start_ts, end_ts}).
+-record(params, {bucket, stat, start_ts, end_ts, step}).
 
 filter_samples(Samples, StartTS, EndTS) ->
     S1 = lists:dropwhile(fun ({T, _}) -> T < StartTS end, Samples),
@@ -2757,11 +2757,24 @@ latest_start_timestamp(Samples, StartTS) ->
               LatestT
       end, StartTS, Samples).
 
+archives(#params{step = Step}) ->
+    %% skip more detailed archive if the next one is sufficient
+    %% for the given step
+    Archives = stats_archiver:archives(),
+    [_ | Archives1] = Archives,
+    ArchivesZipped =
+        lists:dropwhile(
+          fun ({_, {_, NextSeconds, _}}) ->
+                  NextSeconds =< Step;
+              ({_, undefined}) ->
+                  false
+          end, lists:zip(Archives, Archives1 ++ [undefined])),
+    [A || {A, _} <- ArchivesZipped].
+
 retrive_samples_from_all_archives(Params) ->
     {S, N, _, _} =
         lists:foldl(?cut(retrive_samples_from_archive(_1, Params, _2)),
-                         {undefined, undefined, undefined, true},
-                         stats_archiver:archives()),
+                    {undefined, undefined, undefined, true}, archives(Params)),
     {S, N}.
 
 retrive_samples_from_archive(_Archive, _Params,
@@ -2795,11 +2808,17 @@ retrive_samples_from_archive(Archive, Params = #params{start_ts = StartTS,
              Nodes, NewKind, NewContinue}
     end.
 
-do_retrive_samples_from_archive({Period, _Seconds, Count},
+do_retrive_samples_from_archive({Period, Seconds, Count},
                                 #params{bucket = BucketName,
                                         stat = StatName,
-                                        start_ts = StartTS}, Kind) ->
-    Wnd = {1, Period, Count},
+                                        start_ts = StartTS,
+                                        step = Step}, Kind) ->
+    Wnd = case Step of
+              1 ->
+                  {1, Period, Count};
+              _ ->
+                  {1, Period, Seconds * Count div Step}
+          end,
 
     case Kind of
         undefined ->
@@ -2822,8 +2841,15 @@ handle_ui_stats_v2(Req) ->
                      bucket = proplists:get_value(bucket, Values),
                      stat = proplists:get_value(statName, Values),
                      start_ts = proplists:get_value(startTS, Values, 0),
-                     end_ts = proplists:get_value(endTS, Values, ?MAX_TS)},
-              {Samples, Nodes} = retrive_samples_from_all_archives(Params),
+                     end_ts = proplists:get_value(endTS, Values, ?MAX_TS),
+                     step = proplists:get_value(step, Values, 1)},
+              {Samples, Nodes} =
+                  case retrive_samples_from_all_archives(Params) of
+                      {undefined, undefined} ->
+                          {[[]], [node()]};
+                      Other ->
+                          Other
+                  end,
               output_ui_stats_v2(Req, Params, Samples, Nodes)
       end, Req, qs, ui_stats_v2_validators()).
 
@@ -2838,7 +2864,8 @@ ui_stats_v2_validators() ->
                {error, io_lib:format("should not be greater than ~p", [EndTS])};
            (_, _) ->
                ok
-       end, startTS, endTS, _)].
+       end, startTS, endTS, _),
+     validator:integer(step, 1, 60 * 60 * 24 * 366, _)].
 
 validate_bucket(Name, State) ->
     validator:validate(
@@ -2852,7 +2879,8 @@ validate_bucket(Name, State) ->
               end
       end, Name, State).
 
-output_ui_stats_v2(Req, #params{bucket = Bucket, stat = Stat}, Stats, Nodes) ->
+output_ui_stats_v2(Req, #params{bucket = Bucket, stat = Stat, step = Step},
+                   Stats, Nodes) ->
     LocalAddr = menelaus_util:local_addr(Req),
     StatsJson =
         lists:map(
@@ -2865,6 +2893,7 @@ output_ui_stats_v2(Req, #params{bucket = Bucket, stat = Stat}, Stats, Nodes) ->
     menelaus_util:reply_json(
       Req, {[{bucket, list_to_binary(Bucket)},
              {statName, list_to_binary(Stat)},
+             {step, Step},
              {stats, {StatsJson}}]}).
 
 -ifdef(TEST).
