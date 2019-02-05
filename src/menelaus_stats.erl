@@ -384,28 +384,37 @@ gather_needed_stats(BucketName, ForNodes, ClientTStamp, Window, GatherStats) ->
     AllNodesSamples = [{MainNode, lists:reverse(MainSamples)} | RestSamplesRaw],
     {AllNodesSamples, Nodes}.
 
-get_samples_from_one_of_kind([], _, _, _) ->
+nodes_to_try(Kind, all) ->
+    section_nodes(Kind);
+nodes_to_try(_Kind, Nodes) ->
+    Nodes.
+
+get_samples_from_one_of_kind([], _, _, _, _) ->
     %% We will reach here if samples are not available for a known stat.
     %% Samples may not be available at higher zoom level e.g. week, year etc.
     %% We do not know which Kind the stat belongs to and the
     %% nodes relevant for that Kind i.e. its section_nodes().
     %% So, return empty sample with local node.
     {{[[]], [node()]}, undefined};
-get_samples_from_one_of_kind([Kind | RestKinds], StatName, ClientTStamp, Window) ->
-    case section_nodes(Kind) of
+get_samples_from_one_of_kind([Kind | RestKinds], StatName,
+                             ClientTStamp, Window, Nodes) ->
+    case nodes_to_try(Kind, Nodes) of
         [] ->
             get_samples_from_one_of_kind(RestKinds,
-                                         StatName, ClientTStamp, Window);
+                                         StatName, ClientTStamp, Window, Nodes);
         ForNodes ->
             get_samples_for_kind(Kind, RestKinds, ForNodes,
-                                 StatName, ClientTStamp, Window)
+                                 StatName, ClientTStamp, Window, Nodes)
     end.
 
-get_samples_for_kind(Kind, RestKinds, ForNodes, StatName, ClientTStamp, Window) ->
-    RV = {Samples, _} = get_samples_for_stat(Kind, StatName, ForNodes, ClientTStamp, Window),
+get_samples_for_kind(Kind, RestKinds, ForNodes, StatName,
+                     ClientTStamp, Window, Nodes) ->
+    RV = {Samples, _} = get_samples_for_stat(Kind, StatName, ForNodes,
+                                             ClientTStamp, Window),
     case are_samples_undefined(Samples) of
         true ->
-            get_samples_from_one_of_kind(RestKinds, StatName, ClientTStamp, Window);
+            get_samples_from_one_of_kind(RestKinds, StatName,
+                                         ClientTStamp, Window, Nodes);
         false ->
             {RV, Kind}
     end.
@@ -414,7 +423,7 @@ get_samples_for_system_or_bucket_stat(BucketName, StatName,
                                       ClientTStamp, Window) ->
     SearchList = get_stats_search_order(StatName, BucketName),
     {RV, _} = get_samples_from_one_of_kind(SearchList, StatName,
-                                           ClientTStamp, Window),
+                                           ClientTStamp, Window, all),
     RV.
 
 %% For many stats, their section can be identified by their prefix.
@@ -2732,7 +2741,7 @@ do_get_indexes(Service, BucketId0, Nodes) ->
             not(ordsets:is_disjoint(WantedHosts,
                                     lists:usort(proplists:get_value(hosts, I))))].
 
--record(params, {bucket, stat, start_ts, end_ts, step}).
+-record(params, {bucket, stat, start_ts, end_ts, step, nodes}).
 
 filter_samples(Samples, StartTS, EndTS) ->
     S1 = lists:dropwhile(fun ({T, _}) -> T < StartTS end, Samples),
@@ -2784,10 +2793,6 @@ retrive_samples_from_archive(Archive, Params = #params{start_ts = StartTS,
                                                        end_ts = EndTS},
                              {AccSamples, AccNodes, Kind, Continue}) ->
     case do_retrive_samples_from_archive(Archive, Params, Kind) of
-        {{[[]], [N]}, undefined} ->
-            %% stat most likely doesn't exist, no need to continue
-            %% to other archives
-            {[[]], [N], undefined, false};
         {{[[]], [_]}, _} ->
             %% no results for this stat in current archive
             %% no need to proceed to less detailed archives
@@ -2812,7 +2817,8 @@ do_retrive_samples_from_archive({Period, Seconds, Count},
                                 #params{bucket = BucketName,
                                         stat = StatName,
                                         start_ts = StartTS,
-                                        step = Step}, Kind) ->
+                                        step = Step,
+                                        nodes = Nodes}, Kind) ->
     Wnd = case Step of
               1 ->
                   {1, Period, Count};
@@ -2824,9 +2830,9 @@ do_retrive_samples_from_archive({Period, Seconds, Count},
         undefined ->
             SearchList = get_stats_search_order(StatName, BucketName),
             get_samples_from_one_of_kind(SearchList, StatName,
-                                         StartTS, Wnd);
+                                         StartTS, Wnd, Nodes);
         _ ->
-            ForNodes = section_nodes(Kind),
+            ForNodes = nodes_to_try(Kind, Nodes),
             {get_samples_for_stat(Kind, StatName, ForNodes, StartTS, Wnd),
              Kind}
     end.
@@ -2842,18 +2848,24 @@ handle_ui_stats_v2(Req) ->
                      stat = proplists:get_value(statName, Values),
                      start_ts = proplists:get_value(startTS, Values, 0),
                      end_ts = proplists:get_value(endTS, Values, ?MAX_TS),
-                     step = proplists:get_value(step, Values, 1)},
+                     step = proplists:get_value(step, Values, 1),
+                     nodes = proplists:get_value(host, Values, all)},
               {Samples, Nodes} =
-                  case retrive_samples_from_all_archives(Params) of
-                      {undefined, undefined} ->
-                          {[[]], [node()]};
-                      Other ->
-                          Other
-                  end,
+                  fix_empty_response(retrive_samples_from_all_archives(Params),
+                                     Params),
               output_ui_stats_v2(Req, Params, Samples, Nodes)
-      end, Req, qs, ui_stats_v2_validators()).
+      end, Req, qs, ui_stats_v2_validators(Req)).
 
-ui_stats_v2_validators() ->
+fix_empty_response({undefined, undefined}, #params{nodes = all}) ->
+    {[[]], [node()]};
+fix_empty_response({undefined, undefined}, #params{nodes = [Node]}) ->
+    {[[]], [Node]};
+fix_empty_response({[[]], _}, Params) ->
+    fix_empty_response({undefined, undefined}, Params);
+fix_empty_response(Other, _) ->
+    Other.
+
+ui_stats_v2_validators(Req) ->
     [validator:required(bucket, _),
      validate_bucket(bucket, _),
      validator:required(statName, _),
@@ -2865,7 +2877,8 @@ ui_stats_v2_validators() ->
            (_, _) ->
                ok
        end, startTS, endTS, _),
-     validator:integer(step, 1, 60 * 60 * 24 * 366, _)].
+     validator:integer(step, 1, 60 * 60 * 24 * 366, _),
+     validate_host(host, _, Req)].
 
 validate_bucket(Name, State) ->
     validator:validate(
@@ -2876,6 +2889,17 @@ validate_bucket(Name, State) ->
                       ok;
                   false ->
                       {error, "Bucket not found"}
+              end
+      end, Name, State).
+
+validate_host(Name, State, Req) ->
+    validator:validate(
+      fun (HostName) ->
+              case menelaus_web_node:find_node_hostname(HostName, Req) of
+                  false ->
+                      {error, "Unknown hostname"};
+                  {ok, Node} ->
+                      {value, [Node]}
               end
       end, Name, State).
 
