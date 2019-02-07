@@ -5,7 +5,7 @@
     .module('mnAdmin')
     .controller('mnAdminController', mnAdminController);
 
-  function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnSettingsNotificationsService, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnPoorMansAlertsService, mnLostConnectionService, mnPermissions, mnPools, mnMemoryQuotaService, mnResetPasswordDialogService, whoami, mnBucketsStats, mnBucketsService, $q, mnSessionService) {
+  function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnSettingsNotificationsService, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnPoorMansAlertsService, mnLostConnectionService, mnPermissions, mnPools, mnMemoryQuotaService, mnResetPasswordDialogService, whoami, mnBucketsStats, mnBucketsService, $q, mnSessionService, mnServersService) {
     var vm = this;
     vm.poolDefault = poolDefault;
     vm.launchpadId = pools.launchID;
@@ -29,6 +29,7 @@
     vm.alerts = mnAlertsService.alerts;
     vm.closeAlert = mnAlertsService.removeItem;
     vm.setHideNavSidebar = mnPoolDefault.setHideNavSidebar;
+    vm.postStopRebalance = postStopRebalance;
 
     $rootScope.rbac = mnPermissions.export;
     $rootScope.poolDefault = mnPoolDefault.export;
@@ -40,6 +41,11 @@
     function showResetPasswordDialog() {
       vm.showUserDropdownMenu = false;
       mnResetPasswordDialogService.showDialog(whoami);
+    }
+
+    function postStopRebalance() {
+      return mnPromiseHelper(vm, mnServersService.stopRebalanceWithConfirm())
+        .broadcast("reloadServersPoller");
     }
 
     function runInternalSettingsDialog() {
@@ -134,8 +140,24 @@
           .cycle();
 
       if (mnPermissions.export.cluster.tasks.read) {
-        var tasksPoller = new mnPoller($scope, function () {
-          return mnTasksDetails.getFresh({group: "global"});
+        var tasksPoller = new mnPoller($scope, function (prevTask) {
+          return mnTasksDetails.getFresh({group: "global"})
+            .then(function (tasks) {
+              if (typeof tasks.tasksRebalance.stageInfo == "object") {
+                mnTasksDetails.clearRebalanceReportCache();
+                return tasks;
+              } else {
+                return mnTasksDetails.getRebalanceReport().then(function (rv) {
+                  if (rv.data.stageInfo) {
+                    tasks.tasksRebalance.stageInfo = rv.data.stageInfo;
+                    tasks.tasksRebalance.completionMessage = rv.data.completionMessage;
+                  } else {
+                    mnTasksDetails.clearRebalanceReportCache();
+                  }
+                  return tasks;
+                });
+              }
+            });
         })
             .setInterval(function (result) {
               return (_.chain(result.tasks).pluck('recommendedRefreshPeriod').compact().min().value() * 1000) >> 0 || 10000;
@@ -172,10 +194,39 @@
                    tasks.tasksRebalance.previousRebalance.stageInfo);
 
               if (serverStageInfo) {
-                Object
-                  .keys(serverStageInfo)
-                  .forEach(function(key) {
+                var services = Object
+                    .keys(serverStageInfo)
+                    .sort(function (a, b) {
+                      if (!serverStageInfo[a].timeTaken) {
+                        return 1;
+                      }
+                      if (!serverStageInfo[b].startTime) {
+                        return -1;
+                      }
+                      if (new Date(serverStageInfo[a].startTime) >
+                          new Date(serverStageInfo[b].startTime)) {
+                        return 1;
+                      } else {
+                        return -1;
+                      }
+                    });
+
+                stageInfo.services = services
+                  .map(function(key) {
                     var value = serverStageInfo[key];
+                    value.name = key;
+                    var details = Object
+                        .keys(value.details || {})
+                        // .sort(function (a, b) {
+                        //   return new Date(value.details[a].startTime) -
+                        //     new Date(value.details[b].startTime);
+                        // });
+
+                    value.details = details.map(function (bucketName) {
+                      value.details[bucketName].name = bucketName;
+                      return value.details[bucketName];
+                    });
+
                     if (value.startTime) {
                       if (!stageInfo.startTime ||
                           stageInfo.startTime > new Date(value.startTime)) {
@@ -191,9 +242,9 @@
                     } else {
                       stageInfo.completedTime.status = false;
                     }
-
+                    return value;
                   });
-                stageInfo.services = Object.assign({}, serverStageInfo);
+
                 tasks.tasksRebalance.stageInfo = stageInfo;
               }
 

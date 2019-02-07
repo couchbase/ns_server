@@ -22,6 +22,7 @@
       setupServices: setupServices,
       cancelFailOverNode: cancelFailOverNode,
       stopRebalance: stopRebalance,
+      stopRebalanceWithConfirm: stopRebalanceWithConfirm,
       stopRecovery: stopRecovery,
       postFailover: postFailover,
       ejectNode: ejectNode,
@@ -33,6 +34,19 @@
     };
 
     return mnServersService;
+
+    function stopRebalanceWithConfirm() {
+      return stopRebalance()
+        .then(null, function (resp) {
+          if (resp.status === 504) {
+            return $uibModal.open({
+              templateUrl: 'app/mn_admin/mn_servers/stop_rebalance_dialog/mn_servers_stop_rebalance_dialog.html'
+            }).result.then(function () {
+              return stopRebalance(true);
+            });
+          }
+        });
+    }
 
     function addToPendingEject(node) {
       pendingEject.push(node);

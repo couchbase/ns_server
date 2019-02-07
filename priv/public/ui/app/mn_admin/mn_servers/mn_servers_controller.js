@@ -50,7 +50,7 @@
     var vm = this;
     vm.mnPoolDefault = mnPoolDefault.latestValue();
 
-    vm.stopRebalance = stopRebalance;
+    vm.postStopRebalance = postStopRebalance;
     vm.onStopRecovery = onStopRecovery;
     vm.postRebalance = postRebalance;
     vm.addServer = addServer;
@@ -104,9 +104,9 @@
           .cycle();
       }
 
-      $scope.$on("reloadServersPoller", function () {
-        vm.showSpinner = true;
-      });
+      // $scope.$on("reloadServersPoller", function () {
+      //   vm.showSpinner = true;
+      // });
     }
     function multipleFailoverDialog() {
       $uibModal.open({
@@ -155,23 +155,9 @@
         .broadcast("reloadServersPoller")
         .showErrorsSensitiveSpinner();
     }
-    function doPostStopRebalance(allowUnsafe) {
-      return mnPromiseHelper(vm, mnServersService.stopRebalance(allowUnsafe))
-        .showErrorsSensitiveSpinner()
+    function postStopRebalance() {
+      return mnPromiseHelper(vm, mnServersService.stopRebalanceWithConfirm())
         .broadcast("reloadServersPoller");
-    }
-    function stopRebalance() {
-      doPostStopRebalance()
-        .getPromise()
-        .then(null, function (resp) {
-          if (resp.status === 504) {
-            return $uibModal.open({
-              templateUrl: 'app/mn_admin/mn_servers/stop_rebalance_dialog/mn_servers_stop_rebalance_dialog.html'
-            }).result.then(function () {
-              return doPostStopRebalance(true);
-            });
-          }
-        });
     }
   }
 })();

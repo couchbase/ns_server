@@ -8,19 +8,27 @@
     var mnTasksDetails = {
       get: get,
       clearCache: clearCache,
-      getFresh: getFresh
+      getFresh: getFresh,
+      getRebalanceReport: getRebalanceReport,
+      clearRebalanceReportCache: clearRebalanceReportCache
     };
 
     return mnTasksDetails;
 
-    // if (!rv.rebalancing) {
-    //   if (sawRebalanceRunning && task.errorMessage) {
-    //     sawRebalanceRunning = false;
-    //     // displayNotice(task.errorMessage, true);
-    //   }
-    // } else {
-    //   sawRebalanceRunning = true;
-    // }
+    function getRebalanceReport() {
+      return $http({
+        url: "/logs/rebalanceReport",
+        method: 'GET',
+        cache: true
+      }).then(null,function () {
+        return {data: {stageInfo: {}}};
+      });
+    }
+
+    function clearRebalanceReportCache() {
+      $cacheFactory.get('$http').remove('/logs/rebalanceReport');
+      return this;
+    }
 
     function get(mnHttpParams) {
       return $http({
