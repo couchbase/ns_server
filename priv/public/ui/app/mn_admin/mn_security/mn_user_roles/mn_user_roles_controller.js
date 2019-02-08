@@ -4,6 +4,7 @@
   angular
     .module("mnUserRoles", [
       "mnUserRolesService",
+      "mnUserRolesList",
       "mnHelper",
       "mnPromiseHelper",
       "mnPoll",

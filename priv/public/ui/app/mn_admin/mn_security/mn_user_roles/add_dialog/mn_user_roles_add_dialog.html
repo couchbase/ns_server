@@ -104,65 +104,9 @@
       <div class="column width-7">
         <label>Roles</label>
         <fieldset class="select-user-roles hide-track show-scrollbar">
-          <script type="text/ng-template" id="rolesTree">
-            <div ng-init="::isArray = ('isArray' | lodash:role);
-                          isObject = ('isObject' | lodash:role) && !isArray">
-              <div
-                 ng-if="::isArray"
-                 ng-init="::
-                          isFirstArray = ('isArray' | lodash:role[0]);
-                          getUIID = userRolesAddDialogCtl.getUIID(isFirstArray ? role[0] : role[1][0], true);
-                          roles = role;">
-                <label
-                   ng-if="!isFirstArray"
-                   ng-click="::userRolesAddDialogCtl.toggleWrappers(getUIID)"
-                   class="disclosure"
-                   ng-class="{
-                             'disclosed': userRolesAddDialogCtl.openedWrappers[getUIID],
-                             'has-selection': !userRolesAddDialogCtl.openedWrappers[getUIID] && userRolesAddDialogCtl.containsSelected[getUIID]
-                             }">
-                  {{::role[0]}}
-                </label>
-                <div ng-class="{'indent-1': !isFirstArray}">
-                  <div
-                     ng-show="userRolesAddDialogCtl.openedWrappers[getUIID]"
-                     ng-repeat="role in (isFirstArray ? roles : roles[1])"
-                     ng-include="'rolesTree'">
-                  </div>
-                </div>
-              </div>
-              <div
-                 ng-if="isObject"
-                 ng-init="::getUIID = userRolesAddDialogCtl.getUIID(role);
-                          userRolesAddDialogCtl.show(getUIID);"
-                 ng-class="[{'has-selection': userRolesAddDialogCtl.selectedRoles[getUIID]}, 'dynamic-' + role.role, 'dynamic-' + (role.bucket_name ? role.bucket_name : 'no_bucket')]">
-                <input
-                   type="checkbox"
-                   id="for-{{::getUIID}}"
-                   ng-disabled="userRolesAddDialogCtl.isRoleDisabled(role)"
-                   ng-change="::userRolesAddDialogCtl.onCheckChange(role, getUIID)"
-                   ng-model="userRolesAddDialogCtl.selectedRoles[getUIID]"
-                   ng-class="{'fake-select': userRolesAddDialogCtl.isRoleDisabled(role)}">
-                <label
-                   ng-attr-title="{{role.desc}}"
-                   for="for-{{::getUIID}}">
-                  {{::role.name}}
-                  <span
-                     ng-if="getUIID === userRolesAddDialogCtl.getUIID({role: 'query_external_access'})"
-                     tooltip-trigger="'mouseenter'"
-                     tooltip-append-to-body="true"
-                     class="fa-exclamation-circle icon orange-3"
-                     uib-tooltip="Warning: Granting the query_external_access role permits execution of the N1QL function CURL() and may allow access to other network endpoints in the local network and the Internet.">
-                  </span>
-                </label>
-              </div>
-            </div>
-          </script>
-          <div>
-            <div
-               ng-repeat="role in userRolesAddDialogCtl.rolesTree"
-               ng-include="'rolesTree'"></div>
-          </div>
+          <mn-user-roles-list
+            roles-to-enable="userRolesAddDialogCtl.user.roles"
+            selected-roles="userRolesAddDialogCtl.selectedRoles"></mn-user-roles-list>
         </fieldset>
       </div>
     </div>
