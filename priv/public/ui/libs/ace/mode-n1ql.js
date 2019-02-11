@@ -204,7 +204,6 @@
           '|\\b(' + newline_before + '|' + newline_before_plus_indent + ')\\b','ig');
     var newline_before_and_after_regex = new RegExp(prefix + '|\\b(' + newline_before_and_after + ')\\b','ig');
     var newline_after_regex = /\bOVER[\s]*\(/ig;
-    var newline_select_split_regex = /\([\s]*SELECT\b/ig;
     // we need an indent if the line starts with one of these
     var needs_indent_regex = new RegExp('^(' + newline_before_plus_indent + ')\\b','ig');
 
@@ -272,10 +271,11 @@
       str2 = str2.replace(function_regex, function(match,p1) {if (p1) return p1.toUpperCase() + '('; else return match}); // upper case all keywords
       str2 = str2.replace(newline_before_regex, function(match,p1) {if (p1) return "~::~" + p1; else return match});
       str2 = str2.replace(newline_before_and_after_regex, function(match,p1) {if (p1) return "~::~" + p1 + "~::~"; else return match});
-      str2 = str2.replace(/\bOVER[\s]*\(/ig, function(match) {return 'OVER (~::~';});         // put a newline after ( in "OVER ("
-      str2 = str2.replace(newline_select_split_regex, function(match) {return '(~::~SELECT'});// put a newline after ( in "( SELECT"
-      str2 = str2.replace(/\)[\s]*,/ig,function(match) {return '),'});                        // remove any whitespace between ) and ,
-      str2 = str2.replace(/~::~w{1,}/g,"~::~");                                               // remove blank lines
+      str2 = str2.replace(newline_after_regex, function(match) {return 'OVER (~::~';});  // put a newline after ( in "OVER ("
+      str2 = str2.replace(/\([\s]*SELECT\b/ig, function(match) {return '(~::~SELECT'});  // put a newline after ( in "( SELECT"
+      str2 = str2.replace(/\)[\s]*SELECT\b/ig, function(match) {return ')~::~SELECT'});  // put a newline after ) in ") SELECT"
+      str2 = str2.replace(/\)[\s]*,/ig,function(match) {return '),'});                   // remove any whitespace between ) and ,
+      str2 = str2.replace(/~::~w{1,}/g,"~::~");                                          // remove blank lines
       str2 = str2.replace(/~::~ /ig,'~::~');
 
       // get an array of lines, based on the above breaks, then make a new array where we also split on comma-delimited lists
