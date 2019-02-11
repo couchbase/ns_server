@@ -814,6 +814,11 @@ select[disabled] {
   filter: alpha(opacity=55);
   cursor: default;
 }
+label[disabled] {
+  opacity: 0.55;
+  filter: alpha(opacity=55);
+  pointer-events: none;
+}
 input[type="email"],
 input[type="number"],
 input[type="search"],

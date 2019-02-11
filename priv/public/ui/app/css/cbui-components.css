@@ -383,7 +383,7 @@ color: #333;
 .cbui-table-header {
   display: flex;
   align-items: center;
-  flex-wrap: no-wrap;
+  flex-wrap: nowrap;
   justify-content: space-between;
   position: relative;
   border-bottom: solid 1px #d1d1d1;
@@ -397,7 +397,7 @@ color: #333;
   display: flex;
   min-height: 1rem;
   align-items: center;
-  flex-wrap: no-wrap;
+  flex-wrap: nowrap;
   justify-content: space-between;
   position: relative;
   border-width: 0;
@@ -1704,7 +1704,7 @@ input[type="checkbox"].fake-select + label:before {
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-wrap: no-wrap;
+  flex-wrap: nowrap;
 }
 .content-box p {
   margin-bottom: .5rem;

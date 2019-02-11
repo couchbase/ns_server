@@ -82,7 +82,7 @@ footer {
   display: flex;
   min-height: 1rem;
   align-items: center;
-  flex-wrap: no-wrap;
+  flex-wrap: nowrap;
   justify-content: space-between;
   position: relative;
 }

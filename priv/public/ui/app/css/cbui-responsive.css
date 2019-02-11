@@ -20,6 +20,12 @@
   .resp-wrap-med {
     flex-wrap: wrap;
   }
+  .controls.resp-med {
+    flex-wrap: wrap;
+  }
+  .controls.resp-med .column {
+    margin-top: .25rem;
+  }
   .resp-flex-column-med {
     flex-direction: column;
     justify-content: flex-start;
@@ -131,7 +137,6 @@
     margin-left: 0 !important;
   }
   .row.resp-sml,
-  .controls.resp-sml,
   .content-box-dashboard.resp-sml,
   .wb-query-editor-footer,
   .row.flex-wrap {
