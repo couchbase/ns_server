@@ -1,6 +1,10 @@
 <mn-element-cargo depot="actions">
   <div class="header-controls">
     <a ng-show="rbac.cluster.admin.security.write"
+       ui-sref="app.admin.security.rolesGroups">
+      GROUPS
+    </a>
+    <a ng-show="rbac.cluster.admin.security.write"
        ng-click="userRolesCtl.addUser()">
       ADD USER
     </a>
@@ -57,7 +61,6 @@
         <span class="cbui-table-cell flex-grow-3 wrap">
           <span
               class="relative"
-
               ng-repeat="role in user.roles track by $index"
               tooltip-trigger="'mouseenter'"
               tooltip-append-to-body="true"

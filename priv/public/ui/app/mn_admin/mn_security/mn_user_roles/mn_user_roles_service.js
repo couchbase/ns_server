@@ -9,12 +9,18 @@
     var mnUserRolesService = {
       getState: getState,
       addUser: addUser,
-      getRoles: getRoles,
       deleteUser: deleteUser,
+      getRoles: getRoles,
       getRolesByRole: getRolesByRole,
       getRolesTree: getRolesTree,
       getUsers: getUsers,
-      getRoleUIID: getRoleUIID
+      getRoleUIID: getRoleUIID,
+      addGroup: addGroup,
+      deleteRolesGroup: deleteRolesGroup,
+      getRolesGroups: getRolesGroups,
+      getRolesGroup: getRolesGroup,
+      putRolesGroup: putRolesGroup,
+      getRolesGroupsState: getRolesGroupsState
     };
 
     return mnUserRolesService;
@@ -159,6 +165,13 @@
       });
     }
 
+    function deleteRolesGroup(group) {
+      return $http({
+        method: "DELETE",
+        url: "/settings/rbac/groups/" + group.id,
+      });
+    }
+
     function getUserUrl(user) {
       var base = "/settings/rbac/users/";
       if (mnPoolDefault.export.compat.atLeast50) {
@@ -199,6 +212,82 @@
       });
     }
 
+    function addGroup(group, roles, isEditingMode) {
+      if (!group || !group.id) {
+        return $q.reject({name: "name is required"});
+      }
+      if (!roles || !roles.length) {
+        return $q.reject({roles: "at least one role should be added"});
+      }
+      if (isEditingMode) {
+        return putRolesGroup(group, roles);
+      } else {
+        return getRolesGroup(group).then(function () {
+          return $q.reject({name: "group already exists"});
+        }, function () {
+          return putRolesGroup(user, roles);
+        });
+      }
+    }
+
+    function getRolesGroups(params) {
+      var config = {
+        method: "GET",
+        url: "/settings/rbac/groups",
+        params: {}
+      };
+
+      if (params && params.pageSize) {
+        if (params.substr) {
+          config.params.substr = params.substr;
+        }
+        config.params.pageSize = params.pageSize;
+        config.params.startFrom = params.startFrom;
+        config.params.order = params.order;
+        config.params.sortBy = params.sortBy;
+      }
+
+      return $http(config);
+    }
+
+    function getRolesGroup(group) {
+      return $http({
+        method: "GET",
+        url: "/settings/rbac/groups/" + group.id
+      });
+    }
+
+    function putRolesGroup(group, roles) {
+      var config = {
+        method: "PUT",
+        url: "/settings/rbac/groups/" + group.id,
+        data: {
+          roles: roles.indexOf("admin") > -1 ? "admin" : roles.join(','),
+          description: group.description,
+          ldap_group_ref: group.ldap_group_ref
+        }
+      };
+
+      return $http(config);
+    }
+
+    function getRolesGroupsState(params) {
+      return getRolesGroups(params).then(function (resp) {
+        var i;
+        for (i in resp.data.links) {
+          resp.data.links[i] = resp.data.links[i].split("?")[1]
+            .split("&")
+            .reduce(function(prev, curr, i, arr) {
+              var p = curr.split("=");
+              prev[decodeURIComponent(p[0])] = decodeURIComponent(p[1]);
+              return prev;
+            }, {});
+        }
+        return resp.data;
+
+      });
+    }
+
     function addUser(user, roles, isEditingMode, resetPassword) {
       if (!user || !user.id) {
         return $q.reject({username: "username is required"});
@@ -215,7 +304,6 @@
           return doAddUser(packData(user, roles, isEditingMode), user);
         });
       }
-
     }
 
     function getState(params) {

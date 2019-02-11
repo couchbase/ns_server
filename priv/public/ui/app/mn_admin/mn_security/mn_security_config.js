@@ -7,7 +7,8 @@
     'mnRootCertificate',
     'mnElementCrane',
     'mnClientCertificate',
-    'mnRedaction'
+    'mnRedaction',
+    'mnRolesGroups'
   ]).config(mnIndexesConfig);
 
   function mnIndexesConfig($stateProvider) {
@@ -78,6 +79,41 @@
         controller: "mnUserRolesController as userRolesCtl",
         templateUrl: "app/mn_admin/mn_security/mn_user_roles/mn_user_roles.html",
         data: {
+          compat: "atLeast50"
+        }
+      })
+      .state('app.admin.security.rolesGroups', {
+        // url: "/userRoles?openedUsers&startFrom&startFromDomain&{pageSize:int}",
+        url: "/rolesGroups?startFrom&sortBy&order&substr&{pageSize:int}",
+        params: {
+          openedRolesGroups: {
+            array: true,
+            dynamic: true
+          },
+          substr: {
+            dynamic: true,
+            value: ""
+          },
+          pageSize: {
+            value: 10
+          },
+          startFrom: {
+            value: null
+          },
+          sortBy: {
+            value: "id",
+            dynamic: true
+          },
+          order: {
+            value: "asc",
+            dynamic: true
+          }
+        },
+        controller: "mnRolesGroupsController as rolesGroupsCtl",
+        templateUrl: "app/mn_admin/mn_security/mn_roles_groups.html",
+        data: {
+          child: "app.admin.security",
+          title: "User Groups",
           compat: "atLeast50"
         }
       })

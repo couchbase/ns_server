@@ -27,7 +27,6 @@
     vm.editUser = editUser;
     vm.resetUserPassword = resetUserPassword;
 
-    vm.rolesFilter = rolesFilter;
     vm.filterField = "";
 
     vm.isLdapEnabled = poolDefault.saslauthdEnabled;
@@ -90,16 +89,11 @@
       });
     }
 
-    function rolesFilter(value) {
-      return !value.bucket_name || value.bucket_name === "*";
-    }
-
     function activate() {
       mnHelper.initializeDetailsHashObserver(vm, 'openedUsers', '.');
 
       mnPromiseHelper(vm, mnUserRolesService.getRoles())
         .applyToScope(function (roles) {
-          vm.roles = roles;
           mnPromiseHelper(vm, mnUserRolesService.getRolesByRole(roles))
             .applyToScope("rolesByRole");
         });
