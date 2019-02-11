@@ -29,13 +29,14 @@ import threading
 import optparse
 import atexit
 import signal
-import urllib.request, urllib.parse, urllib.error
+import urllib
 import shutil
+import urlparse
 import errno
 import hashlib
 import uuid
 from datetime import datetime, timedelta, tzinfo
-from io import StringIO
+from StringIO import StringIO
 
 class AltExitC(object):
     def __init__(self):
@@ -327,19 +328,19 @@ class Task(object):
 
             p.stdin.close()
 
-        except OSError as e:
+        except OSError, e:
             # if use_shell is False then Popen may raise exception
             # if binary is missing. In this case we mimic what
             # shell does. Namely, complaining to stderr and
             # setting non-zero status code. It's might also
             # automatically handle things like "failed to fork due
             # to some system limit".
-            print("Failed to execute %s: %s" % (self.command, e), file=fp)
+            print >> fp, "Failed to execute %s: %s" % (self.command, e)
             return 127
 
-        except IOError as e:
+        except IOError, e:
             if e.errno == errno.EPIPE:
-                print("Ignoring broken pipe on stdin for %s" % self.command, file=fp)
+                print >> fp, "Ignoring broken pipe on stdin for %s" % self.command
             else:
                 raise
 
@@ -377,7 +378,7 @@ class Task(object):
                 # timer is fired; that would result in a spurious timeout
                 # message
                 if timer_fired.isSet():
-                    print("`%s` timed out after %s seconds" % (self.command, self.timeout), file=fp)
+                    print >> fp, "`%s` timed out after %s seconds" % (self.command, self.timeout)
                     log("[Command timed out after %s seconds] - " % (self.timeout), new_line=False)
 
         return p.wait()
@@ -406,7 +407,7 @@ class TaskRunner(object):
         try:
             self.tmpdir = tempfile.mkdtemp(dir=tmp_dir)
         except OSError as e:
-           print("Could not use temporary dir {0}: {1}".format(tmp_dir, e))
+           print "Could not use temporary dir {0}: {1}".format(tmp_dir, e)
            sys.exit(1)
 
         # If a dir wasn't passed by --tmp-dir, check if the env var was set and if we were able to use it
@@ -420,7 +421,7 @@ class TaskRunner(object):
 
     def finalize(self):
         try:
-            for fp in self.files.items():
+            for fp in self.files.iteritems():
                 fp.close()
         except:
             pass
@@ -436,7 +437,7 @@ class TaskRunner(object):
         if not filename in self.files:
             try:
                 self.files[filename] = open(filename, 'r')
-            except IOError as e:
+            except IOError, e:
                 log("Failed to collect file '%s': %s" % (filename, str(e)))
         else:
             log("Unable to collect file '%s' - already collected." % filename)
@@ -452,10 +453,10 @@ class TaskRunner(object):
 
     def header(self, fp, title, subtitle):
         separator = '=' * 78
-        print(separator, file=fp)
-        print(title, file=fp)
-        print(subtitle, file=fp)
-        print(separator, file=fp)
+        print >> fp, separator
+        print >> fp, title
+        print >> fp, subtitle
+        print >> fp, separator
         fp.flush()
 
     def log_result(self, result):
@@ -491,7 +492,7 @@ class TaskRunner(object):
             if not task.no_header:
                 self.header(fp, task.description, task.command)
 
-            for i in range(task.num_samples):
+            for i in xrange(task.num_samples):
                 if i > 0:
                     log("Taking sample %d after %f seconds - " % (i+1, task.interval), new_line=False)
                     time.sleep(task.interval)
@@ -520,7 +521,7 @@ class TaskRunner(object):
         files = []
         redactor = LogRedactor(self.salt_value, self.tmpdir, self.default_name)
 
-        for name, fp in self.files.items():
+        for name, fp in self.files.iteritems():
             if "users.dets" in name:
                 continue
             files.append(redactor.redact_file(name, fp.name))
@@ -529,14 +530,14 @@ class TaskRunner(object):
         self._zip_helper(prefix, filename, files)
 
     def close_all_files(self):
-        for name, fp in self.files.items():
+        for name, fp in self.files.iteritems():
             fp.close()
 
     def zip(self, filename, node):
         prefix = "cbcollect_info_%s_%s" % (node, self.start_time)
 
         files = []
-        for name, fp in self.files.items():
+        for name, fp in self.files.iteritems():
             files.append(fp.name)
         self._zip_helper(prefix, filename, files)
 
@@ -555,7 +556,7 @@ class TaskRunner(object):
 
             if status != 0:
                 log("gozip terminated with non-zero exit code (%d)" % status)
-        except OSError as e:
+        except OSError, e:
             log("Exception during compression: %s" % e)
             fallback = True
 
@@ -608,7 +609,7 @@ class LiteralTask(AllOsTask):
         self.__dict__.update(kwargs)
 
     def execute(self, fp):
-        print(self.literal, file=fp)
+        print >> fp, self.literal
         return 0
 
 class CollectFile(AllOsTask):
@@ -620,7 +621,7 @@ class CollectFile(AllOsTask):
 
     def execute(self, fp):
         self._task_runner.collect_file(self.file_path)
-        print("Collected file %s" % self.file_path, file=fp)
+        print >> fp, "Collected file %s" % self.file_path
         return 0
 
 def make_curl_task(name, user, password, url,
@@ -666,7 +667,7 @@ def get_diag_password(guts):
         return ""
 
 def make_query_task(statement, user, password, port):
-    url = "http://%s:%s/query/service?statement=%s" % (local_url_addr, port, urllib.parse.quote(statement))
+    url = "http://%s:%s/query/service?statement=%s" % (local_url_addr, port, urllib.quote(statement))
 
     return make_curl_task(name="Result of query statement \'%s\'" % statement,
                           user=user, password=password, url=url)
@@ -1216,7 +1217,7 @@ def get_server_guts(initargs_path):
     args = [escript, dump_guts_path, "--initargs-path", initargs_path]
     if extra_args:
         args = args + extra_args.split(";")
-    print(("Checking for server guts in %s..." % initargs_path))
+    print("Checking for server guts in %s..." % initargs_path)
     p = subprocess.Popen(args, stdout = subprocess.PIPE)
     output = p.stdout.read()
     p.wait()
@@ -1225,7 +1226,7 @@ def get_server_guts(initargs_path):
     tokens = output.rstrip("\0").split("\0")
     d = {}
     if len(tokens) > 1:
-        for i in range(0, len(tokens), 2):
+        for i in xrange(0, len(tokens), 2):
             d[tokens[i]] = tokens[i+1]
     return d
 
@@ -1264,14 +1265,14 @@ def dump_utilities(*args, **kwargs):
             if isinstance(task, platform):
                 platform_utils[name].add(utility)
 
-    print('This is an autogenerated, possibly incomplete and flawed list '
-          'of utilites used by cbcollect_info')
+    print '''This is an autogenerated, possibly incomplete and flawed list
+of utilites used by cbcollect_info'''
 
     for (name, utilities) in sorted(platform_utils.items(), key=lambda x: x[0]):
-        print("\n%s:" % name)
+        print "\n%s:" % name
 
         for utility in sorted(utilities):
-            print("        - %s" % utility)
+            print "        - %s" % utility
 
     sys.exit(0)
 
@@ -1301,7 +1302,7 @@ def do_upload_and_exit(path, url, proxy):
         p = subprocess.Popen(args, stdout=subprocess.PIPE)
         k = CurlKiller(p)
         AltExit.register_and_unlock(k.cleanup)
-    except Exception as e:
+    except Exception, e:
         AltExit.lock.release()
         raise e
 
@@ -1320,9 +1321,9 @@ def do_upload_and_exit(path, url, proxy):
             sys.exit(1)
 
 def parse_host(host):
-    url = urllib.parse.urlsplit(host)
+    url = urlparse.urlsplit(host)
     if not url.scheme:
-        url = urllib.parse.urlsplit('https://' + host)
+        url = urlparse.urlsplit('https://' + host)
 
     return url.scheme, url.netloc, url.path
 
@@ -1334,14 +1335,14 @@ def generate_upload_url(parser, options, zip_filename):
 
         scheme, netloc, path = parse_host(options.upload_host)
 
-        customer = urllib.parse.quote(options.upload_customer)
-        fname = urllib.parse.quote(os.path.basename(zip_filename))
+        customer = urllib.quote(options.upload_customer)
+        fname = urllib.quote(os.path.basename(zip_filename))
         if options.upload_ticket:
             full_path = '%s/%s/%d/%s' % (path, customer, options.upload_ticket, fname)
         else:
             full_path = '%s/%s/%s' % (path, customer, fname)
 
-        upload_url = urllib.parse.urlunsplit((scheme, netloc, full_path, '', ''))
+        upload_url = urlparse.urlunsplit((scheme, netloc, full_path, '', ''))
         log("Will upload collected .zip file into %s" % upload_url)
     return upload_url
 
