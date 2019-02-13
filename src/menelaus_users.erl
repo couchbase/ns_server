@@ -195,7 +195,9 @@ on_save(Docs, State) ->
                    Identity,
                    replicated_dets:get_value(Doc),
                    replicated_dets:is_deleted(Doc),
-                   S)}
+                   S)};
+            (_, _, S) ->
+                {undefined, S}
         end,
 
     {MessagesToSend, NewState} =
@@ -209,9 +211,7 @@ on_save(Docs, State) ->
         true -> mru_cache:flush(ldap_groups_cache);
         false -> ok
     end,
-    lists:foreach(fun (Msg) ->
-                          self() ! Msg
-                  end, sets:to_list(MessagesToSend)),
+    [self() ! Msg || Msg <- sets:to_list(MessagesToSend), Msg =/= undefined],
     NewState.
 
 handle_info({change_version, Key} = Msg, #state{base = Base} = State) ->
