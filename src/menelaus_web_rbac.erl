@@ -57,7 +57,12 @@
          handle_delete_group/2,
          handle_get_groups/2,
          handle_get_group/2,
-         assert_groups_and_ldap_enabled/0]).
+         assert_groups_and_ldap_enabled/0,
+         handle_get_profiles/1,
+         handle_get_profile/2,
+         handle_delete_profile/2,
+         handle_put_profile/2
+]).
 
 -define(MIN_USERS_PAGE_SIZE, 2).
 -define(MAX_USERS_PAGE_SIZE, 100).
@@ -1642,6 +1647,101 @@ group_to_json(GroupId, Props) ->
 assert_groups_and_ldap_enabled() ->
     menelaus_util:assert_is_enterprise(),
     menelaus_util:assert_is_madhatter().
+
+jsonify_profiles() ->
+    ?make_transducer(
+       begin
+           ?yield(array_start),
+           pipes:foreach(
+             ?producer(),
+             fun ({{_, {Id, Domain}}, Json}) ->
+                     ?yield({json, {[{id, list_to_binary(Id)},
+                                     {domain, Domain},
+                                     {profile, Json}]}})
+             end),
+           ?yield(array_end)
+       end).
+
+handle_get_profiles(Req) ->
+    pipes:run(menelaus_users:select_profiles(),
+              [jsonify_profiles(),
+               sjson:encode_extended_json([{compact, true},
+                                           {strict, false}]),
+               pipes:simple_buffer(2048)],
+              menelaus_util:send_chunked(
+                Req, 200, [{"Content-Type", "application/json"}])).
+
+get_identity_for_profiles(self, Req) ->
+    menelaus_auth:get_identity(Req);
+get_identity_for_profiles({Name, "admin"}, _) ->
+    {Name, admin};
+get_identity_for_profiles({Name, DomainStr}, _) ->
+    {Name, case domain_to_atom(DomainStr) of
+               unknown ->
+                   erlang:throw({web_exception, 404, <<"Unknown domain">>, []});
+               Atom ->
+                   Atom
+           end}.
+
+validate_identity_for_profiles({Name, Domain}) ->
+    case validate_cred(Name, username) of
+        true ->
+            case Domain of
+                admin ->
+                    case ns_config_auth:get_user(admin) of
+                        Name ->
+                            ok;
+                        _ ->
+                            erlang:throw(
+                              {web_exception, 404, <<"Unknown identity">>, []})
+                    end;
+                local ->
+                    case menelaus_users:user_exists({Name, local}) of
+                        false ->
+                            erlang:throw(
+                              {web_exception, 404, <<"User does not exist">>,
+                               []});
+                        true ->
+                            ok
+                    end;
+                _ ->
+                    ok
+            end;
+        Error ->
+            erlang:throw(
+              {web_exception, 400, Error, []})
+    end.
+
+handle_get_profile(RawIdentity, Req) ->
+    Identity = get_identity_for_profiles(RawIdentity, Req),
+    case menelaus_users:get_profile(Identity) of
+        undefined ->
+            menelaus_util:reply_json(Req, <<"UI profile was not found.">>, 404);
+        Json ->
+            menelaus_util:reply_json(Req, Json)
+    end.
+
+handle_delete_profile(RawIdentity, Req) ->
+    Identity = get_identity_for_profiles(RawIdentity, Req),
+    case menelaus_users:delete_profile(Identity) of
+        ok ->
+            menelaus_util:reply_json(Req, <<>>, 200);
+        {error, not_found} ->
+            menelaus_util:reply_json(Req, <<"UI profile was not found.">>, 404)
+    end.
+
+handle_put_profile(RawIdentity, Req) ->
+    Identity = get_identity_for_profiles(RawIdentity, Req),
+    validate_identity_for_profiles(Identity),
+
+    Body = mochiweb_request:recv_body(Req),
+    try ejson:decode(Body) of
+        Json ->
+            menelaus_users:store_profile(Identity, Json),
+            menelaus_util:reply_json(Req, <<>>, 200)
+    catch _:_ ->
+            menelaus_util:reply_json(Req, <<"Invalid Json">>, 400)
+    end.
 
 -ifdef(TEST).
 parse_roles_test() ->

@@ -54,6 +54,12 @@
          group_exists/1,
          get_groups_version/0,
 
+%% UI Profiles
+         get_profile/1,
+         store_profile/2,
+         delete_profile/1,
+         select_profiles/0,
+
 %% Actions:
          authenticate/2,
          build_scram_auth/1,
@@ -744,6 +750,26 @@ get_groups_by_ldap_group(LDAPGroup) ->
             mru_cache:add(ldap_groups_cache, LDAPGroup, Groups),
             Groups
     end.
+
+%% ui profiles
+
+profile_key(Identity) ->
+    {ui_profile, Identity}.
+
+get_profile(Identity) ->
+    replicated_dets:get(storage_name(), profile_key(Identity), undefined).
+
+store_profile(Identity, Json) ->
+    ok = replicated_dets:set(storage_name(), profile_key(Identity), Json).
+
+delete_profile(Identity) ->
+    case replicated_dets:delete(storage_name(), profile_key(Identity)) of
+        ok -> ok;
+        {not_found, _} -> {error, not_found}
+    end.
+
+select_profiles() ->
+    replicated_dets:select(storage_name(), profile_key('_'), 100).
 
 -spec get_user_name(rbac_identity()) -> rbac_user_name().
 get_user_name({_, Domain} = Identity) when Domain =:= local orelse Domain =:= external ->
