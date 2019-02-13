@@ -281,12 +281,17 @@ authenticate({client_cert_auth, Username} = Param) ->
     %% on the client certificate.
     case ns_node_disco:couchdb_node() == node() of
         false ->
-            Identity = {Username, local},
-            case menelaus_users:user_exists(Identity) of
-                true ->
-                    {ok, Identity};
-                false ->
-                    false
+            case ns_config_auth:get_user(admin) of
+                Username ->
+                    {ok, {Username, admin}};
+                _ ->
+                    Identity = {Username, local},
+                    case menelaus_users:user_exists(Identity) of
+                        true ->
+                            {ok, Identity};
+                        false ->
+                            false
+                    end
             end;
         true ->
             rpc:call(ns_node_disco:ns_server_node(), ?MODULE, authenticate,
