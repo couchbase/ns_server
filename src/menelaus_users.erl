@@ -184,22 +184,26 @@ init_versions() ->
     Base.
 
 on_save(Docs, State) ->
+    ProcessDoc =
+        fun ({group, _}, _Doc, S) ->
+                {{change_version, group_version}, S};
+            ({user, _}, _Doc, S) ->
+                {{change_version, user_version}, S};
+            ({auth, Identity}, Doc, S) ->
+                {{change_version, auth_version},
+                 maybe_update_passwordless(
+                   Identity,
+                   replicated_dets:get_value(Doc),
+                   replicated_dets:is_deleted(Doc),
+                   S)}
+        end,
+
     {MessagesToSend, NewState} =
         lists:foldl(
           fun (Doc, {MessagesAcc, StateAcc}) ->
-                  case replicated_dets:get_id(Doc) of
-                      {group, _} ->
-                          {sets:add_element({change_version, group_version},
-                                            MessagesAcc), StateAcc};
-                      {user, _} ->
-                          {sets:add_element({change_version, user_version}, MessagesAcc), StateAcc};
-                      {auth, Identity} ->
-                          NState = maybe_update_passwordless(Identity,
-                                                             replicated_dets:get_value(Doc),
-                                                             replicated_dets:is_deleted(Doc),
-                                                             StateAcc),
-                          {sets:add_element({change_version, auth_version}, MessagesAcc), NState}
-                  end
+                  {Message, NewState} =
+                      ProcessDoc(replicated_dets:get_id(Doc), Doc, StateAcc),
+                  {sets:add_element(Message, MessagesAcc), NewState}
           end, {sets:new(), State}, Docs),
     case sets:is_element({change_version, group_version}, MessagesToSend) of
         true -> mru_cache:flush(ldap_groups_cache);
