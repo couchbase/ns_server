@@ -23,6 +23,7 @@
   function mnUserRolesController($scope, $uibModal, mnLdapService, mnPromiseHelper, mnUserRolesService, mnPoller, mnHelper, $state, poolDefault) {
     var vm = this;
     vm.addUser = addUser;
+    vm.addLDAP = addLDAP;
     vm.deleteUser = deleteUser;
     vm.editUser = editUser;
     vm.resetUserPassword = resetUserPassword;
@@ -127,6 +128,14 @@
         }
       });
     }
+
+    function addLDAP() {
+      $uibModal.open({
+        templateUrl: 'app/mn_admin/mn_security/mn_user_roles/mn_add_ldap_dialog.html',
+        controller: 'mnAddLDAPDialogController as addLdapDialogCtl'
+      });
+    }
+
     function resetUserPassword(user) {
       $uibModal.open({
         templateUrl: 'app/mn_admin/mn_security/mn_user_roles/reset_password_dialog/mn_user_roles_reset_password_dialog.html',

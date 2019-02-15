@@ -1,6 +1,10 @@
 <mn-element-cargo depot="actions">
   <div class="header-controls">
     <a ng-show="rbac.cluster.admin.security.write"
+       ng-click="userRolesCtl.addLDAP()">
+      LDAP
+    </a>
+    <a ng-show="rbac.cluster.admin.security.write"
        ui-sref="app.admin.security.rolesGroups">
       GROUPS
     </a>

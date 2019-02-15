@@ -15,15 +15,35 @@
       getRolesTree: getRolesTree,
       getUsers: getUsers,
       getRoleUIID: getRoleUIID,
+
       addGroup: addGroup,
       deleteRolesGroup: deleteRolesGroup,
       getRolesGroups: getRolesGroups,
       getRolesGroup: getRolesGroup,
       putRolesGroup: putRolesGroup,
-      getRolesGroupsState: getRolesGroupsState
+      getRolesGroupsState: getRolesGroupsState,
+
+      ldapSettingsValidate: ldapSettingsValidate,
+      postLdapSettings: postLdapSettings
     };
 
     return mnUserRolesService;
+
+    function ldapSettingsValidate(type, data) {
+      return $http({
+        method: "POST",
+        url: "/settings/ldap/validate/" + type,
+        data: data
+      });
+    }
+
+    function postLdapSettings(data) {
+      return $http({
+        method: "POST",
+        url: "/settings/ldap",
+        data: data
+      });
+    }
 
     function getRoles() {
       return $http({
