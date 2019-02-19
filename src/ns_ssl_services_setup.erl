@@ -37,7 +37,8 @@
          get_user_name_from_client_cert/1,
          set_node_certificate_chain/4,
          upgrade_client_cert_auth_to_51/1,
-         supported_ciphers/2]).
+         supported_ciphers/2,
+         ssl_client_opts/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -363,6 +364,9 @@ ssl_server_opts() ->
          {honor_cipher_order, Order},
          {secure_renegotiate, true},
          {client_renegotiation, ClientReneg}].
+
+ssl_client_opts() ->
+    [{cacertfile, ssl_cacert_key_path()}].
 
 start_link_rest_service() ->
     Config0 = menelaus_web:webconfig(),
