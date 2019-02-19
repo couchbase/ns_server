@@ -180,6 +180,8 @@ default() ->
       [{port, service_ports:default(memcached_port, IsEnterprise)},
        {dedicated_port,
         service_ports:default(memcached_dedicated_port, IsEnterprise)},
+       {dedicated_ssl_port,
+        service_ports:default(memcached_dedicated_ssl_port, IsEnterprise)},
        {ssl_port, service_ports:default(memcached_ssl_port, IsEnterprise)},
        {admin_user, "@ns_server"},
        {other_users, ["@cbq-engine", "@projector", "@goxdcr", "@index", "@fts",
@@ -225,7 +227,13 @@ default() ->
              {port, ssl_port},
              {ssl, {[{key, list_to_binary(ns_ssl_services_setup:memcached_key_path())},
                      {cert, list_to_binary(ns_ssl_services_setup:memcached_cert_path())}]}}]
-             ++ InterfacesIPFields}
+            ++ InterfacesIPFields},
+
+           {[{host, <<"*">>},
+             {port, dedicated_ssl_port},
+             {ssl, {[{key, list_to_binary(ns_ssl_services_setup:memcached_key_path())},
+                     {cert, list_to_binary(ns_ssl_services_setup:memcached_cert_path())}]}}]
+            ++ InterfacesIPFields}
           ]}},
 
         {ssl_cipher_list, {memcached_config_mgr, get_ssl_cipher_list, []}},
@@ -497,7 +505,8 @@ upgrade_config_from_5_5_3_to_madhatter(Config) ->
 do_upgrade_config_from_5_5_3_to_madhatter(Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
      upgrade_key(memcached_defaults, DefaultConfig),
-     upgrade_sub_keys(memcached, [other_users], Config, DefaultConfig),
+     upgrade_sub_keys(memcached, [other_users, dedicated_ssl_port],
+                      Config, DefaultConfig),
      upgrade_key(moxi, DefaultConfig) |
      rename_key(ldap_enabled, saslauthd_enabled, Config)].
 
@@ -624,7 +633,8 @@ upgrade_5_5_3_to_madhatter_test() ->
              {{node, node(), ldap_enabled}, true}]],
     Default = [{{node, node(), memcached_config}, [{interfaces,
                                                     [{[{x, y}]}]}]},
-               {{node, node(), memcached}, [{some, stuff}, {other_users, new}]},
+               {{node, node(), memcached}, [{some, stuff}, {other_users, new},
+                                            {dedicated_ssl_port, 123}]},
                {{node, node(), memcached_defaults}, [{k1, v1}, {k2, v2}]},
                {{node, node(), moxi}, new_moxi_value}],
 
@@ -632,7 +642,8 @@ upgrade_5_5_3_to_madhatter_test() ->
                                                        [{[{x, y}]}]}]},
                   {set, {node, _, memcached_defaults}, [{k1, v1}, {k2, v2}]},
                   {set, {node, _, memcached}, [{old, info},
-                                               {other_users, new}]},
+                                               {other_users, new},
+                                               {dedicated_ssl_port, 123}]},
                   {set, {node, _, moxi}, new_moxi_value},
                   {delete, {node, _, ldap_enabled}},
                   {set, {node, _, saslauthd_enabled}, true}],
@@ -643,7 +654,8 @@ upgrade_5_5_3_to_madhatter_test() ->
                                                        [{[{x, y}]}]}]},
                   {set, {node, _, memcached_defaults}, [{k1, v1}, {k2, v2}]},
                   {set, {node, _, memcached}, [{old, info},
-                                               {other_users, new}]},
+                                               {other_users, new},
+                                               {dedicated_ssl_port, 123}]},
                   {set, {node, _, moxi}, new_moxi_value}],
                  do_upgrade_config_from_5_5_3_to_madhatter(Cfg2, Default)).
 

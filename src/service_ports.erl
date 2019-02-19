@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2017-2018 Couchbase, Inc.
+%% @copyright 2017-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -52,12 +52,13 @@ all_ports() ->
      %% xdcr ports
      ?define_port(xdcr_rest_port, undefined, xdcr, 9998),
      %% kv service ports
-     ?define_port(memcached_port,           kv,        kv, 11210),
-     ?define_port(memcached_ssl_port,       kvSSL,     kv, 11207, secure),
-     ?define_port(memcached_dedicated_port, undefined, kv, 11209),
-     ?define_port(capi_port,                capi,      kv, 8092),
-     ?define_port(ssl_capi_port,            capiSSL,   kv, 18092, secure),
-     ?define_port(projector_port,           projector, kv, 9999),
+     ?define_port(memcached_port,               kv,        kv, 11210),
+     ?define_port(memcached_ssl_port,           kvSSL,     kv, 11207, secure),
+     ?define_port(memcached_dedicated_port,     undefined, kv, 11209),
+     ?define_port(memcached_dedicated_ssl_port, undefined, kv, 11206, secure),
+     ?define_port(capi_port,                    capi,      kv, 8092),
+     ?define_port(ssl_capi_port,                capiSSL,   kv, 18092, secure),
+     ?define_port(projector_port,               projector, kv, 9999),
      %% query service ports
      ?define_port(query_port,     n1ql,    n1ql, 8093),
      ?define_port(ssl_query_port, n1qlSSL, n1ql, 18093, secure),
