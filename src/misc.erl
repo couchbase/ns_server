@@ -1350,6 +1350,15 @@ get_cluster_encryption_level() ->
 should_data_rep_be_encrypted() ->
     get_cluster_encryption_level() =:= all.
 
+-spec disable_non_ssl_ports() -> true | false.
+disable_non_ssl_ports() ->
+    %% TODO: Disabling the non-SSL ports in not targeted for the Mad-Hatter
+    %% release. Hence returning 'false' unconditionally. The thinking is to
+    %% implement this API correctly in the next release when this feature
+    %% will be supported. This will avoid making changes to the plumbing to
+    %% get this info to other services via cbauth.
+    false.
+
 -spec get_net_family() -> inet:address_family().
 get_net_family() ->
     case is_ipv6() of

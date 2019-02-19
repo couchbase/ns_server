@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2014-2018 Couchbase, Inc.
+%% @copyright 2014-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -95,6 +95,7 @@ is_interesting({buckets, _}) -> true;
 is_interesting({cipher_suites, _}) -> true;
 is_interesting({honor_cipher_order, _}) -> true;
 is_interesting({ssl_minimum_protocol, _}) -> true;
+is_interesting({cluster_encryption_level, _}) -> true;
 is_interesting(_) -> false.
 
 handle_call(_Msg, _From, State) ->
@@ -256,6 +257,8 @@ build_auth_info(#state{cert_version = CertVersion,
     CipherOpenSSLNames = [N2 || N <- Ciphers, N2 <- [ciphers:openssl_name(N)],
                                 N2 =/= undefined],
     MinTLSVsn = ns_ssl_services_setup:ssl_minimum_protocol(Config),
+    ClusterDataEncrypt = misc:should_data_rep_be_encrypted(),
+    DisableNonSSLPorts = misc:disable_non_ssl_ports(),
 
     [{nodes, Nodes},
      {authCheckURL, list_to_binary(AuthCheckURL)},
@@ -266,6 +269,8 @@ build_auth_info(#state{cert_version = CertVersion,
      {extractUserFromCertURL, list_to_binary(EUserFromCertURL)},
      {clientCertAuthState, list_to_binary(CcaState)},
      {clientCertAuthVersion, ClientCertAuthVersion},
+     {clusterEncryptionConfig, {[{encryptData, ClusterDataEncrypt},
+                                 {disableNonSSLPorts, DisableNonSSLPorts}]}},
      {tlsConfig, {[{minTLSVersion, MinTLSVsn},
                    {cipherOrder, Order},
                    {ciphers, CipherInts},
