@@ -1333,6 +1333,16 @@ is_cluster_encryption_enabled() ->
     %% distribution mode in which the ns_server VM is operating.
     ns_config:search(ns_config:latest(), cluster_encryption, true).
 
+-spec get_cluster_encryption_level() -> none | control | all.
+get_cluster_encryption_level() ->
+    case is_cluster_encryption_enabled() of
+        true ->
+            ns_config:search(ns_config:latest(), cluster_encryption_level,
+                             control);
+        false ->
+            none
+    end.
+
 -spec get_net_family() -> inet:address_family().
 get_net_family() ->
     case is_ipv6() of
