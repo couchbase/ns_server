@@ -96,13 +96,25 @@ terminate(_Reason, _State) ->
     ok.
 
 handle_info({tcp, Socket, Data}, #state{sock = Socket} = State) ->
-    %% Set up the socket to receive another message
-    ok = inet:setopts(Socket, [{active, once}]),
+    handle_info({socket_data, Socket, Data}, State);
 
+handle_info({ssl, Socket, Data}, #state{sock = Socket} = State) ->
+    handle_info({socket_data, Socket, Data}, State);
+
+handle_info({socket_data, Socket, Data}, State) ->
+    %% Set up the socket to receive another message
+    ok = network:socket_setopts(Socket, [{active, once}]),
     {noreply, process_data(Data, State), ?HIBERNATE_TIMEOUT};
 
 handle_info({tcp_closed, Socket}, State) ->
-    ?log_error("Socket ~p was closed. Closing myself. State = ~p", [Socket, State]),
+    handle_info({socket_closed, Socket}, State);
+
+handle_info({ssl_closed, Socket}, State) ->
+    handle_info({socket_closed, Socket}, State);
+
+handle_info({socket_closed, Socket}, State) ->
+    ?log_error("Socket ~p was closed. Closing myself. State = ~p",
+               [Socket, State]),
     {stop, socket_closed, State};
 
 handle_info({'EXIT', _Pid, _Reason} = ExitSignal, State) ->
@@ -171,7 +183,7 @@ handle_packet(<<Magic:8, Opcode:8, _Rest/binary>> = Packet,
     {Action, NewExtState, NewState} = ExtModule:handle_packet(Type, Opcode, Packet, ExtState, State),
     case Action of
         proxy ->
-            ok = gen_tcp:send(ProxyTo, Packet);
+            ok = network:socket_send(ProxyTo, Packet);
         block ->
             ok
     end,
@@ -209,7 +221,7 @@ maybe_connect(#state{sock = undefined,
     Sock = connect(Type, ConnName, Node, Bucket, RepFeatures),
 
     %% setup socket to receive the first message
-    ok = inet:setopts(Sock, [{active, once}]),
+    ok = network:socket_setopts(Sock, [{active, once}]),
 
     State#state{sock = Sock};
 maybe_connect(State, _) ->
@@ -223,24 +235,7 @@ connect(Type, ConnName, Node, Bucket, RepFeatures) ->
     Username = ns_config:search_node_prop(Node, Cfg, memcached, admin_user),
     Password = ns_config:search_node_prop(Node, Cfg, memcached, admin_pass),
 
-    {Host0, Port, _} = ns_memcached:host_ports(Node),
-
-    %% 'Node' can be different in situations where we are upgrading from pre-5.1
-    %% clusters. In such situations, the orchestrator node will be proxying the
-    %% takeover operation.
-    Host = case Node =:= node() of
-               true  -> misc:localhost();
-               false -> Host0
-           end,
-
-    {ok, Sock} = gen_tcp:connect(Host, Port,
-                                 [misc:get_net_family(), binary,
-                                  {packet, raw}, {active, false},
-                                  {nodelay, true}, {delay_send, true},
-                                  {keepalive, true},
-                                  {recbuf, ?RECBUF},
-                                  {sndbuf, ?SNDBUF}],
-                                 ?CONNECT_TIMEOUT),
+    {ok, Sock} = connect_inner(Cfg, Node, RepFeatures),
     ok = mc_client_binary:auth(Sock, {<<"PLAIN">>,
                                       {list_to_binary(Username),
                                        list_to_binary(Password)}}),
@@ -251,6 +246,34 @@ connect(Type, ConnName, Node, Bucket, RepFeatures) ->
 
     ok = dcp_commands:open_connection(Sock, ConnName, Type, RepFeatures),
     Sock.
+
+connect_inner(Cfg, Node, RepFeatures) ->
+    SOpts = [misc:get_net_family(), binary,
+             {packet, raw}, {active, false},
+             {nodelay, true}, {delay_send, true},
+             {keepalive, true}, {recbuf, ?RECBUF},
+             {sndbuf, ?SNDBUF}],
+
+    {Host0, TcpPort, SslPort} = ns_memcached:host_ports(Node, Cfg),
+
+    %% 'Node' can be different in situations where we are upgrading from pre-5.1
+    %% clusters. In such situations, the orchestrator node will be proxying the
+    %% takeover operation.
+    Host = case Node =:= node() of
+               true  -> misc:localhost();
+               false -> Host0
+           end,
+
+    {Protocol, Opts, Port} =
+        case proplists:get_bool(ssl, RepFeatures) andalso Node =/= node() of
+            true ->
+                {ssl, SOpts ++ ns_ssl_services_setup:ssl_client_opts(),
+                 SslPort};
+            false ->
+                {tcp, SOpts, TcpPort}
+        end,
+
+    network:socket_connect(Protocol, Host, Port, Opts, ?CONNECT_TIMEOUT).
 
 negotiate_features(Sock, Type, ConnName, Features) ->
     HelloFeatures = mc_client_binary:hello_features(Features),
@@ -286,7 +309,7 @@ do_negotiate_features(Sock, Type, ConnName, Features) ->
     end.
 
 disconnect(Sock) ->
-    gen_tcp:close(Sock).
+    network:socket_close(Sock).
 
 nuke_connection(Type, ConnName, Node, Bucket) ->
     ?log_debug("Nuke DCP connection ~p type ~p on node ~p", [ConnName, Type, Node]),

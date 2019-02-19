@@ -1346,6 +1346,10 @@ get_cluster_encryption_level() ->
             none
     end.
 
+-spec should_data_rep_be_encrypted() -> true | false.
+should_data_rep_be_encrypted() ->
+    get_cluster_encryption_level() =:= all.
+
 -spec get_net_family() -> inet:address_family().
 get_net_family() ->
     case is_ipv6() of

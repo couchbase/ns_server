@@ -242,11 +242,12 @@ send({OutPid, CmdNum}, Data) when is_pid(OutPid) ->
 send(undefined, _Data)              -> ok;
 send(_Sock, <<>>)                   -> ok;
 send(Sock, List) when is_list(List) -> send(Sock, iolist_to_binary(List));
-send(Sock, Data)                    -> prim_inet:send(Sock, Data).
+send(Sock, Data)                    -> network:socket_send(Sock, Data).
 
 %% @doc Receive binary data of specified number of bytes length.
 recv_data(_, 0, _)                 -> {ok, <<>>};
-recv_data(Sock, NumBytes, Timeout) -> prim_inet:recv(Sock, NumBytes, Timeout).
+recv_data(Sock, NumBytes, Timeout) -> network:socket_recv(Sock, NumBytes,
+                                                          Timeout).
 
 -record(get_keys_params, {
           start_key :: binary(),
@@ -341,7 +342,8 @@ handle_get_keys_response(VBucket, Header, Entry, Params) ->
 
 fetch_more(Sock, TRef, Number, Params,
            #heap_item{vbucket = VBucket, key = LastKey, rest_keys = <<>>}) ->
-    ok = prim_inet:send(Sock, encode_get_keys([VBucket], LastKey, Number + 1)),
+    ok = network:socket_send(Sock,
+                             encode_get_keys([VBucket], LastKey, Number + 1)),
 
     get_keys_recv(
       Sock, TRef,
@@ -404,8 +406,9 @@ do_get_keys(Sock, VBuckets, Params, TRef) ->
     PrefetchLimit = 2 * (Limit div length(VBuckets) + 1),
     proc_lib:spawn_link(
       fun () ->
-              ok = prim_inet:send(Sock,
-                                  encode_get_keys(VBuckets, StartKey, PrefetchLimit))
+              ok = network:socket_send(Sock,
+                                       encode_get_keys(VBuckets, StartKey,
+                                                       PrefetchLimit))
       end),
 
     Heap0 =
@@ -486,8 +489,9 @@ handle_limit(Heap, Sock, TRef, FetchLimit,
 retrieve_values(Sock, TRef, KeysAndVBuckets) ->
     proc_lib:spawn_link(
       fun () ->
-              ok = prim_inet:send(Sock,
-                                  [encode_get(K, VB) || {K, VB} <- KeysAndVBuckets])
+              ok = network:socket_send(Sock,
+                                       [encode_get(K, VB) ||
+                                           {K, VB} <- KeysAndVBuckets])
       end),
 
     {KVs, Missing} =

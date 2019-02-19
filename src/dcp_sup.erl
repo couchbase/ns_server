@@ -84,7 +84,8 @@ get_replication_features() ->
                   %% so we can assume that if collections are enabled globally
                   %% they cannot be disabled for particular bucket
                   {collections, collections:enabled()},
-                  {del_times, cluster_compat_mode:is_cluster_55()}],
+                  {del_times, cluster_compat_mode:is_cluster_55()},
+                  {ssl, misc:should_data_rep_be_encrypted()}],
     misc:canonical_proplist(FeatureSet).
 
 manage_replicators(Bucket, NeededNodes) ->
