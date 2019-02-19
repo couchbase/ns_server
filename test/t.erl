@@ -194,6 +194,9 @@ setup_paths() ->
 
     application:set_env(ns_server, error_logger_mf_dir, TmpDir),
 
+    application:set_env(kernel, dist_config_file,
+                        filename:join(TmpDir, "dist_cfg")),
+
     ok.
 
 spawn_listener() ->

@@ -31,9 +31,6 @@
          wait_for_node/1, dist_config_path/1, store_dist_config/3,
          update_dist_config/1]).
 
-%% used by the service init script.
--export([get_proto_dist_type/1]).
-
 %% used by babysitter and ns_couchdb
 -export([configure_net_kernel/0]).
 
@@ -91,41 +88,6 @@ update_dist_config(NewAFamily) ->
                        [NewDistType, DCfgFile]),
             store_dist_config(DCfgFile, CurrDistType, NewDistType)
     end.
-
-%% This function will be called by the init script to determine
-%% the networking mode to start with.
-get_proto_dist_type(Params) ->
-    [DataDir, StartStop] = Params,
-    DCfgFile = dist_config_path(DataDir),
-
-    ExitStatus =
-        case file:consult(DCfgFile) of
-            {error, enoent} ->
-                io:format("inet_tcp"),
-                0;
-            {error, Err} ->
-                io:format("Couldn't determine proto_dist value. Failed to "
-                          "read from `~s` file: ~p", [DCfgFile, Err]),
-                1;
-            {ok, []} ->
-                io:format("inet_tcp"),
-                0;
-            {ok, Val} ->
-                DistCfg = lists:keyfind(dist_type, 1, Val),
-                Modes = case DistCfg of
-                            {dist_type, C, N} -> [C, N];
-                            {dist_type, C}    -> [C]
-                        end,
-                RV = case StartStop of
-                         "start" -> lists:last(Modes);
-                         "stop"  -> hd(Modes)
-                     end,
-
-                io:format("~s", [RV]),
-                0
-        end,
-
-    init:stop(ExitStatus).
 
 strip_full(String) ->
     String2 = string:strip(String),

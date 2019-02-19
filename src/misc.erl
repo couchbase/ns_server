@@ -1344,7 +1344,7 @@ letrec(Args, F) ->
 
 -spec is_ipv6() -> true | false.
 is_ipv6() ->
-    get_proto_dist_type() =:= "inet6_tcp".
+    get_net_family() == inet6.
 
 -spec is_cluster_encryption_enabled() -> true | false.
 is_cluster_encryption_enabled() ->
@@ -1383,12 +1383,7 @@ disable_non_ssl_ports() ->
 
 -spec get_net_family() -> inet:address_family().
 get_net_family() ->
-    case is_ipv6() of
-        true ->
-            inet6;
-        false ->
-            inet
-    end.
+    cb_dist:address_family().
 
 -spec get_proto_dist_type() -> string().
 get_proto_dist_type() ->
@@ -1776,7 +1771,8 @@ take_marker(Path) ->
     Result.
 
 is_free_nodename(ShortName) ->
-    {ok, Names} = erl_epmd:names({127,0,0,1}),
+    ErlEpmd = net_kernel:epmd_module(),
+    {ok, Names} = ErlEpmd:names({127,0,0,1}),
     not lists:keymember(ShortName, 1, Names).
 
 wait_for_nodename(ShortName) ->

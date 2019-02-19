@@ -49,6 +49,7 @@ NODEFILE="@PREFIX@/var/lib/couchbase/couchbase-server.babysitter.node"
 STATIC_CONFIG_PATH="@PREFIX@/etc/couchbase/static_config"
 CB_DATA_DIR="@PREFIX@/var/lib/couchbase"
 SSL_DIST_OPTFILE="@PREFIX@/etc/couchbase/ssl_dist_opts"
+CB_DIST_CFG_FILE="$CB_DATA_DIR/config/dist_cfg"
 
 couch_start_arguments=""
 
@@ -94,32 +95,6 @@ if you've built Couchbase Server from source.
 
 EOF
         fi
-    fi
-}
-
-_check_inet_mode() {
-    CMD=$1
-    PROTO_DIST=`erl \
-                -pa "$NS_EBIN_PATH" \
-                -noshell   \
-                -setcookie nocookie \
-                -run dist_manager get_proto_dist_type "$CB_DATA_DIR" $CMD`
-    if [ $? -ne 0 ]
-    then
-        echo $PROTO_DIST
-        exit 1
-    fi
-
-    if [ $PROTO_DIST == "inet6_tcp" ]; then
-        if [ x"${ENTERPRISE}" = "xtrue" ]
-        then
-            VM_NAME='babysitter_of_ns_1@::1'
-        else
-            echo "IPv6 is supported only in enterprise edition"
-            exit 1
-        fi
-    else
-        VM_NAME='babysitter_of_ns_1@127.0.0.1'
     fi
 }
 
@@ -179,8 +154,6 @@ _start() {
     _maybe_start_epmd
     _load_config
 
-    _check_inet_mode "start"
-
     # note: we depend on pwd being $datadir from _prepare_datadir
     _drop_old_crashdumps
 
@@ -191,10 +164,12 @@ _start() {
         -smp enable \
         -kernel inet_dist_listen_min 21100 inet_dist_listen_max 21299 \
                 error_logger false \
+                dist_config_file "\"$CB_DIST_CFG_FILE\"" \
         -sasl sasl_error_logger false \
         -hidden \
-        -name $VM_NAME \
-        -proto_dist $PROTO_DIST \
+        -name 'babysitter_of_ns_1@127.0.0.1' \
+        -proto_dist cb \
+        -epmd_module cb_epmd \
         -ssl_dist_optfile $SSL_DIST_OPTFILE \
         -setcookie nocookie \
         $* \
@@ -209,14 +184,14 @@ _start() {
 _stop() {
     [ -f "$COOKIEFILE" -a -f "$NODEFILE" ] || return 1
 
-    _check_inet_mode "stop"
-
     cookie=`cat "$COOKIEFILE"`
     node=`cat "$NODEFILE"`
 
     erl \
         -name executioner@executioner \
-        -proto_dist $PROTO_DIST \
+        -kernel dist_config_file "\"$CB_DIST_CFG_FILE\"" \
+        -proto_dist cb \
+        -epmd_module cb_epmd \
         -ssl_dist_optfile $SSL_DIST_OPTFILE \
         -noshell \
         -hidden \

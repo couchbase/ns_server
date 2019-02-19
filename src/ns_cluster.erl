@@ -612,7 +612,8 @@ call_port_please(Name, Host) ->
     %% host is configured with IPv6. But if we pass in the IP Address instead of
     %% hostname the API does the right thing. Hence passing the IP Address.
     {ok, IpAddr} = inet:getaddr(Host, misc:get_net_family()),
-    case erl_epmd:port_please(Name, IpAddr, 5000) of
+    ErlEpmd = net_kernel:epmd_module(),
+    case ErlEpmd:port_please(Name, IpAddr, 5000) of
         {port, Port, _Version} -> Port;
         X -> X
     end.

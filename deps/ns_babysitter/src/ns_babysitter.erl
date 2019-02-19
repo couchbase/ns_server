@@ -38,7 +38,6 @@ start(_, _) ->
 
     {have_host, true} = {have_host, ('nonode@nohost' =/= node())},
 
-    ok = save_dist_config(),
     ok = dist_manager:configure_net_kernel(),
 
     Cookie =
@@ -61,12 +60,6 @@ start(_, _) ->
     true = os:unsetenv("https_proxy"),
 
     ns_babysitter_sup:start_link().
-
-save_dist_config() ->
-    DCfgFile = dist_manager:dist_config_path(path_config:component_path(data)),
-    filelib:ensure_dir(DCfgFile),
-    dist_manager:store_dist_config(DCfgFile, misc:get_proto_dist_type(),
-                                   undefined).
 
 maybe_write_file(Env, Content, Name) ->
     case application:get_env(Env) of
