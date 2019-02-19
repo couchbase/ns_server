@@ -223,7 +223,7 @@ connect(Type, ConnName, Node, Bucket, RepFeatures) ->
     Username = ns_config:search_node_prop(Node, Cfg, memcached, admin_user),
     Password = ns_config:search_node_prop(Node, Cfg, memcached, admin_pass),
 
-    {Host0, Port} = ns_memcached:host_port(Node),
+    {Host0, Port, _} = ns_memcached:host_ports(Node),
 
     %% 'Node' can be different in situations where we are upgrading from pre-5.1
     %% clusters. In such situations, the orchestrator node will be proxying the

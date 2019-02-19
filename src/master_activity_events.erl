@@ -1,5 +1,5 @@
 %% @author Couchbase, Inc <info@couchbase.com>
-%% @copyright 2012-2018 Couchbase, Inc.
+%% @copyright 2012-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -351,17 +351,17 @@ format_simple_value(Value) ->
             iolist_to_binary(io_lib:format("~p", [Value]))
     end.
 
-format_mcd_pair({Host, Port}) ->
+format_mcd_tuple({Host, Port, _}) ->
     list_to_binary(misc:join_host_port(Host, Port)).
 
 node_to_host(undefined, _Config) ->
     <<"">>;
 node_to_host(Node, Config) ->
-    case ns_memcached:host_port(Node, Config) of
-        {_, undefined} ->
+    case ns_memcached:host_ports(Node, Config) of
+        {_, undefined, _} ->
             atom_to_binary(Node, latin1);
-        HostPort ->
-            format_mcd_pair(HostPort)
+        HostPorts ->
+            format_mcd_tuple(HostPorts)
     end.
 
 nodes_to_hosts(Nodes) ->

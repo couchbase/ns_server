@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2010-2018 Couchbase, Inc.
+%% @copyright 2010-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -93,8 +93,8 @@
          sync_delete_vbucket/2,
          get_vbucket/3,
          get_vbucket_details_stats/2,
-         host_port/1,
-         host_port/2,
+         host_ports/1,
+         host_ports/2,
          list_vbuckets/1, list_vbuckets/2,
          local_connected_and_list_vbuckets/1,
          list_vbuckets_prevstate/2,
@@ -1056,20 +1056,28 @@ get_vbucket(Node, Bucket, VBucket) ->
 get_vbucket_details_stats(Bucket, VBucket) ->
     do_call(server(Bucket), {get_vbucket_details_stats, VBucket}, ?TIMEOUT).
 
-
--spec host_port(node(), any()) ->
-                           {nonempty_string(), pos_integer() | undefined}.
-host_port(Node, Config) ->
-    DefaultPort = service_ports:get_port(memcached_port, Config, Node),
-    Port = ns_config:search_node_prop(Node, Config,
-                                      memcached, dedicated_port, DefaultPort),
+-spec host_ports(node(), any()) ->
+                        {nonempty_string(),
+                         pos_integer() | undefined,
+                         pos_integer() | undefined}.
+host_ports(Node, Config) ->
+    [Port, SslPort] =
+        [begin
+             DefaultPort = service_ports:get_port(Defaultkey, Config, Node),
+             ns_config:search_node_prop(Node, Config, memcached,
+                                        DedicatedKey, DefaultPort)
+         end || {Defaultkey, DedicatedKey} <-
+                    [{memcached_port, dedicated_port},
+                     {memcached_ssl_port, dedicated_ssl_port}]],
     {_Name, Host} = misc:node_name_host(Node),
-    {Host, Port}.
+    {Host, Port, SslPort}.
 
--spec host_port(node()) ->
-                           {nonempty_string(), pos_integer()}.
-host_port(Node) ->
-    host_port(Node, ns_config:get()).
+-spec host_ports(node()) ->
+                        {nonempty_string(),
+                         pos_integer() | undefined,
+                         pos_integer() | undefined}.
+host_ports(Node) ->
+    host_ports(Node, ns_config:get()).
 
 -spec list_vbuckets(bucket_name()) ->
     {ok, [{vbucket_id(), vbucket_state()}]} | mc_error().
