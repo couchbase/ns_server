@@ -1324,6 +1324,15 @@ letrec(Args, F) ->
 is_ipv6() ->
     get_proto_dist_type() =:= "inet6_tcp".
 
+-spec is_cluster_encryption_enabled() -> true | false.
+is_cluster_encryption_enabled() ->
+    %% TODO: Currently this API searches for a non-existent key in the
+    %% config. This is mostly to keep the dialyzer happy. The intent here
+    %% is to unconditionally return true. But once we have the erlang dist
+    %% details figured out, the output of this API will be dependent on the
+    %% distribution mode in which the ns_server VM is operating.
+    ns_config:search(ns_config:latest(), cluster_encryption, true).
+
 -spec get_net_family() -> inet:address_family().
 get_net_family() ->
     case is_ipv6() of
