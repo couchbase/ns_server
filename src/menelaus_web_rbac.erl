@@ -1725,6 +1725,7 @@ handle_delete_profile(RawIdentity, Req) ->
     Identity = get_identity_for_profiles(RawIdentity, Req),
     case menelaus_users:delete_profile(Identity) of
         ok ->
+            ns_audit:delete_user_profile(Req, Identity),
             menelaus_util:reply_json(Req, <<>>, 200);
         {error, not_found} ->
             menelaus_util:reply_json(Req, <<"UI profile was not found.">>, 404)
@@ -1738,6 +1739,7 @@ handle_put_profile(RawIdentity, Req) ->
     try ejson:decode(Body) of
         Json ->
             menelaus_users:store_profile(Identity, Json),
+            ns_audit:set_user_profile(Req, Identity, Json),
             menelaus_util:reply_json(Req, <<>>, 200)
     catch _:_ ->
             menelaus_util:reply_json(Req, <<"Invalid Json">>, 400)

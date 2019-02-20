@@ -1003,6 +1003,41 @@
           "optional_fields" : {
               "sessionid" : ""
           }
+      },
+      {
+          "id" : 8249,
+          "name" : "set user profile",
+          "description" : "UI profile was added or updated",
+          "sync" : false,
+          "enabled" : true,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"domain" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "identity" : {"domain" : "", "user" : ""},
+              "profile" : ""
+          },
+          "optional_fields" : {
+              "sessionid" : "",
+              "full_name" : ""
+          }
+      },
+      {
+          "id" : 8250,
+          "name" : "delete user profile",
+          "description" : "UI profile was deleted",
+          "sync" : false,
+          "enabled" : true,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"domain" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "identity" : {"domain" : "", "user" : ""}
+          },
+          "optional_fields" : {
+              "sessionid" : "",
+              "full_name" : ""
+          }
       }
     ]
 }

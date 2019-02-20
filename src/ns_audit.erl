@@ -77,7 +77,9 @@
          delete_user_group/2,
          ldap_settings/2,
          developer_preview_settings/2,
-         license_settings/2
+         license_settings/2,
+         set_user_profile/3,
+         delete_user_profile/2
         ]).
 
 -export([start_link/0, stats/0]).
@@ -319,7 +321,11 @@ code(ldap_settings) ->
 code(developer_preview_settings) ->
     8247;
 code(license_settings) ->
-    8248.
+    8248;
+code(set_user_profile) ->
+    8249;
+code(delete_user_profile) ->
+    8250.
 
 to_binary({list, List}) ->
     [to_binary(A) || A <- List];
@@ -327,6 +333,8 @@ to_binary(A) when is_list(A) ->
     iolist_to_binary(A);
 to_binary({propset, Props}) when is_list(Props) ->
     {[kv_to_binary(A) || A <- Props]};
+to_binary({json, Json}) ->
+    Json;
 to_binary(A) ->
     A.
 
@@ -824,3 +832,11 @@ prepare_ldap_setting(Default) -> Default.
 developer_preview_settings(Req, Settings) ->
     put(developer_preview_settings, Req,
         [{settings, {prepare_list(Settings)}}]).
+
+set_user_profile(Req, Identity, Json) ->
+    put(set_user_profile, Req,
+        [{identity, get_identity(Identity)},
+         {profile, {json, Json}}]).
+
+delete_user_profile(Req, Identity) ->
+    put(delete_user_profile, Req, [{identity, get_identity(Identity)}]).
