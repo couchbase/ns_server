@@ -461,6 +461,12 @@ store_user_50_with_auth(Identity, Props, Auth, Roles, Config) ->
     end.
 
 store_user_50_validated(Identity, Props, Auth) ->
+    case replicated_dets:get(storage_name(), {user, Identity}) of
+        false ->
+            _ = delete_profile(Identity);
+        _ ->
+            ok
+    end,
     ok = replicated_dets:set(storage_name(), {user, Identity}, Props),
     case store_auth(Identity, Auth) of
         ok ->
@@ -513,7 +519,8 @@ delete_user_45({UserName, external}) ->
 delete_user_50({_, Domain} = Identity) ->
     case Domain of
         local ->
-            _ = replicated_dets:delete(storage_name(), {auth, Identity});
+            _ = replicated_dets:delete(storage_name(), {auth, Identity}),
+            _ = delete_profile(Identity);
         external ->
             ok
     end,
