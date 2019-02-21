@@ -352,6 +352,7 @@ ssl_auth_options() ->
 ssl_server_opts() ->
     Path = ssl_cert_key_path(),
     {CipherSuites, Order} = supported_ciphers(),
+    ClientReneg = ns_config:read_key_fast(client_renegotiation_allowed, false),
     ssl_auth_options() ++
         [{keyfile, Path},
          {certfile, Path},
@@ -359,7 +360,9 @@ ssl_server_opts() ->
          {cacertfile, ssl_cacert_key_path()},
          {dh, dh_params_der()},
          {ciphers, CipherSuites},
-         {honor_cipher_order, Order}].
+         {honor_cipher_order, Order},
+         {secure_renegotiate, true},
+         {client_renegotiation, ClientReneg}].
 
 start_link_rest_service() ->
     Config0 = menelaus_web:webconfig(),
