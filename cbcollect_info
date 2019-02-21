@@ -745,6 +745,7 @@ def make_os_tasks():
         LinuxTask("Swap configuration", "swapon -s"),
         LinuxTask("Kernel modules", "lsmod"),
         LinuxTask("Distro version", "cat /etc/redhat-release"),
+        LinuxTask("Distro version", "cat /etc/oracle-release"),
         LinuxTask("Distro version", "lsb_release -a"),
         LinuxTask("Distro version", "cat /etc/SuSE-release"),
         LinuxTask("Distro version", "cat /etc/issue"),
