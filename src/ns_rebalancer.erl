@@ -871,10 +871,21 @@ run_janitor_pre_rebalance(BucketName) ->
 do_rebalance_membase_bucket(Bucket, Config,
                             KeepNodes, ProgressFun, DeltaRecoveryBuckets) ->
     Map = proplists:get_value(map, Config),
+    AdjustedMap = case cluster_compat_mode:is_cluster_madhatter() of
+                      true ->
+                          NumReplicas = ns_bucket:num_replicas(Config),
+                          ns_janitor_map_recoverer:align_replicas(Map,
+                                                                  NumReplicas);
+                      false ->
+                          %% Expect equal length map pre mad-hatter, as the
+                          %% janitor fixes it for us.
+                          %% See fun ns_janitor:compute_vbucket_map_fixup.
+                          Map
+                  end,
     {FastForwardMap, MapOptions} =
         case lists:keyfind(Bucket, 1, DeltaRecoveryBuckets) of
             false ->
-                generate_vbucket_map(Map, KeepNodes, Config);
+                generate_vbucket_map(AdjustedMap, KeepNodes, Config);
             {_, _, V} ->
                 V
         end,
@@ -1180,7 +1191,8 @@ build_delta_recovery_buckets_loop(MappedConfigs, DeltaRecoveryBuckets, Acc) ->
     [{Bucket, BucketConfig, RecoverResult0} | RestMapped] = MappedConfigs,
 
     NeedBucket = lists:member(Bucket, DeltaRecoveryBuckets),
-    RecoverResult = case NeedBucket of
+    RecoverResult = case NeedBucket andalso
+                         not ns_bucket:replica_change(BucketConfig) of
                         true ->
                             RecoverResult0;
                         false ->
@@ -1691,8 +1703,12 @@ membase_delta_recovery_buckets_test() ->
     ["b1", "b3"] = membase_delta_recovery_buckets(all, MembaseBuckets).
 
 build_delta_recovery_buckets_loop_test() ->
-    MappedConfigs = [{"b1", conf1, {map, opts}},
-                     {"b2", conf2, false}],
+    %% Fake num_replicas so that we don't crash in
+    %% build_delta_recovery_buckets_loop.
+    Conf1 = [{num_replicas, 1}, conf1],
+    Conf2 = [{num_replicas, 1}, conf2],
+    MappedConfigs = [{"b1", Conf1, {map, opts}},
+                     {"b2", Conf2, false}],
     All = membase_delta_recovery_buckets(all, [{"b1", conf}, {"b2", conf}]),
 
     {ok, []} = build_delta_recovery_buckets_loop([], All, []),
@@ -1700,8 +1716,8 @@ build_delta_recovery_buckets_loop_test() ->
     {error, not_possible} = build_delta_recovery_buckets_loop(MappedConfigs, ["b2"], []),
     {error, not_possible} = build_delta_recovery_buckets_loop(MappedConfigs, ["b1", "b2"], []),
     {ok, []} = build_delta_recovery_buckets_loop(MappedConfigs, [], []),
-    ?assertEqual({ok, [{"b1", conf1, {map, opts}}]},
+    ?assertEqual({ok, [{"b1", Conf1, {map, opts}}]},
                  build_delta_recovery_buckets_loop(MappedConfigs, ["b1"], [])),
-    ?assertEqual({ok, [{"b1", conf1, {map, opts}}]},
+    ?assertEqual({ok, [{"b1", Conf1, {map, opts}}]},
                  build_delta_recovery_buckets_loop([hd(MappedConfigs)], All, [])).
 -endif.

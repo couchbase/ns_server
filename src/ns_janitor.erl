@@ -363,7 +363,17 @@ compute_vbucket_map_fixup(Bucket, BucketConfig, States) ->
                   ignore -> OldChain;
                   _ -> NewChain
               end || {NewChain, OldChain} <- lists:zip(MapUpdates, Map)],
-    NewAdjustedMap = maybe_adjust_chain_size(NewMap, BucketConfig),
+    NewAdjustedMap = case cluster_compat_mode:is_cluster_madhatter() of
+                         true ->
+                             %% Defer adjusting chain length to rebalance, at
+                             %% the time of writing this code the logic is in,
+                             %% ns_rebalancer:do_rebalance_membase_bucket.
+                             NewMap;
+                         false ->
+                             NumReplicas = ns_bucket:num_replicas(BucketConfig),
+                             ns_janitor_map_recoverer:align_replicas(Map,
+                                                                     NumReplicas)
+                     end,
     NewBucketConfig = case NewAdjustedMap =:= Map of
                           true ->
                               BucketConfig;
@@ -373,10 +383,6 @@ compute_vbucket_map_fixup(Bucket, BucketConfig, States) ->
                                                {map, NewAdjustedMap})
                       end,
     {NewBucketConfig, IgnoredVBuckets}.
-
-maybe_adjust_chain_size(Map, BucketConfig) ->
-    NumReplicas = ns_bucket:num_replicas(BucketConfig),
-    ns_janitor_map_recoverer:align_replicas(Map, NumReplicas).
 
 construct_vbucket_states(VBucket, Chain, States) ->
     NodeStates  = [{N, S} || {N, V, S} <- States, V == VBucket],
@@ -564,5 +570,30 @@ enumerate_chains_test() ->
 
     EnumeratedChains2 = enumerate_chains(Map, undefined),
     [{0, [a, b, c], []}, {1, [b, c, a], []}] = EnumeratedChains2.
+
+sanify_addition_of_replicas_test() ->
+    [a, b] = do_sanify_chain("B", [{a, 0, active},
+                                   {b, 0, replica}],
+                             [a, b], [a, b, c], 0),
+    [a, b] = do_sanify_chain("B", [{a, 0, active},
+                                   {b, 0, replica},
+                                   {c, 0, replica}],
+                             [a, b], [a, b, c], 0),
+
+    %% replica addition with possible move.
+    [a, b] = do_sanify_chain("B", [{a, 0, dead},
+                                   {b, 0, replica},
+                                   {c, 0, pending}],
+                             [a, b], [c, a, b], 0),
+    [c, d, a] = do_sanify_chain("B", [{a, 0, dead},
+                                      {b, 0, replica},
+                                      {c, 0, active},
+                                      {d, 0, replica}],
+                                [a, b], [c, d, a], 0),
+    [c, d, a] = do_sanify_chain("B", [{a, 0, replica},
+                                      {b, 0, replica},
+                                      {c, 0, active},
+                                      {d, 0, replica}],
+                                [a, b], [c, d, a], 0).
 
 -endif.

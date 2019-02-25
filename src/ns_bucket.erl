@@ -17,6 +17,7 @@
 
 -include("ns_common.hrl").
 -include("ns_config.hrl").
+-include("cut.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -27,6 +28,7 @@
          bucket_nodes/1,
          bucket_type/1,
          replication_type/1,
+         replica_change/1,
          create_bucket/3,
          credentials/1,
          delete_bucket/1,
@@ -712,7 +714,14 @@ set_fast_forward_map(Bucket, Map) ->
 
 
 set_map(Bucket, Map) ->
-    true = mb_map:is_valid(Map),
+    case mb_map:is_valid(Map) of
+        true ->
+            ok;
+        different_length_chains ->
+            %% Never expect to set map with different_length_chains
+            %% pre-madhatter.
+            true = cluster_compat_mode:is_cluster_madhatter()
+    end,
     update_bucket_config(
       Bucket,
       fun (OldConfig) ->
@@ -833,6 +842,16 @@ past_vbucket_maps(Config) ->
         false -> []
     end.
 
+replica_change(BucketConfig) ->
+    replica_change(num_replicas(BucketConfig),
+                   proplists:get_value(map, BucketConfig)).
+
+replica_change(_NumReplicas, undefined) ->
+    false;
+replica_change(NumReplicas, Map) ->
+    ExpectedChainLength = NumReplicas + 1,
+    lists:any(?cut(ExpectedChainLength =/= length(_)), Map).
+
 needs_rebalance(BucketConfig, Nodes) ->
     Servers = proplists:get_value(servers, BucketConfig, []),
     case proplists:get_value(type, BucketConfig) of
@@ -843,6 +862,7 @@ needs_rebalance(BucketConfig, Nodes) ->
                 _ ->
                     Map = proplists:get_value(map, BucketConfig),
                     Map =:= undefined orelse
+                        replica_change(BucketConfig) orelse
                         lists:sort(Nodes) =/= lists:sort(Servers) orelse
                         ns_rebalancer:map_options_changed(BucketConfig) orelse
                         (ns_rebalancer:unbalanced(Map, BucketConfig) andalso

@@ -92,6 +92,7 @@ is_swap_rebalance(OldMap, NewMap) ->
         length(OldNodes) =/= length(NewNodes) andalso erlang:throw(not_swap),
         lists:foldl(
           fun ({_VB, OldChain, NewChain}, Dict0) ->
+                  length(OldChain) =/= length(NewChain) andalso throw(not_swap),
                   Changed = [Pair || {From, To} = Pair <- lists:zip(OldChain, NewChain),
                                      From =/= To,
                                      From =/= undefined,
