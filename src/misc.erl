@@ -56,11 +56,14 @@ get_days_list() ->
     ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].
 
 % formats time (see erlang:localtime/0) as ISO-8601 text
-iso_8601_fmt(Time) -> iso_8601_fmt(Time, undefined).
-iso_8601_fmt({{Year,Month,Day},{Hour,Min,Sec}}, UTCOffset) ->
+iso_8601_fmt({{Year,Month,Day},{Hour,Min,Sec}}, Millis, UTCOffset) ->
     TimeS =
         io_lib:format("~4.10.0B-~2.10.0B-~2.10.0BT~2.10.0B:~2.10.0B:~2.10.0B",
                       [Year, Month, Day, Hour, Min, Sec]),
+    MilliSecond = case Millis of
+                     undefined -> "";
+                     _ -> io_lib:format(".~3.10.0B", [Millis])
+                  end,
     OffsetS =
         case UTCOffset of
             undefined -> "";
@@ -72,23 +75,25 @@ iso_8601_fmt({{Year,Month,Day},{Hour,Min,Sec}}, UTCOffset) ->
                        end,
                 io_lib:format("~s~2.10.0B:~2.10.0B", [Sign, abs(H), M])
         end,
-    lists:flatten(TimeS ++ OffsetS).
+    lists:flatten(TimeS ++ MilliSecond ++ OffsetS).
 
 timestamp_utc_iso8601() ->
-    iso_8601_fmt(erlang:universaltime(), {0, 0}).
+    iso_8601_fmt(erlang:universaltime(), undefined, {0, 0}).
 
 -ifdef(EUNIT).
 iso_8601_fmt_test() ->
+    ?assertEqual("2007-04-05T14:30:00.040Z",
+                 iso_8601_fmt({{2007, 4, 5}, {14, 30, 00}}, 40, {0, 0})),
     ?assertEqual("2007-04-05T14:30:00Z",
-                 iso_8601_fmt({{2007, 4, 5}, {14, 30, 00}}, {0, 0})),
+                 iso_8601_fmt({{2007, 4, 5}, {14, 30, 00}}, undefined, {0, 0})),
     ?assertEqual("2007-04-05T14:30:00",
-                 iso_8601_fmt({{2007, 4, 5}, {14, 30, 00}})),
+                 iso_8601_fmt({{2007, 4, 5}, {14, 30, 00}}, undefined, undefined)),
     ?assertEqual("2007-04-05T14:30:00+01:00",
-                 iso_8601_fmt({{2007, 4, 5}, {14, 30, 00}}, {1,0})),
+                 iso_8601_fmt({{2007, 4, 5}, {14, 30, 00}}, undefined, {1,0})),
     ?assertEqual("2007-04-05T14:30:00-03:45",
-                 iso_8601_fmt({{2007, 4, 5}, {14, 30, 00}}, {-3,45})),
+                 iso_8601_fmt({{2007, 4, 5}, {14, 30, 00}}, undefined, {-3,45})),
     ?assertEqual("2007-04-05T14:30:00-23:45",
-                 iso_8601_fmt({{2007, 4, 5}, {14, 30, 00}}, {-23,45})).
+                 iso_8601_fmt({{2007, 4, 5}, {14, 30, 00}}, undefined, {-23,45})).
 -endif.
 
 %% applies (catch Fun(X)) for each element of list in parallel. If
