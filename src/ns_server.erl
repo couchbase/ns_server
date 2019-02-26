@@ -265,8 +265,8 @@ stop(_State) ->
 setup_node_names() ->
     Name =  misc:node_name_short(),
     Babysitter = list_to_atom("babysitter_of_" ++ Name ++ "@" ++
-                                  misc:localhost()),
-    Couchdb = list_to_atom("couchdb_" ++ Name ++ "@" ++ misc:localhost()),
+                                  misc:localhost_alias()),
+    Couchdb = list_to_atom("couchdb_" ++ Name ++ "@" ++ misc:localhost_alias()),
     application:set_env(ns_server, ns_couchdb_node, Couchdb),
     application:set_env(ns_server, babysitter_node, Babysitter).
 

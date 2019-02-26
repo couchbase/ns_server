@@ -262,6 +262,16 @@ node_name_host(Node) ->
     [Name, Host | _] = string:tokens(atom_to_list(Node), "@"),
     {Name, Host}.
 
+%% For hidden nodes (babysitter and couchdb) we use aliases as hostnames
+%% This alias doesn't work outside the vm, so we need to return localhost
+%% ip address in this case
+extract_node_address(Node) ->
+    LocalhostAlias = localhost_alias(),
+    case node_name_host(Node) of
+        {_, LocalhostAlias} -> localhost();
+        {_, Host} -> Host
+    end.
+
 % Get an environment variable value or return a default value
 getenv_int(VariableName, DefaultValue) ->
     case (catch list_to_integer(os:getenv(VariableName))) of
@@ -1422,6 +1432,8 @@ localhost(Options) ->
         false ->
             "127.0.0.1"
     end.
+
+localhost_alias() -> "cb.local".
 
 -spec inaddr_any() -> string().
 inaddr_any() ->

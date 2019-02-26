@@ -397,7 +397,7 @@ json_map_with_full_config(LocalAddr, BucketConfig, Config) ->
                 fun (ENode) ->
                         Port = service_ports:get_port(memcached_port, Config,
                                                       ENode),
-                        {_, H} = misc:node_name_host(ENode),
+                        H = misc:extract_node_address(ENode),
                         Host = case misc:is_localhost(H) of
                                    true  -> LocalAddr;
                                    false -> H

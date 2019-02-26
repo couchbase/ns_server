@@ -50,6 +50,7 @@ STATIC_CONFIG_PATH="@PREFIX@/etc/couchbase/static_config"
 CB_DATA_DIR="@PREFIX@/var/lib/couchbase"
 SSL_DIST_OPTFILE="@PREFIX@/etc/couchbase/ssl_dist_opts"
 CB_DIST_CFG_FILE="$CB_DATA_DIR/config/dist_cfg"
+HOSTS_CFG_FILE="@PREFIX@/etc/couchbase/hosts.cfg"
 
 couch_start_arguments=""
 
@@ -164,10 +165,11 @@ _start() {
         -smp enable \
         -kernel inet_dist_listen_min 21100 inet_dist_listen_max 21299 \
                 error_logger false \
+                inetrc "\"$HOSTS_CFG_FILE\"" \
                 dist_config_file "\"$CB_DIST_CFG_FILE\"" \
         -sasl sasl_error_logger false \
         -hidden \
-        -name 'babysitter_of_ns_1@127.0.0.1' \
+        -name 'babysitter_of_ns_1@cb.local' \
         -proto_dist cb \
         -epmd_module cb_epmd \
         -ssl_dist_optfile $SSL_DIST_OPTFILE \
@@ -188,8 +190,9 @@ _stop() {
     node=`cat "$NODEFILE"`
 
     erl \
-        -name executioner@executioner \
+        -name 'executioner@cb.local' \
         -kernel dist_config_file "\"$CB_DIST_CFG_FILE\"" \
+                inetrc "\"$HOSTS_CFG_FILE\"" \
         -proto_dist cb \
         -epmd_module cb_epmd \
         -ssl_dist_optfile $SSL_DIST_OPTFILE \

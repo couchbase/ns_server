@@ -169,12 +169,15 @@ handle_arguments(Arguments) ->
                          Flag =:= nouser ->
                       Acc;
                   _ ->
-                      case application:load(Flag) of
-                          {error, {Error, _}} when Error =/= already_loaded ->
+                      %% Make exception for kernel to make sure that ns_server
+                      %% node inherits kernel env vars like inetrc and
+                      %% dist_config_file
+                      case is_application(Flag) and (Flag =/= kernel) of
+                          false ->
                               FlagStr = "-" ++ atom_to_list(Flag),
                               AccArgs1 = [FlagStr | Values] ++ AccArgs,
                               {AccArgs1, AccEnv};
-                          _ ->
+                          true ->
                               AccEnv1 = case lists:keymember(Flag, 1, AccEnv) of
                                             false ->
                                                 [{Flag, get_all_env(Flag)} | AccEnv];
@@ -185,6 +188,12 @@ handle_arguments(Arguments) ->
                       end
               end
       end, {[], []}, Arguments).
+
+is_application(Name) ->
+    case application:load(Name) of
+        {error, {Error, _}} when Error =/= already_loaded -> false;
+        _ -> true
+    end.
 
 get_all_env(ns_babysitter) ->
     Env = application:get_all_env(ns_babysitter),

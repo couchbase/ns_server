@@ -647,7 +647,7 @@ trigger_ssl_reload(Event, Services, #state{reload_state = ReloadState} = State) 
     State#state{reload_state = lists:usort(Services ++ ReloadState)}.
 
 do_generate_local_cert(CertPEM, PKeyPEM, Node) ->
-    {_, Host} = misc:node_name_host(node()),
+    Host = misc:extract_node_address(node()),
     Args = ["--generate-leaf",
             "--common-name=" ++ Host],
     Env = [{"CACERT", binary_to_list(CertPEM)},

@@ -411,7 +411,7 @@ goport_args(indexer, Config, _Cmd, NodeUUID) ->
 
 goport_args(fts, Config, _Cmd, NodeUUID) ->
     NsRestPort = service_ports:get_port(rest_port, Config),
-    {_, Host} = misc:node_name_host(node()),
+    Host = misc:extract_node_address(node()),
 
     BuildHostPortArgs =
         fun(ArgName, PortName) ->
@@ -501,7 +501,7 @@ goport_args(cbas, Config, Cmd, NodeUUID) ->
     JavaHome = ns_storage_conf:this_node_java_home(),
 
     {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
-    {_, Host} = misc:node_name_host(node()),
+    Host = misc:extract_node_address(node()),
     {ok, MemoryQuota} = memory_quota:get_quota(Config, cbas),
     RotationConf = ns_server:get_disk_sink_rotation_opts(cbas),
     RotSize = proplists:get_value(size, RotationConf),
@@ -545,7 +545,7 @@ goport_args(cbas, Config, Cmd, NodeUUID) ->
 
 goport_args(example, Config, _Cmd, NodeUUID) ->
     Port = service_ports:get_port(rest_port, Config) + 20000,
-    {_, Host} = misc:node_name_host(node()),
+    Host = misc:extract_node_address(node()),
     ["-node-id", NodeUUID,
      "-host", misc:join_host_port(Host, Port)].
 

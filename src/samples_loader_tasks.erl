@@ -121,7 +121,7 @@ perform_loading_task(Name, Quota) ->
         allowed_to_go -> ok
     end,
 
-    {_Name, Host} = misc:node_name_host(node()),
+    Host = misc:extract_node_address(node()),
     Port = service_ports:get_port(rest_port),
     BinDir = path_config:component_path(bin),
 

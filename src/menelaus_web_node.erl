@@ -245,7 +245,7 @@ build_extra_node_info(Config, Node, InfoNode, _BucketsAll, Append) ->
      | Append].
 
 build_node_hostname(Config, Node, LocalAddr) ->
-    {_, H} = misc:node_name_host(Node),
+    H = misc:extract_node_address(Node),
     Host = case misc:is_localhost(H) of
                true  -> LocalAddr;
                false -> H

@@ -113,7 +113,13 @@ create_ns_couchdb_spec() ->
                           []
                   end,
 
-    ErlangArgs = CouchIni ++ SSLDistOpts ++
+    KernelInetrc =
+        case init:get_argument(kernel) of
+            {ok, Args} -> lists:concat([["-kernel" | V] || V <- Args]);
+            _ -> []
+        end,
+
+    ErlangArgs = CouchIni ++ KernelInetrc ++ SSLDistOpts ++
         ["-setcookie", atom_to_list(ns_server:get_babysitter_cookie()),
          "-name", atom_to_list(ns_node_disco:couchdb_node()),
          "-smp", "enable",

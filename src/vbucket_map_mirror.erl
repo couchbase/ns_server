@@ -159,7 +159,7 @@ call_compute_node_base_url(Node, User, Password) ->
                                      [User, $:, Password, $@]
                              end,
 
-                      {_, H} = misc:node_name_host(RealNode),
+                      H = misc:extract_node_address(RealNode),
                       StorePort = case misc:is_localhost(H) of
                                       true  -> Port;
                                       false -> false
