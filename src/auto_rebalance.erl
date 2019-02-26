@@ -30,6 +30,7 @@
 -export([retry_rebalance/5,
          cancel_any_pending_retry/1,
          cancel_any_pending_retry_async/1,
+         cancel_pending_retry/2,
          cancel_pending_retry_async/2,
          get_pending_retry/0]).
 
@@ -51,19 +52,12 @@
 
 -define(SERVER, {via, leader_registry, ?MODULE}).
 
-%% TODO: These will be set using REST API.
-%% How long to wait before retrying a failed rebalance.
--define(RETRY_AFTER,  ?get_timeout(retry_after, 60000)).
-%% Number of times to retry a failed rebalance.
--define(RETRY_COUNT,  ns_config:read_key_fast(retry_rebalance_count, 3)).
-
 %% APIs
 start_link() ->
     misc:start_singleton(gen_server, ?MODULE, [], []).
 
 retry_rebalance(KnownNodes, EjectNodes, DRBuckets, RebalanceId, Chk) ->
-    %% TODO: Will be set using REST API
-    case ns_config:read_key_fast(retry_rebalance_enabled, false) of
+    case auto_rebalance_settings:is_retry_enabled() of
         true ->
             cast({rebalance, KnownNodes, EjectNodes, DRBuckets, RebalanceId,
                   Chk}),
@@ -80,6 +74,9 @@ cancel_any_pending_retry(CancelledBy) ->
 cancel_any_pending_retry_async(CancelledBy) ->
     cast({cancel_any_pending_retry, CancelledBy}).
 
+cancel_pending_retry(RebalanceId, CancelledBy) ->
+    call({cancel_pending_retry, RebalanceId, CancelledBy}).
+
 cancel_pending_retry_async(RebalanceId, CancelledBy) ->
     cast({cancel_pending_retry, RebalanceId, CancelledBy}).
 
@@ -93,7 +90,8 @@ init([]) ->
 handle_cast({rebalance, KnownNodes, EjectNodes, DRBuckets, Id, Chk},
             #state{state = idle} = State) ->
     Count = 1,
-    TRef = schedule_retry(Id, Count),
+    AfterS = auto_rebalance_settings:get_retry_after(ns_config:latest()),
+    TRef = schedule_retry(Id, Count, AfterS),
     RS = #retry_rebalance{known_nodes = KnownNodes,
                           eject_nodes = EjectNodes,
                           delta_recov_bkts = DRBuckets,
@@ -118,7 +116,10 @@ handle_cast({rebalance, KNs, ENs, DRBuckets, Id, Chk},
                        %% Validate arguments match
                        true = DRBuckets =:= PrevDRB,
 
-                       case Count =:= ?RETRY_COUNT of
+                       Cfg = ns_config:latest(),
+                       Max = auto_rebalance_settings:get_retry_max(Cfg),
+                       AfterS = auto_rebalance_settings:get_retry_after(Cfg),
+                       case Count =:= Max of
                            true ->
                                ale:info(?USER_LOGGER,
                                         "Rebalance with Id ~s will not be "
@@ -127,7 +128,7 @@ handle_cast({rebalance, KNs, ENs, DRBuckets, Id, Chk},
                                reset_state();
                            _ ->
                                NewCount = Count + 1,
-                               TRef = schedule_retry(Id, NewCount),
+                               TRef = schedule_retry(Id, NewCount, AfterS),
                                RS1 = RS#retry_rebalance{state = pending,
                                                         known_nodes = KNs,
                                                         eject_nodes = ENs,
@@ -163,11 +164,12 @@ handle_cast({cancel_pending_retry, RebID, CancelledBy},
                    true ->
                        cancel_rebalance(PendingID, TRef, CancelledBy);
                    false ->
-                       ?log_debug("Pending rebalance will not be cancelled due "
-                                  "to rebalance Id mismatch. "
-                                  "Id passed by the caller:~s. "
-                                  "Id of pending rebalance:~s.",
-                                  [RebID, PendingID]),
+                       ale:info(?USER_LOGGER,
+                                "Pending rebalance will not be cancelled due "
+                                "to rebalance Id mismatch. "
+                                "Id passed by the caller:~s. "
+                                "Id of pending rebalance:~s.",
+                                [RebID, PendingID]),
                        State
                end,
     {noreply, NewState};
@@ -195,10 +197,11 @@ handle_call(get_pending_retry, _From,
                 TimeMS ->
                     TimeMS/1000
             end,
+    Max = auto_rebalance_settings:get_retry_max(ns_config:latest()),
     RV = [{retry_rebalance, RetryState}, {rebalance_id, ID},
           {known_nodes, KN}, {eject_nodes, EN},
           {delta_recovery_buckets, DRBkts},
-          {attempts_remaining, ?RETRY_COUNT - Count},
+          {attempts_remaining, Max - Count + 1},
           {retry_after_secs, TimeS}],
     {reply, RV, State};
 
@@ -206,6 +209,10 @@ handle_call(get_pending_retry, _From,  #state{state = idle} = State) ->
     {reply, [{retry_rebalance, not_pending}], State};
 
 handle_call({cancel_any_pending_retry, _} = Call, _From, State) ->
+    {noreply, NewState} = handle_cast(Call, State),
+    {reply, ok, NewState};
+
+handle_call({cancel_pending_retry, _, _} = Call, _From, State) ->
     {noreply, NewState} = handle_cast(Call, State),
     {reply, ok, NewState};
 
@@ -259,12 +266,12 @@ cast(Cast) ->
     misc:wait_for_global_name(?MODULE),
     gen_server:cast(?SERVER, Cast).
 
-schedule_retry(Id, RetryCount) ->
+schedule_retry(Id, RetryCount, AfterS) ->
     ale:info(?USER_LOGGER,
              "Rebalance with Id ~s will be retried after ~p seconds. "
              "Retry attempt number ~p",
-             [Id, ?RETRY_AFTER/1000, RetryCount]),
-    erlang:send_after(?RETRY_AFTER, self(), retry_rebalance).
+             [Id, AfterS, RetryCount]),
+    erlang:send_after(AfterS * 1000, self(), retry_rebalance).
 
 cancel_rebalance(ID, TRef, CancelledBy) ->
     ?log_debug("Cancelling pending rebalance with Id ~s. Cancelled by ~s.",

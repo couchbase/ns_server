@@ -307,6 +307,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "autoReprovision"] ->
                     {{[settings], read},
                      fun menelaus_web_settings:handle_settings_auto_reprovision/1};
+                ["settings", "retryRebalance"] ->
+                    {{[settings], read},
+                     fun menelaus_web_auto_rebalance:handle_get_retry/1};
                 ["settings", "querySettings"] ->
                     {{[settings], read}, fun menelaus_web_queries:handle_settings_get/1};
                 ["settings", "querySettings", "curlWhitelist"] ->
@@ -405,6 +408,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {local, fun diag_handler:handle_diag_get_password/1};
                 ["pools", "default", "rebalanceProgress"] ->
                     {{[tasks], read}, fun menelaus_web_cluster:handle_rebalance_progress/2, ["default"]};
+                ["pools", "default", "pendingRetryRebalance"] ->
+                    {{[tasks], read},
+                     fun menelaus_web_auto_rebalance:handle_get_pending_retry/2, ["default"]};
                 ["pools", "default", "tasks"] ->
                     {{[tasks], read}, fun menelaus_web_misc:handle_tasks/2, ["default"]};
                 ["index.html"] ->
@@ -501,6 +507,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "autoReprovision"] ->
                     {{[settings], write},
                      fun menelaus_web_settings:handle_settings_auto_reprovision_post/1};
+                ["settings", "retryRebalance"] ->
+                    {{[settings], write},
+                     fun menelaus_web_auto_rebalance:handle_post_retry/1};
                 ["settings", "querySettings"] ->
                     {{[settings], write}, fun menelaus_web_queries:handle_settings_post/1};
                 ["settings", "querySettings", "curlWhitelist"] ->
@@ -589,6 +598,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[pools], write}, fun menelaus_web_cluster:handle_re_failover/1};
                 ["controller", "stopRebalance"] ->
                     {{[pools], write}, fun menelaus_web_cluster:handle_stop_rebalance/1};
+                ["controller", "cancelRebalanceRetry", RebId] ->
+                    {{[pools], write},
+                     fun menelaus_web_auto_rebalance:handle_cancel_pending_retry/2, [RebId]};
                 ["controller", "setRecoveryType"] ->
                     {{[pools], write}, fun menelaus_web_cluster:handle_set_recovery_type/1};
                 ["controller", "setAutoCompaction"] ->
