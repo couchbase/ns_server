@@ -2838,6 +2838,7 @@ do_retrive_samples_from_archive({Period, Seconds, Count},
     end.
 
 -define(MAX_TS, 9999999999999).
+-define(MIN_TS, -?MAX_TS).
 
 handle_ui_stats_v2(Req) ->
     validator:handle(
@@ -2866,19 +2867,37 @@ fix_empty_response(Other, _) ->
     Other.
 
 ui_stats_v2_validators(Req) ->
+    Now = os:system_time(millisecond),
     [validator:required(bucket, _),
      validate_bucket(bucket, _),
      validator:required(statName, _),
-     validator:integer(startTS, 0, ?MAX_TS, _),
-     validator:integer(endTS, 0, ?MAX_TS, _),
+     validator:integer(startTS, ?MIN_TS, ?MAX_TS, _),
+     validator:integer(endTS, ?MIN_TS, ?MAX_TS, _),
+     validate_negative_ts(startTS, Now, _),
+     validate_negative_ts(endTS, Now, _),
      validator:validate_relative(
        fun (StartTS, EndTS) when StartTS > EndTS ->
-               {error, io_lib:format("should not be greater than ~p", [EndTS])};
+               {error,
+                io_lib:format("should not be greater than ~p", [EndTS]) ++
+                    case EndTS - Now of
+                        N when N < 0 ->
+                            io_lib:format(" or between ~p and 0", [N]);
+                        _ ->
+                            []
+                    end};
            (_, _) ->
                ok
        end, startTS, endTS, _),
      validator:integer(step, 1, 60 * 60 * 24 * 366, _),
      validate_host(host, _, Req)].
+
+validate_negative_ts(Name, Now, State) ->
+    validator:validate(
+      fun (TS) when TS < 0 ->
+              {value, Now + TS};
+          (_) ->
+              ok
+      end, Name, State).
 
 validate_bucket(Name, State) ->
     validator:validate(
