@@ -350,14 +350,25 @@ dict_safe_fetch(K, Dict, Default) ->
         _ -> Default
     end.
 
-are_samples_undefined(Samples) ->
-    lists:all(fun (List) ->
-                      lists:all(fun ({_, undefined}) ->
-                                        true;
-                                    ({_, _}) ->
-                                        false
-                                end, List)
-              end, Samples).
+-record(gathered_stats, {kind, samples, nodes, extractor}).
+
+are_samples_undefined(#gathered_stats{samples = Samples}) ->
+    lists:all(
+      fun (NodeSamples) ->
+              lists:all(
+                fun (#stat_entry{values = VS}) ->
+                        lists:all(
+                          fun ({_, undefined}) ->
+                                  true;
+                              ({_, _}) ->
+                                  false
+                          end, VS)
+                end, NodeSamples)
+      end, Samples).
+
+calculate_stats(#gathered_stats{samples = Samples, nodes = Nodes,
+                                extractor = Extractor}) ->
+    {[lists:map(Extractor, NodeSamples) || NodeSamples <- Samples], Nodes}.
 
 %%
 %% Earlier we were gathering all stats from all nodes even if we are
@@ -365,24 +376,19 @@ are_samples_undefined(Samples) ->
 %% To optimize, we will gather only the stats as specified by the StatName.
 %%
 
-get_samples_for_stat(BucketName, StatName, ForNodes, ClientTStamp, Window) ->
-    {GatherStats, StatExtractor} = build_stat_list_and_extractor(BucketName,
-                                                                 StatName),
+get_samples_for_stat(Kind, StatName, ForNodes, ClientTStamp, Window) ->
+    {GatherStats, StatExtractor} =
+        build_stat_list_and_extractor(Kind, StatName),
 
-    {AllNodesSamples, Nodes} = gather_needed_stats(BucketName, ForNodes,
-                                                   ClientTStamp, Window,
-                                                   GatherStats),
-    {[lists:map(StatExtractor, NodeSamples) ||
-         {_, NodeSamples} <- AllNodesSamples], Nodes}.
-
-gather_needed_stats(BucketName, ForNodes, ClientTStamp, Window, GatherStats) ->
     {MainNode, MainSamples, RestSamplesRaw}
-        = menelaus_stats_gatherer:gather_stats(BucketName, ForNodes,
+        = menelaus_stats_gatherer:gather_stats(Kind, ForNodes,
                                                ClientTStamp, Window,
                                                GatherStats),
-    Nodes = [MainNode | [N || {N, _} <- RestSamplesRaw]],
-    AllNodesSamples = [{MainNode, lists:reverse(MainSamples)} | RestSamplesRaw],
-    {AllNodesSamples, Nodes}.
+
+    {RestNodes, RestSamples} = lists:unzip(RestSamplesRaw),
+    #gathered_stats{kind = Kind, nodes = [MainNode | RestNodes],
+                    samples = [lists:reverse(MainSamples) | RestSamples],
+                    extractor = StatExtractor}.
 
 nodes_to_try(Kind, all) ->
     section_nodes(Kind);
@@ -394,8 +400,7 @@ get_samples_from_one_of_kind([], _, _, _, _) ->
     %% Samples may not be available at higher zoom level e.g. week, year etc.
     %% We do not know which Kind the stat belongs to and the
     %% nodes relevant for that Kind i.e. its section_nodes().
-    %% So, return empty sample with local node.
-    {{[[]], [node()]}, undefined};
+    #gathered_stats{samples = [[]], nodes = [node()]};
 get_samples_from_one_of_kind([Kind | RestKinds], StatName,
                              ClientTStamp, Window, Nodes) ->
     case nodes_to_try(Kind, Nodes) of
@@ -409,22 +414,22 @@ get_samples_from_one_of_kind([Kind | RestKinds], StatName,
 
 get_samples_for_kind(Kind, RestKinds, ForNodes, StatName,
                      ClientTStamp, Window, Nodes) ->
-    RV = {Samples, _} = get_samples_for_stat(Kind, StatName, ForNodes,
-                                             ClientTStamp, Window),
-    case are_samples_undefined(Samples) of
+    Stats = get_samples_for_stat(Kind, StatName, ForNodes,
+                                 ClientTStamp, Window),
+    case are_samples_undefined(Stats) of
         true ->
             get_samples_from_one_of_kind(RestKinds, StatName,
                                          ClientTStamp, Window, Nodes);
         false ->
-            {RV, Kind}
+            Stats
     end.
 
 get_samples_for_system_or_bucket_stat(BucketName, StatName,
                                       ClientTStamp, Window) ->
     SearchList = get_stats_search_order(StatName, BucketName),
-    {RV, _} = get_samples_from_one_of_kind(SearchList, StatName,
-                                           ClientTStamp, Window, all),
-    RV.
+    Stats = get_samples_from_one_of_kind(SearchList, StatName,
+                                         ClientTStamp, Window, all),
+    calculate_stats(Stats).
 
 %% For many stats, their section can be identified by their prefix.
 guess_sections_by_pefix(StatName, BucketName) ->
@@ -2793,12 +2798,13 @@ retrive_samples_from_archive(Archive, Params = #params{start_ts = StartTS,
                                                        end_ts = EndTS},
                              {AccSamples, AccNodes, Kind, Continue}) ->
     case do_retrive_samples_from_archive(Archive, Params, Kind) of
-        {{[[]], [_]}, _} ->
+        #gathered_stats{samples = [[]]} ->
             %% no results for this stat in current archive
             %% no need to proceed to less detailed archives
             {AccSamples, AccNodes, Kind, false};
-        {{Samples, Nodes}, NewKind} ->
+        Stats = #gathered_stats{nodes = Nodes, kind = NewKind} ->
             true = AccNodes =:= undefined orelse Nodes =:= AccNodes,
+            {Samples, _} = calculate_stats(Stats),
             NewContinue =
                 case latest_start_timestamp(Samples, StartTS) > StartTS of
                     true ->
@@ -2833,8 +2839,7 @@ do_retrive_samples_from_archive({Period, Seconds, Count},
                                          StartTS, Wnd, Nodes);
         _ ->
             ForNodes = nodes_to_try(Kind, Nodes),
-            {get_samples_for_stat(Kind, StatName, ForNodes, StartTS, Wnd),
-             Kind}
+            get_samples_for_stat(Kind, StatName, ForNodes, StartTS, Wnd)
     end.
 
 -define(MAX_TS, 9999999999999).
