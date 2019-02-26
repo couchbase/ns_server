@@ -1328,10 +1328,13 @@ is_ipv6() ->
 is_cluster_encryption_enabled() ->
     %% TODO: Currently this API searches for a non-existent key in the
     %% config. This is mostly to keep the dialyzer happy. The intent here
-    %% is to unconditionally return true. But once we have the erlang dist
-    %% details figured out, the output of this API will be dependent on the
+    %% is to unconditionally return true, provided the cluster is fully MH
+    %% and enterprise edition. But once we have the erlang dist details
+    %% figured out, the output of this API will be dependent on the
     %% distribution mode in which the ns_server VM is operating.
-    ns_config:search(ns_config:latest(), cluster_encryption, true).
+    cluster_compat_mode:is_cluster_madhatter() andalso
+        cluster_compat_mode:is_enterprise() andalso
+        ns_config:search(ns_config:latest(), cluster_encryption, true).
 
 -spec get_cluster_encryption_level() -> none | control | all.
 get_cluster_encryption_level() ->
