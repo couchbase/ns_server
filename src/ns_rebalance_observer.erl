@@ -19,6 +19,7 @@
 -behavior(gen_server).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -export([start_link/3,
          get_detailed_progress/0,
@@ -34,14 +35,17 @@
 -define(SERVER, {via, leader_registry, ?MODULE}).
 -define(DOCS_LEFT_REFRESH_INTERVAL, 5000).
 
+-record(stat_info, {start_time = false,
+                    end_time = false}).
+
 -record(replica_building_stats, {node :: node(),
                                  docs_total :: non_neg_integer(),
                                  docs_left :: non_neg_integer()}).
 
--record(vbucket_info, {vbucket :: vbucket_id(),
-                       before_chain :: [node()],
+-record(vbucket_info, {before_chain :: [node()],
                        after_chain :: [node()],
-                       stats :: [#replica_building_stats{}]}).
+                       stats :: [#replica_building_stats{}],
+                       move = #stat_info{}}).
 
 -record(state, {bucket :: bucket_name() | undefined,
                 buckets_count :: pos_integer(),
@@ -49,10 +53,7 @@
                 stage_info :: rebalance_progress:stage_info(),
                 nodes_info :: [{atom(), [node()]}],
                 type :: atom(),
-                done_moves :: [#vbucket_info{}],
-                current_moves :: [#vbucket_info{}],
-                pending_moves :: [#vbucket_info{}]
-               }).
+                moves :: dict:dict()}).
 
 start_link(Stages, NodesInfo, Type) ->
     gen_server:start_link(?SERVER, ?MODULE, {Stages, NodesInfo, Type}, []).
@@ -135,7 +136,7 @@ init({Services, NodesInfo, Type}) ->
                              end, []),
 
     StageInfo = rebalance_stage_info:init(get_stage_nodes(Services, NodesInfo)),
-    BucketsCount = length(ns_bucket:get_buckets()),
+    BucketsCount = length(ns_bucket:get_bucket_names()),
     proc_lib:spawn_link(erlang, apply, [fun docs_left_updater_init/1, [Self]]),
 
     {ok, #state{bucket = undefined,
@@ -144,9 +145,7 @@ init({Services, NodesInfo, Type}) ->
                 stage_info = StageInfo,
                 nodes_info = NodesInfo,
                 type = Type,
-                done_moves  = [],
-                current_moves = [],
-                pending_moves = []}}.
+                moves = dict:new()}}.
 
 handle_call(get, _From, State) ->
     {reply, State, State};
@@ -296,18 +295,14 @@ initiate_bucket_rebalance(BucketName, OldState) ->
                   end || Replica <- ChainAfter,
                          Replica =/= undefined,
                          Replica =/= MasterNode],
-             #vbucket_info{vbucket = VB,
-                           before_chain = ChainBefore,
-                           after_chain = ChainAfter,
-                           stats = RBStats}
+             {VB, #vbucket_info{before_chain = ChainBefore,
+                                after_chain = ChainAfter,
+                                stats = RBStats}}
          end || {VB, [MasterNode|_] = ChainBefore, ChainAfter} <- Diff],
 
     ?log_debug("Moves:~n~p", [Moves]),
-
     OldState#state{bucket = BucketName,
-                   done_moves = [],
-                   current_moves = [],
-                   pending_moves = Moves}.
+                   moves = dict:from_list(Moves)}.
 
 handle_rebalance_stage_started({TS, rebalance_stage_started, Stage},
                                #state{stage_info = Old} = State) ->
@@ -334,57 +329,27 @@ handle_bucket_rebalance_started({_, bucket_rebalance_started, _BucketName, _Pid}
 handle_set_ff_map({_, set_ff_map, BucketName, _Diff}, State) ->
     {noreply, initiate_bucket_rebalance(BucketName, State)}.
 
-handle_vbucket_move_start({_, vbucket_move_start, _Pid, _BucketName, _Node, VBucketId, _, _} = Ev, State) ->
-    case ensure_not_pending(State, VBucketId) of
-        State ->
-            ?log_error("Weird vbucket move start for move not in pending moves: ~p", [Ev]),
-            {noreply, State};
-        NewState ->
-            ?log_debug("Noted vbucket move start (vbucket ~p)", [VBucketId]),
-            {noreply, NewState}
-    end.
+handle_vbucket_move_start({TS, vbucket_move_start, _Pid, _BucketName,
+                           _Node, VBucketId, _, _},
+                          State) ->
+    ?log_debug("Noted vbucket move start (vbucket ~p)", [VBucketId]),
+    {noreply, update_info(vbucket_move_start, State,
+                          {TS, VBucketId})}.
 
-handle_vbucket_move_done({_, vbucket_move_done, _BucketName, VBucket} = Ev, State) ->
+handle_vbucket_move_done({TS, vbucket_move_done, _BucketName, VBucket},
+                         State) ->
     State1 = update_move(State, VBucket,
                          fun (#vbucket_info{stats=Stats} = Move) ->
                                  Stats1 = [S#replica_building_stats{docs_left=0} ||
                                               S <- Stats],
                                  Move#vbucket_info{stats=Stats1}
                          end),
-    case ensure_not_current(State1, VBucket) of
-        State1 ->
-            ?log_error("Weird vbucket_move_done for move not in current_moves: ~p", [Ev]),
-            {noreply, State1};
-        NewState ->
-            ?log_debug("Noted vbucket move end (vbucket ~p)", [VBucket]),
-            {noreply, NewState}
-    end.
+    ?log_debug("Noted vbucket move end (vbucket ~p)", [VBucket]),
+    {noreply, update_info(vbucket_move_done, State1,
+                          {TS, VBucket})}.
 
-move_the_move(State, VBucketId, From, To) ->
-    case lists:keytake(VBucketId, #vbucket_info.vbucket, erlang:element(From, State)) of
-        false ->
-            State;
-        {value, Move, RestFrom} ->
-            OldTo = erlang:element(To, State),
-            State1 = erlang:setelement(To, State, [Move | OldTo]),
-            erlang:setelement(From, State1, RestFrom)
-    end.
-
-ensure_not_pending(State, VBucketId) ->
-    move_the_move(State, VBucketId, #state.pending_moves, #state.current_moves).
-
-ensure_not_current(State, VBucketId) ->
-    move_the_move(State, VBucketId, #state.current_moves, #state.done_moves).
-
-update_move(#state{current_moves = Moves} = State, VBucket, Fun) ->
-    NewCurrent =
-        [case Move#vbucket_info.vbucket =:= VBucket of
-             false ->
-                 Move;
-             _ ->
-                 Fun(Move)
-         end || Move <- Moves],
-    State#state{current_moves = NewCurrent}.
+update_move(State, VBucket, Fun) ->
+    update_all_vb_info(State, dict:update(VBucket, Fun, get_all_vb_info(State))).
 
 handle_info(Msg, State) ->
     ?log_error("Got unexpected message: ~p", [Msg]),
@@ -401,31 +366,32 @@ docs_left_updater_init(Parent) ->
     docs_left_updater_loop(Parent).
 
 docs_left_updater_loop(Parent) ->
-    #state{current_moves = CurrentMoves,
-           bucket = BucketName} = gen_server:call(Parent, get, infinity),
+    State = gen_server:call(Parent, get, infinity),
+    BucketName = State#state.bucket,
+    Moves = dict:to_list(get_all_vb_info(State)),
     case BucketName of
         undefined ->
             ok;
         _ ->
-            ?log_debug("Starting docs_left_updater_loop:~p~n~p", [BucketName, CurrentMoves])
+            ?log_debug("Starting docs_left_updater_loop:~p~n~p",
+                       [BucketName, Moves])
     end,
-    [update_docs_left_for_move(Parent, BucketName, M) || M <- CurrentMoves],
+    [update_docs_left_for_move(Parent, BucketName, VB, VBInfo) ||
+     {VB, VBInfo} <- Moves],
     receive
         refresh ->
             _Lost = misc:flush(refresh),
             docs_left_updater_loop(Parent)
     end.
 
-get_docs_estimate(BucketName, #vbucket_info{vbucket = VBucket,
-                                            before_chain = [MasterNode|_],
-                                            stats = RStats}) ->
+get_docs_estimate(BucketName, VBucket, #vbucket_info{before_chain = [MasterNode|_],
+                                                     stats = RStats}) ->
     ReplicaNodes = [S#replica_building_stats.node || S <- RStats],
     janitor_agent:get_dcp_docs_estimate(BucketName, MasterNode, VBucket, ReplicaNodes).
 
-update_docs_left_for_move(Parent, BucketName,
-                          #vbucket_info{vbucket = VBucket,
-                                        stats = RStats} = MoveState) ->
-    try get_docs_estimate(BucketName, MoveState) of
+update_docs_left_for_move(Parent, BucketName, VBucket,
+                          #vbucket_info{stats = RStats} = MoveState) ->
+    try get_docs_estimate(BucketName, VBucket, MoveState) of
         NewLefts ->
             Stuff =
                 lists:flatmap(
@@ -466,15 +432,26 @@ keygroup_sorted(Items) ->
       end, [], Items).
 
 
-do_get_detailed_progress(#state{bucket=undefined}) ->
+do_get_detailed_progress(#state{bucket = undefined}) ->
     not_running;
-do_get_detailed_progress(#state{bucket=Bucket,
-                                buckets_count=BucketsCount,
-                                bucket_number=BucketNumber,
-                                current_moves=CurrentMoves,
-                                pending_moves=PendingMoves,
-                                done_moves=DoneMoves}) ->
-    AllMoves = lists:append([CurrentMoves, PendingMoves, DoneMoves]),
+do_get_detailed_progress(#state{bucket = Bucket,
+                                buckets_count = BucketsCount,
+                                bucket_number = BucketNumber} = State) ->
+    AllMoves = get_all_vb_info(State),
+    {CurrentMoves, PendingMoves} =
+        dict:fold(
+          fun (_, #vbucket_info{move = MoveStat} = VBInfo, {CM, PM}) ->
+                  case {MoveStat#stat_info.start_time,
+                        MoveStat#stat_info.end_time} of
+                      {false, _} ->
+                          {CM, [VBInfo | PM]};
+                      {_, false} ->
+                          {[VBInfo | CM], PM};
+                      {_, _} ->
+                          {CM, PM}
+                  end
+          end, {[], []}, AllMoves),
+
     {OutMovesStats, InMovesStats} = moves_stats(AllMoves),
 
     Inc = fun (undefined, Dict) ->
@@ -547,9 +524,9 @@ do_get_detailed_progress(#state{bucket=Bucket,
 
 
 moves_stats(Moves) ->
-    lists:foldl(
-      fun (#vbucket_info{stats=Stats,
-                         before_chain=[OldMaster|_]}, Acc) ->
+    dict:fold(
+      fun (_, #vbucket_info{stats=Stats,
+                            before_chain=[OldMaster|_]}, Acc) ->
               true = (OldMaster =/= undefined),
 
               lists:foldl(
@@ -571,3 +548,20 @@ moves_stats(Moves) ->
                         {AccOut1, AccIn1}
                 end, Acc, Stats)
       end, {dict:new(), dict:new()}, Moves).
+
+update_info(vbucket_move_done, State, {TS, VB}) ->
+    update_move(State, VB,
+                fun (#vbucket_info{move = Move} = VBInfo) ->
+                        VBInfo#vbucket_info{move = Move#stat_info{end_time = TS}}
+                end);
+update_info(vbucket_move_start, State, {TS, VB}) ->
+    update_move(State, VB,
+                fun (VBInfo) ->
+                        VBInfo#vbucket_info{move = #stat_info{start_time = TS}}
+                end).
+
+get_all_vb_info(#state{moves = Moves}) ->
+    Moves.
+
+update_all_vb_info(State, NewMoves) ->
+    State#state{moves = NewMoves}.
