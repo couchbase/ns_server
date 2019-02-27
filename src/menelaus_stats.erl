@@ -366,9 +366,13 @@ are_samples_undefined(#gathered_stats{samples = Samples}) ->
                 end, NodeSamples)
       end, Samples).
 
+calculate_stats(Extractor, Samples) ->
+    lists:map(Extractor, Samples).
+
 calculate_stats(#gathered_stats{samples = Samples, nodes = Nodes,
                                 extractor = Extractor}) ->
-    {[lists:map(Extractor, NodeSamples) || NodeSamples <- Samples], Nodes}.
+    {[calculate_stats(Extractor, NodeSamples) || NodeSamples <- Samples],
+     Nodes}.
 
 %%
 %% Earlier we were gathering all stats from all nodes even if we are
@@ -2749,23 +2753,28 @@ do_get_indexes(Service, BucketId0, Nodes) ->
 -record(params, {bucket, stat, start_ts, end_ts, step, nodes}).
 
 filter_samples(Samples, StartTS, EndTS) ->
-    S1 = lists:dropwhile(fun ({T, _}) -> T < StartTS end, Samples),
-    lists:takewhile(fun ({T, _}) -> T < EndTS end, S1).
+    S1 = lists:dropwhile(fun (#stat_entry{timestamp = T}) -> T < StartTS end,
+                         Samples),
+    lists:takewhile(fun (#stat_entry{timestamp = T}) -> T < EndTS end, S1).
 
-merge_samples(Samples, undefined, StartTS, EndTS) ->
-    [filter_samples(S, StartTS, EndTS) || S <- Samples];
-merge_samples(Samples, AccSamples, StartTS, EndTS) ->
-    [do_merge_samples(S, A, StartTS, EndTS) ||
+prepare_samples(Samples, StartTS, EndTS, Extractor) ->
+    Filtered = filter_samples(Samples, StartTS, EndTS),
+    calculate_stats(Extractor, Filtered).
+
+merge_samples(Samples, undefined, StartTS, EndTS, Extractor) ->
+    [prepare_samples(S, StartTS, EndTS, Extractor) || S <- Samples];
+merge_samples(Samples, AccSamples, StartTS, EndTS, Extractor) ->
+    [do_merge_samples(S, A, StartTS, EndTS, Extractor) ||
         {S, A} <- lists:zip(Samples, AccSamples)].
 
-do_merge_samples(Samples, [], StartTS, EndTS) ->
-    filter_samples(Samples, StartTS, EndTS);
-do_merge_samples(Samples, [{EndTS, _} | _] = AccSamples, StartTS, _) ->
-    filter_samples(Samples, StartTS, EndTS) ++ AccSamples.
+do_merge_samples(Samples, [], StartTS, EndTS, Extractor) ->
+    prepare_samples(Samples, StartTS, EndTS, Extractor);
+do_merge_samples(Samples, [{EndTS, _} | _] = AccSamples, StartTS, _, Extractor) ->
+    prepare_samples(Samples, StartTS, EndTS, Extractor) ++ AccSamples.
 
 latest_start_timestamp(Samples, StartTS) ->
     lists:foldl(
-      fun ([{T, _} | _], LatestT) when T > LatestT ->
+      fun ([#stat_entry{timestamp = T} | _], LatestT) when T > LatestT ->
               T;
           (_, LatestT) ->
               LatestT
@@ -2802,9 +2811,9 @@ retrive_samples_from_archive(Archive, Params = #params{start_ts = StartTS,
             %% no results for this stat in current archive
             %% no need to proceed to less detailed archives
             {AccSamples, AccNodes, Kind, false};
-        Stats = #gathered_stats{nodes = Nodes, kind = NewKind} ->
+        #gathered_stats{nodes = Nodes, kind = NewKind, extractor = Extractor,
+                        samples = Samples} ->
             true = AccNodes =:= undefined orelse Nodes =:= AccNodes,
-            {Samples, _} = calculate_stats(Stats),
             NewContinue =
                 case latest_start_timestamp(Samples, StartTS) > StartTS of
                     true ->
@@ -2815,7 +2824,7 @@ retrive_samples_from_archive(Archive, Params = #params{start_ts = StartTS,
                         false
                 end,
 
-            {merge_samples(Samples, AccSamples, StartTS, EndTS),
+            {merge_samples(Samples, AccSamples, StartTS, EndTS, Extractor),
              Nodes, NewKind, NewContinue}
     end.
 
