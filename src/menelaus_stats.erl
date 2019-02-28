@@ -441,22 +441,28 @@ guess_sections_by_pefix(StatName, BucketName) ->
         "query_" ++ _Rest ->
             ["@query"];
         "replication" ++ _Rest ->
-            ["@xdcr-" ++ BucketName];
+            ["@xdcr-" ++ BucketName || BucketName =/= undefined];
         "views" ++ _Rest ->
-            [BucketName];
+            [BucketName || BucketName =/= undefined];
         "spatial" ++ _Rest ->
-            [BucketName];
+            [BucketName || BucketName =/= undefined];
         "vb_" ++ _Rest ->
-            [BucketName];
+            [BucketName || BucketName =/= undefined];
         "ep_" ++ _Rest ->
-            [BucketName];
+            [BucketName || BucketName =/= undefined];
         Other ->
-            case lists:takewhile(fun ($/) -> false; (_) -> true end, Other) of
-                Other ->
-                    [];
-                Prefix ->
-                    ["@" ++ Prefix,
-                     "@" ++ Prefix ++ "-" ++ BucketName]
+            case string:split(Other, "/") of
+                [Prefix, _] ->
+                    case lists:member(Prefix, services_sections(undefined)) of
+                        true ->
+                            ["@" ++ Prefix] ++
+                                ["@" ++ Prefix ++ "-" ++ BucketName ||
+                                    BucketName =/= undefined];
+                        false ->
+                            []
+                    end;
+                _ ->
+                    []
             end
     end.
 
@@ -467,8 +473,12 @@ guess_sections_by_pefix(StatName, BucketName) ->
 %%
 get_stats_search_order(StatName, BucketName) ->
     GuessedSections = guess_sections_by_pefix(StatName, BucketName),
-    AllSections = ["@system", BucketName, "@xdcr-" ++ BucketName] ++
-        services_sections(BucketName),
+    AllSections = ["@system" | case BucketName of
+                                   undefined ->
+                                       [];
+                                   _ ->
+                                       [BucketName, "@xdcr-" ++ BucketName]
+                               end ++ services_sections(BucketName)],
     GuessedSections ++ (AllSections -- GuessedSections).
 
 build_response_for_specific_stat(BucketName, StatName, Params, LocalAddr) ->
@@ -550,15 +560,17 @@ do_merge_all_samples_normally(ETS, MainSamples, ListOfLists) ->
       end, ListOfLists),
     [hd(ets:lookup(ETS, T)) || #stat_entry{timestamp = T} <- MainSamples].
 
-services_sections(BucketName) ->
+services_sections(undefined) ->
     ["@query",
      "@index",
      "@fts",
      "@cbas",
-     "@eventing",
-     "@index-" ++ BucketName,
-     "@fts-" ++ BucketName,
-     "@cbas-" ++ BucketName].
+     "@eventing"];
+services_sections(BucketName) ->
+    services_sections(undefined) ++
+        ["@index-" ++ BucketName,
+         "@fts-" ++ BucketName,
+         "@cbas-" ++ BucketName].
 
 describe_section("@query") ->
     {n1ql, undefined};
@@ -2908,8 +2920,7 @@ fix_response({Stats, Nodes}, _) ->
 
 ui_stats_v2_validators(Req) ->
     Now = os:system_time(millisecond),
-    [validator:required(bucket, _),
-     validate_bucket(bucket, _),
+    [validate_bucket(bucket, _),
      validator:required(statName, _),
      validator:integer(startTS, ?MIN_TS, ?MAX_TS, _),
      validator:integer(endTS, ?MIN_TS, ?MAX_TS, _),
@@ -2981,10 +2992,10 @@ output_ui_stats_v2(Req, #params{bucket = Bucket, stat = Stat, step = Step},
                   {Host, {[{samples, Samples}, {timestamps, Timestamps}]}}
           end, lists:zip(Stats, Nodes)),
     menelaus_util:reply_json(
-      Req, {[{bucket, list_to_binary(Bucket)},
-             {statName, list_to_binary(Stat)},
+      Req, {[{statName, list_to_binary(Stat)},
              {step, Step},
              {stats, {StatsJson}}] ++
+                [{bucket, list_to_binary(Bucket)} || Bucket =/= undefined] ++
                 [{aggregatedNodes,
                   [list_to_binary(
                      menelaus_web_node:build_node_hostname(ns_config:latest(),
