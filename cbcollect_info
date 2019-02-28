@@ -750,6 +750,7 @@ def make_os_tasks():
         LinuxTask("Distro version", "cat /etc/SuSE-release"),
         LinuxTask("Distro version", "cat /etc/issue"),
         LinuxTask("Installed software", "rpm -qa"),
+        LinuxTask("Ksplice updates", "uptrack-show"),
         LinuxTask("Hot fix list", "rpm -V couchbase-server"),
         # NOTE: AFAIK columns _was_ necessary, but it doesn't appear to be
         # required anymore. I.e. dpkg -l correctly detects stdout as not a
