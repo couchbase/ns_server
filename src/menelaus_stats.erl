@@ -394,7 +394,7 @@ get_samples_for_stat(Kind, StatName, ForNodes, ClientTStamp, Window) ->
                     samples = [lists:reverse(MainSamples) | RestSamples],
                     extractor = StatExtractor}.
 
-nodes_to_try(Kind, all) ->
+nodes_to_try(Kind, Atom) when Atom =:= all; Atom =:= aggregate ->
     section_nodes(Kind);
 nodes_to_try(_Kind, Nodes) ->
     Nodes.
@@ -2772,6 +2772,19 @@ do_merge_samples(Samples, [], StartTS, EndTS, Extractor) ->
 do_merge_samples(Samples, [{EndTS, _} | _] = AccSamples, StartTS, _, Extractor) ->
     prepare_samples(Samples, StartTS, EndTS, Extractor) ++ AccSamples.
 
+prepare_aggregated_samples(Samples, StartTS, EndTS, Extractor) ->
+    [FirstNodeSamples | Rest] =
+        [filter_samples(S, StartTS, EndTS) || S <- Samples],
+    Aggregated = merge_all_samples_normally(FirstNodeSamples, Rest),
+    calculate_stats(Extractor, Aggregated).
+
+aggregate_and_merge(Samples, [[{EndTS, _} | _]] = [AccSamples], StartTS, _,
+                    Extractor) ->
+    [prepare_aggregated_samples(Samples, StartTS, EndTS, Extractor) ++
+         AccSamples];
+aggregate_and_merge(Samples, _, StartTS, EndTS, Extractor) ->
+    [prepare_aggregated_samples(Samples, StartTS, EndTS, Extractor)].
+
 latest_start_timestamp(Samples, StartTS) ->
     lists:foldl(
       fun ([#stat_entry{timestamp = T} | _], LatestT) when T > LatestT ->
@@ -2804,7 +2817,8 @@ retrive_samples_from_archive(_Archive, _Params,
                              {_AccSamples, _AccNodes, _Kind, false} = Acc) ->
     Acc;
 retrive_samples_from_archive(Archive, Params = #params{start_ts = StartTS,
-                                                       end_ts = EndTS},
+                                                       end_ts = EndTS,
+                                                       nodes = Host},
                              {AccSamples, AccNodes, Kind, Continue}) ->
     case do_retrive_samples_from_archive(Archive, Params, Kind) of
         #gathered_stats{samples = [[]]} ->
@@ -2824,8 +2838,16 @@ retrive_samples_from_archive(Archive, Params = #params{start_ts = StartTS,
                         false
                 end,
 
-            {merge_samples(Samples, AccSamples, StartTS, EndTS, Extractor),
-             Nodes, NewKind, NewContinue}
+            MergedSamples =
+                case Host of
+                    aggregate ->
+                        aggregate_and_merge(Samples, AccSamples, StartTS,
+                                            EndTS, Extractor);
+                    _ ->
+                        merge_samples(Samples, AccSamples, StartTS, EndTS,
+                                      Extractor)
+                end,
+            {MergedSamples, Nodes, NewKind, NewContinue}
     end.
 
 do_retrive_samples_from_archive({Period, Seconds, Count},
@@ -2865,20 +2887,24 @@ handle_ui_stats_v2(Req) ->
                      end_ts = proplists:get_value(endTS, Values, ?MAX_TS),
                      step = proplists:get_value(step, Values, 1),
                      nodes = proplists:get_value(host, Values, all)},
-              {Samples, Nodes} =
-                  fix_empty_response(retrive_samples_from_all_archives(Params),
-                                     Params),
-              output_ui_stats_v2(Req, Params, Samples, Nodes)
+              {Samples, Nodes, AggregatedNodes} =
+                  fix_response(retrive_samples_from_all_archives(Params),
+                               Params),
+              output_ui_stats_v2(Req, Params, Samples, Nodes, AggregatedNodes)
       end, Req, qs, ui_stats_v2_validators(Req)).
 
-fix_empty_response({undefined, undefined}, #params{nodes = all}) ->
-    {[[]], [node()]};
-fix_empty_response({undefined, undefined}, #params{nodes = [Node]}) ->
-    {[[]], [Node]};
-fix_empty_response({[[]], _}, Params) ->
-    fix_empty_response({undefined, undefined}, Params);
-fix_empty_response(Other, _) ->
-    Other.
+fix_response({undefined, undefined}, #params{nodes = aggregate}) ->
+    {[[]], [aggregate], []};
+fix_response({undefined, undefined}, #params{nodes = all}) ->
+    {[[]], [node()], undefined};
+fix_response({undefined, undefined}, #params{nodes = [Node]}) ->
+    {[[]], [Node], undefined};
+fix_response({[[]], _}, Params) ->
+    fix_response({undefined, undefined}, Params);
+fix_response({Stats, Nodes}, #params{nodes = aggregate}) ->
+    {Stats, [aggregate], Nodes};
+fix_response({Stats, Nodes}, _) ->
+    {Stats, Nodes, undefined}.
 
 ui_stats_v2_validators(Req) ->
     Now = os:system_time(millisecond),
@@ -2927,7 +2953,9 @@ validate_bucket(Name, State) ->
 
 validate_host(Name, State, Req) ->
     validator:validate(
-      fun (HostName) ->
+      fun ("aggregate") ->
+              {value, aggregate};
+          (HostName) ->
               case menelaus_web_node:find_node_hostname(HostName, Req) of
                   false ->
                       {error, "Unknown hostname"};
@@ -2937,13 +2965,18 @@ validate_host(Name, State, Req) ->
       end, Name, State).
 
 output_ui_stats_v2(Req, #params{bucket = Bucket, stat = Stat, step = Step},
-                   Stats, Nodes) ->
+                   Stats, Nodes, AggregatedNodes) ->
     LocalAddr = menelaus_util:local_addr(Req),
     StatsJson =
         lists:map(
           fun({S, N}) ->
-                  Host = menelaus_web_node:build_node_hostname(
-                           ns_config:latest(), N, LocalAddr),
+                  Host = case N of
+                             aggregate ->
+                                 aggregate;
+                             _ ->
+                                 menelaus_web_node:build_node_hostname(
+                                   ns_config:latest(), N, LocalAddr)
+                         end,
                   {Timestamps, Samples} = lists:unzip(S),
                   {Host, {[{samples, Samples}, {timestamps, Timestamps}]}}
           end, lists:zip(Stats, Nodes)),
@@ -2951,7 +2984,13 @@ output_ui_stats_v2(Req, #params{bucket = Bucket, stat = Stat, step = Step},
       Req, {[{bucket, list_to_binary(Bucket)},
              {statName, list_to_binary(Stat)},
              {step, Step},
-             {stats, {StatsJson}}]}).
+             {stats, {StatsJson}}] ++
+                [{aggregatedNodes,
+                  [list_to_binary(
+                     menelaus_web_node:build_node_hostname(ns_config:latest(),
+                                                           N, LocalAddr)) ||
+                      N <- AggregatedNodes]} || AggregatedNodes =/= undefined]
+           }).
 
 -ifdef(TEST).
 join_samples_test() ->
