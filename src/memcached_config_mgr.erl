@@ -114,6 +114,7 @@ is_notable_config_key(memcached) -> true;
 is_notable_config_key(memcached_config_extra) -> true;
 is_notable_config_key(ssl_minimum_protocol) -> true;
 is_notable_config_key(cluster_compat_version) -> true;
+is_notable_config_key(developer_preview_enabled) -> true;
 is_notable_config_key(client_cert_auth) -> true;
 is_notable_config_key(scramsha_fallback_salt) -> true;
 is_notable_config_key(external_auth_polling_interval) -> true;

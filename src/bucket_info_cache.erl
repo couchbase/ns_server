@@ -76,6 +76,9 @@ cleaner_loop({{node, _, membership}, _Value}, State) ->
 cleaner_loop({cluster_compat_version, _Value}, State) ->
     submit_full_reset(),
     State;
+cleaner_loop({developer_preview_enabled, _Value}, State) ->
+    submit_full_reset(),
+    State;
 cleaner_loop({{node, _, services}, _Value}, State) ->
     submit_full_reset(),
     State;
