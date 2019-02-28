@@ -61,7 +61,7 @@
          note_autofailover_node_state_change/4,
          note_autofailover_server_group_state_change/4,
          note_autofailover_done/2,
-         note_rebalance_stage_started/1,
+         note_rebalance_stage_started/2,
          note_rebalance_stage_completed/1,
          note_rebalance_stage_event/2
         ]).
@@ -87,8 +87,8 @@ get_stage_list(Stage) when is_atom(Stage) ->
 get_stage_list(Stage) when is_list(Stage) ->
     Stage.
 
-note_rebalance_stage_started(Stage) ->
-    submit_cast({rebalance_stage_started, get_stage_list(Stage)}).
+note_rebalance_stage_started(Stage, Nodes) ->
+    submit_cast({rebalance_stage_started, get_stage_list(Stage), Nodes}).
 
 note_rebalance_stage_completed(Stage) ->
     submit_cast({rebalance_stage_completed, get_stage_list(Stage)}).
@@ -408,10 +408,11 @@ maybe_get_pids_node(Pid) when is_pid(Pid) ->
 maybe_get_pids_node(_PerhapsBinary) ->
     skip_this_pair_please.
 
-event_to_jsons({TS, rebalance_stage_started, Stage}) ->
+event_to_jsons({TS, rebalance_stage_started, Stage, Nodes}) ->
     [format_simple_plist_as_json([{type, rebalanceStageStarted},
                                   {ts, misc:time_to_epoch_float(TS)},
-                                  {stage, {list, Stage}}])];
+                                  {stage, {list, Stage}},
+                                  {nodes, {list, Nodes}}])];
 
 event_to_jsons({TS, rebalance_stage_completed, Stage}) ->
     [format_simple_plist_as_json([{type, rebalanceStageCompleted},

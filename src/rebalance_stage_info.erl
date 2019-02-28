@@ -40,34 +40,26 @@
 
 -type stage_info() :: #stage_info{}.
 
-init(Stages) ->
-    PerStageProgress = dict:from_list(init_per_stage_progress(Stages)),
+%% Need StageNodes as when rebalance starts we need to show a minimum stages of
+%% rebalance that are expected to occur, usually the services involved.
+init(StageNodes) ->
+    PerStageProgress = dict:from_list(init_per_stage_progress(StageNodes)),
     Aggregated = aggregate(PerStageProgress),
-    StageInfo = init_per_stage_info(Stages),
+    StageInfo = init_per_stage_info(StageNodes),
     #stage_info{per_stage_progress = PerStageProgress,
                 aggregated = Aggregated,
                 per_stage_info = StageInfo}.
 
-init_per_stage_progress(Stages) ->
-    lists:flatten([init_stage_progress(S, N, SS) || {S, N, SS} <- Stages]).
+init_per_stage_progress(StageNodes) ->
+    [{Stage, dict:from_list([{N, 0} || N <- Nodes])} ||
+        {Stage, Nodes} <- StageNodes, Nodes =/= []].
 
-init_stage_progress(_Stage, [], _SubStage) ->
-    [];
-init_stage_progress(Stage, Nodes, SubStages) ->
-    SubStageNodes = init_per_stage_progress(SubStages),
-    [{Stage, dict:from_list([{N, 0} || N <- Nodes])} | SubStageNodes].
+init_per_stage_info(StageNodes) ->
+    [{Stage, #stage_details{}} || {Stage, Nodes} <- StageNodes, Nodes =/= []].
 
 %% For backward compatibility.
 get_progress(#stage_info{aggregated = Aggregated}) ->
     Aggregated.
-
-init_per_stage_info(Stages) ->
-    [{Stage, #stage_details{
-                start_time = false,
-                complete_time = false,
-                sub_stages = init_per_stage_info(SubStages),
-                notable_events = []
-               }} || {Stage, Nodes, SubStages} <- Stages, Nodes =/= []].
 
 update_progress(
   Stage, StageProgress,
@@ -85,7 +77,7 @@ do_update_progress(Stage, StageProgress, PerStage) ->
                         dict:merge(fun (_, _, New) ->
                                            New
                                    end, OldStageProgress, StageProgress)
-                end, PerStage).
+                end, StageProgress, PerStage).
 
 aggregate(PerStage) ->
     TmpAggr = dict:fold(
@@ -212,32 +204,39 @@ get_per_stage_progress(PerStageProgress) ->
                      dict:to_list(StageProgress)
              end, PerStageProgress).
 
-update_stage_info({started, Time}, StageInfo) ->
+update_stage({started, {Time, _}}, StageInfo) ->
     StageInfo#stage_details{start_time = Time,
                             complete_time = false};
-update_stage_info({completed, Time}, StageInfo) ->
+update_stage({completed, Time}, StageInfo) ->
     StageInfo#stage_details{complete_time = Time};
-update_stage_info({notable_event, TS, Text},
-                  #stage_details{notable_events = NotableEvents} = StageInfo) ->
+update_stage({notable_event, TS, Text},
+             #stage_details{notable_events = NotableEvents} = StageInfo) ->
     Time = binarify_timestamp(TS),
     Msg = list_to_binary(Text),
     StageInfo#stage_details{notable_events = [{Time, Msg} | NotableEvents]}.
 
-update_stage_info(Stage, StageInfoUpdate,
-                  #stage_info{per_stage_info = PerStageInfo} = StageInfo) ->
+update_stage_info(Stage, StageInfoUpdate, StageInfo) ->
+    NewStageInfo = maybe_create(Stage, StageInfoUpdate, StageInfo,
+                                fun maybe_create_new_stage_progress/3),
+    update_stage_info_inner(Stage, StageInfoUpdate, NewStageInfo).
+
+update_stage_info_inner(Stage, StageInfoUpdate,
+                        #stage_info{per_stage_info = PerStageInfo} = StageInfo) ->
     NewPerStageInfo = update_stage_info_rec(Stage, StageInfoUpdate,
                                             PerStageInfo),
     StageInfo#stage_info{per_stage_info = NewPerStageInfo}.
 
-update_stage_info_rec([Stage | SubStages], StageInfoUpdate, AllStageInfo) ->
+update_stage_info_rec([Stage | SubStages] = AllStages, StageInfoUpdate,
+                      AllStageInfo) ->
     case lists:keysearch(Stage, 1, AllStageInfo) of
         false ->
-            AllStageInfo;
+            maybe_create(AllStages, StageInfoUpdate, AllStageInfo,
+                         fun create_stage/3);
         {value, {Stage, OldStageInfo}} ->
             NewStageInfo =
                 case SubStages of
                     [] ->
-                        update_stage_info(StageInfoUpdate, OldStageInfo);
+                        update_stage(StageInfoUpdate, OldStageInfo);
                     _ ->
                         NewSubStages = update_stage_info_rec(
                                          SubStages,
@@ -247,4 +246,33 @@ update_stage_info_rec([Stage | SubStages], StageInfoUpdate, AllStageInfo) ->
                         OldStageInfo#stage_details{sub_stages = NewSubStages}
                 end,
             lists:keyreplace(Stage, 1, AllStageInfo, {Stage, NewStageInfo})
+    end.
+
+create_new_field({started, {_, []}}) ->
+    false;
+create_new_field({started, {_, _}}) ->
+    true;
+create_new_field(_) ->
+    false.
+
+maybe_create(Stage, Info, Old, Fun) ->
+    case create_new_field(Info) of
+        true -> Fun(Stage, Info, Old);
+        false -> Old
+    end.
+
+create_stage([Stage | _] = AllStages, {started, {_,_}} = Info, AllStageInfo) ->
+    update_stage_info_rec(AllStages, Info,
+                          [{Stage, #stage_details{}} | AllStageInfo]).
+
+maybe_create_new_stage_progress(
+  Stage, {started, {_, Nodes}},
+  #stage_info{per_stage_progress = PerStageProgress} = StageInfo) ->
+    ProgressStage = lists:last(Stage),
+    case dict:find(ProgressStage, PerStageProgress) of
+        {ok, _} ->
+            StageInfo;
+        _ ->
+            [{ProgressStage, Dict}] = init_per_stage_progress([{ProgressStage, Nodes}]),
+            update_progress(ProgressStage, Dict, StageInfo)
     end.

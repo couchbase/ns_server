@@ -117,7 +117,7 @@ is_interesting_master_event({vbucket_move_start, _Pid, _BucketName, _Node, _VBuc
     fun handle_vbucket_move_start/2;
 is_interesting_master_event({vbucket_move_done, _BucketName, _VBucketId}) ->
     fun handle_vbucket_move_done/2;
-is_interesting_master_event({rebalance_stage_started, _Stage}) ->
+is_interesting_master_event({rebalance_stage_started, _Stage, _Nodes}) ->
     fun handle_rebalance_stage_started/2;
 is_interesting_master_event({rebalance_stage_completed, _Stage}) ->
     fun handle_rebalance_stage_completed/2;
@@ -142,16 +142,6 @@ is_interesting_master_event({seqno_waiting_ended, _BucketName, _VBucketId, _, _}
 is_interesting_master_event(_) ->
     undefined.
 
-possible_substages(kv, NodesInfo) ->
-    case proplists:get_value(delta_nodes, NodesInfo, []) of
-        [] ->
-            [];
-        DeltaNodes ->
-            [{kv_delta_recovery, DeltaNodes, []}]
-    end;
-possible_substages(_,_) ->
-    [].
-
 get_stage_nodes(Services, NodesInfo) ->
     ActiveNodes = proplists:get_value(active_nodes, NodesInfo, []),
     lists:filtermap(
@@ -160,8 +150,7 @@ get_stage_nodes(Services, NodesInfo) ->
                   [] ->
                       false;
                   Nodes ->
-                      SubStages = possible_substages(Service, NodesInfo),
-                      {true, {Service, Nodes, SubStages}}
+                      {true, {Service, Nodes}}
               end
       end, lists:usort(Services)).
 
@@ -339,9 +328,10 @@ initiate_bucket_rebalance(BucketName, FFMap, OldState) ->
     TmpState = update_all_vb_info(OldState, BucketName, dict:from_list(Moves)),
     TmpState#state{bucket = BucketName}.
 
-handle_rebalance_stage_started({TS, rebalance_stage_started, Stage},
+handle_rebalance_stage_started({TS, rebalance_stage_started, Stage, Nodes},
                                #state{stage_info = Old} = State) ->
-    New = rebalance_stage_info:update_stage_info(Stage, {started, TS}, Old),
+    New = rebalance_stage_info:update_stage_info(Stage, {started, {TS, Nodes}},
+                                                 Old),
     {noreply, State#state{stage_info = New}}.
 
 handle_rebalance_stage_completed({TS, rebalance_stage_completed, Stage},
