@@ -5,7 +5,7 @@
     .module('mnAlertsService', ['ui.bootstrap', 'mnFilters'])
     .service('mnAlertsService', mnAlertsServiceFactory);
 
-  function mnAlertsServiceFactory($uibModal, $rootScope, $window, $timeout) {
+  function mnAlertsServiceFactory($uibModal, $rootScope, $timeout) {
     var alerts = [];
     var alertsHistory = [];
     var clientAlerts = {
@@ -76,7 +76,6 @@
       if (timeout) {
         item.timeout = startTimer(item, timeout);
       }
-      $window.scrollTo(0, 0);
     }
     function formatAndSetAlerts(incomingAlerts, type, timeout) {
       timeout = timeout || (60000 * 5);
