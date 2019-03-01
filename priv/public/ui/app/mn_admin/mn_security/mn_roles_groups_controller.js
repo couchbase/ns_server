@@ -8,7 +8,6 @@
       "mnHelper",
       "mnPromiseHelper",
       "mnPoll",
-      "mnSortableTable",
       "mnSpinner",
       "ui.select",
       "mnEqual",

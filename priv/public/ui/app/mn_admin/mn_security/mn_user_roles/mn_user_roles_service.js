@@ -170,9 +170,14 @@
         config.params.permission = params.permission;
       }
       if (params && params.pageSize) {
+        if (params.substr) {
+          config.params.substr = params.substr;
+        }
         config.params.pageSize = params.pageSize;
         config.params.startFromDomain = params.startFromDomain;
         config.params.startFrom = params.startFrom;
+        config.params.order = params.order;
+        config.params.sortBy = params.sortBy;
       }
 
       return $http(config);

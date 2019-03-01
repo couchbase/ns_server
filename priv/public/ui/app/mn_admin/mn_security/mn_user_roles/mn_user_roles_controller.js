@@ -30,58 +30,24 @@
 
     vm.filterField = "";
 
+    vm.stateParams = $state.params;
+
     vm.isLdapEnabled = poolDefault.saslauthdEnabled;
 
     vm.pageSize = $state.params.pageSize;
     vm.pageSizeChanged = pageSizeChanged;
-    vm.listFiter = listFiter;
+    vm.sortByChanged = sortByChanged;
+    vm.isOrderBy = isOrderBy;
+    vm.isDesc = isDesc;
 
     activate();
 
-    function listFiter(user) {
-      var interestingFields = ["id", "name"];
-      var l1 = user.roles.length;
-      var l2 = interestingFields.length;
-      var i1;
-      var i2;
-      var searchValue = vm.filterField.toLowerCase();
-      var role;
-      var roleName;
-      var rv = false;
-      var searchFiled;
+    function isOrderBy(sortBy) {
+      return sortBy === $state.params.sortBy;
+    }
 
-      if ((user.domain === "local" ? "Couchbase" : "External")
-          .toLowerCase()
-          .indexOf(searchValue) > -1) {
-        rv = true;
-      }
-
-      if (!rv) {
-        //look in roles
-        loop1:
-        for (i1 = 0; i1 < l1; i1++) {
-          role = user.roles[i1];
-          roleName = role.role + (role.bucket_name ? '[' + role.bucket_name + ']' : '');
-          if (vm.rolesByRole[roleName].name.toLowerCase().indexOf(searchValue) > -1) {
-            rv = true;
-            break loop1;
-          }
-        }
-      }
-
-      if (!rv) {
-        //look in interestingFields
-        loop2:
-        for (i2 = 0; i2 < l2; i2++) {
-          searchFiled = interestingFields[i2];
-          if (user[searchFiled].toLowerCase().indexOf(searchValue) > -1) {
-            rv = true;
-            break loop2;
-          }
-        }
-      }
-
-      return rv;
+    function isDesc() {
+      return $state.params.order === "desc";
     }
 
     function pageSizeChanged() {
@@ -90,7 +56,29 @@
       });
     }
 
+    function sortByChanged(sortBy) {
+      $state.go('.', {
+        order: $state.params.sortBy != sortBy ? "asc" :
+          $state.params.order === "asc" ? "desc" : "asc",
+        sortBy: sortBy
+      });
+    }
+
     function activate() {
+
+      $scope.$watchGroup(["userRolesCtl.stateParams.order",
+                          "userRolesCtl.stateParams.sortBy",
+                          "userRolesCtl.stateParams.substr"], _.debounce(function () {
+                            console.log("a")
+                            $scope.$broadcast("reloadRolesPoller");
+                          }, 500, {leading: true}));
+
+      $scope.$watch('userRolesCtl.filterField', _.debounce(function () {
+        $state.go('.', {
+          substr: vm.filterField || undefined
+        })
+      }, 500, {leading: true}), true);
+
       mnHelper.initializeDetailsHashObserver(vm, 'openedUsers', '.');
 
       mnPromiseHelper(vm, mnUserRolesService.getRoles())

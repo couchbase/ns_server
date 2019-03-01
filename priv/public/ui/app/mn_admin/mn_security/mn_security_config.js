@@ -60,11 +60,18 @@
         }
       })
       .state('app.admin.security.userRoles', {
-        url: "/userRoles?openedUsers&startFrom&startFromDomain&{pageSize:int}",
+        url: "/userRoles?openedUsers&startFrom&startFromDomain&sortBy&order&substr&{pageSize:int}",
         params: {
           openedUsers: {
             array: true,
             dynamic: true
+          },
+          substr: {
+            dynamic: true,
+            value: ""
+          },
+          pageSize: {
+            value: 10
           },
           startFrom: {
             value: null
@@ -72,8 +79,13 @@
           startFromDomain: {
             value: null
           },
-          pageSize: {
-            value: 10
+          sortBy: {
+            value: "id",
+            dynamic: true
+          },
+          order: {
+            value: "asc",
+            dynamic: true
           }
         },
         controller: "mnUserRolesController as userRolesCtl",

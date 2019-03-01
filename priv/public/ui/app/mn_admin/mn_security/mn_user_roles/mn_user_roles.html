@@ -30,32 +30,46 @@
        mn-search="userRolesCtl.filterField">
     </div>
   </div>
-  <div class="cbui-table" mn-sortable-table>
+  <div class="cbui-table">
     <div class="cbui-table-header padding-left">
       <span class="cbui-table-cell">
-        <span mn-sortable-title="id" sort-by-default="true" class="sorter">username</span>
+        <span
+          class="sorter"
+          ng-click="userRolesCtl.sortByChanged('id')"
+          ng-class="{'dynamic-active': userRolesCtl.isOrderBy('id'),
+                    'dynamic-inverted': userRolesCtl.isOrderBy('id')
+                    && userRolesCtl.isDesc()}">username</span>
       </span>
       <span class="cbui-table-cell resp-hide-sml">
-        <span mn-sortable-title="name" class="sorter">full name</span>
+        <span class="sorter"
+              ng-click="userRolesCtl.sortByChanged('name')"
+              ng-class="{'dynamic-active': userRolesCtl.isOrderBy('name'),
+                        'dynamic-inverted': userRolesCtl.isOrderBy('name')
+                        && userRolesCtl.isDesc()}">full name</span>
       </span>
       <span class="cbui-table-cell flex-grow-3">
-        <span mn-sortable-title="roles" class="sorter">roles</span>
+        <span>roles</span>
       </span>
       <span class="cbui-table-cell resp-hide-xsml">
-        <span mn-sortable-title="domain" class="sorter">auth domain</span>
+        <span class="sorter"
+              ng-click="userRolesCtl.sortByChanged('domain')"
+              ng-class="{'dynamic-active': userRolesCtl.isOrderBy('domain'),
+                        'dynamic-inverted': userRolesCtl.isOrderBy('domain')
+                        && userRolesCtl.isDesc()}">auth domain</span>
       </span>
       <span class="cbui-table-cell resp-hide-sml">
-        <span mn-sortable-title="password_change_date" class="sorter">password set</span>
+        <span class="sorter"
+              ng-click="userRolesCtl.sortByChanged('password_change_date')"
+              ng-class="{'dynamic-active': userRolesCtl.isOrderBy('password_change_date'),
+                        'dynamic-inverted': userRolesCtl.isOrderBy('password_change_date')
+                        && userRolesCtl.isDesc()}">password set</span>
       </span>
     </div>
     <section
        class="has-hover"
        ng-if="userRolesCtl.state.users.length"
        ng-click="userRolesCtl.toggleDetails(user.id + user.domain)"
-       ng-repeat="user in userRolesCtl.state.users |
-                  orderBy: mnSortableTable.sortableTableProperties.orderBy:mnSortableTable.sortableTableProperties.invert |
-                  filter: userRolesCtl.listFiter
-                  track by (user.id + user.domain)">
+       ng-repeat="user in userRolesCtl.state.users track by (user.id + user.domain)">
       <div class="cbui-tablerow padding-left resp-sml">
         <span class="cbui-table-cell">
           {{user.id}}
