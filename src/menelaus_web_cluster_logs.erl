@@ -15,12 +15,23 @@
 %%
 -module(menelaus_web_cluster_logs).
 
+-include("ns_common.hrl").
 -include("cut.hrl").
 
 -export([handle_start_collect_logs/1,
          handle_cancel_collect_logs/1,
          handle_settings_log_redaction/1,
-         handle_settings_log_redaction_post/1]).
+         handle_settings_log_redaction_post/1,
+         handle_rebalance_report/1]).
+
+handle_rebalance_report(Req) ->
+    menelaus_util:assert_is_madhatter(),
+    case ns_rebalance_report_manager:get_rebalance_report() of
+        {ok, BinaryReport} ->
+            menelaus_util:reply_ok(Req, "application/json", BinaryReport);
+        Err ->
+            menelaus_util:reply_json(Req, {[Err]})
+    end.
 
 handle_settings_log_redaction(Req) ->
     menelaus_util:assert_is_enterprise(),

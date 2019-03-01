@@ -1221,14 +1221,16 @@ terminate_observer(#rebalancing_state{rebalance_observer = ObserverPid}) ->
 
 handle_rebalance_completion(ExitReason, State) ->
     cancel_stop_timer(State),
-    terminate_observer(State),
     maybe_reset_autofailover_count(ExitReason, State),
     maybe_reset_reprovision_count(ExitReason, State),
-    log_rebalance_completion(ExitReason, State),
+    Msg = log_rebalance_completion(ExitReason, State),
     maybe_retry_rebalance(ExitReason, State),
     update_rebalance_counters(ExitReason, State),
     update_rebalance_status(ExitReason, State),
     rpc:eval_everywhere(diag_handler, log_all_dcp_stats, []),
+    ns_rebalance_observer:record_rebalance_report(
+      [{completionMessage, list_to_binary(Msg)}]),
+    terminate_observer(State),
 
     R = compat_mode_manager:consider_switching_compat_mode(),
     case maybe_start_service_upgrader(ExitReason, R, State) of
@@ -1419,35 +1421,31 @@ maybe_reset_reprovision_count(_, _) ->
 log_rebalance_completion(
   ExitReason, #rebalancing_state{type = Type, abort_reason = AbortReason,
                                  rebalance_id = RebalanceId}) ->
-    do_log_rebalance_completion(ExitReason, Type, AbortReason, RebalanceId).
+    {Severity, Fmt, Args} = get_log_msg(ExitReason, Type, AbortReason,
+                                        RebalanceId),
+    ale:log(?USER_LOGGER, Severity, Fmt, Args),
+    lists:flatten(io_lib:format(Fmt, Args)).
 
-do_log_rebalance_completion(normal, Type, _, Id) ->
-    ale:info(?USER_LOGGER,
-             "~s completed successfully. Operation Id = ~s",
-             [rebalance_type2text(Type), Id]);
-do_log_rebalance_completion({shutdown, stop}, Type, AbortReason, Id) ->
-    log_abort_reason(AbortReason, Type, Id);
-do_log_rebalance_completion(Error, Type, undefined, Id) ->
-    ale:error(?USER_LOGGER,
-              "~s exited with reason ~p. Operation Id = ~s",
-              [rebalance_type2text(Type), Error, Id]);
-do_log_rebalance_completion(_Error, Type, AbortReason, Id) ->
-    log_abort_reason(AbortReason, Type, Id).
+get_log_msg(normal, Type, _, Id) ->
+    {info, "~s completed successfully. Operation Id = ~s",
+     [rebalance_type2text(Type), Id]};
+get_log_msg({shutdown, stop}, Type, AbortReason, Id) ->
+    get_log_msg(AbortReason, Type, Id);
+get_log_msg(Error, Type, undefined, Id) ->
+    {error, "~s exited with reason ~p. Operation Id = ~s",
+     [rebalance_type2text(Type), Error, Id]};
+get_log_msg(_Error, Type, AbortReason, Id) ->
+    get_log_msg(AbortReason, Type, Id).
 
-log_abort_reason({try_autofailover, _, Nodes}, Type, Id) ->
-    ale:info(?USER_LOGGER,
-             "~s interrupted due to auto-failover of nodes ~p. "
-             "Operation Id = ~s",
-             [rebalance_type2text(Type), Nodes, Id]);
-log_abort_reason({rebalance_observer_terminated, Reason}, Type, Id) ->
-    ale:error(?USER_LOGGER,
-              "~s interrupted as observer exited with reason ~p. "
-              "Operation Id = ~s",
-              [rebalance_type2text(Type), Reason, Id]);
-log_abort_reason(user_stop, Type, Id) ->
-    ale:info(?USER_LOGGER,
-             "~s stopped by user. Operation Id = ~s",
-             [rebalance_type2text(Type), Id]).
+get_log_msg({try_autofailover, _, Nodes}, Type, Id) ->
+    {info, "~s interrupted due to auto-failover of nodes ~p. Operation Id = ~s",
+     [rebalance_type2text(Type), Nodes, Id]};
+get_log_msg({rebalance_observer_terminated, Reason}, Type, Id) ->
+    {error, "~s interrupted as observer exited with reason ~p. Operation Id = ~s",
+     [rebalance_type2text(Type), Reason, Id]};
+get_log_msg(user_stop, Type, Id) ->
+    {info, "~s stopped by user. Operation Id = ~s",
+     [rebalance_type2text(Type), Id]}.
 
 rebalance_type2text(rebalance) ->
     <<"Rebalance">>;

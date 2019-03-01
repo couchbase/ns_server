@@ -260,4 +260,7 @@ child_specs() ->
       permanent, infinity, supervisor, [health_monitor_sup]},
 
      {reblance_agent, {rebalance_agent, start_link, []},
-      permanent, 5000, worker, []}].
+      permanent, 5000, worker, []},
+
+     {ns_rebalance_report_manager, {ns_rebalance_report_manager, start_link, []},
+      permanent, 1000, worker, []}].

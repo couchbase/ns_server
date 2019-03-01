@@ -25,6 +25,7 @@
          get_detailed_progress/0,
          get_aggregated_progress/1,
          get_rebalance_info/0,
+         record_rebalance_report/1,
          update_stage_info/2,
          update_progress/2,
          submit_master_event/1]).
@@ -98,6 +99,9 @@ get_aggregated_progress(Timeout) ->
 
 get_rebalance_info() ->
     generic_get_call({get_rebalance_info, []}).
+
+record_rebalance_report(Args) ->
+    generic_get_call({record_rebalance_report, Args}).
 
 update_progress(Stage, StageProgress) ->
     gen_server:cast(?SERVER, {update_progress, Stage, StageProgress}).
@@ -194,6 +198,21 @@ handle_call({get_rebalance_info, Options}, _From,
                      {nodesInfo, {NodesInfo}},
                      {masterNode, atom_to_binary(node(), latin1)}],
     {reply, RebalanceInfo, State};
+handle_call({record_rebalance_report, ExitInfo}, From, State) ->
+    {_, RebalanceInfo, NewState} = handle_call({get_rebalance_info,
+                                                [{add_vbucket_info, true}]},
+                                               From,
+                                               State),
+    Report = {RebalanceInfo ++ ExitInfo},
+    RV = case ns_rebalance_report_manager:record_rebalance_report(Report) of
+             ok ->
+                 ok;
+             Err ->
+                 ?log_info("Unable to record report ~p, Error ~p",
+                           [Report, Err]),
+                 Err
+         end,
+    {reply, RV, NewState};
 handle_call(Req, From, State) ->
     ?log_error("Got unknown request: ~p from ~p", [Req, From]),
     {reply, unknown_request, State}.
