@@ -180,7 +180,7 @@ verify_starting_compaction(N, #vs{running_moves = RunningM,
 generate_a_map(VBucketsCount, ReplicasCount, Nodes) ->
     Chain = lists:duplicate(ReplicasCount+1, undefined),
     EmptyMap = lists:duplicate(VBucketsCount, Chain),
-    mb_map:generate_map(EmptyMap, lists:sort(Nodes), []).
+    mb_map:generate_map(EmptyMap, ReplicasCount, lists:sort(Nodes), []).
 
 simulate_rebalance_log(Msg, Args) ->
     ?log_info(Msg, Args).
@@ -277,7 +277,7 @@ simulate_rebalance_loop(S, InFlight, R, VirtualTime, Acc) ->
 test_rebalance(Replicas, VBuckets, BackfillsLimit, MovesBeforeCompaction, MaxInflightMoves,
                NodesBefore, NodesAfter) ->
     InitialMap = generate_a_map(VBuckets, Replicas, NodesBefore),
-    TargetMap = mb_map:generate_map(InitialMap, NodesAfter, []),
+    TargetMap = mb_map:generate_map(InitialMap, Replicas, NodesAfter, []),
     do_test_rebalance(VBuckets, BackfillsLimit, MovesBeforeCompaction, MaxInflightMoves,
                       InitialMap, TargetMap).
 
@@ -380,7 +380,7 @@ run_rebalance_after_data_loss(Nodes, FailedOverNodes, VBuckets, Replicas,
     AfterFailover = lists:foldl(fun (ToRemove, Map0) ->
                                         mb_map:promote_replicas(Map0, [ToRemove])
                                 end, InitialMap, FailedOverNodes),
-    TargetMap = mb_map:generate_map(AfterFailover, Nodes, []),
+    TargetMap = mb_map:generate_map(AfterFailover, Replicas, Nodes, []),
     do_test_rebalance(VBuckets, BackfillsLimit, MovesBeforeCompaction, MaxInflightMoves,
                       AfterFailover, TargetMap).
 
@@ -402,8 +402,9 @@ simulate_that_rebalance() ->
       end,
       ?LOGGERS),
 
-    Before = generate_a_map(256, 0, [a, b, c, d]),
-    After = mb_map:generate_map(Before, [a, b, c], []),
+    NumReplicas = 0,
+    Before = generate_a_map(256, NumReplicas, [a, b, c, d]),
+    After = mb_map:generate_map(Before, NumReplicas, [a, b, c], []),
     {_, _, Events} = simulate_rebalance(Before, After, 1, 16, 16),
     {ok, F} = file:open("simulate-results", [write, binary]),
     Rows =

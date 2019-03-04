@@ -377,7 +377,8 @@ generate_vbucket_map(CurrentMap, KeepNodes, BucketConfig) ->
     Map = case Map0 of
               undefined ->
                   EffectiveOpts = [{maps_history, ns_bucket:past_vbucket_maps()} | Opts],
-                  mb_map:generate_map(CurrentMap, KeepNodes, EffectiveOpts);
+                  NumReplicas = ns_bucket:num_replicas(BucketConfig),
+                  mb_map:generate_map(CurrentMap, NumReplicas, KeepNodes, EffectiveOpts);
               _ ->
                   Map0
           end,

@@ -30,8 +30,8 @@
 -export([promote_replicas/2,
          promote_replica/2,
          promote_replicas_for_graceful_failover/2,
-         generate_map/3,
-         is_balanced/3,
+         generate_map/4,
+         is_balanced/4,
          is_valid/1,
          random_map/3,
          vbucket_movements/2,
@@ -303,17 +303,15 @@ matching_renamings_same_vbuckets_count(KeepNodesSet, CurrentTags,
 %% API
 %%
 
-generate_map(Map, Nodes, Options) ->
+generate_map(Map, NumReplicas, Nodes, Options) ->
     Tags = proplists:get_value(tags, Options),
-    NumReplicas = length(hd(Map)) - 1,
-
     UseOldCode = (Tags =:= undefined) andalso (NumReplicas =< 1),
 
     case UseOldCode of
         true ->
-            generate_map_old(Map, Nodes, Options);
+            generate_map_old(Map, NumReplicas, Nodes, Options);
         false ->
-            generate_map_new(Map, Nodes, Options)
+            generate_map_new(Map, NumReplicas, Nodes, Options)
     end.
 
 is_compatible_past_map(OptionsPast0, OptionsNow0) ->
@@ -321,13 +319,12 @@ is_compatible_past_map(OptionsPast0, OptionsNow0) ->
     OptionsNow = lists:keydelete(tags, 1, OptionsNow0),
     OptionsNow =:= OptionsPast.
 
-generate_map_new(Map, Nodes, Options) ->
+generate_map_new(Map, NumReplicas, Nodes, Options) ->
     KeepNodes = lists:sort(Nodes),
     MapsHistory = proplists:get_value(maps_history, Options, []),
 
     NumVBuckets = length(Map),
     NumSlaves = proplists:get_value(max_slaves, Options, 10),
-    NumReplicas = length(hd(Map)) - 1,
     Tags = proplists:get_value(tags, Options),
 
     MapsFromPast0 = find_matching_past_maps(Nodes, Map, Options, MapsHistory),
@@ -357,17 +354,17 @@ generate_map_new(Map, Nodes, Options) ->
                 lists:keymember(BestMap, 1, GeneratedMaps)]),
     BestMap.
 
-generate_map_old(Map, Nodes, Options) ->
+generate_map_old(Map, NumReplicas, Nodes, Options) ->
     KeepNodes = lists:sort(Nodes),
     MapsHistory = proplists:get_value(maps_history, Options, []),
 
-    NaturalMap = balance(Map, KeepNodes, Options),
+    NaturalMap = balance(Map, NumReplicas, KeepNodes, Options),
     [NaturalMapScore] = score_maps(Map, [NaturalMap]),
 
     ?log_debug("Natural map score: ~p", [element(2, NaturalMapScore)]),
 
-    RndMap1 = balance(Map, misc:shuffle(Nodes), Options),
-    RndMap2 = balance(Map, misc:shuffle(Nodes), Options),
+    RndMap1 = balance(Map, NumReplicas, misc:shuffle(Nodes), Options),
+    RndMap2 = balance(Map, NumReplicas, misc:shuffle(Nodes), Options),
 
     AllRndMapScores = [RndMap1Score, RndMap2Score] = score_maps(Map, [RndMap1, RndMap2]),
 
@@ -387,10 +384,10 @@ generate_map_old(Map, Nodes, Options) ->
     BestMap.
 
 %% @doc Generate a balanced map.
-balance(Map, KeepNodes, Options) ->
+balance(Map, NumReplicas, KeepNodes, Options) ->
     NumNodes = length(KeepNodes),
     NumVBuckets = length(Map),
-    OrigCopies = length(hd(Map)),
+    OrigCopies = NumReplicas + 1,
     NumCopies = erlang:min(NumNodes, OrigCopies),
     %% We always use the slave assignment machinery.
     MaxSlaves = proplists:get_value(max_slaves, Options, NumNodes - 1),
@@ -407,10 +404,10 @@ balance(Map, KeepNodes, Options) ->
 
 
 %% @doc Test that a map is valid and balanced.
-is_balanced(Map, Nodes, Options) ->
+is_balanced(Map, NumReplicas, Nodes, Options) ->
     case is_valid(Map) of
         true ->
-            NumCopies = erlang:min(length(hd(Map)), length(Nodes)),
+            NumCopies = erlang:min(NumReplicas + 1, length(Nodes)),
             case lists:all(
                    fun (Chain) ->
                            {Active, Inactive} = lists:split(NumCopies, Chain),
@@ -956,13 +953,14 @@ rebalance_count_experiment(From, To) when From =:= To ->
 rebalance_count_experiment(From, To) ->
     NodesBefore = testnodes(From),
     NodesAfter = testnodes(To),
-    Initial = lists:duplicate(1024, lists:duplicate(2, undefined)),
-    BeforeMap = generate_map(Initial, NodesBefore, [{max_slaves, 10}]),
-    AfterMap = generate_map(BeforeMap, NodesAfter, [{max_slaves, 10}]),
+    NumReplicas = 1,
+    Initial = lists:duplicate(1024, lists:duplicate(NumReplicas + 1, undefined)),
+    BeforeMap = generate_map(Initial, NumReplicas, NodesBefore, [{max_slaves, 10}]),
+    AfterMap = generate_map(BeforeMap, NumReplicas,  NodesAfter, [{max_slaves, 10}]),
     [MinTF, MaxTF] = lists:sort([To, From]),
     Minimal = 1024 * 2 / MaxTF * (MaxTF - MinTF),
-    IsBalancedS = is_balanced_sort_of_strongly(AfterMap, NodesAfter, [{max_slaves, 10}]),
-    IsBalanced = is_balanced(AfterMap, NodesAfter, [{max_slaves, 10}]),
+    IsBalancedS = is_balanced_sort_of_strongly(AfterMap, NumReplicas, NodesAfter, [{max_slaves, 10}]),
+    IsBalanced = is_balanced(AfterMap, NumReplicas, NodesAfter, [{max_slaves, 10}]),
     io:format("~p -> ~p: ~p, min: ~p ~p ~p~n", [From, To, simple_movements(BeforeMap, AfterMap), Minimal, IsBalancedS, IsBalanced]),
     ok.
 
@@ -998,10 +996,10 @@ run_rebalance_counts_experiment() ->
         To <- lists:seq(1, 100)],
     erlang:halt(0).
 
-is_balanced_sort_of_strongly(Map, Nodes, Options) ->
+is_balanced_sort_of_strongly(Map, NumReplicas, Nodes, Options) ->
     case is_valid(Map) of
         true ->
-            NumCopies = erlang:min(length(hd(Map)), length(Nodes)),
+            NumCopies = erlang:min(NumReplicas + 1, length(Nodes)),
             case lists:all(
                    fun (Chain) ->
                            {Active, Inactive} = lists:split(NumCopies, Chain),
@@ -1076,8 +1074,8 @@ balance_test_gen(MapSize, CopySize, NumNodes, NumSlaves) ->
                   Map1 = random_map(MapSize, CopySize, NumNodes),
                   Nodes = testnodes(NumNodes),
                   Opts = [{max_slaves, NumSlaves}],
-                  Map2 = balance(Map1, Nodes, Opts),
-                  ?assert(is_balanced(Map2, Nodes, Opts))
+                  Map2 = balance(Map1, CopySize - 1, Nodes, Opts),
+                  ?assert(is_balanced(Map2, CopySize - 1, Nodes, Opts))
           end,
     {timeout, 300, {Title, Fun}}.
 
@@ -1086,12 +1084,13 @@ validate_test() ->
     ?assertEqual(is_valid([]), empty),
     ?assertEqual(is_valid([[]]), empty).
 
-do_failover_and_rebalance_back_trial(NodesCount, FailoverIndex, VBucketCount, ReplicaCount) ->
+do_failover_and_rebalance_back_trial(NodesCount, FailoverIndex, VBucketCount,
+                                     NumReplicas) ->
     Nodes = testnodes(NodesCount),
-    InitialMap = lists:duplicate(VBucketCount, lists:duplicate(ReplicaCount+1, undefined)),
+    InitialMap = lists:duplicate(VBucketCount, lists:duplicate(NumReplicas + 1, undefined)),
     SlavesOptions = [{max_slaves, 10}],
-    FirstMap = generate_map_old(InitialMap, Nodes, SlavesOptions),
-    true = is_balanced(FirstMap, Nodes, SlavesOptions),
+    FirstMap = generate_map_old(InitialMap, NumReplicas, Nodes, SlavesOptions),
+    true = is_balanced(FirstMap, NumReplicas, Nodes, SlavesOptions),
     FailedNode = lists:nth(FailoverIndex, Nodes),
     FailoverMap = promote_replicas(FirstMap, [FailedNode]),
     LiveNodes = lists:sublist(Nodes, FailoverIndex-1) ++ lists:nthtail(FailoverIndex, Nodes),
@@ -1099,10 +1098,10 @@ do_failover_and_rebalance_back_trial(NodesCount, FailoverIndex, VBucketCount, Re
     true = lists:member(FailedNode, Nodes),
     ?assertEqual(NodesCount, length(LiveNodes) + 1),
     ?assertEqual(NodesCount, length(lists:usort(LiveNodes)) + 1),
-    false = is_balanced(FailoverMap, LiveNodes, SlavesOptions),
+    false = is_balanced(FailoverMap, NumReplicas, LiveNodes, SlavesOptions),
     true = (lists:sort(LiveNodes) =:= lists:sort(sets:to_list(map_nodes_set(FailoverMap)))),
-    RebalanceBackMap = generate_map_old(FailoverMap, Nodes, [{maps_history, [{FirstMap, SlavesOptions}]} | SlavesOptions]),
-    true = (RebalanceBackMap =/= generate_map_old(FailoverMap, Nodes, [{maps_history, [{FirstMap, lists:keyreplace(max_slaves, 1, SlavesOptions, {max_slaves, 3})}]} | SlavesOptions])),
+    RebalanceBackMap = generate_map_old(FailoverMap, NumReplicas, Nodes, [{maps_history, [{FirstMap, SlavesOptions}]} | SlavesOptions]),
+    true = (RebalanceBackMap =/= generate_map_old(FailoverMap, NumReplicas, Nodes, [{maps_history, [{FirstMap, lists:keyreplace(max_slaves, 1, SlavesOptions, {max_slaves, 3})}]} | SlavesOptions])),
     ?assertEqual(FirstMap, RebalanceBackMap).
 
 failover_and_rebalance_back_one_replica_test() ->
@@ -1110,7 +1109,8 @@ failover_and_rebalance_back_one_replica_test() ->
     do_failover_and_rebalance_back_trial(6, 2, 1260, 1),
     do_failover_and_rebalance_back_trial(12, 7, 1260, 2).
 
-do_replace_nodes_rebalance_trial(NodesCount, RemoveIndexes, AddIndexes, VBucketCount, ReplicaCount) ->
+do_replace_nodes_rebalance_trial(NodesCount, RemoveIndexes, AddIndexes,
+                                 VBucketCount, NumReplicas) ->
     Nodes = testnodes(NodesCount),
     RemoveIndexes = RemoveIndexes -- AddIndexes,
     AddIndexes = AddIndexes -- RemoveIndexes,
@@ -1118,10 +1118,10 @@ do_replace_nodes_rebalance_trial(NodesCount, RemoveIndexes, AddIndexes, VBucketC
     RemovedNodes = [lists:nth(I, Nodes) || I <- RemoveIndexes],
     InitialNodes = Nodes -- AddedNodes,
     ReplacementNodes = Nodes -- RemovedNodes,
-    InitialMap = lists:duplicate(VBucketCount, lists:duplicate(ReplicaCount+1, undefined)),
+    InitialMap = lists:duplicate(VBucketCount, lists:duplicate(NumReplicas + 1, undefined)),
     SlavesOptions = [{max_slaves, 10}],
-    FirstMap = generate_map_old(InitialMap, InitialNodes, SlavesOptions),
-    ReplaceMap = generate_map_old(FirstMap, ReplacementNodes, [{maps_history, [{FirstMap, SlavesOptions}]} | SlavesOptions]),
+    FirstMap = generate_map_old(InitialMap, NumReplicas, InitialNodes, SlavesOptions),
+    ReplaceMap = generate_map_old(FirstMap, NumReplicas, ReplacementNodes, [{maps_history, [{FirstMap, SlavesOptions}]} | SlavesOptions]),
     ?log_debug("FirstMap:~n~p~nReplaceMap:~n~p~n", [FirstMap, ReplaceMap]),
     %% we expect all change to be just some rename (i.e. mapping
     %% from/to) RemovedNodes to AddedNodes. We can find it by finding
