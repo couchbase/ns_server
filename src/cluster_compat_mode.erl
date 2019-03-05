@@ -65,7 +65,7 @@
 -export([pre_force_compat_version/0, post_force_compat_version/0]).
 
 cluster_capabilities(?VERSION_MADHATTER) ->
-    [{n1ql, [enhanced_prepared_statements]}];
+    [{n1ql, [enhancedPreparedStatements]}];
 cluster_capabilities(_) ->
     [].
 
