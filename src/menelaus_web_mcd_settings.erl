@@ -40,7 +40,16 @@ supported_setting_names() ->
      {breakpad_minidump_dir_path, string},
      {dedupe_nmvb_maps, bool},
      {tracing_enabled, bool},
-     {datatype_snappy, bool}].
+     {datatype_snappy, bool}] ++
+        case cluster_compat_mode:is_developer_preview() andalso
+            cluster_compat_mode:is_cluster_madhatter() of
+            false ->
+                [];
+            true ->
+                [{opentracing_enabled, bool},
+                 {opentracing_module, string},
+                 {opentracing_config, string}]
+        end.
 
 supported_extra_setting_names() ->
     [{default_reqs_per_event, {int, 0, ?MC_MAXINT}},
