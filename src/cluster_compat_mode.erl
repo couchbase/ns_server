@@ -64,13 +64,20 @@
 
 -export([pre_force_compat_version/0, post_force_compat_version/0]).
 
-cluster_capabilities(?VERSION_MADHATTER) ->
-    [{n1ql, [enhancedPreparedStatements]}];
-cluster_capabilities(_) ->
+n1ql_cluster_capabilities(?VERSION_MADHATTER, true) ->
+    [costBasedOptimizer |
+     n1ql_cluster_capabilities(?VERSION_MADHATTER, false)];
+n1ql_cluster_capabilities(?VERSION_MADHATTER, false) ->
+    [enhancedPreparedStatements].
+
+cluster_capabilities(?VERSION_MADHATTER, IsDP) ->
+    [{n1ql, n1ql_cluster_capabilities(?VERSION_MADHATTER, IsDP)}];
+cluster_capabilities(_, _) ->
     [].
 
 get_cluster_capabilities(Config) ->
-    cluster_capabilities(get_compat_version(Config)).
+    cluster_capabilities(get_compat_version(Config),
+                         is_developer_preview(Config)).
 
 get_compat_version() ->
     get_compat_version(ns_config:latest()).
