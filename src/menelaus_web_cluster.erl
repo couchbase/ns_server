@@ -795,12 +795,13 @@ handle_re_failover(Req) ->
     end.
 
 serve_node_services(Req) ->
-    reply_ok(Req, "application/json", bucket_info_cache:build_node_services()).
+    {_Rev, Bin} = bucket_info_cache:build_node_services(),
+    reply_ok(Req, "application/json", Bin).
 
 serve_node_services_streaming(Req) ->
     handle_streaming(
       fun (_) ->
-              V = bucket_info_cache:build_node_services(),
+              {_, V} = bucket_info_cache:build_node_services(),
               {just_write, {write, V}}
       end, Req).
 

@@ -119,6 +119,7 @@
          get_mass_dcp_docs_estimate/2,
          get_dcp_docs_estimate/3,
          set_cluster_config/3,
+         set_cluster_config/2,
          get_ep_startup_time_for_xdcr/1,
          perform_checkpoint_commit_for_xdcr/3,
          get_random_key/1,
@@ -1502,3 +1503,8 @@ config_reload() ->
 get_failover_log(Bucket, VBucket) ->
     perform_very_long_call(
       ?cut({reply, mc_client_binary:get_failover_log(_, VBucket)}), Bucket).
+
+-spec set_cluster_config(integer(), binary()) -> ok | mc_error().
+set_cluster_config(Rev, Blob) ->
+    perform_very_long_call(
+      ?cut({reply, mc_client_binary:set_cluster_config(_, "", Rev, Blob)})).

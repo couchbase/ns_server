@@ -177,6 +177,10 @@ child_specs() ->
      {testconditions_store, {simple_store, start_link, [testconditions]},
       permanent, 1000, worker, []},
 
+     {terse_cluster_info_uploader,
+      {terse_cluster_info_uploader, start_link, []},
+      permanent, 1000, worker, []},
+
      {ns_bucket_worker_sup, {ns_bucket_worker_sup, start_link, []},
       permanent, infinity, supervisor, [ns_bucket_worker_sup]},
 

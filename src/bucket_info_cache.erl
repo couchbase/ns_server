@@ -269,12 +269,12 @@ build_node_services() ->
     case ets:lookup(bucket_info_cache, 'node_services') of
         [] ->
             case call_build_node_services() of
-                {ok, V} -> V;
+                {ok, Rev, V} -> {Rev, V};
                 {T, E, Stack} ->
                     erlang:raise(T, E, Stack)
             end;
-        [{_, V}] ->
-            V
+        [{_, Rev, V}] ->
+            {Rev, V}
     end.
 
 call_build_node_services() ->
@@ -284,14 +284,15 @@ call_build_node_services() ->
               case ets:lookup(bucket_info_cache, 'node_services') of
                   [] ->
                       try do_build_node_services() of
-                          V ->
-                              ets:insert(bucket_info_cache, {'node_services', V}),
-                              {ok, V}
+                          {Rev, V} ->
+                              ets:insert(bucket_info_cache,
+                                         {'node_services', Rev, V}),
+                              {ok, Rev, V}
                       catch T:E ->
                               {T, E, erlang:get_stacktrace()}
                       end;
-                  [{_, V}] ->
-                          {ok, V}
+                  [{_, Rev, V}] ->
+                      {ok, Rev, V}
               end
       end).
 
@@ -309,9 +310,10 @@ do_build_node_services() ->
     NEIs = build_nodes_ext(ns_cluster_membership:active_nodes(Config),
                            Config, []),
     Caps = build_cluster_capabilities(Config),
-    J = {[{rev, ns_config:compute_global_rev(Config)},
+    Rev = ns_config:compute_global_rev(Config),
+    J = {[{rev, Rev},
           {nodesExt, NEIs}] ++ Caps},
-    ejson:encode(J).
+    {Rev, ejson:encode(J)}.
 
 terse_bucket_info_with_local_addr(BucketName, LocalAddr) ->
     case terse_bucket_info(BucketName) of
