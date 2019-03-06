@@ -215,7 +215,9 @@ INSTALL (DIRECTORY priv/public
          DESTINATION "${INST_LIBDIR}/ns_server/priv"
          PATTERN "*_license_agreement.txt" EXCLUDE)
 
-INSTALL (PROGRAMS cbbrowse_logs cbcollect_info DESTINATION bin)
+PyWrapper (SCRIPTS cbcollect_info)
+
+INSTALL (PROGRAMS cbbrowse_logs DESTINATION bin)
 INSTALL (PROGRAMS scripts/cbdump-config scripts/dump-guts DESTINATION bin)
 INSTALL (PROGRAMS scripts/escript-wrapper scripts/dump-stats DESTINATION bin)
 

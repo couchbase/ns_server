@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- python -*-
 #
 # @author Couchbase <info@couchbase.com>
@@ -29,14 +29,13 @@ import threading
 import optparse
 import atexit
 import signal
-import urllib
+import urllib.request, urllib.parse, urllib.error
 import shutil
-import urlparse
 import errno
 import hashlib
 import uuid
 from datetime import datetime, timedelta, tzinfo
-from StringIO import StringIO
+from io import BytesIO, StringIO
 
 class AltExitC(object):
     def __init__(self):
@@ -324,23 +323,23 @@ class Task(object):
                                  shell=use_shell,
                                  **extra_flags)
             if hasattr(self, 'to_stdin'):
-                p.stdin.write(self.to_stdin)
+                p.stdin.write(self.to_stdin.encode())
 
             p.stdin.close()
 
-        except OSError, e:
+        except OSError as e:
             # if use_shell is False then Popen may raise exception
             # if binary is missing. In this case we mimic what
             # shell does. Namely, complaining to stderr and
             # setting non-zero status code. It's might also
             # automatically handle things like "failed to fork due
             # to some system limit".
-            print >> fp, "Failed to execute %s: %s" % (self.command, e)
+            fp.write(f"Failed to execute {self.command}: {e}\n".encode())
             return 127
 
-        except IOError, e:
+        except IOError as e:
             if e.errno == errno.EPIPE:
-                print >> fp, "Ignoring broken pipe on stdin for %s" % self.command
+                fp.write(f"Ignoring broken pipe on stdin for {self.command}\n".encode())
             else:
                 raise
 
@@ -378,7 +377,7 @@ class Task(object):
                 # timer is fired; that would result in a spurious timeout
                 # message
                 if timer_fired.isSet():
-                    print >> fp, "`%s` timed out after %s seconds" % (self.command, self.timeout)
+                    fp.write(f"`{self.command}` timed out after {self.timeout} seconds\n".encode())
                     log("[Command timed out after %s seconds] - " % (self.timeout), new_line=False)
 
         return p.wait()
@@ -407,7 +406,7 @@ class TaskRunner(object):
         try:
             self.tmpdir = tempfile.mkdtemp(dir=tmp_dir)
         except OSError as e:
-           print "Could not use temporary dir {0}: {1}".format(tmp_dir, e)
+           print("Could not use temporary dir {0}: {1}".format(tmp_dir, e))
            sys.exit(1)
 
         # If a dir wasn't passed by --tmp-dir, check if the env var was set and if we were able to use it
@@ -421,7 +420,7 @@ class TaskRunner(object):
 
     def finalize(self):
         try:
-            for fp in self.files.iteritems():
+            for fp in self.files.items():
                 fp.close()
         except:
             pass
@@ -437,7 +436,7 @@ class TaskRunner(object):
         if not filename in self.files:
             try:
                 self.files[filename] = open(filename, 'r')
-            except IOError, e:
+            except IOError as e:
                 log("Failed to collect file '%s': %s" % (filename, str(e)))
         else:
             log("Unable to collect file '%s' - already collected." % filename)
@@ -446,17 +445,17 @@ class TaskRunner(object):
         if filename in self.files:
             fp = self.files[filename]
         else:
-            fp = open(os.path.join(self.tmpdir, filename), 'w+')
+            fp = open(os.path.join(self.tmpdir, filename), 'wb+')
             self.files[filename] = fp
 
         return fp
 
     def header(self, fp, title, subtitle):
         separator = '=' * 78
-        print >> fp, separator
-        print >> fp, title
-        print >> fp, subtitle
-        print >> fp, separator
+        if isinstance(subtitle, list):
+            subtitle = " ".join(subtitle)
+        message = f"{separator}\n{title}\n{subtitle}\n{separator}\n"
+        fp.write(message.encode())
         fp.flush()
 
     def log_result(self, result):
@@ -492,7 +491,7 @@ class TaskRunner(object):
             if not task.no_header:
                 self.header(fp, task.description, task.command)
 
-            for i in xrange(task.num_samples):
+            for i in range(task.num_samples):
                 if i > 0:
                     log("Taking sample %d after %f seconds - " % (i+1, task.interval), new_line=False)
                     time.sleep(task.interval)
@@ -521,7 +520,7 @@ class TaskRunner(object):
         files = []
         redactor = LogRedactor(self.salt_value, self.tmpdir, self.default_name)
 
-        for name, fp in self.files.iteritems():
+        for name, fp in self.files.items():
             if "users.dets" in name:
                 continue
             files.append(redactor.redact_file(name, fp.name))
@@ -530,14 +529,14 @@ class TaskRunner(object):
         self._zip_helper(prefix, filename, files)
 
     def close_all_files(self):
-        for name, fp in self.files.iteritems():
+        for name, fp in self.files.items():
             fp.close()
 
     def zip(self, filename, node):
         prefix = "cbcollect_info_%s_%s" % (node, self.start_time)
 
         files = []
-        for name, fp in self.files.iteritems():
+        for name, fp in self.files.items():
             files.append(fp.name)
         self._zip_helper(prefix, filename, files)
 
@@ -556,7 +555,7 @@ class TaskRunner(object):
 
             if status != 0:
                 log("gozip terminated with non-zero exit code (%d)" % status)
-        except OSError, e:
+        except OSError as e:
             log("Exception during compression: %s" % e)
             fallback = True
 
@@ -583,7 +582,7 @@ class SolarisTask(Task):
 
 
 class LinuxTask(Task):
-    platforms = ['linux2']
+    platforms = ['linux']
 
 
 class WindowsTask(Task):
@@ -609,7 +608,7 @@ class LiteralTask(AllOsTask):
         self.__dict__.update(kwargs)
 
     def execute(self, fp):
-        print >> fp, self.literal
+        fp.write(self.literal.encode() + b'\n')
         return 0
 
 class CollectFile(AllOsTask):
@@ -621,7 +620,7 @@ class CollectFile(AllOsTask):
 
     def execute(self, fp):
         self._task_runner.collect_file(self.file_path)
-        print >> fp, "Collected file %s" % self.file_path
+        fp.write(f"Collected file {self.file_path}\n".encode())
         return 0
 
 def make_curl_task(name, user, password, url,
@@ -659,15 +658,15 @@ def get_diag_password(guts):
     command = ["curl", "-sS", "--proxy", "", "-u", "@localtoken:%s" % pwd, url]
 
     task = AllOsTask("get diag password", command, timeout=60)
-    output = StringIO()
+    output = BytesIO()
     if task.execute(output) == 0:
-        return output.getvalue()
+        return output.getvalue().decode()
     else:
-        log(output.getvalue())
+        log(output.getvalue().decode())
         return ""
 
 def make_query_task(statement, user, password, port):
-    url = "http://%s:%s/query/service?statement=%s" % (local_url_addr, port, urllib.quote(statement))
+    url = "http://%s:%s/query/service?statement=%s" % (local_url_addr, port, urllib.parse.quote(statement))
 
     return make_curl_task(name="Result of query statement \'%s\'" % statement,
                           user=user, password=password, url=url)
@@ -681,10 +680,13 @@ def make_redaction_task():
     return LiteralTask("Log Redaction", "RedactLevel:none")
 
 def basedir():
-    mydir = os.path.dirname(sys.argv[0])
-    if mydir == "":
-        mydir = "."
-    return mydir
+    # We are installed in $INSTALL_DIR/lib/python, so need to go up three levels
+    return os.path.normpath(
+        os.path.join(
+            os.path.abspath(__file__),
+            '..', '..', '..'
+        )
+    )
 
 def make_event_log_task():
     from datetime import datetime, timedelta
@@ -1042,11 +1044,11 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
         WindowsTask("Index directory structure",
                     "dir /s " + winquote_path(viewdir)),
         WindowsTask("Version file",
-                    "type " + winquote_path(basedir()) + "\\..\\VERSION.txt"),
+                    "type " + winquote_path(basedir()) + "\\VERSION.txt"),
         WindowsTask("Manifest file",
-                    "type " + winquote_path(basedir()) + "\\..\\manifest.txt"),
+                    "type " + winquote_path(basedir()) + "\\manifest.txt"),
         WindowsTask("Manifest file",
-                    "type " + winquote_path(basedir()) + "\\..\\manifest.xml"),
+                    "type " + winquote_path(basedir()) + "\\manifest.xml"),
         LinuxTask("Version file", "cat '%s/VERSION.txt'" % root),
         LinuxTask("Variant file", "cat '%s/VARIANT.txt'" % root),
         LinuxTask("Manifest file", "cat '%s/manifest.txt'" % root),
@@ -1198,12 +1200,10 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
     return _tasks
 
 def find_script(name):
-    dirs = [basedir(), os.path.join(basedir(), "scripts")]
-    for d in dirs:
-        path = os.path.join(d, name)
-        if os.path.exists(path):
-            log("Found %s: %s" % (name, path))
-            return os.path.abspath(path)
+    path = os.path.join(basedir(), "bin", name)
+    if os.path.exists(path):
+        log("Found %s: %s" % (name, path))
+        return os.path.abspath(path)
 
     return None
 
@@ -1221,14 +1221,14 @@ def get_server_guts(initargs_path):
         args = args + extra_args.split(";")
     print("Checking for server guts in %s..." % initargs_path)
     p = subprocess.Popen(args, stdout = subprocess.PIPE)
-    output = p.stdout.read()
+    output = p.stdout.read().decode()
     p.wait()
     rc = p.returncode
     # print("args: %s gave rc: %d and:\n\n%s\n" % (args, rc, output))
     tokens = output.rstrip("\0").split("\0")
     d = {}
     if len(tokens) > 1:
-        for i in xrange(0, len(tokens), 2):
+        for i in range(0, len(tokens), 2):
             d[tokens[i]] = tokens[i+1]
     return d
 
@@ -1267,14 +1267,14 @@ def dump_utilities(*args, **kwargs):
             if isinstance(task, platform):
                 platform_utils[name].add(utility)
 
-    print '''This is an autogenerated, possibly incomplete and flawed list
-of utilites used by cbcollect_info'''
+    print('This is an autogenerated, possibly incomplete and flawed list '
+          'of utilites used by cbcollect_info')
 
     for (name, utilities) in sorted(platform_utils.items(), key=lambda x: x[0]):
-        print "\n%s:" % name
+        print("\n%s:" % name)
 
         for utility in sorted(utilities):
-            print "        - %s" % utility
+            print("        - %s" % utility)
 
     sys.exit(0)
 
@@ -1304,11 +1304,11 @@ def do_upload_and_exit(path, url, proxy):
         p = subprocess.Popen(args, stdout=subprocess.PIPE)
         k = CurlKiller(p)
         AltExit.register_and_unlock(k.cleanup)
-    except Exception, e:
+    except Exception as e:
         AltExit.lock.release()
         raise e
 
-    stdout, _ = p.communicate()
+    stdout, _ = p.communicate().decode()
     k.disarm()
 
     if p.returncode != 0:
@@ -1323,9 +1323,9 @@ def do_upload_and_exit(path, url, proxy):
             sys.exit(1)
 
 def parse_host(host):
-    url = urlparse.urlsplit(host)
+    url = urllib.parse.urlsplit(host)
     if not url.scheme:
-        url = urlparse.urlsplit('https://' + host)
+        url = urllib.parse.urlsplit('https://' + host)
 
     return url.scheme, url.netloc, url.path
 
@@ -1337,14 +1337,14 @@ def generate_upload_url(parser, options, zip_filename):
 
         scheme, netloc, path = parse_host(options.upload_host)
 
-        customer = urllib.quote(options.upload_customer)
-        fname = urllib.quote(os.path.basename(zip_filename))
+        customer = urllib.parse.quote(options.upload_customer)
+        fname = urllib.parse.quote(os.path.basename(zip_filename))
         if options.upload_ticket:
             full_path = '%s/%s/%d/%s' % (path, customer, options.upload_ticket, fname)
         else:
             full_path = '%s/%s/%s' % (path, customer, fname)
 
-        upload_url = urlparse.urlunsplit((scheme, netloc, full_path, '', ''))
+        upload_url = urllib.parse.urlunsplit((scheme, netloc, full_path, '', ''))
         log("Will upload collected .zip file into %s" % upload_url)
     return upload_url
 
@@ -1367,15 +1367,15 @@ def main():
     os.environ['LANG'] = 'C'
     os.environ['LC_ALL'] = 'C'
 
-    mydir = os.path.dirname(sys.argv[0])
+    rootdir = basedir()
     #(MB-8239)erl script fails in OSX as it is unable to find COUCHBASE_TOP -ravi
     if platform.system() == 'Darwin':
-        os.environ["COUCHBASE_TOP"] = os.path.abspath(os.path.join(mydir, ".."))
+        os.environ["COUCHBASE_TOP"] = rootdir
 
     parser = optparse.OptionParser(usage=USAGE, option_class=CbcollectInfoOptions)
     parser.add_option("-r", dest="root",
-                      help="root directory - defaults to %s" % (mydir + "/.."),
-                      default=os.path.abspath(os.path.join(mydir, "..")))
+                      help="root directory - defaults to %s" % (rootdir),
+                      default=rootdir)
     parser.add_option("-v", dest="verbosity", help="increase verbosity level",
                       action="count", default=0)
     parser.add_option("-p", dest="product_only", help="gather only product related information",
@@ -1437,12 +1437,10 @@ def main():
     else:
         upload_url = generate_upload_url(parser, options, zip_filename)
 
-
-    erldir = os.path.join(mydir, 'erlang', 'bin')
+    bindir = os.path.join(options.root, 'bin')
     if os.name == 'posix':
-        path = [mydir,
+        path = [bindir,
                 '/opt/couchbase/bin',
-                erldir,
                 os.environ['PATH'],
                 '/bin',
                 '/sbin',
@@ -1458,7 +1456,7 @@ def main():
 
         os.environ['LD_LIBRARY_PATH'] = ':'.join(library_path)
     elif os.name == 'nt':
-      path = [mydir, erldir, os.environ['PATH']]
+      path = [bindir, os.environ['PATH']]
       os.environ['PATH'] = ';'.join(path)
 
     if options.just_upload_into != None:
