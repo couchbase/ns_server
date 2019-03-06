@@ -87,13 +87,14 @@ flush_refresh_msgs(BucketName) ->
 
 refresh_cluster_config(BucketName) ->
     case bucket_info_cache:terse_bucket_info(BucketName) of
-        {ok, JSON} ->
-            ok = ns_memcached:set_cluster_config(BucketName, JSON);
+        {ok, Rev, Blob} ->
+            ok = ns_memcached:set_cluster_config(BucketName, Rev, Blob);
         not_present ->
             ?log_debug("Bucket ~s is dead", [BucketName]),
             ok;
         {T, E, Stack} = Exception ->
-            ?log_error("Got exception trying to get terse bucket info: ~p", [Exception]),
+            ?log_error("Got exception trying to get terse bucket info: ~p",
+                       [Exception]),
             timer:sleep(10000),
             erlang:raise(T, E, Stack)
     end.

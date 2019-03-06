@@ -1780,7 +1780,7 @@ convert_info_level(InfoLevel) ->
 
 build_terse_bucket_info(BucketName) ->
     case bucket_info_cache:terse_bucket_info(BucketName) of
-        {ok, V} -> V;
+        {ok, _, V} -> V;
         %% NOTE: {auth_bucket for this route handles 404 for us albeit
         %% harmlessly racefully
         {T, E, Stack} ->

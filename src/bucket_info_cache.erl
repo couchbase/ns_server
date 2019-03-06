@@ -223,7 +223,7 @@ compute_bucket_info_with_config(Bucket, Config, BucketConfig) ->
           {nodeLocator, ns_bucket:node_locator(BucketConfig)},
           {uuid, UUID}
           | MaybeVBMapDDocs]},
-    {ok, ejson:encode(J), BucketConfig}.
+    {ok, Rev, ejson:encode(J), BucketConfig}.
 
 compute_bucket_info(Bucket) ->
     Config = ns_config:get(),
@@ -240,18 +240,20 @@ call_compute_bucket_info(BucketName) ->
               case ets:lookup(bucket_info_cache, BucketName) of
                   [] ->
                       case compute_bucket_info(BucketName) of
-                          {ok, V, BucketConfig} ->
-                              ets:insert(bucket_info_cache, {BucketName, V}),
-                              ets:insert(bucket_info_cache_buckets, {BucketName, BucketConfig}),
-                              {ok, V};
+                          {ok, Rev, V, BucketConfig} ->
+                              ets:insert(bucket_info_cache,
+                                         {BucketName, Rev, V}),
+                              ets:insert(bucket_info_cache_buckets,
+                                         {BucketName, BucketConfig}),
+                              {ok, Rev, V};
                           Other ->
                               %% note: we might consider caching
                               %% exceptions but they're supposedly
                               %% rare anyways
                               Other
                       end;
-                  [{_, V}] ->
-                      {ok, V}
+                  [{_, Rev, V}] ->
+                      {ok, Rev, V}
               end
       end).
 
@@ -259,8 +261,8 @@ terse_bucket_info(BucketName) ->
     case ets:lookup(bucket_info_cache, BucketName) of
         [] ->
             call_compute_bucket_info(BucketName);
-        [{_, V}] ->
-            {ok, V}
+        [{_, Rev, V}] ->
+            {ok, Rev, V}
     end.
 
 build_node_services() ->
@@ -313,8 +315,9 @@ do_build_node_services() ->
 
 terse_bucket_info_with_local_addr(BucketName, LocalAddr) ->
     case terse_bucket_info(BucketName) of
-        {ok, Bin} ->
-            {ok, binary:replace(Bin, list_to_binary(?LOCALHOST_MARKER_STRING), list_to_binary(LocalAddr), [global])};
+        {ok, _, Bin} ->
+            {ok, binary:replace(Bin, list_to_binary(?LOCALHOST_MARKER_STRING),
+                                list_to_binary(LocalAddr), [global])};
         Other ->
             Other
     end.
