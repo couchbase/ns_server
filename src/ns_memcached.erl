@@ -1498,5 +1498,5 @@ config_reload() ->
 -spec get_failover_log(bucket_name(), vbucket_id()) ->
                               [{integer(), integer()}] | mc_error().
 get_failover_log(Bucket, VBucket) ->
-    ns_memcached:perform_very_long_call(
+    perform_very_long_call(
       ?cut({reply, mc_client_binary:get_failover_log(_, VBucket)}), Bucket).
