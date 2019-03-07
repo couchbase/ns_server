@@ -68,7 +68,13 @@ handle_delete_collection(Bucket, Scope, Name, Req) ->
     handle_rv(collections:drop_collection(Bucket, Scope, Name), Req).
 
 assert_api_available(Bucket) ->
-    menelaus_util:assert_cluster_version(fun collections:enabled/0),
+    case collections:enabled() of
+        true ->
+            ok;
+        false ->
+            erlang:throw({web_exception, 400,
+                          "Not allowed on this version of cluster", []})
+    end,
     {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
     case collections:enabled(BucketConfig) of
         true ->
