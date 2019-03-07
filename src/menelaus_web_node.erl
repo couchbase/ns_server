@@ -934,6 +934,13 @@ check_connection_proto(Node, Family, Encryption) ->
     case net_kernel:node_info(Node) of
         {ok, Info} ->
             case proplists:get_value(address, Info) of
+                %% Workaround for a bug in inet_tls_dist.erl
+                %% address family is always set to inet, even when the socket
+                %% is actually an inet6 socket
+                #net_address{address = {{_, _, _, _, _, _, _, _}, _},
+                             protocol = proxy,
+                             family = inet} when Proto == proxy,
+                                                 Family == inet6 -> ok;
                 #net_address{protocol = Proto, family = Family} -> ok;
                 A -> erlang:error({wrong_proto, Node, A})
             end;
