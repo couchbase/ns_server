@@ -42,6 +42,7 @@ GetChainsFromBucket =
     {ok, Conf} = ns_bucket:get_bucket(Bucket),
     {map, Map} = lists:keyfind(map, 1, Conf),
     OldChain = lists:nth(VBucket+1, Map),
+    %% Do not change length of chain according to num_replicas.
     NewChain = [hd(OldChain)] ++ [undefined || _ <- tl(OldChain)],
     {OldChain, NewChain}
   end,
