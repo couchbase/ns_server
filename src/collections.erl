@@ -28,7 +28,7 @@
          for_memcached/1,
          for_rest/1,
          create_scope/2,
-         create_collection/3,
+         create_collection/4,
          drop_scope/2,
          drop_collection/3]).
 
@@ -59,7 +59,7 @@ default_manifest() ->
 uid(BucketCfg) ->
     case enabled(BucketCfg) of
         true ->
-            extract_uid(get_manifest(BucketCfg));
+            get_uid_in_memcached_format(get_manifest(BucketCfg));
         false ->
             undefined
     end.
@@ -67,8 +67,20 @@ uid(BucketCfg) ->
 get_uid(Props) ->
     proplists:get_value(uid, Props).
 
-extract_uid(Props) ->
-    list_to_binary(string:to_lower(integer_to_list(get_uid(Props), 16))).
+convert_uid_to_memcached(V) ->
+    list_to_binary(string:to_lower(integer_to_list(V, 16))).
+
+get_uid_in_memcached_format(Props) ->
+    convert_uid_to_memcached(get_uid(Props)).
+
+collection_prop_to_memcached(uid, V) ->
+    convert_uid_to_memcached(V);
+collection_prop_to_memcached(_, V) ->
+    V.
+
+collection_to_memcached(Name, Props) ->
+    {[{name, list_to_binary(Name)} |
+      [{K, collection_prop_to_memcached(K, V)} || {K, V} <- Props]]}.
 
 for_memcached(BucketCfg) ->
     Manifest = get_manifest(BucketCfg),
@@ -77,17 +89,19 @@ for_memcached(BucketCfg) ->
         lists:map(
           fun ({ScopeName, Scope}) ->
                   {[{name, list_to_binary(ScopeName)},
-                    {uid, extract_uid(Scope)},
+                    {uid, get_uid_in_memcached_format(Scope)},
                     {collections,
-                     lists:map(
-                       fun({CollName, Coll}) ->
-                               {[{name, list_to_binary(CollName)},
-                                 {uid, extract_uid(Coll)}]}
-                       end, get_collections(Scope))}]}
+                     [collection_to_memcached(CollName, Coll) ||
+                         {CollName, Coll} <- get_collections(Scope)]}]}
           end, get_scopes(Manifest)),
 
-    {[{uid, extract_uid(Manifest)},
+    {[{uid, get_uid_in_memcached_format(Manifest)},
       {scopes, ScopesJson}]}.
+
+collection_prop_to_rest({max_ttl, V}) ->
+    {maxTTL, V};
+collection_prop_to_rest(Other) ->
+    Other.
 
 for_rest(Bucket) ->
     {ok, BucketCfg} = ns_bucket:get_bucket(Bucket),
@@ -95,20 +109,22 @@ for_rest(Bucket) ->
     Scopes = get_scopes(Manifest),
     {[{uid, get_uid(Manifest)},
       {scopes,
-       {lists:map(fun ({ScopeName, Scope}) ->
-                          {list_to_binary(ScopeName),
-                           {[{uid, get_uid(Scope)},
-                             {collections,
-                              {[{list_to_binary(CollName), {Props}} ||
-                                   {CollName, Props} <- get_collections(Scope)]}}
-                            ]}}
-                  end, Scopes)}}]}.
+       {lists:map(
+          fun ({ScopeName, Scope}) ->
+                  {list_to_binary(ScopeName),
+                   {[{uid, get_uid(Scope)},
+                     {collections,
+                      {[{list_to_binary(CollName),
+                         {[collection_prop_to_rest(P) || P <- Props]}} ||
+                           {CollName, Props} <- get_collections(Scope)]}}
+                    ]}}
+          end, Scopes)}}]}.
 
 create_scope(Bucket, Name) ->
     update(Bucket, {create_scope, Name}).
 
-create_collection(Bucket, Scope, Name) ->
-    update(Bucket, {create_collection, Scope, Name}).
+create_collection(Bucket, Scope, Name, Props) ->
+    update(Bucket, {create_collection, Scope, Name, Props}).
 
 drop_scope(Bucket, Name) ->
     update(Bucket, {drop_scope, Name}).
@@ -203,7 +219,7 @@ update_manifest_uid(Manifest) ->
 
 needed_ids({create_scope, _}) ->
     [next_scope_uid];
-needed_ids({create_collection, _, _}) ->
+needed_ids({create_collection, _, _, _}) ->
     [next_coll_uid];
 needed_ids(_) ->
     [].
@@ -229,7 +245,7 @@ verify_oper({drop_scope, Name}, Manifest) ->
                     ok
             end
     end;
-verify_oper({create_collection, ScopeName, Name}, Manifest) ->
+verify_oper({create_collection, ScopeName, Name, _}, Manifest) ->
     Scopes = get_scopes(Manifest),
     case find_scope(ScopeName, Scopes) of
         undefined ->
@@ -262,8 +278,8 @@ handle_oper({create_scope, Name}, Manifest) ->
     on_scopes(add_scope(Name, _, Manifest), Manifest);
 handle_oper({drop_scope, Name}, Manifest) ->
     on_scopes(delete_scope(Name, _), Manifest);
-handle_oper({create_collection, Scope, Name}, Manifest) ->
-    on_collections(add_collection(Name, _, Manifest), Scope, Manifest);
+handle_oper({create_collection, Scope, Name, Props}, Manifest) ->
+    on_collections(add_collection(Name, Props, _, Manifest), Scope, Manifest);
 handle_oper({drop_collection, Scope, Name}, Manifest) ->
     on_collections(delete_collection(Name, _), Scope, Manifest).
 
@@ -297,9 +313,9 @@ get_collections(Scope) ->
 find_collection(Name, Collections) ->
     proplists:get_value(Name, Collections).
 
-add_collection(Name, Collections, Manifest) ->
-    [{Name,
-      [{uid, proplists:get_value(next_coll_uid, Manifest)}]} | Collections].
+add_collection(Name, Props, Collections, Manifest) ->
+    [{Name, [{uid, proplists:get_value(next_coll_uid, Manifest)} | Props]} |
+     Collections].
 
 delete_collection(Name, Collections) ->
     lists:keydelete(Name, 1, Collections).
