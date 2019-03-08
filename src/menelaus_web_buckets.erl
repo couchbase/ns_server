@@ -406,7 +406,8 @@ build_bucket_capabilities(BucketConfig) ->
     MoreCaps =
         [C || {C, true} <-
                   [{xattr, cluster_compat_mode:is_cluster_50()},
-                   {collections, collections:enabled(BucketConfig)}]],
+                   {collections, collections:enabled(BucketConfig)},
+                   {durableWrite, cluster_compat_mode:is_cluster_madhatter()}]],
 
     Caps =
         case ns_bucket:bucket_type(BucketConfig) of
