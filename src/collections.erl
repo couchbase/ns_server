@@ -64,9 +64,11 @@ uid(BucketCfg) ->
             undefined
     end.
 
+get_uid(Props) ->
+    proplists:get_value(uid, Props).
+
 extract_uid(Props) ->
-    list_to_binary(string:to_lower(
-                     integer_to_list(proplists:get_value(uid, Props), 16))).
+    list_to_binary(string:to_lower(integer_to_list(get_uid(Props), 16))).
 
 for_memcached(BucketCfg) ->
     Manifest = get_manifest(BucketCfg),
@@ -91,11 +93,16 @@ for_rest(Bucket) ->
     {ok, BucketCfg} = ns_bucket:get_bucket(Bucket),
     Manifest = get_manifest(BucketCfg),
     Scopes = get_scopes(Manifest),
-    {lists:map(fun ({ScopeName, Scope}) ->
-                       {list_to_binary(ScopeName),
-                        {[{list_to_binary(CollName), {[]}} ||
-                             {CollName, _} <- get_collections(Scope)]}}
-               end, Scopes)}.
+    {[{uid, get_uid(Manifest)},
+      {scopes,
+       {lists:map(fun ({ScopeName, Scope}) ->
+                          {list_to_binary(ScopeName),
+                           {[{uid, get_uid(Scope)},
+                             {collections,
+                              {[{list_to_binary(CollName), {Props}} ||
+                                   {CollName, Props} <- get_collections(Scope)]}}
+                            ]}}
+                  end, Scopes)}}]}.
 
 create_scope(Bucket, Name) ->
     update(Bucket, {create_scope, Name}).
