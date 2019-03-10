@@ -45,7 +45,9 @@
          apply_node_settings/1,
          alternate_addresses_json/3,
          handle_setup_net_config/1,
-         handle_dist_protocols/1]).
+         handle_dist_protocols/1,
+         apply_net_config/2,
+         apply_ext_dist_protocols/1]).
 
 -import(menelaus_util,
         [local_addr/1,
@@ -302,6 +304,15 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
                    ssl_rest_port,
                    rest_port],
 
+    AFamily = ns_config:search_node_with_default(WantENode, Config,
+                                                 address_family, inet),
+    CEncryption = ns_config:search_node_with_default(WantENode, Config,
+                                                     cluster_encryption,
+                                                     false),
+    Listeners = ns_config:search_node_with_default(WantENode, Config,
+                                                   erl_external_dist_protocols,
+                                                   undefined),
+
     RV = [{hostname, list_to_binary(HostName)},
           {nodeUUID, NodeUUID},
           {clusterCompatibility, cluster_compat_mode:effective_cluster_compat_version()},
@@ -309,7 +320,10 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
           {os, list_to_binary(OS)},
           {cpuCount, CpuCount},
           {ports, {struct, PortsKV}},
-          {services, ns_cluster_membership:node_services(Config, WantENode)}
+          {services, ns_cluster_membership:node_services(Config, WantENode)},
+          {addressFamily, AFamily},
+          {clusterEncryption, CEncryption},
+          {distProtocols, Listeners}
          ] ++ alternate_addresses_json(WantENode, Config, WantedPorts),
     case WantENode =:= node() of
         true ->
@@ -842,30 +856,41 @@ handle_setup_net_config(Req) ->
       fun (Values) ->
               AFamily = proplists:get_value(afamily, Values),
               CEncrypt = proplists:get_value(clusterEncryption, Values, false),
-              case update_type(AFamily, CEncrypt) of
-                  empty -> menelaus_util:reply(Req, 200);
-                  Type ->
-                      try
-                          erlang:process_flag(trap_exit, true),
-                          update_proto_in_dist_config(AFamily, CEncrypt),
-                          case Type of
-                              external_only -> ok;
-                              _ -> change_local_dist_proto(AFamily, false)
-                          end,
-                          change_ext_dist_proto(AFamily, CEncrypt),
-                          ns_config:set({node, node(), address_family},
-                                        AFamily),
-                          ns_config:set({node, node(), cluster_encryption},
-                                        CEncrypt),
-                          menelaus_util:reply(Req, 200)
-                      catch
-                          error:Error ->
-                              Msg = iolist_to_binary(format_error(Error)),
-                              menelaus_util:reply_global_error(Req, Msg)
-                      end,
-                      erlang:exit(normal)
-              end
+              erlang:process_flag(trap_exit, true),
+              case apply_net_config(AFamily, CEncrypt) of
+                  ok -> menelaus_util:reply(Req, 200);
+                  {error, Msg} -> menelaus_util:reply_global_error(Req, Msg)
+              end,
+              erlang:exit(normal)
       end, Req, form, net_config_validators()).
+
+apply_net_config(AFamily, CEncrypt) ->
+    ?log_info("Node is going to apply the following net settings: afamily ~p, "
+              "encryptiion ~p", [AFamily, CEncrypt]),
+    case update_type(AFamily, CEncrypt) of
+        empty -> ok;
+        Type ->
+            try
+                update_proto_in_dist_config(AFamily, CEncrypt),
+                case Type of
+                    external_only -> ok;
+                    _ -> change_local_dist_proto(AFamily, false)
+                end,
+                change_ext_dist_proto(AFamily, CEncrypt),
+                ns_config:set({node, node(), address_family},
+                              AFamily),
+                ns_config:set({node, node(), cluster_encryption},
+                              CEncrypt),
+                ?log_info("Node network settings (afamily: ~p, encryptiion: ~p)"
+                          " successfully applied", [AFamily, CEncrypt]),
+                ok
+            catch
+                error:Error ->
+                    Msg = iolist_to_binary(format_error(Error)),
+                    ?log_error("~s", [Msg]),
+                    {error, Msg}
+            end
+    end.
 
 change_local_dist_proto(ExpectedFamily, ExpectedEncryption) ->
     ?log_info("Reconnecting to babysitter and restarting couchdb since local "
@@ -976,6 +1001,12 @@ handle_dist_protocols(Req) ->
 
 handle_dist_protocols_validated(Req, Props) ->
     Protos = proplists:get_value(external, Props),
+    case apply_ext_dist_protocols(Protos) of
+        ok -> menelaus_util:reply(Req, 200);
+        {error, Msg} -> menelaus_util:reply_global_error(Req, Msg)
+    end.
+
+apply_ext_dist_protocols(Protos) ->
     ?log_info("Node is going to change dist protocols to ~p", [Protos]),
     case cb_dist:update_listeners_in_config(Protos) of
         ok ->
@@ -983,15 +1014,15 @@ handle_dist_protocols_validated(Req, Props) ->
                 ok ->
                     ns_config:set({node, node(), erl_external_dist_protocols},
                                   Protos),
-                    menelaus_util:reply(Req, 200);
+                    ok;
                 {error, Error} ->
                     Msg = io_lib:format("Failed to reload cb_dist config: ~p",
                                         [Error]),
-                    menelaus_util:reply_global_error(Req, iolist_to_binary(Msg))
+                    {error, iolist_to_binary(Msg)}
             end;
         {error, Reason} ->
             Msg = io_lib:format("Failed to store cb_dist config: ~p", [Reason]),
-            menelaus_util:reply_global_error(Req, iolist_to_binary(Msg))
+            {error, iolist_to_binary(Msg)}
     end.
 
 validate_ext_protos(Name, State) ->

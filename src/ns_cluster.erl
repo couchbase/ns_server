@@ -98,19 +98,46 @@ engage_cluster(NodeKVList) ->
 engage_cluster_not_to_self(NodeKVList) ->
     case proplists:get_value(<<"clusterCA">>, NodeKVList) of
         undefined ->
-            call_engage_cluster(NodeKVList);
+            engage_cluster_with_cluster_ca(NodeKVList);
         ClusterCA ->
             case ns_server_cert:apply_certificate_chain_from_inbox(ClusterCA) of
                 {ok, Props} ->
                     ?log_info("Custom certificate was loaded on the node before joining. Props: ~p",
                               [Props]),
-                    call_engage_cluster(NodeKVList);
+                    engage_cluster_with_cluster_ca(NodeKVList);
                 {error, Error} ->
                     Message =
                         iolist_to_binary(["Error applying node certificate. ",
                                            ns_error_messages:reload_node_certificate_error(Error)]),
                     {error, apply_cert, Message, {apply_cert, Error}}
             end
+    end.
+
+engage_cluster_with_cluster_ca(NodeKVList) ->
+    case apply_net_config(NodeKVList) of
+        ok -> call_engage_cluster(NodeKVList);
+        {error, Msg} ->
+            {error, apply_net_config, Msg, apply_net_config}
+    end.
+
+apply_net_config(NodeKVList) ->
+    ProtosB =
+        case proplists:get_value(<<"distProtocols">>, NodeKVList) of
+            Ps when Ps =:= <<"undefined">>; Ps =:= undefined ->
+                [<<"inet_tcp_dist">>, <<"inet6_tcp_dist">>];
+            Ps -> Ps
+        end,
+    Protos = [binary_to_atom(P, latin1) || P <- ProtosB],
+    AFamilyBin = proplists:get_value(<<"addressFamily">>, NodeKVList,
+                                     <<"inet">>),
+    AFamily = binary_to_atom(AFamilyBin, latin1),
+    CEncription = proplists:get_value(<<"clusterEncryption">>, NodeKVList, false),
+    ?log_info("Applying net config. AFamily: ~p, CEncryption: ~p, "
+              "DistProtos: ~p", [AFamily, CEncription, Protos]),
+
+    case menelaus_web_node:apply_ext_dist_protocols(Protos) of
+        ok -> menelaus_web_node:apply_net_config(AFamily, CEncription);
+        {error, Msg} -> {error, Msg}
     end.
 
 call_engage_cluster(NodeKVList) ->
