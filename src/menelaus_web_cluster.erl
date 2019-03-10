@@ -292,22 +292,34 @@ handle_join_clean_node(Req) ->
         {errors, Errors} ->
             reply_json(Req, Errors, 400);
         {ok, Fields} ->
+            OtherScheme = proplists:get_value(scheme, Fields),
             OtherHost = proplists:get_value(host, Fields),
             OtherPort = proplists:get_value(port, Fields),
             OtherUser = proplists:get_value(user, Fields),
             OtherPswd = proplists:get_value(password, Fields),
             Services = proplists:get_value(services, Fields),
-            handle_join_tail(Req, OtherHost, OtherPort, OtherUser, OtherPswd, Services)
+            handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherUser,
+                             OtherPswd, Services)
     end.
 
-handle_join_tail(Req, OtherHost, OtherPort, OtherUser, OtherPswd, Services) ->
+handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherUser, OtherPswd,
+                 Services) ->
     process_flag(trap_exit, true),
     RV = case ns_cluster:check_host_connectivity(OtherHost) of
              {ok, MyIP} ->
                  {struct, MyPList} = menelaus_web_node:build_full_node_info(node(), MyIP),
-                 Hostname = misc:expect_prop_value(hostname, MyPList),
+                 HostnamePort =
+                    binary_to_list(misc:expect_prop_value(hostname, MyPList)),
+                 {Host, _} = misc:split_host_port(HostnamePort, "8091"),
+                 Host2 = misc:maybe_add_brackets(Host),
+                 Port = case OtherScheme of
+                            http -> service_ports:get_port(rest_port);
+                            https -> service_ports:get_port(ssl_rest_port)
+                        end,
+                 NodeURL = io_lib:format("~p://~s:~b",
+                                         [OtherScheme, Host2, Port]),
 
-                 BasePayload = [{<<"hostname">>, Hostname},
+                 BasePayload = [{<<"hostname">>, iolist_to_binary(NodeURL)},
                                 {<<"user">>, []},
                                 {<<"password">>, []}],
 
@@ -324,12 +336,12 @@ handle_join_tail(Req, OtherHost, OtherPort, OtherUser, OtherPswd, Services) ->
                      end,
 
 
-                 RestRV = menelaus_rest:json_request_hilevel(post,
-                                                             {http, OtherHost, OtherPort,
-                                                              Endpoint,
-                                                              "application/x-www-form-urlencoded",
-                                                              mochiweb_util:urlencode(Payload)},
-                                                             {OtherUser, OtherPswd}),
+                 RestRV = menelaus_rest:json_request_hilevel(
+                            post,
+                            {OtherScheme, OtherHost, OtherPort, Endpoint,
+                             "application/x-www-form-urlencoded",
+                             mochiweb_util:urlencode(Payload)},
+                            {OtherUser, OtherPswd}),
                  case RestRV of
                      {error, What, _M, {bad_status, 404, Msg}} ->
                          {error, What, <<"Node attempting to join an older cluster. Some of the selected services are not available.">>, {bad_status, 404, Msg}};
