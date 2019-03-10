@@ -85,9 +85,7 @@ decode_json_response_ext(Response, Method, Request) ->
 
 -spec json_request_hilevel(atom(),
                            {atom(), string(), string() | integer(), string(), string(), iolist()}
-                           | {atom(), string(), string() | integer(), string()}
-                           | {string(), {string(), string() | integer(), string()}}
-                           | string(),
+                           | {atom(), string(), string() | integer(), string()},
                            undefined | {string(), string()},
                            [any()]) ->
                                   %% json response payload
@@ -104,9 +102,6 @@ json_request_hilevel(Method, {Scheme, Host, Port, Path, MimeType, Payload} = R,
     decode_json_response_ext(RV, Method, setelement(6, R, RealPayload));
 json_request_hilevel(Method, {Scheme, Host, Port, Path}, Auth, HTTPOptions) ->
     URL = rest_url(Host, Port, Path, Scheme),
-    RV = rest_request(Method, URL, [], undefined, [], Auth, HTTPOptions),
-    decode_json_response_ext(RV, Method, {Scheme, Host, Port, Path, [], []});
-json_request_hilevel(Method, {URL, {Scheme, Host, Port, Path}}, Auth, HTTPOptions) ->
     RV = rest_request(Method, URL, [], undefined, [], Auth, HTTPOptions),
     decode_json_response_ext(RV, Method, {Scheme, Host, Port, Path, [], []}).
 
