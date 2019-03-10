@@ -35,6 +35,8 @@
          preview_cluster_join_error/0]).
 
 -spec connection_error_message(term(), string(), string() | integer()) -> binary() | undefined.
+connection_error_message({tls_alert, M}, Host, Port) ->
+    list_to_binary(io_lib:format("Failed to establish TLS connection to ~s:~w: ~p", [Host, Port, M]));
 connection_error_message({Error, _}, Host, Port) ->
     connection_error_message(Error, Host, Port);
 connection_error_message(nxdomain, Host, _Port) ->
@@ -55,7 +57,8 @@ connection_error_message(_, _, _) -> undefined.
 
 -spec decode_json_response_error({ok, term()} | {error, term()},
                                  atom(),
-                                 {string(), string() | integer(), string(), string(), iolist()}) ->
+                                 {atom(), string(), string() | integer(),
+                                  string(), string(), iolist()}) ->
                                         %% English error message and nested error
                                         {error, rest_error, binary(), {error, term()} | {bad_status, integer(), string()}}.
 decode_json_response_error({ok, {{200 = _StatusCode, _} = _StatusLine,
@@ -73,23 +76,25 @@ decode_json_response_error({ok, {{401 = StatusCode, _}, _, Body}},
 
 decode_json_response_error({ok, {{StatusCode, _}, _, Body}},
                          Method,
-                         {Host, Port, Path, _MimeType, _Payload}) ->
+                         {Scheme, Host, Port, Path, _MimeType, _Payload}) ->
     TrimmedBody = string:substr(erlang:binary_to_list(Body), 1, 48),
     RealPort = if is_integer(Port) -> integer_to_list(Port);
                   true -> Port
                end,
-    M = list_to_binary(io_lib:format("Got HTTP status ~p from REST call ~p to http://~s:~s~s. Body was: ~p",
-                                     [StatusCode, Method, Host, RealPort, Path, TrimmedBody])),
+    M = list_to_binary(io_lib:format("Got HTTP status ~p from REST call ~p to ~p://~s:~s~s. Body was: ~p",
+                                     [StatusCode, Method, Scheme, Host, RealPort, Path, TrimmedBody])),
     {error, rest_error, M, {bad_status, StatusCode, list_to_binary(TrimmedBody)}};
 
-decode_json_response_error({error, Reason} = E, Method, {Host, Port, Path, _MimeType, _Payload}) ->
+decode_json_response_error({error, Reason} = E,
+                           Method,
+                           {Scheme, Host, Port, Path, _MimeType, _Payload}) ->
     M = case connection_error_message(Reason, Host, Port) of
             undefined ->
                 RealPort = if is_integer(Port) -> integer_to_list(Port);
                               true -> Port
                            end,
-                list_to_binary(io_lib:format("Error ~p happened during REST call ~p to http://~s:~s~s.",
-                                             [Reason, Method, Host, RealPort, Path]));
+                list_to_binary(io_lib:format("Error ~p happened during REST call ~p to ~p://~s:~s~s.",
+                                             [Reason, Method, Scheme, Host, RealPort, Path]));
             X -> X
         end,
     {error, rest_error, M, E}.

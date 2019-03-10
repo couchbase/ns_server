@@ -252,12 +252,17 @@ parse_join_cluster_params(Params, ThisIsJoin) ->
                           || {F, V} <- BasePList,
                              V =:= undefined],
 
+    DefaultScheme = case cluster_compat_mode:is_enterprise() of
+                        true -> https;
+                        false -> http
+                    end,
+
     {HostnameError, ParsedHostnameRV} =
-        case (catch parse_hostname(Hostname)) of
+        case (catch parse_hostname(Hostname, DefaultScheme)) of
             {error, HMsgs} ->
                 {HMsgs, undefined};
-            {ParsedHost, ParsedPort} when is_list(ParsedHost) ->
-                {[], {ParsedHost, ParsedPort}}
+            {ParsedScheme, ParsedHost, ParsedPort} when is_list(ParsedHost) ->
+                {[], {ParsedScheme, ParsedHost, ParsedPort}}
         end,
 
     Errors = MissingFieldErrors ++ VersionErrors ++ HostnameError ++
@@ -270,8 +275,9 @@ parse_join_cluster_params(Params, ThisIsJoin) ->
     case Errors of
         [] ->
             {ok, ServicesList} = Services,
-            {Host, Port} = ParsedHostnameRV,
+            {Scheme, Host, Port} = ParsedHostnameRV,
             {ok, [{services, ServicesList},
+                  {scheme, Scheme},
                   {host, Host},
                   {port, Port}
                   | BasePList]};
@@ -319,7 +325,7 @@ handle_join_tail(Req, OtherHost, OtherPort, OtherUser, OtherPswd, Services) ->
 
 
                  RestRV = menelaus_rest:json_request_hilevel(post,
-                                                             {OtherHost, OtherPort,
+                                                             {http, OtherHost, OtherPort,
                                                               Endpoint,
                                                               "application/x-www-form-urlencoded",
                                                               mochiweb_util:urlencode(Payload)},
@@ -513,27 +519,35 @@ validate_add_node_params(User, Password) ->
 
 %% erlang R15B03 has http_uri:parse/2 that does the job
 %% reimplement after support of R14B04 will be dropped
-parse_hostname(Hostname) ->
-    do_parse_hostname(string:trim(Hostname)).
+parse_hostname(Hostname, DefaultScheme) ->
+    do_parse_hostname(string:trim(Hostname), DefaultScheme).
 
-do_parse_hostname([]) ->
+do_parse_hostname([], _) ->
     throw({error, [<<"Hostname is required.">>]});
-do_parse_hostname(Hostname) ->
-    WithoutScheme = case string:str(Hostname, "://") of
-                        0 ->
-                            Hostname;
-                        X ->
-                            Scheme = string:sub_string(Hostname, 1, X - 1),
-                            case string:to_lower(Scheme) =:= "http" of
-                                false ->
-                                    throw({error, [list_to_binary("Unsupported protocol " ++ Scheme)]});
-                                true ->
-                                    string:sub_string(Hostname, X + 3)
-                            end
-                    end,
 
-    {Host, StringPort} = misc:split_host_port(WithoutScheme, "8091"),
-    {Host, parse_validate_port_number(StringPort)}.
+do_parse_hostname(Hostname, DefaultScheme) ->
+    WithScheme = case string:str(Hostname, "://") of
+                     0 -> atom_to_list(DefaultScheme) ++ "://" ++ Hostname;
+                     _ -> Hostname
+                 end,
+    SchemeVer = fun (S) ->
+                        case string:to_lower(S) of
+                            "http" -> valid;
+                            "https" -> valid;
+                            _ -> {error, {invalid_sheme, S}}
+                        end
+                end,
+    case http_uri:parse(WithScheme, [{scheme_validation_fun, SchemeVer},
+                                     {ipv6_host_with_brackets, false},
+                                     {scheme_defaults, [{http, 8091},
+                                                        {https, 18091}]}]) of
+        {ok, {Scheme, "", Host, Port, "/", ""}} ->
+            {Scheme, Host, parse_validate_port_number(integer_to_list(Port))};
+        {error, {invalid_sheme, S}} ->
+            throw({error, [list_to_binary("Unsupported protocol " ++ S)]});
+        _ ->
+            throw({error, [list_to_binary("Malformed URL " ++ Hostname)]})
+    end.
 
 handle_add_node(Req) ->
     do_handle_add_node(Req, undefined).
@@ -562,11 +576,12 @@ do_handle_add_node(Req, GroupUUID) ->
         {ok, KV} ->
             User = proplists:get_value(user, KV),
             Password = proplists:get_value(password, KV),
+            Scheme = proplists:get_value(scheme, KV),
             Hostname = proplists:get_value(host, KV),
             Port = proplists:get_value(port, KV),
             Services = proplists:get_value(services, KV),
             case ns_cluster:add_node_to_group(
-                   Hostname, Port,
+                   Scheme, Hostname, Port,
                    {User, Password},
                    GroupUUID,
                    Services) of
@@ -888,21 +903,29 @@ hostname_parsing_test() ->
             "host:port",
             "aaa:bb:cc",
             " \t\r\nhost\n",
-            " "],
+            " ",
+            "https://host:2000",
+            "[::1]",
+            "http://::1:10000",
+            "http://[::1]:10000"],
 
-    ExpectedResults = [{"host",1025},
+    ExpectedResults = [{http, "host",1025},
                        {error, [<<"The port number must be greater than 1023 and less than 65536.">>]},
                        {error, [<<"The port number must be greater than 1023 and less than 65536.">>]},
-                       {"host", 8000},
+                       {http, "host", 8000},
                        {error, [<<"Unsupported protocol ftp">>]},
-                       {"host", 8091},
-                       {"127.0.0.1", 6000},
-                       {error, [<<"Port must be a number.">>]},
-                       {error, [<<"The hostname is malformed. If using an IPv6 address, please enclose the address within '[' and ']'">>]},
-                       {"host", 8091},
-                       {error, [<<"Hostname is required.">>]}],
+                       {http, "host", 8091},
+                       {https, "127.0.0.1", 6000},
+                       {error, [<<"Malformed URL host:port">>]},
+                       {error, [<<"Malformed URL aaa:bb:cc">>]},
+                       {https, "host", 18091},
+                       {error, [<<"Hostname is required.">>]},
+                       {https, "host", 2000},
+                       {https, "::1", 18091},
+                       {error, [<<"Malformed URL http://::1:10000">>]},
+                       {http, "::1", 10000}],
 
-    Results = [(catch parse_hostname(X)) || X <- Urls],
+    Results = [(catch parse_hostname(X, https)) || X <- Urls],
 
     ?assertEqual(ExpectedResults, Results),
     ok.

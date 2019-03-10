@@ -26,7 +26,9 @@
          json_request_hilevel/4,
          add_basic_auth/3]).
 
--spec rest_url(string(), string() | integer(), string(), string()) -> string().
+-spec rest_url(string(), string() | integer(), string(), string() | atom()) -> string().
+rest_url(Host, Port, Path, Scheme) when is_atom(Scheme) ->
+    rest_url(Host, Port, Path, atom_to_list(Scheme));
 rest_url(Host, Port, Path, Scheme) when is_integer(Port) ->
     rest_url(Host, integer_to_list(Port), Path, Scheme);
 rest_url(Host, Port, Path, Scheme) ->
@@ -82,8 +84,8 @@ decode_json_response_ext(Response, Method, Request) ->
     ns_error_messages:decode_json_response_error(Response, Method, Request).
 
 -spec json_request_hilevel(atom(),
-                           {string(), string() | integer(), string(), string(), iolist()}
-                           | {string(), string() | integer(), string()}
+                           {atom(), string(), string() | integer(), string(), string(), iolist()}
+                           | {atom(), string(), string() | integer(), string()}
                            | {string(), {string(), string() | integer(), string()}}
                            | string(),
                            undefined | {string(), string()},
@@ -94,18 +96,19 @@ decode_json_response_ext(Response, Method, Request) ->
                                   {client_error, term()} |
                                   %% english error message and nested error
                                   {error, rest_error, binary(), {error, term()} | {bad_status, integer(), string()}}.
-json_request_hilevel(Method, {Host, Port, Path, MimeType, Payload} = R, Auth, HTTPOptions) ->
+json_request_hilevel(Method, {Scheme, Host, Port, Path, MimeType, Payload} = R,
+                     Auth, HTTPOptions) ->
     RealPayload = binary_to_list(iolist_to_binary(Payload)),
-    URL = rest_url(Host, Port, Path),
+    URL = rest_url(Host, Port, Path, Scheme),
     RV = rest_request(Method, URL, [], MimeType, RealPayload, Auth, HTTPOptions),
-    decode_json_response_ext(RV, Method, setelement(5, R, RealPayload));
-json_request_hilevel(Method, {Host, Port, Path}, Auth, HTTPOptions) ->
-    URL = rest_url(Host, Port, Path),
+    decode_json_response_ext(RV, Method, setelement(6, R, RealPayload));
+json_request_hilevel(Method, {Scheme, Host, Port, Path}, Auth, HTTPOptions) ->
+    URL = rest_url(Host, Port, Path, Scheme),
     RV = rest_request(Method, URL, [], undefined, [], Auth, HTTPOptions),
-    decode_json_response_ext(RV, Method, {Host, Port, Path, [], []});
-json_request_hilevel(Method, {URL, {Host, Port, Path}}, Auth, HTTPOptions) ->
+    decode_json_response_ext(RV, Method, {Scheme, Host, Port, Path, [], []});
+json_request_hilevel(Method, {URL, {Scheme, Host, Port, Path}}, Auth, HTTPOptions) ->
     RV = rest_request(Method, URL, [], undefined, [], Auth, HTTPOptions),
-    decode_json_response_ext(RV, Method, {Host, Port, Path, [], []}).
+    decode_json_response_ext(RV, Method, {Scheme, Host, Port, Path, [], []}).
 
 json_request_hilevel(Method, Request, Auth) ->
     DefaultOptions = [{timeout, 30000}, {connect_timeout, 30000}],
