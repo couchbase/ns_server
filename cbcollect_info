@@ -917,8 +917,8 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
 
     lookup_tasks = []
     if lookup_cmd is not None:
-        lookup_tasks = [UnixTask("DNS lookup information for %s" % node,
-                                 "%(lookup_cmd)s '%(node)s'" % locals())
+        lookup_tasks = [UnixTask(f"DNS lookup information for {node}",
+                                 f"{lookup_cmd} '{node}'"
                         for node in nodes]
 
     getent_tasks = [LinuxTask("Name Service Switch "
