@@ -1,6 +1,6 @@
 <div>
   <div ng-class="{fiter_opened: viewsEditingCtl.isFilterOpened}">
-    <div ng-show="rbac.cluster.bucket[viewsEditingCtl.currentBucketName].data.read">
+    <div ng-show="rbac.cluster.bucket[viewsEditingCtl.currentBucketName].data.docs.read">
       <div ng-click="viewsEditingCtl.toggleSampleDocument()">
         <div class="row margin-bottom-half">
           <h4

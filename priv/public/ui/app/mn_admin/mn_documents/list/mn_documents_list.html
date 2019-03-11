@@ -1,7 +1,7 @@
 <mn-element-cargo depot="actions">
   <div class="header-controls">
     <a
-       ng-show="!documentsControlCtl.isEmptyState() && rbac.cluster.bucket[documentsCtl.currentBucketName].data.write"
+       ng-show="!documentsControlCtl.isEmptyState() && rbac.cluster.bucket[documentsCtl.currentBucketName].data.docs.upsert"
        ng-click="documentsListCtl.showCreateDialog()">
       ADD DOCUMENT
     </a>
@@ -54,11 +54,11 @@
        autocapitalize="off"
        placeholder="Document ID"
        ng-model="documentsListCtl.lookupId"
-       ng-disabled="documentsControlCtl.isEmptyState() || !rbac.cluster.bucket[documentsCtl.currentBucketName].data.read">
+       ng-disabled="documentsControlCtl.isEmptyState() || !rbac.cluster.bucket[documentsCtl.currentBucketName].data.docs.read">
     <button
        type="submit"
        class="append"
-       ng-disabled="documentsControlCtl.isEmptyState() || !rbac.cluster.bucket[documentsCtl.currentBucketName].data.read">
+       ng-disabled="documentsControlCtl.isEmptyState() || !rbac.cluster.bucket[documentsCtl.currentBucketName].data.docs.read">
       Look Up ID
     </button>
   </form>
@@ -85,14 +85,14 @@
         <span class="cbui-table-cell wrap text-right">
           <button
              class="outline tight"
-             ng-show="rbac.cluster.bucket[documentsCtl.currentBucketName].data.write"
+             ng-show="rbac.cluster.bucket[documentsCtl.currentBucketName].data.docs.upsert"
              ng-click="$event.stopPropagation(); documentsListCtl.deleteDocument(r.id)">Delete</button>
           <button
              ng-click="$event.stopPropagation()"
              ui-sref="^.^.editing({documentId: r.id})"
              class="outline tight">
-            <span ng-show="rbac.cluster.bucket[documentsCtl.currentBucketName].data.write">Edit</span>
-            <span ng-show="rbac.cluster.bucket[documentsCtl.currentBucketName].data.read && !rbac.cluster.bucket[documentsCtl.currentBucketName].data.write">View Document</span>
+            <span ng-show="rbac.cluster.bucket[documentsCtl.currentBucketName].data.docs.upsert">Edit</span>
+            <span ng-show="rbac.cluster.bucket[documentsCtl.currentBucketName].data.docs.read && !rbac.cluster.bucket[documentsCtl.currentBucketName].data.docs.upsert">View Document</span>
           </button>
         </span>
       </div>

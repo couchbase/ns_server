@@ -273,7 +273,7 @@
         data: {
           title: "Documents",
           child: parent,
-          permissions: "cluster.bucket['.'].settings.read && cluster.bucket['.'].data.read"
+          permissions: "cluster.bucket['.'].settings.read && cluster.bucket['.'].data.docs.read"
         }
       })
       .state(parent + '.documents.control', {

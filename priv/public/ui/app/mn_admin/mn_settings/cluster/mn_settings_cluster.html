@@ -38,9 +38,9 @@
 
       <div class="width-6">
 
-        <div ui-view="notifications"></div>
+        <div ng-if="rbac.cluster.settings.read" ui-view="notifications"></div>
 
-        <div ui-view="autofailover"></div>
+        <div ng-if="rbac.cluster.settings.read" ui-view="autofailover"></div>
 
         <label
            ng-show="poolDefault.compat.atLeast40 && rbac.cluster.settings.indexes.read"
@@ -60,12 +60,16 @@
           </div>
         </div>
         <p
-           class="disclosure"
-           ng-class="{disclosed: settingsClusterCtl.showAdvancedSettings}"
-           ng-click="settingsClusterCtl.showAdvancedSettings = !settingsClusterCtl.showAdvancedSettings">
+          ng-if="rbac.cluster.settings.read"
+          class="disclosure"
+          ng-class="{disclosed: settingsClusterCtl.showAdvancedSettings}"
+          ng-click="settingsClusterCtl.showAdvancedSettings = !settingsClusterCtl.showAdvancedSettings">
           Advanced Index Settings
         </p>
-        <div ng-show="settingsClusterCtl.showAdvancedSettings" class="indent-1-5">
+        <div
+          ng-if="rbac.cluster.settings.read"
+          ng-show="settingsClusterCtl.showAdvancedSettings"
+          class="indent-1-5">
           <div class="formrow">
             <label for="index_settings_thread" class="inline">
               Indexer Threads

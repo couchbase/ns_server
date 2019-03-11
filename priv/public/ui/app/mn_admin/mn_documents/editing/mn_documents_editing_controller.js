@@ -101,31 +101,37 @@
     function areThereErrors() {
       return !!vm.state.errors || areThereWarnings();
     }
+
+    function hasDocUpsert() {
+      return $scope.rbac.cluster.bucket[$state.params.bucket] &&
+        $scope.rbac.cluster.bucket[$state.params.bucket].data.docs.upsert;
+    }
     function isEditorDisabled() {
       return !vm.state ||
-             (vm.state.editorWarnings &&
-             (vm.state.editorWarnings.notFound ||
-              vm.state.editorWarnings.documentIsBase64 ||
-              vm.state.editorWarnings.documentLimitError)) ||
-             ($scope.rbac.cluster.bucket[$state.params.bucket] &&
-             !$scope.rbac.cluster.bucket[$state.params.bucket].data.write);
-
+        (vm.state.editorWarnings &&
+         (vm.state.editorWarnings.notFound ||
+          vm.state.editorWarnings.documentIsBase64 ||
+          vm.state.editorWarnings.documentLimitError)) ||
+        !hasDocUpsert();
     }
     function isDeleteDisabled() {
       return !vm.state ||
-              vm.viewLoading ||
-             (vm.state.editorWarnings && vm.state.editorWarnings.notFound);
+        vm.viewLoading ||
+        (vm.state.editorWarnings && vm.state.editorWarnings.notFound) ||
+        !hasDocUpsert();
     }
     function isSaveAsDisabled() {
       return !vm.state ||
-              vm.viewLoading ||
-              areThereErrors();
+        vm.viewLoading ||
+        areThereErrors() ||
+        !hasDocUpsert();
     }
     function isSaveDisabled() {
       return !vm.state ||
-              vm.viewLoading ||
-             !vm.isDocumentChanged ||
-             areThereErrors();
+        vm.viewLoading ||
+        !vm.isDocumentChanged ||
+        areThereErrors() ||
+        !hasDocUpsert();
     }
     function onDocValueUpdate(json) {
       vm.state.errors = null;

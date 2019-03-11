@@ -193,7 +193,7 @@
             rv.currentDocument = _.find(rv.ddocs.rows, function (row) {
               return row.doc.meta.id === params.documentId;
             });
-            if (mnPermissions.export.cluster.bucket[params.bucket].data.read) {
+            if (mnPermissions.export.cluster.bucket[params.bucket].data.docs.read) {
               return prepareRandomDocument(params).then(function (randomDoc) {
                 rv.sampleDocument = randomDoc;
                 return rv;

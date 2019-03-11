@@ -41,7 +41,8 @@
           "cluster.bucket[" + name + "].data!write",
           "cluster.bucket[" + name + "].data!read",
           "cluster.bucket[" + name + "].data.docs!read",
-          "cluster.bucket[" + name + "].data.docs!write"
+          "cluster.bucket[" + name + "].data.docs!write",
+          "cluster.bucket[" + name + "].data.docs!upsert"
         ]);
       }
 
