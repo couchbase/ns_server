@@ -57,7 +57,15 @@ rest_request(Method, URL, Headers, MimeType, Body, Auth, HTTPOptions) ->
     NewHeaders = rest_add_mime_type(NewHeaders0, MimeType),
     Timeout = proplists:get_value(timeout, HTTPOptions, 30000),
     HTTPOptions1 = lists:keydelete(timeout, 1, HTTPOptions),
-    lhttpc:request(URL, Method, NewHeaders, Body, Timeout, HTTPOptions1).
+    HTTPOptions2 = add_tls_options(URL, HTTPOptions1),
+    lhttpc:request(URL, Method, NewHeaders, Body, Timeout, HTTPOptions2).
+
+add_tls_options("https://" ++ _, Options) ->
+    ConnectOptions = proplists:get_value(connect_options, Options, []),
+    TLSOptions = ns_server_cert:tls_server_validation_options(),
+    NewConnectOptions = misc:update_proplist(TLSOptions, ConnectOptions),
+    misc:update_proplist(Options, [{connect_options, NewConnectOptions}]);
+add_tls_options("http://" ++ _, Options) -> Options.
 
 decode_json_response_ext({ok, {{200 = _StatusCode, _} = _StatusLine,
                                _Headers, Body} = _Result},

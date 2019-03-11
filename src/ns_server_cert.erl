@@ -29,7 +29,8 @@
          get_warnings/1,
          get_subject_fields_by_type/2,
          get_sub_alt_names_by_type/2,
-         get_node_cert_info/1]).
+         get_node_cert_info/1,
+         tls_server_validation_options/0]).
 
 inbox_chain_path() ->
     filename:join(path_config:component_path(data, "inbox"), "chain.pem").
@@ -536,3 +537,12 @@ get_warnings(CAProps) ->
 get_node_cert_info(Node) ->
     Props = ns_config:read_key_fast({node, Node, cert}, []),
     proplists:delete(verified_with, Props).
+
+tls_server_validation_options() ->
+    case ns_server_cert:cluster_ca() of
+        {_, _} -> [];
+        {UploadedCAProps, _, _} ->
+            Pem = proplists:get_value(pem, UploadedCAProps),
+            [{verify, verify_peer},
+             {cacerts, [ns_server_cert:decode_single_certificate(Pem)]}]
+    end.
