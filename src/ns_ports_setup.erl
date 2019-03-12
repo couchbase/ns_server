@@ -375,6 +375,8 @@ goport_args(projector, Config, _Cmd, _NodeUUID) ->
     LocalMemcachedPort = service_ports:get_port(memcached_port, Config),
     MinidumpDir = path_config:minidump_dir(),
 
+    build_https_args(projector_port, "--httpsPort", "--certFile",
+                     "--keyFile", Config) ++
     ["-kvaddrs=" ++ misc:local_url(LocalMemcachedPort, [no_scheme]),
      build_port_arg("-adminport", ":", projector_port, Config),
      "-diagDir=" ++ MinidumpDir,
