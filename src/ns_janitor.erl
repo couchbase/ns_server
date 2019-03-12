@@ -353,7 +353,7 @@ enumerate_chains(BucketConfig) ->
                          [] ->
                              [[] || _ <- Map];
                          _ ->
-                             FFMap
+                             maybe_adjust_chain_size(FFMap, BucketConfig)
                      end,
     MapLen = length(Map),
     EnumeratedChains = lists:zip3(lists:seq(0, MapLen - 1),
@@ -394,13 +394,15 @@ maybe_adjust_chain_size(Map, BucketConfig) ->
 
 sanify_chain(Bucket, States, Chain, FutureChain, VBucket) ->
     NewChain = do_sanify_chain(Bucket, States, Chain, FutureChain, VBucket),
-    %% Fill in any missing replicas
-    case is_list(NewChain) andalso length(NewChain) < length(Chain) of
-        false ->
-            NewChain;
-        true ->
-            NewChain ++ lists:duplicate(length(Chain) - length(NewChain),
-                                        undefined)
+    %% Fill in any missing replicas and assert that new chain is not longer than
+    %% the original one
+    case NewChain of
+        ignore ->
+            ignore;
+        L when length(L) < length(Chain) ->
+            L ++ lists:duplicate(length(Chain) - length(L), undefined);
+        L when length(L) =:= length(Chain) ->
+            L
     end.
 
 construct_vbucket_states(VBucket, Chain, States) ->
@@ -590,3 +592,19 @@ sanify_doesnt_lose_replicas_on_stopped_rebalance_test() ->
     [c] = do_sanify_chain("B", [{a, 0, dead}, {b, 0, replica},
                                 {c, 0, active}, {d, 0, replica}],
                           [a, b], [], 0).
+
+enumerate_chains_test() ->
+    BucketConfig1 = [{map, [[a, b, c], [b, c, a]]},
+                     {fastForwardMap, [[c, b, a], [c, a, b]]},
+                     {num_replicas, 1}],
+    {EnumeratedChains1, _, _} = enumerate_chains(BucketConfig1),
+    [{0, [a, b], [c, b]}, {1, [b, c], [c, a]}] = EnumeratedChains1,
+
+    BucketConfig2 = lists:keyreplace(num_replicas, 1, BucketConfig1,
+                                     {num_replicas, 2}),
+    {EnumeratedChains2, _, _} = enumerate_chains(BucketConfig2),
+    [{0, [a, b, c], [c, b, a]}, {1, [b, c, a], [c, a, b]}] = EnumeratedChains2,
+
+    BucketConfig3 = lists:keydelete(fastForwardMap, 1, BucketConfig2),
+    {EnumeratedChains3, _, _} = enumerate_chains(BucketConfig3),
+    [{0, [a, b, c], []}, {1, [b, c, a], []}] = EnumeratedChains3.
