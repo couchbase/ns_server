@@ -27,7 +27,7 @@
     vm.groups = mnStatisticsNewService.export.scenarios.selected.groups;
     vm.newChart = _.cloneDeep(chart) || {
       stats: {},
-      size: "medium",
+      size: "small",
       specificStat: "false",
       group: vm.groups[0].id.toString(),
       bucket: $scope.rbac.bucketNames['.stats!read'][0]

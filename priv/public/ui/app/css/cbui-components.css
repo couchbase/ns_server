@@ -728,6 +728,11 @@ section.error {
   width: 640px;
 }
 
+/* extra-large-width modal dialog (uses .panel) ------------------------------- */
+.dialog-xlg {
+  width: 720px;
+}
+
 /* LABELS & BADGES ------------------------------------------------------ */
 .label {
   font-size: .688rem;
@@ -2299,4 +2304,33 @@ nav.nav-sidebar-hidden {
 
 .nvd3.nv-scatter.nv-single-point .nv-groups .nv-group .nv-point:not(.hover) {
   fill-opacity: .0 !important;
-  stroke-opa
+  }
+/* stroke-opa */
+
+/*  checkbox filter widget for the chartbuilder data section  --------------- */
+.checkbox-filter {
+  border: 1px solid #d1d1d1;
+  border-radius: 5px;
+  margin: 0 .25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+.checkbox-filter:first-child {
+  margin: 0 .25rem 0 0;
+}
+.checkbox-filter:last-child {
+  margin: 0 0 0 .25rem;
+}
+.checkbox-filter input[type="checkbox"] + label:before {
+  display: none;
+}
+.checkbox-filter.selected {
+  background-color: #d9e7f7;
+}
+.checkbox-filter label {
+  width: 100%;
+  font-size: .8125rem!important;
+  text-align: center;
+}

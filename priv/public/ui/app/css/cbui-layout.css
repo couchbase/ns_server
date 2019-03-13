@@ -305,7 +305,7 @@ footer {
   width: 4rem; /* 1rem = 16px, 4rem = 64px */
 }
 .fix-width-1-5 {
-  width: 6rem; /* 1rem = 16px, 3rem = 48px */
+  width: 6rem; /* 1rem = 16px, 6rem = 96px */
 }
 .fix-width-2 {
   width: 8rem; /* 128px */
@@ -358,6 +358,10 @@ footer {
 /* fixed height ------------------------------------------------------- */
 .max-height-500 {
   max-height: 500px;
+  overflow: auto;
+}
+.max-height-550 {
+  max-height: 550px;
   overflow: auto;
 }
 .min-height-2 {
