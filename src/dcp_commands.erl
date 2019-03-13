@@ -21,7 +21,7 @@
 -include("mc_constants.hrl").
 -include("mc_entry.hrl").
 
--export([open_connection/4, open_connection/5,
+-export([open_connection/4,
          add_stream/4, close_stream/3, stream_request/8,
          setup_flow_control/2, process_response/2, format_packet_nicely/1,
          command_2_atom/1]).
@@ -39,14 +39,9 @@ process_response(#mc_header{status=Status}, #mc_entry{data=Msg}) ->
 process_response({ok, Header, Body}) ->
     process_response(Header, Body).
 
--spec open_connection(port(), dcp_conn_name(), dcp_conn_type(), list()) ->
-                             ok | dcp_error().
+-spec open_connection(port(), dcp_conn_name(), dcp_conn_type(),
+                      list()) -> ok | dcp_error().
 open_connection(Sock, ConnName, Type, RepFeatures) ->
-    open_connection(Sock, ConnName, Type, RepFeatures, ns_server).
-
--spec open_connection(port(), dcp_conn_name(), dcp_conn_type(), list(),
-                      atom()) -> ok | dcp_error().
-open_connection(Sock, ConnName, Type, RepFeatures, Logger) ->
     Flags = case Type of
                 consumer ->
                     ?DCP_CONNECTION_FLAG_CONSUMER;
@@ -68,8 +63,8 @@ open_connection(Sock, ConnName, Type, RepFeatures, Logger) ->
 
     Extra = <<0:32, NewFlags:32>>,
 
-    ale:debug(Logger, "Open ~p connection ~p on socket ~p",
-              [Type, ConnName, Sock]),
+    ?log_debug("Open ~p connection ~p on socket ~p",
+               [Type, ConnName, Sock]),
     process_response(
       mc_client_binary:cmd_vocal(?DCP_OPEN, Sock,
                                  {#mc_header{},
