@@ -2334,3 +2334,35 @@ nav.nav-sidebar-hidden {
   font-size: .8125rem!important;
   text-align: center;
 }
+
+/* chart styles ------------------------------------------------------------- */
+.chart-adder {
+  background-color: #f5f5f5;
+  border-radius: 5px;
+  font-family: FontAwesome;
+  color: #d1d1d1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3rem;
+  cursor: pointer;
+  margin: 1rem;
+}
+.chart-adder:hover {
+  color: #a1a1a1;
+}
+.chart-adder:before {
+  content: "\f055";
+}
+.statistics-small + .chart-adder {
+  width: calc(25% - 2rem);
+  height: 180px;
+}
+.statistics-medium + .chart-adder {
+  width: calc(50% - 2rem);
+  height: 240px;
+}
+.statistics-large + .chart-adder {
+  width: calc(25% - 2rem);
+  height: 180px;
+}
