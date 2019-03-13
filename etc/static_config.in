@@ -22,6 +22,7 @@
 {loglevel_mapreduce_errors, debug}.
 {loglevel_xdcr, debug}.
 {loglevel_access, info}.
+{loglevel_cbas, debug}.
 
 {disk_sink_opts,
  [{rotation, [{compress, true},

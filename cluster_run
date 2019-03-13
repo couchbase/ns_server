@@ -267,7 +267,7 @@ def usage():
     sys.exit("Usage: {0} [--nodes=N] [--dont-rename] [--dont-start] "
              "[--interactive] [--static-cookie] [--start-index=N] "
              "[--static-cookie] [--host=H] [--loglevel=L] "
-             "[--pluggable-config=File] [--minified] [--disable-autocomplete]"
+             "[--pluggable-config=File] [--minified] [--disable-autocomplete] "
              "[ns_server args]".format(sys.argv[0]))
 
 def find_primary_addr():
@@ -388,7 +388,6 @@ def main():
         else:
             extra_args += ["rename_ip", '"' + primary_addr + '"']
 
-    extra_args += args[1:]
     if prepend_extras:
         prepend_args = args[0:]
     else:

@@ -19,7 +19,7 @@
 
 -export([start/2, stop/1, get_loglevel/1, setup_node_names/0,
          get_babysitter_node/0, get_babysitter_cookie/0, get_babysitter_pid/0,
-         start_disk_sink/2, adjust_loglevel/2]).
+         start_disk_sink/2, get_disk_sink_rotation_opts/1, adjust_loglevel/2]).
 
 -include("ns_common.hrl").
 -include_lib("ale/include/ale.hrl").
@@ -246,11 +246,18 @@ start_sink(Name, Module, Args) ->
 
 start_disk_sink(Name, FileName) ->
     {ok, Dir} = application:get_env(ns_server, error_logger_mf_dir),
-    PerSinkOpts = misc:get_env_default(ns_server, list_to_atom("disk_sink_opts_" ++ atom_to_list(Name)), []),
-    DiskSinkOpts = PerSinkOpts ++ misc:get_env_default(ns_server, disk_sink_opts, []),
+    DiskSinkOpts = get_disk_sink_opts(Name),
 
     Path = filename:join(Dir, FileName),
     start_sink(Name, ale_disk_sink, [Path, DiskSinkOpts]).
+
+get_disk_sink_opts(Name) ->
+  PerSinkOpts = misc:get_env_default(ns_server, list_to_atom("disk_sink_opts_" ++ atom_to_list(Name)), []),
+  PerSinkOpts ++ misc:get_env_default(ns_server, disk_sink_opts, []).
+
+get_disk_sink_rotation_opts(Name) ->
+  DiskSinkOpts = get_disk_sink_opts(Name),
+  proplists:get_value(rotation, DiskSinkOpts, []).
 
 stop(_State) ->
     ok.

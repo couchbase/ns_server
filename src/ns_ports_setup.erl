@@ -502,6 +502,10 @@ goport_args(cbas, Config, Cmd, NodeUUID) ->
     {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
     {_, Host} = misc:node_name_host(node()),
     {ok, MemoryQuota} = memory_quota:get_quota(Config, cbas),
+    RotationConf = ns_server:get_disk_sink_rotation_opts(cbas),
+    RotSize = proplists:get_value(size, RotationConf),
+    RotNumFiles = proplists:get_value(num_files, RotationConf),
+    LogLevel = ns_server:get_loglevel(cbas),
 
     build_port_args([{"-serverPort",           rest_port},
                      {"-bindHttpPort",         cbas_http_port},
@@ -530,7 +534,10 @@ goport_args(cbas, Config, Cmd, NodeUUID) ->
          "-memoryQuotaMb=" ++ integer_to_list(MemoryQuota),
          "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
          "-logDir=" ++ LogDir,
-         "-tmpDir=" ++ path_config:component_path(tmp)
+         "-tmpDir=" ++ path_config:component_path(tmp),
+         "-logRotationSize=" ++ integer_to_list(RotSize),
+         "-logRotationNumFiles=" ++ integer_to_list(RotNumFiles),
+         "-logLevel=" ++ atom_to_list(LogLevel)
         ] ++
         ["-dataDir=" ++ Dir || Dir <- CBASDirs] ++
         ["-javaHome=" ++ JavaHome || JavaHome =/= undefined];
