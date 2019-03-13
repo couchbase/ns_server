@@ -44,7 +44,8 @@
          handle_node_settings_post/2,
          apply_node_settings/1,
          alternate_addresses_json/3,
-         handle_setup_net_config/1]).
+         handle_setup_net_config/1,
+         handle_dist_protocols/1]).
 
 -import(menelaus_util,
         [local_addr/1,
@@ -957,6 +958,54 @@ format_error({exceeded_retries, Node}) ->
     io_lib:format("Reconnect to ~p retries exceeded", [Node]);
 format_error(R) ->
     io_lib:format("~p", [R]).
+
+handle_dist_protocols(Req) ->
+    validator:handle(
+      fun (Props) ->
+              handle_dist_protocols_validated(Req, Props)
+      end, Req, form, [validator:required(external, _),
+                       validate_ext_protos(external, _),
+                       validator:unsupported(_)]).
+
+handle_dist_protocols_validated(Req, Props) ->
+    Protos = proplists:get_value(external, Props),
+    ?log_info("Node is going to change dist protocols to ~p", [Protos]),
+    case cb_dist:update_listeners_in_config(Protos) of
+        ok ->
+            case cb_dist:reload_config() of
+                ok ->
+                    ns_config:set({node, node(), erl_external_dist_protocols},
+                                  Protos),
+                    menelaus_util:reply(Req, 200);
+                {error, Error} ->
+                    Msg = io_lib:format("Failed to reload cb_dist config: ~p",
+                                        [Error]),
+                    menelaus_util:reply_global_error(Req, iolist_to_binary(Msg))
+            end;
+        {error, Reason} ->
+            Msg = io_lib:format("Failed to store cb_dist config: ~p", [Reason]),
+            menelaus_util:reply_global_error(Req, iolist_to_binary(Msg))
+    end.
+
+validate_ext_protos(Name, State) ->
+    validator:validate(
+        fun (Value) ->
+                Protos = [string:trim(T) || T <- string:tokens(Value, ",")],
+                Allowed = ["inet_tcp", "inet6_tcp", "inet_tls", "inet6_tls"],
+                case lists:all(lists:member(_, Allowed), Protos) of
+                    true ->
+                        Res = [list_to_atom(P ++ "_dist") || P <- Protos],
+                        case lists:member(inet6_tls_dist, Res) andalso
+                             lists:member(inet_tls_dist, Res) of
+                            false -> {value, Res};
+                            true -> {error, "tls over ipv4 and tls over ipv6 "
+                                            "can't be used simultaneously"}
+                        end;
+                    false ->
+                        {error, io_lib:format("invalid protocols list, allowed "
+                                              "protocols are ~p", [Allowed])}
+                end
+        end, Name, State).
 
 -ifdef(TEST).
 validate_ix_cbas_path_test() ->
