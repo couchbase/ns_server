@@ -27,7 +27,8 @@
 %% External exports
 -export([start_link/0,
          barrier_spec/1, barrier_notify_spec/1,
-         barrier_start_link/0, barrier_notify/0, barrier_wait/0]).
+         barrier_start_link/0, barrier_notify/0, barrier_wait/0,
+         restart_web_servers/0]).
 
 %% supervisor callbacks
 -export([init/1]).
@@ -151,3 +152,7 @@ ns_log_code_string(?START_OK) ->
     "web start ok";
 ns_log_code_string(?START_FAIL) ->
     "web start fail".
+
+restart_web_servers() ->
+    supervisor:terminate_child(menelaus_sup, menelaus_web),
+    supervisor:restart_child(menelaus_sup, menelaus_web).

@@ -376,9 +376,6 @@ ssl_client_opts() ->
     [{cacertfile, ssl_cacert_key_path()}].
 
 start_link_rest_service() ->
-    Config0 = menelaus_web:webconfig(),
-    Config1 = lists:keydelete(port, 1, Config0),
-    Config2 = lists:keydelete(name, 1, Config1),
     case service_ports:get_port(ssl_rest_port) of
         undefined ->
             ignore;
@@ -386,8 +383,7 @@ start_link_rest_service() ->
             Config3 = [{ssl, true},
                        {name, menelaus_web_ssl},
                        {ssl_opts, ssl_server_opts()},
-                       {port, SSLPort}
-                       | Config2],
+                       {port, SSLPort}],
             menelaus_web:start_link(Config3)
     end.
 

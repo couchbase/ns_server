@@ -29,12 +29,12 @@
 
 -export([start_link/0,
          start_link/1,
-         stop/0,
+         http_server/1,
          loop/2,
          webconfig/0,
          webconfig/1,
-         restart/0,
-         get_uuid/0]).
+         get_uuid/0,
+         init/1]).
 
 -export([ns_log_cat/1, ns_log_code_string/1]).
 
@@ -53,10 +53,32 @@
 %% External API
 
 start_link() ->
-    start_link(webconfig()).
-
+    start_link([]).
 start_link(Options) ->
-    {AppRoot, Options1} = get_option(approot, Options),
+    supervisor:start_link(?MODULE, [Options]).
+
+init([Options0]) ->
+    Name = proplists:get_value(name, Options0, ?MODULE),
+    Options = proplists:delete(name, Options0),
+    CreateName = fun (N, S) ->
+                     list_to_atom(lists:flatten(io_lib:format("~p_~s", [N, S])))
+                 end,
+    IsEnterprise = cluster_compat_mode:is_enterprise(),
+    Specs = [{menelaus_web_ipv4,
+              {?MODULE, http_server,
+               [[{ip, "0.0.0.0"}, {name, CreateName(Name, "ipv4")} | Options]]},
+              permanent, 5000, worker, dynamic}] ++
+            [{menelaus_web_ipv6,
+              {?MODULE, http_server,
+               [[{ip, "::"}, {name, CreateName(Name, "ipv6")} | Options]]},
+              permanent, 5000, worker, dynamic} || IsEnterprise],
+    {ok, {{one_for_all, 10, 10}, Specs}}.
+
+http_server(Options) ->
+    Defaults = webconfig(),
+    Options0 = misc:update_proplist(Defaults, Options),
+    {AppRoot, Options1} = get_option(approot, Options0),
+
     Plugins = menelaus_pluggable_ui:find_plugins(),
     IsSSL = proplists:get_value(ssl, Options1, false),
     Loop = fun (Req) ->
@@ -65,18 +87,21 @@ start_link(Options) ->
     case mochiweb_http:start_link([{loop, Loop} | Options1]) of
         {ok, Pid} -> {ok, Pid};
         Other ->
-            ?MENELAUS_WEB_LOG(?START_FAIL,
-                              "Failed to start web service:  ~p~n", [Other]),
-            Other
+            AFamily = misc:get_net_family(),
+            case {proplists:get_value(ip, Options1, "0.0.0.0"), AFamily} of
+                {"0.0.0.0", inet6} ->
+                    ?log_warning("Failed to start IPv4 web service, ignoring"),
+                    ignore;
+                {"::", inet} ->
+                    ?log_warning("Failed to start IPv6 web service, ignoring"),
+                    ignore;
+                _ ->
+                    ?MENELAUS_WEB_LOG(?START_FAIL,
+                                      "Failed to start web service:  ~p~n",
+                                      [Other]),
+                    Other
+            end
     end.
-
-stop() ->
-    % Note that a supervisor might restart us right away.
-    mochiweb_http:stop(?MODULE).
-
-restart() ->
-    % Depend on our supervision tree to restart us right away.
-    stop().
 
 webconfig(Config) ->
     Ip = case os:getenv("MOCHIWEB_IP") of
@@ -90,7 +115,6 @@ webconfig(Config) ->
                    list_to_integer(P)
            end,
     WebConfig = [{ip, Ip},
-                 {name, ?MODULE},
                  {port, Port},
                  {nodelay, true},
                  {approot, menelaus_deps:local_path(["priv","public"],

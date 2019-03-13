@@ -194,6 +194,6 @@ maybe_restart(#state{webconfig=WebConfigOld} = State) ->
     WebConfigNew = menelaus_web:webconfig(),
     case WebConfigNew =:= WebConfigOld of
         true -> State;
-        false -> spawn(fun menelaus_web:restart/0),
+        false -> spawn(fun menelaus_sup:restart_web_servers/0),
                  State#state{webconfig=WebConfigNew}
     end.
