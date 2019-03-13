@@ -512,8 +512,15 @@ check_add_possible(Body) ->
 do_add_node(Scheme, RemoteAddr, RestPort, Auth, GroupUUID, Services) ->
     check_add_possible(
       fun () ->
-              do_add_node_allowed(Scheme, RemoteAddr, RestPort, Auth,
-                                  GroupUUID, Services)
+              case misc:is_raw_ip(RemoteAddr) and misc:is_ipv6() of
+                  false ->
+                      do_add_node_allowed(Scheme, RemoteAddr, RestPort, Auth,
+                                          GroupUUID, Services);
+                  true ->
+                      Msg = "Only node with FQDN can be added to ipv6 cluster",
+                      {error, raw_ip_not_allowed, iolist_to_binary(Msg),
+                       raw_ip_not_allowed}
+              end
       end).
 
 should_change_address() ->

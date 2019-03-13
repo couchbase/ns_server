@@ -2747,3 +2747,9 @@ is_fqdn_basic_validation_test() ->
     false = is_fqdn_basic_validation("something:"),
     true = is_fqdn_basic_validation("ns_server33.services.co.woohoo").
 -endif.
+
+is_raw_ip(Host) ->
+    case inet:parse_address(Host) of
+        {ok, _} -> true;
+        {error, einval} -> false
+    end.
