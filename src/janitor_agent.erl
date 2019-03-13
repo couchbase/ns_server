@@ -250,62 +250,14 @@ apply_new_bucket_config_with_timeout(Bucket, Rebalancer, Servers,
 
 apply_new_bucket_config(Bucket, Rebalancer, Servers,
                         NewBucketConfig, IgnoredVBuckets, Timeout) ->
-    Map = proplists:get_value(map, NewBucketConfig),
-    true = (Map =/= undefined),
-    NumVBuckets = proplists:get_value(num_vbuckets, NewBucketConfig),
-    true = is_integer(NumVBuckets),
-
-    %% Since apply_new_config and apply_new_config_replica_phase calls expect
-    %% vbucket maps and not the actual changes that has to be applied, we need
-    %% to involve some trickery here. For every node we build something that
-    %% looks like vbucket map. Map chain for a vbucket on master node looks
-    %% like this [node]. This ensures that apply_new_config sets this vbucket
-    %% to active on the node. Map chain for a replica vbucket looks like
-    %% [master_node, replica_node] for every replica node. This ensures that
-    %% apply_new_config sets the vbucket to replica state on replica_node and
-    %% that apply_new_config_replica_phase sets up the replication correctly.
-    NodeMaps0 = dict:from_list(
-                  [{N, array:new([{size, NumVBuckets},
-                                  {default, [undefined]}])} || N <- Servers]),
-
-    NodeMaps1 =
-        lists:foldl(
-          fun ({VBucket, [Master | Replicas]}, Acc) ->
-                  Acc1 = case lists:member(Master, Servers) of
-                             true ->
-                                 NodeMap0 = dict:fetch(Master, Acc),
-                                 NodeMap1 = array:set(VBucket, [Master], NodeMap0),
-                                 dict:store(Master, NodeMap1, Acc);
-                             false ->
-                                 Acc
-                         end,
-
-                  lists:foldl(
-                    fun (Dst, Acc2) ->
-                            case lists:member(Dst, Servers) of
-                                true ->
-                                    NodeMap2 = dict:fetch(Dst, Acc2),
-                                    %% note that master may be undefined here;
-                                    NodeMap3 = array:set(VBucket, [Master, Dst], NodeMap2),
-                                    dict:store(Dst, NodeMap3, Acc2);
-                                false ->
-                                    Acc2
-                            end
-                    end, Acc1, Replicas)
-          end, NodeMaps0, misc:enumerate(Map, 0)),
-
-    NodeMaps = dict:map(
-                 fun (_, NodeMapArr) ->
-                         lists:keystore(map, 1, NewBucketConfig, {map, array:to_list(NodeMapArr)})
-                 end, NodeMaps1),
-
     RV1 = misc:parallel_map(
             fun (Node) ->
-                    {Node, catch gen_server:call({server_name(Bucket), Node},
-                                                 get_apply_new_config_call(Rebalancer,
-                                                                           dict:fetch(Node, NodeMaps),
-                                                                           IgnoredVBuckets),
-                                                 Timeout)}
+                    {Node, catch gen_server:call(
+                                   {server_name(Bucket), Node},
+                                   get_apply_new_config_call(Rebalancer,
+                                                             NewBucketConfig,
+                                                             IgnoredVBuckets),
+                                   Timeout)}
             end, Servers, infinity),
     case process_apply_config_rv(Bucket, {RV1, []}, apply_new_config) of
         ok ->
@@ -314,7 +266,7 @@ apply_new_bucket_config(Bucket, Rebalancer, Servers,
                             {Node,
                              catch gen_server:call({server_name(Bucket), Node},
                                                    {apply_new_config_replicas_phase,
-                                                    dict:fetch(Node, NodeMaps),
+                                                    NewBucketConfig,
                                                     IgnoredVBuckets},
                                                    Timeout)}
                     end, Servers, infinity),
