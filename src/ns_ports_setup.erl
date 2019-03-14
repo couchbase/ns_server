@@ -416,6 +416,7 @@ goport_args(fts, Config, _Cmd, NodeUUID) ->
     NsRestPort = service_ports:get_port(rest_port, Config),
     FtRestPort = service_ports:get_port(fts_http_port, Config),
     FtGrpcPort = service_ports:get_port(fts_grpc_port, Config),
+    FtGrpcSslPort = service_ports:get_port(fts_grpc_ssl_port, Config),
 
     FTSIdxDir = get_writable_ix_subdir("@fts"),
 
@@ -432,6 +433,11 @@ goport_args(fts, Config, _Cmd, NodeUUID) ->
                              [misc:maybe_add_brackets(Host), FtGrpcPort,
                               misc:inaddr_any([url]),
                               FtGrpcPort]),
+
+    BindGrpcSsl = io_lib:format("~s:~b,~s:~b",
+                             [misc:maybe_add_brackets(Host), FtGrpcSslPort,
+                              misc:inaddr_any([url]),
+                              FtGrpcSslPort]),
 
     {ok, FTSMemoryQuota} = memory_quota:get_quota(Config, fts),
     MaxReplicasAllowed = case cluster_compat_mode:is_enterprise() of
@@ -463,6 +469,7 @@ goport_args(fts, Config, _Cmd, NodeUUID) ->
      "-server=" ++ misc:local_url(NsRestPort, []),
      "-bindHttp=" ++ BindHttp,
      "-bindGrpc=" ++ BindGrpc,
+     "-bindGrpcSsl=" ++ BindGrpcSsl,
      "-dataDir=" ++ FTSIdxDir,
      "-tags=feed,janitor,pindex,queryer,cbauth_service",
      "-auth=cbauth",
