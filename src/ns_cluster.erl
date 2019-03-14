@@ -266,7 +266,10 @@ handle_cast(leave, State) ->
                      %% we preserve rest settings, so if the server runs on a
                      %% custom port, it doesn't revert to the default
                      rest,
-                     {node, node(), rest}]),
+                     {node, node(), rest},
+                     {node, node(), address_family},
+                     {node, node(), cluster_encryption},
+                     {node, node(), erl_external_dist_protocols}]),
 
 
     %% set_initial here clears vclock on nodes_wanted. Thus making
