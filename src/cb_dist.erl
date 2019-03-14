@@ -30,12 +30,14 @@
 -export([start_link/0,
          get_preferred_dist/1,
          reload_config/0,
+         reload_config/1,
          status/0,
          config_path/0,
          address_family/0,
          external_encryption/0,
          external_listeners/0,
-         validate_config_file/1]).
+         update_listeners_in_config/1,
+         update_net_settings_in_config/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -148,6 +150,9 @@ get_preferred_dist(TargetNode) ->
 reload_config() ->
     gen_server:call(?MODULE, reload_config, infinity).
 
+reload_config(Node) when is_atom(Node) ->
+    gen_server:call({?MODULE, Node}, reload_config, infinity).
+
 status() ->
     gen_server:call(?MODULE, status).
 
@@ -175,6 +180,27 @@ get_config() ->
         exit:{noproc, {gen_server, call, _}} ->
             read_config(config_path(), true)
     end.
+
+update_listeners_in_config(Protos) ->
+    gen_server:call(?MODULE, {update_listeners_in_config, Protos}, infinity).
+
+update_net_settings_in_config(AFamily, CEncryption) ->
+    PreferredExternal =
+        case {AFamily, CEncryption} of
+            {inet, false} -> inet_tcp_dist;
+            {inet, true} -> inet_tls_dist;
+            {inet6, false} -> inet6_tcp_dist;
+            {inet6, true} -> inet6_tls_dist
+        end,
+    PreferredLocal =
+        case AFamily of
+            inet -> inet_tcp_dist;
+            inet6 -> inet6_tcp_dist
+        end,
+    gen_server:call(
+      ?MODULE,
+      {update_preferred_protos, PreferredExternal, PreferredLocal},
+      infinity).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -257,6 +283,20 @@ handle_call(status, _From, #s{listeners = Listeners,
              {config, Config},
              {listeners, Listeners},
              {acceptors, Acceptors}], State};
+
+handle_call({update_listeners_in_config, Protos}, _From,
+            #s{config = Cfg} = State) ->
+    Res = update_config(Protos,
+                        proplists:get_value(preferred_external_proto, Cfg),
+                        proplists:get_value(preferred_local_proto, Cfg)),
+    {reply, Res, State};
+
+handle_call({update_preferred_protos, PreferredExternal, PreferredLocal}, _From,
+            #s{config = Cfg} = State) ->
+    Res = update_config(proplists:get_value(external_listeners, Cfg),
+                        PreferredExternal, PreferredLocal),
+    {reply, Res, State};
+
 
 handle_call(_Request, _From, State) ->
     {noreply, State}.
@@ -528,4 +568,40 @@ validate_config_file(CfgFile) ->
         ok
     catch
         _:E -> {error, E}
+    end.
+
+store_config(DCfgFile, DCfg) ->
+    DirName = filename:dirname(DCfgFile),
+    FileName = filename:basename(DCfgFile),
+    TmpPath = path_config:tempfile(DirName, FileName, ".tmp"),
+    Data = io_lib:format("~p.~n", [DCfg]),
+    try
+        case misc:write_file(TmpPath, Data) of
+            ok ->
+                case validate_config_file(TmpPath) of
+                    ok -> misc:atomic_rename(TmpPath, DCfgFile);
+                    Y -> Y
+                end;
+            X ->
+                X
+        end
+    after
+        (catch file:delete(TmpPath))
+    end.
+
+update_config(Listeners, PreferredExternal, PreferredLocal) ->
+    Cfg = [{external_listeners, Listeners} || Listeners =/= undefined] ++
+          [{preferred_external_proto, PreferredExternal}
+              || PreferredExternal =/= undefined] ++
+          [{preferred_local_proto, PreferredLocal}
+              || PreferredLocal =/= undefined],
+    CfgFile = cb_dist:config_path(),
+    case store_config(CfgFile, Cfg) of
+        ok ->
+            info_msg("Updated cb_dist config ~p: ~p", [CfgFile, Cfg]),
+            ok;
+        {error, Reason} ->
+            error_msg("Failed to save cb_dist config to ~p with reason: ~p",
+                      [CfgFile, Reason]),
+            {error, Reason}
     end.

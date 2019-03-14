@@ -1395,15 +1395,6 @@ disable_non_ssl_ports() ->
 get_net_family() ->
     cb_dist:address_family().
 
--spec get_proto_dist_type() -> string().
-get_proto_dist_type() ->
-    case init:get_argument(proto_dist) of
-        {ok, [[Proto]]} ->
-            Proto;
-        error ->
-            "inet_tcp"
-    end.
-
 -spec is_localhost(string()) -> true | false.
 is_localhost(Addr) ->
     case inet:parse_address(Addr) of
