@@ -729,9 +729,7 @@ idle({start_graceful_failover, Nodes, Id, RetryChk}, From, _State) ->
     Services = [kv],
     Type = graceful_failover,
     {ok, ObserverPid} = ns_rebalance_observer:start_link(
-                          Services,
-                          NodesInfo,
-                          Type),
+                          Services, NodesInfo, Type, Id),
 
     case ns_rebalancer:start_link_graceful_failover(Nodes) of
         {ok, Pid} ->
@@ -772,9 +770,7 @@ idle({start_rebalance, KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
     Type = rebalance,
     Services = ns_cluster_membership:cluster_supported_services(),
     {ok, ObserverPid} = ns_rebalance_observer:start_link(
-                          Services,
-                          NodesInfo,
-                          Type),
+                          Services, NodesInfo, Type, RebalanceId),
     case ns_rebalancer:start_link_rebalance(KeepNodes, EjectNodes,
                                             FailedNodes, DeltaNodes,
                                             DeltaRecoveryBuckets) of
@@ -822,21 +818,19 @@ idle({start_rebalance, KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
             {keep_state_and_data, [{reply, From, delta_recovery_not_possible}]}
     end;
 idle({move_vbuckets, Bucket, Moves}, From, _State) ->
+    Id = couch_uuids:random(),
     KeepNodes = ns_node_disco:nodes_wanted(),
     Type = move_vbuckets,
     NodesInfo = [{active_nodes, ns_cluster_membership:active_nodes()},
                  {keep_nodes, KeepNodes}],
     Services = [kv],
     {ok, ObserverPid} = ns_rebalance_observer:start_link(
-                          Services,
-                          NodesInfo,
-                          Type),
+                          Services, NodesInfo, Type, Id),
     Pid = spawn_link(
             fun () ->
                     ns_rebalancer:move_vbuckets(Bucket, Moves)
             end),
 
-    Id = couch_uuids:random(),
     ?log_debug("Moving vBuckets in bucket ~p. Moves ~p. "
                "Operation Id = ~s", [Bucket, Moves, Id]),
     ns_cluster:counter_inc(Type, start),
@@ -1494,8 +1488,8 @@ reason2status(_Error, Type) ->
 maybe_start_service_upgrader(normal, unchanged, _State) ->
     not_needed;
 maybe_start_service_upgrader(normal, {changed, OldVersion, NewVersion},
-                             #rebalancing_state{keep_nodes = KeepNodes}
-                             = State) ->
+                             #rebalancing_state{keep_nodes = KeepNodes,
+                                                rebalance_id = Id} = State) ->
     Old = ns_cluster_membership:topology_aware_services_for_version(OldVersion),
     New = ns_cluster_membership:topology_aware_services_for_version(NewVersion),
 
@@ -1512,9 +1506,7 @@ maybe_start_service_upgrader(normal, {changed, OldVersion, NewVersion},
             NodesInfo = [{active_nodes, KeepNodes},
                          {keep_nodes, KeepNodes}],
             {ok, ObserverPid} = ns_rebalance_observer:start_link(
-                                  Services,
-                                  NodesInfo,
-                                  Type),
+                                  Services, NodesInfo, Type, Id),
             Pid = start_service_upgrader(KeepNodes, Services),
 
             set_rebalance_status(Type, running, Pid),

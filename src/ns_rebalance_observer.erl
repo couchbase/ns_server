@@ -21,7 +21,7 @@
 -include("ns_common.hrl").
 -include("cut.hrl").
 
--export([start_link/3,
+-export([start_link/4,
          get_detailed_progress/0,
          get_aggregated_progress/1,
          get_stage_info/0,
@@ -73,10 +73,11 @@
                 stage_info :: rebalance_stage_info:stage_info(),
                 nodes_info :: [{atom(), [node()]}],
                 type :: atom(),
+                rebalance_id :: binary(),
                 bucket_info :: dict:dict()}).
 
-start_link(Stages, NodesInfo, Type) ->
-    gen_server:start_link(?SERVER, ?MODULE, {Stages, NodesInfo, Type}, []).
+start_link(Stages, NodesInfo, Type, Id) ->
+    gen_server:start_link(?SERVER, ?MODULE, {Stages, NodesInfo, Type, Id}, []).
 
 generic_get_call(Call) ->
     generic_get_call(Call, 10000).
@@ -154,7 +155,7 @@ get_stage_nodes(Services, NodesInfo) ->
               end
       end, lists:usort(Services)).
 
-init({Services, NodesInfo, Type}) ->
+init({Services, NodesInfo, Type, Id}) ->
     Self = self(),
     StageInfo = rebalance_stage_info:init(get_stage_nodes(Services, NodesInfo)),
     Buckets = ns_bucket:get_bucket_names(),
@@ -171,6 +172,7 @@ init({Services, NodesInfo, Type}) ->
                 stage_info = StageInfo,
                 nodes_info = NodesInfo,
                 type = Type,
+                rebalance_id = Id,
                 bucket_info = BucketLevelInfo}}.
 
 handle_call(get, _From, State) ->
