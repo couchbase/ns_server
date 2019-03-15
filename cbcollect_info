@@ -1308,7 +1308,8 @@ def do_upload_and_exit(path, url, proxy):
         AltExit.lock.release()
         raise e
 
-    stdout, _ = p.communicate().decode()
+    stdout, _ = p.communicate()
+    stdout = stdout.decode()
     k.disarm()
 
     if p.returncode != 0:
