@@ -65,7 +65,7 @@
 -export([pre_force_compat_version/0, post_force_compat_version/0]).
 
 n1ql_cluster_capabilities(?VERSION_MADHATTER, true) ->
-    [costBasedOptimizer, indexAdvisor |
+    [costBasedOptimizer, indexAdvisor, javaScriptFunctions, inlineFunctions |
      n1ql_cluster_capabilities(?VERSION_MADHATTER, false)];
 n1ql_cluster_capabilities(?VERSION_MADHATTER, false) ->
     [enhancedPreparedStatements].
