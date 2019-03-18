@@ -182,8 +182,16 @@ build_remote_set_specs(Mod, Node, BucketName, DDocId, ViewName, VBuckets) ->
                            <<"/_spatial_merge">>
                    end,
     [{cookie, Cookie}] = ns_config:read_key_fast(otp, undefined),
+    {Node1, SSLOptions} = case misc:should_data_rep_be_encrypted() of
+                              true ->
+                                  {{ssl, Node},
+                                   ns_ssl_services_setup:ssl_client_opts()};
+                              false ->
+                                  {Node, []}
+                          end,
+
     MergeURL = iolist_to_binary([vbucket_map_mirror:node_to_inner_capi_base_url(
-                                   Node, "%40ns_server", atom_to_list(Cookie)),
+                                   Node1, "%40ns_server", atom_to_list(Cookie)),
                                  MergeHandler]),
 
     Sets = {[
@@ -195,8 +203,8 @@ build_remote_set_specs(Mod, Node, BucketName, DDocId, ViewName, VBuckets) ->
               {<<"views">>,
                {[{<<"sets">>, Sets}]}}
              ]},
-    #merged_index_spec{url = MergeURL, ejson_spec = Props}.
-
+    #merged_index_spec{url = MergeURL, ejson_spec = Props,
+                       ssl_opts = SSLOptions}.
 
 -spec set_active_partition(mapreduce_view | spatial_view, binary(), binary(),
                            non_neg_integer()) -> ok.
