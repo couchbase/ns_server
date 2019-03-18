@@ -121,8 +121,14 @@ accept_connection(_, {AcceptorPid, ConnectionSocket}, MyNode, Allowed, SetupTime
 
 -spec select(Node :: atom()) -> true | false.
 select(Node) ->
-    Module = get_preferred_dist(Node),
-    Module:select(Node).
+    try get_preferred_dist(Node) of
+        Module -> Module:select(Node)
+    catch
+        _:Error ->
+            error_msg("Select for ~p failed. Couldn't find preferred proto: ~p",
+                      [Node, Error]),
+            false
+    end.
 
 -spec setup(Node :: atom(),
             Type :: hidden | normal,
@@ -130,14 +136,24 @@ select(Node) ->
             LongOrShortNames :: any(),
             SetupTime :: any()) -> ConPid :: pid().
 setup(Node, Type, MyNode, LongOrShortNames, SetupTime) ->
-    Module = get_preferred_dist(Node),
-    info_msg("Setting up new connection to ~p using ~p", [Node, Module]),
-    Module:setup(Node, Type, MyNode, LongOrShortNames, SetupTime).
+    try get_preferred_dist(Node) of
+        Module ->
+            info_msg("Setting up new connection to ~p using ~p",
+                     [Node, Module]),
+            Module:setup(Node, Type, MyNode, LongOrShortNames, SetupTime)
+    catch
+        _:Error ->
+            spawn_opt(
+              fun () ->
+                  error_msg("** Connection to ~p failed. Couldn't find "
+                            "preferred proto: ~p", [Node, Error]),
+                  ?shutdown2(Node, Error)
+              end, [link])
+    end.
 
 -spec is_node_name(Node :: atom()) -> true | false.
 is_node_name(Node) ->
-    Module = get_preferred_dist(Node),
-    Module:is_node_name(Node).
+    select(Node).
 
 -spec close(LSocket :: any()) -> ok.
 close(_LSocket) ->
@@ -145,7 +161,10 @@ close(_LSocket) ->
 
 -spec get_preferred_dist(TargetNode :: atom() | string()) -> protocol().
 get_preferred_dist(TargetNode) ->
-    gen_server:call(?MODULE, {get_preferred, TargetNode}, infinity).
+    case gen_server:call(?MODULE, {get_preferred, TargetNode}, infinity) of
+        {ok, Res} -> Res;
+        {exception, {_, E, _}} -> erlang:error(E)
+    end.
 
 reload_config() ->
     gen_server:call(?MODULE, reload_config, infinity).
@@ -245,14 +264,19 @@ handle_call({get_module_by_acceptor, AcceptorPid}, _From,
 
 handle_call({get_preferred, Target}, _From, #s{name = Name,
                                                config = Config} = State) ->
-    IsLocalDest = cb_epmd:is_local_node(Target),
-    IsLocalSource = cb_epmd:is_local_node(Name),
-    Res =
-        case IsLocalDest or IsLocalSource of
-            true -> conf(preferred_local_proto, Config);
-            false -> conf(preferred_external_proto, Config)
-        end,
-    {reply, Res, State};
+    try cb_epmd:is_local_node(Target) of
+        IsLocalDest ->
+            IsLocalSource = cb_epmd:is_local_node(Name),
+            Res =
+                case IsLocalDest or IsLocalSource of
+                    true -> conf(preferred_local_proto, Config);
+                    false -> conf(preferred_external_proto, Config)
+                end,
+            {reply, {ok, Res}, State}
+    catch
+        C:E ->
+            {reply, {exception, {C, E, erlang:get_stacktrace()}}, State}
+    end;
 
 handle_call(close, _From, State) ->
     {stop, normal, ok, close_listeners(State)};

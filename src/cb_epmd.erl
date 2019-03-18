@@ -41,19 +41,25 @@ port_please(Node, Hostname) ->
     port_please(Node, Hostname, infinity).
 
 port_please(NodeStr, Hostname, Timeout) ->
-    Module = cb_dist:get_preferred_dist(NodeStr),
-    case node_type(NodeStr) of
-        %% needed for backward compat: old ns_server nodes use dynamic ports
-        %% so the only way to know those ports is to ask real epmd
-        %% for this reason we also keep registering new static ports on epmd
-        %% because old nodes doesn't know anything about those ports
-        {ok, ns_server, _} when Module == inet_tcp_dist;
-                                Module == inet6_tcp_dist ->
-            erl_epmd:port_please(NodeStr, Hostname, Timeout);
-        {ok, Type, N} ->
-            {port, port(Type, N, Module), 5};
-        {error, Reason} ->
-            {error, Reason}
+    try cb_dist:get_preferred_dist(NodeStr) of
+        Module ->
+            case node_type(NodeStr) of
+                %% needed for backward compat: old ns_server nodes use dynamic
+                %% ports so the only way to know those ports is to ask real epmd
+                %% for this reason we also keep registering new static ports on
+                %% epmd because old nodes doesn't know anything about those
+                %% ports
+                {ok, ns_server, _} when Module == inet_tcp_dist;
+                                        Module == inet6_tcp_dist ->
+                    erl_epmd:port_please(NodeStr, Hostname, Timeout);
+                {ok, Type, N} ->
+                    {port, port(Type, N, Module), 5};
+                {error, Reason} ->
+                    {error, Reason}
+            end
+    catch
+        error:Error ->
+            {error, Error}
     end.
 
 names() -> erl_epmd:names().
@@ -85,7 +91,8 @@ is_local_node(Node) ->
     [NodeName | _] = string:tokens(Node, "@"),
     case node_type(NodeName) of
         {ok, ns_server, _} -> false;
-        {ok, _, _} -> true
+        {ok, _, _} -> true;
+        {error, Reason} -> erlang:error(Reason)
     end.
 
 %%%===================================================================
