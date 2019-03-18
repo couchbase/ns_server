@@ -70,15 +70,20 @@
       // calls, e.g. max(a,b,c)
       //
 
-      function replace_top_level_commas(text,tab,parenDepth) {
+      function replace_top_level_commas(text,parenDepth) {
         var items = [];
         var start = 0;
-        var indent = tab;
 
         for (var i=0; i < text.length; i++) {
           switch (text.charAt(i)) {
-          case '(': parenDepth.depth++; break;
-          case ')': parenDepth.depth--; break;
+          case '(':
+          case '{':
+          case '[':
+            parenDepth.depth++; break;
+          case ')':
+          case '}':
+          case ']':
+            parenDepth.depth--; break;
           case ',':
             if (parenDepth.depth <= 0) {
               items.push(text.substring(start,i+1));
@@ -91,7 +96,7 @@
         }
 
         // get the last one
-        items.push((items.length ? indent : '') + text.substring(start,text.length));
+        items.push(text.substring(start,text.length));
         return(items);
       }
 
@@ -118,7 +123,7 @@
 
         arr.forEach(function (s) {
           var parenDepth = {depth:0};
-          arr2 = arr2.concat(replace_top_level_commas(s,tab,parenDepth));
+          arr2 = arr2.concat(replace_top_level_commas(s,parenDepth));
             });
 
         return(arr2);
@@ -127,7 +132,7 @@
       // function to format queries based on the parameters above
 
       var formatter = function(text, step) {
-        var tab = this.step,
+        var tab = ' '.repeat(step),
         ar,
         deep = 0,
         paren_level = 0,
