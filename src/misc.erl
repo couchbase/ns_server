@@ -55,6 +55,15 @@ shuffle(List) when is_list(List) ->
 get_days_list() ->
     ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].
 
+get_utc_offset(LocalTime, UTCTime) ->
+    Diff = calendar:datetime_to_gregorian_seconds(LocalTime) -
+             calendar:datetime_to_gregorian_seconds(UTCTime),
+    {TZHours, TZMin, _} = calendar:seconds_to_time(abs(Diff)),
+    case Diff >= 0 of
+        true -> {TZHours, TZMin};
+        false -> {-TZHours, TZMin}
+    end.
+
 % formats time (see erlang:localtime/0) as ISO-8601 text
 iso_8601_fmt({{Year,Month,Day},{Hour,Min,Sec}}, Millis, UTCOffset) ->
     TimeS =
@@ -79,6 +88,14 @@ iso_8601_fmt({{Year,Month,Day},{Hour,Min,Sec}}, Millis, UTCOffset) ->
 
 timestamp_utc_iso8601() ->
     iso_8601_fmt(erlang:universaltime(), undefined, {0, 0}).
+
+%% Time is as per erlang:timestamp/0
+timestamp_local_iso8601(Time) ->
+    LocalTime = calendar:now_to_local_time(Time),
+    UTCTime = calendar:now_to_universal_time(Time),
+    UTCOffset = get_utc_offset(LocalTime, UTCTime),
+    Millis = erlang:element(3, Time) div 1000,
+    iso_8601_fmt(LocalTime, Millis, UTCOffset).
 
 -ifdef(EUNIT).
 iso_8601_fmt_test() ->
