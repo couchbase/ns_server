@@ -30,7 +30,7 @@
     function success() {
       /* never sync to /auth URL (as user will stay on the login page) */
       if ($location.path() === "/auth") {
-        $state.go('app.admin.overview');
+        $state.go('app.admin.overview.statistics');
       } else {
         $urlRouter.sync();
       }

@@ -87,7 +87,7 @@
       var etagPoller = new mnEtagPoller($scope, function (previous) {
         return mnPoolDefault.get({
           etag: previous ? previous.etag : "",
-          waitChange: $state.current.name === "app.admin.overview" ? 3000 : 10000
+          waitChange: $state.current.name === "app.admin.overview.statistics" ? 3000 : 10000
         }, {group: "global"});
       }).subscribe(function (resp, previous) {
         if (!_.isEqual(resp, previous)) {

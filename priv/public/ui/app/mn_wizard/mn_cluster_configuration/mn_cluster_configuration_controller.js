@@ -70,7 +70,7 @@
             mnSettingsClusterService.postIndexSettings(config.indexSettings);
           }
         }).then(function () {
-          return $state.go('app.admin.overview');
+          return $state.go('app.admin.overview.statistics');
         });
       });
     }
@@ -175,7 +175,7 @@
             } else {
               return postJoinCluster().then(function () {
                 return mnAuthService.login(vm.joinClusterConfig.clusterMember).then(function () {
-                  return $state.go('app.admin.overview').then(function () {
+                  return $state.go('app.admin.overview.statistics').then(function () {
                     $rootScope.$broadcast("maybeShowMemoryQuotaDialog", vm.joinClusterConfig.services.model);
                     mnAlertsService.formatAndSetAlerts('This server has been associated with the cluster and will join on the next rebalance operation.', 'success', 60000);
                   });

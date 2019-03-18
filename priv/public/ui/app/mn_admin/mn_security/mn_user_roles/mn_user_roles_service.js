@@ -24,7 +24,10 @@
       getRolesGroupsState: getRolesGroupsState,
 
       ldapSettingsValidate: ldapSettingsValidate,
-      postLdapSettings: postLdapSettings
+      postLdapSettings: postLdapSettings,
+
+      getUserProfile: getUserProfile,
+      putUserProfile: putUserProfile
     };
 
     return mnUserRolesService;
@@ -42,6 +45,21 @@
         method: "POST",
         url: "/settings/ldap",
         data: data
+      });
+    }
+
+    function putUserProfile(data) {
+      $http.put("/settings/rbac/profiles/@self", JSON.stringify(data));
+    }
+
+    function getUserProfile() {
+      return $http.get("/settings/rbac/profiles/@self").then(function (resp) {
+        return resp.data;
+      }, function (resp) {
+        switch (resp.status) {
+        case "404":
+        default: return {scenarios: []};
+        }
       });
     }
 

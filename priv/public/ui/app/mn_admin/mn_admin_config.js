@@ -9,6 +9,7 @@
     'mnPromiseHelper',
     'mnBuckets',
     'mnAnalytics',
+    'mnStatisticsNew',
     'mnLogs',
     'mnOverview',
     'mnIndexes',
@@ -81,6 +82,7 @@
       })
       .state('app.admin.overview', {
         url: '/overview',
+        abstract: true,
         views: {
           "main@app.admin": {
             controller: 'mnOverviewController as overviewCtl',
@@ -202,6 +204,34 @@
       .state('app.admin.logs.collectInfo.form', {
         url: '/form',
         templateUrl: 'app/mn_admin/mn_logs/collect_info/mn_logs_collect_info_form.html'
+      })
+      .state('app.admin.overview.statistics', {
+        url: '/stats?zoom&scenario&scenarioBucket',
+        controller: 'mnStatisticsNewController as statisticsNewCtl',
+        templateUrl: 'app/mn_admin/mn_statistics/mn_statistics.html',
+        redirectTo: function (trans, permissions) {
+          var mnPermissionsService = trans.injector().get("mnPermissions");
+          var params = _.clone(trans.params(), true);
+          return mnPermissionsService.check().then(function (permissions) {
+            var statsRead = permissions.bucketNames['.stats!read']
+            if (!params.scenarioBucket && statsRead && statsRead[0]) {
+              params.scenarioBucket = statsRead[0];
+              return {state: "app.admin.overview.statistics", params: params};
+            }
+          });
+        },
+        params: {
+          scenarioBucket: {
+            value: null
+          },
+          scenario: {
+            value: null,
+            dynamic: true
+          },
+          zoom: {
+            value: null
+          }
+        }
       });
 
   addAnalyticsStates("app.admin.servers.list");

@@ -2590,7 +2590,7 @@ serve_aggregated_ui_stats(Req, Params) ->
                   end
           end, GoXDCRStats, services_sections(Bucket)),
 
-    Stats = [{list_to_binary(Bucket), {BS}}, {<<"@system">>, {SS}} | FullStats],
+    Stats = [{list_to_binary("@kv-" ++ Bucket), {BS}}, {<<"@system">>, {SS}} | FullStats],
     NewHaveStamp = [case proplists:get_value(timestamp, S) of
                         [] -> {Name, 0};
                         L -> {Name, lists:last(L)}

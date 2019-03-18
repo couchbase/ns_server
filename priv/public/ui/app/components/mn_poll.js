@@ -34,14 +34,28 @@
     }
   }
 
-  function mnPollerFactory($q, $timeout, mnTasksDetails, mnPromiseHelper) {
+  function mnPollerFactory($q, $timeout, mnTasksDetails, mnPromiseHelper, $window) {
 
     function Poller(scope, request) {
       this.deferred = $q.defer();
       this.request = request;
       this.scope = scope;
+      var self = this;
 
-      scope.$on('$destroy', this.stop.bind(this));
+      scope.$on('$destroy', function () {
+        $window.removeEventListener('visibilitychange', onVisibilitychange);
+        self.onDestroy();
+      });
+
+      function onVisibilitychange() {
+        if (document.hidden) {
+          self.stop();
+        } else {
+          self.reload();
+        }
+      }
+
+      $window.addEventListener('visibilitychange', onVisibilitychange);
 
       this.latestResult = undefined;
       this.stopTimestamp = undefined;
@@ -60,8 +74,13 @@
     Poller.prototype.showSpinner = showSpinner;
     Poller.prototype.reload = reload;
     Poller.prototype.reloadOnScopeEvent = reloadOnScopeEvent;
+    Poller.prototype.onDestroy = onDestroy;
 
     return Poller;
+
+    function onDestroy() {
+      this.stop();
+    }
 
     function isStopped(startTimestamp) {
       return !(angular.isUndefined(this.stopTimestamp) || startTimestamp >= this.stopTimestamp);
@@ -112,6 +131,11 @@
       return query;
     }
     function cycle() {
+      if (this.isLaunched) {
+        return this;
+      }
+
+      this.isLaunched = true;
       this.doCycle();
       return this;
     }
@@ -140,6 +164,7 @@
     }
     function stop() {
       var self = this;
+      self.isLaunched = false;
       self.stopTimestamp = new Date();
       $timeout.cancel(self.timeout);
     }

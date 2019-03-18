@@ -594,12 +594,14 @@
   function mnFormatServices() {
     return function (service) {
       switch (service) {
-        case 'kv': return 'Data';
-        case 'n1ql': return 'Query';
-        case 'index': return 'Index';
-        case 'fts': return 'Search';
-        case 'eventing': return 'Eventing';
-        case 'cbas': return 'Analytics';
+      case 'kv': return 'Data';
+      case 'query':
+      case 'n1ql': return 'Query';
+      case 'index': return 'Index';
+      case 'fts': return 'Search';
+      case 'eventing': return 'Eventing';
+      case 'cbas': return 'Analytics';
+      default: return service;
       }
     }
   }

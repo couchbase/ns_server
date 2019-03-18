@@ -1,0 +1,14 @@
+<div class="row">
+  <div class="chart-title">
+    {{title}}
+  </div>
+  <span class="text-right nowrap">
+    <a class="margin-right-half" ng-click="editChart(config)"><span class="icon fa-edit"></span></a>
+    <a ng-click="deleteChart(config)"><span class="icon fa-trash"></span></a>
+  </span>
+</div>
+<nvd3
+   api="chartApi"
+   options="options"
+   data="chartData"
+   ></nvd3>

@@ -57,7 +57,7 @@
                     .postAuth(newClusterState.user).then(function () {
                       return mnAuthService
                         .login(newClusterState.user).then(function () {
-                          return $state.go('app.admin.overview');
+                          return $state.go('app.admin.overview.statistics');
                         });
                     });
                 });

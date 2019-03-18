@@ -75,8 +75,7 @@
         queries.push(isSpecificStat ? $q.when({
           data: resp.data.directory.value,
           origTitle: resp.data.directory.origTitle
-        }) : getStatsDirectory(resp.data.directory.url));
-
+        }) : getStatsDirectory("/pools/default/buckets//" + params.$stateParams.bucket + "/statsDirectory"));
         return $q.all(queries).then(function (data) {
           return prepareAnaliticsState(data, params);
         });
@@ -114,7 +113,14 @@
     function getStatsDirectory(url) {
       return $http({
         url: url,
-        method: 'GET'
+        method: 'GET',
+        params: {
+          adde: '"all"',
+          adda: '"all"',
+          addi: '"all"',
+          addf: '"all"',
+          addq: "1"
+        }
       });
     }
     function prepareAnaliticsState(data, params) {

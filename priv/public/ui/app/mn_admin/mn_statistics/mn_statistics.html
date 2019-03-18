@@ -1,0 +1,111 @@
+<style>
+  .chart-title {font-size: .875rem;font-weight: 600;color: #333; white-space: nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .chart-title small {font-size: .688rem;font-weight: 400;color: #999;}
+  .statistics-small {width: calc(25% - 2rem);height: 180px;padding: .5rem .5rem 1rem .5rem;margin: 1rem;}
+  .statistics-small .chart-title {font-size: .75rem;}
+  .statistics-small .chart-title small {display: none;}
+  .statistics-medium {width: calc(50% - 2rem);height: 240px;padding: .5rem .5rem 1rem .5rem;margin: 1rem;}
+  .statistics-medium:hover {background-color: #f7f7f7; cursor: pointer;}
+  .statistics-large {width: calc(100% - 2rem);height: 360px; padding: .5rem .5rem 1rem .5rem;margin: 1rem;}
+  .statistics-large:hover {background-color: #f7f7f7; cursor: pointer;}
+  .nvd3 .nv-axis line {opacity: 0;}
+  .nvd3 .nv-axis.nv-y1 line,
+  .nvd3 .nv-axis.nv-x line {opacity: 1;}
+  .row.charts {flex-wrap: wrap;margin-left: -1rem;justify-content: flex-start;}
+  .row.header {justify-content: flex-start;}
+  .charts select {font-size: 10px;line-height: 1.5;height: 1.5rem;}
+  .charts.text-smaller {font-size: 10px;}
+
+  .nvd3 text {font: normal 10px OpenSans;}
+  .tick line {display:none;}
+  .domain {opacity: .2;}
+  .nv-axisMaxMin-y text,
+  .nv-axisMin-y text {font-weight: 400!important;}
+  .full-size-dialog .dialog {width:100%; margin: 2rem}
+  .full-size-dialog .panel-header {display: none}
+
+</style>
+
+<div>
+  <div class="row margin-bottom-1">
+    <div>
+      Stats &gt;
+    </div>
+
+    <ui-select
+      style="width:200px"
+      class="cbui-select"
+      ng-model="statisticsNewCtl.statisticsService.scenarios.selected"
+      on-select="statisticsNewCtl.onSelectScenario($item)"
+      theme="selectize">
+      <ui-select-match
+        class="ui-select-match">{{$select.selected.name}}</ui-select-match>
+      <ui-select-choices
+        class="ui-select-choices"
+        repeat="scenario as scenario in statisticsNewCtl.statisticsService.scenarios | filter: $select.search">
+        <span class="select-item ellipsis"
+              ng-bind-html="scenario.name | highlight: $select.search"></span>
+        <small ng-bind-html="scenario.desc | highlight: $select.search"></small>
+      </ui-select-choices>
+    </ui-select>
+
+    <small>
+      <a ng-disabled="!statisticsNewCtl.statisticsService.scenarios.length"
+         ng-click="statisticsNewCtl.openGroupDialog(
+                   statisticsNewCtl.statisticsService.scenarios.selected)">Add Group</a>
+      |
+      <a ng-disabled="!rbac.bucketNames['.stats!read'].length"
+         ng-click="statisticsNewCtl.openScenarioDialog()">Add Scenario</a>
+      |
+      <a ng-disabled="!statisticsNewCtl.statisticsService.scenarios.selected"
+         ng-click="statisticsNewCtl.openScenarioDialog(
+                   statisticsNewCtl.statisticsService.scenarios.selected)">Manage Scenario</a>
+    </small>
+
+    <select ng-model="statisticsNewCtl.statisticsService.scenarios.selected.zoom"
+            ng-change="statisticsNewCtl.onSelectZoom(
+                       statisticsNewCtl.statisticsService.scenarios.selected.zoom)">
+      <option value="minute">minute</option>
+      <option value="hour">hour</option>
+      <option value="day">day</option>
+      <option value="week">week</option>
+      <option value="month">month</option>
+    </select>
+
+    <select ng-model="statisticsNewCtl.selectedBucket"
+            ng-change="statisticsNewCtl.onBucketChange(statisticsNewCtl.selectedBucket)">
+      <option ng-repeat="name in rbac.bucketNames['.stats!read']" value="{{name}}">{{name}}</option>
+    </select>
+
+  </div>
+  <div style="width:100%">
+    <div ng-repeat="group in statisticsNewCtl.statisticsService.scenarios.selected.groups">
+      <div ng-click="isDetailsOpened = !isDetailsOpened;"
+           ng-init="isDetailsOpened = true;"
+           class="disclosure"
+           ng-class="{disclosed: isDetailsOpened}">
+        {{group.name}}
+      </div>
+      <div ng-if="isDetailsOpened" class="row charts items-top">
+        <div
+          ng-repeat="config in group.charts track by config.id"
+          ng-class="'statistics-' + config.size"
+          mn-statistics-chart
+          nodes="statisticsNewCtl.nodes"
+          class="panel"
+          rbac="rbac"
+          config="config"></div>
+        <div style="width:3rem;height:3rem;text-align:center;line-height:3rem;border:1px solid #000;cursor:pointer;"
+             ng-click="statisticsNewCtl.openChartBuilderDialog(group)">
+          +
+        </div>
+      </div>
+    </div>
+    <div ng-show="statisticsNewCtl.statisticsService.scenarios.selected &&
+                  !statisticsNewCtl.statisticsService.scenarios.selected.groups.length"
+         class="zero-content">
+      No charts to display yet. Use Add Group to add groups and charts.<br>
+      NOTE: All your changes will be auto-saved.
+    </div>
+  </div>
+</div>

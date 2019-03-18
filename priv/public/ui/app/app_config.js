@@ -5,6 +5,19 @@
     .module('app')
     .config(appConfig);
 
+  //https://github.com/angular-ui/ui-select/issues/1560
+  angular.module('ui.select').run(function($animate) {
+    var origEnabled = $animate.enabled
+    $animate.enabled = function (elem) {
+      if (arguments.length !== 1) {
+        return origEnabled.apply($animate, arguments);
+      } else if (origEnabled(elem)) {
+        return (/enable-ng-animation/).test(elem.classNames);
+      }
+      return false
+    }
+  });
+
   function appConfig($httpProvider, $stateProvider, $urlRouterProvider, $uibModalProvider, $transitionsProvider, $uibTooltipProvider, $animateProvider, $qProvider, $sceDelegateProvider) {
     $httpProvider.defaults.headers.common['invalid-auth-response'] = 'on';
     $httpProvider.defaults.headers.common['Cache-Control'] = 'no-cache';
@@ -40,7 +53,7 @@
     $urlRouterProvider.otherwise(function ($injector, $location) {
       $injector.get("mnPools").get().then(function (pools) {
         if (pools.isInitialized) {
-          return $injector.get("$state").go("app.admin.overview");
+          return $injector.get("$state").go("app.admin.overview.statistics");
         }
       });
       return true;
