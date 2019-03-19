@@ -212,7 +212,7 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
          build_controllers(UUID),
          build_rebalance_params(Id, UUID),
          {nodeStatusesUri, <<"/nodeStatuses">>},
-         {maxBucketCount, ns_config:read_key_fast(max_bucket_count, 10)},
+         {maxBucketCount, ns_bucket:get_max_buckets()},
          {autoCompactionSettings,
           menelaus_web_autocompaction:build_global_settings(Config)},
          {tasks, {struct, [{uri, TasksURI}]}},

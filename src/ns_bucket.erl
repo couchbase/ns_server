@@ -86,9 +86,11 @@
          bucket_view_nodes/1,
          bucket_config_view_nodes/1,
          get_num_vbuckets/0,
+         get_max_buckets/0,
          config_upgrade_to_50/1,
          config_upgrade_to_51/1,
-         config_upgrade_to_55/1]).
+         config_upgrade_to_55/1,
+         config_upgrade_to_madhatter/1]).
 
 
 %%%===================================================================
@@ -527,6 +529,9 @@ validate_bucket_config(BucketName, NewConfig) ->
             {error, {invalid_bucket_name, BucketName}}
     end.
 
+get_max_buckets() ->
+    ns_config:read_key_fast(max_bucket_count, ?MAX_BUCKETS_SUPPORTED).
+
 get_num_vbuckets() ->
     case ns_config:search(couchbase_num_vbuckets_default) of
         false ->
@@ -918,6 +923,14 @@ config_upgrade_to_55(Config) ->
           end, Buckets),
     [{set, buckets, [{configs, NewBuckets}]}].
 
+config_upgrade_to_madhatter(Config) ->
+    MaxBuckets = case ns_config:search(Config, max_bucket_count) of
+                     false ->
+                         ?MAX_BUCKETS_SUPPORTED;
+                     {value, V} ->
+                         erlang:max(V, ?MAX_BUCKETS_SUPPORTED)
+                 end,
+    [{set, max_bucket_count, MaxBuckets}].
 
 -ifdef(TEST).
 min_live_copies_test() ->

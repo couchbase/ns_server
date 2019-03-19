@@ -109,7 +109,7 @@ default() ->
      {{node, node(), is_enterprise}, IsEnterprise},
      {{node, node(), saslauthd_enabled}, SASLAuthdEnabled},
      {index_aware_rebalance_disabled, false},
-     {max_bucket_count, 10},
+     {max_bucket_count, ?MAX_BUCKETS_SUPPORTED},
      {autocompaction, [{database_fragmentation_threshold, {30, undefined}},
                        {view_fragmentation_threshold, {30, undefined}}]},
      {set_view_update_daemon,

@@ -130,7 +130,7 @@ conf(internal) ->
      {rebalance_moves_before_compaction, rebalanceMovesBeforeCompaction, 64, get_number(1, 1024)},
      {{couchdb, max_parallel_indexers}, maxParallelIndexers, <<>>, get_number(1, 1024)},
      {{couchdb, max_parallel_replica_indexers}, maxParallelReplicaIndexers, <<>>, get_number(1, 1024)},
-     {max_bucket_count, maxBucketCount, 10, get_number(1, 8192)},
+     {max_bucket_count, maxBucketCount, ?MAX_BUCKETS_SUPPORTED, get_number(1, 8192)},
      {{request_limit, rest}, restRequestLimit, undefined, get_number(0, 99999, undefined)},
      {{request_limit, capi}, capiRequestLimit, undefined, get_number(0, 99999, undefined)},
      {drop_request_memory_threshold_mib, dropRequestMemoryThresholdMiB, undefined,
