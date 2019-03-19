@@ -41,22 +41,17 @@ port_please(Node, Hostname) ->
     port_please(Node, Hostname, infinity).
 
 port_please(NodeStr, Hostname, Timeout) ->
-    try cb_dist:get_preferred_dist(NodeStr) of
-        Module ->
-            case node_type(NodeStr) of
-                %% needed for backward compat: old ns_server nodes use dynamic
-                %% ports so the only way to know those ports is to ask real epmd
-                %% for this reason we also keep registering new static ports on
-                %% epmd because old nodes doesn't know anything about those
-                %% ports
-                {ok, ns_server, _} when Module == inet_tcp_dist;
-                                        Module == inet6_tcp_dist ->
-                    erl_epmd:port_please(NodeStr, Hostname, Timeout);
-                {ok, Type, N} ->
-                    {port, port(Type, N, Module), 5};
-                {error, Reason} ->
-                    {error, Reason}
-            end
+    try {cb_dist:get_preferred_dist(NodeStr), node_type(NodeStr)} of
+        %% needed for backward compat: old ns_server nodes use dynamic
+        %% ports so the only way to know those ports is to ask real epmd
+        %% for this reason we also keep registering new static ports on
+        %% epmd because old nodes doesn't know anything about those
+        %% ports
+        {Module, ns_server} when Module == inet_tcp_dist;
+                                 Module == inet6_tcp_dist ->
+            erl_epmd:port_please(NodeStr, Hostname, Timeout);
+        {Module, _} ->
+            {port, port_for_node(Module, NodeStr), 5}
     catch
         error:Error ->
             {error, Error}
@@ -79,58 +74,40 @@ register_node(_Name, _PortNo, _Family) ->
     {ok, 0}.
 
 port_for_node(Module, NodeStr) ->
-    case node_type(NodeStr) of
-        {ok, Type, N} ->
-            {ok, port(Type, N, Module)};
-        {error, Reason} ->
-            {error, Reason}
-    end.
+    {Type, N} = parse_node(NodeStr),
+    base_port(Type, cb_dist:proto_to_encryption(Module)) + N.
 
 is_local_node(Node) when is_atom(Node) -> is_local_node(atom_to_list(Node));
 is_local_node(Node) ->
     [NodeName | _] = string:tokens(Node, "@"),
     case node_type(NodeName) of
-        {ok, ns_server, _} -> false;
-        {ok, _, _} -> true;
-        {error, Reason} -> erlang:error(Reason)
+        ns_server -> false;
+        _ -> true
     end.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
-port(Type, N, Module) ->
-    try
-        base_port(Type) + list_to_integer(N) * 2 + shift(Module)
-    catch
-        C:E ->
-            ST = erlang:get_stacktrace(),
-            error_logger:error_msg("Port calc exception: ~p, called as "
-                                   "port(~p, ~p, ~p), Stacktrace: ~p",
-                                   [E, Type, N, Module, ST]),
-            erlang:raise(C,E,ST)
-    end.
+base_port(ns_server, false) -> 21100;
+base_port(ns_server, true) -> 21150;
+base_port(babysitter, false) -> 21200;
+base_port(babysitter, true) -> 21250;
+base_port(couchdb, false) -> 21300;
+base_port(couchdb, true) -> 21350.
 
-port_shifts() ->
-    [{inet_tcp_dist,  0},
-     {inet6_tcp_dist, 0},
-     {inet_tls_dist,  1},
-     {inet6_tls_dist, 1}].
+node_type(NodeStr) ->
+    {Type, _} = parse_node(NodeStr),
+    Type.
 
-shift(Module) -> proplists:get_value(Module, port_shifts()).
+parse_node("ns_1") -> {ns_server, 0};
+parse_node("babysitter_of_ns_1") -> {babysitter, 0};
+parse_node("couchdb_ns_1") -> {couchdb, 0};
 
-base_port(ns_server) -> 21100;
-base_port(babysitter) -> 21200;
-base_port(couchdb) -> 21300.
+parse_node("n_" ++ Nstr) -> {ns_server, list_to_integer(Nstr)};
+parse_node("babysitter_of_n_" ++ Nstr) -> {babysitter, list_to_integer(Nstr)};
+parse_node("couchdb_n_" ++ Nstr) -> {couchdb, list_to_integer(Nstr)};
 
-node_type("ns_1") -> {ok, ns_server, "0"};
-node_type("babysitter_of_ns_1") -> {ok, babysitter, "0"};
-node_type("couchdb_ns_1") -> {ok, couchdb, "0"};
+parse_node("executioner") -> {babysitter, 1};
 
-node_type("n_" ++ Nstr) -> {ok, ns_server, Nstr};
-node_type("babysitter_of_n_" ++ Nstr) -> {ok, babysitter, Nstr};
-node_type("couchdb_n_" ++ Nstr) -> {ok, couchdb, Nstr};
-
-node_type("executioner") -> {ok, babysitter, "1"};
-
-node_type(Name) -> {error, {unknown_node, Name}}.
+parse_node(Name) -> erlang:error({unknown_node, Name}).

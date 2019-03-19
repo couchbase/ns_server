@@ -37,7 +37,8 @@
          external_encryption/0,
          external_listeners/0,
          update_listeners_in_config/1,
-         update_net_settings_in_config/2]).
+         update_net_settings_in_config/2,
+         proto_to_encryption/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -434,7 +435,7 @@ remove_proto(Mod, #s{listeners = Listeners, acceptors = Acceptors} = State) ->
 
 listen_proto(Module, NodeName) ->
     NameStr = atom_to_list(NodeName),
-    {ok, Port} = cb_epmd:port_for_node(Module, NameStr),
+    Port = cb_epmd:port_for_node(Module, NameStr),
     info_msg("Starting ~p listener on ~p...", [Module, Port]),
     ListenFun =
         fun () ->
@@ -462,7 +463,7 @@ maybe_register_on_epmd(Module, NodeName, PortNo)
   when Module =:= inet_tcp_dist;
        Module =:= inet6_tcp_dist ->
     case cb_epmd:node_type(atom_to_list(NodeName)) of
-        {ok, ns_server, _} ->
+        ns_server ->
             Family = proto_to_family(Module),
             case erl_epmd:register_node(NodeName, PortNo, Family) of
                 {ok, _} -> ok;
