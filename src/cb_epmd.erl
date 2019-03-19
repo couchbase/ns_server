@@ -18,11 +18,14 @@
 %%      based on node names.
 -module(cb_epmd).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 %% External exports
 -export([start/0, start_link/0, stop/0, port_for_node/2, port_please/2,
          port_please/3, names/0, names/1,
          register_node/2, register_node/3, is_local_node/1, node_type/1]).
-
 
 %%%----------------------------------------------------------------------
 %%% API
@@ -31,8 +34,12 @@
 %% Starting erl_epmd only for backward compat
 %% Old clusters will use epmd to discover this nodes. When upgrade is finished
 %% epmd is not needed.
-start() -> erl_epmd:start().
-start_link() -> erl_epmd:start_link().
+start() ->
+    load_configuration(),
+    erl_epmd:start().
+start_link() ->
+    load_configuration(),
+    erl_epmd:start_link().
 stop() -> erl_epmd:stop().
 
 %% Node here comes without hostname and as string
@@ -89,12 +96,18 @@ is_local_node(Node) ->
 %%% Internal functions
 %%%===================================================================
 
-base_port(ns_server, false) -> 21100;
-base_port(ns_server, true) -> 21150;
-base_port(babysitter, false) -> 21200;
-base_port(babysitter, true) -> 21250;
-base_port(couchdb, false) -> 21300;
-base_port(couchdb, true) -> 21350.
+base_port(ns_server, false) ->
+    application:get_env(kernel, external_tcp_port, 21100);
+base_port(ns_server, true) ->
+    application:get_env(kernel, external_tls_port, 21150);
+base_port(babysitter, false) ->
+    element(1, application:get_env(kernel, internal_tcp_ports, {21200, -1}));
+base_port(babysitter, true) ->
+    element(1, application:get_env(kernel, internal_tls_ports, {21250, -1}));
+base_port(couchdb, false) ->
+    element(2, application:get_env(kernel, internal_tcp_ports, {-1, 21300}));
+base_port(couchdb, true) ->
+    element(2, application:get_env(kernel, internal_tls_ports, {-1, 21350})).
 
 node_type(NodeStr) ->
     {Type, _} = parse_node(NodeStr),
@@ -111,3 +124,89 @@ parse_node("couchdb_n_" ++ Nstr) -> {couchdb, list_to_integer(Nstr)};
 parse_node("executioner") -> {babysitter, 1};
 
 parse_node(Name) -> erlang:error({unknown_node, Name}).
+
+load_configuration() ->
+    ConfigFile = config_path(),
+    try read_ports_config(ConfigFile) of
+        Config ->
+            lists:map(
+                fun ({Key, Val}) ->
+                    application:set_env(kernel, Key, Val)
+                end, Config)
+    catch _:Error ->
+            ST = erlang:get_stacktrace(),
+            error_logger:error_msg("Invalid config ~p: ~p~n~p",
+                                   [ConfigFile, Error, ST]),
+            erlang:error({invalid_format, ConfigFile})
+    end.
+
+read_ports_config(File) ->
+    case erl_prim_loader:get_file(File) of
+        {ok, Bin, _} -> parse_config(binary_to_list(Bin));
+        error -> []
+    end.
+
+parse_config(Str) ->
+    Lines = [string:trim(S) || L <- string:tokens(Str, "\r\n"),
+                               [S | _] <- [string:split(L, ";")],
+                               "" =/= string:trim(S)],
+
+    ToInt = fun (S) ->
+                try list_to_integer(S)
+                catch
+                    _:_ -> erlang:error({not_integer, S})
+                end
+            end,
+    lists:map(
+      fun (L) ->
+              [Left, Right] =
+                  case string:tokens(L, "=") of
+                      [Op1, Op2] -> [Op1, Op2];
+                      _ -> erlang:error({syntax_error, L})
+                  end,
+              case string:trim(Left) of
+                  K when K =:= "external_tcp_port";
+                         K =:= "external_tls_port" ->
+                      {list_to_atom(K), ToInt(string:trim(Right))};
+                  K when K =:= "internal_tcp_ports";
+                         K =:= "internal_tls_ports" ->
+                      case string:tokens(Right, ",") of
+                          [Port1, Port2] ->
+                              {list_to_atom(K), {ToInt(string:trim(Port1)),
+                                                 ToInt(string:trim(Port2))}};
+                          _ -> erlang:error({two_ports_expected, Right})
+                      end;
+                  K ->
+                      erlang:error({unknown_key, K})
+              end
+      end, Lines).
+
+config_path() ->
+    filename:join(filename:dirname(cb_dist:config_path()), "dist_ports.cfg").
+
+-ifdef(TEST).
+parse_config_test() ->
+    ?assertEqual([], parse_config("")),
+    ?assertEqual([{external_tcp_port, 123}],
+                 parse_config("external_tcp_port=123")),
+    ?assertEqual([{external_tcp_port, 123}, {external_tls_port, 234}],
+                 parse_config("external_tcp_port=123\nexternal_tls_port=234")),
+    ?assertEqual([{internal_tcp_ports, {123,234}}],
+                 parse_config("internal_tcp_ports=123,234")),
+    ?assertEqual([{external_tcp_port, 123},
+                  {internal_tls_ports, {321, 432}},
+                  {internal_tcp_ports, {456, 678}}],
+                 parse_config("  \n\r\nexternal_tcp_port= 123\r\n"
+                              " internal_tls_ports =321,432 ; comment;comment\r"
+                              " ;  comment\n"
+                              "; comment\n"
+                              "internal_tcp_ports = 456 , 678\r\n  \r\n   ")),
+    ?assertException(error, {unknown_key, _}, parse_config("unknown=123")),
+    ?assertException(error, {syntax_error, "unknown"}, parse_config("unknown")),
+    ?assertException(error, {two_ports_expected, "123"},
+                     parse_config("internal_tcp_ports=123")),
+    ?assertException(error, {not_integer, "str"},
+                     parse_config("internal_tcp_ports=123,str")),
+    ?assertException(error, _, parse_config("internal_tcp_ports=123")),
+    ?assertException(error, _, parse_config("internal_tcp_ports=123=1234")).
+-endif.
