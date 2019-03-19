@@ -332,7 +332,7 @@ default_cbauth_ciphers() ->
     Names = lists:flatmap(
               fun (high) -> ciphers:high();
                   (medium) -> ciphers:medium()
-               end, ns_config:read_key_fast(ssl_ciphers_strength, [high])),
+              end, ns_config:read_key_fast(ssl_ciphers_strength, [high])),
     ciphers:only_known(Names).
 
 honor_cipher_order(Default) ->
