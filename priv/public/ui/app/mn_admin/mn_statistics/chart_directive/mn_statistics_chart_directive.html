@@ -1,11 +1,24 @@
-<div class="row">
-  <div class="chart-title">
+<div class="row row-min">
+  <div class="chart-title" title="{{title}}">
     {{title}}
   </div>
-  <span class="text-right nowrap">
-    <a class="margin-right-half" ng-click="editChart(config)"><span class="icon fa-edit"></span></a>
-    <a ng-click="deleteChart(config)"><span class="icon fa-trash"></span></a>
-  </span>
+  <div class="chart-controls" title="show/hide chart controls">
+    <span
+       class="icon fa-ellipsis-v"
+       ng-model="showChartControls"
+       ng-click="showChartControls = !showChartControls"
+       ng-class="showChartControls ? 'fa-angle-right' : 'fa-ellipsis-v'"></span>
+    <span
+      title="edit chart"
+       class="icon fa-edit"
+       ng-click="editChart(config)"
+       ng-show="showChartControls"></span>
+    <span
+       title="delete chart"
+       class="icon fa-trash"
+       ng-click="deleteChart(config)"
+       ng-show="showChartControls"></span>
+  </div>
 </div>
 <nvd3
    api="chartApi"

@@ -1,37 +1,5 @@
-<style>
-  .chart-title {font-size: .875rem;font-weight: 600;color: #333; white-space: nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .chart-title small {font-size: .688rem;font-weight: 400;color: #999;}
-  .statistics-small {width: calc(25% - 2rem);height: 180px;padding: .5rem .5rem 1rem .5rem;margin: 1rem;}
-  .statistics-small .chart-title {font-size: .75rem;}
-  .statistics-small .chart-title small {display: none;}
-  .statistics-medium {width: calc(50% - 2rem);height: 240px;padding: .5rem .5rem 1rem .5rem;margin: 1rem;}
-  .statistics-medium:hover {background-color: #f7f7f7; cursor: pointer;}
-  .statistics-large {width: calc(100% - 2rem);height: 360px; padding: .5rem .5rem 1rem .5rem;margin: 1rem;}
-  .statistics-large:hover {background-color: #f7f7f7; cursor: pointer;}
-  .nvd3 .nv-axis line {opacity: 0;}
-  .nvd3 .nv-axis.nv-y1 line,
-  .nvd3 .nv-axis.nv-x line {opacity: 1;}
-  .row.charts {flex-wrap: wrap;margin-left: -1rem;justify-content: flex-start;}
-  .row.header {justify-content: flex-start;}
-  .charts select {font-size: 10px;line-height: 1.5;height: 1.5rem;}
-  .charts.text-smaller {font-size: 10px;}
-
-  .nvd3 text {font: normal 10px OpenSans;}
-  .tick line {display:none;}
-  .domain {opacity: .2;}
-  .nv-axisMaxMin-y text,
-  .nv-axisMin-y text {font-weight: 400!important;}
-  .full-size-dialog .dialog {width:100%; margin: 2rem}
-  .full-size-dialog .panel-header {display: none}
-
-</style>
-
 <div>
   <div class="row margin-bottom-1">
-    <div>
-      Stats &gt;
-    </div>
-
     <ui-select
       style="width:200px"
       class="cbui-select"
@@ -86,7 +54,7 @@
            ng-class="{disclosed: isDetailsOpened}">
         {{group.name}}
       </div>
-      <div ng-if="isDetailsOpened" class="row charts items-top">
+      <div ng-if="statisticsNewCtl.isDetailsOpened(group.id)" class="row charts items-top">
         <div
           ng-repeat="config in group.charts track by config.id"
           ng-class="'statistics-' + config.size"

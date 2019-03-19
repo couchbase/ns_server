@@ -1,14 +1,15 @@
-<div class="dialog-med">
+<div class="dialog-small">
   <div class="panel-header">
-    <h2>Delete Chat</h2>
+    <h2>Delete Chart</h2>
   </div>
   <div class="panel-content">
-    <p class="error">
-      Are you sure that you want to delete this chat?
-    </p>
+    <div class="row flex-left">
+      <span class="icon fa-warning fa-2x red-3"></span>
+        <p>Delete this chart?</p>
+    </div>
   </div>
   <div class="panel-footer">
-    <a href="" ng-click="$dismiss()">Cancel</a>
-    <button ng-click="$close()">Yes, I'm sure</button>
+    <a ng-click="$dismiss()">Cancel</a>
+    <button ng-click="$close()">Delete Chart</button>
   </div>
 </div>
