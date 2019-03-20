@@ -188,7 +188,7 @@
       }
       mnStatisticsNewService.addUpdateChart(
         chart,
-        _.find(vm.groups, {'id': Number(vm.newChart.group)})
+        _.find(vm.groups, {'id': vm.newChart.group})
       ).then(function () {
         $uibModalInstance.close();
         vm.isEditing && $state.reload();

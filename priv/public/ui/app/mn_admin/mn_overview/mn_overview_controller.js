@@ -9,6 +9,7 @@
     'mnPoll',
     'ui.bootstrap',
     'mnElementCrane',
+    'mnDropdown',
     'mnPromiseHelper',
     'mnXDCRService',
     'mnHelper'

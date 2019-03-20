@@ -2,10 +2,10 @@
   "use strict";
 
   angular
-    .module('mnStatisticsNewService', ["mnServersService", "mnUserRolesService", 'mnPoll', "mnStatisticsDescriptionService"])
+    .module('mnStatisticsNewService', ["mnServersService", "mnUserRolesService", 'mnPoll', "mnStatisticsDescriptionService", "mnHelper"])
     .factory('mnStatisticsNewService', mnStatisticsNewServiceFactory);
 
-  function mnStatisticsNewServiceFactory($http, $q, mnServersService, mnPoller, $rootScope, mnStatisticsDescriptionService, mnUserRolesService) {
+  function mnStatisticsNewServiceFactory($http, $q, mnServersService, mnPoller, $rootScope, mnStatisticsDescriptionService, mnUserRolesService, mnHelper) {
     var mnStatisticsNewService = {
       prepareNodesList: prepareNodesList,
       export: {
@@ -18,6 +18,8 @@
       addUpdateScenario: addUpdateScenario,
       addUpdateGroup: addUpdateGroup,
       addUpdateChart: addUpdateChart,
+      deleteScenario: deleteScenario,
+      deleteGroup: deleteGroup,
       saveScenarios: saveScenarios,
       readByPath: readByPath,
       getStatsV2: getStatsV2,
@@ -111,8 +113,8 @@
 
       if (!chartScopes[statID].length) {
         rootScopes[statID].$destroy();
-        rootScopes[statID] = null;
-        pollers[statID] = null;
+        delete rootScopes[statID]
+        delete pollers[statID];
       }
     }
 
@@ -130,7 +132,7 @@
         var index = _.findIndex(charts, {'id': newChart.id});
         charts[index] = newChart;
       } else {
-        var chartId = new Date().getTime();
+        var chartId = mnHelper.generateID();
         charts = charts || [];
         newChart.id = chartId;
         charts.push(newChart);
@@ -147,25 +149,35 @@
     }
 
     function addUpdateGroup(newGroup) {
-      newGroup.id = new Date().getTime();
+      newGroup.id = mnHelper.generateID();
       mnStatisticsNewService.export.scenarios.selected.groups.push(newGroup);
       return saveScenarios();
     }
 
-    function addUpdateScenario(newSenario, doDelete) {
+    function deleteGroup(group) {
+      var groups = mnStatisticsNewService.export.scenarios.selected.groups;
+      var index = _.findIndex(groups, {'id': group.id});
+      groups.splice(index, 1);
+      return saveScenarios();
+    }
+
+
+    function deleteScenario(scenario) {
+      var scenarios = mnStatisticsNewService.export.scenarios;
+      var index = _.findIndex(scenarios, {'id': scenario.id});
+      scenarios.splice(index, 1);
+      return saveScenarios();
+    }
+
+    function addUpdateScenario(newSenario) {
       var scenarios = mnStatisticsNewService.export.scenarios;
 
       if (newSenario.id) {
         var index = _.findIndex(scenarios, {'id': newSenario.id});
-
-        if (doDelete) {
-          scenarios.splice(index, 1);
-        } else {
-          scenarios[index].name = newSenario.name;
-          scenarios[index].desc = newSenario.desc;
-        }
+        scenarios[index].name = newSenario.name;
+        scenarios[index].desc = newSenario.desc;
       } else {
-        newSenario.id = new Date().getTime();
+        newSenario.id = mnHelper.generateID();
         scenarios.push(newSenario);
       }
 

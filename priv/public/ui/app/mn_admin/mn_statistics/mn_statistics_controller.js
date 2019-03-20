@@ -25,6 +25,7 @@
     vm.onSelectZoom = onSelectZoom;
 
     vm.statisticsService = mnStatisticsNewService.export;
+    vm.saveScenarios = mnStatisticsNewService.saveScenarios;
 
     if (vm.statisticsService.scenarios.selected) {
       $state.go("^.statistics", {
@@ -35,6 +36,7 @@
     vm.currentBucket = $state.params.statisticsBucket;
     vm.openGroupDialog = openGroupDialog;
     vm.openScenarioDialog = openScenarioDialog;
+    vm.deleteGroup = deleteGroup;
 
     vm.selectedBucket = $state.params.scenarioBucket;
     vm.onBucketChange = onBucketChange;
@@ -63,13 +65,21 @@
       });
     }
 
-    function openChartBuilderDialog(group) {
+    function openChartBuilderDialog() {
       $uibModal.open({
         templateUrl: 'app/mn_admin/mn_statistics/chart_builder/mn_statistics_chart_builder.html',
         controller: 'mnStatisticsNewChartBuilderController as chartBuilderCtl',
         resolve: {
           chart: mnHelper.wrapInFunction()
         }
+      });
+    }
+
+    function deleteGroup(group) {
+      $uibModal.open({
+        templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_scenario_delete.html',
+      }).result.then(function () {
+        mnStatisticsNewService.deleteGroup(group);
       });
     }
 
@@ -101,7 +111,7 @@
           vm.statisticsService.scenarios.selected =
             scenarios[$state.params.scenario ?
                       _.findIndex(scenarios,
-                                  {'id': Number($state.params.scenario)}) : 0];
+                                  {'id': $state.params.scenario}) : 0];
         });
       }
 

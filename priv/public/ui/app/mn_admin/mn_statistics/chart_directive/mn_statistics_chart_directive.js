@@ -46,7 +46,7 @@
           scope: $scope
         }).result.then(function () {
           var group = _.find(mnStatisticsNewService.export.scenarios.selected.groups,
-                             {'id': Number(config.group)});
+                             {'id': config.group});
 
           var index = _.findIndex(group.charts, {'id': config.id});
 
@@ -136,7 +136,7 @@
               }
             },
             yAxis: {
-              // axisLabel : '',
+              axisLabel : "",
               showMaxMin: false
             },
             callback: function (chart) {
@@ -148,7 +148,7 @@
                   $uibModal.open({
                     templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_chart_focus_dialog.html',
                     controller: 'mnStatisticsChartFocusDialogController as chartFocusDialogCtl',
-                    windowTopClass: "full-size-dialog",
+                    windowTopClass: "chart-overlay",
                     resolve: {
                       chartConfig: mnHelper.wrapInFunction($scope.config),
                       chartNodes: mnHelper.wrapInFunction($scope.nodes)
@@ -161,7 +161,7 @@
                   $uibModal.open({
                     templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_chart_dialog.html',
                     scope: scope,
-                    windowTopClass: "full-size-dialog"
+                    windowTopClass: "chart-overlay"
                   });
                 }
               });

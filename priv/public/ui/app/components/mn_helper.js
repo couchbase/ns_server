@@ -19,7 +19,8 @@
       reloadApp: reloadApp,
       reloadState: reloadState,
       listToCheckboxes: listToCheckboxes,
-      getEndings: getEndings
+      getEndings: getEndings,
+      generateID: generateID
     };
 
     return mnHelper;
@@ -64,6 +65,9 @@
     }
     function reloadApp() {
       $window.location.reload();
+    }
+    function generateID() {
+      return Math.random().toString(36).substr(2, 9);
     }
     function reloadState(state) {
       if (!state) {

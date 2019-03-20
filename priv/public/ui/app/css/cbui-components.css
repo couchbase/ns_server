@@ -1695,7 +1695,7 @@ input[type="checkbox"].fake-select + label:before {
   font-size: .875rem;
   padding: 1rem 2rem;
   border-radius: 9px;
-  margin: .5rem;
+  margin: .5rem 0;
   text-align: center;
 }
 .zero-content.text-left {
@@ -2382,6 +2382,19 @@ nav.nav-sidebar-hidden {
   background-color: #f5f5f5;
   cursor: pointer;
 }
+.chart-overlay .dialog {
+  width: 100%;
+  margin: 0 2rem;
+}
+.chart-overlay .panel-header {
+  display: none;
+}
+.chart-overlay .chart-controls {
+  display: none;
+}
+.chart-overlay .statistics-large:hover {
+  background-color: #fff;
+}
 .row.charts {
   flex-wrap: wrap;
   margin-left: -.5rem;
@@ -2415,6 +2428,7 @@ nav.nav-sidebar-hidden {
 .chart-controls .icon:last-child {
   margin-right: 0;
 }
+
 .chart-adder {
   background-color: #f5f5f5;
   border-radius: 5px;
@@ -2438,29 +2452,205 @@ nav.nav-sidebar-hidden {
 
 /* over-writes of nvd3 css -------------------------------------------------- */
 .nvd3 .nv-axis line {
-  opacity: 0;
+  opacity: 0!important;
 }
 .nvd3 .nv-axis.nv-y1 line,
 .nvd3 .nv-axis.nv-x line {
-  opacity: 1;
+  opacity: 1!important;
 }
 .nvd3 text {
-  font: normal 10px OpenSans;
+  font: normal 10px OpenSans!important;
 }
 .tick line {
-  display:none;
+  display:none!important;
 }
 .domain {
-  opacity: .2;
+  opacity: .2!important;
 }
 .nv-axisMaxMin-y text,
 .nv-axisMin-y text {
   font-weight: 400!important;
 }
-.full-size-dialog .dialog {
-  width:100%;
-  margin: 2rem
+
+/* cbui custom dropdown menu  ------------------------------------------------*/
+mn-dropdown {
+  display: block;
+  position: relative;
+  z-index: 100;
 }
-.full-size-dialog .panel-header {
-  display: none
+mn-dropdown inner-header,
+mn-dropdown inner-body,
+mn-dropdown inner-footer,
+mn-dropdown mn-dropdown-item {
+  display: block;
+}
+mn-dropdown .select {
+  border: 1px solid #d1d1d1;
+  border-radius: 4px;
+  position: relative;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1rem 0 .5rem;
+  height: 32px;
+  min-width: 248px;
+  font-size: .875rem;
+}
+mn-dropdown .select:after {
+  font-family: FontAwesome;
+  content: "\f0d7";
+  color: #555;
+  position: relative;
+  right: -.5rem;
+}
+mn-dropdown .select.active:after {
+  content: "\f0d8";
+}
+mn-dropdown .menu {
+  position: absolute;
+  top: 31px;
+  width: 248px;
+  border: 1px solid #d1d1d1;
+  background-color: #fff;
+  box-shadow: 0 4px 7px 0 rgba(0,0,0,0.25);
+  overflow-y: hidden;
+}
+mn-dropdown .footer {
+  padding: 1rem;
+  box-shadow: 0 -2px 6px -2px rgba(0,0,0,0.18);
+  position: relative;
+}
+mn-dropdown-item {
+  background-color: white;
+  padding: .5rem 1rem;
+  cursor: pointer;
+  position: relative;
+  font-size: .875rem;
+  display: block;
+  border-bottom: 1px solid #d1d1d1;
+  line-height: 1.3;
+}
+mn-dropdown-item:hover {
+  background-color: #f6fafd;
+}
+
+/* styles specific to the .scenario-dropdown menu --------------------------- */
+.scenario-dropdown inner-body {
+  overflow-y: auto;
+  max-height: calc(100vh - 200px);
+}
+/* magic number max-height shortens main menu when the add footer is expanded;
+   TO-DO: EDIT controls are shorter than ADD and still make menu jump ----- */
+.scenario-dropdown inner-body.body-shorter {
+  max-height: calc(100vh - 344px);
+}
+.scenario-dropdown mn-dropdown-item {
+  background-color: white;
+  padding: .5rem 1rem;
+  cursor: pointer;
+  position: relative;
+  font-size: .875rem;
+  display: block;
+  border-width: 0;
+  line-height: 1;
+}
+.scenario-dropdown mn-dropdown-item:last-child {
+  margin-bottom: .5rem;
+}
+.scenario-dropdown mn-dropdown-item:hover {
+  background-color: #f6fafd;
+}
+.scenario-dropdown mn-dropdown-item p:nth-child(1) {
+  font-size: .875rem;
+  font-weight: 600;
+  color: #000;
+  margin: 0 0 .125rem 0;
+  line-height: 1.2;
+}
+.scenario-dropdown mn-dropdown-item p:nth-child(2) {
+  font-size: .688rem;
+  font-weight: 400;
+  color: #333;
+  margin: 0;
+}
+.scenario-controls {
+  display: none;
+  margin: 0 0 0 1rem;
+  white-space: nowrap;
+  text-align: right;
+  position: absolute;
+  right: .25rem;
+  top: .3rem;
+  background-color: rgba(246,250,253, 0.9);
+  padding: .25rem .5rem;
+}
+mn-dropdown-item:hover .scenario-controls {
+  display: block;
+}
+.scenario-controls .icon {
+  color: #999;
+  padding: 0 .25rem;
+  cursor: pointer;
+}
+.scenario-controls .icon:hover {
+  color: #000;
+}
+.scenario-controls .icon:last-child {
+  margin-right: 0;
+}
+.scenario-add {
+  position: relative;
+  margin: -.5rem 0;
+}
+.scenario-add input[type=text] {
+  border: 1px solid #d1d1d1;
+  border-radius: 2px;
+  position: relative;
+  width: 100%;
+  height: 32px;
+  font-size: .8125rem;
+  color: #333;
+  margin: 0;
+}
+.scenario-add-ext {
+  margin: 0;
+}
+.scenario-add .icon {
+  font-size: 1.5rem;
+  color: #ececec;
+  position: absolute;
+  right: .5rem;
+  top: .25rem;
+  pointer-events: none;
+}
+.scenario-add:hover .icon {
+  font-size: 1.5rem;
+  color: #999;
+}
+input[type=text].scenario-desc  {
+  border: 1px solid #d1d1d1;
+  border-radius: 2px;
+  position: relative;
+  width: 100%;
+  height: 32px;
+  font-size: .8125rem;
+  color: #333;
+  margin: .5rem 0;
+}
+.scenario-dropdown .footer label {
+  font-size: .8125rem;
+  color: #333;
+}
+.scenario-save-controls {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+  background-color: #fff;
+  margin-bottom: -.5rem;
+}
+.scenario-save-controls a {
+  font-size: .875rem;
 }
