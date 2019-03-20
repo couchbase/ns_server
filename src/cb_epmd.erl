@@ -58,7 +58,10 @@ port_please(NodeStr, Hostname, Timeout) ->
                                  Module == inet6_tcp_dist ->
             erl_epmd:port_please(NodeStr, Hostname, Timeout);
         {Module, _} ->
-            {port, port_for_node(Module, NodeStr), 5}
+            case port_for_node(Module, NodeStr) of
+                noport -> noport;
+                P -> {port, P, 5}
+            end
     catch
         error:Error ->
             {error, Error}
@@ -81,8 +84,10 @@ register_node(_Name, _PortNo, _Family) ->
     {ok, 0}.
 
 port_for_node(Module, NodeStr) ->
-    {Type, N} = parse_node(NodeStr),
-    base_port(Type, cb_dist:proto_to_encryption(Module)) + N.
+    case parse_node(NodeStr) of
+        {executioner, _} -> noport;
+        {Type, N} -> base_port(Type, cb_dist:proto_to_encryption(Module)) + N
+    end.
 
 is_local_node(Node) when is_atom(Node) -> is_local_node(atom_to_list(Node));
 is_local_node(Node) ->
@@ -121,7 +126,7 @@ parse_node("n_" ++ Nstr) -> {ns_server, list_to_integer(Nstr)};
 parse_node("babysitter_of_n_" ++ Nstr) -> {babysitter, list_to_integer(Nstr)};
 parse_node("couchdb_n_" ++ Nstr) -> {couchdb, list_to_integer(Nstr)};
 
-parse_node("executioner") -> {babysitter, 1};
+parse_node("executioner") -> {executioner, 0};
 
 parse_node(Name) -> erlang:error({unknown_node, Name}).
 

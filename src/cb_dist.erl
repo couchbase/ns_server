@@ -371,6 +371,7 @@ close_listeners(#s{listeners = Listeners} = State) ->
 %% inet_*_dist modules use inet_dist_listen_min and inet_dist_listen_max to
 %% choose port for listening. Since we need them to choose Port we set those
 %% variables to Port, call listen function, and then change variables back.
+with_dist_port(noport, _Fun) -> ignore;
 with_dist_port(Port, Fun) ->
     OldMin = application:get_env(kernel,inet_dist_listen_min),
     OldMax = application:get_env(kernel,inet_dist_listen_max),
@@ -450,6 +451,9 @@ listen_proto(Module, NodeName) ->
         end,
     case with_dist_port(Port, ListenFun) of
         {ok, Res} -> {ok, Res};
+        ignore ->
+            info_msg("Ignoring starting dist ~p on port ~p", [Module, Port]),
+            ignore;
         Error ->
             error_msg("Failed to start dist ~p on port ~p with reason: ~p",
                       [Module, Port, Error]),
