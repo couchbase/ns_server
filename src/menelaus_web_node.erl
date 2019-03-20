@@ -298,6 +298,10 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
                         end
                 end, PortKeys),
 
+    ShortNode = misc:node_name_short(node()),
+    DistPorts = [{distTCP, cb_epmd:port_for_node(inet_tcp_dist, ShortNode)},
+                 {distTLS, cb_epmd:port_for_node(inet_tls_dist, ShortNode)}],
+
     WantedPorts = [memcached_port,
                    ssl_capi_port,
                    capi_port,
@@ -319,7 +323,7 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
           {version, list_to_binary(Version)},
           {os, list_to_binary(OS)},
           {cpuCount, CpuCount},
-          {ports, {struct, PortsKV}},
+          {ports, {struct, PortsKV ++ DistPorts}},
           {services, ns_cluster_membership:node_services(Config, WantENode)},
           {addressFamily, AFamily},
           {clusterEncryption, CEncryption},

@@ -135,9 +135,36 @@ apply_net_config(NodeKVList) ->
     ?log_info("Applying net config. AFamily: ~p, CEncryption: ~p, "
               "DistProtos: ~p", [AFamily, CEncription, Protos]),
 
-    case menelaus_web_node:apply_ext_dist_protocols(Protos) of
-        ok -> menelaus_web_node:apply_net_config(AFamily, CEncription);
+    case ensure_dist_ports_match(NodeKVList) of
+        ok ->
+            case menelaus_web_node:apply_ext_dist_protocols(Protos) of
+                ok -> menelaus_web_node:apply_net_config(AFamily, CEncription);
+                {error, Msg} -> {error, Msg}
+            end;
         {error, Msg} -> {error, Msg}
+    end.
+
+ensure_dist_ports_match(NodeKVList) ->
+    {struct, Ports} = proplists:get_value(<<"ports">>, NodeKVList,
+                                          {struct, []}),
+    RemoteNode = expect_json_property_atom(<<"otpNode">>, NodeKVList),
+    RemoteShortNode = misc:node_name_short(RemoteNode),
+    LocalTCPPort = cb_epmd:port_for_node(inet_tcp_dist, RemoteShortNode),
+    RemoteTCPPort = proplists:get_value(<<"distTCP">>, Ports, LocalTCPPort),
+    LocalTLSPort = cb_epmd:port_for_node(inet_tls_dist, RemoteShortNode),
+    RemoteTLSPort = proplists:get_value(<<"distTLS">>, Ports, LocalTLSPort),
+    case {RemoteTCPPort, RemoteTLSPort} of
+        {LocalTCPPort, LocalTLSPort} -> ok;
+        {LocalTCPPort, _} ->
+            Msg = io_lib:format("Distribution TLS ports doesn't match. Cluster "
+                                "uses ~p while new node will use ~p port",
+                                [RemoteTLSPort, LocalTLSPort]),
+            {error, iolist_to_binary(Msg)};
+        {_, _} ->
+            Msg = io_lib:format("Distribution ports doesn't match. Cluster "
+                                "uses ~p while new node will use ~p port",
+                                [RemoteTCPPort, LocalTCPPort]),
+            {error, iolist_to_binary(Msg)}
     end.
 
 call_engage_cluster(NodeKVList) ->
