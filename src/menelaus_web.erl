@@ -715,6 +715,11 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[{bucket, Id}, views], compact},
                      fun menelaus_web_buckets:handle_set_ddoc_update_min_changes/4,
                      ["default", Id, DDocId]};
+                ["pools", "default", "buckets", Id, "collections",
+                 "@ensureManifest", ManifestId] ->
+                    {{[{bucket, Id}, collections], read},
+                     fun menelaus_web_collections:handle_ensure_manifest/3,
+                     [Id, ManifestId]};
                 ["pools", "default", "buckets", Id, "collections", Scope] ->
                     {{[{bucket, Id}, collections], write},
                      fun menelaus_web_collections:handle_post_collection/3,

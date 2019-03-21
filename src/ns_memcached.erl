@@ -115,7 +115,8 @@
          config_validate/1,
          config_reload/0,
          get_failover_log/2,
-         get_failover_logs/2
+         get_failover_logs/2,
+         get_collections_uid/1
         ]).
 
 %% for ns_memcached_sockets_pool, memcached_file_refresh only
@@ -1371,6 +1372,14 @@ get_failover_logs_loop(Sock, [V | VBs], Acc) ->
 set_cluster_config(Rev, Blob) ->
     perform_very_long_call(
       ?cut({reply, mc_client_binary:set_cluster_config(_, "", Rev, Blob)})).
+
+get_collections_uid(Bucket) ->
+    perform_very_long_call(
+      ?cut({reply,
+            list_to_integer(
+              binary_to_list(
+                memcached_bucket_config:get_current_collections_uid(_)))}),
+      Bucket).
 
 handle_connected_call(Call, From, #state{status = Status} = State) ->
     case Status of

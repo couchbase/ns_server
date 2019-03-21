@@ -25,7 +25,8 @@
          handle_post_scope/2,
          handle_post_collection/3,
          handle_delete_scope/3,
-         handle_delete_collection/4]).
+         handle_delete_collection/4,
+         handle_ensure_manifest/3]).
 
 handle_get(Bucket, Req) ->
     assert_api_available(Bucket),
@@ -75,6 +76,33 @@ handle_delete_collection(Bucket, Scope, Name, Req) ->
     assert_api_available(Bucket),
     handle_rv(collections:drop_collection(Bucket, Scope, Name), Req).
 
+handle_ensure_manifest(Bucket, Uid, Req) ->
+    assert_api_available(Bucket),
+    UidInt = convert_uid(Uid),
+    {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
+
+    BucketNodes = ns_bucket:live_bucket_nodes_from_config(BucketConfig),
+    BucketUuid = ns_bucket:bucket_uuid(BucketConfig),
+
+    validator:handle(
+      fun (Values) ->
+              Nodes = proplists:get_value(nodes, Values, BucketNodes),
+              Timeout = proplists:get_value(timeout, Values, 30000),
+              case collections:wait_for_manifest_uid(
+                     Nodes, Bucket, BucketUuid, UidInt, Timeout) of
+                  ok ->
+                      menelaus_util:reply(Req, 200);
+                  timeout ->
+                      menelaus_util:reply_text(Req, "timeout", 504);
+                  stopped ->
+                      menelaus_util:reply_text(Req, "bucket no longer exists",
+                                               404)
+              end
+      end, Req, form,
+      [validator:integer(timeout, 0, 60000, _),
+       nodes_validator(BucketNodes, Req, _),
+       validator:unsupported(_)]).
+
 assert_api_available(Bucket) ->
     case collections:enabled() of
         true ->
@@ -108,6 +136,42 @@ name_validator(State) ->
       name, "^[0-9A-Za-z_%\-]+$",
       "Can only contain characters A-Z, a-z, 0-9 and the following symbols "
       "_ - %", State).
+
+convert_uid(Uid) ->
+    case menelaus_util:parse_validate_number(Uid, 0, undefined) of
+        {ok, UidInt} ->
+            UidInt;
+        _ ->
+            erlang:throw({web_exception, 400, "Invalid UID", []})
+    end.
+
+nodes_validator(BucketNodes, Req, State) ->
+    validator:validate(
+      fun (NodesStr) ->
+              Nodes = string:split(NodesStr, ",", all),
+              {Good, Bad} =
+                  lists:foldl(
+                    fun (HostPort, {G, B}) ->
+                            case menelaus_web_node:find_node_hostname(
+                                   HostPort, Req) of
+                                false ->
+                                    {G, [HostPort | B]};
+                                {ok, Node} ->
+                                    case lists:member(Node, BucketNodes) of
+                                        true ->
+                                            {[Node | G], B};
+                                        false ->
+                                            {G, [HostPort | B]}
+                                    end
+                            end
+                    end, {[], []}, Nodes),
+              case Bad of
+                  [] ->
+                      {value, Good};
+                  _ ->
+                      {error, "Invalid nodes : " ++ string:join(Bad, ",")}
+              end
+      end, nodes, State).
 
 handle_rv({ok, Uid}, Req) ->
     menelaus_util:reply_json(Req, {[{uid, Uid}]}, 200);

@@ -30,7 +30,11 @@
          create_scope/2,
          create_collection/4,
          drop_scope/2,
-         drop_collection/3]).
+         drop_collection/3,
+         wait_for_manifest_uid/5]).
+
+%% rpc from other nodes
+-export([wait_for_manifest_uid/4]).
 
 -define(SERVER, {via, leader_registry, ?MODULE}).
 
@@ -345,4 +349,66 @@ pull_config(Nodes) ->
             ?log_error("Failed to pull config from some nodes: ~p.",
                        [Error]),
             Error
+    end.
+
+wait_for_manifest_uid(Bucket, BucketUuid, Uid, Timeout) ->
+    case async:run_with_timeout(
+           ?cut(wait_for_manifest_uid(Bucket, BucketUuid, Uid)), Timeout) of
+        {ok, R} ->
+            R;
+        {error, timeout} ->
+            timeout
+    end.
+
+wait_for_manifest_uid(Bucket, BucketUuid, Uid) ->
+    Ref = erlang:make_ref(),
+    Parent = self(),
+    Subscription =
+        ns_pubsub:subscribe_link(
+          buckets_events,
+          fun ({set_collections_manifest, B, U}) when U >= Uid,
+                                                      B =:= BucketUuid ->
+                  Parent ! {Ref, ok};
+              ({stopped, B}) when B =:= Bucket ->
+                  Parent ! {Ref, stopped};
+              (_) ->
+                  ok
+          end),
+    try
+        case ns_memcached:get_collections_uid(Bucket) of
+            U when U >= Uid ->
+                ok;
+            _ ->
+                receive
+                    {Ref, Ret} ->
+                        Ret
+                end
+        end
+    after
+        (catch ns_pubsub:unsubscribe(Subscription))
+    end.
+
+wait_for_manifest_uid(Nodes, Bucket, BucketUuid, Uid, Timeout) ->
+    {Ret, [], BadNodes} =
+        misc:rpc_multicall_with_plist_result(
+          Nodes, ?MODULE, wait_for_manifest_uid,
+          [Bucket, BucketUuid, Uid, Timeout], Timeout),
+    case BadNodes of
+        [] ->
+            case lists:all(fun ({_, ok}) -> true; (_) -> false end, Ret) of
+                true ->
+                    ok;
+                false ->
+                    check_for_stopped_bucket(Ret)
+            end;
+        _ ->
+            check_for_stopped_bucket(Ret)
+    end.
+
+check_for_stopped_bucket(Ret) ->
+    case lists:any(fun ({_, stopped}) -> true; (_) -> false end, Ret) of
+        true ->
+            stopped;
+        false ->
+            timeout
     end.
