@@ -1540,81 +1540,73 @@ input[type="checkbox"].fake-select + label:before {
 }
 
 /* dashboard widgets displaying node counts for each of four statuses ----- */
-.dashboard-nodes {
+.dashboard-servers {
+  font-size: .8125rem;
+  color: #333;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: nowrap;
+  margin-bottom: .5rem;
+}
+.dashboard-node {
   display: flex;
   align-items: center;
   justify-content: flex-start;
   margin-right: 2rem;
 }
-.dashboard-nodes:last-child {
+.dashboard-node:last-child {
   margin-right: 0;
 }
-.dashboard-nodes .icon {
- margin-right: .5rem;
+.dashboard-node .icon {
+  margin-right: .5rem;
+  font-size: 1rem;
 }
-.dashboard-nodes h3 {
- margin-right: .25rem;
+.dashboard-node  p:nth-child(2) {
+  margin: 0 .25rem 0 0;
+  font-size: .875rem;
 }
-.dashboard-nodes .icon {
-  font-size: 1.25rem;
-}
-.dashboard-nodes p {
+.dashboard-node p:nth-child(3) {
   margin: 0;
-  font-size: .75rem;
-  color: #333;
-  line-height: .85rem;
 }
 
-/* dashboard service widgets displaying status & details for each service + XDCR */
+/* dashboard service widgets with status & details for each service + XDCR -- */
 .service-widget-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 800px;
   margin: .25rem auto .5rem auto;
+  font-size: .8125rem;
+  color: #333;
 }
 .service-widget {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  padding: 0 0 0 .25rem;
+  padding: 0 0 0 .5rem;
   margin-right: 1.5rem;
   cursor: pointer;
+  line-height: 1.1;
 }
-.service-widget > a,
-.service-widget > .error {
+.service-widget a,
+.service-widget .error {
   font-size: .75rem;
 }
-.service-widget > a {
+.service-widget a {
   display:block;
   color: #333;
   white-space: nowrap;
 }
-.service-widget > a:hover {
+.service-widget a:hover {
   color: #000;
   text-decoration: underline;
 }
-.service-widget b {
-  margin-right: .5rem;
+.service-widget p {
+  margin: 0 .5rem 0 0;
 }
 
-/* DYNAMIC STATUSES - SERVERS/BUCKETS/SERVICES -------------------------- */
-/* old-style background colors ------------------------------------------
-.dynamic_inactive {
-  background-color: #a1a1a1;
-}
-.dynamic_healthy {
-  background-color: #80c677;
-}
-.dynamic_inactiveFailed,
-.dynamic_warmup {
-  background-color: #f6a623;
-}
-.dynamic_unhealthy {
-  background-color: #e07f82;
-}  */
-
-/* new-style border colors ---------------------------------------------- */
+/* state-indicating border colors ------------------------------------------- */
 .service-widget.dynamic_inactive,
 .dynamic_inactive {
   border-left: 8px solid #a1a1a1;  /* gray-3 */
@@ -1709,15 +1701,6 @@ input[type="checkbox"].fake-select + label:before {
   font-size: .75rem;
   padding: 1rem;
   margin-bottom: 1.5rem;
-}
-/* dashboard version is a lighter-colored flex container ----------------- */
-.content-box-dashboard {
-  font-size: .75rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: nowrap;
-  margin-bottom: .5rem;
 }
 .content-box p {
   margin-bottom: .5rem;

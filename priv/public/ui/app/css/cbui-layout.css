@@ -68,7 +68,7 @@ section {
 }
 footer {
   text-align: center;
-  padding: .25rem 0;
+  padding: .5rem 0;
   width: 100%;
   color: #555;
   background-color: #fff;
@@ -76,7 +76,7 @@ footer {
   position: fixed;
   bottom: 0;
   left: 0;
-  box-shadow: 0px -1px 2px 1px rgba(0,0,0,0.15);
+  box-shadow: 0px -2px 3px 0 rgba(0,0,0,0.15);
 }
 /* basic flex component for horizontal layout --------------------------- */
 .row {

@@ -76,25 +76,25 @@
   -->
 </div>
 <footer>
-  <div class="content-box-dashboard resp-xsml">
-    <div class="dashboard-nodes" title="active nodes">
+  <div class="dashboard-servers resp-xsml">
+    <div class="dashboard-node" title="active nodes">
       <span class="icon fa-server green-2"></span>
-      <h3>{{overviewCtl.nodes.all.active.length || '0'}}</h3>
+      <p class="semi-bold">{{overviewCtl.nodes.all.active.length || '0'}}</p>
       <p class="resp-hide-xsml">active nodes</p>
     </div>
-    <div class="dashboard-nodes" title="failed-over nodes">
+    <div class="dashboard-node" title="failed-over nodes">
       <span class="icon fa-server orange-2"></span>
-      <h3>{{overviewCtl.nodes.all.failedOver.length || '0'}}</h3>
+      <p class="semi-bold">{{overviewCtl.nodes.all.failedOver.length || '0'}}</p>
       <p class="resp-hide-xsml">failed-over nodes</p>
     </div>
-    <div class="dashboard-nodes" title="nodes pending rebalance">
+    <div class="dashboard-node" title="nodes pending rebalance">
       <span class="icon fa-server orange-2"></span>
-      <h3>{{overviewCtl.nodes.all.pending.length || '0'}}</h3>
+      <p class="semi-bold">{{overviewCtl.nodes.all.pending.length || '0'}}</p>
       <p class="resp-hide-xsml">nodes pending rebalance</p>
     </div>
-    <div class="dashboard-nodes" title="inactive nodes">
+    <div class="dashboard-node" title="inactive nodes">
       <span class="icon fa-server red-3"></span>
-      <h3>{{overviewCtl.nodes.all.down.length || '0'}}</h3>
+      <p class="semi-bold">{{overviewCtl.nodes.all.down.length || '0'}}</p>
       <p class="resp-hide-xsml">inactive nodes</p>
     </div>
   </div>
@@ -104,14 +104,14 @@
        class="service-widget"
        ui-sref="app.admin.buckets"
        ng-class="['dynamic_' + overviewCtl.nodes.kv.statusClass]">
-      <b class="text-small">Data</b>
+      <p>Data</p>
       <!--<a ng-click="$event.stopPropagation()" ui-sref="app.admin.servers.list">
         {{overviewCtl.nodes.kv.length || '0'}}
         node{{overviewCtl.getEndings(overviewCtl.nodes.kv.length)}}
       </a>-->
       <div
          class="error"
-         ng-repeat="(nodeStatuses, count) in overviewCtl.nodes.kv.nodesByStatuses">
+         ng-repeat="(nodeStatuses, count) in overviewCtl.nodes.kv.nodespyStatuses">
         {{count + ' node' + overviewCtl.getEndings(count) + ' ' + nodeStatuses}}
       </div>
     </div>
@@ -119,7 +119,7 @@
        class="service-widget"
        ui-sref="app.admin.gsi"
        ng-class="['dynamic_' + overviewCtl.nodes.index.statusClass]">
-      <b class="text-small">Index</b>
+      <p>Index</p>
       <!--<a ng-click="$event.stopPropagation()" ui-sref="app.admin.servers.list">
         {{overviewCtl.nodes.index.length || '0'}}
         node{{overviewCtl.getEndings(overviewCtl.nodes.index.length)}}
@@ -134,7 +134,7 @@
        class="service-widget"
        ui-sref="app.admin.query.workbench"
        ng-class="['dynamic_' + overviewCtl.nodes.n1ql.statusClass]">
-      <b class="text-small">Query</b>
+      <p>Query</p>
       <!--<a ng-click="$event.stopPropagation()" ui-sref="app.admin.servers.list">
         {{overviewCtl.nodes.n1ql.length || '0'}}
         node{{overviewCtl.getEndings(overviewCtl.nodes.n1ql.length)}}
@@ -149,7 +149,7 @@
        class="service-widget"
        ui-sref="app.admin.search.fts_list"
        ng-class="['dynamic_' + overviewCtl.nodes.fts.statusClass]">
-      <b class="text-small">Search</b>
+      <p>Search</p>
       <!--<a ng-click="$event.stopPropagation()" ui-sref="app.admin.servers.list">
         {{overviewCtl.nodes.fts.length || '0'}}
         node{{overviewCtl.getEndings(overviewCtl.nodes.fts.length)}}
@@ -165,7 +165,7 @@
        class="service-widget"
        ui-sref="app.admin.cbas.workbench"
        ng-class="['dynamic_' + overviewCtl.nodes.cbas.statusClass]">
-      <b class="text-small">Analytics</b>
+      <p>Analytics</p>
       <!--<a ng-click="$event.stopPropagation()" ui-sref="app.admin.servers.list">
         {{overviewCtl.nodes.cbas.length || '0'}}
         node{{overviewCtl.getEndings(overviewCtl.nodes.cbas.length)}}
@@ -181,7 +181,7 @@
        class="service-widget"
        ui-sref="app.admin.eventing.summary"
        ng-class="['dynamic_' + overviewCtl.nodes.eventing.statusClass]">
-      <b class="text-small">Eventing</b>
+      <p>Eventing</p>
       <!--<a ng-click="$event.stopPropagation()" ui-sref="app.admin.servers.list">
         {{overviewCtl.nodes.eventing.length || '0'}}
         node{{overviewCtl.getEndings(overviewCtl.nodes.eventing.length)}}
@@ -197,7 +197,7 @@
        ui-sref="app.admin.replications"
        class="service-widget"
        ng-class="['dynamic_' + (adminCtl.tasks.tasksXDCR.length ? 'healthy' : 'inactive')]">
-      <b class="text-small">XDCR</b>
+      <p>XDCR</p>
       <a>
         {{overviewCtl.xdcrReferences.filtered.length}}
         remote{{overviewCtl.getEndings(overviewCtl.xdcrReferences.filtered.length)}}
