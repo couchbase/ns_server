@@ -41,11 +41,7 @@
       $uibModal.open({
         templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_scenario_delete.html',
       }).result.then(function () {
-        mnStatisticsNewService
-          .deleteScenario(scenario)
-          .then(function () {
-            selectLastScenario(true);
-          });
+        return mnStatisticsNewService.deleteScenario(scenario).then(selectLastScenario);
       });
     }
 
@@ -55,20 +51,16 @@
       vm.showRestOfMenu = true;
     }
 
-    function selectLastScenario(doDelete) {
+    function selectLastScenario() {
       var scenarios = mnStatisticsNewService.export.scenarios;
       scenarios.selected = scenarios[scenarios.length - 1];
       return $state.go("^.statistics", {
-        scenario: doDelete ? scenarios.selected.id : scenario.id
+        scenario: scenarios.selected.id
       });
     }
 
-    function doAddUpdateScenario(scenario, doDelete) {
-      return mnStatisticsNewService
-        .addUpdateScenario(scenario, doDelete)
-        .then(function () {
-          selectLastScenario(false);
-        });
+    function doAddUpdateScenario(scenario) {
+      return mnStatisticsNewService.addUpdateScenario(scenario).then(selectLastScenario);
     }
 
     function onSubmit() {
