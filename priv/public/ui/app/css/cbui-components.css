@@ -2658,3 +2658,38 @@ input[type=text].scenario-desc  {
 .scenario-save-controls a {
   font-size: .875rem;
 }
+
+/* LDAP configuration dialog -------------------------------------------------*/
+.ldap-helpsidebar {
+  font-size: .75rem;
+  width: 248px;
+  position:fixed;
+  left: calc(50vw + 120px);
+  border: 1px solid #ececec;
+  height: 480px;
+  overflow-y: scroll;
+  border-width: 0 0 0 1px;
+  padding-left: 1rem;
+}
+.ldap-helpsidebar .disclosure {
+  padding-left: 1.25rem;
+}
+.ldap-helpsidebar .disclosed {
+  padding-left: 1.25rem;
+}
+.ldap-helpsidebar .disclosure:before {
+  font-size: .875rem;
+  top: 0;
+}
+.ldap-helpsidebar .disclosed:before {
+  font-size: .875rem;
+  top: 0;
+}
+.ldap-helpsidebar h5 {
+  line-height: 1.7;
+  margin-top: .25rem;
+}
+.ldap-helpsidebar h5:first-child {
+  line-height: 1.7;
+  margin-top: 0;
+}

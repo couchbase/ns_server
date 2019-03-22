@@ -1,560 +1,664 @@
-<div class="dialog-lg">
+<div class="fix-width-8">
   <div class="panel-header">
-    <h2>
-      Add LDAP
-    </h2>
+    <h2>LDAP Configuration</h2>
   </div>
   <form
-    novalidate
-    ng-submit="addLdapDialogCtl.save()"
-    mn-spinner="addLdapDialogCtl.viewLoading">
-    <div class="panel-content forms" style="padding-bottom: .5rem;">
-      <div class="formrow">
-        <label for="ldap_hosts">LDAP Hosts</label>
-        <input
-          type="text"
-          autocorrect="off"
-          spellcheck="false"
-          autocapitalize="off"
-          mn-autocomplete-off="enforce"
-          id="ldap_hosts"
-          ng-model="addLdapDialogCtl.config.connect.hosts">
-        <div
-          class="error"
-          ng-show="addLdapDialogCtl.errors.hosts">
-          {{addLdapDialogCtl.errors.hosts}}
-        </div>
-      </div>
-      <div class="formrow">
-        <label for="ldap_port">LDAP Port</label>
-        <input
-          type="text"
-          autocorrect="off"
-          spellcheck="false"
-          autocapitalize="off"
-          mn-autocomplete-off="enforce"
-          id="ldap_port"
-          ng-model="addLdapDialogCtl.config.connect.port">
-        <div
-          class="error"
-          ng-show="addLdapDialogCtl.errors.port">
-          {{addLdapDialogCtl.errors.port}}
-        </div>
-      </div>
-      <div class="formrow">
-        <label for="ldap_encryption">Encryption</label>
-        <select
-          id="ldap_encryption"
-          ng-model="addLdapDialogCtl.config.connect.encryption">
-          <option value="false">None</option>
-          <option value="TLS">TLS</option>
-          <option value="StartTLSExtension">StartTLSExtension</option>
-        </select>
-        <div
-          class="error"
-          ng-show="addLdapDialogCtl.errors.encryption">
-          {{addLdapDialogCtl.errors.encryption}}
-        </div>
-      </div>
-      <div class="formrow">
-        <label for="server_cert_validation">Certificate Validation</label>
-        <div class="formrow checkbox-list">
-          <input
-            type="radio"
-            id="ldap-cert-none"
-            ng-model="addLdapDialogCtl.config.connect.server_cert_validation"
-            name="certValidation"
-            value="false">
-          <label for="ldap-cert-none">None</label>
-          <input
-            type="radio"
-            id="ldap-cert-server"
-            ng-model="addLdapDialogCtl.config.connect.server_cert_validation"
-            name="certValidation"
-            value="true">
-          <label for="ldap-cert-server">Use server cert</label>
-          <!-- <input -->
-          <!--   type="radio" -->
-          <!--   id="ldap-cert-add" -->
-          <!--   ng-model="addLdapDialogCtl.config.server_cert_validation" -->
-          <!--   name="certValidation" -->
-          <!--   value="addCert"> -->
-          <!-- <label for="ldap-cert-add">Add cert</label> -->
-        </div>
-        <div
-          class="error"
-          ng-show="addLdapDialogCtl.errors.server_cert_validation">
-          {{addLdapDialogCtl.errors.server_cert_validation}}
-        </div>
-      </div>
-      <div class="formrow"
-           ng-if="addLdapDialogCtl.config.connect.server_cert_validation == 'true'">
-        <label for="query_dn">Certificate Text</label>
-        <textarea
-          rows="4"
-          id="ldap_group_ref"
-          autocorrect="off"
-          autocompleterg="off"
-          spellcheck="false"
-          ng-model="addLdapDialogCtl.config.connect.cacert">
-        </textarea>
-        <div
-          class="error"
-          ng-show="addLdapDialogCtl.errors.cacert">
-          {{addLdapDialogCtl.errors.cacert}}
-        </div>
-      </div>
-      <div class="formrow">
-        <label for="query_dn">User DN</label>
-        <input
-          type="text"
-          autocorrect="off"
-          spellcheck="false"
-          autocapitalize="off"
-          mn-autocomplete-off="enforce"
-          id="query_dn"
-          ng-model="addLdapDialogCtl.config.connect.query_dn">
-        <div
-          class="error"
-          ng-show="addLdapDialogCtl.errors.query_dn">
-          {{addLdapDialogCtl.errors.query_dn}}
-        </div>
-      </div>
-      <div class="formrow">
-        <label for="query_pass">Password</label>
-        <input
-          type="text"
-          autocorrect="off"
-          spellcheck="false"
-          autocapitalize="off"
-          mn-autocomplete-off="enforce"
-          id="query_pass"
-          ng-model="addLdapDialogCtl.config.connect.query_pass">
-        <div
-          class="error"
-          ng-show="addLdapDialogCtl.errors.query_pass">
-          {{addLdapDialogCtl.errors.query_pass}}
-        </div>
-      </div>
-      <button
-        type="button"
-        class="outline"
-        ng-click="addLdapDialogCtl.checkConnectivity()">Check Network Settings</button>
-      <div ng-show="addLdapDialogCtl.connectSuccessResult">
-        <span class="wb-result-status"
-              ng-class="[addLdapDialogCtl.connectSuccessResult.data.result]"></span>
-        <p>{{addLdapDialogCtl.connectSuccessResult.data.result == "error" ? addLdapDialogCtl.connectSuccessResult.data.reason || "error" : "Connect LDAP server successful"}}</p>
-      </div>
-
-
-      <div class="row flex-left margin-bottom-1-5">
-        <label
-          class="toggle-control margin-0"
-          for="for-enable-ldap-user-auth">
-          <input
-            type="checkbox"
-            id="for-enable-ldap-user-auth"
-            ng-model="addLdapDialogCtl.config.authentication.authentication_enabled">
-          <span class="toggle-control-body"></span>
-        </label>
-        <span class="text-small">&nbsp; Enable LDAP user authentication</span>
-      </div>
-      <div ng-show="addLdapDialogCtl.config.authentication.authentication_enabled">
-        <div class="formrow">
-          <label for="user-dn-mapping">Map Usernames Using:</label>
-          <div class="formrow checkbox-list">
-            <input
-              type="radio"
-              id="user-dn-mapping-flag-tempate"
-              ng-change="addLdapDialogCtl.userDnMappingChanged()"
-              ng-model="addLdapDialogCtl.config.userDnMapping"
-              name="userDnMapping"
-              value="template">
-            <label for="user-dn-mapping-flag-tempate">Template</label>
-            <input
-              type="radio"
-              id="user-dn-mapping-flag-query"
-              ng-change="addLdapDialogCtl.userDnMappingChanged()"
-              ng-model="addLdapDialogCtl.config.userDnMapping"
-              name="userDnMapping"
-              value="query">
-            <label for="user-dn-mapping-flag-query">LDAP query builder</label>
-            <input
-              type="radio"
-              id="user-dn-mapping-flag-custom"
-              ng-change="addLdapDialogCtl.userDnMappingChanged()"
-              ng-model="addLdapDialogCtl.config.userDnMapping"
-              name="userDnMapping"
-              value="custom">
-            <label for="user-dn-mapping-flag-custom">Custom</label>
-          </div>
-        </div>
-
-        <div class="formrow"
-             ng-if="addLdapDialogCtl.config.userDnMapping == 'template'">
-          <label for="user-dn-mapping-template">Template</label>
-          <input
-            type="text"
-            placeholder="cn={0},ou=users,dc=example,dc=com"
-            autocorrect="off"
-            spellcheck="false"
-            autocapitalize="off"
-            mn-autocomplete-off="enforce"
-            id="user-dn-mapping-template"
-            ng-model="addLdapDialogCtl.config.authentication.user_dn_mapping.template">
-        </div>
-
-        <div ng-if="addLdapDialogCtl.config.userDnMapping == 'query'">
-          <div class="formrow">
-            <label for="user-dn-mapping-base">Base</label>
-            <input
-              type="text"
-              autocorrect="off"
-              spellcheck="false"
-              autocapitalize="off"
-              mn-autocomplete-off="enforce"
-              id="user-dn-mapping-base"
-              ng-model="addLdapDialogCtl.config.authentication.user_dn_mapping.base">
-          </div>
-          <div class="formrow">
-            <label for="user-dn-mapping-filter">Filter</label>
-            <input
-              type="text"
-              autocorrect="off"
-              spellcheck="false"
-              autocapitalize="off"
-              mn-autocomplete-off="enforce"
-              id="user-dn-mapping-filter"
-              ng-model="addLdapDialogCtl.config.authentication.user_dn_mapping.filter">
-          </div>
-        </div>
-
-        <div ng-if="addLdapDialogCtl.config.userDnMapping == 'custom'">
-          <div class="formrow">
-            <label for="for-custom-mapping">Custom Mapping</label>
-            <textarea
-              placeholder='ex: [{"re":"(.+)@(.+).com", "query":"ou=users,dc={1},dc=com??one?(uid={0})"},
-        {"re":"(.+)", "template":"cn={0},ou=users,dc=example,dc=com"}]'
-              autocorrect="off"
-              spellcheck="false"
-              autocapitalize="off"
-              mn-autocomplete-off="enforce"
-              id="for-custom-mapping"
-              ng-model="addLdapDialogCtl.config.authentication.user_dn_mapping.value"
-              rows="3">
-            </textarea>
-          </div>
-        </div>
-
-        <div
-          class="error"
-          ng-show="addLdapDialogCtl.errors.user_dn_mapping">
-          {{addLdapDialogCtl.errors.user_dn_mapping}}
-        </div>
-
-        <p
-          class="disclosure"
-          ng-class="{disclosed: addLdapDialogCtl.showTestUsername}"
-          ng-click="addLdapDialogCtl.showTestUsername = !addLdapDialogCtl.showTestUsername">
-          Test User Authentication
-        </p>
-        <div ng-if="addLdapDialogCtl.showTestUsername">
-          <div class="formrow">
-            <label for="auth_user">Test Username</label>
-            <input
-              type="text"
-              autocorrect="off"
-              spellcheck="false"
-              autocapitalize="off"
-              mn-autocomplete-off="enforce"
-              id="auth_user"
-              ng-model="addLdapDialogCtl.config.cred.auth_user">
+     novalidate
+     ng-submit="addLdapDialogCtl.save()"
+     mn-spinner="addLdapDialogCtl.viewLoading">
+    <div class="panel-content forms max-height-500 margin-bottom-1" style="height: 500px;">
+      <div class="row items-top relative">
+        <div style="width: 476px;">
+          <span ng-click="sect_1_focus = true; sect_2_focus = false; sect_3_focus = false">
+            <div class="formrow row items-top">
+              <span class="width-9 margin-right-half">
+                <label for="ldap_hosts">LDAP Host(s)</label>
+                <input
+                   type="text"
+                   autocorrect="off"
+                   spellcheck="false"
+                   autocapitalize="off"
+                   mn-autocomplete-off="enforce"
+                   id="ldap_hosts"
+                   ng-model="addLdapDialogCtl.config.connect.hosts"
+                   placeholder="hostName_1, hostName_2"
+                   autofocus
+                   ng-focus="sect_1_focus = true">
+                <div
+                   class="error"
+                   ng-show="addLdapDialogCtl.errors.hosts">
+                  {{addLdapDialogCtl.errors.hosts}}
+                </div>
+              </span>
+              <span class="width-3">
+                <label for="ldap_port">LDAP Port</label>
+                <input
+                   type="text"
+                   autocorrect="off"
+                   spellcheck="false"
+                   autocapitalize="off"
+                   mn-autocomplete-off="enforce"
+                   id="ldap_port"
+                   ng-model="addLdapDialogCtl.config.connect.port">
+                <div
+                   class="error"
+                   ng-show="addLdapDialogCtl.errors.port">
+                  {{addLdapDialogCtl.errors.port}}
+                </div>
+              </span>
+            </div>
+            <div class="formrow row items-top">
+              <span class="width-4 margin-right-2">
+                <label for="ldap_encryption">Encryption</label>
+                <select
+                   id="ldap_encryption"
+                   ng-model="addLdapDialogCtl.config.connect.encryption">
+                  <option value="false">None</option>
+                  <option value="TLS">TLS</option>
+                  <option value="StartTLSExtension">StartTLSExtension</option>
+                </select>
+                <div
+                  class="error"
+                  ng-show="addLdapDialogCtl.errors.encryption">
+                  {{addLdapDialogCtl.errors.encryption}}
+                </div>
+              </span>
+              <span class="width-8">
+                <label for="cert">Certificate</label>
+                <div class="checkbox-list">
+                  <input
+                     type="radio"
+                     id="ldap-cert-none"
+                     ng-model="addLdapDialogCtl.config.connect.cert"
+                     name="certValidation"
+                     value="false">
+                  <label for="ldap-cert-none">None</label>
+                  <input
+                     type="radio"
+                     id="ldap-cert-server"
+                     ng-model="addLdapDialogCtl.config.connect.cert"
+                     name="certValidation"
+                     value="serverCert">
+                  <label for="ldap-cert-server">Couchbase</label>
+                  <input
+                     type="radio"
+                     id="ldap-cert-add"
+                     ng-model="addLdapDialogCtl.config.connect.cert"
+                     name="certValidation"
+                     value="certText">
+                  <label for="ldap-cert-add">Paste Cert</label>
+                </div>
+                <div
+                   class="error"
+                   ng-show="addLdapDialogCtl.errors.cert">
+                  {{addLdapDialogCtl.errors.cert}}
+                </div>
+              </span>
+            </div>
             <div
-              class="error"
-              ng-show="addLdapDialogCtl.errors.auth_user">
-              {{addLdapDialogCtl.errors.auth_user}}
+               class="formrow"
+               ng-if="addLdapDialogCtl.config.connect.cert == 'certText'">
+              <label for="query_dn">Certificate Text</label>
+              <textarea
+                 rows="4"
+                 id="ldap_group_ref"
+                 autocorrect="off"
+                 autocompleterg="off"
+                 spellcheck="false"
+                 ng-model="addLdapDialogCtl.config.connect.cacert">
+              </textarea>
+              <div
+                 class="error"
+                 ng-show="addLdapDialogCtl.errors.cacert">
+                {{addLdapDialogCtl.errors.cacert}}
+              </div>
+            </div>
+            <div class="formrow">
+              <input
+                 type="checkbox"
+                 id="anonymous-access"
+                 ng-model="addLdapDialogCtl.config.connect.anon">
+              <label for="anonymous-access">Contact LDAP host anonymously</label>
+            </div>
+            <div class="formrow row items-top">
+              <span class="width-6 margin-right-half">
+                <label
+                   for="query_dn"
+                   ng-disabled="addLdapDialogCtl.config.connect.anon">
+                  LDAP DN
+                </label>
+                <input
+                   type="text"
+                   autocorrect="off"
+                   spellcheck="false"
+                   autocapitalize="off"
+                   mn-autocomplete-off="enforce"
+                   id="query_dn"
+                   ng-model="addLdapDialogCtl.config.connect.query_dn"
+                   placeholder="ou=users,dc=example,dc=com"
+                   ng-disabled="addLdapDialogCtl.config.connect.anon">
+                <div
+                   class="error"
+                   ng-show="addLdapDialogCtl.errors.query_dn">
+                  {{addLdapDialogCtl.errors.query_dn}}
+                </div>
+              </span>
+              <span class="width-6">
+                <label
+                   for="query_pass"
+                   ng-disabled="addLdapDialogCtl.config.connect.anon">
+                  Password
+                </label>
+                <input
+                   type="text"
+                   autocorrect="off"
+                   spellcheck="false"
+                   autocapitalize="off"
+                   mn-autocomplete-off="enforce"
+                   id="query_pass"
+                   ng-model="addLdapDialogCtl.config.connect.query_pass"
+                   ng-disabled="addLdapDialogCtl.config.connect.anon">
+                <div
+                   class="error"
+                   ng-show="addLdapDialogCtl.errors.query_pass">
+                  {{addLdapDialogCtl.errors.query_pass}}
+                </div>
+              </span>
+            </div>
+            <div class="formrow row">
+              <span class="margin-right-half">
+                <button
+                   type="button"
+                   class="outline"
+                   ng-click="addLdapDialogCtl.checkConnectivity()">
+                  Check Network Settings
+                </button>
+              </span>
+              <span ng-show="addLdapDialogCtl.connectSuccessResult" class="width-12">
+                <span
+                   class="wb-result-status"
+                   ng-class="[addLdapDialogCtl.connectSuccessResult.data.result]">
+                  {{addLdapDialogCtl.connectSuccessResult.data.result == "error" ? addLdapDialogCtl.connectSuccessResult.data.reason || "error" : "Contact LDAP server successful"}}
+                </span>
+              </span>
+            </div>
+          </span>
+
+<!-- Enable LDAP user authentication --------------------------------------- -->
+          <span ng-click="sect_1_focus = false; sect_2_focus = true; sect_3_focus = false">
+            <div class="formrow row flex-left margin-top-2">
+              <label
+                 class="toggle-control margin-0"
+                 for="for-enable-ldap-user-auth">
+                <input
+                   type="checkbox"
+                   id="for-enable-ldap-user-auth"
+                   ng-model="addLdapDialogCtl.config.authentication.authentication_enabled">
+                <span class="toggle-control-body"></span>
+              </label>
+              <span class="text-small">&nbsp; Enable LDAP user authentication</span>
+            </div>
+            <div ng-show="addLdapDialogCtl.config.authentication.authentication_enabled" class="margin-bottom-2">
+              <div class="formrow">
+                <label for="user-dn-mapping">Map Usernames Using:</label>
+                <div class="checkbox-list">
+                  <input
+                     type="radio"
+                     id="user-dn-mapping-flag-tempate"
+                     ng-change="addLdapDialogCtl.userDnMappingChanged()"
+                     ng-model="addLdapDialogCtl.config.userDnMapping"
+                     name="userDnMapping"
+                     value="template">
+                  <label for="user-dn-mapping-flag-tempate">Template</label>
+                  <input
+                     type="radio"
+                     id="user-dn-mapping-flag-query"
+                     ng-change="addLdapDialogCtl.userDnMappingChanged()"
+                     ng-model="addLdapDialogCtl.config.userDnMapping"
+                     name="userDnMapping"
+                     value="query">
+                  <label for="user-dn-mapping-flag-query">LDAP query builder</label>
+                  <input
+                     type="radio"
+                     id="user-dn-mapping-flag-custom"
+                     ng-change="addLdapDialogCtl.userDnMappingChanged()"
+                     ng-model="addLdapDialogCtl.config.userDnMapping"
+                     name="userDnMapping"
+                     value="custom">
+                  <label for="user-dn-mapping-flag-custom">Custom</label>
+                </div>
+              </div>
+              <div class="formrow">
+                <div ng-if="addLdapDialogCtl.config.userDnMapping == 'template'">
+                  <label for="user-dn-mapping-template">Template</label>
+                  <input
+                     type="text"
+                     placeholder="cn={0},ou=users,dc=example,dc=com"
+                     autocorrect="off"
+                     spellcheck="false"
+                     autocapitalize="off"
+                     mn-autocomplete-off="enforce"
+                     id="user-dn-mapping-template"
+                     ng-model="addLdapDialogCtl.config.authentication.user_dn_mapping.template">
+                </div>
+                <div class="row items-top" ng-if="addLdapDialogCtl.config.userDnMapping == 'query'">
+                  <span class="width-6 margin-right-half">
+                    <label for="user-dn-mapping-base">Base</label>
+                    <input
+                       type="text"
+                       autocorrect="off"
+                       spellcheck="false"
+                       autocapitalize="off"
+                       mn-autocomplete-off="enforce"
+                       id="user-dn-mapping-base"
+                       ng-model="addLdapDialogCtl.config.authentication.user_dn_mapping.base"
+                       placeholder="ou=users,dc=example,dc=com">
+                  </span>
+                  <span class="width-6">
+                    <label for="user-dn-mapping-filter">Filter</label>
+                    <input
+                       type="text"
+                       autocorrect="off"
+                       spellcheck="false"
+                       autocapitalize="off"
+                       mn-autocomplete-off="enforce"
+                       id="user-dn-mapping-filter"
+                       ng-model="addLdapDialogCtl.config.authentication.user_dn_mapping.filter"
+                       placeholder="(uid={0})">
+                  </span>
+                </div>
+                <div ng-if="addLdapDialogCtl.config.userDnMapping == 'custom'">
+                  <label for="for-custom-mapping">Custom Mapping</label>
+                  <textarea
+                     autocorrect="off"
+                     spellcheck="false"
+                     autocapitalize="off"
+                     mn-autocomplete-off="enforce"
+                     id="for-custom-mapping"
+                     ng-model="addLdapDialogCtl.config.authentication.user_dn_mapping.value"
+                     rows="3"
+                     placeholder='ex: [{"re":"(.+)@(.+).com","query":"ou=users, dc={1},dc=com??one?(uid={0})"},{"re":"(.+)","template":"cn={0},ou=users,dc=example,dc=com"}]'>
+                  </textarea>
+                </div>
+                <div
+                   class="error"
+                   ng-show="addLdapDialogCtl.errors.user_dn_mapping">
+                  {{addLdapDialogCtl.errors.user_dn_mapping}}
+                </div>
+              </div>
+              <p
+                 class="disclosure"
+                 ng-class="{disclosed: addLdapDialogCtl.showTestUsername}"
+                 ng-click="addLdapDialogCtl.showTestUsername = !addLdapDialogCtl.showTestUsername">
+                Test User Authentication
+              </p>
+              <div ng-if="addLdapDialogCtl.showTestUsername" class="formrow margin-left-1-5">
+                <div class="formrow row items-top">
+                  <span class="width-6 margin-right-half">
+                    <label for="auth_user">Test Username</label>
+                    <input
+                       type="text"
+                       autocorrect="off"
+                       spellcheck="false"
+                       autocapitalize="off"
+                       mn-autocomplete-off="enforce"
+                       id="auth_user"
+                       ng-model="addLdapDialogCtl.config.cred.auth_user">
+                    <div
+                       class="error"
+                       ng-show="addLdapDialogCtl.errors.auth_user">
+                      {{addLdapDialogCtl.errors.auth_user}}
+                    </div>
+                  </span>
+                  <span class="width-6">
+                    <label for="auth_pass">Password</label>
+                    <input
+                       type="text"
+                       autocorrect="off"
+                       spellcheck="false"
+                       autocapitalize="off"
+                       mn-autocomplete-off="enforce"
+                       id="auth_pass"
+                       ng-model="addLdapDialogCtl.config.cred.auth_pass">
+                    <div
+                       class="error"
+                       ng-show="addLdapDialogCtl.errors.auth_pass">
+                      {{addLdapDialogCtl.errors.auth_pass}}
+                    </div>
+                  </span>
+                </div>
+                <button
+                   type="button"
+                   class="outline"
+                   ng-click="addLdapDialogCtl.checkAuthentication()">
+                  Test User Authentication
+                </button>
+                <div ng-show="addLdapDialogCtl.authenticationSuccessResult">
+                  <span
+                     class="wb-result-status"
+                     ng-class="[addLdapDialogCtl.authenticationSuccessResult.data.result]">
+                  </span>
+                  <p>
+                    {{addLdapDialogCtl.authenticationSuccessResult.data.result == "error" ?
+                    addLdapDialogCtl.connectSuccessResult.data.reason || "error" : "User recognized by LDAP server"}}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </span>
+
+<!-- Enable LDAP group authorization & sync -------------------------------- -->
+          <span ng-click="sect_1_focus = false; sect_2_focus = false; sect_3_focus = true">
+            <div class="formrow row flex-left">
+              <label
+                 class="toggle-control margin-0"
+                 for="for-enable-ldap-group">
+                <input
+                   type="checkbox"
+                   id="for-enable-ldap-group"
+                   ng-model="addLdapDialogCtl.config.group.authorization_enabled">
+                <span class="toggle-control-body"></span>
+              </label>
+              <span class="text-small">&nbsp; Enable LDAP group authorization & sync</span>
+            </div>
+            <div ng-if="addLdapDialogCtl.config.group.authorization_enabled" class="margin-bottom-1-5">
+              <div class="formrow">
+                <label>Query for Groups Using:</label>
+                <div class="formrow checkbox-list">
+                  <input
+                     type="radio"
+                     id="for-query-groups-attrs"
+                     ng-change="addLdapDialogCtl.queryForGroupsChanged()"
+                     ng-model="addLdapDialogCtl.config.queryForGroups"
+                     name="queryForGroups"
+                     value="users_attrs">
+                  <label for="for-query-groups-attrs">User's attributes</label>
+                  <input
+                     type="radio"
+                     id="for-query-groups-builder"
+                     ng-change="addLdapDialogCtl.queryForGroupsChanged()"
+                     ng-model="addLdapDialogCtl.config.queryForGroups"
+                     name="queryForGroups"
+                     value="query">
+                  <label for="for-query-groups-builder">LDAP query builder</label>
+                  <input
+                     type="radio"
+                     id="for-query-groups-custom"
+                     ng-change="addLdapDialogCtl.queryForGroupsChanged()"
+                     ng-model="addLdapDialogCtl.config.queryForGroups"
+                     name="queryForGroups"
+                     value="custom">
+                  <label for="for-query-groups-custom">Custom</label>
+                </div>
+              </div>
+              <div ng-if="addLdapDialogCtl.config.queryForGroups == 'users_attrs'">
+                <label for="for-groups-user-attributes">User Attributes</label>
+                <input
+                   type="text"
+                   autocorrect="off"
+                   spellcheck="false"
+                   autocapitalize="off"
+                   mn-autocomplete-off="enforce"
+                   id="for-groups-user-attributes"
+                   ng-model="addLdapDialogCtl.config.group.groups_query.attributes"
+                   placeholder="memberOf">
+              </div>
+              <div class="row formrow items-top" ng-if="addLdapDialogCtl.config.queryForGroups == 'query'">
+                <span class="width-6 margin-right-half">
+                  <label for="for-groups-query">Base</label>
+                  <input
+                     type="text"
+                     autocorrect="off"
+                     spellcheck="false"
+                     autocapitalize="off"
+                     mn-autocomplete-off="enforce"
+                     id="for-groups-query"
+                     ng-model="addLdapDialogCtl.config.group.groups_query.base"
+                     placeholder="ou=users,dc=example,dc=com">
+                </span>
+                <span class="width-6">
+                  <label for="for-groups-query-filter">Filter</label>
+                  <input
+                     type="text"
+                     autocorrect="off"
+                     spellcheck="false"
+                     autocapitalize="off"
+                     mn-autocomplete-off="enforce"
+                     id="for-groups-query-filter"
+                     ng-model="addLdapDialogCtl.config.group.groups_query.filter"
+                     placeholder="(uid={0})">
+                </span>
+              </div>
+              <div ng-if="addLdapDialogCtl.config.queryForGroups == 'query'" class="width-4">
+                <label for="for-groups-query-scope">Scope</label>
+                <select
+                   id="for-groups-query-scope"
+                   ng-model="addLdapDialogCtl.config.group.groups_query.scope">
+                  <option value="base">base</option>
+                  <option value="one">one</option>
+                  <option value="sub">sub</option>
+                </select>
+              </div>
+              <div ng-if="addLdapDialogCtl.config.queryForGroups == 'custom'">
+                <label for="for-groups-custom-mapping">Custom Mapping</label>
+                <textarea
+                   placeholder="ou=groups,dc=example,dc=com??one?(member=%D)"
+                   autocorrect="off"
+                   spellcheck="false"
+                   autocapitalize="off"
+                   mn-autocomplete-off="enforce"
+                   id="for-groups-custom-mapping"
+                   ng-model="addLdapDialogCtl.config.group.groups_query.value"
+                   rows="3">
+                </textarea>
+              </div>
+              <div
+                 class="error"
+                 ng-show="addLdapDialogCtl.errors.groups_query">
+                {{addLdapDialogCtl.errors.groups_query}}
+              </div>
+              <div class="formrow checkbox-list margin-top-1">
+                <input
+                   type="checkbox"
+                   id="for-nested-groups-enabled"
+                   ng-model="addLdapDialogCtl.config.group.nested_groups_enabled"
+                   value="true">
+                <label for="for-nested-groups-enabled">Traverse nested groups</label>
+              </div>
+              <p
+                class="disclosure margin-top-1-5"
+                ng-class="{disclosed: addLdapDialogCtl.testGroupsQuery}"
+                ng-click="addLdapDialogCtl.testGroupsQuery = !addLdapDialogCtl.testGroupsQuery">
+                Test Groups Query
+              </p>
+              <div ng-if="addLdapDialogCtl.testGroupsQuery" class="margin-left-1-5">
+                <div class="formrow width-8">
+                  <label for="for-groups-query-user">Test Username</label>
+                  <input
+                     type="text"
+                     autocorrect="off"
+                     spellcheck="false"
+                     autocapitalize="off"
+                     mn-autocomplete-off="enforce"
+                     id="for-groups-query-user"
+                     ng-model="addLdapDialogCtl.config.groups_query_user">
+                  <div
+                    class="error"
+                    ng-show="addLdapDialogCtl.errors.groups_query_user">
+                    {{addLdapDialogCtl.errors.groups_query_user}}
+                  </div>
+                </div>
+                <div class="formrow row">
+                  <span class="margin-right-half">
+                    <button
+                       type="button"
+                       class="outline"
+                       ng-click="addLdapDialogCtl.checkGroupsQuery()">
+                      Test Groups Query
+                    </button>
+                  </span>
+                  <span ng-show="addLdapDialogCtl.queryForGroupsSuccessResult" class="width-12">
+                    <span
+                       class="wb-result-status"
+                       ng-class="[addLdapDialogCtl.queryForGroupsSuccessResult.data.result]">
+                      {{addLdapDialogCtl.queryForGroupsSuccessResult.data.result == "error" ? addLdapDialogCtl.queryForGroupsSuccessResult.data.reason || "error" : "Groups discovered successfully"}}
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </span>
+
+<!-- advanced settings ----------------------------------------------------- -->
+          <label
+             class="disclosure"
+             ng-class="{disclosed: addLdapDialogCtl.advancedSettings}"
+             ng-click="addLdapDialogCtl.advancedSettings = !addLdapDialogCtl.advancedSettings">
+            Advanced Settings
+          </label>
+          <div ng-if="addLdapDialogCtl.advancedSettings" class="margin-left-1-5">
+            <div class="formrow">
+              <label for="for-request-timeout">Request Timeout ms</label>
+              <input
+                 type="text"
+                 autocorrect="off"
+                 spellcheck="false"
+                 autocapitalize="off"
+                 mn-autocomplete-off="enforce"
+                 id="for-request-timeout"
+                 ng-model="addLdapDialogCtl.config.advanced.request_timeout">
+              <div
+                 class="error"
+                 ng-show="addLdapDialogCtl.errors.request_timeout">
+                {{addLdapDialogCtl.errors.request_timeout}}
+              </div>
+            </div>
+            <div class="formrow">
+              <label for="for-max-parallel">Max Parallel Connections</label>
+              <input
+                 type="text"
+                 autocorrect="off"
+                 spellcheck="false"
+                 autocapitalize="off"
+                 mn-autocomplete-off="enforce"
+                 id="for-max-parallel"
+                 ng-model="addLdapDialogCtl.config.advanced.max_parallel_connections">
+              <div
+                 class="error"
+                 ng-show="addLdapDialogCtl.errors.max_parallel_connections">
+                {{addLdapDialogCtl.errors.max_parallel_connections}}
+              </div>
+            </div>
+            <div class="formrow">
+              <label for="for-max-cache-size">Max Cache Records</label>
+              <input
+                 type="text"
+                 autocorrect="off"
+                 spellcheck="false"
+                 autocapitalize="off"
+                 mn-autocomplete-off="enforce"
+                 id="for-max-cache-size"
+                 ng-model="addLdapDialogCtl.config.advanced.max_cache_size">
+              <div
+                 class="error"
+                 ng-show="addLdapDialogCtl.errors.max_cache_size">
+                {{addLdapDialogCtl.errors.max_cache_size}}
+              </div>
+            </div>
+            <div class="formrow">
+              <label for="for-cache-lifetime">Cache Time-to-Live ms</label>
+              <input
+                 type="text"
+                 autocorrect="off"
+                 spellcheck="false"
+                 autocapitalize="off"
+                 mn-autocomplete-off="enforce"
+                 id="for-cache-lifetime"
+                 ng-model="addLdapDialogCtl.config.advanced.cache_value_lifetime">
+              <div
+                 class="error"
+                 ng-show="addLdapDialogCtl.errors.cache_value_lifetime">
+                {{addLdapDialogCtl.errors.cache_value_lifetime}}
+              </div>
+            </div>
+            <div class="formrow">
+              <label for="for-group-max-nesting">Group Max Nesting Depth</label>
+              <input
+                 type="text"
+                 autocorrect="off"
+                 spellcheck="false"
+                 autocapitalize="off"
+                 mn-autocomplete-off="enforce"
+                 id="for-group-max-nesting"
+                 ng-model="addLdapDialogCtl.config.advanced.nested_groups_max_depth">
+              <div
+                 class="error"
+                 ng-show="addLdapDialogCtl.errors.nested_groups_max_depth">
+                {{addLdapDialogCtl.errors.nested_groups_max_depth}}
+              </div>
             </div>
           </div>
-          <div class="formrow">
-            <label for="auth_pass">Password</label>
-            <input
-              type="text"
-              autocorrect="off"
-              spellcheck="false"
-              autocapitalize="off"
-              mn-autocomplete-off="enforce"
-              id="auth_pass"
-              ng-model="addLdapDialogCtl.config.cred.auth_pass">
-            <div
-              class="error"
-              ng-show="addLdapDialogCtl.errors.auth_pass">
-              {{addLdapDialogCtl.errors.auth_pass}}
-            </div>
-          </div>
-          <button
-            type="button"
-            class="outline"
-            ng-click="addLdapDialogCtl.checkAuthentication()">Test User Authentication</button>
-          <div ng-show="addLdapDialogCtl.authenticationSuccessResult">
-            <span class="wb-result-status"
-                  ng-class="[addLdapDialogCtl.authenticationSuccessResult.data.result]"></span>
-            <p>{{addLdapDialogCtl.authenticationSuccessResult.data.result == "error" ? addLdapDialogCtl.connectSuccessResult.data.reason || "error" : "User recognized by LDAP server"}}</p>
-          </div>
-        </div>
-      </div>
-
-      <div class="row flex-left margin-bottom-1-5">
-        <label
-          class="toggle-control margin-0"
-          for="for-enable-ldap-group">
-          <input
-            type="checkbox"
-            id="for-enable-ldap-group"
-            ng-model="addLdapDialogCtl.config.group.authorization_enabled">
-          <span class="toggle-control-body"></span>
-        </label>
-        <span class="text-small">&nbsp; Enable LDAP group authorization & sync</span>
-      </div>
-      <div ng-if="addLdapDialogCtl.config.group.authorization_enabled">
-        <div class="formrow checkbox-list">
-          <input
-            type="checkbox"
-            id="for-nested-groups-enabled"
-            ng-model="addLdapDialogCtl.config.group.nested_groups_enabled"
-            value="true">
-          <label for="for-nested-groups-enabled">Traverse nested groups</label>
         </div>
 
-        <div class="formrow">
-          <label>Query for Groups Using:</label>
-          <div class="formrow checkbox-list">
-            <input
-              type="radio"
-              id="for-query-groups-attrs"
-              ng-change="addLdapDialogCtl.queryForGroupsChanged()"
-              ng-model="addLdapDialogCtl.config.queryForGroups"
-              name="queryForGroups"
-              value="users_attrs">
-            <label for="for-query-groups-attrs">User's attributes</label>
-            <input
-              type="radio"
-              id="for-query-groups-builder"
-              ng-change="addLdapDialogCtl.queryForGroupsChanged()"
-              ng-model="addLdapDialogCtl.config.queryForGroups"
-              name="queryForGroups"
-              value="query">
-            <label for="for-query-groups-builder">LDAP query builder</label>
-            <input
-              type="radio"
-              id="for-query-groups-custom"
-              ng-change="addLdapDialogCtl.queryForGroupsChanged()"
-              ng-model="addLdapDialogCtl.config.queryForGroups"
-              name="queryForGroups"
-              value="custom">
-            <label for="for-query-groups-custom">Custom</label>
+<!-- help sidebar ---------------------------------------------------------- -->
+        <div class="ldap-helpsidebar">
+          <h5
+             class="disclosure"
+             ng-class="{disclosed: sect_1_focus}"
+             ng-click="sect_1_focus = !sect_1_focus; sect_2_focus = false; sect_3_focus = false;">
+            LDAP Host Configuration
+          </h5>
+          <div ng-show="sect_1_focus">
+          <p>
+            This first section (down to <b>Check Network Settings</b>) contains
+            the basic settings to connect to your LDAP host(s).
+          </p>
+          <p>
+            Your certificate choices for connecting to your LDAP host are either
+            none, use the certificate already loaded in your Couchbase cluster,
+            or choose <b>Paste Cert</b> and paste in your own certificate text.
+          </p>
+          <p>
+            You may choose <b>Contact LDAP Host Anonymously</b> if your LDAP
+            configuration supports it, but an <b>LDAP DN</b> and valid
+            password will be necessary if you choose to authenticate users with
+            the query builder below and for any group authorization.
+          </p>
           </div>
-        </div>
-
-        <div class="formrow"
-             ng-if="addLdapDialogCtl.config.queryForGroups == 'users_attrs'">
-          <label for="for-groups-user-attributes">User Attributes</label>
-          <input
-            type="text"
-            autocorrect="off"
-            spellcheck="false"
-            autocapitalize="off"
-            mn-autocomplete-off="enforce"
-            id="for-groups-user-attributes"
-            ng-model="addLdapDialogCtl.config.group.groups_query.attributes">
-        </div>
-
-        <div ng-if="addLdapDialogCtl.config.queryForGroups == 'query'">
-          <div class="formrow">
-            <label for="for-groups-query">Base</label>
-            <input
-              type="text"
-              autocorrect="off"
-              spellcheck="false"
-              autocapitalize="off"
-              mn-autocomplete-off="enforce"
-              id="for-groups-query"
-              ng-model="addLdapDialogCtl.config.group.groups_query.base">
+          <h5
+             class="disclosure"
+             ng-class="{disclosed: sect_2_focus}"
+             ng-click="sect_2_focus = !sect_2_focus; sect_1_focus = false; sect_3_focus = false;">
+            User Authentication
+          </h5>
+          <div ng-show="sect_2_focus">
+            <p>
+              This section (down to <b>Test User Authentication</b>) lets you map
+              simple usernames (that will be used to log into Couchbase SERVER) to
+              LDAP DNs. You can expand the test section to test your mapping with
+              a real user.
+            </p>
           </div>
-          <div class="formrow">
-            <label for="for-groups-query-filter">Filter</label>
-            <input
-              type="text"
-              autocorrect="off"
-              spellcheck="false"
-              autocapitalize="off"
-              mn-autocomplete-off="enforce"
-              id="for-groups-query-filter"
-              ng-model="addLdapDialogCtl.config.group.groups_query.filter">
-          </div>
-          <div class="formrow">
-            <label for="for-groups-query-scope">Scope</label>
-            <select
-              id="for-groups-query-scope"
-              ng-model="addLdapDialogCtl.config.group.groups_query.scope">
-              <option value="base">base</option>
-              <option value="one">one</option>
-              <option value="sub">sub</option>
-            </select>
-          </div>
-        </div>
-
-        <div ng-if="addLdapDialogCtl.config.queryForGroups == 'custom'">
-          <div class="formrow">
-            <label for="for-groups-custom-mapping">Custom Mapping</label>
-            <textarea
-              placeholder="ou=groups,dc=example,dc=com??one?(member=%D)"
-              autocorrect="off"
-              spellcheck="false"
-              autocapitalize="off"
-              mn-autocomplete-off="enforce"
-              id="for-groups-custom-mapping"
-              ng-model="addLdapDialogCtl.config.group.groups_query.value"
-              rows="3">
-            </textarea>
-            <input>
-          </div>
-        </div>
-
-        <div
-          class="error"
-          ng-show="addLdapDialogCtl.errors.groups_query">
-          {{addLdapDialogCtl.errors.groups_query}}
-        </div>
-
-        <p
-          class="disclosure"
-          ng-class="{disclosed: addLdapDialogCtl.testGroupsQuery}"
-          ng-click="addLdapDialogCtl.testGroupsQuery = !addLdapDialogCtl.testGroupsQuery">
-          Test Groups Query
-        </p>
-        <div ng-if="addLdapDialogCtl.testGroupsQuery">
-          <div class="formrow">
-            <label for="for-groups-query-user">Test Username</label>
-            <input
-              type="text"
-              autocorrect="off"
-              spellcheck="false"
-              autocapitalize="off"
-              mn-autocomplete-off="enforce"
-              id="for-groups-query-user"
-              ng-model="addLdapDialogCtl.config.groups_query_user">
-            <div
-              class="error"
-              ng-show="addLdapDialogCtl.errors.groups_query_user">
-              {{addLdapDialogCtl.errors.groups_query_user}}
-            </div>
-          </div>
-          <button
-            type="button"
-            class="outline"
-            ng-click="addLdapDialogCtl.checkGroupsQuery()">Test Groups Query</button>
-          <div ng-show="addLdapDialogCtl.queryForGroupsSuccessResult">
-            <span class="wb-result-status"
-                  ng-class="[addLdapDialogCtl.queryForGroupsSuccessResult.data.result]"></span>
-            <p>{{addLdapDialogCtl.queryForGroupsSuccessResult.data.result == "error" ? addLdapDialogCtl.queryForGroupsSuccessResult.data.reason || "error" : "Groups discovered successfully"}}</p>
-          </div>
-        </div>
-      </div>
-
-      <p
-        class="disclosure"
-        ng-class="{disclosed: addLdapDialogCtl.advancedSettings}"
-        ng-click="addLdapDialogCtl.advancedSettings = !addLdapDialogCtl.advancedSettings">
-        Advanced Settings
-      </p>
-      <div ng-if="addLdapDialogCtl.advancedSettings">
-        <div class="formrow">
-          <label for="for-request-timeout">Request Timeout ms</label>
-          <input
-            type="text"
-            autocorrect="off"
-            spellcheck="false"
-            autocapitalize="off"
-            mn-autocomplete-off="enforce"
-            id="for-request-timeout"
-            ng-model="addLdapDialogCtl.config.advanced.request_timeout">
-          <div
-            class="error"
-            ng-show="addLdapDialogCtl.errors.request_timeout">
-            {{addLdapDialogCtl.errors.request_timeout}}
-          </div>
-        </div>
-        <div class="formrow">
-          <label for="for-max-parallel">Max Parallel Connections</label>
-          <input
-            type="text"
-            autocorrect="off"
-            spellcheck="false"
-            autocapitalize="off"
-            mn-autocomplete-off="enforce"
-            id="for-max-parallel"
-            ng-model="addLdapDialogCtl.config.advanced.max_parallel_connections">
-          <div
-            class="error"
-            ng-show="addLdapDialogCtl.errors.max_parallel_connections">
-            {{addLdapDialogCtl.errors.max_parallel_connections}}
-          </div>
-        </div>
-        <div class="formrow">
-          <label for="for-max-cache-size">Max Cache Records</label>
-          <input
-            type="text"
-            autocorrect="off"
-            spellcheck="false"
-            autocapitalize="off"
-            mn-autocomplete-off="enforce"
-            id="for-max-cache-size"
-            ng-model="addLdapDialogCtl.config.advanced.max_cache_size">
-          <div
-            class="error"
-            ng-show="addLdapDialogCtl.errors.max_cache_size">
-            {{addLdapDialogCtl.errors.max_cache_size}}
-          </div>
-        </div>
-        <div class="formrow">
-          <label for="for-cache-lifetime">Cache Time-to-Live ms</label>
-          <input
-            type="text"
-            autocorrect="off"
-            spellcheck="false"
-            autocapitalize="off"
-            mn-autocomplete-off="enforce"
-            id="for-cache-lifetime"
-            ng-model="addLdapDialogCtl.config.advanced.cache_value_lifetime">
-          <div
-            class="error"
-            ng-show="addLdapDialogCtl.errors.cache_value_lifetime">
-            {{addLdapDialogCtl.errors.cache_value_lifetime}}
-          </div>
-        </div>
-        <div class="formrow">
-          <label for="for-group-max-nesting">Group Max Nesting Depth</label>
-          <input
-            type="text"
-            autocorrect="off"
-            spellcheck="false"
-            autocapitalize="off"
-            mn-autocomplete-off="enforce"
-            id="for-group-max-nesting"
-            ng-model="addLdapDialogCtl.config.advanced.nested_groups_max_depth">
-          <div
-            class="error"
-            ng-show="addLdapDialogCtl.errors.nested_groups_max_depth">
-            {{addLdapDialogCtl.errors.nested_groups_max_depth}}
+          <h5
+             class="disclosure"
+             ng-class="{disclosed: sect_3_focus}"
+             ng-click="sect_3_focus = !sect_3_focus; sect_1_focus = false; sect_2_focus = false;">
+            Group Authorization
+          </h5>
+          <div ng-show="sect_3_focus">
+            <p>
+              This section (down to <b>Test Group Authorization</b>) lets you map
+              simple usernames (that will be used to log into Couchbase SERVER) to
+              LDAP DNs. You can expand the test section to test your mapping with
+              a real user.
+            </p>
           </div>
         </div>
       </div>
     </div>
     <div class="panel-footer scroll-shadow">
       <a ng-click="$dismiss()">Cancel</a>
-      <button type="submit">
-        Save
-      </button>
+      <button type="submit">Save LDAP Configuration</button>
     </div>
   </form>
 </div>
