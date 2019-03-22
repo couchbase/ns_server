@@ -996,6 +996,8 @@ format_error(R) ->
     io_lib:format("~p", [R]).
 
 handle_dist_protocols(Req) ->
+    menelaus_util:assert_is_enterprise(),
+    menelaus_util:assert_is_madhatter(),
     validator:handle(
       fun (Props) ->
               handle_dist_protocols_validated(Req, Props)
