@@ -4,7 +4,7 @@
     .module('mnWizard')
     .controller('mnClusterConfigurationController', mnClusterConfigurationController);
 
-  function mnClusterConfigurationController($scope, $rootScope, $state, $q, mnClusterConfigurationService, mnSettingsClusterService, mnAuthService, pools, mnHelper, mnServersService, mnPools, mnAlertsService, mnPromiseHelper, mnWizardService) {
+  function mnClusterConfigurationController($scope, $rootScope, $state, $q, mnClusterConfigurationService, mnSettingsClusterService, mnAuthService, pools, mnHelper, mnServersService, mnPools, mnAlertsService, mnPromiseHelper, mnWizardService, mnStatisticsNewService) {
     var vm = this;
 
     vm.joinClusterConfig = mnClusterConfigurationService.getJoinClusterConfig();
@@ -69,6 +69,7 @@
           if (config.services.model.index) {
             mnSettingsClusterService.postIndexSettings(config.indexSettings);
           }
+          return mnStatisticsNewService.presetScenario();
         }).then(function () {
           return $state.go('app.admin.overview.statistics');
         });

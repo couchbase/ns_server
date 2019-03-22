@@ -69,8 +69,10 @@
         vm.scenario.groups = selected.groups.map(function (group, index) {
           group = Object.assign({}, group);
           group.id = mnHelper.generateID();
+          group.preset = false;
           group.charts = group.charts.map(function (chart, index) {
             chart = Object.assign({}, chart);
+            chart.preset = false;
             chart.group = group.id
             chart.id = mnHelper.generateID();
             return chart;

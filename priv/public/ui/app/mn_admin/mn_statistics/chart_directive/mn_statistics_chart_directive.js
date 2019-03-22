@@ -77,9 +77,9 @@
 
       function subscribeToMultiChartData() {
         $scope.$on("$destroy", function () {
-          mnStatisticsNewService.unsubscribeChartStats($scope.config, $scope, $state.params.bucket);
+          mnStatisticsNewService.unsubscribeChartStats($scope.config, $scope, $state.params.scenarioBucket);
         });
-        mnStatisticsNewService.subscribeToChartStats($scope.config, $scope, $state.params.bucket);
+        mnStatisticsNewService.subscribeToChartStats($scope.config, $scope, $state.params.scenarioBucket);
         $scope.$watch("mnChartStats", onMultiChartDataUpdate);
       }
 

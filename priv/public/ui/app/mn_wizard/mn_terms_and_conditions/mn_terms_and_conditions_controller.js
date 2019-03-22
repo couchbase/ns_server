@@ -5,7 +5,7 @@
     .module('mnWizard')
     .controller('mnTermsAndConditionsController', mnTermsAndConditionsController);
 
-  function mnTermsAndConditionsController($scope, $state, mnWizardService, pools, mnPromiseHelper, mnClusterConfigurationService, mnSettingsClusterService, mnAuthService, mnServersService ) {
+  function mnTermsAndConditionsController($scope, $state, mnWizardService, pools, mnPromiseHelper, mnClusterConfigurationService, mnSettingsClusterService, mnAuthService, mnServersService, mnStatisticsNewService) {
     var vm = this;
 
     vm.isEnterprise = pools.isEnterprise;
@@ -55,10 +55,11 @@
                 .postPoolsDefault(false, false, newClusterState.clusterName).then(function () {
                   mnClusterConfigurationService
                     .postAuth(newClusterState.user).then(function () {
-                      return mnAuthService
-                        .login(newClusterState.user).then(function () {
+                      return mnAuthService.login(newClusterState.user).then(function () {
+                        return mnStatisticsNewService.presetScenario().then(function () {
                           return $state.go('app.admin.overview.statistics');
                         });
+                      });
                     });
                 });
             });

@@ -11,11 +11,12 @@
         </inner-select>
         <inner-body ng-class="{'body-shorter' : statisticsNewCtl.scenarioCtrl.showRestOfMenu}">
           <mn-dropdown-item
-             ng-repeat="scenario in statisticsNewCtl.statisticsService.scenarios track by scenario.id"
+             ng-repeat="scenario in statisticsNewCtl.statisticsService.scenarios | orderBy:'-preset' track by scenario.id"
              mn-item="scenario">
             <p>{{scenario.name}}</p>
             <p ng-if="scenario.desc">{{scenario.desc}}</p>
             <div
+               ng-if="!scenario.preset"
                class="scenario-controls"
                ng-click="$event.stopPropagation();"
                title="delete/edit scenario">
@@ -131,6 +132,7 @@
        class="disclosure"
        ng-class="{disclosed: scope.isDetailsOpened}">
       <form novalidate
+            ng-show="!group.preset"
             style="display: inline-block;"
             ng-mouseleave="statisticsNewCtl.hideGroupControls(scope, group);"
             ng-click="$event.stopPropagation();"
@@ -166,6 +168,7 @@
                          statisticsNewCtl.hideGroupControls(scope, group)">
         </span>
       </form>
+      <span ng-show="group.preset">{{group.name}}</span>
     </div>
 
     <div ng-if="scope.isDetailsOpened" class="row charts">
@@ -179,6 +182,7 @@
          config="config"></div>
       <div
          class="chart-adder"
+         ng-show="!statisticsNewCtl.statisticsService.scenarios.selected.preset"
          ng-click="statisticsNewCtl.openChartBuilderDialog()">
       </div>
     </div>

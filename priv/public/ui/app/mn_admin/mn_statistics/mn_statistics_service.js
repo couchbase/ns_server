@@ -22,6 +22,7 @@
       deleteGroup: deleteGroup,
       saveScenarios: saveScenarios,
       readByPath: readByPath,
+      presetScenario: presetScenario,
       getStatsV2: getStatsV2,
       getStatsUnits: getStatsUnits,
       getStatsTitle: getStatsTitle,
@@ -39,6 +40,40 @@
     var rootScopes = {};
 
     return mnStatisticsNewService;
+
+    function presetScenario() {
+      return saveScenarios([{
+        name: "Preset scenario",
+        desc: "with description",
+        zoom: "hour",
+        preset: true,
+        id: mnHelper.generateID(),
+        groups: [(function (groupId) {
+          return {
+            id: groupId,
+            name: "Preset scenario group",
+            preset: true,
+            charts: [{
+              stats: {"cpu_utilization_rate": "@system.cpu_utilization_rate"},
+              preset: true,
+              size: "small",
+              specificStat: "true",
+              group: groupId,
+              id: mnHelper.generateID(),
+              bucket: ""
+            }, {
+              stats: {"cpu_utilization_rate": "@system.cpu_utilization_rate"},
+              preset: true,
+              size: "small",
+              specificStat: "false",
+              group: groupId,
+              id: mnHelper.generateID(),
+              bucket: ""
+            }]
+          }
+        })(mnHelper.generateID())]
+      }]);
+    }
 
     function getStatsTitle(stats) {
       return _.map(_.values(stats), function (descPath) {
@@ -111,7 +146,7 @@
         return scope === scopeToRemove;
       });
 
-      if (!chartScopes[statID].length) {
+      if (chartScopes[statID] && !chartScopes[statID].length) {
         rootScopes[statID].$destroy();
         delete rootScopes[statID]
         delete pollers[statID];
@@ -141,11 +176,11 @@
       return saveScenarios();
     }
 
-    function saveScenarios() {
+    function saveScenarios(scenarios) {
       return mnUserRolesService.getUserProfile().then(function (profile) {
-        profile.scenarios = mnStatisticsNewService.export.scenarios;
+        profile.scenarios = scenarios || mnStatisticsNewService.export.scenarios;
         return mnUserRolesService.putUserProfile(profile);
-      })
+      });
     }
 
     function addUpdateGroup(newGroup) {
@@ -201,7 +236,7 @@
     function subscribeToChartStats(config, chartScope, bucket) {
       var config1 = _.clone(config, true);
       var statID = getStatSourcePath(config1, bucket);
-
+      config1.bucket = bucket;
 
       rootScopes[statID] = rootScopes[statID] || $rootScope.$new();
       chartScopes[statID] = chartScopes[statID] || [];

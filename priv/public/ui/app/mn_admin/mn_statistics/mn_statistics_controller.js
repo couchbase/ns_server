@@ -37,7 +37,6 @@
       });
     }
 
-    vm.currentBucket = $state.params.statisticsBucket;
     vm.openGroupDialog = openGroupDialog;
     vm.openScenarioDialog = openScenarioDialog;
     vm.deleteGroup = deleteGroup;

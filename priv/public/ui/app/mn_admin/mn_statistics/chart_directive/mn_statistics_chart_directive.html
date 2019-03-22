@@ -2,26 +2,26 @@
   <div class="chart-title" title="{{title}}">
     {{title}}
   </div>
-  <div class="chart-controls" title="show/hide chart controls">
+  <div class="chart-controls" title="show/hide chart controls" ng-show="!config.preset">
     <span
-       class="icon fa-ellipsis-v"
-       ng-model="showChartControls"
-       ng-click="showChartControls = !showChartControls"
-       ng-class="showChartControls ? 'fa-angle-right' : 'fa-ellipsis-v'"></span>
+      class="icon fa-ellipsis-v"
+      ng-model="showChartControls"
+      ng-click="showChartControls = !showChartControls"
+      ng-class="showChartControls ? 'fa-angle-right' : 'fa-ellipsis-v'"></span>
     <span
       title="edit chart"
-       class="icon fa-edit"
-       ng-click="editChart(config)"
-       ng-show="showChartControls"></span>
+      class="icon fa-edit"
+      ng-click="editChart(config)"
+      ng-show="showChartControls"></span>
     <span
-       title="delete chart"
-       class="icon fa-trash"
-       ng-click="deleteChart(config)"
-       ng-show="showChartControls"></span>
+      title="delete chart"
+      class="icon fa-trash"
+      ng-click="deleteChart(config)"
+      ng-show="showChartControls"></span>
   </div>
 </div>
 <nvd3
-   api="chartApi"
-   options="options"
-   data="chartData"
-   ></nvd3>
+  api="chartApi"
+  options="options"
+  data="chartData"
+  ></nvd3>
