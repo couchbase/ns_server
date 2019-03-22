@@ -59,16 +59,12 @@
       });
     }
 
-    function doAddUpdateScenario(scenario) {
-      return mnStatisticsNewService.addUpdateScenario(scenario).then(selectLastScenario);
-    }
-
     function onSubmit() {
       if (!vm.scenario.name) {
         return;
       }
       var selected = mnStatisticsNewService.export.scenarios.selected;
-      if ((vm.copyScenario == "true") && selected) {
+      if ((vm.copyScenario == "true") && selected && !vm.isEditingMode) {
         var groups = vm.scenario.groups;
         vm.scenario.groups = selected.groups.map(function (group, index) {
           group = Object.assign({}, group);
@@ -82,9 +78,12 @@
           return group;
         });
       }
-      doAddUpdateScenario(vm.scenario).then(function () {
-        $document.triggerHandler("click");
-      });
+
+      mnStatisticsNewService.addUpdateScenario(vm.scenario)
+        .then(vm.isEditingMode ? clear : function () {
+          selectLastScenario();
+          $document.triggerHandler("click");
+        });
     }
   }
 
