@@ -2401,9 +2401,9 @@ nav.nav-sidebar-hidden {
 }
 .row.charts {
   flex-wrap: wrap;
-  margin-left: -.5rem;
   justify-content: flex-start;
   align-items: stretch;
+  margin-left: -.5rem;
 }
 .row.header {
   justify-content: flex-start;
@@ -2452,6 +2452,41 @@ nav.nav-sidebar-hidden {
 }
 .chart-adder:before {
   content: "\f055";
+}
+.charts-group {
+  margin-bottom: 1rem;
+}
+.charts-group:nth-of-type(2) {
+  margin-bottom: 3rem;
+}
+.charts-group-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+.charts-group-row .disclosure {
+  padding-left: 1rem;
+}
+.charts-group-row .disclosure:before,
+.charts-group-row .disclosed:before {
+  top: 3px;
+}
+input[type="text"].charts-group-name {
+  border-color: #fff;
+  font-size: .961rem;
+  font-weight: 600;
+  margin-right: .5rem;
+}
+input[type="text"]:focus.charts-group-name {
+  border-color: #d1d1d1;
+}
+.charts-group-row .icon {
+  padding: 0 .5rem;
+  color: #4287d6;
+  cursor: pointer;
+}
+.charts-group-row .icon:hover {
+  color: #000;
 }
 
 /* over-writes of nvd3 css -------------------------------------------------- */

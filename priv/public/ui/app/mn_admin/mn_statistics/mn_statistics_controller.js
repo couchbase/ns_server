@@ -18,14 +18,18 @@
     ])
     .controller('mnStatisticsNewController', mnStatisticsNewController);
 
-  function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http, mnPoller, mnBucketsService, $uibModal, $rootScope, mnHelper, $window, mnUserRolesService, permissions) {
+  function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http, mnPoller, mnBucketsService, $uibModal, $rootScope, mnHelper, $window, mnUserRolesService, permissions, $timeout, $document) {
     var vm = this;
 
     vm.onSelectScenario = onSelectScenario;
     vm.onSelectZoom = onSelectZoom;
+    vm.$document = $document;
 
     vm.statisticsService = mnStatisticsNewService.export;
     vm.saveScenarios = mnStatisticsNewService.saveScenarios;
+
+    vm.hideGroupControls = hideGroupControls;
+    vm.onGroupNameBlur = onGroupNameBlur;
 
     if (vm.statisticsService.scenarios.selected) {
       $state.go("^.statistics", {
@@ -47,6 +51,20 @@
     };
 
     activate();
+
+    function onGroupNameBlur(scope, group) {
+      if (!scope.onControlClick) {
+        scope.showGroupControls = false;
+        group.name = scope.initName;
+      }
+    }
+
+    function hideGroupControls(scope, group) {
+      if (scope.onControlClick) {
+        scope.onControlClick = false;
+        onGroupNameBlur(scope, group);
+      }
+    }
 
     function openScenarioDialog(scenario) {
       $uibModal.open({
@@ -77,7 +95,7 @@
 
     function deleteGroup(group) {
       $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_scenario_delete.html',
+        templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_group_delete.html',
       }).result.then(function () {
         mnStatisticsNewService.deleteGroup(group);
       });
