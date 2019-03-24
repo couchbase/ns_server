@@ -1855,7 +1855,28 @@ input[type="checkbox"].fake-select + label:before {
 .ace_gutter-active-line {
   background-color: #eceff2 !important;
 }
-
+/* QWB warning for missing fields - icon and revised ace tooltip ------------ */
+.ace_gutter-cell.ace_warning {
+  background-image: none !important;
+}
+.ace_gutter-cell.ace_warning:before {
+  content: "\f071";
+  font-family: FontAwesome;
+  font-size: .75rem;
+  color: #f7b84f;
+  position: absolute;
+  left: 2px;
+}
+.ace_tooltip {
+  font-family: OpenSans !important;
+  font-size: .8125rem !important;
+  background-image: none !important;
+  border-width: 0 !important;
+  border-radius: 3px !important;
+  padding: .5rem 1rem !important;
+  width: 320px !important;
+  box-shadow: 0 1px 1px 1px rgba(0,0,0,0.25) !important;
+}
 /* editor footer row: buttons + summary of query results + status ----------- */
 .wb-query-editor-footer {
   margin-top: .5rem;
