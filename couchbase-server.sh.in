@@ -190,7 +190,6 @@ _start() {
         -smp enable \
         -kernel inet_dist_listen_min 21100 inet_dist_listen_max 21299 \
                 error_logger false \
-                global_enable_tracing true \
         -sasl sasl_error_logger false \
         -hidden \
         -name $VM_NAME \
