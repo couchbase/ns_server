@@ -124,12 +124,11 @@
 <div class="width-12">
   <div
      ng-repeat="group in statisticsNewCtl.statisticsService.scenarios.selected.groups track by group.id"
-
      class="charts-group">
     <div
        ng-click="scope.isDetailsOpened = !scope.isDetailsOpened;"
        ng-init="scope.isDetailsOpened = true;"
-       class="disclosure"
+       class="charts-group-row disclosure"
        ng-class="{disclosed: scope.isDetailsOpened}">
       <form novalidate
             ng-show="!group.preset"

@@ -2470,11 +2470,11 @@ nav.nav-sidebar-hidden {
   align-items: center;
   justify-content: flex-start;
 }
-.charts-group-row .disclosure {
+.charts-group-row.disclosure {
   padding-left: 1rem;
 }
-.charts-group-row .disclosure:before,
-.charts-group-row .disclosed:before {
+.charts-group-row.disclosure:before,
+.charts-group-row.disclosed:before {
   top: 3px;
 }
 input[type="text"].charts-group-name {
@@ -2493,6 +2493,19 @@ input[type="text"]:focus.charts-group-name {
 }
 .charts-group-row .icon:hover {
   color: #000;
+}
+.charts-group-row button {
+  height: auto;
+  padding: 0;
+  margin: 0;
+  border-width: 0;
+}
+.charts-group-row button:hover {
+  border-width: 0;
+  box-shadow: none;
+}
+.charts-group-row button:active {
+  background-color: transparent;
 }
 
 /* over-writes of nvd3 css -------------------------------------------------- */
