@@ -387,108 +387,112 @@ construct_vbucket_states(VBucket, Chain, States) ->
     {NodeStates, ChainStates, ExtraStates}.
 
 %% this will decide what vbucket map chain is right for this vbucket
-do_sanify_chain(Bucket, States, Chain, FutureChain, VBucket) ->
-    {NodeStates, ChainStates, ExtraStates} = construct_vbucket_states(VBucket,
-                                                                      Chain,
-                                                                      States),
-    case ChainStates of
-        [{undefined, _}|_] ->
-            %% if for some reason (failovers most likely) we don't
-            %% have master, there's not much we can do. Or at least
-            %% that's how we have been behaving since early days.
-            Chain;
-        [{Master, State}|ReplicaStates] when State /= active andalso State /= zombie ->
-            %% we know master according to map is not active. See if
-            %% there's anybody else who is active and if we need to update map
-            case [N || {N, active} <- ReplicaStates ++ ExtraStates] of
-                [] ->
-                    %% We'll let the next pass catch the replicas.
-                    ?log_info("Setting vbucket ~p in ~p on ~p from ~p to active.",
-                              [VBucket, Bucket, Master, State]),
-                    %% nobody else (well, assuming zombies are not
-                    %% active) is active. Let's activate according to vbucket map
-                    Chain;
-                [Node] ->
-                    %% somebody else is active.
-                    PickFutureChain =
-                        case FutureChain of
-                            [Node | _] ->
-                                %% if active is future master check rest of future chain
-                                active = proplists:get_value(hd(FutureChain), NodeStates),
-                                %% and if everything fits -- cool
-                                %%
-                                %% we check expected replicas to be
-                                %% replicas. One other allowed
-                                %% possibility is if old master is
-                                %% replica in ff chain. In which case
-                                %% depending on where rebalance was
-                                %% stopped it may be dead (if stopped
-                                %% right after takeover) or replica
-                                %% (if stopped after post-move vbucket
-                                %% states are set).
-                                lists:all(
-                                  fun (undefined = _N) ->
-                                          true;
-                                      (N) ->
-                                          ActualState = proplists:get_value(N, NodeStates),
-                                          if
-                                              ActualState =:= replica ->
-                                                  true;
-                                              N =:= Master ->
-                                                  %% old master might
-                                                  %% be dead or
-                                                  %% replica. Replica
-                                                  %% is tested above
-                                                  ActualState =:= dead;
-                                              true ->
-                                                  false
-                                          end
-                                  end, tl(FutureChain));
-                            _ ->
-                                false
-                        end,
-                    case PickFutureChain of
-                        true ->
-                            ?log_warning("Master for vbucket ~p in ~p is not active, but entire fast-forward map chain fits (~p), so using it.", [VBucket, Bucket, FutureChain]),
-                            FutureChain;
-                        false ->
-                            %% One active node, but it's not the
-                            %% master.
-                            %%
-                            %% It's not fast-forward map master, so
-                            %% we'll just update vbucket map. Note
-                            %% behavior below with losing replicas
-                            %% makes little sense as of
-                            %% now. Especially with star
-                            %% replication. But we can adjust it
-                            %% later.
-                            case misc:position(Node, Chain) of
-                                false ->
-                                    %% It's an extra node
-                                    ?log_warning(
-                                       "Master for vbucket ~p in ~p is not active, but ~p is, so making that the master.",
-                                       [VBucket, Bucket, Node]),
-                                    [Node];
-                                Pos ->
-                                    ?log_warning("Master for vbucket ~p in ~p is not active, but ~p is (one of replicas). So making that master.",
-                                                 [VBucket, Bucket, Node]),
-                                    [Node|lists:nthtail(Pos, Chain)]
-                            end
-                    end;
-                Nodes ->
-                    ?log_error("Extra active nodes ~p for vbucket ~p in ~p. This should never happen!",
-                               [Nodes, Bucket, VBucket]),
-                    %% just do nothing if there are two active
-                    %% vbuckets and both are not master according to
-                    %% vbucket map
-                    ignore
-            end;
-        [{_,_} | _] ->
-            %% NOTE: here we know that master is either active or zombie
-            %% just keep existing vbucket map chain
-            Chain
+do_sanify_chain(_Bucket, _States,
+                [CurrentMaster | _] = CurrentChain,
+                _FutureChain, _VBucket) when CurrentMaster =:= undefined ->
+    %% We can get here on a hard-failover case.
+    CurrentChain;
+do_sanify_chain(Bucket, States,
+                [CurrentMaster | _] = CurrentChain,
+                FutureChain, VBucket) ->
+    NodeStates = [{N, S} || {N, VB, S} <- States, VB =:= VBucket],
+    Actives = [{N, S} || {N, S} <- NodeStates, S =:= active],
+
+    case Actives of
+        %% No Actives.
+        [] ->
+            CurrentMasterState = proplists:get_value(CurrentMaster,
+                                                     NodeStates, missing),
+            ?log_info("Setting vbucket ~p in ~p on ~p from ~p to active.",
+                      [VBucket, Bucket, CurrentMaster, CurrentMasterState]),
+            %% Let's activate according to vbucket map.
+            CurrentChain;
+
+        %% One Active.
+        [{ActiveNode, active}] ->
+            sanify_chain_one_active(Bucket, VBucket, ActiveNode,
+                                    NodeStates, CurrentChain, FutureChain);
+
+        %% Multiple Actives.
+        _ ->
+            ?log_error("Extra active nodes ~p for vbucket ~p in ~p. "
+                       "This should never happen!",
+                       [[N || {N, _} <- Actives], Bucket, VBucket]),
+            case lists:keyfind(CurrentMaster, 1, Actives) of
+                false ->
+                    ignore;
+                {CurrentMaster, active} ->
+                    %% Pick CurrentChain if CurrentMaster is active.
+                    CurrentChain
+            end
     end.
 
+derive_chain(Bucket, VBucket, ActiveNode, Chain) ->
+    case misc:position(ActiveNode, Chain) of
+        false ->
+            %% It's an extra node
+            ?log_error(
+               "Master for vbucket ~p in ~p is not "
+               "active, but ~p is, so making that the "
+               "master.",
+               [VBucket, Bucket, ActiveNode]),
+            [ActiveNode];
+        Pos ->
+            ?log_error(
+               "Master for vbucket ~p in ~p "
+               "is not active, but ~p is (one of "
+               "replicas). So making that master.",
+               [VBucket, Bucket, ActiveNode]),
+            [ActiveNode | lists:nthtail(Pos, Chain)]
+    end.
+
+sanify_chain_one_active(_Bucket, _VBucket, ActiveNode, _States,
+                        [CurrentMaster | _CurrentReplicas] = CurrentChain,
+                        _FutureChain)
+  when ActiveNode =:= CurrentMaster ->
+    CurrentChain;
+sanify_chain_one_active(Bucket, VBucket, ActiveNode, States,
+                        [CurrentMaster | _CurrentReplicas] = CurrentChain,
+                        [FutureMaster | FutureReplicas] = FutureChain)
+  when ActiveNode =:= FutureMaster ->
+    %% we check expected replicas to be replicas. One other allowed
+    %% possibility is if old master is replica in ff chain. In which
+    %% case depending on where rebalance was stopped it may be dead (if
+    %% stopped right after takeover) or replica (if stopped after
+    %% post-move vbucket states are set).
+    PickFutureChain = lists:all(
+                        fun (undefined) ->
+                                true;
+                            (N) ->
+                                case proplists:get_value(N, States) of
+                                    replica ->
+                                        true;
+                                    dead when N =:= CurrentMaster ->
+                                        %% old master might be dead or
+                                        %% replica. Replica is tested
+                                        %% above
+                                        true;
+                                    _ ->
+                                        false
+                                end
+                        end, FutureReplicas),
+    case PickFutureChain of
+        true ->
+            FutureChain;
+        false ->
+            derive_chain(Bucket, VBucket, ActiveNode, CurrentChain)
+    end;
+sanify_chain_one_active(Bucket, VBucket, ActiveNode, _States,
+                        CurrentChain, FutureChain) ->
+    ?log_error("Active node ~p for vbucket ~p in ~p, was not part of "
+               "current topology ~p or future topology ~p. "
+               "This should never happen!",
+               [ActiveNode, Bucket, VBucket, CurrentChain, FutureChain]),
+    %% One active node, but it's not the master and it's not fast-forward map
+    %% master, so we'll just update vbucket map. Note behavior below with losing
+    %% replicas makes little sense as of now. Especially with star replication.
+    %% But we can adjust it later.
+    derive_chain(Bucket, VBucket, ActiveNode, CurrentChain).
 
 -ifdef(TEST).
 sanify_basic_test() ->
