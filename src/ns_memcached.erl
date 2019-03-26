@@ -98,6 +98,7 @@
          host_ports/2,
          list_vbuckets/1, list_vbuckets/2,
          local_connected_and_list_vbuckets/1,
+         local_connected_and_list_vbucket_details/2,
          list_vbuckets_prevstate/2,
          list_vbuckets_multi/2,
          set_vbucket/3, set_vbucket/4,
@@ -251,11 +252,10 @@ handle_call(connected, _From, #state{status=Status} = State) ->
     Reply = [{connected, Connected},
              {warmed, Warmed}],
     {reply, Reply, State};
-handle_call(connected_and_list_vbuckets, _From, #state{status = Status} = State)
-  when Status =:= init orelse Status =:= connecting ->
-    {reply, warming_up, State};
 handle_call(connected_and_list_vbuckets, From, State) ->
-    handle_call(list_vbuckets, From, State);
+    handle_connected_call(list_vbuckets, From, State);
+handle_call({connected_and_list_vbucket_details, Keys}, From, State) ->
+    handle_connected_call({get_vbucket_details_stats, all, Keys}, From, State);
 handle_call(warmed, From, #state{status = warmed} = State) ->
     %% A bucket is set to "warmed" state in ns_memcached,
     %% after the bucket is loaded in memcached and ns_server
@@ -1113,6 +1113,12 @@ list_vbuckets(Node, Bucket) ->
 local_connected_and_list_vbuckets(Bucket) ->
     do_call(server(Bucket), connected_and_list_vbuckets, ?TIMEOUT).
 
+-spec local_connected_and_list_vbucket_details(bucket_name(), [string()]) ->
+    warming_up | {ok, dict:dict()}.
+local_connected_and_list_vbucket_details(Bucket, Keys) ->
+    do_call(server(Bucket), {connected_and_list_vbucket_details, Keys},
+            ?TIMEOUT).
+
 -spec list_vbuckets_prevstate(node(), bucket_name()) ->
     {ok, [{vbucket_id(), vbucket_state()}]} | mc_error().
 list_vbuckets_prevstate(Node, Bucket) ->
@@ -1521,6 +1527,14 @@ get_failover_log(Bucket, VBucket) ->
 set_cluster_config(Rev, Blob) ->
     perform_very_long_call(
       ?cut({reply, mc_client_binary:set_cluster_config(_, "", Rev, Blob)})).
+
+handle_connected_call(Call, From, #state{status = Status} = State) ->
+    case Status of
+        S when (S =:= init orelse S =:= connecting) ->
+            {reply, warming_up, State};
+        _ ->
+            handle_call(Call, From, State)
+    end.
 
 construct_topology(Topology) ->
     [lists:map(fun (undefined) ->

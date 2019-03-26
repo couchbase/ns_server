@@ -44,6 +44,7 @@
 
 -export([wait_for_bucket_creation/2, query_states/3,
          query_states_details/3,
+         query_vbucket_state_topology/3,
          apply_new_bucket_config_with_timeout/6,
          mark_bucket_warmed/2,
          delete_vbucket_copies/4,
@@ -75,7 +76,8 @@
          terminate/2, code_change/3]).
 
 wait_for_bucket_creation(Bucket, Nodes) ->
-    NodeRVs = wait_for_memcached(Nodes, Bucket, ?WAIT_FOR_MEMCACHED_TIMEOUT),
+    NodeRVs = wait_for_memcached(Nodes, Bucket, query_vbucket_states,
+                                 ?WAIT_FOR_MEMCACHED_TIMEOUT),
     BadNodes = [N || {N, R} <- NodeRVs,
                      case R of
                          warming_up -> false;
@@ -84,39 +86,44 @@ wait_for_bucket_creation(Bucket, Nodes) ->
                      end],
     BadNodes.
 
-query_vbucket_states_loop(Node, Bucket, Parent) ->
-    query_vbucket_states_loop(Node, Bucket, Parent, undefined).
-query_vbucket_states_loop(Node, Bucket, Parent, Warming) ->
-    case (catch gen_server:call(server_name(Bucket, Node), query_vbucket_states, infinity)) of
+query_vbucket_states_loop(Node, Bucket, Call, Parent) ->
+    query_vbucket_states_loop(Node, Bucket, Call, Parent, undefined).
+query_vbucket_states_loop(Node, Bucket, Call, Parent, Warming) ->
+    case (catch gen_server:call(server_name(Bucket, Node), Call, infinity)) of
         {ok, _} = Msg ->
             Msg;
         warming_up ->
-            query_vbucket_states_loop_next_step(Node, Bucket, Parent,
+            query_vbucket_states_loop_next_step(Node, Bucket, Call, Parent,
                                                 Warming, warming_up);
         {'EXIT', {noproc, _}} = Exc ->
-            ?log_debug("Exception from query_vbucket_states of ~p:~p~n~p",
-                       [Bucket, Node, Exc]),
-            query_vbucket_states_loop_next_step(Node, Bucket, Parent,
+            ?log_debug("Exception from ~p of ~p:~p~n~p",
+                       [Call, Bucket, Node, Exc]),
+            query_vbucket_states_loop_next_step(Node, Bucket, Call, Parent,
                                                 Warming, noproc);
         Exc ->
-            ?log_debug("Exception from query_vbucket_states of ~p:~p~n~p",
-                       [Bucket, Node, Exc]),
+            ?log_debug("Exception from ~p of ~p:~p~n~p",
+                       [Call, Bucket, Node, Exc]),
             Exc
     end.
 
-query_vbucket_states_loop_next_step(Node, Bucket, Parent, Warming, Reason) ->
+query_vbucket_states_loop_next_step(Node, Bucket, Call, Parent, Warming, Reason) ->
     ?log_debug("Waiting for ~p on ~p", [Bucket, Node]),
     NewWarming = maybe_send_warming(Parent, Warming, Reason),
     timer:sleep(1000),
-    query_vbucket_states_loop(Node, Bucket, Parent, NewWarming).
+    query_vbucket_states_loop(Node, Bucket, Call, Parent, NewWarming).
 
 maybe_send_warming(Parent, undefined, warming_up) ->
     Parent ! warming_up;
 maybe_send_warming(_Parent, Warming, _Reason) ->
     Warming.
 
--spec wait_for_memcached([node()], bucket_name(), non_neg_integer()) -> [{node(), {ok, list()} | warming_up | timeout | any()}].
-wait_for_memcached(Nodes, Bucket, WaitTimeout) ->
+-spec wait_for_memcached([node()], bucket_name(),
+                         query_vbucket_states | query_vbucket_state_topology,
+                         non_neg_integer()) -> [{node(),
+                                                 {ok, list()} |
+                                                 {ok, dict:dict()} |
+                                                 warming_up | timeout | any()}].
+wait_for_memcached(Nodes, Bucket, Call, WaitTimeout) ->
     Parent = self(),
     misc:executing_on_new_process(
       fun () ->
@@ -126,7 +133,10 @@ wait_for_memcached(Nodes, Bucket, WaitTimeout) ->
               NodePids = [{Node, proc_lib:spawn_link(
                                    fun () ->
                                            {ok, TRef} = timer2:kill_after(WaitTimeout),
-                                           RV = query_vbucket_states_loop(Node, Bucket, Me),
+                                           RV = query_vbucket_states_loop(Node,
+                                                                          Bucket,
+                                                                          Call,
+                                                                          Me),
                                            Me ! {'EXIT', self(), {Ref, RV}},
                                            %% doing cancel is quite
                                            %% important. kill_after is
@@ -170,22 +180,48 @@ complete_flush(Bucket, Nodes, Timeout) ->
     GoodNodes = [N || {N, _R} <- GoodReplies],
     {GoodNodes, BadReplies, BadNodes}.
 
+-spec query_states(bucket_name(), [node()],
+                   undefined | pos_integer()) -> {ok,
+                                                  [{node(), vbucket_id(),
+                                                    vbucket_state()}],
+                                                  [node()]}.
+query_states(Bucket, Nodes, Timeout) ->
+    query_states(Bucket, Nodes, query_vbucket_states, Timeout).
+
 %% TODO: consider supporting partial janitoring
--spec query_states(bucket_name(), [node()], undefined | pos_integer()) -> {ok, [{node(), vbucket_id(), vbucket_state()}], [node()]}.
-query_states(Bucket, Nodes, undefined) ->
-    query_states(Bucket, Nodes, ?WAIT_FOR_MEMCACHED_TIMEOUT);
-query_states(Bucket, Nodes, ReadynessWaitTimeout) ->
-    {ok, States, Failures} = query_states_details(Bucket, Nodes, ReadynessWaitTimeout),
+-spec query_states(bucket_name(), [node()],
+                   query_vbucket_state_topology | query_vbucket_states,
+                   undefined | pos_integer()) ->
+    {ok,
+     [{node(), vbucket_id(), vbucket_state(), [[node()]] | undefined}]
+         | [{node(), vbucket_id(), vbucket_state()}],
+     [node()]}.
+query_states(Bucket, Nodes, Call, undefined) ->
+    query_states(Bucket, Nodes, Call, ?WAIT_FOR_MEMCACHED_TIMEOUT);
+query_states(Bucket, Nodes, Call, ReadynessWaitTimeout) ->
+    {ok, States, Failures} = query_states_details(Bucket, Nodes, Call,
+                                                  ReadynessWaitTimeout),
     BadNodes = [N || {N, _} <- Failures],
     {ok, States, BadNodes}.
 
--spec query_states_details(bucket_name(), [node()], undefined | pos_integer()) ->
+-spec query_states_details(bucket_name(), [node()],
+                           undefined | pos_integer()) ->
                                   {ok, [{node(), vbucket_id(), vbucket_state()}],
                                    [{node(), term()}]}.
-query_states_details(Bucket, Nodes, undefined) ->
-    query_states_details(Bucket, Nodes, ?WAIT_FOR_MEMCACHED_TIMEOUT);
 query_states_details(Bucket, Nodes, ReadynessWaitTimeout) ->
-    NodeRVs = wait_for_memcached(Nodes, Bucket, ReadynessWaitTimeout),
+    query_states_details(Bucket, Nodes, query_vbucket_states, ReadynessWaitTimeout).
+
+-spec query_states_details(bucket_name(), [node()],
+                           query_vbucket_state_topology | query_vbucket_states,
+                           undefined | pos_integer()) ->
+    {ok,
+     [{node(), vbucket_id(), vbucket_state(), [[node()]] | undefined}]
+         | [{node(), vbucket_id(), vbucket_state()}],
+     [{node(), term()}]}.
+query_states_details(Bucket, Nodes, Call, undefined) ->
+    query_states_details(Bucket, Nodes, Call, ?WAIT_FOR_MEMCACHED_TIMEOUT);
+query_states_details(Bucket, Nodes, Call, ReadynessWaitTimeout) ->
+    NodeRVs = wait_for_memcached(Nodes, Bucket, Call, ReadynessWaitTimeout),
     Failures = [{N, R} || {N, R} <- NodeRVs,
                           case R of
                               {ok, _} -> false;
@@ -193,15 +229,30 @@ query_states_details(Bucket, Nodes, ReadynessWaitTimeout) ->
                           end],
     case Failures of
         [] ->
-            RV = [{Node, VBucket, State}
-                  || {Node, {ok, Pairs}} <- NodeRVs,
-                     {VBucket, State} <- Pairs],
+            RV = case Call of
+                     query_vbucket_states ->
+                         [{Node, VBucket, State}
+                          || {Node, {ok, Pairs}} <- NodeRVs,
+                             {VBucket, State} <- Pairs];
+                     query_vbucket_state_topology ->
+                         [{Node, VBucket, State, Topology}
+                          || {Node, {ok, Triples}} <- NodeRVs,
+                             {VBucket, State, Topology} <- Triples]
+                 end,
             {ok, RV, []};
         _ ->
             ?log_error("Failed to query vbucket states from some nodes:~n~p",
                        [Failures]),
             {ok, [], Failures}
     end.
+
+-spec query_vbucket_state_topology(bucket_name(),
+                                   [node()], undefined | pos_integer()) ->
+    {ok,
+     [{node(), vbucket_id(), vbucket_state(), [[node()]] | undefined}],
+     [node()]}.
+query_vbucket_state_topology(Bucket, Nodes, Timeout) ->
+    query_states(Bucket, Nodes, query_vbucket_state_topology, Timeout).
 
 -spec mark_bucket_warmed(Bucket::bucket_name(), [node()]) -> ok | {error, [node()], list()}.
 mark_bucket_warmed(Bucket, Nodes) ->
@@ -505,28 +556,12 @@ handle_call(prepare_flush, _From, #state{bucket_name = BucketName} = State) ->
     {reply, ns_memcached:disable_traffic(BucketName, infinity), State};
 handle_call(complete_flush, _From, State) ->
     {reply, ok, consider_doing_flush(State)};
-handle_call(query_vbucket_states, _From, #state{bucket_name = BucketName,
-                                               rebalance_status = in_process} = State) ->
-    ?log_info("Attempt to query vbucket states for bucket ~p during rebalance", [BucketName]),
-    {reply, rebalancing, State};
-handle_call(query_vbucket_states, _From, #state{bucket_name = BucketName} = State) ->
-    NewState = consider_doing_flush(State),
-    %% NOTE: uses 'outer' memcached timeout of 60 seconds
-    RV = (catch ns_memcached:local_connected_and_list_vbuckets(BucketName)),
-    {RV1, NewState1} =
-        case RV of
-            {ok, _} ->
-                {case maybe_prime_replicators(NewState) of
-                     true ->
-                         (catch ns_memcached:local_connected_and_list_vbuckets(BucketName));
-                     false ->
-                         RV
-                 end, NewState#state{replicators_primed = true}};
-              _ ->
-                {RV, NewState}
-        end,
-
-    {reply, RV1, NewState1};
+handle_call(query_vbucket_states, _From, State) ->
+    {RV, NewState} = handle_query_states(query_vbucket_states, State),
+    {reply, RV, NewState};
+handle_call(query_vbucket_state_topology, _From, State) ->
+    {RV, NewState} = handle_query_states(query_vbucket_state_topology, State),
+    {reply, RV, NewState};
 handle_call(get_incoming_replication_map, _From, #state{bucket_name = BucketName} = State) ->
     %% NOTE: has infinite timeouts but uses only local communication
     RV = replication_manager:get_incoming_replication_map(BucketName),
@@ -1035,10 +1070,15 @@ is_topology_same(active, Chain, MemcachedTopology) ->
 is_topology_same(_, _, _) ->
     true.
 
+get_state_topology_decode_table() ->
+    [{"state", fun erlang:list_to_existing_atom/1},
+     {"topology", fun decode_topology/1}].
+
+decode_state_topology(VBDetails) ->
+    decode_vbucket_details(VBDetails, get_state_topology_decode_table()).
+
 get_state_topology(BucketName) ->
-    DecodeTable = [{"state", fun erlang:list_to_existing_atom/1},
-                   {"topology", fun decode_topology/1}],
-    get_decoded_vbucket_details(BucketName, DecodeTable).
+    get_decoded_vbucket_details(BucketName, get_state_topology_decode_table()).
 
 get_decoded_vbucket_details(BucketName, DecodeTable) ->
     Keys = [Key || {Key, _DecodeFun} <- DecodeTable],
@@ -1062,3 +1102,40 @@ decode_vbucket_details(VBDetails, DecodeTable) ->
                         end
                 end, List)
       end, VBDetails).
+
+handle_query_states(Call, #state{bucket_name = BucketName,
+                                 rebalance_status = in_process} = State) ->
+    ?log_info("Attempt to ~p for bucket ~p during rebalance", [Call, BucketName]),
+    {rebalancing, State};
+handle_query_states(Call, #state{bucket_name = BucketName} = State) ->
+    NewState = consider_doing_flush(State),
+    %% NOTE: uses 'outer' memcached timeout of 60 seconds
+    Fun = fun (query_vbucket_states) ->
+                  (catch ns_memcached:local_connected_and_list_vbuckets(BucketName));
+              (query_vbucket_state_topology) ->
+                  Keys = ["state", "topology"],
+                  (catch maybe_decode_state_topology(
+                           ns_memcached:local_connected_and_list_vbucket_details(
+                             BucketName, Keys)))
+          end,
+    RV = Fun(Call),
+    case RV of
+        {ok, _} ->
+            {case maybe_prime_replicators(NewState) of
+                 true ->
+                     Fun(Call);
+                 false ->
+                     RV
+             end, NewState#state{replicators_primed = true}};
+        _ ->
+            {RV, NewState}
+    end.
+
+maybe_decode_state_topology({ok, Dict}) ->
+    RV = [{VB,
+           proplists:get_value("state", Details),
+           proplists:get_value("topology", Details)}
+           || {VB, Details} <- dict:to_list(decode_state_topology(Dict))],
+    {ok, RV};
+maybe_decode_state_topology(Err) ->
+    Err.
