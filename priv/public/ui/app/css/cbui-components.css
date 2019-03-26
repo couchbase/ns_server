@@ -2529,6 +2529,9 @@ input[type="text"]:focus.charts-group-name {
 .nv-axisMin-y text {
   font-weight: 400!important;
 }
+.nvtooltip {
+  position: fixed!important;
+}
 
 /* cbui custom dropdown menu  ------------------------------------------------*/
 mn-dropdown {

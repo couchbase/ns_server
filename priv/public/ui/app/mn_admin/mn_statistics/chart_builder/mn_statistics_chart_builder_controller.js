@@ -17,7 +17,7 @@
     };
   }
 
-  function mnStatisticsNewChartBuilderController($scope, mnPromiseHelper, mnBucketsStats, mnStatisticsNewService, chart, $uibModalInstance, mnStatisticsDescriptionService, $timeout, $state) {
+  function mnStatisticsNewChartBuilderController($scope, mnPromiseHelper, mnBucketsStats, mnStatisticsNewService, chart, group, $uibModalInstance, mnStatisticsDescriptionService, $timeout, $state) {
     var vm = this;
 
     vm.create = create;
@@ -29,9 +29,11 @@
       stats: {},
       size: "small",
       specificStat: "false",
-      group: vm.groups[0].id.toString(),
+      group: group && group.id.toString(),
       bucket: $scope.rbac.bucketNames['.stats!read'][0]
     };
+
+    var initialGroup = vm.newChart.group;
 
     if (vm.newChart.specificStat) {
       vm.newChart.specificStat = "true";
@@ -177,7 +179,7 @@
         size: vm.newChart.size,
         specificStat: vm.newChart.specificStat === "true",
         id: vm.newChart.id,
-        group: vm.newChart.group,
+        group: vm.isEditing ? vm.newChart.group : group.id,
         stats: {}
       };
       var key;
@@ -185,6 +187,13 @@
         if (vm.newChart.stats[key]) {
           chart.stats[key] = vm.newChart.stats[key];
         }
+      }
+      if (chart.id && (initialGroup !== vm.newChart.group)) {
+        var fromGroup = _.find(vm.groups, {'id': initialGroup});
+        var index = _.findIndex(fromGroup.charts, {'id': chart.id});
+        var toGroup = _.find(vm.groups, {'id': vm.newChart.group});
+
+        toGroup.charts.push(fromGroup.charts.splice(index, 1)[0]);
       }
       mnStatisticsNewService.addUpdateChart(
         chart,

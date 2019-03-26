@@ -82,12 +82,13 @@
       });
     }
 
-    function openChartBuilderDialog() {
+    function openChartBuilderDialog(group) {
       $uibModal.open({
         templateUrl: 'app/mn_admin/mn_statistics/chart_builder/mn_statistics_chart_builder.html',
         controller: 'mnStatisticsNewChartBuilderController as chartBuilderCtl',
         resolve: {
-          chart: mnHelper.wrapInFunction()
+          chart: mnHelper.wrapInFunction(),
+          group: mnHelper.wrapInFunction(group)
         }
       });
     }

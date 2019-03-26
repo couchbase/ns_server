@@ -196,7 +196,8 @@
         <div class="flex-grow-2">
           <h4>Group</h4>
           <select
-            ng-model="chartBuilderCtl.newChart.group">
+             ng-disabled="!chartBuilderCtl.isEditing"
+             ng-model="chartBuilderCtl.newChart.group">
             <option
               ng-repeat="group in chartBuilderCtl.groups"
               value="{{group.id}}">{{group.name}}</option>

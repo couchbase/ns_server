@@ -61,9 +61,8 @@
           templateUrl: 'app/mn_admin/mn_statistics/chart_builder/mn_statistics_chart_builder.html',
           controller: 'mnStatisticsNewChartBuilderController as chartBuilderCtl',
           resolve: {
-            chart: function () {
-              return config;
-            }
+            chart: mnHelper.wrapInFunction(config),
+            group: mnHelper.wrapInFunction()
           }
         }).result.then(function () {
           $state.reload();
@@ -140,7 +139,7 @@
               showMaxMin: false
             },
             callback: function (chart) {
-              chart.interactiveLayer.dispatch.on("elementClick", function () {
+              chart && chart.interactiveLayer.dispatch.on("elementClick", function () {
                 if ($scope.isModal) {
                   return;
                 }
