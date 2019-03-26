@@ -2462,8 +2462,8 @@ nav.nav-sidebar-hidden {
 .charts-group {
   margin-bottom: 1rem;
 }
-.charts-group:nth-of-type(2) {
-  margin-bottom: 3rem;
+.charts-group:last-child {
+  margin-bottom: 4rem;
 }
 .charts-group-row {
   display: flex;
@@ -2485,6 +2485,10 @@ input[type="text"].charts-group-name {
 }
 input[type="text"]:focus.charts-group-name {
   border-color: #d1d1d1;
+}
+.charts-preset-group-name {
+  font-size: .961rem;
+  font-weight: 600;
 }
 .charts-group-row .icon {
   padding: 0 .5rem;

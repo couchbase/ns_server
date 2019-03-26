@@ -96,7 +96,8 @@
     <a
        ng-disabled="!statisticsNewCtl.statisticsService.scenarios.length"
        ng-click="statisticsNewCtl.openGroupDialog(statisticsNewCtl.statisticsService.scenarios.selected)"
-       class="text-small">
+       class="text-small"
+       ng-show="!scenario.preset">
       Add Group
     </a>
   </span>
@@ -167,7 +168,7 @@
                          statisticsNewCtl.hideGroupControls(scope, group)">
         </span>
       </form>
-      <span ng-show="group.preset">{{group.name}}</span>
+      <span class="charts-preset-group-name" ng-show="group.preset">{{group.name}}</span>
     </div>
 
     <div ng-if="scope.isDetailsOpened" class="row charts">
@@ -187,7 +188,7 @@
     </div>
   </div>
   <div
-     ng-show="statisticsNewCtl.statisticsService.scenarios.selected &&
+     ng-if="statisticsNewCtl.statisticsService.scenarios.selected &&
               !statisticsNewCtl.statisticsService.scenarios.selected.groups.length"
      class="zero-content">
     No charts to display yet. Use Add Group to first add groups and then charts.<br>

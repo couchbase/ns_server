@@ -2,7 +2,7 @@
   <div class="about-text resp-sml">
     {{::adminCtl.implementationVersion | mnPrettyVersion}} <span ng-show="overviewCtl.isIPv6">&#8231; IPv6</span><span ng-show="!overviewCtl.isIPv6">&#8231; IPv4</span>
     <br>
-    &copy; 2018 <a href="http://couchbase.com" target="_blank">Couchbase, Inc.</a>
+    &copy; 2019 <a href="http://couchbase.com" target="_blank">Couchbase, Inc.</a>
   </div>
 </mn-element-cargo>
 
@@ -16,7 +16,7 @@
     </span>
   </div>
 
-  <div ui-view=""></div>
+  <div ng-show="buckets.details.length" ui-view=""></div>
 
 <!--
   <div class="content-box-dashboard max-width-12 margin-top-2 resp-wrap-med resp-med">
