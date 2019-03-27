@@ -378,9 +378,18 @@ json_map_from_config(LocalAddr, BucketConfig) ->
     Config = ns_config:get(),
     json_map_with_full_config(LocalAddr, BucketConfig, Config).
 
+equal_len_chains([]) ->
+    [];
+equal_len_chains(Map) ->
+    MaxChainLen = length(misc:min_by(fun (Chain, Max) ->
+                                             length(Chain) > length(Max)
+                                     end, Map)),
+    [Chain ++ lists:duplicate(MaxChainLen - length(Chain), undefined)
+     || Chain <- Map].
+
 json_map_with_full_config(LocalAddr, BucketConfig, Config) ->
     NumReplicas = num_replicas(BucketConfig),
-    EMap = proplists:get_value(map, BucketConfig, []),
+    EMap = equal_len_chains(proplists:get_value(map, BucketConfig, [])),
     BucketNodes = proplists:get_value(servers, BucketConfig, []),
     ENodes = lists:delete(undefined, lists:usort(lists:append([BucketNodes |
                                                                 EMap]))),
