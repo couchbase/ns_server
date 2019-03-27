@@ -415,8 +415,10 @@ docs_left_updater_loop(Parent) ->
             ?log_debug("Starting docs_left_updater_loop:~p~n~p",
                        [BucketName, Moves])
     end,
-    [update_docs_left_for_move(Parent, BucketName, VB, VBInfo) ||
-     {VB, VBInfo} <- Moves],
+    [update_docs_left_for_move(Parent, BucketName, VB, VBInfo)
+     || {VB, VBInfo} <- Moves,
+        VBInfo#vbucket_info.move#stat_info.start_time =/= false,
+        VBInfo#vbucket_info.move#stat_info.end_time =:= false],
     receive
         refresh ->
             _Lost = misc:flush(refresh),
