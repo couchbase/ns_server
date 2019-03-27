@@ -140,11 +140,11 @@
          ng-disabled="(rbac && !rbac.cluster.settings.write) || autoCompactionSettings.indexCircularCompactionFlag === true"
          ng-model="autoCompactionSettings.indexFragmentationThreshold.percentage">
         %
-      <small
+      <div
          class="error"
          ng-show="validationErrors.indexFragmentationThreshold_percentage_">
         {{validationErrors.indexFragmentationThreshold_percentage_}}
-      </small>
+      </div>
     </div>
     <div class="formrow">
       <input
