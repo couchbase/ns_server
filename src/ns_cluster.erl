@@ -100,17 +100,30 @@ engage_cluster_not_to_self(NodeKVList) ->
         undefined ->
             engage_cluster_with_cluster_ca(NodeKVList);
         ClusterCA ->
+            case apply_certs(ClusterCA) of
+                ok -> engage_cluster_with_cluster_ca(NodeKVList);
+                {error, _, _, _} = Error -> Error
+            end
+    end.
+
+apply_certs(ClusterCA) ->
+    case ns_server_cert:set_cluster_ca(ClusterCA) of
+        {ok, _} ->
             case ns_server_cert:apply_certificate_chain_from_inbox(ClusterCA) of
                 {ok, Props} ->
-                    ?log_info("Custom certificate was loaded on the node before joining. Props: ~p",
-                              [Props]),
-                    engage_cluster_with_cluster_ca(NodeKVList);
+                    ns_ssl_services_setup:sync_local_cert_and_pkey_change(),
+                    ?log_info("Custom certificate was loaded on the node "
+                              "before joining. Props: ~p", [Props]),
+                    ok;
                 {error, Error} ->
                     Message =
                         iolist_to_binary(["Error applying node certificate. ",
-                                           ns_error_messages:reload_node_certificate_error(Error)]),
+                                          ns_error_messages:reload_node_certificate_error(Error)]),
                     {error, apply_cert, Message, {apply_cert, Error}}
-            end
+            end;
+        {error, Error} ->
+            Msg = io_lib:format("Error applying root CA: ~p", [Error]),
+            {error, apply_cert, iolist_to_binary(Msg), {apply_cert, Error}}
     end.
 
 engage_cluster_with_cluster_ca(NodeKVList) ->
@@ -1183,6 +1196,8 @@ perform_actual_join(RemoteNode, NewCookie) ->
                                  %% update for the sake of incrementing the
                                  %% vclock
                                  {update, Pair};
+                             ({cert_and_pkey, V}) ->
+                                 {set_initial, {cert_and_pkey, V}};
                              (_) ->
                                  erase
                          end),
