@@ -457,8 +457,14 @@ update_docs_left_for_move(Parent, BucketName, VBucket,
                     gen_server:cast(Parent,
                                     {update_stats, BucketName, VBucket, Stuff})
             end
-    catch error:{janitor_agent_servant_died, _} ->
+    catch
+        error:{janitor_agent_servant_died, _} ->
             ?log_debug("Apparently move of ~p is already done", [VBucket]),
+            ok;
+        T:E ->
+            %% Ignore exceptions from get_docs_estimate, we expect rebalance to
+            %% fail on continued exception.
+            ?log_debug("Exception in get_docs_estimate ~p", [{T, E}]),
             ok
     end.
 
