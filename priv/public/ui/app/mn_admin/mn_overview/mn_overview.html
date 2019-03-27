@@ -1,7 +1,8 @@
 <mn-element-cargo depot="header">
   <div class="about-text resp-sml">
-    {{::adminCtl.implementationVersion | mnPrettyVersion}} <span ng-show="overviewCtl.isIPv6">&#8231; IPv6</span><span ng-show="!overviewCtl.isIPv6">&#8231; IPv4</span>
-    <br>
+    {{::adminCtl.implementationVersion | mnPrettyVersion}}
+    <span ng-show="overviewCtl.isIPv6">&#8231; IPv6</span><span ng-show="!overviewCtl.isIPv6">&#8231; IPv4</span>
+    <span ng-show="overviewCtl.isDeveloperPreview">&#8231; DEVELOPER PREVIEW MODE</span>
     &copy; 2019 <a href="http://couchbase.com" target="_blank">Couchbase, Inc.</a>
   </div>
 </mn-element-cargo>
