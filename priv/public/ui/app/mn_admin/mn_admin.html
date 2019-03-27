@@ -84,12 +84,12 @@
         <a
           ng-show="pools.isEnterprise && poolDefault.compat.atLeast50 && (adminCtl.user.domain === 'local' || adminCtl.user.domain === 'admin')"
           ng-click="adminCtl.showResetPasswordDialog()">
-          Reset password
+          Change Password
         </a>
         <a
           ng-click="adminCtl.logout()"
           class="ellipsis max-width-4">
-          Sign out {{adminCtl.user.id}}
+          Sign Out {{adminCtl.user.id}}
         </a>
       </div>
     </span>
