@@ -1525,8 +1525,8 @@ do_couchbase_fts_stats_descriptions(BucketId, Nodes) ->
                {stats,
                 [{struct, [{title, <<"items">>},
                            {name, per_fts_stat(Id, <<"doc_count">>)},
-                           {desc, <<"Number of documents"
-                                    " (measured from doc_count)">>}]},
+                           {desc, <<"Number of documents examined"
+                                    " (measured from doc_count of active and replica index partitions)">>}]},
                  {struct, [{title, <<"bytes indexed/sec">>},
                            {name, per_fts_stat(Id, <<"total_bytes_indexed">>)},
                            {desc, <<"Number of plain text bytes indexed per second"
