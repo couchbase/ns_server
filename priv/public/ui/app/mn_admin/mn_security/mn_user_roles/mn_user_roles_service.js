@@ -234,9 +234,10 @@
       });
     }
 
-    function packData(user, roles, isEditingMode, resetPassword) {
+    function packData(user, roles, groups, isEditingMode, resetPassword) {
       var data = {
         roles: roles.indexOf("admin") > -1 ? "admin" : roles.join(','),
+        groups: groups.join(','),
         name: user.name
       };
 
@@ -331,20 +332,17 @@
       });
     }
 
-    function addUser(user, roles, isEditingMode, resetPassword) {
+    function addUser(user, roles, groups, isEditingMode, resetPassword) {
       if (!user || !user.id) {
         return $q.reject({username: "username is required"});
       }
-      if (!resetPassword && (!roles || !roles.length)) {
-        return $q.reject({roles: "at least one role should be added"});
-      }
       if (isEditingMode) {
-        return doAddUser(packData(user, roles, isEditingMode, resetPassword), user);
+        return doAddUser(packData(user, roles, groups, isEditingMode, resetPassword), user);
       } else {
         return getUser(user).then(function (users) {
           return $q.reject({username: "username already exists"});
         }, function () {
-          return doAddUser(packData(user, roles, isEditingMode), user);
+          return doAddUser(packData(user, roles, groups, isEditingMode), user);
         });
       }
     }

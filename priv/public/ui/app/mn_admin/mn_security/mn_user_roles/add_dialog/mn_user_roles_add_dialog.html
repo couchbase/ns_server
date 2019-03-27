@@ -102,11 +102,46 @@
       </div>
 
       <div class="column width-7">
-        <label>Roles</label>
-        <fieldset class="select-user-roles hide-track show-scrollbar">
+        <input type="radio"
+               name="dialogTab"
+               id="for-select-roles-tab"
+               ng-model="userRolesAddDialogCtl.selectedPanel"
+               value="roles"><label for="for-select-roles-tab">Roles</label>
+        <input type="radio"
+               name="dialogTab"
+               id="for-select-groups-tab"
+               ng-model="userRolesAddDialogCtl.selectedPanel"
+               value="groups"><label for="for-select-groups-tab">Groups</label>
+        <fieldset
+           class="select-user-roles ehide-track show-scrollbar">
+          <div ng-show="userRolesAddDialogCtl.selectedPanel == 'groups'">
+            <label
+               class="disclosure"
+               ng-init="isGroupOpened = true;"
+               ng-click="isGroupOpened = !isGroupOpened;"
+               ng-class="{'disclosed': isGroupOpened}">
+              Groups
+            </label>
+            <div class="indent-1" ng-show="isGroupOpened">
+              <div
+                 ng-repeat="group in userRolesAddDialogCtl.groups"
+                 ng-class="[{'has-selection': userRolesAddDialogCtl.selectedGroups[group.id]}]">
+                <input
+                   type="checkbox"
+                   id="for-{{::group.id}}"
+                   ng-model="userRolesAddDialogCtl.selectedGroups[group.id]">
+                <label
+                   ng-attr-title="{{::userRolesAddDialogCtl.getGroupTitle(group.roles);}}"
+                   for="for-{{::group.id}}">
+                  {{::group.id}}
+                </label>
+              </div>
+            </div>
+          </div>
           <mn-user-roles-list
-            roles-to-enable="userRolesAddDialogCtl.user.roles"
-            selected-roles="userRolesAddDialogCtl.selectedRoles"></mn-user-roles-list>
+             ng-show="userRolesAddDialogCtl.selectedPanel == 'roles'"
+             roles-to-enable="userRolesAddDialogCtl.user.roles"
+             selected-roles="userRolesAddDialogCtl.selectedRoles"></mn-user-roles-list>
         </fieldset>
       </div>
     </div>
