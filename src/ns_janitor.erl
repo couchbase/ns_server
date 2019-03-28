@@ -392,12 +392,7 @@ compute_vbucket_map_fixup(Bucket, BucketConfig, States) ->
 
 maybe_adjust_chain_size(Map, BucketConfig) ->
     NumReplicas = ns_bucket:num_replicas(BucketConfig),
-    case length(hd(Map)) =:= NumReplicas + 1 of
-        true ->
-            Map;
-        false ->
-            ns_janitor_map_recoverer:align_replicas(Map, NumReplicas)
-    end.
+    ns_janitor_map_recoverer:align_replicas(Map, NumReplicas).
 
 sanify_chain(Bucket, States, Chain, FutureChain, VBucket) ->
     NewChain = do_sanify_chain(Bucket, States, Chain, FutureChain, VBucket),
