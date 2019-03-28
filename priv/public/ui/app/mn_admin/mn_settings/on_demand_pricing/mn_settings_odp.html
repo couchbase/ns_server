@@ -1,0 +1,63 @@
+
+<div
+   ng-if="poolDefault.isEnterprise && poolDefault.compat.atLeast65 && rbac.cluster.settings.write"
+   class="margin-top-1-5">
+
+  <label>On-Demand Pricing</label>
+  <div class="formrow">
+    <input
+       type="checkbox"
+       id="odp_enabled"
+       ng-model="settingsODPCtl.reporting_enabled">
+    <label for="odp_enabled" class="margin-right-zero">Enable on-demand pricing </label>
+    <span
+       class="fa-stack icon-info"
+       uib-tooltip="With On-Demand Pricing you pay for Couchbase usage based on
+                    the number of nodes, cores, and RAM available to the cluster.
+                    This configuration data will be updated hourly. On-Demand Pricing
+                    requires an ID and authorization token obtained from Couchbase Sales."
+       tooltip-placement="auto right">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+    </span>
+  </div>
+  <div ng-show="settingsODPCtl.reporting_enabled" class="formrow">
+    <label>On-Demand Pricing ID</label>
+    <input
+       id="odp_id"
+       type="text"
+       autocorrect="off"
+       spellcheck="false"
+       autocapitalize="off"
+       maxlength="256"
+       ng-model="settingsODPCtl.contract_id">
+  </div>
+  <div ng-show="settingsODPCtl.reporting_enabled" class="formrow">
+    <label>Authorization Token</label>
+    <input
+       id="odp_token"
+       type="text"
+       autocorrect="off"
+       spellcheck="false"
+       autocapitalize="off"
+       maxlength="256"
+       ng-model="settingsODPCtl.customer_token">
+  </div>
+
+  <div>
+    <span
+       ng-show="settingsODPCtl.reporting_enabled"
+       ng-if="settingsODPCtl.valid === false"
+       class="error">
+      <span class="icon fa-warning"></span>
+      {{settingsODPCtl.validation_error}}
+    </span>
+    <span
+       ng-if="settingsODPCtl.reporting_enabled && settingsODPCtl.valid === true"
+       class="success">
+      <span class="icon fa-check"></span>
+      On-Demand Pricing enabled and updating
+    </span>
+  </div>
+
+</div>

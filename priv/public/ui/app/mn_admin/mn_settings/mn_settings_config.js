@@ -13,6 +13,7 @@
       'mnSettingsCluster',
       'mnSettingsAlerts',
       'mnSettingsNotificationsService',
+      'mnSettingsOnDemandPricing',
       'mnInternalRoles',
       'ui.router',
       'mnPluggableUiRegistry',
@@ -47,6 +48,10 @@
           "autofailover@app.admin.settings.cluster": {
             controller: 'mnSettingsAutoFailoverController as settingsAutoFailoverCtl',
             templateUrl: 'app/mn_admin/mn_settings/auto_failover/mn_settings_auto_failover.html'
+          },
+          "ondemandpricing@app.admin.settings.cluster": {
+            controller: 'mnSettingsODPController as settingsODPCtl',
+            templateUrl: 'app/mn_admin/mn_settings/on_demand_pricing/mn_settings_odp.html'
           },
           "notifications@app.admin.settings.cluster": {
             controller: 'mnSettingsNotificationsController as settingsNotificationsCtl',
