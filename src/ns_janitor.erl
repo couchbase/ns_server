@@ -341,9 +341,8 @@ compute_servers_list_cleanup(BucketConfig, FullConfig) ->
     end.
 
 enumerate_chains(BucketConfig) ->
-    OrigMap = proplists:get_value(map, BucketConfig, []),
-    true = ([] =/= OrigMap),
-    Map = maybe_adjust_chain_size(OrigMap, BucketConfig),
+    Map = proplists:get_value(map, BucketConfig, []),
+    true = ([] =/= Map),
 
     FFMap = case proplists:get_value(fastForwardMap, BucketConfig) of
                 undefined -> [];
@@ -360,52 +359,41 @@ enumerate_chains(BucketConfig) ->
                          [] ->
                              [[] || _ <- Map];
                          _ ->
-                             maybe_adjust_chain_size(FFMap, BucketConfig)
+                             FFMap
                      end,
     MapLen = length(Map),
     EnumeratedChains = lists:zip3(lists:seq(0, MapLen - 1),
                                   Map,
                                   EffectiveFFMap),
-    {EnumeratedChains, OrigMap, Map}.
+    {EnumeratedChains, Map}.
 
 compute_vbucket_map_fixup(Bucket, BucketConfig, States) ->
-    {EnumeratedChains, OrigMap, AdjustedMap} = enumerate_chains(BucketConfig),
-    MapUpdates = [sanify_chain(Bucket, States, Chain, FutureChain, VBucket)
+    {EnumeratedChains, Map} = enumerate_chains(BucketConfig),
+    MapUpdates = [do_sanify_chain(Bucket, States, Chain, FutureChain, VBucket)
                   || {VBucket, Chain, FutureChain} <- EnumeratedChains],
 
-    MapLen = length(AdjustedMap),
+    MapLen = length(Map),
     IgnoredVBuckets = [VBucket || {VBucket, ignore} <-
                                       lists:zip(lists:seq(0, MapLen - 1),
                                                 MapUpdates)],
     NewMap = [case NewChain of
                   ignore -> OldChain;
                   _ -> NewChain
-              end || {NewChain, OldChain} <- lists:zip(MapUpdates, AdjustedMap)],
-    NewBucketConfig = case NewMap =:= OrigMap of
+              end || {NewChain, OldChain} <- lists:zip(MapUpdates, Map)],
+    NewAdjustedMap = maybe_adjust_chain_size(NewMap, BucketConfig),
+    NewBucketConfig = case NewAdjustedMap =:= Map of
                           true ->
                               BucketConfig;
                           false ->
                               ?log_debug("Janitor decided to update vbucket map"),
-                              lists:keyreplace(map, 1, BucketConfig, {map, NewMap})
+                              lists:keyreplace(map, 1, BucketConfig,
+                                               {map, NewAdjustedMap})
                       end,
     {NewBucketConfig, IgnoredVBuckets}.
 
 maybe_adjust_chain_size(Map, BucketConfig) ->
     NumReplicas = ns_bucket:num_replicas(BucketConfig),
     ns_janitor_map_recoverer:align_replicas(Map, NumReplicas).
-
-sanify_chain(Bucket, States, Chain, FutureChain, VBucket) ->
-    NewChain = do_sanify_chain(Bucket, States, Chain, FutureChain, VBucket),
-    %% Fill in any missing replicas and assert that new chain is not longer than
-    %% the original one
-    case NewChain of
-        ignore ->
-            ignore;
-        L when length(L) < length(Chain) ->
-            L ++ lists:duplicate(length(Chain) - length(L), undefined);
-        L when length(L) =:= length(Chain) ->
-            L
-    end.
 
 construct_vbucket_states(VBucket, Chain, States) ->
     NodeStates  = [{N, S} || {N, V, S} <- States, V == VBucket],
@@ -585,16 +573,16 @@ enumerate_chains_test() ->
     BucketConfig1 = [{map, [[a, b, c], [b, c, a]]},
                      {fastForwardMap, [[c, b, a], [c, a, b]]},
                      {num_replicas, 1}],
-    {EnumeratedChains1, _, _} = enumerate_chains(BucketConfig1),
-    [{0, [a, b], [c, b]}, {1, [b, c], [c, a]}] = EnumeratedChains1,
+    {EnumeratedChains1, _} = enumerate_chains(BucketConfig1),
+    [{0, [a, b, c], [c, b, a]}, {1, [b, c, a], [c, a, b]}] = EnumeratedChains1,
 
     BucketConfig2 = lists:keyreplace(num_replicas, 1, BucketConfig1,
                                      {num_replicas, 2}),
-    {EnumeratedChains2, _, _} = enumerate_chains(BucketConfig2),
+    {EnumeratedChains2, _} = enumerate_chains(BucketConfig2),
     [{0, [a, b, c], [c, b, a]}, {1, [b, c, a], [c, a, b]}] = EnumeratedChains2,
 
     BucketConfig3 = lists:keydelete(fastForwardMap, 1, BucketConfig2),
-    {EnumeratedChains3, _, _} = enumerate_chains(BucketConfig3),
+    {EnumeratedChains3, _} = enumerate_chains(BucketConfig3),
     [{0, [a, b, c], []}, {1, [b, c, a], []}] = EnumeratedChains3.
 
 -endif.
