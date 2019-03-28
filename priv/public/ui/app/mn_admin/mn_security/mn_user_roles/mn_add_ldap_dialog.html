@@ -21,7 +21,7 @@
                    mn-autocomplete-off="enforce"
                    id="ldap_hosts"
                    ng-model="addLdapDialogCtl.config.connect.hosts"
-                   placeholder="hostName_1, hostName_2"
+                   placeholder="ldap1.example.com, ldap2.example.com"
                    autofocus
                    ng-focus="sect_1_focus = true">
                 <div
@@ -64,29 +64,48 @@
                 </div>
               </span>
               <span class="width-8">
-                <label for="cert">Certificate</label>
+                <label
+                   for="cert"
+                   ng-disabled="addLdapDialogCtl.config.connect.encryption == 'false'">
+                  Certificate
+                </label>
                 <div class="checkbox-list">
                   <input
                      type="radio"
                      id="ldap-cert-none"
                      ng-model="addLdapDialogCtl.config.connect.cert"
                      name="certValidation"
-                     value="false">
-                  <label for="ldap-cert-none">None</label>
+                     value="false"
+                     ng-disabled="addLdapDialogCtl.config.connect.encryption == 'false'">
+                  <label
+                     for="ldap-cert-none"
+                     ng-disabled="addLdapDialogCtl.config.connect.encryption == 'false'">
+                    None
+                  </label>
                   <input
                      type="radio"
                      id="ldap-cert-server"
                      ng-model="addLdapDialogCtl.config.connect.cert"
                      name="certValidation"
-                     value="serverCert">
-                  <label for="ldap-cert-server">Couchbase</label>
+                     value="serverCert"
+                     ng-disabled="addLdapDialogCtl.config.connect.encryption == 'false'">
+                  <label
+                     for="ldap-cert-server"
+                     ng-disabled="addLdapDialogCtl.config.connect.encryption == 'false'">
+                    Couchbase
+                  </label>
                   <input
                      type="radio"
                      id="ldap-cert-add"
                      ng-model="addLdapDialogCtl.config.connect.cert"
                      name="certValidation"
-                     value="certText">
-                  <label for="ldap-cert-add">Paste Cert</label>
+                     value="certText"
+                     ng-disabled="addLdapDialogCtl.config.connect.encryption == 'false'">
+                  <label
+                     for="ldap-cert-add"
+                     ng-disabled="addLdapDialogCtl.config.connect.encryption == 'false'">
+                    Paste Cert
+                  </label>
                 </div>
                 <div
                    class="error"
@@ -135,7 +154,7 @@
                    mn-autocomplete-off="enforce"
                    id="query_dn"
                    ng-model="addLdapDialogCtl.config.connect.query_dn"
-                   placeholder="ou=users,dc=example,dc=com"
+                   placeholder="uid=admin,ou=users,dc=example,dc=com"
                    ng-disabled="addLdapDialogCtl.config.connect.anon">
                 <div
                    class="error"
@@ -217,7 +236,7 @@
                      ng-model="addLdapDialogCtl.config.userDnMapping"
                      name="userDnMapping"
                      value="query">
-                  <label for="user-dn-mapping-flag-query">LDAP query builder</label>
+                  <label for="user-dn-mapping-flag-query">LDAP Query</label>
                   <input
                      type="radio"
                      id="user-dn-mapping-flag-custom"
@@ -233,7 +252,7 @@
                   <label for="user-dn-mapping-template">Template</label>
                   <input
                      type="text"
-                     placeholder="cn={0},ou=users,dc=example,dc=com"
+                     placeholder="cn=%u,ou=users,dc=example,dc=com"
                      autocorrect="off"
                      spellcheck="false"
                      autocapitalize="off"
@@ -264,7 +283,7 @@
                        mn-autocomplete-off="enforce"
                        id="user-dn-mapping-filter"
                        ng-model="addLdapDialogCtl.config.authentication.user_dn_mapping.filter"
-                       placeholder="(uid={0})">
+                       placeholder="(uid=%u)">
                   </span>
                 </div>
                 <div ng-if="addLdapDialogCtl.config.userDnMapping == 'custom'">
@@ -295,7 +314,7 @@
               <div ng-if="addLdapDialogCtl.showTestUsername" class="formrow margin-left-1-5">
                 <div class="formrow row items-top">
                   <span class="width-6 margin-right-half">
-                    <label for="auth_user">Test Username</label>
+                    <label for="auth_user">Username to Test</label>
                     <input
                        type="text"
                        autocorrect="off"
@@ -380,19 +399,11 @@
                      ng-model="addLdapDialogCtl.config.queryForGroups"
                      name="queryForGroups"
                      value="query">
-                  <label for="for-query-groups-builder">LDAP query builder</label>
-                  <input
-                     type="radio"
-                     id="for-query-groups-custom"
-                     ng-change="addLdapDialogCtl.queryForGroupsChanged()"
-                     ng-model="addLdapDialogCtl.config.queryForGroups"
-                     name="queryForGroups"
-                     value="custom">
-                  <label for="for-query-groups-custom">Custom</label>
+                  <label for="for-query-groups-builder">LDAP Query</label>
                 </div>
               </div>
               <div ng-if="addLdapDialogCtl.config.queryForGroups == 'users_attrs'">
-                <label for="for-groups-user-attributes">User Attributes</label>
+                <label for="for-groups-user-attributes">User Attribute</label>
                 <input
                    type="text"
                    autocorrect="off"
@@ -426,7 +437,7 @@
                      mn-autocomplete-off="enforce"
                      id="for-groups-query-filter"
                      ng-model="addLdapDialogCtl.config.group.groups_query.filter"
-                     placeholder="(uid={0})">
+                     placeholder="(uid=%u)">
                 </span>
               </div>
               <div ng-if="addLdapDialogCtl.config.queryForGroups == 'query'" class="width-4">
@@ -615,11 +626,12 @@
           </p>
           <p>
             Your certificate choices for connecting to your LDAP host are either
-            none, use the certificate already loaded in your Couchbase cluster,
+            none (and no hostname verification will occur), use the certificate
+            already loaded in your Couchbase cluster,
             or choose <b>Paste Cert</b> and paste in your own certificate text.
           </p>
           <p>
-            You may choose <b>Contact LDAP Host Anonymously</b> if your LDAP
+            You may choose <b>Contact LDAP host anonymously</b> if your LDAP
             configuration supports it, but an <b>LDAP DN</b> and valid
             password will be necessary if you choose to authenticate users with
             the query builder below and for any group authorization.
@@ -633,8 +645,8 @@
           </h5>
           <div ng-show="sect_2_focus">
             <p>
-              This section (down to <b>Test User Authentication</b>) lets you map
-              simple usernames (that will be used to log into Couchbase SERVER) to
+              This section lets you map
+              simple usernames (that will be used to log into Couchbase Server) to
               LDAP DNs. You can expand the test section to test your mapping with
               a real user.
             </p>
@@ -647,10 +659,18 @@
           </h5>
           <div ng-show="sect_3_focus">
             <p>
-              This section (down to <b>Test Group Authorization</b>) lets you map
-              simple usernames (that will be used to log into Couchbase SERVER) to
-              LDAP DNs. You can expand the test section to test your mapping with
+              This section lets you build a query so that Couchbase
+              Server can discover the LDAP groups a particular user belongs to
+              (which you can then map to Couchbase Server groups in Security >
+              Users > Groups). You can discover a user's groups with a user attribute
+              or by constructing a query.
+            </p>
+            <p>
+              You can expand the test section to test your query with
               a real user.
+            </p>
+            <p>
+              NOTE: %u – is used to mean username, %D – means LDAP DN of the user
             </p>
           </div>
         </div>
