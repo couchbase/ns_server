@@ -340,35 +340,18 @@ compute_servers_list_cleanup(BucketConfig, FullConfig) ->
             compute_servers_list_cleanup(BucketConfig1, FullConfig)
     end.
 
-enumerate_chains(BucketConfig) ->
-    Map = proplists:get_value(map, BucketConfig, []),
-    true = ([] =/= Map),
-
-    FFMap = case proplists:get_value(fastForwardMap, BucketConfig) of
-                undefined -> [];
-                FFMap0 ->
-                    case FFMap0 =:= [] orelse length(FFMap0) =:= length(Map) of
-                        true ->
-                            FFMap0;
-                        false ->
-                            ?log_warning("fast forward map length doesn't match map length. Ignoring it"),
-                            []
-                    end
-            end,
-    EffectiveFFMap = case FFMap of
-                         [] ->
-                             [[] || _ <- Map];
-                         _ ->
-                             FFMap
-                     end,
-    MapLen = length(Map),
-    EnumeratedChains = lists:zip3(lists:seq(0, MapLen - 1),
-                                  Map,
-                                  EffectiveFFMap),
-    {EnumeratedChains, Map}.
+enumerate_chains(Map, undefined) ->
+    EffectiveFFMap = [[] || _ <- Map],
+    enumerate_chains(Map, EffectiveFFMap);
+enumerate_chains(Map, FastForwardMap) ->
+    lists:zip3(lists:seq(0, length(Map) - 1), Map, FastForwardMap).
 
 compute_vbucket_map_fixup(Bucket, BucketConfig, States) ->
-    {EnumeratedChains, Map} = enumerate_chains(BucketConfig),
+    Map = proplists:get_value(map, BucketConfig, []),
+    true = ([] =/= Map),
+    FFMap = proplists:get_value(fastForwardMap, BucketConfig),
+
+    EnumeratedChains = enumerate_chains(Map, FFMap),
     MapUpdates = [do_sanify_chain(Bucket, States, Chain, FutureChain, VBucket)
                   || {VBucket, Chain, FutureChain} <- EnumeratedChains],
 
@@ -570,19 +553,12 @@ sanify_doesnt_lose_replicas_on_stopped_rebalance_test() ->
                           [a, b], [], 0).
 
 enumerate_chains_test() ->
-    BucketConfig1 = [{map, [[a, b, c], [b, c, a]]},
-                     {fastForwardMap, [[c, b, a], [c, a, b]]},
-                     {num_replicas, 1}],
-    {EnumeratedChains1, _} = enumerate_chains(BucketConfig1),
+    Map = [[a, b, c], [b, c, a]],
+    FFMap = [[c, b, a], [c, a, b]],
+    EnumeratedChains1 = enumerate_chains(Map, FFMap),
     [{0, [a, b, c], [c, b, a]}, {1, [b, c, a], [c, a, b]}] = EnumeratedChains1,
 
-    BucketConfig2 = lists:keyreplace(num_replicas, 1, BucketConfig1,
-                                     {num_replicas, 2}),
-    {EnumeratedChains2, _} = enumerate_chains(BucketConfig2),
-    [{0, [a, b, c], [c, b, a]}, {1, [b, c, a], [c, a, b]}] = EnumeratedChains2,
-
-    BucketConfig3 = lists:keydelete(fastForwardMap, 1, BucketConfig2),
-    {EnumeratedChains3, _} = enumerate_chains(BucketConfig3),
-    [{0, [a, b, c], []}, {1, [b, c, a], []}] = EnumeratedChains3.
+    EnumeratedChains2 = enumerate_chains(Map, undefined),
+    [{0, [a, b, c], []}, {1, [b, c, a], []}] = EnumeratedChains2.
 
 -endif.
