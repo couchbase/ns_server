@@ -305,8 +305,8 @@ handle_join_clean_node(Req) ->
 handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherUser, OtherPswd,
                  Services) ->
     process_flag(trap_exit, true),
-    RV = case ns_cluster:check_host_connectivity(OtherHost) of
-             {ok, MyIP} ->
+    RV = case ns_cluster:check_host_port_connectivity(OtherHost, OtherPort) of
+             {ok, MyIP, AFamily} ->
                  {struct, MyPList} = menelaus_web_node:build_full_node_info(node(), MyIP),
                  HostnamePort =
                     binary_to_list(misc:expect_prop_value(hostname, MyPList)),
@@ -335,20 +335,31 @@ handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherUser, OtherPswd,
                              {SVCPayload, "/controller/addNodeV2"}
                      end,
 
+                 Options = [{connect_options, [AFamily]}],
 
                  RestRV = menelaus_rest:json_request_hilevel(
                             post,
                             {OtherScheme, OtherHost, OtherPort, Endpoint,
                              "application/x-www-form-urlencoded",
                              mochiweb_util:urlencode(Payload)},
-                            {OtherUser, OtherPswd}),
+                            {OtherUser, OtherPswd}, Options),
                  case RestRV of
                      {error, What, _M, {bad_status, 404, Msg}} ->
                          {error, What, <<"Node attempting to join an older cluster. Some of the selected services are not available.">>, {bad_status, 404, Msg}};
                      Other ->
                          Other
                  end;
-             X -> X
+             {error, Reason} ->
+                    M = case ns_error_messages:connection_error_message(
+                               Reason, OtherHost, integer_to_list(OtherPort)) of
+                            undefined -> io:format("~p", [Reason]);
+                            Msg -> Msg
+                        end,
+                    ReasonStr = io_lib:format(
+                                  "Failed to connect to ~p://~s:~p. ~s",
+                                  [OtherScheme, OtherHost, OtherPort, M]),
+                    {error, host_connectivity, iolist_to_binary(ReasonStr),
+                     {error, Reason}}
          end,
 
     case RV of

@@ -52,7 +52,7 @@
 
 -export([add_node_to_group/6,
          engage_cluster/1, complete_join/1,
-         check_host_connectivity/1, change_address/1,
+         check_host_port_connectivity/2, change_address/1,
          enforce_topology_limitation/1,
          rename_marker_path/0,
          sanitize_node_info/1]).
@@ -456,27 +456,52 @@ shun(RemoteNode) ->
             leave()
     end.
 
-check_host_connectivity(OtherHost) ->
-    %% connect to epmd at other side
-    ConnRV = (catch gen_tcp:connect(OtherHost, 4369, [misc:get_net_family(),
-                                                      binary,
-                                                      {packet, 0},
-                                                      {active, false}], 5000)),
-    case ConnRV of
+check_host_port_connectivity(Host, Port, AFamily) ->
+    try gen_tcp:connect(Host, Port, [AFamily, binary, {packet, 0},
+                                     {active, false}], 5000) of
         {ok, Socket} ->
-            %% and determine our ip address
-            {ok, {IpAddr, _}} = inet:sockname(Socket),
-            inet:close(Socket),
-            {ok, inet:ntoa(IpAddr)};
-        _ ->
-            Reason =
-                case ConnRV of
-                    {'EXIT', R} ->
-                        R;
-                    {error, R} ->
-                        R
-                end,
+            try
+                {ok, {IpAddr, _}} = inet:sockname(Socket),
+                {ok, inet:ntoa(IpAddr)}
+            after
+                inet:close(Socket)
+            end;
+        {error, Reason} ->
+            {error, Reason}
+    catch
+        _:R -> {error, R}
+    end.
 
+resolve(Host) ->
+    Res = [{inet:getaddr(Host, AF), AF} || AF <- [inet, inet6]],
+    IPs = [{IP, AF} || {{ok, IP}, AF} <- Res],
+    Errors = [R || {{error, R}, _} <- Res],
+    case IPs of
+        [] -> {error, Errors};
+        _ -> {ok, IPs}
+    end.
+
+check_host_port_connectivity(Host, Port) ->
+    case resolve(Host) of
+        {ok, IPList} ->
+            lists:foldl(
+              fun ({IP, AFamily}, {error, _}) ->
+                      case check_host_port_connectivity(IP, Port, AFamily) of
+                          {ok, MyIP} -> {ok, MyIP, AFamily};
+                          {error, Error} -> {error, Error}
+                      end;
+                  (_, Res) ->
+                      Res
+              end, {error, undefined}, IPList);
+        {error, Errors} ->
+            {error, hd(Errors)}
+    end.
+
+check_epmd_connectivity(OtherHost) ->
+    %% connect to epmd at other side
+    case check_host_port_connectivity(OtherHost, 4369, misc:get_net_family()) of
+        {ok, IP} -> {ok, IP};
+        {error, Reason} ->
             M = case ns_error_messages:connection_error_message(Reason, OtherHost, "4369") of
                     undefined ->
                         list_to_binary(io_lib:format("Failed to reach erlang port mapper "
@@ -485,7 +510,7 @@ check_host_connectivity(OtherHost) ->
                         iolist_to_binary([<<"Failed to reach erlang port mapper. ">>, Msg])
                 end,
 
-            {error, host_connectivity, M, ConnRV}
+            {error, host_connectivity, M, {error, Reason}}
     end.
 
 -spec do_change_address(string(), boolean()) -> ok | not_renamed |
@@ -572,7 +597,7 @@ should_change_address() ->
         not dist_manager:using_user_supplied_address().
 
 do_add_node_allowed(Scheme, RemoteAddr, RestPort, Auth, GroupUUID, Services) ->
-    case check_host_connectivity(RemoteAddr) of
+    case check_epmd_connectivity(RemoteAddr) of
         {ok, MyIP} ->
             R = case should_change_address() of
                     true ->
@@ -1032,7 +1057,7 @@ do_engage_cluster_inner(NodeKVList, Services) ->
     OtpNode = expect_json_property_atom(<<"otpNode">>, NodeKVList),
     MaybeTargetHost = proplists:get_value(<<"requestedTargetNodeHostname">>, NodeKVList),
     {_, Host} = misc:node_name_host(OtpNode),
-    case check_host_connectivity(Host) of
+    case check_epmd_connectivity(Host) of
         {ok, MyIP} ->
             {Address, UserSupplied} =
                 case MaybeTargetHost of
