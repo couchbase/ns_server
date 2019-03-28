@@ -13,13 +13,33 @@
     vm.isEditingMode = !!user;
     vm.isLdapEnabled = isLdapEnabled;
     vm.selectedRoles = {};
+    vm.selectedGroupsRoles = {}
+    vm.disabledGroupsRoles = {};
     vm.selectedGroups = {};
 
     vm.focusError = false;
     vm.getGroupTitle = getGroupTitle;
+    vm.onGroupChanged = onGroupChanged;
     vm.selectedPanel = "roles";
 
     activate();
+
+    function selectRoles(flag) {
+      return function (role) {
+        var id = mnUserRolesService.getRoleUIID(role);
+        vm.selectedGroupsRoles[id] = flag;
+        vm.disabledGroupsRoles[id] = flag;
+        vm.selectedRoles[id] = flag;
+      }
+    }
+
+    function onGroupChanged(group) {
+      if (vm.selectedGroups[group.id]) {
+        group.roles.forEach(selectRoles(true));
+      } else {
+        group.roles.forEach(selectRoles(false));
+      }
+    }
 
     function getGroupTitle(roles) {
       return roles && roles.map(function (v) {
@@ -39,6 +59,11 @@
             acc[group] = true;
             return acc;
           }, {});
+          vm.user.groups.forEach(function (groupId) {
+            onGroupChanged(vm.groups.find(function (group) {
+              return group.id == groupId;
+            }));
+          });
         }
       });
     }

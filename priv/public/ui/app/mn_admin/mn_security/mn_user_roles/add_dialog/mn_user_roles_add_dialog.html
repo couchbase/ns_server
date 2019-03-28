@@ -128,6 +128,7 @@
                  ng-class="[{'has-selection': userRolesAddDialogCtl.selectedGroups[group.id]}]">
                 <input
                    type="checkbox"
+                   ng-change="userRolesAddDialogCtl.onGroupChanged(group)"
                    id="for-{{::group.id}}"
                    ng-model="userRolesAddDialogCtl.selectedGroups[group.id]">
                 <label
@@ -140,6 +141,8 @@
           </div>
           <mn-user-roles-list
              ng-show="userRolesAddDialogCtl.selectedPanel == 'roles'"
+             disabled-groups-roles="userRolesAddDialogCtl.disabledGroupsRoles"
+             selected-groups-roles="userRolesAddDialogCtl.selectedGroupsRoles"
              roles-to-enable="userRolesAddDialogCtl.user.roles"
              selected-roles="userRolesAddDialogCtl.selectedRoles"></mn-user-roles-list>
         </fieldset>

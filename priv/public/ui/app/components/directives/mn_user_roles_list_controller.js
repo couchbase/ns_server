@@ -14,7 +14,9 @@
       restrict: 'E',
       scope: {
         rolesToEnable: "=?",
-        selectedRoles: "="
+        selectedRoles: "=",
+        disabledGroupsRoles: "=?",
+        selectedGroupsRoles: "=?"
       },
       templateUrl: 'app/components/directives/mn_user_roles_list.html',
       controller: mnUserRolesListController,
@@ -58,21 +60,21 @@
        }
 
        function onCheckChange(role, id) {
-         var selectedRoles;
+         var selectedRoles = {};
          if (vm.selectedRoles[id]) {
            if (role.role === "admin") {
-             selectedRoles = {};
              selectedRoles[id] = true;
-             vm.selectedRoles = selectedRoles;
            } else if (role.bucket_name === "*") {
              vm.allRoles.forEach(function (item) {
                if (item.bucket_name !== undefined &&
                    item.bucket_name !== "*" &&
                    item.role === role.role) {
-                 vm.selectedRoles[vm.getUIID(item)] = false;
+                 selectedRoles[vm.getUIID(item)] = false;
                }
              });
            }
+           Object.assign(selectedRoles, vm.selectedGroupsRoles);
+           vm.selectedRoles = selectedRoles;
          }
          reviewSelectedWrappers();
        }
@@ -99,15 +101,10 @@
        }
 
        function isRoleDisabled(role) {
-         return (
-           role.role !== 'admin' &&
-             vm.selectedRoles[
-               vm.getUIID({role: 'admin'})
-             ]) || (
-               role.bucket_name !== '*' &&
-                 vm.selectedRoles[
-                   vm.getUIID({role: role.role, bucket_name: '*'})
-                 ]);
+         return (role.role !== 'admin' && vm.selectedRoles[vm.getUIID({role: 'admin'})]) ||
+           (role.bucket_name !== '*' &&
+            vm.selectedRoles[vm.getUIID({role: role.role, bucket_name: '*'})]) ||
+           (vm.disabledGroupsRoles && vm.disabledGroupsRoles[vm.getUIID(role)])
        }
 
        function toggleWrappers(id, value) {
