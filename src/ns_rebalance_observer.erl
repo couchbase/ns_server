@@ -111,8 +111,8 @@ submit_master_event(Event) ->
 
 is_interesting_master_event({bucket_rebalance_started, _Bucket, _Pid}) ->
     fun handle_bucket_rebalance_started/2;
-is_interesting_master_event({set_ff_map, _BucketName, _FFMap}) ->
-    fun handle_set_ff_map/2;
+is_interesting_master_event({planned_moves, _BucketName, _MovesTuple}) ->
+    fun handle_planned_moves/2;
 is_interesting_master_event({vbucket_move_start, _Pid, _BucketName, _Node, _VBucketId, _, _}) ->
     fun handle_vbucket_move_start/2;
 is_interesting_master_event({vbucket_move_done, _BucketName, _VBucketId}) ->
@@ -257,28 +257,21 @@ handle_cast(Req, _State) ->
     ?log_error("Got unknown cast: ~p", [Req]),
     erlang:error({unknown_cast, Req}).
 
-initiate_bucket_rebalance(BucketName, _FFMap, OldState) when OldState#state.bucket =:= BucketName ->
+initiate_bucket_rebalance(BucketName, _, OldState) when OldState#state.bucket =:= BucketName ->
     OldState;
-initiate_bucket_rebalance(BucketName, FFMap, OldState) ->
+initiate_bucket_rebalance(BucketName, {Moves, UndefinedMoves}, OldState) ->
     {ok, BucketConfig} = ns_bucket:get_bucket(BucketName),
-    Map = proplists:get_value(map, BucketConfig),
-    VBCount = length(Map),
-    Diff = [Triple
-            || {_, [MasterNode|_] = ChainBefore, ChainAfter} = Triple <- lists:zip3(lists:seq(0, VBCount-1),
-                                                                                    Map,
-                                                                                    FFMap),
-               MasterNode =/= undefined,
-               ChainBefore =/= ChainAfter],
-    BuildDestinations0 = [{MasterNode, VB} || {VB, [MasterNode|_], _ChainAfter} <- Diff],
-    BuildDestinations1 = [{N, VB} || {VB, [MasterNode|_], ChainAfter} <- Diff,
+    dcp = ns_bucket:replication_type(BucketConfig),
+
+    BuildDestinations0 = [{MasterNode, VB}
+                          || {VB, [MasterNode|_], _ChainAfter, _} <- Moves],
+    BuildDestinations1 = [{N, VB} || {VB, [MasterNode|_], ChainAfter, _} <- Moves,
                                      N <- ChainAfter, N =/= undefined, N =/= MasterNode],
 
     BuildDestinations =
         %% the following groups vbuckets to per node. [{a, 1}, {a, 2}, {b, 3}] => [{a, [1,2]}, {b, [3]}]
         keygroup_sorted(lists:merge(lists:sort(BuildDestinations0),
                                     lists:sort(BuildDestinations1))),
-
-    dcp = ns_bucket:replication_type(BucketConfig),
 
     SomeEstimates0 = misc:parallel_map(
                        fun ({Node, VBs}) ->
@@ -295,7 +288,7 @@ initiate_bucket_rebalance(BucketName, FFMap, OldState) ->
 
     ?log_debug("Initial estimates:~n~p", [SomeEstimates]),
 
-    Moves =
+    BuiltMoves =
         [begin
              {_, {MasterEstimate, MasterChkItems}} = lists:keyfind({MasterNode, VB}, 1, SomeEstimates),
              RBStats =
@@ -322,10 +315,16 @@ initiate_bucket_rebalance(BucketName, FFMap, OldState) ->
              {VB, #vbucket_info{before_chain = ChainBefore,
                                 after_chain = ChainAfter,
                                 stats = RBStats}}
-         end || {VB, [MasterNode|_] = ChainBefore, ChainAfter} <- Diff],
+         end || {VB, [MasterNode|_] = ChainBefore, ChainAfter, _} <- Moves],
 
-    ?log_debug("Moves:~n~p", [Moves]),
-    TmpState = update_all_vb_info(OldState, BucketName, dict:from_list(Moves)),
+    BuiltUndefinedMoves = [{VB, #vbucket_info{before_chain = ChainBefore,
+                                              after_chain = ChainAfter,
+                                              stats = []}}
+                           || {VB, ChainBefore, ChainAfter, _} <- UndefinedMoves],
+
+    AllMoves = BuiltMoves ++ BuiltUndefinedMoves,
+    ?log_debug("Moves:~n~p", [AllMoves]),
+    TmpState = update_all_vb_info(OldState, BucketName, dict:from_list(AllMoves)),
     TmpState#state{bucket = BucketName}.
 
 handle_rebalance_stage_started({TS, rebalance_stage_started, Stage, Nodes},
@@ -351,8 +350,8 @@ handle_bucket_rebalance_started({_, bucket_rebalance_started, _BucketName, _Pid}
     NewState = State#state{bucket_number=Number + 1},
     {noreply, NewState}.
 
-handle_set_ff_map({_, set_ff_map, BucketName, Map}, State) ->
-    {noreply, initiate_bucket_rebalance(BucketName, Map, State)}.
+handle_planned_moves({_, planned_moves, BucketName, MovesTuple}, State) ->
+    {noreply, initiate_bucket_rebalance(BucketName, MovesTuple, State)}.
 
 handle_vbucket_move_start({TS, vbucket_move_start, _Pid, BucketName,
                            _Node, VBucketId, _, _},
@@ -417,6 +416,7 @@ docs_left_updater_loop(Parent) ->
     end,
     [update_docs_left_for_move(Parent, BucketName, VB, VBInfo)
      || {VB, VBInfo} <- Moves,
+        hd(VBInfo#vbucket_info.before_chain) =/= undefined,
         VBInfo#vbucket_info.move#stat_info.start_time =/= false,
         VBInfo#vbucket_info.move#stat_info.end_time =:= false],
     receive
@@ -575,7 +575,7 @@ moves_stats(Moves) ->
     dict:fold(
       fun (_, #vbucket_info{stats=Stats,
                             before_chain=[OldMaster|_]}, Acc) ->
-              true = (OldMaster =/= undefined),
+              true = (OldMaster =/= undefined orelse Stats =:= []),
 
               lists:foldl(
                 fun (#replica_building_stats{node=DstNode,
@@ -814,14 +814,20 @@ construct_vbucket_info_json(Id, #vbucket_info{before_chain = BC,
                                               backfill = Backfill,
                                               takeover = Takeover,
                                               persistence = Persistence}) ->
+    StatsJson = case RBS of
+                    [] ->
+                        [];
+                    _ ->
+                        [{stats, {[construct_replica_building_stats_json(X)
+                                   || X <- RBS]}}]
+                end,
     {[{id, Id},
       {beforeChain, BC},
       {afterChain, AC},
-      {stats, {[construct_replica_building_stats_json(X) || X <- RBS]}},
       {move, construct_stat_info_json(Move)},
       {backfill, construct_stat_info_json(Backfill)},
       {takeover, construct_stat_info_json(Takeover)},
-      {persistence, construct_stat_info_json(Persistence)}]}.
+      {persistence, construct_stat_info_json(Persistence)}] ++ StatsJson}.
 
 construct_vbucket_level_info_json(VBLevelInfo, Options) ->
     case dict:is_empty(VBLevelInfo#vbucket_level_info.vbucket_info) of

@@ -50,6 +50,8 @@ cleanup_list_del(Pid) ->
 %% replication update will still work properly.
 mover(Parent, Bucket,
       VBucket, [undefined | _] = OldChain, [NewNode | _] = NewChain, Quirks) ->
+    master_activity_events:note_vbucket_mover(self(), Bucket, undefined,
+                                              VBucket, OldChain, NewChain),
     misc:try_with_maybe_ignorant_after(
       fun () ->
               process_flag(trap_exit, true),

@@ -110,6 +110,7 @@
 -export([prepare/7,
          is_done/1,
          choose_action/1,
+         get_moves/1,
          extract_progress/1,
          note_backfill_done/2,
          note_move_completed/2,
@@ -223,6 +224,10 @@ prepare(CurrentMap, TargetMap, Quirks,
     %% InfoLogger("State:~n~p", [State]),
 
     State.
+
+get_moves(#state{moves_left = Moves,
+                 moves_from_undefineds = UndefinedMoves}) ->
+    {Moves, UndefinedMoves}.
 
 %% @doc true iff we're done. NOTE: is_done is only valid if
 %% choose_action returned empty actions list

@@ -126,7 +126,6 @@ note_became_master() ->
 note_set_ff_map(BucketName, undefined, _OldMap) ->
     submit_cast({set_ff_map, BucketName, undefined});
 note_set_ff_map(BucketName, NewMap, OldMap) ->
-    ns_rebalance_observer:submit_master_event({set_ff_map, BucketName, NewMap}),
     Work = fun () ->
                    {set_ff_map, BucketName,
                     misc:compute_map_diff(NewMap, OldMap)}
