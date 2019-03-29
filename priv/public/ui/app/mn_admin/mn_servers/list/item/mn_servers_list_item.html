@@ -29,7 +29,7 @@
         ---
       </span>
       <span ng-show="serversItemCtl.getCpuUsageConf.exist">
-        {{serversItemCtl.getCpuUsageConf.value | mnTruncateTo3Digits}}%
+        {{serversItemCtl.getCpuUsageConf.value | number:1}}%
       </span>
     </span>
     <span class="cbui-table-cell flex-grow-half flex-basis-2 resp-hide-sml">
@@ -37,7 +37,7 @@
         ---
       </span>
       <span ng-show="serversItemCtl.getRamUsageConf.exist">
-        {{serversItemCtl.getRamUsageConf.value | mnTruncateTo3Digits}}%
+        {{serversItemCtl.getRamUsageConf.value | number:1}}%
       </span>
     </span>
     <span class="cbui-table-cell flex-grow-half flex-basis-2 resp-hide-med">
@@ -45,7 +45,7 @@
         ---
       </span>
       <span ng-show="serversItemCtl.getSwapUsageConf.exist">
-        {{serversItemCtl.getSwapUsageConf.value | mnTruncateTo3Digits}}%
+        {{serversItemCtl.getSwapUsageConf.value | number:1}}%
       </span>
     </span>
     <span class="cbui-table-cell resp-hide-med">
