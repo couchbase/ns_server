@@ -151,8 +151,8 @@ verify_otp_connectivity_connection_error(Reason, OtpNode, Host, Port) ->
                  undefined -> [];
                  X -> [" ", X]
              end,
-    list_to_binary(io_lib:format("Failed to reach otp port ~p for node ~p.~s"
-                                 " This can be firewall problem.", [Port, Detail, OtpNode])).
+    list_to_binary(io_lib:format("Failed to reach otp port ~p for node ~p.~s",
+                                 [Port, OtpNode, Detail])).
 
 unsupported_services_error(AvailableServices, RequestedServices) ->
     list_to_binary(io_lib:format("Node doesn't support requested services: ~s. Supported services: ~s",
