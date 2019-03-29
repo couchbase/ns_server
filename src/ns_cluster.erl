@@ -597,7 +597,8 @@ should_change_address() ->
         not dist_manager:using_user_supplied_address().
 
 do_add_node_allowed(Scheme, RemoteAddr, RestPort, Auth, GroupUUID, Services) ->
-    case check_epmd_connectivity(RemoteAddr) of
+    case check_host_port_connectivity(RemoteAddr, RestPort,
+                                      misc:get_net_family()) of
         {ok, MyIP} ->
             R = case should_change_address() of
                     true ->
@@ -624,7 +625,17 @@ do_add_node_allowed(Scheme, RemoteAddr, RestPort, Auth, GroupUUID, Services) ->
                                         [Error]),
                     {error, rename_failed, iolist_to_binary(Msg), Nested}
             end;
-        X -> X
+        {error, Reason} ->
+            M = case ns_error_messages:connection_error_message(
+                       Reason, RemoteAddr, integer_to_list(RestPort)) of
+                    undefined -> io:format("~p", [Reason]);
+                    Msg -> Msg
+                end,
+            ReasonStr = io_lib:format(
+                          "Failed to connect to ~p://~s:~p. ~s",
+                          [Scheme, RemoteAddr, RestPort, M]),
+            {error, host_connectivity, iolist_to_binary(ReasonStr),
+             {error, Reason}}
     end.
 
 do_add_node_with_connectivity(Scheme, RemoteAddr, RestPort, Auth, GroupUUID,
