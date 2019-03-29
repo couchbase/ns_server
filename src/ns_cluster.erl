@@ -502,22 +502,6 @@ check_host_port_connectivity(Host, Port) ->
             {error, hd(Errors)}
     end.
 
-check_epmd_connectivity(OtherHost) ->
-    %% connect to epmd at other side
-    case check_host_port_connectivity(OtherHost, 4369, misc:get_net_family()) of
-        {ok, IP} -> {ok, IP};
-        {error, Reason} ->
-            M = case ns_error_messages:connection_error_message(Reason, OtherHost, "4369") of
-                    undefined ->
-                        list_to_binary(io_lib:format("Failed to reach erlang port mapper "
-                                                     "at node ~p. Error: ~p", [OtherHost, Reason]));
-                    Msg ->
-                        iolist_to_binary([<<"Failed to reach erlang port mapper. ">>, Msg])
-                end,
-
-            {error, host_connectivity, M, {error, Reason}}
-    end.
-
 -spec do_change_address(string(), boolean()) -> ok | not_renamed |
                                                 {address_save_failed, _} | not_self_started.
 do_change_address(NewAddr, UserSupplied) ->
@@ -754,17 +738,13 @@ verify_otp_connectivity(OtpNode) ->
              ns_error_messages:verify_otp_connectivity_port_error(OtpNode, Port),
              {connect_node, OtpNode, Port}};
         true ->
-            case gen_tcp:connect(Host, Port,
-                                 [misc:get_net_family(), binary,
-                                  {packet, 0}, {active, false}],
-                                 5000) of
-                {ok, Socket} ->
-                    inet:close(Socket),
-                    ok;
-                {error, Reason} = X ->
+            AFamily = misc:get_net_family(),
+            case check_host_port_connectivity(Host, Port, AFamily) of
+                {ok, IP} -> {ok, IP};
+                {error, Reason} ->
                     {error, connect_node,
                      ns_error_messages:verify_otp_connectivity_connection_error(Reason, OtpNode, Host, Port),
-                     X}
+                     {error, Reason}}
             end
     end.
 
@@ -772,7 +752,7 @@ do_add_node_engaged(NodeKVList, Auth, GroupUUID, Services, Scheme) ->
     OtpNode = expect_json_property_atom(<<"otpNode">>, NodeKVList),
     RV = verify_otp_connectivity(OtpNode),
     case RV of
-        ok ->
+        {ok, _} ->
             case check_can_add_node(NodeKVList) of
                 ok ->
                     %% TODO: only add services if possible
@@ -1066,8 +1046,7 @@ unsupported_services_error(Supported, Requested) ->
 do_engage_cluster_inner(NodeKVList, Services) ->
     OtpNode = expect_json_property_atom(<<"otpNode">>, NodeKVList),
     MaybeTargetHost = proplists:get_value(<<"requestedTargetNodeHostname">>, NodeKVList),
-    {_, Host} = misc:node_name_host(OtpNode),
-    case check_epmd_connectivity(Host) of
+    case verify_otp_connectivity(OtpNode) of
         {ok, MyIP} ->
             {Address, UserSupplied} =
                 case MaybeTargetHost of
