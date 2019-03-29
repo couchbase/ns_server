@@ -87,11 +87,16 @@ add_node_to_group(Scheme, RemoteAddr, RestPort, Auth, GroupUUID, Services) ->
 engage_cluster(NodeKVList) ->
     MyNode = node(),
     RawOtpNode = proplists:get_value(<<"otpNode">>, NodeKVList, <<"undefined">>),
-    case binary_to_atom(RawOtpNode, latin1) of
-        MyNode ->
+    OtpNode = binary_to_atom(RawOtpNode, latin1),
+    Joinable = ns_cluster_membership:system_joinable(),
+    if
+        OtpNode =:= MyNode ->
             {error, self_join,
              <<"Joining node to itself is not allowed.">>, {self_join, MyNode}};
-        _ ->
+        not Joinable ->
+            {error, system_not_joinable,
+             <<"Node is already part of cluster.">>, system_not_joinable};
+        true ->
             engage_cluster_not_to_self(NodeKVList)
     end.
 
@@ -940,13 +945,7 @@ node_add_transaction_finish(Node, GroupUUID, Body) ->
 
 do_engage_cluster(NodeKVList) ->
     try
-        case ns_cluster_membership:system_joinable() of
-            false ->
-                {error, system_not_joinable,
-                 <<"Node is already part of cluster.">>, system_not_joinable};
-            true ->
-                do_engage_cluster_check_compatibility(NodeKVList)
-        end
+        do_engage_cluster_check_compatibility(NodeKVList)
     catch
         exit:{unexpected_json, _, _} = Exc ->
             {error, unexpected_json,
