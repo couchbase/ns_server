@@ -55,9 +55,17 @@
         params: params,
         data: pack(data)
       }).then(function (resp) {
-        if (resp.data.errors && resp.data.errors.disabledUsers) {
-          resp.data.errors.disabledUsers =
-            resp.data.errors.disabledUsers.replace(/\/local/gi,"/couchbase");
+        if (resp.data.errors) {
+          if (resp.data.errors.disabledUsers) {
+            resp.data.errors.disabledUsers =
+              resp.data.errors.disabledUsers.replace(/\/local/gi,"/couchbase");
+          }
+          if (resp.data.errors.rotateSize) {
+            resp.data.errors.rotateSize =
+              resp.data.errors.rotateSize.replace(/\d+/g, function (bytes) {
+                return Number(bytes) / IEC.Mi;
+              });
+          }
         }
         return resp;
       });
