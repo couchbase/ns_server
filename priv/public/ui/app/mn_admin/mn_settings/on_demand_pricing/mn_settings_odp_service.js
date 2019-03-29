@@ -17,48 +17,45 @@
       return $http({
         method: 'GET',
         url: "/settings/license"
+      }).then(function (resp) {
+        return resp.data;
       });
     }
-
+    function saveODPSettings(settings) {
+      return $http({
+        method: 'POST',
+        url: "/settings/license",
+        data: packData(settings)
+      });
+    }
+    function validateODPSettings(settings) {
+      return $http({
+        method: 'POST',
+        url: "/settings/license/validate",
+        data: packData(settings)
+      });
+    }
     //
     // Parameters to save:
     // - reporting_enabled
     // - contract_id
     // - customer_token
     //
-    function saveODPSettings(reporting_enabled, contract_id, customer_token) {
-      var request = {
-          method: 'POST',
-          url: "/settings/license",
-          data: {reporting_enabled: reporting_enabled,
-            contract_id: contract_id,
-            customer_token: customer_token},
-        };
+    function packData(settings) {
+      var rv = {};
+      var fields = ["reporting_enabled"];
       // need to ignore placeholder tokens
-      if (customer_token == "**********")
-        delete request.data.customer_token;
-
-      return $http(request);
+      if (settings.reporting_enabled) {
+        fields.push("contract_id");
+        if (settings.customer_token !== "**********") {
+          fields.push("customer_token");
+        }
+      }
+      fields.forEach(function (field) {
+        rv[field] = settings[field];
+      });
+      return rv;
     }
-
-    //
-    // validate the current settings
-    function validateODPSettings(reporting_enabled, contract_id, customer_token) {
-      var request = {
-          method: 'POST',
-          url: "/settings/license/validate",
-          data: {reporting_enabled: reporting_enabled,
-            contract_id: contract_id,
-            customer_token: customer_token},
-        };
-      // need to ignore placeholder tokens
-      if (customer_token == "**********")
-        delete request.data.customer_token;
-
-      return $http(request);
-    }
-
-
 
   }
 })();
