@@ -21,7 +21,7 @@
     <div class="row width-6 flex-right relative">
       <div class="inside-label">MB</div>
       <input
-         type="number"
+         type="text"
          mn-focus
          ng-disabled="config.services && !config.services.model.kv || (rbac && !rbac.cluster.pools.write)"
          ng-model="config.memoryQuota"
@@ -54,7 +54,7 @@
     <div class="row width-6 flex-right">
       <div class="inside-label">MB</div>
       <input
-         type="number"
+         type="text"
          min="0"
          ng-disabled="config.services && !config.services.model.index || (rbac && !rbac.cluster.pools.write)"
          mn-focus="config.services.model.kv === false"
@@ -113,7 +113,7 @@
     <div class="row width-6 flex-right">
       <div class="inside-label">MB</div>
       <input
-         type="number"
+         type="text"
          mn-focus="config.services.model.kv === false && config.services.model.index  === false"
          ng-disabled="config.services && !config.services.model.fts || (rbac && !rbac.cluster.pools.write)"
          ng-model="config.ftsMemoryQuota"
@@ -145,7 +145,7 @@
     <div class="row width-6 flex-right">
       <div class="inside-label">MB</div>
       <input
-         type="number"
+         type="text"
          mn-focus="config.services.model.kv === false && config.services.model.index  === false"
          ng-disabled="config.services && !config.services.model.cbas || (rbac && !rbac.cluster.pools.write)"
          ng-model="config.cbasMemoryQuota"
@@ -177,7 +177,7 @@
     <div class="row width-6 flex-right">
       <div class="inside-label">MB</div>
       <input
-         type="number"
+         type="text"
          mn-focus="config.services.model.kv === false && config.services.model.index  === false"
          ng-disabled="config.services && !config.services.model.eventing || (rbac && !rbac.cluster.pools.write)"
          ng-model="config.eventingMemoryQuota"
