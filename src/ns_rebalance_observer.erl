@@ -796,9 +796,20 @@ average(_, 0) ->
 average(Total, Count) ->
     Total/Count.
 
+construct_total_stat_info_json(TotalStatInfo) ->
+    construct_total_stat_info_json(TotalStatInfo, undefined).
+
 construct_total_stat_info_json(#total_stat_info{total_time = TT,
-                                                completed_count = CC}) ->
-    {[{averageTime, average(TT, CC)}]}.
+                                                completed_count = CC},
+                               TotalCount) ->
+    CountJson = case TotalCount of
+                    undefined ->
+                        [];
+                    _ ->
+                        [{totalCount, TotalCount},
+                         {remainingCount, TotalCount - CC}]
+                end,
+    {[{averageTime, average(TT, CC)}] ++ CountJson}.
 
 construct_replica_building_stats_json(#replica_building_stats{node = Node,
                                                               docs_total = DT,
@@ -853,7 +864,7 @@ construct_vbucket_level_info_json_inner(
               _ ->
                   []
           end,
-    {[{move, construct_total_stat_info_json(Move)},
+    {[{move, construct_total_stat_info_json(Move, dict:size(AllVBInfo))},
       {backfill, construct_total_stat_info_json(Backfill)},
       {takeover, construct_total_stat_info_json(Takeover)},
       {persistence, construct_total_stat_info_json(Persistence)}]
