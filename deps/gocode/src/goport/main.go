@@ -214,6 +214,7 @@ func (p *port) handleStreamError(event *ProcessStreamError) {
 }
 
 func (p *port) handleProcessExited(event *ProcessExited) error {
+	status := event.Status
 	if p.isShuttingDown() {
 		// respond to the shutdown request
 		err := p.handleOpResult(nil)
@@ -222,10 +223,17 @@ func (p *port) handleProcessExited(event *ProcessExited) error {
 		}
 
 		p.noteOpDone()
+
+		// Since we know that the child process is getting shutdown,
+		// we can set the exit code to 0. Note that this would hide
+		// the actual exit code if the child died before it could
+		// handle our SIGKILL. But this is the best we can do as that
+		// window would always exist.
+		status = 0
 	}
 
 	p.noteProcessExited()
-	p.parentWrite([]byte("exit:"), []byte(strconv.Itoa(event.Status)))
+	p.parentWrite([]byte("exit:"), []byte(strconv.Itoa(status)))
 
 	return nil
 }
