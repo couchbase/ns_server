@@ -316,22 +316,10 @@ generate_map(Map, Nodes, Options) ->
             generate_map_new(Map, Nodes, Options)
     end.
 
-is_compatible_past_map(OptionsPast0, OptionsNow0, NumReplicas) ->
+is_compatible_past_map(OptionsPast0, OptionsNow0) ->
     OptionsPast = lists:keydelete(tags, 1, OptionsPast0),
     OptionsNow = lists:keydelete(tags, 1, OptionsNow0),
-
-    case OptionsNow =:= OptionsPast of
-        true ->
-            true;
-        false ->
-            NonTopologyOptionsPast =
-                lists:keydelete(replication_topology, 1, OptionsPast),
-            NonTopologyOptionsNow =
-                lists:keydelete(replication_topology, 1, OptionsNow),
-
-            NonTopologyOptionsPast =:= NonTopologyOptionsNow andalso
-                NumReplicas =:= 1
-    end.
+    OptionsNow =:= OptionsPast.
 
 generate_map_new(Map, Nodes, Options) ->
     KeepNodes = lists:sort(Nodes),
@@ -555,7 +543,6 @@ find_matching_past_maps(Nodes, Map, MapOptions, History, Options) ->
     do_find_matching_past_maps(NodesSet, Map, Options1, History, Trivial).
 
 do_find_matching_past_maps(NodesSet, Map, Options, History, Trivial) ->
-    NumReplicas = length(hd(Map)) - 1,
     Tags = proplists:get_value(tags, Options),
 
     lists:flatmap(fun ({PastMap, NonHistoryOptions0}) ->
@@ -563,7 +550,7 @@ do_find_matching_past_maps(NodesSet, Map, Options, History, Trivial) ->
                           PastTags = proplists:get_value(tags, NonHistoryOptions),
 
                           Compatible =
-                              is_compatible_past_map(NonHistoryOptions, Options, NumReplicas),
+                              is_compatible_past_map(NonHistoryOptions, Options),
                           case Compatible of
                               true ->
                                   matching_renamings_with_tags(NodesSet, {Map, Tags},

@@ -820,14 +820,15 @@ past_vbucket_maps() ->
 past_vbucket_maps(Config) ->
     case ns_config:search(Config, vbucket_map_history) of
         {value, V} ->
-            lists:map(
-              fun ({Map, Options} = MapOptions) ->
-                      case proplists:get_value(replication_topology, Options) of
-                          undefined ->
-                              {Map, [{replication_topology, chain} | Options]};
-                          _ ->
-                              MapOptions
-                      end
+            lists:filter(
+              fun ({_Map, Options}) ->
+                      %% A a map with no replication_topology is a map
+                      %% generated for chain replication. We stopped using
+                      %% them long ago, but theoretically it's possible to
+                      %% stumble upon one here through a series of
+                      %% upgrades. Don't return it here so the code elsewhere
+                      %% need not know how to handle them.
+                      proplists:is_defined(replication_topology, Options)
               end, V);
         false -> []
     end.
