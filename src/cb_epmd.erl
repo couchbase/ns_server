@@ -56,7 +56,14 @@ port_please(NodeStr, Hostname, Timeout) ->
         %% ports
         {Module, ns_server} when Module == inet_tcp_dist;
                                  Module == inet6_tcp_dist ->
-            erl_epmd:port_please(NodeStr, Hostname, Timeout);
+            case erl_epmd:port_please(NodeStr, Hostname, Timeout) of
+                {port, _, _} = R -> R;
+                _ ->
+                    case port_for_node(Module, NodeStr) of
+                        noport -> noport;
+                        P -> {port, P, 5}
+                    end
+            end;
         {Module, _} ->
             case port_for_node(Module, NodeStr) of
                 noport -> noport;
