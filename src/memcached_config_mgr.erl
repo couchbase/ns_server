@@ -28,7 +28,7 @@
          is_snappy_enabled/0, collections_enabled/2, get_fallback_salt/2,
          get_external_users_push_interval/2, get_ssl_cipher_list/2,
          get_ssl_cipher_order/2, get_external_auth_service/2,
-         is_external_auth_service_enabled/0]).
+         is_external_auth_service_enabled/0, get_afamily_type/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -109,6 +109,8 @@ is_notable_config_key({node, N, memcached_defaults}) ->
 is_notable_config_key({node, N, memcached_config}) ->
     N =:= node();
 is_notable_config_key({node, N, memcached_config_extra}) ->
+    N =:= node();
+is_notable_config_key({node, N, address_family}) ->
     N =:= node();
 is_notable_config_key(memcached) -> true;
 is_notable_config_key(memcached_config_extra) -> true;
@@ -416,3 +418,10 @@ get_ssl_cipher_order([], _Params) ->
     {_, Order} = ns_ssl_services_setup:supported_ciphers(openssl,
                                                          ns_config:latest()),
     Order.
+
+get_afamily_type([AFamily], _Params) ->
+    Required = ns_config:read_key_fast({node, node(), address_family}, inet),
+    case AFamily of
+        Required -> <<"required">>;
+        _ -> <<"optional">>
+    end.

@@ -74,14 +74,6 @@ init_saslauthd_enabled() ->
 
 default() ->
     DataDir = get_data_dir(),
-    InterfacesIPFields = case misc:is_ipv6() of
-                             true ->
-                                 [{ipv4, <<"optional">>},
-                                  {ipv6, <<"required">>}];
-                             false ->
-                                 [{ipv4, <<"required">>},
-                                  {ipv6, <<"optional">>}]
-                         end,
 
     DefaultQuotas = memory_quota:default_quotas([kv, cbas, fts]),
     {_, KvQuota} = lists:keyfind(kv, 1, DefaultQuotas),
@@ -221,22 +213,28 @@ default() ->
          {memcached_config_mgr, omit_missing_mcd_ports,
           [
            {[{host, <<"*">>},
-             {port, port}] ++ InterfacesIPFields},
+             {port, port},
+             {ipv4, {memcached_config_mgr, get_afamily_type, [inet]}},
+             {ipv6, {memcached_config_mgr, get_afamily_type, [inet6]}}]},
 
            {[{host, <<"*">>},
-             {port, dedicated_port}] ++ InterfacesIPFields},
+             {port, dedicated_port},
+             {ipv4, {memcached_config_mgr, get_afamily_type, [inet]}},
+             {ipv6, {memcached_config_mgr, get_afamily_type, [inet6]}}]},
 
            {[{host, <<"*">>},
              {port, ssl_port},
              {ssl, {[{key, list_to_binary(ns_ssl_services_setup:memcached_key_path())},
-                     {cert, list_to_binary(ns_ssl_services_setup:memcached_cert_path())}]}}]
-            ++ InterfacesIPFields},
+                     {cert, list_to_binary(ns_ssl_services_setup:memcached_cert_path())}]}},
+             {ipv4, {memcached_config_mgr, get_afamily_type, [inet]}},
+             {ipv6, {memcached_config_mgr, get_afamily_type, [inet6]}}]},
 
            {[{host, <<"*">>},
              {port, dedicated_ssl_port},
              {ssl, {[{key, list_to_binary(ns_ssl_services_setup:memcached_key_path())},
-                     {cert, list_to_binary(ns_ssl_services_setup:memcached_cert_path())}]}}]
-            ++ InterfacesIPFields}
+                     {cert, list_to_binary(ns_ssl_services_setup:memcached_cert_path())}]}},
+             {ipv4, {memcached_config_mgr, get_afamily_type, [inet]}},
+             {ipv6, {memcached_config_mgr, get_afamily_type, [inet6]}}]}
           ]}},
 
         {ssl_cipher_list, {memcached_config_mgr, get_ssl_cipher_list, []}},
