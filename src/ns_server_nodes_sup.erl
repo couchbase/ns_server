@@ -133,6 +133,7 @@ create_ns_couchdb_spec() ->
          "-hidden",
          "-proto_dist", "cb",
          "-epmd_module", atom_to_list(net_kernel:epmd_module()),
+         "-start_epmd", "false",
          "-run", "child_erlang", "child_start", "ns_couchdb"],
 
     ns_ports_setup:create_erl_node_spec(
