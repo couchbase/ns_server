@@ -1775,8 +1775,10 @@ take_marker(Path) ->
 
 is_free_nodename(ShortName) ->
     ErlEpmd = net_kernel:epmd_module(),
-    {ok, Names} = ErlEpmd:names({127,0,0,1}),
-    not lists:keymember(ShortName, 1, Names).
+    case ErlEpmd:names({127,0,0,1}) of
+        {ok, Names} -> not lists:keymember(ShortName, 1, Names);
+        {error, address} -> true
+    end.
 
 wait_for_nodename(ShortName) ->
     wait_for_nodename(ShortName, 5).
