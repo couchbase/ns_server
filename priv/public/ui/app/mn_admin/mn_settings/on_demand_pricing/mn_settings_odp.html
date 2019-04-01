@@ -16,38 +16,40 @@
     <span class="icon fa-info fa-stack-1x"></span>
   </span>
 </div>
-<div class="formrow">
-  <label>On-Demand Pricing ID</label>
-  <input
-     id="odp_id"
-     type="text"
-     ng-disabled="!settingsODPCtl.odpSettings.reporting_enabled"
-     autocorrect="off"
-     spellcheck="false"
-     autocapitalize="off"
-     maxlength="256"
-     ng-model="settingsODPCtl.odpSettings.contract_id">
-</div>
-<div class="formrow">
-  <label>Authorization Token</label>
-  <input
-     id="odp_token"
-     type="text"
-     ng-disabled="!settingsODPCtl.odpSettings.reporting_enabled"
-     autocorrect="off"
-     spellcheck="false"
-     autocapitalize="off"
-     maxlength="256"
-     ng-model="settingsODPCtl.odpSettings.customer_token">
-</div>
+<div ng-if="settingsODPCtl.odpSettings.reporting_enabled">
+  <div class="formrow">
+    <label>On-Demand Pricing ID</label>
+    <input
+       id="odp_id"
+       type="text"
+       ng-disabled="!settingsODPCtl.odpSettings.reporting_enabled"
+       autocorrect="off"
+       spellcheck="false"
+       autocapitalize="off"
+       maxlength="256"
+       ng-model="settingsODPCtl.odpSettings.contract_id">
+  </div>
+  <div class="formrow">
+    <label>Authorization Token</label>
+    <input
+       id="odp_token"
+       type="text"
+       ng-disabled="!settingsODPCtl.odpSettings.reporting_enabled"
+       autocorrect="off"
+       spellcheck="false"
+       autocapitalize="off"
+       maxlength="256"
+       ng-model="settingsODPCtl.odpSettings.customer_token">
+  </div>
 
-<div ng-show="settingsODPCtl.odpSettings.reporting_enabled">
-  <span class="error" ng-show="settingsODPCtl.errors">
-    <span class="icon fa-warning"></span>
-    {{settingsODPCtl.errors}}
-  </span>
-  <span class="success" ng-show="!settingsODPCtl.errors && settingsODPCtl.valid">
-    <span class="icon fa-check"></span>
-    On-Demand Pricing enabled and updating
-  </span>
+  <div ng-show="settingsODPCtl.odpSettings.reporting_enabled">
+    <span class="error" ng-show="settingsODPCtl.errors">
+      <span class="icon fa-warning"></span>
+      {{settingsODPCtl.errors}}
+    </span>
+    <span class="success" ng-show="!settingsODPCtl.errors && settingsODPCtl.valid">
+      <span class="icon fa-check"></span>
+      On-Demand Pricing enabled and updating
+    </span>
+  </div>
 </div>
