@@ -23,7 +23,7 @@
 
     return mnGsiTable;
 
-    function mnGsiTableController($scope) {
+    function mnGsiTableController($state, $scope, mnStatisticsNewService) {
       var vm = this;
       vm.generateIndexId = generateIndexId;
       vm.hasQueryService = hasQueryService;

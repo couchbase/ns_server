@@ -440,15 +440,15 @@
       return string;
     }
 
-    function subscribeToChartStats(config, chartScope, bucket) {
+    function subscribeToChartStats(config, chartScope, bucket, zoom) {
       var config1 = _.clone(config, true);
       var statID = getStatSourcePath(config1, bucket);
-      config1.bucket = bucket;
+      config1.bucket = config1.bucket || bucket;
+      // config1.zoom = config1.zoom || zoom;
 
       rootScopes[statID] = rootScopes[statID] || $rootScope.$new();
       chartScopes[statID] = chartScopes[statID] || [];
       chartScopes[statID].push(chartScope);
-
       if (!pollers[statID]) {
         pollers[statID] =
           new mnPoller(rootScopes[statID], function (previousResult) {
@@ -465,7 +465,7 @@
           .reloadOnScopeEvent("reloadChartPoller")
           .cycle();
       } else {
-        pollers[statID].reload();
+        !config.preset && pollers[statID].reload();
       }
     }
 
@@ -483,7 +483,7 @@
 
     function doGetStats(chartConfig, previousResult) {
       var reqParams = {
-        zoom: mnStatisticsNewService.export.scenarios.selected.zoom,
+        zoom: chartConfig.zoom || mnStatisticsNewService.export.scenarios.selected.zoom,
         bucket: chartConfig.bucket
       };
       if (chartConfig.specificStat) {

@@ -13,7 +13,8 @@
     'mnElementCrane',
     'ui.bootstrap',
     'mnPromiseHelper',
-    'mnAlertsService'
+    'mnAlertsService',
+    'mnStatisticsNewService'
   ]).controller('mnGsiController', mnGsiController);
 
   function mnGsiController($scope, mnGsiService, mnPoller) {

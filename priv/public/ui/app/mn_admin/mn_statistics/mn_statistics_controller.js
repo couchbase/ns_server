@@ -27,6 +27,7 @@
 
     vm.statisticsService = mnStatisticsNewService.export;
     vm.saveScenarios = mnStatisticsNewService.saveScenarios;
+    vm.bucket = $state.params.scenarioBucket;
 
     vm.hideGroupControls = hideGroupControls;
     vm.onGroupNameBlur = onGroupNameBlur;

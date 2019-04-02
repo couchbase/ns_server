@@ -1,0 +1,47 @@
+<div
+   class="content-box cursor-auto"
+   ng-click="$event.stopPropagation();">
+  <p><strong>Definition</strong><br>{{row.definition}}</p>
+  <p ng-show="row.hosts.length > 1"><strong>Nodes</strong><br>{{mnGsiItemDetailsCtl.hosts}}</p>
+  <button
+     class="outline"
+     ui-sref="app.admin.query.workbench({query: row.definition})">
+    Open in Workbench
+  </button>
+  <span
+     ng-if="mnGsiItemDetailsCtl.hasQueryService() &&
+            rbac.cluster.bucket[row.bucket].n1ql.select.execute">
+    <!-- blank spaces in index name mean replica, can't drop -->
+    <button
+       ng-show="row.index.indexOf(' ') == -1"
+       class="outline"
+       ng-click="mnGsiItemDetailsCtl.dropIndex(row)">Drop</button>
+  </span>
+  <select
+     ng-model="mnGsiItemDetailsCtl.zoom"
+     ng-change="mnGsiItemDetailsCtl.onSelectZoom()">
+    <option value="minute">minute</option>
+    <option value="hour">hour</option>
+    <option value="day">day</option>
+    <option value="week">week</option>
+    <option value="month">month</option>
+  </select>
+  <select
+     ng-if="row.partitions"
+     ng-model="mnGsiItemDetailsCtl.selectedPartition"
+     ng-change="mnGsiItemDetailsCtl.onSelectPartition()">
+    <option ng-repeat="(instId, partition) in row.partitions"
+            value="{{instId}}">{{partition.index}}</option>
+  </select>
+  <div class="row charts">
+    <div
+       ng-repeat="config in mnGsiItemDetailsCtl.charts track by config.id"
+       ng-class="'statistics-' + config.size"
+       mn-statistics-chart
+       bucket="{{row.bucket}}"
+       class="panel"
+       rbac="rbac"
+       config="config"></div>
+  </div>
+  <!-- nodes="statisticsNewCtl.nodes" -->
+</div>

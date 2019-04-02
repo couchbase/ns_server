@@ -63,30 +63,11 @@
         <span ng-show="row.progress">{{row.progress}}%</span>
       </span>
     </div>
-    <div
+    <mn-gsi-item-details
+       row="row"
        class="cbui-tablerow-expanded"
        ng-if="mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row))">
-      <div
-         class="content-box cursor-auto"
-         ng-click="$event.stopPropagation();">
-        <p><strong>Definition</strong><br>{{row.definition}}</p>
-        <p ng-show="row.hosts.length > 1"><strong>Nodes</strong><br>{{row.hosts.join(', ')}}</p>
-        <button
-           class="outline"
-           ui-sref="app.admin.query.workbench({query: row.definition})">
-          Open in Workbench
-        </button>
-        <span
-           ng-if="mnGsiTableCtl.hasQueryService() &&
-                  mnGsiTableCtl.rbac.cluster.bucket[row.bucket].n1ql.select.execute">
-          <!-- blank spaces in index name mean replica, can't drop -->
-          <button
-             ng-show="row.index.indexOf(' ') == -1"
-             class="outline"
-             ng-click="mnGsiTableCtl.dropIndex(row)">Drop</button>
-        </span>
-      </div>
-    </div>
+    </mn-gsi-item-details>
   </section>
   <div ng-if="!listFiltered.length" class="zero-content text-left">no result</div>
 </div>

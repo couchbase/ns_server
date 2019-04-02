@@ -10,9 +10,9 @@
 
   <div class="row flex-left margin-bottom-half relative">
     <span>
-    <div class="simple-select-inside-label">
-      view by
-    </div>
+      <div class="simple-select-inside-label">
+        view by
+      </div>
       <div class="simple-select margin-right-half">
         <select ng-model="viewby" ng-init="viewby = 'viewby_index'">
           <option value="viewby_index">index</option>
@@ -32,7 +32,7 @@
   <div ng-if="gsiCtl.state.indexes.length">
     <div
        ng-if="viewby == 'viewby_node'"
-       ng-repeat="(nodeName, group) in gsiCtl.state.nodes track by nodeName">
+       ng-repeat="(nodeName, group) in gsiCtl.state.byNodes track by nodeName">
       <h4 class="margin-top-1-5">{{nodeName}}</h4>
       <mn-gsi-table
          list="group"
@@ -45,7 +45,7 @@
 
     <div
        ng-if="viewby == 'viewby_bucket'"
-       ng-repeat="(bucketName, group) in gsiCtl.state.groups track by bucketName">
+       ng-repeat="(bucketName, group) in gsiCtl.state.byBucket track by bucketName">
       <h4 class="margin-top-1-5">{{bucketName}}</h4>
       <mn-gsi-table
          list="group"
@@ -58,7 +58,7 @@
 
     <mn-gsi-table
        ng-if="viewby == 'viewby_index'"
-       list="gsiCtl.state.indexes"
+       list="gsiCtl.state.byID"
        rbac="rbac"
        pools="pools"
        filter-field="gsiCtl.filterField">

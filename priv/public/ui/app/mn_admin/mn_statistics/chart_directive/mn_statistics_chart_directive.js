@@ -20,7 +20,8 @@
         config: "=",
         nodes: "=",
         rbac: "=",
-        isModal: "=?"
+        isModal: "=?",
+        bucket: "@"
       },
       controller: controller
     };
@@ -76,9 +77,9 @@
 
       function subscribeToMultiChartData() {
         $scope.$on("$destroy", function () {
-          mnStatisticsNewService.unsubscribeChartStats($scope.config, $scope, $state.params.scenarioBucket);
+          mnStatisticsNewService.unsubscribeChartStats($scope.config, $scope, $scope.bucket);
         });
-        mnStatisticsNewService.subscribeToChartStats($scope.config, $scope, $state.params.scenarioBucket);
+        mnStatisticsNewService.subscribeToChartStats($scope.config, $scope, $scope.bucket);
         $scope.$watch("mnChartStats", onMultiChartDataUpdate);
       }
 
@@ -135,7 +136,7 @@
               }
             },
             yAxis: {
-              axisLabel : "",
+              axisLabel: "",
               showMaxMin: false
             },
             callback: function (chart) {

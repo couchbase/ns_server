@@ -176,6 +176,7 @@
          ng-repeat="config in group.charts track by config.id"
          ng-class="'statistics-' + config.size"
          mn-statistics-chart
+         bucket="{{statisticsNewCtl.bucket}}"
          nodes="statisticsNewCtl.nodes"
          class="panel"
          rbac="rbac"
