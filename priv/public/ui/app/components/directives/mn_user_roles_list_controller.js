@@ -60,22 +60,23 @@
        }
 
        function onCheckChange(role, id) {
-         var selectedRoles = {};
+         var selectedRoles;
          if (vm.selectedRoles[id]) {
            if (role.role === "admin") {
+             selectedRoles = {};
              selectedRoles[id] = true;
+             vm.selectedRoles = selectedRoles;
            } else if (role.bucket_name === "*") {
              vm.allRoles.forEach(function (item) {
                if (item.bucket_name !== undefined &&
                    item.bucket_name !== "*" &&
                    item.role === role.role) {
-                 selectedRoles[vm.getUIID(item)] = false;
+                 vm.selectedRoles[vm.getUIID(item)] = false;
                }
              });
            }
-           Object.assign(selectedRoles, vm.selectedGroupsRoles);
-           vm.selectedRoles = selectedRoles;
          }
+         Object.assign(vm.selectedRoles, vm.selectedGroupsRoles);
          reviewSelectedWrappers();
        }
 
@@ -104,7 +105,7 @@
          return (role.role !== 'admin' && vm.selectedRoles[vm.getUIID({role: 'admin'})]) ||
            (role.bucket_name !== '*' &&
             vm.selectedRoles[vm.getUIID({role: role.role, bucket_name: '*'})]) ||
-           (vm.disabledGroupsRoles && vm.disabledGroupsRoles[vm.getUIID(role)])
+           (vm.disabledGroupsRoles && vm.disabledGroupsRoles[vm.getUIID(role)]);
        }
 
        function toggleWrappers(id, value) {
