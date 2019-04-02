@@ -845,7 +845,7 @@ update_proto_in_dist_config(AFamily, CEncryption) ->
     case cb_dist:update_net_settings_in_config(AFamily, CEncryption) of
         ok ->
             case cb_dist:reload_config() of
-                ok -> ok;
+                {ok, _} -> ok;
                 {error, Error} ->
                     erlang:error({reload_cb_dist_config_error, node(), Error})
             end;
@@ -903,7 +903,7 @@ change_local_dist_proto(ExpectedFamily, ExpectedEncryption) ->
               [ExpectedFamily, ExpectedEncryption]),
     Babysitter = ns_server:get_babysitter_node(),
     case cb_dist:reload_config(Babysitter) of
-        ok -> ok;
+        {ok, _} -> ok;
         {error, Error} ->
             erlang:error({reload_cb_dist_config_error, Babysitter, Error})
     end,
@@ -1017,10 +1017,18 @@ apply_ext_dist_protocols(Protos) ->
     case cb_dist:update_listeners_in_config(Protos) of
         ok ->
             case cb_dist:reload_config() of
-                ok ->
-                    ns_config:set({node, node(), erl_external_dist_protocols},
-                                  Protos),
-                    ok;
+                {ok, ListenProtos} ->
+                    case Protos -- ListenProtos of
+                        [] ->
+                            ns_config:set({node, node(),
+                                           erl_external_dist_protocols},
+                                          Protos),
+                            ok;
+                        NotStarted ->
+                            Msg = io_lib:format("Failed to start listeners: ~p",
+                                                [NotStarted]),
+                            {error, iolist_to_binary(Msg)}
+                    end;
                 {error, Error} ->
                     Msg = io_lib:format("Failed to reload cb_dist config: ~p",
                                         [Error]),

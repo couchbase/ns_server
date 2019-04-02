@@ -84,12 +84,16 @@ start_link() ->
           Creation :: pos_integer()}}.
 listen(Name) when is_atom(Name) ->
     Pid = whereis(?MODULE),
-    Creation = gen_server:call(Pid, {listen, Name}, infinity),
-    Addr = #net_address{address = undefined,
-                        host = undefined,
-                        protocol = ?family,
-                        family = ?proto},
-    {ok, {Pid, Addr, Creation}}.
+    case gen_server:call(Pid, {listen, Name}, infinity) of
+        {ok, Creation} ->
+            Addr = #net_address{address = undefined,
+                                host = undefined,
+                                protocol = ?family,
+                                family = ?proto},
+            {ok, {Pid, Addr, Creation}};
+        {error, _} = Error ->
+            Error
+    end.
 
 -spec accept(LSocket :: any()) -> AcceptorPid :: pid().
 accept(_LSocket) ->
@@ -236,8 +240,9 @@ handle_call({listen, Name}, _From, #s{creation = Creation} = State) ->
     State1 = State#s{name = Name},
 
     Protos = get_protos(State1),
+    Required = [R || R <- get_required_protos(State1), lists:member(R, Protos)],
 
-    info_msg("Initial protos: ~p", [Protos]),
+    info_msg("Initial protos: ~p, required protos: ~p", [Protos, Required]),
 
     Listeners =
         lists:filtermap(
@@ -247,7 +252,16 @@ handle_call({listen, Name}, _From, #s{creation = Creation} = State) ->
                         _Error -> false
                     end
             end, Protos),
-    {reply, Creation, State1#s{listeners = Listeners}};
+    NotStartedRequired = Required -- [M || {M, _} <- Listeners],
+    State2 = State1#s{listeners = Listeners},
+    case NotStartedRequired of
+        [] -> {reply, {ok, Creation}, State2};
+        _ ->
+            error_msg("Failed to start required dist listeners ~p. "
+                      "Net kernel will not start", [NotStartedRequired]),
+            close_listeners(State2),
+            {reply, {error, {not_started, NotStartedRequired}}, State}
+    end;
 
 handle_call({accept, KernelPid}, _From, #s{listeners = Listeners} = State) ->
     Acceptors =
@@ -295,7 +309,8 @@ handle_call(reload_config, _From, #s{listeners = Listeners} = State) ->
                                  State1, ToRemove),
             State3 = lists:foldl(fun (P, S) -> add_proto(P, S) end,
                                  State2, ToAdd),
-            {reply, ok, State3}
+            NewCurrentProtos = [M || {M, _} <- State3#s.listeners],
+            {reply, {ok, NewCurrentProtos}, State3}
     catch
         _:Error -> {reply, {error, Error}, State}
     end;
@@ -560,6 +575,15 @@ get_protos(#s{name = Name, config = Config}) ->
                     conf(local_listeners, Config)
         end,
     lists:usort(Protos).
+
+get_required_protos(#s{name = Name, config = Config}) ->
+    Local = conf(preferred_local_proto, Config),
+    Ext = conf(preferred_external_proto, Config),
+    case {cb_epmd:node_type(atom_to_list(Name)), cb_epmd:is_local_node(Name)} of
+        {executioner, _} -> [];
+        {_, true} -> [Local];
+        {_, false} -> lists:usort([Local, Ext])
+    end.
 
 info_msg(F, A) -> error_logger:info_msg("cb_dist: " ++ F, A).
 error_msg(F, A) -> error_logger:error_msg("cb_dist: " ++ F, A).
