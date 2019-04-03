@@ -31,7 +31,6 @@
          promote_replica/2,
          promote_replicas_for_graceful_failover/2,
          generate_map/4,
-         is_balanced/4,
          is_valid/1,
          random_map/3,
          vbucket_movements/2,
@@ -41,9 +40,6 @@
          enumerate_chains/2,
          align_replicas/2,
          align_chain_replicas/2]).
-
-
--export([counts/1]). % for testing
 
 %% removes RemapNodes from head of vbucket map Map. Returns new map
 promote_replicas(undefined, _RemapNode) ->
@@ -405,76 +401,6 @@ balance(Map, NumReplicas, KeepNodes, Options) ->
     end.
 
 
-%% @doc Test that a map is valid and balanced.
-is_balanced(Map, NumReplicas, Nodes, Options) ->
-    case is_valid(Map) of
-        true ->
-            NumCopies = erlang:min(NumReplicas + 1, length(Nodes)),
-            case lists:all(
-                   fun (Chain) ->
-                           {Active, Inactive} = lists:split(NumCopies, Chain),
-                           lists:all(
-                             fun (Node) -> lists:member(Node, Nodes) end,
-                             Active) andalso
-                               case Inactive of
-                                   [] ->
-                                       true;
-                                   _ ->
-                                       lists:all(fun (N) -> N == undefined end,
-                                                 Inactive)
-                               end
-                   end, Map) of
-                false ->
-                    false;
-                true ->
-                    Histograms = histograms(Map),
-                    case lists:all(
-                           fun (ChainHist) ->
-                                   lists:max(ChainHist) -
-                                       lists:min(ChainHist) =< 2
-                           end, lists:sublist(Histograms, NumCopies)) of
-                        false ->
-                            ?log_debug("Histograms = ~w~n", [Histograms]),
-                            ?log_debug("Counts = ~p~n", [dict:to_list(counts(Map))]),
-                            false;
-                        true ->
-                            Counts = counts(Map),
-                            SlaveCounts = count_slaves(Counts),
-                            NumNodes = length(Nodes),
-                            NumSlaves = erlang:min(
-                                          proplists:get_value(
-                                            max_slaves, Options, NumNodes-1),
-                                          NumNodes-1),
-                            ?log_debug("Counts = ~p~n", [dict:to_list(counts(Map))]),
-                            dict:fold(
-                              fun (_, {Min, Max, SlaveCount}, Acc) ->
-                                      Acc andalso SlaveCount == NumSlaves
-                                          andalso Min /= really_big
-                                          andalso Max > 0
-                                          andalso Max - Min =< 2
-                              end, true, SlaveCounts)
-                    end
-            end
-    end.
-
-%% @private
-%% @doc Return the number of nodes replicating from a given node
-count_slaves(Counts) ->
-    dict:fold(
-      fun ({_, undefined, _}, _, Dict) -> Dict;
-          ({undefined, _, _}, _, Dict) -> Dict;
-          ({Master, _, Turn}, VBucketCount, Dict) ->
-              Key = {Master, Turn},
-              {Min, Max, SlaveCount} = case dict:find(Key, Dict) of
-                                           {ok, Value} -> Value;
-                                           error -> {really_big, 0, 0}
-                                       end,
-              dict:store(Key, {erlang:min(Min, VBucketCount),
-                               erlang:max(Max, VBucketCount),
-                               SlaveCount + 1}, Dict)
-      end, dict:new(), Counts).
-
-
 has_repeats([Chain|Map]) ->
     lists:any(fun ({_, C}) -> C > 1 end,
               misc:uniqc(lists:filter(fun (N) -> N /= undefined end, Chain)))
@@ -689,23 +615,6 @@ chains2(Counts, _, _, _, ChainReversed)  ->
 
 
 %% @private
-%% @doc Count the number of nodes a given node has replicas on.
-counts(Map) ->
-    lists:foldl(fun (Chain, Dict) ->
-                        counts_chain(Chain, undefined, 1, 1, Dict)
-                end, dict:new(), Map).
-
-
-%% @private
-%% @doc Count master/slave relatioships for a single replication chain.
-counts_chain([Node|Chain], PrevNode, Turn, C, Dict) ->
-    Dict1 = dict:update_counter({PrevNode, Node, Turn}, C, Dict),
-    counts_chain(Chain, Node, Turn + 1, C, Dict1);
-counts_chain([], _, _, _, Dict) ->
-    Dict.
-
-
-%% @private
 %% @doc Generalized merge function. Takes a comparison function which
 %% must return -1, 0, or 1 depending on whether the first item is less
 %% than, equal to, or greater than the second element respectively,
@@ -727,14 +636,6 @@ genmerge(Cmp, [H1|T1] = L1, [H2|T2] = L2) ->
     end;
 genmerge(_, L1, L2) ->
     {[], L1, L2}.
-
-
-%% @private
-%% @doc A list of lists of the number of vbuckets on each node at each
-%% turn, but without specifying which nodes.
-histograms(Map) ->
-    [[C || {_, C} <- misc:uniqc(lists:sort(L))]
-     || L <- misc:rotate(Map)].
 
 
 %% @private
@@ -983,6 +884,97 @@ align_replicas_test() ->
         align_replicas([[a, b, c],
                         [d, e],
                         [undefined]], 0).
+
+%% @doc Test that a map is valid and balanced.
+is_balanced(Map, NumReplicas, Nodes, Options) ->
+    case is_valid(Map) of
+        true ->
+            NumCopies = erlang:min(NumReplicas + 1, length(Nodes)),
+            case lists:all(
+                   fun (Chain) ->
+                           {Active, Inactive} = lists:split(NumCopies, Chain),
+                           lists:all(
+                             fun (Node) -> lists:member(Node, Nodes) end,
+                             Active) andalso
+                               case Inactive of
+                                   [] ->
+                                       true;
+                                   _ ->
+                                       lists:all(fun (N) -> N == undefined end,
+                                                 Inactive)
+                               end
+                   end, Map) of
+                false ->
+                    false;
+                true ->
+                    Histograms = histograms(Map),
+                    case lists:all(
+                           fun (ChainHist) ->
+                                   lists:max(ChainHist) -
+                                       lists:min(ChainHist) =< 2
+                           end, lists:sublist(Histograms, NumCopies)) of
+                        false ->
+                            ?log_debug("Histograms = ~w~n", [Histograms]),
+                            ?log_debug("Counts = ~p~n", [dict:to_list(counts(Map))]),
+                            false;
+                        true ->
+                            Counts = counts(Map),
+                            SlaveCounts = count_slaves(Counts),
+                            NumNodes = length(Nodes),
+                            NumSlaves = erlang:min(
+                                          proplists:get_value(
+                                            max_slaves, Options, NumNodes-1),
+                                          NumNodes-1),
+                            ?log_debug("Counts = ~p~n", [dict:to_list(counts(Map))]),
+                            dict:fold(
+                              fun (_, {Min, Max, SlaveCount}, Acc) ->
+                                      Acc andalso SlaveCount == NumSlaves
+                                          andalso Min /= really_big
+                                          andalso Max > 0
+                                          andalso Max - Min =< 2
+                              end, true, SlaveCounts)
+                    end
+            end
+    end.
+
+%% @private
+%% @doc A list of lists of the number of vbuckets on each node at each
+%% turn, but without specifying which nodes.
+histograms(Map) ->
+    [[C || {_, C} <- misc:uniqc(lists:sort(L))]
+     || L <- misc:rotate(Map)].
+
+%% @private
+%% @doc Count the number of nodes a given node has replicas on.
+counts(Map) ->
+    lists:foldl(fun (Chain, Dict) ->
+                        counts_chain(Chain, undefined, 1, 1, Dict)
+                end, dict:new(), Map).
+
+%% @private
+%% @doc Count master/slave relatioships for a single replication chain.
+counts_chain([Node|Chain], PrevNode, Turn, C, Dict) ->
+    Dict1 = dict:update_counter({PrevNode, Node, Turn}, C, Dict),
+    counts_chain(Chain, Node, Turn + 1, C, Dict1);
+counts_chain([], _, _, _, Dict) ->
+    Dict.
+
+%% @private
+%% @doc Return the number of nodes replicating from a given node
+count_slaves(Counts) ->
+    dict:fold(
+      fun ({_, undefined, _}, _, Dict) -> Dict;
+          ({undefined, _, _}, _, Dict) -> Dict;
+          ({Master, _, Turn}, VBucketCount, Dict) ->
+              Key = {Master, Turn},
+              {Min, Max, SlaveCount} = case dict:find(Key, Dict) of
+                                           {ok, Value} -> Value;
+                                           error -> {really_big, 0, 0}
+                                       end,
+              dict:store(Key, {erlang:min(Min, VBucketCount),
+                               erlang:max(Max, VBucketCount),
+                               SlaveCount + 1}, Dict)
+      end, dict:new(), Counts).
 
 balance_test_() ->
     MapSizes = [1,2,1024,4096],
