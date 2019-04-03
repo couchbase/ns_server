@@ -486,11 +486,14 @@ build_response_for_specific_stat(BucketName, StatName, Params, LocalAddr) ->
         parse_stats_params(Params),
 
     {NodesSamples, Nodes} =
-        get_samples_for_system_or_bucket_stat(BucketName, StatName, ClientTStamp, Window),
+        get_samples_for_system_or_bucket_stat(BucketName, StatName,
+                                              ClientTStamp, Window),
 
     Config = ns_config:get(),
-    Hostnames = [list_to_binary(menelaus_web_node:build_node_hostname(Config, N, LocalAddr)) ||
-                    N <- Nodes],
+    Hostnames =
+        [list_to_binary(menelaus_web_node:build_node_hostname(Config, N,
+                                                              LocalAddr)) ||
+            N <- Nodes],
 
     Timestamps = [TS || {TS, _} <- hd(NodesSamples)],
     MainValues = [VS || {_, VS} <- hd(NodesSamples)],
@@ -501,6 +504,8 @@ build_response_for_specific_stat(BucketName, StatName, Params, LocalAddr) ->
                             Dict = orddict:from_list(Samples),
                             [dict_safe_fetch(T, Dict, 0) || T <- Timestamps]
                     end, tl(NodesSamples)),
+
+    AllValues = [MainValues | AllignedRestValues],
     {struct, [{samplesCount, Count},
               {isPersistent, is_persistent(BucketName)},
               {lastTStamp, case Timestamps of
@@ -512,7 +517,7 @@ build_response_for_specific_stat(BucketName, StatName, Params, LocalAddr) ->
               {nodeStats, {struct, lists:zipwith(fun (H, VS) ->
                                                          {H, VS}
                                                  end,
-                                                 Hostnames, [MainValues | AllignedRestValues])}}]}.
+                                                 Hostnames, AllValues)}}]}.
 
 %% ops SUM(cmd_get, cmd_set,
 %%         incr_misses, incr_hits,
