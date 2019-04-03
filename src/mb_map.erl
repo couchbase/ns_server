@@ -35,7 +35,6 @@
          is_valid/1,
          random_map/3,
          vbucket_movements/2,
-         run_rebalance_counts_experiment/0,
          find_matching_past_maps/4,
          find_matching_past_maps/5,
          is_trivially_compatible_past_map/5,
@@ -945,110 +944,6 @@ do_collect_vbmap_output(Port, Output) ->
 decode_vbmap_status(0) -> ok;
 decode_vbmap_status(1) -> no_solution;
 decode_vbmap_status(_) -> error.
-
-
-simple_movements(MapFrom, MapTo) ->
-    lists:sum([length(lists:usort(ChainTo -- ChainFrom) -- [undefined])
-               || {ChainFrom, ChainTo} <- lists:zip(MapFrom, MapTo)]).
-
-rebalance_count_experiment(From, To) when From =:= To ->
-    0;
-rebalance_count_experiment(From, To) ->
-    NodesBefore = testnodes(From),
-    NodesAfter = testnodes(To),
-    NumReplicas = 1,
-    Initial = lists:duplicate(1024, lists:duplicate(NumReplicas + 1, undefined)),
-    BeforeMap = generate_map(Initial, NumReplicas, NodesBefore, [{max_slaves, 10}]),
-    AfterMap = generate_map(BeforeMap, NumReplicas,  NodesAfter, [{max_slaves, 10}]),
-    [MinTF, MaxTF] = lists:sort([To, From]),
-    Minimal = 1024 * 2 / MaxTF * (MaxTF - MinTF),
-    IsBalancedS = is_balanced_sort_of_strongly(AfterMap, NumReplicas, NodesAfter, [{max_slaves, 10}]),
-    IsBalanced = is_balanced(AfterMap, NumReplicas, NodesAfter, [{max_slaves, 10}]),
-    io:format("~p -> ~p: ~p, min: ~p ~p ~p~n", [From, To, simple_movements(BeforeMap, AfterMap), Minimal, IsBalancedS, IsBalanced]),
-    ok.
-
-%% That's entry point. Run like this:
-%% erl `find . -name ebin -type d | sed 's/^/-pa /g'` -run mb_map run_rebalance_counts_experiment -noshell | cat
-run_rebalance_counts_experiment() ->
-    LogLevel = error,
-    {ok, _Pid} = ale_sup:start_link(),
-
-    ok = ale:start_sink(stderr, ale_stderr_sink, []),
-
-    lists:foreach(
-      fun (Logger) ->
-              ok = ale:start_logger(Logger, LogLevel),
-              ok = ale:add_sink(Logger, stderr)
-      end,
-      ?LOGGERS),
-
-    %% begin
-    %%     From = 73,
-    %%     To = 75,
-    %%     NodesBefore = testnodes(From),
-    %%     NodesAfter = testnodes(To),
-    %%     Initial = lists:duplicate(1024, lists:duplicate(2, undefined)),
-    %%     BeforeMap = generate_map(Initial, NodesBefore, [{max_slaves, 10}]),
-    %%     AfterMap = generate_map(BeforeMap, NodesAfter, [{max_slaves, 10}]),
-    %%     io:format("~p", [lists:zip3(lists:seq(0, 1023), BeforeMap, AfterMap)]),
-    %%     erlang:halt(0)
-    %% end,
-
-    [rebalance_count_experiment(From, To)
-     || From <- lists:seq(1, 100),
-        To <- lists:seq(1, 100)],
-    erlang:halt(0).
-
-is_balanced_sort_of_strongly(Map, NumReplicas, Nodes, Options) ->
-    case is_valid(Map) of
-        true ->
-            NumCopies = erlang:min(NumReplicas + 1, length(Nodes)),
-            case lists:all(
-                   fun (Chain) ->
-                           {Active, Inactive} = lists:split(NumCopies, Chain),
-                           lists:all(
-                             fun (Node) -> lists:member(Node, Nodes) end,
-                             Active) andalso
-                               case Inactive of
-                                   [] ->
-                                       true;
-                                   _ ->
-                                       lists:all(fun (N) -> N == undefined end,
-                                                 Inactive)
-                               end
-                   end, Map) of
-                false ->
-                    false;
-                true ->
-                    Histograms = histograms(Map),
-                    case lists:all(
-                           fun (ChainHist) ->
-                                   lists:max(ChainHist) -
-                                       lists:min(ChainHist) =< 1
-                           end, lists:sublist(Histograms, NumCopies)) of
-                        false ->
-                            ?log_debug("Histograms = ~w~n", [Histograms]),
-                            ?log_debug("Counts = ~p~n", [dict:to_list(counts(Map))]),
-                            false;
-                        true ->
-                            Counts = counts(Map),
-                            SlaveCounts = count_slaves(Counts),
-                            NumNodes = length(Nodes),
-                            NumSlaves = erlang:min(
-                                          proplists:get_value(
-                                            max_slaves, Options, NumNodes-1),
-                                          NumNodes-1),
-                            ?log_debug("Counts = ~p~n", [dict:to_list(counts(Map))]),
-                            dict:fold(
-                              fun (_, {Min, Max, SlaveCount}, Acc) ->
-                                      Acc andalso SlaveCount == NumSlaves
-                                          andalso Min /= really_big
-                                          andalso Max > 0
-                                          andalso Max - Min =< 1
-                              end, true, SlaveCounts)
-                    end
-            end
-    end.
 
 enumerate_chains(Map, undefined) ->
     EffectiveFFMap = [[] || _ <- Map],
