@@ -48,8 +48,24 @@ final      -> value : {final, '$1'}.
 
 attr       -> str : get_value('$1').
 matchingrule -> str : get_value('$1').
-value      -> str : get_value('$1').
+value      -> str : unescape(get_value('$1'), get_line('$1'), "").
 
 Erlang code.
 
 get_value({_,_,V}) -> V.
+get_line({_, L, _}) -> L.
+
+unescape("\\\\" ++ T, L, R) -> unescape(T, L, "\\" ++ R);
+unescape("\\" ++ [C1, C2 | T], L, R) ->
+    try list_to_integer([C1, C2], 16) of
+        V -> unescape(T, L, [V | R])
+    catch
+        _:_ ->
+            return_error(L, ["invalid hex digits after escape character \\",
+                             [C1, C2]])
+    end;
+unescape("\\" ++ _, L, _R) ->
+    return_error(L, "missing hex digits after escape character \\");
+unescape([C | T], L, R) -> unescape(T, L, [C | R]);
+unescape([], _, R) -> lists:reverse(R).
+

@@ -25,11 +25,13 @@
 parse(StringInput) ->
     case tokens(StringInput) of
         {ok, Tokens} ->
-            case ldap_rfc4515_parser:parse(Tokens) of
+            try ldap_rfc4515_parser:parse(Tokens) of
                 {ok, Filter} ->
                     {ok, Filter};
                 {error, {_Line, Module, Error}} ->
                     {error, Module:format_error(Error)}
+            catch
+                _:_ -> {error, "syntax error"}
             end;
         {error, Error} ->
             {error, Error}
