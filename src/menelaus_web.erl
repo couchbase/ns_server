@@ -183,6 +183,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[pools], read}, fun menelaus_web_pools:handle_pools/1};
                 ["pools", "default"] ->
                     {{[pools], read}, fun menelaus_web_pools:check_and_handle_pool_info/2, ["default"]};
+                ["pools", "default", "terseClusterInfo"] ->
+                    {{[pools], read},
+                     fun menelaus_web_pools:handle_terse_cluster_info/1};
                 %% NOTE: see MB-10859. Our docs used to
                 %% recommend doing this which due to old
                 %% code's leniency worked just like

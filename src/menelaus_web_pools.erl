@@ -25,7 +25,8 @@
 -export([handle_pools/1,
          check_and_handle_pool_info/2,
          handle_pool_info_streaming/2,
-         handle_pool_settings_post/1]).
+         handle_pool_settings_post/1,
+         handle_terse_cluster_info/1]).
 
 %% for hibernate
 -export([handle_pool_info_wait_wake/4]).
@@ -478,3 +479,207 @@ do_audit_cluster_settings(Req) ->
                end, memory_quota:aware_services(cluster_compat_mode:get_compat_version())),
     ClusterName = get_cluster_name(),
     ns_audit:cluster_settings(Req, Quotas, ClusterName).
+
+handle_terse_cluster_info(Req) ->
+    menelaus_util:assert_is_enterprise(),
+    menelaus_util:assert_is_madhatter(),
+    case ns_config_auth:is_system_provisioned() of
+        true ->
+            RV = handle_terse_cluster_info_inner(Req),
+            reply_json(Req, {struct, RV});
+        false ->
+            reply_json(Req, <<"unknown pool">>, 404)
+    end.
+
+handle_terse_cluster_info_inner(Req) ->
+    LocalAddr = local_addr(Req),
+    UUID = menelaus_web:get_uuid(),
+    Orchestrator = case leader_registry:whereis_name(ns_orchestrator) of
+                       undefined -> undefined;
+                       RV -> node(RV)
+                   end,
+
+    NodeInfos = [begin
+                     {struct, Props} =
+                         menelaus_web_node:build_full_node_info(N, LocalAddr),
+                     {N, Props}
+                 end || N <- ns_node_disco:nodes_wanted()],
+
+    Cfg = ns_config:get(),
+    BCfgs = ns_bucket:get_buckets(Cfg),
+
+    Buckets =
+        extract_bucket_specific_data(
+          BCfgs,
+          fun(BName, BCfg) ->
+                  RamQuota = ns_bucket:raw_ram_quota(BCfg),
+                  CommonProps = [{ramQuota, RamQuota}],
+                  case ns_bucket:bucket_type(BCfg) of
+                      memcached ->
+                          {BName, {struct, CommonProps}};
+                      _ ->
+                          NumReplicas = ns_bucket:num_replicas(BCfg),
+                          EvictPolicy = ns_bucket:eviction_policy(BCfg),
+                          Props = [{numReplicas, NumReplicas},
+                                   {evictionPolicy, EvictPolicy}],
+                          {BName, {struct, Props ++ CommonProps}}
+                  end
+          end),
+
+    {Stats, StatsDesc} = get_stats_of_interest(Cfg, BCfgs),
+
+    AFCfg = [{K, V} || {K, V} <- ns_config:search(Cfg, auto_failover_cfg, []),
+                       lists:member(K, [enabled, timeout])],
+
+    ARCfg = ns_config:search(Cfg, auto_reprovision_cfg, []),
+
+    Nodes = [glean_node_details(BCfgs, NI, Stats) || NI <- NodeInfos],
+    QuotaInfo = menelaus_web_node:build_memory_quota_info(Cfg),
+    CCAState = ns_ssl_services_setup:client_cert_auth_state(Cfg),
+    [V1 | V2] = lists:map(integer_to_list(_),
+                          cluster_compat_mode:get_compat_version(Cfg)),
+
+    [{clusterUUID, UUID},
+     {autoFailover, {struct, AFCfg}},
+     {autoReprovision, {struct, ARCfg}},
+     {orchestrator, Orchestrator},
+     {master, mb_master:master_node()},
+     {isBalanced, ns_cluster_membership:is_balanced()},
+     {quotaInfo, {struct, QuotaInfo}},
+     {clusterCompatVersion, list_to_binary(V1 ++ "." ++ V2)},
+     {clientCertAuthState, list_to_binary(CCAState)},
+     {buckets, Buckets},
+     {statsDescTable, StatsDesc},
+     {nodes, Nodes}].
+
+extract_bucket_specific_data(BucketCfgs, ExtractFun) ->
+    BktsInfo =
+        lists:foldl(
+          fun({BName, BCfg}, Acc) ->
+                  case ExtractFun(BName, BCfg) of
+                      undefined ->
+                          Acc;
+                      Val ->
+                          StorageMode = ns_bucket:storage_mode(BCfg),
+                          BucketType = ns_bucket:bucket_type(BCfg),
+                          DisplayType =
+                              menelaus_web_buckets:display_type(BucketType,
+                                                                StorageMode),
+
+                          case proplists:get_value(DisplayType, Acc) of
+                              undefined ->
+                                  [{DisplayType, {struct, [Val]}} | Acc];
+                              {struct, Arr} ->
+                                  NewVal = {DisplayType, {struct, [Val | Arr]}},
+                                  lists:keyreplace(DisplayType, 1, Acc, NewVal)
+                          end
+                  end
+          end, [], BucketCfgs),
+
+    {struct, BktsInfo}.
+
+get_stats_of_interest(Cfg, BCfgs) ->
+    CommonStatsDesc = [{curr_connections,
+                       <<"Total connections to this node">>}],
+    MembaseStatsDesc =
+        [{curr_items,
+          <<"Total docs in active vBuckets on this node for this bucket">>},
+         {vb_replica_curr_items,
+          <<"Total docs in replica vBuckets on this node for this bucket">>},
+         {vb_pending_curr_items,
+          <<"Total docs in pending vBuckets on this node for this bucket">>},
+         {<<"vb_active_resident_items_ratio">>,
+          <<"Percentage of docs in active vBuckets in RAM on this node for "
+            "this bucket">>},
+         {vb_active_num,
+          <<"Number of vBuckets in 'active' state on this node for this "
+            "bucket">>},
+         {vb_replica_num,
+          <<"Number of vBuckets in 'replica' state on this node for this "
+            "bucket">>},
+         {vb_pending_num,
+          <<"Number of vBuckets in 'pending' state on this node for this "
+            "bucket">>},
+         {ep_vb_total,
+          <<"Number of vBuckets on this node for this bucket">>}],
+    AllStatsDesc = MembaseStatsDesc ++ CommonStatsDesc,
+
+    KVNodes = ns_cluster_membership:service_active_nodes(Cfg, kv),
+
+    GetStatsFun =
+        fun(BName, Node, StatKeys) ->
+                RV = menelaus_stats:build_bucket_stats_ops_response([Node],
+                                                                    BName,
+                                                                    [],
+                                                                    true),
+                {struct, Op} = proplists:get_value(op, RV),
+                {struct, Samples} = proplists:get_value(samples, Op),
+                Timestamp = proplists:get_value(lastTStamp, Op),
+                Stats = [begin
+                             Val = case proplists:get_value(Key, Samples) of
+                                       undefined ->
+                                           undefined;
+                                       Vals ->
+                                           lists:last(Vals)
+                                   end,
+                             {Key, Val}
+                         end || {Key, _DisplayText} <- StatKeys],
+                {Node, {Stats, Timestamp}}
+        end,
+
+    GetBucketStatsFun =
+        fun(Type, StatKeys) ->
+                [begin
+                     RV = [GetStatsFun(BName, Node, StatKeys) ||
+                              Node <- KVNodes],
+                     {BName, RV}
+                 end || {BName, Props} <- BCfgs,
+                        ns_bucket:bucket_type(Props) =:= Type]
+        end,
+
+    RV = GetBucketStatsFun(memcached, CommonStatsDesc) ++
+        GetBucketStatsFun(membase, AllStatsDesc),
+
+    {RV, {struct, AllStatsDesc}}.
+
+glean_node_details(BucketCfgs, {Node, NodeInfo}, Stats) ->
+    {struct, SysStats} = proplists:get_value(systemStats, NodeInfo),
+    SwapTotal = proplists:get_value(swap_total, SysStats),
+    SwapUsed = proplists:get_value(swap_used, SysStats),
+
+    {struct, SC} = proplists:get_value(storage, NodeInfo),
+    [{struct, SConf0}] = proplists:get_value(hdd, SC),
+    SConf =
+        lists:foldl(
+          fun({Name, Key}, Acc) ->
+                  Val = proplists:get_value(Key, SConf0),
+                  [{Name, Val} | Acc]
+          end, [], [{cbasDirs, cbas_dirs},
+                    {indexPath, index_path},
+                    {dbPath, path}]),
+
+    BucketStats =
+        extract_bucket_specific_data(
+          BucketCfgs,
+          fun(BName, _) ->
+                  BStats = proplists:get_value(BName, Stats),
+                  case proplists:get_value(Node, BStats) of
+                      undefined ->
+                          undefined;
+                      {NodeSpecBStats, TS} ->
+                          Props = [{stats, {struct, NodeSpecBStats}},
+                                   {statsTimestamp, TS}],
+                          {BName, {struct, Props}}
+                  end
+          end),
+
+    KeysOfInterest = [hostname, version, os, uptime, cpuCount,
+                      memoryTotal, memoryFree, clusterMembership,
+                      status, services, nodeUUID],
+
+    {struct,
+     misc:proplist_keyfilter(lists:member(_, KeysOfInterest), NodeInfo) ++
+         [{swapTotal, SwapTotal},
+          {swapUsed, SwapUsed},
+          {bucketStats, BucketStats},
+          {storageConf, {struct, SConf}}]}.

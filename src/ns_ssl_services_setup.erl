@@ -34,6 +34,7 @@
          ssl_minimum_protocol/1,
          client_cert_auth/0,
          client_cert_auth_state/0,
+         client_cert_auth_state/1,
          get_user_name_from_client_cert/1,
          set_node_certificate_chain/4,
          upgrade_client_cert_auth_to_51/1,
@@ -219,15 +220,21 @@ ssl_minimum_protocol() ->
 ssl_minimum_protocol(Config) ->
     ns_config:search(Config, ssl_minimum_protocol, 'tlsv1').
 
-client_cert_auth() ->
+client_cert_auth(Cfg) ->
     DefaultValue = case cluster_compat_mode:is_cluster_51() of
                        true -> [{state, "disable"}, {prefixes, []}];
                        false -> [{state, "disable"}]
                    end,
-    ns_config:search(ns_config:latest(), client_cert_auth, DefaultValue).
+    ns_config:search(Cfg, client_cert_auth, DefaultValue).
+
+client_cert_auth() ->
+    client_cert_auth(ns_config:latest()).
+
+client_cert_auth_state(Cfg) ->
+    proplists:get_value(state, client_cert_auth(Cfg)).
 
 client_cert_auth_state() ->
-    proplists:get_value(state, client_cert_auth()).
+    client_cert_auth_state(ns_config:latest()).
 
 upgrade_client_cert_auth_to_51(Config) ->
     Cca = ns_config:search(Config, client_cert_auth, []),

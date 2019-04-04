@@ -35,6 +35,7 @@
          basic_stats/1,
          bucket_disk_usage/1,
          bucket_ram_usage/1,
+         build_bucket_stats_ops_response/4,
          serve_stats_directory/3,
          serve_ui_stats/1,
          handle_ui_stats_v2/1]).

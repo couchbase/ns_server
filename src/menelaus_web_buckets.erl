@@ -50,6 +50,7 @@
          handle_local_random_key/3,
          build_bucket_capabilities/1,
          external_bucket_type/1,
+         display_type/2,
          maybe_cleanup_old_buckets/0,
          serve_short_bucket_info/2,
          serve_streaming_short_bucket_info/2,
