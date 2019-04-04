@@ -302,6 +302,10 @@ i {
   opacity: .55;
   filter: alpha(opacity=55);
 }
+.disabled-more {
+  opacity: .4 !important;
+  filter: alpha(opacity=44) !important;
+}
 /* capitalization ----------------------------------------------------------- */
 .allcaps {
   text-transform: uppercase;

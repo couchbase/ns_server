@@ -738,7 +738,7 @@ section.error {
 
 /* extra-large-width modal dialog (uses .panel) ------------------------------- */
 .dialog-xlg {
-  width: 720px;
+  width: 800px;
 }
 
 /* LABELS & BADGES ------------------------------------------------------ */
@@ -1708,6 +1708,11 @@ input[type="checkbox"].fake-select + label:before {
 .content-box p:last-child {
   margin-bottom: 0;
 }
+.content-box.min-padding {
+  padding: .5rem 1rem;
+  margin-bottom: 1rem;
+}
+
 
 /* for when services are presented as a simple column of checkboxes (no
    text input for quotas) ----------------------------------------------- */
@@ -2718,6 +2723,11 @@ input[type=text].scenario-desc  {
 }
 .scenario-save-controls a {
   font-size: .875rem;
+}
+
+/* chart-builder -------------------------------------------------------------*/
+.chart-builder label {
+  font-size: .875rem!important;
 }
 
 /* LDAP configuration dialog -------------------------------------------------*/
