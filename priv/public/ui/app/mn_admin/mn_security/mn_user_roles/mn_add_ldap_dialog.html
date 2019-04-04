@@ -73,7 +73,7 @@
                   <input
                      type="radio"
                      id="ldap-cert-none"
-                     ng-model="addLdapDialogCtl.config.connect.cert"
+                     ng-model="addLdapDialogCtl.config.connect.server_cert_validation"
                      name="certValidation"
                      value="false"
                      ng-disabled="addLdapDialogCtl.config.connect.encryption == 'false'">
@@ -85,9 +85,9 @@
                   <input
                      type="radio"
                      id="ldap-cert-server"
-                     ng-model="addLdapDialogCtl.config.connect.cert"
+                     ng-model="addLdapDialogCtl.config.connect.server_cert_validation"
                      name="certValidation"
-                     value="serverCert"
+                     value="true"
                      ng-disabled="addLdapDialogCtl.config.connect.encryption == 'false'">
                   <label
                      for="ldap-cert-server"
@@ -97,9 +97,9 @@
                   <input
                      type="radio"
                      id="ldap-cert-add"
-                     ng-model="addLdapDialogCtl.config.connect.cert"
+                     ng-model="addLdapDialogCtl.config.connect.server_cert_validation"
                      name="certValidation"
-                     value="certText"
+                     value="pasteCert"
                      ng-disabled="addLdapDialogCtl.config.connect.encryption == 'false'">
                   <label
                      for="ldap-cert-add"
@@ -116,7 +116,7 @@
             </div>
             <div
                class="formrow"
-               ng-if="addLdapDialogCtl.config.connect.cert == 'certText'">
+               ng-if="addLdapDialogCtl.config.connect.server_cert_validation == 'pasteCert'">
               <label for="query_dn">Certificate Text</label>
               <textarea
                  rows="4"

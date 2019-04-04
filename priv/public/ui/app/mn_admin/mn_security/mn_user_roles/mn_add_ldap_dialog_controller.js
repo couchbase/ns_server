@@ -87,7 +87,12 @@
 
     function getConnectivitySettings() {
       var config = Object.assign({}, vm.config.connect);
-      if (config.server_cert_validation == "false") {
+      if (config.encryption == "false") {
+        delete config.server_cert_validation;
+      }
+      if (config.server_cert_validation == "pasteCert") {
+        config.server_cert_validation = "true";
+      } else {
         delete config.cacert;
       }
       return config;
