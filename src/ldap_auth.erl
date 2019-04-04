@@ -199,7 +199,7 @@ search_type(URLProps) ->
 format_error({ldap_search_failed, Reason}) ->
     io_lib:format("LDAP search returned error: ~s", [format_error(Reason)]);
 format_error({connect_failed, _}) ->
-    "Connot connect to the server";
+    "Can't connect to the server";
 format_error({start_tls_failed, _}) ->
     "Failed to use StartTLS extension";
 format_error({ldap_url_parse_error, URL, Error}) ->
