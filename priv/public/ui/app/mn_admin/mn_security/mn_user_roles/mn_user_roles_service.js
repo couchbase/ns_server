@@ -41,6 +41,13 @@
     }
 
     function postLdapSettings(data) {
+      if (!(data.anon || data.query_dn) &&
+          !!((data.authentication_enabled && data.user_dn_mapping &&
+              data.user_dn_mapping.includes("query")) ||
+             (data.authorization_enabled && data.groups_query))) {
+        return $q.reject({query_dn: "LDAP DN should be supplied"});
+      }
+      delete data.anon;
       return $http({
         method: "POST",
         url: "/settings/ldap",
