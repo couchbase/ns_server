@@ -9,7 +9,7 @@
     <div class="panel-content forms max-height-500 margin-bottom-1" style="height: 500px;">
       <div class="row items-top relative">
         <div style="width: 476px;">
-          <span ng-click="sect_1_focus = true; sect_2_focus = false; sect_3_focus = false">
+          <span ng-click="sectFocus = 'LDAP';">
             <div class="formrow row items-top">
               <span class="width-9 margin-right-half">
                 <label for="ldap_hosts">LDAP Host(s)</label>
@@ -22,8 +22,8 @@
                    id="ldap_hosts"
                    ng-model="addLdapDialogCtl.config.connect.hosts"
                    placeholder="ldap1.example.com, ldap2.example.com"
-                   autofocus
-                   ng-focus="sect_1_focus = true">
+                   mn-focus="true"
+                   ng-focus="sectFocus = 'LDAP'">
                 <div
                    class="error"
                    ng-show="addLdapDialogCtl.errors.hosts">
@@ -204,7 +204,7 @@
           </span>
 
 <!-- Enable LDAP user authentication --------------------------------------- -->
-          <span ng-click="sect_1_focus = false; sect_2_focus = true; sect_3_focus = false">
+          <span ng-click="sectFocus = 'user auth'">
             <div class="formrow row flex-left margin-top-2">
               <label
                  class="toggle-control margin-0"
@@ -367,7 +367,7 @@
           </span>
 
 <!-- Enable LDAP group authorization & sync -------------------------------- -->
-          <span ng-click="sect_1_focus = false; sect_2_focus = false; sect_3_focus = true">
+          <span ng-click="sectFocus = 'group auth'">
             <div class="formrow row flex-left">
               <label
                  class="toggle-control margin-0"
@@ -615,11 +615,11 @@
         <div class="ldap-helpsidebar">
           <h5
              class="disclosure"
-             ng-class="{disclosed: sect_1_focus}"
-             ng-click="sect_1_focus = !sect_1_focus; sect_2_focus = false; sect_3_focus = false;">
+             ng-class="{disclosed: sectFocus == 'LDAP'}"
+             ng-click="sectFocus = 'LDAP'">
             LDAP Host Configuration
           </h5>
-          <div ng-show="sect_1_focus">
+          <div ng-show="sectFocus == 'LDAP'">
           <p>
             This first section (down to <b>Check Network Settings</b>) contains
             the basic settings to connect to your LDAP host(s).
@@ -639,11 +639,11 @@
           </div>
           <h5
              class="disclosure"
-             ng-class="{disclosed: sect_2_focus}"
-             ng-click="sect_2_focus = !sect_2_focus; sect_1_focus = false; sect_3_focus = false;">
+             ng-class="{disclosed: sectFocus == 'user auth'}"
+             ng-click="sectFocus = 'user auth'">
             User Authentication
           </h5>
-          <div ng-show="sect_2_focus">
+          <div ng-show="sectFocus == 'user auth'">
             <p>
               This section lets you map
               simple usernames (that will be used to log into Couchbase Server) to
@@ -653,11 +653,11 @@
           </div>
           <h5
              class="disclosure"
-             ng-class="{disclosed: sect_3_focus}"
-             ng-click="sect_3_focus = !sect_3_focus; sect_1_focus = false; sect_2_focus = false;">
+             ng-class="{disclosed: sectFocus == 'group auth'}"
+             ng-click="sectFocus = 'group auth'">
             Group Authorization
           </h5>
-          <div ng-show="sect_3_focus">
+          <div ng-show="sectFocus == 'group auth'">
             <p>
               This section lets you build a query so that Couchbase
               Server can discover the LDAP groups a particular user belongs to
