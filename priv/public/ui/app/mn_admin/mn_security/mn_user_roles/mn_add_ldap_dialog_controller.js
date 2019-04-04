@@ -16,7 +16,8 @@
         server_cert_validation: "false",
         cacert: "",
         query_dn: "",
-        query_pass: ""
+        query_pass: "",
+        anon: false
       },
       userDnMapping: "template",
       authentication: {
@@ -45,16 +46,114 @@
     vm.save = save;
     vm.checkConnectivity = checkConnectivity;
     vm.checkAuthentication = checkAuthentication;
-    vm.userDnMappingChanged = userDnMappingChanged;
-    vm.queryForGroupsChanged = queryForGroupsChanged;
     vm.checkGroupsQuery = checkGroupsQuery;
+    activate();
 
-    function userDnMappingChanged() {
-      vm.config.authentication.user_dn_mapping = {};
+    function activate() {
+      mnUserRolesService.getLdapSettings().then(function (resp) {
+        var config = resp.data;
+        vm.config.connect =
+          unpackConnectivity(config);
+        vm.config.userDnMapping =
+          unpackUserDnMappingType(config.user_dn_mapping);
+        vm.config.authentication.authentication_enabled =
+          config.authentication_enabled;
+        vm.config.authentication.user_dn_mapping =
+          unpackUserDnMapping(vm.config.userDnMapping, config.user_dn_mapping);
+        vm.config.queryForGroups =
+          unpackQueryForGroupsType(config.groups_query);
+        vm.config.group.authorization_enabled =
+          config.authorization_enabled;
+        vm.config.group.nested_groups_enabled =
+          config.nested_groups_enabled;
+        vm.config.group.groups_query =
+          unpackQueryForGroups(vm.config.queryForGroups, config.groups_query);
+        vm.config.advanced =
+          unpackAdvancedSettings(config);
+      });
     }
 
-    function queryForGroupsChanged() {
-      vm.config.group.groups_query = {scope: "one"};
+    function isThisAnonConnection(data) {
+      return !data.query_dn && !!((data.authentication_enabled && data.user_dn_mapping &&
+                                   data.user_dn_mapping.includes("query")) ||
+                                  (data.authorization_enabled && data.groups_query));
+    }
+
+    function unpackAdvancedSettings(config) {
+      return Object
+        .keys(vm.config.advanced)
+        .reduce(function (acc, key) {
+          acc[key] = config[key];
+          return acc;
+        }, {});
+    }
+
+    function unpackConnectivity(config) {
+      return Object
+        .keys(vm.config.connect)
+        .reduce(function (acc, key) {
+          switch (key) {
+          case "hosts": acc[key] = config[key].join(","); break;
+          default:
+            if (config[key] !== undefined) {
+              acc[key] = config[key].toString();
+            }
+          }
+          return acc;
+        }, {anon: isThisAnonConnection(config)});
+    }
+
+    function unpackUserDnMapping(type, mapping) {
+      if (!mapping.length) {
+        return;
+      }
+      switch (type) {
+      case "template":
+        return {template: mapping[0].template};
+      case "query":
+        var query = mapping[0].query.split("?");
+        return {base: query[0], filter: query[3]};
+      case "custom":
+        return {value: JSON.stringify(mapping)};
+      }
+    }
+
+    function unpackUserDnMappingType(userDnMapping) {
+      if (userDnMapping.length > 0) {
+        if (userDnMapping.length == 1) {
+          if (userDnMapping[0].re == "(.+)") {
+            if (userDnMapping[0].query) {
+              return "query";
+            }
+          } else {
+            return "custom";
+          }
+        } else {
+          return "custom";
+        }
+      }
+      return "template";
+    }
+
+    function unpackQueryForGroupsType(query) {
+      if (!query || (query.includes("%D?") && query.includes("?one"))) {
+        return "users_attrs";
+      } else {
+        return "query";
+      }
+    }
+
+    function unpackQueryForGroups(type, groupsQuery) {
+      if (!groupsQuery) {
+        return;
+      }
+      var query = groupsQuery.split("?");
+      switch (type) {
+      case "users_attrs":
+        return {attributes: query[1], scope: "one"};
+      case "query":
+        return {base: query[0], scope: query[2] || "one", filter: query[3]};
+      }
     }
 
     function getUserDnMapping(config) {
@@ -80,8 +179,6 @@
         return (config.groups_query.base || "") + "??" +
           (config.groups_query.scope || "") + "?" +
           (config.groups_query.filter || "");
-      case "custom":
-        return config.groups_query.value || "";
       }
     }
 

@@ -25,12 +25,20 @@
 
       ldapSettingsValidate: ldapSettingsValidate,
       postLdapSettings: postLdapSettings,
+      getLdapSettings: getLdapSettings,
 
       getUserProfile: getUserProfile,
       putUserProfile: putUserProfile
     };
 
     return mnUserRolesService;
+
+    function getLdapSettings() {
+      return $http({
+        method: "GET",
+        url: "/settings/ldap"
+      });
+    }
 
     function ldapSettingsValidate(type, data) {
       return $http({

@@ -224,7 +224,6 @@
                   <input
                      type="radio"
                      id="user-dn-mapping-flag-tempate"
-                     ng-change="addLdapDialogCtl.userDnMappingChanged()"
                      ng-model="addLdapDialogCtl.config.userDnMapping"
                      name="userDnMapping"
                      value="template">
@@ -232,7 +231,6 @@
                   <input
                      type="radio"
                      id="user-dn-mapping-flag-query"
-                     ng-change="addLdapDialogCtl.userDnMappingChanged()"
                      ng-model="addLdapDialogCtl.config.userDnMapping"
                      name="userDnMapping"
                      value="query">
@@ -240,7 +238,6 @@
                   <input
                      type="radio"
                      id="user-dn-mapping-flag-custom"
-                     ng-change="addLdapDialogCtl.userDnMappingChanged()"
                      ng-model="addLdapDialogCtl.config.userDnMapping"
                      name="userDnMapping"
                      value="custom">
@@ -387,7 +384,6 @@
                   <input
                      type="radio"
                      id="for-query-groups-attrs"
-                     ng-change="addLdapDialogCtl.queryForGroupsChanged()"
                      ng-model="addLdapDialogCtl.config.queryForGroups"
                      name="queryForGroups"
                      value="users_attrs">
@@ -395,7 +391,6 @@
                   <input
                      type="radio"
                      id="for-query-groups-builder"
-                     ng-change="addLdapDialogCtl.queryForGroupsChanged()"
                      ng-model="addLdapDialogCtl.config.queryForGroups"
                      name="queryForGroups"
                      value="query">
@@ -450,19 +445,6 @@
                   <option value="sub">sub</option>
                 </select>
               </div>
-              <div ng-if="addLdapDialogCtl.config.queryForGroups == 'custom'">
-                <label for="for-groups-custom-mapping">Custom Mapping</label>
-                <textarea
-                   placeholder="ou=groups,dc=example,dc=com??one?(member=%D)"
-                   autocorrect="off"
-                   spellcheck="false"
-                   autocapitalize="off"
-                   mn-autocomplete-off="enforce"
-                   id="for-groups-custom-mapping"
-                   ng-model="addLdapDialogCtl.config.group.groups_query.value"
-                   rows="3">
-                </textarea>
-              </div>
               <div
                  class="error"
                  ng-show="addLdapDialogCtl.errors.groups_query">
@@ -472,8 +454,7 @@
                 <input
                    type="checkbox"
                    id="for-nested-groups-enabled"
-                   ng-model="addLdapDialogCtl.config.group.nested_groups_enabled"
-                   value="true">
+                   ng-model="addLdapDialogCtl.config.group.nested_groups_enabled">
                 <label for="for-nested-groups-enabled">Traverse nested groups</label>
               </div>
               <p
