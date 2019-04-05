@@ -102,18 +102,17 @@
       </div>
 
       <div class="column width-7">
-        <input type="radio"
-               name="dialogTab"
-               id="for-select-roles-tab"
-               ng-model="userRolesAddDialogCtl.selectedPanel"
-               value="roles"><label for="for-select-roles-tab">Roles</label>
-        <input type="radio"
-               name="dialogTab"
-               id="for-select-groups-tab"
-               ng-model="userRolesAddDialogCtl.selectedPanel"
-               value="groups"><label for="for-select-groups-tab">Groups</label>
-        <fieldset
-           class="select-user-roles ehide-track show-scrollbar">
+        <span class="pills nowrap">
+          <a ng-click="userRolesAddDialogCtl.selectedPanel = 'roles'"
+             ng-class="{selected : (userRolesAddDialogCtl.selectedPanel == 'roles')}">
+            Roles
+          </a>
+          <a ng-click="userRolesAddDialogCtl.selectedPanel = 'groups'"
+             ng-class="{selected : (userRolesAddDialogCtl.selectedPanel == 'groups')}">
+            Groups
+          </a>
+        </span>
+        <fieldset class="select-user-roles hide-track show-scrollbar">
           <div ng-show="userRolesAddDialogCtl.selectedPanel == 'groups'">
             <label
                class="disclosure"

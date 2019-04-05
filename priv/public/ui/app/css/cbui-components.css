@@ -1642,6 +1642,7 @@ input[type="checkbox"].fake-select + label:before {
   height: 370px;
   overflow-y: scroll;
   padding: .25rem .25rem .25rem .75rem;
+  margin-top: .5rem;
 }
 .select-user-roles div,
 .select-user-roles label,
