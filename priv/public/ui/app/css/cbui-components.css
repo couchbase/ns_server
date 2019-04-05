@@ -2453,11 +2453,11 @@ nav.nav-sidebar-hidden {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 3rem;
+  font-size: 2rem;
   cursor: pointer;
   margin: .5rem;
-  width: calc(25% - 1rem);
-  min-height: 180px;
+  flex-grow: 2;
+  min-height: 3rem;
 }
 .chart-adder:hover {
   color: #a1a1a1;
