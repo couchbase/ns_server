@@ -1467,15 +1467,22 @@ local_url(Port, Path, Options) ->
     Scheme ++ User ++ localhost([url]) ++ ":" ++ integer_to_list(Port) ++ Path.
 
 -spec is_good_address(string()) -> ok | {cannot_resolve, inet:posix()}
-                                       | {cannot_listen, inet:posix()}
-                                       | {address_not_allowed, string()}.
+                                      | {cannot_listen, inet:posix()}
+                                      | {address_not_allowed, string()}.
 is_good_address(Address) ->
-    is_good_address(Address, is_ipv6()).
-
-is_good_address(Address, false) ->
-    check_short_name(Address, ".");
-is_good_address(Address, true) ->
-    check_short_name(Address, ".:").
+    case {is_ipv6(), is_raw_ip(Address), is_raw_ipv6(Address)} of
+        {true, true, _} ->
+            Msg = io_lib:format("Can't use raw ip address ~s for ipv6 node. "
+                                "Please use a Fully Qualified Domain Name.",
+                                [Address]),
+            {address_not_allowed, lists:flatten(Msg)};
+        {false, _, true} ->
+            Msg = io_lib:format("Can't use ipv6 address ~s for ipv4 node",
+                                [Address]),
+            {address_not_allowed, lists:flatten(Msg)};
+        _ ->
+            check_short_name(Address, ".")
+    end.
 
 check_short_name(Address, Separators) ->
     case lists:subtract(Address, Separators) of
@@ -2752,6 +2759,12 @@ is_fqdn_basic_validation_test() ->
 
 is_raw_ip(Host) ->
     case inet:parse_address(Host) of
+        {ok, _} -> true;
+        {error, einval} -> false
+    end.
+
+is_raw_ipv6(Host) ->
+    case inet:parse_ipv6strict_address(Host) of
         {ok, _} -> true;
         {error, einval} -> false
     end.
