@@ -26,14 +26,14 @@
                  ng-class="showScenarioControls ? 'fa-angle-right' : 'fa-ellipsis-v'">
               </span>
               <span
-                 title="edit chart"
-                 class="icon fa-edit"
-                 ng-click="statisticsNewCtl.scenarioCtrl.editScenario(scenario)"
-                 ng-show="showScenarioControls"></span>
-              <span
-                 title="delete chart"
+                 title="delete scenario"
                  class="icon fa-trash"
                  ng-click="statisticsNewCtl.scenarioCtrl.deleteScenario(scenario)"
+                 ng-show="showScenarioControls"></span>
+              <span
+                 title="edit scenario"
+                 class="icon fa-edit"
+                 ng-click="statisticsNewCtl.scenarioCtrl.editScenario(scenario)"
                  ng-show="showScenarioControls"></span>
             </div>
           </mn-dropdown-item>

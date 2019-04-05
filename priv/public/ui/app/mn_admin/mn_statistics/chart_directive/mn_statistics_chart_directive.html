@@ -9,14 +9,14 @@
       ng-click="showChartControls = !showChartControls"
       ng-class="showChartControls ? 'fa-angle-right' : 'fa-ellipsis-v'"></span>
     <span
-      title="edit chart"
-      class="icon fa-edit"
-      ng-click="editChart(config)"
-      ng-show="showChartControls"></span>
-    <span
       title="delete chart"
       class="icon fa-trash"
       ng-click="deleteChart(config)"
+      ng-show="showChartControls"></span>
+    <span
+      title="edit chart"
+      class="icon fa-edit"
+      ng-click="editChart(config)"
       ng-show="showChartControls"></span>
   </div>
 </div>
