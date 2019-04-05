@@ -23,7 +23,7 @@
          bad_memory_size_error/3,
          incompatible_cluster_version_error/3,
          too_old_version_error/2,
-         verify_otp_connectivity_port_error/2,
+         verify_otp_connectivity_port_error/3,
          verify_otp_connectivity_connection_error/4,
          unsupported_services_error/2,
          topology_limitation_error/1,
@@ -147,7 +147,11 @@ too_old_version_error(Node, Version) ->
                         [Version, Node, MinSupported]),
     iolist_to_binary(Msg).
 
-verify_otp_connectivity_port_error(OtpNode, _Port) ->
+verify_otp_connectivity_port_error(_OtpNode, Host, {error, nxdomain}) ->
+    list_to_binary(
+      io_lib:format("Failed to resolve address for ~p. The hostname may be "
+                    "incorrect or not resolvable.", [Host]));
+verify_otp_connectivity_port_error(OtpNode, _Host, _Port) ->
     list_to_binary(io_lib:format("Failed to obtain otp port from erlang port mapper for node ~p."
                                  " This can be network name resolution or firewall problem.", [OtpNode])).
 

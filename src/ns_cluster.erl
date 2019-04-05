@@ -721,23 +721,22 @@ call_port_please(Name, Host) ->
     %% implementation uses "inet" protocol by default. This will fail if the
     %% host is configured with IPv6. But if we pass in the IP Address instead of
     %% hostname the API does the right thing. Hence passing the IP Address.
-    {ok, IpAddr} = inet:getaddr(Host, misc:get_net_family()),
-    ErlEpmd = net_kernel:epmd_module(),
-    case ErlEpmd:port_please(Name, IpAddr, 5000) of
-        {port, Port, _Version} -> Port;
-        X -> X
+    case inet:getaddr(Host, misc:get_net_family()) of
+        {ok, IpAddr} ->
+            ErlEpmd = net_kernel:epmd_module(),
+            case ErlEpmd:port_please(Name, IpAddr, 5000) of
+                {port, Port, _Version} -> {ok, Port};
+                X -> X
+            end;
+        {error, _} = Error -> Error
     end.
 
 verify_otp_connectivity(OtpNode) ->
     {Name, Host} = misc:node_name_host(OtpNode),
-    Port = call_port_please(Name, Host),
-    ?cluster_debug("port_please(~p, ~p) = ~p", [Name, Host, Port]),
-    case is_integer(Port) of
-        false ->
-            {error, connect_node,
-             ns_error_messages:verify_otp_connectivity_port_error(OtpNode, Port),
-             {connect_node, OtpNode, Port}};
-        true ->
+    PortPleaseRes = call_port_please(Name, Host),
+    ?cluster_debug("port_please(~p, ~p) = ~p", [Name, Host, PortPleaseRes]),
+    case PortPleaseRes of
+        {ok, Port} ->
             AFamily = misc:get_net_family(),
             case check_host_port_connectivity(Host, Port, AFamily) of
                 {ok, IP} -> {ok, IP};
@@ -745,7 +744,12 @@ verify_otp_connectivity(OtpNode) ->
                     {error, connect_node,
                      ns_error_messages:verify_otp_connectivity_connection_error(Reason, OtpNode, Host, Port),
                      {error, Reason}}
-            end
+            end;
+        Error ->
+            {error, connect_node,
+             ns_error_messages:verify_otp_connectivity_port_error(OtpNode, Host,
+                                                                  Error),
+             {connect_node, OtpNode, Error}}
     end.
 
 do_add_node_engaged(NodeKVList, Auth, GroupUUID, Services, Scheme) ->
