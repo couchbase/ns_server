@@ -32,7 +32,10 @@
 -export([fresh/0, descends/2, merge/1, get_counter/2, get_timestamp/2,
          increment/2, all_nodes/1, likely_newer/2, timestamp/0,
          get_latest_timestamp/1, count_changes/1]).
--export([example_test/0]).
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 % @type vclock() = [vc_entry].
 % @type   vc_entry() = {node(), {counter(), timestamp()}}.
@@ -68,35 +71,6 @@ simplify([{Node,{Ctr1,TS1}}|VClock], NClock) ->
                        {Ctr2,TS2}
                end,
     simplify(VClock, [{Node,{Ctr,TS}}|proplists:delete(Node, NClock)]).
-
-% @doc Serves as both a trivial test and some example code.
-example_test() ->
-    A = vclock:fresh(),
-    B = vclock:fresh(),
-    A1 = vclock:increment(a, A),
-    B1 = vclock:increment(b, B),
-    true = vclock:descends(A1,A),
-    true = vclock:descends(B1,B),
-    false = vclock:descends(A1,B1),
-    A2 = vclock:increment(a, A1),
-    C = vclock:merge([A2, B1]),
-    C1 = vclock:increment(c, C),
-    true = vclock:descends(C1, A2),
-    true = vclock:descends(C1, B1),
-    false = vclock:descends(B1, C1),
-    false = vclock:descends(B1, A1),
-    BadClock1 = [{node1, {1, 10}}, {node2, {1, 20}}],
-    BadClock2 = [{node1, {1, 12}}, {node2, {1, 20}}],
-    true = vclock:descends(BadClock1, BadClock2),
-    true = vclock:descends(BadClock2, BadClock1),
-    false = vclock:likely_newer(BadClock1, BadClock2),
-    true = vclock:likely_newer(BadClock2, BadClock1),
-    BadClock3 = [{node1, {1, 12}}, {node2, {1, 21}}],
-    true = vclock:descends(BadClock1, BadClock3),
-    true = vclock:descends(BadClock3, BadClock1),
-    false = vclock:likely_newer(BadClock1, BadClock3),
-    true = vclock:likely_newer(BadClock3, BadClock1),
-    ok.
 
 % @doc Return true if Va is a direct descendant of Vb, else false -- remember, a vclock is its own descendant!
 % @spec descends(Va :: vclock(), Vb :: vclock()) -> bool()
@@ -196,3 +170,35 @@ count_changes_rec([{_Node, {Counter, _}} | RestVClock], Acc) ->
 
 count_changes(VClock) ->
     count_changes_rec(VClock, 0).
+
+
+-ifdef(TEST).
+% @doc Serves as both a trivial test and some example code.
+example_test() ->
+    A = vclock:fresh(),
+    B = vclock:fresh(),
+    A1 = vclock:increment(a, A),
+    B1 = vclock:increment(b, B),
+    true = vclock:descends(A1,A),
+    true = vclock:descends(B1,B),
+    false = vclock:descends(A1,B1),
+    A2 = vclock:increment(a, A1),
+    C = vclock:merge([A2, B1]),
+    C1 = vclock:increment(c, C),
+    true = vclock:descends(C1, A2),
+    true = vclock:descends(C1, B1),
+    false = vclock:descends(B1, C1),
+    false = vclock:descends(B1, A1),
+    BadClock1 = [{node1, {1, 10}}, {node2, {1, 20}}],
+    BadClock2 = [{node1, {1, 12}}, {node2, {1, 20}}],
+    true = vclock:descends(BadClock1, BadClock2),
+    true = vclock:descends(BadClock2, BadClock1),
+    false = vclock:likely_newer(BadClock1, BadClock2),
+    true = vclock:likely_newer(BadClock2, BadClock1),
+    BadClock3 = [{node1, {1, 12}}, {node2, {1, 21}}],
+    true = vclock:descends(BadClock1, BadClock3),
+    true = vclock:descends(BadClock3, BadClock1),
+    false = vclock:likely_newer(BadClock1, BadClock3),
+    true = vclock:likely_newer(BadClock3, BadClock1),
+    ok.
+-endif.
