@@ -24,7 +24,6 @@
 -export([get_compat_version/0,
          get_compat_version/1,
          is_enabled/1, is_enabled_at/2,
-         force_compat_version/1, un_force_compat_version/0,
          consider_switching_compat_mode/0,
          is_index_aware_rebalance_on/0,
          is_index_pausing_on/0,
@@ -53,8 +52,6 @@
 
 %% NOTE: this is rpc:call-ed by mb_master
 -export([mb_master_advertised_version/0]).
-
--export([pre_force_compat_version/0, post_force_compat_version/0]).
 
 n1ql_cluster_capabilities(?VERSION_MADHATTER, true) ->
     [costBasedOptimizer, indexAdvisor, javaScriptFunctions, inlineFunctions |
@@ -170,12 +167,7 @@ consider_switching_compat_mode() ->
             end,
             ok;
         false ->
-            case ns_config:search(Config, forced_cluster_compat_version, false) of
-                true ->
-                    ok;
-                false ->
-                    do_consider_switching_compat_mode(Config, CurrentVersion)
-            end
+            do_consider_switching_compat_mode(Config, CurrentVersion)
     end.
 
 upgrades() ->
@@ -269,34 +261,6 @@ consider_switching_compat_mode_loop(NodeInfos, [Node | RestNodesWanted], Version
         _ ->
             undefined
     end.
-
-force_compat_version(ClusterVersion) ->
-    RV0 = rpc:multicall([node() | nodes()], supervisor, terminate_child, [ns_server_sup, mb_master], 15000),
-    ale:warn(?USER_LOGGER, "force_compat_version: termination of mb_master results: ~p", [RV0]),
-    RV1 = rpc:multicall([node() | nodes()], cluster_compat_mode, pre_force_compat_version, [], 15000),
-    ale:warn(?USER_LOGGER, "force_compat_version: pre_force_compat_version results: ~p", [RV1]),
-    try
-        ns_config:set(cluster_compat_version, ClusterVersion),
-        ns_config:set(forced_cluster_compat_version, true),
-        ok = ns_config_rep:ensure_config_seen_by_nodes(ns_node_disco:nodes_wanted())
-    after
-        RV2 = (catch rpc:multicall([node() | nodes()], supervisor, restart_child, [ns_server_sup, mb_master], 15000)),
-        (catch ale:warn(?USER_LOGGER, "force_compat_version: restart of mb_master results: ~p", [RV2])),
-        RV3 = (catch rpc:multicall([node() | nodes()], cluster_compat_mode, post_force_compat_version, [], 15000)),
-        (catch ale:warn(?USER_LOGGER, "force_compat_version: post_force_compat_version results: ~p", [RV3]))
-    end.
-
-un_force_compat_version() ->
-    ns_config:set(forced_cluster_compat_version, false).
-
-pre_force_compat_version() ->
-    ok.
-
-post_force_compat_version() ->
-    Names = [atom_to_list(Name) || Name <- registered()],
-    [erlang:exit(whereis(list_to_atom(Name)), diepls)
-     || ("ns_memcached-" ++ _) = Name <- Names],
-    ok.
 
 %% undefined is "used" shortly after node is initialized and when
 %% there's no compat mode yet
