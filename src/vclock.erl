@@ -29,8 +29,8 @@
 -author('Justin Sheehy <justin@basho.com>').
 -author('Andy Gross <andy@basho.com>').
 
--export([fresh/0, descends/2, merge/1, get_counter/2, get_timestamp/2,
-         increment/2, all_nodes/1, likely_newer/2, timestamp/0,
+-export([fresh/0, descends/2, merge/1,
+         increment/2, likely_newer/2, timestamp/0,
          get_latest_timestamp/1, count_changes/1]).
 
 -ifdef(TEST).
@@ -118,22 +118,6 @@ merge([], NClock) ->
 merge([AClock|VClocks],NClock) ->
     merge(VClocks, lists:foldl(fun(X,L) -> extend(X,L) end, NClock, AClock)).
 
-% @doc Get the counter value in VClock set from Node.
-% @spec get_counter(Node :: node(), VClock :: vclock()) -> counter()
-get_counter(Node, VClock) ->
-    case proplists:get_value(Node, VClock) of
-        {Ctr, _TS} -> Ctr;
-        undefined -> undefined
-    end.
-
-% @doc Get the timestamp value in a VClock set from Node.
-% @spec get_timestamp(Node :: node(), VClock :: vclock()) -> timestamp()
-get_timestamp(Node, VClock) ->
-    case proplists:get_value(Node, VClock) of
-        {_Ctr, TS} -> TS;
-        undefined -> undefined
-    end.
-
 get_latest_timestamp([]) ->
     0;
 get_latest_timestamp([{_Node, {_Ctr, TS}} | Rest]) ->
@@ -155,11 +139,6 @@ increment(Node, VClock) ->
                         {C + 1, timestamp()}
                 end,
     extend({Node, {Ctr, TS}}, VClock).
-
-% @doc Return the list of all nodes that have ever incremented VClock.
-% @spec all_nodes(VClock :: vclock()) -> [node()]
-all_nodes(VClock) ->
-    [X || {X,{_,_}} <- VClock].
 
 timestamp() ->
     calendar:datetime_to_gregorian_seconds(erlang:universaltime()).
