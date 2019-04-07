@@ -30,7 +30,7 @@
 -author('Andy Gross <andy@basho.com>').
 
 -export([fresh/0, descends/2, merge/1,
-         increment/2, likely_newer/2, timestamp/0,
+         increment/2, likely_newer/2,
          get_latest_timestamp/1, count_changes/1]).
 
 -ifdef(TEST).
