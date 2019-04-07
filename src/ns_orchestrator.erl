@@ -1571,16 +1571,25 @@ maybe_start_service_upgrader(_Reason, _SwitchCompatResult, _State) ->
 start_service_upgrader(KeepNodes, Services) ->
     proc_lib:spawn_link(
       fun () ->
-              Config = ns_config:get(),
-              EjectNodes = [],
-
-              ok = service_janitor:cleanup(Config),
-
-              %% since we are not actually ejecting anything here, we can
-              %% ignore the return value
-              _ = ns_rebalancer:rebalance_topology_aware_services(
-                    Config, Services, KeepNodes, EjectNodes)
+              ok = leader_activities:run_activity(
+                     service_upgrader, majority,
+                     fun () ->
+                             service_upgrader_body(Services, KeepNodes)
+                     end)
       end).
+
+service_upgrader_body(Services, KeepNodes) ->
+    Config = ns_config:get(),
+    EjectNodes = [],
+
+    ok = service_janitor:cleanup(Config),
+
+    %% since we are not actually ejecting anything here, we can ignore the
+    %% return value
+    _ = ns_rebalancer:rebalance_topology_aware_services(
+          Config, Services, KeepNodes, EjectNodes),
+
+    ok.
 
 call_recovery_server(State, Call) ->
     call_recovery_server(State, Call, []).
