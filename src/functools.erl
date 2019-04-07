@@ -15,8 +15,19 @@
 %%
 -module(functools).
 
--compile(nowarn_export_all).
--compile(export_all).
+-export([id/1,
+         const/1,
+         compose/1, compose/2,
+         chain/2,
+         curry/1,
+         uncurry/1,
+         alternative/2,
+         sequence/2,
+         sequence_/2,
+         add/1, add/2,
+         sub/1, sub/2,
+         mul/1, mul/2,
+         idiv/1, idiv/2]).
 
 %% Identity function.
 id(X) ->
