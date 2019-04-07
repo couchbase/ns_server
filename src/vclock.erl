@@ -69,8 +69,6 @@ simplify([{Node,{Ctr1,TS1}}|VClock], NClock) ->
                end,
     simplify(VClock, [{Node,{Ctr,TS}}|proplists:delete(Node, NClock)]).
 
-%% @todo Use common_test or other good test framework, and write more tests.
-%
 % @doc Serves as both a trivial test and some example code.
 example_test() ->
     A = vclock:fresh(),
