@@ -67,12 +67,9 @@ section {
   padding: 4px 0;
 }
 footer {
-  text-align: center;
   padding: .5rem 0;
   width: 100%;
-  color: #555;
   background-color: #fff;
-  font-size: .688rem;
   position: fixed;
   bottom: 0;
   left: 0;

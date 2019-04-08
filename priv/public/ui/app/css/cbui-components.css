@@ -2300,28 +2300,20 @@ nav.nav-sidebar-hidden {
   left: -32px;
 }
 
-/*  fixed footer for saving forms ------------------------------------------- */
+/*  fixed footer for saving forms (builds on <footer>) ---------------------- */
 .footer-save {
-  position: fixed;
-  width: 100%;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  bottom: 0;
-  left: 0;
+  justify-content: center;
   height: 3rem;
-  background-color: #fff;
   z-index: 98;
-  box-shadow: 0px -3px 8px 0px rgba(0,0,0,0.08);
-  border: 1px solid #e1e1e1;
-  border-width: 1px 0 0 0;
 }
-/*  pipe delimiter style  -------------------------------------------------- */
+
+/*  pipe delimiter style  --------------------------------------------------- */
 .pipe:before {
   content: '\007C';
   color: #d1d1d1;
 }
-
 .pipe:nth-child(2):before {
   content: none !important;
 }
@@ -2329,7 +2321,6 @@ nav.nav-sidebar-hidden {
 .nvd3.nv-scatter.nv-single-point .nv-groups .nv-group .nv-point:not(.hover) {
   fill-opacity: .0 !important;
   }
-/* stroke-opa */
 
 /*  checkbox filter widget for the chartbuilder data section  --------------- */
 .checkbox-filter {
@@ -2517,7 +2508,12 @@ input[type="text"]:focus.charts-group-name {
 .charts-group-row button:active {
   background-color: transparent;
 }
-
+/*  fixed footer for cluster-wide info (builds on <footer>) ----------------- */
+.footer-dashboard {
+  text-align: center;
+  color: #555;
+  font-size: .688rem;
+}
 /* over-writes of nvd3 css -------------------------------------------------- */
 .nvd3 .nv-axis line {
   opacity: 0!important;

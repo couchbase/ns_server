@@ -290,8 +290,7 @@
 
       </div>
     </div>
-    <div class="footer-save">
-      <a class="text-medium margin-right-2" onClick="location.reload()">Cancel/Reset</a>
+    <footer class="footer-save">
       <button
          type="submit"
          ng-show="rbac.cluster.pools.write || rbac.cluster.settings.indexes.write"
@@ -299,6 +298,7 @@
          class="margin-right-2">
         Save
       </button>
-    </div>
+      <a class="text-medium margin-left-1" onClick="location.reload()">Cancel/Reset</a>
+    </footer>
   </form>
 </div>
