@@ -136,14 +136,14 @@
               <input
                  type="checkbox"
                  id="anonymous-access"
-                 ng-model="addLdapDialogCtl.config.connect.anon">
+                 ng-model="addLdapDialogCtl.config.isAnon">
               <label for="anonymous-access">Contact LDAP host anonymously</label>
             </div>
             <div class="formrow row items-top">
               <span class="width-6 margin-right-half">
                 <label
                    for="query_dn"
-                   ng-disabled="addLdapDialogCtl.config.connect.anon">
+                   ng-disabled="addLdapDialogCtl.config.isAnon">
                   LDAP DN
                 </label>
                 <input
@@ -155,7 +155,7 @@
                    id="query_dn"
                    ng-model="addLdapDialogCtl.config.connect.query_dn"
                    placeholder="uid=admin,ou=users,dc=example,dc=com"
-                   ng-disabled="addLdapDialogCtl.config.connect.anon">
+                   ng-disabled="addLdapDialogCtl.config.isAnon">
                 <div
                    class="error"
                    ng-show="addLdapDialogCtl.errors.query_dn">
@@ -165,7 +165,7 @@
               <span class="width-6">
                 <label
                    for="query_pass"
-                   ng-disabled="addLdapDialogCtl.config.connect.anon">
+                   ng-disabled="addLdapDialogCtl.config.isAnon">
                   Password
                 </label>
                 <input
@@ -176,7 +176,7 @@
                    mn-autocomplete-off="enforce"
                    id="query_pass"
                    ng-model="addLdapDialogCtl.config.connect.query_pass"
-                   ng-disabled="addLdapDialogCtl.config.connect.anon">
+                   ng-disabled="addLdapDialogCtl.config.isAnon">
                 <div
                    class="error"
                    ng-show="addLdapDialogCtl.errors.query_pass">

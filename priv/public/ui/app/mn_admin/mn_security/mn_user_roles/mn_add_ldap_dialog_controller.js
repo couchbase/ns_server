@@ -16,9 +16,9 @@
         server_cert_validation: "false",
         cacert: "",
         query_dn: "",
-        query_pass: "",
-        anon: false
+        query_pass: ""
       },
+      isAnon: false,
       userDnMapping: "template",
       authentication: {
         authentication_enabled: false,
@@ -71,6 +71,8 @@
           unpackQueryForGroups(vm.config.queryForGroups, config.groups_query);
         vm.config.advanced =
           unpackAdvancedSettings(config);
+        vm.config.isAnon =
+          isThisAnonConnection(config);
       });
     }
 
@@ -108,7 +110,7 @@
             }
           }
           return acc;
-        }, {anon: isThisAnonConnection(config)});
+        }, {});
     }
 
     function unpackUserDnMapping(type, mapping) {
@@ -264,7 +266,9 @@
                                  getQueryForGroupsSettings(),
                                  vm.config.advanced);
 
-      mnPromiseHelper(vm, mnUserRolesService.postLdapSettings(config), $uibModalInstance)
+      mnPromiseHelper(vm,
+                      mnUserRolesService.postLdapSettings(config, vm.config.isAnon),
+                      $uibModalInstance)
         .showGlobalSpinner()
         .catchErrors()
         // .broadcast("reloadRolesPoller")
