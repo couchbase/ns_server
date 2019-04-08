@@ -47,6 +47,7 @@
     vm.checkConnectivity = checkConnectivity;
     vm.checkAuthentication = checkAuthentication;
     vm.checkGroupsQuery = checkGroupsQuery;
+    vm.clearLdapCache = clearLdapCache;
     activate();
 
     function activate() {
@@ -77,6 +78,13 @@
       return !data.query_dn && !!((data.authentication_enabled && data.user_dn_mapping &&
                                    data.user_dn_mapping.includes("query")) ||
                                   (data.authorization_enabled && data.groups_query));
+    }
+
+    function clearLdapCache() {
+      return mnPromiseHelper(vm, mnUserRolesService.clearLdapCache(), $uibModalInstance)
+        .broadcast("reloadRolesPoller")
+        .closeOnSuccess()
+        .showGlobalSuccess("Cache cleared successfully!");
     }
 
     function unpackAdvancedSettings(config) {

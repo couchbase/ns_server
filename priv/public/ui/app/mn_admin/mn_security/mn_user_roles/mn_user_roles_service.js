@@ -26,12 +26,20 @@
       ldapSettingsValidate: ldapSettingsValidate,
       postLdapSettings: postLdapSettings,
       getLdapSettings: getLdapSettings,
+      clearLdapCache: clearLdapCache,
 
       getUserProfile: getUserProfile,
       putUserProfile: putUserProfile
     };
 
     return mnUserRolesService;
+
+    function clearLdapCache() {
+      return $http({
+        method: "POST",
+        url: "/settings/invalidateLDAPCache"
+      });
+    }
 
     function getLdapSettings() {
       return $http({
