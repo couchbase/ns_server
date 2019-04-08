@@ -115,7 +115,7 @@
 
     function unpackUserDnMapping(type, mapping) {
       if (!mapping.length) {
-        return;
+        return {};
       }
       switch (type) {
       case "template":
@@ -155,7 +155,7 @@
 
     function unpackQueryForGroups(type, groupsQuery) {
       if (!groupsQuery) {
-        return;
+        return {scope: "one"};
       }
       var query = groupsQuery.split("?");
       switch (type) {
