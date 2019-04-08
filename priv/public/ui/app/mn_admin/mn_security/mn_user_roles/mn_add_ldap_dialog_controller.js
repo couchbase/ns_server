@@ -237,25 +237,29 @@
     }
 
     function checkConnectivity() {
-      mnPromiseHelper(vm,
+      delete vm.connectSuccessResult;
+      mnPromiseHelper(
+        vm,
         mnUserRolesService.ldapSettingsValidate("connectivity", getConnectivitySettings()))
         .applyToScope("connectSuccessResult")
         .catchErrors(maybeExtractResultFromError("connectSuccessResult"));
     }
 
     function checkAuthentication() {
+      delete vm.authenticationSuccessResult;
       var settings = Object.assign({}, getAuthenticationSettings(), vm.config.cred);
       mnPromiseHelper(vm,
-        mnUserRolesService.ldapSettingsValidate("authentication", settings))
+                      mnUserRolesService.ldapSettingsValidate("authentication", settings))
         .applyToScope("authenticationSuccessResult")
         .catchErrors(maybeExtractResultFromError("authenticationSuccessResult"));
     }
 
     function checkGroupsQuery() {
+      delete vm.queryForGroupsSuccessResult;
       var settings = Object.assign({groups_query_user: vm.config.groups_query_user},
                                    getQueryForGroupsSettings());
       mnPromiseHelper(vm,
-        mnUserRolesService.ldapSettingsValidate("groups_query", settings))
+                      mnUserRolesService.ldapSettingsValidate("groups_query", settings))
         .applyToScope("queryForGroupsSuccessResult")
         .catchErrors(maybeExtractResultFromError("queryForGroupsSuccessResult"));
     }
@@ -270,6 +274,7 @@
                       mnUserRolesService.postLdapSettings(config, vm.config.isAnon),
                       $uibModalInstance)
         .showGlobalSpinner()
+        .removeErrors()
         .catchErrors()
         // .broadcast("reloadRolesPoller")
         .closeOnSuccess()

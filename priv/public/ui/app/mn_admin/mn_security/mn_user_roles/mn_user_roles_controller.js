@@ -65,11 +65,9 @@
     }
 
     function activate() {
-
       $scope.$watchGroup(["userRolesCtl.stateParams.order",
                           "userRolesCtl.stateParams.sortBy",
                           "userRolesCtl.stateParams.substr"], _.debounce(function () {
-                            console.log("a")
                             $scope.$broadcast("reloadRolesPoller");
                           }, 500, {leading: true}));
 
