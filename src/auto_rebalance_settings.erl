@@ -33,8 +33,7 @@
          is_retry_enabled/0]).
 
 config_upgrade_to_madhatter() ->
-    DefaultEnable = cluster_compat_mode:is_enterprise(),
-    Cfg = [{enabled, DefaultEnable},
+    Cfg = [{enabled, false},
            {after_time_period, ?RETRY_AFTER_DEFAULT},
            {max_attempts, ?RETRY_ATTEMPTS_DEFAULT}],
     [{set, retry_rebalance, Cfg}].
