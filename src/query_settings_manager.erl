@@ -27,7 +27,8 @@
          get/1,
          get_from_config/3,
          update/2,
-         config_upgrade_to_55/0
+         config_upgrade_to_55/0,
+         config_upgrade_to_madhatter/1
         ]).
 
 -export([cfg_key/0,
@@ -63,47 +64,63 @@ update(Key, Value) ->
 
 config_upgrade_to_55() ->
     [{set, ?QUERY_CONFIG_KEY,
-      json_settings_manager:build_settings_json(default_settings_for_55(),
-                                                dict:new(), known_settings())}].
+      json_settings_manager:build_settings_json(
+        default_settings(?VERSION_55), dict:new(),
+        known_settings(?VERSION_55))}].
+
+config_upgrade_to_madhatter(Config) ->
+    NewSettings = general_settings_defaults(?VERSION_MADHATTER) --
+        general_settings_defaults(?VERSION_55),
+    json_settings_manager:upgrade_existing_key(
+      ?MODULE, Config, [{generalSettings, NewSettings}],
+      known_settings(?VERSION_MADHATTER)).
 
 known_settings() ->
-    [{generalSettings, general_settings_lens()},
+    known_settings(cluster_compat_mode:get_compat_version()).
+
+known_settings(Ver) ->
+    [{generalSettings, general_settings_lens(Ver)},
      {curlWhitelistSettings, curl_whitelist_settings_lens()}].
 
-default_settings_for_55() ->
-    [{generalSettings, general_settings_defaults()},
+default_settings(Ver) ->
+    [{generalSettings, general_settings_defaults(Ver)},
      {curlWhitelistSettings, curl_whitelist_settings_defaults()}].
 
-general_settings_lens_props() ->
-    [{queryTmpSpaceDir, id_lens(<<"query.settings.tmp_space_dir">>)},
-     {queryTmpSpaceSize, id_lens(<<"query.settings.tmp_space_size">>)}].
+general_settings(Ver) ->
+    [{queryTmpSpaceDir, "query.settings.tmp_space_dir",
+      list_to_binary(path_config:component_path(tmp))},
+     {queryTmpSpaceSize, "query.settings.tmp_space_size",
+      ?QUERY_TMP_SPACE_DEF_SIZE}] ++
+        case cluster_compat_mode:is_version_madhatter(Ver) of
+            true ->
+                [{queryPipelineBatch,      "pipeline-batch",      16},
+                 {queryPipelineCap,        "pipeline-cap",        512},
+                 {queryScanCap,            "scan-cap",            512},
+                 {queryTimeout,            "timeout",             0},
+                 {queryPreparedLimit,      "prepared-limit",      16384},
+                 {queryCompletedLimit,     "completed-limit",     4000},
+                 {queryCompletedThreshold, "completed-threshold", 1000},
+                 {queryLogLevel,           "loglevel",            <<"info">>},
+                 {queryMaxParallelism,     "max-parallelism",     1},
+                 {queryN1QLFeatCtrl,       "n1ql-feat-ctrl",      12}];
+            false ->
+                []
+        end.
 
 curl_whitelist_settings_len_props() ->
     [{queryCurlWhitelist, id_lens(<<"query.settings.curl_whitelist">>)}].
 
-general_settings_defaults() ->
-    [{queryTmpSpaceDir, list_to_binary(path_config:component_path(tmp))},
-     {queryTmpSpaceSize, ?QUERY_TMP_SPACE_DEF_SIZE}].
+general_settings_defaults(Ver) ->
+    [{K, D} || {K, _, D} <- general_settings(Ver)].
 
 curl_whitelist_settings_defaults() ->
     [{queryCurlWhitelist, {[{<<"all_access">>, false},
                             {<<"allowed_urls">>, []},
                             {<<"disallowed_urls">>, []}]}}].
 
-general_settings_lens() ->
-    json_settings_manager:props_lens(general_settings_lens_props()).
+general_settings_lens(Ver) ->
+    json_settings_manager:props_lens(
+      [{K, id_lens(list_to_binary(L))} || {K, L, _} <- general_settings(Ver)]).
 
 curl_whitelist_settings_lens() ->
     json_settings_manager:props_lens(curl_whitelist_settings_len_props()).
-
-
--ifdef(TEST).
-defaults_test() ->
-    Keys = fun (L) -> lists:sort([K || {K, _} <- L]) end,
-
-    ?assertEqual(Keys(known_settings()), Keys(default_settings_for_55())),
-    ?assertEqual(Keys(curl_whitelist_settings_len_props()),
-                 Keys(curl_whitelist_settings_defaults())),
-    ?assertEqual(Keys(general_settings_lens_props()),
-                 Keys(general_settings_defaults())).
--endif.

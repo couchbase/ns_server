@@ -36,8 +36,28 @@ settings_post_validators() ->
      validator:integer(queryTmpSpaceSize, _),
      validate_tmp_space_size(queryTmpSpaceSize, _),
      validator:dir(queryTmpSpaceDir, _),
-     validator:convert(queryTmpSpaceDir, fun list_to_binary/1, _),
-     validator:unsupported(_)].
+     validator:convert(queryTmpSpaceDir, fun list_to_binary/1, _)] ++
+        settings_post_validators_madhatter() ++
+        [validator:unsupported(_)].
+
+settings_post_validators_madhatter() ->
+    case cluster_compat_mode:is_cluster_madhatter() of
+        true ->
+            [validator:integer(queryPipelineBatch, _),
+             validator:integer(queryPipelineCap, _),
+             validator:integer(queryScanCap, _),
+             validator:integer(queryTimeout, _),
+             validator:integer(queryPreparedLimit, 0, infinity, _),
+             validator:integer(queryCompletedLimit, _),
+             validator:integer(queryCompletedThreshold, _),
+             validator:integer(queryMaxParallelism, _),
+             validator:integer(queryN1QLFeatCtrl, _),
+             validator:one_of(queryLogLevel, ["debug", "trace", "info", "warn",
+                                              "error", "severe", "none"], _),
+             validator:convert(queryLogLevel, fun list_to_binary/1, _)];
+        false ->
+            []
+    end.
 
 validate_tmp_space_size(Name, State) ->
     %% zero disables the feature, and -1 implies unlimited quota

@@ -26,7 +26,8 @@
          id_lens/1,
          props_lens/1,
          update/2,
-         update_txn/2
+         update_txn/2,
+         upgrade_existing_key/4
         ]).
 
 -callback cfg_key() -> term().
@@ -94,6 +95,12 @@ update_txn(M, Props) ->
             New = build_settings_json(Props, Current, M:known_settings()),
             {commit, SetFn(CfgKey, New, Config), New}
     end.
+
+upgrade_existing_key(M, Config, NewProps, KnownSettings) ->
+    JSON = fetch_settings_json(Config, M:cfg_key()),
+    Current = decode_settings_json(JSON),
+    New = build_settings_json(NewProps, Current, KnownSettings),
+    [{set, M:cfg_key(), New}].
 
 do_update(M, Props) ->
     RV = ns_config:run_txn(update_txn(M, Props)),
