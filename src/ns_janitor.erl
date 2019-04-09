@@ -434,23 +434,27 @@ sanify_chain(Bucket, States,
     end.
 
 derive_chain(Bucket, VBucket, ActiveNode, Chain) ->
-    case misc:position(ActiveNode, Chain) of
-        false ->
-            %% It's an extra node
-            ?log_error(
-               "Master for vbucket ~p in ~p is not "
-               "active, but ~p is, so making that the "
-               "master.",
-               [VBucket, Bucket, ActiveNode]),
-            [ActiveNode];
-        Pos ->
-            ?log_error(
-               "Master for vbucket ~p in ~p "
-               "is not active, but ~p is (one of "
-               "replicas). So making that master.",
-               [VBucket, Bucket, ActiveNode]),
-            [ActiveNode | lists:nthtail(Pos, Chain)]
-    end.
+    DerivedChain = case misc:position(ActiveNode, Chain) of
+                       false ->
+                           %% It's an extra node
+                           ?log_error(
+                              "Master for vbucket ~p in ~p is not "
+                              "active, but ~p is, so making that the "
+                              "master.",
+                              [VBucket, Bucket, ActiveNode]),
+                           [ActiveNode];
+                       Pos ->
+                           ?log_error(
+                              "Master for vbucket ~p in ~p "
+                              "is not active, but ~p is (one of "
+                              "replicas). So making that master.",
+                              [VBucket, Bucket, ActiveNode]),
+                           [ActiveNode | lists:nthtail(Pos, Chain)]
+                   end,
+    %% Fill missing replicas, so we don't lose durability constraints.
+    Undefineds = lists:duplicate(length(Chain) - length(DerivedChain),
+                                 undefined),
+    DerivedChain ++ Undefineds.
 
 sanify_chain_one_active(_Bucket, _VBucket, ActiveNode, _States,
                         [CurrentMaster | _CurrentReplicas] = CurrentChain,
@@ -524,11 +528,11 @@ sanify_basic_test() ->
     ignore = sanify_chain("B", [{a, 0, active}, {b, 0, active}],
                           [c, a, b], [], 0),
     %% this runs "master is one of replicas" case
-    [b] = sanify_chain("B", [{b, 0, active}, {c, 0, replica}],
-                       [a, b], [], 0),
+    [b, undefined] = sanify_chain("B", [{b, 0, active}, {c, 0, replica}],
+                                  [a, b], [], 0),
     %% and this runs "master is some non-chain member node" case
-    [c] = sanify_chain("B", [{c, 0, active}],
-                       [a, b], [], 0),
+    [c, undefined] = sanify_chain("B", [{c, 0, active}],
+                                  [a, b], [], 0),
 
     %% lets also test rebalance stopped prior to complete takeover
     [a, b] = sanify_chain("B", [{a, 0, dead}, {b, 0, replica},
@@ -558,9 +562,9 @@ sanify_doesnt_lose_replicas_on_stopped_rebalance_test() ->
                           [a, b], [c, d], 0),
     %% but without FF map we're (too) conservative (should be fixable
     %% someday)
-    [c] = sanify_chain("B", [{a, 0, dead}, {b, 0, replica},
-                             {c, 0, active}, {d, 0, replica}],
-                       [a, b], [], 0).
+    [c, undefined] = sanify_chain("B", [{a, 0, dead}, {b, 0, replica},
+                                        {c, 0, active}, {d, 0, replica}],
+                                  [a, b], [], 0).
 
 enumerate_chains_test() ->
     Map = [[a, b, c], [b, c, a]],
