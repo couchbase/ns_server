@@ -698,6 +698,11 @@ section.error {
 .dialog-wizard  .panel-footer {
   justify-content: space-between;
 }
+footer.wizard-footer {
+  font-size: .75rem;
+  text-align: center;
+  box-shadow: none;
+}
 /* setup and sign-in page background ------------------------------------ */
 .sign-in-background {
   background: #eceff2;
