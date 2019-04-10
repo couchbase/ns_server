@@ -310,7 +310,16 @@ handle_call(reload_config, _From, #s{listeners = Listeners} = State) ->
             State3 = lists:foldl(fun (P, S) -> add_proto(P, S) end,
                                  State2, ToAdd),
             NewCurrentProtos = [M || {M, _} <- State3#s.listeners],
-            {reply, {ok, NewCurrentProtos}, State3}
+            Required = [R || R <- get_required_protos(State3),
+                             lists:member(R, get_protos(State3))],
+            NotStartedRequired = Required -- NewCurrentProtos,
+            case NotStartedRequired of
+                [] -> {reply, {ok, NewCurrentProtos}, State3};
+                _ ->
+                    error_msg("Failed to start required dist listeners ~p",
+                              [NotStartedRequired]),
+                    {reply, {error, {not_started, NotStartedRequired}}, State3}
+            end
     catch
         _:Error -> {reply, {error, Error}, State}
     end;
