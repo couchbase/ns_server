@@ -786,6 +786,17 @@ check_for_raw_addr(AFamily) ->
             end
     end.
 
+verify_net_config_allowed(State) ->
+    case ns_config_auth:is_system_provisioned() andalso
+        auto_failover:is_enabled() of
+        true  ->
+            M = "Can't change network configuration when auto-failover "
+                "is enabled.",
+            validator:return_error('_', M, State);
+        false ->
+            State
+    end.
+
 net_config_validators() ->
     [validator:has_params(_),
      validator:required(afamily, _),
@@ -799,6 +810,7 @@ net_config_validators() ->
      validator:validate(fun ("on") -> {value, true};
                             ("off") -> {value, false}
                         end, clusterEncryption, _),
+     verify_net_config_allowed(_),
      validator:unsupported(_)].
 
 update_type(AFamily, CEncrypt) ->

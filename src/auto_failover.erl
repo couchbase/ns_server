@@ -60,7 +60,8 @@
 -endif.
 
 %% API
--export([start_link/0, enable/3, disable/1, reset_count/0, reset_count_async/0]).
+-export([start_link/0, enable/3, disable/1, reset_count/0, reset_count_async/0,
+         is_enabled/0]).
 %% For email alert notificatons
 -export([alert_keys/0]).
 
@@ -164,6 +165,11 @@ reset_count() ->
 -spec reset_count_async() -> ok.
 reset_count_async() ->
     cast(reset_auto_failover_count).
+
+-spec is_enabled() -> true | false.
+is_enabled() ->
+    AFCfg = ns_config:read_key_fast(auto_failover_cfg, []),
+    proplists:get_value(enabled, AFCfg, false).
 
 call(Call) ->
     misc:wait_for_global_name(?MODULE),
