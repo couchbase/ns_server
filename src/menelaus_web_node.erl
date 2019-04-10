@@ -326,9 +326,9 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
           {ports, {struct, PortsKV ++ DistPorts}},
           {services, ns_cluster_membership:node_services(Config, WantENode)},
           {addressFamily, AFamily},
-          {clusterEncryption, CEncryption},
-          {distProtocols, Listeners}
-         ] ++ alternate_addresses_json(WantENode, Config, WantedPorts),
+          {clusterEncryption, CEncryption}
+         ] ++ [{distProtocols, Listeners} || Listeners =/= undefined]
+           ++ alternate_addresses_json(WantENode, Config, WantedPorts),
     case WantENode =:= node() of
         true ->
             [{thisNode, true} | RV];
@@ -1017,16 +1017,20 @@ apply_ext_dist_protocols(Protos) ->
     case cb_dist:update_listeners_in_config(Protos) of
         ok ->
             case cb_dist:reload_config() of
-                {ok, ListenProtos} ->
-                    case Protos -- ListenProtos of
+                {ok, Listeners} ->
+                    NotStarted = case Protos of
+                                     undefined -> [];
+                                     _ -> Protos -- Listeners
+                                 end,
+                    case NotStarted of
                         [] ->
                             ns_config:set({node, node(),
                                            erl_external_dist_protocols},
                                           Protos),
                             ok;
-                        NotStarted ->
+                        L ->
                             Msg = io_lib:format("Failed to start listeners: ~p",
-                                                [NotStarted]),
+                                                [L]),
                             {error, iolist_to_binary(Msg)}
                     end;
                 {error, Error} ->
