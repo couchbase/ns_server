@@ -2322,7 +2322,7 @@ nav.nav-sidebar-hidden {
   fill-opacity: .0 !important;
   }
 
-/*  checkbox filter widget for the chartbuilder data section  --------------- */
+/*  activate/deactivate content filters for the chartbuilder data section  -- */
 .checkbox-filter {
   border: 1px solid #d1d1d1;
   border-radius: 5px;
@@ -2478,7 +2478,7 @@ input[type="text"].charts-group-name {
   border-color: #fff;
   font-size: .961rem;
   font-weight: 600;
-  margin-right: .5rem;
+  margin: 0 .5rem;
 }
 input[type="text"]:focus.charts-group-name {
   border-color: #d1d1d1;
@@ -2486,6 +2486,10 @@ input[type="text"]:focus.charts-group-name {
 .charts-preset-group-name {
   font-size: .961rem;
   font-weight: 600;
+  display: inline-block;
+  height: 2rem;
+  line-height: 2rem;
+  margin-left: 1rem;
 }
 .charts-group-row .icon {
   padding: 0 .5rem;

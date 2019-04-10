@@ -97,7 +97,7 @@
        ng-disabled="!statisticsNewCtl.statisticsService.scenarios.length"
        ng-click="statisticsNewCtl.openGroupDialog(statisticsNewCtl.statisticsService.scenarios.selected)"
        class="text-small"
-       ng-show="!scenario.preset">
+       ng-hide="statisticsNewCtl.statisticsService.scenarios.selected.preset">
       Add Group
     </a>
   </span>

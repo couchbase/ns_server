@@ -88,7 +88,7 @@
             type: 'multiChart',
             height: Number($scope.config.height),
             margin : {
-              top: 40,
+              top: 32,
               right: 40,
               bottom: 40,
               left: 40

@@ -196,8 +196,8 @@
           },
           "couch_docs_actual_disk_size": {
             unit: "bytes",
-            title: "Disk Size",
-            desc: "The size of all data files on disk for this bucket, including the data itself, metadata, and temporary files. (measured from couch_docs_actual_disk_size)"
+            title: "Total Data Service Disk Size",
+            desc: "The size of all data service files on disk for this bucket, including the data itself, metadata, and temporary files. (measured from couch_docs_actual_disk_size)"
           },
           "couch_docs_data_size": {
             unit: "bytes",

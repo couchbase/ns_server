@@ -20,10 +20,10 @@
       vm.scenario = {
         name: "",
         desc: "",
-        zoom: "hour",
+        zoom: "minute",
         groups: [{
           id: mnHelper.generateID(),
-          name: "new group",
+          name: "click to edit group name",
           desc: "",
           charts: []
         }]
