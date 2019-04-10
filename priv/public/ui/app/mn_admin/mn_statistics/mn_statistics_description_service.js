@@ -9,9 +9,9 @@
     return {
       "kvGroups": {
         "Ops":
-        ["ops","hit_ratio","cas_hits","ep_cache_miss_rate","couch_views_ops","ep_num_ops_del_meta","ep_num_ops_get_meta","ep_num_ops_set_meta","ep_ops_create","ep_ops_update","vb_active_ops_create","vb_pending_ops_create","vb_replica_ops_create","xdc_ops","curr_connections"],
+        ["ops","cmd_get","cmd_set","hit_ratio","delete_hits","cas_hits","ep_cache_miss_rate","couch_views_ops","ep_num_ops_del_meta","ep_num_ops_get_meta","ep_num_ops_set_meta","ep_ops_create","ep_ops_update","vb_active_ops_create","vb_pending_ops_create","vb_replica_ops_create","xdc_ops","curr_connections"],
         "Memory":
-        ["mem_used","ep_kv_size","ep_meta_data_memory","ep_tmp_oom_errors","vb_active_itm_memory","vb_active_meta_data_memory","vb_pending_itm_memory","vb_pending_meta_data_memory","vb_replica_itm_memory","vb_replica_meta_data_memory"],
+        ["mem_used","ep_kv_size","ep_meta_data_memory","ep_tmp_oom_errors","ep_mem_low_wat","ep_mem_high_wat","vb_active_itm_memory","vb_active_meta_data_memory","vb_pending_itm_memory","vb_pending_meta_data_memory","vb_replica_itm_memory","vb_replica_meta_data_memory"],
         "Disk":
         ["couch_total_disk_size","ep_cache_miss_rate","vb_avg_total_queue_age","avg_disk_update_time","avg_disk_commit_time","couch_docs_actual_disk_size","couch_views_actual_disk_size",
          "disk_write_queue","ep_bg_fetched","ep_data_read_failed","ep_data_write_failed","ep_num_value_ejects","ep_ops_create","ep_ops_update"],
@@ -20,7 +20,7 @@
         "Disk Queues":
         ["ep_diskqueue_fill","ep_diskqueue_drain","ep_diskqueue_items","vb_active_queue_fill","vb_active_queue_drain","vb_active_queue_size","vb_replica_queue_fill","vb_replica_queue_drain","vb_replica_queue_size","vb_pending_queue_fill","vb_pending_queue_drain","vb_pending_queue_size"],
         "DCP Queues":
-        ["ep_dcp_views+indexes_count","ep_dcp_views+indexes_producer_count","ep_dcp_views+indexes_total_bytes","ep_dcp_views+indexes_backoff","ep_dcp_cbas_count","ep_dcp_cbas_producer_count","ep_dcp_cbas_total_bytes","ep_dcp_cbas_backoff","ep_dcp_replica_count","ep_dcp_replica_producer_count","ep_dcp_replica_total_bytes","ep_dcp_replica_backoff","ep_dcp_xdcr_count","ep_dcp_xdcr_producer_count","ep_dcp_xdcr_total_bytes","ep_dcp_xdcr_backoff","ep_dcp_other_count","ep_dcp_other_producer_count","ep_dcp_other_total_bytes","ep_dcp_other_backoff"]
+        ["ep_dcp_views+indexes_count","ep_dcp_views+indexes_producer_count","ep_dcp_views+indexes_items_remaining","ep_dcp_views+indexes_total_bytes","ep_dcp_views+indexes_backoff","ep_dcp_cbas_count","ep_dcp_cbas_producer_count","ep_dcp_cbas_items_remaining","ep_dcp_cbas_total_bytes","ep_dcp_cbas_backoff","ep_dcp_replica_count","ep_dcp_replica_producer_count","ep_dcp_replica_items_remaining","ep_dcp_replica_total_bytes","ep_dcp_replica_backoff","ep_dcp_xdcr_count","ep_dcp_xdcr_producer_count","ep_dcp_xdcr_items_remaining","ep_dcp_xdcr_total_bytes","ep_dcp_xdcr_backoff","ep_dcp_other_count","ep_dcp_other_producer_count","ep_dcp_other_items_remaining","ep_dcp_other_total_bytes","ep_dcp_other_backoff"]
       },
       "stats": {
         "@kv-": {
