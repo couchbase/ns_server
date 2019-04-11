@@ -38,7 +38,9 @@
          external_listeners/0,
          update_listeners_in_config/1,
          update_net_settings_in_config/2,
-         proto_to_encryption/1]).
+         proto_to_encryption/1,
+         format_error/1,
+         proto2str/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -557,7 +559,7 @@ read_config(File, IgnoreReadError) ->
             [];
         {error, Reason} ->
             error_msg("Can't read cb_dist config file ~p: ~p", [File, Reason]),
-            erlang:error(invalid_cb_dist_config)
+            erlang:error({invalid_cb_dist_config, File, Reason})
     end.
 
 %% can't use file:consult here because file server might not be started
@@ -667,3 +669,20 @@ update_config(Listeners, PreferredExternal, PreferredLocal) ->
                       [CfgFile, Reason]),
             {error, Reason}
     end.
+
+format_error({not_started, Protocols}) ->
+    PS = string:join([proto2str(P) || P <- Protocols], ", "),
+    io_lib:format("Failed to start the following required listeners: ~p", [PS]);
+format_error({invalid_cb_dist_config, File, invalid_format}) ->
+    io_lib:format("Invalid format of cb_dist config file (~s)", [File]);
+format_error({invalid_cb_dist_config, File, read_error}) ->
+    io_lib:format("Can't read cb_dist config file ~s", [File]);
+format_error({invalid_cb_dist_config, File, Reason}) ->
+    io_lib:format("Can't read cb_dist config file ~s (~p)", [File, Reason]);
+format_error(Unknown) ->
+    io_lib:format("~p", [Unknown]).
+
+proto2str(inet_tcp_dist) -> "TCP-ipv4";
+proto2str(inet_tls_dist) -> "TLS-ipv4";
+proto2str(inet6_tcp_dist) -> "TCP-ipv6";
+proto2str(inet6_tls_dist) -> "TLS-ipv6".

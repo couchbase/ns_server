@@ -847,7 +847,8 @@ update_proto_in_dist_config(AFamily, CEncryption) ->
             case cb_dist:reload_config() of
                 {ok, _} -> ok;
                 {error, Error} ->
-                    erlang:error({reload_cb_dist_config_error, node(), Error})
+                    erlang:error({reload_cb_dist_config_error, node(),
+                                  cb_dist:format_error(Error)})
             end;
         {error, Error} ->
             erlang:error({save_cb_dist_file_error, Error})
@@ -905,7 +906,8 @@ change_local_dist_proto(ExpectedFamily, ExpectedEncryption) ->
     case cb_dist:reload_config(Babysitter) of
         {ok, _} -> ok;
         {error, Error} ->
-            erlang:error({reload_cb_dist_config_error, Babysitter, Error})
+            erlang:error({reload_cb_dist_config_error, Babysitter,
+                          cb_dist:format_error(Error)})
     end,
     ensure_connection_proto(Babysitter,
                             ExpectedFamily, ExpectedEncryption, 10),
@@ -979,9 +981,9 @@ check_connection_proto(Node, Family, Encryption) ->
 
 format_error({save_cb_dist_file_error, R}) ->
     io_lib:format("Failed to save cb_dist configuration file: ~p", [R]);
-format_error({reload_cb_dist_config_error, Node, R}) ->
-    io_lib:format("Failed to reload cb_dist configuration file on node ~p: ~p",
-                  [Node, R]);
+format_error({reload_cb_dist_config_error, Node, Msg}) ->
+    io_lib:format("Failed to reload cb_dist configuration file on node ~p: ~s",
+                  [Node, Msg]);
 format_error({ns_server_restart_error, Error}) ->
     io_lib:format("Restart error: ~p", [Error]);
 format_error({node_info, Node, Error}) ->
@@ -1029,13 +1031,14 @@ apply_ext_dist_protocols(Protos) ->
                                           Protos),
                             ok;
                         L ->
-                            Msg = io_lib:format("Failed to start listeners: ~p",
-                                                [L]),
+                            ProtoStrs = [cb_dist:proto2str(P) || P <- L],
+                            Msg = io_lib:format("Failed to start listeners: ~s",
+                                                [string:join(ProtoStrs, ", ")]),
                             {error, iolist_to_binary(Msg)}
                     end;
                 {error, Error} ->
-                    Msg = io_lib:format("Failed to reload cb_dist config: ~p",
-                                        [Error]),
+                    Msg = io_lib:format("Failed to reload cb_dist config: ~s",
+                                        [cb_dist:format_error(Error)]),
                     {error, iolist_to_binary(Msg)}
             end;
         {error, Reason} ->
