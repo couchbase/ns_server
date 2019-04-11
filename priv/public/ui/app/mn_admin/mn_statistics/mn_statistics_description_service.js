@@ -796,18 +796,18 @@
           "cbas/failed_at_parser_records_count": null,
           "cbas/failed_at_parser_records_count_total": {
             unit: "number",
-            title: "Analytics Sync Failed Records",
-            desc: "Number of records Analytics failed to parse during bucket synchronization."
+            title: "Analytics Parse Fail Since Connect",
+            desc: "Number of records Analytics failed to parse during bucket synchronization - since last bucket connect."
           },
           "cbas/incoming_records_count": {
             unit: "number/sec",
-            title: "Analytics Total Ops",
+            title: "Analytics Ops Rate",
             desc: "Operations (gets + sets + deletes) per second processed by Analytics for this bucket."
           },
           "cbas/incoming_records_count_total": {
             unit: "number",
-            title: "Analytics Total Ops Since Bucket Connect",
-            desc: "Operations (gets + sets + deletes) processed by Analytics for this bucket since last connected."
+            title: "Analytics Ops Since Connect",
+            desc: "Number of operations (gets + sets + deletes) processed by Analytics for this bucket since last bucket connect."
           }
         },
         "@index-":{
@@ -941,7 +941,7 @@
           "cbas_gc_count": {
             unit: "number",
             title: "Analytics Garbage Collection Rate",
-            desc: "Number of JVM garbage collections ??per second?? for this Analytics node."
+            desc: "Number of JVM garbage collections per second for this Analytics node."
           },
           "cbas_gc_time": {
             unit: "millisecond/sec",
@@ -1118,7 +1118,7 @@
             "rate_doc_opt_repd": {
               unit: "number/sec",
               title: "XDCR Optimistic Replication Rate",
-              desc: "Number of replicated mutations per second. Per-replication. ?????????"
+              desc: "Number of replicated mutations per second. Per-replication."
             },
             "rate_received_from_dcp": {
               unit: "number/sec",
