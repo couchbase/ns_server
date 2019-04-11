@@ -229,7 +229,7 @@
             dynamic: true
           },
           zoom: {
-            value: null
+            value: "minute"
           }
         }
       });

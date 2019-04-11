@@ -34,14 +34,13 @@
             value="{{instId}}">{{partition.index}}</option>
   </select>
   <div class="row charts">
-    <div
+    <mn-statistics-chart
        ng-repeat="config in mnGsiItemDetailsCtl.charts track by config.id"
        ng-class="'statistics-' + config.size"
-       mn-statistics-chart
        bucket="{{row.bucket}}"
+       zoom="{{mnGsiItemDetailsCtl.zoom}}"
        class="panel"
-       rbac="rbac"
-       config="config"></div>
+       config="config"></mn-statistics-chart>
   </div>
   <!-- nodes="statisticsNewCtl.nodes" -->
 </div>

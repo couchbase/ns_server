@@ -45,7 +45,6 @@
       return saveScenarios([{
         name: "Cluster Overview",
         desc: "Stats showing the general health of your cluster.",
-        zoom: "minute",
         preset: true,
         id: mnHelper.generateID(),
         groups: [(function (groupId) {
@@ -54,37 +53,33 @@
             name: "Server Resources",
             preset: true,
             charts: [{
-              stats: {"cpu_utilization_rate": "@system.cpu_utilization_rate"},
+              stats: {"cpu_utilization_rate": "@system"},
               preset: true,
               size: "small",
               specificStat: true, // for single-stat chart
               group: groupId,
               id: mnHelper.generateID(),
-              bucket: ""
             }, {
-              stats: {"mem_actual_free": "@system.mem_actual_free"},
+              stats: {"mem_actual_free": "@system"},
               preset: true,
               size: "small",
               specificStat: true,
               group: groupId,
               id: mnHelper.generateID(),
-              bucket: ""
             }, {
-              stats: {"swap_used": "@system.swap_used"},
+              stats: {"swap_used": "@system"},
               preset: true,
               size: "small",
               specificStat: true,
               group: groupId,
               id: mnHelper.generateID(),
-              bucket: ""
             }, {
-              stats: {"rest_requests": "@system.rest_requests"},
+              stats: {"rest_requests": "@system"},
               preset: true,
               size: "small",
               specificStat: true,
               group: groupId,
               id: mnHelper.generateID(),
-              bucket: ""
             }]
           }
         })(mnHelper.generateID()), // 2nd group starts here with the comma ////
@@ -94,37 +89,33 @@
             name: "Data Service Overview (per bucket)",
             preset: true,
             charts: [{
-              stats: {"ops": "@kv-.ops"},
+              stats: {"ops": "@kv-"},
               preset: true,
               size: "small",
               specificStat: true,
               group: groupId,
-              id: mnHelper.generateID(),
-              bucket: ""
+              id: mnHelper.generateID()
             }, {
-              stats: {"mem_used": "@kv-.mem_used"},
+              stats: {"mem_used": "@kv-"},
               preset: true,
               size: "small",
               specificStat: true,
               group: groupId,
-              id: mnHelper.generateID(),
-              bucket: ""
+              id: mnHelper.generateID()
             }, {
-              stats: {"couch_docs_actual_disk_size": "@kv-.couch_docs_actual_disk_size"},
+              stats: {"couch_docs_actual_disk_size": "@kv-"},
               preset: true,
               size: "small",
               specificStat: true,
               group: groupId,
-              id: mnHelper.generateID(),
-              bucket: ""
+              id: mnHelper.generateID()
             }, {
-              stats: {"ep_resident_items_rate": "@kv-.ep_resident_items_rate"},
+              stats: {"ep_resident_items_rate": "@kv-"},
               preset: true,
               size: "small",
               specificStat: true,
               group: groupId,
-              id: mnHelper.generateID(),
-              bucket: ""
+              id: mnHelper.generateID()
             }]
           }
         })(mnHelper.generateID())]
@@ -132,7 +123,6 @@
       {
         name: "Data Service",
         desc: "Data Service stats per bucket.",
-        zoom: "minute",
         preset: true,
         id: mnHelper.generateID(),
         groups: [(function (groupId) {
@@ -141,21 +131,19 @@
             name: "Memory",
             preset: true,
             charts: [{
-              stats: {"mem_used": "@kv-.mem_used", "ep_mem_low_wat": "@kv-.ep_mem_low_wat", "ep_mem_high_wat": "@kv-.ep_mem_high_wat"},
+              stats: {"mem_used": "@kv-", "ep_mem_low_wat": "@kv-", "ep_mem_high_wat": "@kv-"},
               preset: true,
               size: "medium",
               specificStat: false, // false for multi-stat chart
               group: groupId,
-              id: mnHelper.generateID(),
-              bucket: ""
+              id: mnHelper.generateID()
             }, {
-              stats: {"ep_kv_size": "@kv-.ep_kv_size", "ep_meta_data_memory": "@kv-.ep_meta_data_memory"},
+              stats: {"ep_kv_size": "@kv-", "ep_meta_data_memory": "@kv-"},
               preset: true,
               size: "medium",
               specificStat: false,
               group: groupId,
-              id: mnHelper.generateID(),
-              bucket: ""
+              id: mnHelper.generateID()
             }]
           }
         })(mnHelper.generateID()),
@@ -165,21 +153,19 @@
             name: "Ops",
             preset: true,
             charts: [{
-              stats: {"ops": "@kv-.ops","ep_cache_miss_rate": "@kv-.ep_cache_miss_rate"},
+              stats: {"ops": "@kv-","ep_cache_miss_rate": "@kv-"},
               preset: true,
               size: "medium",
               specificStat: false,
               group: groupId,
-              id: mnHelper.generateID(),
-              bucket: ""
+              id: mnHelper.generateID()
             }, {
-              stats: {"cmd_get": "@kv-.cmd_get", "cmd_set": "@kv-.cmd_set", "delete_hits": "@kv-.delete_hits"},
+              stats: {"cmd_get": "@kv-", "cmd_set": "@kv-", "delete_hits": "@kv-"},
               preset: true,
               size: "medium",
               specificStat: false,
               group: groupId,
-              id: mnHelper.generateID(),
-              bucket: ""
+              id: mnHelper.generateID()
             }]
           }
         })(mnHelper.generateID()),
@@ -189,21 +175,19 @@
             name: "Disk",
             preset: true,
             charts: [{
-              stats: {"couch_docs_actual_disk_size": "@kv-.couch_docs_actual_disk_size", "couch_docs_data_size": "@kv-.couch_docs_data_size"},
+              stats: {"couch_docs_actual_disk_size": "@kv-", "couch_docs_data_size": "@kv-"},
               preset: true,
               size: "medium",
               specificStat: false,
               group: groupId,
-              id: mnHelper.generateID(),
-              bucket: ""
+              id: mnHelper.generateID()
             }, {
-              stats: {"disk_write_queue": "@kv-.disk_write_queue", "ep_data_read_failed": "@kv-.ep_data_read_failed", "ep_data_write_failed": "@kv-.ep_data_write_failed"},
+              stats: {"disk_write_queue": "@kv-", "ep_data_read_failed": "@kv-", "ep_data_write_failed": "@kv-"},
               preset: true,
               size: "medium",
               specificStat: false,
               group: groupId,
-              id: mnHelper.generateID(),
-              bucket: ""
+              id: mnHelper.generateID()
             }]
           }
         })(mnHelper.generateID()),
@@ -213,37 +197,33 @@
             name: "vBuckets",
             preset: true,
             charts: [{
-              stats: {"ep_vb_total": "@kv-.ep_vb_total"},
+              stats: {"ep_vb_total": "@kv-"},
               preset: true,
               size: "small",
               specificStat: true,
               group: groupId,
-              id: mnHelper.generateID(),
-              bucket: ""
+              id: mnHelper.generateID()
             }, {
-              stats: {"vb_active_num": "@kv-.vb_active_num"},
+              stats: {"vb_active_num": "@kv-"},
               preset: true,
               size: "small",
               specificStat: true,
               group: groupId,
-              id: mnHelper.generateID(),
-              bucket: ""
+              id: mnHelper.generateID()
             }, {
-              stats: {"vb_pending_num": "@kv-.vb_pending_num"},
+              stats: {"vb_pending_num": "@kv-"},
               preset: true,
               size: "small",
               specificStat: true,
               group: groupId,
-              id: mnHelper.generateID(),
-              bucket: ""
+              id: mnHelper.generateID()
             }, {
-              stats: {"vb_replica_num": "@kv-.vb_replica_num"},
+              stats: {"vb_replica_num": "@kv-"},
               preset: true,
               size: "small",
               specificStat: true,
               group: groupId,
-              id: mnHelper.generateID(),
-              bucket: ""
+              id: mnHelper.generateID()
             }]
           }
         })(mnHelper.generateID()),
@@ -253,29 +233,26 @@
             name: "DCP Queues",
             preset: true,
             charts: [{
-              stats: {"ep_dcp_views+indexes_count": "@kv-.ep_dcp_views+indexes_count", "ep_dcp_cbas_count": "@kv-.ep_dcp_cbas_count", "ep_dcp_replica_count": "@kv-.ep_dcp_replica_count", "ep_dcp_xdcr_count": "@kv-.ep_dcp_xdcr_count", "ep_dcp_other_count": "@kv-.ep_dcp_other_count"},
+              stats: {"ep_dcp_views+indexes_count": "@kv-", "ep_dcp_cbas_count": "@kv-", "ep_dcp_replica_count": "@kv-", "ep_dcp_xdcr_count": "@kv-", "ep_dcp_other_count": "@kv-"},
               preset: true,
               size: "medium",
               specificStat: false,
               group: groupId,
-              id: mnHelper.generateID(),
-              bucket: ""
+              id: mnHelper.generateID()
             }, {
-              stats: {"ep_dcp_views+indexes_producer_count": "@kv-.ep_dcp_views+indexes_producer_count", "ep_dcp_cbas_producer_count": "@kv-.ep_dcp_cbas_producer_count", "ep_dcp_replica_producer_count": "@kv-.ep_dcp_replica_producer_count", "ep_dcp_xdcr_producer_count": "@kv-.ep_dcp_xdcr_producer_count", "ep_dcp_other_producer_count": "@kv-.ep_dcp_other_producer_count"},
+              stats: {"ep_dcp_views+indexes_producer_count": "@kv-", "ep_dcp_cbas_producer_count": "@kv-", "ep_dcp_replica_producer_count": "@kv-", "ep_dcp_xdcr_producer_count": "@kv-", "ep_dcp_other_producer_count": "@kv-"},
               preset: true,
               size: "medium",
               specificStat: false,
               group: groupId,
-              id: mnHelper.generateID(),
-              bucket: ""
+              id: mnHelper.generateID()
             }, {
-              stats: {"ep_dcp_views+indexes_items_remaining": "@kv-.ep_dcp_views+indexes_items_remaining", "ep_dcp_cbas_items_remaining": "@kv-.ep_dcp_cbas_items_remaining", "ep_dcp_replica_items_remaining": "@kv-.ep_dcp_replica_items_remaining", "ep_dcp_xdcr_items_remaining": "@kv-.ep_dcp_xdcr_items_remaining", "ep_dcp_other_items_remaining": "@kv-.ep_dcp_other_items_remaining"},
+              stats: {"ep_dcp_views+indexes_items_remaining": "@kv-", "ep_dcp_cbas_items_remaining": "@kv-", "ep_dcp_replica_items_remaining": "@kv-", "ep_dcp_xdcr_items_remaining": "@kv-", "ep_dcp_other_items_remaining": "@kv-"},
               preset: true,
               size: "medium",
               specificStat: false,
               group: groupId,
-              id: mnHelper.generateID(),
-              bucket: ""
+              id: mnHelper.generateID()
             }]
           }
         })(mnHelper.generateID())]
@@ -283,9 +260,8 @@
     }
 
     function getStatsTitle(stats) {
-      return _.map(_.values(stats), function (descPath) {
-        var desc = mnStatisticsNewService
-            .readByPath(mnStatisticsDescriptionService.stats, descPath);
+      return _.map(stats, function (descPath, name) {
+        var desc = mnStatisticsNewService.readByPath(descPath, name);
         return desc.title;
       }).join(", ");
     }
@@ -296,8 +272,7 @@
         if (!descPath) {
           return;
         }
-        var desc = mnStatisticsNewService
-            .readByPath(mnStatisticsDescriptionService.stats, descPath);
+        var desc = mnStatisticsNewService.readByPath(descPath, name);
         units[desc.unit] = true;
       });
       return units;
@@ -332,9 +307,12 @@
       return $q.all(requests);
     }
 
-    function readByPath(obj, path) {
+    function readByPath(path, name) {
       var paths = path.split('.');
-      var current = obj;
+      var maybeItIsItemName = name.split("/");
+      name = maybeItIsItemName[maybeItIsItemName.length - 1];
+      paths.push(name);
+      var current = mnStatisticsDescriptionService.stats;
       var i;
 
       for (i = 0; i < paths.length; ++i) {
@@ -444,7 +422,7 @@
       var config1 = _.clone(config, true);
       var statID = getStatSourcePath(config1, bucket);
       config1.bucket = config1.bucket || bucket;
-      // config1.zoom = config1.zoom || zoom;
+      config1.zoom = config1.zoom || zoom;
 
       rootScopes[statID] = rootScopes[statID] || $rootScope.$new();
       chartScopes[statID] = chartScopes[statID] || [];
@@ -483,7 +461,8 @@
 
     function doGetStats(chartConfig, previousResult) {
       var reqParams = {
-        zoom: chartConfig.zoom || mnStatisticsNewService.export.scenarios.selected.zoom,
+        zoom: chartConfig.zoom,
+          // || mnStatisticsNewService.export.scenarios.selected.zoom,
         bucket: chartConfig.bucket
       };
       if (chartConfig.specificStat) {
@@ -503,9 +482,9 @@
         method: 'GET',
         params: reqParams
       }).then(function (resp) {
-        if (previousResult && !previousResult.status) {
-          resp.data = maybeApplyDelta(previousResult, resp.data);
-        }
+        // if (previousResult && !previousResult.status) {
+        //   resp.data = maybeApplyDelta(previousResult, resp.data);
+        // }
         // stats.serverDate = mnParseHttpDateFilter(data[0].headers('date')).valueOf();
         // stats.clientDate = (new Date()).valueOf();
         var samples = {};

@@ -44,13 +44,9 @@
         activate();
       }
 
-      function getStatDescPath(stat) {
-        return "@index-.@items." + stat;
-      }
-
       function getStats(stat) {
         var rv = {};
-        rv[stat] = getStatDescPath(stat.split("/")[2]);
+        rv[stat] = "@index-.@items";
         return rv;
       }
 
@@ -67,15 +63,12 @@
               var stat = key.split("/")[2];
               var indexName = key.split("/")[1];
               return indexName == row.index &&
-                mnStatisticsNewService.readByPath(
-                  mnStatisticsDescriptionService.stats,
-                  getStatDescPath(stat));
+                mnStatisticsNewService.readByPath("@index-.@items", stat);
             })
             .map(function (stat) {
               return {
                 preset: true,
                 id: mnHelper.generateID(),
-                bucket: row.bucket,
                 isSpecific: false,
                 size: "small",
                 zoom: vm.zoom,

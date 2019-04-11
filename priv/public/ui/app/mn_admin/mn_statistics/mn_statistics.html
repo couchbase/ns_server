@@ -103,9 +103,8 @@
   </span>
 
   <select
-     ng-model="statisticsNewCtl.statisticsService.scenarios.selected.zoom"
-     ng-change="statisticsNewCtl.onSelectZoom(
-                statisticsNewCtl.statisticsService.scenarios.selected.zoom)">
+     ng-model="statisticsNewCtl.zoom"
+     ng-change="statisticsNewCtl.onSelectZoom()">
     <option value="minute">minute</option>
     <option value="hour">hour</option>
     <option value="day">day</option>
@@ -172,15 +171,33 @@
     </div>
 
     <div ng-if="scope.isDetailsOpened" class="row charts">
-      <div
-         ng-repeat="config in group.charts track by config.id"
-         ng-class="'statistics-' + config.size"
-         mn-statistics-chart
-         bucket="{{statisticsNewCtl.bucket}}"
-         nodes="statisticsNewCtl.nodes"
-         class="panel"
-         rbac="rbac"
-         config="config"></div>
+      <div ng-repeat="config in group.charts track by config.id"
+           ng-class="'statistics-' + config.size"
+           class="panel">
+        <div class="chart-controls" title="show/hide chart controls" ng-show="!config.preset">
+          <span
+             class="icon fa-ellipsis-v"
+             ng-model="showChartControls"
+             ng-click="showChartControls = !showChartControls"
+             ng-class="showChartControls ? 'fa-angle-right' : 'fa-ellipsis-v'"></span>
+          <span
+             title="delete chart"
+             class="icon fa-trash"
+             ng-click="statisticsNewCtl.deleteChart(config)"
+             ng-show="showChartControls"></span>
+          <span
+             title="edit chart"
+             class="icon fa-edit"
+             ng-click="statisticsNewCtl.editChart(config)"
+             ng-show="showChartControls"></span>
+        </div>
+        <mn-statistics-chart
+           get-nvd3-options="statisticsNewCtl.getNvd3Options(config)"
+           bucket="{{statisticsNewCtl.bucket}}"
+           zoom="{{statisticsNewCtl.zoom}}"
+           rbac="rbac"
+           config="config"></mn-statistics-chart>
+      </div>
       <div
          class="chart-adder"
          ng-show="!statisticsNewCtl.statisticsService.scenarios.selected.preset"

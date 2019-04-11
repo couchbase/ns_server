@@ -5,11 +5,10 @@
     .module("mnStatisticsNew")
     .controller("mnStatisticsChartFocusDialogController", mnStatisticsChartFocusDialogController)
 
-  function mnStatisticsChartFocusDialogController(mnStatisticsNewService, chartConfig, chartNodes, mnPoller, $scope, mnStatisticsDescriptionService, mnPrepareQuantityFilter, mnTruncateTo3DigitsFilter, $state) {
+  function mnStatisticsChartFocusDialogController(mnStatisticsNewService, chartConfig, mnPoller, $scope, mnStatisticsDescriptionService, mnPrepareQuantityFilter, mnTruncateTo3DigitsFilter, $state) {
     var vm = this;
 
     vm.chartConfig = chartConfig;
-    vm.chartNodes = chartNodes;
     vm.onSelectZoom = onSelectZoom;
     vm.selectedZoom = "3600000";
     var unit = Object.keys(mnStatisticsNewService.getStatsUnits(chartConfig.stats))[0];

@@ -29,9 +29,10 @@
       stats: {},
       size: "small",
       specificStat: "false",
-      group: group && group.id.toString(),
-      bucket: $scope.rbac.bucketNames['.stats!read'][0]
+      group: group && group.id.toString()
     };
+
+    vm.bucket = $scope.rbac.bucketNames['.stats!read'][0];
 
     var initialGroup = vm.newChart.group;
 
@@ -55,14 +56,14 @@
     var selectedUnits = {};
     vm.selectedKVFilters = {};
 
-    activate(vm.newChart.bucket);
+    activate();
 
     function selectTab(name) {
       vm.selectedBlock = name;
     }
 
-    function onSelectBucket(bucket) {
-      activate(bucket);
+    function onSelectBucket() {
+      activate();
       onSpecificChecked();
     }
 
@@ -113,14 +114,11 @@
       }
     }
 
-    function activate(bucket) {
-      // if (chart) {
-      //   onStatChecked();
-      // }
-
+    function activate() {
       mnPromiseHelper(vm, mnStatisticsNewService.doGetStats({
-        bucket: bucket,
-        node: "all"
+        bucket: vm.bucket,
+        node: "all",
+        zoom: "minute"
       }))
         .applyToScope(function (rv) {
           // var stats = rv.data.stats;
@@ -154,9 +152,7 @@
 
               var breadcrumb = [descPath.split(".")[0]];
               var splited = statName.split("/");
-              var desc = mnStatisticsNewService.readByPath(
-                mnStatisticsDescriptionService.stats,
-                descPath);
+              var desc = mnStatisticsNewService.readByPath(descPath, statName);
 
               if (splited.length > 2) {
                 splited.pop();
@@ -175,7 +171,6 @@
 
     function create() {
       var chart = {
-        bucket: vm.newChart.bucket,
         size: vm.newChart.size,
         specificStat: vm.newChart.specificStat === "true",
         id: vm.newChart.id,

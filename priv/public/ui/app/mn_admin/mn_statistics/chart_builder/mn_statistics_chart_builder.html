@@ -81,15 +81,15 @@
       </div>
 
       <div
-         ng-if="chartBuilderCtl.statsDirectoryBlocks[chartBuilderCtl.selectedBlock + '-' + chartBuilderCtl.newChart.bucket]"
+         ng-if="chartBuilderCtl.statsDirectoryBlocks[chartBuilderCtl.selectedBlock + '-' + chartBuilderCtl.bucket]"
          class="row margin-bottom-1">
         <ui-select
            style="width:200px"
            class="cbui-select"
-           ng-model="chartBuilderCtl.newChart.bucket"
+           ng-model="chartBuilderCtl.bucket"
            theme="selectize"
            ng-disabled="!rbac.bucketNames['.stats!read'].length"
-           on-select="chartBuilderCtl.onSelectBucket($item)">
+           on-select="chartBuilderCtl.onSelectBucket()">
           <ui-select-match class="ui-select-match">
             {{$select.selected}}
           </ui-select-match>
@@ -104,12 +104,12 @@
 
         <div
            class="row flex-right"
-           ng-if="chartBuilderCtl.statsDirectoryBlocks[chartBuilderCtl.selectedBlock + '-' + chartBuilderCtl.newChart.bucket]['@items']">
+           ng-if="chartBuilderCtl.statsDirectoryBlocks[chartBuilderCtl.selectedBlock + '-' + chartBuilderCtl.bucket]['@items']">
           <label class="text-small">
             Views/Indexes: &nbsp;
           </label>
           <ui-select
-             ng-if="chartBuilderCtl.statsDirectoryBlocks[chartBuilderCtl.selectedBlock + '-' + chartBuilderCtl.newChart.bucket]['@items']"
+             ng-if="chartBuilderCtl.statsDirectoryBlocks[chartBuilderCtl.selectedBlock + '-' + chartBuilderCtl.bucket]['@items']"
              style="width:200px"
              class="cbui-select"
              ng-model="chartBuilderCtl.groupItem"
@@ -120,7 +120,7 @@
             </ui-select-match>
             <ui-select-choices
                class="ui-select-choices"
-               repeat="stat.key as (key, stat) in chartBuilderCtl.statsDirectoryBlocks[chartBuilderCtl.selectedBlock + '-' + chartBuilderCtl.newChart.bucket]['@items'] | filter: {'key':$select.search}">
+               repeat="stat.key as (key, stat) in chartBuilderCtl.statsDirectoryBlocks[chartBuilderCtl.selectedBlock + '-' + chartBuilderCtl.bucket]['@items'] | filter: {'key':$select.search}">
               <span
                  class="select-item ellipsis"
                  ng-bind-html="stat.key | highlight: $select.search"></span>
@@ -158,7 +158,7 @@
               <input
                  id="stat-{{name}}-checkbox"
                  type="checkbox"
-                 ng-true-value="'{{chartBuilderCtl.selectedBlock + '-' + '.' + name}}'"
+                 ng-true-value="'{{chartBuilderCtl.selectedBlock + '-'}}'"
                  ng-change="chartBuilderCtl.onStatChecked(
                             chartBuilderCtl.statsDesc[chartBuilderCtl.selectedBlock + '-'][name],
                             chartBuilderCtl.newChart.stats[name],
@@ -180,13 +180,13 @@
         </div>
 <!-- bucket XDCR/VIEWS/INDEXES...(items) stats ----------------------------- -->
         <div
-           ng-repeat="(name, stat) in chartBuilderCtl.statsDirectoryBlocks[chartBuilderCtl.selectedBlock + '-' + chartBuilderCtl.newChart.bucket]['@items'][chartBuilderCtl.groupItem]"
+           ng-repeat="(name, stat) in chartBuilderCtl.statsDirectoryBlocks[chartBuilderCtl.selectedBlock + '-' + chartBuilderCtl.bucket]['@items'][chartBuilderCtl.groupItem]"
            ng-if="chartBuilderCtl.statsDesc[chartBuilderCtl.selectedBlock + '-']['@items'][name]"
            ng-style="{opacity: chartBuilderCtl.maybeDisableField(chartBuilderCtl.statsDesc[chartBuilderCtl.selectedBlock + '-']['@items'][name], name) ? '0.3' : '1'}">
           <input
              id="stat-{{name}}-checkbox"
              type="checkbox"
-             ng-true-value="'{{chartBuilderCtl.selectedBlock + '-' + '.' + '@items' + '.' + name}}'"
+             ng-true-value="'{{chartBuilderCtl.selectedBlock + '-' + '.' + '@items'}}'"
              ng-change="chartBuilderCtl.onStatChecked(
                         chartBuilderCtl.statsDesc[chartBuilderCtl.selectedBlock + '-']['@items'][name],
                         chartBuilderCtl.newChart.stats[chartBuilderCtl.groupItem + '/' + name],
@@ -207,13 +207,13 @@
 
 <!-- bucket non KV stats --------------------------------------------------- -->
         <div
-           ng-repeat="(name, stat) in chartBuilderCtl.statsDirectoryBlocks[chartBuilderCtl.selectedBlock + '-' + chartBuilderCtl.newChart.bucket]"
+           ng-repeat="(name, stat) in chartBuilderCtl.statsDirectoryBlocks[chartBuilderCtl.selectedBlock + '-' + chartBuilderCtl.bucket]"
            ng-if="chartBuilderCtl.selectedBlock !== '@kv' && chartBuilderCtl.statsDesc[chartBuilderCtl.selectedBlock + '-'][name] && name !== '@items'"
            ng-style="{opacity: chartBuilderCtl.maybeDisableField(chartBuilderCtl.statsDesc[chartBuilderCtl.selectedBlock + '-'][name], name) ? '0.3' : '1'}">
           <input
              id="stat-{{name}}-checkbox"
              type="checkbox"
-             ng-true-value="'{{chartBuilderCtl.selectedBlock + '-' + '.' + name}}'"
+             ng-true-value="'{{chartBuilderCtl.selectedBlock + '-'}}'"
              ng-change="chartBuilderCtl.onStatChecked(
                         chartBuilderCtl.statsDesc[chartBuilderCtl.selectedBlock + '-'][name],
                         chartBuilderCtl.newChart.stats[name],
@@ -240,7 +240,7 @@
           <input
              id="stat-{{name}}-checkbox"
              type="checkbox"
-             ng-true-value="'{{chartBuilderCtl.selectedBlock + '.' + name}}'"
+             ng-true-value="'{{chartBuilderCtl.selectedBlock}}'"
              ng-change="chartBuilderCtl.onStatChecked(
                         chartBuilderCtl.statsDesc[chartBuilderCtl.selectedBlock][name],
                         chartBuilderCtl.newChart.stats[name],
