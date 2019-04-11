@@ -487,18 +487,18 @@
           "ep_num_non_resident": null,
           "ep_num_ops_del_meta": {
             unit: "number/sec",
-            title: "Delete Rate",
+            title: "XDCR Incoming Delete Rate",
             desc: "Number of delete operations per second for this bucket as the target for XDCR. (measured from ep_num_ops_del_meta)"
           },
           "ep_num_ops_del_ret_meta": null,
           "ep_num_ops_get_meta": {
             unit: "number/sec",
-            title: "Metadata Read Rate",
+            title: "XDCR Incoming Metadata Read Rate",
             desc: "Number of metadata read operations per second for this bucket as the target for XDCR. (measured from ep_num_ops_get_meta)"
           },
           "ep_num_ops_set_meta": {
             unit: "number/sec",
-            title: "Set Rate",
+            title: "XDCR Incoming Set Rate",
             desc: "Number of set operations per second for this bucket as the target for XDCR. (measured from ep_num_ops_set_meta)"
           },
           "ep_num_ops_set_ret_meta": null,
@@ -726,8 +726,8 @@
           "vb_total_queue_age": null,
           "xdc_ops": {
             unit: "number/sec",
-            title: "Incoming XDCR Op Rate",
-            desc: "Incoming XDCR operations per second for this bucket. (measured from xdc_ops)"
+            title: "XDCR Incoming Op Rate",
+            desc: "Number of incoming XDCR operations per second for this bucket. (measured from xdc_ops)"
 
             // membase_incoming_xdcr_operations_stats_description
             // title: "total ops per sec.",
