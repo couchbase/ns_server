@@ -67,6 +67,7 @@
          get_vbucket_high_seqno/4,
          dcp_takeover/5,
          teardown_replications/4,
+         get_failover_info/4,
          inhibit_view_compaction/3,
          uninhibit_view_compaction/4]).
 
@@ -365,6 +366,19 @@ prepare_nodes_for_rebalance(Bucket, Nodes, RebalancerPid) ->
             {ok, Versions};
         Errors ->
             Errors
+    end.
+
+get_failover_info(Bucket, VBucket, Nodes, Timeout) ->
+    {Result, BadNodes} = misc:multi_call(Nodes, server_name(Bucket),
+                                         {get_failover_info, VBucket}, Timeout,
+                                         fun ({ok, _}) -> true;
+                                             (_) -> false
+                                         end),
+    case BadNodes of
+        [] ->
+            {ok, [{N, RV} || {N, {ok, RV}} <- Result]};
+        _ ->
+            {error, BadNodes, Result}
     end.
 
 finish_rebalance(Bucket, Nodes, RebalancerPid) ->
@@ -774,6 +788,29 @@ handle_call({wait_seqno_persisted, VBucket, SeqNo},
                        ok
                end),
     {noreply, State2};
+handle_call({get_failover_info, VBucket}, _From,
+            #state{bucket_name = Bucket} = State) ->
+    Keys = ["state", "high_prepared_seqno", "high_seqno"],
+    Result = case ns_memcached:get_single_vbucket_details_stats(
+                    Bucket, VBucket, Keys) of
+                 {ok, Val} ->
+                     case ns_memcached:get_failover_log(Bucket, VBucket) of
+                         FailoverLog when is_list(FailoverLog) ->
+                             {ok,
+                              {list_to_existing_atom(proplists:get_value(
+                                                       "state", Val)),
+                               list_to_integer(proplists:get_value(
+                                                 "high_prepared_seqno", Val)),
+                               list_to_integer(proplists:get_value(
+                                                 "high_seqno", Val)),
+                               FailoverLog}};
+                         Err ->
+                             Err
+                     end;
+                 Err ->
+                     Err
+             end,
+    {reply, Result, State};
 handle_call({inhibit_view_compaction, Pid},
             From,
             #state{bucket_name = Bucket} = State) ->
