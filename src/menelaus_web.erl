@@ -455,7 +455,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["node", "controller", "setupServices"] ->
                     {{[admin, setup], write}, fun menelaus_web_cluster:handle_setup_services_post/1};
                 ["node", "controller", "reloadCertificate"] ->
-                    {{[admin, setup], write},
+                    {{[admin, security], write},
                      fun menelaus_web_cert:handle_reload_node_certificate/1};
                 ["node", "controller", "changeMasterPassword"] ->
                     {{[admin, security], write},
