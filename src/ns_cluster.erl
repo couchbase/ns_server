@@ -139,24 +139,76 @@ engage_cluster_with_cluster_ca(NodeKVList) ->
     end.
 
 apply_net_config(NodeKVList) ->
+    case ensure_dist_ports_match(NodeKVList) of
+        ok ->
+            case extract_remote_cluster_net_settings(NodeKVList) of
+                {ok, AFamily, CEncryption, Protos} ->
+                    ?log_info("Applying net config. AFamily: ~p, CEncryption: ~p, "
+                              "DistProtos: ~p", [AFamily, CEncryption, Protos]),
+                    case menelaus_web_node:apply_ext_dist_protocols(Protos) of
+                        ok -> menelaus_web_node:apply_net_config(AFamily, CEncryption);
+                        {error, Msg} -> {error, Msg}
+                    end;
+                {error, Msg} -> {error, Msg}
+            end;
+        {error, Msg} -> {error, Msg}
+    end.
+
+extract_remote_cluster_net_settings(NodeKVList) ->
     Protos = case proplists:get_value(<<"distProtocols">>, NodeKVList) of
                  undefined -> undefined;
                  Ps -> [binary_to_atom(P, latin1) || P <- Ps]
              end,
-    AFamilyBin = proplists:get_value(<<"addressFamily">>, NodeKVList,
-                                     <<"inet">>),
-    AFamily = binary_to_atom(AFamilyBin, latin1),
-    CEncription = proplists:get_value(<<"clusterEncryption">>, NodeKVList, false),
-    ?log_info("Applying net config. AFamily: ~p, CEncryption: ~p, "
-              "DistProtos: ~p", [AFamily, CEncription, Protos]),
-
-    case ensure_dist_ports_match(NodeKVList) of
-        ok ->
-            case menelaus_web_node:apply_ext_dist_protocols(Protos) of
-                ok -> menelaus_web_node:apply_net_config(AFamily, CEncription);
+    CEncryption = proplists:get_value(<<"clusterEncryption">>, NodeKVList,
+                                      false),
+    case proplists:get_value(<<"addressFamily">>, NodeKVList) of
+        undefined ->
+            case pre_madhatter_remote_node_address_family(NodeKVList) of
+                {ok, AF} -> {ok, AF, CEncryption, Protos};
                 {error, Msg} -> {error, Msg}
             end;
-        {error, Msg} -> {error, Msg}
+        AFamilyBin ->
+            AFamily = binary_to_atom(AFamilyBin, latin1),
+            {ok, AFamily, CEncryption, Protos}
+    end.
+
+%% Pre mad-hatter nodes do not include address family info in engageCluster.
+%% In order to figure it out we can check the type of port that is used for
+%% distribution. If that port is ipv6 the remote node is ipv6 node.
+pre_madhatter_remote_node_address_family(NodeKVList) ->
+    RemoteNodeBin = proplists:get_value(<<"otpNode">>, NodeKVList, <<>>),
+    RemoteNode = binary_to_atom(RemoteNodeBin, latin1),
+    {Name, Host} = misc:node_name_host(RemoteNode),
+    case misc:is_raw_ip(Host) of
+        %% we don't allow using raw ip's with ipv6, so if nodename contains
+        %% raw ip it means node is ipv4
+        true -> {ok, inet};
+        false ->
+            case pre_madhatter_call_port_please(Name, Host) of
+                {ok, Port} ->
+                    case check_host_port_connectivity(Host, Port, inet6) of
+                        {ok, _} -> {ok, inet6};
+                        {error, _} -> {ok, inet}
+                    end;
+                {error, _} = Error ->
+                    Msg = ns_error_messages:verify_otp_connectivity_port_error(
+                            RemoteNode, Host, Error),
+                    {error, Msg}
+            end
+    end.
+
+pre_madhatter_call_port_please(Name, Host) ->
+    case resolve(Host) of
+        {ok, IPList} ->
+            lists:foldl(
+              fun ({IP, _AFamily}, {error, _}) ->
+                      case erl_epmd:port_please(Name, IP, 5000) of
+                          {port, P, _} -> {ok, P};
+                          _ -> {error, noport}
+                      end;
+                  (_, Res) -> Res
+              end, {error, undefined}, IPList);
+        {error, Errors} -> {error, hd(Errors)}
     end.
 
 ensure_dist_ports_match(NodeKVList) ->
