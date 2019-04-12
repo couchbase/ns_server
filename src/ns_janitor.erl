@@ -441,21 +441,14 @@ sanify_chain(Bucket, States,
                                             NodeStates, CurrentChain,
                                             FutureChain);
                 [Chain | _] ->
-                    case lists:all(fun (undefined) -> true;
-                                       (Node) -> lists:member(Node, Servers)
-                                   end, Chain) of
-                        false ->
-                            %% In case of failover of nodes we may have removed
-                            %% it from the servers list.
-                            %% Also, using the topology as is would be wrong in
-                            %% such a case as it contains nodes not in the
-                            %% server list.
-                            fill_missing_replicas(
-                              lists:filter(lists:member(_, Servers), Chain),
-                              length(Chain));
-                        true ->
-                            Chain
-                    end
+                    %% In case of failover of nodes we may have removed
+                    %% it from the servers list.
+                    %% Also, using the topology as is would be wrong in
+                    %% such a case as it contains nodes not in the
+                    %% server list.
+                    fill_missing_replicas(
+                      lists:filter(lists:member(_, Servers), Chain),
+                      length(Chain))
             end;
 
         %% Multiple Actives.
