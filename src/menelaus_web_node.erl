@@ -843,15 +843,10 @@ update_type(AFamily, CEncrypt) ->
 
 update_proto_in_dist_config(AFamily, CEncryption) ->
     case cb_dist:update_net_settings_in_config(AFamily, CEncryption) of
-        ok ->
-            case cb_dist:reload_config() of
-                {ok, _} -> ok;
-                {error, Error} ->
-                    erlang:error({reload_cb_dist_config_error, node(),
-                                  cb_dist:format_error(Error)})
-            end;
+        {ok, _} -> ok;
         {error, Error} ->
-            erlang:error({save_cb_dist_file_error, Error})
+            erlang:error({update_cb_dist_config_error,
+                          cb_dist:format_error(Error)})
     end.
 
 handle_setup_net_config(Req) ->
@@ -979,8 +974,8 @@ check_connection_proto(Node, Family, Encryption) ->
             erlang:error({node_info, Node, Error})
     end.
 
-format_error({save_cb_dist_file_error, R}) ->
-    io_lib:format("Failed to save cb_dist configuration file: ~p", [R]);
+format_error({update_cb_dist_config_error, Msg}) ->
+    io_lib:format("Failed to update cb_dist configuration file: ~s", [Msg]);
 format_error({reload_cb_dist_config_error, Node, Msg}) ->
     io_lib:format("Failed to reload cb_dist configuration file on node ~p: ~s",
                   [Node, Msg]);
@@ -1017,32 +1012,25 @@ handle_dist_protocols_validated(Req, Props) ->
 apply_ext_dist_protocols(Protos) ->
     ?log_info("Node is going to change dist protocols to ~p", [Protos]),
     case cb_dist:update_listeners_in_config(Protos) of
-        ok ->
-            case cb_dist:reload_config() of
-                {ok, Listeners} ->
-                    NotStarted = case Protos of
-                                     undefined -> [];
-                                     _ -> Protos -- Listeners
-                                 end,
-                    case NotStarted of
-                        [] ->
-                            ns_config:set({node, node(),
-                                           erl_external_dist_protocols},
-                                          Protos),
-                            ok;
-                        L ->
-                            ProtoStrs = [cb_dist:proto2str(P) || P <- L],
-                            Msg = io_lib:format("Failed to start listeners: ~s",
-                                                [string:join(ProtoStrs, ", ")]),
-                            {error, iolist_to_binary(Msg)}
-                    end;
-                {error, Error} ->
-                    Msg = io_lib:format("Failed to reload cb_dist config: ~s",
-                                        [cb_dist:format_error(Error)]),
+        {ok, Listeners} ->
+            NotStarted = case Protos of
+                             undefined -> [];
+                             _ -> Protos -- Listeners
+                         end,
+            case NotStarted of
+                [] ->
+                    ns_config:set({node, node(), erl_external_dist_protocols},
+                                  Protos),
+                    ok;
+                L ->
+                    ProtoStrs = [cb_dist:proto2str(P) || P <- L],
+                    Msg = io_lib:format("Failed to start listeners: ~s",
+                                        [string:join(ProtoStrs, ", ")]),
                     {error, iolist_to_binary(Msg)}
             end;
-        {error, Reason} ->
-            Msg = io_lib:format("Failed to store cb_dist config: ~p", [Reason]),
+        {error, Error} ->
+            Msg = io_lib:format("Failed to update cb_dist config: ~s",
+                                [cb_dist:format_error(Error)]),
             {error, iolist_to_binary(Msg)}
     end.
 

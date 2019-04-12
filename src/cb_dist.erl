@@ -298,33 +298,8 @@ handle_call({get_preferred, Target}, _From, #s{name = Name,
 handle_call(close, _From, State) ->
     {stop, normal, ok, close_listeners(State)};
 
-handle_call(reload_config, _From, #s{listeners = Listeners} = State) ->
-    try read_config(config_path(), true) of
-        Cfg ->
-            info_msg("Reloading configuration: ~p", [Cfg]),
-            State1 = State#s{config = Cfg},
-            CurrentProtos = [M || {M, _} <- Listeners],
-            NewProtos = get_protos(State1),
-            ToAdd = NewProtos -- CurrentProtos,
-            ToRemove = CurrentProtos -- NewProtos,
-            State2 = lists:foldl(fun (P, S) -> remove_proto(P, S) end,
-                                 State1, ToRemove),
-            State3 = lists:foldl(fun (P, S) -> add_proto(P, S) end,
-                                 State2, ToAdd),
-            NewCurrentProtos = [M || {M, _} <- State3#s.listeners],
-            Required = [R || R <- get_required_protos(State3),
-                             lists:member(R, get_protos(State3))],
-            NotStartedRequired = Required -- NewCurrentProtos,
-            case NotStartedRequired of
-                [] -> {reply, {ok, NewCurrentProtos}, State3};
-                _ ->
-                    error_msg("Failed to start required dist listeners ~p",
-                              [NotStartedRequired]),
-                    {reply, {error, {not_started, NotStartedRequired}}, State3}
-            end
-    catch
-        _:Error -> {reply, {error, Error}, State}
-    end;
+handle_call(reload_config, _From, State) ->
+    handle_reload_config(State);
 
 handle_call(status, _From, #s{listeners = Listeners,
                               acceptors = Acceptors,
@@ -337,17 +312,20 @@ handle_call(status, _From, #s{listeners = Listeners,
 
 handle_call({update_listeners_in_config, Protos}, _From,
             #s{config = Cfg} = State) ->
-    Res = update_config(Protos,
-                        proplists:get_value(preferred_external_proto, Cfg),
-                        proplists:get_value(preferred_local_proto, Cfg)),
-    {reply, Res, State};
+    case update_config(Protos,
+                       proplists:get_value(preferred_external_proto, Cfg),
+                       proplists:get_value(preferred_local_proto, Cfg)) of
+        ok -> handle_reload_config(State);
+        {error, _} = Error -> {reply, Error, State}
+    end;
 
 handle_call({update_preferred_protos, PreferredExternal, PreferredLocal}, _From,
             #s{config = Cfg} = State) ->
-    Res = update_config(proplists:get_value(external_listeners, Cfg),
-                        PreferredExternal, PreferredLocal),
-    {reply, Res, State};
-
+    case update_config(proplists:get_value(external_listeners, Cfg),
+                       PreferredExternal, PreferredLocal) of
+        ok -> handle_reload_config(State);
+        {error, _} = Error -> {reply, Error, State}
+    end;
 
 handle_call(_Request, _From, State) ->
     {noreply, State}.
@@ -574,6 +552,34 @@ read_terms_from_file(F) ->
                 _:_ -> {error, invalid_format}
             end;
         error -> {error, read_error}
+    end.
+
+handle_reload_config(#s{listeners = Listeners} = State) ->
+    try read_config(config_path(), true) of
+        Cfg ->
+            info_msg("Reloading configuration: ~p", [Cfg]),
+            State1 = State#s{config = Cfg},
+            CurrentProtos = [M || {M, _} <- Listeners],
+            NewProtos = get_protos(State1),
+            ToAdd = NewProtos -- CurrentProtos,
+            ToRemove = CurrentProtos -- NewProtos,
+            State2 = lists:foldl(fun (P, S) -> remove_proto(P, S) end,
+                                 State1, ToRemove),
+            State3 = lists:foldl(fun (P, S) -> add_proto(P, S) end,
+                                 State2, ToAdd),
+            NewCurrentProtos = [M || {M, _} <- State3#s.listeners],
+            Required = [R || R <- get_required_protos(State3),
+                             lists:member(R, get_protos(State3))],
+            NotStartedRequired = Required -- NewCurrentProtos,
+            case NotStartedRequired of
+                [] -> {reply, {ok, NewCurrentProtos}, State3};
+                _ ->
+                    error_msg("Failed to start required dist listeners ~p",
+                              [NotStartedRequired]),
+                    {reply, {error, {not_started, NotStartedRequired}}, State3}
+            end
+    catch
+        _:Error -> {reply, {error, Error}, State}
     end.
 
 get_protos(#s{name = Name, config = Config}) ->
