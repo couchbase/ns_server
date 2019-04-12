@@ -69,7 +69,7 @@ run_failover(Nodes, AllowUnsafe) ->
         ok ->
             Result = leader_activities:run_activity(
                        failover, majority,
-                       ?cut(orchestrate_failover(Nodes)),
+                       ?cut(orchestrate_failover(Nodes, [durability_aware])),
                        [{unsafe, AllowUnsafe}]),
 
             case Result of
@@ -84,11 +84,11 @@ run_failover(Nodes, AllowUnsafe) ->
             Error
     end.
 
-orchestrate_failover(Nodes) ->
+orchestrate_failover(Nodes, Options) ->
     ale:info(?USER_LOGGER, "Starting failing over ~p", [Nodes]),
     master_activity_events:note_failover(Nodes),
 
-    ErrorNodes = failover(Nodes),
+    ErrorNodes = failover(Nodes, Options),
 
     case ErrorNodes of
         [] ->
@@ -116,13 +116,14 @@ deactivate_nodes(Nodes) ->
 
 %% @doc Fail one or more nodes. Doesn't eject the node from the cluster. Takes
 %% effect immediately.
-failover(Nodes) ->
-    lists:umerge([failover_buckets(Nodes),
+failover(Nodes, Options) ->
+    lists:umerge([failover_buckets(Nodes, Options),
                   failover_services(Nodes)]).
 
-failover_buckets(Nodes) ->
+failover_buckets(Nodes, Options) ->
     Results = lists:flatmap(fun ({Bucket, BucketConfig}) ->
-                                    failover_bucket(Bucket, BucketConfig, Nodes)
+                                    failover_bucket(Bucket, BucketConfig,
+                                                    Nodes, Options)
                             end, ns_bucket:get_buckets()),
     failover_buckets_handle_failover_vbuckets(Results),
     failover_handle_results(Results).
@@ -160,22 +161,22 @@ failover_handle_results(Results) ->
                             end
                     end, NodeStatuses).
 
-failover_bucket(Bucket, BucketConfig, Nodes) ->
+failover_bucket(Bucket, BucketConfig, Nodes, Options) ->
     master_activity_events:note_bucket_failover_started(Bucket, Nodes),
 
     Type   = ns_bucket:bucket_type(BucketConfig),
-    Result = do_failover_bucket(Type, Bucket, BucketConfig, Nodes),
+    Result = do_failover_bucket(Type, Bucket, BucketConfig, Nodes, Options),
 
     master_activity_events:note_bucket_failover_ended(Bucket, Nodes),
 
     Result.
 
-do_failover_bucket(memcached, Bucket, BucketConfig, Nodes) ->
+do_failover_bucket(memcached, Bucket, BucketConfig, Nodes, _Options) ->
     failover_memcached_bucket(Nodes, Bucket, BucketConfig),
     [];
-do_failover_bucket(membase, Bucket, BucketConfig, Nodes) ->
+do_failover_bucket(membase, Bucket, BucketConfig, Nodes, Options) ->
     Map = proplists:get_value(map, BucketConfig, []),
-    R = failover_membase_bucket(Nodes, Bucket, BucketConfig, Map),
+    R = failover_membase_bucket(Nodes, Bucket, BucketConfig, Map, Options),
 
     [[{bucket, Bucket},
       {node, N},
@@ -245,13 +246,13 @@ validate_autofailover_bucket(BucketConfig, Nodes) ->
 failover_memcached_bucket(Nodes, Bucket, BucketConfig) ->
     remove_nodes_from_server_list(Nodes, Bucket, BucketConfig).
 
-failover_membase_bucket(Nodes, Bucket, BucketConfig, Map) when Map =:= [] ->
+failover_membase_bucket(Nodes, Bucket, BucketConfig, [], _Options) ->
     %% this is possible if bucket just got created and ns_janitor didn't get a
     %% chance to create a map yet; or alternatively, if it failed to do so
     %% because, for example, one of the nodes was down
     failover_membase_bucket_with_no_map(Nodes, Bucket, BucketConfig);
-failover_membase_bucket(Nodes, Bucket, BucketConfig, Map) ->
-    failover_membase_bucket_with_map(Nodes, Bucket, BucketConfig, Map).
+failover_membase_bucket(Nodes, Bucket, BucketConfig, Map, Options) ->
+    failover_membase_bucket_with_map(Nodes, Bucket, BucketConfig, Map, Options).
 
 failover_membase_bucket_with_no_map(Nodes, Bucket, BucketConfig) ->
     ?log_debug("Skipping failover of bucket ~p because it has no vbuckets. "
@@ -262,8 +263,8 @@ failover_membase_bucket_with_no_map(Nodes, Bucket, BucketConfig) ->
     remove_nodes_from_server_list(Nodes, Bucket, BucketConfig),
     ok.
 
-failover_membase_bucket_with_map(Nodes, Bucket, BucketConfig, Map) ->
-    NewMap = fix_vbucket_map(Nodes, Bucket, Map),
+failover_membase_bucket_with_map(Nodes, Bucket, BucketConfig, Map, Options) ->
+    NewMap = fix_vbucket_map(Nodes, Bucket, Map, Options),
     true = (NewMap =/= undefined),
 
     ?log_debug("Original vbucket map: ~p~n"
@@ -297,15 +298,19 @@ failover_membase_bucket_with_map(Nodes, Bucket, BucketConfig, Map) ->
             janitor_failed
     end.
 
-fix_vbucket_map(FailoverNodes, Bucket, Map) ->
-    case cluster_compat_mode:is_cluster_madhatter() of
+durability_aware(Options) ->
+    cluster_compat_mode:is_cluster_madhatter() andalso
+        proplists:get_bool(durability_aware, Options).
+
+fix_vbucket_map(FailoverNodes, Bucket, Map, Options) ->
+    case durability_aware(Options) of
         true ->
-            fix_vbucket_map_madhatter(FailoverNodes, Bucket, Map);
+            fix_vbucket_map_durability_aware(FailoverNodes, Bucket, Map);
         false ->
             mb_map:promote_replicas(Map, FailoverNodes)
     end.
 
-fix_vbucket_map_madhatter(FailoverNodes, Bucket, Map) ->
+fix_vbucket_map_durability_aware(FailoverNodes, Bucket, Map) ->
     EnumeratedMap = misc:enumerate(Map, 0),
 
     FixedChains =
@@ -1493,7 +1498,7 @@ run_graceful_failover(Nodes) ->
                                                             NumBuckets),
                              I+1
                      end, 0, InterestingBuckets),
-                   orchestrate_failover(Nodes),
+                   orchestrate_failover(Nodes, []),
 
                    ok
            end).
