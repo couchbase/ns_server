@@ -59,6 +59,7 @@
 -define(REBALANCER_APPLY_CONFIG_TIMEOUT,   ?get_timeout(apply_config, 300000)).
 -define(FAILOVER_CONFIG_SYNC_TIMEOUT,
         ?get_timeout(failover_config_sync, 2000)).
+-define(FAILOVER_OPS_TIMEOUT, ?get_timeout(failover_ops_timeout, 10000)).
 %%
 %% API
 %%
@@ -263,9 +264,11 @@ failover_membase_bucket_with_no_map(Nodes, Bucket, BucketConfig) ->
     ok.
 
 failover_membase_bucket_with_map(Nodes, Bucket, BucketConfig, Map) ->
-    %% Promote replicas of vbuckets on this node
-    NewMap = mb_map:promote_replicas(Map, Nodes),
+    NewMap = fix_vbucket_map(Nodes, Bucket, Map),
     true = (NewMap =/= undefined),
+
+    ?log_debug("Original vbucket map: ~p~n"
+               "VBucket map with failover applied: ~p", [Map, NewMap]),
 
     case [I || {I, [undefined|_]} <- misc:enumerate(NewMap, 0)] of
         [] -> ok; % Phew!
@@ -293,6 +296,113 @@ failover_membase_bucket_with_map(Nodes, Bucket, BucketConfig, Map) ->
             ?rebalance_error("Janitor cleanup of ~p failed after failover of ~p: ~p",
                              [Bucket, Nodes, {E, R}]),
             janitor_failed
+    end.
+
+fix_vbucket_map(FailoverNodes, Bucket, Map) ->
+    case cluster_compat_mode:is_cluster_madhatter() of
+        true ->
+            fix_vbucket_map_madhatter(FailoverNodes, Bucket, Map);
+        false ->
+            mb_map:promote_replicas(Map, FailoverNodes)
+    end.
+
+fix_vbucket_map_madhatter(FailoverNodes, Bucket, Map) ->
+    EnumeratedMap = misc:enumerate(Map, 0),
+
+    FixedChains =
+        dict:from_list(
+          case [C || C = {_, [Master | _]} <- EnumeratedMap,
+                     lists:member(Master, FailoverNodes)] of
+              [] ->
+                  [];
+              ChainsNeedFixing ->
+                  fix_chains(Bucket, FailoverNodes, ChainsNeedFixing)
+          end),
+    lists:map(
+      fun ({VB, Chain}) ->
+              case dict:find(VB, FixedChains) of
+                  {ok, NewChain} ->
+                      NewChain;
+                  error ->
+                      mb_map:promote_replica(Chain, FailoverNodes)
+              end
+      end, EnumeratedMap).
+
+fix_chains(Bucket, FailoverNodes, Chains) ->
+    NodesToQuery = nodes_to_query(Chains, FailoverNodes),
+
+    {Info, BadNodes} =
+        janitor_agent:query_vbuckets(
+          Bucket, NodesToQuery,
+          [high_seqno, high_prepared_seqno],
+          [stop_replications, wait_for_warmup,
+           {timeout, ?FAILOVER_OPS_TIMEOUT}]),
+
+    BadNodes =:= [] orelse
+        throw_failover_error("Failed to get failover info for bucket ~p: ~p",
+                             [Bucket, BadNodes]),
+
+    ?log_debug("Retrieved the following vbuckets information: ~p",
+               [dict:to_list(Info)]),
+
+    [{VB, fix_chain(VB, Chain, Info, FailoverNodes)}
+     || {VB, Chain} <- Chains].
+
+fix_chain(VBucket, Chain, Info, FailoverNodes) ->
+    NodeStates = janitor_agent:fetch_vbucket_states(VBucket, Info),
+    WithFNodesRemoved = mb_map:promote_replica(Chain, FailoverNodes),
+
+    case find_max_replica(WithFNodesRemoved, NodeStates) of
+        not_found ->
+            WithFNodesRemoved;
+        MaxReplica ->
+            [MaxReplica | lists:delete(MaxReplica, WithFNodesRemoved)]
+    end.
+
+nodes_to_query(Chains, FailoverNodes) ->
+    NodeVBs =
+        lists:flatmap(
+          fun ({VB, Chain}) ->
+                  [{Node, VB} || Node <- tl(Chain),
+                                 Node =/= undefined,
+                                 not lists:member(Node, FailoverNodes)]
+          end, Chains),
+    [{N, lists:usort(VBs)} ||
+        {N, VBs} <- misc:groupby_map(fun functools:id/1, NodeVBs)].
+
+throw_failover_error(Msg, Params) ->
+    throw({failover_not_possible, lists:flatten(io_lib:format(Msg, Params))}).
+
+%% A replica is considered ahead of another replica if its last snapshot seqno
+%% is greater, if they are the same, the replica with greater high_seqno is then
+%% considered ahead.
+find_max_replica(Chain, NodeStates) ->
+    Get = fun (K, P) ->
+                  V = proplists:get_value(K, P), true = V =/= undefined, V
+          end,
+    ChainStates =
+        lists:filtermap(
+          fun (undefined) ->
+                  false;
+              (Node) ->
+                  case lists:keyfind(Node, 1, NodeStates) of
+                      {Node, _, Props} ->
+                          {true,
+                           {Node,
+                            {Get(high_prepared_seqno, Props),
+                             Get(high_seqno, Props)}}};
+                      false ->
+                          false
+                  end
+          end, Chain),
+    case ChainStates of
+        [] ->
+            not_found;
+        _ ->
+            {MaxReplica, _} = misc:min_by(fun ({_, SeqNos}, {_, MaxSeqNos}) ->
+                                                  SeqNos > MaxSeqNos
+                                          end, ChainStates),
+            MaxReplica
     end.
 
 remove_nodes_from_server_list(Nodes, Bucket, BucketConfig) ->
