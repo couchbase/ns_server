@@ -1828,9 +1828,14 @@ input[type="checkbox"].fake-select + label:before {
 }
 /* wrapper for query editor and results area ----------- */
 .wb-main-wrapper {
+  height: calc(100vh - 130px); /* magic number - 130px for the header */
+  display: flex;
+  flex-direction: column;
   transition: all 1s;
-  }
-.wb-query-editor {} /* wrapper for query editor area: header, Ace, footer -- */
+}
+.wb-query-editor { /* wrapper for query editor area: header, Ace, footer -- */
+  flex: 0 0 auto; /* don't expand or shrink, size will be set in .js */
+}
 .wb-query-editor-header {
   min-height: 2rem;
   margin-bottom: .5rem;
@@ -1853,6 +1858,9 @@ input[type="checkbox"].fake-select + label:before {
 }
 .ace_gutter {
   background-color: #f6f7f9 !important;
+}
+.ace_layer.ace_gutter-layer {
+  width: 50px !important;
 }
 .ace_print-margin {
   display: none !important;
@@ -1961,6 +1969,8 @@ input[type="checkbox"].fake-select + label:before {
 .wb-results-wrapper {
   background-color: #f6f7f9;
   margin-top: .5rem;
+  flex: 1;
+  overflow: auto;
 }
 /* the wrappers around the various results views --------------------------- */
 .wb-results-json,
@@ -1971,6 +1981,7 @@ input[type="checkbox"].fake-select + label:before {
 .wb-results-advice,
 .insights-sidebar {
   overflow: auto;
+  height: 100%;
 }
 .wb-results-json {
   background-color: #f6f7f9 !important;
