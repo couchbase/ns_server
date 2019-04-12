@@ -1769,6 +1769,18 @@ read_marker(Path) ->
             exit({failed_to_read_marker, Path, Other})
     end.
 
+consult_marker(Path) ->
+    case file:consult(Path) of
+        {ok, Terms} ->
+            {ok, Terms};
+        {error, enoent} ->
+            false;
+        {error, Other} ->
+            ?log_error("Unexpected error when reading marker ~p: ~p",
+                       [Path, Other]),
+            exit({failed_to_read_marker, Path, Other})
+    end.
+
 take_marker(Path) ->
     Result = read_marker(Path),
     case Result of

@@ -20,7 +20,6 @@
 
 -include("ns_common.hrl").
 -include("cut.hrl").
--include_lib("kernel/include/net_address.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -45,9 +44,7 @@
          apply_node_settings/1,
          alternate_addresses_json/3,
          handle_setup_net_config/1,
-         handle_dist_protocols/1,
-         apply_net_config/2,
-         apply_ext_dist_protocols/1]).
+         handle_dist_protocols/1]).
 
 -import(menelaus_util,
         [local_addr/1,
@@ -832,23 +829,6 @@ net_config_validators() ->
      verify_net_config_allowed(_),
      validator:unsupported(_)].
 
-update_type(AFamily, CEncrypt) ->
-    CurAFamily = ns_config:search_node_with_default(address_family, inet),
-    CurCEncrypt= ns_config:search_node_with_default(cluster_encryption, false),
-    case {CurAFamily =/= AFamily, CurCEncrypt =/= CEncrypt} of
-        {true, _} -> all;
-        {false, true} -> external_only;
-        {false, false} -> empty
-    end.
-
-update_proto_in_dist_config(AFamily, CEncryption) ->
-    case cb_dist:update_net_settings_in_config(AFamily, CEncryption) of
-        {ok, _} -> ok;
-        {error, Error} ->
-            erlang:error({update_cb_dist_config_error,
-                          cb_dist:format_error(Error)})
-    end.
-
 handle_setup_net_config(Req) ->
     menelaus_util:assert_is_enterprise(),
     menelaus_util:assert_is_madhatter(),
@@ -857,140 +837,12 @@ handle_setup_net_config(Req) ->
               AFamily = proplists:get_value(afamily, Values),
               CEncrypt = proplists:get_value(clusterEncryption, Values, false),
               erlang:process_flag(trap_exit, true),
-              case apply_net_config(AFamily, CEncrypt) of
+              case netconfig_updater:apply_net_config(AFamily, CEncrypt) of
                   ok -> menelaus_util:reply(Req, 200);
                   {error, Msg} -> menelaus_util:reply_global_error(Req, Msg)
               end,
               erlang:exit(normal)
       end, Req, form, net_config_validators()).
-
-apply_net_config(AFamily, CEncrypt) ->
-    ?log_info("Node is going to apply the following net settings: afamily ~p, "
-              "encryptiion ~p", [AFamily, CEncrypt]),
-    case update_type(AFamily, CEncrypt) of
-        empty -> ok;
-        Type ->
-            try
-                update_proto_in_dist_config(AFamily, CEncrypt),
-                case Type of
-                    external_only -> ok;
-                    _ -> change_local_dist_proto(AFamily, false)
-                end,
-                change_ext_dist_proto(AFamily, CEncrypt),
-                ns_config:set({node, node(), address_family},
-                              AFamily),
-                ns_config:set({node, node(), cluster_encryption},
-                              CEncrypt),
-                ?log_info("Node network settings (afamily: ~p, encryptiion: ~p)"
-                          " successfully applied", [AFamily, CEncrypt]),
-                ok
-            catch
-                error:Error ->
-                    Msg = iolist_to_binary(format_error(Error)),
-                    ?log_error("~s", [Msg]),
-                    {error, Msg}
-            end
-    end.
-
-change_local_dist_proto(ExpectedFamily, ExpectedEncryption) ->
-    ?log_info("Reconnecting to babysitter and restarting couchdb since local "
-              "dist protocol settings changed, expected afamily is ~p, "
-              "expected encryption is ~p",
-              [ExpectedFamily, ExpectedEncryption]),
-    Babysitter = ns_server:get_babysitter_node(),
-    case cb_dist:reload_config(Babysitter) of
-        {ok, _} -> ok;
-        {error, Error} ->
-            erlang:error({reload_cb_dist_config_error, Babysitter,
-                          cb_dist:format_error(Error)})
-    end,
-    ensure_connection_proto(Babysitter,
-                            ExpectedFamily, ExpectedEncryption, 10),
-    %% Curently couchdb doesn't support gracefull change of afamily
-    %% so we have to restart it. Unfortunatelly we can't do it without
-    %% restarting ns_server.
-    case ns_server_cluster_sup:restart_ns_server() of
-        {ok, _} ->
-            check_connection_proto(ns_node_disco:couchdb_node(),
-                                   ExpectedFamily, ExpectedEncryption);
-        {error, not_running} -> ok;
-        Error2 -> erlang:error({ns_server_restart_error, Error2})
-    end.
-
-change_ext_dist_proto(ExpectedFamily, ExpectedEncryption) ->
-    Nodes = ns_node_disco:nodes_wanted() -- [node()],
-    ?log_info("Reconnecting to all known erl nodes since dist protocol "
-              "settings changed, expected afamily is ~p, expected encryption "
-              "is ~p, nodes: ~p", [ExpectedFamily, ExpectedEncryption, Nodes]),
-    [ensure_connection_proto(N, ExpectedFamily, ExpectedEncryption, 10)
-        || N <- Nodes],
-    ok.
-
-ensure_connection_proto(Node, _Family, _Encr, Retries) when Retries =< 0 ->
-    erlang:error({exceeded_retries, Node});
-ensure_connection_proto(Node, Family, Encryption, Retries) ->
-    erlang:disconnect_node(Node),
-    case net_kernel:connect(Node) of
-        true ->
-            ?log_debug("Reconnected to ~p, checking connection type...",
-                       [Node]),
-            try check_connection_proto(Node, Family, Encryption) of
-                ok -> ok
-            catch
-                error:Reason ->
-                    ?log_error("Checking node ~p connection type failed with "
-                               "reason: ~p, retries left: ~p",
-                               [Node, Reason, Retries - 1]),
-                    timer:sleep(rand:uniform(30)),
-                    ensure_connection_proto(Node, Family, Encryption,
-                                            Retries - 1)
-            end;
-        false ->
-            ?log_error("Failed to connect to node ~p, retries left: ~p",
-                       [Node, Retries - 1]),
-            timer:sleep(100),
-            ensure_connection_proto(Node, Family, Encryption, Retries - 1)
-    end.
-
-check_connection_proto(Node, Family, Encryption) ->
-    Proto = case Encryption of
-                true -> proxy;
-                false -> tcp
-            end,
-    case net_kernel:node_info(Node) of
-        {ok, Info} ->
-            case proplists:get_value(address, Info) of
-                %% Workaround for a bug in inet_tls_dist.erl
-                %% address family is always set to inet, even when the socket
-                %% is actually an inet6 socket
-                #net_address{address = {{_, _, _, _, _, _, _, _}, _},
-                             protocol = proxy,
-                             family = inet} when Proto == proxy,
-                                                 Family == inet6 -> ok;
-                #net_address{protocol = Proto, family = Family} -> ok;
-                A -> erlang:error({wrong_proto, Node, A})
-            end;
-        {error, Error} ->
-            erlang:error({node_info, Node, Error})
-    end.
-
-format_error({update_cb_dist_config_error, Msg}) ->
-    io_lib:format("Failed to update cb_dist configuration file: ~s", [Msg]);
-format_error({reload_cb_dist_config_error, Node, Msg}) ->
-    io_lib:format("Failed to reload cb_dist configuration file on node ~p: ~s",
-                  [Node, Msg]);
-format_error({ns_server_restart_error, Error}) ->
-    io_lib:format("Restart error: ~p", [Error]);
-format_error({node_info, Node, Error}) ->
-    io_lib:format("Failed to get connection info to node ~p: ~p",
-                  [Node, Error]);
-format_error({wrong_proto, Node, _}) ->
-    io_lib:format("Couldn't establish connection of desired type to node ~p",
-                  [Node]);
-format_error({exceeded_retries, Node}) ->
-    io_lib:format("Reconnect to ~p retries exceeded", [Node]);
-format_error(R) ->
-    io_lib:format("~p", [R]).
 
 handle_dist_protocols(Req) ->
     menelaus_util:assert_is_enterprise(),
@@ -1004,34 +856,9 @@ handle_dist_protocols(Req) ->
 
 handle_dist_protocols_validated(Req, Props) ->
     Protos = proplists:get_value(external, Props),
-    case apply_ext_dist_protocols(Protos) of
+    case netconfig_updater:apply_ext_dist_protocols(Protos) of
         ok -> menelaus_util:reply(Req, 200);
         {error, Msg} -> menelaus_util:reply_global_error(Req, Msg)
-    end.
-
-apply_ext_dist_protocols(Protos) ->
-    ?log_info("Node is going to change dist protocols to ~p", [Protos]),
-    case cb_dist:update_listeners_in_config(Protos) of
-        {ok, Listeners} ->
-            NotStarted = case Protos of
-                             undefined -> [];
-                             _ -> Protos -- Listeners
-                         end,
-            case NotStarted of
-                [] ->
-                    ns_config:set({node, node(), erl_external_dist_protocols},
-                                  Protos),
-                    ok;
-                L ->
-                    ProtoStrs = [cb_dist:proto2str(P) || P <- L],
-                    Msg = io_lib:format("Failed to start listeners: ~s",
-                                        [string:join(ProtoStrs, ", ")]),
-                    {error, iolist_to_binary(Msg)}
-            end;
-        {error, Error} ->
-            Msg = io_lib:format("Failed to update cb_dist config: ~s",
-                                [cb_dist:format_error(Error)]),
-            {error, iolist_to_binary(Msg)}
     end.
 
 validate_ext_protos(Name, State) ->

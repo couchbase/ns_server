@@ -145,8 +145,8 @@ apply_net_config(NodeKVList) ->
                 {ok, AFamily, CEncryption, Protos} ->
                     ?log_info("Applying net config. AFamily: ~p, CEncryption: ~p, "
                               "DistProtos: ~p", [AFamily, CEncryption, Protos]),
-                    case menelaus_web_node:apply_ext_dist_protocols(Protos) of
-                        ok -> menelaus_web_node:apply_net_config(AFamily, CEncryption);
+                    case netconfig_updater:apply_ext_dist_protocols(Protos) of
+                        ok -> netconfig_updater:apply_net_config(AFamily, CEncryption);
                         {error, Msg} -> {error, Msg}
                     end;
                 {error, Msg} -> {error, Msg}
