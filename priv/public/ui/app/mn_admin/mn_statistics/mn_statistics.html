@@ -21,11 +21,6 @@
                ng-click="$event.stopPropagation();"
                title="delete/edit scenario">
               <span
-                 class="icon fa-ellipsis-v"
-                 ng-click="showScenarioControls = !showScenarioControls"
-                 ng-class="showScenarioControls ? 'fa-angle-right' : 'fa-ellipsis-v'">
-              </span>
-              <span
                  title="delete scenario"
                  class="icon fa-trash"
                  ng-click="statisticsNewCtl.scenarioCtrl.deleteScenario(scenario)"
@@ -35,6 +30,10 @@
                  class="icon fa-edit"
                  ng-click="statisticsNewCtl.scenarioCtrl.editScenario(scenario)"
                  ng-show="showScenarioControls"></span>
+              <span
+                class="icon fa-ellipsis-v"
+                ng-click="showScenarioControls = !showScenarioControls">
+              </span>
             </div>
           </mn-dropdown-item>
         </inner-body>
@@ -171,15 +170,11 @@
     </div>
 
     <div ng-if="scope.isDetailsOpened" class="row charts">
-      <div ng-repeat="config in group.charts track by config.id"
-           ng-class="'statistics-' + config.size"
-           class="panel">
+      <div
+         ng-repeat="config in group.charts track by config.id"
+         ng-class="'statistics-' + config.size"
+         class="panel relative">
         <div class="chart-controls" title="show/hide chart controls" ng-show="!config.preset">
-          <span
-             class="icon fa-ellipsis-v"
-             ng-model="showChartControls"
-             ng-click="showChartControls = !showChartControls"
-             ng-class="showChartControls ? 'fa-angle-right' : 'fa-ellipsis-v'"></span>
           <span
              title="delete chart"
              class="icon fa-trash"
@@ -190,6 +185,10 @@
              class="icon fa-edit"
              ng-click="statisticsNewCtl.editChart(config)"
              ng-show="showChartControls"></span>
+          <span
+            class="icon fa-ellipsis-v"
+            ng-model="showChartControls"
+            ng-click="showChartControls = !showChartControls"></span>
         </div>
         <mn-statistics-chart
            get-nvd3-options="statisticsNewCtl.getNvd3Options(config)"

@@ -1,22 +1,44 @@
 <div
-   class="content-box cursor-auto"
+   class="indent-1 cursor-auto"
    ng-click="$event.stopPropagation();">
-  <p><strong>Definition</strong><br>{{row.definition}}</p>
-  <p ng-show="row.hosts.length > 1"><strong>Nodes</strong><br>{{mnGsiItemDetailsCtl.hosts}}</p>
-  <button
-     class="outline"
-     ui-sref="app.admin.query.workbench({query: row.definition})">
-    Open in Workbench
-  </button>
-  <span
-     ng-if="mnGsiItemDetailsCtl.hasQueryService() &&
-            rbac.cluster.bucket[row.bucket].n1ql.select.execute">
-    <!-- blank spaces in index name mean replica, can't drop -->
-    <button
-       ng-show="row.index.indexOf(' ') == -1"
-       class="outline"
-       ng-click="mnGsiItemDetailsCtl.dropIndex(row)">Drop</button>
-  </span>
+  <div class="row items-bottom margin-bottom-1-5">
+    <div>
+      <p>{{row.definition}}</p>
+      <p ng-show="row.hosts.length > 1" class="margin-bottom-0"><strong>Nodes:</strong> {{mnGsiItemDetailsCtl.hosts}}</p>
+    </div>
+    <div class="nowrap">
+      <button
+         class="outline"
+         ui-sref="app.admin.query.workbench({query: row.definition})">
+        Open in Workbench
+      </button>
+      <span
+         ng-if="mnGsiItemDetailsCtl.hasQueryService() &&
+                rbac.cluster.bucket[row.bucket].n1ql.select.execute">
+        <!-- blank spaces in index name mean replica, can't drop -->
+        <button
+           ng-show="row.index.indexOf(' ') == -1"
+           class="outline"
+           ng-click="mnGsiItemDetailsCtl.dropIndex(row)">Drop</button>
+      </span>
+    </div>
+  </div>
+  <h5 class="inline margin-right-1">
+    Index Stats
+    <span ng-if="row.partitions" class="text-small">(per replica)</span>
+  </h5>
+  <select
+     ng-if="row.partitions"
+     ng-model="mnGsiItemDetailsCtl.selectedPartition"
+     ng-change="mnGsiItemDetailsCtl.onSelectPartition()"
+     class="margin-right-1">
+    <option
+       ng-repeat="(instId, partition) in row.partitions"
+       value="{{instId}}">
+      {{partition.index}}
+    </option>
+  </select>
+
   <select
      ng-model="mnGsiItemDetailsCtl.zoom"
      ng-change="mnGsiItemDetailsCtl.onSelectZoom()">
@@ -26,13 +48,7 @@
     <option value="week">week</option>
     <option value="month">month</option>
   </select>
-  <select
-     ng-if="row.partitions"
-     ng-model="mnGsiItemDetailsCtl.selectedPartition"
-     ng-change="mnGsiItemDetailsCtl.onSelectPartition()">
-    <option ng-repeat="(instId, partition) in row.partitions"
-            value="{{instId}}">{{partition.index}}</option>
-  </select>
+
   <div class="row charts">
     <mn-statistics-chart
        ng-repeat="config in mnGsiItemDetailsCtl.charts track by config.id"
