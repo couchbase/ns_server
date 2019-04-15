@@ -9,7 +9,8 @@
     var mnGsiItemDetails = {
       restrict: 'E',
       scope: {
-        row: "="
+        row: "=",
+        rbac: "="
       },
       controller: mnGsiItemDetailsController,
       controllerAs: "mnGsiItemDetailsCtl",
