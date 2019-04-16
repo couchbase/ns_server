@@ -1316,7 +1316,7 @@ buckets_chk(Config) ->
                              {B, proplists:get_value(num_replicas, BC),
                               proplists:get_value(uuid, BC)}
                      end, ns_bucket:get_buckets(Config)),
-    erlang:phash2(Bkts).
+    erlang:phash2(lists:sort(Bkts)).
 
 groups_chk(SGs, UpdateFn) ->
     lists:map(
