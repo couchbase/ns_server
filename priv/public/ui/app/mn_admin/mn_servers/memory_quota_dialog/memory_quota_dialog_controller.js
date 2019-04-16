@@ -13,6 +13,7 @@
     vm.initialIndexSettings = _.clone(indexSettings);
     vm.indexSettings = indexSettings;
     vm.firstTimeAddedServices = firstTimeAddedServices;
+    vm.getFirstTimeServiceNames = getFirstTimeServiceNames;
 
     if (indexSettings.storageMode === "") {
       vm.indexSettings.storageMode = vm.isEnterprise ? "plasma" : "forestdb";
@@ -42,6 +43,20 @@
         .showGlobalSpinner()
         .closeOnSuccess()
         .showGlobalSuccess("Memory quota saved successfully!");
+    }
+
+    function getFirstTimeServiceNames() {
+      var services = [];
+      if (firstTimeAddedServices.index)
+        services.push("GSI Index");
+      if (firstTimeAddedServices.fts)
+        services.push("Full Text");
+      if (firstTimeAddedServices.cbas)
+        services.push("Analytics");
+      if (firstTimeAddedServices.eventing)
+        services.push("Eventing");
+
+      return services;
     }
   }
 })();
