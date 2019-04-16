@@ -13,7 +13,8 @@
         hideColumn: "@",
         filterField: "=",
         rbac: "=",
-        pools: "="
+        pools: "=",
+        nodeName: "@?"
       },
       controller: mnGsiTableController,
       controllerAs: "mnGsiTableCtl",
@@ -33,8 +34,10 @@
       mnHelper.initializeDetailsHashObserver(vm, 'openedIndex', 'app.admin.gsi');
 
 
-      function generateIndexId(row) {
-        return (row.id.toString() + (row.instId || "")) + (row.hosts ? row.hosts.join() : "");
+      function generateIndexId(row, partitionHost) {
+        return (row.id.toString() + (row.instId || "")) +
+          (row.hosts ? row.hosts.join() : "") +
+          (vm.nodeName || "");
       }
 
       // we can show Edit / Delete buttons if there is a query service
