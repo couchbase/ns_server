@@ -3,17 +3,23 @@
 
   angular.module('mnXDCR').controller('mnXDCREditDialogController', mnXDCREditDialogController);
 
-  function mnXDCREditDialogController($scope, $uibModalInstance, mnPromiseHelper, mnXDCRService, currentSettings, globalSettings, id, mnPoolDefault, mnPools) {
+  function mnXDCREditDialogController($scope, $uibModalInstance, mnPromiseHelper, mnXDCRService, currentSettings, globalSettings, id, source) {
     var vm = this;
 
-    vm.mnPoolDefault = mnPoolDefault.export;
-    vm.mnPools = mnPools.export;
-
-    vm.settings = _.extend({}, globalSettings.data, currentSettings.data);
+    vm.settings = _.extend({fromBucket: source}, globalSettings.data, currentSettings.data);
+    vm.settings.enableAdvancedFiltering = !!vm.settings.filterExpression;
+    vm.settings.filterSkipRestream = "false";
     vm.createReplication = createReplication;
 
     function createReplication() {
-      var promise = mnXDCRService.saveReplicationSettings(id, mnXDCRService.removeExcessSettings(vm.settings));
+      var settings = mnXDCRService.removeExcessSettings(vm.settings);
+      if ($scope.pools.isEnterprise) {
+        settings.filterExpression = vm.settings.filterExpression;
+      }
+      if (settings.filterExpression) {
+        settings.filterSkipRestream = (vm.settings.filterSkipRestream === "true");
+      }
+      var promise = mnXDCRService.saveReplicationSettings(id, settings);
       mnPromiseHelper(vm, promise, $uibModalInstance)
         .showGlobalSpinner()
         .catchErrors()

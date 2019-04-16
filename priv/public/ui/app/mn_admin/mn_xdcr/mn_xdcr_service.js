@@ -28,11 +28,11 @@
       return getStringBytesFilter(text) > 250;
     }
 
-    function validateRegex(regex, testKey) {
+    function validateRegex(regex, testDocID, bucket) {
       if (doValidateOnOverLimit(regex)) {
         return $q.reject('Regex should not have size more than 250 bytes');
       }
-      if (doValidateOnOverLimit(testKey)) {
+      if (doValidateOnOverLimit(testDocID)) {
         return $q.reject('Test key should not have size more than 250 bytes');
       }
       return $http({
@@ -42,7 +42,8 @@
         },
         data: {
           expression: regex,
-          keys: JSON.stringify([testKey])
+          docId: testDocID,
+          bucket: bucket
         },
         transformResponse: function (data) {
           //angular expect response in JSON format
@@ -77,7 +78,7 @@
         neededProperties.push("networkUsageLimit");
       }
       var rv = {};
-      angular.forEach(neededProperties,  function (key) {
+      neededProperties.forEach(function (key) {
         rv[key] = settings[key];
       });
       return rv;

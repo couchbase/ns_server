@@ -140,6 +140,7 @@
         templateUrl: 'app/mn_admin/mn_xdcr/edit_dialog/mn_xdcr_edit_dialog.html',
         scope: $scope,
         resolve: {
+          source: mnHelper.wrapInFunction(row.source),
           id: mnHelper.wrapInFunction(row.id),
           currentSettings: mnHelper.wrapInFunction(mnXDCRService.getReplicationSettings(row.id)),
           globalSettings: mnHelper.wrapInFunction(mnXDCRService.getReplicationSettings())
