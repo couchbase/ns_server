@@ -52,6 +52,7 @@
   <div class="row charts">
     <mn-statistics-chart
        ng-repeat="config in mnGsiItemDetailsCtl.charts track by config.id"
+       get-nvd3-options="mnGsiItemDetailsCtl.getNvd3Options(config)"
        ng-class="'statistics-' + config.size"
        bucket="{{row.bucket}}"
        zoom="{{mnGsiItemDetailsCtl.zoom}}"

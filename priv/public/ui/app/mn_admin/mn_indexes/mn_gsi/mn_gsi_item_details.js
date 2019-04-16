@@ -24,6 +24,7 @@
       vm.hasQueryService = hasQueryService;
       vm.onSelectZoom = onSelectZoom;
       vm.onSelectPartition = onSelectPartition;
+      vm.getNvd3Options = getNvd3Options;
 
       vm.zoom = "minute";
 
@@ -49,6 +50,12 @@
         var rv = {};
         rv[stat] = "@index-.@items";
         return rv;
+      }
+
+      function getNvd3Options(config) {
+        return {
+          showLegend: false
+        };
       }
 
       function activate() {
