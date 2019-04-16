@@ -67,6 +67,11 @@ section {
   padding: 4px 0;
 }
 footer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: #555;
+  font-size: .75rem;
   padding: .5rem 0;
   width: 100%;
   background-color: #fff;
@@ -74,6 +79,7 @@ footer {
   bottom: 0;
   left: 0;
   box-shadow: 0px -1px 2px 1px rgba(0,0,0,0.16);
+  z-index: 1;
 }
 /* basic flex component for horizontal layout --------------------------- */
 .row {

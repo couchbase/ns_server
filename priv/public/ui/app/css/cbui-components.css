@@ -2316,15 +2316,6 @@ nav.nav-sidebar-hidden {
   left: -32px;
 }
 
-/*  fixed footer for saving forms (builds on <footer>) ---------------------- */
-.footer-save {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 3rem;
-  z-index: 98;
-}
-
 /*  pipe delimiter style  --------------------------------------------------- */
 .pipe:before {
   content: '\007C';
@@ -2541,12 +2532,7 @@ input[type="text"]:focus.charts-group-name {
 .charts-group-row button:active {
   background-color: transparent;
 }
-/*  fixed footer for cluster-wide info (builds on <footer>) ----------------- */
-.footer-dashboard {
-  text-align: center;
-  color: #555;
-  font-size: .688rem;
-}
+
 /* over-writes of nvd3 css -------------------------------------------------- */
 .nvd3 .nv-axis line {
   opacity: 0!important;
@@ -2761,6 +2747,42 @@ input[type=text].scenario-desc  {
 /* chart-builder -------------------------------------------------------------*/
 .chart-builder label {
   font-size: .875rem!important;
+}
+
+/* footer for saving forms (builds on <footer>) ----------------------------- */
+.footer-save {
+  height: 4rem;
+}
+/* stats footers for the dashboard and various service pages -----------------*/
+.footer-dashboard {
+  font-size: .688rem;
+  flex-flow: column;
+}
+.footer-analytics {}
+.footer-query {}
+footer .column {
+  flex: 1 0 auto;
+  white-space: nowrap;
+  max-width: 240px;
+  padding: 0 2rem 0 0;
+  line-height: 2;
+  height: 100%;
+}
+footer .column.vertical-divider {
+  border-right: 1px solid #d1d1d1;
+}
+footer .column.narrow {
+  flex: 0 1 0;
+}
+footer .column.wide {
+  flex: 0 0 auto;
+  max-width: inherit;
+}
+footer .column span {
+  display: inline-block;
+}
+footer hr {
+  margin: .25rem 0;
 }
 
 /* LDAP configuration dialog -------------------------------------------------*/
