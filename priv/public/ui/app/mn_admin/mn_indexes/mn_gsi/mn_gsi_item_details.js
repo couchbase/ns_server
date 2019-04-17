@@ -19,12 +19,13 @@
 
     return mnGsiItemDetails;
 
-    function mnGsiItemDetailsController($state, $scope, mnStatisticsNewService, mnPoolDefault, mnHelper, mnStatisticsDescriptionService) {
+    function mnGsiItemDetailsController($rootScope, mnGsiService, $uibModal, mnPromiseHelper, mnAlertsService, $scope, mnStatisticsNewService, mnPoolDefault, mnHelper) {
       var vm = this;
       vm.hasQueryService = hasQueryService;
       vm.onSelectZoom = onSelectZoom;
       vm.onSelectPartition = onSelectPartition;
       vm.getNvd3Options = getNvd3Options;
+      vm.dropIndex = dropIndex;
 
       vm.zoom = "minute";
 
@@ -83,6 +84,32 @@
                 stats: getStats(stat)
               };
             });
+        });
+      }
+
+      function dropIndex(row) {
+        var scope = $rootScope.$new();
+        scope.partitioned = row.partitioned;
+        $uibModal.open({
+          windowClass: "z-index-10001",
+          backdrop: 'static',
+          templateUrl: 'app/mn_admin/mn_indexes/mn_gsi/mn_gsi_drop_confirm_dialog.html',
+          scope: scope
+        }).result.then(function () {
+          row.awaitingRemoval = true;
+          mnPromiseHelper(vm, mnGsiService.postDropIndex(row))
+            .showGlobalSpinner()
+            .catchErrors(function (resp) {
+              if (!resp) {
+                return;
+              } else if (_.isString(resp)) {
+                mnAlertsService.formatAndSetAlerts(resp.data, "error", 4000);
+              } else if (resp.errors && resp.errors.length) {
+                mnAlertsService.formatAndSetAlerts(_.map(resp.errors, "msg"), "error", 4000);
+              }
+              row.awaitingRemoval = false;
+            })
+            .showGlobalSuccess("Index dropped successfully!");
         });
       }
 

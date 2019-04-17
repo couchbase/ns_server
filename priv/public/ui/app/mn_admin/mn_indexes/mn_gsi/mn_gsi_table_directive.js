@@ -5,7 +5,7 @@
     .module('mnGsi')
     .directive('mnGsiTable', mnGsiTableDirective);
 
-  function mnGsiTableDirective($rootScope, mnGsiService, mnPoolDefault, $uibModal, mnPromiseHelper, mnAlertsService, mnHelper) {
+  function mnGsiTableDirective(mnHelper) {
     var mnGsiTable = {
       restrict: 'EA',
       scope: {
@@ -24,11 +24,10 @@
 
     return mnGsiTable;
 
-    function mnGsiTableController($state, $scope, mnStatisticsNewService) {
+    function mnGsiTableController() {
       var vm = this;
       vm.generateIndexId = generateIndexId;
       vm.hasQueryService = hasQueryService;
-      vm.dropIndex = dropIndex;
       vm.getStatusClass = getStatusClass;
 
       mnHelper.initializeDetailsHashObserver(vm, 'openedIndex', 'app.admin.gsi');
@@ -54,32 +53,6 @@
         case 'Error': return 'dynamic_unhealthy';
         default: return 'dynamic_warmup';
         }
-      }
-
-      function dropIndex(row) {
-        var scope = $rootScope.$new();
-        scope.partitioned = row.partitioned;
-        $uibModal.open({
-          windowClass: "z-index-10001",
-          backdrop: 'static',
-          templateUrl: 'app/mn_admin/mn_indexes/mn_gsi/mn_gsi_drop_confirm_dialog.html',
-          scope: scope
-        }).result.then(function () {
-          row.awaitingRemoval = true;
-          mnPromiseHelper(vm, mnGsiService.postDropIndex(row))
-            .showGlobalSpinner()
-            .catchErrors(function (resp) {
-              if (!resp) {
-                return;
-              } else if (_.isString(resp)) {
-                mnAlertsService.formatAndSetAlerts(resp.data, "error", 4000);
-              } else if (resp.errors && resp.errors.length) {
-                mnAlertsService.formatAndSetAlerts(_.map(resp.errors, "msg"), "error", 4000);
-              }
-              row.awaitingRemoval = false;
-            })
-            .showGlobalSuccess("Index dropped successfully!");
-        });
       }
 
     }
