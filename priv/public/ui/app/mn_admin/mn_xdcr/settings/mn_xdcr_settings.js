@@ -5,7 +5,7 @@
     .module('mnXDCR')
     .directive('mnXdcrSettings', mnXdcrSettingsDirective);
 
-    function mnXdcrSettingsDirective($http, mnPromiseHelper) {
+  function mnXdcrSettingsDirective($http, mnPromiseHelper, mnXDCRService) {
       var mnXdcrSettings = {
         restrict: 'A',
         scope: {
@@ -26,14 +26,7 @@
       function controller($scope) {
         var vm = this;
         $scope.$watch('xdcrSettingsCtl.settings', function (settings) {
-          mnPromiseHelper(vm, $http({
-            method: 'POST',
-            url: '/settings/replications/',
-            data: settings,
-            params: {
-              just_validate: 1
-            }
-          })).catchErrors();
+          mnPromiseHelper(vm, mnXDCRService.postSettingsReplications(settings, true)).catchErrors();
         }, true);
       }
     }

@@ -17,7 +17,8 @@
       saveReplicationSettings: saveReplicationSettings,
       postRelication: postRelication,
       getReplicationState: getReplicationState,
-      validateRegex: validateRegex
+      validateRegex: validateRegex,
+      postSettingsReplications: postSettingsReplications
     };
 
     return mnXDCRService;
@@ -106,6 +107,15 @@
     }
     function deleteReplication(id) {
       return $http.delete('/controller/cancelXDCR/' + encodeURIComponent(id));
+    }
+
+    function postSettingsReplications(settings, justValidate) {
+      return $http({
+        method: 'POST',
+        url: '/settings/replications/',
+        data: settings,
+        params: {just_validate: justValidate ? 1 : 0}
+      });
     }
     function getReplicationSettings(id) {
       return $http.get("/settings/replications" + (id ? ("/" + encodeURIComponent(id)) : ""));
