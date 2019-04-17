@@ -84,7 +84,6 @@
           atLeast55: poolDefault.thisNode.clusterCompatibility >= version55,
           atLeast65: poolDefault.thisNode.clusterCompatibility >= version65
         };
-        poolDefault.isKvNode =  _.indexOf(poolDefault.thisNode.services, "kv") > -1;
         poolDefault.capiBase = $window.location.protocol === "https:" ? poolDefault.thisNode.couchApiBaseHTTPS : poolDefault.thisNode.couchApiBase;
 
         _.extend(mnPoolDefault.export, poolDefault);
