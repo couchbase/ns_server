@@ -58,7 +58,11 @@ all_ports() ->
      ?define_port(memcached_dedicated_ssl_port, undefined, kv, 11206, secure),
      ?define_port(capi_port,                    capi,      kv, 8092),
      ?define_port(ssl_capi_port,                capiSSL,   kv, 18092, secure),
+     %% projector ports - depending on the cluster encryption setting,
+     %%                   projector hosts either an SSL or non-SSL endpoint.
+     %%                   Hence assigning the same port for both types.
      ?define_port(projector_port,               projector, kv, 9999),
+     ?define_port(projector_ssl_port,           projector, kv, 9999, secure),
      %% query service ports
      ?define_port(query_port,     n1ql,    n1ql, 8093),
      ?define_port(ssl_query_port, n1qlSSL, n1ql, 18093, secure),
