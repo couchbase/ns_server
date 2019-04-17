@@ -292,7 +292,18 @@
             </div>
           </div>
         </div>
-
+        <div class="formrow">
+          <label for="xdcr_maximum_processes">XDCR Maximum Processes</label>
+          <input
+             type="text"
+             autocorrect="off"
+             spellcheck="false"
+             autocapitalize="off"
+             ng-disabled="!rbac.cluster.settings.write"
+             id="xdcr_maximum_processes"
+             ng-model="settingsClusterCtl.replicationSettings.goMaxProcs"
+             class="input-small input-short-1">
+        </div>
       </div>
     </div>
     <footer class="footer-save">

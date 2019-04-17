@@ -10,10 +10,11 @@
     'mnPoolDefault',
     'mnMemoryQuotaService',
     'mnSpinner',
-    'mnClusterConfigurationService'
+    'mnClusterConfigurationService',
+    'mnXDCRService'
   ]).controller('mnSettingsClusterController', mnSettingsClusterController);
 
-  function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMemoryQuotaService, mnSettingsClusterService, mnHelper, mnPromiseHelper, mnClusterConfigurationService) {
+  function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMemoryQuotaService, mnSettingsClusterService, mnHelper, mnPromiseHelper, mnClusterConfigurationService, mnXDCRService) {
     var vm = this;
     vm.saveVisualInternalSettings = saveVisualInternalSettings;
 
@@ -52,6 +53,7 @@
       var promise5;
 
       queries.push(promise1);
+      queries.push(mnXDCRService.postSettingsReplications(vm.replicationSettings));
 
       if (!_.isEqual(vm.indexSettings, vm.initialIndexSettings) && mnPoolDefault.export.compat.atLeast40 && $scope.rbac.cluster.settings.indexes.write) {
         promise2 = mnPromiseHelper(vm, mnSettingsClusterService.postIndexSettings(vm.indexSettings))
@@ -141,6 +143,10 @@
         services.cbas = mnPoolDefault.export.compat.atLeast55;
         services.eventing = mnPoolDefault.export.compat.atLeast55;
       }
+
+      mnXDCRService.getSettingsReplications().then(function (rv) {
+        vm.replicationSettings = rv.data;
+      });
 
       mnPromiseHelper(vm, mnMemoryQuotaService.memoryQuotaConfig(services, false, false))
         .applyToScope(function (resp) {

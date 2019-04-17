@@ -18,7 +18,8 @@
       postRelication: postRelication,
       getReplicationState: getReplicationState,
       validateRegex: validateRegex,
-      postSettingsReplications: postSettingsReplications
+      postSettingsReplications: postSettingsReplications,
+      getSettingsReplications: getSettingsReplications
     };
 
     return mnXDCRService;
@@ -112,11 +113,16 @@
     function postSettingsReplications(settings, justValidate) {
       return $http({
         method: 'POST',
-        url: '/settings/replications/',
+        url: '/settings/replications',
         data: settings,
         params: {just_validate: justValidate ? 1 : 0}
       });
     }
+
+    function getSettingsReplications(settings, justValidate) {
+      return $http.get('/settings/replications');
+    }
+
     function getReplicationSettings(id) {
       return $http.get("/settings/replications" + (id ? ("/" + encodeURIComponent(id)) : ""));
     }
