@@ -128,6 +128,17 @@
         </div>
       </span>
 
+      <div class="formrow">
+        <label for="replication_priority">Replication Priority</label>
+        <select
+           id="xdcr_advaced_settings_type"
+           ng-model="xdcrCreateDialogCtl.replication.priority">
+          <option value="Low">Low</option>
+          <option value="Medium">Medium</option>
+          <option value="High">High</option>
+        </select>
+      </div>
+
       <span>
         <div class="formrow">
           <h4
