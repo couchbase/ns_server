@@ -24,6 +24,7 @@
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
+-define(MAX_HOSTNAME_LENGTH, 1000).
 
 -export([handle_node/2,
          build_full_node_info/2,
@@ -716,13 +717,25 @@ parse_validate_ports(Params) ->
               end
       end, [], Params).
 
+parse_validate_hostname(undefined) ->
+    throw({web_exception, 400, "hostname should be specified", []});
+parse_validate_hostname(Hostname) ->
+    HN = string:trim(Hostname),
+    case length(HN) =< ?MAX_HOSTNAME_LENGTH andalso
+         misc:is_valid_hostname(HN) of
+        true ->
+            HN;
+        false ->
+            Msg = io_lib:format(
+                    "Invalid hostname specified. "
+                    "Hostname should be ~p characters or less and "
+                    "either a valid IPv4, IPv6, or FQDN",
+                    [?MAX_HOSTNAME_LENGTH]),
+            throw({web_exception, 400, Msg, []})
+    end.
+
 parse_validate_external_params(Params) ->
-    Hostname = case proplists:get_value("hostname", Params) of
-                   undefined ->
-                       throw({web_exception, 400, "hostname should be specified", []});
-                   HostNm ->
-                       string:trim(HostNm)
-               end,
+    Hostname = parse_validate_hostname(proplists:get_value("hostname", Params)),
     Ports = parse_validate_ports(proplists:delete("hostname", Params)),
     [{external, [{hostname, Hostname}, {ports, Ports}]}].
 
