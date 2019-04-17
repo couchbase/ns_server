@@ -21,7 +21,6 @@
 
     function mnGsiItemDetailsController($rootScope, mnGsiService, $uibModal, mnPromiseHelper, mnAlertsService, $scope, mnStatisticsNewService, mnPoolDefault, mnHelper) {
       var vm = this;
-      vm.hasQueryService = hasQueryService;
       vm.onSelectZoom = onSelectZoom;
       vm.onSelectPartition = onSelectPartition;
       vm.getNvd3Options = getNvd3Options;
@@ -111,12 +110,6 @@
             })
             .showGlobalSuccess("Index dropped successfully!");
         });
-      }
-
-
-      // we can show Edit / Delete buttons if there is a query service
-      function hasQueryService() {
-        return (mnPoolDefault.export.thisNode.services.indexOf('n1ql') != -1);
       }
 
     }

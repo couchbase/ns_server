@@ -27,7 +27,6 @@
     function mnGsiTableController() {
       var vm = this;
       vm.generateIndexId = generateIndexId;
-      vm.hasQueryService = hasQueryService;
       vm.getStatusClass = getStatusClass;
 
       mnHelper.initializeDetailsHashObserver(vm, 'openedIndex', 'app.admin.gsi');
@@ -37,12 +36,6 @@
         return (row.id.toString() + (row.instId || "")) +
           (row.hosts ? row.hosts.join() : "") +
           (vm.nodeName || "");
-      }
-
-      // we can show Edit / Delete buttons if there is a query service
-      function hasQueryService() {
-        return (mnPoolDefault.export.thisNode.services
-                .indexOf('n1ql') != -1);
       }
 
       function getStatusClass(row) {
