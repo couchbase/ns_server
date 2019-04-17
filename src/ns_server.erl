@@ -82,7 +82,7 @@ start(_Type, _Args) ->
 
     path_config:ensure_directories(),
 
-    ns_server_cluster_sup:start_link().
+    root_sup:start_link().
 
 get_config_path() ->
     case application:get_env(ns_server, config_path) of
