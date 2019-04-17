@@ -12,13 +12,10 @@
          ui-sref="app.admin.query.workbench({query: row.definition})">
         Open in Workbench
       </button>
-      <span ng-if="rbac.cluster.bucket[row.bucket].n1ql.select.execute">
-        <!-- blank spaces in index name mean replica, can't drop -->
-        <button
-           ng-show="row.index.indexOf(' ') == -1"
-           class="outline"
-           ng-click="mnGsiItemDetailsCtl.dropIndex(row)">Drop</button>
-      </span>
+      <button
+         ng-if="rbac.cluster.bucket[row.bucket].n1ql.select.execute"
+         class="outline"
+         ng-click="mnGsiItemDetailsCtl.dropIndex(row)">Drop</button>
     </div>
   </div>
   <h5 class="inline margin-right-1">
