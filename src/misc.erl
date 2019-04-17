@@ -2655,3 +2655,32 @@ read_int_from_file(File, Default) ->
     catch
         _:_ -> Default
     end.
+
+is_valid_hostname(Address) ->
+    case inet:parse_address(Address) of
+        {ok, _} -> true;
+        _ -> is_fqdn_basic_validation(Address)
+    end.
+
+is_fqdn_basic_validation(Address) ->
+    Labels = string:split(Address, ".", all),
+    lists:all(
+      fun (Label) ->
+              case re:run(Label, "^[a-zA-Z0-9-_]+$") of
+                  {match, _} ->
+                      true;
+                  nomatch ->
+                      false
+              end
+      end, Labels).
+
+-ifdef(TEST).
+is_fqdn_basic_validation_test() ->
+    true = is_fqdn_basic_validation("-abc09_"),
+    true = is_fqdn_basic_validation("a.b.c"),
+    true = is_fqdn_basic_validation("abc.com"),
+    false = is_fqdn_basic_validation("abc..com"),
+    false = is_fqdn_basic_validation("ftp//"),
+    false = is_fqdn_basic_validation("something:"),
+    true = is_fqdn_basic_validation("ns_server33.services.co.woohoo").
+-endif.
