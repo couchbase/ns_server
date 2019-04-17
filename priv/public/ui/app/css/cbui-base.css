@@ -783,7 +783,7 @@ input[type="checkbox"] {
   position: absolute;
   right: .5rem;
   top: 7px;
-  z-index: 10;
+  z-index: 1;
   font-size: .75rem;
   color: #999;
 }
