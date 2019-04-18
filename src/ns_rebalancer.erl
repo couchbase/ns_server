@@ -125,21 +125,68 @@ failover_buckets(Nodes, Options) ->
                                     failover_bucket(Bucket, BucketConfig,
                                                     Nodes, Options)
                             end, ns_bucket:get_buckets()),
-    failover_buckets_handle_failover_vbuckets(Results),
+    update_failover_vbuckets(Results),
     failover_handle_results(Results).
 
-failover_buckets_handle_failover_vbuckets(Results) ->
-    FailoverVBuckets =
-        misc:groupby_map(fun (Result) ->
-                                 Node   = proplists:get_value(node, Result),
-                                 Bucket = proplists:get_value(bucket, Result),
-                                 VBs    = proplists:get_value(vbuckets, Result),
+update_failover_vbuckets(Results) ->
+    GroupedByNode =
+        misc:groupby_map(fun (L) ->
+                                 Node   = proplists:get_value(node, L),
+                                 Bucket = proplists:get_value(bucket, L),
+                                 VBs    = proplists:get_value(vbuckets, L),
 
                                  {Node, {Bucket, VBs}}
                          end, Results),
+    {commit, _} =
+        ns_config:run_txn(
+          fun (Config, Set) ->
+                  {commit,
+                   lists:foldl(?cut(update_failover_vbuckets(Set, _, _)),
+                               Config, GroupedByNode)}
+          end).
 
-    KVs = [{{node, N, failover_vbuckets}, VBs} || {N, VBs} <- FailoverVBuckets],
-    ns_config:set(KVs).
+update_failover_vbuckets(Set, {Node, BucketResults}, Config) ->
+    ExistingBucketResults = node_failover_vbuckets(Config, Node),
+    Merged = merge_failover_vbuckets(ExistingBucketResults, BucketResults),
+
+    ?log_debug("Updating failover_vbuckets for ~p with ~p~n"
+               "Existing vbuckets: ~p~nNew vbuckets: ~p~n",
+               [Node, Merged, ExistingBucketResults, BucketResults]),
+
+    case Merged of
+        ExistingBucketResults ->
+            Config;
+        _ ->
+            Set({node, Node, failover_vbuckets}, Merged, Config)
+    end.
+
+merge_failover_vbuckets(ExistingBucketResults, BucketResults) ->
+    Grouped =
+        misc:groupby_map(fun functools:id/1,
+                         ExistingBucketResults ++ BucketResults),
+    lists:map(fun ({B, [VBs1, VBs2]}) when is_list(VBs1), is_list(VBs2) ->
+                      {B, lists:usort(VBs1 ++ VBs2)};
+                  ({B, [VBs]}) when is_list(VBs) ->
+                      {B, lists:sort(VBs)}
+              end, Grouped).
+
+-ifdef(TEST).
+merge_failover_vbuckets_test() ->
+    ?assertEqual(
+       [{"test", [0, 1, 2, 3]}, {"test1", [0, 1, 2, 3]}],
+       merge_failover_vbuckets(
+         [], [{"test", [0, 1, 2, 3]}, {"test1", [0, 1, 2, 3]}])),
+    ?assertEqual(
+       [{"test", [0, 1, 2, 3]}, {"test1", [0, 1, 2, 3]}],
+       merge_failover_vbuckets(
+         [{"test", [0, 1, 2, 3]}], [{"test1", [0, 1, 2, 3]}])),
+    ?assertEqual(
+       [{"test", [0, 1, 2, 3]}],
+       merge_failover_vbuckets([{"test", [0, 3]}], [{"test", [1, 2]}])),
+    ?assertEqual(
+       [{"test", [0, 1, 2, 3]}],
+       merge_failover_vbuckets([{"test", [0, 2, 3]}], [{"test", [1, 2]}])).
+-endif.
 
 failover_handle_results(Results) ->
     NodeStatuses =
