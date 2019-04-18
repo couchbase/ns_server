@@ -2079,7 +2079,7 @@ input[type="checkbox"].fake-select + label:before {
   -webkit-box-flex: 0;
   flex: 0 0 auto;
   padding-left: 1.5rem;
-  height: calc(100vh - 150px);
+  height: calc(100vh - 128px);
   overflow: auto;
   transition: all .8s;
 }
@@ -2174,6 +2174,9 @@ input[type="checkbox"].fake-select + label:before {
   font-style: italic;
   font-size: .8125rem;
   line-height: 1.7;
+}
+.wb-refresh-btn button {
+  box-shadow: 0 0 16px 16px rgba(255,255,255,.9); 
 }
 
 /* workbench query history -------------------------------------------------- */
