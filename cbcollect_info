@@ -133,6 +133,9 @@ def log(message, new_line=True):
     sys.stderr.write(message)
     sys.stderr.flush()
 
+def generate_hash(val):
+    return hashlib.sha1(val.encode())
+
 class AccessLogProcessor:
     def __init__(self, salt):
         self.salt = salt
@@ -177,7 +180,7 @@ class AccessLogProcessor:
         return self._hash(docid)
 
     def _hash(self, token):
-        return hashlib.sha1(self.salt + token).hexdigest()
+        return generate_hash(self.salt + token).hexdigest()
 
     def _repl_columns(self, matchobj):
         return matchobj.group(1) + \
@@ -197,7 +200,7 @@ class RegularLogProcessor:
         self.salt = salt
 
     def _hash(self, match):
-        h = hashlib.sha1(self.salt + match.group(2)).hexdigest()
+        h = generate_hash(self.salt + match.group(2)).hexdigest()
         return match.group(1) + h + match.group(3)
 
     def _process_line(self, line):
@@ -216,7 +219,7 @@ class CouchbaseLogProcessor(RegularLogProcessor):
             # salt + salt to maintain consistency with other
             # occurances of hashed salt in the logs.
             return 'RedactLevel:partial,HashOfSalt:%s\n' \
-                % hashlib.sha1(self.salt + self.salt).hexdigest()
+                % generate_hash(self.salt + self.salt).hexdigest()
         else:
             return self._process_line(line)
 
