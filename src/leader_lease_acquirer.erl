@@ -29,7 +29,7 @@
 
 -define(SERVER, ?MODULE).
 
--type worker() :: {pid(), reference()}.
+-type worker() :: pid().
 -record(state, { uuid    :: binary(),
                  nodes   :: sets:set(node()),
                  workers :: [{node(), worker()}],
@@ -98,6 +98,8 @@ handle_info({new_nodes, Nodes}, State) ->
     {noreply, handle_new_nodes(Nodes, State)};
 handle_info({'DOWN', MRef, process, Pid, Reason}, State) ->
     {noreply, handle_down(MRef, Pid, Reason, State)};
+handle_info({'EXIT', Pid, Reason}, State) ->
+    {noreply, handle_exit(Pid, Reason, State)};
 handle_info(Info, State) ->
     ?log_error("Received unexpected message ~p when state is~n~p",
                [Info, State]),
@@ -127,18 +129,24 @@ handle_removed_nodes(Nodes, State) ->
 handle_down(_MRef, Pid, Reason, #state{leader_activities_pid = Pid}) ->
     ?log_info("Leader activities process ~p terminated with reason ~p",
               [Pid, Reason]),
-    exit({leader_activities_died, Pid, Reason});
-handle_down(MRef, Pid, Reason, State) ->
-    Worker = {Pid, MRef},
+    exit({leader_activities_died, Pid, Reason}).
 
-    ?log_debug("Received DOWN message ~p", [{MRef, Pid, Reason}]),
+handle_exit(Pid, Reason, State) ->
+    case take_worker(Pid, State) of
+        not_found ->
+            ?log_error("Received an EXIT message "
+                       "from an unknown process: ~p", [{Pid, Reason}]),
+            exit({exit_from_unkown_process, Pid, Reason});
+        {ok, {Node, Pid}, NewState} ->
+            handle_worker_exit(Node, Pid, Reason, NewState)
+    end.
 
-    {ok, {Node, Worker}, NewState} = take_worker(Worker, State),
+handle_worker_exit(Node, Pid, Reason, State) ->
     ?log_error("Worker ~p for node ~p terminated unexpectedly (reason ~p)",
-               [Worker, Node, Reason]),
+               [Pid, Node, Reason]),
 
     cleanup_after_worker(Node),
-    spawn_worker(Node, NewState).
+    spawn_worker(Node, State).
 
 handle_terminate(Reason, State) ->
     case misc:is_shutdown(Reason) of
@@ -168,7 +176,7 @@ spawn_many_workers(Nodes, State) ->
     spawn_many_workers(sets:to_list(Nodes), State).
 
 spawn_worker_process(Node, State) ->
-    leader_lease_acquire_worker:spawn_monitor(Node, State#state.uuid).
+    leader_lease_acquire_worker:spawn_link(Node, State#state.uuid).
 
 shutdown_all_workers(State) ->
     shutdown_many_workers(State#state.nodes, State).
@@ -185,18 +193,16 @@ shutdown_many_workers(Nodes, State) ->
                                            end
                                    end, _)).
 
-shutdown_worker(Node, {Pid, MRef}) ->
-    erlang:demonitor(MRef, [flush]),
-    async:abort(Pid),
-
+shutdown_worker(Node, Pid) ->
+    misc:unlink_terminate_and_wait(Pid, shutdown),
     cleanup_after_worker(Node).
 
 cleanup_after_worker(Node) ->
     %% make sure that if we owned the lease, we report it being lost
     ok = leader_activities:lease_lost(self(), Node).
 
-take_worker(Worker, #state{workers = Workers} = State) ->
-    case lists:keytake(Worker, 2, Workers) of
+take_worker(Pid, #state{workers = Workers} = State) ->
+    case lists:keytake(Pid, 2, Workers) of
         {value, NodeWorker, RestWorkers} ->
             {ok, NodeWorker, State#state{workers = RestWorkers}};
         false ->
