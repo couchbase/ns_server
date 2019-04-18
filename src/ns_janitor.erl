@@ -441,13 +441,20 @@ sanify_chain(Bucket, States,
                                             NodeStates, CurrentChain,
                                             FutureChain);
                 [Chain | _] ->
+                    UpdatedChain = case hd(Chain) of
+                                       ActiveNode ->
+                                           Chain;
+                                       _ ->
+                                           %% Maybe someone renamed the node.
+                                           [ActiveNode | tl(Chain)]
+                                   end,
                     %% In case of failover of nodes we may have removed
                     %% it from the servers list.
                     %% Also, using the topology as is would be wrong in
                     %% such a case as it contains nodes not in the
                     %% server list.
                     fill_missing_replicas(
-                      lists:filter(lists:member(_, Servers), Chain),
+                      lists:filter(lists:member(_, Servers), UpdatedChain),
                       length(Chain))
             end;
 
