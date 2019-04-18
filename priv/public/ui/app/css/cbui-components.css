@@ -221,8 +221,20 @@ h1 a:active {
   cursor: default;
 }
 
-/* COMPONENTS W/ ICONS -------------------------------------------------- */
-/* inserts down-caret triangle before items with .has-menu -------------- */
+/* COMPONENTS W/ ICONS ------------------------------------------------------ */
+.inprogress:after {
+  font-family: FontAwesome;
+  content: "\f110";
+  font-size: .925rem;
+  color: #999;
+  position: absolute;
+  top: 4px;
+  right: 0;
+  display: inline-block;
+  -webkit-animation: fa-spin .5s infinite ease;
+  animation: fa-spin .5s infinite ease;
+}
+/* inserts down-caret triangle before items with .has-menu ------------------ */
 .has-menu:after {
   font-family: FontAwesome;
   content: "\f0d7";
@@ -2763,7 +2775,7 @@ input[type=text].scenario-desc  {
 footer .column {
   flex: 1 0 auto;
   white-space: nowrap;
-  max-width: 240px;
+  max-width: 280px;
   padding: 0 2rem 0 0;
   line-height: 2;
   height: 100%;
