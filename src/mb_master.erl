@@ -147,21 +147,12 @@ check_master_takeover_needed(Peers) ->
         [Master|_] ->
             ?log_debug("Checking version of current master: ~p", [Master]),
             case rpc:call(Master, cluster_compat_mode, mb_master_advertised_version, [], 5000) of
-                {badrpc, Reason} = Crap ->
-                    IsUndef = case Reason of
-                                  {'EXIT', ExitReason} ->
-                                      misc:is_undef_exit(cluster_compat_mode, mb_master_advertised_version, [], ExitReason);
-                                  _ ->
-                                      false
-                              end,
-                    case IsUndef of
-                        true ->
-                            ale:warn(?USER_LOGGER, "Current master is older (before 2.0.1) and I'll try to takeover", []),
-                            Master;
-                        _ ->
-                            ale:warn(?USER_LOGGER, "Failed to grab master's version. Assuming force mastership takeover is not needed. Reason: ~p", [Crap]),
-                            false
-                    end;
+                {badrpc, _} = Error ->
+                    ale:warn(?USER_LOGGER,
+                             "Failed to grab master's version. "
+                             "Assuming force mastership "
+                             "takeover is not needed. Reason: ~p", [Error]),
+                    false;
                 CompatVersion ->
                     ?log_debug("Current master's supported compat version: ~p", [CompatVersion]),
                     MasterNodeInfo = build_node_info(CompatVersion, Master),
