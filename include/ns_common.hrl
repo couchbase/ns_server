@@ -232,7 +232,7 @@
 
 %% Points to latest release
 -define(LATEST_VERSION_NUM, ?VERSION_55).
--define(MASTER_ADVERTISED_VERSION, [5, 5, 0]).
+-define(MASTER_ADVERTISED_VERSION, [5, 5, 4]).
 
 -define(DEFAULT_UI_COMPAT_VERSION, ?VERSION_45).
 
