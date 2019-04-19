@@ -18,7 +18,7 @@
    mn-spinner="!userRolesCtl.state || userRolesCtl.viewLoading"
    min-height="300px"
    class="margin-top-neg-half margin-left-neg-1">
-  <div class="row resp-sml margin-bottom-half">
+  <div class="row resp-sml margin-bottom-half" ng-if="userRolesCtl.state.users.length">
     <div
        ng-if="adminCtl.poolDefault.isEnterprise && userRolesCtl.isLdapEnabled"
        mn-saslauthd-auth="">
@@ -30,7 +30,7 @@
        mn-search="userRolesCtl.filterField">
     </div>
   </div>
-  <div class="cbui-table">
+  <div class="cbui-table" ng-if="userRolesCtl.state.users.length">
     <div class="cbui-table-header padding-left">
       <span class="cbui-table-cell">
         <span
@@ -113,14 +113,11 @@
            ng-click="userRolesCtl.editUser(user)">Edit</button>
       </div>
     </section>
-
-    <div
-       ng-if="!userRolesCtl.state.users.length"
-       class="zero-content">
-      You don't have any users to display yet. <span ng-show="rbac.cluster.admin.security.write">Use ADD USER above to create one.</span>
-    </div>
   </div>
-  <div class="row pagination" ng-show="poolDefault.compat.atLeast50">
+  <div
+     class="row pagination"
+     ng-show="poolDefault.compat.atLeast50"
+     ng-if="userRolesCtl.state.users.length">
     <div class="simple-select">
       <select
          ng-change="userRolesCtl.pageSizeChanged()"
@@ -144,6 +141,14 @@
          ui-sref="(userRolesCtl.state.links.last)"
          ng-show="userRolesCtl.state.links.last">
         Last &gt;&gt;</a>
+    </span>
+  </div>
+  <div
+     ng-if="!userRolesCtl.state.users.length"
+     class="zero-content margin-top-1">
+    You don't have any users to display yet.
+    <span ng-show="rbac.cluster.admin.security.write">
+      Use ADD USER above to create one.
     </span>
   </div>
 </div>
