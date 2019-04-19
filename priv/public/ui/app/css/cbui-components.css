@@ -710,11 +710,7 @@ section.error {
 .dialog-wizard  .panel-footer {
   justify-content: space-between;
 }
-footer.wizard-footer {
-  font-size: .75rem;
-  text-align: center;
-  box-shadow: none;
-}
+
 /* setup and sign-in page background ------------------------------------ */
 .sign-in-background {
   background: #eceff2;
@@ -2176,7 +2172,7 @@ input[type="checkbox"].fake-select + label:before {
   line-height: 1.7;
 }
 .wb-refresh-btn button {
-  box-shadow: 0 0 16px 16px rgba(255,255,255,.9); 
+  box-shadow: 0 0 16px 16px rgba(255,255,255,.9);
 }
 
 /* workbench query history -------------------------------------------------- */
@@ -2768,13 +2764,17 @@ input[type=text].scenario-desc  {
 .footer-save {
   height: 4rem;
 }
-/* stats footers for the dashboard and various service pages -----------------*/
+/* stats footers for the wizard, dashboard, and various service pages --------*/
 .footer-dashboard {
   font-size: .688rem;
   flex-flow: column;
 }
-.footer-analytics {}
-.footer-query {}
+.footer-wizard {
+  display: inline-block;
+  font-size: .75rem;
+  text-align: center;
+  box-shadow: none;
+}
 footer .column {
   flex: 1 0 auto;
   white-space: nowrap;

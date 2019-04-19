@@ -1,9 +1,28 @@
 <div>
-
+  <h4>Current Version</h4>
   <p class="text-medium">
-    <strong>Current Version:&nbsp;</strong>
     <em>Couchbase Server {{settingsNotificationsCtl.implementationVersion | mnPrettyVersion}}</em>
   </p>
+  <div class="margin-bottom-half">
+    <input
+       type="checkbox"
+       id="for-update-notice-enable"
+       ng-disabled="!rbac.cluster.settings.write"
+       ng-model="settingsNotificationsCtl.updates.enabled">
+    <label for="for-update-notice-enable" class="margin-right-zero">
+      Enable software update notifications
+    </label>
+    <span
+       class="fa-stack icon-info"
+       uib-tooltip="Enabling software update notifications allows notification
+       in the Couchbase web console when a new version of Couchbase Server is
+       available. Configuration information transferred in the update check is
+       anonymous and does not include any stored key-value data."
+       tooltip-placement="auto right">
+      <span class="icon fa-circle-thin fa-stack-2x"></span>
+      <span class="icon fa-info fa-stack-1x"></span>
+    </span>
+  </div>
   <div ng-if="settingsNotificationsCtl.updates.sendStats">
     <p
        ng-if="settingsNotificationsCtl.updates.newVersion === undefined"
@@ -38,25 +57,5 @@
         </a>
       </span>
     </div>
-  </div>
-  <div class="margin-bottom-1-5">
-    <input
-       type="checkbox"
-       id="for-update-notice-enable"
-       ng-disabled="!rbac.cluster.settings.write"
-       ng-model="settingsNotificationsCtl.updates.enabled">
-    <label for="for-update-notice-enable" class="margin-right-zero">
-      Enable software update notifications
-    </label>
-    <span
-       class="fa-stack icon-info"
-       uib-tooltip="Enabling software update notifications allows notification
-       in the Couchbase web console when a new version of Couchbase Server is
-       available. Configuration information transferred in the update check is
-       anonymous and does not include any stored key-value data."
-       tooltip-placement="auto right">
-      <span class="icon fa-circle-thin fa-stack-2x"></span>
-      <span class="icon fa-info fa-stack-1x"></span>
-    </span>
   </div>
 </div>
