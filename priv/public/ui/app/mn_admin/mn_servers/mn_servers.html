@@ -19,10 +19,8 @@
   <div
      class="alert alert-warning"
      ng-show="serversCtl.autoFailoverSettings.data.count > 0 && rbac.cluster.settings.read">
-    <p>A server was automatically failed over.</p>
-    <a
-       ng-show="rbac.cluster.settings.write"
-       ng-click="adminCtl.resetAutoFailOverCount()">Reset Quota</a>
+    <p>A server was automatically failed over. Failover quota used/max:
+      {{serversCtl.autoFailoverSettings.data.count}}/{{serversCtl.autoFailoverSettings.data.maxCount}}</p>
   </div>
   <div
      class="alert alert-warning"
@@ -53,7 +51,6 @@
     </a>
   </div>
 </mn-element-cargo>
-
 <div
    mn-spinner="!serversCtl.nodes || (rbac.cluster.tasks.read && !adminCtl.tasks) || (rbac.cluster.server_groups.read && !serversCtl.getGroupsByHostname)"
    min-height="300px">
@@ -64,12 +61,20 @@
        mn-search="serversCtl.filterField"
        mn-hide-button="true">
     </div>
-    <div ng-show="rbac.cluster.tasks.read" class="server-actions">
+    <div ng-show="rbac.cluster.tasks.read" class="server-actions row flex-right flex-wrap">
+      <div
+         class="row flex-right"
+         ng-show="serversCtl.autoFailoverSettings.data.count > 0 && rbac.cluster.settings.read">
+        <button
+           class="outline"
+           ng-show="rbac.cluster.settings.write"
+           ng-click="adminCtl.resetAutoFailOverCount()">Reset Auto-Failover Quota</button>
+      </div>
       <button
          ng-show="!poolDefault.rebalancing  && rbac.cluster.pools.write"
          ng-click="serversCtl.postRebalance()"
          ng-disabled="adminCtl.tasks.inRecoveryMode || (!serversCtl.nodes.pending.length && poolDefault.balanced) || serversCtl.nodes.unhealthyActive || adminCtl.tasks.isLoadingSamples || adminCtl.tasks.isOrphanBucketTask"
-         class="orange resp-sml">Rebalance</button>
+         class="orange resp-sml margin-left-1">Rebalance</button>
       <button
          class="orange"
          ng-show="poolDefault.rebalancing && rbac.cluster.pools.write"
