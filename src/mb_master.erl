@@ -63,6 +63,10 @@ start_link() ->
 master_node() ->
     gen_fsm:sync_send_all_state_event(?MODULE, master_node).
 
+%% Returns the master node according to Node. For mb_master's internal use
+%% only.
+master_node(Node, Timeout) ->
+    gen_fsm:sync_send_all_state_event({?MODULE, Node}, master_node, Timeout).
 
 %%
 %% gen_fsm handlers
@@ -131,13 +135,26 @@ do_invalidate_master(MasterToShutdown) ->
     send_heartbeat_with_peers([MasterToShutdown],
                               master, [node(), MasterToShutdown]),
     %% sync that "surrender" event
-    case rpc:call(MasterToShutdown, mb_master, master_node, [], 5000) of
-        Us when Us =:= node() ->
-            ok;
-        MasterToShutdown ->
-            retry;
-        Other ->
-            {error, Other}
+    case sync_surrender(MasterToShutdown, 5000) of
+        {ok, NewMaster} ->
+            if NewMaster =:= node() ->
+                    ok;
+               NewMaster =:= MasterToShutdown ->
+                    retry;
+               true ->
+                    {error, {unexpected_master, NewMaster}}
+            end;
+        Error ->
+            Error
+    end.
+
+sync_surrender(MasterToShutdown, Timeout) ->
+    try master_node(MasterToShutdown, Timeout) of
+        Node ->
+            {ok, Node}
+    catch
+        T:E ->
+            {error, {T, E}}
     end.
 
 check_master_takeover_needed(Peers) ->
