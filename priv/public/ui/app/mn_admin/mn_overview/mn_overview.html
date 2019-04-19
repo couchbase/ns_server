@@ -9,72 +9,16 @@
 
 <div class="margin-top-half" mn-spinner="(rbac.cluster.bucket['.'].stats.read && !overviewCtl.mnOverviewStats) || !overviewCtl.mnOverviewConfig || !overviewCtl.nodes || (rbac.cluster.bucket['.'].settings.read && !buckets.details)">
 
-  <div class="zero-content max-width-12 " ng-show="!buckets.details.length">
+  <div class="zero-content max-width-12" ng-show="!buckets.details.length">
     You have no data buckets.
     <span ng-show="rbac.cluster.buckets.create">
       Go to <a ui-sref="app.admin.buckets">Buckets</a> to add one, or load a
-      <a ui-sref="app.admin.settings.sampleBuckets">sample bucket</a> with data & indexes.
+      sample bucket with data & indexes from Settings > <a ui-sref="app.admin.settings.sampleBuckets">Sample Buckets</a>.
     </span>
   </div>
 
   <div ng-show="buckets.details.length" ui-view=""></div>
 
-<!--
-  <div class="content-box-dashboard max-width-12 margin-top-2 resp-wrap-med resp-med">
-    <div
-       class="column width-6">
-      <b class="text-small">Data Service Memory</b>
-      <div
-         ng-class="{
-                   overcommitted: overviewCtl.mnOverviewConfig.ramOverviewConfig.items[1].name === 'overused',
-                   'has-free-space': overviewCtl.mnOverviewConfig.ramOverviewConfig.items[2].name === 'available'
-}"
-         class="bar-usages bar-usages-dashboard"
-         mn-bar-usage
-         base-info="overviewCtl.mnOverviewConfig.ramOverviewConfig"></div>
-    </div>
-    <div
-       class="column width-6">
-      <b class="text-small">Data Service Disk</b>
-      <div
-         class="bar-usages"
-         mn-bar-usage
-         base-info="overviewCtl.mnOverviewConfig.hddOverviewConfig"></div>
-    </div>
-  </div>
-
-  <div ng-if="rbac.cluster.bucket['.'].settings.read">
-    <div
-       ng-if="rbac.cluster.bucket['.'].stats.read"
-       class="row flex-left items-top resp-wrap-med">
-      <div ng-show="buckets.details.length" class="fix-width-5 margin-top-1 margin-right-3">
-        <b class="text-small">Buckets Operations Per Second</b>
-          <span ng-show="!overviewCtl.mnOverviewStats.opsGraphConfig.stats.length">
-            loading stats...
-          </span>
-        <div
-           ng-if="overviewCtl.mnOverviewStats.opsGraphConfig.stats.length"
-           mn-plot
-           mn-plot-config="overviewCtl.mnOverviewStats.opsGraphConfig"
-           style="height: 150px; width: 360px; margin-right: 2rem;"
-           class="text-smaller"></div>
-      </div>
-      <div ng-show="buckets.details.length" class="fix-width-5 margin-top-1">
-        <b class="text-small">Disk Fetches Per Second</b>
-          <span ng-show="!overviewCtl.mnOverviewStats.readsGraphConfig.stats.length">
-            loading stats...
-          </span>
-
-        <div
-           ng-if="overviewCtl.mnOverviewStats.readsGraphConfig.stats.length"
-           mn-plot
-           mn-plot-config="overviewCtl.mnOverviewStats.readsGraphConfig"
-           style="height: 150px; width: 360px;"
-           class="text-smaller"></div>
-      </div>
-    </div>
-  </div>
-  -->
 </div>
 <footer class="footer-dashboard">
   <div class="dashboard-servers resp-xsml">
@@ -175,14 +119,6 @@
        class="service-widget"
        ng-class="['dynamic_' + (adminCtl.tasks.tasksXDCR.length ? 'healthy' : 'inactive')]">
       <p>XDCR</p>
-      <!-- <a>
-        {{overviewCtl.xdcrReferences.filtered.length}}
-        remote{{overviewCtl.getEndings(overviewCtl.xdcrReferences.filtered.length)}}
-      </a> |
-      <a>
-        {{adminCtl.tasks.tasksXDCR.length}}
-        replication{{overviewCtl.getEndings(adminCtl.tasks.tasksXDCR.length)}}
-      </a>  -->
     </div>
   </div>
 </footer>
