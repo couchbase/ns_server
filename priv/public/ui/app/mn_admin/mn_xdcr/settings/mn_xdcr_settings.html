@@ -1,5 +1,21 @@
 <div>
 
+  <div class="formrow">
+    <label for="xdcr_advaced_settings_type">XDCR Protocol</label>
+    <select
+       id="xdcr_advaced_settings_type"
+       ng-disabled="xdcrSettingsCtl.mnIsEditing"
+       ng-model="xdcrSettingsCtl.settings.type">
+      <option value="capi">Version 1</option>
+      <option value="xmem">Version 2</option>
+    </select>
+    <div
+       class="error"
+       ng-show="xdcrSettingsCtl.errors.type">
+      {{xdcrSettingsCtl.errors.type}}
+    </div>
+  </div>
+
   <div class="formrow"
        ng-show="xdcrSettingsCtl.mnPools.isEnterprise &&
                 xdcrSettingsCtl.settings.type !== 'capi' &&

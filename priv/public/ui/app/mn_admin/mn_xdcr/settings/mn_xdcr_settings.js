@@ -11,7 +11,8 @@
         scope: {
           settings: '=mnXdcrSettings',
           mnPoolDefault: "=",
-          mnPools: "="
+          mnPools: "=",
+          mnIsEditing: "=?"
         },
         isolate: false,
         replace: true,

@@ -7,7 +7,8 @@
      ng-submit="xdcrEditDialogCtl.createReplication()"
      mn-spinner="xdcrEditDialogCtl.viewLoading">
     <div class="panel-content">
-      <div class="formrow">
+      <div class="formrow"
+           ng-show="xdcrEditDialogCtl.settings.type !== 'capi'">
         <label for="replication_priority">Replication Priority</label>
         <select
            id="xdcr_advaced_settings_type"
@@ -18,6 +19,7 @@
         </select>
       </div>
       <div
+         mn-is-editing="true"
          mn-pool-default="xdcrEditDialogCtl.mnPoolDefault"
          mn-pools="xdcrEditDialogCtl.mnPools"
          mn-xdcr-settings="xdcrEditDialogCtl.settings"></div>
