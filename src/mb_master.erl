@@ -108,24 +108,36 @@ do_maybe_invalidate_current_master(TriesLeft, FirstTime) ->
             end,
             ok;
         MasterToShutdown ->
-            %% send our config to this master it doesn't make sure
-            %% mb_master will see us in peers because of a couple of
-            %% races, but at least we'll delay a bit on some work and
-            %% increase chance of it. We'll retry if it's not the case
-            ok = ns_config_rep:ensure_config_seen_by_nodes([MasterToShutdown]),
-            %% ask master to give up
-            send_heartbeat_with_peers([MasterToShutdown], master, [node(), MasterToShutdown]),
-            %% sync that "surrender" event
-            case rpc:call(MasterToShutdown, mb_master, master_node, [], 5000) of
-                Us when Us =:= node() ->
+            case do_invalidate_master(MasterToShutdown) of
+                ok ->
                     ok;
-                MasterToShutdown ->
+                retry ->
                     do_maybe_invalidate_current_master(TriesLeft-1, false);
-                Other ->
+                {error, Error} ->
                     ale:error(?USER_LOGGER,
-                              "Failed to forcefully take mastership over old node (~p): ~p",
-                              [MasterToShutdown, Other])
+                              "Failed to forcefully take mastership "
+                              "over old node (~p): ~p",
+                              [MasterToShutdown, Error])
             end
+    end.
+
+do_invalidate_master(MasterToShutdown) ->
+    %% send our config to this master it doesn't make sure
+    %% mb_master will see us in peers because of a couple of
+    %% races, but at least we'll delay a bit on some work and
+    %% increase chance of it. We'll retry if it's not the case
+    ok = ns_config_rep:ensure_config_seen_by_nodes([MasterToShutdown]),
+    %% ask master to give up
+    send_heartbeat_with_peers([MasterToShutdown],
+                              master, [node(), MasterToShutdown]),
+    %% sync that "surrender" event
+    case rpc:call(MasterToShutdown, mb_master, master_node, [], 5000) of
+        Us when Us =:= node() ->
+            ok;
+        MasterToShutdown ->
+            retry;
+        Other ->
+            {error, Other}
     end.
 
 check_master_takeover_needed(Peers) ->
