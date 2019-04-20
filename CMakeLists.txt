@@ -237,6 +237,9 @@ SET (DATA_PREFIX "${PREFIX}")
 SET (BIN_PREFIX "${PREFIX}")
 CONFIGURE_FILE (etc/static_config.in "${_etcdir}/couchbase/static_config" @ONLY)
 
+SET (CONFIG_PREFIX "${PREFIX}/var/lib/couchbase/config")
+CONFIGURE_FILE (etc/ssl_dist_opts.in "${_etcdir}/couchbase/ssl_dist_opts" @ONLY)
+
 FILE (WRITE "${_etcdir}/couchbase/config" "")    # create empty file
 SET (_cdbetcdir "${_etcdir}/couchdb/default.d")
 FILE (MAKE_DIRECTORY "${_cdbetcdir}")

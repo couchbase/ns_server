@@ -120,6 +120,22 @@ def prepare_start_cluster(extra_args, args_prefix):
 def quote_string_for_erl(s):
     return '"' + s.replace("\\", "\\\\").replace("\"", "\\\"") + '"'
 
+def generate_ssl_dist_optfile(datadir):
+    cfg_dir = os.path.join(datadir, "config")
+    in_file = os.path.join(os.getcwd(), "etc", "ssl_dist_opts.in")
+    out_file = os.path.join(cfg_dir, "ssl_dist_opts")
+
+    if not os.path.exists(cfg_dir):
+        os.makedirs(cfg_dir, 0755)
+
+    with open(in_file) as f:
+        content = f.read().replace('@CONFIG_PREFIX@', cfg_dir)
+
+    with open(out_file, "w") as f:
+        f.write(content)
+
+    return out_file
+
 def erlang_args_for_node(i):
     logdir = "logs/n_{0}".format(i)
 
@@ -139,10 +155,12 @@ def erlang_args_for_node(i):
     nodefile = os.path.join(datadir, "nodefile")
     babysitternodefile = os.path.join(datadir, "couchbase-server.babysitter.node")
     babysittercookiefile = os.path.join(datadir, "couchbase-server.babysitter.cookie")
+    ssloptfile = generate_ssl_dist_optfile(datadir)
 
     args += [
         "-name", "babysitter_of_n_{0}@::1".format(i) if ipv6 else "babysitter_of_n_{0}@127.0.0.1".format(i),
         "-proto_dist", "inet6_tcp" if ipv6 else "inet_tcp",
+        "-ssl_dist_optfile", ssloptfile,
         "-hidden",
         "-ns_babysitter", "cookiefile", quote_string_for_erl(babysittercookiefile),
         "-ns_babysitter", "nodefile", quote_string_for_erl(babysitternodefile),

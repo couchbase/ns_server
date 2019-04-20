@@ -48,6 +48,7 @@ COOKIEFILE="@PREFIX@/var/lib/couchbase/couchbase-server.babysitter.cookie"
 NODEFILE="@PREFIX@/var/lib/couchbase/couchbase-server.babysitter.node"
 STATIC_CONFIG_PATH="@PREFIX@/etc/couchbase/static_config"
 CB_DATA_DIR="@PREFIX@/var/lib/couchbase"
+SSL_DIST_OPTFILE="@PREFIX@/etc/couchbase/ssl_dist_opts"
 
 couch_start_arguments=""
 
@@ -194,6 +195,7 @@ _start() {
         -hidden \
         -name $VM_NAME \
         -proto_dist $PROTO_DIST \
+        -ssl_dist_optfile $SSL_DIST_OPTFILE \
         -setcookie nocookie \
         $* \
         -run ns_babysitter_bootstrap -- \
@@ -215,6 +217,7 @@ _stop() {
     erl \
         -name executioner@executioner \
         -proto_dist $PROTO_DIST \
+        -ssl_dist_optfile $SSL_DIST_OPTFILE \
         -noshell \
         -hidden \
         -setcookie "$cookie" \
