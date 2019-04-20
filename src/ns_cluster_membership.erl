@@ -282,16 +282,14 @@ services_by_version() ->
      {?VERSION_40, index},
      {?VERSION_45, fts},
      {?VERSION_55, cbas},
-     {?VERSION_55, eventing},
-     {?VERSION_MADHATTER, mobile}] ++
+     {?VERSION_55, eventing}] ++
         maybe_example_service().
 
 topology_aware_services_by_version() ->
     [{?VERSION_45, fts},
      {?VERSION_50, index},
      {?VERSION_55, cbas},
-     {?VERSION_55, eventing},
-     {?VERSION_MADHATTER, mobile}] ++
+     {?VERSION_55, eventing}] ++
         maybe_example_service().
 
 filter_services_by_version(Version, Services) ->

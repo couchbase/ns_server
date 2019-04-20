@@ -322,11 +322,6 @@ goport_defs() ->
           service = eventing,
           rpc = eventing,
           log = ?EVENTING_LOG_FILENAME},
-     #def{id = mobile,
-          exe = "mobile-service",
-          service = mobile,
-          rpc = mobile,
-          log = ?MOBILE_LOG_FILENAME},
      #def{id = example,
           exe = "cache-service",
           service = example,
@@ -550,16 +545,6 @@ goport_args(cbas, Config, Cmd, NodeUUID) ->
         ] ++
         ["-dataDir=" ++ Dir || Dir <- CBASDirs] ++
         ["-javaHome=" ++ JavaHome || JavaHome =/= undefined];
-
-goport_args(mobile, Config, _Cmd, NodeUUID) ->
-    RestPort = service_ports:get_port(rest_port, Config),
-    build_port_args([{"--grpcTlsPort",      mobile_grpc_port},
-                     {"--restAdminPort",    mobile_http_port},
-                     {"--restAdminPortTLS", mobile_https_port}], Config) ++
-        ["--dataDir=" ++ get_writable_ix_subdir("@mobile"),
-         "--uuid=" ++ binary_to_list(NodeUUID),
-         "--server=" ++ misc:local_url(RestPort, []),
-         "--enterprise=" ++ atom_to_list(cluster_compat_mode:is_enterprise())];
 
 goport_args(example, Config, _Cmd, NodeUUID) ->
     Port = service_ports:get_port(rest_port, Config) + 20000,

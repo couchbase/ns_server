@@ -102,11 +102,7 @@ all_ports() ->
      ?define_port(cbas_replication_port,       cbasReplication, misc, 9120),
      ?define_port(cbas_metadata_port,          undefined,       misc, 9121),
      ?define_port(cbas_parent_port,            cbasParent,      misc, 9122),
-     ?define_port(cbas_debug_port,             cbasDebug,       misc, -1),
-     %% mobile service ports
-     ?define_port(mobile_http_port,  mobile,     mobile, 8097),
-     ?define_port(mobile_https_port, mobileSSL,  mobile, 18097, secure),
-     ?define_port(mobile_grpc_port,  mobileGRPC, mobile, 18098, secure)
+     ?define_port(cbas_debug_port,             cbasDebug,       misc, -1)
     ].
 
 config_key(memcached_port) ->
