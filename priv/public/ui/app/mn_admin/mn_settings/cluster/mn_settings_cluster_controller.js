@@ -51,9 +51,16 @@
       var promise2;
       var promise3;
       var promise5;
+      var promise6;
 
       queries.push(promise1);
-      queries.push(mnXDCRService.postSettingsReplications(vm.replicationSettings));
+
+      promise6 = mnPromiseHelper(vm,
+                                 mnXDCRService.postSettingsReplications(vm.replicationSettings))
+        .catchErrors("replicationSettingsErrors")
+        .getPromise();
+
+      queries.push(promise6);
 
       if (!_.isEqual(vm.indexSettings, vm.initialIndexSettings) && mnPoolDefault.export.compat.atLeast40 && $scope.rbac.cluster.settings.indexes.write) {
         promise2 = mnPromiseHelper(vm, mnSettingsClusterService.postIndexSettings(vm.indexSettings))

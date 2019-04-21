@@ -303,6 +303,11 @@
              id="xdcr_maximum_processes"
              ng-model="settingsClusterCtl.replicationSettings.goMaxProcs"
              class="input-small input-short-1">
+          <div
+             class="error error-form"
+             ng-show="!!settingsClusterCtl.replicationSettingsErrors.goMaxProcs">
+            {{settingsClusterCtl.replicationSettingsErrors.goMaxProcs}}
+          </div>
         </div>
       </div>
     </div>
