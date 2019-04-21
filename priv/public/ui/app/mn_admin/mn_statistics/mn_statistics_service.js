@@ -310,7 +310,9 @@
     function readByPath(path, name) {
       var paths = path.split('.');
       var maybeItIsItemName = name.split("/");
-      name = maybeItIsItemName[maybeItIsItemName.length - 1];
+      if (maybeItIsItemName.length > 2) {
+        name = maybeItIsItemName[maybeItIsItemName.length - 1];
+      }
       paths.push(name);
       var current = mnStatisticsDescriptionService.stats;
       var i;
