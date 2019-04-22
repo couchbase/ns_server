@@ -194,11 +194,7 @@
 <div
    ng-if="config.calculateTotal"
    class="text-small text-right nowrap margin-right-1">
-  <strong>TOTAL QUOTA</strong> &nbsp; {{ ((!config.displayedServices.kv || (config.services && !config.services.model.kv)) ? 0 : config.memoryQuota) +
-      ((!config.displayedServices.index || (config.services && !config.services.model.index)) ? 0 : config.indexMemoryQuota) +
-      ((!config.displayedServices.fts || (config.services && !config.services.model.fts)) ? 0 : config.ftsMemoryQuota) +
-      ((!config.displayedServices.cbas || (config.services && !config.services.model.cbas)) ? 0 : config.cbasMemoryQuota) +
-      ((!config.displayedServices.eventing || (config.services && !config.services.model.eventing)) ? 0 : config.eventingMemoryQuota) }}MB
+  <strong>TOTAL QUOTA</strong> &nbsp; {{calculateTotalQuota()}} MB
 </div>
 
 <div
