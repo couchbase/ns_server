@@ -184,10 +184,15 @@ handle_call(get_aggregated_progress, _From,
             #state{stage_info = StageInfo} = State) ->
     {reply, dict:to_list(rebalance_stage_info:get_progress(StageInfo)), State};
 handle_call({get_rebalance_info, Options}, _From,
-            #state{stage_info = StageInfo} = State) ->
+            #state{stage_info = StageInfo,
+                   nodes_info = NodesInfo,
+                   rebalance_id = Id} = State) ->
     StageDetails = get_all_stage_rebalance_details(State, Options),
     RebalanceInfo = [{stageInfo, rebalance_stage_info:get_stage_info(
-                                   StageInfo, StageDetails)}],
+                                   StageInfo, StageDetails)},
+                     {rebalanceId, Id},
+                     {nodesInfo, {NodesInfo}},
+                     {masterNode, atom_to_binary(node(), latin1)}],
     {reply, RebalanceInfo, State};
 handle_call(Req, From, State) ->
     ?log_error("Got unknown request: ~p from ~p", [Req, From]),
