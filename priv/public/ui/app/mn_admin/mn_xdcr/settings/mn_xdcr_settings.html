@@ -1,12 +1,10 @@
 <div>
-  <div class="formrow">
-    <h4
-       class="disclosure"
-       ng-class="{disclosed: xdcrSettingsCtl.showAdvancedSettings}"
-       ng-click="xdcrSettingsCtl.showAdvancedSettings = !xdcrSettingsCtl.showAdvancedSettings">
-      Show Advanced Settings
-    </h4>
-  </div>
+  <p
+     class="disclosure margin-bottom-half"
+     ng-class="{disclosed: xdcrSettingsCtl.showAdvancedSettings}"
+     ng-click="xdcrSettingsCtl.showAdvancedSettings = !xdcrSettingsCtl.showAdvancedSettings">
+    Advanced Settings
+  </p>
   <div ng-if="xdcrSettingsCtl.showAdvancedSettings">
     <div class="formrow">
       <label for="xdcr_advaced_settings_type">XDCR Protocol</label>

@@ -1356,37 +1356,54 @@ section.error {
   margin: 0 1rem 1px 1rem;
 }
 
-/* create xdcr replication dialog --------------------------------------- */
+/* create xdcr replication dialog ------------------------------------------- */
 .dynamic-hightlight {
   background-color: #c6dbf2;
 }
-.match_indicator {
-  background-color: #ffbd44;
-  color: #fff;
-  font-size: 0.7rem;
-  text-align: center;
-  line-height: 1.5rem;
-  position: absolute;
-  width: 4rem;
-  height: 1.6rem;
-  top: -1.8rem;
-  right: 0.2rem;
+.xdcrfilter-matching {
+  font-size: .75rem;
+  margin-left: .5rem;
+  padding-left: .5rem;
+  white-space: nowrap;
 }
-.match_indicator.dynamic_match {
-  background-color: green;
+.xdcrfilter-match {
+  color: #56b349;
 }
-.match_indicator .no_match,
-.match_indicator.dynamic_match .match,
-.match_indicator.dynamic_spinner .loading {
+.xdcrfilter-nomatch {
+  color: #f5a623;
+}
+.xdcrfilter-match:before {
+  font-family: FontAwesome;
+  content: "\f00c";
+  font-size: 1rem;
+  color: #2ca01c;
+  position: relative;
+  right: 4px;
+}
+.xdcrfilter-nomatch:before {
+  font-family: FontAwesome;
+  content: "\f071";
+  font-size: .8rem;
+  color: #f5a623;
+  position: relative;
+  right: 6px;
+}
+.xdcrfilter-matching .xdcrfilter-nomatch,
+.xdcrfilter-matching.dynamic_match .xdcrfilter-match,
+.xdcrfilter-matching.dynamic_spinner .xdcrfilter-loading {
   display: block;
 }
-.match_indicator.dynamic_spinner .no_match,
-.match_indicator.dynamic_spinner .match,
-.match_indicator.dynamic_match .no_match,
-.match_indicator.dynamic_match .loading,
-.match_indicator .loading,
-.match_indicator .match {
+.xdcrfilter-matching.dynamic_spinner .xdcrfilter-nomatch,
+.xdcrfilter-matching.dynamic_spinner .xdcrfilter-match,
+.xdcrfilter-matching.dynamic_match .xdcrfilter-nomatch,
+.xdcrfilter-matching.dynamic_match .xdcrfilter-loading,
+.xdcrfilter-matching .xdcrfilter-loading,
+.xdcrfilter-matching .xdcrfilter-match {
   display: none;
+}
+.xdcr-filter-stream,
+.xdcr-filter-stream label {
+  font-size: .875rem!important;
 }
 
 /* documents and views editing code viewer ------------------------------ */

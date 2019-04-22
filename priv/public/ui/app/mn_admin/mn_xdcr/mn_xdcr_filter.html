@@ -10,7 +10,7 @@
 </div>
 
 <div ng-if="mnReplication.enableAdvancedFiltering">
-  <div class="formrow">
+  <div class="margin-bottom-1-5">
     <label class="inline">Filter Expression</label>
     <span
        class="fa-stack icon-info"
@@ -24,50 +24,58 @@
        rows="4"
        autocorrect="off"
        autocompleterg="off"
-       spellcheck="false">
+       spellcheck="false"
+       class="xdcr-filter margin-bottom-half">
     </textarea>
-    <input
-       ng-model="xdcrFilterCtl.testDocID"
-       type="text"
-       autocorrect="off"
-       autocompleterg="off"
-       spellcheck="false">
-    <button type="button"
-            ng-disabled="xdcrFilterCtl.filterExpressionSpinner"
-            ng-click="xdcrFilterCtl.onExpressionUpdate()">Test Filter</button>
-    <div
-       class="match_indicator"
-       style="position: relative; display: inline-block; top: 0; left: 5px;"
-       ng-class="{dynamic_match: xdcrFilterCtl.filterExpressionResult.data.result,
-                 dynamic_spinner: xdcrFilterCtl.filterExpressionSpinner}">
-      <span class="no_match">No Match</span>
-      <span class="loading">...</span>
-      <span class="match">Match</span>
+    <div ng-if="mnIsEditing" class="xdcr-filter-stream formrow">
+      <strong>After saving filter changes</strong>&nbsp;&nbsp;
+      <input
+         type="radio"
+         value="false"
+         id="for-save-restart-replication"
+         ng-model="mnReplication.filterSkipRestream">
+      <label for="for-save-restart-replication">restart replication</label>
+      <input
+         type="radio"
+         value="true"
+         id="for-save-continue-replicating"
+         ng-model="mnReplication.filterSkipRestream">
+      <label for="for-save-continue-replicating">continue replicating</label>
     </div>
-    <br>
-    <div
-       class="error error-field"
-       ng-show="xdcrFilterCtl.filterExpressionResult.data.error ||
-                xdcrFilterCtl.filterExpressionError ||
-                mnErrors.filterExpression">
+    <div class="row margin-bottom-half">
+      <input
+         ng-model="xdcrFilterCtl.testDocID"
+         type="text"
+         autocorrect="off"
+         autocompleterg="off"
+         spellcheck="false"
+         placeholder="id of document to test..."
+         class="margin-right-half">
+      <button
+         type="button"
+         class="outline"
+         ng-disabled="xdcrFilterCtl.filterExpressionSpinner"
+         ng-click="xdcrFilterCtl.onExpressionUpdate()">
+        Test Filter
+      </button>
+      <div
+         class="xdcrfilter-matching"
+         ng-class="{dynamic_match: xdcrFilterCtl.filterExpressionResult.data.result,
+                   dynamic_spinner: xdcrFilterCtl.filterExpressionSpinner,
+                   hidden: xdcrFilterCtl.filterExpressionResult == null}">
+        <span class="xdcrfilter-nomatch">no match</span>
+        <span class="xdcrfilter-loading loading">...</span>
+        <span class="xdcrfilter-match">match</span>
+      </div>
+    </div>
+
+    <div class="error"
+         ng-show="xdcrFilterCtl.filterExpressionResult.data.error ||
+                  xdcrFilterCtl.filterExpressionError ||
+                  mnErrors.filterExpression">
       {{xdcrFilterCtl.filterExpressionResult.data.error ||
       xdcrFilterCtl.filterExpressionError ||
       mnErrors.filterExpression}}
     </div>
-  </div>
-  <div ng-if="mnIsEditing" class="formrow">
-    <label>Bucket Type</label>
-    <input
-       type="radio"
-       value="false"
-       id="for-save-restart-replication"
-       ng-model="mnReplication.filterSkipRestream">
-    <label for="for-save-restart-replication">Save and restart replication</label>
-    <input
-       type="radio"
-       value="true"
-       id="for-save-continue-replicating"
-       ng-model="mnReplication.filterSkipRestream">
-    <label for="for-save-continue-replicating">Save and continue replicating</label>
   </div>
 </div>
