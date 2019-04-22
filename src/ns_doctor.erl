@@ -794,7 +794,7 @@ do_build_rebalance_task(Timeout) ->
         case (catch ns_orchestrator:rebalance_progress_full(Timeout)) of
             {running, PerNode} ->
                 DetailedProgress = get_detailed_progress(),
-                StageInfo = ns_rebalance_observer:get_stage_info(),
+                RebalanceInfo = ns_rebalance_observer:get_rebalance_info(),
 
                 Subtype = case ns_config:search(rebalancer_pid) =:= ns_config:search(graceful_failover_pid) of
                               true ->
@@ -817,8 +817,7 @@ do_build_rebalance_task(Timeout) ->
                  {perNode,
                   {struct, [{Node, {struct, [{progress, Progress * 100}]}}
                             || {Node, Progress} <- PerNode]}},
-                 {detailedProgress, DetailedProgress},
-                 {stageInfo, StageInfo}];
+                 {detailedProgress, DetailedProgress}] ++ RebalanceInfo;
             FullProgress ->
                 [{type, rebalance},
                  {status, notRunning},

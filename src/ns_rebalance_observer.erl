@@ -24,7 +24,7 @@
 -export([start_link/4,
          get_detailed_progress/0,
          get_aggregated_progress/1,
-         get_stage_info/0,
+         get_rebalance_info/0,
          update_stage_info/2,
          update_progress/2,
          submit_master_event/1]).
@@ -85,7 +85,8 @@ generic_get_call(Call, Timeout) ->
     try
         gen_server:call(?SERVER, Call, Timeout)
     catch
-        exit:_Reason ->
+        Type:Reason ->
+            ?log_error("Unexpected exception ~p", [{Type, Reason}]),
             not_running
     end.
 
@@ -95,8 +96,8 @@ get_detailed_progress() ->
 get_aggregated_progress(Timeout) ->
     generic_get_call(get_aggregated_progress, Timeout).
 
-get_stage_info() ->
-    generic_get_call({get_stage_info, []}).
+get_rebalance_info() ->
+    generic_get_call({get_rebalance_info, []}).
 
 update_progress(Stage, StageProgress) ->
     gen_server:cast(?SERVER, {update_progress, Stage, StageProgress}).
@@ -182,11 +183,12 @@ handle_call(get_detailed_progress, _From, State) ->
 handle_call(get_aggregated_progress, _From,
             #state{stage_info = StageInfo} = State) ->
     {reply, dict:to_list(rebalance_stage_info:get_progress(StageInfo)), State};
-handle_call({get_stage_info, Options}, _From,
+handle_call({get_rebalance_info, Options}, _From,
             #state{stage_info = StageInfo} = State) ->
     StageDetails = get_all_stage_rebalance_details(State, Options),
-    {reply, rebalance_stage_info:get_stage_info(StageInfo, StageDetails),
-     State};
+    RebalanceInfo = [{stageInfo, rebalance_stage_info:get_stage_info(
+                                   StageInfo, StageDetails)}],
+    {reply, RebalanceInfo, State};
 handle_call(Req, From, State) ->
     ?log_error("Got unknown request: ~p from ~p", [Req, From]),
     {reply, unknown_request, State}.
