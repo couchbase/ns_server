@@ -1,9 +1,10 @@
 <mn-element-cargo depot="alerts">
   <div
      class="alert alert-warning"
-     ng-show="settingsAutoFailoverCtl.autoFailoverSettings.count > 0">
+     ng-show="settingsAutoFailoverCtl.autoFailoverSettings.count == settingsAutoFailoverCtl.autoFailoverSettings.maxCount">
     <p>
-      The maximum number of nodes have been automatically failed over. Auto-failover is disabled until you reset it. &nbsp;
+      The maximum number of nodes have been automatically failed over.
+      Auto-failover is disabled until you reset it.<br>
       <a
          ng-click="adminCtl.resetAutoFailOverCount()"
          ng-show="rbac.cluster.settings.write">
