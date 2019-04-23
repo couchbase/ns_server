@@ -53,7 +53,7 @@
          rebalance_progress_full/1,
          start_link/0,
          start_rebalance/3,
-         retry_rebalance/5,
+         retry_rebalance/4,
          stop_rebalance/0,
          is_rebalance_running/0,
          start_recovery/1,
@@ -63,6 +63,7 @@
          recovery_map/2,
          is_recovery_running/0,
          ensure_janitor_run/1,
+         rebalance_type2text/1,
          start_graceful_failover/1]).
 
 -define(SERVER, {via, leader_registry, ?MODULE}).
@@ -286,10 +287,12 @@ start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets) ->
     maybe_start_rebalance({maybe_start_rebalance, KnownNodes, EjectNodes,
                            DeltaRecoveryBuckets}).
 
-retry_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets, RebalanceId,
-                RetryChk) ->
-    maybe_start_rebalance({maybe_start_rebalance, KnownNodes, EjectNodes,
-                           DeltaRecoveryBuckets, RebalanceId, RetryChk}).
+retry_rebalance(rebalance, Params, Id, Chk) ->
+    maybe_start_rebalance({maybe_start_rebalance,
+                           proplists:get_value(known_nodes, Params),
+                           proplists:get_value(eject_nodes, Params),
+                           proplists:get_value(delta_recovery_buckets, Params),
+                           Id, Chk}).
 
 maybe_start_rebalance(Call) ->
     wait_for_orchestrator(),
@@ -1272,8 +1275,12 @@ retry_rebalance(_, #rebalancing_state{type = rebalance,
 
                     NewChk = update_retry_check(EjectedByReb, Chk),
 
-                    auto_rebalance:retry_rebalance(KnownNodes, EjectedNodes,
-                                                   DRBkts, Id, NewChk);
+                    Params = [{known_nodes,  KnownNodes},
+                              {eject_nodes, EjectedNodes},
+                              {delta_recovery_buckets, DRBkts}],
+
+                    auto_rebalance:retry_rebalance(rebalance, Params, Id,
+                                                   NewChk);
                 Extras ->
                     ale:info(?USER_LOGGER,
                              "~p nodes have been removed from the "

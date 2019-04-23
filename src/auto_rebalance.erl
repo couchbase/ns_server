@@ -27,7 +27,7 @@
 
 %% API
 -export([start_link/0]).
--export([retry_rebalance/5,
+-export([retry_rebalance/4,
          cancel_any_pending_retry/1,
          cancel_any_pending_retry_async/1,
          cancel_pending_retry/2,
@@ -38,14 +38,13 @@
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
 
--record(retry_rebalance, { known_nodes      :: [term()],
-                           eject_nodes      :: [term()],
-                           delta_recov_bkts :: [term()],
-                           rebalance_id     :: binary(),
-                           retry_check      :: [term()],
-                           state            :: pending | in_progress,
-                           attempts         :: non_neg_integer(),
-                           timer_ref        :: undefined | reference()
+-record(retry_rebalance, { params       :: [term()],
+                           type         :: rebalance,
+                           rebalance_id :: binary(),
+                           retry_check  :: [term()],
+                           state        :: pending | in_progress,
+                           attempts     :: non_neg_integer(),
+                           timer_ref    :: undefined | reference()
                          }).
 
 -record(state, {state :: idle | #retry_rebalance{}}).
@@ -56,15 +55,16 @@
 start_link() ->
     misc:start_singleton(gen_server, ?MODULE, [], []).
 
-retry_rebalance(KnownNodes, EjectNodes, DRBuckets, RebalanceId, Chk) ->
+retry_rebalance(Type, Params, RebalanceId, Chk) ->
     case auto_rebalance_settings:is_retry_enabled() of
         true ->
-            cast({rebalance, KnownNodes, EjectNodes, DRBuckets, RebalanceId,
-                  Chk}),
+            cast({rebalance, Type, Params, RebalanceId, Chk}),
             true;
         false ->
-            ?log_debug("Retry rebalance is not enabled. Failed rebalance "
-                       "with Id ~s will not be retried.", [RebalanceId]),
+            ?log_debug("Retry rebalance is not enabled. Failed ~s "
+                       "with Id ~s will not be retried.",
+                       [ns_orchestrator:rebalance_type2text(Type),
+                        RebalanceId]),
             false
     end.
 
@@ -87,14 +87,13 @@ get_pending_retry() ->
 init([]) ->
     {ok, reset_state()}.
 
-handle_cast({rebalance, KnownNodes, EjectNodes, DRBuckets, Id, Chk},
+handle_cast({rebalance, Type, Params, Id, Chk},
             #state{state = idle} = State) ->
     Count = 1,
     AfterS = auto_rebalance_settings:get_retry_after(ns_config:latest()),
-    TRef = schedule_retry(Id, Count, AfterS),
-    RS = #retry_rebalance{known_nodes = KnownNodes,
-                          eject_nodes = EjectNodes,
-                          delta_recov_bkts = DRBuckets,
+    TRef = schedule_retry(Type, Id, Count, AfterS),
+    RS = #retry_rebalance{params = Params,
+                          type = Type,
                           rebalance_id = Id,
                           retry_check = Chk,
                           state = pending,
@@ -102,19 +101,20 @@ handle_cast({rebalance, KnownNodes, EjectNodes, DRBuckets, Id, Chk},
                           timer_ref = TRef},
     {noreply, State#state{state = RS}};
 
-handle_cast({rebalance, KNs, ENs, DRBuckets, Id, Chk},
-            #state{state = #retry_rebalance{delta_recov_bkts = PrevDRB,
-                                            rebalance_id = PrevId,
+handle_cast({rebalance, Type, Params, Id, Chk},
+            #state{state = #retry_rebalance{rebalance_id = PrevId,
+                                            type = PrevType,
                                             attempts = Count,
                                             timer_ref = PrevTRef} = RS} = S) ->
+
+    TypeStr = ns_orchestrator:rebalance_type2text(Type),
     NewState = case Id =:= PrevId of
                    true ->
                        %% Since this is a retry of a previous rebalance,
                        %% the timer should have been expired.
                        false = erlang:read_timer(PrevTRef),
 
-                       %% Validate arguments match
-                       true = DRBuckets =:= PrevDRB,
+                       true = Type =:= PrevType,
 
                        Cfg = ns_config:latest(),
                        Max = auto_rebalance_settings:get_retry_max(Cfg),
@@ -122,16 +122,17 @@ handle_cast({rebalance, KNs, ENs, DRBuckets, Id, Chk},
                        case Count =:= Max of
                            true ->
                                ale:info(?USER_LOGGER,
-                                        "Rebalance with Id ~s will not be "
+                                        "~s with Id ~s will not be "
                                         "retried. Exhausted all retries. "
-                                        "Retry count ~p", [Id, Count]),
+                                        "Retry count ~p",
+                                        [TypeStr, Id, Count]),
                                reset_state();
                            _ ->
                                NewCount = Count + 1,
-                               TRef = schedule_retry(Id, NewCount, AfterS),
+                               TRef = schedule_retry(Type, Id, NewCount,
+                                                     AfterS),
                                RS1 = RS#retry_rebalance{state = pending,
-                                                        known_nodes = KNs,
-                                                        eject_nodes = ENs,
+                                                        params = Params,
                                                         retry_check = Chk,
                                                         attempts = NewCount,
                                                         timer_ref = TRef},
@@ -139,9 +140,10 @@ handle_cast({rebalance, KNs, ENs, DRBuckets, Id, Chk},
                        end;
                    false ->
                        ?log_error("Retry rebalance encountered Id mismatch. "
-                                  "Rebalance with Id ~s will not be retried. "
+                                  "~s with Id ~s will not be retried. "
                                   "Pending rebalance with Id ~s will be "
-                                  "cancelled.", [Id, PrevId]),
+                                  "cancelled.",
+                                  [TypeStr, Id, PrevId]),
                        erlang:cancel_timer(PrevTRef),
                        misc:flush(retry_rebalance),
                        reset_state()
@@ -150,8 +152,9 @@ handle_cast({rebalance, KNs, ENs, DRBuckets, Id, Chk},
 
 handle_cast({cancel_any_pending_retry, CancelledBy},
             #state{state = #retry_rebalance{rebalance_id = ID,
+                                            type = Type,
                                             timer_ref = TRef}}) ->
-    NewState = cancel_rebalance(ID, TRef, CancelledBy),
+    NewState = cancel_rebalance(Type, ID, TRef, CancelledBy),
     {noreply, NewState};
 
 handle_cast({cancel_any_pending_retry, _CancelledBy}, State) ->
@@ -159,17 +162,19 @@ handle_cast({cancel_any_pending_retry, _CancelledBy}, State) ->
 
 handle_cast({cancel_pending_retry, RebID, CancelledBy},
             #state{state = #retry_rebalance{rebalance_id = PendingID,
+                                            type = Type,
                                             timer_ref = TRef}} = State) ->
     NewState = case RebID =:= PendingID of
                    true ->
-                       cancel_rebalance(PendingID, TRef, CancelledBy);
+                       cancel_rebalance(Type, PendingID, TRef, CancelledBy);
                    false ->
                        ale:info(?USER_LOGGER,
-                                "Pending rebalance will not be cancelled due "
+                                "Pending ~s will not be cancelled due "
                                 "to rebalance Id mismatch. "
                                 "Id passed by the caller:~s. "
                                 "Id of pending rebalance:~s.",
-                                [RebID, PendingID]),
+                                [ns_orchestrator:rebalance_type2text(Type),
+                                 RebID, PendingID]),
                        State
                end,
     {noreply, NewState};
@@ -182,9 +187,8 @@ handle_cast(Cast, State) ->
     {noreply, State}.
 
 handle_call(get_pending_retry, _From,
-            #state{state = #retry_rebalance{known_nodes = KN,
-                                            eject_nodes = EN,
-                                            delta_recov_bkts = DRBkts,
+            #state{state = #retry_rebalance{params = Params,
+                                            type = Type,
                                             rebalance_id = ID,
                                             state = RetryState,
                                             attempts = Count,
@@ -198,11 +202,9 @@ handle_call(get_pending_retry, _From,
                     TimeMS/1000
             end,
     Max = auto_rebalance_settings:get_retry_max(ns_config:latest()),
-    RV = [{retry_rebalance, RetryState}, {rebalance_id, ID},
-          {known_nodes, KN}, {eject_nodes, EN},
-          {delta_recovery_buckets, DRBkts},
+    RV = [{retry_rebalance, RetryState}, {rebalance_id, ID}, {type, Type},
           {attempts_remaining, Max - Count + 1},
-          {retry_after_secs, TimeS}],
+          {retry_after_secs, TimeS}] ++ Params,
     {reply, RV, State};
 
 handle_call(get_pending_retry, _From,  #state{state = idle} = State) ->
@@ -222,23 +224,22 @@ handle_call(Call, From, State) ->
     {reply, nack, State}.
 
 handle_info(retry_rebalance,
-            #state{state = #retry_rebalance{known_nodes = KN, eject_nodes = EN,
-                                            delta_recov_bkts = DB,
+            #state{state = #retry_rebalance{params = Params, type = Type,
                                             retry_check = Chk,
                                             rebalance_id = ID} = RS} = S) ->
-    NewState = case ns_orchestrator:retry_rebalance(KN, EN, DB, ID, Chk) of
+    NewState = case ns_orchestrator:retry_rebalance(Type, Params, ID, Chk) of
                    ok ->
-                       ?log_debug("Retrying rebalance with Id:~s, "
-                                  "KnownNodes:~p, EjectNodes:~p, "
-                                  "and Delta Recovery Buckets:~p ",
-                                  [ID, KN, EN, DB]),
+                       ?log_debug("Retrying ~s with Id:~s, params:~p ",
+                                  [ns_orchestrator:rebalance_type2text(Type),
+                                   ID, Params]),
                        RS1 = RS#retry_rebalance{state = in_progress},
                        S#state{state = RS1};
                    Error ->
                        ale:info(?USER_LOGGER,
-                                "Retry of rebalance with Id ~s failed with "
+                                "Retry of ~s with Id ~s failed with "
                                 "error ~p. Operation will not be retried.",
-                                [ID, Error]),
+                                [ns_orchestrator:rebalance_type2text(Type),
+                                 ID, Error]),
                        reset_state()
                end,
     {noreply, NewState};
@@ -266,16 +267,17 @@ cast(Cast) ->
     misc:wait_for_global_name(?MODULE),
     gen_server:cast(?SERVER, Cast).
 
-schedule_retry(Id, RetryCount, AfterS) ->
+schedule_retry(Type, Id, RetryCount, AfterS) ->
     ale:info(?USER_LOGGER,
-             "Rebalance with Id ~s will be retried after ~p seconds. "
+             "~s with Id ~s will be retried after ~p seconds. "
              "Retry attempt number ~p",
-             [Id, AfterS, RetryCount]),
+             [ns_orchestrator:rebalance_type2text(Type),
+              Id, AfterS, RetryCount]),
     erlang:send_after(AfterS * 1000, self(), retry_rebalance).
 
-cancel_rebalance(ID, TRef, CancelledBy) ->
-    ?log_debug("Cancelling pending rebalance with Id ~s. Cancelled by ~s.",
-               [ID, CancelledBy]),
+cancel_rebalance(Type, ID, TRef, CancelledBy) ->
+    ?log_debug("Cancelling pending ~s with Id ~s. Cancelled by ~s.",
+               [ns_orchestrator:rebalance_type2text(Type), ID, CancelledBy]),
     erlang:cancel_timer(TRef),
     misc:flush(retry_rebalance),
     reset_state().
