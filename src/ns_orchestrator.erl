@@ -1335,16 +1335,13 @@ retry_ok(Config, FailedNodes, undefined) ->
 retry_ok(Config, FailedNodes, RetryChk) ->
     retry_ok(RetryChk, get_retry_check(Config, FailedNodes)).
 
-retry_ok([], NewChk) ->
-    NewChk;
-retry_ok([{Key, Val} | Rest], NewChk) ->
-    case proplists:get_value(Key, NewChk) =:= Val of
-        true ->
-            retry_ok(Rest, NewChk);
-        false ->
-            ?log_debug("Retry check failed for ~p", [Key]),
-            false
-    end.
+retry_ok(Chk, Chk) ->
+    Chk;
+retry_ok(RetryChk, NewChk) ->
+    ?log_debug("Retry check failed. (RetryChk -- NewChk): ~p~n"
+               "(NewChk -- RetryChk): ~p",
+               [RetryChk -- NewChk, NewChk -- RetryChk]),
+    false.
 
 get_retry_check(Config, FailedNodes) ->
     SGs = ns_config:search(Config, server_groups, []),
