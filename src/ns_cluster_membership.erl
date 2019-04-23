@@ -45,7 +45,8 @@
          get_rebalance_status/0,
          is_balanced/0,
          get_recovery_type/2,
-         update_recovery_type/2
+         update_recovery_type/2,
+         attach_node_uuids/2
         ]).
 
 -export([supported_services/0,
@@ -413,6 +414,17 @@ user_friendly_service_name(cbas) ->
 user_friendly_service_name(Service) ->
     atom_to_list(Service).
 
+attach_node_uuids(Nodes, Config) ->
+    UUIDDict = ns_config:get_node_uuid_map(Config),
+    lists:map(
+      fun (Node) ->
+              case dict:find(Node, UUIDDict) of
+                  {ok, UUID} ->
+                      {Node, UUID};
+                  error ->
+                      {Node, undefined}
+              end
+      end, Nodes).
 
 -ifdef(TEST).
 supported_services_for_version_test() ->

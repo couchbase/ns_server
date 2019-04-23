@@ -39,7 +39,7 @@
          handle_info/2, terminate/2, code_change/3]).
 
 -record(retry_rebalance, { params       :: [term()],
-                           type         :: rebalance,
+                           type         :: rebalance | graceful_failover,
                            rebalance_id :: binary(),
                            retry_check  :: [term()],
                            state        :: pending | in_progress,

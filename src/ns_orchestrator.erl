@@ -31,6 +31,7 @@
                             failed_nodes,
                             delta_recov_bkts,
                             retry_check = undefined,
+                            to_failover,
                             stop_timer,
                             type,
                             rebalance_id = undefined,
@@ -287,16 +288,24 @@ start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets) ->
     maybe_start_rebalance({maybe_start_rebalance, KnownNodes, EjectNodes,
                            DeltaRecoveryBuckets}).
 
+%% TODO: Make this a generic Call function
+maybe_start_rebalance(Call) ->
+    wait_for_orchestrator(),
+    gen_statem:call(?SERVER, Call).
+
 retry_rebalance(rebalance, Params, Id, Chk) ->
     maybe_start_rebalance({maybe_start_rebalance,
                            proplists:get_value(known_nodes, Params),
                            proplists:get_value(eject_nodes, Params),
                            proplists:get_value(delta_recovery_buckets, Params),
-                           Id, Chk}).
+                           Id, Chk});
 
-maybe_start_rebalance(Call) ->
+retry_rebalance(graceful_failover, Params, Id, Chk) ->
     wait_for_orchestrator(),
-    gen_statem:call(?SERVER, Call).
+    gen_statem:call(?SERVER,
+                    {maybe_retry_graceful_failover,
+                     proplists:get_value(nodes, Params),
+                     Id, Chk}).
 
 -spec start_graceful_failover([node()]) ->
                                      ok | in_progress | in_recovery |
@@ -407,10 +416,7 @@ handle_event({call, From},
             Config = ns_config:get(),
 
             MaybeKeepNodes = KnownNodes -- EjectedNodes,
-            FailedNodes =
-                [N || N <- KnownNodes,
-                      ns_cluster_membership:get_cluster_membership(N, Config)
-                          =:= inactiveFailed],
+            FailedNodes = get_failed_nodes(Config, KnownNodes),
             KeepNodes = MaybeKeepNodes -- FailedNodes,
             DeltaNodes = ns_rebalancer:get_delta_recovery_nodes(Config,
                                                                 KeepNodes),
@@ -445,6 +451,16 @@ handle_event({call, From},
             end;
         _ ->
             {keep_state_and_data, [{reply, From, nodes_mismatch}]}
+    end;
+
+handle_event({call, From}, {maybe_retry_graceful_failover, Nodes, Id, Chk},
+             _StateName, _State) ->
+    case graceful_failover_retry_ok(Chk) of
+        false ->
+            {keep_state_and_data, [{reply, From, retry_check_failed}]};
+        Chk ->
+            StartEvent = {start_graceful_failover, Nodes, Id, Chk},
+            {keep_state_and_data, [{next_event, {call, From}, StartEvent}]}
     end;
 
 handle_event({call, From}, recovery_status, StateName, State) ->
@@ -703,6 +719,11 @@ idle({start_graceful_failover, Node}, From, _State) when is_atom(Node) ->
      [{next_event, {call, From}, {start_graceful_failover, [Node]}}]};
 idle({start_graceful_failover, Nodes}, From, _State) ->
     auto_rebalance:cancel_any_pending_retry_async("graceful failover"),
+    {keep_state_and_data,
+     [{next_event, {call, From},
+       {start_graceful_failover, Nodes, couch_uuids:random(),
+        get_graceful_fo_chk()}}]};
+idle({start_graceful_failover, Nodes, Id, RetryChk}, From, _State) ->
     ActiveNodes = ns_cluster_membership:active_nodes(),
     NodesInfo = [{active_nodes, ActiveNodes}],
     Services = [kv],
@@ -714,7 +735,6 @@ idle({start_graceful_failover, Nodes}, From, _State) ->
 
     case ns_rebalancer:start_link_graceful_failover(Nodes) of
         {ok, Pid} ->
-            Id = couch_uuids:random(),
             ale:info(?USER_LOGGER,
                      "Starting graceful failover of nodes ~p. "
                      "Operation Id = ~s", [Nodes, Id]),
@@ -729,7 +749,8 @@ idle({start_graceful_failover, Nodes}, From, _State) ->
                                 keep_nodes = [],
                                 failed_nodes = [],
                                 delta_recov_bkts = [],
-                                retry_check = undefined,
+                                retry_check = RetryChk,
+                                to_failover = Nodes,
                                 abort_reason = undefined,
                                 type = Type,
                                 rebalance_id = Id},
@@ -788,6 +809,7 @@ idle({start_rebalance, KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
                                 failed_nodes = FailedNodes,
                                 delta_recov_bkts = DeltaRecoveryBuckets,
                                 retry_check = RetryChk,
+                                to_failover = [],
                                 abort_reason = undefined,
                                 type = Type,
                                 rebalance_id = RebalanceId},
@@ -828,6 +850,7 @@ idle({move_vbuckets, Bucket, Moves}, From, _State) ->
                         failed_nodes = [],
                         delta_recov_bkts = [],
                         retry_check = undefined,
+                        to_failover = [],
                         abort_reason = undefined,
                         type = Type,
                         rebalance_id = Id},
@@ -921,6 +944,8 @@ rebalancing({start_rebalance, _KeepNodes, _EjectNodes,
              "Not rebalancing because rebalance is already in progress.~n"),
     {keep_state_and_data, [{reply, From, in_progress}]};
 rebalancing({start_graceful_failover, _}, From, _State) ->
+    {keep_state_and_data, [{reply, From, in_progress}]};
+rebalancing({start_graceful_failover, _, _, _}, From, _State) ->
     {keep_state_and_data, [{reply, From, in_progress}]};
 rebalancing(stop_rebalance, From,
             #rebalancing_state{rebalancer = Pid} = State) ->
@@ -1224,20 +1249,21 @@ handle_rebalance_completion(ExitReason, State) ->
     end.
 
 maybe_retry_rebalance(ExitReason,
-                      #rebalancing_state{rebalance_id = ID} = State) ->
+                      #rebalancing_state{type = Type,
+                                         rebalance_id = ID} = State) ->
     case retry_rebalance(ExitReason, State) of
         true ->
             ok;
         false ->
             %% Cancel retry if there is one pending from previous failure.
-            auto_rebalance:cancel_pending_retry_async(ID, "rebalance")
+            By = binary_to_list(rebalance_type2text(Type)) ++ " completion",
+            auto_rebalance:cancel_pending_retry_async(ID, By)
     end.
 
 retry_rebalance(normal, _State) ->
     false;
 retry_rebalance({shutdown, stop}, _State) ->
     false;
-%% TODO: handle graceful failover retry
 retry_rebalance(_, #rebalancing_state{type = rebalance,
                                       keep_nodes = KNs,
                                       eject_nodes = ENs,
@@ -1274,13 +1300,13 @@ retry_rebalance(_, #rebalancing_state{type = rebalance,
                     EjectedNodes = EjectedNodes0 -- EjectedByReb,
 
                     NewChk = update_retry_check(EjectedByReb, Chk),
-
                     Params = [{known_nodes,  KnownNodes},
                               {eject_nodes, EjectedNodes},
                               {delta_recovery_buckets, DRBkts}],
 
                     auto_rebalance:retry_rebalance(rebalance, Params, Id,
                                                    NewChk);
+
                 Extras ->
                     ale:info(?USER_LOGGER,
                              "~p nodes have been removed from the "
@@ -1290,6 +1316,14 @@ retry_rebalance(_, #rebalancing_state{type = rebalance,
                     false
             end
     end;
+
+retry_rebalance(_, #rebalancing_state{type = graceful_failover,
+                                      to_failover = Nodes,
+                                      retry_check = Chk,
+                                      rebalance_id = Id}) ->
+    auto_rebalance:retry_rebalance(graceful_failover, [{nodes, Nodes}],
+                                   Id, Chk);
+
 retry_rebalance(_, _) ->
     false.
 
@@ -1347,6 +1381,21 @@ update_retry_check(EjectedByReb, Chk0) ->
     UpdateFn = fun (Nodes) -> Nodes -- ENs end,
     lists:keyreplace(server_groups, 1, Chk1,
                      {server_groups, groups_chk(SGs0, UpdateFn)}).
+
+get_failed_nodes(Cfg, KnownNodes) ->
+    [N || N <- KnownNodes,
+          ns_cluster_membership:get_cluster_membership(N, Cfg)
+              =:= inactiveFailed].
+
+graceful_failover_retry_ok(Chk) ->
+    retry_ok(Chk, get_graceful_fo_chk()).
+
+get_graceful_fo_chk() ->
+    Cfg = ns_config:get(),
+    KnownNodes0 = ns_node_disco:nodes_wanted(),
+    KnownNodes = ns_cluster_membership:attach_node_uuids(KnownNodes0, Cfg),
+    FailedNodes = get_failed_nodes(Cfg, KnownNodes0),
+    [{known_nodes, KnownNodes}] ++ get_retry_check(Cfg, FailedNodes).
 
 maybe_eject_myself(Reason, State) ->
     case need_eject_myself(Reason, State) of
