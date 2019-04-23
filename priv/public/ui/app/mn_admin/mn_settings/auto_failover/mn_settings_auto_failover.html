@@ -1,7 +1,7 @@
 <mn-element-cargo depot="alerts">
   <div
      class="alert alert-warning"
-     ng-show="settingsAutoFailoverCtl.autoFailoverSettings.count == settingsAutoFailoverCtl.autoFailoverSettings.maxCount">
+     ng-show="(settingsAutoFailoverCtl.autoFailoverSettings.count == settingsAutoFailoverCtl.autoFailoverSettings.maxCount) || (!(poolDefault.compat.atLeast55 && pools.isEnterprise) && settingsAutoFailoverCtl.autoFailoverSettings.count == 1)">
     <p>
       The maximum number of nodes have been automatically failed over.
       Auto-failover is disabled until you reset it.<br>
@@ -20,7 +20,7 @@
       <label class="inline">Node Availability</label>
       <span
          class="fa-stack icon-info"
-         uib-tooltip="After the timeout period set here—and up to the limit of actionable events—an unresponsive
+         uib-tooltip="After the timeout period set here — and up to the limit of actionable events — an unresponsive
          or malfunctioning node will be failed over. Any replica copies of data, indexes, or query engines will
          be promoted to active elsewhere in the cluster. Please note that this feature is only available when 3
          or more nodes are present in the cluster and that many other factors determine whether or not an auto-failover
