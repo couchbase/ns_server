@@ -66,7 +66,6 @@
          wait_seqno_persisted/5,
          get_vbucket_high_seqno/4,
          dcp_takeover/5,
-         teardown_replications/4,
          inhibit_view_compaction/3,
          uninhibit_view_compaction/4]).
 
@@ -468,20 +467,6 @@ dcp_takeover(Bucket, Rebalancer, OldMasterNode, NewMasterNode, VBucket) ->
                     {if_rebalance, Rebalancer,
                      {dcp_takeover, OldMasterNode, VBucket}}, infinity).
 
-teardown_replications(ReplicaNodes, Bucket, FailoverNodes, Timeout) ->
-    {RVs, BadNodes} = misc:multi_call(ReplicaNodes, server_name(Bucket),
-                                      {teardown_replications, FailoverNodes},
-                                      Timeout,
-                                      fun (ok) -> true;
-                                          (_) -> false
-                                      end),
-    case BadNodes =:= [] of
-        true ->
-            ok;
-        false ->
-            {error, BadNodes, RVs}
-    end.
-
 get_vbucket_high_seqno(Bucket, Rebalancer, MasterNode, VBucket) ->
     ?rebalance_info("~s: Doing get_vbucket_high_seqno call for vbucket ~p on ~s",
                     [Bucket, VBucket, MasterNode]),
@@ -736,10 +721,6 @@ handle_call({wait_dcp_data_move, ReplicaNodes, VBucket}, From, #state{bucket_nam
                        dcp_replicator:wait_for_data_move(ReplicaNodes, Bucket, VBucket)
                end),
     {noreply, State2};
-handle_call({teardown_replications, Nodes}, _From,
-            #state{bucket_name = Bucket} = State) ->
-    RV = replication_manager:teardown_replications(Bucket, Nodes),
-    {reply, RV, State};
 handle_call({dcp_takeover, OldMasterNode, VBucket}, From, #state{bucket_name = Bucket} = State) ->
     State2 = spawn_rebalance_subprocess(
                State,
