@@ -746,7 +746,7 @@ idle({start_rebalance, KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
                  {delta_nodes, DeltaNodes},
                  {failed_nodes, FailedNodes}],
     Type = rebalance,
-    Services = [kv] ++ ns_cluster_membership:topology_aware_services(),
+    Services = ns_cluster_membership:cluster_supported_services(),
     {ok, ObserverPid} = ns_rebalance_observer:start_link(
                           Services,
                           NodesInfo,
