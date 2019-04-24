@@ -72,7 +72,8 @@ set_retry_rebalance(Settings) ->
     maybe_cancel_pending_retry(CurrEn, NewEn),
 
     New = [{enabled, NewEn}, {after_time_period, After}, {max_attempts, Max}],
-    ns_config:set(retry_rebalance, New).
+    ns_config:set(retry_rebalance, New),
+    New.
 
 maybe_cancel_pending_retry(true, false) ->
     auto_rebalance:cancel_any_pending_retry("feature disable");

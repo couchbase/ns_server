@@ -53,6 +53,7 @@
          enable_auto_failover/4,
          disable_auto_failover/1,
          reset_auto_failover_count/1,
+         modify_retry_rebalance/2,
          alerts/2,
          modify_compaction_settings/2,
          regenerate_certificate/1,
@@ -325,7 +326,9 @@ code(license_settings) ->
 code(set_user_profile) ->
     8249;
 code(delete_user_profile) ->
-    8250.
+    8250;
+code(modify_retry_rebalance) ->
+    8251.
 
 to_binary({list, List}) ->
     [to_binary(A) || A <- List];
@@ -642,6 +645,9 @@ disable_auto_failover(Req) ->
 
 reset_auto_failover_count(Req) ->
     put(reset_auto_failover_count, Req, []).
+
+modify_retry_rebalance(Req, New) ->
+    put(modify_retry_rebalance, Req, New).
 
 alerts(Req, Settings) ->
     case misc:expect_prop_value(enabled, Settings) of

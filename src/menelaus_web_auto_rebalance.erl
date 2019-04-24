@@ -38,11 +38,11 @@ handle_get_retry(Req) ->
     reply_with_retry_settings(Req).
 
 handle_post_retry(Req) ->
-    %% TODO: Audit changes
     assert_api_supported(),
     validator:handle(
       fun (Values) ->
-              auto_rebalance_settings:set_retry_rebalance(Values),
+              New = auto_rebalance_settings:set_retry_rebalance(Values),
+              ns_audit:modify_retry_rebalance(Req, New),
               reply_with_retry_settings(Req)
       end, Req, form,
       [validator:required(enabled, _),

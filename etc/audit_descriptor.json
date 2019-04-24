@@ -1038,6 +1038,24 @@
               "sessionid" : "",
               "full_name" : ""
           }
+      },
+      {
+          "id" : 8251,
+          "name" : "modify retry rebalance",
+          "description" : "Retry rebalance settings were modified",
+          "sync" : false,
+          "enabled" : true,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"domain" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "enabled" : false,
+              "after_time_period" : 1,
+              "max_attempts" : 1
+          },
+          "optional_fields" : {
+              "sessionid" : ""
+          }
       }
     ]
 }
