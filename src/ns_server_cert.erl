@@ -30,7 +30,8 @@
          get_subject_fields_by_type/2,
          get_sub_alt_names_by_type/2,
          get_node_cert_info/1,
-         tls_server_validation_options/0]).
+         tls_server_validation_options/0,
+         set_generated_public_ca/1]).
 
 inbox_chain_path() ->
     filename:join(path_config:component_path(data, "inbox"), "chain.pem").
@@ -333,6 +334,9 @@ set_cluster_ca(CA) ->
             ?log_error("Certificate authority validation failed with ~p", [Error]),
             {error, Error}
     end.
+
+set_generated_public_ca(CA) ->
+    ns_config:set(cert_and_pkey, {CA, undefined}).
 
 -record(verify_state, {last_subject, root_cert, chain_len}).
 

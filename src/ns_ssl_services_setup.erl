@@ -660,6 +660,10 @@ apply_node_cert_data(Data) ->
     ok = ssl:clear_pem_cache(),
     ok = clear_dist_pem_cache().
 
+apply_node_cert_data({generated, CertPEM, undefined, _Node}, _Path) ->
+    ?log_info("No private key provided. This happens when node joins the "
+              "cluster. Just store the new CA"),
+    ok = misc:atomic_write_file(raw_ssl_cacert_key_path(), CertPEM);
 apply_node_cert_data({generated, CertPEM, PKeyPEM, Node}, Path) ->
     {LocalCert, LocalPKey} = maybe_generate_local_cert(CertPEM, PKeyPEM, Node),
     ok = misc:atomic_write_file(Path, [LocalCert, LocalPKey]),
