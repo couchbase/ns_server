@@ -784,21 +784,16 @@ check_for_raw_addr(AFamily) ->
         CurAFamily ->
             ok;
         _ ->
-            case ns_config_auth:is_system_provisioned() of
-                true ->
-                    RawAddrNodes = lists:filter(fun is_raw_addr_node/1,
-                                                ns_node_disco:nodes_wanted()),
-                    case RawAddrNodes of
-                        [] ->
-                            ok;
-                        _ ->
-                            M = io_lib:format("Can't change address family when "
-                                              "nodes are configured with raw IP "
-                                              "addresses: ~p", [RawAddrNodes]),
-                            {error, M}
-                    end;
-                false ->
-                    ok
+            RawAddrNodes = lists:filter(fun is_raw_addr_node/1,
+                                        ns_node_disco:nodes_wanted()),
+            case RawAddrNodes of
+                [] ->
+                    ok;
+                _ ->
+                    M = io_lib:format("Can't change address family when "
+                                      "nodes are configured with raw IP "
+                                      "addresses: ~p", [RawAddrNodes]),
+                    {error, M}
             end
     end.
 
