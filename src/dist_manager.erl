@@ -173,7 +173,7 @@ init([]) ->
         case read_address_config() of
             undefined ->
                 ?log_info("ip config not found. Looks like we're brand new node"),
-                {misc:localhost(), false};
+                {misc:localhost_alias(), false};
             read_error ->
                 ?log_error("Could not read ip config. "
                            "Will refuse to start for safety reasons."),

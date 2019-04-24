@@ -29,6 +29,9 @@ mn.modules.MnWizard =
       mnWizardService.stream.getSelfConfigFirst
         .subscribe(function (selfConfig) {
           var hostname = selfConfig['otpNode'].split('@')[1] || '127.0.0.1';
+          if (hostname == "cb.local") {
+              hostname = "127.0.0.1";
+          }
           newClusterConfig.get("clusterStorage.hostname").setValue(hostname);
           joinCluster.get("clusterStorage.hostname").setValue(hostname);
           mnWizardService.initialValues.hostname = hostname;

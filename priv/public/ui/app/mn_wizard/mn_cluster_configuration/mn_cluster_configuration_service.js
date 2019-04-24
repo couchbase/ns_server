@@ -239,6 +239,9 @@
         nodeConfig.ramMaxMegs = mnHelper.calculateMaxMemorySize(totalRAMMegs);
 
         nodeConfig.hostname = (nodeConfig && nodeConfig['otpNode'].split('@')[1]) || '127.0.0.1';
+        if (nodeConfig.hostname == "cb.local") {
+            nodeConfig.hostname = "127.0.0.1";
+        }
 
         return nodeConfig;
       });
