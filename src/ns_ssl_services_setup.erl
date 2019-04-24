@@ -45,9 +45,6 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
-%% state sanitization
--export([format_status/2]).
-
 %% exported for debugging purposes
 -export([low_security_ciphers/0]).
 
@@ -57,15 +54,11 @@
 
 -behavior(gen_server).
 
--record(state, {cert_state,
+-record(state, {hash,
                 reload_state,
                 min_ssl_ver,
                 client_cert_auth,
                 ciphers}).
-
--record(cert_state, {cert,
-                     pkey,
-                     node}).
 
 start_link() ->
     case cluster_compat_mode:is_enterprise() of
@@ -447,13 +440,8 @@ sync_local_cert_and_pkey_change() ->
 set_node_certificate_chain(Props, CAChain, Cert, PKey) ->
     gen_server:call(?MODULE, {set_node_certificate_chain, Props, CAChain, Cert, PKey}, infinity).
 
-build_cert_state({generated, CertPEM, PKeyPEM, Node}) ->
-    BaseState = #cert_state{cert = CertPEM,
-                            pkey = PKeyPEM},
-    BaseState#cert_state{node = Node};
-build_cert_state({user_set, Cert, PKey, CAChain}) ->
-    #cert_state{cert = [Cert, CAChain],
-                pkey = PKey}.
+build_hash(Data) ->
+    crypto:hash(sha256, term_to_binary(Data)).
 
 get_node_cert_data() ->
     Node = node(),
@@ -487,14 +475,11 @@ init([]) ->
                    false ->
                        []
                end,
-    {ok, #state{cert_state = build_cert_state(Data),
+    {ok, #state{hash = build_hash(Data),
                 reload_state = RetrySvc,
                 min_ssl_ver = ssl_minimum_protocol(),
                 ciphers = supported_ciphers(),
                 client_cert_auth = client_cert_auth()}}.
-
-format_status(_Opt, [_PDict, #state{cert_state = CertState} = State]) ->
-    State#state{cert_state = CertState#cert_state{pkey = <<"sanitized">>}}.
 
 config_change_detector_loop({cert_and_pkey, _}, Parent) ->
     Parent ! cert_and_pkey_changed,
@@ -539,12 +524,12 @@ handle_call(_, _From, State) ->
 handle_cast(_, State) ->
     {noreply, State}.
 
-handle_info(cert_and_pkey_changed, #state{cert_state = OldCertState} = State) ->
+handle_info(cert_and_pkey_changed, #state{hash = OldHash} = State) ->
     misc:flush(cert_and_pkey_changed),
 
     Data = get_node_cert_data(),
-    NewCertState = build_cert_state(Data),
-    case OldCertState =:= NewCertState of
+    NewHash = build_hash(Data),
+    case OldHash =:= NewHash of
         true ->
             {noreply, State};
         false ->
@@ -553,7 +538,7 @@ handle_info(cert_and_pkey_changed, #state{cert_state = OldCertState} = State) ->
             apply_node_cert_data(Data),
             ?log_info("Wrote new pem file"),
             self() ! notify_services,
-            {noreply, #state{cert_state = NewCertState,
+            {noreply, #state{hash = NewHash,
                              reload_state = all_services()}}
     end;
 handle_info(ssl_minimum_protocol_changed,
