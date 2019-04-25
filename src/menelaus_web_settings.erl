@@ -359,16 +359,18 @@ handle_settings_auto_reprovision_post(Req) ->
     menelaus_util:assert_is_50(),
 
     PostArgs = mochiweb_request:parse_post(Req),
-    ValidateOnly = proplists:get_value("just_validate", mochiweb_request:parse_qs(Req)) =:= "1",
+    ValidateOnly = proplists:get_value("just_validate",
+                                       mochiweb_request:parse_qs(Req)) =:= "1",
     Enabled = proplists:get_value("enabled", PostArgs),
     MaxNodes = proplists:get_value("maxNodes", PostArgs),
+
     case {ValidateOnly,
           validate_settings_auto_reprovision(Enabled, MaxNodes)} of
         {false, [true, MaxNodes2]} ->
-            auto_reprovision:enable(MaxNodes2),
+            ok = auto_reprovision:enable(MaxNodes2),
             reply(Req, 200);
         {false, false} ->
-            auto_reprovision:disable(),
+            ok = auto_reprovision:disable(),
             reply(Req, 200);
         {false, {error, Errors}} ->
             Errors2 = [<<Msg/binary, "\n">> || {_, Msg} <- Errors],
