@@ -788,7 +788,7 @@ construct_stat_info_json(#stat_info{start_time = false}) ->
 construct_stat_info_json(#stat_info{start_time = ST,
                                     end_time = ET}) ->
     {[{startTime, rebalance_stage_info:binarify_timestamp(ST)},
-      {endTime, rebalance_stage_info:binarify_timestamp(ET)},
+      {completedTime, rebalance_stage_info:binarify_timestamp(ET)},
       {timeTaken, rebalance_stage_info:diff_timestamp(ET, ST)}]}.
 
 average(_, 0) ->
