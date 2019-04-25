@@ -1,18 +1,20 @@
 <div
-   class="panel dialog-med dialog dialog-wizard"
+   class="panel dialog-med dialog dialog-wizard height-85vh"
    mn-spinner="clusterConfigurationCtl.viewLoading || !clusterConfigurationCtl.config.selfConfig">
-  <div class="panel-header flex-left">
+  <div class="panel-header flex-left margin-bottom-quarter">
     <img
        src="../cb_logo_bug_white_2.svg"
        width="32"
        height="32"
        class="margin-right-half">
-    <h2>Couchbase &gt; New Cluster / Configure </h2>
+    <h2>Couchbase &gt; New Cluster &gt; Configure</h2>
   </div>
   <form
      class="forms"
+     style="height:inherit;"
      novalidate
      ng-submit="clusterConfigurationCtl.onSubmit()">
+  <div style="height:calc(100% - 112px);overflow:auto;" class="show-scrollbar">
     <div class="panel-content">
       <div class="formrow">
         <div class="row">
@@ -160,7 +162,8 @@
           </mn-storage-mode>
         </div>
       </div>
-      <div class="formrow">
+
+      <div>
         <input
            type="checkbox"
            id="init-notifications-updates-enabled"
@@ -177,11 +180,13 @@
            </span>
       </div>
     </div>
-    <div class="panel-footer">
-      <a ui-sref="app.wizard.termsAndConditions">&lt; Back</a>
-      <button
-         ng-disabled="clusterConfigurationCtl.postMemoryErrors && clusterConfigurationCtl.joinCluster === 'no'"
-         type="submit">Save & Finish</button>
-    </div>
+  </div>
+
+  <div class="panel-footer scroll-shadow margin-top-quarter">
+    <a ui-sref="app.wizard.termsAndConditions">&lt; Back</a>
+    <button
+       ng-disabled="clusterConfigurationCtl.postMemoryErrors && clusterConfigurationCtl.joinCluster === 'no'"
+       type="submit">Save & Finish</button>
+  </div>
   </form>
 </div>
