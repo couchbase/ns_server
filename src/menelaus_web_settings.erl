@@ -368,9 +368,11 @@ handle_settings_auto_reprovision_post(Req) ->
           validate_settings_auto_reprovision(Enabled, MaxNodes)} of
         {false, [true, MaxNodes2]} ->
             ok = auto_reprovision:enable(MaxNodes2),
+            ns_audit:enable_auto_reprovision(Req, MaxNodes2),
             reply(Req, 200);
         {false, false} ->
             ok = auto_reprovision:disable(),
+            ns_audit:disable_auto_reprovision(Req),
             reply(Req, 200);
         {false, {error, Errors}} ->
             Errors2 = [<<Msg/binary, "\n">> || {_, Msg} <- Errors],

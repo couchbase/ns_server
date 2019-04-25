@@ -1056,6 +1056,37 @@
           "optional_fields" : {
               "sessionid" : ""
           }
+      },
+      {
+          "id" : 8252,
+          "name" : "enable auto reprovision",
+          "description" : "Auto reprovision was enabled",
+          "sync" : false,
+          "enabled" : true,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"domain" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "max_nodes" : 1
+          },
+          "optional_fields" : {
+              "sessionid" : ""
+          }
+      },
+      {
+          "id" : 8253,
+          "name" : "disable auto reprovision",
+          "description" : "Auto reprovision was disabled",
+          "sync" : false,
+          "enabled" : true,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"domain" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1}
+          },
+          "optional_fields" : {
+              "sessionid" : ""
+          }
       }
     ]
 }

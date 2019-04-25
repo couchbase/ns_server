@@ -80,7 +80,9 @@
          developer_preview_settings/2,
          license_settings/2,
          set_user_profile/3,
-         delete_user_profile/2
+         delete_user_profile/2,
+         enable_auto_reprovision/2,
+         disable_auto_reprovision/1
         ]).
 
 -export([start_link/0, stats/0]).
@@ -328,7 +330,11 @@ code(set_user_profile) ->
 code(delete_user_profile) ->
     8250;
 code(modify_retry_rebalance) ->
-    8251.
+    8251;
+code(enable_auto_reprovision) ->
+    8252;
+code(disable_auto_reprovision) ->
+    8253.
 
 to_binary({list, List}) ->
     [to_binary(A) || A <- List];
@@ -648,6 +654,12 @@ reset_auto_failover_count(Req) ->
 
 modify_retry_rebalance(Req, New) ->
     put(modify_retry_rebalance, Req, New).
+
+enable_auto_reprovision(Req, MaxNodes) ->
+    put(enable_auto_reprovision, Req, [{max_nodes, MaxNodes}]).
+
+disable_auto_reprovision(Req) ->
+    put(disable_auto_reprovision, Req, []).
 
 alerts(Req, Settings) ->
     case misc:expect_prop_value(enabled, Settings) of
