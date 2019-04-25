@@ -14,7 +14,12 @@
     <label class="inline">Filter Expression</label>
     <span
        class="fa-stack icon-info"
-       uib-tooltip="The filter expression is a regular expression against which the keys of documents are tested. If the key matches, the document will be replicated; otherwise the document won’t be replicated. You may test your filter expression against a number of sample candidate keys in the provided fields."
+       uib-tooltip="You may filter for values and x-attributes in addition to key names.
+       If the filter matches, the document will be replicated; otherwise the document
+       won’t be replicated. See the XDCR documentation for possible filter expressions
+       (NOTE: regex pattern-matching and many N1QL statements are supported, but there
+       are some unique aspects to the XDCR filtering language). You may test if your
+       filter expression matches a document by entering its ID in the test field below."
        tooltip-placement="right">
       <span class="icon fa-circle-thin fa-stack-2x"></span>
       <span class="icon fa-info fa-stack-1x"></span>
