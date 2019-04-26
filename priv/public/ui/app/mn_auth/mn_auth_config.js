@@ -25,7 +25,7 @@
               ($injector.get('$state').includes('app.admin') ||
                $injector.get('$state').includes('app.wizard')) &&
               !rejection.config.headers["ignore-401"] &&
-              !$injector.get('mnLostConnectionService').getState().isActivated) {
+              !$injector.get('mnLostConnectionService').getState().isActive) {
             $injector.get('mnAuthService').logout();
           }
           return $q.reject(rejection);

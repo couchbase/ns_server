@@ -83,17 +83,6 @@
         '<div ng-show="mnGlobalSpinnerFlag" class="global-spinner"></div>'
     });
 
-    $transitionsProvider.onStart({
-      from: "app.admin.**",
-      to: "app.admin.**"
-    }, function (trans) {
-      var mnLostConnectionService = trans.injector().get('mnLostConnectionService');
-      var state = mnLostConnectionService.getState();
-      //block navigation in app.admin while lostConnection is active
-      //and allow navigation for the moment of reloading (e.g location.reload)
-      return !state.isActivated || state.isReloading;
-    });
-
     $transitionsProvider.onFinish({
       from: "app.admin.**",
       to: "app.admin.**"

@@ -4,15 +4,15 @@
   angular
     .module("mnLostConnectionService", [
       "mnHelper",
+      "ui.router",
       "ui.bootstrap"
     ])
     .factory("mnLostConnectionService", mnLostConnectionFactory);
 
-  function mnLostConnectionFactory($interval, mnHelper, $uibModalStack, $window) {
-    var repeatAt = 3.09;
+  function mnLostConnectionFactory($interval, mnHelper, $uibModalStack, $window, $state) {
     var state = {
-      isActivated: false,
-      isReloading: false
+      isActive: false,
+      isReload: false
     };
     var mnLostConnectionService = {
       activate: activate,
@@ -23,11 +23,10 @@
     return mnLostConnectionService;
 
     function activate() {
-      if (state.isActivated && !state.isReseted) {
+      if (state.isActive) {
         return;
       }
-      state.isActivated = true;
-      state.isReseted = false;
+      state.isActive = true;
       resetTimer();
       runTimer();
     }
@@ -45,25 +44,23 @@
     function resetTimer() {
       $interval.cancel(state.interval);
       state.interval = null;
-      repeatAt = Math.round(Math.min(repeatAt * 1.6, 300));
-      state.repeatAt = repeatAt;
+      state.repeatAt = 60;
     }
 
     function resendQueries() {
-      state.isReloading = true;
-      state.isReseted = true;
-      mnHelper.reloadState().then(null, function () {
-        state.isReloading = false;
+      $state.reload().then(deactivate, function () {
+        resetTimer();
+        runTimer();
       });
     }
 
     function deactivate() {
-      if (state.isActivated) {
-        state.isReloading = true;
-        $interval.cancel(state.interval);
-        $window.location.reload(true);// completely reinitialize application after lost of connection
-
+      if (state.isReload) {
+        return;
       }
+      state.isReload = true;
+      $interval.cancel(state.interval);
+      $window.location.reload(true);// completely reinitialize application after lost of connection
     }
 
     function getState() {

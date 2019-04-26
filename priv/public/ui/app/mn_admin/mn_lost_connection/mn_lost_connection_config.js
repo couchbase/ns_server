@@ -15,10 +15,8 @@
 
     return {
       responseError: function (rejection) {
-        if (rejection.status <= 0 && rejection.config.timeout &&
-            rejection.config.timeout.$$state && rejection.config.timeout.$$state.status === 0) {
+        if (rejection.status <= 0 && (rejection.xhrStatus == "error")) {
           //rejection caused not by us (e.g. net::ERR_CONNECTION_REFUSED)
-          //in case status of $$state is 0
           wantedUrls[rejection.config.url] = true;
           $injector
             .get("mnLostConnectionService")
