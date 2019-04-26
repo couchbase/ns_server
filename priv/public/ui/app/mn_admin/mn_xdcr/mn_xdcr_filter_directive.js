@@ -24,7 +24,6 @@
         var vm = this;
 
         vm.onExpressionUpdate = onExpressionUpdate;
-        vm.initFilterExpression = !!$scope.mnReplication.filterExpression;
 
         function onExpressionUpdate() {
           handleValidateRegex($scope.mnReplication.filterExpression,
@@ -32,7 +31,7 @@
         }
 
         function handleValidateRegex(regex, testDocID, bucket) {
-          if (!testDocID || !regex) {
+          if (!testDocID) {
             return;
           }
           return mnPromiseHelper(vm, mnXDCRService.validateRegex(regex, testDocID, bucket))

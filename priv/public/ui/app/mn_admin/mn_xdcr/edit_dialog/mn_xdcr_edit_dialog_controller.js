@@ -11,12 +11,15 @@
     vm.settings.filterSkipRestream = "false";
     vm.createReplication = createReplication;
 
+
     function createReplication() {
       var settings = mnXDCRService.removeExcessSettings(vm.settings);
       if ($scope.pools.isEnterprise) {
-        settings.filterExpression = vm.settings.filterExpression;
-      }
-      if (settings.filterExpression) {
+        if (vm.settings.enableAdvancedFiltering) {
+          settings.filterExpression = vm.settings.filterExpression;
+        } else {
+          settings.filterExpression = "";
+        }
         settings.filterSkipRestream = (vm.settings.filterSkipRestream === "true");
       }
       var promise = mnXDCRService.saveReplicationSettings(id, settings);
