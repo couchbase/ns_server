@@ -698,7 +698,7 @@ section.error {
 /* adds white "shadow" above footer or below header to indicate scrollability
    when max-height is set on contents ----------------------------------- */
 .panel-footer.scroll-shadow {
-  box-shadow: 0 -36px 20px -12px #fff;
+  box-shadow: 0 -36px 28px -12px #fff;
 }
 .scroll-shadow-top {
   box-shadow: 0 16px 24px 10px #fff;
@@ -1249,8 +1249,16 @@ section.error {
   border: 1px solid #d1d1d1;
   border-radius: 3px;
 }
-.cbui-select .selectize-input.focus {
+.cbui-select-small .selectize-input {
+  height: 1.75rem;
+  line-height: 1.5rem;
+  font-size: 13px;
+}
+.cbui-select .selectize-input.focus { /* when user first clicks input */
   border-color: #a1a1a1 !important;
+}
+.cbui-select .selectize-input.selectize-focus { /* after a menu choice is made */
+  border-color: #d1d1d1 !important;
 }
 .cbui-select .selectize-dropdown {
   position: absolute;
@@ -2826,17 +2834,32 @@ input[type=text].scenario-desc  {
   text-align: center;
   box-shadow: none;
 }
-footer .column {
+.footer-indexes {
+  align-items: flex-start;
+}
+.footer-indexes .column.wide {
+  max-width: 840px;
+}
+footer .column,
+.footer-column {
   flex: 1 0 auto;
   white-space: nowrap;
   max-width: 280px;
   padding: 0 2rem 0 0;
+  margin-right: 2rem;
   line-height: 2;
   height: 100%;
 }
-footer .column.vertical-divider {
+footer .column:last-child,
+.footer-column:last-child {
+  padding-right: 0;
+  margin-right: 0;
+}
+footer .column.vertical-divider,
+.footer-column.vertical-divider {
   border-right: 1px solid #d1d1d1;
 }
+
 footer .column.narrow {
   flex: 0 1 0;
 }
