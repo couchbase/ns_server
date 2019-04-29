@@ -570,6 +570,8 @@ do_add_node_with_connectivity(Scheme, RemoteAddr, RestPort, Auth, GroupUUID,
                 Props
         end,
 
+    Options = [{connect_options, [misc:get_net_family()]}],
+
     ?cluster_debug("Posting node info to engage_cluster on ~p:~n~p",
                    [{Scheme, RemoteAddr, RestPort},
                     {sanitize_node_info(Props1)}]),
@@ -577,7 +579,7 @@ do_add_node_with_connectivity(Scheme, RemoteAddr, RestPort, Auth, GroupUUID,
                                             {Scheme, RemoteAddr, RestPort,
                                              "/engageCluster2", "application/json",
                                              mochijson2:encode({Props1})},
-                                            Auth),
+                                            Auth, Options),
     ?cluster_debug("Reply from engage_cluster on ~p:~n~p",
                    [{RemoteAddr, RestPort}, sanitize_node_info(RV)]),
 
@@ -735,6 +737,8 @@ do_add_node_engaged_inner(NodeKVList, OtpNode, Auth, Services, Scheme) ->
                        {<<"requestedServices">>, Services}
                        | MyNodeKVList]},
 
+    ConnectOpts = [misc:get_net_family()],
+
     ?cluster_debug("Posting the following to complete_join on ~p:~n~p",
                    [{Scheme2, Hostname0, Port}, sanitize_node_info(Struct)]),
     RV = menelaus_rest:json_request_hilevel(post,
@@ -743,7 +747,8 @@ do_add_node_engaged_inner(NodeKVList, OtpNode, Auth, Services, Scheme) ->
                                              "application/json",
                                              mochijson2:encode(Struct)},
                                             Auth,
-                                            [{timeout, ?COMPLETE_TIMEOUT},
+                                            [{connect_options, ConnectOpts},
+                                             {timeout, ?COMPLETE_TIMEOUT},
                                              {connect_timeout, ?COMPLETE_TIMEOUT}]),
     ?cluster_debug("Reply from complete_join on ~p:~n~p",
                    [HostnameRaw, RV]),
