@@ -22,7 +22,6 @@
 
 -export([rest_url/3,
          rest_url/4,
-         json_request_hilevel/3,
          json_request_hilevel/4,
          add_basic_auth/3]).
 
@@ -116,9 +115,6 @@ json_request_hilevel(Method, {Scheme, Host, Port, Path}, Auth, HTTPOptions) ->
     RV = rest_request(Method, URL, [], undefined, [], Auth, HTTPOptions1),
 
     decode_json_response_ext(RV, Method, {Scheme, Host, Port, Path, [], []}).
-
-json_request_hilevel(Method, Request, Auth) ->
-    json_request_hilevel(Method, Request, Auth, set_default_request_opts([])).
 
 set_default_request_opts(Opts) ->
     misc:update_proplist([{connect_timeout, 30000}], Opts).
