@@ -61,7 +61,8 @@ rest_request(Method, URL, Headers, MimeType, Body, Auth, HTTPOptions) ->
 
 add_tls_options("https://" ++ _, Options) ->
     ConnectOptions = proplists:get_value(connect_options, Options, []),
-    TLSOptions = ns_server_cert:tls_server_validation_options(),
+    TLSOptions = ns_server_cert:tls_server_validation_options() ++
+                 [{reuse_sessions, false}],
     NewConnectOptions = misc:update_proplist(TLSOptions, ConnectOptions),
     misc:update_proplist(Options, [{connect_options, NewConnectOptions}]);
 add_tls_options("http://" ++ _, Options) -> Options.
