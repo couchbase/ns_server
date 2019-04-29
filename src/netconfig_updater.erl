@@ -46,14 +46,16 @@ init([]) ->
     end,
     gen_server:enter_loop(?MODULE, [], #s{}, {local, ServerName}, hibernate).
 
-handle_call({apply_net_config, _, _} = Cmd, _From, State) ->
+handle_call({apply_net_config, AFamily, CEncrypt}, _From, State) ->
     CurAFamily = cb_dist:address_family(),
     CurCEncrypt = cb_dist:external_encryption(),
-    handle_with_marker(Cmd, {apply_net_config, CurAFamily, CurCEncrypt}, State);
+    From = {CurAFamily, CurCEncrypt},
+    To = {AFamily, CEncrypt},
+    handle_with_marker(apply_net_config, From, To, State);
 
-handle_call({apply_ext_dist_protocols, _} = Cmd, _From, State) ->
+handle_call({apply_ext_dist_protocols, Protos}, _From, State) ->
     CurProtos = cb_dist:external_listeners(),
-    handle_with_marker(Cmd, {apply_ext_dist_protocols, CurProtos}, State);
+    handle_with_marker(apply_ext_dist_protocols, CurProtos, Protos, State);
 
 handle_call(Request, _From, State) ->
     ?log_error("Unhandled call: ~p", [Request]),
@@ -77,12 +79,12 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-handle_with_marker(Command, Marker, State) ->
+handle_with_marker(Command, From, To, State) ->
     case misc:marker_exists(update_marker_path()) of
         false ->
-            MarkerStr = io_lib:format("~p.", [Marker]),
+            MarkerStr = io_lib:format("{~p, ~p, ~p}.", [Command, To, From]),
             misc:create_marker(update_marker_path(), MarkerStr),
-            case apply_and_delete_marker(Command) of
+            case apply_and_delete_marker({Command, From, To}) of
                 ok -> {reply, ok, State, hibernate};
                 {error, _} = Error -> {stop, Error, Error, State}
             end;
@@ -92,18 +94,18 @@ handle_with_marker(Command, Marker, State) ->
 
 apply_and_delete_marker(Cmd) ->
     Res = case Cmd of
-              {apply_net_config, AFamily, CEncrypt} ->
-                  apply_net_config_unprotected(AFamily, CEncrypt);
-              {apply_ext_dist_protocols, Protos} ->
-                  apply_ext_dist_protocols_unprotected(Protos)
+              {apply_net_config, From, To} ->
+                  apply_net_config_unprotected(From, To);
+              {apply_ext_dist_protocols, _From, To} ->
+                  apply_ext_dist_protocols_unprotected(To)
           end,
     (Res =:= ok) andalso misc:remove_marker(update_marker_path()),
     Res.
 
-apply_net_config_unprotected(AFamily, CEncrypt) ->
+apply_net_config_unprotected(From, {AFamily, CEncrypt} = To) ->
     ?log_info("Node is going to apply the following net settings: afamily ~p, "
               "encryptiion ~p", [AFamily, CEncrypt]),
-    case update_type(AFamily, CEncrypt) of
+    case update_type(From, To) of
         empty -> ok;
         Type ->
             try
@@ -128,14 +130,9 @@ apply_net_config_unprotected(AFamily, CEncrypt) ->
             end
     end.
 
-update_type(AFamily, CEncrypt) ->
-    CurAFamily = cb_dist:address_family(),
-    CurCEncrypt = cb_dist:external_encryption(),
-    case {CurAFamily =/= AFamily, CurCEncrypt =/= CEncrypt} of
-        {true, _} -> all;
-        {false, true} -> external_only;
-        {false, false} -> empty
-    end.
+update_type({FromAFamily, FromCEnc}, {FromAFamily, FromCEnc}) -> empty;
+update_type({FromAFamily, _FromCEnc}, {FromAFamily, _ToCEnc}) -> external_only;
+update_type({_FromAFamily, _FromCEnc}, {_ToAFamily, _ToCEnc}) -> all.
 
 update_proto_in_dist_config(AFamily, CEncryption) ->
     case cb_dist:update_net_settings_in_config(AFamily, CEncryption) of
