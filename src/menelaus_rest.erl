@@ -106,13 +106,20 @@ json_request_hilevel(Method, {Scheme, Host, Port, Path, MimeType, Payload} = R,
                      Auth, HTTPOptions) ->
     RealPayload = binary_to_list(iolist_to_binary(Payload)),
     URL = rest_url(Host, Port, Path, Scheme),
-    RV = rest_request(Method, URL, [], MimeType, RealPayload, Auth, HTTPOptions),
+    HTTPOptions1 = set_default_request_opts(HTTPOptions),
+    RV = rest_request(Method, URL, [], MimeType, RealPayload, Auth,
+                      HTTPOptions1),
     decode_json_response_ext(RV, Method, setelement(6, R, RealPayload));
 json_request_hilevel(Method, {Scheme, Host, Port, Path}, Auth, HTTPOptions) ->
     URL = rest_url(Host, Port, Path, Scheme),
-    RV = rest_request(Method, URL, [], undefined, [], Auth, HTTPOptions),
+    HTTPOptions1 = set_default_request_opts(HTTPOptions),
+    RV = rest_request(Method, URL, [], undefined, [], Auth, HTTPOptions1),
+
     decode_json_response_ext(RV, Method, {Scheme, Host, Port, Path, [], []}).
 
 json_request_hilevel(Method, Request, Auth) ->
-    DefaultOptions = [{timeout, 30000}, {connect_timeout, 30000}],
-    json_request_hilevel(Method, Request, Auth, DefaultOptions).
+    json_request_hilevel(Method, Request, Auth, set_default_request_opts([])).
+
+set_default_request_opts(Opts) ->
+    misc:update_proplist([{connect_timeout, 30000}], Opts).
+
