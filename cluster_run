@@ -14,7 +14,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os, os.path, subprocess, sys, signal, atexit, socket, getopt, select, shlex
+import os, os.path, subprocess, sys, atexit, socket, getopt, shlex
 import platform, fnmatch
 
 base_direct_port = 12000
