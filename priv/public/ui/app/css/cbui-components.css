@@ -231,8 +231,8 @@ h1 a:active {
   top: 4px;
   right: 0;
   display: inline-block;
-  -webkit-animation: fa-spin .5s infinite ease;
-  animation: fa-spin .5s infinite ease;
+  -webkit-animation: fa-spin .5s infinite linear;
+  animation: fa-spin .5s infinite linear;
 }
 /* inserts down-caret triangle before items with .has-menu ------------------ */
 .has-menu:after {
@@ -392,9 +392,10 @@ color: #333;
   top: 4px;
   right: 0;
   display: inline-block;
-  -webkit-animation: fa-spin .5s infinite ease;
-  animation: fa-spin .5s infinite ease;
+  -webkit-animation: fa-spin .5s infinite linear;
+  animation: fa-spin .5s infinite linear;
 }
+
 /* rebalance error icon ----------------------------------------------- */
 .rebalance-stage-error:after {
   font-family: FontAwesome;
@@ -2918,6 +2919,9 @@ footer hr {
   color: #000;
   margin-top: .5rem;
 }
+.rebalance-panel h6 {
+  margin: .25rem 0;
+}
 .rebalance-stage-status {
   font-size: .75rem;
   padding-right: 1.5rem;
@@ -2926,28 +2930,40 @@ footer hr {
   font-size: .688rem;
   color: #000;
   padding: .5rem 0 .5rem 1.5rem;
+  margin-bottom: 1rem;
   background-color: #f6fafd;
 }
 .rebalance-panel .desc {
   color: #000;
   font-size: .75rem;
 }
-.rebalance-panel label.disclosure {
+.rebalance-panel label.disclosure,
+.rebalance-panel h6.disclosure {
   padding-left: 1rem;
 }
-.rebalance-panel label.disclosure:before {
+.rebalance-panel label.disclosure:before,
+.rebalance-panel h6.disclosure:before {
   left: -.5rem;
 }
-.rebalance-panel label.reverse.disclosed:before {
+.rebalance-panel label.reverse.disclosed:before,
+.rebalance-panel h6.reverse.disclosed:before {
   left: 0;
 }
-.rebalance-panel label.reverse.disclosed {
+.rebalance-panel label.reverse.disclosed,
+.rebalance-panel h6.reverse.disclosed {
   padding-left: 1.5rem;
 }
+.rebalance-panel h6.disclosure:before,
+.rebalance-panel h6.disclosed:before {
+  top: -1px;
+  font-size: .825rem;
+}
+
 
 /* timeline widget ---------------------------------------------------------- */
 .timeline {
   display: flex;
+  justify-content: flex-start;
   margin: 1rem 0 1.5rem -1rem;
 }
 .timeline-stage {

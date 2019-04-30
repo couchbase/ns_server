@@ -1,10 +1,10 @@
 <div
-  ng-if="rbac.cluster.settings.read"
-  mn-launchpad
-  launchpad-source="adminCtl.launchpadSource"
-  launchpad-id="adminCtl.launchpadId"></div>
+   ng-if="rbac.cluster.settings.read"
+   mn-launchpad
+   launchpad-source="adminCtl.launchpadSource"
+   launchpad-id="adminCtl.launchpadId"></div>
 <div
-  ui-view="lostConnection">
+   ui-view="lostConnection">
 </div>
 
 <div class="row">
@@ -12,18 +12,18 @@
     <a ng-click="adminCtl.toggleProgressBar()" class="activities" ng-if="rbac.cluster.tasks.read">
       activity
       <span
-        ng-if="adminCtl.filterTasks(adminCtl.tasks.running).length > 0"
-        class="label badge">
+         ng-if="adminCtl.filterTasks(adminCtl.tasks.running).length > 0"
+         class="label badge">
         {{adminCtl.filterTasks(adminCtl.tasks.running).length}}
       </span>
     </a>
 <!-- rebalance menu ******************************************************** -->
     <div class="relative inline" ng-if="rbac.cluster.tasks.read">
       <div
-        mn-drag-and-drop
-        base-corner-right="true"
-        class="tasks-progress panel dialog-med rebalance-panel enable-ng-animation"
-        ng-if="!adminCtl.isProgressBarClosed">
+         mn-drag-and-drop
+         base-corner-right="true"
+         class="tasks-progress panel dialog-med rebalance-panel enable-ng-animation"
+         ng-if="!adminCtl.isProgressBarClosed">
         <div class="row">
           <h3>Rebalance</h3>
           <span ng-click="adminCtl.toggleProgressBar()" class="cursor-pointer">X</span>
@@ -41,14 +41,6 @@
               adminCtl.tasks.tasksRebalance.errorMessage ? "failed" : "completed"}}
             </span>
           </p>
-          <button
-            class="outline"
-            ng-disabled="!poolDefault.rebalancing || !rbac.cluster.pools.write"
-            ng-click="adminCtl.postStopRebalance()">
-            <span>Stop</span>
-            <!-- <span ng-show="adminCtl.tasks.isSubtypeGraceful">Stop Failover</span> -->
-            <!-- <span ng-show="!adminCtl.tasks.isSubtypeGraceful">Stop Rebalance</span> -->
-          </button>
           <div class="alert"
                ng-show="adminCtl.tasks.tasksRebalance.completionMessage"
                ng-class="{'alert-error': adminCtl.tasks.tasksRebalance.errorMessage,
@@ -61,7 +53,7 @@
                class="timeline-stage"
                ng-class="{highlight: !(service.timeTaken === false)}"
                ng-repeat="service in adminCtl.tasks.tasksRebalance.stageInfo.services track by (service.name + $index)">
-              <label>{{service.name}}</label>
+              <label class="initialcaps">{{service.name}}</label>
               <div class="timeline-dot"></div>
             </div>
           </div>
@@ -77,14 +69,22 @@
                             'indent-1': service.name !== 'data'}">
                 {{service.name}}
               </label>
-              <span ng-show="service.timeTaken !== false" class="rebalance-stage-status">
-                <span ng-show="service.completedTime" class="rebalance-stage-success">
+              <span
+                 ng-show="service.timeTaken !== false"
+                 class="rebalance-stage-status">
+                <span
+                   ng-show="service.completedTime"
+                   class="rebalance-stage-success">
                   completed
                 </span>
-                <span ng-show="!service.completedTime && !adminCtl.tasks.tasksRebalance.errorMessage" class="rebalance-stage-inprogress">
+                <span
+                   ng-show="!service.completedTime && !adminCtl.tasks.tasksRebalance.errorMessage"
+                   class="rebalance-stage-inprogress">
                   elapsed
                 </span>
-                <span ng-show="!service.completedTime && adminCtl.tasks.tasksRebalance.errorMessage" class="rebalance-stage-error">
+                <span
+                   ng-show="!service.completedTime && adminCtl.tasks.tasksRebalance.errorMessage"
+                   class="rebalance-stage-error">
                   failed
                 </span>
                 {{service.timeTaken | mnMsToTime}}
@@ -92,81 +92,69 @@
               <span ng-show="service.timeTaken === false">- - -</span>
             </div>
 <!-- per bucket info ******************************************************* -->
-            <div ng-if="showModule">
+            <div ng-if="showModule" class="margin-bottom-1">
               <div ng-repeat="bucketInfo in service.details track by bucketInfo.name" class="indent-1">
                 <label
                    ng-click="hideBucket = !hideBucket"
-                   class="reverse disclosed cursor-pointer"
+                   class="reverse disclosed cursor-pointer margin-bottom-half"
                    ng-class="{disclosure: hideBucket}">
                     {{bucketInfo.name}}
                 </label>
-                <div ng-if="!hideBucket">
-                  <label ng-show="bucketInfo.vbucketLevelInfo"
-                         ng-click="hidevbucket = !hidevbucket"
-                         class="reverse disclosed cursor-pointer"
-                         ng-class="{disclosure: hidevbucket}">
-                    vBucket Moves
-                  </label>
+                <div ng-if="!hideBucket" class="indent-1-5">
+                  <h6 ng-show="bucketInfo.vbucketLevelInfo">vBucket Moves</h6>
                   <div class="rebalance-stage-details"
                        ng-if="!hidevbucket && bucketInfo.vbucketLevelInfo">
-                    <div class="cbui-table-header padding-left">
-                      <div class="cbui-table-cell">vBuckets</div>
-                      <div class="cbui-table-cell">total</div>
-                      <div class="cbui-table-cell">complete</div>
+                    <div class="cbui-table-header padding-left-0 border-0">
+                      <div class="cbui-table-cell">stage</div>
                       <div class="cbui-table-cell">average time</div>
                     </div>
-                    <div class="cbui-tablerow"
+                    <div class="cbui-tablerow padding-left-0"
                          ng-repeat="(key, v) in bucketInfo.vbucketLevelInfo track by key"
                          ng-if="key !== 'vbucketInfo'">
                       <div class="cbui-table-cell initialcaps">{{key}}</div>
-                      <div class="cbui-table-cell">
-                        {{bucketInfo.vbucketLevelInfo.vbucketInfo.length || "-"}}
-                      </div>
-                      <div class="cbui-table-cell">
-                        {{v.completedCount || "-"}}
-                      </div>
-                      <div class="cbui-table-cell">
-                        {{v.averageTime / 1000 | number:4}}
-                      </div>
+                      <div class="cbui-table-cell">{{v.averageTime / 1000 | number:4}}</div>
                     </div>
                   </div>
 
-                  <label ng-show="bucketInfo.compactionInfo"
-                         ng-click="hideCompaction = !hideCompaction"
-                         class="reverse disclosed cursor-pointer"
-                         ng-class="{disclosure: hideCompaction}">
+                  <h6
+                     ng-show="bucketInfo.compactionInfo"
+                     ng-click="hideCompaction = !hideCompaction"
+                     class="reverse disclosed cursor-pointer"
+                     ng-class="{disclosure: hideCompaction}">
                     Compaction
-                  </label>
+                  </h6>
                   <div ng-if="!hideCompaction && bucketInfo.compactionInfo"
                        class="rebalance-stage-details">
-                    <div class="cbui-table-header padding-left">
+                    <div class="cbui-table-header padding-left-0 border-0">
                       <div class="cbui-table-cell">node</div>
                       <div class="cbui-table-cell">average time</div>
                     </div>
-                    <div class="cbui-tablerow"
+                    <div class="cbui-tablerow padding-left-0"
                          ng-repeat="(node, v) in bucketInfo.compactionInfo.perNode track by node">
                       <div class="cbui-table-cell">{{node}}</div>
-                      <div class="cbui-table-cell">
-                        {{v.averageTime / 1000 | number:4}}
-                      </div>
+                      <div class="cbui-table-cell">{{v.averageTime / 1000 | number:4}}</div>
                     </div>
                   </div>
                 </div>
               </div>
-              <div ng-show="service.subStages.deltaRecovery" class="row">
-                <label>
-                  Delta Recovery
-                </label>
-                <span ng-show="service.subStages.deltaRecovery.timeTaken !== false"
-                      class="rebalance-stage-status">
-                  <span ng-show="service.subStages.deltaRecovery.completedTime"
-                        class="rebalance-stage-success">
+              <div ng-show="service.subStages.deltaRecovery" ng-if="!hideBucket" class="row indent-2-5">
+                <h6>Delta Recovery</h6>
+                <span
+                   ng-show="service.subStages.deltaRecovery.timeTaken !== false"
+                   class="rebalance-stage-status">
+                  <span
+                     ng-show="service.subStages.deltaRecovery.completedTime"
+                     class="rebalance-stage-success">
                     completed
                   </span>
-                  <span ng-show="!service.subStages.deltaRecovery.completedTime && !adminCtl.tasks.tasksRebalance.errorMessage" class="rebalance-stage-inprogress">
+                  <span
+                     ng-show="!service.subStages.deltaRecovery.completedTime && !adminCtl.tasks.tasksRebalance.errorMessage"
+                     class="rebalance-stage-inprogress">
                     elapsed
                   </span>
-                  <span ng-show="!service.subStages.deltaRecovery.completedTime && adminCtl.tasks.tasksRebalance.errorMessage" class="rebalance-stage-error">
+                  <span
+                     ng-show="!service.subStages.deltaRecovery.completedTime && adminCtl.tasks.tasksRebalance.errorMessage"
+                     class="rebalance-stage-error">
                     failed
                   </span>
                   {{service.subStages.deltaRecovery.timeTaken | mnMsToTime}}
@@ -175,6 +163,17 @@
               </div>
             </div>
           </div>
+          <div class="row margin-bottom-1 margin-top-1">
+            <button class="outline" style="opacity:0;">
+              Rebalance Details
+            </button>
+            <button
+               class="red"
+               ng-disabled="!poolDefault.rebalancing || !rbac.cluster.pools.write"
+               ng-click="adminCtl.postStopRebalance()">
+              Stop
+            </button>
+          </div>
         </div>
         <div ng-repeat="task in adminCtl.filterTasks(adminCtl.tasks.running)" class="zero-content margin-top-1">
           <div class="text-small text-left">
@@ -182,25 +181,26 @@
             <span ng-if="task.progress != undefined">{{(task.progress | number:1) + '%'}}</span>
           </div>
           <div
-            class="bar-wrapper"
-            ng-show="task.type !== 'loadingSampleBucket' && task.type !== 'orphanBucket'">
+             class="bar-wrapper"
+             ng-show="task.type !== 'loadingSampleBucket' && task.type !== 'orphanBucket'">
             <div
-              class="bar positive"
-              ng-style="{'width': task.progress + '%'}">
+               class="bar positive"
+               ng-style="{'width': task.progress + '%'}">
               <div></div>
             </div>
             <div
-              class="bar negative"
-              ng-style="{'width': (100 - task.progress) + '%'}">
+               class="bar negative"
+               ng-style="{'width': (100 - task.progress) + '%'}">
               <div></div>
             </div>
           </div>
         </div>
       </div>
     </div>
+<!-- End of rebalance/activity menu **************************************** -->
     <a
-      ng-click="adminCtl.runInternalSettingsDialog();"
-      ng-show="adminCtl.enableInternalSettings && rbac.cluster.admin.settings.write">
+       ng-click="adminCtl.runInternalSettingsDialog();"
+       ng-show="adminCtl.enableInternalSettings && rbac.cluster.admin.settings.write">
       Edit internal settings
     </a>
     <span uib-dropdown>
@@ -225,13 +225,13 @@
       </a>
       <div uib-dropdown-menu class="dropdown-menu-select-like">
         <a
-          ng-show="pools.isEnterprise && poolDefault.compat.atLeast50 && (adminCtl.user.domain === 'local' || adminCtl.user.domain === 'admin')"
-          ng-click="adminCtl.showResetPasswordDialog()">
+           ng-show="pools.isEnterprise && poolDefault.compat.atLeast50 && (adminCtl.user.domain === 'local' || adminCtl.user.domain === 'admin')"
+           ng-click="adminCtl.showResetPasswordDialog()">
           Change Password
         </a>
         <a
-          ng-click="adminCtl.logout()"
-          class="ellipsis max-width-4">
+           ng-click="adminCtl.logout()"
+           class="ellipsis max-width-4">
           Sign Out {{adminCtl.user.id}}
         </a>
       </div>
@@ -278,83 +278,83 @@
 <main>
 
   <nav
-    class="nav-sidebar"
-    ng-class="{'resp-show-menu' : showRespMenu, 'nav-sidebar-hidden' : poolDefault.hideNavSidebar}"
-    ng-click="showRespMenu = !showRespMenu"
-    mn-pluggable-ui-tabs
-    mn-tab-bar-name="adminTab">
+     class="nav-sidebar"
+     ng-class="{'resp-show-menu' : showRespMenu, 'nav-sidebar-hidden' : poolDefault.hideNavSidebar}"
+     ng-click="showRespMenu = !showRespMenu"
+     mn-pluggable-ui-tabs
+     mn-tab-bar-name="adminTab">
 
     <a
-      mn-tab="overview"
-      ui-sref="app.admin.overview.statistics"
-      ui-sref-active="currentnav">
+       mn-tab="overview"
+       ui-sref="app.admin.overview.statistics"
+       ui-sref-active="currentnav">
       Dashboard
     </a>
     <a
-      mn-tab="servers"
-      ui-sref-active="currentnav"
-      ui-sref="app.admin.servers.list">
+       mn-tab="servers"
+       ui-sref-active="currentnav"
+       ui-sref="app.admin.servers.list">
       Servers
     </a>
     <a
-      mn-tab="buckets"
-      ng-show="rbac.cluster.bucket['.'].settings.read"
-      ui-sref="app.admin.buckets"
-      ui-sref-active="currentnav">
+       mn-tab="buckets"
+       ng-show="rbac.cluster.bucket['.'].settings.read"
+       ui-sref="app.admin.buckets"
+       ui-sref-active="currentnav">
       Buckets
     </a>
     <a
-      ng-show="rbac.cluster.tasks.read"
-      mn-tab="replications"
-      ui-sref-active="currentnav"
-      ui-sref="app.admin.replications">
+       ng-show="rbac.cluster.tasks.read"
+       mn-tab="replications"
+       ui-sref-active="currentnav"
+       ui-sref="app.admin.replications">
       XDCR
     </a>
     <a
-      ng-show="rbac.cluster.admin.security.read"
-      mn-tab="security"
-      ng-class="{currentnav: ('app.admin.security' | includedByState)}"
-      ui-sref="app.admin.security">
+       ng-show="rbac.cluster.admin.security.read"
+       mn-tab="security"
+       ng-class="{currentnav: ('app.admin.security' | includedByState)}"
+       ui-sref="app.admin.security">
       Security
     </a>
     <a
-      mn-tab="settings"
-      ng-class="{currentnav: ('app.admin.settings' | includedByState)}"
-      ui-sref="app.admin.settings.cluster">
+       mn-tab="settings"
+       ng-class="{currentnav: ('app.admin.settings' | includedByState)}"
+       ui-sref="app.admin.settings.cluster">
       <span
-        ng-show="adminCtl.updates.sendStats && !!adminCtl.updates.newVersion"
-        class="label neutral badge notify"
-        uib-tooltip="A newer version of Couchbase Server is available on the General Settings page..."
-        tooltip-placement="auto right"
-        tooltip-append-to-body="true">i</span>
+         ng-show="adminCtl.updates.sendStats && !!adminCtl.updates.newVersion"
+         class="label neutral badge notify"
+         uib-tooltip="A newer version of Couchbase Server is available on the General Settings page..."
+         tooltip-placement="auto right"
+         tooltip-append-to-body="true">i</span>
       Settings
     </a>
     <a
-      mn-tab="logs"
-      ui-sref="app.admin.logs.list"
-      ng-class="{currentnav: ('app.admin.logs' | includedByState)}"
-      ng-show="rbac.cluster.logs.read">
+       mn-tab="logs"
+       ui-sref="app.admin.logs.list"
+       ng-class="{currentnav: ('app.admin.logs' | includedByState)}"
+       ng-show="rbac.cluster.logs.read">
       Logs
     </a>
     <div class="margin-bottom-1"></div>
     <nav
-      mn-pluggable-ui-tabs
-      mn-tab-bar-name="workbenchTab">
+       mn-pluggable-ui-tabs
+       mn-tab-bar-name="workbenchTab">
     </nav>
     <a
-      ng-show="rbac.cluster.bucket['.'].settings.read && rbac.cluster.bucket['.'].views.read"
-      ui-state="'app.admin.views.list'"
-      ui-state-params="{bucket: rbac.bucketNames['.views!read'][0] || null}"
-      ng-class="{currentnav: ('app.admin.views' | includedByState)}">Views</a>
+       ng-show="rbac.cluster.bucket['.'].settings.read && rbac.cluster.bucket['.'].views.read"
+       ui-state="'app.admin.views.list'"
+       ui-state-params="{bucket: rbac.bucketNames['.views!read'][0] || null}"
+       ng-class="{currentnav: ('app.admin.views' | includedByState)}">Views</a>
     <a
-      ng-show="rbac.cluster.bucket['.'].n1ql.index.read"
-      ui-sref="app.admin.gsi"
-      ng-class="{currentnav: ('app.admin.gsi' | includedByState)}">Indexes</a>
+       ng-show="rbac.cluster.bucket['.'].n1ql.index.read"
+       ui-sref="app.admin.gsi"
+       ng-class="{currentnav: ('app.admin.gsi' | includedByState)}">Indexes</a>
 
     <div
-       class="sidebar-closer resp-hide-med"
-       title="hide sidebar"
-       ng-click="poolDefault.hideNavSidebar = true">
+        class="sidebar-closer resp-hide-med"
+        title="hide sidebar"
+        ng-click="poolDefault.hideNavSidebar = true">
       <span class="icon fa-chevron-left"></span>
     </div>
   </nav>
@@ -368,7 +368,12 @@
   </div>
 
   <!-- all page content goes here -->
-  <div ui-view="main" autoscroll="false" class="main-content min-width-zero width-12" mn-spinner="showMainSpinner" opacity="true"></div>
+  <div
+     ui-view="main"
+     autoscroll="false"
+     class="main-content min-width-zero width-12"
+     mn-spinner="showMainSpinner"
+     opacity="true"></div>
 </main>
 
 <div class="alert-wrapper fix-position-bl">

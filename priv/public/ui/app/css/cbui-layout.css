@@ -501,6 +501,9 @@ footer {
 .margin-left-2, .indent-2 {
   margin-left: 2rem !important;
 }
+.margin-left-2-5, .indent-2-5 {
+  margin-left: 2.5rem !important;
+}
 .margin-left-3, .indent-3 {
   margin-left: 3rem !important;
 }
@@ -549,4 +552,7 @@ footer {
 }
 .debug-outline {
   border: 1px dashed red;
+}
+.border-0 {
+  border-width: 0!important;
 }

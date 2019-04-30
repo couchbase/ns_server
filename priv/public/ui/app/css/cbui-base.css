@@ -172,15 +172,11 @@ h5 {
   font-weight: 600;
   color: #000;
 }
-/* nav section title -------------------------------------------------------- */
+/* very small title --------------------------------------------------------- */
 h6 {
-  font-size: .8125rem;
+  font-size: .75rem;
   font-weight: 600;
-  color: #a1a1a1;
-  padding: 0 .75rem .25rem 0;
-  text-align: right;
-  white-space: nowrap;
-  border-right: 2px solid #fff;
+  color: #333;
 }
 /* MARGINS:  only the first element of type (2nd el in pair),
    preceded by the former element receives this style ----------------------- */
@@ -518,6 +514,17 @@ button.orange {
 .btn.orange[disabled],
 button.orange[disabled] {
   background-color: #fad79e;
+  cursor: default;
+  box-shadow: none;
+}
+/* special button for rebalance menu - red ---------------------------------- */
+button.red {
+  background-color: #e07f82;
+  color: #fff;
+}
+.btn.orange[disabled],
+button.red[disabled] {
+  background-color: #efbfc0;
   cursor: default;
   box-shadow: none;
 }
