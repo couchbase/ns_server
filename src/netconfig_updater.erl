@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, apply_net_config/2, apply_ext_dist_protocols/1]).
+-export([start_link/0, apply_net_config/1, apply_ext_dist_protocols/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -21,8 +21,8 @@
 start_link() ->
     proc_lib:start_link(?MODULE, init, [[]]).
 
-apply_net_config(AFamily, CEncrypt) ->
-    gen_server:call(?MODULE, {apply_net_config, AFamily, CEncrypt}, infinity).
+apply_net_config(Config) ->
+    gen_server:call(?MODULE, {apply_net_config, Config}, infinity).
 
 apply_ext_dist_protocols(Protos) ->
     gen_server:call(?MODULE, {apply_ext_dist_protocols, Protos}, infinity).
@@ -46,9 +46,11 @@ init([]) ->
     end,
     gen_server:enter_loop(?MODULE, [], #s{}, {local, ServerName}, hibernate).
 
-handle_call({apply_net_config, AFamily, CEncrypt}, _From, State) ->
+handle_call({apply_net_config, Config}, _From, State) ->
     CurAFamily = cb_dist:address_family(),
     CurCEncrypt = cb_dist:external_encryption(),
+    AFamily = proplists:get_value(afamily, Config, CurAFamily),
+    CEncrypt = proplists:get_value(clusterEncryption, Config, CurCEncrypt),
     From = {CurAFamily, CurCEncrypt},
     To = {AFamily, CEncrypt},
     handle_with_marker(apply_net_config, From, To, State);

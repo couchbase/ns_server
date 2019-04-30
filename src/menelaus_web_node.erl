@@ -810,13 +810,11 @@ verify_net_config_allowed(State) ->
 
 net_config_validators() ->
     [validator:has_params(_),
-     validator:required(afamily, _),
      validator:one_of(afamily, ["ipv4", "ipv6"], _),
      validator:validate(fun ("ipv4") -> {value, inet};
                             ("ipv6") -> {value, inet6}
                         end, afamily, _),
      validator:validate(fun check_for_raw_addr/1, afamily, _),
-     validator:required(clusterEncryption, _),
      validator:one_of(clusterEncryption, ["on", "off"], _),
      validator:validate(fun ("on") -> {value, true};
                             ("off") -> {value, false}
@@ -829,10 +827,8 @@ handle_setup_net_config(Req) ->
     menelaus_util:assert_is_madhatter(),
     validator:handle(
       fun (Values) ->
-              AFamily = proplists:get_value(afamily, Values),
-              CEncrypt = proplists:get_value(clusterEncryption, Values, false),
               erlang:process_flag(trap_exit, true),
-              case netconfig_updater:apply_net_config(AFamily, CEncrypt) of
+              case netconfig_updater:apply_net_config(Values) of
                   ok -> menelaus_util:reply(Req, 200);
                   {error, Msg} -> menelaus_util:reply_global_error(Req, Msg)
               end,

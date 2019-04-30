@@ -146,7 +146,10 @@ apply_net_config(NodeKVList) ->
                     ?log_info("Applying net config. AFamily: ~p, CEncryption: ~p, "
                               "DistProtos: ~p", [AFamily, CEncryption, Protos]),
                     case netconfig_updater:apply_ext_dist_protocols(Protos) of
-                        ok -> netconfig_updater:apply_net_config(AFamily, CEncryption);
+                        ok ->
+                            Cfg = [{clusterEncryption, CEncryption},
+                                   {afamily, AFamily}],
+                            netconfig_updater:apply_net_config(Cfg);
                         {error, Msg} -> {error, Msg}
                     end;
                 {error, Msg} -> {error, Msg}
