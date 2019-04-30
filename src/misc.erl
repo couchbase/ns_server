@@ -2492,6 +2492,8 @@ with_trap_exit_test_() ->
 %% Like a sequence of unlink(Pid) and exit(Pid, Reason). But care is taken
 %% that the Pid is terminated even the caller dies right in between unlink and
 %% exit.
+unlink_terminate(Pid, normal) ->
+    unlink_terminate(Pid, shutdown);
 unlink_terminate(Pid, Reason) ->
     with_trap_exit(
       fun () ->
@@ -2511,12 +2513,17 @@ unlink_terminate_and_wait(Pid, Reason) ->
 
 -ifdef(TEST).
 unlink_terminate_and_wait_simple_test() ->
+    do_test_unlink_terminate_and_wait_simple(normal),
+    do_test_unlink_terminate_and_wait_simple(shutdown),
+    do_test_unlink_terminate_and_wait_simple(kill).
+
+do_test_unlink_terminate_and_wait_simple(Reason) ->
     Pid = proc_lib:spawn_link(fun () -> timer:sleep(10000) end),
-    unlink_terminate_and_wait(Pid, kill),
+    unlink_terminate_and_wait(Pid, Reason),
     false = is_process_alive(Pid),
 
     %% make sure dead procecesses are handled too
-    unlink_terminate_and_wait(Pid, kill).
+    unlink_terminate_and_wait(Pid, Reason).
 
 %% Test that if the killing process doesn't trap exits, we can still kill it
 %% promptly.

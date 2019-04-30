@@ -18,7 +18,7 @@
 -include("cut.hrl").
 -include("ns_common.hrl").
 
--export([spawn_monitor/2]).
+-export([spawn_link/2]).
 
 -define(LEASE_TIME,        ?get_param(lease_time, 15000)).
 -define(LEASE_RENEW_AFTER, ?get_param(lease_renew_after, 2000)).
@@ -34,9 +34,9 @@
                  retry_backoff    :: backoff:backoff(),
                  acquire_timer    :: misc:timer(acquire) }).
 
-spawn_monitor(TargetNode, UUID) ->
+spawn_link(TargetNode, UUID) ->
     Parent = self(),
-    async:perform(?cut(init(Parent, TargetNode, UUID))).
+    proc_lib:spawn_link(?cut(init(Parent, TargetNode, UUID))).
 
 init(Parent, TargetNode, UUID) ->
     process_flag(priority, high),
