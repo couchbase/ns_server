@@ -18,6 +18,7 @@
 -behaviour(gen_statem).
 
 -compile({nowarn_deprecated_function, [{gen_fsm,send_event,2}]}).
+-compile({nowarn_deprecated_function, [{gen_fsm,sync_send_all_state_event,3}]}).
 
 -include("cut.hrl").
 -include("ns_common.hrl").
@@ -66,6 +67,17 @@ start_link() ->
 master_node() ->
     gen_statem:call(?MODULE, master_node).
 
+%% Returns the master node according to Node. For mb_master's internal use
+%% only.
+master_node(Node, Timeout) ->
+    case cluster_compat_mode:is_cluster_madhatter() of
+        true ->
+            gen_statem:call({?MODULE, Node}, master_node, Timeout);
+        false ->
+            gen_fsm:sync_send_all_state_event({?MODULE, Node},
+                                              master_node, Timeout)
+    end.
+
 %%
 %% gen_statem handlers
 %%
@@ -112,25 +124,158 @@ do_maybe_invalidate_current_master(TriesLeft, FirstTime) ->
                     ale:warn(?USER_LOGGER, "Decided not to forcefully take over mastership", [])
             end,
             ok;
-        MasterToShutdown ->
-            %% send our config to this master it doesn't make sure
-            %% mb_master will see us in peers because of a couple of
-            %% races, but at least we'll delay a bit on some work and
-            %% increase chance of it. We'll retry if it's not the case
-            ok = ns_config_rep:ensure_config_seen_by_nodes([MasterToShutdown]),
-            %% ask master to give up
-            send_heartbeat_with_peers([MasterToShutdown], master, [node(), MasterToShutdown]),
-            %% sync that "surrender" event
-            case rpc:call(MasterToShutdown, mb_master, master_node, [], 5000) of
-                Us when Us =:= node() ->
+        {MasterToShutdown, Version} ->
+            case do_invalidate_master(MasterToShutdown, Version) of
+                ok ->
                     ok;
-                MasterToShutdown ->
+                retry ->
                     do_maybe_invalidate_current_master(TriesLeft-1, false);
-                Other ->
+                {error, Error} ->
                     ale:error(?USER_LOGGER,
-                              "Failed to forcefully take mastership over old node (~p): ~p",
-                              [MasterToShutdown, Other])
+                              "Failed to forcefully take mastership "
+                              "over old node (~p): ~p",
+                              [MasterToShutdown, Error])
             end
+    end.
+
+do_invalidate_master(MasterToShutdown, Version) ->
+    WorkAroundMB33750 = should_workaround_mb33750(Version),
+    SyncTimeout = case WorkAroundMB33750 of
+                      true ->
+                          %% If the old master is indeed affected by MB-33750,
+                          %% the sync_surrender/2 call below will take a long
+                          %% time because mb_master will be busy waiting for
+                          %% mb_master_sup to terminate once we tell it to
+                          %% surrender. The shutdown timeout is set to 10
+                          %% seconds. So we need to use a timeout that will
+                          %% give mb_master enough time to get unblocked.
+                          20000;
+                      false ->
+                          5000
+                  end,
+
+    %% send our config to this master it doesn't make sure
+    %% mb_master will see us in peers because of a couple of
+    %% races, but at least we'll delay a bit on some work and
+    %% increase chance of it. We'll retry if it's not the case
+    ok = ns_config_rep:ensure_config_seen_by_nodes([MasterToShutdown]),
+    %% ask master to give up
+    send_heartbeat_with_peers([MasterToShutdown],
+                              master, [node(), MasterToShutdown]),
+    %% sync that "surrender" event
+    case sync_surrender(MasterToShutdown, SyncTimeout) of
+        {ok, NewMaster} ->
+            if NewMaster =:= node() ->
+                    case WorkAroundMB33750 of
+                        true ->
+                            workaround_mb33750(MasterToShutdown, Version);
+                        false ->
+                            ok
+                    end,
+                    ok;
+               NewMaster =:= MasterToShutdown ->
+                    retry;
+               true ->
+                    {error, {unexpected_master, NewMaster}}
+            end;
+        Error ->
+            Error
+    end.
+
+sync_surrender(MasterToShutdown, Timeout) ->
+    try master_node(MasterToShutdown, Timeout) of
+        Node ->
+            {ok, Node}
+    catch
+        T:E ->
+            {error, {T, E}}
+    end.
+
+%% Checks if a workaround for MB-33750 should be attempted. Will return true
+%% if:
+%%
+%% - The old master is of the affected version.
+%%
+%% - There are no pre-5.5 nodes in the cluster, which would mean that the old
+%% orchestration is still in use and hence the workaround is not needed.
+%%
+%% - The workaround is not explicitly disabled through an ns_config knob.
+should_workaround_mb33750(Version) ->
+    case cluster_compat_mode:is_cluster_55() of
+        true ->
+            Enabled = ?get_param(mb33750_workaround_enabled, true),
+
+            Affected55x = (Version >= [5, 5, 0]) andalso (Version < [5, 5, 4]),
+            Affected60x = (Version >= [6, 0, 0]) andalso (Version < [6, 0, 2]),
+            Affected    = Affected55x orelse Affected60x,
+
+            Enabled andalso Affected;
+        false ->
+            %% The actual node that we are taking over might be running a
+            %% vulnerable version of the code, but that we're still in pre-55
+            %% compat mode indicates that the vulnerable code path didn't get
+            %% a chance to run yet.
+            false
+    end.
+
+-define(stringify(Body), ??Body).
+
+%% Applies a workaround for MB-33750 to the Node.
+%%
+%% The gist of the issue.
+%%
+%% The old master might fail to terminate leader_lease_acquirer after
+%% surrendering mastership. If that happens, the old master will continue
+%% actively acquiring leases disrupting the operation of the true master. The
+%% workaround is to explicitly attempt to kill the leader_lease_acquirer
+%% process on the old master. The details of the bug are such that killing the
+%% leader_lease_acquirer might not kill its children. And it's those children
+%% that are actually responsible for lease acquisitions. But it should at
+%% least eventually kill those of them that can be killed. The rest of them
+%% will get stuck in the shutdown sequence. So they are going to continue to
+%% waste memory, but at least they won't be able to disrupt the operation of
+%% the new master anymore.
+workaround_mb33750(Node, Version) ->
+    ?log_info("Going to attempt to kill leader_lease_acquirer "
+              "on ~p (node version is ~p) as a workaround for MB-33750.",
+              [Node, Version]),
+
+    %% Can't simply "send" an anonymous function to another node, since it
+    %% won't exist there. So we need to send the workaround as a string
+    %% payload to misc:eval/2 instead.
+    EvalPayload =
+        ?stringify(begin
+                       Pid = whereis(leader_lease_acquirer),
+                       case is_pid(Pid) andalso is_process_alive(Pid) of
+                           true ->
+                               exit(Pid, kill),
+                               killed;
+                           false ->
+                               not_found
+                       end
+                   end),
+    EvalBindings = erl_eval:new_bindings(),
+
+    case call_eval(Node, EvalPayload, EvalBindings) of
+        {ok, killed} ->
+            ?log_info("Applied the workaround for MB-33750 on ~p. "
+                      "Actually found lingering leader_lease_acquirer.",
+                      [Node]);
+        {ok, not_found} ->
+            ?log_info("Applied the workaround for MB-33750 on ~p. "
+                      "No lingering leader_lease_acquirer found.",
+                      [Node]);
+        Other ->
+            ?log_info("Failed to apply the workaround for "
+                      "MB-33750 on ~p. Return value: ~p", [Node, Other])
+    end.
+
+call_eval(Node, Payload, Bindings) ->
+    case rpc:call(Node, misc, eval, [Payload, Bindings], 10000) of
+        {value, Result, _} ->
+            {ok, Result};
+        Error ->
+            Error
     end.
 
 check_master_takeover_needed(Peers) ->
@@ -152,28 +297,19 @@ check_master_takeover_needed(Peers) ->
         [Master|_] ->
             ?log_debug("Checking version of current master: ~p", [Master]),
             case rpc:call(Master, cluster_compat_mode, mb_master_advertised_version, [], 5000) of
-                {badrpc, Reason} = Crap ->
-                    IsUndef = case Reason of
-                                  {'EXIT', ExitReason} ->
-                                      misc:is_undef_exit(cluster_compat_mode, mb_master_advertised_version, [], ExitReason);
-                                  _ ->
-                                      false
-                              end,
-                    case IsUndef of
-                        true ->
-                            ale:warn(?USER_LOGGER, "Current master is older (before 2.0.1) and I'll try to takeover", []),
-                            Master;
-                        _ ->
-                            ale:warn(?USER_LOGGER, "Failed to grab master's version. Assuming force mastership takeover is not needed. Reason: ~p", [Crap]),
-                            false
-                    end;
+                {badrpc, _} = Error ->
+                    ale:warn(?USER_LOGGER,
+                             "Failed to grab master's version. "
+                             "Assuming force mastership "
+                             "takeover is not needed. Reason: ~p", [Error]),
+                    false;
                 CompatVersion ->
                     ?log_debug("Current master's supported compat version: ~p", [CompatVersion]),
                     MasterNodeInfo = build_node_info(CompatVersion, Master),
                     case strongly_lower_priority_node(MasterNodeInfo) of
                         true ->
                             ale:warn(?USER_LOGGER, "Current master is older and I'll try to takeover", []),
-                            Master;
+                            {Master, CompatVersion};
                         false ->
                             ?log_debug("Current master is not older"),
                             false
