@@ -22,6 +22,10 @@
         }
         settings.filterSkipRestream = (vm.settings.filterSkipRestream === "true");
       }
+
+      settings.filterDeletion = vm.settings.filterDeletion;
+      settings.filterExpiration = vm.settings.filterExpiration;
+
       var promise = mnXDCRService.saveReplicationSettings(id, settings);
       mnPromiseHelper(vm, promise, $uibModalInstance)
         .showGlobalSpinner()

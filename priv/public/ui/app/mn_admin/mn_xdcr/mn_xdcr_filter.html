@@ -46,6 +46,41 @@
          ng-model="mnReplication.filterSkipRestream">
       <label for="for-save-continue-replicating">continue replicating</label>
     </div>
+    <div class="formrow form-inline">
+      <input
+         type="checkbox"
+         value="index"
+         id="for-do-not-replicate-ttl"
+         ng-model="mnReplication.filterExpiration">
+      <label for="for-do-not-replicate-ttl">
+        Do not replicate TTL
+      </label>
+      <span
+         class="fa-stack icon-info"
+         uib-tooltip="Destination items will have no TTL and source
+                      expirations will not be replicated."
+         tooltip-placement="right">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+      </span>
+    </div>
+    <div class="formrow form-inline">
+      <input
+         type="checkbox"
+         value="index"
+         id="for-do-not-replicate-delete"
+         ng-model="mnReplication.filterDeletion">
+      <label for="for-do-not-replicate-delete">
+        Do not replicate Delete operations
+      </label>
+      <span
+         class="fa-stack icon-info"
+         uib-tooltip="application-level deletes will not be replicated."
+         tooltip-placement="right">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+      </span>
+    </div>
     <div class="row margin-bottom-half">
       <input
          ng-model="xdcrFilterCtl.testDocID"
