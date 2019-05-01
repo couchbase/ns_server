@@ -10,7 +10,7 @@
   var keywords_array = keywords.split('|');
 
   var sysCatalogs = (
-      "system:datastores|system:namespaces|system:keyspaces|system:indexes|system:dual|system:user_info|system:my_user_info|system:nodes|system:applicable_roles|system:prepareds|system:completed_requests|system:active_requests"
+      "system:active_requests|system:applicable_roles|system:completed_requests|system:datastores|system:dual|system:functions|system:functions_cache|system:indexes|system:keyspaces|system:my_user_info|system:namespaces|system:nodes|system:prepareds|system:user_info"
   );
   var sysCatalogs_array = sysCatalogs.split('|');
 
