@@ -419,6 +419,7 @@ a[disabled] {
 .disabled-link {
   color: #a1a1a1 !important;
   cursor: default !important;
+  pointer-events: none;
 }
 .link-heavy {
   font-weight: 600;

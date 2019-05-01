@@ -71,7 +71,7 @@
             value: ""
           },
           pageSize: {
-            value: 10
+            value: 20
           },
           startFrom: {
             value: null
@@ -107,7 +107,7 @@
             value: ""
           },
           pageSize: {
-            value: 10
+            value: 20
           },
           startFrom: {
             value: null

@@ -104,21 +104,22 @@
     </div>
     <span>
       <a
-         ng-hide="rolesGroupsCtl.state.skipped == 0"
+         ng-class="{'disabled-link' : rolesGroupsCtl.state.skipped == 0}"
          ui-sref="{pageSize: rolesGroupsCtl.pageSize, startFromDomain: null, startFrom: null}">
-        &lt;&lt; First</a>
+        &lt;&lt; first</a>
       <a
          ui-sref="(rolesGroupsCtl.state.links.prev)"
-         ng-show="rolesGroupsCtl.state.links.prev">
-        &lt; Prev</a>
+         ng-class="{'disabled-link' : !rolesGroupsCtl.state.links.prev}">
+        &lt; prev</a>
+      <span class="text-smaller grayblack-3">&nbsp; |</span>
       <a
          ui-sref="(rolesGroupsCtl.state.links.next)"
-         ng-show="rolesGroupsCtl.state.links.next">
-        Next &gt;</a>
+         ng-class="{'disabled-link' : !rolesGroupsCtl.state.links.next}">
+        next &gt;</a>
       <a
          ui-sref="(rolesGroupsCtl.state.links.last)"
-         ng-show="rolesGroupsCtl.state.links.last">
-        Last &gt;&gt;</a>
+         ng-class="{'disabled-link' : !rolesGroupsCtl.state.links.last}">
+        last &gt;&gt;</a>
     </span>
   </div>
   <div

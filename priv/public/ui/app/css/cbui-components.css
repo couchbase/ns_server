@@ -1799,7 +1799,8 @@ input[type="checkbox"].fake-select + label:before {
   padding: 0 1.5rem 0 .5rem;
 }
 .pagination a {
-  padding-left: .5rem;
+  padding-left: .25rem;
+  font-size: .875rem;
 }
 
 /* CodeMirror JSON editor height ---------------------------------------- */

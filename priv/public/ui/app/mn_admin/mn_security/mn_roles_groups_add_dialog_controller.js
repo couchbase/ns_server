@@ -40,7 +40,7 @@
         })
         .broadcast("reloadRolesGroupsPoller")
         .closeOnSuccess()
-        .showGlobalSuccess("User saved successfully!");
+        .showGlobalSuccess("Group saved successfully!");
     }
   }
 })();
