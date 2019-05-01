@@ -5,8 +5,8 @@
       LDAP
     </a>
     <a ng-show="rbac.cluster.admin.security.write"
-       ui-sref="app.admin.security.rolesGroups">
-      GROUPS
+       ng-click="userRolesCtl.addRolesGroup()">
+      ADD GROUP
     </a>
     <a ng-show="rbac.cluster.admin.security.write"
        ng-click="userRolesCtl.addUser()">
@@ -29,6 +29,14 @@
        mn-hide-button="true"
        mn-search="userRolesCtl.filterField">
     </div>
+    <span class="pills nowrap">
+      <a
+         ui-sref="app.admin.security.userRoles"
+         ui-sref-active="selected">Users</a>
+      <a
+         ui-sref="app.admin.security.rolesGroups"
+         ui-sref-active="selected">Groups</a>
+    </span>
   </div>
   <div class="cbui-table" ng-if="userRolesCtl.state.users.length">
     <div class="cbui-table-header padding-left">

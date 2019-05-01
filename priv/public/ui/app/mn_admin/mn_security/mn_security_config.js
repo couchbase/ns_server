@@ -124,8 +124,6 @@
         controller: "mnRolesGroupsController as rolesGroupsCtl",
         templateUrl: "app/mn_admin/mn_security/mn_roles_groups.html",
         data: {
-          child: "app.admin.security",
-          title: "User Groups",
           compat: "atLeast50"
         }
       })

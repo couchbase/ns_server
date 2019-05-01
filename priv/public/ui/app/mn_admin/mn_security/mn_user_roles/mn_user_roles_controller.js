@@ -23,6 +23,7 @@
   function mnUserRolesController($scope, $uibModal, mnLdapService, mnPromiseHelper, mnUserRolesService, mnPoller, mnHelper, $state, poolDefault) {
     var vm = this;
     vm.addUser = addUser;
+    vm.addRolesGroup = addRolesGroup;
     vm.addLDAP = addLDAP;
     vm.deleteUser = deleteUser;
     vm.editUser = editUser;
@@ -121,7 +122,16 @@
         controller: 'mnAddLDAPDialogController as addLdapDialogCtl'
       });
     }
-
+    function addRolesGroup() {
+      $uibModal.open({
+        templateUrl: 'app/mn_admin/mn_security/mn_roles_groups_add_dialog.html',
+        controller: 'mnRolesGroupsAddDialogController as rolesGroupsAddDialogCtl',
+        resolve: {
+          rolesGroup: mnHelper.wrapInFunction(undefined),
+          isLdapEnabled: mnHelper.wrapInFunction(poolDefault.saslauthdEnabled)
+        }
+      });
+    }
     function resetUserPassword(user) {
       $uibModal.open({
         templateUrl: 'app/mn_admin/mn_security/mn_user_roles/reset_password_dialog/mn_user_roles_reset_password_dialog.html',

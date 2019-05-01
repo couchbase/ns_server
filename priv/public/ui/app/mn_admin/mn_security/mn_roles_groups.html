@@ -1,8 +1,16 @@
 <mn-element-cargo depot="actions">
   <div class="header-controls">
     <a ng-show="rbac.cluster.admin.security.write"
+       ng-click="rolesGroupsCtl.addLDAP()">
+      LDAP
+    </a>
+    <a ng-show="rbac.cluster.admin.security.write"
        ng-click="rolesGroupsCtl.addRolesGroup()">
       ADD GROUP
+    </a>
+    <a ng-show="rbac.cluster.admin.security.write"
+       ng-click="rolesGroupsCtl.addUser()">
+      ADD USER
     </a>
   </div>
 </mn-element-cargo>
@@ -17,6 +25,14 @@
        mn-hide-button="true"
        mn-search="rolesGroupsCtl.filterField">
     </div>
+    <span class="pills nowrap">
+      <a
+         ui-sref="app.admin.security.userRoles"
+         ui-sref-active="selected">Users</a>
+      <a
+         ui-sref="app.admin.security.rolesGroups"
+         ui-sref-active="selected">Groups</a>
+    </span>
   </div>
   <div class="cbui-table" ng-if="rolesGroupsCtl.state.groups.length">
     <div class="cbui-table-header padding-left">
