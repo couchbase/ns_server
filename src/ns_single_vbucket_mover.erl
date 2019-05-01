@@ -561,8 +561,6 @@ on_move_done(RebalancerPid, Bucket, VBucket, OldChain, NewChain) ->
 
 on_move_done_body(RebalancerPid, Bucket, VBucket, OldChain,
                   [NewMaster | _] = NewChain) ->
-    update_replication_post_move(RebalancerPid, Bucket, VBucket, OldChain, NewChain),
-
     case cluster_compat_mode:is_cluster_madhatter() of
         true ->
             %% Set topology on the NewMaster.
@@ -572,6 +570,8 @@ on_move_done_body(RebalancerPid, Bucket, VBucket, OldChain,
         false ->
             ok
     end,
+
+    update_replication_post_move(RebalancerPid, Bucket, VBucket, OldChain, NewChain),
 
     OldCopies0 = OldChain -- NewChain,
     OldCopies = [OldCopyNode || OldCopyNode <- OldCopies0,
