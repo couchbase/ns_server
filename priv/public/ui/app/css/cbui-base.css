@@ -334,6 +334,12 @@ sub {
   bottom: -0.2rem;
 }
 
+.monospaced {
+  font-size: .75rem;
+  font-style: normal;
+  font-family: Monaco, Consolas, "Andale Mono", "Lucida Console", "Lucida Sans Typewriter", "Courier New", monospace;
+}
+
 /* code ----------------------------------------------------------------------*/
 pre,
 code,
