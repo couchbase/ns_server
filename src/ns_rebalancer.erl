@@ -496,17 +496,17 @@ start_link_rebalance(KeepNodes, EjectNodes,
                KVDeltaNodes = ns_cluster_membership:service_nodes(DeltaNodes,
                                                                   kv),
                BucketConfigs = ns_bucket:get_buckets(),
+               %% Pre-emptive check to see if delta recovery is possible.
                case build_delta_recovery_buckets(KVKeep, KVDeltaNodes,
                                                  BucketConfigs, DeltaRecoveryBucketNames) of
-                   {ok, DeltaRecoveryBucketTuples} ->
+                   {ok, _DeltaRecoveryBucketTuples} ->
                        proc_lib:init_ack({ok, self()}),
 
                        master_activity_events:note_rebalance_start(
                          self(), KeepNodes, EjectNodes, FailedNodes, DeltaNodes),
 
                        rebalance(KeepNodes, EjectNodes, FailedNodes,
-                                 BucketConfigs,
-                                 DeltaNodes, DeltaRecoveryBucketTuples);
+                                 DeltaNodes, DeltaRecoveryBucketNames);
                    {error, not_possible} ->
                        proc_lib:init_ack({error, delta_recovery_not_possible})
                end
@@ -701,19 +701,18 @@ do_maybe_delay_eject_nodes(Timestamps, EjectNodes) ->
     end.
 
 rebalance(KeepNodes, EjectNodesAll, FailedNodesAll,
-          BucketConfigs,
-          DeltaNodes, DeltaRecoveryBuckets) ->
+          DeltaNodes, DeltaRecoveryBucketNames) ->
     ok = check_test_condition(rebalance_start),
     ok = leader_activities:run_activity(
            rebalance, majority,
            ?cut(rebalance_body(KeepNodes, EjectNodesAll,
-                               FailedNodesAll, BucketConfigs,
-                               DeltaNodes, DeltaRecoveryBuckets))).
+                               FailedNodesAll,
+                               DeltaNodes, DeltaRecoveryBucketNames))).
 
 rebalance_body(KeepNodes,
                EjectNodesAll,
                FailedNodesAll,
-               BucketConfigs, DeltaNodes, DeltaRecoveryBuckets) ->
+               DeltaNodes, DeltaRecoveryBucketNames) ->
     KVDeltaNodes = ns_cluster_membership:service_nodes(DeltaNodes, kv),
 
     ok = drop_old_2i_indexes(KeepNodes),
@@ -732,8 +731,20 @@ rebalance_body(KeepNodes,
     %% vbucket on newly added nodes are applied.
     lists:foreach(fun ({Bucket, _BucketConfig}) ->
                           run_janitor_pre_rebalance(Bucket)
-                  end, BucketConfigs),
+                  end, ns_bucket:get_buckets()),
 
+    %% Fetch new BucketConfigs and re build DeltaRecoveryBuckets, as janitor run
+    %% might have updated vbucket map.
+    BucketConfigs = ns_bucket:get_buckets(),
+    KVKeep = ns_cluster_membership:service_nodes(KeepNodes, kv),
+    DeltaRecoveryBuckets = case build_delta_recovery_buckets(
+                                  KVKeep, KVDeltaNodes,
+                                  BucketConfigs, DeltaRecoveryBucketNames) of
+                               {ok, DRB} ->
+                                   DRB;
+                               {error, not_possible} ->
+                                   throw({error, delta_recovery_not_possible})
+                           end,
     master_activity_events:note_rebalance_stage_started(
       [kv, kv_delta_recovery], KVDeltaNodes),
     ok = apply_delta_recovery_buckets(DeltaRecoveryBuckets,
