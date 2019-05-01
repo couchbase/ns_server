@@ -241,7 +241,19 @@ init([]) ->
 handle_call({listen, Name}, _From, #s{creation = Creation} = State) ->
     State1 = State#s{name = Name},
 
-    Protos = get_protos(State1),
+    Protos0 = get_protos(State1),
+
+    %% On unpatched erlang ipv6 listener automatically tries to listen on
+    %% ipv4 as well (on linux and mac only) which prevents ipv4 listener
+    %% to start later. To work around that start the ipv4 listener before
+    %% the ipv6 one.
+    OrderFun =
+        fun (inet_tcp_dist, _) -> true;
+            (_, inet_tcp_dist) -> false;
+            (A, B) -> A =< B
+        end,
+    Protos = lists:sort(OrderFun, Protos0),
+
     Required = [R || R <- get_required_protos(State1), lists:member(R, Protos)],
 
     info_msg("Initial protos: ~p, required protos: ~p", [Protos, Required]),
