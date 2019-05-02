@@ -729,9 +729,9 @@ rebalance_body(KeepNodes,
     %% Unfortunately, we need to run it once more in rebalance_kv after
     %% the server list for the bucket is updated. So that the states of the
     %% vbucket on newly added nodes are applied.
-    lists:foreach(fun ({Bucket, _BucketConfig}) ->
+    lists:foreach(fun (Bucket) ->
                           run_janitor_pre_rebalance(Bucket)
-                  end, ns_bucket:get_buckets()),
+                  end, ns_bucket:get_bucket_names()),
 
     %% Fetch new BucketConfigs and re build DeltaRecoveryBuckets, as janitor run
     %% might have updated vbucket map.
