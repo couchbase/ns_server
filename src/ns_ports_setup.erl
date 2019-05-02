@@ -411,30 +411,30 @@ goport_args(indexer, Config, _Cmd, NodeUUID) ->
 
 goport_args(fts, Config, _Cmd, NodeUUID) ->
     NsRestPort = service_ports:get_port(rest_port, Config),
-    FtRestPort = service_ports:get_port(fts_http_port, Config),
-    FtGrpcPort = service_ports:get_port(fts_grpc_port, Config),
-    FtGrpcSslPort = service_ports:get_port(fts_grpc_ssl_port, Config),
+    {_, Host} = misc:node_name_host(node()),
+
+    BuildHostPortArgs =
+        fun(ArgName, PortName) ->
+                case service_ports:get_port(PortName, Config) of
+                    undefined -> [];
+                    Port ->
+                        V = io_lib:format("~s=~s:~b,~s:~b",
+                                          [ArgName,
+                                           misc:maybe_add_brackets(Host),
+                                           Port, misc:inaddr_any([url]), Port]),
+                        [lists:flatten(V)]
+                end
+        end,
 
     FTSIdxDir = get_writable_ix_subdir("@fts"),
 
-    {_, Host} = misc:node_name_host(node()),
-    BindHttp = io_lib:format("~s:~b,~s:~b",
-                             [misc:maybe_add_brackets(Host), FtRestPort,
-                              misc:inaddr_any([url]),
-                              FtRestPort]),
+    BindHttp = BuildHostPortArgs("-bindHttp", fts_http_port),
     BindHttps =
         build_https_args(fts_ssl_port, "-bindHttps", ":",
                          "-tlsCertFile", "-tlsKeyFile", Config),
 
-    BindGrpc = io_lib:format("~s:~b,~s:~b",
-                             [misc:maybe_add_brackets(Host), FtGrpcPort,
-                              misc:inaddr_any([url]),
-                              FtGrpcPort]),
-
-    BindGrpcSsl = io_lib:format("~s:~b,~s:~b",
-                             [misc:maybe_add_brackets(Host), FtGrpcSslPort,
-                              misc:inaddr_any([url]),
-                              FtGrpcSslPort]),
+    BindGrpc = BuildHostPortArgs("-bindGrpc", fts_grpc_port),
+    BindGrpcSsl = BuildHostPortArgs("-bindGrpcSsl", fts_grpc_ssl_port),
 
     {ok, FTSMemoryQuota} = memory_quota:get_quota(Config, fts),
     MaxReplicasAllowed = case cluster_compat_mode:is_enterprise() of
@@ -464,15 +464,12 @@ goport_args(fts, Config, _Cmd, NodeUUID) ->
      "-cfg=metakv",
      "-uuid=" ++ NodeUUID,
      "-server=" ++ misc:local_url(NsRestPort, []),
-     "-bindHttp=" ++ BindHttp,
-     "-bindGrpc=" ++ BindGrpc,
-     "-bindGrpcSsl=" ++ BindGrpcSsl,
      "-dataDir=" ++ FTSIdxDir,
      "-tags=feed,janitor,pindex,queryer,cbauth_service",
      "-auth=cbauth",
      "-extra=" ++ lists:flatten(io_lib:format("~s:~b", [Host, NsRestPort])),
      "-options=" ++ Options
-    ] ++ BindHttps;
+    ] ++ BindHttp ++ BindHttps ++ BindGrpc ++ BindGrpcSsl;
 
 goport_args(eventing, Config, _Cmd, NodeUUID) ->
     {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
