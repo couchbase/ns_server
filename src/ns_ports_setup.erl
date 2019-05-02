@@ -342,7 +342,7 @@ build_goport_spec(#def{id = SpecId,
             [];
         _ ->
             EnvVars = build_go_env_vars(Config, RPCService),
-            Args = goport_args(SpecId, Config, Cmd, NodeUUID),
+            Args = goport_args(SpecId, Config, Cmd, binary_to_list(NodeUUID)),
             [{SpecId, Cmd, Args,
               [via_goport, exit_status, stderr_to_stdout, {env, EnvVars}] ++
                   [{log, Log} || Log =/= undefined]}]
@@ -470,7 +470,7 @@ goport_args(fts, Config, _Cmd, NodeUUID) ->
      "-dataDir=" ++ FTSIdxDir,
      "-tags=feed,janitor,pindex,queryer,cbauth_service",
      "-auth=cbauth",
-     "-extra=" ++ io_lib:format("~s:~b", [Host, NsRestPort]),
+     "-extra=" ++ lists:flatten(io_lib:format("~s:~b", [Host, NsRestPort])),
      "-options=" ++ Options
     ] ++ BindHttps;
 
@@ -485,7 +485,7 @@ goport_args(eventing, Config, _Cmd, NodeUUID) ->
                          "-certfile", "-keyfile", Config) ++
 
         ["-dir=" ++ filename:join(IdxDir, "@eventing"),
-         "-uuid=" ++ binary_to_list(NodeUUID),
+         "-uuid=" ++ NodeUUID,
          "-diagdir=" ++ path_config:minidump_dir(),
          "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
          "-vbuckets=" ++ integer_to_list(ns_bucket:get_num_vbuckets())];
@@ -531,7 +531,7 @@ goport_args(cbas, Config, Cmd, NodeUUID) ->
         build_https_args(cbas_ssl_port, "-bindHttpsPort",
                          "-tlsCertFile", "-tlsKeyFile", Config) ++
         [
-         "-uuid=" ++ binary_to_list(NodeUUID),
+         "-uuid=" ++ NodeUUID,
          "-serverAddress=" ++ misc:localhost(),
          "-bindHttpAddress=" ++ Host,
          "-cbasExecutable=" ++ Cmd,
@@ -549,7 +549,7 @@ goport_args(cbas, Config, Cmd, NodeUUID) ->
 goport_args(example, Config, _Cmd, NodeUUID) ->
     Port = service_ports:get_port(rest_port, Config) + 20000,
     {_, Host} = misc:node_name_host(node()),
-    ["-node-id", binary_to_list(NodeUUID),
+    ["-node-id", NodeUUID,
      "-host", misc:join_host_port(Host, Port)].
 
 saslauthd_port_spec(Config) ->
