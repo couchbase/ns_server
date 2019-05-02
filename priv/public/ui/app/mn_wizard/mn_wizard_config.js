@@ -11,7 +11,8 @@
     'mnAutocompleteOff',
     'mnMinlength',
     'mnEqual',
-    'mnFilters'
+    'mnFilters',
+    'mnServicesDiskPaths'
   ]).config(mnWizardConfig);
 
   function mnWizardConfig($stateProvider) {

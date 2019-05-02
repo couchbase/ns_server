@@ -11,10 +11,6 @@
     vm.defaultJoinClusterSerivesConfig = _.clone(vm.joinClusterConfig.services, true);
     vm.isEnterprise = pools.isEnterprise;
 
-    vm.onDbPathChange = onDbPathChange;
-    vm.onIndexPathChange = onIndexPathChange;
-    vm.onCbasDirsChange = onCbasDirsChange;
-    vm.addCbasPath = addCbasPath;
     vm.onSubmit = onSubmit;
     vm.sendStats = true;
 
@@ -25,11 +21,6 @@
         .applyToScope("config")
         .onSuccess(function (config) {
           vm.defaultConfig = _.clone(config);
-          vm.onDbPathChange();
-          vm.onIndexPathChange();
-          vm.config.cbasDirs.forEach(function (path, index) {
-            vm.onCbasDirsChange(index);
-          });
         });
 
       mnPromiseHelper(vm, mnClusterConfigurationService.getQuerySettings())
@@ -46,21 +37,7 @@
       mnPromiseHelper(vm, promise)
         .catchErrorsFromSuccess("postMemoryErrors");
     }
-    function onDbPathChange() {
-      vm.dbPathTotal = mnClusterConfigurationService.lookup(vm.config.dbPath, vm.config.selfConfig.preprocessedAvailableStorage);
-    }
-    function onIndexPathChange() {
-      vm.indexPathTotal = mnClusterConfigurationService.lookup(vm.config.indexPath, vm.config.selfConfig.preprocessedAvailableStorage);
-    }
-    function onCbasDirsChange(index) {
-      vm["cbasDirsTotal" + index] = mnClusterConfigurationService
-        .lookup(vm.config.cbasDirs[index], vm.config.selfConfig.preprocessedAvailableStorage);
-    }
-    function addCbasPath() {
-      var last = vm.config.cbasDirs.length-1;
-      vm["cbasDirsTotal" + (last + 1)] = vm["cbasDirsTotal" + last];
-      vm.config.cbasDirs.push(vm.config.cbasDirs[last]);
-    }
+
     function goNext() {
       var newClusterState = mnWizardService.getNewClusterState();
       return mnClusterConfigurationService.postAuth(newClusterState.user).then(function () {

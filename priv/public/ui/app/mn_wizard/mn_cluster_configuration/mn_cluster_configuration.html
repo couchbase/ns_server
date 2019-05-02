@@ -37,89 +37,12 @@
         </div>
       </div>
 
-      <div class="formrow">
-        <div class="row">
-          <label for="setup_db_path_input">Data Disk Path</label>
-          <small class="text-smaller">Path cannot be changed after setup</small>
-        </div>
-        <input
-           type="text"
-           autocorrect="off"
-           spellcheck="false"
-           autocapitalize="off"
-           id="setup_db_path_input"
-           ng-model="clusterConfigurationCtl.config.dbPath"
-           ng-change="clusterConfigurationCtl.onDbPathChange()">
-        <p>
-          Free: {{clusterConfigurationCtl.dbPathTotal}}
-        </p>
-      </div>
-
-      <div
-         class="error error-form"
-         ng-if="clusterConfigurationCtl.postDiskStorageErrors">
-        <div ng-repeat="error in clusterConfigurationCtl.postDiskStorageErrors">
-          Attention: {{error}}<br>
-        </div>
-      </div>
-
-      <div class="formrow">
-        <div class="row">
-          <label for="setup_index_path_input">Indexes Disk Path</label>
-          <small class="text-smaller">Path cannot be changed after setup</small>
-        </div>
-        <input
-           type="text"
-           autocorrect="off"
-           spellcheck="false"
-           autocapitalize="off"
-           id="setup_index_path_input"
-           ng-model="clusterConfigurationCtl.config.indexPath"
-           ng-change="clusterConfigurationCtl.onIndexPathChange()">
-        <p>
-          Free: {{clusterConfigurationCtl.indexPathTotal}}
-        </p>
-      </div>
-
-      <div
-         class="formrow"
-         ng-if="clusterConfigurationCtl.isEnterprise">
-        <div class="row">
-          <label for="setup_cbas_dirs_input0">Analytics Disk Paths</label>
-          <small class="text-smaller">Paths cannot be changed after setup</small>
-        </div>
-        <div
-           class="formrow"
-           ng-repeat="dir in clusterConfigurationCtl.config.cbasDirs track by $index">
-          <input
-             type="text"
-             autocorrect="off"
-             spellcheck="false"
-             autocapitalize="off"
-             ng-attr-id="{{'setup_cbas_dirs_input' + $index}}"
-             ng-model="clusterConfigurationCtl.config.cbasDirs[$index]"
-             ng-change="clusterConfigurationCtl.onCbasDirsChange($index)">
-          <p>
-            Free: {{clusterConfigurationCtl['cbasDirsTotal' + $index]}}
-          </p>
-        </div>
-      </div>
-
-      <div
-         class="row formrow flex-right margin-top-neg-2"
-         ng-if="clusterConfigurationCtl.isEnterprise">
-        <button
-           class="outline btn-small"
-           title="Add field"
-           ng-click="clusterConfigurationCtl.addCbasPath();"
-           type="button">+</button>
-        <button
-           class="outline btn-small"
-           title="Remove field"
-           ng-disabled="clusterConfigurationCtl.config.cbasDirs.length === 1"
-           ng-click="clusterConfigurationCtl.config.cbasDirs.pop();"
-           type="button">-</button>
-      </div>
+      <mn-services-disk-paths
+         ng-if="clusterConfigurationCtl.config"
+         config="clusterConfigurationCtl.config"
+         is-enterprise="clusterConfigurationCtl.isEnterprise"
+         post-disk-storage-errors="clusterConfigurationCtl.postDiskStorageErrors"
+         ></mn-services-disk-paths>
 
       <div class="formrow">
         <div class="row">
