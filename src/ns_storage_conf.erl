@@ -32,7 +32,7 @@
          this_node_bucket_dbdir/1,
          delete_unused_buckets_db_files/0,
          delete_old_2i_indexes/0,
-         setup_db_and_ix_paths/0,
+         setup_storage_paths/0,
          this_node_cbas_dirs/0,
          this_node_java_home/0,
          update_java_home/1]).
@@ -41,8 +41,15 @@
 
 -export([extract_disk_stats_for_path/2]).
 
-setup_db_and_ix_paths() ->
+setup_storage_paths() ->
     setup_db_and_ix_paths(ns_couchdb_api:get_db_and_ix_paths()),
+    case ns_config:search_node(node(), ns_config:latest(), cbas_dirs) of
+        false ->
+            {ok, Default} = this_node_ixdir(),
+            ok = update_cbas_dirs({ok, [Default]});
+        {value, _V} ->
+            not_changed
+    end,
     ignore.
 
 setup_db_and_ix_paths(Dirs) ->
@@ -217,8 +224,14 @@ node_cbas_dirs(Config, Node) ->
         {value, V} ->
             V;
         false ->
-            {ok, Default} = this_node_ixdir(),
-            [Default]
+            % Should only occur running mixed versions (e.g. during upgrade)
+            % TODO: Remove once madhatter is the oldest supported release
+            case rpc:call(Node, ns_storage_conf, this_node_ixdir, []) of
+                {ok, CBASDirs} ->
+                    [CBASDirs];
+                _Error ->
+                    []
+            end
     end.
 
 this_node_java_home() ->
