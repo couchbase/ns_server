@@ -57,7 +57,8 @@
          have_non_dcp_buckets/1,
          is_developer_preview/0,
          is_developer_preview/1,
-         get_cluster_capabilities/1]).
+         get_cluster_capabilities/1,
+         tls_supported/0]).
 
 %% NOTE: this is rpc:call-ed by mb_master
 -export([mb_master_advertised_version/0]).
@@ -364,6 +365,9 @@ get_pretend_version() ->
 is_developer_preview() -> is_developer_preview(ns_config:get()).
 is_developer_preview(Config) ->
     ns_config:search(Config, developer_preview_enabled, false).
+
+tls_supported() ->
+    is_enterprise().
 
 -ifdef(TEST).
 mb_master_advertised_version_test() ->

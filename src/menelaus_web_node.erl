@@ -268,9 +268,6 @@ construct_ext_json(Hostname, Ports) ->
     [{external, {struct, [{hostname, list_to_binary(Hostname)},
                           {ports, {struct, Ports}}]}}].
 
-is_xdcr_over_ssl_allowed() ->
-    cluster_compat_mode:is_enterprise().
-
 build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
     Versions = proplists:get_value(version, InfoNode, []),
     Version = proplists:get_value(ns_server, Versions, "unknown"),
@@ -481,7 +478,7 @@ handle_node_rename(Req) ->
     end.
 
 handle_node_self_xdcr_ssl_ports(Req) ->
-    case is_xdcr_over_ssl_allowed() of
+    case cluster_compat_mode:tls_supported() of
         false ->
             reply_json(Req, [], 403);
         true ->

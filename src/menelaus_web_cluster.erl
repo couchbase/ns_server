@@ -252,7 +252,7 @@ parse_join_cluster_params(Params, ThisIsJoin) ->
                           || {F, V} <- BasePList,
                              V =:= undefined],
 
-    DefaultScheme = case cluster_compat_mode:is_enterprise() of
+    DefaultScheme = case cluster_compat_mode:tls_supported() of
                         true -> https;
                         false -> http
                     end,

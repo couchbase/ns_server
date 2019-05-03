@@ -61,7 +61,7 @@
                 ciphers}).
 
 start_link() ->
-    case cluster_compat_mode:is_enterprise() of
+    case cluster_compat_mode:tls_supported() of
         true ->
             gen_server:start_link({local, ?MODULE}, ?MODULE, [], []);
         false ->
