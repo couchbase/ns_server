@@ -219,9 +219,9 @@ default() ->
 
            {[{host, <<"*">>},
              {port, dedicated_port},
+             {system, true},
              {ipv4, {memcached_config_mgr, get_afamily_type, [inet]}},
              {ipv6, {memcached_config_mgr, get_afamily_type, [inet6]}}]},
-
            {[{host, <<"*">>},
              {port, ssl_port},
              {ssl, {[{key, list_to_binary(ns_ssl_services_setup:memcached_key_path())},
@@ -231,6 +231,7 @@ default() ->
 
            {[{host, <<"*">>},
              {port, dedicated_ssl_port},
+             {system, true},
              {ssl, {[{key, list_to_binary(ns_ssl_services_setup:memcached_key_path())},
                      {cert, list_to_binary(ns_ssl_services_setup:memcached_cert_path())}]}},
              {ipv4, {memcached_config_mgr, get_afamily_type, [inet]}},
