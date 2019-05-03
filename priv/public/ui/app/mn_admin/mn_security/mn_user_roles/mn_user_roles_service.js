@@ -101,8 +101,6 @@
       case "query": return "Query and Index Services";
       case "fts": return "Search Service";
       case "analytics": return "Analytics Service";
-      case "undefined": return "Administration & Global Roles";
-      case "*": return "All Buckets (*)";
       case "replication":
       case "bucket": return undefined;
       default: return name;
@@ -160,9 +158,12 @@
 
       _.forEach(_.groupBy(roles, 'bucket_name'), function (value, key) {
         switch (key) {
-        case "undefined": rv[0] = [getWrapperName(key), sortAdminAndGlobalRoles(value)]; break;
-        case "*": rv[1] = [getWrapperName(key), sortBucketRoles(value)]; break;
-        default: rv.push([getWrapperName(key), sortBucketRoles(value)]); break;
+        case "undefined":
+          rv[0] = ["Administration & Global Roles", sortAdminAndGlobalRoles(value)]; break;
+        case "*":
+          rv[1] = ["All Buckets (*)", sortBucketRoles(value)]; break;
+        default:
+          rv.push([key, sortBucketRoles(value)]); break;
         }
       });
 
