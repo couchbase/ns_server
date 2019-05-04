@@ -538,8 +538,8 @@ handle_info(cert_and_pkey_changed, #state{hash = OldHash} = State) ->
             apply_node_cert_data(Data),
             ?log_info("Wrote new pem file"),
             self() ! notify_services,
-            {noreply, #state{hash = NewHash,
-                             reload_state = all_services()}}
+            {noreply, State#state{hash = NewHash,
+                                  reload_state = all_services()}}
     end;
 handle_info(ssl_minimum_protocol_changed,
             #state{min_ssl_ver = MinSslVer} = State) ->
