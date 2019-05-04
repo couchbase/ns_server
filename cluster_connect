@@ -144,7 +144,7 @@ def main():
         o.open("http://{0}:{1}/node/controller/doJoinCluster".format(addr, port),
                "user=Administrator&password=asdasd&" +
                    "clusterMemberHostIp={0}".format(addr) +
-                   "&clusterMemberPort={0}".format(base_port) +
+                   "&clusterMemberPort={0}".format(10000 + base_port) +
                    "&services={0}".format(",".join(services))).read()
 
     if do_rebalance:
