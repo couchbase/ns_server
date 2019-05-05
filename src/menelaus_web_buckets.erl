@@ -74,7 +74,7 @@ checking_bucket_uuid(Req, BucketConfig, Body) ->
     case ReqUUID0 =/= undefined of
         true ->
             ReqUUID = list_to_binary(ReqUUID0),
-            BucketUUID = proplists:get_value(uuid, BucketConfig),
+            BucketUUID = ns_bucket:bucket_uuid(BucketConfig),
 
             case BucketUUID =:= undefined orelse BucketUUID =:= ReqUUID of
                 true ->
@@ -136,7 +136,7 @@ build_bucket_node_infos(BucketName, BucketConfig, InfoLevel0, LocalAddr) ->
                {error, not_present} -> dict:new();
                {error, no_map} -> dict:new()
            end,
-    BucketUUID = proplists:get_value(uuid, BucketConfig),
+    BucketUUID = ns_bucket:bucket_uuid(BucketConfig),
     add_couch_api_base_loop(Nodes, BucketName, BucketUUID, LocalAddr, F, Dict, [], []).
 
 
@@ -255,7 +255,7 @@ build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
     NodeStatsListURI = bin_concat_path(["pools", "default", "buckets", Id, "nodes"]),
     BucketCaps = build_bucket_capabilities(BucketConfig),
 
-    MaybeBucketUUID = proplists:get_value(uuid, BucketConfig),
+    MaybeBucketUUID = ns_bucket:bucket_uuid(BucketConfig),
     QSProps = case MaybeBucketUUID of
                   undefined ->
                       [];

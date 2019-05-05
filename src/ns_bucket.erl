@@ -89,6 +89,7 @@
          bucket_config_view_nodes/1,
          get_num_vbuckets/0,
          get_max_buckets/0,
+         bucket_uuid/1,
          config_upgrade_to_50/1,
          config_upgrade_to_51/1,
          config_upgrade_to_55/1,
@@ -910,6 +911,9 @@ bucket_config_view_nodes(BucketConfig) ->
         false ->
             []
     end.
+
+bucket_uuid(BucketConfig) ->
+    proplists:get_value(uuid, BucketConfig).
 
 config_upgrade_to_50(Config) ->
     Buckets = get_buckets(Config),

@@ -800,7 +800,7 @@ start_compiled_roles_cache() ->
                  menelaus_users:get_users_version(),
                  menelaus_users:get_groups_version(),
                  ns_config_auth:is_system_provisioned(),
-                 [{Name, proplists:get_value(uuid, BucketConfig)} ||
+                 [{Name, ns_bucket:bucket_uuid(BucketConfig)} ||
                      {Name, BucketConfig} <- ns_bucket:get_buckets(ns_config:latest())]}
         end,
     GetEvents =
@@ -852,7 +852,7 @@ filter_out_invalid_roles(Roles, Definitions, AllPossibleValues) ->
 calculate_possible_param_values(_Buckets, []) ->
     [[]];
 calculate_possible_param_values(Buckets, [bucket_name]) ->
-    [[any] | [[{Name, proplists:get_value(uuid, Props)}] || {Name, Props} <- Buckets]].
+    [[any] | [[{Name, ns_bucket:bucket_uuid(Props)}] || {Name, Props} <- Buckets]].
 
 all_params_combinations() ->
     [[], [bucket_name]].

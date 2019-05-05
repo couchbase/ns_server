@@ -177,7 +177,7 @@ compute_bucket_info_with_config(Bucket, Config, BucketConfig) ->
 
     %% we do sorting to make nodes list match order of servers inside vBucketServerMap
     Servers = lists:sort(Servers0),
-    BucketUUID = proplists:get_value(uuid, BucketConfig),
+    BucketUUID = ns_bucket:bucket_uuid(BucketConfig),
 
     NIs = lists:map(fun (Node) ->
                             node_bucket_info(Node, Config, Bucket,

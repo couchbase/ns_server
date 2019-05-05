@@ -119,7 +119,7 @@ get(Config, BucketName) ->
     BucketType = proplists:get_value(type, BucketConfig),
 
     MemQuota = proplists:get_value(ram_quota, BucketConfig),
-    UUID = proplists:get_value(uuid, BucketConfig),
+    UUID = ns_bucket:bucket_uuid(BucketConfig),
 
     Params = params(BucketType, BucketName, BucketConfig, MemQuota, UUID),
 

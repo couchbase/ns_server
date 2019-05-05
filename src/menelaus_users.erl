@@ -910,7 +910,7 @@ do_upgrade_to_50(Nodes, Repair) ->
                            [AdminName]);
           ({BucketName, BucketConfig}) ->
               Password = proplists:get_value(sasl_password, BucketConfig, ""),
-              UUID = proplists:get_value(uuid, BucketConfig),
+              UUID = ns_bucket:bucket_uuid(BucketConfig),
               Name = "Generated user for bucket " ++ BucketName,
               ok = store_user_50_validated(
                      {BucketName, local},

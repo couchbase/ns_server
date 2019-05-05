@@ -50,7 +50,7 @@ do_db_req(#httpd{path_parts=[DbName | _]} = Req, Fun) ->
 verify_bucket_uuid(_, undefined) ->
     ok;
 verify_bucket_uuid(BucketConfig, MaybeUUID) ->
-    BucketUUID = proplists:get_value(uuid, BucketConfig),
+    BucketUUID = ns_bucket:bucket_uuid(BucketConfig),
     true = (BucketUUID =/= undefined),
     case BucketUUID =:= MaybeUUID of
         true ->

@@ -1352,7 +1352,7 @@ get_retry_check(Config, FailedNodes) ->
 buckets_chk(Config) ->
     Bkts = lists:map(fun({B, BC}) ->
                              {B, proplists:get_value(num_replicas, BC),
-                              proplists:get_value(uuid, BC)}
+                              ns_bucket:bucket_uuid(BC)}
                      end, ns_bucket:get_buckets(Config)),
     erlang:phash2(lists:sort(Bkts)).
 
