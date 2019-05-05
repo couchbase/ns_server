@@ -913,7 +913,9 @@ bucket_config_view_nodes(BucketConfig) ->
     end.
 
 bucket_uuid(BucketConfig) ->
-    proplists:get_value(uuid, BucketConfig).
+    UUID = proplists:get_value(uuid, BucketConfig),
+    true = is_binary(UUID),
+    UUID.
 
 config_upgrade_to_50(Config) ->
     Buckets = get_buckets(Config),

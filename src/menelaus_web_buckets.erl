@@ -76,7 +76,7 @@ checking_bucket_uuid(Req, BucketConfig, Body) ->
             ReqUUID = list_to_binary(ReqUUID0),
             BucketUUID = ns_bucket:bucket_uuid(BucketConfig),
 
-            case BucketUUID =:= undefined orelse BucketUUID =:= ReqUUID of
+            case BucketUUID =:= ReqUUID of
                 true ->
                     Body();
                 false ->
@@ -255,13 +255,8 @@ build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
     NodeStatsListURI = bin_concat_path(["pools", "default", "buckets", Id, "nodes"]),
     BucketCaps = build_bucket_capabilities(BucketConfig),
 
-    MaybeBucketUUID = ns_bucket:bucket_uuid(BucketConfig),
-    QSProps = case MaybeBucketUUID of
-                  undefined ->
-                      [];
-                  _ ->
-                      [{"bucket_uuid", MaybeBucketUUID}]
-              end,
+    BucketUUID = ns_bucket:bucket_uuid(BucketConfig),
+    QSProps = [{"bucket_uuid", BucketUUID}],
 
     BuildUUIDURI = fun (Segments) ->
                            bin_concat_path(Segments, QSProps)
@@ -336,27 +331,20 @@ build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
                       Suffix
               end,
 
-    Suffix2 = case MaybeBucketUUID of
-                  undefined ->
-                      Suffix1;
-                  _ ->
-                      [{uuid, MaybeBucketUUID} | Suffix1]
-              end,
-
     StorageMode = ns_bucket:storage_mode(BucketConfig),
     ACInfo = build_auto_compaction_info(BucketConfig, StorageMode),
     PIInfo = build_purge_interval_info(BucketConfig, StorageMode),
-    Suffix3 = ACInfo ++ PIInfo ++ Suffix2,
+    Suffix2 = ACInfo ++ PIInfo ++ Suffix1 ,
 
-    Suffix4 = case StorageMode of
+    Suffix3 = case StorageMode of
                   couchstore ->
                       DDocsURI = bin_concat_path(["pools", "default", "buckets",
                                                   Id, "ddocs"]),
                       [{ddocs, {struct, [{uri, DDocsURI}]}},
                        {replicaIndex, proplists:get_value(replica_index, BucketConfig, true)}
-                       | Suffix3];
+                       | Suffix2];
                   _ ->
-                      Suffix3
+                      Suffix2
               end,
 
     FlushEnabled = proplists:get_value(flush_enabled, BucketConfig, false),
@@ -369,16 +357,17 @@ build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
                 []
         end,
 
-    Suffix5 = case MayExposeAuth of
+    Suffix4 = case MayExposeAuth of
                   true ->
                       [{saslPassword,
                        list_to_binary(proplists:get_value(sasl_password, BucketConfig, ""))} |
-                       Suffix4];
+                       Suffix3];
                   false ->
-                      Suffix4
+                      Suffix3
               end,
 
     {struct, [{name, list_to_binary(Id)},
+              {uuid, BucketUUID},
               {bucketType, external_bucket_type(BucketType, BucketConfig)},
               {authType, misc:expect_prop_value(auth_type, BucketConfig)},
               {uri, BuildUUIDURI(["pools", "default", "buckets", Id])},
@@ -401,7 +390,7 @@ build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
                                 {directoryURI, StatsDirectoryUri},
                                 {nodeStatsListURI, NodeStatsListURI}]}},
               {nodeLocator, ns_bucket:node_locator(BucketConfig)}
-              | Suffix5]}.
+              | Suffix4]}.
 
 build_bucket_capabilities(BucketConfig) ->
     MoreCaps =

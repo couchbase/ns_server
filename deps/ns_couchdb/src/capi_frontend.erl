@@ -51,7 +51,6 @@ verify_bucket_uuid(_, undefined) ->
     ok;
 verify_bucket_uuid(BucketConfig, MaybeUUID) ->
     BucketUUID = ns_bucket:bucket_uuid(BucketConfig),
-    true = (BucketUUID =/= undefined),
     case BucketUUID =:= MaybeUUID of
         true ->
             ok;
