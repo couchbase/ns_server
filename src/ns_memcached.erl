@@ -70,7 +70,7 @@
                 very_heavy_calls_queue = impossible :: queue:queue(),
                 status :: connecting | init | connected | warmed,
                 start_time :: undefined | tuple(),
-                bucket :: nonempty_string(),
+                bucket :: bucket_name(),
                 sock = still_connecting :: port() | still_connecting,
                 timer :: any(),
                 work_requests = [],
