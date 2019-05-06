@@ -70,7 +70,7 @@
 -record(state, {bucket :: bucket_name() | undefined,
                 buckets_count :: pos_integer(),
                 bucket_number :: non_neg_integer(),
-                stage_info :: rebalance_progress:stage_info(),
+                stage_info :: rebalance_stage_info:stage_info(),
                 nodes_info :: [{atom(), [node()]}],
                 type :: atom(),
                 bucket_info :: dict:dict()}).
