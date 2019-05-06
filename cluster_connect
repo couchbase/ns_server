@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # @author Couchbase <info@couchbase.com>
-# @copyright 2011-2018 Couchbase, Inc.
+# @copyright 2011-2019 Couchbase, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -120,6 +120,10 @@ def main():
     addr = "127.0.0.1" if protocol == "ipv4" else "[::1]"
     services = deploy["n0"]
     print "Connecting node 0 with services {0}".format(str(services))
+
+    info = json.loads(o.open("http://{0}:{1}/pools".format(addr, base_port)).read())
+    community_edition = info['isEnterprise'] is not True
+
     o.open("http://{0}:{1}/node/controller/setupServices".format(addr, base_port),
            "services={0}".format(",".join(services))).read()
     o.open("http://{0}:{1}/pools/default".format(addr, base_port),
@@ -141,10 +145,11 @@ def main():
         services = deploy.get("n" + str(i), [])
         if not services: services = ["kv"]
         print "Connecting node {0} with services {1}".format(i, str(services))
+        cluster_member_port = base_port if community_edition else base_port + 10000
         o.open("http://{0}:{1}/node/controller/doJoinCluster".format(addr, port),
                "user=Administrator&password=asdasd&" +
                    "clusterMemberHostIp={0}".format(addr) +
-                   "&clusterMemberPort={0}".format(10000 + base_port) +
+                   "&clusterMemberPort={0}".format(cluster_member_port) +
                    "&services={0}".format(",".join(services))).read()
 
     if do_rebalance:
