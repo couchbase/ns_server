@@ -49,6 +49,7 @@
          is_version_madhatter/1,
          is_enterprise/0,
          is_saslauthd_enabled/0,
+         is_cbas_enabled/0,
          supported_compat_version/0,
          min_supported_compat_version/0,
          effective_cluster_compat_version/0,
@@ -188,6 +189,9 @@ is_saslauthd_enabled() ->
     is_enterprise() andalso
         ns_config:search(ns_config:latest(),
                          {node, node(), saslauthd_enabled}, false).
+
+is_cbas_enabled() ->
+    is_enterprise().
 
 rebalance_ignore_view_compactions() ->
     ns_config:read_key_fast(rebalance_ignore_view_compactions, false).

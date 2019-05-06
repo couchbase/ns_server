@@ -220,18 +220,25 @@ this_node_cbas_dirs() ->
     node_cbas_dirs(ns_config:latest(), node()).
 
 node_cbas_dirs(Config, Node) ->
-    case ns_config:search_node(Node, Config, cbas_dirs) of
-        {value, V} ->
-            V;
+   case cluster_compat_mode:is_cbas_enabled() of
+        true ->
+            case ns_config:search_node(Node, Config, cbas_dirs) of
+                {value, V} ->
+                    V;
+                false ->
+                    %% Should only occur running mixed versions (e.g. during
+                    %% upgrade)
+                    %% TODO: Remove once madhatter is the oldest supported
+                    %%       release
+                    case rpc:call(Node, ns_storage_conf, this_node_ixdir, []) of
+                        {ok, CBASDirs} ->
+                            [CBASDirs];
+                        _Error ->
+                            []
+                    end
+            end;
         false ->
-            % Should only occur running mixed versions (e.g. during upgrade)
-            % TODO: Remove once madhatter is the oldest supported release
-            case rpc:call(Node, ns_storage_conf, this_node_ixdir, []) of
-                {ok, CBASDirs} ->
-                    [CBASDirs];
-                _Error ->
-                    []
-            end
+            []
     end.
 
 this_node_java_home() ->
