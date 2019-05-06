@@ -32,7 +32,8 @@
          cancel_any_pending_retry_async/1,
          cancel_pending_retry/2,
          cancel_pending_retry_async/2,
-         get_pending_retry/0]).
+         get_pending_retry/0,
+         process_new_settings/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -83,13 +84,16 @@ cancel_pending_retry_async(RebalanceId, CancelledBy) ->
 get_pending_retry() ->
     call(get_pending_retry).
 
+process_new_settings(Curr, New) ->
+    call({process_new_settings, Curr, New}).
+
 %% gen_server callbacks
 init([]) ->
     {ok, reset_state()}.
 
 handle_cast({rebalance, Type, Params, Id, Chk},
             #state{state = idle} = State) ->
-    Count = 1,
+    Count = 0,
     AfterS = auto_rebalance_settings:get_retry_after(ns_config:latest()),
     TRef = schedule_retry(Type, Id, Count, AfterS),
     RS = #retry_rebalance{params = Params,
@@ -119,16 +123,16 @@ handle_cast({rebalance, Type, Params, Id, Chk},
                        Cfg = ns_config:latest(),
                        Max = auto_rebalance_settings:get_retry_max(Cfg),
                        AfterS = auto_rebalance_settings:get_retry_after(Cfg),
-                       case Count =:= Max of
-                           true ->
+                       NewCount = Count + 1,
+                       case NewCount of
+                           I when I >= Max ->
                                ale:info(?USER_LOGGER,
                                         "~s with Id ~s will not be "
                                         "retried. Exhausted all retries. "
                                         "Retry count ~p",
-                                        [TypeStr, Id, Count]),
+                                        [TypeStr, Id, NewCount]),
                                reset_state();
                            _ ->
-                               NewCount = Count + 1,
                                TRef = schedule_retry(Type, Id, NewCount,
                                                      AfterS),
                                RS1 = RS#retry_rebalance{state = pending,
@@ -193,18 +197,10 @@ handle_call(get_pending_retry, _From,
                                             state = RetryState,
                                             attempts = Count,
                                             timer_ref = TRef}} = State) ->
-    true = TRef =/= undefined,
-    TimeS = case erlang:read_timer(TRef) of
-                false ->
-                    %% Can happen when timer has expired
-                    0;
-                TimeMS ->
-                    TimeMS/1000
-            end,
     Max = auto_rebalance_settings:get_retry_max(ns_config:latest()),
     RV = [{retry_rebalance, RetryState}, {rebalance_id, ID}, {type, Type},
-          {attempts_remaining, Max - Count + 1},
-          {retry_after_secs, TimeS}] ++ Params,
+          {attempts_remaining, Max - Count},
+          {retry_after_secs, remaining_time(TRef)}] ++ Params,
     {reply, RV, State};
 
 handle_call(get_pending_retry, _From,  #state{state = idle} = State) ->
@@ -217,6 +213,18 @@ handle_call({cancel_any_pending_retry, _} = Call, _From, State) ->
 handle_call({cancel_pending_retry, _, _} = Call, _From, State) ->
     {noreply, NewState} = handle_cast(Call, State),
     {reply, ok, NewState};
+
+handle_call({process_new_settings, _, _}, _From,
+            #state{state = idle} = State) ->
+    {reply, ok, State};
+
+handle_call({process_new_settings, _, _}, _From,
+            #state{state = #retry_rebalance{state = in_progress}} = State) ->
+    {reply, ok, State};
+
+handle_call({process_new_settings, Curr, New}, _From,
+            #state{state = #retry_rebalance{state = pending}} = State) ->
+    {reply, ok, process_new_settings(Curr, New, State)};
 
 handle_call(Call, From, State) ->
     ?log_warning("Unexpected call ~p from ~p when in state:~n~p",
@@ -272,12 +280,77 @@ schedule_retry(Type, Id, RetryCount, AfterS) ->
              "~s with Id ~s will be retried after ~p seconds. "
              "Retry attempt number ~p",
              [ns_orchestrator:rebalance_type2text(Type),
-              Id, AfterS, RetryCount]),
+              Id, AfterS, RetryCount + 1]),
     erlang:send_after(AfterS * 1000, self(), retry_rebalance).
 
 cancel_rebalance(Type, ID, TRef, CancelledBy) ->
     ?log_debug("Cancelling pending ~s with Id ~s. Cancelled by ~s.",
                [ns_orchestrator:rebalance_type2text(Type), ID, CancelledBy]),
-    erlang:cancel_timer(TRef),
-    misc:flush(retry_rebalance),
+    cancel_timer(TRef),
     reset_state().
+
+cancel_timer(TRef) ->
+    erlang:cancel_timer(TRef),
+    misc:flush(retry_rebalance).
+
+remaining_time(TRef) ->
+    true = TRef =/= undefined,
+    case erlang:read_timer(TRef) of
+        false ->
+            %% Can happen when timer has expired
+            0;
+        TimeMS ->
+            round(TimeMS/1000)
+    end.
+
+process_new_settings(Curr, New,
+                     #state{state = #retry_rebalance{type = Type,
+                                                     rebalance_id = Id,
+                                                     attempts = Count,
+                                                     timer_ref = TRef}} = S) ->
+    case  proplists:get_value(enabled, New) of
+        false ->
+            cancel_rebalance(Type, Id, TRef, "feature disable");
+        true ->
+            NewMax = proplists:get_value(max_attempts, New),
+            case Count of
+                I when I >= NewMax ->
+                    ale:info(?USER_LOGGER,
+                             "~s with Id ~s has been retried ~p times. "
+                             "This exceeds the new max attempts ~p. "
+                             "Cancelling the operation.",
+                             [ns_orchestrator:rebalance_type2text(Type),
+                              Id, Count, NewMax]),
+                    cancel_rebalance(Type, Id, TRef,
+                                     "reduction in max attempts");
+                _ ->
+                    CurrAfter = proplists:get_value(after_time_period, Curr),
+                    NewAfter = proplists:get_value(after_time_period, New),
+                    process_time_change(CurrAfter, NewAfter, S)
+            end
+    end.
+
+process_time_change(CurrAfter, CurrAfter, S) ->
+    S;
+process_time_change(CurrAfter, NewAfter,
+                    #state{state = #retry_rebalance{type = Type,
+                                                    rebalance_id = Id,
+                                                    attempts = Count,
+                                                    timer_ref = TRef}} = S) ->
+    ElapsedTime = CurrAfter - remaining_time(TRef),
+    cancel_timer(TRef),
+    case ElapsedTime of
+        I when I >= NewAfter ->
+            ale:info(?USER_LOGGER,
+                     "Retry of ~s with Id ~s is pending for ~p seconds. "
+                     "This is longer than the new time period of ~p seconds. "
+                     "Scheduling the next retry right away. ",
+                     [ns_orchestrator:rebalance_type2text(Type),
+                      Id, ElapsedTime, NewAfter]),
+            self() ! retry_rebalance,
+            S;
+        _ ->
+            NewTR = schedule_retry(Type, Id, Count, NewAfter - ElapsedTime),
+            RS = S#state.state,
+            S#state{state = RS#retry_rebalance{timer_ref = NewTR}}
+    end.

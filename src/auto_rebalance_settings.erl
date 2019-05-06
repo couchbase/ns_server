@@ -59,24 +59,20 @@ is_retry_enabled(Config) ->
 
 set_retry_rebalance(Settings) ->
     Curr = get_retry_rebalance(ns_config:latest()),
-    CurrEn = proplists:get_value(enabled, Curr),
     CurrAfter = proplists:get_value(after_time_period, Curr),
     CurrMax = proplists:get_value(max_attempts, Curr),
 
-    %% TODO: adjust time for any retry currently pending.
     After = proplists:get_value(afterTimePeriod, Settings, CurrAfter),
-    %% TODO: adjust count for any retry currently pending.
     Max = proplists:get_value(maxAttempts, Settings, CurrMax),
     NewEn = proplists:get_value(enabled, Settings),
 
-    maybe_cancel_pending_retry(CurrEn, NewEn),
-
     New = [{enabled, NewEn}, {after_time_period, After}, {max_attempts, Max}],
-    ns_config:set(retry_rebalance, New),
+    maybe_update_settings(Curr, New),
     New.
 
-maybe_cancel_pending_retry(true, false) ->
-    auto_rebalance:cancel_any_pending_retry("feature disable");
-maybe_cancel_pending_retry(_, _) ->
-    ok.
+maybe_update_settings(Curr, Curr) ->
+    ok;
+maybe_update_settings(Curr, New) ->
+    ns_config:set(retry_rebalance, New),
+    auto_rebalance:process_new_settings(Curr, New).
 
