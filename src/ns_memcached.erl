@@ -732,17 +732,17 @@ handle_info(Msg, State) ->
 terminate(_Reason, #state{sock = still_connecting}) ->
     ?log_debug("Dying when socket is not yet connected");
 terminate(Reason, #state{bucket=Bucket, sock=Sock}) ->
-    NsConfig = try ns_config:get()
-               catch T:E ->
-                       ?log_error("Failed to reach ns_config:get() ~p:~p~n~p~n",
-                                  [T,E,erlang:get_stacktrace()]),
-                       undefined
-               end,
-    BucketConfigs = ns_bucket:get_buckets(NsConfig),
-    NoBucket = NsConfig =/= undefined andalso
-        not lists:keymember(Bucket, 1, BucketConfigs),
-    NodeDying = NsConfig =/= undefined
-        andalso (ns_config:search(NsConfig, i_am_a_dead_man) =/= false
+    try
+        do_terminate(Reason, ns_config:get(), Bucket, Sock)
+    after
+        gen_event:notify(buckets_events, {stopped, Bucket}),
+        ?log_debug("Terminated.")
+    end.
+
+do_terminate(Reason, Config, Bucket, Sock) ->
+    BucketConfigs = ns_bucket:get_buckets(Config),
+    NoBucket = not lists:keymember(Bucket, 1, BucketConfigs),
+    NodeDying = (ns_config:search(Config, i_am_a_dead_man) =/= false
                  orelse not lists:member(Bucket, ns_bucket:node_bucket_names(node(), BucketConfigs))),
 
     Deleting = NoBucket orelse NodeDying,
@@ -786,11 +786,7 @@ terminate(Reason, #state{bucket=Bucket, sock=Sock}) ->
             ale:info(?USER_LOGGER,
                      "Control connection to memcached on ~p disconnected: ~p",
                      [node(), Reason])
-    end,
-    gen_event:notify(buckets_events, {stopped, Bucket}),
-    ?log_debug("Terminated."),
-    ok.
-
+    end.
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
