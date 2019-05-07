@@ -509,6 +509,7 @@ goport_args(cbas, Config, Cmd, NodeUUID) ->
     LogLevel = ns_server:get_loglevel(cbas),
 
     build_port_args([{"-serverPort",           rest_port},
+                     {"-serverSslPort",        ssl_rest_port},
                      {"-bindHttpPort",         cbas_http_port},
                      {"-bindAdminPort",        cbas_admin_port},
                      {"-debugPort",            cbas_debug_port},
