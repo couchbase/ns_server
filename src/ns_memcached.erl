@@ -787,7 +787,7 @@ terminate(Reason, #state{bucket=Bucket, sock=Sock}) ->
                      "Control connection to memcached on ~p disconnected: ~p",
                      [node(), Reason])
     end,
-    gen_event:notify(buckets_events, {stopped, Bucket, Deleting, Reason}),
+    gen_event:notify(buckets_events, {stopped, Bucket}),
     ?log_debug("Terminated."),
     ok.
 

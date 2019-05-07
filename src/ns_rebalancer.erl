@@ -428,7 +428,7 @@ do_wait_local_buckets_shutdown_complete(ExcessiveBuckets) ->
               Ref = erlang:make_ref(),
               Parent = self(),
               Subscription = ns_pubsub:subscribe_link(buckets_events,
-                                                      fun ({stopped, _, _, _} = StoppedMsg) ->
+                                                      fun ({stopped, _} = StoppedMsg) ->
                                                               Parent ! {Ref, StoppedMsg};
                                                           (_) ->
                                                               ok
