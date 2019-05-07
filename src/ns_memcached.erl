@@ -757,35 +757,54 @@ do_terminate(Reason, Config, Bucket, Sock) ->
                                           Deleting -> "deletion";
                                           true -> "server shutdown"
                                       end]),
-            try
-                case Deleting orelse Reconfig of
-                    false ->
-                        %% if this is system shutdown bucket engine
-                        %% now can reliably delete all buckets as part of shutdown.
-                        %% if this is supervisor crash, we're fine too
-                        ?log_info("This bucket shutdown is not due to bucket deletion or reconfiguration. Doing nothing");
-                    true ->
-                        ok = mc_client_binary:delete_bucket(Sock, Bucket, [{force, not(Reconfig)}])
-                end
-            catch E2:R2 ->
-                    ?log_error("Failed to delete bucket ~p: ~p",
-                               [Bucket, {E2, R2}])
-            after
-                case NoBucket of
+
+            case Deleting orelse Reconfig of
+                true ->
+                    %% force = true means that that ep_engine will not try to
+                    %% flush outstanding mutations to disk before deleting the
+                    %% bucket. So we need to set it to false when we need to
+                    %% delete and recreate the bucket just because some
+                    %% setting changed.
+                    Force = not Reconfig,
+
                     %% files are deleted here only when bucket is deleted; in
                     %% all the other cases (like node removal or failover) we
                     %% leave them on the file system and let others decide
                     %% when they should be deleted
-                    true ->
-                        ?log_debug("Proceeding into vbuckets dbs deletions"),
-                        ns_couchdb_api:delete_databases_and_files(Bucket);
-                    _ -> ok
-                end
+                    DeleteData = NoBucket,
+
+                    delete_bucket(Sock, Bucket, Force, DeleteData);
+                false ->
+                    %% if this is system shutdown bucket engine
+                    %% now can reliably delete all buckets as part of shutdown.
+                    %% if this is supervisor crash, we're fine too
+                    ?log_info("Bucket ~p shutdown is not due to bucket "
+                              "deletion or reconfiguration. Doing nothing",
+                              [Bucket])
             end;
         false ->
             ale:info(?USER_LOGGER,
                      "Control connection to memcached on ~p disconnected: ~p",
                      [node(), Reason])
+    end.
+
+delete_bucket(Sock, Bucket, Force, DeleteData) ->
+    ?log_info("Deleting bucket ~p from memcached (force = ~p)",
+              [Bucket, Force]),
+
+    try
+        ok = mc_client_binary:delete_bucket(Sock, Bucket, [{force, Force}])
+    catch
+        T:E ->
+            ?log_error("Failed to delete bucket ~p: ~p", [Bucket, {T, E}])
+    after
+        case DeleteData of
+            true ->
+                ?log_debug("Proceeding into vbuckets dbs deletions"),
+                ns_couchdb_api:delete_databases_and_files(Bucket);
+            false ->
+                ok
+        end
     end.
 
 code_change(_OldVsn, State, _Extra) ->
