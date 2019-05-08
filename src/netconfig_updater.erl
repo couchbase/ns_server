@@ -53,7 +53,10 @@ handle_call({apply_net_config, Config}, _From, State) ->
     CEncrypt = proplists:get_value(clusterEncryption, Config, CurCEncrypt),
     From = {CurAFamily, CurCEncrypt},
     To = {AFamily, CEncrypt},
-    handle_with_marker(apply_net_config, From, To, State);
+    case check_nodename_resolvable(node(), AFamily) of
+        ok -> handle_with_marker(apply_net_config, From, To, State);
+        {error, _} = Error -> {reply, Error, State}
+    end;
 
 handle_call({apply_ext_dist_protocols, Protos}, _From, State) ->
     CurProtos = cb_dist:external_listeners(),
@@ -277,3 +280,18 @@ apply_ext_dist_protocols_unprotected(Protos) ->
 
 update_marker_path() ->
     path_config:component_path(data, "netconfig_marker").
+
+check_nodename_resolvable('nonode@nohost', _) -> ok;
+check_nodename_resolvable(Node, AFamily) ->
+    {_, Hostname} = misc:node_name_host(Node),
+    case inet:getaddr(Hostname, AFamily) of
+        {ok, _} -> ok;
+        {error, Reason} ->
+            AFamilyStr = case AFamily of
+                             inet -> "IPv4";
+                             inet6 -> "IPv6"
+                         end,
+            M = io_lib:format("Can't resolve node's name ~s to ~s address: ~p",
+                              [Hostname, AFamilyStr, Reason]),
+            {error, iolist_to_binary(M)}
+    end.
