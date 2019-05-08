@@ -746,43 +746,33 @@ do_terminate(Reason, Config, Bucket, Sock) ->
                  orelse not lists:member(Bucket, ns_bucket:node_bucket_names(node(), BucketConfigs))),
 
     Deleting = NoBucket orelse NodeDying,
+    Reconfig = (Reason =:= {shutdown, reconfig}),
 
-    case misc:is_normal_termination(Reason) orelse Deleting of
+    case Deleting orelse Reconfig of
         true ->
-            Reconfig = (Reason =:= {shutdown, reconfig}),
-
             ale:info(?USER_LOGGER, "Shutting down bucket ~p on ~p for ~s",
                      [Bucket, node(), if
                                           Reconfig -> "reconfiguration";
-                                          Deleting -> "deletion";
-                                          true -> "server shutdown"
+                                          Deleting -> "deletion"
                                       end]),
 
-            case Deleting orelse Reconfig of
-                true ->
-                    %% force = true means that that ep_engine will not try to
-                    %% flush outstanding mutations to disk before deleting the
-                    %% bucket. So we need to set it to false when we need to
-                    %% delete and recreate the bucket just because some
-                    %% setting changed.
-                    Force = not Reconfig,
+            %% force = true means that that ep_engine will not try to flush
+            %% outstanding mutations to disk before deleting the bucket. So we
+            %% need to set it to false when we need to delete and recreate the
+            %% bucket just because some setting changed.
+            Force = not Reconfig,
 
-                    %% files are deleted here only when bucket is deleted; in
-                    %% all the other cases (like node removal or failover) we
-                    %% leave them on the file system and let others decide
-                    %% when they should be deleted
-                    DeleteData = NoBucket,
+            %% files are deleted here only when bucket is deleted; in all the
+            %% other cases (like node removal or failover) we leave them on
+            %% the file system and let others decide when they should be
+            %% deleted
+            DeleteData = NoBucket,
 
-                    delete_bucket(Sock, Bucket, Force, DeleteData);
-                false ->
-                    %% if this is system shutdown bucket engine
-                    %% now can reliably delete all buckets as part of shutdown.
-                    %% if this is supervisor crash, we're fine too
-                    ?log_info("Bucket ~p shutdown is not due to bucket "
-                              "deletion or reconfiguration. Doing nothing",
-                              [Bucket])
-            end;
+            delete_bucket(Sock, Bucket, Force, DeleteData);
         false ->
+            %% if this is system shutdown bucket engine now can reliably
+            %% delete all buckets as part of shutdown. if this is supervisor
+            %% crash, we're fine too
             ale:info(?USER_LOGGER,
                      "Control connection to memcached on ~p disconnected: ~p",
                      [node(), Reason])
