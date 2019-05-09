@@ -114,6 +114,7 @@
     function postJoinCluster() {
       var data = _.clone(vm.joinClusterConfig.clusterMember);
       data.services = mnHelper.checkboxesToList(vm.joinClusterConfig.services.model).join(',');
+      data.newNodeHostname = vm.config.hostname;
       return addErrorHandler(mnClusterConfigurationService.postJoinCluster(data), "postJoinCluster");
     }
     function postStats() {
@@ -156,12 +157,14 @@
 
       var promise =
           postDiskStorage().then(function () {
-            var promise = addErrorHandler(mnClusterConfigurationService
-                                          .postHostname(vm.config.hostname), "postHostname");
-            if (vm.isEnterprise) {
-              promise = promise.then(postHostConfig);
+            if (mnWizardService.getState().isNewCluster) {
+              var promise = addErrorHandler(mnClusterConfigurationService
+                                            .postHostname(vm.config.hostname), "postHostname");
+              if (vm.isEnterprise) {
+                promise = promise.then(postHostConfig);
+              }
+              return promise;
             }
-            return promise;
           }).then(function () {
             if (mnWizardService.getState().isNewCluster) {
               if (vm.config.startNewClusterConfig.services.model.index) {

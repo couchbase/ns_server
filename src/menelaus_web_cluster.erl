@@ -265,6 +265,17 @@ parse_join_cluster_params(Params, ThisIsJoin) ->
                 {[], {ParsedScheme, ParsedHost, ParsedPort}}
         end,
 
+    NewHostnameParams = case proplists:get_value("newNodeHostname", Params) of
+                            undefined -> [];
+                            NH ->
+                                case string:trim(NH) of
+                                    "" -> [];
+                                    "127.0.0.1" -> [];
+                                    "::1" -> [];
+                                    _ -> [{new_node_hostname, NH}]
+                                end
+                        end,
+
     Errors = MissingFieldErrors ++ VersionErrors ++ HostnameError ++
         case Services of
             {error, ServicesError} ->
@@ -280,7 +291,7 @@ parse_join_cluster_params(Params, ThisIsJoin) ->
                   {scheme, Scheme},
                   {host, Host},
                   {port, Port}
-                  | BasePList]};
+                  | BasePList ++ NewHostnameParams]};
         _ ->
             {errors, Errors}
     end.
@@ -298,26 +309,38 @@ handle_join_clean_node(Req) ->
             OtherUser = proplists:get_value(user, Fields),
             OtherPswd = proplists:get_value(password, Fields),
             Services = proplists:get_value(services, Fields),
+            Hostname = proplists:get_value(new_node_hostname, Fields),
             handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherUser,
-                             OtherPswd, Services)
+                             OtherPswd, Services, Hostname)
     end.
 
 handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherUser, OtherPswd,
-                 Services) ->
+                 Services, Hostname) ->
     process_flag(trap_exit, true),
     RV = case ns_cluster:check_host_port_connectivity(OtherHost, OtherPort) of
              {ok, MyIP, AFamily} ->
-                 {struct, MyPList} = menelaus_web_node:build_full_node_info(node(), MyIP),
-                 HostnamePort =
-                    binary_to_list(misc:expect_prop_value(hostname, MyPList)),
-                 {Host, _} = misc:split_host_port(HostnamePort, "8091"),
-                 Host2 = misc:maybe_add_brackets(Host),
+                 Host =
+                    case Hostname of
+                        undefined ->
+                            {struct, MyPList} =
+                                menelaus_web_node:build_full_node_info(node(),
+                                                                       MyIP),
+                            HostnamePort =
+                                binary_to_list(misc:expect_prop_value(hostname,
+                                                                      MyPList)),
+                            {H, _} = misc:split_host_port(HostnamePort, "8091"),
+                            H;
+                        H -> H
+                    end,
+
                  Port = case OtherScheme of
                             http -> service_ports:get_port(rest_port);
                             https -> service_ports:get_port(ssl_rest_port)
                         end,
                  NodeURL = io_lib:format("~p://~s:~b",
-                                         [OtherScheme, Host2, Port]),
+                                         [OtherScheme,
+                                          misc:maybe_add_brackets(Host),
+                                          Port]),
 
                  BasePayload = [{<<"hostname">>, iolist_to_binary(NodeURL)},
                                 {<<"user">>, []},
