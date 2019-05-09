@@ -5,7 +5,7 @@
      id="for-kv-service"
      ng-change="mnServicesCtl.change('kv', mnServicesCtl.config)"
      ng-model="mnServicesCtl.config.services.model.kv"
-     ng-disabled="mnServicesCtl.config.services.disabled.kv">
+     ng-disabled="mnServicesCtl.config.services.disabled.kv || mnServicesCtl.mnIsDisabled">
   <label for="for-kv-service">
     Data
   </label>
@@ -17,7 +17,7 @@
      id="for-index-service"
      ng-change="mnServicesCtl.change('index', mnServicesCtl.config)"
      ng-model="mnServicesCtl.config.services.model.index"
-     ng-disabled="mnServicesCtl.config.services.disabled.index">
+     ng-disabled="mnServicesCtl.config.services.disabled.index || mnServicesCtl.mnIsDisabled">
   <label for="for-index-service">
     Index
   </label>
@@ -29,7 +29,7 @@
      id="for-query-service"
      ng-change="mnServicesCtl.change('n1ql', mnServicesCtl.config)"
      ng-model="mnServicesCtl.config.services.model.n1ql"
-     ng-disabled="mnServicesCtl.config.services.disabled.n1ql">
+     ng-disabled="mnServicesCtl.config.services.disabled.n1ql || mnServicesCtl.mnIsDisabled">
   <label for="for-query-service">
     Query
   </label>
@@ -41,7 +41,7 @@
      id="for-fts-service"
      ng-change="mnServicesCtl.change('fts', mnServicesCtl.config)"
      ng-model="mnServicesCtl.config.services.model.fts"
-     ng-disabled="mnServicesCtl.config.services.disabled.fts">
+     ng-disabled="mnServicesCtl.config.services.disabled.fts || mnServicesCtl.mnIsDisabled">
   <label for="for-fts-service">
     Search
   </label>
@@ -53,7 +53,7 @@
      id="for-cbas-service"
      ng-change="mnServicesCtl.change('cbas', mnServicesCtl.config)"
      ng-model="mnServicesCtl.config.services.model.cbas"
-     ng-disabled="mnServicesCtl.config.services.disabled.cbas">
+     ng-disabled="mnServicesCtl.config.services.disabled.cbas || mnServicesCtl.mnIsDisabled">
   <label for="for-cbas-service">
     Analytics
   </label>
@@ -65,7 +65,7 @@
      id="for-eventing-service"
      ng-change="mnServicesCtl.change('eventing', mnServicesCtl.config)"
      ng-model="mnServicesCtl.config.services.model.eventing"
-     ng-disabled="mnServicesCtl.config.services.disabled.eventing">
+     ng-disabled="mnServicesCtl.config.services.disabled.eventing || mnServicesCtl.mnIsDisabled">
   <label for="for-eventing-service">
     Eventing
   </label>

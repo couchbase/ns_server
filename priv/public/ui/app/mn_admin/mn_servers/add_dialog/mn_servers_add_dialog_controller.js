@@ -5,7 +5,7 @@
     .module('mnServers')
     .controller('mnServersAddDialogController', mnServersAddDialogController)
 
-  function mnServersAddDialogController($scope, $rootScope, $q, $uibModal, mnServersService, $uibModalInstance, mnHelper, mnPromiseHelper, groups) {
+  function mnServersAddDialogController($scope, $rootScope, $q, $uibModal, mnServersService, $uibModalInstance, mnHelper, mnPromiseHelper, groups, mnClusterConfigurationService, mnPoolDefault) {
     var vm = this;
 
     vm.addNodeConfig = {
@@ -29,6 +29,7 @@
     }
     vm.isGroupsAvailable = !!groups;
     vm.onSubmit = onSubmit;
+
     if (vm.isGroupsAvailable) {
       vm.addNodeConfig.selectedGroup = groups.groups[0];
       vm.groups = groups.groups;
@@ -38,6 +39,32 @@
 
     function activate() {
       reset();
+      mnClusterConfigurationService.getSelfConfig().then(function (selfConfig) {
+        var rv = {};
+        rv.selfConfig = selfConfig;
+        if ($scope.poolDefault.isEnterprise) {
+          rv.cbasDirs = selfConfig.storage.hdd[0].cbas_dirs;
+        }
+        rv.dbPath = selfConfig.storage.hdd[0].path;
+        rv.indexPath = selfConfig.storage.hdd[0].index_path;
+        vm.selfConfig = rv;
+      });
+    }
+    function postDiskStorage(resp) {
+      if (resp) {
+        vm.optNode = resp.otpNode;
+      }
+      var data = {
+        path: vm.selfConfig.dbPath,
+        index_path: vm.selfConfig.indexPath
+      };
+      if ($scope.poolDefault.isEnterprise) {
+        data.cbas_path = vm.selfConfig.cbasDirs;
+      }
+      var promise = mnClusterConfigurationService.postDiskStorage(data, vm.optNode);
+      return mnPromiseHelper(vm, promise)
+        .catchErrors('postDiskStorageErrors')
+        .getPromise();
     }
     function reset() {
       vm.focusMe = true;
@@ -54,8 +81,16 @@
       if (form.$invalid) {
         return reset();
       }
-
-      var promise = mnServersService.addServer(vm.addNodeConfig.selectedGroup, vm.addNodeConfig.credentials, servicesList);
+      var promise;
+      if (vm.postDiskStorageErrors) {
+        promise = postDiskStorage();
+      } else {
+        promise = mnServersService
+          .addServer(vm.addNodeConfig.selectedGroup,
+                     vm.addNodeConfig.credentials,
+                     servicesList)
+          .then(postDiskStorage);
+      }
 
       mnPromiseHelper(vm, promise, $uibModalInstance)
         .showGlobalSpinner()

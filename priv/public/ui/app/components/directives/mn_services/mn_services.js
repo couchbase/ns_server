@@ -9,6 +9,7 @@
     var mnServices = {
       restrict: 'A',
       scope: {
+        mnIsDisabled: "=?",
         config: '=mnServices',
         mnIsEnterprise: "="
       },

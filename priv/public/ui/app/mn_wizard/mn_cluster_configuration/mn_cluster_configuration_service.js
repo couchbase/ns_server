@@ -230,10 +230,10 @@
         return preprocessPath(path).substring(0, info.path.length) == info.path;
       }) || {path: "/", sizeKBytes: 0, usagePercent: 0});
     }
-    function postDiskStorage(config) {
+    function postDiskStorage(config, node) {
       return $http({
         method: 'POST',
-        url: '/nodes/self/controller/settings',
+        url: '/nodes/' + (node || 'self') + '/controller/settings',
         data: config
       });
     }
