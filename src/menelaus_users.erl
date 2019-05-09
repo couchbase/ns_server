@@ -74,10 +74,8 @@
 
 %% Backward compatibility:
          get_users_45/1,
-         upgrade_to_4_5/1,
          upgrade_to_50/2,
          upgrade_to_55/2,
-         config_upgrade_to_50/0,
          config_upgrade_to_55/0,
          upgrade_status/0
         ]).
@@ -810,37 +808,6 @@ build_plain_auth(Salt, Mac) ->
     SaltAndMac = <<Salt/binary, Mac/binary>>,
     [{<<"plain">>, base64:encode(SaltAndMac)}].
 
-collect_users(asterisk, _Role, Dict) ->
-    Dict;
-collect_users([], _Role, Dict) ->
-    Dict;
-collect_users([User | Rest], Role, Dict) ->
-    NewDict = dict:update(User, fun (Roles) ->
-                                        ordsets:add_element(Role, Roles)
-                                end, ordsets:from_list([Role]), Dict),
-    collect_users(Rest, Role, NewDict).
-
--spec upgrade_to_4_5(ns_config()) -> [{set, user_roles, _}].
-upgrade_to_4_5(Config) ->
-    case ns_config:search(Config, saslauthd_auth_settings) of
-        false ->
-            [];
-        {value, Props} ->
-            case proplists:get_value(enabled, Props, false) of
-                false ->
-                    [];
-                true ->
-                    Dict = dict:new(),
-                    Dict1 = collect_users(proplists:get_value(admins, Props, []), admin, Dict),
-                    Dict2 = collect_users(proplists:get_value(roAdmins, Props, []), ro_admin, Dict1),
-                    [{set, user_roles,
-                      lists:map(fun ({User, Roles}) ->
-                                        {{binary_to_list(User), saslauthd},
-                                         [{roles, ordsets:to_list(Roles)}]}
-                                end, dict:to_list(Dict2))}]
-            end
-    end.
-
 upgrade_to_50(Config, Nodes) ->
     try
         Repair =
@@ -926,9 +893,6 @@ do_upgrade_to_50(Nodes, Repair) ->
               NewProps = lists:keystore(roles, 1, Props, {roles, ValidatedRoles}),
               ok = store_user_50_validated({LdapUser, external}, NewProps, same)
       end, LdapUsers).
-
-config_upgrade_to_50() ->
-    [{delete, users_upgrade}, {delete, read_only_user_creds}].
 
 rbac_55_upgrade_key() ->
     {rbac_upgrade, ?VERSION_55}.
@@ -1035,31 +999,3 @@ do_upgrade_to_55(Nodes) ->
                           NewProps = upgrade_user_roles_to_55(OldProps),
                           store_user_50_validated(Identity, NewProps, same)
                   end, UpdateUsers).
-
-
--ifdef(TEST).
-upgrade_to_4_5_test() ->
-    Config = [[{saslauthd_auth_settings,
-                [{enabled,true},
-                 {admins,[<<"user1">>, <<"user2">>, <<"user1">>, <<"user3">>]},
-                 {roAdmins,[<<"user4">>, <<"user1">>]}]}]],
-    UserRoles = [{{"user1", saslauthd}, [{roles, [admin, ro_admin]}]},
-                 {{"user2", saslauthd}, [{roles, [admin]}]},
-                 {{"user3", saslauthd}, [{roles, [admin]}]},
-                 {{"user4", saslauthd}, [{roles, [ro_admin]}]}],
-    Upgraded = upgrade_to_4_5(Config),
-    ?assertMatch([{set, user_roles, _}], Upgraded),
-    [{set, user_roles, UpgradedUserRoles}] = Upgraded,
-    ?assertMatch(UserRoles, lists:sort(UpgradedUserRoles)).
-
-upgrade_to_4_5_asterisk_test() ->
-    Config = [[{saslauthd_auth_settings,
-                [{enabled,true},
-                 {admins, asterisk},
-                 {roAdmins,[<<"user1">>]}]}]],
-    UserRoles = [{{"user1", saslauthd}, [{roles, [ro_admin]}]}],
-    Upgraded = upgrade_to_4_5(Config),
-    ?assertMatch([{set, user_roles, _}], Upgraded),
-    [{set, user_roles, UpgradedUserRoles}] = Upgraded,
-    ?assertMatch(UserRoles, lists:sort(UpgradedUserRoles)).
--endif.

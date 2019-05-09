@@ -96,7 +96,7 @@ supported_compat_version() ->
     end.
 
 min_supported_compat_version() ->
-    ?VERSION_40.
+    ?VERSION_50.
 
 %% NOTE: this is rpc:call-ed by mb_master
 %%

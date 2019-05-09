@@ -375,18 +375,6 @@ upgrade_config(Config) ->
     case ConfigVersion of
         CurrentVersion ->
             [];
-        {4,0} ->
-            [{set, {node, node(), config_version}, {4,1,1}} |
-             upgrade_config_from_4_0_to_4_1_1(Config)];
-        {4,1,1} ->
-            [{set, {node, node(), config_version}, {4,5}} |
-             upgrade_config_from_4_1_1_to_4_5()];
-        {4,5} ->
-            [{set, {node, node(), config_version}, {4,6,5}} |
-             upgrade_config_from_4_5_to_4_6_5()];
-        {4,6,5} ->
-            [{set, {node, node(), config_version}, {5,0}} |
-             upgrade_config_from_4_6_5_to_5_0(Config)];
         {5,0} ->
             [{set, {node, node(), config_version}, {5,1,1}} |
              upgrade_config_from_5_0_to_5_1_1()];
@@ -459,34 +447,6 @@ rename_key(OldKey, NewKey, Config) ->
         false ->
             []
     end.
-
-upgrade_config_from_4_0_to_4_1_1(Config) ->
-    ?log_info("Upgrading config from 4.0 to 4.1.1"),
-    do_upgrade_config_from_4_0_to_4_1_1(Config, default()).
-
-do_upgrade_config_from_4_0_to_4_1_1(_Config, DefaultConfig) ->
-    [upgrade_key(memcached_defaults, DefaultConfig),
-     upgrade_key(memcached_config, DefaultConfig)].
-
-upgrade_config_from_4_1_1_to_4_5() ->
-    DefaultConfig = default(),
-    do_upgrade_config_from_4_1_1_to_4_5(DefaultConfig).
-
-do_upgrade_config_from_4_1_1_to_4_5(DefaultConfig) ->
-    [upgrade_key(memcached_config, DefaultConfig),
-     upgrade_key(memcached_defaults, DefaultConfig),
-     upgrade_key(compaction_daemon, DefaultConfig)].
-
-upgrade_config_from_4_5_to_4_6_5() ->
-    rebalance_quirks:upgrade_config_project_intact_patched().
-
-upgrade_config_from_4_6_5_to_5_0(Config) ->
-    do_upgrade_config_from_4_6_5_to_5_0(Config, default()).
-
-do_upgrade_config_from_4_6_5_to_5_0(Config, DefaultConfig) ->
-    [upgrade_sub_keys(memcached, [rbac_file], Config, DefaultConfig),
-     upgrade_key(memcached_defaults, DefaultConfig),
-     upgrade_key(memcached_config, DefaultConfig)].
 
 upgrade_config_from_5_0_to_5_1_1() ->
     rebalance_quirks:upgrade_config_project_intact_patched().
@@ -563,50 +523,6 @@ decrypt(Config) ->
 
 
 -ifdef(TEST).
-upgrade_4_0_to_4_1_1_test() ->
-    Cfg = [[{some_key, some_value},
-            {{node, node(), memcached}, old_memcached_config},
-            {{node, node(), port_servers}, old_port_servers},
-            {{node, node(), memcached_default}, old_memcached_defaults},
-            {{node, node(), memcached_config}, old_memcached_config}]],
-    Default = [{{node, node(), memcached_defaults}, new_memcached_defaults},
-               {{node, node(), port_servers}, new_port_servers},
-               {{node, node(), memcached}, new_memcached},
-               {{node, node(), memcached_config}, new_memcached_config}],
-    ?assertMatch([{set, {node, _, memcached_defaults}, new_memcached_defaults},
-                  {set, {node, _, memcached_config}, new_memcached_config}],
-                 do_upgrade_config_from_4_0_to_4_1_1(Cfg, Default)).
-
-upgrade_4_1_1_to_4_5_test() ->
-    Default = [{{node, node(), memcached_config}, memcached_config},
-               {{node, node(), memcached}, memcached},
-               {{node, node(), memcached_defaults}, memcached_defaults},
-               {{node, node(), compaction_daemon}, compaction_daemon_config}],
-
-    ?assertMatch([{set, {node, _, memcached_config}, memcached_config},
-                  {set, {node, _, memcached_defaults}, memcached_defaults},
-                  {set, {node, _, compaction_daemon}, compaction_daemon_config}],
-                 do_upgrade_config_from_4_1_1_to_4_5(Default)).
-
-upgrade_4_6_5_to_5_0_test() ->
-    Cfg = [[{some_key, some_value},
-            {{node, node(), memcached},
-             [{old, info}]},
-            {{node, node(), memcached_defaults}, old_memcached_defaults},
-            {{node, node(), memcached_config}, old_memcached_config}]],
-    Default = [{{node, node(), memcached}, [{some, stuff},
-                                            {rbac_file, rbac_file_path}]},
-               {{node, node(), memcached_defaults}, [{some, stuff},
-                                            {new_field, enable}]},
-               {{node, node(), memcached_config}, new_memcached_config}],
-
-    ?assertMatch([{set, {node, _, memcached}, [{old, info},
-                                               {rbac_file, rbac_file_path}]},
-                  {set, {node, _, memcached_defaults}, [{some, stuff},
-                                               {new_field, enable}]},
-                  {set, {node, _, memcached_config}, new_memcached_config}],
-                 do_upgrade_config_from_4_6_5_to_5_0(Cfg, Default)).
-
 upgrade_5_1_1_to_5_5_test() ->
     Cfg = [[{some_key, some_value},
             {{node, node(), memcached}, [{old, info}, {other_users, old}]},
@@ -672,7 +588,7 @@ no_upgrade_on_current_version_test() ->
 all_upgrades_test() ->
     Default = default(),
     KVs = misc:update_proplist(Default,
-                               [{{node, node(), config_version}, {4,0}}]),
+                               [{{node, node(), config_version}, {5,0}}]),
     Cfg = #config{dynamic = [KVs], uuid = <<"uuid">>},
     UpgradedCfg = ns_config:upgrade_config(Cfg, fun upgrade_config/1),
 

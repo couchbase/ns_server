@@ -90,7 +90,6 @@
          get_num_vbuckets/0,
          get_max_buckets/0,
          bucket_uuid/1,
-         config_upgrade_to_50/1,
          config_upgrade_to_51/1,
          config_upgrade_to_55/1,
          config_upgrade_to_madhatter/1]).
@@ -916,17 +915,6 @@ bucket_uuid(BucketConfig) ->
     UUID = proplists:get_value(uuid, BucketConfig),
     true = is_binary(UUID),
     UUID.
-
-config_upgrade_to_50(Config) ->
-    Buckets = get_buckets(Config),
-    NewBuckets =
-        lists:map(
-          fun ({Name, Props}) ->
-                  {Name, misc:update_proplist(
-                           Props,
-                           [{auth_type, sasl}, {sasl_password, generate_sasl_password()}])}
-          end, Buckets),
-    [{set, buckets, [{configs, NewBuckets}]}].
 
 config_upgrade_to_51(Config) ->
     %% fix for possible consequence of MB-27160

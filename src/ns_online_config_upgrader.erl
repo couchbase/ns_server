@@ -38,9 +38,9 @@ do_upgrade_config(Config, FinalVersion) ->
         %% default config, but that uncovered issues that I'm too scared to
         %% touch at the moment.
         false ->
-            upgrade_compat_version(?VERSION_40);
+            upgrade_compat_version(?VERSION_50);
         {value, undefined} ->
-            upgrade_compat_version(?VERSION_40);
+            upgrade_compat_version(?VERSION_50);
         {value, Ver} ->
             {NewVersion, Upgrade} = upgrade(Ver, Config),
             ?log_info("Performing online config upgrade to ~p", [NewVersion]),
@@ -56,28 +56,10 @@ maybe_final_upgrade(?LATEST_VERSION_NUM) ->
 maybe_final_upgrade(_) ->
     [].
 
-upgrade(?VERSION_40, Config) ->
-    {?VERSION_41,
-     create_service_maps(Config, [n1ql, index])};
-
-upgrade(?VERSION_41, Config) ->
-    {?VERSION_45,
-     create_service_maps(Config, [fts]) ++
-         menelaus_users:upgrade_to_4_5(Config) ++
-         index_settings_manager:config_upgrade_to_45(Config) ++
-         add_index_ram_alert_limit(Config)};
-
-upgrade(?VERSION_45, _Config) ->
-    {?VERSION_46, []};
-
-upgrade(?VERSION_46, Config) ->
-    {?VERSION_50,
-     [{delete, roles_definitions} | menelaus_users:config_upgrade_to_50() ++
-          ns_bucket:config_upgrade_to_50(Config)]};
-
 upgrade(?VERSION_50, Config) ->
     {?VERSION_51,
-     ns_ssl_services_setup:upgrade_client_cert_auth_to_51(Config) ++
+     index_settings_manager:config_upgrade_to_45(Config) ++
+         ns_ssl_services_setup:upgrade_client_cert_auth_to_51(Config) ++
          ns_bucket:config_upgrade_to_51(Config)};
 
 upgrade(?VERSION_51, Config) ->
@@ -101,19 +83,3 @@ upgrade(?VERSION_60, Config) ->
          ns_bucket:config_upgrade_to_madhatter(Config) ++
          auto_rebalance_settings:config_upgrade_to_madhatter() ++
          query_settings_manager:config_upgrade_to_madhatter(Config)}.
-
-add_index_ram_alert_limit(Config) ->
-    {value, Current} = ns_config:search(Config, alert_limits),
-    case proplists:get_value(max_indexer_ram, Current) of
-        undefined ->
-            New = Current ++ [{max_indexer_ram, 75}],
-            [{set, alert_limits, New}];
-        _ ->
-            []
-    end.
-
-create_service_maps(Config, Services) ->
-    ActiveNodes = ns_cluster_membership:active_nodes(Config),
-    Maps = [{S, ns_cluster_membership:service_nodes(Config, ActiveNodes, S)} ||
-                S <- Services],
-    [{set, {service_map, Service}, Map} || {Service, Map} <- Maps].
