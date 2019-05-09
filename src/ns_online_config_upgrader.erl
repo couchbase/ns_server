@@ -58,8 +58,7 @@ maybe_final_upgrade(_) ->
 
 upgrade(?VERSION_50, Config) ->
     {?VERSION_51,
-     index_settings_manager:config_upgrade_to_45(Config) ++
-         ns_ssl_services_setup:upgrade_client_cert_auth_to_51(Config) ++
+     ns_ssl_services_setup:upgrade_client_cert_auth_to_51(Config) ++
          ns_bucket:config_upgrade_to_51(Config)};
 
 upgrade(?VERSION_51, Config) ->

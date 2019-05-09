@@ -28,8 +28,7 @@
          get_from_config/3,
          update/2,
          update_txn/1,
-         config_default_40/0,
-         config_upgrade_to_45/1,
+         config_default/0,
          is_memory_optimized/1]).
 
 -export([cfg_key/0,
@@ -66,77 +65,38 @@ update(Key, Value) ->
 update_txn(Props) ->
     json_settings_manager:update_txn(?MODULE, Props).
 
-config_upgrade_to_45(Config) ->
-    JSON = json_settings_manager:fetch_settings_json(Config, ?INDEX_CONFIG_KEY),
-    Current = json_settings_manager:decode_settings_json(JSON),
-    New = json_settings_manager:build_settings_json(extra_default_settings_for_45(Config),
-                                                    Current, extra_known_settings_for_45()),
-    [{set, ?INDEX_CONFIG_KEY, New}].
-
 -spec is_memory_optimized(any()) -> boolean().
 is_memory_optimized(?INDEX_STORAGE_MODE_MEMORY_OPTIMIZED) ->
     true;
 is_memory_optimized(_) ->
     false.
 
-known_settings_40() ->
-    [{memoryQuota, memory_quota_lens()},
-     {generalSettings, general_settings_lens()},
-     {compaction, compaction_lens()}].
+default_settings() ->
+    DaysOfWeek = misc:get_days_list(),
+    CircDefaults = [{daysOfWeek, list_to_binary(string:join(DaysOfWeek, ","))},
+                    {abort_outside, false},
+                    {interval, compaction_interval_default()}],
+
+    [{memoryQuota, 512},
+     {generalSettings, general_settings_defaults()},
+     {compaction, compaction_defaults()},
+     {storageMode, <<"">>},
+     {compactionMode, <<"circular">>},
+     {circularCompaction, CircDefaults}].
 
 known_settings() ->
-    known_settings(cluster_compat_mode:is_cluster_45()).
-
-known_settings(Is45) ->
-    RV = known_settings_40(),
-    case Is45 of
-        true ->
-            extra_known_settings_for_45() ++ RV;
-        false ->
-            RV
-    end.
-
-extra_known_settings_for_45() ->
-    [{storageMode, id_lens(<<"indexer.settings.storage_mode">>)},
+    [{memoryQuota, memory_quota_lens()},
+     {generalSettings, general_settings_lens()},
+     {compaction, compaction_lens()},
+     {storageMode, id_lens(<<"indexer.settings.storage_mode">>)},
      {compactionMode,
       id_lens(<<"indexer.settings.compaction.compaction_mode">>)},
      {circularCompaction, circular_compaction_lens()}].
 
-default_settings_for_40() ->
-    [{memoryQuota, 512},
-     {generalSettings, general_settings_defaults()},
-     {compaction, compaction_defaults()}].
-
-config_default_40() ->
-     {?INDEX_CONFIG_KEY, json_settings_manager:build_settings_json(
-                           default_settings_for_40(),
-                           dict:new(), known_settings_40())}.
-
-extra_default_settings_for_45(Config) ->
-    Nodes = ns_node_disco:nodes_wanted(Config),
-
-    IndexNodes = ns_cluster_membership:service_nodes(Config, Nodes, index),
-    {SM, CM, Int} = case IndexNodes of
-                        [] ->
-                            %% New cluster install or upgrades w/o any
-                            %% index nodes.
-                            {<<"">>, <<"circular">>,
-                             [{interval, compaction_interval_default()}]};
-                        _ ->
-                            %% Upgrades with index nodes in the cluster.
-                            %% Leave interval to whatever value user had set
-                            %% to prior to the upgrade.
-                            %% storage mode is set to forestdb because that
-                            %% was the only type supported in previous
-                            %% release. compaction mode set to "full"
-                            %% for the same reason.
-                            {?INDEX_STORAGE_MODE_FORESTDB, <<"full">>, []}
-                    end,
-    DaysOfWeek = misc:get_days_list(),
-    CircDefaults = [{daysOfWeek, list_to_binary(string:join(DaysOfWeek, ","))},
-                    {abort_outside, false}] ++ Int,
-    [{storageMode, SM}, {compactionMode, CM},
-     {circularCompaction, CircDefaults}].
+config_default() ->
+    {?INDEX_CONFIG_KEY, json_settings_manager:build_settings_json(
+                          default_settings(),
+                          dict:new(), known_settings())}.
 
 memory_quota_lens() ->
     Key = <<"indexer.settings.memory_quota">>,
@@ -250,9 +210,7 @@ compaction_lens() ->
 defaults_test() ->
     Keys = fun (L) -> lists:sort([K || {K, _} <- L]) end,
 
-    ?assertEqual(Keys(known_settings(false)), Keys(default_settings_for_40())),
-    ?assertEqual(Keys(known_settings(true)),
-                 Keys(default_settings_for_40() ++ extra_known_settings_for_45())),
+    ?assertEqual(Keys(known_settings()), Keys(default_settings())),
     ?assertEqual(Keys(compaction_lens_props()), Keys(compaction_defaults())),
     ?assertEqual(Keys(general_settings_lens_props()),
                  Keys(general_settings_defaults())).

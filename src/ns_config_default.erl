@@ -131,8 +131,7 @@ default() ->
      {{couchdb, max_parallel_replica_indexers}, 2},
 
      %% Default config for metakv index settings in minimum supported version,
-     %% VERSION_40.
-     index_settings_manager:config_default_40(),
+     index_settings_manager:config_default(),
 
      %% {rest_creds, {User, {password, {Salt, Mac}}}}
      %% {rest_creds, null} means no login/password auth check.
