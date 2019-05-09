@@ -15,7 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os, os.path, subprocess, sys, atexit, socket, getopt, shlex
-import platform, fnmatch
+import platform, fnmatch, errno, shutil
 
 base_direct_port = 12000
 base_api_port = 9000
@@ -40,7 +40,53 @@ def read_configuration():
 config = read_configuration()
 PREFIX = config['prefix']
 
-def setup_path():
+def setup_extra_ns_server_app_file(force_community):
+    # The extra/ebin directory contains modified versions of files also
+    # contained in other directories.  The ones in extra/ebin are listed
+    # in the path directory such that they will take precedence when
+    # loaded.  Note the -pa option used when starting erl reverses the
+    # order of the list.
+    extra_ebin_dirname = "extra"
+    extra_ebin_path = extra_ebin_dirname + "/ebin"
+    returned_path = None
+
+    # Clean up any residual files from prior runs.
+    try:
+        shutil.rmtree(extra_ebin_dirname)
+    except OSError as exc:
+        if exc.errno == errno.ENOENT:
+            pass
+        else:
+            raise
+
+    if force_community:
+        found_enterprise = False
+        with open("./ebin/ns_server.app", "r") as src_f:
+            lines = src_f.readlines()
+
+        lines_out = ""
+        for line in lines:
+            # The way to change Enterprise edition to Community edition is to
+            # simply change the "vsn" in the ns_server app.
+            if "vsn" in line and "enterprise" in line:
+                line = line.replace("enterprise", "community")
+                # Ensure only one line containing "vsn" and "enterprise".
+                assert found_enterprise is False
+                found_enterprise = True
+            lines_out = lines_out + line
+
+        if found_enterprise:
+            # Any errors here are "real" so we want exceptions thrown
+            os.makedirs(extra_ebin_path)
+
+            with open("./{}/ns_server.app".format(extra_ebin_path), "w") as dst_f:
+                dst_f.write(lines_out)
+
+            returned_path = extra_ebin_path
+
+    return returned_path
+
+def setup_path(ns_server_app_path):
     def ebin_search(path):
         dirs = os.walk(path)
         ebins = []
@@ -52,12 +98,22 @@ def setup_path():
         return ebins
 
     path = ebin_search(".")
+    if ns_server_app_path in path:
+        # The ns_server_app_path needs to be first in the path. We remove
+        # it from what was found and append it to the path (it's at the
+        # end as the -pa argument used when starting erl reverses the
+        # order).
+        path.remove(ns_server_app_path)
+        path.append(ns_server_app_path)
+
     couchpath = ebin_search("{0}/lib/couchdb/erlang/lib".format(PREFIX))
     couch_plugins = ebin_search("{0}/lib/couchdb/plugins".format(PREFIX))
 
     if len(couchpath) == 0:
        sys.exit("Couch libs wasn't found.\nCan't handle it")
 
+    # Note the paths are passed via "-pa" to the erl process where their
+    # ordering is reversed.
     return couchpath + path + couch_plugins
 
 def mk_node_couch_config(i):
@@ -108,12 +164,14 @@ cluster_args_prefix = None
 def is_ipv6_setup():
     return os.getenv("IPV6", "false") == "true"
 
-def prepare_start_cluster(extra_args, args_prefix):
+def prepare_start_cluster(extra_args, args_prefix, force_community):
     global cluster_args_prefix
     global cluster_extra_args
     global ebin_path
 
-    ebin_path = setup_path()
+    ns_server_app_path = setup_extra_ns_server_app_file(force_community)
+
+    ebin_path = setup_path(ns_server_app_path)
     cluster_extra_args = extra_args
     cluster_args_prefix = args_prefix
 
@@ -226,8 +284,10 @@ def erlang_args_for_node(i):
 
     return args
 
-def start_cluster(num_nodes, start_index, host, extra_args, args_prefix):
-    prepare_start_cluster(extra_args, args_prefix)
+def start_cluster(num_nodes, start_index, host, extra_args, args_prefix,
+                  force_community):
+
+    prepare_start_cluster(extra_args, args_prefix, force_community)
 
     def start_node(i):
         logdir = "logs/n_{0}".format(i)
@@ -284,9 +344,10 @@ def start_cluster(num_nodes, start_index, host, extra_args, args_prefix):
 
 def usage():
     sys.exit("Usage: {0} [--nodes=N] [--dont-rename] [--dont-start] "
-             "[--interactive] [--static-cookie] [--start-index=N] "
-             "[--static-cookie] [--host=H] [--loglevel=L] "
+             "[--static-cookie] [--start-index=N] "
+             "[--host=H] [--loglevel=L] [--prepend-extras] "
              "[--pluggable-config=File] [--minified] [--disable-autocomplete] "
+             "[--pretend-version=V] [--community] "
              "[ns_server args]".format(sys.argv[0]))
 
 def find_primary_addr():
@@ -308,13 +369,14 @@ def find_primary_addr():
 
 def main():
     try:
-        optlist, args = getopt.gnu_getopt(sys.argv[1:], "hn:ip:",
+        optlist, args = getopt.gnu_getopt(sys.argv[1:], "hn:p:",
                                           ["help", "start-index=", "nodes=",
-                                           "dont-rename", "interactive",
+                                           "dont-rename",
                                            "static-cookie", "dont-start",
                                            "host=", "loglevel=",
                                            "prepend-extras", "pluggable-config=",
                                            "minified", "disable-autocomplete",
+                                           "community",
                                            "pretend-version=", "afamily="])
     except getopt.GetoptError, err:
         # print help information and exit:
@@ -337,6 +399,7 @@ def main():
     use_minified = False
     disable_autocomplete = "{disable_autocomplete,false}"
     pretend_version = None
+    force_community_edition = False
 
     for o, a in optlist:
         if o in ("--nodes", "-n"):
@@ -373,6 +436,8 @@ def main():
                 ipv6 = False
             else:
                 assert False, "invalid address family"
+        elif o == "--community":
+            force_community_edition = True
         else:
             assert False, "unhandled options"
 
@@ -454,7 +519,8 @@ def main():
         extra_args += ["-ns_server",
                        "pretend_version", '"{}"'.format(pretend_version)]
 
-    nodes = start_cluster(num_nodes, start_index, host, extra_args, prepend_args)
+    nodes = start_cluster(num_nodes, start_index, host, extra_args,
+                          prepend_args, force_community_edition)
 
     for node in nodes:
         node.wait()
