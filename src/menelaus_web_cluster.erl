@@ -184,54 +184,40 @@ parse_validate_services_list(ServicesList) ->
     end.
 
 parse_join_cluster_params(Params, ThisIsJoin) ->
-    Version = proplists:get_value("version", Params, "3.0"),
-
-    OldVersion = (Version =:= "3.0"),
-
-    Hostname = case proplists:get_value("hostname", Params) of
-                   undefined ->
-                       if
-                           ThisIsJoin andalso OldVersion ->
-                               %%  this is for backward compatibility
-                               ClusterMemberPort = proplists:get_value("clusterMemberPort", Params),
-                               ClusterMemberHostIp = proplists:get_value("clusterMemberHostIp", Params),
-                               case lists:member(undefined,
-                                                 [ClusterMemberPort, ClusterMemberHostIp]) of
-                                   true ->
-                                       "";
-                                   _ ->
-                                       lists:concat([ClusterMemberHostIp, ":", ClusterMemberPort])
-                               end;
-                           true ->
-                               ""
-                       end;
-                   X ->
-                       X
-               end,
-
+    Hostname =
+        case proplists:get_value("hostname", Params) of
+            undefined when ThisIsJoin =:= true ->
+                %%  this is for backward compatibility
+                CMemPort = proplists:get_value("clusterMemberPort", Params),
+                CMemHostIp = proplists:get_value("clusterMemberHostIp", Params),
+                case lists:member(undefined, [CMemPort, CMemHostIp]) of
+                    true ->
+                        "";
+                    _ ->
+                        lists:concat([CMemHostIp, ":", CMemPort])
+                end;
+            undefined -> "";
+            X -> X
+        end,
     OtherUser = proplists:get_value("user", Params),
     OtherPswd = proplists:get_value("password", Params),
 
-    Version40 = cluster_compat_mode:compat_mode_string_40(),
-
-    VersionErrors = case Version of
-                        "3.0" ->
-                            [];
-                        %% bound above
-                        Version40 ->
-                            KnownParams = ["hostname", "version", "user", "password", "services"],
-                            UnknownParams = [K || {K, _} <- Params,
-                                                  not lists:member(K, KnownParams)],
-                            case UnknownParams of
-                                [_|_] ->
-                                    Msg = io_lib:format("Got unknown parameters: ~p", [UnknownParams]),
-                                    [iolist_to_binary(Msg)];
-                                [] ->
-                                    []
-                            end;
-                        _ ->
-                            [<<"version is not recognized">>]
-                    end,
+    AddNodeErrors =
+        case ThisIsJoin of
+            false ->
+                KnownParams = ["hostname", "user", "password", "services"],
+                UnknownParams = [K || {K, _} <- Params,
+                                      not lists:member(K, KnownParams)],
+                case UnknownParams of
+                    [_|_] ->
+                        Msg = io_lib:format("Got unknown parameters: ~p",
+                                            [UnknownParams]),
+                        [iolist_to_binary(Msg)];
+                    [] ->
+                        []
+                end;
+            true -> []
+        end,
 
     Services = case proplists:get_value("services", Params) of
                    undefined ->
@@ -276,7 +262,7 @@ parse_join_cluster_params(Params, ThisIsJoin) ->
                                 end
                         end,
 
-    Errors = MissingFieldErrors ++ VersionErrors ++ HostnameError ++
+    Errors = MissingFieldErrors ++ HostnameError ++ AddNodeErrors ++
         case Services of
             {error, ServicesError} ->
                 [ServicesError];
@@ -352,14 +338,12 @@ handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherUser, OtherPswd,
                              {BasePayload, "/controller/addNode"};
                          false ->
                              ServicesStr = string:join([erlang:atom_to_list(S) || S <- Services], ","),
-                             SVCPayload = [{"version", cluster_compat_mode:compat_mode_string_40()},
-                                           {"services", ServicesStr}
+                             SVCPayload = [{"services", ServicesStr}
                                            | BasePayload],
                              {SVCPayload, "/controller/addNodeV2"}
                      end,
 
                  Options = [{connect_options, [AFamily]}],
-
                  RestRV = menelaus_rest:json_request_hilevel(
                             post,
                             {OtherScheme, OtherHost, OtherPort, Endpoint,
