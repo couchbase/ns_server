@@ -7,11 +7,6 @@
      ng-submit="xdcrEditDialogCtl.createReplication()"
      mn-spinner="xdcrEditDialogCtl.viewLoading">
     <div class="panel-content">
-      <mn-xdcr-filter
-         ng-if="poolDefault.isEnterprise"
-         mn-is-editing="true"
-         mn-errors="xdcrEditDialogCtl.errors"
-         mn-replication="xdcrEditDialogCtl.settings"></mn-xdcr-filter>
 
       <div class="formrow"
            ng-show="xdcrEditDialogCtl.settings.type !== 'capi'">
@@ -24,6 +19,12 @@
           <option value="High">High</option>
         </select>
       </div>
+
+      <mn-xdcr-filter
+         ng-if="poolDefault.isEnterprise"
+         mn-is-editing="true"
+         mn-errors="xdcrEditDialogCtl.errors"
+         mn-replication="xdcrEditDialogCtl.settings"></mn-xdcr-filter>
 
       <div
          mn-is-editing="true"

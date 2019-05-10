@@ -31,56 +31,7 @@
        spellcheck="false"
        class="xdcr-filter margin-bottom-half">
     </textarea>
-    <div ng-if="mnIsEditing" class="xdcr-filter-stream formrow">
-      <strong>After saving filter changes</strong>&nbsp;&nbsp;
-      <input
-         type="radio"
-         value="false"
-         id="for-save-restart-replication"
-         ng-model="mnReplication.filterSkipRestream">
-      <label for="for-save-restart-replication">restart replication</label>
-      <input
-         type="radio"
-         value="true"
-         id="for-save-continue-replicating"
-         ng-model="mnReplication.filterSkipRestream">
-      <label for="for-save-continue-replicating">continue replicating</label>
-    </div>
-    <div class="formrow form-inline">
-      <input
-         type="checkbox"
-         value="index"
-         id="for-do-not-replicate-ttl"
-         ng-model="mnReplication.filterExpiration">
-      <label for="for-do-not-replicate-ttl">
-        Do not replicate TTL
-      </label>
-      <span
-         class="fa-stack icon-info"
-         uib-tooltip="Destination items will have no TTL and source
-                      expirations will not be replicated."
-         tooltip-placement="right">
-        <span class="icon fa-circle-thin fa-stack-2x"></span>
-        <span class="icon fa-info fa-stack-1x"></span>
-      </span>
-    </div>
-    <div class="formrow form-inline">
-      <input
-         type="checkbox"
-         value="index"
-         id="for-do-not-replicate-delete"
-         ng-model="mnReplication.filterDeletion">
-      <label for="for-do-not-replicate-delete">
-        Do not replicate Delete operations
-      </label>
-      <span
-         class="fa-stack icon-info"
-         uib-tooltip="application-level deletes will not be replicated."
-         tooltip-placement="right">
-        <span class="icon fa-circle-thin fa-stack-2x"></span>
-        <span class="icon fa-info fa-stack-1x"></span>
-      </span>
-    </div>
+
     <div class="row margin-bottom-half">
       <input
          ng-model="xdcrFilterCtl.testDocID"
@@ -116,5 +67,21 @@
       xdcrFilterCtl.filterExpressionError ||
       mnErrors.filterExpression}}
     </div>
+
+    <div ng-if="mnIsEditing" class="xdcr-filter-stream formrow">
+      <input
+         type="radio"
+         value="false"
+         id="for-save-restart-replication"
+         ng-model="mnReplication.filterSkipRestream">
+      <label for="for-save-restart-replication">Save filter & restart replication</label>
+      <input
+         type="radio"
+         value="true"
+         id="for-save-continue-replicating"
+         ng-model="mnReplication.filterSkipRestream">
+      <label for="for-save-continue-replicating">Save & continue replicating</label>
+    </div>
+
   </div>
 </div>

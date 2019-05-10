@@ -58,10 +58,6 @@
         </div>
       </div>
 
-      <mn-xdcr-filter
-         ng-if="poolDefault.isEnterprise"
-         mn-replication="xdcrCreateDialogCtl.replication"></mn-xdcr-filter>
-
       <div class="formrow">
         <label for="replication_priority">Replication Priority</label>
         <select
@@ -72,6 +68,10 @@
           <option value="High">High</option>
         </select>
       </div>
+
+      <mn-xdcr-filter
+         ng-if="poolDefault.isEnterprise"
+         mn-replication="xdcrCreateDialogCtl.replication"></mn-xdcr-filter>
 
       <div
          mn-xdcr-settings="xdcrCreateDialogCtl.replication"
