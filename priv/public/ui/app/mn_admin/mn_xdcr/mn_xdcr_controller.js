@@ -28,26 +28,32 @@
     vm.pausePlayReplication = pausePlayReplication;
     vm.createReplications = createReplications;
 
+    mnHelper.initializeDetailsHashObserver(vm, 'xdcrDetails', 'app.admin.replications');
+
     activate();
 
-    vm.to = to;
+    vm.toBucket = toBucket;
+    vm.toCluster = toCluster;
     vm.humanStatus = humanStatus;
     vm.status = status;
 
-    function to(row) {
+    function toBucket(row) {
+      return row.target.split('buckets/')[1];
+    }
+    function toCluster(row) {
       var uuid = row.id.split("/")[0];
       var clusters = vm.references ? vm.references.byUUID : {};
       var toName = !clusters[uuid] ? "unknown" : !clusters[uuid].deleted ? clusters[uuid].name : ('at ' + cluster[uuid].hostname);
-      return 'bucket "' + row.target.split('buckets/')[1] + '" on cluster "' + toName + '"';
+      return toName;
     }
     function humanStatus(row) {
       if (row.pauseRequested && row.status != 'paused') {
-        return 'Paused';
+        return 'pausing...';
       } else {
         switch (row.status) {
-          case 'running': return 'Replicating';
-          case 'paused': return 'Paused';
-          default: return 'Starting Up';
+          case 'running': return 'replicating';
+          case 'paused': return 'paused';
+          default: return 'starting up...';
         }
       }
     }

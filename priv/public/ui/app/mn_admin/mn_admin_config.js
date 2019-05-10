@@ -163,6 +163,12 @@
             controller: 'mnXDCRController as xdcrCtl'
           }
         },
+        params: {
+          xdcrDetails: {
+            array: true,
+            dynamic: true
+          }
+        },
         data: {
           permissions: "cluster.tasks.read",
           title: "XDCR Replications"

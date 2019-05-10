@@ -836,6 +836,13 @@ section.error {
   top: 0;
   padding: .275rem;
 }
+.replications.badge {
+  background-color: #f5a623;
+  color: #fff;
+  left: -1px;
+  top: -4px;
+  padding: .275rem;
+}
 .badge.notify {
   background-color: #d9e7f7;
   color: #333;
@@ -849,6 +856,10 @@ section.error {
 .badge.red-3 {
   color: #fff;
   background-color: #e07f82;
+}
+.badge.orange-1 {
+  color: #fff;
+  background-color: #f5a623;
 }
 
 /* alerts  -------------------------------------------------------------- */
@@ -3019,4 +3030,9 @@ footer hr {
 .timeline-stage.highlight .timeline-dot:before,
 .timeline-stage.highlight .timeline-dot:after {
   background-color: #8eb7e6!important;
+}
+/* button to control replication status in XDCR ----------------------------- */
+button.replication .fa-spinner {
+  -webkit-animation: fa-spin 1s infinite linear;
+  animation: fa-spin 1s infinite linear;
 }
