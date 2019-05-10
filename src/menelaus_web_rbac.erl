@@ -155,15 +155,10 @@ handle_saslauthd_auth_settings_post(Req) ->
 
 handle_validate_saslauthd_creds_post(Req) ->
     assert_is_saslauthd_enabled(),
-    case cluster_compat_mode:is_cluster_45() of
-        true ->
-            erlang:throw(
-              {web_exception,
-               400,
-               "This http API endpoint is not supported in 4.5 clusters", []});
-        false ->
-            ok
-    end,
+    erlang:throw(
+      {web_exception,
+       400,
+       "This http API endpoint is not supported in 4.5 clusters", []}),
 
     Params = mochiweb_request:parse_post(Req),
     User = proplists:get_value("user", Params, ""),
@@ -217,18 +212,7 @@ get_roles_by_permission(Permission) ->
       menelaus_roles:produce_roles_by_permission(Permission, Config, Buckets),
       pipes:collect()).
 
-assert_api_can_be_used() ->
-    menelaus_util:assert_is_45(),
-    case cluster_compat_mode:is_cluster_50() of
-        true ->
-            ok;
-        false ->
-            menelaus_util:assert_is_enterprise()
-    end.
-
 handle_get_roles(Req) ->
-    assert_api_can_be_used(),
-
     validator:handle(
       fun (Values) ->
               Permission = proplists:get_value(permission, Values),
@@ -294,8 +278,6 @@ format_password_change_time(TS) ->
     menelaus_util:format_server_time(Local).
 
 handle_get_users(Path, Req) ->
-    assert_api_can_be_used(),
-
     case cluster_compat_mode:is_cluster_50() of
         true ->
             handle_get_users_with_domain(Req, '_', Path);
@@ -884,7 +866,6 @@ is_valid_password(P, {MinLength, MustPresent}) ->
     execute_verifiers(Verifiers).
 
 handle_put_user(Domain, UserId, Req) ->
-    assert_api_can_be_used(),
     assert_no_users_upgrade(),
 
     case validate_cred(UserId, username) of
@@ -1047,7 +1028,6 @@ do_delete_user(Req, Identity) ->
     end.
 
 handle_delete_user(Domain, UserId, Req) ->
-    menelaus_util:assert_is_45(),
     assert_no_users_upgrade(),
 
     case domain_to_atom(Domain) of

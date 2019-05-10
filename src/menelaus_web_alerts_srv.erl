@@ -235,11 +235,10 @@ do_handle_check_alerts_info(#state{history=Hist, opaque=Opaque}) ->
     BucketNames = ordsets:intersection(lists:sort(ns_memcached:active_buckets()),
                                        lists:sort(ns_bucket:node_bucket_names(node()))),
     IsIndex = lists:member(index, ns_cluster_membership:node_active_services(node())),
-    Is45 = cluster_compat_mode:is_cluster_45(),
     %% the single index-related alert only applies to memory optimized
     %% indexes, so we only bother to collect index stats in this case
     StorageMode = index_settings_manager:get(storageMode),
-    Index = case Is45 andalso IsIndex andalso
+    Index = case IsIndex andalso
                 index_settings_manager:is_memory_optimized(StorageMode) of
                 true ->
                     ["@index"];

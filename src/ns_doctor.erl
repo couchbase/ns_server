@@ -912,13 +912,8 @@ get_node(Node, NodeStatuses) ->
     end.
 
 build_gsi_task() ->
-    case cluster_compat_mode:is_cluster_45() of
-        true ->
-            {ok, Indexes, Stale, _} = service_index:get_indexes(),
-            build_gsi_index_task(Indexes, Stale, []);
-        false ->
-            []
-    end.
+    {ok, Indexes, Stale, _} = service_index:get_indexes(),
+    build_gsi_index_task(Indexes, Stale, []).
 
 build_gsi_index_task([], _, Acc) ->
     Acc;

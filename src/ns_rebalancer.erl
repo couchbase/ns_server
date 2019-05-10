@@ -183,11 +183,6 @@ do_failover_bucket(membase, Bucket, BucketConfig, Nodes) ->
       {vbuckets, node_vbuckets(Map, N)}] || N <- Nodes].
 
 failover_services(Nodes) ->
-    failover_services(cluster_compat_mode:is_cluster_41(), Nodes).
-
-failover_services(false, _Nodes) ->
-    [];
-failover_services(true, Nodes) ->
     Config    = ns_config:get(),
     Services0 = lists:flatmap(
                   ns_cluster_membership:node_services(Config, _), Nodes),
@@ -538,27 +533,22 @@ rebalance_services(KeepNodes, EjectNodes) ->
     maybe_delay_eject_nodes(SimpleTSs ++ TopologyAwareTSs, EjectNodes).
 
 rebalance_simple_services(Config, Services, KeepNodes) ->
-    case cluster_compat_mode:is_cluster_41(Config) of
-        true ->
-            lists:filtermap(
-              fun (Service) ->
-                      ServiceNodes = ns_cluster_membership:service_nodes(KeepNodes, Service),
-                      master_activity_events:note_rebalance_stage_started(
-                        Service, ServiceNodes),
-                      Updated = update_service_map_with_config(Config, Service, ServiceNodes),
+    lists:filtermap(
+      fun (Service) ->
+              ServiceNodes = ns_cluster_membership:service_nodes(KeepNodes, Service),
+              master_activity_events:note_rebalance_stage_started(
+                Service, ServiceNodes),
+              Updated = update_service_map_with_config(Config, Service, ServiceNodes),
 
-                      master_activity_events:note_rebalance_stage_completed(
-                        Service),
-                      case Updated of
-                          false ->
-                              false;
-                          true ->
-                              {true, {Service, os:timestamp()}}
-                      end
-              end, Services);
-        false ->
-            []
-    end.
+              master_activity_events:note_rebalance_stage_completed(
+                Service),
+              case Updated of
+                  false ->
+                      false;
+                  true ->
+                      {true, {Service, os:timestamp()}}
+              end
+      end, Services).
 
 update_service_map_with_config(Config, Service, ServiceNodes0) ->
     CurrentNodes0 = ns_cluster_membership:get_service_map(Config, Service),
@@ -659,12 +649,7 @@ get_service_eject_delay(Service) ->
     ?get_param({eject_delay, Service}, Default).
 
 maybe_delay_eject_nodes(Timestamps, EjectNodes) ->
-    case cluster_compat_mode:is_cluster_41() of
-        true ->
-            do_maybe_delay_eject_nodes(Timestamps, EjectNodes);
-        false ->
-            ok
-    end.
+    do_maybe_delay_eject_nodes(Timestamps, EjectNodes).
 
 do_maybe_delay_eject_nodes(_Timestamps, []) ->
     ok;

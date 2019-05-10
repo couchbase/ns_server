@@ -1197,20 +1197,14 @@ get_conflict_resolution_type_and_thresholds(Params, _BucketConfig, true = IsNew)
         undefined ->
             [{ok, conflict_resolution_type, seqno}];
         Value ->
-            case cluster_compat_mode:is_cluster_46() of
-                false ->
-                    [{error, conflictResolutionType,
-                      <<"Conflict resolution type can not be set if cluster is not fully 4.6">>}];
-                true ->
-                    ConResType = parse_validate_conflict_resolution_type(Value),
-                    case ConResType of
-                        {ok, _, lww} ->
-                            [ConResType,
-                             get_drift_ahead_threshold(Params, IsNew),
-                             get_drift_behind_threshold(Params, IsNew)];
-                        _ ->
-                            [ConResType]
-                    end
+            ConResType = parse_validate_conflict_resolution_type(Value),
+            case ConResType of
+                {ok, _, lww} ->
+                    [ConResType,
+                     get_drift_ahead_threshold(Params, IsNew),
+                     get_drift_behind_threshold(Params, IsNew)];
+                _ ->
+                    [ConResType]
             end
     end;
 get_conflict_resolution_type_and_thresholds(Params, BucketConfig, false = IsNew) ->

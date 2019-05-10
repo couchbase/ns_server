@@ -25,13 +25,8 @@ handle_settings_get(Req) ->
     menelaus_util:reply_json(Req, {Settings}).
 
 get_settings() ->
-    S0 = index_settings_manager:get(generalSettings),
-    case cluster_compat_mode:is_cluster_45() of
-        true ->
-            [{storageMode, index_settings_manager:get(storageMode)}] ++ S0;
-        false ->
-            S0
-    end.
+    index_settings_manager:get(generalSettings) ++
+        [{storageMode, index_settings_manager:get(storageMode)}].
 
 settings_post_validators() ->
     [validator:has_params(_),
@@ -39,14 +34,9 @@ settings_post_validators() ->
      validator:integer(memorySnapshotInterval, 1, infinity, _),
      validator:integer(stableSnapshotInterval, 1, infinity, _),
      validator:integer(maxRollbackPoints, 1, infinity, _),
-     validate_param(logLevel, _)] ++
-        case cluster_compat_mode:is_cluster_45() of
-            true ->
-                [validate_storage_mode(_)];
-            false ->
-                []
-        end ++
-        [validator:unsupported(_)].
+     validate_param(logLevel, _),
+     validate_storage_mode(_),
+     validator:unsupported(_)].
 
 validate_storage_mode(State) ->
     %% Note, at the beginning the storage mode will be empty. Once set,
@@ -175,12 +165,7 @@ update_settings(Key, Value) ->
 handle_settings_post(Req) ->
     validator:handle(
       fun (Values) ->
-              Values1 = case cluster_compat_mode:is_cluster_45() of
-                            true ->
-                                update_storage_mode(Req, Values);
-                            false ->
-                                Values
-                        end,
+              Values1 = update_storage_mode(Req, Values),
               case Values1 of
                   [] ->
                       ok;

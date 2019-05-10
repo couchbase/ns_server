@@ -30,11 +30,6 @@
          is_index_pausing_on/0,
          rebalance_ignore_view_compactions/0,
          compat_mode_string_40/0,
-         is_cluster_41/0,
-         is_cluster_41/1,
-         is_cluster_45/0,
-         is_version_45/1,
-         is_cluster_46/0,
          is_cluster_50/0,
          is_cluster_50/1,
          is_version_50/1,
@@ -121,23 +116,8 @@ is_enabled(FeatureVersion) ->
 is_enabled(Config, FeatureVersion) ->
     is_enabled_at(get_compat_version(Config), FeatureVersion).
 
-is_cluster_41() ->
-    is_cluster_41(ns_config:latest()).
-
-is_cluster_41(Config) ->
-    is_enabled(Config, ?VERSION_41).
-
 compat_mode_string_40() ->
     "4.0".
-
-is_version_45(ClusterVersion) ->
-    is_enabled_at(ClusterVersion, ?VERSION_45).
-
-is_cluster_45() ->
-    is_enabled(?VERSION_45).
-
-is_cluster_46() ->
-    is_enabled(?VERSION_46).
 
 is_version_50(ClusterVersion) ->
     is_enabled_at(ClusterVersion, ?VERSION_50).

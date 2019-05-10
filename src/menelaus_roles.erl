@@ -755,20 +755,8 @@ get_roles({_, ro_admin}) ->
     [ro_admin];
 get_roles({BucketName, bucket}) ->
     [{bucket_full_access, [BucketName]}];
-get_roles({User, external} = Identity) ->
-    case cluster_compat_mode:is_cluster_45() of
-        true ->
-            menelaus_users:get_roles(Identity);
-        false ->
-            case saslauthd_auth:get_role_pre_45(User) of
-                admin ->
-                    [admin];
-                ro_admin ->
-                    [ro_admin];
-                false ->
-                    []
-            end
-    end;
+get_roles({_User, external} = Identity) ->
+    menelaus_users:get_roles(Identity);
 get_roles({_User, local} = Identity) ->
     menelaus_users:get_roles(Identity).
 

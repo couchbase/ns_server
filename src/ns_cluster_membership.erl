@@ -379,16 +379,8 @@ should_run_service(Config, Service, Node) ->
 service_active_nodes(Service) ->
     service_active_nodes(ns_config:latest(), Service).
 
-%% just like get_service_map/2, but returns all nodes having a service if the
-%% cluster is not 4.1 yet
 service_active_nodes(Config, Service) ->
-    case cluster_compat_mode:is_cluster_41(Config) of
-        true ->
-            get_service_map(Config, Service);
-        false ->
-            ActiveNodes = active_nodes(Config),
-            service_nodes(Config, ActiveNodes, Service)
-    end.
+    get_service_map(Config, Service).
 
 service_actual_nodes(Config, Service) ->
     ActualNodes = ordsets:from_list(actual_active_nodes(Config)),

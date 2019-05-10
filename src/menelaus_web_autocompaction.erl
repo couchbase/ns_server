@@ -46,32 +46,28 @@ build_global_settings(Config) ->
     IndexCompaction = index_settings_manager:get(compaction),
     true = (IndexCompaction =/= undefined),
     {_, Fragmentation} = lists:keyfind(fragmentation, 1, IndexCompaction),
-    Extra = [{indexFragmentationThreshold,
-              {struct, [{percentage, Fragmentation}]}}],
-    IndexExtra = (case cluster_compat_mode:is_cluster_45() of
-                      true ->
-                          CompMode = index_settings_manager:get(compactionMode),
-                          true = (CompMode =/= undefined),
-                          Circ0 = index_settings_manager:get(circularCompaction),
-                          true = (Circ0 =/= undefined),
-                          Int = proplists:get_value(interval, Circ0),
-                          Circ1 = [{abort_outside,
-                                    proplists:get_value(abort_outside, Circ0)}] ++ Int,
-                          Circ = [{daysOfWeek,
-                                   proplists:get_value(daysOfWeek, Circ0)},
-                                  {interval,
-                                   build_allowed_time_period(
-                                     Circ1)}],
-                          [{indexCompactionMode, CompMode},
-                           {indexCircularCompaction, {struct, Circ}}];
-                      false ->
-                          []
-                  end) ++ Extra,
+
+    CompMode = index_settings_manager:get(compactionMode),
+    true = (CompMode =/= undefined),
+    Circ0 = index_settings_manager:get(circularCompaction),
+    true = (Circ0 =/= undefined),
+    Int = proplists:get_value(interval, Circ0),
+    Circ1 = [{abort_outside,
+              proplists:get_value(abort_outside, Circ0)}] ++ Int,
+    Circ = [{daysOfWeek, proplists:get_value(daysOfWeek, Circ0)},
+            {interval, build_allowed_time_period(Circ1)}],
+
+    IndexSettings =
+        [{indexCompactionMode, CompMode},
+         {indexCircularCompaction, {struct, Circ}},
+         {indexFragmentationThreshold,
+          {struct, [{percentage, Fragmentation}]}}],
+
     case ns_config:search(Config, autocompaction) of
         false ->
-            do_build_settings([], IndexExtra);
+            do_build_settings([], IndexSettings);
         {value, ACSettings} ->
-            do_build_settings(ACSettings, IndexExtra)
+            do_build_settings(ACSettings, IndexSettings)
     end.
 
 build_bucket_settings(Settings) ->
@@ -134,32 +130,13 @@ handle_set_global_settings(Req) ->
                         []
                 end,
 
-            case cluster_compat_mode:is_cluster_45() of
-                true ->
-                    new_index_compaction_settings(MaybeIndex);
-                false ->
-                    old_index_compaction_settings(ACSettings, MaybeIndex)
-            end,
-
+            index_compaction_settings(MaybeIndex),
             ns_audit:modify_compaction_settings(Req, ACSettings ++ MaybePurgeInterval
                                                 ++ MaybeIndex),
             reply_json(Req, [], 200)
     end.
 
-old_index_compaction_settings(ACSettings, MaybeIndex) ->
-    AllowedPeriod = proplists:get_value(allowed_time_period, ACSettings, []),
-    Fragmentation =
-        case MaybeIndex of
-            [] ->
-                [];
-            _ ->
-                [{fragmentation, misc:expect_prop_value(index_fragmentation_percentage, MaybeIndex)}]
-        end,
-
-    {ok, _} = index_settings_manager:update(compaction,
-                                            [{interval, AllowedPeriod}] ++ Fragmentation).
-
-new_index_compaction_settings(Settings) ->
+index_compaction_settings(Settings) ->
     case proplists:get_value(index_fragmentation_percentage, Settings) of
         undefined ->
             ok;
@@ -325,12 +302,7 @@ parse_validate_settings(Params, ExpectIndex) ->
                 RV0 = PercValidator({"indexFragmentationThreshold[percentage]",
                                      index_fragmentation_percentage,
                                      "index fragmentation"}),
-                case cluster_compat_mode:is_cluster_45() of
-                    true ->
-                        parse_and_validate_extra_index_settings(Params) ++ RV0;
-                    false ->
-                        RV0
-                end;
+                parse_and_validate_extra_index_settings(Params) ++ RV0;
             false ->
                 []
         end,

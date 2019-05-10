@@ -102,7 +102,6 @@ reply_error(Req, Error) ->
 
 handle_upload_cluster_ca(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_45(),
 
     case mochiweb_request:recv_body(Req) of
         undefined ->
@@ -121,7 +120,6 @@ handle_upload_cluster_ca(Req) ->
 
 handle_reload_node_certificate(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_45(),
 
     case ns_server_cert:apply_certificate_chain_from_inbox() of
         {ok, Props} ->

@@ -43,14 +43,10 @@ gather_stats(Bucket, Nodes, ClientTStamp, Window) ->
 gather_stats(_Bucket, [], _ClientTStamp, _Window, _StatList) ->
     {none, [], []};
 gather_stats(Bucket, Nodes, ClientTStamp, Window, StatList) ->
-    case cluster_compat_mode:is_cluster_45() of
-        true ->
-            FirstNode = get_first_node(Nodes),
-            gen_server:call({?MODULE, FirstNode},
-                            {gather_stats, Bucket, Nodes, ClientTStamp, Window, StatList}, infinity);
-        false ->
-            gather_stats(Bucket, Nodes, ClientTStamp, Window)
-    end.
+    FirstNode = get_first_node(Nodes),
+    gen_server:call({?MODULE, FirstNode},
+                    {gather_stats, Bucket, Nodes, ClientTStamp, Window,
+                     StatList}, infinity).
 
 gather_op_stats(FirstNode, Bucket, Nodes, ClientTStamp, Window) ->
     gather_op_stats(FirstNode, Bucket, Nodes, ClientTStamp, Window, all).
@@ -130,15 +126,8 @@ gather_op_stats_body(FirstNode, Bucket, Nodes, ClientTStamp,
 invoke_archiver(Bucket, NodeS, Window) ->
     invoke_archiver(Bucket, NodeS, Window, all).
 invoke_archiver(Bucket, NodeS, {Step, Period, Count}, StatList) ->
-    RV = case cluster_compat_mode:is_cluster_45() of
-             true ->
-                 catch stats_reader:latest_specific_stats(Period, NodeS,
-                                                          Bucket, Step,
-                                                          Count, StatList);
-             false ->
-                 catch stats_reader:latest(Period, NodeS, Bucket,
-                                           Step, Count)
-         end,
+    RV = (catch stats_reader:latest_specific_stats(Period, NodeS, Bucket, Step,
+                                                   Count, StatList)),
     case is_list(NodeS) of
         true -> [{K, V} || {K, {ok, V}} <- RV];
         _ ->

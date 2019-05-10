@@ -66,7 +66,6 @@
          send_chunked/3,
          handle_streaming/2,
          assert_is_enterprise/0,
-         assert_is_45/0,
          assert_is_50/0,
          assert_is_55/0,
          assert_is_madhatter/0,
@@ -537,9 +536,6 @@ assert_is_enterprise() ->
                           "This http API endpoint requires enterprise edition",
                           [{"X-enterprise-edition-needed", 1}]})
     end.
-
-assert_is_45() ->
-    assert_cluster_version(fun cluster_compat_mode:is_cluster_45/0).
 
 assert_is_50() ->
     assert_cluster_version(fun cluster_compat_mode:is_cluster_50/0).
