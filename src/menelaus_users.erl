@@ -73,8 +73,6 @@
          user_auth_info/2,
 
 %% Backward compatibility:
-         get_users_45/1,
-         upgrade_to_50/2,
          upgrade_to_55/2,
          config_upgrade_to_55/0,
          upgrade_status/0
@@ -265,10 +263,6 @@ handle_call(get_passwordless, _From, TableName, #state{passwordless = undefined}
 handle_call(get_passwordless, _From, _TableName, #state{passwordless = Passwordless} = State) ->
     {reply, Passwordless, State}.
 
--spec get_users_45(ns_config()) -> [{rbac_identity(), []}].
-get_users_45(Config) ->
-    ns_config:search(Config, user_roles, []).
-
 select_users(KeySpec) ->
     select_users(KeySpec, ?DEFAULT_PROPS).
 
@@ -387,27 +381,7 @@ build_auth({_, CurrentAuth}, Password) ->
 store_user(Identity, Name, Password, Roles, Groups) ->
     Props = [{name, Name} || Name =/= undefined] ++
             [{groups, Groups} || Groups =/= undefined],
-    case cluster_compat_mode:is_cluster_50() of
-        true ->
-            store_user_50(Identity, Props, Password, Roles, ns_config:get());
-        false ->
-            store_user_45(Identity, Props, Roles)
-    end.
-
-store_user_45({UserName, external}, Props, Roles) ->
-    ns_config:run_txn(
-      fun (Config, SetFn) ->
-              case menelaus_roles:validate_roles(Roles, Config) of
-                  {_, []} ->
-                      Identity = {UserName, saslauthd},
-                      Users = get_users_45(Config),
-                      NewUsers = lists:keystore(Identity, 1, Users,
-                                                {Identity, [{roles, Roles} | Props]}),
-                      {commit, SetFn(user_roles, NewUsers, Config)};
-                  {_, BadRoles} ->
-                      {abort, {error, roles_validation, BadRoles}}
-              end
-      end).
+    store_user_50(Identity, Props, Password, Roles, ns_config:get()).
 
 count_users() ->
     pipes:run(menelaus_users:select_users('_', []),
@@ -490,29 +464,7 @@ change_password({_UserName, local} = Identity, Password) when is_list(Password) 
 
 -spec delete_user(rbac_identity()) -> run_txn_return().
 delete_user(Identity) ->
-    case cluster_compat_mode:is_cluster_50() of
-        true ->
-            delete_user_50(Identity);
-        false ->
-            delete_user_45(Identity)
-    end.
-
-delete_user_45({UserName, external}) ->
-    Identity = {UserName, saslauthd},
-    ns_config:run_txn(
-      fun (Config, SetFn) ->
-              case ns_config:search(Config, user_roles) of
-                  false ->
-                      {abort, {error, not_found}};
-                  {value, Users} ->
-                      case lists:keytake(Identity, 1, Users) of
-                          false ->
-                              {abort, {error, not_found}};
-                          {value, _, NewUsers} ->
-                              {commit, SetFn(user_roles, NewUsers, Config)}
-                      end
-              end
-      end).
+    delete_user_50(Identity).
 
 delete_user_50({_, Domain} = Identity) ->
     case Domain of
@@ -807,92 +759,6 @@ build_plain_auth(Password) ->
 build_plain_auth(Salt, Mac) ->
     SaltAndMac = <<Salt/binary, Mac/binary>>,
     [{<<"plain">>, base64:encode(SaltAndMac)}].
-
-upgrade_to_50(Config, Nodes) ->
-    try
-        Repair =
-            case ns_config:search(Config, users_upgrade) of
-                false ->
-                    ns_config:set(users_upgrade, started),
-                    false;
-                {value, started} ->
-                    ?log_debug("Found unfinished users upgrade. Continue."),
-                    true
-            end,
-        do_upgrade_to_50(Nodes, Repair),
-        ok
-    catch T:E ->
-            ale:error(?USER_LOGGER, "Unsuccessful user storage upgrade.~n~p",
-                      [{T,E,erlang:get_stacktrace()}]),
-            error
-    end.
-
-do_upgrade_to_50(Nodes, Repair) ->
-    %% propagate users_upgrade to nodes
-    case ns_config_rep:ensure_config_seen_by_nodes(Nodes) of
-        ok ->
-            ok;
-        {error, BadNodes} ->
-            throw({push_config, BadNodes})
-    end,
-    %% pull latest user information from nodes
-    case ns_config_rep:pull_remotes(Nodes) of
-        ok ->
-            ok;
-        Error ->
-            throw({pull_config, Error})
-    end,
-
-    case Repair of
-        true ->
-            %% in case if aborted upgrade left some junk
-            replicated_storage:sync_to_me(storage_name(), Nodes,
-                                          ?get_timeout(users_upgrade, 60000)),
-            replicated_dets:delete_all(storage_name());
-        false ->
-            ok
-    end,
-    Config = ns_config:get(),
-    AdminName =
-        case ns_config_auth:get_creds(Config, admin) of
-            undefined ->
-                undefined;
-            {AN, _} ->
-                AN
-        end,
-
-    case ns_config_auth:get_creds(Config, ro_admin) of
-        undefined ->
-            ok;
-        {ROAdmin, {Salt, Mac}} ->
-            Auth = build_plain_auth(Salt, Mac),
-            {commit, ok} =
-                store_user_50_with_auth({ROAdmin, local}, [{name, "Read Only User"}],
-                                        Auth, [ro_admin], Config)
-    end,
-
-    lists:foreach(
-      fun ({Name, _}) when Name =:= AdminName ->
-              ?log_warning("Not creating user for bucket ~p, because the name matches administrators id",
-                           [AdminName]);
-          ({BucketName, BucketConfig}) ->
-              Password = proplists:get_value(sasl_password, BucketConfig, ""),
-              UUID = ns_bucket:bucket_uuid(BucketConfig),
-              Name = "Generated user for bucket " ++ BucketName,
-              ok = store_user_50_validated(
-                     {BucketName, local},
-                     [{name, Name}, {roles, [{bucket_full_access, [{BucketName, UUID}]}]}],
-                     build_scram_auth(Password))
-      end, ns_bucket:get_buckets(Config)),
-
-    LdapUsers = get_users_45(Config),
-    lists:foreach(
-      fun ({{LdapUser, saslauthd}, Props}) ->
-              Roles = proplists:get_value(roles, Props),
-              {ValidatedRoles, _} = menelaus_roles:validate_roles(Roles, Config),
-              NewProps = lists:keystore(roles, 1, Props, {roles, ValidatedRoles}),
-              ok = store_user_50_validated({LdapUser, external}, NewProps, same)
-      end, LdapUsers).
 
 rbac_55_upgrade_key() ->
     {rbac_upgrade, ?VERSION_55}.

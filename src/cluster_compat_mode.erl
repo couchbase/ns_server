@@ -188,8 +188,7 @@ consider_switching_compat_mode() ->
     end.
 
 upgrades() ->
-    [{?VERSION_50, users, menelaus_users, upgrade_to_50},
-     {?VERSION_55, rbac, menelaus_users, upgrade_to_55}].
+    [{?VERSION_55, rbac, menelaus_users, upgrade_to_55}].
 
 do_upgrades(undefined, _, _, _) ->
     %% this happens during the cluster initialization. no upgrade needed

@@ -278,12 +278,7 @@ format_password_change_time(TS) ->
     menelaus_util:format_server_time(Local).
 
 handle_get_users(Path, Req) ->
-    case cluster_compat_mode:is_cluster_50() of
-        true ->
-            handle_get_users_with_domain(Req, '_', Path);
-        false ->
-            handle_get_users_45(Req)
-    end.
+    handle_get_users_with_domain(Req, '_', Path).
 
 get_users_or_roles_validators() ->
     [validate_permission(permission, _)].
@@ -352,17 +347,6 @@ handle_get_users_with_domain(Req, DomainAtom, Path) ->
               handle_get_users_page(Req, DomainAtom, Path, _),
               Req, Query, get_users_page_validators(DomainAtom, HasStartFrom))
     end.
-
-handle_get_users_45(Req) ->
-    Users = menelaus_users:get_users_45(ns_config:latest()),
-    Json = lists:map(
-             fun ({{LdapUser, saslauthd}, Props}) ->
-                     NewProps = lists:map(fun ({roles, R}) -> {user_roles, R};
-                                              (P) -> P
-                                          end, Props),
-                     user_to_json({LdapUser, external}, NewProps)
-             end, Users),
-    menelaus_util:reply_json(Req, Json).
 
 security_filter(Req) ->
     case menelaus_auth:has_permission(?SECURITY_READ, Req) of
@@ -1011,9 +995,7 @@ do_store_user(Identity, Name, Password, UniqueRoles, Groups, Req) ->
         {abort, too_many} ->
             menelaus_util:reply_error(
               Req, "_",
-              "You cannot create any more users on Community Edition.");
-        retry_needed ->
-            erlang:error(exceeded_retries)
+              "You cannot create any more users on Community Edition.")
     end.
 
 do_delete_user(Req, Identity) ->
@@ -1022,9 +1004,7 @@ do_delete_user(Req, Identity) ->
             ns_audit:delete_user(Req, Identity),
             reply_put_delete_users(Req);
         {abort, {error, not_found}} ->
-            menelaus_util:reply_json(Req, <<"User was not found.">>, 404);
-        retry_needed ->
-            erlang:error(exceeded_retries)
+            menelaus_util:reply_json(Req, <<"User was not found.">>, 404)
     end.
 
 handle_delete_user(Domain, UserId, Req) ->
@@ -1041,12 +1021,7 @@ handle_delete_user(Domain, UserId, Req) ->
     end.
 
 reply_put_delete_users(Req) ->
-    case cluster_compat_mode:is_cluster_50() of
-        true ->
-            menelaus_util:reply_json(Req, <<>>, 200);
-        false ->
-            handle_get_users_45(Req)
-    end.
+    menelaus_util:reply_json(Req, <<>>, 200).
 
 change_password_validators() ->
     [validator:required(password, _),
