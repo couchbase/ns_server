@@ -378,10 +378,28 @@ build_auth({_, CurrentAuth}, Password) ->
 
 -spec store_user(rbac_identity(), rbac_user_name(), rbac_password(),
                  [rbac_role()], [rbac_group_id()]) -> run_txn_return().
-store_user(Identity, Name, Password, Roles, Groups) ->
+store_user({_UserName, Domain} = Identity, Name, Password, Roles, Groups) ->
     Props = [{name, Name} || Name =/= undefined] ++
             [{groups, Groups} || Groups =/= undefined],
-    store_user_50(Identity, Props, Password, Roles, ns_config:get()).
+    Config = ns_config:get(),
+
+    CurrentAuth = replicated_dets:get(storage_name(), {auth, Identity}),
+    case check_limit(Identity) of
+        true ->
+            case Domain of
+                external ->
+                    store_user_with_auth(Identity, Props, same, Roles, Config);
+                local ->
+                    case build_auth(CurrentAuth, Password) of
+                        password_required ->
+                            {abort, password_required};
+                        Auth ->
+                            store_user_with_auth(Identity, Props, Auth, Roles, Config)
+                    end
+            end;
+        false ->
+            {abort, too_many}
+    end.
 
 count_users() ->
     pipes:run(menelaus_users:select_users('_', []),
@@ -404,35 +422,16 @@ check_limit(Identity) ->
             end
     end.
 
-store_user_50({_UserName, Domain} = Identity, Props, Password, Roles, Config) ->
-    CurrentAuth = replicated_dets:get(storage_name(), {auth, Identity}),
-    case check_limit(Identity) of
-        true ->
-            case Domain of
-                external ->
-                    store_user_50_with_auth(Identity, Props, same, Roles, Config);
-                local ->
-                    case build_auth(CurrentAuth, Password) of
-                        password_required ->
-                            {abort, password_required};
-                        Auth ->
-                            store_user_50_with_auth(Identity, Props, Auth, Roles, Config)
-                    end
-            end;
-        false ->
-            {abort, too_many}
-    end.
-
-store_user_50_with_auth(Identity, Props, Auth, Roles, Config) ->
+store_user_with_auth(Identity, Props, Auth, Roles, Config) ->
     case menelaus_roles:validate_roles(Roles, Config) of
         {NewRoles, []} ->
-            ok = store_user_50_validated(Identity, [{roles, NewRoles} | Props], Auth),
+            ok = store_user_validated(Identity, [{roles, NewRoles} | Props], Auth),
             {commit, ok};
         {_, BadRoles} ->
             {abort, {error, roles_validation, BadRoles}}
     end.
 
-store_user_50_validated(Identity, Props, Auth) ->
+store_user_validated(Identity, Props, Auth) ->
     case replicated_dets:get(storage_name(), {user, Identity}) of
         false ->
             _ = delete_profile(Identity);
@@ -463,10 +462,7 @@ change_password({_UserName, local} = Identity, Password) when is_list(Password) 
     end.
 
 -spec delete_user(rbac_identity()) -> run_txn_return().
-delete_user(Identity) ->
-    delete_user_50(Identity).
-
-delete_user_50({_, Domain} = Identity) ->
+delete_user({_, Domain} = Identity) ->
     case Domain of
         local ->
             _ = replicated_dets:delete(storage_name(), {auth, Identity}),
@@ -863,5 +859,5 @@ do_upgrade_to_55(Nodes) ->
     lists:foreach(fun (Identity) ->
                           OldProps = get_user_props(Identity, [user_roles]),
                           NewProps = upgrade_user_roles_to_55(OldProps),
-                          store_user_50_validated(Identity, NewProps, same)
+                          store_user_validated(Identity, NewProps, same)
                   end, UpdateUsers).
