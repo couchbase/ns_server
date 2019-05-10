@@ -626,6 +626,10 @@ do_handle_add_node(Req, GroupUUID) ->
             Hostname = proplists:get_value(host, KV),
             Port = proplists:get_value(port, KV),
             Services = proplists:get_value(services, KV),
+
+            %% Possible restart of web servers during node addition can
+            %% stop this process. Protect ourselves with trap_exit.
+            process_flag(trap_exit, true),
             case ns_cluster:add_node_to_group(
                    Scheme, Hostname, Port,
                    {User, Password},
@@ -638,7 +642,10 @@ do_handle_add_node(Req, GroupUUID) ->
                     reply_json(Req, [Message], 404);
                 {error, _What, Message, _Nested} ->
                     reply_json(Req, [Message], 400)
-            end;
+            end,
+            %% we have to stop this process because in case of
+            %% ns_server restart it becomes orphan
+            erlang:exit(normal);
         {errors, ErrorList} ->
             reply_json(Req, ErrorList, 400)
     end.
