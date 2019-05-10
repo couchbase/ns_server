@@ -10,11 +10,31 @@
     vm.joinClusterConfig = mnClusterConfigurationService.getJoinClusterConfig();
     vm.defaultJoinClusterSerivesConfig = _.clone(vm.joinClusterConfig.services, true);
     vm.isEnterprise = pools.isEnterprise;
+    vm.hostConfig = {
+      afamily: 'ipv4',
+      clusterEncryption: 'off'
+    };
 
     vm.onSubmit = onSubmit;
     vm.sendStats = true;
 
     activate();
+
+    function postSetupNetConfig() {
+      return mnClusterConfigurationService.postSetupNetConfig(vm.hostConfig);
+    }
+
+    function postHostConfig() {
+      var promise;
+      if (vm.hostConfig.clusterEncryption == "on") {
+        promise = mnClusterConfigurationService.postDistProtocols({
+          external: 'inet6_tls'
+        }).then(postSetupNetConfig);
+      } else {
+        promise = postSetupNetConfig();
+      }
+      return addErrorHandler(promise, "postHostConfig");
+    }
 
     function activate() {
       mnPromiseHelper(vm, mnClusterConfigurationService.getConfig())
@@ -137,7 +157,12 @@
 
       var promise =
           postDiskStorage().then(function () {
-            return addErrorHandler(mnClusterConfigurationService.postHostname(vm.config.hostname), "postHostname");
+            var promise = addErrorHandler(mnClusterConfigurationService
+                                          .postHostname(vm.config.hostname), "postHostname");
+            if (vm.isEnterprise) {
+              promise = promise.then(postHostConfig);
+            }
+            return promise;
           }).then(function () {
             if (mnWizardService.getState().isNewCluster) {
               if (vm.config.startNewClusterConfig.services.model.index) {

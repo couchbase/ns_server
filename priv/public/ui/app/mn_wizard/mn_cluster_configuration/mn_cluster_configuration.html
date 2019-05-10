@@ -37,6 +37,37 @@
         </div>
       </div>
 
+      <div class="formrow form-inline" ng-show="clusterConfigurationCtl.isEnterprise">
+        <input
+           type="checkbox"
+           ng-false-value="'ipv4'"
+           ng-true-value="'ipv6'"
+           id="for-use-ipv6-addresses"
+           ng-model="clusterConfigurationCtl.hostConfig.afamily">
+        <label for="for-use-ipv6-addresses">
+          use IPv6 addresses
+        </label>
+        <input
+           type="checkbox"
+           ng-false-value="'off'"
+           ng-true-value="'on'"
+           id="for-cluster-encryption"
+           ng-model="clusterConfigurationCtl.hostConfig.clusterEncryption">
+        <label for="for-cluster-encryption">
+           enable cluster encryption
+        </label>
+        <div
+           class="error error-form"
+           ng-show="clusterConfigurationCtl.postHostConfigErrors.afamily">
+          {{clusterConfigurationCtl.postHostConfigErrors.afamily}}
+        </div>
+        <div
+           class="error error-form"
+           ng-show="clusterConfigurationCtl.postHostConfigErrors.clusterEncryption">
+          {{clusterConfigurationCtl.postHostConfigErrors.clusterEncryption}}
+        </div>
+      </div>
+
       <mn-services-disk-paths
          ng-if="clusterConfigurationCtl.config"
          config="clusterConfigurationCtl.config"

@@ -21,7 +21,9 @@
       postStats: postStats,
       getQuerySettings: getQuerySettings,
       postQuerySettings: postQuerySettings,
-      postCurlWhitelist: postCurlWhitelist
+      postCurlWhitelist: postCurlWhitelist,
+      postDistProtocols: postDistProtocols,
+      postSetupNetConfig: postSetupNetConfig
     };
     var re = /^[A-Z]:\//;
     var preprocessPath;
@@ -78,12 +80,19 @@
 
     return mnClusterConfigurationService;
 
-    function getQuerySettings() {
+    function postDistProtocols(data) {
       return $http({
-        method: 'GET',
-        url: '/settings/querySettings'
-      }).then(function (resp) {
-        return resp.data;
+        method: 'POST',
+        url: '/node/controller/distProtocols',
+        data: data
+      });
+    }
+
+    function postSetupNetConfig(data) {
+      return $http({
+        method: 'POST',
+        url: '/node/controller/setupNetConfig',
+        data: data
       });
     }
 
@@ -92,6 +101,15 @@
         method: 'POST',
         url: '/settings/querySettings',
         data: data
+      }).then(function (resp) {
+        return resp.data;
+      });
+    }
+
+    function getQuerySettings() {
+      return $http({
+        method: 'GET',
+        url: '/settings/querySettings'
       }).then(function (resp) {
         return resp.data;
       });
