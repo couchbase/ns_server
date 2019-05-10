@@ -29,7 +29,7 @@
     </div>
   </div>
 
-  <div ng-if="gsiCtl.state.indexes.length">
+  <div ng-if="gsiCtl.state.indexes.length" style="margin-bottom: 120px;">
     <div
        ng-if="viewby == 'viewby_node'"
        ng-repeat="(nodeName, group) in gsiCtl.state.byNodes track by nodeName">
@@ -62,6 +62,7 @@
        list="gsiCtl.state.byID"
        rbac="rbac"
        pools="pools"
+       hide-column="all"
        filter-field="gsiCtl.filterField">
     </mn-gsi-table>
   </div>
@@ -74,18 +75,17 @@
     <div class="column vertical-divider">
       <h5>Global Stats</h5>
       <span class="width-6">RAM Quota</span>
-      <span class="text-right width-6">{{gsiCtl.stats.index_memory_quota/1024/1024 | number:1}} MB</span><br>
+      <span class="text-right width-6">{{gsiCtl.state.overall_stats[gsiCtl.currentBucket].index_memory_quota/1024/1024 | number:1}} MB</span><br>
       <span class="width-6">RAM Used/Remaining</span>
-      <span class="text-right width-6">{{gsiCtl.stats.index_memory_used/1024/1024 | number:1}}/{{gsiCtl.stats.index_remaining_ram/1024/1024 | number:1}} MB</span><br>
+      <span class="text-right width-6">{{gsiCtl.state.overall_stats[gsiCtl.currentBucket].index_memory_used/1024/1024 | number:1}}/{{gsiCtl.stats.index_remaining_ram/1024/1024 | number:1}} MB</span><br>
       <span class="width-6">RAM Percent</span>
-      <span class="text-right width-6">{{gsiCtl.stats.index_ram_percent | number:1}}%</span>
+      <span class="text-right width-6">{{gsiCtl.state.overall_stats[gsiCtl.currentBucket].index_ram_percent | number:1}}%</span>
     </div>
     <div class="column wide width-12">
       <div class="row">
         <h5>Per-Bucket Stats</h5>
         <ui-select class="cbui-select cbui-select-small" ng-model="gsiCtl.currentBucket"
-          theme="selectize" ng-disabled="!rbac.bucketNames['.stats!read'].length"
-          on-select="gsiCtl.onSelectBucket($item)">
+          theme="selectize" ng-disabled="!rbac.bucketNames['.stats!read'].length">
           <ui-select-match class="ui-select-match">{{$select.selected}} </ui-select-match>
           <ui-select-choices
             class="ui-select-choices"
@@ -97,27 +97,27 @@
       <div class="row">
         <div class="footer-column vertical-divider">
           <span class="width-6">Index Fragmentation</span>
-          <span class="text-right width-6">{{gsiCtl.stats['index/fragmentation'] | number:1}} %</span><br>
+          <span class="text-right width-6">{{gsiCtl.state.overall_stats[gsiCtl.currentBucket]['index/fragmentation'] | number:1}} %</span><br>
           <span class="width-6">RAM Percent Used</span>
-          <span class="text-right width-6">{{gsiCtl.stats['index_ram_percent'] | number:1}} %</span><br>
+          <span class="text-right width-6">{{gsiCtl.state.overall_stats[gsiCtl.currentBucket]['index_ram_percent'] | number:1}} %</span><br>
           <span class="width-6">RAM Bytes Used</span>
-          <span class="text-right width-6">{{gsiCtl.stats['index_memory_used']/1024/1024 | number:1}} MB</span><br>
+          <span class="text-right width-6">{{gsiCtl.state.overall_stats[gsiCtl.currentBucket]['index_memory_used']/1024/1024 | number:1}} MB</span><br>
         </div>
         <div class="footer-column vertical-divider">
           <span class="width-6">DCP Backoffs</span>
-          <span class="text-right width-6">{{gsiCtl.stats['ep_dcp_views+indexes_backoff'] | number:0}}</span><br>
+          <span class="text-right width-6">{{gsiCtl.state.overall_stats[gsiCtl.currentBucket]['ep_dcp_views+indexes_backoff'] | number:0}}</span><br>
           <span class="width-6">DCP Count</span>
-          <span class="text-right width-6">{{gsiCtl.stats['ep_dcp_views+indexes_count'] | number:0}}</span><br>
+          <span class="text-right width-6">{{gsiCtl.state.overall_stats[gsiCtl.currentBucket]['ep_dcp_views+indexes_count'] | number:0}}</span><br>
           <span class="width-6">DCP Items Remaining</span>
-          <span class="text-right width-6">{{gsiCtl.stats['ep_dcp_views+indexes_items_remaining'] | number:0}}</span><br>
+          <span class="text-right width-6">{{gsiCtl.state.overall_stats[gsiCtl.currentBucket]['ep_dcp_views+indexes_items_remaining'] | number:0}}</span><br>
         </div>
         <div class="footer-column">
           <span class="width-6">DCP Producer Count</span>
-          <span class="text-right width-6">{{gsiCtl.stats['ep_dcp_views+indexes_producer_count'] | number:0}}</span><br>
+          <span class="text-right width-6">{{gsiCtl.state.overall_stats[gsiCtl.currentBucket]['ep_dcp_views+indexes_producer_count'] | number:0}}</span><br>
           <span class="width-6">DCP Backlog</span>
-          <span class="text-right width-6">{{gsiCtl.stats['ep_dcp_views+indexes_total_backlog_size'] | number:0}}</span><br>
+          <span class="text-right width-6">{{gsiCtl.state.overall_stats[gsiCtl.currentBucket]['ep_dcp_views+indexes_total_backlog_size'] | number:0}}</span><br>
           <span class="width-6">DCP Total Bytes</span>
-          <span class="text-right width-6">{{gsiCtl.stats['ep_dcp_views+indexes_total_bytes'] | number:0}} B</span><br>
+          <span class="text-right width-6">{{gsiCtl.state.overall_stats[gsiCtl.currentBucket]['ep_dcp_views+indexes_total_bytes'] | number:0}} B</span><br>
         </div>
       </div>
     </div>
