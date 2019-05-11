@@ -1471,10 +1471,11 @@ local_url(Port, Path, Options) ->
                                       | {address_not_allowed, string()}.
 is_good_address(Address) ->
     case {is_ipv6(), is_raw_ip(Address), is_raw_ipv6(Address)} of
+        {true, _, true} -> check_short_name(Address, ":");
         {true, true, _} ->
-            Msg = io_lib:format("Can't use raw ip address ~s for ipv6 node. "
-                                "Please use a Fully Qualified Domain Name.",
-                                [Address]),
+            Msg = io_lib:format("Can't use raw ipv4 address ~s for ipv6 node. "
+                                "Please use a Fully Qualified Domain Name or "
+                                "ipv6 address.", [Address]),
             {address_not_allowed, lists:flatten(Msg)};
         {false, _, true} ->
             Msg = io_lib:format("Can't use ipv6 address ~s for ipv4 node",

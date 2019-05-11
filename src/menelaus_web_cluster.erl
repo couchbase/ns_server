@@ -328,7 +328,7 @@ handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherUser, OtherPswd,
                             HostnamePort =
                                 binary_to_list(misc:expect_prop_value(hostname,
                                                                       MyPList)),
-                            {H, _} = misc:split_host_port(HostnamePort, "8091"),
+                            [H, _] = string:split(HostnamePort, ":", trailing),
                             H;
                         H -> H
                     end,
