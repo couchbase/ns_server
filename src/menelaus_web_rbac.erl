@@ -29,7 +29,6 @@
 
 -export([handle_saslauthd_auth_settings/1,
          handle_saslauthd_auth_settings_post/1,
-         handle_validate_saslauthd_creds_post/1,
          handle_get_roles/1,
          handle_get_users/2,
          handle_get_users/3,
@@ -152,39 +151,6 @@ handle_saslauthd_auth_settings_post(Req) ->
         {errors, Errors} ->
             menelaus_util:reply_json(Req, {Errors}, 400)
     end.
-
-handle_validate_saslauthd_creds_post(Req) ->
-    assert_is_saslauthd_enabled(),
-    erlang:throw(
-      {web_exception,
-       400,
-       "This http API endpoint is not supported in 4.5 clusters", []}),
-
-    Params = mochiweb_request:parse_post(Req),
-    User = proplists:get_value("user", Params, ""),
-    VRV = menelaus_auth:verify_login_creds(
-            User, proplists:get_value("password", Params, "")),
-
-    {Role, Src} =
-        case VRV of
-            {ok, {_, external}} ->
-                {saslauthd_auth:get_role_pre_45(User), saslauthd};
-            {ok, {_, R}} ->
-                {R, builtin};
-            {error, Error} ->
-                erlang:throw({web_exception, 400, Error, []});
-            _ ->
-                {false, builtin}
-        end,
-    JRole = case Role of
-                admin ->
-                    fullAdmin;
-                ro_admin ->
-                    roAdmin;
-                false ->
-                    none
-            end,
-    menelaus_util:reply_json(Req, {[{role, JRole}, {source, Src}]}).
 
 role_to_json(Name) when is_atom(Name) ->
     [{role, Name}];
