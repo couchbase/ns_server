@@ -320,8 +320,6 @@ validate_permission(Name, State) ->
       end, Name, State).
 
 handle_get_users(Path, Domain, Req) ->
-    menelaus_util:assert_is_50(),
-
     case domain_to_atom(Domain) of
         unknown ->
             menelaus_util:reply_json(Req, <<"Unknown user domain.">>, 404);
@@ -398,7 +396,6 @@ handle_get_all_users(Req, Pattern, Params) ->
                 Req, 200, [{"Content-Type", "application/json"}])).
 
 handle_get_user(Domain, UserId, Req) ->
-    menelaus_util:assert_is_50(),
     case domain_to_atom(Domain) of
         unknown ->
             menelaus_util:reply_json(Req, <<"Unknown user domain.">>, 404);
@@ -862,7 +859,6 @@ handle_put_user(Domain, UserId, Req) ->
                     menelaus_util:assert_is_enterprise(),
                     handle_put_user_with_identity({UserId, T}, Req);
                 local = T ->
-                    menelaus_util:assert_is_50(),
                     handle_put_user_with_identity({UserId, T}, Req)
             end;
         Error ->
@@ -1038,7 +1034,6 @@ change_password_validators() ->
 
 handle_change_password(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_50(),
 
     case menelaus_auth:get_token(Req) of
         undefined ->
@@ -1369,7 +1364,6 @@ forbidden_response(Permission) ->
     forbidden_response([Permission]).
 
 handle_get_password_policy(Req) ->
-    menelaus_util:assert_is_50(),
     {MinLength, MustPresent} = get_password_policy(),
     menelaus_util:reply_json(
       Req,

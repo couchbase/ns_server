@@ -39,13 +39,7 @@ get_key(ro_admin) ->
     read_only_user_creds.
 
 set_credentials(Role, User, Password) ->
-    Auth =
-        case cluster_compat_mode:is_cluster_50() of
-            true ->
-                {auth, menelaus_users:build_scram_auth(Password)};
-            false ->
-                {password, hash_password(Password)}
-        end,
+    Auth = {auth, menelaus_users:build_scram_auth(Password)},
     ns_config:set(get_key(Role), {User, Auth}).
 
 get_user_and_auth(Role) ->

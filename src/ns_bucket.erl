@@ -567,12 +567,6 @@ new_bucket_default_params(memcached) ->
      {map, []},
      {ram_quota, 0}].
 
-cleanup_bucket_props_pre_50(Props) ->
-    case proplists:get_value(auth_type, Props) of
-        sasl -> lists:keydelete(moxi_port, 1, Props);
-        none -> lists:keydelete(sasl_password, 1, Props)
-    end.
-
 cleanup_bucket_props(Props) ->
     case proplists:get_value(moxi_port, Props) of
         undefined ->
@@ -595,13 +589,7 @@ create_bucket(BucketType, BucketName, NewConfig) ->
             MergedConfig0 =
                 misc:update_proplist(new_bucket_default_params(BucketType),
                                      NewConfig),
-            MergedConfig1 =
-                case cluster_compat_mode:is_cluster_50() of
-                    true ->
-                        generate_sasl_password(MergedConfig0);
-                    false ->
-                        cleanup_bucket_props_pre_50(MergedConfig0)
-                end,
+            MergedConfig1 = generate_sasl_password(MergedConfig0),
             BucketUUID = couch_uuids:random(),
             MergedConfig = [{repl_type, dcp} |
                             [{uuid, BucketUUID} | MergedConfig1]],
@@ -697,12 +685,7 @@ update_bucket_props(BucketName, Props) ->
                                           fun ({K, _V} = Tuple, Acc) ->
                                                   [Tuple | lists:keydelete(K, 1, Acc)]
                                           end, OldProps, Props),
-                             case cluster_compat_mode:is_cluster_50() of
-                                 true ->
-                                     cleanup_bucket_props(NewProps);
-                                 false ->
-                                     cleanup_bucket_props_pre_50(NewProps)
-                             end
+                             cleanup_bucket_props(NewProps)
                      end),
               case RV of
                   false -> exit({not_found, BucketName});

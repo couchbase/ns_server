@@ -84,20 +84,7 @@ handle_event({rest_creds, Creds}, State) ->
     {changed, State#state{rest_creds = Creds}}.
 
 producer(State) ->
-    case cluster_compat_mode:is_cluster_50() of
-        true ->
-            make_producer(State);
-        false ->
-            ?make_producer(?yield(generate_45(State)))
-    end.
-
-generate_45(#state{buckets = Buckets,
-                   users = Users,
-                   admin_pass = AP}) ->
-    UserPasswords = [{U, AP} || U <- Users] ++ Buckets,
-    Infos = menelaus_users:build_scram_auth_info(UserPasswords),
-    Json = {struct, [{<<"users">>, Infos}]},
-    menelaus_util:encode_json(Json).
+    make_producer(State).
 
 make_producer(#state{buckets = Buckets,
                      users = Users,

@@ -238,23 +238,18 @@ mutate(Req, Oper, BucketId, DocId, Body, Flags) ->
     end.
 
 extract_flags(Params) ->
-    case cluster_compat_mode:is_cluster_50() of
-        false ->
-            undefined;
-        true ->
-            case proplists:get_value("flags", Params) of
-                undefined ->
-                    ?COMMON_FLAGS_JSON;
-                Val ->
-                    case (catch list_to_integer(Val)) of
-                        Int when is_integer(Int) andalso Int > 0 ->
-                            Int;
-                        _ ->
-                            erlang:throw(
-                              {web_exception, 400,
-                               <<"'flags' must be a valid positive integer">>,
-                               []})
-                    end
+    case proplists:get_value("flags", Params) of
+        undefined ->
+            ?COMMON_FLAGS_JSON;
+        Val ->
+            case (catch list_to_integer(Val)) of
+                Int when is_integer(Int) andalso Int > 0 ->
+                    Int;
+                _ ->
+                    erlang:throw(
+                      {web_exception, 400,
+                       <<"'flags' must be a valid positive integer">>,
+                       []})
             end
     end.
 

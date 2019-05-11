@@ -309,8 +309,7 @@ handle_info(tick, State0) ->
     NonPendingNodes = lists:sort(ns_cluster_membership:active_nodes(Config)),
 
     NodeStatuses = ns_doctor:get_nodes(),
-    {DownNodes, DownSG} = get_down_nodes(NodeStatuses,
-                                         NonPendingNodes, Config),
+    {DownNodes, DownSG} = get_down_nodes(NonPendingNodes, Config),
     State = log_down_nodes_reason(DownNodes, State1),
     CurrentlyDown = [N || {N, _} <- DownNodes],
     NodeUUIDs = ns_config:get_node_uuid_map(Config),
@@ -596,33 +595,20 @@ report_failover_error(Flag, ErrMsg, Nodes, State) ->
     end.
 
 get_tick_period() ->
-    case cluster_compat_mode:is_cluster_50() of
-        true ->
-            ?TICK_PERIOD;
-        false ->
-            ?HEART_BEAT_PERIOD
-    end.
+    ?TICK_PERIOD.
 
 %% Returns list of nodes that are down/unhealthy along with the reason
 %% why the node is considered unhealthy.
 %% Also, returns name of the down server group if all nodes in that group
 %% are down and all other requirements for server group auto-failover are
 %% satisfied.
-get_down_nodes(NodeStatuses, NonPendingNodes, Config) ->
-    case cluster_compat_mode:is_cluster_50() of
-        true ->
-            %% Find down nodes using the new failure detector.
-            DownNodesInfo0 = fastfo_down_nodes(NonPendingNodes),
-            DownSG = get_down_server_group(DownNodesInfo0, Config,
-                                           NonPendingNodes),
-            DownNodesInfo = [{N, Info} || {N, Info, _} <- DownNodesInfo0],
-            {DownNodesInfo, DownSG};
-        false ->
-            DownNodes = actual_down_nodes(NodeStatuses, NonPendingNodes,
-                                          Config),
-            {lists:zip(DownNodes, lists:duplicate(length(DownNodes), unknown)),
-             []}
-    end.
+get_down_nodes(NonPendingNodes, Config) ->
+    %% Find down nodes using the new failure detector.
+    DownNodesInfo0 = fastfo_down_nodes(NonPendingNodes),
+    DownSG = get_down_server_group(DownNodesInfo0, Config,
+                                   NonPendingNodes),
+    DownNodesInfo = [{N, Info} || {N, Info, _} <- DownNodesInfo0],
+    {DownNodesInfo, DownSG}.
 
 fastfo_down_nodes(NonPendingNodes) ->
     NodeStatuses = node_status_analyzer:get_nodes(),
@@ -798,38 +784,6 @@ all_nodes_down_in_same_group([{SG, Nodes} | Rest], DownNodes) ->
             all_nodes_down_in_same_group(Rest, DownNodes)
     end.
 
-%% @doc Returns a list of nodes that should be active, but are not running.
--spec actual_down_nodes(dict:dict(), [atom()], [{atom(), term()}]) -> [atom()].
-actual_down_nodes(NodesDict, NonPendingNodes, Config) ->
-    %% Get all buckets
-    BucketConfigs = ns_bucket:get_buckets(Config),
-    actual_down_nodes_inner(NonPendingNodes, BucketConfigs, NodesDict,
-                            erlang:monotonic_time()).
-
-actual_down_nodes_inner(NonPendingNodes, BucketConfigs, NodesDict, Now) ->
-    BucketsServers = [{Name, lists:sort(proplists:get_value(servers, BC, []))}
-                      || {Name, BC} <- BucketConfigs],
-
-    lists:filter(
-      fun (Node) ->
-              case dict:find(Node, NodesDict) of
-                  {ok, Info} ->
-                      LastHeard = proplists:get_value(last_heard, Info),
-                      Diff      = erlang:convert_time_unit(Now - LastHeard,
-                                                           native, millisecond),
-
-                      Diff > (?HEART_BEAT_PERIOD + ?STATS_TIMEOUT) orelse
-                          begin
-                              Ready = proplists:get_value(ready_buckets, Info, []),
-                              ExpectedReady = [Name || {Name, Servers} <- BucketsServers,
-                                                       ordsets:is_element(Node, Servers)],
-                              (ExpectedReady -- Ready) =/= []
-                          end;
-                  error ->
-                      true
-              end
-      end, NonPendingNodes).
-
 %% @doc Save the current state in ns_config
 -spec make_state_persistent(State::#state{}) -> ok.
 make_state_persistent(State) ->
@@ -930,38 +884,6 @@ restart_on_compat_mode_change() ->
 
 
 -ifdef(TEST).
-actual_down_nodes_inner_test() ->
-    PList0 = [{a, ["bucket1", "bucket2"]},
-              {b, ["bucket1"]},
-              {c, []}],
-    NodesDict = dict:from_list([{N, [{ready_buckets, B},
-                                     {last_heard, 0}]}
-                                || {N, B} <- PList0]),
-    R = fun (Nodes, Buckets) ->
-                actual_down_nodes_inner(Nodes, Buckets, NodesDict, 0)
-        end,
-    ?assertEqual([], R([a, b, c], [])),
-    ?assertEqual([], R([a, b, c],
-                       [{"bucket1", [{servers, [a]}]}])),
-    ?assertEqual([], R([a, b, c],
-                       [{"bucket1", [{servers, [a, b]}]}])),
-    %% this also tests too "old" heartbeats a bit
-    ?assertEqual([a,b,c],
-                 actual_down_nodes_inner([a,b,c],
-                                         [{"bucket1", [{servers, [a, b]}]}],
-                                         NodesDict, 16#100000000000)),
-    ?assertEqual([c], R([a, b, c],
-                        [{"bucket1", [{servers, [a, b, c]}]}])),
-    ?assertEqual([b, c], R([a, b, c],
-                           [{"bucket1", [{servers, [a, b, c]}]},
-                            {"bucket2", [{servers, [a, b, c]}]}])),
-    ?assertEqual([b, c], R([a, b, c],
-                           [{"bucket2", [{servers, [a, b, c]}]}])),
-    ?assertEqual([a, b, c], R([a, b, c],
-                              [{"bucket3", [{servers, [a]}]},
-                               {"bucket2", [{servers, [a, b, c]}]}])),
-    ok.
-
 -define(FLAG, #state.reported_autofailover_unsafe).
 reported_test() ->
     %% nothing reported initially

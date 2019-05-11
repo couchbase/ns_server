@@ -119,21 +119,7 @@ handle_event({rest_creds, _}, State) ->
     {changed, State#state{cluster_admin = undefined}}.
 
 producer(State) ->
-    case cluster_compat_mode:is_cluster_50() of
-        true ->
-            make_producer(State);
-        false ->
-            ?make_producer(?yield(generate_45(State)))
-    end.
-
-generate_45(#state{buckets = Buckets,
-                   param_values = ParamValues,
-                   roles = RoleDefinitions,
-                   users = Users}) ->
-    Json =
-        {[memcached_admin_json(U) || U <- Users] ++
-             generate_json_45(Buckets, ParamValues, RoleDefinitions)},
-    menelaus_util:encode_json(Json).
+    make_producer(State).
 
 refresh() ->
     memcached_refresh:refresh(rbac).
@@ -193,17 +179,6 @@ jsonify_user({UserName, Domain}, [{global, GlobalPermissions} | BucketPermission
 
 memcached_admin_json(AU) ->
     jsonify_user({AU, local}, [{global, [all]}, {"*", [all]}]).
-
-generate_json_45(Buckets, ParamValues, RoleDefinitions) ->
-    RolesDict = dict:new(),
-    {Json, _} =
-        lists:foldl(fun (Bucket, {Acc, Dict}) ->
-                            Roles = menelaus_roles:get_roles({Bucket, bucket}),
-                            {Permissions, NewDict} =
-                                permissions_for_user(Roles, Buckets, ParamValues, RoleDefinitions, Dict),
-                            {[jsonify_user({Bucket, local}, Permissions) | Acc], NewDict}
-                    end, {[], RolesDict}, Buckets),
-    lists:reverse(Json).
 
 jsonify_users(Users, Buckets, ParamValues, RoleDefinitions, ClusterAdmin) ->
     ?make_transducer(
@@ -265,33 +240,3 @@ make_producer(#state{buckets = Buckets,
                    jsonify_users(Users, Buckets, ParamValues, RoleDefinitions, ClusterAdmin),
                    sjson:encode_extended_json([{compact, false},
                                                {strict, false}])]).
-
-
--ifdef(TEST).
-generate_json_45_test() ->
-    RoleDefinitions = menelaus_roles:roles_45(),
-    BucketsConfig = [{"default", [{uuid, <<"default_id">>}]}, {"test", [{uuid, <<"test_id">>}]}],
-    Buckets = ns_bucket:get_bucket_names(BucketsConfig),
-    ParamValues =  menelaus_roles:calculate_possible_param_values(BucketsConfig),
-
-    Json =
-        [{<<"default">>,
-          {[{buckets,{[{<<"default">>,
-                        ['DcpConsumer','DcpProducer','Delete','Insert',
-                         'MetaRead','MetaWrite','Read','SimpleStats',
-                         'SystemXattrRead','SystemXattrWrite','Upsert',
-                         'XattrRead','XattrWrite']},
-                       {<<"test">>,[]}]}},
-            {privileges,[]},
-            {domain, local}]}},
-         {<<"test">>,
-          {[{buckets,{[{<<"default">>,[]},
-                       {<<"test">>,
-                        ['DcpConsumer','DcpProducer','Delete','Insert',
-                         'MetaRead','MetaWrite','Read','SimpleStats',
-                         'SystemXattrRead','SystemXattrWrite','Upsert',
-                         'XattrRead','XattrWrite']}]}},
-            {privileges,[]},
-            {domain, local}]}}],
-    ?assertEqual(Json, generate_json_45(Buckets, ParamValues, RoleDefinitions)).
--endif.

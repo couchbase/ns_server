@@ -264,7 +264,6 @@ validate_client_cert_auth_settings({Key, Val}, Params, OldVal, Acc) ->
 
 handle_client_cert_auth_settings_post(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_50(),
 
     case cluster_compat_mode:is_cluster_51() of
         true ->

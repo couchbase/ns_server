@@ -152,8 +152,7 @@ validate_settings_auto_failover(Args, Config) ->
     end.
 
 parse_validate_other_params(Args, Config) ->
-    Min = case cluster_compat_mode:is_cluster_50() andalso
-              cluster_compat_mode:is_enterprise() of
+    Min = case cluster_compat_mode:is_enterprise() of
               true ->
                   ?AUTO_FAILLOVER_MIN_TIMEOUT;
               false ->

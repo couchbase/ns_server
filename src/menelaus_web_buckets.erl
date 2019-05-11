@@ -395,15 +395,14 @@ build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
 build_bucket_capabilities(BucketConfig) ->
     MoreCaps =
         [C || {C, true} <-
-                  [{xattr, cluster_compat_mode:is_cluster_50()},
-                   {collections, collections:enabled(BucketConfig)},
+                  [{collections, collections:enabled(BucketConfig)},
                    {durableWrite, cluster_compat_mode:is_cluster_madhatter()}]],
 
     Caps =
         case ns_bucket:bucket_type(BucketConfig) of
             membase ->
                 Caps0 = MoreCaps ++ [dcp, cbhello, touch, cccp,
-                                     xdcrCheckpointing, nodesExt],
+                                     xdcrCheckpointing, nodesExt, xattr],
 
                 case ns_bucket:storage_mode(BucketConfig) of
                     couchstore -> [couchapi | Caps0];
@@ -507,27 +506,16 @@ respond_bucket_created(Req, PoolId, BucketId) ->
     reply(Req, 202, [{"Location", concat_url_path(["pools", PoolId, "buckets", BucketId])}]).
 
 %% returns pprop list with only props useful for ns_bucket
-extract_bucket_props(BucketId, Props) ->
-    ImportantProps = [X || X <- [lists:keyfind(Y, 1, Props) || Y <- [num_replicas, replica_index, ram_quota, auth_type,
-                                                                     sasl_password, moxi_port,
-                                                                     autocompaction, purge_interval,
-                                                                     flush_enabled, num_threads, eviction_policy,
-                                                                     conflict_resolution_type,
-                                                                     drift_ahead_threshold_ms,
-                                                                     drift_behind_threshold_ms,
-                                                                     storage_mode, max_ttl,
-                                                                     compression_mode]],
-                           X =/= false],
-    case not cluster_compat_mode:is_cluster_50() andalso
-        BucketId =:= "default" of
-        true ->
-            lists:keyreplace(
-              auth_type, 1,
-              [{sasl_password, ""} | lists:keydelete(sasl_password, 1, ImportantProps)],
-              {auth_type, sasl});
-        _ ->
-            ImportantProps
-    end.
+extract_bucket_props(Props) ->
+    [X || X <-
+              [lists:keyfind(Y, 1, Props) ||
+                  Y <- [num_replicas, replica_index, ram_quota, auth_type,
+                        sasl_password, moxi_port, autocompaction,
+                        purge_interval, flush_enabled, num_threads,
+                        eviction_policy, conflict_resolution_type,
+                        drift_ahead_threshold_ms, drift_behind_threshold_ms,
+                        storage_mode, max_ttl, compression_mode]],
+          X =/= false].
 
 -record(bv_ctx, {
           validate_only,
@@ -599,7 +587,7 @@ handle_bucket_update_inner(BucketId, Req, Params, Limit) ->
             BucketType = proplists:get_value(bucketType, ParsedProps),
             StorageMode = proplists:get_value(storage_mode, ParsedProps,
                                               undefined),
-            UpdatedProps = extract_bucket_props(BucketId, ParsedProps),
+            UpdatedProps = extract_bucket_props(ParsedProps),
             case ns_orchestrator:update_bucket(BucketType, StorageMode,
                                                BucketId, UpdatedProps) of
                 ok ->
@@ -650,7 +638,7 @@ create_bucket(Req, Name, Params) ->
 do_bucket_create(Req, Name, ParsedProps) ->
     BucketType = proplists:get_value(bucketType, ParsedProps),
     StorageMode = proplists:get_value(storage_mode, ParsedProps, undefined),
-    BucketProps = extract_bucket_props(Name, ParsedProps),
+    BucketProps = extract_bucket_props(ParsedProps),
     maybe_cleanup_old_buckets(),
     case ns_orchestrator:create_bucket(BucketType, Name, BucketProps) of
         ok ->
@@ -883,39 +871,11 @@ parse_bucket_params_without_warnings(Ctx, Params) ->
 
 basic_bucket_params_screening(#bv_ctx{bucket_config = false, new = false}, _Params) ->
     {[], [{name, <<"Bucket with given name doesn't exist">>}]};
-basic_bucket_params_screening(#bv_ctx{cluster_version = Version} = Ctx, Params) ->
-    case cluster_compat_mode:is_version_50(Version) of
-        true ->
-            basic_bucket_params_screening_tail(Ctx, Params);
-        false ->
-            basic_bucket_params_screening_auth_46(Ctx, Params)
-    end.
-
-basic_bucket_params_screening_auth_46(#bv_ctx{bucket_config = BucketConfig} = Ctx, Params) ->
-    AuthType = case proplists:get_value("authType", Params) of
-                   "none" ->
-                       none;
-                   "sasl" ->
-                       sasl;
-                   undefined when BucketConfig =/= false ->
-                       ns_bucket:auth_type(BucketConfig);
-                   _ ->
-                       invalid
-               end,
-    case AuthType of
-        invalid ->
-            {[], [{authType, <<"invalid authType">>}]};
-        _ ->
-            basic_bucket_params_screening_tail(
-              Ctx, lists:keystore("authType", 1, Params, {"authType", AuthType}))
-    end.
-
-basic_bucket_params_screening_tail(Ctx, Params) ->
+basic_bucket_params_screening(Ctx, Params) ->
     CommonParams = validate_common_params(Ctx, Params),
-    VersionSpecificParams = validate_version_specific_params(Ctx, Params),
     TypeSpecificParams =
         validate_bucket_type_specific_params(CommonParams, Params, Ctx),
-    Candidates = CommonParams ++ VersionSpecificParams ++ TypeSpecificParams,
+    Candidates = CommonParams ++ TypeSpecificParams,
     assert_candidates(Candidates),
     {[{K,V} || {ok, K, V} <- Candidates],
      [{K,V} || {error, K, V} <- Candidates]}.
@@ -927,18 +887,8 @@ validate_common_params(#bv_ctx{bucket_name = BucketName,
      parse_validate_flush_enabled(Params, IsNew),
      validate_bucket_name(IsNew, BucketConfig, BucketName, AllBuckets),
      parse_validate_ram_quota(Params, BucketConfig),
-     parse_validate_other_buckets_ram_quota(Params)].
-
-validate_version_specific_params(#bv_ctx{cluster_version = Version} = Ctx, Params) ->
-    case cluster_compat_mode:is_version_50(Version) of
-        true ->
-            [validate_moxi_port(Params)];
-        false ->
-            AuthType = proplists:get_value("authType", Params),
-            true = AuthType =/= undefined,
-            [{ok, auth_type, AuthType},
-             validate_auth_params_46(AuthType, Ctx, Params)]
-    end.
+     parse_validate_other_buckets_ram_quota(Params),
+     validate_moxi_port(Params)].
 
 validate_bucket_type_specific_params(CommonParams, Params,
                                      #bv_ctx{new = IsNew,
@@ -1022,23 +972,6 @@ validate_bucket_name(true = _IsNew, _BucketConfig, BucketName, AllBuckets) ->
 validate_bucket_name(false = _IsNew, BucketConfig, _BucketName, _AllBuckets) ->
     true = (BucketConfig =/= false),
     {ok, currentBucket, BucketConfig}.
-
-validate_auth_params_46(none = _AuthType, #bv_ctx{bucket_config = BucketConfig},
-                        Params) ->
-    case proplists:get_value("proxyPort", Params) of
-        undefined when BucketConfig =/= false ->
-            case ns_bucket:auth_type(BucketConfig) of
-                none ->
-                    ignore;
-                _ ->
-                    {error, proxyPort, <<"port is missing">>}
-            end;
-        ProxyPort ->
-            do_validate_moxi_port(ProxyPort)
-    end;
-validate_auth_params_46(sasl = _AuthType, #bv_ctx{new = IsNew}, Params) ->
-    validate_with_missing(proplists:get_value("saslPassword", Params), "",
-                          IsNew, fun validate_bucket_password/1).
 
 validate_moxi_port(Params) ->
     do_validate_moxi_port(proplists:get_value("proxyPort", Params)).
@@ -1181,13 +1114,7 @@ get_storage_mode(Params, _BucketConfig, true = _IsNew) ->
         "couchbase" ->
             {ok, storage_mode, couchstore};
         "ephemeral" ->
-            case cluster_compat_mode:is_cluster_50() of
-                true ->
-                    {ok, storage_mode, ephemeral};
-                false ->
-                    {error, bucketType,
-                     <<"Bucket type 'ephemeral' is supported only in 5.0">>}
-            end
+            {ok, storage_mode, ephemeral}
     end;
 get_storage_mode(_Params, BucketConfig, false = _IsNew)->
     {ok, storage_mode, ns_bucket:storage_mode(BucketConfig)}.
@@ -1245,28 +1172,6 @@ get_drift_behind_threshold(Params, IsNew) ->
                           "5000",
                           IsNew,
                           fun parse_validate_drift_behind_threshold/1).
-
-validate_bucket_password(undefined) ->
-    {error, saslPassword, <<"Bucket password is undefined">>};
-validate_bucket_password(SaslPassword) ->
-    case do_validate_bucket_password(SaslPassword) of
-        ok ->
-            {ok, sasl_password, SaslPassword};
-        {error, Error} ->
-            {error, saslPassword, Error}
-    end.
-
-do_validate_bucket_password(Password) ->
-    case lists:all(
-           fun (C) ->
-                   C > 32 andalso C =/= 127
-           end, Password) andalso couch_util:validate_utf8(Password) of
-        true ->
-            ok;
-        false ->
-            {error, <<"Bucket password must not contain control characters, "
-                      "spaces and has to be a valid utf8">>}
-    end.
 
 -define(PRAM(K, KO), {KO, V#ram_summary.K}).
 ram_summary_to_proplist(V) ->
@@ -1860,10 +1765,9 @@ basic_bucket_params_screening_test() ->
     %% it is possible to update only some fields
     {OK6, E6} = basic_bucket_params_screening(false, "third",
                                               [{"bucketType", "membase"},
-                                               {"saslPassword", "password"}],
+                                               {"replicaNumber", "2"}],
                                               AllBuckets),
-    {sasl_password, "password"} = lists:keyfind(sasl_password, 1, OK6),
-    {auth_type, sasl} = lists:keyfind(auth_type, 1, OK6),
+    {num_replicas, 2} = lists:keyfind(num_replicas, 1, OK6),
     [] = E6,
     ?assertEqual(false, lists:keyfind(num_threads, 1, OK6)),
     ?assertEqual(false, lists:keyfind(eviction_policy, 1, OK6)),

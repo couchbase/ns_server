@@ -1571,16 +1571,11 @@ check_for_moxi_buckets(Config) ->
     end.
 
 check_for_passwordless_default(Config) ->
-    case cluster_compat_mode:is_cluster_50(Config) of
-        false ->
-            ok;
+    case lists:member({"default", local},
+                      menelaus_users:get_passwordless()) andalso
+        lists:keymember("default", 1, ns_bucket:get_buckets(Config)) of
         true ->
-            case lists:member({"default", local},
-                              menelaus_users:get_passwordless()) andalso
-                lists:keymember("default", 1, ns_bucket:get_buckets(Config)) of
-                true ->
-                    {error, "Please reset password for user 'default'"};
-                false ->
-                    ok
-            end
+            {error, "Please reset password for user 'default'"};
+        false ->
+            ok
     end.

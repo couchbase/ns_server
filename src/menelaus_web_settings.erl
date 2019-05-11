@@ -341,8 +341,6 @@ validate_settings_stats(SendStats) ->
 
 %% @doc Settings to en-/disable auto-reprovision
 handle_settings_auto_reprovision(Req) ->
-    menelaus_util:assert_is_50(),
-
     Config = build_settings_auto_reprovision(),
     Enabled = proplists:get_value(enabled, Config),
     MaxNodes = proplists:get_value(max_nodes, Config),
@@ -356,8 +354,6 @@ build_settings_auto_reprovision() ->
     Config.
 
 handle_settings_auto_reprovision_post(Req) ->
-    menelaus_util:assert_is_50(),
-
     PostArgs = mochiweb_request:parse_post(Req),
     ValidateOnly = proplists:get_value("just_validate",
                                        mochiweb_request:parse_qs(Req)) =:= "1",
@@ -407,8 +403,6 @@ validate_settings_auto_reprovision(Enabled, MaxNodes) ->
 
 %% @doc Resets the number of nodes that were automatically reprovisioned to zero
 handle_settings_auto_reprovision_reset_count(Req) ->
-    menelaus_util:assert_is_50(),
-
     auto_reprovision:reset_count(),
     reply(Req, 200).
 

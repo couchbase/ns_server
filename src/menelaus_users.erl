@@ -487,17 +487,12 @@ has_scram_hashes(Auth) ->
 
 -spec authenticate(rbac_user_id(), rbac_password()) -> boolean().
 authenticate(Username, Password) ->
-    case cluster_compat_mode:is_cluster_50() of
-        true ->
-            Identity = {Username, local},
-            case get_auth_info(Identity) of
-                false ->
-                    false;
-                Auth ->
-                    authenticate_with_info(Auth, Password)
-            end;
+    Identity = {Username, local},
+    case get_auth_info(Identity) of
         false ->
-            false
+            false;
+        Auth ->
+            authenticate_with_info(Auth, Password)
     end.
 
 get_auth_info(Identity) ->
@@ -526,31 +521,16 @@ authenticate_with_info(Auth, Password) ->
     {Salt, Mac} = get_salt_and_mac(Auth),
     misc:compare_secure(ns_config_auth:hash_password(Salt, Password), Mac).
 
-get_user_props_45({User, external}) ->
-    ns_config:search_prop(ns_config:latest(), user_roles,
-                          {User, saslauthd}, []);
-get_user_props_45(_) ->
-    [].
-
 get_user_props(Identity) ->
     get_user_props(Identity, ?DEFAULT_PROPS).
 
 get_user_props(Identity, ItemList) ->
-    Props =
-        case cluster_compat_mode:is_cluster_50() of
-            true -> replicated_dets:get(storage_name(), {user, Identity}, []);
-            false -> get_user_props_45(Identity)
-        end,
+    Props = replicated_dets:get(storage_name(), {user, Identity}, []),
     make_props(Identity, Props, ItemList).
 
 -spec user_exists(rbac_identity()) -> boolean().
 user_exists(Identity) ->
-    case cluster_compat_mode:is_cluster_50() of
-        true ->
-            false =/= replicated_dets:get(storage_name(), {user, Identity});
-        false ->
-            get_user_props_45(Identity) =/= []
-    end.
+    false =/= replicated_dets:get(storage_name(), {user, Identity}).
 
 -spec get_roles(rbac_identity()) -> [rbac_role()].
 get_roles(Identity) ->

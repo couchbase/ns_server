@@ -611,16 +611,11 @@ get_definitions() ->
 
 -spec get_definitions(ns_config()) -> [rbac_role_def(), ...].
 get_definitions(Config) ->
-    case cluster_compat_mode:is_cluster_50(Config) of
+    case cluster_compat_mode:is_cluster_55(Config) of
         true ->
-            case cluster_compat_mode:is_cluster_55(Config) of
-                true ->
-                    roles_55();
-                false ->
-                    roles_50()
-            end;
+            roles_55();
         false ->
-            roles_45()
+            roles_50()
     end.
 
 -spec object_match(rbac_permission_object(), rbac_permission_pattern_object()) ->
