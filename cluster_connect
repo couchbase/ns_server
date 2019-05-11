@@ -124,6 +124,8 @@ def main():
     info = json.loads(o.open("http://{0}:{1}/pools".format(addr, base_port)).read())
     community_edition = info['isEnterprise'] is not True
 
+    o.open("http://{0}:{1}/node/controller/setupNetConfig".format(addr, base_port),
+           "afamily={0}".format(protocol))
     o.open("http://{0}:{1}/node/controller/setupServices".format(addr, base_port),
            "services={0}".format(",".join(services))).read()
     o.open("http://{0}:{1}/pools/default".format(addr, base_port),
