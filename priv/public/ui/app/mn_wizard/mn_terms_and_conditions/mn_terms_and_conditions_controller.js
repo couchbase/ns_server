@@ -55,11 +55,10 @@
                 .postPoolsDefault(false, false, newClusterState.clusterName).then(function () {
                   mnClusterConfigurationService
                     .postAuth(newClusterState.user).then(function () {
-                      return mnAuthService.login(newClusterState.user).then(function () {
-                        return mnStatisticsNewService.presetScenario().then(function () {
+                      return mnAuthService
+                        .login(newClusterState.user).then(function () {
                           return $state.go('app.admin.overview.statistics');
                         });
-                      });
                     });
                 });
             });

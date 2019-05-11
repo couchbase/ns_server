@@ -66,7 +66,6 @@
           if (config.services.model.index) {
             mnSettingsClusterService.postIndexSettings(config.indexSettings);
           }
-          return mnStatisticsNewService.presetScenario();
         }).then(function () {
           return $state.go('app.admin.overview.statistics');
         });

@@ -2,7 +2,7 @@
   "use strict";
 
   angular
-    .module("mnUserRolesService", ['mnHelper'])
+    .module("mnUserRolesService", ['mnHelper', 'mnPoolDefault'])
     .factory("mnUserRolesService", mnUserRolesFactory);
 
   function mnUserRolesFactory($q, $http, mnHelper, mnPoolDefault) {
@@ -71,16 +71,22 @@
     }
 
     function putUserProfile(data) {
-      $http.put("/settings/rbac/profiles/@self", JSON.stringify(data));
+      return $http.put("/settings/rbac/profiles/@self", JSON.stringify(data));
     }
 
     function getUserProfile() {
       return $http.get("/settings/rbac/profiles/@self").then(function (resp) {
-        return resp.data;
+        if (!resp.data || !resp.data.scenarios) {
+          resp.data = resp.data || {};
+          resp.data.scenarios = presetScenario();
+          return putUserProfile(resp.data).then(getUserProfile);
+        } else {
+          return resp.data;
+        }
       }, function (resp) {
         switch (resp.status) {
         case "404":
-        default: return {scenarios: []};
+        default: return putUserProfile({scenarios: presetScenario()}).then(getUserProfile);
         }
       });
     }
@@ -392,5 +398,224 @@
 
       });
     }
+
+    function presetScenario() {
+      return [{
+        name: "Cluster Overview",
+        desc: "Stats showing the general health of your cluster.",
+        preset: true,
+        id: mnHelper.generateID(),
+        groups: [(function (groupId) {
+          return {
+            id: groupId,
+            name: "Server Resources",
+            preset: true,
+            charts: [{
+              stats: {"cpu_utilization_rate": "@system"},
+              preset: true,
+              size: "small",
+              specificStat: true, // for single-stat chart
+              group: groupId,
+              id: mnHelper.generateID(),
+            }, {
+              stats: {"mem_actual_free": "@system"},
+              preset: true,
+              size: "small",
+              specificStat: true,
+              group: groupId,
+              id: mnHelper.generateID(),
+            }, {
+              stats: {"swap_used": "@system"},
+              preset: true,
+              size: "small",
+              specificStat: true,
+              group: groupId,
+              id: mnHelper.generateID(),
+            }, {
+              stats: {"rest_requests": "@system"},
+              preset: true,
+              size: "small",
+              specificStat: true,
+              group: groupId,
+              id: mnHelper.generateID(),
+            }]
+          }
+        })(mnHelper.generateID()), // 2nd group starts here with the comma ////
+        (function (groupId) {
+          return {
+            id: groupId,
+            name: "Data Service Overview (per bucket)",
+            preset: true,
+            charts: [{
+              stats: {"ops": "@kv-"},
+              preset: true,
+              size: "small",
+              specificStat: true,
+              group: groupId,
+              id: mnHelper.generateID()
+            }, {
+              stats: {"mem_used": "@kv-"},
+              preset: true,
+              size: "small",
+              specificStat: true,
+              group: groupId,
+              id: mnHelper.generateID()
+            }, {
+              stats: {"couch_docs_actual_disk_size": "@kv-"},
+              preset: true,
+              size: "small",
+              specificStat: true,
+              group: groupId,
+              id: mnHelper.generateID()
+            }, {
+              stats: {"ep_resident_items_rate": "@kv-"},
+              preset: true,
+              size: "small",
+              specificStat: true,
+              group: groupId,
+              id: mnHelper.generateID()
+            }]
+          }
+        })(mnHelper.generateID())]
+      }, // 2nd scenario starts here with the comma ///////////////////////////
+      {
+        name: "Data Service",
+        desc: "Data Service stats per bucket.",
+        preset: true,
+        id: mnHelper.generateID(),
+        groups: [(function (groupId) {
+          return {
+            id: groupId,
+            name: "Memory",
+            preset: true,
+            charts: [{
+              stats: {"mem_used": "@kv-", "ep_mem_low_wat": "@kv-", "ep_mem_high_wat": "@kv-"},
+              preset: true,
+              size: "medium",
+              specificStat: false, // false for multi-stat chart
+              group: groupId,
+              id: mnHelper.generateID()
+            }, {
+              stats: {"ep_kv_size": "@kv-", "ep_meta_data_memory": "@kv-"},
+              preset: true,
+              size: "medium",
+              specificStat: false,
+              group: groupId,
+              id: mnHelper.generateID()
+            }]
+          }
+        })(mnHelper.generateID()),
+        (function (groupId) {
+          return {
+            id: groupId,
+            name: "Ops",
+            preset: true,
+            charts: [{
+              stats: {"ops": "@kv-","ep_cache_miss_rate": "@kv-"},
+              preset: true,
+              size: "medium",
+              specificStat: false,
+              group: groupId,
+              id: mnHelper.generateID()
+            }, {
+              stats: {"cmd_get": "@kv-", "cmd_set": "@kv-", "delete_hits": "@kv-"},
+              preset: true,
+              size: "medium",
+              specificStat: false,
+              group: groupId,
+              id: mnHelper.generateID()
+            }]
+          }
+        })(mnHelper.generateID()),
+        (function (groupId) {
+          return {
+            id: groupId,
+            name: "Disk",
+            preset: true,
+            charts: [{
+              stats: {"couch_docs_actual_disk_size": "@kv-", "couch_docs_data_size": "@kv-"},
+              preset: true,
+              size: "medium",
+              specificStat: false,
+              group: groupId,
+              id: mnHelper.generateID()
+            }, {
+              stats: {"disk_write_queue": "@kv-", "ep_data_read_failed": "@kv-", "ep_data_write_failed": "@kv-"},
+              preset: true,
+              size: "medium",
+              specificStat: false,
+              group: groupId,
+              id: mnHelper.generateID()
+            }]
+          }
+        })(mnHelper.generateID()),
+        (function (groupId) {
+          return {
+            id: groupId,
+            name: "vBuckets",
+            preset: true,
+            charts: [{
+              stats: {"ep_vb_total": "@kv-"},
+              preset: true,
+              size: "small",
+              specificStat: true,
+              group: groupId,
+              id: mnHelper.generateID()
+            }, {
+              stats: {"vb_active_num": "@kv-"},
+              preset: true,
+              size: "small",
+              specificStat: true,
+              group: groupId,
+              id: mnHelper.generateID()
+            }, {
+              stats: {"vb_pending_num": "@kv-"},
+              preset: true,
+              size: "small",
+              specificStat: true,
+              group: groupId,
+              id: mnHelper.generateID()
+            }, {
+              stats: {"vb_replica_num": "@kv-"},
+              preset: true,
+              size: "small",
+              specificStat: true,
+              group: groupId,
+              id: mnHelper.generateID()
+            }]
+          }
+        })(mnHelper.generateID()),
+        (function (groupId) {
+          return {
+            id: groupId,
+            name: "DCP Queues",
+            preset: true,
+            charts: [{
+              stats: {"ep_dcp_views+indexes_count": "@kv-", "ep_dcp_cbas_count": "@kv-", "ep_dcp_replica_count": "@kv-", "ep_dcp_xdcr_count": "@kv-", "ep_dcp_other_count": "@kv-"},
+              preset: true,
+              size: "medium",
+              specificStat: false,
+              group: groupId,
+              id: mnHelper.generateID()
+            }, {
+              stats: {"ep_dcp_views+indexes_producer_count": "@kv-", "ep_dcp_cbas_producer_count": "@kv-", "ep_dcp_replica_producer_count": "@kv-", "ep_dcp_xdcr_producer_count": "@kv-", "ep_dcp_other_producer_count": "@kv-"},
+              preset: true,
+              size: "medium",
+              specificStat: false,
+              group: groupId,
+              id: mnHelper.generateID()
+            }, {
+              stats: {"ep_dcp_views+indexes_items_remaining": "@kv-", "ep_dcp_cbas_items_remaining": "@kv-", "ep_dcp_replica_items_remaining": "@kv-", "ep_dcp_xdcr_items_remaining": "@kv-", "ep_dcp_other_items_remaining": "@kv-"},
+              preset: true,
+              size: "medium",
+              specificStat: false,
+              group: groupId,
+              id: mnHelper.generateID()
+            }]
+          }
+        })(mnHelper.generateID())]
+      }];
+    }
+
   }
 })();
