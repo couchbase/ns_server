@@ -157,13 +157,13 @@
 
       var promise =
           postDiskStorage().then(function () {
+            if (mnWizardService.getState().isNewCluster && vm.isEnterprise) {
+                return postHostConfig();
+            }
+          }).then(function () {
             if (mnWizardService.getState().isNewCluster) {
-              var promise = addErrorHandler(mnClusterConfigurationService
-                                            .postHostname(vm.config.hostname), "postHostname");
-              if (vm.isEnterprise) {
-                promise = promise.then(postHostConfig);
-              }
-              return promise;
+              return addErrorHandler(mnClusterConfigurationService
+                                     .postHostname(vm.config.hostname), "postHostname");
             }
           }).then(function () {
             if (mnWizardService.getState().isNewCluster) {
