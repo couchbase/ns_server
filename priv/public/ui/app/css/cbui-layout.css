@@ -192,6 +192,24 @@ footer {
 .flex-order-one {
   order: 1 !important;
 }
+.flex-order-1 {
+  order: 1 !important;
+}
+.flex-order-2 {
+  order: 2 !important;
+}
+.flex-order-3 {
+  order: 3 !important;
+}
+.flex-order-4 {
+  order: 4 !important;
+}
+.flex-order-5 {
+  order: 5 !important;
+}
+.flex-order-6 {
+  order: 6 !important;
+}
 /* flex-grow factors --------------------------------------------------- */
 .flex-basis-2 {
   flex-basis: 2rem !important;
@@ -565,7 +583,7 @@ footer {
   word-break: break-all;
 }
 .debug-outline {
-  border: 1px dashed red;
+  border: 1px dashed red !important;
 }
 .border-0 {
   border-width: 0!important;

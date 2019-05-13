@@ -45,8 +45,18 @@
          title="{{mnThisCtl.getGroupName(node)}}">
         {{mnThisCtl.getGroupName(node) | mnLimitTo: 20}}
       </span>
-      <span class="cbui-table-cell flex-grow-2-5 text-right resp-hide-xsml">
-        <span ng-repeat="service in node.services | mnFormatServicesArray | orderBy" class="label neutral nocaps">{{service}}</span>
+      <span class="cbui-table-cell flex-grow-2-5 row min flex-right resp-hide-xsml">
+        <span
+           ng-repeat="service in node.services | mnFormatServicesArray | orderBy"
+           class="label neutral nocaps"
+           ng-class="{'flex-order-1' : service == 'Data',
+                      'flex-order-2' : service == 'Index',
+                      'flex-order-3' : service == 'Query',
+                      'flex-order-4' : service == 'Search',
+                      'flex-order-5' : service == 'Analytics',
+                      'flex-order-6' : service == 'Eventing'}">
+          {{service}}
+        </span>
       </span>
     </div>
   </section>

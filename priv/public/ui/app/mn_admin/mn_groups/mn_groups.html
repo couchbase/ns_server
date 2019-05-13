@@ -49,11 +49,18 @@
       <span
        class="cbui-tablerow"
        ng-class="['dynamic_' + server.status, 'dynamic_' + server.clusterMembership]">
-        <span class="cbui-tablerow-title ellipsis flex-grow-1-5">
+        <span class="cbui-tablerow-title ellipsis flex-grow-1-5 row flex-left">
           {{server.hostname | mnStripPortHTML:group.nodes}}
           <span
              ng-repeat="service in server.services | mnFormatServicesArray | orderBy"
-             class="label neutral">{{service}}
+             class="label neutral nocaps"
+             ng-class="{'flex-order-1' : service == 'Data',
+                        'flex-order-2' : service == 'Index',
+                        'flex-order-3' : service == 'Query',
+                        'flex-order-4' : service == 'Search',
+                        'flex-order-5' : service == 'Analytics',
+                        'flex-order-6' : service == 'Eventing'}">
+            {{service}}
           </span>
         </span>
         <span class="cbui-table-cell wrap text-right">
