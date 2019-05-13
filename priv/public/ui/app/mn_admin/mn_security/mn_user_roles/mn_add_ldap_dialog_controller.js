@@ -170,11 +170,12 @@
       var userDnMapping = [{re: "(.+)"}];
       switch (vm.config.userDnMapping) {
       case "template":
-        userDnMapping[0].template = config.user_dn_mapping.template || "";
+        userDnMapping[0].template = config.user_dn_mapping.template.replace("%u", "{0}") || "";
         return JSON.stringify(userDnMapping);
       case "query":
         userDnMapping[0].query =
-          (config.user_dn_mapping.base || "")+"??one?"+(config.user_dn_mapping.filter || "");
+          (config.user_dn_mapping.base || "")+"??one?"
+          +(config.user_dn_mapping.filter.replace("%u", "{0}") || "");
         return JSON.stringify(userDnMapping);
       case "custom":
         return config.user_dn_mapping.value || "";
@@ -247,7 +248,9 @@
 
     function checkAuthentication() {
       delete vm.authenticationSuccessResult;
-      var settings = Object.assign({}, getAuthenticationSettings(), vm.config.cred);
+      var settings = Object.assign({}, getAuthenticationSettings(),
+                                   vm.config.cred,
+                                   getConnectivitySettings());
       mnPromiseHelper(vm,
                       mnUserRolesService.ldapSettingsValidate("authentication", settings))
         .applyToScope("authenticationSuccessResult")
@@ -257,7 +260,8 @@
     function checkGroupsQuery() {
       delete vm.queryForGroupsSuccessResult;
       var settings = Object.assign({groups_query_user: vm.config.groups_query_user},
-                                   getQueryForGroupsSettings());
+                                   getQueryForGroupsSettings(),
+                                   getConnectivitySettings());
       mnPromiseHelper(vm,
                       mnUserRolesService.ldapSettingsValidate("groups_query", settings))
         .applyToScope("queryForGroupsSuccessResult")

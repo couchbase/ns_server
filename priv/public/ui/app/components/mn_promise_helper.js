@@ -31,7 +31,8 @@
         catchErrors: catchErrors,
         catchGlobalErrors: catchGlobalErrors,
         showGlobalSuccess: showGlobalSuccess,
-        broadcast: broadcast
+        broadcast: broadcast,
+        removeErrors: removeErrors
       }
 
       return promiseHelper;
@@ -164,6 +165,7 @@
       }
       function removeErrors() {
         errorsCtrl(false);
+        return this;
       }
       function setSpinnerName(name) {
         spinnerNameOrFunction = name;
