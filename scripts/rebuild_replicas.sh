@@ -32,7 +32,7 @@ bucket=$4
 vbucket=$5
 sleep=${6:-10000}
 
-curl --fail -X POST -u $user:$password http://$host/diag/eval -d @- <<EOF
+curl --fail -X POST -u $user:$password http://$host/diag/eval --data-binary @- <<EOF
 Bucket = "${bucket}",
 VBucket = ${vbucket},
 Sleep = ${sleep},
