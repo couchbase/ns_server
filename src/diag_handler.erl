@@ -127,35 +127,39 @@ massage_message(Message) ->
     iolist_to_binary(io_lib:format("~W", [Message, 25])).
 
 grab_process_info(Pid) ->
-    PureInfo = erlang:process_info(Pid,
-                                   [registered_name,
-                                    status,
-                                    initial_call,
-                                    backtrace,
-                                    error_handler,
-                                    garbage_collection,
-                                    heap_size,
-                                    total_heap_size,
-                                    links,
-                                    monitors,
-                                    monitored_by,
-                                    memory,
-                                    messages,
-                                    message_queue_len,
-                                    reductions,
-                                    trap_exit,
-                                    current_location,
-                                    dictionary]),
+    case erlang:process_info(Pid,
+                             [registered_name,
+                              status,
+                              initial_call,
+                              backtrace,
+                              error_handler,
+                              garbage_collection,
+                              heap_size,
+                              total_heap_size,
+                              links,
+                              monitors,
+                              monitored_by,
+                              memory,
+                              messages,
+                              message_queue_len,
+                              reductions,
+                              trap_exit,
+                              current_location,
+                              dictionary]) of
+        undefined ->
+            undefined;
+        PureInfo ->
+            Backtrace = proplists:get_value(backtrace, PureInfo),
+            Name = proplists:get_value(registered_name, PureInfo),
+            NewBacktrace = sanitize_backtrace(Name, Backtrace),
 
-    Backtrace = proplists:get_value(backtrace, PureInfo),
-    Name = proplists:get_value(registered_name, PureInfo),
-    NewBacktrace = sanitize_backtrace(Name, Backtrace),
+            Messages = proplists:get_value(messages, PureInfo),
+            NewMessages = massage_messages(Messages),
 
-    Messages = proplists:get_value(messages, PureInfo),
-    NewMessages = massage_messages(Messages),
-
-    Info0 = lists:keyreplace(backtrace, 1, PureInfo, {backtrace, NewBacktrace}),
-    lists:keyreplace(messages, 1, Info0, {messages, NewMessages}).
+            Info0 = lists:keyreplace(backtrace, 1, PureInfo,
+                                     {backtrace, NewBacktrace}),
+            lists:keyreplace(messages, 1, Info0, {messages, NewMessages})
+    end.
 
 grab_all_dcp_stats() ->
     grab_all_dcp_stats(15000).
@@ -320,8 +324,14 @@ grab_process_infos() ->
 grab_process_infos_loop([], Acc) ->
     Acc;
 grab_process_infos_loop([P | RestPids], Acc) ->
-    NewAcc = [{P, (catch grab_process_info(P))} | Acc],
-    grab_process_infos_loop(RestPids, NewAcc).
+    case catch grab_process_info(P) of
+        undefined ->
+            %% Pid gone, skip it.
+            grab_process_infos_loop(RestPids, Acc);
+        Info ->
+            NewAcc = [{P, Info} | Acc],
+            grab_process_infos_loop(RestPids, NewAcc)
+    end.
 
 grab_couchdb_ets_tables() ->
     rpc:call(ns_node_disco:couchdb_node(), ?MODULE, grab_all_ets_tables, [], 5000).
@@ -765,7 +775,7 @@ arm_timeout(Millis) ->
     arm_timeout(Millis,
                 fun (Pid) ->
                         Info = (catch grab_process_info(Pid)),
-                        ?log_error("slow process info:~n~p~n", [Info])
+                        ?log_error("slow process ~p info:~n~p~n", [Pid, Info])
                 end).
 
 arm_timeout(Millis, Callback) ->

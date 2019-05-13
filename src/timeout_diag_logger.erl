@@ -115,7 +115,13 @@ maybe_spawn_diag(Error, #state{last_tstamp = TStamp} = State) ->
 do_diag(Error) ->
     Processes =
         lists:foldl(fun (Pid, Acc) ->
-                            [{Pid, (catch diag_handler:grab_process_info(Pid))} | Acc]
+                            case catch diag_handler:grab_process_info(Pid) of
+                                undefined ->
+                                    %% Pid gone, skip it
+                                    [Acc];
+                                Info ->
+                                    [{Pid, Info} | Acc]
+                            end
                     end, [], erlang:processes()),
     ?log_error("Got timeout ~p~nProcesses snapshot is: ~n", [Error]),
     lists:foreach(fun (Item) ->
