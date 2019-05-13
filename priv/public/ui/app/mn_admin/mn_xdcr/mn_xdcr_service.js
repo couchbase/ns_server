@@ -63,7 +63,7 @@
     }
 
     function removeExcessSettings(settings) {
-      var neededProperties = ["replicationType", "optimisticReplicationThreshold", "failureRestartInterval", "docBatchSizeKb", "workerBatchSize", "checkpointInterval", "type", "toBucket", "toCluster", "fromBucket", "sourceNozzlePerNode", "targetNozzlePerNode", "statsInterval", "logLevel", "priority"];
+      var neededProperties = ["replicationType", "optimisticReplicationThreshold", "failureRestartInterval", "docBatchSizeKb", "workerBatchSize", "checkpointInterval", "type", "toBucket", "toCluster", "fromBucket", "sourceNozzlePerNode", "targetNozzlePerNode", "statsInterval", "logLevel", "priority", "filterExpiration", "filterDeletion", "filterBypassExpiry"];
 
       if (mnPools.export.isEnterprise &&
           settings.type !== "capi" &&

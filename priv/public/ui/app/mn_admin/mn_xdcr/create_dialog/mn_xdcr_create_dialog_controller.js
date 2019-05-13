@@ -22,9 +22,6 @@
         replication.filterExpression = vm.replication.filterExpression;
       }
 
-      replication.filterDeletion = vm.replication.filterDeletion;
-      replication.filterExpiration = vm.replication.filterExpiration;
-
       var promise = mnXDCRService.postRelication(replication);
       mnPromiseHelper(vm, promise, $uibModalInstance)
         .showGlobalSpinner()

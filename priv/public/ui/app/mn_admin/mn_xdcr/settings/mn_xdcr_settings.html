@@ -12,7 +12,7 @@
         type="checkbox"
         value="index"
         id="for-do-not-replicate-ttl"
-        ng-model="mnReplication.filterExpiration">
+        ng-model="xdcrSettingsCtl.settings.filterExpiration">
      <label for="for-do-not-replicate-ttl" class="margin-right-0">
        Do not replicate document expirations
      </label>
@@ -29,7 +29,7 @@
         type="checkbox"
         value="index"
         id="for-do-not-replicate-delete"
-        ng-model="mnReplication.filterDeletion">
+        ng-model="xdcrSettingsCtl.settings.filterDeletion">
      <label for="for-do-not-replicate-delete" class="margin-right-0">
        Do not replicate DELETE operations
      </label>
@@ -46,7 +46,7 @@
         type="checkbox"
         value="index"
         id="for-do-not-replicate-TTL"
-        ng-model="mnReplication.filterTTL">
+        ng-model="xdcrSettingsCtl.settings.filterBypassExpiry">
      <label for="for-do-not-replicate-TTL" class="margin-right-0">
        Remove TTL from replicated items
      </label>
