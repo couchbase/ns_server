@@ -52,7 +52,6 @@
 
 -export([get_definitions/0,
          get_definitions/1,
-         roles_45/0,
          is_allowed/2,
          get_roles/1,
          get_compiled_roles/1,
@@ -68,67 +67,6 @@
 
 %% for RPC from ns_couchdb node
 -export([build_compiled_roles/1]).
-
--spec roles_45() -> [rbac_role_def(), ...].
-roles_45() ->
-    [{admin, [],
-      [{name, <<"Admin">>},
-       {desc, <<"Can manage ALL cluster features including security.">>}],
-      [{[], all}]},
-     {ro_admin, [],
-      [{name, <<"Read Only Admin">>},
-       {desc, <<"Can view ALL cluster features.">>}],
-      [{[{bucket, any}, password], none},
-       {[{bucket, any}, data], none},
-       {[admin, security], [read]},
-       {[admin], none},
-       {[], [read]}]},
-     {cluster_admin, [],
-      [{name, <<"Cluster Admin">>},
-       {desc, <<"Can manage all cluster features EXCEPT security.">>}],
-      [{[admin], none},
-       {[n1ql, curl], none},
-       {[], all}]},
-     {bucket_admin, [bucket_name],
-      [{name, <<"Bucket Admin">>},
-       {desc, <<"Can manage ALL bucket features for specified buckets (incl. start/stop XDCR)">>}],
-      [{[{bucket, bucket_name}, xdcr], [read, execute]},
-       {[{bucket, bucket_name}], all},
-       {[{bucket, any}, settings], [read]},
-       {[{bucket, any}], none},
-       {[xdcr], none},
-       {[admin], none},
-       {[], [read]}]},
-     {bucket_full_access, [bucket_name],
-      [],
-      [{[{bucket, bucket_name}, data], all},
-       {[{bucket, bucket_name}, views], all},
-       {[{bucket, bucket_name}, n1ql, index], all},
-       {[{bucket, bucket_name}, n1ql], [execute]},
-       {[{bucket, bucket_name}], [read, flush]},
-       {[{bucket, bucket_name}, settings], [read]},
-       {[pools], [read]}]},
-     {views_admin, [bucket_name],
-      [{name, <<"Views Admin">>},
-       {desc, <<"Can manage views for specified buckets">>}],
-      [{[{bucket, bucket_name}, views], all},
-       {[{bucket, bucket_name}, data], [read]},
-       {[{bucket, any}, settings], [read]},
-       {[{bucket, any}], none},
-       {[{bucket, bucket_name}, n1ql], [execute]},
-       {[xdcr], none},
-       {[admin], none},
-       {[], [read]}]},
-     {replication_admin, [],
-      [{name, <<"Replication Admin">>},
-       {desc, <<"Can manage ONLY XDCR features (cluster AND bucket level)">>}],
-      [{[{bucket, any}, xdcr], all},
-       {[{bucket, any}, data], [read]},
-       {[{bucket, any}, settings], [read]},
-       {[{bucket, any}], none},
-       {[xdcr], all},
-       {[admin], none},
-       {[], [read]}]}].
 
 -spec roles_50() -> [rbac_role_def(), ...].
 roles_50() ->
@@ -1028,12 +966,12 @@ compile_roles_test() ->
                                [{test_role, [bucket_name], [], [{[{bucket, bucket_name}], none}]}])).
 
 admin_test() ->
-    Roles = compile_roles([admin], roles_45()),
+    Roles = compile_roles([admin], roles_50()),
     ?assertEqual(true, is_allowed({[buckets], create}, Roles)),
     ?assertEqual(true, is_allowed({[something, something], anything}, Roles)).
 
 ro_admin_test() ->
-    Roles = compile_roles([ro_admin], roles_45()),
+    Roles = compile_roles([ro_admin], roles_50()),
     ?assertEqual(false, is_allowed({[{bucket, "test"}, password], read}, Roles)),
     ?assertEqual(false, is_allowed({[{bucket, "test"}, data], read}, Roles)),
     ?assertEqual(true, is_allowed({[{bucket, "test"}, something], read}, Roles)),
@@ -1067,13 +1005,13 @@ bucket_admin_check_default(Roles) ->
     ?assertEqual(true, is_allowed({[{bucket, "default"}, anything], anything}, Roles)).
 
 bucket_admin_test() ->
-    Roles = compile_roles([{bucket_admin, ["default"]}], roles_45()),
+    Roles = compile_roles([{bucket_admin, ["default"]}], roles_50()),
     bucket_admin_check_default(Roles),
     bucket_views_admin_check_another(Roles),
     bucket_views_admin_check_global(Roles).
 
 bucket_admin_wildcard_test() ->
-    Roles = compile_roles([{bucket_admin, [any]}], roles_45()),
+    Roles = compile_roles([{bucket_admin, [any]}], roles_50()),
     bucket_admin_check_default(Roles),
     bucket_views_admin_check_global(Roles).
 
@@ -1086,13 +1024,13 @@ views_admin_check_default(Roles) ->
     ?assertEqual(false, is_allowed({[{bucket, "default"}], read}, Roles)).
 
 views_admin_test() ->
-    Roles = compile_roles([{views_admin, ["default"]}], roles_45()),
+    Roles = compile_roles([{views_admin, ["default"]}], roles_50()),
     views_admin_check_default(Roles),
     bucket_views_admin_check_another(Roles),
     bucket_views_admin_check_global(Roles).
 
 views_admin_wildcard_test() ->
-    Roles = compile_roles([{views_admin, [any]}], roles_45()),
+    Roles = compile_roles([{views_admin, [any]}], roles_50()),
     views_admin_check_default(Roles),
     bucket_views_admin_check_global(Roles).
 
@@ -1103,14 +1041,14 @@ bucket_full_access_check(Roles, Bucket, Allowed) ->
     ?assertEqual(false, is_allowed({[{bucket, Bucket}], write}, Roles)).
 
 bucket_full_access_test() ->
-    Roles = compile_roles([{bucket_full_access, ["default"]}], roles_45()),
+    Roles = compile_roles([{bucket_full_access, ["default"]}], roles_50()),
     bucket_full_access_check(Roles, "default", true),
     bucket_full_access_check(Roles, "another", false),
     ?assertEqual(true, is_allowed({[pools], read}, Roles)),
     ?assertEqual(false, is_allowed({[another], read}, Roles)).
 
 replication_admin_test() ->
-    Roles = compile_roles([replication_admin], roles_45()),
+    Roles = compile_roles([replication_admin], roles_50()),
     ?assertEqual(true, is_allowed({[{bucket, "default"}, xdcr], anything}, Roles)),
     ?assertEqual(false, is_allowed({[{bucket, "default"}, password], read}, Roles)),
     ?assertEqual(false, is_allowed({[{bucket, "default"}, views], read}, Roles)),
@@ -1124,7 +1062,7 @@ replication_admin_test() ->
 
 validate_role_test() ->
     Config = toy_config(),
-    Definitions = roles_45(),
+    Definitions = roles_50(),
     AllParamValues = calculate_possible_param_values(ns_bucket:get_buckets(Config)),
     ?assertEqual({ok, admin}, validate_role(admin, Definitions, AllParamValues)),
     ?assertEqual({ok, {bucket_admin, [{"test", <<"test_id">>}]}},
