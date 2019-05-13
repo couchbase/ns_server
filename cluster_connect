@@ -41,11 +41,11 @@ class PasswordManager(urllib2.HTTPPasswordMgr):
     def find_user_password(self, realm, authuri):
         return self.auth
 
-
 def main():
     try:
         opts, args = getopt.getopt(sys.argv[1:],
-                                   "n:t:s:r:iS:T:I:p:", ["dont-rebalance"])
+                                   "n:t:s:r:iS:T:I:p:",
+                                   ["dont-rebalance", "afamily="])
     except getopt.GetoptError, err:
         print str(err)
         usage()
@@ -59,7 +59,7 @@ def main():
     start_index = 0
     deploy = ['kv']
     do_rebalance = True
-    protocol = "ipv4"
+    protocol = "ipv6" if (os.getenv("IPV6", "false") == "true") else "ipv4"
 
     data_base_path = os.getcwd() + "/data"
     for o, a in opts:
@@ -85,7 +85,9 @@ def main():
             else:
                 plan = dict(e.split(':') for e in plan)
                 deploy = dict([(k, v.split('+')) for k, v in plan.items()])
-        elif o == "-p":
+        elif o in ("-p", "--afamily"):
+            if a not in ("ipv4", "ipv6"):
+                assert False, "invalid address family"
             protocol = a
         elif o == "--dont-rebalance":
             do_rebalance = False

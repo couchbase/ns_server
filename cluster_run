@@ -308,14 +308,14 @@ def find_primary_addr():
 
 def main():
     try:
-        optlist, args = getopt.gnu_getopt(sys.argv[1:], "hn:i",
+        optlist, args = getopt.gnu_getopt(sys.argv[1:], "hn:ip:",
                                           ["help", "start-index=", "nodes=",
                                            "dont-rename", "interactive",
                                            "static-cookie", "dont-start",
                                            "host=", "loglevel=",
                                            "prepend-extras", "pluggable-config=",
                                            "minified", "disable-autocomplete",
-                                           "pretend-version="])
+                                           "pretend-version=", "afamily="])
     except getopt.GetoptError, err:
         # print help information and exit:
         print str(err) # will print something like "option -a not recognized"
@@ -366,6 +366,13 @@ def main():
             disable_autocomplete = "{disable_autocomplete,true}"
         elif o == "--pretend-version":
             pretend_version = a
+        elif o in ("--afamily", "-p"):
+            if a == "ipv6":
+                ipv6 = True
+            elif a == "ipv4":
+                ipv6 = False
+            else:
+                assert False, "invalid address family"
         else:
             assert False, "unhandled options"
 
