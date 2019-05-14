@@ -28,7 +28,7 @@
       var promise;
       if (vm.hostConfig.clusterEncryption == "on") {
         promise = mnClusterConfigurationService.postDistProtocols({
-          external: 'inet6_tls'
+          external: (vm.hostConfig.afamily == "ipv4") ? 'inet_tls' : 'inet6_tls'
         }).then(postSetupNetConfig);
       } else {
         promise = postSetupNetConfig();
