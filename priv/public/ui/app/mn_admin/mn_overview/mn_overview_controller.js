@@ -12,15 +12,17 @@
     'mnDropdown',
     'mnPromiseHelper',
     'mnXDCRService',
-    'mnHelper'
+    'mnHelper',
+    'mnPoolDefault'
   ]).controller('mnOverviewController', mnOverviewController);
 
-  function mnOverviewController($scope, $rootScope, mnBucketsService, mnOverviewService, mnPoller, mnPromiseHelper, mnHelper, mnXDCRService, permissions, pools) {
+  function mnOverviewController($scope, $rootScope, mnBucketsService, mnOverviewService, mnPoller, mnPromiseHelper, mnHelper, mnXDCRService, permissions, pools, mnPoolDefault) {
     var vm = this;
 
     vm.getEndings = mnHelper.getEndings;
     vm.isIPv6 = pools.isIPv6;
     vm.isDeveloperPreview = pools.isDeveloperPreview;
+    vm.nodeEncryption = mnPoolDefault.export.thisNode.nodeEncryption;
 
     activate();
 

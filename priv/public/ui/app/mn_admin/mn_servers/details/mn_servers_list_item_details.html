@@ -10,6 +10,9 @@
         <strong>Version:</strong> {{serversListItemDetailsCtl.server.details.version | mnPrettyVersion:true}}
       </div>
       <div>
+        <strong>Encryption:</strong> <span ng-if="node.nodeEncryption">On</span><span ng-if="!node.nodeEncryption">Off</span>
+      </div>
+      <div>
         <strong>Uptime:</strong> {{(serversListItemDetailsCtl.server.details.uptime | mnFormatUptime) || 'unknown'}}
       </div>
       <div>
