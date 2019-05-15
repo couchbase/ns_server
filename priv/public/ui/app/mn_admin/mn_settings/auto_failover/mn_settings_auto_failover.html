@@ -1,7 +1,7 @@
 <mn-element-cargo depot="alerts">
   <div
-     class="alert alert-warning"
-     ng-show="(settingsAutoFailoverCtl.autoFailoverSettings.count == settingsAutoFailoverCtl.autoFailoverSettings.maxCount) || (!(poolDefault.compat.atLeast55 && pools.isEnterprise) && settingsAutoFailoverCtl.autoFailoverSettings.count == 1)">
+     class="alert alert-warning ng-hide"
+     ng-show="(settingsAutoFailoverCtl.autoFailoverSettings && (settingsAutoFailoverCtl.autoFailoverSettings.count == settingsAutoFailoverCtl.autoFailoverSettings.maxCount)) || (!(poolDefault.compat.atLeast55 && pools.isEnterprise) && settingsAutoFailoverCtl.autoFailoverSettings.count == 1)">
     <p>
       The maximum number of nodes have been automatically failed over.
       Auto-failover is disabled until you reset it.<br>

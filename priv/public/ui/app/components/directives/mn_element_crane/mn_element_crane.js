@@ -36,14 +36,21 @@
     }
 
     function deliverCargo(scope, element, attrs) {
-      //should be in the end of call stack to make sure that
-      //depotElement has been registered
-      $timeout(function () {
-        var depotElement = depots[attrs.depot];
+      var depotElement = depots[attrs.depot];
+      if (depotElement) {
+        appendElement();
+      } else {
+        //should be in the end of call stack to make sure that
+        //depotElement has been registered
+        $timeout(appendElement, 0);
+      }
+
+      function appendElement() {
+        depotElement = depotElement || depots[attrs.depot];
         depotElement.append(element.contents());
         element.remove();
         scope.$on('$destroy', depotElement.empty.bind(depotElement));
-      });
+      }
     }
   }
 })();
