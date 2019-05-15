@@ -911,38 +911,32 @@ do_node_add_transaction(Cfg, SetFn, Node, NWanted, Services, GroupUUID) ->
     Cfg1 = SetFn(nodes_wanted, NewNWanted, Cfg),
     Cfg2 = SetFn({node, Node, membership}, inactiveAdded, Cfg1),
     CfgPreGroups = SetFn({node, Node, services}, Services, Cfg2),
-    case ns_config:search(Cfg, cluster_compat_version, undefined) of
-        [_A, _B] = CompatVersion when CompatVersion >= ?VERSION_25 ->
-            {value, Groups} = ns_config:search(Cfg, server_groups),
-            MaybeGroup0 = [G || G <- Groups,
-                                proplists:get_value(uuid, G) =:= GroupUUID],
-            MaybeGroup = case MaybeGroup0 of
-                             [] ->
-                                 case GroupUUID of
-                                     undefined ->
-                                         [hd(Groups)];
-                                     _ ->
-                                         []
-                                 end;
+    {value, Groups} = ns_config:search(Cfg, server_groups),
+    MaybeGroup0 = [G || G <- Groups,
+                        proplists:get_value(uuid, G) =:= GroupUUID],
+    MaybeGroup = case MaybeGroup0 of
+                     [] ->
+                         case GroupUUID of
+                             undefined ->
+                                 [hd(Groups)];
                              _ ->
-                                 true = (undefined =/= GroupUUID),
-                                 MaybeGroup0
-                         end,
-            case MaybeGroup of
-                [] ->
-                    {abort, notfound};
-                [TheGroup] ->
-                    GroupNodes = proplists:get_value(nodes, TheGroup),
-                    true = (is_list(GroupNodes)),
-                    NewGroupNodes = lists:usort([Node | GroupNodes]),
-                    NewGroup = lists:keystore(nodes, 1, TheGroup, {nodes, NewGroupNodes}),
-                    NewGroups = lists:usort([NewGroup | (Groups -- MaybeGroup)]),
-                    Cfg3 = SetFn(server_groups, NewGroups, CfgPreGroups),
-                    {commit, Cfg3}
-            end;
-        _ ->
-            %% we're pre 2.5 compat mode. Not touching server groups
-            {commit, CfgPreGroups}
+                                 []
+                         end;
+                     _ ->
+                         true = (undefined =/= GroupUUID),
+                         MaybeGroup0
+                 end,
+    case MaybeGroup of
+        [] ->
+            {abort, notfound};
+        [TheGroup] ->
+            GroupNodes = proplists:get_value(nodes, TheGroup),
+            true = (is_list(GroupNodes)),
+            NewGroupNodes = lists:usort([Node | GroupNodes]),
+            NewGroup = lists:keystore(nodes, 1, TheGroup, {nodes, NewGroupNodes}),
+            NewGroups = lists:usort([NewGroup | (Groups -- MaybeGroup)]),
+            Cfg3 = SetFn(server_groups, NewGroups, CfgPreGroups),
+            {commit, Cfg3}
     end.
 
 node_add_transaction(Node, GroupUUID, Services, Body) ->
