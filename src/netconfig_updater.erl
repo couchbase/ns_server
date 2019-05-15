@@ -48,11 +48,11 @@ init([]) ->
 
 handle_call({apply_net_config, Config}, _From, State) ->
     CurAFamily = cb_dist:address_family(),
-    CurCEncrypt = cb_dist:external_encryption(),
+    CurNEncrypt = cb_dist:external_encryption(),
     AFamily = proplists:get_value(afamily, Config, CurAFamily),
-    CEncrypt = proplists:get_value(clusterEncryption, Config, CurCEncrypt),
-    From = {CurAFamily, CurCEncrypt},
-    To = {AFamily, CEncrypt},
+    NEncrypt = proplists:get_value(nodeEncryption, Config, CurNEncrypt),
+    From = {CurAFamily, CurNEncrypt},
+    To = {AFamily, NEncrypt},
     case check_nodename_resolvable(node(), AFamily) of
         ok -> handle_with_marker(apply_net_config, From, To, State);
         {error, _} = Error -> {reply, Error, State}
@@ -107,25 +107,25 @@ apply_and_delete_marker(Cmd) ->
     (Res =:= ok) andalso misc:remove_marker(update_marker_path()),
     Res.
 
-apply_net_config_unprotected(From, {AFamily, CEncrypt} = To) ->
+apply_net_config_unprotected(From, {AFamily, NEncrypt} = To) ->
     ?log_info("Node is going to apply the following net settings: afamily ~p, "
-              "encryptiion ~p", [AFamily, CEncrypt]),
+              "encryption ~p", [AFamily, NEncrypt]),
     case update_type(From, To) of
         empty -> ok;
         Type ->
             try
-                update_proto_in_dist_config(AFamily, CEncrypt),
+                update_proto_in_dist_config(AFamily, NEncrypt),
                 case Type of
                     external_only -> ok;
                     _ -> change_local_dist_proto(AFamily, false)
                 end,
-                change_ext_dist_proto(AFamily, CEncrypt),
+                change_ext_dist_proto(AFamily, NEncrypt),
                 ns_config:set({node, node(), address_family},
                               AFamily),
-                ns_config:set({node, node(), cluster_encryption},
-                              CEncrypt),
-                ?log_info("Node network settings (afamily: ~p, encryptiion: ~p)"
-                          " successfully applied", [AFamily, CEncrypt]),
+                ns_config:set({node, node(), node_encryption},
+                              NEncrypt),
+                ?log_info("Node network settings (afamily: ~p, encryption: ~p)"
+                          " successfully applied", [AFamily, NEncrypt]),
                 ok
             catch
                 error:Error ->

@@ -304,8 +304,8 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
 
     AFamily = ns_config:search_node_with_default(WantENode, Config,
                                                  address_family, inet),
-    CEncryption = ns_config:search_node_with_default(WantENode, Config,
-                                                     cluster_encryption,
+    NEncryption = ns_config:search_node_with_default(WantENode, Config,
+                                                     node_encryption,
                                                      false),
     Listeners = ns_config:search_node_with_default(WantENode, Config,
                                                    erl_external_dist_protocols,
@@ -320,7 +320,7 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
           {ports, {struct, PortsKV ++ DistPorts}},
           {services, ns_cluster_membership:node_services(Config, WantENode)},
           {addressFamily, AFamily},
-          {clusterEncryption, CEncryption}
+          {nodeEncryption, NEncryption}
          ] ++ [{distProtocols, Listeners} || Listeners =/= undefined]
            ++ alternate_addresses_json(WantENode, Config, WantedPorts),
     case WantENode =:= node() of
@@ -812,10 +812,10 @@ net_config_validators() ->
                             ("ipv6") -> {value, inet6}
                         end, afamily, _),
      validator:validate(fun check_for_raw_addr/1, afamily, _),
-     validator:one_of(clusterEncryption, ["on", "off"], _),
+     validator:one_of(nodeEncryption, ["on", "off"], _),
      validator:validate(fun ("on") -> {value, true};
                             ("off") -> {value, false}
-                        end, clusterEncryption, _),
+                        end, nodeEncryption, _),
      verify_net_config_allowed(_),
      validator:unsupported(_)].
 

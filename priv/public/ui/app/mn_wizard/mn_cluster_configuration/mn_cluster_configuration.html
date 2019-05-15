@@ -52,10 +52,10 @@
            type="checkbox"
            ng-false-value="'off'"
            ng-true-value="'on'"
-           id="for-cluster-encryption"
-           ng-model="clusterConfigurationCtl.hostConfig.clusterEncryption">
-        <label for="for-cluster-encryption">
-           enable cluster encryption
+           id="for-node-encryption"
+           ng-model="clusterConfigurationCtl.hostConfig.nodeEncryption">
+        <label for="for-node-encryption">
+           enable node encryption
         </label>
         <div
            class="error error-form"
@@ -64,8 +64,8 @@
         </div>
         <div
            class="error error-form"
-           ng-show="clusterConfigurationCtl.postHostConfigErrors.clusterEncryption">
-          {{clusterConfigurationCtl.postHostConfigErrors.clusterEncryption}}
+           ng-show="clusterConfigurationCtl.postHostConfigErrors.nodeEncryption">
+          {{clusterConfigurationCtl.postHostConfigErrors.nodeEncryption}}
         </div>
       </div>
 

@@ -160,12 +160,12 @@ apply_net_config(NodeKVList) ->
     case ensure_dist_ports_match(NodeKVList) of
         ok ->
             case extract_remote_cluster_net_settings(NodeKVList) of
-                {ok, AFamily, CEncryption, Protos} ->
-                    ?log_info("Applying net config. AFamily: ~p, CEncryption: ~p, "
-                              "DistProtos: ~p", [AFamily, CEncryption, Protos]),
+                {ok, AFamily, NEncryption, Protos} ->
+                    ?log_info("Applying net config. AFamily: ~p, NEncryption: ~p, "
+                              "DistProtos: ~p", [AFamily, NEncryption, Protos]),
                     case netconfig_updater:apply_ext_dist_protocols(Protos) of
                         ok ->
-                            Cfg = [{clusterEncryption, CEncryption},
+                            Cfg = [{nodeEncryption, NEncryption},
                                    {afamily, AFamily}],
                             netconfig_updater:apply_net_config(Cfg);
                         {error, Msg} -> {error, Msg}
@@ -180,17 +180,17 @@ extract_remote_cluster_net_settings(NodeKVList) ->
                  undefined -> undefined;
                  Ps -> [binary_to_atom(P, latin1) || P <- Ps]
              end,
-    CEncryption = proplists:get_value(<<"clusterEncryption">>, NodeKVList,
+    NEncryption = proplists:get_value(<<"nodeEncryption">>, NodeKVList,
                                       false),
     case proplists:get_value(<<"addressFamily">>, NodeKVList) of
         undefined ->
             case pre_madhatter_remote_node_address_family(NodeKVList) of
-                {ok, AF} -> {ok, AF, CEncryption, Protos};
+                {ok, AF} -> {ok, AF, NEncryption, Protos};
                 {error, Msg} -> {error, Msg}
             end;
         AFamilyBin ->
             AFamily = binary_to_atom(AFamilyBin, latin1),
-            {ok, AFamily, CEncryption, Protos}
+            {ok, AFamily, NEncryption, Protos}
     end.
 
 %% Pre mad-hatter nodes do not include address family info in engageCluster.
@@ -383,7 +383,7 @@ handle_cast(leave, State) ->
                      rest,
                      {node, node(), rest},
                      {node, node(), address_family},
-                     {node, node(), cluster_encryption},
+                     {node, node(), node_encryption},
                      {node, node(), erl_external_dist_protocols}]),
 
 

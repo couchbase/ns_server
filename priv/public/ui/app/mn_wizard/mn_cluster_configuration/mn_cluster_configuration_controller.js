@@ -12,7 +12,7 @@
     vm.isEnterprise = pools.isEnterprise;
     vm.hostConfig = {
       afamily: 'ipv4',
-      clusterEncryption: 'off'
+      nodeEncryption: 'off'
     };
 
     vm.onSubmit = onSubmit;
@@ -34,7 +34,7 @@
     }
     function postHostConfig() {
       var promise;
-      if (vm.hostConfig.clusterEncryption == "on") {
+      if (vm.hostConfig.nodeEncryption == "on") {
         promise = mnClusterConfigurationService.postDistProtocols({
           external: (vm.hostConfig.afamily == "ipv4") ? 'inet_tls' : 'inet6_tls'
         }).then(postSetupNetConfig);
