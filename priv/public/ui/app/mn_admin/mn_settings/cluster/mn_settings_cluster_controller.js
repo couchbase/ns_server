@@ -17,6 +17,7 @@
   function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMemoryQuotaService, mnSettingsClusterService, mnHelper, mnPromiseHelper, mnClusterConfigurationService, mnXDCRService) {
     var vm = this;
     vm.saveVisualInternalSettings = saveVisualInternalSettings;
+    vm.reloadState = mnHelper.reloadState;
 
     activate();
 
@@ -98,6 +99,7 @@
       var promiseAll = $q.all(queries);
       mnPromiseHelper(vm, promiseAll)
         .showGlobalSpinner()
+        .reloadState()
         .showGlobalSuccess("Settings saved successfully!");
     }
     function saveVisualInternalSettings() {
