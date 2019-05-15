@@ -347,9 +347,9 @@ complete_rename(OldNode) ->
         NewNode ->
             ?log_debug("Rename marker exists but node name didn't change. Nothing to do.");
         _ ->
-            notify_couchdb_node(NewNode),
-            ?log_debug("Renaming node from ~p to ~p.", [OldNode, NewNode]),
+            ?log_debug("Renaming node from ~p to ~p in config", [OldNode, NewNode]),
             rename_node_in_config(OldNode, NewNode),
+            notify_couchdb_node(NewNode),
             ?log_debug("Node ~p has been renamed to ~p.", [OldNode, NewNode])
     end,
     misc:remove_marker(ns_cluster:rename_marker_path()).
