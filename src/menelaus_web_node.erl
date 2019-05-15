@@ -801,8 +801,16 @@ verify_net_config_allowed(State) ->
             M = "Can't change network configuration when auto-failover "
                 "is enabled.",
             validator:return_error('_', M, State);
-        false ->
-            State
+        _ ->
+            case validator:get_value(nodeEncryption, State) =:= false andalso
+                misc:get_cluster_encryption_level() =:= all of
+                true ->
+                    M = <<"Can't disable nodeEncryption when the cluster "
+                          "encryption level has been set to 'all'">>,
+                    validator:return_error(nodeEncryption, M, State);
+                false ->
+                    State
+            end
     end.
 
 net_config_validators() ->
