@@ -427,7 +427,9 @@ supported_services_for_version_test() ->
     ?assertEqual(lists:sort([kv,index,n1ql]),
                  lists:sort(supported_services_for_version(?VERSION_41))),
     ?assertEqual(lists:sort([fts,kv,index,n1ql]),
-                 lists:sort(supported_services_for_version(?VERSION_45))).
+                 lists:sort(supported_services_for_version(?VERSION_45))),
+    ?assertEqual(lists:sort([fts,kv,index,n1ql,cbas,eventing]),
+                 lists:sort(supported_services_for_version(?VERSION_55))).
 
 topology_aware_services_for_version_test() ->
     ?assertEqual([], topology_aware_services_for_version(?VERSION_25)),
@@ -436,5 +438,7 @@ topology_aware_services_for_version_test() ->
     ?assertEqual(lists:sort([fts]),
                  lists:sort(topology_aware_services_for_version(?VERSION_45))),
     ?assertEqual(lists:sort([fts,index]),
-                 lists:sort(topology_aware_services_for_version(?VERSION_50))).
+                 lists:sort(topology_aware_services_for_version(?VERSION_50))),
+    ?assertEqual(lists:sort([fts,index,cbas,eventing]),
+                 lists:sort(topology_aware_services_for_version(?VERSION_55))).
 -endif.
