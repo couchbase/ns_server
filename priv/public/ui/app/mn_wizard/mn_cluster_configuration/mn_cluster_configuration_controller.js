@@ -16,6 +16,7 @@
     };
 
     vm.onSubmit = onSubmit;
+    vm.onIPvChange = onIPvChange;
     vm.sendStats = true;
 
     activate();
@@ -23,7 +24,14 @@
     function postSetupNetConfig() {
       return mnClusterConfigurationService.postSetupNetConfig(vm.hostConfig);
     }
-
+    function onIPvChange() {
+      if (vm.hostConfig.afamily == "ipv6" && vm.config.hostname == "127.0.0.1") {
+        vm.config.hostname = "::1";
+      }
+      if (vm.hostConfig.afamily == "ipv4" && vm.config.hostname == "::1") {
+        vm.config.hostname = "127.0.0.1";
+      }
+    }
     function postHostConfig() {
       var promise;
       if (vm.hostConfig.clusterEncryption == "on") {

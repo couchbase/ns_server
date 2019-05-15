@@ -42,6 +42,7 @@
            type="checkbox"
            ng-false-value="'ipv4'"
            ng-true-value="'ipv6'"
+           ng-change="clusterConfigurationCtl.onIPvChange()"
            id="for-use-ipv6-addresses"
            ng-model="clusterConfigurationCtl.hostConfig.afamily">
         <label for="for-use-ipv6-addresses">
