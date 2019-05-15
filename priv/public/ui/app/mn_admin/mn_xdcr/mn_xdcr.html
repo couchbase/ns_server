@@ -129,8 +129,9 @@
               <span
                  class="label lt-blue"
                  ng-if="row.filterExpression"
-                 ng-click="$event.stopPropagation();xdcrCtl.editReplication(row)">
-                filtered
+                 ng-click="$event.stopPropagation()"
+                 uib-tooltip="{{row.filterExpression}}">
+                filter
               </span>
             </span>
             <span

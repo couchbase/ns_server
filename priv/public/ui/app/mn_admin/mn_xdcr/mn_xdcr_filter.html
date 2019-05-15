@@ -1,14 +1,11 @@
-<div class="formrow checkbox-list">
-  <input
-     type="checkbox"
-     id="for-xdcr-advanced-filtering"
-     ng-model="mnReplication.enableAdvancedFiltering">
-  <label for="for-xdcr-advanced-filtering">
-    Enable advanced filtering
-  </label>
-</div>
+  <p
+     class="disclosure margin-bottom-half"
+     ng-class="{disclosed: mnReplication.showAdvancedFiltering || mnIsEditing}"
+     ng-click="mnReplication.showAdvancedFiltering = !mnReplication.showAdvancedFiltering">
+    Replication Filters
+  </p>
 
-<div ng-if="mnReplication.enableAdvancedFiltering">
+<div ng-if="mnReplication.showAdvancedFiltering || mnIsEditing" class="margin-left-1-5">
   <div class="margin-bottom-1-5">
     <label class="inline">Filter Expression</label>
     <span
@@ -18,7 +15,7 @@
        won’t be replicated. See the XDCR documentation for possible filter expressions
        (NOTE: regex pattern-matching and many N1QL statements are supported, but there
        are some unique aspects to the XDCR filtering language). You may test if your
-       filter expression matches a document by entering its ID in the test field below."
+       filter expression matches a document by entering the document ID in the test field."
        tooltip-placement="right">
       <span class="icon fa-circle-thin fa-stack-2x"></span>
       <span class="icon fa-info fa-stack-1x"></span>
@@ -81,6 +78,59 @@
          id="for-save-continue-replicating"
          ng-model="mnReplication.filterSkipRestream">
       <label for="for-save-continue-replicating">Save & continue replicating</label>
+    </div>
+
+    <label>Deletion Filters</label>
+    <div>
+     <input
+        type="checkbox"
+        value="index"
+        id="for-do-not-replicate-ttl"
+        ng-model="xdcrSettingsCtl.settings.filterExpiration">
+     <label for="for-do-not-replicate-ttl" class="margin-right-0">
+       Do not replicate document expirations
+     </label>
+     <span
+        class="fa-stack icon-info"
+        uib-tooltip="Source expirations will not be replicated."
+        tooltip-placement="right">
+       <span class="icon fa-circle-thin fa-stack-2x"></span>
+       <span class="icon fa-info fa-stack-1x"></span>
+     </span>
+    </div>
+    <div>
+     <input
+        type="checkbox"
+        value="index"
+        id="for-do-not-replicate-delete"
+        ng-model="xdcrSettingsCtl.settings.filterDeletion">
+     <label for="for-do-not-replicate-delete" class="margin-right-0">
+       Do not replicate DELETE operations
+     </label>
+     <span
+        class="fa-stack icon-info"
+        uib-tooltip="Application-level deletes will not be replicated."
+        tooltip-placement="right">
+       <span class="icon fa-circle-thin fa-stack-2x"></span>
+       <span class="icon fa-info fa-stack-1x"></span>
+     </span>
+    </div>
+    <div class="margin-bottom-1">
+     <input
+        type="checkbox"
+        value="index"
+        id="for-do-not-replicate-TTL"
+        ng-model="xdcrSettingsCtl.settings.filterBypassExpiry">
+     <label for="for-do-not-replicate-TTL" class="margin-right-0">
+       Remove TTL from replicated items
+     </label>
+     <span
+        class="fa-stack icon-info"
+        uib-tooltip="Destination items will have no TTL."
+        tooltip-placement="right">
+       <span class="icon fa-circle-thin fa-stack-2x"></span>
+       <span class="icon fa-info fa-stack-1x"></span>
+     </span>
     </div>
 
   </div>
