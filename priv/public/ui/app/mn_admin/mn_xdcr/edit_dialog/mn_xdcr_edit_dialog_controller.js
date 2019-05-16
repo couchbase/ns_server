@@ -7,7 +7,6 @@
     var vm = this;
 
     vm.settings = _.extend({fromBucket: source}, globalSettings.data, currentSettings.data);
-    vm.settings.enableAdvancedFiltering = !!vm.settings.filterExpression;
     vm.settings.filterSkipRestream = "false";
     vm.createReplication = createReplication;
 
@@ -15,11 +14,7 @@
     function createReplication() {
       var settings = mnXDCRService.removeExcessSettings(vm.settings);
       if ($scope.pools.isEnterprise) {
-        if (vm.settings.enableAdvancedFiltering) {
-          settings.filterExpression = vm.settings.filterExpression;
-        } else {
-          settings.filterExpression = "";
-        }
+        settings.filterExpression = vm.settings.filterExpression;
         settings.filterSkipRestream = (vm.settings.filterSkipRestream === "true");
       }
 
