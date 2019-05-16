@@ -200,11 +200,10 @@ pre_madhatter_remote_node_address_family(NodeKVList) ->
     RemoteNodeBin = proplists:get_value(<<"otpNode">>, NodeKVList, <<>>),
     RemoteNode = binary_to_atom(RemoteNodeBin, latin1),
     {Name, Host} = misc:node_name_host(RemoteNode),
-    case misc:is_raw_ip(Host) of
-        %% we don't allow using raw ip's with ipv6, so if nodename contains
-        %% raw ip it means node is ipv4
-        true -> {ok, inet};
-        false ->
+    case {misc:is_raw_ip(Host), misc:is_raw_ipv6(Host)} of
+        {true, false} -> {ok, inet};
+        {true, true} -> {ok, inet6};
+        {false, _} ->
             case pre_madhatter_call_port_please(Name, Host) of
                 {ok, Port} ->
                     case check_host_port_connectivity(Host, Port, inet6) of
