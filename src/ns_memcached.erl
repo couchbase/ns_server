@@ -1094,7 +1094,7 @@ host_ports(Node, Config) ->
          end || {Defaultkey, DedicatedKey} <-
                     [{memcached_port, dedicated_port},
                      {memcached_ssl_port, dedicated_ssl_port}]],
-    {_Name, Host} = misc:node_name_host(Node),
+    Host = misc:extract_node_address(Node),
     {Host, Port, SslPort}.
 
 -spec host_ports(node()) ->

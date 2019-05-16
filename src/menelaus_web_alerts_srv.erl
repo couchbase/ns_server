@@ -320,7 +320,7 @@ check(disk, Opaque, _History, _Stats) ->
                   Key = list_to_atom("disk_check_" ++ Disk),
                   case hit_rate_limit(Key, Acc) of
                       false ->
-                          {_Sname, Host} = misc:node_name_host(node()),
+                          Host = misc:extract_node_address(node()),
                           Err = fmt_to_bin(errors(disk), [Disk, Host, Used]),
                           global_alert(disk, Err),
 
@@ -338,7 +338,7 @@ check(overhead, Opaque, _History, Stats) ->
     [case over_threshold(fetch_bucket_stat(Stats, Bucket, ep_meta_data_memory),
                          fetch_bucket_stat(Stats, Bucket, ep_max_size)) of
          {true, X} ->
-             {_Sname, Host} = misc:node_name_host(node()),
+             Host = misc:extract_node_address(node()),
              Err = fmt_to_bin(errors(overhead), [erlang:trunc(X), Bucket, Host]),
              global_alert({overhead, Bucket}, Err);
          false  ->
@@ -361,7 +361,7 @@ check(indexer_ram_max_usage, Opaque, _History, Stats) ->
                     Max = proplists:get_value(max_indexer_ram, Config),
                     case IndexerRam > Max of
                         true ->
-                            {_Sname, Host} = misc:node_name_host(node()),
+                            Host = misc:extract_node_address(node()),
                             Err = fmt_to_bin(errors(indexer_ram_max_usage),
                                              [Host, erlang:trunc(IndexerRam),
                                               Max]),
@@ -434,12 +434,10 @@ check(communication_issue, Opaque, _History, _Stats) ->
 
                       case TimeElapsed > ?COMMUNICATION_ISSUE_TIMEOUT of
                           true ->
-                              {_Sname, Host} = misc:node_name_host(Node),
+                              Host = misc:extract_node_address(Node),
                               Others = lists:map(
-                                         fun (N) ->
-                                                 {_S, H} = misc:node_name_host(N),
-                                                 H
-                                         end, Nodes),
+                                         fun misc:extract_node_address/1,
+                                         Nodes),
                               OH = string:join(Others, ", "),
                               Err = fmt_to_bin(errors(communication_issue),
                                                [Host, OH]),
@@ -501,7 +499,7 @@ check_stat_increased(Stats, StatName, Opaque, Formatter) ->
                 [] ->
                     ok;
                 Buckets ->
-                    {_Sname, Host} = misc:node_name_host(node()),
+                    Host = misc:extract_node_address(node()),
                     [global_alert({StatName, Bucket}, Formatter(Bucket, StatName, Host))
                      || Bucket <- Buckets]
             end,
@@ -519,7 +517,7 @@ check_global_stat_increased(Stats, StatName, Opaque) ->
                 false ->
                     ok;
                 true ->
-                    {_Sname, Host} = misc:node_name_host(node()),
+                    Host = misc:extract_node_address(node()),
                     global_alert(StatName, fmt_to_bin(errors(StatName), [Host]))
             end,
             dict:store(StatName, New, Opaque)

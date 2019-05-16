@@ -233,7 +233,7 @@ create_report(Settings, Extra) ->
               SystemStats = proplists:get_value(system_stats, Props, []),
               MemLimit = proplists:get_value(mem_limit, SystemStats),
               Cores = proplists:get_value(cpu_cores_available, SystemStats),
-              {_, Hostname} = misc:node_name_host(Node),
+              Hostname = misc:extract_node_address(Node),
               {[{node, Node},
                 {hostname, iolist_to_binary(Hostname)},
                 {cpu_cores_available, Cores},

@@ -277,8 +277,7 @@ address_and_port(Props, Node) ->
     {Addr, Port}.
 
 node_address(Node) ->
-    {_Node, Addr} = misc:node_name_host(Node),
-    Addr.
+    misc:extract_node_address(Node).
 
 port_name_by_service_name(fts) -> fts_http_port;
 port_name_by_service_name(cbas) -> cbas_http_port;
