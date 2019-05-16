@@ -117,7 +117,7 @@ submit_full_reset() ->
       end).
 
 maybe_build_ext_hostname(Node) ->
-    {_, H} = misc:node_name_host(Node),
+    H = misc:extract_node_address(Node),
     case misc:is_localhost(H) of
         true  -> [];
         false -> [{hostname, list_to_binary(H)}]
