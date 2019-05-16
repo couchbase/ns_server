@@ -51,8 +51,8 @@
       });
     }
     function postDiskStorage(resp) {
-      if (resp) {
-        vm.optNode = resp.otpNode;
+      if (resp && resp.data) {
+        vm.optNode = resp.data.otpNode;
       }
       var data = {
         path: vm.selfConfig.dbPath,
