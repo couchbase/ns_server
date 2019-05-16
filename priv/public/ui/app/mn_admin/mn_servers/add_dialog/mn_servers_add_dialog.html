@@ -35,6 +35,7 @@
            id="add-server-hostname"
            ng-model="serversAddDialogCtl.addNodeConfig.credentials.hostname"
            mn-focus="serversAddDialogCtl.focusMe"
+           ng-disabled="!!serversAddDialogCtl.postDiskStorageErrors"
            required
            name="hostname"
            autocorrect="off"
@@ -47,6 +48,7 @@
         <span ng-if="serversAddDialogCtl.isGroupsAvailable">
           <label for="js_servers_group_select">Assign Group</label>
           <select
+             ng-disabled="!!serversAddDialogCtl.postDiskStorageErrors"
              id="js_servers_group_select"
              ng-model="serversAddDialogCtl.addNodeConfig.selectedGroup"
              ng-options="group.name for group in serversAddDialogCtl.groups"></select>
@@ -58,6 +60,7 @@
         <small>an existing username with admin access to this server</small>
         <br>
         <input
+           ng-disabled="!!serversAddDialogCtl.postDiskStorageErrors"
            type="text"
            id="user_inp"
            ng-model="serversAddDialogCtl.addNodeConfig.credentials.user"
@@ -71,6 +74,7 @@
         <small>an existing password with admin access to this server</small>
         <br>
         <input
+           ng-disabled="!!serversAddDialogCtl.postDiskStorageErrors"
            mn-autocomplete-off
            type="password"
            id="password_inp"
@@ -89,6 +93,7 @@
       </span>
       <br>
       <div
+         mn-is-disabled="!!serversAddDialogCtl.postDiskStorageErrors"
          class="formrow checkbox-list"
          mn-is-enterprise="poolDefault.isEnterprise"
          mn-services="serversAddDialogCtl.addNodeConfig">

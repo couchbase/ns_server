@@ -81,11 +81,16 @@
       if (form.$invalid) {
         return reset();
       }
-      var promise = postDiskStorage().then(function () {
-        return mnServersService.addServer(vm.addNodeConfig.selectedGroup,
-                                          vm.addNodeConfig.credentials,
-                                          servicesList);
-      });
+      var promise;
+      if (vm.postDiskStorageErrors) {
+        promise = postDiskStorage();
+      } else {
+        promise = mnServersService
+          .addServer(vm.addNodeConfig.selectedGroup,
+                     vm.addNodeConfig.credentials,
+                     servicesList)
+          .then(postDiskStorage);
+      }
 
       mnPromiseHelper(vm, promise, $uibModalInstance)
         .showGlobalSpinner()
