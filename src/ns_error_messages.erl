@@ -156,7 +156,7 @@ verify_otp_connectivity_port_error(OtpNode, _Host, _Port) ->
                                  " This can be network name resolution or firewall problem.", [OtpNode])).
 
 verify_otp_connectivity_connection_error(Reason, OtpNode, Host, Port) ->
-    Detail = case connection_error_message(Reason, Host, integer_to_list(Port)) of
+    Detail = case connection_error_message(Reason, Host, Port) of
                  undefined -> [];
                  X -> [" ", X]
              end,

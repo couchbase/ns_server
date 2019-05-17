@@ -358,7 +358,7 @@ handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherUser, OtherPswd,
                  end;
              {error, Reason} ->
                     M = case ns_error_messages:connection_error_message(
-                               Reason, OtherHost, integer_to_list(OtherPort)) of
+                               Reason, OtherHost, OtherPort) of
                             undefined -> io:format("~p", [Reason]);
                             Msg -> Msg
                         end,

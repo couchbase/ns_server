@@ -678,7 +678,7 @@ do_add_node_allowed(Scheme, RemoteAddr, RestPort, Auth, GroupUUID, Services) ->
             end;
         {error, Reason} ->
             M = case ns_error_messages:connection_error_message(
-                       Reason, RemoteAddr, integer_to_list(RestPort)) of
+                       Reason, RemoteAddr, RestPort) of
                     undefined -> io:format("~p", [Reason]);
                     Msg -> Msg
                 end,
