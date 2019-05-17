@@ -53,8 +53,11 @@
       var promise3;
       var promise5;
       var promise6;
-
-      queries.push(promise1);
+      var promise7 =
+          mnPromiseHelper(vm, mnSettingsClusterService
+                          .postSettingsRetryRebalance(vm.retryRebalanceCfg))
+          .catchErrors("retryRebalanceErrors")
+          .getPromise();
 
       promise6 = mnPromiseHelper(vm,
                                  mnXDCRService.postSettingsReplications(vm.replicationSettings))
@@ -90,6 +93,7 @@
 
         queries.push(promise3);
         queries.push(promise5);
+        queries.push(promise7);
       }
 
       queries = queries.concat(mnSettingsClusterService.getSubmitCallbacks().map(function (cb) {
@@ -155,6 +159,10 @@
 
       mnXDCRService.getSettingsReplications().then(function (rv) {
         vm.replicationSettings = rv.data;
+      });
+
+      mnSettingsClusterService.getSettingsRetryRebalance().then(function (data) {
+        vm.retryRebalanceCfg = data;
       });
 
       mnPromiseHelper(vm, mnMemoryQuotaService.memoryQuotaConfig(services, false, false))

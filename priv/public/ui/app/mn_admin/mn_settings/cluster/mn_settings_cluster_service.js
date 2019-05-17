@@ -12,12 +12,25 @@
       postIndexSettings: postIndexSettings,
       registerSubmitCallback: registerSubmitCallback,
       clearSubmitCallbacks: clearSubmitCallbacks,
-      getSubmitCallbacks: getSubmitCallbacks
+      getSubmitCallbacks: getSubmitCallbacks,
+      getSettingsRetryRebalance: getSettingsRetryRebalance,
+      postSettingsRetryRebalance: postSettingsRetryRebalance
     };
 
     var childSubmitCallbacks = [];
 
     return mnSettingsClusterService;
+
+    function postSettingsRetryRebalance(data) {
+      return $http.post("/settings/retryRebalance", data);
+    }
+
+    function getSettingsRetryRebalance() {
+      return $http.get("/settings/retryRebalance")
+        .then(function (resp) {
+          return resp.data;
+        });
+    }
 
     function getSubmitCallbacks() {
       return childSubmitCallbacks;

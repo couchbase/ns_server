@@ -49,6 +49,54 @@
         <label
            ng-show="poolDefault.compat.atLeast40 && rbac.cluster.settings.indexes.read"
            class="margin-top-half">
+          Rebalance Settings
+        </label>
+        <div class="row flex-left text-medium flex-wrap">
+          <input
+             type="checkbox"
+             id="for-retry-rebalance-up-to"
+             ng-disabled="!rbac.cluster.settings.write"
+             ng-model="settingsClusterCtl.retryRebalanceCfg.enabled">
+          <label
+             for="for-retry-rebalance-up-to"
+             class="line-height-1-5">
+            Retry rebalance up to
+          </label>
+          <input
+             type="number"
+             autocorrect="off"
+             spellcheck="false"
+             autocapitalize="off"
+             ng-model="settingsClusterCtl.retryRebalanceCfg.maxAttempts"
+             ng-disabled="!settingsClusterCtl.retryRebalanceCfg.enabled ||
+                          !rbac.cluster.settings.write"
+             class="input-small input-short-half margin-right-half">
+            time after
+          <input
+             type="number"
+             autocorrect="off"
+             spellcheck="false"
+             autocapitalize="off"
+             ng-model="settingsClusterCtl.retryRebalanceCfg.afterTimePeriod"
+             ng-disabled="!settingsClusterCtl.retryRebalanceCfg.enabled ||
+                          !rbac.cluster.settings.write"
+             class="input-small input-short-1 margin-right-half margin-left-half">
+          second{{settingsClusterCtl.retryRebalanceCfg.max_attempts !== 1 ? "s" : ""}}
+        </div>
+        <div
+           class="error"
+           ng-show="settingsClusterCtl.retryRebalanceErrors.maxAttempts">
+          {{settingsClusterCtl.retryRebalanceErrors.maxAttempts}}
+        </div>
+        <div
+           class="error"
+           ng-show="settingsClusterCtl.retryRebalanceErrors.afterTimePeriod">
+          {{settingsClusterCtl.retryRebalanceErrors.afterTimePeriod}}
+        </div>
+
+        <label
+           ng-show="poolDefault.compat.atLeast40 && rbac.cluster.settings.indexes.read"
+           class="margin-top-half">
           Index Storage Mode
         </label>
         <div ng-show="poolDefault.compat.atLeast40 && rbac.cluster.settings.indexes.read">
