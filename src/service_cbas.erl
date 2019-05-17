@@ -53,7 +53,9 @@ is_started() ->
 grab_stats() ->
     Port = get_port(),
     Timeout = ?get_timeout(stats, 30000),
-    rest_utils:get_json_local(cbas, "analytics/node/stats", Port, Timeout).
+    Path = "analytics/node/stats",
+    CDataEncrypt = misc:should_cluster_data_be_encrypted(),
+    rest_utils:get_json_local(cbas, Path, Port, Timeout, CDataEncrypt).
 
 compute_service_gauges(_Gauges) ->
     [].

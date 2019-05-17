@@ -17,7 +17,7 @@
 
 -include("ns_common.hrl").
 
--export([request/6, request_local/7, get_json_local/4]).
+-export([request/6, get_json_local/4, get_json_local/5]).
 
 request(Type, URL, Method, Headers, Body, Timeout) ->
     system_stats_collector:increment_counter({Type, requests}, 1),
@@ -38,8 +38,7 @@ request(Type, URL, Method, Headers, Body, Timeout) ->
 
     RV.
 
-request_local(Type, Path, Port, Method, Headers, Body, Timeout) ->
-    URL = misc:local_url(Port, Path, []),
+request_local(Type, URL, Method, Headers, Body, Timeout) ->
     User = ns_config_auth:get_user(special),
     Pwd = ns_config_auth:get_password(special),
 
@@ -47,8 +46,8 @@ request_local(Type, Path, Port, Method, Headers, Body, Timeout) ->
 
     request(Type, URL, Method, HeadersWithAuth, Body, Timeout).
 
-get_json_local(Type, Path, Port, Timeout) ->
-    RV = request_local(Type, Path, Port, "GET", [], [], Timeout),
+get_json(Type, URL, Path, Timeout) ->
+    RV = request_local(Type, URL, "GET", [], [], Timeout),
     case RV of
         {ok, {{200, _}, _Headers, BodyRaw}} ->
             try
@@ -63,3 +62,13 @@ get_json_local(Type, Path, Port, Timeout) ->
             ?log_error("Request to (~p) ~s failed: ~p", [Type, Path, RV]),
             {error, RV}
     end.
+
+get_json_local(Type, Path, Port, Timeout) ->
+    get_json_local(Type, Path, Port, Timeout, false).
+
+get_json_local(Type, Path, Port, Timeout, false = _IsSecure) ->
+    URL = misc:local_url(Port, Path, []),
+    get_json(Type, URL, Path, Timeout);
+get_json_local(Type, Path, Port, Timeout, true = _IsSecure) ->
+    URL = misc:local_url(Port, Path, [ssl]),
+    get_json(Type, URL, Path, Timeout).
