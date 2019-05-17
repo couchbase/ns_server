@@ -182,7 +182,7 @@ build_remote_set_specs(Mod, Node, BucketName, DDocId, ViewName, VBuckets) ->
                            <<"/_spatial_merge">>
                    end,
     [{cookie, Cookie}] = ns_config:read_key_fast(otp, undefined),
-    {Node1, SSLOptions} = case misc:should_data_rep_be_encrypted() of
+    {Node1, SSLOptions} = case misc:should_cluster_data_be_encrypted() of
                               true ->
                                   {{ssl, Node},
                                    ns_ssl_services_setup:ssl_client_opts()};

@@ -1378,8 +1378,8 @@ get_cluster_encryption_level() ->
             none
     end.
 
--spec should_data_rep_be_encrypted() -> true | false.
-should_data_rep_be_encrypted() ->
+-spec should_cluster_data_be_encrypted() -> true | false.
+should_cluster_data_be_encrypted() ->
     get_cluster_encryption_level() =:= all.
 
 -spec disable_non_ssl_ports() -> true | false.

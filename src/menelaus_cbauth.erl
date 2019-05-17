@@ -257,7 +257,7 @@ build_auth_info(#state{cert_version = CertVersion,
     CipherOpenSSLNames = [N2 || N <- Ciphers, N2 <- [ciphers:openssl_name(N)],
                                 N2 =/= undefined],
     MinTLSVsn = ns_ssl_services_setup:ssl_minimum_protocol(Config),
-    ClusterDataEncrypt = misc:should_data_rep_be_encrypted(),
+    ClusterDataEncrypt = misc:should_cluster_data_be_encrypted(),
     DisableNonSSLPorts = misc:disable_non_ssl_ports(),
 
     [{nodes, Nodes},
