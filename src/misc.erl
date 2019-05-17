@@ -1445,20 +1445,24 @@ inaddr_any(Options) ->
     end.
 
 -spec local_url(integer(),
-                [] | [no_scheme |
+                [] | [no_scheme | ssl |
                       {user_info, {string(), string()}}]) -> string().
 local_url(Port, Options) ->
     local_url(Port, "", Options).
 
 -spec local_url(integer(), string(),
-                [] | [no_scheme |
+                [] | [no_scheme | ssl |
                       {user_info, {string(), string()}}]) -> string().
 local_url(Port, [H | _] = Path, Options) when H =/= $/ ->
     local_url(Port, "/" ++ Path, Options);
 local_url(Port, Path, Options) ->
     Scheme = case lists:member(no_scheme, Options) of
                  true -> "";
-                 false -> "http://"
+                 false ->
+                     case lists:member(ssl, Options) of
+                         true  -> "https://";
+                         false -> "http://"
+                     end
              end,
     User = case lists:keysearch(user_info, 1, Options) of
                false -> "";
