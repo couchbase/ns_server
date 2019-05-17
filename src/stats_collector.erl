@@ -266,7 +266,7 @@ parse_plain_stats(TS, PlainStats, LastTS, LastPlainCounters, MinFilesSize) ->
     {Values0, Counters} = parse_stats_raw(TS, PlainStats, LastPlainCounters, LastTS,
                                           [?STAT_GAUGES], [?STAT_COUNTERS]),
     DiskSize = stats_dict_get(<<"ep_db_file_size">>, PlainStats),
-    AggregateValues = [{ops, sum_stat_values(Values0, [cmd_get, cmd_set,
+    AggregateValues = [{ops, sum_stat_values(Values0, [cmd_total_gets, cmd_set,
                                                        incr_misses, incr_hits,
                                                        decr_misses, decr_hits,
                                                        delete_misses, delete_hits,

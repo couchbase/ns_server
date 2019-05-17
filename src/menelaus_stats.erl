@@ -520,7 +520,7 @@ build_response_for_specific_stat(BucketName, StatName, Params, LocalAddr) ->
                                                  end,
                                                  Hostnames, AllValues)}}]}.
 
-%% ops SUM(cmd_get, cmd_set,
+%% ops SUM(cmd_total_gets, cmd_set,
 %%         incr_misses, incr_hits,
 %%         decr_misses, decr_hits,
 %%         cas_misses, cas_hits, cas_badval,
@@ -898,7 +898,17 @@ computed_stats_lazy_proplist(_) ->
                   fun (Gets, _Hits) when Gets == 0 -> 0; % this handles int and float 0
                       (Gets, Hits) -> Hits * 100/Gets
                   end),
-    EPCacheMissRatio = Z2(ep_bg_fetched, cmd_get,
+    %% Pre-madhatter nodes do not collect cmd_total_gets.
+    %% Cache miss ratio will show up as 0 for such nodes when the statistics
+    %% is viewed from madhatter/post madhatter nodes. So, use cmd_get
+    %% till the cluster is upgraded.
+    GetStat = case cluster_compat_mode:is_cluster_madhatter() of
+                  true ->
+                      cmd_total_gets;
+                  false ->
+                      cmd_get
+              end,
+    EPCacheMissRatio = Z2(ep_bg_fetched, GetStat,
                           fun (BGFetches, Gets) ->
                                   try BGFetches * 100 / Gets
                                   catch error:badarith -> 0
@@ -1706,19 +1716,29 @@ membase_summary_stats_description(BucketId, ServiceNodes, IsEphemeral) ->
        {stats,
         [{struct,[{title, <<"ops per second">>},
                   {name, <<"ops">>},
-                  {desc, <<"Total amount of operations per second (including XDCR) to this bucket "
-                           "(measured from cmd_get + cmd_set + incr_misses + incr_hits + decr_misses "
-                           "+ decr_hits + delete_misses + delete_hits + ep_num_ops_del_meta + "
+                  {desc, <<"Total amount of operations per second "
+                           "(including XDCR) to this bucket "
+                           "(measured from cmd_total_gets + cmd_set "
+                           "+ incr_misses + incr_hits + decr_misses "
+                           "+ decr_hits + delete_misses + delete_hits "
+                           "+ ep_num_ops_del_meta + "
                            "ep_num_ops_get_meta + ep_num_ops_set_meta)">>},
                   {default, true}]},
          {struct, [{title, <<"cache miss ratio">>},
                    {name, <<"ep_cache_miss_rate">>},
-                   {desc, <<"Percentage of reads per second to this bucket from disk as opposed to "
-                            "RAM (measured from ep_bg_fetches / gets * 100)">>},
+                   {desc, <<"Percentage of reads per second to this bucket "
+                            "from disk as opposed to RAM (measured from "
+                            "ep_bg_fetches / cmd_total_gets * 100)">>},
                    {maxY, 100}]},
          {struct, [{title, <<"gets per sec.">>},
                    {name, <<"cmd_get">>},
                    {desc, <<"Number of reads (get operations) per second from this bucket (measured from cmd_get)">>}]},
+         {struct, [{title, <<"total gets per sec.">>},
+                   {name, <<"cmd_total_gets">>},
+                   {desc, <<"Number of total get operations per second from "
+                            "this bucket (measured from cmd_total_gets). "
+                            "This includes additional get operations such as "
+                            "get locked that are not included in cmd_get">>}]},
          {struct, [{title, <<"sets per sec.">>},
                    {name, <<"cmd_set">>},
                    {desc, <<"Number of writes (set operations) per second to this bucket (measured from cmd_set)">>}]},
