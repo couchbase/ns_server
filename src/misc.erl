@@ -97,7 +97,7 @@ timestamp_local_iso8601(Time) ->
     Millis = erlang:element(3, Time) div 1000,
     iso_8601_fmt(LocalTime, Millis, UTCOffset).
 
--ifdef(EUNIT).
+-ifdef(TEST).
 iso_8601_fmt_test() ->
     ?assertEqual("2007-04-05T14:30:00.040Z",
                  iso_8601_fmt({{2007, 4, 5}, {14, 30, 00}}, 40, {0, 0})),
