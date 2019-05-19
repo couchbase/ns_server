@@ -26,7 +26,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--export([adjust_my_address/3, read_address_config/0, save_address_config/1,
+-export([adjust_my_address/3, save_address_config/1,
          ip_config_path/0, using_user_supplied_address/0, reset_address/0,
          wait_for_node/1, dist_config_path/1]).
 
@@ -81,6 +81,18 @@ read_address_config() ->
             case read_address_config_from_path(IpPath) of
                 Address when is_list(Address) ->
                     {Address, false};
+                undefined ->
+                    %% Migration to Mad-Hatter
+                    %% If there is no "ip" file, it might be the case that
+                    %% node has default name. The problem is that default
+                    %% pre-MH name and default MH name are different. Hence the
+                    %% migration. The idea is the following: if "nodefile"
+                    %% exists, but there is no ip or ip_start files, we should
+                    %% use 127.0.0.1 (or ::1) address (instead of cb.local)
+                    case nodefile_exists() of
+                        true -> {misc:localhost(), false};
+                        false -> undefined
+                    end;
                 Other ->
                     Other
             end
@@ -164,6 +176,10 @@ save_node(NodeName) ->
         {ok, NodeFile} -> save_node(NodeName, NodeFile);
         X -> X
     end.
+
+nodefile_exists() ->
+    {ok, NodeFile} = application:get_env(nodefile),
+    filelib:is_regular(NodeFile).
 
 init([]) ->
     register(?MODULE, self()),
