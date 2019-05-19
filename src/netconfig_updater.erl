@@ -34,6 +34,7 @@ apply_ext_dist_protocols(Protos) ->
 init([]) ->
     ServerName = ?MODULE,
     register(ServerName, self()),
+    migration_to_madhatter(),
     proc_lib:init_ack({ok, self()}),
     case misc:consult_marker(update_marker_path()) of
         {ok, [Cmd]} ->
@@ -294,4 +295,16 @@ check_nodename_resolvable(Node, AFamily) ->
             M = io_lib:format("Can't resolve node's name ~s to ~s address: ~p",
                               [Hostname, AFamilyStr, Reason]),
             {error, iolist_to_binary(M)}
+    end.
+
+migration_to_madhatter() ->
+    AFamily = cb_dist:address_family(),
+    case ns_config:search_node(address_family) of
+        {value, AFamily} -> ok;
+        _ -> ns_config:set({node, node(), address_family}, AFamily)
+    end,
+    NodeEncryption = cb_dist:external_encryption(),
+    case ns_config:search_node(node_encryption) of
+        {value, NodeEncryption} -> ok;
+        _ -> ns_config:set({node, node(), node_encryption}, NodeEncryption)
     end.
