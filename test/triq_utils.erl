@@ -41,13 +41,20 @@ safe_idiv(X) ->
     end.
 
 random_integer_fun_spec() ->
-    list(oneof([fun functools:id/1] ++
+    [oneof([fun functools:id/1] ++
                    [random_simple_fun_spec(BF) ||
                        BF <- [fun functools:const/1,
                               fun functools:add/1,
                               fun functools:sub/1,
                               fun functools:mul/1,
-                              fun safe_idiv/1]])).
+                              fun safe_idiv/1]]) ||
+        %% Explicitly limit number of recursive applications to a low
+        %% number. Otherwise, the resulting functions tend to converge to the
+        %% same result irrespective of the input. That is because whenever
+        %% there's a const() in the sequence, the end result is going to be
+        %% the same for any input. Similarly the convergence can be caused by
+        %% integer division producing same results for different inputs.
+        _ <- lists:seq(1, 3)].
 
 random_simple_fun_spec(BaseFun) ->
     ?LET(N, int(), {BaseFun, [N]}).
