@@ -137,6 +137,55 @@ prop_parallel_map_equals_map() ->
             lists:map(Fun, Xs) =:= parallel_map(Fun, Xs, infinity)).
 -endif.
 
+-spec parallel_map_partial(Fun, List, Timeout) -> Result when
+      Fun :: fun((any()) -> any()),
+      List :: [any()],
+      Timeout :: non_neg_integer() | infinity,
+      Result :: [{ok, any()} | {error, timeout}].
+parallel_map_partial(Fun, List, Timeout) ->
+    async:with_many(
+      Fun, List, [{abort_after, Timeout}],
+      fun (Asyncs) ->
+              [try
+                   {ok, async:wait(A)}
+               catch
+                   exit:timeout ->
+                       {error, timeout}
+               end || A <- Asyncs]
+      end).
+
+-ifdef(TEST).
+prop_parallel_map_partial_equals_map() ->
+    ?FORALL({Fun, Xs}, {triq_utils:random_integer_fun(), list(int())},
+            lists:map(?cut({ok, Fun(_)}), Xs) =:=
+                parallel_map_partial(Fun, Xs, infinity)).
+
+prop_parallel_map_partial_timeout_() ->
+    {?FORALL({Fun, Xs}, {triq_utils:random_integer_fun(), list(int())},
+             begin
+                 TimingOutFun =
+                     fun (I) ->
+                             case I rem 2 =:= 0 of
+                                 true ->
+                                     Fun(I);
+                                 false ->
+                                     timer:sleep(10000)
+                             end
+                     end,
+
+                 Results = parallel_map_partial(TimingOutFun, Xs, 100),
+                 lists:all(fun ({I, Result}) ->
+                                   case I rem 2 =:= 0 of
+                                       true ->
+                                           Result =:= {ok, Fun(I)};
+                                       false ->
+                                           Result =:= {error, timeout}
+                                   end
+                           end, lists:zip(Xs, Results))
+             end),
+     [{iters, 10}]}.
+-endif.
+
 gather_dir_info(Name) ->
     case file:list_dir(Name) of
         {ok, Filenames} ->
