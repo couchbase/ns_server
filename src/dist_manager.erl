@@ -164,7 +164,15 @@ save_address_config(#state{my_ip = MyIP,
     DeleteRV = file:delete(ClearPath),
     ?log_info("Deleting irrelevant ip file ~p: ~p", [ClearPath, DeleteRV]),
     ?log_info("saving ip config to ~p", [Path]),
-    misc:atomic_write_file(Path, MyIP).
+    case misc:atomic_write_file(Path, MyIP) of
+        ok ->
+            ?log_info("Persisted the address successfully"),
+            ok;
+        {error, Error} ->
+            ?log_error("Failed to persist the address to ~p: ~p",
+                       [Path, Error]),
+            {error, Error}
+    end.
 
 save_node(NodeName, Path) ->
     ?log_info("saving node to ~p", [Path]),
@@ -210,6 +218,7 @@ init([]) ->
     end,
 
     State = bringup(Address, UserSupplied),
+    ok = save_address_config(State),
     proc_lib:init_ack({ok, self()}),
     case misc:read_marker(ns_cluster:rename_marker_path()) of
         {ok, OldNode} ->
@@ -328,7 +337,6 @@ do_adjust_address(MyIP, UserSupplied, OnRename, State = #state{my_ip = MyOldIP})
 
     case save_address_config(NewState) of
         ok ->
-            ?log_info("Persisted the address successfully"),
             case Status of
                 net_restarted ->
                     master_activity_events:note_name_changed(),
@@ -338,7 +346,6 @@ do_adjust_address(MyIP, UserSupplied, OnRename, State = #state{my_ip = MyOldIP})
             end,
             {reply, Status, NewState};
         {error, Error} ->
-            ?log_warning("Failed to persist the address: ~p", [Error]),
             {stop,
              {address_save_failed, Error},
              {address_save_failed, Error},
@@ -418,10 +425,8 @@ handle_call(reset_address, _From,
     NewState = State#state{user_supplied = false},
     case save_address_config(NewState) of
         ok ->
-            ?log_info("Persisted the address successfully"),
             {reply, ok, NewState};
         {error, Error} ->
-            ?log_warning("Failed to persist the address: ~p", [Error]),
             {stop,
              {address_save_failed, Error},
              {address_save_failed, Error},
