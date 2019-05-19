@@ -131,6 +131,12 @@ parallel_map(Fun, List, Timeout) when is_list(List) andalso is_function(Fun) ->
             exit(timeout)
     end.
 
+-ifdef(TEST).
+prop_parallel_map_equals_map() ->
+    ?FORALL({Fun, Xs}, {triq_utils:random_integer_fun(), list(int())},
+            lists:map(Fun, Xs) =:= parallel_map(Fun, Xs, infinity)).
+-endif.
+
 gather_dir_info(Name) ->
     case file:list_dir(Name) of
         {ok, Filenames} ->
