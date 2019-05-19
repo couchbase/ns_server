@@ -14,10 +14,10 @@
 %% limitations under the License.
 %%
 -module(triq_utils).
--compile(nowarn_export_all).
--compile(export_all).
 
 -include("triq.hrl").
+
+-export([smaller/1, min_size/2]).
 
 smaller(Domain) ->
     ?SIZED(Size,
