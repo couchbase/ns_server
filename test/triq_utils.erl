@@ -17,7 +17,7 @@
 
 -include("triq.hrl").
 
--export([smaller/1, min_size/2]).
+-export([smaller/1, min_size/2, random_integer_fun/0]).
 
 smaller(Domain) ->
     ?SIZED(Size,
@@ -31,3 +31,37 @@ min_size(Domain, MinSize) ->
                false ->
                    resize(MinSize, Domain)
            end).
+
+safe_idiv(X) ->
+    case X =/= 0 of
+        true ->
+            functools:idiv(X);
+        false ->
+            fun functools:id/1
+    end.
+
+random_integer_fun_spec() ->
+    list(oneof([fun functools:id/1] ++
+                   [random_simple_fun_spec(BF) ||
+                       BF <- [fun functools:const/1,
+                              fun functools:add/1,
+                              fun functools:sub/1,
+                              fun functools:mul/1,
+                              fun safe_idiv/1]])).
+
+random_simple_fun_spec(BaseFun) ->
+    ?LET(N, int(), {BaseFun, [N]}).
+
+fun_spec_to_fun(Spec) ->
+    fun (X) ->
+            Funs = [case F of
+                        _ when is_function(F) ->
+                            F;
+                        {BaseF, Args} ->
+                            erlang:apply(BaseF, Args)
+                    end || F <- Spec],
+            functools:chain(X, Funs)
+    end.
+
+random_integer_fun() ->
+    ?LET(Spec, random_integer_fun_spec(), fun_spec_to_fun(Spec)).

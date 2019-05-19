@@ -213,37 +213,6 @@ singleton_map(KSpec, VSpec) ->
     ?LET(K, KSpec,
          ?LET(V, VSpec, #{K => V})).
 
-safe_idiv(X) ->
-    case X =/= 0 of
-        true ->
-            functools:idiv(X);
-        false ->
-            fun functools:id/1
-    end.
-
-random_fun_spec() ->
-    list(oneof([fun functools:id/1] ++
-                   [random_simple_fun_spec(BF) ||
-                       BF <- [fun functools:const/1,
-                              fun functools:add/1,
-                              fun functools:sub/1,
-                              fun functools:mul/1,
-                              fun safe_idiv/1]])).
-
-random_simple_fun_spec(BaseFun) ->
-    ?LET(N, int(), {BaseFun, [N]}).
-
-fun_spec_to_fun(Spec) ->
-    fun (X) ->
-            Funs = [case F of
-                        _ when is_function(F) ->
-                            F;
-                        {BaseF, Args} ->
-                            erlang:apply(BaseF, Args)
-                    end || F <- Spec],
-            functools:chain(X, Funs)
-    end.
-
 %% triq properties
 prop_transform_id(Transform) ->
     ?FORALL(Term, any(), Transform(fun functools:id/1, Term) =:= Term).
@@ -275,10 +244,9 @@ prop_transforms_same_subterms() ->
                  end).
 
 prop_transforms_result(Transform) ->
-    Props = ?FORALL(Spec, random_fun_spec(),
+    Props = ?FORALL(Fun, triq_utils:random_integer_fun(),
                     forall_terms(
                       fun (Items, Term) ->
-                              Fun = fun_spec_to_fun(Spec),
                               TransFun = ?transform(I when is_integer(I), Fun(I)),
 
                               Items1 = lists:map(Fun, Items),
