@@ -222,6 +222,8 @@ async_init(Parent, ParentController, Opts, Fun) ->
     case proplists:get_value(abort_after, Opts) of
         undefined ->
             ok;
+        infinity ->
+            ok;
         AbortAfter when is_integer(AbortAfter) ->
             erlang:send_after(AbortAfter, self(), abort_after_expired)
     end,
