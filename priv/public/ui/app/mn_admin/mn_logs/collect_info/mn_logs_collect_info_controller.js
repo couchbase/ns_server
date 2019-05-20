@@ -5,11 +5,12 @@
     .module('mnLogs')
     .controller('mnLogsCollectInfoController', mnLogsCollectInfoController);
 
-  function mnLogsCollectInfoController($scope, mnHelper, mnPromiseHelper, mnPoolDefault, mnLogsCollectInfoService, mnPoller, $state, $uibModal, mnLogRedactionService, permissions, mnGroupsService) {
+  function mnLogsCollectInfoController($scope, mnHelper, mnPromiseHelper, mnPoolDefault, mnLogsCollectInfoService, mnPoller, $state, $uibModal, mnLogRedactionService, permissions, mnGroupsService, mnLogsService) {
     var vm = this;
     vm.stopCollection = stopCollection;
     vm.isNodeDisabled = isNodeDisabled;
     vm.submit = submit;
+    vm.showClusterInfoDialog = mnLogsService.showClusterInfoDialog;
 
     activate();
 

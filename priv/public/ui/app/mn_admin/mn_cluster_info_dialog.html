@@ -1,0 +1,18 @@
+<div class="dialog-med">
+  <div class="panel-header">
+    <h2>Cluster Info</h2>
+  </div>
+
+  <div class="panel-content">
+    <button class="outline ng-isolate-scope"
+            ngclipboard=""
+            data-clipboard-target="#cluster_info">
+      Copy to Clipboard
+    </button>
+    <pre id="cluster_info" style="font-size:0.8rem">{{info}}</pre>
+  </div>
+
+  <div class="panel-footer">
+    <a href="" ng-click="$dismiss()">Cancel</a>
+  </div>
+</div>

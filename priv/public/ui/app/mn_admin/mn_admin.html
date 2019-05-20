@@ -216,6 +216,13 @@
           Couchbase Support<br>
           <desc>For Enterprise Edition subscription customers</desc>
         </a>
+        <a ng-click="adminCtl.showClusterInfoDialog()">
+          Get Cluster Summary lnfo<br>
+          <desc>For complete info, use
+            <span ng-click="$event.stopPropagation()"
+               ui-sref="app.admin.logs.collectInfo.form">Collect lnfo</span>
+          </desc>
+        </a>
       </div>
     </span>
     <span uib-dropdown>
