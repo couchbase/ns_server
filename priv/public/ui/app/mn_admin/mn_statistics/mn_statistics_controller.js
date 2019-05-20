@@ -103,7 +103,9 @@
               });
             } else {
               var scope = $rootScope.$new();
-              scope.config = $scope.config;
+              scope.config = config;
+              scope.bucket = $state.params.scenarioBucket;
+              scope.zoom = $state.params.zoom;
               $uibModal.open({
                 templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_chart_dialog.html',
                 scope: scope,
