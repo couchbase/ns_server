@@ -27,7 +27,10 @@ init([]) ->
     {ok, {{one_for_all, 3, 10}, child_specs()}}.
 
 child_specs() ->
-    [{ns_bucket_worker, {work_queue, start_link, [ns_bucket_worker]},
-      permanent, 1000, worker, [work_queue]},
-     {ns_bucket_sup, {ns_bucket_sup, start_link, []},
-      permanent, infinity, supervisor, [ns_bucket_sup]}].
+    [{ns_bucket_sup, {ns_bucket_sup, start_link, []},
+      permanent, infinity, supervisor, [ns_bucket_sup]},
+
+     %% ns_bucket_worker calls into ns_bucket_sup, so it needs to start after
+     %% it.
+     {ns_bucket_worker, {ns_bucket_worker, start_link, []},
+      permanent, 1000, worker, [ns_bucket_worker]}].
