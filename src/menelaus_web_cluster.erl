@@ -318,44 +318,11 @@ handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherUser, OtherPswd,
                             H;
                         H -> H
                     end,
+                 NodeURL = build_node_url(OtherScheme, Host),
 
-                 Port = case OtherScheme of
-                            http -> service_ports:get_port(rest_port);
-                            https -> service_ports:get_port(ssl_rest_port)
-                        end,
-                 NodeURL = io_lib:format("~p://~s:~b",
-                                         [OtherScheme,
-                                          misc:maybe_add_brackets(Host),
-                                          Port]),
-
-                 BasePayload = [{<<"hostname">>, iolist_to_binary(NodeURL)},
-                                {<<"user">>, []},
-                                {<<"password">>, []}],
-
-                 {Payload, Endpoint} =
-                     case Services =:= ns_cluster_membership:default_services() of
-                         true ->
-                             {BasePayload, "/controller/addNode"};
-                         false ->
-                             ServicesStr = string:join([erlang:atom_to_list(S) || S <- Services], ","),
-                             SVCPayload = [{"services", ServicesStr}
-                                           | BasePayload],
-                             {SVCPayload, "/controller/addNodeV2"}
-                     end,
-
-                 Options = [{connect_options, [AFamily]}],
-                 RestRV = menelaus_rest:json_request_hilevel(
-                            post,
-                            {OtherScheme, OtherHost, OtherPort, Endpoint,
-                             "application/x-www-form-urlencoded",
-                             mochiweb_util:urlencode(Payload)},
-                            {OtherUser, OtherPswd}, Options),
-                 case RestRV of
-                     {error, What, _M, {bad_status, 404, Msg}} ->
-                         {error, What, <<"Node attempting to join an older cluster. Some of the selected services are not available.">>, {bad_status, 404, Msg}};
-                     Other ->
-                         Other
-                 end;
+                 call_add_node(OtherScheme, OtherHost, OtherPort,
+                               {OtherUser, OtherPswd}, AFamily,
+                               NodeURL, Services);
              {error, Reason} ->
                     M = case ns_error_messages:connection_error_message(
                                Reason, OtherHost, OtherPort) of
@@ -378,6 +345,48 @@ handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherUser, OtherPswd,
             reply_json(Req, [Message], 400)
     end,
     exit(normal).
+
+build_node_url(Scheme, Host) ->
+    Port = case Scheme of
+               http -> service_ports:get_port(rest_port);
+               https -> service_ports:get_port(ssl_rest_port)
+           end,
+    HostWBrackets = misc:maybe_add_brackets(Host),
+    URL = io_lib:format("~p://~s:~b", [Scheme, HostWBrackets, Port]),
+    lists:flatten(URL).
+
+call_add_node(OtherScheme, OtherHost, OtherPort, Creds, AFamily,
+              ThisNodeURL, Services) ->
+    BasePayload = [{<<"hostname">>, list_to_binary(ThisNodeURL)},
+                   {<<"user">>, []},
+                   {<<"password">>, []}],
+
+    {Payload, Endpoint} =
+        case Services =:= ns_cluster_membership:default_services() of
+            true ->
+                {BasePayload, "/controller/addNode"};
+            false ->
+                ServicesStr =
+                    string:join([erlang:atom_to_list(S) || S <- Services], ","),
+                SVCPayload = [{"services", ServicesStr} | BasePayload],
+                {SVCPayload, "/controller/addNodeV2"}
+        end,
+
+    Options = [{connect_options, [AFamily]}],
+
+    Res = menelaus_rest:json_request_hilevel(
+            post,
+            {OtherScheme, OtherHost, OtherPort, Endpoint,
+             "application/x-www-form-urlencoded",
+             mochiweb_util:urlencode(Payload)},
+            Creds, Options),
+    case Res of
+        {error, What, _M, {bad_status, 404, Msg}} ->
+            NewMsg = <<"Node attempting to join an older cluster. Some of the "
+                       "selected services are not available.">>,
+            {error, What, NewMsg, {bad_status, 404, Msg}};
+        Other -> Other
+    end.
 
 %% waits till only one node is left in cluster
 do_eject_myself_rec(0, _) ->
