@@ -98,13 +98,12 @@
          mn-is-enterprise="poolDefault.isEnterprise"
          mn-services="serversAddDialogCtl.addNodeConfig">
       </div>
-      <br>
-      <label
+      <p
          class="disclosure margin-bottom-half"
          ng-class="{disclosed: serversAddDialogCtl.specifyDisk}"
          ng-click="serversAddDialogCtl.specifyDisk = !serversAddDialogCtl.specifyDisk">
-        Specify disk paths
-      </label>
+        Disk Paths
+      </p>
       <div ng-show="serversAddDialogCtl.specifyDisk" class="indent-1-5">
         <mn-services-disk-paths
            ng-if="serversAddDialogCtl.selfConfig"
