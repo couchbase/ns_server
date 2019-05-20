@@ -5,7 +5,7 @@
     .module('mnAdmin')
     .controller('mnAdminController', mnAdminController);
 
-  function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnSettingsNotificationsService, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnPoorMansAlertsService, mnLostConnectionService, mnPermissions, mnPools, mnMemoryQuotaService, mnResetPasswordDialogService, whoami, mnBucketsStats, mnBucketsService, $q, mnSessionService, mnServersService) {
+  function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnSettingsNotificationsService, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnPoorMansAlertsService, mnLostConnectionService, mnPermissions, mnPools, mnMemoryQuotaService, mnResetPasswordDialogService, whoami, mnBucketsStats, mnBucketsService, $q, mnSessionService, mnServersService, mnSettingsClusterService) {
     var vm = this;
     vm.poolDefault = poolDefault;
     vm.launchpadId = pools.launchID;
@@ -16,6 +16,7 @@
     vm.toggleProgressBar = toggleProgressBar;
     vm.filterTasks = filterTasks;
     vm.showResetPasswordDialog = showResetPasswordDialog;
+    vm.postCancelRebalanceRetry = postCancelRebalanceRetry;
 
     vm.user = whoami;
 
@@ -37,6 +38,12 @@
     $rootScope.buckets = mnBucketsService.export;
 
     activate();
+
+    function postCancelRebalanceRetry() {
+      return mnTasksDetails.get().then(function (tasks) {
+        mnSettingsClusterService.postCancelRebalanceRetry(tasks.tasksRebalance.statusId);
+      });
+    }
 
     function showResetPasswordDialog() {
       vm.showUserDropdownMenu = false;
@@ -140,6 +147,18 @@
           .cycle();
 
       if (mnPermissions.export.cluster.tasks.read) {
+        if (pools.isEnterprise && poolDefault.compat.atLeast65) {
+          var retryRebalancePoller = new mnPoller($scope, function () {
+            return mnSettingsClusterService.getPendingRetryRebalance({group: "global"});
+          })
+              .setInterval(function (resp) {
+                return resp.data.retry_after_secs ? 1000 : 3000;
+              })
+              .subscribe(function (resp) {
+                vm.retryRebalance = resp.data;
+              }).cycle();
+        }
+
         var tasksPoller = new mnPoller($scope, function (prevTask) {
           return mnTasksDetails.getFresh({group: "global"})
             .then(function (tasks) {

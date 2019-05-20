@@ -276,7 +276,6 @@
 <mn-element-depot name="subnav"></mn-element-depot>
 
 <main>
-
   <nav
      class="nav-sidebar"
      ng-class="{'resp-show-menu' : showRespMenu, 'nav-sidebar-hidden' : poolDefault.hideNavSidebar}"
@@ -378,6 +377,18 @@
 
 <div class="alert-wrapper fix-position-bl">
   <mn-element-depot name="alerts"></mn-element-depot>
+  <div
+     class="alert alert-warning ng-hide"
+     ng-show="adminCtl.retryRebalance && (adminCtl.retryRebalance.retry_rebalance !== 'not_pending')">
+    <p>
+      Rebalance failed. It will be automatically retried in {{adminCtl.retryRebalance.retry_after_secs}}<br>
+      <a
+         ng-click="adminCtl.postCancelRebalanceRetry()"
+         ng-show="rbac.cluster.pools.write">
+        CANCEL RETRY
+      </a>
+    </p>
+  </div>
   <div
      class="alert alert-warning"
      ng-show="adminCtl.lostConnState.isActive">

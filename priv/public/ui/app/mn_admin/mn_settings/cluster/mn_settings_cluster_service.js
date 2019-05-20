@@ -14,7 +14,9 @@
       clearSubmitCallbacks: clearSubmitCallbacks,
       getSubmitCallbacks: getSubmitCallbacks,
       getSettingsRetryRebalance: getSettingsRetryRebalance,
-      postSettingsRetryRebalance: postSettingsRetryRebalance
+      postSettingsRetryRebalance: postSettingsRetryRebalance,
+      getPendingRetryRebalance: getPendingRetryRebalance,
+      postCancelRebalanceRetry: postCancelRebalanceRetry
     };
 
     var childSubmitCallbacks = [];
@@ -25,11 +27,27 @@
       return $http.post("/settings/retryRebalance", data);
     }
 
+    function getPendingRetryRebalance(mnHttpParams) {
+      return $http({
+        url: "/pools/default/pendingRetryRebalance",
+        method: 'GET',
+        mnHttp: mnHttpParams
+      });
+    }
+
     function getSettingsRetryRebalance() {
       return $http.get("/settings/retryRebalance")
         .then(function (resp) {
           return resp.data;
         });
+    }
+
+    function postCancelRebalanceRetry(replicationId) {
+      return $http({
+        url: "/controller/cancelRebalanceRetry/" + encodeURIComponent(replicationId),
+        method: "POST",
+        mnHttp: {group: "global"}
+      });
     }
 
     function getSubmitCallbacks() {
