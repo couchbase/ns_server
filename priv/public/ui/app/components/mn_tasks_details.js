@@ -88,8 +88,8 @@
       return this;
     }
 
-    function getFresh() {
-      return mnTasksDetails.clearCache().get();
+    function getFresh(mnHttpParams) {
+      return mnTasksDetails.clearCache().get(mnHttpParams);
     }
   }
 })();
