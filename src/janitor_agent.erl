@@ -42,9 +42,9 @@
                 apply_vbucket_states_worker :: undefined | pid(),
                 rebalance_subprocesses_registry :: pid()}).
 
--export([wait_for_bucket_creation/2, query_states/3,
-         query_states_details/3,
-         query_vbucket_state_topology/3,
+-export([wait_for_bucket_creation/2,
+         query_states/3,
+         check_bucket_ready/3,
          apply_new_bucket_config_with_timeout/6,
          mark_bucket_warmed/2,
          delete_vbucket_copies/4,
@@ -180,79 +180,62 @@ complete_flush(Bucket, Nodes, Timeout) ->
     GoodNodes = [N || {N, _R} <- GoodReplies],
     {GoodNodes, BadReplies, BadNodes}.
 
--spec query_states(bucket_name(), [node()],
-                   undefined | pos_integer()) -> {ok,
-                                                  [{node(), vbucket_id(),
-                                                    vbucket_state()}],
-                                                  [node()]}.
-query_states(Bucket, Nodes, Timeout) ->
-    query_states(Bucket, Nodes, query_vbucket_states, Timeout).
+failures_to_zombies(Failures) ->
+    [N || {N, _} <- Failures].
 
-%% TODO: consider supporting partial janitoring
--spec query_states(bucket_name(), [node()],
-                   query_vbucket_state_topology | query_vbucket_states,
-                   undefined | pos_integer()) ->
-    {ok,
-     [{node(), vbucket_id(), vbucket_state(), [[node()]] | undefined}]
-         | [{node(), vbucket_id(), vbucket_state()}],
-     [node()]}.
-query_states(Bucket, Nodes, Call, undefined) ->
-    query_states(Bucket, Nodes, Call, ?WAIT_FOR_MEMCACHED_TIMEOUT);
-query_states(Bucket, Nodes, Call, ReadynessWaitTimeout) ->
-    {ok, States, Failures} = query_states_details(Bucket, Nodes, Call,
-                                                  ReadynessWaitTimeout),
-    BadNodes = [N || {N, _} <- Failures],
-    {ok, States, BadNodes}.
-
--spec query_states_details(bucket_name(), [node()],
-                           undefined | pos_integer()) ->
-                                  {ok, [{node(), vbucket_id(), vbucket_state()}],
-                                   [{node(), term()}]}.
-query_states_details(Bucket, Nodes, ReadynessWaitTimeout) ->
-    query_states_details(Bucket, Nodes, query_vbucket_states, ReadynessWaitTimeout).
-
--spec query_states_details(bucket_name(), [node()],
-                           query_vbucket_state_topology | query_vbucket_states,
-                           undefined | pos_integer()) ->
-    {ok,
-     [{node(), vbucket_id(), vbucket_state(), [[node()]] | undefined}]
-         | [{node(), vbucket_id(), vbucket_state()}],
-     [{node(), term()}]}.
-query_states_details(Bucket, Nodes, Call, undefined) ->
-    query_states_details(Bucket, Nodes, Call, ?WAIT_FOR_MEMCACHED_TIMEOUT);
-query_states_details(Bucket, Nodes, Call, ReadynessWaitTimeout) ->
-    NodeRVs = wait_for_memcached(Nodes, Bucket, Call, ReadynessWaitTimeout),
-    Failures = [{N, R} || {N, R} <- NodeRVs,
-                          case R of
-                              {ok, _} -> false;
-                              _ -> true
-                          end],
-    case Failures of
-        [] ->
-            RV = case Call of
-                     query_vbucket_states ->
-                         [{Node, VBucket, State}
-                          || {Node, {ok, Pairs}} <- NodeRVs,
-                             {VBucket, State} <- Pairs];
-                     query_vbucket_state_topology ->
-                         [{Node, VBucket, State, Topology}
-                          || {Node, {ok, Triples}} <- NodeRVs,
-                             {VBucket, State, Topology} <- Triples]
-                 end,
-            {ok, RV, []};
-        _ ->
-            ?log_error("Failed to query vbucket states from some nodes:~n~p",
-                       [Failures]),
-            {ok, [], Failures}
+check_bucket_ready(Bucket, Nodes, Timeout) ->
+    case do_query_states(Bucket, Nodes, query_vbucket_states, Timeout) of
+        {_States, []} ->
+            ready;
+        {_States, Failures} ->
+            Zombies = failures_to_zombies(Failures),
+            ?log_debug("Querying bucket ~p states failed. Failures: ~p",
+                       [Bucket, Failures]),
+            case lists:all(fun ({_Node, warming_up}) ->
+                                   true;
+                               ({_Node, _}) ->
+                                   false
+                           end, Failures) of
+                true ->
+                    {warming_up, Zombies};
+                false ->
+                    {failed, Zombies}
+            end
     end.
 
--spec query_vbucket_state_topology(bucket_name(),
-                                   [node()], undefined | pos_integer()) ->
-    {ok,
-     [{node(), vbucket_id(), vbucket_state(), [[node()]] | undefined}],
-     [node()]}.
-query_vbucket_state_topology(Bucket, Nodes, Timeout) ->
-    query_states(Bucket, Nodes, query_vbucket_state_topology, Timeout).
+-spec query_states(bucket_name(), [node()], pos_integer() | undefined) ->
+                          {[{node(), vbucket_id(), vbucket_state(),
+                             [[node()]] | undefined}],
+                           [node()]}.
+query_states(Bucket, Nodes, undefined) ->
+    query_states(Bucket, Nodes, ?WAIT_FOR_MEMCACHED_TIMEOUT);
+query_states(Bucket, Nodes, Timeout) ->
+    Call = case cluster_compat_mode:is_cluster_madhatter() of
+               false ->
+                   query_vbucket_states;
+               true ->
+                   query_vbucket_state_topology
+           end,
+    {NodeRVs, Failures} = do_query_states(Bucket, Nodes, Call, Timeout),
+    {case Call of
+         query_vbucket_states ->
+             [{Node, VBucket, State, undefined}
+              || {Node, {ok, Pairs}} <- NodeRVs,
+                 {VBucket, State} <- Pairs];
+         query_vbucket_state_topology ->
+             [{Node, VBucket, State, Topology}
+              || {Node, {ok, Triples}} <- NodeRVs,
+                 {VBucket, State, Topology} <- Triples]
+     end, failures_to_zombies(Failures)}.
+
+%% TODO: consider supporting partial janitoring
+do_query_states(Bucket, Nodes, Call, Timeout) ->
+    NodeRVs = wait_for_memcached(Nodes, Bucket, Call, Timeout),
+    lists:partition(fun ({_, {ok, _}}) ->
+                            true;
+                        ({_, _}) ->
+                            false
+                    end, NodeRVs).
 
 -spec mark_bucket_warmed(Bucket::bucket_name(), [node()]) -> ok | {error, [node()], list()}.
 mark_bucket_warmed(Bucket, Nodes) ->

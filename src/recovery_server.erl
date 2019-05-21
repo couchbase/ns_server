@@ -246,15 +246,14 @@ complete_start_recovery(Bucket, BucketConfig, Servers) ->
     end.
 
 apply_recovery_bucket_config(Bucket, BucketConfig, Servers) ->
-    {ok, _, Zombies} =
-        janitor_agent:query_states(Bucket,
-                                   Servers, ?RECOVERY_QUERY_STATES_TIMEOUT),
-    case Zombies of
-        [] ->
+    case janitor_agent:check_bucket_ready(Bucket,
+                                          Servers,
+                                          ?RECOVERY_QUERY_STATES_TIMEOUT) of
+        ready ->
             janitor_agent:apply_new_bucket_config_with_timeout(
               Bucket, undefined, Servers,
               BucketConfig, [], undefined_timeout);
-        _ ->
+        {_, Zombies} ->
             ?log_error("Failed to query states "
                        "from some of the nodes: ~p", [Zombies]),
             {error, {failed_nodes, Zombies}}

@@ -830,12 +830,12 @@ rebalance_membase_bucket(BucketName, BucketConfig, ProgressFun,
     ThisLiveNodes = KeepKVNodes ++ ThisEjected,
     ns_bucket:set_servers(BucketName, ThisLiveNodes),
     ?rebalance_info("Waiting for bucket ~p to be ready on ~p", [BucketName, ThisLiveNodes]),
-    {ok, _States, Zombies} = janitor_agent:query_states(BucketName, ThisLiveNodes, ?REBALANCER_READINESS_WAIT_TIMEOUT),
-    case Zombies of
-        [] ->
+    case janitor_agent:check_bucket_ready(BucketName, ThisLiveNodes,
+                                          ?REBALANCER_READINESS_WAIT_TIMEOUT) of
+        ready ->
             ?rebalance_info("Bucket is ready on all nodes"),
             ok;
-        _ ->
+        {_, Zombies} ->
             exit({not_all_nodes_are_ready_yet, Zombies})
     end,
 
@@ -1258,29 +1258,17 @@ wait_for_bucket(Bucket, Nodes) ->
     do_wait_for_bucket(Bucket, Nodes).
 
 do_wait_for_bucket(Bucket, Nodes) ->
-    case janitor_agent:query_states_details(Bucket, Nodes, 60000) of
-        {ok, _States, []} ->
+    case janitor_agent:check_bucket_ready(Bucket, Nodes, 60000) of
+        ready ->
             ?log_debug("Bucket ~p became ready on nodes ~p", [Bucket, Nodes]),
             ok;
-        {ok, _States, Failures} ->
-            case check_failures(Failures) of
-                keep_waiting ->
-                    Zombies = [N || {N, _} <- Failures],
-                    ?log_debug("Bucket ~p still not ready on nodes ~p",
-                               [Bucket, Zombies]),
-                    do_wait_for_bucket(Bucket, Zombies);
-                fail ->
-                    ?log_error("Bucket ~p not available on nodes ~p",
-                               [Bucket, Failures]),
-                    fail
-            end
-    end.
-
-check_failures(Failures) ->
-    case [F || {_Node, Reason} = F <- Failures, Reason =/= warming_up] of
-        [] ->
-            keep_waiting;
-        _ ->
+        {warming_up, Zombies} ->
+            ?log_debug("Bucket ~p still not ready on nodes ~p",
+                       [Bucket, Zombies]),
+            do_wait_for_bucket(Bucket, Zombies);
+        {failed, Zombies} ->
+            ?log_error("Bucket ~p not available on nodes ~p",
+                       [Bucket, Zombies]),
             fail
     end.
 

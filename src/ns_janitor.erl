@@ -128,28 +128,15 @@ cleanup_with_membase_bucket_vbucket_map(Bucket, Options, BucketConfig) ->
     Servers = proplists:get_value(servers, BucketConfig, []),
     true = (Servers =/= []),
     Timeout = proplists:get_value(query_states_timeout, Options),
-    {ok, States, Zombies} =
-        case cluster_compat_mode:is_cluster_madhatter() of
-            false ->
-                {ok, TmpStates, Zomb} = janitor_agent:query_states(
-                                          Bucket, Servers,
-                                          Timeout),
-                ModifiedStates = [{N, V, S, undefined} ||
-                                     {N, V, S} <- TmpStates],
-                {ok, ModifiedStates, Zomb};
-            true ->
-                janitor_agent:query_vbucket_state_topology(Bucket, Servers,
-                                                           Timeout)
-        end,
-    cleanup_with_states(Bucket, Options, BucketConfig, Servers, States,
-                        Zombies).
+    case janitor_agent:query_states(Bucket, Servers, Timeout) of
+        {States, []} ->
+            cleanup_with_states(Bucket, Options, BucketConfig, Servers, States);
+        {_States, Zombies} ->
+            ?log_info("Bucket ~p not yet ready on ~p", [Bucket, Zombies]),
+            {error, wait_for_memcached_failed, Zombies}
+    end.
 
-cleanup_with_states(Bucket, _Options, _BucketConfig,
-                    _Servers, _States, Zombies) when Zombies =/= [] ->
-    ?log_info("Bucket ~p not yet ready on ~p", [Bucket, Zombies]),
-    {error, wait_for_memcached_failed, Zombies};
-cleanup_with_states(Bucket, Options, BucketConfig, Servers, States,
-                    [] = _Zombies) ->
+cleanup_with_states(Bucket, Options, BucketConfig, Servers, States) ->
     {NewBucketConfig, IgnoredVBuckets} = maybe_fixup_vbucket_map(Bucket,
                                                                  BucketConfig,
                                                                  States),
