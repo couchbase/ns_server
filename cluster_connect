@@ -25,7 +25,7 @@ def usage():
     print "usage: \n\
             -n <number of nodes>\n\
             -T <services to run. kv if unspecified> (eg: n0:kv,n1:index+n1ql+fts+eventing+cbas)\n\
-            -s <memory size (min 256) default: 256\n\
+            -s <memory size> (min 256) default: 256\n\
             -I <index memory size> default: 256\n\
             -t <bucket type> (ephemeral, membase, memcached) default: membase\n\
             -r <num replicas> (max 3) default: 1 (Only for ephemeral or membase buckets!)\n\

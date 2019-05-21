@@ -343,12 +343,22 @@ def start_cluster(num_nodes, start_index, host, extra_args, args_prefix,
     return [start_node(i + start_index) for i in xrange(num_nodes)]
 
 def usage():
-    sys.exit("Usage: {0} [--nodes=N] [--dont-rename] [--dont-start] "
-             "[--static-cookie] [--start-index=N] "
-             "[--host=H] [--loglevel=L] [--prepend-extras] "
-             "[--pluggable-config=File] [--minified] [--disable-autocomplete] "
-             "[--pretend-version=V] [--community] "
-             "[ns_server args]".format(sys.argv[0]))
+    print("usage: {0}\n\
+            [--nodes=<number of nodes>] (default: 1)\n\
+            [--dont-rename] (don't change network address)\n\
+            [--dont-start] (don't start ns_server)\n\
+            [--static-cookie] (don't reset cookie)\n\
+            [--start-index=<index>] (starting node number; default: 0)\n\
+            [--host=<host>] (default: '127.0.0.1')\n\
+            [--loglevel=<level>] (logging level; default: 'debug')\n\
+            [--prepend-extras] (extra arguments)\n\
+            [--pluggable-config=<file name>] (plug-ins)\n\
+            [--minified] (use minified files)\n\
+            [--disable-autocomplete] (disable auto-completion in UI)\n\
+            [--pretend-version=<version> (spoof different version;\n\
+                                          default: current version)\n\
+            [--community] (boot as Community Edition)\n\
+            [ns_server args]".format(sys.argv[0]))
 
 def find_primary_addr():
     Family = socket.AF_INET6 if ipv6 else socket.AF_INET
