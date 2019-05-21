@@ -99,7 +99,6 @@
          local_connected_and_list_vbuckets/1,
          local_connected_and_list_vbucket_details/2,
          list_vbuckets_prevstate/2,
-         list_vbuckets_multi/2,
          set_vbucket/3, set_vbucket/4,
          server/1,
          stats/1, stats/2, stats/3,
@@ -1126,23 +1125,6 @@ local_connected_and_list_vbucket_details(Bucket, Keys) ->
                                      mc_error().
 list_vbuckets_prevstate(Node, Bucket) ->
     do_call({server(Bucket), Node}, list_vbuckets_prevstate, ?TIMEOUT).
-
-
--spec list_vbuckets_multi([node()], bucket_name()) ->
-                                 {[{node(), {ok, [{vbucket_id(),
-                                                   vbucket_state()}]}}],
-                                  [node()]}.
-list_vbuckets_multi(Nodes, Bucket) ->
-    UpNodes = [node()|nodes()],
-    {LiveNodes, DeadNodes} = lists:partition(
-                               fun (Node) ->
-                                       lists:member(Node, UpNodes)
-                               end, Nodes),
-    {Replies, Zombies} =
-        gen_server:multi_call(LiveNodes, server(Bucket), list_vbuckets,
-                              ?TIMEOUT),
-    {Replies, Zombies ++ DeadNodes}.
-
 
 set_vbucket(Bucket, VBucket, VBState) ->
     set_vbucket(Bucket, VBucket, VBState, undefined).
