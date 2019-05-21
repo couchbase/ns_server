@@ -16,51 +16,58 @@
     'mnPromiseHelper',
     'mnAlertsService',
     'mnStatisticsNewService'
-  ]).controller('mnGsiController', mnGsiController);
+  ]).controller('mnGsiController', mnGsiController)
+    .controller('mnGsiStatsController', mnGsiStatsController);
 
-  function mnGsiController($scope, mnGsiService, mnPoller, mnPermissions) {
+  function mnGsiController($scope, mnGsiService, mnPoller) {
     var vm = this;
-    vm.focusindexFilter = false;
-    vm.currentBucket = mnPermissions.export.bucketNames['.stats!read'][0];
-    vm.onSelectBucket = getStats;
+    activate();
 
     function activate() {
       new mnPoller($scope, function () {
-       return mnGsiService.getIndexesState();
+        return mnGsiService.getIndexesState();
       })
-      .setInterval(10000)
-      .subscribe("state", vm)
-      .reloadOnScopeEvent("indexStatusURIChanged")
-      .cycle();
-
-      new mnPoller($scope, getStats)
-      .setInterval(5000)
-      .subscribe("stats", vm)
-      .cycle();
+        .setInterval(10000)
+        .subscribe("state", vm)
+        .reloadOnScopeEvent("indexStatusURIChanged")
+        .cycle();
     }
+  }
 
-    // for the index display, the following array has the list of stats
-    var stat_names = ["cbas_disk_used","index_memory_quota","index_memory_used","index_ram_percent","index_remaining_ram",
-      "ep_dcp_views+indexes_count","ep_dcp_views+indexes_items_remaining","ep_dcp_views+indexes_producer_count",
-      "ep_dcp_views+indexes_total_backlog_size","ep_dcp_views+indexes_total_bytes","ep_dcp_views+indexes_backoff",
-      "index/fragmentation","index/memory_used","index/disk_size","index/data_size"];
+  function mnGsiStatsController($scope, mnStatisticsNewService, mnPoller, mnPermissions) {
+    var vm = this;
+    vm.currentBucket = mnPermissions.export.bucketNames['.stats!read'][0];
+    vm.onSelectBucket = onSelectBucket;
 
-    function getStats() {
-      return mnGsiService.getIndexStats(stat_names,vm.currentBucket).then(function success(resp) {
-        var result = {};
-        if (resp) resp.forEach(function (aStat) {
-          if (aStat.data && aStat.data.statName && aStat.data.stats.aggregate.samples.length > 0) {
-            var sum = 0;
-            for (var i=0; i<aStat.data.stats.aggregate.samples.length; i++)
-              sum += aStat.data.stats.aggregate.samples[i];
-            result[aStat.data.statName] = sum/aStat.data.stats.aggregate.samples.length;
-          }
-        });
-        return result;
-      });
-    }
-
-    // done with config
     activate();
+
+    function activate() {
+      new mnPoller($scope, function (previousResult) {
+        return mnStatisticsNewService.doGetStats({
+          zoom: "minute",
+          bucket: vm.currentBucket,
+          node: "all"
+        }, previousResult);
+      })
+        .setInterval(5000)
+        .subscribe(getAverageUIStats)
+        .reloadOnScopeEvent("reloadUIStatPoller")
+        .cycle();
+    }
+
+    function onSelectBucket() {
+      $scope.$broadcast("reloadUIStatPoller");
+    }
+
+    function getAverageUIStats(resp) {
+      var rv = {};
+      (["cbas_disk_used", "index_memory_quota","index_memory_used","index_ram_percent","index_remaining_ram", "ep_dcp_views+indexes_count","ep_dcp_views+indexes_items_remaining","ep_dcp_views+indexes_producer_count","ep_dcp_views+indexes_total_backlog_size","ep_dcp_views+indexes_total_bytes","ep_dcp_views+indexes_backoff", "index/fragmentation","index/memory_used","index/disk_size","index/data_size"]).forEach(function (statName) {
+        var stats = resp.data.samples[statName];
+        rv[statName] = stats.reduce(function (sum, stat) {
+          return sum + stat;
+        }, 0) / stats.length;
+      });
+      vm.stats = rv;
+    }
   }
 })();

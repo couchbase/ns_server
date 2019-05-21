@@ -8,7 +8,6 @@
   function mnGsiServiceFactory($http, $q, qwQueryService) {
     var mnGsiService = {
       getIndexesState: getIndexesState,
-      getIndexStats: getIndexStats,
       postDropIndex: postDropIndex
     };
 
@@ -69,26 +68,6 @@
 
         return resp.data;
       });
-    }
-
-    function getIndexStats(stats, bucket) {
-      var requests = [];
-      var data = {
-        bucket: bucket,
-        startTS: Date.now() - 60000,
-        endTS: Date.now(),
-        step: 1,
-        host: 'aggregate'
-      };
-      stats.forEach(function (statName, bucket) {
-          requests.push(
-            $http({type: "GET",
-                   url: "/_uistats/v2",
-                   params: Object.assign({statName: statName}, data)
-                  }));
-      });
-
-      return($q.all(requests));
     }
   }
 })();
