@@ -36,7 +36,6 @@
          flush/1,
          hello_features/1,
          hello/3,
-         get_vbucket/2,
          list_buckets/1,
          refresh_isasl/1,
          refresh_ssl_certs/1,
@@ -296,11 +295,6 @@ hello(Sock, AgentName, ClientFeatures) ->
             process_error_response(Response)
     end.
 
-decode_vb_state(<<?VB_STATE_ACTIVE:32>>)  -> active;
-decode_vb_state(<<?VB_STATE_REPLICA:32>>) -> replica;
-decode_vb_state(<<?VB_STATE_PENDING:32>>) -> pending;
-decode_vb_state(<<?VB_STATE_DEAD:32>>)    -> dead.
-
 -spec vbucket_state_to_atom(int_vb_state()) -> atom().
 vbucket_state_to_atom(?VB_STATE_ACTIVE) ->
     active;
@@ -312,15 +306,6 @@ vbucket_state_to_atom(?VB_STATE_DEAD) ->
     dead;
 vbucket_state_to_atom(_) ->
     unknown.
-
-get_vbucket(Sock, VBucket) ->
-    case cmd(?CMD_GET_VBUCKET, Sock, undefined, undefined,
-            {#mc_header{vbucket = VBucket},
-             #mc_entry{}}) of
-        {ok, #mc_header{status=?SUCCESS}, #mc_entry{data=StateBin}, _NCB} ->
-            {ok, decode_vb_state(StateBin)};
-        Response -> process_error_response(Response)
-    end.
 
 list_buckets(Sock) ->
     case cmd(?CMD_LIST_BUCKETS, Sock, undefined, undefined,

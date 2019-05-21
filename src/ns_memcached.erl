@@ -91,7 +91,6 @@
          disable_traffic/2,
          delete_vbucket/2, delete_vbucket/3,
          sync_delete_vbucket/2,
-         get_vbucket/3,
          get_vbucket_details_stats/2,
          get_single_vbucket_details_stats/3,
          host_ports/1,
@@ -479,9 +478,6 @@ do_handle_call({sync_delete_vbucket, VBucket}, _From, #state{sock=Sock} = State)
     ?log_info("sync-deleting vbucket ~p", [VBucket]),
     ok = mc_client_binary:set_vbucket(Sock, VBucket, dead),
     Reply = mc_client_binary:sync_delete_vbucket(Sock, VBucket),
-    {reply, Reply, State};
-do_handle_call({get_vbucket, VBucket}, _From, State) ->
-    Reply = mc_client_binary:get_vbucket(State#state.sock, VBucket),
     {reply, Reply, State};
 do_handle_call({get_vbucket_details_stats, VBucket, Keys}, _From, State) ->
     Reply = get_vbucket_details(State#state.sock, VBucket, Keys),
@@ -1047,12 +1043,6 @@ delete_vbucket(Node, Bucket, VBucket) ->
 sync_delete_vbucket(Bucket, VBucket) ->
     do_call(server(Bucket), {sync_delete_vbucket, VBucket},
             infinity).
-
-
--spec get_vbucket(node(), bucket_name(), vbucket_id()) ->
-                         {ok, vbucket_state()} | mc_error().
-get_vbucket(Node, Bucket, VBucket) ->
-    do_call({server(Bucket), Node}, {get_vbucket, VBucket}, ?TIMEOUT).
 
 -spec get_single_vbucket_details_stats(bucket_name(), vbucket_id(),
                                        all | [nonempty_string()]) ->
