@@ -1348,6 +1348,7 @@ simulate_slow_warmup(Bucket) ->
             testconditions:set(TestCondition, NewDelay),
             true
     end.
+
 has_started({memcached_error, key_enoent, _}, _) ->
     %% this is memcached bucket, warmup is done :)
     true;
@@ -1358,6 +1359,7 @@ has_started(Stats, Bucket) ->
         true ->
             false
     end.
+
 has_started_inner({ok, WarmupStats}) ->
     case lists:keyfind(<<"ep_warmup_thread">>, 1, WarmupStats) of
         {_, <<"complete">>} ->
