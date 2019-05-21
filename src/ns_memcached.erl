@@ -100,7 +100,6 @@
          local_connected_and_list_vbucket_details/2,
          list_vbuckets_prevstate/2,
          set_vbucket/3, set_vbucket/4,
-         server/1,
          stats/1, stats/2, stats/3,
          warmup_stats/1,
          topkeys/1,
