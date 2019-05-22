@@ -36,7 +36,6 @@
 
 -define(CHECK_INTERVAL, 10000).
 -define(CHECK_WARMUP_INTERVAL, 500).
--define(EVAL_TIMEOUT,        ?get_timeout(eval, 120000)).
 -define(TIMEOUT,             ?get_timeout(outer, 180000)).
 -define(TIMEOUT_HEAVY,       ?get_timeout(outer_heavy, 180000)).
 -define(TIMEOUT_VERY_HEAVY,  ?get_timeout(outer_very_heavy, 360000)).
@@ -103,7 +102,6 @@
          get_xattrs/4,
          update_with_rev/7,
          get_seqno_stats/2,
-         eval/2,
          get_mass_dcp_docs_estimate/2,
          get_dcp_docs_estimate/3,
          set_cluster_config/3,
@@ -549,15 +547,6 @@ do_handle_call(topkeys, _From, State) ->
               end,
               []),
     {reply, Reply, State};
-do_handle_call({eval, Fn, Ref}, _From, #state{sock=Sock} = State) ->
-    try
-        R = Fn(Sock),
-        {reply, R, State}
-    catch
-        T:E ->
-            {compromised_reply,
-             {thrown, Ref, T, E, erlang:get_stacktrace()}, State}
-    end;
 do_handle_call(get_random_key, _From, State) ->
     {reply, mc_client_binary:get_random_key(State#state.sock), State};
 do_handle_call({get_vbucket_high_seqno, VBucketId}, _From, State) ->
@@ -890,15 +879,6 @@ update_with_rev(Bucket, VBucket, Id, Value, Rev, Deleted, LocalCAS) ->
               {reply, mc_client_binary:update_with_rev(
                         Sock, VBucket, Id, Value, Rev, Deleted, LocalCAS)}
       end, Bucket).
-
-eval(Bucket, Fn) ->
-    Ref = make_ref(),
-    case do_call(server(Bucket), {eval, Fn, Ref}, ?EVAL_TIMEOUT) of
-        {thrown, Ref, T, E, Stack} ->
-            erlang:raise(T, E, Stack);
-        V ->
-            V
-    end.
 
 %% @doc Delete a vbucket. Will set the vbucket to dead state if it
 %% isn't already, blocking until it successfully does so.
