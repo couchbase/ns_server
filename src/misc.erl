@@ -1411,6 +1411,10 @@ letrec(Args, F) ->
 is_ipv6() ->
     get_net_family() == inet6.
 
+-spec is_node_encryption_enabled(term(), atom()) -> true | false.
+is_node_encryption_enabled(Cfg, Node) ->
+    ns_config:search_node(Node, Cfg, node_encryption) =:= {value, true}.
+
 -spec is_cluster_encryption_enabled() -> true | false.
 is_cluster_encryption_enabled() ->
     %% Cluster wide encryption is considered to be enabled only if node
@@ -1418,7 +1422,7 @@ is_cluster_encryption_enabled() ->
     Cfg = ns_config:latest(),
     NonEncryptNodes =
         [N || N <- ns_node_disco:nodes_wanted(),
-              ns_config:search_node(N, Cfg, node_encryption) =/= {value, true}],
+              not is_node_encryption_enabled(Cfg, N)],
 
     cluster_compat_mode:is_cluster_madhatter() andalso
         cluster_compat_mode:is_enterprise() andalso

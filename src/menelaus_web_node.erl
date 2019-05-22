@@ -304,9 +304,7 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
 
     AFamily = ns_config:search_node_with_default(WantENode, Config,
                                                  address_family, inet),
-    NEncryption = ns_config:search_node_with_default(WantENode, Config,
-                                                     node_encryption,
-                                                     false),
+    NEncryption = misc:is_node_encryption_enabled(Config, WantENode),
     Listeners = case ns_config:search_node_with_default(WantENode, Config,
                                                         erl_external_listeners,
                                                         undefined) of
