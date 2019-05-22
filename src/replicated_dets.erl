@@ -23,7 +23,7 @@
 
 -behaviour(replicated_storage).
 
--export([start_link/5, set/3, delete/2, delete_all/1, get/2, get/3,
+-export([start_link/5, set/3, delete/2, get/2, get/3,
          get_last_modified/3, select/3, select/4, empty/1,
          select_with_update/4]).
 
@@ -70,18 +70,6 @@ update_doc(Id, Value) ->
         end,
     #docv2{id = Id, value = Value,
            props = [{deleted, false}, {rev, 0}] ++ LastModified}.
-
-delete_all(Name) ->
-    Keys =
-        pipes:run(select(Name, '_', 100),
-                  ?make_consumer(
-                     pipes:fold(?producer(),
-                                fun ({Key, _}, Acc) ->
-                                        [Key | Acc]
-                                end, []))),
-    lists:foreach(fun (Key) ->
-                          delete(Name, Key)
-                  end, Keys).
 
 empty(Name) ->
     gen_server:call(Name, empty, infinity).

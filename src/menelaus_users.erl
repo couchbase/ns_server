@@ -63,7 +63,6 @@
 %% Actions:
          authenticate/2,
          build_scram_auth/1,
-         build_scram_auth_info/1,
          build_plain_auth/1,
          build_plain_auth/2,
          empty_storage/0,
@@ -712,9 +711,6 @@ get_user_name(_) ->
 
 user_auth_info(User, Auth) ->
     {[{<<"n">>, list_to_binary(User)} | Auth]}.
-
-build_scram_auth_info(UserPasswords) ->
-    [user_auth_info(U, build_scram_auth(P)) || {U, P} <- UserPasswords].
 
 build_scram_auth(Password) ->
     BuildAuth =

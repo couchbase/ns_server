@@ -19,8 +19,7 @@
 
 -export([build_settings/0,
          set_settings/1,
-         authenticate/2,
-         get_role_pre_45/1
+         authenticate/2
         ]).
 
 verify_creds(Username, Password) ->
@@ -62,31 +61,4 @@ do_authenticate(User, Password) ->
             false;
         true ->
             verify_creds(User, Password)
-    end.
-
-get_role_pre_45(User) ->
-    case ns_config:search(saslauthd_auth_settings) of
-        {value, LDAPCfg} ->
-            get_role_pre_45(LDAPCfg, User);
-        false ->
-            false
-    end.
-
-get_role_pre_45(LDAPCfg, User) ->
-    {_, Admins} = lists:keyfind(admins, 1, LDAPCfg),
-    {_, RoAdmins} = lists:keyfind(roAdmins, 1, LDAPCfg),
-    UserB = list_to_binary(User),
-    IsAdmin = is_list(Admins) andalso lists:member(UserB, Admins),
-    IsRoAdmin = is_list(RoAdmins) andalso lists:member(UserB, RoAdmins),
-    if
-        IsAdmin ->
-            admin;
-        IsRoAdmin ->
-            ro_admin;
-        Admins =:= asterisk ->
-            admin;
-        RoAdmins =:= asterisk ->
-            ro_admin;
-        true ->
-            false
     end.

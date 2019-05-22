@@ -35,7 +35,6 @@
          get_user_id/1,
          get_token/1,
          assert_no_meta_headers/1,
-         verify_login_creds/2,
          verify_rest_auth/2,
          verify_local_token/1,
          apply_headers/2]).
@@ -340,14 +339,6 @@ verify_login_creds(Auth) ->
         Other ->
             Other
     end.
-
--spec verify_login_creds(rbac_user_id(), rbac_password()) ->
-                                auth_failure |
-                                {forbidden, rbac_identity(),
-                                 rbac_permission()} |
-                                {ok, rbac_identity()} | {error, term()}.
-verify_login_creds(Username, Password) ->
-    verify_login_creds({Username, Password}).
 
 -spec uilogin(mochiweb_request(), list()) -> mochiweb_response().
 uilogin(Req, Params) ->
