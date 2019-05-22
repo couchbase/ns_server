@@ -97,8 +97,7 @@
          warmup_stats/1,
          topkeys/1,
          raw_stats/5,
-         set/5,
-         sync/4, add/4, get/3, delete/3, delete/4,
+         set/5, add/4, get/3, delete/3, delete/4,
          get_from_replica/3,
          get_meta/3,
          get_xattrs/4,
@@ -352,7 +351,6 @@ assign_queue({get_from_replica, _Key, _VBucket}) -> #state.heavy_calls_queue;
 assign_queue({delete, _Key, _VBucket, _CAS}) -> #state.heavy_calls_queue;
 assign_queue({set, _Key, _VBucket, _Value, _Flags}) -> #state.heavy_calls_queue;
 assign_queue({get_keys, _VBuckets, _Params}) -> #state.heavy_calls_queue;
-assign_queue({sync, _Key, _VBucket, _CAS}) -> #state.very_heavy_calls_queue;
 assign_queue({get_mass_dcp_docs_estimate, _VBuckets}) -> #state.very_heavy_calls_queue;
 assign_queue(_) -> #state.fast_calls_queue.
 
@@ -513,9 +511,6 @@ do_handle_call({get_from_replica, Key, VBucket}, _From, State) ->
                                  {#mc_header{vbucket = VBucket},
                                   #mc_entry{key = Key}}),
     {reply, Reply, State};
-
-do_handle_call({sync, Key, VBucket, CAS}, _From, State) ->
-    {reply, mc_client_binary:sync(State#state.sock, VBucket, Key, CAS), State};
 
 do_handle_call({set_vbucket, VBucket, VBState, Topology}, _From,
                #state{sock=Sock} = State) ->
@@ -923,13 +918,6 @@ eval(Bucket, Fn) ->
         V ->
             V
     end.
-
-%% @doc send a sync command to memcached instance
--spec sync(bucket_name(), binary(), integer(), integer()) ->
-                  {ok, #mc_header{}, #mc_entry{}, any()}.
-sync(Bucket, Key, VBucket, CAS) ->
-    do_call({server(Bucket), node()},
-            {sync, Key, VBucket, CAS}, ?TIMEOUT_VERY_HEAVY).
 
 %% @doc Delete a vbucket. Will set the vbucket to dead state if it
 %% isn't already, blocking until it successfully does so.

@@ -44,7 +44,6 @@
          set_vbucket/4,
          stats/1,
          stats/4,
-         sync/4,
          get_meta/3,
          update_with_rev/7,
          set_engine_param/4,
@@ -208,12 +207,6 @@ auth(_Sock, _UnknownMech) ->
     {error, emech_unsupported}.
 
 % -------------------------------------------------
-
-sync(Sock, VBucket, Key, CAS) ->
-    Sync = build_sync_flags(Key, VBucket, CAS),
-    cmd(?SYNC, Sock, undefined, undefined,
-        {#mc_header{}, #mc_entry{data = Sync}}).
-
 create_bucket(Sock, BucketName, Engine, Config) ->
     case cmd(?CMD_CREATE_BUCKET, Sock, undefined, undefined,
              {#mc_header{},
@@ -684,22 +677,6 @@ map_status(_) ->
 process_error_response({ok, #mc_header{status=Status}, #mc_entry{data=Msg},
                         _NCB}) ->
     {memcached_error, map_status(Status), Msg}.
-
-build_sync_flags(Key, VBucket, CAS) ->
-    <<
-     0:16/big, % Reserved
-     0:8/big,  % Reserved
-     0:4/big,  % Replica Count
-     1:1/big,  % Persistence
-     0:1/big,  % Mutation
-     0:1/big,  % R + P
-     0:1/big,  % Reserved
-     1:16/big, % Number of keyspecs to follow
-     CAS:64/big, % CAS
-     VBucket:16/big,
-     (erlang:size(Key)):16/big,
-     Key/binary
-     >>.
 
 wait_for_seqno_persistence(Sock, VBucket, SeqNo) ->
     RV = cmd(?CMD_SEQNO_PERSISTENCE, Sock, undefined, undefined,
