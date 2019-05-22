@@ -4,10 +4,7 @@
   <div class="row items-bottom margin-bottom-1-5">
     <div>
       <p>{{row.definition}}</p>
-      <p class="margin-bottom-0">
-        <span ng-show="row.hosts.length > 1"><strong>Nodes:</strong> {{mnGsiItemDetailsCtl.hosts}} &nbsp;</span>
-        <strong>Type:</strong> {{row.storageMode | mnFormatStorageMode:mnGsiTableCtl.pools.isEnterprise}}
-      </p>
+      <p ng-show="row.hosts.length > 1" class="margin-bottom-0"><strong>Nodes:</strong> {{mnGsiItemDetailsCtl.hosts}}</p>
     </div>
     <div class="nowrap">
       <button

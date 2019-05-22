@@ -1,11 +1,14 @@
 (function () {
   "use strict";
 
-  angular.module('mnGsiService', ["qwQuery"]).factory('mnGsiService', mnGsiServiceFactory);
+  angular.module('mnGsiService', [
+    "qwQuery"
+  ]).factory('mnGsiService', mnGsiServiceFactory);
 
-  function mnGsiServiceFactory($http, $q, qwQueryService, mnAnalyticsService) {
+  function mnGsiServiceFactory($http, $q, qwQueryService) {
     var mnGsiService = {
       getIndexesState: getIndexesState,
+      getIndexStats: getIndexStats,
       postDropIndex: postDropIndex
     };
 
@@ -17,109 +20,75 @@
         .executeQueryUtil('DROP INDEX `' + row.bucket + '`.`' + row.index + '`', true);
     }
 
-    function getIndexesState(mnHttpParams,forController) {
+    function getIndexesState(mnHttpParams) {
       return $http({
         method: 'GET',
         url: '/indexStatus',
         mnHttp: mnHttpParams
-      }).then(function success(resp) {
+      }).then(function (resp) {
         var byNodes = {};
         var byBucket = {};
         var byID = {};
 
-        resp.data.indexes.forEach(function (index) {
-          index.hosts.forEach(function (node) {
-            byNodes[node] = byNodes[node] || [];
-            byNodes[node].push(index);
-          });
+        function collapsePartition(root, index) {
+          if (root[index.id]) {
+            root[index.id].partitions = root[index.id].partitions || {};
+            if (!root[index.id].partitions[root[index.id].instId]) {
+              root[index.id].partitions[root[index.id].instId] =
+                Object.assign({}, root[index.id]);
+            }
+            root[index.id].partitions[index.instId] = Object.assign({}, index);
+            root[index.id].hosts = _.uniq(root[index.id].hosts.concat(index.hosts));
+          } else {
+            root[index.id] = Object.assign({}, index);
+          }
+        }
 
+        resp.data.indexes.forEach(function (index) {
+          collapsePartition(byID, index)
+
+          index.hosts.forEach(function (node) {
+            byNodes[node] = byNodes[node] || {};
+            collapsePartition(byNodes[node], index);
+          });
+        });
+
+        Object.keys(byNodes).forEach(function (id) {
+          byNodes[id] = Object.values(byNodes[id]);
+        });
+
+        Object.keys(byID).forEach(function (id) {
+          var index = byID[id];
           byBucket[index.bucket] = byBucket[index.bucket] || [];
-          byBucket[index.bucket].push(index);
+          byBucket[index.bucket].push(Object.assign({}, index));
         });
 
         resp.data.byBucket = byBucket;
         resp.data.byNodes = byNodes;
-        resp.data.byID = resp.data.indexes;
+        resp.data.byID = Object.values(byID);
 
-        if (forController) // only get stats for indexes if we're being called by the gsi_controller
-          return getAllIndexStats(resp.data);
-        else
-          return(resp.data);
+        return resp.data;
       });
     }
 
-    //
-    // make a single call to get all stats, and pull out the ones we want for our indexes
-    function getAllIndexStats(state) {
-      var index_stat_names = ["data_size","num_rows_returned","index_resident_percent","num_docs_pending+queued","num_requests"];
-
-      var stat_names = {
-          "@index": ["index_memory_quota","index_memory_used","index_ram_percent","index_remaining_ram"],
-          "@kv-": ["ep_dcp_views+indexes_count","ep_dcp_views+indexes_items_remaining","ep_dcp_views+indexes_producer_count","ep_dcp_views+indexes_total_backlog_size","ep_dcp_views+indexes_total_bytes","ep_dcp_views+indexes_backoff"],
-          "@index-": ["index/fragmentation","index/memory_used","index/disk_size","index/data_size"]
-        };
-
-
-      var promises = [];
-      var bucket_names = Object.keys(state.byBucket);
-      bucket_names.forEach(function(bucket_name) {               // for each bucket
-        promises.push(
-            mnAnalyticsService.getStats({$stateParams:{
-              bucket: bucket_name,
-              statsHostname: "all",
-              zoom: "minute"
-            }})
-            .then(function success(data) {
-              var result = {};
-              if (data && data.statsByName) {
-                state.byBucket[bucket_name].forEach(function(index) { // for each index in the bucket
-                  index_stat_names.forEach(function(stat_name) {         // for each statistic
-                    var fullName = 'index/' + index.index + '/' + stat_name;
-                    var stats = data.statsByName[fullName].config.data.slice(-5); // only want last 5 secs of data
-                    result[fullName] =  stats.reduce(function (sum, stat) {return sum + stat;}, 0) / stats.length;
-                  });
-                });
-                // get the overall stats for this bucket
-                result.overall = result.overall || {};
-                result.overall[bucket_name] = {};try {
-                Object.keys(stat_names).forEach(function (section) {
-                  var section1 = section.includes("-") ? (section + bucket_name) : section;
-                  stat_names[section].forEach(function (statName) {
-                    var stats = data.stats.stats[section1][statName].slice(-5); // only want last 5 seconds
-                    result.overall[bucket_name][statName] = stats.reduce(function (sum, stat) {
-                      return sum + stat;
-                    }, 0) / stats.length;
-                  });
-                });
-                } catch (e) {console.log("Got error: " + e)}
-                return(result);
-              }
-            },function error(resp) {return(state);})
-        );
+    function getIndexStats(stats, bucket) {
+      var requests = [];
+      var data = {
+        bucket: bucket,
+        startTS: Date.now() - 60000,
+        endTS: Date.now(),
+        step: 1,
+        host: 'aggregate'
+      };
+      stats.forEach(function (statName, bucket) {
+          requests.push(
+            $http({type: "GET",
+                   url: "/_uistats/v2",
+                   params: Object.assign({statName: statName}, data)
+                  }));
       });
 
-      // got stats for every bucket with indexes, now process the results
-      return $q.all(promises).then(function(values) {
-        var index_stats = {};
-        var overall_stats = {};
-        values.forEach(function(some_stats) {
-          if (some_stats.overall)
-            Object.assign(overall_stats,some_stats.overall);
-          Object.assign(index_stats,some_stats);
-        });
-
-        state.overall_stats = overall_stats;
-
-        // add the values for each stat to each index
-        state.byID.forEach(function (index) {
-          index_stat_names.forEach(function(stat_name) {         // for each statistic
-            index[stat_name] = index_stats['index/' + index.index + '/' + stat_name];
-          });
-        });
-        return(state);
-      });
-
-
+      return($q.all(requests));
     }
   }
 })();

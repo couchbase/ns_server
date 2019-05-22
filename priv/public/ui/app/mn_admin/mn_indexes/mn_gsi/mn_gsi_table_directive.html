@@ -1,28 +1,29 @@
 <div class="cbui-table" mn-sortable-table>
   <div class="cbui-table-header">
-    <span class="cbui-table-cell flex-grow-2-5">
+    <span class="cbui-table-cell flex-grow-1-5">
       <span
          mn-sortable-title="index"
          sort-by-default="true"
          class="sorter">index name</span>
     </span>
-    <span class="cbui-table-cell"><span mn-sortable-title="num_rows_returned" class="sorter">scans</span></span>
-    <span class="cbui-table-cell"><span mn-sortable-title="num_requests" class="sorter">requests/sec</span></span>
-    <span class="cbui-table-cell"><span mn-sortable-title="index_resident_percent" class="sorter">resident ratio</span></span>
-    <span class="cbui-table-cell"><span mn-sortable-title="data_size" class="sorter">data size</span></span>
     <span class="cbui-table-cell"
-          ng-if="mnGsiTableCtl.hideColumn !== 'bucket' && mnGsiTableCtl.hideColumn !== 'all'">
+          ng-if="mnGsiTableCtl.hideColumn !== 'bucket'">
       <span
          mn-sortable-title="bucket"
          class="sorter">bucket</span>
     </span>
     <span class="cbui-table-cell"
-          ng-if="mnGsiTableCtl.hideColumn !== 'node' && mnGsiTableCtl.hideColumn !== 'all'">
+          ng-if="mnGsiTableCtl.hideColumn !== 'node'">
       <span
          mn-sortable-title="hosts[0]"
          class="sorter">node</span>
     </span>
-    <span class="cbui-table-cell flex-grow-2">status</span>
+    <span class="cbui-table-cell">
+      <span
+         mn-sortable-title="storageMode | mnFormatStorageMode:mnGsiTableCtl.pools.isEnterprise"
+         class="sorter">storage type</span>
+    </span>
+    <span class="cbui-table-cell flex-grow-half">build progress</span>
   </div>
   <section
      ng-repeat="row in mnGsiTableCtl.list
@@ -41,30 +42,25 @@
        ng-class="[(!mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row)) ?
                  mnGsiTableCtl.getStatusClass(row) : '')]">
       <span
-         class="cbui-table-cell flex-grow-2-5"
+         class="cbui-table-cell flex-grow-1-5"
          title="{{row.index}}">
         {{row.index}}<span
                         class="label lt-blue"
                         ng-if="row.partitioned">partitioned</span></span>
-      <span class="cbui-table-cell">{{row.num_rows_returned | number:0}}</span>
-      <span class="cbui-table-cell">{{row.num_requests| number:2}}</span>
-      <span class="cbui-table-cell">{{row.index_resident_percent| number:0}}%</span>
-      <span class="cbui-table-cell">{{row.data_size/1024/1024 | number:2}} MB</span>
       <span
-         ng-if="mnGsiTableCtl.hideColumn !== 'bucket' && mnGsiTableCtl.hideColumn !== 'all'"
+         ng-if="mnGsiTableCtl.hideColumn !== 'bucket'"
          class="cbui-table-cell">
         {{row.bucket}}</span>
       <span
-         ng-if="mnGsiTableCtl.hideColumn !== 'node' && mnGsiTableCtl.hideColumn !== 'all'"
+         ng-if="mnGsiTableCtl.hideColumn !== 'node'"
          class="cbui-table-cell"
          title="{{row.hosts.join(', ')}}">
         {{row.hosts.join(', ')}}</span>
-      <span class="cbui-table-cell flex-grow-2 wrap">
-        <span ng-show="row.status == 'Building'">Building...<br></span>
-        <span ng-show="row.status == 'Replicating'">Replicating...<br></span>
-        <span ng-show="row.status == 'Created'">Deferred<br></span>
-        <span ng-show="row.progress < 100 && progress > 0">building {{row.progress}}%<br></span>
-        <span ng-show="row.status == 'Ready'">Ready<br><span ng-show="row['num_docs_pending+queued'] > 0">{{row['num_docs_pending+queued'] | number:0}} mutations pending</span>
+      <span class="cbui-table-cell">
+        {{row.storageMode | mnFormatStorageMode:mnGsiTableCtl.pools.isEnterprise}}</span>
+      <span class="cbui-table-cell flex-grow-half">
+        <span ng-show="row.status == 'Replicating'">Replicating</span>
+        <span ng-show="row.progress">{{row.progress}}%</span>
       </span>
     </div>
     <mn-gsi-item-details
