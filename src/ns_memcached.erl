@@ -79,7 +79,6 @@
 
 %% external API
 -export([active_buckets/0,
-         warmed/2,
          warmed/3,
          warmed_buckets/0,
          warmed_buckets/1,
@@ -818,10 +817,6 @@ warmed(Node, Bucket, Timeout) ->
         _:_ ->
             false
     end.
-
--spec warmed(node(), bucket_name()) -> boolean().
-warmed(Node, Bucket) ->
-    warmed(Node, Bucket, ?WARMED_TIMEOUT).
 
 -spec mark_warmed([node()], bucket_name(), Timeout)
                  -> Result
