@@ -393,21 +393,18 @@ build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
               | Suffix4]}.
 
 build_bucket_capabilities(BucketConfig) ->
-    MoreCaps =
-        [C || {C, true} <-
-                  [{collections, collections:enabled(BucketConfig)},
-                   {durableWrite, cluster_compat_mode:is_cluster_madhatter()}]],
-
     Caps =
         case ns_bucket:bucket_type(BucketConfig) of
             membase ->
-                Caps0 = MoreCaps ++ [dcp, cbhello, touch, cccp,
-                                     xdcrCheckpointing, nodesExt, xattr],
+                Conditional =
+                    [{collections, collections:enabled(BucketConfig)},
+                     {durableWrite, cluster_compat_mode:is_cluster_madhatter()},
+                     {couchapi,
+                      ns_bucket:storage_mode(BucketConfig) =:= couchstore}],
 
-                case ns_bucket:storage_mode(BucketConfig) of
-                    couchstore -> [couchapi | Caps0];
-                    ephemeral  -> Caps0
-                end;
+                [C || {C, true} <- Conditional] ++
+                    [dcp, cbhello, touch, cccp, xdcrCheckpointing, nodesExt,
+                     xattr];
             memcached ->
                 [cbhello, nodesExt]
         end,
