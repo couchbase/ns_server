@@ -97,7 +97,7 @@
          warmup_stats/1,
          topkeys/1,
          raw_stats/5,
-         set/5, add/4, get/3, delete/3, delete/4,
+         set/5, add/4, get/3, delete/3,
          get_from_replica/3,
          get_meta/3,
          get_xattrs/4,
@@ -348,7 +348,7 @@ assign_queue({set_vbucket, _, _, _}) -> #state.heavy_calls_queue;
 assign_queue({add, _Key, _VBucket, _Value}) -> #state.heavy_calls_queue;
 assign_queue({get, _Key, _VBucket}) -> #state.heavy_calls_queue;
 assign_queue({get_from_replica, _Key, _VBucket}) -> #state.heavy_calls_queue;
-assign_queue({delete, _Key, _VBucket, _CAS}) -> #state.heavy_calls_queue;
+assign_queue({delete, _Key, _VBucket}) -> #state.heavy_calls_queue;
 assign_queue({set, _Key, _VBucket, _Value, _Flags}) -> #state.heavy_calls_queue;
 assign_queue({get_keys, _VBuckets, _Params}) -> #state.heavy_calls_queue;
 assign_queue({get_mass_dcp_docs_estimate, _VBuckets}) -> #state.very_heavy_calls_queue;
@@ -482,10 +482,10 @@ do_handle_call(list_vbuckets, _From, State) ->
               end, []),
     {reply, Reply, State};
 
-do_handle_call({delete, Key, VBucket, CAS}, _From, State) ->
+do_handle_call({delete, Key, VBucket}, _From, State) ->
     Reply = mc_client_binary:cmd(?DELETE, State#state.sock, undefined, undefined,
                                  {#mc_header{vbucket = VBucket},
-                                  #mc_entry{key = Key, cas = CAS}}),
+                                  #mc_entry{key = Key}}),
     {reply, Reply, State};
 
 do_handle_call({set, Key, VBucket, Val, Flags}, _From, State) ->
@@ -879,16 +879,11 @@ subdoc_multi_lookup(Bucket, Key, VBucket, Paths, Options) ->
       end, Bucket, [xattr]).
 
 %% @doc send a delete command to memcached instance
--spec delete(bucket_name(), binary(), integer(), integer()) ->
+-spec delete(bucket_name(), binary(), integer()) ->
                     {ok, #mc_header{}, #mc_entry{}, any()} |
                     {memcached_error, any(), any()}.
-delete(Bucket, Key, VBucket, CAS) ->
-    do_call({server(Bucket), node()},
-            {delete, Key, VBucket, CAS}, ?TIMEOUT_HEAVY).
-
-
 delete(Bucket, Key, VBucket) ->
-    delete(Bucket, Key, VBucket, 0).
+    do_call(server(Bucket), {delete, Key, VBucket}, ?TIMEOUT_HEAVY).
 
 %% @doc send a set command to memcached instance
 -spec set(bucket_name(), binary(), integer(), binary(), integer()) ->
