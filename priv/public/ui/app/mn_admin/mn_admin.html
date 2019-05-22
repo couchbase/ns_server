@@ -388,7 +388,9 @@
      class="alert alert-warning ng-hide"
      ng-show="adminCtl.retryRebalance && (adminCtl.retryRebalance.retry_rebalance !== 'not_pending')">
     <p>
-      Rebalance failed. It will be automatically retried in {{adminCtl.retryRebalance.retry_after_secs}}<br>
+      <span ng-show="adminCtl.retryRebalance.type == 'rebalance'">Rebalance</span>
+      <span ng-show="adminCtl.retryRebalance.type == 'graceful_failover'">Graceful Failover</span>
+      failed. It will be automatically retried in {{adminCtl.retryRebalance.retry_after_secs}}<br>
       <a
          ng-click="adminCtl.postCancelRebalanceRetry(adminCtl.retryRebalance.rebalance_id)"
          ng-show="rbac.cluster.pools.write">
