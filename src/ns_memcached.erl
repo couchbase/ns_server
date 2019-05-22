@@ -79,7 +79,6 @@
 
 %% external API
 -export([active_buckets/0,
-         warmed/3,
          warmed_buckets/0,
          warmed_buckets/1,
          mark_warmed/2,
