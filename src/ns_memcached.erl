@@ -82,7 +82,7 @@
          warmed_buckets/1,
          mark_warmed/2,
          disable_traffic/2,
-         delete_vbucket/2, delete_vbucket/3,
+         delete_vbucket/2,
          sync_delete_vbucket/2,
          get_vbucket_details_stats/2,
          get_single_vbucket_details_stats/3,
@@ -948,14 +948,6 @@ sync(Bucket, Key, VBucket, CAS) ->
                             ok | mc_error().
 delete_vbucket(Bucket, VBucket) ->
     do_call(server(Bucket), {delete_vbucket, VBucket}, ?TIMEOUT_VERY_HEAVY).
-
-
--spec delete_vbucket(node(), bucket_name(), vbucket_id()) ->
-                            ok | mc_error().
-delete_vbucket(Node, Bucket, VBucket) ->
-    do_call({server(Bucket), Node}, {delete_vbucket, VBucket},
-            ?TIMEOUT_VERY_HEAVY).
-
 
 -spec sync_delete_vbucket(bucket_name(), vbucket_id()) ->
                                  ok | mc_error().
