@@ -322,10 +322,12 @@
 
     function packData(user, roles, groups, isEditingMode, resetPassword) {
       var data = {
-        roles: roles.indexOf("admin") > -1 ? "admin" : roles.join(','),
-        groups: groups.join(','),
-        name: user.name
-      };
+          roles: roles.indexOf("admin") > -1 ? "admin" : roles.join(','),
+          name: user.name
+        };
+
+      if (mnPoolDefault.export.isEnterprise)
+        data.groups = groups.join(',');
 
       if ((!isEditingMode && user.domain == "local") || resetPassword) {
         data.password = user.password;

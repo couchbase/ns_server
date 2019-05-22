@@ -24,8 +24,8 @@
            ng-repeat="error in userRolesAddDialogCtl.errors">
           {{error}}
         </div>
-        <div class="formrow checkbox-list">
-          <div ng-if="userRolesAddDialogCtl.isLdapEnabled && poolDefault.compat.atLeast50">
+        <div ng-if="userRolesAddDialogCtl.isLdapEnabled && poolDefault.compat.atLeast50" class="formrow checkbox-list">
+          <div>
             <h4>Authentication Domain</h4>
             <input
                type="radio"
@@ -102,7 +102,7 @@
       </div>
 
       <div class="column width-7">
-        <span class="pills nowrap">
+        <span ng-show="pools.isEnterprise" class="pills nowrap">
           <a ng-click="userRolesAddDialogCtl.selectedPanel = 'roles'"
              ng-class="{selected : (userRolesAddDialogCtl.selectedPanel == 'roles')}">
             Roles

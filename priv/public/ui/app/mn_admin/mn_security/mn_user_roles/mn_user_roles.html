@@ -4,7 +4,7 @@
        ng-click="userRolesCtl.addLDAP()">
       LDAP
     </a>
-    <a ng-show="rbac.cluster.admin.security.write"
+    <a ng-show="rbac.cluster.admin.security.write && pools.isEnterprise"
        ng-click="userRolesCtl.addRolesGroup()">
       ADD GROUP
     </a>
@@ -33,7 +33,7 @@
       <a
          ui-sref="app.admin.security.userRoles"
          ui-sref-active="selected">Users</a>
-      <a
+      <a ng-show="pools.isEnterprise"
          ui-sref="app.admin.security.rolesGroups"
          ui-sref-active="selected">Groups</a>
     </span>
