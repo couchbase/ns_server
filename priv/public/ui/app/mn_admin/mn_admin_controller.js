@@ -40,10 +40,8 @@
 
     activate();
 
-    function postCancelRebalanceRetry() {
-      return mnTasksDetails.get().then(function (tasks) {
-        mnSettingsClusterService.postCancelRebalanceRetry(tasks.tasksRebalance.statusId);
-      });
+    function postCancelRebalanceRetry(id) {
+      mnSettingsClusterService.postCancelRebalanceRetry(id);
     }
 
     function showResetPasswordDialog() {

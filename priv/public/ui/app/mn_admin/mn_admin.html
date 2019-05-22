@@ -390,7 +390,7 @@
     <p>
       Rebalance failed. It will be automatically retried in {{adminCtl.retryRebalance.retry_after_secs}}<br>
       <a
-         ng-click="adminCtl.postCancelRebalanceRetry()"
+         ng-click="adminCtl.postCancelRebalanceRetry(adminCtl.retryRebalance.rebalance_id)"
          ng-show="rbac.cluster.pools.write">
         CANCEL RETRY
       </a>
