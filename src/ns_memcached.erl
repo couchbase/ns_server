@@ -878,7 +878,7 @@ subdoc_multi_lookup(Bucket, Key, VBucket, Paths, Options) ->
                                                            Paths, Options)}
       end, Bucket, [xattr]).
 
-%% @doc send a set command to memcached instance
+%% @doc send a delete command to memcached instance
 -spec delete(bucket_name(), binary(), integer(), integer()) ->
                     {ok, #mc_header{}, #mc_entry{}, any()} |
                     {memcached_error, any(), any()}.
