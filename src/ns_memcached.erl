@@ -82,7 +82,6 @@
          warmed_buckets/0,
          warmed_buckets/1,
          mark_warmed/2,
-         mark_warmed/3,
          disable_traffic/2,
          delete_vbucket/2, delete_vbucket/3,
          sync_delete_vbucket/2,
@@ -817,22 +816,14 @@ warmed(Node, Bucket, Timeout) ->
             false
     end.
 
--spec mark_warmed([node()], bucket_name(), Timeout)
-                 -> Result
-                        when Timeout :: pos_integer() | infinity,
-                             Result :: {Replies, BadNodes},
-                             Replies :: [{node(), any()}],
-                             BadNodes :: [node()].
-mark_warmed(Nodes, Bucket, Timeout) ->
-    gen_server:multi_call(Nodes, server(Bucket), mark_warmed, Timeout).
-
 -spec mark_warmed([node()], bucket_name())
                  -> Result
                         when Result :: {Replies, BadNodes},
                              Replies :: [{node(), any()}],
                              BadNodes :: [node()].
 mark_warmed(Nodes, Bucket) ->
-    mark_warmed(Nodes, Bucket, ?MARK_WARMED_TIMEOUT).
+    gen_server:multi_call(Nodes, server(Bucket),
+                          mark_warmed, ?MARK_WARMED_TIMEOUT).
 
 warmed_buckets() ->
     warmed_buckets(?WARMED_TIMEOUT).
