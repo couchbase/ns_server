@@ -15,7 +15,7 @@
     font-size: 15px;
   }
   .resp-hide-med {
-    display: none;
+    display: none !important;
   }
   .resp-wrap-med {
     flex-wrap: wrap;
