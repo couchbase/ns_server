@@ -128,7 +128,8 @@ cleanup_with_membase_bucket_vbucket_map(Bucket, Options, BucketConfig) ->
     Servers = proplists:get_value(servers, BucketConfig, []),
     true = (Servers =/= []),
     Timeout = proplists:get_value(query_states_timeout, Options),
-    case janitor_agent:query_states(Bucket, Servers, Timeout) of
+    Opts = [wait_for_warmup | [{timeout, Timeout} || Timeout =/= undefined]],
+    case janitor_agent:query_vbuckets(Bucket, Servers, [topology], Opts) of
         {States, []} ->
             cleanup_with_states(Bucket, Options, BucketConfig, Servers, States);
         {_States, Zombies} ->
@@ -418,10 +419,11 @@ sanify_chain(Bucket, States,
 
         %% One Active.
         [{ActiveNode, active}] ->
-            [Topology] = [T || {N, VB, S, T} <- States,
-                               VB =:= VBucket,
-                               N =:= ActiveNode,
-                               S =:= active],
+            [Topology] = [proplists:get_value(topology, P) ||
+                             {N, VB, S, P} <- States,
+                             VB =:= VBucket,
+                             N =:= ActiveNode,
+                             S =:= active],
             case Topology of
                 undefined ->
                     sanify_chain_one_active(Bucket, VBucket, ActiveNode,
@@ -534,68 +536,73 @@ sanify_chain_one_active(Bucket, VBucket, ActiveNode, _States,
     derive_chain(Bucket, VBucket, ActiveNode, CurrentChain).
 
 -ifdef(TEST).
+sanify_chain_t(Bucket, States, CurrentChain, FutureChain, Vbucket, Servers) ->
+    sanify_chain(Bucket,
+                 [{N, Vb, S, [{topology, T}]} || {N, Vb, S, T} <- States],
+                 CurrentChain, FutureChain, Vbucket, Servers).
+
 sanify_basic_test() ->
     Servers = [a, b, c, d],
     %% normal case when everything matches vb map
-    [a, b] = sanify_chain("B", [{a, 0, active, undefined},
-                                {b, 0, replica, undefined}],
-                          [a, b], [], 0, Servers),
-    [a, b] = sanify_chain("B", [{a, 0, active, [[a, b]]},
-                                {b, 0, replica, undefined}],
-                          [a, b], [], 0, Servers),
+    [a, b] = sanify_chain_t("B", [{a, 0, active, undefined},
+                                  {b, 0, replica, undefined}],
+                            [a, b], [], 0, Servers),
+    [a, b] = sanify_chain_t("B", [{a, 0, active, [[a, b]]},
+                                  {b, 0, replica, undefined}],
+                            [a, b], [], 0, Servers),
 
     %% yes, the code will keep both masters as long as expected master
     %% is there. Possibly something to fix in future
-    [a, b] = sanify_chain("B", [{a, 0, active, undefined},
-                                {b, 0, active, undefined}],
-                          [a, b], [], 0, Servers),
+    [a, b] = sanify_chain_t("B", [{a, 0, active, undefined},
+                                  {b, 0, active, undefined}],
+                            [a, b], [], 0, Servers),
 
     %% main chain doesn't match but fast-forward chain does
-    [b, c] = sanify_chain("B", [{a, 0, dead, undefined},
-                                {b, 0, active, undefined},
-                                {c, 0, replica, undefined}],
-                          [a, b], [b, c], 0, Servers),
-    [b, d] = sanify_chain("B", [{a, 0, dead, undefined},
-                                {b, 0, active, [[b, d]]},
-                                {c, 0, replica, undefined}],
-                          [a, b], [b, c], 0, Servers),
+    [b, c] = sanify_chain_t("B", [{a, 0, dead, undefined},
+                                  {b, 0, active, undefined},
+                                  {c, 0, replica, undefined}],
+                            [a, b], [b, c], 0, Servers),
+    [b, d] = sanify_chain_t("B", [{a, 0, dead, undefined},
+                                  {b, 0, active, [[b, d]]},
+                                  {c, 0, replica, undefined}],
+                            [a, b], [b, c], 0, Servers),
 
     %% main chain doesn't match but ff chain does. And old master is already
     %% deleted
-    [b, c] = sanify_chain("B", [{b, 0, active, undefined},
-                                {c, 0, replica, undefined}],
-                          [a, b], [b, c], 0, Servers),
-    [b, d] = sanify_chain("B", [{b, 0, active, [[b, d]]},
-                                {d, 0, replica, undefined}],
-                          [a, b], [b, c], 0, Servers),
+    [b, c] = sanify_chain_t("B", [{b, 0, active, undefined},
+                                  {c, 0, replica, undefined}],
+                            [a, b], [b, c], 0, Servers),
+    [b, d] = sanify_chain_t("B", [{b, 0, active, [[b, d]]},
+                                  {d, 0, replica, undefined}],
+                            [a, b], [b, c], 0, Servers),
 
     %% lets make sure we touch all paths just in case
     %% this runs "there are >1 unexpected master" case
-    ignore = sanify_chain("B", [{a, 0, active, undefined},
-                                {b, 0, active, undefined}],
-                          [c, a, b], [], 0, Servers),
-    ignore = sanify_chain("B", [{a, 0, active, [[a]]},
-                                {b, 0, active, [[b]]}],
-                          [c, a, b], [], 0, Servers),
+    ignore = sanify_chain_t("B", [{a, 0, active, undefined},
+                                  {b, 0, active, undefined}],
+                            [c, a, b], [], 0, Servers),
+    ignore = sanify_chain_t("B", [{a, 0, active, [[a]]},
+                                  {b, 0, active, [[b]]}],
+                            [c, a, b], [], 0, Servers),
     %% this runs "master is one of replicas" case
-    [b, undefined] = sanify_chain("B", [{b, 0, active, undefined},
-                             {c, 0, replica, undefined}],
-                       [a, b], [], 0, Servers),
-    [b, c, a] = sanify_chain("B", [{b, 0, active, [[b, c, a], [a, b]]},
-                                   {c, 0, replica, undefined}],
-                             [a, b], [], 0, Servers),
+    [b, undefined] = sanify_chain_t("B", [{b, 0, active, undefined},
+                                          {c, 0, replica, undefined}],
+                                    [a, b], [], 0, Servers),
+    [b, c, a] = sanify_chain_t("B", [{b, 0, active, [[b, c, a], [a, b]]},
+                                     {c, 0, replica, undefined}],
+                               [a, b], [], 0, Servers),
     %% and this runs "master is some non-chain member node" case
-    [c, undefined] = sanify_chain("B", [{c, 0, active, undefined}],
-                       [a, b], [], 0, Servers),
-    [c] = sanify_chain("B", [{c, 0, active, [[c]]}],
-                       [a, b], [], 0, Servers),
+    [c, undefined] = sanify_chain_t("B", [{c, 0, active, undefined}],
+                                    [a, b], [], 0, Servers),
+    [c] = sanify_chain_t("B", [{c, 0, active, [[c]]}],
+                         [a, b], [], 0, Servers),
 
     %% lets also test rebalance stopped prior to complete takeover
-    [a, b] = sanify_chain("B", [{a, 0, dead, undefined},
-                                {b, 0, replica, undefined},
-                                {c, 0, pending, undefined},
-                                {d, 0, replica, undefined}],
-                          [a, b], [c, d], 0, Servers),
+    [a, b] = sanify_chain_t("B", [{a, 0, dead, undefined},
+                                  {b, 0, replica, undefined},
+                                  {c, 0, pending, undefined},
+                                  {d, 0, replica, undefined}],
+                            [a, b], [c, d], 0, Servers),
     ok.
 
 sanify_doesnt_lose_replicas_on_stopped_rebalance_test() ->
@@ -605,41 +612,41 @@ sanify_doesnt_lose_replicas_on_stopped_rebalance_test() ->
     %% vbmap. We have code in sanify to detect this condition using
     %% fast-forward map and is supposed to recover perfectly from this
     %% condition.
-    [a, b] = sanify_chain("B", [{a, 0, active, undefined},
-                                {b, 0, dead, undefined}],
-                          [b, a], [a, b], 0, Servers),
-    [a, b, c] = sanify_chain("B", [{a, 0, active, [[a, b, c]]},
-                                   {b, 0, dead, undefined}],
-                             [b, a], [a, b, c], 0, Servers),
+    [a, b] = sanify_chain_t("B", [{a, 0, active, undefined},
+                                  {b, 0, dead, undefined}],
+                            [b, a], [a, b], 0, Servers),
+    [a, b, c] = sanify_chain_t("B", [{a, 0, active, [[a, b, c]]},
+                                     {b, 0, dead, undefined}],
+                               [b, a], [a, b, c], 0, Servers),
 
     %% rebalance can be stopped after updating vbucket states but
     %% before vbucket map update
-    [a, b] = sanify_chain("B", [{a, 0, active, undefined},
-                                {b, 0, replica, undefined}],
-                          [b, a], [a, b], 0, Servers),
+    [a, b] = sanify_chain_t("B", [{a, 0, active, undefined},
+                                  {b, 0, replica, undefined}],
+                            [b, a], [a, b], 0, Servers),
     %% same stuff but prior to takeover
-    [a, b] = sanify_chain("B", [{a, 0, dead, undefined},
-                                {b, 0, pending, undefined}],
-                          [a, b], [b, a], 0, Servers),
+    [a, b] = sanify_chain_t("B", [{a, 0, dead, undefined},
+                                  {b, 0, pending, undefined}],
+                            [a, b], [b, a], 0, Servers),
 
     %% Rebalance stopped after new chain set in map but topology not updated.
-    [a, c] = sanify_chain("B", [{a, 0, active, [[a,c], [a,b]]},
-                                {b, 0, replica, undefined}],
-                          [a, b], [], 0, Servers),
+    [a, c] = sanify_chain_t("B", [{a, 0, active, [[a,c], [a,b]]},
+                                  {b, 0, replica, undefined}],
+                            [a, b], [], 0, Servers),
 
     %% lets test more usual case too
-    [c, d] = sanify_chain("B", [{a, 0, dead, undefined},
-                                {b, 0, replica, undefined},
-                                {c, 0, active, undefined},
-                                {d, 0, replica, undefined}],
-                          [a, b], [c, d], 0, Servers),
+    [c, d] = sanify_chain_t("B", [{a, 0, dead, undefined},
+                                  {b, 0, replica, undefined},
+                                  {c, 0, active, undefined},
+                                  {d, 0, replica, undefined}],
+                            [a, b], [c, d], 0, Servers),
     %% but without FF map we're (too) conservative (should be fixable
     %% someday)
-    [c, undefined] = sanify_chain("B", [{a, 0, dead, undefined},
-                                        {b, 0, replica, undefined},
-                                        {c, 0, active, undefined},
-                                        {d, 0, replica, undefined}],
-                                  [a, b], [], 0, Servers).
+    [c, undefined] = sanify_chain_t("B", [{a, 0, dead, undefined},
+                                          {b, 0, replica, undefined},
+                                          {c, 0, active, undefined},
+                                          {d, 0, replica, undefined}],
+                                    [a, b], [], 0, Servers).
 
 enumerate_chains_test() ->
     Map = [[a, b, c], [b, c, a]],
@@ -652,33 +659,33 @@ enumerate_chains_test() ->
 
 sanify_addition_of_replicas_test() ->
     Servers = [a, b, c, d],
-    [a, b] = sanify_chain("B", [{a, 0, active, undefined},
-                                {b, 0, replica, undefined}],
-                          [a, b], [a, b, c], 0, Servers),
-    [a, b] = sanify_chain("B", [{a, 0, active, undefined},
-                                {b, 0, replica, undefined},
-                                {c, 0, replica, undefined}],
-                          [a, b], [a, b, c], 0, Servers),
+    [a, b] = sanify_chain_t("B", [{a, 0, active, undefined},
+                                  {b, 0, replica, undefined}],
+                            [a, b], [a, b, c], 0, Servers),
+    [a, b] = sanify_chain_t("B", [{a, 0, active, undefined},
+                                  {b, 0, replica, undefined},
+                                  {c, 0, replica, undefined}],
+                            [a, b], [a, b, c], 0, Servers),
 
     %% replica addition with possible move.
-    [a, b] = sanify_chain("B", [{a, 0, dead, undefined},
-                                {b, 0, replica, undefined},
-                                {c, 0, pending, undefined}],
-                          [a, b], [c, a, b], 0, Servers),
-    [c, d, a] = sanify_chain("B", [{a, 0, dead, undefined},
-                                   {b, 0, replica, undefined},
-                                   {c, 0, active, undefined},
-                                   {d, 0, replica, undefined}],
-                             [a, b], [c, d, a], 0, Servers),
-    [c, d] = sanify_chain("B", [{a, 0, dead, undefined},
-                                {b, 0, replica, undefined},
-                                {c, 0, active, [[c, d]]},
-                                {d, 0, replica, undefined}],
-                          [a, b], [c, d, a], 0, Servers),
-    [c, d, a] = sanify_chain("B", [{a, 0, replica, undefined},
-                                   {b, 0, replica, undefined},
-                                   {c, 0, active, undefined},
-                                   {d, 0, replica, undefined}],
-                             [a, b], [c, d, a], 0, Servers).
+    [a, b] = sanify_chain_t("B", [{a, 0, dead, undefined},
+                                  {b, 0, replica, undefined},
+                                  {c, 0, pending, undefined}],
+                            [a, b], [c, a, b], 0, Servers),
+    [c, d, a] = sanify_chain_t("B", [{a, 0, dead, undefined},
+                                     {b, 0, replica, undefined},
+                                     {c, 0, active, undefined},
+                                     {d, 0, replica, undefined}],
+                               [a, b], [c, d, a], 0, Servers),
+    [c, d] = sanify_chain_t("B", [{a, 0, dead, undefined},
+                                  {b, 0, replica, undefined},
+                                  {c, 0, active, [[c, d]]},
+                                  {d, 0, replica, undefined}],
+                            [a, b], [c, d, a], 0, Servers),
+    [c, d, a] = sanify_chain_t("B", [{a, 0, replica, undefined},
+                                     {b, 0, replica, undefined},
+                                     {c, 0, active, undefined},
+                                     {d, 0, replica, undefined}],
+                               [a, b], [c, d, a], 0, Servers).
 
 -endif.

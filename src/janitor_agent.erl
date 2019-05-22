@@ -16,6 +16,7 @@
 
 -behavior(gen_server).
 
+-include("cut.hrl").
 -include("ns_common.hrl").
 
 -define(WAIT_FOR_MEMCACHED_TIMEOUT, ?get_timeout(wait_for_memcached, 5000)).
@@ -43,7 +44,7 @@
                 rebalance_subprocesses_registry :: pid()}).
 
 -export([wait_for_bucket_creation/2,
-         query_states/3,
+         query_vbuckets/4,
          check_bucket_ready/3,
          apply_new_bucket_config_with_timeout/6,
          mark_bucket_warmed/2,
@@ -119,7 +120,7 @@ maybe_send_warming(_Parent, Warming, _Reason) ->
     Warming.
 
 -spec wait_for_memcached([node()], bucket_name(),
-                         query_vbucket_states | query_vbucket_state_topology,
+                         query_vbucket_states | {query_vbuckets, list(), list()},
                          non_neg_integer()) -> [{node(),
                                                  {ok, list()} |
                                                  {ok, dict:dict()} |
@@ -185,7 +186,8 @@ failures_to_zombies(Failures) ->
     [N || {N, _} <- Failures].
 
 check_bucket_ready(Bucket, Nodes, Timeout) ->
-    case do_query_states(Bucket, Nodes, query_vbucket_states, Timeout) of
+    case do_query_vbuckets(Bucket, Nodes, query_vbucket_states, Timeout,
+                           true) of
         {_States, []} ->
             ready;
         {_States, Failures} ->
@@ -204,39 +206,48 @@ check_bucket_ready(Bucket, Nodes, Timeout) ->
             end
     end.
 
--spec query_states(bucket_name(), [node()], pos_integer() | undefined) ->
-                          {[{node(), vbucket_id(), vbucket_state(),
-                             [[node()]] | undefined}],
-                           [node()]}.
-query_states(Bucket, Nodes, undefined) ->
-    query_states(Bucket, Nodes, ?WAIT_FOR_MEMCACHED_TIMEOUT);
-query_states(Bucket, Nodes, Timeout) ->
+-spec query_vbuckets(bucket_name(), [node()], list(), list()) ->
+                            {[{node(), vbucket_id(), vbucket_state(), list()}],
+                             [node()]}.
+query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
+    Timeout = proplists:get_value(timeout, Options,
+                                  ?WAIT_FOR_MEMCACHED_TIMEOUT),
+    WaitForWarmup = proplists:is_defined(wait_for_warmup, Options),
     Call = case cluster_compat_mode:is_cluster_madhatter() of
                false ->
+                   true = WaitForWarmup,
                    query_vbucket_states;
                true ->
-                   query_vbucket_state_topology
+                   {query_vbuckets, ExtraKeys, Options}
            end,
-    {NodeRVs, Failures} = do_query_states(Bucket, Nodes, Call, Timeout),
+    {NodeRVs, Failures} =
+        do_query_vbuckets(Bucket, Nodes, Call, Timeout, WaitForWarmup),
     {case Call of
          query_vbucket_states ->
-             [{Node, VBucket, State, undefined}
+             [{Node, VBucket, State, []}
               || {Node, {ok, Pairs}} <- NodeRVs,
                  {VBucket, State} <- Pairs];
-         query_vbucket_state_topology ->
-             [{Node, VBucket, State, Topology}
+         {query_vbuckets, _, _} ->
+             [{Node, VBucket, State, ExtraValues}
               || {Node, {ok, Triples}} <- NodeRVs,
-                 {VBucket, State, Topology} <- Triples]
+                 {VBucket, State, ExtraValues} <- Triples]
      end, failures_to_zombies(Failures)}.
 
 %% TODO: consider supporting partial janitoring
-do_query_states(Bucket, Nodes, Call, Timeout) ->
-    NodeRVs = wait_for_memcached(Nodes, Bucket, Call, Timeout),
+do_query_vbuckets(Bucket, Nodes, Call, Timeout, false) ->
+    misc:multi_call_request([{N, Call} || N <- Nodes],
+                            server_name(Bucket),
+                            Timeout,
+                            fun ({ok, _}) -> true;
+                                (Err) -> {false, Err}
+                            end);
+do_query_vbuckets(Bucket, Nodes, Call, Timeout, true) ->
+    RVs = wait_for_memcached(Nodes, Bucket, Call, Timeout),
     lists:partition(fun ({_, {ok, _}}) ->
                             true;
                         ({_, _}) ->
                             false
-                    end, NodeRVs).
+                    end, RVs).
 
 -spec mark_bucket_warmed(Bucket::bucket_name(), [node()]) -> ok | {error, [node()], list()}.
 mark_bucket_warmed(Bucket, Nodes) ->
@@ -573,10 +584,11 @@ handle_call(prepare_flush, _From, #state{bucket_name = BucketName} = State) ->
 handle_call(complete_flush, _From, State) ->
     {reply, ok, consider_doing_flush(State)};
 handle_call(query_vbucket_states, _From, State) ->
-    {RV, NewState} = handle_query_states(query_vbucket_states, State),
+    {RV, NewState} = handle_query_vbuckets(query_vbucket_states, State),
     {reply, RV, NewState};
-handle_call(query_vbucket_state_topology, _From, State) ->
-    {RV, NewState} = handle_query_states(query_vbucket_state_topology, State),
+handle_call({query_vbuckets, _, _} = Call, _From, State) ->
+    {RV, NewState} =
+        handle_query_vbuckets(Call, State),
     {reply, RV, NewState};
 handle_call(get_incoming_replication_map, _From, #state{bucket_name = BucketName} = State) ->
     %% NOTE: has infinite timeouts but uses only local communication
@@ -644,10 +656,10 @@ handle_call({apply_new_config, Caller, NewBucketConfig, IgnoredVBuckets}, _From,
                     {ActualState, ActualTopology} =
                         case dict:find(VBucket, VBDetails) of
                             {ok, Val} ->
-                                StateVal = proplists:get_value("state", Val),
+                                StateVal = proplists:get_value(state, Val),
                                 %% Always expect "state" to be present.
                                 false = StateVal =:= undefined,
-                                {StateVal, proplists:get_value("topology", Val)};
+                                {StateVal, proplists:get_value(topology, Val)};
                             _ ->
                                 {missing, undefined}
                         end,
@@ -1039,11 +1051,6 @@ do_wait_seqno_persisted(Bucket, VBucket, SeqNo) ->
             do_wait_seqno_persisted(Bucket, VBucket, SeqNo)
     end.
 
-maybe_prime_replicators(#state{replicators_primed = true}) ->
-    false;
-maybe_prime_replicators(#state{bucket_name = BucketName}) ->
-    dcp_sup:nuke(BucketName).
-
 apply_new_vbucket_state(VBucket, NormalState, RebalanceState, State) ->
     #state{last_applied_vbucket_states = WantedVBuckets,
            rebalance_only_vbucket_states = RebalanceVBuckets} = State,
@@ -1097,9 +1104,9 @@ is_topology_same(active, Chain, MemcachedTopology) ->
 is_topology_same(_, _, _) ->
     true.
 
-decode_value("state", V) ->
+decode_value(state, V) ->
     erlang:list_to_existing_atom(V);
-decode_value("topology", V) ->
+decode_value(topology, V) ->
     decode_topology(V);
 decode_value(_, V) ->
     V.
@@ -1118,43 +1125,54 @@ decode_vbucket_details(VBDetails) ->
       fun (_VB, List) ->
               lists:map(
                 fun ({Key, Value}) ->
-                        {Key, decode_value(Key, Value)}
+                        KeyAtom = list_to_existing_atom(Key),
+                        {KeyAtom, decode_value(KeyAtom, Value)}
                 end, List)
       end, VBDetails).
 
-handle_query_states(Call, #state{bucket_name = BucketName,
-                                 rebalance_status = in_process} = State) ->
-    ?log_info("Attempt to ~p for bucket ~p during rebalance", [Call, BucketName]),
-    {rebalancing, State};
-handle_query_states(Call, #state{bucket_name = BucketName} = State) ->
-    NewState = consider_doing_flush(State),
-    %% NOTE: uses 'outer' memcached timeout of 60 seconds
-    Fun = fun (query_vbucket_states) ->
-                  (catch ns_memcached:local_connected_and_list_vbuckets(BucketName));
-              (query_vbucket_state_topology) ->
-                  Keys = ["state", "topology"],
-                  (catch maybe_decode_state_topology(
-                           ns_memcached:local_connected_and_list_vbucket_details(
-                             BucketName, Keys)))
-          end,
-    RV = Fun(Call),
-    case RV of
-        {ok, _} ->
-            {case maybe_prime_replicators(NewState) of
+with_maybe_priming_replicators(F, #state{replicators_primed = true} = State) ->
+    {F(), State};
+with_maybe_priming_replicators(F, #state{bucket_name = BucketName} = State) ->
+    case F() of
+        {ok, _} = RV ->
+            {case dcp_sup:nuke(BucketName) of
                  true ->
-                     Fun(Call);
+                     F();
                  false ->
                      RV
-             end, NewState#state{replicators_primed = true}};
-        _ ->
-            {RV, NewState}
+             end, State#state{replicators_primed = true}};
+        RV ->
+            {RV, State}
     end.
 
-maybe_decode_state_topology({ok, Dict}) ->
-    RV = [{VB,
-           proplists:get_value("state", Details),
-           proplists:get_value("topology", Details)}
-           || {VB, Details} <- dict:to_list(decode_vbucket_details(Dict))],
-    {ok, RV};
-maybe_decode_state_topology(Err) ->
-    Err.
+handle_query_vbuckets(Call, #state{bucket_name = BucketName,
+                                   rebalance_status = in_process} = State) ->
+    ?log_info("Attempt to ~p for bucket ~p during rebalance",
+              [Call, BucketName]),
+    {rebalancing, State};
+handle_query_vbuckets(Call, #state{bucket_name = BucketName} = State) ->
+    %% NOTE: uses 'outer' memcached timeout of 60 seconds
+    Fun =
+        case Call of
+            query_vbucket_states ->
+                ?cut((catch ns_memcached:local_connected_and_list_vbuckets(
+                              BucketName)));
+            {query_vbuckets, Keys, _Opts} ->
+                ?cut((catch perform_query_vbuckets(Keys, BucketName)))
+        end,
+    NewState = consider_doing_flush(State),
+    with_maybe_priming_replicators(Fun, NewState).
+
+perform_query_vbuckets(Keys, BucketName) ->
+    KeyStrings = ["state" | [atom_to_list(K) || K <- Keys, is_atom(K)]],
+    case ns_memcached:local_connected_and_list_vbucket_details(
+           BucketName, KeyStrings) of
+        {ok, Dict} ->
+            {ok,
+             [{VB,
+               proplists:get_value(state, Details),
+               lists:keydelete(state, 1, Details)}
+              || {VB, Details} <- dict:to_list(decode_vbucket_details(Dict))]};
+        Err ->
+            Err
+    end.
