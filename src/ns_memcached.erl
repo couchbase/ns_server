@@ -100,7 +100,7 @@
          local_connected_and_list_vbucket_details/2,
          list_vbuckets_prevstate/2,
          set_vbucket/3, set_vbucket/4,
-         stats/1, stats/2, stats/3,
+         stats/1, stats/2,
          warmup_stats/1,
          topkeys/1,
          raw_stats/5,
@@ -1145,12 +1145,6 @@ stats(Bucket) ->
                    {ok, [{binary(), binary()}]} | mc_error().
 stats(Bucket, Key) ->
     do_call(server(Bucket), {stats, Key}, ?TIMEOUT).
-
-
--spec stats(node(), bucket_name(), binary()) ->
-                   {ok, [{binary(), binary()}]} | mc_error().
-stats(Node, Bucket, Key) ->
-    do_call({server(Bucket), Node}, {stats, Key}, ?TIMEOUT).
 
 -spec warmup_stats(bucket_name()) -> [{binary(), binary()}].
 warmup_stats(Bucket) ->
