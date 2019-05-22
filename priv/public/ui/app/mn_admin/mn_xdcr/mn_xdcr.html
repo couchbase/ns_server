@@ -21,7 +21,7 @@
     <div
        mn-spinner="xdcrCtl.showReferencesSpinner"
        min-height="66px">
-      <div class="cbui-table" mn-sortable-table>
+      <div class="cbui-table" mn-sortable-table ng-if="xdcrCtl.references.filtered.length">
         <div class="cbui-table-header padding-left">
           <span class="cbui-table-cell flex-grow-1-5">
             <span
@@ -74,7 +74,7 @@
       <div
          ng-if="!xdcrCtl.references.filtered.length"
          class="zero-content">
-        No cluster references defined.
+        No remote clusters defined. Use ADD REMOTE to set one up.
       </div>
 
     </div>
@@ -82,13 +82,13 @@
 
   <!-- Ongoing Replications -->
   <div
-     ng-show="rbac.cluster.tasks.read"
+     ng-show="rbac.cluster.tasks.read && xdcrCtl.references.filtered.length"
      class="margin-top-1-5">
     <h4>Outgoing Replications</h4>
     <div
        mn-spinner="adminCtl.showTasksSpinner"
        min-height="66px">
-      <div class="cbui-table" mn-sortable-table>
+      <div class="cbui-table" mn-sortable-table ng-if="adminCtl.tasks.tasksXDCR.length">
         <div class="cbui-table-header padding-left">
           <span class="cbui-table-cell flex-grow-1-5">
             <span
@@ -184,11 +184,11 @@
             </div>
           </div>
         </section>
+      </div>
 
-        <div ng-if="!adminCtl.tasks.tasksXDCR.length" class="zero-content">
-          There are no replications currently in progress.
-        </div>
+      <div ng-if="!adminCtl.tasks.tasksXDCR.length" class="zero-content">
+        There are currently no replications defined. Use ADD REPLICATION to set one up.
+      </div>
 
-    </div>
   </div>
 </div>
