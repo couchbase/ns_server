@@ -591,7 +591,7 @@ handle_call({apply_new_config, Caller, NewBucketConfig, IgnoredVBuckets}, _From,
             #state{bucket_name = BucketName,
                    rebalance_pid = Rebalancer} = State) ->
     %% ?log_debug("handling apply_new_config:~n~p", [NewBucketConfig]),
-    {ok, VBDetails} = get_state_topology(BucketName),
+    {ok, VBDetails} = get_state_and_topology(BucketName),
     Map = proplists:get_value(map, NewBucketConfig),
     true = (Map =/= undefined),
     %% TODO: unignore ignored vbuckets
@@ -1053,36 +1053,28 @@ is_topology_same(active, Chain, MemcachedTopology) ->
 is_topology_same(_, _, _) ->
     true.
 
-get_state_topology_decode_table() ->
-    [{"state", fun erlang:list_to_existing_atom/1},
-     {"topology", fun decode_topology/1}].
+decode_value("state", V) ->
+    erlang:list_to_existing_atom(V);
+decode_value("topology", V) ->
+    decode_topology(V);
+decode_value(_, V) ->
+    V.
 
-decode_state_topology(VBDetails) ->
-    decode_vbucket_details(VBDetails, get_state_topology_decode_table()).
-
-get_state_topology(BucketName) ->
-    get_decoded_vbucket_details(BucketName, get_state_topology_decode_table()).
-
-get_decoded_vbucket_details(BucketName, DecodeTable) ->
-    Keys = [Key || {Key, _DecodeFun} <- DecodeTable],
+get_state_and_topology(BucketName) ->
+    Keys = ["state", "topology"],
     case ns_memcached:get_vbucket_details_stats(BucketName, Keys) of
         {ok, VBDetails} ->
-            {ok, decode_vbucket_details(VBDetails, DecodeTable)};
+            {ok, decode_vbucket_details(VBDetails)};
         Error ->
             Error
     end.
 
-decode_vbucket_details(VBDetails, DecodeTable) ->
+decode_vbucket_details(VBDetails) ->
     dict:map(
       fun (_VB, List) ->
               lists:map(
                 fun ({Key, Value}) ->
-                        case lists:keyfind(Key, 1, DecodeTable) of
-                            {Key, DecodeFun} ->
-                                {Key, DecodeFun(Value)};
-                            _ ->
-                                {Key, Value}
-                        end
+                        {Key, decode_value(Key, Value)}
                 end, List)
       end, VBDetails).
 
@@ -1118,7 +1110,7 @@ maybe_decode_state_topology({ok, Dict}) ->
     RV = [{VB,
            proplists:get_value("state", Details),
            proplists:get_value("topology", Details)}
-           || {VB, Details} <- dict:to_list(decode_state_topology(Dict))],
+           || {VB, Details} <- dict:to_list(decode_vbucket_details(Dict))],
     {ok, RV};
 maybe_decode_state_topology(Err) ->
     Err.
