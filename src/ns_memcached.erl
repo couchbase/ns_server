@@ -36,7 +36,6 @@
 
 -define(CHECK_INTERVAL, 10000).
 -define(CHECK_WARMUP_INTERVAL, 500).
--define(VBUCKET_POLL_INTERVAL, 100).
 -define(EVAL_TIMEOUT,        ?get_timeout(eval, 120000)).
 -define(TIMEOUT,             ?get_timeout(outer, 180000)).
 -define(TIMEOUT_HEAVY,       ?get_timeout(outer_heavy, 180000)).
