@@ -101,7 +101,6 @@
          get_from_replica/3,
          get_meta/3,
          get_xattrs/4,
-         subdoc_multi_lookup/5,
          update_with_rev/7,
          get_seqno_stats/2,
          eval/2,
@@ -863,19 +862,6 @@ get_xattrs(Bucket, Key, VBucket, Permissions) ->
     perform_very_long_call(
       fun (Sock) ->
               {reply, mc_binary:get_xattrs(Sock, Key, VBucket, Permissions)}
-      end, Bucket, [xattr]).
-
-%% @doc send an subdoc multi lookup command to memcached
--spec subdoc_multi_lookup(bucket_name(), binary(), integer(),
-                          [binary()], [atom()]) ->
-                                 {ok, integer(), [binary()]}
-                                     | {memcached_error, key_enoent, integer()}
-                                     | mc_error().
-subdoc_multi_lookup(Bucket, Key, VBucket, Paths, Options) ->
-    perform_very_long_call(
-      fun (Sock) ->
-              {reply, mc_client_binary:subdoc_multi_lookup(Sock, Key, VBucket,
-                                                           Paths, Options)}
       end, Bucket, [xattr]).
 
 %% @doc send a delete command to memcached instance
