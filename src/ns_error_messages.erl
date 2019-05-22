@@ -35,6 +35,10 @@
          preview_cluster_join_error/0]).
 
 -spec connection_error_message(term(), string(), string() | integer()) -> binary() | undefined.
+connection_error_message({tls_alert, "bad record mac"}, Host, Port) ->
+    list_to_binary(io_lib:format("Failed to establish TLS connection to ~s:~w. "
+                                 "Please check that you are connecting to a "
+                                 "TLS / HTTPS endpoint.", [Host, Port]));
 connection_error_message({tls_alert, M}, Host, Port) ->
     list_to_binary(io_lib:format("Failed to establish TLS connection to ~s:~w: ~p", [Host, Port, M]));
 connection_error_message({Error, _}, Host, Port) ->
