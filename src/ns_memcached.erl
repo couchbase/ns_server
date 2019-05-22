@@ -41,7 +41,6 @@
 -define(TIMEOUT,             ?get_timeout(outer, 180000)).
 -define(TIMEOUT_HEAVY,       ?get_timeout(outer_heavy, 180000)).
 -define(TIMEOUT_VERY_HEAVY,  ?get_timeout(outer_very_heavy, 360000)).
--define(CONNECTED_TIMEOUT,   ?get_timeout(connected, 5000)).
 -define(WARMED_TIMEOUT,      ?get_timeout(warmed, 5000)).
 -define(MARK_WARMED_TIMEOUT, ?get_timeout(mark_warmed, 5000)).
 %% half-second is definitely 'slow' for any definition of slow
@@ -80,8 +79,6 @@
 
 %% external API
 -export([active_buckets/0,
-         connected/2,
-         connected/3,
          warmed/2,
          warmed/3,
          warmed_buckets/0,
@@ -106,7 +103,6 @@
          raw_stats/5,
          flush/1,
          set/5,
-         ready_nodes/4,
          sync/4, add/4, get/3, delete/3, delete/4,
          get_from_replica/3,
          get_meta/3,
@@ -243,12 +239,6 @@ handle_call({get_work, CounterSlot}, From, #state{work_requests = Froms} = State
     Counter = erlang:element(CounterSlot, State2) - 1,
     State3 = erlang:setelement(CounterSlot, State2, Counter),
     {noreply, maybe_deliver_work(State3)};
-handle_call(connected, _From, #state{status=Status} = State) ->
-    Warmed = Status =:= warmed,
-    Connected = Warmed orelse Status =:= connected,
-    Reply = [{connected, Connected},
-             {warmed, Warmed}],
-    {reply, Reply, State};
 handle_call(connected_and_list_vbuckets, From, State) ->
     handle_connected_call(list_vbuckets, From, State);
 handle_call({connected_and_list_vbucket_details, Keys}, From, State) ->
@@ -820,38 +810,6 @@ active_buckets() ->
     [Bucket || ?MODULE_STRING "-" ++ Bucket <-
                    [atom_to_list(Name) || Name <- registered()]].
 
--spec connected_common(node(), bucket_name(), Timeout, NewRespFn)
-                      -> boolean()
-                             when Timeout :: pos_integer() | infinity,
-                                  NewRespFn :: fun ((list()) -> boolean()).
-connected_common(Node, Bucket, Timeout, NewRespFn) ->
-    Address = {server(Bucket), Node},
-    try
-        %% I decided to not introduce new call to detect if ns_memcached is
-        %% warmed up because it would require additional round trip for some
-        %% nodes: first detect that node does not understand the new call,
-        %% then call the old one. Instead new nodes will return a proplist as
-        %% a reply to the 'connected' call saying if node is connected and
-        %% warmed up. It's also important that this call is performed either
-        %% from some node to itself or from master to any other node. And
-        %% since we more or less guarantee that master is always on the newest
-        %% version, it should not impose backward compatibility issues.
-        R = do_call(Address, connected, Timeout),
-        handle_connected_result(R, NewRespFn)
-    catch
-        _:_ ->
-            false
-    end.
-
--spec connected(node(), bucket_name(), pos_integer() | infinity) -> boolean().
-connected(Node, Bucket, Timeout) ->
-    connected_common(Node, Bucket, Timeout,
-                     fun extract_new_response_connected/1).
-
--spec connected(node(), bucket_name()) -> boolean().
-connected(Node, Bucket) ->
-    connected(Node, Bucket, ?CONNECTED_TIMEOUT).
-
 -spec warmed(node(), bucket_name(), pos_integer() | infinity) -> boolean().
 warmed(Node, Bucket, Timeout) ->
     try
@@ -881,27 +839,6 @@ mark_warmed(Nodes, Bucket, Timeout) ->
                              BadNodes :: [node()].
 mark_warmed(Nodes, Bucket) ->
     mark_warmed(Nodes, Bucket, ?MARK_WARMED_TIMEOUT).
-
--spec ready_nodes([node()], bucket_name(), up | connected, pos_integer() | infinity | default) -> [node()].
-ready_nodes(Nodes, Bucket, Type, default) ->
-    ready_nodes(Nodes, Bucket, Type, ?CONNECTED_TIMEOUT);
-ready_nodes(Nodes, Bucket, Type, Timeout) ->
-    UpNodes = ordsets:intersection(ordsets:from_list(Nodes),
-                                   ordsets:from_list([node() | nodes()])),
-    {Replies0, _BadNodes} = gen_server:multi_call(UpNodes, server(Bucket), connected, Timeout),
-
-    Replies =
-        lists:keymap(
-          fun (R) ->
-                  handle_connected_result(R, fun extract_new_response_connected/1)
-          end, 2, Replies0),
-
-    case Type of
-        up ->
-            [N || {N, _} <- Replies];
-        connected ->
-            [N || {N, true} <- Replies]
-    end.
 
 warmed_buckets() ->
     warmed_buckets(?WARMED_TIMEOUT).
@@ -1353,20 +1290,6 @@ do_call(Server, Msg, Timeout) ->
                 ?log_debug("failed to measure ns_memcached call:~n~p", [{T,E,erlang:get_stacktrace()}])
         end
     end.
-
-handle_connected_result(R, NewRespFn) ->
-    case is_list(R) of
-        %% new nodes will return a proplist to us
-        true ->
-            NewRespFn(R);
-        false ->
-            R
-    end.
-
-extract_new_response_connected(Resp) when is_list(Resp) ->
-    R = proplists:get_value(connected, Resp),
-    true = is_boolean(R),
-    R.
 
 -spec disable_traffic(bucket_name(), non_neg_integer() | infinity) -> ok | bad_status | mc_error().
 disable_traffic(Bucket, Timeout) ->
