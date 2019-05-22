@@ -18,12 +18,15 @@
    mn-spinner="!rolesGroupsCtl.state || rolesGroupsCtl.viewLoading"
    min-height="300px"
    class="margin-top-neg-half margin-left-neg-1">
-  <div class="row resp-sml margin-bottom-half" ng-if="rolesGroupsCtl.state.groups.length">
+  <div
+     class="row resp-sml margin-bottom-half"
+     ng-class="{'flex-right' : !rolesGroupsCtl.state.groups.length}">
     <div
        class="row"
        mn-placeholder="filter groups..."
        mn-hide-button="true"
-       mn-search="rolesGroupsCtl.filterField">
+       mn-search="rolesGroupsCtl.filterField"
+       ng-if="rolesGroupsCtl.state.groups.length">
     </div>
     <span class="pills nowrap">
       <a
