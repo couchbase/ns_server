@@ -23,8 +23,8 @@
 
     return mnSettingsClusterService;
 
-    function postSettingsRetryRebalance(data) {
-      return $http.post("/settings/retryRebalance", data);
+    function postSettingsRetryRebalance(data, params) {
+      return $http.post("/settings/retryRebalance", data, {params: params});
     }
 
     function getPendingRetryRebalance(mnHttpParams) {

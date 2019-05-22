@@ -163,6 +163,16 @@
 
       mnSettingsClusterService.getSettingsRetryRebalance().then(function (data) {
         vm.retryRebalanceCfg = data;
+
+        if (!$scope.rbac.cluster.settings.write) {
+          return;
+        }
+
+        $scope.$watch('settingsClusterCtl.retryRebalanceCfg', _.debounce(function (values) {
+          mnPromiseHelper(vm, mnSettingsClusterService
+                          .postSettingsRetryRebalance(values, {just_validate: 1}))
+            .catchErrorsFromSuccess("retryRebalanceErrors");
+        }, 500, {leading: true}), true);
       });
 
       mnPromiseHelper(vm, mnMemoryQuotaService.memoryQuotaConfig(services, false, false))
