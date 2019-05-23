@@ -118,7 +118,8 @@ with_authenticated_connection(DN, Password, Settings, Fun) ->
                                        [ns_config_log:tag_user_name(DN), Bind]),
                             case Bind of
                                 ok -> Fun(Handle);
-                                _ -> {error, {bind_failed, Bind}}
+                                {error, Error} ->
+                                    {error, {bind_failed, DN, Error}}
                             end
                     end).
 

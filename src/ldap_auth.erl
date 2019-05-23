@@ -205,7 +205,7 @@ format_error({start_tls_failed, _}) ->
 format_error({ldap_url_parse_error, URL, Error}) ->
     io_lib:format("Failed to parse ldap url ~p (~s)", [URL, format_error(Error)]);
 format_error({dn_search_failed, Reason}) ->
-    io_lib:format("LDAP search for user DN failed with reason '~s'",
+    io_lib:format("LDAP search for user DN failed with reason: ~s",
                   [format_error(Reason)]);
 format_error(dn_not_found) ->
     "LDAP DN not found";
@@ -220,7 +220,7 @@ format_error({invalid_scheme, S}) ->
 format_error(malformed_url) ->
     "Malformed LDAP URL";
 format_error({invalid_dn, DN}) ->
-    io_lib:format("Invalid ldap DN '~s'", [DN]);
+    io_lib:format("Invalid ldap DN \"~s\"", [DN]);
 format_error({invalid_scope, Scope}) ->
     io_lib:format("Invalid ldap scope: ~p, possible values are one, "
                   "base or sub", [Scope]);
@@ -228,5 +228,17 @@ format_error(user_placeholder) ->
     "%u placeholder is not allowed in nested groups search";
 format_error(max_depth) ->
     "Nested search max depth has been reached";
+format_error({invalid_groups_query, Query, Reason}) ->
+    io_lib:format("Invalid ldap query: \"~s\". ~s", [Query, format_error(Reason)]);
+format_error({bind_failed, DN, Bind}) ->
+    io_lib:format("Bind failed for \"~s\". ~s", [DN, format_error(Bind)]);
+format_error(invalidCredentials) ->
+    "Invalid username or password";
+format_error(anonymous_auth) ->
+    "Anonymous bind is not supported by the server";
+format_error(unwillingToPerform) ->
+    "Cannot process the request because of server-defined restrictions";
+format_error(invalidDNSyntax) ->
+    "Invalid DN syntax";
 format_error(Error) ->
     io_lib:format("~p", [Error]).
