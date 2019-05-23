@@ -192,7 +192,16 @@ validate_client_cert_auth_state(StateVal, Prefixes, Cfg, Errors) ->
                                               "'state' is '~s'", [StateVal])},
                     {Cfg, [E | Errors]};
                 false ->
-                    {[CfgPair | Cfg], Errors}
+                    case StateVal =:= "mandatory" andalso
+                        misc:should_cluster_data_be_encrypted() of
+                        false -> {[CfgPair | Cfg], Errors};
+                        true ->
+                            M = "Cannot set 'state' to 'mandatory' when "
+                                "cluster encryption level has been set to "
+                                "'all'",
+                            E = {error, M},
+                            {Cfg, [E | Errors]}
+                    end
             end;
         Err ->
             {Cfg, [Err | Errors]}
