@@ -98,9 +98,12 @@ validate_ldap_settings("connectivity", Settings) ->
 validate_ldap_settings("authentication", Settings) ->
     User = proplists:get_value(auth_user, Settings),
     Pass = proplists:get_value(auth_pass, Settings),
-    case ldap_auth:authenticate(User, Pass, Settings) of
-        true -> [{result, success}];
-        false -> [{result, error}]
+    case ldap_auth:authenticate_with_cause(User, Pass, Settings) of
+        {ok, DN} ->
+            [{result, success}, {dn, iolist_to_binary(DN)}];
+        {error, Error} ->
+            Bin = iolist_to_binary(ldap_auth:format_error(Error)),
+            [{result, error}, {reason, Bin}]
     end;
 validate_ldap_settings("groups_query", Settings) ->
     GroupsUser = proplists:get_value(groups_query_user, Settings),

@@ -21,6 +21,7 @@
 
 -export([authenticate/2,
          authenticate/3,
+         authenticate_with_cause/3,
          user_groups/1,
          user_groups/2,
          format_error/1]).
@@ -29,20 +30,26 @@ authenticate(Username, Password) ->
     authenticate(Username, Password, ldap_util:build_settings()).
 
 authenticate(Username, Password, Settings) ->
+    case authenticate_with_cause(Username, Password, Settings) of
+        {ok, _} -> true;
+        {error, _} -> false
+    end.
+
+authenticate_with_cause(Username, Password, Settings) ->
     case proplists:get_value(authentication_enabled, Settings) of
         true ->
             case get_user_DN(Username, Settings) of
                 {ok, DN} ->
                     case ldap_util:with_authenticated_connection(
                            DN, Password, Settings, fun (_) -> ok end) of
-                        ok -> true;
-                        {error, _} -> false
+                        ok -> {ok, DN};
+                        {error, _} = Error -> Error
                     end;
-                {error, _} -> false
+                {error, _} = Error -> Error
             end;
         false ->
             ?log_debug("LDAP authentication is disabled"),
-            false
+            {error, authentication_disabled}
     end.
 
 with_query_connection(Settings, Fun) ->
