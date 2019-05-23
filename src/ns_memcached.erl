@@ -115,7 +115,8 @@
          get_keys/3,
          config_validate/1,
          config_reload/0,
-         get_failover_log/2
+         get_failover_log/2,
+         get_failover_logs/2
         ]).
 
 %% for ns_memcached_sockets_pool, memcached_file_refresh only
@@ -1340,6 +1341,27 @@ config_reload() ->
 get_failover_log(Bucket, VBucket) ->
     perform_very_long_call(
       ?cut({reply, mc_client_binary:get_failover_log(_, VBucket)}), Bucket).
+
+-spec get_failover_logs(bucket_name(), [vbucket_id()]) -> Result when
+      Result :: Success | Error,
+      Success :: {ok, [{vbucket_id(), FailoverLog}]},
+      FailoverLog :: [{integer(), integer()}],
+      Error :: {error, {failed_to_get_failover_log,
+                        bucket_name(), vbucket_id(), mc_error()}}.
+get_failover_logs(Bucket, VBuckets) ->
+    %% TODO: consider using "failovers" stat instead
+    perform_very_long_call(
+      ?cut({reply, get_failover_logs_loop(_, VBuckets, [])}), Bucket).
+
+get_failover_logs_loop(_Sock, [], Acc) ->
+    {ok, lists:reverse(Acc)};
+get_failover_logs_loop(Sock, [V | VBs], Acc) ->
+    case mc_client_binary:get_failover_log(Sock, V) of
+        FailoverLog when is_list(FailoverLog) ->
+            get_failover_logs_loop(Sock, VBs, [FailoverLog | Acc]);
+        Error ->
+            {error, {failed_to_get_failover_log, V, Error}}
+    end.
 
 -spec set_cluster_config(integer(), binary()) -> ok | mc_error().
 set_cluster_config(Rev, Blob) ->
