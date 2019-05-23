@@ -123,6 +123,8 @@ get_cluster_encryption(Level) ->
     SupportedLevels = ["control", "all"],
     IsCEncryptEnabled = misc:is_cluster_encryption_enabled(),
     ValidLevel = lists:member(Level, SupportedLevels),
+    IsMandatory = (ns_ssl_services_setup:client_cert_auth_state() =:=
+                       "mandatory"),
 
     if
         not IsCEncryptEnabled  ->
@@ -131,6 +133,10 @@ get_cluster_encryption(Level) ->
             {error, M};
         not ValidLevel ->
             M = "Cluster encryption level must be one of ['control', 'all'].",
+            {error, M};
+        IsMandatory andalso Level =:= "all" ->
+            M = "Can't set cluster encryption level to 'all' when client "
+                "certificate authentication state is set to 'mandatory'.",
             {error, M};
         true ->
             {ok, list_to_atom(Level)}
