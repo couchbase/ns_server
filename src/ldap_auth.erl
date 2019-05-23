@@ -181,7 +181,7 @@ run_query(Handle, Query, ReplacePairs, Timeout) ->
         {error, Reason2} -> throw({error, {ldap_search_failed, Reason2}})
     end.
 
-groups_search_res([], {attribute, _}) -> {ok, []};
+groups_search_res([], {attribute, _}) -> [];
 groups_search_res([#eldap_entry{attributes = Attrs}], {attribute, GroupAttr}) ->
     AttrsLower = [{string:to_lower(K), V} || {K, V} <- Attrs],
     proplists:get_value(string:to_lower(GroupAttr), AttrsLower, []);
