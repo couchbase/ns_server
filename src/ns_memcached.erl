@@ -349,6 +349,7 @@ assign_queue({delete, _Key, _VBucket}) -> #state.heavy_calls_queue;
 assign_queue({set, _Key, _VBucket, _Value, _Flags}) -> #state.heavy_calls_queue;
 assign_queue({get_keys, _VBuckets, _Params}) -> #state.heavy_calls_queue;
 assign_queue({get_mass_dcp_docs_estimate, _VBuckets}) -> #state.very_heavy_calls_queue;
+assign_queue({get_vbucket_details_stats, all, _}) -> #state.very_heavy_calls_queue;
 assign_queue(_) -> #state.fast_calls_queue.
 
 queue_to_counter_slot(#state.very_heavy_calls_queue) -> #state.running_very_heavy;
