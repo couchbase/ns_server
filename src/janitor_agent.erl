@@ -78,7 +78,8 @@
          terminate/2, code_change/3]).
 
 wait_for_bucket_creation(Bucket, Nodes) ->
-    NodeRVs = wait_for_memcached(Nodes, Bucket, query_vbucket_states,
+    NodeCalls = [{N, query_vbucket_states} || N <- Nodes],
+    NodeRVs = wait_for_memcached(NodeCalls, Bucket,
                                  ?WAIT_FOR_MEMCACHED_TIMEOUT),
     BadNodes = [N || {N, R} <- NodeRVs,
                      case R of
@@ -119,40 +120,42 @@ maybe_send_warming(Parent, undefined, warming_up) ->
 maybe_send_warming(_Parent, Warming, _Reason) ->
     Warming.
 
--spec wait_for_memcached([node()], bucket_name(),
-                         query_vbucket_states | {query_vbuckets, list(), list()},
+-type query_vbuckets_call() :: query_vbucket_states |
+                               {query_vbuckets, [vbucket_id()], list(), list()}.
+-spec wait_for_memcached([{node(), query_vbuckets_call()}], bucket_name(),
                          non_neg_integer()) -> [{node(),
                                                  {ok, list()} |
                                                  {ok, dict:dict()} |
                                                  warming_up | timeout | any()}].
-wait_for_memcached(Nodes, Bucket, Call, WaitTimeout) ->
+wait_for_memcached(NodeCalls, Bucket, WaitTimeout) ->
     Parent = self(),
     misc:executing_on_new_process(
       fun () ->
               erlang:process_flag(trap_exit, true),
               Ref = make_ref(),
               Me = self(),
-              NodePids = [{Node, proc_lib:spawn_link(
-                                   fun () ->
-                                           {ok, TRef} = timer2:kill_after(WaitTimeout),
-                                           RV = query_vbucket_states_loop(Node,
-                                                                          Bucket,
-                                                                          Call,
-                                                                          Me),
-                                           Me ! {'EXIT', self(), {Ref, RV}},
-                                           %% doing cancel is quite
-                                           %% important. kill_after is
-                                           %% not automagically
-                                           %% canceled
-                                           timer2:cancel(TRef),
-                                           %% Nodes list can be reasonably
-                                           %% big. Let's not slow down
-                                           %% receive loop below due to
-                                           %% extra garbage. It's O(N²)
-                                           %% already
-                                           erlang:unlink(Me)
-                                   end)}
-                          || Node <- Nodes],
+              NodePids =
+                  [{Node, proc_lib:spawn_link(
+                            fun () ->
+                                    {ok, TRef} = timer2:kill_after(WaitTimeout),
+                                    RV = query_vbucket_states_loop(Node,
+                                                                   Bucket,
+                                                                   Call,
+                                                                   Me),
+                                    Me ! {'EXIT', self(), {Ref, RV}},
+                                    %% doing cancel is quite
+                                    %% important. kill_after is
+                                    %% not automagically
+                                    %% canceled
+                                    timer2:cancel(TRef),
+                                    %% Nodes list can be reasonably
+                                    %% big. Let's not slow down
+                                    %% receive loop below due to
+                                    %% extra garbage. It's O(N²)
+                                    %% already
+                                    erlang:unlink(Me)
+                            end)}
+                   || {Node, Call} <- NodeCalls],
               [recv_result(Bucket, Parent, Ref, NodePid) || NodePid <- NodePids]
       end).
 
@@ -186,8 +189,8 @@ failures_to_zombies(Failures) ->
     [N || {N, _} <- Failures].
 
 check_bucket_ready(Bucket, Nodes, Timeout) ->
-    case do_query_vbuckets(Bucket, Nodes, query_vbucket_states, Timeout,
-                           true) of
+    NodeCalls = [{N, query_vbucket_states} || N <- Nodes],
+    case do_query_vbuckets(Bucket, NodeCalls, Timeout, true) of
         {_States, []} ->
             ready;
         {_States, Failures} ->
@@ -206,43 +209,50 @@ check_bucket_ready(Bucket, Nodes, Timeout) ->
             end
     end.
 
--spec query_vbuckets(bucket_name(), [node()], list(), list()) ->
+convert_call_result(Node, {VBucket, State}) ->
+    {Node, VBucket, State, []};
+convert_call_result(Node, {VBucket, State, ExtraValues}) ->
+    {Node, VBucket, State, ExtraValues}.
+
+-spec query_vbuckets(bucket_name(), [node()] | [{node(), [vbucket_id()]}],
+                     list(), list()) ->
                             {[{node(), vbucket_id(), vbucket_state(), list()}],
                              [node()]}.
 query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
     Timeout = proplists:get_value(timeout, Options,
                                   ?WAIT_FOR_MEMCACHED_TIMEOUT),
     WaitForWarmup = proplists:is_defined(wait_for_warmup, Options),
-    Call = case cluster_compat_mode:is_cluster_madhatter() of
-               false ->
-                   true = WaitForWarmup,
-                   query_vbucket_states;
-               true ->
-                   {query_vbuckets, ExtraKeys, Options}
-           end,
+
+    CreateCall = case cluster_compat_mode:is_cluster_madhatter() of
+                     false ->
+                         true = WaitForWarmup,
+                         fun (_) -> query_vbucket_states end;
+                     true ->
+                         {query_vbuckets, _, ExtraKeys, Options}
+                 end,
+
+    NodeCalls = lists:map(fun ({N, VBs}) ->
+                                  {N, CreateCall(VBs)};
+                              (N) ->
+                                  {N, CreateCall(all)}
+                          end, Nodes),
+
     {NodeRVs, Failures} =
-        do_query_vbuckets(Bucket, Nodes, Call, Timeout, WaitForWarmup),
-    {case Call of
-         query_vbucket_states ->
-             [{Node, VBucket, State, []}
-              || {Node, {ok, Pairs}} <- NodeRVs,
-                 {VBucket, State} <- Pairs];
-         {query_vbuckets, _, _} ->
-             [{Node, VBucket, State, ExtraValues}
-              || {Node, {ok, Triples}} <- NodeRVs,
-                 {VBucket, State, ExtraValues} <- Triples]
-     end, failures_to_zombies(Failures)}.
+        do_query_vbuckets(Bucket, NodeCalls, Timeout, WaitForWarmup),
+    {[convert_call_result(Node, ResultTuple)
+      || {Node, {ok, Tuples}} <- NodeRVs, ResultTuple <- Tuples],
+     failures_to_zombies(Failures)}.
 
 %% TODO: consider supporting partial janitoring
-do_query_vbuckets(Bucket, Nodes, Call, Timeout, false) ->
-    misc:multi_call_request([{N, Call} || N <- Nodes],
+do_query_vbuckets(Bucket, NodeCalls, Timeout, false) ->
+    misc:multi_call_request(NodeCalls,
                             server_name(Bucket),
                             Timeout,
                             fun ({ok, _}) -> true;
                                 (Err) -> {false, Err}
                             end);
-do_query_vbuckets(Bucket, Nodes, Call, Timeout, true) ->
-    RVs = wait_for_memcached(Nodes, Bucket, Call, Timeout),
+do_query_vbuckets(Bucket, NodeCalls, Timeout, true) ->
+    RVs = wait_for_memcached(NodeCalls, Bucket, Timeout),
     lists:partition(fun ({_, {ok, _}}) ->
                             true;
                         ({_, _}) ->
@@ -586,7 +596,7 @@ handle_call(complete_flush, _From, State) ->
 handle_call(query_vbucket_states, _From, State) ->
     {RV, NewState} = handle_query_vbuckets(query_vbucket_states, State),
     {reply, RV, NewState};
-handle_call({query_vbuckets, _, _} = Call, _From, State) ->
+handle_call({query_vbuckets, _, _, _} = Call, _From, State) ->
     {RV, NewState} =
         handle_query_vbuckets(Call, State),
     {reply, RV, NewState};
@@ -1157,22 +1167,37 @@ handle_query_vbuckets(Call, #state{bucket_name = BucketName} = State) ->
             query_vbucket_states ->
                 ?cut((catch ns_memcached:local_connected_and_list_vbuckets(
                               BucketName)));
-            {query_vbuckets, Keys, _Opts} ->
-                ?cut((catch perform_query_vbuckets(Keys, BucketName)))
+            {query_vbuckets, VBs, Keys, _Opts} ->
+                ?cut((catch perform_query_vbuckets(Keys, VBs, BucketName)))
         end,
     NewState = consider_doing_flush(State),
     with_maybe_priming_replicators(Fun, NewState).
 
-perform_query_vbuckets(Keys, BucketName) ->
+filter_vbucket_dict(all, Dict) ->
+    Dict;
+filter_vbucket_dict(VBs, Dict) ->
+    lists:foldl(
+      fun (VB, D) ->
+              case dict:find(VB, Dict) of
+                  {ok, Value} ->
+                      dict:store(VB, Value, D);
+                  error ->
+                      D
+              end
+      end, dict:new(), VBs).
+
+perform_query_vbuckets(Keys, VBs, BucketName) ->
     KeyStrings = ["state" | [atom_to_list(K) || K <- Keys, is_atom(K)]],
     case ns_memcached:local_connected_and_list_vbucket_details(
            BucketName, KeyStrings) of
         {ok, Dict} ->
+            Filtered = filter_vbucket_dict(VBs, Dict),
+            Decoded = decode_vbucket_details(Filtered),
             {ok,
              [{VB,
                proplists:get_value(state, Details),
                lists:keydelete(state, 1, Details)}
-              || {VB, Details} <- dict:to_list(decode_vbucket_details(Dict))]};
+              || {VB, Details} <- dict:to_list(Decoded)]};
         Err ->
             Err
     end.
