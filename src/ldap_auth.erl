@@ -24,7 +24,8 @@
          authenticate_with_cause/3,
          user_groups/1,
          user_groups/2,
-         format_error/1]).
+         format_error/1,
+         with_query_connection/2]).
 
 authenticate(Username, Password) ->
     authenticate(Username, Password, ldap_util:build_settings()).

@@ -22,8 +22,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([with_connection/2,
-         with_authenticated_connection/4,
+-export([with_authenticated_connection/4,
          search/6,
          parse_url/1,
          parse_url/2,

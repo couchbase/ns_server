@@ -87,7 +87,7 @@ handle_ldap_settings_validate_post(_Type, Req) ->
     menelaus_util:reply_json(Req, <<"Unknown validation type">>, 404).
 
 validate_ldap_settings("connectivity", Settings) ->
-    case ldap_util:with_connection(Settings, fun (_) -> ok end) of
+    case ldap_auth:with_query_connection(Settings, fun (_) -> ok end) of
         ok ->
             [{result, success}];
         {error, Error} ->
