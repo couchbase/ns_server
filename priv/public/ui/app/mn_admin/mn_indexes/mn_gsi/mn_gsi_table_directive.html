@@ -6,6 +6,18 @@
          sort-by-default="true"
          class="sorter">index name</span>
     </span>
+    <span class="cbui-table-cell">
+      <span mn-sortable-title="num_rows_returned" class="sorter">scans</span>
+    </span>
+    <span class="cbui-table-cell">
+      <span mn-sortable-title="num_requests" class="sorter">requests/sec</span>
+    </span>
+    <span class="cbui-table-cell">
+      <span mn-sortable-title="index_resident_percent" class="sorter">resident ratio</span>
+    </span>
+    <span class="cbui-table-cell">
+      <span mn-sortable-title="data_size" class="sorter">data size</span>
+    </span>
     <span class="cbui-table-cell"
           ng-if="mnGsiTableCtl.hideColumn !== 'bucket'">
       <span
@@ -40,13 +52,37 @@
     <div
        class="cbui-tablerow"
        ng-class="[(!mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row)) ?
-                 mnGsiTableCtl.getStatusClass(row) : '')]">
+                 mnGsiTableCtl.getStatusClass(row) : '')]"
+       ng-controller="mnGsiItemController as gsiItemCtl">
       <span
          class="cbui-table-cell flex-grow-1-5"
          title="{{row.index}}">
         {{row.index}}<span
                         class="label lt-blue"
                         ng-if="row.partitioned">partitioned</span></span>
+      <span class="cbui-table-cell">
+        <span ng-show="gsiItemCtl.stats.num_rows_returned">
+          {{gsiItemCtl.stats.num_rows_returned | number:0}}</span>
+        <span ng-show="!gsiItemCtl.stats.num_rows_returned">N/A</span>
+      </span>
+      <span class="cbui-table-cell">
+        <span ng-show="gsiItemCtl.stats.num_requests">
+          {{gsiItemCtl.stats.num_requests| number:2}}
+        </span>
+        <span ng-show="!gsiItemCtl.stats.num_requests">N/A</span>
+      </span>
+      <span class="cbui-table-cell">
+        <span ng-show="gsiItemCtl.stats.index_resident_percent">
+          {{gsiItemCtl.stats.index_resident_percent| number:0}}%
+        </span>
+        <span ng-show="!gsiItemCtl.stats.index_resident_percent">N/A</span>
+      </span>
+      <span class="cbui-table-cell">
+        <span ng-show="gsiItemCtl.stats.stats.data_size">
+          {{gsiItemCtl.stats.data_size/1024/1024 | number:2}} MB
+        </span>
+        <span ng-show="!gsiItemCtl.stats.stats.data_size">N/A</span>
+      </span>
       <span
          ng-if="mnGsiTableCtl.hideColumn !== 'bucket'"
          class="cbui-table-cell">

@@ -63,9 +63,11 @@
       var rv = {};
       (["cbas_disk_used", "index_memory_quota","index_memory_used","index_ram_percent","index_remaining_ram", "ep_dcp_views+indexes_count","ep_dcp_views+indexes_items_remaining","ep_dcp_views+indexes_producer_count","ep_dcp_views+indexes_total_backlog_size","ep_dcp_views+indexes_total_bytes","ep_dcp_views+indexes_backoff", "index/fragmentation","index/memory_used","index/disk_size","index/data_size"]).forEach(function (statName) {
         var stats = resp.data.samples[statName];
-        rv[statName] = stats.reduce(function (sum, stat) {
-          return sum + stat;
-        }, 0) / stats.length;
+        if (stats) {
+          rv[statName] = stats.reduce(function (sum, stat) {
+            return sum + stat;
+          }, 0) / stats.length;
+        }
       });
       vm.stats = rv;
     }

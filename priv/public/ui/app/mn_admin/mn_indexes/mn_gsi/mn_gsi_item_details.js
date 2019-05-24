@@ -3,7 +3,41 @@
 
   angular
     .module('mnGsi')
+    .controller('mnGsiItemController', mnGsiItemController)
     .directive('mnGsiItemDetails', mnGsiItemDetails);
+
+  function mnGsiItemController($scope, mnStatisticsNewService, mnPermissions) {
+    if (!mnPermissions.export.cluster.bucket[$scope.row.bucket].stats.read) {
+      return;
+    }
+
+    var vm = this;
+
+    mnStatisticsNewService.subscribeUIStatsPoller({
+      bucket: $scope.row.bucket,
+      node: "all",
+      zoom: 'minute'
+    }, $scope);
+
+    $scope.$watch("mnUIStats", function (resp) {
+      if (!resp) {
+        return
+      }
+      var rv = {};
+      (["data_size","num_rows_returned","index_resident_percent",
+        "num_docs_pending+queued","num_requests"]).forEach(function (statName) {
+          var fullName = 'index/' + $scope.row.index + '/' + statName;
+          var stats = resp.data.samples[fullName];
+          if (stats) {
+            rv[statName] =  stats.reduce(function (sum, stat) {
+              return sum + stat;
+            }, 0) / stats.length;
+          }
+        });
+      vm.stats = rv;
+    });
+
+  }
 
   function mnGsiItemDetails() {
     var mnGsiItemDetails = {
