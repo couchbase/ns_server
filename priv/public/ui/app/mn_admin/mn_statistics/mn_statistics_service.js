@@ -13,8 +13,8 @@
       },
       doGetStats: doGetStats,
       getStatSourcePath: getStatSourcePath,
-      subscribeToChartStats: subscribeToChartStats,
-      unsubscribeChartStats: unsubscribeChartStats,
+      subscribeUIStatsPoller: subscribeUIStatsPoller,
+      unsubscribeUIStatsPoller: unsubscribeUIStatsPoller,
       addUpdateScenario: addUpdateScenario,
       addUpdateGroup: addUpdateGroup,
       addUpdateChart: addUpdateChart,
@@ -35,7 +35,7 @@
     };
 
     var pollers = {};
-    var chartScopes = {};
+    var uiStatsScopes = {};
     var rootScopes = {};
 
     return mnStatisticsNewService;
@@ -108,13 +108,13 @@
       return current;
     }
 
-    function unsubscribeChartStats(config, scopeToRemove, bucket) {
-      var statID = getStatSourcePath(config, bucket);
-      _.remove(chartScopes[statID], function (scope) {
+    function unsubscribeUIStatsPoller(config, scopeToRemove) {
+      var statID = getStatSourcePath(config);
+      _.remove(uiStatsScopes[statID], function (scope) {
         return scope === scopeToRemove;
       });
 
-      if (chartScopes[statID] && !chartScopes[statID].length) {
+      if (uiStatsScopes[statID] && !uiStatsScopes[statID].length) {
         rootScopes[statID].$destroy();
         delete rootScopes[statID]
         delete pollers[statID];
@@ -187,47 +187,48 @@
       return saveScenarios();
     }
 
-    function getStatSourcePath(chart, bucket) {
-      var string = bucket;
+    function getStatSourcePath(config) {
+      var string = config.bucket + config.zoom;
 
-      if (chart.specificStat) {
-        angular.forEach(chart.stats, function (descPath, statName) {
+      if (config.specificStat) {
+        angular.forEach(config.stats, function (descPath, statName) {
           string += statName;
         });
       } else {
-        string += chart.node;
+        string += config.node;
       }
 
       return string;
     }
 
-    function subscribeToChartStats(config, chartScope, bucket, zoom) {
-      var config1 = _.clone(config, true);
-      var statID = getStatSourcePath(config1, bucket);
-      config1.bucket = config1.bucket || bucket;
-      config1.zoom = config1.zoom || zoom;
+    function subscribeUIStatsPoller(config, scope) {
+      var statID = getStatSourcePath(config);
 
       rootScopes[statID] = rootScopes[statID] || $rootScope.$new();
-      chartScopes[statID] = chartScopes[statID] || [];
-      chartScopes[statID].push(chartScope);
+      uiStatsScopes[statID] = uiStatsScopes[statID] || [];
+      uiStatsScopes[statID].push(scope);
       if (!pollers[statID]) {
         pollers[statID] =
           new mnPoller(rootScopes[statID], function (previousResult) {
-            return mnStatisticsNewService.doGetStats(config1, previousResult);
+            return mnStatisticsNewService.doGetStats(config, previousResult);
           })
           .setInterval(function (response) {
             return response.data.interval;
           })
           .subscribe(function (value) {
-            chartScopes[statID].forEach(function (scope) {
-              scope["mnChartStats"] = value;
+            uiStatsScopes[statID].forEach(function (scope) {
+              scope["mnUIStats"] = value;
             });
           })
-          .reloadOnScopeEvent("reloadChartPoller")
+          .reloadOnScopeEvent("reloadUIStatPoller")
           .cycle();
       } else {
-        chartScope["mnChartStats"] = pollers[statID].getLatestResult();
+        scope["mnUIStats"] = pollers[statID].getLatestResult();
       }
+
+      scope.$on("$destroy", function () {
+        mnStatisticsNewService.unsubscribeUIStatsPoller(config, scope);
+      });
     }
 
     function prepareNodesList(params) {

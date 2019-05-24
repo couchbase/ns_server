@@ -44,13 +44,15 @@
       }
 
       function subscribeToMultiChartData() {
-        $scope.$on("$destroy", function () {
-          mnStatisticsNewService.unsubscribeChartStats($scope.config,
-                                                       $scope, $scope.bucket, $scope.zoom);
-        });
-        mnStatisticsNewService.subscribeToChartStats($scope.config,
-                                                     $scope, $scope.bucket, $scope.zoom);
-        $scope.$watch("mnChartStats", onMultiChartDataUpdate);
+        mnStatisticsNewService.subscribeUIStatsPoller({
+          bucket: $scope.bucket,
+          node: $scope.config.node || "all",
+          stats: $scope.config.stats,
+          zoom: $scope.zoom,
+          specificStat: $scope.config.specificStat
+        }, $scope);
+
+        $scope.$watch("mnUIStats", onMultiChartDataUpdate);
       }
 
       function initConfig() {
