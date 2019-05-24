@@ -11,6 +11,8 @@
       </div>
       <div>
         <strong>Encryption:</strong> <span ng-if="node.nodeEncryption">On</span><span ng-if="!node.nodeEncryption">Off</span>
+        &nbsp;
+        <strong>Address Family:</strong> <span ng-if="node.addressFamily == 'inet6'">IPv6</span><span ng-if="node.addressFamily == 'inet'">IPv4</span>
       </div>
       <div>
         <strong>Uptime:</strong> {{(serversListItemDetailsCtl.server.details.uptime | mnFormatUptime) || 'unknown'}}
@@ -19,7 +21,17 @@
         <strong>OS:</strong> {{serversListItemDetailsCtl.server.details.os}}
       </div>
       <div>
-        <strong>Data Service RAM Quota:</strong> {{(serversListItemDetailsCtl.server.details.storageTotals.ram.quotaTotal | mnFormatMemSize) || 'unknown'}}
+        <strong>RAM Quotas:</strong>
+        <span class="nowrap" ng-if="serversListItemDetailsCtl.server.details.storageTotals.ram.quotaTotal">
+          Data {{(serversListItemDetailsCtl.server.details.storageTotals.ram.quotaTotal | mnFormatMemSize) || 'unknown'}}</span>
+        <span class="nowrap" ng-if="serversListItemDetailsCtl.server.details.indexMemoryQuota">
+          | Index {{serversListItemDetailsCtl.server.details.indexMemoryQuota}} MB</span>
+        <span class="nowrap" ng-if="serversListItemDetailsCtl.server.details.ftsMemoryQuota">
+          | Search {{serversListItemDetailsCtl.server.details.ftsMemoryQuota}} MB</span>
+        <span class="nowrap" ng-if="serversListItemDetailsCtl.server.details.cbasMemoryQuota">
+          | Analytics {{serversListItemDetailsCtl.server.details.cbasMemoryQuota}} MB</span>
+        <span class="nowrap" ng-if="serversListItemDetailsCtl.server.details.eventingMemoryQuota">
+          | Eventing {{serversListItemDetailsCtl.server.details.eventingMemoryQuota}} MB</span>
       </div>
       <div
         title="{{serversListItemDetailsCtl.server.details.storage.hdd[0].path}}"
