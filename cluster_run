@@ -302,7 +302,7 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix):
     return args
 
 
-def start_cluster(num_nodes, start_index, host, extra_args, args_prefix,
+def start_cluster(num_nodes, start_index, extra_args, args_prefix,
                   force_community):
 
     ebin_path = prepare_start_cluster(force_community)
@@ -368,7 +368,6 @@ def usage():
             [--dont-start] (don't start ns_server)\n\
             [--static-cookie] (don't reset cookie)\n\
             [--start-index=<index>] (starting node number; default: 0)\n\
-            [--host=<host>] (default: '127.0.0.1')\n\
             [--loglevel=<level>] (logging level; default: 'debug')\n\
             [--prepend-extras] (extra arguments)\n\
             [--pluggable-config=<file name>] (plug-ins)\n\
@@ -404,7 +403,7 @@ def main():
                                           ["help", "start-index=", "nodes=",
                                            "dont-rename",
                                            "static-cookie", "dont-start",
-                                           "host=", "loglevel=",
+                                           "loglevel=",
                                            "prepend-extras",
                                            "pluggable-config=",
                                            "minified", "disable-autocomplete",
@@ -424,7 +423,6 @@ def main():
     start_index = 0
     num_nodes = 1
     prepend_extras = False
-    host = "127.0.0.1"
     loglevel = 'debug'
     pluggable_config = []
     use_minified = False
@@ -437,8 +435,6 @@ def main():
             num_nodes = int(a)
         elif o == '--dont-start':
             dont_start = True
-        elif o == '--host':
-            host = a
         elif o == '--start-index':
             start_index = int(a)
         elif o == '--dont-rename':
@@ -553,7 +549,7 @@ def main():
         extra_args += ["-ns_server",
                        "pretend_version", '"{}"'.format(pretend_version)]
 
-    nodes = start_cluster(num_nodes, start_index, host, extra_args,
+    nodes = start_cluster(num_nodes, start_index, extra_args,
                           prepend_args, force_community_edition)
 
     for node in nodes:
