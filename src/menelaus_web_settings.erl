@@ -468,6 +468,12 @@ do_handle_settings_web_post(Port, U, P, Req) ->
                   "SAME" -> proplists:get_value(port, menelaus_web:webconfig());
                   _      -> list_to_integer(Port)
               end,
+
+    %% In case we set the 'rest' port in config, the web-server will be
+    %% restarted (via menelaus_event). Protecting ourselves so that the
+    %% HTTP request at hand can be completed.
+    process_flag(trap_exit, true),
+
     case Port =/= PortInt orelse ns_config_auth:credentials_changed(admin, U, P) of
         false -> ok; % No change.
         true ->
@@ -491,7 +497,8 @@ do_handle_settings_web_post(Port, U, P, Req) ->
     {PureHostName, _} = misc:split_host_port(mochiweb_request:get_header_value("host", Req), ""),
     NewHost = misc:join_host_port(PureHostName, PortInt),
     %% TODO: detect and support https when time will come
-    reply_json(Req, {struct, [{newBaseUri, list_to_binary("http://" ++ NewHost ++ "/")}]}).
+    reply_json(Req, {struct, [{newBaseUri, list_to_binary("http://" ++ NewHost ++ "/")}]}),
+    exit(normal).
 
 handle_settings_alerts(Req) ->
     {value, Config} = ns_config:search(email_alerts),
