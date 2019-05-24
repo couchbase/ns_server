@@ -14,8 +14,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os, os.path, subprocess, sys, atexit, socket, getopt, shlex
-import platform, fnmatch, errno, shutil
+import os
+import os.path
+import subprocess
+import sys
+import atexit
+import socket
+import getopt
+import shlex
+import platform
+import fnmatch
+import errno
+import shutil
 
 base_direct_port = 12000
 base_api_port = 9000
@@ -29,6 +39,7 @@ base_cbas_port = 9600
 
 LOGLEVELS = ["debug", "info", "warn", "error", "critical"]
 
+
 def read_configuration():
     with open("build/cluster_run.configuration") as f:
         def fn(line):
@@ -37,8 +48,10 @@ def read_configuration():
 
         return dict(fn(line) for line in f.readlines())
 
+
 config = read_configuration()
 PREFIX = config['prefix']
+
 
 def setup_extra_ns_server_app_file(force_community):
     # The extra/ebin directory contains modified versions of files also
@@ -79,12 +92,14 @@ def setup_extra_ns_server_app_file(force_community):
             # Any errors here are "real" so we want exceptions thrown
             os.makedirs(extra_ebin_path)
 
-            with open("./{}/ns_server.app".format(extra_ebin_path), "w") as dst_f:
+            with open("./{}/ns_server.app".format(
+                    extra_ebin_path), "w") as dst_f:
                 dst_f.write(lines_out)
 
             returned_path = extra_ebin_path
 
     return returned_path
+
 
 def setup_path(ns_server_app_path):
     def ebin_search(path):
@@ -110,11 +125,12 @@ def setup_path(ns_server_app_path):
     couch_plugins = ebin_search("{0}/lib/couchdb/plugins".format(PREFIX))
 
     if len(couchpath) == 0:
-       sys.exit("Couch libs wasn't found.\nCan't handle it")
+        sys.exit("Couch libs wasn't found.\nCan't handle it")
 
     # Note the paths are passed via "-pa" to the erl process where their
     # ordering is reversed.
     return couchpath + path + couch_plugins
+
 
 def mk_node_couch_config(i):
     try:
@@ -142,6 +158,7 @@ def couch_configs(i):
             "{0}/etc/couchdb/default.d/geocouch.ini".format(PREFIX),
             "couch/n_{0}_conf.ini".format(i)]
 
+
 def os_specific(args, params):
     """Add os-specific junk to the cluster startup."""
     if platform.system() == 'Windows':
@@ -150,7 +167,8 @@ def os_specific(args, params):
         args += ["dont_suppress_stderr_logger", "true"]
     if platform.system() == 'Darwin':
         import resource
-        ## OS X has a pretty tiny default fd limit.  Let's increase it (if it hasn't already been).
+        # OS X has a pretty tiny default fd limit.  Let's increase it
+        # (if it hasn't already been).
         (soft, hard) = resource.getrlimit(resource.RLIMIT_NOFILE)
         if soft < 2048:
             resource.setrlimit(resource.RLIMIT_NOFILE, (2048, 2048))
@@ -161,14 +179,17 @@ def os_specific(args, params):
 def is_ipv6_setup():
     return os.getenv("IPV6", "false") == "true"
 
+
 def prepare_start_cluster(force_community):
     ns_server_app_path = setup_extra_ns_server_app_file(force_community)
 
     ebin_path = setup_path(ns_server_app_path)
     return ebin_path
 
+
 def quote_string_for_erl(s):
     return '"' + s.replace("\\", "\\\\").replace("\"", "\\\"") + '"'
+
 
 def generate_ssl_dist_optfile(datadir):
     cfg_dir = os.path.join(datadir, "config")
@@ -185,6 +206,7 @@ def generate_ssl_dist_optfile(datadir):
         f.write(content)
 
     return out_file
+
 
 def erlang_args_for_node(i, ebin_path, extra_args, args_prefix):
     logdir = "logs/n_{0}".format(i)
@@ -203,8 +225,10 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix):
     datadir = os.path.abspath('data/n_{0}'.format(i))
     tempdir = os.path.abspath('tmp/')
     nodefile = os.path.join(datadir, "nodefile")
-    babysitternodefile = os.path.join(datadir, "couchbase-server.babysitter.node")
-    babysittercookiefile = os.path.join(datadir, "couchbase-server.babysitter.cookie")
+    babysitternodefile = os.path.join(
+            datadir, "couchbase-server.babysitter.node")
+    babysittercookiefile = os.path.join(
+            datadir, "couchbase-server.babysitter.cookie")
     ssloptfile = generate_ssl_dist_optfile(datadir)
     cb_dist_config = os.path.join(datadir, "config", "dist_cfg")
 
@@ -216,7 +240,8 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix):
         "-hidden",
         "-kernel", "dist_config_file", quote_string_for_erl(cb_dist_config),
         "-kernel", "inetrc", "\"etc/hosts.cfg\"",
-        "-ns_babysitter", "cookiefile", quote_string_for_erl(babysittercookiefile),
+        "-ns_babysitter", "cookiefile", quote_string_for_erl(
+            babysittercookiefile),
         "-ns_babysitter", "nodefile", quote_string_for_erl(babysitternodefile),
         "-ns_server", "config_path", '"etc/static_config.in"',
         "error_logger_mf_dir", quote_string_for_erl(logdir),
@@ -276,6 +301,7 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix):
 
     return args
 
+
 def start_cluster(num_nodes, start_index, host, extra_args, args_prefix,
                   force_community):
 
@@ -285,7 +311,7 @@ def start_cluster(num_nodes, start_index, host, extra_args, args_prefix,
         logdir = "logs/n_{0}".format(i)
         try:
             os.makedirs(logdir)
-        except:
+        except OSError:
             pass
 
         args = erlang_args_for_node(i, ebin_path, extra_args, args_prefix)
@@ -294,12 +320,12 @@ def start_cluster(num_nodes, start_index, host, extra_args, args_prefix,
 
         os_specific(args, params)
 
-        if not params.has_key('env'):
+        if 'env' not in params:
             params['env'] = {}
             params['env'].update(os.environ)
         path = params['env']['PATH']
         path = (PREFIX+"/bin") + os.pathsep + path
-        if not params['env'].has_key('ERL_FULLSWEEP_AFTER'):
+        if 'ERL_FULLSWEEP_AFTER' not in params['env']:
             params['env']['ERL_FULLSWEEP_AFTER'] = '512'
         params['env']['PATH'] = path
 
@@ -316,7 +342,7 @@ def start_cluster(num_nodes, start_index, host, extra_args, args_prefix,
         w = None
 
         if "-noinput" in args:
-            (r,w) = os.pipe()
+            (r, w) = os.pipe()
 
             params['stdin'] = r
 
@@ -327,12 +353,13 @@ def start_cluster(num_nodes, start_index, host, extra_args, args_prefix,
                 params['preexec_fn'] = os.setpgrp
 
         pr = subprocess.Popen(args, **params)
-        if w != None:
+        if w is not None:
             os.close(r)
         pr.write_side = w
         return pr
 
     return [start_node(i + start_index) for i in xrange(num_nodes)]
+
 
 def usage():
     print("usage: {0}\n\
@@ -352,6 +379,7 @@ def usage():
             [--community] (boot as Community Edition)\n\
             [ns_server args]".format(sys.argv[0]))
 
+
 def find_primary_addr(ipv6):
     Family = socket.AF_INET6 if ipv6 else socket.AF_INET
     DnsAddr = "2001:4860:4860::8844" if ipv6 else "8.8.8.8"
@@ -369,6 +397,7 @@ def find_primary_addr(ipv6):
     finally:
         s.close()
 
+
 def main():
     try:
         optlist, args = getopt.gnu_getopt(sys.argv[1:], "hn:p:",
@@ -376,13 +405,14 @@ def main():
                                            "dont-rename",
                                            "static-cookie", "dont-start",
                                            "host=", "loglevel=",
-                                           "prepend-extras", "pluggable-config=",
+                                           "prepend-extras",
+                                           "pluggable-config=",
                                            "minified", "disable-autocomplete",
                                            "community",
                                            "pretend-version=", "afamily="])
     except getopt.GetoptError, err:
         # print help information and exit:
-        print str(err) # will print something like "option -a not recognized"
+        print str(err)  # will print something like "option -a not recognized"
         usage()
         sys.exit(2)
 
@@ -447,9 +477,10 @@ def main():
 
     def kill_nodes(*args):
         for n in nodes:
-            if n.write_side != None:
+            if n.write_side is not None:
                 print("Closing %d\n" % n.write_side)
-                # os.write(n.write_side, "shutdown\n") # this line does graceful shutdown versus quick
+                # this line does graceful shutdown versus quick
+                # os.write(n.write_side, "shutdown\n")
                 os.close(n.write_side)
             else:
                 try:
@@ -460,7 +491,7 @@ def main():
         for n in nodes:
             n.wait()
 
-        if terminal_attrs != None:
+        if terminal_attrs is not None:
             termios.tcsetattr(sys.stdin, termios.TCSANOW, terminal_attrs)
 
     atexit.register(kill_nodes)
@@ -468,13 +499,13 @@ def main():
     try:
         import termios
         terminal_attrs = termios.tcgetattr(sys.stdin)
-    except:
+    except Exception:
         pass
 
     extra_args = []
     if not dont_rename:
         primary_addr = find_primary_addr(ipv6)
-        if primary_addr == None:
+        if primary_addr is None:
             print("was unable to detect 'internet' address of this machine."
                   + " node rename will be disabled")
         else:
@@ -493,7 +524,8 @@ def main():
         extra_args += ["-run", "t", "fake_loggers"]
     else:
         extra_args += ["-noinput"]
-        extra_args += ["-run", "child_erlang", "child_start", "ns_babysitter_bootstrap"]
+        extra_args += ["-run", "child_erlang", "child_start",
+                       "ns_babysitter_bootstrap"]
         extra_args += ["-ns_babysitter", "handle_ctrl_c", "true"]
 
     if loglevel not in LOGLEVELS:
@@ -509,11 +541,12 @@ def main():
 
     if pluggable_config:
         extra_args += ["-ns_server", "ui_plugins",
-                        quote_string_for_erl(','.join(pluggable_config))]
+                       quote_string_for_erl(','.join(pluggable_config))]
 
     ui_env = [disable_autocomplete]
 
-    extra_args += ["-ns_server", "use_minified", "true" if use_minified else "false"]
+    extra_args += ["-ns_server", "use_minified",
+                   "true" if use_minified else "false"]
     extra_args += ["-ns_server", "ui_env", '[' + ','.join(ui_env) + ']']
 
     if pretend_version is not None:
