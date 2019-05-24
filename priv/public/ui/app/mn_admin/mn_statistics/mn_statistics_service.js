@@ -226,7 +226,7 @@
           .reloadOnScopeEvent("reloadChartPoller")
           .cycle();
       } else {
-        !config.preset && pollers[statID].reload();
+        chartScope["mnChartStats"] = pollers[statID].getLatestResult();
       }
     }
 

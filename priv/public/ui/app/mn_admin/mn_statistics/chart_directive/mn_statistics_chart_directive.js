@@ -12,7 +12,7 @@
     ])
     .directive("mnStatisticsChart", mnStatisticsNewChartDirective);
 
-  function mnStatisticsNewChartDirective(mnStatisticsNewService, mnStatisticsDescriptionService, $uibModal, $state, mnPrepareQuantityFilter, mnTruncateTo3DigitsFilter, $rootScope, mnHelper) {
+  function mnStatisticsNewChartDirective(mnStatisticsNewService, mnStatisticsDescriptionService, $uibModal, $state, mnPrepareQuantityFilter, mnTruncateTo3DigitsFilter, $rootScope, mnHelper, $timeout) {
     return {
       restrict: 'AE',
       templateUrl: 'app/mn_admin/mn_statistics/chart_directive/mn_statistics_chart_directive.html',
@@ -151,7 +151,13 @@
             });
           });
         }
-        $scope.chartApi.updateWithData(chartData);
+        if ($scope.chartApi) {
+          $scope.chartApi.updateWithData(chartData);
+        } else {
+          $timeout(function () {
+            $scope.chartApi.updateWithData(chartData);
+          }, 0)
+        }
       }
     }
   }

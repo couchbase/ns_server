@@ -75,11 +75,16 @@
     Poller.prototype.reload = reload;
     Poller.prototype.reloadOnScopeEvent = reloadOnScopeEvent;
     Poller.prototype.onDestroy = onDestroy;
+    Poller.prototype.getLatestResult = getLatestResult;
 
     return Poller;
 
     function onDestroy() {
       this.stop();
+    }
+
+    function getLatestResult() {
+      return this.latestResult;
     }
 
     function isStopped(startTimestamp) {
