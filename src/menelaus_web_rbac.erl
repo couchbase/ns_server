@@ -864,9 +864,9 @@ validate_user_groups(Name, State) ->
     IsMadHatter = cluster_compat_mode:is_cluster_madhatter(),
     IsEnterprise = cluster_compat_mode:is_enterprise(),
     validator:validate(
-      fun (_) when not IsEnterprise ->
+      fun (GroupsRaw) when (GroupsRaw =/= "") andalso not IsEnterprise ->
               {error, "User groups require enterprise edition"};
-          (_) when not IsMadHatter ->
+          (GroupsRaw) when (GroupsRaw =/= "") andalso not IsMadHatter ->
               {error, "User groups are not supported in "
                       "mixed version clusters"};
           (GroupsRaw) ->
