@@ -1162,16 +1162,29 @@ handle_query_vbuckets(Call, #state{bucket_name = BucketName,
     {rebalancing, State};
 handle_query_vbuckets(Call, #state{bucket_name = BucketName} = State) ->
     %% NOTE: uses 'outer' memcached timeout of 60 seconds
-    Fun =
+    {Fun, VBuckets, Options} =
         case Call of
             query_vbucket_states ->
-                ?cut((catch ns_memcached:local_connected_and_list_vbuckets(
-                              BucketName)));
-            {query_vbuckets, VBs, Keys, _Opts} ->
-                ?cut((catch perform_query_vbuckets(Keys, VBs, BucketName)))
+                {?cut((catch ns_memcached:local_connected_and_list_vbuckets(
+                               BucketName))), all, []};
+            {query_vbuckets, VBs, Keys, Opts} ->
+                {?cut((catch perform_query_vbuckets(Keys, VBs, BucketName))),
+                 VBs, Opts}
         end,
     NewState = consider_doing_flush(State),
-    with_maybe_priming_replicators(Fun, NewState).
+    R = case proplists:is_defined(stop_replications, Options) of
+            true ->
+                stop_replications(BucketName, VBuckets);
+            false ->
+                ok
+        end,
+
+    case R of
+        ok ->
+            with_maybe_priming_replicators(Fun, NewState);
+        Err ->
+            Err
+    end.
 
 filter_vbucket_dict(all, Dict) ->
     Dict;
@@ -1201,3 +1214,8 @@ perform_query_vbuckets(Keys, VBs, BucketName) ->
         Err ->
             Err
     end.
+
+stop_replications(Bucket, all) ->
+    replication_manager:set_incoming_replication_map(Bucket, []);
+stop_replications(Bucket, VBs) ->
+    replication_manager:teardown_replications(Bucket, VBs).
