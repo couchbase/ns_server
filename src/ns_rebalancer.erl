@@ -884,7 +884,7 @@ do_rebalance_membase_bucket(Bucket, Config,
         case lists:keyfind(Bucket, 1, DeltaRecoveryBuckets) of
             false ->
                 generate_vbucket_map(AdjustedMap, KeepNodes, Config);
-            {_, _, V} ->
+            {_, _, V, _} ->
                 V
         end,
 
@@ -1106,7 +1106,7 @@ find_delta_recovery_map(Config, AllNodes, DeltaNodes, Bucket, BucketConfig) ->
         not_found ->
             false;
         {ok, Map} ->
-            {Map, CurrentOptions}
+            {{Map, CurrentOptions}, FailoverVBs}
     end.
 
 find_delta_recovery_map(CurrentMap, FailoverVBs, MatchingMaps) ->
@@ -1176,8 +1176,11 @@ build_delta_recovery_buckets(AllNodes, DeltaNodes, AllBucketConfigs, DeltaRecove
         {ok, Recovered0} ->
             RV = [{Bucket,
                    build_transitional_bucket_config(BucketConfig, Map, Opts, DeltaNodes),
-                   {Map, Opts}}
-                  || {Bucket, BucketConfig, {Map, Opts}} <- Recovered0],
+                   {Map, Opts},
+                   FailoverVBs}
+                  || {Bucket,
+                      BucketConfig,
+                      {{Map, Opts}, FailoverVBs}} <- Recovered0],
             {ok, RV};
         Error ->
             Error
@@ -1197,11 +1200,11 @@ build_delta_recovery_buckets_loop(MappedConfigs, DeltaRecoveryBuckets, Acc) ->
                             false
                     end,
     case RecoverResult of
-        {Map, Opts} ->
+        {MapOpts, _FailoverVBs} ->
             ?rebalance_debug("Found delta recovery map for bucket ~s: ~p",
-                             [Bucket, {Map, Opts}]),
+                             [Bucket, MapOpts]),
 
-            NewAcc = [{Bucket, BucketConfig, {Map, Opts}} | Acc],
+            NewAcc = [{Bucket, BucketConfig, RecoverResult} | Acc],
             build_delta_recovery_buckets_loop(RestMapped, DeltaRecoveryBuckets, NewAcc);
         false ->
             case NeedBucket of
@@ -1221,7 +1224,7 @@ apply_delta_recovery_buckets(DeltaRecoveryBuckets, DeltaNodes, CurrentBuckets) -
     NewBuckets = misc:update_proplist(
                    CurrentBuckets,
                    [{Bucket, BucketConfig} ||
-                       {Bucket, BucketConfig, _} <- DeltaRecoveryBuckets]),
+                       {Bucket, BucketConfig, _, _} <- DeltaRecoveryBuckets]),
     NodeChanges = [[{{node, N, failover_vbuckets}, []},
                     {{node, N, membership}, active}] || N <- DeltaNodes],
     BucketChanges = {buckets, [{configs, NewBuckets}]},
@@ -1238,7 +1241,7 @@ apply_delta_recovery_buckets(DeltaRecoveryBuckets, DeltaNodes, CurrentBuckets) -
 
     ok = check_test_condition(apply_delta_recovery),
     lists:foreach(
-      fun ({Bucket, BucketConfig, _}) ->
+      fun ({Bucket, BucketConfig, _, _}) ->
               ok = wait_for_bucket(Bucket, DeltaNodes),
               ok = ns_janitor:cleanup_apply_config(
                      Bucket, DeltaNodes, BucketConfig, [],
