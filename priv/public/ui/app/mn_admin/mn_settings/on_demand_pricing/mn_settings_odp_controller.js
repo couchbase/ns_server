@@ -23,7 +23,7 @@
     }
 
     function submit() {
-      validate().then(function () {
+      return validate().then(function () {
         return mnPromiseHelper(vm, mnSettingsODPService.saveODPSettings(vm.odpSettings))
           .catchErrors()
           .getPromise();
