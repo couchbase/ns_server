@@ -1485,6 +1485,7 @@ section.error {
   cursor: pointer;
   color: #f9ca7b !important;
   font-size: 1.125rem;
+  position: relative;
 }
 .icon-info-warning:hover {
   color: #f5a623 !important;
@@ -1495,7 +1496,10 @@ section.error {
   top: 1px;
 }
 label + .fa-stack,
-h4 + .fa-stack { /* elevate info icon next to label or heading */
+h4 + .fa-stack { /* elevate icon next to label or heading  */
+  top: -4px;
+}
+.raised { /* elevate element which is child of relatively-positioned parent  */
   top: -4px;
 }
 
