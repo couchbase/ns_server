@@ -23,7 +23,10 @@
       putRolesGroup: putRolesGroup,
       getRolesGroupsState: getRolesGroupsState,
 
-      ldapSettingsValidate: ldapSettingsValidate,
+      ldapConnectivityValidate: ldapConnectivityValidate,
+      ldapAuthenticationValidate: ldapAuthenticationValidate,
+      ldapGroupsQueryValidate: ldapGroupsQueryValidate,
+
       postLdapSettings: postLdapSettings,
       getLdapSettings: getLdapSettings,
       clearLdapCache: clearLdapCache,
@@ -31,6 +34,8 @@
       getUserProfile: getUserProfile,
       putUserProfile: putUserProfile
     };
+
+    var queryDnError = "LDAP DN should be supplied";
 
     return mnUserRolesService;
 
@@ -48,20 +53,47 @@
       });
     }
 
-    function ldapSettingsValidate(type, data) {
-      return $http({
-        method: "POST",
-        url: "/settings/ldap/validate/" + type,
-        data: data
-      });
+    function isAnonOrQueryDn(data, isAnon) {
+      return (isAnon || data.query_dn);
+    }
+
+    function validateLDAPQuery(data) {
+      return !!(data.user_dn_mapping &&
+                data.user_dn_mapping.includes("query"));
+    }
+
+    function validateGroupQuery(data) {
+      return !!(data.groups_query);
+    }
+
+    function ldapConnectivityValidate(data, isAnon) {
+      if (!isAnonOrQueryDn(data, isAnon)) {
+        return $q.reject({query_dn: queryDnError});
+      }
+      return $http.post("/settings/ldap/validate/connectivity", data);
+    }
+
+    function ldapAuthenticationValidate(data, isAnon) {
+      if (!isAnonOrQueryDn(data, isAnon) && validateLDAPQuery(data)) {
+        return $q.reject({query_dn: queryDnError});
+      }
+      return $http.post("/settings/ldap/validate/authentication", data);
+    }
+
+    function ldapGroupsQueryValidate(data, formData, isAnon) {
+      if (!isAnonOrQueryDn(data, isAnon) && validateGroupQuery(data)) {
+        return $q.reject({query_dn: queryDnError});
+      }
+      return $http.post("/settings/ldap/validate/groups_query", data);
     }
 
     function postLdapSettings(data, isAnon) {
-      if (!(isAnon || data.query_dn) &&
-          !!((data.authentication_enabled && data.user_dn_mapping &&
-              data.user_dn_mapping.includes("query")) ||
-             (data.authorization_enabled && data.groups_query))) {
-        return $q.reject({query_dn: "LDAP DN should be supplied"});
+      var isGroups = data.authorization_enabled;
+      var isUser = data.authentication_enabled;
+      if (!isAnonOrQueryDn(data, isAnon) && ((!isUser && !isGroups) ||
+                                             (validateLDAPQuery(data) && isUser) ||
+                                             (validateGroupQuery(data) && isGroups))) {
+        return $q.reject({query_dn: queryDnError});
       }
       return $http({
         method: "POST",
