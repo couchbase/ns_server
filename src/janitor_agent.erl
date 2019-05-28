@@ -1116,6 +1116,10 @@ is_topology_same(_, _, _) ->
 
 decode_value(state, V) ->
     erlang:list_to_existing_atom(V);
+decode_value(high_seqno, V) ->
+    list_to_integer(V);
+decode_value(high_prepared_seqno, V) ->
+    list_to_integer(V);
 decode_value(topology, V) ->
     decode_topology(V);
 decode_value(_, V) ->
