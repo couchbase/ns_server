@@ -67,7 +67,8 @@
          get_vbucket_high_seqno/4,
          dcp_takeover/5,
          inhibit_view_compaction/3,
-         uninhibit_view_compaction/4]).
+         uninhibit_view_compaction/4,
+         get_failover_logs/2]).
 
 -export([start_link/1]).
 
@@ -521,6 +522,38 @@ mass_prepare_flush(Bucket, Nodes) ->
 server_name(Bucket, Node) ->
     {server_name(Bucket), Node}.
 
+get_failover_logs(Bucket, NodeVBuckets) ->
+    Timeout = ?get_timeout(get_failover_logs, 60000),
+    Results =
+        misc:parallel_map_partial(
+          fun ({Node, VBuckets}) ->
+                  do_servant_call(server_name(Bucket, Node),
+                                  {get_failover_logs, VBuckets})
+          end, NodeVBuckets, Timeout),
+    process_get_failover_logs_results(NodeVBuckets, Results).
+
+process_get_failover_logs_results(NodeVBuckets, Results) ->
+    {Good, Bad} =
+        lists:foldl(
+          fun ({{Node, _VBuckets}, Result}, {AccGood, AccBad}) ->
+                  case Result of
+                      {ok, {ok, FailoverLogs}} ->
+                          NewGood = [{Node, FailoverLogs} | AccGood],
+                          {NewGood, AccBad};
+                      {ok, Error} ->
+                          {AccGood, [{Node, Error} | AccBad]};
+                      _Error ->
+                          {AccGood, [{Node, Result} | AccBad]}
+                  end
+          end, {[], []}, lists:zip(NodeVBuckets, Results)),
+
+    case Bad of
+        [] ->
+            {ok, Good};
+        _ ->
+            {error, {failed_nodes, Bad}}
+    end.
+
 %% ----------- implementation -----------
 
 start_link(Bucket) ->
@@ -777,6 +810,17 @@ handle_call({get_mass_dcp_docs_estimate, VBucketsR}, From, State) ->
       From, State, VBucketsR,
       fun (VBuckets, #state{bucket_name = Bucket}) ->
               ns_memcached:get_mass_dcp_docs_estimate(Bucket, VBuckets)
+      end);
+handle_call({get_failover_logs, VBucketsR}, From, State) ->
+    handle_call_via_servant(
+      From, State, VBucketsR,
+      fun (VBuckets, #state{bucket_name = Bucket}) ->
+              case ns_memcached:get_failover_logs(Bucket, VBuckets) of
+                  {ok, FailoverLogs} ->
+                      {ok, lists:zip(VBuckets, FailoverLogs)};
+                  Error ->
+                      Error
+              end
       end).
 
 handle_call_via_servant({FromPid, _Tag}, State, Req, Body) ->
