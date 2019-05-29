@@ -796,22 +796,31 @@ check_for_raw_addr(AFamily) ->
     end.
 
 verify_net_config_allowed(State) ->
-    case ns_config_auth:is_system_provisioned() andalso
-        auto_failover:is_enabled() of
-        true  ->
+
+    NodeEncryption = validator:get_value(nodeEncryption, State),
+    AFamily = validator:get_value(afamily, State),
+    AutoFailover = ns_config_auth:is_system_provisioned() andalso
+                   auto_failover:is_enabled(),
+    EncryptLevelAll = (misc:get_cluster_encryption_level() =:= all),
+    IsCommunity = not cluster_compat_mode:is_enterprise(),
+
+    if
+        IsCommunity andalso NodeEncryption =:= true ->
+            M = <<"Node encryption is not supported in community edition">>,
+            validator:return_error(nodeEncryption, M, State);
+        IsCommunity andalso AFamily =:= inet6 ->
+            M = <<"IPv6 is not supported in community edition">>,
+            validator:return_error(nodeEncryption, M, State);
+        AutoFailover ->
             M = "Can't change network configuration when auto-failover "
                 "is enabled.",
             validator:return_error('_', M, State);
-        _ ->
-            case validator:get_value(nodeEncryption, State) =:= false andalso
-                misc:get_cluster_encryption_level() =:= all of
-                true ->
-                    M = <<"Can't disable nodeEncryption when the cluster "
-                          "encryption level has been set to 'all'">>,
-                    validator:return_error(nodeEncryption, M, State);
-                false ->
-                    State
-            end
+        EncryptLevelAll andalso NodeEncryption =:= false ->
+            M = <<"Can't disable nodeEncryption when the cluster "
+                  "encryption level has been set to 'all'">>,
+            validator:return_error(nodeEncryption, M, State);
+        true ->
+            State
     end.
 
 net_config_validators() ->
@@ -829,7 +838,6 @@ net_config_validators() ->
      validator:unsupported(_)].
 
 handle_setup_net_config(Req) ->
-    menelaus_util:assert_is_enterprise(),
     menelaus_util:assert_is_madhatter(),
     validator:handle(
       fun (Values) ->
@@ -842,7 +850,6 @@ handle_setup_net_config(Req) ->
       end, Req, form, net_config_validators()).
 
 handle_dist_protocols(Req) ->
-    menelaus_util:assert_is_enterprise(),
     menelaus_util:assert_is_madhatter(),
     validator:handle(
       fun (Props) ->
@@ -862,7 +869,15 @@ validate_ext_protos(Name, State) ->
     validator:validate(
         fun (Value) ->
                 Protos = [string:trim(T) || T <- string:tokens(Value, ",")],
-                Allowed = ["inet_tcp", "inet6_tcp", "inet_tls", "inet6_tls"],
+
+                Allowed =
+                    case cluster_compat_mode:is_enterprise() of
+                        true ->
+                            ["inet_tcp", "inet6_tcp", "inet_tls", "inet6_tls"];
+                        false ->
+                            ["inet_tcp"]
+                    end,
+
                 case lists:all(lists:member(_, Allowed), Protos) of
                     true ->
                         Res = [list_to_atom(P ++ "_dist") || P <- Protos],
