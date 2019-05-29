@@ -414,7 +414,7 @@
                      mn-autocomplete-off="enforce"
                      id="for-groups-query"
                      ng-model="addLdapDialogCtl.config.group.groups_query.base"
-                     placeholder="ou=users,dc=example,dc=com">
+                     placeholder="ou=groups,dc=example,dc=com">
                 </span>
                 <span class="width-6">
                   <label for="for-groups-query-filter">Filter</label>
@@ -426,7 +426,7 @@
                      mn-autocomplete-off="enforce"
                      id="for-groups-query-filter"
                      ng-model="addLdapDialogCtl.config.group.groups_query.filter"
-                     placeholder="(uid=%u)">
+                     placeholder="(member=%u)">
                 </span>
               </div>
               <div ng-if="addLdapDialogCtl.config.queryForGroups == 'query'" class="width-4">
