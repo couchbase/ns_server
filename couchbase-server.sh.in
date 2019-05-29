@@ -72,11 +72,12 @@ then
 fi
 
 _check_ulimit() {
-    if [ `ulimit $1` -lt $2 ]
+    lim=`ulimit $1`
+    if [ $lim != "unlimited" ] && [ $lim -lt $2 ]
     then
         cat <<EOF
 
-The $3 for the couchbase user is set too low.
+The $3 for the couchbase user is set too low ($lim).
 It must be at least $2.
 
 EOF
