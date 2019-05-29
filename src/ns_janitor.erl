@@ -176,7 +176,7 @@ maybe_fixup_vbucket_map(Bucket, BucketConfig, States) ->
 fixup_vbucket_map(Bucket, BucketConfig, NewBucketConfig, States) ->
     ?log_info("Janitor is going to change "
               "bucket config for bucket ~p", [Bucket]),
-    ?log_info("VBucket states:~n~p", [States]),
+    ?log_info("VBucket states:~n~p", [dict:to_list(States)]),
     ?log_info("Old bucket config:~n~p", [BucketConfig]),
 
     ok = ns_bucket:set_bucket_config(Bucket, NewBucketConfig),
@@ -250,17 +250,15 @@ find_unsafe_nodes_with_vbucket_states(BucketConfig, States, true) ->
 %% when the replication streams are establised the replicas will also lose their
 %% data.
 data_loss_possible(VBucket, Chain, States) ->
-    {_NodeStates, ChainStates, ExtraStates} = construct_vbucket_states(VBucket,
-                                                                       Chain,
-                                                                       States),
-    case ChainStates of
-        [{Master, State}|ReplicaStates] when State =:= missing ->
-            OtherNodeStates = ReplicaStates ++ ExtraStates,
-            case [N || {N, active} <- OtherNodeStates] of
-                [] ->
+    NodeStates = fetch_vbucket_states(VBucket, States),
+    Master = hd(Chain),
+    case find_node_state(Master, NodeStates) of
+        missing ->
+            case lists:keymember(active, 2, NodeStates) of
+                false ->
                     %% If none of the nodes have the vBucket active check if
                     %% the other nodes have the vBucket in replica state.
-                    case [N || {N, replica} <- OtherNodeStates] of
+                    case [N || {N, replica, _} <- NodeStates] of
                         [] ->
                             false;
                         Replicas ->
@@ -270,10 +268,10 @@ data_loss_possible(VBucket, Chain, States) ->
                                       [VBucket, Master, Replicas]),
                             {true, Master}
                     end;
-                _ ->
+                true ->
                     false
             end;
-        [{_,_}|_] ->
+        _ ->
             false
     end.
 
@@ -387,13 +385,21 @@ compute_vbucket_map_fixup(Bucket, BucketConfig, States) ->
                       end,
     {NewBucketConfig, IgnoredVBuckets}.
 
-construct_vbucket_states(VBucket, Chain, States) ->
-    NodeStates  = [{N, S} || {N, V, S, _T} <- States, V =:= VBucket],
-    ChainStates = [{N, proplists:get_value(N,
-                                           NodeStates, missing)} || N <- Chain],
-    ExtraStates = [X || X = {N, _} <- NodeStates,
-                        not lists:member(N, Chain)],
-    {NodeStates, ChainStates, ExtraStates}.
+fetch_vbucket_states(VBucket, States) ->
+    case dict:find(VBucket, States) of
+        {ok, Infos} ->
+            Infos;
+        error ->
+            []
+    end.
+
+find_node_state(Node, NodeStates) ->
+    case lists:keyfind(Node, 1, NodeStates) of
+        {Node, State, _} ->
+            State;
+        false ->
+            missing
+    end.
 
 %% this will decide what vbucket map chain is right for this vbucket
 sanify_chain(_Bucket, _States,
@@ -404,27 +410,21 @@ sanify_chain(_Bucket, _States,
 sanify_chain(Bucket, States,
              [CurrentMaster | _] = CurrentChain,
              FutureChain, VBucket, Servers) ->
-    NodeStates = [{N, S} || {N, VB, S, _T} <- States, VB =:= VBucket],
-    Actives = [{N, S} || {N, S} <- NodeStates, S =:= active],
+    NodeStates = fetch_vbucket_states(VBucket, States),
+    Actives = [{N, P} || {N, active, P} <- NodeStates],
 
     case Actives of
         %% No Actives.
         [] ->
-            CurrentMasterState = proplists:get_value(CurrentMaster,
-                                                     NodeStates, missing),
+            CurrentMasterState = find_node_state(CurrentMaster, NodeStates),
             ?log_info("Setting vbucket ~p in ~p on ~p from ~p to active.",
                       [VBucket, Bucket, CurrentMaster, CurrentMasterState]),
             %% Let's activate according to vbucket map.
             CurrentChain;
 
         %% One Active.
-        [{ActiveNode, active}] ->
-            [Topology] = [proplists:get_value(topology, P) ||
-                             {N, VB, S, P} <- States,
-                             VB =:= VBucket,
-                             N =:= ActiveNode,
-                             S =:= active],
-            case Topology of
+        [{ActiveNode, Props}] ->
+            case proplists:get_value(topology, Props) of
                 undefined ->
                     sanify_chain_one_active(Bucket, VBucket, ActiveNode,
                                             NodeStates, CurrentChain,
@@ -452,10 +452,10 @@ sanify_chain(Bucket, States,
             ?log_error("Extra active nodes ~p for vbucket ~p in ~p. "
                        "This should never happen!",
                        [[N || {N, _} <- Actives], Bucket, VBucket]),
-            case lists:keyfind(CurrentMaster, 1, Actives) of
+            case lists:keymember(CurrentMaster, 1, Actives) of
                 false ->
                     ignore;
-                {CurrentMaster, active} ->
+                true ->
                     %% Pick CurrentChain if CurrentMaster is active.
                     CurrentChain
             end
@@ -505,7 +505,7 @@ sanify_chain_one_active(Bucket, VBucket, ActiveNode, States,
                         fun (undefined) ->
                                 true;
                             (N) ->
-                                case proplists:get_value(N, States) of
+                                case find_node_state(N, States) of
                                     replica ->
                                         true;
                                     dead when N =:= CurrentMaster ->
@@ -536,72 +536,73 @@ sanify_chain_one_active(Bucket, VBucket, ActiveNode, _States,
     derive_chain(Bucket, VBucket, ActiveNode, CurrentChain).
 
 -ifdef(TEST).
-sanify_chain_t(Bucket, States, CurrentChain, FutureChain, Vbucket, Servers) ->
+sanify_chain_t(Bucket, States, CurrentChain, FutureChain, VB, Servers) ->
     sanify_chain(Bucket,
-                 [{N, Vb, S, [{topology, T}]} || {N, Vb, S, T} <- States],
-                 CurrentChain, FutureChain, Vbucket, Servers).
+                 dict:from_list(
+                   [{VB, [{N, S, [{topology, T}]} || {N, S, T} <- States]}]),
+                 CurrentChain, FutureChain, VB, Servers).
 
 sanify_basic_test() ->
     Servers = [a, b, c, d],
     %% normal case when everything matches vb map
-    [a, b] = sanify_chain_t("B", [{a, 0, active, undefined},
-                                  {b, 0, replica, undefined}],
+    [a, b] = sanify_chain_t("B", [{a, active, undefined},
+                                  {b, replica, undefined}],
                             [a, b], [], 0, Servers),
-    [a, b] = sanify_chain_t("B", [{a, 0, active, [[a, b]]},
-                                  {b, 0, replica, undefined}],
+    [a, b] = sanify_chain_t("B", [{a, active, [[a, b]]},
+                                  {b, replica, undefined}],
                             [a, b], [], 0, Servers),
 
     %% yes, the code will keep both masters as long as expected master
     %% is there. Possibly something to fix in future
-    [a, b] = sanify_chain_t("B", [{a, 0, active, undefined},
-                                  {b, 0, active, undefined}],
+    [a, b] = sanify_chain_t("B", [{a, active, undefined},
+                                  {b, active, undefined}],
                             [a, b], [], 0, Servers),
 
     %% main chain doesn't match but fast-forward chain does
-    [b, c] = sanify_chain_t("B", [{a, 0, dead, undefined},
-                                  {b, 0, active, undefined},
-                                  {c, 0, replica, undefined}],
+    [b, c] = sanify_chain_t("B", [{a, dead, undefined},
+                                  {b, active, undefined},
+                                  {c, replica, undefined}],
                             [a, b], [b, c], 0, Servers),
-    [b, d] = sanify_chain_t("B", [{a, 0, dead, undefined},
-                                  {b, 0, active, [[b, d]]},
-                                  {c, 0, replica, undefined}],
+    [b, d] = sanify_chain_t("B", [{a, dead, undefined},
+                                  {b, active, [[b, d]]},
+                                  {c, replica, undefined}],
                             [a, b], [b, c], 0, Servers),
 
     %% main chain doesn't match but ff chain does. And old master is already
     %% deleted
-    [b, c] = sanify_chain_t("B", [{b, 0, active, undefined},
-                                  {c, 0, replica, undefined}],
+    [b, c] = sanify_chain_t("B", [{b, active, undefined},
+                                  {c, replica, undefined}],
                             [a, b], [b, c], 0, Servers),
-    [b, d] = sanify_chain_t("B", [{b, 0, active, [[b, d]]},
-                                  {d, 0, replica, undefined}],
+    [b, d] = sanify_chain_t("B", [{b, active, [[b, d]]},
+                                  {d, replica, undefined}],
                             [a, b], [b, c], 0, Servers),
 
     %% lets make sure we touch all paths just in case
     %% this runs "there are >1 unexpected master" case
-    ignore = sanify_chain_t("B", [{a, 0, active, undefined},
-                                  {b, 0, active, undefined}],
+    ignore = sanify_chain_t("B", [{a, active, undefined},
+                                  {b, active, undefined}],
                             [c, a, b], [], 0, Servers),
-    ignore = sanify_chain_t("B", [{a, 0, active, [[a]]},
-                                  {b, 0, active, [[b]]}],
+    ignore = sanify_chain_t("B", [{a, active, [[a]]},
+                                  {b, active, [[b]]}],
                             [c, a, b], [], 0, Servers),
     %% this runs "master is one of replicas" case
-    [b, undefined] = sanify_chain_t("B", [{b, 0, active, undefined},
-                                          {c, 0, replica, undefined}],
+    [b, undefined] = sanify_chain_t("B", [{b, active, undefined},
+                                          {c, replica, undefined}],
                                     [a, b], [], 0, Servers),
-    [b, c, a] = sanify_chain_t("B", [{b, 0, active, [[b, c, a], [a, b]]},
-                                     {c, 0, replica, undefined}],
+    [b, c, a] = sanify_chain_t("B", [{b, active, [[b, c, a], [a, b]]},
+                                     {c, replica, undefined}],
                                [a, b], [], 0, Servers),
     %% and this runs "master is some non-chain member node" case
-    [c, undefined] = sanify_chain_t("B", [{c, 0, active, undefined}],
+    [c, undefined] = sanify_chain_t("B", [{c, active, undefined}],
                                     [a, b], [], 0, Servers),
-    [c] = sanify_chain_t("B", [{c, 0, active, [[c]]}],
+    [c] = sanify_chain_t("B", [{c, active, [[c]]}],
                          [a, b], [], 0, Servers),
 
     %% lets also test rebalance stopped prior to complete takeover
-    [a, b] = sanify_chain_t("B", [{a, 0, dead, undefined},
-                                  {b, 0, replica, undefined},
-                                  {c, 0, pending, undefined},
-                                  {d, 0, replica, undefined}],
+    [a, b] = sanify_chain_t("B", [{a, dead, undefined},
+                                  {b, replica, undefined},
+                                  {c, pending, undefined},
+                                  {d, replica, undefined}],
                             [a, b], [c, d], 0, Servers),
     ok.
 
@@ -612,40 +613,40 @@ sanify_doesnt_lose_replicas_on_stopped_rebalance_test() ->
     %% vbmap. We have code in sanify to detect this condition using
     %% fast-forward map and is supposed to recover perfectly from this
     %% condition.
-    [a, b] = sanify_chain_t("B", [{a, 0, active, undefined},
-                                  {b, 0, dead, undefined}],
+    [a, b] = sanify_chain_t("B", [{a, active, undefined},
+                                  {b, dead, undefined}],
                             [b, a], [a, b], 0, Servers),
-    [a, b, c] = sanify_chain_t("B", [{a, 0, active, [[a, b, c]]},
-                                     {b, 0, dead, undefined}],
+    [a, b, c] = sanify_chain_t("B", [{a, active, [[a, b, c]]},
+                                     {b, dead, undefined}],
                                [b, a], [a, b, c], 0, Servers),
 
     %% rebalance can be stopped after updating vbucket states but
     %% before vbucket map update
-    [a, b] = sanify_chain_t("B", [{a, 0, active, undefined},
-                                  {b, 0, replica, undefined}],
+    [a, b] = sanify_chain_t("B", [{a, active, undefined},
+                                  {b, replica, undefined}],
                             [b, a], [a, b], 0, Servers),
     %% same stuff but prior to takeover
-    [a, b] = sanify_chain_t("B", [{a, 0, dead, undefined},
-                                  {b, 0, pending, undefined}],
+    [a, b] = sanify_chain_t("B", [{a, dead, undefined},
+                                  {b, pending, undefined}],
                             [a, b], [b, a], 0, Servers),
 
     %% Rebalance stopped after new chain set in map but topology not updated.
-    [a, c] = sanify_chain_t("B", [{a, 0, active, [[a,c], [a,b]]},
-                                  {b, 0, replica, undefined}],
+    [a, c] = sanify_chain_t("B", [{a, active, [[a,c], [a,b]]},
+                                  {b, replica, undefined}],
                             [a, b], [], 0, Servers),
 
     %% lets test more usual case too
-    [c, d] = sanify_chain_t("B", [{a, 0, dead, undefined},
-                                  {b, 0, replica, undefined},
-                                  {c, 0, active, undefined},
-                                  {d, 0, replica, undefined}],
+    [c, d] = sanify_chain_t("B", [{a, dead, undefined},
+                                  {b, replica, undefined},
+                                  {c, active, undefined},
+                                  {d, replica, undefined}],
                             [a, b], [c, d], 0, Servers),
     %% but without FF map we're (too) conservative (should be fixable
     %% someday)
-    [c, undefined] = sanify_chain_t("B", [{a, 0, dead, undefined},
-                                          {b, 0, replica, undefined},
-                                          {c, 0, active, undefined},
-                                          {d, 0, replica, undefined}],
+    [c, undefined] = sanify_chain_t("B", [{a, dead, undefined},
+                                          {b, replica, undefined},
+                                          {c, active, undefined},
+                                          {d, replica, undefined}],
                                     [a, b], [], 0, Servers).
 
 enumerate_chains_test() ->
@@ -659,33 +660,33 @@ enumerate_chains_test() ->
 
 sanify_addition_of_replicas_test() ->
     Servers = [a, b, c, d],
-    [a, b] = sanify_chain_t("B", [{a, 0, active, undefined},
-                                  {b, 0, replica, undefined}],
+    [a, b] = sanify_chain_t("B", [{a, active, undefined},
+                                  {b, replica, undefined}],
                             [a, b], [a, b, c], 0, Servers),
-    [a, b] = sanify_chain_t("B", [{a, 0, active, undefined},
-                                  {b, 0, replica, undefined},
-                                  {c, 0, replica, undefined}],
+    [a, b] = sanify_chain_t("B", [{a, active, undefined},
+                                  {b, replica, undefined},
+                                  {c, replica, undefined}],
                             [a, b], [a, b, c], 0, Servers),
 
     %% replica addition with possible move.
-    [a, b] = sanify_chain_t("B", [{a, 0, dead, undefined},
-                                  {b, 0, replica, undefined},
-                                  {c, 0, pending, undefined}],
+    [a, b] = sanify_chain_t("B", [{a, dead, undefined},
+                                  {b, replica, undefined},
+                                  {c, pending, undefined}],
                             [a, b], [c, a, b], 0, Servers),
-    [c, d, a] = sanify_chain_t("B", [{a, 0, dead, undefined},
-                                     {b, 0, replica, undefined},
-                                     {c, 0, active, undefined},
-                                     {d, 0, replica, undefined}],
+    [c, d, a] = sanify_chain_t("B", [{a, dead, undefined},
+                                     {b, replica, undefined},
+                                     {c, active, undefined},
+                                     {d, replica, undefined}],
                                [a, b], [c, d, a], 0, Servers),
-    [c, d] = sanify_chain_t("B", [{a, 0, dead, undefined},
-                                  {b, 0, replica, undefined},
-                                  {c, 0, active, [[c, d]]},
-                                  {d, 0, replica, undefined}],
+    [c, d] = sanify_chain_t("B", [{a, dead, undefined},
+                                  {b, replica, undefined},
+                                  {c, active, [[c, d]]},
+                                  {d, replica, undefined}],
                             [a, b], [c, d, a], 0, Servers),
-    [c, d, a] = sanify_chain_t("B", [{a, 0, replica, undefined},
-                                     {b, 0, replica, undefined},
-                                     {c, 0, active, undefined},
-                                     {d, 0, replica, undefined}],
+    [c, d, a] = sanify_chain_t("B", [{a, replica, undefined},
+                                     {b, replica, undefined},
+                                     {c, active, undefined},
+                                     {d, replica, undefined}],
                                [a, b], [c, d, a], 0, Servers).
 
 -endif.

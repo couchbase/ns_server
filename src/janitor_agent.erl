@@ -210,14 +210,12 @@ check_bucket_ready(Bucket, Nodes, Timeout) ->
     end.
 
 convert_call_result(Node, {VBucket, State}) ->
-    {Node, VBucket, State, []};
+    {VBucket, {Node, State, []}};
 convert_call_result(Node, {VBucket, State, ExtraValues}) ->
-    {Node, VBucket, State, ExtraValues}.
+    {VBucket, {Node, State, ExtraValues}}.
 
 -spec query_vbuckets(bucket_name(), [node()] | [{node(), [vbucket_id()]}],
-                     list(), list()) ->
-                            {[{node(), vbucket_id(), vbucket_state(), list()}],
-                             [node()]}.
+                     list(), list()) -> {dict:dict(), [node()]}.
 query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
     Timeout = proplists:get_value(timeout, Options,
                                   ?WAIT_FOR_MEMCACHED_TIMEOUT),
@@ -239,8 +237,10 @@ query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
 
     {NodeRVs, Failures} =
         do_query_vbuckets(Bucket, NodeCalls, Timeout, WaitForWarmup),
-    {[convert_call_result(Node, ResultTuple)
-      || {Node, {ok, Tuples}} <- NodeRVs, ResultTuple <- Tuples],
+    ConvertedResults =
+        [convert_call_result(Node, ResultTuple)
+         || {Node, {ok, Tuples}} <- NodeRVs, ResultTuple <- Tuples],
+    {dict:from_list(misc:groupby_map(fun functools:id/1, ConvertedResults)),
      failures_to_zombies(Failures)}.
 
 %% TODO: consider supporting partial janitoring
