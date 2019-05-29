@@ -36,6 +36,7 @@
     };
 
     var queryDnError = "LDAP DN should be supplied";
+    var usersAttrsError = "The field can't be empty";
 
     return mnUserRolesService;
 
@@ -66,40 +67,61 @@
       return !!(data.groups_query);
     }
 
-    function ldapConnectivityValidate(data, isAnon) {
-      if (!isAnonOrQueryDn(data, isAnon)) {
+    function validateGroupUserAttrs(formData) {
+      return formData.queryForGroups === "users_attrs" &&
+        !formData.group.groups_query.attributes;
+    }
+
+    function ldapConnectivityValidate(data, formData) {
+      if (!isAnonOrQueryDn(data, formData.isAnon)) {
         return $q.reject({query_dn: queryDnError});
       }
       return $http.post("/settings/ldap/validate/connectivity", data);
     }
 
-    function ldapAuthenticationValidate(data, isAnon) {
-      if (!isAnonOrQueryDn(data, isAnon) && validateLDAPQuery(data)) {
+    function ldapAuthenticationValidate(data, formData) {
+      if (!isAnonOrQueryDn(data, formData.isAnon) && validateLDAPQuery(data)) {
         return $q.reject({query_dn: queryDnError});
       }
       return $http.post("/settings/ldap/validate/authentication", data);
     }
 
-    function ldapGroupsQueryValidate(data, formData, isAnon) {
-      if (!isAnonOrQueryDn(data, isAnon) && validateGroupQuery(data)) {
-        return $q.reject({query_dn: queryDnError});
+    function ldapGroupsQueryValidate(data, formData) {
+      var errors = {};
+      if (!isAnonOrQueryDn(data, formData.isAnon) && validateGroupQuery(data)) {
+        errors.query_dn = queryDnError;
       }
-      return $http.post("/settings/ldap/validate/groups_query", data);
+      if (validateGroupUserAttrs(formData)) {
+        errors.groups_query = usersAttrsError;
+      }
+      if (Object.keys(errors).length) {
+        return $q.reject(errors);
+      } else {
+        return $http.post("/settings/ldap/validate/groups_query", data);
+      }
     }
 
-    function postLdapSettings(data, isAnon) {
+    function postLdapSettings(data, formData) {
+      var errors = {};
       var isGroups = data.authorization_enabled;
       var isUser = data.authentication_enabled;
-      if (!isAnonOrQueryDn(data, isAnon) && ((!isUser && !isGroups) ||
-                                             (validateLDAPQuery(data) && isUser) ||
-                                             (validateGroupQuery(data) && isGroups))) {
-        return $q.reject({query_dn: queryDnError});
+      if (!isAnonOrQueryDn(data, formData.isAnon) && ((!isUser && !isGroups) ||
+                                                      (validateLDAPQuery(data) && isUser) ||
+                                                      (validateGroupQuery(data) && isGroups))) {
+        errors.query_dn = queryDnError;
       }
-      return $http({
-        method: "POST",
-        url: "/settings/ldap",
-        data: data
-      });
+      if (isGroups && validateGroupUserAttrs(formData)) {
+        errors.groups_query = usersAttrsError;
+      }
+      if (Object.keys(errors).length) {
+        return $q.reject(errors);
+      } else {
+        return $http({
+          method: "POST",
+          url: "/settings/ldap",
+          data: data
+        });
+      }
     }
 
     function putUserProfile(data) {

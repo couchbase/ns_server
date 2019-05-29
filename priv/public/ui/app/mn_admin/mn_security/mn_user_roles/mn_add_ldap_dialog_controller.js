@@ -48,6 +48,7 @@
     vm.checkAuthentication = checkAuthentication;
     vm.checkGroupsQuery = checkGroupsQuery;
     vm.clearLdapCache = clearLdapCache;
+    vm.removeGroupsQueryErrors = removeGroupsQueryErrors;
     activate();
 
     function activate() {
@@ -237,6 +238,12 @@
       };
     }
 
+    function removeGroupsQueryErrors() {
+      if (vm.errors) {
+        delete vm.errors.groups_query;
+      }
+    }
+
     function removeErrors() {
       delete vm.errors;
       delete vm.connectSuccessResult;
@@ -248,7 +255,7 @@
       removeErrors();
       mnPromiseHelper(
         vm,
-        mnUserRolesService.ldapConnectivityValidate(getConnectivitySettings(), vm.config.isAnon))
+        mnUserRolesService.ldapConnectivityValidate(getConnectivitySettings(), vm.config))
         .applyToScope("connectSuccessResult")
         .catchErrors(maybeExtractResultFromError("connectSuccessResult"));
     }
@@ -259,7 +266,7 @@
                                    getAuthenticationSettings(),
                                    vm.config.cred);
       mnPromiseHelper(vm,
-                      mnUserRolesService.ldapAuthenticationValidate(settings, vm.config.isAnon))
+                      mnUserRolesService.ldapAuthenticationValidate(settings, vm.config))
         .applyToScope("authenticationSuccessResult")
         .catchErrors(maybeExtractResultFromError("authenticationSuccessResult"));
     }
@@ -271,7 +278,7 @@
                                    getAuthenticationSettings(),
                                    getQueryForGroupsSettings());
       mnPromiseHelper(vm,
-                      mnUserRolesService.ldapGroupsQueryValidate(settings, vm.config.isAnon))
+                      mnUserRolesService.ldapGroupsQueryValidate(settings, vm.config))
         .applyToScope("queryForGroupsSuccessResult")
         .catchErrors(maybeExtractResultFromError("queryForGroupsSuccessResult"));
     }
@@ -284,7 +291,7 @@
                                  vm.config.advanced);
 
       mnPromiseHelper(vm,
-                      mnUserRolesService.postLdapSettings(config, vm.config.isAnon),
+                      mnUserRolesService.postLdapSettings(config, vm.config),
                       $uibModalInstance)
         .showGlobalSpinner()
         .removeErrors()

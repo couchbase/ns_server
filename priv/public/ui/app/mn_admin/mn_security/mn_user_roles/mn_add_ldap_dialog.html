@@ -376,6 +376,7 @@
                   <input
                      type="radio"
                      id="for-query-groups-attrs"
+                     ng-change="addLdapDialogCtl.removeGroupsQueryErrors()"
                      ng-model="addLdapDialogCtl.config.queryForGroups"
                      name="queryForGroups"
                      value="users_attrs">
@@ -383,6 +384,7 @@
                   <input
                      type="radio"
                      id="for-query-groups-builder"
+                     ng-change="addLdapDialogCtl.removeGroupsQueryErrors()"
                      ng-model="addLdapDialogCtl.config.queryForGroups"
                      name="queryForGroups"
                      value="query">
