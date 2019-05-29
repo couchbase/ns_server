@@ -698,12 +698,14 @@ rebalance_body(KeepNodes,
                EjectNodesAll,
                FailedNodesAll,
                DeltaNodes, DeltaRecoveryBucketNames) ->
+    LiveNodes = KeepNodes ++ EjectNodesAll,
+    LiveKVNodes = ns_cluster_membership:service_nodes(LiveNodes, kv),
     KVDeltaNodes = ns_cluster_membership:service_nodes(DeltaNodes, kv),
+
+    prepare_rebalance(LiveNodes),
 
     ok = drop_old_2i_indexes(KeepNodes),
 
-    LiveKVNodes = ns_cluster_membership:service_nodes(KeepNodes ++ EjectNodesAll,
-                                                      kv),
     master_activity_events:note_rebalance_stage_started(kv, LiveKVNodes),
     %% wait till all bucket shutdowns are done on nodes we're
     %% adding (or maybe adding).
@@ -756,6 +758,13 @@ rebalance_body(KeepNodes,
     rebalance_services(KeepNodes, EjectNodesAll),
 
     ok = leader_activities:deactivate_quorum_nodes(EjectNodesAll),
+
+    %% Note that we "unprepare" rebalance only if it terminates normally. If
+    %% it's interrupted or fails, that's likely because some of the nodes are
+    %% unhealthy. Specifically, in the case of autofailover interrupting
+    %% rebalance we don't want to get stuck trying to reach the node that
+    %% needs to be auto failed over.
+    unprepare_rebalance(LiveNodes),
 
     %% don't eject ourselves at all here; this will be handled by
     %% ns_orchestrator
@@ -1221,6 +1230,15 @@ build_delta_recovery_buckets_loop(MappedConfigs, DeltaRecoveryBuckets, Acc) ->
 apply_delta_recovery_buckets([], _DeltaNodes, _CurrentBuckets) ->
     ok;
 apply_delta_recovery_buckets(DeltaRecoveryBuckets, DeltaNodes, CurrentBuckets) ->
+    Buckets = [Bucket || {Bucket, _, _, _} <- DeltaRecoveryBuckets],
+    prepare_delta_recovery(DeltaNodes, Buckets),
+
+    lists:foreach(
+      fun ({Bucket, BucketConfig, _, FailoverVBuckets}) ->
+              prepare_delta_recovery_bucket(Bucket,
+                                            BucketConfig, FailoverVBuckets)
+      end, DeltaRecoveryBuckets),
+
     NewBuckets = misc:update_proplist(
                    CurrentBuckets,
                    [{Bucket, BucketConfig} ||
@@ -1238,6 +1256,8 @@ apply_delta_recovery_buckets(DeltaRecoveryBuckets, DeltaNodes, CurrentBuckets) -
         {error, SyncFailedNodes} ->
             exit({delta_recovery_config_synchronization_failed, SyncFailedNodes})
     end,
+
+    complete_delta_recovery(DeltaNodes),
 
     ok = check_test_condition(apply_delta_recovery),
     lists:foreach(
@@ -1710,3 +1730,176 @@ build_delta_recovery_buckets_loop_test() ->
     ?assertEqual({ok, [{"b1", Conf1, {map, opts}}]},
                  build_delta_recovery_buckets_loop([hd(MappedConfigs)], All, [])).
 -endif.
+
+prepare_rebalance(Nodes) ->
+    case cluster_compat_mode:is_cluster_madhatter() of
+        true ->
+            do_prepare_rebalance(Nodes);
+        false ->
+            ok
+    end.
+
+do_prepare_rebalance(Nodes) ->
+    case rebalance_agent:prepare_rebalance(Nodes, self()) of
+        ok ->
+            ok;
+        Error ->
+            exit({prepare_rebalance_failed, Error})
+    end.
+
+unprepare_rebalance(Nodes) ->
+    case cluster_compat_mode:is_cluster_madhatter() of
+        true ->
+            do_unprepare_rebalance(Nodes);
+        false ->
+            ok
+    end.
+
+do_unprepare_rebalance(Nodes) ->
+    case rebalance_agent:unprepare_rebalance(Nodes, self()) of
+        ok ->
+            ok;
+        Error ->
+            ?log_error("Failed to reach rebalance_agent on "
+                       "some nodes to cleanup after reblance: ~p",
+                       [Error])
+    end.
+
+prepare_delta_recovery(Nodes, Buckets) ->
+    case cluster_compat_mode:is_cluster_madhatter() of
+        true ->
+            do_prepare_delta_recovery(Nodes, Buckets);
+        false ->
+            ok
+    end.
+
+do_prepare_delta_recovery(Nodes, Buckets) ->
+    case rebalance_agent:prepare_delta_recovery(Nodes, self(), Buckets) of
+        ok ->
+            ok;
+        Errors ->
+            ?log_error("Failed to prepare delta "
+                       "recovery for bucket ~p on some nodes:~n~p",
+                       [Buckets, Errors]),
+            exit({prepare_delta_recovery_failed, Buckets, Errors})
+    end.
+
+prepare_delta_recovery_bucket(Bucket, BucketConfig, FailoverVBuckets) ->
+    case cluster_compat_mode:is_cluster_madhatter() of
+        true ->
+            do_prepare_delta_recovery_bucket(Bucket, BucketConfig,
+                                             FailoverVBuckets);
+        false ->
+            ok
+    end.
+
+do_prepare_delta_recovery_bucket(Bucket, BucketConfig, FailoverVBuckets) ->
+    Map = proplists:get_value(map, BucketConfig, []),
+    VBucketsToRecover =
+        dict:fold(
+          fun (_Node, VBuckets, Acc) ->
+                  sets:union(sets:from_list(VBuckets), Acc)
+          end, sets:new(), FailoverVBuckets),
+
+    ?log_debug("Going to get failover logs for delta recovery.~n"
+               "Bucket: ~p~n"
+               "VBuckets: ~p",
+               [Bucket, sets:to_list(VBucketsToRecover)]),
+    FailoverLogs = get_active_failover_logs(Bucket, Map, VBucketsToRecover),
+    ?log_debug("Got the following failover logs:~n~p", [FailoverLogs]),
+
+    FailoverVBucketsList = dict:to_list(FailoverVBuckets),
+    ?log_debug("Going to prepare bucket ~p on some nodes for delta recovery.~n"
+               "Nodes: ~p",
+               [Bucket, FailoverVBucketsList]),
+    case rebalance_agent:prepare_delta_recovery_bucket(
+           self(), Bucket, FailoverVBucketsList, FailoverLogs) of
+        ok ->
+            Nodes = dict:fetch_keys(FailoverVBuckets),
+            ?log_debug("Prepared bucket ~p for delta "
+                       "recovery on ~p successfully.", [Bucket, Nodes]);
+        Errors ->
+            ?log_error("Failed to prepare bucket ~p for delta recovery "
+                       "on some nodes:~n~p", [Bucket, Errors]),
+            exit({prepare_delta_recovery_failed, Bucket, Errors})
+    end.
+
+get_active_failover_logs(Bucket, Map, VBucketsSet) ->
+    NodeVBuckets0   = find_active_nodes_of_vbuckets(Map, VBucketsSet),
+    MissingVBuckets = maps:get(undefined, NodeVBuckets0, []),
+
+    NodeVBuckets = maps:to_list(maps:remove(undefined, NodeVBuckets0)),
+    case janitor_agent:get_failover_logs(Bucket, NodeVBuckets) of
+        {ok, FailoverLogs} ->
+            Result = maps:from_list([{V, missing} || V <- MissingVBuckets]),
+            lists:foldl(
+              fun ({_Node, NodeFailoverLogs}, Acc) ->
+                      maps:merge(Acc, maps:from_list(NodeFailoverLogs))
+              end, Result, FailoverLogs);
+        Errors ->
+            ?log_error("Failed to get failover logs "
+                       "from some nodes for delta recovery.~n"
+                       "Bucket: ~p~n"
+                       "Requests: ~p~n"
+                       "Errors: ~p",
+                       [Bucket, NodeVBuckets, Errors]),
+            exit({get_failover_logs_failed, Bucket, NodeVBuckets, Errors})
+    end.
+
+find_active_nodes_of_vbuckets(Map, VBucketsSet) ->
+    lists:foldl(
+      fun ({VBucket, [Active|_]}, Acc) ->
+              case sets:is_element(VBucket, VBucketsSet) of
+                  true ->
+                      maps:update_with(Active, [VBucket | _], [VBucket], Acc);
+                  false ->
+                      Acc
+              end
+      end, #{}, misc:enumerate(Map, 0)).
+
+-ifdef(TEST).
+find_active_nodes_of_vbuckets_test() ->
+    Map = [[a, b],
+           [b, a],
+           [a, b],
+           [undefined, undefined]],
+
+    SortMap = ?cut(maps:map(?cut(lists:sort(_2)), _)),
+
+    ?assertEqual(#{ a => [0, 2],
+                    b => [1],
+                    undefined => [3] },
+                 SortMap(find_active_nodes_of_vbuckets(
+                           Map, sets:from_list([0, 1, 2, 3])))),
+
+    ?assertEqual(#{ a => [0],
+                    b => [1],
+                    undefined => [3] },
+                 SortMap(find_active_nodes_of_vbuckets(
+                           Map, sets:from_list([0, 1, 3])))),
+
+
+    ?assertEqual(#{ a => [0, 2] },
+                 SortMap(find_active_nodes_of_vbuckets(
+                           Map, sets:from_list([0, 2])))).
+-endif.
+
+complete_delta_recovery(Nodes) ->
+    case cluster_compat_mode:is_cluster_madhatter() of
+        true ->
+            do_complete_delta_recovery(Nodes);
+        false ->
+            ok
+    end.
+
+do_complete_delta_recovery(Nodes) ->
+    ?log_debug("Going to complete delta "
+               "recovery preparation on nodes ~p", [Nodes]),
+    case rebalance_agent:complete_delta_recovery(Nodes, self()) of
+        ok ->
+            ?log_debug("Delta recovery preparation completed.");
+        Errors ->
+            ?log_error("Failed to complete delta recovery "
+                       "preparation on some nodes:~n~p", [Errors]),
+            exit({complete_delta_recovery_failed, Errors})
+    end.
