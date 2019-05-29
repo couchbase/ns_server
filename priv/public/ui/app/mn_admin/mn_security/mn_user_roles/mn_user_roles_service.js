@@ -94,6 +94,9 @@
       if (validateGroupUserAttrs(formData)) {
         errors.groups_query = usersAttrsError;
       }
+      if (!data.groups_query_user) {
+        errors.groups_query_user = "The filed is mandatory";
+      }
       if (Object.keys(errors).length) {
         return $q.reject(errors);
       } else {
