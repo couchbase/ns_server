@@ -349,7 +349,10 @@
                    class="wb-result-status"
                    ng-class="[addLdapDialogCtl.authenticationSuccessResult.data.result]">
                   {{addLdapDialogCtl.authenticationSuccessResult.data.result == "error" ?
-                  addLdapDialogCtl.connectSuccessResult.data.reason || "error" : "User recognized by LDAP server"}}
+                  addLdapDialogCtl.connectSuccessResult.data.reason || "error" : "User recognized by LDAP server:"}}
+                  <p ng-if="addLdapDialogCtl.connectSuccessResult.data.dn">
+                    {{addLdapDialogCtl.connectSuccessResult.data.dn}}
+                  </p>
                 </div>
               </div>
             </div>
