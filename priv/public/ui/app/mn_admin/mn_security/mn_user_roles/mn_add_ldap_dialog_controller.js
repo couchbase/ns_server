@@ -196,6 +196,9 @@
 
     function getConnectivitySettings() {
       var config = Object.assign({}, vm.config.connect);
+      if (config.query_pass == "**********") {
+        delete config.query_pass;
+      }
       if (config.encryption == "false") {
         delete config.server_cert_validation;
       }
