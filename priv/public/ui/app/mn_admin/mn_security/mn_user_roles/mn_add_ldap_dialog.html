@@ -484,8 +484,12 @@
                    ng-show="addLdapDialogCtl.queryForGroupsSuccessResult"
                    class="wb-result-status"
                    ng-class="[addLdapDialogCtl.queryForGroupsSuccessResult.data.result]">
-                  {{addLdapDialogCtl.queryForGroupsSuccessResult.data.result == "error" ? addLdapDialogCtl.queryForGroupsSuccessResult.data.reason || "error" : "Groups discovered successfully"}}
+                  {{addLdapDialogCtl.queryForGroupsSuccessResult.data.result == "error" ? addLdapDialogCtl.queryForGroupsSuccessResult.data.reason || "error" : "Groups discovered successfully:"}}
+                  <p ng-if="addLdapDialogCtl.queryForGroupsSuccessResult.data.groups">
+                    {{addLdapDialogCtl.queryForGroupsSuccessResult.data.groups.join(", ")}}
+                  </p>
                 </div>
+
               </div>
             </div>
           </span>
