@@ -634,9 +634,11 @@ validate_config_file(CfgFile) ->
         ([E || {_, _} = E <- Cfg] == Cfg) orelse throw(not_proplist),
         Unknown = proplists:get_keys(Cfg) -- proplists:get_keys(defaults()),
         (Unknown == []) orelse throw({unknown_props, Unknown}),
-        is_valid_protocol(conf(preferred_external_proto, Cfg))
+        ExtPreferred = conf(preferred_external_proto, Cfg),
+        is_valid_protocol(ExtPreferred)
             orelse throw(invalid_preferred_external_proto),
-        is_valid_protocol(conf(preferred_local_proto, Cfg))
+        LocalPreferred = conf(preferred_local_proto, Cfg),
+        is_valid_protocol(LocalPreferred)
             orelse throw(invalid_preferred_local_proto),
         LocalListeners = conf(local_listeners, Cfg),
         ExternalListeners = conf(external_listeners, Cfg),
@@ -647,6 +649,10 @@ validate_config_file(CfgFile) ->
             orelse throw(not_unique_listeners),
         length(lists:usort(ExternalListeners)) == length(ExternalListeners)
             orelse throw(not_unique_listeners),
+        lists:member(ExtPreferred, ExternalListeners ++ LocalListeners)
+            orelse throw({missing_preferred_external_listener, ExtPreferred}),
+        lists:member(LocalPreferred, LocalListeners)
+            orelse throw({missing_preferred_local_listener, LocalPreferred}),
         ok
     catch
         _:E -> {error, E}
@@ -697,6 +703,12 @@ format_error({invalid_cb_dist_config, File, read_error}) ->
     io_lib:format("Can't read cb_dist config file ~s", [File]);
 format_error({invalid_cb_dist_config, File, Reason}) ->
     io_lib:format("Can't read cb_dist config file ~s (~p)", [File, Reason]);
+format_error({missing_preferred_external_listener, Proto}) ->
+    io_lib:format("Missing ~s listener (needed for external communication)",
+                  [proto2str(Proto)]);
+format_error({missing_preferred_local_listener, Proto}) ->
+    io_lib:format("Missing ~s listener (needed for local communication)",
+                  [proto2str(Proto)]);
 format_error(Unknown) ->
     io_lib:format("~p", [Unknown]).
 
