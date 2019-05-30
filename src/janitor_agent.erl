@@ -45,6 +45,8 @@
 
 -export([wait_for_bucket_creation/2,
          query_vbuckets/4,
+         fetch_vbucket_states/2,
+         find_vbucket_state/2,
          check_bucket_ready/3,
          apply_new_bucket_config_with_timeout/6,
          mark_bucket_warmed/2,
@@ -213,6 +215,26 @@ convert_call_result(Node, {VBucket, State}) ->
     {VBucket, {Node, State, []}};
 convert_call_result(Node, {VBucket, State, ExtraValues}) ->
     {VBucket, {Node, State, ExtraValues}}.
+
+-type nodes_states() :: [{node(), vbucket_state(), list()}].
+
+-spec fetch_vbucket_states(vbucket_id(), dict:dict()) -> nodes_states().
+fetch_vbucket_states(VBucket, States) ->
+    case dict:find(VBucket, States) of
+        {ok, Infos} ->
+            Infos;
+        error ->
+            []
+    end.
+
+-spec find_vbucket_state(node(), nodes_states()) -> vbucket_state() | missing.
+find_vbucket_state(Node, NodeStates) ->
+    case lists:keyfind(Node, 1, NodeStates) of
+        {Node, State, _} ->
+            State;
+        false ->
+            missing
+    end.
 
 -spec query_vbuckets(bucket_name(), [node()] | [{node(), [vbucket_id()]}],
                      list(), list()) -> {dict:dict(), [node()]}.

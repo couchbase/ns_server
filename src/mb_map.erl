@@ -38,7 +38,8 @@
          run_rebalance_counts_experiment/0,
          find_matching_past_maps/4,
          find_matching_past_maps/5,
-         is_trivially_compatible_past_map/5]).
+         is_trivially_compatible_past_map/5,
+         enumerate_chains/2]).
 
 
 -export([counts/1]). % for testing
@@ -1047,6 +1048,11 @@ is_balanced_sort_of_strongly(Map, NumReplicas, Nodes, Options) ->
             end
     end.
 
+enumerate_chains(Map, undefined) ->
+    EffectiveFFMap = [[] || _ <- Map],
+    enumerate_chains(Map, EffectiveFFMap);
+enumerate_chains(Map, FastForwardMap) ->
+    lists:zip3(lists:seq(0, length(Map) - 1), Map, FastForwardMap).
 
 -ifdef(TEST).
 balance_test_() ->
@@ -1363,4 +1369,14 @@ find_matching_past_maps_test() ->
                                           {c, tag1},
                                           {d, tag2}]}],
                                  History2, [trivial]).
+
+enumerate_chains_test() ->
+    Map = [[a, b, c], [b, c, a]],
+    FFMap = [[c, b, a], [c, a, b]],
+    EnumeratedChains1 = enumerate_chains(Map, FFMap),
+    [{0, [a, b, c], [c, b, a]}, {1, [b, c, a], [c, a, b]}] = EnumeratedChains1,
+
+    EnumeratedChains2 = enumerate_chains(Map, undefined),
+    [{0, [a, b, c], []}, {1, [b, c, a], []}] = EnumeratedChains2.
+
 -endif.

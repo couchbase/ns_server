@@ -250,9 +250,9 @@ find_unsafe_nodes_with_vbucket_states(BucketConfig, States, true) ->
 %% when the replication streams are establised the replicas will also lose their
 %% data.
 data_loss_possible(VBucket, Chain, States) ->
-    NodeStates = fetch_vbucket_states(VBucket, States),
+    NodeStates = janitor_agent:fetch_vbucket_states(VBucket, States),
     Master = hd(Chain),
-    case find_node_state(Master, NodeStates) of
+    case janitor_agent:find_vbucket_state(Master, NodeStates) of
         missing ->
             case lists:keymember(active, 2, NodeStates) of
                 false ->
@@ -338,18 +338,12 @@ compute_servers_list_cleanup(BucketConfig, FullConfig) ->
             compute_servers_list_cleanup(BucketConfig1, FullConfig)
     end.
 
-enumerate_chains(Map, undefined) ->
-    EffectiveFFMap = [[] || _ <- Map],
-    enumerate_chains(Map, EffectiveFFMap);
-enumerate_chains(Map, FastForwardMap) ->
-    lists:zip3(lists:seq(0, length(Map) - 1), Map, FastForwardMap).
-
 compute_vbucket_map_fixup(Bucket, BucketConfig, States) ->
     Map = proplists:get_value(map, BucketConfig, []),
     true = ([] =/= Map),
     FFMap = proplists:get_value(fastForwardMap, BucketConfig),
 
-    EnumeratedChains = enumerate_chains(Map, FFMap),
+    EnumeratedChains = mb_map:enumerate_chains(Map, FFMap),
     MapUpdates = [sanify_chain(Bucket, States, Chain, FutureChain, VBucket)
                   || {VBucket, Chain, FutureChain} <- EnumeratedChains],
 
@@ -382,22 +376,6 @@ compute_vbucket_map_fixup(Bucket, BucketConfig, States) ->
                       end,
     {NewBucketConfig, IgnoredVBuckets}.
 
-fetch_vbucket_states(VBucket, States) ->
-    case dict:find(VBucket, States) of
-        {ok, Infos} ->
-            Infos;
-        error ->
-            []
-    end.
-
-find_node_state(Node, NodeStates) ->
-    case lists:keyfind(Node, 1, NodeStates) of
-        {Node, State, _} ->
-            State;
-        false ->
-            missing
-    end.
-
 %% this will decide what vbucket map chain is right for this vbucket
 sanify_chain(_Bucket, _States,
              [CurrentMaster | _] = CurrentChain,
@@ -407,13 +385,14 @@ sanify_chain(_Bucket, _States,
 sanify_chain(Bucket, States,
              [CurrentMaster | _] = CurrentChain,
              FutureChain, VBucket) ->
-    NodeStates = fetch_vbucket_states(VBucket, States),
+    NodeStates = janitor_agent:fetch_vbucket_states(VBucket, States),
     Actives = [N || {N, active, _} <- NodeStates],
 
     case Actives of
         %% No Actives.
         [] ->
-            CurrentMasterState = find_node_state(CurrentMaster, NodeStates),
+            CurrentMasterState =
+                janitor_agent:find_vbucket_state(CurrentMaster, NodeStates),
             ?log_info("Setting vbucket ~p in ~p on ~p from ~p to active.",
                       [VBucket, Bucket, CurrentMaster, CurrentMasterState]),
             %% Let's activate according to vbucket map.
@@ -481,7 +460,8 @@ sanify_chain_one_active(Bucket, VBucket, ActiveNode, States,
                         fun (undefined) ->
                                 true;
                             (N) ->
-                                case find_node_state(N, States) of
+                                case janitor_agent:find_vbucket_state(N,
+                                                                      States) of
                                     replica ->
                                         true;
                                     dead when N =:= CurrentMaster ->
@@ -571,15 +551,6 @@ sanify_doesnt_lose_replicas_on_stopped_rebalance_test() ->
     %% someday)
     [c, undefined] = sanify_chain_t([{a, dead}, {b, replica}, {c, active},
                                      {d, replica}], [a, b], []).
-
-enumerate_chains_test() ->
-    Map = [[a, b, c], [b, c, a]],
-    FFMap = [[c, b, a], [c, a, b]],
-    EnumeratedChains1 = enumerate_chains(Map, FFMap),
-    [{0, [a, b, c], [c, b, a]}, {1, [b, c, a], [c, a, b]}] = EnumeratedChains1,
-
-    EnumeratedChains2 = enumerate_chains(Map, undefined),
-    [{0, [a, b, c], []}, {1, [b, c, a], []}] = EnumeratedChains2.
 
 sanify_addition_of_replicas_test() ->
     [a, b] = sanify_chain_t([{a, active}, {b, replica}], [a, b], [a, b, c]),
