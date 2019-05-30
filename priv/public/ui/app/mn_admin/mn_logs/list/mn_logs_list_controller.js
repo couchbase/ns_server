@@ -28,7 +28,7 @@
             node: row.node,
             code: moduleCodeFilter(row.code),
             time: $filter('date')(row.serverTime, 'mediumTime', 'UTC'),
-            date: $filter('date')(row.serverTime, 'EEE MMM d, yyyy', 'UTC'),
+            date: $filter('date')(row.serverTime, 'd MMM, y', 'UTC'),
             tstamp: row.tstamp
           };
         });
