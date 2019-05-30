@@ -193,12 +193,18 @@
            ng-show="logsCollectInfoCtl.errors.ticket">{{logsCollectInfoCtl.errors.ticket}}</div>
       </div>
     </div>
-    <div class="margin-top-1">
+
+    <div class="row flex-left margin-top-1">
       <button
          type="submit"
-         ng-disabled="logsCollectInfoCtl.collect.from === '' && !('some' | lodash:('values' | lodash:logsCollectInfoCtl.collect.nodes))">Start Collection
+         ng-disabled="logsCollectInfoCtl.collect.from === '' && !('some' | lodash:('values' | lodash:logsCollectInfoCtl.collect.nodes))"
+         class="margin-right-1">
+        Start Collection
       </button>
-      <a ng-click="logsCollectInfoCtl.showClusterInfoDialog()">Get Cluster summary lnfo</a>
+      <a class="text-medium" ng-click="logsCollectInfoCtl.showClusterInfoDialog()">
+        Get Summary
+      </a>
     </div>
+
   </form>
 </div>

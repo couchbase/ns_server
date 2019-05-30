@@ -205,7 +205,7 @@
     </a>
     <span uib-dropdown>
       <a uib-dropdown-toggle>
-        help
+        help <span class="has-menu">&nbsp;</span>
       </a>
       <div uib-dropdown-menu class="dropdown-menu-select-like">
         <a ng-href="https://developer.couchbase.com/documentation/server/{{::(adminCtl.implementationVersion | parseVersion)[0].split('.').splice(0,2).join('.')}}/introduction/whats-new.html" target="_blank">
@@ -217,10 +217,14 @@
           <desc>For Enterprise Edition subscription customers</desc>
         </a>
         <a ng-click="adminCtl.showClusterInfoDialog()">
-          Get Cluster Summary lnfo<br>
+          Get Cluster Summary Info<br>
           <desc>For complete info, use
-            <span ng-click="$event.stopPropagation()"
-               ui-sref="app.admin.logs.collectInfo.form">Collect lnfo</span>
+            <span
+               ng-click="$event.stopPropagation()"
+               ui-sref="app.admin.logs.collectInfo.form"
+               class="blue-1">
+              Collect Info
+            </span>
           </desc>
         </a>
       </div>
