@@ -3,7 +3,10 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, apply_net_config/1, apply_ext_dist_protocols/1]).
+-export([start_link/0,
+         apply_net_config/1,
+         apply_ext_dist_protocols/1,
+         change_external_listeners/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -26,6 +29,9 @@ apply_net_config(Config) ->
 
 apply_ext_dist_protocols(Protos) ->
     gen_server:call(?MODULE, {apply_ext_dist_protocols, Protos}, infinity).
+
+change_external_listeners(Action, Config) ->
+    gen_server:call(?MODULE, {change_listeners, Action, Config}, infinity).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -61,6 +67,18 @@ handle_call({apply_net_config, Config}, _From, State) ->
 
 handle_call({apply_ext_dist_protocols, Protos}, _From, State) ->
     CurProtos = cb_dist:external_listeners(),
+    handle_with_marker(apply_ext_dist_protocols, CurProtos, Protos, State);
+
+handle_call({change_listeners, Action, Config}, _From, State) ->
+    CurProtos = cb_dist:external_listeners(),
+    AFamily = proplists:get_value(afamily, Config, cb_dist:address_family()),
+    NEncrypt = proplists:get_value(nodeEncryption, Config,
+                                   cb_dist:external_encryption()),
+    Proto = cb_dist:netsettings2proto(AFamily, NEncrypt),
+    Protos = case Action of
+                 enable -> lists:usort([Proto | CurProtos]);
+                 disable -> CurProtos -- [Proto]
+             end,
     handle_with_marker(apply_ext_dist_protocols, CurProtos, Protos, State);
 
 handle_call(Request, _From, State) ->

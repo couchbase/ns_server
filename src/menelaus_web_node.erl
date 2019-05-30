@@ -44,7 +44,7 @@
          apply_node_settings/1,
          alternate_addresses_json/3,
          handle_setup_net_config/1,
-         handle_dist_protocols/1]).
+         handle_change_external_listeners/2]).
 
 -import(menelaus_util,
         [local_addr/1,
@@ -823,19 +823,23 @@ verify_net_config_allowed(State) ->
             State
     end.
 
-net_config_validators() ->
+net_config_validators(SafeAction) ->
     [validator:has_params(_),
      validator:one_of(afamily, ["ipv4", "ipv6"], _),
      validator:validate(fun ("ipv4") -> {value, inet};
                             ("ipv6") -> {value, inet6}
                         end, afamily, _),
-     validator:validate(fun check_for_raw_addr/1, afamily, _),
      validator:one_of(nodeEncryption, ["on", "off"], _),
      validator:validate(fun ("on") -> {value, true};
                             ("off") -> {value, false}
                         end, nodeEncryption, _),
-     verify_net_config_allowed(_),
-     validator:unsupported(_)].
+     validator:unsupported(_)] ++
+     case SafeAction of
+         true -> [];
+         false ->
+             [verify_net_config_allowed(_),
+              validator:validate(fun check_for_raw_addr/1, afamily, _)]
+     end.
 
 handle_setup_net_config(Req) ->
     menelaus_util:assert_is_madhatter(),
@@ -847,51 +851,17 @@ handle_setup_net_config(Req) ->
                   {error, Msg} -> menelaus_util:reply_global_error(Req, Msg)
               end,
               erlang:exit(normal)
-      end, Req, form, net_config_validators()).
+      end, Req, form, net_config_validators(false)).
 
-handle_dist_protocols(Req) ->
+handle_change_external_listeners(Action, Req) ->
     menelaus_util:assert_is_madhatter(),
     validator:handle(
       fun (Props) ->
-              handle_dist_protocols_validated(Req, Props)
-      end, Req, form, [validator:required(external, _),
-                       validate_ext_protos(external, _),
-                       validator:unsupported(_)]).
-
-handle_dist_protocols_validated(Req, Props) ->
-    Protos = proplists:get_value(external, Props),
-    case netconfig_updater:apply_ext_dist_protocols(Protos) of
-        ok -> menelaus_util:reply(Req, 200);
-        {error, Msg} -> menelaus_util:reply_global_error(Req, Msg)
-    end.
-
-validate_ext_protos(Name, State) ->
-    validator:validate(
-        fun (Value) ->
-                Protos = [string:trim(T) || T <- string:tokens(Value, ",")],
-
-                Allowed =
-                    case cluster_compat_mode:is_enterprise() of
-                        true ->
-                            ["inet_tcp", "inet6_tcp", "inet_tls", "inet6_tls"];
-                        false ->
-                            ["inet_tcp"]
-                    end,
-
-                case lists:all(lists:member(_, Allowed), Protos) of
-                    true ->
-                        Res = [list_to_atom(P ++ "_dist") || P <- Protos],
-                        case lists:member(inet6_tls_dist, Res) andalso
-                             lists:member(inet_tls_dist, Res) of
-                            false -> {value, Res};
-                            true -> {error, "tls over ipv4 and tls over ipv6 "
-                                            "can't be used simultaneously"}
-                        end;
-                    false ->
-                        {error, io_lib:format("invalid protocols list, allowed "
-                                              "protocols are ~p", [Allowed])}
-                end
-        end, Name, State).
+              case netconfig_updater:change_external_listeners(Action, Props) of
+                  ok -> menelaus_util:reply(Req, 200);
+                  {error, Msg} -> menelaus_util:reply_global_error(Req, Msg)
+              end
+      end, Req, form, net_config_validators(Action == disable)).
 
 -ifdef(TEST).
 validate_ix_cbas_path_test() ->

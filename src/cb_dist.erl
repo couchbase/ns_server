@@ -40,7 +40,8 @@
          update_net_settings_in_config/2,
          proto_to_encryption/1,
          format_error/1,
-         proto2str/1]).
+         proto2str/1,
+         netsettings2proto/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -211,18 +212,8 @@ update_listeners_in_config(Protos) ->
     gen_server:call(?MODULE, {update_listeners_in_config, Protos}, infinity).
 
 update_net_settings_in_config(AFamily, CEncryption) ->
-    PreferredExternal =
-        case {AFamily, CEncryption} of
-            {inet, false} -> inet_tcp_dist;
-            {inet, true} -> inet_tls_dist;
-            {inet6, false} -> inet6_tcp_dist;
-            {inet6, true} -> inet6_tls_dist
-        end,
-    PreferredLocal =
-        case AFamily of
-            inet -> inet_tcp_dist;
-            inet6 -> inet6_tcp_dist
-        end,
+    PreferredExternal = netsettings2proto(AFamily, CEncryption),
+    PreferredLocal = netsettings2proto(AFamily, false),
     gen_server:call(
       ?MODULE,
       {update_preferred_protos, PreferredExternal, PreferredLocal},
@@ -716,3 +707,8 @@ proto2str(inet_tcp_dist) -> "TCP-ipv4";
 proto2str(inet_tls_dist) -> "TLS-ipv4";
 proto2str(inet6_tcp_dist) -> "TCP-ipv6";
 proto2str(inet6_tls_dist) -> "TLS-ipv6".
+
+netsettings2proto(inet, false) -> inet_tcp_dist;
+netsettings2proto(inet, true) -> inet_tls_dist;
+netsettings2proto(inet6, false) -> inet6_tcp_dist;
+netsettings2proto(inet6, true) -> inet6_tls_dist.

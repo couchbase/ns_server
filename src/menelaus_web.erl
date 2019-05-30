@@ -521,9 +521,12 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["node", "controller", "setupNetConfig"] ->
                     {{[admin, setup], write},
                      fun menelaus_web_node:handle_setup_net_config/1};
-                ["node", "controller", "distProtocols"] ->
+                ["node", "controller", "enableExternalListener"] ->
                     {{[admin, setup], write},
-                     fun menelaus_web_node:handle_dist_protocols/1};
+                     fun menelaus_web_node:handle_change_external_listeners/2, [enable]};
+                ["node", "controller", "disableExternalListener"] ->
+                    {{[admin, setup], write},
+                     fun menelaus_web_node:handle_change_external_listeners/2, [disable]};
                 ["settings", "web"] ->
                     {{[admin, setup], write}, fun menelaus_web_settings:handle_settings_web_post/1};
                 ["settings", "alerts"] ->
