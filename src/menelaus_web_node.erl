@@ -307,9 +307,14 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
     NEncryption = ns_config:search_node_with_default(WantENode, Config,
                                                      node_encryption,
                                                      false),
-    Listeners = ns_config:search_node_with_default(WantENode, Config,
-                                                   erl_external_dist_protocols,
-                                                   undefined),
+    Listeners = case ns_config:search_node_with_default(WantENode, Config,
+                                                        erl_external_listeners,
+                                                        undefined) of
+                    undefined ->
+                        undefined;
+                    L ->
+                        [{[{afamily, AF}, {nodeEncryption, E}]} || {AF, E} <- L]
+                end,
 
     RV = [{hostname, list_to_binary(HostName)},
           {nodeUUID, NodeUUID},
@@ -321,7 +326,7 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
           {services, ns_cluster_membership:node_services(Config, WantENode)},
           {addressFamily, AFamily},
           {nodeEncryption, NEncryption}
-         ] ++ [{distProtocols, Listeners} || Listeners =/= undefined]
+         ] ++ [{externalListeners, Listeners} || Listeners =/= undefined]
            ++ alternate_addresses_json(WantENode, Config, WantedPorts),
     case WantENode =:= node() of
         true ->
@@ -846,7 +851,7 @@ handle_setup_net_config(Req) ->
     validator:handle(
       fun (Values) ->
               erlang:process_flag(trap_exit, true),
-              case netconfig_updater:apply_net_config(Values) of
+              case netconfig_updater:apply_config(Values) of
                   ok -> menelaus_util:reply(Req, 200);
                   {error, Msg} -> menelaus_util:reply_global_error(Req, Msg)
               end,

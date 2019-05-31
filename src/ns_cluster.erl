@@ -163,34 +163,37 @@ apply_net_config(NodeKVList) ->
                 {ok, AFamily, NEncryption, Protos} ->
                     ?log_info("Applying net config. AFamily: ~p, NEncryption: ~p, "
                               "DistProtos: ~p", [AFamily, NEncryption, Protos]),
-                    case netconfig_updater:apply_ext_dist_protocols(Protos) of
-                        ok ->
-                            Cfg = [{nodeEncryption, NEncryption},
-                                   {afamily, AFamily}],
-                            netconfig_updater:apply_net_config(Cfg);
-                        {error, Msg} -> {error, Msg}
-                    end;
+                    Props = [{externalListeners, Protos},
+                             {afamily, AFamily},
+                             {nodeEncryption, NEncryption}],
+                    netconfig_updater:apply_config(Props);
                 {error, Msg} -> {error, Msg}
             end;
         {error, Msg} -> {error, Msg}
     end.
 
 extract_remote_cluster_net_settings(NodeKVList) ->
-    Protos = case proplists:get_value(<<"distProtocols">>, NodeKVList) of
-                 undefined -> undefined;
-                 Ps -> [binary_to_atom(P, latin1) || P <- Ps]
-             end,
+    Listeners = case proplists:get_value(<<"externalListeners">>, NodeKVList) of
+                    undefined -> undefined;
+                    Pairs ->
+                       lists:map(
+                         fun ({struct, P}) ->
+                                 [{<<"afamily">>, AF},
+                                  {<<"nodeEncryption">>, NE}] = lists:usort(P),
+                                 {binary_to_atom(AF, latin1), NE}
+                         end, Pairs)
+                end,
     NEncryption = proplists:get_value(<<"nodeEncryption">>, NodeKVList,
                                       false),
     case proplists:get_value(<<"addressFamily">>, NodeKVList) of
         undefined ->
             case pre_madhatter_remote_node_address_family(NodeKVList) of
-                {ok, AF} -> {ok, AF, NEncryption, Protos};
+                {ok, AF} -> {ok, AF, NEncryption, Listeners};
                 {error, Msg} -> {error, Msg}
             end;
         AFamilyBin ->
             AFamily = binary_to_atom(AFamilyBin, latin1),
-            {ok, AFamily, NEncryption, Protos}
+            {ok, AFamily, NEncryption, Listeners}
     end.
 
 %% Pre mad-hatter nodes do not include address family info in engageCluster.
@@ -383,7 +386,7 @@ handle_cast(leave, State) ->
                      {node, node(), rest},
                      {node, node(), address_family},
                      {node, node(), node_encryption},
-                     {node, node(), erl_external_dist_protocols}]),
+                     {node, node(), erl_external_listeners}]),
 
 
     %% set_initial here clears vclock on nodes_wanted. Thus making

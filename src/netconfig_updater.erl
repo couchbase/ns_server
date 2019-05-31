@@ -4,8 +4,7 @@
 
 %% API
 -export([start_link/0,
-         apply_net_config/1,
-         apply_ext_dist_protocols/1,
+         apply_config/1,
          change_external_listeners/2]).
 
 %% gen_server callbacks
@@ -24,11 +23,8 @@
 start_link() ->
     proc_lib:start_link(?MODULE, init, [[]]).
 
-apply_net_config(Config) ->
-    gen_server:call(?MODULE, {apply_net_config, Config}, infinity).
-
-apply_ext_dist_protocols(Protos) ->
-    gen_server:call(?MODULE, {apply_ext_dist_protocols, Protos}, infinity).
+apply_config(Config) ->
+    gen_server:call(?MODULE, {apply_config, Config}, infinity).
 
 change_external_listeners(Action, Config) ->
     gen_server:call(?MODULE, {change_listeners, Action, Config}, infinity).
@@ -53,33 +49,36 @@ init([]) ->
     end,
     gen_server:enter_loop(?MODULE, [], #s{}, {local, ServerName}, hibernate).
 
-handle_call({apply_net_config, Config}, _From, State) ->
-    CurAFamily = cb_dist:address_family(),
-    CurNEncrypt = cb_dist:external_encryption(),
-    AFamily = proplists:get_value(afamily, Config, CurAFamily),
-    NEncrypt = proplists:get_value(nodeEncryption, Config, CurNEncrypt),
-    From = {CurAFamily, CurNEncrypt},
-    To = {AFamily, NEncrypt},
+handle_call({apply_config, Config}, _From, State) ->
+    CurConfig = lists:map(
+                  fun ({afamily, _}) ->
+                          {afamily, cb_dist:address_family()};
+                      ({nodeEncryption, _}) ->
+                          {nodeEncryption, cb_dist:external_encryption()};
+                      ({externalListeners, _}) ->
+                          {externalListeners, cb_dist:external_listeners()}
+                  end, Config),
+    Config2 = lists:usort(Config) -- CurConfig,
+    CurConfig2 = lists:usort(CurConfig) -- Config,
+    AFamily = proplists:get_value(afamily, Config2),
     case check_nodename_resolvable(node(), AFamily) of
-        ok -> handle_with_marker(apply_net_config, From, To, State);
-        {error, _} = Error -> {reply, Error, State}
+        ok -> handle_with_marker(apply_config, CurConfig2, Config2, State);
+        {error, _} = Error -> {reply, Error, State, hibernate}
     end;
-
-handle_call({apply_ext_dist_protocols, Protos}, _From, State) ->
-    CurProtos = cb_dist:external_listeners(),
-    handle_with_marker(apply_ext_dist_protocols, CurProtos, Protos, State);
 
 handle_call({change_listeners, Action, Config}, _From, State) ->
     CurProtos = cb_dist:external_listeners(),
     AFamily = proplists:get_value(afamily, Config, cb_dist:address_family()),
     NEncrypt = proplists:get_value(nodeEncryption, Config,
                                    cb_dist:external_encryption()),
-    Proto = cb_dist:netsettings2proto(AFamily, NEncrypt),
+    Proto = {AFamily, NEncrypt},
     Protos = case Action of
                  enable -> lists:usort([Proto | CurProtos]);
                  disable -> CurProtos -- [Proto]
              end,
-    handle_with_marker(apply_ext_dist_protocols, CurProtos, Protos, State);
+    NewConfig = [{externalListeners, Protos}],
+    CurConfig = [{externalListeners, CurProtos}],
+    handle_with_marker(apply_config, CurConfig, NewConfig, State);
 
 handle_call(Request, _From, State) ->
     ?log_error("Unhandled call: ~p", [Request]),
@@ -106,9 +105,9 @@ code_change(_OldVsn, State, _Extra) ->
 handle_with_marker(Command, From, To, State) ->
     case misc:marker_exists(update_marker_path()) of
         false ->
-            MarkerStr = io_lib:format("{~p, ~p, ~p}.", [Command, To, From]),
+            MarkerStr = io_lib:format("{~p, ~p}.", [Command, From]),
             misc:create_marker(update_marker_path(), MarkerStr),
-            case apply_and_delete_marker({Command, From, To}) of
+            case apply_and_delete_marker({Command, To}) of
                 ok -> {reply, ok, State, hibernate};
                 {error, _} = Error -> {stop, Error, Error, State}
             end;
@@ -118,54 +117,69 @@ handle_with_marker(Command, From, To, State) ->
 
 apply_and_delete_marker(Cmd) ->
     Res = case Cmd of
-              {apply_net_config, From, To} ->
-                  apply_net_config_unprotected(From, To);
-              {apply_ext_dist_protocols, _From, To} ->
-                  apply_ext_dist_protocols_unprotected(To)
+              {apply_config, To} ->
+                  apply_config_unprotected(To)
           end,
     (Res =:= ok) andalso misc:remove_marker(update_marker_path()),
     Res.
 
-apply_net_config_unprotected(From, {AFamily, NEncrypt} = To) ->
-    ?log_info("Node is going to apply the following net settings: afamily ~p, "
-              "encryption ~p", [AFamily, NEncrypt]),
-    case update_type(From, To) of
-        empty -> ok;
-        Type ->
-            try
-                update_proto_in_dist_config(AFamily, NEncrypt),
-                case Type of
-                    external_only -> ok;
-                    _ -> change_local_dist_proto(AFamily, false)
-                end,
-                change_ext_dist_proto(AFamily, NEncrypt),
-                ns_config:set({node, node(), address_family},
-                              AFamily),
-                ns_config:set({node, node(), node_encryption},
-                              NEncrypt),
-                ?log_info("Node network settings (afamily: ~p, encryption: ~p)"
-                          " successfully applied", [AFamily, NEncrypt]),
-                ok
-            catch
-                error:Error ->
-                    Msg = iolist_to_binary(format_error(Error)),
-                    ?log_error("~s", [Msg]),
-                    {error, Msg}
-            end
+apply_config_unprotected([]) -> ok;
+apply_config_unprotected(Config) ->
+    ?log_info("Node is going to apply the following settings: ~p", [Config]),
+    try
+        AFamily = proplists:get_value(afamily, Config,
+                                      cb_dist:address_family()),
+        NEncrypt = proplists:get_value(nodeEncryption, Config,
+                                       cb_dist:external_encryption()),
+        ExternalListeners = proplists:get_value(externalListeners, Config,
+                                                cb_dist:external_listeners()),
+        case cb_dist:update_config(Config) of
+            {ok, Listeners} ->
+                verify_listeners_started(Listeners, Config);
+            {error, Reason} ->
+                erlang:throw({update_cb_dist_config_error,
+                              cb_dist:format_error(Reason)})
+        end,
+        case need_local_update(Config) of
+            true -> change_local_dist_proto(AFamily, false);
+            false -> ok
+        end,
+        case need_external_update(Config) of
+            true -> change_ext_dist_proto(AFamily, NEncrypt);
+            false -> ok
+        end,
+        ns_config:set({node, node(), address_family},
+                      AFamily),
+        ns_config:set({node, node(), node_encryption},
+                      NEncrypt),
+        ns_config:set({node, node(), erl_external_listeners},
+                      ExternalListeners),
+        ?log_info("Node network settings (~p) successfully applied", [Config]),
+        ok
+    catch
+        throw:Error ->
+            Msg = iolist_to_binary(format_error(Error)),
+            ?log_error("~s", [Msg]),
+            {error, Msg}
     end.
 
-update_type({FromAFamily, FromCEnc}, {FromAFamily, FromCEnc}) -> empty;
-update_type({FromAFamily, _FromCEnc}, {FromAFamily, _ToCEnc}) -> external_only;
-update_type({_FromAFamily, _FromCEnc}, {_ToAFamily, _ToCEnc}) -> all.
+need_local_update(Config) ->
+    proplists:get_value(afamily, Config) =/= undefined.
 
-update_proto_in_dist_config(AFamily, CEncryption) ->
-    case cb_dist:update_net_settings_in_config(AFamily, CEncryption) of
-        {ok, _} -> ok;
-        {error, Error} ->
-            erlang:error({update_cb_dist_config_error,
-                          cb_dist:format_error(Error)})
+need_external_update(Config) ->
+    (proplists:get_value(afamily, Config) =/= undefined) orelse
+        (proplists:get_value(nodeEncryption, Config) =/= undefined).
+
+verify_listeners_started(Listeners, Config) ->
+    Protos = proplists:get_value(externalListeners, Config),
+    NotStarted = case Protos of
+                     undefined -> [];
+                     _ -> Protos -- Listeners
+                 end,
+    case NotStarted of
+        [] -> ok;
+        L -> erlang:throw({start_listeners_failed, L})
     end.
-
 
 change_local_dist_proto(ExpectedFamily, ExpectedEncryption) ->
     ?log_info("Reconnecting to babysitter and restarting couchdb since local "
@@ -176,7 +190,7 @@ change_local_dist_proto(ExpectedFamily, ExpectedEncryption) ->
     case cb_dist:reload_config(Babysitter) of
         {ok, _} -> ok;
         {error, Error} ->
-            erlang:error({reload_cb_dist_config_error, Babysitter,
+            erlang:throw({reload_cb_dist_config_error, Babysitter,
                           cb_dist:format_error(Error)})
     end,
     ensure_connection_proto(Babysitter,
@@ -189,7 +203,7 @@ change_local_dist_proto(ExpectedFamily, ExpectedEncryption) ->
             check_connection_proto(ns_node_disco:couchdb_node(),
                                    ExpectedFamily, ExpectedEncryption);
         {error, not_running} -> ok;
-        Error2 -> erlang:error({ns_server_restart_error, Error2})
+        Error2 -> erlang:throw({ns_server_restart_error, Error2})
     end.
 
 change_ext_dist_proto(ExpectedFamily, ExpectedEncryption) ->
@@ -202,7 +216,7 @@ change_ext_dist_proto(ExpectedFamily, ExpectedEncryption) ->
     ok.
 
 ensure_connection_proto(Node, _Family, _Encr, Retries) when Retries =< 0 ->
-    erlang:error({exceeded_retries, Node});
+    erlang:throw({exceeded_retries, Node});
 ensure_connection_proto(Node, Family, Encryption, Retries) ->
     erlang:disconnect_node(Node),
     case net_kernel:connect(Node) of
@@ -212,7 +226,7 @@ ensure_connection_proto(Node, Family, Encryption, Retries) ->
             try check_connection_proto(Node, Family, Encryption) of
                 ok -> ok
             catch
-                error:Reason ->
+                throw:Reason ->
                     ?log_error("Checking node ~p connection type failed with "
                                "reason: ~p, retries left: ~p",
                                [Node, Reason, Retries - 1]),
@@ -243,10 +257,10 @@ check_connection_proto(Node, Family, Encryption) ->
                              family = inet} when Proto == proxy,
                                                  Family == inet6 -> ok;
                 #net_address{protocol = Proto, family = Family} -> ok;
-                A -> erlang:error({wrong_proto, Node, A})
+                A -> erlang:throw({wrong_proto, Node, A})
             end;
         {error, Error} ->
-            erlang:error({node_info, Node, Error})
+            erlang:throw({node_info, Node, Error})
     end.
 
 format_error({update_cb_dist_config_error, Msg}) ->
@@ -269,37 +283,17 @@ format_error({host_ip_not_allowed, Addr}) ->
                   "addr: ~p", [Addr]);
 format_error({rename_failed, Addr, Reason}) ->
     io_lib:format("Address change (~p) failed with reason: ~p", [Addr, Reason]);
+format_error({start_listeners_failed, L}) ->
+    ProtoStrs = [cb_dist:netsettings2str(P) || P <- L],
+    io_lib:format("Failed to start listeners: ~s",
+                  [string:join(ProtoStrs, ", ")]);
 format_error(R) ->
     io_lib:format("~p", [R]).
-
-apply_ext_dist_protocols_unprotected(Protos) ->
-    ?log_info("Node is going to change dist protocols to ~p", [Protos]),
-    case cb_dist:update_listeners_in_config(Protos) of
-        {ok, Listeners} ->
-            NotStarted = case Protos of
-                             undefined -> [];
-                             _ -> Protos -- Listeners
-                         end,
-            case NotStarted of
-                [] ->
-                    ns_config:set({node, node(), erl_external_dist_protocols},
-                                  Protos),
-                    ok;
-                L ->
-                    ProtoStrs = [cb_dist:proto2str(P) || P <- L],
-                    Msg = io_lib:format("Failed to start listeners: ~s",
-                                        [string:join(ProtoStrs, ", ")]),
-                    {error, iolist_to_binary(Msg)}
-            end;
-        {error, Error} ->
-            Msg = io_lib:format("Failed to update cb_dist config: ~s",
-                                [cb_dist:format_error(Error)]),
-            {error, iolist_to_binary(Msg)}
-    end.
 
 update_marker_path() ->
     path_config:component_path(data, "netconfig_marker").
 
+check_nodename_resolvable(_, undefined) -> ok;
 check_nodename_resolvable('nonode@nohost', _) -> ok;
 check_nodename_resolvable(Node, AFamily) ->
     {_, Hostname} = misc:node_name_host(Node),

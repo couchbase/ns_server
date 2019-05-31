@@ -36,12 +36,10 @@
          address_family/0,
          external_encryption/0,
          external_listeners/0,
-         update_listeners_in_config/1,
-         update_net_settings_in_config/2,
+         update_config/1,
          proto_to_encryption/1,
          format_error/1,
-         proto2str/1,
-         netsettings2proto/2]).
+         netsettings2str/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -198,7 +196,8 @@ external_encryption() ->
     proto_to_encryption(conf(preferred_external_proto, get_config())).
 
 external_listeners() ->
-    conf(external_listeners, get_config()).
+    L = conf(external_listeners, get_config()),
+    lists:usort([proto2netsettings(Proto) || Proto <- L]).
 
 get_config() ->
     try status() of
@@ -208,16 +207,8 @@ get_config() ->
             read_config(config_path(), true)
     end.
 
-update_listeners_in_config(Protos) ->
-    gen_server:call(?MODULE, {update_listeners_in_config, Protos}, infinity).
-
-update_net_settings_in_config(AFamily, CEncryption) ->
-    PreferredExternal = netsettings2proto(AFamily, CEncryption),
-    PreferredLocal = netsettings2proto(AFamily, false),
-    gen_server:call(
-      ?MODULE,
-      {update_preferred_protos, PreferredExternal, PreferredLocal},
-      infinity).
+update_config(Props) ->
+    gen_server:call(?MODULE, {update_config, Props}, infinity).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -313,19 +304,8 @@ handle_call(status, _From, #s{listeners = Listeners,
              {listeners, Listeners},
              {acceptors, Acceptors}], State};
 
-handle_call({update_listeners_in_config, Protos}, _From,
-            #s{config = Cfg} = State) ->
-    case update_config(Protos,
-                       proplists:get_value(preferred_external_proto, Cfg),
-                       proplists:get_value(preferred_local_proto, Cfg)) of
-        ok -> handle_reload_config(State);
-        {error, _} = Error -> {reply, Error, State}
-    end;
-
-handle_call({update_preferred_protos, PreferredExternal, PreferredLocal}, _From,
-            #s{config = Cfg} = State) ->
-    case update_config(proplists:get_value(external_listeners, Cfg),
-                       PreferredExternal, PreferredLocal) of
+handle_call({update_config, Props}, _From, #s{config = Cfg} = State) ->
+    case store_config(import_props_to_config(Props, Cfg)) of
         ok -> handle_reload_config(State);
         {error, _} = Error -> {reply, Error, State}
     end;
@@ -575,7 +555,9 @@ handle_reload_config(#s{listeners = Listeners} = State) ->
                              lists:member(R, get_protos(State3))],
             NotStartedRequired = Required -- NewCurrentProtos,
             case NotStartedRequired of
-                [] -> {reply, {ok, NewCurrentProtos}, State3};
+                [] ->
+                    L = [proto2netsettings(Proto) || Proto <- NewCurrentProtos],
+                    {reply, {ok, L}, State3};
                 _ ->
                     error_msg("Failed to start required dist listeners ~p",
                               [NotStartedRequired]),
@@ -635,7 +617,7 @@ validate_config_file(CfgFile) ->
         ExternalListeners = conf(external_listeners, Cfg),
         Invalid = [L || L <- LocalListeners, not is_valid_protocol(L)] ++
                   [L || L <- ExternalListeners, not is_valid_protocol(L)],
-        (Invalid == []) orelse throw({invalid_listerners, Invalid}),
+        (Invalid == []) orelse throw({invalid_listeners, Invalid}),
         length(lists:usort(LocalListeners)) == length(LocalListeners)
             orelse throw(not_unique_listeners),
         length(lists:usort(ExternalListeners)) == length(ExternalListeners)
@@ -648,6 +630,23 @@ validate_config_file(CfgFile) ->
     catch
         _:E -> {error, E}
     end.
+
+import_props_to_config(Props, Cfg) ->
+    CurListeners = proplists:get_value(external_listeners, Cfg),
+    CurAFamily = proto_to_family(conf(preferred_external_proto, Cfg)),
+    CurNEncr = proto_to_encryption(conf(preferred_external_proto, Cfg)),
+    NewAFamily = proplists:get_value(afamily, Props, CurAFamily),
+    NewNEncr = proplists:get_value(nodeEncryption, Props, CurNEncr),
+    PrefExt = netsettings2proto({NewAFamily, NewNEncr}),
+    PrefLocal = netsettings2proto({NewAFamily, false}),
+    Listeners =
+        case proplists:get_value(externalListeners, Props) of
+            undefined -> CurListeners;
+            L -> [netsettings2proto(E) || E <- L]
+        end,
+    [{external_listeners, Listeners}     || Listeners =/= undefined] ++
+    [{preferred_external_proto, PrefExt} || PrefExt   =/= undefined] ++
+    [{preferred_local_proto, PrefLocal}  || PrefLocal =/= undefined].
 
 store_config(DCfgFile, DCfg) ->
     DirName = filename:dirname(DCfgFile),
@@ -668,12 +667,7 @@ store_config(DCfgFile, DCfg) ->
         (catch file:delete(TmpPath))
     end.
 
-update_config(Listeners, PreferredExternal, PreferredLocal) ->
-    Cfg = [{external_listeners, Listeners} || Listeners =/= undefined] ++
-          [{preferred_external_proto, PreferredExternal}
-              || PreferredExternal =/= undefined] ++
-          [{preferred_local_proto, PreferredLocal}
-              || PreferredLocal =/= undefined],
+store_config(Cfg) ->
     CfgFile = cb_dist:config_path(),
     case store_config(CfgFile, Cfg) of
         ok ->
@@ -703,12 +697,20 @@ format_error({missing_preferred_local_listener, Proto}) ->
 format_error(Unknown) ->
     io_lib:format("~p", [Unknown]).
 
+netsettings2str(S) -> proto2str(netsettings2proto(S)).
+
 proto2str(inet_tcp_dist) -> "TCP-ipv4";
 proto2str(inet_tls_dist) -> "TLS-ipv4";
 proto2str(inet6_tcp_dist) -> "TCP-ipv6";
 proto2str(inet6_tls_dist) -> "TLS-ipv6".
 
-netsettings2proto(inet, false) -> inet_tcp_dist;
-netsettings2proto(inet, true) -> inet_tls_dist;
-netsettings2proto(inet6, false) -> inet6_tcp_dist;
-netsettings2proto(inet6, true) -> inet6_tls_dist.
+netsettings2proto({inet, false}) -> inet_tcp_dist;
+netsettings2proto({inet, true}) -> inet_tls_dist;
+netsettings2proto({inet6, false}) -> inet6_tcp_dist;
+netsettings2proto({inet6, true}) -> inet6_tls_dist.
+
+proto2netsettings(inet_tcp_dist) -> {inet, false};
+proto2netsettings(inet6_tcp_dist) -> {inet6, false};
+proto2netsettings(inet_tls_dist) -> {inet, true};
+proto2netsettings(inet6_tls_dist) -> {inet6, true}.
+
