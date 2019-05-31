@@ -59,3 +59,4 @@ tmp
 /src/ldap_rfc4515_parser.erl
 .idea/
 *.iml
+/venv
