@@ -120,10 +120,10 @@
       }
       switch (type) {
       case "template":
-        return {template: mapping[0].template};
+        return {template: mapping[0].template.replace("{0}", "%u")};
       case "query":
         var query = mapping[0].query.split("?");
-        return {base: query[0], filter: query[3]};
+        return {base: query[0], filter: query[3].replace("{0}", "%u")};
       case "custom":
         return {value: JSON.stringify(mapping)};
       }
