@@ -36,7 +36,7 @@ change_external_listeners(Action, Config) ->
 init([]) ->
     ServerName = ?MODULE,
     register(ServerName, self()),
-    migration_to_madhatter(),
+    ensure_ns_config_settings_in_order(),
     proc_lib:init_ack({ok, self()}),
     case misc:consult_marker(update_marker_path()) of
         {ok, [Cmd]} ->
@@ -309,14 +309,36 @@ check_nodename_resolvable(Node, AFamily) ->
             {error, iolist_to_binary(M)}
     end.
 
-migration_to_madhatter() ->
-    AFamily = cb_dist:address_family(),
-    case ns_config:search_node(address_family) of
-        {value, AFamily} -> ok;
-        _ -> ns_config:set({node, node(), address_family}, AFamily)
-    end,
-    NodeEncryption = cb_dist:external_encryption(),
-    case ns_config:search_node(node_encryption) of
-        {value, NodeEncryption} -> ok;
-        _ -> ns_config:set({node, node(), node_encryption}, NodeEncryption)
-    end.
+%% This function is needed in two cases:
+%%  - migration for address family settings to mad hatter
+%%  - allow manual changes in dist_cfg file
+ensure_ns_config_settings_in_order() ->
+    RV = ns_config:run_txn(
+           fun (Cfg, Set) ->
+               AFamily = cb_dist:address_family(),
+               NodeEncryption = cb_dist:external_encryption(),
+               Listeners = cb_dist:external_listeners(),
+               Cfg1 =
+                   case ns_config:search_node(Cfg, address_family) of
+                       {value, AFamily} -> Cfg;
+                       _ ->
+                           Set({node, node(), address_family}, AFamily, Cfg)
+                   end,
+               Cfg2 =
+                   case ns_config:search_node(Cfg, node_encryption) of
+                       {value, NodeEncryption} -> Cfg1;
+                       _ ->
+                           Set({node, node(), node_encryption}, NodeEncryption,
+                               Cfg1)
+                   end,
+               Cfg3 =
+                   case ns_config:search_node(Cfg, erl_external_listeners) of
+                       {value, Listeners} -> Cfg2;
+                       _ ->
+                           Set({node, node(), erl_external_listeners},
+                               Listeners, Cfg2)
+                   end,
+               {commit, Cfg3}
+           end),
+    {commit, _} = RV,
+    ok.
