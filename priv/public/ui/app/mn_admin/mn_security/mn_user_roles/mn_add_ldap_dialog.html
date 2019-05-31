@@ -190,12 +190,12 @@
                ng-click="addLdapDialogCtl.checkConnectivity()">
               Check Network Settings
             </button>
-            <div
+            <p
                ng-show="addLdapDialogCtl.connectSuccessResult"
-               class="wb-result-status"
+               class="result-status"
                ng-class="[addLdapDialogCtl.connectSuccessResult.data.result]">
               {{addLdapDialogCtl.connectSuccessResult.data.result == "error" ? addLdapDialogCtl.connectSuccessResult.data.reason || "error" : "Contact LDAP server successful"}}
-            </div>
+            </p>
           </span>
 
 <!-- Enable LDAP user authentication --------------------------------------- -->
@@ -303,7 +303,7 @@
                  ng-click="addLdapDialogCtl.showTestUsername = !addLdapDialogCtl.showTestUsername">
                 Test User Authentication
               </p>
-              <div ng-if="addLdapDialogCtl.showTestUsername" class="formrow margin-left-1-5">
+              <div ng-if="addLdapDialogCtl.showTestUsername" class="margin-left-1-5">
                 <div class="formrow row items-top">
                   <span class="width-6 margin-right-half">
                     <label for="auth_user">Username to Test</label>
@@ -344,16 +344,18 @@
                    ng-click="addLdapDialogCtl.checkAuthentication()">
                   Test User Authentication
                 </button>
-                <div
+                <p
                    ng-show="addLdapDialogCtl.authenticationSuccessResult"
-                   class="wb-result-status"
+                   class="result-status"
                    ng-class="[addLdapDialogCtl.authenticationSuccessResult.data.result]">
                   {{addLdapDialogCtl.authenticationSuccessResult.data.result == "error" ?
-                  addLdapDialogCtl.authenticationSuccessResult.data.reason || "error" : "User recognized by LDAP server:"}}
-                  <p ng-if="addLdapDialogCtl.authenticationSuccessResult.data.dn">
+                  addLdapDialogCtl.authenticationSuccessResult.data.reason || "Error authenticating user" : "User recognized by LDAP server:"}}
+                </p>
+                  <p
+                     ng-if="addLdapDialogCtl.authenticationSuccessResult.data.dn"
+                     class="text-smallish">
                     {{addLdapDialogCtl.authenticationSuccessResult.data.dn}}
                   </p>
-                </div>
               </div>
             </div>
           </span>
@@ -455,7 +457,7 @@
                 <label for="for-nested-groups-enabled">Traverse nested groups</label>
               </div>
               <p
-                class="disclosure margin-top-1-5"
+                class="disclosure margin-top-1"
                 ng-class="{disclosed: addLdapDialogCtl.testGroupsQuery}"
                 ng-click="addLdapDialogCtl.testGroupsQuery = !addLdapDialogCtl.testGroupsQuery">
                 Test Groups Query
@@ -483,15 +485,19 @@
                    ng-click="addLdapDialogCtl.checkGroupsQuery()">
                   Test Groups Query
                 </button>
-                <div
-                   ng-show="addLdapDialogCtl.queryForGroupsSuccessResult"
-                   class="wb-result-status"
-                   ng-class="[addLdapDialogCtl.queryForGroupsSuccessResult.data.result]">
-                  {{addLdapDialogCtl.queryForGroupsSuccessResult.data.result == "error" ? addLdapDialogCtl.queryForGroupsSuccessResult.data.reason || "error" : "Groups discovered successfully:"}}
-                  <p ng-if="addLdapDialogCtl.queryForGroupsSuccessResult.data.groups">
-                    {{addLdapDialogCtl.queryForGroupsSuccessResult.data.groups.join(", ")}}
-                  </p>
-                </div>
+                <p class="result-status error"
+                     ng-show="addLdapDialogCtl.queryForGroupsSuccessResult.data.result == 'error'">
+                  {{addLdapDialogCtl.queryForGroupsSuccessResult.data.reason}}
+                </p>
+                <p class="result-status success"
+                   ng-show="addLdapDialogCtl.queryForGroupsSuccessResult.data.groups.length">
+                  Groups discovered successfully:<br>
+                  {{addLdapDialogCtl.queryForGroupsSuccessResult.data.groups.join(", ")}}
+                </p>
+                <p class="result-status warning"
+                   ng-show="(addLdapDialogCtl.queryForGroupsSuccessResult.data.result == 'success') && !addLdapDialogCtl.queryForGroupsSuccessResult.data.groups.length">
+                  Connected but returned no groups.
+                </p>
 
               </div>
             </div>

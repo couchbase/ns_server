@@ -1054,10 +1054,35 @@ form .success {
   font-size: .75rem;
   display: block;
 }
+
 /* error text after form validation - appears at the top of the form -------- */
 .forms .error-form,
 form .error-form {
   margin-bottom: .5rem;
+}
+
+/* when there is some result status beneath a button ------------------------ */
+.result-status {
+  font-size: .8125rem;
+  margin: .75rem 0 0 0;
+}
+.result-status.success:before {
+  font-family: FontAwesome;
+  content: "\f00c";
+  font-size: .825rem;
+  color: #56b349;
+}
+.result-status.error:before {
+  font-family: FontAwesome;
+  content: "\f06a";
+  font-size: .825rem;
+  color: #e07f82;
+}
+.result-status.warning:before {
+  font-family: FontAwesome;
+  content: "\f071";
+  font-size: .825rem;
+  color: #f5a623;
 }
 
 /* visibility / selection --------------------------------------------------- */

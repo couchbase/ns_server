@@ -2009,9 +2009,6 @@ input[type="checkbox"].fake-select + label:before {
   flex-grow: 1;
   font-size: .75rem;
 }
-.wb-result-status {
-  font-weight: 600;
-}
 .wb-result-status:not(.success):not(.error) {
   white-space: nowrap;
   color: #f5a623;
@@ -2019,14 +2016,20 @@ input[type="checkbox"].fake-select + label:before {
 .wb-result-status.success:before {
   font-family: FontAwesome;
   content: "\f00c";
-  font-size: 1rem;
+  font-size: .825rem;
   color: #56b349;
 }
 .wb-result-status.error:before {
   font-family: FontAwesome;
   content: "\f06a";
-  font-size: 1rem;
+  font-size: .825rem;
   color: #e07f82;
+}
+.wb-result-status.warning:before {
+  font-family: FontAwesome;
+  content: "\f071";
+  font-size: .825rem;
+  color: #f5a623;
 }
 .wb-result-summary span:first-child {
   margin-left: 0;
