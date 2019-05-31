@@ -24,6 +24,9 @@
     function postSetupNetConfig() {
       return mnClusterConfigurationService.postSetupNetConfig(vm.hostConfig);
     }
+    function postEnableExternalListener() {
+      return mnClusterConfigurationService.postEnableExternalListener(vm.hostConfig);
+    }
     function onIPvChange() {
       if (vm.hostConfig.afamily == "ipv6" && vm.config.hostname == "127.0.0.1") {
         vm.config.hostname = "::1";
@@ -33,14 +36,7 @@
       }
     }
     function postHostConfig() {
-      var promise;
-      if (vm.hostConfig.nodeEncryption == "on") {
-        promise = mnClusterConfigurationService.postDistProtocols({
-          external: (vm.hostConfig.afamily == "ipv4") ? 'inet_tls' : 'inet6_tls'
-        }).then(postSetupNetConfig);
-      } else {
-        promise = postSetupNetConfig();
-      }
+      var promise = postEnableExternalListener().then(postSetupNetConfig);
       return addErrorHandler(promise, "postHostConfig");
     }
 

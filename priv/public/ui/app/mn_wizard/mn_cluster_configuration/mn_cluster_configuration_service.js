@@ -22,7 +22,7 @@
       getQuerySettings: getQuerySettings,
       postQuerySettings: postQuerySettings,
       postCurlWhitelist: postCurlWhitelist,
-      postDistProtocols: postDistProtocols,
+      postEnableExternalListener: postEnableExternalListener,
       postSetupNetConfig: postSetupNetConfig
     };
     var re = /^[A-Z]:\//;
@@ -80,10 +80,10 @@
 
     return mnClusterConfigurationService;
 
-    function postDistProtocols(data) {
+    function postEnableExternalListener(data) {
       return $http({
         method: 'POST',
-        url: '/node/controller/distProtocols',
+        url: '/node/controller/enableExternalListener',
         data: data
       });
     }
