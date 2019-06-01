@@ -29,8 +29,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([orchestrate_failover/1,
-         check_graceful_failover_possible/2,
+-export([check_graceful_failover_possible/2,
          validate_autofailover/1,
          generate_initial_map/1,
          start_link_rebalance/5,
