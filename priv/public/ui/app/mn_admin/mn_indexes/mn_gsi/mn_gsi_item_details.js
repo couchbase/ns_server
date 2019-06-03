@@ -7,11 +7,24 @@
     .directive('mnGsiItemDetails', mnGsiItemDetails);
 
   function mnGsiItemController($scope, mnStatisticsNewService, mnPermissions) {
+    var vm = this;
+
+    vm.hasValue = hasValue;
+    vm.hasNoValue = hasNoValue;
+
     if (!mnPermissions.export.cluster.bucket[$scope.row.bucket].stats.read) {
       return;
     }
 
-    var vm = this;
+    function hasNoValue(key) {
+      return !!$scope.gsiItemCtl.stats &&
+        ($scope.gsiItemCtl.stats[key] == undefined);
+    }
+
+    function hasValue(key) {
+      return !!$scope.gsiItemCtl.stats &&
+        ($scope.gsiItemCtl.stats[key] != undefined);
+    }
 
     mnStatisticsNewService.subscribeUIStatsPoller({
       bucket: $scope.row.bucket,

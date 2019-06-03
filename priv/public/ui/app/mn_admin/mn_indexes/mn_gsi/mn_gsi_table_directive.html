@@ -61,27 +61,29 @@
                         class="label lt-blue"
                         ng-if="row.partitioned">partitioned</span></span>
       <span class="cbui-table-cell">
-        <span ng-show="gsiItemCtl.stats.num_rows_returned">
+        <span ng-show="gsiItemCtl.hasValue('num_rows_returned')">
           {{gsiItemCtl.stats.num_rows_returned | number:0}}</span>
-        <span ng-show="!gsiItemCtl.stats.num_rows_returned">N/A</span>
+        <span ng-show="gsiItemCtl.hasNoValue('num_rows_returned')">
+          N/A
+        </span>
       </span>
       <span class="cbui-table-cell">
-        <span ng-show="gsiItemCtl.stats.num_requests">
+        <span ng-show="gsiItemCtl.hasValue('num_requests')">
           {{gsiItemCtl.stats.num_requests| number:2}}
         </span>
-        <span ng-show="!gsiItemCtl.stats.num_requests">N/A</span>
+        <span ng-show="gsiItemCtl.hasNoValue('num_requests')">N/A</span>
       </span>
       <span class="cbui-table-cell">
-        <span ng-show="gsiItemCtl.stats.index_resident_percent">
+        <span ng-show="gsiItemCtl.hasValue('index_resident_percent')">
           {{gsiItemCtl.stats.index_resident_percent| number:0}}%
         </span>
-        <span ng-show="!gsiItemCtl.stats.index_resident_percent">N/A</span>
+        <span ng-show="gsiItemCtl.hasNoValue('index_resident_percent')">N/A</span>
       </span>
       <span class="cbui-table-cell">
-        <span ng-show="gsiItemCtl.stats.stats.data_size">
+        <span ng-show="gsiItemCtl.hasValue('data_size')">
           {{gsiItemCtl.stats.data_size/1024/1024 | number:2}} MB
         </span>
-        <span ng-show="!gsiItemCtl.stats.stats.data_size">N/A</span>
+        <span ng-show="gsiItemCtl.hasNoValue('data_size')">N/A</span>
       </span>
       <span
          ng-if="mnGsiTableCtl.hideColumn !== 'bucket'"
