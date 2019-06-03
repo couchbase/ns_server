@@ -1,12 +1,18 @@
 <div
-   class="indent-1 cursor-auto"
-   ng-click="$event.stopPropagation();">
-  <div class="row items-bottom margin-bottom-1-5">
-    <div>
-      <p>{{row.definition}}</p>
-      <p ng-show="row.hosts.length > 1" class="margin-bottom-0"><strong>Nodes:</strong> {{mnGsiItemDetailsCtl.hosts}}</p>
+   class="indent-1 cursor-auto">
+  <div class="row items-top margin-bottom-1">
+    <div class="margin-right-half">
+      <div ng-click="$event.stopPropagation();">
+        <strong>Definition</strong> &nbsp;{{row.definition}}
+      </div>
+      <div>
+        <strong>Storage Mode</strong> &nbsp;{{row.storageMode | mnFormatStorageMode:mnGsiTableCtl.pools.isEnterprise}} &nbsp;
+        <span ng-show="row.hosts.length > 1" class="margin-bottom-0">
+          <strong>Nodes</strong> &nbsp; {{mnGsiItemDetailsCtl.hosts}}
+        </span>
+      </div>
     </div>
-    <div class="nowrap">
+    <div class="nowrap margin-right-1">
       <button
          class="outline"
          ui-sref="app.admin.query.workbench({query: row.definition})">
@@ -18,7 +24,10 @@
          ng-click="mnGsiItemDetailsCtl.dropIndex(row)">Drop</button>
     </div>
   </div>
-  <h5 class="inline margin-right-1">
+  <h5
+     class="disclosure inline margin-right-1"
+     ng-class="{'disclosed' : showStats}"
+     ng-click="showStats = !showStats; $event.stopPropagation();">
     Index Stats
     <span ng-if="row.partitions" class="text-small">(per replica)</span>
   </h5>
@@ -26,7 +35,8 @@
      ng-if="row.partitions"
      ng-model="mnGsiItemDetailsCtl.selectedPartition"
      ng-change="mnGsiItemDetailsCtl.onSelectPartition()"
-     class="margin-right-1">
+     class="margin-right-1"
+     ng-click="$event.stopPropagation();">
     <option
        ng-repeat="(instId, partition) in row.partitions"
        value="{{instId}}">
@@ -36,7 +46,8 @@
 
   <select
      ng-model="mnGsiItemDetailsCtl.zoom"
-     ng-change="mnGsiItemDetailsCtl.onSelectZoom()">
+     ng-change="mnGsiItemDetailsCtl.onSelectZoom()"
+     ng-click="$event.stopPropagation();">
     <option value="minute">minute</option>
     <option value="hour">hour</option>
     <option value="day">day</option>
@@ -44,7 +55,7 @@
     <option value="month">month</option>
   </select>
 
-  <div class="row charts">
+  <div ng-if="showStats" class="row charts" ng-click="$event.stopPropagation();">
     <mn-statistics-chart
        ng-repeat="config in mnGsiItemDetailsCtl.charts track by config.id"
        get-nvd3-options="mnGsiItemDetailsCtl.getNvd3Options(config)"

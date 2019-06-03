@@ -822,6 +822,9 @@ section.error {
   background-color: #cc2a2e;
   color: #fff;
 }
+.label.warning {
+  background-color: #fdedd3;
+}
 
 .badge {
   padding: .3rem .4rem;

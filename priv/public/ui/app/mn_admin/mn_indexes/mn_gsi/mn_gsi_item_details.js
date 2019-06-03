@@ -37,7 +37,7 @@
         return
       }
       var rv = {};
-      (["data_size","num_rows_returned","index_resident_percent",
+      (["data_size","items_count","index_resident_percent",
         "num_docs_pending+queued","num_requests"]).forEach(function (statName) {
           var fullName = 'index/' + $scope.row.index + '/' + statName;
           var stats = resp.data.samples[fullName];

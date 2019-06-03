@@ -4,38 +4,45 @@
       <span
          mn-sortable-title="index"
          sort-by-default="true"
-         class="sorter">index name</span>
+         class="sorter">
+        index name
+      </span>
+    </span>
+    <span class="cbui-table-cell flex-grow-half resp-hide-xsml">
+      <span mn-sortable-title="num_requests" class="sorter">
+        requests/sec
+      </span>
+    </span>
+    <span class="cbui-table-cell flex-grow-half resp-hide-sml">
+      <span mn-sortable-title="index_resident_percent" class="sorter">
+        resident ratio
+      </span>
+    </span>
+    <span class="cbui-table-cell flex-grow-half">
+      <span mn-sortable-title="items_count" class="sorter">
+        items
+      </span>
+    </span>
+    <span class="cbui-table-cell flex-grow-half resp-hide-xsml">
+      <span mn-sortable-title="data_size" class="sorter">
+        data size
+      </span>
+    </span>
+    <span class="cbui-table-cell" ng-if="mnGsiTableCtl.hideColumn == 'node'">
+      <span mn-sortable-title="bucket" class="sorter">
+        bucket
+      </span>
+    </span>
+    <span class="cbui-table-cell" ng-if="mnGsiTableCtl.hideColumn == 'bucket'">
+      <span mn-sortable-title="hosts[0]" class="sorter">
+        node
+      </span>
     </span>
     <span class="cbui-table-cell">
-      <span mn-sortable-title="num_rows_returned" class="sorter">scans</span>
+      <span mn-sortable-title="status" class="sorter">
+        status
+      </span>
     </span>
-    <span class="cbui-table-cell">
-      <span mn-sortable-title="num_requests" class="sorter">requests/sec</span>
-    </span>
-    <span class="cbui-table-cell">
-      <span mn-sortable-title="index_resident_percent" class="sorter">resident ratio</span>
-    </span>
-    <span class="cbui-table-cell">
-      <span mn-sortable-title="data_size" class="sorter">data size</span>
-    </span>
-    <span class="cbui-table-cell"
-          ng-if="mnGsiTableCtl.hideColumn !== 'bucket'">
-      <span
-         mn-sortable-title="bucket"
-         class="sorter">bucket</span>
-    </span>
-    <span class="cbui-table-cell"
-          ng-if="mnGsiTableCtl.hideColumn !== 'node'">
-      <span
-         mn-sortable-title="hosts[0]"
-         class="sorter">node</span>
-    </span>
-    <span class="cbui-table-cell">
-      <span
-         mn-sortable-title="storageMode | mnFormatStorageMode:mnGsiTableCtl.pools.isEnterprise"
-         class="sorter">storage type</span>
-    </span>
-    <span class="cbui-table-cell flex-grow-half">build progress</span>
   </div>
   <section
      ng-repeat="row in mnGsiTableCtl.list
@@ -54,51 +61,66 @@
        ng-class="[(!mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row)) ?
                  mnGsiTableCtl.getStatusClass(row) : '')]"
        ng-controller="mnGsiItemController as gsiItemCtl">
-      <span
-         class="cbui-table-cell flex-grow-1-5"
-         title="{{row.index}}">
-        {{row.index}}<span
-                        class="label lt-blue"
-                        ng-if="row.partitioned">partitioned</span></span>
-      <span class="cbui-table-cell">
-        <span ng-show="gsiItemCtl.hasValue('num_rows_returned')">
-          {{gsiItemCtl.stats.num_rows_returned | number:0}}</span>
-        <span ng-show="gsiItemCtl.hasNoValue('num_rows_returned')">
-          N/A
+      <span class="cbui-table-cell flex-grow-1-5" title="{{row.index}}">
+        {{row.index}}
+        <span class="label lt-blue" ng-if="row.partitioned">
+          partitioned
         </span>
       </span>
-      <span class="cbui-table-cell">
+      <span class="cbui-table-cell flex-grow-half resp-hide-xsml">
         <span ng-show="gsiItemCtl.hasValue('num_requests')">
-          {{gsiItemCtl.stats.num_requests| number:2}}
+          {{gsiItemCtl.stats.num_requests| number:0}}
         </span>
-        <span ng-show="gsiItemCtl.hasNoValue('num_requests')">N/A</span>
+        <span ng-show="gsiItemCtl.hasNoValue('num_requests')"> - </span>
       </span>
-      <span class="cbui-table-cell">
+      <span class="cbui-table-cell flex-grow-half resp-hide-sml">
         <span ng-show="gsiItemCtl.hasValue('index_resident_percent')">
           {{gsiItemCtl.stats.index_resident_percent| number:0}}%
         </span>
-        <span ng-show="gsiItemCtl.hasNoValue('index_resident_percent')">N/A</span>
+        <span ng-show="gsiItemCtl.hasNoValue('index_resident_percent')"> - </span>
       </span>
-      <span class="cbui-table-cell">
+      <span class="cbui-table-cell flex-grow-half">
+        <span ng-show="gsiItemCtl.hasValue('items_count')">
+          {{gsiItemCtl.stats.items_count | number:0}}
+        </span>
+        <span ng-show="gsiItemCtl.hasNoValue('items_count')"> - </span>
+      </span>
+      <span class="cbui-table-cell flex-grow-half resp-hide-xsml">
         <span ng-show="gsiItemCtl.hasValue('data_size')">
           {{gsiItemCtl.stats.data_size/1024/1024 | number:2}} MB
         </span>
-        <span ng-show="gsiItemCtl.hasNoValue('data_size')">N/A</span>
+        <span ng-show="gsiItemCtl.hasNoValue('data_size')"> - </span>
+      </span>
+      <span ng-if="mnGsiTableCtl.hideColumn == 'node'" class="cbui-table-cell">
+        {{row.bucket}}
       </span>
       <span
-         ng-if="mnGsiTableCtl.hideColumn !== 'bucket'"
-         class="cbui-table-cell">
-        {{row.bucket}}</span>
-      <span
-         ng-if="mnGsiTableCtl.hideColumn !== 'node'"
+         ng-if="mnGsiTableCtl.hideColumn == 'bucket'"
          class="cbui-table-cell"
          title="{{row.hosts.join(', ')}}">
-        {{row.hosts.join(', ')}}</span>
-      <span class="cbui-table-cell">
-        {{row.storageMode | mnFormatStorageMode:mnGsiTableCtl.pools.isEnterprise}}</span>
-      <span class="cbui-table-cell flex-grow-half">
-        <span ng-show="row.status == 'Replicating'">Replicating</span>
-        <span ng-show="row.progress">{{row.progress}}%</span>
+        {{row.hosts.join(', ')}}
+      </span>
+      <span class="cbui-table-cell flex-wrap text-smaller">
+        <div
+           ng-show="row.status == 'Building'"
+           uib-tooltip="{{mnGsiTableCtl.getStatusDescription(row)}}"
+           tooltip-append-to-body="true"
+           tooltip-trigger="'mouseenter'"
+           ng-click="$event.stopPropagation();">
+          building {{row.progress}}%
+        </div>
+        <div
+           ng-show="row.status != 'Building'"
+           uib-tooltip="{{mnGsiTableCtl.getStatusDescription(row)}}"
+           tooltip-append-to-body="true"
+           tooltip-trigger="'mouseenter'"
+           ng-click="$event.stopPropagation();"
+           class="nocaps">
+          {{row.status}}
+        </div>
+        <div ng-if="gsiItemCtl.stats['num_docs_pending+queued'] > 0" class="label warning">
+          {{gsiItemCtl.stats['num_docs_pending+queued'] | number:0}} mutations remaining
+        </div>
       </span>
     </div>
     <mn-gsi-item-details
@@ -108,5 +130,7 @@
        ng-if="mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row))">
     </mn-gsi-item-details>
   </section>
-  <div ng-if="!listFiltered.length" class="zero-content text-left">no result</div>
+  <div ng-if="!listFiltered.length" class="zero-content margin-top-1-5">
+    You have definitely over-filtered this. Try a little less filtering, Mozart.
+  </div>
 </div>

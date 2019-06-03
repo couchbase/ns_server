@@ -6,7 +6,7 @@
   </div>
 </mn-element-cargo>
 
-<div mn-spinner="!gsiCtl.state">
+<div mn-spinner="!gsiCtl.state" style="padding-bottom: 120px;">
 
   <div class="row flex-left margin-bottom-half relative">
     <span>
@@ -62,6 +62,7 @@
        list="gsiCtl.state.byID"
        rbac="rbac"
        pools="pools"
+       hide-column="index"
        filter-field="gsiCtl.filterField">
     </mn-gsi-table>
   </div>
