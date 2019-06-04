@@ -14,21 +14,30 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os, sys, getopt, urllib2, urllib, json
-
-from urllib2 import HTTPError
+import os
+import sys
+import getopt
+import urllib2
+import urllib
+import json
+from functools import reduce
 
 valid_bucket_types = ["ephemeral", "membase", "memcached"]
-valid_service_types = {"kv", "n1ql", "index", "fts", "cbas", "example", "eventing"}
+valid_service_types = {"kv", "n1ql", "index", "fts", "cbas", "example",
+                       "eventing"}
+
 
 def usage():
     print "usage: \n\
             -n <number of nodes>\n\
-            -T <services to run. kv if unspecified> (eg: n0:kv,n1:index+n1ql+fts+eventing+cbas)\n\
+            -T <services to run. kv if unspecified>\n\
+               (eg: n0:kv,n1:index+n1ql+fts+eventing+cbas)\n\
             -s <memory size> (min 256) default: 256\n\
             -I <index memory size> default: 256\n\
-            -t <bucket type> (ephemeral, membase, memcached) default: membase\n\
-            -r <num replicas> (max 3) default: 1 (Only for ephemeral or membase buckets!)\n\
+            -t <bucket type> (ephemeral, membase, memcached)\n\
+               default: membase\n\
+            -r <num replicas> (max 3) default: 1\n\
+               (Only for ephemeral or membase buckets!)\n\
             -i (don't index replicas) default: replica index enabled\n\
             -S <start index> default: 0\n\
             -p <networking protocol to use> (ipv4, ipv6) default: ipv4"
@@ -41,12 +50,13 @@ class PasswordManager(urllib2.HTTPPasswordMgr):
     def find_user_password(self, realm, authuri):
         return self.auth
 
+
 def main():
     try:
         opts, args = getopt.getopt(sys.argv[1:],
                                    "n:t:s:r:iS:T:I:p:",
                                    ["dont-rebalance", "afamily="])
-    except getopt.GetoptError, err:
+    except getopt.GetoptError as err:
         print str(err)
         usage()
         sys.exit()
@@ -61,7 +71,6 @@ def main():
     do_rebalance = True
     protocol = "ipv6" if (os.getenv("IPV6", "false") == "true") else "ipv4"
 
-    data_base_path = os.getcwd() + "/data"
     for o, a in opts:
         if o == "-n":
             nodes = int(a)
@@ -78,7 +87,7 @@ def main():
         elif o == "-S":
             start_index = int(a)
         elif o == "-T":
-            plan = a.replace(' ','').split(',')
+            plan = a.replace(' ', '').split(',')
 
             if len(plan) == 1 and len(plan[0].split(':')) == 1:
                 deploy = plan[0].split('+')
@@ -102,8 +111,10 @@ def main():
     deploy["n0"] = deploy.get("n0", []) + ["kv"]
     if nodes == 0 or buckettype not in valid_bucket_types or \
             int(memsize) < 256 or int(replicas) > 3 or \
-            not set(deploy.keys()) <= set(["n" + str(i) for i in range(nodes)]) or \
-            not set(reduce(lambda x,y:x+y, deploy.values(), [])) <= valid_service_types:
+            not set(deploy.keys()) <= \
+            set(["n" + str(i) for i in range(nodes)]) or \
+            not set(reduce(lambda x, y: x + y, deploy.values(), [])) <= \
+            valid_service_types:
         usage()
         sys.exit()
 
@@ -113,9 +124,8 @@ def main():
 
     print "Connecting {0} nodes, bucket type {1}, mem size {2} " \
         "with {3} replica copies, start index {4}, password asdasd, "\
-        "deployment plan {5}\n".format(nodes, buckettype,
-                                   memsize, replicas, start_index,
-                                   str(deploy))
+        "deployment plan {5}\n".format(
+            nodes, buckettype, memsize, replicas, start_index, str(deploy))
 
     base_port = 9000 + start_index
 
@@ -123,12 +133,15 @@ def main():
     services = deploy["n0"]
     print "Connecting node 0 with services {0}".format(str(services))
 
-    info = json.loads(o.open("http://{0}:{1}/pools".format(addr, base_port)).read())
+    info = json.loads(o.open("http://{0}:{1}/pools".format(
+        addr, base_port)).read())
     community_edition = info['isEnterprise'] is not True
 
-    o.open("http://{0}:{1}/node/controller/setupNetConfig".format(addr, base_port),
+    o.open("http://{0}:{1}/node/controller/setupNetConfig".format(
+           addr, base_port),
            "afamily={0}".format(protocol))
-    o.open("http://{0}:{1}/node/controller/setupServices".format(addr, base_port),
+    o.open("http://{0}:{1}/node/controller/setupServices".format(
+           addr, base_port),
            "services={0}".format(",".join(services))).read()
     o.open("http://{0}:{1}/pools/default".format(addr, base_port),
            "memoryQuota=" + str(memsize) +
@@ -147,27 +160,33 @@ def main():
     for i in range(1, nodes):
         port = base_port + i
         services = deploy.get("n" + str(i), [])
-        if not services: services = ["kv"]
+        if not services:
+            services = ["kv"]
         print "Connecting node {0} with services {1}".format(i, str(services))
-        cluster_member_port = base_port if community_edition else base_port + 10000
-        o.open("http://{0}:{1}/node/controller/doJoinCluster".format(addr, port),
+        cluster_member_port = base_port if community_edition else \
+            base_port + 10000
+        o.open("http://{0}:{1}/node/controller/doJoinCluster".format(
+               addr, port),
                "user=Administrator&password=asdasd&" +
-                   "clusterMemberHostIp={0}".format(addr) +
-                   "&clusterMemberPort={0}".format(cluster_member_port) +
-                   "&services={0}".format(",".join(services))).read()
+               "clusterMemberHostIp={0}".format(addr) +
+               "&clusterMemberPort={0}".format(cluster_member_port) +
+               "&services={0}".format(",".join(services))).read()
 
     if do_rebalance:
         print "Getting node list"
-        info = json.loads(o.open("http://{0}:{1}/nodeStatuses".format(addr, base_port)).read())
+        info = json.loads(o.open("http://{0}:{1}/nodeStatuses".format(
+            addr, base_port)).read())
 
         print "Servers added, triggering rebalance."
         o.open("http://{0}:{1}/controller/rebalance".format(addr, base_port),
                urllib.urlencode(
-                {'knownNodes': ",".join([info[k]['otpNode'] for k in info]),
-                 'ejectedNodes': ''})).read()
+            {'knownNodes': ",".join([info[k]['otpNode'] for k in info]),
+             'ejectedNodes': ''})).read()
 
-def bool_request_value(Value):
-    return "1" if Value else "0"
+
+def bool_request_value(value):
+    return "1" if value else "0"
+
 
 if __name__ == '__main__':
     main()
