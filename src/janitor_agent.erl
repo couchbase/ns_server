@@ -37,7 +37,6 @@
                 rebalance_only_vbucket_states :: undefined | list(),
                 flushseq,
                 rebalance_status = finished :: in_process | finished,
-                replicators_primed :: boolean(),
 
                 apply_vbucket_states_queue :: undefined | queue:queue(),
                 apply_vbucket_states_worker :: undefined | pid(),
@@ -577,15 +576,27 @@ process_get_failover_logs_results(NodeVBuckets, Results) ->
 %% ----------- implementation -----------
 
 start_link(Bucket) ->
-    gen_server:start_link({local, server_name(Bucket)}, ?MODULE, Bucket, []).
+    proc_lib:start_link(?MODULE, init, [Bucket]).
 
 init(BucketName) ->
+    ServerName = server_name(BucketName),
+    register(ServerName, self()),
+
+    proc_lib:init_ack({ok, self()}),
+
     RegistryPid = janitor_agent_sup:get_registry_pid(BucketName),
     true = is_pid(RegistryPid),
-    {ok, #state{bucket_name = BucketName,
-                flushseq = read_flush_counter(BucketName),
-                replicators_primed = false,
-                rebalance_subprocesses_registry = RegistryPid}}.
+
+    %% Drop all replications if we crashed, so that:
+    %%  - Our state is consistent with the state of replications.
+    %%  - All outstanding state changes due to inflight takeovers have
+    %%    completed, and therefore query_vbuckets returns consistent results.
+    dcp_sup:nuke(BucketName),
+
+    State = #state{bucket_name = BucketName,
+                   flushseq = read_flush_counter(BucketName),
+                   rebalance_subprocesses_registry = RegistryPid},
+    gen_server:enter_loop(?MODULE, [], State, {local, ServerName}).
 
 handle_call(prepare_flush, _From, #state{bucket_name = BucketName} = State) ->
     ?log_info("Preparing flush by disabling bucket traffic"),
@@ -1143,21 +1154,6 @@ decode_vbucket_details(VBDetails) ->
                 end, List)
       end, VBDetails).
 
-with_maybe_priming_replicators(F, #state{replicators_primed = true} = State) ->
-    {F(), State};
-with_maybe_priming_replicators(F, #state{bucket_name = BucketName} = State) ->
-    case F() of
-        {ok, _} = RV ->
-            {case dcp_sup:nuke(BucketName) of
-                 true ->
-                     F();
-                 false ->
-                     RV
-             end, State#state{replicators_primed = true}};
-        RV ->
-            {RV, State}
-    end.
-
 handle_query_vbuckets(Call, #state{bucket_name = BucketName,
                                    rebalance_status = in_process} = State) ->
     ?log_info("Attempt to ~p for bucket ~p during rebalance",
@@ -1184,7 +1180,7 @@ handle_query_vbuckets(Call, #state{bucket_name = BucketName} = State) ->
 
     case R of
         ok ->
-            with_maybe_priming_replicators(Fun, NewState);
+            {Fun(), NewState};
         Err ->
             Err
     end.
