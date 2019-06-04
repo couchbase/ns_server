@@ -39,7 +39,8 @@
          find_matching_past_maps/4,
          find_matching_past_maps/5,
          is_trivially_compatible_past_map/5,
-         enumerate_chains/2]).
+         enumerate_chains/2,
+         align_replicas/2]).
 
 
 -export([counts/1]). % for testing
@@ -1054,7 +1055,42 @@ enumerate_chains(Map, undefined) ->
 enumerate_chains(Map, FastForwardMap) ->
     lists:zip3(lists:seq(0, length(Map) - 1), Map, FastForwardMap).
 
+-spec align_replicas([[atom()]], non_neg_integer()) -> [[atom()]].
+align_replicas(Map, NumReplicas) ->
+    [begin
+         [Master | Replicas] = Chain,
+         [Master | align_chain_replicas(Replicas, NumReplicas)]
+     end || Chain <- Map].
+
+align_chain_replicas(_, 0) -> [];
+align_chain_replicas([H|T] = _Chain, ReplicasLeft) ->
+    [H | align_chain_replicas(T, ReplicasLeft-1)];
+align_chain_replicas([] = _Chain, ReplicasLeft) ->
+    lists:duplicate(ReplicasLeft, undefined).
+
 -ifdef(TEST).
+align_replicas_test() ->
+    [[a, b, c],
+     [d, e, undefined],
+     [undefined, undefined, undefined]] =
+        align_replicas([[a, b, c],
+                        [d, e],
+                        [undefined]], 2),
+
+    [[a, b],
+     [d, e],
+     [undefined, undefined]] =
+        align_replicas([[a, b, c],
+                        [d, e],
+                        [undefined]], 1),
+
+    [[a],
+     [d],
+     [undefined]] =
+        align_replicas([[a, b, c],
+                        [d, e],
+                        [undefined]], 0).
+
 balance_test_() ->
     MapSizes = [1,2,1024,4096],
     NodeNums = [1,2,3,4,5,10,100],

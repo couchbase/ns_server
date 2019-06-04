@@ -995,8 +995,7 @@ do_rebalance_membase_bucket(Bucket, Config,
     AdjustedMap = case cluster_compat_mode:is_cluster_madhatter() of
                       true ->
                           NumReplicas = ns_bucket:num_replicas(Config),
-                          ns_janitor_map_recoverer:align_replicas(Map,
-                                                                  NumReplicas);
+                          mb_map:align_replicas(Map, NumReplicas);
                       false ->
                           %% Expect equal length map pre mad-hatter, as the
                           %% janitor fixes it for us.

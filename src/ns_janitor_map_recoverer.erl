@@ -24,8 +24,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([read_existing_map/4,
-         align_replicas/2]).
+-export([read_existing_map/4]).
 
 -define(CLEAN_VBUCKET_MAP_RECOVER, 0).
 -define(UNCLEAN_VBUCKET_MAP_RECOVER, 1).
@@ -77,7 +76,7 @@ read_existing_map(Bucket, S, VBucketsCount, NumReplicas) ->
                               ++ " Missing vbuckets count: ~p and HasDuplicates is: ~p~n",
                               [Bucket, MissingVBucketsCount, HasDuplicates])
             end,
-            {ok, align_replicas(Map, NumReplicas)}
+            {ok, mb_map:align_replicas(Map, NumReplicas)}
     end.
 
 -spec recover_map([{non_neg_integer(), node()}],
@@ -107,44 +106,7 @@ recover_map(Active, Replica, HasDuplicates, I, VBucketsCount, MapAcc) ->
                  | MapAcc],
     recover_map(Active, Replica, NewDuplicates, I+1, VBucketsCount, NewMapAcc).
 
--spec align_replicas([[atom()]], non_neg_integer()) ->
-                            [[atom()]].
-align_replicas(Map, NumReplicas) ->
-    [begin
-         [Master | Replicas] = Chain,
-         [Master | align_chain_replicas(Replicas, NumReplicas)]
-     end || Chain <- Map].
-
-align_chain_replicas(_, 0) -> [];
-align_chain_replicas([H|T] = _Chain, ReplicasLeft) ->
-    [H | align_chain_replicas(T, ReplicasLeft-1)];
-align_chain_replicas([] = _Chain, ReplicasLeft) ->
-    lists:duplicate(ReplicasLeft, undefined).
-
-
 -ifdef(TEST).
-align_replicas_test() ->
-    [[a, b, c],
-     [d, e, undefined],
-     [undefined, undefined, undefined]] =
-        align_replicas([[a, b, c],
-                        [d, e],
-                        [undefined]], 2),
-
-    [[a, b],
-     [d, e],
-     [undefined, undefined]] =
-        align_replicas([[a, b, c],
-                        [d, e],
-                        [undefined]], 1),
-
-    [[a],
-     [d],
-     [undefined]] =
-        align_replicas([[a, b, c],
-                        [d, e],
-                        [undefined]], 0).
-
 recover_map_test() ->
     Result1 = recover_map([{0, a},
                            {2, b},

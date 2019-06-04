@@ -363,8 +363,7 @@ compute_vbucket_map_fixup(Bucket, BucketConfig, States) ->
                              NewMap;
                          false ->
                              NumReplicas = ns_bucket:num_replicas(BucketConfig),
-                             ns_janitor_map_recoverer:align_replicas(Map,
-                                                                     NumReplicas)
+                             mb_map:align_replicas(Map, NumReplicas)
                      end,
     NewBucketConfig = case NewAdjustedMap =:= Map of
                           true ->
