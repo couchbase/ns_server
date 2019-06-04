@@ -102,8 +102,8 @@ def setup_extra_ns_server_app_file(force_community):
 
 
 def setup_path(ns_server_app_path):
-    def ebin_search(path):
-        dirs = os.walk(path)
+    def ebin_search(path_name):
+        dirs = os.walk(path_name)
         ebins = []
 
         for d, _, _ in dirs:
@@ -197,7 +197,7 @@ def generate_ssl_dist_optfile(datadir):
     out_file = os.path.join(cfg_dir, "ssl_dist_opts")
 
     if not os.path.exists(cfg_dir):
-        os.makedirs(cfg_dir, 0755)
+        os.makedirs(cfg_dir, 0o755)
 
     with open(in_file) as f:
         content = f.read().replace('@CONFIG_PREFIX@', cfg_dir)
@@ -226,9 +226,9 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix):
     tempdir = os.path.abspath('tmp/')
     nodefile = os.path.join(datadir, "nodefile")
     babysitternodefile = os.path.join(
-            datadir, "couchbase-server.babysitter.node")
+        datadir, "couchbase-server.babysitter.node")
     babysittercookiefile = os.path.join(
-            datadir, "couchbase-server.babysitter.cookie")
+        datadir, "couchbase-server.babysitter.cookie")
     ssloptfile = generate_ssl_dist_optfile(datadir)
     cb_dist_config = os.path.join(datadir, "config", "dist_cfg")
 
@@ -246,11 +246,11 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix):
         "-ns_server", "config_path", '"etc/static_config.in"',
         "error_logger_mf_dir", quote_string_for_erl(logdir),
         "path_config_etcdir", '"priv"',
-        "path_config_bindir", quote_string_for_erl(PREFIX+"/bin"),
-        "path_config_libdir", quote_string_for_erl(PREFIX+"/lib"),
+        "path_config_bindir", quote_string_for_erl(PREFIX + "/bin"),
+        "path_config_libdir", quote_string_for_erl(PREFIX + "/lib"),
         "path_config_datadir", quote_string_for_erl(datadir),
         "path_config_tmpdir", quote_string_for_erl(tempdir),
-        "path_config_secdir", quote_string_for_erl(PREFIX+"/etc/security"),
+        "path_config_secdir", quote_string_for_erl(PREFIX + "/etc/security"),
         "path_audit_log", quote_string_for_erl(logdir),
         "rest_port", str(base_api_port + i),
         "query_port", str(base_couch_port - 1 - i),
@@ -297,7 +297,7 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix):
         "cbas_metadata_port", str(base_cbas_port + i * 15 + 13),
         "cbas_metadata_callback_port", str(base_cbas_port + i * 15 + 14),
         "cbas_ssl_port", str(10000 + base_cbas_port + i)
-        ] + extra_args
+    ] + extra_args
 
     return args
 
@@ -307,14 +307,15 @@ def start_cluster(num_nodes, start_index, extra_args, args_prefix,
 
     ebin_path = prepare_start_cluster(force_community)
 
-    def start_node(i):
-        logdir = "logs/n_{0}".format(i)
+    def start_node(node_num):
+        logdir = "logs/n_{0}".format(node_num)
         try:
             os.makedirs(logdir)
         except OSError:
             pass
 
-        args = erlang_args_for_node(i, ebin_path, extra_args, args_prefix)
+        args = erlang_args_for_node(node_num, ebin_path, extra_args,
+                                    args_prefix)
 
         params = {}
 
@@ -324,12 +325,12 @@ def start_cluster(num_nodes, start_index, extra_args, args_prefix,
             params['env'] = {}
             params['env'].update(os.environ)
         path = params['env']['PATH']
-        path = (PREFIX+"/bin") + os.pathsep + path
+        path = (PREFIX + "/bin") + os.pathsep + path
         if 'ERL_FULLSWEEP_AFTER' not in params['env']:
             params['env']['ERL_FULLSWEEP_AFTER'] = '512'
         params['env']['PATH'] = path
 
-        crash_dump_base = 'erl_crash.dump.n_%d' % i
+        crash_dump_base = 'erl_crash.dump.n_%d' % node_num
         params['env']['ERL_CRASH_DUMP_BASE'] = crash_dump_base
         params['env']['ERL_CRASH_DUMP'] = crash_dump_base + '.babysitter'
 
@@ -340,6 +341,7 @@ def start_cluster(num_nodes, start_index, extra_args, args_prefix,
             params['close_fds'] = False
 
         w = None
+        r = None
 
         if "-noinput" in args:
             (r, w) = os.pipe()
@@ -355,7 +357,11 @@ def start_cluster(num_nodes, start_index, extra_args, args_prefix,
         pr = subprocess.Popen(args, **params)
         if w is not None:
             os.close(r)
+
+        # Squirrel away the write descriptor for the pipe into the
+        # subprocess.Popen object
         pr.write_side = w
+
         return pr
 
     return [start_node(i + start_index) for i in xrange(num_nodes)]
@@ -380,11 +386,11 @@ def usage():
 
 
 def find_primary_addr(ipv6):
-    Family = socket.AF_INET6 if ipv6 else socket.AF_INET
-    DnsAddr = "2001:4860:4860::8844" if ipv6 else "8.8.8.8"
-    s = socket.socket(Family, socket.SOCK_DGRAM)
+    family = socket.AF_INET6 if ipv6 else socket.AF_INET
+    dns_addr = "2001:4860:4860::8844" if ipv6 else "8.8.8.8"
+    s = socket.socket(family, socket.SOCK_DGRAM)
     try:
-        s.connect((DnsAddr, 53))
+        s.connect((dns_addr, 53))
         if ipv6:
             addr, port, _, _ = s.getsockname()
         else:
@@ -409,7 +415,7 @@ def main():
                                            "minified", "disable-autocomplete",
                                            "community",
                                            "pretend-version=", "afamily="])
-    except getopt.GetoptError, err:
+    except getopt.GetoptError as err:
         # print help information and exit:
         print str(err)  # will print something like "option -a not recognized"
         usage()
@@ -442,7 +448,7 @@ def main():
         elif o in ("--help", "-h"):
             usage()
             exit(0)
-        elif o in("--static-cookie"):
+        elif o == "--static-cookie":
             static_cookie = True
         elif o == '--loglevel':
             loglevel = a
@@ -471,7 +477,7 @@ def main():
     nodes = []
     terminal_attrs = None
 
-    def kill_nodes(*args):
+    def kill_nodes():
         for n in nodes:
             if n.write_side is not None:
                 print("Closing %d\n" % n.write_side)
@@ -531,9 +537,9 @@ def main():
 
     plugins_dir = '../build/cluster_run_ui_plugins'
     if os.path.isdir(plugins_dir):
-        for file in os.listdir(plugins_dir):
-            if fnmatch.fnmatch(file, 'pluggable-ui-*.cluster_run.json'):
-                pluggable_config.append(os.path.join(plugins_dir, file))
+        for f in os.listdir(plugins_dir):
+            if fnmatch.fnmatch(f, 'pluggable-ui-*.cluster_run.json'):
+                pluggable_config.append(os.path.join(plugins_dir, f))
 
     if pluggable_config:
         extra_args += ["-ns_server", "ui_plugins",
