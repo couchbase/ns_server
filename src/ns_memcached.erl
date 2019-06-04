@@ -90,7 +90,6 @@
          list_vbuckets/1, list_vbuckets/2,
          local_connected_and_list_vbuckets/1,
          local_connected_and_list_vbucket_details/2,
-         list_vbuckets_prevstate/2,
          set_vbucket/3, set_vbucket/4,
          stats/1, stats/2,
          warmup_stats/1,
@@ -463,14 +462,6 @@ do_handle_call({get_vbucket_details_stats, VBucket, Keys}, _From, State) ->
     {reply, Reply, State};
 do_handle_call(list_buckets, _From, State) ->
     Reply = mc_client_binary:list_buckets(State#state.sock),
-    {reply, Reply, State};
-do_handle_call(list_vbuckets_prevstate, _From, State) ->
-    Reply = mc_binary:quick_stats(
-              State#state.sock, <<"prev-vbucket">>,
-              fun (<<"vb_", K/binary>>, V, Acc) ->
-                      [{list_to_integer(binary_to_list(K)),
-                        binary_to_existing_atom(V, latin1)} | Acc]
-              end, []),
     {reply, Reply, State};
 do_handle_call(list_vbuckets, _From, State) ->
     Reply = mc_binary:quick_stats(
@@ -972,11 +963,6 @@ local_connected_and_list_vbucket_details(Bucket, Keys) ->
     do_call(server(Bucket), {connected_and_list_vbucket_details, Keys},
             ?TIMEOUT).
 
--spec list_vbuckets_prevstate(node(), bucket_name()) ->
-                                     {ok, [{vbucket_id(), vbucket_state()}]} |
-                                     mc_error().
-list_vbuckets_prevstate(Node, Bucket) ->
-    do_call({server(Bucket), Node}, list_vbuckets_prevstate, ?TIMEOUT).
 
 set_vbucket(Bucket, VBucket, VBState) ->
     set_vbucket(Bucket, VBucket, VBState, undefined).

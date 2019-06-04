@@ -43,8 +43,7 @@
                 apply_vbucket_states_worker :: undefined | pid(),
                 rebalance_subprocesses_registry :: pid()}).
 
--export([wait_for_bucket_creation/2,
-         query_vbuckets/4,
+-export([query_vbuckets/4,
          fetch_vbucket_states/2,
          find_vbucket_state/2,
          check_bucket_ready/3,
@@ -78,18 +77,6 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
-
-wait_for_bucket_creation(Bucket, Nodes) ->
-    NodeCalls = [{N, query_vbucket_states} || N <- Nodes],
-    NodeRVs = wait_for_memcached(NodeCalls, Bucket,
-                                 ?WAIT_FOR_MEMCACHED_TIMEOUT),
-    BadNodes = [N || {N, R} <- NodeRVs,
-                     case R of
-                         warming_up -> false;
-                         {ok, _} -> false;
-                         _ -> true
-                     end],
-    BadNodes.
 
 query_vbucket_states_loop(Node, Bucket, Call, Parent) ->
     query_vbucket_states_loop(Node, Bucket, Call, Parent, undefined).

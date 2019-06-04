@@ -86,27 +86,12 @@ cleanup_with_membase_bucket_check_map(Bucket, Options, BucketConfig) ->
         [] ->
             Servers = proplists:get_value(servers, BucketConfig, []),
             true = (Servers =/= []),
-            case janitor_agent:wait_for_bucket_creation(Bucket, Servers) of
-                [_|_] = Down ->
-                    ?log_info("~s: Some nodes (~p) are still not ready to see if we need to recover past vbucket map", [Bucket, Down]),
-                    {error, wait_for_memcached_failed, Down};
-                [] ->
-                    NumVBuckets = proplists:get_value(num_vbuckets, BucketConfig),
-                    NumReplicas = ns_bucket:num_replicas(BucketConfig),
-                    {NewMap, Opts} =
-                        case ns_janitor_map_recoverer:read_existing_map(Bucket, Servers, NumVBuckets, NumReplicas) of
-                            {ok, M} ->
-                                Opts1 = ns_bucket:config_to_map_options(BucketConfig),
-                                {M, Opts1};
-                            {error, no_map} ->
-                                ?log_info("janitor decided to generate initial vbucket map"),
-                                ns_rebalancer:generate_initial_map(BucketConfig)
-                        end,
 
-                    set_initial_map(NewMap, Opts, Bucket, BucketConfig),
+            ?log_info("janitor decided to generate initial vbucket map"),
+            {NewMap, Opts} = ns_rebalancer:generate_initial_map(BucketConfig),
+            set_initial_map(NewMap, Opts, Bucket, BucketConfig),
 
-                    cleanup(Bucket, Options)
-            end;
+            cleanup(Bucket, Options);
         _ ->
             cleanup_with_membase_bucket_vbucket_map(Bucket, Options, BucketConfig)
     end.
