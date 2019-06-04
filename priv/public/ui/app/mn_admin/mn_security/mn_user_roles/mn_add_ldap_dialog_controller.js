@@ -199,6 +199,10 @@
       if (config.query_pass == "**********") {
         delete config.query_pass;
       }
+      if (vm.config.isAnon) {
+        config.query_dn = "";
+        config.query_pass = "";
+      }
       if (config.encryption == "false") {
         delete config.server_cert_validation;
       }
