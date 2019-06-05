@@ -32,9 +32,11 @@
       function activate() {
         vm.onDbPathChange();
         vm.onIndexPathChange();
-        $scope.config.cbasDirs.forEach(function (path, index) {
-          vm.onCbasDirsChange(index);
-        });
+        if ($scope.config.cbasDirs) {
+          $scope.config.cbasDirs.forEach(function (path, index) {
+            vm.onCbasDirsChange(index);
+          });
+        }
       }
 
       function onDbPathChange() {
