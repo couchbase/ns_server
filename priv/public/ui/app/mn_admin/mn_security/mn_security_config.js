@@ -124,7 +124,8 @@
         controller: "mnRolesGroupsController as rolesGroupsCtl",
         templateUrl: "app/mn_admin/mn_security/mn_roles_groups.html",
         data: {
-          compat: "atLeast50"
+          compat: "atLeast50",
+          enterprise: true
         }
       })
       .state('app.admin.security.internalRoles', {

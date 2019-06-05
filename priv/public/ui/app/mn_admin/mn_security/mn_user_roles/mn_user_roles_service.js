@@ -326,8 +326,9 @@
           name: user.name
         };
 
-      if (mnPoolDefault.export.isEnterprise)
+      if (mnPoolDefault.export.isEnterprise) {
         data.groups = groups.join(',');
+      }
 
       if ((!isEditingMode && user.domain == "local") || resetPassword) {
         data.password = user.password;
