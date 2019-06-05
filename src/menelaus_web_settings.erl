@@ -92,7 +92,7 @@ get_tls_version(SV) ->
         false -> invalid
     end.
 
-get_cuipher_suites(Str) ->
+get_cipher_suites(Str) ->
     try ejson:decode(Str) of
         L when is_list(L) ->
             InvalidNames = lists:filter(?cut(not ciphers:is_valid_name(_)), L),
@@ -119,7 +119,7 @@ conf(security) ->
      {ui_session_timeout, uiSessionTimeout, undefined,
       get_number(60, 1000000, undefined)},
      {ssl_minimum_protocol, tlsMinVersion, undefined, fun get_tls_version/1},
-     {cipher_suites, cipherSuites, undefined, fun get_cuipher_suites/1},
+     {cipher_suites, cipherSuites, undefined, fun get_cipher_suites/1},
      {honor_cipher_order, honorCipherOrder, undefined, fun get_bool/1},
      {cluster_encryption_level, clusterEncryptionLevel, control,
       fun get_cluster_encryption/1}];
