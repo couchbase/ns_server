@@ -192,7 +192,7 @@ failures_to_zombies(Failures) ->
 
 check_bucket_ready(Bucket, Nodes, Timeout) ->
     NodeCalls = [{N, query_vbucket_states} || N <- Nodes],
-    case do_query_vbuckets(Bucket, NodeCalls, Timeout, true) of
+    case do_query_vbuckets(Bucket, NodeCalls, Timeout) of
         {_States, []} ->
             ready;
         {_States, Failures} ->
@@ -241,11 +241,9 @@ find_vbucket_state(Node, NodeStates) ->
 query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
     Timeout = proplists:get_value(timeout, Options,
                                   ?WAIT_FOR_MEMCACHED_TIMEOUT),
-    WaitForWarmup = proplists:is_defined(wait_for_warmup, Options),
 
     CreateCall = case cluster_compat_mode:is_cluster_madhatter() of
                      false ->
-                         true = WaitForWarmup,
                          fun (_) -> query_vbucket_states end;
                      true ->
                          {query_vbuckets, _, ExtraKeys, Options}
@@ -257,8 +255,7 @@ query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
                                   {N, CreateCall(all)}
                           end, Nodes),
 
-    {NodeRVs, Failures} =
-        do_query_vbuckets(Bucket, NodeCalls, Timeout, WaitForWarmup),
+    {NodeRVs, Failures} = do_query_vbuckets(Bucket, NodeCalls, Timeout),
     ConvertedResults =
         [convert_call_result(Node, ResultTuple)
          || {Node, {ok, Tuples}} <- NodeRVs, ResultTuple <- Tuples],
@@ -266,14 +263,7 @@ query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
      failures_to_zombies(Failures)}.
 
 %% TODO: consider supporting partial janitoring
-do_query_vbuckets(Bucket, NodeCalls, Timeout, false) ->
-    misc:multi_call_request(NodeCalls,
-                            server_name(Bucket),
-                            Timeout,
-                            fun ({ok, _}) -> true;
-                                (Err) -> {false, Err}
-                            end);
-do_query_vbuckets(Bucket, NodeCalls, Timeout, true) ->
+do_query_vbuckets(Bucket, NodeCalls, Timeout) ->
     RVs = wait_for_memcached(NodeCalls, Bucket, Timeout),
     lists:partition(fun ({_, {ok, _}}) ->
                             true;

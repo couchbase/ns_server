@@ -339,8 +339,7 @@ fix_chains(Bucket, FailoverNodes, Chains) ->
         janitor_agent:query_vbuckets(
           Bucket, NodesToQuery,
           [high_seqno, high_prepared_seqno],
-          [stop_replications, wait_for_warmup,
-           {timeout, ?FAILOVER_OPS_TIMEOUT}]),
+          [stop_replications, {timeout, ?FAILOVER_OPS_TIMEOUT}]),
 
     BadNodes =:= [] orelse
         throw_failover_error("Failed to get failover info for bucket ~p: ~p",

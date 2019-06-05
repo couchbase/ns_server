@@ -128,7 +128,7 @@ cleanup_with_membase_bucket_vbucket_map(Bucket, Options, BucketConfig) ->
     Servers = proplists:get_value(servers, BucketConfig, []),
     true = (Servers =/= []),
     Timeout = proplists:get_value(query_states_timeout, Options),
-    Opts = [wait_for_warmup | [{timeout, Timeout} || Timeout =/= undefined]],
+    Opts = [{timeout, Timeout} || Timeout =/= undefined],
     case janitor_agent:query_vbuckets(Bucket, Servers, [], Opts) of
         {States, []} ->
             cleanup_with_states(Bucket, Options, BucketConfig, Servers, States);
