@@ -82,7 +82,8 @@
          set_user_profile/3,
          delete_user_profile/2,
          enable_auto_reprovision/2,
-         disable_auto_reprovision/1
+         disable_auto_reprovision/1,
+         failover_settings/2
         ]).
 
 -export([start_link/0, stats/0]).
@@ -334,7 +335,9 @@ code(modify_retry_rebalance) ->
 code(enable_auto_reprovision) ->
     8252;
 code(disable_auto_reprovision) ->
-    8253.
+    8253;
+code(failover_settings) ->
+    8254.
 
 to_binary({list, List}) ->
     [to_binary(A) || A <- List];
@@ -860,3 +863,8 @@ set_user_profile(Req, Identity, Json) ->
 
 delete_user_profile(Req, Identity) ->
     put(delete_user_profile, Req, [{identity, get_identity(Identity)}]).
+
+failover_settings(Req, Settings) ->
+    Settings1 = [{K, V} || {{failover, K}, V} <- Settings],
+    put(failover_settings, Req,
+        [{settings, {prepare_list(Settings1)}}]).

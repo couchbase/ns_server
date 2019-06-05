@@ -300,7 +300,8 @@ failover_membase_bucket_with_map(Nodes, Bucket, BucketConfig, Map, Options) ->
 
 durability_aware(Options) ->
     cluster_compat_mode:is_cluster_madhatter() andalso
-        proplists:get_bool(durability_aware, Options).
+        proplists:get_bool(durability_aware, Options) andalso
+        ns_config:read_key_fast({failover, preserve_durable_mutations}, true).
 
 fix_vbucket_map(FailoverNodes, Bucket, Map, Options) ->
     case durability_aware(Options) of

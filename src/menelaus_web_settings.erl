@@ -152,7 +152,15 @@ conf(internal) ->
       fun get_bool/1},
      {{cert, use_sha1}, certUseSha1, false, fun get_bool/1}];
 conf(developer_preview) ->
-    [{developer_preview_enabled, enabled, false, fun only_true/1}].
+    [{developer_preview_enabled, enabled, false, fun only_true/1}];
+conf(failover) ->
+    case cluster_compat_mode:is_cluster_madhatter() of
+        true ->
+            [{{failover, preserve_durable_mutations}, preserveDurableMutations,
+              true, fun get_bool/1}];
+        false ->
+            []
+    end.
 
 build_kvs(Type) ->
     Conf = conf(Type),
