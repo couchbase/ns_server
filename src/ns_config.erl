@@ -253,7 +253,9 @@ set_kvlist([{Key, Value} | Rest], Config, UUID, NewPairs) ->
     NewList = update_config_key(Key, Value, Config, UUID),
     set_kvlist(Rest, NewList, UUID, [hd(NewList) | NewPairs]).
 
-set(KVList) ->
+set([]) ->
+    ok;
+set(KVList) when is_list(KVList) ->
     ok = update_with_changes(fun (Config, UUID) ->
                                      set_kvlist(KVList, Config, UUID, [])
                              end).
