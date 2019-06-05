@@ -372,6 +372,13 @@ complete_rename(OldNode) ->
             notify_couchdb_node(NewNode),
             ?log_debug("Node ~p has been renamed to ~p.", [OldNode, NewNode])
     end,
+    %% Rename of the node leads to generation of node's certs, which leads
+    %% to restart of web server. External components (UI and CLI) assume the
+    %% rename command to be synchronous. They can perform calls to web server
+    %% immediately after rename is done. In order to avoid the race we need
+    %% to make sure web server is restarted by the time the rename is finished.
+    cluster_compat_mode:is_enterprise() andalso
+        ns_ssl_services_setup:sync_local_cert_and_pkey_change(),
     misc:remove_marker(ns_cluster:rename_marker_path()).
 
 rename_node_in_config(Old, New) ->

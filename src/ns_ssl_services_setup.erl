@@ -537,9 +537,9 @@ handle_info(cert_and_pkey_changed, #state{hash = OldHash} = State) ->
             misc:create_marker(marker_path()),
             apply_node_cert_data(Data),
             ?log_info("Wrote new pem file"),
-            self() ! notify_services,
-            {noreply, State#state{hash = NewHash,
-                                  reload_state = all_services()}}
+            NewState = State#state{hash = NewHash,
+                                   reload_state = all_services()},
+            {noreply, notify_services(NewState)}
     end;
 handle_info(ssl_minimum_protocol_changed,
             #state{min_ssl_ver = MinSslVer} = State) ->
@@ -578,39 +578,9 @@ handle_info(secure_headers_changed, State) ->
     {noreply, trigger_ssl_reload(secure_headers_changed, [capi_ssl_service],
                                  State)};
 
-handle_info(notify_services, #state{reload_state = []} = State) ->
+handle_info(notify_services, State) ->
     misc:flush(notify_services),
-    {noreply, State};
-handle_info(notify_services, #state{reload_state = Reloads} = State) ->
-    misc:flush(notify_services),
-
-    ?log_debug("Going to notify following services: ~p", [Reloads]),
-
-    RVs = diag_handler:diagnosing_timeouts(
-            fun () ->
-                    misc:parallel_map(fun notify_service/1, Reloads, 60000)
-            end),
-    ResultPairs = lists:zip(RVs, Reloads),
-    {Good, Bad} = lists:foldl(fun ({ok, Svc}, {AccGood, AccBad}) ->
-                                      {[Svc | AccGood], AccBad};
-                                  (ErrorPair, {AccGood, AccBad}) ->
-                                      {AccGood, [ErrorPair | AccBad]}
-                              end, {[], []}, ResultPairs),
-    case Good of
-        [] ->
-            ok;
-        _ ->
-            ?log_info("Succesfully notified services ~p", [Good])
-    end,
-    case Bad of
-        [] ->
-            misc:remove_marker(marker_path()),
-            ok;
-        _ ->
-            ?log_info("Failed to notify some services. Will retry in 5 sec, ~p", [Bad]),
-            timer:send_after(5000, notify_services)
-    end,
-    {noreply, State#state{reload_state = [Svc || {_, Svc} <- Bad]}};
+    {noreply, notify_services(State)};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -773,6 +743,36 @@ san_field_to_type("email") -> rfc822Name.
 
 all_services() ->
     [ssl_service, capi_ssl_service, xdcr_proxy, memcached, event].
+
+notify_services(#state{reload_state = []} = State) -> State;
+notify_services(#state{reload_state = Reloads} = State) ->
+    ?log_debug("Going to notify following services: ~p", [Reloads]),
+
+    RVs = diag_handler:diagnosing_timeouts(
+            fun () ->
+                    misc:parallel_map(fun notify_service/1, Reloads, 60000)
+            end),
+    ResultPairs = lists:zip(RVs, Reloads),
+    {Good, Bad} = lists:foldl(fun ({ok, Svc}, {AccGood, AccBad}) ->
+                                      {[Svc | AccGood], AccBad};
+                                  (ErrorPair, {AccGood, AccBad}) ->
+                                      {AccGood, [ErrorPair | AccBad]}
+                              end, {[], []}, ResultPairs),
+    case Good of
+        [] ->
+            ok;
+        _ ->
+            ?log_info("Succesfully notified services ~p", [Good])
+    end,
+    case Bad of
+        [] ->
+            misc:remove_marker(marker_path()),
+            ok;
+        _ ->
+            ?log_info("Failed to notify some services. Will retry in 5 sec, ~p", [Bad]),
+            timer:send_after(5000, notify_services)
+    end,
+    State#state{reload_state = [Svc || {_, Svc} <- Bad]}.
 
 notify_service(Service) ->
     RV = (catch do_notify_service(Service)),
