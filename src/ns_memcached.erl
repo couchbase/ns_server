@@ -175,7 +175,15 @@ run_connect_phase(Parent, Bucket, WorkersCount) ->
 
 worker_init(Parent, ParentState) ->
     ParentState1 = do_worker_init(ParentState),
-    worker_loop(Parent, ParentState1, #state.running_fast).
+    try
+        worker_loop(Parent, ParentState1, #state.running_fast)
+    catch
+        T:E ->
+            Stack = erlang:get_stacktrace(),
+            ?log_error("Unexpected exception in ns_memcached for bucket ~p: ~p",
+                       [ParentState1#state.bucket, {T, E, Stack}]),
+            worker_init(Parent, ParentState)
+    end.
 
 do_worker_init(State) ->
     {ok, Sock} = connect([json]),
