@@ -67,25 +67,18 @@ mover(Parent, Bucket,
 
 mover(Parent, Bucket, VBucket, OldChain, NewChain, Quirks) ->
     master_activity_events:note_vbucket_mover(self(), Bucket, hd(OldChain), VBucket, OldChain, NewChain),
-    IndexAware = cluster_compat_mode:is_index_aware_rebalance_on(),
     misc:try_with_maybe_ignorant_after(
       fun () ->
               process_flag(trap_exit, true),
               mover_inner_dcp(Parent, Bucket, VBucket,
-                              OldChain, NewChain, IndexAware, Quirks),
+                              OldChain, NewChain, Quirks),
               on_move_done(Parent, Bucket, VBucket, OldChain, NewChain)
       end,
       fun () ->
               misc:sync_shutdown_many_i_am_trapping_exits(get_cleanup_list())
       end),
 
-    case IndexAware of
-        false ->
-            Parent ! {move_done, {VBucket, OldChain, NewChain, Quirks}};
-        true ->
-            Parent ! {move_done_new_style, {VBucket,
-                                            OldChain, NewChain, Quirks}}
-    end.
+    Parent ! {move_done_new_style, {VBucket, OldChain, NewChain, Quirks}}.
 
 spawn_and_wait(Body) ->
     WorkerPid = proc_lib:spawn_link(Body),
@@ -162,7 +155,9 @@ maybe_initiate_indexing(Bucket, Parent, JustBackfillNodes, ReplicaNodes, VBucket
 
 mover_inner_dcp(Parent, Bucket, VBucket,
                 [OldMaster|OldReplicas] = OldChain,
-                [NewMaster|_] = NewChain, IndexAware, Quirks) ->
+                [NewMaster|_] = NewChain, Quirks) ->
+    IndexAware = cluster_compat_mode:is_index_aware_rebalance_on(),
+
     maybe_inhibit_view_compaction(Parent, OldMaster, Bucket, NewMaster, IndexAware),
 
     %% build new chain as replicas of existing master
