@@ -189,7 +189,7 @@ handle_info({compaction_done, N}, #state{moves_scheduler_state = SubState} = Sta
     ?log_debug("noted compaction done: ~p", [A]),
     SubState2 = vbucket_move_scheduler:note_compaction_done(SubState, A),
     spawn_workers(State#state{moves_scheduler_state = SubState2});
-handle_info({move_done_new_style,
+handle_info({move_done,
              {_VBucket, _OldChain, _NewChain, _Quirks} = Tuple}, State) ->
     on_move_done(Tuple, State);
 handle_info({backfill_done,
