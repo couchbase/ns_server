@@ -121,4 +121,5 @@ nuke(Bucket) ->
       end,
       Connections,
       infinity),
-    Children =/= [] andalso Connections =/= [].
+
+    ok.
