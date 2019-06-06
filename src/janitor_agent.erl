@@ -946,7 +946,7 @@ set_rebalance_mref(Pid, State0) ->
             case State0#state.rebalance_status =:= in_process of
                 true ->
                     %% something went wrong. nuke replicator just in case
-                    (catch dcp_sup:nuke(State0#state.bucket_name));
+                    dcp_sup:nuke(State0#state.bucket_name);
                 false ->
                     ok
             end,
