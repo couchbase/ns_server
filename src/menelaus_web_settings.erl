@@ -61,14 +61,23 @@ get_bool("true") ->
 get_bool("false") ->
     {ok, false};
 get_bool(_) ->
-    invalid.
+    {error, "Accepted values are 'true' and 'false'."}.
 
 only_true("true") -> {ok, true};
-only_true(_) -> invalid.
+only_true(_) -> {error, "Only accepted value is 'true'."}.
+
+parse_validate_number_wrapper(Num, Min, Max) ->
+    case parse_validate_number(Num, Min, Max) of
+        {ok, _} = OK -> OK;
+        _ ->
+            M = io_lib:format("The value must be between ~p and ~p.",
+                              [Min, Max]),
+            {error, lists:flatten(M)}
+    end.
 
 get_number(Min, Max) ->
     fun (SV) ->
-            parse_validate_number(SV, Min, Max)
+            parse_validate_number_wrapper(SV, Min, Max)
     end.
 
 get_number(Min, Max, Default) ->
@@ -77,7 +86,7 @@ get_number(Min, Max, Default) ->
                 "" ->
                     {ok, Default};
                 _ ->
-                    parse_validate_number(SV, Min, Max)
+                    parse_validate_number_wrapper(SV, Min, Max)
             end
     end.
 
@@ -89,7 +98,9 @@ get_tls_version(SV) ->
     SupportedStr = [atom_to_list(S) || S <- Supported],
     case lists:member(SV, SupportedStr) of
         true -> {ok, list_to_atom(SV)};
-        false -> invalid
+        false ->
+            M = io_lib:format("Supported TLS versions are ~p", [Supported]),
+            {error, lists:flatten(M)}
     end.
 
 get_cipher_suites(Str) ->
@@ -98,19 +109,31 @@ get_cipher_suites(Str) ->
             InvalidNames = lists:filter(?cut(not ciphers:is_valid_name(_)), L),
             case InvalidNames of
                 [] -> {ok, L};
-                _ -> invalid
+                _ ->
+                    M = io_lib:format("Invalid cipher suite names = ~s",
+                                      [InvalidNames]),
+                    {error, lists:flatten(M)}
             end;
-        _ -> invalid
+        _ -> {error, "Invalid format. Expecting a list of ciphers."}
     catch
-        _:_ -> invalid
+        _:_ -> {error, "Invalid format. Expecting a list of ciphers."}
     end.
 
 get_cluster_encryption(Level) ->
     SupportedLevels = ["control", "all"],
-    case lists:member(Level, SupportedLevels) andalso
-        misc:is_cluster_encryption_enabled() of
-        true ->  {ok, list_to_atom(Level)};
-        false -> invalid
+    IsCEncryptEnabled = misc:is_cluster_encryption_enabled(),
+    ValidLevel = lists:member(Level, SupportedLevels),
+
+    if
+        not IsCEncryptEnabled  ->
+            M = "Can't set cluster encryption level when cluster encryption "
+                "is disabled.",
+            {error, M};
+        not ValidLevel ->
+            M = "Cluster encryption level must be one of ['control', 'all'].",
+            {error, M};
+        true ->
+            {ok, list_to_atom(Level)}
     end.
 
 conf(security) ->
@@ -204,9 +227,10 @@ handle_post(Type, Req) ->
                                       _ ->
                                           {[{CK, V} | ListToSet], ListErrors}
                                   end;
-                              _ ->
+                              {error, Msg} ->
+                                  M = io_lib:format("~s - ~s", [SJK, Msg]),
                                   {ListToSet,
-                                   [iolist_to_binary(io_lib:format("~s is invalid", [SJK])) | ListErrors]}
+                                   [iolist_to_binary(M) | ListErrors]}
                           end;
                       false ->
                           {ListToSet,
@@ -226,7 +250,7 @@ handle_post(Type, Req) ->
             end,
             reply_json(Req, []);
         _ ->
-            reply_json(Req, {[{error, X} || X <- Errors]}, 400)
+            reply_json(Req, {struct, [{errors, Errors}]}, 400)
     end.
 
 handle_settings_max_parallel_indexers(Req) ->
