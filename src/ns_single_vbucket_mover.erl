@@ -70,8 +70,7 @@ mover(Parent, Bucket, VBucket, OldChain, NewChain, Quirks) ->
     misc:try_with_maybe_ignorant_after(
       fun () ->
               process_flag(trap_exit, true),
-              mover_inner_dcp(Parent, Bucket, VBucket,
-                              OldChain, NewChain, Quirks),
+              mover_inner(Parent, Bucket, VBucket, OldChain, NewChain, Quirks),
               on_move_done(Parent, Bucket, VBucket, OldChain, NewChain)
       end,
       fun () ->
@@ -153,9 +152,9 @@ maybe_initiate_indexing(Bucket, Parent, JustBackfillNodes, ReplicaNodes, VBucket
     ok = janitor_agent:initiate_indexing(Bucket, Parent, JustBackfillNodes, ReplicaNodes, VBucket),
     master_activity_events:note_indexing_initiated(Bucket, JustBackfillNodes, VBucket).
 
-mover_inner_dcp(Parent, Bucket, VBucket,
-                [OldMaster|OldReplicas] = OldChain,
-                [NewMaster|_] = NewChain, Quirks) ->
+mover_inner(Parent, Bucket, VBucket,
+            [OldMaster|OldReplicas] = OldChain,
+            [NewMaster|_] = NewChain, Quirks) ->
     IndexAware = cluster_compat_mode:is_index_aware_rebalance_on(),
 
     maybe_inhibit_view_compaction(Parent, OldMaster, Bucket, NewMaster, IndexAware),
