@@ -643,7 +643,7 @@ handle_call({update_vbucket_state, VBucket, NormalState, RebalanceState,
     handle_call({update_vbucket_state, VBucket, NormalState, RebalanceState,
                  ReplicateFrom, undefined}, From, State);
 handle_call({update_vbucket_state, VBucket, NormalState, RebalanceState,
-             _ReplicateFrom, _Json} = Call, From, State) ->
+             _ReplicateFrom, _Topology} = Call, From, State) ->
     NewState = apply_new_vbucket_state(VBucket, NormalState, RebalanceState,
                                        State),
     delegate_apply_vbucket_state(Call, From, NewState);
