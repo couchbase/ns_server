@@ -63,7 +63,7 @@ mover(Parent, Bucket,
       fun () ->
               misc:sync_shutdown_many_i_am_trapping_exits(get_cleanup_list())
       end),
-    Parent ! {move_done, {VBucket, OldChain, NewChain, Quirks}};
+    Parent ! {move_done_new_style, {VBucket, OldChain, NewChain, Quirks}};
 
 mover(Parent, Bucket, VBucket, OldChain, NewChain, Quirks) ->
     master_activity_events:note_vbucket_mover(self(), Bucket, hd(OldChain), VBucket, OldChain, NewChain),
