@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 # @author Couchbase <info@couchbase.com>
-# @copyright 2016-2018 Couchbase, Inc.
+# @copyright 2016-2019 Couchbase, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -62,8 +62,7 @@ SyncConfig =
     Nodes = ns_node_disco:nodes_wanted(),
 
     ns_config_rep:pull_and_push(Nodes),
-    ns_config:sync_announcements(),
-    ok = ns_config_rep:synchronize_remote(Nodes)
+    ns_config_rep:ensure_config_seen_by_nodes(Nodes)
   end,
 
 Rebalance =
@@ -104,8 +103,7 @@ UpdateReplType =
           end,
         error_logger:info_msg("Updating replication type for bucket ~p:~n~p", [Bucket, NewType]),
         ns_bucket:update_bucket_props(Bucket, [{repl_type, NewType}]),
-        ns_config:sync_announcements(),
-        ok = ns_config_rep:synchronize_remote([mb_master:master_node()])
+        ok = ns_config_rep:ensure_config_seen_by_nodes([mb_master:master_node()])
     end
   end,
 
