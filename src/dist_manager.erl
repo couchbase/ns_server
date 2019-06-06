@@ -28,7 +28,7 @@
 
 -export([adjust_my_address/3, save_address_config/1,
          ip_config_path/0, using_user_supplied_address/0, reset_address/0,
-         wait_for_node/1, dist_config_path/1]).
+         wait_for_node/1]).
 
 %% used by babysitter and ns_couchdb
 -export([configure_net_kernel/0]).
@@ -48,9 +48,6 @@ ip_config_path() ->
 
 ip_start_config_path() ->
     path_config:component_path(data, "ip_start").
-
-dist_config_path(DataDir) ->
-    filename:join([DataDir, "config", "dist_cfg"]).
 
 using_user_supplied_address() ->
     gen_server:call(?MODULE, using_user_supplied_address).
