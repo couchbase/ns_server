@@ -46,27 +46,9 @@ cleanup_list_del(Pid) ->
     List2 = ordsets:del_element(Pid, List),
     erlang:put(cleanup_list, List2).
 
-%% We do a no-op here rather than filtering these out so that the
-%% replication update will still work properly.
-mover(Parent, Bucket,
-      VBucket, [undefined | _] = OldChain, [NewNode | _] = NewChain, Quirks) ->
-    master_activity_events:note_vbucket_mover(self(), Bucket, undefined,
-                                              VBucket, OldChain, NewChain),
-    misc:try_with_maybe_ignorant_after(
-      fun () ->
-              process_flag(trap_exit, true),
-              set_vbucket_state(Bucket, NewNode, Parent, VBucket,
-                                active, undefined, undefined, undefined),
-
-              on_move_done(Parent, Bucket, VBucket, OldChain, NewChain)
-      end,
-      fun () ->
-              misc:sync_shutdown_many_i_am_trapping_exits(get_cleanup_list())
-      end),
-    Parent ! {move_done, {VBucket, OldChain, NewChain, Quirks}};
-
 mover(Parent, Bucket, VBucket, OldChain, NewChain, Quirks) ->
-    master_activity_events:note_vbucket_mover(self(), Bucket, hd(OldChain), VBucket, OldChain, NewChain),
+    master_activity_events:note_vbucket_mover(self(), Bucket, hd(OldChain),
+                                              VBucket, OldChain, NewChain),
     misc:try_with_maybe_ignorant_after(
       fun () ->
               process_flag(trap_exit, true),
@@ -152,6 +134,11 @@ maybe_initiate_indexing(Bucket, Parent, JustBackfillNodes, ReplicaNodes, VBucket
     ok = janitor_agent:initiate_indexing(Bucket, Parent, JustBackfillNodes, ReplicaNodes, VBucket),
     master_activity_events:note_indexing_initiated(Bucket, JustBackfillNodes, VBucket).
 
+mover_inner(Parent, Bucket, VBucket,
+            [undefined|_] = _OldChain,
+            [NewMaster|_] = _NewChain, _Quirks) ->
+    set_vbucket_state(Bucket, NewMaster, Parent, VBucket,
+                      active, undefined, undefined, undefined);
 mover_inner(Parent, Bucket, VBucket,
             [OldMaster|OldReplicas] = OldChain,
             [NewMaster|_] = NewChain, Quirks) ->
