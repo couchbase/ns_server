@@ -120,10 +120,19 @@ failover(Nodes, Options) ->
                   failover_services(Nodes)]).
 
 failover_buckets(Nodes, Options) ->
-    Results = lists:flatmap(fun ({Bucket, BucketConfig}) ->
-                                    failover_bucket(Bucket, BucketConfig,
-                                                    Nodes, Options)
-                            end, ns_bucket:get_buckets()),
+    Results =
+        lists:foldl(
+          fun ({Bucket, BucketConfig}, Acc) ->
+                  try failover_bucket(Bucket, BucketConfig, Nodes, Options) of
+                      Res ->
+                          Res ++ Acc
+                  catch throw:{failed, Msg} ->
+                          ?log_error("Caught failover exception: ~p", [Msg]),
+                          update_failover_vbuckets(Acc),
+                          ns_orchestrator:request_janitor_run({bucket, Bucket}),
+                          throw({failover_failed, Msg})
+                  end
+          end, [], ns_bucket:get_buckets()),
     update_failover_vbuckets(Results),
     failover_handle_results(Results).
 
@@ -421,7 +430,7 @@ nodes_to_query(Chains, FailoverNodes) ->
         {N, VBs} <- misc:groupby_map(fun functools:id/1, NodeVBs)].
 
 throw_failover_error(Msg, Params) ->
-    throw({failover_not_possible, lists:flatten(io_lib:format(Msg, Params))}).
+    throw({failed, lists:flatten(io_lib:format(Msg, Params))}).
 
 %% A replica is considered ahead of another replica if its last snapshot seqno
 %% is greater, if they are the same, the replica with greater high_seqno is then
