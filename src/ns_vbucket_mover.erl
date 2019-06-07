@@ -312,9 +312,23 @@ spawn_compaction_uninhibitor(Bucket, Node, MRef) ->
 uninhibit_view_compaction(Bucket, Rebalancer, Node, MRef) ->
     janitor_agent:uninhibit_view_compaction(Bucket, Rebalancer, Node, MRef).
 
--spec inhibit_view_compaction(bucket_name(), pid(), node()) -> {ok, reference()} | nack.
-inhibit_view_compaction(Bucket, Rebalancer, Node) ->
-    janitor_agent:inhibit_view_compaction(Bucket, Rebalancer, Node).
+-spec inhibit_view_compaction(bucket_name(), pid(), [node()]) -> ok.
+inhibit_view_compaction(Bucket, Rebalancer, Nodes) ->
+    misc:parallel_map(
+      fun (N) ->
+              RV = janitor_agent:inhibit_view_compaction(Bucket, Rebalancer, N),
+              case RV of
+                  {ok, MRef} ->
+                      master_activity_events:note_compaction_inhibited(Bucket,
+                                                                       N),
+                      Rebalancer ! {inhibited_view_compaction, N, MRef};
+                  _ ->
+                      ?log_debug("Got nack for inhibited_view_compaction. "
+                                 "Thats normal: ~p", [{N, RV}])
+              end
+      end, Nodes, infinity),
+
+    ok.
 
 %% @doc Spawn workers up to the per-node maximum.
 -spec spawn_workers(#state{}) -> {noreply, #state{}} | {stop, normal, #state{}}.

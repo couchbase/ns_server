@@ -109,19 +109,8 @@ inhibit_view_compaction(Parent, Node, Bucket, NewNode) ->
             spawn_and_wait(
               fun () ->
                       InhibitedNodes = lists:usort([Node, NewNode]),
-                      InhibitRVs = misc:parallel_map(
-                                     fun (N) ->
-                                             {N, ns_vbucket_mover:inhibit_view_compaction(Bucket, Parent, N)}
-                                     end, InhibitedNodes, infinity),
-
-                      [case IRV of
-                           {N, {ok, MRef}} ->
-                               master_activity_events:note_compaction_inhibited(Bucket, N),
-                               Parent ! {inhibited_view_compaction, N, MRef};
-                           _ ->
-                               ?log_debug("Got nack for inhibited_view_compaction. Thats normal: ~p", [IRV])
-                       end || IRV <- InhibitRVs],
-                      ok
+                      ns_vbucket_mover:inhibit_view_compaction(Bucket, Parent,
+                                                               InhibitedNodes)
               end);
         _ ->
             ok
