@@ -41,6 +41,7 @@
          terminate/2]).
 
 -export([inhibit_view_compaction/3]).
+-export([note_move_done/5, note_backfill_done/5]).
 
 -type progress_callback() :: fun((dict:dict()) -> any()).
 
@@ -61,6 +62,12 @@
 start_link(Bucket, OldMap, NewMap, ProgressCallback) ->
     gen_server:start_link(?MODULE, {Bucket, OldMap, NewMap, ProgressCallback},
                           []).
+
+note_move_done(Pid, VBucket, OldChain, NewChain, Quirks) ->
+    Pid ! {move_done, {VBucket, OldChain, NewChain, Quirks}}.
+
+note_backfill_done(Pid, VBucket, OldChain, NewChain, Quirks) ->
+    Pid ! {backfill_done, {VBucket, OldChain, NewChain, Quirks}}.
 
 %%
 %% gen_server callbacks
