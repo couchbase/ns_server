@@ -118,8 +118,6 @@ is_swap_rebalance(OldMap, NewMap) ->
     end.
 
 init({Bucket, OldMap, NewMap, ProgressCallback}) ->
-    erlang:put(i_am_master_mover, true),
-    erlang:put(bucket_name, Bucket),
     erlang:put(child_processes, []),
 
     AllNodesSet0 =
