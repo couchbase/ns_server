@@ -143,10 +143,7 @@ init({Bucket, OldMap, NewMap, ProgressCallback}) ->
     timer2:send_interval(?DCP_STATS_LOGGING_INTERVAL, log_dcp_stats),
 
     AllNodesSet = sets:del_element(undefined, AllNodesSet0),
-    {ok, NodeVersions} = janitor_agent:prepare_nodes_for_rebalance(Bucket, sets:to_list(AllNodesSet), self()),
-
-    ets:new(node_versions_for_rebalance, [named_table, protected, set]),
-    ets:insert(node_versions_for_rebalance, NodeVersions),
+    {ok, _} = janitor_agent:prepare_nodes_for_rebalance(Bucket, sets:to_list(AllNodesSet), self()),
 
     ets:new(compaction_inhibitions, [named_table, private, set]),
 
