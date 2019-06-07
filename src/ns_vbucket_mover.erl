@@ -207,8 +207,6 @@ handle_info({ns_node_disco_events, OldNodes, NewNodes} = Event,
         false ->
             {stop, {important_nodes_went_down, Event}, State}
     end;
-%% We intentionally don't handle other exits so we'll die if one of
-%% the movers fails.
 handle_info({'EXIT', Pid, _} = Msg, #state{disco_events_subscription=Pid}=State) ->
     ?rebalance_error("Got exit from node disco events subscription"),
     {stop, {ns_node_disco_events_exited, Msg}, State};
