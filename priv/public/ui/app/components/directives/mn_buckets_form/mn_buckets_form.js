@@ -53,7 +53,7 @@
     function controller($scope) {
       $scope.goToUsersPage = function () {
         $scope.uibModal.dismiss();
-        $state.go("app.admin.security.userRoles");
+        $state.go("app.admin.security.roles.user");
       };
       $scope.replicaNumberEnabled = $scope.bucketConf.replicaNumber != 0;
       $scope.canChangeBucketsSettings = $scope.bucketConf.isNew;

@@ -33,7 +33,7 @@
           var atLeast45 = mnPoolDefault.export.compat.atLeast45;
 
           if (atLeast50) {
-            return {state: "app.admin.security.userRoles"};
+            return {state: "app.admin.security.roles.user"};
           } else {
             if (isEnterprise && ldapEnabled && atLeast45) {
               return {state: "app.admin.security.externalRoles"};
@@ -59,7 +59,12 @@
           enterprise: true
         }
       })
-      .state('app.admin.security.userRoles', {
+      .state('app.admin.security.roles', {
+        abstract: true,
+        templateUrl: "app/mn_admin/mn_security/mn_roles.html",
+        controller: "mnRolesController as rolesCtl"
+      })
+      .state('app.admin.security.roles.user', {
         url: "/userRoles?openedUsers&startFrom&startFromDomain&sortBy&order&substr&{pageSize:int}",
         params: {
           openedUsers: {
@@ -94,7 +99,7 @@
           compat: "atLeast50"
         }
       })
-      .state('app.admin.security.rolesGroups', {
+      .state('app.admin.security.roles.groups', {
         // url: "/userRoles?openedUsers&startFrom&startFromDomain&{pageSize:int}",
         url: "/rolesGroups?startFrom&sortBy&order&substr&{pageSize:int}",
         params: {

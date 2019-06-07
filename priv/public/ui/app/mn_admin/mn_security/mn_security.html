@@ -5,9 +5,9 @@
      mn-tab-bar-name="securityTab">
     <a
        ng-show="poolDefault.compat.atLeast50 && rbac.cluster.admin.security.read"
-       ui-sref="app.admin.security.userRoles"
-       ng-class="{selected: ('app.admin.security.userRoles' | includedByState) ||
-                ('app.admin.security.rolesGroups' | includedByState)}">
+       ui-sref="app.admin.security.roles.user"
+       ng-class="{selected: ('app.admin.security.roles.user' | includedByState) ||
+                ('app.admin.security.roles.groups' | includedByState)}">
       Users <span ng-show="pools.isEnterprise">&amp; Groups</span>
     </a>
     <a
