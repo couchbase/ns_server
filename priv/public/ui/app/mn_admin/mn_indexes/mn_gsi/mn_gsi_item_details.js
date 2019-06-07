@@ -69,27 +69,14 @@
     function mnGsiItemDetailsController($rootScope, mnGsiService, $uibModal, mnPromiseHelper, mnAlertsService, $scope, mnStatisticsNewService, mnPoolDefault, mnHelper) {
       var vm = this;
       vm.onSelectZoom = onSelectZoom;
-      vm.onSelectPartition = onSelectPartition;
       vm.getNvd3Options = getNvd3Options;
       vm.dropIndex = dropIndex;
 
       vm.zoom = "minute";
 
-      function getRow() {
-        return $scope.row.partitions ? $scope.row.partitions[vm.selectedPartition] : $scope.row;
-      }
-
-      if ($scope.row.partitions) {
-        vm.selectedPartition = $scope.row.instId.toString();
-      }
-
       activate();
 
       function onSelectZoom() {
-        activate();
-      }
-
-      function onSelectPartition() {
         activate();
       }
 
@@ -106,7 +93,7 @@
       }
 
       function activate() {
-        var row = getRow();
+        var row = $scope.row;
         vm.hosts = row.hosts.join(', ');
         mnStatisticsNewService.doGetStats({
           zoom: vm.zoom,

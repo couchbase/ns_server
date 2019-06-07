@@ -29,20 +29,7 @@
      ng-class="{'disclosed' : showStats}"
      ng-click="showStats = !showStats; $event.stopPropagation();">
     Index Stats
-    <span ng-if="row.partitions" class="text-small">(per replica)</span>
   </h5>
-  <select
-     ng-if="row.partitions"
-     ng-model="mnGsiItemDetailsCtl.selectedPartition"
-     ng-change="mnGsiItemDetailsCtl.onSelectPartition()"
-     class="margin-right-1"
-     ng-click="$event.stopPropagation();">
-    <option
-       ng-repeat="(instId, partition) in row.partitions"
-       value="{{instId}}">
-      {{partition.index}}
-    </option>
-  </select>
 
   <select
      ng-model="mnGsiItemDetailsCtl.zoom"
