@@ -1421,31 +1421,31 @@ maybe_reset_reprovision_count(_, _) ->
 log_rebalance_completion(
   ExitReason, #rebalancing_state{type = Type, abort_reason = AbortReason,
                                  rebalance_id = RebalanceId}) ->
-    {Severity, Fmt, Args} = get_log_msg(ExitReason, Type, AbortReason,
-                                        RebalanceId),
-    ale:log(?USER_LOGGER, Severity, Fmt, Args),
+    {Severity, Fmt, Args} = get_log_msg(ExitReason, Type, AbortReason),
+    ale:log(?USER_LOGGER, Severity, Fmt ++ "~nRebalance Operation Id = ~s",
+            Args ++ [RebalanceId]),
     lists:flatten(io_lib:format(Fmt, Args)).
 
-get_log_msg(normal, Type, _, Id) ->
-    {info, "~s completed successfully. Operation Id = ~s",
-     [rebalance_type2text(Type), Id]};
-get_log_msg({shutdown, stop}, Type, AbortReason, Id) ->
-    get_log_msg(AbortReason, Type, Id);
-get_log_msg(Error, Type, undefined, Id) ->
-    {error, "~s exited with reason ~p. Operation Id = ~s",
-     [rebalance_type2text(Type), Error, Id]};
-get_log_msg(_Error, Type, AbortReason, Id) ->
-    get_log_msg(AbortReason, Type, Id).
+get_log_msg(normal, Type, _) ->
+    {info, "~s completed successfully.",
+     [rebalance_type2text(Type)]};
+get_log_msg({shutdown, stop}, Type, AbortReason) ->
+    get_log_msg(AbortReason, Type);
+get_log_msg(Error, Type, undefined) ->
+    {error, "~s exited with reason ~p.",
+     [rebalance_type2text(Type), Error]};
+get_log_msg(_Error, Type, AbortReason) ->
+    get_log_msg(AbortReason, Type).
 
-get_log_msg({try_autofailover, _, Nodes}, Type, Id) ->
-    {info, "~s interrupted due to auto-failover of nodes ~p. Operation Id = ~s",
-     [rebalance_type2text(Type), Nodes, Id]};
-get_log_msg({rebalance_observer_terminated, Reason}, Type, Id) ->
-    {error, "~s interrupted as observer exited with reason ~p. Operation Id = ~s",
-     [rebalance_type2text(Type), Reason, Id]};
-get_log_msg(user_stop, Type, Id) ->
-    {info, "~s stopped by user. Operation Id = ~s",
-     [rebalance_type2text(Type), Id]}.
+get_log_msg({try_autofailover, _, Nodes}, Type) ->
+    {info, "~s interrupted due to auto-failover of nodes ~p.",
+     [rebalance_type2text(Type), Nodes]};
+get_log_msg({rebalance_observer_terminated, Reason}, Type) ->
+    {error, "~s interrupted as observer exited with reason ~p.",
+     [rebalance_type2text(Type), Reason]};
+get_log_msg(user_stop, Type) ->
+    {info, "~s stopped by user.",
+     [rebalance_type2text(Type)]}.
 
 rebalance_type2text(rebalance) ->
     <<"Rebalance">>;
