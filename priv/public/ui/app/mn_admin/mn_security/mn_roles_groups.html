@@ -3,14 +3,13 @@
    min-height="300px"
    class="margin-top-neg-half margin-left-neg-1">
   <div
-     class="row resp-sml margin-bottom-half"
-     ng-class="{'flex-right' : !rolesGroupsCtl.state.groups.length}">
+     class="row resp-sml margin-bottom-half">
     <div
        class="row"
        mn-placeholder="filter groups..."
        mn-hide-button="true"
-       mn-search="rolesGroupsCtl.filterField"
-       ng-if="rolesGroupsCtl.state.groups.length">
+       mn-disabled="!rolesGroupsCtl.filterField && !rolesGroupsCtl.state.groups.length"
+       mn-search="rolesGroupsCtl.filterField">
     </div>
     <span class="pills nowrap">
       <a
@@ -50,10 +49,8 @@
     </div>
     <section
        class="has-hover"
-       ng-if="rolesGroupsCtl.state.groups.length"
        ng-click="rolesGroupsCtl.toggleDetails(rolesGroup.id)"
-       ng-repeat="rolesGroup in rolesGroupsCtl.state.groups
-                 track by (rolesGroup.id)">
+       ng-repeat="rolesGroup in rolesGroupsCtl.state.groups track by (rolesGroup.id)">
       <div class="cbui-tablerow padding-left resp-sml">
         <span class="cbui-table-cell">
           {{rolesGroup.id}}
@@ -98,7 +95,8 @@
     </section>
 
   </div>
-  <div class="row pagination" ng-show="poolDefault.compat.atLeast50" ng-if="rolesGroupsCtl.state.groups.length">
+  <div class="row pagination"
+       ng-if="rolesGroupsCtl.state.groups.length && poolDefault.compat.atLeast50">
     <div class="simple-select">
       <select
          ng-change="rolesGroupsCtl.pageSizeChanged()"
@@ -126,11 +124,13 @@
     </span>
   </div>
   <div
-     ng-if="!rolesGroupsCtl.state.groups.length"
-     class="zero-content margin-top-1">
+     class="zero-content margin-top-1"
+     ng-show="!rolesGroupsCtl.filterField && !rolesGroupsCtl.state.groups.length">
     You don't have any groups to display yet.
     <span ng-show="rbac.cluster.admin.security.write">
       Use ADD GROUP above to create one.
     </span>
   </div>
+  <div ng-show="rolesGroupsCtl.filterField && !rolesGroupsCtl.state.groups.length"
+       class="zero-content text-left">no result</div>
 </div>

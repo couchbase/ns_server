@@ -2,7 +2,7 @@
    mn-spinner="!userRolesCtl.state || userRolesCtl.viewLoading"
    min-height="300px"
    class="margin-top-neg-half margin-left-neg-1">
-  <div class="row resp-sml margin-bottom-half" ng-if="userRolesCtl.state.users.length">
+  <div class="row resp-sml margin-bottom-half">
     <div
        ng-if="adminCtl.poolDefault.isEnterprise && userRolesCtl.isLdapEnabled"
        mn-saslauthd-auth="">
@@ -11,6 +11,7 @@
        class="row"
        mn-placeholder="filter users..."
        mn-hide-button="true"
+       mn-disabled="!userRolesCtl.filterField && !userRolesCtl.state.users.length"
        mn-search="userRolesCtl.filterField">
     </div>
     <span class="pills nowrap">
@@ -131,11 +132,13 @@
     </span>
   </div>
   <div
-     ng-if="!userRolesCtl.state.users.length"
+     ng-show="!userRolesCtl.filterField && !userRolesCtl.state.users.length"
      class="zero-content margin-top-1">
     You don't have any users to display yet.
     <span ng-show="rbac.cluster.admin.security.write">
       Use ADD USER above to create one.
     </span>
   </div>
+  <div ng-show="userRolesCtl.filterField && !userRolesCtl.state.users.length"
+       class="zero-content text-left">no result</div>
 </div>
