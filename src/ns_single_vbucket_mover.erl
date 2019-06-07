@@ -116,8 +116,7 @@ inhibit_view_compaction(Parent, Node, Bucket, NewNode) ->
 
                       [case IRV of
                            {N, {ok, MRef}} ->
-                               [master_activity_events:note_compaction_inhibited(Bucket, ANode)
-                                || ANode <- InhibitedNodes],
+                               master_activity_events:note_compaction_inhibited(Bucket, N),
                                Parent ! {inhibited_view_compaction, N, MRef};
                            _ ->
                                ?log_debug("Got nack for inhibited_view_compaction. Thats normal: ~p", [IRV])
