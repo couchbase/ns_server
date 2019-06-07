@@ -4,7 +4,62 @@
   angular
     .module('mnGsi')
     .controller('mnGsiItemController', mnGsiItemController)
+    .controller('mnGsiItemStatsController', mnGsiItemStatsController)
     .directive('mnGsiItemDetails', mnGsiItemDetails);
+
+  function mnGsiItemStatsController(mnStatisticsNewService, mnHelper, $scope) {
+    var vm = this;
+    vm.getNvd3Options = getNvd3Options;
+    vm.zoom = "minute";
+    vm.onSelectZoom = onSelectZoom;
+    vm.getNvd3Options = getNvd3Options;
+
+    activate();
+
+    function onSelectZoom() {
+      activate();
+    }
+
+    function getNvd3Options(config) {
+      return {
+        showLegend: false
+      };
+    }
+
+    function getStats(stat) {
+      var rv = {};
+      rv[stat] = "@index-.@items";
+      return rv;
+    }
+
+    function activate() {
+      var row = $scope.row;
+      vm.hosts = row.hosts.join(', ');
+      mnStatisticsNewService.doGetStats({
+        zoom: vm.zoom,
+        bucket: row.bucket
+      }).then(function (rv) {
+        vm.charts = Object
+          .keys(rv.data.stats["@index-" + row.bucket])
+          .filter(function (key) {
+            var stat = key.split("/")[2];
+            var indexName = key.split("/")[1];
+            return indexName == row.index &&
+              mnStatisticsNewService.readByPath("@index-.@items", stat);
+          })
+          .map(function (stat) {
+            return {
+              preset: true,
+              id: mnHelper.generateID(),
+              isSpecific: false,
+              size: "small",
+              zoom: vm.zoom,
+              stats: getStats(stat)
+            };
+          });
+      });
+    }
+  }
 
   function mnGsiItemController($scope, mnStatisticsNewService, mnPermissions) {
     var vm = this;
@@ -66,59 +121,9 @@
 
     return mnGsiItemDetails;
 
-    function mnGsiItemDetailsController($rootScope, mnGsiService, $uibModal, mnPromiseHelper, mnAlertsService, $scope, mnStatisticsNewService, mnPoolDefault, mnHelper) {
+    function mnGsiItemDetailsController($rootScope, mnGsiService, $uibModal, mnPromiseHelper, mnAlertsService) {
       var vm = this;
-      vm.onSelectZoom = onSelectZoom;
-      vm.getNvd3Options = getNvd3Options;
       vm.dropIndex = dropIndex;
-
-      vm.zoom = "minute";
-
-      activate();
-
-      function onSelectZoom() {
-        activate();
-      }
-
-      function getStats(stat) {
-        var rv = {};
-        rv[stat] = "@index-.@items";
-        return rv;
-      }
-
-      function getNvd3Options(config) {
-        return {
-          showLegend: false
-        };
-      }
-
-      function activate() {
-        var row = $scope.row;
-        vm.hosts = row.hosts.join(', ');
-        mnStatisticsNewService.doGetStats({
-          zoom: vm.zoom,
-          bucket: row.bucket
-        }).then(function (rv) {
-          vm.charts = Object
-            .keys(rv.data.stats["@index-" + row.bucket])
-            .filter(function (key) {
-              var stat = key.split("/")[2];
-              var indexName = key.split("/")[1];
-              return indexName == row.index &&
-                mnStatisticsNewService.readByPath("@index-.@items", stat);
-            })
-            .map(function (stat) {
-              return {
-                preset: true,
-                id: mnHelper.generateID(),
-                isSpecific: false,
-                size: "small",
-                zoom: vm.zoom,
-                stats: getStats(stat)
-              };
-            });
-        });
-      }
 
       function dropIndex(row) {
         var scope = $rootScope.$new();

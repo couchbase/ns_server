@@ -31,24 +31,26 @@
     Index Stats
   </h5>
 
-  <select
-     ng-model="mnGsiItemDetailsCtl.zoom"
-     ng-change="mnGsiItemDetailsCtl.onSelectZoom()"
-     ng-click="$event.stopPropagation();">
-    <option value="minute">minute</option>
-    <option value="hour">hour</option>
-    <option value="day">day</option>
-    <option value="week">week</option>
-    <option value="month">month</option>
-  </select>
-
-  <div ng-if="showStats" class="row charts" ng-click="$event.stopPropagation();">
+  <div ng-if="showStats"
+       class="row charts"
+       ng-click="$event.stopPropagation();"
+       ng-controller="mnGsiItemStatsController as gsiItemStatsCtl">
+    <select
+       ng-model="gsiItemStatsCtl.zoom"
+       ng-change="gsiItemStatsCtl.onSelectZoom()"
+       ng-click="$event.stopPropagation();">
+      <option value="minute">minute</option>
+      <option value="hour">hour</option>
+      <option value="day">day</option>
+      <option value="week">week</option>
+      <option value="month">month</option>
+    </select>
     <mn-statistics-chart
-       ng-repeat="config in mnGsiItemDetailsCtl.charts track by config.id"
-       get-nvd3-options="mnGsiItemDetailsCtl.getNvd3Options(config)"
+       ng-repeat="config in gsiItemStatsCtl.charts track by config.id"
+       get-nvd3-options="gsiItemStatsCtl.getNvd3Options(config)"
        ng-class="'statistics-' + config.size"
        bucket="{{row.bucket}}"
-       zoom="{{mnGsiItemDetailsCtl.zoom}}"
+       zoom="{{gsiItemStatsCtl.zoom}}"
        class="panel"
        config="config"></mn-statistics-chart>
   </div>
