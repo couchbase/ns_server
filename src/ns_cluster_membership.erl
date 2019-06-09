@@ -270,28 +270,25 @@ enterprise_only_services() ->
     [cbas, eventing].
 
 services_by_version() ->
-    [{[0, 0],      kv},
-     {?VERSION_40, n1ql},
-     {?VERSION_40, index},
-     {?VERSION_45, fts},
-     {?VERSION_55, cbas},
-     {?VERSION_55, eventing}].
+    [{[0, 0],      [kv]},
+     {?VERSION_40, [n1ql, index]},
+     {?VERSION_45, [fts]},
+     {?VERSION_55, [cbas, eventing]}].
 
 topology_aware_services_by_version() ->
-    [{?VERSION_45, fts},
-     {?VERSION_50, index},
-     {?VERSION_55, cbas},
-     {?VERSION_55, eventing}].
+    [{?VERSION_45, [fts]},
+     {?VERSION_50, [index]},
+     {?VERSION_55, [cbas, eventing]}].
 
-filter_services_by_version(Version, Services) ->
-    lists:filtermap(fun ({V, Service}) ->
-                            case cluster_compat_mode:is_enabled_at(Version, V) of
-                                true ->
-                                    {true, Service};
-                                false ->
-                                    false
-                            end
-                    end, Services).
+filter_services_by_version(Version, ServicesTable) ->
+    lists:flatmap(fun ({V, Services}) ->
+                          case cluster_compat_mode:is_enabled_at(Version, V) of
+                              true ->
+                                  Services;
+                              false ->
+                                  []
+                          end
+                  end, ServicesTable).
 
 supported_services_for_version(ClusterVersion) ->
     filter_services_by_version(ClusterVersion, services_by_version()).
