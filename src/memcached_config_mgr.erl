@@ -24,7 +24,7 @@
 
 %% referenced from ns_config_default
 -export([get_minidump_dir/2, omit_missing_mcd_ports/2, ssl_minimum_protocol/2,
-         is_enabled/2, client_cert_auth/2, is_snappy_enabled/2,
+         client_cert_auth/2, is_snappy_enabled/2,
          is_snappy_enabled/0, collections_enabled/2, get_fallback_salt/2,
          get_external_users_push_interval/2, get_ssl_cipher_list/2,
          get_ssl_cipher_order/2, get_external_auth_service/2,
@@ -366,9 +366,6 @@ client_cert_auth([], _Params) ->
         false ->
             {[{K, list_to_binary(V)} || {K,V} <- Val]}
     end.
-
-is_enabled([FeatureVersion], _Params) ->
-    cluster_compat_mode:is_enabled(FeatureVersion).
 
 is_snappy_enabled([], _Params) ->
     is_snappy_enabled().
