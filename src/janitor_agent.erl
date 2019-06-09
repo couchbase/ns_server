@@ -77,19 +77,19 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
-query_vbucket_states_loop(Node, Bucket, Call, Parent) ->
-    query_vbucket_states_loop(Node, Bucket, Call, Parent, undefined).
-query_vbucket_states_loop(Node, Bucket, Call, Parent, Warming) ->
+query_vbuckets_loop(Node, Bucket, Call, Parent) ->
+    query_vbuckets_loop(Node, Bucket, Call, Parent, undefined).
+query_vbuckets_loop(Node, Bucket, Call, Parent, Warming) ->
     case (catch gen_server:call(server_name(Bucket, Node), Call, infinity)) of
         {ok, _} = Msg ->
             Msg;
         warming_up ->
-            query_vbucket_states_loop_next_step(Node, Bucket, Call, Parent,
+            query_vbuckets_loop_next_step(Node, Bucket, Call, Parent,
                                                 Warming, warming_up);
         {'EXIT', {noproc, _}} = Exc ->
             ?log_debug("Exception from ~p of ~p:~p~n~p",
                        [Call, Bucket, Node, Exc]),
-            query_vbucket_states_loop_next_step(Node, Bucket, Call, Parent,
+            query_vbuckets_loop_next_step(Node, Bucket, Call, Parent,
                                                 Warming, noproc);
         Exc ->
             ?log_debug("Exception from ~p of ~p:~p~n~p",
@@ -97,11 +97,11 @@ query_vbucket_states_loop(Node, Bucket, Call, Parent, Warming) ->
             Exc
     end.
 
-query_vbucket_states_loop_next_step(Node, Bucket, Call, Parent, Warming, Reason) ->
+query_vbuckets_loop_next_step(Node, Bucket, Call, Parent, Warming, Reason) ->
     ?log_debug("Waiting for ~p on ~p", [Bucket, Node]),
     NewWarming = maybe_send_warming(Parent, Warming, Reason),
     timer:sleep(1000),
-    query_vbucket_states_loop(Node, Bucket, Call, Parent, NewWarming).
+    query_vbuckets_loop(Node, Bucket, Call, Parent, NewWarming).
 
 maybe_send_warming(Parent, undefined, warming_up) ->
     Parent ! warming_up;
@@ -126,10 +126,8 @@ wait_for_memcached(NodeCalls, Bucket, WaitTimeout) ->
                   [{Node, proc_lib:spawn_link(
                             fun () ->
                                     {ok, TRef} = timer2:kill_after(WaitTimeout),
-                                    RV = query_vbucket_states_loop(Node,
-                                                                   Bucket,
-                                                                   Call,
-                                                                   Me),
+                                    RV = query_vbuckets_loop(Node, Bucket,
+                                                             Call, Me),
                                     Me ! {'EXIT', self(), {Ref, RV}},
                                     %% doing cancel is quite
                                     %% important. kill_after is
