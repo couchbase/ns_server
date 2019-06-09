@@ -449,11 +449,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["index.html"] ->
                     {done, redirect_permanently("/ui/index.html", Req)};
                 ["ui", "index.html"] ->
-                    {ui, IsSSL, fun handle_ui_root/5, [AppRoot, Path, ?VERSION_50,
-                                                       Plugins]};
-                ["ui", "new-index.html"] ->
-                    {ui, IsSSL, fun handle_ui_root/5, [AppRoot, Path, ?VERSION_41,
-                                                       []]};
+                    {ui, IsSSL, fun handle_ui_root/4, [AppRoot, Path, Plugins]};
                 ["sasl_logs"] ->
                     {{[admin, logs], read}, fun diag_handler:handle_sasl_logs/1, []};
                 ["sasl_logs", LogName] ->
@@ -973,7 +969,7 @@ serve_ui_env(Req) ->
                              {lists:ukeymerge(1, NodeSpecificUIEnv,
                                               lists:ukeymerge(1, GlobalUIEnv, UIEnvDefault))}).
 
-handle_ui_root(AppRoot, Path, ?VERSION_50, Plugins, Req) ->
+handle_ui_root(AppRoot, Path, Plugins, Req) ->
     Filename = case use_minified(Req) of
                    true ->
                        filename:join([AppRoot, "ui", "index.min.html"]);
@@ -983,10 +979,7 @@ handle_ui_root(AppRoot, Path, ?VERSION_50, Plugins, Req) ->
     menelaus_util:reply_ok(
       Req,
       "text/html; charset=utf8",
-      menelaus_pluggable_ui:inject_head_fragments(Filename, ?VERSION_50, Plugins));
-handle_ui_root(AppRoot, Path, ?VERSION_41, [], Req) ->
-    menelaus_util:serve_static_file(Req, {AppRoot, Path},
-                                    "text/html; charset=utf8", []).
+      menelaus_pluggable_ui:inject_head_fragments(Filename, ?VERSION_50, Plugins)).
 
 handle_serve_file(AppRoot, Path, MaxAge, Req) ->
     menelaus_util:serve_file(
