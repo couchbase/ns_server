@@ -366,7 +366,6 @@ default() ->
 %% to handle vclock updates
 -spec upgrade_config([[{term(), term()}]]) -> [{set, term(), term()}].
 upgrade_config(Config) ->
-    assert_no_tap_buckets(Config),
     CurrentVersion = get_current_version(),
     ConfigVersion = ns_config:search_node_with_default(node(), Config,
                                                        config_version, {1, 7}),
@@ -389,17 +388,6 @@ upgrade_config(Config) ->
         OldVersion ->
             ?log_error("Detected an attempt to offline upgrade from "
                        "unsupported version ~p. Terminating.", [OldVersion]),
-            catch ale:sync_all_sinks(),
-            misc:halt(1)
-    end.
-
-assert_no_tap_buckets(Config) ->
-    case cluster_compat_mode:have_non_dcp_buckets(Config) of
-        false ->
-            ok;
-        {true, BadBuckets} ->
-            ?log_error("Can't offline upgrade since there're non-dcp buckets: ~p",
-                       [BadBuckets]),
             catch ale:sync_all_sinks(),
             misc:halt(1)
     end.

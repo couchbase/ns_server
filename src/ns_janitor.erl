@@ -39,7 +39,6 @@ cleanup(Bucket, Options) ->
         {ok, BucketConfig} ->
             case ns_bucket:bucket_type(BucketConfig) of
                 membase ->
-                    dcp = ns_bucket:replication_type(BucketConfig),
                     cleanup_membase_bucket(Bucket,
                                            Options, BucketConfig, FullConfig);
                 _ -> ok

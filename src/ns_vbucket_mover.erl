@@ -147,9 +147,6 @@ init({Bucket, OldMap, NewMap, ProgressCallback}) ->
 
     ets:new(compaction_inhibitions, [named_table, private, set]),
 
-    {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
-    dcp = ns_bucket:replication_type(BucketConfig),
-
     Quirks = rebalance_quirks:get_quirks(sets:to_list(AllNodesSet)),
     SchedulerState = vbucket_move_scheduler:prepare(
                        OldMap, NewMap, Quirks,

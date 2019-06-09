@@ -715,8 +715,6 @@ handle_call({apply_new_config, Caller, NewBucketConfig, IgnoredVBuckets}, _From,
                      set_rebalance_mref(undefined, State2)
              end,
 
-    dcp = ns_bucket:replication_type(NewBucketConfig),
-
     %% before changing vbucket states (i.e. activating or killing
     %% vbuckets) we must stop replications into those vbuckets
     WantedReplicas = [{Src, VBucket} || {Src, Dst, VBucket} <- ns_bucket:map_to_replicas(Map),

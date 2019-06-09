@@ -64,7 +64,6 @@
 %%
 
 run_failover(Nodes, AllowUnsafe) ->
-    ok = check_no_tap_buckets(),
     case check_failover_possible(Nodes) of
         ok ->
             Result = leader_activities:run_activity(
@@ -637,7 +636,6 @@ start_link_rebalance(KeepNodes, EjectNodes,
     proc_lib:start_link(
       erlang, apply,
       [fun () ->
-               ok = check_no_tap_buckets(),
                FailKvChk = check_test_condition(no_kv_nodes_left) =/= ok,
 
                KVKeep = ns_cluster_membership:service_nodes(KeepNodes, kv),
@@ -1498,7 +1496,6 @@ start_link_graceful_failover(Nodes) ->
     proc_lib:start_link(erlang, apply, [fun run_graceful_failover/1, [Nodes]]).
 
 run_graceful_failover(Nodes) ->
-    ok = check_no_tap_buckets(),
     pull_and_push_config(ns_node_disco:nodes_wanted()),
 
     case check_failover_possible(Nodes) of
@@ -1656,17 +1653,6 @@ drop_old_2i_indexes(KeepNodes) ->
         _ ->
             ?rebalance_error("Failed to cleanup indexes: ~p", [Errors]),
             {old_indexes_cleanup_failed, Errors}
-    end.
-
-check_no_tap_buckets() ->
-    case cluster_compat_mode:have_non_dcp_buckets() of
-        false ->
-            ok;
-        {true, BadBuckets} ->
-            ale:error(?USER_LOGGER,
-                      "Cannot rebalance/failover with non-dcp buckets. "
-                      "Non-dcp buckets: ~p", [BadBuckets]),
-            {error, {found_non_dcp_buckets, BadBuckets}}
     end.
 
 %%

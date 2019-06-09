@@ -45,8 +45,6 @@
          min_supported_compat_version/0,
          effective_cluster_compat_version/0,
          effective_cluster_compat_version_for/1,
-         have_non_dcp_buckets/0,
-         have_non_dcp_buckets/1,
          is_developer_preview/0,
          is_developer_preview/1,
          get_cluster_capabilities/1,
@@ -304,21 +302,6 @@ effective_cluster_compat_version_for([VersionMaj, VersionMin] = _CompatVersion) 
 
 effective_cluster_compat_version() ->
     effective_cluster_compat_version_for(get_compat_version()).
-
-have_non_dcp_buckets() ->
-    have_non_dcp_buckets(ns_config:latest()).
-
-have_non_dcp_buckets(Config) ->
-    Buckets = ns_bucket:get_buckets(Config),
-    BadBuckets = [B || {B, Conf} <- Buckets,
-                       ns_bucket:bucket_type(Conf) =:= membase andalso
-                           ns_bucket:replication_type(Conf) =/= dcp],
-    case BadBuckets of
-        [] ->
-            false;
-        _ ->
-            {true, BadBuckets}
-    end.
 
 get_pretend_version() ->
     case application:get_env(ns_server, pretend_version) of

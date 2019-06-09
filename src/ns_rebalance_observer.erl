@@ -288,9 +288,6 @@ handle_cast(Req, _State) ->
 initiate_bucket_rebalance(BucketName, _, OldState) when OldState#state.bucket =:= BucketName ->
     OldState;
 initiate_bucket_rebalance(BucketName, {Moves, UndefinedMoves}, OldState) ->
-    {ok, BucketConfig} = ns_bucket:get_bucket(BucketName),
-    dcp = ns_bucket:replication_type(BucketConfig),
-
     BuildDestinations0 = [{MasterNode, VB}
                           || {VB, [MasterNode|_], _ChainAfter, _} <- Moves],
     BuildDestinations1 = [{N, VB} || {VB, [MasterNode|_], ChainAfter, _} <- Moves,
