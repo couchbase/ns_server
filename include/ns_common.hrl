@@ -21,14 +21,12 @@
 
 -type bucket_name() :: nonempty_string().
 -type bucket_type() :: memcached | membase.
--type histogram() :: [{atom(), non_neg_integer()}].
 -type vbucket_map() :: [[atom(), ...], ...].
 -type mc_error_atom() :: key_enoent | key_eexists | e2big | einval |
                          not_stored | delta_badval | not_my_vbucket |
                          unknown_command | enomem | not_supported | internal |
                          ebusy | etmpfail | auth_error | auth_continue.
 -type mc_error() :: {memcached_error, mc_error_atom(), binary()}.
--type moves() :: [{non_neg_integer(), atom(), atom()}].
 -type vbucket_id() :: non_neg_integer().
 -type vbucket_state() :: active | dead | replica | pending.
 -type rev_id() :: <<_:128>>.
@@ -42,8 +40,6 @@
 -type ext_vbucket_id() :: vbucket_id() | binary().
 
 -type version() :: {list(integer()), candidate | release, integer()}.
-
--type checkpoint_id() :: non_neg_integer().
 
 -type bucket_replication_type() :: tap | dcp.
 
