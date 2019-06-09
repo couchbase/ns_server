@@ -1689,9 +1689,10 @@ serve_streaming_short_bucket_info(BucketName, Req) ->
 -ifdef(TEST).
 %% for test
 basic_bucket_params_screening(IsNew, Name, Params, AllBuckets) ->
+    Version = cluster_compat_mode:supported_compat_version(),
     Ctx = init_bucket_validation_context(IsNew, Name, AllBuckets, undefined,
                                          false, false,
-                                         ?VERSION_46, true),
+                                         Version, true),
     basic_bucket_params_screening(Ctx, Params).
 
 basic_bucket_params_screening_test() ->
