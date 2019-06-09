@@ -232,8 +232,6 @@
 -define(LATEST_VERSION_NUM, ?VERSION_MADHATTER).
 -define(MASTER_ADVERTISED_VERSION, [6, 5, 0]).
 
--define(DEFAULT_UI_COMPAT_VERSION, ?VERSION_45).
-
 -define(flush(Pattern),
         misc:letrec([0],
                     fun (Rec, I) ->

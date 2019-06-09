@@ -207,7 +207,7 @@ create_docroot(Prefix, Root) ->
     filename:join(Prefix, binary_to_list(Root)).
 
 decode_version_dirs(undefined) ->
-    [{?DEFAULT_UI_COMPAT_VERSION, "."}];
+    [];
 decode_version_dirs(VersionDirs) ->
     [{get_element(<<"version">>, VersionDir),
       binary_to_list(get_element(<<"dir">>, VersionDir))} ||
