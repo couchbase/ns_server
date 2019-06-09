@@ -1064,10 +1064,9 @@ do_get_requested_services(Key, KVList, Default) ->
 
 community_allowed_topologies() ->
     KvOnly = [kv],
-    AllServices40 = ns_cluster_membership:supported_services_for_version(?VERSION_40),
     AllServices = ns_cluster_membership:allowed_services(community),
 
-    [KvOnly, lists:sort(AllServices40), lists:sort(AllServices)].
+    [KvOnly, lists:sort(AllServices)].
 
 enforce_topology_limitation(Services) ->
     case cluster_compat_mode:is_enterprise() of
