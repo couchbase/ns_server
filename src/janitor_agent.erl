@@ -175,8 +175,7 @@ failures_to_zombies(Failures) ->
     [N || {N, _} <- Failures].
 
 check_bucket_ready(Bucket, Nodes, Timeout) ->
-    NodeCalls = [{N, query_vbucket_states} || N <- Nodes],
-    case do_query_vbuckets(Bucket, NodeCalls, Timeout) of
+    case do_query_vbuckets(Bucket, Nodes, [], [{timeout, Timeout}]) of
         {_States, []} ->
             ready;
         {_States, Failures} ->
@@ -223,6 +222,15 @@ find_vbucket_state(Node, NodeStates) ->
 -spec query_vbuckets(bucket_name(), [node()] | [{node(), [vbucket_id()]}],
                      list(), list()) -> {dict:dict(), [node()]}.
 query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
+    {NodeRVs, Failures} = do_query_vbuckets(Bucket, Nodes, ExtraKeys, Options),
+    ConvertedResults =
+        [convert_call_result(Node, ResultTuple)
+         || {Node, {ok, Tuples}} <- NodeRVs, ResultTuple <- Tuples],
+    {dict:from_list(misc:groupby_map(fun functools:id/1, ConvertedResults)),
+     failures_to_zombies(Failures)}.
+
+%% TODO: consider supporting partial janitoring
+do_query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
     Timeout = proplists:get_value(timeout, Options,
                                   ?WAIT_FOR_MEMCACHED_TIMEOUT),
 
@@ -239,15 +247,6 @@ query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
                                   {N, CreateCall(all)}
                           end, Nodes),
 
-    {NodeRVs, Failures} = do_query_vbuckets(Bucket, NodeCalls, Timeout),
-    ConvertedResults =
-        [convert_call_result(Node, ResultTuple)
-         || {Node, {ok, Tuples}} <- NodeRVs, ResultTuple <- Tuples],
-    {dict:from_list(misc:groupby_map(fun functools:id/1, ConvertedResults)),
-     failures_to_zombies(Failures)}.
-
-%% TODO: consider supporting partial janitoring
-do_query_vbuckets(Bucket, NodeCalls, Timeout) ->
     RVs = wait_for_memcached(NodeCalls, Bucket, Timeout),
     lists:partition(fun ({_, {ok, _}}) ->
                             true;
