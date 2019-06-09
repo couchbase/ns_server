@@ -16,8 +16,7 @@
 # limitations under the License.
 #
 # A script that drops all replicas for a particular vbucket and then recreates
-# them from active copy. If vbucket was replicated using tap, then it will
-# also update the replication to dcp.
+# them from active copy.
 #
 # Use as follows:
 #
@@ -78,35 +77,6 @@ Rebalance =
     error_logger:info_msg("Fixup rebalance ~p is complete", [{VBucket, C}])
   end,
 
-UpdateReplType =
-  fun () ->
-    SyncConfig(),
-
-    {ok, Conf} = ns_bucket:get_bucket(Bucket),
-    case ns_bucket:replication_type(Conf) of
-      dcp ->
-        ok;
-      Type ->
-        TapVBuckets =
-          case Type of
-            tap ->
-              lists:seq(0, proplists:get_value(num_vbuckets, Conf) - 1);
-            {dcp, Vs} ->
-              Vs
-          end,
-        NewType =
-          case ordsets:del_element(VBucket, TapVBuckets) of
-            [] ->
-              dcp;
-            NewTapVBuckets ->
-              {dcp, NewTapVBuckets}
-          end,
-        error_logger:info_msg("Updating replication type for bucket ~p:~n~p", [Bucket, NewType]),
-        ns_bucket:update_bucket_props(Bucket, [{repl_type, NewType}]),
-        ok = ns_config_rep:ensure_config_seen_by_nodes([mb_master:master_node()])
-    end
-  end,
-
 {OldChain, NoReplicasChain} =
   case ns_config:search({fixup_rebalance, Bucket, VBucket}) of
     {value, Chains} ->
@@ -119,7 +89,6 @@ UpdateReplType =
   end,
 
 Rebalance(NoReplicasChain),
-UpdateReplType(),
 Rebalance(OldChain),
 ns_config:delete({fixup_rebalance, Bucket, VBucket}),
 
