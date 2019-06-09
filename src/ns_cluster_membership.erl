@@ -269,16 +269,15 @@ allowed_services(community) ->
 enterprise_only_services() ->
     [cbas, eventing].
 
+-define(PREHISTORIC, [0, 0]).
+
 services_by_version() ->
-    [{[0, 0],      [kv]},
-     {?VERSION_40, [n1ql, index]},
-     {?VERSION_45, [fts]},
-     {?VERSION_55, [cbas, eventing]}].
+    [{?PREHISTORIC, [kv, n1ql, index, fts]},
+     {?VERSION_55,  [cbas, eventing]}].
 
 topology_aware_services_by_version() ->
-    [{?VERSION_45, [fts]},
-     {?VERSION_50, [index]},
-     {?VERSION_55, [cbas, eventing]}].
+    [{?PREHISTORIC, [fts, index]},
+     {?VERSION_55,  [cbas, eventing]}].
 
 filter_services_by_version(Version, ServicesTable) ->
     lists:flatmap(fun ({V, Services}) ->
@@ -407,23 +406,12 @@ attach_node_uuids(Nodes, Config) ->
 
 -ifdef(TEST).
 supported_services_for_version_test() ->
-    ?assertEqual([kv], supported_services_for_version(?VERSION_25)),
-    ?assertEqual([kv], supported_services_for_version(?VERSION_30)),
-    ?assertEqual(lists:sort([kv,index,n1ql]),
-                 lists:sort(supported_services_for_version(?VERSION_40))),
-    ?assertEqual(lists:sort([kv,index,n1ql]),
-                 lists:sort(supported_services_for_version(?VERSION_41))),
     ?assertEqual(lists:sort([fts,kv,index,n1ql]),
-                 lists:sort(supported_services_for_version(?VERSION_45))),
+                 lists:sort(supported_services_for_version(?VERSION_50))),
     ?assertEqual(lists:sort([fts,kv,index,n1ql,cbas,eventing]),
                  lists:sort(supported_services_for_version(?VERSION_55))).
 
 topology_aware_services_for_version_test() ->
-    ?assertEqual([], topology_aware_services_for_version(?VERSION_25)),
-    ?assertEqual([], topology_aware_services_for_version(?VERSION_30)),
-    ?assertEqual([], topology_aware_services_for_version(?VERSION_40)),
-    ?assertEqual(lists:sort([fts]),
-                 lists:sort(topology_aware_services_for_version(?VERSION_45))),
     ?assertEqual(lists:sort([fts,index]),
                  lists:sort(topology_aware_services_for_version(?VERSION_50))),
     ?assertEqual(lists:sort([fts,index,cbas,eventing]),
