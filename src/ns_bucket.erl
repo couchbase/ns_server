@@ -490,6 +490,7 @@ new_bucket_default_params(membase) ->
      {num_replicas, 1},
      {ram_quota, 0},
      {replication_topology, star},
+     {repl_type, dcp},
      {servers, []}];
 new_bucket_default_params(memcached) ->
     Nodes = ns_cluster_membership:service_active_nodes(kv),
@@ -524,8 +525,7 @@ create_bucket(BucketType, BucketName, NewConfig) ->
                                      NewConfig),
             MergedConfig1 = generate_sasl_password(MergedConfig0),
             BucketUUID = couch_uuids:random(),
-            MergedConfig = [{repl_type, dcp} |
-                            [{uuid, BucketUUID} | MergedConfig1]],
+            MergedConfig = [{uuid, BucketUUID} | MergedConfig1],
             ns_config:update_sub_key(
               buckets, configs,
               fun (List) ->
