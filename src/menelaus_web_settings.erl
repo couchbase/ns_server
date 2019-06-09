@@ -555,12 +555,13 @@ do_handle_settings_web_post(Port, U, P, Req) ->
     %% HTTP request at hand can be completed.
     process_flag(trap_exit, true),
 
-    case Port =/= PortInt orelse ns_config_auth:credentials_changed(admin, U, P) of
+    case Port =/= PortInt orelse
+        ns_config_auth:admin_credentials_changed(U, P) of
         false -> ok; % No change.
         true ->
             menelaus_web_buckets:maybe_cleanup_old_buckets(),
             ns_config:set(rest, [{port, PortInt}]),
-            ns_config_auth:set_credentials(admin, U, P),
+            ns_config_auth:set_admin_credentials(U, P),
             case ns_config:search(uuid) of
                 false ->
                     Uuid = couch_uuids:random(),

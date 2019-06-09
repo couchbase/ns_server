@@ -359,9 +359,6 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "autoCompaction"] ->
                     {{[settings], read},
                      fun menelaus_web_autocompaction:handle_get_global_settings/1};
-                ["settings", "readOnlyAdminName"] ->
-                    {{[admin, security], read},
-                     fun menelaus_web_rbac:handle_settings_read_only_admin_name/1};
                 ["settings", "replications"] ->
                     {no_check, fun goxdcr_rest:proxy/1};
                 ["settings", "replications", _XID] ->
@@ -565,9 +562,6 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "viewUpdateDaemon"] ->
                     {{[settings, indexes], write},
                      fun menelaus_web_settings:handle_settings_view_update_daemon_post/1};
-                ["settings", "readOnlyUser"] ->
-                    {{[admin, security], write},
-                     fun menelaus_web_rbac:handle_settings_read_only_user_post/1};
                 ["settings", "replications"] ->
                     {no_check, fun goxdcr_rest:proxy/1};
                 ["settings", "replications", _XID] ->
@@ -811,9 +805,6 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                         ["controller", "cancelXDCR", XID])]};
                 ["controller", "cancelXDCR", _XID] ->
                     {no_check, fun goxdcr_rest:proxy/1};
-                ["settings", "readOnlyUser"] ->
-                    {{[admin, security], write},
-                     fun menelaus_web_rbac:handle_read_only_user_delete/1};
                 ["pools", "default", "serverGroups", GroupUUID] ->
                     {{[server_groups], write},
                      fun menelaus_web_groups:handle_server_group_delete/2, [GroupUUID]};
@@ -861,9 +852,6 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
             end;
         'PUT' = Method ->
             case PathTokens of
-                ["settings", "readOnlyUser"] ->
-                    {{[admin, security], write},
-                     fun menelaus_web_rbac:handle_read_only_user_reset/1};
                 ["pools", "default", "serverGroups"] ->
                     {{[server_groups], write},
                      fun menelaus_web_groups:handle_server_groups_put/1};

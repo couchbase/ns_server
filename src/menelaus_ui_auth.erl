@@ -70,18 +70,13 @@ reset() ->
 logout(Token) ->
     token_server:remove(?MODULE, Token).
 
-revoke(UserType) ->
-    token_server:purge(?MODULE, {'_', UserType}).
-
 init() ->
     ns_pubsub:subscribe_link(ns_config_events,
                              fun ns_config_event_handler/1).
 
 %% TODO: implement it correctly for all users or get rid of it
 ns_config_event_handler({rest_creds, _}) ->
-    revoke(admin);
-ns_config_event_handler({read_only_user_creds, _}) ->
-    revoke(ro_admin);
+    token_server:purge(?MODULE, {'_', admin});
 ns_config_event_handler(_Evt) ->
     ok.
 

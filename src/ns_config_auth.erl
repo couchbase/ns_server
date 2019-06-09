@@ -13,51 +13,44 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 %%
-%% @doc unified access api for admin and ro_admin credentials
+%% @doc access api for admin credentials
 
 -module(ns_config_auth).
 
 -include("ns_common.hrl").
 
 -export([authenticate/2,
-         set_credentials/3,
+         set_admin_credentials/2,
          get_user/1,
          get_password/1,
-         credentials_changed/3,
-         unset_credentials/1,
-         get_user_and_auth/1,
-         get_creds/2,
+         admin_credentials_changed/2,
+         get_admin_user_and_auth/0,
+         get_admin_creds/1,
          is_system_provisioned/0,
          is_system_provisioned/1,
          get_no_auth_buckets/1,
          hash_password/1,
          hash_password/2]).
 
-get_key(admin) ->
-    rest_creds;
-get_key(ro_admin) ->
-    read_only_user_creds.
+admin_cfg_key() ->
+    rest_creds.
 
-set_credentials(Role, User, Password) ->
+set_admin_credentials(User, Password) ->
     Auth = {auth, menelaus_users:build_scram_auth(Password)},
-    ns_config:set(get_key(Role), {User, Auth}).
+    ns_config:set(admin_cfg_key(), {User, Auth}).
 
-get_user_and_auth(Role) ->
-    get_user_and_auth(ns_config:latest(), Role).
+get_admin_user_and_auth() ->
+    get_admin_user_and_auth(ns_config:latest()).
 
-get_user_and_auth(Config, Role) ->
-    case ns_config:search(Config, get_key(Role)) of
-        {value, UserAndAuth} ->
-            UserAndAuth;
-        _ ->
-            undefined
-    end.
+get_admin_user_and_auth(Config) ->
+    {value, UserAuth} = ns_config:search(Config, admin_cfg_key()),
+    UserAuth.
 
 is_system_provisioned() ->
     is_system_provisioned(ns_config:latest()).
 
 is_system_provisioned(Config) ->
-    case get_user_and_auth(Config, admin) of
+    case get_admin_user_and_auth(Config) of
         {_, _} ->
             true;
         _ ->
@@ -66,8 +59,8 @@ is_system_provisioned(Config) ->
 
 get_user(special) ->
     "@";
-get_user(Role) ->
-    case get_user_and_auth(Role) of
+get_user(admin) ->
+    case get_admin_user_and_auth() of
         {U, _} ->
             U;
         _ ->
@@ -82,66 +75,56 @@ get_salt_and_mac({password, {Salt, Mac}}) ->
 get_salt_and_mac({auth, Auth}) ->
     menelaus_users:get_salt_and_mac(Auth).
 
-get_creds(Config, Role) ->
-    case get_user_and_auth(Config, Role) of
+get_admin_creds(Config) ->
+    case get_admin_user_and_auth(Config) of
         {User, Auth} ->
             {User, get_salt_and_mac(Auth)};
         _ ->
             undefined
     end.
 
-credentials_changed(admin, User, Password) ->
-    case get_creds(ns_config:latest(), admin) of
+admin_credentials_changed(User, Password) ->
+    case get_admin_creds(ns_config:latest()) of
         {User, {Salt, Mac}} ->
             hash_password(Salt, Password) =/= Mac;
         _ ->
             true
     end.
 
-authenticate(admin, [$@ | _] = User, Password) ->
+authenticate_as_admin([$@ | _] = User, Password) ->
     MemcachedPassword =
         ns_config:search_node_prop(ns_config:latest(), memcached, admin_pass),
     misc:compare_secure(MemcachedPassword, Password)
-        orelse authenticate_non_special(admin, User, Password);
-authenticate(Role, User, Password) ->
-    authenticate_non_special(Role, User, Password).
+        orelse authenticate_non_special(User, Password);
+authenticate_as_admin(User, Password) ->
+    authenticate_non_special(User, Password).
 
 authenticate(Username, Password) ->
-    case authenticate(admin, Username, Password) of
+    case authenticate_as_admin(Username, Password) of
         true ->
             {ok, {Username, admin}};
         false ->
-            case authenticate(ro_admin, Username, Password) of
+            case menelaus_users:authenticate(Username, Password) of
                 true ->
-                    {ok, {Username, ro_admin}};
+                    {ok, {Username, local}};
                 false ->
-                    case menelaus_users:authenticate(Username, Password) of
+                    case is_bucket_auth(Username, Password) of
                         true ->
-                            {ok, {Username, local}};
+                            {ok, {Username, bucket}};
                         false ->
-                            case is_bucket_auth(Username, Password) of
-                                true ->
-                                    {ok, {Username, bucket}};
-                                false ->
-                                    false
-                            end
+                            false
                     end
             end
     end.
 
-authenticate_non_special(Role, User, Password) ->
-    do_authenticate(Role, get_user_and_auth(Role), User, Password).
-
-do_authenticate(_Role, {User, Auth}, User, Password) ->
-    {Salt, Mac} = get_salt_and_mac(Auth),
-    misc:compare_secure(hash_password(Salt, Password), Mac);
-do_authenticate(admin, null, _User, _Password) ->
-    true;
-do_authenticate(_Role, _Creds, _User, _Password) ->
-    false.
-
-unset_credentials(Role) ->
-    ns_config:set(get_key(Role), null).
+authenticate_non_special(User, Password) ->
+    case get_admin_user_and_auth() of
+        null ->
+            true;
+        {User, Auth} ->
+            {Salt, Mac} = get_salt_and_mac(Auth),
+            misc:compare_secure(hash_password(Salt, Password), Mac)
+    end.
 
 hash_password(Password) ->
     Salt = crypto:strong_rand_bytes(16),

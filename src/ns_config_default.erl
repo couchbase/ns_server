@@ -135,9 +135,7 @@ default() ->
 
      %% {rest_creds, {User, {password, {Salt, Mac}}}}
      %% {rest_creds, null} means no login/password auth check.
-     %% read_only_user_creds has the same format
      {rest_creds, null},
-     {read_only_user_creds, null},
 
      {remote_clusters, []},
      {{node, node(), isasl}, [{path, filename:join(DataDir, ?ISASL_PW)}]},

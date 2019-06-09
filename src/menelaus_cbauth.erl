@@ -279,7 +279,7 @@ build_auth_info(#state{cert_version = CertVersion,
 
 auth_version(Config) ->
     B = term_to_binary(
-          [ns_config_auth:get_creds(Config, admin),
+          [ns_config_auth:get_admin_creds(Config),
            menelaus_users:get_auth_version()]),
     base64:encode(crypto:hash(sha, B)).
 

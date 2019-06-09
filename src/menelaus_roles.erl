@@ -684,8 +684,6 @@ get_roles({"", anonymous}) ->
     end;
 get_roles({_, admin}) ->
     [admin];
-get_roles({_, ro_admin}) ->
-    [ro_admin];
 get_roles({BucketName, bucket}) ->
     [{bucket_full_access, [BucketName]}];
 get_roles({_User, external} = Identity) ->

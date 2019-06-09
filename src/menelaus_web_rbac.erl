@@ -37,10 +37,6 @@
          handle_put_user/3,
          handle_delete_user/3,
          handle_change_password/1,
-         handle_settings_read_only_admin_name/1,
-         handle_settings_read_only_user_post/1,
-         handle_read_only_user_delete/1,
-         handle_read_only_user_reset/1,
          handle_reset_admin_password/1,
          handle_check_permissions_post/1,
          check_permissions_url_version/1,
@@ -1037,86 +1033,7 @@ handle_change_password_with_identity(Req, Identity) ->
 do_change_password({_, local} = Identity, Password) ->
     menelaus_users:change_password(Identity, Password);
 do_change_password({User, admin}, Password) ->
-    ns_config_auth:set_credentials(admin, User, Password).
-
-handle_settings_read_only_admin_name(Req) ->
-    case ns_config_auth:get_user(ro_admin) of
-        undefined ->
-            menelaus_util:reply_not_found(Req);
-        Name ->
-            menelaus_util:reply_json(Req, list_to_binary(Name), 200)
-    end.
-
-handle_settings_read_only_user_post(Req) ->
-    assert_no_users_upgrade(),
-
-    PostArgs = mochiweb_request:parse_post(Req),
-    ValidateOnly = proplists:get_value("just_validate", mochiweb_request:parse_qs(Req)) =:= "1",
-    U = proplists:get_value("username", PostArgs),
-    P = proplists:get_value("password", PostArgs),
-    Errors0 = [{K, V} || {K, V} <- [{username, validate_cred(U, username)},
-                                    {password, validate_cred(P, password)}],
-                         V =/= true],
-    Errors = Errors0 ++
-        case ns_config_auth:get_user(admin) of
-            U ->
-                [{username,
-                  <<"Read-only user cannot be same user as administrator">>}];
-            _ ->
-                []
-        end,
-
-    case Errors of
-        [] ->
-            case ValidateOnly of
-                false ->
-                    ns_config_auth:set_credentials(ro_admin, U, P),
-                    ns_audit:password_change(Req, {U, ro_admin});
-                true ->
-                    true
-            end,
-            menelaus_util:reply_json(Req, [], 200);
-        _ ->
-            menelaus_util:reply_json(Req,
-                                     {struct, [{errors, {struct, Errors}}]},
-                                     400)
-    end.
-
-handle_read_only_user_delete(Req) ->
-    assert_no_users_upgrade(),
-
-    case ns_config_auth:get_user(ro_admin) of
-        undefined ->
-            menelaus_util:reply_json(Req,
-                                     <<"Read-Only admin does not exist">>, 404);
-        User ->
-            ns_config_auth:unset_credentials(ro_admin),
-            ns_audit:delete_user(Req, {User, ro_admin}),
-            menelaus_util:reply_json(Req, [], 200)
-    end.
-
-handle_read_only_user_reset(Req) ->
-    assert_no_users_upgrade(),
-
-    case ns_config_auth:get_user(ro_admin) of
-        undefined ->
-            menelaus_util:reply_json(Req,
-                                     <<"Read-Only admin does not exist">>, 404);
-        ROAName ->
-            ReqArgs = mochiweb_request:parse_post(Req),
-            NewROAPass = proplists:get_value("password", ReqArgs),
-            case validate_cred(NewROAPass, password) of
-                true ->
-                    ns_config_auth:set_credentials(ro_admin, ROAName,
-                                                   NewROAPass),
-                    ns_audit:password_change(Req, {ROAName, ro_admin}),
-                    menelaus_util:reply_json(Req, [], 200);
-                Error ->
-                    menelaus_util:reply_json(
-                      Req, {struct, [{errors, {struct, [{password, Error}]}}]},
-                      400)
-            end
-    end.
+    ns_config_auth:set_admin_credentials(User, Password).
 
 gen_password(Policy) ->
     gen_password(Policy, 100).
@@ -1161,7 +1078,7 @@ reset_admin_password(Password) ->
 
     case Error of
         undefined ->
-            ok = ns_config_auth:set_credentials(admin, User, Password),
+            ok = ns_config_auth:set_admin_credentials(User, Password),
             ns_audit:password_change(undefined, {User, admin}),
             {ok, Password};
         _ ->
