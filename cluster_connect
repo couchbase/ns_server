@@ -23,9 +23,7 @@ import json
 from functools import reduce
 
 valid_bucket_types = ["ephemeral", "membase", "memcached"]
-valid_service_types = {"kv", "n1ql", "index", "fts", "cbas", "example",
-                       "eventing"}
-
+valid_service_types = {"kv", "n1ql", "index", "fts", "cbas", "eventing"}
 
 def usage():
     print "usage: \n\

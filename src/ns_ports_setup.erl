@@ -321,11 +321,7 @@ goport_defs() ->
           exe = "eventing-producer",
           service = eventing,
           rpc = eventing,
-          log = ?EVENTING_LOG_FILENAME},
-     #def{id = example,
-          exe = "cache-service",
-          service = example,
-          rpc = example}].
+          log = ?EVENTING_LOG_FILENAME}].
 
 build_goport_spec(#def{id = SpecId,
                        exe = Executable,
@@ -542,13 +538,7 @@ goport_args(cbas, Config, Cmd, NodeUUID) ->
          "-logLevel=" ++ atom_to_list(LogLevel)
         ] ++
         ["-dataDir=" ++ Dir || Dir <- CBASDirs] ++
-        ["-javaHome=" ++ JavaHome || JavaHome =/= undefined];
-
-goport_args(example, Config, _Cmd, NodeUUID) ->
-    Port = service_ports:get_port(rest_port, Config) + 20000,
-    Host = misc:extract_node_address(node()),
-    ["-node-id", NodeUUID,
-     "-host", misc:join_host_port(Host, Port)].
+        ["-javaHome=" ++ JavaHome || JavaHome =/= undefined].
 
 saslauthd_port_spec(Config) ->
     Cmd = find_executable("saslauthd-port"),

@@ -39,7 +39,6 @@
 -define(AUTO_FAILOVER_FTS_NODE_COUNT, 1).
 -define(AUTO_FAILOVER_EVENTING_NODE_COUNT, 1).
 -define(AUTO_FAILOVER_CBAS_NODE_COUNT, 1).
--define(AUTO_FAILOVER_EXAMPLE_NODE_COUNT, 1).
 
 -record(node_state, {
           name :: term(),
@@ -531,9 +530,7 @@ service_failover_min_node_count(fts) ->
 service_failover_min_node_count(eventing) ->
     ?AUTO_FAILOVER_EVENTING_NODE_COUNT;
 service_failover_min_node_count(cbas) ->
-    ?AUTO_FAILOVER_CBAS_NODE_COUNT;
-service_failover_min_node_count(example) ->
-    ?AUTO_FAILOVER_EXAMPLE_NODE_COUNT.
+    ?AUTO_FAILOVER_CBAS_NODE_COUNT.
 
 
 -ifdef(TEST).

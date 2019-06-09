@@ -266,14 +266,6 @@ allowed_services(enterprise) ->
 allowed_services(community) ->
     supported_services() -- enterprise_only_services().
 
-maybe_example_service() ->
-    case os:getenv("ENABLE_EXAMPLE_SERVICE") =/= false of
-        true ->
-            [{?VERSION_45, example}];
-        false ->
-            []
-    end.
-
 enterprise_only_services() ->
     [cbas, eventing].
 
@@ -283,15 +275,13 @@ services_by_version() ->
      {?VERSION_40, index},
      {?VERSION_45, fts},
      {?VERSION_55, cbas},
-     {?VERSION_55, eventing}] ++
-        maybe_example_service().
+     {?VERSION_55, eventing}].
 
 topology_aware_services_by_version() ->
     [{?VERSION_45, fts},
      {?VERSION_50, index},
      {?VERSION_55, cbas},
-     {?VERSION_55, eventing}] ++
-        maybe_example_service().
+     {?VERSION_55, eventing}].
 
 filter_services_by_version(Version, Services) ->
     lists:filtermap(fun ({V, Service}) ->
