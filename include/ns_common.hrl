@@ -54,7 +54,6 @@
 -define(MIB, 1048576).
 
 -define(VBMAP_HISTORY_SIZE, 10).
--define(NUM_NS_MEMCACHED_DATA_INSTANCES, 4).
 -define(MAX_BUCKETS_SUPPORTED, 30).
 
 -define(DEFAULT_LOG_FILENAME, "info.log").
