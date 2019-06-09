@@ -43,7 +43,6 @@
          get_buckets/0,
          get_buckets/1,
          is_persistent/1,
-         is_port_free/1,
          is_valid_bucket_name/1,
          json_map_from_config/2,
          json_map_with_full_config/3,
@@ -474,72 +473,6 @@ is_valid_bucket_name_inner([Char | Rest]) ->
         _ -> {error, invalid}
     end.
 
-is_not_a_bucket_port(BucketName, Port) ->
-    UsedPorts = lists:filter(fun (undefined) -> false;
-                                 (_) -> true
-                             end,
-                             [proplists:get_value(moxi_port, Config)
-                              || {Name, Config} <- get_buckets(),
-                                 Name /= BucketName]),
-    not lists:member(Port, UsedPorts).
-
-is_not_a_kernel_port(Port) ->
-    Env = application:get_all_env(kernel),
-    MinPort = case lists:keyfind(inet_dist_listen_min, 1, Env) of
-                  false ->
-                      1000000;
-                  {_, P} ->
-                      P
-              end,
-    MaxPort = case lists:keyfind(inet_dist_listen_max, 1, Env) of
-                  false ->
-                      0;
-                  {_, P1} ->
-                      P1
-              end,
-    Port < MinPort orelse Port > MaxPort.
-
-is_port_free(Port) ->
-    is_port_free([], Port).
-
-is_port_free(BucketName, Port) ->
-    is_port_free(BucketName, Port, ns_config:get()).
-
-is_port_free(BucketName, Port, Config) ->
-    true = (Port /= undefined),
-    TakenWebPort = case BucketName of
-                       [] ->
-                           0;
-                       _ ->
-                           proplists:get_value(port, menelaus_web:webconfig(Config))
-                   end,
-    Port =/= service_ports:get_port(memcached_port, Config)
-        andalso Port =/= service_ports:get_port(memcached_dedicated_port,
-                                                Config)
-        andalso Port =/= service_ports:get_port(memcached_ssl_port, Config)
-        andalso Port =/= ns_config:search_node_prop(Config, moxi, port)
-        andalso Port =/= service_ports:get_port(capi_port, Config)
-        andalso Port =/= TakenWebPort
-        andalso Port =/= 4369 %% default epmd port
-        andalso is_not_a_bucket_port(BucketName, Port)
-        andalso is_not_a_kernel_port(Port)
-        andalso Port =/= service_ports:get_port(ssl_capi_port, Config)
-        andalso Port =/= service_ports:get_port(ssl_rest_port, Config).
-
-validate_bucket_config(BucketName, NewConfig) ->
-    case is_valid_bucket_name(BucketName) of
-        true ->
-            Port = proplists:get_value(moxi_port, NewConfig),
-            case Port =:= undefined orelse is_port_free(BucketName, Port) of
-                false ->
-                    {error, {port_conflict, Port}};
-                true ->
-                    ok
-            end;
-        {error, _} ->
-            {error, {invalid_bucket_name, BucketName}}
-    end.
-
 get_max_buckets() ->
     ns_config:read_key_fast(max_bucket_count, ?MAX_BUCKETS_SUPPORTED).
 
@@ -584,8 +517,8 @@ generate_sasl_password(Props) ->
                     {sasl_password, generate_sasl_password()})].
 
 create_bucket(BucketType, BucketName, NewConfig) ->
-    case validate_bucket_config(BucketName, NewConfig) of
-        ok ->
+    case is_valid_bucket_name(BucketName) of
+        true ->
             MergedConfig0 =
                 misc:update_proplist(new_bucket_default_params(BucketType),
                                      NewConfig),
@@ -605,7 +538,8 @@ create_bucket(BucketType, BucketName, NewConfig) ->
               end),
             %% The janitor will handle creating the map.
             ok;
-        E -> E
+        {error, _} ->
+            {error, {invalid_bucket_name, BucketName}}
     end.
 
 -spec delete_bucket(bucket_name()) -> ok | {exit, {not_found, bucket_name()}, any()}.

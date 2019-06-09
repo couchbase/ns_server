@@ -467,7 +467,39 @@ is_valid_port_number_or_error(StringPort) ->
 is_port_free("SAME") ->
     true;
 is_port_free(Port) ->
-    ns_bucket:is_port_free(list_to_integer(Port)).
+    Port =/= service_ports:get_port(memcached_port)
+        andalso Port =/= service_ports:get_port(memcached_dedicated_port)
+        andalso Port =/= service_ports:get_port(memcached_ssl_port)
+        andalso Port =/= service_ports:get_port(capi_port)
+        andalso Port =/= 4369 %% default epmd port
+        andalso is_not_a_bucket_port(Port)
+        andalso is_not_a_kernel_port(Port)
+        andalso Port =/= service_ports:get_port(ssl_capi_port)
+        andalso Port =/= service_ports:get_port(ssl_rest_port).
+
+is_not_a_kernel_port(Port) ->
+    Env = application:get_all_env(kernel),
+    MinPort = case lists:keyfind(inet_dist_listen_min, 1, Env) of
+                  false ->
+                      1000000;
+                  {_, P} ->
+                      P
+              end,
+    MaxPort = case lists:keyfind(inet_dist_listen_max, 1, Env) of
+                  false ->
+                      0;
+                  {_, P1} ->
+                      P1
+              end,
+    Port < MinPort orelse Port > MaxPort.
+
+is_not_a_bucket_port(Port) ->
+    UsedPorts = lists:filter(fun (undefined) -> false;
+                                 (_) -> true
+                             end,
+                             [proplists:get_value(moxi_port, Config)
+                              || {_, Config} <- ns_bucket:get_buckets()]),
+    not lists:member(Port, UsedPorts).
 
 validate_settings(Port, U, P) ->
     case lists:all(fun erlang:is_list/1, [Port, U, P]) of
