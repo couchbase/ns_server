@@ -119,9 +119,6 @@ handle_event({rest_creds, _}, #state{cluster_admin = undefined}) ->
 handle_event({rest_creds, _}, State) ->
     {changed, State#state{cluster_admin = undefined}}.
 
-producer(State) ->
-    make_producer(State).
-
 refresh() ->
     memcached_refresh:refresh(rbac).
 
@@ -232,11 +229,11 @@ jsonify_users(Users, Buckets, ParamValues, RoleDefinitions, ClusterAdmin) ->
            ?yield(object_end)
        end).
 
-make_producer(#state{buckets = Buckets,
-                     param_values = ParamValues,
-                     roles = RoleDefinitions,
-                     users = Users,
-                     cluster_admin = ClusterAdmin}) ->
+producer(#state{buckets = Buckets,
+                param_values = ParamValues,
+                roles = RoleDefinitions,
+                users = Users,
+                cluster_admin = ClusterAdmin}) ->
     pipes:compose([menelaus_users:select_users({'_', local}, [roles]),
                    jsonify_users(Users, Buckets, ParamValues, RoleDefinitions, ClusterAdmin),
                    sjson:encode_extended_json([{compact, false},

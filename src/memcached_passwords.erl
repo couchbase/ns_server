@@ -83,13 +83,10 @@ handle_event({rest_creds, Creds}, #state{rest_creds = Creds}) ->
 handle_event({rest_creds, Creds}, State) ->
     {changed, State#state{rest_creds = Creds}}.
 
-producer(State) ->
-    make_producer(State).
-
-make_producer(#state{buckets = Buckets,
-                     users = Users,
-                     admin_pass = AP,
-                     rest_creds = RestCreds}) ->
+producer(#state{buckets = Buckets,
+                users = Users,
+                admin_pass = AP,
+                rest_creds = RestCreds}) ->
     pipes:compose([menelaus_users:select_auth_infos({'_', local}),
                    jsonify_auth(Users, AP, Buckets, RestCreds),
                    sjson:encode_extended_json([{compact, false},
