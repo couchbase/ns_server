@@ -932,7 +932,8 @@ rebalancing({try_autofailover, Nodes}, From, State) ->
             end
     end;
 rebalancing({start_rebalance, _KeepNodes, _EjectNodes,
-             _FailedNodes, _DeltaNodes, _DeltaRecoveryBuckets, _RebalanceId},
+             _FailedNodes, _DeltaNodes, _DeltaRecoveryBuckets,
+             _RebalanceId, _RetryChk},
             From, _State) ->
     ale:info(?USER_LOGGER,
              "Not rebalancing because rebalance is already in progress.~n"),
