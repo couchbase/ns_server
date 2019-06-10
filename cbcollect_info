@@ -62,7 +62,8 @@ class AltExitC(object):
         for f in self.list:
             try:
                 f()
-            except:
+            except BaseException:
+                # Continue exit handling in spite of any exceptions
                 pass
 
     def exit(self, status):
@@ -177,7 +178,7 @@ class AccessLogProcessor:
 
     def _process_url_tail(self, rex, fn, key, s):
         m = rex.search(s)
-        if m != None:
+        if m is not None:
             return s[:m.start(key)] + fn(m.group(key)) + s[m.end(key):]
         else:
             return s
@@ -374,7 +375,7 @@ class Task(object):
             def on_timeout():
                 try:
                     self._kill(p)
-                except:
+                except BaseException:
                     # the process might have died already
                     pass
 
@@ -420,7 +421,8 @@ class TaskRunner(object):
         self.start_time = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
         self.salt_value = salt_value
 
-        # Depending on platform, mkdtemp() may act unpredictably if passed an empty string.
+        # Depending on platform, mkdtemp() may act unpredictably if passed an
+        # empty string.
         if not tmp_dir:
             tmp_dir = None
         else:
@@ -432,8 +434,10 @@ class TaskRunner(object):
             print("Could not use temporary dir {0}: {1}".format(tmp_dir, e))
             sys.exit(1)
 
-        # If a dir wasn't passed by --tmp-dir, check if the env var was set and if we were able to use it
-        if not tmp_dir and os.getenv("TMPDIR") and os.path.split(self.tmpdir)[0] != os.getenv("TMPDIR"):
+        # If a dir wasn't passed by --tmp-dir, check if the env var was set and
+        # if we were able to use it
+        if not tmp_dir and os.getenv("TMPDIR") and os.path.split(
+                self.tmpdir)[0] != os.getenv("TMPDIR"):
             log("Could not use TMPDIR {0}".format(os.getenv("TMPDIR")))
         log("Using temporary dir {0}".format(os.path.split(self.tmpdir)[0]))
 
@@ -445,7 +449,8 @@ class TaskRunner(object):
         try:
             for fp in self.files.items():
                 fp.close()
-        except:
+        except BaseException:
+            # Continue exit handling in spite of any exceptions
             pass
 
         shutil.rmtree(self.tmpdir, ignore_errors=True)
@@ -517,7 +522,7 @@ class TaskRunner(object):
             for i in range(task.num_samples):
                 if i > 0:
                     log("Taking sample %d after %f seconds - " %
-                        (i+1, task.interval), new_line=False)
+                        (i + 1, task.interval), new_line=False)
                     time.sleep(task.interval)
                 result = task.execute(fp)
                 self.log_result(result)
@@ -717,7 +722,8 @@ def make_redaction_task():
 
 
 def basedir():
-    # We are installed in $INSTALL_DIR/lib/python, so need to go up three levels
+    # We are installed in $INSTALL_DIR/lib/python, so need to go up three
+    # levels
     return os.path.normpath(
         os.path.join(
             os.path.abspath(__file__),
@@ -773,7 +779,9 @@ def make_os_tasks():
         SolarisTask("Disk activity", "iostat -E 1 10"),
         LinuxTask("Process list snapshot",
                   "export TERM=''; top -Hb -n1 || top -H n1"),
-        LinuxTask("Process list", "ps -AwwL -o user,pid,lwp,ppid,nlwp,pcpu,maj_flt,min_flt,pri,nice,vsize,rss,tty,stat,wchan:12,start,bsdtime,command"),
+        LinuxTask(
+            "Process list",
+            "ps -AwwL -o user,pid,lwp,ppid,nlwp,pcpu,maj_flt,min_flt,pri,nice,vsize,rss,tty,stat,wchan:12,start,bsdtime,command"),
         LinuxTask("Raw /proc/buddyinfo", "cat /proc/buddyinfo"),
         LinuxTask("Raw /proc/meminfo", "cat /proc/meminfo"),
         LinuxTask("Raw /proc/pagetypeinfo", "cat /proc/pagetypeinfo"),
@@ -802,7 +810,9 @@ def make_os_tasks():
         LinuxTask("Installed software", "COLUMNS=300 dpkg -l"),
         # NOTE: -V is supported only from dpkg v1.17.2 onwards.
         LinuxTask("Hot fix list", "COLUMNS=300 dpkg -V couchbase-server"),
-        LinuxTask("Extended iostat", "iostat -x -p ALL 1 10 || iostat -x 1 10"),
+        LinuxTask(
+            "Extended iostat",
+            "iostat -x -p ALL 1 10 || iostat -x 1 10"),
         LinuxTask("Core dump settings",
                   "find /proc/sys/kernel -type f -name '*core*' -print -exec cat '{}' ';'"),
         UnixTask("sysctl settings", "sysctl -a"),
@@ -904,7 +914,8 @@ def make_os_tasks():
 
     return _tasks
 
-# stolen from http://rightfootin.blogspot.com/2006/09/more-on-python-flatten.html
+# stolen from
+# http://rightfootin.blogspot.com/2006/09/more-on-python-flatten.html
 
 
 def iter_flatten(iterable):
@@ -926,7 +937,7 @@ def read_guts(guts, key):
 
 
 def winquote_path(s):
-    return '"'+s.replace("\\\\", "\\").replace('/', "\\")+'"'
+    return '"' + s.replace("\\\\", "\\").replace('/', "\\") + '"'
 
 # python's split splits empty string to [''] which doesn't make any
 # sense. So this function works around that.
@@ -1312,7 +1323,7 @@ def get_server_guts(initargs_path):
     d = {}
     if len(tokens) > 1:
         for i in range(0, len(tokens), 2):
-            d[tokens[i]] = tokens[i+1]
+            d[tokens[i]] = tokens[i + 1]
     return d
 
 
@@ -1332,7 +1343,7 @@ def guess_utility(command):
 
 def dump_utilities(*args, **kwargs):
     specific_platforms = {SolarisTask: 'Solaris',
-                          LinuxTask:  'Linux',
+                          LinuxTask: 'Linux',
                           WindowsTask: 'Windows',
                           MacOSXTask: 'Mac OS X'}
     platform_utils = dict((name, set())
@@ -1356,7 +1367,8 @@ def dump_utilities(*args, **kwargs):
     print('This is an autogenerated, possibly incomplete and flawed list '
           'of utilites used by cbcollect_info')
 
-    for (name, utilities) in sorted(platform_utils.items(), key=lambda x: x[0]):
+    for (name, utilities) in sorted(
+            platform_utils.items(), key=lambda x: x[0]):
         print("\n%s:" % name)
 
         for utility in sorted(utilities):
@@ -1370,7 +1382,7 @@ class CurlKiller:
         self.p = p
 
     def cleanup(self):
-        if self.p != None:
+        if self.p is not None:
             print("Killing curl...")
             os.kill(self.p.pid, signal.SIGKILL)
             print("done")
@@ -1445,7 +1457,7 @@ def generate_upload_url(parser, options, zip_filename):
 
 
 def check_ticket(option, opt, value):
-    if re.match('^\d{1,7}$', value):
+    if re.match(r'^\d{1,7}$', value):
         return int(value)
     else:
         raise optparse.OptionValueError(
@@ -1561,7 +1573,7 @@ def main():
         path = [bindir, os.environ['PATH']]
         os.environ['PATH'] = ';'.join(path)
 
-    if options.just_upload_into != None:
+    if options.just_upload_into is not None:
         do_upload_and_exit(args[0], options.just_upload_into,
                            options.upload_proxy)
 
@@ -1579,7 +1591,7 @@ def main():
                          "/opt/couchbase/var/lib/couchbase/initargs",
                          os.path.expanduser("~/Library/Application Support/Couchbase/var/lib/couchbase/initargs")]
 
-    if options.initargs != None:
+    if options.initargs is not None:
         initargs_variants = [options.initargs]
 
     guts = None
@@ -1630,7 +1642,8 @@ def main():
     else:
         memcached_breakpad_minidump_dir = read_guts(
             guts, "memcached_breakpad_minidump_dir")
-        for dump in glob.glob(os.path.join(memcached_breakpad_minidump_dir, "*.dmp")):
+        for dump in glob.glob(os.path.join(
+                memcached_breakpad_minidump_dir, "*.dmp")):
             runner.collect_file(dump)
 
         # Collect indexer breakpad minidumps
@@ -1639,13 +1652,15 @@ def main():
             indexer_breakpad_minidump_dir = read_guts(
                 guts, "indexer_breakpad_minidump_dir")
             if memcached_breakpad_minidump_dir != indexer_breakpad_minidump_dir:
-                for dump in glob.glob(os.path.join(indexer_breakpad_minidump_dir, "*.dmp")):
+                for dump in glob.glob(os.path.join(
+                        indexer_breakpad_minidump_dir, "*.dmp")):
                     runner.collect_file(dump)
 
     fts_port = read_guts(guts, "fts_http_port")
     if fts_port:
         idx_dir = read_guts(guts, "idx_dir")
-        for dump in glob.glob(os.path.join(idx_dir, "@fts", "dumps", "*.dump.txt")):
+        for dump in glob.glob(os.path.join(
+                idx_dir, "@fts", "dumps", "*.dump.txt")):
             runner.collect_file(dump)
 
     addr = zip_node.split("@")[-1]
