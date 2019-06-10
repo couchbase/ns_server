@@ -461,7 +461,7 @@ class TaskRunner(object):
 
         filename - Absolute path to file to collect.
         """
-        if not filename in self.files:
+        if filename not in self.files:
             try:
                 self.files[filename] = open(filename, 'r')
             except IOError as e:
@@ -576,7 +576,11 @@ class TaskRunner(object):
         fallback = False
 
         try:
-            p = subprocess.Popen([exe, "-strip-path", "-prefix", prefix, filename] + files,
+            p = subprocess.Popen([exe,
+                                  "-strip-path",
+                                  "-prefix",
+                                  prefix,
+                                  filename] + files,
                                  stderr=subprocess.STDOUT,
                                  stdin=subprocess.PIPE)
             p.stdin.close()
@@ -740,14 +744,16 @@ def make_event_log_task():
     limit = datetime.today() - timedelta(days=31)
     limit = limit.strftime('%Y%m%d000000.000000-000')
 
-    return WindowsTask("Event log",
-                       "wmic ntevent where "
-                       "\""
-                       "(LogFile='application' or LogFile='system') and "
-                       "EventType<3 and TimeGenerated>'%(limit)s'"
-                       "\" "
-                       "get TimeGenerated,LogFile,SourceName,EventType,Message "
-                       "/FORMAT:list" % locals())
+    return WindowsTask(
+        "Event log",
+        "wmic ntevent where "
+        "\""
+        "(LogFile='application' or LogFile='system') and "
+        "EventType<3 and TimeGenerated>'%(limit)s'"
+        "\" "
+        "get TimeGenerated,LogFile,SourceName,EventType,Message "
+        "/FORMAT:list" %
+        locals())
 
 
 def make_os_tasks():
@@ -1017,41 +1023,76 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
     index_tasks = []
     index_port = read_guts(guts, "indexer_http_port")
     if index_port:
-        index_tasks = [make_index_task("Index definitions are: ", "getIndexStatus",
-                                       memcached_pass, index_port),
-                       make_index_task("Indexer settings are: ", "settings",
-                                       memcached_pass, index_port),
-                       make_index_task("Index storage stats are: ", "stats/storage",
-                                       memcached_pass, index_port),
-                       make_index_task("MOI allocator stats are: ", "stats/storage/mm",
-                                       memcached_pass, index_port),
-                       make_index_task("Indexer Go routine dump: ", "debug/pprof/goroutine?debug=1",
-                                       memcached_pass, index_port, logfile="indexer_pprof.log"),
-                       make_index_task("Indexer Rebalance Tokens: ", "listRebalanceTokens",
-                                       memcached_pass, index_port),
-                       make_index_task("Indexer Metadata Tokens: ", "listMetadataTokens",
-                                       memcached_pass, index_port),
-                       make_index_task("Indexer Memory Profile: ", "debug/pprof/heap?debug=1",
-                                       memcached_pass, index_port, logfile="indexer_mprof.log"),
-                       ]
+        index_tasks = [
+            make_index_task(
+                "Index definitions are: ",
+                "getIndexStatus",
+                memcached_pass,
+                index_port),
+            make_index_task(
+                "Indexer settings are: ",
+                "settings",
+                memcached_pass,
+                index_port),
+            make_index_task(
+                "Index storage stats are: ",
+                "stats/storage",
+                memcached_pass,
+                index_port),
+            make_index_task(
+                "MOI allocator stats are: ",
+                "stats/storage/mm",
+                memcached_pass,
+                index_port),
+            make_index_task(
+                "Indexer Go routine dump: ",
+                "debug/pprof/goroutine?debug=1",
+                memcached_pass,
+                index_port,
+                logfile="indexer_pprof.log"),
+            make_index_task(
+                "Indexer Rebalance Tokens: ",
+                "listRebalanceTokens",
+                memcached_pass,
+                index_port),
+            make_index_task(
+                "Indexer Metadata Tokens: ",
+                "listMetadataTokens",
+                memcached_pass,
+                index_port),
+            make_index_task(
+                "Indexer Memory Profile: ",
+                "debug/pprof/heap?debug=1",
+                memcached_pass,
+                index_port,
+                logfile="indexer_mprof.log"),
+        ]
 
     projector_tasks = []
     proj_port = read_guts(guts, "projector_port")
     if proj_port:
         proj_url = 'http://%s:%s/debug/pprof/goroutine?debug=1' % (
             local_url_addr, proj_port)
-        projector_tasks = [make_curl_task(name="Projector Go routine dump ",
-                                          user="@", password=memcached_pass,
-                                          url=proj_url, log_file="projector_pprof.log")]
+        projector_tasks = [
+            make_curl_task(
+                name="Projector Go routine dump ",
+                user="@",
+                password=memcached_pass,
+                url=proj_url,
+                log_file="projector_pprof.log")]
 
     goxdcr_tasks = []
     goxdcr_port = read_guts(guts, "xdcr_rest_port")
     if goxdcr_port:
         goxdcr_url = 'http://%s:%s/debug/pprof/goroutine?debug=1' % (
             local_url_addr, goxdcr_port)
-        goxdcr_tasks = [make_curl_task(name="GoXDCR Go routine dump ",
-                                       user="@", password=memcached_pass,
-                                       url=goxdcr_url, log_file="goxdcr_pprof.log")]
+        goxdcr_tasks = [
+            make_curl_task(
+                name="GoXDCR Go routine dump ",
+                user="@",
+                password=memcached_pass,
+                url=goxdcr_url,
+                log_file="goxdcr_pprof.log")]
 
     fts_tasks = []
     fts_port = read_guts(guts, "fts_http_port")
@@ -1076,19 +1117,26 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                                    password=memcached_pass,
                                    port=cbas_port)
 
-        cbas_tasks = [make_curl_task(name="Analytics /analytics/node/diagnostics: ",
-                                     user="@", password=memcached_pass,
-                                     url=cbas_diag_url,
-                                     log_file="analytics_diag.json", no_header=True),
-                      make_curl_task(name="Analytics Go routine dump: ",
-                                     user="@", password=memcached_pass,
-                                     url=cbas_pprof_url,
-                                     log_file="analytics_pprof.log", no_header=True),
-                      make_cbas("select * from `Metadata`.`Dataverse`"),
-                      make_cbas("select * from `Metadata`.`Dataset`"),
-                      make_cbas("select * from `Metadata`.`Index`"),
-                      make_cbas("select * from `Metadata`.`Bucket`"),
-                      make_cbas("select * from `Metadata`.`Link`")]
+        cbas_tasks = [
+            make_curl_task(
+                name="Analytics /analytics/node/diagnostics: ",
+                user="@",
+                password=memcached_pass,
+                url=cbas_diag_url,
+                log_file="analytics_diag.json",
+                no_header=True),
+            make_curl_task(
+                name="Analytics Go routine dump: ",
+                user="@",
+                password=memcached_pass,
+                url=cbas_pprof_url,
+                log_file="analytics_pprof.log",
+                no_header=True),
+            make_cbas("select * from `Metadata`.`Dataverse`"),
+            make_cbas("select * from `Metadata`.`Dataset`"),
+            make_cbas("select * from `Metadata`.`Index`"),
+            make_cbas("select * from `Metadata`.`Bucket`"),
+            make_cbas("select * from `Metadata`.`Link`")]
 
     eventing_tasks = []
     eventing_port = read_guts(guts, "eventing_http_port")
@@ -1097,14 +1145,21 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
             local_url_addr, eventing_port)
         eventing_pprof_url = 'http://%s:%s/debug/pprof/goroutine?debug=1' % (
             local_url_addr, eventing_port)
-        eventing_tasks = [make_curl_task(name="Eventing /api/v1/stats: ",
-                                         user="@", password=memcached_pass,
-                                         url=stats_url,
-                                         log_file="eventing_stats.json", no_header=True),
-                          make_curl_task(name="Eventing Go routine dump: ",
-                                         user="@", password=memcached_pass,
-                                         url=eventing_pprof_url,
-                                         log_file="eventing_pprof.log", no_header=True)]
+        eventing_tasks = [
+            make_curl_task(
+                name="Eventing /api/v1/stats: ",
+                user="@",
+                password=memcached_pass,
+                url=stats_url,
+                log_file="eventing_stats.json",
+                no_header=True),
+            make_curl_task(
+                name="Eventing Go routine dump: ",
+                user="@",
+                password=memcached_pass,
+                url=eventing_pprof_url,
+                log_file="eventing_pprof.log",
+                no_header=True)]
 
     _tasks = [
         UnixTask("Directory structure",
@@ -1286,8 +1341,16 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                   artifacts=["kv_trace.json"]),
     ]
 
-    _tasks = flatten([getent_tasks, lookup_tasks, query_tasks, index_tasks,
-                      projector_tasks, fts_tasks, cbas_tasks, eventing_tasks, goxdcr_tasks, _tasks])
+    _tasks = flatten([getent_tasks,
+                      lookup_tasks,
+                      query_tasks,
+                      index_tasks,
+                      projector_tasks,
+                      fts_tasks,
+                      cbas_tasks,
+                      eventing_tasks,
+                      goxdcr_tasks,
+                      _tasks])
 
     return _tasks
 
@@ -1446,7 +1509,9 @@ def generate_upload_url(parser, options, zip_filename):
         fname = urllib.parse.quote(os.path.basename(zip_filename))
         if options.upload_ticket:
             full_path = '%s/%s/%d/%s' % (path,
-                                         customer, options.upload_ticket, fname)
+                                         customer,
+                                         options.upload_ticket,
+                                         fname)
         else:
             full_path = '%s/%s/%s' % (path, customer, fname)
 
@@ -1489,18 +1554,27 @@ def main():
                       default=rootdir)
     parser.add_option("-v", dest="verbosity", help="increase verbosity level",
                       action="count", default=0)
-    parser.add_option("-p", dest="product_only", help="gather only product related information",
-                      action="store_true", default=False)
+    parser.add_option(
+        "-p",
+        dest="product_only",
+        help="gather only product related information",
+        action="store_true",
+        default=False)
     parser.add_option("-d", action="callback", callback=dump_utilities,
                       help="dump a list of commands that cbcollect_info needs")
     parser.add_option("--initargs", dest="initargs",
                       help="server 'initargs' path")
-    parser.add_option("--multi-node-diag", dest="multi_node_diag",
-                      action="store_true", default=False,
-                      help="collect per-node diag  on all reachable nodes (default is just this node)")
-    parser.add_option("--log-redaction-level", dest="redact_level",
-                      default="none",
-                      help="redaction level for the logs collected, none and partial supported (default is none)")
+    parser.add_option(
+        "--multi-node-diag",
+        dest="multi_node_diag",
+        action="store_true",
+        default=False,
+        help="collect per-node diag  on all reachable nodes (default is just this node)")
+    parser.add_option(
+        "--log-redaction-level",
+        dest="redact_level",
+        default="none",
+        help="redaction level for the logs collected, none and partial supported (default is none)")
     parser.add_option("--log-redaction-salt", dest="salt_value",
                       default=str(uuid.uuid4()),
                       help="Is used to salt the hashing of tagged data, \
@@ -1508,8 +1582,10 @@ def main():
                             be provided along with --log-redaction-level option")
     parser.add_option("--just-upload-into", dest="just_upload_into",
                       help=optparse.SUPPRESS_HELP)
-    parser.add_option("--upload-host", dest="upload_host",
-                      help="gather diagnostics and upload it for couchbase support. Gives upload host")
+    parser.add_option(
+        "--upload-host",
+        dest="upload_host",
+        help="gather diagnostics and upload it for couchbase support. Gives upload host")
     parser.add_option("--customer", dest="upload_customer",
                       help="specifies customer name for upload")
     parser.add_option("--ticket", dest="upload_ticket", type='ticket',
@@ -1517,11 +1593,16 @@ def main():
     parser.add_option("--bypass-sensitive-data", dest="bypass_sensitive_data",
                       action="store_true", default=False,
                       help="do not collect sensitive data")
-    parser.add_option("--task-regexp", dest="task_regexp",
-                      default="",
-                      help="Run only tasks matching regexp. For debugging purposes only.")
-    parser.add_option("--tmp-dir", dest="tmp_dir", default=None,
-                      help="set the temp dir used while processing collected data. Overrides the TMPDIR env variable if set")
+    parser.add_option(
+        "--task-regexp",
+        dest="task_regexp",
+        default="",
+        help="Run only tasks matching regexp. For debugging purposes only.")
+    parser.add_option(
+        "--tmp-dir",
+        dest="tmp_dir",
+        default=None,
+        help="set the temp dir used while processing collected data. Overrides the TMPDIR env variable if set")
     parser.add_option("--upload-proxy", dest="upload_proxy", default="",
                       help="specifies proxy for upload")
     options, args = parser.parse_args()
@@ -1587,9 +1668,16 @@ def main():
     if not options.product_only:
         runner.run_tasks(make_os_tasks())
 
-    initargs_variants = [os.path.abspath(os.path.join(options.root, "var", "lib", "couchbase", "initargs")),
-                         "/opt/couchbase/var/lib/couchbase/initargs",
-                         os.path.expanduser("~/Library/Application Support/Couchbase/var/lib/couchbase/initargs")]
+    initargs_variants = [
+        os.path.abspath(
+            os.path.join(
+                options.root,
+                "var",
+                "lib",
+                "couchbase",
+                "initargs")),
+        "/opt/couchbase/var/lib/couchbase/initargs",
+        os.path.expanduser("~/Library/Application Support/Couchbase/var/lib/couchbase/initargs")]
 
     if options.initargs is not None:
         initargs_variants = [options.initargs]
@@ -1616,11 +1704,22 @@ def main():
         else:
             prefix = '/opt/couchbase'
 
-        guts = {"db_dir": os.path.join(prefix, "var/lib/couchbase/data"),
-                "idx_dir": os.path.join(prefix, "var/lib/couchbase/data"),
-                "ns_log_path": os.path.join(prefix, "var/lib/couchbase/ns_log"),
-                "log_path": os.path.join(prefix, "var/lib/couchbase/logs"),
-                "memcached_logs_path": os.path.join(prefix, "var/lib/couchbase/logs")}
+        guts = {
+            "db_dir": os.path.join(
+                prefix,
+                "var/lib/couchbase/data"),
+            "idx_dir": os.path.join(
+                prefix,
+                "var/lib/couchbase/data"),
+            "ns_log_path": os.path.join(
+                prefix,
+                "var/lib/couchbase/ns_log"),
+            "log_path": os.path.join(
+                prefix,
+                "var/lib/couchbase/logs"),
+            "memcached_logs_path": os.path.join(
+                prefix,
+                "var/lib/couchbase/logs")}
 
         guts_initargs_path = os.path.abspath(prefix)
 
@@ -1630,8 +1729,9 @@ def main():
     memcached_password = get_diag_password(guts)
 
     zip_node = read_guts(guts, "node")
-    runner.literal("product diag header",
-                   "Found server initargs at %s (%d)" % (guts_initargs_path, len(guts)))
+    runner.literal(
+        "product diag header", "Found server initargs at %s (%d)" %
+        (guts_initargs_path, len(guts)))
 
     runner.run_tasks(make_product_task(guts, guts_initargs_path,
                                        memcached_password, options))
