@@ -20,7 +20,6 @@ import sys
 import tempfile
 import time
 import subprocess
-import string
 import re
 import platform
 import glob
@@ -29,9 +28,7 @@ import threading
 import optparse
 import atexit
 import signal
-import urllib.request
 import urllib.parse
-import urllib.error
 import shutil
 import errno
 import hashlib
@@ -787,7 +784,8 @@ def make_os_tasks():
                   "export TERM=''; top -Hb -n1 || top -H n1"),
         LinuxTask(
             "Process list",
-            "ps -AwwL -o user,pid,lwp,ppid,nlwp,pcpu,maj_flt,min_flt,pri,nice,vsize,rss,tty,stat,wchan:12,start,bsdtime,command"),
+            "ps -AwwL -o user,pid,lwp,ppid,nlwp,pcpu,maj_flt,min_flt,pri,nice,vsize,rss,tty,stat,wchan:12,start,"
+            "bsdtime,command"),
         LinuxTask("Raw /proc/buddyinfo", "cat /proc/buddyinfo"),
         LinuxTask("Raw /proc/meminfo", "cat /proc/meminfo"),
         LinuxTask("Raw /proc/pagetypeinfo", "cat /proc/pagetypeinfo"),
@@ -887,14 +885,19 @@ def make_os_tasks():
         LinuxTask("Systemd journal",
                   "journalctl | gzip -c > systemd_journal.gz",
                   change_dir=True, artifacts=['systemd_journal.gz']),
-        LinuxTask("All logs", "tar cz /var/log/syslog* /var/log/dmesg /var/log/messages* /var/log/daemon* /var/log/debug* /var/log/kern.log* 2>/dev/null",
+        LinuxTask("All logs",
+                  "tar cz /var/log/syslog* /var/log/dmesg /var/log/messages* /var/log/daemon* /var/log/debug* "
+                  "/var/log/kern.log* 2>/dev/null",
                   log_file="syslog.tar.gz", no_header=True),
         LinuxTask("Relevant proc data", "echo %(programs)s | "
-                  "xargs -n1 pgrep | xargs -n1 -- sh -c 'echo $1; cat /proc/$1/status; cat /proc/$1/limits; cat /proc/$1/smaps; cat /proc/$1/numa_maps; cat /proc/$1/task/*/sched; echo' --" % locals()),
+                  "xargs -n1 pgrep | xargs -n1 -- sh -c 'echo $1; cat /proc/$1/status; cat /proc/$1/limits; "
+                  "cat /proc/$1/smaps; cat /proc/$1/numa_maps; cat /proc/$1/task/*/sched; echo' --" % locals()),
         LinuxTask("Processes' environment", "echo %(programs)s | "
-                  r"xargs -n1 pgrep | xargs -n1 -- sh -c 'echo $1; ( cat /proc/$1/environ | tr \\0 \\n | egrep -v ^CB_MASTER_PASSWORD=\|^CBAUTH_REVRPC_URL=); echo' --" % locals()),
+                  r"xargs -n1 pgrep | xargs -n1 -- sh -c 'echo $1; ( cat /proc/$1/environ | tr \\0 \\n | "
+                  "egrep -v ^CB_MASTER_PASSWORD=\|^CBAUTH_REVRPC_URL=); echo' --" % locals()),
         LinuxTask("Processes' stack",
-                  "for program in %(programs)s; do for thread in $(pgrep --lightweight $program); do echo $program/$thread:; cat /proc/$thread/stack; echo; done; done" % locals()),
+                  "for program in %(programs)s; do for thread in $(pgrep --lightweight $program); "
+                  "do echo $program/$thread:; cat /proc/$thread/stack; echo; done; done" % locals()),
         LinuxTask("NUMA data", "numactl --hardware"),
         LinuxTask("NUMA data", "numactl --show"),
         LinuxTask("NUMA data", "cat /sys/devices/system/node/node*/numastat"),
@@ -1285,13 +1288,15 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
         [AllOsTask("ddocs for %s (%s)" % (bucket, path),
                    ["couch_dbdump", path],
                    log_file="ddocs.log")
-         for bucket in set(correct_split(read_guts(guts, "buckets"), ",")) - set(correct_split(read_guts(guts, "memcached_buckets"), ","))
+         for bucket in set(correct_split(read_guts(guts, "buckets"), ",")) - \
+            set(correct_split(read_guts(guts, "memcached_buckets"), ","))
          for path in glob.glob(os.path.join(dbdir, bucket, "master.couch*"))],
 
         [AllOsTask("Couchstore local documents (%s, %s)" % (bucket, os.path.basename(path)),
                    ["couch_dbdump", "--local", path],
                    log_file="couchstore_local.log")
-         for bucket in set(correct_split(read_guts(guts, "buckets"), ",")) - set(correct_split(read_guts(guts, "memcached_buckets"), ","))
+         for bucket in set(correct_split(read_guts(guts, "buckets"), ",")) - \
+            set(correct_split(read_guts(guts, "memcached_buckets"), ","))
          for path in glob.glob(os.path.join(dbdir, bucket, "*.couch.*"))],
 
         # RocksDB has logs per DB (i.e. vBucket). 'LOG' is the most
