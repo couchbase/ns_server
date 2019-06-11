@@ -59,8 +59,7 @@ mover(Parent, Bucket, VBucket, OldChain, NewChain, Quirks) ->
               misc:sync_shutdown_many_i_am_trapping_exits(get_cleanup_list())
       end),
 
-    ns_vbucket_mover:note_move_done(Parent,
-                                    VBucket, OldChain, NewChain, Quirks).
+    ns_vbucket_mover:note_move_done(Parent, self()).
 
 spawn_and_wait(Body) ->
     WorkerPid = proc_lib:spawn_link(Body),
@@ -167,8 +166,7 @@ mover_inner(Parent, Bucket, VBucket,
 
     %% notify parent that the backfill is done, so it can start rebalancing
     %% next vbucket
-    ns_vbucket_mover:note_backfill_done(Parent,
-                                        VBucket, OldChain, NewChain, Quirks),
+    ns_vbucket_mover:note_backfill_done(Parent, self()),
 
     ok = ns_rebalancer:check_test_condition(backfill_done, Bucket),
 

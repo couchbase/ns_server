@@ -41,7 +41,7 @@
          terminate/2]).
 
 -export([inhibit_view_compaction/3]).
--export([note_move_done/5, note_backfill_done/5]).
+-export([note_move_done/2, note_backfill_done/2]).
 
 -type progress_callback() :: fun((dict:dict()) -> any()).
 
@@ -65,11 +65,11 @@ start_link(Bucket, Nodes, OldMap, NewMap, ProgressCallback) ->
                           {Bucket, Nodes, OldMap, NewMap, ProgressCallback},
                           []).
 
-note_move_done(Pid, VBucket, OldChain, NewChain, Quirks) ->
-    Pid ! {move_done, {VBucket, OldChain, NewChain, Quirks}}.
+note_move_done(Pid, Worker) ->
+    Pid ! {move_done, Worker}.
 
-note_backfill_done(Pid, VBucket, OldChain, NewChain, Quirks) ->
-    Pid ! {backfill_done, {VBucket, OldChain, NewChain, Quirks}}.
+note_backfill_done(Pid, Worker) ->
+    Pid ! {backfill_done, Worker}.
 
 %%
 %% gen_server callbacks
@@ -120,8 +120,6 @@ is_swap_rebalance(OldMap, NewMap) ->
     end.
 
 init({Bucket, Nodes, OldMap, NewMap, ProgressCallback}) ->
-    erlang:put(child_processes, []),
-
     case is_swap_rebalance(OldMap, NewMap) of
         true ->
             ale:info(?USER_LOGGER, "Bucket ~p rebalance appears to be swap rebalance", [Bucket]);
@@ -143,6 +141,7 @@ init({Bucket, Nodes, OldMap, NewMap, ProgressCallback}) ->
     {ok, _} = janitor_agent:prepare_nodes_for_rebalance(Bucket, Nodes, self()),
 
     ets:new(compaction_inhibitions, [named_table, private, set]),
+    ets:new(workers, [named_table, private, set]),
 
     Quirks = rebalance_quirks:get_quirks(Nodes),
     SchedulerState = vbucket_move_scheduler:prepare(
@@ -185,12 +184,10 @@ handle_info({compaction_done, N}, #state{moves_scheduler_state = SubState} = Sta
     ?log_debug("noted compaction done: ~p", [A]),
     SubState2 = vbucket_move_scheduler:note_compaction_done(SubState, A),
     spawn_workers(State#state{moves_scheduler_state = SubState2});
-handle_info({move_done,
-             {_VBucket, _OldChain, _NewChain, _Quirks} = Tuple}, State) ->
-    on_move_done(Tuple, State);
-handle_info({backfill_done,
-             {_VBucket, _OldChain, _NewChain, _Quirks} = Tuple}, State) ->
-    on_backfill_done(Tuple, State);
+handle_info({move_done, Worker}, State) ->
+    on_move_done(Worker, State);
+handle_info({backfill_done, Worker}, State) ->
+    on_backfill_done(Worker, State);
 handle_info({ns_node_disco_events, OldNodes, NewNodes} = Event,
             #state{all_nodes_set = AllNodesSet} = State) ->
     WentDownNodes = sets:from_list(ordsets:subtract(OldNodes, NewNodes)),
@@ -205,20 +202,31 @@ handle_info({'EXIT', Pid, _} = Msg,
             #state{disco_events_subscription = Pid} = State) ->
     ?rebalance_error("Got exit from node disco events subscription"),
     {stop, {ns_node_disco_events_exited, Msg}, State};
-handle_info({'EXIT', _, normal}, State) ->
-    {noreply, State};
 handle_info({'EXIT', Pid, Reason}, State) ->
-    ?rebalance_error("~p exited with ~p", [Pid, Reason]),
-    {stop, Reason, State};
+    {ok, Action} = take_worker(Pid),
+    case Reason =:= normal of
+        true ->
+            {noreply, State};
+        false ->
+            ?rebalance_error("Worker ~p (for action ~p) exited with reason ~p",
+                             [Pid, Action, Reason]),
+            {stop, Reason, State}
+    end;
 handle_info(Info, State) ->
     ?rebalance_warning("Unhandled message ~p", [Info]),
     {noreply, State}.
 
 
 terminate(Reason, _State) ->
-    ?log_debug("running terminate/2 of ns_vbucket_mover. Reason: ~p", [Reason]),
-    AllChildsEver = erlang:get(child_processes),
-    misc:terminate_and_wait(AllChildsEver, Reason).
+    case get_all_workers() of
+        [] ->
+            ok;
+        Workers ->
+            ?log_debug("ns_vbucket_mover terminating "
+                       "when some workers are still running:~n~p", [Workers]),
+            Pids = [Pid || {Pid, _} <- Workers],
+            misc:terminate_and_wait(Pids, Reason)
+    end.
 
 %%
 %% Internal functions
@@ -246,16 +254,18 @@ report_progress(#state{moves_scheduler_state = SubState,
     Progress = vbucket_move_scheduler:extract_progress(SubState),
     Callback(Progress).
 
-on_backfill_done(Tuple, #state{moves_scheduler_state = SubState} = State) ->
-    Move = {move, Tuple},
+on_backfill_done(Worker, #state{moves_scheduler_state = SubState} = State) ->
+    {ok, Move} = find_worker(Worker),
     NextState = State#state{moves_scheduler_state = vbucket_move_scheduler:note_backfill_done(SubState, Move)},
     ?log_debug("noted backfill done: ~p", [Move]),
     {noreply, _} = spawn_workers(NextState).
 
-on_move_done({VBucket, _OldChain, NewChain, _} = Tuple,
-             #state{bucket = Bucket,
-                    map = Map,
-                    moves_scheduler_state = SubState} = State) ->
+on_move_done(Worker, #state{bucket = Bucket,
+                            map = Map,
+                            moves_scheduler_state = SubState} = State) ->
+    {ok, Move} = find_worker(Worker),
+    {move, {VBucket, _, NewChain, _}} = Move,
+
     %% Pull the new chain from the target map
     %% Update the current map
     Map1 = array:set(VBucket, NewChain, Map),
@@ -267,7 +277,6 @@ on_move_done({VBucket, _OldChain, NewChain, _} = Tuple,
             ?log_error("Config replication sync failed: ~p", [RepSyncRV])
     end,
 
-    Move = {move, Tuple},
     NextState = State#state{moves_scheduler_state = vbucket_move_scheduler:note_move_completed(SubState, Move),
                             map = Map1},
 
@@ -333,7 +342,7 @@ spawn_workers(#state{bucket = Bucket,
                   done ->
                       ok;
                   {ok, Worker} ->
-                      register_child_process(Worker)
+                      store_worker(Worker, Action)
               end
       end, Actions),
 
@@ -365,11 +374,24 @@ spawn_worker({compact, Node}, #state{bucket = Bucket}) ->
             {ok, Pid}
     end.
 
-register_child_process(Pid) ->
-    List = erlang:get(child_processes),
-    true = is_list(List),
-    erlang:put(child_processes, [Pid | List]).
+store_worker(Pid, Action) ->
+    true = ets:insert_new(workers, {Pid, Action}).
 
+find_worker(Pid) ->
+    case ets:lookup(workers, Pid) of
+        [{_, Action}] ->
+            {ok, Action};
+        [] ->
+            not_found
+    end.
+
+take_worker(Pid) ->
+    R = find_worker(Pid),
+    ets:delete(workers, Pid),
+    R.
+
+get_all_workers() ->
+    ets:tab2list(workers).
 
 -ifdef(TEST).
 is_swap_rebalance_test() ->
