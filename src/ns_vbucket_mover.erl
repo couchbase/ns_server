@@ -333,11 +333,10 @@ spawn_workers(#state{bucket = Bucket,
                                                        NewChain, Quirks),
              register_child_process(Pid);
          {compact, N} ->
-             case ets:lookup(compaction_inhibitions, N) of
+             case ets:take(compaction_inhibitions, N) of
                  [] ->
                      self() ! {compaction_done, N};
                  [{N, MRef}] ->
-                     ets:delete(compaction_inhibitions, N),
                      Pid = spawn_compaction_uninhibitor(Bucket, N, MRef),
                      register_child_process(Pid)
              end
