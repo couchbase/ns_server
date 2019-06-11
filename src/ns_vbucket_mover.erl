@@ -45,12 +45,12 @@
 
 -type progress_callback() :: fun((dict:dict()) -> any()).
 
--record(state, {bucket::nonempty_string(),
-                disco_events_subscription::pid(),
-                map::array:array(),
+-record(state, {bucket :: nonempty_string(),
+                disco_events_subscription :: pid(),
+                map :: array:array(),
                 moves_scheduler_state,
-                progress_callback::progress_callback(),
-                all_nodes_set::set:set()}).
+                progress_callback :: progress_callback(),
+                all_nodes_set :: set:set()}).
 
 %%
 %% API
@@ -157,12 +157,12 @@ init({Bucket, OldMap, NewMap, ProgressCallback}) ->
     ns_rebalance_observer:submit_master_event(
       {planned_moves, Bucket, vbucket_move_scheduler:get_moves(SchedulerState)}),
 
-    {ok, #state{bucket=Bucket,
-                disco_events_subscription=Subscription,
+    {ok, #state{bucket = Bucket,
+                disco_events_subscription = Subscription,
                 map = map_to_array(OldMap),
                 moves_scheduler_state = SchedulerState,
-                progress_callback=ProgressCallback,
-                all_nodes_set=AllNodesSet}}.
+                progress_callback = ProgressCallback,
+                all_nodes_set = AllNodesSet}}.
 
 
 handle_call(_, _From, _State) ->
@@ -195,7 +195,7 @@ handle_info({backfill_done,
              {_VBucket, _OldChain, _NewChain, _Quirks} = Tuple}, State) ->
     on_backfill_done(Tuple, State);
 handle_info({ns_node_disco_events, OldNodes, NewNodes} = Event,
-            #state{all_nodes_set=AllNodesSet} = State) ->
+            #state{all_nodes_set = AllNodesSet} = State) ->
     WentDownNodes = sets:from_list(ordsets:subtract(OldNodes, NewNodes)),
 
     case sets:is_disjoint(AllNodesSet, WentDownNodes) of
@@ -204,7 +204,8 @@ handle_info({ns_node_disco_events, OldNodes, NewNodes} = Event,
         false ->
             {stop, {important_nodes_went_down, Event}, State}
     end;
-handle_info({'EXIT', Pid, _} = Msg, #state{disco_events_subscription=Pid}=State) ->
+handle_info({'EXIT', Pid, _} = Msg,
+            #state{disco_events_subscription = Pid} = State) ->
     ?rebalance_error("Got exit from node disco events subscription"),
     {stop, {ns_node_disco_events_exited, Msg}, State};
 handle_info({'EXIT', _, normal}, State) ->
@@ -329,7 +330,7 @@ inhibit_view_compaction(Bucket, Rebalancer, Nodes) ->
 
 %% @doc Spawn workers up to the per-node maximum.
 -spec spawn_workers(#state{}) -> {noreply, #state{}} | {stop, normal, #state{}}.
-spawn_workers(#state{bucket=Bucket,
+spawn_workers(#state{bucket = Bucket,
                      moves_scheduler_state = SubState,
                      all_nodes_set = AllNodesSet} = State) ->
     {Actions, NewSubState} = vbucket_move_scheduler:choose_action(SubState),
