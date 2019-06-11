@@ -1070,17 +1070,24 @@ do_rebalance_membase_bucket(Bucket, Config,
      MapOptions}.
 
 run_mover(Bucket, Config, KeepNodes, ProgressFun, Map, FastForwardMap) ->
+    Servers = ns_bucket:bucket_nodes(Config),
+
+    %% At this point the server list must have already been updated to include
+    %% all future nodes in addition to the old ones (some of which might be
+    %% being removed).
+    true = ((KeepNodes -- Servers) =:= []),
+
     ?rebalance_info("Target map (distance: ~p):~n~p", [(catch mb_map:vbucket_movements(Map, FastForwardMap)), FastForwardMap]),
     ns_bucket:set_fast_forward_map(Bucket, FastForwardMap),
     misc:with_trap_exit(
       fun () ->
-              {ok, Pid} = ns_vbucket_mover:start_link(Bucket, Map,
-                                                      FastForwardMap,
+              {ok, Pid} = ns_vbucket_mover:start_link(Bucket, Servers,
+                                                      Map, FastForwardMap,
                                                       ProgressFun),
               wait_for_mover(Pid)
       end),
 
-    HadRebalanceOut = ((proplists:get_value(servers, Config, []) -- KeepNodes) =/= []),
+    HadRebalanceOut = ((Servers -- KeepNodes) =/= []),
     case HadRebalanceOut of
         true ->
             SecondsToWait = ns_config:read_key_fast(rebalance_out_delay_seconds, 10),

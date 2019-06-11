@@ -34,7 +34,7 @@
         ?get_param(dcp_stats_logging_interval, 10 * 60 * 1000)).
 
 %% API
--export([start_link/4]).
+-export([start_link/5]).
 
 %% gen_server callbacks
 -export([code_change/3, init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -57,11 +57,12 @@
 %%
 
 %% @doc Start the mover.
--spec start_link(bucket_name(),
+-spec start_link(bucket_name(), [node()],
                  vbucket_map(), vbucket_map(), progress_callback()) ->
                         {ok, pid()} | {error, any()}.
-start_link(Bucket, OldMap, NewMap, ProgressCallback) ->
-    gen_server:start_link(?MODULE, {Bucket, OldMap, NewMap, ProgressCallback},
+start_link(Bucket, Nodes, OldMap, NewMap, ProgressCallback) ->
+    gen_server:start_link(?MODULE,
+                          {Bucket, Nodes, OldMap, NewMap, ProgressCallback},
                           []).
 
 note_move_done(Pid, VBucket, OldChain, NewChain, Quirks) ->
@@ -118,13 +119,9 @@ is_swap_rebalance(OldMap, NewMap) ->
             false
     end.
 
-init({Bucket, OldMap, NewMap, ProgressCallback}) ->
+init({Bucket, Nodes, OldMap, NewMap, ProgressCallback}) ->
     erlang:put(child_processes, []),
 
-    AllNodesSet0 =
-        lists:foldl(fun (Chain, Acc) ->
-                            sets:union(Acc, sets:from_list(Chain))
-                    end, sets:new(), OldMap ++ NewMap),
     case is_swap_rebalance(OldMap, NewMap) of
         true ->
             ale:info(?USER_LOGGER, "Bucket ~p rebalance appears to be swap rebalance", [Bucket]);
@@ -143,12 +140,11 @@ init({Bucket, OldMap, NewMap, ProgressCallback}) ->
 
     timer2:send_interval(?DCP_STATS_LOGGING_INTERVAL, log_dcp_stats),
 
-    AllNodesSet = sets:del_element(undefined, AllNodesSet0),
-    {ok, _} = janitor_agent:prepare_nodes_for_rebalance(Bucket, sets:to_list(AllNodesSet), self()),
+    {ok, _} = janitor_agent:prepare_nodes_for_rebalance(Bucket, Nodes, self()),
 
     ets:new(compaction_inhibitions, [named_table, private, set]),
 
-    Quirks = rebalance_quirks:get_quirks(sets:to_list(AllNodesSet)),
+    Quirks = rebalance_quirks:get_quirks(Nodes),
     SchedulerState = vbucket_move_scheduler:prepare(
                        OldMap, NewMap, Quirks,
                        ?MAX_MOVES_PER_NODE, ?MOVES_BEFORE_COMPACTION,
@@ -163,7 +159,7 @@ init({Bucket, OldMap, NewMap, ProgressCallback}) ->
                 map = map_to_array(OldMap),
                 moves_scheduler_state = SchedulerState,
                 progress_callback = ProgressCallback,
-                all_nodes_set = AllNodesSet}}.
+                all_nodes_set = sets:from_list(Nodes)}}.
 
 
 handle_call(_, _From, _State) ->
