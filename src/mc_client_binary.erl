@@ -150,14 +150,13 @@ cmd_vocal(Opcode, Sock, RecvCallback, CBData, {Header, Entry},
 
 cmd_vocal_recv(Opcode, Sock, RecvCallback, CBData, Timeout) ->
     {ok, RecvHeader, RecvEntry} = mc_binary:recv(Sock, res, Timeout),
+    %% Assert Opcode is what we expect.
+    Opcode = RecvHeader#mc_header.opcode,
     NCB = case is_function(RecvCallback) of
               true  -> RecvCallback(RecvHeader, RecvEntry, CBData);
               false -> CBData
           end,
-    case Opcode =:= RecvHeader#mc_header.opcode of
-        true  -> {ok, RecvHeader, RecvEntry, NCB};
-        false -> cmd_vocal_recv(Opcode, Sock, RecvCallback, NCB, Timeout)
-    end.
+    {ok, RecvHeader, RecvEntry, NCB}.
 
 % -------------------------------------------------
 
