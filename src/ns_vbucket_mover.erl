@@ -45,7 +45,7 @@
 
 -type progress_callback() :: fun((dict:dict()) -> any()).
 
--record(state, {bucket :: nonempty_string(),
+-record(state, {bucket :: bucket_name(),
                 disco_events_subscription :: pid(),
                 map :: array:array(),
                 moves_scheduler_state,
@@ -57,7 +57,8 @@
 %%
 
 %% @doc Start the mover.
--spec start_link(string(), vbucket_map(), vbucket_map(), progress_callback()) ->
+-spec start_link(bucket_name(),
+                 vbucket_map(), vbucket_map(), progress_callback()) ->
                         {ok, pid()} | {error, any()}.
 start_link(Bucket, OldMap, NewMap, ProgressCallback) ->
     gen_server:start_link(?MODULE, {Bucket, OldMap, NewMap, ProgressCallback},
