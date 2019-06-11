@@ -58,7 +58,8 @@ global_permissions_to_check() ->
      {{[admin, memcached, node], write},    'NodeManagement'},
      {{[admin, memcached, session], write}, 'SessionManagement'},
      {{[admin, memcached, idle], write},    'IdleConnection'},
-     {{[admin, security, audit], write},    'AuditManagement'}].
+     {{[admin, security, audit], write},    'AuditManagement'},
+     {{[pools], read},                      'SystemSettings'}].
 
 start_link() ->
     Path = ns_config:search_node_prop(ns_config:latest(), memcached, rbac_file),
