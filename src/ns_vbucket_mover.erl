@@ -327,20 +327,16 @@ spawn_workers(#state{bucket = Bucket,
                      all_nodes_set = AllNodesSet} = State) ->
     {Actions, NewSubState} = vbucket_move_scheduler:choose_action(SubState),
     ?log_debug("Got actions: ~p", [Actions]),
-    [case A of
-         {move, {V, OldChain, NewChain, Quirks}} ->
-             Pid = ns_single_vbucket_mover:spawn_mover(Bucket, V, OldChain,
-                                                       NewChain, Quirks),
-             register_child_process(Pid);
-         {compact, N} ->
-             case ets:take(compaction_inhibitions, N) of
-                 [] ->
-                     self() ! {compaction_done, N};
-                 [{N, MRef}] ->
-                     Pid = spawn_compaction_uninhibitor(Bucket, N, MRef),
-                     register_child_process(Pid)
-             end
-     end || A <- Actions],
+    lists:foreach(
+      fun (Action) ->
+              case spawn_worker(Action, State) of
+                  done ->
+                      ok;
+                  {ok, Worker} ->
+                      register_child_process(Worker)
+              end
+      end, Actions),
+
     NextState = State#state{moves_scheduler_state = NewSubState},
     Done = Actions =:= [] andalso begin
                                       true = (NewSubState =:= SubState),
@@ -352,6 +348,21 @@ spawn_workers(#state{bucket = Bucket,
             {stop, normal, NextState};
         _ ->
             {noreply, NextState}
+    end.
+
+spawn_worker({move, {VBucket, OldChain, NewChain, Quirks}},
+             #state{bucket = Bucket}) ->
+    Pid = ns_single_vbucket_mover:spawn_mover(Bucket, VBucket,
+                                              OldChain, NewChain, Quirks),
+    {ok, Pid};
+spawn_worker({compact, Node}, #state{bucket = Bucket}) ->
+    case ets:take(compaction_inhibitions, Node) of
+        [] ->
+            self() ! {compaction_done, Node},
+            done;
+        [{Node, MRef}] ->
+            Pid = spawn_compaction_uninhibitor(Bucket, Node, MRef),
+            {ok, Pid}
     end.
 
 register_child_process(Pid) ->
