@@ -281,24 +281,19 @@ spawn_compaction_uninhibitor(Bucket, Node, MRef) ->
     Parent = self(),
     erlang:spawn_link(
       fun () ->
-              case cluster_compat_mode:is_index_aware_rebalance_on() of
-                  true ->
-                      master_activity_events:note_compaction_uninhibit_started(Bucket, Node),
-                      case uninhibit_view_compaction(Bucket, Parent, Node, MRef) of
-                          ok ->
-                              master_activity_events:note_compaction_uninhibit_done(Bucket, Node),
-                              ok;
-                          nack ->
-                              Msg = io_lib:format(
-                                      "failed to initiate compaction for "
-                                      "bucket ~p on node ~p",
-                                      [Bucket, Node]),
-                              master_activity_events:note_rebalance_stage_event(
-                                kv, Msg),
-                              erlang:exit({failed_to_initiate_compaction, Bucket, Node, MRef})
-                      end;
-                  _ ->
-                      ok
+              master_activity_events:note_compaction_uninhibit_started(Bucket, Node),
+              case uninhibit_view_compaction(Bucket, Parent, Node, MRef) of
+                  ok ->
+                      master_activity_events:note_compaction_uninhibit_done(Bucket, Node),
+                      ok;
+                  nack ->
+                      Msg = io_lib:format(
+                              "failed to initiate compaction for "
+                              "bucket ~p on node ~p",
+                              [Bucket, Node]),
+                      master_activity_events:note_rebalance_stage_event(
+                        kv, Msg),
+                      erlang:exit({failed_to_initiate_compaction, Bucket, Node, MRef})
               end,
               Parent ! {compaction_done, Node}
       end).
@@ -338,19 +333,13 @@ spawn_workers(#state{bucket = Bucket,
                                                        NewChain, Quirks),
              register_child_process(Pid);
          {compact, N} ->
-             case (cluster_compat_mode:is_index_aware_rebalance_on()
-                   andalso not cluster_compat_mode:rebalance_ignore_view_compactions()) of
-                 true ->
-                     case ets:lookup(compaction_inhibitions, N) of
-                         [] ->
-                             self() ! {compaction_done, N};
-                         [{N, MRef}] ->
-                             ets:delete(compaction_inhibitions, N),
-                             Pid = spawn_compaction_uninhibitor(Bucket, N, MRef),
-                             register_child_process(Pid)
-                     end;
-                 _ ->
-                     self() ! {compaction_done, N}
+             case ets:lookup(compaction_inhibitions, N) of
+                 [] ->
+                     self() ! {compaction_done, N};
+                 [{N, MRef}] ->
+                     ets:delete(compaction_inhibitions, N),
+                     Pid = spawn_compaction_uninhibitor(Bucket, N, MRef),
+                     register_child_process(Pid)
              end
      end || A <- Actions],
     NextState = State#state{moves_scheduler_state = NewSubState},
