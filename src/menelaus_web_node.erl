@@ -622,24 +622,6 @@ apply_node_settings(Params) ->
         CBASDirs = proplists:get_all_values(cbas_path, Paths),
         JavaHome = proplists:get_value(java_home, Paths),
 
-        {ok, DefaultDbPath} = ns_storage_conf:this_node_dbdir(),
-        DbPathChanged = DbPath =/= DefaultDbPath,
-
-        case DbPathChanged andalso
-             ns_config_auth:is_system_provisioned() andalso
-             not ns_cluster_membership:is_newly_added_node(node()) of
-            true ->
-                %% MB-7344: we had 1.8.1 instructions allowing that. And
-                %% 2.0 works very differently making that original
-                %% instructions lose data. Thus we decided it's much safer
-                %% to un-support this path.
-                Msg = "Changing data of nodes that are part of provisioned "
-                      "cluster is not supported",
-                erlang:throw({error, [Msg]});
-            _ ->
-                ok
-        end,
-
         RV1 =
             case ns_storage_conf:setup_disk_storage_conf(DbPath, IxPath,
                                                          CBASDirs) of

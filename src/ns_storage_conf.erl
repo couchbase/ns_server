@@ -120,7 +120,40 @@ read_path_from_conf(Config, Node, Key, SubKey) ->
 setup_disk_storage_conf(DbPath, IxPath, CBASDirs) ->
     NewDbDir = misc:absname(DbPath),
     NewIxDir = misc:absname(IxPath),
+    NewCBASDirs = lists:usort(
+                    lists:map(fun (Dir) ->
+                                      {ok, RealPath} = misc:realpath(Dir, "/"),
+                                      RealPath
+                              end, CBASDirs)),
+    [{db_path, CurrentDbDir},
+     {index_path, CurrentIxDir}] = lists:sort(ns_couchdb_api:get_db_and_ix_paths()),
+    CurrentCBASDir = this_node_cbas_dirs(),
 
+    DbDirChanged = NewDbDir =/= CurrentDbDir,
+    IxDirChanged = NewIxDir =/= CurrentIxDir,
+    CBASDirChanged = NewCBASDirs =/= CurrentCBASDir,
+
+    case DbDirChanged orelse IxDirChanged orelse CBASDirChanged of
+        true ->
+            case ns_config_auth:is_system_provisioned() andalso
+                 not ns_cluster_membership:is_newly_added_node(node()) of
+                true ->
+                    %% MB-7344: we had 1.8.1 instructions allowing that. And
+                    %% 2.0 works very differently making that original
+                    %% instructions lose data. Thus we decided it's much safer
+                    %% to un-support this path.
+                    Msg = <<"Changing paths of nodes that are part of "
+                            "provisioned cluster is not supported">>,
+                    {errors, [Msg]};
+                false ->
+                    do_setup_disk_storage_conf(NewDbDir, NewIxDir,
+                                               {NewCBASDirs, CBASDirs})
+            end;
+        false ->
+            not_changed
+    end.
+
+do_setup_disk_storage_conf(NewDbDir, NewIxDir, CBASDirs) ->
     case {prepare_db_ix_dirs(NewDbDir, NewIxDir),
           prepare_cbas_dirs(CBASDirs)} of
         {{errors, Errors1}, {errors, Errors2}} ->
@@ -184,15 +217,9 @@ update_db_ix_dirs(ok, NewDbDir, NewIxDir) ->
                            {index_path, NewIxDir}]),
     restart.
 
-prepare_cbas_dirs(CBASDirs) ->
+prepare_cbas_dirs({RealDirs, CBASDirs}) ->
     case misc:ensure_writable_dirs(CBASDirs) of
         ok ->
-            RealDirs =
-                lists:usort(
-                  lists:map(fun (Dir) ->
-                                    {ok, RealPath} = misc:realpath(Dir, "/"),
-                                    RealPath
-                            end, CBASDirs)),
             case length(RealDirs) =:= length(CBASDirs) of
                 false ->
                     {errors,
