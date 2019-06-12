@@ -46,6 +46,7 @@
          is_balanced/0,
          get_recovery_type/2,
          update_recovery_type/2,
+         is_newly_added_node/1,
          attach_node_uuids/2
         ]).
 
@@ -152,6 +153,10 @@ activate(Nodes) ->
 deactivate(Nodes) ->
     ns_config:set([{{node, Node, membership}, inactiveFailed}
                    || Node <- Nodes]).
+
+is_newly_added_node(Node) ->
+    get_cluster_membership(Node) =:= inactiveAdded andalso
+        get_recovery_type(ns_config:latest(), Node) =:= none.
 
 is_stop_rebalance_safe() ->
     case ns_config:search(rebalancer_pid) of

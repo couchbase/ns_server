@@ -624,11 +624,10 @@ apply_node_settings(Params) ->
 
         {ok, DefaultDbPath} = ns_storage_conf:this_node_dbdir(),
         DbPathChanged = DbPath =/= DefaultDbPath,
-        Provisioned = ns_config_auth:is_system_provisioned(),
-        NodeStatus = ns_cluster_membership:get_cluster_membership(node()),
 
-        case DbPathChanged andalso Provisioned
-            andalso (NodeStatus =/= inactiveAdded) of
+        case DbPathChanged andalso
+             ns_config_auth:is_system_provisioned() andalso
+             not ns_cluster_membership:is_newly_added_node(node()) of
             true ->
                 %% MB-7344: we had 1.8.1 instructions allowing that. And
                 %% 2.0 works very differently making that original
