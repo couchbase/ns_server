@@ -41,7 +41,7 @@
          terminate/2]).
 
 -export([inhibit_view_compaction/3]).
--export([note_move_done/2, note_backfill_done/2]).
+-export([note_move_done/2, note_backfill_done/2, update_vbucket_map/2]).
 
 -type progress_callback() :: fun((dict:dict()) -> any()).
 
@@ -70,6 +70,9 @@ note_move_done(Pid, Worker) ->
 
 note_backfill_done(Pid, Worker) ->
     Pid ! {backfill_done, Worker}.
+
+update_vbucket_map(Pid, Worker) ->
+    gen_server:call(Pid, {update_vbucket_map, Worker}, infinity).
 
 %%
 %% gen_server callbacks
@@ -161,6 +164,8 @@ init({Bucket, Nodes, OldMap, NewMap, ProgressCallback}) ->
                 all_nodes_set = sets:from_list(Nodes)}}.
 
 
+handle_call({update_vbucket_map, Worker}, _From, State) ->
+    handle_update_vbucket_map(Worker, State);
 handle_call(_, _From, _State) ->
     exit(not_supported).
 
@@ -266,25 +271,35 @@ on_move_done(Worker, #state{bucket = Bucket,
     {ok, Move} = find_worker(Worker),
     {move, {VBucket, _, NewChain, _}} = Move,
 
-    %% Pull the new chain from the target map
-    %% Update the current map
-    Map1 = array:set(VBucket, NewChain, Map),
-    ns_bucket:set_map(Bucket, array_to_map(Map1)),
-    RepSyncRV = (catch ns_config_rep:ensure_config_seen_by_nodes()),
-    case RepSyncRV of
-        ok -> ok;
-        _ ->
-            ?log_error("Config replication sync failed: ~p", [RepSyncRV])
-    end,
+    %% Make sure the worker switched the chains as expected.
+    true = (array:get(VBucket, Map) =:= NewChain),
 
-    NextState = State#state{moves_scheduler_state = vbucket_move_scheduler:note_move_completed(SubState, Move),
-                            map = Map1},
-
-    report_progress(NextState),
+    NextSubState = vbucket_move_scheduler:note_move_completed(SubState, Move),
+    NextState = State#state{moves_scheduler_state = NextSubState},
 
     master_activity_events:note_move_done(Bucket, VBucket),
 
+    report_progress(NextState),
     spawn_workers(NextState).
+
+handle_update_vbucket_map(Worker, #state{map = Map,
+                                         bucket = Bucket} = State) ->
+    {ok, {move, Move}} = find_worker(Worker),
+    {VBucket, OldChain, NewChain, _} = Move,
+
+    true = (array:get(VBucket, Map) =:= OldChain),
+    NewMap = array:set(VBucket, NewChain, Map),
+
+    ns_bucket:set_map(Bucket, array_to_map(NewMap)),
+
+    %% Failed over nodes are ejected at the beginning of rebalance. The only
+    %% exception is the orchestrator node if it happens to be failed
+    %% over. That means that all nodes_wanted are supposed to be alive, so we
+    %% can simply synchronize to all nodes_wanted.
+    NodesWanted = ns_node_disco:nodes_wanted(),
+    RV = (catch ns_config_rep:ensure_config_seen_by_nodes(NodesWanted)),
+
+    {reply, RV, State#state{map = NewMap}}.
 
 spawn_compaction_uninhibitor(Bucket, Node, MRef) ->
     Parent = self(),

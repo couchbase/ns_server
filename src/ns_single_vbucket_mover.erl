@@ -531,14 +531,18 @@ update_replication_post_move(RebalancerPid, BucketName, VBucket, OldChain, NewCh
                                               VBucket, AddChanges ++ DelChanges).
 
 on_move_done(RebalancerPid, Bucket, VBucket, OldChain, NewChain) ->
+    WorkerPid = self(),
+
     spawn_and_wait(
       fun () ->
-              on_move_done_body(RebalancerPid, Bucket,
-                                VBucket, OldChain, NewChain)
+              on_move_done_body(RebalancerPid, WorkerPid,
+                                Bucket, VBucket, OldChain, NewChain)
       end).
 
-on_move_done_body(RebalancerPid, Bucket, VBucket, OldChain,
+on_move_done_body(RebalancerPid, WorkerPid, Bucket, VBucket, OldChain,
                   [NewMaster | _] = NewChain) ->
+    update_vbucket_map(RebalancerPid, WorkerPid, Bucket, VBucket),
+
     case cluster_compat_mode:is_cluster_madhatter() of
         true ->
             %% Set topology on the NewMaster.
@@ -560,4 +564,21 @@ on_move_done_body(RebalancerPid, Bucket, VBucket, OldChain,
             ok;
         {errors, BadDeletes} ->
             ?log_error("Deleting some old copies of vbucket failed: ~p", [BadDeletes])
+    end.
+
+update_vbucket_map(RebalancerPid, WorkerPid, Bucket, VBucket) ->
+    ?log_debug("Updating vbucket map "
+               "for bucket ~p, vbucket ~p", [Bucket, VBucket]),
+
+    Start = erlang:monotonic_time(microsecond),
+    case ns_vbucket_mover:update_vbucket_map(RebalancerPid, WorkerPid) of
+        ok ->
+            End = erlang:monotonic_time(microsecond),
+            ?log_debug("Updated vbucket map for bucket ~p, vbucket ~p in ~b us",
+                       [Bucket, VBucket, End - Start]);
+        Error ->
+            ?log_error("Failed to update vbucket "
+                       "map for bucket ~p, vbucket ~p:~n~p",
+                       [Bucket, VBucket, Error]),
+            exit({failed_to_update_vbucket_map, Bucket, VBucket, Error})
     end.
