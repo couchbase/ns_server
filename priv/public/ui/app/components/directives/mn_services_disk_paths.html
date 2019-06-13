@@ -18,6 +18,7 @@
      autocorrect="off"
      spellcheck="false"
      autocapitalize="off"
+     ng-disabled="isDisabled"
      id="setup_db_path_input"
      ng-model="config.dbPath"
      ng-change="mnCtl.onDbPathChange()">
@@ -36,6 +37,7 @@
      autocorrect="off"
      spellcheck="false"
      autocapitalize="off"
+     ng-disabled="isDisabled"
      id="setup_index_path_input"
      ng-model="config.indexPath"
      ng-change="mnCtl.onIndexPathChange()">
@@ -55,6 +57,7 @@
      class="formrow"
      ng-repeat="dir in config.cbasDirs track by $index">
     <input
+       ng-disabled="isDisabled"
        type="text"
        autocorrect="off"
        spellcheck="false"
@@ -74,12 +77,13 @@
   <button
      class="outline btn-small"
      title="Add field"
+     ng-disabled="isDisabled"
      ng-click="mnCtl.addCbasPath();"
      type="button">+</button>
   <button
      class="outline btn-small"
      title="Remove field"
-     ng-disabled="config.cbasDirs.length === 1"
+     ng-disabled="(config.cbasDirs.length === 1) || isDisabled"
      ng-click="config.cbasDirs.pop();"
      type="button">-</button>
 </div>

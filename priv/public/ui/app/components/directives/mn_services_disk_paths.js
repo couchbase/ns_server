@@ -11,7 +11,8 @@
       scope: {
         config: "=",
         postDiskStorageErrors: "=",
-        isEnterprise: "="
+        isEnterprise: "=",
+        isDisabled: "=?"
       },
       templateUrl: "app/components/directives/mn_services_disk_paths.html",
       controller: controller,

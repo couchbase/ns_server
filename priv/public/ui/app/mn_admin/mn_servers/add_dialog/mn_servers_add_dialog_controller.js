@@ -8,6 +8,8 @@
   function mnServersAddDialogController($scope, $rootScope, $q, $uibModal, mnServersService, $uibModalInstance, mnHelper, mnPromiseHelper, groups, mnClusterConfigurationService, mnPoolDefault) {
     var vm = this;
 
+    vm.specifyDisk = false;
+
     vm.addNodeConfig = {
       services: {
         model: {
@@ -83,13 +85,19 @@
       }
       var promise;
       if (vm.postDiskStorageErrors) {
-        promise = postDiskStorage();
+        if (vm.specifyDisk) {
+          promise = postDiskStorage();
+        } else {
+          $uibModalInstance.close();
+        }
       } else {
         promise = mnServersService
           .addServer(vm.addNodeConfig.selectedGroup,
                      vm.addNodeConfig.credentials,
-                     servicesList)
-          .then(postDiskStorage);
+                     servicesList);
+        if (vm.specifyDisk) {
+          promise = promise.then(postDiskStorage);
+        }
       }
 
       mnPromiseHelper(vm, promise, $uibModalInstance)

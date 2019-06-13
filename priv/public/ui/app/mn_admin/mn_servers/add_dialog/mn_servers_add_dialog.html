@@ -98,20 +98,23 @@
          mn-is-enterprise="poolDefault.isEnterprise"
          mn-services="serversAddDialogCtl.addNodeConfig">
       </div>
-      <p
-         class="disclosure margin-bottom-half"
-         ng-class="{disclosed: serversAddDialogCtl.specifyDisk}"
-         ng-click="serversAddDialogCtl.specifyDisk = !serversAddDialogCtl.specifyDisk">
-        Disk Paths
-      </p>
-      <div ng-show="serversAddDialogCtl.specifyDisk" class="indent-1-5">
-        <mn-services-disk-paths
-           ng-if="serversAddDialogCtl.selfConfig"
-           config="serversAddDialogCtl.selfConfig"
-           is-enterprise="poolDefault.isEnterprise"
-           post-disk-storage-errors="serversAddDialogCtl.postDiskStorageErrors"
-           ></mn-services-disk-paths>
+
+      <div class="formrow">
+        <input
+           type="checkbox"
+           id="for-use-disk-paths"
+           ng-model="serversAddDialogCtl.specifyDisk">
+        <label for="for-use-disk-paths">
+          Use disk paths
+        </label>
       </div>
+      <mn-services-disk-paths
+         is-disabled="!serversAddDialogCtl.specifyDisk"
+         ng-if="serversAddDialogCtl.selfConfig"
+         config="serversAddDialogCtl.selfConfig"
+         is-enterprise="poolDefault.isEnterprise"
+         post-disk-storage-errors="serversAddDialogCtl.postDiskStorageErrors"
+         ></mn-services-disk-paths>
     </div>
 
     <div class="panel-footer">
