@@ -170,21 +170,13 @@ mover_inner(Parent, Bucket, VBucket,
 
     ok = ns_rebalancer:check_test_condition(backfill_done, Bucket),
 
-    SetTopology = cluster_compat_mode:is_cluster_madhatter(),
-    MaybeSetTopology = fun (Topology) ->
-                               case SetTopology of
-                                   true -> Topology;
-                                   false -> undefined
-                               end
-                       end,
     case OldMaster =:= NewMaster of
         true ->
             %% if there's nothing to move, we're done
             %% we're safe if old and new masters are the same; basically our
             %% replication streams are already established
-            maybe_set_dual_topology(Bucket, OldMaster, Parent, VBucket, undefined,
-                                    MaybeSetTopology([OldChain, NewChain]),
-                                    AllBuiltNodes);
+            set_dual_topology(Bucket, OldMaster, Parent, VBucket,
+                              undefined, OldChain, NewChain, AllBuiltNodes);
         false ->
             case IndexAware of
                 true ->
@@ -194,7 +186,7 @@ mover_inner(Parent, Bucket, VBucket,
                             system_stats_collector:increment_counter(index_pausing_runs, 1),
                             set_vbucket_state(Bucket, OldMaster, Parent, VBucket,
                                               active, paused, undefined,
-                                              MaybeSetTopology([OldChain])),
+                                              [OldChain]),
                             wait_master_seqno_persisted_on_replicas(Bucket, VBucket, Parent, OldMaster,
                                                                     AllBuiltNodes);
                         false ->
@@ -209,9 +201,8 @@ mover_inner(Parent, Bucket, VBucket,
                     ok
             end,
 
-            maybe_set_dual_topology(Bucket, OldMaster, Parent, VBucket, paused,
-                                    MaybeSetTopology([OldChain, NewChain]),
-                                    AllBuiltNodes),
+            set_dual_topology(Bucket, OldMaster, Parent, VBucket,
+                              paused, OldChain, NewChain, AllBuiltNodes),
 
             master_activity_events:note_takeover_started(Bucket, VBucket, OldMaster,
                                                          NewMaster),
@@ -224,8 +215,7 @@ mover_inner(Parent, Bucket, VBucket,
             master_activity_events:note_takeover_ended(Bucket, VBucket, OldMaster, NewMaster),
 
             set_vbucket_state(Bucket, NewMaster, Parent, VBucket,
-                              active, undefined, undefined,
-                              undefined),
+                              active, undefined, undefined, undefined),
 
             %% Vbucket on the old master is dead.
             %% Cleanup replication streams from the old master to the
@@ -290,36 +280,55 @@ maybe_reset_replicas(Bucket, RebalancerPid, VBucket, Nodes, Quirks) ->
             ok
     end.
 
-maybe_set_dual_topology(_Bucket, _ActiveNode, _RebalancerPid, _VBucket,
-                        _VBucketRebalanceState, undefined, _AllBuiltNodes) ->
-    ok;
-maybe_set_dual_topology(Bucket, ActiveNode, RebalancerPid, VBucket,
-                        VBucketRebalanceState, Topology, AllBuiltNodes) ->
-    true = (length(Topology) =:= 2),
-    set_vbucket_state(Bucket, ActiveNode, RebalancerPid, VBucket,
-                      active, VBucketRebalanceState, undefined,
-                      Topology),
-    %% We wait for seqno because we may not have sync write on NewChain
-    %% but have been committed on the OldChain.
-    wait_master_seqno_persisted_on_replicas(Bucket, VBucket, RebalancerPid,
-                                            ActiveNode, AllBuiltNodes).
+set_dual_topology(Bucket, ActiveNode,
+                  RebalancerPid, VBucket, VBucketRebalanceState,
+                  OldTopology, NewTopology, AllBuiltNodes) ->
+    case cluster_compat_mode:is_cluster_madhatter() of
+        true ->
+            DualTopology = [OldTopology, NewTopology],
+            set_vbucket_state_madhatter(Bucket, ActiveNode, RebalancerPid,
+                                        VBucket, active, VBucketRebalanceState,
+                                        undefined, DualTopology),
+            %% We wait for seqno because we may not have sync write on NewChain
+            %% but have been committed on the OldChain.
+            wait_master_seqno_persisted_on_replicas(Bucket,
+                                                    VBucket, RebalancerPid,
+                                                    ActiveNode, AllBuiltNodes);
+        false ->
+            ok
+    end.
 
 set_vbucket_state(Bucket, Node, RebalancerPid, VBucket,
                   VBucketState, VBucketRebalanceState, ReplicateFrom,
-                  undefined) ->
+                  Topology) ->
+    case cluster_compat_mode:is_cluster_madhatter() of
+        true ->
+            set_vbucket_state_madhatter(Bucket, Node,
+                                        RebalancerPid, VBucket, VBucketState,
+                                        VBucketRebalanceState,
+                                        ReplicateFrom, Topology);
+        false ->
+            set_vbucket_state_pre_madhatter(Bucket, Node,
+                                            RebalancerPid, VBucket,
+                                            VBucketState, VBucketRebalanceState,
+                                            ReplicateFrom)
+    end.
+
+set_vbucket_state_pre_madhatter(Bucket, Node,
+                                RebalancerPid, VBucket, VBucketState,
+                                VBucketRebalanceState, ReplicateFrom) ->
     spawn_and_wait(
       fun () ->
-              %% Use old API ignoring Topology.
               ok = janitor_agent:set_vbucket_state(
                      Bucket, Node, RebalancerPid, VBucket,
                      VBucketState, VBucketRebalanceState, ReplicateFrom)
-      end);
-set_vbucket_state(Bucket, Node, RebalancerPid, VBucket,
-                  VBucketState, VBucketRebalanceState, ReplicateFrom,
-                  Topology) ->
+      end).
+
+set_vbucket_state_madhatter(Bucket, Node, RebalancerPid, VBucket,
+                            VBucketState, VBucketRebalanceState, ReplicateFrom,
+                            Topology) ->
     spawn_and_wait(
       fun () ->
-              %% Use new API.
               ok = janitor_agent:set_vbucket_state(
                      Bucket, Node, RebalancerPid, VBucket,
                      VBucketState, VBucketRebalanceState, ReplicateFrom,
