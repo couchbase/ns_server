@@ -133,6 +133,7 @@
       vm.querySettings = querySettings;
     }
     function activate() {
+      console.log("");
       mnSettingsClusterService.clearSubmitCallbacks();
 
       mnPromiseHelper(vm, mnPoolDefault.get())

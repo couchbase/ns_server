@@ -23,11 +23,19 @@
     }
 
     function submit() {
-      return validate().then(function () {
-        return mnPromiseHelper(vm, mnSettingsODPService.saveODPSettings(vm.odpSettings))
-          .catchErrors()
-          .getPromise();
-      });
+      var promise;
+      if (vm.odpSettings.reporting_enabled) {
+        promise = validate().then(save);
+      } else {
+        promise = save();
+      }
+      return promise;
+    }
+
+    function save() {
+      return mnPromiseHelper(vm, mnSettingsODPService.saveODPSettings(vm.odpSettings))
+        .catchErrors()
+        .getPromise();
     }
 
     function validate() {
