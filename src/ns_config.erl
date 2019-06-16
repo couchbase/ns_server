@@ -884,16 +884,18 @@ handle_info({'EXIT', Pid, Reason},
             #config{saver_pid = MyPid,
                     pending_more_save = NeedMore} = State) when MyPid =:= Pid ->
     NewState = State#config{saver_pid = undefined},
-    case Reason of
-        normal ->
-            ok;
-        _ ->
-            ?log_error("Saving ns_config failed. Trying to ignore: ~p", [Reason])
-    end,
     S = case NeedMore of
             true ->
                 initiate_save_config(NewState);
             false ->
+                case Reason of
+                    normal ->
+                        ok;
+                    _ ->
+                        ?log_error("Saving ns_config failed. "
+                                   "Trying to ignore: ~p", [Reason])
+                end,
+
                 NewState
         end,
     {noreply, S};
