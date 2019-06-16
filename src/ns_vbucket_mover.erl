@@ -17,6 +17,7 @@
 
 -behavior(gen_server).
 
+-include("cut.hrl").
 -include("ns_common.hrl").
 
 -ifdef(TEST).
@@ -48,6 +49,7 @@
 -record(state, {bucket :: bucket_name(),
                 disco_events_subscription :: pid(),
                 map :: array:array(),
+                pending_map_sync :: undefined | [{pid(), any()}],
                 moves_scheduler_state,
                 progress_callback :: progress_callback(),
                 all_nodes_set :: set:set()}).
@@ -164,8 +166,8 @@ init({Bucket, Nodes, OldMap, NewMap, ProgressCallback}) ->
                 all_nodes_set = sets:from_list(Nodes)}}.
 
 
-handle_call({update_vbucket_map, Worker}, _From, State) ->
-    handle_update_vbucket_map(Worker, State);
+handle_call({update_vbucket_map, Worker}, From, State) ->
+    handle_update_vbucket_map(Worker, From, State);
 handle_call(_, _From, _State) ->
     exit(not_supported).
 
@@ -203,6 +205,8 @@ handle_info({ns_node_disco_events, OldNodes, NewNodes} = Event,
         false ->
             {stop, {important_nodes_went_down, Event}, State}
     end;
+handle_info(map_sync, State) ->
+    map_sync(State);
 handle_info({'EXIT', Pid, _} = Msg,
             #state{disco_events_subscription = Pid} = State) ->
     ?rebalance_error("Got exit from node disco events subscription"),
@@ -282,15 +286,28 @@ on_move_done(Worker, #state{bucket = Bucket,
     report_progress(NextState),
     spawn_workers(NextState).
 
-handle_update_vbucket_map(Worker, #state{map = Map,
-                                         bucket = Bucket} = State) ->
+handle_update_vbucket_map(Worker, From, #state{map = Map} = State) ->
     {ok, {move, Move}} = find_worker(Worker),
     {VBucket, OldChain, NewChain, _} = Move,
 
     true = (array:get(VBucket, Map) =:= OldChain),
     NewMap = array:set(VBucket, NewChain, Map),
+    NewState = State#state{map = NewMap},
 
-    ns_bucket:set_map(Bucket, array_to_map(NewMap)),
+    {noreply, maybe_schedule_map_sync(From, NewState)}.
+
+maybe_schedule_map_sync(From, #state{pending_map_sync = undefined} = State) ->
+    Delay = ?get_param(map_sync_delay, 5),
+    erlang:send_after(Delay, self(), map_sync),
+
+    State#state{pending_map_sync = [From]};
+maybe_schedule_map_sync(From, #state{pending_map_sync = Waiters} = State) ->
+    State#state{pending_map_sync = [From | Waiters]}.
+
+map_sync(#state{map = Map,
+                bucket = Bucket,
+                pending_map_sync = Waiters} = State) ->
+    ns_bucket:set_map(Bucket, array_to_map(Map)),
 
     %% Failed over nodes are ejected at the beginning of rebalance. The only
     %% exception is the orchestrator node if it happens to be failed
@@ -299,7 +316,10 @@ handle_update_vbucket_map(Worker, #state{map = Map,
     NodesWanted = ns_node_disco:nodes_wanted(),
     RV = (catch ns_config_rep:ensure_config_seen_by_nodes(NodesWanted)),
 
-    {reply, RV, State#state{map = NewMap}}.
+    lists:foreach(gen_server:reply(_, RV), Waiters),
+    ?log_debug("Batched ~b vbucket map syncs together.", [length(Waiters)]),
+
+    {noreply, State#state{pending_map_sync = undefined}}.
 
 spawn_compaction_uninhibitor(Bucket, Node, MRef) ->
     Parent = self(),
