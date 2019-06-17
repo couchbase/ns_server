@@ -21,15 +21,15 @@
       </div>
 
       <mn-xdcr-filter
-         ng-if="poolDefault.isEnterprise"
          mn-is-editing="true"
+         ng-if="xdcrEditDialogCtl.pools.isEnterprise"
          mn-errors="xdcrEditDialogCtl.errors"
          mn-replication="xdcrEditDialogCtl.settings"></mn-xdcr-filter>
 
       <div
          mn-is-editing="true"
-         mn-pool-default="poolDefault"
-         mn-pools="pools"
+         mn-pool-default="xdcrEditDialogCtl.poolDefault"
+         mn-pools="xdcrEditDialogCtl.pools"
          mn-xdcr-settings="xdcrEditDialogCtl.settings"></div>
     </div>
     <div class="panel-footer">

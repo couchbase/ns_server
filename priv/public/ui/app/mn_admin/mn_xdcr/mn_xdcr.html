@@ -154,35 +154,12 @@
               </span> <!-- what is this?  {{row.when}} -->
             </span>
           </div>
-          <div
+          <mn-xdcr-item-details
+             row="row"
+             rbac="rbac"
              class="cbui-tablerow-expanded"
              ng-if="xdcrCtl.isDetailsOpened(row.id)">
-            <div class="width-12 text-right margin-top-half">
-              <button
-                 ng-show="rbac.cluster.bucket[row.source].xdcr.write"
-                 ng-click="$event.stopPropagation();xdcrCtl.deleteReplication(row)"
-                 class="outline">
-                Delete
-              </button>
-              <button
-                 ng-show="rbac.cluster.bucket[row.source].xdcr.write && rbac.cluster.xdcr.settings.write"
-                 ng-click="$event.stopPropagation();xdcrCtl.editReplication(row)"
-                 class="outline">
-                Edit
-              </button>
-              <button
-                 ng-click="$event.stopPropagation();xdcrCtl.status(row) !== 'spinner' && xdcrCtl.pausePlayReplication(row)"
-                 class="fix-width-2 replication">
-                <span ng-show="xdcrCtl.status(row) == 'spinner'">Pausing</span>
-                <span ng-show="xdcrCtl.status(row) == 'pause'">Pause</span>
-                <span ng-show="xdcrCtl.status(row) == 'play'">Run</span>
-                <div
-                   ng-show="row.status !== 'notRunning' && rbac.cluster.bucket[row.source].xdcr.execute"
-                   class="icon margin-left-half"
-                   ng-class="['fa-' + xdcrCtl.status(row)]"></div>
-              </button>
-            </div>
-          </div>
+          </mn-xdcr-item-details>
         </section>
       </div>
 

@@ -23,9 +23,7 @@
     vm.deleteClusterReference = deleteClusterReference;
     vm.editClusterReference = editClusterReference;
     vm.showReplicationErrors = showReplicationErrors;
-    vm.deleteReplication = deleteReplication;
-    vm.editReplication = editReplication;
-    vm.pausePlayReplication = pausePlayReplication;
+
     vm.createReplications = createReplications;
 
     mnHelper.initializeDetailsHashObserver(vm, 'xdcrDetails', 'app.admin.replications');
@@ -35,7 +33,6 @@
     vm.toBucket = toBucket;
     vm.toCluster = toCluster;
     vm.humanStatus = humanStatus;
-    vm.status = status;
 
     function toBucket(row) {
       return row.target.split('buckets/')[1];
@@ -54,17 +51,6 @@
           case 'running': return 'replicating';
           case 'paused': return 'paused';
           default: return 'starting up...';
-        }
-      }
-    }
-    function status(row) {
-      if (row.pauseRequested && row.status != 'paused') {
-        return 'spinner';
-      } else {
-        switch (row.status) {
-        case 'running': return 'pause';
-        case 'paused': return 'play';
-        default: return 'spinner';
         }
       }
     }
@@ -130,32 +116,5 @@
         delete vm.xdcrErrors;
       });
     }
-    function deleteReplication(row) {
-      $uibModal.open({
-        controller: 'mnXDCRDeleteDialogController as xdcrDeleteDialogCtl',
-        templateUrl: 'app/mn_admin/mn_xdcr/delete_dialog/mn_xdcr_delete_dialog.html',
-        scope: $scope,
-        resolve: {
-          id: mnHelper.wrapInFunction(row.id)
-        }
-      });
-    }
-    function editReplication(row) {
-      $uibModal.open({
-        controller: 'mnXDCREditDialogController as xdcrEditDialogCtl',
-        templateUrl: 'app/mn_admin/mn_xdcr/edit_dialog/mn_xdcr_edit_dialog.html',
-        scope: $scope,
-        resolve: {
-          source: mnHelper.wrapInFunction(row.source),
-          id: mnHelper.wrapInFunction(row.id),
-          currentSettings: mnHelper.wrapInFunction(mnXDCRService.getReplicationSettings(row.id)),
-          globalSettings: mnHelper.wrapInFunction(mnXDCRService.getReplicationSettings())
-        }
-      });
-    }
-    function pausePlayReplication(row) {
-      mnPromiseHelper(vm, mnXDCRService.saveReplicationSettings(row.id, {pauseRequested: row.status !== 'paused'}))
-        .broadcast(["reloadTasksPoller"], {doNotShowSpinner: true});
-    };
   }
 })();
