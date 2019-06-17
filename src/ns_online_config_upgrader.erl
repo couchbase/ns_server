@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2012-2018 Couchbase, Inc.
+%% @copyright 2012-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -81,4 +81,5 @@ upgrade(?VERSION_60, Config) ->
          menelaus_alert:config_upgrade_to_madhatter(Config) ++
          ns_bucket:config_upgrade_to_madhatter(Config) ++
          auto_rebalance_settings:config_upgrade_to_madhatter() ++
-         query_settings_manager:config_upgrade_to_madhatter(Config)}.
+         query_settings_manager:config_upgrade_to_madhatter(Config) ++
+         menelaus_web_settings:config_upgrade_to_madhatter(Config)}.
