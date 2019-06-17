@@ -3,7 +3,65 @@
 
   angular
     .module('mnXDCR')
+    .controller('mnXdcrItemStatsController', mnXDCRItemStatsController)
     .directive('mnXdcrItemDetails', mnXDCRItemDetails);
+
+  function mnXDCRItemStatsController(mnStatisticsNewService, mnHelper, $scope) {
+    var vm = this;
+    vm.zoom = "minute";
+
+    vm.getNvd3Options = getNvd3Options;
+    vm.onSelectZoom = onSelectZoom;
+    vm.getNvd3Options = getNvd3Options;
+
+    activate();
+
+    function onSelectZoom() {
+      activate();
+    }
+
+    function getNvd3Options(config) {
+      return {
+        showLegend: false
+      };
+    }
+
+    function getStats(stat) {
+      var rv = {};
+      rv[stat] = "@xdcr-.@items";
+      return rv;
+    }
+
+    function activate() {
+      var row = $scope.row;
+      mnStatisticsNewService.doGetStats({
+        zoom: vm.zoom,
+        bucket: row.source
+      }).then(function (rv) {
+        vm.charts = Object
+          .keys(rv.data.stats["@xdcr-" + row.source])
+          .filter(function (key) {
+            var splitted = key.split("/")
+            var stat = splitted.pop();
+            splitted.shift();
+            var xdcrID = splitted.join("/");
+            return xdcrID == row.id &&
+              mnStatisticsNewService.readByPath("@xdcr-.@items", stat);
+          })
+          .map(function (stat) {
+            return {
+              preset: true,
+              id: mnHelper.generateID(),
+              isSpecific: false,
+              size: "small",
+              zoom: vm.zoom,
+              stats: getStats(stat)
+            };
+          });
+      });
+    }
+
+  }
 
   function mnXDCRItemDetails() {
     var mnXDCRItemDetails = {
