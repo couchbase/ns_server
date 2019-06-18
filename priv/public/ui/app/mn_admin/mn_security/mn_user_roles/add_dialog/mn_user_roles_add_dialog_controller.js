@@ -76,8 +76,14 @@
 
       //example of the inсoming role
       //All Buckets (*)|Query and Index Services|query_insert[*]
-      var roles = [];
+      var rolesSelectedByUser = {};
       _.forEach(vm.selectedRoles, function (value, key) {
+        if (value && !vm.selectedGroupsRoles[key]) {
+          rolesSelectedByUser[key] = true;
+        }
+      });
+      var roles = [];
+      _.forEach(rolesSelectedByUser, function (value, key) {
         if (value) {
           var path = key.split("|");
           roles.push(path[path.length - 1]);
