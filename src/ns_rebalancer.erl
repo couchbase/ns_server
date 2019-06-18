@@ -56,8 +56,6 @@
 -define(REBALANCER_READINESS_WAIT_TIMEOUT, ?get_timeout(readiness, 60000)).
 -define(REBALANCER_QUERY_STATES_TIMEOUT,   ?get_timeout(query_states, 10000)).
 -define(REBALANCER_APPLY_CONFIG_TIMEOUT,   ?get_timeout(apply_config, 300000)).
--define(FAILOVER_CONFIG_SYNC_TIMEOUT,
-        ?get_timeout(failover_config_sync, 2000)).
 -define(FAILOVER_OPS_TIMEOUT, ?get_timeout(failover_ops_timeout, 10000)).
 %%
 %% API
