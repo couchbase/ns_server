@@ -1048,29 +1048,8 @@ connect(Options) ->
     connect(Options, Retries).
 
 connect(Options, Tries) ->
-    Config = ns_config:get(),
-    Port = service_ports:get_port(memcached_dedicated_port, Config),
-    User = ns_config:search_node_prop(Config, memcached, admin_user),
-    Pass = ns_config:search_node_prop(Config, memcached, admin_pass),
     try
-        {ok, S} = gen_tcp:connect(misc:localhost(), Port,
-                                  [misc:get_net_family(),
-                                   binary,
-                                   {packet, 0},
-                                   {active, false},
-                                   {recbuf, ?RECBUF},
-                                   {sndbuf, ?SNDBUF}]),
-        ok = mc_client_binary:auth(S, {<<"PLAIN">>,
-                                       {list_to_binary(User),
-                                        list_to_binary(Pass)}}),
-        S of
-        Sock ->
-            Features = mc_client_binary:hello_features(Options),
-            {ok, Negotiated} =
-                mc_client_binary:hello(Sock, "regular", Features),
-            Failed = Features -- Negotiated,
-            Failed == [] orelse error({feature_negotiation_failed, Failed}),
-            {ok, Sock}
+        do_connect(Options)
     catch
         E:R ->
             case Tries of
@@ -1084,6 +1063,32 @@ connect(Options, Tries) ->
             end
     end.
 
+do_connect(Options) ->
+    Config = ns_config:get(),
+    Port = service_ports:get_port(memcached_dedicated_port, Config),
+    User = ns_config:search_node_prop(Config, memcached, admin_user),
+    Pass = ns_config:search_node_prop(Config, memcached, admin_pass),
+    {ok, Sock} = gen_tcp:connect(misc:localhost(), Port,
+                                 [misc:get_net_family(),
+                                  binary,
+                                  {packet, 0},
+                                  {active, false},
+                                  {recbuf, ?RECBUF},
+                                  {sndbuf, ?SNDBUF}]),
+    try
+        ok = mc_client_binary:auth(Sock, {<<"PLAIN">>,
+                                          {list_to_binary(User),
+                                           list_to_binary(Pass)}}),
+        Features = mc_client_binary:hello_features(Options),
+        {ok, Negotiated} = mc_client_binary:hello(Sock, "regular", Features),
+        Failed = Features -- Negotiated,
+        Failed == [] orelse error({feature_negotiation_failed, Failed}),
+        {ok, Sock}
+    catch
+        T:E ->
+            gen_tcp:close(Sock),
+            throw({T, E})
+    end.
 
 ensure_bucket(Sock, Bucket) ->
     Config = ns_config:get(),
