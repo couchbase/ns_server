@@ -95,28 +95,10 @@
           %% before requiring reset of the auto-failover count.
           %% This list is reset when auto-failover count is reset.
           failed_over_server_groups = [] :: list(),
-
-          %% Whether we reported to the user autofailover_unsafe condition
-          reported_autofailover_unsafe = false :: boolean(),
-          %% Whether we reported that max number of auto failovers for
-          %% individual nodes was reached
-          reported_max_node_reached = false :: boolean(),
-          %% Whether we reported that max number of auto failovers for
-          %% server groups was reached
-          reported_max_group_reached = false :: boolean(),
-          %% Whether we reported the attempt to failover a server group
-          reported_group_failover_attempt = false :: boolean(),
-          %% Whether we reported that we could not auto failover because of
-          %% rebalance
-          reported_rebalance_running = false :: boolean(),
-          %% Whether we reported that we could not auto failover because of
-          %% recovery mode
-          reported_in_recovery = false :: boolean(),
-          %% Whether we reported that we could not auto failover because there
-          %% was no quorum
-          reported_orchestration_unsafe = false :: boolean(),
           %% Whether we reported why the node is considered down
-          reported_down_nodes_reason = [] :: list()
+          reported_down_nodes_reason = [] :: list(),
+          %% Keeps all errors that have been reported.
+          reported_errors = sets:new() :: sets:set()
         }).
 
 %%
@@ -431,13 +413,13 @@ process_action({failover, {Node, _UUID}}, S, DownNodes, NodeStatuses, Config) ->
     SG = ns_cluster_membership:get_node_server_group(Node, Config),
     case allow_failover(SG, S, failover) of
         {false, ErrMsg} ->
-            case should_report(#state.reported_max_node_reached, S) of
+            case should_report(max_node_reached, S) of
                 true ->
                     ?log_info_and_email(
                        auto_failover_maximum_reached,
                        "Could not auto-failover more nodes (~p). ~s",
                        [Node, ErrMsg]),
-                    note_reported(#state.reported_max_node_reached, S);
+                    note_reported(max_node_reached, S);
                 false ->
                     S
             end;
@@ -448,14 +430,14 @@ process_action({failover_group, SG, Nodes0}, S, DownNodes, NodeStatuses, _) ->
     Nodes = [N || {N, _} <- Nodes0],
     case allow_failover(SG, S, failover_group) of
         {false, ErrMsg} ->
-            case should_report(#state.reported_max_group_reached, S) of
+            case should_report(max_group_reached, S) of
                 true ->
                     ?log_info_and_email(
                        auto_failover_maximum_reached,
                        "Could not auto-failover server group (~p) "
                        "with nodes (~p). ~s",
                        [binary_to_list(SG), Nodes, ErrMsg]),
-                    note_reported(#state.reported_max_group_reached, S);
+                    note_reported(max_group_reached, S);
                 false ->
                     S
             end;
@@ -474,12 +456,12 @@ failover_group(Nodes, S0, DownNodes, NodeStatuses, UpdateCount, SG) ->
     end.
 
 log_group_failover_attempt(SG, Nodes, State) ->
-    case should_report(#state.reported_group_failover_attempt, State) of
+    case should_report(group_failover_attempt, State) of
         true ->
             ale:info(?USER_LOGGER,
                      "Attempting auto-failover of server group (~p) with "
                      "nodes (~p).", [binary_to_list(SG), Nodes]),
-            note_reported(#state.reported_group_failover_attempt, State);
+            note_reported(group_failover_attempt, State);
         false ->
             State
     end.
@@ -566,20 +548,18 @@ process_failover_error({autofailover_unsafe, UnsafeBuckets}, Nodes, S) ->
     ErrMsg = lists:flatten(io_lib:format("Would lose vbuckets in the"
                                          " following buckets: ~p",
                                          [UnsafeBuckets])),
-    report_failover_error(#state.reported_autofailover_unsafe, ErrMsg,
-                          Nodes, S);
+    report_failover_error(autofailover_unsafe, ErrMsg, Nodes, S);
 process_failover_error(retry_aborting_rebalance, Nodes, S) ->
      ?log_debug("Rebalance is being stopped by user, will retry auto-failover "
                 "of nodes, ~p", [Nodes]),
      S;
 process_failover_error(rebalance_running, Nodes, S) ->
-    report_failover_error(#state.reported_rebalance_running,
-                          "Rebalance is running.", Nodes, S);
+    report_failover_error(rebalance_running, "Rebalance is running.", Nodes, S);
 process_failover_error(in_recovery, Nodes, S) ->
-    report_failover_error(#state.reported_in_recovery,
+    report_failover_error(in_recovery,
                           "Cluster is in recovery mode.", Nodes, S);
 process_failover_error(orchestration_unsafe, Nodes, S) ->
-    report_failover_error(#state.reported_orchestration_unsafe,
+    report_failover_error(orchestration_unsafe,
                           "Could not contact majority of servers. "
                           "Orchestration may be compromised.", Nodes, S).
 
@@ -814,20 +794,14 @@ make_state_persistent(State, Extras) ->
     ns_config:set(auto_failover_cfg, NewCfg).
 
 note_reported(Flag, State) ->
-    false = element(Flag, State),
-    setelement(Flag, State, true).
+    true = should_report(Flag, State),
+    misc:update_field(#state.reported_errors, State, sets:add_element(Flag, _)).
 
-should_report(Flag, State) ->
-    not(element(Flag, State)).
+should_report(Flag, #state{reported_errors = Reported}) ->
+    not sets:is_element(Flag, Reported).
 
 init_reported(State) ->
-    State#state{reported_autofailover_unsafe = false,
-                reported_max_node_reached = false,
-                reported_max_group_reached = false,
-                reported_group_failover_attempt = false,
-                reported_rebalance_running = false,
-                reported_in_recovery = false,
-                reported_orchestration_unsafe = false}.
+    State#state{reported_errors = sets:new()}.
 
 update_reported_flags_by_actions(Actions, State) ->
     case lists:keymember(failover, 1, Actions) orelse
@@ -885,7 +859,7 @@ restart_on_compat_mode_change() ->
 
 
 -ifdef(TEST).
--define(FLAG, #state.reported_autofailover_unsafe).
+-define(FLAG, autofailover_unsafe).
 reported_test() ->
     %% nothing reported initially
     State = init_reported(#state{}),
