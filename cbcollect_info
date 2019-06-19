@@ -70,6 +70,18 @@ class AltExitC(object):
 
 AltExit = AltExitC()
 
+# Currently we decode bytes in this file via LATIN1. The reason for this is that
+# UTF8 (which is the default in python) is a decoding which can fail - i.e. not
+# all sequences of bytes are valid UTF8 and we cannot currenlty guarantee that
+# all bytes that will be run through cbcollect will be valid UTF8. (We need
+# protections elsewhere to make this guarantee that currently don't exist.) By
+# contrast, all byte sequences are valid LATIN1, almost all our content is ASCII
+# and thus LATIN1, and python2 essentially decoded strings as LATIN1, thus we
+# are backwards compatible with pre-6.5 behavior. See MB-33809.
+# For cases in which one knows for certain UTF8 is being used, feel free
+# to use it.
+LATIN1 = 'latin1'
+
 USAGE = """usage: %prog [options] output_file.zip
 
 - Linux/Windows/OSX:
@@ -696,13 +708,13 @@ def get_diag_password(guts):
     command = ["curl", "-sS", "--proxy", "", "-u", "@localtoken:%s" % pwd, url]
 
     task = AllOsTask("get diag password", command, timeout=60)
-    output = BytesIO()
-    if task.execute(output) == 0:
-        return output.getvalue().decode()
-    else:
-        log(output.getvalue().decode())
-        return ""
-
+    output_bytes = BytesIO()
+    status = task.execute(output_bytes)
+    output = output_bytes.getvalue().decode(LATIN1)
+    if status == 0:
+        return output
+    log(output)
+    return ""
 
 def make_query_task(statement, user, password, port):
     url = "http://%s:%s/query/service?statement=%s" % (
@@ -1383,7 +1395,7 @@ def get_server_guts(initargs_path):
         args = args + extra_args.split(";")
     print("Checking for server guts in %s..." % initargs_path)
     p = subprocess.Popen(args, stdout=subprocess.PIPE)
-    output = p.stdout.read().decode()
+    output = p.stdout.read().decode(LATIN1)
     p.wait()
     rc = p.returncode
     # print("args: %s gave rc: %d and:\n\n%s\n" % (args, rc, output))
@@ -1479,7 +1491,7 @@ def do_upload_and_exit(path, url, proxy):
         raise e
 
     stdout, _ = p.communicate()
-    stdout = stdout.decode()
+    stdout = stdout.decode(LATIN1)
     k.disarm()
 
     if p.returncode != 0:
