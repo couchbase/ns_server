@@ -182,6 +182,7 @@ worker_init(Parent, ParentState) ->
             Stack = erlang:get_stacktrace(),
             ?log_error("Unexpected exception in ns_memcached for bucket ~p: ~p",
                        [ParentState1#state.bucket, {T, E, Stack}]),
+            gen_tcp:close(ParentState1#state.sock),
             worker_init(Parent, ParentState)
     end.
 
@@ -201,14 +202,14 @@ worker_loop(Parent, #state{sock = Sock} = State, PrevCounterSlot) ->
         %% Exit if socket is closed by memcached, which is possible if our
         %% previous request was erroneous.
         {error, einval} ->
-            exit(lost_connection);
+            error(lost_connection);
         ok ->
             ok
     end,
 
     receive
         {tcp, Sock, Data} ->
-            exit({extra_data_on_socket, Data})
+            error({extra_data_on_socket, Data})
     after 0 ->
             ok
     end,
@@ -216,22 +217,20 @@ worker_loop(Parent, #state{sock = Sock} = State, PrevCounterSlot) ->
     WorkStartTS = os:timestamp(),
 
     erlang:put(last_call, Msg),
-    {Reply, NewState} =
-        case do_handle_call(Msg, From, State) of
-            %% note we only accept calls that don't mutate state. So in- and
-            %% out- going states asserted to be same.
-            {reply, R, State} ->
-                {R, State};
-            {compromised_reply, R, State} ->
-                ok = gen_tcp:close(Sock),
-                ?log_warning("Call ~p (return value ~p) compromised our connection. Reconnecting.",
-                             [Msg, R]),
-                {R, do_worker_init(State)}
-        end,
+    case do_handle_call(Msg, From, State) of
+        %% note we only accept calls that don't mutate state. So in- and
+        %% out- going states asserted to be same.
+        {reply, R, State} ->
+            gen_server:reply(From, R);
+        {compromised_reply, R, State} ->
+            ?log_warning("Call ~p (return value ~p) compromised our connection. Reconnecting.",
+                         [Msg, R]),
+            gen_server:reply(From, R),
+            error({compromised_reply, R})
+    end,
 
-    gen_server:reply(From, Reply),
-    verify_report_long_call(StartTS, WorkStartTS, NewState, Msg, []),
-    worker_loop(Parent, NewState, CounterSlot).
+    verify_report_long_call(StartTS, WorkStartTS, State, Msg, []),
+    worker_loop(Parent, State, CounterSlot).
 
 handle_call({get_work, CounterSlot}, From, #state{work_requests = Froms} = State) ->
     State2 = State#state{work_requests = [From | Froms]},
