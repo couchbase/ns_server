@@ -74,7 +74,7 @@ childspecs() ->
                       _ -> []
                   end
           end, [inet_tcp_dist, inet_tls_dist]),
-    {ok, CBDistSpec ++ DistSpecs}.
+    {ok, DistSpecs ++ CBDistSpec}.
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
