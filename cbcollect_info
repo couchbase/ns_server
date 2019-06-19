@@ -33,6 +33,7 @@ import shutil
 import errno
 import hashlib
 import uuid
+import codecs
 from datetime import datetime, timedelta, tzinfo
 from io import BytesIO, StringIO
 
@@ -262,7 +263,7 @@ class LogRedactor:
 
     def _process_file(self, ifile, ofile, processor):
         try:
-            with open(ifile, 'r') as inp:
+            with codecs.open(ifile, 'r', LATIN1) as inp:
                 with open(ofile, 'w+') as out:
                     for line in inp:
                         out.write(processor.do(line))
