@@ -360,10 +360,10 @@ code_change(_OldVsn, State, _Extra) ->
 %% in triage of issues.
 log_down_nodes_reason(DownNodes,
                       #state{reported_down_nodes_reason = Curr} = State) ->
-    New = lists:foldl(
-            fun ({_Node, unknown}, Acc) ->
-                    Acc;
-                ({Node, {Reason, _}}, Acc) ->
+    New = lists:filtermap(
+            fun ({_Node, unknown}) ->
+                    false;
+                ({Node, {Reason, _}}) ->
                     case lists:keyfind(Node, 1, Curr) of
                         {Node, Reason} ->
                             ok;
@@ -373,8 +373,9 @@ log_down_nodes_reason(DownNodes,
                             ?log_debug("Node ~p is considered down. Reason:~p",
                                        [Node, Reason])
                     end,
-                    [{Node, Reason} | Acc]
-            end, [], DownNodes),
+
+                    {true, {Node, Reason}}
+            end, DownNodes),
     State#state{reported_down_nodes_reason = New}.
 
 update_state_timeout(Timeout, #state{timeout = CurrTimeout} = State) ->
