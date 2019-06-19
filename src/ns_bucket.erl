@@ -35,6 +35,7 @@
          failover_warnings/0,
          get_bucket/1,
          get_bucket/2,
+         get_bucket_from_configs/2,
          get_bucket_names/0,
          get_bucket_names/1,
          get_bucket_names_of_type/2,
@@ -109,7 +110,10 @@ get_bucket(Bucket) ->
 
 get_bucket(Bucket, Config) ->
     BucketConfigs = get_buckets(Config),
-    case lists:keysearch(Bucket, 1, BucketConfigs) of
+    get_bucket_from_configs(Bucket, BucketConfigs).
+
+get_bucket_from_configs(Bucket, Configs) ->
+    case lists:keysearch(Bucket, 1, Configs) of
         {value, {_, BucketConfig}} ->
             {ok, BucketConfig};
         false -> not_present

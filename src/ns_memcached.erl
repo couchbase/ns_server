@@ -150,8 +150,18 @@ init(Bucket) ->
                            DefinedWorkersCount
                    end,
     Self = self(),
-    proc_lib:spawn_link(erlang, apply, [fun run_connect_phase/3, [Self, Bucket, WorkersCount]]),
-
+    proc_lib:spawn_link(erlang, apply, [fun run_connect_phase/3,
+                                        [Self, Bucket, WorkersCount]]),
+    CollectionsCheckPid =
+        proc_lib:spawn_link(erlang, apply, [fun collections_uid_check_loop/3,
+                                            [Self, Bucket, undefined]]),
+    ns_pubsub:subscribe_link(
+      ns_config_events,
+      fun ({buckets, [{configs, Configs}]}) ->
+              CollectionsCheckPid ! {check, Configs};
+          (_) ->
+              ok
+      end),
     State = #state{
                status = connecting,
                bucket = Bucket,
@@ -162,6 +172,29 @@ init(Bucket) ->
                running_fast = WorkersCount
               },
     {ok, State}.
+
+collections_uid_check_loop(Parent, Bucket, CollectionsUid) ->
+    receive
+        {check, Configs} ->
+            Uid =
+                case ns_bucket:get_bucket_from_configs(Bucket, Configs) of
+                    {ok, BucketConfig} ->
+                        case collections:uid(BucketConfig) of
+                            CollectionsUid ->
+                                CollectionsUid;
+                            NewCollectionsUid ->
+                                ?log_debug(
+                                   "Triggering config check due to "
+                                   "collections uid change from ~p to ~p",
+                                   [CollectionsUid, NewCollectionsUid]),
+                                Parent ! check_config,
+                                NewCollectionsUid
+                        end;
+                    not_present ->
+                        CollectionsUid
+                end,
+            collections_uid_check_loop(Parent, Bucket, Uid)
+    end.
 
 run_connect_phase(Parent, Bucket, WorkersCount) ->
     ?log_debug("Started 'connecting' phase of ns_memcached-~s. Parent is ~p", [Bucket, Parent]),
