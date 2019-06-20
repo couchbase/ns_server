@@ -24,6 +24,7 @@
         var vm = this;
 
         vm.onExpressionUpdate = onExpressionUpdate;
+        vm.showAdvancedFiltering = $scope.mnIsEditing;
 
         function onExpressionUpdate() {
           handleValidateRegex($scope.mnReplication.filterExpression,

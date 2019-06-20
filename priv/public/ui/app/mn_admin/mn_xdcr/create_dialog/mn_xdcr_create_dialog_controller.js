@@ -18,7 +18,7 @@
 
     function createReplication() {
       var replication = mnXDCRService.removeExcessSettings(vm.replication);
-      if ($scope.poolDefault.isEnterprise && vm.replication.enableAdvancedFiltering) {
+      if ($scope.poolDefault.isEnterprise) {
         replication.filterExpression = vm.replication.filterExpression;
       }
 
