@@ -304,7 +304,13 @@ process_apply_config_rv(Bucket, {Replies, BadNodes}, Call) ->
 get_apply_new_config_call(undefined, NewBucketConfig, IgnoredVBuckets) ->
     {apply_new_config, NewBucketConfig, IgnoredVBuckets};
 get_apply_new_config_call(Rebalancer, NewBucketConfig, IgnoredVBuckets) ->
-    {apply_new_config, Rebalancer, NewBucketConfig, IgnoredVBuckets}.
+    case cluster_compat_mode:is_cluster_madhatter() of
+        true ->
+            get_apply_new_config_call(undefined, NewBucketConfig,
+                                      IgnoredVBuckets);
+        false ->
+            {apply_new_config, Rebalancer, NewBucketConfig, IgnoredVBuckets}
+    end.
 
 apply_new_bucket_config_with_timeout(Bucket, Rebalancer, Servers,
                                      NewBucketConfig, IgnoredVBuckets,
@@ -613,70 +619,87 @@ init(BucketName) ->
                    rebalance_subprocesses_registry = RegistryPid},
     gen_server:enter_loop(?MODULE, [], State, {local, ServerName}).
 
-handle_call(prepare_flush, _From, #state{bucket_name = BucketName} = State) ->
-    ?log_info("Preparing flush by disabling bucket traffic"),
-    {reply, ns_memcached:disable_traffic(BucketName, infinity), State};
-handle_call(complete_flush, _From, State) ->
-    {reply, ok, consider_doing_flush(State)};
-handle_call(query_vbucket_states, _From, State) ->
-    {RV, NewState} = handle_query_vbuckets(query_vbucket_states, State),
-    {reply, RV, NewState};
-handle_call({query_vbuckets, _, _, _} = Call, _From, State) ->
-    {RV, NewState} =
-        handle_query_vbuckets(Call, State),
-    {reply, RV, NewState};
-handle_call(get_incoming_replication_map, _From,
-            #state{bucket_name = BucketName} = State) ->
-    %% NOTE: has infinite timeouts but uses only local communication
-    RV = replication_manager:get_incoming_replication_map(BucketName),
-    {reply, RV, State};
-handle_call({prepare_rebalance, _Pid}, _From,
-            #state{last_applied_vbucket_states = undefined} = State) ->
-    {reply, no_vbucket_states_set, State};
-handle_call({prepare_rebalance, Pid}, _From,
-            State) ->
-    State1 =
-        State#state{
-          rebalance_only_vbucket_states =
-              [undefined || _ <- State#state.rebalance_only_vbucket_states]},
-    {reply, {ok, [{version,
-                   cluster_compat_mode:mb_master_advertised_version()}]},
-     set_rebalance_mref(Pid, State1)};
-
-handle_call(finish_rebalance, _From, State) ->
-    {reply, ok, State#state{rebalance_status = finished}};
-
 handle_call({if_rebalance, RebalancerPid, Subcall},
             From,
             #state{rebalance_pid = RealRebalancerPid} = State) ->
     case RealRebalancerPid =:= RebalancerPid of
         true ->
-            handle_call(Subcall, From, State);
+            do_handle_call(Subcall, From, State);
         false ->
             ?log_error(
                "Rebalance call failed due to the wrong rebalancer pid ~p. "
                "Should be ~p.", [RebalancerPid, RealRebalancerPid]),
             {reply, wrong_rebalancer_pid, State}
     end;
-handle_call({update_vbucket_state, VBucket, NormalState, RebalanceState,
-             ReplicateFrom}, From, State) ->
-    handle_call({update_vbucket_state, VBucket, NormalState, RebalanceState,
-                 ReplicateFrom, undefined}, From, State);
-handle_call({update_vbucket_state, VBucket, NormalState, RebalanceState,
-             _ReplicateFrom, _Topology} = Call, From, State) ->
+handle_call({get_dcp_docs_estimate, _VBucketId, _ReplicaNodes} = Req, From,
+            State) ->
+    handle_call_via_servant(
+      From, State, Req,
+      fun ({_, VBucketId, ReplicaNodes}, #state{bucket_name = Bucket}) ->
+              [dcp_replicator:get_docs_estimate(Bucket, VBucketId, Node)
+               || Node <- ReplicaNodes]
+      end);
+handle_call({get_mass_dcp_docs_estimate, VBucketsR}, From, State) ->
+    handle_call_via_servant(
+      From, State, VBucketsR,
+      fun (VBuckets, #state{bucket_name = Bucket}) ->
+              ns_memcached:get_mass_dcp_docs_estimate(Bucket, VBuckets)
+      end);
+handle_call(Call, From, State) ->
+    do_handle_call(Call, From, cleanup_rebalance_artifacts(Call, State)).
+
+do_handle_call(prepare_flush, _From, #state{bucket_name = BucketName} = State) ->
+    ?log_info("Preparing flush by disabling bucket traffic"),
+    {reply, ns_memcached:disable_traffic(BucketName, infinity), State};
+do_handle_call(complete_flush, _From, State) ->
+    {reply, ok, consider_doing_flush(State)};
+do_handle_call(query_vbucket_states, _From, State) ->
+    {RV, NewState} = handle_query_vbuckets(query_vbucket_states, State),
+    {reply, RV, NewState};
+do_handle_call({query_vbuckets, _, _, _} = Call, _From, State) ->
+    {RV, NewState} =
+        handle_query_vbuckets(Call, State),
+    {reply, RV, NewState};
+do_handle_call(get_incoming_replication_map, _From,
+               #state{bucket_name = BucketName} = State) ->
+    %% NOTE: has infinite timeouts but uses only local communication
+    RV = replication_manager:get_incoming_replication_map(BucketName),
+    {reply, RV, State};
+do_handle_call({prepare_rebalance, _Pid}, _From,
+               #state{last_applied_vbucket_states = undefined} = State) ->
+    {reply, no_vbucket_states_set, State};
+do_handle_call({prepare_rebalance, Pid} = Call, _From,
+               State) ->
+    State1 =
+        State#state{
+          rebalance_only_vbucket_states =
+              [undefined || _ <- State#state.rebalance_only_vbucket_states]},
+    {reply, {ok, [{version,
+                   cluster_compat_mode:mb_master_advertised_version()}]},
+     set_rebalance_mref(Call, Pid, State1)};
+
+do_handle_call(finish_rebalance, _From, State) ->
+    {reply, ok, State#state{rebalance_status = finished}};
+
+do_handle_call({update_vbucket_state, VBucket, NormalState, RebalanceState,
+                ReplicateFrom}, From, State) ->
+    do_handle_call({update_vbucket_state, VBucket, NormalState, RebalanceState,
+                    ReplicateFrom, undefined}, From, State);
+do_handle_call({update_vbucket_state, VBucket, NormalState, RebalanceState,
+                _ReplicateFrom, _Topology} = Call, From, State) ->
     NewState = apply_new_vbucket_state(VBucket, NormalState, RebalanceState,
                                        State),
     delegate_apply_vbucket_state(Call, From, NewState);
-handle_call({delete_vbucket, VBucket} = Call, From, State) ->
+do_handle_call({delete_vbucket, VBucket} = Call, From, State) ->
     NewState = apply_new_vbucket_state(VBucket, missing, undefined, State),
     delegate_apply_vbucket_state(Call, From, NewState);
-handle_call({apply_new_config, NewBucketConfig, IgnoredVBuckets},
-            From, State) ->
-    handle_call({apply_new_config, undefined, NewBucketConfig, IgnoredVBuckets},
-                From, State);
-handle_call({apply_new_config, Caller, NewBucketConfig, IgnoredVBuckets}, _From,
-            #state{bucket_name = BucketName,
-                   rebalance_pid = Rebalancer} = State) ->
+do_handle_call({apply_new_config, _Caller, NewBucketConfig, IgnoredVBuckets},
+               From, State) ->
+    %% called on pre MadHatter clusters only
+    do_handle_call({apply_new_config, NewBucketConfig, IgnoredVBuckets},
+                   From, State);
+do_handle_call({apply_new_config, NewBucketConfig, IgnoredVBuckets}, _From,
+               #state{bucket_name = BucketName} = State) ->
     %% ?log_debug("handling apply_new_config:~n~p", [NewBucketConfig]),
     {ok, VBDetails} = get_state_and_topology(BucketName),
     Map = proplists:get_value(map, NewBucketConfig),
@@ -733,12 +756,6 @@ handle_call({apply_new_config, Caller, NewBucketConfig, IgnoredVBuckets}, _From,
     NewRebalance = [undefined || _ <- NewWantedRev],
     State2 = State#state{last_applied_vbucket_states = NewWanted,
                          rebalance_only_vbucket_states = NewRebalance},
-    State3 = case Caller of
-                 Rebalancer ->
-                     State2;
-                 undefined ->
-                     set_rebalance_mref(undefined, State2)
-             end,
 
     %% before changing vbucket states (i.e. activating or killing
     %% vbuckets) we must stop replications into those vbuckets
@@ -766,9 +783,9 @@ handle_call({apply_new_config, Caller, NewBucketConfig, IgnoredVBuckets}, _From,
     %% and ok to delete vbuckets we want to delete
     [ns_memcached:delete_vbucket(BucketName, VBucket) || VBucket <- ToDelete],
 
-    {reply, ok, pass_vbucket_states_to_set_view_manager(State3)};
-handle_call({apply_new_config_replicas_phase, NewBucketConfig, IgnoredVBuckets},
-            _From, #state{bucket_name = BucketName} = State) ->
+    {reply, ok, pass_vbucket_states_to_set_view_manager(State2)};
+do_handle_call({apply_new_config_replicas_phase, NewBucketConfig, IgnoredVBuckets},
+               _From, #state{bucket_name = BucketName} = State) ->
     Map = proplists:get_value(map, NewBucketConfig),
     true = (Map =/= undefined),
     %% TODO: unignore ignored vbuckets
@@ -782,8 +799,8 @@ handle_call({apply_new_config_replicas_phase, NewBucketConfig, IgnoredVBuckets},
     ok = replication_manager:set_incoming_replication_map(
            BucketName, WantedReplications),
     {reply, ok, State};
-handle_call({wait_index_updated, VBucket}, From,
-            #state{bucket_name = Bucket} = State) ->
+do_handle_call({wait_index_updated, VBucket}, From,
+               #state{bucket_name = Bucket} = State) ->
     State2 = spawn_rebalance_subprocess(
                State,
                From,
@@ -791,8 +808,8 @@ handle_call({wait_index_updated, VBucket}, From,
                        ns_couchdb_api:wait_index_updated(Bucket, VBucket)
                end),
     {noreply, State2};
-handle_call({wait_dcp_data_move, ReplicaNodes, VBucket}, From,
-            #state{bucket_name = Bucket} = State) ->
+do_handle_call({wait_dcp_data_move, ReplicaNodes, VBucket}, From,
+               #state{bucket_name = Bucket} = State) ->
     State2 = spawn_rebalance_subprocess(
                State,
                From,
@@ -801,8 +818,8 @@ handle_call({wait_dcp_data_move, ReplicaNodes, VBucket}, From,
                                                          VBucket)
                end),
     {noreply, State2};
-handle_call({dcp_takeover, OldMasterNode, VBucket}, From,
-            #state{bucket_name = Bucket} = State) ->
+do_handle_call({dcp_takeover, OldMasterNode, VBucket}, From,
+               #state{bucket_name = Bucket} = State) ->
     State2 = spawn_rebalance_subprocess(
                State,
                From,
@@ -811,7 +828,7 @@ handle_call({dcp_takeover, OldMasterNode, VBucket}, From,
                                                         VBucket)
                end),
     {noreply, State2};
-handle_call(initiate_indexing, From, #state{bucket_name = Bucket} = State) ->
+do_handle_call(initiate_indexing, From, #state{bucket_name = Bucket} = State) ->
     State2 = spawn_rebalance_subprocess(
                State,
                From,
@@ -819,9 +836,9 @@ handle_call(initiate_indexing, From, #state{bucket_name = Bucket} = State) ->
                        ok = ns_couchdb_api:initiate_indexing(Bucket)
                end),
     {noreply, State2};
-handle_call({wait_seqno_persisted, VBucket, SeqNo},
-           From,
-           #state{bucket_name = Bucket} = State) ->
+do_handle_call({wait_seqno_persisted, VBucket, SeqNo},
+               From,
+               #state{bucket_name = Bucket} = State) ->
     State2 =
         spawn_rebalance_subprocess(
           State,
@@ -842,9 +859,9 @@ handle_call({wait_seqno_persisted, VBucket, SeqNo},
                   ok
           end),
     {noreply, State2};
-handle_call({inhibit_view_compaction, Pid},
-            From,
-            #state{bucket_name = Bucket} = State) ->
+do_handle_call({inhibit_view_compaction, Pid},
+               From,
+               #state{bucket_name = Bucket} = State) ->
     State2 = spawn_rebalance_subprocess(
                State,
                From,
@@ -852,9 +869,9 @@ handle_call({inhibit_view_compaction, Pid},
                        compaction_daemon:inhibit_view_compaction(Bucket, Pid)
                end),
     {noreply, State2};
-handle_call({uninhibit_view_compaction, Ref},
-            From,
-            #state{bucket_name = Bucket} = State) ->
+do_handle_call({uninhibit_view_compaction, Ref},
+               From,
+               #state{bucket_name = Bucket} = State) ->
     State2 = spawn_rebalance_subprocess(
                State,
                From,
@@ -862,28 +879,14 @@ handle_call({uninhibit_view_compaction, Ref},
                        compaction_daemon:uninhibit_view_compaction(Bucket, Ref)
                end),
     {noreply, State2};
-handle_call({get_vbucket_high_seqno, VBucket},
-            _From,
-            #state{bucket_name = Bucket} = State) ->
+do_handle_call({get_vbucket_high_seqno, VBucket},
+               _From,
+               #state{bucket_name = Bucket} = State) ->
     %% NOTE: this happens on current master of vbucket thus undefined
     %% persisted seq no should not be possible here
     {ok, SeqNo} = ns_memcached:get_vbucket_high_seqno(Bucket, VBucket),
     {reply, SeqNo, State};
-handle_call({get_dcp_docs_estimate, _VBucketId, _ReplicaNodes} = Req, From,
-            State) ->
-    handle_call_via_servant(
-      From, State, Req,
-      fun ({_, VBucketId, ReplicaNodes}, #state{bucket_name = Bucket}) ->
-              [dcp_replicator:get_docs_estimate(Bucket, VBucketId, Node)
-               || Node <- ReplicaNodes]
-      end);
-handle_call({get_mass_dcp_docs_estimate, VBucketsR}, From, State) ->
-    handle_call_via_servant(
-      From, State, VBucketsR,
-      fun (VBuckets, #state{bucket_name = Bucket}) ->
-              ns_memcached:get_mass_dcp_docs_estimate(Bucket, VBuckets)
-      end);
-handle_call({get_failover_logs, VBucketsR}, From, State) ->
+do_handle_call({get_failover_logs, VBucketsR}, From, State) ->
     handle_call_via_servant(
       From, State, VBucketsR,
       fun (VBuckets, #state{bucket_name = Bucket}) ->
@@ -924,7 +927,7 @@ handle_cast({apply_vbucket_state_reply, ReplyPid, Call, Reply},
 handle_cast(_, _State) ->
     erlang:error(cannot_do).
 
-handle_info({'DOWN', MRef, _, Pid, Reason},
+handle_info({'DOWN', MRef, _, Pid, Reason} = Call,
             #state{rebalance_mref = RMRef,
                    last_applied_vbucket_states = WantedVBuckets} = State)
   when MRef =:= RMRef ->
@@ -932,7 +935,7 @@ handle_info({'DOWN', MRef, _, Pid, Reason},
               "states caused by rebalance", [Pid, Reason]),
     State2 = State#state{rebalance_only_vbucket_states =
                              [undefined || _ <- WantedVBuckets]},
-    State3 = set_rebalance_mref(undefined, State2),
+    State3 = cleanup_rebalance_artifacts(Call, State2),
     {noreply, pass_vbucket_states_to_set_view_manager(State3)};
 handle_info({subprocess_done, Pid, RV},
             #state{rebalance_subprocesses = Subprocesses} = State) ->
@@ -967,7 +970,14 @@ pass_vbucket_states_to_set_view_manager(
                                            RebalanceVBuckets),
     State.
 
-set_rebalance_mref(Pid, State0) ->
+set_rebalance_mref(Call, Pid, State0) ->
+    case State0#state.rebalance_pid of
+        Pid ->
+            ok;
+        _ ->
+            ?log_debug("Changing rebalance pid from ~p to ~p for ~p",
+                       [State0#state.rebalance_pid, Pid, Call])
+    end,
     [begin
          ?log_debug("Killing rebalance-related subprocess: ~p", [P]),
          misc:unlink_terminate_and_wait(P, shutdown),
@@ -1019,6 +1029,9 @@ set_rebalance_mref(Pid, State0) ->
                         rebalance_status = in_process,
                         apply_vbucket_states_worker = WorkerPid}
     end.
+
+cleanup_rebalance_artifacts(Call, State) ->
+    set_rebalance_mref(Call, undefined, State).
 
 spawn_rebalance_subprocess(
   #state{rebalance_subprocesses = Subprocesses,
