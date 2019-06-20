@@ -78,10 +78,24 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+call(Bucket, Node, Call, Timeout) ->
+    gen_server:call({server_name(Bucket), Node}, Call, Timeout).
+
+multi_call(Bucket, Nodes, Call, Timeout) ->
+    gen_server:multi_call(Nodes, server_name(Bucket), Call, Timeout).
+
+rebalance_call(undefined, Bucket, Node, Call, Timeout) ->
+    call(Bucket, Node, Call, Timeout);
+rebalance_call(Rebalancer, Bucket, Node, Call, Timeout) ->
+    call(Bucket, Node, {if_rebalance, Rebalancer, Call}, Timeout).
+
+rebalance_multi_call(Rebalancer, Bucket, Nodes, Call, Timeout) ->
+    multi_call(Bucket, Nodes, {if_rebalance, Rebalancer, Call}, Timeout).
+
 query_vbuckets_loop(Node, Bucket, Call, Parent) ->
     query_vbuckets_loop(Node, Bucket, Call, Parent, undefined).
 query_vbuckets_loop(Node, Bucket, Call, Parent, Warming) ->
-    case (catch gen_server:call(server_name(Bucket, Node), Call, infinity)) of
+    case (catch call(Bucket, Node, Call, infinity)) of
         {ok, _} = Msg ->
             Msg;
         warming_up ->
@@ -167,8 +181,7 @@ recv_result(Bucket, Parent, Ref, {Node, Pid}) ->
     end.
 
 complete_flush(Bucket, Nodes, Timeout) ->
-    {Replies, BadNodes} = gen_server:multi_call(Nodes, server_name(Bucket),
-                                                complete_flush, Timeout),
+    {Replies, BadNodes} = multi_call(Bucket, Nodes, complete_flush, Timeout),
     {GoodReplies, BadReplies} = lists:partition(fun ({_N, R}) -> R =:= ok end,
                                                 Replies),
     GoodNodes = [N || {N, _R} <- GoodReplies],
@@ -291,8 +304,7 @@ process_apply_config_rv(Bucket, {Replies, BadNodes}, Call) ->
 get_apply_new_config_call(undefined, NewBucketConfig, IgnoredVBuckets) ->
     {apply_new_config, NewBucketConfig, IgnoredVBuckets};
 get_apply_new_config_call(Rebalancer, NewBucketConfig, IgnoredVBuckets) ->
-    {if_rebalance, Rebalancer,
-     {apply_new_config, Rebalancer, NewBucketConfig, IgnoredVBuckets}}.
+    {apply_new_config, Rebalancer, NewBucketConfig, IgnoredVBuckets}.
 
 apply_new_bucket_config_with_timeout(Bucket, Rebalancer, Servers,
                                      NewBucketConfig, IgnoredVBuckets,
@@ -309,24 +321,23 @@ apply_new_bucket_config(Bucket, Rebalancer, Servers,
                         NewBucketConfig, IgnoredVBuckets, Timeout) ->
     RV1 = misc:parallel_map(
             fun (Node) ->
-                    {Node, catch gen_server:call(
-                                   {server_name(Bucket), Node},
-                                   get_apply_new_config_call(Rebalancer,
-                                                             NewBucketConfig,
-                                                             IgnoredVBuckets),
-                                   Timeout)}
+                    {Node,
+                     catch rebalance_call(
+                             Rebalancer, Bucket, Node,
+                             get_apply_new_config_call(
+                               Rebalancer, NewBucketConfig, IgnoredVBuckets),
+                             Timeout)}
             end, Servers, infinity),
     case process_apply_config_rv(Bucket, {RV1, []}, apply_new_config) of
         ok ->
             RV2 = misc:parallel_map(
                     fun (Node) ->
                             {Node,
-                             catch gen_server:call(
-                                     {server_name(Bucket), Node},
-                                     {apply_new_config_replicas_phase,
-                                      NewBucketConfig,
-                                      IgnoredVBuckets},
-                                     Timeout)}
+                             catch call(Bucket, Node,
+                                        {apply_new_config_replicas_phase,
+                                         NewBucketConfig,
+                                         IgnoredVBuckets},
+                                        Timeout)}
                     end, Servers, infinity),
             process_apply_config_rv(Bucket, {RV2, []},
                                     apply_new_config_replicas_phase);
@@ -346,19 +357,17 @@ process_multicall_rv(BadReplies, BadNodes) ->
 -spec delete_vbucket_copies(bucket_name(), pid(), [node()], vbucket_id()) ->
                                    ok | {errors, [{node(), term()}]}.
 delete_vbucket_copies(Bucket, RebalancerPid, Nodes, VBucket) ->
-    process_multicall_rv(gen_server:multi_call(Nodes, server_name(Bucket),
-                                               {if_rebalance, RebalancerPid,
-                                                {delete_vbucket, VBucket}},
-                                               ?DELETE_VBUCKET_TIMEOUT)).
+    process_multicall_rv(
+      rebalance_multi_call(RebalancerPid, Bucket, Nodes,
+                           {delete_vbucket, VBucket}, ?DELETE_VBUCKET_TIMEOUT)).
 
 -spec prepare_nodes_for_rebalance(bucket_name(), [node()], pid()) ->
                                          {ok, [{node(), [integer()]}]} |
                                          {errors, [{node(), term()}]}.
 prepare_nodes_for_rebalance(Bucket, Nodes, RebalancerPid) ->
     {Replies, BadNodes} =
-        gen_server:multi_call(Nodes, server_name(Bucket),
-                              {prepare_rebalance, RebalancerPid},
-                              ?PREPARE_REBALANCE_TIMEOUT),
+        multi_call(Bucket, Nodes, {prepare_rebalance, RebalancerPid},
+                   ?PREPARE_REBALANCE_TIMEOUT),
     {BadReplies, Versions} =
         lists:foldl(fun ({_, ok}, {BRAcc, VAcc}) ->
                             {BRAcc, VAcc};
@@ -375,9 +384,8 @@ prepare_nodes_for_rebalance(Bucket, Nodes, RebalancerPid) ->
     end.
 
 finish_rebalance(Bucket, Nodes, RebalancerPid) ->
-    process_multicall_rv(gen_server:multi_call(
-                           Nodes, server_name(Bucket),
-                           {if_rebalance, RebalancerPid, finish_rebalance},
+    process_multicall_rv(
+      rebalance_multi_call(RebalancerPid, Bucket, Nodes, finish_rebalance,
                            ?PREPARE_REBALANCE_TIMEOUT)).
 
 %% this is only called by
@@ -438,9 +446,8 @@ set_vbucket_state(Bucket, Node, RebalancerPid, VBucket, VBucketState,
 set_vbucket_state_inner(Bucket, Node, RebalancerPid, VBucket, SubCall) ->
     ?rebalance_info("Doing vbucket ~p state change: ~p",
                     [VBucket, {Node, SubCall}]),
-    ok = gen_server:call(server_name(Bucket, Node),
-                         {if_rebalance, RebalancerPid, SubCall},
-                         ?SET_VBUCKET_STATE_TIMEOUT).
+    ok = rebalance_call(RebalancerPid, Bucket, Node, SubCall,
+                        ?SET_VBUCKET_STATE_TIMEOUT).
 
 get_src_dst_vbucket_replications(Bucket, Nodes) ->
     get_src_dst_vbucket_replications(Bucket, Nodes,
@@ -448,9 +455,7 @@ get_src_dst_vbucket_replications(Bucket, Nodes) ->
 
 get_src_dst_vbucket_replications(Bucket, Nodes, Timeout) ->
     {OkResults, FailedNodes} =
-        gen_server:multi_call(Nodes, server_name(Bucket),
-                              get_incoming_replication_map,
-                              Timeout),
+        multi_call(Bucket, Nodes, get_incoming_replication_map, Timeout),
     Replications = [{Src, Dst, VB}
                     || {Dst, Pairs} <- OkResults,
                        {Src, VBs} <- Pairs,
@@ -464,65 +469,52 @@ initiate_indexing(Bucket, Rebalancer, [NewMasterNode], _ReplicaNodes,
                   _VBucket) ->
     ?rebalance_info("~s: Doing initiate_indexing call for ~s",
                     [Bucket, NewMasterNode]),
-    ok = gen_server:call(server_name(Bucket, NewMasterNode),
-                         {if_rebalance, Rebalancer, initiate_indexing},
-                         infinity).
+    ok = rebalance_call(Rebalancer, Bucket, NewMasterNode, initiate_indexing,
+                        infinity).
 
 wait_index_updated(Bucket, Rebalancer, NewMasterNode, _ReplicaNodes, VBucket) ->
     ?rebalance_info("~s: Doing wait_index_updated call for ~s (vbucket ~p)",
                     [Bucket, NewMasterNode, VBucket]),
-    ok = gen_server:call(server_name(Bucket, NewMasterNode),
-                         {if_rebalance, Rebalancer,
-                          {wait_index_updated, VBucket}},
-                         infinity).
+    ok = rebalance_call(Rebalancer, Bucket, NewMasterNode,
+                        {wait_index_updated, VBucket}, infinity).
 
 wait_dcp_data_move(Bucket, Rebalancer, MasterNode, ReplicaNodes, VBucket) ->
-    gen_server:call(server_name(Bucket, MasterNode),
-                    {if_rebalance, Rebalancer,
-                     {wait_dcp_data_move, ReplicaNodes, VBucket}}, infinity).
+    rebalance_call(Rebalancer, Bucket, MasterNode,
+                   {wait_dcp_data_move, ReplicaNodes, VBucket}, infinity).
 
 dcp_takeover(Bucket, Rebalancer, OldMasterNode, NewMasterNode, VBucket) ->
-    gen_server:call(server_name(Bucket, NewMasterNode),
-                    {if_rebalance, Rebalancer,
-                     {dcp_takeover, OldMasterNode, VBucket}}, infinity).
+    rebalance_call(Rebalancer, Bucket, NewMasterNode,
+                   {dcp_takeover, OldMasterNode, VBucket}, infinity).
 
 get_vbucket_high_seqno(Bucket, Rebalancer, MasterNode, VBucket) ->
     ?rebalance_info(
        "~s: Doing get_vbucket_high_seqno call for vbucket ~p on ~s",
        [Bucket, VBucket, MasterNode]),
-    RV = gen_server:call(
-           server_name(Bucket, MasterNode),
-           {if_rebalance, Rebalancer, {get_vbucket_high_seqno, VBucket}},
-           infinity),
+    RV = rebalance_call(Rebalancer, Bucket, MasterNode,
+                        {get_vbucket_high_seqno, VBucket}, infinity),
     true = is_integer(RV),
     RV.
 
 -spec wait_seqno_persisted(bucket_name(), pid(), node(), vbucket_id(),
                            seq_no()) -> ok.
 wait_seqno_persisted(Bucket, Rebalancer, Node, VBucket, SeqNo) ->
-    ok = gen_server:call(
-           {server_name(Bucket), Node},
-           {if_rebalance, Rebalancer, {wait_seqno_persisted, VBucket, SeqNo}},
-           infinity).
+    ok = rebalance_call(Rebalancer, Bucket, Node,
+                        {wait_seqno_persisted, VBucket, SeqNo}, infinity).
 
 -spec inhibit_view_compaction(bucket_name(), pid(), node()) ->
                                      {ok, reference()} | nack.
 inhibit_view_compaction(Bucket, Rebalancer, Node) ->
-    gen_server:call(
-      {server_name(Bucket), Node},
-      {if_rebalance, Rebalancer, {inhibit_view_compaction, Rebalancer}},
-      infinity).
+    rebalance_call(Rebalancer, Bucket, Node,
+                   {inhibit_view_compaction, Rebalancer}, infinity).
 
 -spec uninhibit_view_compaction(bucket_name(), pid(), node(), reference()) ->
                                        ok | nack.
 uninhibit_view_compaction(Bucket, Rebalancer, Node, Ref) ->
-    gen_server:call(
-      {server_name(Bucket), Node},
-      {if_rebalance, Rebalancer, {uninhibit_view_compaction, Ref}},
-      infinity).
+    rebalance_call(Rebalancer, Bucket, Node,
+                   {uninhibit_view_compaction, Ref}, infinity).
 
-initiate_servant_call(Server, Request) ->
-    {ServantPid, Tag} = gen_server:call(Server, Request, infinity),
+initiate_servant_call(Bucket, Node, Request) ->
+    {ServantPid, Tag} = call(Bucket, Node, Request, infinity),
     MRef = erlang:monitor(process, ServantPid),
     {MRef, Tag}.
 
@@ -537,15 +529,15 @@ get_servant_call_reply({MRef, Tag}) ->
             end
     end.
 
-do_servant_call(Server, Request) ->
-    get_servant_call_reply(initiate_servant_call(Server, Request)).
+servant_call(Bucket, Node, Request) ->
+    get_servant_call_reply(initiate_servant_call(Bucket, Node, Request)).
 
 -spec get_dcp_docs_estimate(bucket_name(), node(), vbucket_id(), [node()]) ->
                                    [{ok, {non_neg_integer(), non_neg_integer(),
                                           binary()}}].
 get_dcp_docs_estimate(Bucket, SrcNode, VBucket, ReplicaNodes) ->
-    do_servant_call({server_name(Bucket), SrcNode},
-                    {get_dcp_docs_estimate, VBucket, ReplicaNodes}).
+    servant_call(Bucket, SrcNode,
+                 {get_dcp_docs_estimate, VBucket, ReplicaNodes}).
 
 -spec get_mass_dcp_docs_estimate(bucket_name(), node(), [vbucket_id()]) ->
                                         {ok, [{non_neg_integer(),
@@ -553,30 +545,24 @@ get_dcp_docs_estimate(Bucket, SrcNode, VBucket, ReplicaNodes) ->
 get_mass_dcp_docs_estimate(_Bucket, _Node, []) ->
     {ok, []};
 get_mass_dcp_docs_estimate(Bucket, Node, VBuckets) ->
-    RV = do_servant_call({server_name(Bucket), Node},
-                         {get_mass_dcp_docs_estimate, VBuckets}),
+    RV = servant_call(Bucket, Node, {get_mass_dcp_docs_estimate, VBuckets}),
     {ok, _} = RV,
     RV.
 
 mass_prepare_flush(Bucket, Nodes) ->
     {Replies, BadNodes} =
-        gen_server:multi_call(Nodes, server_name(Bucket),
-                              prepare_flush, ?PREPARE_FLUSH_TIMEOUT),
+        multi_call(Bucket, Nodes, prepare_flush, ?PREPARE_FLUSH_TIMEOUT),
     {GoodReplies, BadReplies} =
         lists:partition(fun ({_N, R}) -> R =:= ok end, Replies),
     GoodNodes = [N || {N, _R} <- GoodReplies],
     {GoodNodes, BadReplies, BadNodes}.
-
-server_name(Bucket, Node) ->
-    {server_name(Bucket), Node}.
 
 get_failover_logs(Bucket, NodeVBuckets) ->
     Timeout = ?get_timeout(get_failover_logs, 60000),
     Results =
         misc:parallel_map_partial(
           fun ({Node, VBuckets}) ->
-                  do_servant_call(server_name(Bucket, Node),
-                                  {get_failover_logs, VBuckets})
+                  servant_call(Bucket, Node, {get_failover_logs, VBuckets})
           end, NodeVBuckets, Timeout),
     process_get_failover_logs_results(NodeVBuckets, Results).
 
