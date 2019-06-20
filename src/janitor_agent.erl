@@ -32,7 +32,8 @@
 -record(state, {bucket_name :: bucket_name(),
                 rebalance_pid :: undefined | pid(),
                 rebalance_mref :: undefined | reference(),
-                rebalance_subprocesses = [] :: [{From :: term(), Worker :: pid()}],
+                rebalance_subprocesses = [] :: [{From :: term(),
+                                                 Worker :: pid()}],
                 last_applied_vbucket_states :: undefined | list(),
                 rebalance_only_vbucket_states :: undefined | list(),
                 flushseq,
@@ -160,14 +161,16 @@ recv_result(Bucket, Parent, Ref, {Node, Pid}) ->
                     {Node, timeout}
             end;
         {'EXIT', Pid, Reason} = ExitMsg ->
-            ?log_info("Got exception trying to query vbuckets of ~p bucket ~p~n~p",
-                      [Node, Bucket, Reason]),
+            ?log_info("Got exception trying to query vbuckets of ~p "
+                      "bucket ~p~n~p", [Node, Bucket, Reason]),
             {Node, ExitMsg}
     end.
 
 complete_flush(Bucket, Nodes, Timeout) ->
-    {Replies, BadNodes} = gen_server:multi_call(Nodes, server_name(Bucket), complete_flush, Timeout),
-    {GoodReplies, BadReplies} = lists:partition(fun ({_N, R}) -> R =:= ok end, Replies),
+    {Replies, BadNodes} = gen_server:multi_call(Nodes, server_name(Bucket),
+                                                complete_flush, Timeout),
+    {GoodReplies, BadReplies} = lists:partition(fun ({_N, R}) -> R =:= ok end,
+                                                Replies),
     GoodNodes = [N || {N, _R} <- GoodReplies],
     {GoodNodes, BadReplies, BadNodes}.
 
@@ -254,7 +257,8 @@ do_query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
                             false
                     end, RVs).
 
--spec mark_bucket_warmed(Bucket::bucket_name(), [node()]) -> ok | {error, [node()], list()}.
+-spec mark_bucket_warmed(Bucket::bucket_name(),
+                         [node()]) -> ok | {error, [node()], list()}.
 mark_bucket_warmed(Bucket, Nodes) ->
     {Replies, BadNodes} = ns_memcached:mark_warmed(Nodes, Bucket),
     BadReplies = [{N, R} || {N, R} <- Replies,
@@ -276,7 +280,8 @@ process_apply_config_rv(Bucket, {Replies, BadNodes}, Call) ->
                        RV =/= ok],
     case BadReplies =/= [] orelse BadNodes =/= [] of
         true ->
-            ?log_info("~s:Some janitor state change requests (~p) have failed:~n~p~n~p", [Bucket, Call, BadReplies, BadNodes]),
+            ?log_info("~s:Some janitor state change requests (~p) have failed"
+                      ":~n~p~n~p", [Bucket, Call, BadReplies, BadNodes]),
             FailedNodes = [N || {N, _} <- BadReplies] ++ BadNodes,
             {error, {failed_nodes, FailedNodes}};
         false ->
@@ -316,13 +321,15 @@ apply_new_bucket_config(Bucket, Rebalancer, Servers,
             RV2 = misc:parallel_map(
                     fun (Node) ->
                             {Node,
-                             catch gen_server:call({server_name(Bucket), Node},
-                                                   {apply_new_config_replicas_phase,
-                                                    NewBucketConfig,
-                                                    IgnoredVBuckets},
-                                                   Timeout)}
+                             catch gen_server:call(
+                                     {server_name(Bucket), Node},
+                                     {apply_new_config_replicas_phase,
+                                      NewBucketConfig,
+                                      IgnoredVBuckets},
+                                     Timeout)}
                     end, Servers, infinity),
-            process_apply_config_rv(Bucket, {RV2, []}, apply_new_config_replicas_phase);
+            process_apply_config_rv(Bucket, {RV2, []},
+                                    apply_new_config_replicas_phase);
         Other ->
             Other
     end.
@@ -348,9 +355,10 @@ delete_vbucket_copies(Bucket, RebalancerPid, Nodes, VBucket) ->
                                          {ok, [{node(), [integer()]}]} |
                                          {errors, [{node(), term()}]}.
 prepare_nodes_for_rebalance(Bucket, Nodes, RebalancerPid) ->
-    {Replies, BadNodes} = gen_server:multi_call(Nodes, server_name(Bucket),
-                                                {prepare_rebalance, RebalancerPid},
-                                                ?PREPARE_REBALANCE_TIMEOUT),
+    {Replies, BadNodes} =
+        gen_server:multi_call(Nodes, server_name(Bucket),
+                              {prepare_rebalance, RebalancerPid},
+                              ?PREPARE_REBALANCE_TIMEOUT),
     {BadReplies, Versions} =
         lists:foldl(fun ({_, ok}, {BRAcc, VAcc}) ->
                             {BRAcc, VAcc};
@@ -367,9 +375,10 @@ prepare_nodes_for_rebalance(Bucket, Nodes, RebalancerPid) ->
     end.
 
 finish_rebalance(Bucket, Nodes, RebalancerPid) ->
-    process_multicall_rv(gen_server:multi_call(Nodes, server_name(Bucket),
-                                               {if_rebalance, RebalancerPid, finish_rebalance},
-                                               ?PREPARE_REBALANCE_TIMEOUT)).
+    process_multicall_rv(gen_server:multi_call(
+                           Nodes, server_name(Bucket),
+                           {if_rebalance, RebalancerPid, finish_rebalance},
+                           ?PREPARE_REBALANCE_TIMEOUT)).
 
 %% this is only called by
 %% failover_safeness_level:build_local_safeness_info_new.
@@ -384,13 +393,17 @@ this_node_replicator_triples(Bucket) ->
             [{SrcNode, node(), VBs} || {SrcNode, VBs} <- List]
     end.
 
--spec bulk_set_vbucket_state(bucket_name(),
-                             pid(),
-                             vbucket_id(),
-                             [{Node::node(), vbucket_state(), rebalance_vbucket_state(), Src::(node()|undefined)}])
+-spec bulk_set_vbucket_state(
+        bucket_name(),
+        pid(),
+        vbucket_id(),
+        [{Node::node(), vbucket_state(), rebalance_vbucket_state(),
+          Src::(node()|undefined)}])
                             -> ok.
-bulk_set_vbucket_state(Bucket, RebalancerPid, VBucket, NodeVBucketStateRebalanceStateReplicateFromS) ->
-    ?rebalance_info("Doing bulk vbucket ~p state change~n~p", [VBucket, NodeVBucketStateRebalanceStateReplicateFromS]),
+bulk_set_vbucket_state(Bucket, RebalancerPid, VBucket,
+                       NodeVBucketStateRebalanceStateReplicateFromS) ->
+    ?rebalance_info("Doing bulk vbucket ~p state change~n~p",
+                    [VBucket, NodeVBucketStateRebalanceStateReplicateFromS]),
     RVs = misc:parallel_map(
             fun ({Node, active, _, _}) ->
                     {Node, unexpected_state_active};
@@ -405,7 +418,8 @@ bulk_set_vbucket_state(Bucket, RebalancerPid, VBucket, NodeVBucketStateRebalance
     case NonOks of
         [] -> ok;
         _ ->
-            ?rebalance_debug("bulk vbucket state change failed for:~n~p", [NonOks]),
+            ?rebalance_debug("bulk vbucket state change failed for:~n~p",
+                             [NonOks]),
             erlang:error({bulk_set_vbucket_state_failed, NonOks})
     end.
 
@@ -429,7 +443,8 @@ set_vbucket_state_inner(Bucket, Node, RebalancerPid, VBucket, SubCall) ->
                          ?SET_VBUCKET_STATE_TIMEOUT).
 
 get_src_dst_vbucket_replications(Bucket, Nodes) ->
-    get_src_dst_vbucket_replications(Bucket, Nodes, ?GET_SRC_DST_REPLICATIONS_TIMEOUT).
+    get_src_dst_vbucket_replications(Bucket, Nodes,
+                                     ?GET_SRC_DST_REPLICATIONS_TIMEOUT).
 
 get_src_dst_vbucket_replications(Bucket, Nodes, Timeout) ->
     {OkResults, FailedNodes} =
@@ -442,16 +457,20 @@ get_src_dst_vbucket_replications(Bucket, Nodes, Timeout) ->
                        VB <- VBs],
     {lists:sort(Replications), FailedNodes}.
 
-initiate_indexing(_Bucket, _Rebalancer, [] = _MaybeMaster, _ReplicaNodes, _VBucket) ->
+initiate_indexing(_Bucket, _Rebalancer, [] = _MaybeMaster, _ReplicaNodes,
+                  _VBucket) ->
     ok;
-initiate_indexing(Bucket, Rebalancer, [NewMasterNode], _ReplicaNodes, _VBucket) ->
-    ?rebalance_info("~s: Doing initiate_indexing call for ~s", [Bucket, NewMasterNode]),
+initiate_indexing(Bucket, Rebalancer, [NewMasterNode], _ReplicaNodes,
+                  _VBucket) ->
+    ?rebalance_info("~s: Doing initiate_indexing call for ~s",
+                    [Bucket, NewMasterNode]),
     ok = gen_server:call(server_name(Bucket, NewMasterNode),
                          {if_rebalance, Rebalancer, initiate_indexing},
                          infinity).
 
 wait_index_updated(Bucket, Rebalancer, NewMasterNode, _ReplicaNodes, VBucket) ->
-    ?rebalance_info("~s: Doing wait_index_updated call for ~s (vbucket ~p)", [Bucket, NewMasterNode, VBucket]),
+    ?rebalance_info("~s: Doing wait_index_updated call for ~s (vbucket ~p)",
+                    [Bucket, NewMasterNode, VBucket]),
     ok = gen_server:call(server_name(Bucket, NewMasterNode),
                          {if_rebalance, Rebalancer,
                           {wait_index_updated, VBucket}},
@@ -468,31 +487,39 @@ dcp_takeover(Bucket, Rebalancer, OldMasterNode, NewMasterNode, VBucket) ->
                      {dcp_takeover, OldMasterNode, VBucket}}, infinity).
 
 get_vbucket_high_seqno(Bucket, Rebalancer, MasterNode, VBucket) ->
-    ?rebalance_info("~s: Doing get_vbucket_high_seqno call for vbucket ~p on ~s",
-                    [Bucket, VBucket, MasterNode]),
-    RV = gen_server:call(server_name(Bucket, MasterNode),
-                         {if_rebalance, Rebalancer, {get_vbucket_high_seqno, VBucket}},
-                         infinity),
+    ?rebalance_info(
+       "~s: Doing get_vbucket_high_seqno call for vbucket ~p on ~s",
+       [Bucket, VBucket, MasterNode]),
+    RV = gen_server:call(
+           server_name(Bucket, MasterNode),
+           {if_rebalance, Rebalancer, {get_vbucket_high_seqno, VBucket}},
+           infinity),
     true = is_integer(RV),
     RV.
 
--spec wait_seqno_persisted(bucket_name(), pid(), node(), vbucket_id(), seq_no()) -> ok.
+-spec wait_seqno_persisted(bucket_name(), pid(), node(), vbucket_id(),
+                           seq_no()) -> ok.
 wait_seqno_persisted(Bucket, Rebalancer, Node, VBucket, SeqNo) ->
-    ok = gen_server:call({server_name(Bucket), Node},
-                         {if_rebalance, Rebalancer, {wait_seqno_persisted, VBucket, SeqNo}},
-                         infinity).
+    ok = gen_server:call(
+           {server_name(Bucket), Node},
+           {if_rebalance, Rebalancer, {wait_seqno_persisted, VBucket, SeqNo}},
+           infinity).
 
--spec inhibit_view_compaction(bucket_name(), pid(), node()) -> {ok, reference()} | nack.
+-spec inhibit_view_compaction(bucket_name(), pid(), node()) ->
+                                     {ok, reference()} | nack.
 inhibit_view_compaction(Bucket, Rebalancer, Node) ->
-    gen_server:call({server_name(Bucket), Node},
-                    {if_rebalance, Rebalancer, {inhibit_view_compaction, Rebalancer}},
-                    infinity).
+    gen_server:call(
+      {server_name(Bucket), Node},
+      {if_rebalance, Rebalancer, {inhibit_view_compaction, Rebalancer}},
+      infinity).
 
--spec uninhibit_view_compaction(bucket_name(), pid(), node(), reference()) -> ok | nack.
+-spec uninhibit_view_compaction(bucket_name(), pid(), node(), reference()) ->
+                                       ok | nack.
 uninhibit_view_compaction(Bucket, Rebalancer, Node, Ref) ->
-    gen_server:call({server_name(Bucket), Node},
-                    {if_rebalance, Rebalancer, {uninhibit_view_compaction, Ref}},
-                    infinity).
+    gen_server:call(
+      {server_name(Bucket), Node},
+      {if_rebalance, Rebalancer, {uninhibit_view_compaction, Ref}},
+      infinity).
 
 initiate_servant_call(Server, Request) ->
     {ServantPid, Tag} = gen_server:call(Server, Request, infinity),
@@ -514,13 +541,15 @@ do_servant_call(Server, Request) ->
     get_servant_call_reply(initiate_servant_call(Server, Request)).
 
 -spec get_dcp_docs_estimate(bucket_name(), node(), vbucket_id(), [node()]) ->
-                                   [{ok, {non_neg_integer(), non_neg_integer(), binary()}}].
+                                   [{ok, {non_neg_integer(), non_neg_integer(),
+                                          binary()}}].
 get_dcp_docs_estimate(Bucket, SrcNode, VBucket, ReplicaNodes) ->
     do_servant_call({server_name(Bucket), SrcNode},
                     {get_dcp_docs_estimate, VBucket, ReplicaNodes}).
 
 -spec get_mass_dcp_docs_estimate(bucket_name(), node(), [vbucket_id()]) ->
-                                        {ok, [{non_neg_integer(), non_neg_integer(), binary()}]}.
+                                        {ok, [{non_neg_integer(),
+                                               non_neg_integer(), binary()}]}.
 get_mass_dcp_docs_estimate(_Bucket, _Node, []) ->
     {ok, []};
 get_mass_dcp_docs_estimate(Bucket, Node, VBuckets) ->
@@ -530,8 +559,11 @@ get_mass_dcp_docs_estimate(Bucket, Node, VBuckets) ->
     RV.
 
 mass_prepare_flush(Bucket, Nodes) ->
-    {Replies, BadNodes} = gen_server:multi_call(Nodes, server_name(Bucket), prepare_flush, ?PREPARE_FLUSH_TIMEOUT),
-    {GoodReplies, BadReplies} = lists:partition(fun ({_N, R}) -> R =:= ok end, Replies),
+    {Replies, BadNodes} =
+        gen_server:multi_call(Nodes, server_name(Bucket),
+                              prepare_flush, ?PREPARE_FLUSH_TIMEOUT),
+    {GoodReplies, BadReplies} =
+        lists:partition(fun ({_N, R}) -> R =:= ok end, Replies),
     GoodNodes = [N || {N, _R} <- GoodReplies],
     {GoodNodes, BadReplies, BadNodes}.
 
@@ -607,7 +639,8 @@ handle_call({query_vbuckets, _, _, _} = Call, _From, State) ->
     {RV, NewState} =
         handle_query_vbuckets(Call, State),
     {reply, RV, NewState};
-handle_call(get_incoming_replication_map, _From, #state{bucket_name = BucketName} = State) ->
+handle_call(get_incoming_replication_map, _From,
+            #state{bucket_name = BucketName} = State) ->
     %% NOTE: has infinite timeouts but uses only local communication
     RV = replication_manager:get_incoming_replication_map(BucketName),
     {reply, RV, State};
@@ -616,9 +649,12 @@ handle_call({prepare_rebalance, _Pid}, _From,
     {reply, no_vbucket_states_set, State};
 handle_call({prepare_rebalance, Pid}, _From,
             State) ->
-    State1 = State#state{rebalance_only_vbucket_states =
-                             [undefined || _ <- State#state.rebalance_only_vbucket_states]},
-    {reply, {ok, [{version, cluster_compat_mode:mb_master_advertised_version()}]},
+    State1 =
+        State#state{
+          rebalance_only_vbucket_states =
+              [undefined || _ <- State#state.rebalance_only_vbucket_states]},
+    {reply, {ok, [{version,
+                   cluster_compat_mode:mb_master_advertised_version()}]},
      set_rebalance_mref(Pid, State1)};
 
 handle_call(finish_rebalance, _From, State) ->
@@ -631,8 +667,9 @@ handle_call({if_rebalance, RebalancerPid, Subcall},
         true ->
             handle_call(Subcall, From, State);
         false ->
-            ?log_error("Rebalance call failed due to the wrong rebalancer pid ~p. Should be ~p.",
-                       [RebalancerPid, RealRebalancerPid]),
+            ?log_error(
+               "Rebalance call failed due to the wrong rebalancer pid ~p. "
+               "Should be ~p.", [RebalancerPid, RealRebalancerPid]),
             {reply, wrong_rebalancer_pid, State}
     end;
 handle_call({update_vbucket_state, VBucket, NormalState, RebalanceState,
@@ -647,8 +684,10 @@ handle_call({update_vbucket_state, VBucket, NormalState, RebalanceState,
 handle_call({delete_vbucket, VBucket} = Call, From, State) ->
     NewState = apply_new_vbucket_state(VBucket, missing, undefined, State),
     delegate_apply_vbucket_state(Call, From, NewState);
-handle_call({apply_new_config, NewBucketConfig, IgnoredVBuckets}, From, State) ->
-    handle_call({apply_new_config, undefined, NewBucketConfig, IgnoredVBuckets}, From, State);
+handle_call({apply_new_config, NewBucketConfig, IgnoredVBuckets},
+            From, State) ->
+    handle_call({apply_new_config, undefined, NewBucketConfig, IgnoredVBuckets},
+                From, State);
 handle_call({apply_new_config, Caller, NewBucketConfig, IgnoredVBuckets}, _From,
             #state{bucket_name = BucketName,
                    rebalance_pid = Rebalancer} = State) ->
@@ -661,15 +700,16 @@ handle_call({apply_new_config, Caller, NewBucketConfig, IgnoredVBuckets}, _From,
     {_, ToSet, ToDelete, NewWantedRev}
         = lists:foldl(
             fun (Chain, {VBucket, ToSet, ToDelete, PrevWanted}) ->
-                    WantedState = case [Pos || {Pos, N} <- misc:enumerate(Chain, 0),
-                                               N =:= node()] of
-                                      [0] ->
-                                          active;
-                                      [_] ->
-                                          replica;
-                                      [] ->
-                                          missing
-                                  end,
+                    WantedState =
+                        case [Pos || {Pos, N} <- misc:enumerate(Chain, 0),
+                                     N =:= node()] of
+                            [0] ->
+                                active;
+                            [_] ->
+                                replica;
+                            [] ->
+                                missing
+                        end,
                     {ActualState, ActualTopology} =
                         case dict:find(VBucket, VBDetails) of
                             {ok, Val} ->
@@ -688,14 +728,16 @@ handle_call({apply_new_config, Caller, NewBucketConfig, IgnoredVBuckets}, _From,
                         false ->
                             case WantedState of
                                 missing ->
-                                    {VBucket + 1, ToSet, [VBucket | ToDelete], NewWanted};
+                                    {VBucket + 1, ToSet, [VBucket | ToDelete],
+                                     NewWanted};
                                 active ->
                                     {VBucket + 1,
                                      [{VBucket, WantedState, [Chain]} | ToSet],
                                      ToDelete, NewWanted};
                                 _ ->
                                     {VBucket + 1,
-                                     [{VBucket, WantedState, undefined} | ToSet],
+                                     [{VBucket, WantedState,
+                                       undefined} | ToSet],
                                      ToDelete, NewWanted}
                             end
                     end
@@ -714,11 +756,14 @@ handle_call({apply_new_config, Caller, NewBucketConfig, IgnoredVBuckets}, _From,
 
     %% before changing vbucket states (i.e. activating or killing
     %% vbuckets) we must stop replications into those vbuckets
-    WantedReplicas = [{Src, VBucket} || {Src, Dst, VBucket} <- ns_bucket:map_to_replicas(Map),
-                                        Dst =:= node()],
-    WantedReplications = [{Src, [VB || {_, VB} <- Pairs]}
-                          || {Src, Pairs} <- misc:keygroup(1, lists:sort(WantedReplicas))],
-    ok = replication_manager:remove_undesired_replications(BucketName, WantedReplications),
+    WantedReplicas = [{Src, VBucket}
+                      || {Src, Dst, VBucket} <- ns_bucket:map_to_replicas(Map),
+                         Dst =:= node()],
+    WantedReplications =
+        [{Src, [VB || {_, VB} <- Pairs]}
+         || {Src, Pairs} <- misc:keygroup(1, lists:sort(WantedReplicas))],
+    ok = replication_manager:remove_undesired_replications(
+           BucketName, WantedReplications),
 
     SetTopology = cluster_compat_mode:is_cluster_madhatter(),
     %% then we're ok to change vbucket states
@@ -742,13 +787,17 @@ handle_call({apply_new_config_replicas_phase, NewBucketConfig, IgnoredVBuckets},
     true = (Map =/= undefined),
     %% TODO: unignore ignored vbuckets
     [] = IgnoredVBuckets,
-    WantedReplicas = [{Src, VBucket} || {Src, Dst, VBucket} <- ns_bucket:map_to_replicas(Map),
+    WantedReplicas = [{Src, VBucket}
+                      || {Src, Dst, VBucket} <- ns_bucket:map_to_replicas(Map),
                                         Dst =:= node()],
-    WantedReplications = [{Src, [VB || {_, VB} <- Pairs]}
-                          || {Src, Pairs} <- misc:keygroup(1, lists:sort(WantedReplicas))],
-    ok = replication_manager:set_incoming_replication_map(BucketName, WantedReplications),
+    WantedReplications =
+        [{Src, [VB || {_, VB} <- Pairs]}
+         || {Src, Pairs} <- misc:keygroup(1, lists:sort(WantedReplicas))],
+    ok = replication_manager:set_incoming_replication_map(
+           BucketName, WantedReplications),
     {reply, ok, State};
-handle_call({wait_index_updated, VBucket}, From, #state{bucket_name = Bucket} = State) ->
+handle_call({wait_index_updated, VBucket}, From,
+            #state{bucket_name = Bucket} = State) ->
     State2 = spawn_rebalance_subprocess(
                State,
                From,
@@ -756,20 +805,24 @@ handle_call({wait_index_updated, VBucket}, From, #state{bucket_name = Bucket} = 
                        ns_couchdb_api:wait_index_updated(Bucket, VBucket)
                end),
     {noreply, State2};
-handle_call({wait_dcp_data_move, ReplicaNodes, VBucket}, From, #state{bucket_name = Bucket} = State) ->
+handle_call({wait_dcp_data_move, ReplicaNodes, VBucket}, From,
+            #state{bucket_name = Bucket} = State) ->
     State2 = spawn_rebalance_subprocess(
                State,
                From,
                fun () ->
-                       dcp_replicator:wait_for_data_move(ReplicaNodes, Bucket, VBucket)
+                       dcp_replicator:wait_for_data_move(ReplicaNodes, Bucket,
+                                                         VBucket)
                end),
     {noreply, State2};
-handle_call({dcp_takeover, OldMasterNode, VBucket}, From, #state{bucket_name = Bucket} = State) ->
+handle_call({dcp_takeover, OldMasterNode, VBucket}, From,
+            #state{bucket_name = Bucket} = State) ->
     State2 = spawn_rebalance_subprocess(
                State,
                From,
                fun () ->
-                       replication_manager:dcp_takeover(Bucket, OldMasterNode, VBucket)
+                       replication_manager:dcp_takeover(Bucket, OldMasterNode,
+                                                        VBucket)
                end),
     {noreply, State2};
 handle_call(initiate_indexing, From, #state{bucket_name = Bucket} = State) ->
@@ -783,20 +836,25 @@ handle_call(initiate_indexing, From, #state{bucket_name = Bucket} = State) ->
 handle_call({wait_seqno_persisted, VBucket, SeqNo},
            From,
            #state{bucket_name = Bucket} = State) ->
-    State2 = spawn_rebalance_subprocess(
-               State,
-               From,
-               fun () ->
-                       ?rebalance_debug("Going to wait for persistence of seqno ~B in vbucket ~B",
-                                        [SeqNo, VBucket]),
-                       Replicator = dcp_replication_manager:get_replicator_pid(Bucket, VBucket),
-                       erlang:link(Replicator),
-                       ok = do_wait_seqno_persisted(Bucket, VBucket, SeqNo),
-                       erlang:unlink(Replicator),
-                       ?rebalance_debug("Done waiting for persistence of seqno ~B in vbucket ~B",
-                                        [SeqNo, VBucket]),
-                       ok
-               end),
+    State2 =
+        spawn_rebalance_subprocess(
+          State,
+          From,
+          fun () ->
+                  ?rebalance_debug(
+                     "Going to wait for persistence of seqno ~B in vbucket ~B",
+                     [SeqNo, VBucket]),
+                  Replicator =
+                      dcp_replication_manager:get_replicator_pid(Bucket,
+                                                                 VBucket),
+                  erlang:link(Replicator),
+                  ok = do_wait_seqno_persisted(Bucket, VBucket, SeqNo),
+                  erlang:unlink(Replicator),
+                  ?rebalance_debug(
+                     "Done waiting for persistence of seqno ~B in vbucket ~B",
+                     [SeqNo, VBucket]),
+                  ok
+          end),
     {noreply, State2};
 handle_call({inhibit_view_compaction, Pid},
             From,
@@ -825,7 +883,8 @@ handle_call({get_vbucket_high_seqno, VBucket},
     %% persisted seq no should not be possible here
     {ok, SeqNo} = ns_memcached:get_vbucket_high_seqno(Bucket, VBucket),
     {reply, SeqNo, State};
-handle_call({get_dcp_docs_estimate, _VBucketId, _ReplicaNodes} = Req, From, State) ->
+handle_call({get_dcp_docs_estimate, _VBucketId, _ReplicaNodes} = Req, From,
+            State) ->
     handle_call_via_servant(
       From, State, Req,
       fun ({_, VBucketId, ReplicaNodes}, #state{bucket_name = Bucket}) ->
@@ -863,8 +922,9 @@ handle_cast({apply_vbucket_state_reply, ReplyPid, Call, Reply},
                    apply_vbucket_states_worker = WorkerPid} = State) ->
     case ReplyPid =:= WorkerPid of
         true ->
-            ?log_debug("Got reply to call ~p from apply_vbucket_states_worker: ~p",
-                       [Call, Reply]),
+            ?log_debug(
+               "Got reply to call ~p from apply_vbucket_states_worker: ~p",
+               [Call, Reply]),
             {{value, From}, NewQ} = queue:out(Q),
             gen_server:reply(From, Reply),
             {noreply, State#state{apply_vbucket_states_queue = NewQ}};
@@ -878,23 +938,26 @@ handle_cast({apply_vbucket_state_reply, ReplyPid, Call, Reply},
 handle_cast(_, _State) ->
     erlang:error(cannot_do).
 
-handle_info({'DOWN', MRef, _, Pid, Reason}, #state{rebalance_mref = RMRef,
-                                                   last_applied_vbucket_states = WantedVBuckets} = State)
+handle_info({'DOWN', MRef, _, Pid, Reason},
+            #state{rebalance_mref = RMRef,
+                   last_applied_vbucket_states = WantedVBuckets} = State)
   when MRef =:= RMRef ->
-    ?log_info("Rebalancer ~p died with reason ~p. Undoing temporary vbucket states caused by rebalance",
-              [Pid, Reason]),
-    State2 = State#state{rebalance_only_vbucket_states = [undefined
-                                                          || _ <- WantedVBuckets]},
+    ?log_info("Rebalancer ~p died with reason ~p. Undoing temporary vbucket "
+              "states caused by rebalance", [Pid, Reason]),
+    State2 = State#state{rebalance_only_vbucket_states =
+                             [undefined || _ <- WantedVBuckets]},
     State3 = set_rebalance_mref(undefined, State2),
     {noreply, pass_vbucket_states_to_set_view_manager(State3)};
-handle_info({subprocess_done, Pid, RV}, #state{rebalance_subprocesses = Subprocesses} = State) ->
+handle_info({subprocess_done, Pid, RV},
+            #state{rebalance_subprocesses = Subprocesses} = State) ->
     ?log_debug("Got done message from subprocess: ~p (~p)", [Pid, RV]),
     case lists:keyfind(Pid, 2, Subprocesses) of
         false ->
             {noreply, State};
         {From, _} = Pair ->
             gen_server:reply(From, RV),
-            {noreply, State#state{rebalance_subprocesses = Subprocesses -- [Pair]}}
+            {noreply,
+             State#state{rebalance_subprocesses = Subprocesses -- [Pair]}}
     end;
 handle_info(Info, State) ->
     ?log_debug("Ignoring unexpected message: ~p", [Info]),
@@ -909,9 +972,10 @@ code_change(_OldVsn, State, _Extra) ->
 server_name(Bucket) ->
     list_to_atom("janitor_agent-" ++ Bucket).
 
-pass_vbucket_states_to_set_view_manager(#state{bucket_name = BucketName,
-                                               last_applied_vbucket_states = WantedVBuckets,
-                                               rebalance_only_vbucket_states = RebalanceVBuckets} = State) ->
+pass_vbucket_states_to_set_view_manager(
+  #state{bucket_name = BucketName,
+         last_applied_vbucket_states = WantedVBuckets,
+         rebalance_only_vbucket_states = RebalanceVBuckets} = State) ->
     ok = ns_couchdb_api:set_vbucket_states(BucketName,
                                            WantedVBuckets,
                                            RebalanceVBuckets),
@@ -970,15 +1034,17 @@ set_rebalance_mref(Pid, State0) ->
                         apply_vbucket_states_worker = WorkerPid}
     end.
 
-spawn_rebalance_subprocess(#state{rebalance_subprocesses = Subprocesses,
-                                  rebalance_subprocesses_registry = RegistryPid} = State, From, Fun) ->
+spawn_rebalance_subprocess(
+  #state{rebalance_subprocesses = Subprocesses,
+         rebalance_subprocesses_registry = RegistryPid} = State, From, Fun) ->
     Parent = self(),
-    Pid = proc_lib:spawn_link(fun () ->
-                                      ns_process_registry:register_pid(RegistryPid,
-                                                                       erlang:make_ref(), self()),
-                                      RV = Fun(),
-                                      Parent ! {subprocess_done, self(), RV}
-                              end),
+    Pid = proc_lib:spawn_link(
+            fun () ->
+                    ns_process_registry:register_pid(RegistryPid,
+                                                     erlang:make_ref(), self()),
+                    RV = Fun(),
+                    Parent ! {subprocess_done, self(), RV}
+            end),
     State#state{rebalance_subprocesses = [{From, Pid} | Subprocesses]}.
 
 flushseq_file_path(BucketName) ->
@@ -994,11 +1060,13 @@ read_flush_counter(BucketName) ->
                     ?log_info("Got flushseq from local file: ~p", [FlushSeq]),
                     FlushSeq
             catch T:E ->
-                    ?log_error("Parsing flushseq failed: ~p", [{T, E, erlang:get_stacktrace()}]),
+                    ?log_error("Parsing flushseq failed: ~p",
+                               [{T, E, erlang:get_stacktrace()}]),
                     read_flush_counter_from_config(BucketName)
             end;
         Error ->
-            ?log_info("Loading flushseq failed: ~p. Assuming it's equal to global config.", [Error]),
+            ?log_info("Loading flushseq failed: ~p. "
+                      "Assuming it's equal to global config.", [Error]),
             read_flush_counter_from_config(BucketName)
     end.
 
@@ -1016,12 +1084,16 @@ consider_doing_flush(State) ->
             MyFlushSeq = State#state.flushseq,
             case ConfigFlushSeq > MyFlushSeq of
                 true ->
-                    ?log_info("Config flushseq ~p is greater than local flushseq ~p. Going to flush", [ConfigFlushSeq, MyFlushSeq]),
+                    ?log_info("Config flushseq ~p is greater than local "
+                              "flushseq ~p. Going to flush",
+                              [ConfigFlushSeq, MyFlushSeq]),
                     perform_flush(State, BucketConfig, ConfigFlushSeq);
                 false ->
                     case ConfigFlushSeq =/= MyFlushSeq of
                         true ->
-                            ?log_error("That's weird. Config flushseq is lower than ours: ~p vs. ~p. Ignoring", [ConfigFlushSeq, MyFlushSeq]),
+                            ?log_error("That's weird. Config flushseq is lower "
+                                       "than ours: ~p vs. ~p. Ignoring",
+                                       [ConfigFlushSeq, MyFlushSeq]),
                             State#state{flushseq = ConfigFlushSeq};
                         _ ->
                             State
@@ -1032,11 +1104,16 @@ consider_doing_flush(State) ->
             State
     end.
 
-perform_flush(#state{bucket_name = BucketName} = State, BucketConfig, ConfigFlushSeq) ->
+perform_flush(#state{bucket_name = BucketName} = State, BucketConfig,
+              ConfigFlushSeq) ->
     ?log_info("Doing local bucket flush"),
     {ok, VBStates} = ns_memcached:local_connected_and_list_vbuckets(BucketName),
-    NewVBStates = lists:duplicate(proplists:get_value(num_vbuckets, BucketConfig), missing),
-    RebalanceVBStates = lists:duplicate(proplists:get_value(num_vbuckets, BucketConfig), undefined),
+    NewVBStates =
+        lists:duplicate(
+          proplists:get_value(num_vbuckets, BucketConfig), missing),
+    RebalanceVBStates =
+        lists:duplicate(
+          proplists:get_value(num_vbuckets, BucketConfig), undefined),
     NewState = State#state{last_applied_vbucket_states = NewVBStates,
                            rebalance_only_vbucket_states = RebalanceVBStates,
                            flushseq = ConfigFlushSeq},
@@ -1062,7 +1139,9 @@ do_wait_seqno_persisted(Bucket, VBucket, SeqNo) ->
         ok ->
             ok;
         {memcached_error, etmpfail, _} ->
-            ?rebalance_debug("Got etmpfail while waiting for sequence number ~p to persist for vBucket:~p. Will retry.", [SeqNo, VBucket]),
+            ?rebalance_debug("Got etmpfail while waiting for sequence number "
+                             "~p to persist for vBucket:~p. Will retry.",
+                             [SeqNo, VBucket]),
             do_wait_seqno_persisted(Bucket, VBucket, SeqNo)
     end.
 
@@ -1070,14 +1149,17 @@ apply_new_vbucket_state(VBucket, NormalState, RebalanceState, State) ->
     #state{last_applied_vbucket_states = WantedVBuckets,
            rebalance_only_vbucket_states = RebalanceVBuckets} = State,
 
-    NewWantedVBuckets = misc:nthreplace(VBucket + 1, NormalState, WantedVBuckets),
-    NewRebalanceVBuckets = misc:nthreplace(VBucket + 1, RebalanceState, RebalanceVBuckets),
+    NewWantedVBuckets =
+        misc:nthreplace(VBucket + 1, NormalState, WantedVBuckets),
+    NewRebalanceVBuckets =
+        misc:nthreplace(VBucket + 1, RebalanceState, RebalanceVBuckets),
     State#state{last_applied_vbucket_states = NewWantedVBuckets,
                 rebalance_only_vbucket_states = NewRebalanceVBuckets}.
 
-delegate_apply_vbucket_state(Call, From,
-                             #state{apply_vbucket_states_queue = Q,
-                                    apply_vbucket_states_worker = Pid} = State) ->
+delegate_apply_vbucket_state(
+  Call, From,
+  #state{apply_vbucket_states_queue = Q,
+         apply_vbucket_states_worker = Pid} = State) ->
     Pid ! {self(), Call, State},
     NewState = State#state{apply_vbucket_states_queue = queue:in(From, Q)},
     {noreply, NewState}.
@@ -1086,7 +1168,8 @@ apply_vbucket_states_worker_loop() ->
     receive
         {Parent, Call, State} ->
             Reply = handle_apply_vbucket_state(Call, State),
-            gen_server:cast(Parent, {apply_vbucket_state_reply, self(), Call, Reply}),
+            gen_server:cast(Parent, {apply_vbucket_state_reply, self(), Call,
+                                     Reply}),
             apply_vbucket_states_worker_loop()
     end.
 
