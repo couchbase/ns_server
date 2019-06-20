@@ -729,18 +729,18 @@ config_to_map_options(Config) ->
     [{max_slaves, proplists:get_value(max_slaves, Config, 10)},
      {replication_topology, proplists:get_value(replication_topology, Config, star)}].
 
+get_vbmap_history_size() ->
+    %% Not set in config through any means, but gives us a tunable parameter.
+    ns_config:read_key_fast(vbmap_history_size, ?VBMAP_HISTORY_SIZE).
+
 update_vbucket_map_history(Map, SanifiedOptions) ->
     History = past_vbucket_maps(),
     NewEntry = {Map, SanifiedOptions},
-    History2 = case lists:member(NewEntry, History) of
-                   true ->
-                       History;
-                   false ->
-                       History1 = [NewEntry | History],
-                       case length(History1) > ?VBMAP_HISTORY_SIZE of
-                           true -> lists:sublist(History1, ?VBMAP_HISTORY_SIZE);
-                           false -> History1
-                       end
+    HistorySize = get_vbmap_history_size(),
+    History1 = [NewEntry | lists:delete(NewEntry, History)],
+    History2 = case length(History1) > HistorySize of
+                   true -> lists:sublist(History1, HistorySize);
+                   false -> History1
                end,
     ns_config:set(vbucket_map_history, History2).
 

@@ -51,8 +51,8 @@
 
 -define(MIB, 1048576).
 
--define(VBMAP_HISTORY_SIZE, 10).
 -define(MAX_BUCKETS_SUPPORTED, 30).
+-define(VBMAP_HISTORY_SIZE, ?MAX_BUCKETS_SUPPORTED).
 
 -define(DEFAULT_LOG_FILENAME, "info.log").
 -define(ERRORS_LOG_FILENAME, "error.log").
