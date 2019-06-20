@@ -794,7 +794,11 @@ do_build_rebalance_task(Timeout) ->
         case (catch ns_orchestrator:rebalance_progress_full(Timeout)) of
             {running, PerNode} ->
                 DetailedProgress = get_detailed_progress(),
-                RebalanceInfo = ns_rebalance_observer:get_rebalance_info(),
+                RebalanceInfo =
+                    case ns_rebalance_observer:get_rebalance_info() of
+                        not_running -> [];
+                        RV -> RV
+                    end,
 
                 Subtype = case ns_config:search(rebalancer_pid) =:= ns_config:search(graceful_failover_pid) of
                               true ->
