@@ -1075,9 +1075,15 @@ do_connect(Options) ->
                                   {recbuf, ?RECBUF},
                                   {sndbuf, ?SNDBUF}]),
     try
-        ok = mc_client_binary:auth(Sock, {<<"PLAIN">>,
+        case mc_client_binary:auth(Sock, {<<"PLAIN">>,
                                           {list_to_binary(User),
-                                           list_to_binary(Pass)}}),
+                                           list_to_binary(Pass)}}) of
+            ok -> ok;
+            Err ->
+                ?log_debug("MB-34675: Login failed for <ud>~s</ud> with "
+                           "provided password <ud>~s</ud>", [User, Pass]),
+                error({auth_failure, Err})
+        end,
         Features = mc_client_binary:hello_features(Options),
         {ok, Negotiated} = mc_client_binary:hello(Sock, "regular", Features),
         Failed = Features -- Negotiated,
