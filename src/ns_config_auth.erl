@@ -123,7 +123,9 @@ authenticate_non_special(User, Password) ->
             true;
         {User, Auth} ->
             {Salt, Mac} = get_salt_and_mac(Auth),
-            misc:compare_secure(hash_password(Salt, Password), Mac)
+            misc:compare_secure(hash_password(Salt, Password), Mac);
+        {_, _} ->
+            false
     end.
 
 hash_password(Password) ->
