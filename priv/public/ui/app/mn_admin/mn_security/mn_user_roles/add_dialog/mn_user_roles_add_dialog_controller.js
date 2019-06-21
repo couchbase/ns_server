@@ -13,8 +13,7 @@
     vm.isEditingMode = !!user;
     vm.isLdapEnabled = isLdapEnabled;
     vm.selectedRoles = {};
-    vm.selectedGroupsRoles = {}
-    vm.disabledGroupsRoles = {};
+    vm.selectedGroupsRoles = {};
     vm.selectedGroups = {};
 
     vm.focusError = false;
@@ -28,8 +27,6 @@
       return function (role) {
         var id = mnUserRolesService.getRoleUIID(role);
         vm.selectedGroupsRoles[id] = flag;
-        vm.disabledGroupsRoles[id] = flag;
-        vm.selectedRoles[id] = flag;
       }
     }
 
@@ -47,7 +44,18 @@
       }).join(',');
     }
 
+    function getUserRoles(user) {
+      return user.roles.filter(function (role) {
+        return role.origins.find(function (origin) {
+          return origin.type == "user";
+        });
+      });
+    }
+
     function activate() {
+      if (vm.user.roles) {
+        vm.rolesToEnable = getUserRoles(vm.user);
+      }
       $q.all([
         mnUserRolesService.getRolesByRole(),
         mnUserRolesService.getRolesGroups()
@@ -76,21 +84,13 @@
 
       //example of the inсoming role
       //All Buckets (*)|Query and Index Services|query_insert[*]
-      var rolesSelectedByUser = {};
-      _.forEach(vm.selectedRoles, function (value, key) {
-        if (value && !vm.selectedGroupsRoles[key]) {
-          rolesSelectedByUser[key] = true;
-        }
-      });
       var roles = [];
-      _.forEach(rolesSelectedByUser, function (value, key) {
+      _.forEach(vm.selectedRoles, function (value, key) {
         if (value) {
           var path = key.split("|");
           roles.push(path[path.length - 1]);
         }
       });
-
-
 
       mnPromiseHelper(vm, mnUserRolesService.addUser(
         vm.user, roles, mnHelper.checkboxesToList(vm.selectedGroups), vm.isEditingMode,

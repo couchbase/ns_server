@@ -15,7 +15,6 @@
       scope: {
         rolesToEnable: "=?",
         selectedRoles: "=",
-        disabledGroupsRoles: "=?",
         selectedGroupsRoles: "=?"
       },
       templateUrl: 'app/components/directives/mn_user_roles_list.html',
@@ -76,7 +75,7 @@
              });
            }
          }
-         Object.assign(vm.selectedRoles, vm.selectedGroupsRoles);
+
          reviewSelectedWrappers();
        }
 
@@ -104,8 +103,7 @@
        function isRoleDisabled(role) {
          return (role.role !== 'admin' && vm.selectedRoles[vm.getUIID({role: 'admin'})]) ||
            (role.bucket_name !== '*' &&
-            vm.selectedRoles[vm.getUIID({role: role.role, bucket_name: '*'})]) ||
-           (vm.disabledGroupsRoles && vm.disabledGroupsRoles[vm.getUIID(role)]);
+            vm.selectedRoles[vm.getUIID({role: role.role, bucket_name: '*'})]);
        }
 
        function toggleWrappers(id, value) {
