@@ -405,7 +405,8 @@ get_samples_from_one_of_kind([], _, _, _, _) ->
     %% Samples may not be available at higher zoom level e.g. week, year etc.
     %% We do not know which Kind the stat belongs to and the
     %% nodes relevant for that Kind i.e. its section_nodes().
-    #gathered_stats{samples = [[]], nodes = [node()]};
+    #gathered_stats{samples = [[]], nodes = [node()],
+                    extractor = fun functools:id/1};
 get_samples_from_one_of_kind([Kind | RestKinds], StatName,
                              ClientTStamp, Window, Nodes) ->
     case nodes_to_try(Kind, Nodes) of
