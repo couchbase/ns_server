@@ -121,10 +121,12 @@ cleanup_with_membase_bucket_vbucket_map(Bucket, Options, BucketConfig) ->
             {error, wait_for_memcached_failed, Zombies}
     end.
 
-cleanup_with_states(Bucket, Options, BucketConfig, Servers, States) ->
+cleanup_with_states(Bucket, Options, BucketConfig0, Servers, States) ->
+    BucketConfig = maybe_pull_config(Bucket, BucketConfig0, States, Options),
     {NewBucketConfig, IgnoredVBuckets} = maybe_fixup_vbucket_map(Bucket,
                                                                  BucketConfig,
                                                                  States),
+    maybe_push_config(Bucket, NewBucketConfig, States, Options),
 
     %% Find all the unsafe nodes (nodes on which memcached restarted within
     %% the auto-failover timeout) using the vbucket states. If atleast one
@@ -179,6 +181,54 @@ cleanup_apply_config(Bucket,
           [quiet]),
 
     Result.
+
+config_sync_nodes(Options) ->
+    case proplists:get_value(sync_nodes, Options) of
+        undefined ->
+            ns_cluster_membership:get_nodes_with_status(_ =/= inactiveFailed);
+        Nodes when is_list(Nodes) ->
+            Nodes
+    end.
+
+maybe_config_sync(Type, Bucket, BucketConfig, States, Options) ->
+    Flag = config_sync_type_to_flag(Type),
+    case proplists:get_value(Flag, Options, true)
+        andalso cluster_compat_mode:preserve_durable_mutations() of
+        true ->
+            {_, Map} = lists:keyfind(map, 1, BucketConfig),
+            case map_matches_states_exactly(Map, States) of
+                true ->
+                    ok;
+                {false, Mismatch} ->
+                    Nodes = config_sync_nodes(Options),
+                    Timeout = ?get_timeout({config_sync, Type}, 10000),
+
+                    ?log_debug("Going to ~s config to/from nodes ~p "
+                               "due to states mismatch in bucket ~p:~n~p",
+                               [Type, Nodes, Bucket, Mismatch]),
+                    config_sync(Type, Nodes, Timeout)
+            end;
+        false ->
+            ok
+    end.
+
+config_sync_type_to_flag(pull) ->
+    pull_config;
+config_sync_type_to_flag(push) ->
+    push_config.
+
+config_sync(pull, Nodes, Timeout) ->
+    ok = ns_config_rep:pull_remotes(Nodes, Timeout);
+config_sync(push, Nodes, Timeout) ->
+    ok = ns_config_rep:ensure_config_seen_by_nodes(Nodes, Timeout).
+
+maybe_pull_config(Bucket, BucketConfig, States, Options) ->
+    maybe_config_sync(pull, Bucket, BucketConfig, States, Options),
+    {ok, NewBucketConfig} = ns_bucket:get_bucket(Bucket),
+    NewBucketConfig.
+
+maybe_push_config(Bucket, BucketConfig, States, Options) ->
+    maybe_config_sync(push, Bucket, BucketConfig, States, Options).
 
 cleanup_apply_config_body(Bucket, Servers,
                           BucketConfig, IgnoredVBuckets, Options) ->
@@ -474,6 +524,53 @@ sanify_chain_one_active(Bucket, VBucket, ActiveNode, _States,
     %% But we can adjust it later.
     derive_chain(Bucket, VBucket, ActiveNode, CurrentChain).
 
+map_matches_states_exactly(Map, States) ->
+    Mismatch =
+        lists:filtermap(
+          fun ({VBucket, Chain}) ->
+                  NodeStates =
+                      janitor_agent:fetch_vbucket_states(VBucket, States),
+
+                  case chain_matches_states_exactly(Chain, NodeStates) of
+                      true ->
+                          false;
+                      false ->
+                          {true, {VBucket, Chain, NodeStates}}
+                  end
+          end, misc:enumerate(Map, 0)),
+
+    case Mismatch of
+        [] ->
+            true;
+        _ ->
+            {false, Mismatch}
+    end.
+
+chain_matches_states_exactly(Chain0, NodeStates) ->
+    Chain = [N || N <- Chain0, N =/= undefined],
+
+    case length(Chain) =:= length(NodeStates) of
+        true ->
+            lists:all(
+              fun ({Pos, Node}) ->
+                      ExpectedState =
+                          case Pos of
+                              1 ->
+                                  active;
+                              _ ->
+                                  replica
+                          end,
+
+                      ActualState =
+                          janitor_agent:find_vbucket_state(Node, NodeStates),
+
+                      ActualState =:= ExpectedState
+              end, misc:enumerate(Chain));
+        false ->
+            %% Some extra nodes have the vbucket.
+            false
+    end.
+
 -ifdef(TEST).
 sanify_chain_t(States, CurrentChain, FutureChain) ->
     sanify_chain("B",
@@ -548,4 +645,60 @@ sanify_addition_of_replicas_test() ->
     [c, d, a] = sanify_chain_t([{a, replica}, {b, replica}, {c, active},
                                 {d, replica}], [a, b], [c, d, a]).
 
+chain_matches_states_exactly_test() ->
+    ?assert(chain_matches_states_exactly([a, b],
+                                         [{a, active, []},
+                                          {b, replica, []}])),
+
+    ?assertNot(chain_matches_states_exactly([a, b],
+                                            [{a, active, []},
+                                             {b, pending, []}])),
+
+    ?assertNot(chain_matches_states_exactly([a, undefined],
+                                            [{a, active, []},
+                                             {b, replica, []}])),
+
+    ?assertNot(chain_matches_states_exactly([b, a],
+                                            [{a, active, []},
+                                             {b, replica, []}])),
+
+    ?assertNot(chain_matches_states_exactly([undefined, undefined],
+                                            [{a, active, []},
+                                             {b, replica, []}])),
+
+    ?assert(chain_matches_states_exactly([undefined, undefined], [])).
+
+map_matches_states_exactly_test() ->
+    Map = [[a, b],
+           [a, b],
+           [c, undefined],
+           [undefined, undefined]],
+    GoodStates = dict:from_list(
+                   [{0, [{a, active, []}, {b, replica, []}]},
+                    {1, [{a, active, []}, {b, replica, []}]},
+                    {2, [{c, active, []}]},
+                    {3, []}]),
+
+    ?assert(map_matches_states_exactly(Map, GoodStates)),
+
+    BadStates1 = dict:from_list(
+                   [{0, [{a, active, []}, {b, replica, []}]},
+                    {1, [{a, replica, []}, {b, replica, []}]},
+                    {2, [{c, active, []}]},
+                    {3, []}]),
+    BadStates2 = dict:from_list(
+                   [{0, [{a, active, []}, {b, replica, []}, {c, active, []}]},
+                    {1, [{a, active, []}, {b, replica, []}]},
+                    {2, [{c, active, []}]},
+                    {3, []}]),
+    BadStates3 = dict:from_list(
+                   [{0, [{a, active, []}, {b, replica, []}]},
+                    {1, [{a, active, []}, {b, replica, []}]},
+                    {2, [{c, active, []}]},
+                    {3, [{c, replica}]}]),
+
+    lists:foreach(
+      fun (States) ->
+              ?assertMatch({false, _}, map_matches_states_exactly(Map, States))
+      end, [BadStates1, BadStates2, BadStates3]).
 -endif.

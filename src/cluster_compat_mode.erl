@@ -48,7 +48,8 @@
          is_developer_preview/0,
          is_developer_preview/1,
          get_cluster_capabilities/1,
-         tls_supported/0]).
+         tls_supported/0,
+         preserve_durable_mutations/0]).
 
 %% NOTE: this is rpc:call-ed by mb_master
 -export([mb_master_advertised_version/0]).
@@ -323,3 +324,7 @@ tls_supported() ->
 mb_master_advertised_version_test() ->
     true = mb_master_advertised_version() >= ?LATEST_VERSION_NUM ++ [0].
 -endif.
+
+preserve_durable_mutations() ->
+    cluster_compat_mode:is_cluster_madhatter() andalso
+        ns_config:read_key_fast({failover, preserve_durable_mutations}, true).

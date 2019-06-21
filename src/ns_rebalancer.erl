@@ -368,7 +368,9 @@ failover_membase_bucket_with_map(Nodes, Bucket, BucketConfig, Map, Options) ->
     ns_bucket:set_fast_forward_map(Bucket, undefined),
     ns_bucket:set_map(Bucket, NewMap),
     remove_nodes_from_server_list(Nodes, Bucket, BucketConfig),
-    try ns_janitor:cleanup(Bucket, []) of
+
+    CleanupOptions = failover_janitor_cleanup_options(Nodes, Options),
+    try ns_janitor:cleanup(Bucket, CleanupOptions) of
         ok ->
             ok;
         {error, _, BadNodes} ->
@@ -384,10 +386,14 @@ failover_membase_bucket_with_map(Nodes, Bucket, BucketConfig, Map, Options) ->
             janitor_failed
     end.
 
+failover_janitor_cleanup_options(FailedNodes, FailoverOptions) ->
+    [{sync_nodes, failover_config_sync_nodes(FailedNodes)},
+     {pull_config, false},
+     {push_config, durability_aware(FailoverOptions)}].
+
 durability_aware(Options) ->
-    cluster_compat_mode:is_cluster_madhatter() andalso
-        proplists:get_bool(durability_aware, Options) andalso
-        ns_config:read_key_fast({failover, preserve_durable_mutations}, true).
+    cluster_compat_mode:preserve_durable_mutations() andalso
+        proplists:get_bool(durability_aware, Options).
 
 fix_vbucket_map(FailoverNodes, Bucket, Map, Options) ->
     case durability_aware(Options) of
