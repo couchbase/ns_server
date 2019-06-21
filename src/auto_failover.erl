@@ -561,7 +561,11 @@ process_failover_error(in_recovery, Nodes, S) ->
 process_failover_error(orchestration_unsafe, Nodes, S) ->
     report_failover_error(orchestration_unsafe,
                           "Could not contact majority of servers. "
-                          "Orchestration may be compromised.", Nodes, S).
+                          "Orchestration may be compromised.", Nodes, S);
+process_failover_error(config_sync_failed, Nodes, S) ->
+    report_failover_error(config_sync_failed,
+                          "Could not synchronize metadata with some nodes.",
+                          Nodes, S).
 
 report_failover_error(Flag, ErrMsg, Nodes, State) ->
     case should_report(Flag, State) of

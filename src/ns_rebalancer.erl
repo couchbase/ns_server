@@ -82,6 +82,14 @@ run_failover(Nodes, AllowUnsafe) ->
     end.
 
 orchestrate_failover(Nodes, Options) ->
+    case pre_failover_config_sync(Nodes, Options) of
+        ok ->
+            do_orchestrate_failover(Nodes, Options);
+        Error ->
+            Error
+    end.
+
+do_orchestrate_failover(Nodes, Options) ->
     ale:info(?USER_LOGGER, "Starting failing over ~p", [Nodes]),
     master_activity_events:note_failover(Nodes),
 
@@ -104,6 +112,31 @@ orchestrate_failover(Nodes, Options) ->
     deactivate_nodes(Nodes),
 
     ok.
+
+pre_failover_config_sync(FailedNodes, Options) ->
+    case durability_aware(Options) of
+        true ->
+            Timeout = ?get_timeout(failover_config_pull, 10000),
+            SyncNodes = failover_config_sync_nodes(FailedNodes),
+
+            ?log_info("Going to pull config "
+                      "from ~p before failover", [SyncNodes]),
+
+            case ns_config_rep:pull_remotes(SyncNodes, Timeout) of
+                ok ->
+                    ok;
+                Error ->
+                    ?log_error("Config pull from ~p failed: ~p",
+                               [SyncNodes, Error]),
+                    config_sync_failed
+            end;
+        false ->
+            ok
+    end.
+
+failover_config_sync_nodes(FailedNodes) ->
+    Nodes = ns_cluster_membership:get_nodes_with_status(_ =/= inactiveFailed),
+    Nodes -- FailedNodes.
 
 deactivate_nodes([]) ->
     ok;
@@ -1555,7 +1588,7 @@ run_graceful_failover(Nodes) ->
                                                             NumBuckets),
                              I+1
                      end, 0, InterestingBuckets),
-                   orchestrate_failover(Nodes, []),
+                   ok = orchestrate_failover(Nodes, []),
 
                    ok
            end).

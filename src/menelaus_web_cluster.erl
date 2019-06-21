@@ -719,6 +719,11 @@ handle_failover(Req) ->
                                %% need to convey the information to the client
                                %% somehow.
                                504);
+                config_sync_failed ->
+                    reply_text(Req,
+                               "Could not synchronize "
+                               "metadata with some nodes.",
+                               500);
                 last_node ->
                     reply_text(Req, "Last active node cannot be failed over.", 400);
                 unknown_node ->

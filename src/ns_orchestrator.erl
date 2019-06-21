@@ -161,6 +161,7 @@ flush_bucket(BucketName) ->
                       last_node |
                       unknown_node |
                       orchestration_unsafe |
+                      config_sync_failed |
                       %% the following is needed just to trick the dialyzer;
                       %% otherwise it wouldn't let the callers cover what it
                       %% believes to be an impossible return value if all
@@ -175,6 +176,7 @@ failover(Nodes, AllowUnsafe) ->
                                   retry_aborting_rebalance |
                                   in_recovery |
                                   orchestration_unsafe |
+                                  config_sync_failed |
                                   {autofailover_unsafe, [bucket_name()]}.
 try_autofailover(Nodes) ->
     wait_for_orchestrator(),
