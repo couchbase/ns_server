@@ -17,7 +17,8 @@
     vm.filterTasks = filterTasks;
     vm.showResetPasswordDialog = showResetPasswordDialog;
     vm.postCancelRebalanceRetry = postCancelRebalanceRetry;
-    vm.showClusterInfoDialog = mnLogsService.showClusterInfoDialog
+    vm.showClusterInfoDialog = mnLogsService.showClusterInfoDialog;
+    vm.isDeveloperPreview = pools.isDeveloperPreview;
 
     vm.user = whoami;
 

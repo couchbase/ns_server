@@ -21,7 +21,6 @@
 
     vm.getEndings = mnHelper.getEndings;
     vm.isIPv6 = pools.isIPv6;
-    vm.isDeveloperPreview = pools.isDeveloperPreview;
     vm.nodeEncryption = mnPoolDefault.export.thisNode.nodeEncryption;
 
     activate();
