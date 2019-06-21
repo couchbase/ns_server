@@ -136,6 +136,7 @@ ldap_settings_validators() ->
         validator:integer(request_timeout, 0, infinity, _),
         validator:boolean(nested_groups_enabled, _),
         validator:integer(nested_groups_max_depth, 1, 100, _),
+        validator:boolean(fail_on_max_depth, _),
         validator:boolean(server_cert_validation, _),
         validate_cert(cacert, _),
         validator:unsupported(_)

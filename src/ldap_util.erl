@@ -140,6 +140,7 @@ default_settings() ->
      {request_timeout, 5000},
      {nested_groups_enabled, false},
      {nested_groups_max_depth, 10},
+     {fail_on_max_depth, false},
      {cache_value_lifetime,
       round(0.5*menelaus_roles:external_auth_polling_interval())},
      {cacert, undefined},

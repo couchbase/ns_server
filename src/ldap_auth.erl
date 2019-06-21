@@ -149,27 +149,29 @@ get_groups(Handle, Username, Settings, QueryStr) ->
         end,
     EscapedUser = ldap_util:escape(Username),
     MaxDepth = proplists:get_value(nested_groups_max_depth, Settings),
+    FailOnMaxDepth = proplists:get_value(fail_on_max_depth, Settings),
     NestedEnabled = proplists:get_bool(nested_groups_enabled, Settings),
     try
         UserGroups = run_query(Handle, QueryStr, [{"%u", EscapedUser},
                                                   {"%D", GetDN}], Timeout),
         case NestedEnabled of
-            true -> {ok, get_nested_groups(QueryFun, UserGroups,
-                                           UserGroups, MaxDepth)};
+            true -> {ok, get_nested_groups(QueryFun, UserGroups, UserGroups,
+                                           FailOnMaxDepth, MaxDepth)};
             false -> {ok, UserGroups}
         end
     catch
         throw:{error, _} = Error -> Error
     end.
 
-get_nested_groups(_QueryFun, [], Discovered, _MaxDepth) -> Discovered;
-get_nested_groups(_QueryFun, _, _, 0) -> throw({error, max_depth});
-get_nested_groups(QueryFun, Groups, Discovered, MaxDepth) ->
+get_nested_groups(_QueryFun, [], Discovered, _, _MaxDepth) -> Discovered;
+get_nested_groups(_QueryFun, _, _, true, 0) -> throw({error, max_depth});
+get_nested_groups(_QueryFun, _, Discovered, false, 0) -> Discovered;
+get_nested_groups(QueryFun, Groups, Discovered, FailOnMaxDepth, MaxDepth) ->
     NewGroups = lists:flatmap(QueryFun, Groups),
     NewUniqueGroups = lists:usort(NewGroups) -- Discovered,
     ?log_debug("Discovered new groups: ~p (~p)", [NewUniqueGroups, Discovered]),
-    get_nested_groups(QueryFun, NewUniqueGroups,
-                      NewUniqueGroups ++ Discovered, MaxDepth - 1).
+    get_nested_groups(QueryFun, NewUniqueGroups, NewUniqueGroups ++ Discovered,
+                      FailOnMaxDepth, MaxDepth - 1).
 
 run_query(_Handle, undefined, _ReplacePairs, _Timeout) -> [];
 run_query(Handle, Query, ReplacePairs, Timeout) ->
