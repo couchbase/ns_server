@@ -21,7 +21,8 @@
 
 -export([maybe_build_cluster_logs_task/0]).
 
--export([preflight_base_url/1]).
+-export([preflight_base_url/2,
+         preflight_proxy_url/1]).
 
 %% called remotely
 -export([start_collection_per_node/3,
@@ -351,23 +352,35 @@ start_upload_per_node(Path, BaseURL, Parent, Options) ->
             Parent ! {self(), {error, URL, Status, Output}}
     end.
 
-preflight_base_url(false) ->
-    ok;
-preflight_base_url(BaseURL) ->
-    ?log_debug("Doing preflight_base_url(~s)", [BaseURL]),
-    case lhttpc:request(BaseURL, head, [], 20000) of
+preflight_lhttpc_request(Type, URL, Options) ->
+    case lhttpc:request(URL, head, [], [], 20000, Options) of
         {ok, Result} ->
-            ?log_debug("Got some result: ~p", [Result]),
+            ?log_debug("~p url check received '~p' from '~s'",
+                       [Type, Result, URL]),
             ok;
         {error, {Reason, Stack}} ->
-            ?log_debug("Unable to access '~s' (~p): ~p",
-                       [BaseURL, Reason, Stack]),
+            ?log_debug("~p url check unable to access '~s' (~p): ~p",
+                       [Type, URL, Reason, Stack]),
             Msg = io_lib:format("Unable to access '~s' : ~p",
-                                [BaseURL, {error, Reason}]),
+                                [URL, {error, Reason}]),
             {error, iolist_to_binary(Msg)};
         {error, Reason} ->
-            Msg = io_lib:format("Unable to access '~s' : ~p",
-                                [BaseURL, Reason]),
+            Msg = io_lib:format("Unable to access '~s' : ~p", [URL, Reason]),
             ?log_debug(Msg),
             {error, iolist_to_binary(Msg)}
     end.
+
+preflight_base_url(false, false) ->
+    ok;
+preflight_base_url(BaseURL, {upload_proxy, URL}) ->
+    preflight_lhttpc_request("Base", BaseURL, [{proxy, URL}]);
+preflight_base_url(BaseURL, false) ->
+    preflight_lhttpc_request("Base", BaseURL, []).
+
+preflight_proxy_url(false) ->
+    ok;
+preflight_proxy_url({upload_proxy, URL}) ->
+    preflight_lhttpc_request("Proxy", URL, []);
+preflight_proxy_url(ProxyInfo) ->
+    Msg = io_lib:format("Invalid proxy '~s'", [ProxyInfo]),
+    {error, iolist_to_binary(Msg)}.

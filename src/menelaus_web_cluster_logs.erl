@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2014-2018 Couchbase, Inc.
+%% @copyright 2014-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -66,24 +66,35 @@ handle_start_collect_logs(Req) ->
 
     case parse_validate_collect_params(Params, ns_config:get()) of
         {ok, Nodes, BaseURL, Options} ->
-            case cluster_logs_collection_task:preflight_base_url(BaseURL) of
-                ok ->
-                    case cluster_logs_sup:start_collect_logs(Nodes, BaseURL,
-                                                             Options) of
-                        ok ->
-                            ns_audit:start_log_collection(
-                              Req, Nodes, BaseURL,
-                              lists:keydelete(redact_salt_fun, 1, Options)),
-                            menelaus_util:reply_json(Req, [], 200);
-                        already_started ->
-                            menelaus_util:reply_json(
-                              Req, {struct,
-                                    [{'_', <<"Logs collection task is already "
-                                             "started">>}]}, 400)
-                    end;
+            ProxyInfo = lists:keyfind(upload_proxy, 1, Options),
+            case cluster_logs_collection_task:preflight_proxy_url(ProxyInfo) of
                 {error, Message} ->
-                    menelaus_util:reply_json(Req, {struct, [{'_', Message}]},
-                                             400)
+                    menelaus_util:reply_json(Req,
+                                             {struct, [{'_', Message}]},
+                                             400);
+                ok ->
+                    case cluster_logs_collection_task:preflight_base_url(
+                           BaseURL, ProxyInfo) of
+                        ok ->
+                            case cluster_logs_sup:start_collect_logs(
+                                   Nodes, BaseURL, Options) of
+                                ok ->
+                                    ns_audit:start_log_collection(
+                                      Req, Nodes, BaseURL,
+                                      lists:keydelete(redact_salt_fun, 1,
+                                                      Options)),
+                                    menelaus_util:reply_json(Req, [], 200);
+                                already_started ->
+                                    menelaus_util:reply_json(
+                                      Req,
+                                      {struct,
+                                       [{'_', <<"Logs collection task is "
+                                                "already started">>}]}, 400)
+                            end;
+                        {error, Message} ->
+                            menelaus_util:reply_json(
+                              Req, {struct, [{'_', Message}]}, 400)
+                    end
             end;
         {errors, RawErrors} ->
             Errors = [begin
@@ -150,6 +161,29 @@ is_field_valid(customer, Customer) ->
 is_field_valid(ticket, Ticket) ->
     re:run(Ticket, <<"^[0-9]*$">>) =/= nomatch andalso length(Ticket) =< 7.
 
+parse_url_prefix_suffix(Url, SecurePrefix) ->
+    Prefix = case Url of
+                 "http://" ++ _ ->
+                     "";
+                 "https://" ++ _ ->
+                     "";
+                 _ ->
+                     case SecurePrefix of
+                         true ->
+                             "https://";
+                         false ->
+                             "http://"
+                     end
+             end,
+    Suffix = case lists:reverse(Url) of
+                 "/" ++ _ ->
+                     "";
+                 _ ->
+                     "/"
+             end,
+    {Prefix, Suffix}.
+
+
 parse_validate_upload_url(UploadHost0, Customer0, Ticket0) ->
     UploadHost = string:trim(UploadHost0),
     Customer = string:trim(Customer0),
@@ -165,17 +199,7 @@ parse_validate_upload_url(UploadHost0, Customer0, Ticket0) ->
         true ->
             BasicErrors;
         _ ->
-            Prefix = case UploadHost of
-                         "http://" ++ _ -> "";
-                         "https://" ++ _ -> "";
-                         _ -> "https://"
-                     end,
-            Suffix = case lists:reverse(UploadHost) of
-                         "/" ++ _ ->
-                             "";
-                         _ ->
-                             "/"
-                     end,
+            {Prefix, Suffix} = parse_url_prefix_suffix(UploadHost, true),
             URLNoTicket = Prefix ++ UploadHost ++ Suffix
                 ++ mochiweb_util:quote_plus(Customer) ++ "/",
             URL = case Ticket of
@@ -187,6 +211,19 @@ parse_validate_upload_url(UploadHost0, Customer0, Ticket0) ->
             [{ok, URL}]
     end.
 
+parse_validate_proxy_url(ProxyHost0) ->
+    ProxyHost = string:trim(ProxyHost0),
+    BasicError = [{error, {empty, K}} || {K, V} <- [{upload_proxy, ProxyHost}],
+                                         V =:= ""],
+    case BasicError =/= [] of
+        true ->
+            BasicError;
+        _ ->
+            {Prefix, Suffix} = parse_url_prefix_suffix(ProxyHost, false),
+            URL = Prefix ++ ProxyHost ++ Suffix,
+            [{ok, URL}]
+    end.
+
 parse_validate_collect_params(Params, Config) ->
     NodesRV = parse_nodes(proplists:get_value("nodes", Params), Config),
 
@@ -195,10 +232,11 @@ parse_validate_collect_params(Params, Config) ->
     %% we handle no ticket or empty ticket the same
     Ticket = proplists:get_value("ticket", Params, ""),
 
-    UploadProxy = case proplists:get_value("uploadProxy", Params) of
-                      undefined -> [];
-                      P -> [{upload_proxy, P}]
-                  end,
+    MaybeUploadProxy = case proplists:get_value("uploadProxy", Params) of
+                           undefined -> [];
+                           Proxy ->
+                               parse_validate_proxy_url(Proxy)
+                       end,
     LogDir = case proplists:get_value("logDir", Params) of
                  undefined -> [];
                  Val -> case misc:is_absolute_path(Val) of
@@ -274,12 +312,18 @@ parse_validate_collect_params(Params, Config) ->
                   end,
 
     BasicErrors = [E || {error, E} <- NodesRV ++ TmpDir ++ LogDir ++
-                                      UploadProxy ++ RedactLevel ++
+                                      MaybeUploadProxy ++ RedactLevel ++
                                       RedactSalt ++ MaybeUpload],
     case BasicErrors of
         [] ->
             [{ok, Nodes}] = NodesRV,
             [{ok, Upload}] = MaybeUpload,
+            UploadProxy = case MaybeUploadProxy of
+                              [{ok, UploadProxy0}] ->
+                                  [{upload_proxy, UploadProxy0}];
+                              [] ->
+                                  []
+                          end,
             Options = RedactLevel ++ RedactSalt ++ TmpDir ++
                       LogDir ++ UploadProxy,
             {ok, Nodes, Upload, Options};
