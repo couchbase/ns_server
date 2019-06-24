@@ -53,7 +53,8 @@ def main():
     try:
         opts, args = getopt.getopt(sys.argv[1:],
                                    "n:t:s:r:iS:T:I:p:",
-                                   ["dont-rebalance", "afamily="])
+                                   ["dont-rebalance", "afamily=",
+                                    "enable-encryption"])
     except getopt.GetoptError as err:
         print str(err)
         usage()
@@ -68,6 +69,7 @@ def main():
     deploy = ['kv']
     do_rebalance = True
     protocol = "ipv6" if (os.getenv("IPV6", "false") == "true") else "ipv4"
+    encryption = False
 
     for o, a in opts:
         if o == "-n":
@@ -96,6 +98,8 @@ def main():
             if a not in ("ipv4", "ipv6"):
                 assert False, "invalid address family"
             protocol = a
+        elif o == "--enable-encryption":
+            encryption = True
         elif o == "--dont-rebalance":
             do_rebalance = False
         else:
@@ -135,9 +139,12 @@ def main():
         addr, base_port)).read())
     community_edition = info['isEnterprise'] is not True
 
+    net_opts = "afamily={0}".format(protocol) + \
+               "&nodeEncryption={0}".format("on" if encryption else "off")
+    o.open("http://{0}:{1}/node/controller/enableExternalListener".format(
+           addr, base_port), net_opts)
     o.open("http://{0}:{1}/node/controller/setupNetConfig".format(
-           addr, base_port),
-           "afamily={0}".format(protocol))
+           addr, base_port), net_opts)
     o.open("http://{0}:{1}/node/controller/setupServices".format(
            addr, base_port),
            "services={0}".format(",".join(services))).read()
