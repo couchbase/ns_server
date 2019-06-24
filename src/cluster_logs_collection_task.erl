@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2014-2018 Couchbase, Inc.
+%% @copyright 2014-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -359,7 +359,15 @@ preflight_base_url(BaseURL) ->
         {ok, Result} ->
             ?log_debug("Got some result: ~p", [Result]),
             ok;
+        {error, {Reason, Stack}} ->
+            ?log_debug("Unable to access '~s' (~p): ~p",
+                       [BaseURL, Reason, Stack]),
+            Msg = io_lib:format("Unable to access '~s' : ~p",
+                                [BaseURL, {error, Reason}]),
+            {error, iolist_to_binary(Msg)};
         {error, Reason} ->
-            Msg = io_lib:format("Failed to check reachability of ~s: ~p", [BaseURL, Reason]),
+            Msg = io_lib:format("Unable to access '~s' : ~p",
+                                [BaseURL, Reason]),
+            ?log_debug(Msg),
             {error, iolist_to_binary(Msg)}
     end.
