@@ -111,8 +111,37 @@
              ng-class="{selected : (userRolesAddDialogCtl.selectedPanel == 'groups')}">
             Groups
           </a>
+          <a ng-if="userRolesAddDialogCtl.isEditingMode"
+             ng-click="userRolesAddDialogCtl.selectedPanel = 'external_groups'"
+             ng-class="{selected : (userRolesAddDialogCtl.selectedPanel == 'external_groups')}">
+            External Groups
+          </a>
         </span>
         <fieldset class="select-user-roles hide-track show-scrollbar">
+          <div
+             ng-if="userRolesAddDialogCtl.isEditingMode"
+             ng-show="userRolesAddDialogCtl.selectedPanel == 'external_groups'">
+            <label
+               class="disclosure"
+               ng-init="isGroupOpened = true;"
+               ng-click="isGroupOpened = !isGroupOpened;"
+               ng-class="{'disclosed': isGroupOpened}">
+              External Groups
+            </label>
+            <div class="indent-1" ng-show="isGroupOpened">
+              <div
+                 ng-repeat="(group, flag) in userRolesAddDialogCtl.externalGroups"
+                 ng-class="[{'has-selection': true}]">
+                <input
+                   type="checkbox"
+                   disabled="true"
+                   checked="true">
+                <label>
+                  {{::group}}
+                </label>
+              </div>
+            </div>
+          </div>
           <div ng-show="userRolesAddDialogCtl.selectedPanel == 'groups'">
             <label
                class="disclosure"

@@ -65,6 +65,13 @@
       });
     }
 
+    function groupsToObject(groups) {
+      return groups.reduce(function (acc, group) {
+        acc[group] = true;
+        return acc;
+      }, {});
+    }
+
     function activate() {
       if (vm.user.roles) {
         vm.rolesToEnable = getUserRoles(vm.user);
@@ -77,6 +84,7 @@
         vm.groups = groups[1].data;
 
         vm.selectedGroups = groupsToObject(vm.user.groups || []);
+        vm.externalGroups = groupsToObject(vm.user.external_groups || []);
 
         vm.user.roles.forEach(function (role) {
           var id = mnUserRolesService.getRoleUIID(role);
