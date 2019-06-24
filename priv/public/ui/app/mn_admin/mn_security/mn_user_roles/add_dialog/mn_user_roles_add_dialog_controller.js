@@ -23,19 +23,32 @@
 
     activate();
 
-    function selectRoles(flag) {
+    function selectRoles(group, flag) {
       return function (role) {
         var id = mnUserRolesService.getRoleUIID(role);
-        vm.selectedGroupsRoles[id] = flag;
+        vm.selectedGroupsRoles[id] = vm.selectedGroupsRoles[id] || {};
+        if (flag) {
+          vm.selectedGroupsRoles[id][group] = flag;
+        } else {
+          delete vm.selectedGroupsRoles[id][group];
+        }
+        reviewSelectedWrappers();
       }
+    }
+
+    function reviewSelectedWrappers() {
+      vm.selectedWrappers =
+        mnUserRolesService.reviewSelectedWrappers(vm.selectedRoles, vm.selectedGroupsRoles);
     }
 
     function onGroupChanged(group) {
       if (vm.selectedGroups[group.id]) {
-        group.roles.forEach(selectRoles(true));
+        group.roles.forEach(selectRoles(group.id, true));
       } else {
-        group.roles.forEach(selectRoles(false));
+        group.roles.forEach(selectRoles(group.id, false));
       }
+
+      reviewSelectedWrappers();
     }
 
     function getGroupTitle(roles) {
@@ -62,17 +75,20 @@
       ]).then(function (groups) {
         vm.byRole = groups[0];
         vm.groups = groups[1].data;
-        if (vm.user.groups) {
-          vm.selectedGroups = vm.user.groups.reduce(function (acc, group) {
-            acc[group] = true;
-            return acc;
-          }, {});
-          vm.user.groups.forEach(function (groupId) {
-            onGroupChanged(vm.groups.find(function (group) {
-              return group.id == groupId;
-            }));
+
+        vm.selectedGroups = groupsToObject(vm.user.groups || []);
+
+        vm.user.roles.forEach(function (role) {
+          var id = mnUserRolesService.getRoleUIID(role);
+          vm.selectedGroupsRoles[id] = vm.selectedGroupsRoles[id] || {};
+          role.origins.forEach(function (group) {
+            if (group.type == "group") {
+              vm.selectedGroupsRoles[id][group.name] = true;
+            }
           });
-        }
+        });
+
+        reviewSelectedWrappers();
       });
     }
 

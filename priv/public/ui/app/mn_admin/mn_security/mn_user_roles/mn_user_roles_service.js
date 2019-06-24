@@ -32,7 +32,9 @@
       clearLdapCache: clearLdapCache,
 
       getUserProfile: getUserProfile,
-      putUserProfile: putUserProfile
+      putUserProfile: putUserProfile,
+
+      reviewSelectedWrappers: reviewSelectedWrappers
     };
 
     var queryDnError = "LDAP DN should be supplied";
@@ -45,6 +47,29 @@
         method: "POST",
         url: "/settings/invalidateLDAPCache"
       });
+    }
+
+    function reviewSelectedWrappers(selectedRoles, selectedGroupsRoles) {
+      var rv = {};
+      angular.forEach(
+        Object.assign({}, selectedRoles, selectedGroupsRoles),
+        function (value, key) {
+          if ((typeof value == "object") ? Object.keys(value).length : value) {
+            selectWrappers(key, true, rv);
+          }
+        });
+      return rv;
+    }
+
+    function selectWrappers(id, value, applyTo) {
+      var wrappers = id.split("|");
+      var flag = wrappers.pop();
+      var id;
+      while (wrappers.length) {
+        id = wrappers.join("|");
+        applyTo[id] = value;
+        wrappers.pop();
+      }
     }
 
     function getLdapSettings() {

@@ -15,6 +15,7 @@
       scope: {
         rolesToEnable: "=?",
         selectedRoles: "=",
+        selectedWrappers: "=?",
         selectedGroupsRoles: "=?"
       },
       templateUrl: 'app/components/directives/mn_user_roles_list.html',
@@ -29,15 +30,28 @@
        var vm = this;
 
        vm.openedWrappers = {};
-       vm.containsSelected = {};
 
        vm.getUIID = mnUserRolesService.getRoleUIID;
 
        vm.toggleWrappers = toggleWrappers;
        vm.isRoleDisabled = isRoleDisabled;
        vm.onCheckChange = onCheckChange;
+       vm.getGroupsList = getGroupsList;
+       vm.hasGroups = hasGroups;
 
        activate();
+
+       function hasGroups(id) {
+         if (vm.selectedGroupsRoles && vm.selectedGroupsRoles[id]) {
+           return !!Object.keys(vm.selectedGroupsRoles[id]).length;
+         } else {
+           return false;
+         }
+       }
+
+       function getGroupsList(id) {
+         return Object.keys(vm.selectedGroupsRoles[id]).join(", ");
+       }
 
        function activate() {
          vm.openedWrappers[vm.getUIID({role: "admin"}, true)] = true;
@@ -79,25 +93,9 @@
          reviewSelectedWrappers();
        }
 
-       function selectWrappers(id, value, applyTo) {
-         var wrappers = id.split("|");
-         var flag = wrappers.pop();
-         var id;
-         while (wrappers.length) {
-           id = wrappers.join("|");
-           applyTo[id] = value;
-           wrappers.pop();
-         }
-       }
-
        function reviewSelectedWrappers() {
-         var containsSelected = {};
-         _.forEach(vm.selectedRoles, function (value, key) {
-           if (value) {
-             selectWrappers(key, true, containsSelected);
-           }
-         });
-         vm.containsSelected = containsSelected;
+         vm.selectedWrappers =
+           mnUserRolesService.reviewSelectedWrappers(vm.selectedRoles, vm.selectedGroupsRoles);
        }
 
        function isRoleDisabled(role) {
