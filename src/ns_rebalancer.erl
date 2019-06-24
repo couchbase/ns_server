@@ -156,7 +156,7 @@ update_failover_vbuckets(Set, {Node, BucketResults}, Config) ->
     Merged = merge_failover_vbuckets(ExistingBucketResults, BucketResults),
 
     ?log_debug("Updating failover_vbuckets for ~p with ~p~n"
-               "Existing vbuckets: ~p~nNew vbuckets: ~p~n",
+               "Existing vbuckets: ~p~nNew vbuckets: ~p",
                [Node, Merged, ExistingBucketResults, BucketResults]),
 
     case Merged of
