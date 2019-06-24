@@ -61,7 +61,7 @@ start_keeper() ->
 
 get_gauges() ->
     [num_mutations_to_index, doc_count, num_recs_to_persist, num_bytes_used_disk,
-    num_pindexes_actual, num_pindexes_target].
+    num_pindexes_actual, num_pindexes_target, num_files_on_disk].
 
 get_counters() ->
     [total_bytes_indexed, total_compaction_written_bytes, total_queries,
@@ -72,7 +72,7 @@ get_computed() ->
     [].
 
 get_service_gauges() ->
-    [num_bytes_used_ram].
+    [num_bytes_used_ram, total_queries_rejected_by_herder, curr_batches_blocked_by_herder].
 
 get_service_counters() ->
     [].

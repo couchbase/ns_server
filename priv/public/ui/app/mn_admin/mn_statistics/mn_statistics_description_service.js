@@ -1167,6 +1167,11 @@
               title:"Search Disk Size",
               desc: "Bytes on disk for this index. Per index. (measured from num_bytes_used_disk)"
             },
+            "num_files_on_disk": {
+              unit: "number",
+              title: "Search Disk Files",
+              desc: "Number of search files on disk across all partitions. (measured from num_files_on_disk)"
+            },
             "num_mutations_to_index": {
               unit: "number",
               title: "Search Mutations Remaining",
@@ -1235,6 +1240,11 @@
             title: "Search Disk Size",
             desc: "Bytes stored on disk for all Search indexes in this bucket."
           },
+          "fts/num_files_on_disk": {
+            unit: "number",
+            title: "Search Disk Files",
+            desc: "Number of search files on disk across all partitions."
+          },
           "fts/num_mutations_to_index": null,
           "fts/num_pindexes_actual": null,
           "fts/num_pindexes_target": null,
@@ -1262,6 +1272,16 @@
             unit: "bytes",
             title: "Search RAM Used",
             desc: "Bytes of RAM used by Search across all indexes and all buckets on this server."
+          },
+          "fts_total_queries_rejected_by_herder": {
+            unit: "number",
+            title: "Search queries rejected",
+            desc: "Number of queries rejected by throttler due to high memory consumption."
+          },
+          "fts_curr_batches_blocked_by_herder": {
+            unit: "number",
+            title: "DCP batches blocked by FTS throttler",
+            desc: "DCP batches blocked by throttler due to high memory consumption."
           }
         }
       }

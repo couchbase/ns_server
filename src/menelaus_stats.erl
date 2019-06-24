@@ -1600,6 +1600,10 @@ do_couchbase_fts_stats_descriptions(BucketId, Nodes) ->
                            {desc, <<"Number of index partitions expected"
                                     " (including replica partitions, measured from"
                                     " num_pindexes_target)">>}]},
+                 {struct, [{title, <<"files on disk">>},
+                           {name, per_fts_stat(Id, <<"num_files_on_disk">>)},
+                           {desc, <<"Number of files on disk across all"
+                                    " partitions (measured from num_files_on_disk)">>}]},
                  {struct, [{title, <<"term searchers/sec">>},
                            {name, per_fts_stat(Id, <<"total_term_searchers">>)},
                            {desc, <<"Number of term searchers started per second"
@@ -2355,7 +2359,15 @@ fts_server_resources_stats_description(true) ->
     [{struct, [{isBytes, true},
                {name, <<"fts_num_bytes_used_ram">>},
                {title, <<"fts RAM used">>},
-               {desc, <<"Amount of RAM used by FTS on this server">>}]}].
+               {desc, <<"Amount of RAM used by FTS on this server">>}]},
+     {struct, [{title, <<"fts queries rejected">>},
+               {name, <<"fts_total_queries_rejected_by_herder">>},
+               {desc, <<"Number of fts queries rejected by the FTS throttler"
+                        " due to high memory consumption">>}]},
+     {struct, [{title, <<"fts blocked dcp batches">>},
+               {name, <<"fts_curr_batches_blocked_by_herder">>},
+               {desc, <<"Number of DCP batches blocked by the FTS throttler"
+                        " due to high memory consumption">>}]}].
 
 cbas_server_resources_stats_description(false) ->
     [];
