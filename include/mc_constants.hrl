@@ -204,6 +204,10 @@
 %% window update is officially called "buffer acknowledgement"
 -define(DCP_WINDOW_UPDATE,         16#5d).
 -define(DCP_CONTROL,               16#5e).
+-define(DCP_PREPARE,               16#60).
+-define(DCP_SEQNO_ACKNOWLEDGED,    16#61).
+-define(DCP_COMMIT,                16#62).
+-define(DCP_ABORT,                 16#63).
 
 %% RBAC commands
 -define(MC_AUTH_PROVIDER,             16#F8).

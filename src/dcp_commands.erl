@@ -148,6 +148,14 @@ command_2_atom(?DCP_WINDOW_UPDATE) ->
     dcp_window_update;
 command_2_atom(?DCP_NOP) ->
     dcp_nop;
+command_2_atom(?DCP_PREPARE) ->
+    dcp_prepare;
+command_2_atom(?DCP_SEQNO_ACKNOWLEDGED) ->
+    dcp_seqno_acknowledged;
+command_2_atom(?DCP_COMMIT) ->
+    dcp_commit;
+command_2_atom(?DCP_ABORT) ->
+    dcp_abort;
 command_2_atom(_) ->
     not_dcp.
 
