@@ -700,7 +700,6 @@ do_handle_call({apply_new_config, _Caller, NewBucketConfig, IgnoredVBuckets},
                    From, State);
 do_handle_call({apply_new_config, NewBucketConfig, IgnoredVBuckets}, _From,
                #state{bucket_name = BucketName} = State) ->
-    %% ?log_debug("handling apply_new_config:~n~p", [NewBucketConfig]),
     {ok, VBDetails} = get_state_and_topology(BucketName),
     Map = proplists:get_value(map, NewBucketConfig),
     true = (Map =/= undefined),
