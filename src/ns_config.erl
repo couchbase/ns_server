@@ -81,7 +81,8 @@
          merge_dynamic_and_static/0,
          search_node_with_default/2,
          search_node_with_default/3,
-         search_node_with_default/4]).
+         search_node_with_default/4,
+         reload/0]).
 
 -export([compute_global_rev/1]).
 
@@ -449,6 +450,9 @@ set_sub_kvlist(PList, [ {SubKey, Value} | Rest ]) ->
 
 clear() -> clear([]).
 clear(Keep) -> gen_server:call(?MODULE, {clear, Keep}).
+
+reload() ->
+    gen_server:call(?MODULE, reload).
 
 % ----------------------------------------
 
@@ -916,6 +920,7 @@ handle_call({eval, Fun}, _From, State) ->
     {reply, catch Fun(State), State};
 
 handle_call(reload, _From, State) ->
+    wait_saver(State, infinity),
     case init(State#config.init) of
         {ok, State2} ->
             {reply, ok, State2};
@@ -986,9 +991,7 @@ handle_call({clear, Keep}, From, State) ->
     {reply, _, NewState} = handle_call(resave, From,
                                        State#config{dynamic=[NewList],
                                                     uuid=NewUUID}),
-    %% we ignore state from saver, 'cause we're going to reload it anyway
-    wait_saver(NewState, infinity),
-    RV = handle_call(reload, From, State),
+    RV = handle_call(reload, From, NewState),
     ?log_debug("Full result of clear:~n~p", [ns_config_log:sanitize(RV)]),
     RV;
 
