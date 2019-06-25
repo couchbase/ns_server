@@ -203,6 +203,9 @@ sanitize(Config, TagUserTuples) ->
               {stop, {<<"h">>, "*****"}};
           ({<<"plain">>, _}) ->
               {stop, {<<"plain">>, "*****"}};
+          ({disabled_users, ListUsers}) ->
+              TaggedUsers = [{tag_user_name(N), Src} || {N, Src} <- ListUsers],
+              {stop, {disabled_users, TaggedUsers}};
           (Other) ->
               Continue(Other)
       end, Config).
