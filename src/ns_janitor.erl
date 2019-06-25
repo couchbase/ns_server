@@ -259,7 +259,7 @@ find_unsafe_nodes_with_vbucket_states(_BucketConfig, _States, false) ->
 find_unsafe_nodes_with_vbucket_states(BucketConfig, States, true) ->
     Map = proplists:get_value(map, BucketConfig, []),
     true = (Map =/= []),
-    EnumeratedChains = lists:zip(lists:seq(0, length(Map) - 1), Map),
+    EnumeratedChains = misc:enumerate(Map, 0),
 
     lists:foldl(
       fun ({VB, [Master | _ ] = Chain}, UnsafeNodesAcc) ->
