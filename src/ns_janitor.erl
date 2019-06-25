@@ -365,11 +365,7 @@ compute_servers_list_cleanup(BucketConfig, FullConfig) ->
             NewServers = ns_cluster_membership:service_active_nodes(FullConfig, kv),
             {update_servers, NewServers};
         Servers when is_list(Servers) ->
-            none;
-        Else ->
-            ?log_error("Some garbage in servers field: ~p", [Else]),
-            BucketConfig1 = [{servers, []} | lists:keydelete(servers, 1, BucketConfig)],
-            compute_servers_list_cleanup(BucketConfig1, FullConfig)
+            none
     end.
 
 compute_vbucket_map_fixup(Bucket, BucketConfig, States) ->
