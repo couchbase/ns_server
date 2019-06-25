@@ -315,7 +315,9 @@ get_pretend_version() ->
 
 is_developer_preview() -> is_developer_preview(ns_config:get()).
 is_developer_preview(Config) ->
-    ns_config:search(Config, developer_preview_enabled, false).
+    %% The default value should be returned back to false after
+    %% beta concludes
+    ns_config:search(Config, developer_preview_enabled, true).
 
 tls_supported() ->
     is_enterprise().
