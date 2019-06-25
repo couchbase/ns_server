@@ -538,6 +538,8 @@ sanitize_config(Config) ->
                       {stop, {cookie, "*****"}};
                   ({rest_creds, [_|_]}) ->
                       {stop, {rest_creds, "*****"}};
+                  ({disabled_users, ListUsers}) ->
+                      {stop, {disabled_users, "*****"}};
                   _ ->
                       {continue, T}
               end
