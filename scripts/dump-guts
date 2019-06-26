@@ -515,34 +515,31 @@ rewrite_tuples(Fun, Struct) ->
 %% this one is taken from ns_config_log
 sanitize_config(Config) ->
     rewrite_tuples(
-      fun (T) ->
-              case T of
-                  {password, _} ->
-                      {stop, {password, "*****"}};
-                  {sasl_password, _} ->
-                      {stop, {sasl_password, "*****"}};
-                  {admin_pass, _} ->
-                      {stop, {admin_pass, "*****"}};
-                  {pass, _} ->
-                      {stop, {pass, "*****"}};
-                  {cert_and_pkey, [VClock|{Cert, _PKey}]} ->
-                      {stop, {cert_and_pkey, [VClock|{Cert, <<"*****">>}]}};
-                  {cert_and_pkey, {Cert, _PKey}} ->
-                      {stop, {cert_and_pkey, {Cert, <<"*****">>}}};
-                  {{metakv, K}, [VClock|{metakv_sensitive, _V}]} ->
-                      {stop, {{metakv, K}, [VClock|{metakv_sensitive,
-                                                    <<"*****">>}]}};
-                  {{metakv, K}, {metakv_sensitive, _V}} ->
-                      {stop, {{metakv, K}, {metakv_sensitive, <<"*****">>}}};
-                  ({cookie, _Cookie}) ->
-                      {stop, {cookie, "*****"}};
-                  ({rest_creds, [_|_]}) ->
-                      {stop, {rest_creds, "*****"}};
-                  ({disabled_users, ListUsers}) ->
-                      {stop, {disabled_users, "*****"}};
-                  _ ->
-                      {continue, T}
-              end
+      fun ({password, _}) ->
+              {stop, {password, "*****"}};
+          ({sasl_password, _}) ->
+              {stop, {sasl_password, "*****"}};
+          ({admin_pass, _}) ->
+              {stop, {admin_pass, "*****"}};
+          ({pass, _}) ->
+              {stop, {pass, "*****"}};
+          ({cert_and_pkey, [VClock|{Cert, _PKey}]}) ->
+              {stop, {cert_and_pkey, [VClock|{Cert, <<"*****">>}]}};
+          ({cert_and_pkey, {Cert, _PKey}}) ->
+              {stop, {cert_and_pkey, {Cert, <<"*****">>}}};
+          ({{metakv, K}, [VClock|{metakv_sensitive, _V}]}) ->
+              {stop, {{metakv, K}, [VClock|{metakv_sensitive,
+                                            <<"*****">>}]}};
+          ({{metakv, K}, {metakv_sensitive, _V}}) ->
+              {stop, {{metakv, K}, {metakv_sensitive, <<"*****">>}}};
+          ({cookie, _Cookie}) ->
+              {stop, {cookie, "*****"}};
+          ({rest_creds, [_|_]}) ->
+              {stop, {rest_creds, "*****"}};
+          ({disabled_users, ListUsers}) ->
+              {stop, {disabled_users, "*****"}};
+          (Other) ->
+              {continue, Other}
       end, Config).
 
 find_port(NSConfig, Node, ConfigKey, DefaultPort) ->
