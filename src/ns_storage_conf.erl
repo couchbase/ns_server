@@ -121,10 +121,16 @@ setup_disk_storage_conf(DbPath, IxPath, CBASDirs) ->
     NewDbDir = misc:absname(DbPath),
     NewIxDir = misc:absname(IxPath),
     NewCBASDirs = lists:usort(
-                    lists:map(fun (Dir) ->
-                                      {ok, RealPath} = misc:realpath(Dir, "/"),
-                                      RealPath
-                              end, CBASDirs)),
+                    lists:map(
+                      fun (Dir) ->
+                              case misc:realpath(Dir, "/") of
+                                  {ok, RealPath} ->
+                                      RealPath;
+                                  {error, _, _, _, {error, enoent}} ->
+                                      %% We create them later.
+                                      undefined
+                              end
+                      end, CBASDirs)),
     [{db_path, CurrentDbDir},
      {index_path, CurrentIxDir}] = lists:sort(ns_couchdb_api:get_db_and_ix_paths()),
     CurrentCBASDir = this_node_cbas_dirs(),
@@ -146,8 +152,7 @@ setup_disk_storage_conf(DbPath, IxPath, CBASDirs) ->
                             "provisioned cluster is not supported">>,
                     {errors, [Msg]};
                 false ->
-                    do_setup_disk_storage_conf(NewDbDir, NewIxDir,
-                                               {NewCBASDirs, CBASDirs})
+                    do_setup_disk_storage_conf(NewDbDir, NewIxDir, CBASDirs)
             end;
         false ->
             not_changed
@@ -217,9 +222,14 @@ update_db_ix_dirs(ok, NewDbDir, NewIxDir) ->
                            {index_path, NewIxDir}]),
     restart.
 
-prepare_cbas_dirs({RealDirs, CBASDirs}) ->
+prepare_cbas_dirs(CBASDirs) ->
     case misc:ensure_writable_dirs(CBASDirs) of
         ok ->
+            RealDirs = lists:usort(
+                         lists:map(fun (Dir) ->
+                                           {ok, RealPath} = misc:realpath(Dir, "/"),
+                                           RealPath
+                                   end, CBASDirs)),
             case length(RealDirs) =:= length(CBASDirs) of
                 false ->
                     {errors,
