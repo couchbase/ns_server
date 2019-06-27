@@ -23,7 +23,6 @@
 
 -include("cut.hrl").
 -include("ns_common.hrl").
--include("ns_stats.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
