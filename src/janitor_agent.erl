@@ -301,13 +301,10 @@ process_apply_config_rv(Bucket, {Replies, BadNodes}, Call) ->
             ok
     end.
 
-get_apply_new_config_call(undefined, NewBucketConfig, IgnoredVBuckets) ->
-    {apply_new_config, NewBucketConfig, IgnoredVBuckets};
 get_apply_new_config_call(Rebalancer, NewBucketConfig, IgnoredVBuckets) ->
     case cluster_compat_mode:is_cluster_madhatter() of
         true ->
-            get_apply_new_config_call(undefined, NewBucketConfig,
-                                      IgnoredVBuckets);
+            {apply_new_config, NewBucketConfig, IgnoredVBuckets};
         false ->
             {apply_new_config, Rebalancer, NewBucketConfig, IgnoredVBuckets}
     end.
