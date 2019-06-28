@@ -885,7 +885,7 @@ serve_node_services(Req) ->
 
 serve_node_services_streaming(Req) ->
     handle_streaming(
-      fun (_) ->
+      fun (_, _UpdateID) ->
               {_, V} = bucket_info_cache:build_node_services(),
               {just_write, {write, V}}
       end, Req).

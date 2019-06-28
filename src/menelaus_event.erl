@@ -24,7 +24,8 @@
 -export([start_link/0]).
 
 -export([register_watcher/1,
-         unregister_watcher/1]).
+         unregister_watcher/1,
+         flush_watcher_notifications/1]).
 
 %% gen_event callbacks
 
@@ -184,8 +185,9 @@ handle_info(_Info, State) ->
 % ------------------------------------------------------------
 
 notify_watchers(#state{watchers = Watchers}) ->
+    UpdateID = erlang:unique_integer(),
     lists:foreach(fun({Pid, _}) ->
-                          Pid ! notify_watcher
+                          Pid ! {notify_watcher, UpdateID}
                   end,
                   Watchers),
     ok.
@@ -196,4 +198,11 @@ maybe_restart(#state{webconfig=WebConfigOld} = State) ->
         true -> State;
         false -> spawn(fun menelaus_sup:restart_web_servers/0),
                  State#state{webconfig=WebConfigNew}
+    end.
+
+flush_watcher_notifications(PrevID) ->
+    receive
+        {notify_watcher, ID} -> flush_watcher_notifications(ID)
+    after 0 ->
+        PrevID
     end.

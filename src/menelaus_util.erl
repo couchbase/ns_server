@@ -479,10 +479,10 @@ handle_streaming(F, Req) ->
     menelaus_event:register_watcher(self()),
     Sock = mochiweb_request:get(socket, Req),
     mochiweb_socket:setopts(Sock, [{active, true}]),
-    handle_streaming(F, Req, HTTPRes, undefined).
+    handle_streaming(F, Req, HTTPRes, undefined, undefined).
 
-streaming_inner(F, HTTPRes, LastRes) ->
-    Res = F(stable),
+streaming_inner(F, HTTPRes, LastRes, UpdateID) ->
+    Res = F(stable, UpdateID),
     case Res =:= LastRes of
         true ->
             ok;
@@ -491,7 +491,7 @@ streaming_inner(F, HTTPRes, LastRes) ->
                             {just_write, Stuff} ->
                                 Stuff;
                             _ ->
-                                F(unstable)
+                                F(unstable, UpdateID)
                         end,
             Encoded = case ResNormal of
                           {write, Bin} -> Bin;
@@ -502,9 +502,9 @@ streaming_inner(F, HTTPRes, LastRes) ->
     end,
     Res.
 
-handle_streaming(F, Req, HTTPRes, LastRes) ->
+handle_streaming(F, Req, HTTPRes, LastRes, UpdateID) ->
     Res =
-        try streaming_inner(F, HTTPRes, LastRes)
+        try streaming_inner(F, HTTPRes, LastRes, UpdateID)
         catch exit:normal ->
                 mochiweb_response:write_chunk("", HTTPRes),
                 exit(normal)
@@ -513,17 +513,17 @@ handle_streaming(F, Req, HTTPRes, LastRes) ->
                                 [F, Req, HTTPRes, Res]).
 
 handle_streaming_wakeup(F, Req, HTTPRes, Res) ->
-    receive
-        notify_watcher ->
-            timer:sleep(50),
-            misc:flush(notify_watcher),
-            ok;
-        _ ->
-            exit(normal)
-    after 25000 ->
-            ok
-    end,
-    handle_streaming(F, Req, HTTPRes, Res).
+    UpdateID =
+        receive
+            {notify_watcher, ID} ->
+                timer:sleep(50),
+                menelaus_event:flush_watcher_notifications(ID);
+            _ ->
+                exit(normal)
+        after 25000 ->
+                timeout
+        end,
+    handle_streaming(F, Req, HTTPRes, Res, UpdateID).
 
 assert_is_enterprise() ->
     case cluster_compat_mode:is_enterprise() of

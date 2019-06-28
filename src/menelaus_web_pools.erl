@@ -100,50 +100,46 @@ handle_pool_info(Id, Req) ->
     PassedETag = proplists:get_value("etag", Query),
     case WaitChangeS of
         undefined ->
-            reply_json(Req, build_pool_info(Id, Req, normal, unstable, LocalAddr));
+            reply_json(Req, build_pool_info(Id, Req, normal, unstable,
+                                            LocalAddr, undefined));
         _ ->
             WaitChange = list_to_integer(WaitChangeS),
             menelaus_event:register_watcher(self()),
             erlang:send_after(WaitChange, self(), wait_expired),
-            handle_pool_info_wait(Req, Id, LocalAddr, PassedETag)
+            handle_pool_info_wait(Req, Id, LocalAddr, PassedETag, undefined)
     end.
 
-handle_pool_info_wait(Req, Id, LocalAddr, PassedETag) ->
-    Info = build_pool_info(Id, Req, for_ui, stable, LocalAddr),
+handle_pool_info_wait(Req, Id, LocalAddr, PassedETag, UpdateID) ->
+    Info = build_pool_info(Id, Req, for_ui, stable, LocalAddr, UpdateID),
     ETag = integer_to_list(erlang:phash2(Info)),
     if
         ETag =:= PassedETag ->
             erlang:hibernate(?MODULE, handle_pool_info_wait_wake,
                              [Req, Id, LocalAddr, PassedETag]);
         true ->
-            handle_pool_info_wait_tail(Req, Id, LocalAddr, ETag)
+            handle_pool_info_wait_tail(Req, Id, LocalAddr, ETag, UpdateID)
     end.
 
 handle_pool_info_wait_wake(Req, Id, LocalAddr, PassedETag) ->
     receive
         wait_expired ->
-            handle_pool_info_wait_tail(Req, Id, LocalAddr, PassedETag);
-        notify_watcher ->
+            handle_pool_info_wait_tail(Req, Id, LocalAddr, PassedETag,
+                                       undefined);
+        {notify_watcher, ID} ->
             timer:sleep(200), %% delay a bit to catch more notifications
-            consume_notifications(),
-            handle_pool_info_wait(Req, Id, LocalAddr, PassedETag);
+            LastID = menelaus_event:flush_watcher_notifications(ID),
+            handle_pool_info_wait(Req, Id, LocalAddr, PassedETag, LastID);
         _ ->
             exit(normal)
     end.
 
-consume_notifications() ->
-    receive
-        notify_watcher -> consume_notifications()
-    after 0 ->
-            done
-    end.
-
-handle_pool_info_wait_tail(Req, Id, LocalAddr, ETag) ->
+handle_pool_info_wait_tail(Req, Id, LocalAddr, ETag, UpdateID) ->
     menelaus_event:unregister_watcher(self()),
     %% consume all notifications
-    consume_notifications(),
+    LastID = menelaus_event:flush_watcher_notifications(UpdateID),
     %% and reply
-    {struct, PList} = build_pool_info(Id, Req, for_ui, unstable, LocalAddr),
+    {struct, PList} = build_pool_info(Id, Req, for_ui, unstable, LocalAddr,
+                                      LastID),
     Info = {struct, [{etag, list_to_binary(ETag)} | PList]},
     reply_ok(Req, "application/json", encode_json(Info),
              menelaus_auth:maybe_refresh_token(Req)),
@@ -153,7 +149,7 @@ handle_pool_info_wait_tail(Req, Id, LocalAddr, ETag) ->
     exit(normal).
 
 
-build_pool_info(Id, Req, normal, Stability, LocalAddr) ->
+build_pool_info(Id, Req, normal, Stability, LocalAddr, UpdateID) ->
     InfoLevel =
         case menelaus_auth:has_permission({[admin, internal], all}, Req) of
             true ->
@@ -176,15 +172,17 @@ build_pool_info(Id, Req, normal, Stability, LocalAddr) ->
       {pool_details, InfoLevel, Stability, LocalAddr},
       fun () ->
               %% NOTE: token needs to be taken before building pool info
-              Vsn = {ns_config:config_version_token(), nodes()},
+              Vsn = {ns_config:config_version_token(), nodes(), UpdateID},
               {do_build_pool_info(Id, InfoLevel, Stability, LocalAddr), 1000,
                Vsn}
       end,
-      fun (_Key, _Value, {ConfigVersionToken, Nodes}) ->
+      fun (_Key, _Value, {ConfigVersionToken, Nodes, OldUpdateID}) ->
               ConfigVersionToken =/= ns_config:config_version_token()
                   orelse Nodes =/= nodes()
+                  orelse ((UpdateID =/= OldUpdateID) andalso
+                          (UpdateID =/= undefined))
       end);
-build_pool_info(Id, _Req, for_ui, Stability, LocalAddr) ->
+build_pool_info(Id, _Req, for_ui, Stability, LocalAddr, _UpdateID) ->
     do_build_pool_info(Id, for_ui, Stability, LocalAddr).
 
 do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
@@ -344,8 +342,8 @@ build_one_alert({_Key, Msg, Time}) ->
 
 handle_pool_info_streaming(Id, Req) ->
     LocalAddr = local_addr(Req),
-    F = fun(Stability) ->
-                build_pool_info(Id, Req, normal, Stability, LocalAddr)
+    F = fun(Stability, UpdateID) ->
+                build_pool_info(Id, Req, normal, Stability, LocalAddr, UpdateID)
         end,
     handle_streaming(F, Req).
 
