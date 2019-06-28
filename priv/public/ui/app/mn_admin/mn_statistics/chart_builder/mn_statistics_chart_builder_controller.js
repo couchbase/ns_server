@@ -55,6 +55,8 @@
     vm.kvGroups = mnStatisticsDescriptionService.kvGroups;
     var selectedUnits = {};
     vm.selectedKVFilters = {};
+    var selectedByNodeStats = {};
+    var selectedStats = {};
 
     activate();
 
@@ -80,10 +82,20 @@
     }
 
     function onSpecificChecked() {
-      vm.newChart.stats = {};
+      if (vm.newChart.specificStat == "true") {
+        selectedStats = vm.newChart.stats;
+        vm.newChart.stats = selectedByNodeStats;
+      } else {
+        selectedByNodeStats = vm.newChart.stats;
+        vm.newChart.stats = selectedStats;
+      }
+
+
       vm.units = {};
       vm.breadcrumbs = {};
       vm.disableStats = false;
+
+      _.forEach(vm.newChart.stats, activateStats);
     }
 
     function onStatChecked(desc, value, breadcrumb) {
@@ -112,6 +124,22 @@
       } else {
         vm.disableStats = selectedUnitsCount >= 2;
       }
+    }
+
+    function activateStats(descPath, statName) {
+
+      var breadcrumb = [descPath.split(".")[0]];
+      var splited = statName.split("/");
+      var desc = mnStatisticsNewService.readByPath(descPath, statName);
+
+      if (splited.length > 2) {
+        splited.pop();
+        breadcrumb.push(splited.join("/"));
+      }
+
+      breadcrumb.push(desc.title);
+
+      onStatChecked(desc, true, breadcrumb);
     }
 
     function activate() {
@@ -148,21 +176,7 @@
           vm.selectedBlock = vm.selectedBlock || "@system";
 
           if (chart) {
-            _.forEach(chart.stats, function (descPath, statName) {
-
-              var breadcrumb = [descPath.split(".")[0]];
-              var splited = statName.split("/");
-              var desc = mnStatisticsNewService.readByPath(descPath, statName);
-
-              if (splited.length > 2) {
-                splited.pop();
-                breadcrumb.push(splited.join("/"));
-              }
-
-              breadcrumb.push(desc.title);
-
-              onStatChecked(desc, true, breadcrumb);
-            });
+            _.forEach(chart.stats, activateStats);
           }
         })
         .showSpinner();
