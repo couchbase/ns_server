@@ -252,7 +252,7 @@ apply_recovery_bucket_config(Bucket, BucketConfig, Servers) ->
         ready ->
             janitor_agent:apply_new_bucket_config_with_timeout(
               Bucket, undefined, Servers,
-              BucketConfig, [], undefined_timeout);
+              BucketConfig, undefined_timeout);
         {_, Zombies} ->
             ?log_error("Failed to query states "
                        "from some of the nodes: ~p", [Zombies]),

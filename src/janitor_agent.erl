@@ -47,7 +47,7 @@
          fetch_vbucket_states/2,
          find_vbucket_state/2,
          check_bucket_ready/3,
-         apply_new_bucket_config_with_timeout/6,
+         apply_new_bucket_config_with_timeout/5,
          mark_bucket_warmed/2,
          delete_vbucket_copies/4,
          prepare_nodes_for_rebalance/3,
@@ -301,16 +301,24 @@ process_apply_config_rv(Bucket, {Replies, BadNodes}, Call) ->
             ok
     end.
 
-get_apply_new_config_call(Rebalancer, NewBucketConfig, IgnoredVBuckets) ->
+get_apply_new_config_call(Rebalancer, NewBucketConfig) ->
     case cluster_compat_mode:is_cluster_madhatter() of
         true ->
-            {apply_new_config, NewBucketConfig, IgnoredVBuckets};
+            {apply_new_config, NewBucketConfig};
         false ->
-            {apply_new_config, Rebalancer, NewBucketConfig, IgnoredVBuckets}
+            {apply_new_config, Rebalancer, NewBucketConfig, []}
+    end.
+
+get_apply_new_config_replicas_phase_call(NewBucketConfig) ->
+    case cluster_compat_mode:is_cluster_madhatter() of
+        true ->
+            {apply_new_config_replicas_phase, NewBucketConfig};
+        false ->
+            {apply_new_config_replicas_phase, NewBucketConfig, []}
     end.
 
 apply_new_bucket_config_with_timeout(Bucket, Rebalancer, Servers,
-                                     NewBucketConfig, IgnoredVBuckets,
+                                     NewBucketConfig,
                                      Timeout0) ->
     Timeout = case Timeout0 of
                   undefined_timeout -> ?APPLY_NEW_CONFIG_TIMEOUT;
@@ -318,29 +326,25 @@ apply_new_bucket_config_with_timeout(Bucket, Rebalancer, Servers,
               end,
     true = (Rebalancer =:= undefined orelse is_pid(Rebalancer)),
     apply_new_bucket_config(Bucket, Rebalancer, Servers,
-                            NewBucketConfig, IgnoredVBuckets, Timeout).
+                            NewBucketConfig, Timeout).
 
 apply_new_bucket_config(Bucket, Rebalancer, Servers,
-                        NewBucketConfig, IgnoredVBuckets, Timeout) ->
+                        NewBucketConfig, Timeout) ->
     RV1 = misc:parallel_map(
             fun (Node) ->
                     {Node,
                      catch rebalance_call(
                              Rebalancer, Bucket, Node,
-                             get_apply_new_config_call(
-                               Rebalancer, NewBucketConfig, IgnoredVBuckets),
+                             get_apply_new_config_call(Rebalancer,
+                                                       NewBucketConfig),
                              Timeout)}
             end, Servers, infinity),
     case process_apply_config_rv(Bucket, {RV1, []}, apply_new_config) of
         ok ->
+            Call = get_apply_new_config_replicas_phase_call(NewBucketConfig),
             RV2 = misc:parallel_map(
                     fun (Node) ->
-                            {Node,
-                             catch call(Bucket, Node,
-                                        {apply_new_config_replicas_phase,
-                                         NewBucketConfig,
-                                         IgnoredVBuckets},
-                                        Timeout)}
+                            {Node, catch call(Bucket, Node, Call, Timeout)}
                     end, Servers, infinity),
             process_apply_config_rv(Bucket, {RV2, []},
                                     apply_new_config_replicas_phase);
@@ -690,18 +694,21 @@ do_handle_call({update_vbucket_state, VBucket, NormalState, RebalanceState,
 do_handle_call({delete_vbucket, VBucket} = Call, From, State) ->
     NewState = apply_new_vbucket_state(VBucket, missing, undefined, State),
     delegate_apply_vbucket_state(Call, From, NewState);
-do_handle_call({apply_new_config, _Caller, NewBucketConfig, IgnoredVBuckets},
-               From, State) ->
+do_handle_call({apply_new_config,
+                NewBucketConfig, IgnoredVBuckets}, From, State) ->
     %% called on pre MadHatter clusters only
-    do_handle_call({apply_new_config, NewBucketConfig, IgnoredVBuckets},
-                   From, State);
-do_handle_call({apply_new_config, NewBucketConfig, IgnoredVBuckets}, _From,
+    [] = IgnoredVBuckets,
+    do_handle_call({apply_new_config, NewBucketConfig}, From, State);
+do_handle_call({apply_new_config,
+                _Caller, NewBucketConfig, IgnoredVBuckets}, From, State) ->
+    %% called on pre MadHatter clusters only
+    [] = IgnoredVBuckets,
+    do_handle_call({apply_new_config, NewBucketConfig}, From, State);
+do_handle_call({apply_new_config, NewBucketConfig}, _From,
                #state{bucket_name = BucketName} = State) ->
     {ok, VBDetails} = get_state_and_topology(BucketName),
     Map = proplists:get_value(map, NewBucketConfig),
     true = (Map =/= undefined),
-    %% TODO: unignore ignored vbuckets
-    [] = IgnoredVBuckets,
     {_, ToSet, ToDelete, NewWantedRev}
         = lists:foldl(
             fun (Chain, {VBucket, ToSet, ToDelete, PrevWanted}) ->
@@ -780,12 +787,16 @@ do_handle_call({apply_new_config, NewBucketConfig, IgnoredVBuckets}, _From,
     [ns_memcached:delete_vbucket(BucketName, VBucket) || VBucket <- ToDelete],
 
     {reply, ok, pass_vbucket_states_to_set_view_manager(State2)};
-do_handle_call({apply_new_config_replicas_phase, NewBucketConfig, IgnoredVBuckets},
+do_handle_call({apply_new_config_replicas_phase,
+                NewBucketConfig, IgnoredVBuckets}, From, State) ->
+    %% called on pre MadHatter clusters only
+    [] = IgnoredVBuckets,
+    do_handle_call({apply_new_config_replicas_phase, NewBucketConfig},
+                   From, State);
+do_handle_call({apply_new_config_replicas_phase, NewBucketConfig},
                _From, #state{bucket_name = BucketName} = State) ->
     Map = proplists:get_value(map, NewBucketConfig),
     true = (Map =/= undefined),
-    %% TODO: unignore ignored vbuckets
-    [] = IgnoredVBuckets,
     WantedReplicas = [{Src, VBucket}
                       || {Src, Dst, VBucket} <- ns_bucket:map_to_replicas(Map),
                                         Dst =:= node()],

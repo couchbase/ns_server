@@ -24,7 +24,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([cleanup/2, reset_rebalance_status/1, cleanup_apply_config/5]).
+-export([cleanup/2, reset_rebalance_status/1, cleanup_apply_config/4]).
 
 -spec cleanup(Bucket::bucket_name(), Options::list()) ->
                      ok |
@@ -123,9 +123,7 @@ cleanup_with_membase_bucket_vbucket_map(Bucket, Options, BucketConfig) ->
 
 cleanup_with_states(Bucket, Options, BucketConfig0, Servers, States) ->
     BucketConfig = maybe_pull_config(Bucket, BucketConfig0, States, Options),
-    {NewBucketConfig, IgnoredVBuckets} = maybe_fixup_vbucket_map(Bucket,
-                                                                 BucketConfig,
-                                                                 States),
+    NewBucketConfig = maybe_fixup_vbucket_map(Bucket, BucketConfig, States),
     maybe_push_config(Bucket, NewBucketConfig, States, Options),
 
     %% Find all the unsafe nodes (nodes on which memcached restarted within
@@ -141,14 +139,14 @@ cleanup_with_states(Bucket, Options, BucketConfig0, Servers, States) ->
         true ->
             {error, unsafe_nodes, UnsafeNodes};
         false ->
-            cleanup_apply_config(Bucket, Servers,
-                                 NewBucketConfig, IgnoredVBuckets, Options)
+            cleanup_apply_config(Bucket, Servers, NewBucketConfig, Options)
     end.
 
 maybe_fixup_vbucket_map(Bucket, BucketConfig, States) ->
     {NewBucketConfig, IgnoredVBuckets} = compute_vbucket_map_fixup(Bucket,
                                                                    BucketConfig,
                                                                    States),
+    [] = IgnoredVBuckets,
 
     case NewBucketConfig =:= BucketConfig of
         true ->
@@ -157,7 +155,7 @@ maybe_fixup_vbucket_map(Bucket, BucketConfig, States) ->
             fixup_vbucket_map(Bucket, BucketConfig, NewBucketConfig, States)
     end,
 
-    {NewBucketConfig, IgnoredVBuckets}.
+    NewBucketConfig.
 
 fixup_vbucket_map(Bucket, BucketConfig, NewBucketConfig, States) ->
     ?log_info("Janitor is going to change "
@@ -168,15 +166,13 @@ fixup_vbucket_map(Bucket, BucketConfig, NewBucketConfig, States) ->
     ok = ns_bucket:set_bucket_config(Bucket, NewBucketConfig),
     ok = ns_config_rep:ensure_config_seen_by_nodes().
 
-cleanup_apply_config(Bucket,
-                     Servers, BucketConfig, IgnoredVBuckets, Options) ->
+cleanup_apply_config(Bucket, Servers, BucketConfig, Options) ->
     {ok, Result} =
         leader_activities:run_activity(
           {ns_janitor, Bucket, apply_config}, {all, Servers},
           fun () ->
-                  {ok, cleanup_apply_config_body(Bucket,
-                                                 Servers, BucketConfig,
-                                                 IgnoredVBuckets, Options)}
+                  {ok, cleanup_apply_config_body(Bucket, Servers,
+                                                 BucketConfig, Options)}
           end,
           [quiet]),
 
@@ -230,15 +226,13 @@ maybe_pull_config(Bucket, BucketConfig, States, Options) ->
 maybe_push_config(Bucket, BucketConfig, States, Options) ->
     maybe_config_sync(push, Bucket, BucketConfig, States, Options).
 
-cleanup_apply_config_body(Bucket, Servers,
-                          BucketConfig, IgnoredVBuckets, Options) ->
+cleanup_apply_config_body(Bucket, Servers, BucketConfig, Options) ->
     ApplyTimeout = proplists:get_value(apply_config_timeout,
                                        Options,
                                        undefined_timeout),
     ok = janitor_agent:apply_new_bucket_config_with_timeout(Bucket, undefined,
                                                             Servers,
                                                             BucketConfig,
-                                                            IgnoredVBuckets,
                                                             ApplyTimeout),
 
     maybe_reset_rebalance_status(Options),
