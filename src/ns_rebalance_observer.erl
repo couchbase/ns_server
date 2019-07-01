@@ -198,14 +198,16 @@ handle_call({get_rebalance_info, Options}, _From,
                      {nodesInfo, {NodesInfo}},
                      {masterNode, atom_to_binary(node(), latin1)}],
     {reply, RebalanceInfo, State};
-handle_call({record_rebalance_report, ExitInfo}, From, State) ->
+handle_call({record_rebalance_report, ExitInfo}, From,
+            #state{nodes_info = NodesInfo} = State) ->
     {_, RebalanceInfo, NewState} = handle_call({get_rebalance_info,
                                                 [{add_vbucket_info, true}]},
                                                From,
                                                State),
     Report = {RebalanceInfo ++ ExitInfo},
+    KeepNodes = proplists:get_value(keep_nodes, NodesInfo, [node()]),
     RV = case ns_rebalance_report_manager:record_rebalance_report(
-                ejson:encode(Report)) of
+                ejson:encode(Report), KeepNodes) of
              ok ->
                  ok;
              Err ->

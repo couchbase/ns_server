@@ -29,7 +29,7 @@
 %% APIs.
 -export([start_link/0,
          get_rebalance_report/0,
-         record_rebalance_report/1]).
+         record_rebalance_report/2]).
 
 %% gen_server2 callbacks.
 -export([init/1, handle_call/3, handle_cast/2,
@@ -53,8 +53,24 @@ get_rebalance_report() ->
                              ?FETCH_TIMEOUT)
     end.
 
-record_rebalance_report(Report) ->
-    gen_server2:call(?MODULE, {record_rebalance_report, Report}, infinity).
+record_rebalance_report(Report, KeepNodes) ->
+    case lists:member(node(), KeepNodes) of
+        true ->
+            gen_server2:call(?MODULE, {record_rebalance_report, Report},
+                             infinity);
+        false ->
+            case cluster_compat_mode:is_cluster_madhatter() of
+                true ->
+                    CompressedReport = zlib:compress(Report),
+                    [Node | _] = KeepNodes,
+                    gen_server2:call({?MODULE, Node},
+                                     {record_compressed_rebalance_report,
+                                      CompressedReport},
+                                     ?FETCH_TIMEOUT);
+                false ->
+                    {error, not_supported}
+            end
+    end.
 
 %% -------------------------------------------------------------
 %% gen_server2 callbacks.
@@ -90,6 +106,9 @@ handle_call({get_rebalance_report, Reqd, Options}, From,
               end),
             {noreply, State}
     end;
+handle_call({record_compressed_rebalance_report, R}, From, State) ->
+    Report = zlib:uncompress(R),
+    handle_call({record_rebalance_report, Report}, From, State);
 handle_call({record_rebalance_report, Report}, _From,
             #state{report_dir = Dir} = State) ->
     FileName = "rebalance_report_" ++ misc:timestamp_utc_iso8601() ++ ".json",
