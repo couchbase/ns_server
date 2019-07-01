@@ -456,6 +456,13 @@ handle_force_self_eject(Req) ->
     ok.
 
 do_handle_eject_post(Req, OtpNode) ->
+    %% Verify that the server lists are consistent with cluster membership
+    %% states in all buckets.
+    lists:foreach(
+      fun ({Bucket, BucketConfig}) ->
+              ok = ns_janitor:check_server_list(Bucket, BucketConfig)
+      end, ns_bucket:get_buckets()),
+
     case OtpNode =:= node() of
         true ->
             do_eject_myself(),

@@ -24,7 +24,10 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([cleanup/2, reset_rebalance_status/1, cleanup_apply_config/4]).
+-export([cleanup/2,
+         reset_rebalance_status/1,
+         cleanup_apply_config/4,
+         check_server_list/2]).
 
 -spec cleanup(Bucket::bucket_name(), Options::list()) ->
                      ok |
@@ -33,7 +36,8 @@
                      {error, unsafe_nodes, [node()]} |
                      {error, {config_sync_failed,
                               pull | push, Details :: any()}} |
-                     {error, {bad_vbuckets, [vbucket_id()]}}.
+                     {error, {bad_vbuckets, [vbucket_id()]}} |
+                     {error, {corrupted_server_list, [node()], [node()]}}.
 cleanup(Bucket, Options) ->
     FullConfig = ns_config:get(),
     case ns_bucket:get_bucket(Bucket, FullConfig) of
@@ -68,12 +72,14 @@ cleanup_membase_bucket(Bucket, Options, BucketConfig, FullConfig) ->
     RV.
 
 cleanup_with_membase_bucket_check_servers(Bucket, Options, BucketConfig, FullConfig) ->
-    case compute_servers_list_cleanup(BucketConfig, FullConfig) of
-        none ->
+    case check_server_list(Bucket, BucketConfig, FullConfig) of
+        ok ->
             cleanup_with_membase_bucket_check_map(Bucket, Options, BucketConfig);
         {update_servers, NewServers} ->
             update_servers(Bucket, NewServers),
-            cleanup(Bucket, Options)
+            cleanup(Bucket, Options);
+        {error, _} = Error ->
+            Error
     end.
 
 update_servers(Bucket, Servers) ->
@@ -396,14 +402,32 @@ maybe_reset_rebalance_status() ->
 
 %% !!! only purely functional code below (with notable exception of logging) !!!
 %% lets try to keep as much as possible logic below this line
+check_server_list(Bucket, BucketConfig) ->
+    check_server_list(Bucket, BucketConfig, ns_config:latest()).
 
-compute_servers_list_cleanup(BucketConfig, FullConfig) ->
-    case proplists:get_value(servers, BucketConfig) of
+check_server_list(Bucket, BucketConfig, FullConfig) ->
+    Servers = ns_bucket:bucket_nodes(BucketConfig),
+    ActiveKVNodes = ns_cluster_membership:service_active_nodes(FullConfig, kv),
+    do_check_server_list(Bucket, Servers, ActiveKVNodes).
+
+do_check_server_list(_Bucket, [], ActiveKVNodes) ->
+    {update_servers, ActiveKVNodes};
+do_check_server_list(Bucket, Servers, ActiveKVNodes) when is_list(Servers) ->
+    %% We don't expect for buckets to refer to servers that are not active. We
+    %% can't guarantee this though due to weaknesses of ns_config. The best we
+    %% can do if we detect a mismatch is to complain and have a human
+    %% intervene.
+    UnexpectedServers = Servers -- ActiveKVNodes,
+    case UnexpectedServers of
         [] ->
-            NewServers = ns_cluster_membership:service_active_nodes(FullConfig, kv),
-            {update_servers, NewServers};
-        Servers when is_list(Servers) ->
-            none
+            ok;
+        _ ->
+            ?log_error("Found a corrupt server list in bucket ~p.~n"
+                       "Server list: ~p~n"
+                       "Active KV nodes: ~p~n"
+                       "Unexpected servers: ~p",
+                       [Bucket, Servers, ActiveKVNodes, UnexpectedServers]),
+            {error, {corrupted_server_list, Servers, ActiveKVNodes}}
     end.
 
 compute_vbucket_map_fixup(Bucket, BucketConfig, States) ->
@@ -766,4 +790,11 @@ data_loss_possible_test() ->
 
     %% Vbuckets that exists on nodes not in the vbucket chain don't matter.
     ?assertNot(data_loss_possible_t([a, b], [{c, replica}])).
+
+check_server_list_test() ->
+    ?assertEqual({update_servers, [a, b, c]},
+                 do_check_server_list("bucket", [], [a, b, c])),
+    ?assertEqual(ok, do_check_server_list("bucket", [a, b], [a, b, c])),
+    ?assertEqual(ok, do_check_server_list("bucket", [a, b], [a, c, b])),
+    ?assertMatch({error, _}, do_check_server_list("bucket", [a, b, c], [a, b])).
 -endif.

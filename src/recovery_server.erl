@@ -170,6 +170,13 @@ handle_start_recovery(Bucket, FromPid) ->
 check_bucket(Bucket) ->
     case ns_bucket:get_bucket(Bucket) of
         {ok, BucketConfig} ->
+            %% Verify that the server list is consistent with cluster
+            %% membership states. Even though we call ns_janitor:cleanup/2 in
+            %% prepare_bucket which performs this check too, it's too late by
+            %% then: we explicitely activate all kv nodes before getting
+            %% there essentially invalidating the check.
+            ok = ns_janitor:check_server_list(Bucket, BucketConfig),
+
             case ns_bucket:bucket_type(BucketConfig) of
                 membase ->
                     ok;

@@ -153,6 +153,10 @@ failover_buckets(Nodes, Options) ->
     Results =
         lists:foldl(
           fun ({Bucket, BucketConfig}, Acc) ->
+                  %% Verify that the server list is consistent with cluster
+                  %% membership states.
+                  ok = ns_janitor:check_server_list(Bucket, BucketConfig),
+
                   try failover_bucket(Bucket, BucketConfig, Nodes, Options) of
                       Res ->
                           Res ++ Acc
