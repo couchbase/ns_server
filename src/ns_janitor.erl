@@ -320,25 +320,28 @@ find_unsafe_nodes_with_vbucket_states(BucketConfig, States, true) ->
 %% data.
 data_loss_possible(VBucket, Chain, States) ->
     NodeStates = janitor_agent:fetch_vbucket_states(VBucket, States),
-    Master = hd(Chain),
+    [Master | Replicas] = Chain,
     case janitor_agent:find_vbucket_state(Master, NodeStates) of
         missing ->
-            case lists:keymember(active, 2, NodeStates) of
-                false ->
-                    %% If none of the nodes have the vBucket active check if
-                    %% the other nodes have the vBucket in replica state.
-                    case [N || {N, replica, _} <- NodeStates] of
-                        [] ->
-                            false;
-                        Replicas ->
-                            ?log_info("vBucket ~p missing on master ~p while "
-                                      "replicas ~p are active. Can lead to "
-                                      "dataloss.",
-                                      [VBucket, Master, Replicas]),
-                            {true, Master}
-                    end;
-                true ->
-                    false
+            %% Replicas might be in wrong states due to interrupted rebalance
+            %% (since this code is executed with a fixed up vbucket map, but
+            %% before the state changes are actually applied to the system),
+            %% so we check for any existing vbuckets among expected replicas.
+            ExistingReplicas =
+                [N || N <- Replicas,
+                      N =/= undefined,
+                      janitor_agent:find_vbucket_state(N, NodeStates) =/=
+                          missing],
+
+            case ExistingReplicas of
+                [] ->
+                    false;
+                _ ->
+                    ?log_info("vBucket ~p missing on master ~p while "
+                              "replicas ~p are active. Can lead to "
+                              "dataloss.",
+                              [VBucket, Master, ExistingReplicas]),
+                    {true, Master}
             end;
         _ ->
             false
@@ -732,4 +735,24 @@ map_matches_states_exactly_test() ->
       fun (States) ->
               ?assertMatch({false, _}, map_matches_states_exactly(Map, States))
       end, [BadStates1, BadStates2, BadStates3]).
+
+data_loss_possible_t(Chain, States) ->
+    data_loss_possible(0, Chain,
+                       dict:from_list([{0, [{N, S, []} || {N, S} <- States]}])).
+
+data_loss_possible_test() ->
+    ?assertEqual({true, a}, data_loss_possible_t([a, b], [{b, replica}])),
+
+    %% No copies left, so no data loss.
+    ?assertNot(data_loss_possible_t([a, b], [])),
+
+    %% Normal case, all copies are where we expect them to be.
+    ?assertNot(data_loss_possible_t([a, b], [{a, active}, {b, replica}])),
+
+    %% For some reason our vbucket is a bad state, but the data is there, so
+    %% data loss is possible.
+    ?assertEqual({true, a}, data_loss_possible_t([a, b], [{b, dead}])),
+
+    %% Vbuckets that exists on nodes not in the vbucket chain don't matter.
+    ?assertNot(data_loss_possible_t([a, b], [{c, replica}])).
 -endif.
