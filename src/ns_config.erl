@@ -39,7 +39,6 @@
 
 -behaviour(gen_server).
 
--include("cut.hrl").
 -include("ns_common.hrl").
 
 -ifdef(TEST).
@@ -110,7 +109,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--export([stop/0, resave/0, reannounce/0, ensure_persisted/0]).
+-export([stop/0, resave/0, reannounce/0]).
 
 %% state sanitization
 -export([format_status/2]).
@@ -137,9 +136,6 @@ start_link(ConfigPath, PolicyMod) -> start_link([ConfigPath, PolicyMod]).
 stop()       -> gen_server:cast(?MODULE, stop).
 resave()     -> gen_server:call(?MODULE, resave).
 reannounce() -> gen_server:call(?MODULE, reannounce).
-
-ensure_persisted() ->
-    gen_server:call(?MODULE, ensure_persisted, ?DEFAULT_TIMEOUT).
 
 % ----------------------------------------
 
@@ -890,26 +886,19 @@ handle_cast(stop, State) ->
 
 handle_info({'EXIT', Pid, Reason},
             #config{saver_pid = MyPid,
-                    persist_waiters = Waiters,
                     pending_more_save = NeedMore} = State) when MyPid =:= Pid ->
     NewState = State#config{saver_pid = undefined},
+    case Reason of
+        normal ->
+            ok;
+        _ ->
+            ?log_error("Saving ns_config failed. Trying to ignore: ~p", [Reason])
+    end,
     S = case NeedMore of
             true ->
                 initiate_save_config(NewState);
             false ->
-                Result =
-                    case Reason of
-                        normal ->
-                            ok;
-                        _ ->
-                            ?log_error("Saving ns_config failed. "
-                                       "Trying to ignore: ~p", [Reason]),
-                            {error, {save_failed, Reason}}
-                    end,
-
-                lists:foreach(gen_server:reply(_, Result), Waiters),
-                NewState#config{persist_waiters = [],
-                                last_persist_result = Result}
+                NewState
         end,
     {noreply, S};
 handle_info(Info, State) ->
@@ -931,15 +920,6 @@ handle_call(reload, _From, State) ->
 
 handle_call(resave, _From, State) ->
     {reply, ok, initiate_save_config(State)};
-
-handle_call(ensure_persisted, From, #config{saver_pid = SaverPid} = State) ->
-    case SaverPid of
-        undefined ->
-            {reply, State#config.last_persist_result, State};
-        _ when is_pid(SaverPid) ->
-            Waiters = State#config.persist_waiters,
-            {noreply, State#config{persist_waiters = [From | Waiters]}}
-    end;
 
 handle_call(reannounce, _From, State) ->
     %% we have to assume those are all genuine just made local changes
@@ -1429,8 +1409,7 @@ all_test_() ->
                {"test_clear", fun test_clear/0},
                {"test_with_saver_set_and_stop", fun test_with_saver_set_and_stop/0},
                {"test_clear_with_concurrent_save", fun test_clear_with_concurrent_save/0},
-               {"test_local_changes_count", fun test_local_changes_count/0},
-               {"test_ensure_persisted", fun test_ensure_persisted/0}]}}].
+               {"test_local_changes_count", fun test_local_changes_count/0}]}}].
 
 -define(assertConfigEquals(A, B), ?assertEqual(lists:sort([{K, strip_metadata(V)} || {K,V} <- A]),
                                                lists:sort([{K, strip_metadata(V)} || {K,V} <- B]))).
@@ -1464,12 +1443,7 @@ send_config(Config, Pid) ->
     Pid ! {saving, Ref, Config, self()},
     receive
         {Ref, Reply} ->
-            case Reply of
-                ok ->
-                    ok;
-                _ ->
-                    exit(Reply)
-            end
+            Reply
     end.
 
 setup_with_saver() ->
@@ -1743,43 +1717,6 @@ test_local_changes_count() ->
     ?assertEqual(1, vclock:count_changes(VC)),
 
     ok.
-
-test_ensure_persisted() ->
-    TestPid = self(),
-    Saver = spawn_link(
-              fun () ->
-                      register(save_config_target, self()),
-                      receive
-                          {saving, Ref, C, Pid} ->
-                              TestPid ! {saved, C},
-                              Pid ! {Ref, ok}
-                      end
-              end),
-
-    ns_config:set(d, 4),
-    ?assertEqual(ok, ns_config:ensure_persisted()),
-
-    receive
-        {saved, C} ->
-            ?assertEqual(4, ns_config:search(C, d, undefined))
-    after
-        0 ->
-            throw(didnt_persist)
-    end,
-
-    spawn_link(
-      fun () ->
-              misc:wait_for_process(Saver, infinity),
-              register(save_config_target, self()),
-
-              receive
-                  {saving, Ref, _, Pid} ->
-                      Pid ! {Ref, failed}
-              end
-      end),
-
-    ns_config:set(d, 5),
-    ?assertEqual({error, {save_failed, failed}}, ns_config:ensure_persisted()).
 
 upgrade_config_case(InitialList, Changes, ExpectedList) ->
     Upgrader = fun (_) -> [] end,

@@ -19,8 +19,6 @@
                  saver_mfa,
                  saver_pid,
                  pending_more_save = false,
-                 persist_waiters = [],
-                 last_persist_result = ok,
                  uuid,
                  upgrade_config_fun
                 }).
