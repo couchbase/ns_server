@@ -211,7 +211,9 @@ prepare_bucket(Bucket, Servers) ->
             {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
             BucketConfig;
         {error, _, FailedNodes} ->
-            throw({error, {failed_nodes, FailedNodes}})
+            throw({error, {failed_nodes, FailedNodes}});
+        {error, OtherError} ->
+            throw({error, {janitor_error, OtherError}})
     end.
 
 init_recovery_state(Servers, BucketConfig) ->

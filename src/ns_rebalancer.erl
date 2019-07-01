@@ -369,7 +369,7 @@ failover_membase_bucket_with_map(Nodes, Bucket, BucketConfig, Map, Options) ->
     remove_nodes_from_server_list(Nodes, Bucket, BucketConfig),
 
     CleanupOptions = failover_janitor_cleanup_options(Nodes, Options),
-    try ns_janitor:cleanup(Bucket, CleanupOptions) of
+    case (catch ns_janitor:cleanup(Bucket, CleanupOptions)) of
         ok ->
             ok;
         {error, _, BadNodes} ->
@@ -377,11 +377,11 @@ failover_membase_bucket_with_map(Nodes, Bucket, BucketConfig, Map, Options) ->
                              "replication topology changes because not "
                              "all remaining nodes were found to have "
                              "healthy bucket ~p: ~p", [Bucket, BadNodes]),
-            janitor_failed
-    catch
-        E:R ->
-            ?rebalance_error("Janitor cleanup of ~p failed after failover of ~p: ~p",
-                             [Bucket, Nodes, {E, R}]),
+            janitor_failed;
+        Error ->
+            ?rebalance_error("Janitor cleanup of ~p "
+                             "failed after failover of ~p: ~p",
+                             [Bucket, Nodes, Error]),
             janitor_failed
     end.
 
@@ -1072,8 +1072,8 @@ run_janitor_pre_rebalance(BucketName) ->
                              {apply_config_timeout, ?REBALANCER_APPLY_CONFIG_TIMEOUT}]) of
         ok ->
             ok;
-        {error, _, BadNodes} ->
-            exit({pre_rebalance_janitor_run_failed, BucketName, BadNodes})
+        Error ->
+            exit({pre_rebalance_janitor_run_failed, BucketName, Error})
     end.
 
 %% @doc Rebalance the cluster. Operates on a single bucket. Will

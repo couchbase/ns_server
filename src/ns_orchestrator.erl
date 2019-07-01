@@ -334,7 +334,8 @@ stop_rebalance() ->
                             rebalance_running |
                             not_present |
                             not_needed |
-                            {error, {failed_nodes, [node()]}}
+                            {error, {failed_nodes, [node()]}} |
+                            {error, {janitor_error, any()}}
                                 when UUID :: binary(),
                                      RecoveryMap :: dict:dict().
 start_recovery(Bucket) ->

@@ -30,7 +30,9 @@
                      ok |
                      {error, wait_for_memcached_failed, [node()]} |
                      {error, marking_as_warmed_failed, [node()]} |
-                     {error, unsafe_nodes, [node()]}.
+                     {error, unsafe_nodes, [node()]} |
+                     {error, {config_sync_failed,
+                              pull | push, Details :: any()}}.
 cleanup(Bucket, Options) ->
     FullConfig = ns_config:get(),
     case ns_bucket:get_bucket(Bucket, FullConfig) of
@@ -121,28 +123,47 @@ cleanup_with_membase_bucket_vbucket_map(Bucket, Options, BucketConfig) ->
             {error, wait_for_memcached_failed, Zombies}
     end.
 
-cleanup_with_states(Bucket, Options, BucketConfig0, Servers, States) ->
-    BucketConfig = maybe_pull_config(Bucket, BucketConfig0, States, Options),
-    NewBucketConfig = maybe_fixup_vbucket_map(Bucket, BucketConfig, States),
-    maybe_push_config(Bucket, NewBucketConfig, States, Options),
+cleanup_with_states(Bucket, Options, BucketConfig, Servers, States) ->
+    case maybe_fixup_vbucket_map(Bucket, BucketConfig, States, Options) of
+        {ok, NewBucketConfig} ->
+            cleanup_check_unsafe_nodes(Bucket, Options,
+                                       NewBucketConfig, Servers, States);
+        Error ->
+            Error
+    end.
 
+cleanup_check_unsafe_nodes(Bucket, Options, BucketConfig, Servers, States) ->
     %% Find all the unsafe nodes (nodes on which memcached restarted within
     %% the auto-failover timeout) using the vbucket states. If atleast one
     %% unsafe node is found then we won't bring the bucket online until we
     %% we reprovision it. Reprovisioning is initiated by the orchestrator at
     %% the end of every janitor run.
     UnsafeNodes = find_unsafe_nodes_with_vbucket_states(
-                    NewBucketConfig, States,
-                    should_check_for_unsafe_nodes(NewBucketConfig, Options)),
+                    BucketConfig, States,
+                    should_check_for_unsafe_nodes(BucketConfig, Options)),
 
     case UnsafeNodes =/= [] of
         true ->
             {error, unsafe_nodes, UnsafeNodes};
         false ->
-            cleanup_apply_config(Bucket, Servers, NewBucketConfig, Options)
+            cleanup_apply_config(Bucket, Servers, BucketConfig, Options)
     end.
 
-maybe_fixup_vbucket_map(Bucket, BucketConfig, States) ->
+maybe_fixup_vbucket_map(Bucket, BucketConfig, States, Options) ->
+    try
+        NewBucketConfig = maybe_pull_config(Bucket,
+                                            BucketConfig, States, Options),
+        FixedBucketConfig = do_maybe_fixup_vbucket_map(Bucket,
+                                                       NewBucketConfig, States),
+        maybe_push_config(Bucket, FixedBucketConfig, States, Options),
+
+        {ok, FixedBucketConfig}
+    catch
+        throw:Error ->
+            Error
+    end.
+
+do_maybe_fixup_vbucket_map(Bucket, BucketConfig, States) ->
     {NewBucketConfig, IgnoredVBuckets} = compute_vbucket_map_fixup(Bucket,
                                                                    BucketConfig,
                                                                    States),
@@ -213,10 +234,22 @@ config_sync_type_to_flag(pull) ->
 config_sync_type_to_flag(push) ->
     push_config.
 
-config_sync(pull, Nodes, Timeout) ->
-    ok = ns_config_rep:pull_remotes(Nodes, Timeout);
-config_sync(push, Nodes, Timeout) ->
-    ok = ns_config_rep:ensure_config_seen_by_nodes(Nodes, Timeout).
+config_sync(Type, Nodes, Timeout) ->
+    try do_config_sync(Type, Nodes, Timeout) of
+        ok ->
+            ok;
+        Error ->
+            throw({error, {config_sync_failed, Type, Error}})
+    catch
+        T:E ->
+            Stack = erlang:get_stacktrace(),
+            throw({error, {config_sync_failed, Type, {T, E, Stack}}})
+    end.
+
+do_config_sync(pull, Nodes, Timeout) ->
+    ns_config_rep:pull_remotes(Nodes, Timeout);
+do_config_sync(push, Nodes, Timeout) ->
+    ns_config_rep:ensure_config_seen_by_nodes(Nodes, Timeout).
 
 maybe_pull_config(Bucket, BucketConfig, States, Options) ->
     maybe_config_sync(pull, Bucket, BucketConfig, States, Options),

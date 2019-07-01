@@ -97,8 +97,7 @@ build_recovery_map_json(RecoveryMap) ->
               [JSON | Acc]
       end, [], RecoveryMap).
 
-reply_common(Req, Reply0) ->
-    Reply = extract_reply(Reply0),
+reply_common(Req, Reply) ->
     Status = reply_status_code(Reply),
     Code = reply_code(Reply),
     Extra = build_common_reply_extra(Reply),
@@ -106,20 +105,25 @@ reply_common(Req, Reply0) ->
     JSON = {struct, [{code, Code} | Extra]},
     reply_json(Req, JSON, Status).
 
-build_common_reply_extra({failed_nodes, Nodes}) ->
-    [{failedNodes, Nodes}];
 build_common_reply_extra(Reply) when is_atom(Reply) ->
-    [].
+    [];
+build_common_reply_extra({error, Error}) ->
+    build_error_reply_extra(Error).
 
-extract_reply({error, Error}) ->
-    Error;
-extract_reply(Reply) ->
-    Reply.
+build_error_reply_extra({failed_nodes, Nodes}) ->
+    [{failedNodes, Nodes}];
+build_error_reply_extra(OtherError) ->
+    [{internalError, iolist_to_binary(io_lib:format("~p", [OtherError]))}].
 
-reply_code({failed_nodes, _}) ->
-    failed_nodes;
 reply_code(Reply) when is_atom(Reply) ->
-    Reply.
+    Reply;
+reply_code({error, Error}) ->
+    error_reply_code(Error).
+
+error_reply_code({failed_nodes, _}) ->
+    failed_nodes;
+error_reply_code(_) ->
+    internal_error.
 
 reply_status_code(ok) ->
     200;
@@ -131,9 +135,9 @@ reply_status_code(bad_recovery) ->
     404;
 reply_status_code(vbucket_not_found) ->
     404;
-reply_status_code({failed_nodes, _}) ->
-    500;
 reply_status_code(rebalance_running) ->
     503;
 reply_status_code(Error) when is_atom(Error) ->
-    400.
+    400;
+reply_status_code({error, _}) ->
+    500.
