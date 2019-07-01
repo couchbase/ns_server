@@ -225,9 +225,7 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix):
                           "+P", "327680", "-pa"] + ebin_path
     args += [
         "-setcookie", "nocookie",
-        "-kernel", "inet_dist_listen_min", "21100",
-        "inet_dist_listen_max", "21199",
-        "error_logger", "false",
+        "-kernel", "error_logger", "false",
         "-sasl", "sasl_error_logger", "false",
         "-couch_ini"] + couch_configs(i)
 
