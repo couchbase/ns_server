@@ -281,10 +281,12 @@ start_collection_per_node(TimestampS, Parent, Options) ->
     {UploadFilename, MaybeLogRedaction} =
         case proplists:get_value(redact_level, Options) of
             partial ->
+                Salt = proplists:get_value(redact_salt, Options),
+                ?log_debug("Partial redaction requested. Hashed salt = ~p",
+                           [crypto:hash(sha, Salt)]),
                 {filename:join(LogPath, Basename ++ "-redacted" ++ ".zip"),
                  ["--log-redaction-level=partial",
-                  "--log-redaction-salt=" ++
-                   proplists:get_value(redact_salt, Options)]};
+                  "--log-redaction-salt=" ++ Salt]};
             _ ->
                 {Filename, []}
         end,
@@ -312,7 +314,7 @@ start_collection_per_node(TimestampS, Parent, Options) ->
 
     ?log_debug("spawning collectinfo:~n"
                "  Args: ~p~n"
-               "  Env: ~p", [Args, Env]),
+               "  Env: ~p", [Args -- MaybeLogRedaction, Env]),
     {Status, Output} =
         misc:run_external_tool(path_config:component_path(bin, "cbcollect_info"),
                                Args, Env),

@@ -220,14 +220,22 @@ class AccessLogProcessor:
 
 class RegularLogProcessor:
     rexes = [re.compile('(<ud>)(.+?)(</ud>)'),
-             re.compile('("--log-redaction-salt=)(.+?)(")')]
+             # Redact the rest of the line in the case we encounter
+             # log-redaction-salt. Needed to redact pre-madhatter debug logs
+             # as well as occurence in couchbase.log
+             re.compile('(log-redaction-salt)(.+)')]
 
     def __init__(self, salt):
         self.salt = salt
 
     def _hash(self, match):
-        h = generate_hash(self.salt + match.group(2)).hexdigest()
-        return match.group(1) + h + match.group(3)
+        result = match.group(1)
+        if match.lastindex == 3:
+            h = generate_hash(self.salt + match.group(2)).hexdigest()
+            result += h + match.group(3)
+        elif match.lastindex == 2:
+            result += " <redacted>"
+        return result
 
     def _process_line(self, line):
         for rex in self.rexes:
@@ -239,8 +247,6 @@ class RegularLogProcessor:
 
 
 class CouchbaseLogProcessor(RegularLogProcessor):
-    rexes = [re.compile('(--log-redaction-salt=)(.+?)( )')]
-
     def do(self, line):
         if "RedactLevel" in line:
             # salt + salt to maintain consistency with other
