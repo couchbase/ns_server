@@ -197,9 +197,10 @@ sync_config(Servers, FromPid) ->
     case ns_config_rep:ensure_config_seen_by_nodes(SyncServers) of
         ok ->
             ok;
-        {error, BadNodes} ->
+        {error, BadReplies} ->
             ?log_error("Failed to "
-                       "synchronize config to some nodes: ~p", [BadNodes]),
+                       "synchronize config to some nodes: ~p", [BadReplies]),
+            BadNodes = [N || {N, _} <- BadReplies],
             throw({error, {failed_nodes, BadNodes}})
     end.
 
