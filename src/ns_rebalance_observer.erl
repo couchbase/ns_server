@@ -204,7 +204,8 @@ handle_call({record_rebalance_report, ExitInfo}, From, State) ->
                                                From,
                                                State),
     Report = {RebalanceInfo ++ ExitInfo},
-    RV = case ns_rebalance_report_manager:record_rebalance_report(Report) of
+    RV = case ns_rebalance_report_manager:record_rebalance_report(
+                ejson:encode(Report)) of
              ok ->
                  ok;
              Err ->

@@ -98,8 +98,7 @@ handle_call({record_rebalance_report, Report}, _From,
                   ns_config:read_key_fast(rebalance_reports, [])],
     Keep = lists:sublist(AllReports, get_num_rebalance_reports()),
     Path = filename:join(Dir, FileName),
-    BinaryReport = ejson:encode(Report),
-    ok = misc:atomic_write_file(Path, BinaryReport),
+    ok = misc:atomic_write_file(Path, Report),
     ns_config:set(rebalance_reports, Keep),
     {reply, ok, State};
 handle_call(_, _, State) ->
