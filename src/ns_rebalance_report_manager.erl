@@ -110,6 +110,22 @@ handle_cast(_, State) ->
 
 handle_info(refresh, #state{report_dir = Dir} = State) ->
     misc:flush(refresh),
+    refresh(Dir),
+    {noreply, State};
+handle_info(_, State) ->
+    {noreply, State}.
+
+terminate(_Reason, _State) ->
+    ok.
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+%% -------------------------------------------------------------
+%% Internal API's.
+%% -------------------------------------------------------------
+
+refresh(Dir) ->
     gen_server2:abort_queue(fetch_task),
     ReqdReports = ns_config:read_key_fast(rebalance_reports, []),
     {ok, ListFiles} = file:list_dir(Dir),
@@ -134,20 +150,7 @@ handle_info(refresh, #state{report_dir = Dir} = State) ->
                       fetch_task(MissingReports, Dir)
               end,
               fun (_, S) -> {noreply, S} end)
-    end,
-    {noreply, State};
-handle_info(_, State) ->
-    {noreply, State}.
-
-terminate(_Reason, _State) ->
-    ok.
-
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
-
-%% -------------------------------------------------------------
-%% Internal API's.
-%% -------------------------------------------------------------
+    end.
 
 %% If configured use that value. num_rebalance_reports is not set by ns_server
 %% anywhere. Can only be set by explicit administrative action we provide.
