@@ -32,7 +32,8 @@
                      {error, marking_as_warmed_failed, [node()]} |
                      {error, unsafe_nodes, [node()]} |
                      {error, {config_sync_failed,
-                              pull | push, Details :: any()}}.
+                              pull | push, Details :: any()}} |
+                     {error, {bad_vbuckets, [vbucket_id()]}}.
 cleanup(Bucket, Options) ->
     FullConfig = ns_config:get(),
     case ns_bucket:get_bucket(Bucket, FullConfig) of
@@ -153,11 +154,14 @@ maybe_fixup_vbucket_map(Bucket, BucketConfig, States, Options) ->
     try
         NewBucketConfig = maybe_pull_config(Bucket,
                                             BucketConfig, States, Options),
-        FixedBucketConfig = do_maybe_fixup_vbucket_map(Bucket,
-                                                       NewBucketConfig, States),
-        maybe_push_config(Bucket, FixedBucketConfig, States, Options),
 
-        {ok, FixedBucketConfig}
+        case do_maybe_fixup_vbucket_map(Bucket, NewBucketConfig, States) of
+            {ok, FixedBucketConfig} ->
+                maybe_push_config(Bucket, FixedBucketConfig, States, Options),
+                {ok, FixedBucketConfig};
+            FixupError ->
+                FixupError
+        end
     catch
         throw:Error ->
             Error
@@ -167,16 +171,20 @@ do_maybe_fixup_vbucket_map(Bucket, BucketConfig, States) ->
     {NewBucketConfig, IgnoredVBuckets} = compute_vbucket_map_fixup(Bucket,
                                                                    BucketConfig,
                                                                    States),
-    [] = IgnoredVBuckets,
+    case IgnoredVBuckets of
+        [] ->
+            case NewBucketConfig =:= BucketConfig of
+                true ->
+                    ok;
+                false ->
+                    fixup_vbucket_map(Bucket, BucketConfig,
+                                      NewBucketConfig, States)
+            end,
 
-    case NewBucketConfig =:= BucketConfig of
-        true ->
-            ok;
-        false ->
-            fixup_vbucket_map(Bucket, BucketConfig, NewBucketConfig, States)
-    end,
-
-    NewBucketConfig.
+            {ok, NewBucketConfig};
+        _ when is_list(IgnoredVBuckets) ->
+            {error, {bad_vbuckets, IgnoredVBuckets}}
+    end.
 
 fixup_vbucket_map(Bucket, BucketConfig, NewBucketConfig, States) ->
     ?log_info("Janitor is going to change "
