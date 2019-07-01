@@ -109,8 +109,14 @@ handle_cast(_, State) ->
     {noreply, State}.
 
 handle_info(refresh, #state{report_dir = Dir} = State) ->
-    misc:flush(refresh),
-    refresh(Dir),
+    case ns_config_auth:is_system_provisioned() of
+        true ->
+            %% Only run refresh task if it a provisioned cluster.
+            misc:flush(refresh),
+            refresh(Dir);
+        false ->
+            ok
+    end,
     {noreply, State};
 handle_info(_, State) ->
     {noreply, State}.
