@@ -71,7 +71,7 @@
       </div>
 
       <div class="row pills margin-bottom-half">
-        <a ng-repeat="(name, block) in chartBuilderCtl.statsDirectoryBlocks track by name"
+        <a ng-repeat="name in chartBuilderCtl.orderPills(chartBuilderCtl.statsDirectoryBlocks) track by name"
            ng-if="chartBuilderCtl.filterStats(name)"
            ng-class="{selected: chartBuilderCtl.selectedBlock == name}"
            ng-click="chartBuilderCtl.selectTab(name)"

@@ -53,12 +53,20 @@
     vm.onSelectBucket = onSelectBucket;
     vm.statsDesc = mnStatisticsDescriptionService.stats;
     vm.kvGroups = mnStatisticsDescriptionService.kvGroups;
+    vm.orderPills = orderPills;
     var selectedUnits = {};
     vm.selectedKVFilters = {};
     var selectedByNodeStats = {};
     var selectedStats = {};
 
     activate();
+
+    function orderPills(statsDirectoryBlocks) {
+      var order = ["@system", "@kv", "@index", "@query", "@fts", "@cbas", "@eventing", "@xdcr"];
+      return Object.keys(statsDirectoryBlocks || {}).sort(function (a, b) {
+        return order.indexOf(a) - order.indexOf(b);
+      });
+    }
 
     function selectTab(name) {
       vm.selectedBlock = name;
