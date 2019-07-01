@@ -730,11 +730,22 @@ map_matches_states_exactly_test() ->
                     {1, [{a, active, []}, {b, replica, []}]},
                     {2, [{c, active, []}]},
                     {3, [{c, replica}]}]),
+    BadStates4 = dict:from_list(
+                   [{0, [{a, active, []}, {b, replica, []}]},
+                    {1, [{a, active, []}, {b, replica, []}]},
+                    {2, []},
+                    {3, []}]),
+    BadStates5 = dict:from_list(
+                   [{0, [{a, active, []}, {b, replica, []}]},
+                    {1, [{a, active, []}]},
+                    {2, [{c, active, []}]},
+                    {3, []}]),
+
 
     lists:foreach(
       fun (States) ->
               ?assertMatch({false, _}, map_matches_states_exactly(Map, States))
-      end, [BadStates1, BadStates2, BadStates3]).
+      end, [BadStates1, BadStates2, BadStates3, BadStates4, BadStates5]).
 
 data_loss_possible_t(Chain, States) ->
     data_loss_possible(0, Chain,
