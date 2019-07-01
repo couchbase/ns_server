@@ -8,7 +8,14 @@
 
   function mnFormatStatsSections() {
     return function (section) {
-      section = section.substr(1);
+      if (section.includes("@")) {
+        section = section.substr(1);
+      }
+
+      if (section.includes("-")) {
+        section = section.substr(0, section.length-1);
+      }
+
       switch (section) {
       case "system": return "System";
       case "xdcr": return "XDCR";
@@ -17,7 +24,7 @@
     };
   }
 
-  function mnStatisticsNewChartBuilderController($scope, mnPromiseHelper, mnBucketsStats, mnStatisticsNewService, chart, group, $uibModalInstance, mnStatisticsDescriptionService, $timeout, $state) {
+  function mnStatisticsNewChartBuilderController($scope, mnPromiseHelper, mnBucketsStats, mnStatisticsNewService, chart, group, $uibModalInstance, mnStatisticsDescriptionService, $timeout, $state, mnFormatStatsSectionsFilter, mnFormatServicesFilter) {
     var vm = this;
 
     vm.create = create;
@@ -107,16 +114,23 @@
     }
 
     function onStatChecked(desc, value, breadcrumb) {
+      console.log(breadcrumb)
       if (vm.units[desc.unit] === undefined) {
         vm.units[desc.unit] = 0;
       }
 
       if (value) {
         vm.units[desc.unit] += 1;
-        vm.breadcrumbs[breadcrumb.join(" > ")] = true;
+        vm.breadcrumbs[breadcrumb
+                       .map(mnFormatStatsSectionsFilter)
+                       .map(mnFormatServicesFilter)
+                       .join(" > ")] = true;
       } else {
         vm.units[desc.unit] -= 1;
-        delete vm.breadcrumbs[breadcrumb.join(" > ")];
+        delete vm.breadcrumbs[breadcrumb
+                              .map(mnFormatStatsSectionsFilter)
+                              .map(mnFormatServicesFilter)
+                              .join(" > ")];
       }
 
       var selectedUnitsCount =
