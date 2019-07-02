@@ -212,7 +212,7 @@
         templateUrl: 'app/mn_admin/mn_logs/collect_info/mn_logs_collect_info_form.html'
       })
       .state('app.admin.overview.statistics', {
-        url: '/stats?zoom&scenario&scenarioBucket',
+        url: '/stats',
         controller: 'mnStatisticsNewController as statisticsNewCtl',
         templateUrl: 'app/mn_admin/mn_statistics/mn_statistics.html',
         redirectTo: function (trans, permissions) {
