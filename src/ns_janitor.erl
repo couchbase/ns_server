@@ -263,6 +263,12 @@ config_sync(Type, Nodes, Timeout) ->
 do_config_sync(pull, Nodes, Timeout) ->
     ns_config_rep:pull_remotes(Nodes, Timeout);
 do_config_sync(push, Nodes, Timeout) ->
+    %% Explicitly push buckets to other nodes even if didn't modify them. This
+    %% is needed because ensure_conig_seen_by_nodes() only makes sure that any
+    %% outstanding local mutations are pushed out. But it's possible that we
+    %% didn't have any local modifications to buckets, we still want to make
+    %% sure that all nodes have received all updates.
+    ns_config_rep:push_keys([buckets]),
     ns_config_rep:ensure_config_seen_by_nodes(Nodes, Timeout).
 
 maybe_pull_config(Bucket, BucketConfig, States, Options) ->
