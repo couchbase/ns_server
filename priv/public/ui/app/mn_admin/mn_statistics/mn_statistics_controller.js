@@ -28,7 +28,7 @@
     vm.statisticsService = mnStatisticsNewService.export;
     vm.saveScenarios = mnStatisticsNewService.saveScenarios;
     vm.bucket = $state.params.scenarioBucket;
-    vm.zoom = $state.params.zoom;
+    vm.zoom = $state.params.scenarioZoom;
     vm.getNvd3Options = getNvd3Options;
     vm.editChart = editChart;
     vm.deleteChart = deleteChart;
@@ -105,7 +105,7 @@
               var scope = $rootScope.$new();
               scope.config = config;
               scope.bucket = $state.params.scenarioBucket;
-              scope.zoom = $state.params.zoom;
+              scope.zoom = $state.params.scenarioZoom;
               $uibModal.open({
                 templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_chart_dialog.html',
                 scope: scope,
@@ -182,7 +182,7 @@
     function onSelectZoom() {
       mnStatisticsNewService.saveScenarios().then(function () {
         $state.go('^.statistics', {
-          zoom: vm.zoom
+          scenarioZoom: vm.zoom
         });
       });
     }

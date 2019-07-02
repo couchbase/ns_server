@@ -55,6 +55,18 @@
     $stateProvider
       .state('app.admin', {
         abstract: true,
+        params: {
+          scenarioBucket: {
+            value: null
+          },
+          scenario: {
+            value: null,
+            dynamic: true
+          },
+          scenarioZoom: {
+            value: "minute"
+          }
+        },
         resolve: {
           poolDefault: function (mnPoolDefault) {
             return mnPoolDefault.getFresh();
@@ -225,18 +237,6 @@
               return {state: "app.admin.overview.statistics", params: params};
             }
           });
-        },
-        params: {
-          scenarioBucket: {
-            value: null
-          },
-          scenario: {
-            value: null,
-            dynamic: true
-          },
-          zoom: {
-            value: "minute"
-          }
         }
       });
 
