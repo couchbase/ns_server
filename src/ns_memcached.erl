@@ -57,23 +57,23 @@
          handle_info/2, terminate/2, code_change/3]).
 
 -record(state, {
-                running_fast = 0,
-                running_heavy = 0,
-                running_very_heavy = 0,
-                %% NOTE: otherwise dialyzer seemingly thinks it's possible
-                %% for queue fields to be undefined
-                fast_calls_queue = impossible :: queue:queue(),
-                heavy_calls_queue = impossible :: queue:queue(),
-                very_heavy_calls_queue = impossible :: queue:queue(),
-                status :: connecting | init | connected | warmed,
-                start_time :: undefined | tuple(),
-                bucket :: bucket_name(),
-                sock = still_connecting :: port() | still_connecting,
-                timer :: any(),
-                work_requests = [],
-                warmup_stats = [] :: [{binary(), binary()}],
-                check_config_pid = undefined :: undefined | pid()
-               }).
+          running_fast = 0,
+          running_heavy = 0,
+          running_very_heavy = 0,
+          %% NOTE: otherwise dialyzer seemingly thinks it's possible
+          %% for queue fields to be undefined
+          fast_calls_queue = impossible :: queue:queue(),
+          heavy_calls_queue = impossible :: queue:queue(),
+          very_heavy_calls_queue = impossible :: queue:queue(),
+          status :: connecting | init | connected | warmed,
+          start_time :: undefined | tuple(),
+          bucket :: bucket_name(),
+          sock = still_connecting :: port() | still_connecting,
+          timer :: any(),
+          work_requests = [],
+          warmup_stats = [] :: [{binary(), binary()}],
+          check_config_pid = undefined :: undefined | pid()
+         }).
 
 %% external API
 -export([active_buckets/0,
