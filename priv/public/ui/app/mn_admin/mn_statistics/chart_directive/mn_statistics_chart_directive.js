@@ -31,6 +31,7 @@
       if (!_.isEmpty($scope.config.stats)) {
         units = mnStatisticsNewService.getStatsUnits($scope.config.stats);
         $scope.title = mnStatisticsNewService.getStatsTitle($scope.config.stats);
+        $scope.desc = mnStatisticsNewService.getStatsDesc($scope.config.stats);
         activate();
       }
 

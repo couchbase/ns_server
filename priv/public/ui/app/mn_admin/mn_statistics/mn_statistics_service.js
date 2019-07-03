@@ -25,6 +25,7 @@
       getStatsV2: getStatsV2,
       getStatsUnits: getStatsUnits,
       getStatsTitle: getStatsTitle,
+      getStatsDesc: getStatsDesc,
       tickMultiFormat: d3.time.format.multi([
         ["%-I:%M%p", function (d) {return d.getMinutes(); }], // not the beginning of the hour
         ["%-I%p", function (d) { return d.getHours(); }], // not midnight
@@ -45,6 +46,13 @@
         var desc = mnStatisticsNewService.readByPath(descPath, name);
         return desc.title;
       }).join(", ");
+    }
+
+    function getStatsDesc(stats) {
+      return _.map(stats, function (descPath, name) {
+        var desc = mnStatisticsNewService.readByPath(descPath, name);
+        return "<b>" + desc.title + "</b><p>" + desc.desc + "</p>";
+      }).join("");
     }
 
     function getStatsUnits(stats) {
