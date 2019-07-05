@@ -22,6 +22,8 @@
   function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http, mnPoller, mnBucketsService, $uibModal, $rootScope, mnHelper, $window, mnUserRolesService, permissions, $timeout, $document) {
     var vm = this;
 
+    vm.mnStatisticsNewScope = $scope;
+
     vm.onSelectScenario = onSelectScenario;
     vm.onSelectZoom = onSelectZoom;
     vm.$document = $document;

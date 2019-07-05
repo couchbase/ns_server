@@ -12,11 +12,12 @@
     ])
     .directive("mnStatisticsChart", mnStatisticsNewChartDirective);
 
-  function mnStatisticsNewChartDirective(mnStatisticsNewService, mnStatisticsDescriptionService, $uibModal, $state, mnPrepareQuantityFilter, mnTruncateTo3DigitsFilter, $rootScope, mnHelper, $timeout) {
+  function mnStatisticsNewChartDirective(mnStatisticsNewService, mnStatisticsDescriptionService, $uibModal, $state, mnPrepareQuantityFilter, mnTruncateTo3DigitsFilter, $rootScope, mnHelper, $timeout, $window) {
     return {
       restrict: 'AE',
       templateUrl: 'app/mn_admin/mn_statistics/chart_directive/mn_statistics_chart_directive.html',
       scope: {
+        syncScope: "=?",
         config: "=",
         getNvd3Options: "&?",
         bucket: "@",
@@ -25,7 +26,7 @@
       controller: controller
     };
 
-    function controller($scope) {
+    function controller($scope, $element) {
       var units;
 
       if (!_.isEmpty($scope.config.stats)) {
@@ -51,6 +52,57 @@
         });
         initConfig();
         subscribeToMultiChartData();
+        if ($scope.syncScope) {
+          syncTooltips();
+        }
+      }
+
+      function syncTooltips() {
+        $element.on("mousemove mouseup mousedown mouseout", _.debounce(function (e) {
+          $scope.syncScope.$broadcast("syncTooltips", {
+            element: $element,
+            event: e,
+            api: $scope.chartApi
+          });
+        }, 2, {leading:true}));
+
+        $scope.$on("syncTooltips", function (e, source) {
+          if (source.element[0] !== $element[0] && $element.find("svg")[0]) {
+            var sourcePos = source.element[0].getBoundingClientRect();
+            var elementPos = $element[0].getBoundingClientRect();
+            var sourceMargin = source.api.getScope().chart.margin();
+            var elementMargin = $scope.chartApi.getScope().chart.margin();
+            var sourceGraphWidth = sourcePos.width - sourceMargin.right - sourceMargin.left;
+            var elementGraphWidth = elementPos.width - elementMargin.right - elementMargin.left;
+            var sourceGraphRelativeX = source.event.clientX - sourcePos.x - sourceMargin.left;
+
+            var interX = sourceGraphWidth / sourceGraphRelativeX;
+            var clientX  = (elementPos.x + elementMargin.right) + (elementGraphWidth / interX);
+
+            var interY =  sourcePos.height / (source.event.clientY - sourcePos.y);
+            var clientY  = elementPos.y + (elementPos.height / interY);
+
+            source.api.getScope().chart.interactiveLayer.tooltip.enabled(true);
+            $scope.chartApi.getScope().chart.interactiveLayer.tooltip.enabled(false);
+
+            $element.find("svg")[0].dispatchEvent(createEvent(
+	      source.event.type,
+              clientX,
+              clientY
+	    ));
+          }
+        });
+      }
+
+      function createEvent(type, clientX, clientY){
+        var event = new MouseEvent(type, {
+          view: $window,
+          bubbles: false,
+          cancelable: true,
+          clientX: clientX,
+          clientY: clientY
+        });
+        return event;
       }
 
       function subscribeToMultiChartData() {

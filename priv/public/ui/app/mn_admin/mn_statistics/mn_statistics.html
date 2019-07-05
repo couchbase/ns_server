@@ -192,6 +192,8 @@
             ng-click="showChartControls = !showChartControls"></span>
         </div>
         <mn-statistics-chart
+           style="display:block;"
+           sync-scope="statisticsNewCtl.mnStatisticsNewScope"
            get-nvd3-options="statisticsNewCtl.getNvd3Options(config)"
            bucket="{{statisticsNewCtl.bucket}}"
            zoom="{{statisticsNewCtl.zoom}}"
