@@ -47,7 +47,7 @@
          fetch_vbucket_states/2,
          find_vbucket_state/2,
          check_bucket_ready/3,
-         apply_new_bucket_config_with_timeout/5,
+         apply_new_bucket_config_with_timeout/4,
          mark_bucket_warmed/2,
          delete_vbucket_copies/4,
          prepare_nodes_for_rebalance/3,
@@ -301,12 +301,12 @@ process_apply_config_rv(Bucket, {Replies, BadNodes}, Call) ->
             ok
     end.
 
-get_apply_new_config_call(Rebalancer, NewBucketConfig) ->
+get_apply_new_config_call(NewBucketConfig) ->
     case cluster_compat_mode:is_cluster_madhatter() of
         true ->
             {apply_new_config, NewBucketConfig};
         false ->
-            {apply_new_config, Rebalancer, NewBucketConfig, []}
+            {apply_new_config, NewBucketConfig, []}
     end.
 
 get_apply_new_config_replicas_phase_call(NewBucketConfig) ->
@@ -317,27 +317,21 @@ get_apply_new_config_replicas_phase_call(NewBucketConfig) ->
             {apply_new_config_replicas_phase, NewBucketConfig, []}
     end.
 
-apply_new_bucket_config_with_timeout(Bucket, Rebalancer, Servers,
-                                     NewBucketConfig,
-                                     Timeout0) ->
+apply_new_bucket_config_with_timeout(Bucket, Servers,
+                                     NewBucketConfig, Timeout0) ->
     Timeout = case Timeout0 of
                   undefined_timeout -> ?APPLY_NEW_CONFIG_TIMEOUT;
                   _ -> Timeout0
               end,
-    true = (Rebalancer =:= undefined orelse is_pid(Rebalancer)),
-    apply_new_bucket_config(Bucket, Rebalancer, Servers,
-                            NewBucketConfig, Timeout).
+    apply_new_bucket_config(Bucket, Servers, NewBucketConfig, Timeout).
 
-apply_new_bucket_config(Bucket, Rebalancer, Servers,
-                        NewBucketConfig, Timeout) ->
+apply_new_bucket_config(Bucket, Servers, NewBucketConfig, Timeout) ->
     RV1 = misc:parallel_map(
             fun (Node) ->
                     {Node,
-                     catch rebalance_call(
-                             Rebalancer, Bucket, Node,
-                             get_apply_new_config_call(Rebalancer,
-                                                       NewBucketConfig),
-                             Timeout)}
+                     catch call(Bucket, Node,
+                                get_apply_new_config_call(NewBucketConfig),
+                                Timeout)}
             end, Servers, infinity),
     case process_apply_config_rv(Bucket, {RV1, []}, apply_new_config) of
         ok ->

@@ -283,7 +283,7 @@ cleanup_apply_config_body(Bucket, Servers, BucketConfig, Options) ->
     ApplyTimeout = proplists:get_value(apply_config_timeout,
                                        Options,
                                        undefined_timeout),
-    ok = janitor_agent:apply_new_bucket_config_with_timeout(Bucket, undefined,
+    ok = janitor_agent:apply_new_bucket_config_with_timeout(Bucket,
                                                             Servers,
                                                             BucketConfig,
                                                             ApplyTimeout),
