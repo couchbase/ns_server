@@ -386,7 +386,8 @@ wait_for_bucket_init_loop(Bucket) ->
                               <<"creating vbuckets">>,
                               <<"loading collection counts">>,
                               <<"estimating database item count">>,
-                              <<"loading prepared SyncWrites">>]) of
+                              <<"loading prepared SyncWrites">>,
+                              <<"populating vbucket map">>]) of
         true ->
             timer:sleep(10),
             wait_for_bucket_init_loop(Bucket);
