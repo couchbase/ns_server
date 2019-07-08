@@ -64,6 +64,7 @@
                           in_progress = [] :: [{node(), #stat_info{}}]}).
 
 -record(bucket_level_info, {bucket_name,
+                            storage_mode,
                             compaction_info = #compaction_info{},
                             vbucket_level_info = #vbucket_level_info{}}).
 
@@ -159,11 +160,14 @@ get_stage_nodes(Services, NodesInfo) ->
 init({Services, NodesInfo, Type, Id}) ->
     Self = self(),
     StageInfo = rebalance_stage_info:init(get_stage_nodes(Services, NodesInfo)),
-    Buckets = ns_bucket:get_bucket_names(),
+    Buckets = ns_bucket:get_buckets(),
     BucketsCount = length(Buckets),
-    BucketLevelInfo = dict:from_list([{BN,
-                                       #bucket_level_info{bucket_name = BN}} ||
-                                      BN <- Buckets]),
+    BucketLevelInfo = dict:from_list(
+                        [{BN,
+                          #bucket_level_info{
+                             bucket_name = BN,
+                             storage_mode = ns_bucket:storage_mode(Config)}}
+                         || {BN, Config} <- Buckets]),
     proc_lib:spawn_link(erlang, apply, [fun docs_left_updater_init/1, [Self]]),
     erlang:register(get_registered_local_name(), self()),
 
@@ -614,6 +618,14 @@ moves_stats(Moves) ->
                 end, Acc, Stats)
       end, {dict:new(), dict:new()}, Moves).
 
+ignore_event_for_bucket(Event,
+                        #bucket_level_info{storage_mode = StorageMode}) ->
+    (StorageMode =:= undefined orelse StorageMode =:= ephemeral) andalso
+        (Event =:= compaction_uninhibit_started orelse
+         Event =:= compaction_uninhibit_done orelse
+         Event =:= seqno_waiting_started orelse
+         Event =:= seqno_waiting_ended).
+
 update_info(Event,
             #state{bucket_info = OldBucketLevelInfo} = State,
             {_TS, BucketName, _VB} = UpdateArgs) ->
@@ -621,8 +633,14 @@ update_info(Event,
         dict:update(
           BucketName,
           fun (BLI0) ->
-                  BLI1 = update_bucket_level_info(Event, BLI0, UpdateArgs),
-                  update_vbucket_level_info(Event, BLI1, UpdateArgs)
+                  case ignore_event_for_bucket(Event, BLI0) of
+                      false ->
+                          BLI1 = update_bucket_level_info(Event, BLI0,
+                                                          UpdateArgs),
+                          update_vbucket_level_info(Event, BLI1, UpdateArgs);
+                      true ->
+                          BLI0
+                  end
           end, OldBucketLevelInfo),
     State#state{bucket_info = NewBucketLevelInfo}.
 
