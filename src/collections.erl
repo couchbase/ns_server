@@ -31,7 +31,8 @@
          create_collection/4,
          drop_scope/2,
          drop_collection/3,
-         wait_for_manifest_uid/5]).
+         wait_for_manifest_uid/5,
+         convert_uid_from_memcached/1]).
 
 %% rpc from other nodes
 -export([wait_for_manifest_uid/4]).
@@ -73,6 +74,9 @@ get_uid(Props) ->
 
 convert_uid_to_memcached(V) ->
     list_to_binary(string:to_lower(integer_to_list(V, 16))).
+
+convert_uid_from_memcached(V) ->
+    list_to_integer(binary_to_list(V), 16).
 
 get_uid_in_memcached_format(Props) ->
     convert_uid_to_memcached(get_uid(Props)).

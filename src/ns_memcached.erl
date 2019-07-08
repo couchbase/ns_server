@@ -1374,12 +1374,10 @@ set_cluster_config(Rev, Blob) ->
       ?cut({reply, mc_client_binary:set_cluster_config(_, "", Rev, Blob)})).
 
 get_collections_uid(Bucket) ->
-    perform_very_long_call(
-      ?cut({reply,
-            list_to_integer(
-              binary_to_list(
-                memcached_bucket_config:get_current_collections_uid(_)))}),
-      Bucket).
+    collections:convert_uid_from_memcached(
+      perform_very_long_call(
+        ?cut({reply, memcached_bucket_config:get_current_collections_uid(_)}),
+        Bucket)).
 
 handle_connected_call(Call, From, #state{status = Status} = State) ->
     case Status of

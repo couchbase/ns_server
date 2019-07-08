@@ -257,7 +257,7 @@ ensure_collections(Sock, #cfg{name = BucketName, config = BucketConfig}) ->
             gen_event:notify(buckets_events,
                              {set_collections_manifest,
                               ns_bucket:bucket_uuid(BucketConfig),
-                              list_to_integer(binary_to_list(Next))})
+                              collections:convert_uid_from_memcached(Next)})
     end.
 
 start_params(#cfg{config = BucketConfig,
