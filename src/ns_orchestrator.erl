@@ -704,7 +704,7 @@ idle({failover, Node}, From, _State) ->
      [{next_event, {call, From}, {failover, [Node], false}}]};
 idle({failover, Nodes, AllowUnsafe}, From, _State) ->
     auto_rebalance:cancel_any_pending_retry_async("failover"),
-    Result = ns_rebalancer:run_failover(Nodes, AllowUnsafe),
+    Result = failover:run(Nodes, AllowUnsafe),
 
     {keep_state_and_data, [{reply, From, Result}]};
 idle({try_autofailover, Nodes}, From, _State) ->
