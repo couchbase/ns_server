@@ -603,11 +603,18 @@ init(BucketName) ->
     RegistryPid = janitor_agent_sup:get_registry_pid(BucketName),
     true = is_pid(RegistryPid),
 
-    %% Drop all replications if we crashed, so that:
-    %%  - Our state is consistent with the state of replications.
-    %%  - All outstanding state changes due to inflight takeovers have
-    %%    completed, and therefore query_vbuckets returns consistent results.
-    dcp_sup:nuke(BucketName),
+    {ok, BucketConfig} = ns_bucket:get_bucket(BucketName),
+    case ns_bucket:bucket_type(BucketConfig) of
+        memcached ->
+            ok;
+        _ ->
+            %% Drop all replications if we crashed, so that:
+            %%  - Our state is consistent with the state of replications.
+            %%  - All outstanding state changes due to inflight takeovers have
+            %%    completed, and therefore query_vbuckets returns consistent
+            %%    results.
+            dcp_sup:nuke(BucketName)
+    end,
 
     State = #state{bucket_name = BucketName,
                    flushseq = read_flush_counter(BucketName),
