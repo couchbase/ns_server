@@ -26,7 +26,6 @@
          get_aggregated_progress/1,
          get_rebalance_info/0,
          record_rebalance_report/1,
-         update_stage_info/2,
          update_progress/2,
          submit_master_event/1]).
 
@@ -105,9 +104,6 @@ record_rebalance_report(Args) ->
 
 update_progress(Stage, StageProgress) ->
     gen_server:cast(?SERVER, {update_progress, Stage, StageProgress}).
-
-update_stage_info(Stage, StageInfo) ->
-    gen_server:cast(?SERVER, {update_stage_info, Stage, StageInfo}).
 
 get_registered_local_name() ->
     ?MODULE.
@@ -276,10 +272,6 @@ handle_cast({update_progress, Stage, StageProgress},
     NewStageInfo = rebalance_stage_info:update_progress(
                      Stage, StageProgress, Old),
     {noreply, State#state{stage_info = NewStageInfo}};
-handle_cast({update_stage_info, Stage, StageInfo},
-            #state{stage_info = Old} = State) ->
-    New = rebalance_stage_info:update_stage_info(Stage, StageInfo, Old),
-    {noreply, State#state{stage_info = New}};
 
 handle_cast(Req, _State) ->
     ?log_error("Got unknown cast: ~p", [Req]),
