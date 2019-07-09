@@ -95,6 +95,8 @@ build_node_task_status(Tasks, BaseURL, Node) ->
         {_, started, Path} ->
             [{status, started},
              {path, Path}];
+        {_, died, killed} ->
+            [{status, cancelled}];
         {_, died, _Reason} ->
             [{status, failed}];
         {_, {ok, Path, _Output}} ->
@@ -230,6 +232,7 @@ wait_child(P, Node, Subtask) ->
             end;
         {'EXIT', _Other, Reason} = Msg ->
             ?log_info("got exit ~p while waiting for collectinfo slave on node ~p", [Msg, Node]),
+            update_ets_status({{Node, Subtask}, died, Reason}),
             erlang:exit(Reason)
     end.
 
