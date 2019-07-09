@@ -304,7 +304,7 @@
             </div>
 
             <div>
-              <div class="row resp-sml">
+              <div class="row items-top resp-sml">
                 <div class="column width-9">
                   <label for="setup_query_temp_input">Query Temp Disk Path</label>
                   <input
@@ -315,6 +315,11 @@
                      id="setup_query_temp_input"
                      ng-disabled="!rbac.cluster.settings.write"
                      ng-model="settingsClusterCtl.querySettings.queryTmpSpaceDir">
+                  <div
+                    class="error error-form"
+                    ng-show="!!settingsClusterCtl.querySettingsErrors.queryTmpSpaceDir">
+                   {{settingsClusterCtl.querySettingsErrors.queryTmpSpaceDir}}
+                  </div>
                 </div>
                 <div class="width-3">
                   <label for="setup_query_gb_input">Quota</label>
@@ -332,17 +337,12 @@
                        class="input-inside-label"
                        maxlength="12">
                   </div>
+                  <div
+                     class="error error-form"
+                     ng-show="!!settingsClusterCtl.querySettingsErrors.queryTmpSpaceSize">
+                    {{settingsClusterCtl.querySettingsErrors.queryTmpSpaceSize}}
+                  </div>
                 </div>
-              </div>
-              <div
-                 class="error error-form"
-                 ng-show="!!settingsClusterCtl.querySettingsErrors.queryTmpSpaceDir">
-                {{settingsClusterCtl.querySettingsErrors.queryTmpSpaceDir}}
-              </div>
-              <div
-                 class="error error-form"
-                 ng-show="!!settingsClusterCtl.querySettingsErrors.queryTmpSpaceSize">
-                {{settingsClusterCtl.querySettingsErrors.queryTmpSpaceSize}}
               </div>
             </div>
           </div>
