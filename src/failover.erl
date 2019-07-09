@@ -55,36 +55,47 @@ run(Nodes, AllowUnsafe) ->
     end.
 
 orchestrate(Nodes, Options) ->
-    case pre_failover_config_sync(Nodes, Options) of
-        ok ->
-            do_orchestrate(Nodes, Options);
-        Error ->
-            Error
-    end.
-
-do_orchestrate(Nodes, Options) ->
     ale:info(?USER_LOGGER, "Starting failing over ~p", [Nodes]),
     master_activity_events:note_failover(Nodes),
 
-    ErrorNodes = failover(Nodes, Options),
-
-    case ErrorNodes of
-        [] ->
-            ns_cluster:counter_inc(failover_complete),
-            ale:info(?USER_LOGGER, "Failed over ~p: ok", [Nodes]);
-        _ ->
-            ns_cluster:counter_inc(failover_incomplete),
-            ale:error(?USER_LOGGER,
-                      "Failover couldn't "
-                      "complete on some nodes:~n~p", [ErrorNodes])
-    end,
-
-    ok = leader_activities:deactivate_quorum_nodes(Nodes),
-
+    Res =
+        case config_sync_and_orchestrate(Nodes, Options) of
+            ok ->
+                ns_cluster:counter_inc(failover_complete),
+                ale:info(?USER_LOGGER, "Failed over ~p: ok", [Nodes]),
+                finish_failover(Nodes),
+                ok;
+            {failover_incomplete, ErrorNodes} ->
+                ns_cluster:counter_inc(failover_incomplete),
+                ale:error(?USER_LOGGER,
+                          "Failover couldn't complete on some nodes:~n~p",
+                          [ErrorNodes]),
+                finish_failover(Nodes),
+                ok;
+            Error ->
+                ns_cluster:counter_inc(failover_failed),
+                ale:error(?USER_LOGGER, "Failover failed with ~p", [Error]),
+                Error
+        end,
     ns_cluster:counter_inc(failover),
-    deactivate_nodes(Nodes),
+    Res.
 
-    ok.
+finish_failover(Nodes) ->
+    ok = leader_activities:deactivate_quorum_nodes(Nodes),
+    deactivate_nodes(Nodes).
+
+config_sync_and_orchestrate(Nodes, Options) ->
+    case pre_failover_config_sync(Nodes, Options) of
+        ok ->
+            case failover(Nodes, Options) of
+                [] ->
+                    ok;
+                ErrorNodes ->
+                    {failover_incomplete, ErrorNodes}
+            end;
+        Error ->
+            Error
+    end.
 
 pre_failover_config_sync(FailedNodes, Options) ->
     case durability_aware(Options) of
