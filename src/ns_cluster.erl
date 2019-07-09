@@ -529,10 +529,6 @@ shun(RemoteNode) ->
                        (_Other) ->
                            skip
                    end),
-            %% reload is needed to reinitialize ns_config's cache after
-            %% config cleanup ('erase' causes the problem, but it looks like
-            %% it's not worth it to add proper 'erase' support to ns_config)
-            ns_config:reload(),
             ns_config_rep:ensure_config_pushed();
         true ->
             ?cluster_debug("Asked to shun myself. Leaving cluster.", []),
