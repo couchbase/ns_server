@@ -398,6 +398,19 @@ color: #333;
   -webkit-animation: fa-spin .5s infinite linear;
   animation: fa-spin .5s infinite linear;
 }
+/* rebalance status icon ----------------------------------------------- */
+.rebalance-status-inprogress:after {
+  font-family: FontAwesome;
+  content: "\f110";
+  font-size: .925rem;
+  color: #f7b84f;
+  position: relative;
+  top: 0;
+  right: -4px;
+  display: inline-block;
+  -webkit-animation: fa-spin .5s infinite linear;
+  animation: fa-spin .5s infinite linear;
+}
 
 /* rebalance error icon ----------------------------------------------- */
 .rebalance-stage-error:after {
@@ -2416,9 +2429,6 @@ nav.nav-sidebar-hidden {
 .pipe:before {
   content: '\007C';
   color: #d1d1d1;
-}
-.pipe:nth-child(2):before {
-  content: none !important;
 }
 
 .nvd3.nv-scatter.nv-single-point .nv-groups .nv-group .nv-point:not(.hover) {

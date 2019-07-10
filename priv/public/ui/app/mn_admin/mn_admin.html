@@ -32,14 +32,14 @@
           <span ng-click="adminCtl.toggleProgressBar()" class="cursor-pointer">X</span>
         </div>
         <div ng-if="adminCtl.tasks.tasksRebalance">
-          <p class="desc">
-            <span class="nowrap">
+          <p class="desc relative">
+            <span class="nowrap" ng-if="adminCtl.tasks.tasksRebalance.stageInfo.startTime">
               start: {{adminCtl.tasks.tasksRebalance.stageInfo.startTime | date:'d MMM HH:mm:ss Z'}}
             </span>
             <span ng-show="adminCtl.tasks.tasksRebalance.stageInfo.completedTime.status" class="nowrap pipe">
               complete: {{adminCtl.tasks.tasksRebalance.stageInfo.completedTime.time | date:'d MMM HH:mm:ss Z'}}
             </span>
-            <span class="nowrap pipe">
+            <span class="nowrap pipe" ng-class="{'rebalance-status-inprogress' : adminCtl.tasks.tasksRebalance.status == 'running'}">
               status: {{adminCtl.tasks.tasksRebalance.status == "running" ? "in progress" :
               adminCtl.tasks.tasksRebalance.errorMessage ? "failed" : "completed"}}
             </span>
@@ -48,7 +48,7 @@
                ng-show="adminCtl.tasks.tasksRebalance.completionMessage"
                ng-class="{'alert-error': adminCtl.tasks.tasksRebalance.errorMessage,
                          'alert-success': !adminCtl.tasks.tasksRebalance.errorMessage}">
-            {{adminCtl.tasks.tasksRebalance.completionMessage}}
+            <p>{{adminCtl.tasks.tasksRebalance.completionMessage}}</p>
           </div>
 <!-- rebalance timeline **************************************************** -->
           <div class="timeline">
@@ -166,13 +166,11 @@
               </div>
             </div>
           </div>
-          <div class="row margin-bottom-1 margin-top-1">
-            <button class="outline" style="opacity:0;">
-              Rebalance Details
-            </button>
+          <div
+             class="text-right margin-bottom-1 margin-top-1"
+             ng-hide="!poolDefault.rebalancing || !rbac.cluster.pools.write">
             <button
                class="red"
-               ng-disabled="!poolDefault.rebalancing || !rbac.cluster.pools.write"
                ng-click="adminCtl.postStopRebalance()">
               Stop
             </button>
