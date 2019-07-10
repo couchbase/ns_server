@@ -68,21 +68,19 @@ validate_autofailover(Nodes) ->
     end.
 
 validate_autofailover_bucket(BucketConfig, Nodes) ->
-    case proplists:get_value(type, BucketConfig) of
+    case ns_bucket:bucket_type(BucketConfig) of
         membase ->
-            Map = proplists:get_value(map, BucketConfig),
-            Map1 = mb_map:promote_replicas(Map, Nodes),
-            case Map1 of
+            case proplists:get_value(map, BucketConfig) of
                 undefined ->
                     true;
-                _ ->
-                    case [I || {I, [undefined|_]} <- misc:enumerate(Map1, 0)] of
-                        [] -> true;
-                        _MissingVBuckets ->
-                            false
-                    end
+                Map ->
+                    not lists:any(fun ([undefined|_]) ->
+                                          true;
+                                      (_) ->
+                                          false
+                                  end, mb_map:promote_replicas(Map, Nodes))
             end;
-        _ ->
+        memcached ->
             true
     end.
 
