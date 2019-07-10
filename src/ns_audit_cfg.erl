@@ -253,16 +253,11 @@ write_audit_json(CompatMode, Params) ->
     Path = audit_json_path(),
 
     Fields = fields(Version),
-    Json = lists:filtermap(
-             fun({K, V}) ->
-                     case lists:member(K, Fields) of
-                         false ->
-                             false;
-                         true ->
-                             {true, {K, (jsonifier(K))(V)}}
-                     end
-             end, CompleteParams),
-    ?log_debug("Writing new content to ~p : ~p", [Path, Json]),
+    JsonParams = [{K, V} || {K, V} <- CompleteParams,
+                            lists:member(K, Fields)],
+    Json = [{K, (jsonifier(K))(V)} || {K, V} <- JsonParams],
+    ?log_debug("Writing new content to ~p, Params ~p",
+               [Path, ns_config_log:sanitize(JsonParams)]),
 
     Bytes = misc:ejson_encode_pretty({Json}),
     ok = misc:atomic_write_file(Path, Bytes).
