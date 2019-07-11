@@ -35,29 +35,6 @@
     function activate() {
       var row = $scope.row;
       vm.hosts = row.hosts.join(', ');
-      mnStatisticsNewService.doGetStats({
-        zoom: vm.zoom,
-        bucket: row.bucket
-      }).then(function (rv) {
-        vm.charts = Object
-          .keys(rv.data.stats["@index-" + row.bucket])
-          .filter(function (key) {
-            var stat = key.split("/")[2];
-            var indexName = key.split("/")[1];
-            return indexName == row.index &&
-              mnStatisticsNewService.readByPath("@index-.@items", stat);
-          })
-          .map(function (stat) {
-            return {
-              preset: true,
-              id: mnHelper.generateID(),
-              isSpecific: false,
-              size: "small",
-              zoom: vm.zoom,
-              stats: getStats(stat)
-            };
-          });
-      });
     }
   }
 

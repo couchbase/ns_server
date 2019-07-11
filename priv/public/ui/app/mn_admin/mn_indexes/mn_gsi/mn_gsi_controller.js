@@ -15,7 +15,8 @@
     'ui.bootstrap',
     'mnPromiseHelper',
     'mnAlertsService',
-    'mnStatisticsNewService'
+    'mnStatisticsNewService',
+    'mnDetailStats'
   ]).controller('mnGsiController', mnGsiController)
     .controller('mnGsiStatsController', mnGsiStatsController);
 

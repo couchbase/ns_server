@@ -23,39 +23,11 @@
          ng-click="mnGsiItemDetailsCtl.dropIndex(row)">Drop</button>
     </div>
   </div>
-  <div ng-controller="mnGsiItemStatsController as gsiItemStatsCtl">
-    <div class="row flex-left min-height-2">
-      <h5
-         class="disclosure inline margin-right-1"
-         ng-class="{'disclosed' : showStats}"
-         ng-click="showStats = !showStats; $event.stopPropagation();">
-        Index Stats
-      </h5>
-      <select
-         ng-if="showStats"
-         ng-model="gsiItemStatsCtl.zoom"
-         ng-change="gsiItemStatsCtl.onSelectZoom()"
-         ng-click="$event.stopPropagation();">
-        <option value="minute">minute</option>
-        <option value="hour">hour</option>
-        <option value="day">day</option>
-        <option value="week">week</option>
-        <option value="month">month</option>
-      </select>
-    </div>
-    <div ng-if="showStats"
-         ng-click="$event.stopPropagation();">
-      <div class="row charts">
-        <mn-statistics-chart
-           ng-repeat="config in gsiItemStatsCtl.charts track by config.id"
-           get-nvd3-options="gsiItemStatsCtl.getNvd3Options(config)"
-           ng-class="'statistics-' + config.size"
-           bucket="{{row.bucket}}"
-           zoom="{{gsiItemStatsCtl.zoom}}"
-           class="panel"
-           config="config"></mn-statistics-chart>
-      </div>
-    </div>
-  </div>
+  <mn-detail-stats
+     bucket="{{row.bucket}}"
+     title="Index Stats"
+     item-id="{{row.index}}"
+     service="index"
+     ></mn-detail-stats>
   <!-- nodes="statisticsNewCtl.nodes" -->
 </div>
