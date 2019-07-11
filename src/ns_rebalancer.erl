@@ -57,14 +57,20 @@
 %% API
 %%
 validate_autofailover(Nodes) ->
-    BucketPairs = ns_bucket:get_buckets(),
-    UnsafeBuckets =
-        [BucketName
-         || {BucketName, BucketConfig} <- BucketPairs,
-            validate_autofailover_bucket(BucketConfig, Nodes) =:= false],
-    case UnsafeBuckets of
-        [] -> ok;
-        _ -> {error, UnsafeBuckets}
+    case ns_cluster_membership:service_nodes(Nodes, kv) of
+        [] ->
+            ok;
+        KVNodes ->
+            BucketPairs = ns_bucket:get_buckets(),
+            UnsafeBuckets =
+                [BucketName
+                 || {BucketName, BucketConfig} <- BucketPairs,
+                    validate_autofailover_bucket(BucketConfig, KVNodes)
+                        =:= false],
+            case UnsafeBuckets of
+                [] -> ok;
+                _ -> {error, UnsafeBuckets}
+            end
     end.
 
 validate_autofailover_bucket(BucketConfig, Nodes) ->
