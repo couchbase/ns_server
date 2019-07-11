@@ -120,9 +120,12 @@ deactivate_nodes(Nodes) ->
 %% @doc Fail one or more nodes. Doesn't eject the node from the cluster. Takes
 %% effect immediately.
 failover(Nodes, Options) ->
-    lists:umerge([failover_buckets(Nodes, Options),
+    KVNodes = ns_cluster_membership:service_nodes(Nodes, kv),
+    lists:umerge([failover_buckets(KVNodes, Options),
                   failover_services(Nodes)]).
 
+failover_buckets([], _Options) ->
+    [];
 failover_buckets(Nodes, Options) ->
     Results =
         lists:foldl(
