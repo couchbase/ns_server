@@ -942,15 +942,16 @@ bucket_failover_vbuckets(Config, Bucket, DeltaNodes) ->
                 {Node, lists:usort(VBs)}
         end, DeltaNodes)).
 
-membase_delta_recovery_buckets(DeltaRecoveryBuckets, MembaseBucketConfigs) ->
-    MembaseBuckets = [Bucket || {Bucket, _} <- MembaseBucketConfigs],
+couchbase_delta_recovery_buckets(DeltaRecoveryBuckets, CouchbaseBucketConfigs) ->
+    CouchbaseBuckets = [Bucket || {Bucket, _} <- CouchbaseBucketConfigs],
 
     case DeltaRecoveryBuckets of
         all ->
-            MembaseBuckets;
+            CouchbaseBuckets;
         _ when is_list(DeltaRecoveryBuckets) ->
-            ordsets:to_list(ordsets:intersection(ordsets:from_list(MembaseBuckets),
-                                                 ordsets:from_list(DeltaRecoveryBuckets)))
+            ordsets:to_list(ordsets:intersection(
+                              ordsets:from_list(CouchbaseBuckets),
+                              ordsets:from_list(DeltaRecoveryBuckets)))
     end.
 
 build_delta_recovery_buckets(_AllNodes, [] = _DeltaNodes, _AllBucketConfigs, _DeltaRecoveryBuckets) ->
@@ -958,9 +959,11 @@ build_delta_recovery_buckets(_AllNodes, [] = _DeltaNodes, _AllBucketConfigs, _De
 build_delta_recovery_buckets(AllNodes, DeltaNodes, AllBucketConfigs, DeltaRecoveryBuckets0) ->
     Config = ns_config:get(),
 
-    MembaseBuckets = [P || {_, BucketConfig} = P <- AllBucketConfigs,
-                           proplists:get_value(type, BucketConfig) =:= membase],
-    DeltaRecoveryBuckets = membase_delta_recovery_buckets(DeltaRecoveryBuckets0, MembaseBuckets),
+    CouchbaseBuckets = [P || {_, BucketConfig} = P <- AllBucketConfigs,
+                           ns_bucket:bucket_type(BucketConfig) =:= membase,
+                           ns_bucket:storage_mode(BucketConfig) =/= ephemeral],
+    DeltaRecoveryBuckets = couchbase_delta_recovery_buckets(
+                             DeltaRecoveryBuckets0, CouchbaseBuckets),
 
     %% such non-lazy computation of recovery map is suboptimal, but
     %% it's not that big deal suboptimal. I'm doing it for better
@@ -969,7 +972,7 @@ build_delta_recovery_buckets(AllNodes, DeltaNodes, AllBucketConfigs, DeltaRecove
                       BucketConfig,
                       find_delta_recovery_map(Config, AllNodes, DeltaNodes,
                                               Bucket, BucketConfig)}
-                     || {Bucket, BucketConfig} <- MembaseBuckets],
+                     || {Bucket, BucketConfig} <- CouchbaseBuckets],
 
     case build_delta_recovery_buckets_loop(MappedConfigs, DeltaRecoveryBuckets, []) of
         {ok, Recovered0} ->
@@ -1464,10 +1467,10 @@ map_to_vbuckets_dict_test() ->
                   {c, [3, 4, 5]}],
                  lists:sort(dict:to_list(map_to_vbuckets_dict(Map)))).
 
-membase_delta_recovery_buckets_test() ->
+couchbase_delta_recovery_buckets_test() ->
     MembaseBuckets = [{"b1", conf}, {"b3", conf}],
-    ["b1", "b3"] = membase_delta_recovery_buckets(["b1", "b2", "b3", "b4"], MembaseBuckets),
-    ["b1", "b3"] = membase_delta_recovery_buckets(all, MembaseBuckets).
+    ["b1", "b3"] = couchbase_delta_recovery_buckets(["b1", "b2", "b3", "b4"], MembaseBuckets),
+    ["b1", "b3"] = couchbase_delta_recovery_buckets(all, MembaseBuckets).
 
 build_delta_recovery_buckets_loop_test() ->
     %% Fake num_replicas so that we don't crash in
@@ -1476,7 +1479,7 @@ build_delta_recovery_buckets_loop_test() ->
     Conf2 = [{num_replicas, 1}, conf2],
     MappedConfigs = [{"b1", Conf1, {map, opts}},
                      {"b2", Conf2, false}],
-    All = membase_delta_recovery_buckets(all, [{"b1", conf}, {"b2", conf}]),
+    All = couchbase_delta_recovery_buckets(all, [{"b1", conf}, {"b2", conf}]),
 
     {ok, []} = build_delta_recovery_buckets_loop([], All, []),
     {error, not_possible} = build_delta_recovery_buckets_loop(MappedConfigs, All, []),
