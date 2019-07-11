@@ -20,27 +20,30 @@
         {{adminCtl.filterTasks(adminCtl.tasks.running).length}}
       </span>
     </a>
-<!-- rebalance menu ******************************************************** -->
+<!-- activity menu ******************************************************** -->
     <div class="relative inline" ng-if="rbac.cluster.tasks.read">
       <div
          mn-drag-and-drop
          base-corner-right="true"
-         class="tasks-progress panel dialog-med rebalance-panel enable-ng-animation"
+         class="tasks-progress panel dialog-med activity-panel enable-ng-animation"
          ng-if="!adminCtl.isProgressBarClosed">
-        <div class="row">
-          <h3>Rebalance</h3>
-          <span ng-click="adminCtl.toggleProgressBar()" class="cursor-pointer">X</span>
+        <div class="text-right grayblack-2">
+          <span ng-click="adminCtl.toggleProgressBar()" class="cursor-pointer close-x">
+            X
+          </span>
         </div>
+
+        <h4>Rebalance</h4>
         <div ng-if="adminCtl.tasks.tasksRebalance">
           <p class="desc relative">
             <span class="nowrap" ng-if="adminCtl.tasks.tasksRebalance.stageInfo.startTime">
-              start: {{adminCtl.tasks.tasksRebalance.stageInfo.startTime | date:'d MMM HH:mm:ss Z'}}
+              <strong>start</strong> {{adminCtl.tasks.tasksRebalance.stageInfo.startTime | date:'d MMM HH:mm:ss'}}
             </span>
-            <span ng-show="adminCtl.tasks.tasksRebalance.stageInfo.completedTime.status" class="nowrap pipe">
-              complete: {{adminCtl.tasks.tasksRebalance.stageInfo.completedTime.time | date:'d MMM HH:mm:ss Z'}}
+            <span ng-show="adminCtl.tasks.tasksRebalance.stageInfo.completedTime.status" class="nowrap margin-left-half">
+              <strong>complete</strong> {{adminCtl.tasks.tasksRebalance.stageInfo.completedTime.time | date:'d MMM HH:mm:ss'}}
             </span>
-            <span class="nowrap pipe" ng-class="{'rebalance-status-inprogress' : adminCtl.tasks.tasksRebalance.status == 'running'}">
-              status: {{adminCtl.tasks.tasksRebalance.status == "running" ? "in progress" :
+            <span class="nowrap margin-left-half" ng-class="{'rebalance-status-inprogress' : adminCtl.tasks.tasksRebalance.status == 'running'}">
+              <strong>status</strong> {{adminCtl.tasks.tasksRebalance.status == "running" ? "in progress" :
               adminCtl.tasks.tasksRebalance.errorMessage ? "failed" : "completed"}}
             </span>
           </p>

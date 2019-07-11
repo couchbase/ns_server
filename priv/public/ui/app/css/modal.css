@@ -50,28 +50,31 @@
     display: block;
     text-align: center;
     font-size: 1.2rem;
-    padding: .5rem .75rem;
     font-weight: 400;
     position: absolute;
-    top: 0;
+    top: .25rem;
     right: .5rem;
     color: #fff;
+    border-radius: 50%;
+    padding: .35rem .75rem;
+    opacity: .7;
+    transition: all .4s ease;
+    opacity: 1;
 }
-
 .modal-close:link {
     color: #fff;
 }
-
 .modal-close:visited {
     color: #fff;
 }
-
 .modal-close:hover {
-  color: #fff;
+  color: #000;
   font-weight: 600;
-  transition: none;
+  background-color: #fff;
+  opacity: .6;
 }
-
 .modal-close:active {
     color: #689fde;
+    background-color: #eceff2;
+    opacity: .5;
 }

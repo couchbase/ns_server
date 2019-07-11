@@ -389,7 +389,7 @@ color: #333;
 .rebalance-stage-inprogress:after {
   font-family: FontAwesome;
   content: "\f110";
-  font-size: .925rem;
+  font-size: 1rem;
   color: #f7b84f;
   position: absolute;
   top: 4px;
@@ -2947,17 +2947,17 @@ footer hr {
   line-height: 1.7;
   margin-top: 0;
 }
-/* rebalance panel ---------------------------------------------------------- */
-.rebalance-panel {
+/* activity panel ---------------------------------------------------------- */
+.activity-panel {
   padding: .5rem 1rem 1rem;
 }
-.rebalance-panel label {
+.activity-panel label {
   font-size: .925rem;
   font-weight: 600;
   color: #000;
   margin-top: .5rem;
 }
-.rebalance-panel h6 {
+.activity-panel h6 {
   margin: .25rem 0;
 }
 .rebalance-stage-status {
@@ -2971,28 +2971,33 @@ footer hr {
   margin-bottom: 1rem;
   background-color: #f6fafd;
 }
-.rebalance-panel .desc {
+.activity-panel .desc {
   color: #000;
   font-size: .75rem;
 }
-.rebalance-panel label.disclosure,
-.rebalance-panel h6.disclosure {
+.activity-panel label.disclosure,
+.activity-panel h6.disclosure {
   padding-left: 1rem;
 }
-.rebalance-panel label.disclosure:before,
-.rebalance-panel h6.disclosure:before {
-  left: -.5rem;
+.activity-panel label.disclosure:before,
+.activity-panel h6.disclosure:before {
+  left: -.25rem;
 }
-.rebalance-panel label.reverse.disclosed:before,
-.rebalance-panel h6.reverse.disclosed:before {
+.activity-panel label.reverse.disclosed:before,
+.activity-panel h6.reverse.disclosed:before {
   left: 0;
 }
-.rebalance-panel label.reverse.disclosed,
-.rebalance-panel h6.reverse.disclosed {
+.activity-panel label.reverse.disclosed,
+.activity-panel h6.reverse.disclosed {
   padding-left: 1.5rem;
 }
-.rebalance-panel h6.disclosure:before,
-.rebalance-panel h6.disclosed:before {
+.activity-panel label.disclosure:before,
+.activity-panel label.disclosed:before {
+  top: 2px;
+  font-size: .875rem;
+}
+.activity-panel h6.disclosure:before,
+.activity-panel h6.disclosed:before {
   top: -1px;
   font-size: .825rem;
 }
@@ -3061,4 +3066,29 @@ footer hr {
 button.replication .fa-spinner {
   -webkit-animation: fa-spin 1s infinite linear;
   animation: fa-spin 1s infinite linear;
+}
+
+/* for menu/panel close X's ------------------------------------------------- */
+.close-x {
+  font-size: 1rem;
+  font-weight: 400;
+  border-radius: 50%;
+  margin-right: -.6rem;
+  padding: .5rem .85rem;
+  opacity: .7;
+  transition: all .2s ease;
+  color: #333;
+  position: relative;
+  top: 2px;
+}
+.close-x:hover {
+  background-color: #eceff2;
+  font-weight: 600;
+  opacity: 1;
+}
+.close-x:active {
+ background-color: #efefef;
+ color: #555;
+ opacity: .7;
+
 }
