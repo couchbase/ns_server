@@ -398,7 +398,11 @@ color: #333;
   -webkit-animation: fa-spin .5s infinite linear;
   animation: fa-spin .5s infinite linear;
 }
-/* rebalance status icon ----------------------------------------------- */
+.rebalance-stage-inprogress-paused:after {
+  -webkit-animation: none !important;
+  animation: none !important;
+}
+/* rebalance status in progress icon --------------------------------------- */
 .rebalance-status-inprogress:after {
   font-family: FontAwesome;
   content: "\f110";
@@ -411,7 +415,6 @@ color: #333;
   -webkit-animation: fa-spin .5s infinite linear;
   animation: fa-spin .5s infinite linear;
 }
-
 /* rebalance error icon ----------------------------------------------- */
 .rebalance-stage-error:after {
   font-family: FontAwesome;
