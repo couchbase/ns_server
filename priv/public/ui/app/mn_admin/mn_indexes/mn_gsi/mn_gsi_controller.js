@@ -61,7 +61,9 @@
 
     function getAverageUIStats(resp) {
       var rv = {};
-      (["cbas_disk_used", "index_memory_quota","index_memory_used","index_ram_percent","index_remaining_ram", "ep_dcp_views+indexes_count","ep_dcp_views+indexes_items_remaining","ep_dcp_views+indexes_producer_count","ep_dcp_views+indexes_total_backlog_size","ep_dcp_views+indexes_total_bytes","ep_dcp_views+indexes_backoff", "index/fragmentation","index/memory_used","index/disk_size","index/data_size"]).forEach(function (statName) {
+      (["index_memory_quota","index_memory_used","index_remaining_ram","index_ram_percent",
+        "index/fragmentation","index/data_size","index/disk_size","index/num_rows_returned"])
+        .forEach(function (statName) {
         var stats = resp.data.samples[statName];
         if (stats) {
           rv[statName] = stats.reduce(function (sum, stat) {

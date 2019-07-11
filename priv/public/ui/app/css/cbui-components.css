@@ -2883,7 +2883,7 @@ footer .column,
 .footer-column {
   flex: 1 0 auto;
   white-space: nowrap;
-  max-width: 280px;
+  max-width: 320px;
   padding: 0 2rem 0 0;
   margin-right: 2rem;
   line-height: 2;
@@ -2892,6 +2892,9 @@ footer .column,
 footer .column:last-child,
 .footer-column:last-child {
   padding-right: 0;
+}
+footer .column:last-child,
+.footer-column:last-child {
   margin-right: 0;
 }
 footer .column.vertical-divider,
