@@ -28,21 +28,18 @@
          ng-class="['fa-' + xdcrItemDetailsCtl.status(row)]"></div>
     </button>
   </div>
-
-  <h5
-     class="disclosure inline margin-right-1"
-     ng-class="{'disclosed': showStats}"
-     ng-click="showStats = !showStats; $event.stopPropagation();">
-    XDCR Stats
-  </h5>
-
-  <div ng-if="showStats"
-       ng-click="$event.stopPropagation();"
-       ng-controller="mnXdcrItemStatsController as xdcrItemStatsCtl">
-    <div class="text-right">
+  <div ng-controller="mnXdcrItemStatsController as xdcrItemStatsCtl">
+    <div class="row flex-left min-height-2">
+      <h5
+         class="disclosure inline margin-right-1"
+         ng-class="{'disclosed': showStats}"
+         ng-click="showStats = !showStats; $event.stopPropagation();">
+        XDCR Stats
+      </h5>
       <select
          ng-model="xdcrItemStatsCtl.zoom"
-         ng-change="xdcrItemStatsCtl.onSelectZoom()">
+         ng-change="xdcrItemStatsCtl.onSelectZoom()"
+         ng-if="showStats">
         <option value="minute">minute</option>
         <option value="hour">hour</option>
         <option value="day">day</option>
@@ -50,15 +47,17 @@
         <option value="month">month</option>
       </select>
     </div>
-    <div class="row charts">
-      <mn-statistics-chart
-         ng-repeat="config in xdcrItemStatsCtl.charts track by config.id"
-         get-nvd3-options="xdcrItemStatsCtl.getNvd3Options(config)"
-         ng-class="'statistics-' + config.size"
-         bucket="{{row.source}}"
-         zoom="{{xdcrItemStatsCtl.zoom}}"
-         class="panel"
-         config="config"></mn-statistics-chart>
+    <div ng-if="showStats" ng-click="$event.stopPropagation();">
+      <div class="row charts">
+        <mn-statistics-chart
+           ng-repeat="config in xdcrItemStatsCtl.charts track by config.id"
+           get-nvd3-options="xdcrItemStatsCtl.getNvd3Options(config)"
+           ng-class="'statistics-' + config.size"
+           bucket="{{row.source}}"
+           zoom="{{xdcrItemStatsCtl.zoom}}"
+           class="panel"
+           config="config"></mn-statistics-chart>
+      </div>
     </div>
   </div>
 </div>
