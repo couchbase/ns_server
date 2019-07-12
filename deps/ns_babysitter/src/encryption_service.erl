@@ -23,6 +23,8 @@
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
 
+-export([remote_set_password/1]).
+
 -export([set_password/1,
          decrypt/1,
          encrypt/1,
@@ -33,6 +35,23 @@
 
 data_key_store_path() ->
     filename:join(path_config:component_path(data, "config"), "encrypted_data_keys").
+
+remote_set_password([Node, Password]) ->
+    N = list_to_atom(Node),
+    RV = rpc:call(N, encryption_service, set_password, [Password]),
+
+    %% This API will be called from couchbase-cli. Mapping the return values to
+    %% different exit codes so the cli need not scrape the stdout of the process
+    %% that calls this to ascertain the outcome.
+    ExitCode = case RV of
+                   ok                   -> 0;
+                   retry                -> 1;
+                   {error, not_allowed} -> 2;
+                   {badrpc, nodedown}   -> 3;
+                   auth_failure         -> 4;
+                   _                    -> 5
+               end,
+    init:stop(ExitCode).
 
 set_password(Password) ->
     gen_server:call(?MODULE, {set_password, Password}, infinity).
