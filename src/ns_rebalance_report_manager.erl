@@ -217,7 +217,7 @@ fetch_rebalance_report_local({_Node, FileName}, Dir) ->
         error:Reason ->
             {error, Reason};
         T:E ->
-            ?log_debug("Unexpected exception ~p", [T, E]),
+            ?log_debug("Unexpected exception ~p", [{T, E}]),
             {error, unexpected_exception}
     end.
 
