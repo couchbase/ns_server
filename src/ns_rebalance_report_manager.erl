@@ -182,6 +182,7 @@ get_num_rebalance_reports() ->
     ns_config:read_key_fast(num_rebalance_reports, ?NUM_REBALANCE_REPORTS).
 
 fetch_task(MissingReports, Dir) ->
+    ClusterNodes = ns_node_disco:nodes_wanted(),
     [begin
          case does_file_exist(Dir, FN) of
              true ->
@@ -189,7 +190,9 @@ fetch_task(MissingReports, Dir) ->
              false ->
                  fetch_rebalance_report_remote({Node, FN}, Dir)
          end
-     end || {Node, FN} <- MissingReports, Node =/= node()].
+     end || {Node, FN} <- MissingReports,
+            Node =/= node(),
+            lists:member(Node, ClusterNodes)].
 
 does_file_exist(Dir, FileName) ->
     Path = filename:join(Dir, FileName),
