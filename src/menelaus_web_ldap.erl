@@ -189,8 +189,8 @@ parse_user_dn_mapping_record([{<<"re">>, Re}, {<<"template">>, Template}]) ->
     case eldap:parse_dn(DN) of
         {ok, _} -> ok;
         {parse_error, Reason, _} ->
-            throw({error, io_lib:format("Template is not a valid ldap DN: ~p",
-                                        [Reason])})
+            throw({error, io_lib:format("Template is not a valid LDAP "
+                                        "distinguished name: ~p", [Reason])})
     end,
     {validate_re(Re), {template, validate_placeholders(Template)}};
 parse_user_dn_mapping_record([{<<"query">>, QueryTempl}, {<<"re">>, Re}]) ->
@@ -199,7 +199,7 @@ parse_user_dn_mapping_record([{<<"query">>, QueryTempl}, {<<"re">>, Re}]) ->
         {ok, _} -> ok;
         {error, Reason} ->
             throw({error, io_lib:format(
-                            "Invalid ldap query '~s': ~s",
+                            "Invalid LDAP query '~s': ~s",
                             [QueryTempl, ldap_auth:format_error(Reason)])})
     end,
     {validate_re(Re), {'query', validate_placeholders(QueryTempl)}};
@@ -229,8 +229,8 @@ validate_ldap_dn(Name, State) ->
               case eldap:parse_dn(DN) of
                   {ok, _} -> {value, DN};
                   {parse_error, Reason, _} ->
-                      Msg = io_lib:format("Should be valid LDAP DN: ~p",
-                                          [Reason]),
+                      Msg = io_lib:format("Should be valid LDAP distinguished "
+                                          "name: ~p", [Reason]),
                       {error, Msg}
               end
       end, Name, State).
@@ -253,7 +253,7 @@ validate_ldap_groups_query(Name, State) ->
                               ok
                       end;
                   {error, _} ->
-                      {error, "Invalid ldap URL"}
+                      {error, "Invalid LDAP query"}
               end
       end, Name, State).
 

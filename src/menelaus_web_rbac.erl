@@ -1338,8 +1338,8 @@ validate_ldap_ref(Name, State) ->
                   {ok, _} ->
                       {value, DN};
                   {parse_error, Reason, _} ->
-                      {error, io_lib:format("Should be valid LDAP DN: ~p",
-                                            [Reason])}
+                      {error, io_lib:format("Should be valid LDAP distinguished"
+                                            " name: ~p", [Reason])}
               end
       end, Name, State).
 

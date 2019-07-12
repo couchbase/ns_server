@@ -213,42 +213,45 @@ format_error({connect_failed, _}) ->
 format_error({start_tls_failed, _}) ->
     "Failed to use StartTLS extension";
 format_error({ldap_url_parse_error, URL, Error}) ->
-    io_lib:format("Failed to parse ldap url ~p (~s)", [URL, format_error(Error)]);
+    io_lib:format("Failed to parse LDAP url ~p (~s)",
+                  [URL, format_error(Error)]);
 format_error({dn_search_failed, Reason}) ->
-    io_lib:format("LDAP search for user DN failed with reason: ~s",
-                  [format_error(Reason)]);
+    io_lib:format("LDAP search for user distinguished name failed with reason:"
+                  " ~s", [format_error(Reason)]);
 format_error(dn_not_found) ->
-    "LDAP DN not found";
+    "LDAP distinguished name not found";
 format_error(not_unique_username) ->
     "Search returned more than one entry for given username";
 format_error({invalid_filter, Filter, Reason}) ->
-    io_lib:format("Invalid ldap filter ~p (~s)", [Filter, Reason]);
+    io_lib:format("Invalid LDAP filter ~p (~s)", [Filter, Reason]);
 format_error({username_to_dn_map_failed, R}) ->
-    io_lib:format("Failed to map username to DN: ~s", [format_error(R)]);
+    io_lib:format("Failed to map username to LDAP distinguished name: ~s",
+                  [format_error(R)]);
 format_error({invalid_scheme, S}) ->
     io_lib:format("Invalid scheme ~p", [S]);
 format_error(malformed_url) ->
     "Malformed LDAP URL";
 format_error({invalid_dn, DN}) ->
-    io_lib:format("Invalid ldap DN \"~s\"", [DN]);
+    io_lib:format("Invalid LDAP distinguished name \"~s\"", [DN]);
 format_error({invalid_scope, Scope}) ->
-    io_lib:format("Invalid ldap scope: ~p, possible values are one, "
+    io_lib:format("Invalid LDAP scope: ~p, possible values are one, "
                   "base or sub", [Scope]);
 format_error(user_placeholder) ->
     "%u placeholder is not allowed in nested groups search";
 format_error(max_depth) ->
     "Nested search max depth has been reached";
 format_error({invalid_groups_query, Query, Reason}) ->
-    io_lib:format("Invalid ldap query: \"~s\". ~s", [Query, format_error(Reason)]);
+    io_lib:format("Invalid LDAP query: \"~s\". ~s", [Query, format_error(Reason)]);
 format_error({bind_failed, DN, Bind}) ->
     io_lib:format("Bind failed for \"~s\". ~s", [DN, format_error(Bind)]);
 format_error(invalidCredentials) ->
     "Invalid username or password";
 format_error(anonymous_auth) ->
-    "Anonymous bind is not supported by the server";
+    "Anonymous bind is not supported by LDAP server";
 format_error(unwillingToPerform) ->
-    "Cannot process the request because of server-defined restrictions";
+    "LDAP server cannot process the request because of server-defined "
+    "restrictions";
 format_error(invalidDNSyntax) ->
-    "Invalid DN syntax";
+    "Invalid LDAP distinguished name syntax";
 format_error(Error) ->
     io_lib:format("~p", [Error]).
