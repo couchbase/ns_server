@@ -9,6 +9,7 @@
     'mnAutocompleteOff',
     'mnPoolDefault',
     'mnPools',
+    'mnSortableTable',
     'mnSpinner',
     "ui.codemirror",
     'mnAlertsService'

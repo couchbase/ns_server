@@ -80,7 +80,7 @@
     </div>
   </div>
 
-  <!-- Ongoing Replications -->
+<!-- Outgoing Replications ************************************************ -->
   <div
      ng-show="rbac.cluster.tasks.read && xdcrCtl.references.filtered.length"
      class="margin-top-1-5">
@@ -89,29 +89,26 @@
        mn-spinner="adminCtl.showTasksSpinner"
        min-height="66px">
       <div class="cbui-table" mn-sortable-table ng-if="adminCtl.tasks.tasksXDCR.length">
-        <div class="cbui-table-header padding-left">
+        <div class="cbui-table-header">
           <span class="cbui-table-cell flex-grow-1-5">
             <span
-               mn-sortable-title="source bucket"
+               mn-sortable-title="source_bucket"
                sort-by-default="true"
                class="sorter">source bucket</span>
           </span>
           <span class="cbui-table-cell flex-grow-1-5">
             <span
-               mn-sortable-title="destination bucket"
-               sort-by-default="true"
+               mn-sortable-title="destination_bucket"
                class="sorter">destination bucket</span>
           </span>
           <span class="cbui-table-cell flex-grow-1-5">
             <span
-               mn-sortable-title="remote cluster"
-               sort-by-default="false"
+               mn-sortable-title="remote_cluster"
                class="sorter">remote cluster</span>
           </span>
           <span class="cbui-table-cell flex-grow-half">
             <span
                mn-sortable-title="status"
-               sort-by-default="false"
                class="sorter">status</span>
           </span>
         </div>
@@ -120,8 +117,11 @@
            ng-if="adminCtl.tasks.tasksXDCR.length"
            ng-repeat="row in adminCtl.tasks.tasksXDCR track by row.id"
            class="has-hover"
-           ng-click="xdcrCtl.toggleDetails(row.id)">
-          <div class="cbui-tablerow">
+           ng-click="xdcrCtl.toggleDetails(row.id)"
+           ng-class="[xdcrCtl.isDetailsOpened(row.id) ? (xdcrCtl.humanStatus(row) == 'replicating' ? 'dynamic_healthy' : 'dynamic_warmup') : '']">
+          <div
+             class="cbui-tablerow"
+             ng-class="[!xdcrCtl.isDetailsOpened(row.id) ? (xdcrCtl.humanStatus(row) == 'replicating' ? 'dynamic_healthy' : 'dynamic_warmup') : '']">
             <span
                class="cbui-table-cell flex-grow-1-5"
                title="{{row.source}}">
