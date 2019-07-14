@@ -322,7 +322,7 @@
     function deleteRolesGroup(group) {
       return $http({
         method: "DELETE",
-        url: "/settings/rbac/groups/" + group.id,
+        url: "/settings/rbac/groups/" + encodeURIComponent(group.id),
       });
     }
 
@@ -374,16 +374,13 @@
       if (!group || !group.id) {
         return $q.reject({name: "name is required"});
       }
-      if (!roles || !roles.length) {
-        return $q.reject({roles: "at least one role should be added"});
-      }
       if (isEditingMode) {
         return putRolesGroup(group, roles);
       } else {
         return getRolesGroup(group).then(function () {
           return $q.reject({name: "group already exists"});
         }, function () {
-          return putRolesGroup(user, roles);
+          return putRolesGroup(group, roles);
         });
       }
     }
@@ -411,14 +408,14 @@
     function getRolesGroup(group) {
       return $http({
         method: "GET",
-        url: "/settings/rbac/groups/" + group.id
+        url: "/settings/rbac/groups/" + encodeURIComponent(group.id)
       });
     }
 
     function putRolesGroup(group, roles) {
       var config = {
         method: "PUT",
-        url: "/settings/rbac/groups/" + group.id,
+        url: "/settings/rbac/groups/" + encodeURIComponent(group.id),
         data: {
           roles: roles.indexOf("admin") > -1 ? "admin" : roles.join(','),
           description: group.description,

@@ -32,12 +32,9 @@
         }
       });
 
-      mnPromiseHelper(vm, mnUserRolesService.putRolesGroup(vm.rolesGroup, roles, vm.isEditingMode), $uibModalInstance)
+      mnPromiseHelper(vm, mnUserRolesService.addGroup(vm.rolesGroup, roles, vm.isEditingMode), $uibModalInstance)
         .showGlobalSpinner()
-        .catchErrors(function (errors) {
-          vm.focusError = !!errors;
-          vm.errors = errors;
-        })
+        .catchErrors()
         .broadcast("reloadRolesGroupsPoller")
         .closeOnSuccess()
         .showGlobalSuccess("Group saved successfully!");
