@@ -72,6 +72,7 @@ view_plugin() ->
                                              "connection",
                                              "content-type",
                                              "pragma",
+                                             "user-agent",
                                              "referer"]}}.
 
 %% The plugin files passed via the command line are processed first so it is
