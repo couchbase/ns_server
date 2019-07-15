@@ -40,6 +40,9 @@
                         'dynamic-inverted': userRolesCtl.isOrderBy('name')
                         && userRolesCtl.isDesc()}">full name</span>
       </span>
+      <span class="cbui-table-cell">
+        <span>groups</span>
+      </span>
       <span class="cbui-table-cell flex-grow-3">
         <span>roles</span>
       </span>
@@ -69,6 +72,7 @@
           <span ng-show="user.passwordless" class="label lt-blue">no password</span>
         </span>
         <span class="cbui-table-cell resp-hide-sml">{{user.name}}</span>
+        <span class="cbui-table-cell wrap">{{userRolesCtl.parseGroupNames(user.groups)}}</span>
         <span class="cbui-table-cell flex-grow-3 wrap">
           <span
               class="relative"

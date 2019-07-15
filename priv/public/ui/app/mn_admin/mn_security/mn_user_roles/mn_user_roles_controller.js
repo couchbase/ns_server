@@ -35,6 +35,7 @@
 
     vm.pageSize = $state.params.pageSize;
     vm.pageSizeChanged = pageSizeChanged;
+    vm.parseGroupNames = parseGroupNames;
     vm.sortByChanged = sortByChanged;
     vm.isOrderBy = isOrderBy;
     vm.isDesc = isDesc;
@@ -53,6 +54,10 @@
       $state.go('.', {
         pageSize: vm.pageSize
       });
+    }
+
+    function parseGroupNames(group) {
+      return group.join(", ");
     }
 
     function sortByChanged(sortBy) {
