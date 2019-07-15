@@ -267,7 +267,9 @@
 
     <div class="panel-footer scroll-shadow">
       <a ng-click="$dismiss()">Cancel</a>
-      <button type="submit">Save Chart</button>
+      <button
+         type="submit"
+         ng-disabled="!chartBuilderCtl.getSelectedStatsLength()">Save Chart</button>
     </div>
   </form>
 </div>

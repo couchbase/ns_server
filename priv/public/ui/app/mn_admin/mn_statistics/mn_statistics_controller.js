@@ -14,7 +14,8 @@
       'mnBucketsStats',
       'mnSpinner',
       'mnStatisticsChart',
-      'mnUserRolesService'
+      'mnUserRolesService',
+      'mnFilters'
     ])
     .controller('mnStatisticsNewController', mnStatisticsNewController);
 

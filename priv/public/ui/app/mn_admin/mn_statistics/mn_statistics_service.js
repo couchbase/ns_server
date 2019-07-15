@@ -132,13 +132,6 @@
     function addUpdateChart(newChart, group) {
       var charts = group.charts;
 
-      var statName;
-      if (newChart.specificStat) {
-        _.forEach(newChart.stats, function (value, key) {
-          statName = key;
-        });
-      }
-
       if (newChart.id) {
         var index = _.findIndex(charts, {'id': newChart.id});
         charts[index] = newChart;

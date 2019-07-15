@@ -61,6 +61,8 @@
     vm.statsDesc = mnStatisticsDescriptionService.stats;
     vm.kvGroups = mnStatisticsDescriptionService.kvGroups;
     vm.orderPills = orderPills;
+    vm.getSelectedStats = getSelectedStats;
+    vm.getSelectedStatsLength = getSelectedStatsLength;
     var selectedUnits = {};
     vm.selectedKVFilters = {};
     var selectedByNodeStats = {};
@@ -77,6 +79,21 @@
 
     function selectTab(name) {
       vm.selectedBlock = name;
+    }
+
+    function getSelectedStatsLength() {
+      return Object.keys(getSelectedStats()).length;
+    }
+
+    function getSelectedStats() {
+      return Object
+        .keys(vm.newChart.stats)
+        .reduce(function (acc, key) {
+          if (vm.newChart.stats[key]) {
+            acc[key] = vm.newChart.stats[key];
+          }
+          return acc;
+        }, {});
     }
 
     function onSelectBucket() {
@@ -202,7 +219,6 @@
           }
         })
         .showSpinner();
-
     }
 
     function create() {
@@ -211,14 +227,8 @@
         specificStat: vm.newChart.specificStat === "true",
         id: vm.newChart.id,
         group: vm.isEditing ? vm.newChart.group : group.id,
-        stats: {}
+        stats: getSelectedStats()
       };
-      var key;
-      for (key in vm.newChart.stats) {
-        if (vm.newChart.stats[key]) {
-          chart.stats[key] = vm.newChart.stats[key];
-        }
-      }
       if (chart.id && (initialGroup !== vm.newChart.group)) {
         var fromGroup = _.find(vm.groups, {'id': initialGroup});
         var index = _.findIndex(fromGroup.charts, {'id': chart.id});
