@@ -34,7 +34,7 @@
        id="storage_memory_optimized"
        ng-model="mnModel.storageMode"
        ng-disabled="!mnIsEnterprise ||
-                    (mnServices && !mnServicesModel.index) ||
+                    (mnServicesModel && !mnServicesModel.index) ||
                     (mnPermissions && !mnPermissions.cluster.settings.indexes.write)">
     <label for="storage_memory_optimized" class="checkbox margin-right-zero">
       Memory-Optimized
