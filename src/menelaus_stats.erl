@@ -1604,6 +1604,14 @@ do_couchbase_fts_stats_descriptions(BucketId, Nodes) ->
                            {name, per_fts_stat(Id, <<"num_files_on_disk">>)},
                            {desc, <<"Number of files on disk across all"
                                     " partitions (measured from num_files_on_disk)">>}]},
+                 {struct, [{title, <<"memory segments">>},
+                           {name, per_fts_stat(Id, <<"num_root_memorysegments">>)},
+                           {desc, <<"Number of memory segments across all partitions"
+                                    " (measured from num_root_memorysegments)">>}]},
+                 {struct, [{title, <<"file segments">>},
+                           {name, per_fts_stat(Id, <<"num_root_filesegments">>)},
+                           {desc, <<"Number of file segments across all partitions"
+                                    " (measured from num_root_filesegments)">>}]},
                  {struct, [{title, <<"term searchers/sec">>},
                            {name, per_fts_stat(Id, <<"total_term_searchers">>)},
                            {desc, <<"Number of term searchers started per second"

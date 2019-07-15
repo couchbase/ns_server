@@ -1172,6 +1172,16 @@
               title: "Search Disk Files",
               desc: "Number of search files on disk across all partitions. (measured from num_files_on_disk)"
             },
+            "num_root_memorysegments": {
+              unit: "number",
+              title: "Search Memory Segments",
+              desc: "Number of memory segments in the index across all partitions. (measured from num_root_memorysegments)"
+            },
+            "num_root_filesegments": {
+              unit: "number",
+              title: "Search Disk Segments",
+              desc: "Number of file segments in the index across all partitions. (measured from num_root_filesegments)"
+            },
             "num_mutations_to_index": {
               unit: "number",
               title: "Search Mutations Remaining",

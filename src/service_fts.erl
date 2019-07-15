@@ -61,7 +61,8 @@ start_keeper() ->
 
 get_gauges() ->
     [num_mutations_to_index, doc_count, num_recs_to_persist, num_bytes_used_disk,
-    num_pindexes_actual, num_pindexes_target, num_files_on_disk].
+    num_pindexes_actual, num_pindexes_target, num_files_on_disk, num_root_memorysegments,
+    num_root_filesegments].
 
 get_counters() ->
     [total_bytes_indexed, total_compaction_written_bytes, total_queries,
