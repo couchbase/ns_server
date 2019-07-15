@@ -72,6 +72,17 @@ handle_info({notable_change, secure_headers = Key}, State) ->
 
     apply_to_couch_config(httpd, extra_headers, Value, false),
     {noreply, State};
+handle_info({notable_change, audit = Key}, State) ->
+    flush_for_key(Key),
+
+    {value, ValueRaw} = ns_config:search(Key),
+    Value1 = [{audit_enabled, couch_util:get_value(auditd_enabled, ValueRaw, false)},
+              {disabled_users, couch_util:get_value(disabled_users, ValueRaw, [])},
+              {enabled_events, couch_util:get_value(enabled, ValueRaw, [])}
+             ],
+
+    apply_to_couch_config(security, audit, lists:flatten(io_lib:format("~p", [Value1])), false),
+    {noreply, State};
 handle_info({notable_change, Key}, State) ->
     flush_for_key(Key),
 
@@ -110,6 +121,7 @@ apply_to_couch_config(CouchSectionAtom, CouchKeyAtom, Value, Persist) ->
 is_notable_key({couchdb, _}) -> true;
 is_notable_key({{node, Node, {couchdb, _}}}) when Node =:= node() -> true;
 is_notable_key(secure_headers) -> true;
+is_notable_key(audit) -> true;
 is_notable_key(_) -> false.
 
 handle_config_event({Key, _Value}) ->
@@ -125,6 +137,8 @@ handle_config_event(_) ->
 to_global_key({couchdb, _} = Key) ->
     Key;
 to_global_key(secure_headers = Key) ->
+    Key;
+to_global_key(audit = Key) ->
     Key;
 to_global_key({node, Node, {couchdb, _} = Key}) when Node =:= node() ->
     Key.
