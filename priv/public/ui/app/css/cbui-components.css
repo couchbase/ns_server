@@ -1858,7 +1858,7 @@ input[type="checkbox"].fake-select + label:before {
   overflow: hidden;
   display: inline-block;
   vertical-align: bottom;
-  animation: ellipsis steps(4,end) 900ms infinite;
+  animation: ellipsis steps(4,end) 1.2s infinite;
   content: "\2026"; /* ascii code for the ellipsis character */
   width: 0;
 }

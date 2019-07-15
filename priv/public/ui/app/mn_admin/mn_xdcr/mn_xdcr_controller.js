@@ -46,12 +46,12 @@
     }
     function humanStatus(row) {
       if (row.pauseRequested && row.status != 'paused') {
-        return 'pausing...';
+        return 'pausing';
       } else {
         switch (row.status) {
           case 'running': return 'replicating';
           case 'paused': return 'paused';
-          default: return 'starting up...';
+          default: return 'starting up';
         }
       }
     }

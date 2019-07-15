@@ -92,30 +92,33 @@
         <div class="cbui-table-header">
           <span class="cbui-table-cell flex-grow-1-5">
             <span
-               mn-sortable-title="source_bucket"
+               mn-sortable-title="source"
                sort-by-default="true"
                class="sorter">source bucket</span>
           </span>
           <span class="cbui-table-cell flex-grow-1-5">
             <span
-               mn-sortable-title="destination_bucket"
+               mn-sortable-title="target"
+               sort-function="xdcrCtl.toBucket(value)"
                class="sorter">destination bucket</span>
           </span>
           <span class="cbui-table-cell flex-grow-1-5">
             <span
-               mn-sortable-title="remote_cluster"
+               mn-sortable-title="remote"
+               sort-function="xdcrCtl.toCluster(value)"
                class="sorter">remote cluster</span>
           </span>
           <span class="cbui-table-cell flex-grow-half">
             <span
                mn-sortable-title="status"
+               sort-function="xdcrCtl.humanStatus(value)"
                class="sorter">status</span>
           </span>
         </div>
 
         <section
            ng-if="adminCtl.tasks.tasksXDCR.length"
-           ng-repeat="row in adminCtl.tasks.tasksXDCR track by row.id"
+           ng-repeat="row in adminCtl.tasks.tasksXDCR | orderBy:mnSortableTable.sortableTableProperties.orderBy:mnSortableTable.sortableTableProperties.invert track by row.id"
            class="has-hover"
            ng-click="xdcrCtl.toggleDetails(row.id)"
            ng-class="[xdcrCtl.isDetailsOpened(row.id) ? (xdcrCtl.humanStatus(row) == 'replicating' ? 'dynamic_healthy' : 'dynamic_warmup') : '']">
@@ -146,6 +149,7 @@
             <span
                class="cbui-table-cell flex-grow-half">
               {{xdcrCtl.humanStatus(row)}}
+                <span ng-if="xdcrCtl.humanStatus(row) !== 'paused'" class="loading"></span>
               <span
                  ng-show="row.errors.length"
                  ng-click="$event.stopPropagation();xdcrCtl.showReplicationErrors(row)"
