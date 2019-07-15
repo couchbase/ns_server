@@ -57,7 +57,7 @@
 
       <div class="formrow">
         <label for="user_inp" class="inline">Username&nbsp;</label>
-        <small>an existing username with admin access to this server</small>
+        <small>a user with admin access to this server</small>
         <br>
         <input
            ng-disabled="!!serversAddDialogCtl.postDiskStorageErrors"
@@ -70,9 +70,7 @@
       </div>
 
       <div class="formrow">
-        <label for="password_inp" class="inline">Password&nbsp;</label>
-        <small>an existing password with admin access to this server</small>
-        <br>
+        <label for="password_inp">Password</label>
         <input
            ng-disabled="!!serversAddDialogCtl.postDiskStorageErrors"
            mn-autocomplete-off
@@ -105,7 +103,7 @@
            id="for-use-disk-paths"
            ng-model="serversAddDialogCtl.specifyDisk">
         <label for="for-use-disk-paths">
-          Use disk paths
+          Change default disk paths
         </label>
       </div>
       <mn-services-disk-paths
