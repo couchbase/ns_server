@@ -11,7 +11,8 @@
     'mnMemoryQuotaService',
     'mnSpinner',
     'mnClusterConfigurationService',
-    'mnXDCRService'
+    'mnXDCRService',
+    'mnField'
   ]).controller('mnSettingsClusterController', mnSettingsClusterController);
 
   function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMemoryQuotaService, mnSettingsClusterService, mnHelper, mnPromiseHelper, mnClusterConfigurationService, mnXDCRService) {
@@ -76,12 +77,19 @@
       }
 
       if (mnPoolDefault.export.compat.atLeast55 && $scope.rbac.cluster.settings.write) {
-        promise3 = mnPromiseHelper(vm, mnClusterConfigurationService.postQuerySettings({
-          queryTmpSpaceDir: vm.querySettings.queryTmpSpaceDir,
-          queryTmpSpaceSize: vm.querySettings.queryTmpSpaceSize
-        }))
-            .catchErrors("querySettingsErrors")
-            .getPromise();
+        promise3 = mnPromiseHelper(
+          vm,
+          mnClusterConfigurationService.postQuerySettings(
+            (["queryTmpSpaceDir", "queryTmpSpaceSize", "queryPipelineBatch", "queryPipelineCap",
+              "queryScanCap", "queryTimeout", "queryPreparedLimit", "queryCompletedLimit",
+              "queryCompletedThreshold", "queryLogLevel", "queryMaxParallelism",
+              "queryN1QLFeatCtrl"])
+              .reduce(function (acc, key) {
+                acc[key] = vm.querySettings[key];
+                return acc;
+              }, {})))
+          .catchErrors("querySettingsErrors")
+          .getPromise();
 
         promise5 = mnPromiseHelper(vm, mnClusterConfigurationService.postCurlWhitelist(
           vm.querySettings.queryCurlWhitelist,
@@ -133,7 +141,6 @@
       vm.querySettings = querySettings;
     }
     function activate() {
-      console.log("");
       mnSettingsClusterService.clearSubmitCallbacks();
 
       mnPromiseHelper(vm, mnPoolDefault.get())

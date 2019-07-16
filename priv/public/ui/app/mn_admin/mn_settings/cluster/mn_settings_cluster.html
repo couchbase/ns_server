@@ -345,6 +345,109 @@
                 </div>
               </div>
             </div>
+
+            <mn-field
+               mn-name="queryPipelineBatch"
+               mn-type="number"
+               mn-id="query-pipeline-batch"
+               mn-label="Query Pipeline Batch"
+               mn-disabled="!rbac.cluster.settings.write"
+               mn-model="settingsClusterCtl.querySettings"
+               mn-errors="settingsClusterCtl.querySettingsErrors">
+            </mn-field>
+
+            <mn-field
+               mn-name="queryPipelineCap"
+               mn-type="number"
+               mn-id="query-pipeline-cap"
+               mn-label="Query Pipeline Cap"
+               mn-disabled="!rbac.cluster.settings.write"
+               mn-model="settingsClusterCtl.querySettings"
+               mn-errors="settingsClusterCtl.querySettingsErrors">
+            </mn-field>
+
+            <mn-field
+               mn-name="queryScanCap"
+               mn-type="number"
+               mn-id="query-scan-cap"
+               mn-label="Query Scan Cap"
+               mn-disabled="!rbac.cluster.settings.write"
+               mn-model="settingsClusterCtl.querySettings"
+               mn-errors="settingsClusterCtl.querySettingsErrors">
+            </mn-field>
+
+            <mn-field
+               mn-name="queryTimeout"
+               mn-type="number"
+               mn-id="query-timeout"
+               mn-label="Query Timeout"
+               mn-disabled="!rbac.cluster.settings.write"
+               mn-model="settingsClusterCtl.querySettings"
+               mn-errors="settingsClusterCtl.querySettingsErrors">
+            </mn-field>
+
+            <mn-field
+               mn-name="queryPreparedLimit"
+               mn-type="number"
+               mn-id="query-prepared-limit"
+               mn-label="Query Prepared Limit"
+               mn-disabled="!rbac.cluster.settings.write"
+               mn-model="settingsClusterCtl.querySettings"
+               mn-errors="settingsClusterCtl.querySettingsErrors">
+            </mn-field>
+
+            <mn-field
+               mn-name="queryCompletedLimit"
+               mn-type="number"
+               mn-id="query-completed-limit"
+               mn-label="Query Prepared Limit"
+               mn-disabled="!rbac.cluster.settings.write"
+               mn-model="settingsClusterCtl.querySettings"
+               mn-errors="settingsClusterCtl.querySettingsErrors">
+            </mn-field>
+
+            <mn-field
+               mn-name="queryCompletedThreshold"
+               mn-type="number"
+               mn-id="query-completed-threshold"
+               mn-label="Query Completed Threshold"
+               mn-disabled="!rbac.cluster.settings.write"
+               mn-model="settingsClusterCtl.querySettings"
+               mn-errors="settingsClusterCtl.querySettingsErrors">
+            </mn-field>
+
+            <mn-field
+               mn-name="queryLogLevel"
+               mn-type="select"
+               mn-items="['debug', 'trace', 'info', 'warn', 'error', 'severe', 'none']"
+               mn-id="query-log-level"
+               mn-label="Query Log Level"
+               mn-disabled="!rbac.cluster.settings.write"
+               mn-model="settingsClusterCtl.querySettings"
+               mn-errors="settingsClusterCtl.querySettingsErrors">
+            </mn-field>
+
+            <mn-field
+               mn-name="queryMaxParallelism"
+               mn-type="number"
+               mn-id="query-max-parallelism"
+               mn-label="Query Max Parallelism"
+               mn-disabled="!rbac.cluster.settings.write"
+               mn-model="settingsClusterCtl.querySettings"
+               mn-errors="settingsClusterCtl.querySettingsErrors">
+            </mn-field>
+
+            <mn-field
+               mn-name="queryN1QLFeatCtrl"
+               mn-type="number"
+               mn-id="query-N1QL-feat-ctrl"
+               mn-label="Query N1QL Feat Controller"
+               mn-disabled="!rbac.cluster.settings.write"
+               mn-model="settingsClusterCtl.querySettings"
+               mn-errors="settingsClusterCtl.querySettingsErrors">
+            </mn-field>
+
+
           </div>
         </div>
 
