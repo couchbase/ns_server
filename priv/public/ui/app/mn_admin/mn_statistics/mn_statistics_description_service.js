@@ -746,7 +746,7 @@
             },
             "disk_size": {
               unit: "bytes",
-              title: "disk size",
+              title: "Views Disk Size",
               desc: "Bytes stored on disk for views in this design doc."
             }
           }
@@ -812,6 +812,43 @@
         },
         "@index-":{
           "@items": {
+            "num_docs_pending+queued": {
+              unit: "number",
+              title: "Index Mutations Remaining",
+              desc: "Number of documents pending to be indexed. Per index."
+            },
+            "num_docs_indexed": {
+              unit: "number/sec",
+              title: "Index Drain Rate",
+              desc: "Number of documents indexed by the indexer per second. Per index."
+            },
+            "index_resident_percent": {
+              unit: "percent",
+              title: "Index Resident Percent",
+              desc: "Percentage of index data resident in memory. Per index."
+            },
+            "memory_used": {
+              unit: "bytes",
+              title: "Index RAM Used",
+              desc: "Bytes in memory for this index. Per index."
+            },
+            "items_count": {
+              unit: "number",
+              title: "Indexed Items",
+              desc: "Current total indexed documents. Per index."
+            },
+            "data_size": {
+              unit: "bytes",
+              title: "Index Data Size",
+              desc: "Bytes of data in this index. Per index."
+              //membase_index_stats_description
+              //title: "index data size"
+            },
+            "disk_size": {
+              unit: "bytes",
+              title: "Index Disk Size",
+              desc: "Bytes on disk for this index. Per index."
+            },
             "avg_item_size": {
               unit: "bytes",
               title: "Index Item Size",
@@ -822,59 +859,6 @@
               title: "Index Scan Latency",
               desc: "Average time (in nanoseconds) to serve a scan request. Per index."
             },
-            "cache_hits": null,
-            "cache_miss_ratio": {
-              unit: "percent",
-              title: "Index Miss Ratio",
-              desc: "Percentage of accesses to this index data from disk as opposed to RAM. (measured from cache_misses * 100 / (cache_misses + cache_hits))"
-            },
-            "cache_misses": null,
-            "data_size": {
-              unit: "bytes",
-              title: "Index Data Size",
-              desc: "Bytes of data in this index. Per index."
-              //membase_index_stats_description
-              //title: "index data size"
-            },
-            "disk_overhead_estimate": null,
-            "disk_size": {
-              unit: "bytes",
-              title: "Index Disk Size",
-              desc: "Bytes on disk for this index. Per index."
-            },
-            "frag_percent": null,
-            "index_frag_percent": {
-              unit: "percent",
-              title: "Index Fragmentation",
-              desc: "Percentage fragmentation of the index. Note: at small index sizes of less than a hundred kB, the static overhead of the index disk file will inflate the index fragmentation percentage. Per index."
-            },
-            "index_resident_percent": {
-              unit: "percent",
-              title: "Index Resident Ratio",
-              desc: "Percentage of index data resident in memory. Per index."
-            },
-            "items_count": {
-              unit: "number",
-              title: "Index Docs",
-              desc: "Current total indexed document count. Per index."
-            },
-            "memory_used": {
-              unit: "bytes",
-              title: "Index RAM Used",
-              desc: "Bytes in memory for this index. Per index."
-            },
-            "num_docs_indexed": {
-              unit: "number/sec",
-              title: "Indexer Rate",
-              desc: "Number of documents indexed by the indexer per second. Per index."
-            },
-            "num_docs_pending": null,
-            "num_docs_pending+queued": {
-              unit: "number",
-              title: "Index Mutations Remaining",
-              desc: "Number of documents pending to be indexed. Per index."
-            },
-            "num_docs_queued": null,
             "num_requests": {
               unit: "number/sec",
               title: "Index Request Rate",
@@ -885,13 +869,29 @@
               title: "Index Scan Items",
               desc: "Number of index items scanned by the indexer per second. Per index."
             },
-            "recs_in_mem": null,
-            "recs_on_disk": null,
             "scan_bytes_read": {
               unit: "number/sec",
               title: "Index Scan Bytes",
               desc: "Bytes per second read by a scan. Per index."
             },
+            "cache_hits": null,
+            "index_frag_percent": {
+              unit: "percent",
+              title: "Index Fragmentation",
+              desc: "Percentage fragmentation of the index. Note: at small index sizes of less than a hundred kB, the static overhead of the index disk file will inflate the index fragmentation percentage. Per index."
+            },
+            "cache_miss_ratio": {
+              unit: "percent",
+              title: "Index Cache Miss Ratio",
+              desc: "Percentage of accesses to this index data from disk as opposed to RAM. (measured from cache_misses * 100 / (cache_misses + cache_hits))"
+            },
+            "cache_misses": null,
+            "disk_overhead_estimate": null,
+            "frag_percent": null,
+            "num_docs_pending": null,
+            "num_docs_queued": null,
+            "recs_in_mem": null,
+            "recs_on_disk": null,
             "total_scan_duration": null,
           },
           "index/cache_hits": null,
