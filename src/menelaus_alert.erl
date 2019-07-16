@@ -24,7 +24,6 @@
 -export([handle_logs/1,
          build_logs/1,
          parse_settings_alerts_post/1,
-         config_upgrade_to_madhatter/1,
          build_alerts_json/1]).
 
 -export([category_bin/1]).
@@ -291,13 +290,3 @@ common_params(Params) ->
                 L -> list_to_integer(L)
             end,
     {MinTStamp, Limit}.
-
-config_upgrade_to_madhatter(Config) ->
-    case ns_config:search(Config, email_alerts) of
-        false -> [];
-        {value, Props} ->
-            CurrentAlerts = proplists:get_value(alerts, Props, []),
-            NewAlers = lists:usort([odp_report_failed | CurrentAlerts]),
-            NewProps = misc:update_proplist(Props, [{alerts, NewAlers}]),
-            [{set, email_alerts, NewProps}]
-    end.

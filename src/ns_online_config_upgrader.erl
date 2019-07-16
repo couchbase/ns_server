@@ -78,7 +78,6 @@ upgrade(?VERSION_55, _Config) ->
 upgrade(?VERSION_60, Config) ->
     {?VERSION_MADHATTER,
      menelaus_web_auto_failover:config_upgrade_to_madhatter(Config) ++
-         menelaus_alert:config_upgrade_to_madhatter(Config) ++
          ns_bucket:config_upgrade_to_madhatter(Config) ++
          auto_rebalance_settings:config_upgrade_to_madhatter() ++
          query_settings_manager:config_upgrade_to_madhatter(Config) ++

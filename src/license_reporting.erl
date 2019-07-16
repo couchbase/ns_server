@@ -93,10 +93,9 @@ handle_info(report, State) ->
     case send_report(build_settings(), []) of
         {ok, _} -> ok;
         {error, Error} ->
-            Msg = format_bin("On-demand pricing report send failed "
-                             "with reason: ~s", [Error]),
-            system_stats_collector:increment_counter(odp_report_failed),
-            menelaus_web_alerts_srv:global_alert(odp_report_failed, Msg)
+            ?log_error("On-demand pricing report send failed "
+                       "with reason: ~s", [Error]),
+            system_stats_collector:increment_counter(odp_report_failed)
     end,
     {noreply, restart_timer(State), hibernate};
 

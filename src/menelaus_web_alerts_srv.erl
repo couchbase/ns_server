@@ -79,8 +79,6 @@ short_description(ep_clock_cas_drift_threshold_exceeded) ->
     "cas drift threshold exceeded error";
 short_description(communication_issue) ->
     "communication issue among some nodes";
-short_description(odp_report_failed) ->
-    "on-demand pricing report send failed";
 short_description(Other) ->
     %% this case is needed for tests to work
     couch_util:to_list(Other).
@@ -628,7 +626,7 @@ alert_keys() ->
     [ip, disk, overhead, ep_oom_errors, ep_item_commit_failed,
      audit_dropped_events, indexer_ram_max_usage,
      ep_clock_cas_drift_threshold_exceeded,
-     communication_issue, odp_report_failed].
+     communication_issue].
 
 
 -ifdef(TEST).
