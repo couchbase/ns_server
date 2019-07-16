@@ -74,6 +74,7 @@ status_mapping() ->
      {status, <<"status">>},
      {definition, <<"definition">>},
      {progress, <<"completion">>},
+     {stale, <<"stale">>},
      {hosts, <<"hosts">>} | AddType].
 
 process_status(Status) ->
