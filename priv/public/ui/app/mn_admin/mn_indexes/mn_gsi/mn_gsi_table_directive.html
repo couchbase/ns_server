@@ -66,6 +66,9 @@
         <span class="label lt-blue" ng-if="row.partitioned">
           partitioned
         </span>
+        <span class="label lt-blue" ng-if="row.stale">
+          stale
+        </span>
       </span>
       <span class="cbui-table-cell flex-grow-half resp-hide-xsml">
         <span ng-show="gsiItemCtl.hasValue('num_requests')">
