@@ -215,6 +215,9 @@
     page-break-inside: avoid;
     break-inside: avoid;
   }
+  .controls .column button {
+    margin-top: 0!important;
+  }
 }
 
 /* responsive extra-small ------------------------------- */
