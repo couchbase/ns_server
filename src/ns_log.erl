@@ -240,17 +240,19 @@ gc(State = #state{dedup=Dupes}) ->
 
 gc(_Now, [], DupesList) -> DupesList;
 gc(Now, [{Key, Value} | Rest], DupesList) ->
-    {Count, FirstSeen, _LastSeen} = Value,
+    {Count, FirstSeen, LastSeen} = Value,
     case timer:now_diff(Now, FirstSeen) >= ?DUP_TIME of
         true ->
             {Module, Code, Category, Fmt, Args} = Key,
             case Count of
                 0 -> ok;
                 _ ->
+                    DiffLast = timer:now_diff(Now, LastSeen)/1000000,
                     Entry = #log_entry{node=node(), module=Module,
                                        code=Code,
-                                       msg=Fmt ++ " (repeated ~p times)",
-                                       args=Args ++ [Count],
+                                       msg=Fmt ++ " (repeated ~p times, "
+                                                  "last seen ~p secs ago)",
+                                       args=Args ++ [Count, DiffLast],
                                        cat=Category,
 
                                        tstamp=Now},
