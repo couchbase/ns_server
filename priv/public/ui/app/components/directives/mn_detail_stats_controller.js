@@ -2,17 +2,18 @@
   "use strict";
 
   angular
-    .module('mnDetailStats', ["mnStatisticsNewService", "mnStatisticsChart", "mnHelper"])
+    .module('mnDetailStats', ["mnStatisticsNewService", "mnStatisticsChart", "mnHelper", "mnStatisticsDescriptionService"])
     .directive('mnDetailStats', mnDetailStatsDirective);
 
-  function mnDetailStatsDirective(mnStatisticsNewService, mnHelper) {
+  function mnDetailStatsDirective(mnStatisticsNewService, mnStatisticsDescriptionService, mnHelper) {
     var mnDetailStats = {
       restrict: "AE",
       scope: {
         title: "@",
         bucket: "@",
         itemId: "@",
-        service: "@"
+        service: "@",
+        prefix: "@"
       },
       templateUrl: "app/components/directives/mn_detail_stats.html",
       controller: controller,
@@ -50,15 +51,11 @@
           zoom: vm.zoom,
           bucket: $scope.bucket
         }).then(function (rv) {
+
           vm.charts = Object
-            .keys(rv.data.stats["@" + $scope.service + "-" + $scope.bucket])
-            .filter(function (key) {
-              var splitted = key.split("/");
-              var stat = splitted.pop();
-              splitted.shift();
-              var id = splitted.join("/");
-              return id == $scope.itemId &&
-                mnStatisticsNewService.readByPath("@" + $scope.service + "-.@items", stat);
+            .keys(mnStatisticsDescriptionService.stats["@" + $scope.service + "-"]["@items"])
+            .filter(function (stat) {
+              return mnStatisticsDescriptionService.stats["@" + $scope.service + "-"]["@items"][stat] && !!rv.data.stats["@" + $scope.service + "-" + $scope.bucket][$scope.prefix + "/" + $scope.itemId + "/" + stat];
             })
             .map(function (stat) {
               return {
@@ -67,7 +64,7 @@
                 isSpecific: false,
                 size: "small",
                 zoom: vm.zoom,
-                stats: getStats(stat)
+                stats: getStats($scope.prefix + "/" + $scope.itemId + "/" + stat)
               };
             });
         });
