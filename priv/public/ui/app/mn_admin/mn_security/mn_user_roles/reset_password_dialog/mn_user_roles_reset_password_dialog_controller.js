@@ -21,6 +21,7 @@
         vm.user.roles.map(function (role) {
           return (role.bucket_name ? (role.role + '[' + role.bucket_name + ']') : role.role);
         }),
+        vm.user.groups,
         true,
         true
       ), $uibModalInstance)
