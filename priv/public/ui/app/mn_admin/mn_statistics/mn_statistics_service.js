@@ -27,6 +27,7 @@
       getStatsTitle: getStatsTitle,
       getStatsDesc: getStatsDesc,
       tickMultiFormat: d3.time.format.multi([
+        ["%-I:%M:%S%p", function (d) {return d.getSeconds(); }],
         ["%-I:%M%p", function (d) {return d.getMinutes(); }], // not the beginning of the hour
         ["%-I%p", function (d) { return d.getHours(); }], // not midnight
         ["%b %-d", function (d) { return d.getDate() != 1; }], // not the first of the month
