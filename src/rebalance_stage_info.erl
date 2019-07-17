@@ -254,7 +254,7 @@ maybe_create(Stage, Info, Old, Fun) ->
         false -> Old
     end.
 
-create_stage([Stage | _] = AllStages, {started, {_,_}} = Info, AllStageInfo) ->
+create_stage([Stage | _] = AllStages, {started, {_, _}} = Info, AllStageInfo) ->
     update_stage_info_rec(AllStages, Info,
                           [{Stage, #stage_details{}} | AllStageInfo]).
 
