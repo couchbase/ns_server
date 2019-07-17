@@ -241,18 +241,11 @@ update_stage_info_rec([Stage | SubStages] = AllStages, StageInfoUpdate,
             lists:keyreplace(Stage, 1, AllStageInfo, {Stage, NewStageInfo})
     end.
 
-create_new_field({started, {_, []}}) ->
-    false;
-create_new_field({started, {_, _}}) ->
-    true;
-create_new_field(_) ->
-    false.
-
-maybe_create(Stage, Info, Old, Fun) ->
-    case create_new_field(Info) of
-        true -> Fun(Stage, Info, Old);
-        false -> Old
-    end.
+maybe_create(Stage, Info = {started, {_, Nodes}}, Old, Fun)
+  when Nodes =/= [] ->
+    Fun(Stage, Info, Old);
+maybe_create(_Stage, _Info, Old, _Fun) ->
+    Old.
 
 create_stage([Stage | _] = AllStages, {started, {_, _}} = Info, AllStageInfo) ->
     update_stage_info_rec(AllStages, Info,
