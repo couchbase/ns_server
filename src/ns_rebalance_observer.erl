@@ -126,39 +126,6 @@ get_registered_local_name() ->
 submit_master_event(Event) ->
     gen_server:cast(get_registered_local_name(), {note, Event}).
 
-is_interesting_master_event({bucket_rebalance_started, _Bucket, _Pid}) ->
-    fun handle_bucket_rebalance_started/2;
-is_interesting_master_event({planned_moves, _BucketName, _MovesTuple}) ->
-    fun handle_planned_moves/2;
-is_interesting_master_event({vbucket_move_start, _Pid, _BucketName, _Node, _VBucketId, _, _}) ->
-    fun handle_vbucket_move_start/2;
-is_interesting_master_event({vbucket_move_done, _BucketName, _VBucketId}) ->
-    fun handle_vbucket_move_done/2;
-is_interesting_master_event({rebalance_stage_started, _Stage, _Nodes}) ->
-    fun handle_rebalance_stage_started/2;
-is_interesting_master_event({rebalance_stage_completed, _Stage}) ->
-    fun handle_rebalance_stage_completed/2;
-is_interesting_master_event({rebalance_stage_event, _Stage, _Event}) ->
-    fun handle_rebalance_stage_event/2;
-is_interesting_master_event({compaction_uninhibit_started, _BucketName, _}) ->
-    fun handle_compaction_uninhibit/2;
-is_interesting_master_event({compaction_uninhibit_done, _BucketName, _}) ->
-    fun handle_compaction_uninhibit/2;
-is_interesting_master_event({takeover_started, _BucketName, _VBucketId, _, _}) ->
-    fun handle_takeover/2;
-is_interesting_master_event({takeover_ended, _BucketName, _VBucketId, _, _}) ->
-    fun handle_takeover/2;
-is_interesting_master_event({backfill_phase_started, _BucketName, _VBucketId}) ->
-    fun handle_generic_vb_stat_event/2;
-is_interesting_master_event({backfill_phase_ended, _BucketName, _VBucketId}) ->
-    fun handle_generic_vb_stat_event/2;
-is_interesting_master_event({seqno_waiting_started, _BucketName, _VBucketId, _, _}) ->
-    fun handle_persistence/2;
-is_interesting_master_event({seqno_waiting_ended, _BucketName, _VBucketId, _, _}) ->
-    fun handle_persistence/2;
-is_interesting_master_event(_) ->
-    undefined.
-
 get_stage_nodes(Services, NodesInfo) ->
     ActiveNodes = proplists:get_value(active_nodes, NodesInfo, []),
     lists:filtermap(
@@ -237,13 +204,7 @@ handle_call(Req, From, State) ->
     {reply, unknown_request, State}.
 
 handle_cast({note, Event}, State) ->
-    case is_interesting_master_event(Event) of
-        undefined ->
-            {noreply, State};
-        Fun ->
-            StampedEvent = list_to_tuple([os:timestamp() | tuple_to_list(Event)]),
-            Fun(StampedEvent, State)
-    end;
+    {noreply, handle_master_event(Event, State)};
 
 handle_cast({update_stats, BucketName, VBucket, NodeToDocsLeft}, State) ->
     ?log_debug("Got update_stats: ~p, ~p", [VBucket, NodeToDocsLeft]),
@@ -367,62 +328,68 @@ initiate_bucket_rebalance(BucketName, {Moves, UndefinedMoves}, OldState) ->
     TmpState = update_all_vb_info(OldState, BucketName, dict:from_list(AllMoves)),
     TmpState#state{bucket = BucketName}.
 
-handle_rebalance_stage_started({TS, rebalance_stage_started, Stage, Nodes},
-                               #state{stage_info = Old} = State) ->
-    New = rebalance_stage_info:update_stage_info(Stage, {started, {TS, Nodes}},
-                                                 Old),
-    {noreply, State#state{stage_info = New}}.
+handle_master_event({rebalance_stage_started, Stage, Nodes},
+                    #state{stage_info = Old} = State) ->
+    New = rebalance_stage_info:update_stage_info(
+            Stage, {started, {os:timestamp(), Nodes}}, Old),
+    State#state{stage_info = New};
 
-handle_rebalance_stage_completed({TS, rebalance_stage_completed, Stage},
-                                 #state{stage_info = Old} = State) ->
-    New = rebalance_stage_info:update_stage_info(Stage, {completed, TS}, Old),
-    {noreply, State#state{stage_info = New}}.
+handle_master_event({rebalance_stage_completed, Stage},
+                    #state{stage_info = Old} = State) ->
+    New = rebalance_stage_info:update_stage_info(
+            Stage, {completed, os:timestamp()}, Old),
+    State#state{stage_info = New};
 
-handle_rebalance_stage_event({TS, rebalance_stage_event, Stage, Text},
-                             #state{stage_info = Old} = State) ->
-    New = rebalance_stage_info:update_stage_info(Stage,
-                                                 {notable_event, TS, Text},
-                                                 Old),
-    {noreply, State#state{stage_info = New}}.
+handle_master_event({rebalance_stage_event, Stage, Text},
+                    #state{stage_info = Old} = State) ->
+    New = rebalance_stage_info:update_stage_info(
+            Stage, {notable_event, os:timestamp(), Text}, Old),
+    State#state{stage_info = New};
 
-handle_bucket_rebalance_started({_, bucket_rebalance_started, _BucketName, _Pid},
-                                #state{bucket_number = Number} = State) ->
-    NewState = State#state{bucket_number=Number + 1},
-    {noreply, NewState}.
+handle_master_event({bucket_rebalance_started, _BucketName, _Pid},
+                    #state{bucket_number = Number} = State) ->
+    State#state{bucket_number=Number + 1};
 
-handle_planned_moves({_, planned_moves, BucketName, MovesTuple}, State) ->
-    {noreply, initiate_bucket_rebalance(BucketName, MovesTuple, State)}.
+handle_master_event({planned_moves, BucketName, MovesTuple}, State) ->
+    initiate_bucket_rebalance(BucketName, MovesTuple, State);
 
-handle_vbucket_move_start({TS, vbucket_move_start, _Pid, BucketName,
-                           _Node, VBucketId, _, _},
-                          State) ->
+handle_master_event({vbucket_move_start, _Pid, BucketName,
+                     _Node, VBucketId, _, _}, State) ->
     ?log_debug("Noted vbucket move start (vbucket ~p)", [VBucketId]),
-    {noreply, update_info(vbucket_move_start, State,
-                          {TS, BucketName, VBucketId})}.
+    update_info(vbucket_move_start, State, {os:timestamp(), BucketName,
+                                            VBucketId});
 
-handle_vbucket_move_done({TS, vbucket_move_done, BucketName, VBucket},
-                         State) ->
-    State1 = update_move(State, BucketName, VBucket,
-                         fun (#vbucket_info{stats=Stats} = Move) ->
-                                 Stats1 = [S#replica_building_stats{docs_left=0} ||
-                                              S <- Stats],
-                                 Move#vbucket_info{stats=Stats1}
-                         end),
+handle_master_event({vbucket_move_done, BucketName, VBucket}, State) ->
+    State1 = update_move(
+               State, BucketName, VBucket,
+               fun (#vbucket_info{stats=Stats} = Move) ->
+                       Stats1 = [S#replica_building_stats{docs_left=0} ||
+                                    S <- Stats],
+                       Move#vbucket_info{stats=Stats1}
+               end),
     ?log_debug("Noted vbucket move end (vbucket ~p)", [VBucket]),
-    {noreply, update_info(vbucket_move_done, State1,
-                          {TS, BucketName, VBucket})}.
+    update_info(vbucket_move_done, State1,
+                {os:timestamp(), BucketName, VBucket});
 
-handle_compaction_uninhibit({TS, Event, BucketName, Node}, State) ->
-    {noreply, update_info(Event, State, {TS, BucketName, Node})}.
+handle_master_event({Event, BucketName, Node}, State)
+  when Event =:= compaction_uninhibit_started;
+       Event =:= compaction_uninhibit_done ->
+    update_info(Event, State, {os:timestamp(), BucketName, Node});
 
-handle_takeover({TS, Event, BucketName, VBucket, _, _}, State) ->
-    {noreply, update_info(Event, State, {TS, BucketName, VBucket})}.
+handle_master_event({Event, BucketName, VBucket, _, _}, State)
+  when Event =:= takeover_started;
+       Event =:= takeover_ended;
+       Event =:= seqno_waiting_started;
+       Event =:= seqno_waiting_ended ->
+    update_info(Event, State, {os:timestamp(), BucketName, VBucket});
 
-handle_generic_vb_stat_event({TS, Event, BucketName, VBucket}, State) ->
-    {noreply, update_info(Event, State, {TS, BucketName, VBucket})}.
+handle_master_event({Event, BucketName, VBucket}, State)
+  when Event =:= backfill_phase_started;
+       Event =:= backfill_phase_ended ->
+    update_info(Event, State, {os:timestamp(), BucketName, VBucket});
 
-handle_persistence({TS, Event, BucketName, VBucket, _, _}, State) ->
-    {noreply, update_info(Event, State, {TS, BucketName, VBucket})}.
+handle_master_event(_, State) ->
+    State.
 
 update_move(State, BucketName, VBucket, Fun) ->
     update_all_vb_info(State, BucketName,
