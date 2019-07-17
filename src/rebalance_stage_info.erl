@@ -138,21 +138,15 @@ construct_per_stage_json(AllStageProgress, AllStageDetails, Stage, StageInfo) ->
                                                          StageInfo),
     StageInfoJson = construct_per_stage_info_json(StageInfo, AllStageProgress,
                                                   AllStageDetails),
-    {get_stage_name(Stage), {ProgressInfoJson ++ StageInfoJson ++
-                             StageDetails}}.
+    {list_to_binary(get_stage_name(Stage)),
+     {ProgressInfoJson ++ StageInfoJson ++ StageDetails}}.
 
-get_stage_name(Stage) ->
-    Stages = [{kv, data},
-              {n1ql, query},
-              {index, index},
-              {fts, search},
-              {cbas, analytics},
-              {eventing, eventing},
-              {kv_delta_recovery, deltaRecovery}],
-    case lists:keyfind(Stage, 1, Stages) of
-        {Stage, Val} -> Val;
-        false -> Stage
-    end.
+get_stage_name(kv_delta_recovery) ->
+    "deltaRecovery";
+get_stage_name(fts) ->
+    "search";
+get_stage_name(Name) when is_atom(Name) ->
+    ns_cluster_membership:user_friendly_service_name(Name).
 
 construct_per_stage_details_json(Stage, AllStageDetails) ->
     case lists:keyfind(Stage, 1, AllStageDetails) of
