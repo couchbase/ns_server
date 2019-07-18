@@ -68,6 +68,8 @@
     var selectedByNodeStats = {};
     var selectedStats = {};
 
+
+
     activate();
 
     function orderPills(statsDirectoryBlocks) {
@@ -96,9 +98,17 @@
         }, {});
     }
 
+    function reActivateStats() {
+      vm.units = {};
+      vm.breadcrumbs = {};
+      vm.disableStats = false;
+
+      _.forEach(vm.newChart.stats, activateStats);
+    }
+
     function onSelectBucket() {
       activate();
-      onSpecificChecked();
+      reActivateStats();
     }
 
     function filterStats(section) {
@@ -122,12 +132,7 @@
         vm.newChart.stats = selectedStats;
       }
 
-
-      vm.units = {};
-      vm.breadcrumbs = {};
-      vm.disableStats = false;
-
-      _.forEach(vm.newChart.stats, activateStats);
+      reActivateStats();
     }
 
     function onStatChecked(desc, value, breadcrumb) {
@@ -215,7 +220,7 @@
           vm.selectedBlock = vm.selectedBlock || "@system";
 
           if (chart) {
-            _.forEach(chart.stats, activateStats);
+            _.forEach(vm.newChart.stats, activateStats);
           }
         })
         .showSpinner();
