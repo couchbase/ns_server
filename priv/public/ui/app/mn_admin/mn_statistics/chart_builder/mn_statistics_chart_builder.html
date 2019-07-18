@@ -182,7 +182,7 @@
         <div
            ng-repeat="(name, stat) in chartBuilderCtl.statsDirectoryBlocks[chartBuilderCtl.selectedBlock + '-' + chartBuilderCtl.bucket]['@items'][chartBuilderCtl.groupItem]"
            ng-if="chartBuilderCtl.statsDesc[chartBuilderCtl.selectedBlock + '-']['@items'][name]"
-           ng-style="{opacity: chartBuilderCtl.maybeDisableField(chartBuilderCtl.statsDesc[chartBuilderCtl.selectedBlock + '-']['@items'][name], name) ? '0.3' : '1'}">
+           ng-style="{opacity: chartBuilderCtl.maybeDisableField(chartBuilderCtl.statsDesc[chartBuilderCtl.selectedBlock + '-']['@items'][name], chartBuilderCtl.groupItem + '/' +name) ? '0.3' : '1'}">
           <input
              id="stat-{{name}}-checkbox"
              type="checkbox"
@@ -192,7 +192,7 @@
                         chartBuilderCtl.newChart.stats[chartBuilderCtl.groupItem + '/' + name],
                         [chartBuilderCtl.selectedBlock + '-', chartBuilderCtl.groupItem, chartBuilderCtl.statsDesc[chartBuilderCtl.selectedBlock + '-']['@items'][name].title]
                         )"
-             ng-disabled="chartBuilderCtl.maybeDisableField(chartBuilderCtl.statsDesc[chartBuilderCtl.selectedBlock + '-']['@items'][name], name)"
+             ng-disabled="chartBuilderCtl.maybeDisableField(chartBuilderCtl.statsDesc[chartBuilderCtl.selectedBlock + '-']['@items'][name], chartBuilderCtl.groupItem + '/' + name)"
              ng-model="chartBuilderCtl.newChart.stats[chartBuilderCtl.groupItem + '/' + name]">
           <label
              for="stat-{{name}}-checkbox"
