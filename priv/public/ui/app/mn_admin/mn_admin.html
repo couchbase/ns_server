@@ -47,26 +47,16 @@
               adminCtl.tasks.tasksRebalance.errorMessage ? "failed" : "completed"}}
             </span>
           </p>
-          <div class="alert"
+          <div class="alert margin-bottom-1"
                ng-show="adminCtl.tasks.tasksRebalance.completionMessage"
                ng-class="{'alert-error': adminCtl.tasks.tasksRebalance.errorMessage,
                          'alert-success': !adminCtl.tasks.tasksRebalance.errorMessage}">
             <p>{{adminCtl.tasks.tasksRebalance.completionMessage}}</p>
           </div>
-<!-- rebalance timeline ****************************************************
-          <div class="timeline">
-            <div
-               class="timeline-stage"
-               ng-class="{highlight: !(service.timeTaken === false)}"
-               ng-repeat="service in adminCtl.tasks.tasksRebalance.stageInfo.services track by (service.name + $index)">
-              <label class="initialcaps">{{service.name}}</label>
-              <div class="timeline-dot"></div>
-            </div>
-          </div>
--->
+
 <!-- rebalance per stage info ********************************************** -->
           <div ng-repeat="service in adminCtl.tasks.tasksRebalance.stageInfo.services track by (service.name + $index)">
-            <div class="row">
+            <div class="row margin-top-half margin-bottom-half">
               <label
                  class="initialcaps"
                  ng-click="showModule = !showModule"
@@ -99,8 +89,38 @@
               </span>
               <span ng-show="service.timeTaken === false">- - -</span>
             </div>
+
+            <div ng-if="showModule" class="margin-top-half">
+<!-- delta recovery info *************************************************** -->
+              <div
+                 ng-show="service.subStages.deltaRecovery"
+                 ng-if="!hideBucket"
+                 class="row indent-1-5 margin-bottom-half">
+                <label>Delta Recovery</label>
+                <span
+                   ng-show="service.subStages.deltaRecovery.timeTaken !== false"
+                   class="rebalance-stage-status">
+                  <span
+                     ng-show="service.subStages.deltaRecovery.completedTime"
+                     class="rebalance-stage-success">
+                    completed
+                  </span>
+                  <span
+                     ng-show="!service.subStages.deltaRecovery.completedTime && !adminCtl.tasks.tasksRebalance.errorMessage"
+                     class="rebalance-stage-inprogress">
+                    elapsed
+                  </span>
+                  <span
+                     ng-show="!service.subStages.deltaRecovery.completedTime && adminCtl.tasks.tasksRebalance.errorMessage"
+                     class="rebalance-stage-error">
+                    failed
+                  </span>
+                  {{service.subStages.deltaRecovery.timeTaken | mnMsToTime}}
+                </span>
+                <span ng-show="service.subStages.deltaRecovery.timeTaken === false">- - -</span>
+              </div>
+
 <!-- per bucket info ******************************************************* -->
-            <div ng-if="showModule" class="margin-bottom-1">
               <div ng-repeat="bucketInfo in service.details track by bucketInfo.name" class="indent-1">
                 <div class="row">
                   <label
@@ -133,7 +153,6 @@
                       <div class="cbui-table-cell">{{v.averageTime / 1000 | number:4}}</div>
                     </div>
                   </div>
-
                   <h6
                      ng-show="bucketInfo.compactionInfo"
                      ng-click="hideCompaction = !hideCompaction"
@@ -155,34 +174,10 @@
                   </div>
                 </div>
               </div>
-              <div ng-show="service.subStages.deltaRecovery" ng-if="!hideBucket" class="row indent-2-5">
-                <h6>Delta Recovery</h6>
-                <span
-                   ng-show="service.subStages.deltaRecovery.timeTaken !== false"
-                   class="rebalance-stage-status">
-                  <span
-                     ng-show="service.subStages.deltaRecovery.completedTime"
-                     class="rebalance-stage-success">
-                    completed
-                  </span>
-                  <span
-                     ng-show="!service.subStages.deltaRecovery.completedTime && !adminCtl.tasks.tasksRebalance.errorMessage"
-                     class="rebalance-stage-inprogress">
-                    elapsed
-                  </span>
-                  <span
-                     ng-show="!service.subStages.deltaRecovery.completedTime && adminCtl.tasks.tasksRebalance.errorMessage"
-                     class="rebalance-stage-error">
-                    failed
-                  </span>
-                  {{service.subStages.deltaRecovery.timeTaken | mnMsToTime}}
-                </span>
-                <span ng-show="service.subStages.deltaRecovery.timeTaken === false">- - -</span>
-              </div>
             </div>
           </div>
           <div
-             class="text-right margin-bottom-1 margin-top-1"
+             class="text-right margin-bottom-1 margin-top-half"
              ng-hide="!poolDefault.rebalancing || !rbac.cluster.pools.write">
             <button
                class="red"

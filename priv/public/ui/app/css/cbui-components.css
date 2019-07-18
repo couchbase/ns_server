@@ -382,7 +382,7 @@ color: #333;
   font-size: .925rem;
   color: #80c677;
   position: absolute;
-  top: 4px;
+  top: 0;
   right: 0;
 }
 /* rebalance progress icon ----------------------------------------------- */
@@ -392,7 +392,7 @@ color: #333;
   font-size: 1rem;
   color: #f7b84f;
   position: absolute;
-  top: 4px;
+  top: 0;
   right: 0;
   display: inline-block;
   -webkit-animation: fa-spin .5s infinite linear;
@@ -2958,7 +2958,6 @@ footer hr {
   font-size: .925rem;
   font-weight: 600;
   color: #000;
-  margin-top: .5rem;
 }
 .activity-panel h6 {
   margin: .25rem 0;
