@@ -747,9 +747,6 @@ section.error {
 .dialog-small {
   width: 380px;
 }
-.dialog-small .panel-content {
-  padding: 1.5rem 1rem 1rem 1rem;
-}
 .dialog-small .panel-footer {
   border: 0;
   padding: 0 1rem 1rem 1rem;
