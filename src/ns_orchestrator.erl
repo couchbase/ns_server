@@ -1230,10 +1230,10 @@ handle_rebalance_completion(ExitReason, State) ->
     Msg = log_rebalance_completion(ExitReason, State),
     maybe_retry_rebalance(ExitReason, State),
     update_rebalance_counters(ExitReason, State),
-    update_rebalance_status(ExitReason, State),
-    rpc:eval_everywhere(diag_handler, log_all_dcp_stats, []),
     ns_rebalance_observer:record_rebalance_report(
       [{completionMessage, list_to_binary(Msg)}]),
+    update_rebalance_status(ExitReason, State),
+    rpc:eval_everywhere(diag_handler, log_all_dcp_stats, []),
     terminate_observer(State),
 
     R = compat_mode_manager:consider_switching_compat_mode(),
