@@ -78,16 +78,7 @@
         method: 'POST',
         url: "/uilogout"
       }).then(function () {
-        mnPools.clearCache();
-        $state.go('app.auth').then(function () {
-          delete $rootScope.poolDefault;
-          delete $rootScope.pools;
-          mnPermissions.clear();
-        });
-        $cacheFactory.get('$http').remove('/whoami');
-        $window.localStorage.removeItem('mn_xdcr_regex');
-        $window.localStorage.removeItem('mn_xdcr_testKeys');
-        mnPendingQueryKeeper.cancelAllQueries();
+        $window.location.reload();
       });
     }
   }

@@ -25,7 +25,7 @@
 
     angular.element($window).on("storage", function (storage) {
       if (storage.key === "mnLogIn") {
-        $state.go("app.admin.overview.statistics");
+        $urlRouter.sync();
       }
     });
 
