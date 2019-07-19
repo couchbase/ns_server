@@ -68,6 +68,11 @@
           });
         });
       }
+      if ($scope.chartData) {
+        vm.chartData.forEach(function (v, i) {
+          chartData[i].disabled = v.disabled;
+        });
+      }
       vm.chartApi.updateWithData(chartData);
     }
 

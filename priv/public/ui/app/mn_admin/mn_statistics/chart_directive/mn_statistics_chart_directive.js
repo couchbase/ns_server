@@ -163,6 +163,11 @@
             });
           });
         }
+        if ($scope.chartData) {
+          $scope.chartData.forEach(function (v, i) {
+            chartData[i].disabled = v.disabled;
+          });
+        }
         if ($scope.chartApi) {
           $scope.chartApi.updateWithData(chartData);
         } else {
