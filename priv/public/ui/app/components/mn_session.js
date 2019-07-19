@@ -27,10 +27,12 @@
 
     function init($scope) {
       angular.element($window).on("storage", doSyncAcrossTabs);
-      angular.element($window).on("mousemove keydown touchstart", doThrottledResetTimeout);
+      angular.element($window).on("mousemove keydown touchstart",
+                                  throttledResetTimeoutAndSyncAcrossTabs);
 
       $scope.$on("$destroy", function () {
-        angular.element($window).off("mousemove keydown touchstart", doThrottledResetTimeout);
+        angular.element($window).off("mousemove keydown touchstart",
+                                     throttledResetTimeoutAndSyncAcrossTabs);
         angular.element($window).off("storage", doSyncAcrossTabs);
       });
     }
@@ -100,14 +102,10 @@
       localStorage.setItem("uiSessionTimeout", Number(uiSessionTimeout) * 1000);
     }
 
-    function doThrottledResetTimeout(e) {
+    function resetTimeoutAndSyncAcrossTabs() {
       if (sessionTimeoutDialog) {
         return;
       }
-      throttledResetTimeoutAndSyncAcrossTabs(e);
-    }
-
-    function resetTimeoutAndSyncAcrossTabs() {
       resetTimeout(localStorage.getItem("uiSessionTimeout"));
       localStorage.setItem("mnResetSessionTimeout",
                            Number(localStorage.getItem("mnResetSessionTimeout") || "0") + 1);

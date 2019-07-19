@@ -107,7 +107,7 @@
           $rootScope.$broadcast("mnPoolDefaultChanged");
         }
 
-        if ((previous && previous.uiSessionTimeout) !== resp.uiSessionTimeout) {
+        if (Number(localStorage.getItem("uiSessionTimeout")) !== (resp.uiSessionTimeout * 1000)) {
           $rootScope.$broadcast("newSessionTimeout", resp.uiSessionTimeout);
         }
 
