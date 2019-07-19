@@ -33,6 +33,7 @@
          delete_bucket/3,
          delete_vbucket/2,
          sync_delete_vbucket/2,
+         flush/1,
          hello_features/1,
          hello/3,
          list_buckets/1,
@@ -242,6 +243,15 @@ sync_delete_vbucket(Sock, VBucket) ->
     case cmd(?CMD_DELETE_VBUCKET, Sock, undefined, undefined,
              {#mc_header{vbucket = VBucket}, #mc_entry{data = <<"async=0">>}},
              infinity) of
+        {ok, #mc_header{status=?SUCCESS}, _ME, _NCB} ->
+            ok;
+        Response -> process_error_response(Response)
+    end.
+
+flush(Sock) ->
+    case cmd(?FLUSH, Sock, undefined, undefined,
+             {#mc_header{},
+              #mc_entry{}}) of
         {ok, #mc_header{status=?SUCCESS}, _ME, _NCB} ->
             ok;
         Response -> process_error_response(Response)

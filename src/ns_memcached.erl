@@ -95,6 +95,7 @@
          warmup_stats/1,
          topkeys/1,
          raw_stats/5,
+         flush/1,
          set/5, add/4, get/3, delete/3,
          get_from_replica/3,
          get_meta/3,
@@ -340,6 +341,7 @@ verify_report_long_call(StartTS, ActualStartTS, State, Msg, RV) ->
 %% anything effectful is likely to be heavy
 assign_queue({delete_vbucket, _}) -> #state.very_heavy_calls_queue;
 assign_queue({sync_delete_vbucket, _}) -> #state.very_heavy_calls_queue;
+assign_queue(flush) -> #state.very_heavy_calls_queue;
 assign_queue({set_vbucket, _, _, _}) -> #state.heavy_calls_queue;
 assign_queue({add, _Key, _VBucket, _Value}) -> #state.heavy_calls_queue;
 assign_queue({get, _Key, _VBucket}) -> #state.heavy_calls_queue;
@@ -469,6 +471,9 @@ do_handle_call(list_vbuckets, _From, State) ->
                       [{list_to_integer(binary_to_list(K)),
                         binary_to_existing_atom(V, latin1)} | Acc]
               end, []),
+    {reply, Reply, State};
+do_handle_call(flush, _From, State) ->
+    Reply = mc_client_binary:flush(State#state.sock),
     {reply, Reply, State};
 
 do_handle_call({delete, Key, VBucket}, _From, State) ->
@@ -803,6 +808,12 @@ warmed_buckets(Timeout) ->
                     {Bucket, warmed(node(), Bucket, Timeout)}
             end, active_buckets(), infinity),
     [Bucket || {Bucket, true} <- RVs].
+
+%% @doc Send flush command to specified bucket
+-spec flush(bucket_name()) -> ok.
+flush(Bucket) ->
+    do_call({server(Bucket), node()}, flush, ?TIMEOUT_VERY_HEAVY).
+
 
 %% @doc send an add command to memcached instance
 -spec add(bucket_name(), binary(), integer(), binary()) ->
