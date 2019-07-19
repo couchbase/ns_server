@@ -3,7 +3,11 @@
 </div>
 <div class="panel-content">
   <div class="row">
-    <div class="chart-title">
+    <div class="chart-title cursor-pointer"
+         tooltip-append-to-body="true"
+         uib-tooltip-html="'{{chartFocusDialogCtl.desc}}'"
+         tooltip-trigger="'mouseenter'"
+         tooltip-placement="auto right">
       {{chartFocusDialogCtl.title}}
     </div>
     <span class="text-right">

@@ -20,6 +20,7 @@
 
     function activate() {
       vm.title = mnStatisticsNewService.getStatsTitle(vm.chartConfig.stats);
+      vm.desc = mnStatisticsNewService.getStatsDesc(vm.chartConfig.stats);
 
       new mnPoller($scope, function () {
         return mnStatisticsNewService.getStatsV2(vm.chartConfig, vm.selectedZoom, $state.params.scenarioBucket);
