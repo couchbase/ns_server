@@ -22,6 +22,16 @@
       vm.title = mnStatisticsNewService.getStatsTitle(vm.chartConfig.stats);
       vm.desc = mnStatisticsNewService.getStatsDesc(vm.chartConfig.stats);
 
+      $scope.$on("$destroy", function () {
+        if (!vm.chartApi || !vm.chartApi.getScope().chart) {
+          return;
+        }
+        //MB-34897
+        //https://github.com/krispo/angular-nvd3/issues/550
+        var tooltipId = vm.chartApi.getScope().chart.interactiveLayer.tooltip.id();
+        angular.element(document.querySelector("#" + tooltipId)).remove();
+      });
+
       new mnPoller($scope, function () {
         return mnStatisticsNewService.getStatsV2(vm.chartConfig, vm.selectedZoom, $state.params.scenarioBucket);
       })

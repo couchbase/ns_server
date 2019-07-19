@@ -40,6 +40,15 @@
       }
 
       function activate() {
+        $scope.$on("$destroy", function () {
+          if (!$scope.chartApi || !$scope.chartApi.getScope().chart) {
+            return;
+          }
+          //MB-34897
+          //https://github.com/krispo/angular-nvd3/issues/550
+          var tooltipId = $scope.chartApi.getScope().chart.interactiveLayer.tooltip.id();
+          angular.element(document.querySelector("#" + tooltipId)).remove();
+        });
         initConfig();
         subscribeToMultiChartData();
       }
