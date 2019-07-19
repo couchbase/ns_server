@@ -25,7 +25,7 @@
       "stats": {
         "@kv-": {
           "couch_total_disk_size": {
-            unit: "byte",
+            unit: "bytes",
             title: "Data/Views On Disk",
             desc: "The total size on disk of all data and view files for this bucket. (measured from couch_total_disk_size)"
           },
