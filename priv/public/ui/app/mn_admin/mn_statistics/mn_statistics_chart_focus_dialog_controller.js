@@ -68,7 +68,7 @@
           });
         });
       }
-      if ($scope.chartData) {
+      if (vm.chartData) {
         vm.chartData.forEach(function (v, i) {
           chartData[i].disabled = v.disabled;
         });
