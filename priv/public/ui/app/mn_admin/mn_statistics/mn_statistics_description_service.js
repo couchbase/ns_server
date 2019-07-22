@@ -931,7 +931,28 @@
           "index/scan_bytes_read": null,
           "index/total_scan_duration": null
         },
-        "@eventing":{},
+        "@eventing":{
+          "eventing/processed_count": {
+            unit: "number",
+            title: "Eventing Mutations Processed",
+            desc: "Mutations the function has finished processing. Per function."
+          },
+          "eventing/failed_count": {
+            unit: "number",
+            title: "Eventing Failures",
+            desc: "Mutations for which the function execution failed. Per function."
+          },
+          "eventing/dcp_backlog": {
+            unit: "number",
+            title: "Eventing Backlog",
+            desc: "Remaining mutations to be processed by the function. Per function."
+          },
+          "eventing/timeout_count": {
+            unit: "number",
+            title: "Eventing Timeouts",
+            desc: "Execution timeouts while processing mutations. Per function."
+          }
+        },
         "@cbas":{
           "cbas_disk_used": {
             unit: "bytes",
