@@ -33,7 +33,6 @@
 
 -record(stage_info, {
           per_stage_progress :: dict:dict(),
-          %% aggregated needed for backward compatibility.
           aggregated :: dict:dict(),
           per_stage_info :: [{atom(), #stage_details{}}]
          }).
