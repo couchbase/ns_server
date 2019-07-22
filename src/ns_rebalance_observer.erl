@@ -328,23 +328,14 @@ initiate_bucket_rebalance(BucketName, {Moves, UndefinedMoves}, OldState) ->
     TmpState = update_all_vb_info(OldState, BucketName, dict:from_list(AllMoves)),
     TmpState#state{bucket = BucketName}.
 
-handle_master_event({rebalance_stage_started, Stage, Nodes},
-                    #state{stage_info = Old} = State) ->
-    New = rebalance_stage_info:update_stage_info(
-            Stage, {started, Nodes}, os:timestamp(), Old),
-    State#state{stage_info = New};
+handle_master_event({rebalance_stage_started, Stage, Nodes}, State) ->
+    update_stage(Stage, {started, Nodes}, State);
 
-handle_master_event({rebalance_stage_completed, Stage},
-                    #state{stage_info = Old} = State) ->
-    New = rebalance_stage_info:update_stage_info(
-            Stage, completed, os:timestamp(), Old),
-    State#state{stage_info = New};
+handle_master_event({rebalance_stage_completed, Stage}, State) ->
+    update_stage(Stage, completed, State);
 
-handle_master_event({rebalance_stage_event, Stage, Text},
-                    #state{stage_info = Old} = State) ->
-    New = rebalance_stage_info:update_stage_info(
-            Stage, {notable_event, Text}, os:timestamp(), Old),
-    State#state{stage_info = New};
+handle_master_event({rebalance_stage_event, Stage, Text}, State) ->
+    update_stage(Stage, {notable_event, Text}, State);
 
 handle_master_event({bucket_rebalance_started, _BucketName, _Pid},
                     #state{bucket_number = Number} = State) ->
@@ -390,6 +381,11 @@ handle_master_event({Event, BucketName, VBucket}, State)
 
 handle_master_event(_, State) ->
     State.
+
+update_stage(Stage, Info, #state{stage_info = Old} = State) ->
+    State#state{stage_info =
+                    rebalance_stage_info:update_stage_info(
+                      Stage, Info, os:timestamp(), Old)}.
 
 update_move(State, BucketName, VBucket, Fun) ->
     update_all_vb_info(State, BucketName,
