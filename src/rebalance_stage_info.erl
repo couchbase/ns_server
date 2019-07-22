@@ -19,7 +19,7 @@
          get_stage_info/2,
          get_progress/1,
          update_progress/3,
-         update_stage_info/3,
+         update_stage_info/4,
          diff_timestamp/2,
          binarify_timestamp/1]).
 -export_type([stage_info/0]).
@@ -197,43 +197,43 @@ get_per_stage_progress(PerStageProgress) ->
                      dict:to_list(StageProgress)
              end, PerStageProgress).
 
-update_stage({started, {Time, _}}, StageInfo) ->
-    StageInfo#stage_details{start_time = Time,
-                            complete_time = false};
-update_stage({completed, Time}, StageInfo) ->
-    StageInfo#stage_details{complete_time = Time};
-update_stage({notable_event, TS, Text},
+update_stage({started, _}, TS, StageInfo) ->
+    StageInfo#stage_details{start_time = TS, complete_time = false};
+update_stage(completed, TS, StageInfo) ->
+    StageInfo#stage_details{complete_time = TS};
+update_stage({notable_event, Text}, TS,
              #stage_details{notable_events = NotableEvents} = StageInfo) ->
     Time = binarify_timestamp(TS),
     Msg = list_to_binary(Text),
     StageInfo#stage_details{notable_events = [{Time, Msg} | NotableEvents]}.
 
-update_stage_info(Stage, StageInfoUpdate, StageInfo) ->
-    NewStageInfo = maybe_create(Stage, StageInfoUpdate, StageInfo,
-                                fun maybe_create_new_stage_progress/3),
-    update_stage_info_inner(Stage, StageInfoUpdate, NewStageInfo).
+update_stage_info(Stage, StageInfoUpdate, TS, StageInfo) ->
+    NewStageInfo = maybe_create(Stage, StageInfoUpdate, TS, StageInfo,
+                                fun maybe_create_new_stage_progress/4),
+    update_stage_info_inner(Stage, StageInfoUpdate, TS, NewStageInfo).
 
-update_stage_info_inner(Stage, StageInfoUpdate,
-                        #stage_info{per_stage_info = PerStageInfo} = StageInfo) ->
-    NewPerStageInfo = update_stage_info_rec(Stage, StageInfoUpdate,
+update_stage_info_inner(
+  Stage, StageInfoUpdate, TS,
+  #stage_info{per_stage_info = PerStageInfo} = StageInfo) ->
+    NewPerStageInfo = update_stage_info_rec(Stage, StageInfoUpdate, TS,
                                             PerStageInfo),
     StageInfo#stage_info{per_stage_info = NewPerStageInfo}.
 
-update_stage_info_rec([Stage | SubStages] = AllStages, StageInfoUpdate,
+update_stage_info_rec([Stage | SubStages] = AllStages, StageInfoUpdate, TS,
                       AllStageInfo) ->
     case lists:keysearch(Stage, 1, AllStageInfo) of
         false ->
-            maybe_create(AllStages, StageInfoUpdate, AllStageInfo,
-                         fun create_stage/3);
+            maybe_create(AllStages, StageInfoUpdate, TS, AllStageInfo,
+                         fun create_stage/4);
         {value, {Stage, OldStageInfo}} ->
             NewStageInfo =
                 case SubStages of
                     [] ->
-                        update_stage(StageInfoUpdate, OldStageInfo);
+                        update_stage(StageInfoUpdate, TS, OldStageInfo);
                     _ ->
                         NewSubStages = update_stage_info_rec(
                                          SubStages,
-                                         StageInfoUpdate,
+                                         StageInfoUpdate, TS,
                                          OldStageInfo#stage_details.sub_stages),
 
                         OldStageInfo#stage_details{sub_stages = NewSubStages}
@@ -241,24 +241,25 @@ update_stage_info_rec([Stage | SubStages] = AllStages, StageInfoUpdate,
             lists:keyreplace(Stage, 1, AllStageInfo, {Stage, NewStageInfo})
     end.
 
-maybe_create(Stage, Info = {started, {_, Nodes}}, Old, Fun)
+maybe_create(Stage, Info = {started, Nodes}, TS, Old, Fun)
   when Nodes =/= [] ->
-    Fun(Stage, Info, Old);
-maybe_create(_Stage, _Info, Old, _Fun) ->
+    Fun(Stage, Info, TS, Old);
+maybe_create(_Stage, _Info, _TS, Old, _Fun) ->
     Old.
 
-create_stage([Stage | _] = AllStages, {started, {_, _}} = Info, AllStageInfo) ->
-    update_stage_info_rec(AllStages, Info,
+create_stage([Stage | _] = AllStages, {started, _} = Info, TS, AllStageInfo) ->
+    update_stage_info_rec(AllStages, Info, TS,
                           [{Stage, #stage_details{}} | AllStageInfo]).
 
 maybe_create_new_stage_progress(
-  Stage, {started, {_, Nodes}},
+  Stage, {started, Nodes}, _TS,
   #stage_info{per_stage_progress = PerStageProgress} = StageInfo) ->
     ProgressStage = lists:last(Stage),
     case dict:find(ProgressStage, PerStageProgress) of
         {ok, _} ->
             StageInfo;
         _ ->
-            [{ProgressStage, Dict}] = init_per_stage_progress([{ProgressStage, Nodes}]),
+            [{ProgressStage, Dict}] =
+                init_per_stage_progress([{ProgressStage, Nodes}]),
             update_progress(ProgressStage, Dict, StageInfo)
     end.

@@ -331,19 +331,19 @@ initiate_bucket_rebalance(BucketName, {Moves, UndefinedMoves}, OldState) ->
 handle_master_event({rebalance_stage_started, Stage, Nodes},
                     #state{stage_info = Old} = State) ->
     New = rebalance_stage_info:update_stage_info(
-            Stage, {started, {os:timestamp(), Nodes}}, Old),
+            Stage, {started, Nodes}, os:timestamp(), Old),
     State#state{stage_info = New};
 
 handle_master_event({rebalance_stage_completed, Stage},
                     #state{stage_info = Old} = State) ->
     New = rebalance_stage_info:update_stage_info(
-            Stage, {completed, os:timestamp()}, Old),
+            Stage, completed, os:timestamp(), Old),
     State#state{stage_info = New};
 
 handle_master_event({rebalance_stage_event, Stage, Text},
                     #state{stage_info = Old} = State) ->
     New = rebalance_stage_info:update_stage_info(
-            Stage, {notable_event, os:timestamp(), Text}, Old),
+            Stage, {notable_event, Text}, os:timestamp(), Old),
     State#state{stage_info = New};
 
 handle_master_event({bucket_rebalance_started, _BucketName, _Pid},
