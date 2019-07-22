@@ -102,7 +102,7 @@
           etag: previous ? previous.etag : "",
           waitChange: $state.current.name === "app.admin.overview.statistics" ? 3000 : 10000
         }, {group: "global"});
-      }).subscribe(function (resp, previous) {
+      }, true).subscribe(function (resp, previous) {
         if (!_.isEqual(resp, previous)) {
           $rootScope.$broadcast("mnPoolDefaultChanged");
         }

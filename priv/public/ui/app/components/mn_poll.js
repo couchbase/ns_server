@@ -10,8 +10,8 @@
     .factory("mnEtagPoller", mnEtagPollerFactory);
 
   function mnEtagPollerFactory(mnPoller) {
-    function EtagPoller(scope, request) {
-      mnPoller.call(this, scope, request);
+    function EtagPoller(scope, request, doNotListenVisibilitychange) {
+      mnPoller.call(this, scope, request, doNotListenVisibilitychange);
     }
 
     EtagPoller.prototype = Object.create(mnPoller.prototype);
@@ -34,19 +34,14 @@
     }
   }
 
-  function mnPollerFactory($q, $timeout, mnTasksDetails, mnPromiseHelper, $window) {
+  function mnPollerFactory($q, $timeout, mnTasksDetails, mnPromiseHelper) {
 
-    function Poller(scope, request) {
+    function Poller(scope, request, doNotListenVisibilitychange) {
       this.deferred = $q.defer();
       this.request = request;
       this.scope = scope;
+
       var self = this;
-
-      scope.$on('$destroy', function () {
-        $window.removeEventListener('visibilitychange', onVisibilitychange);
-        self.onDestroy();
-      });
-
       function onVisibilitychange() {
         if (document.hidden) {
           self.stop();
@@ -55,7 +50,13 @@
         }
       }
 
-      $window.addEventListener('visibilitychange', onVisibilitychange);
+      if (!doNotListenVisibilitychange) {
+        scope.$on('$destroy', function () {
+          document.removeEventListener('visibilitychange', onVisibilitychange);
+          self.onDestroy();
+        });
+        document.addEventListener('visibilitychange', onVisibilitychange);
+      }
 
       this.latestResult = undefined;
       this.stopTimestamp = undefined;
