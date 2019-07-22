@@ -28,7 +28,7 @@
         data size
       </span>
     </span>
-    <span class="cbui-table-cell" ng-if="mnGsiTableCtl.hideColumn == 'node'">
+    <span class="cbui-table-cell" ng-if="mnGsiTableCtl.hideColumn !== 'bucket'">
       <span mn-sortable-title="bucket" class="sorter">
         bucket
       </span>
@@ -94,7 +94,7 @@
         </span>
         <span ng-show="gsiItemCtl.hasNoValue('data_size')"> - </span>
       </span>
-      <span ng-if="mnGsiTableCtl.hideColumn == 'node'" class="cbui-table-cell">
+      <span ng-if="mnGsiTableCtl.hideColumn !== 'bucket'" class="cbui-table-cell">
         {{row.bucket}}
       </span>
       <span
@@ -134,6 +134,6 @@
     </mn-gsi-item-details>
   </section>
   <div ng-if="!listFiltered.length" class="zero-content margin-top-1-5">
-    You have definitely over-filtered this. Try a little less filtering, Mozart.
+    You have definitely over-filtered this. Try a little less filtering...
   </div>
 </div>
