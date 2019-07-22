@@ -1167,6 +1167,8 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
             local_url_addr, eventing_port)
         eventing_pprof_url = 'http://%s:%s/debug/pprof/goroutine?debug=1' % (
             local_url_addr, eventing_port)
+        eventing_insight_url = 'http://%s:%s/getInsight?udmark=true&aggregate=false' % (
+            local_url_addr, eventing_port)
         eventing_tasks = [
             make_curl_task(
                 name="Eventing /api/v1/stats: ",
@@ -1181,6 +1183,13 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                 password=memcached_pass,
                 url=eventing_pprof_url,
                 log_file="eventing_pprof.log",
+                no_header=True),
+            make_curl_task(
+                name="Eventing code insights: ",
+                user="@",
+                password=memcached_pass,
+                url=eventing_insight_url,
+                log_file="eventing_insights.log",
                 no_header=True)]
 
     _tasks = [
