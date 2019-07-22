@@ -339,7 +339,7 @@ handle_master_event({rebalance_stage_event, Stage, Text}, State) ->
 
 handle_master_event({bucket_rebalance_started, _BucketName, _Pid},
                     #state{bucket_number = Number} = State) ->
-    State#state{bucket_number=Number + 1};
+    State#state{bucket_number = Number + 1};
 
 handle_master_event({planned_moves, BucketName, MovesTuple}, State) ->
     initiate_bucket_rebalance(BucketName, MovesTuple, State);
