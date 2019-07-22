@@ -384,16 +384,18 @@
     <div
        class="formrow checkbox-list"
        ng-if="bucketConf.bucketType === 'ephemeral'">
-      <label class="inline">Ejection Method</label>
+      <label class="inline">Ejection Policy</label>
         <span
            class="fa-stack icon-info"
-           uib-tooltip-html="'<strong>No Ejection:</strong> keeps all data until explicitly deleted, but will reject any new data if you reach the quota (dedicated memory) you set for your bucket.<br><br>
-                              <strong>NRU Ejection:</strong> automatically removes older data to create space for new data if you reach your bucket quota.'"
+           uib-tooltip-html="'Ejection automatically removes older data from RAM
+                              to create space for new data if you reach your bucket quota.<br><br>
+                              Without automatic ejection, Couchbase Server keeps all data
+                              until explicitly deleted, but will reject any new data if
+                              you reach the quota (dedicated memory) you set for your bucket.'"
            tooltip-placement="top">
           <span class="icon fa-circle-thin fa-stack-2x"></span>
           <span class="icon fa-info fa-stack-1x"></span>
         </span>
-      </h4>
       <div class="formrow">
         <input
            type="radio"
@@ -403,9 +405,7 @@
            checked="checked"
            ng-disabled="!bucketConf.isNew"
            ng-model="bucketConf.evictionPolicyEphemeral">
-        <label for="for-metadata-value-eject">
-          No ejection
-        </label>
+        <label for="for-metadata-value-eject">No ejection</label>
         <input
            type="radio"
            name="evictionPolicyEphemeral"
@@ -413,9 +413,7 @@
            id="for-metadata-full-eject"
            ng-disabled="!bucketConf.isNew"
            ng-model="bucketConf.evictionPolicyEphemeral">
-        <label for="for-metadata-full-eject">
-          NRU ejection
-        </label>
+        <label for="for-metadata-full-eject">Eject data when RAM is full</label>
         <div
            class="error"
            ng-show="validation.result.errors.evictionPolicy">
