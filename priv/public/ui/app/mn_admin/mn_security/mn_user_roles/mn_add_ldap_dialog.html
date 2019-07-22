@@ -659,13 +659,24 @@
         </div>
       </div>
     </div>
-    <div class="panel-footer scroll-shadow">
-      <button type="button"
-              class="outline"
-              style="position: absolute; left: 1em;"
-              ng-click="addLdapDialogCtl.clearLdapCache();">Clear Cache</button>
-      <a ng-click="$dismiss()">Cancel</a>
-      <button type="submit">Save LDAP Configuration</button>
+    <div class="panel-footer spaced scroll-shadow">
+      <span class="row">
+        <button
+           type="button"
+           class="outline"
+           ng-click="addLdapDialogCtl.clearLdapCache();">
+          Clear Cache
+        </button>
+        <span
+           ng-if="addLdapDialogCtl.cacheCleared"
+           class="wb-result-status success margin-left-1">
+          cache cleared successfully
+        </span>
+      </span>
+      <span class="row">
+        <a ng-click="$dismiss()">Cancel</a>
+        <button type="submit">Save LDAP Configuration</button>
+      </span>
     </div>
   </form>
 </div>
