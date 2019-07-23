@@ -1057,6 +1057,11 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                 memcached_pass,
                 index_port),
             make_index_task(
+                "Indexer stats are: ",
+                "stats?partition=true",
+                memcached_pass,
+                index_port),
+            make_index_task(
                 "Index storage stats are: ",
                 "stats/storage",
                 memcached_pass,
