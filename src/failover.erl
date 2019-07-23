@@ -78,6 +78,7 @@ orchestrate(Nodes, Options) ->
                 Error
         end,
     ns_cluster:counter_inc(failover),
+    master_activity_events:note_failover_ended(),
     Res.
 
 finish_failover(Nodes) ->

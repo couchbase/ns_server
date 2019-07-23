@@ -28,6 +28,7 @@
          note_vbucket_mover/6,
          note_move_done/2,
          note_failover/1,
+         note_failover_ended/0,
          note_became_master/0,
          note_name_changed/0,
          note_observed_death/3,
@@ -118,6 +119,9 @@ note_move_done(BucketName, VBucketId) ->
 
 note_failover(Nodes) ->
     submit_cast({failover, Nodes}).
+
+note_failover_ended() ->
+    submit_cast({failover_ended}).
 
 note_became_master() ->
     submit_cast({became_master, node()}).
@@ -538,6 +542,10 @@ event_to_jsons({TS, failover, Nodes})
     [format_simple_plist_as_json([{type, failover},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {hosts, nodes_to_hosts(Nodes)}])];
+
+event_to_jsons({TS, failover_ended}) ->
+    [format_simple_plist_as_json([{type, failover},
+                                  {ts, misc:time_to_epoch_float(TS)}])];
 
 event_to_jsons({TS, became_master, Node}) ->
     [format_simple_plist_as_json([{type, becameMaster},
