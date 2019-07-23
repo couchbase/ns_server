@@ -48,7 +48,6 @@
          note_compaction_uninhibit_started/2,
          note_compaction_uninhibit_done/2,
          note_forced_inhibited_view_compaction/1,
-         event_to_jsons/1,
          event_to_formatted_iolist/1,
          format_some_history/1,
          note_dcp_replicator_start/5,
@@ -299,7 +298,7 @@ stream_events(Callback, State) ->
 
 event_to_formatted_iolist(Event) ->
     [iolist_to_binary([mochijson2:encode({struct, JSON}), "\n"])
-     || JSON <- master_activity_events:event_to_jsons(Event)].
+     || JSON <- event_to_jsons(Event)].
 
 -spec format_some_history([[{atom(), any()}]]) -> iolist().
 format_some_history(Events) ->
