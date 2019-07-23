@@ -796,8 +796,8 @@ do_build_rebalance_task(Timeout) ->
                 DetailedProgress = get_detailed_progress(),
                 RebalanceInfo =
                     case ns_rebalance_observer:get_rebalance_info() of
-                        not_running -> [];
-                        RV -> RV
+                        {ok, RV} -> RV;
+                        _ -> []
                     end,
 
                 Subtype = case ns_config:search(rebalancer_pid) =:= ns_config:search(graceful_failover_pid) of

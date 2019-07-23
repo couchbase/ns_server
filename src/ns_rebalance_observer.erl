@@ -186,7 +186,8 @@ handle_call(get_detailed_progress, _From, State) ->
     {reply, do_get_detailed_progress(State), State};
 handle_call(get_aggregated_progress, _From,
             #state{stage_info = StageInfo} = State) ->
-    {reply, dict:to_list(rebalance_stage_info:get_progress(StageInfo)), State};
+    {reply, {ok, dict:to_list(rebalance_stage_info:get_progress(StageInfo))},
+     State};
 handle_call({get_rebalance_info, Options}, _From,
             #state{stage_info = StageInfo,
                    nodes_info = NodesInfo,
@@ -197,13 +198,14 @@ handle_call({get_rebalance_info, Options}, _From,
                      {rebalanceId, Id},
                      {nodesInfo, {NodesInfo}},
                      {masterNode, atom_to_binary(node(), latin1)}],
-    {reply, RebalanceInfo, State};
+    {reply, {ok, RebalanceInfo}, State};
 handle_call({record_rebalance_report, ExitInfo}, From,
             #state{nodes_info = NodesInfo} = State) ->
-    {_, RebalanceInfo, NewState} = handle_call({get_rebalance_info,
-                                                [{add_vbucket_info, true}]},
-                                               From,
-                                               State),
+    {_, {ok, RebalanceInfo}, NewState} = handle_call(
+                                           {get_rebalance_info,
+                                            [{add_vbucket_info, true}]},
+                                           From,
+                                           State),
     Report = {RebalanceInfo ++ ExitInfo},
     KeepNodes = proplists:get_value(keep_nodes, NodesInfo, [node()]),
     RV = case ns_rebalance_report_manager:record_rebalance_report(

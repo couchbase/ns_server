@@ -236,13 +236,19 @@ rebalance_progress_full(Timeout) ->
         {value, undefined} ->
             not_running;
         {value, Pid} when is_pid(Pid) ->
-            case ns_rebalance_observer:get_aggregated_progress(Timeout) of
-                not_running ->
-                    ?log_error("Couldn't reach ns_rebalance_observer"),
-                    not_running;
-                Aggr ->
-                    {running, Aggr}
-            end
+            get_aggregated_progress(Timeout)
+    end.
+
+get_aggregated_progress() ->
+    get_aggregated_progress(2000).
+
+get_aggregated_progress(Timeout) ->
+    case ns_rebalance_observer:get_aggregated_progress(Timeout) of
+        {ok, Aggr} ->
+            {running, Aggr};
+        Err ->
+            ?log_error("Couldn't reach ns_rebalance_observer"),
+            Err
     end.
 
 -spec request_janitor_run(janitor_item()) -> ok.
@@ -942,8 +948,7 @@ rebalancing(rebalance_progress, From, _State) ->
     %% Only expect this call if we are pre-madhatter.
     false = cluster_compat_mode:is_cluster_madhatter(),
     {keep_state_and_data,
-     [{reply, From,
-       {running, ns_rebalance_observer:get_aggregated_progress(2000)}}]};
+     [{reply, From, get_aggregated_progress()}]};
 rebalancing(Event, From, _State) ->
     ?log_warning("Got event ~p while rebalancing.", [Event]),
     {keep_state_and_data, [{reply, From, rebalance_running}]}.
