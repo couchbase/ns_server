@@ -827,20 +827,25 @@ do_handle_rebalance(Req, KnownNodesS, EjectedNodesS, DeltaRecoveryBuckets) ->
     end.
 
 handle_rebalance_progress(_PoolId, Req) ->
-    Status = case ns_cluster_membership:get_rebalance_status() of
-                 {running, PerNode} ->
-                     [{status, <<"running">>}
-                      | [{atom_to_binary(Node, latin1),
-                          {struct, [{progress, Progress}]}} || {Node, Progress} <- PerNode]];
-                 _ ->
-                     case ns_config:search(rebalance_status) of
+    case ns_cluster_membership:get_rebalance_status() of
+        {running, PerNode} ->
+            PerNodeJson = [{atom_to_binary(Node, latin1),
+                            {struct, [{progress, Progress}]}}
+                           || {Node, Progress} <- PerNode],
+            Status = [{status, <<"running">>} | PerNodeJson],
+            reply_json(Req, {struct, Status}, 200);
+        not_running ->
+            Status = case ns_config:search(rebalance_status) of
                          {value, {none, ErrorMessage}} ->
                              [{status, <<"none">>},
                               {errorMessage, iolist_to_binary(ErrorMessage)}];
-                         _ -> [{status, <<"none">>}]
-                     end
-             end,
-    reply_json(Req, {struct, Status}, 200).
+                         _ ->
+                             [{status, <<"none">>}]
+                     end,
+            reply_json(Req, {struct, Status}, 200);
+        {error, timeout} = Err ->
+            reply_json(Req, {[Err]}, 503)
+    end.
 
 handle_stop_rebalance(Req) ->
     validator:handle(handle_stop_rebalance(Req, _),
