@@ -141,7 +141,7 @@ system_joinable() ->
     ns_node_disco:nodes_wanted() =:= [node()].
 
 get_rebalance_status() ->
-    ns_orchestrator:rebalance_progress().
+    ns_orchestrator:rebalance_progress_full().
 
 start_rebalance(KnownNodes, EjectedNodes, DeltaRecoveryBuckets) ->
     ns_orchestrator:start_rebalance(KnownNodes, EjectedNodes, DeltaRecoveryBuckets).

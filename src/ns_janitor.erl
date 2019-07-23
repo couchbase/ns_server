@@ -385,11 +385,7 @@ maybe_reset_rebalance_status(Options) ->
     end.
 
 maybe_reset_rebalance_status() ->
-    Status = try ns_orchestrator:rebalance_progress_full()
-             catch E:T ->
-                     ?log_error("cannot reach orchestrator: ~p:~p", [E,T]),
-                     error
-             end,
+    Status = ns_orchestrator:rebalance_progress_full(),
     case Status of
         %% if rebalance is not actually running according to our
         %% orchestrator, we'll consider checking config and seeing if
