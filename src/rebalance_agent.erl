@@ -123,7 +123,7 @@ handle_cast(Cast, State) ->
     {noreply, State}.
 
 handle_info({'DOWN', MRef, _, _, Reason}, State) ->
-    {noreply, handle_down(MRef, Reason, State)};
+    handle_down(MRef, Reason, State);
 handle_info(Msg, State) ->
     ?log_warning("Received an unexpected message ~p. State:~n~p", [Msg, State]),
     {noreply, State}.
