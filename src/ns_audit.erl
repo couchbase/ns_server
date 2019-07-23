@@ -73,6 +73,7 @@
          modify_index_settings/2,
          modify_query_curl_whitelist_setting/2,
          modify_query_settings/2,
+         read_doc/3,
          mutate_doc/4,
          set_user_group/5,
          delete_user_group/2,
@@ -337,7 +338,9 @@ code(enable_auto_reprovision) ->
 code(disable_auto_reprovision) ->
     8253;
 code(failover_settings) ->
-    8254.
+    8254;
+code(read_doc) ->
+    8255.
 
 to_binary({list, List}) ->
     [to_binary(A) || A <- List];
@@ -828,6 +831,10 @@ modify_query_settings(Req, Settings) ->
 modify_query_curl_whitelist_setting(Req, Values) ->
     Setting = [{curl_whitelist, ejson:encode({Values})}],
     modify_query_settings(Req, Setting).
+
+read_doc(Req, BucketName, DocId) ->
+    put(read_doc, Req, [{bucket_name, BucketName},
+                        {doc_id, ns_config_log:tag_user_name(DocId)}]).
 
 mutate_doc(Req, Oper, BucketName, DocId) ->
     put(mutate_doc, Req, [{bucket_name, BucketName},

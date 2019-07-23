@@ -1104,6 +1104,23 @@
           "optional_fields" : {
               "sessionid" : ""
           }
+      },
+      {
+          "id" : 8255,
+          "name" : "read document",
+          "description" : "Document was read",
+          "sync" : false,
+          "enabled" : true,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"source" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "bucket_name" : "",
+              "doc_id" : ""
+          },
+          "optional_fields" : {
+              "sessionid" : ""
+          }
       }
     ]
 }

@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2012-2018 Couchbase, Inc.
+%% @copyright 2012-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -209,6 +209,7 @@ handle_get(BucketId, DocId, Req) ->
             menelaus_util:reply_json(Req, construct_error_reply(Msg), 400);
         {ok, EJSON, {XAttrs}} ->
             {Json} = capi_utils:couch_doc_to_json(EJSON, unparsed),
+            ns_audit:read_doc(Req, BucketId, DocId),
             menelaus_util:reply_json(Req, {Json ++ XAttrs});
         %% backward compatibility code: response from node of version < 5.5
         {ok, EJSON} ->
