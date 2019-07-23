@@ -175,16 +175,6 @@
     </button>
   </div>
 
-
-  <!-- rebalance progress metering -->
-  <div
-     class="row row-min items-bottom"
-     ng-show="adminCtl.tasks.inRebalance && adminCtl.tasks.tasksRebalance.status === 'running' && rbac.cluster.tasks.read">
-    <div class="task-progress-row-text indent-1">
-      rebalance {{serversItemCtl.getRebalanceProgress | mnTruncateTo3Digits}}% complete
-    </div>
-  </div>
-
   <!-- server details section -->
   <div
      ui-view="details"
