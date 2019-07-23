@@ -43,19 +43,26 @@
 
     vm.hasValue = hasValue;
     vm.hasNoValue = hasNoValue;
+    vm.getMostRecentStatValue = getMostRecentStatValue;
 
     if (!mnPermissions.export.cluster.bucket[$scope.row.bucket].stats.read) {
       return;
     }
 
-    function hasNoValue(key) {
-      return !!$scope.gsiItemCtl.stats &&
-        ($scope.gsiItemCtl.stats[key] == undefined);
+    function getIndexStatName(statName) {
+      return 'index/' + $scope.row.index + '/' + statName;
     }
 
-    function hasValue(key) {
-      return !!$scope.gsiItemCtl.stats &&
-        ($scope.gsiItemCtl.stats[key] != undefined);
+    function hasNoValue(statName) {
+      return getStatSamples(statName) == undefined;
+    }
+
+    function hasValue(statName) {
+      return getStatSamples(statName) != undefined;
+    }
+
+    function getStatSamples(statName) {
+      return $scope.mnUIStats && $scope.mnUIStats.data.samples[getIndexStatName(statName)];
     }
 
     mnStatisticsNewService.subscribeUIStatsPoller({
@@ -64,23 +71,13 @@
       zoom: 'minute'
     }, $scope);
 
-    $scope.$watch("mnUIStats", function (resp) {
-      if (!resp) {
-        return
+    function getMostRecentStatValue(statName) {
+      if (hasNoValue(statName)) {
+        return;
       }
-      var rv = {};
-      (["data_size","items_count","index_resident_percent",
-        "num_docs_pending+queued","num_requests"]).forEach(function (statName) {
-          var fullName = 'index/' + $scope.row.index + '/' + statName;
-          var stats = resp.data.samples[fullName];
-          if (stats) {
-            rv[statName] =  stats.reduce(function (sum, stat) {
-              return sum + stat;
-            }, 0) / stats.length;
-          }
-        });
-      vm.stats = rv;
-    });
+      var samples = getStatSamples(statName);
+      return samples[samples.length - 1];
+    }
 
   }
 

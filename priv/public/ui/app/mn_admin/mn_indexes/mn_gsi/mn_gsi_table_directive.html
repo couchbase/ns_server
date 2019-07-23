@@ -72,25 +72,25 @@
       </span>
       <span class="cbui-table-cell flex-grow-half resp-hide-xsml">
         <span ng-show="gsiItemCtl.hasValue('num_requests')">
-          {{gsiItemCtl.stats.num_requests| number:0}}
+          {{gsiItemCtl.getMostRecentStatValue('num_requests') | number:0}}
         </span>
         <span ng-show="gsiItemCtl.hasNoValue('num_requests')"> - </span>
       </span>
       <span class="cbui-table-cell flex-grow-half resp-hide-sml">
         <span ng-show="gsiItemCtl.hasValue('index_resident_percent')">
-          {{gsiItemCtl.stats.index_resident_percent| number:0}}%
+          {{gsiItemCtl.getMostRecentStatValue('index_resident_percent') | number:0}}%
         </span>
         <span ng-show="gsiItemCtl.hasNoValue('index_resident_percent')"> - </span>
       </span>
       <span class="cbui-table-cell flex-grow-half">
         <span ng-show="gsiItemCtl.hasValue('items_count')">
-          {{gsiItemCtl.stats.items_count | number:0}}
+          {{gsiItemCtl.getMostRecentStatValue('items_count') | number:0}}
         </span>
         <span ng-show="gsiItemCtl.hasNoValue('items_count')"> - </span>
       </span>
       <span class="cbui-table-cell flex-grow-half resp-hide-xsml">
         <span ng-show="gsiItemCtl.hasValue('data_size')">
-          {{gsiItemCtl.stats.data_size/1024/1024 | number:2}} MB
+          {{gsiItemCtl.getMostRecentStatValue('data_size')/1024/1024 | number:2}} MB
         </span>
         <span ng-show="gsiItemCtl.hasNoValue('data_size')"> - </span>
       </span>
@@ -121,8 +121,10 @@
            class="nocaps">
           {{row.status}}
         </div>
-        <div ng-if="gsiItemCtl.stats['num_docs_pending+queued'] > 0" class="label warning">
-          {{gsiItemCtl.stats['num_docs_pending+queued'] | number:0}} mutations remaining
+        <div ng-if="gsiItemCtl.getMostRecentStatValue('num_docs_pending+queued') > 0"
+             class="label warning">
+          {{gsiItemCtl.getMostRecentStatValue('num_docs_pending+queued') | number:0}}
+          mutations remaining
         </div>
       </span>
     </div>
