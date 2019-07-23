@@ -222,13 +222,16 @@ buckets_need_rebalance(NodesWanted) ->
               end,
               ns_bucket:get_buckets()).
 
--spec rebalance_progress_full() -> {running, [{atom(), float()}]} | not_running.
+-spec rebalance_progress_full() -> {running, [{atom(), float()}]} |
+                                   not_running |
+                                   {error, timeout}.
 rebalance_progress_full() ->
     rebalance_progress_full(2000).
 
 -spec rebalance_progress_full(non_neg_integer()) ->
                                      {running, [{atom(), float()}]} |
-                                     not_running.
+                                     not_running |
+                                     {error, timeout}.
 rebalance_progress_full(Timeout) ->
     case ns_config:search(rebalancer_pid) of
         false ->

@@ -80,6 +80,13 @@
 start_link(Stages, NodesInfo, Type, Id) ->
     gen_server:start_link(?SERVER, ?MODULE, {Stages, NodesInfo, Type, Id}, []).
 
+is_timeout(exit, timeout) ->
+    true;
+is_timeout(exit, {timeout, _}) ->
+    true;
+is_timeout(_, _) ->
+    false.
+
 generic_get_call(Call) ->
     generic_get_call(Call, 10000).
 generic_get_call(Call, Timeout) ->
@@ -87,8 +94,15 @@ generic_get_call(Call, Timeout) ->
         gen_server:call(?SERVER, Call, Timeout)
     catch
         Type:Reason ->
-            ?log_error("Unexpected exception ~p", [{Type, Reason}]),
-            not_running
+            case is_timeout(Type, Reason) of
+                true ->
+                    ?log_info("Request ~p timed out after ~p secs",
+                              [Call, Timeout/1000]),
+                    {error, timeout};
+                false ->
+                    ?log_error("Unexpected exception ~p", [{Type, Reason}]),
+                    not_running
+            end
     end.
 
 get_detailed_progress() ->

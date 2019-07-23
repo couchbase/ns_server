@@ -826,7 +826,7 @@ do_build_rebalance_task(Timeout) ->
                 [{type, rebalance},
                  {status, notRunning},
                  {statusIsStale, FullProgress =/= not_running},
-                 {masterRequestTimedOut, misc:is_timeout_exit(FullProgress)}
+                 {masterRequestTimedOut, (FullProgress =:= {error, timeout})}
                  | case ns_config:search(rebalance_status) of
                        {value, {none, ErrorMessage}} ->
                            [{errorMessage, iolist_to_binary(ErrorMessage)}];
@@ -870,7 +870,7 @@ get_detailed_progress() ->
                                {N, Ingoing, Outgoing} <- PerNode],
             PerNodeJSON = {struct, PerNodeJSON0},
             {struct, GlobalDetails ++ [{perNode, PerNodeJSON}]};
-        not_running ->
+        _ ->
             {struct, []}
     end.
 
