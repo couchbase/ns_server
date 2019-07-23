@@ -56,7 +56,6 @@ init_per_stage_progress(StageNodes) ->
 init_per_stage_info(StageNodes) ->
     [{Stage, #stage_details{}} || {Stage, Nodes} <- StageNodes, Nodes =/= []].
 
-%% For backward compatibility.
 get_progress(#stage_info{aggregated = Aggregated}) ->
     Aggregated.
 
