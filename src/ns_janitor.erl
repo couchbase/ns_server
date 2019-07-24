@@ -385,7 +385,7 @@ maybe_reset_rebalance_status(Options) ->
     end.
 
 maybe_reset_rebalance_status() ->
-    Status = ns_orchestrator:rebalance_progress_full(),
+    Status = ns_orchestrator:rebalance_progress(),
     case Status of
         %% if rebalance is not actually running according to our
         %% orchestrator, we'll consider checking config and seeing if

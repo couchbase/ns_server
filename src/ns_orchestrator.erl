@@ -49,8 +49,8 @@
          try_autofailover/1,
          needs_rebalance/0,
          request_janitor_run/1,
-         rebalance_progress_full/0,
-         rebalance_progress_full/1,
+         rebalance_progress/0,
+         rebalance_progress/1,
          start_link/0,
          start_rebalance/3,
          retry_rebalance/4,
@@ -222,17 +222,16 @@ buckets_need_rebalance(NodesWanted) ->
               end,
               ns_bucket:get_buckets()).
 
--spec rebalance_progress_full() -> {running, [{atom(), float()}]} |
-                                   not_running |
-                                   {error, timeout}.
-rebalance_progress_full() ->
-    rebalance_progress_full(2000).
+-spec rebalance_progress() -> {running, [{atom(), float()}]} |
+                              not_running |
+                              {error, timeout}.
+rebalance_progress() ->
+    rebalance_progress(2000).
 
--spec rebalance_progress_full(non_neg_integer()) ->
-                                     {running, [{atom(), float()}]} |
-                                     not_running |
-                                     {error, timeout}.
-rebalance_progress_full(Timeout) ->
+-spec rebalance_progress(non_neg_integer()) -> {running, [{atom(), float()}]} |
+                                               not_running |
+                                               {error, timeout}.
+rebalance_progress(Timeout) ->
     case ns_config:search(rebalancer_pid) of
         false ->
             not_running;
