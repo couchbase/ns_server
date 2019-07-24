@@ -41,13 +41,18 @@
   function mnGsiItemController($scope, mnStatisticsNewService, mnPermissions) {
     var vm = this;
 
-    vm.hasValue = hasValue;
-    vm.hasNoValue = hasNoValue;
-    vm.getMostRecentStatValue = getMostRecentStatValue;
-
     if (!mnPermissions.export.cluster.bucket[$scope.row.bucket].stats.read) {
       return;
     }
+
+    mnStatisticsNewService.subscribeUIStatsPoller({
+      bucket: $scope.row.bucket,
+      node: "all",
+      zoom: 'minute'
+    }, $scope);
+
+    $scope.$watch("mnUIStats", updateValues);
+    $scope.$watch("row", updateValues);
 
     function getIndexStatName(statName) {
       return 'index/' + $scope.row.index + '/' + statName;
@@ -65,19 +70,19 @@
       return $scope.mnUIStats && $scope.mnUIStats.data.samples[getIndexStatName(statName)];
     }
 
-    mnStatisticsNewService.subscribeUIStatsPoller({
-      bucket: $scope.row.bucket,
-      node: "all",
-      zoom: 'minute'
-    }, $scope);
-
-    function getMostRecentStatValue(statName) {
-      if (hasNoValue(statName)) {
-        return;
-      }
-      var samples = getStatSamples(statName);
-      return samples[samples.length - 1];
+    function updateValues() {
+      (['num_requests', 'index_resident_percent', 'items_count', 'data_size'])
+        .forEach(function (statName) {
+          vm['has_' + statName] = hasValue(statName);
+          vm['has_no_' + statName] = hasNoValue(statName);
+          if (vm['has_' + statName]) {
+            var samples = getStatSamples(statName);
+            //set value to the row, so we can use it for sorting later
+            $scope.row[statName] = samples[samples.length - 1];
+          }
+        });
     }
+
 
   }
 
