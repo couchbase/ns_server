@@ -193,6 +193,8 @@ suppress_logging(<<?REQ_MAGIC:8, ?DCP_MUTATION:8, _Rest/binary>>) ->
     true;
 suppress_logging(<<?REQ_MAGIC:8, ?DCP_DELETION:8, _Rest/binary>>) ->
     true;
+suppress_logging(<<?REQ_MAGIC:8, ?DCP_EXPIRATION:8, _Rest/binary>>) ->
+    true;
 suppress_logging(<<?REQ_MAGIC:8, ?DCP_SNAPSHOT_MARKER, _Rest/binary>>) ->
     true;
 suppress_logging(<<?REQ_MAGIC:8, ?DCP_WINDOW_UPDATE, _Rest/binary>>) ->
