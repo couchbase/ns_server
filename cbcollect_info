@@ -1579,6 +1579,8 @@ def main():
     # ask all tools to use C locale (MB-12050)
     os.environ['LANG'] = 'C'
     os.environ['LC_ALL'] = 'C'
+    if 'HOME' not in os.environ:
+        os.environ['HOME'] = basedir()
 
     rootdir = basedir()
     # (MB-8239)erl script fails in OSX as it is unable to find COUCHBASE_TOP -ravi
