@@ -33,9 +33,10 @@
           </span>
         </div>
 
-        <h4>Rebalance</h4>
+        <h4 ng-if="adminCtl.tasks.tasksRebalance.statusId">Rebalance</h4>
         <div ng-if="adminCtl.tasks.tasksRebalance">
-          <p class="desc relative">
+          <p class="desc relative"
+             ng-if="adminCtl.tasks.tasksRebalance.statusId">
             <span class="nowrap" ng-if="adminCtl.tasks.tasksRebalance.stageInfo.startTime">
               <strong>start</strong> {{adminCtl.tasks.tasksRebalance.stageInfo.startTime | date:'d MMM HH:mm:ss'}}
             </span>
