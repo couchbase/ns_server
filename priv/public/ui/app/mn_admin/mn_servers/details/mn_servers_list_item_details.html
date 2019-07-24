@@ -149,12 +149,12 @@
     <span>
       <button
          class="outline"
-         ng-disabled="serversItemCtl.disableRemoveBtn"
+         ng-disabled="serversItemCtl.disableRemoveBtn(node)"
          ng-click="$event.stopPropagation(); serversItemCtl.ejectServer(node)">
         Remove
       </button>
       <button
-         ng-disabled="serversItemCtl.isFailOverDisabled"
+         ng-disabled="serversItemCtl.isFailOverDisabled(node)"
          ng-click="$event.stopPropagation(); serversItemCtl.failOverNode(node)">
         Failover
       </button>

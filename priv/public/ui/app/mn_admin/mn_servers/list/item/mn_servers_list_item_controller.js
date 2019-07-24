@@ -34,8 +34,8 @@
       vm.isNodeInactiveAdded = isNodeInactiveAdded(node);
       vm.couchDiskUsage = couchDiskUsage(node);
 
-      vm.disableRemoveBtn = disableRemoveBtn(node);
-      vm.isFailOverDisabled = isFailOverDisabled(node);
+      vm.disableRemoveBtn = disableRemoveBtn;
+      vm.isFailOverDisabled = isFailOverDisabled;
       vm.isKVNode = isKVNode(node);
 
       vm.getRamUsageConf = getRamUsageConf(node);
