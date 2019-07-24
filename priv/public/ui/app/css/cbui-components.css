@@ -1654,7 +1654,7 @@ input[type="checkbox"].fake-select + label:before {
   align-items: center;
   justify-content: center;
   flex-wrap: nowrap;
-  margin-bottom: .5rem;
+  margin-bottom: .25rem;
 }
 .dashboard-node {
   display: flex;
@@ -1669,11 +1669,7 @@ input[type="checkbox"].fake-select + label:before {
   margin-right: .5rem;
   font-size: 1rem;
 }
-.dashboard-node  p:nth-child(2) {
-  margin: 0 .25rem 0 0;
-  font-size: .875rem;
-}
-.dashboard-node p:nth-child(3) {
+.dashboard-node p {
   margin: 0;
 }
 
@@ -1682,7 +1678,6 @@ input[type="checkbox"].fake-select + label:before {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  width: 800px;
   margin: .25rem auto .5rem auto;
   font-size: .8125rem;
   color: #333;
@@ -1733,6 +1728,9 @@ input[type="checkbox"].fake-select + label:before {
 .dynamic_unhealthy {
   border-left: 8px solid #d65558; /* red-2 */
   animation: pulse_unhealthy 3s infinite;
+}
+.service-widget.dynamic_inactiveFailed {
+  animation: none !important;
 }
 .dynamic_selected { /* selected chart cell in statistics */
   background-color: #ecf3fa;

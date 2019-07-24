@@ -22,35 +22,12 @@
 
 </div>
 <footer class="footer-dashboard">
-  <div class="dashboard-servers resp-xsml">
-    <div class="dashboard-node" title="active nodes">
-      <span class="icon fa-server green-2"></span>
-      <p class="semi-bold">{{overviewCtl.nodes.all.active.length || '0'}}</p>
-      <p class="resp-hide-xsml">active nodes</p>
-    </div>
-    <div class="dashboard-node" title="failed-over nodes">
-      <span class="icon fa-server orange-2"></span>
-      <p class="semi-bold">{{overviewCtl.nodes.all.failedOver.length || '0'}}</p>
-      <p class="resp-hide-xsml">failed-over nodes</p>
-    </div>
-    <div class="dashboard-node" title="nodes pending rebalance">
-      <span class="icon fa-server orange-2"></span>
-      <p class="semi-bold">{{overviewCtl.nodes.all.pending.length || '0'}}</p>
-      <p class="resp-hide-xsml">nodes pending rebalance</p>
-    </div>
-    <div class="dashboard-node" title="inactive nodes">
-      <span class="icon fa-server red-3"></span>
-      <p class="semi-bold">{{overviewCtl.nodes.all.down.length || '0'}}</p>
-      <p class="resp-hide-xsml">inactive nodes</p>
-    </div>
-  </div>
-
   <div class="service-widget-row resp-margin-xsml">
     <div
        class="service-widget"
        ui-sref="app.admin.buckets"
        ng-class="['dynamic_' + overviewCtl.nodes.kv.statusClass]">
-      <p>Data</p>
+      <p>Data - {{buckets.details.length + ' bucket' + overviewCtl.getEndings(buckets.details.length)}}</p>
       <div
          class="error"
          ng-repeat="(nodeStatuses, count) in overviewCtl.nodes.kv.nodespyStatuses">
@@ -120,6 +97,33 @@
        class="service-widget"
        ng-class="['dynamic_' + (adminCtl.tasks.tasksXDCR.length ? 'healthy' : 'inactive')]">
       <p>XDCR</p>
+    </div>
+  </div>
+
+  <div class="dashboard-servers resp-xsml">
+    <div class="dashboard-node" title="active nodes">
+      <span class="icon fa-server green-2"></span>
+      <p>
+        {{(overviewCtl.nodes.all.active.length || '0') + ' active node' + overviewCtl.getEndings(overviewCtl.nodes.all.active.length)}}
+      </p>
+    </div>
+    <div class="dashboard-node" title="failed-over nodes">
+      <span class="icon fa-server orange-2"></span>
+      <p>
+        {{(overviewCtl.nodes.all.failedOver.length || '0') + ' failed-over node' + overviewCtl.getEndings(overviewCtl.nodes.all.failedOver.length)}}
+      </p>
+    </div>
+    <div class="dashboard-node" title="nodes pending rebalance">
+      <span class="icon fa-server orange-2"></span>
+      <p>
+        {{(overviewCtl.nodes.all.pending.length || '0') + ' node' + overviewCtl.getEndings(overviewCtl.nodes.all.pending.length) + ' pending rebalance'}}
+      </p>
+    </div>
+    <div class="dashboard-node" title="inactive nodes">
+      <span class="icon fa-server red-3"></span>
+      <p>
+        {{(overviewCtl.nodes.all.down.length || '0') + ' inactive node' + overviewCtl.getEndings(overviewCtl.nodes.all.down.length)}}
+      </p>
     </div>
   </div>
 </footer>
