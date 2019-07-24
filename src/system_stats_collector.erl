@@ -56,10 +56,15 @@ init([]) ->
     increment_counter(odp_report_failed, 0),
     _ = spawn_link(fun stale_histo_epoch_cleaner/0),
     Path = path_config:component_path(bin, "sigar_port"),
+
+    BabysitterPid = ns_server:get_babysitter_pid(),
     Port =
         try open_port({spawn_executable, Path},
                       [stream, use_stdio, exit_status,
-                       binary, eof, {arg0, lists:flatten(io_lib:format("portsigar for ~s", [node()]))}]) of
+                       binary, eof,
+                       {arg0, lists:flatten(
+                                io_lib:format("portsigar for ~s", [node()]))},
+                       {args, [integer_to_list(BabysitterPid)]}]) of
             X ->
                 X
         catch error:enoent ->
