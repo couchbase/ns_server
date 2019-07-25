@@ -58,13 +58,7 @@
 <!-- rebalance per stage info ********************************************** -->
           <div ng-repeat="service in adminCtl.tasks.tasksRebalance.stageInfo.services track by (service.name + $index)">
             <div class="row margin-top-half margin-bottom-half">
-              <label
-                 class="initialcaps"
-                 ng-click="showModule = !showModule"
-                 ng-class="{disclosed: showModule && service.name == 'data',
-                            disclosure: service.name == 'data',
-                            'cursor-pointer': service.name == 'data',
-                            'indent-1': service.name !== 'data'}">
+              <label class="initialcaps">
                 {{service.name}}
               </label>
               <span
@@ -91,87 +85,87 @@
               <span ng-show="service.timeTaken === false">- - -</span>
             </div>
 
-            <div ng-if="showModule" class="margin-top-half">
 <!-- delta recovery info *************************************************** -->
-              <div
-                 ng-show="service.subStages.deltaRecovery"
-                 ng-if="!hideBucket"
-                 class="row indent-1-5 margin-bottom-half">
-                <label>Delta Recovery</label>
+            <div
+               ng-show="service.subStages.deltaRecovery"
+               class="row indent-1-5 margin-bottom-half margin-top-half">
+              <label>Delta Recovery</label>
+              <span
+                 ng-show="service.subStages.deltaRecovery.timeTaken !== false"
+                 class="rebalance-stage-status">
                 <span
-                   ng-show="service.subStages.deltaRecovery.timeTaken !== false"
-                   class="rebalance-stage-status">
-                  <span
-                     ng-show="service.subStages.deltaRecovery.completedTime"
-                     class="rebalance-stage-success">
-                    completed
-                  </span>
-                  <span
-                     ng-show="!service.subStages.deltaRecovery.completedTime && !adminCtl.tasks.tasksRebalance.errorMessage"
-                     class="rebalance-stage-inprogress">
-                    elapsed
-                  </span>
-                  <span
-                     ng-show="!service.subStages.deltaRecovery.completedTime && adminCtl.tasks.tasksRebalance.errorMessage"
-                     class="rebalance-stage-error">
-                    failed
-                  </span>
-                  {{service.subStages.deltaRecovery.timeTaken | mnMsToTime}}
+                   ng-show="service.subStages.deltaRecovery.completedTime"
+                   class="rebalance-stage-success">
+                  completed
                 </span>
-                <span ng-show="service.subStages.deltaRecovery.timeTaken === false">- - -</span>
-              </div>
+                <span
+                   ng-show="!service.subStages.deltaRecovery.completedTime && !adminCtl.tasks.tasksRebalance.errorMessage"
+                   class="rebalance-stage-inprogress">
+                  elapsed
+                </span>
+                <span
+                   ng-show="!service.subStages.deltaRecovery.completedTime && adminCtl.tasks.tasksRebalance.errorMessage"
+                   class="rebalance-stage-error">
+                  failed
+                </span>
+                {{service.subStages.deltaRecovery.timeTaken | mnMsToTime}}
+              </span>
+              <span ng-show="service.subStages.deltaRecovery.timeTaken === false">- - -</span>
+            </div>
 
 <!-- per bucket info ******************************************************* -->
-              <div ng-repeat="bucketInfo in service.details track by bucketInfo.name" class="indent-1">
-                <div class="row">
-                  <label
-                     ng-click="hideBucket = !hideBucket"
-                     class="reverse disclosed cursor-pointer margin-bottom-half"
-                     ng-class="{disclosure: hideBucket}">
-                      {{bucketInfo.name}}
-                  </label>
-                  <span class="nowrap text-smaller">
-                    <span>
-                      <strong>vBucket moves</strong> {{bucketInfo.vbucketLevelInfo.move.totalCount}}
-                    </span>
-                    <span class="margin-left-half">
-                      <strong>remaining</strong> {{bucketInfo.vbucketLevelInfo.move.remainingCount}}
-                    </span>
-                  </span>
-                </div>
-                <div ng-if="!hideBucket" class="indent-1-5">
-                  <h6 ng-show="bucketInfo.vbucketLevelInfo">vBucket Moves</h6>
-                  <div class="rebalance-stage-details"
-                       ng-if="!hidevbucket && bucketInfo.vbucketLevelInfo">
-                    <div class="cbui-table-header padding-left-0 border-0">
-                      <div class="cbui-table-cell grayblack-0 bold">stage</div>
-                      <div class="cbui-table-cell grayblack-0 bold">average time</div>
-                    </div>
-                    <div class="cbui-tablerow padding-left-0"
-                         ng-repeat="(key, v) in bucketInfo.vbucketLevelInfo track by key"
-                         ng-if="key !== 'vbucketInfo'">
-                      <div class="cbui-table-cell initialcaps">{{key}}</div>
-                      <div class="cbui-table-cell">{{v.averageTime / 1000 | number:4}}</div>
-                    </div>
+            <div ng-repeat="bucketInfo in service.details track by bucketInfo.name">
+              <div class="row margin-bottom-half">
+                <label
+                   ng-click="showBucket = !showBucket"
+                   class="disclosure cursor-pointer margin-left-half"
+                   ng-class="{disclosed: showBucket}">
+                    {{bucketInfo.name}}
+                </label>
+                <span class="nowrap text-smaller text-right">
+                  vbuckets moved: {{(bucketInfo.vbucketLevelInfo.move.totalCount - bucketInfo.vbucketLevelInfo.move.remainingCount) + ' of ' + bucketInfo.vbucketLevelInfo.move.totalCount}}
+                  &nbsp; {{(bucketInfo.vbucketLevelInfo.move.totalCount - bucketInfo.vbucketLevelInfo.move.remainingCount) / bucketInfo.vbucketLevelInfo.move.totalCount * 100 | number:0}}%
+                </span>
+              </div>
+              <div
+                 class="indent-1-5 margin-bottom-1 margin-top-half"
+                 ng-if="showBucket">
+                <div
+                   class="rebalance-stage-details"
+                   ng-if="adminCtl.tasks.tasksRebalance.detailedProgress.perNode && bucketInfo.vbucketLevelInfo.move.remainingCount !== 0">
+                  <div class="cbui-table-header padding-left-0 border-0 min-height-0">
+                    <div class="cbui-table-cell grayblack-0 bold">node</div>
+                    <div class="cbui-table-cell grayblack-0 bold">incoming docs</div>
+                    <div class="cbui-table-cell grayblack-0 bold">outgoing docs</div>
                   </div>
-                  <h6
-                     ng-show="bucketInfo.compactionInfo"
-                     ng-click="hideCompaction = !hideCompaction"
-                     class="reverse disclosed cursor-pointer"
-                     ng-class="{disclosure: hideCompaction}">
-                    Compaction
-                  </h6>
-                  <div ng-if="!hideCompaction && bucketInfo.compactionInfo"
-                       class="rebalance-stage-details">
-                    <div class="cbui-table-header padding-left-0 border-0">
-                      <div class="cbui-table-cell grayblack-0 bold">node</div>
-                      <div class="cbui-table-cell grayblack-0 bold">average time</div>
-                    </div>
-                    <div class="cbui-tablerow padding-left-0"
-                         ng-repeat="(node, v) in bucketInfo.compactionInfo.perNode track by node">
-                      <div class="cbui-table-cell">{{node}}</div>
-                      <div class="cbui-table-cell">{{v.averageTime / 1000 | number:4}}</div>
-                    </div>
+                  <div
+                     class="cbui-tablerow padding-left-0"
+                     ng-repeat="(node, details) in adminCtl.tasks.tasksRebalance.detailedProgress.perNode track by node">
+                    <div class="cbui-table-cell">{{node}}</div>
+                    <div class="cbui-table-cell">{{details.ingoing.docsTransferred + ' of ' + details.ingoing.docsTotal}}</div>
+                    <div class="cbui-table-cell">{{details.outgoing.docsTransferred + ' of ' + details.outgoing.docsTotal}}</div>
+                  </div>
+                </div>
+
+                <h6
+                   ng-show="bucketInfo.compactionInfo"
+                   ng-click="showCompaction = !showCompaction"
+                   class="disclosure cursor-pointer"
+                   ng-class="{disclosed: showCompaction}">
+                  Views Compaction
+                </h6>
+                <div ng-if="showCompaction && bucketInfo.compactionInfo"
+                     class="rebalance-stage-details">
+                  <div class="cbui-table-header padding-left-0 border-0 min-height-0">
+                    <div class="cbui-table-cell grayblack-0 bold">node</div>
+                    <div class="cbui-table-cell">&nbsp;</div>
+                    <div class="cbui-table-cell grayblack-0 bold">average time</div>
+                  </div>
+                  <div class="cbui-tablerow padding-left-0"
+                       ng-repeat="(node, v) in bucketInfo.compactionInfo.perNode track by node">
+                    <div class="cbui-table-cell">{{node}}</div>
+                    <div class="cbui-table-cell">&nbsp;</div>
+                    <div class="cbui-table-cell">{{v.averageTime / 1000 | number:4}}</div>
                   </div>
                 </div>
               </div>
