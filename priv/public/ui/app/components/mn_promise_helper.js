@@ -32,7 +32,8 @@
         catchGlobalErrors: catchGlobalErrors,
         showGlobalSuccess: showGlobalSuccess,
         broadcast: broadcast,
-        removeErrors: removeErrors
+        removeErrors: removeErrors,
+        closeModal: closeModal
       }
 
       return promiseHelper;

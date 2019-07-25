@@ -5,7 +5,7 @@
     .module('mnStatisticsNew')
     .controller('mnGroupDialogController', mnGroupDialogController)
 
-  function mnGroupDialogController($uibModalInstance, mnStatisticsNewService) {
+  function mnGroupDialogController($uibModalInstance, mnStatisticsNewService, mnPromiseHelper) {
     var vm = this;
     vm.group = {
       name: "",
@@ -16,9 +16,10 @@
     vm.submit = submit;
 
     function submit() {
-      mnStatisticsNewService.addUpdateGroup(vm.group).then(function () {
-        $uibModalInstance.close();
-      });
+      mnPromiseHelper(vm, mnStatisticsNewService.addUpdateGroup(vm.group), $uibModalInstance)
+        .showGlobalSpinner()
+        .showGlobalSuccess("Group added successfully!")
+        .closeModal();
     }
   }
 
