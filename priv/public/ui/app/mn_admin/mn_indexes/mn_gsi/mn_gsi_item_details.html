@@ -5,9 +5,9 @@
         <strong>Definition</strong> &nbsp;{{row.definition}}
       </div>
       <div>
-        <strong>Storage Mode</strong> &nbsp;{{row.storageMode | mnFormatStorageMode:mnGsiTableCtl.pools.isEnterprise}} &nbsp;
+        <strong>Storage Mode</strong> &nbsp;{{row.storageMode | mnFormatStorageMode:pools.isEnterprise}} &nbsp;
         <span ng-show="row.hosts.length > 1" class="margin-bottom-0">
-          <strong>Nodes</strong> &nbsp; {{mnGsiItemDetailsCtl.hosts}}
+          <strong>Nodes</strong> &nbsp; {{row.hosts.join(', ')}}
         </span>
       </div>
     </div>
@@ -24,6 +24,7 @@
     </div>
   </div>
   <mn-detail-stats
+     node-name="{{nodeName}}"
      bucket="{{row.bucket}}"
      title="Index Stats"
      item-id="{{row.index}}"

@@ -13,7 +13,8 @@
         bucket: "@",
         itemId: "@",
         service: "@",
-        prefix: "@"
+        prefix: "@",
+        nodeName: "@?"
       },
       templateUrl: "app/components/directives/mn_detail_stats.html",
       controller: controller,
@@ -49,7 +50,8 @@
       function activate() {
         mnStatisticsNewService.doGetStats({
           zoom: vm.zoom,
-          bucket: $scope.bucket
+          bucket: $scope.bucket,
+          node: $scope.nodeName || "all",
         }).then(function (rv) {
 
           vm.charts = Object
@@ -59,6 +61,7 @@
             })
             .map(function (stat) {
               return {
+                node: $scope.nodeName,
                 preset: true,
                 id: mnHelper.generateID(),
                 isSpecific: false,

@@ -18,13 +18,12 @@
       },
       controller: mnGsiTableController,
       controllerAs: "mnGsiTableCtl",
-      bindToController: true,
       templateUrl: 'app/mn_admin/mn_indexes/mn_gsi/mn_gsi_table_directive.html'
     };
 
     return mnGsiTable;
 
-    function mnGsiTableController() {
+    function mnGsiTableController($scope) {
       var vm = this;
       vm.generateIndexId = generateIndexId;
       vm.getStatusClass = getStatusClass;
@@ -36,7 +35,7 @@
       function generateIndexId(row, partitionHost) {
         return (row.id.toString() + (row.instId || "")) +
           (row.hosts ? row.hosts.join() : "") +
-          (vm.nodeName || "");
+          ($scope.nodeName || "");
       }
 
       function getStatusClass(row) {

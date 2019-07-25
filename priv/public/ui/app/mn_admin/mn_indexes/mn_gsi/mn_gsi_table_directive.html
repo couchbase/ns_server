@@ -28,12 +28,12 @@
         data size
       </span>
     </span>
-    <span class="cbui-table-cell" ng-if="mnGsiTableCtl.hideColumn !== 'bucket'">
+    <span class="cbui-table-cell" ng-if="hideColumn !== 'bucket'">
       <span mn-sortable-title="bucket" class="sorter">
         bucket
       </span>
     </span>
-    <span class="cbui-table-cell" ng-if="mnGsiTableCtl.hideColumn == 'bucket'">
+    <span class="cbui-table-cell" ng-if="hideColumn == 'bucket'">
       <span mn-sortable-title="hosts[0]" class="sorter">
         node
       </span>
@@ -45,10 +45,10 @@
     </span>
   </div>
   <section
-     ng-repeat="row in mnGsiTableCtl.list
+     ng-repeat="row in list
                 | orderBy:mnSortableTable.sortableTableProperties.orderBy
                 : mnSortableTable.sortableTableProperties.invert
-                | filter:mnGsiTableCtl.filterField
+                | filter:filterField
                 as listFiltered
                 track by mnGsiTableCtl.generateIndexId(row)"
      ng-class="[(row.awaitingRemoval ? 'disabled-tag' : ''),
@@ -94,11 +94,11 @@
         </span>
         <span ng-show="gsiItemCtl.has_no_data_size"> - </span>
       </span>
-      <span ng-if="mnGsiTableCtl.hideColumn !== 'bucket'" class="cbui-table-cell">
+      <span ng-if="hideColumn !== 'bucket'" class="cbui-table-cell">
         {{row.bucket}}
       </span>
       <span
-         ng-if="mnGsiTableCtl.hideColumn == 'bucket'"
+         ng-if="hideColumn == 'bucket'"
          class="cbui-table-cell"
          title="{{row.hosts.join(', ')}}">
         {{row.hosts.join(', ')}}
@@ -130,7 +130,9 @@
     </div>
     <mn-gsi-item-details
        row="row"
-       rbac="mnGsiTableCtl.rbac"
+       node-name="{{nodeName}}"
+       rbac="rbac"
+       pools="pools"
        class="cbui-tablerow-expanded"
        ng-if="mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row))">
     </mn-gsi-item-details>

@@ -43,7 +43,7 @@
 
     mnStatisticsNewService.subscribeUIStatsPoller({
       bucket: $scope.row.bucket,
-      node: "all",
+      node: $scope.nodeName || "all",
       zoom: 'minute'
     }, $scope);
 
@@ -87,7 +87,9 @@
       restrict: 'E',
       scope: {
         row: "=",
-        rbac: "="
+        rbac: "=",
+        pools: "=",
+        nodeName: "@?"
       },
       controller: mnGsiItemDetailsController,
       controllerAs: "mnGsiItemDetailsCtl",
