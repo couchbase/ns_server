@@ -145,7 +145,9 @@ get_stage_name(kv_delta_recovery) ->
 get_stage_name(fts) ->
     "search";
 get_stage_name(Name) when is_atom(Name) ->
-    ns_cluster_membership:user_friendly_service_name(Name).
+    ns_cluster_membership:user_friendly_service_name(Name);
+get_stage_name(Name) when is_list(Name) ->
+    Name.
 
 construct_per_stage_details_json(Stage, AllStageDetails) ->
     case lists:keyfind(Stage, 1, AllStageDetails) of
