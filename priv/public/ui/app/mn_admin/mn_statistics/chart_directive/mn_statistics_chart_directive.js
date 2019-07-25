@@ -28,6 +28,7 @@
 
     function controller($scope, $element) {
       var units;
+      var options;
 
       if (!_.isEmpty($scope.config.stats)) {
         units = mnStatisticsNewService.getStatsUnits($scope.config.stats);
@@ -118,7 +119,7 @@
       }
 
       function initConfig() {
-        var options = {
+        options = {
           chart: {
             type: 'multiChart',
             margin : {top: 32, right: 40, bottom: 40, left: 40},
@@ -142,10 +143,6 @@
               tickFormat: function (d) {
                 return mnStatisticsNewService.tickMultiFormat(new Date(d));
               }
-            },
-            yAxis: {
-              axisLabel: "",
-              showMaxMin: false
             }
           }
         };
@@ -155,16 +152,29 @@
           index ++;
           units[unit] = index;
           options.chart["yAxis" + index] = {};
+          options.chart["yAxis" + index].ticks = [];
+          options.chart["yAxis" + index].showMaxMin = true;
           options.chart["yAxis" + index].axisLabel = unit; //hack that is involved in order to show current stats value in tooltip correctly
-          options.chart["yAxis" + index].tickFormat = function (d) {
-            return formatValue(d, unit);
+          options.chart["yAxis" + index].tickFormatMaxMin = function (d) {
+            return formatMaxMin(d, unit);
           }
         });
 
         if ($scope.getNvd3Options) {
           Object.assign(options.chart, $scope.getNvd3Options({config:$scope.config}));
         }
-        $scope.options = options;
+      }
+
+      function formatMaxMin(d, unit) {
+        switch (unit) {
+        case "bytes":
+          var val = mnPrepareQuantityFilter(d, 1024);
+          return d3.format(".2s")(d/val[0]) + val[1];
+        case "percent":
+          return d3.format(".0%")(d / 100);
+        default:
+          return d3.format(".2s")(d);
+        }
       }
 
       function formatValue(d, unit) {
@@ -176,6 +186,53 @@
           return  mnTruncateTo3DigitsFilter(d) + "%";
         default: return mnTruncateTo3DigitsFilter(d);
         }
+      }
+
+      function getScaledMinMax(chartData, unit) {
+        var min = d3.min(chartData, function (line) {return line.min/1.005;});
+        var max = d3.max(chartData, function (line) {return line.max;});
+        if (unit == "bytes")
+          return [min <= 0 ? 0 : roundDownBytes(min), max == 0 ? 1 : roundUpBytes(max)];
+        else
+          return [min <= 0 ? 0 : roundDown(min), max == 0 ? 1 : roundUp(max)];
+      }
+
+      // make 2nd digit either 0 or 5
+      function roundUp(num) {
+        var mag = Math.pow(10,Math.floor(Math.log10(num)));
+        return(mag*Math.ceil(2*num/mag)/2);
+      }
+
+      function roundDown(num) {
+        var mag = Math.pow(10,Math.floor(Math.log10(num)));
+        return(mag*Math.floor(2*num/mag)/2);
+      }
+
+      function roundUpBytes(num) { // round up 3rd digit to 0
+        var mag = Math.trunc(Math.log2(num)/10);
+        var base_num = num/Math.pow(2,mag*10); // how many KB, MB, GB, TB, whatever
+        var mag10 = Math.pow(10,Math.floor(Math.log10(base_num))-1);
+        return Math.ceil(base_num/mag10) * mag10 * Math.pow(2,mag*10);
+      }
+
+      function roundDownBytes(num) {
+        var mag = Math.trunc(Math.log2(num)/10);
+        var base_num = num/Math.pow(2,mag*10);
+        var mag10 = Math.pow(10,Math.floor(Math.log10(base_num))-1);
+        return Math.floor(base_num/mag10) * mag10 * Math.pow(2,mag*10);
+      }
+
+      function updateYAxisDomain(chartData) {
+        var chart = $scope.chartApi.getScope().chart;
+        _.forEach(units, function (i, unit) {
+          chart["yDomain" + i](getScaledMinMax(chartData, unit));
+        });
+      }
+
+      function setYAxisDomain(chartData) {
+        _.forEach(units, function (i, unit) {
+          options.chart["yDomain" + i] = getScaledMinMax(chartData, unit);
+        });
       }
 
       function onMultiChartDataUpdate(stats) {
@@ -191,6 +248,8 @@
               chartData.push({
                 type: 'line',
                 unit: desc.unit,
+                max: d3.max(nodeStat || []),
+                min: d3.min(nodeStat || []),
                 yAxis: units[desc.unit],
                 key: nodeName,
                 values: _.zip(nodeStat.timestamps, nodeStat)
@@ -207,6 +266,8 @@
             chartData.push({
               type: 'line',
               unit: desc.unit,
+              max: d3.max(stats.data.samples[name] || []),
+              min: d3.min(stats.data.samples[name] || []),
               yAxis: units[desc.unit],
               key: desc.title,
               values: _.zip(stats.data.samples[name] ?
@@ -220,12 +281,15 @@
             chartData[i].disabled = v.disabled;
           });
         }
-        if ($scope.chartApi) {
+        if ($scope.chartApi && $scope.chartApi.getScope().chart) {
+          updateYAxisDomain(chartData);
           $scope.chartApi.updateWithData(chartData);
         } else {
           $timeout(function () {
+            setYAxisDomain(chartData);
+            $scope.options = options;
             $scope.chartApi.updateWithData(chartData);
-          }, 0)
+          }, 0);
         }
       }
     }
