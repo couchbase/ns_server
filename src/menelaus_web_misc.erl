@@ -54,7 +54,10 @@ handle_versions(Req) ->
     reply_json(Req, {struct, menelaus_web_cache:versions_response()}).
 
 handle_tasks(PoolId, Req) ->
-    RebTimeoutS = proplists:get_value("rebalanceStatusTimeout", mochiweb_request:parse_qs(Req), "2000"),
+    DefaultTimeout = integer_to_list(?REBALANCE_OBSERVER_TASK_DEFAULT_TIMEOUT),
+    RebTimeoutS = proplists:get_value("rebalanceStatusTimeout",
+                                      mochiweb_request:parse_qs(Req),
+                                      DefaultTimeout),
     case parse_validate_number(RebTimeoutS, 1000, 120000) of
         {ok, RebTimeout} ->
             do_handle_tasks(PoolId, Req, RebTimeout);

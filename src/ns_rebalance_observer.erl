@@ -95,7 +95,7 @@ is_timeout(_, _) ->
     false.
 
 generic_get_call(Call) ->
-    generic_get_call(Call, 10000).
+    generic_get_call(Call, ?REBALANCE_OBSERVER_TASK_DEFAULT_TIMEOUT).
 generic_get_call(Call, Timeout) ->
     try
         gen_server:call(?SERVER, Call, Timeout)

@@ -180,6 +180,9 @@
 -define(get_param(Param, Default),
         ns_config:search_node_with_default({?MODULE, Param}, Default)).
 
+-define(REBALANCE_OBSERVER_TASK_DEFAULT_TIMEOUT,
+        ?get_timeout(observer_task, 10000)).
+
 -define(i2l(V), integer_to_list(V)).
 
 -define(UI_AUTH_EXPIRATION_SECONDS, 600).

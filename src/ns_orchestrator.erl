@@ -242,7 +242,7 @@ buckets_need_rebalance(NodesWanted) ->
                               not_running |
                               {error, timeout}.
 rebalance_progress() ->
-    rebalance_progress(2000).
+    rebalance_progress(?REBALANCE_OBSERVER_TASK_DEFAULT_TIMEOUT).
 
 -spec rebalance_progress(non_neg_integer()) -> {running, [{atom(), float()}]} |
                                                not_running |
@@ -258,7 +258,7 @@ rebalance_progress(Timeout) ->
     end.
 
 get_aggregated_progress() ->
-    get_aggregated_progress(2000).
+    get_aggregated_progress(?REBALANCE_OBSERVER_TASK_DEFAULT_TIMEOUT).
 
 get_aggregated_progress(Timeout) ->
     case ns_rebalance_observer:get_aggregated_progress(Timeout) of
