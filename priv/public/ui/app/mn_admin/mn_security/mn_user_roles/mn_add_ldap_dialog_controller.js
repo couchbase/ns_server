@@ -84,7 +84,7 @@
     }
 
     function clearLdapCache() {
-      removeErrors();
+      delete vm.cacheCleared;
       return mnPromiseHelper(vm, mnUserRolesService.clearLdapCache(), $uibModalInstance)
         .broadcast("reloadRolesPoller")
         .applyToScope("cacheCleared");
@@ -256,7 +256,6 @@
       delete vm.connectSuccessResult;
       delete vm.authenticationSuccessResult;
       delete vm.queryForGroupsSuccessResult;
-      delete vm.cacheCleared;
     }
 
     function checkConnectivity() {
