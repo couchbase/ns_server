@@ -41,10 +41,6 @@
   function mnGsiItemController($scope, mnStatisticsNewService, mnPermissions) {
     var vm = this;
 
-    if (!mnPermissions.export.cluster.bucket[$scope.row.bucket].stats.read) {
-      return;
-    }
-
     mnStatisticsNewService.subscribeUIStatsPoller({
       bucket: $scope.row.bucket,
       node: "all",
