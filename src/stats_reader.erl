@@ -39,8 +39,14 @@
 %% API
 %%
 
+%% OTP-20 type spec for gen_server:start_link/4 omits hibernate_after option
+%% even though it's supported. This suppresses the dialyzer warning resulting
+%% from this.
+-dialyzer({no_fail_call, start_link/1}).
 start_link(Bucket) ->
-    gen_server:start_link({local, server(Bucket)}, ?MODULE, Bucket, []).
+    gen_server:start_link({local, server(Bucket)}, ?MODULE, Bucket,
+                          [{hibernate_after,
+                            ?get_param(hibernate_after, 10000)}]).
 
 
 
