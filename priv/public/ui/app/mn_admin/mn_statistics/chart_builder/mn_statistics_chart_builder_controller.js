@@ -90,6 +90,7 @@
     }
 
     function selectTab(name) {
+      delete vm.groupItem;
       vm.selectedBlock = name;
     }
 
