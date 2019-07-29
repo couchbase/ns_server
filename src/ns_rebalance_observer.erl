@@ -610,7 +610,7 @@ ignore_event_for_bucket(Event,
 
 update_info(Event,
             #state{bucket_info = OldBucketLevelInfo} = State,
-            {_TS, BucketName, _VB} = UpdateArgs) ->
+            {_TS, BucketName, _EventSpecific} = UpdateArgs) ->
     NewBucketLevelInfo =
         dict:update(
           BucketName,
