@@ -63,9 +63,15 @@
 -record(compaction_info, {per_node = [] :: [{node(), #total_stat_info{}}],
                           in_progress = [] :: [{node(), #stat_info{}}]}).
 
+-record(per_node_replication_stats, {in_docs_total = 0 :: non_neg_integer(),
+                                     in_docs_left = 0 :: non_neg_integer(),
+                                     out_docs_total = 0 :: non_neg_integer(),
+                                     out_docs_left = 0 :: non_neg_integer()}).
+
 -record(bucket_level_info, {bucket_name,
                             storage_mode,
                             bucket_timeline = #stat_info{},
+                            replication_info = dict:new(),
                             compaction_info = #compaction_info{},
                             vbucket_level_info = #vbucket_level_info{}}).
 
@@ -326,7 +332,8 @@ initiate_bucket_rebalance(BucketName, {Moves, UndefinedMoves}, OldState) ->
 
     AllMoves = BuiltMoves ++ BuiltUndefinedMoves,
     ?log_debug("Moves:~n~p", [AllMoves]),
-    TmpState = update_all_vb_info(OldState, BucketName, dict:from_list(AllMoves)),
+    TmpState = update_vb_and_rep_info(OldState, BucketName,
+                                      dict:from_list(AllMoves)),
     TmpState#state{bucket = BucketName}.
 
 handle_master_event({rebalance_stage_started, Stage, Nodes}, State) ->
@@ -407,9 +414,9 @@ update_stage(Stage, Info, #state{stage_info = Old} = State) ->
                       Stage, Info, os:timestamp(), Old)}.
 
 update_move(State, BucketName, VBucket, Fun) ->
-    update_all_vb_info(State, BucketName,
-                       dict:update(VBucket, Fun,
-                                   get_all_vb_info(State, BucketName))).
+    update_vb_and_rep_info(State, BucketName,
+                           dict:update(VBucket, Fun,
+                                       get_all_vb_info(State, BucketName))).
 
 handle_info(Msg, State) ->
     ?log_error("Got unexpected message: ~p", [Msg]),
@@ -501,6 +508,9 @@ keygroup_sorted(Items) ->
               end
       end, [], Items).
 
+get_replication_info(#state{bucket_info = BI}, BucketName) ->
+    {ok, BLI} = dict:find(BucketName, BI),
+    BLI#bucket_level_info.replication_info.
 
 do_get_detailed_progress(#state{bucket = undefined}) ->
     not_running;
@@ -521,8 +531,6 @@ do_get_detailed_progress(#state{bucket = Bucket,
                           {CM, PM}
                   end
           end, {[], []}, AllMoves),
-
-    {OutMovesStats, InMovesStats} = moves_stats(AllMoves),
 
     Inc = fun (undefined, Dict) ->
                   Dict;
@@ -562,11 +570,17 @@ do_get_detailed_progress(#state{bucket = Bucket,
           end, {dict:new(), dict:new(), dict:new(), dict:new()},
           CurrentMoves ++ PendingMoves),
 
+    ReplicationInfo = get_replication_info(State, Bucket),
     NodesProgress =
         lists:foldl(
           fun (N, Acc) ->
-                  {InTotal, InLeft} = misc:dict_get(N, InMovesStats, {0, 0}),
-                  {OutTotal, OutLeft} = misc:dict_get(N, OutMovesStats, {0, 0}),
+                  PerNode = misc:dict_get(N, ReplicationInfo,
+                                          #per_node_replication_stats{}),
+                  #per_node_replication_stats{
+                     in_docs_total = InTotal,
+                     in_docs_left = InLeft,
+                     out_docs_total = OutTotal,
+                     out_docs_left = OutLeft} = PerNode,
 
                   InA = misc:dict_get(N, MovesInActive, 0),
                   OutA = misc:dict_get(N, MovesOutActive, 0),
@@ -603,21 +617,36 @@ moves_stats(Moves) ->
                 fun (#replica_building_stats{node=DstNode,
                                              docs_total=Total,
                                              docs_left=Left},
-                     {AccOut, AccIn}) ->
+                     Dict) ->
                         true = (Left =< Total),
 
-                        AccOut1 = dict:update(OldMaster,
-                                              fun ({AccTotal, AccLeft}) ->
-                                                      {AccTotal + Total, AccLeft + Left}
-                                              end, {Total, Left}, AccOut),
-                        AccIn1 = dict:update(DstNode,
-                                             fun ({AccTotal, AccLeft}) ->
-                                                     {AccTotal + Total, AccLeft + Left}
-                                             end, {Total, Left}, AccIn),
-
-                        {AccOut1, AccIn1}
+                        TmpDict = dict:update(
+                                    OldMaster,
+                                    fun (#per_node_replication_stats{
+                                            out_docs_total = AccTotal,
+                                            out_docs_left = AccLeft} = RI) ->
+                                            RI#per_node_replication_stats{
+                                              out_docs_total = AccTotal + Total,
+                                              out_docs_left = AccLeft + Left}
+                                    end,
+                                    #per_node_replication_stats{
+                                       out_docs_total = Total,
+                                       out_docs_left = Left},
+                                    Dict),
+                        dict:update(DstNode,
+                                    fun (#per_node_replication_stats{
+                                            in_docs_total = AccTotal,
+                                            in_docs_left = AccLeft} = RI) ->
+                                            RI#per_node_replication_stats{
+                                              in_docs_total = AccTotal + Total,
+                                              in_docs_left = AccLeft + Left}
+                                    end,
+                                    #per_node_replication_stats{
+                                       in_docs_total = Total,
+                                       in_docs_left = Left},
+                                    TmpDict)
                 end, Acc, Stats)
-      end, {dict:new(), dict:new()}, Moves).
+      end, dict:new(), Moves).
 
 ignore_event_for_bucket(Event,
                         #bucket_level_info{storage_mode = StorageMode}) ->
@@ -680,11 +709,25 @@ update_bucket_level_info(bucket_rebalance_started, BucketLevelInfo,
       bucket_timeline = #stat_info{start_time = TS}};
 update_bucket_level_info(bucket_rebalance_ended, BucketLevelInfo,
                          {TS, _Bucket, _, _}) ->
-    TL = BucketLevelInfo#bucket_level_info.bucket_timeline,
-    BucketLevelInfo#bucket_level_info{
+    NewBucketLevelInfo = update_replication_info(BucketLevelInfo),
+    TL = NewBucketLevelInfo#bucket_level_info.bucket_timeline,
+    NewBucketLevelInfo#bucket_level_info{
       bucket_timeline = TL#stat_info{end_time = TS}};
 update_bucket_level_info(_, BLI, _) ->
     BLI.
+
+is_bucket_rebalance_running(#bucket_level_info{bucket_timeline = BT}) ->
+    BT#stat_info.start_time =/= false andalso BT#stat_info.end_time =:= false.
+
+update_replication_info(BucketLevelInfo) ->
+    case is_bucket_rebalance_running(BucketLevelInfo) of
+        true ->
+            BucketLevelInfo#bucket_level_info{
+              replication_info = moves_stats(get_all_vb_info(
+                                               BucketLevelInfo))};
+        false ->
+            BucketLevelInfo
+    end.
 
 update_on_compaction_end(#compaction_info{per_node = OldPerNode},
                          Node,
@@ -712,12 +755,15 @@ get_all_vb_info(#state{bucket_info = BucketInfo}, BucketName) ->
 get_all_vb_info(BucketLevelInfo) ->
     BucketLevelInfo#bucket_level_info.vbucket_level_info#vbucket_level_info.vbucket_info.
 
-update_all_vb_info(#state{bucket_info = OldBucketLevelInfo} = State, BucketName,
-                   NewAllVBInfo) ->
-    NewBucketLevelInfo = dict:update(BucketName,
-                                     ?cut(update_all_vb_info(_, NewAllVBInfo)),
-                                     OldBucketLevelInfo),
-    State#state{bucket_info = NewBucketLevelInfo}.
+update_vb_and_rep_info(#state{bucket_info = OldBucketInfo} = State,
+                       BucketName, NewAllVBInfo) ->
+    NewBucketInfo = dict:update(
+                      BucketName,
+                      fun (BLI) ->
+                              TmpBLI = update_all_vb_info(BLI, NewAllVBInfo),
+                              update_replication_info(TmpBLI)
+                      end, OldBucketInfo),
+    State#state{bucket_info = NewBucketInfo}.
 
 update_all_vb_info(#bucket_level_info{
                       vbucket_level_info = VBLevelInfo} = BucketLevelInfo,
@@ -809,15 +855,33 @@ update_vbucket_level_info_inner(
 construct_bucket_level_info_json(
   #bucket_level_info{bucket_name = BucketName,
                      bucket_timeline = TL,
+                     replication_info = ReplicationInfo,
                      compaction_info = CompactionInfo,
                      vbucket_level_info = VBLevelInfo}, Options) ->
     case construct_compaction_info_json(CompactionInfo) ++
-         construct_vbucket_level_info_json(VBLevelInfo, Options) of
+             construct_vbucket_level_info_json(VBLevelInfo, Options) ++
+             construct_replication_info(ReplicationInfo) of
         [] ->
             [];
         BLI ->
             {Stat} = construct_stat_info_json(TL),
             [{BucketName, {BLI ++ Stat}}]
+    end.
+
+construct_replication_info(ReplicationInfo) ->
+    Info = dict:map(fun (Node, #per_node_replication_stats{
+                                  in_docs_total = InTotal,
+                                  in_docs_left = InLeft,
+                                  out_docs_total = OutTotal,
+                                  out_docs_left = OutLeft}) ->
+                            {[{inDocsTotal, InTotal},
+                              {inDocsLeft, InLeft},
+                              {outDocsTotal, OutTotal},
+                              {outDocsLeft, OutLeft}]}
+                    end, ReplicationInfo),
+    case dict:is_empty(Info) of
+        true -> [];
+        false -> [{replicationInfo, {dict:to_list(Info)}}]
     end.
 
 construct_compaction_info_json(#compaction_info{per_node = PerNode,
