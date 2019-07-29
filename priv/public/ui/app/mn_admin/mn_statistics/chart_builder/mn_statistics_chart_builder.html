@@ -106,7 +106,7 @@
            class="row flex-right"
            ng-if="chartBuilderCtl.statsDirectoryBlocks[chartBuilderCtl.selectedBlock + '-' + chartBuilderCtl.bucket]['@items']">
           <label class="text-small">
-            Views/Indexes: &nbsp;
+            {{chartBuilderCtl.formatGroupLabel(chartBuilderCtl.selectedBlock)}} &nbsp;
           </label>
           <ui-select
              ng-if="chartBuilderCtl.statsDirectoryBlocks[chartBuilderCtl.selectedBlock + '-' + chartBuilderCtl.bucket]['@items']"

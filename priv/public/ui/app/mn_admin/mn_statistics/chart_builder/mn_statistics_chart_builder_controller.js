@@ -63,6 +63,7 @@
     vm.orderPills = orderPills;
     vm.getSelectedStats = getSelectedStats;
     vm.getSelectedStatsLength = getSelectedStatsLength;
+    vm.formatGroupLabel = formatGroupLabel;
     var selectedUnits = {};
     vm.selectedKVFilters = {};
     var selectedByNodeStats = {};
@@ -71,6 +72,15 @@
 
 
     activate();
+
+    function formatGroupLabel(service) {
+      switch (service) {
+      case "@index": return "Indexes";
+      case "@xdcr": return "Replications";
+      case "@kv": return "Views";
+      default: return "Items";
+      }
+    }
 
     function orderPills(statsDirectoryBlocks) {
       var order = ["@system", "@kv", "@index", "@query", "@fts", "@cbas", "@eventing", "@xdcr"];
