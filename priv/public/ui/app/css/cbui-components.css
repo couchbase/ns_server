@@ -449,6 +449,9 @@ color: #333;
 .cbui-tablerow.padding-left-0 {
   padding-left: 0;
 }
+.cbui-tablerow.padding-right-0 {
+  padding-right: 0;
+}
 .cbui-tablerow.row-min {
   min-height: 1rem;
 }

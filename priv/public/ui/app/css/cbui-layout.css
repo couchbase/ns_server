@@ -537,6 +537,9 @@ footer {
   padding-left: 2.5rem !important;
 }
 
+.padding-right-0 {
+  padding-right: 0 !important;
+}
 .padding-right-min {
   padding-right: 4px !important;
 }
