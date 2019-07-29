@@ -65,6 +65,7 @@
 
 -record(bucket_level_info, {bucket_name,
                             storage_mode,
+                            bucket_timeline = #stat_info{},
                             compaction_info = #compaction_info{},
                             vbucket_level_info = #vbucket_level_info{}}).
 
@@ -337,9 +338,15 @@ handle_master_event({rebalance_stage_completed, Stage}, State) ->
 handle_master_event({rebalance_stage_event, Stage, Text}, State) ->
     update_stage(Stage, {notable_event, Text}, State);
 
-handle_master_event({bucket_rebalance_started, _BucketName, _Pid},
+handle_master_event({bucket_rebalance_started, BucketName, _Pid},
                     #state{bucket_number = Number} = State) ->
-    State#state{bucket_number = Number + 1};
+    TmpState = update_info(bucket_rebalance_started, State,
+                           {os:timestamp(), BucketName, undefined}),
+    TmpState#state{bucket_number = Number + 1};
+
+handle_master_event({bucket_rebalance_ended, BucketName, _Pid}, State) ->
+    update_info(bucket_rebalance_ended, State,
+                {os:timestamp(), BucketName, undefined});
 
 handle_master_event({planned_moves, BucketName, MovesTuple}, State) ->
     initiate_bucket_rebalance(BucketName, MovesTuple, State);
@@ -655,6 +662,15 @@ update_bucket_level_info(compaction_uninhibit_done,
                                   CompactionStat#stat_info{end_time = TS},
                                   NewInprogress)}
     end;
+update_bucket_level_info(bucket_rebalance_started, BucketLevelInfo,
+                         {TS, _Bucket, _}) ->
+    BucketLevelInfo#bucket_level_info{
+      bucket_timeline = #stat_info{start_time = TS}};
+update_bucket_level_info(bucket_rebalance_ended, BucketLevelInfo,
+                         {TS, _Bucket, _}) ->
+    TL = BucketLevelInfo#bucket_level_info.bucket_timeline,
+    BucketLevelInfo#bucket_level_info{
+      bucket_timeline = TL#stat_info{end_time = TS}};
 update_bucket_level_info(_, BLI, _) ->
     BLI.
 
@@ -777,12 +793,16 @@ update_vbucket_level_info_inner(
 
 construct_bucket_level_info_json(
   #bucket_level_info{bucket_name = BucketName,
+                     bucket_timeline = TL,
                      compaction_info = CompactionInfo,
                      vbucket_level_info = VBLevelInfo}, Options) ->
     case construct_compaction_info_json(CompactionInfo) ++
          construct_vbucket_level_info_json(VBLevelInfo, Options) of
-        [] -> [];
-        BLI -> [{BucketName, {BLI}}]
+        [] ->
+            [];
+        BLI ->
+            {Stat} = construct_stat_info_json(TL),
+            [{BucketName, {BLI ++ Stat}}]
     end.
 
 construct_compaction_info_json(#compaction_info{per_node = PerNode,
