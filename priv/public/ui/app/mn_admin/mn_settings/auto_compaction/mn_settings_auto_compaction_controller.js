@@ -11,6 +11,7 @@
   function mnSettingsAutoCompactionController($scope, mnHelper, mnPromiseHelper, mnSettingsAutoCompactionService) {
     var vm = this;
 
+    vm.reloadState = mnHelper.reloadState;
     vm.submit = submit;
 
     activate();
@@ -37,6 +38,7 @@
       delete vm.errors;
       mnPromiseHelper(vm, mnSettingsAutoCompactionService.saveAutoCompaction(vm.autoCompactionSettings))
         .showGlobalSpinner()
+        .reloadState()
         .catchErrors()
         .showGlobalSuccess("Settings saved successfully!");
     }

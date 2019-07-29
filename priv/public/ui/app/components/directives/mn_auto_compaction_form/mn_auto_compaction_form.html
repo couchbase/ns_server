@@ -123,9 +123,8 @@
     </div>
   </div>
 
-  <h4 ng-if="!isBucketsSettings && poolDefault.compat.atLeast40 && indexSettings && indexSettings.storageMode !== 'memory_optimized' && poolDefault.isEnterprise === false">Index Fragmentation</h4>
-  <!-- <div -->
-  <!--    ng-if="!isBucketsSettings && poolDefault.compat.atLeast40 && indexSettings && indexSettings.storageMode !== 'memory_optimized' && poolDefault.isEnterprise === false"> -->
+  <div ng-if="!isBucketsSettings && poolDefault.compat.atLeast40 && indexSettings && indexSettings.storageMode !== 'memory_optimized' && poolDefault.isEnterprise === false">
+    <h4>Index Fragmentation</h4>
     <div class="formrow form-inline checkbox-list">
       <input
          type="radio"
@@ -172,7 +171,13 @@
        rbac="rbac"
        errors="validationErrors">
     </div>
-  <!-- </div> -->
+  </div>
+
+  <div
+     ng-if="indexSettings.storageMode == 'memory_optimized' || poolDefault.isEnterprise === true"
+     class="content-box margin-top1">
+    <strong>NOTE FOR GSI INDEXES</strong>:&nbsp; Auto-compaction settings are unnecessary for memory-optimized and plasma-based indexes.
+  </div>
 
   <div class="formrow">
     <label class="inline">Tombstone Purge Interval</label>
@@ -203,12 +208,6 @@
         {{validationErrors.purgeInterval}}
       </div>
     </div>
-  </div>
-
-  <div
-     ng-if="indexSettings.storageMode == 'memory_optimized' || poolDefault.isEnterprise === true"
-     class="content-box margin-top1">
-    <strong>NOTE</strong>&nbsp; Auto-compaction settings are unnecessary for memory-optimized and plasma-based indexes.
   </div>
 
 </div>

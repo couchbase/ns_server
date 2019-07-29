@@ -12,8 +12,7 @@
        mn-auto-compaction-form
        auto-compaction-settings="settingsAutoCompactionCtl.autoCompactionSettings"
        validation-errors="settingsAutoCompactionCtl.errors"></div>
-    <div class="footer-save">
-     <a class="text-medium margin-right-2">Cancel/Reset</a>
+    <footer class="footer-save">
      <button
         type="submit"
         ng-disabled="settingsAutoCompactionCtl.errors"
@@ -21,6 +20,7 @@
         class="margin-right-2">
        Save
      </button>
-    </div>
+     <a class="text-medium" ng-click="settingsAutoCompactionCtl.reloadState()">Cancel/Reset</a>
+    </footer>
   </form>
 </div>
