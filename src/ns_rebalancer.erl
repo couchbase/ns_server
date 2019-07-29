@@ -1167,6 +1167,11 @@ run_graceful_failover(Nodes) ->
                             "Starting vbucket moves for "
                             "graceful failover of ~p", [Nodes]),
 
+                   ActiveNodes = ns_cluster_membership:active_nodes(),
+                   InvolvedNodes = ns_cluster_membership:service_nodes(
+                                     ActiveNodes, kv),
+                   master_activity_events:note_rebalance_stage_started(
+                     kv, InvolvedNodes),
                    lists:foldl(
                      fun ({BucketName, BucketConfig}, I) ->
                              do_run_graceful_failover_moves(Nodes,
@@ -1176,25 +1181,24 @@ run_graceful_failover(Nodes) ->
                                                             NumBuckets),
                              I+1
                      end, 0, InterestingBuckets),
+                   master_activity_events:note_rebalance_stage_completed(kv),
                    ok = failover:orchestrate(Nodes, []),
 
                    ok
            end).
 
 do_run_graceful_failover_moves(Nodes, BucketName, BucketConfig, I, N) ->
+    master_activity_events:note_bucket_rebalance_started(BucketName),
     run_janitor_pre_rebalance(BucketName),
 
     Map = proplists:get_value(map, BucketConfig, []),
     Map1 = mb_map:promote_replicas_for_graceful_failover(Map, Nodes),
 
-    ActiveNodes = ns_cluster_membership:active_nodes(),
-    InvolvedNodes = ns_cluster_membership:service_nodes(ActiveNodes, kv),
-    master_activity_events:note_rebalance_stage_started(kv, InvolvedNodes),
     ProgressFun = make_progress_fun(I, N),
     RV = run_mover(BucketName, BucketConfig,
                    proplists:get_value(servers, BucketConfig),
                    ProgressFun, Map, Map1),
-    master_activity_events:note_rebalance_stage_completed(kv),
+    master_activity_events:note_bucket_rebalance_ended(BucketName),
     RV.
 
 check_graceful_failover_possible(Nodes, BucketsAll) ->
