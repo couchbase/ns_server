@@ -149,9 +149,13 @@ conf(security) ->
      {disable_ui_over_https, disableUIOverHttps, false, fun get_bool/1},
      {ui_session_timeout, uiSessionTimeout, undefined,
       get_number(60, 1000000, undefined)},
-     {ssl_minimum_protocol, tlsMinVersion, undefined, fun get_tls_version/1},
-     {cipher_suites, cipherSuites, undefined, fun get_cipher_suites/1},
-     {honor_cipher_order, honorCipherOrder, undefined, fun get_bool/1},
+     {ssl_minimum_protocol, tlsMinVersion,
+      ns_ssl_services_setup:ssl_minimum_protocol([]), fun get_tls_version/1},
+     {cipher_suites, cipherSuites,
+      ns_ssl_services_setup:configured_ciphers_names([]),
+      fun get_cipher_suites/1},
+     {honor_cipher_order, honorCipherOrder,
+      ns_ssl_services_setup:honor_cipher_order([]), fun get_bool/1},
      {cluster_encryption_level, clusterEncryptionLevel, control,
       fun get_cluster_encryption/1}];
 conf(internal) ->

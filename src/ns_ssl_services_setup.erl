@@ -40,6 +40,7 @@
          upgrade_client_cert_auth_to_51/1,
          supported_ciphers/2,
          ssl_client_opts/0,
+         configured_ciphers_names/1,
          honor_cipher_order/0,
          honor_cipher_order/1]).
 
