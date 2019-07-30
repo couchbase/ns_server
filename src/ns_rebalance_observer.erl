@@ -338,6 +338,18 @@ handle_master_event({rebalance_stage_completed, Stage}, State) ->
 handle_master_event({rebalance_stage_event, Stage, Text}, State) ->
     update_stage(Stage, {notable_event, Text}, State);
 
+handle_master_event({failover, Nodes}, State) ->
+    update_stage([failover], {started, Nodes}, State);
+
+handle_master_event({failover_ended}, State) ->
+    update_stage([failover], completed, State);
+
+handle_master_event({bucket_failover_started, BucketName, Nodes, _}, State) ->
+    update_stage([failover, BucketName], {started, Nodes}, State);
+
+handle_master_event({bucket_failover_ended, BucketName, _, _}, State) ->
+    update_stage([failover, BucketName], completed, State);
+
 handle_master_event({bucket_rebalance_started, BucketName, _Pid},
                     #state{bucket_number = Number} = State) ->
     TmpState = update_info(bucket_rebalance_started, State,
