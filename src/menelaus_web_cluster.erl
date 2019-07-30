@@ -37,6 +37,7 @@
          handle_add_node/1,
          handle_add_node_to_group/2,
          handle_failover/1,
+         handle_start_failover/1,
          handle_start_graceful_failover/1,
          handle_rebalance/1,
          handle_re_add_node/1,
@@ -750,6 +751,16 @@ handle_failover(Req) ->
         {ok, Nodes, AllowUnsafe} ->
             failover_audit_and_reply(
               ns_cluster_membership:failover(Nodes, AllowUnsafe),
+              Req, Nodes, hard);
+        {error, ErrorMsg} ->
+            reply_text(Req, ErrorMsg, 400)
+    end.
+
+handle_start_failover(Req) ->
+    case parse_hard_failover_args(Req) of
+        {ok, Nodes, AllowUnsafe} ->
+            failover_audit_and_reply(
+              ns_orchestrator:start_failover(Nodes, AllowUnsafe),
               Req, Nodes, hard);
         {error, ErrorMsg} ->
             reply_text(Req, ErrorMsg, 400)

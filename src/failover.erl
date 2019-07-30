@@ -28,30 +28,49 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([run/2, is_possible/1, orchestrate/2, get_failover_vbuckets/2]).
+-export([start/2, run/2, is_possible/1, orchestrate/2, get_failover_vbuckets/2]).
 
 -define(DATA_LOST, 1).
 -define(FAILOVER_OPS_TIMEOUT, ?get_timeout(failover_ops_timeout, 10000)).
 
+start(Nodes, AllowUnsafe) ->
+    case is_possible(Nodes) of
+        ok ->
+            {ok, proc_lib:spawn_link(
+                   fun () ->
+                           case do_run(Nodes, AllowUnsafe) of
+                               ok ->
+                                   ok;
+                               Error ->
+                                   erlang:exit(Error)
+                           end
+                   end)};
+        Error ->
+            Error
+    end.
 
 run(Nodes, AllowUnsafe) ->
     case is_possible(Nodes) of
         ok ->
-            Result = leader_activities:run_activity(
-                       failover, majority,
-                       ?cut(orchestrate(Nodes, [durability_aware])),
-                       [{unsafe, AllowUnsafe}]),
-
-            case Result of
-                {leader_activities_error, _, {quorum_lost, _}} ->
-                    orchestration_unsafe;
-                {leader_activities_error, _, {no_quorum, _}} ->
-                    orchestration_unsafe;
-                _ ->
-                    Result
-            end;
+            do_run(Nodes, AllowUnsafe);
         Error ->
             Error
+    end.
+
+
+do_run(Nodes, AllowUnsafe) ->
+    Result = leader_activities:run_activity(
+               failover, majority,
+               ?cut(orchestrate(Nodes, [durability_aware])),
+               [{unsafe, AllowUnsafe}]),
+
+    case Result of
+        {leader_activities_error, _, {quorum_lost, _}} ->
+            orchestration_unsafe;
+        {leader_activities_error, _, {no_quorum, _}} ->
+            orchestration_unsafe;
+        _ ->
+            Result
     end.
 
 orchestrate(Nodes, Options) ->

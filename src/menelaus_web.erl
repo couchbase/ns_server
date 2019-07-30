@@ -617,6 +617,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[pools], write}, fun menelaus_web_cluster:handle_add_node_to_group/2, [UUID]};
                 ["controller", "failOver"] ->
                     {{[pools], write}, fun menelaus_web_cluster:handle_failover/1};
+                ["controller", "startFailover"] ->
+                    {{[pools], write},
+                     fun menelaus_web_cluster:handle_start_failover/1};
                 ["controller", "startGracefulFailover"] ->
                     {{[pools], write}, fun menelaus_web_cluster:handle_start_graceful_failover/1};
                 ["controller", "rebalance"] ->

@@ -46,6 +46,7 @@
          delete_bucket/1,
          flush_bucket/1,
          failover/2,
+         start_failover/2,
          try_autofailover/1,
          needs_rebalance/0,
          request_janitor_run/1,
@@ -169,6 +170,21 @@ flush_bucket(BucketName) ->
 failover(Nodes, AllowUnsafe) ->
     wait_for_orchestrator(),
     gen_statem:call(?SERVER, {failover, Nodes, AllowUnsafe}, infinity).
+
+-spec start_failover([node()], boolean()) ->
+                            ok |
+                            rebalance_running |
+                            in_recovery |
+                            last_node |
+                            unknown_node |
+                            %% the following is needed just to trick the dialyzer;
+                            %% otherwise it wouldn't let the callers cover what it
+                            %% believes to be an impossible return value if all
+                            %% other options are also covered
+                            any().
+start_failover(Nodes, AllowUnsafe) ->
+    wait_for_orchestrator(),
+    gen_statem:call(?SERVER, {start_failover, Nodes, AllowUnsafe}).
 
 -spec try_autofailover(list()) -> ok |
                                   rebalance_running |
@@ -704,6 +720,35 @@ idle({failover, Nodes, AllowUnsafe}, From, _State) ->
     Result = failover:run(Nodes, AllowUnsafe),
 
     {keep_state_and_data, [{reply, From, Result}]};
+idle({start_failover, Nodes, AllowUnsafe}, From, _State) ->
+    ActiveNodes = ns_cluster_membership:active_nodes(),
+    NodesInfo = [{active_nodes, ActiveNodes}],
+    Id = couch_uuids:random(),
+    {ok, ObserverPid} =
+        ns_rebalance_observer:start_link([], NodesInfo, failover, Id),
+    case failover:start(Nodes, AllowUnsafe) of
+        {ok, Pid} ->
+            ale:info(?USER_LOGGER, "Starting failover of nodes ~p. "
+                     "Operation Id = ~s", [Nodes, Id]),
+            Type = failover,
+            ns_cluster:counter_inc(Type, start),
+            set_rebalance_status(Type, running, Pid),
+            NewState = #rebalancing_state{rebalancer = Pid,
+                                          rebalance_observer = ObserverPid,
+                                          eject_nodes = [],
+                                          keep_nodes = [],
+                                          failed_nodes = [],
+                                          delta_recov_bkts = [],
+                                          retry_check = undefined,
+                                          to_failover = Nodes,
+                                          abort_reason = undefined,
+                                          type = Type,
+                                          rebalance_id = Id},
+            {next_state, rebalancing, NewState, [{reply, From, ok}]};
+        Error ->
+            misc:unlink_terminate_and_wait(ObserverPid, kill),
+            {keep_state_and_data, [{reply, From, Error}]}
+    end;
 idle({try_autofailover, Nodes}, From, _State) ->
     case ns_rebalancer:validate_autofailover(Nodes) of
         {error, UnsafeBuckets} ->
@@ -941,6 +986,8 @@ rebalancing({start_rebalance, _KeepNodes, _EjectNodes,
 rebalancing({start_graceful_failover, _}, From, _State) ->
     {keep_state_and_data, [{reply, From, in_progress}]};
 rebalancing({start_graceful_failover, _, _, _}, From, _State) ->
+    {keep_state_and_data, [{reply, From, in_progress}]};
+rebalancing({start_failover, _, _}, From, _State) ->
     {keep_state_and_data, [{reply, From, in_progress}]};
 rebalancing(stop_rebalance, From,
             #rebalancing_state{rebalancer = Pid} = State) ->
@@ -1189,6 +1236,8 @@ set_rebalance_status(graceful_failover, Status, Pid) when is_pid(Pid) ->
 set_rebalance_status(move_vbuckets, Status, Pid) ->
     set_rebalance_status(rebalance, Status, Pid);
 set_rebalance_status(service_upgrade, Status, Pid) ->
+    set_rebalance_status(rebalance, Status, Pid);
+set_rebalance_status(failover, Status, Pid) ->
     set_rebalance_status(rebalance, Status, Pid).
 
 do_set_rebalance_status(Status, RebalancerPid, GracefulPid) ->
@@ -1451,6 +1500,8 @@ rebalance_type2text(rebalance) ->
     <<"Rebalance">>;
 rebalance_type2text(move_vbuckets) ->
     rebalance_type2text(rebalance);
+rebalance_type2text(failover) ->
+    <<"Failover">>;
 rebalance_type2text(graceful_failover) ->
     <<"Graceful failover">>;
 rebalance_type2text(service_upgrade) ->
