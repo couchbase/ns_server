@@ -39,7 +39,9 @@
          set_node_certificate_chain/4,
          upgrade_client_cert_auth_to_51/1,
          supported_ciphers/2,
-         ssl_client_opts/0]).
+         ssl_client_opts/0,
+         honor_cipher_order/0,
+         honor_cipher_order/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -58,7 +60,8 @@
                 reload_state,
                 min_ssl_ver,
                 client_cert_auth,
-                ciphers}).
+                ciphers,
+                honor_cipher_order}).
 
 start_link() ->
     case cluster_compat_mode:tls_supported() of
@@ -295,31 +298,24 @@ supported_ciphers(ns_server, Config) ->
             %% ssl_ciphers is obsolete and should not be used in
             %% new installations
             case application:get_env(ssl_ciphers) of
-                {ok, Ciphers} ->
-                    {Ciphers, honor_cipher_order(true)};
-                undefined ->
-                    {ssl:cipher_suites() -- low_security_ciphers(),
-                     honor_cipher_order(false)}
+                {ok, Ciphers} -> Ciphers;
+                undefined -> ssl:cipher_suites() -- low_security_ciphers()
             end;
-        List -> {List, honor_cipher_order(true)}
+        List -> List
     end;
 supported_ciphers(cbauth, Config) ->
     case configured_ciphers_names(Config) of
-        [] ->
-            {default_cbauth_ciphers(),
-             honor_cipher_order(false)};
-        List ->
-            {List, honor_cipher_order(true)}
+        [] -> default_cbauth_ciphers();
+        List -> List
     end;
 supported_ciphers(openssl, Config) ->
     case configured_ciphers_names(Config) of
-        [] -> {undefined, honor_cipher_order(false)};
+        [] -> undefined;
         List ->
-            Ordered = honor_cipher_order(true),
             OpenSSLNames = [Name || C <- List,
                                     Name <- [ciphers:openssl_name(C)],
                                     Name =/= undefined],
-            {iolist_to_binary(lists:join(":", OpenSSLNames)), Ordered}
+            iolist_to_binary(lists:join(":", OpenSSLNames))
     end.
 
 configured_ciphers_names(Config) ->
@@ -335,8 +331,9 @@ default_cbauth_ciphers() ->
               end, ns_config:read_key_fast(ssl_ciphers_strength, [high])),
     ciphers:only_known(Names).
 
-honor_cipher_order(Default) ->
-    ns_config:read_key_fast(honor_cipher_order, Default).
+honor_cipher_order() -> honor_cipher_order(ns_config:latest()).
+honor_cipher_order(Config) ->
+    ns_config:search(Config, honor_cipher_order, true).
 
 ssl_auth_options() ->
     Val = list_to_atom(proplists:get_value(state, client_cert_auth())),
@@ -352,7 +349,8 @@ ssl_auth_options() ->
 
 ssl_server_opts() ->
     Path = ssl_cert_key_path(),
-    {CipherSuites, Order} = supported_ciphers(),
+    CipherSuites = supported_ciphers(),
+    Order = honor_cipher_order(),
     ClientReneg = ns_config:read_key_fast(client_renegotiation_allowed, false),
     ssl_auth_options() ++
         [{keyfile, Path},
@@ -479,6 +477,7 @@ init([]) ->
                 reload_state = RetrySvc,
                 min_ssl_ver = ssl_minimum_protocol(),
                 ciphers = supported_ciphers(),
+                honor_cipher_order = honor_cipher_order(),
                 client_cert_auth = client_cert_auth()}}.
 
 config_change_detector_loop({cert_and_pkey, _}, Parent) ->
@@ -498,7 +497,7 @@ config_change_detector_loop({cipher_suites, _}, Parent) ->
     Parent ! cipher_suites_changed,
     Parent;
 config_change_detector_loop({honor_cipher_order, _}, Parent) ->
-    Parent ! cipher_suites_changed,
+    Parent ! honor_cipher_order_changed,
     Parent;
 config_change_detector_loop({secure_headers, _}, Parent) ->
     Parent ! secure_headers_changed,
@@ -561,6 +560,18 @@ handle_info(cipher_suites_changed, #state{ciphers = CurrentCiphers} = State) ->
             {noreply, trigger_ssl_reload(cipher_suites,
                                          [ssl_service, capi_ssl_service],
                                          State#state{ciphers = NewCiphers})}
+    end;
+handle_info(honor_cipher_order_changed,
+            #state{honor_cipher_order = Current} = State) ->
+    misc:flush(honor_cipher_order_changed),
+    case honor_cipher_order() of
+        Current ->
+            {noreply, State};
+        NewValue ->
+            {noreply, trigger_ssl_reload(cipher_suites,
+                                         [ssl_service, capi_ssl_service],
+                                          State#state{
+                                              honor_cipher_order = NewValue})}
     end;
 handle_info(client_cert_auth_changed,
             #state{client_cert_auth = Auth} = State) ->

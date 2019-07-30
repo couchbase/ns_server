@@ -403,7 +403,7 @@ is_external_auth_service_enabled() ->
 
 get_ssl_cipher_list([], Params) ->
     Cfg = ns_config:latest(),
-    {Ciphers, _} = ns_ssl_services_setup:supported_ciphers(openssl, Cfg),
+    Ciphers = ns_ssl_services_setup:supported_ciphers(openssl, Cfg),
     Ciphers2 =
         case Ciphers of
             undefined -> proplists:get_value(ssl_cipher_list, Params, "HIGH");
@@ -412,9 +412,7 @@ get_ssl_cipher_list([], Params) ->
     iolist_to_binary(Ciphers2).
 
 get_ssl_cipher_order([], _Params) ->
-    {_, Order} = ns_ssl_services_setup:supported_ciphers(openssl,
-                                                         ns_config:latest()),
-    Order.
+    ns_ssl_services_setup:honor_cipher_order().
 
 get_afamily_type([AFamily], _Params) ->
     Required = ns_config:read_key_fast({node, node(), address_family}, inet),
