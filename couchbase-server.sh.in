@@ -164,8 +164,7 @@ _start() {
     exec erl \
         +A 16 \
         -smp enable \
-        -kernel inet_dist_listen_min 21100 inet_dist_listen_max 21299 \
-                error_logger false \
+        -kernel error_logger false \
                 inetrc "\"$HOSTS_CFG_FILE\"" \
                 dist_config_file "\"$CB_DIST_CFG_FILE\"" \
         -sasl sasl_error_logger false \

@@ -64,7 +64,6 @@ open_port_args() ->
                   %% passed as a separate argument
                   "+e102400",
                   "-setcookie", "nocookie",
-                  "-kernel", "inet_dist_listen_min", "21100", "inet_dist_listen_max", "21299",
                   "error_logger", "false",
                   "-sasl", "sasl_error_logger", "false",
                   "-user", "user_io",
