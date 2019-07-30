@@ -341,12 +341,12 @@ handle_master_event({rebalance_stage_event, Stage, Text}, State) ->
 handle_master_event({bucket_rebalance_started, BucketName, _Pid},
                     #state{bucket_number = Number} = State) ->
     TmpState = update_info(bucket_rebalance_started, State,
-                           {os:timestamp(), BucketName, undefined}),
+                           {os:timestamp(), BucketName, undefined, undefined}),
     TmpState#state{bucket_number = Number + 1};
 
 handle_master_event({bucket_rebalance_ended, BucketName, _Pid}, State) ->
     update_info(bucket_rebalance_ended, State,
-                {os:timestamp(), BucketName, undefined});
+                {os:timestamp(), BucketName, undefined, undefined});
 
 handle_master_event({planned_moves, BucketName, MovesTuple}, State) ->
     initiate_bucket_rebalance(BucketName, MovesTuple, State);
@@ -355,7 +355,7 @@ handle_master_event({vbucket_move_start, _Pid, BucketName,
                      _Node, VBucketId, _, _}, State) ->
     ?log_debug("Noted vbucket move start (vbucket ~p)", [VBucketId]),
     update_info(vbucket_move_start, State, {os:timestamp(), BucketName,
-                                            VBucketId});
+                                            VBucketId, undefined});
 
 handle_master_event({vbucket_move_done, BucketName, VBucket}, State) ->
     State1 = update_move(
@@ -367,24 +367,24 @@ handle_master_event({vbucket_move_done, BucketName, VBucket}, State) ->
                end),
     ?log_debug("Noted vbucket move end (vbucket ~p)", [VBucket]),
     update_info(vbucket_move_done, State1,
-                {os:timestamp(), BucketName, VBucket});
+                {os:timestamp(), BucketName, VBucket, undefined});
 
 handle_master_event({Event, BucketName, Node}, State)
   when Event =:= compaction_uninhibit_started;
        Event =:= compaction_uninhibit_done ->
-    update_info(Event, State, {os:timestamp(), BucketName, Node});
+    update_info(Event, State, {os:timestamp(), BucketName, undefined, Node});
 
 handle_master_event({Event, BucketName, VBucket, _, _}, State)
   when Event =:= takeover_started;
        Event =:= takeover_ended;
        Event =:= seqno_waiting_started;
        Event =:= seqno_waiting_ended ->
-    update_info(Event, State, {os:timestamp(), BucketName, VBucket});
+    update_info(Event, State, {os:timestamp(), BucketName, VBucket, undefined});
 
 handle_master_event({Event, BucketName, VBucket}, State)
   when Event =:= backfill_phase_started;
        Event =:= backfill_phase_ended ->
-    update_info(Event, State, {os:timestamp(), BucketName, VBucket});
+    update_info(Event, State, {os:timestamp(), BucketName, VBucket, undefined});
 
 handle_master_event(_, State) ->
     State.
@@ -617,7 +617,7 @@ ignore_event_for_bucket(Event,
 
 update_info(Event,
             #state{bucket_info = OldBucketLevelInfo} = State,
-            {_TS, BucketName, _EventSpecific} = UpdateArgs) ->
+            {_TS, BucketName, _VB, _EventSpecific} = UpdateArgs) ->
     NewBucketLevelInfo =
         dict:update(
           BucketName,
@@ -635,7 +635,7 @@ update_info(Event,
 
 update_bucket_level_info(compaction_uninhibit_started,
                          BucketLevelInfo,
-                         {TS, _Bucket, Node}) ->
+                         {TS, _Bucket, _VB, Node}) ->
     Compaction = BucketLevelInfo#bucket_level_info.compaction_info,
     InProgress = Compaction#compaction_info.in_progress,
     case lists:keyfind(Node, 1, InProgress) of
@@ -649,7 +649,7 @@ update_bucket_level_info(compaction_uninhibit_started,
     end;
 update_bucket_level_info(compaction_uninhibit_done,
                          BucketLevelInfo,
-                         {TS, _Bucket, Node}) ->
+                         {TS, _Bucket, _VB, Node}) ->
     Compaction = BucketLevelInfo#bucket_level_info.compaction_info,
     InProgress = Compaction#compaction_info.in_progress,
     case lists:keytake(Node, 1, InProgress) of
@@ -663,11 +663,11 @@ update_bucket_level_info(compaction_uninhibit_done,
                                   NewInprogress)}
     end;
 update_bucket_level_info(bucket_rebalance_started, BucketLevelInfo,
-                         {TS, _Bucket, _}) ->
+                         {TS, _Bucket, _, _}) ->
     BucketLevelInfo#bucket_level_info{
       bucket_timeline = #stat_info{start_time = TS}};
 update_bucket_level_info(bucket_rebalance_ended, BucketLevelInfo,
-                         {TS, _Bucket, _}) ->
+                         {TS, _Bucket, _, _}) ->
     TL = BucketLevelInfo#bucket_level_info.bucket_timeline,
     BucketLevelInfo#bucket_level_info{
       bucket_timeline = TL#stat_info{end_time = TS}};
@@ -713,8 +713,11 @@ update_all_vb_info(#bucket_level_info{
     NewVBLevelInfo = VBLevelInfo#vbucket_level_info{vbucket_info = AllVBInfo},
     BucketLevelInfo#bucket_level_info{vbucket_level_info = NewVBLevelInfo}.
 
+update_vbucket_level_info(_Event, BucketLevelInfo,
+                          {_TS, _BucketName, undefined, _Args}) ->
+    BucketLevelInfo;
 update_vbucket_level_info(Event, BucketLevelInfo,
-                          {_TS, _BucketName, VB} = UpdateArgs) ->
+                          {_TS, _BucketName, VB, _Args} = UpdateArgs) ->
     AllVBInfo = get_all_vb_info(BucketLevelInfo),
     case dict:find(VB, AllVBInfo) of
         {ok, VBInfo} ->
@@ -755,7 +758,7 @@ update_stat(start_time, _, TS) ->
 update_stat(end_time, Stat, TS) ->
     Stat#stat_info{end_time = TS}.
 
-update_vbucket_info(Event, VBInfo, {TS, _Bucket, _VB}) ->
+update_vbucket_info(Event, VBInfo, {TS, _Bucket, _VB, _Args}) ->
     case find_event_action(Event) of
         false ->
             VBInfo;
