@@ -708,38 +708,49 @@ parse_hard_failover_args(Req) ->
             Error
     end.
 
+failover_reply(ok) ->
+    200;
+failover_reply(in_progress) ->
+    failover_reply(rebalance_running);
+failover_reply(rebalance_running) ->
+    {503, "Rebalance running."};
+failover_reply(in_recovery) ->
+    {503, "Cluster is in recovery mode."};
+failover_reply(orchestration_unsafe) ->
+    %% 504 is a stretch here of course, but we do
+    %% need to convey the information to the client somehow.
+    {504, "Cannot safely perform a failover at the moment"};
+failover_reply(config_sync_failed) ->
+    {500, "Failed to synchronize config to other nodes"};
+failover_reply({config_sync_failed, _}) ->
+    failover_reply(config_sync_failed);
+failover_reply(last_node) ->
+    {400, "Last active node cannot be failed over."};
+failover_reply(not_graceful) ->
+    {400, "Failover cannot be done gracefully (would lose vbuckets)."};
+failover_reply(non_kv_node) ->
+    {400, "Failover cannot be done gracefully for a node without data service."
+     " Use hard failover."};
+failover_reply(unknown_node) ->
+    {400, "Unknown server given."};
+failover_reply(Other) ->
+    {500, io_lib:format("Unexpected server error: ~p", [Other])}.
+
+failover_audit_and_reply(RV, Req, Nodes, Type) ->
+    case failover_reply(RV) of
+        200 ->
+            ns_audit:failover_nodes(Req, Nodes, Type),
+            reply(Req, 200);
+        {Code, Message} ->
+            reply_text(Req, Message, Code)
+    end.
+
 handle_failover(Req) ->
     case parse_hard_failover_args(Req) of
         {ok, Nodes, AllowUnsafe} ->
-            case ns_cluster_membership:failover(Nodes, AllowUnsafe) of
-                ok ->
-                    ns_audit:failover_nodes(Req, Nodes, hard),
-                    reply(Req, 200);
-                rebalance_running ->
-                    reply_text(Req, "Rebalance running.", 503);
-                in_recovery ->
-                    reply_text(Req, "Cluster is in recovery mode.", 503);
-                orchestration_unsafe ->
-                    reply_text(Req,
-                               "Cannot safely perform a failover at the moment",
-                               %% 504 is a stretch here of course, but we do
-                               %% need to convey the information to the client
-                               %% somehow.
-                               504);
-                config_sync_failed ->
-                    reply_text(Req,
-                               "Could not synchronize "
-                               "metadata with some nodes.",
-                               500);
-                last_node ->
-                    reply_text(Req, "Last active node cannot be failed over.", 400);
-                unknown_node ->
-                    reply_text(Req, "Unknown server given.", 400);
-                Other ->
-                    reply_text(Req,
-                               io_lib:format("Unexpected server error: ~p", [Other]),
-                               500)
-            end;
+            failover_audit_and_reply(
+              ns_cluster_membership:failover(Nodes, AllowUnsafe),
+              Req, Nodes, hard);
         {error, ErrorMsg} ->
             reply_text(Req, ErrorMsg, 400)
     end.
@@ -747,34 +758,9 @@ handle_failover(Req) ->
 handle_start_graceful_failover(Req) ->
     case parse_graceful_failover_args(Req) of
         {ok, Nodes} ->
-            Msg = case ns_orchestrator:start_graceful_failover(Nodes) of
-                      ok ->
-                          [];
-                      in_progress ->
-                          {503, "Rebalance running."};
-                      in_recovery ->
-                          {503, "Cluster is in recovery mode."};
-                      not_graceful ->
-                          {400, "Failover cannot be done gracefully (would lose vbuckets)."};
-                      non_kv_node ->
-                          {400, "Failover cannot be done gracefully for a node without data service. Use hard failover."};
-                      unknown_node ->
-                          {400, "Unknown server given."};
-                      last_node ->
-                          {400, "Last active node cannot be failed over."};
-                      {config_sync_failed, _} ->
-                          {500, "Failed to synchronize config to other nodes"};
-                      Other ->
-                          {500,
-                           io_lib:format("Unexpected server error: ~p", [Other])}
-                  end,
-            case Msg of
-                [] ->
-                    ns_audit:failover_nodes(Req, Nodes, graceful),
-                    reply(Req, 200);
-                {Code, Text} ->
-                    reply_text(Req, Text, Code)
-            end;
+            failover_audit_and_reply(
+              ns_orchestrator:start_graceful_failover(Nodes),
+              Req, Nodes, graceful);
         {error, ErrorMsg} ->
             reply_text(Req, ErrorMsg, 400)
     end.
