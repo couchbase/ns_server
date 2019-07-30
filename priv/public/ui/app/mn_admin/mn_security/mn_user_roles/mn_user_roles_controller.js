@@ -89,6 +89,9 @@
             .applyToScope("rolesByRole");
         });
 
+      mnPromiseHelper(vm, mnUserRolesService.getLdapSettings())
+        .applyToScope("ldapSettings");
+
       var poller = new mnPoller($scope, function () {
         return mnUserRolesService.getState($state.params);
       })
