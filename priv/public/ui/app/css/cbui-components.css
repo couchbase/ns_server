@@ -1470,6 +1470,7 @@ section.error {
 .xdcrfilter-matching.dynamic_spinner .xdcrfilter-loading {
   display: block;
 }
+.xdcrfilter-matching.hidden .xdcrfilter-nomatch,
 .xdcrfilter-matching.dynamic_spinner .xdcrfilter-nomatch,
 .xdcrfilter-matching.dynamic_spinner .xdcrfilter-match,
 .xdcrfilter-matching.dynamic_match .xdcrfilter-nomatch,

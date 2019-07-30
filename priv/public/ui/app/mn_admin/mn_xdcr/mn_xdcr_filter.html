@@ -49,7 +49,10 @@
          class="xdcrfilter-matching"
          ng-class="{dynamic_match: xdcrFilterCtl.filterExpressionResult.data.result,
                    dynamic_spinner: xdcrFilterCtl.filterExpressionSpinner,
-                   hidden: xdcrFilterCtl.filterExpressionResult == null}">
+                   hidden: xdcrFilterCtl.filterExpressionResult == null ||
+                   xdcrFilterCtl.filterExpressionError ||
+                   mnErrors.filterExpression ||
+                   xdcrFilterCtl.filterExpressionResult.data.error}">
         <span class="xdcrfilter-nomatch">no match</span>
         <span class="xdcrfilter-loading loading">...</span>
         <span class="xdcrfilter-match">match</span>
