@@ -40,8 +40,8 @@
                     end_time = false}).
 
 -record(replica_building_stats, {node :: node(),
-                                 docs_total :: non_neg_integer(),
-                                 docs_left :: non_neg_integer()}).
+                                 in_docs_total :: non_neg_integer(),
+                                 in_docs_left :: non_neg_integer()}).
 
 -record(vbucket_info, {before_chain :: [node()],
                        after_chain :: [node()],
@@ -221,21 +221,21 @@ handle_cast({update_stats, BucketName, VBucket, NodeToDocsLeft}, State) ->
                         NewStats =
                             [case lists:keyfind(Stat#replica_building_stats.node, 1, NodeToDocsLeft) of
                                  {_, NewLeft} ->
-                                     #replica_building_stats{docs_total = Total,
-                                                             docs_left = Left} = Stat,
+                                     #replica_building_stats{in_docs_total = Total,
+                                                             in_docs_left = Left} = Stat,
 
                                      case NewLeft >= Left of
                                          true ->
                                              %% our initial estimates are
                                              %% imprecise, so we can end up in
                                              %% a situation where new
-                                             %% docs_left is greater than
-                                             %% docs_total;
+                                             %% in_docs_left is greater than
+                                             %% in_docs_total;
                                              %%
                                              %% another possibility is that
                                              %% there're new mutations coming;
                                              %% in such case if we didn't
-                                             %% adjust docs_total it would
+                                             %% adjust in_docs_total it would
                                              %% seem to the user that number
                                              %% of transfered items went down
                                              %% which is probably not desireable;
@@ -247,10 +247,10 @@ handle_cast({update_stats, BucketName, VBucket, NodeToDocsLeft}, State) ->
                                              %% experience-wise it seems to be
                                              %% better.
                                              Increase = NewLeft - Left,
-                                             Stat#replica_building_stats{docs_left = NewLeft,
-                                                                         docs_total = Total + Increase};
+                                             Stat#replica_building_stats{in_docs_left = NewLeft,
+                                                                         in_docs_total = Total + Increase};
                                          false ->
-                                             Stat#replica_building_stats{docs_left = NewLeft}
+                                             Stat#replica_building_stats{in_docs_left = NewLeft}
                                      end;
                                  false ->
                                      Stat
@@ -315,8 +315,8 @@ initiate_bucket_rebalance(BucketName, {Moves, UndefinedMoves}, OldState) ->
                                          MasterEstimate
                                  end,
                       #replica_building_stats{node = Replica,
-                                              docs_total = Estimate,
-                                              docs_left = Estimate}
+                                              in_docs_total = Estimate,
+                                              in_docs_left = Estimate}
                   end || Replica <- ChainAfter,
                          Replica =/= undefined,
                          Replica =/= MasterNode],
@@ -380,7 +380,7 @@ handle_master_event({vbucket_move_done, BucketName, VBucket}, State) ->
     State1 = update_move(
                State, BucketName, VBucket,
                fun (#vbucket_info{stats=Stats} = Move) ->
-                       Stats1 = [S#replica_building_stats{docs_left=0} ||
+                       Stats1 = [S#replica_building_stats{in_docs_left=0} ||
                                     S <- Stats],
                        Move#vbucket_info{stats=Stats1}
                end),
@@ -615,8 +615,8 @@ moves_stats(Moves) ->
 
               lists:foldl(
                 fun (#replica_building_stats{node=DstNode,
-                                             docs_total=Total,
-                                             docs_left=Left},
+                                             in_docs_total=Total,
+                                             in_docs_left=Left},
                      Dict) ->
                         true = (Left =< Total),
 
@@ -927,12 +927,13 @@ construct_total_stat_info_json(#total_stat_info{total_time = TT,
                 end,
     {[{averageTime, average(TT, CC)}] ++ CountJson}.
 
-construct_replica_building_stats_json(#replica_building_stats{node = Node,
-                                                              docs_total = DT,
-                                                              docs_left = DL}) ->
+construct_replica_building_stats_json(#replica_building_stats{
+                                         node = Node,
+                                         in_docs_total = DT,
+                                         in_docs_left = DL}) ->
     {Node, {[{node, Node},
-             {docsTotal, DT},
-             {docsLeft, DL}]}}.
+             {inDocsTotal, DT},
+             {inDocsLeft, DL}]}}.
 
 construct_vbucket_info_json(Id, #vbucket_info{before_chain = BC,
                                               after_chain = AC,
