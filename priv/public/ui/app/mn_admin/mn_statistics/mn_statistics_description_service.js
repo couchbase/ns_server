@@ -196,7 +196,7 @@
           },
           "couch_docs_actual_disk_size": {
             unit: "bytes",
-            title: "Total Data Service Disk Size",
+            title: "Data Total Disk Size",
             desc: "The size of all data service files on disk for this bucket, including the data itself, metadata, and temporary files. (measured from couch_docs_actual_disk_size)"
           },
           "couch_docs_data_size": {
@@ -567,7 +567,7 @@
           },
           "mem_used": {
             unit: "bytes",
-            title: "RAM Used",
+            title: "Data Total RAM Used",
             desc: "Total memory used in bytes. (as measured from mem_used)"
             // memcached_stats_description
             // isBytes: true
@@ -956,7 +956,7 @@
         "@cbas":{
           "cbas_disk_used": {
             unit: "bytes",
-            title: "Analytics Disk Size",
+            title: "Analytics Total Disk Size",
             desc: "The total disk size used by Analytics."
           },
           "cbas_gc_count": {
@@ -1268,7 +1268,7 @@
           "fts/doc_count": null,
           "fts/num_bytes_used_disk": {
             unit: "bytes",
-            title: "Search Disk Size",
+            title: "Search Total Disk Size",
             desc: "Bytes stored on disk for all Search indexes in this bucket."
           },
           "fts/num_files_on_disk": {
@@ -1301,7 +1301,7 @@
         "@fts": {
           "fts_num_bytes_used_ram": {
             unit: "bytes",
-            title: "Search RAM Used",
+            title: "Search Total RAM Used",
             desc: "Bytes of RAM used by Search across all indexes and all buckets on this server."
           },
           "fts_total_queries_rejected_by_herder": {
