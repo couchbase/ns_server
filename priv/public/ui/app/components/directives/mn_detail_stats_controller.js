@@ -9,7 +9,7 @@
     var mnDetailStats = {
       restrict: "AE",
       scope: {
-        title: "@",
+        mnTitle: "@",
         bucket: "@",
         itemId: "@",
         service: "@",
