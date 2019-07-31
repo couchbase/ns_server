@@ -28,6 +28,15 @@ start(_, _) ->
     %% need to load it.
     ok = application:load(ns_server),
 
+    %% if erlang:send is done toward an unconnected node, the function will
+    %% not return until the connection setup had completed (or failed).
+    %% It leads to some processes get stuck for 7 seconds when they are trying
+    %% to handle a call from ns_server during ns_server's rename
+    %% This setting forbids auto connect back to ns_server. It guarantees that
+    %% attempt to send message to not existing node will not block.
+    %% (blocking send is fixed in erl21 so this hack can be removed)
+    application:set_env(kernel, dist_auto_connect, never),
+
     setup_static_config(),
     init_logging(),
 
