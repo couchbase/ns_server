@@ -66,7 +66,7 @@ table(Bucket, Period) ->
     list_to_atom(fmt("~s-~s-~s", [?MODULE_STRING, Bucket, Period])).
 
 logger_file(Bucket, Period) ->
-    Name = io_lib:format("~s-~s.~s", [?MODULE_STRING, Bucket, Period]),
+    Name = io_lib:format("~s-~s.~s.gz", [?MODULE_STRING, Bucket, Period]),
     filename:join(stats_dir(), Name).
 
 %% Ensure directory for stats archiver ETS table backup files
@@ -242,58 +242,26 @@ read_table(Path, TableName) ->
     end.
 
 do_read_table(Path, TableName) ->
-    case read_table_new(Path, TableName) of
+    Result = misc:with_file(Path, [raw, binary, read],
+                            fun (File) ->
+                                    pipes:run(pipes:read_file(File),
+                                              pipes:gunzip(),
+                                              pipes:unmarshal_table(TableName)),
+                                    ok
+                            end),
+
+    case Result of
         ok ->
             ok;
         {error, enoent} ->
-            case read_table_old(Path, TableName) of
-                ok ->
-                    ?log_info("Found old stats archive for ~p at ~p. Converting.",
-                              [TableName, Path]),
-                    %% write table in new format immediately
-                    write_table(Path, TableName),
-                    file:delete(Path),
-                    ok;
-                {error, enoent} ->
-                    ok;
-                Error ->
-                    Error
-            end;
-        Error ->
-            Error
-    end.
-
-read_table_new(Path, Table) ->
-    GzPath = Path ++ ".gz",
-    misc:with_file(GzPath, [raw, binary, read],
-                   fun (File) ->
-                           pipes:run(pipes:read_file(File),
-                                     pipes:gunzip(),
-                                     pipes:unmarshal_table(Table)),
-                           ok
-                   end).
-
-%% deals with pre-5.0 stats archive files
-read_table_old(Path, Table) ->
-    case file:read_file(Path) of
-        {ok, <<>>} ->
             ok;
-        {ok, B} ->
-            try zlib:uncompress(B) of
-                B2 ->
-                    ets:insert(Table, binary_to_term(B2)),
-                    ok
-            catch error:data_error ->
-                    {error, data_error}
-            end;
         Error ->
             Error
     end.
 
 write_table(Path, TableName) ->
-    GzPath = Path ++ ".gz",
     ok = misc:atomic_write_file(
-           GzPath,
+           Path,
            fun (File) ->
                    pipes:run(pipes:marshal_table(TableName),
                              %% prefer speed over disk space
