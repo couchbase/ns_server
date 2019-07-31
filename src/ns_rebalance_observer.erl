@@ -942,12 +942,13 @@ construct_vbucket_info_json(Id, #vbucket_info{before_chain = BC,
                                               backfill = Backfill,
                                               takeover = Takeover,
                                               persistence = Persistence}) ->
-    StatsJson = case RBS of
+    RInfoJson = case RBS of
                     [] ->
                         [];
                     _ ->
-                        [{stats, {[construct_replica_building_stats_json(X)
-                                   || X <- RBS]}}]
+                        [{replicationInfo,
+                          {[construct_replica_building_stats_json(X)
+                            || X <- RBS]}}]
                 end,
     {[{id, Id},
       {beforeChain, BC},
@@ -955,7 +956,7 @@ construct_vbucket_info_json(Id, #vbucket_info{before_chain = BC,
       {move, construct_stat_info_json(Move)},
       {backfill, construct_stat_info_json(Backfill)},
       {takeover, construct_stat_info_json(Takeover)},
-      {persistence, construct_stat_info_json(Persistence)}] ++ StatsJson}.
+      {persistence, construct_stat_info_json(Persistence)}] ++ RInfoJson}.
 
 construct_vbucket_level_info_json(VBLevelInfo, Options) ->
     case dict:is_empty(VBLevelInfo#vbucket_level_info.vbucket_info) of
