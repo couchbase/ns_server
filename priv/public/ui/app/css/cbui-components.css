@@ -1745,6 +1745,15 @@ input[type="checkbox"].fake-select + label:before {
     border-left-color: #f9e9ea; /* red-7 */
   }
 }
+.dynamic_healthy.eject-node {
+  border-left: 8px solid #f7a623;
+  animation: pulse_warning 3s infinite;
+}
+@keyframes pulse_warning {
+  50% {
+    border-left-color: #fdedd3; /* orange-6 */
+  }
+}
 
 /* selecting user roles ------------------------------------------------  */
 .select-user-roles {
