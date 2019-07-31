@@ -74,25 +74,41 @@
   <footer
      class="footer-indexes"
      ng-if="gsiCtl.state.indexes.length && rbac.bucketNames['.stats!read'].length"
-     ng-controller="mnGsiStatsController as gsiStatsCtl">
-    <div class="column vertical-divider">
-      <span class="width-6">Index Service RAM Quota</span>
-      <span class="text-right width-6">{{gsiStatsCtl.stats.index_memory_quota/1024/1024 | number:1}} MB</span><br>
-      <span class="width-6">RAM Used/Remaining</span>
-      <span class="text-right width-6">{{gsiStatsCtl.stats.index_memory_used/1024/1024 | number:1}}/{{gsiStatsCtl.stats.index_remaining_ram/1024/1024 | number:1}} MB</span><br>
-      <span class="width-6">Index Service RAM Percent</span>
-      <span class="text-right width-6">{{gsiStatsCtl.stats.index_ram_percent | number:1}}%</span><br>
-      <span class="width-6">Indexes Fragmentation</span>
-      <span class="text-right width-6">{{gsiStatsCtl.stats['index/fragmentation'] | number:1}}%</span>
-    </div>
+     ng-controller="mnFooterStatsController as footerStatsCtl">
     <div class="column">
-      <span class="width-6">Total Scan Rate (per sec)</span>
-      <span class="text-right width-6">{{gsiStatsCtl.stats['index/num_rows_returned'] | number:0}}</span><br>
-      <span class="width-6">Indexes Data Size</span>
-      <span class="text-right width-6">{{gsiStatsCtl.stats['index/data_size']/1024/1024 | number:1}} MB</span><br>
-      <span class="width-6">Indexes Disk Size</span>
-      <span class="text-right width-6">{{gsiStatsCtl.stats['index/disk_size']/1024/1024 | number:1}} MB</span><br>
+      <div class="row">
+        <h5>Per-Bucket Stats</h5>
+        <ui-select class="cbui-select cbui-select-small" ng-model="footerStatsCtl.currentBucket"
+                   theme="selectize" ng-disabled="!rbac.bucketNames['.stats!read'].length"
+                   on-select="footerStatsCtl.onSelectBucket($item)">
+          <ui-select-match class="ui-select-match">{{$select.selected}} </ui-select-match>
+          <ui-select-choices
+             class="ui-select-choices"
+             repeat="name in rbac.bucketNames['.stats!read'] | filter: $select.search">
+            <span class="select-item ellipsis" ng-bind-html="name | highlight: $select.search"></span>
+          </ui-select-choices>
+        </ui-select>
+      </div>
+      <div class="row">
+        <div class="column vertical-divider">
+          <span class="width-6">Index Service RAM Quota</span>
+          <span class="text-right width-6">{{footerStatsCtl.stats['index_memory_quota'].slice(-1)[0]/1024/1024 | number:1}} MB</span><br>
+          <span class="width-6">RAM Used/Remaining</span>
+          <span class="text-right width-6">{{footerStatsCtl.stats['index_memory_used'].slice(-1)[0]/1024/1024 | number:1}}/{{footerStatsCtl.stats['index_remaining_ram'].slice(-1)[0]/1024/1024 | number:1}} MB</span><br>
+          <span class="width-6">Index Service RAM Percent</span>
+          <span class="text-right width-6">{{footerStatsCtl.stats['index_ram_percent'].slice(-1)[0] | number:1}}%</span><br>
+          <span class="width-6">Indexes Fragmentation</span>
+          <span class="text-right width-6">{{footerStatsCtl.stats['index/fragmentation'].slice(-1)[0] | number:1}}%</span>
+        </div>
+        <div class="column">
+          <span class="width-6">Total Scan Rate (per sec)</span>
+          <span class="text-right width-6">{{footerStatsCtl.stats['index/num_rows_returned'].slice(-1)[0] | number:0}}</span><br>
+          <span class="width-6">Indexes Data Size</span>
+          <span class="text-right width-6">{{footerStatsCtl.stats['index/data_size'].slice(-1)[0]/1024/1024 | number:1}} MB</span><br>
+          <span class="width-6">Indexes Disk Size</span>
+          <span class="text-right width-6">{{footerStatsCtl.stats['index/disk_size'].slice(-1)[0]/1024/1024 | number:1}} MB</span><br>
+        </div>
+      </div>
     </div>
   </footer>
-
 </div>

@@ -18,7 +18,7 @@
     'mnStatisticsNewService',
     'mnDetailStats'
   ]).controller('mnGsiController', mnGsiController)
-    .controller('mnGsiStatsController', mnGsiStatsController);
+    .controller('mnFooterStatsController', mnFooterStatsController);
 
   function mnGsiController($scope, mnGsiService, mnPoller) {
     var vm = this;
@@ -35,9 +35,10 @@
     }
   }
 
-  function mnGsiStatsController($scope, mnStatisticsNewService, mnPoller, mnPermissions) {
+  function mnFooterStatsController($scope, mnStatisticsNewService, mnPoller, mnPermissions) {
     var vm = this;
-    vm.currentBucket = mnPermissions.export.bucketNames['.stats!read'][0];
+    vm.currentBucket = mnPermissions.export.bucketNames['.stats!read'] &&
+      mnPermissions.export.bucketNames['.stats!read'][0];
     vm.onSelectBucket = onSelectBucket;
 
     activate();
@@ -51,7 +52,9 @@
         }, previousResult);
       })
         .setInterval(5000)
-        .subscribe(getAverageUIStats)
+        .subscribe(function (rv) {
+          vm.stats = rv.data.samples;
+        }, vm)
         .reloadOnScopeEvent("reloadUIStatPoller")
         .cycle();
     }
@@ -60,19 +63,5 @@
       $scope.$broadcast("reloadUIStatPoller");
     }
 
-    function getAverageUIStats(resp) {
-      var rv = {};
-      (["index_memory_quota","index_memory_used","index_remaining_ram","index_ram_percent",
-        "index/fragmentation","index/data_size","index/disk_size","index/num_rows_returned"])
-        .forEach(function (statName) {
-        var stats = resp.data.samples[statName];
-        if (stats) {
-          rv[statName] = stats.reduce(function (sum, stat) {
-            return sum + stat;
-          }, 0) / stats.length;
-        }
-      });
-      vm.stats = rv;
-    }
   }
 })();
