@@ -21,6 +21,7 @@
 
 -module(stats_archiver).
 
+-include("cut.hrl").
 -include("ns_common.hrl").
 -include("ns_stats.hrl").
 
@@ -35,6 +36,8 @@
          avg/2,
          latest_sample/2,
          wipe/0]).
+
+-export([fake_historic_stats/0]).
 
 -export([code_change/3, init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2]).
@@ -134,6 +137,19 @@ wipe() ->
     end,
     R.
 
+%% Populate historic stats with the data from the latest sample. That way we
+%% can see how much memory all stats consume together when a node runs long
+%% enough to populate all archives.
+fake_historic_stats() ->
+    Archivers = [Name || Name <- registered(),
+                         lists:prefix(?MODULE_STRING ++ "-",
+                                      atom_to_list(Name))],
+    misc:parallel_map(
+      fun (Archiver) ->
+              ?MODULE_STRING ++ "-" ++ Bucket = atom_to_list(Archiver),
+              {Bucket, gen_server:call(Archiver, fake_historic_stats, infinity)}
+      end, Archivers, infinity).
+
 %%
 %% gen_server callbacks
 %%
@@ -166,6 +182,8 @@ init(Bucket) ->
     {ok, #state{bucket=Bucket}}.
 
 
+handle_call(fake_historic_stats, _From, State) ->
+    handle_fake_historic_stats(State);
 handle_call(Request, _From, State) ->
     {reply, {unhandled, Request}, State}.
 
@@ -365,3 +383,48 @@ stats_event_handler(Event, {Parent, Bucket} = State) ->
             ok
     end,
     State.
+
+handle_fake_historic_stats(#state{bucket = Bucket} = State) ->
+    Reply =
+        case latest_sample(Bucket, minute) of
+            {ok, Sample} ->
+                lists:foreach(fake_one_archive(Bucket, Sample, _), archives()),
+                backup_loggers(Bucket),
+                erlang:garbage_collect(),
+                ok;
+            Error ->
+                Error
+        end,
+    {reply, Reply, State}.
+
+fake_one_archive(Bucket, Sample, {Period, Interval, NumSamples}) ->
+    Table = table(Bucket, Period),
+    ets:delete_all_objects(Table),
+
+    %% Timestamp is in milliseconds.
+    TS = Sample#stat_entry.timestamp,
+    Values = Sample#stat_entry.values,
+
+    lists:foreach(
+      fun (I) ->
+              FakeTS = TS - I * Interval * 1000,
+              FakeValues =
+                  lists:map(
+                    fun ({Key, Value}) ->
+                            case is_binary(Key) of
+                                true ->
+                                    %% If the key is a reference counted
+                                    %% binary, we need to copy it. Otherwise
+                                    %% all copies of such key are going to
+                                    %% point to the same memory block and we
+                                    %% won't get a true account of how much
+                                    %% memory will be used in the worst case.
+                                    {binary:copy(Key), Value};
+                                false ->
+                                    {Key, Value}
+                            end
+                    end, Values),
+              FakeSample = #stat_entry{timestamp = FakeTS,
+                                       values = FakeValues},
+              true = ets:insert_new(Table, {FakeTS, FakeSample})
+      end, lists:seq(0, NumSamples - 1)).

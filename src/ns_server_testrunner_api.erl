@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2013-2018 Couchbase, Inc.
+%% @copyright 2013-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -93,3 +93,14 @@ shutdown_nicely() ->
 
 master_node() ->
     mb_master:master_node().
+
+fake_historic_stats() ->
+    Results = stats_archiver:fake_historic_stats(),
+    {json, [{struct, [{stats_bucket, list_to_binary(Bucket)},
+                      {status, case Status of
+                                   ok ->
+                                       ok;
+                                   {error, Error} when is_atom(Error) ->
+                                       Error
+                               end}]} ||
+               {Bucket, Status} <- Results]}.
