@@ -133,7 +133,9 @@
                  class="label lt-blue"
                  ng-if="row.filterExpression"
                  ng-click="$event.stopPropagation()"
-                 uib-tooltip="{{row.filterExpression}}">
+                 uib-tooltip="{{row.filterExpression}}"
+                 tooltip-placement="auto top"
+                 tooltip-append-to-body="true">
                 filter
               </span>
             </span>
