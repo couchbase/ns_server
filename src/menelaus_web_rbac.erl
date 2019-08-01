@@ -362,16 +362,34 @@ handle_get_user(Domain, UserId, Req) ->
         unknown ->
             menelaus_util:reply_json(Req, <<"Unknown user domain.">>, 404);
         DomainAtom ->
-            Identity = {UserId, DomainAtom},
-            case menelaus_users:user_exists(Identity) of
-                false ->
-                    menelaus_util:reply_json(Req, <<"Unknown user.">>, 404);
-                true ->
-                    perform_if_allowed(
-                      menelaus_util:reply_json(_, get_user_json(Identity)),
-                      Req, ?SECURITY_READ, menelaus_users:get_roles(Identity))
-            end
+            Query = mochiweb_request:parse_qs(Req),
+            validator:handle(
+                fun (Props) ->
+                        OnlyExisting =
+                            proplists:get_value(only_existing, Props, true),
+                        handle_get_user(DomainAtom, UserId, OnlyExisting, Req)
+                end, Req, Query, get_user_validators(DomainAtom))
     end.
+
+handle_get_user(DomainAtom, UserId, OnlyExisting, Req) ->
+    Identity = {UserId, DomainAtom},
+    ExistingCheck =
+        case OnlyExisting of
+            true -> menelaus_users:user_exists(Identity);
+            false -> true
+        end,
+    case ExistingCheck of
+        true ->
+            perform_if_allowed(
+              menelaus_util:reply_json(_, get_user_json(Identity)),
+              Req, ?SECURITY_READ, menelaus_users:get_roles(Identity));
+        false ->
+            menelaus_util:reply_json(Req, <<"Unknown user.">>, 404)
+    end.
+
+get_user_validators(DomainAtom) ->
+    [validator:boolean(only_existing, _) || DomainAtom =:= external] ++
+    [validator:unsupported(_)].
 
 filter_by_roles(all) ->
     pipes:filter(fun (_) -> true end);
