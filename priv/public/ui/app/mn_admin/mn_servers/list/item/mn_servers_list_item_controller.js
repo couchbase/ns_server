@@ -120,7 +120,7 @@
         if (mnPoolDefault.export.isEnterprise) {
           warnings.isLastCBAS = mnMemoryQuotaService.isOnlyOneNodeWithService(nodes.allNodes, node.services, 'cbas', true);
         }
-        return mnPoolDefault.export.compat.atLeast40 && mnPermissions.export.cluster.bucket['.'].n1ql.index.read ? mnGsiService.getIndexesState().then(function (indexStatus) {
+        return mnPermissions.export.cluster.bucket['.'].n1ql.index.read ? mnGsiService.getIndexesState().then(function (indexStatus) {
           warnings.isThereIndex = !!_.find(indexStatus.indexes, function (index) {
             return _.indexOf(index.hosts, node.hostname) > -1;
           });

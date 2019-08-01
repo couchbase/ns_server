@@ -31,9 +31,7 @@
         totalMemorySize: Math.floor(ram.total/IEC.Mi),
         memoryQuota: Math.floor(ram.quotaTotalPerNode/IEC.Mi)
       };
-      if (currentPool.compat.atLeast40) {
-        rv.indexMemoryQuota = currentPool.indexMemoryQuota || 256;
-      }
+      rv.indexMemoryQuota = currentPool.indexMemoryQuota || 256;
       if (currentPool.compat.atLeast45) {
         rv.ftsMemoryQuota = currentPool.ftsMemoryQuota || 256;
       }

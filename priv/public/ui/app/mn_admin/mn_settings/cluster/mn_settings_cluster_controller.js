@@ -31,16 +31,14 @@
         .catchErrorsFromSuccess("memoryQuotaErrors");
     }, 500), true);
 
-    if (mnPoolDefault.export.compat.atLeast40) {
-      $scope.$watch('settingsClusterCtl.indexSettings', _.debounce(function (indexSettings, prevIndexSettings) {
-        if (!indexSettings || !$scope.rbac.cluster.settings.indexes.write || !(prevIndexSettings && !_.isEqual(indexSettings, prevIndexSettings))) {
-          return;
-        }
-        var promise = mnSettingsClusterService.postIndexSettings(vm.indexSettings, true);
-        mnPromiseHelper(vm, promise)
-          .catchErrorsFromSuccess("indexSettingsErrors");
-      }, 500), true);
-    }
+    $scope.$watch('settingsClusterCtl.indexSettings', _.debounce(function (indexSettings, prevIndexSettings) {
+      if (!indexSettings || !$scope.rbac.cluster.settings.indexes.write || !(prevIndexSettings && !_.isEqual(indexSettings, prevIndexSettings))) {
+        return;
+      }
+      var promise = mnSettingsClusterService.postIndexSettings(vm.indexSettings, true);
+      mnPromiseHelper(vm, promise)
+        .catchErrorsFromSuccess("indexSettingsErrors");
+    }, 500), true);
 
     function saveSettings() {
       var queries = [];
@@ -67,7 +65,7 @@
 
       queries.push(promise6);
 
-      if (!_.isEqual(vm.indexSettings, vm.initialIndexSettings) && mnPoolDefault.export.compat.atLeast40 && $scope.rbac.cluster.settings.indexes.write) {
+      if (!_.isEqual(vm.indexSettings, vm.initialIndexSettings) && $scope.rbac.cluster.settings.indexes.write) {
         promise2 = mnPromiseHelper(vm, mnSettingsClusterService.postIndexSettings(vm.indexSettings))
             .catchErrors("indexSettingsErrors")
             .applyToScope("initialIndexSettings")
@@ -155,9 +153,9 @@
 
       var services = {
         kv: true,
-        index: mnPoolDefault.export.compat.atLeast40,
+        index: true,
         fts: mnPoolDefault.export.compat.atLeast45,
-        n1ql: mnPoolDefault.export.compat.atLeast40
+        n1ql: true
       };
 
       if (mnPoolDefault.export.isEnterprise) {
@@ -189,7 +187,7 @@
           vm.memoryQuotaConfig = resp;
         });
 
-      if (mnPoolDefault.export.compat.atLeast40 && $scope.rbac.cluster.settings.indexes.read) {
+      if ($scope.rbac.cluster.settings.indexes.read) {
         mnPromiseHelper(vm, mnSettingsClusterService.getIndexSettings())
           .applyToScope(function (indexSettings) {
             vm.indexSettings = indexSettings;

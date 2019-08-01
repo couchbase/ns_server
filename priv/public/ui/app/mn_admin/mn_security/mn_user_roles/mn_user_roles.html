@@ -3,10 +3,19 @@
    min-height="300px"
    class="margin-top-neg-half margin-left-neg-1">
   <div class="row resp-sml margin-bottom-half">
-    <div
-       ng-if="adminCtl.poolDefault.isEnterprise && userRolesCtl.isLdapEnabled"
-       mn-saslauthd-auth="">
+    <div class="users-auth-check">
+      <span
+         class="icon margin-right"
+         ng-class="userRolesCtl.saslauthdAuth.enabled ? 'fa-check success' : 'fa-ban grayblack-3'">
+      </span>
+      <p
+         uib-tooltip-html="'Use the CLI to change the state of saslauthd authentication.'"
+         tooltip-placement="auto right">
+        saslauthd authentication is <span ng-show="userRolesCtl.saslauthdAuth">
+          <span ng-show="!userRolesCtl.saslauthdAuth.enabled">not</span> enabled</span>
+      </p>
     </div>
+
     <div class="users-auth-check">
       <span
          class="icon margin-right"

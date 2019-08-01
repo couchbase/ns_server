@@ -158,16 +158,6 @@
           enterprise: true
         }
       })
-      .state('app.admin.security.ldap', {
-        url: '/ldap',
-        controller: 'mnLdapController as ldapCtl',
-        templateUrl: 'app/mn_admin/mn_security/mn_ldap/mn_ldap.html',
-        data: {
-          ldap: true,
-          compat: "atLeast40 && !atLeast45",
-          enterprise: true
-        }
-      })
       .state('app.admin.security.clientCert', {
         url: '/clientCert',
         controller: 'mnClientCertController as clientCertCtl',
@@ -182,8 +172,7 @@
         controller: 'mnAuditController as auditCtl',
         templateUrl: 'app/mn_admin/mn_security/mn_audit/mn_audit.html',
         data: {
-          enterprise: true,
-          compat: "atLeast40"
+          enterprise: true
         }
       })
       .state('app.admin.security.redaction', {

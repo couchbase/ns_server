@@ -34,13 +34,23 @@
       getUserProfile: getUserProfile,
       putUserProfile: putUserProfile,
 
-      reviewSelectedWrappers: reviewSelectedWrappers
+      reviewSelectedWrappers: reviewSelectedWrappers,
+      getSaslauthdAuth: getSaslauthdAuth
     };
 
     var queryDnError = "LDAP DN should be supplied";
     var usersAttrsError = "The field can't be empty";
 
     return mnUserRolesService;
+
+    function getSaslauthdAuth() {
+      return $http({
+        method: "GET",
+        url: "/settings/saslauthdAuth"
+      }).then(function (resp) {
+        return resp.data;
+      });
+    }
 
     function clearLdapCache() {
       return $http({

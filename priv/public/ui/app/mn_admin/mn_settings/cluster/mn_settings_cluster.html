@@ -1,5 +1,5 @@
 <div
-   mn-spinner="settingsClusterCtl.clusterName === undefined || !settingsClusterCtl.memoryQuotaConfig || (rbac.cluster.settings.indexes.read && poolDefault.compat.atLeast40 && !settingsClusterCtl.indexSettings) || (poolDefault.value.isEnterprise && !settingsClusterCtl.certificate)">
+   mn-spinner="settingsClusterCtl.clusterName === undefined || !settingsClusterCtl.memoryQuotaConfig || (rbac.cluster.settings.indexes.read && !settingsClusterCtl.indexSettings) || (poolDefault.value.isEnterprise && !settingsClusterCtl.certificate)">
   <form
      ng-submit="settingsClusterCtl.saveVisualInternalSettings()"
      class="forms">
@@ -47,7 +47,7 @@
         <div ng-if="rbac.cluster.settings.read" ui-view="autofailover"></div>
 
         <label
-           ng-show="poolDefault.compat.atLeast40 && rbac.cluster.settings.indexes.read"
+           ng-show="rbac.cluster.settings.indexes.read"
            class="margin-top-half">
           Rebalance Settings
         </label>
@@ -106,11 +106,11 @@
         </div>
 
         <label
-           ng-show="poolDefault.compat.atLeast40 && rbac.cluster.settings.indexes.read"
+           ng-show="rbac.cluster.settings.indexes.read"
            class="margin-top-half">
           Index Storage Mode
         </label>
-        <div ng-show="poolDefault.compat.atLeast40 && rbac.cluster.settings.indexes.read">
+        <div ng-show="rbac.cluster.settings.indexes.read">
           <div class="formrow">
             <mn-storage-mode
                mn-is-enterprise="adminCtl.poolDefault.isEnterprise"

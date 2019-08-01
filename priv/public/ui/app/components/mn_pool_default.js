@@ -76,7 +76,6 @@
           return n.thisNode;
         });
         poolDefault.compat = {
-          atLeast40: poolDefault.thisNode.clusterCompatibility >= version40,
           atLeast45: poolDefault.thisNode.clusterCompatibility >= version45,
           atLeast46: poolDefault.thisNode.clusterCompatibility >= version46,
           atLeast50: poolDefault.thisNode.clusterCompatibility >= version50,

@@ -4,7 +4,6 @@
   angular
     .module('mnSettings', [
       'mnSettingsNotifications',
-      'mnLdap',
       'mnSettingsSampleBuckets',
       'mnSettingsCluster',
       'mnSettingsAutoFailover',

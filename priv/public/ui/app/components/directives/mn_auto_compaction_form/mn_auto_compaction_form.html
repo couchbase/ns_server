@@ -123,7 +123,7 @@
     </div>
   </div>
 
-  <div ng-if="!isBucketsSettings && poolDefault.compat.atLeast40 && indexSettings && indexSettings.storageMode !== 'memory_optimized' && poolDefault.isEnterprise === false">
+  <div ng-if="!isBucketsSettings && indexSettings && indexSettings.storageMode !== 'memory_optimized' && poolDefault.isEnterprise === false">
     <h4>Index Fragmentation</h4>
     <div class="formrow form-inline checkbox-list">
       <input

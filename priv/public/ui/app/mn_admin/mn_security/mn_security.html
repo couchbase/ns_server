@@ -29,7 +29,7 @@
        ui-sref-active="selected"
        class="resp-hide-sml">Client Certificate</a>
     <a
-       ng-show="rbac.cluster.admin.security.read && poolDefault.compat.atLeast40 && pools.isEnterprise"
+       ng-show="rbac.cluster.admin.security.read && pools.isEnterprise"
        ui-sref="app.admin.security.audit"
        ui-sref-active="selected">Audit</a>
     <a
@@ -37,11 +37,6 @@
       ui-sref="app.admin.security.redaction"
       ui-sref-active="selected"
       class="resp-hide-sml">Log Redaction</a>
-    <a
-       ng-show="pools.isEnterprise && securityCtl.poolDefault.saslauthdEnabled && poolDefault.compat.atLeast40 && !poolDefault.compat.atLeast45 && rbac.cluster.admin.security.read"
-       ui-sref="app.admin.security.ldap"
-       ui-sref-active="selected"
-       class="resp-hide-sml">LDAP Auth Setup</a>
     <a
        ui-sref="app.admin.security.session"
        ui-sref-active="selected"
@@ -73,10 +68,6 @@
            ng-show="pools.isEnterprise && poolDefault.compat.atLeast55 && rbac.cluster.admin.security.read"
            ui-sref="app.admin.security.redaction"
            ui-sref-active="selected">Log Redaction</a>
-        <a
-           ng-show="pools.isEnterprise && securityCtl.poolDefault.saslauthdEnabled && poolDefault.compat.atLeast40 && !poolDefault.compat.atLeast45 && rbac.cluster.admin.security.read"
-           ui-sref="app.admin.security.ldap"
-           ui-sref-active="selected">LDAP Auth Setup</a>
         <a
            ui-sref="app.admin.security.session"
            ui-sref-active="selected"

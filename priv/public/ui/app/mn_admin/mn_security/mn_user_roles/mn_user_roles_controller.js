@@ -11,16 +11,14 @@
       "mnSortableTable",
       "mnSpinner",
       "ui.select",
-      "mnLdapService",
       "mnEqual",
       "mnFilters",
       "mnAutocompleteOff",
-      "mnFocus",
-      "mnSaslauthdAuth"
+      "mnFocus"
     ])
     .controller("mnUserRolesController", mnUserRolesController);
 
-  function mnUserRolesController($scope, $uibModal, mnLdapService, mnPromiseHelper, mnUserRolesService, mnPoller, mnHelper, $state, poolDefault) {
+  function mnUserRolesController($scope, $uibModal, mnPromiseHelper, mnUserRolesService, mnPoller, mnHelper, $state, poolDefault) {
     var vm = this;
 
     vm.deleteUser = deleteUser;
@@ -82,6 +80,9 @@
       }, 500, {leading: true}), true);
 
       mnHelper.initializeDetailsHashObserver(vm, 'openedUsers', '.');
+
+      mnPromiseHelper(vm, mnUserRolesService.getSaslauthdAuth())
+        .applyToScope("saslauthdAuth");
 
       mnPromiseHelper(vm, mnUserRolesService.getRoles())
         .applyToScope(function (roles) {
