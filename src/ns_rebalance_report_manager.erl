@@ -28,7 +28,8 @@
 
 %% APIs.
 -export([start_link/0,
-         get_rebalance_report/0,
+         get_rebalance_report/1,
+         get_last_report_uuid/0,
          record_rebalance_report/2]).
 
 %% gen_server2 callbacks.
@@ -43,14 +44,31 @@
 start_link() ->
     gen_server2:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-get_rebalance_report() ->
+get_last_report_uuid() ->
+    case ns_config:read_key_fast(rebalance_reports, []) of
+        [] -> undefined;
+        [{UUID, _} | _] -> UUID
+    end.
+
+get_rebalance_report(ReportID) ->
     case ns_config:read_key_fast(rebalance_reports, []) of
         [] ->
             {error, enoent};
-        [ReqdReport | _] ->
-            gen_server2:call(?MODULE,
-                             {get_rebalance_report, ReqdReport, []},
-                             ?FETCH_TIMEOUT)
+        [LastReport | _] = Reports ->
+            case ReportID of
+                undefined ->
+                    gen_server2:call(?MODULE,
+                                     {get_rebalance_report, LastReport, []},
+                                     ?FETCH_TIMEOUT);
+                _ ->
+                    case lists:keyfind(list_to_binary(ReportID), 1, Reports) of
+                        false -> {error, enoent};
+                        Report ->
+                            gen_server2:call(?MODULE,
+                                             {get_rebalance_report, Report, []},
+                                             ?FETCH_TIMEOUT)
+                    end
+            end
     end.
 
 record_rebalance_report(Report, KeepNodes) ->
@@ -112,9 +130,8 @@ handle_call({record_compressed_rebalance_report, R}, From, State) ->
 handle_call({record_rebalance_report, Report}, _From,
             #state{report_dir = Dir} = State) ->
     FileName = "rebalance_report_" ++ misc:timestamp_utc_iso8601() ++ ".json",
-    NewReportLocation = {node(), FileName},
-    AllReports = [NewReportLocation |
-                  ns_config:read_key_fast(rebalance_reports, [])],
+    NewReport = {couch_uuids:random(), [{node, node()}, {filename, FileName}]},
+    AllReports = [NewReport | ns_config:read_key_fast(rebalance_reports, [])],
     Keep = lists:sublist(AllReports, get_num_rebalance_reports()),
     Path = filename:join(Dir, FileName),
     ok = misc:atomic_write_file(Path, Report),
@@ -153,13 +170,17 @@ refresh(Dir) ->
     gen_server2:abort_queue(fetch_task),
     ReqdReports = ns_config:read_key_fast(rebalance_reports, []),
     {ok, ListFiles} = file:list_dir(Dir),
-    Keep = [FileName || {_Node, FileName} <- ReqdReports],
+    Keep = [proplists:get_value(filename, Info) || {_, Info} <- ReqdReports],
 
     Delete = ListFiles -- Keep,
     [file:delete(filename:join(Dir, File)) || File <- Delete],
 
     Missing = Keep -- ListFiles,
-    MissingReports = [lists:keyfind(FN, 2, ReqdReports) || FN <- Missing],
+    MissingReports = lists:filter(
+                       fun ({_, Info}) ->
+                          FN = proplists:get_value(filename, Info),
+                          lists:member(FN, Missing)
+                       end, ReqdReports),
     case MissingReports of
         [] ->
             ok;
@@ -183,16 +204,19 @@ get_num_rebalance_reports() ->
 
 fetch_task(MissingReports, Dir) ->
     ClusterNodes = ns_node_disco:nodes_wanted(),
-    [begin
-         case does_file_exist(Dir, FN) of
-             true ->
-                 ok;
-             false ->
-                 fetch_rebalance_report_remote({Node, FN}, Dir)
-         end
-     end || {Node, FN} <- MissingReports,
-            Node =/= node(),
-            lists:member(Node, ClusterNodes)].
+    lists:foreach(
+      fun ({_, Info} = Report) ->
+              FN = proplists:get_value(filename, Info),
+              Node = proplists:get_value(node, Info),
+              case Node =/= node() andalso
+                   lists:member(Node, ClusterNodes) andalso
+                   not does_file_exist(Dir, FN) of
+                  true ->
+                      fetch_rebalance_report_remote(Report, Dir);
+                  false ->
+                      ok
+              end
+      end, MissingReports).
 
 does_file_exist(Dir, FileName) ->
     Path = filename:join(Dir, FileName),
@@ -220,8 +244,10 @@ maybe_write_report(Report, Path) ->
             ok = misc:atomic_write_file(Path, Report)
     end.
 
-fetch_rebalance_report({Node, _} = ReqdReport, Options, Dir) ->
-    RV = case fetch_rebalance_report_local(ReqdReport, Dir) of
+fetch_rebalance_report({_, Info} = ReqdReport, Options, Dir) ->
+    FN = proplists:get_value(filename, Info),
+    Node = proplists:get_value(node, Info),
+    RV = case fetch_rebalance_report_local(FN, Dir) of
              {ok, Report} ->
                  {ok, Report};
              _ when node() =/= Node ->
@@ -231,7 +257,7 @@ fetch_rebalance_report({Node, _} = ReqdReport, Options, Dir) ->
          end,
     maybe_compress(RV, Options).
 
-fetch_rebalance_report_local({_Node, FileName}, Dir) ->
+fetch_rebalance_report_local(FileName, Dir) ->
     try
         Path = filename:join(Dir, FileName),
         misc:raw_read_file(Path)
@@ -249,13 +275,15 @@ fetch_rebalance_report_remote(ReqdReport, Dir) ->
         false -> {error, enoent}
     end.
 
-fetch_rebalance_report_remote_inner({Node, FileName} = ReqdReport, Dir) ->
+fetch_rebalance_report_remote_inner({_, Info} = ReqdReport, Dir) ->
+    Node = proplists:get_value(node, Info),
+    FN = proplists:get_value(filename, Info),
     case gen_server2:call({?MODULE, Node},
                           {get_rebalance_report, ReqdReport, [{compress, true}]},
                           ?FETCH_TIMEOUT) of
         {ok, R} ->
             Report = zlib:uncompress(R),
-            Path = filename:join(Dir, FileName),
+            Path = filename:join(Dir, FN),
             maybe_write_report(Report, Path),
             {ok, Report};
         Err -> Err

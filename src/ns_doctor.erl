@@ -823,6 +823,15 @@ do_build_rebalance_task(Timeout) ->
                             || {Node, Progress} <- PerNode]}},
                  {detailedProgress, DetailedProgress}] ++ RebalanceInfo;
             FullProgress ->
+                ReportURI =
+                    case ns_rebalance_report_manager:get_last_report_uuid() of
+                        undefined ->
+                            [];
+                        UUID ->
+                            URI = list_to_binary(
+                                    "/logs/rebalanceReport?reportID="),
+                            [{lastReportURI, <<URI/binary, UUID/binary>>}]
+                    end,
                 [{type, rebalance},
                  {status, notRunning},
                  {statusIsStale, FullProgress =/= not_running},
@@ -831,7 +840,7 @@ do_build_rebalance_task(Timeout) ->
                        {value, {none, ErrorMessage}} ->
                            [{errorMessage, iolist_to_binary(ErrorMessage)}];
                        _ -> []
-                   end]
+                   end] ++ ReportURI
         end.
 
 build_orphan_buckets_tasks(Buckets, NodesDict) ->

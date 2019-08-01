@@ -26,7 +26,13 @@
 
 handle_rebalance_report(Req) ->
     menelaus_util:assert_is_madhatter(),
-    case ns_rebalance_report_manager:get_rebalance_report() of
+    validator:handle(do_handle_rebalance_report(Req, _), Req, qs,
+                     [validator:length(reportID, 32, 32, _),
+                      validator:unsupported(_)]).
+
+do_handle_rebalance_report(Req, Params) ->
+    ReportID = proplists:get_value(reportID, Params),
+    case ns_rebalance_report_manager:get_rebalance_report(ReportID) of
         {ok, BinaryReport} ->
             menelaus_util:reply_ok(Req, "application/json", BinaryReport);
         Err ->
