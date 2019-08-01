@@ -22,8 +22,7 @@
         hideNavSidebar: false
       }
     };
-    var version40 = encodeCompatVersion(4, 0);
-    var version45 = encodeCompatVersion(4, 5);
+
     var version46 = encodeCompatVersion(4, 6);
     var version50 = encodeCompatVersion(5, 0);
     var version51 = encodeCompatVersion(5, 1);
@@ -76,7 +75,6 @@
           return n.thisNode;
         });
         poolDefault.compat = {
-          atLeast45: poolDefault.thisNode.clusterCompatibility >= version45,
           atLeast46: poolDefault.thisNode.clusterCompatibility >= version46,
           atLeast50: poolDefault.thisNode.clusterCompatibility >= version50,
           atLeast51: poolDefault.thisNode.clusterCompatibility >= version51,

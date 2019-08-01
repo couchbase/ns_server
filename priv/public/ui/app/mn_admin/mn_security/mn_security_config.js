@@ -14,6 +14,7 @@
   function mnIndexesConfig($stateProvider) {
     $stateProvider
       .state('app.admin.security', {
+        abstract: true,
         url: "/security",
         views: {
           "main@app.admin": {
@@ -24,39 +25,6 @@
         data: {
           permissions: "cluster.admin.security.read",
           title: "Security"
-        },
-        redirectTo: function (trans) {
-          var mnPoolDefault = trans.injector().get("mnPoolDefault");
-          var isEnterprise = trans.injector().get("mnPools").export.isEnterprise;
-          var ldapEnabled = mnPoolDefault.export.saslauthdEnabled;
-          var atLeast50 = mnPoolDefault.export.compat.atLeast50;
-          var atLeast45 = mnPoolDefault.export.compat.atLeast45;
-
-          if (atLeast50) {
-            return {state: "app.admin.security.roles.user"};
-          } else {
-            if (isEnterprise && ldapEnabled && atLeast45) {
-              return {state: "app.admin.security.externalRoles"};
-            } else {
-              return {state: "app.admin.security.internalRoles"};
-            }
-          }
-        }
-      })
-      .state('app.admin.security.externalRoles', {
-        url: "/externalRoles?openedUsers",
-        controller: "mnUserRolesController as userRolesCtl",
-        templateUrl: "app/mn_admin/mn_security/mn_user_roles/mn_user_roles.html",
-        params: {
-          openedUsers: {
-            array: true,
-            dynamic: true
-          }
-        },
-        data: {
-          compat: "atLeast45 && !atLeast50",
-          ldap: true,
-          enterprise: true
         }
       })
       .state('app.admin.security.roles', {
@@ -131,15 +99,6 @@
         data: {
           compat: "atLeast50",
           enterprise: true
-        }
-      })
-      .state('app.admin.security.internalRoles', {
-        url: '/internalRoles',
-        controller: 'mnInternalRolesController as internalRolesCtl',
-        templateUrl: 'app/mn_admin/mn_security/mn_internal_roles/mn_internal_roles.html',
-        data: {
-          permissions: "cluster.admin.security.read",
-          compat: "!atLeast50",
         }
       })
       .state('app.admin.security.session', {

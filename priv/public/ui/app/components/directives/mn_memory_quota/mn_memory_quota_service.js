@@ -31,10 +31,10 @@
         totalMemorySize: Math.floor(ram.total/IEC.Mi),
         memoryQuota: Math.floor(ram.quotaTotalPerNode/IEC.Mi)
       };
+
       rv.indexMemoryQuota = currentPool.indexMemoryQuota || 256;
-      if (currentPool.compat.atLeast45) {
-        rv.ftsMemoryQuota = currentPool.ftsMemoryQuota || 256;
-      }
+      rv.ftsMemoryQuota = currentPool.ftsMemoryQuota || 256;
+
       if (currentPool.compat.atLeast55 && mnPoolDefault.export.isEnterprise) {
         rv.cbasMemoryQuota = currentPool.cbasMemoryQuota || 256;
         rv.eventingMemoryQuota = currentPool.eventingMemoryQuota || 256;

@@ -154,7 +154,7 @@
       var services = {
         kv: true,
         index: true,
-        fts: mnPoolDefault.export.compat.atLeast45,
+        fts: true,
         n1ql: true
       };
 

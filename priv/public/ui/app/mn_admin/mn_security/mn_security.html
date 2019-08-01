@@ -11,14 +11,6 @@
       Users <span ng-show="pools.isEnterprise">&amp; Groups</span>
     </a>
     <a
-       ng-show="!poolDefault.compat.atLeast50 && poolDefault.compat.atLeast45 && rbac.cluster.admin.security.read"
-       ui-sref="app.admin.security.externalRoles"
-       ui-sref-active="selected">External User/Roles</a>
-    <a
-       ng-show="rbac.cluster.admin.security.read && !poolDefault.compat.atLeast50"
-       ui-sref="app.admin.security.internalRoles"
-       ui-sref-active="selected">Internal User/Roles</a>
-    <a
        ng-show="pools.isEnterprise"
        ui-sref="app.admin.security.rootCertificate"
        ui-sref-active="selected"
@@ -48,14 +40,6 @@
         <span class="icon fa-ellipsis-v"></span>
       </a>
       <div uib-dropdown-menu class="dropdown-menu-select-like">
-        <a
-           ng-show="!poolDefault.compat.atLeast50 && poolDefault.compat.atLeast45 && rbac.cluster.admin.security.read"
-           ui-sref="app.admin.security.externalRoles"
-           ui-sref-active="selected">External User/Roles</a>
-        <a
-           ng-show="rbac.cluster.admin.security.read && !poolDefault.compat.atLeast50"
-           ui-sref="app.admin.security.internalRoles"
-           ui-sref-active="selected">Internal User/Roles</a>
         <a
            ng-show="pools.isEnterprise"
            ui-sref="app.admin.security.rootCertificate"
