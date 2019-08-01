@@ -1227,24 +1227,22 @@ do_flush_old_style(BucketName, BucketConfig) ->
             {old_style_flush_failed, Results, BadNodes}
     end.
 
-set_rebalance_status(_Type, Status, undefined) ->
-    do_set_rebalance_status(Status, undefined, undefined);
-set_rebalance_status(rebalance, Status, Pid) when is_pid(Pid) ->
-    do_set_rebalance_status(Status, Pid, undefined);
-set_rebalance_status(graceful_failover, Status, Pid) when is_pid(Pid) ->
-    do_set_rebalance_status(Status, Pid, Pid);
 set_rebalance_status(move_vbuckets, Status, Pid) ->
     set_rebalance_status(rebalance, Status, Pid);
 set_rebalance_status(service_upgrade, Status, Pid) ->
     set_rebalance_status(rebalance, Status, Pid);
-set_rebalance_status(failover, Status, Pid) ->
-    set_rebalance_status(rebalance, Status, Pid).
-
-do_set_rebalance_status(Status, RebalancerPid, GracefulPid) ->
+set_rebalance_status(Type, Status, Pid) ->
     ns_config:set([{rebalance_status, Status},
                    {rebalance_status_uuid, couch_uuids:random()},
-                   {rebalancer_pid, RebalancerPid},
-                   {graceful_failover_pid, GracefulPid}]).
+                   {rebalancer_pid, Pid},
+                   {rebalance_type, Type},
+                   set_graceful_failover_pid(Type, Pid)]).
+
+%% needed for compatibility with pre-MadHatter nodes
+set_graceful_failover_pid(graceful_failover, Pid) ->
+    {graceful_failover_pid, Pid};
+set_graceful_failover_pid(_, _) ->
+    {graceful_failover_pid, undefined}.
 
 cancel_stop_timer(State) ->
     do_cancel_stop_timer(State#rebalancing_state.stop_timer).

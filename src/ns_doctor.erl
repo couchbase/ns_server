@@ -785,6 +785,11 @@ build_rebalance_task(Timeout) ->
     Task = do_build_rebalance_task(Timeout),
     [Task].
 
+jsonify_rebalance_type(graceful_failover) ->
+    gracefulFailover;
+jsonify_rebalance_type(T) ->
+    T.
+
 do_build_rebalance_task(Timeout) ->
     case ns_config:search(rebalance_status_uuid) of
         false -> [];
@@ -800,15 +805,10 @@ do_build_rebalance_task(Timeout) ->
                         _ -> []
                     end,
 
-                Subtype = case ns_config:search(rebalancer_pid) =:= ns_config:search(graceful_failover_pid) of
-                              true ->
-                                  gracefulFailover;
-                              _ ->
-                                  rebalance
-                          end,
-
                 [{type, rebalance},
-                 {subtype, Subtype},
+                 {subtype,
+                  jsonify_rebalance_type(
+                    ns_config:read_key_fast(rebalance_type, rebalance))},
                  {recommendedRefreshPeriod, 0.25},
                  {status, running},
                  {progress, case lists:foldl(fun ({_, Progress}, {Total, Count}) ->
