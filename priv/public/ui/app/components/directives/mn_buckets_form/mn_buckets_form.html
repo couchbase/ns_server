@@ -231,7 +231,7 @@
       </div>
     </div>
 
-    <div ng-if="pools.isEnterprise && (bucketConf.bucketType === 'membase' || bucketConf.bucketType === 'ephemeral') && (bucketConf.isWizard || poolDefault.compat.atLeast46)">
+    <div ng-if="pools.isEnterprise && (bucketConf.bucketType === 'membase' || bucketConf.bucketType === 'ephemeral') && (bucketConf.isWizard)">
       <label class="inline">Conflict Resolution</label>
       <span
          class="fa-stack icon-info"
