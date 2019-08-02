@@ -238,10 +238,12 @@ build_logs(Params) ->
     build_log_structs(ns_log:recent(), MinTStamp, Limit).
 
 build_log_structs(LogEntriesIn, MinTStamp, Limit) ->
-    LogEntries = lists:filter(fun(#log_entry{tstamp = TStamp}) ->
-                                      misc:timestamp_to_time(TStamp, millisecond) > MinTStamp
-                              end,
-                              LogEntriesIn),
+    LogEntries =
+        lists:filter(
+          fun(#log_entry{tstamp = TStamp}) ->
+                  misc:timestamp_to_time(TStamp, millisecond) > MinTStamp
+          end,
+          LogEntriesIn),
     LogEntries2 = lists:reverse(lists:keysort(#log_entry.tstamp, LogEntries)),
     LogEntries3 = lists:sublist(LogEntries2, Limit),
     LogStructs =
@@ -257,16 +259,18 @@ build_log_structs(LogEntriesIn, MinTStamp, Limit) ->
                   case catch(io_lib:format(Msg, Args)) of
                       S when is_list(S) ->
                           CodeString = ns_log:code_string(Module, Code),
-                          [{struct, [{node, Node},
-                                     {type, category_bin(Cat)},
-                                     {code, Code},
-                                     {module, list_to_binary(atom_to_list(Module))},
-                                     {tstamp, misc:timestamp_to_time(TStamp, millisecond)},
-                                     {shortText, list_to_binary(CodeString)},
-                                     {text, list_to_binary(S)},
-                                     {serverTime, menelaus_util:format_server_time(
-                                                    ServerTime, MicroSecs)}
-                                    ]} | Acc];
+                          [{struct,
+                            [{node, Node},
+                             {type, category_bin(Cat)},
+                             {code, Code},
+                             {module, list_to_binary(atom_to_list(Module))},
+                             {tstamp, misc:timestamp_to_time(TStamp,
+                                                             millisecond)},
+                             {shortText, list_to_binary(CodeString)},
+                             {text, list_to_binary(S)},
+                             {serverTime, menelaus_util:format_server_time(
+                                            ServerTime, MicroSecs)}
+                            ]} | Acc];
                       _ -> Acc
                   end
           end,
