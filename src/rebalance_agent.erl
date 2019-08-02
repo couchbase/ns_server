@@ -353,12 +353,6 @@ process_multi_call_results(Nodes, Results) ->
     end.
 
 prepare_vbuckets(Bucket, VBuckets) ->
-    %% This is a temporary hack. It ensures that ep-engine goes through an
-    %% initial warmup steps. Otherwise the stats that we are using later on
-    %% are not reliable. This will get removed once we get ep-engine to give
-    %% us consistent stats.
-    wait_for_bucket_init(Bucket),
-
     case ns_memcached:list_vbuckets(Bucket) of
         {ok, States} ->
             case check_vbucket_states(VBuckets, States) of
@@ -370,29 +364,6 @@ prepare_vbuckets(Bucket, VBuckets) ->
             end;
         Error ->
             {error, {failed_to_get_vbucket_states, Bucket, Error}}
-    end.
-
-wait_for_bucket_init(Bucket) ->
-    ?log_debug("Waiting for the bucket ~p "
-               "to get initialized in ep-engine.", [Bucket]),
-    {ok, State} = wait_for_bucket_init_loop(Bucket),
-    ?log_debug("Bucket ~p is initialized. "
-               "Final state was \"~s\"", [Bucket, State]).
-
-wait_for_bucket_init_loop(Bucket) ->
-    {ok, WarmupStats} = ns_memcached:stats(Bucket, "warmup"),
-    {_, State} = lists:keyfind(<<"ep_warmup_state">>, 1, WarmupStats),
-    case lists:member(State, [<<"initialize">>,
-                              <<"creating vbuckets">>,
-                              <<"loading collection counts">>,
-                              <<"estimating database item count">>,
-                              <<"loading prepared SyncWrites">>,
-                              <<"populating vbucket map">>]) of
-        true ->
-            timer:sleep(10),
-            wait_for_bucket_init_loop(Bucket);
-        false ->
-            {ok, State}
     end.
 
 fixup_vbucket_states(Bucket, Fixup) ->
