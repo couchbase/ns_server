@@ -242,7 +242,7 @@
       </a>
       <div uib-dropdown-menu class="dropdown-menu-select-like">
         <a
-           ng-show="pools.isEnterprise && poolDefault.compat.atLeast50 && (adminCtl.user.domain === 'local' || adminCtl.user.domain === 'admin')"
+           ng-show="pools.isEnterprise && (adminCtl.user.domain === 'local' || adminCtl.user.domain === 'admin')"
            ng-click="adminCtl.showResetPasswordDialog()">
           Change Password
         </a>

@@ -19,10 +19,10 @@
       {{bucket.basicStats.itemCount | number}}
     </span>
     <span class="cbui-table-cell">
-      <span ng-show="bucket.isMembase && poolDefault.compat.atLeast50">
+      <span ng-show="bucket.isMembase">
         {{bucketsItemCtl.getResidentRatio(bucket) | mnTruncateTo3Digits}}%
       </span>
-      <span ng-show="bucket.isMemcached || bucket.isEphemeral || !poolDefault.compat.atLeast50">
+      <span ng-show="bucket.isMemcached || bucket.isEphemeral">
         &#8212;
       </span>
     </span>

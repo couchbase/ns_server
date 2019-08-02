@@ -72,7 +72,6 @@
         neededProperties.push("compressionType");
       }
       if (mnPools.export.isEnterprise &&
-          mnPoolDefault.export.compat.atLeast50 &&
           settings.type === "xmem"
          ) {
         neededProperties.push("networkUsageLimit");

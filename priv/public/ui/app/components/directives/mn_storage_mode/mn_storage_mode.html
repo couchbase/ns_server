@@ -13,8 +13,7 @@
       {{:: mnIsEnterprise ? 'Legacy' : 'Standard'}} Global Secondary
     </label>
   </div>
-  <div ng-show="mnIsEnterprise &&
-                (!mnCompat || mnCompat.atLeast50)">
+  <div ng-show="mnIsEnterprise">
     <input
        type="radio"
        value="plasma"

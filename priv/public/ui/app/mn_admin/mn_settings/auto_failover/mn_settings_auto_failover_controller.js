@@ -54,17 +54,15 @@
     }
 
     function activate() {
-      if (mnPoolDefault.export.compat.atLeast50) {
-        mnPromiseHelper(vm, mnSettingsAutoFailoverService.getAutoReprovisionSettings())
-          .applyToScope(function (resp) {
-            vm.reprovisionSettings = resp.data;
+      mnPromiseHelper(vm, mnSettingsAutoFailoverService.getAutoReprovisionSettings())
+        .applyToScope(function (resp) {
+          vm.reprovisionSettings = resp.data;
 
-            $scope.$watch(
-              'settingsAutoFailoverCtl.reprovisionSettings',
-              _.debounce(watchOnSettings("postAutoReprovisionSettings", getReprovisionSettings),
-                         500, {leading: true}), true);
-          });
-      }
+          $scope.$watch(
+            'settingsAutoFailoverCtl.reprovisionSettings',
+            _.debounce(watchOnSettings("postAutoReprovisionSettings", getReprovisionSettings),
+                       500, {leading: true}), true);
+        });
 
       mnPromiseHelper(vm,
         mnSettingsAutoFailoverService.getAutoFailoverSettings())
@@ -84,18 +82,14 @@
           .catchErrors(function (resp) {
             vm.saveAutoFailoverSettingsErrors = resp && {timeout: resp};
           })
+          .getPromise(),
+
+        mnPromiseHelper(vm, mnSettingsAutoFailoverService.postAutoReprovisionSettings(getReprovisionSettings()))
+          .catchErrors(function (resp) {
+            vm.postAutoReprovisionSettingsErrors = resp && {maxNodes: resp};
+          })
           .getPromise()
       ];
-
-      if (mnPoolDefault.export.compat.atLeast50) {
-        queries.push(
-          mnPromiseHelper(vm, mnSettingsAutoFailoverService.postAutoReprovisionSettings(getReprovisionSettings()))
-            .catchErrors(function (resp) {
-              vm.postAutoReprovisionSettingsErrors = resp && {maxNodes: resp};
-            })
-            .getPromise()
-        );
-      }
 
       return $q.all(queries);
     };

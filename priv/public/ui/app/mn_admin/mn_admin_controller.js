@@ -72,11 +72,10 @@
 
     function resetAutoFailOverCount() {
       var queries = [
-        mnSettingsAutoFailoverService.resetAutoFailOverCount({group: "global"})
+        mnSettingsAutoFailoverService.resetAutoFailOverCount({group: "global"}),
+        mnSettingsAutoFailoverService.resetAutoReprovisionCount({group: "global"})
       ];
-      if (mnPoolDefault.export.compat.atLeast50) {
-        queries.push(mnSettingsAutoFailoverService.resetAutoReprovisionCount({group: "global"}));
-      }
+
       mnPromiseHelper(vm, $q.all(queries))
         .reloadState()
         .showSpinner('resetQuotaLoading')

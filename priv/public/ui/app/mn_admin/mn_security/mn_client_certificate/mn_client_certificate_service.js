@@ -31,8 +31,7 @@
           return !_.isEqual(pref, {delimiter: '', prefix: '', path: ''});
         });
       }
-      if (!mnPoolDefault.export.compat.atLeast51 &&
-          mnPoolDefault.export.compat.atLeast50) {
+      if (!mnPoolDefault.export.compat.atLeast51) {
         (['delimiter', 'prefix', 'path']).forEach(function (key) {
           if (settings.prefixes[0] && settings.prefixes[0][key]) {
             settings[key] = settings.prefixes[0][key];

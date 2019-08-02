@@ -62,10 +62,7 @@
           }
         },
         controller: "mnUserRolesController as userRolesCtl",
-        templateUrl: "app/mn_admin/mn_security/mn_user_roles/mn_user_roles.html",
-        data: {
-          compat: "atLeast50"
-        }
+        templateUrl: "app/mn_admin/mn_security/mn_user_roles/mn_user_roles.html"
       })
       .state('app.admin.security.roles.groups', {
         // url: "/userRoles?openedUsers&startFrom&startFromDomain&{pageSize:int}",
@@ -97,7 +94,6 @@
         controller: "mnRolesGroupsController as rolesGroupsCtl",
         templateUrl: "app/mn_admin/mn_security/mn_roles_groups.html",
         data: {
-          compat: "atLeast50",
           enterprise: true
         }
       })
@@ -122,7 +118,6 @@
         controller: 'mnClientCertController as clientCertCtl',
         templateUrl: 'app/mn_admin/mn_security/mn_client_certificate/mn_client_certificate.html',
         data: {
-          compat: "atLeast50",
           enterprise: true
         }
       })

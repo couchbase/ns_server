@@ -4,7 +4,7 @@
      mn-pluggable-ui-tabs
      mn-tab-bar-name="securityTab">
     <a
-       ng-show="poolDefault.compat.atLeast50 && rbac.cluster.admin.security.read"
+       ng-show="rbac.cluster.admin.security.read"
        ui-sref="app.admin.security.roles.user"
        ng-class="{selected: ('app.admin.security.roles.user' | includedByState) ||
                 ('app.admin.security.roles.groups' | includedByState)}">
@@ -16,7 +16,7 @@
        ui-sref-active="selected"
        class="resp-hide-sml">Root Certificate</a>
     <a
-       ng-show="pools.isEnterprise && poolDefault.compat.atLeast50 && rbac.cluster.admin.security.read"
+       ng-show="pools.isEnterprise && rbac.cluster.admin.security.read"
        ui-sref="app.admin.security.clientCert"
        ui-sref-active="selected"
        class="resp-hide-sml">Client Certificate</a>

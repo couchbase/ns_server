@@ -70,15 +70,7 @@
           _.extend(conf, mnSettingsAutoCompactionService.prepareSettingsForSaving(autoCompactionSettings));
         }
       }
-      if (!poolDefault.compat.atLeast50) {
-        if (bucketConf.authType === "sasl") {
-          copyProperty("saslPassword");
-        }
-        if (bucketConf.authType === "none") {
-          copyProperty("proxyPort");
-        }
-        copyProperty("authType");
-      }
+
       if (bucketConf.isWizard) {
         copyProperty("otherBucketsRamQuotaMB");
       }
