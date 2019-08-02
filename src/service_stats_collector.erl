@@ -189,17 +189,7 @@ massage_stats(Service, Ets, [{K, V} | Rest], Acc) ->
 
 grab_stats(#state{status = starting}) ->
     [];
-
 grab_stats(#state{status = started, service = Service}) ->
-    case ns_cluster_membership:should_run_service(ns_config:latest(),
-                                                  Service:get_type(), node()) of
-        true ->
-            do_grab_stats(Service);
-        false ->
-            []
-    end.
-
-do_grab_stats(Service) ->
     case Service:grab_stats() of
         {ok, {Stats}} when is_list(Stats) ->
             Stats;
@@ -304,15 +294,8 @@ finalize_stats(Acc) ->
 handle_info({buckets, NewBuckets}, State) ->
     NewBuckets1 = lists:map(fun list_to_binary/1, NewBuckets),
     {noreply, State#state{buckets = NewBuckets1}};
-
-handle_info(check_status, #state{status = starting,
-                                 service = Service} = State) ->
-    case ns_cluster_membership:should_run_service(ns_config:latest(),
-                                                  Service:get_type(), node()) of
-        true -> {noreply, check_status(State)};
-        false -> {noreply, State}
-    end;
-
+handle_info(check_status, #state{status = starting} = State) ->
+    {noreply, check_status(State)};
 handle_info(_Info, State) ->
     {noreply, State}.
 
