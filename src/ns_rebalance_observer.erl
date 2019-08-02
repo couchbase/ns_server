@@ -215,48 +215,48 @@ handle_cast({note, Event}, State) ->
 
 handle_cast({update_stats, BucketName, VBucket, NodeToDocsLeft}, State) ->
     ?log_debug("Got update_stats: ~p, ~p", [VBucket, NodeToDocsLeft]),
-    {noreply, update_move(
-                State, BucketName, VBucket,
-                fun (Move) ->
-                        NewStats =
-                            [case lists:keyfind(Stat#replica_building_stats.node, 1, NodeToDocsLeft) of
-                                 {_, NewLeft} ->
-                                     #replica_building_stats{in_docs_total = Total,
-                                                             in_docs_left = Left} = Stat,
+    {noreply,
+     update_move(
+       State, BucketName, VBucket,
+       fun (Move) ->
+               NewStats =
+                   [case lists:keyfind(Stat#replica_building_stats.node, 1,
+                                       NodeToDocsLeft) of
+                        {_, NewLeft} ->
+                            #replica_building_stats{in_docs_total = Total,
+                                                    in_docs_left = Left} = Stat,
 
-                                     case NewLeft >= Left of
-                                         true ->
-                                             %% our initial estimates are
-                                             %% imprecise, so we can end up in
-                                             %% a situation where new
-                                             %% in_docs_left is greater than
-                                             %% in_docs_total;
-                                             %%
-                                             %% another possibility is that
-                                             %% there're new mutations coming;
-                                             %% in such case if we didn't
-                                             %% adjust in_docs_total it would
-                                             %% seem to the user that number
-                                             %% of transfered items went down
-                                             %% which is probably not desireable;
-                                             %%
-                                             %% obviously, this adjustment may
-                                             %% lose some mutations (meaning
-                                             %% that final doc_total wouldn't
-                                             %% be precise) but user
-                                             %% experience-wise it seems to be
-                                             %% better.
-                                             Increase = NewLeft - Left,
-                                             Stat#replica_building_stats{in_docs_left = NewLeft,
-                                                                         in_docs_total = Total + Increase};
-                                         false ->
-                                             Stat#replica_building_stats{in_docs_left = NewLeft}
-                                     end;
-                                 false ->
-                                     Stat
-                             end || Stat <- Move#vbucket_info.stats],
-                        Move#vbucket_info{stats = NewStats}
-                end)};
+                            case NewLeft >= Left of
+                                true ->
+                                    %% our initial estimates are imprecise, so
+                                    %% we can end up in a situation where new
+                                    %% in_docs_left is greater than
+                                    %% in_docs_total;
+                                    %%
+                                    %% another possibility is that there're new
+                                    %% mutations coming; in such case if we
+                                    %% didn't adjust in_docs_total it would seem
+                                    %% to the user that number of transfered
+                                    %% items went down which is probably not
+                                    %% desireable;
+                                    %%
+                                    %% obviously, this adjustment may lose some
+                                    %% mutations (meaning that final doc_total
+                                    %% wouldn't be precise) but user
+                                    %% experience-wise it seems to be better.
+                                    Increase = NewLeft - Left,
+                                    Stat#replica_building_stats{
+                                      in_docs_left = NewLeft,
+                                      in_docs_total = Total + Increase};
+                                false ->
+                                    Stat#replica_building_stats{
+                                      in_docs_left = NewLeft}
+                            end;
+                        false ->
+                            Stat
+                    end || Stat <- Move#vbucket_info.stats],
+               Move#vbucket_info{stats = NewStats}
+       end)};
 
 handle_cast({update_progress, Stage, StageProgress},
             #state{stage_info = Old} = State) ->
