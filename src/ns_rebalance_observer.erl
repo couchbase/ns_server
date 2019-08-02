@@ -869,11 +869,11 @@ construct_bucket_level_info_json(
     end.
 
 construct_replication_info(ReplicationInfo) ->
-    Info = dict:map(fun (Node, #per_node_replication_stats{
-                                  in_docs_total = InTotal,
-                                  in_docs_left = InLeft,
-                                  out_docs_total = OutTotal,
-                                  out_docs_left = OutLeft}) ->
+    Info = dict:map(fun (_Node, #per_node_replication_stats{
+                                   in_docs_total = InTotal,
+                                   in_docs_left = InLeft,
+                                   out_docs_total = OutTotal,
+                                   out_docs_left = OutLeft}) ->
                             {[{inDocsTotal, InTotal},
                               {inDocsLeft, InLeft},
                               {outDocsTotal, OutTotal},
