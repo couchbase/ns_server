@@ -338,11 +338,7 @@
 
     function getUserUrl(user) {
       var base = "/settings/rbac/users/";
-      if (mnPoolDefault.export.compat.atLeast50) {
-        return base + encodeURIComponent(user.domain) + "/"  + encodeURIComponent(user.id);
-      } else {
-        return base + encodeURIComponent(user.id);
-      }
+      return base + encodeURIComponent(user.domain) + "/"  + encodeURIComponent(user.id);
     }
 
     function getRolesByRole(userRoles) {

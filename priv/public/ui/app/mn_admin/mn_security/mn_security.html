@@ -45,7 +45,7 @@
            ui-sref="app.admin.security.rootCertificate"
            ui-sref-active="selected">Root Certificate</a>
         <a
-           ng-show="pools.isEnterprise && poolDefault.compat.atLeast50 && rbac.cluster.admin.security.read"
+           ng-show="pools.isEnterprise && rbac.cluster.admin.security.read"
            ui-sref="app.admin.security.clientCert"
            ui-sref-active="selected">Client Certificate</a>
         <a

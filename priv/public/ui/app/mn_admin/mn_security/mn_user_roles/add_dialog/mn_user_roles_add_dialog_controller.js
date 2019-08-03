@@ -7,7 +7,7 @@
 
   function mnUserRolesAddDialogController($scope, mnUserRolesService, $uibModalInstance, mnPromiseHelper, user, isLdapEnabled, mnPoolDefault, $timeout, mnHelper, $q) {
     var vm = this;
-    vm.user = _.clone(user) || {domain: mnPoolDefault.export.compat.atLeast50 ? "local" : "external"};
+    vm.user = _.clone(user) || {domain: "local"};
     vm.userID = vm.user.id || 'New';
     vm.save = save;
     vm.isEditingMode = !!user;
