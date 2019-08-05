@@ -52,7 +52,7 @@ child_specs(BucketName) ->
       permanent, 1000, worker, []},
      {{janitor_agent_sup, BucketName},
       {janitor_agent_sup, start_link, [BucketName]},
-      permanent, 10000, worker, [janitor_agent_sup]},
+      permanent, infinity, supervisor, [janitor_agent_sup]},
      {{stats_collector, BucketName},
       {stats_collector, start_link, [BucketName]},
       permanent, 1000, worker, [stats_collector]},
