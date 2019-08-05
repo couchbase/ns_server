@@ -25,8 +25,7 @@
          enabled/0,
          enabled/1,
          uid/1,
-         for_memcached/1,
-         for_rest/1,
+         manifest_json/1,
          create_scope/2,
          create_collection/4,
          drop_scope/2,
@@ -90,7 +89,7 @@ collection_to_memcached(Name, Props) ->
     {[{name, list_to_binary(Name)} |
       [{K, collection_prop_to_memcached(K, V)} || {K, V} <- Props]]}.
 
-for_memcached(BucketCfg) ->
+manifest_json(BucketCfg) ->
     Manifest = get_manifest(BucketCfg),
 
     ScopesJson =
@@ -105,28 +104,6 @@ for_memcached(BucketCfg) ->
 
     {[{uid, get_uid_in_memcached_format(Manifest)},
       {scopes, ScopesJson}]}.
-
-collection_prop_to_rest({max_ttl, V}) ->
-    {maxTTL, V};
-collection_prop_to_rest(Other) ->
-    Other.
-
-for_rest(Bucket) ->
-    {ok, BucketCfg} = ns_bucket:get_bucket(Bucket),
-    Manifest = get_manifest(BucketCfg),
-    Scopes = get_scopes(Manifest),
-    {[{uid, get_uid(Manifest)},
-      {scopes,
-       {lists:map(
-          fun ({ScopeName, Scope}) ->
-                  {list_to_binary(ScopeName),
-                   {[{uid, get_uid(Scope)},
-                     {collections,
-                      {[{list_to_binary(CollName),
-                         {[collection_prop_to_rest(P) || P <- Props]}} ||
-                           {CollName, Props} <- get_collections(Scope)]}}
-                    ]}}
-          end, Scopes)}}]}.
 
 create_scope(Bucket, Name) ->
     update(Bucket, {create_scope, Name}).
