@@ -192,16 +192,6 @@
     });
     $transitionsProvider.onStart({
       to: function (state) {
-        return state.data && state.data.ldap;
-      }
-    }, function (trans) {
-      var mnPoolDefault = trans.injector().get('mnPoolDefault');
-      return mnPoolDefault.get().then(function(value) {
-        return value.saslauthdEnabled;
-      });
-    });
-    $transitionsProvider.onStart({
-      to: function (state) {
         return state.data && state.data.enterprise;
       }
     }, function (trans) {

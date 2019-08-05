@@ -5,7 +5,7 @@
     .module("mnUserRoles")
     .controller("mnRolesController", mnRolesController);
 
-  function mnRolesController(poolDefault, mnHelper, $uibModal) {
+  function mnRolesController(poolDefault, mnHelper, $uibModal, $q) {
     var vm = this;
     vm.addUser = addUser;
     vm.addRolesGroup = addRolesGroup;
@@ -17,7 +17,14 @@
         controller: 'mnUserRolesAddDialogController as userRolesAddDialogCtl',
         resolve: {
           user: mnHelper.wrapInFunction(undefined),
-          isLdapEnabled: mnHelper.wrapInFunction(poolDefault.saslauthdEnabled)
+          isLdapEnabled: function (mnUserRolesService) {
+            return $q.all([
+              mnUserRolesService.getSaslauthdAuth(),
+              mnUserRolesService.getLdapSettings()
+            ]).then(function (resp) {
+              return resp[0].enabled || resp[1].data.authentication_enabled;
+            });
+          }
         }
       });
     }
@@ -34,8 +41,7 @@
         templateUrl: 'app/mn_admin/mn_security/mn_roles_groups_add_dialog.html',
         controller: 'mnRolesGroupsAddDialogController as rolesGroupsAddDialogCtl',
         resolve: {
-          rolesGroup: mnHelper.wrapInFunction(undefined),
-          isLdapEnabled: mnHelper.wrapInFunction(poolDefault.saslauthdEnabled)
+          rolesGroup: mnHelper.wrapInFunction(undefined)
         }
       });
     }

@@ -18,7 +18,7 @@
     ])
     .controller("mnUserRolesController", mnUserRolesController);
 
-  function mnUserRolesController($scope, $uibModal, mnPromiseHelper, mnUserRolesService, mnPoller, mnHelper, $state, poolDefault) {
+  function mnUserRolesController($scope, $uibModal, mnPromiseHelper, mnUserRolesService, mnPoller, mnHelper, $state) {
     var vm = this;
 
     vm.deleteUser = deleteUser;
@@ -28,8 +28,6 @@
     vm.filterField = "";
 
     vm.stateParams = $state.params;
-
-    vm.isLdapEnabled = poolDefault.saslauthdEnabled;
 
     vm.pageSize = $state.params.pageSize;
     vm.pageSizeChanged = pageSizeChanged;
@@ -81,25 +79,30 @@
 
       mnHelper.initializeDetailsHashObserver(vm, 'openedUsers', '.');
 
-      mnPromiseHelper(vm, mnUserRolesService.getSaslauthdAuth())
-        .applyToScope("saslauthdAuth");
-
       mnPromiseHelper(vm, mnUserRolesService.getRoles())
         .applyToScope(function (roles) {
           mnPromiseHelper(vm, mnUserRolesService.getRolesByRole(roles))
             .applyToScope("rolesByRole");
         });
 
-      mnPromiseHelper(vm, mnUserRolesService.getLdapSettings())
-        .applyToScope("ldapSettings");
+      mnPromiseHelper(vm, mnUserRolesService.getSaslauthdAuth())
+        .applyToScope("saslauthdAuth");
 
-      var poller = new mnPoller($scope, function () {
+      new mnPoller($scope, function () {
+        return mnUserRolesService.getLdapSettings();
+      })
+        .subscribe("ldapSettings", vm)
+        .setInterval(10000)
+        .reloadOnScopeEvent("reloadLdapSettings")
+        .cycle();
+
+      new mnPoller($scope, function () {
         return mnUserRolesService.getState($state.params);
       })
-          .subscribe("state", vm)
-          .setInterval(10000)
-          .reloadOnScopeEvent("reloadRolesPoller")
-          .cycle();
+        .subscribe("state", vm)
+        .setInterval(10000)
+        .reloadOnScopeEvent("reloadRolesPoller")
+        .cycle();
     }
 
     function editUser(user) {
@@ -108,7 +111,9 @@
         controller: 'mnUserRolesAddDialogController as userRolesAddDialogCtl',
         resolve: {
           user: mnHelper.wrapInFunction(user),
-          isLdapEnabled: mnHelper.wrapInFunction(poolDefault.saslauthdEnabled)
+          isLdapEnabled: function () {
+            return vm.saslauthdAuth.enabled || vm.ldapSettings.data.authentication_enabled;
+          }
         }
       });
     }

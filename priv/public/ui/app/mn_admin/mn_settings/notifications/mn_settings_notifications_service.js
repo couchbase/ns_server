@@ -11,9 +11,9 @@ angular.module('mnSettingsNotificationsService', [
   'mnAuditService',
   'mnFilters',
   'mnPermissions',
-  'mnTasksDetails'
-]).factory('mnSettingsNotificationsService',
-  function ($http, mnPoolDefault, mnBucketsService, mnPools, $q, $window, $rootScope, mnAnalyticsService, mnViewsListService, mnGsiService, mnAuditService, mnMBtoBytesFilter, mnPermissions, mnSettingsClusterService, mnSettingsAutoFailoverService, mnSettingsAutoCompactionService, mnTasksDetails, mnXDCRService) {
+  'mnTasksDetails',
+  'mnUserRolesService'
+]).factory('mnSettingsNotificationsService', function ($http, mnPoolDefault, mnBucketsService, mnPools, $q, $window, $rootScope, mnAnalyticsService, mnViewsListService, mnGsiService, mnAuditService, mnMBtoBytesFilter, mnPermissions, mnSettingsClusterService, mnSettingsAutoFailoverService, mnSettingsAutoCompactionService, mnTasksDetails, mnXDCRService, mnUserRolesService) {
     var mnSettingsNotificationsService = {};
 
     function sumWithoutNull(array, average) {
@@ -40,16 +40,11 @@ angular.module('mnSettingsNotificationsService', [
       var indexSettings = source[6];
       var autoFailoverSettings = source[7];
       var autoCompactionSettings = source[8];
-
-      // XDCR
       var remotes = source[9];
       var xdcr_tasks = source[10];
-
-      // Eventing
       var eventing = source[11];
-
-      // Analytics
       var analytics = source[12];
+      var ldapSettings = source[13];
 
       function getAvgPerItem(items, filter) {
         var avgs = [];
@@ -96,7 +91,8 @@ angular.module('mnSettingsNotificationsService', [
         uuid: pools.uuid,
         numNodes: poolsDefault.nodes.length, //Total number of nodes
         isEnterpriseEdition: pools.isEnterprise,
-        adminLDAPEnabled : poolsDefault.saslauthdEnabled,
+        adminLDAPEnabled : poolsDefault.saslauthdEnabled ||
+          ldapSettings.data.authentication_enabled,
         ram: {
           total: poolsDefault.storageTotals.ram.total,
           quotaTotal: poolsDefault.storageTotals.ram.quotaTotal,
@@ -203,7 +199,7 @@ angular.module('mnSettingsNotificationsService', [
         }
         var statsInfo = perBucketStat[0].data;
         if (statsInfo) {
-          var bucketStats = statsInfo.stats[bucketName];
+          var bucketStats = statsInfo.stats["@kv-" + bucketName];
           var indexStats = statsInfo.stats["@index-" + bucketName];
           var queriesStats = statsInfo.stats["@query"];
           var ftsStats = statsInfo.stats["@fts-" + bucketName];
@@ -217,6 +213,7 @@ angular.module('mnSettingsNotificationsService', [
               return result;
             }, {})).length;
           }
+
           var avgNumRowsReturnedPerIndex = getAvgPerItem(indexStats, function (key) {
             key = key.split("/");
             return key.length === 3 && key[2] === "num_rows_returned" && key[0] === "index";
@@ -232,7 +229,6 @@ angular.module('mnSettingsNotificationsService', [
           setPerBucketStat(stats, "total_avg_index_num_rows_returned", indexStats && avgNumRowsReturnedPerIndex);
 
           stats.istats.avg_query_requests_last_week = (queriesStats && queriesStats.query_requests) || []; //is not per bucket
-
           stats.istats.total_curr_items_tot += bucketStats.curr_items_tot ? bucketStats.curr_items_tot[bucketStats.curr_items_tot.length - 1] : 0;
         }
       });
@@ -312,6 +308,7 @@ angular.module('mnSettingsNotificationsService', [
           perBucketQueries.push($q.all(queries));
         });
 
+
         var queries = [
           $q.when(buckets),
           $q.all(perBucketQueries),
@@ -336,21 +333,31 @@ angular.module('mnSettingsNotificationsService', [
         }
 
         // collect info about XDCR
-        if (mnPermissions.export.cluster.xdcr.remote_clusters.read)
+        if (mnPermissions.export.cluster.xdcr.remote_clusters.read) {
           queries[9] = mnXDCRService.getReplicationState();
+        }
 
-        if (mnPermissions.export.cluster.tasks.read)
-           queries[10] = mnTasksDetails.get(mnHttpParams);
+        if (mnPermissions.export.cluster.tasks.read) {
+          queries[10] = mnTasksDetails.get(mnHttpParams);
+        }
 
         // do we have an eventing service? If so, see how it is used
         if (poolDefault.nodes.some(function(node) {
-               return(_.indexOf(node.services, 'eventing') > -1);}))
+          return(_.indexOf(node.services, 'eventing') > -1);
+        })) {
           queries[11] = mnSettingsNotificationsService.getEventingData();
+        }
 
         // do we have an analytics service? If so, get some information about it.
         if (poolDefault.nodes.some(function(node) {
-          return(_.indexOf(node.services, 'cbas') > -1);}))
+          return _.indexOf(node.services, 'cbas') > -1;
+        })) {
           queries[12] = mnSettingsNotificationsService.getCbasData();
+        }
+
+        if (mnPermissions.export.cluster.admin.security.read) {
+          queries[13] = mnUserRolesService.getLdapSettings();
+        }
 
         return $q.all(queries).then(buildPhoneHomeThingy);
       });

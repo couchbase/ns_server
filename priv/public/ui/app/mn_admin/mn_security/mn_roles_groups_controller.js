@@ -19,17 +19,14 @@
 
   function mnRolesGroupsController($scope, $uibModal, mnPromiseHelper, mnUserRolesService, mnPoller, mnHelper, $state, poolDefault, $timeout) {
     var vm = this;
-    vm.addUser = addUser;
+
     vm.addRolesGroup = addRolesGroup;
-    vm.addLDAP = addLDAP;
     vm.deleteRolesGroup = deleteRolesGroup;
     vm.editRolesGroup = editRolesGroup;
 
     vm.filterField = $state.params.substr;
 
     vm.stateParams = $state.params;
-
-    // vm.isLdapEnabled = poolDefault.saslauthdEnabled;
 
     vm.pageSize = $state.params.pageSize;
     vm.pageSizeChanged = pageSizeChanged;
@@ -96,25 +93,8 @@
         templateUrl: 'app/mn_admin/mn_security/mn_roles_groups_add_dialog.html',
         controller: 'mnRolesGroupsAddDialogController as rolesGroupsAddDialogCtl',
         resolve: {
-          rolesGroup: mnHelper.wrapInFunction(rolesGroup),
-          isLdapEnabled: mnHelper.wrapInFunction(poolDefault.saslauthdEnabled)
+          rolesGroup: mnHelper.wrapInFunction(rolesGroup)
         }
-      });
-    }
-    function addUser() {
-      $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_security/mn_user_roles/add_dialog/mn_user_roles_add_dialog.html',
-        controller: 'mnUserRolesAddDialogController as userRolesAddDialogCtl',
-        resolve: {
-          user: mnHelper.wrapInFunction(undefined),
-          isLdapEnabled: mnHelper.wrapInFunction(poolDefault.saslauthdEnabled)
-        }
-      });
-    }
-    function addLDAP() {
-      $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_security/mn_user_roles/mn_add_ldap_dialog.html',
-        controller: 'mnAddLDAPDialogController as addLdapDialogCtl'
       });
     }
     function addRolesGroup() {
@@ -122,8 +102,7 @@
         templateUrl: 'app/mn_admin/mn_security/mn_roles_groups_add_dialog.html',
         controller: 'mnRolesGroupsAddDialogController as rolesGroupsAddDialogCtl',
         resolve: {
-          rolesGroup: mnHelper.wrapInFunction(undefined),
-          isLdapEnabled: mnHelper.wrapInFunction(poolDefault.saslauthdEnabled)
+          rolesGroup: mnHelper.wrapInFunction(undefined)
         }
       });
     }

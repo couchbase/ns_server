@@ -5,13 +5,12 @@
     .module("mnRolesGroups")
     .controller("mnRolesGroupsAddDialogController", mnRolesGroupsAddDialogController);
 
-  function mnRolesGroupsAddDialogController($scope, mnUserRolesService, $uibModalInstance, mnPromiseHelper, rolesGroup, isLdapEnabled, $timeout) {
+  function mnRolesGroupsAddDialogController($scope, mnUserRolesService, $uibModalInstance, mnPromiseHelper, rolesGroup, $timeout) {
     var vm = this;
     vm.rolesGroup = _.clone(rolesGroup) || {};
     vm.rolesGroupID = vm.rolesGroup.id || 'New';
     vm.save = save;
     vm.isEditingMode = !!rolesGroup;
-    vm.isLdapEnabled = isLdapEnabled;
     vm.selectedRoles = {};
 
     vm.focusError = false;

@@ -303,7 +303,7 @@
         .showGlobalSpinner()
         .removeErrors()
         .catchErrors()
-        // .broadcast("reloadRolesPoller")
+        .broadcast("reloadLdapSettings")
         .closeOnSuccess()
         .showGlobalSuccess("LDAP connected successfully!");
     }
