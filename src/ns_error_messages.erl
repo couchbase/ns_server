@@ -206,7 +206,9 @@ cert_validation_error_message(too_many_entries) ->
 cert_validation_error_message(encrypted_certificate) ->
     <<"Encrypted certificates are not supported.">>;
 cert_validation_error_message({invalid_certificate_type, BadType}) ->
-    list_to_binary(io_lib:format("Invalid certificate type: ~s", [BadType])).
+    list_to_binary(io_lib:format("Invalid certificate type: ~s", [BadType]));
+cert_validation_error_message(already_in_use) ->
+    <<"This certificate is already in use">>.
 
 file_read_error(enoent) ->
     "The file does not exist.";

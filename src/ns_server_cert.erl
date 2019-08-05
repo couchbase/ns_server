@@ -310,23 +310,36 @@ parse_cluster_ca(CA) ->
 set_cluster_ca(CA) ->
     case parse_cluster_ca(CA) of
         {ok, Props} ->
+            NewCert = proplists:get_value(pem, Props),
             RV = ns_config:run_txn(
                    fun (Config, SetFn) ->
-                           {GeneratedCert, GeneratedKey} =
+                           CurCerts =
                                case ns_config:search(Config, cert_and_pkey) of
+                                   {value, {NewCert, _}} ->
+                                       {error, already_in_use};
                                    {value, {_, _} = Pair} ->
-                                       Pair;
+                                       {ok, Pair};
                                    {value, {_, GeneratedCert1, GeneratedKey1}} ->
-                                       {GeneratedCert1, GeneratedKey1};
+                                       {ok, {GeneratedCert1, GeneratedKey1}};
                                    false ->
-                                       generate_cert_and_pkey()
+                                       {ok, generate_cert_and_pkey()}
                                end,
-                           {commit, SetFn(cert_and_pkey,
-                                          {Props, GeneratedCert, GeneratedKey}, Config)}
+
+                           case CurCerts of
+                               {ok, {GeneratedCert, GeneratedKey}} ->
+                                   NewCertPKey = {Props, GeneratedCert,
+                                                  GeneratedKey},
+                                   {commit, SetFn(cert_and_pkey, NewCertPKey,
+                                                  Config)};
+                               {error, Reason} ->
+                                   {abort, Reason}
+                           end
                    end),
             case RV of
                 {commit, _} ->
                     {ok, Props};
+                {abort, Reason} ->
+                    {error, Reason};
                 retry_needed ->
                     erlang:error(exceeded_retries)
             end;
