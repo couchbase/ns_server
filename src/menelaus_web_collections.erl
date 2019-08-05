@@ -139,10 +139,12 @@ name_validator(State) ->
       "_ - %", State).
 
 convert_uid(Uid) ->
-    case menelaus_util:parse_validate_number(Uid, 0, undefined) of
-        {ok, UidInt} ->
-            UidInt;
-        _ ->
+    try collections:convert_uid_from_memcached(Uid) of
+        UidInt when UidInt < 0 ->
+            erlang:throw({web_exception, 400, "Invalid UID", []});
+        UidInt ->
+            UidInt
+    catch error:badarg ->
             erlang:throw({web_exception, 400, "Invalid UID", []})
     end.
 

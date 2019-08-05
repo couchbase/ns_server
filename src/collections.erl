@@ -74,8 +74,10 @@ get_uid(Props) ->
 convert_uid_to_memcached(V) ->
     list_to_binary(string:to_lower(integer_to_list(V, 16))).
 
-convert_uid_from_memcached(V) ->
-    list_to_integer(binary_to_list(V), 16).
+convert_uid_from_memcached(V) when is_list(V) ->
+    list_to_integer(V, 16);
+convert_uid_from_memcached(V) when is_binary(V) ->
+    convert_uid_from_memcached(binary_to_list(V)).
 
 get_uid_in_memcached_format(Props) ->
     convert_uid_to_memcached(get_uid(Props)).
