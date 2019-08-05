@@ -430,18 +430,20 @@ event_to_jsons({TS, rebalance_stage_event, Stage, Text}) ->
                                   {stage, {list, Stage}},
                                   {event, Text}])];
 
-event_to_jsons({TS, vbucket_state_change, Bucket, Node, VBucketId, NewState,
-                VBucketInfoJson}) ->
+event_to_jsons({TS, vbucket_state_change,
+                Bucket, Node, VBucketId, NewState, Meta}) ->
     [format_simple_plist_as_json([{type, vbucketStateChange},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, Bucket},
                                   {host, node_to_host(Node, ns_config:latest())},
                                   {vbucket, VBucketId},
                                   {state, NewState},
-                                  {changes, case VBucketInfoJson of
-                                                undefined -> undefined;
-                                                _ -> {json, VBucketInfoJson}
-                                            end}])];
+                                  {meta, case Meta of
+                                             undefined ->
+                                                 undefined;
+                                             _ ->
+                                                 {json, Meta}
+                                         end}])];
 
 event_to_jsons({TS, set_ff_map, BucketName, undefined}) ->
     [format_simple_plist_as_json([{type, resetFastForwardMap},
