@@ -179,7 +179,7 @@ do_update_with_manifest(Bucket, Manifest, Operation) ->
     {Uid, NewManifestWithId} = update_manifest_uid(NewManifest),
     ?log_debug("Resulting manifest ~p", [NewManifestWithId]),
     ok = update_manifest(Bucket, NewManifestWithId),
-    {ok, Uid}.
+    {ok, convert_uid_to_memcached(Uid)}.
 
 update_manifest(Bucket, Manifest) ->
     ns_bucket:update_bucket_config(
