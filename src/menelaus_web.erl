@@ -930,7 +930,8 @@ log_client_error(Req) ->
     ?MENELAUS_WEB_LOG(
        ?UI_SIDE_ERROR_REPORT,
        "Client-side error-report for user ~p on node ~p:~nUser-Agent:~s~n~s~n",
-       [User, node(), mochiweb_request:get_header_value("user-agent", Req), Body]),
+       [ns_config_log:tag_user_name(User),
+        node(), mochiweb_request:get_header_value("user-agent", Req), Body]),
     reply_ok(Req, "text/plain", []).
 
 serve_ui(Req, IsSSL, F, Args) ->
