@@ -161,16 +161,25 @@
         var tasksPoller = new mnPoller($scope, function (prevTask) {
           return mnTasksDetails.getFresh({group: "global"})
             .then(function (tasks) {
-              if (typeof tasks.tasksRebalance.stageInfo == "undefined") {
-                return mnTasksDetails.getRebalanceReport().then(function (rv) {
-                  if (rv.data.stageInfo) {
-                    tasks.tasksRebalance.stageInfo = rv.data.stageInfo;
-                    tasks.tasksRebalance.completionMessage = rv.data.completionMessage;
-                  }
-                  return tasks;
-                });
+              if ((tasks.tasksRebalance.status == "notRunning") &&
+                  tasks.tasksRebalance.masterRequestTimedOut) {
+                if (prevTask && prevTask.tasksRebalance) {
+                  tasks.tasksRebalance.stageInfo = prevTask.tasksRebalance.stageInfo;
+                  tasks.tasksRebalance.completionMessage = prevTask.tasksRebalance.completionMessage;
+                }
+                return tasks;
               } else {
-                return tasks
+                if (typeof tasks.tasksRebalance.stageInfo == "undefined") {
+                  return mnTasksDetails.getRebalanceReport().then(function (rv) {
+                    if (rv.data.stageInfo) {
+                      tasks.tasksRebalance.stageInfo = rv.data.stageInfo;
+                      tasks.tasksRebalance.completionMessage = rv.data.completionMessage;
+                    }
+                    return tasks;
+                  });
+                } else {
+                  return tasks
+                }
               }
             });
         })
