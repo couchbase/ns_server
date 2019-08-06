@@ -64,7 +64,7 @@ open_port_args() ->
                   %% passed as a separate argument
                   "+e102400",
                   "-setcookie", "nocookie",
-                  "error_logger", "false",
+                  "-kernel", "error_logger", "false",
                   "-sasl", "sasl_error_logger", "false",
                   "-user", "user_io",
                   "-run", "child_erlang", "child_start", "ns_bootstrap"]
