@@ -32,7 +32,10 @@
 -record(state, {status :: starting | started,
                 service :: atom(),
                 default_stats,
-                buckets}).
+                buckets,
+
+                recent_names,
+                stale_names}).
 
 -record(stats_accumulators, {
           gauges = [],
@@ -43,12 +46,11 @@
          }).
 
 -define(CHECK_STATUS_INTERVAL, 1000).
+-define(ROTATE_NAMES_INTERVAL,
+        ?get_param(rotate_names_interval, 10 * 60 * 1000)).
 
 server_name(Service) ->
     list_to_atom(?MODULE_STRING "-" ++ atom_to_list(Service:get_type())).
-
-ets_name(Service) ->
-    list_to_atom(?MODULE_STRING "_names-" ++ atom_to_list(Service:get_type())).
 
 start_link(Service) ->
     base_stats_collector:start_link({local, server_name(Service)}, ?MODULE,
@@ -70,8 +72,6 @@ global_stat(Service, StatName) ->
     iolist_to_binary([atom_to_list(Service:get_type()), $/, StatName]).
 
 init(Service) ->
-    ets:new(ets_name(Service), [protected, named_table]),
-
     Self = self(),
     ns_pubsub:subscribe_link(
       ns_config_events,
@@ -92,11 +92,17 @@ init(Service) ->
                        Service:get_computed()],
 
     self() ! check_status,
+    schedule_names_rotation(),
+
+    RecentNames = ets:new(ok, [protected]),
+    StaleNames  = ets:new(ok, [protected]),
 
     {ok, #state{status = starting,
                 service = Service,
                 buckets = Buckets,
-                default_stats = finalize_stats(Defaults)}}.
+                default_stats = finalize_stats(Defaults),
+                recent_names = RecentNames,
+                stale_names = StaleNames}}.
 
 find_type(_, []) ->
     not_found;
@@ -155,36 +161,55 @@ do_recognize_complex_name(Service, K) ->
             undefined
     end.
 
-recognize_name(Service, Ets, K) ->
-    case ets:lookup(Ets, K) of
-        [{K, Type, NewK}] ->
-            {Type, NewK};
-        [{K, undefined}] ->
-            undefined;
+recognize_name(Name, #state{service = Service} = State) ->
+    case lookup_name(Name, State) of
+        {ok, Value} ->
+            Value;
+        not_found ->
+            Value = do_recognize_name(Service, Name),
+            cache_name(Name, Value, State),
+            Value
+    end.
+
+lookup_name(Name, #state{stale_names = Stale,
+                         recent_names = Recent} = State) ->
+    case ets:lookup(Recent, Name) of
+        [{_, Value}] ->
+            {ok, Value};
         [] ->
-            case do_recognize_name(Service, K) of
-                undefined ->
-                    ets:insert(Ets, {K, undefined}),
-                    undefined;
-                {Type, NewK} ->
-                    ets:insert(Ets, {K, Type, NewK}),
-                    {Type, NewK}
+            case ets:take(Stale, Name) of
+                [{_, Value}] ->
+                    cache_name(Name, Value, State),
+                    {ok, Value};
+                [] ->
+                    not_found
             end
     end.
 
-massage_stats(Service, Ets, GrabbedStats) ->
-    massage_stats(Service, Ets, GrabbedStats, #stats_accumulators{}).
+cache_name(Name, Value, #state{recent_names = Recent}) ->
+    true = ets:insert_new(Recent, {Name, Value}).
 
-massage_stats(_Service, _Ets, [], Acc) ->
+rotate_names(#state{stale_names = Stale,
+                    recent_names = Recent} = State) ->
+    ets:delete_all_objects(Stale),
+    State#state{stale_names = Recent,
+                recent_names = Stale}.
+
+schedule_names_rotation() ->
+    erlang:send_after(?ROTATE_NAMES_INTERVAL, self(), rotate_names).
+
+massage_stats(GrabbedStats, State) ->
+    massage_stats(GrabbedStats, State, #stats_accumulators{}).
+
+massage_stats([], _State, Acc) ->
     Acc;
-massage_stats(Service, Ets, [{K, V} | Rest], Acc) ->
-    case recognize_name(Service, Ets, K) of
+massage_stats([{K, V} | Rest], State, Acc) ->
+    case recognize_name(K, State) of
         undefined ->
-            massage_stats(Service, Ets, Rest, Acc);
+            massage_stats(Rest, State, Acc);
         {Pos, NewK} ->
-            massage_stats(
-              Service, Ets, Rest,
-              setelement(Pos, Acc, [{NewK, V} | element(Pos, Acc)]))
+            massage_stats(Rest, State,
+                          setelement(Pos, Acc, [{NewK, V} | element(Pos, Acc)]))
     end.
 
 grab_stats(#state{status = starting}) ->
@@ -205,8 +230,7 @@ process_stats(TS, GrabbedStats, PrevCounters, PrevTS,
               #state{service = Service,
                      buckets = KnownBuckets,
                      default_stats = Defaults} = State) ->
-    MassagedStats =
-        massage_stats(Service, ets_name(Service), GrabbedStats),
+    MassagedStats = massage_stats(GrabbedStats, State),
 
     CalculateStats =
         fun (GaugesPos, CountersPos, ComputeGauges) ->
@@ -296,6 +320,9 @@ handle_info({buckets, NewBuckets}, State) ->
     {noreply, State#state{buckets = NewBuckets1}};
 handle_info(check_status, #state{status = starting} = State) ->
     {noreply, check_status(State)};
+handle_info(rotate_names, State) ->
+    schedule_names_rotation(),
+    {noreply, rotate_names(State)};
 handle_info(_Info, State) ->
     {noreply, State}.
 
