@@ -259,7 +259,7 @@ child_specs() ->
      {health_monitor_sup, {health_monitor_sup, start_link, []},
       permanent, infinity, supervisor, [health_monitor_sup]},
 
-     {reblance_agent, {rebalance_agent, start_link, []},
+     {rebalance_agent, {rebalance_agent, start_link, []},
       permanent, 5000, worker, []},
 
      {ns_rebalance_report_manager, {ns_rebalance_report_manager, start_link, []},
