@@ -176,7 +176,11 @@
       var mnPermissions = trans.injector().get('mnPermissions');
       var $parse = trans.injector().get('$parse');
       return mnPermissions.check().then(function() {
-        return !!$parse(trans.to().data.permissions)(mnPermissions.export);
+        if (!!$parse(trans.to().data.permissions)(mnPermissions.export)) {
+          return true;
+        } else {
+          return trans.router.stateService.target('app.admin.overview.statistics');
+        }
       });
     });
     $transitionsProvider.onStart({
@@ -187,7 +191,11 @@
       var mnPoolDefault = trans.injector().get('mnPoolDefault');
       var $parse = trans.injector().get('$parse');
       return mnPoolDefault.get().then(function() {
-        return !!$parse(trans.to().data.compat)(mnPoolDefault.export.compat);
+        if (!!$parse(trans.to().data.compat)(mnPoolDefault.export.compat)) {
+          return true;
+        } else {
+          return trans.router.stateService.target('app.admin.overview.statistics');
+        }
       });
     });
     $transitionsProvider.onStart({
@@ -197,7 +205,11 @@
     }, function (trans) {
       var mnPools = trans.injector().get('mnPools');
       return mnPools.get().then(function (pools) {
-        return pools.isEnterprise;
+        if (pools.isEnterprise) {
+          return true;
+        } else {
+          return trans.router.stateService.target('app.admin.overview.statistics');
+        }
       });
     });
 
