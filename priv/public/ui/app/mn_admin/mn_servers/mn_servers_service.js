@@ -208,9 +208,8 @@
         rv.confirmation = false;
         rv.down = node.status != 'healthy';
         rv.backfill = node.replication < 1;
-        rv.failOver = rv.down ? "failOver" : node.gracefulFailoverPossible ? "startGracefulFailover" : "failOver";
+        rv.failOver = rv.down ? "startFailover" : node.gracefulFailoverPossible ? "startGracefulFailover" : "startFailover";
         rv.gracefulFailoverPossible = node.gracefulFailoverPossible;
-        rv.down && (rv.failOver = 'failOver');
         !rv.backfill && (rv.confirmation = true);
         return rv;
       })

@@ -86,31 +86,32 @@
             </div>
 
 <!-- delta recovery info *************************************************** -->
+<!-- failover info *************************************************** -->
             <div
-               ng-show="service.subStages.deltaRecovery"
+               ng-repeat="(name, subStage) in service.subStages track by name"
                class="row indent-1-5 margin-bottom-half margin-top-half">
-              <label>Delta Recovery</label>
+              <label>{{name == "deltaRecovery" ? "Delta Recovery" : name}}</label>
               <span
-                 ng-show="service.subStages.deltaRecovery.timeTaken !== false"
+                 ng-show="subStage.timeTaken !== false"
                  class="rebalance-stage-status">
                 <span
-                   ng-show="service.subStages.deltaRecovery.completedTime"
+                   ng-show="subStage.completedTime"
                    class="rebalance-stage-success">
                   completed
                 </span>
                 <span
-                   ng-show="!service.subStages.deltaRecovery.completedTime && !adminCtl.tasks.tasksRebalance.errorMessage"
+                   ng-show="!subStage.completedTime && !adminCtl.tasks.tasksRebalance.errorMessage"
                    class="rebalance-stage-inprogress">
                   elapsed
                 </span>
                 <span
-                   ng-show="!service.subStages.deltaRecovery.completedTime && adminCtl.tasks.tasksRebalance.errorMessage"
+                   ng-show="!subStage.completedTime && adminCtl.tasks.tasksRebalance.errorMessage"
                    class="rebalance-stage-error">
                   failed
                 </span>
-                {{service.subStages.deltaRecovery.timeTaken | mnMsToTime}}
+                {{subStage.timeTaken | mnMsToTime}}
               </span>
-              <span ng-show="service.subStages.deltaRecovery.timeTaken === false">- - -</span>
+              <span ng-show="subStage.timeTaken === false">- - -</span>
             </div>
 
 <!-- per bucket info ******************************************************* -->
@@ -130,6 +131,7 @@
               <div
                  class="indent-1-5 margin-bottom-1 margin-top-half"
                  ng-if="showBucket">
+<!-- replication info ************************************************ -->
                 <div
                    class="rebalance-stage-details"
                    ng-if="bucketInfo.replicationInfo">
@@ -146,7 +148,7 @@
                     <div class="cbui-table-cell">{{(details.outDocsTotal - details.outDocsLeft) + ' of ' + details.outDocsTotal}}</div>
                   </div>
                 </div>
-
+<!-- compaction info ******************************************************* -->
                 <h6
                    ng-show="bucketInfo.compactionInfo"
                    ng-click="showCompaction = !showCompaction"

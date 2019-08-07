@@ -16,7 +16,7 @@
 
     function isFailOverBtnDisabled() {
       return !vm.status || !vm.status.confirmation &&
-             (vm.status.failOver === 'failOver') &&
+             (vm.status.failOver === 'startFailover') &&
             !(vm.status.down && !vm.status.backfill) && !vm.status.dataless;
     }
 

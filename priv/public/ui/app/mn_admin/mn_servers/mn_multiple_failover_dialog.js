@@ -15,7 +15,7 @@
 
     function doPostFailover(allowUnsafe) {
       var otpNodes = mnHelper.checkboxesToList(vm.mnSelectedNodesHolder);
-      var promise = mnServersService.postFailover("failOver", otpNodes, allowUnsafe);
+      var promise = mnServersService.postFailover("startFailover", otpNodes, allowUnsafe);
       return mnPromiseHelper(vm, promise, $uibModalInstance)
         .showGlobalSpinner()
         .catchErrors()
