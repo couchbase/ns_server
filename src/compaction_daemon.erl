@@ -596,10 +596,10 @@ do_chain_compactors(Parent, [Compactor | Compactors]) ->
                              [Type, Name, Compactor, Reason]),
                     exit(Reason);
                 false ->
-                    ale:warn(?USER_LOGGER,
-                             "Compactor for ~p `~s` (pid ~p) terminated "
-                             "unexpectedly (ignoring this): ~p",
-                             [Type, Name, Compactor, Reason])
+                    %% Don't spam the user, just log it
+                    ?log_info("Compactor for ~p `~s` (pid ~p) terminated "
+                              "unexpectedly (ignoring this): ~p",
+                              [Type, Name, Compactor, Reason])
             end
     end.
 
