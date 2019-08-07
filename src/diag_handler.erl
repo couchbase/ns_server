@@ -155,9 +155,13 @@ grab_process_info(Pid) ->
             Messages = proplists:get_value(messages, PureInfo),
             NewMessages = massage_messages(Messages),
 
-            Info0 = lists:keyreplace(backtrace, 1, PureInfo,
-                                     {backtrace, NewBacktrace}),
-            lists:keyreplace(messages, 1, Info0, {messages, NewMessages})
+            Dictionary = proplists:get_value(dictionary, PureInfo),
+            NewDictionary = [{K, trim_term(V, 250)} || {K, V} <- Dictionary],
+
+            misc:update_proplist(PureInfo,
+                                 [{backtrace, NewBacktrace},
+                                  {messages, NewMessages},
+                                  {dictionary, NewDictionary}])
     end.
 
 grab_all_dcp_stats() ->
@@ -1027,4 +1031,37 @@ split_incremental_test() ->
     ?assertEqual(Split1a, split_incremental(String1, <<"\n">>)),
     ?assertEqual(Split2a, split_incremental(String2, <<"\n">>)),
     ?assertEqual(Split3a, split_incremental(String3, <<"\n">>)).
+-endif.
+
+%% Trim a deeply nested term to a smaller one. Each nested term amounts to one
+%% unit of size. Binaries are treated specially though: the length of the
+%% binary is its size.
+trim_term(Term, MaxSize) ->
+    {R, _} = generic:maybe_transform(
+               fun (_, 0) ->
+                       {stop, '...', 0};
+                   (T, S) when is_binary(T) ->
+                       Size = byte_size(T),
+                       case Size > S of
+                           true ->
+                               Part = binary:part(T, 0, S),
+                               {stop, <<Part/binary, "...">>, 0};
+                           false ->
+                               {stop, T, S - Size}
+                       end;
+                   (T, S) ->
+                       {continue, T, S - 1}
+               end, MaxSize, Term),
+    R.
+
+-ifdef(TEST).
+trim_term_test() ->
+    [1, 2 | '...'] = trim_term([1, 2, 3, 4, 5, 6, 7], 4),
+    [<<"123...">> | '...'] = trim_term([<<"12345">>, 6, 7], 4),
+    [<<"123">> | '...'] = trim_term([<<"123">>, 4, 5], 4),
+    {1, 2, 3, '...', '...'} = trim_term({1, 2, 3, 4, 5}, 4),
+
+    %% Maps are unordered, so we have to use a singleton map here. Otherwise
+    %% we don't know which part of the map is supposed to get trimmed.
+    #{1 := '...'} = trim_term(#{1 => 2}, 2).
 -endif.
