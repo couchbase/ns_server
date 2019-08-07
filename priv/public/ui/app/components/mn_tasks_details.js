@@ -9,18 +9,25 @@
       get: get,
       clearCache: clearCache,
       getFresh: getFresh,
-      getRebalanceReport: getRebalanceReport
+      getRebalanceReport: getRebalanceReport,
+      clearRebalanceReportCache: clearRebalanceReportCache
     };
 
     return mnTasksDetails;
 
-    function getRebalanceReport() {
+    function getRebalanceReport(url) {
       return $http({
-        url: "/logs/rebalanceReport",
+        url: url,
+        cache: true,
         method: 'GET'
       }).then(null,function () {
         return {data: {stageInfo: {}}};
       });
+    }
+
+    function clearRebalanceReportCache(url) {
+      $cacheFactory.get('$http').remove(url);
+      return this;
     }
 
     function get(mnHttpParams) {

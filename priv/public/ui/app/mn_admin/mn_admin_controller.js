@@ -161,26 +161,23 @@
         var tasksPoller = new mnPoller($scope, function (prevTask) {
           return mnTasksDetails.getFresh({group: "global"})
             .then(function (tasks) {
-              if ((tasks.tasksRebalance.status == "notRunning") &&
-                  tasks.tasksRebalance.masterRequestTimedOut) {
-                if (prevTask && prevTask.tasksRebalance) {
-                  tasks.tasksRebalance.stageInfo = prevTask.tasksRebalance.stageInfo;
-                  tasks.tasksRebalance.completionMessage = prevTask.tasksRebalance.completionMessage;
+              if (tasks.tasksRebalance.status == "notRunning") {
+                if (!tasks.tasksRebalance.masterRequestTimedOut &&
+                    prevTask && (tasks.tasksRebalance.lastReportURI !=
+                                 prevTask.tasksRebalance.lastReportURI)) {
+                  mnTasksDetails.clearRebalanceReportCache(prevTask.tasksRebalance.lastReportURI);
                 }
-                return tasks;
-              } else {
-                if (typeof tasks.tasksRebalance.stageInfo == "undefined") {
-                  return mnTasksDetails.getRebalanceReport().then(function (rv) {
+                return mnTasksDetails.getRebalanceReport(tasks.tasksRebalance.lastReportURI)
+                  .then(function (rv) {
                     if (rv.data.stageInfo) {
                       tasks.tasksRebalance.stageInfo = rv.data.stageInfo;
                       tasks.tasksRebalance.completionMessage = rv.data.completionMessage;
                     }
                     return tasks;
                   });
-                } else {
-                  return tasks
-                }
+
               }
+              return tasks;
             });
         })
             .setInterval(function (result) {
