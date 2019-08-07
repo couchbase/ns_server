@@ -896,7 +896,8 @@ validate_bucket_type_specific_params(CommonParams, Params,
 
     case BucketType of
         memcached ->
-            validate_memcached_bucket_params(CommonParams, IsNew, BucketConfig);
+            validate_memcached_bucket_params(CommonParams, Params, IsNew,
+                                             BucketConfig);
         membase ->
             validate_membase_bucket_params(CommonParams, Params, IsNew,
                                            BucketConfig, Version, IsEnterprise);
@@ -904,8 +905,18 @@ validate_bucket_type_specific_params(CommonParams, Params,
             validate_unknown_bucket_params(Params)
     end.
 
-validate_memcached_bucket_params(CommonParams, IsNew, BucketConfig) ->
+validate_memcached_params(Params) ->
+    case proplists:get_value("replicaNumber", Params) of
+        undefined ->
+            ignore;
+        _ ->
+            {error, replicaNumber,
+             <<"replicaNumber is not valid for memcached buckets">>}
+    end.
+
+validate_memcached_bucket_params(CommonParams, Params, IsNew, BucketConfig) ->
     [{ok, bucketType, memcached},
+     validate_memcached_params(Params),
      quota_size_error(CommonParams, memcached, IsNew, BucketConfig)].
 
 validate_membase_bucket_params(CommonParams, Params,
