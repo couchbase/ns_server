@@ -2884,18 +2884,11 @@ input[type=text].scenario-desc  {
 }
 .footer-indexes {
   align-items: flex-start;
+  height: 78px;
 }
-.footer-indexes.min {
-  height: 1rem;
-  overflow: clip;
-  padding: 0;
-}
-.footer-indexes.min:hover {
-  background-color: #f6f7f9;
-  cursor: pointer;
-}
-.footer-indexes .column.wide {
-  max-width: 840px;
+
+.footer-indexes .column {
+  height: 100%;
 }
 footer .column,
 .footer-column {
@@ -2921,7 +2914,6 @@ footer .column.vertical-divider,
 .footer-column.vertical-divider {
   border-right: 1px solid #d1d1d1;
 }
-
 footer .column.narrow {
   flex: 0 1 0;
 }

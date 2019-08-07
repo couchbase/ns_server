@@ -28,7 +28,7 @@
         data size
       </span>
     </span>
-    <span class="cbui-table-cell" ng-if="hideColumn !== 'bucket'">
+    <span class="cbui-table-cell flex-grow-half" ng-if="hideColumn !== 'bucket'">
       <span mn-sortable-title="bucket" class="sorter">
         bucket
       </span>
@@ -62,12 +62,20 @@
                  mnGsiTableCtl.getStatusClass(row) : '')]"
        ng-controller="mnGsiItemController as gsiItemCtl">
       <span class="cbui-table-cell flex-grow-1-5" title="{{row.index}}">
-        {{row.index}}
+        {{row.indexName}}
         <span class="label lt-blue" ng-if="row.partitioned">
           partitioned
         </span>
-        <span class="label lt-blue" ng-if="row.stale">
+        <span class="label warning" ng-if="row.stale">
           stale
+        </span>
+        <span
+           class="label lt-blue" ng-if="row.index.indexOf('(replica') > -1"
+           uib-tooltip="Index replicas are always active and automatically load-balance scan requests."
+           tooltip-append-to-body="true"
+           tooltip-placement="auto top"
+           tooltip-trigger="'mouseenter'">
+          replica {{row.numReplica}}
         </span>
       </span>
       <span class="cbui-table-cell flex-grow-half resp-hide-xsml">
@@ -94,7 +102,7 @@
         </span>
         <span ng-show="gsiItemCtl.has_no_data_size"> - </span>
       </span>
-      <span ng-if="hideColumn !== 'bucket'" class="cbui-table-cell">
+      <span ng-if="hideColumn !== 'bucket'" class="cbui-table-cell flex-grow-half">
         {{row.bucket}}
       </span>
       <span

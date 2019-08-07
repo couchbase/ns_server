@@ -2,17 +2,17 @@
   <div class="row items-top margin-bottom-1">
     <div class="margin-right-half">
       <div ng-click="$event.stopPropagation();">
-        <strong>Definition</strong> &nbsp;{{row.definition}}
+        <strong>Definition</strong> {{row.definition}}
       </div>
       <div>
-        <strong>Storage Mode</strong> &nbsp;{{row.storageMode | mnFormatStorageMode:pools.isEnterprise}} &nbsp;
+        <strong>Storage Mode</strong> {{row.storageMode | mnFormatStorageMode:pools.isEnterprise}} &nbsp;&nbsp;
         <span ng-if="!row.partitioned && (row.hosts.length > 1)" class="margin-bottom-0">
-          <strong>Nodes</strong> &nbsp; {{row.hosts.join(', ')}}
+          <strong>Nodes</strong> {{row.hosts.join(', ')}}
         </span>
         <span ng-if="row.partitioned" class="margin-bottom-0">
-          <strong>Nodes</strong> &nbsp;
+          <strong>Nodes</strong>
           <span ng-repeat="(node, partitions) in row.partitionMap track by node">
-            {{node}} ({{partitions.length}} partition){{$last ? '' : ','}}
+            {{node}} ({{partitions.length}} partition<span ng-show="partitions.length != 1">s</span>){{$last ? '' : ','}}
           </span>
         </span>
       </div>
