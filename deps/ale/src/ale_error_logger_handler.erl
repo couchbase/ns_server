@@ -149,7 +149,7 @@ format_report(supervisor_report, Report) ->
 
     {FormatString, [Name, Context, Reason, Offender]};
 format_report(crash_report, Report) ->
-    {"~s", [proc_lib:format(Report)]};
+    {"~s", [proc_lib:format(Report, latin1, 50)]};
 format_report(_Other, Report) when is_list(Report) ->
     case io_lib:printable_list(Report) of
         true ->
