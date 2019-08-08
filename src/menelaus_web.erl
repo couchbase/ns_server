@@ -36,7 +36,7 @@
          get_uuid/0,
          init/1]).
 
--export([ns_log_cat/1, ns_log_code_string/1]).
+-export([ns_log_cat/1, ns_log_code_string/1, ns_log_prepare_message/2]).
 
 -import(menelaus_util,
         [redirect_permanently/2,
@@ -1106,6 +1106,21 @@ ns_log_code_string(?NODE_EJECTED) ->
     "node was ejected";
 ns_log_code_string(?UI_SIDE_ERROR_REPORT) ->
     "client-side error report".
+
+ns_log_prepare_message(?UI_SIDE_ERROR_REPORT, Msg) ->
+    Key = {?MODULE, ns_log_re},
+    Re =
+        case erlang:get(Key) of
+            undefined ->
+                {ok, R} = re:compile("</?ud>"),
+                erlang:put(Key, R),
+                R;
+            R ->
+                R
+        end,
+    re:replace(Msg, Re, "", [global, {return, list}]);
+ns_log_prepare_message(_, Msg) ->
+    Msg.
 
 nth_path_tail(Path, N) when N > 0 ->
     nth_path_tail(path_tail(Path), N-1);

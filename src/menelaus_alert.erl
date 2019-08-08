@@ -258,6 +258,7 @@ build_log_structs(LogEntriesIn, MinTStamp, Limit) ->
                   case catch(io_lib:format(Msg, Args)) of
                       S when is_list(S) ->
                           CodeString = ns_log:code_string(Module, Code),
+                          S1 = ns_log:prepare_message(Module, Code, S),
                           [{struct,
                             [{node, Node},
                              {type, category_bin(Cat)},
@@ -266,7 +267,7 @@ build_log_structs(LogEntriesIn, MinTStamp, Limit) ->
                              {tstamp, misc:timestamp_to_time(TStamp,
                                                              millisecond)},
                              {shortText, list_to_binary(CodeString)},
-                             {text, list_to_binary(S)},
+                             {text, list_to_binary(S1)},
                              {serverTime, menelaus_util:format_server_time(
                                             ServerTime, MicroSecs)}
                             ]} | Acc];

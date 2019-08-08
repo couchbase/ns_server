@@ -36,7 +36,7 @@
 
 -export([log/6, log/7, recent/0, recent/1, delete_log/0]).
 
--export([code_string/2]).
+-export([code_string/2, prepare_message/3]).
 
 -export([ns_log_cat/1, ns_log_code_string/1]).
 
@@ -289,6 +289,16 @@ code_string(Module, Code) ->
     case catch(Module:ns_log_code_string(Code)) of
         S when is_list(S) -> S;
         _                 -> "message"
+    end.
+
+-spec prepare_message(atom(), integer(), string()) -> string().
+prepare_message(Module, Code, Msg) ->
+    case lists:member({ns_log_prepare_message, 2},
+                      Module:module_info(exports)) of
+        true ->
+            Module:ns_log_prepare_message(Code, Msg);
+        false ->
+            Msg
     end.
 
 -spec log(atom(), node(), Time, log_classification(), iolist(), list()) -> ok
