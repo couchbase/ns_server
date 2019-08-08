@@ -22,7 +22,6 @@
 -include("ns_common.hrl").
 
 -export([handle_logs/1,
-         build_logs/1,
          parse_settings_alerts_post/1,
          build_alerts_json/1]).
 
