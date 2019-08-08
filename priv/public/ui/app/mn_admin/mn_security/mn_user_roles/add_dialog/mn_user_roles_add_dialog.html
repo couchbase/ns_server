@@ -56,6 +56,9 @@
              ng-disabled="userRolesAddDialogCtl.isEditingMode"
              id="name_inp"
              ng-model="userRolesAddDialogCtl.user.id">
+          <a ng-show="!userRolesAddDialogCtl.isEditingMode &&
+                      (userRolesAddDialogCtl.user.domain === 'external')"
+             ng-click="userRolesAddDialogCtl.lookupMembership()">Lookup membership</a>
         </div>
         <div class="formrow">
           <label for="name_full_inp">Full Name <small>(optional)</small></label>
@@ -111,15 +114,17 @@
              ng-class="{selected : (userRolesAddDialogCtl.selectedPanel == 'groups')}">
             Groups
           </a>
-          <a ng-if="userRolesAddDialogCtl.isEditingMode"
+          <a ng-if="userRolesAddDialogCtl.externalGroups.length"
              ng-click="userRolesAddDialogCtl.selectedPanel = 'external_groups'"
              ng-class="{selected : (userRolesAddDialogCtl.selectedPanel == 'external_groups')}">
             External Groups
           </a>
         </span>
-        <fieldset class="select-user-roles hide-track show-scrollbar">
+        <fieldset class="select-user-roles hide-track show-scrollbar"
+                  mn-spinner="userRolesAddDialogCtl.reloadUserRoles"
+                  min-height="410px">
           <div
-             ng-if="userRolesAddDialogCtl.isEditingMode"
+             ng-if="userRolesAddDialogCtl.externalGroups.length"
              ng-show="userRolesAddDialogCtl.selectedPanel == 'external_groups'">
             <label
                class="disclosure"
@@ -168,6 +173,7 @@
             </div>
           </div>
           <mn-user-roles-list
+             ng-if="!userRolesAddDialogCtl.reloadUserRoles"
              ng-show="userRolesAddDialogCtl.selectedPanel == 'roles'"
              selected-wrappers="userRolesAddDialogCtl.selectedWrappers"
              selected-groups-roles="userRolesAddDialogCtl.selectedGroupsRoles"

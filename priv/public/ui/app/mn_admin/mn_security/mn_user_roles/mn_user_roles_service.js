@@ -14,6 +14,7 @@
       getRolesByRole: getRolesByRole,
       getRolesTree: getRolesTree,
       getUsers: getUsers,
+      getUser: getUser,
       getRoleUIID: getRoleUIID,
 
       addGroup: addGroup,
@@ -291,10 +292,11 @@
       return rv;
     }
 
-    function getUser(user) {
+    function getUser(user, params) {
       return $http({
         method: "GET",
-        url: getUserUrl(user)
+        url: getUserUrl(user),
+        params: params
       });
     }
 

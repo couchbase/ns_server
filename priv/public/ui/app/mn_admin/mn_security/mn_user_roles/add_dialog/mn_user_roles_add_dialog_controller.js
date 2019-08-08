@@ -20,8 +20,22 @@
     vm.getGroupTitle = getGroupTitle;
     vm.onGroupChanged = onGroupChanged;
     vm.selectedPanel = "roles";
+    vm.lookupMembership =  _.debounce(lookupMembership, 500, {leading: true});
 
     activate();
+
+    function lookupMembership() {
+      vm.reloadUserRoles = true;
+      mnUserRolesService.getUser(vm.user, {only_existing: false})
+        .then(function (user) {
+          vm.selectedRoles = {};
+          vm.selectedGroupsRoles = {};
+          vm.selectedGroups = {};
+          delete vm.rolesToEnable;
+          applyUser(user.data);
+          vm.reloadUserRoles = false;
+        });
+    }
 
     function selectRoles(group, flag) {
       return function (role) {
@@ -73,20 +87,27 @@
     }
 
     function activate() {
-      if (vm.user.roles) {
-        vm.rolesToEnable = getUserRoles(vm.user);
-      }
+      vm.reloadUserRoles = true;
       $q.all([
         mnUserRolesService.getRolesByRole(),
         mnUserRolesService.getRolesGroups()
       ]).then(function (groups) {
         vm.byRole = groups[0];
         vm.groups = groups[1].data;
+        applyUser(vm.user);
+        vm.reloadUserRoles = false;
+      }, function () {
+        vm.reloadUserRoles = false;
+      });
+    }
 
-        vm.selectedGroups = groupsToObject(vm.user.groups || []);
-        vm.externalGroups = groupsToObject(vm.user.external_groups || []);
+    function applyUser(user) {
+      vm.selectedGroups = groupsToObject(user.groups || []);
+      vm.externalGroups = groupsToObject(user.external_groups || []);
 
-        vm.user.roles.forEach(function (role) {
+      if (user.roles) {
+        vm.rolesToEnable = getUserRoles(user);
+        user.roles.forEach(function (role) {
           var id = mnUserRolesService.getRoleUIID(role);
           vm.selectedGroupsRoles[id] = vm.selectedGroupsRoles[id] || {};
           role.origins.forEach(function (group) {
@@ -95,9 +116,8 @@
             }
           });
         });
-
-        reviewSelectedWrappers();
-      });
+      }
+      reviewSelectedWrappers();
     }
 
     function save() {
