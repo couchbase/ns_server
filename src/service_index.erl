@@ -63,7 +63,8 @@ status_mapping() ->
                   cluster_compat_mode:is_enterprise() of
                   true ->
                       [{instId, <<"instId">>},
-                       {partitioned, <<"partitioned">>} | AddType0];
+                       {partitioned, <<"partitioned">>},
+                       {partitionMap, <<"partitionMap">>} | AddType0];
                   false ->
                       AddType0
               end,
