@@ -17,7 +17,7 @@
 
     function getRebalanceReport(url) {
       return $http({
-        url: url,
+        url: url || "/logs/rebalanceReport",
         cache: true,
         method: 'GET'
       }).then(null,function () {
@@ -26,7 +26,7 @@
     }
 
     function clearRebalanceReportCache(url) {
-      $cacheFactory.get('$http').remove(url);
+      $cacheFactory.get('$http').remove(url || "/logs/rebalanceReport");
       return this;
     }
 
