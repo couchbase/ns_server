@@ -6,8 +6,14 @@
       </div>
       <div>
         <strong>Storage Mode</strong> &nbsp;{{row.storageMode | mnFormatStorageMode:pools.isEnterprise}} &nbsp;
-        <span ng-show="row.hosts.length > 1" class="margin-bottom-0">
+        <span ng-if="!row.partitioned && (row.hosts.length > 1)" class="margin-bottom-0">
           <strong>Nodes</strong> &nbsp; {{row.hosts.join(', ')}}
+        </span>
+        <span ng-if="row.partitioned" class="margin-bottom-0">
+          <strong>Nodes</strong> &nbsp;
+          <span ng-repeat="(node, partitions) in row.partitionMap track by node">
+            {{node}} ({{partitions.length}} partition){{$last ? '' : ','}}
+          </span>
         </span>
       </div>
     </div>
