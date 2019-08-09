@@ -762,8 +762,8 @@ do_terminate(Reason, Config, Bucket, Sock) ->
             %% delete all buckets as part of shutdown. if this is supervisor
             %% crash, we're fine too
             ale:info(?USER_LOGGER,
-                     "Control connection to memcached on ~p disconnected: ~p",
-                     [node(), Reason])
+                     "Control connection to memcached on ~p disconnected. "
+                     "Check logs for details.", [node()])
     end.
 
 delete_bucket(Sock, Bucket, Force, DeleteData) ->
