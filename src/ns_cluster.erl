@@ -266,13 +266,13 @@ complete_join(NodeKVList) ->
     gen_server:call(?MODULE, {complete_join, NodeKVList}, ?COMPLETE_TIMEOUT).
 
 -spec change_address(string()) -> ok
-                                      | {cannot_resolve, inet:posix()}
-                                      | {cannot_listen, inet:posix()}
-                                      | not_self_started
-                                      | {address_save_failed, any()}
-                                      | {address_not_allowed, string()}
-                                      | already_part_of_cluster
-                                      | not_renamed.
+                                  | {cannot_resolve, {inet:posix(), inet|inet6}}
+                                  | {cannot_listen, inet:posix()}
+                                  | not_self_started
+                                  | {address_save_failed, any()}
+                                  | {address_not_allowed, string()}
+                                  | already_part_of_cluster
+                                  | not_renamed.
 change_address(Address) ->
     case misc:is_good_address(Address) of
         ok ->
@@ -545,6 +545,8 @@ check_host_port_connectivity(Host, Port, AFamily) ->
             after
                 inet:close(Socket)
             end;
+        {error, nxdomain} ->
+            {error, {AFamily, nxdomain}};
         {error, Reason} ->
             {error, Reason}
     catch
@@ -1138,9 +1140,10 @@ do_engage_cluster_inner_check_address(Address, true) ->
             ok;
         {ErrorType, _} = Error ->
             Msg0 = case Error of
-                       {cannot_resolve, Errno} ->
-                           io_lib:format("Address \"~s\" could not be resolved: ~p",
-                                         [Address, Errno]);
+                       {cannot_resolve, {Errno, AFamily}} ->
+                           io_lib:format(
+                             "Unable to resolve ~s address for ~p: ~p",
+                             [misc:afamily2str(AFamily), Address, Errno]);
                        {cannot_listen, Errno} ->
                            io_lib:format("Could not listen on address \"~s\": ~p",
                                          [Address, Errno]);

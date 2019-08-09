@@ -41,6 +41,11 @@ connection_error_message({tls_alert, "bad record mac"}, Host, Port) ->
                                  "TLS / HTTPS endpoint.", [Host, Port]));
 connection_error_message({tls_alert, M}, Host, Port) ->
     list_to_binary(io_lib:format("Failed to establish TLS connection to ~s:~w: ~p", [Host, Port, M]));
+connection_error_message({AFamily, nxdomain}, Host, _Port) ->
+    list_to_binary(io_lib:format("Unable to resolve ~s address for ~p.  "
+                                 "The hostname may be incorrect or not "
+                                 "resolvable.",
+                                 [misc:afamily2str(AFamily), Host]));
 connection_error_message({Error, _}, Host, Port) ->
     connection_error_message(Error, Host, Port);
 connection_error_message(nxdomain, Host, _Port) ->

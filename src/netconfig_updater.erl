@@ -300,12 +300,8 @@ check_nodename_resolvable(Node, AFamily) ->
     case inet:getaddr(Hostname, AFamily) of
         {ok, _} -> ok;
         {error, Reason} ->
-            AFamilyStr = case AFamily of
-                             inet -> "IPv4";
-                             inet6 -> "IPv6"
-                         end,
-            M = io_lib:format("Can't resolve node's name ~s to ~s address: ~p",
-                              [Hostname, AFamilyStr, Reason]),
+            M = io_lib:format("Unable to resolve ~s address for ~s: ~p",
+                              [misc:afamily2str(AFamily), Hostname, Reason]),
             {error, iolist_to_binary(M)}
     end.
 

@@ -457,8 +457,10 @@ handle_node_rename(Req) ->
                         ok;
                     not_renamed ->
                         ok;
-                    {cannot_resolve, Errno} ->
-                        Msg = io_lib:format("Could not resolve the hostname: ~p", [Errno]),
+                    {cannot_resolve, {Errno, AFamily}} ->
+                        Msg = io_lib:format(
+                                "Unable to resolve ~s address for ~p: ~p",
+                                [misc:afamily2str(AFamily), Hostname, Errno]),
                         {error, iolist_to_binary(Msg), 400};
                     {cannot_listen, Errno} ->
                         Msg = io_lib:format("Could not listen: ~p", [Errno]),

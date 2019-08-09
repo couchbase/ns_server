@@ -1530,9 +1530,10 @@ local_url(Port, Path, Options) ->
            end,
     Scheme ++ User ++ localhost([url]) ++ ":" ++ integer_to_list(Port) ++ Path.
 
--spec is_good_address(string()) -> ok | {cannot_resolve, inet:posix()}
-                                      | {cannot_listen, inet:posix()}
-                                      | {address_not_allowed, string()}.
+-spec is_good_address(string()) ->
+                ok | {cannot_resolve, {inet:posix(), inet|inet6}}
+                   | {cannot_listen, inet:posix()}
+                   | {address_not_allowed, string()}.
 is_good_address(Address) ->
     case {is_ipv6(), is_raw_ip(Address), is_raw_ipv6(Address)} of
         {true, _, true} -> check_short_name(Address, ":");
@@ -1562,7 +1563,7 @@ is_good_address_when_allowed(Address) ->
     NetFamily = get_net_family(),
     case inet:getaddr(Address, NetFamily) of
         {error, Errno} ->
-            {cannot_resolve, Errno};
+            {cannot_resolve, {Errno, NetFamily}};
         {ok, IpAddr} ->
             case gen_udp:open(0, [NetFamily, {ip, IpAddr}]) of
                 {error, Errno} ->
@@ -2845,3 +2846,6 @@ is_raw_ipv6(Host) ->
         {ok, _} -> true;
         {error, einval} -> false
     end.
+
+afamily2str(inet) -> "IPv4";
+afamily2str(inet6) -> "IPv6".
