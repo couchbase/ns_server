@@ -276,6 +276,10 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
     HostName = build_node_hostname(Config, WantENode, LocalAddr),
     NodeUUID = ns_config:search_node_with_default(WantENode, Config, uuid,
                                                   undefined),
+    ConfiguredHostname =
+      misc:join_host_port(
+        misc:extract_node_address(WantENode),
+        service_ports:get_port(rest_port, Config, WantENode)),
 
     PortKeys = [{memcached_port, direct},
                 %% this is used by xdcr over ssl since 2.5.0
@@ -323,7 +327,8 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
           {ports, {struct, PortsKV ++ DistPorts}},
           {services, ns_cluster_membership:node_services(Config, WantENode)},
           {addressFamily, AFamily},
-          {nodeEncryption, NEncryption}
+          {nodeEncryption, NEncryption},
+          {configuredHostname, list_to_binary(ConfiguredHostname)}
          ] ++ [{externalListeners, Listeners} || Listeners =/= undefined]
            ++ alternate_addresses_json(WantENode, Config, WantedPorts),
     case WantENode =:= node() of
