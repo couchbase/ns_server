@@ -110,7 +110,9 @@ def main():
         services = deploy
         deploy = dict(("n%d" % i, services[:]) for i in xrange(nodes))
 
-    deploy["n0"] = deploy.get("n0", []) + ["kv"]
+    if not "kv" in deploy.get("n0", []):
+        deploy["n0"] = deploy.get("n0", []) + ["kv"]
+
     if nodes == 0 or buckettype not in valid_bucket_types or \
             int(memsize) < 256 or int(replicas) > 3 or \
             not set(deploy.keys()) <= \
