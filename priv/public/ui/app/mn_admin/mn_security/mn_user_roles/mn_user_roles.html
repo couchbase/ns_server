@@ -3,7 +3,7 @@
    min-height="300px"
    class="margin-top-neg-half margin-left-neg-1">
   <div class="row resp-sml margin-bottom-half">
-    <div class="users-auth-check">
+    <div class="users-auth-check" ng-if="userRolesCtl.saslauthdAuth">
       <span
          class="icon margin-right"
          ng-class="userRolesCtl.saslauthdAuth.enabled ? 'fa-check success' : 'fa-ban grayblack-3'">

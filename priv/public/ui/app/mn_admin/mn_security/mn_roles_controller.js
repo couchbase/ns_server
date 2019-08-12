@@ -22,7 +22,7 @@
               mnUserRolesService.getSaslauthdAuth(),
               mnUserRolesService.getLdapSettings()
             ]).then(function (resp) {
-              return resp[0].enabled || resp[1].data.authentication_enabled;
+              return (resp[0] && resp[0].enabled) || resp[1].data.authentication_enabled;
             });
           }
         }

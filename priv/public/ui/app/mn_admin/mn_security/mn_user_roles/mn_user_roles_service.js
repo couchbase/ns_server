@@ -50,6 +50,8 @@
         url: "/settings/saslauthdAuth"
       }).then(function (resp) {
         return resp.data;
+      }, function (resp) {
+        return;
       });
     }
 
