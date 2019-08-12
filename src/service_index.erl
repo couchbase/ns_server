@@ -64,6 +64,7 @@ status_mapping() ->
                   true ->
                       [{instId, <<"instId">>},
                        {partitioned, <<"partitioned">>},
+                       {numPartition, <<"numPartition">>},
                        {partitionMap, <<"partitionMap">>} | AddType0];
                   false ->
                       AddType0
@@ -71,6 +72,8 @@ status_mapping() ->
 
     [{id, <<"defnId">>},
      {index, <<"name">>},
+     {indexName, <<"indexName">>},
+     {numReplica, <<"numReplica">>},
      {bucket, <<"bucket">>},
      {status, <<"status">>},
      {definition, <<"definition">>},
