@@ -1,5 +1,5 @@
 {
-    "version" : 1,
+    "version" : 2,
     "module" : "ns_server",
     "events" : [
       {
@@ -8,6 +8,7 @@
           "description" : "Successful login to couchbase cluster",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -24,6 +25,7 @@
           "description" : "Unsuccessful attempt to login to couchbase cluster",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : "",
@@ -38,6 +40,7 @@
           "description" : "User was deleted",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -54,6 +57,7 @@
           "description" : "User credentials were changed",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "identity" : {"domain" : "", "user" : ""}
@@ -70,6 +74,7 @@
           "description" : "Node was added to the cluster",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -91,6 +96,7 @@
           "description" : "Node was removed from the cluster",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -107,6 +113,7 @@
           "description" : "Nodes that were failed over",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -124,6 +131,7 @@
           "description" : "Entered node recovery",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -141,6 +149,7 @@
           "description" : "Rebalance was initiated",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -159,6 +168,7 @@
           "description" : "Bucket was created",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -177,6 +187,7 @@
           "description" : "Bucket was modified",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -195,6 +206,7 @@
           "description" : "Bucket was deleted",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -211,6 +223,7 @@
           "description" : "Bucket was flushed",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "remote" : {"ip" : "", "port" : 1},
@@ -227,6 +240,7 @@
           "description" : "Started loading sample",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -243,6 +257,7 @@
           "description" : "Disk storage configuration was set",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -263,6 +278,7 @@
           "description" : "The node was renamed",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -280,6 +296,7 @@
           "description" : "The services were set for the node",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -297,6 +314,7 @@
           "description" : "Cluster settings were changed",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -314,6 +332,7 @@
           "description" : "Server group was added",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -331,6 +350,7 @@
           "description" : "Server group was deleted",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -348,6 +368,7 @@
           "description" : "Server group was updated",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -366,6 +387,7 @@
           "description" : "Remote cluster reference was created",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -385,6 +407,7 @@
           "description" : "Remote cluster reference was updated",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -404,6 +427,7 @@
           "description" : "Remote cluster reference was deleted",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -423,6 +447,7 @@
           "description" : "XDCR replication was created",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -443,6 +468,7 @@
           "description" : "XDCR replication was updated",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -460,6 +486,7 @@
           "description" : "XDCR replication was canceled",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -476,6 +503,7 @@
           "description" : "Global XDCR settings were updated",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -492,6 +520,7 @@
           "description" : "Auto Failover was enabled",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -513,6 +542,7 @@
           "description" : "Auto Failover was disabled",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -528,6 +558,7 @@
           "description" : "Count for Auto Failover was reset",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -543,6 +574,7 @@
           "description" : "Cluster alerts were enabled",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -562,6 +594,7 @@
           "description" : "Cluster alerts were disabled",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -577,6 +610,7 @@
           "description" : "Compaction settings were modified",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -606,6 +640,7 @@
           "description" : "Self-signed SSL certificate was regenerated",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -621,6 +656,7 @@
           "description" : "Saslauthd settings were modified",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -639,6 +675,7 @@
           "description" : "Internal Settings",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -655,6 +692,7 @@
           "description" : "Upload cluster CA",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -672,6 +710,7 @@
           "description" : "Reload node certificate chain and pkey from inbox",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -689,6 +728,7 @@
           "description" : "Modify Index Storage Mode",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -705,6 +745,7 @@
           "description" : "User was added or updated",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -724,6 +765,7 @@
           "description" : "Master password change was requested",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : "",
@@ -740,6 +782,7 @@
           "description" : "Encryption key rotation was requested",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : "",
@@ -756,6 +799,7 @@
           "description" : "Password policy was changed",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : "",
@@ -773,6 +817,7 @@
           "description" : "Client certificate authentication settings changed",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "identity" : {"domain" : "", "user" : ""}
@@ -794,6 +839,7 @@
           "description" : "Security Settings",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -810,6 +856,7 @@
           "description" : "Log collection run was started",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -831,6 +878,7 @@
           "description" : "Log redaction settings were modified",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -847,6 +895,7 @@
           "description": "loaded configuration file for audit daemon",
           "sync": false,
           "enabled": true,
+          "filtering_permitted" : false,
           "mandatory_fields": {
               "timestamp": "",
               "real_userid": {"domain": "", "user": ""},
@@ -869,6 +918,7 @@
           "description": "Index service settings were modified",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"source" : "", "user" : ""},
@@ -885,6 +935,7 @@
           "description": "Query service settings were modified",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"source" : "", "user" : ""},
@@ -901,6 +952,7 @@
           "description": "Document was mutated",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : true,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"source" : "", "user" : ""},
@@ -919,6 +971,7 @@
           "description" : "User group was added or updated",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -938,6 +991,7 @@
           "description" : "User group was deleted",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -954,6 +1008,7 @@
           "description" : "Ldap settings were modified",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -979,6 +1034,7 @@
           "description" : "Developer preview settings",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -995,6 +1051,7 @@
           "description" : "License Settings",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -1011,6 +1068,7 @@
           "description" : "UI profile was added or updated",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -1029,6 +1087,7 @@
           "description" : "UI profile was deleted",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -1046,6 +1105,7 @@
           "description" : "Retry rebalance settings were modified",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -1064,6 +1124,7 @@
           "description" : "Auto reprovision was enabled",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -1080,6 +1141,7 @@
           "description" : "Auto reprovision was disabled",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -1095,6 +1157,7 @@
           "description" : "Failover settings",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
@@ -1111,6 +1174,7 @@
           "description" : "Document was read",
           "sync" : false,
           "enabled" : true,
+          "filtering_permitted" : true,
           "mandatory_fields" : {
               "timestamp" : "",
               "real_userid" : {"source" : "", "user" : ""},
