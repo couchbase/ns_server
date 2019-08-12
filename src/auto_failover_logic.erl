@@ -16,6 +16,7 @@
 -module(auto_failover_logic).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -541,55 +542,56 @@ service_failover_min_node_count_test() ->
               true = is_integer(service_failover_min_node_count(Service))
       end, Services).
 
-%% TODO - temp to make eunit happy. Update eunit tests.
-process_frame(Nodes, DownNodes, State, SvcConfig) ->
-    process_frame(Nodes, DownNodes, State, SvcConfig, []).
+test_init(DownThreshold) ->
+    init_state(DownThreshold + ?DOWN_GRACE_PERIOD, ?LATEST_VERSION_NUM).
 
-process_frame_no_action(0, _Nodes, _DownNodes, State, _SvcConfig) ->
-    State;
-process_frame_no_action(Times, Nodes, DownNodes, State, SvcConfig) ->
-    {[], NewState} = process_frame(Nodes, DownNodes, State, SvcConfig),
-    process_frame_no_action(Times-1, Nodes, DownNodes, NewState, SvcConfig).
+attach_test_uuid(Node) ->
+    {Node, list_to_binary(atom_to_list(Node))}.
 
-build_svc_config(AllServices, AutoFailoverDisabled, Nodes) ->
-    lists:map(
-      fun (Service) ->
-              {Service, {{disable_auto_failover, AutoFailoverDisabled},
-                         {nodes, Nodes}}}
-      end, AllServices).
+attach_test_uuids(Nodes) ->
+    [attach_test_uuid(N) || N <- Nodes].
 
-attach_uuid(Nodes) ->
-    lists:map(fun(X) -> {X, list_to_binary(atom_to_list(X))} end, Nodes).
+test_frame(Tries, Nodes, DownNodes, State) ->
+    NodesWithIDs = attach_test_uuids(Nodes),
+    SvcConfig = [{kv, {{disable_auto_failover, false}, {nodes, Nodes}}}],
+    test_frame(Tries, [], NodesWithIDs,
+               attach_test_uuids(DownNodes), State, SvcConfig).
+
+test_frame(0, Actions, _Nodes, _DownNodes, State, _SvcConfig) ->
+    {Actions, State};
+test_frame(Times, Actions, Nodes, DownNodes, State, SvcConfig) ->
+    ?assertEqual([], Actions),
+    {NewActions, NewState} = process_frame(
+                               Nodes, DownNodes, State, SvcConfig, []),
+    test_frame(Times - 1, NewActions, Nodes, DownNodes, NewState, SvcConfig).
+
+expect_no_actions({Actions, State}) ->
+    ?assertEqual([], Actions),
+    State.
+
+expect_failover(Node, {Actions, State}) ->
+    ?assertEqual([{failover, attach_test_uuid(Node)}], Actions),
+    State.
+
+expect_mail_down_warnings(Nodes, {Actions, State}) ->
+    ?assertEqual([{mail_down_warning, N} || N <- attach_test_uuids(Nodes)],
+                 Actions),
+    State.
 
 basic_kv_1_test() ->
-    State0 = init_state(3+?DOWN_GRACE_PERIOD, ?LATEST_VERSION_NUM),
-    SvcConfig = build_svc_config([kv], false, [a,b,c]),
-    Nodes = attach_uuid([a,b,c]),
-    DownNode = attach_uuid([b]),
-    {[], State1} = process_frame(Nodes, [], State0, SvcConfig),
-    State2 = process_frame_no_action(4, Nodes, DownNode, State1, SvcConfig),
-    DN = hd(DownNode),
-    {[{failover, DN}], _} = process_frame(Nodes, DownNode, State2, SvcConfig).
+    functools:chain(
+      test_init(3),
+      [?cut(expect_no_actions(test_frame(1, [a, b, c], [], _))),
+       ?cut(expect_failover(b, test_frame(5, [a, b, c], [b], _)))]).
 
 basic_kv_2_test() ->
-    State0 = init_state(4+?DOWN_GRACE_PERIOD, ?LATEST_VERSION_NUM),
-    SvcConfig = build_svc_config([kv], false, [a,b,c]),
-    Nodes = attach_uuid([a,b,c]),
-    DownNode = attach_uuid([b]),
-    {[], State1} = process_frame(Nodes, DownNode, State0, SvcConfig),
-    State2 = process_frame_no_action(4, Nodes, DownNode, State1, SvcConfig),
-    DN = hd(DownNode),
-    {[{failover, DN}], _} = process_frame(Nodes, DownNode, State2, SvcConfig).
+    expect_failover(b, test_frame(6, [a, b, c], [b], test_init(4))).
 
 min_size_test_body(Threshold) ->
-    State0 = init_state(Threshold+?DOWN_GRACE_PERIOD, ?LATEST_VERSION_NUM),
-    SvcConfig = build_svc_config([kv], false, [a,b]),
-    Nodes = attach_uuid([a,b]),
-    DownNode = attach_uuid([b]),
-    {[], State1} = process_frame(Nodes, DownNode, State0, SvcConfig),
-    State2 = process_frame_no_action(Threshold, Nodes, DownNode, State1, SvcConfig),
-    {[{mail_too_small, _, _, _}], State3} = process_frame(Nodes, DownNode, State2, SvcConfig),
-    process_frame_no_action(30, Nodes, DownNode, State3, SvcConfig).
+    {Actions, State} = test_frame(Threshold + 2, [a, b], [b],
+                                  test_init(Threshold)),
+    ?assertMatch([{mail_too_small, _, _, _}], Actions),
+    test_frame(30, [a, b], [b], State).
 
 min_size_test() ->
     min_size_test_body(2),
@@ -597,67 +599,46 @@ min_size_test() ->
     min_size_test_body(4).
 
 min_size_and_increasing_test() ->
-    State = min_size_test_body(2),
-    SvcConfig = build_svc_config([kv], false, [a,b,c]),
-    Nodes = attach_uuid([a,b,c]),
-    DownNode = attach_uuid([b]),
-    State2 = process_frame_no_action(3, Nodes, DownNode, State, SvcConfig),
-    DN = hd(DownNode),
-    {[{failover, DN}], _} = process_frame(Nodes, DownNode, State2, SvcConfig).
+    S = expect_no_actions(min_size_test_body(2)),
+    expect_failover(b, test_frame(4, [a, b, c], [b], S)).
 
 other_down_test() ->
-    State0 = init_state(3+?DOWN_GRACE_PERIOD, ?LATEST_VERSION_NUM),
-    SvcConfig = build_svc_config([kv], false, [a,b,c]),
-    Nodes = attach_uuid([a,b,c]),
-    DownNode1 = attach_uuid([b]),
-    {[], State1} = process_frame(Nodes, DownNode1, State0, SvcConfig),
-    State2 = process_frame_no_action(3, Nodes, DownNode1, State1, SvcConfig),
-    DownNode2 = attach_uuid([b, c]),
-    {[{mail_down_warning, _}], State3} = process_frame(Nodes, DownNode2, State2, SvcConfig),
-    State4 = process_frame_no_action(1, Nodes, DownNode1, State3, SvcConfig),
-    DN = hd(DownNode1),
-    {[{failover, DN}], _} = process_frame(Nodes, DownNode1, State4, SvcConfig),
-    {[], State5} = process_frame(Nodes, DownNode2, State4, SvcConfig),
-    State6 = process_frame_no_action(1, Nodes, DownNode1, State5, SvcConfig),
-    {[{failover, DN}], _} = process_frame(Nodes, DownNode1, State6, SvcConfig).
+    Nodes = [a, b, c],
+    functools:chain(
+      test_init(3),
+      [?cut(expect_no_actions(test_frame(4, Nodes, [b], _))),
+       ?cut(expect_mail_down_warnings([b], test_frame(1, Nodes, [b, c], _))),
+       ?cut(expect_failover(b, test_frame(2, Nodes, [b], _))),
+       ?cut(expect_no_actions(test_frame(1, Nodes, [b, c], _))),
+       ?cut(expect_failover(b, test_frame(1, Nodes, [b], _)))]).
 
 two_down_at_same_time_test() ->
-    State0 = init_state(3+?DOWN_GRACE_PERIOD, ?LATEST_VERSION_NUM),
-    SvcConfig = build_svc_config([kv], false, [a,b,c,d]),
-    Nodes = attach_uuid([a,b,c,d]),
-    DownNode2 = attach_uuid([b, c]),
-    State1 = process_frame_no_action(2, Nodes, DownNode2, State0, SvcConfig),
-    [B, C] = DownNode2,
-    {[{mail_down_warning, B}, {mail_down_warning, C}], _} =
-        process_frame(Nodes, DownNode2, State1, SvcConfig).
+    Nodes = [a, b, c, d],
+    functools:chain(
+      test_init(3),
+      [?cut(expect_no_actions(test_frame(2, Nodes, [b, c], _))),
+       ?cut(expect_mail_down_warnings([b, c],
+                                      test_frame(1, Nodes, [b, c], _)))]).
 
 multiple_mail_down_warning_test() ->
-    State0 = init_state(3+?DOWN_GRACE_PERIOD, ?LATEST_VERSION_NUM),
-    SvcConfig = build_svc_config([kv], false, [a,b,c]),
-    Nodes = attach_uuid([a,b,c]),
-    DownNode1 = attach_uuid([b]),
-    {[], State1} = process_frame(Nodes, DownNode1, State0, SvcConfig),
-    State2 = process_frame_no_action(2, Nodes, DownNode1, State1, SvcConfig),
-    DownNode2 = attach_uuid([b, c]),
-    [B, C] = DownNode2,
-    {[{mail_down_warning, B}], State3} = process_frame(Nodes, DownNode2, State2, SvcConfig),
-    %% Make sure not every tick sends out a message
-    State4 = process_frame_no_action(1, Nodes, DownNode2, State3, SvcConfig),
-    {[{mail_down_warning, C}], _} = process_frame(Nodes, DownNode2, State4, SvcConfig).
+    Nodes = [a, b, c],
+    functools:chain(
+      test_init(3),
+      [?cut(expect_no_actions(test_frame(3, Nodes, [b], _))),
+       ?cut(expect_mail_down_warnings([b], test_frame(1, Nodes, [b, c], _))),
+       %% Make sure not every tick sends out a message
+       ?cut(expect_no_actions(test_frame(1, Nodes, [b, c], _))),
+       ?cut(expect_mail_down_warnings([c], test_frame(1, Nodes, [b, c], _)))]).
 
 %% Test if mail_down_warning is sent again if node was up in between
 mail_down_warning_down_up_down_test() ->
-    State0 = init_state(3+?DOWN_GRACE_PERIOD, ?LATEST_VERSION_NUM),
-    SvcConfig = build_svc_config([kv], false, [a,b,c]),
-    Nodes = attach_uuid([a,b,c]),
-    DownNode1 = attach_uuid([b]),
-    {[], State1} = process_frame(Nodes, DownNode1, State0, SvcConfig),
-    State2 = process_frame_no_action(2, Nodes, DownNode1, State1, SvcConfig),
-    DN = hd(DownNode1),
-    DownNode2 = attach_uuid([b, c]),
-    {[{mail_down_warning, DN}], State3} = process_frame(Nodes, DownNode2, State2, SvcConfig),
-    %% Node is up again
-    State4 = process_frame_no_action(1, Nodes, [], State3, SvcConfig),
-    State5 = process_frame_no_action(2, Nodes, DownNode1, State4, SvcConfig),
-    {[{mail_down_warning, DN}], _} = process_frame(Nodes, DownNode2, State5, SvcConfig).
+    Nodes = [a, b, c],
+    functools:chain(
+      test_init(3),
+      [?cut(expect_no_actions(test_frame(3, Nodes, [b], _))),
+       ?cut(expect_mail_down_warnings([b], test_frame(1, Nodes, [b, c], _))),
+       %% Node is up again
+       ?cut(expect_no_actions(test_frame(1, Nodes, [], _))),
+       ?cut(expect_no_actions(test_frame(2, Nodes, [b], _))),
+       ?cut(expect_mail_down_warnings([b], test_frame(1, Nodes, [b, c], _)))]).
 -endif.
