@@ -747,12 +747,11 @@ active_server_groups(Config) ->
                proplists:get_value(nodes, SG)} || SG <- Groups],
     lists:filtermap(
       fun ({SG, Ns}) ->
-              NMs = ns_cluster_membership:get_nodes_cluster_membership(Ns),
-              ActiveNodes = [N || {N, active} <- NMs],
-              case ActiveNodes of
+              case ns_cluster_membership:get_nodes_with_status(
+                     Config, Ns, active) of
                   [] ->
                       false;
-                  _ ->
+                  ActiveNodes ->
                       {true, {SG, ActiveNodes}}
               end
       end, AllSGs).

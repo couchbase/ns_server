@@ -30,8 +30,6 @@
          inactive_added_nodes/0,
          actual_active_nodes/0,
          actual_active_nodes/1,
-         get_nodes_cluster_membership/0,
-         get_nodes_cluster_membership/1,
          get_cluster_membership/1,
          get_cluster_membership/2,
          get_node_server_group/2,
@@ -104,13 +102,6 @@ actual_active_nodes() ->
 
 actual_active_nodes(Config) ->
     get_nodes_with_status(Config, ns_node_disco:nodes_actual(), active).
-
-get_nodes_cluster_membership() ->
-    get_nodes_cluster_membership(ns_node_disco:nodes_wanted()).
-
-get_nodes_cluster_membership(Nodes) ->
-    Config = ns_config:get(),
-    [{Node, get_cluster_membership(Node, Config)} || Node <- Nodes].
 
 get_cluster_membership(Node) ->
     get_cluster_membership(Node, ns_config:get()).
