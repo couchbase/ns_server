@@ -39,7 +39,7 @@ authenticate(Username, Password, Settings) ->
 authenticate_with_cause(Username, Password, Settings) ->
     case proplists:get_value(authentication_enabled, Settings) of
         true ->
-            case get_user_DN(Username, Settings) of
+            case get_user_DN(Username, Settings, #{}) of
                 {ok, DN} ->
                     case ldap_util:with_authenticated_connection(
                            DN, Password, Settings, fun (_) -> ok end) of
@@ -58,9 +58,9 @@ with_query_connection(Settings, Fun) ->
     {password, Pass} = proplists:get_value(query_pass, Settings),
     ldap_util:with_authenticated_connection(DN, Pass, Settings, Fun).
 
-get_user_DN(Username, Settings) ->
+get_user_DN(Username, Settings, Context) ->
     Map = proplists:get_value(user_dn_mapping, Settings),
-    case map_user_to_DN(Username, Settings, Map) of
+    case map_user_to_DN(Username, Settings, Map, Context) of
         {ok, DN} ->
             ?log_debug("Username->DN: Constructed DN: ~p for ~p",
                        [ns_config_log:tag_user_name(DN),
@@ -73,13 +73,14 @@ get_user_DN(Username, Settings) ->
             {error, Error}
     end.
 
-map_user_to_DN(Username, _Settings, []) ->
+map_user_to_DN(Username, _Settings, [], _) ->
     ?log_debug("Username->DN: rule not found for ~p",
                [ns_config_log:tag_user_name(Username)]),
     {ok, Username};
-map_user_to_DN(Username, Settings, [{Re, {Type, Template}} = Rule|T]) ->
+map_user_to_DN(Username, Settings, [{Re, {Type, Template}} = Rule|T],
+               Context) ->
     case re:run(Username, Re, [{capture, all_but_first, list}]) of
-        nomatch -> map_user_to_DN(Username, Settings, T);
+        nomatch -> map_user_to_DN(Username, Settings, T, Context);
         {match, Captured} ->
             ?log_debug("Username->DN: using rule ~p for ~p",
                        [Rule, ns_config_log:tag_user_name(Username)]),
@@ -89,19 +90,22 @@ map_user_to_DN(Username, Settings, [{Re, {Type, Template}} = Rule|T]) ->
             [Res] = ldap_util:replace_expressions([Template], Subs),
             case Type of
                 template -> {ok, Res};
-                'query' -> dn_query(Res, Settings)
+                'query' -> dn_query(Res, Settings, Context)
             end
     end.
 
-dn_query(Query, Settings) ->
+dn_query(Query, Settings, #{query_handle := Handle}) ->
+    Timeout = proplists:get_value(request_timeout, Settings),
+    dn_query_with_handle(Handle, Query, Timeout);
+dn_query(Query, Settings, _) ->
     Timeout = proplists:get_value(request_timeout, Settings),
     with_query_connection(
       Settings,
       fun (Handle) ->
-              dn_query(Handle, Query, Timeout)
+              dn_query_with_handle(Handle, Query, Timeout)
       end).
 
-dn_query(Handle, Query, Timeout) ->
+dn_query_with_handle(Handle, Query, Timeout) ->
     case ldap_util:parse_url("ldap:///" ++ Query) of
         {ok, URLProps} ->
             Base = proplists:get_value(dn, URLProps, ""),
@@ -135,7 +139,8 @@ get_groups(Handle, Username, Settings, QueryStr) ->
     Timeout = proplists:get_value(request_timeout, Settings),
     GetDN =
         fun () ->
-                case get_user_DN(Username, Settings) of
+                Context = #{query_handle => Handle},
+                case get_user_DN(Username, Settings, Context) of
                     {ok, DN} -> DN;
                     {error, Reason} ->
                         throw({error, {username_to_dn_map_failed, Reason}})
