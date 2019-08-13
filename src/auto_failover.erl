@@ -291,9 +291,11 @@ handle_info(tick, State0) ->
     NonPendingNodes = lists:sort(ns_cluster_membership:active_nodes(Config)),
 
     NodeStatuses = ns_doctor:get_nodes(),
-    {DownNodes, DownSG} = get_down_nodes(NonPendingNodes, Config),
+    DownNodes = fastfo_down_nodes(NonPendingNodes),
+    DownSG = get_down_server_group(DownNodes, Config, NonPendingNodes),
+
     State = log_down_nodes_reason(DownNodes, State1),
-    CurrentlyDown = [N || {N, _} <- DownNodes],
+    CurrentlyDown = [N || {N, _, _} <- DownNodes],
     NodeUUIDs = ns_config:get_node_uuid_map(Config),
 
     %% Extract service specfic information from the Config
@@ -343,9 +345,9 @@ code_change(_OldVsn, State, _Extra) ->
 log_down_nodes_reason(DownNodes,
                       #state{reported_down_nodes_reason = Curr} = State) ->
     New = lists:filtermap(
-            fun ({_Node, unknown}) ->
+            fun ({_Node, unknown, _}) ->
                     false;
-                ({Node, {Reason, _}}) ->
+                ({Node, {Reason, _}, _}) ->
                     case lists:keyfind(Node, 1, Curr) of
                         {Node, Reason} ->
                             ok;
@@ -527,7 +529,7 @@ failover_nodes(Nodes, S, DownNodes, NodeStatuses, UpdateCount) ->
     end.
 
 log_failover_success(Node, DownNodes, NodeStatuses) ->
-    {_, DownInfo} = lists:keyfind(Node, 1, DownNodes),
+    {_, DownInfo, _} = lists:keyfind(Node, 1, DownNodes),
     case DownInfo of
         unknown ->
             ?log_info_and_email(
@@ -584,17 +586,6 @@ get_tick_period() ->
 
 %% Returns list of nodes that are down/unhealthy along with the reason
 %% why the node is considered unhealthy.
-%% Also, returns name of the down server group if all nodes in that group
-%% are down and all other requirements for server group auto-failover are
-%% satisfied.
-get_down_nodes(NonPendingNodes, Config) ->
-    %% Find down nodes using the new failure detector.
-    DownNodesInfo0 = fastfo_down_nodes(NonPendingNodes),
-    DownSG = get_down_server_group(DownNodesInfo0, Config,
-                                   NonPendingNodes),
-    DownNodesInfo = [{N, Info} || {N, Info, _} <- DownNodesInfo0],
-    {DownNodesInfo, DownSG}.
-
 fastfo_down_nodes(NonPendingNodes) ->
     NodeStatuses = node_status_analyzer:get_nodes(),
     lists:foldl(
