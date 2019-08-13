@@ -4,7 +4,7 @@
     .module('mnWizard')
     .controller('mnClusterConfigurationController', mnClusterConfigurationController);
 
-  function mnClusterConfigurationController($scope, $rootScope, $state, $q, mnClusterConfigurationService, mnSettingsClusterService, mnAuthService, pools, mnHelper, mnServersService, mnPools, mnAlertsService, mnPromiseHelper, mnWizardService, mnStatisticsNewService) {
+  function mnClusterConfigurationController($scope, $rootScope, $state, $q, mnClusterConfigurationService, mnSettingsClusterService, mnAuthService, pools, mnHelper, mnServersService, mnPools, mnAlertsService, mnPromiseHelper, mnWizardService, mnStatisticsNewService, mnRootCertificateService) {
     var vm = this;
 
     vm.joinClusterConfig = mnClusterConfigurationService.getJoinClusterConfig();
@@ -41,6 +41,11 @@
     }
 
     function activate() {
+      if (!mnWizardService.getState().isNewCluster && vm.isEnterprise) {
+        mnPromiseHelper(vm, mnRootCertificateService.getDefaultCertificate())
+          .applyToScope("certificate");
+      }
+
       mnPromiseHelper(vm, mnClusterConfigurationService.getConfig())
         .applyToScope("config")
         .onSuccess(function (config) {

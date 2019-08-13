@@ -30,7 +30,8 @@
       'mnWarmupProgress',
       'mnElementCrane',
       'mnSearch',
-      'mnSelectableNodesList'
+      'mnSelectableNodesList',
+      'mnRootCertificateService'
     ])
     .controller('mnServersController', mnServersController)
     .filter("formatFailoverWarnings", formatFailoverWarnings);

@@ -12,7 +12,8 @@
     'mnMinlength',
     'mnEqual',
     'mnFilters',
-    'mnServicesDiskPaths'
+    'mnServicesDiskPaths',
+    'mnRootCertificateService'
   ]).config(mnWizardConfig);
 
   function mnWizardConfig($stateProvider) {

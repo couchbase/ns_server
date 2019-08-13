@@ -5,7 +5,7 @@
     .module('mnServers')
     .controller('mnServersAddDialogController', mnServersAddDialogController)
 
-  function mnServersAddDialogController($scope, $rootScope, $q, $uibModal, mnServersService, $uibModalInstance, mnHelper, mnPromiseHelper, groups, mnClusterConfigurationService, mnPoolDefault) {
+  function mnServersAddDialogController($scope, $rootScope, $q, $uibModal, mnServersService, $uibModalInstance, mnHelper, mnPromiseHelper, groups, mnClusterConfigurationService, mnPoolDefault, mnRootCertificateService) {
     var vm = this;
 
     vm.specifyDisk = false;
@@ -41,6 +41,10 @@
 
     function activate() {
       reset();
+      if ($scope.poolDefault.isEnterprise) {
+        mnPromiseHelper(vm, mnRootCertificateService.getDefaultCertificate())
+          .applyToScope("certificate");
+      }
       mnClusterConfigurationService.getSelfConfig().then(function (selfConfig) {
         var rv = {};
         rv.selfConfig = selfConfig;
