@@ -147,7 +147,7 @@
     }
 
     function unpackQueryForGroupsType(query) {
-      if (!query || (query.includes("%D?") && query.includes("?one"))) {
+      if (!query || (query.includes("%D?") && query.includes("?base"))) {
         return "users_attrs";
       } else {
         return "query";
@@ -161,7 +161,7 @@
       var query = groupsQuery.split("?");
       switch (type) {
       case "users_attrs":
-        return {attributes: query[1], scope: "one"};
+        return {attributes: query[1], scope: "base"};
       case "query":
         return {base: query[0], scope: query[2] || "one", filter: query[3]};
       }
@@ -186,7 +186,7 @@
     function getQueryForGroups(config) {
       switch (vm.config.queryForGroups) {
       case "users_attrs":
-        return "%D?" + (config.groups_query.attributes || "") + "?one";
+        return "%D?" + (config.groups_query.attributes || "") + "?base";
       case "query":
         return (config.groups_query.base || "") + "??" +
           (config.groups_query.scope || "") + "?" +
