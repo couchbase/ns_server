@@ -80,6 +80,15 @@
     </div>
   </div>
 
+  <script type="text/ng-template" id="filterTooltipTemplate.html">
+    <div>
+      {{row.filterExpression}}
+      <div ng-show="row.filterExpiration">Do not replicate document expirations</div>
+      <div ng-show="row.filterDeletion">Do not replicate DELETE operations</div>
+      <div ng-show="row.filterBypassExpiry">Remove TTL from replicated items</div>
+   </div>
+  </script>
+
 <!-- Outgoing Replications ************************************************ -->
   <div
      ng-show="rbac.cluster.tasks.read && xdcrCtl.references.filtered.length"
@@ -131,9 +140,9 @@
               {{row.source}}
               <span
                  class="label lt-blue"
-                 ng-if="row.filterExpression"
+                 ng-if="row.filterExpression || row.filterExpiration || row.filterDeletion || row.filterBypassExpiry"
                  ng-click="$event.stopPropagation()"
-                 uib-tooltip="{{row.filterExpression}}"
+                 uib-tooltip-template="'filterTooltipTemplate.html'"
                  tooltip-placement="auto top"
                  tooltip-append-to-body="true">
                 filter
