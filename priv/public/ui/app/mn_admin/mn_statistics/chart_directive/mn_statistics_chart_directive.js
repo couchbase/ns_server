@@ -68,7 +68,7 @@
         }, 2, {leading:true}));
 
         $scope.$on("syncTooltips", function (e, source) {
-          if (source.element[0] !== $element[0] && $element.find("svg")[0]) {
+          if (source.element[0] !== $element[0] && $element.find("svg")[0] && source.api.getScope().chart) {
             var sourcePos = source.element[0].getBoundingClientRect();
             var elementPos = $element[0].getBoundingClientRect();
             var sourceMargin = source.api.getScope().chart.margin();
