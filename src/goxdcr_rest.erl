@@ -99,6 +99,12 @@ interesting_doc_key(<<"pauseRequested">>) ->
     true;
 interesting_doc_key(<<"filter_expression">>) ->
     true;
+interesting_doc_key(<<"filterBypassExpiry">>) ->
+    true;
+interesting_doc_key(<<"filterDeletion">>) ->
+    true;
+interesting_doc_key(<<"filterExpiration">>) ->
+    true;
 interesting_doc_key(_) ->
     false.
 
