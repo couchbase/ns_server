@@ -259,9 +259,6 @@
 
         } else {
           angular.forEach($scope.config.stats, function (descPath, name) {
-            if (!descPath) {
-              return;
-            }
             var desc = mnStatisticsNewService.readByPath(descPath, name);
             chartData.push({
               type: 'line',
@@ -278,17 +275,20 @@
         }
         if ($scope.chartData) {
           $scope.chartData.forEach(function (v, i) {
+            if (!chartData[i]) {
+              return;
+            }
             chartData[i].disabled = v.disabled;
           });
         }
         if ($scope.chartApi && $scope.chartApi.getScope().chart) {
           updateYAxisDomain(chartData);
-          $scope.chartApi.updateWithData(chartData);
+          $scope.chartData = chartData;
         } else {
           $timeout(function () {
             setYAxisDomain(chartData);
             $scope.options = options;
-            $scope.chartApi.updateWithData(chartData);
+            $scope.chartData = chartData;
           }, 0);
         }
       }
