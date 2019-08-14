@@ -28,12 +28,12 @@
         data size
       </span>
     </span>
-    <span class="cbui-table-cell" ng-if="hideColumn !== 'bucket'">
+    <span class="cbui-table-cell" ng-hide="hideColumn == 'bucket'">
       <span mn-sortable-title="bucket" class="sorter">
         bucket
       </span>
     </span>
-    <span class="cbui-table-cell" ng-if="hideColumn == 'bucket'">
+    <span class="cbui-table-cell" ng-hide="hideColumn == 'node'">
       <span mn-sortable-title="hosts[0]" class="sorter">
         node
       </span>
@@ -94,11 +94,11 @@
         </span>
         <span ng-show="gsiItemCtl.has_no_data_size"> - </span>
       </span>
-      <span ng-if="hideColumn !== 'bucket'" class="cbui-table-cell">
+      <span ng-hide="hideColumn == 'bucket'" class="cbui-table-cell">
         {{row.bucket}}
       </span>
       <span
-         ng-if="hideColumn == 'bucket'"
+         ng-hide="hideColumn == 'node'"
          class="cbui-table-cell"
          title="{{row.hosts.join(', ')}}">
         {{row.hosts.join(', ')}}
