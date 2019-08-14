@@ -114,7 +114,7 @@
       vm.breadcrumbs = {};
       vm.disableStats = false;
 
-      _.forEach(vm.newChart.stats, activateStats);
+      _.forEach(getSelectedStats(), activateStats);
     }
 
     function onSelectBucket() {
@@ -147,7 +147,6 @@
     }
 
     function onStatChecked(desc, value, breadcrumb) {
-      console.log(breadcrumb)
       if (vm.units[desc.unit] === undefined) {
         vm.units[desc.unit] = 0;
       }
@@ -182,7 +181,6 @@
     }
 
     function activateStats(descPath, statName) {
-
       var breadcrumb = [descPath.split(".")[0]];
       var splited = statName.split("/");
       var desc = mnStatisticsNewService.readByPath(descPath, statName);
@@ -231,7 +229,7 @@
           vm.selectedBlock = vm.selectedBlock || "@system";
 
           if (chart) {
-            _.forEach(vm.newChart.stats, activateStats);
+            _.forEach(getSelectedStats(), activateStats);
           }
         })
         .showSpinner();
