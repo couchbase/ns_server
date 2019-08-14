@@ -199,71 +199,105 @@ conf(failover) ->
     end.
 
 build_kvs(Type) ->
+    build_kvs(Type, ns_config:get(), fun (_) -> true end).
+
+build_kvs(Type, Config, Filter) ->
     Conf = conf(Type),
-    [{JK, case ns_config:read_key_fast(CK, DV) of
+    lists:filtermap(
+      fun ({CK, JK, DV, _}) ->
+              Val = case ns_config:search(Config, CK, DV) of
+                        undefined -> DV;
+                        V -> V
+                    end,
+              Filter({JK, Val}) andalso {true, {JK, Val}};
+          ({CK, JK, SubKeys}) when is_list(SubKeys) ->
+              List = lists:filter(
+                       fun ({SubK, SubV}) -> Filter({[JK, SubK], SubV}) end,
+                       build_sub_kvs(CK, SubKeys, Config)),
+              {true, {JK, {List}}}
+      end, Conf).
+
+build_sub_kvs(Key, SubKeys, Config) ->
+    [{JK, case ns_config:search_prop(Config, Key, CK, DV) of
               undefined ->
                   DV;
               V ->
                   V
           end}
-     || {CK, JK, DV, _} <- Conf].
+     || {CK, JK, DV, _} <- SubKeys].
 
 handle_get(Type, Req) ->
-    Settings = lists:filter(
-                 fun ({_, undefined}) ->
-                         false;
-                     ({clusterEncryptionLevel, _}) ->
-                         misc:is_cluster_encryption_enabled();
-                     (_) ->
-                         true
-                 end, build_kvs(Type)),
+    Filter = fun ({_, undefined}) ->
+                     false;
+                 ({clusterEncryptionLevel, _}) ->
+                     misc:is_cluster_encryption_enabled();
+                 (_) ->
+                     true
+              end,
+    Settings = build_kvs(Type, ns_config:get(), Filter),
     reply_json(Req, {Settings}).
 
 audit_fun(Type) ->
     list_to_atom(atom_to_list(Type) ++ "_settings").
 
 handle_post(Type, Req) ->
-    Conf = [{CK, atom_to_list(JK), JK, Parser} ||
-               {CK, JK, _, Parser} <- conf(Type)],
-    Params = mochiweb_request:parse_post(Req),
-    CurrentValues = build_kvs(Type),
-    {ToSet, Errors} =
-        lists:foldl(
-          fun ({SJK, SV}, {ListToSet, ListErrors}) ->
-                  case lists:keyfind(SJK, 2, Conf) of
-                      {CK, SJK, JK, Parser} ->
-                          case Parser(SV) of
-                              {ok, V} ->
-                                  case proplists:get_value(JK, CurrentValues) of
-                                      V ->
-                                          {ListToSet, ListErrors};
-                                      _ ->
-                                          {[{CK, V} | ListToSet], ListErrors}
-                                  end;
-                              {error, Msg} ->
-                                  M = io_lib:format("~s - ~s", [SJK, Msg]),
-                                  {ListToSet,
-                                   [iolist_to_binary(M) | ListErrors]}
-                          end;
-                      false ->
-                          {ListToSet,
-                           [iolist_to_binary(io_lib:format("Unknown key ~s", [SJK])) | ListErrors]}
-                  end
-          end, {[], []}, Params),
+    Conf = lists:foldr(
+             fun ({CK, JK, _, Parser}, Acc) ->
+                     Acc#{atom_to_list(JK) => {key, CK, Parser}};
+                 ({CK, JK, List}, Acc) when is_list(List) ->
+                     lists:foldl(
+                       fun ({SubCK, SubJK, _, Parser}, Acc2) ->
+                             StrJK = atom_to_list(JK) ++ "." ++
+                                     atom_to_list(SubJK),
+                             Acc2#{StrJK => {sub, [CK, SubCK], Parser}}
+                       end, Acc, List)
+             end, #{}, conf(Type)),
 
-    case Errors of
+    Params = mochiweb_request:parse_post(Req),
+    Res = [handle_post_for_key(SJK, SV, Conf) || {SJK, SV} <- Params],
+
+    case [M || {error, M} <- Res] of
         [] ->
-            case ToSet of
-                [] ->
-                    ok;
-                _ ->
-                    ns_config:set(ToSet),
-                    AuditFun = audit_fun(Type),
-                    ns_audit:AuditFun(Req, ToSet)
-            end,
+            AuditProps =
+                lists:foldl(
+                  fun ({{key, K}, V}, Acc) ->
+                          ns_config:set(K, V),
+                          Acc#{K => V};
+                      ({{subkey, K, SubK}, V}, Acc) ->
+                          ns_config:set_sub(K, SubK, V),
+                          maps:update_with(K,
+                                           fun ({L}) -> {[{SubK, V} | L]} end,
+                                           {[{SubK, V}]}, Acc)
+                  end, #{}, [ToSet || {ok, ToSet} <- Res]),
+            AuditFun = audit_fun(Type),
+            ns_audit:AuditFun(Req, maps:to_list(AuditProps)),
             reply_json(Req, []);
-        _ ->
+        Errors ->
             reply_json(Req, {struct, [{errors, Errors}]}, 400)
+    end.
+
+handle_post_for_key(StrJKey, StrVal, Conf) ->
+    case maps:find(StrJKey, Conf) of
+        {ok, {key, CK, Parser}} ->
+            case {Parser(StrVal), ns_config:search(CK)} of
+                {{ok, V}, {value, V}} -> ignore;
+                {{ok, V}, _} -> {ok, {{key, CK}, V}};
+                {{error, Msg}, _} ->
+                    M = io_lib:format("~s - ~s", [StrJKey, Msg]),
+                    {error, iolist_to_binary(M)}
+            end;
+        {ok, {sub, [CK, SCK], Parser}} ->
+            Cfg = ns_config:get(),
+            case {Parser(StrVal), ns_config:search_prop(Cfg, CK, SCK)} of
+                {{ok, V}, V} -> ignore;
+                {{ok, V}, _} -> {ok, {{subkey, CK, SCK}, V}};
+                {{error, Msg}, _} ->
+                    M = io_lib:format("~s - ~s", [StrJKey, Msg]),
+                    {error, iolist_to_binary(M)}
+            end;
+        error ->
+            M = io_lib:format("Unknown key ~s", [StrJKey]),
+            {error, iolist_to_binary(M)}
     end.
 
 handle_settings_max_parallel_indexers(Req) ->
