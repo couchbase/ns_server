@@ -421,7 +421,7 @@ set_sub(Key, SubKey, Value) ->
                                     [ {SubKey, Value} | PList ];
                                 RV -> RV
                             end
-                    end).
+                    end, [{SubKey, Value}]).
 
 %% Set subkeys of certain key in config. If some of the subkeys do not exist
 %% they are created.
@@ -429,7 +429,7 @@ set_sub(Key, SubKVList) ->
     ok = update_key(Key,
                     fun (PList) ->
                             set_sub_kvlist(PList, SubKVList)
-                    end).
+                    end, SubKVList).
 
 set_sub_kvlist(PList, []) ->
     PList;
