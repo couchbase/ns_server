@@ -14,6 +14,8 @@
     vm.reAddNode = reAddNode;
     vm.failOverNode = failOverNode;
     vm.ejectServer = ejectServer;
+    vm.disableRemoveBtn = disableRemoveBtn;
+    vm.isFailOverDisabled = isFailOverDisabled;
 
     var ramUsageConf = {};
     var swapUsageConf = {};
@@ -34,8 +36,6 @@
       vm.isNodeInactiveAdded = isNodeInactiveAdded(node);
       vm.couchDiskUsage = couchDiskUsage(node);
 
-      vm.disableRemoveBtn = disableRemoveBtn;
-      vm.isFailOverDisabled = isFailOverDisabled;
       vm.isKVNode = isKVNode(node);
 
       vm.getRamUsageConf = getRamUsageConf(node);
