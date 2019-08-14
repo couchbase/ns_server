@@ -30,19 +30,19 @@
          memcached_cert_path/0,
          memcached_key_path/0,
          sync_local_cert_and_pkey_change/0,
-         ssl_minimum_protocol/0,
          ssl_minimum_protocol/1,
+         ssl_minimum_protocol/2,
          client_cert_auth/0,
          client_cert_auth_state/0,
          client_cert_auth_state/1,
          get_user_name_from_client_cert/1,
          set_node_certificate_chain/4,
          upgrade_client_cert_auth_to_51/1,
-         supported_ciphers/2,
+         supported_ciphers/3,
          ssl_client_opts/0,
-         configured_ciphers_names/1,
-         honor_cipher_order/0,
-         honor_cipher_order/1]).
+         configured_ciphers_names/2,
+         honor_cipher_order/1,
+         honor_cipher_order/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -59,10 +59,8 @@
 
 -record(state, {hash,
                 reload_state,
-                min_ssl_ver,
                 client_cert_auth,
-                ciphers,
-                honor_cipher_order}).
+                sec_settings_state}).
 
 start_link() ->
     case cluster_compat_mode:tls_supported() of
@@ -211,11 +209,20 @@ supported_versions(MinVer) ->
             end
     end.
 
-ssl_minimum_protocol() ->
-    ssl_minimum_protocol(ns_config:latest()).
+ssl_minimum_protocol(Service) ->
+    ssl_minimum_protocol(Service, ns_config:latest()).
 
-ssl_minimum_protocol(Config) ->
-    ns_config:search(Config, ssl_minimum_protocol, 'tlsv1').
+ssl_minimum_protocol(Service, Config) ->
+    get_sec_setting(Service, ssl_minimum_protocol, Config, 'tlsv1').
+
+
+get_sec_setting(Service, Setting, Config, Default) ->
+    case ns_config:search_prop(Config, {security_settings, Service}, Setting) of
+        undefined ->
+            ns_config:search(Config, Setting, Default);
+        Val ->
+            Val
+    end.
 
 client_cert_auth(Cfg) ->
     DefaultValue = case cluster_compat_mode:is_cluster_51() of
@@ -288,12 +295,13 @@ low_security_ciphers() ->
     Ciphers = low_security_ciphers_openssl(),
     [EC || C <- Ciphers, {ok, EC} <- [openssl_cipher_to_erlang(C)]].
 
-supported_ciphers() -> supported_ciphers(ns_server, ns_config:latest()).
+supported_ciphers() ->
+    supported_ciphers(ns_server, ns_server, ns_config:latest()).
 
 %% Due to backward compatibility we have to support separate functions
 %% for ns_server and services
-supported_ciphers(ns_server, Config) ->
-    case configured_ciphers(Config) of
+supported_ciphers(Service, ns_server, Config) ->
+    case configured_ciphers(Service, Config) of
         [] ->
             %% Backward compatibility
             %% ssl_ciphers is obsolete and should not be used in
@@ -304,13 +312,13 @@ supported_ciphers(ns_server, Config) ->
             end;
         List -> List
     end;
-supported_ciphers(cbauth, Config) ->
-    case configured_ciphers_names(Config) of
+supported_ciphers(Service, cbauth, Config) ->
+    case configured_ciphers_names(Service, Config) of
         [] -> default_cbauth_ciphers();
         List -> List
     end;
-supported_ciphers(openssl, Config) ->
-    case configured_ciphers_names(Config) of
+supported_ciphers(Service, openssl, Config) ->
+    case configured_ciphers_names(Service, Config) of
         [] -> undefined;
         List ->
             OpenSSLNames = [Name || C <- List,
@@ -319,11 +327,11 @@ supported_ciphers(openssl, Config) ->
             iolist_to_binary(lists:join(":", OpenSSLNames))
     end.
 
-configured_ciphers_names(Config) ->
-    ciphers:only_known(ns_config:search(Config, cipher_suites, [])).
+configured_ciphers_names(Service, Config) ->
+    ciphers:only_known(get_sec_setting(Service, cipher_suites, Config, [])).
 
-configured_ciphers(Config) ->
-    [ciphers:code(N) || N <- configured_ciphers_names(Config)].
+configured_ciphers(Service, Config) ->
+    [ciphers:code(N) || N <- configured_ciphers_names(Service, Config)].
 
 default_cbauth_ciphers() ->
     Names = lists:flatmap(
@@ -332,9 +340,9 @@ default_cbauth_ciphers() ->
               end, ns_config:read_key_fast(ssl_ciphers_strength, [high])),
     ciphers:only_known(Names).
 
-honor_cipher_order() -> honor_cipher_order(ns_config:latest()).
-honor_cipher_order(Config) ->
-    ns_config:search(Config, honor_cipher_order, true).
+honor_cipher_order(Service) -> honor_cipher_order(Service, ns_config:latest()).
+honor_cipher_order(Service, Config) ->
+    get_sec_setting(Service, honor_cipher_order, Config, true).
 
 ssl_auth_options() ->
     Val = list_to_atom(proplists:get_value(state, client_cert_auth())),
@@ -351,12 +359,12 @@ ssl_auth_options() ->
 ssl_server_opts() ->
     Path = ssl_cert_key_path(),
     CipherSuites = supported_ciphers(),
-    Order = honor_cipher_order(),
+    Order = honor_cipher_order(ns_server),
     ClientReneg = ns_config:read_key_fast(client_renegotiation_allowed, false),
     ssl_auth_options() ++
         [{keyfile, Path},
          {certfile, Path},
-         {versions, supported_versions(ssl_minimum_protocol())},
+         {versions, supported_versions(ssl_minimum_protocol(ns_server))},
          {cacertfile, ssl_cacert_key_path()},
          {dh, dh_params_der()},
          {ciphers, CipherSuites},
@@ -476,9 +484,7 @@ init([]) ->
                end,
     {ok, #state{hash = build_hash(Data),
                 reload_state = RetrySvc,
-                min_ssl_ver = ssl_minimum_protocol(),
-                ciphers = supported_ciphers(),
-                honor_cipher_order = honor_cipher_order(),
+                sec_settings_state = security_settings_state(),
                 client_cert_auth = client_cert_auth()}}.
 
 config_change_detector_loop({cert_and_pkey, _}, Parent) ->
@@ -489,19 +495,22 @@ config_change_detector_loop({{node, _Node, capi_port}, _}, Parent) ->
     Parent ! cert_and_pkey_changed,
     Parent;
 config_change_detector_loop({ssl_minimum_protocol, _}, Parent) ->
-    Parent ! ssl_minimum_protocol_changed,
+    Parent ! security_settings_changed,
     Parent;
 config_change_detector_loop({client_cert_auth, _}, Parent) ->
     Parent ! client_cert_auth_changed,
     Parent;
 config_change_detector_loop({cipher_suites, _}, Parent) ->
-    Parent ! cipher_suites_changed,
+    Parent ! security_settings_changed,
     Parent;
 config_change_detector_loop({honor_cipher_order, _}, Parent) ->
-    Parent ! honor_cipher_order_changed,
+    Parent ! security_settings_changed,
     Parent;
 config_change_detector_loop({secure_headers, _}, Parent) ->
     Parent ! secure_headers_changed,
+    Parent;
+config_change_detector_loop({{security_settings, ns_server}, _}, Parent) ->
+    Parent ! security_settings_changed,
     Parent;
 config_change_detector_loop(_OtherEvent, Parent) ->
     Parent.
@@ -541,38 +550,17 @@ handle_info(cert_and_pkey_changed, #state{hash = OldHash} = State) ->
                                    reload_state = all_services()},
             {noreply, notify_services(NewState)}
     end;
-handle_info(ssl_minimum_protocol_changed,
-            #state{min_ssl_ver = MinSslVer} = State) ->
-    misc:flush(ssl_minimum_protocol_changed),
-    case ssl_minimum_protocol() of
-        MinSslVer ->
-            {noreply, State};
-        Other ->
-            {noreply, trigger_ssl_reload(ssl_minimum_protocol,
-                                         [ssl_service, capi_ssl_service],
-                                         State#state{min_ssl_ver = Other})}
-    end;
-handle_info(cipher_suites_changed, #state{ciphers = CurrentCiphers} = State) ->
-    misc:flush(cipher_suites_changed),
-    case supported_ciphers() of
-        CurrentCiphers ->
-            {noreply, State};
-        NewCiphers ->
-            {noreply, trigger_ssl_reload(cipher_suites,
-                                         [ssl_service, capi_ssl_service],
-                                         State#state{ciphers = NewCiphers})}
-    end;
-handle_info(honor_cipher_order_changed,
-            #state{honor_cipher_order = Current} = State) ->
-    misc:flush(honor_cipher_order_changed),
-    case honor_cipher_order() of
+handle_info(security_settings_changed,
+            #state{sec_settings_state = Current} = State) ->
+    misc:flush(security_settings_changed),
+    case security_settings_state() of
         Current ->
             {noreply, State};
         NewValue ->
             {noreply, trigger_ssl_reload(cipher_suites,
                                          [ssl_service, capi_ssl_service],
                                           State#state{
-                                              honor_cipher_order = NewValue})}
+                                              sec_settings_state = NewValue})}
     end;
 handle_info(client_cert_auth_changed,
             #state{client_cert_auth = Auth} = State) ->
@@ -825,6 +813,10 @@ do_notify_service(memcached) ->
 do_notify_service(event) ->
     gen_event:notify(ssl_service_events, cert_changed).
 
+security_settings_state() ->
+    {ssl_minimum_protocol(ns_server),
+     honor_cipher_order(ns_server),
+     supported_ciphers()}.
 
 -ifdef(TEST).
 extract_user_name_test() ->

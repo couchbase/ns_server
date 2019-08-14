@@ -96,6 +96,7 @@ is_interesting({cipher_suites, _}) -> true;
 is_interesting({honor_cipher_order, _}) -> true;
 is_interesting({ssl_minimum_protocol, _}) -> true;
 is_interesting({cluster_encryption_level, _}) -> true;
+is_interesting({{security_settings, _}, _}) -> true;
 is_interesting(_) -> false.
 
 handle_call(_Msg, _From, State) ->
@@ -158,6 +159,8 @@ personalize_info(Label, Info) ->
     SpecialUser = ns_config_auth:get_user(special) ++ Label,
     "htuabc-" ++ ReversedTrimmedLabel = lists:reverse(Label),
     MemcachedUser = [$@ | lists:reverse(ReversedTrimmedLabel)],
+    TLSConfig = proplists:get_value(Label,
+                                    proplists:get_value(tlsConfig, Info)),
 
     Nodes = proplists:get_value(nodes, Info),
     NewNodes =
@@ -172,8 +175,11 @@ personalize_info(Label, Info) ->
                                     end,
                           {lists:keydelete(other_users, 1, NewNode)}
                   end, Nodes),
-    [{specialUser, erlang:list_to_binary(SpecialUser)} |
-     lists:keyreplace(nodes, 1, Info, {nodes, NewNodes})].
+
+    misc:update_proplist(Info,
+                         [{specialUser, erlang:list_to_binary(SpecialUser)},
+                          {nodes, NewNodes},
+                          {tlsConfig, TLSConfig}]).
 
 notify_cbauth(Label, Pid, Info) ->
     Method = "AuthCacheSvc.UpdateDB",
@@ -251,13 +257,6 @@ build_auth_info(#state{cert_version = CertVersion,
     PermissionCheckURL = misc:local_url(Port, "/_cbauth/checkPermission", []),
     PermissionsVersion = menelaus_web_rbac:check_permissions_url_version(Config),
     EUserFromCertURL = misc:local_url(Port, "/_cbauth/extractUserFromCert", []),
-    Ciphers = ns_ssl_services_setup:supported_ciphers(cbauth, Config),
-    Order = ns_ssl_services_setup:honor_cipher_order(Config),
-    CipherInts = lists:map(fun (<<I:16/unsigned-integer>>) -> I end,
-                           [ciphers:code(N) || N <- Ciphers]),
-    CipherOpenSSLNames = [N2 || N <- Ciphers, N2 <- [ciphers:openssl_name(N)],
-                                N2 =/= undefined],
-    MinTLSVsn = ns_ssl_services_setup:ssl_minimum_protocol(Config),
     ClusterDataEncrypt = misc:should_cluster_data_be_encrypted(),
     DisableNonSSLPorts = misc:disable_non_ssl_ports(),
 
@@ -272,11 +271,31 @@ build_auth_info(#state{cert_version = CertVersion,
      {clientCertAuthVersion, ClientCertAuthVersion},
      {clusterEncryptionConfig, {[{encryptData, ClusterDataEncrypt},
                                  {disableNonSSLPorts, DisableNonSSLPorts}]}},
-     {tlsConfig, {[{minTLSVersion, MinTLSVsn},
-                   {cipherOrder, Order},
-                   {ciphers, CipherInts},
-                   {cipherNames, Ciphers},
-                   {cipherOpenSSLNames, CipherOpenSSLNames}]}}].
+     {tlsConfig, [tls_config(S, Config) ||
+                  S <- [fts, index, eventing, n1ql, cbas, projector, goxdcr]]}].
+
+tls_config(Service, Config) ->
+    Service2 = case Service of
+                   projector -> index;
+                   _ -> Service
+               end,
+    Label = case Service of
+                n1ql -> "cbq-engine-cbauth";
+                _ -> atom_to_list(Service) ++ "-cbauth"
+            end,
+    Ciphers = ns_ssl_services_setup:supported_ciphers(Service2, cbauth, Config),
+    Order = ns_ssl_services_setup:honor_cipher_order(Service2, Config),
+    CipherInts = lists:map(fun (<<I:16/unsigned-integer>>) -> I end,
+                           [ciphers:code(N) || N <- Ciphers]),
+    CipherOpenSSLNames = [N2 || N <- Ciphers, N2 <- [ciphers:openssl_name(N)],
+                                N2 =/= undefined],
+    MinTLSVsn = ns_ssl_services_setup:ssl_minimum_protocol(Service2, Config),
+    {Label,
+     {[{minTLSVersion, MinTLSVsn},
+       {cipherOrder, Order},
+       {ciphers, CipherInts},
+       {cipherNames, Ciphers},
+       {cipherOpenSSLNames, CipherOpenSSLNames}]}}.
 
 auth_version(Config) ->
     B = term_to_binary(

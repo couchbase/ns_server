@@ -122,6 +122,7 @@ is_notable_config_key(scramsha_fallback_salt) -> true;
 is_notable_config_key(external_auth_polling_interval) -> true;
 is_notable_config_key(cipher_suites) -> true;
 is_notable_config_key(honor_cipher_order) -> true;
+is_notable_config_key({security_settings, kv}) -> true;
 is_notable_config_key(ldap_settings) -> true;
 is_notable_config_key(saslauthd_auth_settings) -> true;
 is_notable_config_key(_) ->
@@ -352,7 +353,7 @@ omit_missing_mcd_ports(Interfaces, MCDParams) ->
             end].
 
 ssl_minimum_protocol([], _Params) ->
-    ns_ssl_services_setup:ssl_minimum_protocol().
+    ns_ssl_services_setup:ssl_minimum_protocol(kv).
 
 client_cert_auth([], _Params) ->
     Val = ns_ssl_services_setup:client_cert_auth(),
@@ -403,7 +404,7 @@ is_external_auth_service_enabled() ->
 
 get_ssl_cipher_list([], Params) ->
     Cfg = ns_config:latest(),
-    Ciphers = ns_ssl_services_setup:supported_ciphers(openssl, Cfg),
+    Ciphers = ns_ssl_services_setup:supported_ciphers(kv, openssl, Cfg),
     Ciphers2 =
         case Ciphers of
             undefined -> proplists:get_value(ssl_cipher_list, Params, "HIGH");
@@ -412,7 +413,7 @@ get_ssl_cipher_list([], Params) ->
     iolist_to_binary(Ciphers2).
 
 get_ssl_cipher_order([], _Params) ->
-    ns_ssl_services_setup:honor_cipher_order().
+    ns_ssl_services_setup:honor_cipher_order(kv).
 
 get_afamily_type([AFamily], _Params) ->
     Required = ns_config:read_key_fast({node, node(), address_family}, inet),

@@ -153,12 +153,23 @@ conf(security) ->
      {ssl_minimum_protocol, tlsMinVersion,
       ns_ssl_services_setup:ssl_minimum_protocol([]), fun get_tls_version/1},
      {cipher_suites, cipherSuites,
-      ns_ssl_services_setup:configured_ciphers_names([]),
+      ns_ssl_services_setup:configured_ciphers_names(undefined, []),
       fun get_cipher_suites/1},
      {honor_cipher_order, honorCipherOrder,
-      ns_ssl_services_setup:honor_cipher_order([]), fun get_bool/1},
+      ns_ssl_services_setup:honor_cipher_order(undefined, []), fun get_bool/1},
      {cluster_encryption_level, clusterEncryptionLevel, control,
-      fun get_cluster_encryption/1}];
+      fun get_cluster_encryption/1}] ++
+    [{{security_settings, S}, SN,
+      [{cipher_suites, cipherSuites, undefined, fun get_cipher_suites/1},
+       {ssl_minimum_protocol, tlsMinVersion, undefined, fun get_tls_version/1},
+       {honor_cipher_order, honorCipherOrder, undefined, fun get_bool/1}]}
+     || {S, SN} <- [{kv, data},
+                    {fts, fullTextSearch},
+                    {index, index},
+                    {eventing, eventing},
+                    {n1ql, 'query'},
+                    {cbas, analytics},
+                    {ns_server, clusterManager}]];
 conf(internal) ->
     [{index_aware_rebalance_disabled, indexAwareRebalanceDisabled, false,
       fun get_bool/1},
