@@ -2354,7 +2354,7 @@ split_host_port("[" ++ Rest, DefaultPort, true) ->
             throw({error, [<<"The hostname is malformed.">>]})
     end;
 split_host_port("[" ++ _Rest, _DefaultPort, false) ->
-    throw({error, [<<"The hostname is malformed.">>]});
+    throw({error, [<<"Unexpected symbol '[' in IPv4 address">>]});
 split_host_port(HostPort, DefaultPort, _) ->
     case item_count(HostPort, $:) > 1 of
         true ->
