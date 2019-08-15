@@ -47,7 +47,6 @@
                 connection_alive
                }).
 
--define(HIBERNATE_TIMEOUT, 10000).
 -define(LIVELINESS_UPDATE_INTERVAL, 1000).
 
 -define(CONNECT_TIMEOUT, ?get_timeout(connect, 180000)).
@@ -63,8 +62,7 @@ init([Type, ConnName, Node, Bucket, ExtModule, InitArgs]) ->
     self() ! check_liveliness,
     {ok, State#state{
            ext_state = ExtState,
-           connection_alive = false
-          }, ?HIBERNATE_TIMEOUT}.
+           connection_alive = false}}.
 
 start_link(Type, ConnName, Node, Bucket, ExtModule, InitArgs) ->
     gen_server:start_link(?MODULE, [Type, ConnName, Node, Bucket, ExtModule, InitArgs], []).
@@ -87,10 +85,10 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 handle_cast({setup_proxy, Partner, ProxyTo}, State) ->
-    {noreply, State#state{proxy_to = ProxyTo, partner = Partner}, ?HIBERNATE_TIMEOUT};
+    {noreply, State#state{proxy_to = ProxyTo, partner = Partner}};
 handle_cast(Msg, State = #state{ext_module = ExtModule, ext_state = ExtState}) ->
     {noreply, NewExtState, NewState} = ExtModule:handle_cast(Msg, ExtState, State),
-    {noreply, NewState#state{ext_state = NewExtState}, ?HIBERNATE_TIMEOUT}.
+    {noreply, NewState#state{ext_state = NewExtState}}.
 
 terminate(_Reason, _State) ->
     ok.
@@ -104,7 +102,7 @@ handle_info({ssl, Socket, Data}, #state{sock = Socket} = State) ->
 handle_info({socket_data, Socket, Data}, State) ->
     %% Set up the socket to receive another message
     ok = network:socket_setopts(Socket, [{active, once}]),
-    {noreply, process_data(Data, State), ?HIBERNATE_TIMEOUT};
+    {noreply, process_data(Data, State)};
 
 handle_info({tcp_closed, Socket}, State) ->
     handle_info({socket_closed, Socket}, State);
@@ -121,12 +119,9 @@ handle_info({'EXIT', _Pid, _Reason} = ExitSignal, State) ->
     ?log_error("killing myself due to exit signal: ~p", [ExitSignal]),
     {stop, {got_exit, ExitSignal}, State};
 
-handle_info(timeout, State) ->
-    {noreply, State, hibernate};
-
 handle_info(check_liveliness, #state{connection_alive = false} = State) ->
     erlang:send_after(?LIVELINESS_UPDATE_INTERVAL, self(), check_liveliness),
-    {noreply, State, ?HIBERNATE_TIMEOUT};
+    {noreply, State};
 handle_info(check_liveliness,
             #state{connect_info = {_, _, Node, Bucket},
                    connection_alive = true} = State) ->
@@ -146,20 +141,20 @@ handle_info(check_liveliness,
     Now = erlang:monotonic_time(),
     dcp_traffic_monitor:node_alive(Node, {Bucket, Now, self()}),
     erlang:send_after(?LIVELINESS_UPDATE_INTERVAL, self(), check_liveliness),
-    {noreply, State#state{connection_alive = false}, ?HIBERNATE_TIMEOUT};
+    {noreply, State#state{connection_alive = false}};
 
 handle_info(Msg, State) ->
     ?log_warning("Unexpected handle_info(~p, ~p)", [Msg, State]),
-    {noreply, State, ?HIBERNATE_TIMEOUT}.
+    {noreply, State}.
 
 handle_call(get_socket, _From, State = #state{sock = Sock}) ->
-    {reply, Sock, State, ?HIBERNATE_TIMEOUT};
+    {reply, Sock, State};
 handle_call(Command, From, State = #state{ext_module = ExtModule, ext_state = ExtState}) ->
     case ExtModule:handle_call(Command, From, ExtState, State) of
         {ReplyType, Reply, NewExtState, NewState} ->
-            {ReplyType, Reply, NewState#state{ext_state = NewExtState}, ?HIBERNATE_TIMEOUT};
+            {ReplyType, Reply, NewState#state{ext_state = NewExtState}};
         {ReplyType, NewExtState, NewState} ->
-            {ReplyType, NewState#state{ext_state = NewExtState}, ?HIBERNATE_TIMEOUT}
+            {ReplyType, NewState#state{ext_state = NewExtState}}
     end.
 
 handle_packet(<<Magic:8, Opcode:8, _Rest/binary>> = Packet,
