@@ -865,7 +865,8 @@ check_can_add_node(NodeKVList) ->
 
 do_add_node_engaged_inner(NodeKVList, OtpNode, Auth, Services, Scheme) ->
     HostnameRaw = expect_json_property_list(<<"hostname">>, NodeKVList),
-    {Hostname0, NonHttpsPort} = misc:split_host_port(HostnameRaw, "8091"),
+    {Hostname0, NonHttpsPort} = misc:split_host_port(HostnameRaw, "8091",
+                                                     misc:get_net_family()),
     {struct, Ports} = proplists:get_value(<<"ports">>, NodeKVList,
                                           {struct, []}),
     {Scheme2, Port} =

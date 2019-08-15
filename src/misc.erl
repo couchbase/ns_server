@@ -2340,11 +2340,13 @@ decompress(Blob) ->
     binary_to_term(zlib:uncompress(Blob)).
 
 -spec split_host_port(list(), list()) -> tuple().
+split_host_port("[" ++ _ = HostPort, DefaultPort) ->
+    split_host_port(HostPort, DefaultPort, inet6);
 split_host_port(HostPort, DefaultPort) ->
-    split_host_port(HostPort, DefaultPort, is_ipv6()).
+    split_host_port(HostPort, DefaultPort, inet).
 
--spec split_host_port(list(), list(), boolean()) -> tuple().
-split_host_port("[" ++ Rest, DefaultPort, true) ->
+-spec split_host_port(list(), list(), inet | inet6) -> tuple().
+split_host_port("[" ++ Rest, DefaultPort, inet6) ->
     case string:tokens(Rest, "]") of
         [Host] ->
             {Host, DefaultPort};
@@ -2353,7 +2355,7 @@ split_host_port("[" ++ Rest, DefaultPort, true) ->
         _ ->
             throw({error, [<<"The hostname is malformed.">>]})
     end;
-split_host_port("[" ++ _Rest, _DefaultPort, false) ->
+split_host_port("[" ++ _Rest, _DefaultPort, inet) ->
     throw({error, [<<"Unexpected symbol '[' in IPv4 address">>]});
 split_host_port(HostPort, DefaultPort, _) ->
     case item_count(HostPort, $:) > 1 of
