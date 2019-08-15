@@ -115,6 +115,11 @@ handle_info({socket_closed, Socket}, State) ->
                [Socket, State]),
     {stop, socket_closed, State};
 
+handle_info({ssl_error, Socket, Error}, State) ->
+    ?log_error("SSL error on socket ~p: ~p. Terminating. State:~n~p",
+               [Socket, Error, State]),
+    {stop, {ssl_error, Error}, State};
+
 handle_info({'EXIT', _Pid, _Reason} = ExitSignal, State) ->
     ?log_error("killing myself due to exit signal: ~p", [ExitSignal]),
     {stop, {got_exit, ExitSignal}, State};
