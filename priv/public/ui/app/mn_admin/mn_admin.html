@@ -48,11 +48,19 @@
               adminCtl.tasks.tasksRebalance.errorMessage ? "failed" : "completed"}}
             </span>
           </p>
-          <div class="alert margin-bottom-1"
-               ng-show="adminCtl.tasks.tasksRebalance.completionMessage"
+          <div class="alert margin-bottom-1 row"
+               ng-if="adminCtl.tasks.tasksRebalance.completionMessage"
                ng-class="{'alert-error': adminCtl.tasks.tasksRebalance.errorMessage,
                          'alert-success': !adminCtl.tasks.tasksRebalance.errorMessage}">
-            <p>{{adminCtl.tasks.tasksRebalance.completionMessage}}</p>
+            <p>
+              {{adminCtl.tasks.tasksRebalance.completionMessage}}
+            </p>
+              <button
+                 ng-click="adminCtl.getRebalanceReport()"
+                 download="rebalanceReport.json"
+                 class="outline tight margin-right-half">
+                Download Report
+              </button>
           </div>
 
 <!-- rebalance per stage info ********************************************** -->

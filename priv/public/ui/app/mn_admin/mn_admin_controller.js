@@ -34,6 +34,8 @@
     vm.setHideNavSidebar = mnPoolDefault.setHideNavSidebar;
     vm.postStopRebalance = postStopRebalance;
 
+    vm.getRebalanceReport = getRebalanceReport;
+
     $rootScope.rbac = mnPermissions.export;
     $rootScope.poolDefault = mnPoolDefault.export;
     $rootScope.pools = mnPools.export;
@@ -81,6 +83,13 @@
         .showSpinner('resetQuotaLoading')
         .catchGlobalErrors('Unable to reset Auto-failover quota!')
         .showGlobalSuccess("Auto-failover quota reset successfully!");
+    }
+
+    function getRebalanceReport() {
+      mnTasksDetails.getRebalanceReport().then(function(report) {
+        var file = new Blob([JSON.stringify(report,null,2)],{type: "application/json", name: "rebalanceReport.json"});
+        saveAs(file,"rebalanceReport.json");
+      });
     }
 
     function activate() {
