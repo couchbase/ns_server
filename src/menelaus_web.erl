@@ -409,9 +409,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "passwordPolicy"] ->
                     {{[admin, security], read},
                      fun menelaus_web_rbac:handle_get_password_policy/1};
-                ["settings", "security"] ->
+                ["settings", "security" | Keys] ->
                     {{[admin, security], read},
-                     fun menelaus_web_settings:handle_get/2, [security]};
+                     fun menelaus_web_settings:handle_get/3, [security, Keys]};
                 ["settings", "license"] ->
                     {{[admin, license], read},
                      fun menelaus_web_license:handle_settings_get/1};
@@ -588,9 +588,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "passwordPolicy"] ->
                     {{[admin, security], write},
                      fun menelaus_web_rbac:handle_post_password_policy/1};
-                ["settings", "security"] ->
+                ["settings", "security" | Keys] ->
                     {{[admin, security], write},
-                     fun menelaus_web_settings:handle_post/2, [security]};
+                     fun menelaus_web_settings:handle_post/3, [security, Keys]};
                 ["settings", "developerPreview"] ->
                     {{[admin, setup], write},
                      fun menelaus_web_settings:handle_post/2, [developer_preview]};

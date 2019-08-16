@@ -22,7 +22,9 @@
 
 -export([build_kvs/1,
          handle_get/2,
-         handle_post/2]).
+         handle_get/3,
+         handle_post/2,
+         handle_post/3]).
 
 -export([handle_settings_web/1,
          handle_settings_web_post/1,
@@ -237,7 +239,7 @@ build_sub_kvs(Key, SubKeys, Config) ->
           end}
      || {CK, JK, DV, _} <- SubKeys].
 
-handle_get(Type, Req) ->
+handle_get(Type, Keys, Req) ->
     Filter = fun ({_, undefined}) ->
                      false;
                  ({clusterEncryptionLevel, _}) ->
@@ -246,26 +248,54 @@ handle_get(Type, Req) ->
                      true
               end,
     Settings = build_kvs(Type, ns_config:get(), Filter),
-    reply_json(Req, {Settings}).
+
+    Res =
+        lists:foldl(
+          fun (_, undefined) -> undefined;
+              (_, {val, _}) -> undefined;
+              (K, {props, Acc}) ->
+                  try proplists:get_value(list_to_existing_atom(K), Acc) of
+                      undefined -> undefined;
+                      {L} when is_list(L) -> {props, L};
+                      V -> {val, V}
+                  catch
+                      error:badarg -> undefined
+                  end
+          end, {props, Settings}, Keys),
+    case Res of
+        undefined -> reply_json(Req, <<"Not found">>, 404);
+        {props, Props} -> reply_json(Req, {Props});
+        {val, V} -> reply_json(Req, V)
+    end.
+
+handle_get(Type, Req) ->
+    handle_get(Type, [], Req).
 
 audit_fun(Type) ->
     list_to_atom(atom_to_list(Type) ++ "_settings").
 
 handle_post(Type, Req) ->
+    handle_post(Type, [], Req).
+
+handle_post(Type, Keys, Req) ->
     Conf = lists:foldr(
              fun ({CK, JK, _, Parser}, Acc) ->
-                     Acc#{atom_to_list(JK) => {key, CK, Parser}};
+                     Acc#{[atom_to_list(JK)] => {key, CK, Parser}};
                  ({CK, JK, List}, Acc) when is_list(List) ->
                      lists:foldl(
                        fun ({SubCK, SubJK, _, Parser}, Acc2) ->
-                             StrJK = atom_to_list(JK) ++ "." ++
-                                     atom_to_list(SubJK),
+                             StrJK = [atom_to_list(JK), atom_to_list(SubJK)],
                              Acc2#{StrJK => {sub, [CK, SubCK], Parser}}
                        end, Acc, List)
              end, #{}, conf(Type)),
 
-    Params = mochiweb_request:parse_post(Req),
-    Res = [handle_post_for_key(SJK, SV, Conf) || {SJK, SV} <- Params],
+    Params =
+        case maps:find(Keys, Conf) of
+            {ok, _} -> [{"", binary_to_list(mochiweb_request:recv_body(Req))}];
+            error -> mochiweb_request:parse_post(Req)
+        end,
+    Params2 = [{Keys ++ string:tokens(SJK, "."), SV}|| {SJK, SV} <- Params],
+    Res = [handle_post_for_key(SJK, SV, Conf) || {SJK, SV} <- Params2],
 
     case [M || {error, M} <- Res] of
         [] ->
@@ -294,7 +324,8 @@ handle_post_for_key(StrJKey, StrVal, Conf) ->
                 {{ok, V}, {value, V}} -> ignore;
                 {{ok, V}, _} -> {ok, {{key, CK}, V}};
                 {{error, Msg}, _} ->
-                    M = io_lib:format("~s - ~s", [StrJKey, Msg]),
+                    M = io_lib:format("~s - ~s", [string:join(StrJKey, "."),
+                                                  Msg]),
                     {error, iolist_to_binary(M)}
             end;
         {ok, {sub, [CK, SCK], Parser}} ->
@@ -303,11 +334,12 @@ handle_post_for_key(StrJKey, StrVal, Conf) ->
                 {{ok, V}, V} -> ignore;
                 {{ok, V}, _} -> {ok, {{subkey, CK, SCK}, V}};
                 {{error, Msg}, _} ->
-                    M = io_lib:format("~s - ~s", [StrJKey, Msg]),
+                    M = io_lib:format("~s - ~s", [string:join(StrJKey, "."),
+                                                  Msg]),
                     {error, iolist_to_binary(M)}
             end;
         error ->
-            M = io_lib:format("Unknown key ~s", [StrJKey]),
+            M = io_lib:format("Unknown key ~s", [string:join(StrJKey, ".")]),
             {error, iolist_to_binary(M)}
     end.
 
