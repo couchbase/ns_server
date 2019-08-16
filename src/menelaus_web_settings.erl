@@ -101,7 +101,8 @@ get_tls_version(SV) ->
     case lists:member(SV, SupportedStr) of
         true -> {ok, list_to_atom(SV)};
         false ->
-            M = io_lib:format("Supported TLS versions are ~p", [Supported]),
+            M = io_lib:format("Supported TLS versions are ~s",
+                              [string:join(SupportedStr, ", ")]),
             {error, lists:flatten(M)}
     end.
 
