@@ -107,14 +107,14 @@
           },
           "avg_active_timestamp_drift": {
             unit: "second",
-            title: "Active Drift",
+            title: "Active Timestamp Drift",
             name: "avg_active_timestamp_drift",
-            desc: "Average drift (in seconds) per mutation on active vBuckets."
+            desc: "Average drift (in seconds) between mutation timestamps and the local time for active vBuckets. (measured from ep_active_hlc_drift and ep_active_hlc_drift_count)"
           },
           "avg_replica_timestamp_drift": {
             unit: "second",
-            title: "Replica Drift",
-            desc: "Average drift (in seconds) per mutation on replica vBuckets."
+            title: "Replica Timestamp Drift",
+            desc: "Average drift (in seconds) between mutation timestamps and the local time for replica vBuckets. (measured from ep_replica_hlc_drift and ep_replica_hlc_drift_count)"
           },
           "ep_dcp_views+indexes_count": {
             unit: "number",
@@ -278,7 +278,7 @@
           "ep_active_ahead_exceptions": {
             unit: "number/sec",
             title: "Active Ahead Exception Rate",
-            desc: "Total number of ahead exceptions per second for all active vBuckets."
+            desc: "Total number of ahead exceptions (when timestamp drift between mutations and local time has exceeded 5000000 μs) per second for all active vBuckets."
           },
           "ep_active_hlc_drift": null,
           "ep_active_hlc_drift_count": null,
@@ -526,7 +526,7 @@
           "ep_replica_ahead_exceptions": {
             unit: "number/sec",
             title: "Replica Ahead Exception Rate",
-            desc: "Total number of ahead exceptions per second for all replica vBuckets."
+            desc: "Total number of ahead exceptions (when timestamp drift between mutations and local time has exceeded 5000000 μs) per second for all replica vBuckets."
           },
           "ep_replica_hlc_drift": null,
           "ep_replica_hlc_drift_count": null,
