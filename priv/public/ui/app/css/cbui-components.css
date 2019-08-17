@@ -2907,10 +2907,12 @@ footer .column,
   line-height: 1.4;
   height: 100%;
 }
+.column:last-child,
 footer .column:last-child,
 .footer-column:last-child {
   padding-right: 0;
 }
+.column:last-child,
 footer .column:last-child,
 .footer-column:last-child {
   margin-right: 0;
@@ -3051,4 +3053,25 @@ button.replication .fa-spinner {
  color: #555;
  opacity: .7;
 
+}
+.cb-breadcrumb {
+  position: relative;
+}
+.cb-breadcrumb:first-of-type {
+  padding-left: 1.25rem;
+}
+.cb-breadcrumb:last-of-type .breadcrumb-divider {
+  display: none;
+}
+.cb-breadcrumb:before {
+  content: "";
+  font-family: FontAwesome;
+  font-size: 1rem;
+  color: #56b349;
+  position: absolute;
+  left: 0;
+  top: -3px;
+}
+.cb-breadcrumb:first-of-type:before {
+  content: "\f00c";
 }

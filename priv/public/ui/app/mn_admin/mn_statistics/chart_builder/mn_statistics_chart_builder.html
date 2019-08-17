@@ -1,6 +1,10 @@
 <div class="dialog-xlg chart-builder">
   <div class="panel-header">
-    <h2>Add a Chart</h2>
+    <h2>
+      <span ng-if="chartBuilderCtl.isEditing">Edit</span>
+      <span ng-if="!chartBuilderCtl.isEditing">Add</span>
+      Chart
+    </h2>
   </div>
   <form
      class="forms"
@@ -8,23 +12,9 @@
      ng-submit="chartBuilderCtl.create()">
     <div class="panel-content forms max-height-500">
 
-      <div class="row items-top content-box min-padding">
+      <div class="row items-top content-box min-padding margin-bottom-half">
         <div class="column">
-          <div class="row">
-            <h5>Node Data</h5>
-            <div class="row">
-              <img
-                 src="../2-line-chart.svg"
-                 width="28"
-                 height="14"
-                 style="opacity: .8;"
-                 ng-class="{'disabled-more' : chartBuilderCtl.newChart.specificStat == 'false'}">
-              <span
-                 class="icon fa-line-chart margin-left-1"
-                 ng-class="{'disabled-more' : chartBuilderCtl.newChart.specificStat == 'true'}">
-              </span>
-            </div>
-          </div>
+          <h5>Multi-Stat or Multi-Node Chart?</h5>
           <div class="checkbox-list" style="margin-top: 4px;">
             <input
                type="radio"
@@ -33,7 +23,9 @@
                ng-change="chartBuilderCtl.onSpecificChecked()"
                name="specificStat"
                value="true">
-            <label for="for-individual-nodes">show individual nodes on chart</label>
+            <label for="for-individual-nodes">
+                show seperate nodes + single statistic
+              </label>
             <input
                type="radio"
                id="for-whole-cluster"
@@ -41,11 +33,12 @@
                name="specificStat"
                ng-change="chartBuilderCtl.onSpecificChecked()"
                value="false">
-            <label for="for-whole-cluster">combine</label>
+            <label for="for-whole-cluster">
+              combine node data + multiple stats per chart</label>
           </div>
         </div>
 
-        <div class="column">
+        <div class="column nowrap">
           <h5>Chart Size</h5>
           <select
              ng-model="chartBuilderCtl.newChart.size"
@@ -56,11 +49,12 @@
           </select>
         </div>
 
-        <div style="width: 240px;">
+        <div
+           class="column"
+           style="width: 240px;"
+           ng-if="chartBuilderCtl.isEditing">
           <h5>Group</h5>
-          <select
-             ng-disabled="!chartBuilderCtl.isEditing"
-             ng-model="chartBuilderCtl.newChart.group">
+          <select ng-model="chartBuilderCtl.newChart.group">
             <option
                ng-repeat="group in chartBuilderCtl.groups"
                value="{{group.id}}">
@@ -130,7 +124,7 @@
       </div>
 
       <div
-         class="row row-min margin-bottom-half"
+         class="row row-min"
          ng-if="chartBuilderCtl.selectedBlock == '@kv'">
         <div
            class="checkbox-filter"
@@ -258,18 +252,21 @@
             {{chartBuilderCtl.statsDesc[chartBuilderCtl.selectedBlock][name].title}}</label>
         </div>
       </div>
-
-      <h4 class="margin-top-1">Selected Stats:</h4>
-      <div ng-repeat="(breadcrumb, _val) in chartBuilderCtl.breadcrumbs">
-        {{breadcrumb}}
-      </div>
     </div>
 
-    <div class="panel-footer scroll-shadow">
-      <a ng-click="$dismiss()">Cancel</a>
-      <button
-         type="submit"
-         ng-disabled="!chartBuilderCtl.getSelectedStatsLength()">Save Chart</button>
+    <div class="panel-footer spaced scroll-shadow">
+      <div class="text-smaller flex-grow-2 margin-right-1-5">
+        <span class="cb-breadcrumb" ng-repeat="(breadcrumb, _val) in chartBuilderCtl.breadcrumbs">
+          {{breadcrumb}}
+          <span class="breadcrumb-divider"> | </span>
+        </span>
+      </div>
+      <div class="row">
+        <a ng-click="$dismiss()">Cancel</a>
+        <button
+           type="submit"
+           ng-disabled="!chartBuilderCtl.getSelectedStatsLength()">Save Chart</button>
+      </div>
     </div>
   </form>
 </div>
