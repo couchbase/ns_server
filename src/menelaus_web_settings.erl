@@ -100,8 +100,11 @@ get_number(Min, Max, Default) ->
 get_string(SV) ->
     {ok, list_to_binary(string:strip(SV))}.
 
-get_tls_version(SV) ->
-    Supported = proplists:get_value(supported, ssl:versions(), []),
+tlsv1_3_services() -> [kv].
+
+get_tls_version(SV, Service) ->
+    Supported = ['tlsv1.3' || lists:member(Service, tlsv1_3_services())] ++
+                proplists:get_value(supported, ssl:versions(), []),
     SupportedStr = [atom_to_list(S) || S <- Supported],
     case lists:member(SV, SupportedStr) of
         true -> {ok, list_to_atom(SV)};
@@ -156,7 +159,7 @@ conf(security) ->
      {ui_session_timeout, uiSessionTimeout, undefined,
       get_number(60, 1000000, undefined)},
      {ssl_minimum_protocol, tlsMinVersion,
-      ns_ssl_services_setup:ssl_minimum_protocol([]), fun get_tls_version/1},
+      ns_ssl_services_setup:ssl_minimum_protocol([]), get_tls_version(_, all)},
      {cipher_suites, cipherSuites,
       ns_ssl_services_setup:configured_ciphers_names(undefined, []),
       fun get_cipher_suites/1},
@@ -166,7 +169,7 @@ conf(security) ->
       fun get_cluster_encryption/1}] ++
     [{{security_settings, S}, SN,
       [{cipher_suites, cipherSuites, undefined, fun get_cipher_suites/1},
-       {ssl_minimum_protocol, tlsMinVersion, undefined, fun get_tls_version/1},
+       {ssl_minimum_protocol, tlsMinVersion, undefined, get_tls_version(_, S)},
        {honor_cipher_order, honorCipherOrder, undefined, fun get_bool/1},
        {supported_ciphers, supportedCipherSuites, ciphers:supported(S),
         fun read_only/1}]}
