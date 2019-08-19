@@ -3,29 +3,6 @@
    min-height="300px"
    class="margin-top-neg-half margin-left-neg-1">
   <div class="row resp-sml margin-bottom-half">
-    <div class="users-auth-check" ng-if="userRolesCtl.saslauthdAuth">
-      <span
-         class="icon margin-right"
-         ng-class="userRolesCtl.saslauthdAuth.enabled ? 'fa-check success' : 'fa-ban grayblack-3'">
-      </span>
-      <p
-         uib-tooltip-html="'Use the CLI to change the state of saslauthd authentication.'"
-         tooltip-placement="auto right">
-        saslauthd authentication is <span ng-show="userRolesCtl.saslauthdAuth">
-          <span ng-show="!userRolesCtl.saslauthdAuth.enabled">not</span> enabled</span>
-      </p>
-    </div>
-
-    <div class="users-auth-check">
-      <span
-         class="icon margin-right"
-         ng-class="userRolesCtl.ldapSettings.data.authentication_enabled ? 'fa-check success' :
-                   'fa-ban grayblack-3'">
-      </span>
-      <p>
-        LDAP is {{!userRolesCtl.ldapSettings.data.authentication_enabled ? 'not': ''}} enabled
-      </p>
-    </div>
     <div
        class="row"
        mn-placeholder="filter users..."
@@ -33,6 +10,31 @@
        mn-disabled="!userRolesCtl.filterField && !userRolesCtl.state.users.length"
        mn-search="userRolesCtl.filterField">
     </div>
+    <span class="row">
+      <div
+         class="users-auth-check margin-right-1"
+         ng-if="userRolesCtl.saslauthdAuth">
+        <span
+           class="icon margin-right"
+           ng-class="userRolesCtl.saslauthdAuth.enabled ? 'fa-check success' : 'fa-ban grayblack-3'">
+        </span>
+        <p
+           uib-tooltip-html="'Use the CLI to change the state of saslauthd authentication.'"
+           tooltip-placement="auto right">
+          saslauthd authentication is
+          <span ng-show="userRolesCtl.saslauthdAuth"><span ng-show="!userRolesCtl.saslauthdAuth.enabled">not</span> enabled</span>
+        </p>
+      </div>
+      <div class="users-auth-check">
+        <span
+           class="icon margin-right"
+           ng-class="userRolesCtl.ldapSettings.data.authentication_enabled ? 'fa-check success' : 'fa-ban grayblack-3'">
+        </span>
+        <p>
+          LDAP is {{!userRolesCtl.ldapSettings.data.authentication_enabled ? 'not': ''}} enabled
+        </p>
+      </div>
+    </span>
     <span class="pills nowrap">
       <a
          ui-sref="app.admin.security.roles.user"

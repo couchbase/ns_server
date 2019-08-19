@@ -1921,7 +1921,7 @@ input[type="checkbox"].fake-select + label:before {
   margin: 0;
   color: #555;
   font-size: .75rem;
-  cursor: pointer;
+  cursor: default;
 }
 .users-auth-check:hover .fa-ban {
   color: #e07f82;
