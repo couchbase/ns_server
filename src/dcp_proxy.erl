@@ -100,9 +100,12 @@ handle_info({ssl, Socket, Data}, #state{sock = Socket} = State) ->
     handle_info({socket_data, Socket, Data}, State);
 
 handle_info({socket_data, Socket, Data}, State) ->
+    NewState = process_data(Data, State),
+
     %% Set up the socket to receive another message
     ok = network:socket_setopts(Socket, [{active, once}]),
-    {noreply, process_data(Data, State)};
+
+    {noreply, NewState};
 
 handle_info({tcp_closed, Socket}, State) ->
     handle_info({socket_closed, Socket}, State);
