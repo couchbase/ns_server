@@ -58,7 +58,10 @@
              ng-model="userRolesAddDialogCtl.user.id">
           <a ng-show="!userRolesAddDialogCtl.isEditingMode &&
                       (userRolesAddDialogCtl.user.domain === 'external')"
-             ng-click="userRolesAddDialogCtl.lookupMembership()">Lookup membership</a>
+             ng-click="userRolesAddDialogCtl.lookupMembership()"
+             class="text-smaller">
+            lookup ldap roles
+          </a>
         </div>
         <div class="formrow">
           <label for="name_full_inp">Full Name <small>(optional)</small></label>
