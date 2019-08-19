@@ -20,6 +20,10 @@
 -include("ns_common.hrl").
 -include("cut.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([build_kvs/1,
          handle_get/2,
          handle_get/3,
@@ -220,10 +224,9 @@ conf(failover) ->
     end.
 
 build_kvs(Type) ->
-    build_kvs(Type, ns_config:get(), fun (_) -> true end).
+    build_kvs(conf(Type), ns_config:get(), fun (_) -> true end).
 
-build_kvs(Type, Config, Filter) ->
-    Conf = conf(Type),
+build_kvs(Conf, Config, Filter) ->
     lists:filtermap(
       fun ({CK, JK, DV, _}) ->
               Val = case ns_config:search(Config, CK, DV) of
@@ -255,7 +258,7 @@ handle_get(Type, Keys, Req) ->
                  (_) ->
                      true
               end,
-    Settings = build_kvs(Type, ns_config:get(), Filter),
+    Settings = build_kvs(conf(Type), ns_config:get(), Filter),
 
     Res =
         lists:foldl(
@@ -763,3 +766,21 @@ config_upgrade_to_madhatter(Config) ->
         _ ->
             []
     end.
+
+-ifdef(TEST).
+build_kvs_test() ->
+    Cfg = [[{key2, value}, {key3, [{sub_key2, value}]}]],
+    Conf = [{key1, jsonKey1, default, fun (V) -> {ok, V} end},
+            {key2, jsonKey2, default, fun (V) -> {ok, V} end},
+            {key3, jsonKey3,
+              [{sub_key1, subKey1, default, fun (V) -> {ok, V} end},
+               {sub_key2, subKey2, default, fun (V) -> {ok, V} end}]}],
+    ?assertEqual([], build_kvs([], [], fun (_) -> true end)),
+    ?assertEqual([{jsonKey1, default}, {jsonKey2, value},
+                  {jsonKey3, {[{subKey1, default}, {subKey2, value}]}}],
+                 build_kvs(Conf, Cfg, fun (_) -> true end)),
+    ?assertEqual([{jsonKey2, value}, {jsonKey3, {[{subKey2, value}]}}],
+                 build_kvs(Conf, Cfg,
+                           fun ({_, default}) -> false; (_) -> true end)),
+    ok.
+-endif.
