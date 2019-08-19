@@ -15,7 +15,7 @@ GoInstall (TARGET ns_goport PACKAGE goport
 
 GoInstall (TARGET ns_generate_cert PACKAGE generate_cert
   GOPATH "${CMAKE_CURRENT_SOURCE_DIR}"
-  GOVERSION 1.8.5
+  GOVERSION 1.11.6
   INSTALL_PATH bin)
 
 GoInstall (TARGET ns_godu PACKAGE godu
