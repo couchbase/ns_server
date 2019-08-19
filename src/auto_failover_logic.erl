@@ -77,10 +77,15 @@ init_state(DownThreshold) ->
     init_state(DownThreshold, cluster_compat_mode:get_compat_version()).
 
 init_state(DownThreshold, CompatVersion) ->
+    %% When the auto-failover timeout value is small the skew among the
+    %% various monitors checking state is a significant portion of the
+    %% overall timeout value.  Because of this we allow an extra second
+    %% to mitigate the skew.
+    AdjustedDownThreshold = DownThreshold - ?DOWN_GRACE_PERIOD,
     #state{nodes_states = [],
            services_state = init_services_state(CompatVersion),
            down_server_group_state = init_down_group_state(),
-           down_threshold = DownThreshold - 1 - ?DOWN_GRACE_PERIOD}.
+           down_threshold = AdjustedDownThreshold}.
 
 init_services_state(CompatVersion) ->
     lists:map(
@@ -582,13 +587,13 @@ basic_kv_1_test() ->
     functools:chain(
       test_init(3),
       [?cut(expect_no_actions(test_frame(1, [a, b, c], [], _))),
-       ?cut(expect_failover(b, test_frame(5, [a, b, c], [b], _)))]).
+       ?cut(expect_failover(b, test_frame(6, [a, b, c], [b], _)))]).
 
 basic_kv_2_test() ->
-    expect_failover(b, test_frame(6, [a, b, c], [b], test_init(4))).
+    expect_failover(b, test_frame(7, [a, b, c], [b], test_init(4))).
 
 min_size_test_body(Threshold) ->
-    {Actions, State} = test_frame(Threshold + 2, [a, b], [b],
+    {Actions, State} = test_frame(Threshold + 3, [a, b], [b],
                                   test_init(Threshold)),
     ?assertMatch([{mail_too_small, _, _, _}], Actions),
     test_frame(30, [a, b], [b], State).
@@ -600,13 +605,13 @@ min_size_test() ->
 
 min_size_and_increasing_test() ->
     S = expect_no_actions(min_size_test_body(2)),
-    expect_failover(b, test_frame(4, [a, b, c], [b], S)).
+    expect_failover(b, test_frame(5, [a, b, c], [b], S)).
 
 other_down_test() ->
     Nodes = [a, b, c],
     functools:chain(
       test_init(3),
-      [?cut(expect_no_actions(test_frame(4, Nodes, [b], _))),
+      [?cut(expect_no_actions(test_frame(5, Nodes, [b], _))),
        ?cut(expect_mail_down_warnings([b], test_frame(1, Nodes, [b, c], _))),
        ?cut(expect_failover(b, test_frame(2, Nodes, [b], _))),
        ?cut(expect_no_actions(test_frame(1, Nodes, [b, c], _))),
@@ -616,7 +621,7 @@ two_down_at_same_time_test() ->
     Nodes = [a, b, c, d],
     functools:chain(
       test_init(3),
-      [?cut(expect_no_actions(test_frame(2, Nodes, [b, c], _))),
+      [?cut(expect_no_actions(test_frame(3, Nodes, [b, c], _))),
        ?cut(expect_mail_down_warnings([b, c],
                                       test_frame(1, Nodes, [b, c], _)))]).
 
@@ -624,10 +629,10 @@ multiple_mail_down_warning_test() ->
     Nodes = [a, b, c],
     functools:chain(
       test_init(3),
-      [?cut(expect_no_actions(test_frame(3, Nodes, [b], _))),
+      [?cut(expect_no_actions(test_frame(4, Nodes, [b], _))),
        ?cut(expect_mail_down_warnings([b], test_frame(1, Nodes, [b, c], _))),
        %% Make sure not every tick sends out a message
-       ?cut(expect_no_actions(test_frame(1, Nodes, [b, c], _))),
+       ?cut(expect_no_actions(test_frame(2, Nodes, [b, c], _))),
        ?cut(expect_mail_down_warnings([c], test_frame(1, Nodes, [b, c], _)))]).
 
 %% Test if mail_down_warning is sent again if node was up in between
@@ -635,10 +640,10 @@ mail_down_warning_down_up_down_test() ->
     Nodes = [a, b, c],
     functools:chain(
       test_init(3),
-      [?cut(expect_no_actions(test_frame(3, Nodes, [b], _))),
+      [?cut(expect_no_actions(test_frame(4, Nodes, [b], _))),
        ?cut(expect_mail_down_warnings([b], test_frame(1, Nodes, [b, c], _))),
        %% Node is up again
        ?cut(expect_no_actions(test_frame(1, Nodes, [], _))),
-       ?cut(expect_no_actions(test_frame(2, Nodes, [b], _))),
+       ?cut(expect_no_actions(test_frame(3, Nodes, [b], _))),
        ?cut(expect_mail_down_warnings([b], test_frame(1, Nodes, [b, c], _)))]).
 -endif.
