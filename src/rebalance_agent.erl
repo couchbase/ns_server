@@ -34,6 +34,9 @@
 -define(JOB_QUEUE, rebalance_jobs).
 -define(WORKER, list_to_atom(?MODULE_STRING ++ "-worker")).
 
+-type multi_call_result(Success) ::
+        Success | {error, {failed_nodes, [{node(), Error :: any()}]}}.
+
 -record(state,
         { rebalancer     :: undefined | {pid(), reference()},
           delta_recovery :: undefined | {reference(), [bucket_name()]} }).
@@ -41,6 +44,7 @@
 start_link() ->
     gen_server2:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+-spec prepare_rebalance([node()], pid()) -> multi_call_result(ok).
 prepare_rebalance(Nodes, Pid) ->
     Timeout = ?get_timeout(prepare_rebalance, 30000),
     Results = call_prepare_rebalance(Nodes, Pid, Timeout),
@@ -61,14 +65,23 @@ call_prepare_rebalance_one_node(Node, Pid) ->
             call_prepare_rebalance_one_node(Node, Pid)
     end.
 
+-spec unprepare_rebalance([node()], pid()) -> multi_call_result(ok).
 unprepare_rebalance(Nodes, Pid) ->
     Timeout = ?get_timeout(unprepare_rebalance, 30000),
     multi_call(Nodes, {unprepare_rebalance, Pid}, Timeout).
 
+-spec prepare_delta_recovery([node()], pid(), [bucket_name()]) ->
+                                    multi_call_result(ok).
 prepare_delta_recovery(Nodes, Pid, Buckets) ->
     Timeout = ?get_timeout(prepare_delta_recovery, 120000),
     multi_call(Nodes, {prepare_delta_recovery, Pid, Buckets}, Timeout).
 
+-spec prepare_delta_recovery_bucket(pid(), bucket_name(),
+                                    NodeVBuckets, ActiveFailoverLogs) ->
+                                           multi_call_result(ok) when
+      NodeVBuckets :: [{node(), [vbucket_id()]}],
+      ActiveFailoverLogs :: #{vbucket_id() => missing | FailoverLog},
+      FailoverLog :: [{UID :: integer(), StartSeqno :: integer()}].
 prepare_delta_recovery_bucket(Pid, Bucket, NodeVBuckets, ActiveFailoverLogs) ->
     %% We do a lot of stuff as part of preparetion for delta recovery, and
     %% certain interactions with memcached are not optimized as of right now,
@@ -91,6 +104,7 @@ call_prepare_delta_recovery_bucket(Pid, Bucket,
                 end, NodeVBuckets, Timeout),
     {Nodes, Results}.
 
+-spec complete_delta_recovery([node()], pid()) -> multi_call_result(ok).
 complete_delta_recovery(Nodes, Pid) ->
     Timeout = ?get_timeout(complete_delta_recovery, 30000),
     multi_call(Nodes, {complete_delta_recovery, Pid}, Timeout).
