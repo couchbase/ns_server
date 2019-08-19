@@ -71,6 +71,8 @@ get_bool(_) ->
 only_true("true") -> {ok, true};
 only_true(_) -> {error, "Only accepted value is 'true'."}.
 
+read_only(_) -> {error, "Property is readonly"}.
+
 parse_validate_number_wrapper(Num, Min, Max) ->
     case parse_validate_number(Num, Min, Max) of
         {ok, _} = OK -> OK;
@@ -165,7 +167,9 @@ conf(security) ->
     [{{security_settings, S}, SN,
       [{cipher_suites, cipherSuites, undefined, fun get_cipher_suites/1},
        {ssl_minimum_protocol, tlsMinVersion, undefined, fun get_tls_version/1},
-       {honor_cipher_order, honorCipherOrder, undefined, fun get_bool/1}]}
+       {honor_cipher_order, honorCipherOrder, undefined, fun get_bool/1},
+       {supported_ciphers, supportedCipherSuites, ciphers:supported(S),
+        fun read_only/1}]}
      || {S, SN} <- [{kv, data},
                     {fts, fullTextSearch},
                     {index, index},
