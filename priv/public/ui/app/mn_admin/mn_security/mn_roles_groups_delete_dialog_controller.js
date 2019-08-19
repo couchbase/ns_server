@@ -11,7 +11,6 @@
     vm.onSubmit = onSubmit;
 
     function onSubmit() {
-      console.log("")
       mnPromiseHelper(vm, mnUserRolesService.deleteRolesGroup(rolesGroup), $uibModalInstance)
         .showGlobalSpinner()
         .closeFinally()

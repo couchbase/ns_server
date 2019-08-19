@@ -1,16 +1,17 @@
 <div class="row flex-left margin-bottom-half">
-  <div class="inline margin-right-half">
+  <div class="inline margin-right-half"
+       ng-controller="mnScenarioDialogController as scenarioCtrl">
     <mn-dropdown
        ng-click="$event.stopPropagation();"
        on-select="statisticsNewCtl.onSelectScenario(scenario);"
-       model="statisticsNewCtl.statisticsService.scenarios"
+       model="statisticsNewCtl.scenario"
        class="scenario-dropdown">
       <inner-select>
-        {{statisticsNewCtl.statisticsService.scenarios.selected.name}}
+        {{statisticsNewCtl.scenario.selected.name}}
       </inner-select>
-      <inner-body ng-class="{'body-shorter' : statisticsNewCtl.scenarioCtrl.showRestOfMenu}">
+      <inner-body ng-class="{'body-shorter' : scenarioCtrl.showRestOfMenu}">
         <mn-dropdown-item
-           ng-repeat="scenario in statisticsNewCtl.statisticsService.scenarios | orderBy:'-preset' track by scenario.id"
+           ng-repeat="scenario in statisticsNewCtl.scenarios | orderBy:'-preset' track by scenario.id"
            mn-item="scenario">
           <p>{{scenario.name}}</p>
           <p ng-if="scenario.desc">{{scenario.desc}}</p>
@@ -22,26 +23,25 @@
             <span
                title="delete scenario"
                class="icon fa-trash"
-               ng-click="statisticsNewCtl.scenarioCtrl.deleteScenario(scenario)"
+               ng-click="scenarioCtrl.deleteScenario(scenario.id)"
                ng-show="showScenarioControls"></span>
             <span
                title="edit scenario"
                class="icon fa-edit"
-               ng-click="statisticsNewCtl.scenarioCtrl.editScenario(scenario)"
+               ng-click="scenarioCtrl.editScenario(scenario)"
                ng-show="showScenarioControls"></span>
             <span
-              class="icon fa-ellipsis-v"
-              ng-click="showScenarioControls = !showScenarioControls">
+               class="icon fa-ellipsis-v"
+               ng-click="showScenarioControls = !showScenarioControls">
             </span>
           </div>
         </mn-dropdown-item>
       </inner-body>
       <inner-footer
-         ng-controller="mnScenarioDialogController as scenarioCtrl"
-         ng-init="statisticsNewCtl.scenarioCtrl = scenarioCtrl">
+>
         <form
            novalidate
-           ng-submit="scenarioCtrl.onSubmit()"
+           ng-submit="scenarioCtrl.onSubmit(statisticsNewCtl.scenario.selected)"
            name="form"
            class="forms">
           <div class="scenario-add" ng-class="{'scenario-add-ext' : scenarioCtrl.showRestOfMenu}">
@@ -112,10 +112,10 @@
   </select>
 
   <button
-     ng-disabled="!statisticsNewCtl.statisticsService.scenarios.length"
-     ng-click="statisticsNewCtl.openGroupDialog(statisticsNewCtl.statisticsService.scenarios.selected)"
+     ng-disabled="!statisticsNewCtl.scenarios.length"
+     ng-click="statisticsNewCtl.openGroupDialog(statisticsNewCtl.scenario.selected)"
      class="tight"
-     ng-hide="statisticsNewCtl.statisticsService.scenarios.selected.preset"
+     ng-hide="statisticsNewCtl.scenario.selected.preset"
      style="margin-left: auto;">
     <span class="icon fa-plus-circle"></span> Add Group
   </button>
@@ -124,93 +124,94 @@
 
 <div class="width-12">
   <div
-     ng-repeat="group in statisticsNewCtl.statisticsService.scenarios.selected.groups track by group.id"
+     ng-repeat="groupID in statisticsNewCtl.scenario.selected.groups track by ($index + groupID)"
+     ng-controller="mnStatisticsGroupsController as mnStatsGroupsCtl"
      class="charts-group">
     <div
-       ng-click="scope.isDetailsOpened = !scope.isDetailsOpened;"
-       ng-init="scope.isDetailsOpened = true;"
+       ng-click="mnStatsGroupsCtl.isDetailsOpened = !mnStatsGroupsCtl.isDetailsOpened;"
        class="charts-group-row disclosure"
-       ng-class="{disclosed: scope.isDetailsOpened}">
+       ng-class="{disclosed: mnStatsGroupsCtl.isDetailsOpened}">
       <form novalidate
-            ng-show="!group.preset"
+            ng-if="!mnStatsGroupsCtl.group.preset"
             style="display: inline-block;"
-            ng-mouseleave="statisticsNewCtl.hideGroupControls(scope, group);"
+            ng-mouseleave="mnStatsGroupsCtl.hideGroupControls();"
             ng-click="$event.stopPropagation();"
-            ng-submit="scope.initName = group.name;
-                       statisticsNewCtl.saveScenarios();
-                       statisticsNewCtl.hideGroupControls(scope, group);
-                       scope.focusOnSubmit = true;">
+            ng-submit="mnStatsGroupsCtl.onGroupSubmit();">
         <input
-           ng-model="group.name"
+           ng-model="mnStatsGroupsCtl.group.name"
            autocorrect="off"
            spellcheck="false"
            autocapitalize="off"
            type="text"
            class="charts-group-name"
-           ng-focus="scope.showGroupControls = true;
-                     scope.initName = group.name;"
-           ng-blur="statisticsNewCtl.onGroupNameBlur(scope, group)"
-           ng-attr-size="{{group.name.length + 3}}">
+           ng-focus="mnStatsGroupsCtl.onGroupFocus();"
+           ng-blur="mnStatsGroupsCtl.onGroupNameBlur();"
+           ng-attr-size="{{mnStatsGroupsCtl.group.name.length + 3}}">
         <button
            type="submit"
            title="save chart"
            class="outline icon fa-check"
-           mn-focus="scope.focusOnSubmit"
-           ng-show="scope.showGroupControls"
-           ng-mousedown="scope.onControlClick = true;">
+           mn-focus="mnStatsGroupsCtl.focusOnSubmit"
+           ng-show="mnStatsGroupsCtl.showGroupControls"
+           ng-mousedown="mnStatsGroupsCtl.onControlClick = true;">
         </button>
         <span
            title="delete group"
            class="icon fa-trash"
-           ng-show="scope.showGroupControls"
-           ng-mousedown="scope.onControlClick = true;
-                         statisticsNewCtl.deleteGroup(group);
-                         statisticsNewCtl.hideGroupControls(scope, group)">
+           ng-show="mnStatsGroupsCtl.showGroupControls"
+           ng-mousedown="mnStatsGroupsCtl.onGroupDelete();">
         </span>
       </form>
-      <span class="charts-preset-group-name" ng-show="group.preset">{{group.name}}</span>
+      <span class="charts-preset-group-name"
+            ng-if="mnStatsGroupsCtl.group.preset">{{mnStatsGroupsCtl.group.name}}</span>
     </div>
 
-    <div ng-if="scope.isDetailsOpened" class="row charts">
+    <div ng-if="mnStatsGroupsCtl.isDetailsOpened" class="row charts">
       <div
-         ng-repeat="config in group.charts track by config.id"
-         ng-class="'statistics-' + config.size"
+         ng-repeat="chartID in mnStatsGroupsCtl.group.charts track by ($index + chartID)"
+         ng-controller="mnStatisticsChartsController as mnStatsChartsCtl"
+         ng-class="'statistics-' + mnStatsChartsCtl.chart.size"
          class="panel relative">
-        <div class="chart-controls" title="show/hide chart controls" ng-show="!config.preset">
+        <div class="chart-controls"
+             title="show/hide chart controls"
+             ng-show="!mnStatsChartsCtl.chart.preset">
           <span
              title="delete chart"
              class="icon fa-trash"
-             ng-click="statisticsNewCtl.deleteChart(config)"
-             ng-show="showChartControls"></span>
+             ng-click="mnStatsChartsCtl.deleteChart()"
+             ng-show="mnStatsChartsCtl.showChartControls"></span>
           <span
              title="edit chart"
              class="icon fa-edit"
-             ng-click="statisticsNewCtl.editChart(config)"
-             ng-show="showChartControls"></span>
+             ng-click="mnStatsChartsCtl.editChart(mnStatsGroupsCtl.group,
+                       statisticsNewCtl.scenario.selected)"
+             ng-show="mnStatsChartsCtl.showChartControls"></span>
           <span
-            class="icon fa-ellipsis-v"
-            ng-model="showChartControls"
-            ng-click="showChartControls = !showChartControls"></span>
+             class="icon fa-ellipsis-v"
+             ng-model="mnStatsChartsCtl.showChartControls"
+             ng-click="mnStatsChartsCtl.showChartControls = !mnStatsChartsCtl.showChartControls"></span>
         </div>
         <mn-statistics-chart
+           ng-if="!mnStatsChartsCtl.reloadChartDirective"
            style="display:block;"
            sync-scope="statisticsNewCtl.mnStatisticsNewScope"
-           get-nvd3-options="statisticsNewCtl.getNvd3Options(config)"
+           get-nvd3-options="mnStatsChartsCtl.getNvd3Options()"
            bucket="{{statisticsNewCtl.bucket}}"
            zoom="{{statisticsNewCtl.zoom}}"
            rbac="rbac"
-           config="config"></mn-statistics-chart>
+           config="mnStatsChartsCtl.chart"></mn-statistics-chart>
       </div>
       <div
          class="chart-adder"
-         ng-show="!statisticsNewCtl.statisticsService.scenarios.selected.preset"
-         ng-click="statisticsNewCtl.openChartBuilderDialog(group)">
+         ng-show="!statisticsNewCtl.scenario.selected.preset"
+         ng-click="statisticsNewCtl.openChartBuilderDialog(
+                   mnStatsGroupsCtl.group, statisticsNewCtl.scenario.selected)">
       </div>
     </div>
   </div>
   <div
-     ng-if="statisticsNewCtl.statisticsService.scenarios.selected &&
-              !statisticsNewCtl.statisticsService.scenarios.selected.groups.length"
+     ng-if="statisticsNewCtl.scenario.selected &&
+            !statisticsNewCtl.scenario.selected.groups.length"
      class="zero-content">
     No charts to display yet. Use Add Group to first add groups and then charts.<br>
     NOTE: All your changes will be auto-saved.

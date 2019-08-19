@@ -5,7 +5,7 @@
     .module('mnStatisticsNew')
     .controller('mnScenarioDialogController', mnScenarioDialogController)
 
-  function mnScenarioDialogController(mnStatisticsNewService, $state, $document, $uibModal, mnHelper) {
+  function mnScenarioDialogController($scope, mnStatisticsNewService, mnUserRolesService, $state, $document, $uibModal, mnHelper, mnStoreService) {
     var vm = this;
 
     vm.editScenario = editScenario;
@@ -20,12 +20,7 @@
       vm.scenario = {
         name: "",
         desc: "",
-        groups: [{
-          id: mnHelper.generateID(),
-          name: "click to edit group name",
-          desc: "",
-          charts: []
-        }]
+        groups: []
       };
     }
 
@@ -36,11 +31,13 @@
       vm.showRestOfMenu = false;
     }
 
-    function deleteScenario(scenario) {
+    function deleteScenario(scenarioID) {
       $uibModal.open({
         templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_scenario_delete.html',
       }).result.then(function () {
-        return mnStatisticsNewService.deleteScenario(scenario).then(selectLastScenario);
+        mnStatisticsNewService.deleteScenario(scenarioID);
+        selectLastScenario();
+        mnUserRolesService.saveDashboard();
       });
     }
 
@@ -51,40 +48,32 @@
     }
 
     function selectLastScenario() {
-      var scenarios = mnStatisticsNewService.export.scenarios;
-      scenarios.selected = scenarios[scenarios.length - 1];
+      $scope.statisticsNewCtl.scenario.selected = mnStoreService.store("scenarios").last();
       return $state.go("^.statistics", {
-        scenario: scenarios.selected.id
+        scenario: mnStoreService.store("scenarios").last().id
       });
     }
 
-    function onSubmit() {
+    function onSubmit(currentScenario) {
       if (!vm.scenario.name) {
         return;
       }
-      var selected = mnStatisticsNewService.export.scenarios.selected;
-      if ((vm.copyScenario == "true") && selected && !vm.isEditingMode) {
-        var groups = vm.scenario.groups;
-        vm.scenario.groups = selected.groups.map(function (group, index) {
-          group = Object.assign({}, group);
-          group.id = mnHelper.generateID();
-          group.preset = false;
-          group.charts = group.charts.map(function (chart, index) {
-            chart = Object.assign({}, chart);
-            chart.preset = false;
-            chart.group = group.id
-            chart.id = mnHelper.generateID();
-            return chart;
-          });
-          return group;
-        });
+
+      if (vm.isEditingMode) {
+        mnStoreService.store("scenarios").put(vm.scenario);
+      } else {
+        if (vm.copyScenario == "true") {
+          mnStatisticsNewService.copyScenario(vm.scenario,
+                                              currentScenario);
+        } else {
+          mnStoreService.store("scenarios").add(vm.scenario);
+        }
+        selectLastScenario();
       }
 
-      mnStatisticsNewService.addUpdateScenario(vm.scenario)
-        .then(vm.isEditingMode ? clear : function () {
-          selectLastScenario();
-          $document.triggerHandler("click");
-        });
+      $document.triggerHandler("click");
+      clear();
+      mnUserRolesService.saveDashboard();
     }
   }
 

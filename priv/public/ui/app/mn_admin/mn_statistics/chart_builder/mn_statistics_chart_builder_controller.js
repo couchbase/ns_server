@@ -24,24 +24,26 @@
     };
   }
 
-  function mnStatisticsNewChartBuilderController($scope, mnPromiseHelper, mnBucketsStats, mnStatisticsNewService, chart, group, $uibModalInstance, mnStatisticsDescriptionService, $timeout, $state, mnFormatStatsSectionsFilter, mnFormatServicesFilter) {
+  function mnStatisticsNewChartBuilderController($scope, mnPromiseHelper, mnBucketsStats, mnStatisticsNewService, mnUserRolesService, chart, group, scenario, $uibModalInstance, mnStatisticsDescriptionService, $state, mnFormatStatsSectionsFilter, mnFormatServicesFilter, mnStoreService) {
     var vm = this;
-
+    vm.isEditing = !!chart;
     vm.create = create;
 
-    vm.isEditing = !!chart
-
-    vm.groups = mnStatisticsNewService.export.scenarios.selected.groups;
-    vm.newChart = _.cloneDeep(chart) || {
-      stats: {},
-      size: "small",
-      specificStat: "false",
-      group: group && group.id.toString()
-    };
+    if (vm.isEditing) {
+      vm.newChart = _.cloneDeep(chart);
+      vm.selectedGroup = group.id;
+      vm.groups = scenario.groups.map(function (id) {
+        return mnStoreService.store("groups").get(id);
+      });
+    } else {
+      vm.newChart = {
+        stats: {},
+        size: "small",
+        specificStat: "false"
+      };
+    }
 
     vm.bucket = $scope.rbac.bucketNames['.stats!read'][0];
-
-    var initialGroup = vm.newChart.group;
 
     if (vm.newChart.specificStat) {
       vm.newChart.specificStat = "true";
@@ -240,23 +242,21 @@
         size: vm.newChart.size,
         specificStat: vm.newChart.specificStat === "true",
         id: vm.newChart.id,
-        group: vm.isEditing ? vm.newChart.group : group.id,
         stats: getSelectedStats()
       };
-      if (chart.id && (initialGroup !== vm.newChart.group)) {
-        var fromGroup = _.find(vm.groups, {'id': initialGroup});
-        var index = _.findIndex(fromGroup.charts, {'id': chart.id});
-        var toGroup = _.find(vm.groups, {'id': vm.newChart.group});
-
-        toGroup.charts.push(fromGroup.charts.splice(index, 1)[0]);
+      var toGroup = mnStoreService.store("groups").get(vm.selectedGroup || group.id);
+      var fromGroup;
+      if (vm.isEditing) {
+        if (group.id !== vm.selectedGroup) {
+          fromGroup = mnStoreService.store("groups").get(group.id);
+          fromGroup.charts.splice(fromGroup.charts.indexOf(chart.id), 1);
+          toGroup.charts.push(chart.id);
+        }
+        mnStoreService.store("charts").put(chart);
+      } else {
+        toGroup.charts.push(mnStoreService.store("charts").add(chart).id);
       }
-      mnStatisticsNewService.addUpdateChart(
-        chart,
-        _.find(vm.groups, {'id': vm.newChart.group})
-      ).then(function () {
-        $uibModalInstance.close();
-        vm.isEditing && $state.reload();
-      });
+      $uibModalInstance.close();
     }
 
   }

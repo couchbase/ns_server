@@ -2,25 +2,26 @@
   "use strict";
 
   angular
-    .module('mnStatisticsNewService', ["mnServersService", "mnUserRolesService", 'mnPoll', "mnStatisticsDescriptionService", "mnHelper"])
+    .module('mnStatisticsNewService', ["mnServersService", 'mnPoll', "mnStatisticsDescriptionService", "mnHelper"])
     .factory('mnStatisticsNewService', mnStatisticsNewServiceFactory);
 
-  function mnStatisticsNewServiceFactory($http, $q, mnServersService, mnPoller, $rootScope, mnStatisticsDescriptionService, mnUserRolesService, mnHelper) {
+  function mnStatisticsNewServiceFactory($http, $q, mnServersService, mnPoller, $rootScope, mnStatisticsDescriptionService, mnHelper, mnStoreService) {
     var mnStatisticsNewService = {
       prepareNodesList: prepareNodesList,
       export: {
-        scenarios: []
+        scenario: {}
       },
       doGetStats: doGetStats,
       getStatSourcePath: getStatSourcePath,
       subscribeUIStatsPoller: subscribeUIStatsPoller,
       unsubscribeUIStatsPoller: unsubscribeUIStatsPoller,
-      addUpdateScenario: addUpdateScenario,
-      addUpdateGroup: addUpdateGroup,
-      addUpdateChart: addUpdateChart,
+
+      copyScenario: copyScenario,
       deleteScenario: deleteScenario,
       deleteGroup: deleteGroup,
-      saveScenarios: saveScenarios,
+      deleteChart: deleteChart,
+      doAddPresetScenario: doAddPresetScenario,
+
       readByPath: readByPath,
       getStatsV2: getStatsV2,
       getStatsUnits: getStatsUnits,
@@ -41,6 +42,50 @@
     var rootScopes = {};
 
     return mnStatisticsNewService;
+
+    function deleteChart(chartID) {
+      var group = mnStoreService.store("groups").getByIncludes(chartID, "charts");
+      group.charts.splice(group.charts.indexOf(chartID), 1);
+      mnStoreService.store("charts").delete(chartID);
+    }
+
+    function deleteGroup(groupID) {
+      var scenario = mnStoreService.store("scenarios").getByIncludes(groupID, "groups");
+      scenario.groups.splice(scenario.groups.indexOf(groupID), 1);
+      var group = mnStoreService.store("groups").get(groupID);
+      group.charts.forEach(function (chartID) {
+        mnStoreService.store("charts").delete(chartID);
+      });
+      mnStoreService.store("groups").delete(groupID);
+    }
+
+    function deleteScenario(scenarioID) {
+      var scenario = mnStoreService.store("scenarios").get(scenarioID);
+      mnStoreService.store("scenarios").deleteItem(scenario);
+      scenario.groups.forEach(function (groupID) {
+        var group = mnStoreService.store("groups").get(groupID);
+        mnStoreService.store("groups").deleteItem(group);
+        group.charts.forEach(function (chartID) {
+          mnStoreService.store("charts").delete(chartID);
+        });
+      });
+    }
+
+    function copyScenario(scenario, copyFrom) {
+      scenario = mnStoreService.store("scenarios").add(scenario);
+      scenario.groups = (copyFrom.groups || []).map(function (groupID) {
+        var groupToCopy = mnStoreService.store("groups").get(groupID);
+        var copiedGroup = mnStoreService.store("groups").add(groupToCopy);
+        copiedGroup.preset = false;
+        copiedGroup.charts = (copiedGroup.charts || []).map(function (chartID) {
+          var chartToCopy = mnStoreService.store("charts").get(chartID);
+          var copiedChart = mnStoreService.store("charts").add(chartToCopy);
+          copiedChart.preset = false;
+          return copiedChart.id;
+        });
+        return copiedGroup.id;
+      });
+    }
 
     function getStatsTitle(stats) {
       return _.map(stats, function (descPath, name) {
@@ -130,65 +175,6 @@
       }
     }
 
-    function addUpdateChart(newChart, group) {
-      var charts = group.charts;
-
-      if (newChart.id) {
-        var index = _.findIndex(charts, {'id': newChart.id});
-        charts[index] = newChart;
-      } else {
-        var chartId = mnHelper.generateID();
-        charts = charts || [];
-        newChart.id = chartId;
-        charts.push(newChart);
-      }
-
-      return saveScenarios();
-    }
-
-    function saveScenarios(scenarios) {
-      return mnUserRolesService.getUserProfile().then(function (profile) {
-        profile.scenarios = scenarios || mnStatisticsNewService.export.scenarios;
-        return mnUserRolesService.putUserProfile(profile);
-      });
-    }
-
-    function addUpdateGroup(newGroup) {
-      newGroup.id = mnHelper.generateID();
-      mnStatisticsNewService.export.scenarios.selected.groups.push(newGroup);
-      return saveScenarios();
-    }
-
-    function deleteGroup(group) {
-      var groups = mnStatisticsNewService.export.scenarios.selected.groups;
-      var index = _.findIndex(groups, {'id': group.id});
-      groups.splice(index, 1);
-      return saveScenarios();
-    }
-
-
-    function deleteScenario(scenario) {
-      var scenarios = mnStatisticsNewService.export.scenarios;
-      var index = _.findIndex(scenarios, {'id': scenario.id});
-      scenarios.splice(index, 1);
-      return saveScenarios();
-    }
-
-    function addUpdateScenario(newSenario) {
-      var scenarios = mnStatisticsNewService.export.scenarios;
-
-      if (newSenario.id) {
-        var index = _.findIndex(scenarios, {'id': newSenario.id});
-        scenarios[index].name = newSenario.name;
-        scenarios[index].desc = newSenario.desc;
-      } else {
-        newSenario.id = mnHelper.generateID();
-        scenarios.push(newSenario);
-      }
-
-      return saveScenarios();
-    }
-
     function getStatSourcePath(config) {
       var string = config.bucket + config.zoom;
 
@@ -252,7 +238,7 @@
     function doGetStats(chartConfig, previousResult) {
       var reqParams = {
         zoom: chartConfig.zoom,
-          // || mnStatisticsNewService.export.scenarios.selected.zoom,
+          // || mnStatisticsNewService.export.profile.scenarios.selected.zoom,
         bucket: chartConfig.bucket
       };
       if (chartConfig.specificStat) {
@@ -330,6 +316,141 @@
         newSamples[keyName] = ps.concat(samples[keyName].slice(1)).slice(-keepCount);
       }
       return newSamples;
+    }
+
+    function doAddPresetScenario() {
+      presetScenario().forEach(function (scenario) {
+        scenario.preset = true;
+        scenario.groups = scenario.groups.map(function (group) {
+          group.preset = true;
+          group.charts = group.charts.map(function (chart) {
+            chart.preset = true;
+            chart = mnStoreService.store("charts").add(chart);
+            return chart.id;
+          });
+          group = mnStoreService.store("groups").add(group);
+          return group.id;
+        });
+        mnStoreService.store("scenarios").add(scenario);
+      });
+    }
+
+    function presetScenario() {
+      return [{
+        name: "Cluster Overview",
+        desc: "Stats showing the general health of your cluster.",
+        groups: [{
+          name: "Server Resources",
+          charts: [{
+            stats: {"cpu_utilization_rate": "@system"},
+            size: "small",
+            specificStat: true // for single-stat chart
+          }, {
+            stats: {"mem_actual_free": "@system"},
+            size: "small",
+            specificStat: true
+          }, {
+            stats: {"swap_used": "@system"},
+            size: "small",
+            specificStat: true
+          }, {
+            stats: {"rest_requests": "@system"},
+            size: "small",
+            specificStat: true
+          }]
+        }, {
+          name: "Data Service Overview (per bucket)",
+          charts: [{
+            stats: {"ops": "@kv-"},
+            size: "small",
+            specificStat: true
+          }, {
+            stats: {"mem_used": "@kv-"},
+            size: "small",
+            specificStat: true
+          }, {
+            stats: {"couch_docs_actual_disk_size": "@kv-"},
+            size: "small",
+            specificStat: true,
+          }, {
+            stats: {"ep_resident_items_rate": "@kv-"},
+            size: "small",
+            specificStat: true
+          }]
+        }]
+      }, {// 2nd scenario starts here with the comma ///////////////////////////
+        name: "Data Service",
+        desc: "Data Service stats per bucket.",
+        groups: [{
+          name: "Memory",
+          charts: [{
+            stats: {"mem_used": "@kv-", "ep_mem_low_wat": "@kv-", "ep_mem_high_wat": "@kv-"},
+            size: "medium",
+            specificStat: false // false for multi-stat chart
+          }, {
+            stats: {"ep_kv_size": "@kv-", "ep_meta_data_memory": "@kv-"},
+            size: "medium",
+            specificStat: false
+          }]
+        }, {
+          name: "Ops",
+          charts: [{
+            stats: {"ops": "@kv-","ep_cache_miss_rate": "@kv-"},
+            size: "medium",
+            specificStat: false
+          }, {
+            stats: {"cmd_get": "@kv-", "cmd_set": "@kv-", "delete_hits": "@kv-"},
+            size: "medium",
+            specificStat: false
+          }]
+        }, {
+          name: "Disk",
+          charts: [{
+            stats: {"couch_docs_actual_disk_size": "@kv-", "couch_docs_data_size": "@kv-"},
+            size: "medium",
+            specificStat: false
+          }, {
+            stats: {"disk_write_queue": "@kv-",
+                    "ep_data_read_failed": "@kv-", "ep_data_write_failed": "@kv-"},
+            size: "medium",
+            specificStat: false
+          }]
+        }, {
+          name: "vBuckets",
+          charts: [{
+            stats: {"ep_vb_total": "@kv-"},
+            size: "small",
+            specificStat: true
+          }, {
+            stats: {"vb_active_num": "@kv-"},
+            size: "small",
+            specificStat: true
+          }, {
+            stats: {"vb_pending_num": "@kv-"},
+            size: "small",
+            specificStat: true
+          }, {
+            stats: {"vb_replica_num": "@kv-"},
+            size: "small",
+            specificStat: true,
+          }]
+        }, {
+          name: "DCP Queues",
+          charts: [{
+            stats: {"ep_dcp_views+indexes_count": "@kv-", "ep_dcp_cbas_count": "@kv-", "ep_dcp_replica_count": "@kv-", "ep_dcp_xdcr_count": "@kv-", "ep_dcp_other_count": "@kv-"},
+            size: "medium",
+            specificStat: false
+          }, {
+            stats: {"ep_dcp_views+indexes_producer_count": "@kv-", "ep_dcp_cbas_producer_count": "@kv-", "ep_dcp_replica_producer_count": "@kv-", "ep_dcp_xdcr_producer_count": "@kv-", "ep_dcp_other_producer_count": "@kv-"},
+            size: "medium",
+            specificStat: false
+          }, {
+            stats: {"ep_dcp_views+indexes_items_remaining": "@kv-", "ep_dcp_cbas_items_remaining": "@kv-", "ep_dcp_replica_items_remaining": "@kv-", "ep_dcp_xdcr_items_remaining": "@kv-", "ep_dcp_other_items_remaining": "@kv-"},
+            size: "medium",
+            specificStat: false
+          }]
+        }]
+      }]
     }
 
   }

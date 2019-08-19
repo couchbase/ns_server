@@ -54,7 +54,9 @@
            style="width: 240px;"
            ng-if="chartBuilderCtl.isEditing">
           <h5>Group</h5>
-          <select ng-model="chartBuilderCtl.newChart.group">
+          <select
+             ng-disabled="!chartBuilderCtl.isEditing"
+             ng-model="chartBuilderCtl.selectedGroup">
             <option
                ng-repeat="group in chartBuilderCtl.groups"
                value="{{group.id}}">

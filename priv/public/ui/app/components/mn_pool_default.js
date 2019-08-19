@@ -78,6 +78,12 @@
           atLeast55: poolDefault.thisNode.clusterCompatibility >= version55,
           atLeast65: poolDefault.thisNode.clusterCompatibility >= version65
         };
+        poolDefault.versions = {
+          "50": version50,
+          "51": version51,
+          "55": version55,
+          "65": version65
+        };
         poolDefault.capiBase = $window.location.protocol === "https:" ? poolDefault.thisNode.couchApiBaseHTTPS : poolDefault.thisNode.couchApiBase;
 
         _.extend(mnPoolDefault.export, poolDefault);
