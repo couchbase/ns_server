@@ -17,6 +17,10 @@
 -export([is_valid_name/1, code/1, openssl_name/1, high/0, medium/0,
          only_known/1, supported/1]).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -record(cipher,{code :: binary(),
                 dtls_ok :: boolean(),
                 recommended :: boolean(),
@@ -215,6 +219,17 @@ golang_ciphers({1, 7, 6}) ->
         <<"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384">>,
         <<"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384">>
     ].
+
+-ifdef(TEST).
+supported_ciphers_test() ->
+    lists:foreach(
+      fun ({S, C}) ->
+          %% just make sure that all supported by services
+          %% ciphers are in our "ciphers database"
+          ?assertEqual({S, C, true}, {S, C, maps:is_key(C, all())})
+      end, [{S, C} || S <- [ns_server, kv, fts, index, n1ql, eventing, cbas],
+                      C <- supported(S)]).
+-endif.
 
 cipher_name_by_code(Code) ->
     case [N || {N, #cipher{code = C}} <- maps:to_list(all()), C == Code] of
