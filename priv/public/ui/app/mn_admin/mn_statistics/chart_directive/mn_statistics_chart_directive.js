@@ -172,6 +172,14 @@
           return d3.format(".2s")(d/val[0]) + val[1];
         case "percent":
           return d3.format(".0%")(d / 100);
+        case "second":
+          return d3.format(".2s")(d) + 's';
+        case "millisecond":
+          return d3.format(".2s")(d / 1000) + 's';
+        case "microsecond":
+          return d3.format(".2s")(d / 1000000) + 's';
+        case "nanoseconds":
+          return d3.format(".2s")(d / 1000000000) + 's';
         default:
           return d3.format(".2s")(d);
         }
@@ -184,6 +192,12 @@
           return [mnTruncateTo3DigitsFilter(d/val[0]), val[1]].join('');
         case "percent":
           return  mnTruncateTo3DigitsFilter(d) + "%";
+        case "millisecond":
+          return d3.format(".2s")(d / 1000) + 's';
+        case "microsecond":
+          return d3.format(".2s")(d / 1000000) + 's';
+        case "nanoseconds":
+          return d3.format(".2s")(d / 1000000000) + 's';
         default: return mnTruncateTo3DigitsFilter(d);
         }
       }
