@@ -350,6 +350,15 @@ input.filter-input {
   position: absolute;
   left: .5rem;
 }
+.check:before {
+  font-family: FontAwesome;
+  content: "\f00c";
+  font-size: .925rem;
+  color: #80c677;
+  position: absolute;
+  top: -2px;
+  left: 0;
+}
 /*  angle icon controls for up/down, left/right movement --------------- */
 .angle-icon {
   font-size: 1.25rem!important;
