@@ -21,11 +21,10 @@
       <div
          ng-if="auditCtl.state.auditdEnabled"
          class="content-box fix-width-6">
-        When enabled, auditing is activated for a default set of events.
-        Expand the filterable events modules below to select your own
-        set of events. NOTE: Your cluster’s performance may be impacted in
-        relation to the number of events selected. NOTE: Audit logs may use
-        significant disk space.
+        When enabled, auditing will log a minimum set of events by default. Expand
+        the events modules below to see these defaults and/or select your own set
+        of events. <br> NOTE: The number of events selected for logging may impact your
+        cluster’s performance. Audit logs may also use significant disk space.
       </div>
     </div>
 
@@ -92,7 +91,7 @@
       </div>
     </div>
 
-    <h4>Filterable Events</h4>
+    <h4>Events</h4>
     <section
        ng-if="adminCtl.poolDefault.isEnterprise && adminCtl.poolDefault.compat.atLeast55"
        class="audit-module"
@@ -147,7 +146,15 @@
     <div
        ng-if="adminCtl.poolDefault.isEnterprise && adminCtl.poolDefault.compat.atLeast55"
        class="formrow fix-width-6 margin-top-1">
-      <label>Ignore Filterable Events From These Users</label>
+      <label class="inline">Ignore Events From These Users</label>
+      <span
+         class="icon-info-warning raised"
+         uib-tooltip="NOTE: The list of events on this page is not comprehensive
+                      — on purpose. Very important events impacting security will
+                      ALWAYS be logged. Even from these users."
+         tooltip-placement="auto right">
+        <span class="icon fa-warning"></span>
+      </span>
       <textarea
          ng-model="auditCtl.state.disabledUsers"
          ng-disabled="!auditCtl.state.auditdEnabled || !rbac.cluster.admin.security.write"
@@ -155,7 +162,7 @@
          spellcheck="false"
          autocapitalize="off"
          rows="3"
-         placeholder="e.g. username/external,username/couchbase ...">
+         placeholder="e.g. username/external, username/couchbase...">
       </textarea>
       <div
          ng-if="auditCtl.errors.disabledUsers"

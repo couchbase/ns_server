@@ -23,7 +23,7 @@
       case "auditd":
         return "Audit";
       case "ns_server":
-        return "Server";
+        return "REST API";
       case "n1ql":
         return "Query and Index Service";
       case "eventing":
