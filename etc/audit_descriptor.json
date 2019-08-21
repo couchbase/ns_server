@@ -949,7 +949,7 @@
       {
           "id" : 8243,
           "name": "mutate document",
-          "description": "Document was mutated",
+          "description": "Document was mutated via the REST API",
           "sync" : false,
           "enabled" : true,
           "filtering_permitted" : true,
@@ -1171,9 +1171,9 @@
       {
           "id" : 8255,
           "name" : "read document",
-          "description" : "Document was read",
+          "description" : "Document was read via the REST API",
           "sync" : false,
-          "enabled" : true,
+          "enabled" : false,
           "filtering_permitted" : true,
           "mandatory_fields" : {
               "timestamp" : "",
