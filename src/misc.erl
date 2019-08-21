@@ -2851,3 +2851,28 @@ is_raw_ipv6(Host) ->
 
 afamily2str(inet) -> "IPv4";
 afamily2str(inet6) -> "IPv6".
+
+partitionmap(Fun, List) ->
+    lists:foldr(
+      fun (Elem, {AccLeft, AccRight}) ->
+              case Fun(Elem) of
+                  {left, Left} ->
+                      {[Left | AccLeft], AccRight};
+                  {right, Right} ->
+                      {AccLeft, [Right | AccRight]}
+              end
+      end, {[], []}, List).
+
+-ifdef(TEST).
+partitionmap_test() ->
+    ?assertEqual({[1,3,5,7,9], [-2,-4,-6,-8,-10]},
+                 partitionmap(
+                   fun (Num) ->
+                           case Num rem 2 =:= 0 of
+                               true ->
+                                   {right, -Num};
+                               false ->
+                                   {left, Num}
+                           end
+                   end, lists:seq(1, 10))).
+-endif.
