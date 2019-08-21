@@ -57,7 +57,7 @@ handle_post_collection(Bucket, Scope, Req) ->
                           0 ->
                               [];
                           MaxTTL ->
-                              [{max_ttl, MaxTTL}]
+                              [{maxTTL, MaxTTL}]
                       end,
               handle_rv(collections:create_collection(Bucket, Scope, Name,
                                                       Props), Req)
