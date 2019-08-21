@@ -691,6 +691,14 @@ do_rebalance_membase_bucket(Bucket, Config,
     {run_mover(Bucket, Config, KeepNodes, ProgressFun, Map, FastForwardMap),
      MapOptions}.
 
+sleep_for_sdk_clients(Type) ->
+    SecondsToWait = ns_config:read_key_fast(rebalance_out_delay_seconds, 10),
+    ?rebalance_info("Waiting ~w seconds before completing ~p. "
+                    "So that clients receive graceful not my vbucket "
+                    "instead of silent closed connection",
+                    [SecondsToWait, Type]),
+    timer:sleep(SecondsToWait * 1000).
+
 run_mover(Bucket, Config, KeepNodes, ProgressFun, Map, FastForwardMap) ->
     Servers = ns_bucket:bucket_nodes(Config),
 
@@ -712,10 +720,7 @@ run_mover(Bucket, Config, KeepNodes, ProgressFun, Map, FastForwardMap) ->
     HadRebalanceOut = ((Servers -- KeepNodes) =/= []),
     case HadRebalanceOut of
         true ->
-            SecondsToWait = ns_config:read_key_fast(rebalance_out_delay_seconds, 10),
-            ?rebalance_info("Waiting ~w seconds before completing rebalance out."
-                            " So that clients receive graceful not my vbucket instead of silent closed connection", [SecondsToWait]),
-            timer:sleep(SecondsToWait * 1000);
+            sleep_for_sdk_clients("rebalance out");
         false ->
             ok
     end,
@@ -1182,6 +1187,7 @@ run_graceful_failover(Nodes) ->
                              I+1
                      end, 0, InterestingBuckets),
                    master_activity_events:note_rebalance_stage_completed(kv),
+                   sleep_for_sdk_clients("graceful failover"),
                    ok = failover:orchestrate(Nodes, []),
 
                    ok
