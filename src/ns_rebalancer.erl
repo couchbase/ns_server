@@ -956,82 +956,47 @@ bucket_failover_vbuckets(Config, Bucket, DeltaNodes) ->
                 {Node, lists:usort(VBs)}
         end, DeltaNodes)).
 
-couchbase_delta_recovery_buckets(DeltaRecoveryBuckets, CouchbaseBucketConfigs) ->
-    CouchbaseBuckets = [Bucket || {Bucket, _} <- CouchbaseBucketConfigs],
+get_buckets_to_delta_recover(BucketConfigs, RequestedBuckets) ->
+    [P || {Bucket, BucketConfig} = P <- BucketConfigs,
+          ns_bucket:bucket_type(BucketConfig) =:= membase,
+          ns_bucket:storage_mode(BucketConfig) =:= couchstore,
+          RequestedBuckets =:= all orelse
+              lists:member(Bucket, RequestedBuckets)].
 
-    case DeltaRecoveryBuckets of
-        all ->
-            CouchbaseBuckets;
-        _ when is_list(DeltaRecoveryBuckets) ->
-            ordsets:to_list(ordsets:intersection(
-                              ordsets:from_list(CouchbaseBuckets),
-                              ordsets:from_list(DeltaRecoveryBuckets)))
-    end.
-
-build_delta_recovery_buckets(_AllNodes, [] = _DeltaNodes, _AllBucketConfigs, _DeltaRecoveryBuckets) ->
+build_delta_recovery_buckets(_AllNodes, [] = _DeltaNodes,
+                             _AllBucketConfigs, _DeltaRecoveryBuckets) ->
     {ok, []};
-build_delta_recovery_buckets(AllNodes, DeltaNodes, AllBucketConfigs, DeltaRecoveryBuckets0) ->
+build_delta_recovery_buckets(AllNodes, DeltaNodes,
+                             AllBucketConfigs, DeltaRecoveryBuckets) ->
     Config = ns_config:get(),
+    HandleBucketFun =
+        handle_one_delta_recovery_bucket(Config, AllNodes, DeltaNodes, _),
+    RequiredBuckets =
+        get_buckets_to_delta_recover(AllBucketConfigs, DeltaRecoveryBuckets),
 
-    CouchbaseBuckets = [P || {_, BucketConfig} = P <- AllBucketConfigs,
-                           ns_bucket:bucket_type(BucketConfig) =:= membase,
-                           ns_bucket:storage_mode(BucketConfig) =/= ephemeral],
-    DeltaRecoveryBuckets = couchbase_delta_recovery_buckets(
-                             DeltaRecoveryBuckets0, CouchbaseBuckets),
-
-    %% such non-lazy computation of recovery map is suboptimal, but
-    %% it's not that big deal suboptimal. I'm doing it for better
-    %% testability of build_delta_recovery_buckets_loop
-    MappedConfigs = [{Bucket,
-                      BucketConfig,
-                      find_delta_recovery_map(Config, AllNodes, DeltaNodes,
-                                              Bucket, BucketConfig)}
-                     || {Bucket, BucketConfig} <- CouchbaseBuckets],
-
-    case build_delta_recovery_buckets_loop(MappedConfigs, DeltaRecoveryBuckets, []) of
-        {ok, Recovered0} ->
-            RV = [{Bucket,
-                   build_transitional_bucket_config(BucketConfig, Map, Opts, DeltaNodes),
-                   {Map, Opts},
-                   FailoverVBs}
-                  || {Bucket,
-                      BucketConfig,
-                      {{Map, Opts}, FailoverVBs}} <- Recovered0],
-            {ok, RV};
-        Error ->
-            Error
+    case misc:partitionmap(HandleBucketFun, RequiredBuckets) of
+        {FoundBuckets, []} ->
+            {ok, FoundBuckets};
+        _ ->
+            {error, not_possible}
     end.
 
-build_delta_recovery_buckets_loop([] = _MappedConfigs, _DeltaRecoveryBuckets, Acc) ->
-    {ok, Acc};
-build_delta_recovery_buckets_loop(MappedConfigs, DeltaRecoveryBuckets, Acc) ->
-    [{Bucket, BucketConfig, RecoverResult0} | RestMapped] = MappedConfigs,
-
-    NeedBucket = lists:member(Bucket, DeltaRecoveryBuckets),
-    RecoverResult = case NeedBucket of
-                        true ->
-                            RecoverResult0;
-                        false ->
-                            false
-                    end,
-
-    case RecoverResult of
-        {MapOpts, _FailoverVBs} ->
+handle_one_delta_recovery_bucket(Config, AllNodes, DeltaNodes,
+                                 {Bucket, BucketConfig}) ->
+    case find_delta_recovery_map(Config, AllNodes,
+                                 DeltaNodes, Bucket, BucketConfig) of
+        false ->
+            ?rebalance_debug("Couldn't delta recover bucket ~s when "
+                             "we care about delta recovery of that bucket",
+                             [Bucket]),
+            {right, Bucket};
+        {{Map, Opts} = MapOpts, FailoverVBs} ->
             ?rebalance_debug("Found delta recovery map for bucket ~s: ~p",
                              [Bucket, MapOpts]),
-
-            NewAcc = [{Bucket, BucketConfig, RecoverResult} | Acc],
-            build_delta_recovery_buckets_loop(RestMapped, DeltaRecoveryBuckets, NewAcc);
-        false ->
-            case NeedBucket of
-                true ->
-                    ?rebalance_debug("Couldn't delta recover bucket ~s when we care about delta recovery of that bucket", [Bucket]),
-                    %% run rest of elements for logging
-                    _ = build_delta_recovery_buckets_loop(RestMapped, DeltaRecoveryBuckets, []),
-                    {error, not_possible};
-                false ->
-                    build_delta_recovery_buckets_loop(RestMapped, DeltaRecoveryBuckets, Acc)
-            end
+            TransitionalBucket =
+                build_transitional_bucket_config(BucketConfig, Map,
+                                                 Opts, DeltaNodes),
+            {left, {Bucket, TransitionalBucket, MapOpts, FailoverVBs}}
     end.
 
 apply_delta_recovery_buckets([], _DeltaNodes, _CurrentBuckets) ->
@@ -1486,29 +1451,20 @@ map_to_vbuckets_dict_test() ->
                   {c, [3, 4, 5]}],
                  lists:sort(dict:to_list(map_to_vbuckets_dict(Map)))).
 
-couchbase_delta_recovery_buckets_test() ->
-    MembaseBuckets = [{"b1", conf}, {"b3", conf}],
-    ["b1", "b3"] = couchbase_delta_recovery_buckets(["b1", "b2", "b3", "b4"], MembaseBuckets),
-    ["b1", "b3"] = couchbase_delta_recovery_buckets(all, MembaseBuckets).
-
-build_delta_recovery_buckets_loop_test() ->
-    %% Fake num_replicas so that we don't crash in
-    %% build_delta_recovery_buckets_loop.
-    Conf1 = [{num_replicas, 1}, conf1],
-    Conf2 = [{num_replicas, 1}, conf2],
-    MappedConfigs = [{"b1", Conf1, {map, opts}},
-                     {"b2", Conf2, false}],
-    All = couchbase_delta_recovery_buckets(all, [{"b1", conf}, {"b2", conf}]),
-
-    {ok, []} = build_delta_recovery_buckets_loop([], All, []),
-    {error, not_possible} = build_delta_recovery_buckets_loop(MappedConfigs, All, []),
-    {error, not_possible} = build_delta_recovery_buckets_loop(MappedConfigs, ["b2"], []),
-    {error, not_possible} = build_delta_recovery_buckets_loop(MappedConfigs, ["b1", "b2"], []),
-    {ok, []} = build_delta_recovery_buckets_loop(MappedConfigs, [], []),
-    ?assertEqual({ok, [{"b1", Conf1, {map, opts}}]},
-                 build_delta_recovery_buckets_loop(MappedConfigs, ["b1"], [])),
-    ?assertEqual({ok, [{"b1", Conf1, {map, opts}}]},
-                 build_delta_recovery_buckets_loop([hd(MappedConfigs)], All, [])).
+get_buckets_to_delta_recovery_test() ->
+    Buckets = [{"b1", [{type, membase}]},
+               {"b2", [{type, memcached}]},
+               {"b3", [{type, membase},
+                       {storage_mode, couchstore}]},
+               {"b4", [{type, membase},
+                       {storage_mode, ephemeral}]}],
+    ?assertMatch([{"b1", _}, {"b3", _}],
+                 get_buckets_to_delta_recover(Buckets,
+                                              ["b1", "b2", "b3", "b4"])),
+    ?assertMatch([{"b1", _}, {"b3", _}],
+                 get_buckets_to_delta_recover(Buckets, all)),
+    ?assertMatch([{"b3", _}],
+                 get_buckets_to_delta_recover(Buckets, ["b3", "b4"])).
 -endif.
 
 prepare_rebalance(Nodes) ->
