@@ -900,19 +900,28 @@ maybe_cleanup_old_buckets(KeepNodes) ->
     end.
 
 find_delta_recovery_map(Config, AllNodes, DeltaNodes, Bucket, BucketConfig) ->
-    {map, CurrentMap} = lists:keyfind(map, 1, BucketConfig),
-    CurrentOptions = generate_vbucket_map_options(AllNodes, BucketConfig),
-
-    History = ns_bucket:past_vbucket_maps(Config),
-    MatchingMaps = mb_map:find_matching_past_maps(AllNodes, CurrentMap,
-                                                  CurrentOptions, History),
-
-    FailoverVBs = bucket_failover_vbuckets(Config, Bucket, DeltaNodes),
-    case find_delta_recovery_map(CurrentMap, FailoverVBs, MatchingMaps) of
-        not_found ->
+    %% Ideally this should be caught by mb_map:find_matching_past_maps, but
+    %% getting there requires a lot of changes.
+    case ns_bucket:num_replicas_changed(BucketConfig) of
+        true ->
             false;
-        {ok, Map} ->
-            {{Map, CurrentOptions}, FailoverVBs}
+        false ->
+            {map, CurrentMap} = lists:keyfind(map, 1, BucketConfig),
+            CurrentOptions = generate_vbucket_map_options(AllNodes,
+                                                          BucketConfig),
+            History = ns_bucket:past_vbucket_maps(Config),
+            MatchingMaps = mb_map:find_matching_past_maps(AllNodes, CurrentMap,
+                                                          CurrentOptions,
+                                                          History),
+            FailoverVBs = bucket_failover_vbuckets(Config, Bucket, DeltaNodes),
+
+            case find_delta_recovery_map(CurrentMap,
+                                         FailoverVBs, MatchingMaps) of
+                not_found ->
+                    false;
+                {ok, Map} ->
+                    {{Map, CurrentOptions}, FailoverVBs}
+            end
     end.
 
 find_delta_recovery_map(CurrentMap, FailoverVBs, MatchingMaps) ->
@@ -999,13 +1008,13 @@ build_delta_recovery_buckets_loop(MappedConfigs, DeltaRecoveryBuckets, Acc) ->
     [{Bucket, BucketConfig, RecoverResult0} | RestMapped] = MappedConfigs,
 
     NeedBucket = lists:member(Bucket, DeltaRecoveryBuckets),
-    RecoverResult = case NeedBucket andalso
-                         not ns_bucket:num_replicas_changed(BucketConfig) of
+    RecoverResult = case NeedBucket of
                         true ->
                             RecoverResult0;
                         false ->
                             false
                     end,
+
     case RecoverResult of
         {MapOpts, _FailoverVBs} ->
             ?rebalance_debug("Found delta recovery map for bucket ~s: ~p",
