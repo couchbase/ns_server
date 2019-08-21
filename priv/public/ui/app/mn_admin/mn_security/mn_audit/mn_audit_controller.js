@@ -34,6 +34,8 @@
         return name.toUpperCase();
       case "fts":
         return "Search Service";
+      case "view_engine":
+        return "Views";
       default:
         return name.charAt(0).toUpperCase() + name.substr(1).toLowerCase();
       }
