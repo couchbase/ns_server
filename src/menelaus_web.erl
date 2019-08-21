@@ -436,7 +436,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["uilogin"] ->
                     {ui, IsSSL, fun menelaus_web_misc:handle_uilogin/1};
                 ["uilogout"] ->
-                    {done, menelaus_web_misc:handle_uilogout(Req)};
+                    {no_check, fun menelaus_web_misc:handle_uilogout/1};
                 ["sampleBuckets", "install"] ->
                     {{[buckets], create}, fun menelaus_web_samples:handle_post/1};
                 ["engageCluster2"] ->

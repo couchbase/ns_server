@@ -23,6 +23,7 @@
 
 -export([login_success/1,
          login_failure/1,
+         logout/1,
          delete_user/2,
          password_change/2,
          set_user/4,
@@ -304,7 +305,10 @@ code(modify_index_settings) ->
 code(modify_query_settings) ->
     8242;
 code(mutate_doc) ->
-    8243.
+    8243;
+code(logout) ->
+    8255.
+
 
 to_binary({list, List}) ->
     [to_binary(A) || A <- List];
@@ -444,6 +448,9 @@ login_success(Req) ->
 
 login_failure(Req) ->
     put(login_failure, Req, []).
+
+logout(Req) ->
+    put(logout, Req, []).
 
 delete_user(Req, Identity) ->
     put(delete_user, Req, [{identity, get_identity(Identity)}]).
