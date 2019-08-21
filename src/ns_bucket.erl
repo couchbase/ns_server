@@ -27,7 +27,7 @@
 -export([auth_type/1,
          bucket_nodes/1,
          bucket_type/1,
-         replica_change/1,
+         num_replicas_changed/1,
          create_bucket/3,
          credentials/1,
          delete_bucket/1,
@@ -767,13 +767,13 @@ past_vbucket_maps(Config) ->
         false -> []
     end.
 
-replica_change(BucketConfig) ->
-    replica_change(num_replicas(BucketConfig),
-                   proplists:get_value(map, BucketConfig)).
+num_replicas_changed(BucketConfig) ->
+    num_replicas_changed(num_replicas(BucketConfig),
+                         proplists:get_value(map, BucketConfig)).
 
-replica_change(_NumReplicas, undefined) ->
+num_replicas_changed(_NumReplicas, undefined) ->
     false;
-replica_change(NumReplicas, Map) ->
+num_replicas_changed(NumReplicas, Map) ->
     ExpectedChainLength = NumReplicas + 1,
     lists:any(?cut(ExpectedChainLength =/= length(_)), Map).
 
@@ -787,7 +787,7 @@ needs_rebalance(BucketConfig, Nodes) ->
                 _ ->
                     Map = proplists:get_value(map, BucketConfig),
                     Map =:= undefined orelse
-                        replica_change(BucketConfig) orelse
+                        num_replicas_changed(BucketConfig) orelse
                         lists:sort(Nodes) =/= lists:sort(Servers) orelse
                         ns_rebalancer:map_options_changed(BucketConfig) orelse
                         (ns_rebalancer:unbalanced(Map, BucketConfig) andalso

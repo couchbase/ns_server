@@ -1000,7 +1000,7 @@ build_delta_recovery_buckets_loop(MappedConfigs, DeltaRecoveryBuckets, Acc) ->
 
     NeedBucket = lists:member(Bucket, DeltaRecoveryBuckets),
     RecoverResult = case NeedBucket andalso
-                         not ns_bucket:replica_change(BucketConfig) of
+                         not ns_bucket:num_replicas_changed(BucketConfig) of
                         true ->
                             RecoverResult0;
                         false ->
