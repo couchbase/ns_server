@@ -359,6 +359,15 @@ input.filter-input {
   top: -2px;
   left: 0;
 }
+.filter:before {
+  font-family: FontAwesome;
+  content: "\f0b0";
+  font-size: .925rem;
+  color: #f9ca7b;
+  position: absolute;
+  top: -2px;
+  left: 0;
+}
 /*  angle icon controls for up/down, left/right movement --------------- */
 .angle-icon {
   font-size: 1.25rem!important;
@@ -521,6 +530,7 @@ color: #333;
 .cbui-tablerow-title {
   font-weight: 600;
   font-size: .961rem !important;
+  padding-right: .25rem;
 }
 section.has-hover:hover {
   background-color: #f6fafd;
@@ -829,7 +839,7 @@ section.error {
   text-decoration: none;
   border: 1px solid #fff;
   border-radius: 2px;
-  padding: .3rem;
+  padding: 1px 3px;
   position: relative;
   white-space: nowrap;
 }
@@ -2287,9 +2297,6 @@ input[type="checkbox"].fake-select + label:before {
   font-style: italic;
   font-size: .8125rem;
   line-height: 1.7;
-}
-.wb-refresh-btn button {
-  box-shadow: 0 0 16px 16px rgba(255,255,255,.9);
 }
 
 /* workbench query history -------------------------------------------------- */

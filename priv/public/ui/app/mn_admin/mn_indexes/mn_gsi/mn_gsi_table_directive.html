@@ -61,21 +61,23 @@
        ng-class="[(!mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row)) ?
                  mnGsiTableCtl.getStatusClass(row) : '')]"
        ng-controller="mnGsiItemController as gsiItemCtl">
-      <span class="cbui-table-cell flex-grow-1-5" title="{{row.index}}">
+      <span class="cbui-table-cell flex-grow-1-5 row flex-left" title="{{row.index}}">
         {{row.indexName}}
-        <span class="label lt-blue" ng-if="row.partitioned">
-          partitioned
-        </span>
-        <span class="label warning" ng-if="row.stale">
-          stale
-        </span>
-        <span
-           class="label lt-blue" ng-if="row.index.indexOf('(replica') > -1"
-           uib-tooltip="Index replicas are always active and automatically load-balance scan requests."
-           tooltip-append-to-body="true"
-           tooltip-placement="auto top"
-           tooltip-trigger="'mouseenter'">
-          replica {{row.numReplica}}
+        <span class="flex-inline flex-wrap">
+          <span class="label lt-blue" ng-if="row.partitioned">
+            partitioned
+          </span>
+          <span class="label warning" ng-if="row.stale">
+            stale
+          </span>
+          <span
+             class="label lt-blue" ng-if="row.index.indexOf('(replica') > -1"
+             uib-tooltip="Index replicas are always active and automatically load-balance scan requests."
+             tooltip-append-to-body="true"
+             tooltip-placement="auto top"
+             tooltip-trigger="'mouseenter'">
+            replica {{row.numReplica}}
+          </span>
         </span>
       </span>
       <span class="cbui-table-cell flex-grow-half resp-hide-xsml">

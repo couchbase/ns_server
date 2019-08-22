@@ -82,10 +82,11 @@
 
   <script type="text/ng-template" id="filterTooltipTemplate.html">
     <div>
-      <div class="check relative padding-left-1-5" ng-show="row.filterExpression">{{row.filterExpression}}</div>
-      <div class="check relative padding-left-1-5" ng-show="row.filterExpiration">Do not replicate document expirations</div>
-      <div class="check relative padding-left-1-5" ng-show="row.filterDeletion">Do not replicate DELETE operations</div>
-      <div class="check relative padding-left-1-5" ng-show="row.filterBypassExpiry">Remove TTL from replicated items</div>
+      <h5 class="margin-bottom-quarter">Active Filters</h5>
+      <div class="filter relative padding-left-1" ng-show="row.filterExpression">{{row.filterExpression}}</div>
+      <div class="filter relative padding-left-1" ng-show="row.filterExpiration">Do not replicate document expirations</div>
+      <div class="filter relative padding-left-1" ng-show="row.filterDeletion">Do not replicate DELETE operations</div>
+      <div class="filter relative padding-left-1" ng-show="row.filterBypassExpiry">Remove TTL from replicated items</div>
    </div>
   </script>
 

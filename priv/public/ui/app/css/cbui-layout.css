@@ -107,6 +107,9 @@ footer {
   flex-direction: column;
   justify-content: flex-start;
 }
+.flex-inline {
+  display: inline-flex;
+}
 
 /* GENERAL HELPERS ------------------------------------------------------ */
 .relative {
