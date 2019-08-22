@@ -682,8 +682,9 @@ do_rebalance_membase_bucket(Bucket, Config,
         case lists:keyfind(Bucket, 1, DeltaRecoveryBuckets) of
             false ->
                 generate_vbucket_map(AdjustedMap, KeepNodes, Config);
-            {_, _, V, _} ->
-                V
+            {_, #{target_map := TargetMap,
+                  target_map_opts := TargetMapOpts}} ->
+                {TargetMap, TargetMapOpts}
         end,
 
     ns_bucket:update_vbucket_map_history(FastForwardMap, MapOptions),
@@ -920,7 +921,9 @@ find_delta_recovery_map(Config, AllNodes, DeltaNodes, Bucket, BucketConfig) ->
                 not_found ->
                     false;
                 {ok, Map} ->
-                    {{Map, CurrentOptions}, FailoverVBs}
+                    {ok, #{target_map => Map,
+                           target_map_opts => CurrentOptions,
+                           failover_vbuckets => FailoverVBs}}
             end
     end.
 
@@ -990,32 +993,35 @@ handle_one_delta_recovery_bucket(Config, AllNodes, DeltaNodes,
                              "we care about delta recovery of that bucket",
                              [Bucket]),
             {right, Bucket};
-        {{Map, Opts} = MapOpts, FailoverVBs} ->
-            ?rebalance_debug("Found delta recovery map for bucket ~s: ~p",
-                             [Bucket, MapOpts]),
+        {ok, #{target_map := Map,
+               target_map_opts := Opts} = BucketInfo} ->
+            ?rebalance_debug("Found delta recovery map for bucket ~s:~n~p",
+                             [Bucket, BucketInfo]),
             TransitionalBucket =
                 build_transitional_bucket_config(BucketConfig, Map,
                                                  Opts, DeltaNodes),
-            {left, {Bucket, TransitionalBucket, MapOpts, FailoverVBs}}
+            BucketInfo1 = BucketInfo#{transitional_bucket =>
+                                          TransitionalBucket},
+            {left, {Bucket, BucketInfo1}}
     end.
 
 apply_delta_recovery_buckets([], _DeltaNodes, _CurrentBuckets) ->
     ok;
 apply_delta_recovery_buckets(DeltaRecoveryBuckets, DeltaNodes, CurrentBuckets) ->
-    Buckets = [Bucket || {Bucket, _, _, _} <- DeltaRecoveryBuckets],
-    prepare_delta_recovery(DeltaNodes, Buckets),
+    prepare_delta_recovery(DeltaNodes, DeltaRecoveryBuckets),
 
     lists:foreach(
-      fun ({Bucket, _, _, FailoverVBuckets}) ->
+      fun ({Bucket, BucketInfo}) ->
               {_, BucketConfig} = lists:keyfind(Bucket, 1, CurrentBuckets),
+              FailoverVBuckets = maps:get(failover_vbuckets, BucketInfo),
               prepare_delta_recovery_bucket(Bucket,
                                             BucketConfig, FailoverVBuckets)
       end, DeltaRecoveryBuckets),
 
-    NewBuckets = misc:update_proplist(
-                   CurrentBuckets,
-                   [{Bucket, BucketConfig} ||
-                       {Bucket, BucketConfig, _, _} <- DeltaRecoveryBuckets]),
+    TransitionalBuckets =
+        [{Bucket, maps:get(transitional_bucket, BucketInfo)} ||
+            {Bucket, BucketInfo} <- DeltaRecoveryBuckets],
+    NewBuckets = misc:update_proplist(CurrentBuckets, TransitionalBuckets),
     NodeChanges = [[{{node, N, failover_vbuckets}, []},
                     {{node, N, membership}, active}] || N <- DeltaNodes],
     BucketChanges = {buckets, [{configs, NewBuckets}]},
@@ -1034,12 +1040,12 @@ apply_delta_recovery_buckets(DeltaRecoveryBuckets, DeltaNodes, CurrentBuckets) -
 
     ok = check_test_condition(apply_delta_recovery),
     lists:foreach(
-      fun ({Bucket, BucketConfig, _, _}) ->
+      fun ({Bucket, BucketConfig}) ->
               ok = wait_for_bucket(Bucket, DeltaNodes),
               ok = ns_janitor:cleanup_apply_config(
                      Bucket, DeltaNodes, BucketConfig,
                      [{apply_config_timeout, ?REBALANCER_APPLY_CONFIG_TIMEOUT}])
-      end, DeltaRecoveryBuckets),
+      end, TransitionalBuckets),
 
     ok.
 
@@ -1502,15 +1508,16 @@ do_unprepare_rebalance(Nodes) ->
                        [Error])
     end.
 
-prepare_delta_recovery(Nodes, Buckets) ->
+prepare_delta_recovery(Nodes, BucketConfigs) ->
     case cluster_compat_mode:is_cluster_madhatter() of
         true ->
-            do_prepare_delta_recovery(Nodes, Buckets);
+            do_prepare_delta_recovery(Nodes, BucketConfigs);
         false ->
             ok
     end.
 
-do_prepare_delta_recovery(Nodes, Buckets) ->
+do_prepare_delta_recovery(Nodes, BucketConfigs) ->
+    Buckets = proplists:get_keys(BucketConfigs),
     case rebalance_agent:prepare_delta_recovery(Nodes, self(), Buckets) of
         ok ->
             ok;
