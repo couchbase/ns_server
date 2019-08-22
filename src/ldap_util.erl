@@ -130,7 +130,7 @@ default_settings() ->
      {authorization_enabled, false},
      {hosts, []},
      {port, 389},
-     {encryption, false},
+     {encryption, 'None'},
      {user_dn_mapping, []},
      {query_dn, ""},
      {query_pass, {password, ""}},
