@@ -993,34 +993,20 @@ handle_one_delta_recovery_bucket(Config, AllNodes, DeltaNodes,
                              "we care about delta recovery of that bucket",
                              [Bucket]),
             {right, Bucket};
-        {ok, #{target_map := Map,
-               target_map_opts := Opts} = BucketInfo} ->
+        {ok, BucketInfo} ->
             ?rebalance_debug("Found delta recovery map for bucket ~s:~n~p",
                              [Bucket, BucketInfo]),
-            TransitionalBucket =
-                build_transitional_bucket_config(BucketConfig, Map,
-                                                 Opts, DeltaNodes),
-            BucketInfo1 = BucketInfo#{transitional_bucket =>
-                                          TransitionalBucket},
-            {left, {Bucket, BucketInfo1}}
+            {left, {Bucket, BucketInfo}}
     end.
 
 apply_delta_recovery_buckets([], _DeltaNodes, _CurrentBuckets) ->
     ok;
 apply_delta_recovery_buckets(DeltaRecoveryBuckets, DeltaNodes, CurrentBuckets) ->
     prepare_delta_recovery(DeltaNodes, DeltaRecoveryBuckets),
+    TransitionalBuckets = prepare_delta_recovery_buckets(DeltaRecoveryBuckets,
+                                                         DeltaNodes,
+                                                         CurrentBuckets),
 
-    lists:foreach(
-      fun ({Bucket, BucketInfo}) ->
-              {_, BucketConfig} = lists:keyfind(Bucket, 1, CurrentBuckets),
-              FailoverVBuckets = maps:get(failover_vbuckets, BucketInfo),
-              prepare_delta_recovery_bucket(Bucket,
-                                            BucketConfig, FailoverVBuckets)
-      end, DeltaRecoveryBuckets),
-
-    TransitionalBuckets =
-        [{Bucket, maps:get(transitional_bucket, BucketInfo)} ||
-            {Bucket, BucketInfo} <- DeltaRecoveryBuckets],
     NewBuckets = misc:update_proplist(CurrentBuckets, TransitionalBuckets),
     NodeChanges = [[{{node, N, failover_vbuckets}, []},
                     {{node, N, membership}, active}] || N <- DeltaNodes],
@@ -1528,16 +1514,33 @@ do_prepare_delta_recovery(Nodes, BucketConfigs) ->
             exit({prepare_delta_recovery_failed, Buckets, Errors})
     end.
 
-prepare_delta_recovery_bucket(Bucket, BucketConfig, FailoverVBuckets) ->
+prepare_delta_recovery_buckets(DeltaRecoveryBuckets,
+                               DeltaNodes, CurrentBuckets) ->
+    lists:map(
+      fun ({Bucket, BucketInfo}) ->
+              {_, BucketConfig} = lists:keyfind(Bucket, 1, CurrentBuckets),
+              #{target_map := Map,
+                target_map_opts := Opts,
+                failover_vbuckets := FailoverVBuckets} = BucketInfo,
+
+              prepare_one_delta_recovery_bucket(Bucket, BucketConfig,
+                                                FailoverVBuckets),
+              TransitionalBucket =
+                  build_transitional_bucket_config(BucketConfig,
+                                                   Map, Opts, DeltaNodes),
+              {Bucket, TransitionalBucket}
+      end, DeltaRecoveryBuckets).
+
+prepare_one_delta_recovery_bucket(Bucket, BucketConfig, FailoverVBuckets) ->
     case cluster_compat_mode:is_cluster_madhatter() of
         true ->
-            do_prepare_delta_recovery_bucket(Bucket, BucketConfig,
-                                             FailoverVBuckets);
+            do_prepare_one_delta_recovery_bucket(Bucket, BucketConfig,
+                                                 FailoverVBuckets);
         false ->
             ok
     end.
 
-do_prepare_delta_recovery_bucket(Bucket, BucketConfig, FailoverVBuckets) ->
+do_prepare_one_delta_recovery_bucket(Bucket, BucketConfig, FailoverVBuckets) ->
     Map = proplists:get_value(map, BucketConfig, []),
     VBucketsToRecover =
         dict:fold(
