@@ -2884,7 +2884,7 @@ input[type=text].scenario-desc  {
 
 /* footer for saving forms (builds on <footer>) ----------------------------- */
 .footer-save {
-  height: 4rem;
+  height: 3rem;
 }
 /* stats footers for the wizard, dashboard, and various service pages --------*/
 .footer-dashboard {

@@ -37,6 +37,7 @@
     vm.isFormElementsDisabled = isFormElementsDisabled;
     vm.testEmail = testEmail;
     vm.submit = submit;
+    vm.reloadState = mnHelper.reloadState;
 
     activate();
 

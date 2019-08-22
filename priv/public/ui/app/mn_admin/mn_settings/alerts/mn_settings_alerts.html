@@ -1,6 +1,6 @@
 <div mn-spinner="settingsAlertsCtl.viewLoading || !settingsAlertsCtl.state">
   <form class="forms" ng-submit="settingsAlertsCtl.submit()">
-
+    <div class="margin-bottom-2">
     <div class="row flex-left margin-bottom-1-5">
       <label
          class="toggle-control margin-0"
@@ -130,9 +130,8 @@
         </label>
       </div>
     </div>
-
-    <div class="footer-save">
-     <a class="text-medium margin-right-2">Cancel/Reset</a>
+    </div>
+    <footer class="footer-save">
      <button
         type="submit"
         ng-show="rbac.cluster.settings.write"
@@ -140,6 +139,7 @@
         class="margin-right-2">
        Save
      </button>
-    </div>
+     <a class="text-medium" ng-click="settingsAlertsCtl.reloadState()">Cancel/Reset</a>
+    </footer>
   </form>
 </div>
