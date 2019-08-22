@@ -1006,7 +1006,8 @@ apply_delta_recovery_buckets(DeltaRecoveryBuckets, DeltaNodes, CurrentBuckets) -
     prepare_delta_recovery(DeltaNodes, Buckets),
 
     lists:foreach(
-      fun ({Bucket, BucketConfig, _, FailoverVBuckets}) ->
+      fun ({Bucket, _, _, FailoverVBuckets}) ->
+              {_, BucketConfig} = lists:keyfind(Bucket, 1, CurrentBuckets),
               prepare_delta_recovery_bucket(Bucket,
                                             BucketConfig, FailoverVBuckets)
       end, DeltaRecoveryBuckets),
