@@ -73,6 +73,7 @@ status_mapping() ->
     [{id, <<"defnId">>},
      {index, <<"name">>},
      {indexName, <<"indexName">>},
+     {lastScanTime, <<"lastScanTime">>},
      {numReplica, <<"numReplica">>},
      {bucket, <<"bucket">>},
      {status, <<"status">>},
