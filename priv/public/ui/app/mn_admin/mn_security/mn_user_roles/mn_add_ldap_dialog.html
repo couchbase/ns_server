@@ -66,7 +66,7 @@
               <span class="width-8">
                 <label
                    for="cert"
-                   ng-disabled="addLdapDialogCtl.config.connect.encryption == 'false'">
+                   ng-disabled="addLdapDialogCtl.config.connect.encryption == 'None'">
                   Certificate
                 </label>
                 <div class="checkbox-list">
@@ -76,10 +76,10 @@
                      ng-model="addLdapDialogCtl.config.connect.server_cert_validation"
                      name="certValidation"
                      value="false"
-                     ng-disabled="addLdapDialogCtl.config.connect.encryption == 'false'">
+                     ng-disabled="addLdapDialogCtl.config.connect.encryption == 'None'">
                   <label
                      for="ldap-cert-none"
-                     ng-disabled="addLdapDialogCtl.config.connect.encryption == 'false'">
+                     ng-disabled="addLdapDialogCtl.config.connect.encryption == 'None'">
                     None
                   </label>
                   <input
@@ -88,10 +88,10 @@
                      ng-model="addLdapDialogCtl.config.connect.server_cert_validation"
                      name="certValidation"
                      value="true"
-                     ng-disabled="addLdapDialogCtl.config.connect.encryption == 'false'">
+                     ng-disabled="addLdapDialogCtl.config.connect.encryption == 'None'">
                   <label
                      for="ldap-cert-server"
-                     ng-disabled="addLdapDialogCtl.config.connect.encryption == 'false'">
+                     ng-disabled="addLdapDialogCtl.config.connect.encryption == 'None'">
                     Couchbase
                   </label>
                   <input
@@ -100,10 +100,10 @@
                      ng-model="addLdapDialogCtl.config.connect.server_cert_validation"
                      name="certValidation"
                      value="pasteCert"
-                     ng-disabled="addLdapDialogCtl.config.connect.encryption == 'false'">
+                     ng-disabled="addLdapDialogCtl.config.connect.encryption == 'None'">
                   <label
                      for="ldap-cert-add"
-                     ng-disabled="addLdapDialogCtl.config.connect.encryption == 'false'">
+                     ng-disabled="addLdapDialogCtl.config.connect.encryption == 'None'">
                     Paste Cert
                   </label>
                 </div>

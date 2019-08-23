@@ -12,7 +12,7 @@
       connect: {
         hosts: "",
         port: "",
-        encryption: "false",
+        encryption: "None",
         server_cert_validation: "false",
         cacert: "",
         query_dn: "",
@@ -203,7 +203,7 @@
         config.query_dn = "";
         config.query_pass = "";
       }
-      if (config.encryption == "false") {
+      if (config.encryption == "None") {
         delete config.server_cert_validation;
       }
       if (config.server_cert_validation == "pasteCert") {
