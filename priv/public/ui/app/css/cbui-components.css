@@ -1815,7 +1815,21 @@ input[type="checkbox"].fake-select + label:before {
   font-size: 1rem;
   position: absolute;
   top: -1px;
-  right: 1rem;
+  right: .25rem;
+}
+.role-from-group {
+  position: absolute;
+  right: 2rem;
+  width: 1rem;
+  cursor: default;
+}
+.role-from-group:after {
+  color: #56b349;
+  font-family: FontAwesome;
+  content: "\f0c0";
+  font-size: 1rem;
+  position: absolute;
+  right: 0;
 }
 
 /* shaded box with rounded corners for zero content situations --------- */

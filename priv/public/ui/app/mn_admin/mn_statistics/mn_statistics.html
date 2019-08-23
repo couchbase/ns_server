@@ -104,6 +104,7 @@
 
   <select
      ng-model="statisticsNewCtl.selectedBucket"
+     class="max-width-4"
      ng-change="statisticsNewCtl.onBucketChange(statisticsNewCtl.selectedBucket)">
     <option ng-repeat="name in rbac.bucketNames['.stats!read']" value="{{name}}">
       {{name}}
