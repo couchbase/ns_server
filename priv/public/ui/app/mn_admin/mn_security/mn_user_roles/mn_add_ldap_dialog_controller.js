@@ -105,6 +105,15 @@
         .reduce(function (acc, key) {
           switch (key) {
           case "hosts": acc[key] = config[key].join(","); break;
+          case "server_cert_validation":
+            if (config[key] == false) {
+              acc[key] = "false";
+            } else if (config["cacert"]) {
+              acc[key] = "pasteCert";
+            } else {
+              acc[key] = "true";
+            }
+            break;
           default:
             if (config[key] !== undefined) {
               acc[key] = config[key].toString();
@@ -203,11 +212,10 @@
         config.query_dn = "";
         config.query_pass = "";
       }
-      if (config.encryption == "None") {
-        delete config.server_cert_validation;
-      }
       if (config.server_cert_validation == "pasteCert") {
         config.server_cert_validation = "true";
+      } else if (config.server_cert_validation == "true") {
+        config.cacert = "";
       } else {
         delete config.cacert;
       }

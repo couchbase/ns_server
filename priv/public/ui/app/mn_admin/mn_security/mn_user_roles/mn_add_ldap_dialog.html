@@ -117,14 +117,18 @@
             <div
                class="formrow"
                ng-if="addLdapDialogCtl.config.connect.server_cert_validation == 'pasteCert'">
-              <label for="query_dn">Certificate Text</label>
+              <label
+                 for="query_dn"
+                 ng-disabled="addLdapDialogCtl.config.connect.encryption == 'None'">
+                Certificate Text</label>
               <textarea
                  rows="4"
                  id="ldap_group_ref"
                  autocorrect="off"
                  autocompleterg="off"
                  spellcheck="false"
-                 ng-model="addLdapDialogCtl.config.connect.cacert">
+                 ng-model="addLdapDialogCtl.config.connect.cacert"
+                 ng-disabled="addLdapDialogCtl.config.connect.encryption == 'None'">
               </textarea>
               <div
                  class="error"
