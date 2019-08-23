@@ -40,7 +40,8 @@
          find_matching_past_maps/5,
          is_trivially_compatible_past_map/5,
          enumerate_chains/2,
-         align_replicas/2]).
+         align_replicas/2,
+         align_chain_replicas/2]).
 
 
 -export([counts/1]). % for testing
@@ -1057,10 +1058,7 @@ enumerate_chains(Map, FastForwardMap) ->
 
 -spec align_replicas([[atom()]], non_neg_integer()) -> [[atom()]].
 align_replicas(Map, NumReplicas) ->
-    [begin
-         [Master | Replicas] = Chain,
-         [Master | align_chain_replicas(Replicas, NumReplicas)]
-     end || Chain <- Map].
+    lists:map(align_chain_replicas(_, NumReplicas + 1), Map).
 
 align_chain_replicas(_, 0) -> [];
 align_chain_replicas([H|T] = _Chain, ReplicasLeft) ->

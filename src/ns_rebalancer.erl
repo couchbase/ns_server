@@ -1061,38 +1061,51 @@ do_wait_for_bucket(Bucket, Nodes) ->
     end.
 
 build_transitional_bucket_config(BucketConfig, TargetMap, Options, DeltaNodes) ->
-    {num_replicas, NumReplicas} = lists:keyfind(num_replicas, 1, BucketConfig),
     {map, CurrentMap} = lists:keyfind(map, 1, BucketConfig),
+    TransitionalMap = build_transitional_map(CurrentMap, TargetMap, DeltaNodes),
+
     {servers, Servers} = lists:keyfind(servers, 1, BucketConfig),
-    TransitionalMap =
-        lists:map(
-          fun ({CurrentChain, TargetChain}) ->
-                  case CurrentChain of
-                      [undefined | _] ->
-                          CurrentChain;
-                      _ ->
-                          ChainDeltaNodes = [N || N <- TargetChain,
-                                                  lists:member(N, DeltaNodes)],
-                          PreservedNodes = lists:takewhile(
-                                             fun (N) ->
-                                                     N =/= undefined andalso
-                                                         not lists:member(N, DeltaNodes)
-                                             end, CurrentChain),
-
-                          TransitionalChain0 = PreservedNodes ++ ChainDeltaNodes,
-                          N = length(TransitionalChain0),
-                          true = N =< NumReplicas + 1,
-
-                          TransitionalChain0 ++
-                              lists:duplicate(NumReplicas - N + 1, undefined)
-                  end
-          end, lists:zip(CurrentMap, TargetMap)),
-
     NewServers = DeltaNodes ++ Servers,
 
     misc:update_proplist(BucketConfig, [{map, TransitionalMap},
                                         {servers, NewServers},
                                         {deltaRecoveryMap, {TargetMap, Options}}]).
+
+build_transitional_map(CurrentMap, TargetMap, DeltaNodes) ->
+    lists:zipwith(
+      fun (CurrentChain, TargetChain) ->
+              ChainDeltaNodes = [N || N <- TargetChain,
+                                      lists:member(N, DeltaNodes)],
+              build_transitional_chain(CurrentChain, ChainDeltaNodes)
+      end, CurrentMap, TargetMap).
+
+build_transitional_chain([undefined | _] = CurrentChain, _DeltaNodes) ->
+    CurrentChain;
+build_transitional_chain(CurrentChain, DeltaNodes) ->
+    PreservedNodes = [N || N <- CurrentChain, N =/= undefined],
+
+    %% Previously the code here expected that some of the delta nodes might
+    %% already be in the current chain. But that actually shouldn't
+    %% happen. And elsewhere in the code we don't handle this situation
+    %% gracefully. So we're going to assert instead.
+    false = lists:any(lists:member(_, DeltaNodes), PreservedNodes),
+
+    TransitionalChain = PreservedNodes ++ DeltaNodes,
+
+    N = length(CurrentChain),
+    true = length(TransitionalChain) =< N,
+    mb_map:align_chain_replicas(TransitionalChain, N).
+
+-ifdef(TEST).
+build_transitional_chain_test() ->
+    ?assertEqual([undefined, undefined],
+                 build_transitional_chain([undefined, undefined], [a, b])),
+    ?assertEqual([a, b],
+                 build_transitional_chain([a, undefined], [b])),
+    ?assertEqual([a, b, c, undefined],
+                 build_transitional_chain([a, undefined, undefined, undefined],
+                                          [b, c])).
+-endif.
 
 get_delta_recovery_nodes(Config, Nodes) ->
     [N || N <- Nodes,
