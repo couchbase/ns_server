@@ -1268,7 +1268,7 @@
           "fts/doc_count": null,
           "fts/num_bytes_used_disk": {
             unit: "bytes",
-            title: "Search Total Disk Size",
+            title: "Search Total Disk Used",
             desc: "Bytes stored on disk for all Search indexes in this bucket."
           },
           "fts/num_files_on_disk": {

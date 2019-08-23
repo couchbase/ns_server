@@ -84,8 +84,8 @@
       <span class="text-right width-6">{{footerStatsCtl.stats['index_ram_percent'].slice(-1)[0] | number:1}}%</span>
     </div>
     <div class="column vertical-divider">
-      <span class="width-6">Total Scan Rate (per sec)</span>
-      <span class="text-right width-6">{{footerStatsCtl.stats['index/num_rows_returned'].slice(-1)[0] | number:0}}</span><br>
+      <span class="width-6">Total Scan Rate</span>
+      <span class="text-right width-6">{{footerStatsCtl.stats['index/num_rows_returned'].slice(-1)[0] | number:0}}/sec</span><br>
       <span class="width-6">Indexes Fragmentation</span>
       <span class="text-right width-6">{{footerStatsCtl.stats['index/fragmentation'].slice(-1)[0] | number:1}}%</span>
     </div>

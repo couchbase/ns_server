@@ -2897,12 +2897,13 @@ input[type=text].scenario-desc  {
   text-align: center;
   box-shadow: none;
 }
-.footer-indexes {
+.footer-indexes,
+.footer-fts {
   align-items: flex-start;
   height: 78px;
 }
-
-.footer-indexes .column {
+.footer-indexes .column,
+.footer-fts .column {
   height: 100%;
 }
 footer .column,
