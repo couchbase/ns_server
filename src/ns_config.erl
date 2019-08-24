@@ -388,13 +388,18 @@ update_key_inner(Config, UUID, Key, Fun) ->
         false ->
             false;
         {_, OldValue} ->
-            StrippedValue = strip_metadata(OldValue),
-            case Fun(StrippedValue) of
+            case strip_metadata(OldValue) of
+                ?DELETED_MARKER ->
+                    false;
                 StrippedValue ->
-                    {[], Config};
-                NewValue ->
-                    NewConfig = update_config_key(Key, NewValue, Config, UUID),
-                    {[hd(NewConfig)], NewConfig}
+                    case Fun(StrippedValue) of
+                        StrippedValue ->
+                            {[], Config};
+                        NewValue ->
+                            NewConfig = update_config_key(Key, NewValue, Config,
+                                                          UUID),
+                            {[hd(NewConfig)], NewConfig}
+                    end
             end
     end.
 
