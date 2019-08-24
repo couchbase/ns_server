@@ -24,7 +24,8 @@
          handle_get/2,
          handle_get/3,
          handle_post/2,
-         handle_post/3]).
+         handle_post/3,
+         handle_delete/3]).
 
 -export([handle_settings_web/1,
          handle_settings_web_post/1,
@@ -278,17 +279,7 @@ handle_post(Type, Req) ->
     handle_post(Type, [], Req).
 
 handle_post(Type, Keys, Req) ->
-    Conf = lists:foldr(
-             fun ({CK, JK, _, Parser}, Acc) ->
-                     Acc#{[atom_to_list(JK)] => {key, CK, Parser}};
-                 ({CK, JK, List}, Acc) when is_list(List) ->
-                     lists:foldl(
-                       fun ({SubCK, SubJK, _, Parser}, Acc2) ->
-                             StrJK = [atom_to_list(JK), atom_to_list(SubJK)],
-                             Acc2#{StrJK => {sub, [CK, SubCK], Parser}}
-                       end, Acc, List)
-             end, #{}, conf(Type)),
-
+    Conf = inverted_conf(Type),
     Params =
         case maps:find(Keys, Conf) of
             {ok, _} -> [{"", binary_to_list(mochiweb_request:recv_body(Req))}];
@@ -341,6 +332,43 @@ handle_post_for_key(StrJKey, StrVal, Conf) ->
         error ->
             M = io_lib:format("Unknown key ~s", [string:join(StrJKey, ".")]),
             {error, iolist_to_binary(M)}
+    end.
+
+inverted_conf(Type) ->
+    lists:foldr(
+      fun ({CK, JK, _, Parser}, Acc) ->
+              Acc#{[atom_to_list(JK)] => {key, CK, Parser}};
+          ({CK, JK, List}, Acc) when is_list(List) ->
+              lists:foldl(
+                fun ({SubCK, SubJK, _, Parser}, Acc2) ->
+                      StrJK = [atom_to_list(JK), atom_to_list(SubJK)],
+                      Acc2#{StrJK => {sub, [CK, SubCK], Parser}}
+                end, Acc, List)
+      end, #{}, conf(Type)).
+
+handle_delete(_Type, [], Req) ->
+    reply_json(Req, {struct, [{errors, [<<"Not supported">>]}]}, 400);
+handle_delete(Type, PKeys, Req) ->
+    Conf = maps:to_list(inverted_conf(Type)),
+    Values = [Value || {Keys, Value} <- Conf, lists:prefix(PKeys, Keys)],
+    ToDelete = lists:map(
+                 fun ({key, CKey, _}) -> [CKey];
+                     ({sub, CKeys, _}) -> lists:sublist(CKeys, length(PKeys))
+                 end, Values),
+    case lists:usort(ToDelete) of
+        [] ->
+            M = io_lib:format("Unknown key ~s", [string:join(PKeys, ".")]),
+            reply_json(Req, {struct, [{errors, [iolist_to_binary(M)]}]}, 404);
+        [[K]] ->
+            ns_config:delete(K),
+            AuditFun = audit_fun(Type),
+            ns_audit:AuditFun(Req, [{K, deleted}]),
+            reply_json(Req, []);
+        [[K, SK]] ->
+            ns_config:update_key(K, proplists:delete(SK, _)),
+            AuditFun = audit_fun(Type),
+            ns_audit:AuditFun(Req, [{K, {[{SK, deleted}]}}]),
+            reply_json(Req, [])
     end.
 
 handle_settings_max_parallel_indexers(Req) ->

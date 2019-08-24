@@ -835,6 +835,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, security], write},
                      fun menelaus_web_rbac:handle_delete_profile/2,
                      [{UserId, Domain}]};
+                ["settings", "security" | Keys] ->
+                    {{[admin, security], write},
+                     fun menelaus_web_settings:handle_delete/3,
+                     [security, Keys]};
                 ["couchBase" | _] -> {no_check,
                                       fun menelaus_pluggable_ui:proxy_req/4,
                                       ["couchBase",

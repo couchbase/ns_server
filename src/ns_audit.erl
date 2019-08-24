@@ -781,7 +781,8 @@ client_cert_auth(Req, ClientCertAuth) ->
     put(client_cert_auth, Req, Val).
 
 security_settings(Req, Settings) ->
-    Format = fun ({cipher_suites, List}) -> {cipher_suites, {list, List}};
+    Format = fun ({cipher_suites, deleted}) -> {cipher_suites, deleted};
+                 ({cipher_suites, List}) -> {cipher_suites, {list, List}};
                  (KV) -> KV
              end,
     put(security_settings, Req,
