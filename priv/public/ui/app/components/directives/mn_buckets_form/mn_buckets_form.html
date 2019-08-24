@@ -12,7 +12,7 @@
        </div>
       </script>
       <a
-        ng-if="rbac && rbac.cluster.admin.security.read"
+        ng-if="rbac && rbac.cluster.admin.security.read && users.length > 0"
         class="cursor-pointer"
         uib-tooltip-template="'users-tooltip.html'"
         tooltip-append-to-body="true"
