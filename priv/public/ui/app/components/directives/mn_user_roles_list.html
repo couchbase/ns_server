@@ -44,6 +44,7 @@
         ng-if="getUIID === mnThisCtl.getUIID({role: 'query_external_access'})"
         tooltip-trigger="'mouseenter'"
         tooltip-append-to-body="true"
+        tooltip-placement="auto top"
         class="fa-exclamation-circle icon orange-3"
         uib-tooltip="Warning: Granting the query_external_access role permits execution of the N1QL function CURL() and may allow access to other network endpoints in the local network and the Internet.">
       </span>
