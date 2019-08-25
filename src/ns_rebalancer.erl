@@ -1574,10 +1574,12 @@ do_prepare_one_delta_recovery_bucket(Bucket, BucketConfig, FailoverVBuckets) ->
                [Bucket, FailoverVBucketsList]),
     case rebalance_agent:prepare_delta_recovery_bucket(
            self(), Bucket, FailoverVBucketsList, FailoverLogs) of
-        ok ->
+        {ok, NodeVBuckets} ->
             Nodes = dict:fetch_keys(FailoverVBuckets),
             ?log_debug("Prepared bucket ~p for delta "
-                       "recovery on ~p successfully.", [Bucket, Nodes]);
+                       "recovery on ~p successfully. "
+                       "VBuckets that are left intact are:~n~p",
+                       [Bucket, Nodes, NodeVBuckets]);
         Errors ->
             ?log_error("Failed to prepare bucket ~p for delta recovery "
                        "on some nodes:~n~p", [Bucket, Errors]),

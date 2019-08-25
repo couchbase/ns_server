@@ -78,10 +78,11 @@ prepare_delta_recovery(Nodes, Pid, Buckets) ->
 
 -spec prepare_delta_recovery_bucket(pid(), bucket_name(),
                                     NodeVBuckets, ActiveFailoverLogs) ->
-                                           multi_call_result(ok) when
+                                           multi_call_result(OkResult) when
       NodeVBuckets :: [{node(), [vbucket_id()]}],
       ActiveFailoverLogs :: #{vbucket_id() => missing | FailoverLog},
-      FailoverLog :: [{UID :: integer(), StartSeqno :: integer()}].
+      FailoverLog :: [{UID :: integer(), StartSeqno :: integer()}],
+      OkResult :: {ok, [{node(), PresentVBuckets :: [vbucket_id()]}]}.
 prepare_delta_recovery_bucket(Pid, Bucket, NodeVBuckets, ActiveFailoverLogs) ->
     %% We do a lot of stuff as part of preparetion for delta recovery, and
     %% certain interactions with memcached are not optimized as of right now,
@@ -90,7 +91,8 @@ prepare_delta_recovery_bucket(Pid, Bucket, NodeVBuckets, ActiveFailoverLogs) ->
     {Nodes, Results} =
         call_prepare_delta_recovery_bucket(Pid, Bucket, NodeVBuckets,
                                            ActiveFailoverLogs, Timeout),
-    process_multi_call_results(Nodes, Results).
+    process_multi_call_results(Nodes, Results,
+                               fun is_ok_tuple/1, fun recombine_oks/1).
 
 call_prepare_delta_recovery_bucket(Pid, Bucket,
                                    NodeVBuckets, ActiveFailoverLogs, Timeout) ->
@@ -237,12 +239,12 @@ prepare_delta_recovery_bucket_job(Bucket, VBuckets, ActiveFailoverLogs) ->
 handle_prepare_delta_recovery_result(Bucket, From, Result, State) ->
     {Ref, Buckets} = State#state.delta_recovery,
     ?log_debug("Prepare delta recovery "
-               "result for bucket ~p: ~p", [Bucket, Result]),
+               "result for bucket ~p:~n~p", [Bucket, Result]),
 
     gen_server2:reply(From, Result),
 
     case Result of
-        ok ->
+        {ok, _} ->
             NewBuckets = lists:delete(Bucket, Buckets),
             {noreply, State#state{delta_recovery = {Ref, NewBuckets}}};
         _ ->
@@ -344,9 +346,6 @@ safe_call(Node, Request) ->
             {error, {T, E}}
     end.
 
-is_ok(Response) ->
-    Response =:= ok.
-
 unwrap_call_results(Results) ->
     [case RV of
          {ok, WrappedRV} ->
@@ -355,13 +354,33 @@ unwrap_call_results(Results) ->
              Error
      end || RV <- Results].
 
+is_ok(Response) ->
+    Response =:= ok.
+
+return_ok(_) ->
+    ok.
+
+is_ok_tuple({ok, _}) ->
+    true;
+is_ok_tuple(_) ->
+    false.
+
+recombine_oks(OKs) ->
+    {ok, [{Node, RV} || {Node, {ok, RV}} <- OKs]}.
+
 process_multi_call_results(Nodes, Results) ->
-    Errors = [{N, RV} ||
-                 {N, RV} <- lists:zip(Nodes, unwrap_call_results(Results)),
-                 not is_ok(RV)],
+    process_multi_call_results(Nodes, Results, fun is_ok/1, fun return_ok/1).
+
+process_multi_call_results(Nodes, Results, OkPred, HandleOKs) ->
+    {OKs, Errors} =
+        lists:partition(
+          fun ({_, RV}) ->
+                  OkPred(RV)
+          end, lists:zip(Nodes, unwrap_call_results(Results))),
+
     case Errors of
         [] ->
-            ok;
+            HandleOKs(OKs);
         _ ->
             {error, {failed_nodes, Errors}}
     end.
@@ -535,7 +554,8 @@ maybe_delete_diverged_vbuckets(Bucket, VBuckets, ActiveFailoverLogs) ->
 
             Diverged = find_diverged_vbuckets(Bucket,
                                               ActiveFailoverLogs, FailoverInfo),
-            delete_vbuckets(Bucket, Diverged);
+            ok = delete_vbuckets(Bucket, Diverged),
+            {ok, VBuckets -- Diverged};
         Error ->
             Error
     end.
