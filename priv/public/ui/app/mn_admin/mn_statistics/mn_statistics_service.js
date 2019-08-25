@@ -212,10 +212,14 @@
       if (!pollers[statID]) {
         pollers[statID] =
           new mnPoller(rootScopes[statID], function (previousResult) {
-            return mnStatisticsNewService.doGetStats(config, previousResult);
+            return mnStatisticsNewService
+              .doGetStats(config, previousResult)
+              .then(null, function (resp) {
+                return resp;
+              })
           })
           .setInterval(function (response) {
-            return response.data.interval;
+            return response.status === 404 ? 60000: response.data.interval;
           })
           .subscribe(function (value) {
             uiStatsScopes[statID].forEach(function (scope) {

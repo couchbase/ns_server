@@ -38,6 +38,9 @@
       }
 
       function defaultValueFormatter(d, s, c, g, f, a) {
+        if (c.data[1] == undefined) {
+          return "N/A"
+        }
         return formatValue(d, c.yAxis.axisLabel());
       }
 
@@ -68,7 +71,8 @@
         }, 2, {leading:true}));
 
         $scope.$on("syncTooltips", function (e, source) {
-          if (source.element[0] !== $element[0] && $element.find("svg")[0] && source.api.getScope().chart) {
+          if (source.element[0] !== $element[0] && $element.find("svg")[0] &&
+              source.api.getScope().chart && !source.api.getScope().options.chart.notFound) {
             var sourcePos = source.element[0].getBoundingClientRect();
             var elementPos = $element[0].getBoundingClientRect();
             var sourceMargin = source.api.getScope().chart.margin();
@@ -143,7 +147,8 @@
               tickFormat: function (d) {
                 return mnStatisticsNewService.tickMultiFormat(new Date(d));
               }
-            }
+            },
+            noData: "No Data"
           }
         };
 
@@ -251,7 +256,20 @@
 
       function onMultiChartDataUpdate(stats) {
         if (!stats) {
-          return
+          return;
+        }
+
+        if (stats.status == 404) {
+          $scope.options = {
+            chart: {
+              notFound: true,
+              margin : {top: 32, right: 40, bottom: 40, left: 40},
+              type: 'multiChart',
+              noData: "The stat is not found"
+            }
+          };
+          $scope.chartData = [];
+          return;
         }
 
         var chartData = [];
@@ -266,7 +284,7 @@
                 min: d3.min(nodeStat || []),
                 yAxis: units[desc.unit],
                 key: nodeName,
-                values: _.zip(nodeStat.timestamps, nodeStat)
+                values: _.zip(nodeStat.timestamps, nodeStat || [])
               });
             });
           });
@@ -274,16 +292,15 @@
         } else {
           angular.forEach($scope.config.stats, function (descPath, name) {
             var desc = mnStatisticsNewService.readByPath(descPath, name);
+            var timestamps = stats.data.samples[Object.keys(stats.data.samples)[0]].timestamps;
             chartData.push({
               type: 'line',
               unit: desc.unit,
               max: d3.max(stats.data.samples[name] || []),
               min: d3.min(stats.data.samples[name] || []),
               yAxis: units[desc.unit],
-              key: desc.title,
-              values: _.zip(stats.data.samples[name] ?
-                            stats.data.samples[name].timestamps : [],
-                            stats.data.samples[name])
+              key: !stats.data.samples[name] ? (desc.title + " (no found)") : desc.title,
+              values: _.zip(timestamps, stats.data.samples[name] || [])
             });
           });
         }
