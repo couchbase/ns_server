@@ -1060,9 +1060,10 @@ do_wait_for_bucket(Bucket, Nodes) ->
             fail
     end.
 
-build_transitional_bucket_config(BucketConfig, TargetMap, Options, DeltaNodes) ->
+build_transitional_bucket_config(BucketConfig, TargetMap,
+                                 Options, DeltaNodes, PresentVBuckets) ->
     {map, CurrentMap} = lists:keyfind(map, 1, BucketConfig),
-    TransitionalMap = build_transitional_map(CurrentMap, TargetMap, DeltaNodes),
+    TransitionalMap = build_transitional_map(CurrentMap, PresentVBuckets),
 
     {servers, Servers} = lists:keyfind(servers, 1, BucketConfig),
     NewServers = DeltaNodes ++ Servers,
@@ -1071,13 +1072,21 @@ build_transitional_bucket_config(BucketConfig, TargetMap, Options, DeltaNodes) -
                                         {servers, NewServers},
                                         {deltaRecoveryMap, {TargetMap, Options}}]).
 
-build_transitional_map(CurrentMap, TargetMap, DeltaNodes) ->
-    lists:zipwith(
-      fun (CurrentChain, TargetChain) ->
-              ChainDeltaNodes = [N || N <- TargetChain,
-                                      lists:member(N, DeltaNodes)],
-              build_transitional_chain(CurrentChain, ChainDeltaNodes)
-      end, CurrentMap, TargetMap).
+build_transitional_map(CurrentMap, PresentVBuckets) ->
+    VBucketDeltaNodes =
+        lists:foldl(
+          fun ({Node, VBuckets}, Acc0) ->
+                  lists:foldl(
+                    fun (VBucket, Acc) ->
+                            maps:update_with(VBucket, [Node|_], [Node], Acc)
+                    end, Acc0, VBuckets)
+          end, #{}, PresentVBuckets),
+
+    lists:map(
+      fun ({VBucket, CurrentChain}) ->
+              DeltaNodes = maps:get(VBucket, VBucketDeltaNodes, []),
+              build_transitional_chain(CurrentChain, DeltaNodes)
+      end, misc:enumerate(CurrentMap, 0)).
 
 build_transitional_chain([undefined | _] = CurrentChain, _DeltaNodes) ->
     CurrentChain;
@@ -1536,11 +1545,12 @@ prepare_delta_recovery_buckets(DeltaRecoveryBuckets,
                 target_map_opts := Opts,
                 failover_vbuckets := FailoverVBuckets} = BucketInfo,
 
-              prepare_one_delta_recovery_bucket(Bucket, BucketConfig,
-                                                FailoverVBuckets),
+              PresentVBuckets =
+                  prepare_one_delta_recovery_bucket(Bucket, BucketConfig,
+                                                    FailoverVBuckets),
               TransitionalBucket =
-                  build_transitional_bucket_config(BucketConfig,
-                                                   Map, Opts, DeltaNodes),
+                  build_transitional_bucket_config(BucketConfig, Map, Opts,
+                                                   DeltaNodes, PresentVBuckets),
               {Bucket, TransitionalBucket}
       end, DeltaRecoveryBuckets).
 
@@ -1550,7 +1560,9 @@ prepare_one_delta_recovery_bucket(Bucket, BucketConfig, FailoverVBuckets) ->
             do_prepare_one_delta_recovery_bucket(Bucket, BucketConfig,
                                                  FailoverVBuckets);
         false ->
-            ok
+            %% Assume all failover vbuckets are present on delta nodes in
+            %% compat mode.
+            dict:to_list(FailoverVBuckets)
     end.
 
 do_prepare_one_delta_recovery_bucket(Bucket, BucketConfig, FailoverVBuckets) ->
@@ -1579,7 +1591,8 @@ do_prepare_one_delta_recovery_bucket(Bucket, BucketConfig, FailoverVBuckets) ->
             ?log_debug("Prepared bucket ~p for delta "
                        "recovery on ~p successfully. "
                        "VBuckets that are left intact are:~n~p",
-                       [Bucket, Nodes, NodeVBuckets]);
+                       [Bucket, Nodes, NodeVBuckets]),
+            NodeVBuckets;
         Errors ->
             ?log_error("Failed to prepare bucket ~p for delta recovery "
                        "on some nodes:~n~p", [Bucket, Errors]),
