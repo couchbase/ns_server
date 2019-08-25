@@ -64,13 +64,16 @@
 
     function reviewSelectedWrappers(selectedRoles, selectedGroupsRoles) {
       var rv = {};
-      angular.forEach(
-        Object.assign({}, selectedRoles, selectedGroupsRoles),
-        function (value, key) {
-          if ((typeof value == "object") ? Object.keys(value).length : value) {
-            selectWrappers(key, true, rv);
-          }
-        });
+      Object.keys(selectedRoles).forEach(function (key) {
+        if (selectedRoles[key]) {
+          selectWrappers(key, true, rv);
+        }
+      });
+      Object.keys(selectedGroupsRoles).forEach(function (key) {
+        if (Object.keys(selectedGroupsRoles[key]).length) {
+          selectWrappers(key, true, rv);
+        }
+      });
       return rv;
     }
 
