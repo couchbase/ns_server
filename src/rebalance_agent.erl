@@ -533,24 +533,32 @@ maybe_delete_diverged_vbuckets(Bucket, VBuckets, ActiveFailoverLogs) ->
             ?log_debug("Local failover "
                        "info for bucket ~p:~n~p", [Bucket, FailoverInfo]),
 
-            Diverged = find_diverged_vbuckets(ActiveFailoverLogs, FailoverInfo),
-            delete_diverged_vbuckets(Bucket, Diverged);
+            Diverged = find_diverged_vbuckets(Bucket,
+                                              ActiveFailoverLogs, FailoverInfo),
+            delete_vbuckets(Bucket, Diverged);
         Error ->
             Error
     end.
 
-delete_diverged_vbuckets(Bucket, []) ->
-    ?log_debug("Didn't find diverged vbuckets in bucket ~p", [Bucket]);
-delete_diverged_vbuckets(Bucket, Diverged) ->
-    ?log_info("Found diverged vbuckets in bucket ~p. "
-              "Going to delete them. VBuckets:~n~p",
-              [Bucket, Diverged]),
+delete_vbuckets(Bucket, VBuckets) ->
     lists:foreach(
-      fun ({VB, _, _, _}) ->
+      fun (VB) ->
               ok = ns_memcached:sync_delete_vbucket(Bucket, VB)
-      end, Diverged).
+      end, VBuckets).
 
-find_diverged_vbuckets(ActiveFailoverLogs, LocalFailoverInfo) ->
+find_diverged_vbuckets(Bucket, ActiveFailoverLogs, LocalFailoverInfo) ->
+    Diverged = do_find_diverged_vbuckets(ActiveFailoverLogs, LocalFailoverInfo),
+    case Diverged of
+        [] ->
+            ?log_debug("Didn't find diverged vbuckets in bucket ~p", [Bucket]);
+        _ ->
+            ?log_info("Found diverged vbuckets in bucket ~p. VBuckets:~n~p",
+                      [Bucket, Diverged])
+    end,
+
+    [VBucket || {VBucket, _, _, _} <- Diverged].
+
+do_find_diverged_vbuckets(ActiveFailoverLogs, LocalFailoverInfo) ->
     lists:filtermap(
       fun ({VBucket, FailoverLog, HighSeqno}) ->
               ActiveFailoverLog = maps:get(VBucket, ActiveFailoverLogs),
@@ -565,7 +573,7 @@ find_diverged_vbuckets(ActiveFailoverLogs, LocalFailoverInfo) ->
       end, LocalFailoverInfo).
 
 -ifdef(TEST).
-find_diverged_vbuckets_test() ->
+do_find_diverged_vbuckets_test() ->
     ActiveFailoverLogs =
         maps:from_list([{0, [{a, 0},
                              {b, 10}]},
@@ -573,26 +581,26 @@ find_diverged_vbuckets_test() ->
                              {b, 15}]},
                         {2, missing}]),
 
-    ?assertEqual([], find_diverged_vbuckets(ActiveFailoverLogs,
-                                            [{0, [{a, 0},
-                                                  {c, 10}], 10},
-                                             {1, [{a, 0},
-                                                  {c, 15}], 15}])),
+    ?assertEqual([], do_find_diverged_vbuckets(ActiveFailoverLogs,
+                                               [{0, [{a, 0},
+                                                     {c, 10}], 10},
+                                                {1, [{a, 0},
+                                                     {c, 15}], 15}])),
     ?assertMatch([{1, _, _, _}],
-                 find_diverged_vbuckets(ActiveFailoverLogs,
-                                        [{0, [{a, 0},
-                                              {c, 10}], 10},
-                                         {1, [{a, 0},
-                                              {c, 15}], 16}])),
+                 do_find_diverged_vbuckets(ActiveFailoverLogs,
+                                           [{0, [{a, 0},
+                                                 {c, 10}], 10},
+                                            {1, [{a, 0},
+                                                 {c, 15}], 16}])),
 
     ?assertMatch([{2, _, _, _}],
-                 find_diverged_vbuckets(ActiveFailoverLogs,
-                                        [{0, [{a, 0},
-                                              {c, 10}], 10},
-                                         {1, [{a, 0},
-                                              {c, 15}], 15},
-                                         {2, [{a, 0},
-                                              {b, 10}], 10}])).
+                 do_find_diverged_vbuckets(ActiveFailoverLogs,
+                                           [{0, [{a, 0},
+                                                 {c, 10}], 10},
+                                            {1, [{a, 0},
+                                                 {c, 15}], 15},
+                                            {2, [{a, 0},
+                                                 {b, 10}], 10}])).
 
 -endif.
 
