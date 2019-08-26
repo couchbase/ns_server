@@ -283,7 +283,7 @@ tls_config(Service, Config) ->
                 n1ql -> "cbq-engine-cbauth";
                 _ -> atom_to_list(Service) ++ "-cbauth"
             end,
-    Ciphers = ns_ssl_services_setup:supported_ciphers(Service2, cbauth, Config),
+    Ciphers = ciphers(Service2, Config),
     Order = ns_ssl_services_setup:honor_cipher_order(Service2, Config),
     CipherInts = lists:map(fun (<<I:16/unsigned-integer>>) -> I end,
                            [ciphers:code(N) || N <- Ciphers]),
@@ -296,6 +296,22 @@ tls_config(Service, Config) ->
        {ciphers, CipherInts},
        {cipherNames, Ciphers},
        {cipherOpenSSLNames, CipherOpenSSLNames}]}}.
+
+ciphers(Service, Config) ->
+    case ns_ssl_services_setup:configured_ciphers_names(Service, Config) of
+        [] -> default_cbauth_ciphers();
+        List -> List
+    end.
+
+default_cbauth_ciphers() ->
+    %% Backward compatibility
+    %% ssl_ciphers_strength is obsolete and should not be used in
+    %% new installations
+    Names = lists:flatmap(
+              fun (high) -> ciphers:high();
+                  (medium) -> ciphers:medium()
+              end, ns_config:read_key_fast(ssl_ciphers_strength, [high])),
+    ciphers:only_known(Names).
 
 auth_version(Config) ->
     B = term_to_binary(

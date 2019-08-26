@@ -404,13 +404,23 @@ is_external_auth_service_enabled() ->
 
 get_ssl_cipher_list([], Params) ->
     Cfg = ns_config:latest(),
-    Ciphers = ns_ssl_services_setup:supported_ciphers(kv, openssl, Cfg),
-    Ciphers2 =
-        case Ciphers of
-            undefined -> proplists:get_value(ssl_cipher_list, Params, "HIGH");
-            Str -> Str
+    Ciphers =
+        case ns_ssl_services_setup:configured_ciphers_names(kv, Cfg) of
+            [] ->
+                %% Backward compatibility
+                %% ssl_cipher_list is obsolete and should not be used in
+                %% new installations
+                proplists:get_value(ssl_cipher_list, Params, "HIGH");
+            List ->
+                format_ciphers(List)
         end,
-    iolist_to_binary(Ciphers2).
+    iolist_to_binary(Ciphers).
+
+format_ciphers(RFCCipherNames) ->
+    OpenSSLNames = [Name || C <- RFCCipherNames,
+                            Name <- [ciphers:openssl_name(C)],
+                            Name =/= undefined],
+    iolist_to_binary(lists:join(":", OpenSSLNames)).
 
 get_ssl_cipher_order([], _Params) ->
     ns_ssl_services_setup:honor_cipher_order(kv).

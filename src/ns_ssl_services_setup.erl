@@ -38,7 +38,6 @@
          get_user_name_from_client_cert/1,
          set_node_certificate_chain/4,
          upgrade_client_cert_auth_to_51/1,
-         supported_ciphers/3,
          ssl_client_opts/0,
          configured_ciphers_names/2,
          honor_cipher_order/1,
@@ -295,13 +294,9 @@ low_security_ciphers() ->
     Ciphers = low_security_ciphers_openssl(),
     [EC || C <- Ciphers, {ok, EC} <- [openssl_cipher_to_erlang(C)]].
 
-supported_ciphers() ->
-    supported_ciphers(ns_server, ns_server, ns_config:latest()).
-
-%% Due to backward compatibility we have to support separate functions
-%% for ns_server and services
-supported_ciphers(Service, ns_server, Config) ->
-    case configured_ciphers(Service, Config) of
+ns_server_ciphers() ->
+    Config = ns_config:latest(),
+    case configured_ciphers(ns_server, Config) of
         [] ->
             %% Backward compatibility
             %% ssl_ciphers is obsolete and should not be used in
@@ -311,20 +306,6 @@ supported_ciphers(Service, ns_server, Config) ->
                 undefined -> ssl:cipher_suites() -- low_security_ciphers()
             end;
         List -> List
-    end;
-supported_ciphers(Service, cbauth, Config) ->
-    case configured_ciphers_names(Service, Config) of
-        [] -> default_cbauth_ciphers();
-        List -> List
-    end;
-supported_ciphers(Service, openssl, Config) ->
-    case configured_ciphers_names(Service, Config) of
-        [] -> undefined;
-        List ->
-            OpenSSLNames = [Name || C <- List,
-                                    Name <- [ciphers:openssl_name(C)],
-                                    Name =/= undefined],
-            iolist_to_binary(lists:join(":", OpenSSLNames))
     end.
 
 configured_ciphers_names(Service, Config) ->
@@ -333,12 +314,6 @@ configured_ciphers_names(Service, Config) ->
 configured_ciphers(Service, Config) ->
     [ciphers:code(N) || N <- configured_ciphers_names(Service, Config)].
 
-default_cbauth_ciphers() ->
-    Names = lists:flatmap(
-              fun (high) -> ciphers:high();
-                  (medium) -> ciphers:medium()
-              end, ns_config:read_key_fast(ssl_ciphers_strength, [high])),
-    ciphers:only_known(Names).
 
 honor_cipher_order(Service) -> honor_cipher_order(Service, ns_config:latest()).
 honor_cipher_order(Service, Config) ->
@@ -358,7 +333,7 @@ ssl_auth_options() ->
 
 ssl_server_opts() ->
     Path = ssl_cert_key_path(),
-    CipherSuites = supported_ciphers(),
+    CipherSuites = ns_server_ciphers(),
     Order = honor_cipher_order(ns_server),
     ClientReneg = ns_config:read_key_fast(client_renegotiation_allowed, false),
     ssl_auth_options() ++
@@ -816,7 +791,7 @@ do_notify_service(event) ->
 security_settings_state() ->
     {ssl_minimum_protocol(ns_server),
      honor_cipher_order(ns_server),
-     supported_ciphers()}.
+     ns_server_ciphers()}.
 
 -ifdef(TEST).
 extract_user_name_test() ->
