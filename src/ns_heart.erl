@@ -325,13 +325,6 @@ current_status_slow_inner() ->
         ++ grab_warmup_tasks()
         ++ cluster_logs_collection_task:maybe_build_cluster_logs_task(),
 
-    MaybeMeminfo =
-        case misc:raw_read_file("/proc/meminfo") of
-            {ok, Contents} ->
-                [{meminfo, Contents}];
-            _ -> []
-        end,
-
     ClusterCompatVersion = cluster_compat_mode:effective_cluster_compat_version(),
 
     StorageConf = ns_storage_conf:query_storage_conf(),
@@ -351,10 +344,12 @@ current_status_slow_inner() ->
                   false
           end, ProcessesStats),
 
+    ProcFSFiles = grab_procfs_files(),
     ServiceStatuses = grab_service_statuses(),
 
     failover_safeness_level:build_local_safeness_info(BucketNames) ++
         ServiceStatuses ++
+        ProcFSFiles ++
         [{local_tasks, Tasks},
          {memory, misc:memory()},
          {cpu_count, misc:cpu_count()},
@@ -369,7 +364,7 @@ current_status_slow_inner() ->
          {per_bucket_interesting_stats, PerBucketInterestingStats},
          {processes_stats, InterestingProcessesStats},
          {cluster_compatibility_version, ClusterCompatVersion}
-         | element(2, ns_info:basic_info())] ++ MaybeMeminfo.
+         | element(2, ns_info:basic_info())].
 
 grab_index_status() ->
     case ns_cluster_membership:should_run_service(index, node()) of
@@ -498,5 +493,23 @@ grab_one_service_status(Service) ->
         T:E ->
             ?log_error("Failed to grab service ~p status: ~p",
                        [Service, {T, E, erlang:get_stacktrace()}]),
+            []
+    end.
+
+grab_procfs_files() ->
+    case os:type() of
+        {_, linux} ->
+            Files = [{meminfo, "/proc/meminfo"},
+                     {cpu_pressure, "/proc/pressure/cpu"},
+                     {memory_pressure, "/proc/pressure/memory"},
+                     {io_pressure, "/proc/pressure/io"}],
+            [{Name, case misc:raw_read_file(Path) of
+                        {ok, Content} ->
+                            Content;
+                        Error ->
+                            Error
+                    end} ||
+                {Name, Path} <- Files];
+        _ ->
             []
     end.
