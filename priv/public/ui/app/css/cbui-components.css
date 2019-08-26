@@ -2704,6 +2704,11 @@ input[type="text"]:focus.charts-group-name {
 .nvtooltip {
   position: fixed!important;
 }
+.nvd3.nv-noData {
+  font-weight: 400 !important;
+  font-size: .75rem !important;
+  fill: #cc2a2e !important;
+}
 
 /* cbui custom dropdown menu  ------------------------------------------------*/
 mn-dropdown {

@@ -265,7 +265,7 @@
               notFound: true,
               margin : {top: 32, right: 40, bottom: 40, left: 40},
               type: 'multiChart',
-              noData: "The stat is not found"
+              noData: "Statistics could not be found."
             }
           };
           $scope.chartData = [];
@@ -299,7 +299,7 @@
               max: d3.max(stats.data.samples[name] || []),
               min: d3.min(stats.data.samples[name] || []),
               yAxis: units[desc.unit],
-              key: !stats.data.samples[name] ? (desc.title + " (no found)") : desc.title,
+              key: !stats.data.samples[name] ? (desc.title + " (not found)") : desc.title,
               values: _.zip(timestamps, stats.data.samples[name] || [])
             });
           });
