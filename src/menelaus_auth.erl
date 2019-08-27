@@ -107,6 +107,7 @@ kill_auth_cookie(Req) ->
 
 -spec complete_uilogout(mochiweb_request()) -> mochiweb_response().
 complete_uilogout(Req) ->
+    ns_audit:logout(Req),
     CookieHeader = kill_auth_cookie(Req),
     menelaus_util:reply(Req, 200, [CookieHeader]).
 

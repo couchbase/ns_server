@@ -38,12 +38,9 @@ handle_uilogin(Req) ->
     menelaus_auth:uilogin(Req, Params).
 
 handle_uilogout(Req) ->
-    case menelaus_auth:extract_ui_auth_token(Req) of
-        undefined ->
-            ok;
-        Token ->
-            menelaus_ui_auth:logout(Token)
-    end,
+    Token = menelaus_auth:get_token(Req),
+    false = (Token =:= undefined),
+    menelaus_ui_auth:logout(Token),
     menelaus_auth:complete_uilogout(Req).
 
 handle_can_use_cert_for_auth(Req) ->
