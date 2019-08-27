@@ -18,6 +18,7 @@
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 %% API
 -export([start_link/0]).
@@ -404,17 +405,22 @@ is_external_auth_service_enabled() ->
 
 get_ssl_cipher_list([], Params) ->
     Cfg = ns_config:latest(),
-    Ciphers =
-        case ns_ssl_services_setup:configured_ciphers_names(kv, Cfg) of
+    AllConfigured = ns_ssl_services_setup:configured_ciphers_names(kv, Cfg),
+    {Ciphers12, Ciphers13} =
+        case AllConfigured of
             [] ->
                 %% Backward compatibility
                 %% ssl_cipher_list is obsolete and should not be used in
                 %% new installations
-                proplists:get_value(ssl_cipher_list, Params, "HIGH");
-            List ->
-                format_ciphers(List)
+                {iolist_to_binary(proplists:get_value(ssl_cipher_list, Params,
+                                                      "HIGH")),
+                 format_ciphers(ciphers:all_tls13())};
+            L ->
+                {C13, C12} = lists:partition(fun ciphers:is_tls13_cipher/1, L),
+                {format_ciphers(C12), format_ciphers(C13)}
         end,
-    iolist_to_binary(Ciphers).
+    {[{<<"tls 1.2">>, Ciphers12},
+      {<<"tls 1.3">>, Ciphers13}]}.
 
 format_ciphers(RFCCipherNames) ->
     OpenSSLNames = [Name || C <- RFCCipherNames,

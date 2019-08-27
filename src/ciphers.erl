@@ -15,7 +15,7 @@
 -module(ciphers).
 
 -export([is_valid_name/1, code/1, openssl_name/1, high/0, medium/0,
-         only_known/1, supported/1]).
+         only_known/1, supported/1, is_tls13_cipher/1, all_tls13/0]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -239,6 +239,18 @@ cipher_name_by_code(Code) ->
 
 only_known(Names) ->
     [N || N <- Names, V <- [ciphers:code(N)], V =/= undefined].
+
+
+is_tls13_cipher(Name) ->
+    case maps:find(Name, all()) of
+        {ok, #cipher{reference = Ref}} ->
+            string:find(Ref, "[RFC8446]") =/= nomatch;
+        error ->
+            false
+    end.
+
+all_tls13() ->
+    lists:filter(fun is_tls13_cipher/1, maps:keys(all())).
 
 %% https://www.iana.org/assignments/tls-parameters/tls-parameters.txt
 all() ->
