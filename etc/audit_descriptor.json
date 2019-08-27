@@ -911,7 +911,7 @@
           }
       },
       {
-          "id" : 8255,
+          "id" : 8256,
           "name" : "logout success",
           "description" : "Successful logout of couchbase cluster",
           "sync" : false,

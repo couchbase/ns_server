@@ -307,7 +307,7 @@ code(modify_query_settings) ->
 code(mutate_doc) ->
     8243;
 code(logout) ->
-    8255.
+    8256.
 
 
 to_binary({list, List}) ->
