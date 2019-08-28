@@ -79,33 +79,12 @@
       <div
          ng-if="chartBuilderCtl.statsDirectoryBlocks[chartBuilderCtl.selectedBlock + '-' + chartBuilderCtl.bucket]"
          class="row margin-bottom-1">
-        <ui-select
-           style="width:200px"
-           class="cbui-select"
-           ng-model="chartBuilderCtl.bucket"
-           theme="selectize"
-           ng-disabled="!rbac.bucketNames['.stats!read'].length"
-           on-select="chartBuilderCtl.onSelectBucket()">
-          <ui-select-match class="ui-select-match">
-            {{$select.selected}}
-          </ui-select-match>
-          <ui-select-choices
-             class="ui-select-choices"
-             repeat="name in rbac.bucketNames['.stats!read'] | filter: $select.search">
-            <span
-               class="select-item ellipsis"
-               ng-bind-html="name | highlight: $select.search"></span>
-          </ui-select-choices>
-        </ui-select>
-
         <div
-           class="row flex-right"
-           ng-if="chartBuilderCtl.statsDirectoryBlocks[chartBuilderCtl.selectedBlock + '-' + chartBuilderCtl.bucket]['@items']">
+           class="row flex-right">
           <label class="text-small">
             {{chartBuilderCtl.formatGroupLabel(chartBuilderCtl.selectedBlock)}} &nbsp;
           </label>
           <ui-select
-             ng-if="chartBuilderCtl.statsDirectoryBlocks[chartBuilderCtl.selectedBlock + '-' + chartBuilderCtl.bucket]['@items']"
              style="width:200px"
              class="cbui-select"
              ng-model="chartBuilderCtl.groupItem"

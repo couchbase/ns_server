@@ -24,7 +24,7 @@
     };
   }
 
-  function mnStatisticsNewChartBuilderController($scope, mnPromiseHelper, mnBucketsStats, mnStatisticsNewService, mnUserRolesService, chart, group, scenario, $uibModalInstance, mnStatisticsDescriptionService, $state, mnFormatStatsSectionsFilter, mnFormatServicesFilter, mnStoreService) {
+  function mnStatisticsNewChartBuilderController($scope, mnPromiseHelper, mnStatisticsNewService, chart, group, scenario, $uibModalInstance, mnStatisticsDescriptionService, $state, mnFormatStatsSectionsFilter, mnFormatServicesFilter, mnStoreService) {
     var vm = this;
     vm.isEditing = !!chart;
     vm.create = create;
@@ -43,7 +43,7 @@
       };
     }
 
-    vm.bucket = $scope.rbac.bucketNames['.stats!read'][0];
+    vm.bucket = $state.params.scenarioBucket;
 
     if (vm.newChart.specificStat) {
       vm.newChart.specificStat = "true";
@@ -59,7 +59,6 @@
     vm.maybeDisableField = maybeDisableField;
     vm.filterStats = filterStats;
     vm.selectTab = selectTab;
-    vm.onSelectBucket = onSelectBucket;
     vm.statsDesc = mnStatisticsDescriptionService.stats;
     vm.kvGroups = mnStatisticsDescriptionService.kvGroups;
     vm.orderPills = orderPills;
@@ -70,8 +69,6 @@
     vm.selectedKVFilters = {};
     var selectedByNodeStats = {};
     var selectedStats = {};
-
-
 
     activate();
 
@@ -117,11 +114,6 @@
       vm.disableStats = false;
 
       _.forEach(getSelectedStats(), activateStats);
-    }
-
-    function onSelectBucket() {
-      activate();
-      reActivateStats();
     }
 
     function filterStats(section) {
