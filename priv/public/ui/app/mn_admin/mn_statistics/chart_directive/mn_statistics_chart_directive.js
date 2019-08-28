@@ -122,11 +122,21 @@
         $scope.$watch("mnUIStats", onMultiChartDataUpdate);
       }
 
+      function getChartSize(size) {
+        switch (size) {
+        case "small": return 170;
+        case "medium": return 170;
+        case "large": return 330;
+        default: return 150;
+        }
+      }
+
       function initConfig() {
         options = {
           chart: {
             type: 'multiChart',
             margin : {top: 32, right: 40, bottom: 40, left: 40},
+            height: getChartSize($scope.config.size),
             legendPosition: "bottom",
             legendLeftAxisHint: " (left axis)",
             legendRightAxisHint: " (right axis)",

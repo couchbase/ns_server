@@ -2525,7 +2525,6 @@ nav.nav-sidebar-hidden {
 }
 .statistics-medium {
   width: calc(50% - .5rem);
-  height: 240px;
   padding: .25rem;
   margin: .25rem;
 }
@@ -2535,7 +2534,6 @@ nav.nav-sidebar-hidden {
 }
 .statistics-large {
   width: calc(100% - .5rem);
-  height: 360px;
   padding: .25rem;
   margin: .25rem;
 }
