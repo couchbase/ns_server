@@ -29,6 +29,7 @@
     function controller($scope, $element) {
       var units;
       var options;
+      var isFocusChart = $scope.nvd3Options && $scope.nvd3Options.type === 'lineWithFocusChart';
 
       if (!_.isEmpty($scope.config.stats)) {
         units = mnStatisticsNewService.getStatsUnits($scope.config.stats);
@@ -41,7 +42,7 @@
         if (c.data[1] == undefined) {
           return "N/A"
         }
-        return formatValue(d, c.yAxis.axisLabel());
+        return formatValue(d, c.yAxis ? c.yAxis.axisLabel() : "");
       }
 
       function activate() {
@@ -127,6 +128,7 @@
         case "small": return 170;
         case "medium": return 170;
         case "large": return 330;
+        case "extra": return 450;
         default: return 150;
         }
       }
@@ -137,7 +139,6 @@
             type: 'multiChart',
             margin : {top: 32, right: 40, bottom: 20, left: 40},
             height: getChartSize($scope.config.size),
-            legendPosition: "bottom",
             legendLeftAxisHint: " (left axis)",
             legendRightAxisHint: " (right axis)",
             interactiveLayer: {tooltip: {valueFormatter: defaultValueFormatter}},
@@ -162,18 +163,36 @@
           }
         };
 
+
         var index = 0;
-        _.forEach(units, function (val, unit) {
-          index ++;
-          units[unit] = index;
-          options.chart["yAxis" + index] = {};
-          options.chart["yAxis" + index].ticks = [];
-          options.chart["yAxis" + index].showMaxMin = true;
-          options.chart["yAxis" + index].axisLabel = unit; //hack that is involved in order to show current stats value in tooltip correctly
-          options.chart["yAxis" + index].tickFormatMaxMin = function (d) {
-            return formatMaxMin(d, unit);
+        if (isFocusChart) {
+          options.chart.x2Axis = {
+            axisLabel: "",
+            showMaxMin: false,
+            tickFormat: function (d) {
+              return mnStatisticsNewService.tickMultiFormat(new Date(d));
+            }
+          },
+          options.chart.yAxis = {
+            showMaxMin: false,
+            axisLabel: Object.keys(units)[0],
+            tickFormat: function (d) {
+              return formatMaxMin(d, Object.keys(units)[0]);
+            }
           }
-        });
+        } else {
+          _.forEach(units, function (val, unit) {
+            index ++;
+            units[unit] = index;
+            options.chart["yAxis" + index] = {};
+            options.chart["yAxis" + index].ticks = [];
+            options.chart["yAxis" + index].showMaxMin = true;
+            options.chart["yAxis" + index].axisLabel = unit; //hack that is involved in order to show current stats value in tooltip correctly
+            options.chart["yAxis" + index].tickFormatMaxMin = function (d) {
+              return formatMaxMin(d, unit);
+            }
+          });
+        }
 
         if ($scope.nvd3Options) {
           Object.assign(options.chart, $scope.nvd3Options);
@@ -323,11 +342,11 @@
           });
         }
         if ($scope.chartApi && $scope.chartApi.getScope().chart) {
-          updateYAxisDomain(chartData);
+          !isFocusChart && updateYAxisDomain(chartData);
           $scope.chartData = chartData;
         } else {
           $timeout(function () {
-            setYAxisDomain(chartData);
+            !isFocusChart && setYAxisDomain(chartData);
             $scope.options = options;
             $scope.chartData = chartData;
           }, 0);

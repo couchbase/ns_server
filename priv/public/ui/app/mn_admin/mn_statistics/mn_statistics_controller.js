@@ -60,27 +60,14 @@
     }
 
     function openDetailedChartDialog() {
-      var units = mnStatisticsNewService.getStatsUnits(vm.chart.stats);
-      if (Object.keys(units).length === 1) {
         $uibModal.open({
-          templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_chart_focus_dialog.html',
-          controller: 'mnStatisticsChartFocusDialogController as chartFocusDialogCtl',
+          templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_detailed_chart.html',
+          controller: 'mnStatisticsDetailedChartController as detailedChartCtl',
           windowTopClass: "chart-overlay",
           resolve: {
-            chartConfig: mnHelper.wrapInFunction(vm.chart)
+            chart: mnHelper.wrapInFunction(vm.chart)
           }
         });
-      } else {
-        var scope = $rootScope.$new();
-        scope.config = vm.chart;
-        scope.bucket = $state.params.scenarioBucket;
-        scope.zoom = $state.params.scenarioZoom;
-        $uibModal.open({
-          templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_chart_dialog.html',
-          scope: scope,
-          windowTopClass: "chart-overlay"
-        });
-      }
     }
   }
 

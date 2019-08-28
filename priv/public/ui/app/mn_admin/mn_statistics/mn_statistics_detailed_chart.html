@@ -1,0 +1,24 @@
+<div class="panel-content">
+  <div class="row">
+    <span class="text-right">
+      <select ng-model="detailedChartCtl.zoom"
+              ng-change="detailedChartCtl.onSelectZoom()">
+        <option value="hour">hour</option>
+        <option value="day">day</option>
+        <option value="week">week</option>
+        <option value="month">month</option>
+      </select>
+    </span>
+  </div>
+  <mn-statistics-chart
+     ng-if="!detailedChartCtl.reloadChartDirective"
+     bucket="{{detailedChartCtl.bucket}}"
+     zoom="{{detailedChartCtl.zoom}}"
+     nvd3-options="{type: 'lineWithFocusChart'}"
+     rbac="rbac"
+     config="detailedChartCtl.chart"></mn-statistics-chart>
+</div>
+
+<div class="panel-footer">
+  <a ng-click="$dismiss()">Cancel</a>
+</div>
