@@ -135,7 +135,7 @@
         options = {
           chart: {
             type: 'multiChart',
-            margin : {top: 32, right: 40, bottom: 40, left: 40},
+            margin : {top: 32, right: 40, bottom: 20, left: 40},
             height: getChartSize($scope.config.size),
             legendPosition: "bottom",
             legendLeftAxisHint: " (left axis)",
