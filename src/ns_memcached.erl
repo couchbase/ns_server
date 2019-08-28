@@ -540,16 +540,18 @@ do_handle_call({get_from_replica, Key, VBucket}, _From, State) ->
     {reply, Reply, State};
 
 do_handle_call({set_vbucket, VBucket, VBState, Topology}, _From,
-               #state{sock=Sock} = State) ->
+               #state{sock=Sock, bucket=BucketName} = State) ->
     VBInfoJson = construct_vbucket_info_json(Topology),
     (catch master_activity_events:note_vbucket_state_change(
-             State#state.bucket, node(), VBucket, VBState, VBInfoJson)),
+             BucketName, node(), VBucket, VBState, VBInfoJson)),
     Reply = mc_client_binary:set_vbucket(Sock, VBucket, VBState, VBInfoJson),
     case Reply of
         ok ->
-            ?log_info("Changed vbucket ~p state to ~p", [VBucket, VBState]);
+            ?log_info("Changed bucket ~p vbucket ~p state to ~p",
+                      [BucketName, VBucket, VBState]);
         _ ->
-            ?log_error("Failed to change vbucket ~p state to ~p: ~p", [VBucket, VBState, Reply])
+            ?log_error("Failed to change bucket ~p vbucket ~p state to ~p: ~p",
+                       [BucketName, VBucket, VBState, Reply])
     end,
     {reply, Reply, State};
 do_handle_call({stats, Key}, _From, State) ->
