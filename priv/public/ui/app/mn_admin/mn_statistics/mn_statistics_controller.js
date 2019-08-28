@@ -28,6 +28,7 @@
     vm.deleteChart = deleteChart;
     vm.editChart = editChart;
     vm.getNvd3Options = getNvd3Options;
+    vm.openDetailedChartDialog = openDetailedChartDialog;
     vm.chart = mnStoreService.store("charts").get($scope.chartID);
 
     function deleteChart() {
@@ -60,38 +61,33 @@
     }
 
     function getNvd3Options() {
-      var units = mnStatisticsNewService.getStatsUnits(vm.chart.stats);
-
       return {
-        showLegend: false,
-        callback: function (chart) {
-          if (!chart) {
-            return;
-          }
-          chart.interactiveLayer.dispatch.on("elementClick", function () {
-            if (Object.keys(units).length === 1) {
-              $uibModal.open({
-                templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_chart_focus_dialog.html',
-                controller: 'mnStatisticsChartFocusDialogController as chartFocusDialogCtl',
-                windowTopClass: "chart-overlay",
-                resolve: {
-                  chartConfig: mnHelper.wrapInFunction(vm.chart)
-                }
-              });
-            } else {
-              var scope = $rootScope.$new();
-              scope.config = vm.chart;
-              scope.bucket = $state.params.scenarioBucket;
-              scope.zoom = $state.params.scenarioZoom;
-              $uibModal.open({
-                templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_chart_dialog.html',
-                scope: scope,
-                windowTopClass: "chart-overlay"
-              });
-            }
-          });
-        }
+        showLegend: false
       };
+    }
+
+    function openDetailedChartDialog() {
+      var units = mnStatisticsNewService.getStatsUnits(vm.chart.stats);
+      if (Object.keys(units).length === 1) {
+        $uibModal.open({
+          templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_chart_focus_dialog.html',
+          controller: 'mnStatisticsChartFocusDialogController as chartFocusDialogCtl',
+          windowTopClass: "chart-overlay",
+          resolve: {
+            chartConfig: mnHelper.wrapInFunction(vm.chart)
+          }
+        });
+      } else {
+        var scope = $rootScope.$new();
+        scope.config = vm.chart;
+        scope.bucket = $state.params.scenarioBucket;
+        scope.zoom = $state.params.scenarioZoom;
+        $uibModal.open({
+          templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_chart_dialog.html',
+          scope: scope,
+          windowTopClass: "chart-overlay"
+        });
+      }
     }
   }
 

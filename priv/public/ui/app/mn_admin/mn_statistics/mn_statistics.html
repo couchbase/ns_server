@@ -192,6 +192,7 @@
              ng-click="mnStatsChartsCtl.showChartControls = !mnStatsChartsCtl.showChartControls"></span>
         </div>
         <mn-statistics-chart
+           ng-click="mnStatsChartsCtl.openDetailedChartDialog()"
            ng-if="!mnStatsChartsCtl.reloadChartDirective"
            style="display:block;"
            sync-scope="statisticsNewCtl.mnStatisticsNewScope"
