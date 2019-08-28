@@ -273,9 +273,9 @@
           $scope.options = {
             chart: {
               notFound: true,
-              margin : {top: 32, right: 40, bottom: 40, left: 40},
+              margin : {top: 0, right: 0, bottom: 0, left: 0},
               type: 'multiChart',
-              noData: "Statistics could not be found."
+              noData: "No stats for selected bucket"
             }
           };
           $scope.chartData = [];
