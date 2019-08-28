@@ -9,21 +9,13 @@
 
   function mnGsiItemStatsController(mnStatisticsNewService, mnHelper, $scope) {
     var vm = this;
-    vm.getNvd3Options = getNvd3Options;
     vm.zoom = "minute";
     vm.onSelectZoom = onSelectZoom;
-    vm.getNvd3Options = getNvd3Options;
 
     activate();
 
     function onSelectZoom() {
       activate();
-    }
-
-    function getNvd3Options(config) {
-      return {
-        showLegend: false
-      };
     }
 
     function getStats(stat) {

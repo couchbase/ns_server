@@ -10,20 +10,12 @@
     var vm = this;
     vm.zoom = "minute";
 
-    vm.getNvd3Options = getNvd3Options;
     vm.onSelectZoom = onSelectZoom;
-    vm.getNvd3Options = getNvd3Options;
 
     activate();
 
     function onSelectZoom() {
       activate();
-    }
-
-    function getNvd3Options(config) {
-      return {
-        showLegend: false
-      };
     }
 
     function getStats(stat) {

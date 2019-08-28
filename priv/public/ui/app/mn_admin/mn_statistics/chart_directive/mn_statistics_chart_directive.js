@@ -19,7 +19,7 @@
       scope: {
         syncScope: "=?",
         config: "=",
-        getNvd3Options: "&?",
+        nvd3Options: "=?",
         bucket: "@",
         zoom: "@"
       },
@@ -175,8 +175,8 @@
           }
         });
 
-        if ($scope.getNvd3Options) {
-          Object.assign(options.chart, $scope.getNvd3Options({config:$scope.config}));
+        if ($scope.nvd3Options) {
+          Object.assign(options.chart, $scope.nvd3Options);
         }
       }
 

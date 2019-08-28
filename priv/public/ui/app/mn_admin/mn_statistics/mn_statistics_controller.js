@@ -27,7 +27,6 @@
 
     vm.deleteChart = deleteChart;
     vm.editChart = editChart;
-    vm.getNvd3Options = getNvd3Options;
     vm.openDetailedChartDialog = openDetailedChartDialog;
     vm.chart = mnStoreService.store("charts").get($scope.chartID);
 
@@ -58,12 +57,6 @@
           vm.reloadChartDirective = false;
         });
       });
-    }
-
-    function getNvd3Options() {
-      return {
-        showLegend: false
-      };
     }
 
     function openDetailedChartDialog() {

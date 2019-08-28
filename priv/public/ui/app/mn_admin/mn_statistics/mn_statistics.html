@@ -196,7 +196,7 @@
            ng-if="!mnStatsChartsCtl.reloadChartDirective"
            style="display:block;"
            sync-scope="statisticsNewCtl.mnStatisticsNewScope"
-           get-nvd3-options="mnStatsChartsCtl.getNvd3Options()"
+           nvd3-options="{showLegend: false}"
            bucket="{{statisticsNewCtl.bucket}}"
            zoom="{{statisticsNewCtl.zoom}}"
            rbac="rbac"

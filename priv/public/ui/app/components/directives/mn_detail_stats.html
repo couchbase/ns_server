@@ -24,7 +24,7 @@
      ng-click="$event.stopPropagation();">
   <mn-statistics-chart
      ng-repeat="config in thisCtl.charts track by config.id"
-     get-nvd3-options="thisCtl.getNvd3Options(config)"
+     nvd3-options="{showLegend: false}"
      ng-class="'statistics-' + config.size"
      bucket="{{bucket}}"
      zoom="{{thisCtl.zoom}}"

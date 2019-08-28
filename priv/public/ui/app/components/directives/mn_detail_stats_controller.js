@@ -25,7 +25,6 @@
 
     function controller($scope) {
       var vm = this;
-      vm.getNvd3Options = getNvd3Options;
       vm.zoom = "minute";
       vm.onSelectZoom = onSelectZoom;
 
@@ -33,12 +32,6 @@
 
       function onSelectZoom() {
         activate();
-      }
-
-      function getNvd3Options() {
-        return {
-          showLegend: false
-        };
       }
 
       function getStats(stat) {
