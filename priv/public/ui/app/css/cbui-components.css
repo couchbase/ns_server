@@ -443,7 +443,25 @@ color: #333;
   top: 4px;
   right: 0;
 }
-
+/* search filter icons for focus charts  -------------------------------- */
+.search-filter:before {
+  font-family: FontAwesome;
+  content: "\f010";
+  font-size: .875rem;
+  color: #a6b2bf;
+  position: absolute;
+  top: 6px;
+  left: 0;
+}
+.search-filter-focus:before {
+  font-family: FontAwesome;
+  content: "\f010";
+  font-size: 1.5rem;
+  color: #a6b2bf;
+  position: absolute;
+  top: -66px;
+  left: 1.5rem;
+}
 /* CBUI FLEXBOX TABLES -------------------------------------------------  */
 .cbui-table {
   display: flex;

@@ -159,31 +159,31 @@ footer {
 
 /* FLEX HELPERS --------------------------------------------------------- */
 .flex-left {
-  justify-content: flex-start;
+  justify-content: flex-start !important;
 }
 .flex-right {
-  justify-content: flex-end;
+  justify-content: flex-end !important;
 }
 .flex-center {
-  justify-content: center;
+  justify-content: center !important;
 }
 .flex-wrap {
-  flex-wrap: wrap
+  flex-wrap: wrap !important;
 }
 .items-top {
-  align-items: flex-start;
+  align-items: flex-start !important;
 }
 .items-bottom {
-  align-items: flex-end;
+  align-items: flex-end !important;
 }
 .items-center {
-  align-items: center;
+  align-items: center !important;
 }
 .items-space-around {
-  justify-content: space-around;
+  justify-content: space-around !important;
 }
 .items-stretch {
-  align-items: stretch;
+  align-items: stretch !important;
 }
 
 .flex-order-two {

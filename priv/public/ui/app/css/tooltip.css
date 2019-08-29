@@ -29,6 +29,10 @@
 .tooltip.left {
   padding: 0 1.25rem 0 0;
 }
+.tooltip.bottom {
+  padding: 1rem 0 0 0;
+  top: .75rem;
+}
 
 .tooltip-inner {
   position: relative;

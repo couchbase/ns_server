@@ -78,3 +78,11 @@
     background-color: #eceff2;
     opacity: .5;
 }
+.chart-overlay .modal-close,
+.chart-overlay .modal-close:link,
+.chart-overlay .modal-close:visited {
+  color: #333;
+}
+.chart-overlay .modal-close:hover {
+  background-color: #eceff2;
+}

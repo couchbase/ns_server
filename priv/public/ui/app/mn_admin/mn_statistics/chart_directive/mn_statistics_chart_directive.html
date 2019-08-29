@@ -1,11 +1,14 @@
-<div class="row row-min">
-  <div class="chart-title"
-       tooltip-append-to-body="true"
-       uib-tooltip-html="'{{desc}}'"
-       tooltip-trigger="'mouseenter'"
-       tooltip-placement="auto right">
+<div class="row" style="pointer-events: none;">
+  <span
+     class="chart-title cursor-pointer"
+     style="pointer-events: auto;"
+     tooltip-append-to-body="true"
+     uib-tooltip-html="'{{desc}}'"
+     tooltip-trigger="'mouseenter'"
+     tooltip-placement="auto bottom">
     {{title}}
-  </div>
+  </span>
+  <span>&nbsp;</span>
 </div>
 <nvd3
    style="display:block;"
