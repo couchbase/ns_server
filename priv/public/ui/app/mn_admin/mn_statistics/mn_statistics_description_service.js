@@ -22,7 +22,50 @@
         "DCP Queues":
         ["ep_dcp_views+indexes_count","ep_dcp_views+indexes_producer_count","ep_dcp_views+indexes_items_remaining","ep_dcp_views+indexes_total_bytes","ep_dcp_views+indexes_backoff","ep_dcp_cbas_count","ep_dcp_cbas_producer_count","ep_dcp_cbas_items_remaining","ep_dcp_cbas_total_bytes","ep_dcp_cbas_backoff","ep_dcp_replica_count","ep_dcp_replica_producer_count","ep_dcp_replica_items_remaining","ep_dcp_replica_total_bytes","ep_dcp_replica_backoff","ep_dcp_xdcr_count","ep_dcp_xdcr_producer_count","ep_dcp_xdcr_items_remaining","ep_dcp_xdcr_total_bytes","ep_dcp_xdcr_backoff","ep_dcp_other_count","ep_dcp_other_producer_count","ep_dcp_other_items_remaining","ep_dcp_other_total_bytes","ep_dcp_other_backoff"]
       },
+
       "stats": {
+        "@system":{
+          "cpu_cores_available": null,
+          "cpu_idle_ms": null,
+          "cpu_local_ms": null,
+          "cpu_utilization_rate": {
+            unit: "percent",
+            title: "CPU",
+            desc: "Percentage of CPU in use across all available cores on this server."
+          },
+          "hibernated_requests": {
+            unit: "number",
+            title: "Idle Streaming Requests",
+            desc: "Number of streaming requests on management port (usually 8091) now idle."
+          },
+          "hibernated_waked": {
+            unit: "number/sec",
+            title: "Streaming Wakeups",
+            desc: "Number of streaming request wakeups per second on management port (usually 8091)."
+          },
+          "mem_actual_free": {
+            unit: "bytes",
+            title: "Available RAM",
+            desc: "Bytes of RAM available to Couchbase on this server."
+          },
+          "mem_actual_used": null,
+          "mem_free": null,
+          "mem_limit": null,
+          "mem_total": null,
+          "mem_used_sys": null,
+          "rest_requests": {
+            unit: "number/sec",
+            title: "HTTP Request Rate",
+            desc: "Number of http requests per second on management port (usually 8091)."
+          },
+          "swap_total": null,
+          "swap_used": {
+            unit: "bytes",
+            title: "Swap Used",
+            desc: "Bytes of swap space in use on this server."
+          },
+        },
+
         "@kv-": {
           "couch_total_disk_size": {
             unit: "bytes",
@@ -728,11 +771,11 @@
             unit: "number/sec",
             title: "XDCR Incoming Op Rate",
             desc: "Number of incoming XDCR operations per second for this bucket. (measured from xdc_ops)"
-
             // membase_incoming_xdcr_operations_stats_description
             // title: "total ops per sec.",
             // desc: "Total XDCR operations per second for this bucket (measured from ep_num_ops_del_meta + ep_num_ops_get_meta + ep_num_ops_set_meta)"
           },
+
           "@items": {
             "accesses": {
               unit: "number/sec",
@@ -751,65 +794,22 @@
             }
           }
         },
-        "@system":{
-          "cpu_cores_available": null,
-          "cpu_idle_ms": null,
-          "cpu_local_ms": null,
-          "cpu_utilization_rate": {
+
+        "@index":{
+          "index_memory_quota": null,
+          "index_memory_used": null,
+          "index_ram_percent": {
             unit: "percent",
-            title: "CPU",
-            desc: "Percentage of CPU in use across all available cores on this server."
+            title: "Index RAM Quota Used",
+            desc: "Percentage of Index RAM quota in use across all indexes on this server."
           },
-          "hibernated_requests": {
-            unit: "number",
-            title: "Idle Streaming Requests",
-            desc: "Number of streaming requests on management port (usually 8091) now idle."
-          },
-          "hibernated_waked": {
-            unit: "number/sec",
-            title: "Streaming Wakeups",
-            desc: "Number of streaming request wakeups per second on management port (usually 8091)."
-          },
-          "mem_actual_free": {
+          "index_remaining_ram": {
             unit: "bytes",
-            title: "Available RAM",
-            desc: "Bytes of RAM available to Couchbase on this server."
-          },
-          "mem_actual_used": null,
-          "mem_free": null,
-          "mem_limit": null,
-          "mem_total": null,
-          "mem_used_sys": null,
-          "rest_requests": {
-            unit: "number/sec",
-            title: "HTTP Request Rate",
-            desc: "Number of http requests per second on management port (usually 8091)."
-          },
-          "swap_total": null,
-          "swap_used": {
-            unit: "bytes",
-            title: "Swap Used",
-            desc: "Bytes of swap space in use on this server."
-          },
-        },
-        "@cbas-":{
-          "cbas/failed_at_parser_records_count": null,
-          "cbas/failed_at_parser_records_count_total": {
-            unit: "number",
-            title: "Analytics Parse Fail Since Connect",
-            desc: "Number of records Analytics failed to parse during bucket synchronization - since last bucket connect."
-          },
-          "cbas/incoming_records_count": {
-            unit: "number/sec",
-            title: "Analytics Ops Rate",
-            desc: "Operations (gets + sets + deletes) per second processed by Analytics for this bucket."
-          },
-          "cbas/incoming_records_count_total": {
-            unit: "number",
-            title: "Analytics Ops Since Connect",
-            desc: "Number of operations (gets + sets + deletes) processed by Analytics for this bucket since last bucket connect."
+            title: "Index RAM Quota Available",
+            desc: "Bytes of Index RAM quota still available on this server."
           }
         },
+
         "@index-":{
           "@items": {
             "num_docs_pending+queued": {
@@ -931,74 +931,7 @@
           "index/scan_bytes_read": null,
           "index/total_scan_duration": null
         },
-        "@eventing":{
-          "eventing/processed_count": {
-            unit: "number",
-            title: "Eventing Mutations Processed",
-            desc: "Mutations the function has finished processing. Per function."
-          },
-          "eventing/failed_count": {
-            unit: "number",
-            title: "Eventing Failures",
-            desc: "Mutations for which the function execution failed. Per function."
-          },
-          "eventing/dcp_backlog": {
-            unit: "number",
-            title: "Eventing Backlog",
-            desc: "Remaining mutations to be processed by the function. Per function."
-          },
-          "eventing/timeout_count": {
-            unit: "number",
-            title: "Eventing Timeouts",
-            desc: "Execution timeouts while processing mutations. Per function."
-          }
-        },
-        "@cbas":{
-          "cbas_disk_used": {
-            unit: "bytes",
-            title: "Analytics Total Disk Size",
-            desc: "The total disk size used by Analytics."
-          },
-          "cbas_gc_count": {
-            unit: "number",
-            title: "Analytics Garbage Collection Rate",
-            desc: "Number of JVM garbage collections per second for this Analytics node."
-          },
-          "cbas_gc_time": {
-            unit: "millisecond/sec",
-            title: "Analytics Garbage Collection Time",
-            desc: "The amount of time in milliseconds spent performing JVM garbage collections for Analytics node."
-          },
-          "cbas_heap_used": {
-            unit: "bytes",
-            title: "Analytics Heap Used",
-            desc: "Bytes of JVM heap used by Analytics on this server."
-          },
-          "cbas_system_load_average": {
-            unit: "bytes",
-            title: "Analytics System Load",
-            desc: "System load in bytes for Analytics node."
-          },
-          "cbas_thread_count": {
-            unit: "number",
-            title: "AnalyticsThread Count",
-            desc: "Number of threads for Analytics node."
-          }
-        },
-        "@index":{
-          "index_memory_quota": null,
-          "index_memory_used": null,
-          "index_ram_percent": {
-            unit: "percent",
-            title: "Index RAM Quota Used",
-            desc: "Percentage of Index RAM quota in use across all indexes on this server."
-          },
-          "index_remaining_ram": {
-            unit: "bytes",
-            title: "Index RAM Quota Available",
-            desc: "Bytes of Index RAM quota still available on this server."
-          }
-        },
+
         "@query":{
           "query_avg_req_time": {
             unit: "second",
@@ -1075,102 +1008,7 @@
             desc: "Number of N1QL warnings returned per second."
           }
         },
-        "@xdcr-":{
-          "replication_changes_left": {
-            unit: "number/sec",
-            title: "XDCR Outbound Mutations",
-            desc: "Number of mutations to be replicated to other clusters. (measured from replication_changes_left)"
-          },
-          "replication_docs_rep_queue": null,
-          "@items": {
-            "percent_completeness": {
-              unit: "percent",
-              title: "XDCR Checked Ratio",
-              desc: "Percentage of checked items out of all checked and to-be-replicated items. Per-replication. (measured from percent_completeness)"
-            },
-            "bandwidth_usage": {
-              unit: "bytes/sec",
-              title: "XDCR Replication Rate",
-              desc: "Rate of replication in terms of bytes replicated per second. Per-replication. (measured from bandwidth_usage)"
-            },
-            "changes_left": {
-              unit: "number",
-              title: "XDCR Mutations",
-              desc: "Number of mutations to be replicated to other clusters. Per-replication. (measured from changes_left)"
-            },
-            "data_replicated": null,
-            "dcp_datach_length": null,
-            "dcp_dispatch_time": null,
-            "deletion_docs_written": null,
-            "deletion_failed_cr_source": null,
-            "deletion_filtered": null,
-            "deletion_received_from_dcp": null,
-            "docs_checked": null,
-            "docs_failed_cr_source": {
-              unit: "number",
-              title: "XDCR Mutations Skipped",
-              desc: "Number of mutations that failed conflict resolution on the source side and hence have not been replicated to other clusters. Per-replication. (measured from per-replication stat docs_failed_cr_source)"
-            },
-            "docs_filtered": {
-              unit: "number/sec",
-              title: "XDCR Mutations Filtered Rate",
-              desc: "Number of mutations per second that have been filtered out and have not been replicated to other clusters. Per-replication. (measured from per-replication stat docs_filtered)"
-            },
-            "docs_opt_repd": null,
-            "docs_processed": null,
-            "docs_received_from_dcp": null,
-            "docs_rep_queue": null,
-            "docs_written": {
-              unit: "number",
-              title: "XDCR Mutations Replicated",
-              desc: "Number of mutations that have been replicated to other clusters. Per-replication. (measured from docs_written)"
-            },
-            "expiry_docs_written": null,
-            "expiry_failed_cr_source": null,
-            "expiry_filtered": null,
-            "expiry_received_from_dcp": null,
-            "num_checkpoints": null,
-            "num_failedckpts": null,
-            "rate_doc_checks": {
-              unit: "number/sec",
-              title: "XDCR Doc Check Rate",
-              desc: "Number of doc checks per second. Per-replication."
-            },
-            "rate_doc_opt_repd": {
-              unit: "number/sec",
-              title: "XDCR Optimistic Replication Rate",
-              desc: "Number of replicated mutations per second. Per-replication."
-            },
-            "rate_received_from_dcp": {
-              unit: "number/sec",
-              title: "doc reception rate",
-              desc: "Rate of mutations received from dcp in terms of number of mutations per second. Per-replication."
-            },
-            "rate_replicated": {
-              unit: "number/sec",
-              title: "XDCR Replication Rate",
-              desc:"Number of replicated mutations per second. Per-replication. (measured from rate_replicated)"
-            },
-            "resp_wait_time": null,
-            "set_docs_written": null,
-            "set_failed_cr_source": null,
-            "set_filtered": null,
-            "set_received_from_dcp": null,
-            "size_rep_queue": null,
-            "throttle_latency": null,
-            "time_committing": null,
-            "wtavg_docs_latency": {
-              unit: "millisecond",
-              title: "XDCR Doc Batch Latency",
-              desc: "Weighted average latency in ms of sending replicated mutations to remote cluster. Per-replication. (measured from wtavg_docs_latency)"
-            },
-            "wtavg_meta_latency": {
-              unit: "millisecond",
-              title: "XDCR Meta Batch Latency",
-              desc: "Weighted average latency in ms of sending getMeta and waiting for a conflict solution result from remote cluster. Per-replication. (measured from wtavg_meta_latency)"
-            }
-          }
-        },
+
         "@fts-": {
           "@items": {
             "avg_queries_latency": {
@@ -1298,6 +1136,7 @@
           "fts/total_request_time": null,
           "fts/total_term_searchers": null
         },
+
         "@fts": {
           "fts_num_bytes_used_ram": {
             unit: "bytes",
@@ -1313,6 +1152,178 @@
             unit: "number",
             title: "DCP batches blocked by FTS throttler",
             desc: "DCP batches blocked by throttler due to high memory consumption."
+          }
+        },
+
+        "@cbas-":{
+          "cbas/failed_at_parser_records_count": null,
+          "cbas/failed_at_parser_records_count_total": {
+            unit: "number",
+            title: "Analytics Parse Fail Since Connect",
+            desc: "Number of records Analytics failed to parse during bucket synchronization - since last bucket connect."
+          },
+          "cbas/incoming_records_count": {
+            unit: "number/sec",
+            title: "Analytics Ops Rate",
+            desc: "Operations (gets + sets + deletes) per second processed by Analytics for this bucket."
+          },
+          "cbas/incoming_records_count_total": {
+            unit: "number",
+            title: "Analytics Ops Since Connect",
+            desc: "Number of operations (gets + sets + deletes) processed by Analytics for this bucket since last bucket connect."
+          }
+        },
+
+        "@cbas":{
+          "cbas_disk_used": {
+            unit: "bytes",
+            title: "Analytics Total Disk Size",
+            desc: "The total disk size used by Analytics."
+          },
+          "cbas_gc_count": {
+            unit: "number",
+            title: "Analytics Garbage Collection Rate",
+            desc: "Number of JVM garbage collections per second for this Analytics node."
+          },
+          "cbas_gc_time": {
+            unit: "millisecond/sec",
+            title: "Analytics Garbage Collection Time",
+            desc: "The amount of time in milliseconds spent performing JVM garbage collections for Analytics node."
+          },
+          "cbas_heap_used": {
+            unit: "bytes",
+            title: "Analytics Heap Used",
+            desc: "Bytes of JVM heap used by Analytics on this server."
+          },
+          "cbas_system_load_average": {
+            unit: "bytes",
+            title: "Analytics System Load",
+            desc: "System load in bytes for Analytics node."
+          },
+          "cbas_thread_count": {
+            unit: "number",
+            title: "AnalyticsThread Count",
+            desc: "Number of threads for Analytics node."
+          }
+        },
+
+        "@eventing":{
+          "eventing/processed_count": {
+            unit: "number",
+            title: "Eventing Mutations Processed",
+            desc: "Mutations the function has finished processing. Per function."
+          },
+          "eventing/failed_count": {
+            unit: "number",
+            title: "Eventing Failures",
+            desc: "Mutations for which the function execution failed. Per function."
+          },
+          "eventing/dcp_backlog": {
+            unit: "number",
+            title: "Eventing Backlog",
+            desc: "Remaining mutations to be processed by the function. Per function."
+          },
+          "eventing/timeout_count": {
+            unit: "number",
+            title: "Eventing Timeouts",
+            desc: "Execution timeouts while processing mutations. Per function."
+          }
+        },
+
+        "@xdcr-":{
+          "replication_changes_left": {
+            unit: "number/sec",
+            title: "XDCR Outbound Mutations",
+            desc: "Number of mutations to be replicated to other clusters. (measured from replication_changes_left)"
+          },
+          "replication_docs_rep_queue": null,
+          "@items": {
+            "percent_completeness": {
+              unit: "percent",
+              title: "XDCR Checked Ratio",
+              desc: "Percentage of checked items out of all checked and to-be-replicated items. Per-replication. (measured from percent_completeness)"
+            },
+            "bandwidth_usage": {
+              unit: "bytes/sec",
+              title: "XDCR Replication Rate",
+              desc: "Rate of replication in terms of bytes replicated per second. Per-replication. (measured from bandwidth_usage)"
+            },
+            "changes_left": {
+              unit: "number",
+              title: "XDCR Mutations",
+              desc: "Number of mutations to be replicated to other clusters. Per-replication. (measured from changes_left)"
+            },
+            "data_replicated": null,
+            "dcp_datach_length": null,
+            "dcp_dispatch_time": null,
+            "deletion_docs_written": null,
+            "deletion_failed_cr_source": null,
+            "deletion_filtered": null,
+            "deletion_received_from_dcp": null,
+            "docs_checked": null,
+            "docs_failed_cr_source": {
+              unit: "number",
+              title: "XDCR Mutations Skipped",
+              desc: "Number of mutations that failed conflict resolution on the source side and hence have not been replicated to other clusters. Per-replication. (measured from per-replication stat docs_failed_cr_source)"
+            },
+            "docs_filtered": {
+              unit: "number/sec",
+              title: "XDCR Mutations Filtered Rate",
+              desc: "Number of mutations per second that have been filtered out and have not been replicated to other clusters. Per-replication. (measured from per-replication stat docs_filtered)"
+            },
+            "docs_opt_repd": null,
+            "docs_processed": null,
+            "docs_received_from_dcp": null,
+            "docs_rep_queue": null,
+            "docs_written": {
+              unit: "number",
+              title: "XDCR Mutations Replicated",
+              desc: "Number of mutations that have been replicated to other clusters. Per-replication. (measured from docs_written)"
+            },
+            "expiry_docs_written": null,
+            "expiry_failed_cr_source": null,
+            "expiry_filtered": null,
+            "expiry_received_from_dcp": null,
+            "num_checkpoints": null,
+            "num_failedckpts": null,
+            "rate_doc_checks": {
+              unit: "number/sec",
+              title: "XDCR Doc Check Rate",
+              desc: "Number of doc checks per second. Per-replication."
+            },
+            "rate_doc_opt_repd": {
+              unit: "number/sec",
+              title: "XDCR Optimistic Replication Rate",
+              desc: "Number of replicated mutations per second. Per-replication."
+            },
+            "rate_received_from_dcp": {
+              unit: "number/sec",
+              title: "doc reception rate",
+              desc: "Rate of mutations received from dcp in terms of number of mutations per second. Per-replication."
+            },
+            "rate_replicated": {
+              unit: "number/sec",
+              title: "XDCR Replication Rate",
+              desc:"Number of replicated mutations per second. Per-replication. (measured from rate_replicated)"
+            },
+            "resp_wait_time": null,
+            "set_docs_written": null,
+            "set_failed_cr_source": null,
+            "set_filtered": null,
+            "set_received_from_dcp": null,
+            "size_rep_queue": null,
+            "throttle_latency": null,
+            "time_committing": null,
+            "wtavg_docs_latency": {
+              unit: "millisecond",
+              title: "XDCR Doc Batch Latency",
+              desc: "Weighted average latency in ms of sending replicated mutations to remote cluster. Per-replication. (measured from wtavg_docs_latency)"
+            },
+            "wtavg_meta_latency": {
+              unit: "millisecond",
+              title: "XDCR Meta Batch Latency",
+              desc: "Weighted average latency in ms of sending getMeta and waiting for a conflict solution result from remote cluster. Per-replication. (measured from wtavg_meta_latency)"
+            }
           }
         }
       }

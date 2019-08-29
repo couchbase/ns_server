@@ -27,6 +27,7 @@
       var vm = this;
       vm.zoom = "minute";
       vm.onSelectZoom = onSelectZoom;
+      vm.items = {};
 
       activate();
 
@@ -36,7 +37,7 @@
 
       function getStats(stat) {
         var rv = {};
-        rv[stat] = "@" + $scope.service + "-.@items";
+        rv["@" + $scope.service + "-.@items." + stat] = true;
         return rv;
       }
 
@@ -46,11 +47,13 @@
           bucket: $scope.bucket,
           node: $scope.nodeName || "all",
         }).then(function (rv) {
-
+          vm.items[$scope.service] = $scope.prefix + "/" + $scope.itemId + "/";
           vm.charts = Object
             .keys(mnStatisticsDescriptionService.stats["@" + $scope.service + "-"]["@items"])
             .filter(function (stat) {
-              return mnStatisticsDescriptionService.stats["@" + $scope.service + "-"]["@items"][stat] && !!rv.data.stats["@" + $scope.service + "-" + $scope.bucket][$scope.prefix + "/" + $scope.itemId + "/" + stat];
+              var service = "@" + $scope.service + "-";
+              return !!mnStatisticsDescriptionService.stats[service]["@items"][stat] &&
+                !!rv.data.stats[service + $scope.bucket][vm.items[$scope.service] + stat];
             })
             .map(function (stat) {
               return {
@@ -59,8 +62,7 @@
                 id: mnHelper.generateID(),
                 isSpecific: false,
                 size: "small",
-                zoom: vm.zoom,
-                stats: getStats($scope.prefix + "/" + $scope.itemId + "/" + stat)
+                stats: getStats(stat)
               };
             });
         });

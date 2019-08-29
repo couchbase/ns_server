@@ -44,7 +44,7 @@
       vm.showChartControls = false;
       $uibModal.open({
         templateUrl: 'app/mn_admin/mn_statistics/chart_builder/mn_statistics_chart_builder.html',
-        controller: 'mnStatisticsNewChartBuilderController as chartBuilderCtl',
+        controller: 'mnStatisticsNewChartBuilderController as builderCtl',
         resolve: {
           chart: mnHelper.wrapInFunction(vm.chart),
           group: mnHelper.wrapInFunction(group),
@@ -163,7 +163,7 @@
     function openChartBuilderDialog(group, scenario) {
       $uibModal.open({
         templateUrl: 'app/mn_admin/mn_statistics/chart_builder/mn_statistics_chart_builder.html',
-        controller: 'mnStatisticsNewChartBuilderController as chartBuilderCtl',
+        controller: 'mnStatisticsNewChartBuilderController as builderCtl',
         resolve: {
           scenario: mnHelper.wrapInFunction(scenario),
           chart: mnHelper.wrapInFunction(),

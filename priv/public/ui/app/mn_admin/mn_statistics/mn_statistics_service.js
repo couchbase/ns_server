@@ -88,26 +88,26 @@
     }
 
     function getStatsTitle(stats) {
-      return _.map(stats, function (descPath, name) {
-        var desc = mnStatisticsNewService.readByPath(descPath, name);
+      return Object.keys(stats).map(function (descPath) {
+        var desc = mnStatisticsNewService.readByPath(descPath);
         return desc.title;
       }).join(", ");
     }
 
     function getStatsDesc(stats) {
-      return _.map(stats, function (descPath, name) {
-        var desc = mnStatisticsNewService.readByPath(descPath, name);
+      return Object.keys(stats).map(function (descPath) {
+        var desc = mnStatisticsNewService.readByPath(descPath);
         return "<b>" + desc.title + "</b><p>" + desc.desc + "</p>";
       }).join("");
     }
 
     function getStatsUnits(stats) {
       var units = {};
-      angular.forEach(stats, function (descPath, name) {
-        if (!descPath) {
+      Object.keys(stats).forEach(function (descPath) {
+        if (!stats[descPath]) {
           return;
         }
-        var desc = mnStatisticsNewService.readByPath(descPath, name);
+        var desc = mnStatisticsNewService.readByPath(descPath);
         units[desc.unit] = true;
       });
       return units;
@@ -142,24 +142,19 @@
       return $q.all(requests);
     }
 
-    function readByPath(path, name) {
-      var paths = path.split('.');
-      var maybeItIsItemName = name.split("/");
-      if (maybeItIsItemName.length > 2) {
-        name = maybeItIsItemName[maybeItIsItemName.length - 1];
-      }
-      paths.push(name);
-      var current = mnStatisticsDescriptionService.stats;
+    function readByPath(descPath) {
+      var paths = descPath.split('.');
+      var statsDesc = mnStatisticsDescriptionService.stats;
       var i;
 
       for (i = 0; i < paths.length; ++i) {
-        if (current[paths[i]] == undefined) {
+        if (statsDesc[paths[i]] == undefined) {
           return undefined;
         } else {
-          current = current[paths[i]];
+          statsDesc = statsDesc[paths[i]];
         }
       }
-      return current;
+      return statsDesc;
     }
 
     function unsubscribeUIStatsPoller(config, scopeToRemove) {
@@ -238,13 +233,14 @@
     function doGetStats(chartConfig, previousResult) {
       var reqParams = {
         zoom: chartConfig.zoom,
-          // || mnStatisticsNewService.export.profile.scenarios.selected.zoom,
         bucket: chartConfig.bucket
       };
       if (chartConfig.specificStat) {
-        angular.forEach(chartConfig.stats, function (descPath, statName) {
-          reqParams.statName = statName;
-        });
+        var descPath = Object.keys(chartConfig.stats)[0];
+        var splitted = descPath.split(".");
+        var service = splitted[0].substring(1, splitted[0].length-1);
+        var maybeItem = descPath.includes("@items") && (chartConfig.items || {})[service];
+        reqParams.statName = (maybeItem || "") + splitted[splitted.length - 1];
       } else {
         if (chartConfig.node !== "all") {
           reqParams.node = chartConfig.node;
@@ -342,38 +338,38 @@
         groups: [{
           name: "Server Resources",
           charts: [{
-            stats: {"cpu_utilization_rate": "@system"},
+            stats: {"@system.cpu_utilization_rate": true},
             size: "small",
             specificStat: true // for single-stat chart
           }, {
-            stats: {"mem_actual_free": "@system"},
+            stats: {"@system.mem_actual_free": true},
             size: "small",
             specificStat: true
           }, {
-            stats: {"swap_used": "@system"},
+            stats: {"@system.swap_used": true},
             size: "small",
             specificStat: true
           }, {
-            stats: {"rest_requests": "@system"},
+            stats: {"@system.rest_requests": true},
             size: "small",
             specificStat: true
           }]
         }, {
           name: "Data Service Overview (per bucket)",
           charts: [{
-            stats: {"ops": "@kv-"},
+            stats: {"@kv-.ops": true},
             size: "small",
             specificStat: true
           }, {
-            stats: {"mem_used": "@kv-"},
+            stats: {"@kv-.mem_used": true},
             size: "small",
             specificStat: true
           }, {
-            stats: {"couch_docs_actual_disk_size": "@kv-"},
+            stats: {"@kv-.couch_docs_actual_disk_size": true},
             size: "small",
             specificStat: true,
           }, {
-            stats: {"ep_resident_items_rate": "@kv-"},
+            stats: {"@kv-.ep_resident_items_rate": true},
             size: "small",
             specificStat: true
           }]
@@ -384,68 +380,85 @@
         groups: [{
           name: "Memory",
           charts: [{
-            stats: {"mem_used": "@kv-", "ep_mem_low_wat": "@kv-", "ep_mem_high_wat": "@kv-"},
+            stats: {"@kv-.mem_used": true,
+                    "@kv-.ep_mem_low_wat": true,
+                    "@kv-.ep_mem_high_wat": true},
             size: "medium",
             specificStat: false // false for multi-stat chart
           }, {
-            stats: {"ep_kv_size": "@kv-", "ep_meta_data_memory": "@kv-"},
+            stats: {"@kv-.ep_kv_size": true, "@kv-.ep_meta_data_memory": true},
             size: "medium",
             specificStat: false
           }]
         }, {
           name: "Ops",
           charts: [{
-            stats: {"ops": "@kv-","ep_cache_miss_rate": "@kv-"},
+            stats: {"@kv-.ops": true, "@kv-.ep_cache_miss_rate": true},
             size: "medium",
             specificStat: false
           }, {
-            stats: {"cmd_get": "@kv-", "cmd_set": "@kv-", "delete_hits": "@kv-"},
+            stats: {"@kv-.cmd_get": true, "@kv-.cmd_set": true, "@kv-.delete_hits": true},
             size: "medium",
             specificStat: false
           }]
         }, {
           name: "Disk",
           charts: [{
-            stats: {"couch_docs_actual_disk_size": "@kv-", "couch_docs_data_size": "@kv-"},
+            stats: {"@kv-.couch_docs_actual_disk_size": true,
+                    "@kv-.couch_docs_data_size": true},
             size: "medium",
             specificStat: false
           }, {
-            stats: {"disk_write_queue": "@kv-",
-                    "ep_data_read_failed": "@kv-", "ep_data_write_failed": "@kv-"},
+            stats: {"@kv-.disk_write_queue": true,
+                    "@kv-.ep_data_read_failed": true,
+                    "@kv-.ep_data_write_failed": true},
             size: "medium",
             specificStat: false
           }]
         }, {
           name: "vBuckets",
           charts: [{
-            stats: {"ep_vb_total": "@kv-"},
+            stats: {"@kv-.ep_vb_total": true},
             size: "small",
             specificStat: true
           }, {
-            stats: {"vb_active_num": "@kv-"},
+            stats: {"@kv-.vb_active_num": true},
             size: "small",
             specificStat: true
           }, {
-            stats: {"vb_pending_num": "@kv-"},
+            stats: {"@kv-.vb_pending_num": true},
             size: "small",
             specificStat: true
           }, {
-            stats: {"vb_replica_num": "@kv-"},
+            stats: {"@kv-.vb_replica_num": true},
             size: "small",
             specificStat: true,
           }]
         }, {
           name: "DCP Queues",
           charts: [{
-            stats: {"ep_dcp_views+indexes_count": "@kv-", "ep_dcp_cbas_count": "@kv-", "ep_dcp_replica_count": "@kv-", "ep_dcp_xdcr_count": "@kv-", "ep_dcp_other_count": "@kv-"},
+            stats: {"@kv-.ep_dcp_views+indexes_count": true,
+                    "@kv-.ep_dcp_cbas_count": true,
+                    "@kv-.ep_dcp_replica_count": true,
+                    "@kv-.ep_dcp_xdcr_count": true,
+                    "@kv-.ep_dcp_other_count": true},
             size: "medium",
             specificStat: false
           }, {
-            stats: {"ep_dcp_views+indexes_producer_count": "@kv-", "ep_dcp_cbas_producer_count": "@kv-", "ep_dcp_replica_producer_count": "@kv-", "ep_dcp_xdcr_producer_count": "@kv-", "ep_dcp_other_producer_count": "@kv-"},
+            stats: {"@kv-.ep_dcp_views+indexes_producer_count": true,
+                    "@kv-.ep_dcp_cbas_producer_count": true,
+                    "@kv-.ep_dcp_replica_producer_count": true,
+                    "@kv-.ep_dcp_xdcr_producer_count": true,
+                    "@kv-.ep_dcp_other_producer_count": true},
             size: "medium",
             specificStat: false
           }, {
-            stats: {"ep_dcp_views+indexes_items_remaining": "@kv-", "ep_dcp_cbas_items_remaining": "@kv-", "ep_dcp_replica_items_remaining": "@kv-", "ep_dcp_xdcr_items_remaining": "@kv-", "ep_dcp_other_items_remaining": "@kv-"},
+            stats: {
+              "@kv-.ep_dcp_views+indexes_items_remaining": true,
+              "@kv-.ep_dcp_cbas_items_remaining": true,
+              "@kv-.ep_dcp_replica_items_remaining": true,
+              "@kv-.ep_dcp_xdcr_items_remaining": true,
+              "@kv-.ep_dcp_other_items_remaining": true},
             size: "medium",
             specificStat: false
           }]

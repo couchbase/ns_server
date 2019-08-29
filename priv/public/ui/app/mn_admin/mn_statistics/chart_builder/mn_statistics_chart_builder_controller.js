@@ -17,6 +17,7 @@
       }
 
       switch (section) {
+      case "items": return "Item";
       case "system": return "System";
       case "xdcr": return "XDCR";
       default: return section;
@@ -24,36 +25,17 @@
     };
   }
 
-  function mnStatisticsNewChartBuilderController($scope, mnPromiseHelper, mnStatisticsNewService, chart, group, scenario, $uibModalInstance, mnStatisticsDescriptionService, $state, mnFormatStatsSectionsFilter, mnFormatServicesFilter, mnStoreService) {
+
+  function mnStatisticsNewChartBuilderController(mnStatisticsNewService, chart, group, scenario, $uibModalInstance, mnStatisticsDescriptionService, $state, mnFormatStatsSectionsFilter, mnFormatServicesFilter, mnStoreService) {
     var vm = this;
     vm.isEditing = !!chart;
     vm.create = create;
 
-    if (vm.isEditing) {
-      vm.newChart = _.cloneDeep(chart);
-      vm.selectedGroup = group.id;
-      vm.groups = scenario.groups.map(function (id) {
-        return mnStoreService.store("groups").get(id);
-      });
-    } else {
-      vm.newChart = {
-        stats: {},
-        size: "small",
-        specificStat: "false"
-      };
-    }
-
-    vm.bucket = $state.params.scenarioBucket;
-
-    if (vm.newChart.specificStat) {
-      vm.newChart.specificStat = "true";
-    } else {
-      vm.newChart.specificStat = "false";
-    }
-
     vm.units = {};
     vm.breadcrumbs = {};
     vm.showInPopup = false;
+    vm.tabs = ["@system", "@kv", "@index", "@query", "@fts", "@cbas", "@eventing", "@xdcr"];
+
     vm.onStatChecked = onStatChecked;
     vm.onSpecificChecked = onSpecificChecked;
     vm.maybeDisableField = maybeDisableField;
@@ -61,7 +43,6 @@
     vm.selectTab = selectTab;
     vm.statsDesc = mnStatisticsDescriptionService.stats;
     vm.kvGroups = mnStatisticsDescriptionService.kvGroups;
-    vm.orderPills = orderPills;
     vm.getSelectedStats = getSelectedStats;
     vm.getSelectedStatsLength = getSelectedStatsLength;
     vm.formatGroupLabel = formatGroupLabel;
@@ -81,16 +62,8 @@
       }
     }
 
-    function orderPills(statsDirectoryBlocks) {
-      var order = ["@system", "@kv", "@index", "@query", "@fts", "@cbas", "@eventing", "@xdcr"];
-      return Object.keys(statsDirectoryBlocks || {}).sort(function (a, b) {
-        return order.indexOf(a) - order.indexOf(b);
-      });
-    }
-
     function selectTab(name) {
-      delete vm.groupItem;
-      vm.selectedBlock = name;
+      vm.tab = name;
     }
 
     function getSelectedStatsLength() {
@@ -113,19 +86,20 @@
       vm.breadcrumbs = {};
       vm.disableStats = false;
 
-      _.forEach(getSelectedStats(), activateStats);
+      Object.keys(getSelectedStats()).forEach(onStatChecked);
     }
 
     function filterStats(section) {
       return !section.includes("-");
     }
 
-    function maybeDisableField(stat, name) {
+    function maybeDisableField(descPath) {
+      var stat = mnStatisticsNewService.readByPath(descPath);
       return ((vm.newChart.specificStat == "false") &&
               vm.disableStats && !vm.units[stat.unit]) ||
         (vm.newChart.specificStat == "true" &&
          vm.disableStats &&
-         !vm.newChart.stats[name]);
+         !vm.newChart.stats[descPath]);
     }
 
     function onSpecificChecked() {
@@ -140,7 +114,11 @@
       reActivateStats();
     }
 
-    function onStatChecked(desc, value, breadcrumb) {
+    function onStatChecked(descPath) {
+      var desc = mnStatisticsNewService.readByPath(descPath);
+      var value = vm.newChart.stats[descPath];
+      var breadcrumb = descPath.split(".");
+
       if (vm.units[desc.unit] === undefined) {
         vm.units[desc.unit] = 0;
       }
@@ -174,59 +152,29 @@
       }
     }
 
-    function activateStats(descPath, statName) {
-      var breadcrumb = [descPath.split(".")[0]];
-      var splited = statName.split("/");
-      var desc = mnStatisticsNewService.readByPath(descPath, statName);
-
-      if (splited.length > 2) {
-        splited.pop();
-        breadcrumb.push(splited.join("/"));
+    function activate() {
+      if (vm.isEditing) {
+        vm.newChart = _.cloneDeep(chart);
+        vm.selectedGroup = group.id;
+        vm.groups = scenario.groups.map(function (id) {
+          return mnStoreService.store("groups").get(id);
+        });
+        Object.keys(vm.newChart.stats).forEach(onStatChecked);
+      } else {
+        vm.newChart = {
+          stats: {},
+          size: "small",
+          specificStat: "false"
+        };
       }
 
-      breadcrumb.push(desc.title);
+      vm.bucket = $state.params.scenarioBucket;
 
-      onStatChecked(desc, true, breadcrumb);
-    }
-
-    function activate() {
-      mnPromiseHelper(vm, mnStatisticsNewService.doGetStats({
-        bucket: vm.bucket,
-        node: "all",
-        zoom: "minute"
-      }))
-        .applyToScope(function (rv) {
-          // var stats = rv.data.stats;
-          var stats = Object.keys(rv.data.stats).reduce(function (acc, key) {
-            acc[key] = Object.keys(rv.data.stats[key]).reduce(function (acc, statName) {
-              var splited = statName.split("/");
-              if (splited.length > 2) {
-                var actualStatName = splited.pop();
-                var groupName = splited.join("/");
-                if (!acc["@items"]) {
-                  acc["@items"] = {};
-                }
-                if (!acc["@items"][groupName]) {
-                  acc["@items"][groupName] = {};
-                }
-                acc["@items"][groupName][actualStatName] = rv.data.stats[key][statName];
-              } else {
-                acc[statName] = rv.data.stats[key][statName];
-              }
-              return acc;
-            }, {});
-            return acc;
-          }, {});
-          stats["@kv"] = rv.data.stats["@kv"] || {};
-          stats["@xdcr"] = rv.data.stats["@xdcr"] || {};
-          vm.statsDirectoryBlocks = stats;
-          vm.selectedBlock = vm.selectedBlock || "@system";
-
-          if (chart) {
-            _.forEach(getSelectedStats(), activateStats);
-          }
-        })
-        .showSpinner();
+      if (vm.newChart.specificStat) {
+        vm.newChart.specificStat = "true";
+      } else {
+        vm.newChart.specificStat = "false";
+      }
     }
 
     function create() {

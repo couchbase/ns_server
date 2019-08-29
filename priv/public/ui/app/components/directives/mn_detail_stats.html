@@ -25,6 +25,7 @@
   <mn-statistics-chart
      ng-repeat="config in thisCtl.charts track by config.id"
      nvd3-options="{showLegend: false}"
+     items="thisCtl.items"
      ng-class="'statistics-' + config.size"
      bucket="{{bucket}}"
      zoom="{{thisCtl.zoom}}"

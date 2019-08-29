@@ -21,7 +21,9 @@
         config: "=",
         nvd3Options: "=?",
         bucket: "@",
-        zoom: "@"
+        zoom: "@",
+        node: "@?",
+        items: "=?"
       },
       controller: controller
     };
@@ -113,6 +115,7 @@
 
       function subscribeToMultiChartData() {
         mnStatisticsNewService.subscribeUIStatsPoller({
+          items: $scope.items,
           bucket: $scope.bucket,
           node: $scope.config.node || "all",
           stats: $scope.config.stats,
@@ -174,7 +177,7 @@
             }
           },
           options.chart.yAxis = {
-            showMaxMin: false,
+            showMaxMin: true,
             axisLabel: Object.keys(units)[0],
             tickFormat: function (d) {
               return formatMaxMin(d, Object.keys(units)[0]);
@@ -284,7 +287,7 @@
       }
 
       function onMultiChartDataUpdate(stats) {
-        if (!stats) {
+        if (!stats || !stats.data) {
           return;
         }
 
@@ -303,24 +306,28 @@
 
         var chartData = [];
         if ($scope.config.specificStat) {
-          angular.forEach($scope.config.stats, function (descPath, statName) {
-            var desc = mnStatisticsNewService.readByPath(descPath, statName);
-            angular.forEach(stats.data.samples, function (nodeStat, nodeName) {
-              chartData.push({
-                type: 'line',
-                unit: desc.unit,
-                max: d3.max(nodeStat || []),
-                min: d3.min(nodeStat || []),
-                yAxis: units[desc.unit],
-                key: nodeName,
-                values: _.zip(nodeStat.timestamps, nodeStat || [])
-              });
+          var descPath = Object.keys($scope.config.stats)[0];
+          var desc = mnStatisticsNewService.readByPath(descPath);
+          Object.keys(stats.data.samples).forEach(function (nodeName) {
+            var nodeStat = stats.data.samples[nodeName];
+            chartData.push({
+              type: 'line',
+              unit: desc.unit,
+              max: d3.max(nodeStat || []),
+              min: d3.min(nodeStat || []),
+              yAxis: units[desc.unit],
+              key: nodeName,
+              values: _.zip(nodeStat.timestamps, nodeStat || [])
             });
           });
-
         } else {
-          angular.forEach($scope.config.stats, function (descPath, name) {
-            var desc = mnStatisticsNewService.readByPath(descPath, name);
+          Object.keys($scope.config.stats).forEach(function (descPath) {
+            var splitted = descPath.split(".");
+            var service = splitted[0].substring(1, splitted[0].length-1);
+            var maybeItem = descPath.includes("@items") && ($scope.items || {})[service];
+            var name = (maybeItem || "") + splitted[splitted.length - 1];
+
+            var desc = mnStatisticsNewService.readByPath(descPath);
             var timestamps = stats.data.samples[Object.keys(stats.data.samples)[0]].timestamps;
             chartData.push({
               type: 'line',
