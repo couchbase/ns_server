@@ -36,7 +36,7 @@
           <span ng-show="logsListCtl.isOverLimit(row)">
             <a
                ng-show="!logsListCtl.isOpened($index)"
-               ng-click="logsListCtl.toggle($index)">...show</a>
+               ng-click="logsListCtl.toggle($index)">show...</a>
             <a
                ng-show="logsListCtl.isOpened($index)"
                ng-click="logsListCtl.toggle($index)">hide</a>
@@ -45,7 +45,14 @@
         <span class="cbui-table-cell resp-sml" title="{{row.module}} {{row.code}}">
           {{row.module}} {{row.code}}
         </span>
-        <span class="cbui-table-cell resp-sml">{{row.node}}</span>
+        <span class="cbui-table-cell cursor-pointer resp-sml">
+          <span
+             uib-tooltip-html="'{{row.node}}'"
+             tooltip-placement="auto top"
+             tooltip-trigger="'outsideClick'">
+            {{row.node}}
+          </span>
+         </span>
         <span class="cbui-table-cell flex-grow-1-5 wrap resp-sml">
           <span class="semi-bold nowrap">{{row.time}}</span> &nbsp;
           <span class="nowrap">{{row.date}}</span>
