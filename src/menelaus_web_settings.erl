@@ -380,9 +380,9 @@ inverted_conf(Type) ->
                 end, Acc, List)
       end, #{}, conf(Type)).
 
-handle_delete(_Type, [], Req) ->
-    reply_json(Req, {struct, [{errors, [<<"Not supported">>]}]}, 400);
-handle_delete(Type, PKeys, Req) ->
+find_key_to_delete(_Type, []) ->
+    {error, not_supported};
+find_key_to_delete(Type, PKeys) ->
     Conf = maps:to_list(inverted_conf(Type)),
     Values = [Value || {Keys, Value} <- Conf, lists:prefix(PKeys, Keys)],
     ToDelete = lists:map(
@@ -390,19 +390,27 @@ handle_delete(Type, PKeys, Req) ->
                      ({sub, CKeys, _}) -> lists:sublist(CKeys, length(PKeys))
                  end, Values),
     case lists:usort(ToDelete) of
-        [] ->
-            M = io_lib:format("Unknown key ~s", [string:join(PKeys, ".")]),
-            reply_json(Req, {struct, [{errors, [iolist_to_binary(M)]}]}, 404);
-        [[K]] ->
+        [] -> {error, not_found};
+        [ConfigKeys] -> {ok, ConfigKeys}
+    end.
+
+handle_delete(Type, PKeys, Req) ->
+    case find_key_to_delete(Type, PKeys) of
+        {ok, [K]} ->
             ns_config:delete(K),
             AuditFun = audit_fun(Type),
             ns_audit:AuditFun(Req, [{K, deleted}]),
             reply_json(Req, []);
-        [[K, SK]] ->
+        {ok, [K, SK]} ->
             ns_config:update_key(K, proplists:delete(SK, _)),
             AuditFun = audit_fun(Type),
             ns_audit:AuditFun(Req, [{K, {[{SK, deleted}]}}]),
-            reply_json(Req, [])
+            reply_json(Req, []);
+        {error, not_found} ->
+            M = io_lib:format("Unknown key ~s", [string:join(PKeys, ".")]),
+            reply_json(Req, {struct, [{errors, [iolist_to_binary(M)]}]}, 404);
+        {error, not_supported} ->
+            reply_json(Req, {struct, [{errors, [<<"Not supported">>]}]}, 400)
     end.
 
 handle_settings_max_parallel_indexers(Req) ->
@@ -863,5 +871,18 @@ parse_post_data_test() ->
     ?assertEqual({error, [<<"Unknown key data.unknown.cipherSuites">>]},
                  parse_post_data(security, ["data", "unknown"],
                                  <<"cipherSuites=bad">>)),
+    ok.
+
+find_key_to_delete_test() ->
+    ?assertEqual({ok, [cipher_suites]},
+                 find_key_to_delete(security, ["cipherSuites"])),
+    ?assertEqual({ok, [{security_settings, kv}, cipher_suites]},
+                 find_key_to_delete(security, ["data", "cipherSuites"])),
+    ?assertEqual({error, not_supported},
+                 find_key_to_delete(security, [])),
+    ?assertEqual({error, not_found},
+                 find_key_to_delete(security, ["unknown"])),
+    ?assertEqual({error, not_found},
+                 find_key_to_delete(security, ["data", "unknown"])),
     ok.
 -endif.
