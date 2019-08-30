@@ -289,52 +289,76 @@ handle_post(Type, Req) ->
     handle_post(Type, [], Req).
 
 handle_post(Type, Keys, Req) ->
-    Conf = inverted_conf(Type),
-    Params =
-        case maps:find(Keys, Conf) of
-            {ok, _} -> [{"", binary_to_list(mochiweb_request:recv_body(Req))}];
-            error -> mochiweb_request:parse_post(Req)
-        end,
-    Params2 = [{Keys ++ string:tokens(SJK, "."), SV}|| {SJK, SV} <- Params],
-    Res = [handle_post_for_key(SJK, SV, Conf) || {SJK, SV} <- Params2],
-
-    case [M || {error, M} <- Res] of
-        [] ->
-            AuditProps =
-                lists:foldl(
-                  fun ({{key, K}, V}, Acc) ->
-                          ns_config:set(K, V),
-                          Acc#{K => V};
-                      ({{subkey, K, SubK}, V}, Acc) ->
-                          ns_config:set_sub(K, SubK, V),
-                          maps:update_with(K,
-                                           fun ({L}) -> {[{SubK, V} | L]} end,
-                                           {[{SubK, V}]}, Acc)
-                  end, #{}, [ToSet || {ok, ToSet} <- Res]),
-            AuditFun = audit_fun(Type),
-            ns_audit:AuditFun(Req, maps:to_list(AuditProps)),
-            reply_json(Req, []);
-        Errors ->
+    case parse_post_data(Type, Keys, mochiweb_request:recv_body(Req)) of
+        {ok, ToSet} ->
+            case ns_config:run_txn(?cut(set_keys_in_txn(_1, _2, ToSet))) of
+                {commit, _, AuditProps} ->
+                    AuditFun = audit_fun(Type),
+                    ns_audit:AuditFun(Req, AuditProps),
+                    reply_json(Req, []);
+                retry_needed ->
+                    erlang:error(exceeded_retries)
+            end;
+        {error, Errors} ->
             reply_json(Req, {struct, [{errors, Errors}]}, 400)
     end.
 
-handle_post_for_key(StrJKey, StrVal, Conf) ->
+set_keys_in_txn(Cfg, SetFn, ToSet) ->
+    {NewCfg, AuditProps} =
+        lists:foldl(
+          fun ({{key, K}, V}, {CfgAcc, AuditAcc}) ->
+                  case ns_config:search(CfgAcc, K) of
+                      {value, V} -> {CfgAcc, AuditAcc};
+                      _ -> {SetFn(K, V, CfgAcc), AuditAcc#{K => V}}
+                  end;
+              ({{subkey, K, SubK}, V}, {CfgAcc, AuditAcc}) ->
+                  CurProps = ns_config:search(CfgAcc, K, []),
+                  case proplists:lookup(SubK, CurProps) of
+                      {SubK, V} ->
+                        {CfgAcc, AuditAcc};
+                      _ ->
+                        NewProps = misc:update_proplist(CurProps, [{SubK, V}]),
+                        NewAuditAcc =
+                            maps:update_with(K,
+                                             fun ({L}) -> {[{SubK, V} | L]} end,
+                                             {[{SubK, V}]}, AuditAcc),
+                        {SetFn(K, NewProps, CfgAcc), NewAuditAcc}
+                  end
+          end, {Cfg, #{}}, ToSet),
+    {commit, NewCfg, maps:to_list(AuditProps)}.
+
+parse_post_data(Type, Keys, Data) ->
+    Conf = inverted_conf(Type),
+    Params =
+        case maps:find(Keys, Conf) of
+            {ok, _} -> [{"", binary_to_list(Data)}];
+            error -> mochiweb_util:parse_qs(Data)
+        end,
+
+    Params2 = [{Keys ++ string:tokens(SJK, "."), SV}|| {SJK, SV} <- Params],
+    Res = [parse_post_for_key(SJK, SV, Conf) || {SJK, SV} <- Params2],
+
+    case [M || {error, M} <- Res] of
+        [] ->
+            {ok, [ToSet || {ok, ToSet} <- Res]};
+        Errors ->
+            {error, Errors}
+    end.
+
+parse_post_for_key(StrJKey, StrVal, Conf) ->
     case maps:find(StrJKey, Conf) of
         {ok, {key, CK, Parser}} ->
-            case {Parser(StrVal), ns_config:search(CK)} of
-                {{ok, V}, {value, V}} -> ignore;
-                {{ok, V}, _} -> {ok, {{key, CK}, V}};
-                {{error, Msg}, _} ->
+            case Parser(StrVal) of
+                {ok, V} -> {ok, {{key, CK}, V}};
+                {error, Msg} ->
                     M = io_lib:format("~s - ~s", [string:join(StrJKey, "."),
                                                   Msg]),
                     {error, iolist_to_binary(M)}
             end;
         {ok, {sub, [CK, SCK], Parser}} ->
-            Cfg = ns_config:get(),
-            case {Parser(StrVal), ns_config:search_prop(Cfg, CK, SCK)} of
-                {{ok, V}, V} -> ignore;
-                {{ok, V}, _} -> {ok, {{subkey, CK, SCK}, V}};
-                {{error, Msg}, _} ->
+            case Parser(StrVal) of
+                {ok, V} -> {ok, {{subkey, CK, SCK}, V}};
+                {error, Msg} ->
                     M = io_lib:format("~s - ~s", [string:join(StrJKey, "."),
                                                   Msg]),
                     {error, iolist_to_binary(M)}
