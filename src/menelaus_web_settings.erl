@@ -807,4 +807,61 @@ build_kvs_test() ->
                  build_kvs(Conf, Cfg,
                            fun ({_, default}) -> false; (_) -> true end)),
     ok.
+
+parse_post_data_test() ->
+    ?assertEqual({ok, []}, parse_post_data(security, [], <<>>)),
+    ?assertEqual({ok, [{{key, ssl_minimum_protocol}, 'tlsv1.2'},
+                       {{key, cipher_suites}, []},
+                       {{key, honor_cipher_order}, true},
+                       {{subkey, {security_settings, kv}, ssl_minimum_protocol},
+                        'tlsv1.3'},
+                       {{subkey, {security_settings, kv}, cipher_suites}, []},
+                       {{subkey, {security_settings, kv}, honor_cipher_order},
+                        false}]},
+                 parse_post_data(security, [],
+                                 <<"tlsMinVersion=tlsv1.2&"
+                                   "cipherSuites=[]&"
+                                   "honorCipherOrder=true&"
+                                   "data.tlsMinVersion=tlsv1.3&"
+                                   "data.cipherSuites=[]&"
+                                   "data.honorCipherOrder=false">>)),
+    ?assertEqual({ok, [{{subkey, {security_settings, kv}, ssl_minimum_protocol},
+                        'tlsv1.3'},
+                       {{subkey, {security_settings, kv}, cipher_suites}, []},
+                       {{subkey, {security_settings, kv}, honor_cipher_order},
+                        true}]},
+                 parse_post_data(security, ["data"],
+                                 <<"tlsMinVersion=tlsv1.3&"
+                                   "cipherSuites=[]&"
+                                   "honorCipherOrder=true">>)),
+    ?assertEqual({ok, [{{subkey, {security_settings, kv}, ssl_minimum_protocol},
+                        'tlsv1.3'}]},
+                 parse_post_data(security, ["data", "tlsMinVersion"],
+                                 <<"tlsv1.3">>)),
+    ?assertEqual({error, [<<"Unknown key unknown1">>,
+                          <<"Unknown key unknown2.tlsMinVersion">>,
+                          <<"data.cipherSuites - Invalid format. "
+                            "Expecting a list of ciphers.">>,
+                          <<"Unknown key data.unkwnown3">>]},
+                 parse_post_data(security, [],
+                                 <<"unknown1=tlsv1.2&"
+                                   "cipherSuites=[]&"
+                                   "unknown2.tlsMinVersion=tlsv1.3&"
+                                   "data.cipherSuites=bad&"
+                                   "data.unkwnown3=false">>)),
+    ?assertEqual({error, [<<"Unknown key data.unknown1">>,
+                          <<"data.cipherSuites - Invalid format. "
+                            "Expecting a list of ciphers.">>]},
+                 parse_post_data(security, ["data"],
+                                 <<"unknown1=tlsv1.2&"
+                                   "cipherSuites=[]&"
+                                   "cipherSuites=bad">>)),
+    ?assertEqual({error, [<<"data.cipherSuites - Invalid format. "
+                            "Expecting a list of ciphers.">>]},
+                 parse_post_data(security, ["data", "cipherSuites"],
+                                 <<"bad">>)),
+    ?assertEqual({error, [<<"Unknown key data.unknown.cipherSuites">>]},
+                 parse_post_data(security, ["data", "unknown"],
+                                 <<"cipherSuites=bad">>)),
+    ok.
 -endif.
