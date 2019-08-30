@@ -268,13 +268,13 @@ class LogRedactor:
         self.regular_log = RegularLogProcessor(salt)
 
     def _process_file(self, ifile, ofile, processor):
-        try:
-            with codecs.open(ifile, 'r', LATIN1) as inp:
-                with open(ofile, 'w+') as out:
-                    for line in inp:
-                        out.write(processor.do(line))
-        except IOError as e:
-            log("I/O error(%s): %s" % (e.errno, e.strerror))
+        # Don't try to catch any errors here as we want failures (e.g.
+        # due to disk full) to abort the collection.  This will allow
+        # the cause of the failure to be fixed and collection retried.
+        with codecs.open(ifile, 'r', LATIN1) as inp:
+            with open(ofile, 'w+') as out:
+                for line in inp:
+                    out.write(processor.do(line))
 
     def redact_file(self, name, ifile):
         ofile = os.path.join(self.target_dir, name)
