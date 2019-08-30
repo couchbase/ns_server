@@ -3,57 +3,7 @@
 
   angular
     .module('mnXDCR')
-    .controller('mnXdcrItemStatsController', mnXDCRItemStatsController)
     .directive('mnXdcrItemDetails', mnXDCRItemDetails);
-
-  function mnXDCRItemStatsController(mnStatisticsNewService, mnHelper, $scope) {
-    var vm = this;
-    vm.zoom = "minute";
-
-    vm.onSelectZoom = onSelectZoom;
-
-    activate();
-
-    function onSelectZoom() {
-      activate();
-    }
-
-    function getStats(stat) {
-      var rv = {};
-      rv[stat] = "@xdcr-.@items";
-      return rv;
-    }
-
-    function activate() {
-      var row = $scope.row;
-      mnStatisticsNewService.doGetStats({
-        zoom: vm.zoom,
-        bucket: row.source
-      }).then(function (rv) {
-        vm.charts = Object
-          .keys(rv.data.stats["@xdcr-" + row.source])
-          .filter(function (key) {
-            var splitted = key.split("/")
-            var stat = splitted.pop();
-            splitted.shift();
-            var xdcrID = splitted.join("/");
-            return xdcrID == row.id &&
-              mnStatisticsNewService.readByPath("@xdcr-.@items", stat);
-          })
-          .map(function (stat) {
-            return {
-              preset: true,
-              id: mnHelper.generateID(),
-              isSpecific: false,
-              size: "small",
-              zoom: vm.zoom,
-              stats: getStats(stat)
-            };
-          });
-      });
-    }
-
-  }
 
   function mnXDCRItemDetails() {
     var mnXDCRItemDetails = {
