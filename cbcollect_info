@@ -1409,6 +1409,16 @@ def get_server_guts(initargs_path):
         log("Couldn't find dump-guts script. Some information will be missing")
         return {}
 
+    # Check if initargs exists and is read accessible.
+    if not os.path.exists(initargs_path):
+        log("initargs file '{}' does not exist".format(initargs_path))
+        return {}
+
+    if not os.access(initargs_path, os.R_OK):
+        log("Read access to '{}' is required in order to proceed".format(
+            initargs_path))
+        sys.exit(1)
+
     escript = exec_name("escript")
     extra_args = os.getenv("EXTRA_DUMP_GUTS_ARGS")
     args = [escript, dump_guts_path, "--initargs-path", initargs_path]
