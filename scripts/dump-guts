@@ -536,7 +536,7 @@ sanitize_config(Config) ->
               {stop, {cookie, "*****"}};
           ({rest_creds, [_|_]}) ->
               {stop, {rest_creds, "*****"}};
-          ({disabled_users, ListUsers}) ->
+          ({disabled_users, _ListUsers}) ->
               {stop, {disabled_users, "*****"}};
           (Other) ->
               {continue, Other}
