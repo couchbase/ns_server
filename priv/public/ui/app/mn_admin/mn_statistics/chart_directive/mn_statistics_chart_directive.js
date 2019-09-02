@@ -118,6 +118,7 @@
       }
 
       function subscribeToMultiChartData() {
+
         mnStatisticsNewService.subscribeUIStatsPoller({
           items: $scope.items,
           bucket: $scope.bucket,
@@ -246,10 +247,11 @@
       function getScaledMinMax(chartData, unit) {
         var min = d3.min(chartData, function (line) {return line.min/1.005;});
         var max = d3.max(chartData, function (line) {return line.max;});
-        if (unit == "bytes")
+        if (unit == "bytes") {
           return [min <= 0 ? 0 : roundDownBytes(min), max == 0 ? 1 : roundUpBytes(max)];
-        else
+        } else {
           return [min <= 0 ? 0 : roundDown(min), max == 0 ? 1 : roundUp(max)];
+        }
       }
 
       // make 2nd digit either 0 or 5
@@ -317,8 +319,8 @@
             chartData.push({
               type: 'line',
               unit: desc.unit,
-              max: d3.max(nodeStat || []),
-              min: d3.min(nodeStat || []),
+              max: d3.max(nodeStat || []) || 1,
+              min: d3.min(nodeStat || []) || 0,
               yAxis: units[desc.unit],
               key: nodeName,
               values: _.zip(nodeStat.timestamps, nodeStat || [])
@@ -337,8 +339,8 @@
             chartData.push({
               type: 'line',
               unit: desc.unit,
-              max: d3.max(stats.data.samples[name] || []),
-              min: d3.min(stats.data.samples[name] || []),
+              max: d3.max(stats.data.samples[name] || []) || 1,
+              min: d3.min(stats.data.samples[name] || []) || 0,
               yAxis: units[desc.unit],
               key: !stats.data.samples[name] ? (desc.title + " (not found)") : desc.title,
               values: _.zip(timestamps, stats.data.samples[name] || [])

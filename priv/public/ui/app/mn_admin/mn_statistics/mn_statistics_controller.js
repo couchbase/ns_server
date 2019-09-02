@@ -37,6 +37,7 @@
       }).result.then(function () {
         mnStatisticsNewService.deleteChart($scope.chartID);
         mnUserRolesService.saveDashboard();
+        $scope.$emit("chartUpdated");
       });
     }
 
@@ -51,6 +52,7 @@
           scenario: mnHelper.wrapInFunction(scenario),
         }
       }).result.then(function () {
+        $scope.$emit("chartUpdated");
         mnUserRolesService.saveDashboard();
         vm.reloadChartDirective = true;
         $timeout(function () {
@@ -60,18 +62,19 @@
     }
 
     function openDetailedChartDialog() {
-        $uibModal.open({
-          templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_detailed_chart.html',
-          controller: 'mnStatisticsDetailedChartController as detailedChartCtl',
-          windowTopClass: "chart-overlay",
-          resolve: {
-            chart: mnHelper.wrapInFunction(vm.chart)
-          }
-        });
+      $uibModal.open({
+        templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_detailed_chart.html',
+        controller: 'mnStatisticsDetailedChartController as detailedChartCtl',
+        windowTopClass: "chart-overlay",
+        resolve: {
+          items: mnHelper.wrapInFunction($scope.mnStatsGroupsCtl.items),
+          chart: mnHelper.wrapInFunction(vm.chart)
+        }
+      });
     }
   }
 
-  function mnStatisticsGroupsController($scope, $uibModal,
+  function mnStatisticsGroupsController($scope, $uibModal, $timeout,
                                         mnStatisticsNewService, mnStoreService, mnUserRolesService) {
     var vm = this;
     vm.isDetailsOpened = true;
@@ -81,8 +84,32 @@
     vm.onGroupSubmit = onGroupSubmit;
     vm.onGroupDelete = onGroupDelete;
     vm.deleteGroup = deleteGroup;
+    vm.onItemChange = onItemChange;
 
+    vm.items = {};
+    vm.enabledItems = {};
     vm.group = mnStoreService.store("groups").get($scope.groupID);
+
+    $scope.$on("chartUpdated", activate);
+    activate();
+
+    function onItemChange() {
+      vm.reloadChartDirective = true;
+      $timeout(function () {
+        vm.reloadChartDirective = false;
+      });
+    }
+
+    function activate() {
+      vm.group.charts.forEach(function (chartID) {
+        var chartStats = Object.keys(mnStoreService.store("charts").get(chartID).stats);
+        chartStats.forEach(function (statPath) {
+          if (statPath.includes("@items")) {
+            vm.enabledItems[statPath.split(".")[0]] = true;
+          }
+        })
+      });
+    }
 
     function deleteGroup(groupID) {
       $uibModal.open({
@@ -127,7 +154,7 @@
     }
   }
 
-  function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http, mnPoller, mnBucketsService, $uibModal, $rootScope, mnHelper, $window, mnUserRolesService, permissions, $timeout,mnStoreService) {
+  function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http, mnPoller, mnBucketsService, $uibModal, $rootScope, mnHelper, $window, mnUserRolesService, permissions, $timeout,mnStoreService, mnGsiService, mnViewsListService, mnTasksDetails) {
     var vm = this;
 
     vm.mnStatisticsNewScope = $scope;
@@ -171,6 +198,7 @@
         }
       }).result.then(function () {
         mnUserRolesService.saveDashboard();
+        $scope.$broadcast("chartUpdated");
       });
     }
 
@@ -192,7 +220,85 @@
       });
     }
 
+    function initItemsDropdownSelect() {
+      if ($scope.rbac.cluster.tasks.read) {
+        new mnPoller($scope, function () {
+          return mnTasksDetails.get().then(function (rv) {
+            if (!$state.params.scenarioBucket) {
+              return;
+            }
+            return rv.tasksXDCR.filter(function (row) {
+              return row.source == $state.params.scenarioBucket;
+            });
+          });
+        })
+          .setInterval(10000)
+          .subscribe("xdcrItems", vm)
+          .reloadOnScopeEvent("reloadXdcrPoller")
+          .cycle();
+      }
+
+      if ($scope.rbac.cluster.settings.fts.read) {
+        new mnPoller($scope, function () {
+          return $http.get('/_p/fts/api/index').then(function(rv) {
+            return Object.keys(rv.data.indexDefs.indexDefs).reduce(function (acc, key) {
+              var index = rv.data.indexDefs.indexDefs[key];
+              if (index.sourceName == $state.params.scenarioBucket) {
+                acc.push(index);
+              }
+              return acc;
+            }, []);
+          });
+        })
+          .setInterval(10000)
+          .subscribe("ftsItems", vm)
+          .reloadOnScopeEvent("reloadXdcrPoller")
+          .cycle();
+      }
+
+      if ($scope.rbac.cluster.bucket['.'].n1ql.index.read) {
+        new mnPoller($scope, function () {
+          return mnGsiService.getIndexesState().then(function (rv) {
+            if (!$state.params.scenarioBucket) {
+              return;
+            }
+            return rv.byBucket[$state.params.scenarioBucket];
+          });
+        })
+          .setInterval(10000)
+          .subscribe("indexItems", vm)
+          .reloadOnScopeEvent("indexStatusURIChanged")
+          .cycle();
+      }
+
+      if ($scope.rbac.cluster.bucket['.'].views.read) {
+        new mnPoller($scope, function () {
+          return mnStatisticsNewService.getStatsDirectory($state.params.scenarioBucket, {})
+            .then(function (rv) {
+              if (!$state.params.scenarioBucket) {
+                return;
+              }
+              return rv.data.blocks.filter(function (block) {
+                if (block.blockName.includes("View Stats")) {
+                  block.statId = block.blockName.split(": ")[1];
+                  var name = block.stats[0].name.split("/");
+                  name.pop()
+                  block.statKeyPrefix = name.join("/") + "/";
+                  return true;
+                }
+              });
+            });
+        })
+          .setInterval(10000)
+          .subscribe("viewItems", vm)
+          .reloadOnScopeEvent("reloadViewsPoller")
+          .cycle();
+      }
+    }
+
     function activate() {
+      initItemsDropdownSelect();
+
       if ($scope.rbac.cluster.stats.read) {
         mnUserRolesService.getUserProfile().then(function (profile) {
           vm.scenario.selected =
@@ -203,12 +309,12 @@
         });
       }
 
-      new mnPoller($scope, function () {
-        return mnStatisticsNewService.prepareNodesList($state.params);
-      })
-        .subscribe("nodes", vm)
-        .reloadOnScopeEvent("nodesChanged")
-        .cycle();
+      // new mnPoller($scope, function () {
+      //   return mnStatisticsNewService.prepareNodesList($state.params);
+      // })
+      //   .subscribe("nodes", vm)
+      //   .reloadOnScopeEvent("nodesChanged")
+      //   .cycle();
     }
   }
 })();
