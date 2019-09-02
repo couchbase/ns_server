@@ -342,11 +342,20 @@
           });
         }
         if ($scope.chartApi && $scope.chartApi.getScope().chart) {
-          !isFocusChart && updateYAxisDomain(chartData);
+          if (isFocusChart) {
+            var chart = $scope.chartApi.getScope().chart;
+            chart["yDomain"](getScaledMinMax(chartData, Object.keys(units)[0]));
+          } else {
+            updateYAxisDomain(chartData);
+          }
           $scope.chartData = chartData;
         } else {
           $timeout(function () {
-            !isFocusChart && setYAxisDomain(chartData);
+            if (isFocusChart) {
+              options.chart["yDomain"] = getScaledMinMax(chartData, Object.keys(units)[0]);
+            } else {
+              setYAxisDomain(chartData);
+            }
             $scope.options = options;
             $scope.chartData = chartData;
           }, 0);
