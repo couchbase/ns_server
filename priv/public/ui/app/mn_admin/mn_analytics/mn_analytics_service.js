@@ -5,11 +5,12 @@
     .module('mnAnalyticsService', [
       'mnBucketsService',
       'mnServersService',
-      'mnFilters'
+      'mnFilters',
+      'mnStatisticsNewService'
     ])
     .factory('mnAnalyticsService', mnAnalyticsServiceFactory);
 
-  function mnAnalyticsServiceFactory($http, $q, mnBucketsService, mnServersService, mnCloneOnlyDataFilter, mnFormatQuantityFilter, mnParseHttpDateFilter, timeUnitToSeconds) {
+  function mnAnalyticsServiceFactory($http, $q, mnBucketsService, mnServersService, mnCloneOnlyDataFilter, mnFormatQuantityFilter, mnParseHttpDateFilter, timeUnitToSeconds, mnStatisticsNewService) {
     var mnAnalyticsService = {
       getStats: getStats,
       doGetStats: doGetStats,
@@ -75,7 +76,7 @@
         queries.push(isSpecificStat ? $q.when({
           data: resp.data.directory.value,
           origTitle: resp.data.directory.origTitle
-        }) : getStatsDirectory("/pools/default/buckets//" + params.$stateParams.bucket + "/statsDirectory"));
+        }) : mnStatisticsNewService.getStatsDirectory(params.$stateParams.bucket));
         return $q.all(queries).then(function (data) {
           return prepareAnaliticsState(data, params);
         });
@@ -108,19 +109,6 @@
         method: 'GET',
         params: reqParams,
         mnHttp: mnHttpParams
-      });
-    }
-    function getStatsDirectory(url) {
-      return $http({
-        url: url,
-        method: 'GET',
-        params: {
-          adde: '"all"',
-          adda: '"all"',
-          addi: '"all"',
-          addf: '"all"',
-          addq: "1"
-        }
       });
     }
     function prepareAnaliticsState(data, params) {

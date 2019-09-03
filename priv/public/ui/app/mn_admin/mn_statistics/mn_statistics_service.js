@@ -22,6 +22,7 @@
       deleteChart: deleteChart,
       doAddPresetScenario: doAddPresetScenario,
 
+      getStatsDirectory: getStatsDirectory,
       readByPath: readByPath,
       getStatsV2: getStatsV2,
       getStatsUnits: getStatsUnits,
@@ -42,6 +43,23 @@
     var rootScopes = {};
 
     return mnStatisticsNewService;
+
+    function getStatsDirectory(bucket, params) {
+      //we are using this end point in new stats ui in order to tie ddocs names with ddocs stats
+      //via ddocs signatures
+      params = params || {
+        adde: '"all"',
+        adda: '"all"',
+        addi: '"all"',
+        addf: '"all"',
+        addq: "1"
+      };
+      return $http({
+        url: "/pools/default/buckets//" + bucket + "/statsDirectory",
+        method: 'GET',
+        params: params
+      });
+    }
 
     function deleteChart(chartID) {
       var group = mnStoreService.store("groups").getByIncludes(chartID, "charts");
