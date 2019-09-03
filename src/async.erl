@@ -24,7 +24,7 @@
          perform/1, perform/2,
          abort/1, abort/2,
          abort_many/1, abort_many/2,
-         send/2, adopt/1,
+         send/2,
          with/2, with/3,
          with_many/3, with_many/4,
          wait/1, wait/2,
@@ -83,10 +83,6 @@ abort_many(Pids, Reason) ->
 send(Async, Msg) ->
     Async ! {'$async_msg', Msg},
     Msg.
-
-adopt(Child) ->
-    executor = get_role(),
-    ok = call(Child, {initiate_adoption, get_controller()}).
 
 with(AsyncBody, Fun) ->
     with(AsyncBody, [], Fun).
@@ -248,9 +244,6 @@ async_loop_wait_result(Type, Child, Reply, ChildAsyncs) ->
         %% actual parent of our process
         {'EXIT', _, Reason} ->
             terminate_now(Child, ChildAsyncs, Reason);
-        {'$async_req', From, {initiate_adoption, Controller}} ->
-            handle_initiate_adoption(Controller, From),
-            async_loop_wait_result(Type, Child, Reply, ChildAsyncs);
         {'$async_req', From, {register_child_async, Pid}} ->
             reply(From, {ok, Child}),
             async_loop_wait_result(Type, Child, Reply, [Pid | ChildAsyncs]);
@@ -315,9 +308,6 @@ async_loop_with_result(Result) ->
             exit(Reason);
         {'$async_req', From, get_result} ->
             handle_get_result(From, Result);
-        {'$async_req', From, {initiate_adoption, Controller}} ->
-            handle_initiate_adoption(Controller, From),
-            async_loop_with_result(Result);
         {'$async_req', From, {register_child_async, _Pid}} ->
             %% We don't expect register requests at this point, but it's
             %% possible to write a correct async that has such behavior. If we
@@ -460,10 +450,6 @@ set_controller(Pid) when is_pid(Pid) ->
 
 get_controller() ->
     erlang:get('$async_controller').
-
-handle_initiate_adoption(Controller, From) ->
-    register_for_adoption(Controller),
-    reply(From, ok).
 
 register_for_adoption(Controller) ->
     {ok, Executor} = register_with_async(Controller),
