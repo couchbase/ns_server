@@ -293,11 +293,11 @@ code_string(Module, Code) ->
 
 -spec prepare_message(atom(), integer(), string()) -> string().
 prepare_message(Module, Code, Msg) ->
-    case lists:member({ns_log_prepare_message, 2},
-                      Module:module_info(exports)) of
-        true ->
-            Module:ns_log_prepare_message(Code, Msg);
-        false ->
+    try Module:ns_log_prepare_message(Code, Msg) of
+        S when is_list(S) ->
+            S
+    catch
+        error:undef ->
             Msg
     end.
 
