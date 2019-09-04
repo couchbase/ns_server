@@ -16,8 +16,8 @@
           </span>
         </span>
       </div>
-      <div>
-        <strong>Last scanned at</strong> {{row.lastScanTime}}
+      <div ng-show="row.lastScanTime && row.lastScanTime != 'NA'">
+        <strong>Last Scanned</strong> {{row.lastScanTime}}
       </div>
     </div>
     <div class="nowrap margin-right-1">
