@@ -17,8 +17,8 @@
         </span>
       </div>
       <div ng-show="row.lastScanTime && row.lastScanTime != 'NA'">
-        <strong>Last Scanned</strong> {{row.lastScanTime}}
-      </div>
+         <strong>Last Scanned</strong> {{mnGsiItemDetailsCtl.getFormattedScanTime(row)}}
+       </div>
     </div>
     <div class="nowrap margin-right-1">
       <button

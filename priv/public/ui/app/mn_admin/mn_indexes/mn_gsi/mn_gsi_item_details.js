@@ -90,9 +90,17 @@
 
     return mnGsiItemDetails;
 
-    function mnGsiItemDetailsController($rootScope, mnGsiService, $uibModal, mnPromiseHelper, mnAlertsService) {
+    function mnGsiItemDetailsController($rootScope, mnGsiService, $uibModal, $filter, mnPromiseHelper, mnAlertsService) {
       var vm = this;
       vm.dropIndex = dropIndex;
+      vm.getFormattedScanTime = getFormattedScanTime;
+
+      function getFormattedScanTime(row) {
+        if (row && row.lastScanTime != 'NA')
+          return $filter('date')(Date.parse(row.lastScanTime), 'hh:mm:ss a, d MMM, y');
+        else
+          return 'NA';
+      }
 
       function dropIndex(row) {
         var scope = $rootScope.$new();
