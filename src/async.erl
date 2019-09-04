@@ -312,7 +312,8 @@ async_loop_with_result(Result) ->
             %% don't reply, the requesting process will have to wait till we
             %% die, which is unnecessary. So we just respond with nack to kill
             %% it quickly.
-            reply(From, nack);
+            reply(From, nack),
+            async_loop_with_result(Result);
         {'$async_req', _, _} = Req ->
             exit({unexpected_request, Req});
         _ ->
