@@ -312,10 +312,8 @@ async_loop_with_result(Result) ->
             %% die, which is unnecessary. So we just respond with nack to kill
             %% it quickly.
             reply(From, nack);
-        {'$async_req', From, _} ->
-            %% Similar logic applies to all the other requests (that actually
-            %% don't exist at the moment).
-            reply(From, nack);
+        {'$async_req', _, _} = Req ->
+            exit({unexpected_request, Req});
         _ ->
             async_loop_with_result(Result)
     end.
