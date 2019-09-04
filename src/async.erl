@@ -263,11 +263,35 @@ maybe_terminate_child(undefined, _Reason) ->
     ok;
 maybe_terminate_child(Child, Reason)
   when is_pid(Child) ->
-    misc:unlink_terminate_and_wait(Child, Reason).
+    misc:unlink_terminate(Child, Reason).
+
+terminate_children(ChildAsyncs, Reason) ->
+    terminate_children(undefined, ChildAsyncs, Reason).
 
 terminate_children(Child, ChildAsyncs, Reason) ->
+    MRefs = [erlang:monitor(process, Pid) || Pid <- [Child | ChildAsyncs],
+                                             Pid =/= undefined],
     maybe_terminate_child(Child, Reason),
-    misc:terminate_and_wait(ChildAsyncs, Reason).
+    lists:foreach(misc:terminate(_, Reason), ChildAsyncs),
+    terminate_children_loop(MRefs).
+
+terminate_children_loop([]) ->
+    ok;
+terminate_children_loop([MRef | Rest] = MRefs) ->
+    receive
+        {'DOWN', MRef, process, _Pid, _Reason} ->
+            terminate_children_loop(Rest);
+        {'$async_req', From, {register_child_async, _Pid}} ->
+            %% We need to continue responding to register_child_async
+            %% requests. If async receives a termination request, it will send
+            %% an exit signal to the executor process and will wait for it to
+            %% terminate. But the executor might have just spawned a new async
+            %% that will try to register with us and will get blocked. If it's
+            %% also the case that the executor traps exits and waits on this
+            %% newly spawned async and doesn't expect EXITs, we'll deadlock.
+            reply(From, nack),
+            terminate_children_loop(MRefs)
+    end.
 
 terminate_now(Child, ChildAsyncs, Reason) ->
     terminate_children(Child, ChildAsyncs, Reason),
@@ -283,7 +307,7 @@ async_loop_handle_result(Type, Child, ChildAsyncs, Result) ->
     unlink(Child),
     ?flush({'EXIT', Child, _}),
 
-    misc:terminate_and_wait(ChildAsyncs, shutdown),
+    terminate_children(ChildAsyncs, shutdown),
 
     case Type of
         perform ->
@@ -484,4 +508,32 @@ abort_after_test() ->
     {A3, MRef} = async:perform(?cut(timer:sleep(1000)),
                                [monitor, {abort_after, 100}]),
     ?must_flush({'DOWN', MRef, process, A3, timeout}).
+
+async_trap_exit_test() ->
+    %% Test that we can abort an async (A), whose body traps exits and spawns
+    %% another async (B) that tries to register with A after A has received a
+    %% termination request.
+
+    Parent = self(),
+    A = async:start(
+          fun () ->
+                  process_flag(trap_exit, true),
+                  Parent ! {child, self()},
+                  receive
+                      go -> ok
+                  end,
+
+                  B = async:start(fun () ->
+                                          ok
+                                  end),
+                  async:wait(B)
+          end),
+
+    Child = receive
+                {child, Pid} ->
+                    Pid
+            end,
+    Aborter = spawn(fun() -> async:abort(A) end),
+    Child ! go,
+    ok = misc:wait_for_process(Aborter, infinity).
 -endif.
