@@ -3118,3 +3118,12 @@ button.replication .fa-spinner {
 .cb-breadcrumb:first-of-type:before {
   content: "\f00c";
 }
+
+a.supported-browsers {
+  color: #555;
+  margin-top: .5rem;
+  font-size: .688rem;
+}
+a:hover.supported-browsers {
+  color: #000;
+}

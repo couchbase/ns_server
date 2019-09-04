@@ -804,13 +804,14 @@ input[type="checkbox"] {
 .inside-label + .input-inside-label input {
   padding-right: 3.7rem;
 }
-/* hail mary to kill auto-fill crap -- probably doesn't work ---------------- */
+/* hail mary to kill auto-fill crap -- works in Chrome --------------------- */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus,
 input:-webkit-autofill:active {
   transition: background-color 5000s ease-in-out 0s;
   -webkit-box-shadow: 0 0 0px 1000px #fff inset;
+  font-family: OpenSans;
 }
 input:-ms-input-placeholder {
   font-size: .875rem;
