@@ -296,6 +296,7 @@ async_loop_handle_result(Type, Child, ChildAsyncs, Result) ->
             end
     end.
 
+-spec async_loop_with_result({die, any()} | {reply, any()}) -> no_return().
 async_loop_with_result(Result) ->
     receive
         {'DOWN', _MRef, process, _Pid, Reason} = Down ->
@@ -319,7 +320,8 @@ async_loop_with_result(Result) ->
     end.
 
 handle_get_result(From, {reply, Result}) ->
-    reply(From, Result);
+    reply(From, Result),
+    exit(normal);
 handle_get_result(_From, {die, Reason}) ->
     exit(Reason).
 
