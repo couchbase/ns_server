@@ -313,15 +313,17 @@ wait_for_process_test_() ->
              ok = wait_for_process(Pid, 100)
      end}.
 
+-spec terminate(pid(), atom()) -> true.
+terminate(Pid, normal) ->
+    terminate(Pid, shutdown);
+terminate(Pid, Reason) ->
+    exit(Pid, Reason).
+
 -spec terminate_and_wait(Processes :: pid() | [pid()], Reason :: term()) -> ok.
 terminate_and_wait(Process, Reason) when is_pid(Process) ->
     terminate_and_wait([Process], Reason);
 terminate_and_wait(Processes, Reason) ->
-    RealReason = case Reason of
-                     normal -> shutdown;
-                     _ -> Reason
-                 end,
-    [(catch erlang:exit(P, RealReason)) || P <- Processes],
+    [terminate(P, Reason) || P <- Processes],
     [misc:wait_for_process(P, infinity) || P <- Processes],
     ok.
 
@@ -2407,7 +2409,7 @@ with_trap_exit_test_() ->
 unlink_terminate(Pid, Reason) ->
     with_trap_exit(
       fun () ->
-              exit(Pid, Reason),
+              terminate(Pid, Reason),
               unlink(Pid),
               %% the process might have died before we unlinked
               ?flush({'EXIT', Pid, _})
