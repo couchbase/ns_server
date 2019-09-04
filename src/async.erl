@@ -226,7 +226,13 @@ maybe_register_with_parent_async(Pid) ->
 
 register_with_async(Pid) ->
     controller = get_role(),
-    {ok, _} = call(Pid, {register_child_async, self()}).
+    case call(Pid, {register_child_async, self()}) of
+        {ok, _} = Ok ->
+            Ok;
+        nack ->
+            ?log_debug("Received nack when trying to register with ~p", [Pid]),
+            exit(normal)
+    end.
 
 async_loop_wait_result(Type, Child, Reply, ChildAsyncs) ->
     receive
