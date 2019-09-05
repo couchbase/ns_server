@@ -195,7 +195,7 @@ shutdown_many_workers(Nodes, State) ->
                                    end, _)).
 
 shutdown_worker(Node, Pid) ->
-    misc:unlink_terminate_and_wait(Pid, shutdown),
+    misc:unlink_terminate_and_wait(Pid, kill),
     cleanup_after_worker(Node).
 
 cleanup_after_worker(Node) ->
