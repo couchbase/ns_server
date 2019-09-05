@@ -99,7 +99,7 @@
             <span class="label lt-blue" ng-show="viewsListCtl.showSpatialButton(row)">spatial views</span>
             <span class="label lt-blue" ng-show="viewsListCtl.showCreationButton(row)">views</span>
           </span>
-          <span class="cbui-table-cell flex-grow-0">
+          <span class="cbui-table-cell flex-grow-1">
             <div ng-if="viewsListCtl.tasks[row.doc.meta.id][0].progress && rbac.cluster.tasks.read">
               <div ng-style="{width: viewsListCtl.tasks[row.doc.meta.id][0].progress + '%'}"></div>
               <span>{{viewsListCtl.tasks[row.doc.meta.id][0].type == 'indexer' ? "Indexing" : "Compacting"}} {{viewsListCtl.tasks[row.doc.meta.id][0].progress}}%</span>
