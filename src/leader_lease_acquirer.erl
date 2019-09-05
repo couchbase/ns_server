@@ -162,7 +162,7 @@ handle_terminate(Reason, State) ->
     abolish_all_leases(State),
     ok.
 
-abolish_all_leases(#state{nodes = Nodes, uuid  = UUID}) ->
+abolish_all_leases(#state{nodes = Nodes, uuid = UUID}) ->
     leader_lease_agent:abolish_leases(sets:to_list(Nodes), node(), UUID).
 
 spawn_worker(Node, State) ->
