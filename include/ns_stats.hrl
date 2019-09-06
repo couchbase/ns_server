@@ -278,6 +278,11 @@
         ep_dcp_cbas_producer_count,
         ep_dcp_cbas_total_backlog_size,
 
+        ep_dcp_eventing_count,
+        ep_dcp_eventing_items_remaining,
+        ep_dcp_eventing_producer_count,
+        ep_dcp_eventing_total_backlog_size,
+
         ep_dcp_other_count,
         ep_dcp_other_items_remaining,
         ep_dcp_other_producer_count,
@@ -307,6 +312,10 @@
         ep_dcp_cbas_items_sent,
         ep_dcp_cbas_total_bytes,
         ep_dcp_cbas_backoff,
+
+        ep_dcp_eventing_items_sent,
+        ep_dcp_eventing_total_bytes,
+        ep_dcp_eventing_backoff,
 
         ep_dcp_other_items_sent,
         ep_dcp_other_total_bytes,
@@ -351,12 +360,13 @@ add_dcp_stats(A, B) ->
 -undef(DEFINE_FORMULA).
 
 -define(DEFINE_FORMULA(N), N =
-            G#dcp_stream_stats.N -
+            H#dcp_stream_stats.N -
             (A#dcp_stream_stats.N + B#dcp_stream_stats.N +
                  C#dcp_stream_stats.N + D#dcp_stream_stats.N +
-                 E#dcp_stream_stats.N + F#dcp_stream_stats.N)).
+                 E#dcp_stream_stats.N + F#dcp_stream_stats.N +
+                 G#dcp_stream_stats.N)).
 
-calc_dcp_other_stats(A, B, C, D, E, F, G) ->
+calc_dcp_other_stats(A, B, C, D, E, F, G, H) ->
     #dcp_stream_stats{?DEFINE_FORMULA(count),
                       ?DEFINE_FORMULA(items_remaining),
                       ?DEFINE_FORMULA(items_sent),

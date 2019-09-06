@@ -239,12 +239,14 @@ parse_aggregate_dcp_stats(AggDcp) ->
     IndexStats = extract_agg_dcp_stats([{K, V} || {<<"secidx:", K/binary>>, V} <- AggDcp]),
     FtsStats = extract_agg_dcp_stats([{K, V} || {<<"fts:", K/binary>>, V} <- AggDcp]),
     CbasStats = extract_agg_dcp_stats([{K, V} || {<<"cbas:", K/binary>>, V} <- AggDcp]),
+    EventingStats = extract_agg_dcp_stats([{K, V} || {<<"eventing:", K/binary>>, V} <- AggDcp]),
     TotalStats = extract_agg_dcp_stats([{K, V} || {<<":total:", K/binary>>, V} <- AggDcp]),
 
     ViewsStats = add_dcp_stats(MapreduceStats, SpatialStats),
 
     OtherStats = calc_dcp_other_stats(ReplicaStats, XdcrStats, ViewsStats,
-                                      IndexStats, FtsStats, CbasStats, TotalStats),
+                                      IndexStats, FtsStats, CbasStats,
+                                      EventingStats, TotalStats),
 
     lists:append([dcp_stream_stats_to_kvlist(<<"ep_dcp_replica_">>, ReplicaStats),
                   dcp_stream_stats_to_kvlist(<<"ep_dcp_xdcr_">>, XdcrStats),
@@ -252,6 +254,7 @@ parse_aggregate_dcp_stats(AggDcp) ->
                   dcp_stream_stats_to_kvlist(<<"ep_dcp_2i_">>, IndexStats),
                   dcp_stream_stats_to_kvlist(<<"ep_dcp_fts_">>, FtsStats),
                   dcp_stream_stats_to_kvlist(<<"ep_dcp_cbas_">>, CbasStats),
+                  dcp_stream_stats_to_kvlist(<<"ep_dcp_eventing_">>, EventingStats),
                   dcp_stream_stats_to_kvlist(<<"ep_dcp_other_">>, OtherStats)]).
 
 maybe_adjust_data_size(DataSize, DiskSize, MinFileSize) ->
