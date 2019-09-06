@@ -128,12 +128,10 @@ is_active_check(_) ->
     inactive.
 
 erase_unknown_nodes(Statuses, Nodes) ->
-    NewNodes = ordsets:from_list(Nodes),
-    CurrentNodes = ordsets:from_list(dict:fetch_keys(Statuses)),
-    ToRemove = ordsets:subtract(CurrentNodes, NewNodes),
-    lists:foldl(fun (Node, Acc) ->
-                        dict:erase(Node, Acc)
-                end, Statuses, ToRemove).
+    SortedNodes = ordsets:from_list(Nodes),
+    dict:filter(fun (Node, _Status) ->
+                        ordsets:is_element(Node, SortedNodes)
+                end, Statuses).
 
 send_heartbeat(MonModule, SendNodes) ->
     send_heartbeat_inner(MonModule, SendNodes, {heartbeat, node()}).
