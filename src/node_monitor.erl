@@ -34,9 +34,11 @@ init() ->
     health_monitor:common_init(?MODULE, with_refresh).
 
 handle_call(get_nodes, _From, Statuses, _Nodes) ->
+    Now = erlang:monotonic_time(),
     RV = dict:fold(
            fun (Node, {Status, {recv_ts, RecvTS}}, Acc) ->
-                   [{Node, health_monitor:is_active(RecvTS), Status} | Acc]
+                   [{Node, health_monitor:time_diff_to_status(
+                             Now - RecvTS), Status} | Acc]
            end, [], Statuses),
     {reply, RV};
 

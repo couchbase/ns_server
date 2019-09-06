@@ -28,7 +28,7 @@
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
 -export([common_init/1, common_init/2,
-         is_active/1,
+         time_diff_to_status/1,
          erase_unknown_nodes/2,
          local_monitors/0,
          node_monitors/1,
@@ -117,15 +117,14 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% APIs
-is_active(LastHeard) ->
-    Now = erlang:monotonic_time(),
-    is_active_check(erlang:convert_time_unit(Now - LastHeard,
-                                             native, microsecond)).
-
-is_active_check(Diff) when Diff =< ?INACTIVE_TIME ->
-    active;
-is_active_check(_) ->
-    inactive.
+time_diff_to_status(Diff) ->
+    case erlang:convert_time_unit(Diff, native, microsecond)
+        =< ?INACTIVE_TIME of
+        true ->
+            active;
+        false ->
+            inactive
+    end.
 
 erase_unknown_nodes(Statuses, Nodes) ->
     SortedNodes = ordsets:from_list(Nodes),

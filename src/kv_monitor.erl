@@ -17,6 +17,7 @@
 -module(kv_monitor).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -export([start_link/0]).
 -export([get_nodes/0,
@@ -206,29 +207,24 @@ get_not_ready_buckets([{_OtherNode, _, OtherNodeView} | Rest], Node,
     end.
 
 handle_refresh_status(NodesWanted) ->
-    NodesDict = get_dcp_traffic_status(),
-
     %% To most part, the nodes returned by DCP traffic monitor will
     %% be the same or subset of the ones in the KV monitor. But, the two
     %% monitors might get out-of-sync for short duration during the
     %% the nodes_wanted change. If the DCP traffic monitor returns
     %% a node unknown to the KV monitor then ignore it.
-    Statuses = health_monitor:erase_unknown_nodes(NodesDict, NodesWanted),
+    functools:chain(dcp_traffic_monitor:get_nodes(),
+                    [fun calculate_dcp_statuses/1,
+                     health_monitor:erase_unknown_nodes(_, NodesWanted),
+                     fun check_for_ready_buckets/1,
+                     fun check_for_io_failure/1]).
 
-    maybe_add_local_node(Statuses).
-
-get_dcp_traffic_status() ->
+calculate_dcp_statuses(Statuses) ->
+    Now = erlang:monotonic_time(),
     dict:map(
-      fun (_Node, Buckets) ->
-              lists:map(
-                fun ({Bucket, LastHeard}) ->
-                        {Bucket, health_monitor:is_active(LastHeard)}
-                end, Buckets)
-      end, dcp_traffic_monitor:get_nodes()).
-
-maybe_add_local_node(Statuses) ->
-    NewStatuses = check_for_ready_buckets(Statuses),
-    check_for_io_failure(NewStatuses).
+      fun (_Node, BucketStatuses) ->
+              [{Bucket, health_monitor:time_diff_to_status(Now - V)} ||
+                  {Bucket, V} <- BucketStatuses]
+      end, Statuses).
 
 check_for_ready_buckets(Statuses) ->
     case dict:find(node(), Statuses) of
