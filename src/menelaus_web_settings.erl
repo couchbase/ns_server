@@ -289,7 +289,7 @@ handle_post(Type, Req) ->
     handle_post(Type, [], Req).
 
 handle_post(Type, Keys, Req) ->
-    case parse_post_data(Type, Keys, mochiweb_request:recv_body(Req)) of
+    case parse_post_data(conf(Type), Keys, mochiweb_request:recv_body(Req)) of
         {ok, ToSet} ->
             case ns_config:run_txn(?cut(set_keys_in_txn(_1, _2, ToSet))) of
                 {commit, _, AuditProps} ->
@@ -327,16 +327,16 @@ set_keys_in_txn(Cfg, SetFn, ToSet) ->
           end, {Cfg, #{}}, ToSet),
     {commit, NewCfg, maps:to_list(AuditProps)}.
 
-parse_post_data(Type, Keys, Data) ->
-    Conf = inverted_conf(Type),
+parse_post_data(Conf, Keys, Data) ->
+    InvertedConf = invert_conf(Conf),
     Params =
-        case maps:find(Keys, Conf) of
+        case maps:find(Keys, InvertedConf) of
             {ok, _} -> [{"", binary_to_list(Data)}];
             error -> mochiweb_util:parse_qs(Data)
         end,
 
     Params2 = [{Keys ++ string:tokens(SJK, "."), SV}|| {SJK, SV} <- Params],
-    Res = [parse_post_for_key(SJK, SV, Conf) || {SJK, SV} <- Params2],
+    Res = [parse_post_for_key(SJK, SV, InvertedConf) || {SJK, SV} <- Params2],
 
     case [M || {error, M} <- Res] of
         [] ->
@@ -345,8 +345,8 @@ parse_post_data(Type, Keys, Data) ->
             {error, Errors}
     end.
 
-parse_post_for_key(StrJKey, StrVal, Conf) ->
-    case maps:find(StrJKey, Conf) of
+parse_post_for_key(StrJKey, StrVal, InvertedConf) ->
+    case maps:find(StrJKey, InvertedConf) of
         {ok, {key, CK, Parser}} ->
             case Parser(StrVal) of
                 {ok, V} -> {ok, {{key, CK}, V}};
@@ -368,7 +368,7 @@ parse_post_for_key(StrJKey, StrVal, Conf) ->
             {error, iolist_to_binary(M)}
     end.
 
-inverted_conf(Type) ->
+invert_conf(Conf) ->
     lists:foldr(
       fun ({CK, JK, _, Parser}, Acc) ->
               Acc#{[atom_to_list(JK)] => {key, CK, Parser}};
@@ -378,13 +378,14 @@ inverted_conf(Type) ->
                       StrJK = [atom_to_list(JK), atom_to_list(SubJK)],
                       Acc2#{StrJK => {sub, [CK, SubCK], Parser}}
                 end, Acc, List)
-      end, #{}, conf(Type)).
+      end, #{}, Conf).
 
-find_key_to_delete(_Type, []) ->
+find_key_to_delete(_Conf, []) ->
     {error, not_supported};
-find_key_to_delete(Type, PKeys) ->
-    Conf = maps:to_list(inverted_conf(Type)),
-    Values = [Value || {Keys, Value} <- Conf, lists:prefix(PKeys, Keys)],
+find_key_to_delete(Conf, PKeys) ->
+    InvertedConf = maps:to_list(invert_conf(Conf)),
+    Values = [Value || {Keys, Value} <- InvertedConf,
+                       lists:prefix(PKeys, Keys)],
     ToDelete = lists:map(
                  fun ({key, CKey, _}) -> [CKey];
                      ({sub, CKeys, _}) -> lists:sublist(CKeys, length(PKeys))
@@ -395,7 +396,7 @@ find_key_to_delete(Type, PKeys) ->
     end.
 
 handle_delete(Type, PKeys, Req) ->
-    case find_key_to_delete(Type, PKeys) of
+    case find_key_to_delete(conf(Type), PKeys) of
         {ok, [K]} ->
             ns_config:delete(K),
             AuditFun = audit_fun(Type),
@@ -816,8 +817,20 @@ build_kvs_test() ->
                            fun ({_, default}) -> false; (_) -> true end)),
     ok.
 
+test_conf() ->
+    [{ssl_minimum_protocol,tlsMinVersion,unused, get_tls_version(_, all)},
+     {cipher_suites,cipherSuites,unused, fun get_cipher_suites/1},
+     {honor_cipher_order,honorCipherOrder,unused, fun get_bool/1},
+     {{security_settings, kv}, data,
+      [{cipher_suites, cipherSuites, unused, fun get_cipher_suites/1},
+       {ssl_minimum_protocol, tlsMinVersion, unused, get_tls_version(_, kv)},
+       {honor_cipher_order, honorCipherOrder, unused, fun get_bool/1},
+       {supported_ciphers, supportedCipherSuites, unused, fun read_only/1}]}].
+
 parse_post_data_test() ->
-    ?assertEqual({ok, []}, parse_post_data(security, [], <<>>)),
+    Conf = test_conf(),
+
+    ?assertEqual({ok, []}, parse_post_data(Conf, [], <<>>)),
     ?assertEqual({ok, [{{key, ssl_minimum_protocol}, 'tlsv1.2'},
                        {{key, cipher_suites}, []},
                        {{key, honor_cipher_order}, true},
@@ -826,7 +839,7 @@ parse_post_data_test() ->
                        {{subkey, {security_settings, kv}, cipher_suites}, []},
                        {{subkey, {security_settings, kv}, honor_cipher_order},
                         false}]},
-                 parse_post_data(security, [],
+                 parse_post_data(Conf, [],
                                  <<"tlsMinVersion=tlsv1.2&"
                                    "cipherSuites=[]&"
                                    "honorCipherOrder=true&"
@@ -838,20 +851,20 @@ parse_post_data_test() ->
                        {{subkey, {security_settings, kv}, cipher_suites}, []},
                        {{subkey, {security_settings, kv}, honor_cipher_order},
                         true}]},
-                 parse_post_data(security, ["data"],
+                 parse_post_data(Conf, ["data"],
                                  <<"tlsMinVersion=tlsv1.3&"
                                    "cipherSuites=[]&"
                                    "honorCipherOrder=true">>)),
     ?assertEqual({ok, [{{subkey, {security_settings, kv}, ssl_minimum_protocol},
                         'tlsv1.3'}]},
-                 parse_post_data(security, ["data", "tlsMinVersion"],
+                 parse_post_data(Conf, ["data", "tlsMinVersion"],
                                  <<"tlsv1.3">>)),
     ?assertEqual({error, [<<"Unknown key unknown1">>,
                           <<"Unknown key unknown2.tlsMinVersion">>,
                           <<"data.cipherSuites - Invalid format. "
                             "Expecting a list of ciphers.">>,
                           <<"Unknown key data.unkwnown3">>]},
-                 parse_post_data(security, [],
+                 parse_post_data(Conf, [],
                                  <<"unknown1=tlsv1.2&"
                                    "cipherSuites=[]&"
                                    "unknown2.tlsMinVersion=tlsv1.3&"
@@ -860,29 +873,31 @@ parse_post_data_test() ->
     ?assertEqual({error, [<<"Unknown key data.unknown1">>,
                           <<"data.cipherSuites - Invalid format. "
                             "Expecting a list of ciphers.">>]},
-                 parse_post_data(security, ["data"],
+                 parse_post_data(Conf, ["data"],
                                  <<"unknown1=tlsv1.2&"
                                    "cipherSuites=[]&"
                                    "cipherSuites=bad">>)),
     ?assertEqual({error, [<<"data.cipherSuites - Invalid format. "
                             "Expecting a list of ciphers.">>]},
-                 parse_post_data(security, ["data", "cipherSuites"],
+                 parse_post_data(Conf, ["data", "cipherSuites"],
                                  <<"bad">>)),
     ?assertEqual({error, [<<"Unknown key data.unknown.cipherSuites">>]},
-                 parse_post_data(security, ["data", "unknown"],
+                 parse_post_data(Conf, ["data", "unknown"],
                                  <<"cipherSuites=bad">>)),
     ok.
 
 find_key_to_delete_test() ->
+    Conf = test_conf(),
+
     ?assertEqual({ok, [cipher_suites]},
-                 find_key_to_delete(security, ["cipherSuites"])),
+                 find_key_to_delete(Conf, ["cipherSuites"])),
     ?assertEqual({ok, [{security_settings, kv}, cipher_suites]},
-                 find_key_to_delete(security, ["data", "cipherSuites"])),
+                 find_key_to_delete(Conf, ["data", "cipherSuites"])),
     ?assertEqual({error, not_supported},
-                 find_key_to_delete(security, [])),
+                 find_key_to_delete(Conf, [])),
     ?assertEqual({error, not_found},
-                 find_key_to_delete(security, ["unknown"])),
+                 find_key_to_delete(Conf, ["unknown"])),
     ?assertEqual({error, not_found},
-                 find_key_to_delete(security, ["data", "unknown"])),
+                 find_key_to_delete(Conf, ["data", "unknown"])),
     ok.
 -endif.
