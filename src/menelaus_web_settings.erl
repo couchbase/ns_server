@@ -181,7 +181,7 @@ conf(security) ->
                     {fts, fullTextSearch},
                     {index, index},
                     {eventing, eventing},
-                    {n1ql, 'query'},
+                    {n1ql, query},
                     {cbas, analytics},
                     {ns_server, clusterManager}]];
 conf(internal) ->
