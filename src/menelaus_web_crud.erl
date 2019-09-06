@@ -321,7 +321,7 @@ attempt(DbName, DocId, Mod, Fun, Args, fast_forward) ->
         next_attempt ->
             Nodes = case ns_bucket:get_bucket(binary_to_list(DbName)) of
                         {ok, BC} ->
-                            ns_bucket:bucket_nodes(BC);
+                            ns_bucket:get_servers(BC);
                         not_present ->
                             []
                     end,

@@ -408,7 +408,7 @@ check_server_list(Bucket, BucketConfig) ->
     check_server_list(Bucket, BucketConfig, ns_config:latest()).
 
 check_server_list(Bucket, BucketConfig, FullConfig) ->
-    Servers = ns_bucket:bucket_nodes(BucketConfig),
+    Servers = ns_bucket:get_servers(BucketConfig),
     ActiveKVNodes = ns_cluster_membership:service_active_nodes(FullConfig, kv),
     do_check_server_list(Bucket, Servers, ActiveKVNodes).
 

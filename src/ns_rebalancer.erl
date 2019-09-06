@@ -701,7 +701,7 @@ sleep_for_sdk_clients(Type) ->
     timer:sleep(SecondsToWait * 1000).
 
 run_mover(Bucket, Config, KeepNodes, ProgressFun, Map, FastForwardMap) ->
-    Servers = ns_bucket:bucket_nodes(Config),
+    Servers = ns_bucket:get_servers(Config),
 
     %% At this point the server list must have already been updated to include
     %% all future nodes in addition to the old ones (some of which might be

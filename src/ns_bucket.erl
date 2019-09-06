@@ -25,7 +25,7 @@
 
 %% API
 -export([auth_type/1,
-         bucket_nodes/1,
+         get_servers/1,
          bucket_type/1,
          num_replicas_changed/1,
          create_bucket/3,
@@ -369,8 +369,8 @@ sasl_password(Bucket) ->
 moxi_port(Bucket) ->
     proplists:get_value(moxi_port, Bucket).
 
-bucket_nodes(Bucket) ->
-    proplists:get_value(servers, Bucket).
+get_servers(BucketConfig) ->
+    proplists:get_value(servers, BucketConfig).
 
 json_map_from_config(LocalAddr, BucketConfig) ->
     Config = ns_config:get(),
@@ -822,7 +822,7 @@ bucket_view_nodes(Bucket, Config) ->
 bucket_config_view_nodes(BucketConfig) ->
     case can_have_views(BucketConfig) of
         true ->
-            lists:sort(ns_bucket:bucket_nodes(BucketConfig));
+            lists:sort(get_servers(BucketConfig));
         false ->
             []
     end.

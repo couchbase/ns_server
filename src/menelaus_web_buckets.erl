@@ -436,7 +436,8 @@ handle_sasl_buckets_streaming(_PoolId, Req) ->
                                                  {ports,
                                                   {struct,
                                                    [{direct, DirectPort}]}}]}
-                                   end || N <- ns_bucket:bucket_nodes(BucketInfo)],
+                                   end ||
+                                      N <- ns_bucket:get_servers(BucketInfo)],
                               VBM = case ns_bucket:bucket_type(BucketInfo) of
                                         membase ->
                                             [{vBucketServerMap,

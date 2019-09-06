@@ -661,7 +661,7 @@ idle({delete_bucket, BucketName}, From, _State) ->
     Reply =
         case DeleteRV of
             {ok, BucketConfig} ->
-                Nodes = ns_bucket:bucket_nodes(BucketConfig),
+                Nodes = ns_bucket:get_servers(BucketConfig),
                 Pred = fun (Active) ->
                                not lists:member(BucketName, Active)
                        end,
@@ -1174,7 +1174,7 @@ perform_bucket_flushing_with_config(BucketName, BucketConfig) ->
     end.
 
 do_flush_bucket(BucketName, BucketConfig) ->
-    Nodes = ns_bucket:bucket_nodes(BucketConfig),
+    Nodes = ns_bucket:get_servers(BucketConfig),
     case ns_config_rep:ensure_config_seen_by_nodes(Nodes) of
         ok ->
             case janitor_agent:mass_prepare_flush(BucketName, Nodes) of
@@ -1216,7 +1216,7 @@ finalize_flush_bucket(BucketName, Nodes) ->
     end.
 
 do_flush_old_style(BucketName, BucketConfig) ->
-    Nodes = ns_bucket:bucket_nodes(BucketConfig),
+    Nodes = ns_bucket:get_servers(BucketConfig),
     {Results, BadNodes} =
         rpc:multicall(Nodes, ns_memcached, flush, [BucketName],
                       ?MULTICALL_DEFAULT_TIMEOUT),
