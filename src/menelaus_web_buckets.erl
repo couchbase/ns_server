@@ -127,7 +127,7 @@ build_bucket_node_infos(BucketName, BucketConfig, InfoLevel0, LocalAddr) ->
     {InfoLevel, Stability} = convert_info_level(InfoLevel0),
     %% Only list nodes this bucket is mapped to
     F = menelaus_web_node:build_nodes_info_fun(false, InfoLevel, Stability, LocalAddr),
-    Nodes = proplists:get_value(servers, BucketConfig, []),
+    Nodes = ns_bucket:get_servers(BucketConfig),
     %% NOTE: there's potential inconsistency here between BucketConfig
     %% and (potentially more up-to-date) vbuckets dict. Given that
     %% nodes list is mostly informational I find it ok.
@@ -546,7 +546,7 @@ init_bucket_validation_context(IsNew, BucketName, AllBuckets, ClusterStorageTota
         case lists:keyfind(BucketName, 1, AllBuckets) of
             false -> {false, ClusterStorageTotals};
             {_, V} ->
-                case proplists:get_value(servers, V, []) of
+                case ns_bucket:get_servers(V) of
                     [] ->
                         {V, ClusterStorageTotals};
                     Servers ->
@@ -1712,6 +1712,7 @@ basic_bucket_params_screening_test() ->
                    [{type, memcached},
                     {num_vbuckets, 16},
                     {num_replicas, 1},
+                    {servers, []},
                     {ram_quota, 76 * ?MIB},
                     {auth_type, none},
                     {moxi_port, 33333}]},
@@ -1719,6 +1720,7 @@ basic_bucket_params_screening_test() ->
                    [{type, membase},
                     {num_vbuckets, 16},
                     {num_replicas, 1},
+                    {servers, []},
                     {ram_quota, 512 * ?MIB},
                     {auth_type, sasl},
                     {sasl_password, ""}]},
@@ -1726,6 +1728,7 @@ basic_bucket_params_screening_test() ->
                    [{type, membase},
                     {num_vbuckets, 16},
                     {num_replicas, 1},
+                    {servers, []},
                     {ram_quota, 768 * ?MIB},
                     {auth_type, sasl},
                     {sasl_password, "asdasd"}]}],

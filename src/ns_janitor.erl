@@ -92,7 +92,7 @@ update_servers(Bucket, Servers) ->
 cleanup_with_membase_bucket_check_map(Bucket, Options, BucketConfig) ->
     case proplists:get_value(map, BucketConfig, []) of
         [] ->
-            Servers = proplists:get_value(servers, BucketConfig, []),
+            Servers = ns_bucket:get_servers(BucketConfig),
             true = (Servers =/= []),
 
             ?log_info("janitor decided to generate initial vbucket map"),
@@ -118,7 +118,7 @@ set_initial_map(Map, Opts, Bucket, BucketConfig) ->
     ok = ns_config_rep:ensure_config_seen_by_nodes().
 
 cleanup_with_membase_bucket_vbucket_map(Bucket, Options, BucketConfig) ->
-    Servers = proplists:get_value(servers, BucketConfig, []),
+    Servers = ns_bucket:get_servers(BucketConfig),
     true = (Servers =/= []),
     Timeout = proplists:get_value(query_states_timeout, Options),
     Opts = [{timeout, Timeout} || Timeout =/= undefined],

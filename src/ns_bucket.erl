@@ -153,7 +153,7 @@ live_bucket_nodes(Bucket) ->
     live_bucket_nodes_from_config(BucketConfig).
 
 live_bucket_nodes_from_config(BucketConfig) ->
-    Servers = proplists:get_value(servers, BucketConfig),
+    Servers = get_servers(BucketConfig),
     LiveNodes = [node()|nodes()],
     [Node || Node <- Servers, lists:member(Node, LiveNodes) ].
 
@@ -194,7 +194,7 @@ storage_mode(BucketConfig) ->
 ram_quota(Bucket) ->
     case proplists:get_value(ram_quota, Bucket) of
         X when is_integer(X) ->
-            X * length(proplists:get_value(servers, Bucket, []))
+            X * length(get_servers(Bucket))
     end.
 
 %% returns bucket ram quota for _single_ node. Each node will subtract
@@ -219,7 +219,7 @@ bucket_failover_safety(BucketConfig, ActiveNodes, LiveNodes) ->
         0 -> {?FS_OK, ok};
         _ ->
             MinLiveCopies = min_live_copies(LiveNodes, BucketConfig),
-            BucketNodes = proplists:get_value(servers, BucketConfig),
+            BucketNodes = get_servers(BucketConfig),
             BaseSafety =
                 if
                     MinLiveCopies =:= undefined -> % janitor run pending
@@ -388,7 +388,7 @@ equal_len_chains(Map) ->
 json_map_with_full_config(LocalAddr, BucketConfig, Config) ->
     NumReplicas = num_replicas(BucketConfig),
     EMap = equal_len_chains(proplists:get_value(map, BucketConfig, [])),
-    BucketNodes = proplists:get_value(servers, BucketConfig, []),
+    BucketNodes = get_servers(BucketConfig),
     ENodes = lists:delete(undefined, lists:usort(lists:append([BucketNodes |
                                                                 EMap]))),
     Servers = lists:map(
@@ -586,7 +586,7 @@ delete_bucket_returning_config(BucketName) ->
 
 filter_ready_buckets(BucketInfos) ->
     lists:filter(fun ({_Name, PList}) ->
-                         case proplists:get_value(servers, PList, []) of
+                         case get_servers(PList) of
                              [_|_] = List ->
                                  lists:member(node(), List);
                              _ -> false
@@ -702,7 +702,7 @@ name_conflict(BucketName) ->
 
 node_bucket_names(Node, BucketsConfigs) ->
     [B || {B, C} <- BucketsConfigs,
-          lists:member(Node, proplists:get_value(servers, C, []))].
+          lists:member(Node, get_servers(C))].
 
 node_bucket_names(Node) ->
     node_bucket_names(Node, get_buckets()).
@@ -716,7 +716,7 @@ node_bucket_names_of_type(Node, Type, Mode) ->
                                 undefined|couchstore|ephemeral, list()) -> list().
 node_bucket_names_of_type(Node, Type, Mode, BucketConfigs) ->
     [B || {B, C} <- BucketConfigs,
-          lists:member(Node, proplists:get_value(servers, C, [])),
+          lists:member(Node, get_servers(C)),
           bucket_type(C) =:= Type,
           storage_mode(C) =:= Mode].
 
@@ -778,7 +778,7 @@ num_replicas_changed(NumReplicas, Map) ->
     lists:any(?cut(ExpectedChainLength =/= length(_)), Map).
 
 needs_rebalance(BucketConfig, Nodes) ->
-    Servers = proplists:get_value(servers, BucketConfig, []),
+    Servers = get_servers(BucketConfig),
     case proplists:get_value(type, BucketConfig) of
         membase ->
             case Servers of

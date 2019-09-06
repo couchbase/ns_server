@@ -176,7 +176,7 @@ generate_initial_map(BucketConfig) ->
                             undefined),
     Map1 = lists:duplicate(proplists:get_value(num_vbuckets, BucketConfig),
                            Chain),
-    Servers = proplists:get_value(servers, BucketConfig),
+    Servers = ns_bucket:get_servers(BucketConfig),
     generate_vbucket_map(Map1, Servers, BucketConfig).
 
 local_buckets_shutdown_loop(Ref, CanWait) ->
@@ -305,8 +305,7 @@ move_vbuckets(Bucket, Moves) ->
                        end, list_to_tuple(Map), Moves),
     NewMap = tuple_to_list(TMap),
     ProgressFun = make_progress_fun(0, 1),
-    run_mover(Bucket, Config,
-              proplists:get_value(servers, Config),
+    run_mover(Bucket, Config, ns_bucket:get_servers(Config),
               ProgressFun, Map, NewMap).
 
 rebalance_services(KeepNodes, EjectNodes) ->
@@ -624,9 +623,11 @@ rebalance_membase_bucket(BucketName, BucketConfig, ProgressFun,
                          KeepKVNodes, EjectNodes, DeltaRecoveryBuckets) ->
     %% Only start one bucket at a time to avoid
     %% overloading things
-    ThisEjected = ordsets:intersection(lists:sort(proplists:get_value(servers, BucketConfig, [])),
-                                       lists:sort(EjectNodes)),
+    ThisEjected = ordsets:intersection(
+                    lists:sort(ns_bucket:get_servers(BucketConfig)),
+                    lists:sort(EjectNodes)),
     ThisLiveNodes = KeepKVNodes ++ ThisEjected,
+
     ns_bucket:set_servers(BucketName, ThisLiveNodes),
     ?rebalance_info("Waiting for bucket ~p to be ready on ~p", [BucketName, ThisLiveNodes]),
     case janitor_agent:check_bucket_ready(BucketName, ThisLiveNodes,
@@ -730,7 +731,7 @@ run_mover(Bucket, Config, KeepNodes, ProgressFun, Map, FastForwardMap) ->
     FastForwardMap.
 
 unbalanced(Map, BucketConfig) ->
-    Servers = proplists:get_value(servers, BucketConfig, []),
+    Servers = ns_bucket:get_servers(BucketConfig),
     NumServers = length(Servers),
 
     R = lists:any(
@@ -775,7 +776,7 @@ do_unbalanced(Map, Servers) ->
 map_options_changed(BucketConfig) ->
     Config = ns_config:get(),
 
-    Servers = proplists:get_value(servers, BucketConfig, []),
+    Servers = ns_bucket:get_servers(BucketConfig),
 
     Opts = generate_vbucket_map_options(Servers, BucketConfig, Config),
     OptsHash = proplists:get_value(map_opts_hash, BucketConfig),
@@ -1081,12 +1082,12 @@ build_transitional_bucket_config(BucketConfig, TargetMap,
     {map, CurrentMap} = lists:keyfind(map, 1, BucketConfig),
     TransitionalMap = build_transitional_map(CurrentMap, PresentVBuckets),
 
-    {servers, Servers} = lists:keyfind(servers, 1, BucketConfig),
-    NewServers = DeltaNodes ++ Servers,
+    NewServers = DeltaNodes ++ ns_bucket:get_servers(BucketConfig),
 
-    misc:update_proplist(BucketConfig, [{map, TransitionalMap},
-                                        {servers, NewServers},
-                                        {deltaRecoveryMap, {TargetMap, Options}}]).
+    misc:update_proplist(BucketConfig,
+                         [{map, TransitionalMap},
+                          {servers, NewServers},
+                          {deltaRecoveryMap, {TargetMap, Options}}]).
 
 build_transitional_map(CurrentMap, PresentVBuckets) ->
     VBucketDeltaNodes =
@@ -1207,7 +1208,7 @@ do_run_graceful_failover_moves(Nodes, BucketName, BucketConfig, I, N) ->
 
     ProgressFun = make_progress_fun(I, N),
     RV = run_mover(BucketName, BucketConfig,
-                   proplists:get_value(servers, BucketConfig),
+                   ns_bucket:get_servers(BucketConfig),
                    ProgressFun, Map, Map1),
     master_activity_events:note_bucket_rebalance_ended(BucketName),
     RV.
@@ -1226,7 +1227,7 @@ check_graceful_failover_possible_rec(_Nodes, []) ->
     true;
 check_graceful_failover_possible_rec(Nodes, [{_BucketName, BucketConfig} | RestBucketConfigs]) ->
     Map = proplists:get_value(map, BucketConfig, []),
-    Servers = proplists:get_value(servers, BucketConfig, []),
+    Servers = ns_bucket:get_servers(BucketConfig),
     case lists:any(lists:member(_, Servers), Nodes) of
         true ->
             Map1 = mb_map:promote_replicas_for_graceful_failover(Map, Nodes),

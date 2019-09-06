@@ -483,7 +483,7 @@ find_max_replica(Chain, NodeStates) ->
     end.
 
 remove_nodes_from_server_list(Nodes, Bucket, BucketConfig) ->
-    Servers = proplists:get_value(servers, BucketConfig),
+    Servers = ns_bucket:get_servers(BucketConfig),
     ns_bucket:set_servers(Bucket, Servers -- Nodes).
 
 node_vbuckets(Map, Node) ->

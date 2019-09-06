@@ -50,7 +50,7 @@ start_recovery(BucketConfig) ->
             V ->
                 V
         end,
-    Servers = proplists:get_value(servers, BucketConfig),
+    Servers = ns_bucket:get_servers(BucketConfig),
     true = (Servers =/= undefined),
 
     MissingVBuckets = compute_missing_vbuckets(OldMap),
