@@ -106,19 +106,16 @@ annotate_status(Status) ->
 %%    {Node2, [{monitor1, <node2_status>}, {monitor2, <node2_status>}, ...]},
 %%    ...]
 latest_status(NodesWanted) ->
-    AllMonitors = lists:foldl(
-                    fun (Monitor, Acc) ->
-                            Module = health_monitor:get_module(Monitor),
-                            [{Monitor, Module:get_nodes()} | Acc]
-                    end, [], health_monitor:local_monitors()),
-    lists:foldl(
-      fun (Node, Acc1) ->
-              Status = lists:foldl(
-                         fun ({Monitor, NodesDict}, MAcc) ->
-                                 [{Monitor, node_status(Node, NodesDict)} | MAcc]
-                         end, [], AllMonitors),
-              [{Node, Status} | Acc1]
-      end, [], NodesWanted).
+    AllMonitors = lists:map(fun (Monitor) ->
+                                    Module = health_monitor:get_module(Monitor),
+                                    {Monitor, Module:get_nodes()}
+                            end, health_monitor:local_monitors()),
+    lists:map(
+      fun (Node) ->
+              Status = [{Monitor, node_status(Node, NodesDict)} ||
+                           {Monitor, NodesDict} <- AllMonitors],
+              {Node, Status}
+      end, NodesWanted).
 
 node_status(Node, Dict) ->
     case dict:find(Node, Dict) of
