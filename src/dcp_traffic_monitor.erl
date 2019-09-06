@@ -122,18 +122,22 @@ delete_pid(Buckets, Bucket, Pid) ->
 monitor_process(Node, Bucket, Pid) ->
     MRef = erlang:monitor(process, Pid),
     ets:insert(mref2node, {MRef, {Node, Bucket}}).
+
 update_bucket(Node, Buckets, {Bucket, LastHeard, Pid}) ->
-    NewPids = case lists:keyfind(Bucket, 1, Buckets) of
-                  false ->
-                      monitor_process(Node, Bucket, Pid),
-                      [Pid];
-                  {Bucket, _, Pids} ->
-                      case lists:member(Pid, Pids) of
-                          false ->
-                              monitor_process(Node, Bucket, Pid),
-                              [Pid | Pids];
-                          true ->
-                              Pids
-                      end
-              end,
+    NewPids =
+        case lists:keyfind(Bucket, 1, Buckets) of
+            false ->
+                ?log_debug("Saw that bucket ~p became alive on node ~p",
+                           [Bucket, Node]),
+                monitor_process(Node, Bucket, Pid),
+                [Pid];
+            {Bucket, _, Pids} ->
+                case lists:member(Pid, Pids) of
+                    false ->
+                        monitor_process(Node, Bucket, Pid),
+                        [Pid | Pids];
+                    true ->
+                        Pids
+                end
+        end,
     lists:keystore(Bucket, 1, Buckets, {Bucket, LastHeard, NewPids}).
