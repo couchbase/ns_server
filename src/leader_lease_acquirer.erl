@@ -94,7 +94,8 @@ handle_cast(Msg, State) ->
     ?log_error("Received unexpected cast ~p when state is~n~p", [Msg, State]),
     {noreply, State}.
 
-handle_info({new_nodes, Nodes}, State) ->
+handle_info({new_nodes, Nodes0}, State) ->
+    Nodes = flush_new_nodes(Nodes0),
     {noreply, handle_new_nodes(Nodes, State)};
 handle_info({'DOWN', MRef, process, Pid, Reason}, State) ->
     {noreply, handle_down(MRef, Pid, Reason, State)};
@@ -161,7 +162,7 @@ handle_terminate(Reason, State) ->
     abolish_all_leases(State),
     ok.
 
-abolish_all_leases(#state{nodes = Nodes, uuid  = UUID}) ->
+abolish_all_leases(#state{nodes = Nodes, uuid = UUID}) ->
     leader_lease_agent:abolish_leases(sets:to_list(Nodes), node(), UUID).
 
 spawn_worker(Node, State) ->
@@ -194,7 +195,7 @@ shutdown_many_workers(Nodes, State) ->
                                    end, _)).
 
 shutdown_worker(Node, Pid) ->
-    misc:unlink_terminate_and_wait(Pid, shutdown),
+    misc:unlink_terminate_and_wait(Pid, kill),
     cleanup_after_worker(Node).
 
 cleanup_after_worker(Node) ->
@@ -207,4 +208,13 @@ take_worker(Pid, #state{workers = Workers} = State) ->
             {ok, NodeWorker, State#state{workers = RestWorkers}};
         false ->
             not_found
+    end.
+
+flush_new_nodes(Result) ->
+    receive
+        {new_nodes, Nodes} ->
+            flush_new_nodes(Nodes)
+    after
+        0 ->
+            Result
     end.

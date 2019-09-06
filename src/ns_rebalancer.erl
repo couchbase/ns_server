@@ -837,8 +837,6 @@ wait_for_mover(Pid) ->
             case Reason of
                 normal ->
                     ok;
-                {shutdown, stop} = Stop->
-                    exit(Stop);
                 _ ->
                     exit({mover_crashed, Reason})
             end;
@@ -851,13 +849,31 @@ wait_for_mover(Pid) ->
                                    timeout_diag_logger:log_diagnostics(slow_rebalance_stop)
                            end),
             try
-                exit(Pid, Stop),
-                wait_for_mover(Pid)
+                terminate_mover(Pid, Stop)
             after
                 diag_handler:disarm_timeout(TimeoutPid)
             end;
         {'EXIT', _Pid, Reason} ->
             exit(Reason)
+    end.
+
+terminate_mover(Pid, StopReason) ->
+    ?log_debug("Terminating mover ~p with reason ~p", [Pid, StopReason]),
+    exit(Pid, StopReason),
+
+    receive
+        {'EXIT', Pid, MoverReason} ->
+            ?log_debug("Mover ~p terminated with reason ~p",
+                       [Pid, MoverReason]),
+            %% No matter what the mover's termination reason was, we terminate
+            %% with the reason that was asked of us. This is to deal with the
+            %% cases when the mover just happens to terminate at around the
+            %% time we request its termination.
+            exit(StopReason);
+        {'EXIT', _OtherPid, OtherReason} = Exit ->
+            ?log_debug("Received an exit ~p while waiting for "
+                       "mover ~p to terminate.", [Exit, Pid]),
+            exit(OtherReason)
     end.
 
 maybe_cleanup_old_buckets(KeepNodes) ->
