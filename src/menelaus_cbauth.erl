@@ -159,8 +159,15 @@ personalize_info(Label, Info) ->
     SpecialUser = ns_config_auth:get_user(special) ++ Label,
     "htuabc-" ++ ReversedTrimmedLabel = lists:reverse(Label),
     MemcachedUser = [$@ | lists:reverse(ReversedTrimmedLabel)],
-    TLSConfig = proplists:get_value(Label,
-                                    proplists:get_value(tlsConfig, Info)),
+    TLSInfo = proplists:get_value(tlsConfig, Info),
+    TLSConfig = case proplists:get_value(Label, TLSInfo) of
+                    undefined ->
+                        %% Didn't find values for one of the known services
+                        %% so return "default" values.
+                        proplists:get_value("default-cbauth", TLSInfo);
+                    Other ->
+                        Other
+                end,
 
     Nodes = proplists:get_value(nodes, Info),
     NewNodes =
@@ -272,7 +279,8 @@ build_auth_info(#state{cert_version = CertVersion,
      {clusterEncryptionConfig, {[{encryptData, ClusterDataEncrypt},
                                  {disableNonSSLPorts, DisableNonSSLPorts}]}},
      {tlsConfig, [tls_config(S, Config) ||
-                  S <- [fts, index, eventing, n1ql, cbas, projector, goxdcr]]}].
+                  S <- [fts, index, eventing, n1ql, cbas, projector, goxdcr,
+                       default]]}].
 
 tls_config(Service, Config) ->
     Service2 = case Service of
