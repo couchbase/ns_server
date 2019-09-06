@@ -29,7 +29,7 @@
          handle_info/2, terminate/2, code_change/3]).
 -export([common_init/1, common_init/2,
          is_active/1,
-         process_nodes_wanted/2,
+         erase_unknown_nodes/2,
          local_monitors/0,
          node_monitors/1,
          supported_services/0,
@@ -92,9 +92,11 @@ handle_info(refresh, State) ->
     timer2:send_after(?REFRESH_INTERVAL, self(), refresh),
     RV;
 
-handle_info({nodes_wanted, NewNodes0}, #state{nodes = Statuses} = State) ->
-    {NewStatuses, NewNodes} = process_nodes_wanted(Statuses, NewNodes0),
-    {noreply, State#state{nodes = NewStatuses, nodes_wanted = NewNodes}};
+handle_info({nodes_wanted, NewNodes}, #state{nodes = Statuses} = State) ->
+    NewNodesSorted = lists:usort(NewNodes),
+    FilteredStatuses = erase_unknown_nodes(Statuses, NewNodesSorted),
+    {noreply, State#state{nodes = FilteredStatuses,
+                          nodes_wanted = NewNodesSorted}};
 
 handle_info(Info, State) ->
     handle_message(handle_info, Info, State).
@@ -125,15 +127,13 @@ is_active_check(Diff) when Diff =< ?INACTIVE_TIME ->
 is_active_check(_) ->
     inactive.
 
-process_nodes_wanted(Statuses, Nodes) ->
+erase_unknown_nodes(Statuses, Nodes) ->
     NewNodes = ordsets:from_list(Nodes),
     CurrentNodes = ordsets:from_list(dict:fetch_keys(Statuses)),
     ToRemove = ordsets:subtract(CurrentNodes, NewNodes),
-    NewStatuses = lists:foldl(
-                    fun (Node, Acc) ->
-                            dict:erase(Node, Acc)
-                    end, Statuses, ToRemove),
-    {NewStatuses, NewNodes}.
+    lists:foldl(fun (Node, Acc) ->
+                        dict:erase(Node, Acc)
+                end, Statuses, ToRemove).
 
 send_heartbeat(MonModule, SendNodes) ->
     send_heartbeat_inner(MonModule, SendNodes, {heartbeat, node()}).

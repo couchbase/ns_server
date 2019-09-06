@@ -213,7 +213,7 @@ handle_refresh_status(NodesWanted) ->
     %% monitors might get out-of-sync for short duration during the
     %% the nodes_wanted change. If the DCP traffic monitor returns
     %% a node unknown to the KV monitor then ignore it.
-    Statuses = erase_unknown_nodes(NodesDict, NodesWanted),
+    Statuses = health_monitor:erase_unknown_nodes(NodesDict, NodesWanted),
 
     maybe_add_local_node(Statuses).
 
@@ -225,10 +225,6 @@ get_dcp_traffic_status() ->
                         {Bucket, health_monitor:is_active(LastHeard)}
                 end, Buckets)
       end, dcp_traffic_monitor:get_nodes()).
-
-erase_unknown_nodes(NodesDict, Nodes) ->
-    {Statuses, _} = health_monitor:process_nodes_wanted(NodesDict, Nodes),
-    Statuses.
 
 maybe_add_local_node(Statuses) ->
     NewStatuses = check_for_ready_buckets(Statuses),
