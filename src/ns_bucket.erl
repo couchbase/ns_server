@@ -30,7 +30,6 @@
          num_replicas_changed/1,
          create_bucket/3,
          credentials/1,
-         delete_bucket/1,
          delete_bucket_returning_config/1,
          failover_warnings/0,
          get_bucket/1,
@@ -541,21 +540,6 @@ create_bucket(BucketType, BucketName, NewConfig) ->
             {error, {invalid_bucket_name, BucketName}}
     end.
 
--spec delete_bucket(bucket_name()) -> ok | {exit, {not_found, bucket_name()}, any()}.
-delete_bucket(BucketName) ->
-    RV = ns_config:update_sub_key(buckets, configs,
-                                  fun (List) ->
-                                          case lists:keyfind(BucketName, 1, List) of
-                                              false -> exit({not_found, BucketName});
-                                              Tuple ->
-                                                  lists:delete(Tuple, List)
-                                          end
-                                  end),
-    case RV of
-        ok -> ok;
-        {exit, {not_found, _}, _} -> ok
-    end,
-    RV.
 
 -spec delete_bucket_returning_config(bucket_name()) ->
                                             {ok, BucketConfig :: list()} |
