@@ -128,10 +128,10 @@
 
       function getChartSize(size) {
         switch (size) {
-        case "small": return 170;
-        case "medium": return 170;
-        case "large": return 330;
-        case "extra": return 450;
+        case "small": return 150;
+        case "medium": return 150;
+        case "large": return 310;
+        case "extra": return 430;
         default: return 150;
         }
       }
@@ -140,7 +140,7 @@
         options = {
           chart: {
             type: 'multiChart',
-            margin : {top: 32, right: 40, bottom: 20, left: 40},
+            margin : {top: 10, right: 40, bottom: 20, left: 40},
             height: getChartSize($scope.config.size),
             legendLeftAxisHint: " (left axis)",
             legendRightAxisHint: " (right axis)",
