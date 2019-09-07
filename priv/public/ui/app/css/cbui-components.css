@@ -2568,6 +2568,15 @@ mn-statistics-chart {
 .statistics-extra-large {
   height: 485px;
 }
+.statistics-not-available {
+  font-weight: 400;
+  font-size: .75rem;
+  color: #cc2a2e !important;
+  text-align: center;
+  width: 100%;
+  position: absolute;
+  top: 45%;
+}
 .chart-overlay .dialog {
   width: 100%;
   margin: 0 2rem;

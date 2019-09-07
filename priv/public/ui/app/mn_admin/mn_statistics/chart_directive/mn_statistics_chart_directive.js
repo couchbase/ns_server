@@ -29,6 +29,10 @@
     };
 
     function controller($scope, $element) {
+      if (!$scope.config) {
+        return;
+      }
+
       var units;
       var options;
       var isFocusChart = $scope.nvd3Options && $scope.nvd3Options.type === 'lineWithFocusChart';

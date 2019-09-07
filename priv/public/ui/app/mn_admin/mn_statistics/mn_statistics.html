@@ -170,7 +170,7 @@
       <div
          ng-repeat="chartID in mnStatsGroupsCtl.group.charts track by ($index + chartID)"
          ng-controller="mnStatisticsChartsController as mnStatsChartsCtl"
-         ng-class="'statistics-' + mnStatsChartsCtl.chart.size"
+         ng-class="'statistics-' + (mnStatsChartsCtl.chart.size || 'small')"
          class="panel relative">
         <div class="chart-controls"
              title="show/hide chart controls"
@@ -181,6 +181,7 @@
              ng-click="mnStatsChartsCtl.deleteChart()"
              ng-show="mnStatsChartsCtl.showChartControls"></span>
           <span
+             ng-if="mnStatsChartsCtl.chart"
              title="edit chart"
              class="icon fa-edit"
              ng-click="mnStatsChartsCtl.editChart(mnStatsGroupsCtl.group,
@@ -191,9 +192,12 @@
              ng-model="mnStatsChartsCtl.showChartControls"
              ng-click="mnStatsChartsCtl.showChartControls = !mnStatsChartsCtl.showChartControls"></span>
         </div>
+        <div ng-if="!mnStatsChartsCtl.chart" class="statistics-not-available">
+          Chart not available
+        </div>
         <mn-statistics-chart
            ng-click="mnStatsChartsCtl.openDetailedChartDialog()"
-           ng-if="!mnStatsChartsCtl.reloadChartDirective"
+           ng-if="mnStatsChartsCtl.chart && !mnStatsChartsCtl.reloadChartDirective"
            sync-scope="statisticsNewCtl.mnStatisticsNewScope"
            nvd3-options="{showLegend: false}"
            bucket="{{statisticsNewCtl.bucket}}"
