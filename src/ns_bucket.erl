@@ -592,23 +592,14 @@ update_bucket_props(Type, StorageMode, BucketName, Props) ->
     end.
 
 update_bucket_props(BucketName, Props) ->
-    ns_config:update_sub_key(
-      buckets, configs,
-      fun (List) ->
-              RV = misc:key_update(
-                     BucketName, List,
-                     fun (OldProps) ->
-                             NewProps = lists:foldl(
-                                          fun ({K, _V} = Tuple, Acc) ->
-                                                  [Tuple | lists:keydelete(K, 1, Acc)]
-                                          end, OldProps, Props),
-                             cleanup_bucket_props(NewProps)
-                     end),
-              case RV of
-                  false -> exit({not_found, BucketName});
-                  _ -> ok
-              end,
-              RV
+    update_bucket_config(
+      BucketName,
+      fun (OldProps) ->
+              NewProps = lists:foldl(
+                           fun ({K, _V} = Tuple, Acc) ->
+                                   [Tuple | lists:keydelete(K, 1, Acc)]
+                           end, OldProps, Props),
+              cleanup_bucket_props(NewProps)
       end).
 
 set_fast_forward_map(Bucket, Map) ->
