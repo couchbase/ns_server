@@ -184,12 +184,12 @@ do_update_with_manifest(Bucket, Manifest, Operation) ->
     {ok, convert_uid_to_memcached(Uid)}.
 
 update_manifest(Bucket, Manifest) ->
-    ns_bucket:update_bucket_config(
-      Bucket,
-      fun (OldConfig) ->
-              lists:keystore(collections_manifest, 1, OldConfig,
-                             {collections_manifest, Manifest})
-      end).
+    ok = ns_bucket:update_bucket_config(
+           Bucket,
+           fun (OldConfig) ->
+                   lists:keystore(collections_manifest, 1, OldConfig,
+                                  {collections_manifest, Manifest})
+           end).
 
 bump_ids(Manifest, Oper) ->
     do_bump_ids(Manifest, [next_uid | needed_ids(Oper)]).

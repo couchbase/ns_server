@@ -612,14 +612,14 @@ update_bucket_props(BucketName, Props) ->
       end).
 
 set_fast_forward_map(Bucket, Map) ->
-    update_bucket_config(
-      Bucket,
-      fun (OldConfig) ->
-              OldMap = proplists:get_value(fastForwardMap, OldConfig, []),
-              master_activity_events:note_set_ff_map(Bucket, Map, OldMap),
-              lists:keystore(fastForwardMap, 1, OldConfig,
-                             {fastForwardMap, Map})
-      end).
+    ok = update_bucket_config(
+           Bucket,
+           fun (OldConfig) ->
+                   OldMap = proplists:get_value(fastForwardMap, OldConfig, []),
+                   master_activity_events:note_set_ff_map(Bucket, Map, OldMap),
+                   lists:keystore(fastForwardMap, 1, OldConfig,
+                                  {fastForwardMap, Map})
+           end).
 
 
 set_map(Bucket, Map) ->
@@ -631,40 +631,38 @@ set_map(Bucket, Map) ->
             %% pre-madhatter.
             true = cluster_compat_mode:is_cluster_madhatter()
     end,
-    update_bucket_config(
-      Bucket,
-      fun (OldConfig) ->
-              OldMap = proplists:get_value(map, OldConfig, []),
-              master_activity_events:note_set_map(Bucket, Map, OldMap),
-              lists:keystore(map, 1, OldConfig, {map, Map})
-      end).
+    ok = update_bucket_config(
+           Bucket,
+           fun (OldConfig) ->
+                   OldMap = proplists:get_value(map, OldConfig, []),
+                   master_activity_events:note_set_map(Bucket, Map, OldMap),
+                   lists:keystore(map, 1, OldConfig, {map, Map})
+           end).
 
 set_map_opts(Bucket, Opts) ->
     OptsHash = erlang:phash2(Opts),
-    update_bucket_config(
-      Bucket,
-      fun (OldConfig) ->
-              lists:keystore(map_opts_hash, 1, OldConfig, {map_opts_hash, OptsHash})
-      end).
+    ok = update_bucket_config(
+           Bucket,
+           fun (OldConfig) ->
+                   lists:keystore(map_opts_hash, 1, OldConfig, {map_opts_hash, OptsHash})
+           end).
 
 set_servers(Bucket, Servers) ->
-    update_bucket_config(
-      Bucket,
-      fun (OldConfig) ->
-              lists:keystore(servers, 1, OldConfig, {servers, Servers})
-      end).
+    ok = update_bucket_config(
+           Bucket,
+           fun (OldConfig) ->
+                   lists:keystore(servers, 1, OldConfig, {servers, Servers})
+           end).
 
 % Update the bucket config atomically.
-update_bucket_config(Bucket, Fun) ->
-    ok = ns_config:update_key(
-           buckets,
-           fun (List) ->
-                   Buckets = proplists:get_value(configs, List, []),
-                   OldConfig = proplists:get_value(Bucket, Buckets),
-                   NewConfig = Fun(OldConfig),
-                   NewBuckets = lists:keyreplace(Bucket, 1, Buckets, {Bucket, NewConfig}),
-                   lists:keyreplace(configs, 1, List, {configs, NewBuckets})
-           end).
+update_bucket_config(BucketName, Fun) ->
+    ns_config:update_sub_key(
+      buckets, configs,
+      fun (Buckets) ->
+              RV = misc:key_update(BucketName, Buckets, Fun),
+              RV =/= false orelse exit({not_found, BucketName}),
+              RV
+      end).
 
 is_persistent(BucketName) ->
     {ok, BucketConfig} = get_bucket(BucketName),
