@@ -1703,16 +1703,25 @@ do_safe_split(N, [H|T], Acc) ->
 run_external_tool(Path, Args) ->
     run_external_tool(Path, Args, []).
 
--spec run_external_tool(string(), [string()], [{string(), string()}]) -> {non_neg_integer(), binary()}.
+-spec run_external_tool(string(), [string()], [{string(), string()}]) ->
+                               {non_neg_integer(), binary()}.
 run_external_tool(Path, Args, Env) ->
+    run_external_tool(Path, Args, Env, []).
+
+-spec run_external_tool(string(), [string()],
+                        [{string(), string()}], [graceful_shutdown]) ->
+                               {non_neg_integer(), binary()}.
+run_external_tool(Path, Args, Env, Opts) ->
     executing_on_new_process(
       fun () ->
-              {ok, Port} = goport:start_link(Path,
-                                             [stderr_to_stdout, binary,
-                                              stream, exit_status,
-                                              {args, Args},
-                                              {env, Env},
-                                              {name, false}]),
+              GracefulShutdown = proplists:get_bool(graceful_shutdown, Opts),
+              GoportOpts = [stderr_to_stdout, binary,
+                            stream, exit_status,
+                            {args, Args},
+                            {env, Env},
+                            {name, false},
+                            {graceful_shutdown, GracefulShutdown}],
+              {ok, Port} = goport:start_link(Path, GoportOpts),
               goport:deliver(Port),
               collect_external_tool_output(Port, [])
       end).
