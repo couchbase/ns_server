@@ -2089,7 +2089,7 @@ membase_dcp_queues_stats_description() ->
     [{struct,
       [{blockName,<<"DCP Queues">>},
        {extraCSSClasses,<<"dynamic_closed">>},
-       {columns, [<<"Replication">>, <<"XDCR">>, <<"Views/Indexes">>, <<"Analytics">>, <<"Other">>]},
+       {columns, [<<"Replication">>, <<"XDCR">>, <<"Views/Indexes">>, <<"Analytics">>, <<"Eventing">>]},
        {stats,
         [{struct, [{title, <<"DCP connections">>},
                    {name, <<"ep_dcp_replica_count">>},
@@ -2108,6 +2108,9 @@ membase_dcp_queues_stats_description() ->
                    {desc, <<"Number of internal analytics DCP connections in this bucket "
                             "(measured from ep_dcp_cbas_count)">>}]},
          {struct, [{title, <<"DCP connections">>},
+                   {name, <<"ep_dcp_eventing_count">>},
+                   {desc, <<"Number of eventing DCP connections in this bucket (measured from ep_dcp_eventing_count)">>}]},
+         {struct, [{title, <<"DCP connections">>},
                    {name, <<"ep_dcp_other_count">>},
                    {desc, <<"Number of other DCP connections in this bucket (measured from ep_dcp_other_count)">>}]},
          {struct, [{title, <<"DCP senders">>},
@@ -2123,6 +2126,9 @@ membase_dcp_queues_stats_description() ->
          {struct, [{title, <<"DCP senders">>},
                    {name, <<"ep_dcp_cbas_producer_count">>},
                    {desc, <<"Number of analytics senders for this bucket (measured from ep_dcp_cbas_producer_count)">>}]},
+         {struct, [{title, <<"DCP senders">>},
+                   {name, <<"ep_dcp_eventing_producer_count">>},
+                   {desc, <<"Number of eventing senders for this bucket (measured from ep_dcp_eventing_producer_count)">>}]},
          {struct, [{title, <<"DCP senders">>},
                    {name, <<"ep_dcp_other_producer_count">>},
                    {desc, <<"Number of other senders for this bucket (measured from ep_dcp_other_producer_count)">>}]},
@@ -2144,6 +2150,10 @@ membase_dcp_queues_stats_description() ->
                    {desc, <<"Number of items remaining to be sent to consumer in this bucket "
                             "(measured from ep_dcp_cbas_items_remaining)">>}]},
          {struct, [{title, <<"items remaining">>},
+                   {name, <<"ep_dcp_eventing_items_remaining">>},
+                   {desc, <<"Number of items remaining to be sent to consumer in this bucket "
+                            "(measured from ep_dcp_eventing_items_remaining)">>}]},
+         {struct, [{title, <<"items remaining">>},
                    {name, <<"ep_dcp_other_items_remaining">>},
                    {desc, <<"Number of items remaining to be sent to consumer in this bucket "
                             "(measured from ep_dcp_other_items_remaining)">>}]},
@@ -2163,6 +2173,10 @@ membase_dcp_queues_stats_description() ->
                    {name, <<"ep_dcp_cbas_items_sent">>},
                    {desc, <<"Number of items per second being sent for a producer for this bucket "
                              "(measured from ep_dcp_cbas_items_sent)">>}]},
+         {struct, [{title, <<"drain rate items/sec">>},
+                   {name, <<"ep_dcp_eventing_items_sent">>},
+                   {desc, <<"Number of items per second being sent for a producer for this bucket "
+                            "(measured from ep_dcp_eventing_items_sent)">>}]},
          {struct, [{title, <<"drain rate items/sec">>},
                    {name, <<"ep_dcp_other_items_sent">>},
                    {desc, <<"Number of items per second being sent for a producer for this bucket "
@@ -2185,6 +2199,10 @@ membase_dcp_queues_stats_description() ->
                    {desc, <<"Number of bytes per second being sent for analytics DCP connections for "
                             "this bucket (measured from ep_dcp_cbas_total_bytes)">>}]},
          {struct, [{title, <<"drain rate bytes/sec">>},
+                   {name, <<"ep_dcp_eventing_total_bytes">>},
+                   {desc, <<"Number of bytes per second being sent for eventing DCP connections for "
+                            "this bucket (measured from ep_dcp_eventing_total_bytes)">>}]},
+         {struct, [{title, <<"drain rate bytes/sec">>},
                    {name, <<"ep_dcp_other_total_bytes">>},
                    {desc, <<"Number of bytes per second being sent for other DCP connections for "
                             "this bucket (measured from ep_dcp_other_total_bytes)">>}]},
@@ -2203,8 +2221,13 @@ membase_dcp_queues_stats_description() ->
                    {desc, <<"Number of backoffs for analytics DCP connections "
                             "(measured from ep_dcp_cbas_backoff)">>}]},
          {struct, [{title, <<"backoffs/sec">>},
+                   {name, <<"ep_dcp_eventing_backoff">>},
+                   {desc, <<"Number of backoffs for eventing DCP connections "
+                            "(measured from ep_dcp_eventing_backoff)">>}]},
+         {struct, [{title, <<"backoffs/sec">>},
                    {name, <<"ep_dcp_other_backoff">>},
-                   {desc, <<"Number of backoffs for other DCP connections">>}]}
+                   {desc, <<"Number of backoffs for other DCP connections "
+                            "(measured from ep_dcp_other_backoff)">>}]}
         ]}]}].
 
 membase_incoming_xdcr_operations_stats_description() ->

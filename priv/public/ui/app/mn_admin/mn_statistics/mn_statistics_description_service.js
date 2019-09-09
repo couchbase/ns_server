@@ -20,7 +20,7 @@
         "Disk Queues":
         ["ep_diskqueue_fill","ep_diskqueue_drain","ep_diskqueue_items","vb_active_queue_fill","vb_active_queue_drain","vb_active_queue_size","vb_replica_queue_fill","vb_replica_queue_drain","vb_replica_queue_size","vb_pending_queue_fill","vb_pending_queue_drain","vb_pending_queue_size"],
         "DCP Queues":
-        ["ep_dcp_views+indexes_count","ep_dcp_views+indexes_producer_count","ep_dcp_views+indexes_items_remaining","ep_dcp_views+indexes_total_bytes","ep_dcp_views+indexes_backoff","ep_dcp_cbas_count","ep_dcp_cbas_producer_count","ep_dcp_cbas_items_remaining","ep_dcp_cbas_total_bytes","ep_dcp_cbas_backoff","ep_dcp_replica_count","ep_dcp_replica_producer_count","ep_dcp_replica_items_remaining","ep_dcp_replica_total_bytes","ep_dcp_replica_backoff","ep_dcp_xdcr_count","ep_dcp_xdcr_producer_count","ep_dcp_xdcr_items_remaining","ep_dcp_xdcr_total_bytes","ep_dcp_xdcr_backoff","ep_dcp_other_count","ep_dcp_other_producer_count","ep_dcp_other_items_remaining","ep_dcp_other_total_bytes","ep_dcp_other_backoff"]
+        ["ep_dcp_views+indexes_count","ep_dcp_views+indexes_producer_count","ep_dcp_views+indexes_items_remaining","ep_dcp_views+indexes_total_bytes","ep_dcp_views+indexes_backoff","ep_dcp_cbas_count","ep_dcp_cbas_producer_count","ep_dcp_cbas_items_remaining","ep_dcp_cbas_total_bytes","ep_dcp_cbas_backoff","ep_dcp_replica_count","ep_dcp_replica_producer_count","ep_dcp_replica_items_remaining","ep_dcp_replica_total_bytes","ep_dcp_replica_backoff","ep_dcp_xdcr_count","ep_dcp_xdcr_producer_count","ep_dcp_xdcr_items_remaining","ep_dcp_xdcr_total_bytes","ep_dcp_xdcr_backoff","ep_dcp_eventing_count","ep_dcp_eventing_producer_count","ep_dcp_eventing_items_remaining","ep_dcp_eventing_total_bytes","ep_dcp_eventing_backoff"]
       },
 
       "stats": {
@@ -386,6 +386,37 @@
           "ep_dcp_fts_producer_count": null,
           "ep_dcp_fts_total_backlog_size": null,
           "ep_dcp_fts_total_bytes": null,
+          "ep_dcp_eventing_backoff": {
+            unit: "number/sec",
+            title: "DCP Eventing Backoffs",
+            desc: "Number of backoffs per second for eventing DCP connections (measured from ep_dcp_eventing_backoff)"
+          },
+          "ep_dcp_eventing_count": {
+            unit: "number",
+            title: "DCP Eventing Connections",
+            desc: "Number of internal eventing DCP connections in this bucket (measured from ep_dcp_eventing_count)"
+          },
+          "ep_dcp_eventing_items_remaining": {
+            unit: "number",
+            title: "DCP Eventing Items Remaining",
+            desc: "Number of items remaining to be sent to consumer in this bucket (measured from ep_dcp_eventing_items_remaining)"
+          },
+          "ep_dcp_eventing_items_sent": {
+            unit: "number/sec",
+            title: "DCP Eventing Items Sent",
+            desc: "Number of items per second being sent for a producer for this bucket (measured from ep_dcp_eventing_items_sent)"
+          },
+          "ep_dcp_eventing_producer_count": {
+            unit: "number",
+            title: "DCP Eventing Senders",
+            desc: "Number of eventing senders for this bucket (measured from ep_dcp_eventing_producer_count)"
+          },
+          "ep_dcp_eventing_total_backlog_size": null,
+          "ep_dcp_eventing_total_bytes": {
+            unit: "bytes/sec",
+            title: "DCP Eventing Drain Rate",
+            desc:"Number of bytes per second being sent for eventing DCP connections for this bucket (measured from ep_dcp_eventing_total_bytes)"
+          },
           "ep_dcp_other_backoff": {
             unit: "number/sec",
             title: "DCP Other Backoffs",
