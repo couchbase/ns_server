@@ -1,5 +1,5 @@
 // @author Couchbase <info@couchbase.com>
-// @copyright 2018 Couchbase, Inc.
+// @copyright 2018-2019 Couchbase, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -287,22 +287,19 @@ func (w *ProcessWorker) loop() {
 		case <-w.Follower().Cancel():
 			w.err = ErrCanceled
 			return
-		default:
-			select {
-			case data, ok := <-w.getStream(StreamStdout):
-				w.handleRead(StreamStdout, data, ok)
-			case data, ok := <-w.getStream(StreamStderr):
-				w.handleRead(StreamStderr, data, ok)
-			case err := <-w.getChildDone():
-				if err != nil {
-					w.err = err
-					return
-				}
+		case data, ok := <-w.getStream(StreamStdout):
+			w.handleRead(StreamStdout, data, ok)
+		case data, ok := <-w.getStream(StreamStderr):
+			w.handleRead(StreamStderr, data, ok)
+		case err := <-w.getChildDone():
+			if err != nil {
+				w.err = err
+				return
+			}
 
-				ok := w.handleProcessExit()
-				if ok {
-					return
-				}
+			ok := w.handleProcessExit()
+			if ok {
+				return
 			}
 		}
 	}
