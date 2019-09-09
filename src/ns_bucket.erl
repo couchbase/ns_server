@@ -64,7 +64,7 @@
          raw_ram_quota/1,
          sasl_password/1,
          set_bucket_config/2,
-         update_bucket_config/2,
+         set_property/3,
          set_fast_forward_map/2,
          set_map/2,
          set_map_opts/2,
@@ -602,16 +602,20 @@ update_bucket_props(BucketName, Props) ->
               cleanup_bucket_props(NewProps)
       end).
 
-set_fast_forward_map(Bucket, Map) ->
+set_property(Bucket, Key, Value, Default, Fun) ->
     ok = update_bucket_config(
            Bucket,
            fun (OldConfig) ->
-                   OldMap = proplists:get_value(fastForwardMap, OldConfig, []),
-                   master_activity_events:note_set_ff_map(Bucket, Map, OldMap),
-                   lists:keystore(fastForwardMap, 1, OldConfig,
-                                  {fastForwardMap, Map})
+                   Fun(proplists:get_value(Key, OldConfig, Default)),
+                   lists:keystore(Key, 1, OldConfig, {Key, Value})
            end).
 
+set_property(Bucket, Key, Value) ->
+    ok = update_bucket_config(Bucket, lists:keystore(Key, 1, _, {Key, Value})).
+
+set_fast_forward_map(Bucket, Map) ->
+    set_property(Bucket, fastForwardMap, Map, [],
+                 master_activity_events:note_set_ff_map(Bucket, Map, _)).
 
 set_map(Bucket, Map) ->
     case mb_map:is_valid(Map) of
@@ -622,28 +626,14 @@ set_map(Bucket, Map) ->
             %% pre-madhatter.
             true = cluster_compat_mode:is_cluster_madhatter()
     end,
-    ok = update_bucket_config(
-           Bucket,
-           fun (OldConfig) ->
-                   OldMap = proplists:get_value(map, OldConfig, []),
-                   master_activity_events:note_set_map(Bucket, Map, OldMap),
-                   lists:keystore(map, 1, OldConfig, {map, Map})
-           end).
+    set_property(Bucket, map, Map, [],
+                 master_activity_events:note_set_map(Bucket, Map, _)).
 
 set_map_opts(Bucket, Opts) ->
-    OptsHash = erlang:phash2(Opts),
-    ok = update_bucket_config(
-           Bucket,
-           fun (OldConfig) ->
-                   lists:keystore(map_opts_hash, 1, OldConfig, {map_opts_hash, OptsHash})
-           end).
+    set_property(Bucket, map_opts_hash, erlang:phash2(Opts)).
 
 set_servers(Bucket, Servers) ->
-    ok = update_bucket_config(
-           Bucket,
-           fun (OldConfig) ->
-                   lists:keystore(servers, 1, OldConfig, {servers, Servers})
-           end).
+    set_property(Bucket, servers, Servers).
 
 % Update the bucket config atomically.
 update_bucket_config(BucketName, Fun) ->
