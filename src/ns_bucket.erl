@@ -540,22 +540,22 @@ create_bucket(BucketType, BucketName, NewConfig) ->
             {error, {invalid_bucket_name, BucketName}}
     end.
 
-
 -spec delete_bucket(bucket_name()) ->
                            {ok, BucketConfig :: list()} |
                            {exit, {not_found, bucket_name()}, any()}.
 delete_bucket(BucketName) ->
     Ref = make_ref(),
     Process = self(),
-    RV = ns_config:update_sub_key(buckets, configs,
-                                  fun (List) ->
-                                          case lists:keyfind(BucketName, 1, List) of
-                                              false -> exit({not_found, BucketName});
-                                              {_, BucketConfig} = Tuple ->
-                                                  Process ! {Ref, BucketConfig},
-                                                  lists:delete(Tuple, List)
-                                          end
-                                  end),
+    RV = ns_config:update_sub_key(
+           buckets, configs,
+           fun (List) ->
+                   case lists:keyfind(BucketName, 1, List) of
+                       false -> exit({not_found, BucketName});
+                       {_, BucketConfig} = Tuple ->
+                           Process ! {Ref, BucketConfig},
+                           lists:delete(Tuple, List)
+                   end
+           end),
     case RV of
         ok ->
             receive
