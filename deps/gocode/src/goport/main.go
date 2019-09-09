@@ -1,5 +1,5 @@
 // @author Couchbase <info@couchbase.com>
-// @copyright 2015-2018 Couchbase, Inc.
+// @copyright 2015-2019 Couchbase, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,8 +37,9 @@ type portSpec struct {
 	cmd  string
 	args []string
 
-	windowSize  int
-	interactive bool
+	windowSize       int
+	interactive      bool
+	gracefulShutdown bool
 }
 
 type processState int
@@ -269,7 +270,7 @@ func (p *port) handleOpNoProcess() <-chan error {
 func (p *port) handleShutdown() <-chan error {
 	ch := make(chan error, 1)
 
-	err := p.child.Kill()
+	err := p.shutdown()
 	if err != nil {
 		ch <- err
 		return ch
@@ -280,6 +281,26 @@ func (p *port) handleShutdown() <-chan error {
 	// Note that the channel is empty. The operation is responded to once
 	// we see the child terminate.
 	return ch
+}
+
+func (p *port) shutdown() error {
+	var err error
+	if p.childSpec.gracefulShutdown {
+		err = p.childWorker.Close()
+
+		// The error can be ErrClosed when the user closed stdin
+		// before calling shutdown and we still haven't received an
+		// event indicating that the process has died. Assuming the
+		// supervised process behaves correctly, it will eventually
+		// die. So we can ignore this error for purposes of shutdown.
+		if err == ErrClosed {
+			err = nil
+		}
+	} else {
+		err = p.child.Kill()
+	}
+
+	return err
 }
 
 func (p *port) handleWrite(data []byte) <-chan error {
@@ -370,7 +391,7 @@ func (p *port) loop() error {
 	if err != nil {
 		return fmt.Errorf("failed to start child: %s", err.Error())
 	}
-	defer p.child.Kill()
+	defer p.shutdown()
 
 	p.startWorkers()
 	defer p.terminateWorkers()
@@ -510,10 +531,13 @@ func main() {
 	var args []string
 
 	var interactive bool
+	var gracefulShutdown bool
 
 	flag.IntVar(&windowSize, "window-size", 64*1024, "window size")
 	flag.BoolVar(&interactive, "interactive", false,
 		"run in interactive mode")
+	flag.BoolVar(&gracefulShutdown, "graceful-shutdown", false,
+		"terminate supervised gracefully by closing its stdin")
 	flag.Var((*cmdFlag)(&cmd), "cmd", "command to execute")
 	flag.Var((*argsFlag)(&args), "args", "command arguments")
 	flag.Parse()
@@ -531,10 +555,11 @@ func main() {
 	log.SetPrefix(fmt.Sprintf("[goport(%s)] ", cmd))
 
 	port := newPort(portSpec{
-		cmd:         cmd,
-		args:        args,
-		windowSize:  windowSize,
-		interactive: interactive,
+		cmd:              cmd,
+		args:             args,
+		windowSize:       windowSize,
+		interactive:      interactive,
+		gracefulShutdown: gracefulShutdown,
 	})
 
 	err := port.loop()
