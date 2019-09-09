@@ -117,7 +117,6 @@ func (p *port) initLoopState() {
 
 	p.state.pendingOp = ""
 	p.state.pendingOpChan = nil
-
 }
 
 func (p *port) getOpsChan() <-chan *Op {
