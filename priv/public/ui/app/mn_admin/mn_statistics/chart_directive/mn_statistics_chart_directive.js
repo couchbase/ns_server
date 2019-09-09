@@ -332,7 +332,8 @@
             var name = (maybeItem || "") + splitted[splitted.length - 1];
 
             var desc = mnStatisticsNewService.readByPath(descPath);
-            var timestamps = stats.data.samples[Object.keys(stats.data.samples)[0]].timestamps;
+            var firstStat = stats.data.samples[Object.keys(stats.data.samples)[0]];
+            var timestamps = firstStat ? firstStat.timestamps : [];
             chartData.push({
               type: 'line',
               unit: desc.unit,
