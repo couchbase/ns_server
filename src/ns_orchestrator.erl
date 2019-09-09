@@ -648,19 +648,13 @@ idle({flush_bucket, BucketName}, From, _State) ->
     {keep_state_and_data, [{reply, From, RV}]};
 idle({delete_bucket, BucketName}, From, _State) ->
     menelaus_users:cleanup_bucket_roles(BucketName),
-    DeleteRV = ns_bucket:delete_bucket_returning_config(BucketName),
-
-    case DeleteRV of
-        {ok, _} ->
-            master_activity_events:note_bucket_deletion(BucketName),
-            ns_janitor_server:delete_bucket_request(BucketName);
-        _ ->
-            ok
-    end,
 
     Reply =
-        case DeleteRV of
+        case ns_bucket:delete_bucket(BucketName) of
             {ok, BucketConfig} ->
+                master_activity_events:note_bucket_deletion(BucketName),
+                ns_janitor_server:delete_bucket_request(BucketName),
+
                 Nodes = ns_bucket:get_servers(BucketConfig),
                 Pred = fun (Active) ->
                                not lists:member(BucketName, Active)
@@ -682,8 +676,8 @@ idle({delete_bucket, BucketName}, From, _State) ->
                     _ ->
                         {shutdown_failed, LeftoverNodes}
                 end;
-            _ ->
-                DeleteRV
+            Other ->
+                Other
         end,
 
     {keep_state_and_data, [{reply, From, Reply}]};

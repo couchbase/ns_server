@@ -30,7 +30,7 @@
          num_replicas_changed/1,
          create_bucket/3,
          credentials/1,
-         delete_bucket_returning_config/1,
+         delete_bucket/1,
          failover_warnings/0,
          get_bucket/1,
          get_bucket/2,
@@ -541,10 +541,10 @@ create_bucket(BucketType, BucketName, NewConfig) ->
     end.
 
 
--spec delete_bucket_returning_config(bucket_name()) ->
-                                            {ok, BucketConfig :: list()} |
-                                            {exit, {not_found, bucket_name()}, any()}.
-delete_bucket_returning_config(BucketName) ->
+-spec delete_bucket(bucket_name()) ->
+                           {ok, BucketConfig :: list()} |
+                           {exit, {not_found, bucket_name()}, any()}.
+delete_bucket(BucketName) ->
     Ref = make_ref(),
     Process = self(),
     RV = ns_config:update_sub_key(buckets, configs,
