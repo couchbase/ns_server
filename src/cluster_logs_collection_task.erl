@@ -308,7 +308,7 @@ start_collection_per_node(TimestampS, Parent, Options) ->
                       Value -> ["--tmp-dir=" ++ Value]
                   end,
 
-    Args0 = MaybeSingleNode ++ MaybeLogRedaction ++
+    Args0 = ["--watch-stdin"] ++ MaybeSingleNode ++ MaybeLogRedaction ++
         MaybeTmpDir ++ ["--initargs=" ++ InitargsFilename, Filename],
 
     ExtraArgs = ns_config:search_node_with_default(cbcollect_info_extra_args, []),
@@ -320,8 +320,9 @@ start_collection_per_node(TimestampS, Parent, Options) ->
                "  Args: ~p~n"
                "  Env: ~p", [Args -- MaybeLogRedaction, Env]),
     {Status, Output} =
-        misc:run_external_tool(path_config:component_path(bin, "cbcollect_info"),
-                               Args, Env),
+        misc:run_external_tool(
+          path_config:component_path(bin, "cbcollect_info"),
+          Args, Env, [graceful_shutdown]),
     case Status of
         0 ->
             ?log_debug("Done"),
@@ -340,11 +341,13 @@ start_upload_per_node(Path, BaseURL, Parent, Options) ->
                            V -> ["--upload-proxy=" ++ V]
                        end,
 
-    Args = MaybeUploadProxy ++ ["--just-upload-into=" ++ URL, Path],
+    Args = MaybeUploadProxy ++
+        ["--watch-stdin", "--just-upload-into=" ++ URL, Path],
     ?log_debug("Spawning upload cbcollect_info: ~p", [Args]),
     {Status, Output} =
-        misc:run_external_tool(path_config:component_path(bin, "cbcollect_info"),
-                               Args),
+        misc:run_external_tool(
+          path_config:component_path(bin, "cbcollect_info"),
+          Args, [], [graceful_shutdown]),
     case Status of
         0 ->
             ?log_debug("uploaded ~s to ~s successfully. Deleting it", [Path, URL]),
