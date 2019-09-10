@@ -268,7 +268,6 @@ call(Call) ->
     gen_server:call(?SERVER, Call).
 
 cast(Cast) ->
-    misc:wait_for_global_name(?MODULE),
     gen_server:cast(?SERVER, Cast).
 
 schedule_retry(Type, Id, RetryCount, AfterS) ->
