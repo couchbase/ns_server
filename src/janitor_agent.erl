@@ -1213,7 +1213,12 @@ stop_replications(Bucket, all) ->
 stop_replications(Bucket, VBs) ->
     replication_manager:teardown_replications(Bucket, VBs).
 
-handle_apply_new_config(NewBucketConfig,
+handle_apply_new_config(NewBucketConfig, State) ->
+    check_for_node_rename(apply_new_config,
+                          NewBucketConfig, State,
+                          fun handle_apply_new_config/3).
+
+handle_apply_new_config(Node, NewBucketConfig,
                         #state{bucket_name = BucketName} = State) ->
     {ok, VBDetails} = get_state_and_topology(BucketName),
     Map = proplists:get_value(map, NewBucketConfig),
@@ -1223,7 +1228,7 @@ handle_apply_new_config(NewBucketConfig,
             fun (Chain, {VBucket, ToSet, ToDelete, PrevWanted}) ->
                     WantedState =
                         case [Pos || {Pos, N} <- misc:enumerate(Chain, 0),
-                                     N =:= node()] of
+                                     N =:= Node] of
                             [0] ->
                                 active;
                             [_] ->
@@ -1273,7 +1278,7 @@ handle_apply_new_config(NewBucketConfig,
     %% vbuckets) we must stop replications into those vbuckets
     WantedReplicas = [{Src, VBucket}
                       || {Src, Dst, VBucket} <- ns_bucket:map_to_replicas(Map),
-                         Dst =:= node()],
+                         Dst =:= Node],
     WantedReplications =
         [{Src, [VB || {_, VB} <- Pairs]}
          || {Src, Pairs} <- misc:keygroup(1, lists:sort(WantedReplicas))],
@@ -1297,17 +1302,63 @@ handle_apply_new_config(NewBucketConfig,
 
     {reply, ok, pass_vbucket_states_to_set_view_manager(State2)}.
 
-handle_apply_new_config_replicas_phase(NewBucketConfig,
+handle_apply_new_config_replicas_phase(NewBucketConfig, State) ->
+    check_for_node_rename(apply_new_config_replicas_phase,
+                          NewBucketConfig, State,
+                          fun handle_apply_new_config_replicas_phase/3).
+
+handle_apply_new_config_replicas_phase(Node, NewBucketConfig,
                                        #state{bucket_name =
                                                   BucketName} = State) ->
     Map = proplists:get_value(map, NewBucketConfig),
     true = (Map =/= undefined),
     WantedReplicas = [{Src, VBucket}
                       || {Src, Dst, VBucket} <- ns_bucket:map_to_replicas(Map),
-                         Dst =:= node()],
+                         Dst =:= Node],
     WantedReplications =
         [{Src, [VB || {_, VB} <- Pairs]}
          || {Src, Pairs} <- misc:keygroup(1, lists:sort(WantedReplicas))],
     ok = replication_manager:set_incoming_replication_map(
            BucketName, WantedReplications),
     {reply, ok, State}.
+
+%% It's possible that we got renamed in between when ns_janitor grabbed the
+%% bucket config and when the call made it to janitor_agent. Properly
+%% preventing this from happening proved hard: we'd want to stop almost all
+%% processes, but that has nasty side-effects visible to end user. So instead
+%% we're detecting the node rename by looking into the incoming bucket
+%% config. If we don't find our node in the server list, that must be due to a
+%% rename. So we'll refuse to handle such a call.
+%%
+%% The rename might also happen after our check succeeded. But the handler is
+%% given a node name that is consistent with the bucket config. So as long as
+%% the handlers use the passed node name, everything should be fine.
+%%
+%% See https://issues.couchbase.com/browse/MB-34598 for more details.
+check_for_node_rename(Call, BucketConfig, State, Body) ->
+    Node = node(),
+    Servers = ns_bucket:get_servers(BucketConfig),
+    case lists:member(Node, Servers) of
+        true ->
+            RV = Body(Node, BucketConfig, State),
+
+            NewNode = node(),
+            case NewNode =:= Node of
+                true ->
+                    ok;
+                false ->
+                    ?log_info("Node name changed while handling ~p.~n"
+                              "Old name: ~p.~n"
+                              "New name: ~p.~n"
+                              "Bucket config:~n~p~n"
+                              "Result:~n~p",
+                              [Call, Node, NewNode, BucketConfig, RV])
+            end,
+
+            RV;
+        false ->
+            ?log_info("Detected node rename when handling ~p. "
+                      "Our name: ~p. Bucket server list: ~p",
+                      [Call, Node, Servers]),
+            {reply, {node_rename_detected, Node, Servers}, State}
+    end.
