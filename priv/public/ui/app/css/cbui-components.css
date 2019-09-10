@@ -2534,6 +2534,12 @@ mn-statistics-chart {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.tiny .chart-title {
+  text-align: center;
+  font-weight: 400;
+  font-size: .65rem;
+  width: 100%;
+}
 .statistics-small {
   width: calc(25% - .5rem);
   padding: .25rem;

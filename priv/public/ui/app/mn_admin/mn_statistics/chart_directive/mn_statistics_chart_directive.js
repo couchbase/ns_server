@@ -133,6 +133,7 @@
 
       function getChartSize(size) {
         switch (size) {
+        case "tiny": return 50;
         case "small": return 150;
         case "medium": return 150;
         case "large": return 310;
