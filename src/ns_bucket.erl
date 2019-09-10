@@ -212,7 +212,7 @@ raw_ram_quota(Bucket) ->
 -define(FS_OK, 0).
 
 bucket_failover_safety(BucketConfig, ActiveNodes, LiveNodes) ->
-    ReplicaNum = ns_bucket:num_replicas(BucketConfig),
+    ReplicaNum = num_replicas(BucketConfig),
     case ReplicaNum of
         %% if replica count for bucket is 0 we cannot failover at all
         0 -> {?FS_OK, ok};
@@ -761,7 +761,7 @@ needs_rebalance(BucketConfig, Nodes) ->
     end.
 
 is_compatible_past_map(Nodes, BucketConfig, Map) ->
-    History = ns_bucket:past_vbucket_maps(),
+    History = past_vbucket_maps(),
     MapOpts = ns_rebalancer:generate_vbucket_map_options(Nodes, BucketConfig),
     Matching = mb_map:find_matching_past_maps(Nodes, Map,
                                               MapOpts, History, [trivial]),
@@ -775,7 +775,7 @@ bucket_view_nodes(Bucket) ->
     bucket_view_nodes(Bucket, ns_config:latest()).
 
 bucket_view_nodes(Bucket, Config) ->
-    case ns_bucket:get_bucket(Bucket, Config) of
+    case get_bucket(Bucket, Config) of
         {ok, BucketConfig} ->
             bucket_config_view_nodes(BucketConfig);
         not_present ->
