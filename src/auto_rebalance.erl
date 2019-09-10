@@ -28,7 +28,6 @@
 %% API
 -export([start_link/0]).
 -export([retry_rebalance/4,
-         cancel_any_pending_retry/1,
          cancel_any_pending_retry_async/1,
          cancel_pending_retry/2,
          cancel_pending_retry_async/2,
@@ -68,9 +67,6 @@ retry_rebalance(Type, Params, RebalanceId, Chk) ->
                         RebalanceId]),
             false
     end.
-
-cancel_any_pending_retry(CancelledBy) ->
-    call({cancel_any_pending_retry, CancelledBy}).
 
 cancel_any_pending_retry_async(CancelledBy) ->
     cast({cancel_any_pending_retry, CancelledBy}).

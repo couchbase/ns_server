@@ -778,7 +778,6 @@ handle_start_graceful_failover(Req) ->
 
 handle_rebalance(Req) ->
     Params = mochiweb_request:parse_post(Req),
-    auto_rebalance:cancel_any_pending_retry("manual rebalance"),
     case string:tokens(proplists:get_value("knownNodes", Params, ""),",") of
         [] ->
             reply_json(Req, {struct, [{empty_known_nodes, 1}]}, 400);
