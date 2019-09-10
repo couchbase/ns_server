@@ -51,8 +51,7 @@ get_retry_max(Config) ->
     proplists:get_value(max_attempts, get_retry_rebalance(Config)).
 
 is_retry_enabled() ->
-    %% TODO: Replcae with ns_config:latest() once MB-32881 is fixed.
-    is_retry_enabled(ns_config:get()).
+    is_retry_enabled(ns_config:latest()).
 
 is_retry_enabled(Config) ->
     proplists:get_value(enabled, get_retry_rebalance(Config), false).
