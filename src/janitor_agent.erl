@@ -705,89 +705,8 @@ do_handle_call({apply_new_config,
     %% called on pre MadHatter clusters only
     [] = IgnoredVBuckets,
     do_handle_call({apply_new_config, NewBucketConfig}, From, State);
-do_handle_call({apply_new_config, NewBucketConfig}, _From,
-               #state{bucket_name = BucketName} = State) ->
-    {ok, VBDetails} = get_state_and_topology(BucketName),
-    Map = proplists:get_value(map, NewBucketConfig),
-    true = (Map =/= undefined),
-    {_, ToSet, ToDelete, NewWantedRev}
-        = lists:foldl(
-            fun (Chain, {VBucket, ToSet, ToDelete, PrevWanted}) ->
-                    WantedState =
-                        case [Pos || {Pos, N} <- misc:enumerate(Chain, 0),
-                                     N =:= node()] of
-                            [0] ->
-                                active;
-                            [_] ->
-                                replica;
-                            [] ->
-                                missing
-                        end,
-                    {ActualState, ActualTopology} =
-                        case dict:find(VBucket, VBDetails) of
-                            {ok, Val} ->
-                                StateVal = proplists:get_value(state, Val),
-                                %% Always expect "state" to be present.
-                                false = StateVal =:= undefined,
-                                {StateVal, proplists:get_value(topology, Val)};
-                            _ ->
-                                {missing, undefined}
-                        end,
-                    NewWanted = [WantedState | PrevWanted],
-                    case WantedState =:= ActualState andalso
-                         is_topology_same(WantedState, Chain, ActualTopology) of
-                        true ->
-                            {VBucket + 1, ToSet, ToDelete, NewWanted};
-                        false ->
-                            case WantedState of
-                                missing ->
-                                    {VBucket + 1, ToSet, [VBucket | ToDelete],
-                                     NewWanted};
-                                active ->
-                                    {VBucket + 1,
-                                     [{VBucket, WantedState, [Chain]} | ToSet],
-                                     ToDelete, NewWanted};
-                                _ ->
-                                    {VBucket + 1,
-                                     [{VBucket, WantedState,
-                                       undefined} | ToSet],
-                                     ToDelete, NewWanted}
-                            end
-                    end
-            end, {0, [], [], []}, Map),
-
-    NewWanted = lists:reverse(NewWantedRev),
-    NewRebalance = [undefined || _ <- NewWantedRev],
-    State2 = State#state{last_applied_vbucket_states = NewWanted,
-                         rebalance_only_vbucket_states = NewRebalance},
-
-    %% before changing vbucket states (i.e. activating or killing
-    %% vbuckets) we must stop replications into those vbuckets
-    WantedReplicas = [{Src, VBucket}
-                      || {Src, Dst, VBucket} <- ns_bucket:map_to_replicas(Map),
-                         Dst =:= node()],
-    WantedReplications =
-        [{Src, [VB || {_, VB} <- Pairs]}
-         || {Src, Pairs} <- misc:keygroup(1, lists:sort(WantedReplicas))],
-    ok = replication_manager:remove_undesired_replications(
-           BucketName, WantedReplications),
-
-    SetTopology = cluster_compat_mode:is_cluster_madhatter(),
-    %% then we're ok to change vbucket states
-    [begin
-         case SetTopology of
-             true ->
-                 ns_memcached:set_vbucket(BucketName, VBucket, StateToSet,
-                                          Topology);
-             false ->
-                 ns_memcached:set_vbucket(BucketName, VBucket, StateToSet)
-         end
-     end || {VBucket, StateToSet, Topology} <- ToSet],
-
-    %% and ok to delete vbuckets we want to delete
-    [ns_memcached:delete_vbucket(BucketName, VBucket) || VBucket <- ToDelete],
-
-    {reply, ok, pass_vbucket_states_to_set_view_manager(State2)};
+do_handle_call({apply_new_config, NewBucketConfig}, _From, State) ->
+    handle_apply_new_config(NewBucketConfig, State);
 do_handle_call({apply_new_config_replicas_phase,
                 NewBucketConfig, IgnoredVBuckets}, From, State) ->
     %% called on pre MadHatter clusters only
@@ -795,18 +714,8 @@ do_handle_call({apply_new_config_replicas_phase,
     do_handle_call({apply_new_config_replicas_phase, NewBucketConfig},
                    From, State);
 do_handle_call({apply_new_config_replicas_phase, NewBucketConfig},
-               _From, #state{bucket_name = BucketName} = State) ->
-    Map = proplists:get_value(map, NewBucketConfig),
-    true = (Map =/= undefined),
-    WantedReplicas = [{Src, VBucket}
-                      || {Src, Dst, VBucket} <- ns_bucket:map_to_replicas(Map),
-                                        Dst =:= node()],
-    WantedReplications =
-        [{Src, [VB || {_, VB} <- Pairs]}
-         || {Src, Pairs} <- misc:keygroup(1, lists:sort(WantedReplicas))],
-    ok = replication_manager:set_incoming_replication_map(
-           BucketName, WantedReplications),
-    {reply, ok, State};
+               _From, State) ->
+    handle_apply_new_config_replicas_phase(NewBucketConfig, State);
 do_handle_call({wait_index_updated, VBucket}, From,
                #state{bucket_name = Bucket} = State) ->
     State2 = spawn_rebalance_subprocess(
@@ -1303,3 +1212,102 @@ stop_replications(Bucket, all) ->
     replication_manager:set_incoming_replication_map(Bucket, []);
 stop_replications(Bucket, VBs) ->
     replication_manager:teardown_replications(Bucket, VBs).
+
+handle_apply_new_config(NewBucketConfig,
+                        #state{bucket_name = BucketName} = State) ->
+    {ok, VBDetails} = get_state_and_topology(BucketName),
+    Map = proplists:get_value(map, NewBucketConfig),
+    true = (Map =/= undefined),
+    {_, ToSet, ToDelete, NewWantedRev}
+        = lists:foldl(
+            fun (Chain, {VBucket, ToSet, ToDelete, PrevWanted}) ->
+                    WantedState =
+                        case [Pos || {Pos, N} <- misc:enumerate(Chain, 0),
+                                     N =:= node()] of
+                            [0] ->
+                                active;
+                            [_] ->
+                                replica;
+                            [] ->
+                                missing
+                        end,
+                    {ActualState, ActualTopology} =
+                        case dict:find(VBucket, VBDetails) of
+                            {ok, Val} ->
+                                StateVal = proplists:get_value(state, Val),
+                                %% Always expect "state" to be present.
+                                false = StateVal =:= undefined,
+                                {StateVal, proplists:get_value(topology, Val)};
+                            _ ->
+                                {missing, undefined}
+                        end,
+                    NewWanted = [WantedState | PrevWanted],
+                    case WantedState =:= ActualState andalso
+                        is_topology_same(WantedState, Chain, ActualTopology) of
+                        true ->
+                            {VBucket + 1, ToSet, ToDelete, NewWanted};
+                        false ->
+                            case WantedState of
+                                missing ->
+                                    {VBucket + 1, ToSet, [VBucket | ToDelete],
+                                     NewWanted};
+                                active ->
+                                    {VBucket + 1,
+                                     [{VBucket, WantedState, [Chain]} | ToSet],
+                                     ToDelete, NewWanted};
+                                _ ->
+                                    {VBucket + 1,
+                                     [{VBucket, WantedState,
+                                       undefined} | ToSet],
+                                     ToDelete, NewWanted}
+                            end
+                    end
+            end, {0, [], [], []}, Map),
+
+    NewWanted = lists:reverse(NewWantedRev),
+    NewRebalance = [undefined || _ <- NewWantedRev],
+    State2 = State#state{last_applied_vbucket_states = NewWanted,
+                         rebalance_only_vbucket_states = NewRebalance},
+
+    %% before changing vbucket states (i.e. activating or killing
+    %% vbuckets) we must stop replications into those vbuckets
+    WantedReplicas = [{Src, VBucket}
+                      || {Src, Dst, VBucket} <- ns_bucket:map_to_replicas(Map),
+                         Dst =:= node()],
+    WantedReplications =
+        [{Src, [VB || {_, VB} <- Pairs]}
+         || {Src, Pairs} <- misc:keygroup(1, lists:sort(WantedReplicas))],
+    ok = replication_manager:remove_undesired_replications(
+           BucketName, WantedReplications),
+
+    SetTopology = cluster_compat_mode:is_cluster_madhatter(),
+    %% then we're ok to change vbucket states
+    [begin
+         case SetTopology of
+             true ->
+                 ns_memcached:set_vbucket(BucketName, VBucket, StateToSet,
+                                          Topology);
+             false ->
+                 ns_memcached:set_vbucket(BucketName, VBucket, StateToSet)
+         end
+     end || {VBucket, StateToSet, Topology} <- ToSet],
+
+    %% and ok to delete vbuckets we want to delete
+    [ns_memcached:delete_vbucket(BucketName, VBucket) || VBucket <- ToDelete],
+
+    {reply, ok, pass_vbucket_states_to_set_view_manager(State2)}.
+
+handle_apply_new_config_replicas_phase(NewBucketConfig,
+                                       #state{bucket_name =
+                                                  BucketName} = State) ->
+    Map = proplists:get_value(map, NewBucketConfig),
+    true = (Map =/= undefined),
+    WantedReplicas = [{Src, VBucket}
+                      || {Src, Dst, VBucket} <- ns_bucket:map_to_replicas(Map),
+                         Dst =:= node()],
+    WantedReplications =
+        [{Src, [VB || {_, VB} <- Pairs]}
+         || {Src, Pairs} <- misc:keygroup(1, lists:sort(WantedReplicas))],
+    ok = replication_manager:set_incoming_replication_map(
+           BucketName, WantedReplications),
+    {reply, ok, State}.
