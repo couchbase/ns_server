@@ -459,8 +459,8 @@ color: #333;
   font-size: 1.5rem;
   color: #a6b2bf;
   position: absolute;
-  top: -66px;
-  left: 1.5rem;
+  top: -72px;
+  left: 1rem;
 }
 /* CBUI FLEXBOX TABLES -------------------------------------------------  */
 .cbui-table {
@@ -2575,7 +2575,7 @@ mn-statistics-chart {
   cursor: pointer;
 }
 .statistics-extra-large {
-  height: 485px;
+  height: 444px;
 }
 .statistics-not-available {
   font-weight: 400;
