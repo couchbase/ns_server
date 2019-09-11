@@ -17,6 +17,7 @@
 
 -behaviour(gen_server).
 
+-include("cut.hrl").
 -include("ns_common.hrl").
 -include("ns_config.hrl").
 -include("service_api.hrl").
@@ -107,6 +108,54 @@ wait_for_agents_loop(Service, Nodes, Acc, Timeout) ->
     end.
 
 set_rebalancer(Service, Nodes, Rebalancer) ->
+    case cluster_compat_mode:is_cluster_madhatter() of
+        true ->
+            call_set_rebalancer(Service, Nodes, Rebalancer);
+        false ->
+            %% Pre-madhatter nodes expect the rebalancer to be unset before
+            %% set_rebalancer will succeed. But in order for service rebalance
+            %% to be more responsive to stop requests in the presence of
+            %% wedged services (see MB-32790) we stopped trying to
+            %% synchronously unset the rebalancer when service_rebalancer
+            %% terminates. Normally, service_agents on other nodes will fairly
+            %% quickly realize that the rebalance was stopped. But just to
+            %% give it some extra time, we'll retry a couple of times if we
+            %% see 'nack' responses.
+            set_rebalancer_pre_madhatter(Service, Nodes, Rebalancer)
+    end.
+
+set_rebalancer_pre_madhatter(Service, Nodes, Rebalancer) ->
+    SleepTime = ?get_param({set_rebalancer, sleep}, 200),
+    NumRetries = ?get_param({set_rebalancer, retries}, 5),
+    set_rebalancer_pre_madhatter_loop(Service, Nodes,
+                                      Rebalancer, SleepTime, NumRetries).
+
+set_rebalancer_pre_madhatter_loop(Service, Nodes,
+                                  Rebalancer, SleepTime, NumRetries) ->
+    case call_set_rebalancer(Service, Nodes, Rebalancer) of
+        ok ->
+            ok;
+        {error, {bad_nodes, _, _, Bad}} = Error ->
+            {BadNodes, BadResults} = lists:unzip(Bad),
+            NonNacks = lists:filter(_ =/= nack, BadResults),
+            case NonNacks =:= [] andalso NumRetries > 1 of
+                true ->
+                    ?log_info("Received nacks when setting "
+                              "rebalancer pid for service ~p.~n"
+                              "Nodes: ~p~n"
+                              "Bad nodes: ~p~n"
+                              "Number of retries left: ~p",
+                              [Service, Nodes, BadNodes, NumRetries]),
+                    timer:sleep(SleepTime),
+                    set_rebalancer_pre_madhatter_loop(Service, BadNodes,
+                                                      Rebalancer, SleepTime,
+                                                      NumRetries - 1);
+                false ->
+                    Error
+            end
+    end.
+
+call_set_rebalancer(Service, Nodes, Rebalancer) ->
     Result = multi_call(Nodes, Service,
                         {set_rebalancer, Rebalancer}, ?OUTER_TIMEOUT),
     handle_multicall_result(Service, set_rebalancer, Result, fun just_ok/1).
@@ -163,16 +212,19 @@ handle_call(get_status, _From, #state{service = Service,
 handle_call(get_agent, _From, State) ->
     {reply, {ok, self()}, State};
 handle_call({set_rebalancer, Pid} = Call, _From,
-            #state{rebalancer = Rebalancer} = State) ->
-    case Rebalancer of
-        undefined ->
-            {reply, ok, handle_set_rebalancer(Pid, State)};
-        _ ->
-            ?log_error("Got set_rebalance call ~p when "
-                       "rebalance is already running. Rebalancer: ~p",
-                       [Call, Rebalancer]),
-            {reply, nack, State}
-    end;
+            #state{rebalancer = Rebalancer} = State0) ->
+    State =
+        case Rebalancer of
+            undefined ->
+                State0;
+            _ ->
+                ?log_info("Got set_rebalance call ~p when "
+                          "rebalance is already running. Old rebalancer: ~p. "
+                          "Going to abort the old rebalance.",
+                          [Call, Rebalancer]),
+                handle_unset_rebalancer(State0)
+        end,
+    {reply, ok, handle_set_rebalancer(Pid, State)};
 handle_call({if_rebalance, Pid, Call} = FullCall, From,
             #state{rebalancer = Rebalancer} = State) ->
     case Pid =:= Rebalancer of
