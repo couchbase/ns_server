@@ -37,7 +37,7 @@
       }).result.then(function () {
         mnStatisticsNewService.deleteChart($scope.chartID);
         mnUserRolesService.saveDashboard();
-        $scope.$emit("chartUpdated");
+        $scope.mnStatsGroupsCtl.maybeShowItemsControls();
       });
     }
 
@@ -52,11 +52,11 @@
           scenario: mnHelper.wrapInFunction(scenario),
         }
       }).result.then(function () {
-        $scope.$emit("chartUpdated");
         mnUserRolesService.saveDashboard();
         vm.reloadChartDirective = true;
         $timeout(function () {
           vm.reloadChartDirective = false;
+          $scope.mnStatsGroupsCtl.maybeShowItemsControls();
         });
       });
     }
@@ -85,13 +85,13 @@
     vm.onGroupDelete = onGroupDelete;
     vm.deleteGroup = deleteGroup;
     vm.onItemChange = onItemChange;
+    vm.maybeShowItemsControls = maybeShowItemsControls;
 
     vm.items = {};
     vm.enabledItems = {};
     vm.group = mnStoreService.store("groups").get($scope.groupID);
 
-    $scope.$on("chartUpdated", activate);
-    activate();
+    maybeShowItemsControls();
 
     function onItemChange() {
       vm.reloadChartDirective = true;
@@ -100,15 +100,17 @@
       });
     }
 
-    function activate() {
+    function maybeShowItemsControls() {
+      var items = {};
       vm.group.charts.forEach(function (chartID) {
         var chartStats = Object.keys(mnStoreService.store("charts").get(chartID).stats);
         chartStats.forEach(function (statPath) {
           if (statPath.includes("@items")) {
-            vm.enabledItems[statPath.split(".")[0]] = true;
+            items[statPath.split(".")[0]] = true;
           }
-        })
+        });
       });
+      vm.enabledItems = items;
     }
 
     function deleteGroup(groupID) {
@@ -187,7 +189,7 @@
       });
     }
 
-    function openChartBuilderDialog(group, scenario) {
+    function openChartBuilderDialog(group, scenario, groupCtl) {
       $uibModal.open({
         templateUrl: 'app/mn_admin/mn_statistics/chart_builder/mn_statistics_chart_builder.html',
         controller: 'mnStatisticsNewChartBuilderController as builderCtl',
@@ -198,7 +200,7 @@
         }
       }).result.then(function () {
         mnUserRolesService.saveDashboard();
-        $scope.$broadcast("chartUpdated");
+        groupCtl.maybeShowItemsControls();
       });
     }
 
