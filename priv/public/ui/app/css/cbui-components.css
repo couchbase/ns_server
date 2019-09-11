@@ -2534,10 +2534,13 @@ mn-statistics-chart {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.tiny .chart-title {
+.footer-querymonitor .statistics-tiny {
+  width: 34%;
+}
+.statistics-tiny .chart-title {
   text-align: center;
   font-weight: 400;
-  font-size: .65rem;
+  font-size: inherit;
   width: 100%;
 }
 .statistics-small {
@@ -2983,7 +2986,7 @@ footer .column:last-child,
 .column:last-child,
 footer .column:last-child,
 .footer-column:last-child {
-  margin-right: 0;
+  margin-right: .25rem;
 }
 footer .column.vertical-divider,
 .footer-column.vertical-divider {
@@ -2993,8 +2996,11 @@ footer .column.narrow {
   flex: 0 1 0;
 }
 footer .column.wide {
-  flex: 0 0 auto;
+  flex: 1 0 auto;
   max-width: inherit;
+}
+footer .column.wide.max-width-50 {
+  max-width: 50%;
 }
 footer .column span {
   display: inline-block;

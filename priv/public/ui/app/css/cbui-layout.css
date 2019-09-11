@@ -72,7 +72,7 @@ footer {
   align-items: center;
   color: #555;
   font-size: .75rem;
-  padding: .5rem 0;
+  padding: .5rem 1rem;
   width: 100%;
   background-color: #fff;
   position: fixed;
@@ -279,6 +279,9 @@ footer {
 }
 .max-width-12 {
   max-width: 80rem; /* 1280px */
+}
+.max-width-50 {
+  max-width: 50%;
 }
 
 /* percentage width ---------------------------------------------------- */
