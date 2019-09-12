@@ -19,21 +19,24 @@
 
 -export([spawn_monitor_rebalance/5, spawn_monitor_failover/2]).
 
-spawn_monitor_rebalance(Service, KeepNodes, EjectNodes, DeltaNodes, ProgressCallback) ->
-    spawn_monitor(Service, rebalance, KeepNodes, EjectNodes, DeltaNodes, ProgressCallback).
+spawn_monitor_rebalance(Service, KeepNodes,
+                        EjectNodes, DeltaNodes, ProgressCallback) ->
+    spawn_monitor(Service, rebalance, KeepNodes,
+                  EjectNodes, DeltaNodes, ProgressCallback).
 
 spawn_monitor_failover(Service, KeepNodes) ->
     ProgressCallback = fun (_) -> ok end,
 
     spawn_monitor(Service, failover, KeepNodes, [], [], ProgressCallback).
 
-spawn_monitor(Service, Type, KeepNodes, EjectNodes, DeltaNodes, ProgressCallback) ->
+spawn_monitor(Service, Type, KeepNodes,
+              EjectNodes, DeltaNodes, ProgressCallback) ->
     Parent = self(),
 
     Pid = proc_lib:spawn(
             fun () ->
-                    run_rebalance(Parent, Service, Type,
-                                  KeepNodes, EjectNodes, DeltaNodes, ProgressCallback)
+                    run_rebalance(Parent, Service, Type, KeepNodes,
+                                  EjectNodes, DeltaNodes, ProgressCallback)
             end),
     MRef = erlang:monitor(process, Pid),
     {Pid, MRef}.
@@ -88,7 +91,8 @@ run_rebalance(Parent, Service,
         ok ->
             ok;
         Other ->
-            ?log_warning("Failed to unset rebalancer on some nodes:~n~p", [Other])
+            ?log_warning("Failed to unset rebalancer on some nodes:~n~p",
+                         [Other])
     end,
 
     exit(Reason).
@@ -111,7 +115,8 @@ rebalance(Rebalancer, Service, Type,
                     "~nKeepNodes: ~p~nEjectNodes: ~p~nDeltaNodes: ~p",
                     [Service, Id, KeepNodes, EjectNodes, DeltaNodes]),
 
-    {ok, NodeInfos} = service_agent:get_node_infos(Service, AllNodes, Rebalancer),
+    {ok, NodeInfos} = service_agent:get_node_infos(Service,
+                                                   AllNodes, Rebalancer),
     ?log_debug("Got node infos:~n~p", [NodeInfos]),
 
     {KeepNodesArg, EjectNodesArg} = build_rebalance_args(KeepNodes, EjectNodes,
