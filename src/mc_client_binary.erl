@@ -23,6 +23,7 @@
 %% vbucket. Thus timeout needs to only cover ep-engine going totally
 %% insane.
 -define(VB_DELETE_TIMEOUT, 300000).
+-define(NO_BUCKET, "@no bucket@").
 
 -export([auth/2,
          cmd/5,
@@ -41,6 +42,7 @@
          refresh_ssl_certs/1,
          noop/1,
          select_bucket/2,
+         deselect_bucket/1,
          set_vbucket/3,
          set_vbucket/4,
          stats/1,
@@ -342,6 +344,9 @@ select_bucket(Sock, BucketName) ->
             ok;
         Response -> process_error_response(Response)
     end.
+
+deselect_bucket(Sock) ->
+    select_bucket(Sock, ?NO_BUCKET).
 
 engine_param_type_to_int(flush) ->
     1;

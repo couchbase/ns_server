@@ -53,9 +53,28 @@ take_socket(Bucket, Options) ->
             Error
     end.
 
+put_socket(undefined, Socket, Options) ->
+    put_socket(Socket, Options);
+put_socket(Bucket, Socket, Options) ->
+    case (catch mc_client_binary:deselect_bucket(Socket)) of
+        ok ->
+            put_socket(Socket, Options);
+        Error ->
+            %% If deselect on the socket fails, then remove the socket from
+            %% the connection pool. The attempt here is to avoid bubbling the
+            %% exception back to the caller of 'executing_on_socket'.
+            ?log_debug("Bucket deselect on socket ~p failed. Bucket = ~p, "
+                       "Error = ~p", [Socket, Bucket, Error]),
+            remove_socket(Socket, Options)
+    end.
+
 put_socket(Socket, Options) ->
     Destination = get_destination(Options),
     ns_connection_pool:put_socket(?MODULE, Destination, Socket).
+
+remove_socket(Socket, Options) ->
+    Destination = get_destination(Options),
+    ns_connection_pool:remove_socket(?MODULE, Destination, Socket).
 
 executing_on_socket(Fun) ->
     executing_on_socket(Fun, undefined).
@@ -71,7 +90,7 @@ executing_on_socket(Fun, Bucket, Options) ->
                       {ok, SockName} = inet:sockname(Sock),
                       try
                           Result = Fun(Sock),
-                          put_socket(Sock, Options),
+                          put_socket(Bucket, Sock, Options),
                           Result
                       catch T:E ->
                               Stack = erlang:get_stacktrace(),
