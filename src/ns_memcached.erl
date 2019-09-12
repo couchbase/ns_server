@@ -705,7 +705,9 @@ handle_info(check_started,
     end;
 handle_info(check_config, #state{check_config_pid = undefined} = State) ->
     misc:flush(check_config),
-    Pid = proc_lib:start_link(erlang, apply, [fun run_check_config/2, [State#state.bucket, self()]]),
+    Pid = proc_lib:start_link(erlang, apply,
+                              [fun run_check_and_maybe_update_config/2,
+                               [State#state.bucket, self()]]),
     {noreply, State#state{check_config_pid = Pid}};
 handle_info(check_config, State) ->
     {noreply, State};
@@ -795,7 +797,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% API
 %%
 
-run_check_config(Bucket, Parent) ->
+run_check_and_maybe_update_config(Bucket, Parent) ->
     proc_lib:init_ack(Parent, self()),
     perform_very_long_call(
       fun(Sock) ->
