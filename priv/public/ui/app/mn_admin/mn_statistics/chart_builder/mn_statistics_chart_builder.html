@@ -196,6 +196,16 @@
         </div>
       </div>
 
+      <div ng-if="builderCtl.statIsNotSupported.length"
+           class="content-box min-padding margin-bottom-half">
+        The following stats are no longer supported and will be removed from the chart:
+        <div class="text-smaller flex-grow-2 margin-right-15">
+          <span class="cb-breadcrumb" ng-repeat="name in builderCtl.statIsNotSupported">
+            {{name}}
+            <span class="breadcrumb-divider"> | </span>
+          </span>
+        </div>
+      </div>
 
       <div class="panel-footer spaced scroll-shadow">
         <div class="text-smaller flex-grow-2 margin-right-15">
@@ -208,8 +218,10 @@
           <a ng-click="$dismiss()">Cancel</a>
           <button
              type="submit"
-             ng-disabled="!builderCtl.getSelectedStatsLength()">Save Chart</button>
+             ng-disabled="!builderCtl.getSelectedStatsLength()"
+             >Save Chart</button>
         </div>
       </div>
+    </div>
   </form>
-  </div>
+</div>

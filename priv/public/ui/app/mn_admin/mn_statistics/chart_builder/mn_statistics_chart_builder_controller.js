@@ -36,6 +36,8 @@
     vm.showInPopup = false;
     vm.tabs = ["@system", "@kv", "@index", "@query", "@fts", "@cbas", "@eventing", "@xdcr"];
 
+    vm.statIsNotSupported = [];
+
     vm.onStatChecked = onStatChecked;
     vm.onSpecificChecked = onSpecificChecked;
     vm.maybeDisableField = maybeDisableField;
@@ -116,8 +118,13 @@
 
     function onStatChecked(descPath) {
       var desc = mnStatisticsNewService.readByPath(descPath);
-      var value = vm.newChart.stats[descPath];
       var breadcrumb = descPath.split(".");
+      if (!desc) {
+        vm.newChart.stats[descPath] = false;
+        vm.statIsNotSupported.push(breadcrumb.pop());
+        return;
+      }
+      var value = vm.newChart.stats[descPath];
 
       if (vm.units[desc.unit] === undefined) {
         vm.units[desc.unit] = 0;

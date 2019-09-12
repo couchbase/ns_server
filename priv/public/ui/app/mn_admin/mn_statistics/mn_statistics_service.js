@@ -108,14 +108,19 @@
     function getStatsTitle(stats) {
       return Object.keys(stats).map(function (descPath) {
         var desc = mnStatisticsNewService.readByPath(descPath);
-        return desc.title;
+        return desc ? desc.title : descPath.split(".").pop();
       }).join(", ");
     }
 
     function getStatsDesc(stats) {
       return Object.keys(stats).map(function (descPath) {
         var desc = mnStatisticsNewService.readByPath(descPath);
-        return "<b>" + desc.title + "</b><p>" + desc.desc + "</p>";
+        if (desc) {
+          return "<b>" + desc.title + "</b><p>" + desc.desc + "</p>";
+        } else {
+          return "<b>" + descPath.split(".").pop() + "</b>" +
+            "<p>There is no such stat name anymore. Edit the chart in order to remove it.</p>";
+        }
       }).join("");
     }
 
@@ -126,7 +131,9 @@
           return;
         }
         var desc = mnStatisticsNewService.readByPath(descPath);
-        units[desc.unit] = true;
+        if (desc) {
+          units[desc.unit] = true;
+        }
       });
       return units;
     }

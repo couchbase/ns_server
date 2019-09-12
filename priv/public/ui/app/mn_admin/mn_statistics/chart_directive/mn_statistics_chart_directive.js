@@ -118,7 +118,6 @@
       }
 
       function subscribeToMultiChartData() {
-
         mnStatisticsNewService.subscribeUIStatsPoller({
           items: $scope.items,
           bucket: $scope.bucket,
@@ -315,27 +314,31 @@
         if ($scope.config.specificStat) {
           var descPath = Object.keys($scope.config.stats)[0];
           var desc = mnStatisticsNewService.readByPath(descPath);
-          Object.keys(stats.data.samples).forEach(function (nodeName) {
-            var nodeStat = stats.data.samples[nodeName];
-            chartData.push({
-              type: 'line',
-              unit: desc.unit,
-              disabled: !stats.data.samples[nodeName],
-              max: d3.max(nodeStat || []) || 1,
-              min: d3.min(nodeStat || []) || 0,
-              yAxis: units[desc.unit],
-              key: nodeName,
-              values: _.zip((nodeStat || {}).timestamps, nodeStat || [])
+          if (desc) {
+            Object.keys(stats.data.samples).forEach(function (nodeName) {
+              var nodeStat = stats.data.samples[nodeName];
+              chartData.push({
+                type: 'line',
+                unit: desc.unit,
+                disabled: !stats.data.samples[nodeName],
+                max: d3.max(nodeStat || []) || 1,
+                min: d3.min(nodeStat || []) || 0,
+                yAxis: units[desc.unit],
+                key: nodeName,
+                values: _.zip((nodeStat || {}).timestamps, nodeStat || [])
+              });
             });
-          });
+          }
         } else {
           Object.keys($scope.config.stats).forEach(function (descPath) {
+            var desc = mnStatisticsNewService.readByPath(descPath);
+            if (!desc) {
+              return;
+            }
             var splitted = descPath.split(".");
             var service = splitted[0].substring(1, splitted[0].length-1);
             var maybeItem = descPath.includes("@items") && ($scope.items || {})[service];
-            var name = (maybeItem || "") + splitted[splitted.length - 1];
-
-            var desc = mnStatisticsNewService.readByPath(descPath);
+            var name = (maybeItem || "") + splitted.pop();
             chartData.push({
               type: 'line',
               unit: desc.unit,
