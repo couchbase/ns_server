@@ -13,7 +13,7 @@
     vm.items = items;
     vm.onSelectZoom = onSelectZoom;
     vm.bucket = $state.params.scenarioBucket;
-    vm.zoom = "hour";
+    vm.zoom = $state.params.scenarioZoom;
 
     function onSelectZoom() {
       vm.reloadChartDirective = true;
