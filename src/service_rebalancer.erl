@@ -15,6 +15,7 @@
 %%
 -module(service_rebalancer).
 
+-include("cut.hrl").
 -include("ns_common.hrl").
 
 -export([spawn_monitor_rebalance/5, spawn_monitor_failover/2]).
@@ -70,32 +71,10 @@ run_rebalance(#state{parent = Parent} = State) ->
       end, Agents),
 
     set_rebalancer(State),
-    Worker = proc_lib:spawn_link(
-               fun () ->
-                       rebalance_worker(State)
-               end),
-
-    Reason =
-        receive
-            {'EXIT', Worker, R} = Exit ->
-                ?log_debug("Worker terminated: ~p", [Exit]),
-                R;
-            {'EXIT', Parent, R} = Exit ->
-                ?log_error("Got exit message from parent: ~p", [Exit]),
-                misc:terminate_and_wait(Worker, shutdown),
-                R;
-            {'DOWN', _, _, Parent, R} = Down ->
-                ?log_error("Parent died unexpectedly: ~p", [Down]),
-                misc:terminate_and_wait(Worker, shutdown),
-                R;
-            {'DOWN', _, _, Agent, R} = Down ->
-                ?log_error("Agent terminated during the rebalance: ~p", [Down]),
-                misc:terminate_and_wait(Worker, shutdown),
-                {agent_died, Agent, R}
-        end,
-
+    ExitReason = run_rebalance_worker(State),
     unset_rebalancer(State),
-    exit(Reason).
+
+    exit(ExitReason).
 
 wait_for_agents(#state{type = Type,
                        service = Service,
@@ -127,6 +106,28 @@ unset_rebalancer(#state{service = Service,
         Other ->
             ?log_warning("Failed to unset "
                          "rebalancer on some nodes:~n~p", [Other])
+    end.
+
+run_rebalance_worker(#state{parent = Parent} = State) ->
+    {_, true} = process_info(self(), trap_exit),
+    Worker = proc_lib:spawn_link(?cut(rebalance_worker(State))),
+
+    receive
+        {'EXIT', Worker, Reason} = Exit ->
+            ?log_debug("Worker terminated: ~p", [Exit]),
+            Reason;
+        {'EXIT', Parent, Reason} = Exit ->
+            ?log_error("Got exit message from parent: ~p", [Exit]),
+            misc:terminate_and_wait(Worker, shutdown),
+            Reason;
+        {'DOWN', _, _, Parent, Reason} = Down ->
+            ?log_error("Parent died unexpectedly: ~p", [Down]),
+            misc:terminate_and_wait(Worker, shutdown),
+            Reason;
+        {'DOWN', _, _, Agent, Reason} = Down ->
+            ?log_error("Agent terminated during the rebalance: ~p", [Down]),
+            misc:terminate_and_wait(Worker, shutdown),
+            {agent_died, Agent, Reason}
     end.
 
 rebalance_worker(#state{type = Type,
