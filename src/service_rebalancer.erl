@@ -19,6 +19,16 @@
 
 -export([spawn_monitor_rebalance/5, spawn_monitor_failover/2]).
 
+-record(state, { parent :: pid(),
+                 rebalancer :: pid(),
+                 service :: service(),
+                 type :: failover | rebalance,
+                 keep_nodes :: [node()],
+                 eject_nodes :: [node()],
+                 delta_nodes :: [node()],
+                 all_nodes :: [node()],
+                 progress_callback :: fun ((dict:dict()) -> any())}).
+
 spawn_monitor_rebalance(Service, KeepNodes,
                         EjectNodes, DeltaNodes, ProgressCallback) ->
     spawn_monitor(Service, rebalance, KeepNodes,
@@ -35,35 +45,34 @@ spawn_monitor(Service, Type, KeepNodes,
 
     misc:spawn_monitor(
       fun () ->
-              run_rebalance(Parent, Service, Type, KeepNodes,
-                            EjectNodes, DeltaNodes, ProgressCallback)
+              State = #state{parent = Parent,
+                             rebalancer = self(),
+                             service = Service,
+                             type = Type,
+                             keep_nodes = KeepNodes,
+                             eject_nodes = EjectNodes,
+                             delta_nodes = DeltaNodes,
+                             all_nodes = KeepNodes ++ EjectNodes,
+                             progress_callback = ProgressCallback},
+              run_rebalance(State)
       end).
 
-run_rebalance(Parent, Service,
-              Type, KeepNodes, EjectNodes, DeltaNodes, ProgressCallback) ->
-    erlang:register(name(Service), self()),
+run_rebalance(#state{parent = Parent} = State) ->
+    erlang:register(name(State), self()),
     process_flag(trap_exit, true),
-
-    AllNodes = KeepNodes ++ EjectNodes,
-    Rebalancer = self(),
 
     erlang:monitor(process, Parent),
 
-    WaitTimeout  = wait_for_agents_timeout(Type),
-    {ok, Agents} = service_agent:wait_for_agents(Service,
-                                                 AllNodes, WaitTimeout),
+    Agents = wait_for_agents(State),
     lists:foreach(
       fun ({_Node, Agent}) ->
               erlang:monitor(process, Agent)
       end, Agents),
 
-    ok = service_agent:set_rebalancer(Service, AllNodes, Rebalancer),
-
+    set_rebalancer(State),
     Worker = proc_lib:spawn_link(
                fun () ->
-                       rebalance(Rebalancer, Service, Type,
-                                 AllNodes, KeepNodes,
-                                 EjectNodes, DeltaNodes, ProgressCallback)
+                       rebalance_worker(State)
                end),
 
     Reason =
@@ -85,15 +94,15 @@ run_rebalance(Parent, Service,
                 R
         end,
 
-    case service_agent:unset_rebalancer(Service, AllNodes, Rebalancer) of
-        ok ->
-            ok;
-        Other ->
-            ?log_warning("Failed to unset rebalancer on some nodes:~n~p",
-                         [Other])
-    end,
-
+    unset_rebalancer(State),
     exit(Reason).
+
+wait_for_agents(#state{type = Type,
+                       service = Service,
+                       all_nodes = AllNodes}) ->
+    Timeout = wait_for_agents_timeout(Type),
+    {ok, Agents} = service_agent:wait_for_agents(Service, AllNodes, Timeout),
+    Agents.
 
 wait_for_agents_timeout(Type) ->
     Default = wait_for_agents_default_timeout(Type),
@@ -104,9 +113,30 @@ wait_for_agents_default_timeout(rebalance) ->
 wait_for_agents_default_timeout(failover) ->
     10000.
 
-rebalance(Rebalancer, Service, Type,
-          AllNodes, KeepNodes, EjectNodes, DeltaNodes, ProgressCallback) ->
-    erlang:register(worker_name(Service), self()),
+set_rebalancer(#state{service = Service,
+                      all_nodes = AllNodes,
+                      rebalancer = Rebalancer}) ->
+    ok = service_agent:set_rebalancer(Service, AllNodes, Rebalancer).
+
+unset_rebalancer(#state{service = Service,
+                        all_nodes = AllNodes,
+                        rebalancer = Rebalancer}) ->
+    case service_agent:unset_rebalancer(Service, AllNodes, Rebalancer) of
+        ok ->
+            ok;
+        Other ->
+            ?log_warning("Failed to unset "
+                         "rebalancer on some nodes:~n~p", [Other])
+    end.
+
+rebalance_worker(#state{type = Type,
+                        service = Service,
+                        all_nodes = AllNodes,
+                        keep_nodes = KeepNodes,
+                        eject_nodes = EjectNodes,
+                        delta_nodes = DeltaNodes,
+                        rebalancer = Rebalancer} = State) ->
+    erlang:register(worker_name(State), self()),
 
     Id = couch_uuids:random(),
     ?rebalance_info("Rebalancing service ~p with id ~p."
@@ -128,15 +158,17 @@ rebalance(Rebalancer, Service, Type,
 
     ok = service_agent:start_rebalance(Service, Leader, Rebalancer,
                                        Id, Type, KeepNodesArg, EjectNodesArg),
+    wait_for_rebalance_completion(State).
 
+wait_for_rebalance_completion(#state{service = Service} = State) ->
     Timeout = ?get_timeout({rebalance, Service}, 10 * 60 * 1000),
-    wait_for_rebalance_completion(AllNodes, ProgressCallback, Timeout).
+    wait_for_rebalance_completion_loop(Timeout, State).
 
-wait_for_rebalance_completion(AllNodes, Callback, Timeout) ->
+wait_for_rebalance_completion_loop(Timeout, State) ->
     receive
         {rebalance_progress, Progress} ->
-            report_progress(AllNodes, Callback, Progress),
-            wait_for_rebalance_completion(AllNodes, Callback, Timeout);
+            report_progress(Progress, State),
+            wait_for_rebalance_completion_loop(Timeout, State);
         {rebalance_failed, Error} ->
             exit({rebalance_failed, {service_error, Error}});
         rebalance_done ->
@@ -146,7 +178,8 @@ wait_for_rebalance_completion(AllNodes, Callback, Timeout) ->
             exit({rebalance_failed, inactivity_timeout})
     end.
 
-report_progress(AllNodes, Callback, Progress) ->
+report_progress(Progress, #state{all_nodes = AllNodes,
+                                 progress_callback = Callback}) ->
     D = dict:from_list([{N, Progress} || N <- AllNodes]),
     Callback(D).
 
@@ -172,10 +205,10 @@ build_rebalance_args(KeepNodes, EjectNodes, DeltaNodes0, NodeInfos0) ->
 
     {KeepNodesArg, EjectNodesArg}.
 
-worker_name(Service) ->
+worker_name(#state{service = Service}) ->
     list_to_atom(?MODULE_STRING ++ "-" ++ atom_to_list(Service) ++ "-worker").
 
-name(Service) ->
+name(#state{service = Service}) ->
     list_to_atom(?MODULE_STRING ++ "-" ++ atom_to_list(Service)).
 
 pick_leader(NodeInfos, KeepNodes) ->
