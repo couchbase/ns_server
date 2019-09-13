@@ -88,9 +88,10 @@ run_rebalance(#state{parent = Parent} = State) ->
                 ?log_error("Parent died unexpectedly: ~p", [Down]),
                 misc:terminate_and_wait(Worker, shutdown),
                 R;
-            {'DOWN', _, _, _Agent, R} = Down ->
+            {'DOWN', _, _, Agent, R} = Down ->
                 ?log_error("Agent terminated during the rebalance: ~p", [Down]),
-                misc:terminate_and_wait(Worker, shutdown)
+                misc:terminate_and_wait(Worker, shutdown),
+                {agent_died, Agent, R}
         end,
 
     unset_rebalancer(State),
