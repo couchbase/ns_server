@@ -33,13 +33,11 @@ spawn_monitor(Service, Type, KeepNodes,
               EjectNodes, DeltaNodes, ProgressCallback) ->
     Parent = self(),
 
-    Pid = proc_lib:spawn(
-            fun () ->
-                    run_rebalance(Parent, Service, Type, KeepNodes,
-                                  EjectNodes, DeltaNodes, ProgressCallback)
-            end),
-    MRef = erlang:monitor(process, Pid),
-    {Pid, MRef}.
+    misc:spawn_monitor(
+      fun () ->
+              run_rebalance(Parent, Service, Type, KeepNodes,
+                            EjectNodes, DeltaNodes, ProgressCallback)
+      end).
 
 run_rebalance(Parent, Service,
               Type, KeepNodes, EjectNodes, DeltaNodes, ProgressCallback) ->
