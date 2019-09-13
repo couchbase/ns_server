@@ -38,6 +38,26 @@ from datetime import datetime, timedelta, tzinfo
 from io import BytesIO, StringIO
 
 
+# This is a facility that provides a functionality similar to atexit from the
+# standard library. We don't use the latter for the following reasons.
+#
+# When cbcollect_info is started with --watch-stdin flag, we start a thread
+# monitoring stdin that terminates the process when stdin gets closed. The
+# issue is many-fold:
+#
+#  - sys.exit() can only be called from the main thread.
+#
+#  - os._exit() doesn't invoke any of the cleanup functions registered by
+#    atexit.
+#
+#  - It's possible for the stdin watcher thread to interrupt the main thread
+#    by calling _thread.interrupt_main(). This plays nicely with atexit. But
+#    the issue is that the thread can't always be interrupted. So it can take
+#    a noticeable amount of time for the main thread to terminate.
+#
+# So AltExitC is a solution to these issues. It terminates the process as soon
+# as possible by calling os._exit(). The price is that the cleanup actions
+# need to be registered with AltExitC and synchronization is a concern.
 class AltExitC(object):
     def __init__(self):
         self.list = []
