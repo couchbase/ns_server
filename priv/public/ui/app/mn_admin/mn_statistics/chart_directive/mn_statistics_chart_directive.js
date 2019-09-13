@@ -320,11 +320,12 @@
             chartData.push({
               type: 'line',
               unit: desc.unit,
+              disabled: !stats.data.samples[nodeName],
               max: d3.max(nodeStat || []) || 1,
               min: d3.min(nodeStat || []) || 0,
               yAxis: units[desc.unit],
               key: nodeName,
-              values: _.zip(nodeStat.timestamps, nodeStat || [])
+              values: _.zip((nodeStat || {}).timestamps, nodeStat || [])
             });
           });
         } else {
@@ -335,16 +336,15 @@
             var name = (maybeItem || "") + splitted[splitted.length - 1];
 
             var desc = mnStatisticsNewService.readByPath(descPath);
-            var firstStat = stats.data.samples[Object.keys(stats.data.samples)[0]];
-            var timestamps = firstStat ? firstStat.timestamps : [];
             chartData.push({
               type: 'line',
               unit: desc.unit,
+              disabled: !stats.data.samples[name],
               max: d3.max(stats.data.samples[name] || []) || 1,
               min: d3.min(stats.data.samples[name] || []) || 0,
               yAxis: units[desc.unit],
-              key: !stats.data.samples[name] ? (desc.title + " (not found)") : desc.title,
-              values: _.zip(timestamps, stats.data.samples[name] || [])
+              key: desc.title,
+              values: _.zip((stats.data.samples[name] || {}).timestamps, stats.data.samples[name] || [])
             });
           });
         }
