@@ -21,12 +21,9 @@
       'mnPromiseHelper',
       'mnGroupsService',
       'mnStorageMode',
-      'mnBucketsService',
       'mnPoll',
       'mnFocus',
       'mnPools',
-      'mnSettingsAutoFailoverService',
-      'mnTasksDetails',
       'mnWarmupProgress',
       'mnElementCrane',
       'mnSearch',
@@ -35,7 +32,7 @@
     ])
     .controller('mnServersController', mnServersController);
 
-  function mnServersController($scope, $state, $uibModal, mnPoolDefault, mnPoller, mnServersService, mnHelper, mnGroupsService, mnPromiseHelper, mnPools, mnSettingsAutoFailoverService, mnTasksDetails, permissions, mnFormatServicesFilter, $filter, mnBucketsService) {
+  function mnServersController($scope, $state, $uibModal, mnPoolDefault, mnPoller, mnServersService, mnHelper, mnGroupsService, mnPromiseHelper, mnPools, permissions) {
     var vm = this;
     vm.mnPoolDefault = mnPoolDefault.latestValue();
 
@@ -64,13 +61,6 @@
           .reloadOnScopeEvent(["serverGroupsUriChanged", "reloadServersPoller"])
           .cycle();
       }
-
-      new mnPoller($scope, function () {
-        return mnBucketsService.findMoxiBucket();
-      })
-        .subscribe("moxiBucket", vm)
-        .reloadOnScopeEvent(["reloadBucketStats"])
-        .cycle();
 
       new mnPoller($scope, function () {
         return mnServersService.getNodes();

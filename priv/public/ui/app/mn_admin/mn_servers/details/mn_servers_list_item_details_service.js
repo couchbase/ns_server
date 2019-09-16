@@ -1,9 +1,9 @@
 (function () {
-  angular.module('mnServersListItemDetailsService', [
-    'mnTasksDetails'
-  ]).factory('mnServersListItemDetailsService', mnServersListItemDetailsFactory);
+  angular
+    .module('mnServersListItemDetailsService', [])
+    .factory('mnServersListItemDetailsService', mnServersListItemDetailsFactory);
 
-  function mnServersListItemDetailsFactory($http, $q, mnTasksDetails) {
+  function mnServersListItemDetailsFactory($http, $q) {
     var mnServersListItemDetailsService = {
       getNodeDetails: getNodeDetails,
       getNodeTasks: getNodeTasks

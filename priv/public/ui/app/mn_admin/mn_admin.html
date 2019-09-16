@@ -420,6 +420,22 @@
   </div>
   <div
      class="alert alert-warning"
+     ng-show="adminCtl.tasks.isLoadingSamples && rbac.cluster.tasks.read && !poolDefault.balanced">
+    <p>Warning: Rebalance is not available until data loading is completed.</p>
+  </div>
+  <div
+     class="alert alert-warning"
+     ng-show="!adminCtl.poolDefault.compat.atLeast55 && !!adminCtl.moxiBucket">
+    <p>Your Couchbase bucket <i>{{adminCtl.moxiBucket.name}}</i> has an active dedicated port, also known as a Moxi port. Moxi is deprecated and will be removed in a future release.<br> You can run the CLI command <i>couchbase-cli bucket-edit</i> command with the <i>--remove-bucket-port</i> option to remove the Moxi port.</p>
+  </div>
+  <div
+     class="alert alert-warning"
+     ng-show="!('every' | lodash:('values' | lodash:poolDefault.compat)) && !adminCtl.clientAlerts.hideCompatibility">
+    <p>This cluster contains multiple server versions and is running in {{::poolDefault.thisNode.clusterCompatibility | decodeCompatVersion}} compatibility mode.</p>
+    <a ng-click="adminCtl.clientAlerts.hideCompatibility = true" class="close">X</a>
+  </div>
+  <div
+     class="alert alert-warning"
      ng-repeat="warning in poolDefault.failoverWarnings"
      ng-show="warning && warning != 'failoverNeeded' && !poolDefault.rebalancing">
     <p>Warning: {{warning | formatFailoverWarnings}}</p>

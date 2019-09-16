@@ -94,6 +94,13 @@
 
     function activate() {
 
+      new mnPoller($scope, function () {
+        return mnBucketsService.findMoxiBucket();
+      })
+        .subscribe("moxiBucket", vm)
+        .reloadOnScopeEvent(["reloadBucketStats"])
+        .cycle();
+
       if (mnPermissions.export.cluster.settings.read) {
         new mnPoller($scope, function () {
           return mnSettingsAutoFailoverService.getAutoFailoverSettings();
