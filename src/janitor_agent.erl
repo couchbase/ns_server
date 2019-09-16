@@ -47,7 +47,7 @@
          fetch_vbucket_states/2,
          find_vbucket_state/2,
          check_bucket_ready/3,
-         apply_new_bucket_config_with_timeout/4,
+         apply_new_bucket_config/4,
          mark_bucket_warmed/2,
          delete_vbucket_copies/4,
          prepare_nodes_for_rebalance/3,
@@ -275,62 +275,35 @@ do_query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
 mark_bucket_warmed(Bucket, Nodes) ->
     process_multicall_rv(ns_memcached:mark_warmed(Nodes, Bucket)).
 
-process_apply_config_rv(Bucket, {Replies, BadNodes}, Call) ->
-    BadReplies = [R || {_, RV} = R <- Replies,
-                       RV =/= ok],
-    case BadReplies =/= [] orelse BadNodes =/= [] of
-        true ->
-            ?log_info("~s:Some janitor state change requests (~p) have failed"
-                      ":~n~p~n~p", [Bucket, Call, BadReplies, BadNodes]),
-            FailedNodes = [N || {N, _} <- BadReplies] ++ BadNodes,
-            {error, {failed_nodes, FailedNodes}};
-        false ->
-            ok
-    end.
-
-get_apply_new_config_call(NewBucketConfig) ->
-    case cluster_compat_mode:is_cluster_madhatter() of
-        true ->
-            {apply_new_config, NewBucketConfig};
-        false ->
-            {apply_new_config, NewBucketConfig, []}
-    end.
-
-get_apply_new_config_replicas_phase_call(NewBucketConfig) ->
-    case cluster_compat_mode:is_cluster_madhatter() of
-        true ->
-            {apply_new_config_replicas_phase, NewBucketConfig};
-        false ->
-            {apply_new_config_replicas_phase, NewBucketConfig, []}
-    end.
-
-apply_new_bucket_config_with_timeout(Bucket, Servers,
-                                     NewBucketConfig, Timeout0) ->
-    Timeout = case Timeout0 of
-                  undefined_timeout -> ?APPLY_NEW_CONFIG_TIMEOUT;
-                  _ -> Timeout0
-              end,
-    apply_new_bucket_config(Bucket, Servers, NewBucketConfig, Timeout).
-
+apply_new_bucket_config(Bucket, Servers, NewBucketConfig, undefined_timeout) ->
+    apply_new_bucket_config(Bucket, Servers, NewBucketConfig,
+                            ?APPLY_NEW_CONFIG_TIMEOUT);
 apply_new_bucket_config(Bucket, Servers, NewBucketConfig, Timeout) ->
-    RV1 = misc:parallel_map(
-            fun (Node) ->
-                    {Node,
-                     catch call(Bucket, Node,
-                                get_apply_new_config_call(NewBucketConfig),
-                                Timeout)}
-            end, Servers, infinity),
-    case process_apply_config_rv(Bucket, {RV1, []}, apply_new_config) of
-        ok ->
-            Call = get_apply_new_config_replicas_phase_call(NewBucketConfig),
-            RV2 = misc:parallel_map(
-                    fun (Node) ->
-                            {Node, catch call(Bucket, Node, Call, Timeout)}
-                    end, Servers, infinity),
-            process_apply_config_rv(Bucket, {RV2, []},
-                                    apply_new_config_replicas_phase);
-        Other ->
-            Other
+    functools:sequence_(
+      [?cut(call_on_servers(Bucket, Servers, NewBucketConfig,
+                            apply_new_config, Timeout)),
+       ?cut(call_on_servers(Bucket, Servers, NewBucketConfig,
+                            apply_new_config_replicas_phase, Timeout))]).
+
+format_apply_new_config_call(Call, BucketConfig) ->
+    case cluster_compat_mode:is_cluster_madhatter() of
+        true -> {Call, BucketConfig};
+        false -> {Call, BucketConfig, []}
+    end.
+
+call_on_servers(Bucket, Servers, BucketConfig, Call, Timeout) ->
+    CompleteCall = format_apply_new_config_call(Call, BucketConfig),
+    Replies = misc:parallel_map(
+                ?cut({_1, catch call(Bucket, _1, CompleteCall, Timeout)}),
+                Servers, infinity),
+    BadReplies = [R || {_, RV} = R <- Replies, RV =/= ok],
+    case BadReplies of
+        [] ->
+            ok;
+        _ ->
+            ?log_info("~s:Some janitor state change requests (~p) have failed"
+                      ":~n~p", [Bucket, Call, BadReplies]),
+            {error, {failed_nodes, [N || {N, _} <- BadReplies]}}
     end.
 
 process_multicall_rv({Replies, BadNodes}) ->

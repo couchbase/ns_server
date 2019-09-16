@@ -291,13 +291,10 @@ maybe_push_config(Bucket, BucketConfig, States, Options) ->
     maybe_config_sync(push, Bucket, BucketConfig, States, Options).
 
 cleanup_apply_config_body(Bucket, Servers, BucketConfig, Options) ->
-    ApplyTimeout = proplists:get_value(apply_config_timeout,
-                                       Options,
-                                       undefined_timeout),
-    ok = janitor_agent:apply_new_bucket_config_with_timeout(Bucket,
-                                                            Servers,
-                                                            BucketConfig,
-                                                            ApplyTimeout),
+    ok = janitor_agent:apply_new_bucket_config(
+           Bucket, Servers, BucketConfig,
+           proplists:get_value(apply_config_timeout, Options,
+                               undefined_timeout)),
 
     maybe_reset_rebalance_status(Options),
 

@@ -260,7 +260,7 @@ apply_recovery_bucket_config(Bucket, BucketConfig, Servers) ->
                                           Servers,
                                           ?RECOVERY_QUERY_STATES_TIMEOUT) of
         ready ->
-            janitor_agent:apply_new_bucket_config_with_timeout(
+            janitor_agent:apply_new_bucket_config(
               Bucket, Servers, BucketConfig, undefined_timeout);
         {_, Zombies} ->
             ?log_error("Failed to query states "
