@@ -82,17 +82,6 @@
         .reloadOnScopeEvent(["mnPoolDefaultChanged", "reloadNodes"])
         .cycle();
 
-
-      if (permissions.cluster.settings.read) {
-        new mnPoller($scope, function () {
-          return mnSettingsAutoFailoverService.getAutoFailoverSettings();
-        })
-          .setInterval(10000)
-          .subscribe("autoFailoverSettings", vm)
-          .reloadOnScopeEvent(["reloadServersPoller", "rebalanceFinished"])
-          .cycle();
-      }
-
       // $scope.$on("reloadServersPoller", function () {
       //   vm.showSpinner = true;
       // });

@@ -93,7 +93,19 @@
     }
 
     function activate() {
+
+      if (mnPermissions.export.cluster.settings.read) {
+        new mnPoller($scope, function () {
+          return mnSettingsAutoFailoverService.getAutoFailoverSettings();
+        })
+          .setInterval(10000)
+          .subscribe("autoFailoverSettings", vm)
+          .reloadOnScopeEvent(["reloadServersPoller", "rebalanceFinished"])
+          .cycle();
+      }
+
       mnSessionService.init($scope);
+
       if (mnPermissions.export.cluster.settings.read) {
         mnPromiseHelper(vm, mnSettingsNotificationsService.maybeCheckUpdates({group: "global"}))
           .applyToScope("updates")

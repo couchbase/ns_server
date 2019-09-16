@@ -27,6 +27,8 @@
       return $http({
         method: 'GET',
         url: "/settings/autoFailover"
+      }).then(function (resp) {
+        return resp.data;
       });
     }
     function saveAutoFailoverSettings(autoFailoverSettings, params) {

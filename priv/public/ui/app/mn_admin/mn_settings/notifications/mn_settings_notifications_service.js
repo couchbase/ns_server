@@ -258,8 +258,8 @@ angular.module('mnSettingsNotificationsService', [
         };
       }
       if (autoFailoverSettings) {
-        stats.cluster_settings.enable_auto_failover = autoFailoverSettings.data.enabled;
-        stats.cluster_settings.failover_timeout = autoFailoverSettings.data.timeout;
+        stats.cluster_settings.enable_auto_failover = autoFailoverSettings.enabled;
+        stats.cluster_settings.failover_timeout = autoFailoverSettings.timeout;
       }
       if (indexSettings) {
         stats.cluster_settings.index_storage_mode = indexSettings.storageMode;

@@ -67,7 +67,7 @@
       mnPromiseHelper(vm,
         mnSettingsAutoFailoverService.getAutoFailoverSettings())
         .applyToScope(function (resp) {
-          vm.autoFailoverSettings = resp.data;
+          vm.autoFailoverSettings = resp;
 
           $scope.$watch(
             'settingsAutoFailoverCtl.autoFailoverSettings',

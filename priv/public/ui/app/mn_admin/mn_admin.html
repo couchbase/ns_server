@@ -426,6 +426,30 @@
   </div>
   <div
      class="alert alert-warning"
+     ng-show="adminCtl.autoFailoverSettings.count > 0 && rbac.cluster.settings.read">
+    <p>
+      A server was automatically failed over. Failover quota used/max:
+      {{adminCtl.autoFailoverSettings.count}}/{{adminCtl.autoFailoverSettings.maxCount}}
+    </p>
+  </div>
+  <div
+     class="alert alert-warning ng-hide"
+     ng-show="(adminCtl.autoFailoverSettings &&
+              (adminCtl.autoFailoverSettings.count == adminCtl.autoFailoverSettings.maxCount)) ||
+              (!(poolDefault.compat.atLeast55 && pools.isEnterprise) &&
+                 adminCtl.autoFailoverSettings.count == 1)">
+    <p>
+      The maximum number of nodes have been automatically failed over.
+      Auto-failover is disabled until you reset it.<br>
+      <a
+         ng-click="adminCtl.resetAutoFailOverCount()"
+         ng-show="rbac.cluster.settings.write">
+        Reset Auto-Failover
+      </a>
+    </p>
+  </div>
+  <div
+     class="alert alert-warning"
      ng-show="adminCtl.lostConnState.isActive">
     <p>Difficulties communicating with the cluster. Displaying cached information.</p>
   </div>
