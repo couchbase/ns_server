@@ -791,11 +791,11 @@ wait_for_preconditions_pred(Domain, DomainToken, Lease, Quorum, State) ->
                         Lease, Quorum, false, State) =:= ok.
 
 check_preconditions(Domain, DomainToken, Lease, Quorum, Unsafe, State) ->
-    functools:sequence_(State,
-                        [check_no_domain_conflicts(Domain, DomainToken, _),
-                         check_lease(Lease, _),
-                         check_quorum_requires_leader(Quorum, _),
-                         check_quorum(Unsafe, Quorum, _)]).
+    functools:sequence_(
+      [?cut(check_no_domain_conflicts(Domain, DomainToken, State)),
+       ?cut(check_lease(Lease, State)),
+       ?cut(check_quorum_requires_leader(Quorum, State)),
+       ?cut(check_quorum(Unsafe, Quorum, State))]).
 
 handle_wait_for_preconditions_success(SubCall, From, State) ->
     {noreply, handle_activity_subcall(SubCall, From, State)}.

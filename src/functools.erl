@@ -22,8 +22,8 @@
          curry/1,
          uncurry/1,
          alternative/2,
-         sequence/2,
-         sequence_/2,
+         sequence/1,
+         sequence_/1,
          add/1, add/2,
          sub/1, sub/2,
          mul/1, mul/2,
@@ -83,27 +83,27 @@ alternative(Initial, [F | Funs]) ->
 
 %% Apply functions in sequence and collect the ok results. If any function
 %% fails, return the error.
-sequence(Arg, Funs) ->
-    sequence(Arg, Funs, []).
+sequence(Funs) ->
+    sequence(Funs, []).
 
-sequence(_Arg, [], Acc) ->
+sequence([], Acc) ->
     {ok, lists:reverse(Acc)};
-sequence(Arg, [F | Rest], Acc) ->
-    case F(Arg) of
+sequence([F | Rest], Acc) ->
+    case F() of
         {ok, R} ->
-            sequence(Arg, Rest, [R | Acc]);
+            sequence(Rest, [R | Acc]);
         Other ->
             Other
     end.
 
-%% Same as sequence/2, but doesn't expect functions to return anything useful
+%% Same as sequence/1, but doesn't expect functions to return anything useful
 %% in ok case.
-sequence_(_Arg, []) ->
+sequence_([]) ->
     ok;
-sequence_(Arg, [F | Rest]) ->
-    case F(Arg) of
+sequence_([F | Rest]) ->
+    case F() of
         ok ->
-            sequence_(Arg, Rest);
+            sequence_(Rest);
         Other ->
             Other
     end.

@@ -18,6 +18,7 @@
 -behaviour(gen_statem).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 %% Constants and definitions
 
@@ -1596,8 +1597,8 @@ rebalance_allowed(Config) ->
         true ->
             ok;
         false ->
-            functools:sequence_(Config, [fun check_for_passwordless_default/1,
-                                         fun check_for_moxi_buckets/1])
+            functools:sequence_([?cut(check_for_passwordless_default(Config)),
+                                 ?cut(check_for_moxi_buckets(Config))])
     end.
 
 check_for_moxi_buckets(Config) ->

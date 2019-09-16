@@ -155,9 +155,9 @@ handle_start_transient_buckets(Buckets, Pid, State) ->
     %% probability of catching bugs.
     UpdatedState = update_buckets(State),
 
-    case functools:sequence_(UpdatedState,
-                             [check_no_conflicts(_),
-                              check_buckets_not_running(Buckets, _)]) of
+    case functools:sequence_(
+           [?cut(check_no_conflicts(UpdatedState)),
+            ?cut(check_buckets_not_running(Buckets, UpdatedState))]) of
         ok ->
             ?log_debug("Starting transient buckets ~p per request from ~p",
                        [Buckets, Pid]),

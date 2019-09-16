@@ -183,9 +183,8 @@ handle_unprepare_rebalance(Pid, State) ->
     end.
 
 handle_prepare_delta_recovery(Pid, Buckets, State) ->
-    case functools:sequence_(State,
-                             [check_rebalancer_pid(Pid, _),
-                              check_no_delta_recovery(_)]) of
+    case functools:sequence_([?cut(check_rebalancer_pid(Pid, State)),
+                              ?cut(check_no_delta_recovery(State))]) of
         ok ->
             case ns_bucket_worker:start_transient_buckets(Buckets) of
                 {ok, Ref} ->
@@ -206,9 +205,9 @@ handle_prepare_delta_recovery(Pid, Buckets, State) ->
 
 handle_prepare_delta_recovery_bucket(Pid, Bucket, VBuckets,
                                      ActiveFailoverLogs, From, State) ->
-    case functools:sequence_(State,
-                             [check_rebalancer_pid(Pid, _),
-                              check_delta_recovery_bucket(Bucket, _)]) of
+    case functools:sequence_(
+           [?cut(check_rebalancer_pid(Pid, State)),
+            ?cut(check_delta_recovery_bucket(Bucket, State))]) of
         ok ->
             ?log_debug("Received request to prepare bucket ~p for "
                        "delta recovery. VBuckets:~n~p~nFailover logs:~n~p",
@@ -252,9 +251,8 @@ handle_prepare_delta_recovery_result(Bucket, From, Result, State) ->
     end.
 
 handle_complete_delta_recovery(Pid, State) ->
-    case functools:sequence_(State,
-                             [check_rebalancer_pid(Pid, _),
-                              check_delta_recovery_completed(_)]) of
+    case functools:sequence_([?cut(check_rebalancer_pid(Pid, State)),
+                              ?cut(check_delta_recovery_completed(State))]) of
         ok ->
             Statuses    = stop_transient_buckets(State),
             BadStatuses = [{B, S} || {B, S} <- Statuses, S =/= running],
