@@ -43,7 +43,8 @@
 
 -export([start_link/1,
          maybe_take_socket/2,
-         put_socket/3]).
+         put_socket/3,
+         remove_socket/3]).
 
 -export([init/1,
          handle_call/3,
@@ -82,6 +83,9 @@ put_socket(Server, Dest, Socket) ->
         _ ->
             ok
     end.
+
+remove_socket(Server, Dest, Socket) ->
+    gen_server:call(Server, {remove, Dest, Socket}, infinity).
 
 -spec start_link([{atom(), non_neg_integer()}]) ->
                         {ok, pid()} | {error, already_started}.
@@ -144,6 +148,17 @@ handle_call({done, Dest, Socket}, {Pid, _} = From, State) ->
             end,
             {noreply, State}
     end;
+handle_call({remove, Dest, Socket}, {Pid, _} = From, State) ->
+    gen_server:reply(From, ok),
+    State1 = remove_socket(Socket, State),
+
+    case find_client(Pid, State1) of
+        {ok, {Dest, MonRef}, State2} ->
+            true = erlang:demonitor(MonRef, [flush]),
+            {noreply, maybe_notify_blocked_client(Dest, State2)};
+        error ->
+            {noreply, State1}
+    end;
 handle_call(_, _, State) ->
     {reply, {error, unknown_request}, State}.
 
@@ -170,13 +185,7 @@ handle_info({ssl, Socket, _}, State) ->
     {noreply, remove_socket(Socket, State)}; % got garbage
 handle_info({'DOWN', MonRef, process, Pid, _Reason}, State) ->
     {ok, {Dest, MonRef}, State2} = find_client(Pid, State),
-    case queue_out(Dest, State2) of
-        empty ->
-            {noreply, State2};
-        {ok, From, State3} ->
-            gen_server:reply(From, no_socket),
-            {noreply, monitor_client(Dest, From, State3)}
-    end;
+    {noreply, maybe_notify_blocked_client(Dest, State2)};
 handle_info(_, State) ->
     {noreply, State}.
 
@@ -270,6 +279,15 @@ add_to_queue(Dest, From, #ns_connection_pool{queues = Queues} = State) ->
         end,
 
     State#ns_connection_pool{queues = NewQueues}.
+
+maybe_notify_blocked_client(Dest, State) ->
+    case queue_out(Dest, State) of
+        empty ->
+            State;
+        {ok, From, State1} ->
+            gen_server:reply(From, no_socket),
+            monitor_client(Dest, From, State1)
+    end.
 
 queue_out(Dest, #ns_connection_pool{queues = Queues} = State) ->
     case dict:find(Dest, Queues) of
