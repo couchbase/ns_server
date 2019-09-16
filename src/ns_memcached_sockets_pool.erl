@@ -74,10 +74,10 @@ executing_on_socket(Fun, Bucket, Options) ->
                           put_socket(Sock, Options),
                           Result
                       catch T:E ->
-                                Stack = erlang:get_stacktrace(),
-                                ?log_debug("Exception while executing on socket ~p: ~p~n",
-                                           [SockName, {T, E, Stack}]),
-                                erlang:raise(T, E, Stack)
+                              Stack = erlang:get_stacktrace(),
+                              ?log_debug("Exception while executing on socket "
+                                         "~p: ~p~n", [SockName, {T, E, Stack}]),
+                              erlang:raise(T, E, Stack)
                       end;
                   Error ->
                       Error
