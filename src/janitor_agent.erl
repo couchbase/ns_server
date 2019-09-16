@@ -1037,7 +1037,7 @@ perform_flush(#state{bucket_name = BucketName} = State, BucketConfig,
     pass_vbucket_states_to_set_view_manager(NewState),
     ok = ns_couchdb_api:reset_master_vbucket(BucketName),
     ?log_info("Shutting down incoming replications"),
-    ok = replication_manager:set_incoming_replication_map(BucketName, []),
+    ok = stop_replications(BucketName, all),
     %% kill all vbuckets
     [ok = ns_memcached:sync_delete_vbucket(BucketName, VB)
      || {VB, _} <- VBStates],
