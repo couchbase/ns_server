@@ -420,6 +420,12 @@
   </div>
   <div
      class="alert alert-warning"
+     ng-repeat="warning in poolDefault.failoverWarnings"
+     ng-show="warning && warning != 'failoverNeeded' && !poolDefault.rebalancing">
+    <p>Warning: {{warning | formatFailoverWarnings}}</p>
+  </div>
+  <div
+     class="alert alert-warning"
      ng-show="adminCtl.lostConnState.isActive">
     <p>Difficulties communicating with the cluster. Displaying cached information.</p>
   </div>

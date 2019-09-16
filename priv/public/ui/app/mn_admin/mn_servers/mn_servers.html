@@ -1,12 +1,6 @@
 <mn-element-cargo depot="alerts">
   <div
      class="alert alert-warning"
-     ng-repeat="warning in serversCtl.mnPoolDefault.value.failoverWarnings"
-     ng-show="warning && warning != 'failoverNeeded' && !poolDefault.rebalancing">
-    <p>Warning: {{warning | formatFailoverWarnings}}</p>
-  </div>
-  <div
-     class="alert alert-warning"
      ng-show="!('every' | lodash:('values' | lodash:poolDefault.compat)) && !adminCtl.clientAlerts.hideCompatibility">
     <p>This cluster contains multiple server versions and is running in {{::poolDefault.thisNode.clusterCompatibility | decodeCompatVersion}} compatibility mode.</p>
     <a ng-click="adminCtl.clientAlerts.hideCompatibility = true" class="close">X</a>
