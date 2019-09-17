@@ -22,7 +22,8 @@
 
 -export([handle_get/1,
          handle_post/1,
-         handle_get_descriptors/1]).
+         handle_get_descriptors/1,
+         handle_get_non_filterable_descriptors/1]).
 
 handle_get(Req) ->
     menelaus_util:assert_is_enterprise(),
@@ -68,11 +69,7 @@ audit_modify_audit_settings(Req, Settings) ->
         false -> ok
     end.
 
-handle_get_descriptors(Req) ->
-    menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_55(),
-
-    Descriptors = ns_audit_cfg:get_descriptors(ns_config:latest()),
+reply_with_json_audit_descriptors(Req, Descriptors) ->
     Json =
         lists:map(
           fun ({Id, Props}) ->
@@ -82,6 +79,18 @@ handle_get_descriptors(Req) ->
                     {description, proplists:get_value(description, Props)}]}
           end, Descriptors),
     menelaus_util:reply_json(Req, Json).
+
+handle_get_non_filterable_descriptors(Req) ->
+    menelaus_util:assert_is_enterprise(),
+    menelaus_util:assert_is_madhatter(),
+    Descriptors = ns_audit_cfg:get_non_filterable_descriptors(),
+    reply_with_json_audit_descriptors(Req, Descriptors).
+
+handle_get_descriptors(Req) ->
+    menelaus_util:assert_is_enterprise(),
+    menelaus_util:assert_is_55(),
+    Descriptors = ns_audit_cfg:get_descriptors(ns_config:latest()),
+    reply_with_json_audit_descriptors(Req, Descriptors).
 
 jsonifier(disabled_users) ->
     fun (UList) ->

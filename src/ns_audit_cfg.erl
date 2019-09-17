@@ -29,7 +29,7 @@
          default_audit_json_path/0, get_log_path/0, get_uid/0]).
 
 -export([upgrade_descriptors/0, upgrade_to_55/1, get_descriptors/1,
-         jsonifier/1]).
+         jsonifier/1, get_non_filterable_descriptors/0]).
 
 -record(state, {global,
                 merged}).
@@ -279,7 +279,7 @@ read_config() ->
 get_descriptors(Config) ->
     ns_config:search(Config, audit_decriptors, []).
 
-read_descriptors() ->
+get_audit_descs_from_file(EventPredicate) ->
     Path = filename:join(path_config:component_path(sec), "audit_events.json"),
     {ok, Bin} = file:read_file(Path),
     {Json} = ejson:decode(Bin),
@@ -292,8 +292,7 @@ read_descriptors() ->
               Events = proplists:get_value(<<"events">>, Module),
               lists:filtermap(
                 fun ({Event}) ->
-                        case proplists:get_value(<<"filtering_permitted">>,
-                                                 Event, false) of
+                        case EventPredicate(Event) of
                             false ->
                                 false;
                             true ->
@@ -310,6 +309,18 @@ read_descriptors() ->
                         end
                 end, Events)
       end, Modules).
+
+get_non_filterable_descriptors() ->
+    get_audit_descs_from_file(
+      fun(E) ->
+              proplists:get_value(<<"filtering_permitted">>, E) =:= false
+      end).
+
+read_descriptors() ->
+    get_audit_descs_from_file(
+      fun(E) ->
+              proplists:get_value(<<"filtering_permitted">>, E) =:= true
+      end).
 
 upgrade_descriptors() ->
     [{set, audit_decriptors, lists:ukeysort(1, read_descriptors())}].

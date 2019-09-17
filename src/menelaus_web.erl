@@ -378,6 +378,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "audit", "descriptors"] ->
                     {{[admin, security], read},
                      fun menelaus_web_audit:handle_get_descriptors/1};
+                ["settings", "audit", "nonFilterableDescriptors"] ->
+                    {{[admin, security], read},
+                     fun menelaus_web_audit:handle_get_non_filterable_descriptors/1};
                 ["settings", "rbac", "roles"] ->
                     {{[admin, security], read},
                      fun menelaus_web_rbac:handle_get_roles/1};
