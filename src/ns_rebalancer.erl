@@ -581,7 +581,8 @@ rebalance_kv(KeepNodes, EjectNodes, BucketConfigs, DeltaRecoveryBuckets) ->
     ?rebalance_debug("BucketConfigs = ~p", [sanitize(BucketConfigs)]),
 
     KeepKVNodes = ns_cluster_membership:service_nodes(KeepNodes, kv),
-    LiveKVNodes = ns_cluster_membership:service_nodes(KeepNodes ++ EjectNodes, kv),
+    LiveKVNodes =
+        ns_cluster_membership:service_nodes(KeepNodes ++ EjectNodes, kv),
 
     case maybe_cleanup_old_buckets(KeepNodes) of
         ok ->
@@ -590,14 +591,15 @@ rebalance_kv(KeepNodes, EjectNodes, BucketConfigs, DeltaRecoveryBuckets) ->
             exit(Error)
     end,
 
-    lists:foreach(fun ({I, {BucketName, BucketConfig}}) ->
-                          BucketCompletion = I / NumBuckets,
-                          update_kv_progress(LiveKVNodes, BucketCompletion),
+    lists:foreach(
+      fun ({I, {BucketName, BucketConfig}}) ->
+              BucketCompletion = I / NumBuckets,
+              update_kv_progress(LiveKVNodes, BucketCompletion),
 
-                          ProgressFun = make_progress_fun(BucketCompletion, NumBuckets),
-                          rebalance_bucket(BucketName, BucketConfig, ProgressFun,
-                                           KeepKVNodes, EjectNodes, DeltaRecoveryBuckets)
-                  end, misc:enumerate(BucketConfigs, 0)),
+              ProgressFun = make_progress_fun(BucketCompletion, NumBuckets),
+              rebalance_bucket(BucketName, BucketConfig, ProgressFun,
+                               KeepKVNodes, EjectNodes, DeltaRecoveryBuckets)
+      end, misc:enumerate(BucketConfigs, 0)),
 
     update_kv_progress(LiveKVNodes, 1.0).
 
