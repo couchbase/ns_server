@@ -11,7 +11,7 @@
   function mnAuthServiceFactory($http, $state, mnPools, $rootScope, mnPendingQueryKeeper, mnPermissions, $uibModalStack, $window, $q, $cacheFactory) {
     var mnAuthService = {
       login: login,
-      logout: logout,
+      logout: _.once(logout),
       whoami: whoami,
       canUseCertForAuth: canUseCertForAuth
     };
@@ -78,6 +78,8 @@
         method: 'POST',
         url: "/uilogout"
       }).then(function () {
+        $window.location.reload();
+      }, function () {
         $window.location.reload();
       });
     }

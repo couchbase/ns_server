@@ -22,6 +22,7 @@
           if (rejection.status === 401 &&
               rejection.config.url !== "/pools" &&
               rejection.config.url !== "/controller/changePassword" &&
+              rejection.config.url !== "/uilogout" &&
               ($injector.get('$state').includes('app.admin') ||
                $injector.get('$state').includes('app.wizard')) &&
               !rejection.config.headers["ignore-401"] &&
