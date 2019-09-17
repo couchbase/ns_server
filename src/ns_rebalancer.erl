@@ -597,14 +597,16 @@ rebalance_kv(KeepNodes, EjectNodes, BucketConfigs, DeltaRecoveryBuckets) ->
               update_kv_progress(LiveKVNodes, BucketCompletion),
 
               ProgressFun = make_progress_fun(BucketCompletion, NumBuckets),
+              ForcedMap = get_target_map_and_opts(BucketName,
+                                                  DeltaRecoveryBuckets),
               rebalance_bucket(BucketName, BucketConfig, ProgressFun,
-                               KeepKVNodes, EjectNodes, DeltaRecoveryBuckets)
+                               KeepKVNodes, EjectNodes, ForcedMap)
       end, misc:enumerate(BucketConfigs, 0)),
 
     update_kv_progress(LiveKVNodes, 1.0).
 
 rebalance_bucket(BucketName, BucketConfig, ProgressFun,
-                 KeepKVNodes, EjectNodes, DeltaRecoveryBuckets) ->
+                 KeepKVNodes, EjectNodes, ForcedMap) ->
     ale:info(?USER_LOGGER, "Started rebalancing bucket ~s", [BucketName]),
     ?rebalance_info("Rebalancing bucket ~p with config ~p",
                     [BucketName, sanitize(BucketConfig)]),
@@ -613,7 +615,7 @@ rebalance_bucket(BucketName, BucketConfig, ProgressFun,
             rebalance_memcached_bucket(BucketName, KeepKVNodes);
         membase ->
             rebalance_membase_bucket(BucketName, BucketConfig, ProgressFun,
-                                     KeepKVNodes, EjectNodes, DeltaRecoveryBuckets)
+                                     KeepKVNodes, EjectNodes, ForcedMap)
     end.
 
 rebalance_memcached_bucket(BucketName, KeepKVNodes) ->
@@ -622,7 +624,7 @@ rebalance_memcached_bucket(BucketName, KeepKVNodes) ->
     master_activity_events:note_bucket_rebalance_ended(BucketName).
 
 rebalance_membase_bucket(BucketName, BucketConfig, ProgressFun,
-                         KeepKVNodes, EjectNodes, DeltaRecoveryBuckets) ->
+                         KeepKVNodes, EjectNodes, ForcedMap) ->
     %% Only start one bucket at a time to avoid
     %% overloading things
     ThisEjected = ordsets:intersection(
@@ -648,7 +650,7 @@ rebalance_membase_bucket(BucketName, BucketConfig, ProgressFun,
     master_activity_events:note_bucket_rebalance_started(BucketName),
     {NewMap, MapOptions} =
         do_rebalance_membase_bucket(BucketName, NewConf,
-                                    KeepKVNodes, ProgressFun, DeltaRecoveryBuckets),
+                                    KeepKVNodes, ProgressFun, ForcedMap),
     ns_bucket:set_map_opts(BucketName, MapOptions),
     ns_bucket:update_bucket_props(BucketName,
                                   [{deltaRecoveryMap, undefined}]),
@@ -669,29 +671,30 @@ run_janitor_pre_rebalance(BucketName) ->
 %% either return ok or exit with reason 'stopped' or whatever reason
 %% was given by whatever failed.
 do_rebalance_membase_bucket(Bucket, Config,
-                            KeepNodes, ProgressFun, DeltaRecoveryBuckets) ->
+                            KeepNodes, ProgressFun, ForcedMap) ->
     Map = proplists:get_value(map, Config),
-    AdjustedMap = case cluster_compat_mode:is_cluster_madhatter() of
-                      true ->
-                          NumReplicas = ns_bucket:num_replicas(Config),
-                          mb_map:align_replicas(Map, NumReplicas);
-                      false ->
-                          %% Expect equal length map pre mad-hatter, as the
-                          %% janitor fixes it for us.
-                          %% See fun ns_janitor:compute_vbucket_map_fixup.
-                          Map
-                  end,
     {FastForwardMap, MapOptions} =
-        case lists:keyfind(Bucket, 1, DeltaRecoveryBuckets) of
-            false ->
+        case ForcedMap of
+            undefined ->
+                AdjustedMap =
+                    case cluster_compat_mode:is_cluster_madhatter() of
+                        true ->
+                            NumReplicas = ns_bucket:num_replicas(Config),
+                            mb_map:align_replicas(Map, NumReplicas);
+                        false ->
+                            %% Expect equal length map pre mad-hatter, as the
+                            %% janitor fixes it for us.
+                            %% See fun ns_janitor:compute_vbucket_map_fixup.
+                            Map
+                    end,
                 generate_vbucket_map(AdjustedMap, KeepNodes, Config);
-            {_, #{target_map := TargetMap,
-                  target_map_opts := TargetMapOpts}} ->
-                {TargetMap, TargetMapOpts}
+            _ ->
+                ForcedMap
         end,
 
     ns_bucket:update_vbucket_map_history(FastForwardMap, MapOptions),
-    ?rebalance_debug("Target map options: ~p (hash: ~p)", [MapOptions, erlang:phash2(MapOptions)]),
+    ?rebalance_debug("Target map options: ~p (hash: ~p)",
+                     [MapOptions, erlang:phash2(MapOptions)]),
     {run_mover(Bucket, Config, KeepNodes, ProgressFun, Map, FastForwardMap),
      MapOptions}.
 
@@ -1616,6 +1619,14 @@ do_prepare_one_delta_recovery_bucket(Bucket, BucketConfig, FailoverVBuckets) ->
             ?log_error("Failed to prepare bucket ~p for delta recovery "
                        "on some nodes:~n~p", [Bucket, Errors]),
             exit({prepare_delta_recovery_failed, Bucket, Errors})
+    end.
+
+get_target_map_and_opts(Bucket, DeltaRecoveryBuckets) ->
+    case lists:keyfind(Bucket, 1, DeltaRecoveryBuckets) of
+        false ->
+            undefined;
+        {_, #{target_map := TargetMap, target_map_opts := TargetMapOpts}} ->
+            {TargetMap, TargetMapOpts}
     end.
 
 get_active_failover_logs(Bucket, Map, VBucketsSet) ->
