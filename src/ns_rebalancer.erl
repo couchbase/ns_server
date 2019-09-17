@@ -1006,8 +1006,8 @@ handle_one_delta_recovery_bucket(Config, AllNodes, DeltaNodes,
     case find_delta_recovery_map(Config, AllNodes,
                                  DeltaNodes, Bucket, BucketConfig) of
         false ->
-            ?rebalance_debug("Couldn't delta recover bucket ~s when "
-                             "we care about delta recovery of that bucket",
+            ?rebalance_debug("Couldn't delta recover bucket ~s because "
+                             "suitable vbucket map is not found in the history",
                              [Bucket]),
             {right, Bucket};
         {ok, BucketInfo} ->
