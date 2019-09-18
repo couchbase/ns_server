@@ -54,8 +54,8 @@ authenticate_with_cause(Username, Password, Settings) ->
     end.
 
 with_query_connection(Settings, Fun) ->
-    DN = proplists:get_value(query_dn, Settings),
-    {password, Pass} = proplists:get_value(query_pass, Settings),
+    DN = proplists:get_value(bind_dn, Settings),
+    {password, Pass} = proplists:get_value(bind_pass, Settings),
     ldap_util:with_authenticated_connection(DN, Pass, Settings, Fun).
 
 get_user_DN(Username, Settings, Context) ->

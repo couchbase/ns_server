@@ -140,9 +140,9 @@ ldap_settings_desc() ->
                       {template, iolist_to_binary(T)}]}
             end, L)
       end},
-     {query_dn, queryDN,
+     {bind_dn, bindDN,
       Curry(fun validate_ldap_dn/2), list_to_binary(_)},
-     {query_pass, queryPass,
+     {bind_pass, bindPass,
       fun (N) ->
           functools:compose(
             [validator:touch(N, _),

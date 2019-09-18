@@ -15,8 +15,8 @@
         encryption: "None",
         serverCertValidation: "false",
         cacert: "",
-        queryDN: "",
-        queryPass: ""
+        bindDN: "",
+        bindPass: ""
       },
       isAnon: false,
       userDnMapping: "template",
@@ -78,7 +78,7 @@
     }
 
     function isThisAnonConnection(data) {
-      return !data.queryDN && !!((data.authenticationEnabled && data.userDNMapping &&
+      return !data.bindDN && !!((data.authenticationEnabled && data.userDNMapping &&
                                    data.userDNMapping.includes("query")) ||
                                   (data.authorizationEnabled && data.groupsQuery));
     }
@@ -205,12 +205,12 @@
 
     function getConnectivitySettings() {
       var config = Object.assign({}, vm.config.connect);
-      if (config.queryPass == "**********") {
-        delete config.queryPass;
+      if (config.bindPass == "**********") {
+        delete config.bindPass;
       }
       if (vm.config.isAnon) {
-        config.queryDN = "";
-        config.queryPass = "";
+        config.bindDN = "";
+        config.bindPass = "";
       }
       if (config.serverCertValidation == "pasteCert") {
         config.serverCertValidation = "true";

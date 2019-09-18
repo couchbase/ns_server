@@ -100,7 +100,7 @@
     }
 
     function isAnonOrQueryDn(data, isAnon) {
-      return (isAnon || data.queryDN);
+      return (isAnon || data.bindDN);
     }
 
     function validateLDAPQuery(data) {
@@ -119,14 +119,14 @@
 
     function ldapConnectivityValidate(data, formData) {
       if (!isAnonOrQueryDn(data, formData.isAnon)) {
-        return $q.reject({queryDN: queryDnError});
+        return $q.reject({bindDN: queryDnError});
       }
       return $http.post("/settings/ldap/validate/connectivity", data);
     }
 
     function ldapAuthenticationValidate(data, formData) {
       if (!isAnonOrQueryDn(data, formData.isAnon) && validateLDAPQuery(data)) {
-        return $q.reject({queryDN: queryDnError});
+        return $q.reject({bindDN: queryDnError});
       }
       return $http.post("/settings/ldap/validate/authentication", data);
     }
@@ -134,7 +134,7 @@
     function ldapGroupsQueryValidate(data, formData) {
       var errors = {};
       if (!isAnonOrQueryDn(data, formData.isAnon) && validateGroupQuery(data)) {
-        errors.queryDN = queryDnError;
+        errors.bindDN = queryDnError;
       }
       if (validateGroupUserAttrs(formData)) {
         errors.groupsQuery = usersAttrsError;
@@ -156,7 +156,7 @@
       if (!isAnonOrQueryDn(data, formData.isAnon) && ((!isUser && !isGroups) ||
                                                       (validateLDAPQuery(data) && isUser) ||
                                                       (validateGroupQuery(data) && isGroups))) {
-        errors.queryDN = queryDnError;
+        errors.bindDN = queryDnError;
       }
       if (isGroups && validateGroupUserAttrs(formData)) {
         errors.groupsQuery = usersAttrsError;

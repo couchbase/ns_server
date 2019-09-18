@@ -118,7 +118,7 @@
                class="formrow"
                ng-if="addLdapDialogCtl.config.connect.serverCertValidation == 'pasteCert'">
               <label
-                 for="queryDN"
+                 for="bindDN"
                  ng-disabled="addLdapDialogCtl.config.connect.encryption == 'None'">
                 Certificate Text</label>
               <textarea
@@ -146,9 +146,9 @@
             <div class="formrow row items-top">
               <span class="width-6 margin-right-half">
                 <label
-                   for="queryDN"
+                   for="bindDN"
                    ng-disabled="addLdapDialogCtl.config.isAnon">
-                  LDAP DN
+                  Bind DN
                 </label>
                 <input
                    type="text"
@@ -156,19 +156,19 @@
                    spellcheck="false"
                    autocapitalize="off"
                    mn-autocomplete-off="enforce"
-                   id="queryDN"
-                   ng-model="addLdapDialogCtl.config.connect.queryDN"
+                   id="bindDN"
+                   ng-model="addLdapDialogCtl.config.connect.bindDN"
                    placeholder="uid=admin,ou=users,dc=example,dc=com"
                    ng-disabled="addLdapDialogCtl.config.isAnon">
                 <div
                    class="error"
-                   ng-show="addLdapDialogCtl.errors.queryDN">
-                  {{addLdapDialogCtl.errors.queryDN}}
+                   ng-show="addLdapDialogCtl.errors.bindDN">
+                  {{addLdapDialogCtl.errors.bindDN}}
                 </div>
               </span>
               <span class="width-6">
                 <label
-                   for="queryPass"
+                   for="bindPass"
                    ng-disabled="addLdapDialogCtl.config.isAnon">
                   Password
                 </label>
@@ -178,13 +178,13 @@
                    spellcheck="false"
                    autocapitalize="off"
                    mn-autocomplete-off="enforce"
-                   id="queryPass"
-                   ng-model="addLdapDialogCtl.config.connect.queryPass"
+                   id="bindPass"
+                   ng-model="addLdapDialogCtl.config.connect.bindPass"
                    ng-disabled="addLdapDialogCtl.config.isAnon">
                 <div
                    class="error"
-                   ng-show="addLdapDialogCtl.errors.queryPass">
-                  {{addLdapDialogCtl.errors.queryPass}}
+                   ng-show="addLdapDialogCtl.errors.bindPass">
+                  {{addLdapDialogCtl.errors.bindPass}}
                 </div>
               </span>
             </div>
