@@ -212,6 +212,13 @@ validate_user_dn_mapping(Name, State) ->
                         catch _:_ ->
                             throw({error, "Invalid JSON"})
                         end,
+                  lists:foreach(
+                        fun ({_}) -> ok;
+                            (Invalid) ->
+                                Msg = io_lib:format("Not a JSON object: ~s",
+                                                    [ejson:encode(Invalid)]),
+                                throw({error, Msg})
+                        end, Map),
                   {value, [Parse(Props) || {Props} <- Map]}
               catch
                   throw:{error, _} = Err -> Err
@@ -239,7 +246,7 @@ parse_user_dn_mapping_record([{<<"query">>, QueryTempl}, {<<"re">>, Re}]) ->
     end,
     {validate_re(Re), {'query', validate_placeholders(QueryTempl)}};
 parse_user_dn_mapping_record(Props) ->
-    throw({error, io_lib:format("Invalid record: ~p",
+    throw({error, io_lib:format("Invalid rule: ~s",
                                 [ejson:encode({Props})])}).
 
 validate_placeholders(Str) ->
