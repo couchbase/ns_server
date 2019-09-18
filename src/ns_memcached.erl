@@ -621,7 +621,7 @@ handle_cast({connect_done, WorkersCount, RV}, #state{bucket = Bucket,
 
     case RV of
         {ok, Sock} ->
-            try ensure_bucket(Sock, Bucket) of
+            try ensure_bucket(Sock, Bucket, false) of
                 ok ->
                     connecting = OldStatus,
 
@@ -800,7 +800,7 @@ run_check_config(Bucket, Parent) ->
     perform_very_long_call(
       fun(Sock) ->
               StartTS = os:timestamp(),
-              ok = ensure_bucket(Sock, Bucket),
+              ok = ensure_bucket(Sock, Bucket, true),
               Diff = timer:now_diff(os:timestamp(), StartTS),
               if
                   Diff > ?SLOW_CALL_THRESHOLD_MICROS ->
@@ -809,7 +809,7 @@ run_check_config(Bucket, Parent) ->
                       ok
               end,
               {reply, ok}
-      end).
+      end, Bucket).
 
 -spec active_buckets() -> [bucket_name()].
 active_buckets() ->
@@ -1133,11 +1133,11 @@ do_connect(Options) ->
             throw({T, E})
     end.
 
-ensure_bucket(Sock, Bucket) ->
+ensure_bucket(Sock, Bucket, BucketSelected) ->
     Config = ns_config:get(),
     try memcached_bucket_config:get(Config, Bucket) of
         BConf ->
-            case do_ensure_bucket(Sock, Bucket, BConf) of
+            case do_ensure_bucket(Sock, Bucket, BConf, BucketSelected) of
                 ok ->
                     memcached_bucket_config:ensure_collections(Sock, BConf);
                 Error ->
@@ -1150,19 +1150,12 @@ ensure_bucket(Sock, Bucket) ->
             {E, R}
     end.
 
-do_ensure_bucket(Sock, Bucket, BConf) ->
+do_ensure_bucket(Sock, Bucket, BConf, true) ->
+    ensure_selected_bucket(Sock, Bucket, BConf);
+do_ensure_bucket(Sock, Bucket, BConf, false) ->
     case mc_client_binary:select_bucket(Sock, Bucket) of
         ok ->
-            case memcached_bucket_config:ensure(Sock, BConf) of
-                restart ->
-                    ale:info(
-                      ?USER_LOGGER,
-                      "Restarting bucket ~p due to configuration change",
-                      [Bucket]),
-                    exit({shutdown, reconfig});
-                ok ->
-                    ok
-            end;
+            ensure_selected_bucket(Sock, Bucket, BConf);
         {memcached_error, key_enoent, _} ->
             {ok, DBSubDir} =
                 ns_storage_conf:this_node_bucket_dbdir(Bucket),
@@ -1182,6 +1175,18 @@ do_ensure_bucket(Sock, Bucket, BConf) ->
             end;
         Error ->
             {error, {bucket_select_error, Error}}
+    end.
+
+ensure_selected_bucket(Sock, Bucket, BConf) ->
+    case memcached_bucket_config:ensure(Sock, BConf) of
+        restart ->
+            ale:info(
+              ?USER_LOGGER,
+              "Restarting bucket ~p due to configuration change",
+              [Bucket]),
+            exit({shutdown, reconfig});
+        ok ->
+            ok
     end.
 
 server(Bucket) ->
