@@ -1,124 +1,137 @@
-<div class="row flex-left margin-bottom-half">
-  <div class="inline margin-right-half"
-       ng-controller="mnScenarioDialogController as scenarioCtrl">
-    <mn-dropdown
-       ng-click="$event.stopPropagation();"
-       on-select="statisticsNewCtl.onSelectScenario(scenario);"
-       model="statisticsNewCtl.scenario"
-       class="scenario-dropdown">
-      <inner-select>
-        {{statisticsNewCtl.scenario.selected.name}}
-      </inner-select>
-      <inner-body ng-class="{'body-shorter' : scenarioCtrl.showRestOfMenu}">
-        <mn-dropdown-item
-           ng-repeat="scenario in statisticsNewCtl.scenarios | orderBy:'-preset' track by scenario.id"
-           mn-item="scenario">
-          <p>{{scenario.name}}</p>
-          <p ng-if="scenario.desc">{{scenario.desc}}</p>
-          <div
-             ng-if="!scenario.preset"
-             class="scenario-controls"
-             ng-click="$event.stopPropagation();"
-             title="delete/edit scenario">
-            <span
-               title="delete scenario"
-               class="icon fa-trash"
-               ng-click="scenarioCtrl.deleteScenario(scenario.id)"
-               ng-show="showScenarioControls"></span>
-            <span
-               title="edit scenario"
-               class="icon fa-edit"
-               ng-click="scenarioCtrl.editScenario(scenario)"
-               ng-show="showScenarioControls"></span>
-            <span
-               class="icon fa-ellipsis-v"
-               ng-click="showScenarioControls = !showScenarioControls">
-            </span>
-          </div>
-        </mn-dropdown-item>
-      </inner-body>
-      <inner-footer>
-        <form
-           novalidate
-           ng-submit="scenarioCtrl.onSubmit(statisticsNewCtl.scenario.selected)"
-           name="form"
-           class="forms">
-          <div class="scenario-add" ng-class="{'scenario-add-ext' : scenarioCtrl.showRestOfMenu}">
+<div class="row">
+  <div class="row flex-left margin-bottom-half">
+    <div class="inline margin-right-half"
+         ng-controller="mnScenarioDialogController as scenarioCtrl">
+      <mn-dropdown
+         ng-click="$event.stopPropagation();"
+         on-select="statisticsNewCtl.onSelectScenario(scenario);"
+         model="statisticsNewCtl.scenario"
+         class="scenario-dropdown">
+        <inner-select>
+          {{statisticsNewCtl.scenario.selected.name}}
+        </inner-select>
+        <inner-body ng-class="{'body-shorter' : scenarioCtrl.showRestOfMenu}">
+          <mn-dropdown-item
+             ng-repeat="scenario in statisticsNewCtl.scenarios | orderBy:'-preset' track by scenario.id"
+             mn-item="scenario">
+            <p>{{scenario.name}}</p>
+            <p ng-if="scenario.desc">{{scenario.desc}}</p>
+            <div
+               ng-if="!scenario.preset"
+               class="scenario-controls"
+               ng-click="$event.stopPropagation();"
+               title="delete/edit scenario">
+              <span
+                 title="delete scenario"
+                 class="icon fa-trash"
+                 ng-click="scenarioCtrl.deleteScenario(scenario.id)"
+                 ng-show="showScenarioControls"></span>
+              <span
+                 title="edit scenario"
+                 class="icon fa-edit"
+                 ng-click="scenarioCtrl.editScenario(scenario)"
+                 ng-show="showScenarioControls"></span>
+              <span
+                 class="icon fa-ellipsis-v"
+                 ng-click="showScenarioControls = !showScenarioControls">
+              </span>
+            </div>
+          </mn-dropdown-item>
+        </inner-body>
+        <inner-footer>
+          <form
+             novalidate
+             ng-submit="scenarioCtrl.onSubmit(statisticsNewCtl.scenario.selected)"
+             name="form"
+             class="forms">
+            <div class="scenario-add" ng-class="{'scenario-add-ext' : scenarioCtrl.showRestOfMenu}">
+              <input
+                 type="text"
+                 ng-model="scenarioCtrl.scenario.name"
+                 placeholder="new scenario..."
+                 autocorrect="off"
+                 ng-click="scenarioCtrl.showRestOfMenu = true"
+                 spellcheck="false"
+                 autocapitalize="off"
+                 ng-disabled="!rbac.bucketNames['.stats!read'].length">
+              <span class="icon fa-plus-square" ng-show="!scenarioCtrl.showRestOfMenu"></span>
+            </div>
+
             <input
                type="text"
-               ng-model="scenarioCtrl.scenario.name"
-               placeholder="new scenario..."
+               ng-model="scenarioCtrl.scenario.desc"
+               placeholder="add optional description..."
                autocorrect="off"
-               ng-click="scenarioCtrl.showRestOfMenu = true"
                spellcheck="false"
                autocapitalize="off"
-               ng-disabled="!rbac.bucketNames['.stats!read'].length">
-            <span class="icon fa-plus-square" ng-show="!scenarioCtrl.showRestOfMenu"></span>
-          </div>
+               ng-disabled="!rbac.bucketNames['.stats!read'].length"
+               ng-show="scenarioCtrl.showRestOfMenu"
+               class="scenario-desc">
+            <div class="checkbox-list margin-bottom-half"
+                 ng-show="!scenarioCtrl.isEditingMode && scenarioCtrl.showRestOfMenu">
+              <input
+                 type="radio"
+                 value="true"
+                 ng-model="scenarioCtrl.copyScenario"
+                 id="for-bucket-type-current">
+              <label for="for-bucket-type-current">save current charts</label>
+              <input
+                 type="radio"
+                 value="false"
+                 ng-model="scenarioCtrl.copyScenario"
+                 id="for-bucket-type-blank">
+              <label for="for-bucket-type-blank">start blank</label>
+            </div>
+            <div class="scenario-save-controls" ng-show="scenarioCtrl.showRestOfMenu">
+              <button type="submit">Save</button>
+              <a class="width-12 text-center" ng-click="scenarioCtrl.clear()">Cancel</a>
+            </div>
+          </form>
+        </inner-footer>
+      </mn-dropdown>
+    </div>
 
-          <input
-             type="text"
-             ng-model="scenarioCtrl.scenario.desc"
-             placeholder="add optional description..."
-             autocorrect="off"
-             spellcheck="false"
-             autocapitalize="off"
-             ng-disabled="!rbac.bucketNames['.stats!read'].length"
-             ng-show="scenarioCtrl.showRestOfMenu"
-             class="scenario-desc">
-          <div class="checkbox-list margin-bottom-half"
-               ng-show="!scenarioCtrl.isEditingMode && scenarioCtrl.showRestOfMenu">
-            <input
-               type="radio"
-               value="true"
-               ng-model="scenarioCtrl.copyScenario"
-               id="for-bucket-type-current">
-            <label for="for-bucket-type-current">save current charts</label>
-            <input
-               type="radio"
-               value="false"
-               ng-model="scenarioCtrl.copyScenario"
-               id="for-bucket-type-blank">
-            <label for="for-bucket-type-blank">start blank</label>
-          </div>
-          <div class="scenario-save-controls" ng-show="scenarioCtrl.showRestOfMenu">
-            <button type="submit">Save</button>
-            <a class="width-12 text-center" ng-click="scenarioCtrl.clear()">Cancel</a>
-          </div>
-        </form>
-      </inner-footer>
-    </mn-dropdown>
+    <select
+       ng-model="statisticsNewCtl.zoom"
+       ng-change="statisticsNewCtl.onSelectZoom()"
+       class="margin-right-half">
+      <option value="minute">minute</option>
+      <option value="hour">hour</option>
+      <option value="day">day</option>
+      <option value="week">week</option>
+      <option value="month">month</option>
+    </select>
+
+    <select
+       ng-model="statisticsNewCtl.selectedBucket"
+       class="max-width-4"
+       ng-change="statisticsNewCtl.onBucketChange(statisticsNewCtl.selectedBucket)">
+      <option ng-repeat="name in rbac.bucketNames['.stats!read']" value="{{name}}">
+        {{name}}
+      </option>
+    </select>
+
   </div>
-
-  <select
-     ng-model="statisticsNewCtl.zoom"
-     ng-change="statisticsNewCtl.onSelectZoom()"
-     class="margin-right-half">
-    <option value="minute">minute</option>
-    <option value="hour">hour</option>
-    <option value="day">day</option>
-    <option value="week">week</option>
-    <option value="month">month</option>
-  </select>
-
-  <select
-     ng-model="statisticsNewCtl.selectedBucket"
-     class="max-width-4"
-     ng-change="statisticsNewCtl.onBucketChange(statisticsNewCtl.selectedBucket)">
-    <option ng-repeat="name in rbac.bucketNames['.stats!read']" value="{{name}}">
-      {{name}}
-    </option>
-  </select>
-
-  <button
-     ng-disabled="!statisticsNewCtl.scenarios.length"
-     ng-click="statisticsNewCtl.openGroupDialog(statisticsNewCtl.scenario.selected)"
-     class="tight"
-     ng-hide="statisticsNewCtl.scenario.selected.preset"
-     style="margin-left: auto;">
-    <span class="icon fa-plus-circle"></span> Add Group
-  </button>
-
+  <div class="flex-right">
+    <button
+       ng-disabled="!statisticsNewCtl.scenarios.length"
+       ng-click="statisticsNewCtl.openGroupDialog(statisticsNewCtl.scenario.selected)"
+       class="tight"
+       ng-hide="statisticsNewCtl.scenario.selected.preset">
+      <span class="icon fa-plus-circle"></span> Add Group
+    </button>
+    <div uib-dropdown class="tight">
+      <button uib-dropdown-toggle class="tight">
+        <span class="icon fa-cog"></span>
+      </button>
+      <div uib-dropdown-menu
+           style="top:auto;"
+           class="dropdown-menu-select-like">
+        <a style="color:#e07f82"
+           ng-click="statisticsNewCtl.resetDashboardConfiguration();">Reset to Default</a>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="width-12">

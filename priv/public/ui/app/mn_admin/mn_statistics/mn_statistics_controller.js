@@ -173,11 +173,32 @@
     vm.onBucketChange = onBucketChange;
 
     vm.openChartBuilderDialog = openChartBuilderDialog;
+    vm.resetDashboardConfiguration = resetDashboardConfiguration;
     vm.showBlocks = {
       "Server Resources": true
     };
 
     activate();
+
+    function resetDashboardConfiguration() {
+      return $uibModal.open({
+        templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_reset_dialog.html'
+      }).result.then(function () {
+        mnStoreService.store("charts").clear();
+        mnStoreService.store("groups").clear();
+        mnStoreService.store("scenarios").clear();
+        mnStatisticsNewService.doAddPresetScenario();
+
+        vm.scenario.selected =
+          mnStoreService.store("scenarios").last();
+
+        $state.go("^.statistics", {
+          scenario: mnStoreService.store("scenarios").last().id
+        });
+
+        return mnUserRolesService.saveDashboard();
+      });
+    }
 
     function openGroupDialog(scenario) {
       $uibModal.open({

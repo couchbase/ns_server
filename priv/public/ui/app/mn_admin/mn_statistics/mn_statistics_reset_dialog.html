@@ -1,0 +1,21 @@
+<div class="dialog-med">
+  <div class="panel-header">
+    <h2>Reset Dashboard Confirmation</h2>
+  </div>
+  <div class="panel-content">
+    <div class="row flex-left">
+      <span class="icon fa-warning fa-2x red-3"></span>
+      <p>
+        You will lose all your dashboard configurations.<br>
+        Are you sure you want to reset dashboard to initial setup?
+      </p>
+    </div>
+  </div>
+  <div class="panel-footer">
+    <a ng-click="$dismiss()">Cancel</a>
+    <button
+       type="submit"
+       class="red"
+       ng-click="$close()">Reset Dashboard</button>
+  </div>
+</div>

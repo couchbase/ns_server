@@ -22,6 +22,7 @@
     Store.prototype.share = share;
     Store.prototype.copy = copy;
     Store.prototype.last = last;
+    Store.prototype.clear = clear;
 
     return storeService;
 
@@ -38,7 +39,7 @@
       this.name = name;
       if (options.fill) {
         if (db[this.name]) {
-          db[this.name].splice(0, db[this.name].length);
+          this.clear();
           Array.prototype.push.apply(db[this.name], options.fill);
         } else {
           db[this.name] = options.fill;
@@ -50,6 +51,10 @@
 
     function last() {
       return db[this.name][db[this.name].length - 1];
+    }
+
+    function clear() {
+      db[this.name].splice(0, db[this.name].length);
     }
 
     function share() {
