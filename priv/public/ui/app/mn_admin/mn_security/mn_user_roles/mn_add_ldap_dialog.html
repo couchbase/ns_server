@@ -73,7 +73,7 @@
                   <input
                      type="radio"
                      id="ldap-cert-none"
-                     ng-model="addLdapDialogCtl.config.connect.server_cert_validation"
+                     ng-model="addLdapDialogCtl.config.connect.serverCertValidation"
                      name="certValidation"
                      value="false"
                      ng-disabled="addLdapDialogCtl.config.connect.encryption == 'None'">
@@ -85,7 +85,7 @@
                   <input
                      type="radio"
                      id="ldap-cert-server"
-                     ng-model="addLdapDialogCtl.config.connect.server_cert_validation"
+                     ng-model="addLdapDialogCtl.config.connect.serverCertValidation"
                      name="certValidation"
                      value="true"
                      ng-disabled="addLdapDialogCtl.config.connect.encryption == 'None'">
@@ -97,7 +97,7 @@
                   <input
                      type="radio"
                      id="ldap-cert-add"
-                     ng-model="addLdapDialogCtl.config.connect.server_cert_validation"
+                     ng-model="addLdapDialogCtl.config.connect.serverCertValidation"
                      name="certValidation"
                      value="pasteCert"
                      ng-disabled="addLdapDialogCtl.config.connect.encryption == 'None'">
@@ -116,9 +116,9 @@
             </div>
             <div
                class="formrow"
-               ng-if="addLdapDialogCtl.config.connect.server_cert_validation == 'pasteCert'">
+               ng-if="addLdapDialogCtl.config.connect.serverCertValidation == 'pasteCert'">
               <label
-                 for="query_dn"
+                 for="queryDN"
                  ng-disabled="addLdapDialogCtl.config.connect.encryption == 'None'">
                 Certificate Text</label>
               <textarea
@@ -146,7 +146,7 @@
             <div class="formrow row items-top">
               <span class="width-6 margin-right-half">
                 <label
-                   for="query_dn"
+                   for="queryDN"
                    ng-disabled="addLdapDialogCtl.config.isAnon">
                   LDAP DN
                 </label>
@@ -156,19 +156,19 @@
                    spellcheck="false"
                    autocapitalize="off"
                    mn-autocomplete-off="enforce"
-                   id="query_dn"
-                   ng-model="addLdapDialogCtl.config.connect.query_dn"
+                   id="queryDN"
+                   ng-model="addLdapDialogCtl.config.connect.queryDN"
                    placeholder="uid=admin,ou=users,dc=example,dc=com"
                    ng-disabled="addLdapDialogCtl.config.isAnon">
                 <div
                    class="error"
-                   ng-show="addLdapDialogCtl.errors.query_dn">
-                  {{addLdapDialogCtl.errors.query_dn}}
+                   ng-show="addLdapDialogCtl.errors.queryDN">
+                  {{addLdapDialogCtl.errors.queryDN}}
                 </div>
               </span>
               <span class="width-6">
                 <label
-                   for="query_pass"
+                   for="queryPass"
                    ng-disabled="addLdapDialogCtl.config.isAnon">
                   Password
                 </label>
@@ -178,13 +178,13 @@
                    spellcheck="false"
                    autocapitalize="off"
                    mn-autocomplete-off="enforce"
-                   id="query_pass"
-                   ng-model="addLdapDialogCtl.config.connect.query_pass"
+                   id="queryPass"
+                   ng-model="addLdapDialogCtl.config.connect.queryPass"
                    ng-disabled="addLdapDialogCtl.config.isAnon">
                 <div
                    class="error"
-                   ng-show="addLdapDialogCtl.errors.query_pass">
-                  {{addLdapDialogCtl.errors.query_pass}}
+                   ng-show="addLdapDialogCtl.errors.queryPass">
+                  {{addLdapDialogCtl.errors.queryPass}}
                 </div>
               </span>
             </div>
@@ -211,12 +211,12 @@
                 <input
                    type="checkbox"
                    id="for-enable-ldap-user-auth"
-                   ng-model="addLdapDialogCtl.config.authentication.authentication_enabled">
+                   ng-model="addLdapDialogCtl.config.authentication.authenticationEnabled">
                 <span class="toggle-control-body"></span>
               </label>
               <span class="text-small">&nbsp; Enable LDAP user authentication</span>
             </div>
-            <div ng-show="addLdapDialogCtl.config.authentication.authentication_enabled" class="margin-bottom-2">
+            <div ng-show="addLdapDialogCtl.config.authentication.authenticationEnabled" class="margin-bottom-2">
               <div class="formrow">
                 <label for="user-dn-mapping">Map Usernames Using:</label>
                 <div class="checkbox-list">
@@ -254,7 +254,7 @@
                      autocapitalize="off"
                      mn-autocomplete-off="enforce"
                      id="user-dn-mapping-template"
-                     ng-model="addLdapDialogCtl.config.authentication.user_dn_mapping.template">
+                     ng-model="addLdapDialogCtl.config.authentication.userDNMapping.template">
                 </div>
                 <div class="row items-top" ng-if="addLdapDialogCtl.config.userDnMapping == 'query'">
                   <span class="width-6 margin-right-half">
@@ -266,7 +266,7 @@
                        autocapitalize="off"
                        mn-autocomplete-off="enforce"
                        id="user-dn-mapping-base"
-                       ng-model="addLdapDialogCtl.config.authentication.user_dn_mapping.base"
+                       ng-model="addLdapDialogCtl.config.authentication.userDNMapping.base"
                        placeholder="ou=users,dc=example,dc=com">
                   </span>
                   <span class="width-6">
@@ -278,7 +278,7 @@
                        autocapitalize="off"
                        mn-autocomplete-off="enforce"
                        id="user-dn-mapping-filter"
-                       ng-model="addLdapDialogCtl.config.authentication.user_dn_mapping.filter"
+                       ng-model="addLdapDialogCtl.config.authentication.userDNMapping.filter"
                        placeholder="(uid=%u)">
                   </span>
                 </div>
@@ -290,15 +290,15 @@
                      autocapitalize="off"
                      mn-autocomplete-off="enforce"
                      id="for-custom-mapping"
-                     ng-model="addLdapDialogCtl.config.authentication.user_dn_mapping.value"
+                     ng-model="addLdapDialogCtl.config.authentication.userDNMapping.value"
                      rows="3"
                      placeholder='ex: [{"re":"(.+)@(.+).com","query":"ou=users, dc={1},dc=com??one?(uid={0})"},{"re":"(.+)","template":"cn={0},ou=users,dc=example,dc=com"}]'>
                   </textarea>
                 </div>
                 <div
                    class="error"
-                   ng-show="addLdapDialogCtl.errors.user_dn_mapping">
-                  {{addLdapDialogCtl.errors.user_dn_mapping}}
+                   ng-show="addLdapDialogCtl.errors.userDNMapping">
+                  {{addLdapDialogCtl.errors.userDNMapping}}
                 </div>
               </div>
               <p
@@ -310,35 +310,35 @@
               <div ng-if="addLdapDialogCtl.showTestUsername" class="margin-left-1-5">
                 <div class="formrow row items-top">
                   <span class="width-6 margin-right-half">
-                    <label for="auth_user">Username to Test</label>
+                    <label for="authUser">Username to Test</label>
                     <input
                        type="text"
                        autocorrect="off"
                        spellcheck="false"
                        autocapitalize="off"
                        mn-autocomplete-off="enforce"
-                       id="auth_user"
-                       ng-model="addLdapDialogCtl.config.cred.auth_user">
+                       id="authUser"
+                       ng-model="addLdapDialogCtl.config.cred.authUser">
                     <div
                        class="error"
-                       ng-show="addLdapDialogCtl.errors.auth_user">
-                      {{addLdapDialogCtl.errors.auth_user}}
+                       ng-show="addLdapDialogCtl.errors.authUser">
+                      {{addLdapDialogCtl.errors.authUser}}
                     </div>
                   </span>
                   <span class="width-6">
-                    <label for="auth_pass">Password</label>
+                    <label for="authPass">Password</label>
                     <input
                        type="password"
                        autocorrect="off"
                        spellcheck="false"
                        autocapitalize="off"
                        mn-autocomplete-off="enforce"
-                       id="auth_pass"
-                       ng-model="addLdapDialogCtl.config.cred.auth_pass">
+                       id="authPass"
+                       ng-model="addLdapDialogCtl.config.cred.authPass">
                     <div
                        class="error"
-                       ng-show="addLdapDialogCtl.errors.auth_pass">
-                      {{addLdapDialogCtl.errors.auth_pass}}
+                       ng-show="addLdapDialogCtl.errors.authPass">
+                      {{addLdapDialogCtl.errors.authPass}}
                     </div>
                   </span>
                 </div>
@@ -373,12 +373,12 @@
                 <input
                    type="checkbox"
                    id="for-enable-ldap-group"
-                   ng-model="addLdapDialogCtl.config.group.authorization_enabled">
+                   ng-model="addLdapDialogCtl.config.group.authorizationEnabled">
                 <span class="toggle-control-body"></span>
               </label>
               <span class="text-small">&nbsp; Enable LDAP group authorization & sync</span>
             </div>
-            <div ng-if="addLdapDialogCtl.config.group.authorization_enabled" class="margin-bottom-1-5">
+            <div ng-if="addLdapDialogCtl.config.group.authorizationEnabled" class="margin-bottom-1-5">
               <div class="formrow">
                 <label>Query for Groups Using:</label>
                 <div class="formrow checkbox-list">
@@ -409,7 +409,7 @@
                    autocapitalize="off"
                    mn-autocomplete-off="enforce"
                    id="for-groups-user-attributes"
-                   ng-model="addLdapDialogCtl.config.group.groups_query.attributes"
+                   ng-model="addLdapDialogCtl.config.group.groupsQuery.attributes"
                    placeholder="memberOf">
               </div>
               <div class="row formrow items-top" ng-if="addLdapDialogCtl.config.queryForGroups == 'query'">
@@ -422,7 +422,7 @@
                      autocapitalize="off"
                      mn-autocomplete-off="enforce"
                      id="for-groups-query"
-                     ng-model="addLdapDialogCtl.config.group.groups_query.base"
+                     ng-model="addLdapDialogCtl.config.group.groupsQuery.base"
                      placeholder="ou=groups,dc=example,dc=com">
                 </span>
                 <span class="width-6">
@@ -434,7 +434,7 @@
                      autocapitalize="off"
                      mn-autocomplete-off="enforce"
                      id="for-groups-query-filter"
-                     ng-model="addLdapDialogCtl.config.group.groups_query.filter"
+                     ng-model="addLdapDialogCtl.config.group.groupsQuery.filter"
                      placeholder="(member=%D)">
                 </span>
               </div>
@@ -442,7 +442,7 @@
                 <label for="for-groups-query-scope">Scope</label>
                 <select
                    id="for-groups-query-scope"
-                   ng-model="addLdapDialogCtl.config.group.groups_query.scope">
+                   ng-model="addLdapDialogCtl.config.group.groupsQuery.scope">
                   <option value="base">base</option>
                   <option value="one">one</option>
                   <option value="sub">sub</option>
@@ -450,14 +450,14 @@
               </div>
               <div
                  class="error"
-                 ng-show="addLdapDialogCtl.errors.groups_query">
-                {{addLdapDialogCtl.errors.groups_query}}
+                 ng-show="addLdapDialogCtl.errors.groupsQuery">
+                {{addLdapDialogCtl.errors.groupsQuery}}
               </div>
               <div class="formrow checkbox-list margin-top-1">
                 <input
                    type="checkbox"
                    id="for-nested-groups-enabled"
-                   ng-model="addLdapDialogCtl.config.group.nested_groups_enabled">
+                   ng-model="addLdapDialogCtl.config.group.nestedGroupsEnabled">
                 <label for="for-nested-groups-enabled">Traverse nested groups</label>
               </div>
               <p
@@ -476,11 +476,11 @@
                      autocapitalize="off"
                      mn-autocomplete-off="enforce"
                      id="for-groups-query-user"
-                     ng-model="addLdapDialogCtl.config.groups_query_user">
+                     ng-model="addLdapDialogCtl.config.groupsQueryUser">
                   <div
                     class="error"
-                    ng-show="addLdapDialogCtl.errors.groups_query_user">
-                    {{addLdapDialogCtl.errors.groups_query_user}}
+                    ng-show="addLdapDialogCtl.errors.groupsQueryUser">
+                    {{addLdapDialogCtl.errors.groupsQueryUser}}
                   </div>
                 </div>
                 <button
@@ -524,11 +524,11 @@
                  autocapitalize="off"
                  mn-autocomplete-off="enforce"
                  id="for-request-timeout"
-                 ng-model="addLdapDialogCtl.config.advanced.request_timeout">
+                 ng-model="addLdapDialogCtl.config.advanced.requestTimeout">
               <div
                  class="error"
-                 ng-show="addLdapDialogCtl.errors.request_timeout">
-                {{addLdapDialogCtl.errors.request_timeout}}
+                 ng-show="addLdapDialogCtl.errors.requestTimeout">
+                {{addLdapDialogCtl.errors.requestTimeout}}
               </div>
             </div>
             <div class="formrow">
@@ -540,11 +540,11 @@
                  autocapitalize="off"
                  mn-autocomplete-off="enforce"
                  id="for-max-parallel"
-                 ng-model="addLdapDialogCtl.config.advanced.max_parallel_connections">
+                 ng-model="addLdapDialogCtl.config.advanced.maxParallelConnections">
               <div
                  class="error"
-                 ng-show="addLdapDialogCtl.errors.max_parallel_connections">
-                {{addLdapDialogCtl.errors.max_parallel_connections}}
+                 ng-show="addLdapDialogCtl.errors.maxParallelConnections">
+                {{addLdapDialogCtl.errors.maxParallelConnections}}
               </div>
             </div>
             <div class="formrow">
@@ -556,11 +556,11 @@
                  autocapitalize="off"
                  mn-autocomplete-off="enforce"
                  id="for-max-cache-size"
-                 ng-model="addLdapDialogCtl.config.advanced.max_cache_size">
+                 ng-model="addLdapDialogCtl.config.advanced.maxCacheSize">
               <div
                  class="error"
-                 ng-show="addLdapDialogCtl.errors.max_cache_size">
-                {{addLdapDialogCtl.errors.max_cache_size}}
+                 ng-show="addLdapDialogCtl.errors.maxCacheSize">
+                {{addLdapDialogCtl.errors.maxCacheSize}}
               </div>
             </div>
             <div class="formrow">
@@ -572,11 +572,11 @@
                  autocapitalize="off"
                  mn-autocomplete-off="enforce"
                  id="for-cache-lifetime"
-                 ng-model="addLdapDialogCtl.config.advanced.cache_value_lifetime">
+                 ng-model="addLdapDialogCtl.config.advanced.cacheValueLifetime">
               <div
                  class="error"
-                 ng-show="addLdapDialogCtl.errors.cache_value_lifetime">
-                {{addLdapDialogCtl.errors.cache_value_lifetime}}
+                 ng-show="addLdapDialogCtl.errors.cacheValueLifetime">
+                {{addLdapDialogCtl.errors.cacheValueLifetime}}
               </div>
             </div>
             <div class="formrow">
@@ -588,11 +588,11 @@
                  autocapitalize="off"
                  mn-autocomplete-off="enforce"
                  id="for-group-max-nesting"
-                 ng-model="addLdapDialogCtl.config.advanced.nested_groups_max_depth">
+                 ng-model="addLdapDialogCtl.config.advanced.nestedGroupsMaxDepth">
               <div
                  class="error"
-                 ng-show="addLdapDialogCtl.errors.nested_groups_max_depth">
-                {{addLdapDialogCtl.errors.nested_groups_max_depth}}
+                 ng-show="addLdapDialogCtl.errors.nestedGroupsMaxDepth">
+                {{addLdapDialogCtl.errors.nestedGroupsMaxDepth}}
               </div>
             </div>
           </div>

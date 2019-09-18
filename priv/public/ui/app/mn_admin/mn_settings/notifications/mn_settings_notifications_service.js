@@ -92,7 +92,7 @@ angular.module('mnSettingsNotificationsService', [
         numNodes: poolsDefault.nodes.length, //Total number of nodes
         isEnterpriseEdition: pools.isEnterprise,
         adminLDAPEnabled : poolsDefault.saslauthdEnabled ||
-          ldapSettings.data.authentication_enabled,
+          ldapSettings.data.authenticationEnabled,
         ram: {
           total: poolsDefault.storageTotals.ram.total,
           quotaTotal: poolsDefault.storageTotals.ram.quotaTotal,

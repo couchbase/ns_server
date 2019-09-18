@@ -112,7 +112,7 @@
         resolve: {
           user: mnHelper.wrapInFunction(user),
           isLdapEnabled: function () {
-            return (vm.saslauthdAuth && vm.saslauthdAuth.enabled) || vm.ldapSettings.data.authentication_enabled;
+            return (vm.saslauthdAuth && vm.saslauthdAuth.enabled) || vm.ldapSettings.data.authenticationEnabled;
           }
         }
       });

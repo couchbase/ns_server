@@ -13,33 +13,33 @@
         hosts: "",
         port: "",
         encryption: "None",
-        server_cert_validation: "false",
+        serverCertValidation: "false",
         cacert: "",
-        query_dn: "",
-        query_pass: ""
+        queryDN: "",
+        queryPass: ""
       },
       isAnon: false,
       userDnMapping: "template",
       authentication: {
-        authentication_enabled: false,
-        user_dn_mapping: {
+        authenticationEnabled: false,
+        userDNMapping: {
           template: ""
         }
       },
       cred: {},
       queryForGroups: "users_attrs",
       group: {
-        authorization_enabled: false,
-        nested_groups_enabled: false,
-        groups_query: {},
+        authorizationEnabled: false,
+        nestedGroupsEnabled: false,
+        groupsQuery: {},
       },
-      groups_query_user: "",
+      groupsQueryUser: "",
       advanced: {
-        request_timeout: 4000,
-        max_parallel_connections: 1000,
-        max_cache_size: 10000,
-        cache_value_lifetime: 30000,
-        nested_groups_max_depth: 10
+        requestTimeout: 4000,
+        maxParallelConnections: 1000,
+        maxCacheSize: 10000,
+        cacheValueLifetime: 30000,
+        nestedGroupsMaxDepth: 10
       }
     };
 
@@ -57,19 +57,19 @@
         vm.config.connect =
           unpackConnectivity(config);
         vm.config.userDnMapping =
-          unpackUserDnMappingType(config.user_dn_mapping);
-        vm.config.authentication.authentication_enabled =
-          config.authentication_enabled;
-        vm.config.authentication.user_dn_mapping =
-          unpackUserDnMapping(vm.config.userDnMapping, config.user_dn_mapping);
+          unpackUserDnMappingType(config.userDNMapping);
+        vm.config.authentication.authenticationEnabled =
+          config.authenticationEnabled;
+        vm.config.authentication.userDNMapping =
+          unpackUserDnMapping(vm.config.userDnMapping, config.userDNMapping);
         vm.config.queryForGroups =
-          unpackQueryForGroupsType(config.groups_query);
-        vm.config.group.authorization_enabled =
-          config.authorization_enabled;
-        vm.config.group.nested_groups_enabled =
-          config.nested_groups_enabled;
-        vm.config.group.groups_query =
-          unpackQueryForGroups(vm.config.queryForGroups, config.groups_query);
+          unpackQueryForGroupsType(config.groupsQuery);
+        vm.config.group.authorizationEnabled =
+          config.authorizationEnabled;
+        vm.config.group.nestedGroupsEnabled =
+          config.nestedGroupsEnabled;
+        vm.config.group.groupsQuery =
+          unpackQueryForGroups(vm.config.queryForGroups, config.groupsQuery);
         vm.config.advanced =
           unpackAdvancedSettings(config);
         vm.config.isAnon =
@@ -78,9 +78,9 @@
     }
 
     function isThisAnonConnection(data) {
-      return !data.query_dn && !!((data.authentication_enabled && data.user_dn_mapping &&
-                                   data.user_dn_mapping.includes("query")) ||
-                                  (data.authorization_enabled && data.groups_query));
+      return !data.queryDN && !!((data.authenticationEnabled && data.userDNMapping &&
+                                   data.userDNMapping.includes("query")) ||
+                                  (data.authorizationEnabled && data.groupsQuery));
     }
 
     function clearLdapCache() {
@@ -105,7 +105,7 @@
         .reduce(function (acc, key) {
           switch (key) {
           case "hosts": acc[key] = config[key].join(","); break;
-          case "server_cert_validation":
+          case "serverCertValidation":
             if (config[key] == false) {
               acc[key] = "false";
             } else if (config["cacert"]) {
@@ -180,41 +180,41 @@
       var userDnMapping = [{re: "(.+)"}];
       switch (vm.config.userDnMapping) {
       case "template":
-        userDnMapping[0].template = (config.user_dn_mapping.template  || "").replace("%u", "{0}");
+        userDnMapping[0].template = (config.userDNMapping.template  || "").replace("%u", "{0}");
         return JSON.stringify(userDnMapping);
       case "query":
         userDnMapping[0].query =
-          (config.user_dn_mapping.base || "")+"??one?"
-          +(config.user_dn_mapping.filter || "").replace("%u", "{0}");
+          (config.userDNMapping.base || "")+"??one?"
+          +(config.userDNMapping.filter || "").replace("%u", "{0}");
         return JSON.stringify(userDnMapping);
       case "custom":
-        return config.user_dn_mapping.value || "";
+        return config.userDNMapping.value || "";
       }
     }
 
     function getQueryForGroups(config) {
       switch (vm.config.queryForGroups) {
       case "users_attrs":
-        return "%D?" + (config.groups_query.attributes || "") + "?base";
+        return "%D?" + (config.groupsQuery.attributes || "") + "?base";
       case "query":
-        return (config.groups_query.base || "") + "??" +
-          (config.groups_query.scope || "") + "?" +
-          (config.groups_query.filter || "");
+        return (config.groupsQuery.base || "") + "??" +
+          (config.groupsQuery.scope || "") + "?" +
+          (config.groupsQuery.filter || "");
       }
     }
 
     function getConnectivitySettings() {
       var config = Object.assign({}, vm.config.connect);
-      if (config.query_pass == "**********") {
-        delete config.query_pass;
+      if (config.queryPass == "**********") {
+        delete config.queryPass;
       }
       if (vm.config.isAnon) {
-        config.query_dn = "";
-        config.query_pass = "";
+        config.queryDN = "";
+        config.queryPass = "";
       }
-      if (config.server_cert_validation == "pasteCert") {
-        config.server_cert_validation = "true";
-      } else if (config.server_cert_validation == "true") {
+      if (config.serverCertValidation == "pasteCert") {
+        config.serverCertValidation = "true";
+      } else if (config.serverCertValidation == "true") {
         config.cacert = "";
       } else {
         delete config.cacert;
@@ -224,20 +224,20 @@
 
     function getAuthenticationSettings() {
       var config = Object.assign({}, vm.config.authentication);
-      if (config.authentication_enabled) {
-        config.user_dn_mapping = getUserDnMapping(config);
+      if (config.authenticationEnabled) {
+        config.userDNMapping = getUserDnMapping(config);
       } else {
-        delete config.user_dn_mapping;
+        delete config.userDNMapping;
       }
       return config;
     }
 
     function getQueryForGroupsSettings() {
       var config = Object.assign({}, vm.config.group);
-      if (config.authorization_enabled) {
-        config.groups_query = getQueryForGroups(config);
+      if (config.authorizationEnabled) {
+        config.groupsQuery = getQueryForGroups(config);
       } else {
-        delete config.groups_query;
+        delete config.groupsQuery;
       }
       return config;
     }
@@ -255,7 +255,7 @@
 
     function removeGroupsQueryErrors() {
       if (vm.errors) {
-        delete vm.errors.groups_query;
+        delete vm.errors.groupsQuery;
       }
     }
 
@@ -288,7 +288,7 @@
 
     function checkGroupsQuery() {
       removeErrors();
-      var settings = Object.assign({groups_query_user: vm.config.groups_query_user},
+      var settings = Object.assign({groupsQueryUser: vm.config.groupsQueryUser},
                                    getConnectivitySettings(),
                                    getAuthenticationSettings(),
                                    getQueryForGroupsSettings());
