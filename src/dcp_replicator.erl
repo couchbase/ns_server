@@ -165,35 +165,52 @@ wait_for_data_move_loop([], _, _, _DoneLimit) ->
     ok;
 wait_for_data_move_loop([Node | Rest], Bucket, Partition, DoneLimit) ->
     Connection = get_connection_name(Node, node(), Bucket),
-    case wait_for_data_move_on_one_node(0, Connection, Bucket, Partition, DoneLimit) of
-        undefined ->
-            ?log_error("No dcp backfill stats for bucket ~p, partition ~p, connection ~p",
-                       [Bucket, Partition, Connection]),
-            {error, no_stats_for_this_vbucket};
-        _ ->
-            wait_for_data_move_loop(Rest, Bucket, Partition, DoneLimit)
+    case wait_for_data_move_on_one_node(0, Connection,
+                                        Bucket, Partition, DoneLimit) of
+        ok ->
+            wait_for_data_move_loop(Rest, Bucket, Partition, DoneLimit);
+        {error, _} = Error ->
+            ?log_error("Error getting dcp stats "
+                       "for bucket ~p, partition ~p, connection ~p: ~p",
+                       [Bucket, Partition, Connection, Error]),
+            Error
     end.
 
-wait_for_data_move_on_one_node(Iterations, Connection, Bucket, Partition, DoneLimit) ->
-    case ns_memcached:get_dcp_docs_estimate(Bucket, Partition, Connection) of
-        {ok, {_, _, <<"does_not_exist">>}} ->
-            undefined;
-        {ok, {N, _, _}} when N < DoneLimit ->
+wait_for_data_move_on_one_node(Iterations, Connection,
+                               Bucket, Partition, DoneLimit) ->
+    {ok, Estimate} = ns_memcached:get_dcp_docs_estimate(Bucket,
+                                                        Partition, Connection),
+    case check_move_done(Estimate, DoneLimit) of
+        ok ->
             ok;
-        {ok, {N, _, _}} ->
+        retry ->
             NewIterations =
                 case Iterations of
                     300 ->
                         ?rebalance_debug(
-                           "Still waiting for backfill on connection ~p, bucket ~p, partition ~p, estimated items ~p",
-                           [Connection, Bucket, Partition, N]),
+                           "Still waiting for backfill on connection ~p, "
+                           "bucket ~p, partition ~p, last estimate ~p",
+                           [Connection, Bucket, Partition, Estimate]),
                         0;
                     I ->
                         I + 1
                 end,
             timer:sleep(?VBUCKET_POLL_INTERVAL),
-            wait_for_data_move_on_one_node(NewIterations, Connection, Bucket, Partition, DoneLimit)
+            wait_for_data_move_on_one_node(NewIterations, Connection,
+                                           Bucket, Partition, DoneLimit);
+        {error, _} = Error ->
+            Error
     end.
+
+check_move_done({_, _, <<"does_not_exist">>}, _DoneLimit) ->
+    {error, no_stats_for_this_vbucket};
+check_move_done({_, _, <<"calculating-item-count">>}, _DoneLimit) ->
+    retry;
+check_move_done({N, _, _}, DoneLimit)
+  when N < DoneLimit ->
+    ok;
+check_move_done(_Estimate, _DoneLimit) ->
+    retry.
 
 -spec get_docs_estimate(bucket_name(), vbucket_id(), node()) ->
                                {ok, {non_neg_integer(), non_neg_integer(), binary()}}.
