@@ -23,6 +23,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"gocbutils"
 )
 
 func readdir(path string) (infos []os.FileInfo, err error) {
@@ -150,6 +152,8 @@ func maybePanic(err error) {
 }
 
 func runPort() {
+	gocbutils.LimitCPUThreads()
+
 	rd := bufio.NewReader(os.Stdin)
 	wr := bufio.NewWriter(os.Stdout)
 

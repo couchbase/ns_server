@@ -28,6 +28,8 @@ import (
 	"os"
 
 	"golang.org/x/crypto/pbkdf2"
+
+	"gocbutils"
 )
 
 const keySize = 32
@@ -45,6 +47,8 @@ type encryptionService struct {
 }
 
 func main() {
+	gocbutils.LimitCPUThreads()
+
 	s := &encryptionService{
 		reader: bufio.NewReader(os.Stdin),
 	}

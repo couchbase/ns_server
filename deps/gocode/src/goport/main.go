@@ -27,6 +27,8 @@ import (
 	"os/exec"
 	"path"
 	"strconv"
+
+	"gocbutils"
 )
 
 var (
@@ -553,6 +555,8 @@ func main() {
 	}
 
 	log.SetPrefix(fmt.Sprintf("[goport(%s)] ", cmd))
+
+	gocbutils.LimitCPUThreads()
 
 	port := newPort(portSpec{
 		cmd:              cmd,
