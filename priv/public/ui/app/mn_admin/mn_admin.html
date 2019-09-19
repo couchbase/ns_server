@@ -55,12 +55,14 @@
             <p>
               {{adminCtl.tasks.tasksRebalance.completionMessage}}
             </p>
+            <div class="nowrap">
               <button
                  ng-click="adminCtl.getRebalanceReport()"
                  download="rebalanceReport.json"
                  class="outline tight margin-right-half">
                 Download Report
               </button>
+            </div>
           </div>
 
 <!-- rebalance per stage info ********************************************** -->
