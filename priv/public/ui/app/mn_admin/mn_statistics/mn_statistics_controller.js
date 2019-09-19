@@ -156,7 +156,7 @@
     }
   }
 
-  function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http, mnPoller, mnBucketsService, $uibModal, $rootScope, mnHelper, $window, mnUserRolesService, permissions, $timeout,mnStoreService, mnGsiService, mnViewsListService, mnTasksDetails) {
+  function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http, mnPoller, mnBucketsService, $uibModal, $rootScope, mnHelper, $window, mnUserRolesService, permissions, $timeout,mnStoreService, mnGsiService, mnViewsListService, mnTasksDetails, $anchorScroll, $location) {
     var vm = this;
 
     vm.mnStatisticsNewScope = $scope;
@@ -207,6 +207,9 @@
         resolve: {
           scenario: mnHelper.wrapInFunction(scenario)
         }
+      }).result.then(function (group) {
+        $location.hash('group-' + group.id);
+        $anchorScroll();
       });
     }
 

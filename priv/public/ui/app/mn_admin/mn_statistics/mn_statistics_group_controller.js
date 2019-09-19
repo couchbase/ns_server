@@ -16,12 +16,15 @@
     vm.submit = submit;
 
     function submit() {
-      scenario.groups.push(mnStoreService.store("groups").add(vm.group).id);
+      var group = mnStoreService.store("groups").add(vm.group);
+      scenario.groups.push(group.id);
 
-      mnPromiseHelper(vm, mnUserRolesService.saveDashboard(), $uibModalInstance)
+      mnPromiseHelper(vm, mnUserRolesService.saveDashboard())
         .showGlobalSpinner()
         .showGlobalSuccess("Group added successfully!")
-        .closeModal();
+        .onSuccess(function () {
+          $uibModalInstance.close(group);
+        });
     }
   }
 

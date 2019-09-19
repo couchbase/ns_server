@@ -138,6 +138,7 @@
   <div
      ng-if="statisticsNewCtl.selectedBucket"
      ng-repeat="groupID in statisticsNewCtl.scenario.selected.groups track by ($index + groupID)"
+     ng-attr-id="group-{{groupID}}"
      ng-controller="mnStatisticsGroupsController as mnStatsGroupsCtl"
      class="charts-group">
     <div
