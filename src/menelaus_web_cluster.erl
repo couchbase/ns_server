@@ -341,9 +341,10 @@ handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherUser, OtherPswd,
                             undefined -> io:format("~p", [Reason]);
                             Msg -> Msg
                         end,
-                    ReasonStr = io_lib:format(
-                                  "Failed to connect to ~p://~s:~p. ~s",
-                                  [OtherScheme, OtherHost, OtherPort, M]),
+                    URL = menelaus_rest:rest_url(OtherHost, OtherPort, "",
+                                                 OtherScheme),
+                    ReasonStr = io_lib:format("Failed to connect to ~s. ~s",
+                                              [URL, M]),
                     {error, host_connectivity, iolist_to_binary(ReasonStr),
                      {error, Reason}}
          end,

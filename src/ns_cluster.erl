@@ -696,9 +696,8 @@ do_add_node_allowed(Scheme, RemoteAddr, RestPort, Auth, GroupUUID, Services) ->
                     undefined -> io:format("~p", [Reason]);
                     Msg -> Msg
                 end,
-            ReasonStr = io_lib:format(
-                          "Failed to connect to ~p://~s:~p. ~s",
-                          [Scheme, RemoteAddr, RestPort, M]),
+            URL = menelaus_rest:rest_url(RemoteAddr, RestPort, "", Scheme),
+            ReasonStr = io_lib:format("Failed to connect to ~s. ~s", [URL, M]),
             {error, host_connectivity, iolist_to_binary(ReasonStr),
              {error, Reason}}
     end.
