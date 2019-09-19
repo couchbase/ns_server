@@ -8,9 +8,9 @@
     </div>
     <a
        ng-show="warmUpTasks.length > 3 && limitTo === 3"
-       ng-click="limitTo = undefined">... more</a>
+       ng-click="limitTo = undefined; $event.stopPropagation();">... more</a>
     <a
        ng-show="warmUpTasks.length > 3 && limitTo === undefined"
-       ng-click="limitTo = 3">less</a>
+       ng-click="limitTo = 3; $event.stopPropagation();">less</a>
   </div>
 </div>
