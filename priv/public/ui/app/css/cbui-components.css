@@ -2943,7 +2943,16 @@ input[type=text].scenario-desc  {
 .chart-builder label {
   font-size: .875rem!important;
 }
-
+.chart-builder .dialog-xlg {
+  max-height: 80vh;
+}
+.chart-builder .scrolling-wrapper {
+  max-height: calc(80vh - 240px);
+  overflow: scroll;
+}
+.chart-builder .columns-3 {
+   columns: 120px 3;
+}
 /* footer for saving forms (builds on <footer>) ----------------------------- */
 .footer-save {
   height: 3rem;
