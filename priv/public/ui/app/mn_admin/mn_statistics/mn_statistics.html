@@ -1,5 +1,5 @@
-<div class="row">
-  <div class="row flex-left margin-bottom-half">
+<div class="row margin-bottom-1-5">
+  <div class="row flex-left">
     <div class="inline margin-right-half"
          ng-controller="mnScenarioDialogController as scenarioCtrl">
       <mn-dropdown
@@ -110,27 +110,25 @@
         {{name}}
       </option>
     </select>
-
   </div>
   <div class="flex-right">
+    <div uib-dropdown>
+      <button uib-dropdown-toggle class="outline tight">
+        <span class="icon fa-trash grayblack-3"></span>
+      </button>
+      <div uib-dropdown-menu
+           style="top: 2rem;"
+           class="dropdown-menu-select-like">
+        <a ng-click="statisticsNewCtl.resetDashboardConfiguration();">Delete Custom Scenarios</a>
+      </div>
+    </div>
     <button
        ng-disabled="!statisticsNewCtl.scenarios.length"
        ng-click="statisticsNewCtl.openGroupDialog(statisticsNewCtl.scenario.selected)"
-       class="tight"
+       class="outline tight"
        ng-hide="statisticsNewCtl.scenario.selected.preset">
-      <span class="icon fa-plus-circle"></span> Add Group
+      <span class="icon fa-plus-circle grayblack-3"></span> Add Group
     </button>
-    <div uib-dropdown class="tight">
-      <button uib-dropdown-toggle class="tight">
-        <span class="icon fa-cog"></span>
-      </button>
-      <div uib-dropdown-menu
-           style="top:auto;"
-           class="dropdown-menu-select-like">
-        <a style="color:#e07f82"
-           ng-click="statisticsNewCtl.resetDashboardConfiguration();">Reset to Default</a>
-      </div>
-    </div>
   </div>
 </div>
 
@@ -143,7 +141,7 @@
      class="charts-group">
     <div
        ng-click="mnStatsGroupsCtl.isDetailsOpened = !mnStatsGroupsCtl.isDetailsOpened;"
-       class="charts-group-row disclosure"
+       class="charts-group-row disclosure nowrap"
        ng-class="{disclosed: mnStatsGroupsCtl.isDetailsOpened}">
       <form novalidate
             ng-if="!mnStatsGroupsCtl.group.preset"
@@ -176,73 +174,77 @@
            ng-mousedown="mnStatsGroupsCtl.onGroupDelete();">
         </span>
       </form>
-      <span class="charts-preset-group-name"
+      <span class="charts-preset-group-name ellipsis"
             ng-if="mnStatsGroupsCtl.group.preset">{{mnStatsGroupsCtl.group.name}}</span>
-    </div>
 
-    <div ng-if="mnStatsGroupsCtl.isDetailsOpened">
+<!-- if stats can be sub-divided by "item", they show in these menus ---------->
       <div
-         ng-if="mnStatsGroupsCtl.enabledItems['@index-'] && statisticsNewCtl.indexItems.length"
-         ng-init="mnStatsGroupsCtl.items.index =
-                  'index/' + statisticsNewCtl.indexItems[0].index +'/'">
-        index
-        <select
-           ng-change="mnStatsGroupsCtl.onItemChange()"
+         ng-if="mnStatsGroupsCtl.isDetailsOpened"
+         class="chart-group-row-items"
+         ng-click="$event.stopPropagation();">
+        <div
+           ng-if="mnStatsGroupsCtl.enabledItems['@index-'] && statisticsNewCtl.indexItems.length"
+           ng-init="mnStatsGroupsCtl.items.index =
+                    'index/' + statisticsNewCtl.indexItems[0].index +'/'">
+          indexes:
+          <select
+             ng-change="mnStatsGroupsCtl.onItemChange()"
 
-           ng-model="mnStatsGroupsCtl.items.index"
-           class="max-width-4">
-          <option ng-repeat="row in statisticsNewCtl.indexItems"
-                  ng-value="'index/' + row.index + '/'">
-            {{row.index}}
-          </option>
-        </select>
-      </div>
+             ng-model="mnStatsGroupsCtl.items.index"
+             class="max-width-4">
+            <option ng-repeat="row in statisticsNewCtl.indexItems"
+                    ng-value="'index/' + row.index + '/'">
+              {{row.index}}
+            </option>
+          </select>
+        </div>
 
-      <div ng-if="mnStatsGroupsCtl.enabledItems['@kv-'] && statisticsNewCtl.viewItems.length"
-           ng-init="mnStatsGroupsCtl.items.kv =
-                    statisticsNewCtl.viewItems[0].statKeyPrefix">
-        views
-        <select
-           ng-change="mnStatsGroupsCtl.onItemChange()"
-           ng-model="mnStatsGroupsCtl.items.kv"
-           class="max-width-4">
-          <option ng-repeat="row in statisticsNewCtl.viewItems"
-                  ng-value="row.statKeyPrefix">
-            {{row.statId}}
-          </option>
-        </select>
-      </div>
+        <div ng-if="mnStatsGroupsCtl.enabledItems['@kv-'] && statisticsNewCtl.viewItems.length"
+             ng-init="mnStatsGroupsCtl.items.kv =
+                      statisticsNewCtl.viewItems[0].statKeyPrefix">
+          views:
+          <select
+             ng-change="mnStatsGroupsCtl.onItemChange()"
+             ng-model="mnStatsGroupsCtl.items.kv"
+             class="max-width-4">
+            <option ng-repeat="row in statisticsNewCtl.viewItems"
+                    ng-value="row.statKeyPrefix">
+              {{row.statId}}
+            </option>
+          </select>
+        </div>
 
-      <div
-         ng-if="mnStatsGroupsCtl.enabledItems['@xdcr-'] && statisticsNewCtl.xdcrItems.length"
-         ng-init="mnStatsGroupsCtl.items.xdcr =
-                  'replications/' + statisticsNewCtl.xdcrItems[0].id + '/'">
-        xdcr
-        <select
-           ng-change="mnStatsGroupsCtl.onItemChange()"
-           ng-model="mnStatsGroupsCtl.items.xdcr"
-           class="max-width-4">
-          <option ng-repeat="row in statisticsNewCtl.xdcrItems"
-                  ng-value="'replications/' + row.id + '/'">
-            {{row.source}} -&gt; {{row.target.split('buckets/')[1]}}
-          </option>
-        </select>
-      </div>
+        <div
+           ng-if="mnStatsGroupsCtl.enabledItems['@xdcr-'] && statisticsNewCtl.xdcrItems.length"
+           ng-init="mnStatsGroupsCtl.items.xdcr =
+                    'replications/' + statisticsNewCtl.xdcrItems[0].id + '/'">
+          replications:
+          <select
+             ng-change="mnStatsGroupsCtl.onItemChange()"
+             ng-model="mnStatsGroupsCtl.items.xdcr"
+             class="max-width-4">
+            <option ng-repeat="row in statisticsNewCtl.xdcrItems"
+                    ng-value="'replications/' + row.id + '/'">
+              {{row.source}} -&gt; {{row.target.split('buckets/')[1]}}
+            </option>
+          </select>
+        </div>
 
-      <div
-         ng-if="mnStatsGroupsCtl.enabledItems['@fts-'] && statisticsNewCtl.ftsItems.length"
-         ng-init="mnStatsGroupsCtl.items.fts =
-                  'fts/' + statisticsNewCtl.ftsItems[0].name + '/'">
-        fts
-        <select
-           ng-change="mnStatsGroupsCtl.onItemChange()"
-           ng-model="mnStatsGroupsCtl.items.fts"
-           class="max-width-4">
-          <option ng-repeat="row in statisticsNewCtl.ftsItems"
-                  ng-value="'fts/' + row.name + '/'">
-            {{row.name}}
-          </option>
-        </select>
+        <div
+           ng-if="mnStatsGroupsCtl.enabledItems['@fts-'] && statisticsNewCtl.ftsItems.length"
+           ng-init="mnStatsGroupsCtl.items.fts =
+                    'fts/' + statisticsNewCtl.ftsItems[0].name + '/'">
+          search indexes:
+          <select
+             ng-change="mnStatsGroupsCtl.onItemChange()"
+             ng-model="mnStatsGroupsCtl.items.fts"
+             class="max-width-4">
+            <option ng-repeat="row in statisticsNewCtl.ftsItems"
+                    ng-value="'fts/' + row.name + '/'">
+              {{row.name}}
+            </option>
+          </select>
+        </div>
       </div>
     </div>
 

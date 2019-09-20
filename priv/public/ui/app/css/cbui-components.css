@@ -2522,6 +2522,10 @@ nav.nav-sidebar-hidden {
 }
 
 /* chart & dashboard styles ------------------------------------------------- */
+button.outline:hover .icon {
+  color: #333;
+}
+
 mn-statistics-chart {
   display: block;
 }
@@ -2675,7 +2679,7 @@ mn-statistics-chart {
 .charts-group-row {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
 }
 .charts-group-row.disclosure {
   padding-left: 1rem;
@@ -2684,6 +2688,19 @@ mn-statistics-chart {
 .charts-group-row.disclosed:before {
   top: 3px;
 }
+.chart-group-row-items {
+  font-size: .825rem;
+}
+.chart-group-row-items div {
+  display: inline-block;
+}
+.chart-group-row-items select {
+  margin-right: .5rem;
+}
+.chart-group-row-items div:last-of-type select {
+  margin-right: .25rem;
+}
+
 input[type="text"].charts-group-name {
   border-color: #fff;
   font-size: .961rem;
