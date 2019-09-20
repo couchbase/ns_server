@@ -620,6 +620,9 @@ section.error {
 .cbui-table-meters.servers .bar-usages .label-bottom-1.with-square:before {
   background-color: #efebe0;
 }
+.cbui-table-meters .bar-usages {
+  margin-bottom: 1rem;
+}
 /* table cell-related stuff --------------------------------------------- */
 .cbui-table-cell {
   flex: 1 1 0%; /*flex-basis must have unit, it's important for IE11*/

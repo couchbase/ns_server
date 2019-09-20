@@ -56,21 +56,41 @@
       </div>
     </div>
     <div class="cbui-table-meters servers">
-      <h5>Memory</h5>
+      <h5>Memory Usage</h5>
       <hr>
       <div
          class="column bar-usages"
          mn-bar-usage
-         base-info="serversListItemDetailsCtl.server.getMemoryCacheConfig"></div>
+         base-info="serversListItemDetailsCtl.allocatedMemory"></div>
+      <div
+         class="column bar-usages"
+         mn-bar-usage
+         base-info="serversListItemDetailsCtl.usedMemory"></div>
+      <div
+         class="column bar-usages"
+         mn-bar-usage
+         base-info="serversListItemDetailsCtl.indexMemory"></div>
+      <div
+         class="column bar-usages"
+         mn-bar-usage
+         base-info="serversListItemDetailsCtl.ftsMemory"></div>
+      <div
+         class="column bar-usages"
+         mn-bar-usage
+         base-info="serversListItemDetailsCtl.cbasMemory"></div>
     </div>
 
     <div class="cbui-table-meters servers">
-      <h5>Disk Storage</h5>
+      <h5>Disk Usage</h5>
       <hr>
       <div
+         ng-repeat="item in serversListItemDetailsCtl.diskUsages"
          class="column bar-usages"
          mn-bar-usage
-         base-info="serversListItemDetailsCtl.server.getDiskStorageConfig">
+         base-info="item">
+      </div>
+      <div class="column bar-usages grayblack-2 text-smaller">
+        Disk used by indexing services is shown per index on their pages.<br>Some disk use is currently unreported.
       </div>
     </div>
   </div>
