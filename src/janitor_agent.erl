@@ -271,22 +271,9 @@ do_query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
                     end, RVs).
 
 -spec mark_bucket_warmed(Bucket::bucket_name(),
-                         [node()]) -> ok | {error, [node()], list()}.
+                         [node()]) -> ok | {errors, [{node(), term()}]}.
 mark_bucket_warmed(Bucket, Nodes) ->
-    {Replies, BadNodes} = ns_memcached:mark_warmed(Nodes, Bucket),
-    BadReplies = [{N, R} || {N, R} <- Replies,
-                            %% unhandled returned by old nodes
-                            R =/= ok andalso R =/= unhandled],
-
-    case {BadReplies, BadNodes} of
-        {[], []} ->
-            ok;
-        {_, _} ->
-            ?log_error("Failed to mark bucket `~p` as warmed up."
-                       "~nBadNodes:~n~p~nBadReplies:~n~p",
-                       [Bucket, BadNodes, BadReplies]),
-            {error, BadNodes, BadReplies}
-    end.
+    process_multicall_rv(ns_memcached:mark_warmed(Nodes, Bucket)).
 
 process_apply_config_rv(Bucket, {Replies, BadNodes}, Call) ->
     BadReplies = [R || {_, RV} = R <- Replies,

@@ -304,8 +304,10 @@ cleanup_apply_config_body(Bucket, Servers, BucketConfig, Options) ->
     case janitor_agent:mark_bucket_warmed(Bucket, Servers) of
         ok ->
             ok;
-        {error, BadNodes, _BadReplies} ->
-            {error, marking_as_warmed_failed, BadNodes}
+        {errors, BadReplies} ->
+            ?log_error("Failed to mark bucket `~p` as warmed up."
+                       "~nBadReplies:~n~p", [Bucket, BadReplies]),
+            {error, marking_as_warmed_failed, [N || {N, _} <- BadReplies]}
     end.
 
 should_check_for_unsafe_nodes(BCfg, Options) ->
