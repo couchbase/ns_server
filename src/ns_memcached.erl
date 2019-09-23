@@ -80,6 +80,7 @@
          warmed_buckets/0,
          warmed_buckets/1,
          mark_warmed/2,
+         mark_warmed/1,
          disable_traffic/2,
          delete_vbucket/2,
          sync_delete_vbucket/2,
@@ -835,6 +836,10 @@ warmed(Node, Bucket, Timeout) ->
 mark_warmed(Nodes, Bucket) ->
     gen_server:multi_call(Nodes, server(Bucket),
                           mark_warmed, ?MARK_WARMED_TIMEOUT).
+
+-spec mark_warmed(bucket_name()) -> any().
+mark_warmed(Bucket) ->
+    gen_server:call(server(Bucket), mark_warmed, ?MARK_WARMED_TIMEOUT).
 
 warmed_buckets() ->
     warmed_buckets(?WARMED_TIMEOUT).

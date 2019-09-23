@@ -26,6 +26,7 @@
 -define(PREPARE_REBALANCE_TIMEOUT,  ?get_timeout(prepare_rebalance, 30000)).
 -define(PREPARE_FLUSH_TIMEOUT,      ?get_timeout(prepare_flush, 30000)).
 -define(SET_VBUCKET_STATE_TIMEOUT,  ?get_timeout(set_vbucket_state, infinity)).
+-define(WARMED_TIMEOUT,             ?get_timeout(warmed, 6000)).
 -define(GET_SRC_DST_REPLICATIONS_TIMEOUT,
         ?get_timeout(get_src_dst_replications, 30000)).
 
@@ -273,6 +274,16 @@ do_query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
 -spec mark_bucket_warmed(Bucket::bucket_name(),
                          [node()]) -> ok | {errors, [{node(), term()}]}.
 mark_bucket_warmed(Bucket, Nodes) ->
+    case cluster_compat_mode:is_cluster_madhatter() of
+        true -> mark_bucket_warmed_madhatter(Bucket, Nodes);
+        false -> mark_bucket_warmed_pre_madhatter(Bucket, Nodes)
+    end.
+
+mark_bucket_warmed_madhatter(Bucket, Nodes) ->
+    process_multicall_rv(
+      multi_call(Bucket, Nodes, mark_warmed, ?WARMED_TIMEOUT)).
+
+mark_bucket_warmed_pre_madhatter(Bucket, Nodes) ->
     process_multicall_rv(ns_memcached:mark_warmed(Nodes, Bucket)).
 
 apply_new_bucket_config(Bucket, Servers, NewBucketConfig, undefined_timeout) ->
@@ -773,7 +784,9 @@ do_handle_call({get_failover_logs, VBucketsR}, From, State) ->
                   Error ->
                       Error
               end
-      end).
+      end);
+do_handle_call(mark_warmed, _From, #state{bucket_name = Bucket} = State) ->
+    {reply, ns_memcached:mark_warmed(Bucket), State}.
 
 handle_call_via_servant({FromPid, _Tag}, State, Req, Body) ->
     Tag = erlang:make_ref(),
