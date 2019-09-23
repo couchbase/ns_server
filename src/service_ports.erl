@@ -25,20 +25,22 @@
          find_by_rest_name/1,
          services_port_keys/1,
          get_external_host_and_ports/3,
-         get_ports_for_services/3]).
+         get_ports_for_services/3,
+         portname_to_secure_portname/1]).
 
 -include("ns_common.hrl").
 
--record(port, {key, rest, service, default, secure}).
--define(define_port(Key, RestName, Service, Default, Sec),
+-record(port, {key, rest, service, default, secure, unsecure_analogue}).
+-define(define_port(Key, RestName, Service, Default, Sec, UnsecureKey),
         #port{key     = Key,
               rest    = rest_name_to_bin(RestName),
               service = Service,
               default = Default,
-              secure  = Sec}).
+              secure  = Sec,
+              unsecure_analogue = UnsecureKey}).
 
 -define(define_port(ConfName, RestName, Service, Default),
-        ?define_port(ConfName, RestName, Service, Default, unsecure)).
+        ?define_port(ConfName, RestName, Service, Default, unsecure, undefined)).
 
 rest_name_to_bin(undefined) ->
     undefined;
@@ -48,24 +50,29 @@ rest_name_to_bin(RestName) ->
 all_ports() ->
     [%% rest service ports
      ?define_port(rest_port,     mgmt,    rest, 8091),
-     ?define_port(ssl_rest_port, mgmtSSL, rest, 18091, secure),
+     ?define_port(ssl_rest_port, mgmtSSL, rest, 18091, secure, rest_port),
      %% xdcr ports
      ?define_port(xdcr_rest_port, undefined, xdcr, 9998),
      %% kv service ports
      ?define_port(memcached_port,               kv,        kv, 11210),
-     ?define_port(memcached_ssl_port,           kvSSL,     kv, 11207, secure),
+     ?define_port(memcached_ssl_port,           kvSSL,     kv, 11207,
+                  secure, memcached_port),
      ?define_port(memcached_dedicated_port,     undefined, kv, 11209),
-     ?define_port(memcached_dedicated_ssl_port, undefined, kv, 11206, secure),
+     ?define_port(memcached_dedicated_ssl_port, undefined, kv, 11206,
+                  secure, memcached_dedicated_port),
      ?define_port(capi_port,                    capi,      kv, 8092),
-     ?define_port(ssl_capi_port,                capiSSL,   kv, 18092, secure),
+     ?define_port(ssl_capi_port,                capiSSL,   kv, 18092,
+                  secure, capi_port),
      %% projector ports - depending on the cluster encryption setting,
      %%                   projector hosts either an SSL or non-SSL endpoint.
      %%                   Hence assigning the same port for both types.
      ?define_port(projector_port,               projector, kv, 9999),
-     ?define_port(projector_ssl_port,           projector, kv, 9999, secure),
+     ?define_port(projector_ssl_port,           projector, kv, 9999,
+                  secure, projector_ssl_port),
      %% query service ports
      ?define_port(query_port,     n1ql,    n1ql, 8093),
-     ?define_port(ssl_query_port, n1qlSSL, n1ql, 18093, secure),
+     ?define_port(ssl_query_port, n1qlSSL, n1ql, 18093,
+                  secure, query_port),
      %% index service ports
      ?define_port(indexer_admin_port,     indexAdmin,         index, 9100),
      ?define_port(indexer_scan_port,      indexScan,          index, 9101),
@@ -74,22 +81,25 @@ all_ports() ->
      ?define_port(indexer_stcatchup_port, indexStreamCatchup, index, 9104),
      ?define_port(indexer_stmaint_port,   indexStreamMaint,   index, 9105),
      ?define_port(indexer_https_port,     indexHttps,         index, 19102,
-                  secure),
+                  secure, indexer_http_port),
      %% fts service ports
      ?define_port(fts_http_port,        fts,           fts, 8094),
-     ?define_port(fts_ssl_port,         ftsSSL,        fts, 18094, secure),
+     ?define_port(fts_ssl_port,         ftsSSL,        fts, 18094,
+                  secure, fts_http_port),
      ?define_port(fts_grpc_port,        ftsGRPC,       fts, 9130),
-     ?define_port(fts_grpc_ssl_port,    ftsGRPCSSL,    fts, 19130, secure),
+     ?define_port(fts_grpc_ssl_port,    ftsGRPCSSL,    fts, 19130,
+                  secure, fts_grpc_port),
      %% eventing service ports
      ?define_port(eventing_http_port,  eventingAdminPort, eventing, 8096),
      ?define_port(eventing_debug_port, eventingDebug,     eventing, 9140),
      ?define_port(eventing_https_port, eventingSSL,       eventing, 18096,
-                  secure),
+                  secure, eventing_http_port),
      %% cbas service ports
      ?define_port(cbas_http_port,    cbas,      cbas, 8095),
      ?define_port(cbas_admin_port,   cbasAdmin, cbas, 9110),
      ?define_port(cbas_cc_http_port, cbasCc,    cbas, 9111),
-     ?define_port(cbas_ssl_port,     cbasSSL,   cbas, 18095, secure),
+     ?define_port(cbas_ssl_port,     cbasSSL,   cbas, 18095,
+                  secure, cbas_http_port),
      %% miscellaneous cbas ports
      ?define_port(cbas_cc_cluster_port,        cbasCcCluster,   misc, 9112),
      ?define_port(cbas_cc_client_port,         cbasCcClient,    misc, 9113),
@@ -234,3 +244,9 @@ get_ports_for_services(Node, Config, Services) ->
     [{RestKey, Port} ||
         {#port{rest = RestKey}, Port}
             <- get_ports_for_services_int(Node, Config, Services)].
+
+portname_to_secure_portname(PortName) ->
+    case lists:keyfind(PortName, #port.unsecure_analogue, all_ports()) of
+        false -> undefined;
+        #port{key = SecurePortName} -> SecurePortName
+    end.

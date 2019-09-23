@@ -270,12 +270,23 @@ service_nodes(Service) ->
     {ok, LocalVsn} = dict:find(node(), Versions),
     lists:usort([N || N <- Nodes, {ok, LocalVsn} =:= dict:find(N, Versions)]).
 
-address_and_port(Props, Node) ->
+address_and_port(#prefix_props{port_name = UnsecurePortName}, Node) ->
     Addr = node_address(Node),
-    Port = service_ports:get_port(Props#prefix_props.port_name,
-                                  ns_config:latest(), Node),
+    NodeEncryption = misc:is_node_encryption_enabled(ns_config:latest(),
+                                                     node()),
+    PortName =
+        case NodeEncryption of
+            true -> service_ports:portname_to_secure_portname(UnsecurePortName);
+            false -> UnsecurePortName
+        end,
+    Port = service_ports:get_port(PortName, ns_config:latest(), Node),
     true = Port =/= undefined,
-    {Addr, Port}.
+    Scheme =
+        case NodeEncryption of
+            true -> https;
+            false -> http
+        end,
+    {Scheme, Addr, Port}.
 
 node_address(Node) ->
     misc:extract_node_address(Node).
@@ -325,12 +336,12 @@ filter_headers(Headers, {drop, Names}) ->
 member(Name, Names) ->
     lists:member(string:to_lower(Name), Names).
 
-do_proxy_req({Host, Port}, Path, Headers, Timeout, Req) ->
+do_proxy_req({Scheme, Host, Port}, Path, Headers, Timeout, Req) ->
     Method = mochiweb_request:get(method, Req),
     Body = get_body(Req),
     Options = [{partial_download, [{window_size, ?WINDOW_SIZE},
                                    {part_size, ?PART_SIZE}]}],
-    Resp = lhttpc:request(Host, Port, false, Path, Method, Headers,
+    Resp = lhttpc:request(Host, Port, Scheme =:= https, Path, Method, Headers,
                           Body, Timeout, Options),
     handle_resp(Resp, Req).
 
