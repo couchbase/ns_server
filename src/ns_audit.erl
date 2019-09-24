@@ -569,12 +569,14 @@ disk_storage_conf(Req, Node, Params) ->
     IxPath = proplists:get_value("index_path", Params),
     CbasPaths = proplists:get_all_values("cbas_path", Params),
     JavaHome = proplists:get_value("java_home", Params),
+    EvPath = proplists:get_value("eventing_path", Params),
 
     put(disk_storage_conf, Req,
         [{node, Node}] ++
         [{db_path, DbPath} || DbPath =/= undefined] ++
         [{index_path, IxPath} || IxPath =/= undefined] ++
         [{java_home, JavaHome} || JavaHome =/= undefined] ++
+        [{eventing_path, EvPath} || EvPath =/= undefined] ++
         [{cbas_dirs, {list, CbasPaths}} || CbasPaths =/= []]).
 
 rename_node(Req, Node, Hostname) ->
