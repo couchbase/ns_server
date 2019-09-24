@@ -786,7 +786,9 @@ do_handle_call({get_failover_logs, VBucketsR}, From, State) ->
               end
       end);
 do_handle_call(mark_warmed, _From, #state{bucket_name = Bucket} = State) ->
-    {reply, ns_memcached:mark_warmed(Bucket), State}.
+    RV = ns_memcached:mark_warmed(Bucket),
+    ok = ns_bucket:activate_bucket_data_on_this_node(Bucket),
+    {reply, RV, State}.
 
 handle_call_via_servant({FromPid, _Tag}, State, Req, Body) ->
     Tag = erlang:make_ref(),

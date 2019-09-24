@@ -195,6 +195,8 @@ get_not_ready_buckets([{_OtherNode, _, OtherNodeView} | Rest], Node,
                                          true;
                                      {Bucket, active} ->
                                          false;
+                                     {Bucket, no_data} ->
+                                         false;
                                      {Bucket, ready} ->
                                          false;
                                      {Bucket, delta_recovery_pending} ->
@@ -246,10 +248,21 @@ check_for_ready_buckets(Statuses) ->
             dict:store(node(), local_node_status([]), Statuses)
     end.
 
-local_node_status(Buckets) ->
+local_node_status(Buckets0) ->
     ExpectedBuckets = ns_bucket:node_bucket_names(node()),
-    ActiveBuckets = [Bucket || {Bucket, active} <- Buckets],
-    case ExpectedBuckets -- ActiveBuckets of
+    ActiveBuckets = [Bucket || {Bucket, active} <- Buckets0],
+    NoDataBuckets =
+        case cluster_compat_mode:is_cluster_madhatter() of
+            false ->
+                [];
+            true ->
+                ExpectedBuckets -- ns_bucket:buckets_with_data_on_this_node()
+        end,
+    Buckets = lists:keysort(
+                1, lists:foldl(fun (B, Acc) ->
+                                       lists:keystore(B, 1, Acc, {B, no_data})
+                               end, Buckets0, NoDataBuckets)),
+    case (ExpectedBuckets -- ActiveBuckets) -- NoDataBuckets of
         [] ->
             Buckets;
         GetBuckets ->

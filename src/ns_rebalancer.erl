@@ -505,14 +505,17 @@ rebalance_body(KeepNodes,
     %% Unfortunately, we need to run it once more in rebalance_kv after
     %% the server list for the bucket is updated. So that the states of the
     %% vbucket on newly added nodes are applied.
-    lists:foreach(fun (Bucket) ->
-                          run_janitor_pre_rebalance(Bucket)
-                  end, ns_bucket:get_bucket_names()),
+    KVKeep = ns_cluster_membership:service_nodes(KeepNodes, kv),
+    lists:foreach(
+      fun (Bucket) ->
+              not cluster_compat_mode:is_cluster_madhatter() orelse
+                  deactivate_bucket_data_on_unknown_nodes(Bucket, KVKeep),
+              run_janitor_pre_rebalance(Bucket)
+      end, ns_bucket:get_bucket_names()),
 
     %% Fetch new BucketConfigs and re build DeltaRecoveryBuckets, as janitor run
     %% might have updated vbucket map.
     BucketConfigs = ns_bucket:get_buckets(),
-    KVKeep = ns_cluster_membership:service_nodes(KeepNodes, kv),
     DeltaRecoveryBuckets = case build_delta_recovery_buckets(
                                   KVKeep, KVDeltaNodes,
                                   BucketConfigs, DeltaRecoveryBucketNames) of
@@ -1707,4 +1710,16 @@ do_complete_delta_recovery(Nodes) ->
             ?log_error("Failed to complete delta recovery "
                        "preparation on some nodes:~n~p", [Errors]),
             exit({complete_delta_recovery_failed, Errors})
+    end.
+
+deactivate_bucket_data_on_unknown_nodes(BucketName, Nodes) ->
+    {ok, BucketConfig} = ns_bucket:get_bucket(BucketName),
+    Servers = ns_bucket:get_servers(BucketConfig),
+    UnknownNodes = Nodes -- Servers,
+    case rebalance_agent:deactivate_bucket_data(BucketName, UnknownNodes,
+                                                self()) of
+        ok ->
+            ok;
+        {error, Error} ->
+            exit({error, deactivate_bucket_data_failed, Error})
     end.

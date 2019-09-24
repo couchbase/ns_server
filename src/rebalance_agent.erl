@@ -28,6 +28,7 @@
 -export([prepare_rebalance/2, unprepare_rebalance/2]).
 -export([prepare_delta_recovery/3, complete_delta_recovery/2]).
 -export([prepare_delta_recovery_bucket/4]).
+-export([deactivate_bucket_data/3]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
 -define(SERVER, ?MODULE).
@@ -111,6 +112,12 @@ complete_delta_recovery(Nodes, Pid) ->
     Timeout = ?get_timeout(complete_delta_recovery, 30000),
     multi_call(Nodes, {complete_delta_recovery, Pid}, Timeout).
 
+-spec deactivate_bucket_data(bucket_name(), [node()], pid()) ->
+                                    multi_call_result(ok).
+deactivate_bucket_data(Bucket, Nodes, Pid) ->
+    Timeout = ?get_timeout(deactivate_bucket_data, 5000),
+    multi_call(Nodes, {deactivate_bucket_data, Pid, Bucket}, Timeout).
+
 %% callbacks
 init([]) ->
     process_flag(trap_exit, true),
@@ -129,6 +136,8 @@ handle_call({prepare_delta_recovery_bucket,
                                          From, State);
 handle_call({complete_delta_recovery, Pid}, _From, State) ->
     handle_complete_delta_recovery(Pid,State);
+handle_call({deactivate_bucket_data, Pid, Bucket}, _From, State) ->
+    handle_deactivate_bucket_data(Pid, Bucket, State);
 handle_call(Call, From, State) ->
     ?log_warning("Received unexpected call ~p, from ~p. State:~n~p",
                  [Call, From, State]),
@@ -265,6 +274,15 @@ handle_complete_delta_recovery(Pid, State) ->
                         {error, {bad_bucket_statuses, BadStatuses}}
                 end,
             {reply, Reply, State#state{delta_recovery = undefined}};
+        Error ->
+            {reply, Error, State}
+    end.
+
+handle_deactivate_bucket_data(Pid, Bucket, State) ->
+    case check_rebalancer_pid(Pid, State) of
+        ok ->
+            ok = ns_bucket:deactivate_bucket_data_on_this_node(Bucket),
+            {reply, ok, State};
         Error ->
             {reply, Error, State}
     end.

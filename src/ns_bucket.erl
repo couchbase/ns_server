@@ -88,6 +88,9 @@
          get_num_vbuckets/0,
          get_max_buckets/0,
          bucket_uuid/1,
+         buckets_with_data_on_this_node/0,
+         activate_bucket_data_on_this_node/1,
+         deactivate_bucket_data_on_this_node/1,
          config_upgrade_to_51/1,
          config_upgrade_to_55/1,
          config_upgrade_to_madhatter/1]).
@@ -794,6 +797,22 @@ bucket_uuid(BucketConfig) ->
     UUID = proplists:get_value(uuid, BucketConfig),
     true = is_binary(UUID),
     UUID.
+
+buckets_with_data_on_this_node() ->
+    membase_buckets_with_data_on_node(node(), ns_config:latest()) ++
+        get_bucket_names_of_type(memcached, undefined).
+
+membase_buckets_with_data_on_node(Node, Config) ->
+    ns_config:search_node_with_default(Node, Config, buckets_with_data, []).
+
+activate_bucket_data_on_this_node(BucketName) ->
+    ns_config:update_key(
+      {node, node(), buckets_with_data}, ?cut(lists:umerge([_, [BucketName]])),
+      [BucketName]).
+
+deactivate_bucket_data_on_this_node(BucketName) ->
+    ns_config:update_key(
+      {node, node(), buckets_with_data}, lists:delete(BucketName, _), []).
 
 config_upgrade_to_51(Config) ->
     %% fix for possible consequence of MB-27160
