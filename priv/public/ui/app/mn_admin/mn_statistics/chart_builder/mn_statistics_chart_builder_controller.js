@@ -37,7 +37,6 @@
     vm.tabs = ["@system", "@kv", "@index", "@query", "@fts", "@cbas", "@eventing", "@xdcr"];
 
     vm.statIsNotSupported = [];
-
     vm.onStatChecked = onStatChecked;
     vm.onSpecificChecked = onSpecificChecked;
     vm.maybeDisableField = maybeDisableField;
@@ -181,6 +180,31 @@
         vm.newChart.specificStat = "true";
       } else {
         vm.newChart.specificStat = "false";
+      }
+
+      if (vm.isEditing) {
+        vm.tab = Object.keys(chart.stats).map(function (stat) {
+          var tab = stat.split(".")[0];
+          if (tab.includes("-")) {
+            tab = tab.substr(0, tab.length-1);
+          }
+          return tab;
+        }).sort(function(a, b) {
+          return vm.tabs.indexOf(a) - vm.tabs.indexOf(b);
+        })[0];
+
+        vm.selectedKVFilters = Object.keys(chart.stats).filter(function (stat) {
+          return stat.includes("@kv") && !stat.includes("@items");
+        }).reduce(function (acc, kvStat) {
+          Object.keys(vm.kvGroups).forEach(function (kvFilter) {
+            if (vm.kvGroups[kvFilter].includes(kvStat.split(".")[1])) {
+              acc[kvFilter] = true;
+            }
+          });
+          return acc;
+        }, {});
+      } else {
+        vm.tab = vm.tabs[0];
       }
     }
 
