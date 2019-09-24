@@ -104,6 +104,38 @@
 
     <select
        ng-model="statisticsNewCtl.selectedBucket"
+       class="max-width-4 margin-right-half"
+       ng-change="statisticsNewCtl.onBucketChange(statisticsNewCtl.selectedBucket)">
+      <option ng-repeat="name in rbac.bucketNames['.stats!read']" value="{{name}}">
+        {{name}}
+      </option>
+    </select>
+
+    <ui-select
+       class="cbui-select"
+       ng-model="statisticsNewCtl.nodes.nodesNames.selected"
+       theme="selectize"
+       on-select="statisticsNewCtl.onSelectNode($item)">
+      <ui-select-match
+         class="ui-select-match">{{$select.selected}}</ui-select-match>
+      <ui-select-choices
+         class="ui-select-choices"
+         repeat="name in statisticsNewCtl.nodes.nodesNames | filter: $select.search">
+        <span class="select-item ellipsis" ng-bind-html="name | highlight: $select.search"></span>
+      </ui-select-choices>
+    </ui-select>
+
+    <button
+       ng-disabled="!statisticsNewCtl.scenarios.length"
+       ng-click="statisticsNewCtl.openGroupDialog(statisticsNewCtl.scenario.selected)"
+       class="tight"
+       ng-hide="statisticsNewCtl.scenario.selected.preset"
+       style="margin-left: auto;">
+      <span class="icon fa-plus-circle"></span> Add Group
+    </button>
+
+    <select
+       ng-model="statisticsNewCtl.selectedBucket"
        class="max-width-4"
        ng-change="statisticsNewCtl.onBucketChange(statisticsNewCtl.selectedBucket)">
       <option ng-repeat="name in rbac.bucketNames['.stats!read']" value="{{name}}">
@@ -284,6 +316,7 @@
            nvd3-options="{showLegend: false}"
            bucket="{{statisticsNewCtl.bucket}}"
            zoom="{{statisticsNewCtl.zoom}}"
+           node="{{statisticsNewCtl.node}}"
            items="mnStatsGroupsCtl.items"
            rbac="rbac"
            config="mnStatsChartsCtl.chart"></mn-statistics-chart>

@@ -224,9 +224,12 @@
         templateUrl: 'app/mn_admin/mn_logs/collect_info/mn_logs_collect_info_form.html'
       })
       .state('app.admin.overview.statistics', {
-        url: '/stats',
+        url: '/stats?statsHostname',
         controller: 'mnStatisticsNewController as statisticsNewCtl',
         templateUrl: 'app/mn_admin/mn_statistics/mn_statistics.html',
+        params: {
+          statsHostname: "all"
+        },
         redirectTo: function (trans, permissions) {
           var mnPermissionsService = trans.injector().get("mnPermissions");
           var params = _.clone(trans.params(), true);

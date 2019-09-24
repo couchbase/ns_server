@@ -166,11 +166,13 @@
 
     vm.bucket = $state.params.scenarioBucket;
     vm.zoom = $state.params.scenarioZoom;
+    vm.node = $state.params.statsHostname;
     //selected scenario holder
     vm.scenario = {};
     vm.openGroupDialog = openGroupDialog;
     vm.selectedBucket = $state.params.scenarioBucket;
     vm.onBucketChange = onBucketChange;
+    vm.onSelectNode = onSelectNode;
 
     vm.openChartBuilderDialog = openChartBuilderDialog;
     vm.resetDashboardConfiguration = resetDashboardConfiguration;
@@ -225,6 +227,12 @@
       }).result.then(function () {
         mnUserRolesService.saveDashboard();
         groupCtl.maybeShowItemsControls();
+      });
+    }
+
+    function onSelectNode(selectedHostname) {
+      $state.go('^.statistics', {
+        statsHostname: selectedHostname.indexOf("All Server Nodes") > -1 ? "all" :selectedHostname
       });
     }
 
@@ -335,12 +343,12 @@
         });
       }
 
-      // new mnPoller($scope, function () {
-      //   return mnStatisticsNewService.prepareNodesList($state.params);
-      // })
-      //   .subscribe("nodes", vm)
-      //   .reloadOnScopeEvent("nodesChanged")
-      //   .cycle();
+      new mnPoller($scope, function () {
+        return mnStatisticsNewService.prepareNodesList($state.params);
+      })
+        .subscribe("nodes", vm)
+        .reloadOnScopeEvent("nodesChanged")
+        .cycle();
     }
   }
 })();

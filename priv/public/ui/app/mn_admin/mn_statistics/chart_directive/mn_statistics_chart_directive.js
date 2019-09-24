@@ -121,7 +121,7 @@
         mnStatisticsNewService.subscribeUIStatsPoller({
           items: $scope.items,
           bucket: $scope.bucket,
-          node: $scope.config.node || "all",
+          node: $scope.node || "all",
           stats: $scope.config.stats,
           zoom: $scope.zoom,
           specificStat: $scope.config.specificStat
@@ -315,19 +315,21 @@
           var descPath = Object.keys($scope.config.stats)[0];
           var desc = mnStatisticsNewService.readByPath(descPath);
           if (desc) {
-            Object.keys(stats.data.samples).forEach(function (nodeName) {
-              var nodeStat = stats.data.samples[nodeName];
-              chartData.push({
-                type: 'line',
-                unit: desc.unit,
-                disabled: !stats.data.samples[nodeName],
-                max: d3.max(nodeStat || []) || 1,
-                min: d3.min(nodeStat || []) || 0,
-                yAxis: units[desc.unit],
-                key: nodeName,
-                values: _.zip((nodeStat || {}).timestamps, nodeStat || [])
+            (($scope.node == "all") ?
+             Object.keys(stats.data.samples) : (["@" + $scope.node]))
+              .forEach(function (nodeName) {
+                var nodeStat = stats.data.samples[nodeName];
+                chartData.push({
+                  type: 'line',
+                  unit: desc.unit,
+                  disabled: !stats.data.samples[nodeName],
+                  max: d3.max(nodeStat || []) || 1,
+                  min: d3.min(nodeStat || []) || 0,
+                  yAxis: units[desc.unit],
+                  key: nodeName,
+                  values: _.zip((nodeStat || {}).timestamps, nodeStat || [])
+                });
               });
-            });
           }
         } else {
           Object.keys($scope.config.stats).forEach(function (descPath) {

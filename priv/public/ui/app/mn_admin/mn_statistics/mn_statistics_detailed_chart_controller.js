@@ -9,11 +9,11 @@
     var vm = this;
     vm.chart = Object.assign({}, chart, {size: "extra"});
 
-    console.log(items)
     vm.items = items;
     vm.onSelectZoom = onSelectZoom;
     vm.bucket = $state.params.scenarioBucket;
     vm.zoom = $state.params.scenarioZoom;
+    vm.node = $state.params.statsHostname;
 
     function onSelectZoom() {
       vm.reloadChartDirective = true;

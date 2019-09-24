@@ -250,7 +250,9 @@
           return !(node.clusterMembership === 'inactiveFailed') && !(node.status === 'unhealthy');
         }).pluck("hostname").value();
 
-        rv.nodesNames.selected = params.statsHostname || rv.nodesNames[0];
+        rv.nodesNames.unshift("All Server Nodes (" + rv.nodesNames.length + ")");
+        rv.nodesNames.selected = params.statsHostname === "all" ? rv.nodesNames[0] : params.statsHostname;
+
         return rv;
       });
     }
