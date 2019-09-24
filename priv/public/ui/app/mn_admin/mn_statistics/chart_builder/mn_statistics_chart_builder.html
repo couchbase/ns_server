@@ -36,11 +36,11 @@
           </div>
         </div>
 
-        <div class="column nowrap">
+        <div class="margin-right-1 nowrap">
           <h5>Chart Size</h5>
           <select
              ng-model="builderCtl.newChart.size"
-             class="fix-width-1-5">
+             class="fix-width-1">
             <option value="small">S</option>
             <option value="medium">M</option>
             <option value="large">L</option>
@@ -48,11 +48,11 @@
         </div>
 
         <div
-           class="column nowrap"
+           class="nowrap"
            ng-if="builderCtl.isEditing">
           <h5>Group</h5>
           <select
-             class="fix-width-1-5"
+             class="fix-width-2"
              ng-disabled="!builderCtl.isEditing"
              ng-model="builderCtl.selectedGroup">
             <option

@@ -294,7 +294,8 @@
          ng-click="statisticsNewCtl.openChartBuilderDialog(
                    mnStatsGroupsCtl.group,
                    statisticsNewCtl.scenario.selected,
-                   mnStatsGroupsCtl)">
+                   mnStatsGroupsCtl)"
+         title="Add a Chart">
       </div>
     </div>
   </div>
@@ -302,7 +303,10 @@
      ng-if="statisticsNewCtl.scenario.selected &&
             !statisticsNewCtl.scenario.selected.groups.length"
      class="zero-content">
-    No charts to display yet. Use Add Group to first add groups and then charts.<br>
+    No charts to display yet.
+    <a ng-click="statisticsNewCtl.openGroupDialog(statisticsNewCtl.scenario.selected)">
+      Add a Group
+    </a> to start, then add charts.<br>
     NOTE: All your changes will be auto-saved.
   </div>
 </div>

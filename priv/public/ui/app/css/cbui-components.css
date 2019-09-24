@@ -2533,13 +2533,14 @@ mn-statistics-chart {
   display: block;
 }
 .chart-title {
-  font-size: .8125rem;
+  font-size: .75rem;
   font-weight: 600;
   color: #000;
   margin: 0 1.5rem 0 .5rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.2;
 }
 .footer-querymonitor .statistics-tiny {
   width: 34%;
@@ -2555,7 +2556,7 @@ mn-statistics-chart {
   padding: .25rem;
   margin: .25rem;
   padding-bottom: 0;
-  height: 178px;
+
 }
 .statistics-small:hover {
   background-color: #f5f5f5;
@@ -2565,7 +2566,7 @@ mn-statistics-chart {
   width: calc(50% - .5rem);
   padding: .25rem;
   margin: .25rem;
-  height: 178px;
+
 }
 .statistics-medium:hover {
   background-color: #f5f5f5;
@@ -2575,7 +2576,7 @@ mn-statistics-chart {
   width: calc(100% - .5rem);
   padding: .25rem;
   margin: .25rem;
-  height: 334px;
+
 }
 .statistics-large:hover {
   background-color: #f5f5f5;
@@ -2819,7 +2820,7 @@ mn-dropdown .menu {
 }
 mn-dropdown .footer {
   padding: 1rem;
-  box-shadow: 0 -2px 6px -2px rgba(0,0,0,0.18);
+  box-shadow: 0 -1px 3px -1px rgba(0,0,0,0.21);
   position: relative;
 }
 mn-dropdown-item {
@@ -2908,7 +2909,7 @@ mn-dropdown-item:hover .scenario-controls {
   margin: -.5rem 0;
 }
 .scenario-add input[type=text] {
-  border: 1px solid #d1d1d1;
+  border: 1px solid #efefef;
   border-radius: 2px;
   position: relative;
   width: 100%;
@@ -2941,6 +2942,10 @@ input[type=text].scenario-desc  {
   font-size: .8125rem;
   color: #333;
   margin: .5rem 0;
+}
+.scenario-add input[type=text]:hover,
+input[type=text].scenario-desc:hover {
+  border: 1px solid #999;
 }
 .scenario-dropdown .footer label {
   font-size: .8125rem;
