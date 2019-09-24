@@ -159,15 +159,16 @@ personalize_info(Label, Info) ->
     SpecialUser = ns_config_auth:get_user(special) ++ Label,
     "htuabc-" ++ ReversedTrimmedLabel = lists:reverse(Label),
     MemcachedUser = [$@ | lists:reverse(ReversedTrimmedLabel)],
-    TLSInfo = proplists:get_value(tlsConfig, Info),
-    TLSConfig = case proplists:get_value(Label, TLSInfo) of
-                    undefined ->
-                        %% Didn't find values for one of the known services
-                        %% so return "default" values.
-                        proplists:get_value("default-cbauth", TLSInfo);
-                    Other ->
-                        Other
-                end,
+
+    TlsConfigLabel =
+        case Label of
+            "projector-cbauth" -> "index-cbauth";
+            _ -> Label
+        end,
+
+    TLSConfig = proplists:get_value(TlsConfigLabel,
+                                    proplists:get_value(tlsConfig, Info),
+                                    {[{present, false}]}),
 
     Nodes = proplists:get_value(nodes, Info),
     NewNodes =
@@ -266,6 +267,7 @@ build_auth_info(#state{cert_version = CertVersion,
     EUserFromCertURL = misc:local_url(Port, "/_cbauth/extractUserFromCert", []),
     ClusterDataEncrypt = misc:should_cluster_data_be_encrypted(),
     DisableNonSSLPorts = misc:disable_non_ssl_ports(),
+    TLSServices = menelaus_web_settings:services_with_security_settings(),
 
     [{nodes, Nodes},
      {authCheckURL, list_to_binary(AuthCheckURL)},
@@ -279,27 +281,23 @@ build_auth_info(#state{cert_version = CertVersion,
      {clusterEncryptionConfig, {[{encryptData, ClusterDataEncrypt},
                                  {disableNonSSLPorts, DisableNonSSLPorts}]}},
      {tlsConfig, [tls_config(S, Config) ||
-                  S <- [fts, index, eventing, n1ql, cbas, projector, goxdcr,
-                       default]]}].
+                  S <- [N || {N, _} <- TLSServices]]}].
 
 tls_config(Service, Config) ->
-    Service2 = case Service of
-                   projector -> index;
-                   _ -> Service
-               end,
     Label = case Service of
                 n1ql -> "cbq-engine-cbauth";
                 _ -> atom_to_list(Service) ++ "-cbauth"
             end,
-    Ciphers = ciphers(Service2, Config),
-    Order = ns_ssl_services_setup:honor_cipher_order(Service2, Config),
+    Ciphers = ciphers(Service, Config),
+    Order = ns_ssl_services_setup:honor_cipher_order(Service, Config),
     CipherInts = lists:map(fun (<<I:16/unsigned-integer>>) -> I end,
                            [ciphers:code(N) || N <- Ciphers]),
     CipherOpenSSLNames = [N2 || N <- Ciphers, N2 <- [ciphers:openssl_name(N)],
                                 N2 =/= undefined],
-    MinTLSVsn = ns_ssl_services_setup:ssl_minimum_protocol(Service2, Config),
+    MinTLSVsn = ns_ssl_services_setup:ssl_minimum_protocol(Service, Config),
     {Label,
-     {[{minTLSVersion, MinTLSVsn},
+     {[{present, true},
+       {minTLSVersion, MinTLSVsn},
        {cipherOrder, Order},
        {ciphers, CipherInts},
        {cipherNames, Ciphers},

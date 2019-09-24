@@ -54,7 +54,8 @@
 
          handle_reset_ciphers_suites/1,
 
-         config_upgrade_to_madhatter/1]).
+         config_upgrade_to_madhatter/1,
+         services_with_security_settings/0]).
 
 -import(menelaus_util,
         [parse_validate_number/3,
@@ -157,6 +158,15 @@ get_cluster_encryption(Level) ->
             {ok, list_to_atom(Level)}
     end.
 
+services_with_security_settings() ->
+    [{kv, data},
+     {fts, fullTextSearch},
+     {index, index},
+     {eventing, eventing},
+     {n1ql, query},
+     {cbas, analytics},
+     {ns_server, clusterManager}].
+
 conf(security) ->
     [{disable_ui_over_http, disableUIOverHttp, false, fun get_bool/1},
      {disable_ui_over_https, disableUIOverHttps, false, fun get_bool/1},
@@ -176,14 +186,7 @@ conf(security) ->
        {ssl_minimum_protocol, tlsMinVersion, undefined, get_tls_version(_, S)},
        {honor_cipher_order, honorCipherOrder, undefined, fun get_bool/1},
        {supported_ciphers, supportedCipherSuites, ciphers:supported(S),
-        fun read_only/1}]}
-     || {S, SN} <- [{kv, data},
-                    {fts, fullTextSearch},
-                    {index, index},
-                    {eventing, eventing},
-                    {n1ql, query},
-                    {cbas, analytics},
-                    {ns_server, clusterManager}]];
+        fun read_only/1}]} || {S, SN} <- services_with_security_settings()];
 conf(internal) ->
     [{index_aware_rebalance_disabled, indexAwareRebalanceDisabled, false,
       fun get_bool/1},
