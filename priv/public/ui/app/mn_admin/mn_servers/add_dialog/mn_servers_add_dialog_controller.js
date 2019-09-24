@@ -53,6 +53,7 @@
         }
         rv.dbPath = selfConfig.storage.hdd[0].path;
         rv.indexPath = selfConfig.storage.hdd[0].index_path;
+        rv.eventingPath = selfConfig.storage.hdd[0].eventing_path;
         vm.selfConfig = rv;
       });
     }
@@ -64,6 +65,7 @@
         path: vm.selfConfig.dbPath,
         index_path: vm.selfConfig.indexPath
       };
+      data.eventing_path = vm.selfConfig.eventingPath;
       if ($scope.poolDefault.isEnterprise) {
         data.cbas_path = vm.selfConfig.cbasDirs;
       }

@@ -111,6 +111,7 @@
       var data = {
         path: vm.config.dbPath,
         index_path: vm.config.indexPath,
+        eventing_path: vm.config.eventingPath,
         java_home: vm.config.java_home
       };
       if (pools.isEnterprise) {

@@ -10,6 +10,7 @@ mn.services.MnWizard = (function (Rx) {
     storage: new ng.forms.FormGroup({
       path: new ng.forms.FormControl(null),
       index_path: new ng.forms.FormControl(null),
+      eventing_path: new ng.forms.FormControl(null),
       cbas_path: new ng.forms.FormArray([
         new ng.forms.FormControl()
       ])

@@ -25,6 +25,7 @@
       var vm = this;
       vm.onDbPathChange = onDbPathChange;
       vm.onIndexPathChange = onIndexPathChange;
+      vm.onEventingPathChange = onEventingPathChange;
       vm.onCbasDirsChange = onCbasDirsChange;
       vm.addCbasPath = addCbasPath;
 
@@ -33,6 +34,7 @@
       function activate() {
         vm.onDbPathChange();
         vm.onIndexPathChange();
+        vm.onEventingPathChange();
         if ($scope.config.cbasDirs) {
           $scope.config.cbasDirs.forEach(function (path, index) {
             vm.onCbasDirsChange(index);
@@ -50,6 +52,12 @@
         vm.indexPathTotal =
           mnClusterConfigurationService.lookup(
             $scope.config.indexPath,
+            $scope.config.selfConfig.preprocessedAvailableStorage);
+      }
+      function onEventingPathChange() {
+        vm.eventingPathTotal =
+          mnClusterConfigurationService.lookup(
+            $scope.config.eventingPath,
             $scope.config.selfConfig.preprocessedAvailableStorage);
       }
       function onCbasDirsChange(index) {

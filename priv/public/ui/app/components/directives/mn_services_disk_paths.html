@@ -46,6 +46,25 @@
   </p>
 </div>
 
+<div class="formrow">
+  <div class="row">
+    <label for="setup_eventing_path_input">Eventing Disk Path</label>
+    <small class="text-smaller">Path cannot be changed after setup</small>
+  </div>
+  <input
+     type="text"
+     autocorrect="off"
+     spellcheck="false"
+     autocapitalize="off"
+     ng-disabled="isDisabled"
+     id="setup_eventing_path_input"
+     ng-model="config.eventingPath"
+     ng-change="mnCtl.onEventingPathChange()">
+  <p>
+    Free: {{mnCtl.eventingPathTotal}}
+  </p>
+</div>
+
 <div
    class="formrow"
    ng-if="isEnterprise">
