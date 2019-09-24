@@ -225,7 +225,7 @@ validate_events(Name, Descriptors, State) ->
 validate_users(Name, State) ->
     validator:validate(
       fun (Value) ->
-              Users = string:tokens(Value, ","),
+              Users = [string:trim(N) || N <- string:tokens(Value, ",")],
               UsersParsed = [{U, string:tokens(U, "/")} || U <- Users],
               UsersFound =
                   lists:map(
