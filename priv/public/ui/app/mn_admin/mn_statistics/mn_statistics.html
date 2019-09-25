@@ -111,15 +111,15 @@
       </option>
     </select>
   </div>
-  <div class="flex-right">
+  <div class="row flex-right">
     <div uib-dropdown>
-      <button uib-dropdown-toggle class="outline tight">
-        <span class="icon fa-trash grayblack-3"></span>
-      </button>
+      <a uib-dropdown-toggle class="scenarios-delete">
+        <span class="icon fa-lg fa-trash"></span>
+      </a>
       <div uib-dropdown-menu
-           style="top: 2rem;"
-           class="dropdown-menu-select-like">
-        <a ng-click="statisticsNewCtl.resetDashboardConfiguration();">Delete Custom Scenarios</a>
+           class="dropdown-menu-select-like"
+           style="top: auto;right: 24px;">
+        <a ng-click="statisticsNewCtl.resetDashboardConfiguration();">Delete Custom Scenarios &<br>Reset Presets</a>
       </div>
     </div>
     <button
