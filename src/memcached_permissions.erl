@@ -19,7 +19,7 @@
 
 -behaviour(memcached_cfg).
 
--export([start_link/0, sync/0, jsonify_user/3]).
+-export([start_link/0, sync/0, jsonify_user/3, spec_users/0]).
 
 %% callbacks
 -export([init/0, filter_event/1, handle_event/2, producer/1, refresh/0]).
@@ -73,9 +73,13 @@ init() ->
     #state{buckets = ns_bucket:get_bucket_names(ns_bucket:get_buckets(Config)),
            param_values =
                menelaus_roles:calculate_possible_param_values(ns_bucket:get_buckets(Config)),
-           users = [ns_config:search_node_prop(Config, memcached, admin_user) |
-                    ns_config:search_node_prop(Config, memcached, other_users, [])],
+           users = spec_users(Config),
            roles = menelaus_roles:get_definitions(Config)}.
+
+spec_users() -> spec_users(ns_config:get()).
+spec_users(Config) ->
+    [ns_config:search_node_prop(Config, memcached, admin_user) |
+     ns_config:search_node_prop(Config, memcached, other_users, [])].
 
 filter_event({buckets, _V}) ->
     true;

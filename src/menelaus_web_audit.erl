@@ -92,11 +92,15 @@ handle_get_descriptors(Req) ->
     Descriptors = ns_audit_cfg:get_descriptors(ns_config:latest()),
     reply_with_json_audit_descriptors(Req, Descriptors).
 
+audit_user_exists(Identity) ->
+    SpecIds = [{N, local} || N <- memcached_permissions:spec_users()],
+    menelaus_users:user_exists(Identity) orelse lists:member(Identity, SpecIds).
+
 jsonifier(disabled_users) ->
     fun (UList) ->
             [{[{name, list_to_binary(N)}, {domain, D}]} ||
                  {N, D} = Identity <- UList,
-                 menelaus_users:user_exists(Identity)]
+                 audit_user_exists(Identity)]
     end;
 jsonifier(uid) ->
     fun list_to_binary/1;
@@ -227,7 +231,7 @@ validate_users(Name, State) ->
                   lists:map(
                     fun ({U, [N, S]}) ->
                             Identity = {N, menelaus_web_rbac:domain_to_atom(S)},
-                            case menelaus_users:user_exists(Identity) of
+                            case audit_user_exists(Identity) of
                                 true ->
                                     Identity;
                                 false ->
