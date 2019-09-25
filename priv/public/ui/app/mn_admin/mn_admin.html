@@ -374,10 +374,6 @@
        ui-state="'app.admin.views.list'"
        ui-state-params="{bucket: rbac.bucketNames['.views!read'][0] || null}"
        ng-class="{currentnav: ('app.admin.views' | includedByState)}">Views</a>
-    <a
-       ng-show="rbac.cluster.bucket['.'].n1ql.index.read"
-       ui-sref="app.admin.gsi"
-       ng-class="{currentnav: ('app.admin.gsi' | includedByState)}">Indexes</a>
 
     <div
         class="sidebar-closer resp-hide-med"

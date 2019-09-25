@@ -8,7 +8,17 @@
     'mnElementCrane'
   ]).config(mnIndexesConfig);
 
-  function mnIndexesConfig($stateProvider, mnHelperProvider) {
+  function mnIndexesConfig($stateProvider, mnHelperProvider, mnPluggableUiRegistryProvider) {
+
+    mnPluggableUiRegistryProvider.registerConfig({
+      name: 'Indexes',
+      state: 'app.admin.gsi',
+      includedByState: 'app.admin.gsi',
+      plugIn: 'workbenchTab',
+      index: 2,
+      ngShow: "rbac.cluster.bucket['.'].n1ql.index.read"
+    });
+
     $stateProvider
       .state('app.admin.gsi', {
         url: "/index?openedIndex",
