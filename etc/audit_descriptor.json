@@ -1016,16 +1016,24 @@
           },
           "optional_fields" : {
               "sessionid" : "",
-              "authentication_enabled": false,
-              "authorization_enabled": false,
+              "authenticationEnabled": false,
+              "authorizationEnabled": false,
               "hosts": [],
               "port": 1,
               "encryption": "",
-              "user_dn_mapping": "",
-              "query_dn": "",
-              "query_pass": "",
-              "groups_query": "",
-              "request_timeout": 1
+              "userDNMapping": "",
+              "bindDN": "",
+              "bindPass": "",
+              "groupsQuery": "",
+              "request_timeout": 1,
+              "maxParallelConnections": 1,
+              "maxCacheSize": 1,
+              "cacheValueLifetime": 1,
+              "nestedGroupsEnabled": 1,
+              "nestedGroupsMaxDepth": 1,
+              "failOnMaxDepth": false,
+              "serverCertValidation": false,
+              "cacert": "":
           }
       },
       {
