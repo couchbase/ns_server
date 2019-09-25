@@ -54,6 +54,7 @@
 
     $stateProvider
       .state('app.admin', {
+        url: "?scenarioBucket&scenarioZoom&scenario",
         abstract: true,
         params: {
           scenarioBucket: {
