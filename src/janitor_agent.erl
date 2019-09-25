@@ -623,6 +623,7 @@ handle_call(Call, From, State) ->
 
 do_handle_call(prepare_flush, _From, #state{bucket_name = BucketName} = State) ->
     ?log_info("Preparing flush by disabling bucket traffic"),
+    ns_bucket:deactivate_bucket_data_on_this_node(BucketName),
     {reply, ns_memcached:disable_traffic(BucketName, infinity), State};
 do_handle_call(complete_flush, _From, State) ->
     {reply, ok, consider_doing_flush(State)};
