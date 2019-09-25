@@ -61,7 +61,7 @@
             copyProperty("replicaIndex");
           }
 
-          if (pools.isEnterprise && bucketConf.isWizard) {
+          if (pools.isEnterprise) {
             copyProperty("conflictResolutionType");
           }
         }
