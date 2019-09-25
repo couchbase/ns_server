@@ -850,14 +850,14 @@ mutate_doc(Req, Oper, BucketName, DocId) ->
 
 set_user_group(Req, Id, Roles, Description, LDAPGroup) ->
     put(set_user_group, Req,
-        [{id, Id},
+        [{group_name, Id},
          {roles, {list, [menelaus_web_rbac:role_to_string(Role)
                             || Role <- Roles]}},
          {ldap_group_ref, LDAPGroup},
          {description, Description}]).
 
 delete_user_group(Req, Id) ->
-    put(delete_user_group, Req, [{id, Id}]).
+    put(delete_user_group, Req, [{group_name, Id}]).
 
 ldap_settings(Req, Settings) ->
     put(ldap_settings, Req, [prepare_ldap_setting(S) || S <- Settings]).

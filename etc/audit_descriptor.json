@@ -976,7 +976,7 @@
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
-              "id" : {"domain" : "", "user" : ""},
+              "group_name" : "",
               "roles" : ""
           },
           "optional_fields" : {
@@ -996,7 +996,7 @@
               "timestamp" : "",
               "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
-              "id" : {"domain" : "", "user" : ""}
+              "group_name" : ""
           },
           "optional_fields" : {
               "sessionid" : ""
