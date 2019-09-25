@@ -145,7 +145,7 @@
 
     <div
        ng-if="adminCtl.poolDefault.isEnterprise && adminCtl.poolDefault.compat.atLeast55"
-       class="formrow fix-width-6 margin-top-1">
+       class="formrow fix-width-6 margin-top-1 margin-bottom-2">
       <label class="inline">Ignore Events From These Users</label>
       <span
          class="icon-info-warning raised"
@@ -170,11 +170,13 @@
         {{auditCtl.errors.disabledUsers}}
       </div>
     </div>
-
-    <button
-       ng-show="rbac.cluster.admin.security.write"
-       ng-disabled="!!auditCtl.errors"
-       class="save_button margin-top-1">Save</button>
-
+    <footer class="footer-save">
+      <button
+         ng-show="rbac.cluster.admin.security.write"
+         class="margin-right-2">
+        Save
+      </button>
+      <a class="text-medium" ng-click="auditCtl.reloadState()">Cancel/Reset</a>
+    </footer>
   </form>
 </div>

@@ -15,6 +15,7 @@
     vm.toggleAll = toggleAll;
     vm.mapNames = mapNames;
     vm.findEnabled = findEnabled;
+    vm.reloadState = mnHelper.reloadState;
 
     activate();
 
