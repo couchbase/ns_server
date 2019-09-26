@@ -384,7 +384,10 @@ verify_fun(Cert, Event, State) ->
                        "     Cert: ~p~n     Stack: ~p~n",
                        [InitValidationState, Cert, Trace]),
             {fail, {Error, Subject}};
-        {extension, _} ->
+        {extension, Ext} ->
+            ?log_warning(
+               "Certificate ~p validation spotted an unknown extension ~p",
+               [Subject, Ext]),
             {unknown, State};
         valid ->
             {valid, State#verify_state{last_subject = Subject}};
