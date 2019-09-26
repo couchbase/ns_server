@@ -1224,6 +1224,7 @@ section.error {
   -o-text-overflow: ellipsis;
   position: relative;
   top: 2px;
+  font-size: .875rem;
 }
 .ui-select-container.single .select-item {
   max-width: 200px;
@@ -1236,6 +1237,7 @@ section.error {
   -o-text-overflow: ellipsis;
   padding-right: 15px;
   max-width: 182px;
+  color: #000;
 }
 .ui-select-container.single .ui-select-choices-row.disabled {
   background: #fff;
@@ -2579,17 +2581,16 @@ mn-statistics-chart {
 
 }
 .statistics-small:hover {
-  background-color: #f5f5f5;
+  background-color: #f6fafd;
   cursor: pointer;
 }
 .statistics-medium {
   width: calc(50% - .5rem);
   padding: .25rem;
   margin: .25rem;
-
 }
 .statistics-medium:hover {
-  background-color: #f5f5f5;
+  background-color: #f6fafd;
   cursor: pointer;
 }
 .statistics-large {
@@ -2599,7 +2600,7 @@ mn-statistics-chart {
 
 }
 .statistics-large:hover {
-  background-color: #f5f5f5;
+  background-color: #f6fafd;
   cursor: pointer;
 }
 .statistics-extra-large {
@@ -2652,6 +2653,9 @@ mn-statistics-chart {
   right: 8px;
   z-index: 1;
   background-color: #fff;
+  opacity: .1;
+}
+.panel:hover .chart-controls {
   opacity: .9;
 }
 .statistics-small:hover > .chart-controls,
@@ -2660,9 +2664,10 @@ mn-statistics-chart {
   background-color: #f5f5f5;
 }
 .chart-controls .icon {
-  color: #4287d6;
+  color: #555;
   padding: 0 .5rem;
   cursor: pointer;
+  font-size: .875rem;
 }
 .chart-controls .icon.fa-ellipsis-v {
   color: #999;
@@ -2670,9 +2675,7 @@ mn-statistics-chart {
 .chart-controls .icon:hover {
   color: #000;
 }
-.chart-controls .icon:last-child {
-  margin-right: 0;
-}
+
 
 .chart-adder {
   background-color: #f5f5f5;
@@ -2682,14 +2685,16 @@ mn-statistics-chart {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 2rem;
+  font-size: 1.5rem;
   cursor: pointer;
   margin: .25rem;
   flex-grow: 2;
-  min-height: 3rem;
+  min-height: 2rem;
+  transition: all 500ms;
 }
 .chart-adder:hover {
   color: #a1a1a1;
+  background-color: #fff;
 }
 .chart-adder:before {
   content: "\f055";
@@ -2903,15 +2908,19 @@ mn-dropdown-item:hover {
   text-align: right;
   position: absolute;
   right: .25rem;
-  top: .3rem;
-  background-color: rgba(246,250,253, 0.9);
-  padding: .25rem .5rem;
+  top: 2px;
+  background-color: #f6fafd;
+  padding: .5rem .5rem;
 }
 mn-dropdown-item:hover .scenario-controls {
   display: block;
+  opacity: .7;
+}
+mn-dropdown-item .scenario-controls:hover {
+  opacity: .9;
 }
 .scenario-controls .icon {
-  color: #4287d6;
+  color: #555;
   padding: 0 .5rem;
   cursor: pointer;
 }

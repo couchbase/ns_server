@@ -161,33 +161,33 @@
           },
           "ep_dcp_views+indexes_count": {
             unit: "number",
-            title: "DCP All Indexes Connections",
+            title: "DCP Indexes Connections",
             desc: "Number of internal views/gsi/search index DCP connections in this bucket (measured from ep_dcp_views_count + ep_dcp_2i_count + ep_dcp_fts_count)"
           },
           "ep_dcp_views+indexes_items_remaining": {
             unit: "number",
-            title: "DCP All Indexes Items Remaining",
+            title: "DCP Indexes Items Remaining",
             desc: "Number of items remaining to be sent to consumer in this bucket (measured from ep_dcp_views_items_remaining + ep_dcp_2i_items_remaining + ep_dcp_fts_items_remaining)"
           },
           "ep_dcp_views+indexes_producer_count": {
             unit: "number",
-            title: "DCP All Indexes Senders",
+            title: "DCP Indexes Senders",
             desc: "Number of views/gsi/search index senders for this bucket (measured from ep_dcp_views_producer_count + ep_dcp_2i_producer_count + ep_dcp_fts_producer_count)"
           },
           "ep_dcp_views+indexes_total_backlog_size": null,
           "ep_dcp_views+indexes_items_sent": {
             unit: "number/sec",
-            title: "DCP All Indexes Items Sent",
+            title: "DCP Indexes Items Sent",
             desc: "Number of items per second being sent for a producer for this bucket (measured from ep_dcp_views_items_sent + ep_dcp_2i_items_sent + ep_dcp_fts_items_sent)"
           },
           "ep_dcp_views+indexes_total_bytes": {
             unit: "bytes/sec",
-            title: "DCP All Indexes Drain Rate",
+            title: "DCP Indexes Drain Rate",
             desc: "Number of bytes per second being sent for views/gsi/search index DCP connections for this bucket (measured from ep_dcp_views_total_bytes + ep_dcp_2i_total_bytes + ep_dcp_fts_total_bytes)"
           },
           "ep_dcp_views+indexes_backoff": {
             unit: "number/sec",
-            title: "DCP All Indexes Backoffs",
+            title: "DCP Indexes Backoffs",
             desc: "Number of backoffs for views/gsi/search index DCP connections (measured from ep_dcp_views_backoff + ep_dcp_2i_backoff + ep_dcp_fts_backoff)"
           },
           "bg_wait_count": null,

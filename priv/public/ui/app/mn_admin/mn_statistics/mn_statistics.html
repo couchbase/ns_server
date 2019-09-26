@@ -24,17 +24,11 @@
               <span
                  title="delete scenario"
                  class="icon fa-trash"
-                 ng-click="scenarioCtrl.deleteScenario(scenario.id)"
-                 ng-show="showScenarioControls"></span>
+                 ng-click="scenarioCtrl.deleteScenario(scenario.id)"></span>
               <span
                  title="edit scenario"
                  class="icon fa-edit"
-                 ng-click="scenarioCtrl.editScenario(scenario)"
-                 ng-show="showScenarioControls"></span>
-              <span
-                 class="icon fa-ellipsis-v"
-                 ng-click="showScenarioControls = !showScenarioControls">
-              </span>
+                 ng-click="scenarioCtrl.editScenario(scenario)"></span>
             </div>
           </mn-dropdown-item>
         </inner-body>
@@ -48,7 +42,7 @@
               <input
                  type="text"
                  ng-model="scenarioCtrl.scenario.name"
-                 placeholder="new scenario..."
+                 placeholder="new dashboard..."
                  autocorrect="off"
                  ng-click="scenarioCtrl.showRestOfMenu = true"
                  spellcheck="false"
@@ -220,7 +214,7 @@
           <select
              ng-change="mnStatsGroupsCtl.onItemChange()"
              ng-model="mnStatsGroupsCtl.items.kv"
-             class="max-width-4">
+             class="max-width-4 margin-left-quarter">
             <option ng-repeat="row in statisticsNewCtl.viewItems"
                     ng-value="row.statKeyPrefix">
               {{row.statId}}
@@ -260,6 +254,7 @@
           </select>
         </div>
       </div>
+      <div> &nbsp;</div>
     </div>
 
     <div ng-if="mnStatsGroupsCtl.isDetailsOpened" class="row charts">
@@ -274,19 +269,13 @@
           <span
              title="delete chart"
              class="icon fa-trash"
-             ng-click="mnStatsChartsCtl.deleteChart()"
-             ng-show="mnStatsChartsCtl.showChartControls"></span>
+             ng-click="mnStatsChartsCtl.deleteChart()"></span>
           <span
              ng-if="mnStatsChartsCtl.chart"
              title="edit chart"
              class="icon fa-edit"
              ng-click="mnStatsChartsCtl.editChart(mnStatsGroupsCtl.group,
-                       statisticsNewCtl.scenario.selected)"
-             ng-show="mnStatsChartsCtl.showChartControls"></span>
-          <span
-             class="icon fa-ellipsis-v"
-             ng-model="mnStatsChartsCtl.showChartControls"
-             ng-click="mnStatsChartsCtl.showChartControls = !mnStatsChartsCtl.showChartControls"></span>
+                       statisticsNewCtl.scenario.selected)"></span>
         </div>
         <div ng-if="!mnStatsChartsCtl.chart" class="statistics-not-available">
           Chart not available

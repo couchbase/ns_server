@@ -301,6 +301,7 @@
           $scope.options = {
             chart: {
               notFound: true,
+              height: getChartSize($scope.config.size),
               margin : {top: 0, right: 0, bottom: 0, left: 0},
               type: 'multiChart',
               noData: "No stats for selected bucket"

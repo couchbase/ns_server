@@ -377,35 +377,68 @@
             size: "small",
             specificStat: true
           }, {
-            stats: {"@system.rest_requests": true},
-            size: "small",
-            specificStat: true
-          }]
-        }, {
-          name: "Data Service Overview (per bucket)",
-          charts: [{
             stats: {"@kv-.ops": true},
             size: "small",
             specificStat: true
           }, {
-            stats: {"@kv-.mem_used": true},
-            size: "small",
-            specificStat: true
+            stats: {"@kv-.ops": true,
+                    "@kv-.ep_cache_miss_rate": true},
+            size: "medium",
+            specificStat: false
           }, {
-            stats: {"@kv-.couch_docs_actual_disk_size": true},
-            size: "small",
-            specificStat: true,
+            stats: {"@kv-.cmd_get": true,
+                    "@kv-.cmd_set": true,
+                    "@kv-.delete_hits": true},
+            size: "medium",
+            specificStat: false
           }, {
-            stats: {"@kv-.ep_resident_items_rate": true},
-            size: "small",
-            specificStat: true
-          }]
+            stats: {"@kv-.ops": true,
+                    "@kv-.ep_cache_miss_rate": true},
+            size: "medium",
+            specificStat: false
+          }, {
+            stats: {"@kv-.cmd_get": true,
+                    "@kv-.cmd_set": true,
+                    "@kv-.delete_hits": true},
+            size: "medium",
+            specificStat: false
         }]
-      }, {// 2nd scenario starts here with the comma ///////////////////////////
-        name: "Data Service",
-        desc: "Data Service stats per bucket.",
+      }] }, {  // 2nd scenario starts here with the comma ///////////////////////
+
+        name: "General Troubleshooting",
+        desc: "Most common stats - per service.",
         groups: [{
-          name: "Memory",
+          name: "Server Resources",
+          charts: [{
+            stats: {"@system.cpu_utilization_rate": true},
+            size: "small",
+            specificStat: true // for single-stat chart
+          }, {
+            stats: {"@system.mem_actual_free": true},
+            size: "small",
+            specificStat: true
+          }, {
+            stats: {"@system.swap_used": true},
+            size: "small",
+            specificStat: true
+          }, {
+            stats: {"@system.rest_requests": true},
+            size: "small",
+            specificStat: true
+          }, {
+            stats: {"@kv-.ops": true,
+                    "@kv-.ep_cache_miss_rate": true},
+            size: "medium",
+            specificStat: false
+          }, {
+            stats: {"@kv-.cmd_get": true,
+                    "@kv-.cmd_set": true,
+                    "@kv-.delete_hits": true},
+            size: "medium",
+            specificStat: false
+          }]
+          }, {
+          name: "Data Service",
           charts: [{
             stats: {"@kv-.mem_used": true,
                     "@kv-.ep_mem_low_wat": true,
@@ -413,56 +446,177 @@
             size: "medium",
             specificStat: false // false for multi-stat chart
           }, {
-            stats: {"@kv-.ep_kv_size": true, "@kv-.ep_meta_data_memory": true},
-            size: "medium",
-            specificStat: false
-          }]
-        }, {
-          name: "Ops",
-          charts: [{
-            stats: {"@kv-.ops": true, "@kv-.ep_cache_miss_rate": true},
+            stats: {"@kv-.ep_kv_size": true,
+                    "@kv-.ep_meta_data_memory": true},
             size: "medium",
             specificStat: false
           }, {
-            stats: {"@kv-.cmd_get": true, "@kv-.cmd_set": true, "@kv-.delete_hits": true},
-            size: "medium",
-            specificStat: false
-          }]
-        }, {
-          name: "Disk",
-          charts: [{
-            stats: {"@kv-.couch_docs_actual_disk_size": true,
-                    "@kv-.couch_docs_data_size": true},
+            stats: {"@kv-.ops": true,
+                    "@kv-.ep_cache_miss_rate": true},
             size: "medium",
             specificStat: false
           }, {
-            stats: {"@kv-.disk_write_queue": true,
-                    "@kv-.ep_data_read_failed": true,
-                    "@kv-.ep_data_write_failed": true},
+            stats: {"@kv-.cmd_get": true,
+                    "@kv-.cmd_set": true,
+                    "@kv-.delete_hits": true},
             size: "medium",
             specificStat: false
           }]
-        }, {
-          name: "vBuckets",
+      }, {
+          name: "Index Service",
           charts: [{
-            stats: {"@kv-.ep_vb_total": true},
+            stats: {"@index.index_ram_percent": true,
+                    "@index.index_remaining_ram": true},
+            size: "small",
+            specificStat: false
+          }, {
+            stats: {"@index-.index/data_size": true},
             size: "small",
             specificStat: true
           }, {
-            stats: {"@kv-.vb_active_num": true},
+            stats: {"@index-.index/disk_size": true},
             size: "small",
             specificStat: true
-          }, {
-            stats: {"@kv-.vb_pending_num": true},
-            size: "small",
-            specificStat: true
-          }, {
-            stats: {"@kv-.vb_replica_num": true},
-            size: "small",
-            specificStat: true,
           }]
         }, {
-          name: "DCP Queues",
+          name: "Query Service",
+          charts: [{
+            stats: {"@query.query_requests_1000ms": true,
+                    "@query.query_requests_500ms": true,
+                    "@query.query_requests_5000ms": true},
+            size: "medium",
+            specificStat: false
+          }, {
+            stats: {"@query.query_selects": true,
+                    "@query.query_requests": true},
+            size: "medium",
+            specificStat: false
+          }]
+        }, {
+          name: "Analytics Service",
+          charts: [{
+            stats: {"@cbas-.cbas/incoming_records_count": true},
+            size: "small",
+            specificStat: true
+          }, {
+            stats: {"@cbas.cbas_heap_used": true},
+            size: "small",
+            specificStat: true
+          }, {
+            stats: {"@cbas.cbas_disk_used": true},
+            size: "small",
+            specificStat: true
+          }, {
+            stats: {"@cbas.cbas_system_load_average": true},
+            size: "small",
+            specificStat: true
+          }]
+        }, {
+          name: "vBucket Resources",
+          charts: [{
+            stats: {"@kv-.vb_active_num": true,
+                    "@kv-.vb_replica_num": true,
+                    "@kv-.vb_pending_num": true,
+                    "@kv-.ep_vb_total": true},
+            size: "medium",
+            specificStat: false
+          }, {
+            stats: {"@kv-.curr_items": true,
+                    "@kv-.vb_replica_curr_items": true,
+                    "@kv-.vb_pending_curr_items": true,
+                    "@kv-.curr_items_tot": true},
+            size: "medium",
+            specificStat: false
+          }, {
+            stats: {"@kv-.vb_active_resident_items_ratio": true,
+                    "@kv-.vb_replica_resident_items_ratio": true,
+                    "@kv-.vb_pending_resident_items_ratio": true,
+                    "@kv-.ep_resident_items_rate": true},
+            size: "medium",
+            specificStat: false
+          }, {
+            stats: {"@kv-.vb_active_ops_create": true,
+                    "@kv-.vb_avg_replica_ops_create": true,
+                    "@kv-.vb_avg_pending_ops_create": true,
+                    "@kv-.ep_ops_create": true},
+            size: "medium",
+            specificStat: false
+          }, {
+            stats: {"@kv-.vn_active_eject": true,
+                    "@kv-.vb_replica_eject": true,
+                    "@kv-.vb_pending_eject": true,
+                    "@kv-.ep_num_value_ejects": true},
+            size: "medium",
+            specificStat: false
+          }, {
+            stats: {"@kv-.vb_active_itm_memory": true,
+                    "@kv-.vb_replica_itm_memory": true,
+                    "@kv-.vb_pending_itm_memory": true,
+                    "@kv-.ep_kv_size": true},
+            size: "medium",
+            specificStat: false
+          }, {
+            stats: {"@kv-.vb_active_meta_data_memory": true,
+                    "@kv-.vb_avg_replica_meta_data_memory": true,
+                    "@kv-.vb_avg_pending_meta_data_memory": true,
+                    "@kv-.ep_meta_data_memory": true},
+            size: "medium",
+            specificStat: false
+          }]
+          }, {
+            name: "DCP Queues",
+            charts: [{
+            stats: {"@kv-.ep_dcp_views+indexes_count": true,
+                    "@kv-.ep_dcp_cbas_count": true,
+                    "@kv-.ep_dcp_replica_count": true,
+                    "@kv-.ep_dcp_xdcr_count": true,
+                    "@kv-.ep_dcp_other_count": true},
+            size: "medium",
+            specificStat: false
+          }, {
+            stats: {"@kv-.ep_dcp_views+indexes_producer_count": true,
+                    "@kv-.ep_dcp_cbas_producer_count": true,
+                    "@kv-.ep_dcp_replica_producer_count": true,
+                    "@kv-.ep_dcp_xdcr_producer_count": true,
+                    "@kv-.ep_dcp_other_producer_count": true},
+            size: "medium",
+            specificStat: false
+          }, {
+            stats: {"@kv-.ep_dcp_views+indexes_items_remaining": true,
+                    "@kv-.ep_dcp_cbas_items_remaining": true,
+                    "@kv-.ep_dcp_replica_items_remaining": true,
+                    "@kv-.ep_dcp_xdcr_items_remaining": true,
+                    "@kv-.ep_dcp_other_items_remaining": true},
+            size: "medium",
+            specificStat: false
+          }, {
+            stats: {"@kv-.ep_dcp_views+indexes_items_sent": true,
+                    "@kv-.ep_dcp_cbas_items_sent": true,
+                    "@kv-.ep_dcp_replica_items_sent": true,
+                    "@kv-.ep_dcp_xdcr_items_sent": true,
+                    "@kv-.ep_dcp_other_items_sent": true},
+            size: "medium",
+            specificStat: false
+          }, {
+            stats: {"@kv-.ep_dcp_views+indexes_total_bytes": true,
+                    "@kv-.ep_dcp_cbas_total_bytes": true,
+                    "@kv-.ep_dcp_replica_total_bytes": true,
+                    "@kv-.ep_dcp_xdcr_total_bytes": true,
+                    "@kv-.ep_dcp_other_total_bytes": true},
+            size: "medium",
+            specificStat: false
+          }, {
+            stats: {"@kv-.ep_dcp_views+indexes_backoff": true,
+                    "@kv-.ep_dcp_cbas_backoff": true,
+                    "@kv-.ep_dcp_replica_backoff": true,
+                    "@kv-.ep_dcp_xdcr_backoff": true,
+                    "@kv-.ep_dcp_other_backoff": true},
+            size: "medium",
+            specificStat: false
+          }
+        ]
+        }, {
+          name: "Disk Queues",
           charts: [{
             stats: {"@kv-.ep_dcp_views+indexes_count": true,
                     "@kv-.ep_dcp_cbas_count": true,
@@ -480,16 +634,41 @@
             size: "medium",
             specificStat: false
           }, {
-            stats: {
-              "@kv-.ep_dcp_views+indexes_items_remaining": true,
-              "@kv-.ep_dcp_cbas_items_remaining": true,
-              "@kv-.ep_dcp_replica_items_remaining": true,
-              "@kv-.ep_dcp_xdcr_items_remaining": true,
-              "@kv-.ep_dcp_other_items_remaining": true},
+            stats: {"@kv-.ep_dcp_views+indexes_items_remaining": true,
+                    "@kv-.ep_dcp_cbas_items_remaining": true,
+                    "@kv-.ep_dcp_replica_items_remaining": true,
+                    "@kv-.ep_dcp_xdcr_items_remaining": true,
+                    "@kv-.ep_dcp_other_items_remaining": true},
             size: "medium",
             specificStat: false
-          }]
-        }]
+          }, {
+            stats: {"@kv-.ep_dcp_views+indexes_items_sent": true,
+                    "@kv-.ep_dcp_cbas_items_sent": true,
+                    "@kv-.ep_dcp_replica_items_sent": true,
+                    "@kv-.ep_dcp_xdcr_items_sent": true,
+                    "@kv-.ep_dcp_other_items_sent": true},
+            size: "medium",
+            specificStat: false
+          }, {
+            stats: {"@kv-.ep_dcp_views+indexes_total_bytes": true,
+                    "@kv-.ep_dcp_cbas_total_bytes": true,
+                    "@kv-.ep_dcp_replica_total_bytes": true,
+                    "@kv-.ep_dcp_xdcr_total_bytes": true,
+                    "@kv-.ep_dcp_other_total_bytes": true},
+            size: "medium",
+            specificStat: false
+          }, {
+            stats: {"@kv-.ep_dcp_views+indexes_backoff": true,
+                    "@kv-.ep_dcp_cbas_backoff": true,
+                    "@kv-.ep_dcp_replica_backoff": true,
+                    "@kv-.ep_dcp_xdcr_backoff": true,
+                    "@kv-.ep_dcp_other_backoff": true},
+            size: "medium",
+            specificStat: false
+          }
+        ]
+        }
+      ]
       }]
     }
 
