@@ -1033,7 +1033,7 @@
               "nestedGroupsMaxDepth": 1,
               "failOnMaxDepth": false,
               "serverCertValidation": false,
-              "cacert": "":
+              "cacert": ""
           }
       },
       {
