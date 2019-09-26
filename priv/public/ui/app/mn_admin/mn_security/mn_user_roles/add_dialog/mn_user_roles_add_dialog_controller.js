@@ -26,7 +26,7 @@
 
     function lookupMembership() {
       vm.reloadUserRoles = true;
-      mnUserRolesService.getUser(vm.user, {only_existing: false})
+      mnUserRolesService.lookupLDAPUser(vm.user)
         .then(function (user) {
           vm.selectedRoles = {};
           vm.selectedGroupsRoles = {};

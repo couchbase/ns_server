@@ -17,7 +17,7 @@
 -behaviour(active_cache).
 
 %% API
--export([start_link/0, authenticate/2, user_groups/1, flush/0]).
+-export([start_link/0, authenticate/2, lookup_user/1, user_groups/1, flush/0]).
 
 %% gen_server callbacks
 -export([init/1, translate_options/1]).
@@ -34,6 +34,11 @@ start_link() ->
 authenticate(Username, Pass) ->
     Key = {auth, {Username, crypto:hash(sha256, Pass)}},
     Fun = fun () -> ldap_auth:authenticate(Username, Pass) end,
+    active_cache:get_value(?MODULE, Key, Fun).
+
+lookup_user(Username) ->
+    Key = {lookup_user, Username},
+    Fun = fun () -> ldap_auth:lookup_user(Username) end,
     active_cache:get_value(?MODULE, Key, Fun).
 
 user_groups(Username) ->

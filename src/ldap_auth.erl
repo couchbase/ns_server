@@ -25,7 +25,8 @@
          user_groups/1,
          user_groups/2,
          format_error/1,
-         with_query_connection/2]).
+         with_query_connection/2,
+         lookup_user/1]).
 
 authenticate(Username, Password) ->
     authenticate(Username, Password, ldap_util:build_settings()).
@@ -40,7 +41,7 @@ authenticate_with_cause(Username, Password, Settings) ->
     case proplists:get_value(authentication_enabled, Settings) of
         true ->
             case get_user_DN(Username, Settings, #{}) of
-                {ok, DN} ->
+                {ok, DN, _} ->
                     case ldap_util:with_authenticated_connection(
                            DN, Password, Settings, fun (_) -> ok end) of
                         ok -> {ok, DN};
@@ -58,14 +59,31 @@ with_query_connection(Settings, Fun) ->
     {password, Pass} = proplists:get_value(bind_pass, Settings),
     ldap_util:with_authenticated_connection(DN, Pass, Settings, Fun).
 
+lookup_user(Username) ->
+    Settings = ldap_util:build_settings(),
+    Timeout = proplists:get_value(request_timeout, Settings),
+    with_query_connection(
+      Settings,
+      fun (Handle) ->
+            case get_user_DN(Username, Settings, #{query_handle => Handle}) of
+                {ok, DN, query} ->
+                    {ok, DN};
+                {ok, DN, _} ->
+                    Query = DN ++ "?objectClass?base?(objectClass=*)",
+                    dn_query_with_handle(Handle, Query, Timeout);
+                {error, _} = Error ->
+                    Error
+            end
+      end).
+
 get_user_DN(Username, Settings, Context) ->
     Map = proplists:get_value(user_dn_mapping, Settings),
     case map_user_to_DN(Username, Settings, Map, Context) of
-        {ok, DN} ->
+        {ok, DN, ResolveType} ->
             ?log_debug("Username->DN: Constructed DN: ~p for ~p",
                        [ns_config_log:tag_user_name(DN),
                         ns_config_log:tag_user_name(Username)]),
-            {ok, DN};
+            {ok, DN, ResolveType};
         {error, Error} ->
             ?log_error("Username->DN: Mapping username to LDAP DN failed for "
                        "username ~p with reason ~p",
@@ -76,7 +94,7 @@ get_user_DN(Username, Settings, Context) ->
 map_user_to_DN(Username, _Settings, [], _) ->
     ?log_debug("Username->DN: rule not found for ~p",
                [ns_config_log:tag_user_name(Username)]),
-    {ok, Username};
+    {ok, Username, default};
 map_user_to_DN(Username, Settings, [{Re, {Type, Template}} = Rule|T],
                Context) ->
     case re:run(Username, Re, [{capture, all_but_first, list}]) of
@@ -89,8 +107,12 @@ map_user_to_DN(Username, Settings, [{Re, {Type, Template}} = Rule|T],
                         {N, S} <- misc:enumerate(Captured, 0)],
             [Res] = ldap_util:replace_expressions([Template], Subs),
             case Type of
-                template -> {ok, Res};
-                'query' -> dn_query(Res, Settings, Context)
+                template -> {ok, Res, template};
+                'query' ->
+                    case dn_query(Res, Settings, Context) of
+                        {ok, DN} -> {ok, DN, query};
+                        {error, _} = Error -> Error
+                    end
             end
     end.
 
@@ -141,7 +163,7 @@ get_groups(Handle, Username, Settings, QueryStr) ->
         fun () ->
                 Context = #{query_handle => Handle},
                 case get_user_DN(Username, Settings, Context) of
-                    {ok, DN} -> DN;
+                    {ok, DN, _} -> DN;
                     {error, Reason} ->
                         throw({error, {username_to_dn_map_failed, Reason}})
                 end

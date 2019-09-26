@@ -409,6 +409,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, security], read},
                      fun menelaus_web_rbac:handle_get_profile/2,
                      [{UserId, Domain}]};
+                ["settings", "rbac", "lookupLDAPUser", Name] ->
+                    {{[admin, security], read},
+                     fun menelaus_web_rbac:handle_lookup_ldap_user/2, [Name]};
                 ["settings", "passwordPolicy"] ->
                     {{[admin, security], read},
                      fun menelaus_web_rbac:handle_get_password_policy/1};

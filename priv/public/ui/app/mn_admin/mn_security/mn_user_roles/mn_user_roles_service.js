@@ -18,6 +18,7 @@
       getRolesTree: getRolesTree,
       getUsers: getUsers,
       getUser: getUser,
+      lookupLDAPUser: lookupLDAPUser,
       getRoleUIID: getRoleUIID,
 
       addGroup: addGroup,
@@ -348,6 +349,13 @@
       });
     }
 
+    function lookupLDAPUser(user) {
+      return $http({
+        method: "GET",
+        url: getLookupLDAPUserUrl(user)
+      })
+    }
+
     function getUsers(params) {
       var config = {
         method: "GET",
@@ -389,6 +397,10 @@
     function getUserUrl(user) {
       var base = "/settings/rbac/users/";
       return base + encodeURIComponent(user.domain) + "/"  + encodeURIComponent(user.id);
+    }
+
+    function getLookupLDAPUserUrl(user) {
+      return "/settings/rbac/lookupLDAPUser/" + encodeURIComponent(user.id);
     }
 
     function getRolesByRole(userRoles) {

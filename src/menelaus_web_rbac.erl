@@ -56,7 +56,8 @@
          handle_get_profiles/1,
          handle_get_profile/2,
          handle_delete_profile/2,
-         handle_put_profile/2
+         handle_put_profile/2,
+         handle_lookup_ldap_user/2
 ]).
 
 -define(MIN_USERS_PAGE_SIZE, 2).
@@ -356,6 +357,24 @@ handle_get_all_users(Req, Pattern, Params) ->
                pipes:simple_buffer(2048)],
               menelaus_util:send_chunked(
                 Req, 200, [{"Content-Type", "application/json"}])).
+
+handle_lookup_ldap_user(Name, Req) ->
+    case ldap_util:get_setting(authentication_enabled) of
+        true ->
+            case ldap_auth_cache:lookup_user(Name) of
+                {ok, _} ->
+                    Identity = {Name, external},
+                    Exists = menelaus_users:user_exists(Identity),
+                    {JSONProps} = get_user_json(Identity),
+                    Res = {[{recordExists, Exists} | JSONProps]},
+                    menelaus_util:reply_json(Req, Res);
+                {error, Reason} ->
+                    Msg = iolist_to_binary(ldap_auth:format_error(Reason)),
+                    menelaus_util:reply_json(Req, Msg, 404)
+            end;
+        false ->
+            menelaus_util:reply_json(Req, <<"LDAP is disabled.">>, 404)
+    end.
 
 handle_get_user(Domain, UserId, Req) ->
     case domain_to_atom(Domain) of
