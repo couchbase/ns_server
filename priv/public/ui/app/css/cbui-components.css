@@ -1601,6 +1601,9 @@ input[type="checkbox"][disabled="disabled"] + label:before,
 input[type="radio"][disabled="disabled"] + label:before {
   opacity: .5;
 }
+input[type="checkbox"][disabled="disabled"] + label {
+  cursor: default !important;
+}
 input[type="checkbox"] + label:before {
   top: 1px;
 }

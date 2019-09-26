@@ -47,7 +47,7 @@
       </div>
     </div>
 
-    <label>Log Rotation <small>time interval & size trigger</small></label>
+    <label>File Reset Interval <small>start new empty log after time or size is met</small></label>
     <div class="row flex-left fix-width-6">
       <div class="column form-inline">
         <input
@@ -106,7 +106,7 @@
         </span>
         <span
            class="icon"
-           ng-if="auditCtl.state.auditdEnabled"
+           ng-if="auditCtl.state.auditdEnabled && !showModule"
            ng-class="auditCtl.findEnabled(module, true) ? 'fa-check green-3' : 'fa-ban red-4'"></span>
       </div>
       <div class="audit-module-body" ng-show="showModule">
