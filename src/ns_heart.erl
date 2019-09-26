@@ -347,6 +347,7 @@ current_status_slow_inner() ->
     ProcFSFiles = grab_procfs_files(),
     ServiceStatuses = grab_service_statuses(),
 
+    ns_bootstrap:ensure_os_mon(),
     failover_safeness_level:build_local_safeness_info(BucketNames) ++
         ServiceStatuses ++
         ProcFSFiles ++

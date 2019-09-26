@@ -16,7 +16,7 @@
 -module(ns_bootstrap).
 -include("ns_common.hrl").
 
--export([start/0, stop/0, remote_stop/1, override_resolver/0]).
+-export([start/0, stop/0, remote_stop/1, override_resolver/0, ensure_os_mon/0]).
 
 start() ->
     try
@@ -30,7 +30,9 @@ start() ->
         Apps = [ale, asn1, crypto, public_key, ssl,
                 lhttpc, inets, sasl, os_mon, ns_server],
         lists:foreach(
-          fun (App) ->
+          fun (os_mon = App) ->
+                  ok = application:start(App);
+              (App) ->
                   ok = application:start(App, permanent)
           end, Apps)
     catch T:E ->
@@ -84,3 +86,18 @@ remote_stop(Node) ->
 override_resolver() ->
     inet_db:set_lookup([file, dns]),
     start().
+
+ensure_os_mon() ->
+    %% since os_mon is started as temporary application, if it
+    %% terminates, it needs to be restarted before each call to
+    %% disksup or memsup
+
+    %% strictly speaking, the whereis(os_mon_sup) is not needed because
+    %% application:ensure_started works both when application is started and
+    %% not; but having this makes the common case much faster
+    case whereis(os_mon_sup) of
+        undefined ->
+            ok = application:ensure_started(os_mon);
+        Pid when is_pid(Pid) ->
+            ok
+    end.

@@ -61,13 +61,7 @@ get_disk_data() ->
         true ->
             gen_server:call(?MODULE, get_disk_data, infinity);
         false ->
-            %% since os_mon is started as temporary application, if it
-            %% terminates, disksup:get_disk_data() will be returning dummy
-            %% information which makes, for example, compaction daemon crash;
-            %% we could make os_mon permanent, but that would mean that entire
-            %% ns_server vm would be restarted; so we just try starting the
-            %% app on every call; see MB-15321 for more references
-            ensure_os_mon(),
+            ns_bootstrap:ensure_os_mon(),
             disksup:get_disk_data()
     end.
 
@@ -81,6 +75,7 @@ init([]) ->
 
     OS = os:type(),
     Port = start_portprogram(),
+    ns_bootstrap:ensure_os_mon(),
     Timeout = disksup:get_check_interval(),
 
     %% Initiation first disk check
@@ -186,14 +181,3 @@ skip_to_eol([$\n | T]) ->
     T;
 skip_to_eol([_ | T]) ->
     skip_to_eol(T).
-
-ensure_os_mon() ->
-    %% strictly speaking, this is not needed because
-    %% application:ensure_started works both when application is started and
-    %% not; but having this makes the common case much faster
-    case whereis(os_mon_sup) of
-        undefined ->
-            ok = application:ensure_started(os_mon);
-        Pid when is_pid(Pid) ->
-            ok
-    end.

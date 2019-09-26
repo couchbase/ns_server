@@ -301,6 +301,7 @@ collect_diag_per_node_binary_body(Remoteness, Reply) ->
     Reply(manifest, manifest()),
     Reply(config, ns_config_log:sanitize(ns_config:get_kv_list())),
     Reply(basic_info, element(2, ns_info:basic_info())),
+    ns_bootstrap:ensure_os_mon(),
     Reply(memory, memsup:get_memory_data()),
     Reply(disk, (catch ns_disksup:get_disk_data())),
     Reply(active_tasks, task_status_all()),

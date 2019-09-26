@@ -62,6 +62,7 @@ choose_limit(Limit, Usage, {CGroupLimit, _}) when Limit < CGroupLimit ->
 choose_limit(_, _, CGroupMemData) -> CGroupMemData.
 
 memory_data() ->
+    ns_bootstrap:ensure_os_mon(),
     {Total, Used, ProcInfo} = memsup:get_memory_data(),
     {TotalMemory, TotalUsed} = choose_limit(Total, Used,
                                             cgroup_memory_data()),
