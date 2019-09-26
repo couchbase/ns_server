@@ -6,23 +6,30 @@
   function mnServersListItemDetailsFactory($http, $q) {
     var mnServersListItemDetailsService = {
       getNodeDetails: getNodeDetails,
-      getNodeTasks: getNodeTasks
+      getNodeTasks: getNodeTasks,
+      getBaseConfig: getBaseConfig
     };
 
     return mnServersListItemDetailsService;
 
-    function getBaseConfig(totals) {
-      if (!totals) {
+    function getValue(value) {
+      return parseFloat(Array.isArray(value) ? value.slice(-1)[0] : value);
+    }
+
+    function getBaseConfig(title, used, total, used2) {
+      used = getValue(used);
+      total = getValue(total);
+      used2 = getValue(used2);
+      if (Number.isNaN(used) || Number.isNaN(total)) {
         return;
       }
       return {
         items: [{
-          name: 'used',
-          value: totals.usedByData
-        },
-        {
+          name: title,
+          value: used
+        }, {
           name: 'remaining',
-          value: totals.total - totals.used,
+          value: total - (Number.isNaN(used2) ? used : used2)
         }]
       };
     }
@@ -42,14 +49,9 @@
 
     function getNodeDetails(node) {
       return $http({method: 'GET', url: '/nodes/' + encodeURIComponent(node.otpNode)}).then(function (resp) {
-        var rv = {};
-        var details = resp.data;
-        var memoryCacheConfig = getBaseConfig(details.storageTotals.ram);
-
-        rv.getDiskStorageConfig = getBaseConfig(details.storageTotals.hdd) || {};
-        rv.getMemoryCacheConfig = memoryCacheConfig || {};
-        rv.details = details;
-        return rv;
+        return {
+          details: resp.data
+        };
       });
     }
   }

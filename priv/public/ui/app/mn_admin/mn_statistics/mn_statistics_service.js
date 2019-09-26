@@ -225,7 +225,8 @@
               })
           })
           .setInterval(function (response) {
-            return response.status === 404 ? 60000: response.data.interval;
+            return response.status === 404 ? 60000 :
+              config.interval ? config.interval : response.data.interval;
           })
           .subscribe(function (value) {
             uiStatsScopes[statID].forEach(function (scope) {
