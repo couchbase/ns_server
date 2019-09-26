@@ -55,14 +55,18 @@ manifest() ->
 %% works like lists:foldl(Fun, Acc, binary:split(Binary, Separator, [global]))
 %%
 %% But without problems of binary:split. See MB-9534
-split_fold_incremental(Binary, Separator, Fun, Acc) ->
+split_fold_incremental(Binary, Separator, NumMatches, Fun, Acc) ->
     CP = binary:compile_pattern(Separator),
     Len = erlang:size(Binary),
-    split_fold_incremental_loop(Binary, CP, Len, Fun, Acc, 0).
+    split_fold_incremental_loop(Binary, CP, Len, Fun, Acc, NumMatches, 0).
 
-split_fold_incremental_loop(_Binary, _CP, Len, _Fun, Acc, Start) when Start > Len ->
+split_fold_incremental_loop(_Binary, _CP, _Len, _Fun, Acc, 0, _Start) ->
+    %% Reached the maximum number of matches.
     Acc;
-split_fold_incremental_loop(Binary, CP, Len, Fun, Acc, Start) ->
+split_fold_incremental_loop(_Binary, _CP, Len, _Fun, Acc, _NumMatches, Start)
+  when Start > Len ->
+    Acc;
+split_fold_incremental_loop(Binary, CP, Len, Fun, Acc, NumMatches, Start) ->
     {MatchPos, MatchLen} =
         case binary:match(Binary, CP, [{scope, {Start, Len - Start}}]) of
             nomatch ->
@@ -74,7 +78,8 @@ split_fold_incremental_loop(Binary, CP, Len, Fun, Acc, Start) ->
         end,
     NewPiece = binary:part(Binary, Start, MatchPos - Start),
     NewAcc = Fun(NewPiece, Acc),
-    split_fold_incremental_loop(Binary, CP, Len, Fun, NewAcc, MatchPos + MatchLen).
+    split_fold_incremental_loop(Binary, CP, Len, Fun,
+                                NewAcc, NumMatches - 1, MatchPos + MatchLen).
 
 should_sanitize() ->
     try
@@ -105,7 +110,7 @@ sanitize_backtrace(Name, Backtrace) ->
 
 do_sanitize_backtrace(Backtrace, Fun) ->
     R = split_fold_incremental(
-          Backtrace, <<"\n">>,
+          Backtrace, <<"\n">>, 200,
           fun (X, Acc) ->
                   case Fun(X) of
                       nomatch ->
@@ -1004,8 +1009,8 @@ trace_memory(Format, Params) ->
 
 -ifdef(EUNIT).
 
-split_incremental(Binary, Separator) ->
-    R = split_fold_incremental(Binary, Separator,
+split_incremental(Binary, Separator, NumMatches) ->
+    R = split_fold_incremental(Binary, Separator, NumMatches,
                                fun (Part, Acc) ->
                                        [Part | Acc]
                                end, []),
@@ -1018,9 +1023,10 @@ split_incremental_test() ->
     Split1a = binary:split(String1, <<"\n">>, [global]),
     Split2a = binary:split(String2, <<"\n">>, [global]),
     Split3a = binary:split(String3, <<"\n">>, [global]),
-    ?assertEqual(Split1a, split_incremental(String1, <<"\n">>)),
-    ?assertEqual(Split2a, split_incremental(String2, <<"\n">>)),
-    ?assertEqual(Split3a, split_incremental(String3, <<"\n">>)).
+    ?assertEqual(Split1a, split_incremental(String1, <<"\n">>, 100)),
+    ?assertEqual(Split2a, split_incremental(String2, <<"\n">>, 100)),
+    ?assertEqual(Split3a, split_incremental(String3, <<"\n">>, 100)),
+    ?assertEqual([<<"abc">>, <<>>], split_incremental(String1, <<"\n">>, 2)).
 
 -endif.
 
