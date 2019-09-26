@@ -124,24 +124,6 @@
         <span class="select-item ellipsis" ng-bind-html="name | highlight: $select.search"></span>
       </ui-select-choices>
     </ui-select>
-
-    <button
-       ng-disabled="!statisticsNewCtl.scenarios.length"
-       ng-click="statisticsNewCtl.openGroupDialog(statisticsNewCtl.scenario.selected)"
-       class="tight"
-       ng-hide="statisticsNewCtl.scenario.selected.preset"
-       style="margin-left: auto;">
-      <span class="icon fa-plus-circle"></span> Add Group
-    </button>
-
-    <select
-       ng-model="statisticsNewCtl.selectedBucket"
-       class="max-width-4"
-       ng-change="statisticsNewCtl.onBucketChange(statisticsNewCtl.selectedBucket)">
-      <option ng-repeat="name in rbac.bucketNames['.stats!read']" value="{{name}}">
-        {{name}}
-      </option>
-    </select>
   </div>
   <div class="row flex-right">
     <div uib-dropdown>
