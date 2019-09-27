@@ -100,12 +100,12 @@ query_vbuckets_loop(Node, Bucket, Call, Parent, Warming) ->
             Msg;
         warming_up ->
             query_vbuckets_loop_next_step(Node, Bucket, Call, Parent,
-                                                Warming, warming_up);
+                                          Warming, warming_up);
         {'EXIT', {noproc, _}} = Exc ->
             ?log_debug("Exception from ~p of ~p:~p~n~p",
                        [Call, Bucket, Node, Exc]),
             query_vbuckets_loop_next_step(Node, Bucket, Call, Parent,
-                                                Warming, noproc);
+                                          Warming, noproc);
         Exc ->
             ?log_debug("Exception from ~p of ~p:~p~n~p",
                        [Call, Bucket, Node, Exc]),
@@ -1099,7 +1099,7 @@ handle_apply_vbucket_state({update_vbucket_state, VBucket, NormalState,
     pass_vbucket_states_to_set_view_manager(AgentState),
     ok;
 handle_apply_vbucket_state({delete_vbucket, VBucket},
-                            #state{bucket_name = BucketName} = AgentState) ->
+                           #state{bucket_name = BucketName} = AgentState) ->
     pass_vbucket_states_to_set_view_manager(AgentState),
     ok = ns_memcached:delete_vbucket(BucketName, VBucket).
 
