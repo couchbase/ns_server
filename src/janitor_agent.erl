@@ -1149,11 +1149,7 @@ decode_vbucket_details(VBDetails) ->
       end, VBDetails).
 
 handle_query_vbuckets(Call, #state{bucket_name = BucketName,
-                                   rebalance_status = in_process} = State) ->
-    ?log_info("Attempt to ~p for bucket ~p during rebalance",
-              [Call, BucketName]),
-    {rebalancing, State};
-handle_query_vbuckets(Call, #state{bucket_name = BucketName} = State) ->
+                                   rebalance_status = finished} = State) ->
     %% NOTE: uses 'outer' memcached timeout of 60 seconds
     {Fun, VBuckets, Options} =
         case Call of
