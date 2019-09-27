@@ -233,7 +233,8 @@ proxy_req(RestPrefix, Path, Plugins, Req) ->
                     HostPort = address_and_port(PrefixProps, Node),
                     Timeout = get_timeout(Service, Req),
                     AuthToken = auth_token(Req),
-                    Headers = AuthToken ++ convert_headers(Req, HdrFilter),
+                    Headers = AuthToken ++ convert_headers(Req, HdrFilter) ++
+                              forwarded_headers(Req),
                     do_proxy_req(HostPort, Path, Headers, Timeout, Req);
                 {error, Error} ->
                     server_error(Req, Error)
@@ -322,6 +323,14 @@ convert_headers(Req, Filter) ->
     RawHeaders = mochiweb_headers:to_list(mochiweb_request:get(headers, Req)),
     Headers = [{convert_header_name(Name), Val} || {Name, Val} <- RawHeaders],
     filter_headers(Headers, Filter).
+
+forwarded_headers(Req) ->
+    Socket = mochiweb_request:get(socket, Req),
+    {ok, {Host, Port}} = mochiweb_socket:peername(Socket),
+    For = misc:join_host_port(inet_parse:ntoa(Host), Port),
+    Proto = mochiweb_request:get(scheme, Req),
+    Forwarded = lists:flatten(io_lib:format("for=~s;proto=~s", [For, Proto])),
+    [{"Forwarded", Forwarded}].
 
 convert_header_name(Header) when is_atom(Header) ->
     atom_to_list(Header);
