@@ -800,21 +800,53 @@ bucket_uuid(BucketConfig) ->
     true = is_binary(UUID),
     UUID.
 
+bucket_uuid(Name, BucketConfigs) ->
+    {ok, BucketConfig} = get_bucket_from_configs(Name, BucketConfigs),
+    bucket_uuid(BucketConfig).
+
+filter_out_unknown_buckets(BucketsWithUUIDs, BucketConfigs) ->
+    lists:filter(fun ({Name, UUID}) ->
+                         case get_bucket_from_configs(Name, BucketConfigs) of
+                             {ok, BucketConfig} ->
+                                 bucket_uuid(BucketConfig) =:= UUID;
+                             not_present ->
+                                 false
+                         end
+                 end, BucketsWithUUIDs).
+
 buckets_with_data_on_this_node() ->
-    membase_buckets_with_data_on_node(node(), ns_config:latest()) ++
-        get_bucket_names_of_type(memcached).
+    BucketConfigs = get_buckets(),
+    Stored = membase_buckets_with_data_on_node(node(), ns_config:latest()),
+    Filtered = filter_out_unknown_buckets(Stored, BucketConfigs),
+    [B || {B, _} <- Filtered] ++
+        get_bucket_names_of_type(memcached, BucketConfigs).
 
 membase_buckets_with_data_on_node(Node, Config) ->
     ns_config:search_node_with_default(Node, Config, buckets_with_data, []).
 
-activate_bucket_data_on_this_node(BucketName) ->
-    ns_config:update_key(
-      {node, node(), buckets_with_data}, ?cut(lists:umerge([_, [BucketName]])),
-      [BucketName]).
+activate_bucket_data_on_this_node(Name) ->
+    case ns_config:run_txn(activate_bucket_data_on_this_node_txn(Name, _, _)) of
+        {commit, _} ->
+            ok;
+        {abort, not_changed} ->
+            ok
+    end.
 
-deactivate_bucket_data_on_this_node(BucketName) ->
+activate_bucket_data_on_this_node_txn(Name, Config, Set) ->
+    BucketConfigs = get_buckets(Config),
+    BucketsWithData = membase_buckets_with_data_on_node(node(), Config),
+    NewBuckets = lists:keystore(Name, 1, BucketsWithData,
+                                {Name, bucket_uuid(Name, BucketConfigs)}),
+    case filter_out_unknown_buckets(NewBuckets, BucketConfigs) of
+        BucketsWithData ->
+            {abort, not_changed};
+        ToSet ->
+            {commit, Set({node, node(), buckets_with_data}, ToSet, Config)}
+    end.
+
+deactivate_bucket_data_on_this_node(Name) ->
     ns_config:update_key(
-      {node, node(), buckets_with_data}, lists:delete(BucketName, _), []).
+      {node, node(), buckets_with_data}, lists:keydelete(Name, 1, _), []).
 
 config_upgrade_to_51(Config) ->
     %% fix for possible consequence of MB-27160
