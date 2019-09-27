@@ -468,7 +468,7 @@ goport_args(fts, Config, _Cmd, NodeUUID) ->
     ] ++ BindHttp ++ BindHttps ++ BindGrpc ++ BindGrpcSsl;
 
 goport_args(eventing, Config, _Cmd, NodeUUID) ->
-    {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
+    {ok, EvDir} = ns_storage_conf:this_node_evdir(),
     build_port_args([{"-adminport", eventing_http_port},
                      {"-kvport", memcached_port},
                      {"-restport", rest_port},
@@ -477,7 +477,7 @@ goport_args(eventing, Config, _Cmd, NodeUUID) ->
         build_https_args(eventing_https_port, "-adminsslport",
                          "-certfile", "-keyfile", Config) ++
 
-        ["-dir=" ++ filename:join(IdxDir, "@eventing"),
+        ["-dir=" ++ filename:join(EvDir, "@eventing"),
          "-uuid=" ++ NodeUUID,
          "-diagdir=" ++ path_config:minidump_dir(),
          "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
