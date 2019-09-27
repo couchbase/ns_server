@@ -76,18 +76,18 @@ cleanup_with_membase_bucket_check_servers(Bucket, Options, BucketConfig, FullCon
         ok ->
             cleanup_with_membase_bucket_check_map(Bucket, Options, BucketConfig);
         {update_servers, NewServers} ->
-            update_servers(Bucket, NewServers),
+            update_servers(Bucket, NewServers, Options),
             cleanup(Bucket, Options);
         {error, _} = Error ->
             Error
     end.
 
-update_servers(Bucket, Servers) ->
+update_servers(Bucket, Servers, Options) ->
     ?log_debug("janitor decided to update "
                "servers list for bucket ~p to ~p", [Bucket, Servers]),
 
     ns_bucket:set_servers(Bucket, Servers),
-    ok = ns_config_rep:ensure_config_seen_by_nodes().
+    push_config(Options).
 
 cleanup_with_membase_bucket_check_map(Bucket, Options, BucketConfig) ->
     case proplists:get_value(map, BucketConfig, []) of
@@ -96,26 +96,26 @@ cleanup_with_membase_bucket_check_map(Bucket, Options, BucketConfig) ->
             true = (Servers =/= []),
 
             ?log_info("janitor decided to generate initial vbucket map"),
-            {NewMap, Opts} = ns_rebalancer:generate_initial_map(BucketConfig),
-            set_initial_map(NewMap, Opts, Bucket, BucketConfig),
+            {Map, MapOpts} = ns_rebalancer:generate_initial_map(BucketConfig),
+            set_initial_map(Map, MapOpts, Bucket, BucketConfig, Options),
 
             cleanup(Bucket, Options);
         _ ->
             cleanup_with_membase_bucket_vbucket_map(Bucket, Options, BucketConfig)
     end.
 
-set_initial_map(Map, Opts, Bucket, BucketConfig) ->
+set_initial_map(Map, MapOpts, Bucket, BucketConfig, Options) ->
     case ns_rebalancer:unbalanced(Map, BucketConfig) of
         false ->
-            ns_bucket:update_vbucket_map_history(Map, Opts);
+            ns_bucket:update_vbucket_map_history(Map, MapOpts);
         true ->
             ok
     end,
 
     ns_bucket:set_map(Bucket, Map),
-    ns_bucket:set_map_opts(Bucket, Opts),
+    ns_bucket:set_map_opts(Bucket, MapOpts),
 
-    ok = ns_config_rep:ensure_config_seen_by_nodes().
+    push_config(Options).
 
 cleanup_with_membase_bucket_vbucket_map(Bucket, Options, BucketConfig) ->
     Servers = ns_bucket:get_servers(BucketConfig),
@@ -162,8 +162,18 @@ maybe_fixup_vbucket_map(Bucket, BucketConfig, States, Options) ->
                                             BucketConfig, States, Options),
 
         case do_maybe_fixup_vbucket_map(Bucket, NewBucketConfig, States) of
+            not_needed ->
+                %% We decided not to update the bucket config. It still may be
+                %% the case that some nodes have extra vbuckets. Before
+                %% deleting those, we need to push the config, so all nodes
+                %% are on the same page.
+                maybe_push_config(Bucket, NewBucketConfig, States, Options),
+                {ok, NewBucketConfig};
             {ok, FixedBucketConfig} ->
-                maybe_push_config(Bucket, FixedBucketConfig, States, Options),
+                %% We decided to fix the bucket config. In this case we push
+                %% the config no matter what, i.e. even if durability
+                %% awareness is disabled.
+                push_config(Options),
                 {ok, FixedBucketConfig};
             FixupError ->
                 FixupError
@@ -181,13 +191,12 @@ do_maybe_fixup_vbucket_map(Bucket, BucketConfig, States) ->
         [] ->
             case NewBucketConfig =:= BucketConfig of
                 true ->
-                    ok;
+                    not_needed;
                 false ->
                     fixup_vbucket_map(Bucket, BucketConfig,
-                                      NewBucketConfig, States)
-            end,
-
-            {ok, NewBucketConfig};
+                                      NewBucketConfig, States),
+                    {ok, NewBucketConfig}
+            end;
         _ when is_list(IgnoredVBuckets) ->
             {error, {bad_vbuckets, IgnoredVBuckets}}
     end.
@@ -198,8 +207,7 @@ fixup_vbucket_map(Bucket, BucketConfig, NewBucketConfig, States) ->
     ?log_info("VBucket states:~n~p", [dict:to_list(States)]),
     ?log_info("Old bucket config:~n~p", [BucketConfig]),
 
-    ok = ns_bucket:set_bucket_config(Bucket, NewBucketConfig),
-    ok = ns_config_rep:ensure_config_seen_by_nodes().
+    ok = ns_bucket:set_bucket_config(Bucket, NewBucketConfig).
 
 cleanup_apply_config(Bucket, Servers, BucketConfig, Options) ->
     {ok, Result} =
@@ -231,13 +239,9 @@ maybe_config_sync(Type, Bucket, BucketConfig, States, Options) ->
                 true ->
                     ok;
                 {false, Mismatch} ->
-                    Nodes = config_sync_nodes(Options),
-                    Timeout = ?get_timeout({config_sync, Type}, 10000),
-
-                    ?log_debug("Going to ~s config to/from nodes ~p "
-                               "due to states mismatch in bucket ~p:~n~p",
-                               [Type, Nodes, Bucket, Mismatch]),
-                    config_sync(Type, Nodes, Timeout)
+                    ?log_debug("Found states mismatch in bucket ~p:~n~p",
+                               [Bucket, Mismatch]),
+                    config_sync(Type, Options)
             end;
         false ->
             ok
@@ -248,7 +252,11 @@ config_sync_type_to_flag(pull) ->
 config_sync_type_to_flag(push) ->
     push_config.
 
-config_sync(Type, Nodes, Timeout) ->
+config_sync(Type, Options) ->
+    Nodes = config_sync_nodes(Options),
+    Timeout = ?get_timeout({config_sync, Type}, 10000),
+
+    ?log_debug("Going to ~s config to/from nodes:~n~p", [Type, Nodes]),
     try do_config_sync(Type, Nodes, Timeout) of
         ok ->
             ok;
@@ -259,6 +267,9 @@ config_sync(Type, Nodes, Timeout) ->
             Stack = erlang:get_stacktrace(),
             throw({error, {config_sync_failed, Type, {T, E, Stack}}})
     end.
+
+push_config(Options) ->
+    config_sync(push, Options).
 
 do_config_sync(pull, Nodes, Timeout) ->
     ns_config_rep:pull_remotes(Nodes, Timeout);
