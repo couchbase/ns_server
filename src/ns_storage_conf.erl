@@ -26,9 +26,11 @@
 -endif.
 
 -export([setup_disk_storage_conf/3,
+         setup_disk_storage_conf/4,
          storage_conf_from_node_status/2,
          query_storage_conf/0,
          this_node_dbdir/0, this_node_ixdir/0, this_node_logdir/0,
+         this_node_evdir/0,
          this_node_bucket_dbdir/1,
          delete_unused_buckets_db_files/0,
          delete_old_2i_indexes/0,
@@ -48,6 +50,13 @@ setup_storage_paths() ->
             {ok, Default} = this_node_ixdir(),
             ok = update_cbas_dirs({ok, [Default]});
         {value, _V} ->
+            not_changed
+    end,
+    case ns_config:search_node(node(), ns_config:latest(), eventing_dir) of
+        false ->
+            {ok, EvDefault} = this_node_ixdir(),
+            ok = update_ev_dir({ok, EvDefault});
+        {value, _} ->
             not_changed
     end,
     ignore.
@@ -112,14 +121,19 @@ read_path_from_conf(Config, Node, Key, SubKey) ->
             end
     end.
 
-
-%% @doc sets db, index and analytics paths of this node.
-%% NOTE: ns_server restart is required to make db and index paths change fully effective.
--spec setup_disk_storage_conf(DbPath::string(), IxDir::string(), CBASDirs::list()) ->
-                                     ok | restart | not_changed | {errors, [Msg :: binary()]}.
+%% Interim to avoid dialyzer error.
 setup_disk_storage_conf(DbPath, IxPath, CBASDirs) ->
+    setup_disk_storage_conf(DbPath, IxPath, CBASDirs, IxPath).
+
+%% @doc sets db, index, analytics, and eventing paths of this node.
+%% NOTE: ns_server restart is required to make db and index paths change fully effective.
+-spec setup_disk_storage_conf(DbPath::string(), IxPath::string(),
+                              CBASDirs::list(), EvPath::string()) ->
+    ok | restart | not_changed | {errors, [Msg :: binary()]}.
+setup_disk_storage_conf(DbPath, IxPath, CBASDirs, EvPath) ->
     NewDbDir = misc:absname(DbPath),
     NewIxDir = misc:absname(IxPath),
+    NewEvDir = misc:absname(EvPath),
     NewCBASDirs = lists:usort(
                     lists:map(
                       fun (Dir) ->
@@ -134,12 +148,15 @@ setup_disk_storage_conf(DbPath, IxPath, CBASDirs) ->
     [{db_path, CurrentDbDir},
      {index_path, CurrentIxDir}] = lists:sort(ns_couchdb_api:get_db_and_ix_paths()),
     CurrentCBASDir = this_node_cbas_dirs(),
+    {ok, CurrentEvDir} = this_node_evdir(),
 
     DbDirChanged = NewDbDir =/= CurrentDbDir,
     IxDirChanged = NewIxDir =/= CurrentIxDir,
     CBASDirChanged = NewCBASDirs =/= CurrentCBASDir,
+    EvDirChanged = NewEvDir =/= CurrentEvDir,
 
-    case DbDirChanged orelse IxDirChanged orelse CBASDirChanged of
+    case DbDirChanged orelse IxDirChanged orelse CBASDirChanged orelse
+         EvDirChanged of
         true ->
             case ns_config_auth:is_system_provisioned() andalso
                  not ns_cluster_membership:is_newly_added_node(node()) of
@@ -152,32 +169,41 @@ setup_disk_storage_conf(DbPath, IxPath, CBASDirs) ->
                             "provisioned cluster is not supported">>,
                     {errors, [Msg]};
                 false ->
-                    do_setup_disk_storage_conf(NewDbDir, NewIxDir, CBASDirs)
+                    do_setup_disk_storage_conf(NewDbDir, NewIxDir, CBASDirs,
+                                               NewEvDir)
             end;
         false ->
             not_changed
     end.
 
-do_setup_disk_storage_conf(NewDbDir, NewIxDir, CBASDirs) ->
-    case {prepare_db_ix_dirs(NewDbDir, NewIxDir),
-          prepare_cbas_dirs(CBASDirs)} of
-        {{errors, Errors1}, {errors, Errors2}} ->
-            {errors, Errors1 ++ Errors2};
-        {{errors, Errors}, _} ->
-            {errors, Errors};
-        {_, {errors, Errors}} ->
-            {errors, Errors};
-        {OK1, OK2} ->
-            case {update_db_ix_dirs(OK1, NewDbDir, NewIxDir),
-                  update_cbas_dirs(OK2)} of
-                {restart, _} ->
+do_setup_disk_storage_conf(NewDbDir, NewIxDir, CBASDirs, NewEvDir) ->
+    Results = [prepare_db_ix_dirs(NewDbDir, NewIxDir),
+               prepare_cbas_dirs(CBASDirs),
+               prepare_ev_dir(NewEvDir)],
+
+    Errors = lists:append([E || {errors, E} <- Results]),
+    case Errors of
+        [] ->
+            [DbIxPrep, CbasPrep, EvPrep] = Results,
+            Results2 = [update_db_ix_dirs(DbIxPrep, NewDbDir, NewIxDir),
+                        update_cbas_dirs(CbasPrep),
+                        update_ev_dir(EvPrep)],
+            case lists:member(restart, Results2) of
+                true ->
                     restart;
-                {_, ok} ->
-                    ok;
-                {not_changed, not_changed} ->
-                    not_changed
-            end
+                false ->
+                    case lists:member(ok, Results2) of
+                        true ->
+                            ok;
+                        _ ->
+                            [] = [R || R <- Results2, R =/= not_changed],
+                            not_changed
+                    end
+            end;
+        _ ->
+            {errors, Errors}
     end.
+
 
 prepare_db_ix_dirs(NewDbDir, NewIxDir) ->
     [{db_path, CurrentDbDir},
@@ -301,6 +327,45 @@ update_java_home(JavaHome) ->
             ns_config:set({node, node(), java_home}, JavaHome)
     end.
 
+prepare_ev_dir(NewEvDir) ->
+    {ok, CurrentEvDir} = this_node_evdir(),
+    case NewEvDir =/= CurrentEvDir of
+        true ->
+            case misc:ensure_writable_dirs([NewEvDir]) of
+                ok ->
+                    {ok, NewEvDir};
+                error ->
+                    {errors, [<<"Could not set eventing path.  It must be a "
+                                "directory writable by 'couchbase' user.">>]}
+            end;
+        false ->
+            not_changed
+    end.
+
+update_ev_dir(not_changed) ->
+    not_changed;
+update_ev_dir({ok, EvDir}) ->
+    ns_config:set({node, node(), eventing_dir}, EvDir).
+
+this_node_evdir() ->
+    {ok, node_ev_dir(ns_config:latest(), node())}.
+
+node_ev_dir(Config, Node) ->
+    case ns_config:search_node(Node, Config, eventing_dir) of
+        {value, V} ->
+            V;
+        false ->
+            %% Should only occur running mixed versions (e.g. during upgrade).
+            %% Prior to MH, eventing used the index path
+            %% TODO: Remove once madhatter is the oldest supported release.
+            case rpc:call(Node, ns_storage_conf, this_node_ixdir, []) of
+                {ok, IndexDir} ->
+                    [IndexDir];
+                _Error ->
+                    []
+            end
+    end.
+
 % Returns a proplist of lists of proplists.
 %
 % A quotaMb of none means no quota. Disks can get full, disappear,
@@ -327,6 +392,7 @@ storage_conf_from_node_status(Node, NodeStatus) ->
                       [{path, DBDir},
                        {index_path, proplists:get_value(index_path, StorageConf, DBDir)},
                        {cbas_dirs, node_cbas_dirs(ns_config:latest(), Node)},
+                       {eventing_path, node_ev_dir(ns_config:latest(), Node)},
                        {java_home, node_java_home(ns_config:latest(), Node)},
                        {quotaMb, none},
                        {state, ok}]
@@ -349,7 +415,7 @@ extract_node_storage_info(Config, Node, NodeInfo) ->
     StorageConf = proplists:get_value(node_storage_conf, NodeInfo, []),
     DiskPaths = [X || {PropName, X} <- StorageConf,
                       PropName =:= db_path orelse PropName =:= index_path] ++
-        node_cbas_dirs(Config, Node),
+        node_cbas_dirs(Config, Node) ++ [node_ev_dir(Config, Node)],
     {DiskTotal, DiskUsed} = extract_disk_totals(DiskPaths, DiskStats),
     [{ram, [{total, RAMTotal},
             {used, RAMUsed}
