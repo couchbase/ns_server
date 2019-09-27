@@ -117,10 +117,25 @@
   .simple-select-inside-label {
     top: 6px !important;
   }
+  .alert {
+    opacity: .75;
+    margin-right: 1rem;
+  }
+  .footer-save {
+    justify-content: flex-end;
+    padding-right: 1rem;
+  }
+  .footer-save button {
+    order: 2;
+  }
+  .footer-save a {
+    display: inline-block;
+    margin-right: 1rem;
+  }
 }
 
 /* responsive small ------------------------------------- */
-@media (max-width: 700px) {
+@media (max-width: 720px) {
   .resp-hide-sml {
     display: none !important;
   }

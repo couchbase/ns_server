@@ -135,8 +135,7 @@ h1 a:active {
 
 /* sub-navigation tabs -------------------------------------------------- */
 .sub-nav a {
-  text-align: center;
-  font-size: .961rem;
+  font-size: .875rem;
   font-weight: 400;
   cursor: pointer;
   padding: 1px 2.5rem 2px 2rem;
@@ -1223,6 +1222,8 @@ section.error {
   white-space: nowrap;
   text-overflow: ellipsis;
   -o-text-overflow: ellipsis;
+  position: relative;
+  top: 2px;
 }
 .ui-select-container.single .select-item {
   max-width: 200px;

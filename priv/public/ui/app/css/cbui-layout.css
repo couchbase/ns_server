@@ -40,7 +40,7 @@ nav.sub-nav {
   display: flex;
   position: relative;
   justify-content: center;
-  align-items: center;
+  align-items: stretch;
   background-color: #669ee0;
 }
 /* nav element for main navigation, on left side or hidden for mobile --- */
