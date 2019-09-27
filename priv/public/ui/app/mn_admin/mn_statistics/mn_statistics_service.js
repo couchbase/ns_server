@@ -391,18 +391,7 @@
                     "@kv-.delete_hits": true},
             size: "medium",
             specificStat: false
-          }, {
-            stats: {"@kv-.ops": true,
-                    "@kv-.ep_cache_miss_rate": true},
-            size: "medium",
-            specificStat: false
-          }, {
-            stats: {"@kv-.cmd_get": true,
-                    "@kv-.cmd_set": true,
-                    "@kv-.delete_hits": true},
-            size: "medium",
-            specificStat: false
-        }]
+          }]
       }] }, {  // 2nd scenario starts here with the comma ///////////////////////
 
         name: "General Troubleshooting",
@@ -425,17 +414,6 @@
             stats: {"@system.rest_requests": true},
             size: "small",
             specificStat: true
-          }, {
-            stats: {"@kv-.ops": true,
-                    "@kv-.ep_cache_miss_rate": true},
-            size: "medium",
-            specificStat: false
-          }, {
-            stats: {"@kv-.cmd_get": true,
-                    "@kv-.cmd_set": true,
-                    "@kv-.delete_hits": true},
-            size: "medium",
-            specificStat: false
           }]
           }, {
           name: "Data Service",
@@ -671,6 +649,5 @@
       ]
       }]
     }
-
   }
 })();
