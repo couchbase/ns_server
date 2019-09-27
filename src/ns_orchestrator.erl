@@ -541,7 +541,7 @@ handle_info({cleanup_done, UnsafeNodes, ID}, janitor_running,
     case UnsafeNodes =/= [] of
         true ->
             %% The unsafe nodes only affect the ephemeral buckets.
-            Buckets = ns_bucket:get_bucket_names_of_type(membase, ephemeral),
+            Buckets = ns_bucket:get_bucket_names_of_type({membase, ephemeral}),
             RV = auto_reprovision:reprovision_buckets(Buckets, UnsafeNodes),
             ?log_info("auto_reprovision status = ~p "
                       "(Buckets = ~p, UnsafeNodes = ~p)",

@@ -113,7 +113,7 @@ handle_info(refresh, #state{buckets = Buckets,
 
 handle_info({buckets, Buckets}, #state{buckets = Dict} = State) ->
     BucketConfigs = proplists:get_value(configs, Buckets, []),
-    NewBuckets0 = ns_bucket:get_bucket_names_of_type(membase, couchstore,
+    NewBuckets0 = ns_bucket:get_bucket_names_of_type({membase, couchstore},
                                                      BucketConfigs),
     NewBuckets = lists:sort(NewBuckets0),
     KnownBuckets = lists:sort(dict:fetch_keys(Dict)),

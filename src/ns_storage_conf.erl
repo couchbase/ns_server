@@ -610,8 +610,7 @@ delete_unused_buckets_db_files() ->
             false ->
                 case ns_cluster_membership:get_cluster_membership(node(), Config) of
                     active ->
-                        ns_bucket:get_bucket_names_of_type(membase, couchstore, BCfgs)
-                            ++ ns_bucket:get_bucket_names_of_type(membase, ephemeral, BCfgs);
+                        ns_bucket:get_bucket_names_of_type(membase, BCfgs);
                     _ ->
                         []
                 end

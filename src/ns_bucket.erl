@@ -37,8 +37,8 @@
          get_bucket_from_configs/2,
          get_bucket_names/0,
          get_bucket_names/1,
+         get_bucket_names_of_type/1,
          get_bucket_names_of_type/2,
-         get_bucket_names_of_type/3,
          get_buckets/0,
          get_buckets/1,
          is_persistent/1,
@@ -132,17 +132,19 @@ get_bucket_names() ->
 get_bucket_names(BucketConfigs) ->
     proplists:get_keys(BucketConfigs).
 
--spec get_bucket_names_of_type(memcached|membase,
-                               undefined|couchstore|ephemeral) -> list().
-get_bucket_names_of_type(Type, Mode) ->
-    get_bucket_names_of_type(Type, Mode, get_buckets()).
+-type bucket_type_mode() :: memcached|membase|{membase, couchstore}|
+                            {membase, ephemeral}| {memcached, undefined}.
 
--spec get_bucket_names_of_type(memcached|membase,
-                               undefined|couchstore|ephemeral, list()) -> list().
-get_bucket_names_of_type(Type, Mode, BucketConfigs) ->
-    [Name || {Name, Config} <- BucketConfigs,
-             bucket_type(Config) == Type,
-             storage_mode(Config) == Mode].
+-spec get_bucket_names_of_type(bucket_type_mode()) -> list().
+get_bucket_names_of_type(Type) ->
+    get_bucket_names_of_type(Type, get_buckets()).
+
+-spec get_bucket_names_of_type(bucket_type_mode(), list()) -> list().
+get_bucket_names_of_type({Type, Mode}, BucketConfigs) ->
+    [Name || {Name, Config} <- BucketConfigs, bucket_type(Config) == Type,
+             storage_mode(Config) == Mode];
+get_bucket_names_of_type(Type, BucketConfigs) ->
+    [Name || {Name, Config} <- BucketConfigs, bucket_type(Config) == Type].
 
 get_buckets() ->
     get_buckets(ns_config:latest()).
@@ -587,7 +589,7 @@ filter_ready_buckets(BucketInfos) ->
 %% should return {exit, {not_found, _}, _}
 update_bucket_props(Type, StorageMode, BucketName, Props) ->
     case lists:member(BucketName,
-                      get_bucket_names_of_type(Type, StorageMode)) of
+                      get_bucket_names_of_type({Type, StorageMode})) of
         true ->
             update_bucket_props(BucketName, Props);
         false ->
@@ -800,7 +802,7 @@ bucket_uuid(BucketConfig) ->
 
 buckets_with_data_on_this_node() ->
     membase_buckets_with_data_on_node(node(), ns_config:latest()) ++
-        get_bucket_names_of_type(memcached, undefined).
+        get_bucket_names_of_type(memcached).
 
 membase_buckets_with_data_on_node(Node, Config) ->
     ns_config:search_node_with_default(Node, Config, buckets_with_data, []).

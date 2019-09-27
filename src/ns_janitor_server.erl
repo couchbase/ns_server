@@ -221,13 +221,7 @@ get_unsafe_nodes_from_reprovision_list(ReprovisionList) ->
                    end, sets:new(), ReprovisionList)).
 
 get_janitor_items() ->
-    MembaseBuckets = [{bucket, B} ||
-                         B <- ns_bucket:get_bucket_names_of_type(membase,
-                                                                 couchstore)],
-    EphemeralBuckets = [{bucket, B} ||
-                           B <- ns_bucket:get_bucket_names_of_type(membase,
-                                                                   ephemeral)],
-    Buckets = MembaseBuckets ++ EphemeralBuckets,
+    Buckets = [{bucket, B} || B <- ns_bucket:get_bucket_names_of_type(membase)],
     [compat_mode, services | Buckets].
 
 do_request_janitor_run(Request, #state{janitor_requests=Requests} = State) ->

@@ -77,16 +77,15 @@ init(Service) ->
       ns_config_events,
       fun ({buckets, Buckets}) ->
               BucketConfigs = proplists:get_value(configs, Buckets, []),
-              BucketsList = ns_bucket:get_bucket_names_of_type(membase, couchstore, BucketConfigs) ++
-                  ns_bucket:get_bucket_names_of_type(membase, ephemeral, BucketConfigs),
+              BucketsList =
+                  ns_bucket:get_bucket_names_of_type(membase, BucketConfigs),
               Self ! {buckets, BucketsList};
           (_) ->
               ok
       end),
 
     Buckets = lists:map(fun list_to_binary/1,
-                        ns_bucket:get_bucket_names_of_type(membase, couchstore) ++
-                            ns_bucket:get_bucket_names_of_type(membase, ephemeral)),
+                        ns_bucket:get_bucket_names_of_type(membase)),
     Defaults = [{global_stat(Service, atom_to_binary(Stat, latin1)), 0}
                 || Stat <- Service:get_gauges() ++ Service:get_counters() ++
                        Service:get_computed()],
