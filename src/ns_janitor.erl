@@ -573,11 +573,7 @@ sanify_chain_one_active(Bucket, VBucket, ActiveNode, States,
             derive_chain(Bucket, VBucket, ActiveNode, CurrentChain)
     end;
 sanify_chain_one_active(Bucket, VBucket, ActiveNode, _States,
-                        CurrentChain, FutureChain) ->
-    ?log_error("Active node ~p for vbucket ~p in ~p, was not part of "
-               "current topology ~p or future topology ~p. "
-               "This should never happen!",
-               [ActiveNode, Bucket, VBucket, CurrentChain, FutureChain]),
+                        CurrentChain, _FutureChain) ->
     %% One active node, but it's not the master and it's not fast-forward map
     %% master, so we'll just update vbucket map. Note behavior below with losing
     %% replicas makes little sense as of now. Especially with star replication.
