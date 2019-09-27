@@ -25,8 +25,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([setup_disk_storage_conf/3,
-         setup_disk_storage_conf/4,
+-export([setup_disk_storage_conf/4,
          storage_conf_from_node_status/2,
          query_storage_conf/0,
          this_node_dbdir/0, this_node_ixdir/0, this_node_logdir/0,
@@ -121,9 +120,6 @@ read_path_from_conf(Config, Node, Key, SubKey) ->
             end
     end.
 
-%% Interim to avoid dialyzer error.
-setup_disk_storage_conf(DbPath, IxPath, CBASDirs) ->
-    setup_disk_storage_conf(DbPath, IxPath, CBASDirs, IxPath).
 
 %% @doc sets db, index, analytics, and eventing paths of this node.
 %% NOTE: ns_server restart is required to make db and index paths change fully effective.

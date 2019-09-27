@@ -84,6 +84,7 @@ storage_conf_to_json(S) ->
 location_prop_to_json({path, L}) -> {path, list_to_binary(L)};
 location_prop_to_json({index_path, L}) -> {index_path, list_to_binary(L)};
 location_prop_to_json({cbas_dirs, L}) -> {cbas_dirs, [list_to_binary(El) || El <- L]};
+location_prop_to_json({eventing_path,L}) -> {eventing_path, list_to_binary(L)};
 location_prop_to_json({java_home, undefined}) -> {java_home, <<>>};
 location_prop_to_json({java_home, L}) -> {java_home, list_to_binary(L)};
 location_prop_to_json({quotaMb, none}) -> {quotaMb, none};
@@ -637,10 +638,11 @@ apply_node_settings(Params) ->
         IxPath = proplists:get_value(index_path, Paths),
         CBASDirs = proplists:get_all_values(cbas_path, Paths),
         JavaHome = proplists:get_value(java_home, Paths),
+        EvPath = proplists:get_value(eventing_path, Paths),
 
         RV1 =
             case ns_storage_conf:setup_disk_storage_conf(DbPath, IxPath,
-                                                         CBASDirs) of
+                                                         CBASDirs, EvPath) of
                 restart ->
                     %% performing required restart from
                     %% successfull path change
@@ -674,6 +676,7 @@ apply_node_settings(Params) ->
 extract_settings_paths(Params) ->
     {ok, DefaultDbPath} = ns_storage_conf:this_node_dbdir(),
     {ok, DefaultIxPath} = ns_storage_conf:this_node_ixdir(),
+    {ok, DefaultEvPath} = ns_storage_conf:this_node_evdir(),
 
     CBASDirsToSet =
         case [Dir || {"cbas_path", Dir} <- Params] of
@@ -683,6 +686,8 @@ extract_settings_paths(Params) ->
 
     [{path, proplists:get_value("path", Params, DefaultDbPath)},
      {index_path, proplists:get_value("index_path", Params, DefaultIxPath)},
+     {eventing_path, proplists:get_value("eventing_path", Params,
+                                         DefaultEvPath)},
      {java_home, proplists:get_value("java_home", Params, not_changed)}] ++
         [{cbas_path, P} || P <- CBASDirsToSet].
 
