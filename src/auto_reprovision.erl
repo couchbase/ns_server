@@ -199,10 +199,10 @@ do_reprovision_bucket(Bucket, BucketConfig, UnsafeNodes, Candidates) ->
 
     lists:keyreplace(map, 1, BucketConfig, {map, NewMap}).
 
-promote_replica([Master | _] = Chain, Candidates) ->
+promote_replica([Master | Rest] = Chain, Candidates) ->
     case lists:member(Master, Candidates) of
         true ->
-            NewChain = mb_map:promote_replica(Chain, [Master]),
+            NewChain = Rest ++ [undefined],
             promote_replica(NewChain, Candidates);
         false ->
             Chain
