@@ -10,7 +10,8 @@
       getAuditSettings: getAuditSettings,
       saveAuditSettings: saveAuditSettings,
       getAuditDescriptors: getAuditDescriptors,
-      getState: getState
+      getState: getState,
+      getNonFilterableDescriptors: getNonFilterableDescriptors
     };
 
     return mnAuditService;
@@ -20,9 +21,13 @@
         getAuditSettings()
       ];
 
-      if (mnPoolDefault.export.compat.atLeast55 &&
-          mnPoolDefault.export.isEnterprise) {
-        queries.push(getAuditDescriptors())
+      if (mnPoolDefault.export.isEnterprise) {
+        if (mnPoolDefault.export.compat.atLeast55) {
+          queries.push(getAuditDescriptors());
+        }
+        if (mnPoolDefault.export.compat.atLeast65) {
+          queries.push(getNonFilterableDescriptors())
+        }
       }
 
       return $q.all(queries).then(unpack);
@@ -34,6 +39,18 @@
         url: '/settings/audit'
       }).then(function (resp) {
         return resp.data;
+      });
+    }
+    function getNonFilterableDescriptors() {
+      return $http({
+        method: 'GET',
+        url: '/settings/audit/nonFilterableDescriptors'
+      }).then(function (resp) {
+        return resp.data.map(function (desc) {
+          desc.nonFilterable = true;
+          desc.enabledByUI = true;
+          return desc;
+        })
       });
     }
     function getAuditDescriptors() {
@@ -124,15 +141,20 @@
       if (data.rotateSize) {
         data.rotateSize = data.rotateSize / IEC.Mi;
       }
-      if (mnPoolDefault.export.compat.atLeast55 && mnPoolDefault.export.isEnterprise) {
-        var mapDisabledIDs = _.groupBy(data.disabled);
-        eventsDescriptors.forEach(function (desc) {
-          desc.enabledByUI = !mapDisabledIDs[desc.id];
-        });
-        data.eventsDescriptors = _.groupBy(eventsDescriptors, "module");
-        data.disabledUsers = data.disabledUsers.map(function (user) {
-          return user.name + "/" + (user.domain === "local" ? "couchbase" : user.domain);
-        }).join(',');
+      if (mnPoolDefault.export.isEnterprise) {
+        if (mnPoolDefault.export.compat.atLeast55) {
+          var mapDisabledIDs = _.groupBy(data.disabled);
+          eventsDescriptors.forEach(function (desc) {
+            desc.enabledByUI = !mapDisabledIDs[desc.id];
+          });
+          if (mnPoolDefault.export.compat.atLeast65) {
+            Array.prototype.push.apply(eventsDescriptors, resp[2]);
+          }
+          data.eventsDescriptors = _.groupBy(eventsDescriptors, "module");
+          data.disabledUsers = data.disabledUsers.map(function (user) {
+            return user.name + "/" + (user.domain === "local" ? "couchbase" : user.domain);
+          }).join(',');
+        }
       }
       data.logPath = data.logPath || "";
       return data;

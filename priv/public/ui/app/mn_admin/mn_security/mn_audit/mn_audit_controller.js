@@ -47,6 +47,9 @@
     }
     function setEnabled(moduleName, bool) {
       vm.state.eventsDescriptors[moduleName].forEach(function (desc) {
+        if (desc.nonFilterable) {
+          return;
+        }
         desc.enabledByUI = bool;
       });
     }

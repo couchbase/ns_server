@@ -133,7 +133,7 @@
                type="checkbox"
                id="thisModule_{{module}}_{{desc.id}}"
                ng-model="desc.enabledByUI"
-               ng-disabled="!auditCtl.state.auditdEnabled || !rbac.cluster.admin.security.write">
+               ng-disabled="!auditCtl.state.auditdEnabled || !rbac.cluster.admin.security.write ||desc.nonFilterable">
             <label
                class="checkbox"
                for="thisModule_{{module}}_{{desc.id}}">{{desc.name}}</label>
