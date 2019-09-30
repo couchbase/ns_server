@@ -86,6 +86,7 @@
     vm.deleteGroup = deleteGroup;
     vm.onItemChange = onItemChange;
     vm.maybeShowItemsControls = maybeShowItemsControls;
+    vm.saveDashboard = mnUserRolesService.saveDashboard;
 
     vm.items = {};
     vm.enabledItems = {};
@@ -214,6 +215,7 @@
         $anchorScroll();
       });
     }
+
 
     function openChartBuilderDialog(group, scenario, groupCtl) {
       $uibModal.open({

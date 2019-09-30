@@ -2580,6 +2580,7 @@ mn-statistics-chart {
   padding: .25rem;
   margin: .25rem;
   padding-bottom: 0;
+  height: 124px;
 
 }
 .statistics-small:hover {
@@ -2590,6 +2591,7 @@ mn-statistics-chart {
   width: calc(50% - .5rem);
   padding: .25rem;
   margin: .25rem;
+  height: 144px;
 }
 .statistics-medium:hover {
   background-color: #f6fafd;

@@ -148,9 +148,10 @@
      ng-controller="mnStatisticsGroupsController as mnStatsGroupsCtl"
      class="charts-group">
     <div
-       ng-click="mnStatsGroupsCtl.isDetailsOpened = !mnStatsGroupsCtl.isDetailsOpened;"
+       ng-click="mnStatsGroupsCtl.group.isOpen = !mnStatsGroupsCtl.group.isOpen;
+                 mnStatsGroupsCtl.saveDashboard();"
        class="charts-group-row disclosure nowrap"
-       ng-class="{disclosed: mnStatsGroupsCtl.isDetailsOpened}">
+       ng-class="{disclosed: mnStatsGroupsCtl.group.isOpen}">
       <form novalidate
             ng-if="!mnStatsGroupsCtl.group.preset"
             style="display: inline-block;"
@@ -187,7 +188,7 @@
 
 <!-- if stats can be sub-divided by "item", they show in these menus ---------->
       <div
-         ng-if="mnStatsGroupsCtl.isDetailsOpened"
+         ng-if="mnStatsGroupsCtl.group.isOpen"
          class="chart-group-row-items"
          ng-click="$event.stopPropagation();">
         <div
@@ -257,7 +258,7 @@
       <div> &nbsp;</div>
     </div>
 
-    <div ng-if="mnStatsGroupsCtl.isDetailsOpened" class="row charts">
+    <div ng-if="mnStatsGroupsCtl.group.isOpen" class="row charts">
       <div
          ng-repeat="chartID in mnStatsGroupsCtl.group.charts track by ($index + chartID)"
          ng-controller="mnStatisticsChartsController as mnStatsChartsCtl"
