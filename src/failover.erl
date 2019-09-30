@@ -379,36 +379,19 @@ durability_aware(Options) ->
 fix_vbucket_map(FailoverNodes, Bucket, Map, Options) ->
     case durability_aware(Options) of
         true ->
-            fix_vbucket_map_durability_aware(FailoverNodes, Bucket, Map);
+            promote_max_replicas(FailoverNodes, Bucket, Map,
+                                 mb_map:promote_replica(_, FailoverNodes));
         false ->
             mb_map:promote_replicas(Map, FailoverNodes)
     end.
 
-fix_vbucket_map_durability_aware(FailoverNodes, Bucket, Map) ->
-    EnumeratedMap = misc:enumerate(Map, 0),
+promote_max_replicas(FailoverNodes, Bucket, Map, PromoteReplicaFun) ->
+    MarkedMap = [{lists:member(Master, FailoverNodes),
+                  PromoteReplicaFun(Chain)} || [Master | _] = Chain <- Map],
 
-    FixedChains =
-        dict:from_list(
-          case [C || C = {_, [Master | _]} <- EnumeratedMap,
-                     lists:member(Master, FailoverNodes)] of
-              [] ->
-                  [];
-              ChainsNeedFixing ->
-                  fix_chains(Bucket, FailoverNodes, ChainsNeedFixing)
-          end),
-    lists:map(
-      fun ({VB, Chain}) ->
-              case dict:find(VB, FixedChains) of
-                  {ok, NewChain} ->
-                      NewChain;
-                  error ->
-                      mb_map:promote_replica(Chain, FailoverNodes)
-              end
-      end, EnumeratedMap).
+    EnumeratedMap = misc:enumerate(MarkedMap, 0),
 
-fix_chains(Bucket, FailoverNodes, Chains) ->
-    NodesToQuery = nodes_to_query(Chains, FailoverNodes),
-
+    NodesToQuery = nodes_to_query(EnumeratedMap, FailoverNodes),
     {Info, BadNodes} =
         janitor_agent:query_vbuckets(
           Bucket, NodesToQuery,
@@ -419,33 +402,35 @@ fix_chains(Bucket, FailoverNodes, Chains) ->
         throw_failover_error("Failed to get failover info for bucket ~p: ~p",
                              [Bucket, BadNodes]),
 
-    ?log_debug("Retrieved the following vbuckets information: ~p",
-               [dict:to_list(Info)]),
+    NodesToQuery =:= [] orelse
+        ?log_debug("Retrieved the following vbuckets information: ~p",
+                   [dict:to_list(Info)]),
 
-    [{VB, fix_chain(VB, Chain, Info, FailoverNodes)}
-     || {VB, Chain} <- Chains].
+    [fix_chain(MarkedChain, Info) || MarkedChain <- EnumeratedMap].
 
-fix_chain(VBucket, Chain, Info, FailoverNodes) ->
+fix_chain({_VBucket, {false, Chain}}, _Info) ->
+    Chain;
+fix_chain({VBucket, {true, Chain}}, Info) ->
     NodeStates = janitor_agent:fetch_vbucket_states(VBucket, Info),
-    WithFNodesRemoved = mb_map:promote_replica(Chain, FailoverNodes),
-
-    case find_max_replica(WithFNodesRemoved, NodeStates) of
+    case find_max_replica(Chain, NodeStates) of
         not_found ->
-            WithFNodesRemoved;
+            Chain;
         MaxReplica ->
-            [MaxReplica | lists:delete(MaxReplica, WithFNodesRemoved)]
+            [MaxReplica | lists:delete(MaxReplica, Chain)]
     end.
 
-nodes_to_query(Chains, FailoverNodes) ->
+nodes_to_query(MarkedMap, FailoverNodes) ->
     NodeVBs =
         lists:flatmap(
-          fun ({VB, Chain}) ->
-                  [{Node, VB} || Node <- tl(Chain),
-                                 Node =/= undefined,
+          fun ({_VB, {false, _Chain}}) ->
+                  [];
+              ({VB, {true, Chain}}) ->
+                  [{Node, VB} || Node <- Chain, Node =/= undefined,
                                  not lists:member(Node, FailoverNodes)]
-          end, Chains),
+          end, MarkedMap),
     [{N, lists:usort(VBs)} ||
-        {N, VBs} <- misc:groupby_map(fun functools:id/1, NodeVBs)].
+        {N, VBs} <- misc:groupby_map(fun functools:id/1, NodeVBs),
+        VBs =/= []].
 
 throw_failover_error(Msg, Params) ->
     throw({failed, lists:flatten(io_lib:format(Msg, Params))}).
