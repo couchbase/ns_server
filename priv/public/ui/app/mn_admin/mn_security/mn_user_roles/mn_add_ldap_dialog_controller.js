@@ -124,33 +124,18 @@
     }
 
     function unpackUserDnMapping(type, mapping) {
-      if (!mapping.length) {
-        return {};
-      }
       switch (type) {
       case "template":
-        return {template: mapping[0].template.replace("{0}", "%u")};
+        return {template: mapping.template};
       case "query":
-        var query = mapping[0].query.split("?");
-        return {base: query[0], filter: query[3].replace("{0}", "%u")};
-      case "custom":
-        return {value: JSON.stringify(mapping)};
+        var query = mapping.query.split("?");
+        return {base: query[0], filter: query[3]};
       }
     }
 
     function unpackUserDnMappingType(userDnMapping) {
-      if (userDnMapping.length > 0) {
-        if (userDnMapping.length == 1) {
-          if (userDnMapping[0].re == "(.+)") {
-            if (userDnMapping[0].query) {
-              return "query";
-            }
-          } else {
-            return "custom";
-          }
-        } else {
-          return "custom";
-        }
+      if (userDnMapping.query) {
+        return "query";
       }
       return "template";
     }
@@ -177,18 +162,14 @@
     }
 
     function getUserDnMapping(config) {
-      var userDnMapping = [{re: "(.+)"}];
       switch (vm.config.userDnMapping) {
       case "template":
-        userDnMapping[0].template = (config.userDNMapping.template  || "").replace("%u", "{0}");
-        return JSON.stringify(userDnMapping);
+        return JSON.stringify({template: config.userDNMapping.template || ""});
       case "query":
-        userDnMapping[0].query =
+        var dnQuery =
           (config.userDNMapping.base || "")+"??one?"
-          +(config.userDNMapping.filter || "").replace("%u", "{0}");
-        return JSON.stringify(userDnMapping);
-      case "custom":
-        return config.userDNMapping.value || "";
+          +(config.userDNMapping.filter || "");
+        return JSON.stringify({query: dnQuery});
       }
     }
 

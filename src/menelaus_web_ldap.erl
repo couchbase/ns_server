@@ -129,17 +129,7 @@ ldap_settings_desc() ->
              validator:convert(N, fun list_to_atom/1, _)])
       end, Id},
      {user_dn_mapping, userDNMapping,
-      Curry(fun validate_user_dn_mapping/2),
-      fun (L) ->
-          lists:map(
-            fun ({Re, {'query', Q}}) ->
-                    {[{re, iolist_to_binary(Re)},
-                      {'query', iolist_to_binary(Q)}]};
-                ({Re, {template, T}}) ->
-                    {[{re, iolist_to_binary(Re)},
-                      {template, iolist_to_binary(T)}]}
-            end, L)
-      end},
+      Curry(fun validate_user_dn_mapping/2), fun ({Obj, _}) -> Obj end},
      {bind_dn, bindDN,
       Curry(fun validate_ldap_dn/2), list_to_binary(_)},
      {bind_pass, bindPass,
@@ -204,28 +194,32 @@ validate_ldap_hosts(Name, State) ->
 validate_user_dn_mapping(Name, State) ->
     validator:validate(
       fun (Str) ->
-              Parse = ?cut(parse_user_dn_mapping_record(lists:usort(_))),
               try
-                  Map = try ejson:decode(Str) of
-                            M when is_list(M) -> M;
-                            _ -> throw({error, "Should be a list"})
+                  Obj = try ejson:decode(Str)
                         catch _:_ ->
                             throw({error, "Invalid JSON"})
                         end,
-                  lists:foreach(
-                        fun ({_}) -> ok;
-                            (Invalid) ->
-                                Msg = io_lib:format("Not a JSON object: ~s",
-                                                    [ejson:encode(Invalid)]),
-                                throw({error, Msg})
-                        end, Map),
-                  {value, [Parse(Props) || {Props} <- Map]}
+                  {value, {Obj, parse_dn_mapping(Obj)}}
               catch
                   throw:{error, _} = Err -> Err
               end
       end, Name, State).
 
-parse_user_dn_mapping_record([{<<"re">>, Re}, {<<"template">>, Template}]) ->
+parse_dn_mapping({[{<<"query">>, Q}]}) ->
+    has_username_var(Q),
+    QueryTempl = iolist_to_binary(string:replace(Q, "%u", "{0}")),
+    case ldap_util:parse_url("ldap:///" ++ QueryTempl,
+                             [{"\\{\\d+\\}", "placeholder"}]) of
+        {ok, _} -> ok;
+        {error, Reason} ->
+            throw({error, io_lib:format(
+                            "Invalid LDAP query '~s': ~s",
+                            [Q, ldap_auth:format_error(Reason)])})
+    end,
+    [{<<"(.+)">>, {'query', QueryTempl}}];
+parse_dn_mapping({[{<<"template">>, T}]}) ->
+    has_username_var(T),
+    Template = iolist_to_binary(string:replace(T, "%u", "{0}")),
     DN = re:replace(Template, "\\{\\d+\\}", "placeholder",
                     [{return, list}, global]),
     case eldap:parse_dn(DN) of
@@ -234,35 +228,15 @@ parse_user_dn_mapping_record([{<<"re">>, Re}, {<<"template">>, Template}]) ->
             throw({error, io_lib:format("Template is not a valid LDAP "
                                         "distinguished name: ~p", [Reason])})
     end,
-    {validate_re(Re), {template, validate_placeholders(Template)}};
-parse_user_dn_mapping_record([{<<"query">>, QueryTempl}, {<<"re">>, Re}]) ->
-    case ldap_util:parse_url("ldap:///" ++ QueryTempl,
-                             [{"\\{\\d+\\}", "placeholder"}]) of
-        {ok, _} -> ok;
-        {error, Reason} ->
-            throw({error, io_lib:format(
-                            "Invalid LDAP query '~s': ~s",
-                            [QueryTempl, ldap_auth:format_error(Reason)])})
-    end,
-    {validate_re(Re), {'query', validate_placeholders(QueryTempl)}};
-parse_user_dn_mapping_record(Props) ->
-    throw({error, io_lib:format("Invalid rule: ~s",
-                                [ejson:encode({Props})])}).
+    [{<<"(.+)">>, {template, Template}}];
+parse_dn_mapping(_) ->
+    throw({error, "JSON object must contain either query or template"}).
 
-validate_placeholders(Str) ->
-    case re:run(Str, "\\{\\d+\\}", []) of
+has_username_var(Str) ->
+    case re:run(Str, "%u", []) of
         {match, _} -> Str;
         nomatch ->
-            throw({error, "Template or query should contain at least one "
-                          "placeholder, like \"{0}\""})
-    end.
-
-validate_re(Re) ->
-    case re:compile(Re) of
-        {ok, _} -> Re;
-        {error, {ErrStr, Pos}} ->
-            throw({error, io_lib:format("Invalid regular expression ~s: ~s "
-                                        "at ~b", [Re, ErrStr, Pos])})
+            throw({error, "Template or query should contain at least one %u"})
     end.
 
 validate_ldap_dn(Name, State) ->

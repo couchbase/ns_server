@@ -77,7 +77,7 @@ lookup_user(Username) ->
       end).
 
 get_user_DN(Username, Settings, Context) ->
-    Map = proplists:get_value(user_dn_mapping, Settings),
+    {_, Map} = proplists:get_value(user_dn_mapping, Settings),
     case map_user_to_DN(Username, Settings, Map, Context) of
         {ok, DN, ResolveType} ->
             ?log_debug("Username->DN: Constructed DN: ~p for ~p",

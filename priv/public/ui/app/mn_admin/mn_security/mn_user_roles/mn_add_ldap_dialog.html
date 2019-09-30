@@ -234,13 +234,6 @@
                      name="userDnMapping"
                      value="query">
                   <label for="user-dn-mapping-flag-query">LDAP Query</label>
-                  <input
-                     type="radio"
-                     id="user-dn-mapping-flag-custom"
-                     ng-model="addLdapDialogCtl.config.userDnMapping"
-                     name="userDnMapping"
-                     value="custom">
-                  <label for="user-dn-mapping-flag-custom">Custom</label>
                 </div>
               </div>
               <div class="formrow">
@@ -281,19 +274,6 @@
                        ng-model="addLdapDialogCtl.config.authentication.userDNMapping.filter"
                        placeholder="(uid=%u)">
                   </span>
-                </div>
-                <div ng-if="addLdapDialogCtl.config.userDnMapping == 'custom'">
-                  <label for="for-custom-mapping">Custom Mapping</label>
-                  <textarea
-                     autocorrect="off"
-                     spellcheck="false"
-                     autocapitalize="off"
-                     mn-autocomplete-off="enforce"
-                     id="for-custom-mapping"
-                     ng-model="addLdapDialogCtl.config.authentication.userDNMapping.value"
-                     rows="3"
-                     placeholder='ex: [{"re":"(.+)@(.+).com","query":"ou=users, dc={1},dc=com??one?(uid={0})"},{"re":"(.+)","template":"cn={0},ou=users,dc=example,dc=com"}]'>
-                  </textarea>
                 </div>
                 <div
                    class="error"
