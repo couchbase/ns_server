@@ -175,9 +175,9 @@ get_reprovision_cfg() ->
      proplists:get_value(count, RCfg, 0)}.
 
 do_reprovision_bucket(Bucket, BucketConfig, UnsafeNodes, Candidates) ->
-    %% Since this will be called by the orchestrator immediately after the cleanup (map
-    %% fixup would have happened as part of cleanup) we are just reusing the map in the
-    %% bucket config.
+    %% Since this will be called by the orchestrator immediately after the
+    %% cleanup (map fixup would have happened as part of cleanup) we are
+    %% just reusing the map in the bucket config.
     Map = proplists:get_value(map, BucketConfig, []),
     true = (Map =/= []),
 
@@ -188,7 +188,8 @@ do_reprovision_bucket(Bucket, BucketConfig, UnsafeNodes, Candidates) ->
         [] -> ok;
         MissingVBs ->
             ale:info(?USER_LOGGER,
-                     "During auto-reprovision data has been lost on ~B% of vbuckets in bucket ~p.",
+                     "During auto-reprovision data has been lost on ~B% of "
+                     "vbuckets in bucket ~p.",
                      [length(MissingVBs) * 100 div length(NewMap), Bucket])
     end,
 
