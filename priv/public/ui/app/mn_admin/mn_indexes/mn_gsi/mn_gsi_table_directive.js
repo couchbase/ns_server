@@ -40,6 +40,9 @@
 
       function getStatusClass(row) {
         row = row || {};
+        if (row.stale) { //MB-36247
+          return 'dynamic_warmup';
+        }
         switch (row.status) {
           case 'Ready': return 'dynamic_healthy';
           case 'Not Available': return 'dynamic_unhealthy';
