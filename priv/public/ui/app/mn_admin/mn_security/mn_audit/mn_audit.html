@@ -21,7 +21,7 @@
       <div
          ng-if="auditCtl.state.auditdEnabled"
          class="content-box fix-width-6">
-        When enabled, auditing will log a minimum set of events by default. Expand
+        Auditing will log a minimum set of events by default. Expand
         the events modules below to see these defaults and/or select your own set
         of events. <br> NOTE: The number of events selected for logging may impact your
         cluster’s performance. Audit logs may also use significant disk space.
@@ -149,8 +149,7 @@
       <label class="inline">Ignore Events From These Users</label>
       <span
          class="icon-info-warning raised"
-         uib-tooltip="NOTE: The list of events on this page is not comprehensive
-                      — on purpose. Very important events impacting security will
+         uib-tooltip="NOTE: Important events (shown in the checked-disabled state above) will
                       ALWAYS be logged. Even from these users."
          tooltip-placement="auto right">
         <span class="icon fa-warning"></span>
