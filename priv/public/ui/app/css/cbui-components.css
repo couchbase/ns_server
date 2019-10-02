@@ -415,8 +415,8 @@ color: #333;
   top: 0;
   right: 0;
   display: inline-block;
-  -webkit-animation: fa-spin .5s infinite linear;
-  animation: fa-spin .5s infinite linear;
+  -webkit-animation: fa-spin .5s infinite ease;
+  animation: fa-spin .5s infinite ease-in-out;
 }
 .rebalance-stage-inprogress-paused:after {
   -webkit-animation: none !important;
@@ -432,8 +432,8 @@ color: #333;
   top: 0;
   right: -4px;
   display: inline-block;
-  -webkit-animation: fa-spin .5s infinite linear;
-  animation: fa-spin .5s infinite linear;
+  -webkit-animation: fa-spin .5s infinite ease;
+  animation: fa-spin .5s infinite ease;
 }
 /* rebalance error icon ----------------------------------------------- */
 .rebalance-stage-error:after {
@@ -442,7 +442,7 @@ color: #333;
   font-size: .925rem;
   color: #e07f82;
   position: absolute;
-  top: 4px;
+  top: 0;
   right: 0;
 }
 /* search filter icons for focus charts  -------------------------------- */
@@ -763,7 +763,7 @@ section.error {
 /* adds white "shadow" above footer or below header to indicate scrollability
    when max-height is set on contents ----------------------------------- */
 .panel-footer.scroll-shadow {
-  box-shadow: 0 -36px 28px -12px #fff;
+  box-shadow: 0 -34px 28px -12px #fff;
 }
 .scroll-shadow-top {
   box-shadow: 0 16px 24px 10px #fff;
@@ -3018,7 +3018,6 @@ input[type=text].scenario-desc:hover {
 }
 /* stats footers for the wizard, dashboard, and various service pages --------*/
 .footer-dashboard {
-  font-size: .688rem;
   flex-flow: column;
 }
 .footer-wizard {
@@ -3043,7 +3042,7 @@ footer .column,
   max-width: 320px;
   padding: 0 2rem 0 0;
   margin-right: 2rem;
-  line-height: 1.4;
+  line-height: 1.5;
   height: 100%;
 }
 .column:last-child,

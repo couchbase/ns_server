@@ -25,8 +25,8 @@
          ng-repeat="service in node.services | mnFormatServicesArray | orderBy"
          class="label neutral nocaps"
          ng-class="{'flex-order-1' : service == 'Data',
-                    'flex-order-2' : service == 'Index',
-                    'flex-order-3' : service == 'Query',
+                    'flex-order-2' : service == 'Query',
+                    'flex-order-3' : service == 'Index',
                     'flex-order-4' : service == 'Search',
                     'flex-order-5' : service == 'Analytics',
                     'flex-order-6' : service == 'Eventing'}">

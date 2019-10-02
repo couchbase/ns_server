@@ -105,103 +105,7 @@
           {{settingsClusterCtl.retryRebalanceErrors.afterTimePeriod}}
         </div>
 
-        <label
-           ng-show="rbac.cluster.settings.indexes.read"
-           class="margin-top-half">
-          Index Storage Mode
-        </label>
-        <div ng-show="rbac.cluster.settings.indexes.read">
-          <div class="formrow">
-            <mn-storage-mode
-               mn-is-enterprise="adminCtl.poolDefault.isEnterprise"
-               mn-model="settingsClusterCtl.indexSettings"
-               mn-errors="settingsClusterCtl.indexSettingsErrors"
-               mn-initial="settingsClusterCtl.initialIndexSettings"
-               mn-permissions="rbac"
-               mn-compat="poolDefault.compat">
-            </mn-storage-mode>
-          </div>
-        </div>
-        <p
-          ng-if="rbac.cluster.settings.read"
-          class="disclosure"
-          ng-class="{disclosed: settingsClusterCtl.showAdvancedSettings}"
-          ng-click="settingsClusterCtl.showAdvancedSettings = !settingsClusterCtl.showAdvancedSettings">
-          Advanced Index Settings
-        </p>
-        <div
-          ng-if="rbac.cluster.settings.read"
-          ng-show="settingsClusterCtl.showAdvancedSettings"
-          class="indent-1-5">
-          <div class="formrow">
-            <label for="index_settings_thread" class="inline">
-              Indexer Threads
-            </label>
-            <span
-               class="fa-stack icon-info"
-               uib-tooltip="Number of dedicated threads the indexer uses. On multi-core machines increasing this number will increase the indexer's CPU utilization. Defaults to 0 which instructs the indexer to use all available machine cores."
-               tooltip-placement="auto right">
-              <span class="icon fa-circle-thin fa-stack-2x"></span>
-              <span class="icon fa-info fa-stack-1x"></span>
-            </span>
-            <input
-               type="number"
-               ng-model="settingsClusterCtl.indexSettings.indexerThreads"
-               ng-disabled="settingsClusterCtl.indexSettings.storageMode === '' || !rbac.cluster.settings.indexes.write"
-               id="index_settings_thread"
-               class="input-small input-short-1">
-            <div class="error error-field" ng-show="settingsClusterCtl.indexSettingsErrors.indexerThreads">
-              {{settingsClusterCtl.indexSettingsErrors.indexerThreads}}
-            </div>
-          </div>
-          <div class="formrow" ng-hide="adminCtl.poolDefault.isEnterprise">
-            <label for="in_memory_snapshot" class="inline">
-              Max Rollback Points
-            </label>
-            <span
-               class="fa-stack icon-info"
-               uib-tooltip="The maximum number of committed rollback points."
-               tooltip-placement="auto right">
-              <span class="icon fa-circle-thin fa-stack-2x"></span>
-              <span class="icon fa-info fa-stack-1x"></span>
-            </span>
-            <input
-               type="text"
-               ng-model="settingsClusterCtl.indexSettings.maxRollbackPoints"
-               ng-disabled="settingsClusterCtl.indexSettings.storageMode === '' || !rbac.cluster.settings.indexes.write"
-               id="in_memory_snapshot">
-            <div class="error error-field" ng-show="settingsClusterCtl.indexSettingsErrors.maxRollbackPoints">
-              {{settingsClusterCtl.indexSettingsErrors.maxRollbackPoints}}
-            </div>
-          </div>
-          <div class="formrow">
-            <label for="indexer_log_level">
-              Indexer Log Level
-            </label>
-            <div class="simple-select">
-              <select
-                 ng-model="settingsClusterCtl.indexSettings.logLevel"
-                 name="logLevel"
-                 ng-disabled="settingsClusterCtl.indexSettings.storageMode === '' || !rbac.cluster.settings.indexes.write"
-                 id="indexer_log_level">
-                <option value="silent">Silent</option>
-                <option value="fatal">Fatal</option>
-                <option value="error">Error</option>
-                <option value="warn">Warn</option>
-                <option value="info">Info</option>
-                <option value="verbose">Verbose</option>
-                <option value="timing">Timing</option>
-                <option value="debug">Debug</option>
-                <option value="trace">Trace</option>
-              </select>
-            </div>
-            <div class="error error-field" ng-show="settingsClusterCtl.indexSettingsErrors.logLevel">
-              {{settingsClusterCtl.indexSettingsErrors.logLevel}}
-            </div>
-          </div>
-        </div>
-
-        <div ng-if="poolDefault.compat.atLeast55 && rbac.cluster.settings.read" class="margin-top-1-5">
+        <div ng-if="poolDefault.compat.atLeast55 && rbac.cluster.settings.read" class="margin-top-1">
           <label>Query Settings</label>
           <p
              class="disclosure margin-bottom-half"
@@ -445,9 +349,103 @@
                mn-disabled="!rbac.cluster.settings.write"
                mn-model="settingsClusterCtl.querySettings"
                mn-errors="settingsClusterCtl.querySettingsErrors">
-            </mn-field>
+            </mn-field>s
+          </div>
+        </div>
 
-
+        <label
+           ng-show="rbac.cluster.settings.indexes.read"
+           class="margin-top-1">
+          Index Storage Mode
+        </label>
+        <div ng-show="rbac.cluster.settings.indexes.read">
+          <div class="formrow">
+            <mn-storage-mode
+               mn-is-enterprise="adminCtl.poolDefault.isEnterprise"
+               mn-model="settingsClusterCtl.indexSettings"
+               mn-errors="settingsClusterCtl.indexSettingsErrors"
+               mn-initial="settingsClusterCtl.initialIndexSettings"
+               mn-permissions="rbac"
+               mn-compat="poolDefault.compat">
+            </mn-storage-mode>
+          </div>
+        </div>
+        <p
+          ng-if="rbac.cluster.settings.read"
+          class="disclosure"
+          ng-class="{disclosed: settingsClusterCtl.showAdvancedSettings}"
+          ng-click="settingsClusterCtl.showAdvancedSettings = !settingsClusterCtl.showAdvancedSettings">
+          Advanced Index Settings
+        </p>
+        <div
+          ng-if="rbac.cluster.settings.read"
+          ng-show="settingsClusterCtl.showAdvancedSettings"
+          class="indent-1-5">
+          <div class="formrow">
+            <label for="index_settings_thread" class="inline">
+              Indexer Threads
+            </label>
+            <span
+               class="fa-stack icon-info"
+               uib-tooltip="Number of dedicated threads the indexer uses. On multi-core machines increasing this number will increase the indexer's CPU utilization. Defaults to 0 which instructs the indexer to use all available machine cores."
+               tooltip-placement="auto right">
+              <span class="icon fa-circle-thin fa-stack-2x"></span>
+              <span class="icon fa-info fa-stack-1x"></span>
+            </span>
+            <input
+               type="number"
+               ng-model="settingsClusterCtl.indexSettings.indexerThreads"
+               ng-disabled="settingsClusterCtl.indexSettings.storageMode === '' || !rbac.cluster.settings.indexes.write"
+               id="index_settings_thread"
+               class="input-small input-short-1">
+            <div class="error error-field" ng-show="settingsClusterCtl.indexSettingsErrors.indexerThreads">
+              {{settingsClusterCtl.indexSettingsErrors.indexerThreads}}
+            </div>
+          </div>
+          <div class="formrow" ng-hide="adminCtl.poolDefault.isEnterprise">
+            <label for="in_memory_snapshot" class="inline">
+              Max Rollback Points
+            </label>
+            <span
+               class="fa-stack icon-info"
+               uib-tooltip="The maximum number of committed rollback points."
+               tooltip-placement="auto right">
+              <span class="icon fa-circle-thin fa-stack-2x"></span>
+              <span class="icon fa-info fa-stack-1x"></span>
+            </span>
+            <input
+               type="text"
+               ng-model="settingsClusterCtl.indexSettings.maxRollbackPoints"
+               ng-disabled="settingsClusterCtl.indexSettings.storageMode === '' || !rbac.cluster.settings.indexes.write"
+               id="in_memory_snapshot">
+            <div class="error error-field" ng-show="settingsClusterCtl.indexSettingsErrors.maxRollbackPoints">
+              {{settingsClusterCtl.indexSettingsErrors.maxRollbackPoints}}
+            </div>
+          </div>
+          <div class="formrow">
+            <label for="indexer_log_level">
+              Indexer Log Level
+            </label>
+            <div class="simple-select">
+              <select
+                 ng-model="settingsClusterCtl.indexSettings.logLevel"
+                 name="logLevel"
+                 ng-disabled="settingsClusterCtl.indexSettings.storageMode === '' || !rbac.cluster.settings.indexes.write"
+                 id="indexer_log_level">
+                <option value="silent">Silent</option>
+                <option value="fatal">Fatal</option>
+                <option value="error">Error</option>
+                <option value="warn">Warn</option>
+                <option value="info">Info</option>
+                <option value="verbose">Verbose</option>
+                <option value="timing">Timing</option>
+                <option value="debug">Debug</option>
+                <option value="trace">Trace</option>
+              </select>
+            </div>
+            <div class="error error-field" ng-show="settingsClusterCtl.indexSettingsErrors.logLevel">
+              {{settingsClusterCtl.indexSettingsErrors.logLevel}}
+            </div>
           </div>
         </div>
 
