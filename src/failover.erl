@@ -28,7 +28,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([start/2, run/2, is_possible/1, orchestrate/2, get_failover_vbuckets/2]).
+-export([start/2, run/2, is_possible/1, orchestrate/2,
+         get_failover_vbuckets/2, promote_max_replicas/4]).
 
 -define(DATA_LOST, 1).
 -define(FAILOVER_OPS_TIMEOUT, ?get_timeout(failover_ops_timeout, 10000)).

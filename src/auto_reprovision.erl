@@ -23,6 +23,7 @@
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -export([start_link/0]).
 
@@ -181,7 +182,14 @@ do_reprovision_bucket(Bucket, BucketConfig, UnsafeNodes, Candidates) ->
     Map = proplists:get_value(map, BucketConfig, []),
     true = (Map =/= []),
 
-    NewMap = [promote_replica(Chain, Candidates) || Chain <- Map],
+    NewMap =
+        case cluster_compat_mode:preserve_durable_mutations() of
+            false ->
+                [promote_replica(C, Candidates) || C <- Map];
+            true ->
+                failover:promote_max_replicas(
+                  Candidates, Bucket, Map, ?cut(promote_replica(_, Candidates)))
+        end,
 
     case [I || {I, [N|_]} <- misc:enumerate(NewMap, 0),
                N =:= undefined orelse lists:member(N, UnsafeNodes)] of
