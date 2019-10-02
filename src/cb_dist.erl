@@ -587,8 +587,21 @@ get_required_protos(#s{name = Name, config = Config}) ->
         {_, false} -> lists:usort([Local, Ext])
     end.
 
-info_msg(F, A) -> error_logger:info_msg("cb_dist: " ++ F, A).
-error_msg(F, A) -> error_logger:error_msg("cb_dist: " ++ F, A).
+info_msg(F, A) ->
+    %% Not using error_logger here to prevent showing those messages on
+    %% console during service start
+    %% On babysitter cb_dist starts before ale so we simply ignore
+    %% logs in this case
+    try
+        ale:debug(ns_server, "cb_dist: " ++ F, A)
+    catch
+        error:undef -> ok
+    end.
+error_msg(F, A) ->
+    %% Preformat the message, since the default error_logger handler
+    %% doesn't format it even when error_msg/2 is used
+    Msg = lists:flatten(io_lib:format("cb_dist: " ++ F, A)),
+    error_logger:error_msg(Msg).
 
 proto_to_family(inet_tcp_dist) -> inet;
 proto_to_family(inet_tls_dist) -> inet;
