@@ -2669,7 +2669,7 @@ mn-statistics-chart {
 }
 .chart-controls .icon {
   color: #555;
-  padding: 0 .5rem;
+  padding: 0 .25rem;
   cursor: pointer;
   font-size: .875rem;
 }
@@ -2904,6 +2904,7 @@ mn-dropdown-item:hover {
   font-weight: 400;
   color: #333;
   margin: 0;
+  line-height: 1.2;
 }
 .scenario-controls {
   display: none;

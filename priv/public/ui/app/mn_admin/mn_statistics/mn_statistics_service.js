@@ -364,21 +364,25 @@
         name: "Cluster Overview",
         desc: "Stats showing the general health of your cluster.",
         groups: [{
-          name: "Server Resources",
+          name: "Server Resources & Ops",
+          isOpen: true,
           charts: [{
             stats: {"@system.cpu_utilization_rate": true},
             size: "small",
             specificStat: true // for single-stat chart
           }, {
-            stats: {"@system.mem_actual_free": true},
+            stats: {"@kv-.mem_used": true,
+                    "@index-.index/data_size": true,
+                    "@fts.fts_num_bytes_used_ram": true},
             size: "small",
-            specificStat: true
+            specificStat: false
+          }, {
+            stats: {"@kv-.couch_total_disk_size": true,
+                    "@index-.index/disk_size": true},
+            size: "small",
+            specificStat: false
           }, {
             stats: {"@system.swap_used": true},
-            size: "small",
-            specificStat: true
-          }, {
-            stats: {"@kv-.ops": true},
             size: "small",
             specificStat: true
           }, {
@@ -395,10 +399,11 @@
           }]
       }] }, {  // 2nd scenario starts here with the comma ///////////////////////
 
-        name: "General Troubleshooting",
-        desc: "Most common stats - per service.",
+        name: "Troubleshooting",
+        desc: "Most common stats, arranged per service. Customize this or make your own dashboard with New Dashboard below.",
         groups: [{
           name: "Server Resources",
+          isOpen: true,
           charts: [{
             stats: {"@system.cpu_utilization_rate": true},
             size: "small",
@@ -418,6 +423,7 @@
           }]
           }, {
           name: "Data Service",
+          isOpen: true,
           charts: [{
             stats: {"@kv-.mem_used": true,
                     "@kv-.ep_mem_low_wat": true,
@@ -443,6 +449,7 @@
           }]
       }, {
           name: "Index Service",
+          isOpen: false,
           charts: [{
             stats: {"@index.index_ram_percent": true,
                     "@index.index_remaining_ram": true},
@@ -459,6 +466,7 @@
           }]
         }, {
           name: "Query Service",
+          isOpen: false,
           charts: [{
             stats: {"@query.query_requests_1000ms": true,
                     "@query.query_requests_500ms": true,
@@ -473,6 +481,7 @@
           }]
         }, {
           name: "Analytics Service",
+          isOpen: false,
           charts: [{
             stats: {"@cbas-.cbas/incoming_records_count": true},
             size: "small",
@@ -492,6 +501,7 @@
           }]
         }, {
           name: "vBucket Resources",
+          isOpen: false,
           charts: [{
             stats: {"@kv-.vb_active_num": true,
                     "@kv-.vb_replica_num": true,
@@ -544,6 +554,7 @@
           }]
           }, {
             name: "DCP Queues",
+            isOpen: false,
             charts: [{
             stats: {"@kv-.ep_dcp_views+indexes_count": true,
                     "@kv-.ep_dcp_cbas_count": true,
@@ -596,6 +607,7 @@
         ]
         }, {
           name: "Disk Queues",
+          isOpen: false,
           charts: [{
             stats: {"@kv-.ep_dcp_views+indexes_count": true,
                     "@kv-.ep_dcp_cbas_count": true,
