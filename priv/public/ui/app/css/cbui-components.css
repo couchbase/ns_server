@@ -874,7 +874,9 @@ section.error {
   background-color: #d9e7f7;
 }
 .label.neutral {
-  background-color: #d8d8d8;
+  background-color: #ececec;
+  padding-top: 2px;
+  padding-bottom: 2px;
 }
 .label.red {
   background-color: #cc2a2e;
