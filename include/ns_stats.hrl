@@ -233,7 +233,12 @@
         %% Sum total of all active vBuckets' drift_ahead_threshold_exceeded counter.
         ep_active_ahead_exceptions,
         %% Sum total of all replica vBuckets' drift_ahead_threshold_exceeded counter.
-        ep_replica_ahead_exceptions
+        ep_replica_ahead_exceptions,
+
+        %% Durable write statistics
+        vb_active_sync_write_accepted_count,
+        vb_active_sync_write_committed_count,
+        vb_active_sync_write_aborted_count
 ).
 
 -record(stat_entry, {timestamp :: integer(),

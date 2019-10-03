@@ -16,7 +16,7 @@
         ["couch_total_disk_size","ep_cache_miss_rate","vb_avg_total_queue_age","avg_disk_update_time","avg_disk_commit_time","couch_docs_actual_disk_size","couch_views_actual_disk_size",
          "disk_write_queue","ep_bg_fetched","ep_data_read_failed","ep_data_write_failed","ep_num_value_ejects","ep_ops_create","ep_ops_update"],
         "vBuckets":
-        ["ep_vb_total","vb_active_num","curr_items","vb_active_ops_create","vb_active_resident_items_ratio","vb_active_eject","avg_active_timestamp_drift","ep_active_ahead_exceptions","vb_pending_num","vb_pending_curr_items","vb_pending_ops_create","vb_pending_resident_items_ratio","vb_pending_eject","vb_replica_num","vb_replica_curr_items","vb_replica_ops_create","vb_replica_resident_items_ratio","vb_replica_eject","avg_replica_timestamp_drift","ep_replica_ahead_exceptions"],
+        ["ep_vb_total","vb_active_num","curr_items","vb_active_ops_create","vb_active_resident_items_ratio","vb_active_eject","vb_active_sync_write_accepted_count","vb_active_sync_write_committed_count","vb_active_sync_write_aborted_count","avg_active_timestamp_drift","ep_active_ahead_exceptions","vb_pending_num","vb_pending_curr_items","vb_pending_ops_create","vb_pending_resident_items_ratio","vb_pending_eject","vb_replica_num","vb_replica_curr_items","vb_replica_ops_create","vb_replica_resident_items_ratio","vb_replica_eject","avg_replica_timestamp_drift","ep_replica_ahead_exceptions"],
         "Disk Queues":
         ["ep_diskqueue_fill","ep_diskqueue_drain","ep_diskqueue_items","vb_active_queue_fill","vb_active_queue_drain","vb_active_queue_size","vb_replica_queue_fill","vb_replica_queue_drain","vb_replica_queue_size","vb_pending_queue_fill","vb_pending_queue_drain","vb_pending_queue_size"],
         "DCP Queues":
@@ -700,6 +700,21 @@
             unit: "number",
             title: "Disk Queue Active Items",
             desc: "Number of active items waiting to be written to disk in this bucket. (measured from vb_active_queue_size)"
+          },
+          "vb_active_sync_write_accepted_count": {
+            unit: "number/sec",
+            title: "Accepted Sync Writes Rate",
+            desc: "Number of accepted synchronous write per second into active vBuckets in this bucket. (measured from vb_active_sync_write_accepted_count)"
+          },
+          "vb_active_sync_write_committed_count": {
+            unit: "number/sec",
+            title: "Committed Sync Writes Rate",
+              desc: "Number of committed synchronous writes per second into active vBuckets in this bucket. (measured from vb_active_sync_write_committed_count)"
+          },
+          "vb_active_sync_write_aborted_count": {
+            unit: "number/sec",
+            title: "Aborted Sync Writes Rate",
+            desc: "Number of aborted synchronous writes per second into active vBuckets in this bucket. (measured from vb_active_sync_write_aborted_count)"
           },
           "vb_pending_curr_items": {
             unit: "number",
