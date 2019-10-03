@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2017-2018 Couchbase, Inc.
+%% @copyright 2017-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -47,6 +47,16 @@ handle_get(Req) ->
 handle_post(Req) ->
     menelaus_web_rbac:assert_no_users_upgrade(),
     Samples = mochijson2:decode(mochiweb_request:recv_body(Req)),
+
+    case ns_orchestrator:ensure_janitor_run(services) of
+        ok ->
+            ok;
+        _ ->
+            throw({web_exception, 503,
+                   <<"System services have not completed startup. "
+                     "Please try again shortly.">>,
+                   []})
+    end,
 
     Errors = case validate_post_sample_buckets(Samples) of
                  ok ->
