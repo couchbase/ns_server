@@ -96,11 +96,11 @@ all_ports() ->
                   secure, eventing_http_port),
      %% cbas service ports
      ?define_port(cbas_http_port,    cbas,      cbas, 8095),
+     ?define_port(cbas_admin_port,   cbasAdmin, cbas, 9110),
+     ?define_port(cbas_cc_http_port, cbasCc,    cbas, 9111),
      ?define_port(cbas_ssl_port,     cbasSSL,   cbas, 18095,
                   secure, cbas_http_port),
      %% miscellaneous cbas ports
-     ?define_port(cbas_admin_port,             cbasAdmin,       misc, 9110),
-     ?define_port(cbas_cc_http_port,           cbasCc,          misc, 9111),
      ?define_port(cbas_cc_cluster_port,        cbasCcCluster,   misc, 9112),
      ?define_port(cbas_cc_client_port,         cbasCcClient,    misc, 9113),
      ?define_port(cbas_console_port,           cbasConsole,     misc, 9114),
