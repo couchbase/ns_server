@@ -25,6 +25,10 @@
 -include("ns_common.hrl").
 -include("cut.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([start_link/0]).
 
 %% APIs.
@@ -183,13 +187,8 @@ do_reprovision_bucket(Bucket, BucketConfig, UnsafeNodes, Candidates) ->
     true = (Map =/= []),
 
     NewMap =
-        case cluster_compat_mode:preserve_durable_mutations() of
-            false ->
-                [promote_replica(C, Candidates) || C <- Map];
-            true ->
-                failover:promote_max_replicas(
-                  Candidates, Bucket, Map, ?cut(promote_replica(_, Candidates)))
-        end,
+        fix_vbucket_map(cluster_compat_mode:preserve_durable_mutations(),
+                        Bucket, Map, Candidates),
 
     case [I || {I, [N|_]} <- misc:enumerate(NewMap, 0),
                N =:= undefined orelse lists:member(N, UnsafeNodes)] of
@@ -208,6 +207,12 @@ do_reprovision_bucket(Bucket, BucketConfig, UnsafeNodes, Candidates) ->
 
     lists:keyreplace(map, 1, BucketConfig, {map, NewMap}).
 
+fix_vbucket_map(false, _Bucket, Map, Candidates) ->
+    [promote_replica(C, Candidates) || C <- Map];
+fix_vbucket_map(true, Bucket, Map, Candidates) ->
+    failover:promote_max_replicas(
+      Candidates, Bucket, Map, ?cut(promote_replica(_, Candidates))).
+
 promote_replica([Master | Rest] = Chain, Candidates) ->
     case lists:member(Master, Candidates) of
         true ->
@@ -216,3 +221,45 @@ promote_replica([Master | Rest] = Chain, Candidates) ->
         false ->
             Chain
     end.
+
+-ifdef(TEST).
+
+fix_vbucket_map_test_() ->
+    failover:fix_vbucket_map_test_wrapper(
+      [{"not durability aware",
+        fun () ->
+                meck:delete(janitor_agent, query_vbuckets, 4, true),
+
+                Map = [[a, c, d, b],
+                       [a, b, c, e],
+                       [d, c, b, e],
+                       [c, d, e, undefined]],
+
+                ?assertEqual(
+                   [[c, d, b, undefined],
+                    [c, e, undefined, undefined],
+                    [d, c, b, e],
+                    [c, d, e, undefined]],
+                   fix_vbucket_map(false, "test", Map, [a, b])),
+                ?assert(meck:validate(janitor_agent))
+        end},
+       {"durability aware",
+        fun () ->
+                failover:meck_query_vbuckets(
+                  [{c, [0, 1, 2]}, {d, [0, 1, 2]}],
+                  [{0, [{c, 8, 8}, {d, 3, 3}]},
+                   {1, [{c, 1, 1}, {d, 3, 3}]},
+                   {2, [{c, 1, 1}, {d, 3, 3}]}]),
+
+                Map = [[a, b, c, d],
+                       [a, b, c, d],
+                       [a, c, d, b]],
+
+                ?assertEqual(
+                   [[c, d, undefined, undefined],
+                    [d, c, undefined, undefined],
+                    [d, c, b, undefined]],
+                   fix_vbucket_map(true, "test", Map, [a, b])),
+                ?assert(meck:validate(janitor_agent))
+        end}]).
+-endif.
