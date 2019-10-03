@@ -385,9 +385,13 @@ fix_vbucket_map(FailoverNodes, Bucket, Map, Options) ->
             mb_map:promote_replicas(Map, FailoverNodes)
     end.
 
+should_promote_max_replica([Master | _] = Chain, FailoverNodes) ->
+    lists:member(Master, FailoverNodes) andalso
+        length([N || N <- Chain, not lists:member(N, FailoverNodes)]) > 1.
+
 promote_max_replicas(FailoverNodes, Bucket, Map, PromoteReplicaFun) ->
-    MarkedMap = [{lists:member(Master, FailoverNodes),
-                  PromoteReplicaFun(Chain)} || [Master | _] = Chain <- Map],
+    MarkedMap = [{should_promote_max_replica(Chain, FailoverNodes),
+                  PromoteReplicaFun(Chain)} || Chain <- Map],
 
     EnumeratedMap = misc:enumerate(MarkedMap, 0),
 
@@ -540,11 +544,10 @@ fix_vbucket_map_test_() ->
                  janitor_agent, query_vbuckets,
                  fun ("test", Nodes, [high_seqno, high_prepared_seqno],
                       [stop_replications, {timeout, 1234}]) ->
-                         ?assertEqual([{c, [0, 1, 2, 3]}, {d, [1, 2, 3]}],
+                         ?assertEqual([{c, [1, 2, 3]}, {d, [1, 2, 3]}],
                                       lists:sort(Nodes)),
                          {dict:from_list(
-                           [{0, [F(c, 0, 0)]},
-                            {1, [F(c, 2, 8), F(d, 3, 1)]},
+                           [{1, [F(c, 2, 8), F(d, 3, 1)]},
                             {2, [F(c, 3, 1), F(d, 3, 2)]},
                             {3, [F(c, 1, 0), F(d, 0, 0)]}]), []}
                  end),
