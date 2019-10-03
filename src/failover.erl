@@ -26,6 +26,7 @@
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-export([fix_vbucket_map_test_wrapper/1, meck_query_vbuckets/2]).
 -endif.
 
 -export([start/2, run/2, is_possible/1, orchestrate/2,
@@ -505,7 +506,8 @@ get_failover_vbuckets(Config, Node) ->
 
 
 -ifdef(TEST).
-fix_vbucket_map_test_() ->
+
+fix_vbucket_map_test_wrapper(Funs) ->
     {foreach,
      fun() ->
              meck:new(cluster_compat_mode, [passthrough]),
@@ -520,54 +522,60 @@ fix_vbucket_map_test_() ->
              meck:unload(janitor_agent),
              meck:unload(cluster_compat_mode)
      end,
-     [{"not durability aware",
-       fun () ->
-               meck:delete(janitor_agent, query_vbuckets, 4, true),
+     Funs}.
 
-               Map = [[a, b, c],
-                      [b, d, c],
-                      [c, d, e]],
+meck_query_vbuckets(Input, Output) ->
+    meck:expect(
+      janitor_agent, query_vbuckets,
+      fun ("test", Nodes, [high_seqno, high_prepared_seqno],
+           [stop_replications, {timeout, 1234}]) ->
+              ?assertEqual(Input, lists:sort(Nodes)),
+              {dict:from_list(
+                 [{VB, [{N, replica,
+                         [{high_prepared_seqno, HPS},
+                          {high_seqno, HS}]} || {N, HPS, HS} <- Stats]} ||
+                     {VB, Stats} <- Output]), []}
+      end).
 
-               ?assertEqual(
-                  [[c, undefined, undefined],
-                   [d, c, undefined],
-                   [c, d, e]],
-                  fix_vbucket_map([a, b], "test", Map, [])),
-               ?assert(meck:validate(janitor_agent))
-       end},
-      {"durability aware",
-       fun () ->
-               F = fun (N, HPS, HS) ->
-                           {N, replica, [{high_prepared_seqno, HPS},
-                                         {high_seqno, HS}]}
-                   end,
-               meck:expect(
-                 janitor_agent, query_vbuckets,
-                 fun ("test", Nodes, [high_seqno, high_prepared_seqno],
-                      [stop_replications, {timeout, 1234}]) ->
-                         ?assertEqual([{c, [1, 2, 3]}, {d, [1, 2, 3]}],
-                                      lists:sort(Nodes)),
-                         {dict:from_list(
-                           [{1, [F(c, 2, 8), F(d, 3, 1)]},
-                            {2, [F(c, 3, 1), F(d, 3, 2)]},
-                            {3, [F(c, 1, 0), F(d, 0, 0)]}]), []}
-                 end),
+fix_vbucket_map_test_() ->
+    fix_vbucket_map_test_wrapper(
+      [{"not durability aware",
+        fun () ->
+                meck:delete(janitor_agent, query_vbuckets, 4, true),
 
-               Map = [[a, b, c],
-                      [b, c, d],
-                      [a, c, d],
-                      [a, c, d],
-                      [c, d, a],
-                      [c, d, e]],
+                Map = [[a, b, c],
+                       [b, d, c],
+                       [c, d, e]],
 
-               ?assertEqual(
-                  [[c, undefined, undefined],
-                   [d, c, undefined],
-                   [d, c, undefined],
-                   [c, d, undefined],
-                   [c, d, undefined],
-                   [c, d, e]],
-                  fix_vbucket_map([a, b], "test", Map, [durability_aware])),
-               ?assert(meck:validate(janitor_agent))
-       end}]}.
+                ?assertEqual(
+                   [[c, undefined, undefined],
+                    [d, c, undefined],
+                    [c, d, e]],
+                   fix_vbucket_map([a, b], "test", Map, [])),
+                ?assert(meck:validate(janitor_agent))
+        end},
+       {"durability aware",
+        fun () ->
+                meck_query_vbuckets([{c, [1, 2, 3]}, {d, [1, 2, 3]}],
+                                    [{1, [{c, 2, 8}, {d, 3, 1}]},
+                                     {2, [{c, 3, 1}, {d, 3, 2}]},
+                                     {3, [{c, 1, 0}, {d, 0, 0}]}]),
+
+                Map = [[a, b, c],
+                       [b, c, d],
+                       [a, c, d],
+                       [a, c, d],
+                       [c, d, a],
+                       [c, d, e]],
+
+                ?assertEqual(
+                   [[c, undefined, undefined],
+                    [d, c, undefined],
+                    [d, c, undefined],
+                    [c, d, undefined],
+                    [c, d, undefined],
+                    [c, d, e]],
+                   fix_vbucket_map([a, b], "test", Map, [durability_aware])),
+                ?assert(meck:validate(janitor_agent))
+        end}]).
 -endif.
