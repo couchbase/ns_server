@@ -161,10 +161,6 @@ consider_switching_compat_mode() ->
     CurrentVersion = ns_config:search(Config, cluster_compat_version, undefined),
     case CurrentVersion =:= supported_compat_version() of
         true ->
-            case is_developer_preview() of
-                false -> ns_config:set(developer_preview_enabled, true);
-                true -> ok
-            end,
             ok;
         false ->
             do_consider_switching_compat_mode(Config, CurrentVersion)
