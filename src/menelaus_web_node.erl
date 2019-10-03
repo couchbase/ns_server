@@ -362,11 +362,20 @@ handle_bucket_node_list(BucketName, Req) ->
          || {_, Hostname} <- NHs],
     reply_json(Req, {struct, [{servers, Servers}]}).
 
-find_node_hostname(HostnameList, Req) ->
-    Hostname = list_to_binary(HostnameList),
+normalize_hostport(HostPortStr, Req) ->
+    LocalAddr = local_addr(Req),
+    {HostnameStr, PortStr} = misc:split_host_port(HostPortStr, "8091"),
+    HostnameStr2 = case misc:is_localhost(HostnameStr) of
+                       true  -> LocalAddr;
+                       false -> HostnameStr
+                   end,
+    misc:join_host_port(HostnameStr2, PortStr).
+
+find_node_hostname(HostPortStr, Req) ->
+    HostPortBin = list_to_binary(normalize_hostport(HostPortStr, Req)),
     NHs = nodes_to_hostnames(ns_config:get(), Req),
-    case [N || {N, CandidateHostname} <- NHs,
-               CandidateHostname =:= Hostname] of
+    case [N || {N, CandidateHostPort} <- NHs,
+               CandidateHostPort =:= HostPortBin] of
         [] ->
             false;
         [Node] ->
