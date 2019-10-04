@@ -111,9 +111,9 @@
        theme="selectize"
        on-select="statisticsNewCtl.onSelectNode($item)">
       <ui-select-match
-         class="ui-select-match">{{$select.selected}}</ui-select-match>
+         class="ui-select-match nocaps">{{$select.selected}}</ui-select-match>
       <ui-select-choices
-         class="ui-select-choices"
+         class="ui-select-choices nocaps"
          repeat="name in statisticsNewCtl.nodes.nodesNames | filter: $select.search">
         <span class="select-item ellipsis" ng-bind-html="name | highlight: $select.search"></span>
       </ui-select-choices>
