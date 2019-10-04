@@ -525,13 +525,13 @@
             specificStat: false
           }, {
             stats: {"@kv-.vb_active_ops_create": true,
-                    "@kv-.vb_avg_replica_ops_create": true,
-                    "@kv-.vb_avg_pending_ops_create": true,
+                    "@kv-.vb_replica_ops_create": true,
+                    "@kv-.vb_pending_ops_create": true,
                     "@kv-.ep_ops_create": true},
             size: "medium",
             specificStat: false
           }, {
-            stats: {"@kv-.vn_active_eject": true,
+            stats: {"@kv-.vb_active_eject": true,
                     "@kv-.vb_replica_eject": true,
                     "@kv-.vb_pending_eject": true,
                     "@kv-.ep_num_value_ejects": true},
@@ -546,8 +546,8 @@
             specificStat: false
           }, {
             stats: {"@kv-.vb_active_meta_data_memory": true,
-                    "@kv-.vb_avg_replica_meta_data_memory": true,
-                    "@kv-.vb_avg_pending_meta_data_memory": true,
+                    "@kv-.vb_replica_meta_data_memory": true,
+                    "@kv-.vb_pending_meta_data_memory": true,
                     "@kv-.ep_meta_data_memory": true},
             size: "medium",
             specificStat: false
@@ -560,6 +560,7 @@
                     "@kv-.ep_dcp_cbas_count": true,
                     "@kv-.ep_dcp_replica_count": true,
                     "@kv-.ep_dcp_xdcr_count": true,
+                    "@kv-.ep_dcp_eventing_count": true,
                     "@kv-.ep_dcp_other_count": true},
             size: "medium",
             specificStat: false
@@ -568,6 +569,7 @@
                     "@kv-.ep_dcp_cbas_producer_count": true,
                     "@kv-.ep_dcp_replica_producer_count": true,
                     "@kv-.ep_dcp_xdcr_producer_count": true,
+                    "@kv-.ep_dcp_xdcr_eventing_count": true,
                     "@kv-.ep_dcp_other_producer_count": true},
             size: "medium",
             specificStat: false
@@ -576,6 +578,7 @@
                     "@kv-.ep_dcp_cbas_items_remaining": true,
                     "@kv-.ep_dcp_replica_items_remaining": true,
                     "@kv-.ep_dcp_xdcr_items_remaining": true,
+                    "@kv-.ep_dcp_eventing_items_remaining": true,
                     "@kv-.ep_dcp_other_items_remaining": true},
             size: "medium",
             specificStat: false
@@ -584,6 +587,7 @@
                     "@kv-.ep_dcp_cbas_items_sent": true,
                     "@kv-.ep_dcp_replica_items_sent": true,
                     "@kv-.ep_dcp_xdcr_items_sent": true,
+                    "@kv-.ep_dcp_eventing_items_sent": true,
                     "@kv-.ep_dcp_other_items_sent": true},
             size: "medium",
             specificStat: false
@@ -592,6 +596,7 @@
                     "@kv-.ep_dcp_cbas_total_bytes": true,
                     "@kv-.ep_dcp_replica_total_bytes": true,
                     "@kv-.ep_dcp_xdcr_total_bytes": true,
+                    "@kv-.ep_dcp_eventing_total_bytes": true,
                     "@kv-.ep_dcp_other_total_bytes": true},
             size: "medium",
             specificStat: false
@@ -600,6 +605,7 @@
                     "@kv-.ep_dcp_cbas_backoff": true,
                     "@kv-.ep_dcp_replica_backoff": true,
                     "@kv-.ep_dcp_xdcr_backoff": true,
+                    "@kv-.ep_dcp_eventing_backoff": true,
                     "@kv-.ep_dcp_other_backoff": true},
             size: "medium",
             specificStat: false
@@ -609,51 +615,27 @@
           name: "Disk Queues",
           isOpen: false,
           charts: [{
-            stats: {"@kv-.ep_dcp_views+indexes_count": true,
-                    "@kv-.ep_dcp_cbas_count": true,
-                    "@kv-.ep_dcp_replica_count": true,
-                    "@kv-.ep_dcp_xdcr_count": true,
-                    "@kv-.ep_dcp_other_count": true},
+            stats: {"@kv-.ep_diskqueue_fill": true,
+                    "@kv-.ep_diskqueue_drain": true,
+                    "@kv-.ep_diskqueue_items": true},
             size: "medium",
             specificStat: false
           }, {
-            stats: {"@kv-.ep_dcp_views+indexes_producer_count": true,
-                    "@kv-.ep_dcp_cbas_producer_count": true,
-                    "@kv-.ep_dcp_replica_producer_count": true,
-                    "@kv-.ep_dcp_xdcr_producer_count": true,
-                    "@kv-.ep_dcp_other_producer_count": true},
+            stats: {"@kv-.vb_active_queue_fill": true,
+                    "@kv-.vb_active_queue_drain": true,
+                    "@kv-.vb_active_queue_size": true},
             size: "medium",
             specificStat: false
           }, {
-            stats: {"@kv-.ep_dcp_views+indexes_items_remaining": true,
-                    "@kv-.ep_dcp_cbas_items_remaining": true,
-                    "@kv-.ep_dcp_replica_items_remaining": true,
-                    "@kv-.ep_dcp_xdcr_items_remaining": true,
-                    "@kv-.ep_dcp_other_items_remaining": true},
+            stats: {"@kv-.vb_replica_queue_fill": true,
+                    "@kv-.vb_replica_queue_drain": true,
+                    "@kv-.vb_replica_queue_size": true},
             size: "medium",
             specificStat: false
           }, {
-            stats: {"@kv-.ep_dcp_views+indexes_items_sent": true,
-                    "@kv-.ep_dcp_cbas_items_sent": true,
-                    "@kv-.ep_dcp_replica_items_sent": true,
-                    "@kv-.ep_dcp_xdcr_items_sent": true,
-                    "@kv-.ep_dcp_other_items_sent": true},
-            size: "medium",
-            specificStat: false
-          }, {
-            stats: {"@kv-.ep_dcp_views+indexes_total_bytes": true,
-                    "@kv-.ep_dcp_cbas_total_bytes": true,
-                    "@kv-.ep_dcp_replica_total_bytes": true,
-                    "@kv-.ep_dcp_xdcr_total_bytes": true,
-                    "@kv-.ep_dcp_other_total_bytes": true},
-            size: "medium",
-            specificStat: false
-          }, {
-            stats: {"@kv-.ep_dcp_views+indexes_backoff": true,
-                    "@kv-.ep_dcp_cbas_backoff": true,
-                    "@kv-.ep_dcp_replica_backoff": true,
-                    "@kv-.ep_dcp_xdcr_backoff": true,
-                    "@kv-.ep_dcp_other_backoff": true},
+            stats: {"@kv-.vb_pending_queue_fill": true,
+                    "@kv-.vb_pending_queue_drain": true,
+                    "@kv-.vb_pending_queue_size": true},
             size: "medium",
             specificStat: false
           }

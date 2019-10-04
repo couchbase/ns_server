@@ -555,7 +555,7 @@
           },
           "ep_meta_data_memory": {
             unit: "bytes",
-            title: "Metadata in RAM",
+            title: "Total Metadata in RAM",
             desc: "Bytes of item metadata consuming RAM in this bucket (measured from ep_meta_data_memory)"
           },
           "ep_num_non_resident": null,
@@ -584,7 +584,7 @@
           "ep_oom_errors": null,
           "ep_ops_create": {
             unit: "number/sec",
-            title: "Disk Create Rate",
+            title: "Total Disk Create Rate",
             desc: "Number of new items created on disk per second for this bucket. (measured from vb_active_ops_create + vb_replica_ops_create + vb_pending_ops_create)"
             // membase_vbucket_resources_stats_description
             // title: "new items per sec.",
