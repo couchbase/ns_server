@@ -11,6 +11,23 @@
     <a ng-click="groupsCtl.reloadState('app.admin.servers.list.groups')">Sync Groups</a>
   </div>
 </mn-element-cargo>
+<mn-element-cargo depot="actions">
+  <div class="header-controls resp-sml">
+    <span ng-if="adminCtl.$state.current.data.child">
+      <a
+        ng-if="adminCtl.$state.current.data.child"
+        ui-state="adminCtl.$state.current.data.child"
+        ui-state-params="('merge' | lodash:{}:adminCtl.$state.params:adminCtl.$state.current.data.childParams)">
+        <span class="icon fa-arrow-left"></span> BACK
+      </a>
+    </span>
+    <a
+       ng-disabled="groupsCtl.disableAddGroupBtn || poolDefault.rebalancing || !rbac.cluster.server_groups.write"
+       ng-click="groupsCtl.createGroup()">
+      ADD GROUP
+    </a>
+  </div>
+</mn-element-cargo>
 
 <div class="row flex-right margin-bottom-half">
   <a
@@ -23,10 +40,6 @@
        ng-disabled="groupsCtl.disableApplyChangesBtn || poolDefault.rebalancing || !rbac.cluster.server_groups.write"
        ng-click="groupsCtl.applyChanges()"
        >Apply Changes</button>
-    <button
-       ng-disabled="groupsCtl.disableAddGroupBtn || poolDefault.rebalancing || !rbac.cluster.server_groups.write"
-       ng-click="groupsCtl.createGroup()"
-       >Add Group</button>
   </span>
 </div>
 
