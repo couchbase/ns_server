@@ -74,7 +74,7 @@
           selectWrappers(key, true, rv);
         }
       });
-      Object.keys(selectedGroupsRoles).forEach(function (key) {
+      Object.keys(selectedGroupsRoles || {}).forEach(function (key) {
         if (Object.keys(selectedGroupsRoles[key]).length) {
           selectWrappers(key, true, rv);
         }

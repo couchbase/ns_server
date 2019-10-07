@@ -31,6 +31,7 @@
                type="radio"
                name="domain"
                value="local"
+               ng-change="userRolesAddDialogCtl.onDomainChanged()"
                ng-disabled="userRolesAddDialogCtl.isEditingMode"
                id="user-domain-local"
                ng-model="userRolesAddDialogCtl.user.domain">
@@ -39,6 +40,7 @@
                type="radio"
                name="domain"
                value="external"
+               ng-change="userRolesAddDialogCtl.onDomainChanged()"
                ng-disabled="userRolesAddDialogCtl.isEditingMode"
                id="user-domain-external"
                ng-model="userRolesAddDialogCtl.user.domain">
@@ -46,9 +48,32 @@
           </div>
         </div>
         <div class="formrow">
-          <label for="name_inp">Username</label>
+          <label for="name_inp">
+            Username
+            <span ng-show="userRolesAddDialogCtl.isLookupEnabled() &&
+                           userRolesAddDialogCtl.user.id">
+              <span ng-show="!userRolesAddDialogCtl.isUserAvailable"
+                    style="display: inline"
+                    class="error">not found</span>
+              <span ng-show="userRolesAddDialogCtl.isUserAvailable"
+                    style="display: inline"
+                    class="success">exists</span>
+            </span>
+          </label>
           <input
              type="text"
+             ng-if="!userRolesAddDialogCtl.isLookupEnabled();"
+             autocorrect="off"
+             spellcheck="false"
+             autocitalize="off"
+             mn-autocomplete-off="enforce"
+             ng-disabled="userRolesAddDialogCtl.isEditingMode"
+             id="name_inp"
+             ng-model="userRolesAddDialogCtl.user.id">
+          <input
+             type="text"
+             ng-change="userRolesAddDialogCtl.lookupMembership()"
+             ng-if="userRolesAddDialogCtl.isLookupEnabled();"
              autocorrect="off"
              spellcheck="false"
              autocapitalize="off"
@@ -56,12 +81,6 @@
              ng-disabled="userRolesAddDialogCtl.isEditingMode"
              id="name_inp"
              ng-model="userRolesAddDialogCtl.user.id">
-          <a ng-show="!userRolesAddDialogCtl.isEditingMode &&
-                      (userRolesAddDialogCtl.user.domain === 'external')"
-             ng-click="userRolesAddDialogCtl.lookupMembership()"
-             class="text-smaller">
-            lookup ldap roles
-          </a>
         </div>
         <div class="formrow">
           <label for="name_full_inp">Full Name <small>(optional)</small></label>
@@ -117,39 +136,10 @@
              ng-class="{selected : (userRolesAddDialogCtl.selectedPanel == 'groups')}">
             Groups
           </a>
-          <a ng-if="userRolesAddDialogCtl.externalGroups.length"
-             ng-click="userRolesAddDialogCtl.selectedPanel = 'external_groups'"
-             ng-class="{selected : (userRolesAddDialogCtl.selectedPanel == 'external_groups')}">
-            External Groups
-          </a>
         </span>
         <fieldset class="select-user-roles hide-track show-scrollbar"
                   mn-spinner="userRolesAddDialogCtl.reloadUserRoles"
                   min-height="410px">
-          <div
-             ng-if="userRolesAddDialogCtl.externalGroups.length"
-             ng-show="userRolesAddDialogCtl.selectedPanel == 'external_groups'">
-            <label
-               class="disclosure"
-               ng-init="isGroupOpened = true;"
-               ng-click="isGroupOpened = !isGroupOpened;"
-               ng-class="{'disclosed': isGroupOpened}">
-              External Groups
-            </label>
-            <div class="indent-1" ng-show="isGroupOpened">
-              <div
-                 ng-repeat="(group, flag) in userRolesAddDialogCtl.externalGroups"
-                 ng-class="[{'has-selection': true}]">
-                <input
-                   type="checkbox"
-                   disabled="true"
-                   checked="true">
-                <label>
-                  {{::group}}
-                </label>
-              </div>
-            </div>
-          </div>
           <div ng-show="userRolesAddDialogCtl.selectedPanel == 'groups'">
             <label
                class="disclosure"
@@ -161,7 +151,7 @@
             <div class="indent-1" ng-show="isGroupOpened">
               <div
                  ng-repeat="group in userRolesAddDialogCtl.groups"
-                 ng-class="[{'has-selection': userRolesAddDialogCtl.selectedGroups[group.id]}]">
+                 ng-class="[{'has-selection': userRolesAddDialogCtl.selectedGroups[group.id] || userRolesAddDialogCtl.externalGroups[group.id]}]">
                 <input
                    type="checkbox"
                    ng-change="userRolesAddDialogCtl.onGroupChanged(group)"

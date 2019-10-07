@@ -21,20 +21,44 @@
     vm.onGroupChanged = onGroupChanged;
     vm.selectedPanel = "roles";
     vm.lookupMembership =  _.debounce(lookupMembership, 500, {leading: true});
+    vm.onDomainChanged = onDomainChanged;
+    vm.isLookupEnabled = isLookupEnabled;
 
     activate();
+
+    function onDomainChanged() {
+      if (vm.user.domain === "external") {
+        lookupMembership();
+      } else {
+        clearRoles();
+      }
+    }
 
     function lookupMembership() {
       vm.reloadUserRoles = true;
       mnUserRolesService.lookupLDAPUser(vm.user)
         .then(function (user) {
-          vm.selectedRoles = {};
-          vm.selectedGroupsRoles = {};
-          vm.selectedGroups = {};
-          delete vm.rolesToEnable;
+          clearRoles();
           applyUser(user.data);
+          vm.isUserAvailable = true;
+          vm.reloadUserRoles = false;
+        }, function () {
+          clearRoles();
+          vm.isUserAvailable = false;
           vm.reloadUserRoles = false;
         });
+    }
+
+    function isLookupEnabled() {
+      return !vm.isEditingMode && (vm.user.domain === 'external');
+    }
+
+    function clearRoles() {
+      vm.selectedRoles = {};
+      vm.selectedGroupsRoles = {};
+      vm.selectedGroups = {};
+      vm.externalGroups = {};
+      delete vm.rolesToEnable;
     }
 
     function selectRoles(group, flag) {
@@ -60,6 +84,10 @@
         group.roles.forEach(selectRoles(group.id, true));
       } else {
         group.roles.forEach(selectRoles(group.id, false));
+      }
+
+      if (vm.externalGroups[group.id]) {
+        group.roles.forEach(selectRoles(group.id, true));
       }
 
       reviewSelectedWrappers();

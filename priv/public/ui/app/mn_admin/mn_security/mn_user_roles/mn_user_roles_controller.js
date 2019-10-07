@@ -53,7 +53,7 @@
     }
 
     function parseGroupNames(group) {
-      return group.join(", ");
+      return _.uniq(group.groups.concat(group.external_groups)).join(", ");
     }
 
     function sortByChanged(sortBy) {
