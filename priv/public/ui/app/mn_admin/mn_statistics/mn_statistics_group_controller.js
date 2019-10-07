@@ -10,7 +10,8 @@
     vm.group = {
       name: "",
       desc: "",
-      charts: []
+      charts: [],
+      isOpen: true
     };
 
     vm.submit = submit;
