@@ -120,16 +120,9 @@
     </ui-select>
   </div>
   <div class="row flex-right">
-    <div uib-dropdown>
-      <a uib-dropdown-toggle class="scenarios-delete">
-        <span class="icon fa-lg fa-trash"></span>
-      </a>
-      <div uib-dropdown-menu
-           class="dropdown-menu-select-like"
-           style="top: auto;right: 24px;">
-        <a ng-click="statisticsNewCtl.resetDashboardConfiguration();">Delete Custom Scenarios &<br>Reset Presets</a>
-      </div>
-    </div>
+    <a ng-click="statisticsNewCtl.resetDashboardConfiguration();" class="scenarios-delete">
+      <span class="icon fa-lg fa-trash"></span>
+    </a>
     <button
        ng-disabled="!statisticsNewCtl.scenarios.length"
        ng-click="statisticsNewCtl.openGroupDialog(statisticsNewCtl.scenario.selected)"
