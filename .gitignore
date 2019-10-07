@@ -60,3 +60,4 @@ tmp
 .idea/
 *.iml
 /venv
+*.swp
