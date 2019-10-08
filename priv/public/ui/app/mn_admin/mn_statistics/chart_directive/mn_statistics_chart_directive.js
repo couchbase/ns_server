@@ -168,7 +168,7 @@
                 return mnStatisticsNewService.tickMultiFormat(new Date(d));
               }
             },
-            noData: "No Data"
+            noData: "Stats are not found or not ready yet"
           }
         };
 
@@ -305,7 +305,7 @@
               height: getChartSize($scope.config.size),
               margin : {top: 0, right: 0, bottom: 0, left: 0},
               type: 'multiChart',
-              noData: "No stats for selected bucket"
+              noData: "Stats are not found or not ready yet"
             }
           };
           $scope.chartData = [];
