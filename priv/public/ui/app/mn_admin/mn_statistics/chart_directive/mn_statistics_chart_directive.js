@@ -69,7 +69,7 @@
       }
 
       function syncTooltips() {
-        $element.on("mousemove mouseup mousedown mouseout", _.debounce(function (e) {
+        $element.find("nvd3").on("mousemove mouseup mousedown mouseout", _.debounce(function (e) {
           $scope.syncScope.$broadcast("syncTooltips", {
             element: $element,
             event: e,
@@ -80,19 +80,24 @@
         $scope.$on("syncTooltips", function (e, source) {
           if (source.element[0] !== $element[0] && $element.find("svg")[0] &&
               source.api.getScope().chart && !source.api.getScope().options.chart.notFound) {
-            var sourcePos = source.element[0].getBoundingClientRect();
-            var elementPos = $element[0].getBoundingClientRect();
+            var sourcePos = source.element.find("svg")[0].getBoundingClientRect();
+            var elementPos = $element.find("svg")[0].getBoundingClientRect();
             var sourceMargin = source.api.getScope().chart.margin();
             var elementMargin = $scope.chartApi.getScope().chart.margin();
             var sourceGraphWidth = sourcePos.width - sourceMargin.right - sourceMargin.left;
+            var sourceGraphHeight = sourcePos.height - sourceMargin.bottom - sourceMargin.top;
             var elementGraphWidth = elementPos.width - elementMargin.right - elementMargin.left;
+            var elementGraphHeight = elementPos.height - elementMargin.bottom - elementMargin.top;
             var sourceGraphRelativeX = source.event.clientX - sourcePos.x - sourceMargin.left;
+            var sourceGraphRelativeY = source.event.clientY - sourcePos.y - sourceMargin.top;
 
-            var interX = sourceGraphWidth / sourceGraphRelativeX;
-            var clientX  = (elementPos.x + elementMargin.right) + (elementGraphWidth / interX);
+            var interpolateX = sourceGraphWidth / sourceGraphRelativeX;
+            var clientX = (elementPos.x + elementMargin.left
+                          ) + (elementGraphWidth / interpolateX);
 
-            var interY =  sourcePos.height / (source.event.clientY - sourcePos.y);
-            var clientY  = elementPos.y + (elementPos.height / interY);
+            var interpolateY = sourceGraphHeight / sourceGraphRelativeY;
+            var clientY = (elementPos.y + elementMargin.top
+                          ) + (elementGraphHeight / interpolateY);
 
             source.api.getScope().chart.interactiveLayer.tooltip.enabled(true);
             $scope.chartApi.getScope().chart.interactiveLayer.tooltip.enabled(false);
