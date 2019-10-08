@@ -47,8 +47,12 @@
 -record(state, {kv = [], touched = [], errors = []}).
 
 handle(Fun, Req, json, Validators) ->
-    handle(Fun, Req, with_json_object(
-                       mochiweb_request:recv_body(Req), Validators));
+    handle_one(Fun, Req, with_json_object(
+                           mochiweb_request:recv_body(Req), Validators));
+
+handle(Fun, Req, json_array, Validators) ->
+    handle_multiple(Fun, Req, with_json_array(
+                                mochiweb_request:recv_body(Req), Validators));
 
 handle(Fun, Req, form, Validators) ->
     handle(Fun, Req, mochiweb_request:parse_post(Req), Validators);
@@ -57,37 +61,73 @@ handle(Fun, Req, qs, Validators) ->
     handle(Fun, Req, mochiweb_request:parse_qs(Req), Validators);
 
 handle(Fun, Req, Args, Validators) ->
-    handle(Fun, Req, functools:chain(#state{kv = Args}, Validators)).
+    handle_one(Fun, Req, functools:chain(#state{kv = Args}, Validators)).
 
-handle(Fun, Req, #state{kv = Props, errors = Errors, touched = Touched}) ->
-    ValidateOnly = proplists:get_value("just_validate",
-                                       mochiweb_request:parse_qs(Req)) =:= "1",
-    case {ValidateOnly, Errors} of
-        {true, _} ->
-            menelaus_util:reply_json(
-              Req, {struct, [{errors, {struct, Errors}}]}, 200);
-        {false, []} ->
-            Props1 =
-                lists:map(fun ({K, V}) ->
-                                  case lists:member(K, Touched) of
-                                      true ->
-                                          {list_to_atom(K), V};
-                                      false ->
-                                          {K, V}
-                                  end
-                          end, Props),
-            Fun(Props1);
-        {false, _} ->
-            menelaus_util:reply_json(
-              Req, {struct, [{errors, {struct, Errors}}]}, 400)
+validate_only(Req) ->
+    proplists:get_value("just_validate",
+                        mochiweb_request:parse_qs(Req)) =:= "1".
+
+handle_multiple(Fun, Req, States) when is_list(States) ->
+    Errors = [E || #state{errors = E} <- States],
+    case validate_only(Req) of
+        true ->
+            report_errors_for_multiple(Req, Errors, 200);
+        false ->
+            case lists:flatten(Errors) of
+                [] ->
+                    Fun([prepare_params(S) || S <- States]);
+                _ ->
+                    report_errors_for_multiple(Req, Errors, 400)
+            end
     end.
+
+handle_one(Fun, Req, #state{errors = Errors} = State) ->
+    case {validate_only(Req), Errors} of
+        {true, _} ->
+            report_errors_for_one(Req, Errors, 200);
+        {false, []} ->
+            Fun(prepare_params(State));
+        {false, _} ->
+            report_errors_for_one(Req, Errors, 400)
+    end.
+
+prepare_params(#state{kv = Props, touched = Touched}) ->
+    lists:map(fun ({K, V}) ->
+                      case lists:member(K, Touched) of
+                          true ->
+                              {list_to_atom(K), V};
+                          false ->
+                              {K, V}
+                      end
+              end, Props).
+
+report_errors_for_multiple(Req, Errors, Code) ->
+    send_error_json(Req, [{struct, E} || E <- Errors], Code).
+
+report_errors_for_one(Req, Errors, Code) ->
+    send_error_json(Req, {struct, Errors}, Code).
+
+send_error_json(Req, Errors, Code) ->
+    menelaus_util:reply_json(Req, {struct, [{errors, Errors}]}, Code).
+
+with_decoded_object({KVList}, Validators) ->
+    Params = [{binary_to_list(Name), Value} || {Name, Value} <- KVList],
+    functools:chain(#state{kv = Params}, Validators);
+with_decoded_object(_, _) ->
+    #state{errors = [{<<"_">>, <<"Unexpected Json">>}]}.
 
 with_json_object(Body, Validators) ->
     try ejson:decode(Body) of
-        {KVList} ->
-            Params = [{binary_to_list(Name), Value} ||
-                         {Name, Value} <- KVList],
-            functools:chain(#state{kv = Params}, Validators);
+        Object ->
+            with_decoded_object(Object, Validators)
+    catch _:_ ->
+            #state{errors = [{<<"_">>, <<"Invalid Json">>}]}
+    end.
+
+with_json_array(Body, Validators) ->
+    try ejson:decode(Body) of
+        Objects when is_list(Objects) ->
+            [with_decoded_object(Object, Validators) || Object <- Objects];
         _ ->
             #state{errors = [{<<"_">>, <<"Unexpected Json">>}]}
     catch _:_ ->
