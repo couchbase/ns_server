@@ -25,9 +25,11 @@
     }
 
     function postPoolsDefault(memoryQuotaConfig, justValidate, clusterName) {
-      var data = {
-        clusterName: clusterName
-      };
+      var data = {};
+
+      if (clusterName !== undefined) {
+        data.clusterName = clusterName;
+      }
 
       if (memoryQuotaConfig) {
         maybeSetQuota(data, memoryQuotaConfig, "kv", "memoryQuota");
