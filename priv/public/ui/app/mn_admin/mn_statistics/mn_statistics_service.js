@@ -225,7 +225,7 @@
               })
           })
           .setInterval(function (response) {
-            return response.status === 404 ? 60000 :
+            return response.status === 404 ? 10000 :
               config.interval ? config.interval : response.data.interval;
           })
           .subscribe(function (value) {
