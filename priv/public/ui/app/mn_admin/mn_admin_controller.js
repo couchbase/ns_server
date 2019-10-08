@@ -68,8 +68,10 @@
       vm.isProgressBarClosed = !vm.isProgressBarClosed;
     }
 
-    function filterTasks(runningTasks) {
-      return _.filter(runningTasks, formatProgressMessageFilter);
+    function filterTasks(runningTasks, includeRebalance) {
+      return (runningTasks || []).filter(function (task) {
+        return formatProgressMessageFilter(task, includeRebalance);
+      });
     }
 
     function resetAutoFailOverCount() {

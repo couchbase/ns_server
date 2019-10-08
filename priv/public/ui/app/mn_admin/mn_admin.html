@@ -15,9 +15,9 @@
     <a ng-click="adminCtl.toggleProgressBar()" class="activities" ng-if="rbac.cluster.tasks.read">
       activity
       <span
-         ng-if="adminCtl.filterTasks(adminCtl.tasks.running).length > 0"
+         ng-if="adminCtl.filterTasks(adminCtl.tasks.running, true).length > 0"
          class="label badge">
-        {{adminCtl.filterTasks(adminCtl.tasks.running).length}}
+        {{adminCtl.filterTasks(adminCtl.tasks.running, true).length}}
       </span>
     </a>
 <!-- activity menu ******************************************************** -->

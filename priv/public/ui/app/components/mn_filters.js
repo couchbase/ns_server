@@ -265,7 +265,7 @@
     return serversCount + " " + (serversCount === 1 ? 'node' : 'nodes');
   }
   function formatProgressMessage() {
-    return function (task) {
+    return function (task, includeRebalance) {
       switch (task.type) {
       case "indexer":
         return "building view index " + task.bucket + "/" + task.designDocument;
@@ -281,6 +281,8 @@
         return "orphan bucket: " + task.bucket;
       case "clusterLogsCollection":
         return "collecting logs from " + addNodeCount(task.perNode);
+      case "rebalance":
+        return !!includeRebalance;
       }
     };
   }
