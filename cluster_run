@@ -52,6 +52,7 @@ def read_configuration():
 config = read_configuration()
 PREFIX = config['prefix']
 
+
 def setup_extra_ns_server_app_file(force_community, start_index):
     # The extra/ebin directory contains modified versions of files also
     # contained in other directories.  The ones in extra/ebin are listed
@@ -196,7 +197,7 @@ def is_ipv6_setup():
 
 def prepare_start_cluster(force_community, start_index):
     ns_server_app_path = setup_extra_ns_server_app_file(force_community,
-            start_index)
+                                                        start_index)
 
     ebin_path = setup_path(ns_server_app_path)
     return ebin_path

@@ -743,6 +743,7 @@ def get_diag_password(guts):
     log(output)
     return ""
 
+
 def make_query_task(statement, user, password, port):
     url = "http://%s:%s/query/service?statement=%s" % (
         local_url_addr, port, urllib.parse.quote(statement))
@@ -1507,6 +1508,7 @@ def dump_utilities(*args, **kwargs):
 
     sys.exit(0)
 
+
 def stdin_watcher():
     fd = sys.stdin.fileno()
 
@@ -1516,14 +1518,16 @@ def stdin_watcher():
         if not buf:
             break
 
+
 def setup_stdin_watcher():
     def _in_thread():
         try:
             stdin_watcher()
         finally:
             AltExit.exit(2)
-    th = threading.Thread(target = _in_thread, daemon = True)
+    th = threading.Thread(target=_in_thread, daemon=True)
     th.start()
+
 
 class CurlKiller:
     def __init__(self, p):

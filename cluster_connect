@@ -25,6 +25,7 @@ from functools import reduce
 valid_bucket_types = ["ephemeral", "membase", "memcached"]
 valid_service_types = {"kv", "n1ql", "index", "fts", "cbas", "eventing"}
 
+
 def usage():
     print "usage: \n\
             -n <number of nodes>\n\
@@ -106,7 +107,7 @@ def main():
         services = deploy
         deploy = dict(("n%d" % i, services[:]) for i in xrange(nodes))
 
-    if not "kv" in deploy.get("n0", []):
+    if "kv" not in deploy.get("n0", []):
         deploy["n0"] = deploy.get("n0", []) + ["kv"]
 
     if nodes == 0 or buckettype not in valid_bucket_types or \
