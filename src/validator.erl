@@ -47,7 +47,8 @@
 -record(state, {kv = [], touched = [], errors = []}).
 
 handle(Fun, Req, json, Validators) ->
-    handle(Fun, Req, with_json_object(mochiweb_request:recv_body(Req), Validators));
+    handle(Fun, Req, with_json_object(
+                       mochiweb_request:recv_body(Req), Validators));
 
 handle(Fun, Req, form, Validators) ->
     handle(Fun, Req, mochiweb_request:parse_post(Req), Validators);
@@ -59,7 +60,8 @@ handle(Fun, Req, Args, Validators) ->
     handle(Fun, Req, functools:chain(#state{kv = Args}, Validators)).
 
 handle(Fun, Req, #state{kv = Props, errors = Errors, touched = Touched}) ->
-    ValidateOnly = proplists:get_value("just_validate", mochiweb_request:parse_qs(Req)) =:= "1",
+    ValidateOnly = proplists:get_value("just_validate",
+                                       mochiweb_request:parse_qs(Req)) =:= "1",
     case {ValidateOnly, Errors} of
         {true, _} ->
             menelaus_util:reply_json(
