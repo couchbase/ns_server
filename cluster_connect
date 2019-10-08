@@ -37,7 +37,6 @@ def usage():
             -r <num replicas> (max 3) default: 1\n\
                (Only for ephemeral or membase buckets!)\n\
             -i (don't index replicas) default: replica index enabled\n\
-            -S <start index> default: 0\n\
             -p <networking protocol to use> (ipv4, ipv6) default: ipv4"
 
 
@@ -52,7 +51,7 @@ class PasswordManager(urllib2.HTTPPasswordMgr):
 def main():
     try:
         opts, args = getopt.getopt(sys.argv[1:],
-                                   "n:t:s:r:iS:T:I:p:",
+                                   "n:t:s:r:iT:I:p:",
                                    ["dont-rebalance", "afamily=",
                                     "enable-encryption"])
     except getopt.GetoptError as err:
@@ -65,7 +64,6 @@ def main():
     indexmemsize = 256
     replicas = 1
     replica_index = True
-    start_index = 0
     deploy = ['kv']
     do_rebalance = True
     protocol = "ipv6" if (os.getenv("IPV6", "false") == "true") else "ipv4"
@@ -84,8 +82,6 @@ def main():
             replicas = a
         elif o == "-i":
             replica_index = False
-        elif o == "-S":
-            start_index = int(a)
         elif o == "-T":
             plan = a.replace(' ', '').split(',')
 
@@ -127,11 +123,11 @@ def main():
     o = urllib2.build_opener(handler)
 
     print "Connecting {0} nodes, bucket type {1}, mem size {2} " \
-        "with {3} replica copies, start index {4}, password asdasd, "\
-        "deployment plan {5}\n".format(
-            nodes, buckettype, memsize, replicas, start_index, str(deploy))
+        "with {3} replica copies, password asdasd, "\
+        "deployment plan {4}\n".format(
+            nodes, buckettype, memsize, replicas, str(deploy))
 
-    base_port = 9000 + start_index
+    base_port = 9000
 
     addr = "127.0.0.1" if protocol == "ipv4" else "[::1]"
     services = deploy["n0"]
