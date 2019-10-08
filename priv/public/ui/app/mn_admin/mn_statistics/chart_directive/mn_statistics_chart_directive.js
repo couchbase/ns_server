@@ -246,8 +246,8 @@
       }
 
       function getScaledMinMax(chartData, unit) {
-        var min = d3.min(chartData, function (line) {return line.min/1.005;});
-        var max = d3.max(chartData, function (line) {return line.max;});
+        var min = d3.min(chartData, function (line) {if (line.unit == unit) {return line.min/1.005;}});
+        var max = d3.max(chartData, function (line) {if (line.unit == unit) {return line.max;}});
         if (unit == "bytes") {
           return [min <= 0 ? 0 : roundDownBytes(min), max == 0 ? 1 : roundUpBytes(max)];
         } else {
