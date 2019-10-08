@@ -46,7 +46,7 @@
           mnServersListItemDetailsService.getBaseConfig(
             'Data Service',
             ram.usedByData,
-            ram.quotaUsedPerNode)
+            ram.quotaTotalPerNode)
         ];
 
         vm.diskUsages = [
