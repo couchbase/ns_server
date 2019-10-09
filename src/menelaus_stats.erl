@@ -3018,7 +3018,8 @@ ui_stats_post_validators(Req) ->
        end, startTS, endTS, _),
      validator:integer(step, 1, 60 * 60 * 24 * 366, _),
      validator:string(host, _),
-     validate_host(host, _, Req)].
+     validate_host(host, _, Req),
+     validator:unsupported(_)].
 
 validate_negative_ts(Name, Now, State) ->
     validator:validate(
