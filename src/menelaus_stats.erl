@@ -395,7 +395,7 @@ get_samples_for_stat(Kind, StatName, ForNodes, ClientTStamp, Window) ->
                     samples = [lists:reverse(MainSamples) | RestSamples],
                     extractor = StatExtractor}.
 
-nodes_to_try(Kind, Atom) when Atom =:= all; Atom =:= aggregate ->
+nodes_to_try(Kind, all) ->
     section_nodes(Kind);
 nodes_to_try(_Kind, Nodes) ->
     Nodes.
@@ -2832,7 +2832,7 @@ do_get_indexes(Service, BucketId0, Nodes) ->
             not(ordsets:is_disjoint(WantedHosts,
                                     lists:usort(proplists:get_value(hosts, I))))].
 
--record(params, {bucket, stat, start_ts, end_ts, step, nodes}).
+-record(params, {bucket, stat, start_ts, end_ts, step, nodes, aggregate}).
 
 filter_samples(Samples, StartTS, EndTS) ->
     S1 = lists:dropwhile(fun (#stat_entry{timestamp = T}) -> T < StartTS end,
@@ -2900,7 +2900,7 @@ retrive_samples_from_archive(_Archive, _Params,
     Acc;
 retrive_samples_from_archive(Archive, Params = #params{start_ts = StartTS,
                                                        end_ts = EndTS,
-                                                       nodes = Host},
+                                                       aggregate = Aggregate},
                              {AccSamples, AccNodes, Kind, Continue}) ->
     case do_retrive_samples_from_archive(Archive, Params, Kind) of
         #gathered_stats{samples = [[]]} ->
@@ -2921,11 +2921,11 @@ retrive_samples_from_archive(Archive, Params = #params{start_ts = StartTS,
                 end,
 
             MergedSamples =
-                case Host of
-                    aggregate ->
+                case Aggregate of
+                    true ->
                         aggregate_and_merge(Samples, AccSamples, StartTS,
                                             EndTS, Extractor);
-                    _ ->
+                    false ->
                         merge_samples(Samples, AccSamples, StartTS, EndTS,
                                       Extractor)
                 end,
@@ -2975,12 +2975,13 @@ handle_ui_stats_post_section(LocalAddr, Values) ->
            start_ts = proplists:get_value(startTS, Values, 0),
            end_ts = proplists:get_value(endTS, Values, ?MAX_TS),
            step = proplists:get_value(step, Values, 1),
-           nodes = proplists:get_value(host, Values, all)},
+           nodes = proplists:get_value(host, Values, all),
+           aggregate = proplists:get_value(aggregate, Values, false)},
     {Samples, Nodes, AggregatedNodes} =
         fix_response(retrive_samples_from_all_archives(Params), Params),
     build_section_json(LocalAddr, Params, Samples, Nodes, AggregatedNodes).
 
-fix_response({undefined, undefined}, #params{nodes = aggregate}) ->
+fix_response({undefined, undefined}, #params{aggregate = true}) ->
     {[[]], [aggregate], []};
 fix_response({undefined, undefined}, #params{nodes = all}) ->
     {[[]], [node()], undefined};
@@ -2988,7 +2989,7 @@ fix_response({undefined, undefined}, #params{nodes = [Node]}) ->
     {[[]], [Node], undefined};
 fix_response({[[]], _}, Params) ->
     fix_response({undefined, undefined}, Params);
-fix_response({Stats, Nodes}, #params{nodes = aggregate}) ->
+fix_response({Stats, Nodes}, #params{aggregate = true}) ->
     {Stats, [aggregate], Nodes};
 fix_response({Stats, Nodes}, _) ->
     {Stats, Nodes, undefined}.
@@ -2999,6 +3000,7 @@ ui_stats_post_validators(Req) ->
      validate_bucket(bucket, _),
      validator:required(statName, _),
      validator:string(statName, _),
+     validator:boolean(aggregate, _),
      validator:integer(startTS, ?MIN_TS, ?MAX_TS, _),
      validator:integer(endTS, ?MIN_TS, ?MAX_TS, _),
      validate_negative_ts(startTS, Now, _),
@@ -3043,9 +3045,7 @@ validate_bucket(Name, State) ->
 
 validate_host(Name, State, Req) ->
     validator:validate(
-      fun ("aggregate") ->
-              {value, aggregate};
-          (HostName) ->
+      fun (HostName) ->
               case menelaus_web_node:find_node_hostname(HostName, Req) of
                   false ->
                       {error, "Unknown hostname"};
