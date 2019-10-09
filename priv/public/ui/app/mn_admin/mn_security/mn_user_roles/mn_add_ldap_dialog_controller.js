@@ -124,6 +124,9 @@
     }
 
     function unpackUserDnMapping(type, mapping) {
+      if (mapping == "None") {
+          return {template: ""}
+      }
       switch (type) {
       case "template":
         return {template: mapping.template};
@@ -134,6 +137,9 @@
     }
 
     function unpackUserDnMappingType(userDnMapping) {
+      if (userDnMapping == "None") {
+        return "template";
+      }
       if (userDnMapping.query) {
         return "query";
       }

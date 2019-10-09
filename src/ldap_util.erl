@@ -131,7 +131,7 @@ default_settings() ->
      {hosts, []},
      {port, 389},
      {encryption, 'None'},
-     {user_dn_mapping, []},
+     {user_dn_mapping, {'None', []}},
      {bind_dn, ""},
      {bind_pass, {password, ""}},
      {groups_query, undefined},
