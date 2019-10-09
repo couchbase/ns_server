@@ -81,19 +81,14 @@ handle_settings_post(Req) ->
               menelaus_util:reply_json(Req, {get_settings()})
       end, Req, form, settings_post_validators()).
 
-validate_array(Array) when is_list(Array) ->
-    case lists:all(?cut(is_binary(_1) andalso _1 =/= <<>>), Array) of
-        false -> {error, "Invalid content: Entries must be non-empty strings"};
-        true -> {value, Array}
-    end;
-validate_array(_) ->
-    {error, "Invalid type: Must be a list of non-empty strings"}.
-
 settings_curl_whitelist_validators() ->
+    ConvertArray = [list_to_binary(L) || L <- _],
     [validator:required(all_access, _),
      validator:boolean(all_access, _),
-     validator:validate(fun validate_array/1, allowed_urls, _),
-     validator:validate(fun validate_array/1, disallowed_urls, _),
+     validator:string_array(allowed_urls, _),
+     validator:convert(allowed_urls, ConvertArray, _),
+     validator:string_array(disallowed_urls, _),
+     validator:convert(disallowed_urls, ConvertArray, _),
      validator:unsupported(_)].
 
 get_curl_whitelist_settings() ->

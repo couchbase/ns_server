@@ -42,6 +42,7 @@
          unsupported/1,
          required/2,
          prohibited/2,
+         string_array/2,
          return_value/3,
          return_error/3]).
 
@@ -383,3 +384,17 @@ prohibited(Name, #state{kv = Props} = State) ->
         true ->
             return_error(Name, "The value must not be supplied", State)
     end.
+
+string_array(Name, State) ->
+    validate(
+      fun (Array) when is_list(Array) ->
+              case lists:all(?cut(is_binary(_1) andalso _1 =/= <<>>), Array) of
+                  false ->
+                      {error,
+                       "Invalid content: Entries must be non-empty strings"};
+                  true ->
+                      {value, [binary_to_list(B) || B <- Array]}
+              end;
+          (_) ->
+              {error, "Invalid type: Must be a list of non-empty strings"}
+      end, Name, State).
