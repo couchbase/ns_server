@@ -38,7 +38,7 @@
          build_bucket_stats_ops_response/4,
          serve_stats_directory/3,
          serve_ui_stats/1,
-         handle_ui_stats_v2/1]).
+         handle_ui_stats_post/1]).
 
 
 %% External API
@@ -2958,22 +2958,27 @@ do_retrive_samples_from_archive({Period, Seconds, Count},
 -define(MAX_TS, 9999999999999).
 -define(MIN_TS, -?MAX_TS).
 
-handle_ui_stats_v2(Req) ->
+handle_ui_stats_post(Req) ->
     validator:handle(
-      fun (Values) ->
-              Params =
-                  #params{
-                     bucket = proplists:get_value(bucket, Values),
-                     stat = proplists:get_value(statName, Values),
-                     start_ts = proplists:get_value(startTS, Values, 0),
-                     end_ts = proplists:get_value(endTS, Values, ?MAX_TS),
-                     step = proplists:get_value(step, Values, 1),
-                     nodes = proplists:get_value(host, Values, all)},
-              {Samples, Nodes, AggregatedNodes} =
-                  fix_response(retrive_samples_from_all_archives(Params),
-                               Params),
-              output_ui_stats_v2(Req, Params, Samples, Nodes, AggregatedNodes)
-      end, Req, qs, ui_stats_v2_validators(Req)).
+      fun (List) ->
+              LocalAddr = menelaus_util:local_addr(Req),
+              menelaus_util:reply_json(
+                Req, [handle_ui_stats_post_section(LocalAddr, V) ||
+                         V <- List])
+      end, Req, json_array, ui_stats_post_validators(Req)).
+
+handle_ui_stats_post_section(LocalAddr, Values) ->
+    Params =
+        #params{
+           bucket = proplists:get_value(bucket, Values),
+           stat = proplists:get_value(statName, Values),
+           start_ts = proplists:get_value(startTS, Values, 0),
+           end_ts = proplists:get_value(endTS, Values, ?MAX_TS),
+           step = proplists:get_value(step, Values, 1),
+           nodes = proplists:get_value(host, Values, all)},
+    {Samples, Nodes, AggregatedNodes} =
+        fix_response(retrive_samples_from_all_archives(Params), Params),
+    build_section_json(LocalAddr, Params, Samples, Nodes, AggregatedNodes).
 
 fix_response({undefined, undefined}, #params{nodes = aggregate}) ->
     {[[]], [aggregate], []};
@@ -2988,10 +2993,12 @@ fix_response({Stats, Nodes}, #params{nodes = aggregate}) ->
 fix_response({Stats, Nodes}, _) ->
     {Stats, Nodes, undefined}.
 
-ui_stats_v2_validators(Req) ->
+ui_stats_post_validators(Req) ->
     Now = os:system_time(millisecond),
-    [validate_bucket(bucket, _),
+    [validator:string(bucket, _),
+     validate_bucket(bucket, _),
      validator:required(statName, _),
+     validator:string(statName, _),
      validator:integer(startTS, ?MIN_TS, ?MAX_TS, _),
      validator:integer(endTS, ?MIN_TS, ?MAX_TS, _),
      validate_negative_ts(startTS, Now, _),
@@ -3010,6 +3017,7 @@ ui_stats_v2_validators(Req) ->
                ok
        end, startTS, endTS, _),
      validator:integer(step, 1, 60 * 60 * 24 * 366, _),
+     validator:string(host, _),
      validate_host(host, _, Req)].
 
 validate_negative_ts(Name, Now, State) ->
@@ -3045,9 +3053,9 @@ validate_host(Name, State, Req) ->
               end
       end, Name, State).
 
-output_ui_stats_v2(Req, #params{bucket = Bucket, stat = Stat, step = Step},
-                   Stats, Nodes, AggregatedNodes) ->
-    LocalAddr = menelaus_util:local_addr(Req),
+build_section_json(LocalAddr,
+                   #params{bucket = Bucket, stat = Stat, step = Step}, Stats,
+                   Nodes, AggregatedNodes) ->
     StatsJson =
         lists:map(
           fun({S, N}) ->
@@ -3061,17 +3069,16 @@ output_ui_stats_v2(Req, #params{bucket = Bucket, stat = Stat, step = Step},
                   {Timestamps, Samples} = lists:unzip(S),
                   {Host, {[{samples, Samples}, {timestamps, Timestamps}]}}
           end, lists:zip(Stats, Nodes)),
-    menelaus_util:reply_json(
-      Req, {[{statName, list_to_binary(Stat)},
-             {step, Step},
-             {stats, {StatsJson}}] ++
-                [{bucket, list_to_binary(Bucket)} || Bucket =/= undefined] ++
-                [{aggregatedNodes,
-                  [list_to_binary(
-                     menelaus_web_node:build_node_hostname(ns_config:latest(),
-                                                           N, LocalAddr)) ||
-                      N <- AggregatedNodes]} || AggregatedNodes =/= undefined]
-           }).
+    {[{statName, list_to_binary(Stat)},
+      {step, Step},
+      {stats, {StatsJson}}] ++
+         [{bucket, list_to_binary(Bucket)} || Bucket =/= undefined] ++
+         [{aggregatedNodes,
+           [list_to_binary(
+              menelaus_web_node:build_node_hostname(ns_config:latest(),
+                                                    N, LocalAddr)) ||
+               N <- AggregatedNodes]} || AggregatedNodes =/= undefined]
+    }.
 
 -ifdef(TEST).
 join_samples_test() ->
