@@ -2975,7 +2975,7 @@ handle_ui_stats_post_section(LocalAddr, Values) ->
            start_ts = proplists:get_value(startTS, Values, 0),
            end_ts = proplists:get_value(endTS, Values, ?MAX_TS),
            step = proplists:get_value(step, Values, 1),
-           nodes = proplists:get_value(host, Values, all),
+           nodes = proplists:get_value(nodes, Values, all),
            aggregate = proplists:get_value(aggregate, Values, false)},
     {Samples, Nodes, AggregatedNodes} =
         fix_response(retrive_samples_from_all_archives(Params), Params),
@@ -2985,8 +2985,8 @@ fix_response({undefined, undefined}, #params{aggregate = true}) ->
     {[[]], [aggregate], []};
 fix_response({undefined, undefined}, #params{nodes = all}) ->
     {[[]], [node()], undefined};
-fix_response({undefined, undefined}, #params{nodes = [Node]}) ->
-    {[[]], [Node], undefined};
+fix_response({undefined, undefined}, #params{nodes = Nodes}) ->
+    {[[] || _ <- Nodes], Nodes, undefined};
 fix_response({[[]], _}, Params) ->
     fix_response({undefined, undefined}, Params);
 fix_response({Stats, Nodes}, #params{aggregate = true}) ->
@@ -3019,8 +3019,8 @@ ui_stats_post_validators(Req) ->
                ok
        end, startTS, endTS, _),
      validator:integer(step, 1, 60 * 60 * 24 * 366, _),
-     validator:string(host, _),
-     validate_host(host, _, Req),
+     validator:string_array(nodes, _),
+     validate_nodes(nodes, _, Req),
      validator:unsupported(_)].
 
 validate_negative_ts(Name, Now, State) ->
@@ -3043,14 +3043,25 @@ validate_bucket(Name, State) ->
               end
       end, Name, State).
 
-validate_host(Name, State, Req) ->
+validate_nodes(Name, State, Req) ->
     validator:validate(
-      fun (HostName) ->
-              case menelaus_web_node:find_node_hostname(HostName, Req) of
-                  false ->
-                      {error, "Unknown hostname"};
-                  {ok, Node} ->
-                      {value, [Node]}
+      fun (Nodes) ->
+              {Right, Wrong} =
+                  misc:partitionmap(
+                    fun (HostName) ->
+                            case menelaus_web_node:find_node_hostname(
+                                   HostName, Req) of
+                                false ->
+                                    {right, HostName};
+                                {ok, Node} ->
+                                    {left, Node}
+                            end
+                    end, Nodes),
+              case Wrong of
+                  [] ->
+                      {value, Right};
+                  _ ->
+                      {error, io_lib:format("Unknown hostnames: ~p", [Wrong])}
               end
       end, Name, State).
 
