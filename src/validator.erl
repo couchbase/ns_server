@@ -390,11 +390,10 @@ string_array(Name, State) ->
       fun (Array) when is_list(Array) ->
               case lists:all(?cut(is_binary(_1) andalso _1 =/= <<>>), Array) of
                   false ->
-                      {error,
-                       "Invalid content: Entries must be non-empty strings"};
+                      {error, "Must be an array of non-empty strings"};
                   true ->
                       {value, [binary_to_list(B) || B <- Array]}
               end;
           (_) ->
-              {error, "Invalid type: Must be a list of non-empty strings"}
+              {error, "Must be an array of non-empty strings"}
       end, Name, State).
