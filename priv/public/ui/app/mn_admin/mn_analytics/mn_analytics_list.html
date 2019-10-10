@@ -6,7 +6,8 @@
        ng-repeat="block in analyticsCtl.state.statsDirectoryBlocks track by (block.blockName + $index)"
        ng-class="{dynamic_withtotal: block.withTotal,
                  'flex-order-one': block.blockName=='Summary',
-                 'columns-five': (block.blockName=='Summary') || (block.blockName=='DCP Queues') || (block.blockName.indexOf('Server Resources') > -1),
+                 'columns-six': block.blockName=='DCP Queues',
+                 'columns-five': (block.blockName=='Summary') || (block.blockName.indexOf('Server Resources') > -1),
                  'columns-three': (block.blockName.indexOf('Mapreduce View Stats') > -1) || (block.blockName.indexOf('Spatial View Stats') > -1)}">
       <h4
          class="disclosure"

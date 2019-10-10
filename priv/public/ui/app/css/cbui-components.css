@@ -1047,6 +1047,13 @@ section.error {
 .columns-five .chart-column-headers {
   width: 20%;
 }
+.columns-six {
+  width: 1080px;
+  max-width: 1080px;
+}
+.columns-six .chart-column-headers {
+  width: 16%;
+}
 
 /* MEMORY/DISK USAGE METERS --------------------------------------------- */
 .bar-usages .marker {
