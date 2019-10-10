@@ -10,9 +10,11 @@
   </span>
   <span>&nbsp;</span>
 </div>
-<nvd3
+<mn-multi-chart
+   ng-if="options"
    style="display:block;"
+   sync-scope="syncScope"
    api="chartApi"
    options="options"
    data="chartData"
-   ></nvd3>
+   ></mn-multi-chart>

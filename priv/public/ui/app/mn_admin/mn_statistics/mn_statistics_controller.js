@@ -10,7 +10,6 @@
       'mnHelper',
       'ui.router',
       'ui.bootstrap',
-      'nvd3',
       'mnBucketsStats',
       'mnSpinner',
       'mnStatisticsChart',
@@ -84,7 +83,6 @@
     vm.onGroupSubmit = onGroupSubmit;
     vm.onGroupDelete = onGroupDelete;
     vm.deleteGroup = deleteGroup;
-    vm.onItemChange = onItemChange;
     vm.maybeShowItemsControls = maybeShowItemsControls;
     vm.saveDashboard = mnUserRolesService.saveDashboard;
 
@@ -93,6 +91,11 @@
     vm.group = mnStoreService.store("groups").get($scope.groupID);
 
     maybeShowItemsControls();
+
+    $scope.$watch("mnStatsGroupsCtl.items.index", onItemChange);
+    $scope.$watch("mnStatsGroupsCtl.items.xdcr", onItemChange);
+    $scope.$watch("mnStatsGroupsCtl.items.fts", onItemChange);
+    $scope.$watch("mnStatsGroupsCtl.items.kv", onItemChange);
 
     function onItemChange() {
       vm.reloadChartDirective = true;

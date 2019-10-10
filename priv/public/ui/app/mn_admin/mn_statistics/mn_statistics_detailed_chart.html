@@ -1,16 +1,13 @@
 <div class="panel-content">
-  <div class="statistics-extra-large">
-    <mn-statistics-chart
-       class="statistics-extra-large"
-       ng-if="!detailedChartCtl.reloadChartDirective"
-       bucket="{{detailedChartCtl.bucket}}"
-       zoom="{{detailedChartCtl.zoom}}"
-       node="{{detailedChartCtl.node || 'all'}}"
-       nvd3-options="{type: 'lineWithFocusChart'}"
-       rbac="rbac"
-       items="detailedChartCtl.items"
-       config="detailedChartCtl.chart"></mn-statistics-chart>
-  </div>
+  <mn-statistics-chart
+     ng-if="!detailedChartCtl.reloadChartDirective"
+     bucket="{{detailedChartCtl.bucket}}"
+     zoom="{{detailedChartCtl.zoom}}"
+     node="{{detailedChartCtl.node || 'all'}}"
+     mn-d3="{showFocus: true, showTicks: true, showLegends: true}"
+     rbac="rbac"
+     items="detailedChartCtl.items"
+     config="detailedChartCtl.chart"></mn-statistics-chart>
 </div>
 
 <div class="row flex-center relative search-filter-focus margin-bottom-1-5 margin-top-half">

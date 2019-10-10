@@ -195,8 +195,6 @@
                     'index/' + statisticsNewCtl.indexItems[0].index +'/'">
           indexes:
           <select
-             ng-change="mnStatsGroupsCtl.onItemChange()"
-
              ng-model="mnStatsGroupsCtl.items.index"
              class="max-width-4">
             <option ng-repeat="row in statisticsNewCtl.indexItems"
@@ -211,7 +209,6 @@
                       statisticsNewCtl.viewItems[0].statKeyPrefix">
           views:
           <select
-             ng-change="mnStatsGroupsCtl.onItemChange()"
              ng-model="mnStatsGroupsCtl.items.kv"
              class="max-width-4 margin-left-quarter">
             <option ng-repeat="row in statisticsNewCtl.viewItems"
@@ -227,7 +224,6 @@
                     'replications/' + statisticsNewCtl.xdcrItems[0].id + '/'">
           replications:
           <select
-             ng-change="mnStatsGroupsCtl.onItemChange()"
              ng-model="mnStatsGroupsCtl.items.xdcr"
              class="max-width-4">
             <option ng-repeat="row in statisticsNewCtl.xdcrItems"
@@ -243,7 +239,6 @@
                     'fts/' + statisticsNewCtl.ftsItems[0].name + '/'">
           search indexes:
           <select
-             ng-change="mnStatsGroupsCtl.onItemChange()"
              ng-model="mnStatsGroupsCtl.items.fts"
              class="max-width-4">
             <option ng-repeat="row in statisticsNewCtl.ftsItems"
@@ -282,7 +277,6 @@
            ng-click="mnStatsChartsCtl.openDetailedChartDialog()"
            ng-if="mnStatsChartsCtl.chart && !mnStatsChartsCtl.reloadChartDirective && !mnStatsGroupsCtl.reloadChartDirective"
            sync-scope="statisticsNewCtl.mnStatisticsNewScope"
-           nvd3-options="{showLegend: false}"
            bucket="{{statisticsNewCtl.bucket}}"
            zoom="{{statisticsNewCtl.zoom}}"
            node="{{statisticsNewCtl.node}}"

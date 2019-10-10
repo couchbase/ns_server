@@ -10,6 +10,12 @@
     var perChartConfig = [];
     var perChartScopes = [];
     var currentPerChartScopes = [];
+    var formatSecond = d3.timeFormat("%-I:%M:%S%p");
+    var formatMinute = d3.timeFormat("%-I:%M%p");
+    var formatHour = d3.timeFormat("%-I%p");
+    var formatDayMonth = d3.timeFormat("%b %-d");
+    var formatYear = d3.timeFormat("%Y");
+
     var mnStatisticsNewService = {
       prepareNodesList: prepareNodesList,
       export: {
@@ -30,14 +36,7 @@
       getStatsUnits: getStatsUnits,
       getStatsTitle: getStatsTitle,
       getStatsDesc: getStatsDesc,
-      tickMultiFormat: d3.time.format.multi([
-        ["%-I:%M:%S%p", function (d) {return d.getSeconds(); }],
-        ["%-I:%M%p", function (d) {return d.getMinutes(); }], // not the beginning of the hour
-        ["%-I%p", function (d) { return d.getHours(); }], // not midnight
-        ["%b %-d", function (d) { return d.getDate() != 1; }], // not the first of the month
-        ["%b %-d", function (d) { return d.getMonth(); }], // not Jan 1st
-        ["%Y", function () { return true; }]
-      ]),
+      tickMultiFormat: multiFormat,
       heartbeat: new mnPoller(rootScope, function () {
         currentPerChartScopes = [...perChartScopes];
         return postStats([...perChartConfig]);
@@ -65,7 +64,17 @@
           default: return 15000;
           }
         })();
-      }
+      };
+    }
+
+    // Define filter conditions
+    function multiFormat(date) {
+      return (d3.timeMinute(date) < date ? formatSecond
+              : d3.timeHour(date) < date ? formatMinute
+              : d3.timeDay(date) < date ? formatHour
+              : d3.timeMonth(date) < date ? formatDayMonth
+              : d3.timeYear(date) < date ? formatDayMonth
+              : formatYear)(date);
     }
 
     function getStatsDirectory(bucket, params) {

@@ -8,7 +8,8 @@
       "ui.bootstrap",
       "mnPoll",
       "mnFilters",
-      "mnHelper"
+      "mnHelper",
+      "mnD3Service"
     ])
     .directive("mnStatisticsChart", mnStatisticsNewChartDirective);
 
@@ -19,7 +20,7 @@
       scope: {
         syncScope: "=?",
         config: "=",
-        nvd3Options: "=?",
+        mnD3: "=?",
         bucket: "@",
         zoom: "@",
         node: "@?",
@@ -44,82 +45,9 @@
         activate();
       }
 
-      function defaultValueFormatter(d, s, c, g, f, a) {
-        if (c.data[1] == undefined) {
-          return "N/A"
-        }
-        return formatValue(d, c.yAxis ? c.yAxis.axisLabel() : "");
-      }
-
       function activate() {
-        $scope.$on("$destroy", function () {
-          if (!$scope.chartApi || !$scope.chartApi.getScope().chart) {
-            return;
-          }
-          //MB-34897
-          //https://github.com/krispo/angular-nvd3/issues/550
-          var tooltipId = $scope.chartApi.getScope().chart.interactiveLayer.tooltip.id();
-          angular.element(document.querySelector("#" + tooltipId)).remove();
-        });
         initConfig();
         subscribeToMultiChartData();
-        if ($scope.syncScope) {
-          syncTooltips();
-        }
-      }
-
-      function syncTooltips() {
-        $element.find("nvd3").on("mousemove mouseup mousedown mouseout", _.debounce(function (e) {
-          $scope.syncScope.$broadcast("syncTooltips", {
-            element: $element,
-            event: e,
-            api: $scope.chartApi
-          });
-        }, 2, {leading:true}));
-
-        $scope.$on("syncTooltips", function (e, source) {
-          if (source.element[0] !== $element[0] && $element.find("svg")[0] &&
-              source.api.getScope().chart && !source.api.getScope().options.chart.notFound) {
-            var sourcePos = source.element.find("svg")[0].getBoundingClientRect();
-            var elementPos = $element.find("svg")[0].getBoundingClientRect();
-            var sourceMargin = source.api.getScope().chart.margin();
-            var elementMargin = $scope.chartApi.getScope().chart.margin();
-            var sourceGraphWidth = sourcePos.width - sourceMargin.right - sourceMargin.left;
-            var sourceGraphHeight = sourcePos.height - sourceMargin.bottom - sourceMargin.top;
-            var elementGraphWidth = elementPos.width - elementMargin.right - elementMargin.left;
-            var elementGraphHeight = elementPos.height - elementMargin.bottom - elementMargin.top;
-            var sourceGraphRelativeX = source.event.clientX - sourcePos.x - sourceMargin.left;
-            var sourceGraphRelativeY = source.event.clientY - sourcePos.y - sourceMargin.top;
-
-            var interpolateX = sourceGraphWidth / sourceGraphRelativeX;
-            var clientX = (elementPos.x + elementMargin.left
-                          ) + (elementGraphWidth / interpolateX);
-
-            var interpolateY = sourceGraphHeight / sourceGraphRelativeY;
-            var clientY = (elementPos.y + elementMargin.top
-                          ) + (elementGraphHeight / interpolateY);
-
-            source.api.getScope().chart.interactiveLayer.tooltip.enabled(true);
-            $scope.chartApi.getScope().chart.interactiveLayer.tooltip.enabled(false);
-
-            $element.find("svg")[0].dispatchEvent(createEvent(
-	      source.event.type,
-              clientX,
-              clientY
-	    ));
-          }
-        });
-      }
-
-      function createEvent(type, clientX, clientY){
-        var event = new MouseEvent(type, {
-          view: $window,
-          bubbles: false,
-          cancelable: true,
-          clientX: clientX,
-          clientY: clientY
-        });
-        return event;
       }
 
       function subscribeToMultiChartData() {
@@ -130,6 +58,7 @@
           zoom: $scope.zoom,
           specificStat: $scope.config.specificStat
         }, $scope);
+
 
         $scope.$watch("mnUIStats", onMultiChartDataUpdate);
       }
@@ -148,25 +77,13 @@
       function initConfig() {
         options = {
           chart: {
-            type: 'multiChart',
+            color: (['#3c7ac2','#abd9a4','#b3cfef','#2ca01c','#cab2d6','#6a3d9a','#b15928','#d8ac93']),
             margin : {top: 10, right: 36, bottom: 20, left: 44},
             height: getChartSize($scope.config.size),
-            legendLeftAxisHint: " (left axis)",
-            legendRightAxisHint: " (right axis)",
-            interactiveLayer: {tooltip: {valueFormatter: defaultValueFormatter}},
-            x: function (d, b) {
-              return (d && d[0]) || 0;
-            },
-            y: function (d) {
-              return (d && d[1]) || 0;
-            },
-            interpolate: "linear",
-            duration: 0,
+            tooltip: {valueFormatter: formatValue},
             useInteractiveGuideline: true,
-            xScale: d3.time.scale(),
+            yAxis: [],
             xAxis: {
-              axisLabel: "",
-              showMaxMin: false,
               tickFormat: function (d) {
                 return mnStatisticsNewService.tickMultiFormat(new Date(d));
               }
@@ -175,40 +92,21 @@
           }
         };
 
+        Object.keys(units).forEach(function (unit, index) {
+          units[unit] = index;
+          options.chart.yAxis[index] = {};
+          options.chart.yAxis[index].unit = unit;
+          options.chart.yAxis[index].tickFormat = function (d) {
+            return formatMaxMin(d, unit);
+          };
+          options.chart.yAxis[index].domain = getScaledMinMax;
+        });
 
-        var index = 0;
-        if (isFocusChart) {
-          options.chart.x2Axis = {
-            axisLabel: "",
-            showMaxMin: false,
-            tickFormat: function (d) {
-              return mnStatisticsNewService.tickMultiFormat(new Date(d));
-            }
-          },
-          options.chart.yAxis = {
-            showMaxMin: true,
-            axisLabel: Object.keys(units)[0],
-            tickFormat: function (d) {
-              return formatMaxMin(d, Object.keys(units)[0]);
-            }
-          }
-        } else {
-          _.forEach(units, function (val, unit) {
-            index ++;
-            units[unit] = index;
-            options.chart["yAxis" + index] = {};
-            options.chart["yAxis" + index].ticks = [];
-            options.chart["yAxis" + index].showMaxMin = true;
-            options.chart["yAxis" + index].axisLabel = unit; //hack that is involved in order to show current stats value in tooltip correctly
-            options.chart["yAxis" + index].tickFormatMaxMin = function (d) {
-              return formatMaxMin(d, unit);
-            }
-          });
+        if ($scope.mnD3) {
+          Object.assign(options.chart, $scope.mnD3);
         }
 
-        if ($scope.nvd3Options) {
-          Object.assign(options.chart, $scope.nvd3Options);
-        }
+        $scope.options = options;
       }
 
       function formatMaxMin(d, unit) {
@@ -248,10 +146,10 @@
         }
       }
 
-      function getScaledMinMax(chartData, unit) {
-        var min = d3.min(chartData, function (line) {if (line.unit == unit) {return line.min/1.005;}});
-        var max = d3.max(chartData, function (line) {if (line.unit == unit) {return line.max;}});
-        if (unit == "bytes") {
+      function getScaledMinMax(chartData) {
+        var min = d3.min(chartData, function (line) {return line.min/1.005;});
+        var max = d3.max(chartData, function (line) {return line.max;});
+        if (chartData[0] && chartData[0].unit == "bytes") {
           return [min <= 0 ? 0 : roundDownBytes(min), max == 0 ? 1 : roundUpBytes(max)];
         } else {
           return [min <= 0 ? 0 : roundDown(min), max == 0 ? 1 : roundUp(max)];
@@ -283,19 +181,6 @@
         return Math.floor(base_num/mag10) * mag10 * Math.pow(2,mag*10);
       }
 
-      function updateYAxisDomain(chartData) {
-        var chart = $scope.chartApi.getScope().chart;
-        _.forEach(units, function (i, unit) {
-          chart["yDomain" + i](getScaledMinMax(chartData, unit));
-        });
-      }
-
-      function setYAxisDomain(chartData) {
-        _.forEach(units, function (i, unit) {
-          options.chart["yDomain" + i] = getScaledMinMax(chartData, unit);
-        });
-      }
-
       function onMultiChartDataUpdate(stats) {
         if (!stats) {
           return;
@@ -324,10 +209,14 @@
              Object.keys(stats[0].stats) : ([$scope.node]))
               .forEach(function (nodeName) {
                 var nodeStat = stats[0].stats[nodeName];
+                if (nodeStat.samples) {
+                  nodeStat.samples = nodeStat.samples.map(function (v) {
+                    return (v === "undefined") ? undefined : v;
+                  });
+                }
                 chartData.push({
                   type: 'line',
                   unit: desc.unit,
-                  disabled: !nodeStat.samples.length,
                   max: d3.max(nodeStat.samples || []) || 1,
                   min: d3.min(nodeStat.samples || []) || 0,
                   yAxis: units[desc.unit],
@@ -343,15 +232,21 @@
               return;
             }
             var stat = stats[i].stats[$scope.node == "all" ? "aggregate" : $scope.node];
+            if (stat.samples) {
+              stat.samples = stat.samples.map(function (v) {
+                return (v === "undefined") ? undefined : v;
+              });
+            }
             chartData.push({
               type: 'line',
               unit: desc.unit,
-              disabled: !stat.samples.length,
               max: d3.max(stat.samples || []) || 1,
               min: d3.min(stat.samples || []) || 0,
               yAxis: units[desc.unit],
               key: desc.title,
-              values: _.zip(stat.timestamps, stat.samples)
+              values: stat.timestamps.map(function (v, i) {
+                return [v, stat.samples[i]];
+              })
             });
           });
         }
@@ -363,25 +258,8 @@
             chartData[i].disabled = v.disabled;
           });
         }
-        if ($scope.chartApi && $scope.chartApi.getScope().chart) {
-          if (isFocusChart) {
-            var chart = $scope.chartApi.getScope().chart;
-            chart["yDomain"](getScaledMinMax(chartData, Object.keys(units)[0]));
-          } else {
-            updateYAxisDomain(chartData);
-          }
-          $scope.chartData = chartData;
-        } else {
-          $timeout(function () {
-            if (isFocusChart) {
-              options.chart["yDomain"] = getScaledMinMax(chartData, Object.keys(units)[0]);
-            } else {
-              setYAxisDomain(chartData);
-            }
-            $scope.options = options;
-            $scope.chartData = chartData;
-          }, 0);
-        }
+
+        $scope.chartData = chartData;
       }
     }
   }
