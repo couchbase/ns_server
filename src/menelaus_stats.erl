@@ -2968,10 +2968,14 @@ handle_ui_stats_post(Req) ->
       end, Req, json_array, ui_stats_post_validators(Req)).
 
 handle_ui_stats_post_section(LocalAddr, Values) ->
+    [handle_one_stat(Stat, LocalAddr, Values) ||
+        Stat <- proplists:get_value(stats, Values, [])].
+
+handle_one_stat(Stat, LocalAddr, Values) ->
     Params =
         #params{
            bucket = proplists:get_value(bucket, Values),
-           stat = proplists:get_value(statName, Values),
+           stat = Stat,
            start_ts = proplists:get_value(startTS, Values, 0),
            end_ts = proplists:get_value(endTS, Values, ?MAX_TS),
            step = proplists:get_value(step, Values, 1),
@@ -2979,7 +2983,7 @@ handle_ui_stats_post_section(LocalAddr, Values) ->
            aggregate = proplists:get_value(aggregate, Values, false)},
     {Samples, Nodes, AggregatedNodes} =
         fix_response(retrive_samples_from_all_archives(Params), Params),
-    build_section_json(LocalAddr, Params, Samples, Nodes, AggregatedNodes).
+    build_one_stat_json(LocalAddr, Params, Samples, Nodes, AggregatedNodes).
 
 fix_response({undefined, undefined}, #params{aggregate = true}) ->
     {[[]], [aggregate], []};
@@ -2998,7 +3002,8 @@ ui_stats_post_validators(Req) ->
     Now = os:system_time(millisecond),
     [validator:string(bucket, _),
      validate_bucket(bucket, _),
-     validator:required(statName, _),
+     validator:required(stats, _),
+     validator:string_array(stats, _),
      validator:string(statName, _),
      validator:boolean(aggregate, _),
      validator:integer(startTS, ?MIN_TS, ?MAX_TS, _),
@@ -3065,9 +3070,9 @@ validate_nodes(Name, State, Req) ->
               end
       end, Name, State).
 
-build_section_json(LocalAddr,
-                   #params{bucket = Bucket, stat = Stat, step = Step}, Stats,
-                   Nodes, AggregatedNodes) ->
+build_one_stat_json(LocalAddr,
+                    #params{bucket = Bucket, stat = Stat, step = Step}, Stats,
+                    Nodes, AggregatedNodes) ->
     StatsJson =
         lists:map(
           fun({S, N}) ->
