@@ -316,7 +316,7 @@ cache_max_size_test() ->
       end).
 
 chaos_test_() ->
-    {timeout, 20, fun chaos_testing/0}.
+    {timeout, 50, fun chaos_testing/0}.
 
 chaos_testing() ->
     NumReq = 10000,

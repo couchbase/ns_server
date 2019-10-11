@@ -520,27 +520,30 @@ poll_for_condition(Condition, Timeout, Sleep) ->
     poll_for_condition_rec(Condition, Sleep, Times).
 
 -ifdef(TEST).
-poll_for_condition_test() ->
-    true = poll_for_condition(fun () -> true end, 0, 10),
-    timeout = poll_for_condition(fun () -> false end, 100, 10),
-    Ref = make_ref(),
-    self() ! {Ref, 0},
-    Fun  = fun() ->
-                   Counter = receive
-                                 {Ref, C} -> R = C + 1,
-                                             self() ! {Ref, R},
-                                             R
-                             after 0 ->
-                                 erlang:error(should_not_happen)
-                             end,
-                   Counter > 5
-           end,
-    true = poll_for_condition(Fun, 300, 10),
-    receive
-        {Ref, _} -> ok
-    after 0 ->
-            erlang:error(should_not_happen)
-    end.
+poll_for_condition_test_() ->
+    {timeout, 20,
+     fun () ->
+             true = poll_for_condition(fun () -> true end, 0, 10),
+             timeout = poll_for_condition(fun () -> false end, 100, 10),
+             Ref = make_ref(),
+             self() ! {Ref, 0},
+             Fun  = fun() ->
+                            Counter = receive
+                                          {Ref, C} -> R = C + 1,
+                                                      self() ! {Ref, R},
+                                                      R
+                                      after 0 ->
+                                          erlang:error(should_not_happen)
+                                      end,
+                            Counter > 5
+                    end,
+             true = poll_for_condition(Fun, 300, 10),
+             receive
+                 {Ref, _} -> ok
+             after 0 ->
+                     erlang:error(should_not_happen)
+             end
+     end}.
 -endif.
 
 %% Remove matching messages from the inbox.
@@ -1301,19 +1304,22 @@ executing_on_new_process_body(Fun, StartOptions, WaitOptions) ->
       end).
 
 -ifdef(TEST).
-executing_on_new_process_test() ->
-    lists:foreach(
-      fun (_) ->
-              P = spawn(?cut(misc:executing_on_new_process(
-                               fun () ->
-                                       register(grandchild, self()),
-                                       timer:sleep(3600 * 1000)
-                               end))),
-              timer:sleep(rand:uniform(5) - 1),
-              exit(P, shutdown),
-              ok = wait_for_process(P, 500),
-              undefined = whereis(grandchild)
-      end, lists:seq(1, 1000)).
+executing_on_new_process_test_() ->
+    {timeout, 200,
+     fun () ->
+             lists:foreach(
+               fun (_) ->
+                       P = spawn(?cut(misc:executing_on_new_process(
+                                        fun () ->
+                                                register(grandchild, self()),
+                                                timer:sleep(3600 * 1000)
+                                        end))),
+                       timer:sleep(rand:uniform(5) - 1),
+                       exit(P, shutdown),
+                       ok = wait_for_process(P, 500),
+                       undefined = whereis(grandchild)
+               end, lists:seq(1, 1000))
+     end}.
 
 %% Check that exit signals are propagated without any mangling.
 executing_on_new_process_exit_test() ->

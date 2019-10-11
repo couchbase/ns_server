@@ -59,50 +59,53 @@ priv_dir() ->
   filelib:ensure_dir(filename:join([Dir, "misc"])),
   Dir.
 
-parallel_map_test() ->
-    L = [0, 1, 2, 3],
-    ?assertEqual(L,
-                 misc:parallel_map(fun (N) ->
-                                           timer:sleep(40 - 10*N),
-                                           N
-                                   end, L, infinity)),
-    ?assertEqual(L,
-                 misc:parallel_map(fun (N) ->
-                                           timer:sleep(40 - 10*N),
-                                           N
-                                   end, L, 100)),
-    ?assertEqual(L,
-                 misc:parallel_map(fun (N) ->
-                                           timer:sleep(10*N),
-                                           N
-                                   end, L, 100)),
+parallel_map_test_() ->
+    {timeout, 200,
+     fun () ->
+             L = [0, 1, 2, 3],
+             ?assertEqual(L,
+                          misc:parallel_map(fun (N) ->
+                                                    timer:sleep(40 - 10*N),
+                                                    N
+                                            end, L, infinity)),
+             ?assertEqual(L,
+                          misc:parallel_map(fun (N) ->
+                                                    timer:sleep(40 - 10*N),
+                                                    N
+                                            end, L, 100)),
+             ?assertEqual(L,
+                          misc:parallel_map(fun (N) ->
+                                                    timer:sleep(10*N),
+                                                    N
+                                            end, L, 100)),
 
-    Ref = erlang:make_ref(),
-    Parent = self(),
-    try
-        misc:parallel_map(fun (N) ->
-                                  Parent ! {Ref, {N, self()}},
-                                  timer:sleep(10000)
-                          end, L, 200),
-        exit(failed)
-    catch
-        exit:timeout ->
-            ok
-    end,
+             Ref = erlang:make_ref(),
+             Parent = self(),
+             try
+                 misc:parallel_map(fun (N) ->
+                                           Parent ! {Ref, {N, self()}},
+                                           timer:sleep(10000)
+                                   end, L, 200),
+                 exit(failed)
+             catch
+                 exit:timeout ->
+                     ok
+             end,
 
-    Loop = fun (Loop, Acc) ->
-                   receive
-                       {Ref, P} ->
-                           Loop(Loop, [P|Acc])
-                   after 0 ->
-                           Acc
-                   end
-           end,
-    PidPairs = Loop(Loop, []),
-    ?assertEqual(L, lists:sort([I || {I, _} <- PidPairs])),
-    lists:foreach(fun ({_, Pid}) ->
-                          ?assertEqual(false, erlang:is_process_alive(Pid))
-                  end, PidPairs).
+             Loop = fun (Loop, Acc) ->
+                            receive
+                                {Ref, P} ->
+                                    Loop(Loop, [P|Acc])
+                            after 0 ->
+                                    Acc
+                            end
+                    end,
+             PidPairs = Loop(Loop, []),
+             ?assertEqual(L, lists:sort([I || {I, _} <- PidPairs])),
+             lists:foreach(fun ({_, Pid}) ->
+                                   ?assertEqual(false, erlang:is_process_alive(Pid))
+                           end, PidPairs)
+     end}.
 
 parallel_map_when_trap_exit_test() ->
     {Parent, Ref} = {self(), erlang:make_ref()},
