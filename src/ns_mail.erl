@@ -82,8 +82,8 @@ do_send_async(Subject, Body, Config, Callback) ->
                       {error, _} ->
                           ale:warn(?USER_LOGGER,
                                    "Could not send email: ~p. "
-                                   "Make sure that your email settings are correct.",
-                                   [Reply0]);
+                                   "Make sure that your email settings are "
+                                   "correct.", [Reply0]);
                       _ ->
                           ?log_debug("An email with the following subject has "
                                      "been sent to the configured "
