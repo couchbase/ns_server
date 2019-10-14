@@ -56,6 +56,7 @@
          reset_auto_failover_count/1,
          modify_retry_rebalance/2,
          alerts/2,
+         alert_email_sent/1,
          modify_compaction_settings/2,
          regenerate_certificate/1,
          setup_saslauthd/2,
@@ -343,7 +344,9 @@ code(failover_settings) ->
 code(read_doc) ->
     8255;
 code(logout) ->
-    8256.
+    8256;
+code(alert_email_sent) ->
+    8257.
 
 to_binary({list, List}) ->
     [to_binary(A) || A <- List];
@@ -690,6 +693,9 @@ alerts(Req, Settings) ->
                  {alerts, {list, misc:expect_prop_value(alerts, Settings)}},
                  {email_server, {prepare_list(EmailServer1)}}])
     end.
+
+alert_email_sent(Message) ->
+    put(alert_email_sent, undefined, [{message, Message}]).
 
 build_threshold({Percentage, Size}) ->
     {prepare_list([{percentage, Percentage}, {size, Size}])}.

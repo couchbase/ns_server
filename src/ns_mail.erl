@@ -88,6 +88,7 @@ do_send_async(Subject, Body, Config, Callback) ->
                           ?log_debug("An email with the following subject has "
                                      "been sent to the configured "
                                      "recipients:~n~s~n", [Subject]),
+                          ns_audit:alert_email_sent(Message),
                           ok
                   end,
 

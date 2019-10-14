@@ -1210,6 +1210,20 @@
           "optional_fields" : {
               "sessionid" : ""
           }
+      },
+      {
+          "id" : 8257,
+          "name" : "alert email sent",
+          "description" : "An alert email was successfully sent",
+          "sync" : false,
+          "enabled" : true,
+          "filtering_permitted" : true,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "message": ""
+          },
+          "optional_fields" : {
+          }
       }
     ]
 }
