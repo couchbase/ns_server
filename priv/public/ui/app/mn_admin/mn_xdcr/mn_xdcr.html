@@ -46,7 +46,11 @@
                class="cbui-table-cell flex-grow-1-5"
                title="{{row.name}}">{{row.name}}</span>
             <span class="cbui-table-cell flex-grow-1-5">
-              <a href="{{ window.location.protocol + '//' + row.hostname + '/index.html#/analytics/?statsHostname=' + (row.hostname | encodeURIComponent) }}">{{row.hostname}}</a>
+              <a
+                 href="{{ window.location.protocol + '//' + row.hostname + '/index.html#/analytics/?statsHostname=' + (row.hostname | encodeURIComponent) }}"
+                 ng-click="$event.stopPropagation();">
+                {{row.hostname}}
+              </a>
             </span>
             <span class="cbui-table-cell flex-grow-1-5 resp-hide-sml"></span>
             <span class="cbui-table-cell flex-grow-half resp-hide-sml"></span>
