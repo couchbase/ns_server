@@ -86,10 +86,12 @@ init([]) ->
 recv_data(Port) ->
     recv_data_loop(Port, <<"">>).
 
-recv_data_loop(Port, <<3:32/native, StructSize:32/native, _/binary>> = Acc) ->
+recv_data_loop(Port, <<Version:32/native,
+                       StructSize:32/native, _/binary>> = Acc)
+  when Version =:= 3 ->
     recv_data_with_length(Port, Acc, StructSize - erlang:size(Acc));
-recv_data_loop(_, <<V:32/native, _/binary>>) ->
-    error({unsupported_portsigar_version, V});
+recv_data_loop(_, <<Version:32/native, _/binary>>) ->
+    error({unsupported_portsigar_version, Version});
 recv_data_loop(Port, Acc) ->
     receive
         {Port, {data, Data}} ->
@@ -111,7 +113,7 @@ recv_data_with_length(Port, Acc, WantedLength) ->
     end.
 
 unpack_data({Bin, LocalStats}, PrevSample, State) ->
-    <<Version:32/native,
+    <<_Version:32/native,
       StructSize:32/native,
       CPULocalMS:64/native,
       CPUIdleMS:64/native,
@@ -126,7 +128,6 @@ unpack_data({Bin, LocalStats}, PrevSample, State) ->
       Rest/binary>> = Bin,
 
     StructSize = erlang:size(Bin),
-    Version = 3,
 
     {PrevSampleGlobal, PrevSampleProcs} =
         case PrevSample of
