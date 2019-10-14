@@ -100,25 +100,25 @@
        min-height="66px">
       <div class="cbui-table" mn-sortable-table ng-if="adminCtl.tasks.tasksXDCR.length">
         <div class="cbui-table-header">
-          <span class="cbui-table-cell flex-grow-1-5">
+          <span class="cbui-table-cell">
             <span
                mn-sortable-title="source"
                sort-by-default="true"
                class="sorter">source bucket</span>
           </span>
-          <span class="cbui-table-cell flex-grow-1-5">
+          <span class="cbui-table-cell">
             <span
                mn-sortable-title="target"
                sort-function="xdcrCtl.toBucket(value)"
                class="sorter">destination bucket</span>
           </span>
-          <span class="cbui-table-cell flex-grow-1-5">
+          <span class="cbui-table-cell">
             <span
                mn-sortable-title="remote"
                sort-function="xdcrCtl.toCluster(value)"
                class="sorter">remote cluster</span>
           </span>
-          <span class="cbui-table-cell flex-grow-half">
+          <span class="cbui-table-cell">
             <span
                mn-sortable-title="status"
                sort-function="xdcrCtl.humanStatus(value)"
@@ -136,7 +136,7 @@
              class="cbui-tablerow"
              ng-class="[!xdcrCtl.isDetailsOpened(row.id) ? (xdcrCtl.humanStatus(row) == 'replicating' ? 'dynamic_healthy' : 'dynamic_warmup') : '']">
             <span
-               class="cbui-table-cell flex-grow-1-5"
+               class="cbui-table-cell"
                title="{{row.source}}">
               {{row.source}}
               <span
@@ -151,18 +151,16 @@
               </span>
             </span>
             <span
-               class="cbui-table-cell flex-grow-1-5"
+               class="cbui-table-cell"
                title="{{xdcrCtl.to(row)}}">
               {{xdcrCtl.toBucket(row)}}
             </span>
-            <span
-               class="cbui-table-cell flex-grow-1-5">
+            <span class="cbui-table-cell">
               {{xdcrCtl.toCluster(row)}}
             </span>
-            <span
-               class="cbui-table-cell flex-grow-half">
+            <span class="cbui-table-cell">
               {{xdcrCtl.humanStatus(row)}}
-                <span ng-if="xdcrCtl.humanStatus(row) !== 'paused'" class="loading"></span>
+              <span ng-if="xdcrCtl.humanStatus(row) !== 'paused'" class="loading"></span>
               <span
                  ng-show="row.errors.length"
                  ng-click="$event.stopPropagation();xdcrCtl.showReplicationErrors(row)"
