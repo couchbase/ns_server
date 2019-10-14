@@ -38,23 +38,26 @@
         var hdd = details.storageTotals.hdd;
         var stats = $scope.mnUIStats && $scope.mnUIStats.data && $scope.mnUIStats.data.samples;
 
-        vm.memoryUsages = [
-          mnServersListItemDetailsService.getBaseConfig(
-            'quota allocated to buckets',
-            ram.quotaUsedPerNode,
-            ram.quotaTotalPerNode),
-          mnServersListItemDetailsService.getBaseConfig(
-            'Data Service',
-            ram.usedByData,
-            ram.quotaTotalPerNode)
-        ];
+        vm.memoryUsages = [];
+        vm.diskUsages = [];
 
-        vm.diskUsages = [
-          mnServersListItemDetailsService.getBaseConfig(
-            'Data Service',
-            hdd.usedByData,
-            hdd.free)
-        ];
+        if (details.services.includes("kv")) {
+          vm.memoryUsages.push(
+            mnServersListItemDetailsService.getBaseConfig(
+              'quota allocated to buckets',
+              ram.quotaUsedPerNode,
+              ram.quotaTotalPerNode),
+            mnServersListItemDetailsService.getBaseConfig(
+              'Data Service',
+              ram.usedByData,
+              ram.quotaTotalPerNode)
+          );
+
+          vm.diskUsages.push(mnServersListItemDetailsService.getBaseConfig(
+              'Data Service',
+              hdd.usedByData,
+              hdd.free));
+        }
 
         if (!stats) {
           return;
