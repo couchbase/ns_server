@@ -103,7 +103,7 @@ recv_data_with_length(Port, Acc, WantedLength) ->
 unpack_data({Bin, LocalStats}, PrevSample, State) ->
     <<_Version:32/native,
       StructSize:32/native,
-      CPULocalMS:64/native,
+      CPUTotalMS:64/native,
       CPUIdleMS:64/native,
       SwapTotal:64/native,
       SwapUsed:64/native,
@@ -117,7 +117,7 @@ unpack_data({Bin, LocalStats}, PrevSample, State) ->
 
     StructSize = erlang:size(Bin),
 
-    {PrevSampleGlobal, PrevSampleProcs} =
+    {PrevCounters, PrevSampleProcs} =
         case PrevSample of
             undefined ->
                 {undefined, []};
@@ -142,40 +142,26 @@ unpack_data({Bin, LocalStats}, PrevSample, State) ->
                          N -> N
                      end,
 
-    RawStatsGlobal = [{cpu_local_ms, CPULocalMS},
-                      {cpu_idle_ms, CPUIdleMS},
-                      {cpu_cores_available, CoresAvailable},
-                      {swap_total, SwapTotal},
-                      {swap_used, SwapUsed},
-                      %% {swap_page_in, SwapPageIn},
-                      %% {swap_page_out, SwapPageOut},
-                      {mem_limit, MemLimit},
-                      {mem_total, MemTotal},
-                      {mem_used_sys, MemUsed},
-                      {mem_actual_used, MemActualUsed},
-                      {mem_actual_free, MemActualFree}],
-
+    Counters = #{cpu_total_ms => CPUTotalMS,
+                 cpu_idle_ms => CPUIdleMS},
     NowSamplesGlobal =
-        case PrevSampleGlobal of
+        case PrevCounters of
             undefined ->
                 undefined;
             _ ->
-                {_, OldCPULocal} = lists:keyfind(cpu_local_ms, 1, PrevSampleGlobal),
-                {_, OldCPUIdle} = lists:keyfind(cpu_idle_ms, 1, PrevSampleGlobal),
-                LocalDiff = CPULocalMS - OldCPULocal,
-                IdleDiff = CPUIdleMS - OldCPUIdle,
-
-                RV1 = misc:update_proplist(RawStatsGlobal,
-                                           [{cpu_local_ms, LocalDiff},
-                                            {cpu_idle_ms, IdleDiff}]),
-
-                [{mem_free, MemActualFree},
-                 {cpu_utilization_rate, try 100 * (LocalDiff - IdleDiff) / LocalDiff
-                                        catch error:badarith -> 0 end}
-                 | RV1]
+                compute_cpu_stats(PrevCounters, Counters) ++
+                    [{cpu_cores_available, CoresAvailable},
+                     {swap_total, SwapTotal},
+                     {swap_used, SwapUsed},
+                     {mem_limit, MemLimit},
+                     {mem_total, MemTotal},
+                     {mem_used_sys, MemUsed},
+                     {mem_actual_used, MemActualUsed},
+                     {mem_actual_free, MemActualFree},
+                     {mem_free, MemActualFree}]
         end,
 
-    {{NowSamplesGlobal, NowSamplesProcs}, {RawStatsGlobal, PrevSampleProcs1}}.
+    {{NowSamplesGlobal, NowSamplesProcs}, {Counters, PrevSampleProcs1}}.
 
 unpack_processes(Bin, PrevSample, State) ->
     {NewSample0, NewPrevSample0} =
@@ -528,4 +514,22 @@ adjust_process_name(Pid, Name, #state{pid_names = PidNames}) ->
             Name;
         {Pid, BetterName} ->
             BetterName
+    end.
+
+compute_cpu_stats(OldCounters, Counters) ->
+    Diffs = maps:map(fun (Key, Value) ->
+                             OldValue = maps:get(Key, OldCounters),
+                             Value - OldValue
+                     end, Counters),
+
+    #{cpu_idle_ms := Idle,
+      cpu_total_ms := Total} = Diffs,
+
+    [{cpu_utilization_rate, compute_utilization(Total - Idle, Total)}].
+
+compute_utilization(Used, Total) ->
+    try
+        100 * Used / Total
+    catch error:badarith ->
+            0
     end.
