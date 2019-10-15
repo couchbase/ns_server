@@ -258,8 +258,9 @@ format_error({invalid_scheme, S}) ->
     io_lib:format("Invalid scheme ~p", [S]);
 format_error(malformed_url) ->
     "Malformed LDAP URL";
-format_error({invalid_dn, DN}) ->
-    io_lib:format("Invalid LDAP distinguished name \"~s\"", [DN]);
+format_error({invalid_dn, DN, ParseError}) ->
+    io_lib:format("Invalid LDAP distinguished name \"~s\": ~s",
+                  [DN, format_error(ParseError)]);
 format_error({invalid_scope, Scope}) ->
     io_lib:format("Invalid LDAP scope: ~p, possible values are one, "
                   "base or sub", [Scope]);
@@ -280,5 +281,20 @@ format_error(unwillingToPerform) ->
     "restrictions";
 format_error(invalidDNSyntax) ->
     "Invalid LDAP distinguished name syntax";
+format_error({parse_error, expecting_attribute_type, Rest}) ->
+    io_lib:format("expecting attribute type near '~s'", [Rest]);
+format_error({parse_error, invalid_attribute_type, Rest}) ->
+    io_lib:format("invalid attribute near '~s', make sure reserved "
+                  "characters are escaped in attribute values ", [Rest]);
+format_error({parse_error, expecting_double_quote_mark, _}) ->
+    "missing closing double quote mark";
+format_error({parse_error, expecting_equal_sign, Rest}) ->
+    io_lib:format("expecting equal sign after attribute type near '~s', "
+                  "make sure reserved characters are escaped in attribute "
+                  "values", [Rest]);
+format_error({parse_error, starting_comma, _}) ->
+    "cannot start with comma";
+format_error({parse_error, Err, _}) ->
+    io_lib:format("~p", [Err]);
 format_error(Error) ->
     io_lib:format("~p", [Error]).

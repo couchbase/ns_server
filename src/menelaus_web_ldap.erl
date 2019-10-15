@@ -213,7 +213,7 @@ parse_dn_mapping({[{<<"query">>, Q}]}) ->
         {ok, _} -> ok;
         {error, Reason} ->
             throw({error, io_lib:format(
-                            "Invalid LDAP query '~s': ~s",
+                            "Invalid LDAP query '~s'. ~s",
                             [Q, ldap_auth:format_error(Reason)])})
     end,
     [{<<"(.+)">>, {'query', QueryTempl}}];
@@ -222,11 +222,12 @@ parse_dn_mapping({[{<<"template">>, T}]}) ->
     Template = iolist_to_binary(string:replace(T, "%u", "{0}")),
     DN = re:replace(Template, "\\{\\d+\\}", "placeholder",
                     [{return, list}, global]),
-    case eldap:parse_dn(DN) of
+    case ldap_util:parse_dn(DN) of
         {ok, _} -> ok;
-        {parse_error, Reason, _} ->
+        {error, Error} ->
+            ErrorStr = ldap_auth:format_error(Error),
             throw({error, io_lib:format("Template is not a valid LDAP "
-                                        "distinguished name: ~p", [Reason])})
+                                        "distinguished name: ~s", [ErrorStr])})
     end,
     [{<<"(.+)">>, {template, Template}}];
 parse_dn_mapping(_) ->
@@ -242,11 +243,12 @@ has_username_var(Str) ->
 validate_ldap_dn(Name, State) ->
     validator:validate(
       fun (DN) ->
-              case eldap:parse_dn(DN) of
+              case ldap_util:parse_dn(DN) of
                   {ok, _} -> {value, DN};
-                  {parse_error, Reason, _} ->
+                  {error, Error} ->
+                      ErrorStr = ldap_auth:format_error(Error),
                       Msg = io_lib:format("Should be valid LDAP distinguished "
-                                          "name: ~p", [Reason]),
+                                          "name: ~s", [ErrorStr]),
                       {error, Msg}
               end
       end, Name, State).

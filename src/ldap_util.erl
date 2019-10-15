@@ -30,7 +30,8 @@
          get_setting/1,
          build_settings/0,
          set_settings/1,
-         replace_expressions/2]).
+         replace_expressions/2,
+         parse_dn/1]).
 
 ssl_options(Host, Settings) ->
     case proplists:get_value(server_cert_validation, Settings) of
@@ -219,9 +220,9 @@ parse_url(Str) ->
         Attrs = [mochiweb_util:unquote(A) || A <- string:tokens(AttrsStr, ",")],
 
         DN = mochiweb_util:unquote(EncodedDN),
-        case eldap:parse_dn(DN) of
+        case parse_dn(DN) of
             {ok, _} -> ok;
-            {parse_error, _, _} -> throw({error, {invalid_dn, DN}})
+            {error, Err} -> throw({error, {invalid_dn, DN, Err}})
         end,
 
         ScopeLower = string:to_lower(Scope),
@@ -251,6 +252,14 @@ parse_url(Str) ->
         }
     catch
         throw:{error, _} = Error -> Error
+    end.
+
+%% for some reason eldap doesn't handle this case correctly
+parse_dn("," ++ Rest) -> {error, {parse_error, starting_comma, Rest}};
+parse_dn(DN) ->
+    case eldap:parse_dn(DN) of
+        {ok, Res} -> {ok, Res};
+        {parse_error, _, _} = Error -> {error, Error}
     end.
 
 -define(ALLOWED_CHARS, "abcdefghijklmnopqrstuvwxyz"
