@@ -193,6 +193,9 @@ h1 a:active {
 }
 
 /* tab navigation -> "pills" -------------------------------------------- */
+.pills {
+  white-space: nowrap;
+}
 .pills a {
   color: #333;
   font-size: .961rem;
@@ -724,7 +727,7 @@ section.error {
   padding: .75rem 1rem;
   position: relative;
   background-color: #fff;
-  z-index: 2;
+  z-index: 6;
 }
 .panel-footer.spaced {
   justify-content: space-between;
@@ -2048,6 +2051,13 @@ a:active.scenarios-delete {
   background-color: #f6f7f9 !important;
   padding: 1.5rem !important;
 }
+.doc-ace-editor {
+  overflow: auto;
+  background-color: #f6f7f9 !important;
+  padding: 1.5rem !important;
+  height: 94% !important;
+  font-size: .75rem;
+}
 
 /* ACE editor overrides ---------------------------------------------------- */
 .wb-ace-editor * {
@@ -2058,7 +2068,7 @@ a:active.scenarios-delete {
   background-color: #f6f7f9 !important;
 }
 .ace_layer.ace_gutter-layer {
-  width: 50px !important;
+  width: 56px !important;
 }
 .ace_print-margin {
   display: none !important;
