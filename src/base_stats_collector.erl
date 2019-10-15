@@ -44,13 +44,8 @@ start_link(Name, Module, InitParams) ->
     gen_server:start_link(Name, ?MODULE, [Module, InitParams], []).
 
 init([Module, InitParams]) ->
-    {Ret, State} = Module:init(InitParams),
-    case Ret of
-        ok ->
-            ns_pubsub:subscribe_link(ns_tick_event);
-        no_collecting ->
-            ok
-    end,
+    {ok, State} = Module:init(InitParams),
+    ns_pubsub:subscribe_link(ns_tick_event),
     {ok, #state{module = Module,
                 impl_state = State}}.
 

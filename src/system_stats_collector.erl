@@ -58,30 +58,18 @@ init([]) ->
     Path = path_config:component_path(bin, "sigar_port"),
 
     BabysitterPid = ns_server:get_babysitter_pid(),
-    Port =
-        try open_port({spawn_executable, Path},
-                      [stream, use_stdio, exit_status,
-                       binary, eof,
-                       {arg0, lists:flatten(
-                                io_lib:format("portsigar for ~s", [node()]))},
-                       {args, [integer_to_list(BabysitterPid)]}]) of
-            X ->
-                X
-        catch error:enoent ->
-                ale:error(?USER_LOGGER, "~s is missing. Will not collect system-level stats", [Path]),
-                undefined
-        end,
+    Port = open_port({spawn_executable, Path},
+                     [stream, use_stdio, exit_status,
+                      binary, eof,
+                      {arg0, lists:flatten(
+                               io_lib:format("portsigar for ~s", [node()]))},
+                      {args, [integer_to_list(BabysitterPid)]}]),
     spawn_ale_stats_collector(),
 
     State = #state{port = Port,
                    pid_names = grab_pid_names()},
 
-    case Port of
-        undefined ->
-            {no_collecting, State};
-        _ ->
-            {ok, State}
-    end.
+    {ok, State}.
 
 recv_data(Port) ->
     recv_data_loop(Port, <<"">>).
