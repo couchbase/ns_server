@@ -194,17 +194,15 @@
       </div>
     </div>
 
-    <div class="row flex-left margin-top-1">
+    <footer class="footer-save">
       <button
          type="submit"
          ng-disabled="logsCollectInfoCtl.collect.from === '' && !('some' | lodash:('values' | lodash:logsCollectInfoCtl.collect.nodes))"
-         class="margin-right-1">
-        Start Collection
+         class="margin-right-2">
+        Start Collecting
       </button>
-      <a class="text-medium" ng-click="logsCollectInfoCtl.showClusterInfoDialog()">
-        Get Summary
-      </a>
-    </div>
+      <a class="text-medium" ng-click="logsCollectInfoCtl.showClusterInfoDialog()">Get Cluster Summary</a>
+    </footer>
 
   </form>
 </div>
