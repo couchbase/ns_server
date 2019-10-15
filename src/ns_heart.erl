@@ -358,7 +358,8 @@ current_status_slow_inner() ->
          {node_storage_conf, StorageConf},
          {statistics, erlang_stats()},
          {system_stats, [{N, proplists:get_value(N, SystemStats, 0)}
-                         || N <- [cpu_utilization_rate, swap_total, swap_used,
+                         || N <- [cpu_utilization_rate, cpu_stolen_rate,
+                                  swap_total, swap_used,
                                   mem_total, mem_free, mem_limit,
                                   cpu_cores_available]]},
          {interesting_stats, InterestingStats},
