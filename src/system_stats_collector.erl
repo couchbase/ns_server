@@ -105,6 +105,10 @@ unpack_data({Bin, LocalStats}, PrevSample, State) ->
       StructSize:32/native,
       CPUTotalMS:64/native,
       CPUIdleMS:64/native,
+      CPUUserMS:64/native,
+      CPUSysMS:64/native,
+      CPUIrqMS:64/native,
+      CPUStolenMS:64/native,
       SwapTotal:64/native,
       SwapUsed:64/native,
       MemTotal:64/native,
@@ -141,7 +145,11 @@ unpack_data({Bin, LocalStats}, PrevSample, State) ->
                      end,
 
     Counters = #{cpu_total_ms => CPUTotalMS,
-                 cpu_idle_ms => CPUIdleMS},
+                 cpu_idle_ms => CPUIdleMS,
+                 cpu_user_ms => CPUUserMS,
+                 cpu_sys_ms => CPUSysMS,
+                 cpu_irq_ms => CPUIrqMS,
+                 cpu_stolen_ms => CPUStolenMS},
     NowSamplesGlobal =
         case PrevCounters of
             undefined ->
@@ -521,9 +529,17 @@ compute_cpu_stats(OldCounters, Counters) ->
                      end, Counters),
 
     #{cpu_idle_ms := Idle,
+      cpu_user_ms := User,
+      cpu_sys_ms := Sys,
+      cpu_irq_ms := Irq,
+      cpu_stolen_ms := Stolen,
       cpu_total_ms := Total} = Diffs,
 
-    [{cpu_utilization_rate, compute_utilization(Total - Idle, Total)}].
+    [{cpu_utilization_rate, compute_utilization(Total - Idle, Total)},
+     {cpu_user_rate, compute_utilization(User, Total)},
+     {cpu_sys_rate, compute_utilization(Sys, Total)},
+     {cpu_irq_rate, compute_utilization(Irq, Total)},
+     {cpu_stolen_rate, compute_utilization(Stolen, Total)}].
 
 compute_utilization(Used, Total) ->
     try
