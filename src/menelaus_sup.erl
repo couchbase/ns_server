@@ -119,9 +119,9 @@ init([]) ->
                  {gen_event, start_link, [{local, json_rpc_events}]},
                  permanent, 1000, worker, []},
 
-    Web = {menelaus_web,
-           {menelaus_web, start_link, []},
-           permanent, 5000, worker, dynamic},
+    Web = restartable:spec({menelaus_web,
+                            {menelaus_web, start_link, []},
+                            permanent, 5000, worker, dynamic}),
 
     Alerts = {menelaus_web_alerts_srv,
               {menelaus_web_alerts_srv, start_link, []},
@@ -154,5 +154,4 @@ ns_log_code_string(?START_FAIL) ->
     "web start fail".
 
 restart_web_servers() ->
-    supervisor:terminate_child(menelaus_sup, menelaus_web),
-    supervisor:restart_child(menelaus_sup, menelaus_web).
+    restartable:restart(?MODULE, menelaus_web).
