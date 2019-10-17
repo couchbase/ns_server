@@ -48,13 +48,13 @@
               ram.quotaUsedPerNode,
               ram.quotaTotalPerNode),
             mnServersListItemDetailsService.getBaseConfig(
-              'Data Service',
+              'data service',
               ram.usedByData,
               ram.quotaTotalPerNode)
           );
 
           vm.diskUsages.push(mnServersListItemDetailsService.getBaseConfig(
-              'Data Service',
+              'data service',
               hdd.usedByData,
               hdd.free));
         }
@@ -65,15 +65,15 @@
 
         vm.memoryUsages.push(
           mnServersListItemDetailsService.getBaseConfig(
-            'Index Service',
+            'index service used',
             stats['index_memory_used'],
             details.indexMemoryQuota*1024*1024),
           mnServersListItemDetailsService.getBaseConfig(
-            'Search Service',
+            'search service used',
             stats['fts_num_bytes_used_ram'],
             details.ftsMemoryQuota*1024*1024),
           mnServersListItemDetailsService.getBaseConfig(
-            'Analytics Service',
+            'analytics service used',
             stats['cbas_heap_used'],
             details.cbasMemoryQuota*1024*1024)
         );
@@ -82,7 +82,7 @@
           //{name: 'couch_views_actual_disk_size', label: "views"},
           //{name: 'index/disk_size', label: "indexes"},
           //{name: 'fts/num_bytes_used_disk', label: "analytics"},
-          {name: 'cbas_disk_used', label: "Analytics Service"}
+          {name: 'cbas_disk_used', label: "analytics service"}
         ]).forEach(function (stat) {
           vm.diskUsages.push(mnServersListItemDetailsService.getBaseConfig(
             stat.label,

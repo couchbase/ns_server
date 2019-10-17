@@ -593,9 +593,7 @@ section.error {
 /* list of properties in the servers details section -------------------- */
 .cbui-table-props {
   font-size: .75rem;
-  flex: 0 1 auto;
-  min-width: 280px;
-  max-width: 580px;
+  flex: 0 1 100%;
 }
 .cbui-table-props div {
   margin-top: .75rem;
@@ -608,7 +606,6 @@ section.error {
 .cbui-table-meters {
   margin: 1rem 2rem 0 2rem;
   flex: 0 1 100%;
-  max-width: 480px;
 }
 .cbui-table-meters + .cbui-table-meters {
   margin: 1rem 2rem 0 1rem;
