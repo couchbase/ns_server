@@ -121,7 +121,7 @@ init([]) ->
 
     Web = restartable:spec({menelaus_web,
                             {menelaus_web, start_link, []},
-                            permanent, 5000, worker, dynamic}),
+                            permanent, infinity, supervisor, dynamic}),
 
     Alerts = {menelaus_web_alerts_srv,
               {menelaus_web_alerts_srv, start_link, []},
