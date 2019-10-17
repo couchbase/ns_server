@@ -415,7 +415,7 @@ simulate_that_rebalance() ->
                                {subtype, Type},
                                {type, compact},
                                {node, N}]};
-                 {move, {Vb, ChainBefore, ChainAfter}} ->
+                 {move, {Vb, ChainBefore, ChainAfter, _}} ->
                      {struct, [{ts, TS},
                                {subtype, Type},
                                {type, move},
