@@ -36,6 +36,6 @@ do_get_stats() ->
     case rest_utils:get_json_local(n1ql, "/admin/stats", Port, Timeout) of
         {ok, {Stats}} ->
             Stats;
-        _Error ->
-            []
+        Error ->
+            Error
     end.

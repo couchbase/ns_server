@@ -115,7 +115,12 @@ massage_stats([{K, V} | Rest], AccGauges, AccCounters) ->
     end.
 
 grab_stats([]) ->
-    query_rest:get_stats().
+    case query_rest:get_stats() of
+        {error, _} ->
+            empty_stats;
+        Stats ->
+            Stats
+    end.
 
 process_stats(TS, GrabbedStats, PrevCounters, PrevTS, []) ->
     {Gauges, Counters} = massage_stats(GrabbedStats, [], []),

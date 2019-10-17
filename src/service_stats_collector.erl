@@ -220,9 +220,9 @@ grab_stats(#state{status = started, service = Service}) ->
         {ok, Other} ->
             ?log_error("Got invalid stats response for ~p:~n~p",
                        [Service, Other]),
-            [];
+            empty_stats;
         {error, _} ->
-            []
+            empty_stats
     end.
 
 process_stats(TS, GrabbedStats, PrevCounters, PrevTS,
