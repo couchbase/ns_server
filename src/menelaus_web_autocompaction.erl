@@ -28,7 +28,7 @@
          handle_set_global_settings/1,
          build_bucket_settings/1,
          build_global_settings/1,
-         parse_validate_purge_interval/1,
+         parse_validate_purge_interval/2,
          parse_validate_settings/2]).
 
 -import(menelaus_util,
@@ -104,7 +104,7 @@ build_allowed_time_period(AllowedTimePeriod) ->
 handle_set_global_settings(Req) ->
     Params = mochiweb_request:parse_post(Req),
     SettingsRV = parse_validate_settings(Params, true),
-    PurgeIntervalRV = parse_validate_purge_interval(Params),
+    PurgeIntervalRV = parse_validate_purge_interval(Params, global),
     ValidateOnly = (proplists:get_value("just_validate", mochiweb_request:parse_qs(Req)) =:= "1"),
     case {ValidateOnly, SettingsRV, PurgeIntervalRV} of
         {_, {errors, Errors}, _} ->
@@ -270,8 +270,13 @@ parse_and_validate_extra_index_settings(Params) ->
                   end,
     TimeResults ++ RV1.
 
-parse_validate_purge_interval(Params) ->
-    Fun = mk_number_field_validator(0.04, 60, Params, list_to_float),
+parse_validate_purge_interval(Params, ephemeral) ->
+    do_parse_validate_purge_interval(Params, 0.0007);
+parse_validate_purge_interval(Params, _) ->
+    do_parse_validate_purge_interval(Params, 0.04).
+
+do_parse_validate_purge_interval(Params, LowerLimit) ->
+    Fun = mk_number_field_validator(LowerLimit, 60, Params, list_to_float),
     case Fun({"purgeInterval", purge_interval, "metadata purge interval"}) of
         [{error, Field, Msg}]->
             [{error, iolist_to_binary(Field), Msg}];
