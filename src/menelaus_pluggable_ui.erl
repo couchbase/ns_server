@@ -132,7 +132,7 @@ validate_plugin_spec(KVs, Plugins) ->
     case {valid_service(ServiceName),
           check_prefix_uniqueness(RestApiPrefixes, Plugins)} of
         {true, ok} ->
-            ?log_info("Loaded pluggable UI specification for ~p~n",
+            ?log_info("Loaded pluggable UI specification for ~p",
                       [ServiceName]),
             [#plugin{name = ServiceName,
                      proxy_strategy = ProxyStrategy,
@@ -142,11 +142,11 @@ validate_plugin_spec(KVs, Plugins) ->
                      request_headers_filter = ReqHdrFilter} | Plugins];
         {true, {error, {duplicates, Duplicates}}} ->
             ?log_info("Pluggable UI specification for ~p not loaded, "
-                      "duplicate REST API prefixes ~p~n",
+                      "duplicate REST API prefixes ~p",
                       [ServiceName, Duplicates]),
             Plugins;
         {false, _} ->
-            ?log_info("Pluggable UI specification for ~p not loaded~n",
+            ?log_info("Pluggable UI specification for ~p not loaded",
                       [ServiceName]),
             Plugins
     end.
