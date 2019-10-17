@@ -352,7 +352,7 @@
       <label class="inline">Metadata Purge Interval</label>
       <span
          class="fa-stack icon-info"
-         uib-tooltip="Set how frequently a node will purge metadata on deleted items. The available range is 0.04 - 60 where 0.04 = 1h, 0.5 = 12h. If set too high, it may significantly delay the node from reclaiming disk space. If set too low, it may cause data inconsistencies in XDCR or Views."
+         uib-tooltip="Set how frequently a node will purge metadata on deleted items. The available range is 0.0007 - 60 where 0.0007 = 1m, 0.5 = 12h. If set too high, it may significantly delay the node from reclaiming memory space. If set too low, it may cause data inconsistencies in XDCR or Views."
          tooltip-placement="top">
         <span class="icon fa-circle-thin fa-stack-2x"></span>
         <span class="icon fa-info fa-stack-1x"></span>
@@ -364,7 +364,7 @@
            ng-model="bucketConf.purgeInterval"
            ng-class="{invalid: bucketConf.purgeInterval}"
            id="metadata-purge-frequency">
-        <small>Range 0.04 (1 H) - 60days</small>
+        <small>Range 0.0007 (1 minute) - 60 days</small>
       </div>
       <div
          class="error"
