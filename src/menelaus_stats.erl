@@ -1953,18 +1953,6 @@ membase_vbucket_resources_stats_description() ->
                    {name, <<"vb_pending_ops_create">>},
                    {desc, <<"New items per second being inserted into \"pending\" vBuckets in this "
                             "bucket and should be transient during rebalancing (measured from vb_pending_ops_create)">>}]},
-         {struct, [{title, <<"accepted sync writes.">>},
-                   {name, <<"vb_active_sync_write_accepted_count">>},
-                   {desc, <<"Number of accepted synchronous writes per second into \"active\" vbuckets in this "
-                            "bucket (measured from vb_active_sync_write_accepted_count)">>}]},
-         {struct, [{title, <<"committed sync writes.">>},
-                   {name, <<"vb_active_sync_write_committed_count">>},
-                   {desc, <<"Number of committed synchronous writes per second into \"active\" vbuckets in this "
-                            "bucket (measured from vb_active_sync_write_committed_count)">>}]},
-         {struct, [{title, <<"aborted sync writes.">>},
-                   {name, <<"vb_active_sync_write_aborted_count">>},
-                   {desc, <<"Number of aborted synchronous writes per second into \"active\" vbuckets in this "
-                             "bucket (measured from vb_active_sync_write_aborted_count)">>}]},
          {struct, [{title, <<"new items per sec.">>},
                    {name, <<"ep_ops_create">>},
                    {desc, <<"Total number of new items being inserted into this bucket (measured from ep_ops_create)">>}]},
