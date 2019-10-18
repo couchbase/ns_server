@@ -178,33 +178,32 @@ get_not_ready_buckets([{_OtherNode, inactive, _} | Rest], Node,
                       NotReadyBuckets) ->
     %% Consider OtherNode's view  only if it itself is active.
     get_not_ready_buckets(Rest, Node, NotReadyBuckets);
-get_not_ready_buckets([{_OtherNode, _, OtherNodeView} | Rest], Node,
+get_not_ready_buckets([{OtherNode, _, OtherNodeView} | Rest], Node,
                       NotReadyBuckets) ->
     NodeStatus = proplists:get_value(Node, OtherNodeView, []),
-    case proplists:get_value(kv, NodeStatus, unknown) of
-        unknown ->
-            get_not_ready_buckets(Rest, Node, NotReadyBuckets);
-        [] ->
-            get_not_ready_buckets(Rest, Node, NotReadyBuckets);
-        BucketList ->
-            %% Remove active/ready buckets from NotReadyBuckets list.
-            NotReady = lists:filter(
-                         fun (Bucket) ->
-                                 case lists:keyfind(Bucket, 1, BucketList) of
-                                     false ->
-                                         true;
-                                     {Bucket, active} ->
-                                         false;
-                                     {Bucket, no_data} ->
-                                         false;
-                                     {Bucket, ready} ->
-                                         false;
-                                     _ ->
-                                         true
-                                 end
-                         end, NotReadyBuckets),
-            get_not_ready_buckets(Rest, Node, NotReady)
-    end.
+    BucketList = proplists:get_value(kv, NodeStatus, []),
+    %% Remove active/ready buckets from NotReadyBuckets list.
+    NotReady =
+        lists:filter(
+          fun (Bucket) ->
+                  case lists:keyfind(Bucket, 1, BucketList) of
+                      false ->
+                          %% do not consider bucket not ready on node if the
+                          %% node itself doesn't know about the bucket,
+                          %% to prevent autofailover due to slow config
+                          %% propagation
+                          OtherNode =/= Node;
+                      {Bucket, active} ->
+                          false;
+                      {Bucket, no_data} ->
+                          false;
+                      {Bucket, ready} ->
+                          false;
+                      _ ->
+                          true
+                  end
+          end, NotReadyBuckets),
+    get_not_ready_buckets(Rest, Node, NotReady).
 
 handle_refresh_status(NodesWanted) ->
     %% To most part, the nodes returned by DCP traffic monitor will
