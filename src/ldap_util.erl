@@ -268,7 +268,7 @@ parse_dn(DN) ->
 
 -define(ALLOWED_CHARS, "abcdefghijklmnopqrstuvwxyz"
                        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                       "0123456789=: ").
+                       "0123456789 ").
 
 %% Escapes any special chars (RFC 4515) from a string representing a
 %% a search filter assertion value
@@ -328,7 +328,7 @@ escape_test() ->
     ?assertEqual("Parens R Us \\28for all your parenthetical needs\\29",
                  escape("Parens R Us (for all your parenthetical needs)")),
     ?assertEqual("\\2a", escape("*")),
-    ?assertEqual("C:\\5cMyFile", escape("C:\\MyFile")),
+    ?assertEqual("C\\3a\\5cMyFile", escape("C:\\MyFile")),
     ?assertEqual("\\00\\00\\00\\04", escape([16#00, 16#00, 16#00, 16#04])),
     ?assertEqual("Lu\\c4\\8di\\c4\\87", escape(<<"Lučić"/utf8>>)).
 
