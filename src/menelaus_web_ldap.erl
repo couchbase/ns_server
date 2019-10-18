@@ -258,7 +258,8 @@ validate_ldap_groups_query(Name, State) ->
       fun (Query) ->
               case ldap_util:parse_url(
                      "ldap:///" ++ Query,
-                     [{"%u", "test_user"}, {"%D", "uid=testdn"}]) of
+                     [{"%u", [{default, "test_user"}]},
+                      {"%D", [{default, "uid=testdn"}]}]) of
                   {ok, URLProps} ->
                       Base = proplists:get_value(dn, URLProps, ""),
                       Attrs = proplists:get_value(attributes, URLProps, []),

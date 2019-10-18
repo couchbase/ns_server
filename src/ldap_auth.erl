@@ -70,7 +70,7 @@ lookup_user(Username) ->
                     {ok, DN};
                 {ok, DN, _} ->
                     Query = DN ++ "?objectClass?base?(objectClass=*)",
-                    dn_query_with_handle(Handle, Query, Timeout);
+                    dn_query_with_handle(Handle, Query, [], Timeout);
                 {error, _} = Error ->
                     Error
             end
@@ -103,32 +103,34 @@ map_user_to_DN(Username, Settings, [{Re, {Type, Template}} = Rule|T],
             ?log_debug("Username->DN: using rule ~p for ~p",
                        [Rule, ns_config_log:tag_user_name(Username)]),
             ReplaceRe = ?cut(lists:flatten(io_lib:format("\\{~b\\}", [_]))),
-            Subs = [{ReplaceRe(N), ldap_util:escape(S)} ||
+            Subs = [{ReplaceRe(N), [{default, ldap_util:escape(S)}]} ||
                         {N, S} <- misc:enumerate(Captured, 0)],
-            [Res] = ldap_util:replace_expressions([Template], Subs),
             case Type of
-                template -> {ok, Res, template};
+                template ->
+                    [Res] = ldap_util:replace_expressions([{dn, Template}],
+                                                          Subs),
+                    {ok, Res, template};
                 'query' ->
-                    case dn_query(Res, Settings, Context) of
+                    case dn_query(Template, Subs, Settings, Context) of
                         {ok, DN} -> {ok, DN, query};
                         {error, _} = Error -> Error
                     end
             end
     end.
 
-dn_query(Query, Settings, #{query_handle := Handle}) ->
+dn_query(QueryTemplate, ReplacePairs, Settings, #{query_handle := Handle}) ->
     Timeout = proplists:get_value(request_timeout, Settings),
-    dn_query_with_handle(Handle, Query, Timeout);
-dn_query(Query, Settings, _) ->
+    dn_query_with_handle(Handle, QueryTemplate, ReplacePairs, Timeout);
+dn_query(QueryTemplate, ReplacePairs, Settings, _) ->
     Timeout = proplists:get_value(request_timeout, Settings),
     with_query_connection(
       Settings,
       fun (Handle) ->
-              dn_query_with_handle(Handle, Query, Timeout)
+              dn_query_with_handle(Handle, QueryTemplate, ReplacePairs, Timeout)
       end).
 
-dn_query_with_handle(Handle, Query, Timeout) ->
-    case ldap_util:parse_url("ldap:///" ++ Query) of
+dn_query_with_handle(Handle, QueryTemplate, ReplacePairs, Timeout) ->
+    case ldap_util:parse_url("ldap:///" ++ QueryTemplate, ReplacePairs) of
         {ok, URLProps} ->
             Base = proplists:get_value(dn, URLProps, ""),
             Scope = proplists:get_value(scope, URLProps, "one"),
@@ -141,7 +143,7 @@ dn_query_with_handle(Handle, Query, Timeout) ->
                 {error, Reason} -> {error, {dn_search_failed, Reason}}
             end;
         {error, Error} ->
-            {error, {ldap_url_parse_error, Query, Error}}
+            {error, {ldap_url_parse_error, QueryTemplate, Error}}
     end.
 
 user_groups(User) ->
@@ -163,14 +165,16 @@ get_groups(Handle, Username, Settings, QueryStr) ->
         fun () ->
                 Context = #{query_handle => Handle},
                 case get_user_DN(Username, Settings, Context) of
-                    {ok, DN, _} -> DN;
+                    {ok, DN, _} ->
+                        [{filter, ldap_util:escape(DN)}, {default, DN}];
                     {error, Reason} ->
                         throw({error, {username_to_dn_map_failed, Reason}})
                 end
         end,
     QueryFun =
         fun (G) ->
-                Replace = [{"%D", G},
+                Replace = [{"%D", [{filter, ldap_util:escape(G)},
+                                   {default, G}]},
                            {"%u", ?cut(throw({error, user_placeholder}))}],
                 run_query(Handle, QueryStr, Replace, Timeout)
         end,
@@ -179,8 +183,9 @@ get_groups(Handle, Username, Settings, QueryStr) ->
     FailOnMaxDepth = proplists:get_value(fail_on_max_depth, Settings),
     NestedEnabled = proplists:get_bool(nested_groups_enabled, Settings),
     try
-        UserGroups = run_query(Handle, QueryStr, [{"%u", EscapedUser},
-                                                  {"%D", GetDN}], Timeout),
+        UserGroups = run_query(Handle, QueryStr,
+                               [{"%u", [{default, EscapedUser}]},
+                                {"%D", GetDN}], Timeout),
         case NestedEnabled of
             true -> {ok, get_nested_groups(QueryFun, UserGroups, UserGroups,
                                            FailOnMaxDepth, MaxDepth)};

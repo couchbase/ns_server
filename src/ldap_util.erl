@@ -195,12 +195,11 @@ eldap_search(Handle, SearchProps) ->
             {error, Reason}
     end.
 
-parse_url(Template, ReplacePairs) ->
-    [URL] = replace_expressions([Template], ReplacePairs),
-    parse_url(URL).
+parse_url(Template) ->
+    parse_url(Template, []).
 
 %% RFC4516 ldap url parsing
-parse_url(Str) ->
+parse_url(Str, ReplacePairs) ->
     SchemeValidator = fun (S) ->
                               case string:to_lower(S) of
                                   "ldap" -> valid;
@@ -214,25 +213,30 @@ parse_url(Str) ->
                 {ok, R} -> R;
                 {error, _} -> throw({error, malformed_url})
             end,
-
         [[], AttrsStr, Scope, FilterEncoded, Extensions | _] =
             string:split(Query ++ "?????", "?", all),
-        Attrs = [mochiweb_util:unquote(A) || A <- string:tokens(AttrsStr, ",")],
 
-        DN = mochiweb_util:unquote(EncodedDN),
+        [EncodedDN2, AttrsStr2, Scope2, FilterEncoded2, Extensions2] =
+            replace_expressions([{base, EncodedDN}, {attrs, AttrsStr},
+                                 {scope, Scope}, {filter, FilterEncoded},
+                                 {extensions, Extensions}], ReplacePairs),
+
+        Attrs = [mochiweb_util:unquote(A) || A <- string:tokens(AttrsStr2, ",")],
+
+        DN = mochiweb_util:unquote(EncodedDN2),
         case parse_dn(DN) of
             {ok, _} -> ok;
             {error, Err} -> throw({error, {invalid_dn, DN, Err}})
         end,
 
-        ScopeLower = string:to_lower(Scope),
+        ScopeLower = string:to_lower(Scope2),
         try
             ScopeLower =:= "" orelse parse_scope(ScopeLower)
         catch
-            _:_ -> throw({error, {invalid_scope, Scope}})
+            _:_ -> throw({error, {invalid_scope, Scope2}})
         end,
 
-        Filter = mochiweb_util:unquote(FilterEncoded),
+        Filter = mochiweb_util:unquote(FilterEncoded2),
         case Filter =:= "" orelse ldap_filter_parser:parse(Filter) of
             true -> ok;
             {ok, _} -> ok;
@@ -248,7 +252,7 @@ parse_url(Str) ->
          [{attributes, Attrs} || Attrs =/= []] ++
          [{scope, ScopeLower} || ScopeLower =/= ""] ++
          [{filter, Filter} || Filter =/= ""] ++
-         [{extensions, Extensions} || Extensions =/= ""]
+         [{extensions, Extensions2} || Extensions2 =/= ""]
         }
     catch
         throw:{error, _} = Error -> Error
@@ -291,18 +295,19 @@ escape(Input) ->
     lists:flatten(["\\20" || _ <- Lead] ++ Rest2 ++ ["\\20" || _ <- Trail]).
 
 replace_expressions(Strings, Substitutes) ->
-    lists:foldl(
-        fun ({Re, ValueFun}, Acc) ->
-            replace(Acc, Re, ValueFun, [])
-        end, Strings, Substitutes).
+    Res = lists:foldl(
+            fun ({Re, ValueFun}, Acc) ->
+                replace(Acc, Re, ValueFun, [])
+            end, Strings, Substitutes),
+    [Str || {_, Str} <- Res].
 
 replace([], _, _, Res) -> lists:reverse(Res);
-replace([Str | Tail], Re, Value, Res) when is_function(Value) ->
+replace([{Type, Str} | Tail], Re, Fun, Res) when is_function(Fun) ->
     case re:run(Str, Re, [{capture, none}]) of
-        match -> replace([Str | Tail], Re, Value(), Res);
-        nomatch -> replace(Tail, Re, Value, [Str | Res])
+        match -> replace([{Type, Str} | Tail], Re, Fun(), Res);
+        nomatch -> replace(Tail, Re, Fun, [{Type, Str} | Res])
     end;
-replace([Str | Tail], Re, Value, Res) ->
+replace([{Type, Str} | Tail], Re, ValuesPropList, Res) ->
     %% Replace \ with \\ to prevent re skipping all hex bytes from Value
     %% which are specified as \\XX according to LDAP RFC. Example:
     %%   Str = "(uid=%u)",
@@ -310,9 +315,11 @@ replace([Str | Tail], Re, Value, Res) ->
     %%   Value = "abc\\23def",
     %%   Without replacing the result is "(uid=abcdef)"
     %%   With replacing it is "(uid=abc\\23def)"
+    Value = proplists:get_value(Type, ValuesPropList,
+                                proplists:get_value(default, ValuesPropList)),
     Value2 = re:replace(Value, "\\\\", "\\\\\\\\", [{return, list}, global]),
     ResStr = re:replace(Str, Re, Value2, [global, {return, list}]),
-    replace(Tail, Re, Value, [ResStr | Res]).
+    replace(Tail, Re, ValuesPropList, [{Type, ResStr} | Res]).
 
 
 -ifdef(TEST).
