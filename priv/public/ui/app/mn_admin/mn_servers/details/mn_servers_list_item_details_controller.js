@@ -48,7 +48,7 @@
               ram.quotaUsedPerNode,
               ram.quotaTotalPerNode),
             mnServersListItemDetailsService.getBaseConfig(
-              'data service',
+              'data service used',
               ram.usedByData,
               ram.quotaTotalPerNode)
           );
