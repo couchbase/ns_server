@@ -199,6 +199,8 @@ parse_url(Template) ->
     parse_url(Template, []).
 
 %% RFC4516 ldap url parsing
+parse_url(Bin, ReplacePairs) when is_binary(Bin) ->
+    parse_url(binary_to_list(Bin), ReplacePairs);
 parse_url(Str, ReplacePairs) ->
     SchemeValidator = fun (S) ->
                               case string:to_lower(S) of

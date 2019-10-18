@@ -208,8 +208,8 @@ validate_user_dn_mapping(Name, State) ->
 parse_dn_mapping({[{<<"query">>, Q}]}) ->
     has_username_var(Q),
     QueryTempl = iolist_to_binary(string:replace(Q, "%u", "{0}")),
-    case ldap_util:parse_url("ldap:///" ++ QueryTempl,
-                             [{"\\{\\d+\\}", "placeholder"}]) of
+    case ldap_util:parse_url(<<"ldap:///", QueryTempl/binary>>,
+                             [{"\\{\\d+\\}", [{default, "testuser"}]}]) of
         {ok, _} -> ok;
         {error, Reason} ->
             throw({error, io_lib:format(
