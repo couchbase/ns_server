@@ -50,6 +50,9 @@ type Process struct {
 
 	stdout io.ReadCloser
 	stderr io.ReadCloser
+
+	waitErr error
+	waitCh  chan struct{}
 }
 
 // StartProcess starts a process given a path and a list of arguments to pass
@@ -120,7 +123,29 @@ func StartProcess(path string, args []string) (*Process, error) {
 		stderr: stderrR,
 	}
 
+	p.startWaiter()
+
 	return p, nil
+}
+
+func (p *Process) startWaiter() {
+	ch := make(chan struct{})
+
+	go func() {
+		p.waitErr = p.wait()
+		close(ch)
+	}()
+
+	p.waitCh = ch
+}
+
+func (p *Process) wait() error {
+	err := p.cmd.Wait()
+	if p.cmd.ProcessState != nil {
+		err = nil
+	}
+
+	return err
 }
 
 // Write writes to the standard input of the process.
@@ -169,12 +194,8 @@ func (p *Process) Kill() error {
 
 // Wait waits for the process to terminate.
 func (p *Process) Wait() error {
-	err := p.cmd.Wait()
-	if p.cmd.ProcessState != nil {
-		err = nil
-	}
-
-	return err
+	<-p.waitCh
+	return p.waitErr
 }
 
 // GetExitStatus returns an exit status of the process once it has
