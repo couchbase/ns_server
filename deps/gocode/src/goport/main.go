@@ -288,7 +288,7 @@ func (p *port) handleShutdown() <-chan error {
 func (p *port) shutdown() error {
 	var err error
 	if p.childSpec.gracefulShutdown {
-		err = p.childWorker.Close()
+		err = p.child.Close()
 
 		// The error can be ErrClosed when the user closed stdin
 		// before calling shutdown and we still haven't received an
