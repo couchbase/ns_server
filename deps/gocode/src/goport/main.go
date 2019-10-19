@@ -305,6 +305,12 @@ func (p *port) shutdown() error {
 	return err
 }
 
+func (p *port) shutdownAndWait() {
+	if p.shutdown() == nil {
+		p.child.Wait()
+	}
+}
+
 func (p *port) handleWrite(data []byte) <-chan error {
 	return p.childWorker.Write(data)
 }
@@ -393,7 +399,7 @@ func (p *port) loop() error {
 	if err != nil {
 		return fmt.Errorf("failed to start child: %s", err.Error())
 	}
-	defer p.shutdown()
+	defer p.shutdownAndWait()
 
 	p.startWorkers()
 	defer p.terminateWorkers()
