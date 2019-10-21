@@ -252,7 +252,7 @@ is_internal(Req) ->
                    {token, auth_token()} |
                    {client_cert_auth, string()} |
                    {rbac_user_id(), rbac_password()}) ->
-                          false | {ok, rbac_identity()} | {error, term()}.
+                          false | {ok, rbac_identity()}.
 authenticate(error) ->
     false;
 authenticate(undefined) ->
@@ -270,8 +270,8 @@ authenticate({token, Token} = Param) ->
                         true ->
                             false
                     end;
-                Other ->
-                    Other
+                {ok, Id} ->
+                    {ok, Id}
             end;
         true ->
             rpc:call(ns_node_disco:ns_server_node(), ?MODULE, authenticate, [Param])
@@ -301,24 +301,19 @@ authenticate({Username, Password}) ->
     case ns_config_auth:authenticate(Username, Password) of
         false ->
             authenticate_external(Username, Password);
-        Ok ->
-            Ok
+        {ok, Id} ->
+            {ok, Id}
     end.
 
 -spec authenticate_external(rbac_user_id(), rbac_password()) ->
-                                    false | {ok, rbac_identity()} | {error, term()}.
+                                    false | {ok, rbac_identity()}.
 authenticate_external(Username, Password) ->
     case ns_node_disco:couchdb_node() == node() of
         false ->
-            Res =
-                case saslauthd_auth:authenticate(Username, Password) of
-                    false -> ldap_auth_cache:authenticate(Username, Password);
-                    Else -> Else
-                end,
-            case Res of
+            case saslauthd_auth:authenticate(Username, Password) orelse
+                 ldap_auth_cache:authenticate(Username, Password) of
                 true -> {ok, {Username, external}};
-                false -> false;
-                {error, Error} -> {error, Error}
+                false -> false
             end;
         true ->
             rpc:call(ns_node_disco:ns_server_node(), ?MODULE,
@@ -336,9 +331,7 @@ verify_login_creds(Auth) ->
                     {forbidden, Identity, UIPermission}
             end;
         false ->
-            auth_failure;
-        Other ->
-            Other
+            auth_failure
     end.
 
 -spec uilogin(mochiweb_request(), list()) -> mochiweb_response().

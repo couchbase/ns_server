@@ -28,9 +28,9 @@ verify_creds(Username, Password) ->
                                             {password, list_to_binary(Password)}]}) of
         {ok, Resp} ->
             Resp =:= true;
-        {error, ErrorMsg} = Error ->
+        {error, ErrorMsg} ->
             ?log_error("Revrpc to saslauthd returned error: ~p", [ErrorMsg]),
-            Error
+            false
     end.
 
 build_settings() ->
