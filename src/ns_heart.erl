@@ -502,6 +502,7 @@ grab_procfs_files() ->
     case os:type() of
         {_, linux} ->
             Files = [{meminfo, "/proc/meminfo"},
+                     {loadavg, "/proc/loadavg"},
                      {cpu_pressure, "/proc/pressure/cpu"},
                      {memory_pressure, "/proc/pressure/memory"},
                      {io_pressure, "/proc/pressure/io"}],
