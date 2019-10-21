@@ -364,95 +364,166 @@
         name: "Cluster Overview",
         desc: "Stats showing the general health of your cluster.",
         groups: [{
-          name: "Server Resources & Ops",
-          isOpen: true,
+          name: "Cluster Overview",
+        isOpen: true,
+        charts: [{
+          stats: {"@kv-.ops": true,
+                  "@query.query_requests": true,
+                  "@fts-.@items.total_queries": true,
+                  "@kv-.ep_tmp_oom_errors": true,
+                  "@kv-.ep_cache_miss_rate": true,
+                  "@kv-.cmd_get": true,
+                  "@kv-.cmd_set": true,
+                  "@kv-.delete_hits": true,
+                  "@kv-.@items.accesses": true
+                },
+          size: "large",
+          specificStat: false
+        }, {
+          stats: {"@kv-.mem_used": true,
+                  "@kv-.ep_mem_low_wat": true,
+                  "@kv-.ep_mem_high_wat": true},
+          size: "medium",
+          specificStat: false // false for multi-stat chart
+        }, {
+          stats: {"@kv-.curr_items": true,
+                  "@kv-.vb_replica_curr_items": true,
+                  "@kv-.vb_active_resident_items_ratio": true,
+                  "@kv-.vb_replica_resident_items_ratio": true},
+          size: "medium",
+          specificStat: false
+        }, {
+          stats: {"@kv-.disk_write_queue": true},
+          size: "small",
+          specificStat: true
+        }, {
+          stats: {"@kv-.ep_dcp_replica_items_remaining": true},
+          size: "small",
+          specificStat: true
+        }, {
+          stats: {"@kv-.ep_data_read_failed": true,
+                  "@kv-.ep_data_write_failed": true,
+                  "@query.query_errors": true,
+                  "@query.total_queries_error": true,
+                  "@eventing.eventing/failed_count": true},
+          size: "small",
+          specificStat: false
+        }, {
+          stats: {"@query.query_requests_250ms": true,
+                  "@query.query_requests_500ms": true,
+                  "@query.query_requests_1000ms": true,
+                  "@query.query_requests_5000ms": true},
+          size: "small",
+          specificStat: false
+        }, {
+          stats: {"@xdcr-.replication_changes_left": true},
+          size: "small",
+          specificStat: true
+        }, {
+         stats: {"@index-.@items.num_docs_pending+queued": true},
+         size: "small",
+         specificStat: true
+       }, {
+         stats: {"@fts-.@items.num_mutations_to_index": true},
+         size: "small",
+         specificStat: true
+       }, {
+         stats: {"@eventing.eventing/dcp_backlog": true},
+         size: "small",
+         specificStat: true
+       },
+      ]
+    },
+    {
+          name: "Node Resources",
+          isOpen: false,
           charts: [{
             stats: {"@system.cpu_utilization_rate": true},
-            size: "small",
-            specificStat: true // for single-stat chart
-          }, {
-            stats: {"@kv-.mem_used": true,
-                    "@index-.index/data_size": true,
-                    "@fts.fts_num_bytes_used_ram": true},
-            size: "small",
-            specificStat: false
-          }, {
-            stats: {"@kv-.couch_total_disk_size": true,
-                    "@index-.index/disk_size": true},
-            size: "small",
-            specificStat: false
-          }, {
-            stats: {"@system.swap_used": true},
-            size: "small",
-            specificStat: true
-          }, {
-            stats: {"@kv-.ops": true,
-                    "@kv-.ep_cache_miss_rate": true},
             size: "medium",
-            specificStat: false
-          }, {
-            stats: {"@kv-.cmd_get": true,
-                    "@kv-.cmd_set": true,
-                    "@kv-.delete_hits": true},
-            size: "medium",
-            specificStat: false
-          }]
-      }] }, {  // 2nd scenario starts here with the comma ///////////////////////
-
-        name: "Troubleshooting",
-        desc: "Most common stats, arranged per service. Customize this or make your own dashboard with New Dashboard below.",
-        groups: [{
-          name: "Server Resources",
-          isOpen: true,
-          charts: [{
-            stats: {"@system.cpu_utilization_rate": true},
-            size: "small",
             specificStat: true // for single-stat chart
-          }, {
-            stats: {"@system.mem_actual_free": true},
-            size: "small",
-            specificStat: true
-          }, {
-            stats: {"@system.swap_used": true},
-            size: "small",
-            specificStat: true
           }, {
             stats: {"@system.rest_requests": true},
-            size: "small",
+            size: "medium",
+            specificStat: true
+          }, {
+            stats: {"@system.mem_actual_free": true},
+            size: "medium",
+            specificStat: false
+          }, {
+            stats: {"@system.swap_used": true},
+            size: "medium",
             specificStat: true
           }]
-          }, {
+        }
+      ]
+    },{  // 2nd scenario starts here with the comma ///////////////////////
+
+        name: "All Services",
+        desc: "Most common stats, arranged per service. Customize and make your own dashboard with New Dashboard below.",
+        groups: [{
           name: "Data Service",
           isOpen: true,
           charts: [{
             stats: {"@kv-.mem_used": true,
                     "@kv-.ep_mem_low_wat": true,
-                    "@kv-.ep_mem_high_wat": true},
+                    "@kv-.ep_mem_high_wat": true,
+                    "@kv-.ep_kv_size": true,
+                    "@kv-.ep_meta_data_memory": true,
+                    "@kv-.vb_active_resident_items_ratio": true},
             size: "medium",
             specificStat: false // false for multi-stat chart
           }, {
-            stats: {"@kv-.ep_kv_size": true,
-                    "@kv-.ep_meta_data_memory": true},
-            size: "medium",
-            specificStat: false
-          }, {
             stats: {"@kv-.ops": true,
-                    "@kv-.ep_cache_miss_rate": true},
+                    "@kv-.ep_cache_miss_rate": true,
+                    "@kv-.cmd_get": true,
+                    "@kv-.cmd_set": true,
+                    "@kv-.delete_hits": true,
+                    "@kv-.@items.accesses": true,
+                    "@kv-.ep_num_ops_set_meta": true
+                },
             size: "medium",
             specificStat: false
           }, {
-            stats: {"@kv-.cmd_get": true,
-                    "@kv-.cmd_set": true,
-                    "@kv-.delete_hits": true},
+            stats: {"@kv-.ep_dcp_views+indexes_items_remaining": true,
+                    "@kv-.ep_dcp_cbas_items_remaining": true,
+                    "@kv-.ep_dcp_replica_items_remaining": true,
+                    "@kv-.ep_dcp_xdcr_items_remaining": true,
+                    "@kv-.ep_dcp_eventing_items_remaining": true,
+                    "@kv-.ep_dcp_other_items_remaining": true,
+                    "@xdcr-.replication_changes_left": true
+                  },
             size: "medium",
             specificStat: false
+          }, {
+            stats: {"@kv-.ep_bg_fetched": true,
+                    "@kv-.ep_data_read_failed": true,
+                    "@kv-.ep_data_write_failed": true,
+                    "@kv-.ep_ops_create": true,
+                    "@kv-.ep_ops_update": true
+                  },
+            size: "medium",
+            specificStat: false
+          }, {
+            stats: {"@kv-.ep_diskqueue_items": true},
+            size: "small",
+            specificStat: true
           }]
       }, {
           name: "Index Service",
           isOpen: false,
           charts: [{
+            stats: {"@index-.index/num_rows_returned": true},
+            size: "small",
+            specificStat: true
+          }, {
+            stats: {"@index-.@items.num_docs_pending+queued": true},
+            size: "small",
+            specificStat: true
+         }, {
             stats: {"@index.index_ram_percent": true,
-                    "@index.index_remaining_ram": true},
+                    "@index.index_remaining_ram": true,
+                    "@index-.index/data_size": true,
+                    "@index-.index/disk_size": true},
             size: "small",
             specificStat: false
           }, {
