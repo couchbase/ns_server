@@ -825,7 +825,7 @@ def make_os_tasks():
         LinuxTask(
             "Process list",
             "ps -AwwL -o user,pid,lwp,ppid,nlwp,pcpu,maj_flt,min_flt,pri,nice,vsize,rss,tty,stat,wchan:12,start,"
-            "bsdtime,command"),
+            "bsdtime,comm,command"),
         LinuxTask("Raw /proc/buddyinfo", "cat /proc/buddyinfo"),
         LinuxTask("Raw /proc/meminfo", "cat /proc/meminfo"),
         LinuxTask("Raw /proc/pagetypeinfo", "cat /proc/pagetypeinfo"),
