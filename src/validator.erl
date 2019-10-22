@@ -29,6 +29,7 @@
          get_value/2,
          convert/3,
          one_of/3,
+         string/2,
          boolean/2,
          integer/2,
          integer/4,
@@ -67,6 +68,9 @@ handle(Fun, Req, Args, Validators) ->
 
 add_input_type(Type, Params) ->
     [{{internal, input_type}, Type} | Params].
+
+is_json(#state{kv = Params}) ->
+    json =:= proplists:get_value({internal, input_type}, Params).
 
 validate_only(Req) ->
     proplists:get_value("just_validate",
@@ -244,6 +248,19 @@ one_of(Name, List, State) ->
                          "The value must be one of the following: [~s]",
                          [string:join(StringList, ",")])}
               end
+      end, Name, State).
+
+string(Name, State) ->
+    validate(
+      case is_json(State) of
+          true ->
+              fun (Binary) when is_binary(Binary) ->
+                      {value, binary_to_list(Binary)};
+                  (_) ->
+                      {error, "Value must be json string"}
+              end;
+          false ->
+              functools:id(_)
       end, Name, State).
 
 boolean(Name, State) ->
