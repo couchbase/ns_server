@@ -55,13 +55,18 @@ handle(Fun, Req, json_array, Validators) ->
                                 mochiweb_request:recv_body(Req), Validators));
 
 handle(Fun, Req, form, Validators) ->
-    handle(Fun, Req, mochiweb_request:parse_post(Req), Validators);
+    handle(Fun, Req, add_input_type(form, mochiweb_request:parse_post(Req)),
+           Validators);
 
 handle(Fun, Req, qs, Validators) ->
-    handle(Fun, Req, mochiweb_request:parse_qs(Req), Validators);
+    handle(Fun, Req, add_input_type(form, mochiweb_request:parse_qs(Req)),
+           Validators);
 
 handle(Fun, Req, Args, Validators) ->
     handle_one(Fun, Req, functools:chain(#state{kv = Args}, Validators)).
+
+add_input_type(Type, Params) ->
+    [{{internal, input_type}, Type} | Params].
 
 validate_only(Req) ->
     proplists:get_value("just_validate",
@@ -92,14 +97,16 @@ handle_one(Fun, Req, #state{errors = Errors} = State) ->
     end.
 
 prepare_params(#state{kv = Props, touched = Touched}) ->
-    lists:map(fun ({K, V}) ->
-                      case lists:member(K, Touched) of
-                          true ->
-                              {list_to_atom(K), V};
-                          false ->
-                              {K, V}
-                      end
-              end, Props).
+    lists:filtermap(fun ({{internal, _}, _}) ->
+                            false;
+                        ({K, V}) ->
+                            case lists:member(K, Touched) of
+                                true ->
+                                    {true, {list_to_atom(K), V}};
+                                false ->
+                                    {true, {K, V}}
+                            end
+                    end, Props).
 
 report_errors_for_multiple(Req, Errors, Code) ->
     send_error_json(Req, [{struct, E} || E <- Errors], Code).
@@ -112,7 +119,7 @@ send_error_json(Req, Errors, Code) ->
 
 with_decoded_object({KVList}, Validators) ->
     Params = [{binary_to_list(Name), Value} || {Name, Value} <- KVList],
-    functools:chain(#state{kv = Params}, Validators);
+    functools:chain(#state{kv = add_input_type(json, Params)}, Validators);
 with_decoded_object(_, _) ->
     #state{errors = [{<<"_">>, <<"Unexpected Json">>}]}.
 
@@ -330,7 +337,7 @@ unsupported(#state{kv = Props, touched = Touched, errors = Errors} = State) ->
     NewErrors =
         lists:filtermap(
           fun({Name, _}) ->
-                  case lists:member(Name, Touched) of
+                  case is_tuple(Name) orelse lists:member(Name, Touched) of
                       true ->
                           false;
                       false ->
