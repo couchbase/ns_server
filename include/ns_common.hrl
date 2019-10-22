@@ -202,7 +202,7 @@
 -define(MIN_FREE_RAM, misc:get_env_default(quota_min_free_ram, 1024)).
 -define(MIN_FREE_RAM_PERCENT, 80).
 
--define(DEFAULT_EPHEMERAL_PURGE_INTERVAL_DAYS, 3).
+-define(DEFAULT_EPHEMERAL_PURGE_INTERVAL_DAYS, 1).
 
 %% Default quota is 5GiB but the unit is MiB.
 -define(QUERY_TMP_SPACE_DEF_SIZE, 5120).
