@@ -1137,19 +1137,13 @@ handle_query_vbuckets(Call, #state{bucket_name = BucketName,
                  VBs, Opts}
         end,
     NewState = consider_doing_flush(State),
-    R = case proplists:is_defined(stop_replications, Options) of
-            true ->
-                stop_replications(BucketName, VBuckets);
-            false ->
-                ok
-        end,
-
-    case R of
-        ok ->
-            {Fun(), NewState};
-        Err ->
-            Err
-    end.
+    case proplists:is_defined(stop_replications, Options) of
+        true ->
+            ok = stop_replications(BucketName, VBuckets);
+        false ->
+            ok
+    end,
+    {Fun(), NewState}.
 
 filter_vbucket_dict(all, Dict) ->
     Dict;
