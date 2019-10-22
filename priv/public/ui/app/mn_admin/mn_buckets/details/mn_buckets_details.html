@@ -44,6 +44,12 @@
         <strong>Compaction:</strong>
         {{bucketsDetailsCtl.compactionTasks.thisBucketCompactionTask ? bucketsDetailsCtl.compactionTasks.thisBucketCompactionTask.progress + "% complete" : "Not active"}}
       </div>
+      <div
+         class="nowrap"
+         ng-if="bucket.isEphemeral">
+        <strong>Metadata Purge Interval:</strong>
+        {{(bucketsDetailsCtl.bucketDetails.purgeInterval)}}
+      </div>
     </div>
 
     <div class="cbui-table-meters buckets">
