@@ -131,9 +131,9 @@
            class="nocaps">
           {{row.status}}
         </div>
-        <div ng-if="gsiItemCtl.getMostRecentStatValue('num_docs_pending+queued') > 0"
+        <div ng-if="row['num_docs_pending+queued']"
              class="label warning">
-          {{gsiItemCtl.getMostRecentStatValue('num_docs_pending+queued') | number:0}}
+          {{row['num_docs_pending+queued'] | number:0}}
           mutations remaining
         </div>
       </span>

@@ -55,11 +55,11 @@
     }
 
     function getStatSamples(statName) {
-      return $scope.mnUIStats && $scope.mnUIStats.data.samples[getIndexStatName(statName)];
+      return $scope.mnUIStats && $scope.mnUIStats.data && $scope.mnUIStats.data.samples && $scope.mnUIStats.data.samples[getIndexStatName(statName)];
     }
 
     function updateValues() {
-      (['num_requests', 'index_resident_percent', 'items_count', 'data_size'])
+      (['num_requests', 'index_resident_percent', 'items_count', 'data_size', 'num_docs_pending+queued'])
         .forEach(function (statName) {
           vm['has_' + statName] = hasValue(statName);
           vm['has_no_' + statName] = hasNoValue(statName);
