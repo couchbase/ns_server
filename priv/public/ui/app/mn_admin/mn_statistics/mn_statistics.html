@@ -1,5 +1,5 @@
 <div class="row margin-bottom-1-5">
-  <div class="row flex-left">
+  <div class="row flex-left flex-wrap">
     <div class="inline margin-right-half"
          ng-controller="mnScenarioDialogController as scenarioCtrl">
       <mn-dropdown
@@ -120,9 +120,14 @@
     </ui-select>
   </div>
   <div class="row flex-right">
-    <a ng-click="statisticsNewCtl.resetDashboardConfiguration();" class="scenarios-delete">
-      <span class="icon fa-lg fa-trash"></span>
+<!--
+    <a href="http://127.0.0.1:9000/ui/index.html#!/servers/list/analytics/" class="text-smaller">
+      Classic Stats
     </a>
+-->
+    <button ng-click="statisticsNewCtl.resetDashboardConfiguration();" class="outline tight scenario-delete indent-1">
+      <span class="icon fa-trash grayblack-3"></span> Reset
+    </button>
     <button
        ng-disabled="!statisticsNewCtl.scenarios.length"
        ng-click="statisticsNewCtl.openGroupDialog(statisticsNewCtl.scenario.selected)"
