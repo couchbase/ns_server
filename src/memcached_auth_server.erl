@@ -240,7 +240,8 @@ connect() ->
         {ok, Sock} ->
             case cmd_auth_provider(Sock) of
                 ok ->
-                    ?log_debug("Auth provider connection established"),
+                    ?log_debug("Auth provider connection established "
+                               "(socket info: ~p)", [inet:sockname(Sock)]),
                     inet:setopts(Sock, [{active, once}]),
                     {ok, Sock};
                 {error, Error} ->
