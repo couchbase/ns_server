@@ -40,6 +40,8 @@
     vm.currentBucket = mnPermissions.export.bucketNames['.stats!read'] &&
       mnPermissions.export.bucketNames['.stats!read'][0];
     vm.onSelectBucket = onSelectBucket;
+    vm.getLatestStat = getLatestStat;
+    vm.getLatestStatExponent = getLatestStatExponent;
 
     activate();
 
@@ -57,6 +59,22 @@
         }, vm)
         .reloadOnScopeEvent("reloadUIStatPoller")
         .cycle();
+    }
+
+    function getLatestStat(statName) {
+      if (vm.stats && _.isArray(vm.stats[statName])) {
+        return(vm.stats[statName].slice(-1)[0]);
+      }
+    }
+
+    function getLatestStatExponent(statName, digits) {
+      var value = getLatestStat(statName);
+      if (value) {
+        return(d3.format('.'+digits+'e')(value));
+      }
+      else {
+        return value;
+      }
     }
 
     function onSelectBucket() {
