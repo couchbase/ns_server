@@ -693,7 +693,9 @@ label {
   font-weight: normal;
 }
 .forms h4 + .desc,
-.forms label + .desc {
+.forms label + .desc,
+.forms .desc,
+.desc {
   margin: 0 0 .5rem 0;
 }
 .formrow {
