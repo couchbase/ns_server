@@ -19,10 +19,11 @@
 
       mnStatisticsNewService.subscribeUIStatsPoller({
         node: $scope.node.hostname || "all",
-        zoom: 'minute',
-        interval: 5000,
+        zoom: 1000,
+        step: 1,
         bucket: mnPermissions.export.bucketNames['.stats!read'] &&
-          mnPermissions.export.bucketNames['.stats!read'][0]
+          mnPermissions.export.bucketNames['.stats!read'][0],
+        stats: ['index_memory_used','fts_num_bytes_used_ram','cbas_heap_used','cbas_disk_used']
       }, $scope);
 
       $scope.$watch("mnUIStats", updateBarChartData);
@@ -36,7 +37,7 @@
         var details = vm.server.details;
         var ram = details.storageTotals.ram;
         var hdd = details.storageTotals.hdd;
-        var stats = $scope.mnUIStats && $scope.mnUIStats.data && $scope.mnUIStats.data.samples;
+        var stats = $scope.mnUIStats;
 
         vm.memoryUsages = [];
         vm.diskUsages = [];
@@ -68,15 +69,15 @@
         vm.memoryUsages.push(
           mnServersListItemDetailsService.getBaseConfig(
             'index service used',
-            stats['index_memory_used'],
+            stats[0].stats[$scope.node.hostname].samples,
             details.indexMemoryQuota*1024*1024),
           mnServersListItemDetailsService.getBaseConfig(
             'search service used',
-            stats['fts_num_bytes_used_ram'],
+            stats[1].stats[$scope.node.hostname].samples,
             details.ftsMemoryQuota*1024*1024),
           mnServersListItemDetailsService.getBaseConfig(
             'analytics service used',
-            stats['cbas_heap_used'],
+            stats[2].stats[$scope.node.hostname].samples,
             details.cbasMemoryQuota*1024*1024)
         );
 
@@ -85,10 +86,10 @@
           //{name: 'index/disk_size', label: "indexes"},
           //{name: 'fts/num_bytes_used_disk', label: "analytics"},
           {name: 'cbas_disk_used', label: "analytics service"}
-        ]).forEach(function (stat) {
+        ]).forEach(function (stat, i) {
           vm.diskUsages.push(mnServersListItemDetailsService.getBaseConfig(
             stat.label,
-            stats[stat.name],
+            stats[i + 3].stats[$scope.node.hostname].samples,
             hdd.free,
             hdd.usedByData))
         });

@@ -5,7 +5,7 @@
        ng-if="!detailedChartCtl.reloadChartDirective"
        bucket="{{detailedChartCtl.bucket}}"
        zoom="{{detailedChartCtl.zoom}}"
-       node="{{detailedChartCtl.node}}"
+       node="{{detailedChartCtl.node || 'all'}}"
        nvd3-options="{type: 'lineWithFocusChart'}"
        rbac="rbac"
        items="detailedChartCtl.items"

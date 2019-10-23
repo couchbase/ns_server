@@ -25,11 +25,11 @@
       var timestamp = new Date();
       self.doCallPromise = self.doCall(timestamp);
       self.doCallPromise.then(function () {
-        if (self.isStopped(timestamp)) {
+        if ((self.doCallPromise !== this) || self.isStopped(timestamp)) {
           return;
         }
         self.cycle();
-      });
+      }.bind(self.doCallPromise));
       return self;
     }
   }
@@ -50,11 +50,14 @@
         }
       }
 
-      if (!doNotListenVisibilitychange) {
-        scope.$on('$destroy', function () {
+      scope.$on('$destroy', function () {
+        if (!doNotListenVisibilitychange) {
           document.removeEventListener('visibilitychange', onVisibilitychange);
-          self.onDestroy();
-        });
+        }
+        self.onDestroy();
+      });
+
+      if (!doNotListenVisibilitychange) {
         document.addEventListener('visibilitychange', onVisibilitychange);
       }
 
@@ -77,6 +80,8 @@
     Poller.prototype.reloadOnScopeEvent = reloadOnScopeEvent;
     Poller.prototype.onDestroy = onDestroy;
     Poller.prototype.getLatestResult = getLatestResult;
+
+    Poller.prototype.throttledReload = _.debounce(reload, 100);
 
     return Poller;
 
@@ -129,18 +134,18 @@
       var self = this;
       var query = angular.isFunction(self.request) ? self.request(self.latestResult) : self.request;
       query.then(function (result) {
-        if (self.isStopped(timestamp)) {
+        if ((query !== this) || self.isStopped(timestamp)) {
           return;
         }
         self.deferred.notify(result);
-      });
+      }.bind(query));
       return query;
     }
     function cycle() {
       if (this.isLaunched) {
         return this;
       }
-
+      delete this.stopTimestamp
       this.isLaunched = true;
       this.doCycle();
       return this;
@@ -148,12 +153,11 @@
     function doCycle() {
       var self = this;
       var timestamp = new Date();
-
       self.doCallPromise = self.doCall(timestamp);
 
       if (self.extractInterval) {
         self.doCallPromise.then(function (result) {
-          if (self.isStopped(timestamp)) {
+          if ((self.doCallPromise !== this) || self.isStopped(timestamp)) {
             return;
           }
           var interval = angular.isFunction(self.extractInterval) ?
@@ -161,7 +165,7 @@
               self.extractInterval;
 
           self.timeout = $timeout(self.doCycle.bind(self), interval);
-        });
+        }.bind(self.doCallPromise));
       }
       self.doCallPromise.then(null, function (resp) {
         self.stop(); //stop cycle on any http error;

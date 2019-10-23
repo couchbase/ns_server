@@ -35,50 +35,47 @@
     }
   }
 
-  function mnFooterStatsController($scope, mnStatisticsNewService, mnPoller, mnPermissions) {
+  function mnFooterStatsController($scope, mnStatisticsNewService, mnPermissions) {
     var vm = this;
     vm.currentBucket = mnPermissions.export.bucketNames['.stats!read'] &&
       mnPermissions.export.bucketNames['.stats!read'][0];
     vm.onSelectBucket = onSelectBucket;
+
     vm.getLatestStat = getLatestStat;
     vm.getLatestStatExponent = getLatestStatExponent;
+
+    var config = {
+      bucket: vm.currentBucket,
+      node: "all",
+      zoom: 1000,
+      step: 1,
+      stats: $scope.stats
+    };
 
     activate();
 
     function activate() {
-      new mnPoller($scope, function (previousResult) {
-        return mnStatisticsNewService.doGetStats({
-          zoom: "minute",
-          bucket: vm.currentBucket,
-          node: "all"
-        }, previousResult);
-      })
-        .setInterval(5000)
-        .subscribe(function (rv) {
-          vm.stats = rv.data.samples;
-        }, vm)
-        .reloadOnScopeEvent("reloadUIStatPoller")
-        .cycle();
+      mnStatisticsNewService.subscribeUIStatsPoller(config, $scope);
     }
 
     function getLatestStat(statName) {
-      if (vm.stats && _.isArray(vm.stats[statName])) {
-        return(vm.stats[statName].slice(-1)[0]);
-      }
+      return $scope.mnUIStats &&
+        $scope.mnUIStats[$scope.stats.indexOf(statName)] &&
+        $scope.mnUIStats[$scope.stats.indexOf(statName)].stats.aggregate.samples.slice(-1)[0];
     }
 
     function getLatestStatExponent(statName, digits) {
       var value = getLatestStat(statName);
       if (value) {
         return(d3.format('.'+digits+'e')(value));
-      }
-      else {
+      } else {
         return value;
       }
     }
 
     function onSelectBucket() {
-      $scope.$broadcast("reloadUIStatPoller");
+      config.bucket = vm.currentBucket;
+      mnStatisticsNewService.heartbeat.throttledReload();
     }
 
   }

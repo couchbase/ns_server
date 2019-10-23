@@ -16,6 +16,8 @@
     vm.node = $state.params.statsHostname;
 
     function onSelectZoom() {
+      mnStatisticsNewService.heartbeat.setInterval(
+        mnStatisticsNewService.defaultZoomInterval(vm.zoom));
       vm.reloadChartDirective = true;
       $timeout(function () {
         vm.reloadChartDirective = false;

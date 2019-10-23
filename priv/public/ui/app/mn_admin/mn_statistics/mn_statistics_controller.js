@@ -49,7 +49,7 @@
         resolve: {
           chart: mnHelper.wrapInFunction(vm.chart),
           group: mnHelper.wrapInFunction(group),
-          scenario: mnHelper.wrapInFunction(scenario),
+          scenario: mnHelper.wrapInFunction(scenario)
         }
       }).result.then(function () {
         mnUserRolesService.saveDashboard();
@@ -334,6 +334,9 @@
 
     function activate() {
       initItemsDropdownSelect();
+
+      mnStatisticsNewService.heartbeat.setInterval(
+        mnStatisticsNewService.defaultZoomInterval(vm.zoom));
 
       if ($scope.rbac.cluster.stats.read) {
         mnUserRolesService.getUserProfile().then(function (profile) {

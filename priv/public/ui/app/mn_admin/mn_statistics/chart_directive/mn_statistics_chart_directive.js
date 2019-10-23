@@ -124,10 +124,9 @@
 
       function subscribeToMultiChartData() {
         mnStatisticsNewService.subscribeUIStatsPoller({
-          items: $scope.items,
           bucket: $scope.bucket,
           node: $scope.node || "all",
-          stats: $scope.config.stats,
+          stats: mnStatisticsNewService.descriptionPathToStatName($scope.config, $scope.items),
           zoom: $scope.zoom,
           specificStat: $scope.config.specificStat
         }, $scope);
@@ -298,7 +297,7 @@
       }
 
       function onMultiChartDataUpdate(stats) {
-        if (!stats || !stats.data) {
+        if (!stats) {
           return;
         }
 
@@ -322,40 +321,37 @@
           var desc = mnStatisticsNewService.readByPath(descPath);
           if (desc) {
             (($scope.node == "all") ?
-             Object.keys(stats.data.samples) : (["@" + $scope.node]))
+             Object.keys(stats[0].stats) : ([$scope.node]))
               .forEach(function (nodeName) {
-                var nodeStat = stats.data.samples[nodeName];
+                var nodeStat = stats[0].stats[nodeName];
                 chartData.push({
                   type: 'line',
                   unit: desc.unit,
-                  disabled: !stats.data.samples[nodeName],
-                  max: d3.max(nodeStat || []) || 1,
-                  min: d3.min(nodeStat || []) || 0,
+                  disabled: !nodeStat.samples.length,
+                  max: d3.max(nodeStat.samples || []) || 1,
+                  min: d3.min(nodeStat.samples || []) || 0,
                   yAxis: units[desc.unit],
                   key: nodeName,
-                  values: _.zip((nodeStat || {}).timestamps, nodeStat || [])
+                  values: _.zip(nodeStat.timestamps, nodeStat.samples)
                 });
               });
           }
         } else {
-          Object.keys($scope.config.stats).forEach(function (descPath) {
+          Object.keys($scope.config.stats).forEach(function (descPath, i) {
             var desc = mnStatisticsNewService.readByPath(descPath);
             if (!desc) {
               return;
             }
-            var splitted = descPath.split(".");
-            var service = splitted[0].substring(1, splitted[0].length-1);
-            var maybeItem = descPath.includes("@items") && ($scope.items || {})[service];
-            var name = (maybeItem || "") + splitted.pop();
+            var stat = stats[i].stats[$scope.node == "all" ? "aggregate" : $scope.node];
             chartData.push({
               type: 'line',
               unit: desc.unit,
-              disabled: !stats.data.samples[name],
-              max: d3.max(stats.data.samples[name] || []) || 1,
-              min: d3.min(stats.data.samples[name] || []) || 0,
+              disabled: !stat.samples.length,
+              max: d3.max(stat.samples || []) || 1,
+              min: d3.min(stat.samples || []) || 0,
               yAxis: units[desc.unit],
               key: desc.title,
-              values: _.zip((stats.data.samples[name] || {}).timestamps, stats.data.samples[name] || [])
+              values: _.zip(stat.timestamps, stat.samples)
             });
           });
         }

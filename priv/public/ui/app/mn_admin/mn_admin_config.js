@@ -235,10 +235,20 @@
           var mnPermissionsService = trans.injector().get("mnPermissions");
           var params = _.clone(trans.params(), true);
           return mnPermissionsService.check().then(function (permissions) {
-            var statsRead = permissions.bucketNames['.stats!read']
+            var statsRead = permissions.bucketNames['.stats!read'];
+            var state = {state: "app.admin.overview.statistics", params: params};
             if (!params.scenarioBucket && statsRead && statsRead[0]) {
-              params.scenarioBucket = statsRead[0];
-              return {state: "app.admin.overview.statistics", params: params};
+              state.params.scenarioBucket = statsRead[0];
+              return state;
+            }
+            if (params.scenarioBucket &&
+                statsRead && statsRead.indexOf(params.scenarioBucket) < 0) {
+              state.params.scenarioBucket = statsRead[0];
+              return state;
+            }
+            if (params.scenarioBucket && (!statsRead || !statsRead[0])) {
+              state.params.scenarioBucket = null;
+              return state;
             }
           });
         }

@@ -32,7 +32,7 @@
     ])
     .controller('mnServersController', mnServersController);
 
-  function mnServersController($scope, $state, $uibModal, mnPoolDefault, mnPoller, mnServersService, mnHelper, mnGroupsService, mnPromiseHelper, mnPools, permissions) {
+  function mnServersController($scope, $state, $uibModal, mnPoolDefault, mnPoller, mnServersService, mnHelper, mnGroupsService, mnPromiseHelper, mnPools, permissions, mnStatisticsNewService) {
     var vm = this;
     vm.mnPoolDefault = mnPoolDefault.latestValue();
 
@@ -52,6 +52,10 @@
 
     function activate() {
       mnHelper.initializeDetailsHashObserver(vm, 'openedServers', 'app.admin.servers.list');
+
+      mnStatisticsNewService.heartbeat.setInterval(function (resp) {
+        return resp.interval || 5000;
+      });
 
       if (permissions.cluster.server_groups.read) {
         new mnPoller($scope, function () {

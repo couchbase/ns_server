@@ -6,15 +6,18 @@
     .factory('mnStatisticsNewService', mnStatisticsNewServiceFactory);
 
   function mnStatisticsNewServiceFactory($http, $q, mnServersService, mnPoller, $rootScope, mnStatisticsDescriptionService, mnHelper, mnStoreService) {
+    var rootScope = $rootScope.$new();
+    var perChartConfig = [];
+    var perChartScopes = [];
+    var currentPerChartScopes = [];
     var mnStatisticsNewService = {
       prepareNodesList: prepareNodesList,
       export: {
         scenario: {}
       },
-      doGetStats: doGetStats,
-      getStatSourcePath: getStatSourcePath,
       subscribeUIStatsPoller: subscribeUIStatsPoller,
-      unsubscribeUIStatsPoller: unsubscribeUIStatsPoller,
+      descriptionPathToStatName: descriptionPathToStatName,
+      defaultZoomInterval: defaultZoomInterval,
 
       copyScenario: copyScenario,
       deleteScenario: deleteScenario,
@@ -24,7 +27,6 @@
 
       getStatsDirectory: getStatsDirectory,
       readByPath: readByPath,
-      getStatsV2: getStatsV2,
       getStatsUnits: getStatsUnits,
       getStatsTitle: getStatsTitle,
       getStatsDesc: getStatsDesc,
@@ -35,14 +37,36 @@
         ["%b %-d", function (d) { return d.getDate() != 1; }], // not the first of the month
         ["%b %-d", function (d) { return d.getMonth(); }], // not Jan 1st
         ["%Y", function () { return true; }]
-      ])
+      ]),
+      heartbeat: new mnPoller(rootScope, function () {
+        currentPerChartScopes = [...perChartScopes];
+        return postStats([...perChartConfig]);
+      })
+        .setInterval(function (resp) {
+          return resp.interval || 1000;
+        })
+        .subscribe(function (value) {
+          if (!value.data) {
+            return;
+          }
+          currentPerChartScopes.forEach(function (scope, i) {
+            scope["mnUIStats"] = value.data[i];
+          });
+        })
     };
 
-    var pollers = {};
-    var uiStatsScopes = {};
-    var rootScopes = {};
-
     return mnStatisticsNewService;
+
+    function defaultZoomInterval(zoom) {
+      return function (resp) {
+        return resp.interval || (function () {
+          switch (zoom) {
+          case "minute": return 1000;
+          default: return 15000;
+          }
+        })();
+      }
+    }
 
     function getStatsDirectory(bucket, params) {
       //we are using this end point in new stats ui in order to tie ddocs names with ddocs stats
@@ -138,35 +162,6 @@
       return units;
     }
 
-    function getStatsV2(config, zoom, bucket) {
-      var requests = [];
-      var data = {
-        startTS: 0 - Number(zoom),
-        bucket: bucket,
-        step: 1
-      };
-      if (config.specificStat) {
-        angular.forEach(config.stats, function (descPath, statName) {
-          data.statName = statName;
-        });
-        requests.push(
-          $http({type: "GET",
-                 url: "/_uistats/v2",
-                 params: Object.assign({}, data)
-                }));
-      } else {
-        angular.forEach(config.stats, function (descPath, statName) {
-          requests.push(
-            $http({type: "GET",
-                   url: "/_uistats/v2",
-                   params: Object.assign({statName: statName, host: "aggregate"}, data)
-                  }));
-        });
-      }
-
-      return $q.all(requests);
-    }
-
     function readByPath(descPath) {
       var paths = descPath.split('.');
       var statsDesc = mnStatisticsDescriptionService.stats;
@@ -182,66 +177,74 @@
       return statsDesc;
     }
 
-    function unsubscribeUIStatsPoller(config, scopeToRemove) {
-      var statID = getStatSourcePath(config);
-      _.remove(uiStatsScopes[statID], function (scope) {
-        return scope === scopeToRemove;
+    function postStats(perChartConfig) {
+      return $http({
+        url: '/_uistats',
+        method: 'POST',
+        mnHttp: {
+          group: "global",
+          isNotForm: true
+        },
+        data: perChartConfig
       });
+    }
 
-      if (uiStatsScopes[statID] && !uiStatsScopes[statID].length) {
-        rootScopes[statID].$destroy();
-        delete rootScopes[statID]
-        delete pollers[statID];
+    function descriptionPathToStatName(chartConfig, items) {
+      return Object.keys(chartConfig.stats).map(function (descPath) {
+        var splitted = descPath.split(".");
+        var service = splitted[0].substring(1, splitted[0].length-1);
+
+        var maybeItem = descPath.includes("@items") && ((items || {})[service])
+        return (maybeItem || "") + splitted[splitted.length - 1];
+      });
+    }
+
+
+    function zoomToMS(zoom) {
+      switch (zoom) {
+      case "minute": return 60000;
+      case "hour": return 3600000;
+      case "day": return 86400000;
+      case "week": return 604800000
+      case "month": return 2628000000;
+      default: return zoom
       }
     }
 
-    function getStatSourcePath(config) {
-      var string = config.bucket + config.zoom;
-
-      if (config.specificStat) {
-        angular.forEach(config.stats, function (descPath, statName) {
-          string += statName;
-        });
-      } else {
-        string += config.node;
-      }
-
-      return string;
+    function zoomToStep(zoom) {
+      return zoomToMS(zoom) / 60000;
     }
 
     function subscribeUIStatsPoller(config, scope) {
-      var statID = getStatSourcePath(config);
+      config.startTS = 0 - zoomToMS(config.zoom);
+      config.step = config.step || zoomToStep(config.zoom);
 
-      rootScopes[statID] = rootScopes[statID] || $rootScope.$new();
-      uiStatsScopes[statID] = uiStatsScopes[statID] || [];
-      uiStatsScopes[statID].push(scope);
-      if (!pollers[statID]) {
-        pollers[statID] =
-          new mnPoller(rootScopes[statID], function (previousResult) {
-            return mnStatisticsNewService
-              .doGetStats(config, previousResult)
-              .then(null, function (resp) {
-                return resp;
-              })
-          })
-          .setInterval(function (response) {
-            return response.status === 404 ? 10000 :
-              config.interval ? config.interval : response.data.interval;
-          })
-          .subscribe(function (value) {
-            uiStatsScopes[statID].forEach(function (scope) {
-              scope["mnUIStats"] = value;
-            });
-          })
-          .reloadOnScopeEvent("reloadUIStatPoller")
-          .cycle();
-      } else {
-        scope["mnUIStats"] = pollers[statID].getLatestResult();
+      if (config.node == "all" && !config.specificStat) {
+        config.aggregate = true;
       }
 
+      if (config.node !== "all") {
+        config.nodes = [config.node];
+      }
+
+      _.difference(Object.keys(config),
+                   ["bucket","stats","startTS","endTS","step","nodes","aggregate"])
+        .forEach(function (key) {
+          delete config[key];
+        });
+
+      perChartConfig.push(config);
+      perChartScopes.push(scope);
+
       scope.$on("$destroy", function () {
-        mnStatisticsNewService.unsubscribeUIStatsPoller(config, scope);
+        perChartConfig.splice(perChartConfig.indexOf(config), 1);
+        perChartScopes.splice(perChartScopes.indexOf(scope), 1);
+        if (!perChartConfig.length) {
+          currentPerChartScopes = [];
+          mnStatisticsNewService.heartbeat.stop();
+        }
       });
+      mnStatisticsNewService.heartbeat.throttledReload();
     }
 
     function prepareNodesList(params) {
@@ -256,90 +259,6 @@
 
         return rv;
       });
-    }
-
-    function doGetStats(chartConfig, previousResult) {
-      var reqParams = {
-        zoom: chartConfig.zoom,
-        bucket: chartConfig.bucket
-      };
-      if (chartConfig.specificStat) {
-        var descPath = Object.keys(chartConfig.stats)[0];
-        var splitted = descPath.split(".");
-        var service = splitted[0].substring(1, splitted[0].length-1);
-        var maybeItem = descPath.includes("@items") && (chartConfig.items || {})[service];
-        reqParams.statName = (maybeItem || "") + splitted[splitted.length - 1];
-      } else {
-        if (chartConfig.node !== "all") {
-          reqParams.node = chartConfig.node;
-        }
-      }
-      if (previousResult && !previousResult.status) {
-        reqParams.haveTStamp = previousResult.stats.lastTStamp;
-      }
-      return $http({
-        url: '/_uistats',
-        method: 'GET',
-        params: reqParams
-      }).then(function (resp) {
-        // if (previousResult && !previousResult.status) {
-        //   resp.data = maybeApplyDelta(previousResult, resp.data);
-        // }
-        // stats.serverDate = mnParseHttpDateFilter(data[0].headers('date')).valueOf();
-        // stats.clientDate = (new Date()).valueOf();
-        var samples = {};
-        angular.forEach(resp.data.stats, function (subSamples, subName) {
-          var timestamps = subSamples.timestamp;
-          for (var k in subSamples) {
-            if (k == "timestamp") {
-              continue;
-            }
-            samples[k] = subSamples[k];
-            samples[k].timestamps = timestamps;
-          }
-        });
-        resp.data.samples = samples;
-        return resp;
-      });
-    }
-
-    function maybeApplyDelta(prevValue, value) {
-      var stats = value.stats;
-      var prevStats = prevValue.stats || {};
-      for (var kind in stats) {
-        var newSamples = restoreOpsBlock(prevStats[kind],
-                                         stats[kind],
-                                         value.samplesCount + 1);
-        stats[kind] = newSamples;
-      }
-      return value;
-    }
-
-    function restoreOpsBlock(prevSamples, samples, keepCount) {
-      var prevTS = prevSamples.timestamp;
-      if (samples.timestamp && samples.timestamp.length == 0) {
-        // server was unable to return any data for this "kind" of
-        // stats
-        if (prevSamples && prevSamples.timestamp && prevSamples.timestamp.length > 0) {
-          return prevSamples;
-        }
-        return samples;
-      }
-      if (prevTS == undefined ||
-          prevTS.length == 0 ||
-          prevTS[prevTS.length-1] != samples.timestamp[0]) {
-        return samples;
-      }
-      var newSamples = {};
-      for (var keyName in samples) {
-        var ps = prevSamples[keyName];
-        if (!ps) {
-          ps = [];
-          ps.length = keepCount;
-        }
-        newSamples[keyName] = ps.concat(samples[keyName].slice(1)).slice(-keepCount);
-      }
-      return newSamples;
     }
 
     function doAddPresetScenario() {

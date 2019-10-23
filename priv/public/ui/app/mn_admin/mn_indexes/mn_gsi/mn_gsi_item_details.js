@@ -36,7 +36,10 @@
     mnStatisticsNewService.subscribeUIStatsPoller({
       bucket: $scope.row.bucket,
       node: $scope.nodeName || "all",
-      zoom: 'minute'
+      zoom: 1000,
+      step: 1,
+      stats: (['num_requests', 'index_resident_percent', 'items_count', 'data_size', 'num_docs_pending+queued'])
+        .map(getIndexStatName)
     }, $scope);
 
     $scope.$watch("mnUIStats", updateValues);
@@ -46,25 +49,28 @@
       return 'index/' + $scope.row.index + '/' + statName;
     }
 
-    function hasNoValue(statName) {
-      return getStatSamples(statName) == undefined;
+    function hasNoValue(i) {
+      var stats = getStatSamples(i);
+      return !(stats && stats.length)
     }
 
-    function hasValue(statName) {
-      return getStatSamples(statName) != undefined;
+    function hasValue(i) {
+      var stats = getStatSamples(i);
+      return stats && stats.length;
     }
 
-    function getStatSamples(statName) {
-      return $scope.mnUIStats && $scope.mnUIStats.data && $scope.mnUIStats.data.samples && $scope.mnUIStats.data.samples[getIndexStatName(statName)];
+    function getStatSamples(i) {
+      return $scope.mnUIStats &&
+        $scope.mnUIStats[i].stats[$scope.nodeName || "aggregate"].samples;
     }
 
     function updateValues() {
-      (['num_requests', 'index_resident_percent', 'items_count', 'data_size', 'num_docs_pending+queued'])
-        .forEach(function (statName) {
-          vm['has_' + statName] = hasValue(statName);
-          vm['has_no_' + statName] = hasNoValue(statName);
+      (['num_requests', 'index_resident_percent', 'items_count', 'data_size','num_docs_pending+queued'])
+        .forEach(function (statName, i) {
+          vm['has_' + statName] = hasValue(i);
+          vm['has_no_' + statName] = hasNoValue(i);
           if (vm['has_' + statName]) {
-            var samples = getStatSamples(statName);
+            var samples = getStatSamples(i);
             //set value to the row, so we can use it for sorting later
             $scope.row[statName] = samples[samples.length - 1];
           }

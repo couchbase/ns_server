@@ -42,30 +42,24 @@
       }
 
       function activate() {
-        mnStatisticsNewService.doGetStats({
-          zoom: vm.zoom,
-          bucket: $scope.bucket,
-          node: $scope.nodeName || "all",
-        }).then(function (rv) {
-          vm.items[$scope.service] = $scope.prefix + "/" + $scope.itemId + "/";
-          vm.charts = Object
-            .keys(mnStatisticsDescriptionService.stats["@" + $scope.service + "-"]["@items"])
-            .filter(function (stat) {
-              var service = "@" + $scope.service + "-";
-              return !!mnStatisticsDescriptionService.stats[service]["@items"][stat] &&
-                !!rv.data.stats[service + $scope.bucket][vm.items[$scope.service] + stat];
-            })
-            .map(function (stat) {
-              return {
-                node: $scope.nodeName,
-                preset: true,
-                id: mnHelper.generateID(),
-                isSpecific: false,
-                size: "small",
-                stats: getStats(stat)
-              };
-            });
-        });
+        mnStatisticsNewService.heartbeat.setInterval(
+          mnStatisticsNewService.defaultZoomInterval(vm.zoom));
+        vm.items[$scope.service] = $scope.prefix + "/" + $scope.itemId + "/";
+        vm.charts = Object
+          .keys(mnStatisticsDescriptionService.stats["@" + $scope.service + "-"]["@items"])
+          .filter(function (key) {
+            return mnStatisticsDescriptionService.stats["@" +$scope.service+"-"]["@items"][key];
+          })
+          .map(function (stat) {
+            return {
+              node: $scope.nodeName,
+              preset: true,
+              id: mnHelper.generateID(),
+              isSpecific: false,
+              size: "small",
+              stats: getStats(stat)
+            };
+          });
       }
     }
   }
