@@ -173,15 +173,25 @@ encode(server_res, Header, Entry) ->
     encode(?SERVER_RESP_MAGIC, Header, Entry);
 encode(Magic,
        #mc_header{opcode = Opcode, opaque = Opaque,
-                  vbucket = VBucket},
+                  vbucket = VBucket, status = Status},
        #mc_entry{ext = Ext, key = Key, cas = CAS,
                  data = Data, datatype = DataType}) ->
     ExtLen = bin_size(Ext),
     KeyLen = bin_size(Key),
+    VBucketOrStatus =
+        case is_response(Magic) of
+            true -> Status;
+            false -> VBucket
+        end,
     BodyLen = ExtLen + KeyLen + bin_size(Data),
     [<<Magic:8, Opcode:8, KeyLen:16, ExtLen:8, DataType:8,
-       VBucket:16, BodyLen:32, Opaque:32, CAS:64>>,
+       VBucketOrStatus:16, BodyLen:32, Opaque:32, CAS:64>>,
      bin(Ext), bin(Key), bin(Data)].
+
+is_response(?REQ_MAGIC) -> false;
+is_response(?SERVER_REQ_MAGIC) -> false;
+is_response(?RES_MAGIC) -> true;
+is_response(?SERVER_RESP_MAGIC) -> true.
 
 decode_header(<<?REQ_MAGIC:8, _Rest/binary>> = Header) ->
     decode_header(req, Header);
