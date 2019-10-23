@@ -180,10 +180,10 @@
   </div>
 
   <div class="formrow">
-    <label class="inline">Tombstone Purge Interval</label>
+    <label class="inline">Metadata Purge Interval</label>
     <span
        class="fa-stack icon-info"
-       uib-tooltip="Sets the time period during which tombstones (metadata on deleted items) may remain on disk. The default value is 3 days. The acceptable range of values is 0.04 – 60, where 0.04 = 1 hour and 1 = 1 day. Setting this value too high may significantly delay reclaiming of disk space; setting it too low may cause data inconsistencies in XDCR."
+       uib-tooltip="Sets the time period during which metadata on deleted items may remain on disk. The default value is 1 day. The acceptable range of values is 0.04 – 60, where 0.04 = 1 hour and 1 = 1 day. Setting this value too high may significantly delay reclaiming of disk space; setting it too low may cause data inconsistencies in XDCR."
        tooltip-placement="top">
       <span class="icon fa-circle-thin fa-stack-2x"></span>
       <span class="icon fa-info fa-stack-1x"></span>
