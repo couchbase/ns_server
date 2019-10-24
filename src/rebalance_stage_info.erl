@@ -24,18 +24,14 @@
          binarify_timestamp/1]).
 -export_type([stage_info/0]).
 
--record(stage_details, {
-          start_time = false,
-          complete_time = false,
-          sub_stages = [] :: [{atom(), #stage_details{}}],
-          notable_events = []
-         }).
+-record(stage_details, {start_time = false,
+                        complete_time = false,
+                        sub_stages = [] :: [{atom(), #stage_details{}}],
+                        notable_events = []}).
 
--record(stage_info, {
-          per_stage_progress :: dict:dict(),
-          aggregated :: dict:dict(),
-          per_stage_info :: [{atom(), #stage_details{}}]
-         }).
+-record(stage_info, {per_stage_progress :: dict:dict(),
+                     aggregated :: dict:dict(),
+                     per_stage_info :: [{atom(), #stage_details{}}]}).
 
 -type stage_info() :: #stage_info{}.
 
@@ -182,7 +178,7 @@ construct_per_stage_info_json(#stage_details{
                                                           AllStageDetails,
                                                           SubStage,
                                                           SubStageInfo) ||
-                                 {SubStage, SubStageInfo} <- SubStages]}}]
+                                    {SubStage, SubStageInfo} <- SubStages]}}]
                     end,
     Events = case NotableEvents of
                  [] -> [];
