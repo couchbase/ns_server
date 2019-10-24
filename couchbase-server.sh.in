@@ -164,6 +164,7 @@ _start() {
     exec erl \
         +A 16 \
         -smp enable \
+        +sbwt none \
         -kernel error_logger false \
                 inetrc "\"$HOSTS_CFG_FILE\"" \
                 dist_config_file "\"$CB_DIST_CFG_FILE\"" \

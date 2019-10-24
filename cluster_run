@@ -229,6 +229,7 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix):
 
     args = args_prefix + ["erl", "+MMmcs" "30",
                           "+A", "16", "+sbtu",
+                          "+sbwt", "none",
                           "+P", "327680", "-pa"] + ebin_path
     args += [
         "-setcookie", "nocookie",
