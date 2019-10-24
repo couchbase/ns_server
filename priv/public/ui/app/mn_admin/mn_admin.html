@@ -232,7 +232,8 @@
         </a>
         <a ng-href="{{adminCtl.poolDefault.isEnterprise  ? 'http://support.couchbase.com' : 'http://www.couchbase.com/communities/'}}" target="cbforums">
           Couchbase Support<br>
-          <desc>For Enterprise Edition subscription customers</desc>
+          <desc ng-if="adminCtl.poolDefault.isEnterprise">For Enterprise Edition subscription customers</desc>
+          <desc ng-if="!adminCtl.poolDefault.isEnterprise">For Community Edition users</desc>
         </a>
         <a ng-click="adminCtl.showClusterInfoDialog()">
           Get Cluster Summary Info<br>

@@ -1236,7 +1236,7 @@ section.error {
   font-size: .875rem;
 }
 .ui-select-container.single .select-item {
-  max-width: 200px;
+  max-width: 320px;
   display: block;
 }
 .ui-select-container.single .ui-select-match {
@@ -1374,7 +1374,11 @@ section.error {
 .cbui-select .selectize-dropdown.single {
   border-color: #d1d1d1;
 }
-
+.selectize-control > .selectize-dropdown {
+  width: auto!important;
+  min-width: 240px;
+  max-width: 320px;
+}
 
 /* custom selectize styles for documents area --------------------------- */
 .cbui-select.narrow > .selectize-input {

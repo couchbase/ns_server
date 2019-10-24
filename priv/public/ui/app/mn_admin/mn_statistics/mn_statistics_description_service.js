@@ -1191,7 +1191,7 @@
           },
           "fts_total_queries_rejected_by_herder": {
             unit: "number",
-            title: "Search queries rejected",
+            title: "Search Queries Rejected",
             desc: "Number of queries rejected by throttler due to high memory consumption."
           },
           "fts_curr_batches_blocked_by_herder": {

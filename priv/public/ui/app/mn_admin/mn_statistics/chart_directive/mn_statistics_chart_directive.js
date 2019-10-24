@@ -150,7 +150,6 @@
         options = {
           chart: {
             type: 'multiChart',
-            color: (['#3c7ac2','#abd9a4','#b3cfef','#2ca01c','#cab2d6','#6a3d9a','#b15928','#d8ac93']),
             margin : {top: 10, right: 36, bottom: 20, left: 44},
             height: getChartSize($scope.config.size),
             legendLeftAxisHint: " (left axis)",
