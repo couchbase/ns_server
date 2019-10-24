@@ -1279,7 +1279,7 @@
         "@xdcr-":{
           "replication_changes_left": {
             unit: "number/sec",
-            title: "XDCR Outbound Mutations",
+            title: "XDCR Total Outbound Mutations",
             desc: "Number of mutations to be replicated to other clusters. (measured from replication_changes_left)"
           },
           "replication_docs_rep_queue": null,
@@ -1296,7 +1296,7 @@
             },
             "changes_left": {
               unit: "number",
-              title: "XDCR Mutations",
+              title: "XDCR Replication Mutations",
               desc: "Number of mutations to be replicated to other clusters. Per-replication. (measured from changes_left)"
             },
             "data_replicated": null,

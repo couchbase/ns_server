@@ -459,9 +459,9 @@
     },{  // 2nd scenario starts here with the comma ///////////////////////
 
         name: "All Services",
-        desc: "Most common stats, arranged per service. Customize and make your own dashboard with New Dashboard below.",
+        desc: 'Most common stats, arranged per service. Customize and make your own dashboard with "new dashboard... " below.',
         groups: [{
-          name: "Data Service",
+          name: "Data (Docs/Views/XDCR)",
           isOpen: true,
           charts: [{
             stats: {"@kv-.mem_used": true,
@@ -509,34 +509,7 @@
             specificStat: true
           }]
       }, {
-          name: "Index Service",
-          isOpen: false,
-          charts: [{
-            stats: {"@index-.index/num_rows_returned": true},
-            size: "small",
-            specificStat: true
-          }, {
-            stats: {"@index-.@items.num_docs_pending+queued": true},
-            size: "small",
-            specificStat: true
-         }, {
-            stats: {"@index.index_ram_percent": true,
-                    "@index.index_remaining_ram": true,
-                    "@index-.index/data_size": true,
-                    "@index-.index/disk_size": true},
-            size: "small",
-            specificStat: false
-          }, {
-            stats: {"@index-.index/data_size": true},
-            size: "small",
-            specificStat: true
-          }, {
-            stats: {"@index-.index/disk_size": true},
-            size: "small",
-            specificStat: true
-          }]
-        }, {
-          name: "Query Service",
+          name: "Query",
           isOpen: false,
           charts: [{
             stats: {"@query.query_requests_1000ms": true,
@@ -546,12 +519,72 @@
             specificStat: false
           }, {
             stats: {"@query.query_selects": true,
-                    "@query.query_requests": true},
+                    "@query.query_requests": true,
+                    "@query.query_warnings": true,
+                    "@query.query_invalid_requests": true,
+                    "@query.query_errors": true},
             size: "medium",
+            specificStat: false
+          }, {
+            stats: {"@query.query_avg_req_time": true,
+                    "@query.query_avg_svc_time": true},
+            size: "small",
+            specificStat: false
+          }, {
+            stats: {"@query.query_avg_result_count": true},
+            size: "small",
+            specificStat: true
+          }, {
+            stats: {"@query.query_avg_response_size": true},
+            size: "small",
             specificStat: false
           }]
         }, {
-          name: "Analytics Service",
+            name: "Index",
+            isOpen: false,
+            charts: [{
+              stats: {"@index-.index/num_rows_returned": true},
+              size: "small",
+              specificStat: true
+            }, {
+              stats: {"@index-.@items.num_docs_pending+queued": true},
+              size: "small",
+              specificStat: true
+           }, {
+              stats: {"@index-.index/data_size": true},
+              size: "small",
+              specificStat: true
+            }, {
+              stats: {"@index-.index/disk_size": true},
+              size: "small",
+              specificStat: true
+            }, {
+              stats: {"@index.index_ram_percent": true,
+                     "@index.index_remaining_ram": true,
+                     "@index-.index/data_size": true,
+                     "@index-.index/disk_size": true},
+              size: "medium",
+              specificStat: false
+             }]
+          }, {
+              name: "Search",
+              isOpen: false,
+              charts: [{
+                stats: {"@fts-.fts/num_bytes_used_disk": true,
+                       "@fts.fts_num_bytes_used_ram": true},
+                size: "medium",
+                specificStat: false
+              }, {
+                 stats: {"@fts-.total_queries": true,
+                        "@fts-.@items.total_queries_error": true,
+                        "@fts-.@items.total_queries_slow": true,
+                        "@fts-.@items.total_queries_timeout": true,
+                        "@fts.fts_total_queries_rejected_by_herder": true},
+                 size: "medium",
+                 specificStat: false
+                }]
+            }, {
+          name: "Analytics",
           isOpen: false,
           charts: [{
             stats: {"@cbas-.cbas/incoming_records_count": true},
@@ -569,6 +602,41 @@
             stats: {"@cbas.cbas_system_load_average": true},
             size: "small",
             specificStat: true
+          }]
+        }, {
+          name: "Eventing",
+          isOpen: false,
+          charts: [{
+            stats: {"@eventing.eventing/dcp_backlog": true},
+            size: "small",
+            specificStat: true
+          }, {
+            stats: {"@eventing.eventing/failed_count": true,
+                    "@eventing.eventing/timeout_count": true},
+            size: "small",
+            specificStat: false
+          }]
+        },  {
+          name: "XDCR",
+          isOpen: false,
+          charts: [{
+            stats: {"@xdcr-.replication_changes_left": true},
+            size: "small",
+            specificStat: true
+          }, {
+            stats: {"@xdcr-.@items.changes_left": true},
+            size: "small",
+            specificStat: true
+          }, {
+            stats: {"@xdcr-.@items.wtavg_docs_latency": true,
+                    "@xdcr-.@items.wtavg_meta_latency": true},
+            size: "small",
+            specificStat: false
+          }, {
+            stats: {"@xdcr-.@items.docs_failed_cr_source": true,
+                    "@xdcr-.@items.docs_filtered": true},
+            size: "small",
+            specificStat: false
           }]
         }, {
           name: "vBucket Resources",
