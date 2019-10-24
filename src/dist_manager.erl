@@ -382,8 +382,8 @@ complete_rename(OldNode) ->
     misc:remove_marker(ns_cluster:rename_marker_path()).
 
 rename_node_in_config(Old, New) ->
-    misc:wait_for_local_name(ns_config, 60000),
-    misc:wait_for_local_name(ns_config_rep, 60000),
+    ok = misc:wait_for_local_name(ns_config, 60000),
+    ok = misc:wait_for_local_name(ns_config_rep, 60000),
     ns_config:update(fun ({K, V}) ->
                              NewK = misc:rewrite_value(Old, New, K),
                              NewV = misc:rewrite_value(Old, New, V),
