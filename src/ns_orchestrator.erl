@@ -989,8 +989,6 @@ rebalancing(stop_rebalance, From,
     ?log_debug("Sending stop to rebalancer: ~p", [Pid]),
     {keep_state, stop_rebalance(State, user_stop), [{reply, From, ok}]};
 rebalancing(rebalance_progress, From, _State) ->
-    %% Only expect this call if we are pre-madhatter.
-    false = cluster_compat_mode:is_cluster_madhatter(),
     {keep_state_and_data,
      [{reply, From, get_aggregated_progress()}]};
 rebalancing(Event, From, _State) ->
