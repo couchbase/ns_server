@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2018 Couchbase, Inc.
+%% @copyright 2009-2019 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -18,6 +18,10 @@
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -define(UNUSED_NODE_JOIN_REQUEST, 2).
 -define(NODE_JOINED, 3).
@@ -1073,9 +1077,10 @@ do_get_requested_services(Key, KVList, Default) ->
 
 community_allowed_topologies() ->
     KvOnly = [kv],
+    AllServices40 = [kv, index, n1ql],
     AllServices = ns_cluster_membership:allowed_services(community),
 
-    [KvOnly, lists:sort(AllServices)].
+    [KvOnly, lists:sort(AllServices40), lists:sort(AllServices)].
 
 enforce_topology_limitation(Services) ->
     case cluster_compat_mode:is_enterprise() of
@@ -1344,3 +1349,11 @@ start_marker_path() ->
 
 rename_marker_path() ->
     path_config:component_path(data, "rename_marker").
+
+-ifdef(TEST).
+community_allowed_topologies_test() ->
+    %% Test to help catch changes in community topologies that don't
+    %% maintain backwards compatibility
+    ?assertEqual(community_allowed_topologies(),
+                 [[kv],[index,kv,n1ql],[fts,index,kv,n1ql]]).
+-endif.
