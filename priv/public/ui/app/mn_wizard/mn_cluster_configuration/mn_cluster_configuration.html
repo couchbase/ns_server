@@ -76,7 +76,7 @@
          post-disk-storage-errors="clusterConfigurationCtl.postDiskStorageErrors"
          ></mn-services-disk-paths>
 
-      <div class="formrow">
+      <div class="formrow" ng-if="clusterConfigurationCtl.isEnterprise">
         <div class="row">
           <label for="setup_java_runtime_path_input">Java Runtime Path</label>
           <small class="text-smaller">optional</small>

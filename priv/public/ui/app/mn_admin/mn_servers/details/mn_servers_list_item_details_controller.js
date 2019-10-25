@@ -63,6 +63,8 @@
           return;
         }
 
+        vm.isEnterprise = $scope.poolDefault.isEnterprise;
+
         vm.memoryUsages.push(
           mnServersListItemDetailsService.getBaseConfig(
             'index service used',

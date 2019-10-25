@@ -46,12 +46,12 @@
       </div>
       <div
          title="{{serversListItemDetailsCtl.server.details.storage.hdd[0].eventing_path}}"
-         ng-if="!!serversListItemDetailsCtl.server.details.storage.hdd[0].eventing_path"
+         ng-if="!!serversListItemDetailsCtl.server.details.storage.hdd[0].eventing_path && serversListItemDetailsCtl.isEnterprise"
          class="break-word">
         <strong>Eventing Storage Path:</strong> {{serversListItemDetailsCtl.server.details.storage.hdd[0].eventing_path | mnEllipsisiseOnLeft:100}}
       </div>
       <div
-         ng-if="!!serversListItemDetailsCtl.server.details.storage.hdd[0].cbas_dirs"
+         ng-if="!!serversListItemDetailsCtl.server.details.storage.hdd[0].cbas_dirs && serversListItemDetailsCtl.isEnterprise"
          class="break-word">
         <strong>Analytics Storage Path<span ng-if="serversListItemDetailsCtl.server.details.storage.hdd[0].cbas_dirs.length > 1">s</span>:</strong>
         <span
