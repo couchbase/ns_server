@@ -798,6 +798,7 @@ idle({start_graceful_failover, Nodes, Id, RetryChk}, From, _State) ->
             {keep_state_and_data, [{reply, From, RV}]}
     end;
 idle(rebalance_progress, From, _State) ->
+    %% called by pre-6.5 nodes
     {keep_state_and_data, [{reply, From, not_running}]};
 %% NOTE: this is not remotely called but is used by maybe_start_rebalance
 idle({start_rebalance, KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
@@ -916,6 +917,7 @@ idle({ensure_janitor_run, Item}, From, State) ->
 
 %% Synchronous janitor_running events
 janitor_running(rebalance_progress, From, _State) ->
+    %% called by pre-6.5 nodes
     {keep_state_and_data, [{reply, From, not_running}]};
 janitor_running({ensure_janitor_run, Item}, From, State) ->
     do_request_janitor_run(
@@ -989,6 +991,7 @@ rebalancing(stop_rebalance, From,
     ?log_debug("Sending stop to rebalancer: ~p", [Pid]),
     {keep_state, stop_rebalance(State, user_stop), [{reply, From, ok}]};
 rebalancing(rebalance_progress, From, _State) ->
+    %% called by pre-6.5 nodes
     {keep_state_and_data,
      [{reply, From, get_aggregated_progress()}]};
 rebalancing(Event, From, _State) ->
@@ -1028,6 +1031,7 @@ recovery({recovery_map, Bucket, RecoveryUUID}, From, State) ->
        call_recovery_server(State, recovery_map, [Bucket, RecoveryUUID])}]};
 
 recovery(rebalance_progress, From, _State) ->
+    %% called by pre-6.5 nodes
     {keep_state_and_data, [{reply, From, not_running}]};
 recovery(stop_rebalance, From, _State) ->
     {keep_state_and_data, [{reply, From, not_rebalancing}]};
