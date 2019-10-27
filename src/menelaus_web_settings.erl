@@ -167,6 +167,18 @@ services_with_security_settings() ->
      {cbas, analytics},
      {ns_server, clusterManager}].
 
+is_allowed_setting(K) ->
+    case cluster_compat_mode:is_enterprise() orelse not ee_only_settings(K) of
+        true -> ok;
+        false -> {error, <<"not supported in community edition">>}
+    end.
+
+ee_only_settings([ssl_minimum_protocol]) -> true;
+ee_only_settings([cipher_suites]) -> true;
+ee_only_settings([honor_cipher_order]) -> true;
+ee_only_settings([{security_settings, _} | _]) -> true;
+ee_only_settings(_) -> false.
+
 conf(security) ->
     [{disable_ui_over_http, disableUIOverHttp, false, fun get_bool/1},
      {disable_ui_over_https, disableUIOverHttps, false, fun get_bool/1},
@@ -227,7 +239,7 @@ conf(failover) ->
     end.
 
 build_kvs(Type) ->
-    build_kvs(conf(Type), ns_config:get(), fun (_) -> true end).
+    build_kvs(conf(Type), ns_config:get(), fun (_, _) -> true end).
 
 build_kvs(Conf, Config, Filter) ->
     lists:filtermap(
@@ -236,30 +248,32 @@ build_kvs(Conf, Config, Filter) ->
                         undefined -> DV;
                         V -> V
                     end,
-              Filter({JK, Val}) andalso {true, {JK, Val}};
+              Filter([CK], Val) andalso {true, {JK, Val}};
           ({CK, JK, SubKeys}) when is_list(SubKeys) ->
-              List = lists:filter(
-                       fun ({SubK, SubV}) -> Filter({[JK, SubK], SubV}) end,
-                       build_sub_kvs(CK, SubKeys, Config)),
-              {true, {JK, {List}}}
+              List = lists:filtermap(
+                       fun ({SubCK, SubJK, DV, _}) ->
+                               Val = ns_config:search_prop(Config, CK,
+                                                           SubCK, DV),
+                               case Filter([CK, SubCK], Val) of
+                                   true -> {true, {SubJK, Val}};
+                                   false -> false
+                               end
+                       end,
+                       SubKeys),
+              case Filter([CK], folder) of
+                  true -> {true, {JK, {List}}};
+                  false -> false
+              end
       end, Conf).
 
-build_sub_kvs(Key, SubKeys, Config) ->
-    [{JK, case ns_config:search_prop(Config, Key, CK, DV) of
-              undefined ->
-                  DV;
-              V ->
-                  V
-          end}
-     || {CK, JK, DV, _} <- SubKeys].
-
 handle_get(Type, Keys, Req) ->
-    Filter = fun ({_, undefined}) ->
+    Filter = fun (_, undefined) ->
                      false;
-                 ({clusterEncryptionLevel, _}) ->
-                     misc:is_cluster_encryption_enabled();
-                 (_) ->
-                     true
+                 ([cluster_encryption_level = K], _) ->
+                     (ok == is_allowed_setting(K)) andalso
+                         misc:is_cluster_encryption_enabled();
+                 (K, _) ->
+                     ok == is_allowed_setting(K)
               end,
     Settings = build_kvs(conf(Type), ns_config:get(), Filter),
 
@@ -292,7 +306,8 @@ handle_post(Type, Req) ->
     handle_post(Type, [], Req).
 
 handle_post(Type, Keys, Req) ->
-    case parse_post_data(conf(Type), Keys, mochiweb_request:recv_body(Req)) of
+    case parse_post_data(conf(Type), Keys, mochiweb_request:recv_body(Req),
+                         fun is_allowed_setting/1) of
         {ok, ToSet} ->
             case ns_config:run_txn(?cut(set_keys_in_txn(_1, _2, ToSet))) of
                 {commit, _, AuditProps} ->
@@ -309,12 +324,12 @@ handle_post(Type, Keys, Req) ->
 set_keys_in_txn(Cfg, SetFn, ToSet) ->
     {NewCfg, AuditProps} =
         lists:foldl(
-          fun ({{key, K}, V}, {CfgAcc, AuditAcc}) ->
+          fun ({[K], V}, {CfgAcc, AuditAcc}) ->
                   case ns_config:search(CfgAcc, K) of
                       {value, V} -> {CfgAcc, AuditAcc};
                       _ -> {SetFn(K, V, CfgAcc), AuditAcc#{K => V}}
                   end;
-              ({{subkey, K, SubK}, V}, {CfgAcc, AuditAcc}) ->
+              ({[K, SubK], V}, {CfgAcc, AuditAcc}) ->
                   CurProps = ns_config:search(CfgAcc, K, []),
                   case proplists:lookup(SubK, CurProps) of
                       {SubK, V} ->
@@ -330,7 +345,7 @@ set_keys_in_txn(Cfg, SetFn, ToSet) ->
           end, {Cfg, #{}}, ToSet),
     {commit, NewCfg, maps:to_list(AuditProps)}.
 
-parse_post_data(Conf, Keys, Data) ->
+parse_post_data(Conf, Keys, Data, KeyValidator) ->
     InvertedConf = invert_conf(Conf),
     Params =
         case maps:find(Keys, InvertedConf) of
@@ -339,7 +354,8 @@ parse_post_data(Conf, Keys, Data) ->
         end,
 
     Params2 = [{Keys ++ string:tokens(SJK, "."), SV}|| {SJK, SV} <- Params],
-    Res = [parse_post_for_key(SJK, SV, InvertedConf) || {SJK, SV} <- Params2],
+    Res = [parse_post_for_key(SJK, SV, InvertedConf, KeyValidator)
+              || {SJK, SV} <- Params2],
 
     case [M || {error, M} <- Res] of
         [] ->
@@ -348,22 +364,22 @@ parse_post_data(Conf, Keys, Data) ->
             {error, Errors}
     end.
 
-parse_post_for_key(StrJKey, StrVal, InvertedConf) ->
+parse_post_for_key(StrJKey, StrVal, InvertedConf, KeyValidator) ->
     case maps:find(StrJKey, InvertedConf) of
-        {ok, {key, CK, Parser}} ->
-            case Parser(StrVal) of
-                {ok, V} -> {ok, {{key, CK}, V}};
+        {ok, {CK, Parser}} ->
+            case KeyValidator(CK) of
+                ok ->
+                    case Parser(StrVal) of
+                        {ok, V} ->
+                            {ok, {CK, V}};
+                        {error, Msg} ->
+                            M = io_lib:format("~s - ~s",
+                                              [string:join(StrJKey, "."), Msg]),
+                            {error, iolist_to_binary(M)}
+                    end;
                 {error, Msg} ->
-                    M = io_lib:format("~s - ~s", [string:join(StrJKey, "."),
-                                                  Msg]),
-                    {error, iolist_to_binary(M)}
-            end;
-        {ok, {sub, [CK, SCK], Parser}} ->
-            case Parser(StrVal) of
-                {ok, V} -> {ok, {{subkey, CK, SCK}, V}};
-                {error, Msg} ->
-                    M = io_lib:format("~s - ~s", [string:join(StrJKey, "."),
-                                                  Msg]),
+                    M = io_lib:format("~s - ~s",
+                                      [string:join(StrJKey, "."), Msg]),
                     {error, iolist_to_binary(M)}
             end;
         error ->
@@ -374,12 +390,12 @@ parse_post_for_key(StrJKey, StrVal, InvertedConf) ->
 invert_conf(Conf) ->
     lists:foldr(
       fun ({CK, JK, _, Parser}, Acc) ->
-              Acc#{[atom_to_list(JK)] => {key, CK, Parser}};
+              Acc#{[atom_to_list(JK)] => {[CK], Parser}};
           ({CK, JK, List}, Acc) when is_list(List) ->
               lists:foldl(
                 fun ({SubCK, SubJK, _, Parser}, Acc2) ->
                       StrJK = [atom_to_list(JK), atom_to_list(SubJK)],
-                      Acc2#{StrJK => {sub, [CK, SubCK], Parser}}
+                      Acc2#{StrJK => {[CK, SubCK], Parser}}
                 end, Acc, List)
       end, #{}, Conf).
 
@@ -387,12 +403,9 @@ find_key_to_delete(_Conf, []) ->
     {error, not_supported};
 find_key_to_delete(Conf, PKeys) ->
     InvertedConf = maps:to_list(invert_conf(Conf)),
-    Values = [Value || {Keys, Value} <- InvertedConf,
+    ToDelete = [lists:sublist(CKeys, length(PKeys))
+                    || {Keys, {CKeys, _}} <- InvertedConf,
                        lists:prefix(PKeys, Keys)],
-    ToDelete = lists:map(
-                 fun ({key, CKey, _}) -> [CKey];
-                     ({sub, CKeys, _}) -> lists:sublist(CKeys, length(PKeys))
-                 end, Values),
     case lists:usort(ToDelete) of
         [] -> {error, not_found};
         [ConfigKeys] -> {ok, ConfigKeys}
@@ -400,16 +413,27 @@ find_key_to_delete(Conf, PKeys) ->
 
 handle_delete(Type, PKeys, Req) ->
     case find_key_to_delete(conf(Type), PKeys) of
-        {ok, [K]} ->
-            ns_config:delete(K),
-            AuditFun = audit_fun(Type),
-            ns_audit:AuditFun(Req, [{K, deleted}]),
-            reply_json(Req, []);
-        {ok, [K, SK]} ->
-            ns_config:update_key(K, proplists:delete(SK, _)),
-            AuditFun = audit_fun(Type),
-            ns_audit:AuditFun(Req, [{K, {[{SK, deleted}]}}]),
-            reply_json(Req, []);
+        {ok, Keys} ->
+            case is_allowed_setting(Keys) of
+                ok ->
+                    case Keys of
+                        [K] ->
+                            ns_config:delete(K),
+                            AuditFun = audit_fun(Type),
+                            ns_audit:AuditFun(Req, [{K, deleted}]),
+                            reply_json(Req, []);
+                        [K, SK] ->
+                            ns_config:update_key(K, proplists:delete(SK, _)),
+                            AuditFun = audit_fun(Type),
+                            ns_audit:AuditFun(Req, [{K, {[{SK, deleted}]}}]),
+                            reply_json(Req, [])
+                    end;
+                {error, Msg} ->
+                    M = io_lib:format("~s - ~s",
+                                      [string:join(PKeys, "."), Msg]),
+                    reply_json(Req, {struct, [{errors, [iolist_to_binary(M)]}]},
+                               400)
+            end;
         {error, not_found} ->
             M = io_lib:format("Unknown key ~s", [string:join(PKeys, ".")]),
             reply_json(Req, {struct, [{errors, [iolist_to_binary(M)]}]}, 404);
@@ -811,13 +835,13 @@ build_kvs_test() ->
             {key3, jsonKey3,
               [{sub_key1, subKey1, default, fun (V) -> {ok, V} end},
                {sub_key2, subKey2, default, fun (V) -> {ok, V} end}]}],
-    ?assertEqual([], build_kvs([], [], fun (_) -> true end)),
+    ?assertEqual([], build_kvs([], [], fun (_, _) -> true end)),
     ?assertEqual([{jsonKey1, default}, {jsonKey2, value},
                   {jsonKey3, {[{subKey1, default}, {subKey2, value}]}}],
-                 build_kvs(Conf, Cfg, fun (_) -> true end)),
+                 build_kvs(Conf, Cfg, fun (_, _) -> true end)),
     ?assertEqual([{jsonKey2, value}, {jsonKey3, {[{subKey2, value}]}}],
                  build_kvs(Conf, Cfg,
-                           fun ({_, default}) -> false; (_) -> true end)),
+                           fun (_, default) -> false; (_, _) -> true end)),
     ok.
 
 test_conf() ->
@@ -828,40 +852,45 @@ test_conf() ->
       [{cipher_suites, cipherSuites, unused, fun get_cipher_suites/1},
        {ssl_minimum_protocol, tlsMinVersion, unused, get_tls_version(_, kv)},
        {honor_cipher_order, honorCipherOrder, unused, fun get_bool/1},
-       {supported_ciphers, supportedCipherSuites, unused, fun read_only/1}]}].
+       {supported_ciphers, supportedCipherSuites, unused, fun read_only/1}]},
+     {not_allowed, notAllowed, nope,
+      fun (_) -> error(should_not_be_called) end}].
 
 parse_post_data_test() ->
     Conf = test_conf(),
-
-    ?assertEqual({ok, []}, parse_post_data(Conf, [], <<>>)),
-    ?assertEqual({ok, [{{key, ssl_minimum_protocol}, 'tlsv1.2'},
-                       {{key, cipher_suites}, []},
-                       {{key, honor_cipher_order}, true},
-                       {{subkey, {security_settings, kv}, ssl_minimum_protocol},
+    KeyValidator = fun ([not_allowed]) -> {error, <<"not allowed">>};
+                       (_) -> ok
+                   end,
+    ?assertEqual({ok, []}, parse_post_data(Conf, [], <<>>, KeyValidator)),
+    ?assertEqual({ok, [{[ssl_minimum_protocol], 'tlsv1.2'},
+                       {[cipher_suites], []},
+                       {[honor_cipher_order], true},
+                       {[{security_settings, kv}, ssl_minimum_protocol],
                         'tlsv1.3'},
-                       {{subkey, {security_settings, kv}, cipher_suites}, []},
-                       {{subkey, {security_settings, kv}, honor_cipher_order},
-                        false}]},
+                       {[{security_settings, kv}, cipher_suites], []},
+                       {[{security_settings, kv}, honor_cipher_order], false}]},
                  parse_post_data(Conf, [],
                                  <<"tlsMinVersion=tlsv1.2&"
                                    "cipherSuites=[]&"
                                    "honorCipherOrder=true&"
                                    "data.tlsMinVersion=tlsv1.3&"
                                    "data.cipherSuites=[]&"
-                                   "data.honorCipherOrder=false">>)),
-    ?assertEqual({ok, [{{subkey, {security_settings, kv}, ssl_minimum_protocol},
+                                   "data.honorCipherOrder=false">>,
+                                 KeyValidator)),
+    ?assertEqual({ok, [{[{security_settings, kv}, ssl_minimum_protocol],
                         'tlsv1.3'},
-                       {{subkey, {security_settings, kv}, cipher_suites}, []},
-                       {{subkey, {security_settings, kv}, honor_cipher_order},
-                        true}]},
+                       {[{security_settings, kv}, cipher_suites], []},
+                       {[{security_settings, kv}, honor_cipher_order], true}]},
                  parse_post_data(Conf, ["data"],
                                  <<"tlsMinVersion=tlsv1.3&"
                                    "cipherSuites=[]&"
-                                   "honorCipherOrder=true">>)),
-    ?assertEqual({ok, [{{subkey, {security_settings, kv}, ssl_minimum_protocol},
+                                   "honorCipherOrder=true">>,
+                                 KeyValidator)),
+    ?assertEqual({ok, [{[{security_settings, kv}, ssl_minimum_protocol],
                         'tlsv1.3'}]},
                  parse_post_data(Conf, ["data", "tlsMinVersion"],
-                                 <<"tlsv1.3">>)),
+                                 <<"tlsv1.3">>,
+                                 KeyValidator)),
     ?assertEqual({error, [<<"Unknown key unknown1">>,
                           <<"Unknown key unknown2.tlsMinVersion">>,
                           <<"data.cipherSuites - Invalid format. "
@@ -872,21 +901,27 @@ parse_post_data_test() ->
                                    "cipherSuites=[]&"
                                    "unknown2.tlsMinVersion=tlsv1.3&"
                                    "data.cipherSuites=bad&"
-                                   "data.unkwnown3=false">>)),
+                                   "data.unkwnown3=false">>,
+                                 KeyValidator)),
     ?assertEqual({error, [<<"Unknown key data.unknown1">>,
                           <<"data.cipherSuites - Invalid format. "
                             "Expecting a list of ciphers.">>]},
                  parse_post_data(Conf, ["data"],
                                  <<"unknown1=tlsv1.2&"
                                    "cipherSuites=[]&"
-                                   "cipherSuites=bad">>)),
+                                   "cipherSuites=bad">>,
+                                 KeyValidator)),
     ?assertEqual({error, [<<"data.cipherSuites - Invalid format. "
                             "Expecting a list of ciphers.">>]},
                  parse_post_data(Conf, ["data", "cipherSuites"],
-                                 <<"bad">>)),
+                                 <<"bad">>, KeyValidator)),
     ?assertEqual({error, [<<"Unknown key data.unknown.cipherSuites">>]},
                  parse_post_data(Conf, ["data", "unknown"],
-                                 <<"cipherSuites=bad">>)),
+                                 <<"cipherSuites=bad">>, KeyValidator)),
+    ?assertEqual({error, [<<"notAllowed - not allowed">>]},
+                 parse_post_data(Conf, [],
+                                 <<"tlsMinVersion=tlsv1.2&notAllowed=1">>,
+                                 KeyValidator)),
     ok.
 
 find_key_to_delete_test() ->
@@ -896,6 +931,8 @@ find_key_to_delete_test() ->
                  find_key_to_delete(Conf, ["cipherSuites"])),
     ?assertEqual({ok, [{security_settings, kv}, cipher_suites]},
                  find_key_to_delete(Conf, ["data", "cipherSuites"])),
+    ?assertEqual({ok, [{security_settings, kv}]},
+                 find_key_to_delete(Conf, ["data"])),
     ?assertEqual({error, not_supported},
                  find_key_to_delete(Conf, [])),
     ?assertEqual({error, not_found},
