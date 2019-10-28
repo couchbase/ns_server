@@ -37,6 +37,9 @@
          is_cluster_65/0,
          is_cluster_65/1,
          is_version_65/1,
+         is_cluster_cheshirecat/0,
+         is_cluster_cheshirecat/1,
+         is_version_cheshirecat/1,
          is_enterprise/0,
          is_saslauthd_enabled/0,
          is_cbas_enabled/0,
@@ -134,6 +137,15 @@ is_cluster_65() ->
 
 is_cluster_65(Config) ->
     is_enabled(Config, ?VERSION_65).
+
+is_version_cheshirecat(ClusterVersion) ->
+    is_enabled_at(ClusterVersion, ?VERSION_CHESHIRECAT).
+
+is_cluster_cheshirecat() ->
+    is_cluster_cheshirecat(ns_config:latest()).
+
+is_cluster_cheshirecat(Config) ->
+    is_enabled(Config, ?VERSION_CHESHIRECAT).
 
 is_index_aware_rebalance_on() ->
     not ns_config:read_key_fast(index_aware_rebalance_disabled, false).

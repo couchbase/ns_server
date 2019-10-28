@@ -81,4 +81,7 @@ upgrade(?VERSION_60, Config) ->
          ns_bucket:config_upgrade_to_65(Config) ++
          auto_rebalance_settings:config_upgrade_to_65() ++
          query_settings_manager:config_upgrade_to_65(Config) ++
-         menelaus_web_settings:config_upgrade_to_65(Config)}.
+         menelaus_web_settings:config_upgrade_to_65(Config)};
+
+upgrade(?VERSION_65, _Config) ->
+    {?VERSION_CHESHIRECAT, []}.
