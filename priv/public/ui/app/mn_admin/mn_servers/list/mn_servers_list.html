@@ -12,10 +12,8 @@
           name
         </span>
       </span>
-      <span class="cbui-table-cell flex-grow-1-5">
-        <span mn-sortable-title="group" sort-function="serversCtl.sortByGroup(value)" class="sorter">
-          {{ poolDefault.isGroupsAvailable && rbac.cluster.server_groups.read ? "group" : " " }}
-        </span>
+      <span class="cbui-table-cell flex-grow-1-5" ng-show="rbac.cluster.server_groups.read && serversCtl.mnPoolDefault.value.isGroupsAvailable">
+        <span mn-sortable-title="group" sort-function="serversCtl.sortByGroup(value)" class="sorter">group</span>
       </span>
       <span class="cbui-table-cell flex-grow-3 resp-hide-xsml">
         <span mn-sortable-title="services" class="sorter">
