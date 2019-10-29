@@ -53,15 +53,23 @@ handle_cast(Msg, State) ->
     exit(invalid_message).
 
 handle_info(timeout, State) ->
-    {Generations, Period} = log_params(),
-    N = remove(State#state.dir, State#state.prefix, Generations),
-    if N > 0 ->
-            ?log_info("Removed ~p ~p log files from ~p (retaining up to ~p)",
-                      [N, State#state.prefix, State#state.dir, Generations]);
-       true ->
-            ok
-    end,
-    {noreply, State, Period}.
+    case log_params() of
+        {Generations, Period} when is_integer(Generations),
+                                   is_integer(Period) ->
+            N = remove(State#state.dir, State#state.prefix, Generations),
+            if N > 0 ->
+                    ?log_info(
+                       "Removed ~p ~p log files from ~p (retaining up to ~p)",
+                       [N, State#state.prefix, State#state.dir, Generations]);
+               true ->
+                    ok
+            end,
+            {noreply, State, Period};
+        Other ->
+            ?log_warning("Skipping logs cleanup due to incorrect params ~p",
+                         [Other]),
+            {noreply, State, 5000}
+    end.
 
 terminate(_Reason, _State) ->
     ok.
