@@ -20,6 +20,7 @@
 -include_lib("public_key/include/public_key.hrl").
 
 -export([do_generate_cert_and_pkey/2,
+         decode_cert_chain/1,
          decode_single_certificate/1,
          generate_and_set_cert_and_pkey/0,
          cluster_ca/0,
@@ -90,6 +91,17 @@ do_generate_cert_and_pkey(Args, Env) ->
             extract_cert_and_pkey(Output);
         _ ->
             erlang:exit({bad_generate_cert_exit, Status, Output})
+    end.
+
+decode_cert_chain(CertPemBin) ->
+    Certs = split_certs(CertPemBin),
+    decode_cert_chain(Certs, []).
+
+decode_cert_chain([], Res) -> {ok, lists:reverse(Res)};
+decode_cert_chain([Cert | Tail], Res) ->
+    case decode_single_certificate(Cert) of
+        {error, _} = Err -> Err;
+        Der -> decode_cert_chain(Tail, [Der | Res])
     end.
 
 decode_single_certificate(CertPemBin) ->
@@ -165,11 +177,13 @@ validate_cert_and_pkey({'Certificate', DerCert, not_encrypted}, PKey) ->
             Err
     end.
 
-extract_cert_and_pkey(Output) ->
+split_certs(PEMCerts) ->
     Begin = <<"-----BEGIN">>,
-    [<<>> | Parts0] = binary:split(Output, Begin, [global]),
-    Parts = [<<Begin/binary,P/binary>> || P <- Parts0],
-    case Parts of
+    [<<>> | Parts0] = binary:split(PEMCerts, Begin, [global]),
+    [<<Begin/binary,P/binary>> || P <- Parts0].
+
+extract_cert_and_pkey(Output) ->
+    case split_certs(Output) of
         [Cert, PKey] ->
             case decode_single_certificate(Cert) of
                 {error, Error} ->
@@ -182,7 +196,7 @@ extract_cert_and_pkey(Output) ->
                             erlang:exit({bad_generated_pkey, PKey, Err})
                     end
             end;
-        _ ->
+        Parts ->
             erlang:exit({bad_generate_cert_output, Parts})
     end.
 

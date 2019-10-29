@@ -336,16 +336,27 @@ ssl_server_opts() ->
     CipherSuites = ns_server_ciphers(),
     Order = honor_cipher_order(ns_server),
     ClientReneg = ns_config:read_key_fast(client_renegotiation_allowed, false),
+    %% Pass CA as cacerts opt (instead of cacertfile) in order to
+    %% work around unknown bug in erlang ssl application that leads to
+    %% the following behavior:
+    %% web server doesn't load new CA (after cert rotation) until
+    %% all connections to the server are closed
     ssl_auth_options() ++
         [{keyfile, Path},
          {certfile, Path},
          {versions, supported_versions(ssl_minimum_protocol(ns_server))},
-         {cacertfile, ssl_cacert_key_path()},
+         {cacerts, read_ca_certs(ssl_cacert_key_path())},
          {dh, dh_params_der()},
          {ciphers, CipherSuites},
          {honor_cipher_order, Order},
          {secure_renegotiate, true},
          {client_renegotiation, ClientReneg}].
+
+read_ca_certs(undefined) -> [];
+read_ca_certs(File) ->
+    {ok, CAPemBin} = file:read_file(File),
+    {ok, Certs} = ns_server_cert:decode_cert_chain(CAPemBin),
+    Certs.
 
 ssl_client_opts() ->
     [{cacertfile, ssl_cacert_key_path()}].
