@@ -326,8 +326,8 @@ handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherUser, OtherPswd,
                                          _, Services),
                  case AddNode(NodeURL) of
                      {client_error, [<<"Unsupported protocol https">>]} ->
-                         %% Happens when adding mad-hatter node to
-                         %% pre-mad-hatter cluster
+                         %% Happens when adding a 6.5 node to a pre-6.5
+                         %% cluster
                          ?log_warning("Node ~p:~p doesn't support adding nodes "
                                       "via https; http will be used instead",
                                       [OtherHost, OtherPort]),

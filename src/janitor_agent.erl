@@ -251,7 +251,7 @@ do_query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
     Timeout = proplists:get_value(timeout, Options,
                                   ?WAIT_FOR_MEMCACHED_TIMEOUT),
 
-    CreateCall = case cluster_compat_mode:is_cluster_madhatter() of
+    CreateCall = case cluster_compat_mode:is_cluster_65() of
                      false ->
                          fun (_) -> query_vbucket_states end;
                      true ->
@@ -274,16 +274,16 @@ do_query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
 -spec mark_bucket_warmed(Bucket::bucket_name(),
                          [node()]) -> ok | {errors, [{node(), term()}]}.
 mark_bucket_warmed(Bucket, Nodes) ->
-    case cluster_compat_mode:is_cluster_madhatter() of
-        true -> mark_bucket_warmed_madhatter(Bucket, Nodes);
-        false -> mark_bucket_warmed_pre_madhatter(Bucket, Nodes)
+    case cluster_compat_mode:is_cluster_65() of
+        true -> mark_bucket_warmed_65(Bucket, Nodes);
+        false -> mark_bucket_warmed_pre_65(Bucket, Nodes)
     end.
 
-mark_bucket_warmed_madhatter(Bucket, Nodes) ->
+mark_bucket_warmed_65(Bucket, Nodes) ->
     process_multicall_rv(
       multi_call(Bucket, Nodes, mark_warmed, ?WARMED_TIMEOUT)).
 
-mark_bucket_warmed_pre_madhatter(Bucket, Nodes) ->
+mark_bucket_warmed_pre_65(Bucket, Nodes) ->
     process_multicall_rv(ns_memcached:mark_warmed(Nodes, Bucket)).
 
 apply_new_bucket_config(Bucket, Servers, NewBucketConfig, undefined_timeout) ->
@@ -297,7 +297,7 @@ apply_new_bucket_config(Bucket, Servers, NewBucketConfig, Timeout) ->
                             apply_new_config_replicas_phase, Timeout))]).
 
 format_apply_new_config_call(Call, BucketConfig) ->
-    case cluster_compat_mode:is_cluster_madhatter() of
+    case cluster_compat_mode:is_cluster_65() of
         true -> {Call, BucketConfig};
         false -> {Call, BucketConfig, []}
     end.
@@ -669,19 +669,19 @@ do_handle_call({delete_vbucket, VBucket} = Call, From, State) ->
     delegate_apply_vbucket_state(Call, From, NewState);
 do_handle_call({apply_new_config,
                 NewBucketConfig, IgnoredVBuckets}, From, State) ->
-    %% called on pre MadHatter clusters only
+    %% called on pre 6.5 clusters only
     [] = IgnoredVBuckets,
     do_handle_call({apply_new_config, NewBucketConfig}, From, State);
 do_handle_call({apply_new_config,
                 _Caller, NewBucketConfig, IgnoredVBuckets}, From, State) ->
-    %% called on pre MadHatter clusters only
+    %% called on pre 6.5 clusters only
     [] = IgnoredVBuckets,
     do_handle_call({apply_new_config, NewBucketConfig}, From, State);
 do_handle_call({apply_new_config, NewBucketConfig}, _From, State) ->
     handle_apply_new_config(NewBucketConfig, State);
 do_handle_call({apply_new_config_replicas_phase,
                 NewBucketConfig, IgnoredVBuckets}, From, State) ->
-    %% called on pre MadHatter clusters only
+    %% called on pre 6.5 clusters only
     [] = IgnoredVBuckets,
     do_handle_call({apply_new_config_replicas_phase, NewBucketConfig},
                    From, State);
@@ -1089,7 +1089,7 @@ decode_topology(Topology) ->
                end, Chain) || Chain <- ejson:decode(Topology)].
 
 is_topology_same(active, Chain, MemcachedTopology) ->
-    cluster_compat_mode:is_cluster_madhatter() =:= false orelse
+    cluster_compat_mode:is_cluster_65() =:= false orelse
         [Chain] =:= MemcachedTopology;
 is_topology_same(_, _, _) ->
     true.
@@ -1257,7 +1257,7 @@ handle_apply_new_config(Node, NewBucketConfig,
     ok = replication_manager:remove_undesired_replications(
            BucketName, WantedReplications),
 
-    SetTopology = cluster_compat_mode:is_cluster_madhatter(),
+    SetTopology = cluster_compat_mode:is_cluster_65(),
     %% then we're ok to change vbucket states
     [begin
          case SetTopology of

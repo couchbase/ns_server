@@ -70,7 +70,7 @@ master_node() ->
 %% Returns the master node according to Node. For mb_master's internal use
 %% only.
 master_node(Node, Timeout) ->
-    case cluster_compat_mode:is_cluster_madhatter() of
+    case cluster_compat_mode:is_cluster_65() of
         true ->
             gen_statem:call({?MODULE, Node}, master_node, Timeout);
         false ->
@@ -516,7 +516,7 @@ handle_event(info, {'EXIT', _From, Reason} = Msg, _, _) ->
 handle_event({call, From}, master_node, _State, StateData) ->
     {keep_state_and_data, [{reply, From, StateData#state.master}]};
 %% Backward compitibility: handle heartbeats from nodes that are older than
-%%                         Mad-Hatter where gen_fsm is running
+%%                         6.5 where gen_fsm is running
 handle_event(info, {'$gen_event', Event}, _State, _StateData) ->
     {keep_state_and_data, [{next_event, info, Event}]};
 handle_event(Type, Msg, State, StateData) ->
@@ -542,9 +542,9 @@ send_heartbeat_with_peers(Nodes, StateName, Peers) ->
         %% establish connection each time we try to send.
         %% + also exclude local node here
         AliveNodes = lists:filter(lists:member(_, nodes()), Nodes),
-        IsMadHatter = cluster_compat_mode:is_cluster_madhatter(),
+        Is65 = cluster_compat_mode:is_cluster_65(),
         misc:parallel_map(
-          fun (Node) when IsMadHatter ->
+          fun (Node) when Is65 ->
                   catch erlang:send({?MODULE, Node}, Args, [noconnect]);
               (Node) ->
                   gen_fsm:send_event({?MODULE, Node}, Args)

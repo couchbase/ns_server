@@ -249,7 +249,7 @@ local_node_status(Buckets0) ->
     ExpectedBuckets = ns_bucket:node_bucket_names(node()),
     ActiveBuckets = [Bucket || {Bucket, active} <- Buckets0],
     NoDataBuckets =
-        case cluster_compat_mode:is_cluster_madhatter() of
+        case cluster_compat_mode:is_cluster_65() of
             false ->
                 [];
             true ->

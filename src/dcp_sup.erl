@@ -88,8 +88,8 @@ get_replication_features() ->
                   {collections, collections:enabled()},
                   {del_times, cluster_compat_mode:is_cluster_55()},
                   {ssl, misc:should_cluster_data_be_encrypted()},
-                  {set_consumer_name, cluster_compat_mode:is_cluster_madhatter()},
-                  {json, cluster_compat_mode:is_cluster_madhatter()}],
+                  {set_consumer_name, cluster_compat_mode:is_cluster_65()},
+                  {json, cluster_compat_mode:is_cluster_65()}],
     misc:canonical_proplist(FeatureSet).
 
 manage_replicators(Bucket, NeededNodes) ->

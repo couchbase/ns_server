@@ -241,7 +241,7 @@ class AccessLogProcessor:
 class RegularLogProcessor:
     rexes = [re.compile('(<ud>)(.+?)(</ud>)'),
              # Redact the rest of the line in the case we encounter
-             # log-redaction-salt. Needed to redact pre-madhatter debug logs
+             # log-redaction-salt. Needed to redact pre-6.5 debug logs
              # as well as occurence in couchbase.log
              re.compile('(log-redaction-salt)(.+)')]
 

@@ -398,7 +398,7 @@ build_bucket_capabilities(BucketConfig) ->
             membase ->
                 Conditional =
                     [{collections, collections:enabled(BucketConfig)},
-                     {durableWrite, cluster_compat_mode:is_cluster_madhatter()},
+                     {durableWrite, cluster_compat_mode:is_cluster_65()},
                      {couchapi,
                       ns_bucket:storage_mode(BucketConfig) =:= couchstore}],
 
@@ -988,7 +988,7 @@ validate_moxi_port(Params) ->
 do_validate_moxi_port(undefined) ->
     ignore;
 do_validate_moxi_port("none") ->
-    %% needed for pre-MadHatter clusters only
+    %% needed for pre-6.5 clusters only
     {ok, moxi_port, undefined};
 do_validate_moxi_port(_) ->
     {error, proxyPort,
@@ -1567,7 +1567,7 @@ run_on_node({M, F, A}, Nodes, Req) ->
         true -> {ok, erlang:apply(M, F, A)};
         _ when Nodes == [] -> {error, nonodes};
         _ ->
-            case cluster_compat_mode:is_cluster_madhatter() of
+            case cluster_compat_mode:is_cluster_65() of
                 true ->
                     Node = menelaus_util:choose_node_consistently(Req, Nodes),
                     case rpc:call(Node, M, F, A) of
@@ -1578,7 +1578,7 @@ run_on_node({M, F, A}, Nodes, Req) ->
             end
     end.
 
-%% The function might be rpc'ed beginning from Mad-Hatter
+%% The function might be rpc'ed beginning from 6.5
 get_ddocs_list(PoolId, Bucket) ->
     DDocs = capi_utils:sort_by_doc_id(capi_utils:full_live_ddocs(Bucket)),
     RV =

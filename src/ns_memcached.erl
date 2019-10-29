@@ -1297,7 +1297,7 @@ get_mass_dcp_docs_estimate(Bucket, VBuckets) ->
 set_cluster_config(Bucket, Rev, Blob) ->
     do_call(server(Bucket), {set_cluster_config, Rev, Blob}, ?TIMEOUT).
 
-%% The function might be rpc'ed beginning from Mad-Hatter
+%% The function might be rpc'ed beginning from 6.5
 get_random_key(Bucket) ->
     do_call(server(Bucket), get_random_key, ?TIMEOUT).
 

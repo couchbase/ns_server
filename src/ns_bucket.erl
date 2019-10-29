@@ -93,7 +93,7 @@
          deactivate_bucket_data_on_this_node/1,
          config_upgrade_to_51/1,
          config_upgrade_to_55/1,
-         config_upgrade_to_madhatter/1]).
+         config_upgrade_to_65/1]).
 
 
 %%%===================================================================
@@ -628,8 +628,8 @@ set_map(Bucket, Map) ->
             ok;
         different_length_chains ->
             %% Never expect to set map with different_length_chains
-            %% pre-madhatter.
-            true = cluster_compat_mode:is_cluster_madhatter()
+            %% pre-6.5.
+            true = cluster_compat_mode:is_cluster_65()
     end,
     set_property(Bucket, map, Map, [],
                  master_activity_events:note_set_map(Bucket, Map, _)).
@@ -879,7 +879,7 @@ config_upgrade_to_55(Config) ->
           end, Buckets),
     [{set, buckets, [{configs, NewBuckets}]}].
 
-config_upgrade_to_madhatter(Config) ->
+config_upgrade_to_65(Config) ->
     MaxBuckets = case ns_config:search(Config, max_bucket_count) of
                      false ->
                          ?MAX_BUCKETS_SUPPORTED;

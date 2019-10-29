@@ -42,7 +42,7 @@ start_link() ->
     misc:start_singleton(work_queue, start_link, [?SERVER]).
 
 enabled() ->
-    cluster_compat_mode:is_enabled(?VERSION_MADHATTER) andalso
+    cluster_compat_mode:is_enabled(?VERSION_65) andalso
         cluster_compat_mode:is_developer_preview().
 
 enabled(BucketConfig) ->

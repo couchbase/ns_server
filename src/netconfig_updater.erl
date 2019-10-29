@@ -306,7 +306,7 @@ check_nodename_resolvable(Node, AFamily) ->
     end.
 
 %% This function is needed in two cases:
-%%  - migration for address family settings to mad hatter
+%%  - migration for address family settings to 6.5
 %%  - allow manual changes in dist_cfg file
 ensure_ns_config_settings_in_order() ->
     RV = ns_config:run_txn(

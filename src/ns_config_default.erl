@@ -29,7 +29,7 @@
 -define(NS_LOG, "ns_log").
 
 get_current_version() ->
-    list_to_tuple(?VERSION_MADHATTER).
+    list_to_tuple(?VERSION_65).
 
 get_data_dir() ->
     RawDir = path_config:component_path(data),
@@ -288,10 +288,10 @@ default() ->
      %% Secure headers config
      {secure_headers, []},
 
-     %% This is needed, because we want REST API's on pre MadHatter nodes
+     %% This is needed, because we want REST API's on pre 6.5 nodes
      %% to return proxy as 0, not as "undefined", so it doesn't break golang
      %% components on those nodes, which expect numerical value
-     %% To be removed after the support of pre MadHatter nodes will be
+     %% To be removed after the support of pre 6.5 nodes will be
      %% discontinued
      {{node, node(), moxi}, [{port, 0}]},
 
@@ -382,7 +382,7 @@ upgrade_config(Config) ->
              upgrade_config_from_5_5_to_5_5_3()];
         {5,5,3} ->
             [{set, {node, node(), config_version}, CurrentVersion} |
-             upgrade_config_from_5_5_3_to_madhatter(Config)];
+             upgrade_config_from_5_5_3_to_65(Config)];
         OldVersion ->
             ?log_error("Detected an attempt to offline upgrade from "
                        "unsupported version ~p. Terminating.", [OldVersion]),
@@ -452,11 +452,11 @@ upgrade_config_from_5_5_to_5_5_3() ->
 do_upgrade_config_from_5_5_to_5_5_3(DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig)].
 
-upgrade_config_from_5_5_3_to_madhatter(Config) ->
+upgrade_config_from_5_5_3_to_65(Config) ->
     DefaultConfig = default(),
-    do_upgrade_config_from_5_5_3_to_madhatter(Config, DefaultConfig).
+    do_upgrade_config_from_5_5_3_to_65(Config, DefaultConfig).
 
-do_upgrade_config_from_5_5_3_to_madhatter(Config, DefaultConfig) ->
+do_upgrade_config_from_5_5_3_to_65(Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
      upgrade_key(memcached_defaults, DefaultConfig),
      upgrade_sub_keys(memcached, [dedicated_ssl_port],
@@ -533,7 +533,7 @@ upgrade_5_5_to_5_5_3_test() ->
     ?assertMatch([{set, {node, _, memcached_config}, new_memcached_config}],
                  do_upgrade_config_from_5_5_to_5_5_3(Default)).
 
-upgrade_5_5_3_to_madhatter_test() ->
+upgrade_5_5_3_to_65_test() ->
     Cfg1 = [[{some_key, some_value},
              {{node, node(), memcached}, [{old, info}]},
              {{node, node(), memcached_defaults}, [{k1, v1}]},
@@ -556,7 +556,7 @@ upgrade_5_5_3_to_madhatter_test() ->
                   {set, {node, _, moxi}, new_moxi_value},
                   {delete, {node, _, ldap_enabled}},
                   {set, {node, _, saslauthd_enabled}, true}],
-                 do_upgrade_config_from_5_5_3_to_madhatter(Cfg1, Default)),
+                 do_upgrade_config_from_5_5_3_to_65(Cfg1, Default)),
     Cfg2 = [[{some_key, some_value},
              {{node, node(), memcached}, [{old, info}]}]],
     ?assertMatch([{set, {node, _, memcached_config}, [{interfaces,
@@ -565,7 +565,7 @@ upgrade_5_5_3_to_madhatter_test() ->
                   {set, {node, _, memcached}, [{old, info},
                                                {dedicated_ssl_port, 123}]},
                   {set, {node, _, moxi}, new_moxi_value}],
-                 do_upgrade_config_from_5_5_3_to_madhatter(Cfg2, Default)).
+                 do_upgrade_config_from_5_5_3_to_65(Cfg2, Default)).
 
 no_upgrade_on_current_version_test() ->
     ?assertEqual([], upgrade_config([[{{node, node(), config_version}, get_current_version()}]])).

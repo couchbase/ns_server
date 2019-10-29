@@ -84,7 +84,7 @@ register_node(Name, PortNo) ->
 register_node(_Name, _PortNo, _Family) ->
     %% Since ports are static we don't need to register them, but
     %% there is one exception: because of backward compatibility
-    %% we register non tls ns_server ports in order to let pre-madhatter
+    %% we register non tls ns_server ports in order to let pre-6.5
     %% nodes find this node. The registering itself is done on cb_dist.
     %% 'Creation' is zero because we don't use it anyway
     %% real 'creation' is generated in cb_dist.erl

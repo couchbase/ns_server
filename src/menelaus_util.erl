@@ -67,7 +67,7 @@
          handle_streaming/2,
          assert_is_enterprise/0,
          assert_is_55/0,
-         assert_is_madhatter/0,
+         assert_is_65/0,
          strip_json_struct/1,
          choose_node_consistently/2,
          compute_sec_headers/0]).
@@ -539,8 +539,8 @@ assert_is_enterprise() ->
 assert_is_55() ->
     assert_cluster_version(fun cluster_compat_mode:is_cluster_55/0).
 
-assert_is_madhatter() ->
-    assert_cluster_version(fun cluster_compat_mode:is_cluster_madhatter/0).
+assert_is_65() ->
+    assert_cluster_version(fun cluster_compat_mode:is_cluster_65/0).
 
 assert_cluster_version(Fun) ->
     case Fun() of

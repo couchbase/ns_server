@@ -34,9 +34,9 @@
          is_cluster_55/0,
          is_cluster_55/1,
          is_version_55/1,
-         is_cluster_madhatter/0,
-         is_cluster_madhatter/1,
-         is_version_madhatter/1,
+         is_cluster_65/0,
+         is_cluster_65/1,
+         is_version_65/1,
          is_enterprise/0,
          is_saslauthd_enabled/0,
          is_cbas_enabled/0,
@@ -53,14 +53,14 @@
 %% NOTE: this is rpc:call-ed by mb_master
 -export([mb_master_advertised_version/0]).
 
-n1ql_cluster_capabilities(?VERSION_MADHATTER, true) ->
+n1ql_cluster_capabilities(?VERSION_65, true) ->
     [costBasedOptimizer, indexAdvisor, javaScriptFunctions, inlineFunctions |
-     n1ql_cluster_capabilities(?VERSION_MADHATTER, false)];
-n1ql_cluster_capabilities(?VERSION_MADHATTER, false) ->
+     n1ql_cluster_capabilities(?VERSION_65, false)];
+n1ql_cluster_capabilities(?VERSION_65, false) ->
     [enhancedPreparedStatements].
 
-cluster_capabilities(?VERSION_MADHATTER, IsDP) ->
-    [{n1ql, n1ql_cluster_capabilities(?VERSION_MADHATTER, IsDP)}];
+cluster_capabilities(?VERSION_65, IsDP) ->
+    [{n1ql, n1ql_cluster_capabilities(?VERSION_65, IsDP)}];
 cluster_capabilities(_, _) ->
     [].
 
@@ -126,14 +126,14 @@ is_cluster_55() ->
 is_cluster_55(Config) ->
     is_enabled(Config, ?VERSION_55).
 
-is_version_madhatter(ClusterVersion) ->
-    is_enabled_at(ClusterVersion, ?VERSION_MADHATTER).
+is_version_65(ClusterVersion) ->
+    is_enabled_at(ClusterVersion, ?VERSION_65).
 
-is_cluster_madhatter() ->
-    is_cluster_madhatter(ns_config:latest()).
+is_cluster_65() ->
+    is_cluster_65(ns_config:latest()).
 
-is_cluster_madhatter(Config) ->
-    is_enabled(Config, ?VERSION_MADHATTER).
+is_cluster_65(Config) ->
+    is_enabled(Config, ?VERSION_65).
 
 is_index_aware_rebalance_on() ->
     not ns_config:read_key_fast(index_aware_rebalance_disabled, false).
@@ -290,5 +290,5 @@ mb_master_advertised_version_test() ->
 -endif.
 
 preserve_durable_mutations() ->
-    cluster_compat_mode:is_cluster_madhatter() andalso
+    cluster_compat_mode:is_cluster_65() andalso
         ns_config:read_key_fast({failover, preserve_durable_mutations}, true).

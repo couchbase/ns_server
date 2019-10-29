@@ -29,7 +29,7 @@ start_link() ->
     gen_server2:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 send_tick(Nodes, TS) ->
-    case cluster_compat_mode:is_cluster_madhatter() of
+    case cluster_compat_mode:is_cluster_65() of
         true ->
             gen_server2:abcast(Nodes, ?MODULE, {tick, node(), TS});
         false ->

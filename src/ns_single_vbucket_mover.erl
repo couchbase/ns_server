@@ -283,10 +283,10 @@ maybe_reset_replicas(Bucket, RebalancerPid, VBucket, Nodes, Quirks) ->
 set_dual_topology(Bucket, ActiveNode,
                   RebalancerPid, VBucket, VBucketRebalanceState,
                   OldTopology, NewTopology, AllBuiltNodes) ->
-    case cluster_compat_mode:is_cluster_madhatter() of
+    case cluster_compat_mode:is_cluster_65() of
         true ->
             DualTopology = [OldTopology, NewTopology],
-            set_vbucket_state_madhatter(Bucket, ActiveNode, RebalancerPid,
+            set_vbucket_state_65(Bucket, ActiveNode, RebalancerPid,
                                         VBucket, active, VBucketRebalanceState,
                                         undefined, DualTopology),
             %% We wait for seqno because we may not have sync write on NewChain
@@ -301,20 +301,20 @@ set_dual_topology(Bucket, ActiveNode,
 set_vbucket_state(Bucket, Node, RebalancerPid, VBucket,
                   VBucketState, VBucketRebalanceState, ReplicateFrom,
                   Topology) ->
-    case cluster_compat_mode:is_cluster_madhatter() of
+    case cluster_compat_mode:is_cluster_65() of
         true ->
-            set_vbucket_state_madhatter(Bucket, Node,
+            set_vbucket_state_65(Bucket, Node,
                                         RebalancerPid, VBucket, VBucketState,
                                         VBucketRebalanceState,
                                         ReplicateFrom, Topology);
         false ->
-            set_vbucket_state_pre_madhatter(Bucket, Node,
+            set_vbucket_state_pre_65(Bucket, Node,
                                             RebalancerPid, VBucket,
                                             VBucketState, VBucketRebalanceState,
                                             ReplicateFrom)
     end.
 
-set_vbucket_state_pre_madhatter(Bucket, Node,
+set_vbucket_state_pre_65(Bucket, Node,
                                 RebalancerPid, VBucket, VBucketState,
                                 VBucketRebalanceState, ReplicateFrom) ->
     spawn_and_wait(
@@ -324,7 +324,7 @@ set_vbucket_state_pre_madhatter(Bucket, Node,
                      VBucketState, VBucketRebalanceState, ReplicateFrom)
       end).
 
-set_vbucket_state_madhatter(Bucket, Node, RebalancerPid, VBucket,
+set_vbucket_state_65(Bucket, Node, RebalancerPid, VBucket,
                             VBucketState, VBucketRebalanceState, ReplicateFrom,
                             Topology) ->
     spawn_and_wait(
@@ -543,7 +543,7 @@ on_move_done_body(RebalancerPid, WorkerPid, Bucket, VBucket, OldChain,
                   [NewMaster | _] = NewChain) ->
     update_vbucket_map(RebalancerPid, WorkerPid, Bucket, VBucket),
 
-    case cluster_compat_mode:is_cluster_madhatter() of
+    case cluster_compat_mode:is_cluster_65() of
         true ->
             %% Set topology on the NewMaster.
             janitor_agent:set_vbucket_state(

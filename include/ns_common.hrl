@@ -221,10 +221,10 @@
 -define(VERSION_51, [5, 1]).
 -define(VERSION_55, [5, 5]).
 -define(VERSION_60, [6, 0]).
--define(VERSION_MADHATTER, [6, 5]).
+-define(VERSION_65, [6, 5]).
 
 %% Points to latest release
--define(LATEST_VERSION_NUM, ?VERSION_MADHATTER).
+-define(LATEST_VERSION_NUM, ?VERSION_65).
 -define(MASTER_ADVERTISED_VERSION, [6, 5, 0]).
 
 -define(flush(Pattern),

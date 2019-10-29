@@ -527,7 +527,7 @@ read_config(File, IgnoreReadError) ->
 %% by the moment we need to read config
 read_terms_from_file(F) ->
     case erl_prim_loader:get_file(F) of
-        %% Backward compat: pre-madhatter installer creates empty dist_cfg file
+        %% Backward compat: pre-6.5 installer creates empty dist_cfg file
         {ok, <<>>, _} -> {ok, []};
         {ok, Bin, _} ->
             try {ok, misc:parse_term(Bin)}

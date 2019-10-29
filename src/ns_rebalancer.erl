@@ -508,7 +508,7 @@ rebalance_body(KeepNodes,
     KVKeep = ns_cluster_membership:service_nodes(KeepNodes, kv),
     lists:foreach(
       fun (Bucket) ->
-              not cluster_compat_mode:is_cluster_madhatter() orelse
+              not cluster_compat_mode:is_cluster_65() orelse
                   deactivate_bucket_data_on_unknown_nodes(Bucket, KVKeep),
               run_janitor_pre_rebalance(Bucket)
       end, ns_bucket:get_bucket_names()),
@@ -680,12 +680,12 @@ do_rebalance_membase_bucket(Bucket, Config,
         case ForcedMap of
             undefined ->
                 AdjustedMap =
-                    case cluster_compat_mode:is_cluster_madhatter() of
+                    case cluster_compat_mode:is_cluster_65() of
                         true ->
                             NumReplicas = ns_bucket:num_replicas(Config),
                             mb_map:align_replicas(Map, NumReplicas);
                         false ->
-                            %% Expect equal length map pre mad-hatter, as the
+                            %% Expect equal length map pre 6.5, as the
                             %% janitor fixes it for us.
                             %% See fun ns_janitor:compute_vbucket_map_fixup.
                             Map
@@ -1508,7 +1508,7 @@ get_buckets_to_delta_recovery_test() ->
 -endif.
 
 prepare_rebalance(Nodes) ->
-    case cluster_compat_mode:is_cluster_madhatter() of
+    case cluster_compat_mode:is_cluster_65() of
         true ->
             do_prepare_rebalance(Nodes);
         false ->
@@ -1524,7 +1524,7 @@ do_prepare_rebalance(Nodes) ->
     end.
 
 unprepare_rebalance(Nodes) ->
-    case cluster_compat_mode:is_cluster_madhatter() of
+    case cluster_compat_mode:is_cluster_65() of
         true ->
             do_unprepare_rebalance(Nodes);
         false ->
@@ -1542,7 +1542,7 @@ do_unprepare_rebalance(Nodes) ->
     end.
 
 prepare_delta_recovery(Nodes, BucketConfigs) ->
-    case cluster_compat_mode:is_cluster_madhatter() of
+    case cluster_compat_mode:is_cluster_65() of
         true ->
             do_prepare_delta_recovery(Nodes, BucketConfigs);
         false ->
@@ -1580,7 +1580,7 @@ prepare_delta_recovery_buckets(DeltaRecoveryBuckets,
       end, DeltaRecoveryBuckets).
 
 prepare_one_delta_recovery_bucket(Bucket, BucketConfig, FailoverVBuckets) ->
-    case cluster_compat_mode:is_cluster_madhatter() of
+    case cluster_compat_mode:is_cluster_65() of
         true ->
             do_prepare_one_delta_recovery_bucket(Bucket, BucketConfig,
                                                  FailoverVBuckets);
@@ -1693,7 +1693,7 @@ find_active_nodes_of_vbuckets_test() ->
 -endif.
 
 complete_delta_recovery(Nodes) ->
-    case cluster_compat_mode:is_cluster_madhatter() of
+    case cluster_compat_mode:is_cluster_65() of
         true ->
             do_complete_delta_recovery(Nodes);
         false ->

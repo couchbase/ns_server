@@ -37,11 +37,11 @@ settings_post_validators() ->
      validate_tmp_space_size(queryTmpSpaceSize, _),
      validator:dir(queryTmpSpaceDir, _),
      validator:convert(queryTmpSpaceDir, fun list_to_binary/1, _)] ++
-        settings_post_validators_madhatter() ++
+        settings_post_validators_65() ++
         [validator:unsupported(_)].
 
-settings_post_validators_madhatter() ->
-    case cluster_compat_mode:is_cluster_madhatter() of
+settings_post_validators_65() ->
+    case cluster_compat_mode:is_cluster_65() of
         true ->
             [validator:integer(queryPipelineBatch, _),
              validator:integer(queryPipelineCap, _),

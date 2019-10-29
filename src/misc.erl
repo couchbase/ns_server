@@ -1432,7 +1432,7 @@ is_cluster_encryption_enabled() ->
         [N || N <- ns_node_disco:nodes_wanted(),
               not is_node_encryption_enabled(Cfg, N)],
 
-    cluster_compat_mode:is_cluster_madhatter() andalso
+    cluster_compat_mode:is_cluster_65() andalso
         cluster_compat_mode:is_enterprise() andalso
         NonEncryptNodes =:= [].
 
@@ -1452,7 +1452,7 @@ should_cluster_data_be_encrypted() ->
 
 -spec disable_non_ssl_ports() -> true | false.
 disable_non_ssl_ports() ->
-    %% TODO: Disabling the non-SSL ports in not targeted for the Mad-Hatter
+    %% TODO: Disabling the non-SSL ports in not targeted for the 6.5
     %% release. Hence returning 'false' unconditionally. The thinking is to
     %% implement this API correctly in the next release when this feature
     %% will be supported. This will avoid making changes to the plumbing to

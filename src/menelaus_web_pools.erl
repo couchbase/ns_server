@@ -480,7 +480,7 @@ do_audit_cluster_settings(Req) ->
 
 handle_terse_cluster_info(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_madhatter(),
+    menelaus_util:assert_is_65(),
     case ns_config_auth:is_system_provisioned() of
         true ->
             RV = handle_terse_cluster_info_inner(Req),

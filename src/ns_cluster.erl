@@ -193,7 +193,7 @@ extract_remote_cluster_net_settings(NodeKVList) ->
                                       false),
     case proplists:get_value(<<"addressFamily">>, NodeKVList) of
         undefined ->
-            case pre_madhatter_remote_node_address_family(NodeKVList) of
+            case pre_65_remote_node_address_family(NodeKVList) of
                 {ok, AF} -> {ok, AF, NEncryption, Listeners};
                 {error, Msg} -> {error, Msg}
             end;
@@ -202,10 +202,10 @@ extract_remote_cluster_net_settings(NodeKVList) ->
             {ok, AFamily, NEncryption, Listeners}
     end.
 
-%% Pre mad-hatter nodes do not include address family info in engageCluster.
+%% Pre 6.5 nodes do not include address family info in engageCluster.
 %% In order to figure it out we can check the type of port that is used for
 %% distribution. If that port is ipv6 the remote node is ipv6 node.
-pre_madhatter_remote_node_address_family(NodeKVList) ->
+pre_65_remote_node_address_family(NodeKVList) ->
     RemoteNodeBin = proplists:get_value(<<"otpNode">>, NodeKVList, <<>>),
     RemoteNode = binary_to_atom(RemoteNodeBin, latin1),
     {Name, Host} = misc:node_name_host(RemoteNode),
@@ -213,7 +213,7 @@ pre_madhatter_remote_node_address_family(NodeKVList) ->
         {true, false} -> {ok, inet};
         {true, true} -> {ok, inet6};
         {false, _} ->
-            case pre_madhatter_call_port_please(Name, Host) of
+            case pre_65_call_port_please(Name, Host) of
                 {ok, Port} ->
                     case check_host_port_connectivity(Host, Port, inet6) of
                         {ok, _} -> {ok, inet6};
@@ -226,7 +226,7 @@ pre_madhatter_remote_node_address_family(NodeKVList) ->
             end
     end.
 
-pre_madhatter_call_port_please(Name, Host) ->
+pre_65_call_port_please(Name, Host) ->
     case resolve(Host) of
         {ok, IPList} ->
             lists:foldl(

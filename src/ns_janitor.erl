@@ -459,7 +459,7 @@ compute_vbucket_map_fixup(Bucket, BucketConfig, States) ->
                   ignore -> OldChain;
                   _ -> NewChain
               end || {NewChain, OldChain} <- lists:zip(MapUpdates, Map)],
-    NewAdjustedMap = case cluster_compat_mode:is_cluster_madhatter() of
+    NewAdjustedMap = case cluster_compat_mode:is_cluster_65() of
                          true ->
                              %% Defer adjusting chain length to rebalance, at
                              %% the time of writing this code the logic is in,

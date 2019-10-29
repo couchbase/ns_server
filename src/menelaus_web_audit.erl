@@ -82,7 +82,7 @@ reply_with_json_audit_descriptors(Req, Descriptors) ->
 
 handle_get_non_filterable_descriptors(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_madhatter(),
+    menelaus_util:assert_is_65(),
     Descriptors = ns_audit_cfg:get_non_filterable_descriptors(),
     reply_with_json_audit_descriptors(Req, Descriptors).
 

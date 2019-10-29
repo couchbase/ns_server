@@ -25,14 +25,14 @@
 %% Retry rebalance after time period in seconds
 -define(RETRY_AFTER_DEFAULT, 300).
 
--export([config_upgrade_to_madhatter/0,
+-export([config_upgrade_to_65/0,
          get_retry_rebalance/0,
          set_retry_rebalance/1,
          get_retry_after/1,
          get_retry_max/1,
          is_retry_enabled/0]).
 
-config_upgrade_to_madhatter() ->
+config_upgrade_to_65() ->
     Cfg = [{enabled, false},
            {after_time_period, ?RETRY_AFTER_DEFAULT},
            {max_attempts, ?RETRY_ATTEMPTS_DEFAULT}],

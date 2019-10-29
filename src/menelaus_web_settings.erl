@@ -54,7 +54,7 @@
 
          handle_reset_ciphers_suites/1,
 
-         config_upgrade_to_madhatter/1,
+         config_upgrade_to_65/1,
          services_with_security_settings/0]).
 
 -import(menelaus_util,
@@ -218,7 +218,7 @@ conf(internal) ->
 conf(developer_preview) ->
     [{developer_preview_enabled, enabled, false, fun only_true/1}];
 conf(failover) ->
-    case cluster_compat_mode:is_cluster_madhatter() of
+    case cluster_compat_mode:is_cluster_65() of
         true ->
             [{{failover, preserve_durable_mutations}, preserveDurableMutations,
               true, fun get_bool/1}];
@@ -795,7 +795,7 @@ handle_reset_ciphers_suites(Req) ->
     ns_config:set(cipher_suites, []),
     reply_json(Req, {[]}).
 
-config_upgrade_to_madhatter(Config) ->
+config_upgrade_to_65(Config) ->
     case ns_config:search(Config, gotraceback) of
         {value, <<"crash">>} ->
             [{set, gotraceback, <<"single">>}];

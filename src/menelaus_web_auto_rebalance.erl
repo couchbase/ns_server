@@ -71,5 +71,5 @@ reply_with_retry_settings(Req) ->
 
 assert_api_supported() ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_madhatter().
+    menelaus_util:assert_is_65().
 

@@ -287,7 +287,7 @@ node_cbas_dirs(Config, Node, StorageConf) ->
                 false ->
                     %% Should only occur running mixed versions (e.g. during
                     %% upgrade)
-                    %% TODO: Remove once madhatter is the oldest supported
+                    %% TODO: Remove once 6.5 is the oldest supported
                     %%       release
                     IndexPath = proplists:get_value(index_path, StorageConf),
                     true = IndexPath =/= undefined,
@@ -350,7 +350,7 @@ node_ev_dir(Config, Node, StorageConf) ->
         false ->
             %% Should only occur running mixed versions (e.g. during upgrade).
             %% Prior to MH, eventing used the index path
-            %% TODO: Remove once madhatter is the oldest supported release.
+            %% TODO: Remove once 6.5 is the oldest supported release.
             IndexPath = proplists:get_value(index_path, StorageConf),
             true = IndexPath =/= undefined,
             IndexPath

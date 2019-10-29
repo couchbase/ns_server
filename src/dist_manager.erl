@@ -79,7 +79,7 @@ read_address_config() ->
                 Address when is_list(Address) ->
                     {Address, false};
                 undefined ->
-                    %% Migration to Mad-Hatter
+                    %% Migration to 6.5
                     %% If there is no "ip" file, it might be the case that
                     %% node has default name. The problem is that default
                     %% pre-MH name and default MH name are different. Hence the

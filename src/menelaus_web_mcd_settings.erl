@@ -42,7 +42,7 @@ supported_setting_names() ->
      {tracing_enabled, bool},
      {datatype_snappy, bool}] ++
         case cluster_compat_mode:is_developer_preview() andalso
-            cluster_compat_mode:is_cluster_madhatter() of
+            cluster_compat_mode:is_cluster_65() of
             false ->
                 [];
             true ->

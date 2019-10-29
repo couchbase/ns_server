@@ -22,7 +22,7 @@
          handle_settings_reset_count/1,
          get_failover_on_disk_issues/1,
          config_check_can_abort_rebalance/0,
-         config_upgrade_to_madhatter/1,
+         config_upgrade_to_65/1,
          config_upgrade_to_55/1]).
 
 -import(menelaus_util,
@@ -132,7 +132,7 @@ config_upgrade_to_55(Config) ->
                          {failed_over_server_groups, []}),
     [{set, auto_failover_cfg, New}].
 
-config_upgrade_to_madhatter(Config) ->
+config_upgrade_to_65(Config) ->
     {value, Current} = ns_config:search(Config, auto_failover_cfg),
     CanAbortRebalance = cluster_compat_mode:is_enterprise(),
     New = lists:keystore(?CAN_ABORT_REBALANCE_CONFIG_KEY, 1, Current,
@@ -200,7 +200,7 @@ parse_validate_extras_inner(Args, CurrRV, Config) ->
     end.
 
 parse_validate_can_abort_rebalance(Args, CurrRV) ->
-    case cluster_compat_mode:is_cluster_madhatter() of
+    case cluster_compat_mode:is_cluster_65() of
         true ->
             parse_validate_can_abort_rebalance_inner(Args, CurrRV);
         false ->
@@ -307,7 +307,7 @@ get_extra_settings(Config) ->
             Max = proplists:get_value(?MAX_EVENTS_CONFIG_KEY, Config),
             {Enabled, TimePeriod} = get_failover_on_disk_issues(Config),
             CanAbortRebalance =
-                case cluster_compat_mode:is_cluster_madhatter() of
+                case cluster_compat_mode:is_cluster_65() of
                     true ->
                         V = proplists:get_value(
                               ?CAN_ABORT_REBALANCE_CONFIG_KEY, Config),
@@ -328,7 +328,7 @@ disable_extras(Config) ->
         cluster_compat_mode:is_enterprise() of
         true ->
             CanAbortRebalance =
-                case cluster_compat_mode:is_cluster_madhatter() of
+                case cluster_compat_mode:is_cluster_65() of
                     true ->
                         [{?CAN_ABORT_REBALANCE_CONFIG_KEY, false}];
                     false ->

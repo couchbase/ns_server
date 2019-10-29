@@ -193,8 +193,8 @@ handle_get_roles(Req) ->
       end, Req, qs, get_users_or_roles_validators()).
 
 user_to_json({Id, Domain}, Props) ->
-    IsMadHatter = cluster_compat_mode:is_cluster_madhatter(),
-    RolesJson = user_roles_to_json(Props, IsMadHatter),
+    Is65 = cluster_compat_mode:is_cluster_65(),
+    RolesJson = user_roles_to_json(Props, Is65),
     Name = proplists:get_value(name, Props),
     Groups = proplists:get_value(groups, Props),
     ExtGroups = proplists:get_value(external_groups, Props),
@@ -206,9 +206,9 @@ user_to_json({Id, Domain}, Props) ->
       {domain, Domain},
       {roles, RolesJson}] ++
      [{groups, [list_to_binary(G) || G <- Groups]} || Groups =/= undefined,
-                                                      IsMadHatter] ++
+                                                      Is65] ++
      [{external_groups, [list_to_binary(G) || G <- ExtGroups]}
-          || ExtGroups =/= undefined, IsMadHatter] ++
+          || ExtGroups =/= undefined, Is65] ++
      [{name, list_to_binary(Name)} || Name =/= undefined] ++
      [{passwordless, Passwordless} || Passwordless == true] ++
      [{password_change_date, PassChangeTime} || PassChangeTime =/= undefined]}.
@@ -876,12 +876,12 @@ bad_roles_error(BadRoles) ->
       " malformed or role parameters are undefined: [~s]", [Str]).
 
 validate_user_groups(Name, State) ->
-    IsMadHatter = cluster_compat_mode:is_cluster_madhatter(),
+    Is65 = cluster_compat_mode:is_cluster_65(),
     IsEnterprise = cluster_compat_mode:is_enterprise(),
     validator:validate(
       fun (GroupsRaw) when (GroupsRaw =/= "") andalso not IsEnterprise ->
               {error, "User groups require enterprise edition"};
-          (GroupsRaw) when (GroupsRaw =/= "") andalso not IsMadHatter ->
+          (GroupsRaw) when (GroupsRaw =/= "") andalso not Is65 ->
               {error, "User groups are not supported in "
                       "mixed version clusters"};
           (GroupsRaw) ->
@@ -1497,7 +1497,7 @@ group_to_json(GroupId, Props) ->
 
 assert_groups_and_ldap_enabled() ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_madhatter().
+    menelaus_util:assert_is_65().
 
 jsonify_profiles() ->
     ?make_transducer(

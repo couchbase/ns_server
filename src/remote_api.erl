@@ -45,11 +45,11 @@ get_fts_indexes(Node) ->
 get_service_remote_items(Node, Mod) ->
     do_call(Node, {get_service_remote_items, Mod}).
 
-%% introduced in Mad-Hatter
+%% introduced in 6.5
 apply_node_settings(Node, Settings) ->
     do_call(Node, {apply_node_settings, Settings}).
 
-%% introduced in Mad-Hatter
+%% introduced in 6.5
 invalidate_ldap_cache(Nodes) ->
     gen_server:multi_call(Nodes, ?MODULE, invalidate_ldap_cache,
                           get_timeout(invalidate_ldap_cache)).

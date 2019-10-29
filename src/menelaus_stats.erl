@@ -899,11 +899,11 @@ computed_stats_lazy_proplist(_) ->
                   fun (Gets, _Hits) when Gets == 0 -> 0; % this handles int and float 0
                       (Gets, Hits) -> Hits * 100/Gets
                   end),
-    %% Pre-madhatter nodes do not collect cmd_total_gets.
+    %% Pre-6.5 nodes do not collect cmd_total_gets.
     %% Cache miss ratio will show up as 0 for such nodes when the statistics
-    %% is viewed from madhatter/post madhatter nodes. So, use cmd_get
+    %% are viewed from 6.5/post 6.5 nodes. So, use cmd_get
     %% till the cluster is upgraded.
-    GetStat = case cluster_compat_mode:is_cluster_madhatter() of
+    GetStat = case cluster_compat_mode:is_cluster_65() of
                   true ->
                       cmd_total_gets;
                   false ->

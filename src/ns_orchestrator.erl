@@ -559,7 +559,7 @@ handle_info({timeout, _TRef, stop_timeout} = Msg, rebalancing, StateData) ->
     ?MODULE:rebalancing(Msg, StateData);
 
 %% Backward compitibility: handle messages from nodes that are older than
-%%                         Mad-Hatter which use gen_fsm api's
+%%                         6.5 which use gen_fsm api's
 %%
 %% Here we rely on the fact that gen_fsm:reply/2 and gen_statem:reply/2
 %% do essentially the same thing, so when we accept call from gen_fsm
@@ -754,7 +754,7 @@ idle({try_autofailover, Nodes}, From, _State) ->
              [{next_event, {call, From}, {failover, Nodes, false}}]}
     end;
 idle({start_graceful_failover, Node}, From, _State) when is_atom(Node) ->
-    %% calls from pre-madhatter nodes
+    %% calls from pre-6.5 nodes
     {keep_state_and_data,
      [{next_event, {call, From}, {start_graceful_failover, [Node]}}]};
 idle({start_graceful_failover, Nodes}, From, _State) ->
@@ -955,7 +955,7 @@ rebalancing({timeout, _Tref, stop_timeout},
 
 %% Synchronous rebalancing events
 rebalancing({try_autofailover, Nodes}, From, State) ->
-    case cluster_compat_mode:is_cluster_madhatter() andalso
+    case cluster_compat_mode:is_cluster_65() andalso
         menelaus_web_auto_failover:config_check_can_abort_rebalance() of
         false ->
             {keep_state_and_data, [{reply, From, rebalance_running}]};
@@ -1231,7 +1231,7 @@ set_rebalance_status(Type, Status, Pid) ->
                    {rebalance_type, Type},
                    set_graceful_failover_pid(Type, Pid)]).
 
-%% needed for compatibility with pre-MadHatter nodes
+%% needed for compatibility with pre-6.5 nodes
 set_graceful_failover_pid(graceful_failover, Pid) ->
     {graceful_failover_pid, Pid};
 set_graceful_failover_pid(_, _) ->
@@ -1591,7 +1591,7 @@ call_recovery_server(#recovery_state{pid = Pid}, Call, Args) ->
     erlang:apply(recovery_server, Call, [Pid | Args]).
 
 rebalance_allowed(Config) ->
-    case cluster_compat_mode:is_cluster_madhatter(Config) of
+    case cluster_compat_mode:is_cluster_65(Config) of
         true ->
             ok;
         false ->

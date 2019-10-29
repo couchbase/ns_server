@@ -588,7 +588,7 @@ handle_node_settings_post(NodeStr, Req) when is_list(NodeStr) ->
         error:badarg -> menelaus_util:reply_not_found(Req)
     end;
 handle_node_settings_post(Node, Req) when is_atom(Node) ->
-    case cluster_compat_mode:is_cluster_madhatter() of
+    case cluster_compat_mode:is_cluster_65() of
         false when Node =/= node() ->
             throw({web_exception, 400,
                    <<"Setting the disk storage path for other servers is "
@@ -847,7 +847,7 @@ net_config_validators(SafeAction) ->
      end.
 
 handle_setup_net_config(Req) ->
-    menelaus_util:assert_is_madhatter(),
+    menelaus_util:assert_is_65(),
     validator:handle(
       fun (Values) ->
               erlang:process_flag(trap_exit, true),
@@ -859,7 +859,7 @@ handle_setup_net_config(Req) ->
       end, Req, form, net_config_validators(false)).
 
 handle_change_external_listeners(Action, Req) ->
-    menelaus_util:assert_is_madhatter(),
+    menelaus_util:assert_is_65(),
     validator:handle(
       fun (Props) ->
               case netconfig_updater:change_external_listeners(Action, Props) of

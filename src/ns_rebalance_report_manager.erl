@@ -77,7 +77,7 @@ record_rebalance_report(Report, KeepNodes) ->
             gen_server2:call(?MODULE, {record_rebalance_report, Report},
                              infinity);
         false ->
-            case cluster_compat_mode:is_cluster_madhatter() of
+            case cluster_compat_mode:is_cluster_65() of
                 true ->
                     CompressedReport = zlib:compress(Report),
                     [Node | _] = KeepNodes,
@@ -270,7 +270,7 @@ fetch_rebalance_report_local(FileName, Dir) ->
     end.
 
 fetch_rebalance_report_remote(ReqdReport, Dir) ->
-    case cluster_compat_mode:is_cluster_madhatter() of
+    case cluster_compat_mode:is_cluster_65() of
         true -> fetch_rebalance_report_remote_inner(ReqdReport, Dir);
         false -> {error, enoent}
     end.

@@ -28,7 +28,7 @@
          get_from_config/3,
          update/2,
          config_upgrade_to_55/0,
-         config_upgrade_to_madhatter/1
+         config_upgrade_to_65/1
         ]).
 
 -export([cfg_key/0,
@@ -68,12 +68,12 @@ config_upgrade_to_55() ->
         default_settings(?VERSION_55), dict:new(),
         known_settings(?VERSION_55))}].
 
-config_upgrade_to_madhatter(Config) ->
-    NewSettings = general_settings_defaults(?VERSION_MADHATTER) --
+config_upgrade_to_65(Config) ->
+    NewSettings = general_settings_defaults(?VERSION_65) --
         general_settings_defaults(?VERSION_55),
     json_settings_manager:upgrade_existing_key(
       ?MODULE, Config, [{generalSettings, NewSettings}],
-      known_settings(?VERSION_MADHATTER)).
+      known_settings(?VERSION_65)).
 
 known_settings() ->
     known_settings(cluster_compat_mode:get_compat_version()).
@@ -91,7 +91,7 @@ general_settings(Ver) ->
       list_to_binary(path_config:component_path(tmp))},
      {queryTmpSpaceSize, "query.settings.tmp_space_size",
       ?QUERY_TMP_SPACE_DEF_SIZE}] ++
-        case cluster_compat_mode:is_version_madhatter(Ver) of
+        case cluster_compat_mode:is_version_65(Ver) of
             true ->
                 [{queryPipelineBatch,      "pipeline-batch",      16},
                  {queryPipelineCap,        "pipeline-cap",        512},

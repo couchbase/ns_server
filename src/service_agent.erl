@@ -108,11 +108,11 @@ wait_for_agents_loop(Service, Nodes, Acc, Timeout) ->
     end.
 
 set_rebalancer(Service, Nodes, Rebalancer) ->
-    case cluster_compat_mode:is_cluster_madhatter() of
+    case cluster_compat_mode:is_cluster_65() of
         true ->
             call_set_rebalancer(Service, Nodes, Rebalancer);
         false ->
-            %% Pre-madhatter nodes expect the rebalancer to be unset before
+            %% Pre-6.5 nodes expect the rebalancer to be unset before
             %% set_rebalancer will succeed. But in order for service rebalance
             %% to be more responsive to stop requests in the presence of
             %% wedged services (see MB-32790) we stopped trying to
@@ -121,16 +121,16 @@ set_rebalancer(Service, Nodes, Rebalancer) ->
             %% quickly realize that the rebalance was stopped. But just to
             %% give it some extra time, we'll retry a couple of times if we
             %% see 'nack' responses.
-            set_rebalancer_pre_madhatter(Service, Nodes, Rebalancer)
+            set_rebalancer_pre_65(Service, Nodes, Rebalancer)
     end.
 
-set_rebalancer_pre_madhatter(Service, Nodes, Rebalancer) ->
+set_rebalancer_pre_65(Service, Nodes, Rebalancer) ->
     SleepTime = ?get_param({set_rebalancer, sleep}, 200),
     NumRetries = ?get_param({set_rebalancer, retries}, 5),
-    set_rebalancer_pre_madhatter_loop(Service, Nodes,
+    set_rebalancer_pre_65_loop(Service, Nodes,
                                       Rebalancer, SleepTime, NumRetries).
 
-set_rebalancer_pre_madhatter_loop(Service, Nodes,
+set_rebalancer_pre_65_loop(Service, Nodes,
                                   Rebalancer, SleepTime, NumRetries) ->
     case call_set_rebalancer(Service, Nodes, Rebalancer) of
         ok ->
@@ -147,7 +147,7 @@ set_rebalancer_pre_madhatter_loop(Service, Nodes,
                               "Number of retries left: ~p",
                               [Service, Nodes, BadNodes, NumRetries]),
                     timer:sleep(SleepTime),
-                    set_rebalancer_pre_madhatter_loop(Service, BadNodes,
+                    set_rebalancer_pre_65_loop(Service, BadNodes,
                                                       Rebalancer, SleepTime,
                                                       NumRetries - 1);
                 false ->
