@@ -27,12 +27,12 @@
 -record(state, {dir, prefix}).
 
 log_params() ->
-    Conf = ns_config:get(),
+    Conf = ns_config:latest(),
     {ns_config:search_node_prop(Conf, memcached, log_generations),
      ns_config:search_node_prop(Conf, memcached, log_rotation_period)}.
 
 start_link() ->
-    Conf = ns_config:get(),
+    Conf = ns_config:latest(),
     Dir = ns_config:search_node_prop(Conf, memcached, log_path),
     Prefix = ns_config:search_node_prop(Conf, memcached, log_prefix),
     gen_server:start_link(?MODULE, [Dir, Prefix], []).
