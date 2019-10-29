@@ -86,7 +86,7 @@ remove(Dir, Prefix, N) ->
                                           string:str(Fn, Prefix) == 1],
 
     TimeList = lists:map(fun(Fn) ->
-                      {ok, Fi} = file:read_file_info(Fn),
+                                 {ok, Fi} = file:read_file_info(Fn),
                                  {Fn, Fi#file_info.mtime}
                          end, AbsNames),
 
