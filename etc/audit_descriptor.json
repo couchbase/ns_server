@@ -1220,6 +1220,9 @@
           "filtering_permitted" : true,
           "mandatory_fields" : {
               "timestamp" : "",
+              "sender" : "",
+              "recipients" : "",
+              "subject" : "",
               "message": ""
           },
           "optional_fields" : {

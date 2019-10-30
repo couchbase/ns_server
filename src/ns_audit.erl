@@ -56,7 +56,7 @@
          reset_auto_failover_count/1,
          modify_retry_rebalance/2,
          alerts/2,
-         alert_email_sent/1,
+         alert_email_sent/4,
          modify_compaction_settings/2,
          regenerate_certificate/1,
          setup_saslauthd/2,
@@ -694,8 +694,10 @@ alerts(Req, Settings) ->
                  {email_server, {prepare_list(EmailServer1)}}])
     end.
 
-alert_email_sent(Message) ->
-    put(alert_email_sent, undefined, [{message, Message}]).
+alert_email_sent(Sender, Recipients, Subject, Body) ->
+    put(alert_email_sent, undefined,
+        [{sender, Sender}, {recipients, {list, Recipients}},
+         {subject, Subject}, {message, Body}]).
 
 build_threshold({Percentage, Size}) ->
     {prepare_list([{percentage, Percentage}, {size, Size}])}.
