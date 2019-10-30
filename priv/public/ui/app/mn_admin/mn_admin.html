@@ -55,7 +55,7 @@
             <p>
               {{adminCtl.tasks.tasksRebalance.completionMessage}}
             </p>
-            <div class="nowrap">
+            <div ng-if="adminCtl.poolDefault.isEnterprise" class="nowrap">
               <button
                  ng-click="adminCtl.getRebalanceReport()"
                  download="rebalanceReport.json"
@@ -66,7 +66,9 @@
           </div>
 
 <!-- rebalance per stage info ********************************************** -->
-          <div ng-repeat="service in adminCtl.tasks.tasksRebalance.stageInfo.services track by (service.name + $index)">
+          <div
+             ng-if="adminCtl.poolDefault.isEnterprise"
+             ng-repeat="service in adminCtl.tasks.tasksRebalance.stageInfo.services track by (service.name + $index)">
             <div class="row margin-top-half margin-bottom-half">
               <label class="initialcaps">
                 {{service.name}}

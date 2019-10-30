@@ -914,6 +914,7 @@ section.error {
   color: #333;
   left: 0;
   top: -2px;
+  padding: 4px;
 }
 .badge.notify:hover {
   background-color: #d8dde4;
