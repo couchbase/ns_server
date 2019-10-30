@@ -82,8 +82,8 @@ read_address_config() ->
                     %% Migration to 6.5
                     %% If there is no "ip" file, it might be the case that
                     %% node has default name. The problem is that default
-                    %% pre-MH name and default MH name are different. Hence the
-                    %% migration. The idea is the following: if "nodefile"
+                    %% pre-6.5 name and default 6.5 name are different. Hence
+                    %% the migration. The idea is the following: if "nodefile"
                     %% exists, but there is no ip or ip_start files, we should
                     %% use 127.0.0.1 (or ::1) address (instead of cb.local)
                     case nodefile_exists() of
