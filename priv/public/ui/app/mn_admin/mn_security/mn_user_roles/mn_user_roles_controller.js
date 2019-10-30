@@ -18,7 +18,7 @@
     ])
     .controller("mnUserRolesController", mnUserRolesController);
 
-  function mnUserRolesController($scope, $uibModal, mnPromiseHelper, mnUserRolesService, mnPoller, mnHelper, $state) {
+  function mnUserRolesController($scope, $uibModal, mnPromiseHelper, mnUserRolesService, mnPoller, mnHelper, $state, poolDefault) {
     var vm = this;
 
     vm.deleteUser = deleteUser;
@@ -85,16 +85,20 @@
             .applyToScope("rolesByRole");
         });
 
-      mnPromiseHelper(vm, mnUserRolesService.getSaslauthdAuth())
-        .applyToScope("saslauthdAuth");
+      if (poolDefault.saslauthdEnabled) {
+        mnPromiseHelper(vm, mnUserRolesService.getSaslauthdAuth())
+          .applyToScope("saslauthdAuth");
+      }
 
-      new mnPoller($scope, function () {
-        return mnUserRolesService.getLdapSettings();
-      })
-        .subscribe("ldapSettings", vm)
-        .setInterval(10000)
-        .reloadOnScopeEvent("reloadLdapSettings")
-        .cycle();
+      if (poolDefault.isEditingMode) {
+        new mnPoller($scope, function () {
+          return mnUserRolesService.getLdapSettings();
+        })
+          .subscribe("ldapSettings", vm)
+          .setInterval(10000)
+          .reloadOnScopeEvent("reloadLdapSettings")
+          .cycle();
+      }
 
       new mnPoller($scope, function () {
         return mnUserRolesService.getState($state.params);
@@ -112,7 +116,7 @@
         resolve: {
           user: mnHelper.wrapInFunction(user),
           isLdapEnabled: function () {
-            return (vm.saslauthdAuth && vm.saslauthdAuth.enabled) || vm.ldapSettings.data.authenticationEnabled;
+            return (vm.saslauthdAuth && vm.saslauthdAuth.enabled) || (vm.ldapSettings && vm.ldapSettings.data.authenticationEnabled);
           }
         }
       });

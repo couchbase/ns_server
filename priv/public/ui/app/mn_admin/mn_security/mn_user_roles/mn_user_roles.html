@@ -25,7 +25,7 @@
           <span ng-show="userRolesCtl.saslauthdAuth"><span ng-show="!userRolesCtl.saslauthdAuth.enabled">not</span> enabled</span>
         </p>
       </div>
-      <div class="users-auth-check">
+      <div class="users-auth-check" ng-show="poolDefault.isEnterprise">
         <span
            class="icon margin-right"
            ng-class="userRolesCtl.ldapSettings.data.authenticationEnabled ? 'fa-check success' : 'fa-ban grayblack-3'">

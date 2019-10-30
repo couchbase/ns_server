@@ -92,7 +92,7 @@ angular.module('mnSettingsNotificationsService', [
         numNodes: poolsDefault.nodes.length, //Total number of nodes
         isEnterpriseEdition: pools.isEnterprise,
         adminLDAPEnabled : poolsDefault.saslauthdEnabled ||
-          ldapSettings.data.authenticationEnabled,
+          ldapSettings && ldapSettings.data.authenticationEnabled,
         ram: {
           total: poolsDefault.storageTotals.ram.total,
           quotaTotal: poolsDefault.storageTotals.ram.quotaTotal,
@@ -355,7 +355,7 @@ angular.module('mnSettingsNotificationsService', [
           queries[12] = mnSettingsNotificationsService.getCbasData();
         }
 
-        if (mnPermissions.export.cluster.admin.security.read) {
+        if (poolDefault.isEnterprise && mnPermissions.export.cluster.admin.security.read) {
           queries[13] = mnUserRolesService.getLdapSettings();
         }
 

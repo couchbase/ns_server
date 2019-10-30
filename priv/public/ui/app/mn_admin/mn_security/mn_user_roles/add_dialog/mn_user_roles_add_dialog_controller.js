@@ -118,10 +118,10 @@
       vm.reloadUserRoles = true;
       $q.all([
         mnUserRolesService.getRolesByRole(),
-        mnUserRolesService.getRolesGroups()
-      ]).then(function (groups) {
-        vm.byRole = groups[0];
-        vm.groups = groups[1].data;
+        mnPoolDefault.isEnterprise ? mnUserRolesService.getRolesGroups() : $q.when()
+      ]).then(function (resp) {
+        vm.byRole = resp[0];
+        vm.groups = resp[1] && resp[1].data;
         applyUser(vm.user);
         vm.reloadUserRoles = false;
       }, function () {
