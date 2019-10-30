@@ -349,7 +349,7 @@ node_ev_dir(Config, Node, StorageConf) ->
             V;
         false ->
             %% Should only occur running mixed versions (e.g. during upgrade).
-            %% Prior to MH, eventing used the index path
+            %% Prior to 6.5, eventing used the index path
             %% TODO: Remove once 6.5 is the oldest supported release.
             IndexPath = proplists:get_value(index_path, StorageConf),
             true = IndexPath =/= undefined,
