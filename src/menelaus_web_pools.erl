@@ -479,7 +479,6 @@ do_audit_cluster_settings(Req) ->
     ns_audit:cluster_settings(Req, Quotas, ClusterName).
 
 handle_terse_cluster_info(Req) ->
-    menelaus_util:assert_is_enterprise(),
     menelaus_util:assert_is_65(),
     case ns_config_auth:is_system_provisioned() of
         true ->
