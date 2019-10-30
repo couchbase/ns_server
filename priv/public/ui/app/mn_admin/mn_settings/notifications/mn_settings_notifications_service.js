@@ -124,6 +124,7 @@ angular.module('mnSettingsNotificationsService', [
           avg_query_requests_last_week: [], //Average N1QL queries / sec last week
           total_avg_view_accesses_last_week: [], //Average view reads / sec last week
           total_avg_index_num_rows_returned_last_week: [], //Average scans/sec last week
+          vb_active_sync_write_committed_count_last_week: [],
           total_ddocs: 0, //Number of total design docs
           total_views: 0, //Number of total views
           total_indexes: 0, //Number of total indexes
@@ -224,6 +225,8 @@ angular.module('mnSettingsNotificationsService', [
           });
 
           setPerBucketStat(stats, "avg_ops", bucketStats.ops);
+          setPerBucketStat(stats, "vb_active_sync_write_committed_count",
+                           bucketStats.vb_active_sync_write_committed_count);
           setPerBucketStat(stats, "avg_cmd_set", bucketStats.cmd_set);
           setPerBucketStat(stats, "total_avg_view_accesses", bucketStats && avgViewAccessesPerView);
           setPerBucketStat(stats, "total_avg_index_num_rows_returned", indexStats && avgNumRowsReturnedPerIndex);
@@ -273,6 +276,7 @@ angular.module('mnSettingsNotificationsService', [
       calculateAvgWeekAndHour(stats, "avg_ops", true);
       calculateAvgWeekAndHour(stats, "avg_cmd_set", true);
       calculateAvgWeekAndHour(stats, "avg_query_requests", true);
+      calculateAvgWeekAndHour(stats, "vb_active_sync_write_committed_count", true);
       calculateAvgWeekAndHour(stats, "total_avg_view_accesses");
       calculateAvgWeekAndHour(stats, "total_avg_index_num_rows_returned");
 
