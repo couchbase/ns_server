@@ -17,7 +17,7 @@
       flushEnabled: "0",
       ramQuotaMB: "0",
       uri: '/pools/default/buckets',
-      purgeInterval: "1",
+      purgeInterval: "3",
       compressionMode: "passive",
       maxTTL: 0
     })
