@@ -38,10 +38,12 @@
     <span class="pills nowrap">
       <a
          ui-sref="app.admin.security.roles.user"
-         ui-sref-active="selected">Users</a>
+         ui-sref-active="selected"
+         ng-if="poolDefault.isEnterprise">Users</a>
       <a
          ui-sref="app.admin.security.roles.groups"
-         ui-sref-active="selected">Groups</a>
+         ui-sref-active="selected"
+         ng-if="poolDefault.isEnterprise">Groups</a>
     </span>
   </div>
   <div class="cbui-table" ng-if="userRolesCtl.state.users.length">
