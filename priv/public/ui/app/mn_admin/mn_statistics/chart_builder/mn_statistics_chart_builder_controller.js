@@ -161,6 +161,7 @@
     function activate() {
       if (vm.isEditing) {
         vm.newChart = _.cloneDeep(chart);
+        vm.newChart.specificStat = vm.newChart.specificStat.toString();
         vm.selectedGroup = group.id;
         vm.groups = scenario.groups.map(function (id) {
           return mnStoreService.store("groups").get(id);
@@ -170,17 +171,11 @@
         vm.newChart = {
           stats: {},
           size: "small",
-          specificStat: "false"
+          specificStat: "true"
         };
       }
 
       vm.bucket = $state.params.scenarioBucket;
-
-      if (vm.newChart.specificStat) {
-        vm.newChart.specificStat = "true";
-      } else {
-        vm.newChart.specificStat = "false";
-      }
 
       if (vm.isEditing) {
         vm.tab = Object.keys(chart.stats).map(function (stat) {
