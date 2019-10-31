@@ -23,20 +23,20 @@
 %% Constants and definitions
 
 -record(idle_state, {}).
--record(janitor_state, {cleanup_id = undefined :: undefined | pid()}).
+-record(janitor_state, {cleanup_id :: undefined | pid()}).
 
 -record(rebalancing_state, {rebalancer,
-                            rebalance_observer = undefined,
+                            rebalance_observer,
                             keep_nodes,
                             eject_nodes,
                             failed_nodes,
                             delta_recov_bkts,
-                            retry_check = undefined,
+                            retry_check,
                             to_failover,
                             stop_timer,
                             type,
-                            rebalance_id = undefined,
-                            abort_reason = undefined}).
+                            rebalance_id,
+                            abort_reason}).
 
 -record(recovery_state, {pid :: pid()}).
 
