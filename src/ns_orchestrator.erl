@@ -716,6 +716,8 @@ idle({failover, Nodes, AllowUnsafe}, From, _State) ->
 
     {keep_state_and_data, [{reply, From, Result}]};
 idle({start_failover, Nodes, AllowUnsafe}, From, _State) ->
+    auto_rebalance:cancel_any_pending_retry_async("failover"),
+
     ActiveNodes = ns_cluster_membership:active_nodes(),
     NodesInfo = [{active_nodes, ActiveNodes}],
     Id = couch_uuids:random(),
