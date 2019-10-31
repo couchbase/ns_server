@@ -608,18 +608,25 @@ services_add_params() ->
 has_nodes(Service, ServiceNodes) ->
     proplists:get_value(Service, ServiceNodes) =/= [].
 
+live_bucket_nodes(Bucket) ->
+    case ns_bucket:get_bucket(Bucket) of
+        not_present ->
+            [];
+        {ok, BucketConfig} ->
+            ns_bucket:live_bucket_nodes_from_config(BucketConfig)
+    end.
+
 section_nodes("@system") ->
     ns_cluster_membership:actual_active_nodes();
 section_nodes("@xdcr-" ++ Bucket) ->
-    ns_bucket:live_bucket_nodes(Bucket);
+    live_bucket_nodes(Bucket);
 section_nodes(Section) ->
     case describe_section(Section) of
         {Service, _} ->
             ns_cluster_membership:service_actual_nodes(ns_config:latest(),
                                                        Service);
         undefined ->
-            %% Section is a bucket
-            ns_bucket:live_bucket_nodes(Section)
+            live_bucket_nodes(Section)
     end.
 
 is_persistent("@"++_) ->
