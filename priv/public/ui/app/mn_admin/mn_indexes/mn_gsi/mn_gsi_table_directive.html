@@ -76,7 +76,7 @@
              tooltip-append-to-body="true"
              tooltip-placement="auto top"
              tooltip-trigger="'mouseenter'">
-            replica {{row.numReplica}}
+            replica {{row.index.split("(replica ")[1].slice(0,-1)}}
           </span>
         </span>
       </span>
