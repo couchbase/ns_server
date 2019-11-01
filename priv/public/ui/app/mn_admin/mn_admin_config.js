@@ -224,6 +224,19 @@
         url: '/form',
         templateUrl: 'app/mn_admin/mn_logs/collect_info/mn_logs_collect_info_form.html'
       })
+      .state('app.admin.statistics_overview', {
+        url: '/stats_overview?statsNode&statsBucket&statsZoom',
+        views: {
+          "main@app.admin": {
+            controller: 'mnStatisticsOverviewController as statisticsOverviewCtl',
+            templateUrl: 'app/mn_admin/mn_statistics/overview_page/mn_statistics_overview.html',
+          }
+        },
+        data: {
+          title: "Statistics Overview"
+        }
+      })
+
       .state('app.admin.overview.statistics', {
         url: '/stats?statsHostname',
         controller: 'mnStatisticsNewController as statisticsNewCtl',

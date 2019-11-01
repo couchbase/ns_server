@@ -66,7 +66,7 @@
 
       function getChartSize(size) {
         switch (size) {
-        case "tiny": return 50;
+        case "tiny": return 60;
         case "small": return 100;
         case "medium": return 120;
         case "large": return 310;
@@ -78,7 +78,7 @@
       function initConfig() {
         options = {
           chart: {
-            margin : {top: 10, right: 36, bottom: 16, left: 44},
+            margin : $scope.config.margin || {top: 10, right: 36, bottom: 16, left: 44},
             height: getChartSize($scope.config.size),
             tooltip: {valueFormatter: formatValue},
             useInteractiveGuideline: true,

@@ -229,6 +229,11 @@
             // title: "gets per sec.",
             // desc: "Number of get operations serviced by this bucket (measured from cmd_get)"
           },
+          "cmd_total_gets": {
+            unit: "number/sec",
+            title: "Total Gets",
+            desc: "Number of total get operations per second from this bucket (measured from cmd_total_gets). This includes additional get operations such as get locked that are not included in cmd_get"
+          },
           "cmd_set": {
             unit: "number/sec",
             title: "Sets",
@@ -961,12 +966,28 @@
           },
           "index/cache_hits": null,
           "index/cache_misses": null,
-          "index/items_count": null,
-          "index/memory_used": null,
-          "index/num_docs_indexed": null,
+          "index/items_count": {
+            unit: "number",
+            title: "Doc Count",
+            desc: "Current total number of indexed documents"
+          },
+          "index/memory_used": {
+            unit: "bytes",
+            title: "Index RAM Used",
+            desc: "Total memory used by the index."
+          },
+          "index/num_docs_indexed": {
+            unit: "number/sec",
+            title: "Indexing Rate",
+            desc: "Number of documents indexed by the indexer per second."
+          },
           "index/num_docs_pending": null,
           "index/num_docs_queued": null,
-          "index/num_requests": null,
+          "index/num_requests": {
+            unit: "number/sec",
+            title: "Request Rate",
+            desc: "Number of requests served by the indexer per second"
+          },
           "index/num_rows_returned": {
             unit: "number/sec",
             title: "Index Total Scan Rate",
@@ -974,7 +995,11 @@
           },
           "index/recs_in_mem": null,
           "index/recs_on_disk": null,
-          "index/scan_bytes_read": null,
+          "index/scan_bytes_read": {
+            unit: "bytes/sec",
+            title: "Index Scan Bytes",
+            desc: "Number of bytes/sec scanned by the index."
+          },
           "index/total_scan_duration": null
         },
 
@@ -1250,6 +1275,16 @@
             unit: "number",
             title: "AnalyticsThread Count",
             desc: "Number of threads for Analytics node."
+          },
+          "cbas_io_reads": {
+            unit: "bytes/sec",
+            title: "Analytics Read Rate",
+            desc: "Number of disk bytes read on Analytics node per second."
+          },
+          "cbas_io_writes": {
+            unit: "bytes/sec",
+            title: "Analytics Write Rate",
+            desc: "Number of disk bytes written on Analytics node per second."
           }
         },
 

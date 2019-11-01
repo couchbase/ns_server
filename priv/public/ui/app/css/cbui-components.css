@@ -1026,16 +1026,35 @@ section.error {
   line-height: 1.2;
   width: 174px;
 }
+.chart-cell-tiny {
+  text-align: center;
+  font-size: .688rem;
+  color: #000;
+  display: inline-block;
+  cursor: pointer;
+  background-color: #fff;
+  border: none;
+  border-radius: 3px 3px 2px 2px;
+  box-shadow: 0px 1px 1px 1px rgba(0,0,0,0.25);
+  margin: 0 .25rem .5rem 0;
+  padding: .25rem 0;
+  max-width: 240px;
+}
+.chart-cell-tiny .yAxis text,
+.chart-cell-tiny .xAxis text {
+  font-size: 9px;
+  font-family: OpenSans;
+}
 .chart-column-headers {
   padding: 0 0 .5rem 0;
-  margin-top:.5rem;
+  margin: 0 0 .5rem 0;
   text-align: center;
   display: inline-block;
   width: 25%;
 }
 .columns-four {
   max-width: 710px;
-}
+  }
 .columns-three {
   max-width: 600px;
 }
@@ -1055,6 +1074,25 @@ section.error {
 .columns-six .chart-column-headers {
   width: 16%;
 }
+.columns-three-new {
+  max-width: 660px;
+}
+.columns-four-new { /* for use with new charts */
+  width: 980px;
+}
+.columns-four-new .chart-column-headers {
+  width: 25%;
+}
+.columns-five-new { /* for use with new charts */
+  max-width: 988px;
+}
+.columns-six-new {
+  width: 1471px;
+}
+.columns-six-new .chart-column-headers {
+  width: 16.5%;
+}
+
 
 /* MEMORY/DISK USAGE METERS --------------------------------------------- */
 .bar-usages .marker {
@@ -2591,13 +2629,18 @@ mn-statistics-chart {
   font-size: inherit;
   width: 100%;
 }
+.chart-cell-tiny .chart-title {
+  text-align: center;
+  font-weight: 600;
+  font-size: inherit;
+  width: 100%;
+}
 .statistics-small {
   width: calc(25% - .5rem);
   padding: .25rem;
   margin: .25rem;
   padding-bottom: 0;
   min-width: 200px;
-
 }
 .statistics-small:hover {
   background-color: #f6fafd;
@@ -2789,8 +2832,9 @@ input[type="text"]:focus.charts-group-name {
 /* mnd3 css ----------------------------------------------------------------- */
 text.charts-nodata {
   fill: red;
-  font-size: .75rem;
+  font-size: .625rem;
   transform: translate(-20px, 20px);
+  font-weight: 400;
 }
 .nv-axis line {
   opacity: 0!important;
