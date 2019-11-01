@@ -44,13 +44,13 @@
 %% External API
 bucket_disk_usage(BucketName) ->
     {_, _, _, _, DiskUsed, _, _}
-        = last_membase_sample(BucketName, ns_bucket:live_bucket_nodes(BucketName)),
+        = last_membase_sample(BucketName, live_bucket_nodes(BucketName)),
     DiskUsed.
 
 bucket_ram_usage(BucketName) ->
     %% NOTE: we're getting last membase sample, but first stat name is
     %% same in memcached buckets, so it works for them too.
-    element(1, last_membase_sample(BucketName, ns_bucket:live_bucket_nodes(BucketName))).
+    element(1, last_membase_sample(BucketName, live_bucket_nodes(BucketName))).
 
 extract_stat(StatName, Sample) ->
     case orddict:find(StatName, Sample#stat_entry.values) of
