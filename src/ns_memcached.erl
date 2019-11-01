@@ -939,7 +939,7 @@ sync_delete_vbucket(Bucket, VBucket) ->
             infinity).
 
 -spec get_single_vbucket_details_stats(bucket_name(), vbucket_id(),
-                                       all | [nonempty_string()]) ->
+                                       [nonempty_string()]) ->
                                               {ok, [{nonempty_string(),
                                                      nonempty_string()}]} |
                                               mc_error().
@@ -958,13 +958,13 @@ get_single_vbucket_details_stats(Bucket, VBucket, ReqdKeys) ->
             Err
     end.
 
--spec get_vbucket_details_stats(bucket_name(), all | [nonempty_string()]) ->
+-spec get_vbucket_details_stats(bucket_name(), [nonempty_string()]) ->
                                        {ok, dict:dict()} | mc_error().
 get_vbucket_details_stats(Bucket, ReqdKeys) ->
     get_vbucket_details_stats(Bucket, all, ReqdKeys).
 
 -spec get_vbucket_details_stats(bucket_name(), all | vbucket_id(),
-                                all | [nonempty_string()]) ->
+                                [nonempty_string()]) ->
                                        {ok, dict:dict()} | mc_error().
 get_vbucket_details_stats(Bucket, VBucket, ReqdKeys) ->
     do_call(server(Bucket), {get_vbucket_details_stats, VBucket, ReqdKeys},
@@ -1466,7 +1466,7 @@ get_vbucket_details_inner(Sock, DetailsKey, ReqdKeys) ->
                               [BinVB, BinK] -> {BinVB, binary_to_list(BinK)};
                               [BinVB] -> {BinVB, "state"}
                           end,
-              case ReqdKeys =:= all orelse lists:member(Key, ReqdKeys) of
+              case lists:member(Key, ReqdKeys) of
                   true ->
                       VBucket = list_to_integer(binary_to_list(VB)),
                       NewVal = [{Key, binary_to_list(BinVal)}],
