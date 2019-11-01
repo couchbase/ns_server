@@ -1451,12 +1451,26 @@ construct_vbucket_info_json(undefined) ->
 construct_vbucket_info_json(Topology) ->
     construct_topology_json(Topology).
 
+durability_keys() ->
+    ["state", "topology", "high_seqno", "high_prepared_seqno"].
+
+get_stats_key(["state"]) ->
+    <<"vbucket">>;
+get_stats_key(ReqdKeys) ->
+    case ReqdKeys -- durability_keys() of
+        [] ->
+            <<"vbucket-durability-state">>;
+        _ ->
+            <<"vbucket-details">>
+    end.
+
 get_vbucket_details(Sock, all, ReqdKeys) ->
-    get_vbucket_details_inner(Sock, <<"vbucket-details">>, ReqdKeys);
+    get_vbucket_details_inner(Sock, get_stats_key(ReqdKeys), ReqdKeys);
 get_vbucket_details(Sock, VBucket, ReqdKeys) when is_integer(VBucket) ->
     VBucketStr = integer_to_list(VBucket),
     get_vbucket_details_inner(
-      Sock, iolist_to_binary([<<"vbucket-details ">>, VBucketStr]), ReqdKeys).
+      Sock, iolist_to_binary([get_stats_key(ReqdKeys), " ", VBucketStr]),
+      ReqdKeys).
 
 get_vbucket_details_inner(Sock, DetailsKey, ReqdKeys) ->
     mc_binary:quick_stats(
