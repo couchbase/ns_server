@@ -50,11 +50,13 @@
             creation = undefined,
             kernel_pid = undefined,
             config = undefined,
-            name = undefined}).
+            name = undefined,
+            ensure_config_timer = undefined}).
 
 -define(family, ?MODULE).
 -define(proto, ?MODULE).
 -define(TERMINATE_TIMEOUT, 5000).
+-define(ENSURE_CONFIG_TIMEOUT, 60000).
 
 -type socket() :: any().
 -type protocol() :: inet_tcp_dist | inet6_tcp_dist |
@@ -267,7 +269,8 @@ handle_call({accept, KernelPid}, _From, #s{listeners = Listeners} = State) ->
                 {Module:accept(LSocket), Module}
             end,
             Listeners),
-    {reply, self(), State#s{acceptors = Acceptors, kernel_pid = KernelPid}};
+    {reply, self(), ensure_config(State#s{acceptors = Acceptors,
+                                          kernel_pid = KernelPid})};
 
 handle_call({get_module_by_acceptor, AcceptorPid}, _From,
             #s{acceptors = Acceptors} = State) ->
@@ -336,6 +339,10 @@ handle_info({'EXIT', From, Reason}, State) ->
     error_msg("received EXIT from ~p, stoping: ~p", [From, Reason]),
     {stop, {'EXIT', From, Reason}, State};
 
+handle_info(ensure_config_timer, State) ->
+    info_msg("received ensure_config_timer", []),
+    {noreply, ensure_config(State#s{ensure_config_timer = undefined})};
+
 handle_info(Info, State) ->
     error_msg("received unknown message: ~p", [Info]),
     {noreply, State}.
@@ -396,14 +403,22 @@ add_proto(Mod, #s{name = NodeName, listeners = Listeners,
                             error_msg(
                               "Accept failed for protocol ~p with reason: ~p~n"
                               "Stacktrace: ~p", [Mod, E, ST]),
-                            State
+                            start_ensure_config_timer(State)
                     end;
-                _Error -> State
+                {error, eafnosupport} -> State;
+                {error, eprotonosupport} -> State;
+                _Error -> start_ensure_config_timer(State)
             end;
         {error, Reason} ->
             error_msg("Ignoring ~p listener, reason: ~p", [Mod, Reason]),
             State
     end.
+
+start_ensure_config_timer(#s{ensure_config_timer = undefined} = State) ->
+    {ok, Ref} = timer:send_after(?ENSURE_CONFIG_TIMEOUT, ensure_config_timer),
+    State#s{ensure_config_timer = Ref};
+start_ensure_config_timer(#s{} = State) ->
+    State.
 
 remove_proto(Mod, #s{listeners = Listeners, acceptors = Acceptors} = State) ->
     info_msg("Closing listener ~p", [Mod]),
@@ -568,35 +583,39 @@ read_terms_from_file(F) ->
         error -> {error, read_error}
     end.
 
-handle_reload_config(#s{listeners = Listeners} = State) ->
+handle_reload_config(State) ->
     try read_config(config_path(), true) of
         Cfg ->
             info_msg("Reloading configuration: ~p", [Cfg]),
-            State1 = State#s{config = Cfg},
-            CurrentProtos = [M || {M, _} <- Listeners],
-            NewProtos = get_protos(State1),
-            ToAdd = NewProtos -- CurrentProtos,
-            ToRemove = CurrentProtos -- NewProtos,
-            State2 = lists:foldl(fun (P, S) -> remove_proto(P, S) end,
-                                 State1, ToRemove),
-            State3 = lists:foldl(fun (P, S) -> add_proto(P, S) end,
-                                 State2, ToAdd),
-            NewCurrentProtos = [M || {M, _} <- State3#s.listeners],
-            Required = [R || R <- get_required_protos(State3),
-                             lists:member(R, get_protos(State3))],
+            NewState = ensure_config(State#s{config = Cfg}),
+            NewCurrentProtos = [M || {M, _} <- NewState#s.listeners],
+            Required = [R || R <- get_required_protos(NewState),
+                             lists:member(R, get_protos(NewState))],
             NotStartedRequired = Required -- NewCurrentProtos,
             case NotStartedRequired of
                 [] ->
                     L = [proto2netsettings(Proto) || Proto <- NewCurrentProtos],
-                    {reply, {ok, L}, State3};
+                    {reply, {ok, L}, NewState};
                 _ ->
                     error_msg("Failed to start required dist listeners ~p",
                               [NotStartedRequired]),
-                    {reply, {error, {not_started, NotStartedRequired}}, State3}
+                    {reply, {error, {not_started, NotStartedRequired}},
+                     NewState}
             end
     catch
         _:Error -> {reply, {error, Error}, State}
     end.
+
+ensure_config(#s{listeners = Listeners} = State) ->
+    CurrentProtos = [M || {M, _} <- Listeners],
+    NewProtos = get_protos(State),
+    ToAdd = NewProtos -- CurrentProtos,
+    ToRemove = CurrentProtos -- NewProtos,
+    State2 = lists:foldl(fun (P, S) -> remove_proto(P, S) end,
+                         State, ToRemove),
+    State3 = lists:foldl(fun (P, S) -> add_proto(P, S) end,
+                         State2, ToAdd),
+    State3.
 
 get_protos(#s{name = Name, config = Config}) ->
     Protos =
