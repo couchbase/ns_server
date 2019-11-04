@@ -54,6 +54,7 @@
 
 -define(family, ?MODULE).
 -define(proto, ?MODULE).
+-define(TERMINATE_TIMEOUT, 5000).
 
 -type socket() :: any().
 -type protocol() :: inet_tcp_dist | inet6_tcp_dist |
@@ -408,18 +409,48 @@ remove_proto(Mod, #s{listeners = Listeners, acceptors = Acceptors} = State) ->
     info_msg("Closing listener ~p", [Mod]),
     {LSocket, _, _} = proplists:get_value(Mod, Listeners),
     [erlang:unlink(P) || {P, M} <- Acceptors, M =:= Mod],
-    catch Mod:close(LSocket),
-    case lists:member(Mod, [inet_tls_dist, inet6_tls_dist]) of
-        true ->
-            %% *_tls_dist modules don't close proxy socket when Mod:close/1
-            %% is called, so we have to restart proxy process to make sure that
-            %% those sockets are closed
-            supervisor:terminate_child(ssl_dist_sup, ssl_tls_dist_proxy),
-            supervisor:restart_child(ssl_dist_sup, ssl_tls_dist_proxy);
-        false -> ok
-    end,
+
+    ToWait =
+        case lists:member(Mod, [inet_tls_dist, inet6_tls_dist]) of
+            true ->
+                %% Extract real acceptors from tls proxy in order
+                %% to be able to wait for those processes, so the next
+                %% acceptor doesn't get eaddrinuse error
+                {TLSSockets, TLSAcceptors} = extract_tls_acceptors(),
+                %% *_tls_dist modules don't close proxy socket when Mod:close/1
+                %% is called, so we have to restart proxy process to make sure that
+                %% those sockets are closed
+                supervisor:terminate_child(ssl_dist_sup, ssl_tls_dist_proxy),
+                supervisor:restart_child(ssl_dist_sup, ssl_tls_dist_proxy),
+                [catch gen_tcp:close(S) || S <- TLSSockets],
+                TLSAcceptors;
+            false ->
+                catch Mod:close(LSocket),
+                []
+        end,
+    lists:foreach(
+      fun (Proc) ->
+              case misc:wait_for_process(Proc, ?TERMINATE_TIMEOUT) of
+                  ok -> ok;
+                  {error, Reason} ->
+                      error_msg("Wait for acceptor: ~p failed with reason: ~p",
+                                [Proc, Reason]),
+                      exit(Proc, kill)
+              end
+      end, lists:usort([P || {P, M} <- Acceptors, M =:= Mod] ++ ToWait)),
+
     State#s{listeners = proplists:delete(Mod, Listeners),
             acceptors = [{P, M} || {P, M} <- Acceptors, M =/= Mod]}.
+
+extract_tls_acceptors() ->
+    case sys:get_state(ssl_tls_dist_proxy, 60000) of
+        {state, undefined, undefined} ->
+            {[], []};
+        {state, {LocalSocket, WorldSocket}, undefined} ->
+            {[LocalSocket, WorldSocket], []};
+        {state, {LocalSocket, WorldSocket}, {LocalCon, WorldCon}} ->
+            {[LocalSocket, WorldSocket], [LocalCon, WorldCon]}
+    end.
 
 listen_proto(Module, NodeName) ->
     NameStr = atom_to_list(NodeName),
