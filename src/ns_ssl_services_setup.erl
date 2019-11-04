@@ -454,13 +454,12 @@ get_node_cert_data() ->
     end.
 
 init([]) ->
-    ?log_info("Used ssl options:~n~p", [ssl_server_opts()]),
-
     Self = self(),
     ns_pubsub:subscribe_link(ns_config_events, fun config_change_detector_loop/2, Self),
 
     Data = get_node_cert_data(),
     apply_node_cert_data(Data),
+    ?log_info("Used ssl options:~n~p", [ssl_server_opts()]),
     RetrySvc = case misc:marker_exists(marker_path()) of
                    true ->
                        Self ! notify_services,
