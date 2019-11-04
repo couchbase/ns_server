@@ -625,7 +625,7 @@ apply_node_cert_data(Data) ->
     Path = ssl_cert_key_path(),
     apply_node_cert_data(Data, Path),
     ok = ssl:clear_pem_cache(),
-    ok = clear_dist_pem_cache().
+    cb_dist:restart_tls().
 
 apply_node_cert_data({generated, CertPEM, undefined, _Node}, _Path) ->
     ?log_info("No private key provided. This happens when node joins the "
@@ -642,12 +642,6 @@ apply_node_cert_data({user_set, Cert, PKey, CAChain}, Path) ->
     ok = misc:atomic_write_file(raw_ssl_cacert_key_path(), CAChain),
     ok = misc:atomic_write_file(memcached_cert_path(), [Cert, CAChain]),
     ok = misc:atomic_write_file(memcached_key_path(), PKey).
-
-clear_dist_pem_cache() ->
-    gen_server:call(
-      ssl_pem_cache:name(dist),
-      {unconditionally_clear_pem_cache, self()},
-      infinity).
 
 -spec get_user_name_from_client_cert(term()) -> string() | undefined | failed.
 get_user_name_from_client_cert(Val) ->

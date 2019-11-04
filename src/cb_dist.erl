@@ -40,7 +40,8 @@
          update_config/1,
          proto_to_encryption/1,
          format_error/1,
-         netsettings2str/1]).
+         netsettings2str/1,
+         restart_tls/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -48,7 +49,7 @@
 
 -record(con, {ref :: reference(),
               mod :: protocol(),
-              pid :: pid() | undefined,
+              pid :: pid() | undefined | shutdown,
               mon :: reference() | undefined}).
 
 -record(s, {listeners = [],
@@ -227,6 +228,9 @@ get_config() ->
 update_config(Props) ->
     gen_server:call(?MODULE, {update_config, Props}, infinity).
 
+restart_tls() ->
+    gen_server:call(?MODULE, restart_tls, infinity).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -339,6 +343,41 @@ handle_call({register_connection, Mod}, _From,
 
 handle_call({update_connection_pid, Ref, Pid}, _From, State) ->
     {reply, ok, update_connection_pid(Ref, Pid, State)};
+
+handle_call(restart_tls, _From, #s{connections = Connections,
+                                   kernel_pid = KernelPid} = State) ->
+    info_msg("Restarting tls distribution protocols (if any)", []),
+    NewState = functools:chain(State, [remove_proto(inet6_tls_dist, _),
+                                       remove_proto(inet_tls_dist, _)]),
+
+    NewConnections =
+        lists:filtermap(
+          fun (#con{mod = Mod, pid = Pid, mon = Mon} = Con) ->
+                  case proto2netsettings(Mod) of
+                      {_, true = _Encryption} ->
+                          case Pid of
+                              undefined ->
+                                  {true, Con#con{pid = shutdown}};
+                              shutdown ->
+                                  {true, Con};
+                              _ ->
+                                  info_msg("Closing connection ~p because of "
+                                           "tls restart", [Pid]),
+                                  catch erlang:demonitor(Mon, [flush]),
+                                  close_dist_connection(Pid, KernelPid),
+                                  false
+                          end;
+                      {_, _} ->
+                          true
+                  end
+          end, Connections),
+
+    gen_server:call(
+      ssl_pem_cache:name(dist),
+      {unconditionally_clear_pem_cache, self()},
+      infinity),
+
+    {reply, ok, ensure_config(NewState#s{connections = NewConnections})};
 
 handle_call(_Request, _From, State) ->
     {noreply, State}.
@@ -843,10 +882,15 @@ with_registered_connection(Fun, Module) ->
             erlang:raise(C, E, ST)
     end.
 
-update_connection_pid(Ref, Pid, #s{connections = Connections} = State) ->
+update_connection_pid(Ref, Pid, #s{connections = Connections,
+                                   kernel_pid = KernelPid} = State) ->
     case lists:keytake(Ref, #con.ref, Connections) of
         {value, Con, Rest} when Pid =:= undefined ->
             info_msg("Removed connection: ~p", [Con]),
+            State#s{connections = Rest};
+        {value, #con{pid = shutdown}, Rest} ->
+            info_msg("Closing connection ~p because of tls restart", [Pid]),
+            close_dist_connection(Pid, KernelPid),
             State#s{connections = Rest};
         {value, Con, Rest} ->
             MonRef = erlang:monitor(process, Pid),
@@ -856,4 +900,13 @@ update_connection_pid(Ref, Pid, #s{connections = Connections} = State) ->
         false ->
             error_msg("Connection not found: ~p", [Ref]),
             State
+    end.
+
+close_dist_connection(Pid, KernelPid) ->
+    Pid ! {KernelPid, disconnect},
+    case misc:wait_for_process(Pid, ?TERMINATE_TIMEOUT) of
+        ok -> ok;
+        {error, Reason} ->
+            error_msg("Close connection ~p error: ~p", [Pid, Reason]),
+            exit(Pid, kill)
     end.
