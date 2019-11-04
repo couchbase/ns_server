@@ -162,9 +162,9 @@ setup(Node, Type, MyNode, LongOrShortNames, SetupTime) ->
 is_node_name(Node) ->
     select(Node).
 
--spec close(LSocket :: any()) -> ok.
-close(_LSocket) ->
-    gen_server:call(?MODULE, close, infinity).
+-spec close(Pid :: pid()) -> ok.
+close(Pid) ->
+    gen_server:call(Pid, close, infinity).
 
 -spec get_preferred_dist(TargetNode :: atom() | string()) -> protocol().
 get_preferred_dist(TargetNode) ->
@@ -291,7 +291,7 @@ handle_call({get_preferred, Target}, _From, #s{name = Name,
     end;
 
 handle_call(close, _From, State) ->
-    {stop, normal, ok, close_listeners(State)};
+    {reply, ok, close_listeners(State)};
 
 handle_call(reload_config, _From, State) ->
     handle_reload_config(State);
