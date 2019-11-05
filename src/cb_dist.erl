@@ -421,41 +421,50 @@ start_ensure_config_timer(#s{} = State) ->
     State.
 
 remove_proto(Mod, #s{listeners = Listeners, acceptors = Acceptors} = State) ->
-    info_msg("Closing listener ~p", [Mod]),
-    {LSocket, _, _} = proplists:get_value(Mod, Listeners),
-    [erlang:unlink(P) || {P, M} <- Acceptors, M =:= Mod],
+    case proplists:get_value(Mod, Listeners) of
+        {LSocket, _, _} ->
+            info_msg("Closing listener ~p", [Mod]),
+            [erlang:unlink(P) || {P, M} <- Acceptors, M =:= Mod],
 
-    ToWait =
-        case lists:member(Mod, [inet_tls_dist, inet6_tls_dist]) of
-            true ->
-                %% Extract real acceptors from tls proxy in order
-                %% to be able to wait for those processes, so the next
-                %% acceptor doesn't get eaddrinuse error
-                {TLSSockets, TLSAcceptors} = extract_tls_acceptors(),
-                %% *_tls_dist modules don't close proxy socket when Mod:close/1
-                %% is called, so we have to restart proxy process to make sure that
-                %% those sockets are closed
-                supervisor:terminate_child(ssl_dist_sup, ssl_tls_dist_proxy),
-                supervisor:restart_child(ssl_dist_sup, ssl_tls_dist_proxy),
-                [catch gen_tcp:close(S) || S <- TLSSockets],
-                TLSAcceptors;
-            false ->
-                catch Mod:close(LSocket),
-                []
-        end,
-    lists:foreach(
-      fun (Proc) ->
-              case misc:wait_for_process(Proc, ?TERMINATE_TIMEOUT) of
-                  ok -> ok;
-                  {error, Reason} ->
-                      error_msg("Wait for acceptor: ~p failed with reason: ~p",
-                                [Proc, Reason]),
-                      exit(Proc, kill)
-              end
-      end, lists:usort([P || {P, M} <- Acceptors, M =:= Mod] ++ ToWait)),
+            ToWait =
+                case lists:member(Mod, [inet_tls_dist, inet6_tls_dist]) of
+                    true ->
+                        %% Extract real acceptors from tls proxy in order
+                        %% to be able to wait for those processes, so the next
+                        %% acceptor doesn't get eaddrinuse error
+                        {TLSSockets, TLSAcceptors} = extract_tls_acceptors(),
+                        %% *_tls_dist modules don't close proxy socket when
+                        %% Mod:close/1 is called, so we have to restart proxy
+                        %% process to make sure that those sockets are closed
+                        supervisor:terminate_child(ssl_dist_sup,
+                                                   ssl_tls_dist_proxy),
+                        supervisor:restart_child(ssl_dist_sup,
+                                                 ssl_tls_dist_proxy),
+                        [catch gen_tcp:close(S) || S <- TLSSockets],
+                        TLSAcceptors;
+                    false ->
+                        catch Mod:close(LSocket),
+                        []
+                end,
+            lists:foreach(
+              fun (Proc) ->
+                      case misc:wait_for_process(Proc, ?TERMINATE_TIMEOUT) of
+                          ok -> ok;
+                          {error, Reason} ->
+                              error_msg("Wait for acceptor: ~p failed with "
+                                        "reason: ~p", [Proc, Reason]),
+                              exit(Proc, kill)
+                      end
+              end, lists:usort([P || {P, M} <- Acceptors, M =:= Mod] ++
+                   ToWait)),
 
-    State#s{listeners = proplists:delete(Mod, Listeners),
-            acceptors = [{P, M} || {P, M} <- Acceptors, M =/= Mod]}.
+            State#s{listeners = proplists:delete(Mod, Listeners),
+                    acceptors = [{P, M} || {P, M} <- Acceptors, M =/= Mod]};
+        undefined ->
+            info_msg("ignoring closing of ~p because listener is not started",
+                     [Mod]),
+            State
+    end.
 
 extract_tls_acceptors() ->
     case sys:get_state(ssl_tls_dist_proxy, 60000) of
