@@ -957,10 +957,15 @@ handle_put_user_validated(Identity, Name, Password, Roles, Groups, Req) ->
       Req, ?SECURITY_WRITE, lists:usort(GroupRoles ++ Roles ++ OldRoles)).
 
 do_store_user(Identity, Name, Password, UniqueRoles, Groups, Req) ->
+    Reason = case menelaus_users:user_exists(Identity) of
+                 true -> updated;
+                 false -> added
+             end,
     case menelaus_users:store_user(Identity, Name, Password,
                                    UniqueRoles, Groups) of
         {commit, _} ->
-            ns_audit:set_user(Req, Identity, UniqueRoles, Name, Groups),
+            ns_audit:set_user(Req, Identity, UniqueRoles, Name, Groups,
+                              Reason),
             reply_put_delete_users(Req);
         {abort, {error, roles_validation, UnknownRoles}} ->
             menelaus_util:reply_error(

@@ -753,7 +753,8 @@
               "remote" : {"ip" : "", "port" : 1},
               "identity" : {"domain" : "", "user" : ""},
               "roles" : "",
-              "groups": ""
+              "groups": "",
+              "reason" : ""
           },
           "optional_fields" : {
               "sessionid" : "",

@@ -26,7 +26,7 @@
          logout/1,
          delete_user/2,
          password_change/2,
-         set_user/5,
+         set_user/6,
          add_node/7,
          remove_node/2,
          failover_nodes/3,
@@ -498,12 +498,14 @@ delete_user(Req, Identity) ->
 password_change(Req, Identity) ->
     put(password_change, Req, [{identity, get_identity(Identity)}]).
 
-set_user(Req, Identity, Roles, Name, Groups) ->
+set_user(Req, Identity, Roles, Name, Groups, Reason) ->
     put(set_user, Req, [{identity, get_identity(Identity)},
-                        {roles, {list, [menelaus_web_rbac:role_to_string(Role) || Role <- Roles]}},
+                        {roles, {list, [menelaus_web_rbac:role_to_string(Role) ||
+                                        Role <- Roles]}},
                         {full_name, Name},
                         {groups, {list, [G || Groups =/= undefined,
-                                              G <- Groups]}}]).
+                                              G <- Groups]}},
+                        {reason, Reason}]).
 
 add_node(Req, Hostname, Port, User, GroupUUID, Services, Node) ->
     put(add_node, Req, [{node, Node},
