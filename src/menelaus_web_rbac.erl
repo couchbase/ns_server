@@ -1368,11 +1368,15 @@ validate_ldap_ref(Name, State) ->
       end, Name, State).
 
 do_store_group(GroupId, Description, UniqueRoles, LDAPGroup, Req) ->
+    Reason = case menelaus_users:group_exists(GroupId) of
+                 true -> updated;
+                 false -> added
+             end,
     case menelaus_users:store_group(GroupId, Description, UniqueRoles,
                                     LDAPGroup) of
         ok ->
             ns_audit:set_user_group(Req, GroupId, UniqueRoles, Description,
-                                    LDAPGroup),
+                                    LDAPGroup, Reason),
             menelaus_util:reply_json(Req, <<>>, 200);
         {error, {roles_validation, UnknownRoles}} ->
             menelaus_util:reply_error(

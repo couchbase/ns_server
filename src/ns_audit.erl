@@ -77,7 +77,7 @@
          modify_query_settings/2,
          read_doc/3,
          mutate_doc/4,
-         set_user_group/5,
+         set_user_group/6,
          delete_user_group/2,
          ldap_settings/2,
          developer_preview_settings/2,
@@ -860,13 +860,14 @@ mutate_doc(Req, Oper, BucketName, DocId) ->
                           {doc_id, ns_config_log:tag_user_name(DocId)},
                           {operation, Oper}]).
 
-set_user_group(Req, Id, Roles, Description, LDAPGroup) ->
+set_user_group(Req, Id, Roles, Description, LDAPGroup, Reason) ->
     put(set_user_group, Req,
         [{group_name, Id},
          {roles, {list, [menelaus_web_rbac:role_to_string(Role)
-                            || Role <- Roles]}},
+                         || Role <- Roles]}},
          {ldap_group_ref, LDAPGroup},
-         {description, Description}]).
+         {description, Description},
+         {reason, Reason}]).
 
 delete_user_group(Req, Id) ->
     put(delete_user_group, Req, [{group_name, Id}]).

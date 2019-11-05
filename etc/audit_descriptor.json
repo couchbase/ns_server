@@ -979,7 +979,8 @@
               "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "group_name" : "",
-              "roles" : ""
+              "roles" : "",
+              "reason" : ""
           },
           "optional_fields" : {
               "sessionid" : "",
