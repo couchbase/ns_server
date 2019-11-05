@@ -12,10 +12,12 @@
     vm.items = items;
     vm.onSelectZoom = onSelectZoom;
     vm.bucket = $state.params.scenarioBucket;
-    vm.zoom = $state.params.scenarioZoom;
+    vm.zoom = $state.params.scenarioZoom !== "minute" ? $state.params.scenarioZoom : "hour";
     vm.node = $state.params.statsHostname;
+    vm.options = {showFocus: true, showTicks: true, showLegends: true};
 
     function onSelectZoom() {
+      vm.options.showFocus = vm.zoom !== "minute";
       mnStatisticsNewService.heartbeat.setInterval(
         mnStatisticsNewService.defaultZoomInterval(vm.zoom));
       vm.reloadChartDirective = true;
