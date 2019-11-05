@@ -503,7 +503,7 @@
                 size: "medium",
                 specificStat: false
               }, {
-                 stats: {"@fts-.total_queries": true,
+                 stats: {"@fts-.@items.total_queries": true,
                         "@fts-.@items.total_queries_error": true,
                         "@fts-.@items.total_queries_slow": true,
                         "@fts-.@items.total_queries_timeout": true,

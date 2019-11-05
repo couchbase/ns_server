@@ -14,6 +14,7 @@
         this.throttledResize = _.throttle(this.resize.bind(this), 30);
         var elmRect = this.getElementRect();
         this.cvsRect = this.getCanvasRect(elmRect);
+        this.colors = this.cht.color || d3.schemeTableau10;
 
         //main container
         this.svg =
@@ -96,7 +97,7 @@
         return this.svg.selectAll(".xAxis").transition().duration(0).call(this.xAxis);
       }
       getLineColor(d, i) {
-        return this.cht.color[i % this.cht.color.length];
+        return this.colors[i % this.colors.length];
       }
       drawLine(path) {
         path.attr("d", function (d) {
@@ -112,6 +113,9 @@
         pipe.style("stroke", this.getLineColor.bind(this))
           .style("fill", "none")
           .style("stroke-width", 1);
+      }
+      drawCirclePath(pipe) {
+        pipe.style("fill", this.getLineColor.bind(this));
       }
       updateXAxis(xDomain) {
         if (!xDomain.length) {
@@ -172,7 +176,7 @@
       }
       showEmptyContent() {
         this.inititalized = false;
-        this.svg.html("<text>"+this.cht.noData+"</text>");
+        this.svg.html("<text class='charts-nodata'>"+this.cht.noData+"</text>");
       }
       getXaxisDomain(data) {
         return [data[0][0], data[data.length-1][0]];
@@ -213,7 +217,9 @@
           .on("brush end", this.brushed.bind(this));
 
         this.brushEl = this.svg.append("g")
-          .attr("class", "brush");
+          .attr("class", "charts-brush");
+
+        this.svg.attr("class", "focus-chart");
 
         this.brushEl
           .call(this.brush)
@@ -339,7 +345,7 @@
 
     function drawCircle(path) {
       path
-        .call(this.drawLinePath.bind(this))
+        .call(this.drawCirclePath.bind(this))
         .call(this.updateCirclePosition.bind(this), this.selectedValueIndex);
     }
 
@@ -384,7 +390,7 @@
         enter
           .append("circle")
           .attr('class', 'circle-per-line')
-          .attr("r", 4)
+          .attr("r", 5)
           .call(this.drawCircle.bind(this));
       }.bind(this), function (update) {
         update
@@ -398,13 +404,13 @@
             .style('display', 'block')
             .style('left', this.mouseMoveEvent.pageX + 20 + "px")
             .style('top', this.mouseMoveEvent.pageY - 40 + "px")
-            .selectAll(".tooltip-row")
+            .selectAll(".charts-tooltip-row")
             .data(this.data.filter(this.filterDisabled.bind(this)));
 
         tooltipRows.join(function (enter) {
           enter
             .append("div")
-            .attr('class', 'tooltip-row')
+            .attr('class', 'charts-tooltip-row')
             .html(this.updateLabelRow.bind(this));
         }.bind(this), function (update) {
           update
@@ -418,7 +424,8 @@
     function drawLegends() {
       //Legends
       this.legendsWrap =
-        this.rootEl.append("div").attr("class", "legends-wrap");
+        this.rootEl.append("div").attr("class", "legends-wrap")
+        .append("div").attr("class", "charts-filter-icon");
 
       this.getLegends()
         .data(this.data)
@@ -453,9 +460,9 @@
       if (!(line.values[idx] && line.values[idx].length) || line.disabled) {
         return;
       }
-      return "<i style='background-color:" + this.getLineColor(line, i) + "'></i>" +
-        "<span>" + line.key + ": </span>" +
-        "<span>" + ((!line.values[idx] || line.values[idx][1] == undefined) ? "-" :
+      return "<span><i style='background-color:" + this.getLineColor(line, i) + "'></i>" +
+        "<span class='charts-tooltip-key'>" + line.key + "</span></span>" +
+        "<span class='bold'>" + ((!line.values[idx] || line.values[idx][1] == undefined) ? "-" :
                     this.cht.tooltip.valueFormatter(line.values[idx][1], line.unit)) + "</span>";
     }
 

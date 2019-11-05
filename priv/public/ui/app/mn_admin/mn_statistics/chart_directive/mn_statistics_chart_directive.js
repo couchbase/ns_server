@@ -24,7 +24,8 @@
         bucket: "@",
         zoom: "@",
         node: "@?",
-        items: "=?"
+        items: "=?",
+        api: "=?"
       },
       controller: controller
     };
@@ -77,8 +78,7 @@
       function initConfig() {
         options = {
           chart: {
-            color: (['#3c7ac2','#abd9a4','#b3cfef','#2ca01c','#cab2d6','#6a3d9a','#b15928','#d8ac93']),
-            margin : {top: 10, right: 36, bottom: 20, left: 44},
+            margin : {top: 10, right: 36, bottom: 16, left: 44},
             height: getChartSize($scope.config.size),
             tooltip: {valueFormatter: formatValue},
             useInteractiveGuideline: true,

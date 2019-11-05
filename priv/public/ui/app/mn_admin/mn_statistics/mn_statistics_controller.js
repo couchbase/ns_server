@@ -28,6 +28,7 @@
     vm.editChart = editChart;
     vm.openDetailedChartDialog = openDetailedChartDialog;
     vm.chart = mnStoreService.store("charts").get($scope.chartID);
+    vm.api = {};
 
     function deleteChart() {
       vm.showChartControls = false;

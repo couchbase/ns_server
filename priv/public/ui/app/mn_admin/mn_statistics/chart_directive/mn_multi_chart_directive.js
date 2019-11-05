@@ -38,6 +38,10 @@
         chart.destroy.bind(chart);
       });
 
+      if ($scope.api) {
+        $scope.api.chart = chart;
+      }
+
       function addFocusChart() {
         var focusChartOpt = _.cloneDeep($scope.options);
         focusChartOpt.chart.height = 80;
@@ -51,6 +55,10 @@
         chart.rootEl.on("toggleLegend", function (opt) {
           chartF.updateData(chartF.data);
         });
+
+        if ($scope.api) {
+          $scope.api.chartF = chartF;
+        }
 
         $scope.$on("$destroy", function () {
           angular.element($window).off('resize', chartF.throttledResize);

@@ -280,6 +280,10 @@ small {
   font-size: .688rem;
   font-weight: 400;
 }
+.text-finer {
+  font-size: .625rem;
+  font-weight: 400;
+}
 .text-larger {
   font-size: 130%;
 }

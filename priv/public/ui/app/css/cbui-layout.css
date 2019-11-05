@@ -541,6 +541,10 @@ footer {
   margin-left: -1rem !important;
 }
 
+.margin-auto {
+  margin: auto;
+}
+
 /* padding ------------------------------------------------------------- */
 .padding-0 {
   padding: 0 !important;

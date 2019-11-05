@@ -463,8 +463,8 @@ color: #333;
   content: "\f010";
   font-size: 1.5rem;
   color: #a6b2bf;
-  position: absolute;
-  top: -72px;
+  position: relative;
+  top: 2px;
   left: 1rem;
 }
 /* CBUI FLEXBOX TABLES -------------------------------------------------  */
@@ -2596,7 +2596,6 @@ mn-statistics-chart {
   padding: .25rem;
   margin: .25rem;
   padding-bottom: 0;
-  height: 124px;
   min-width: 200px;
 
 }
@@ -2608,7 +2607,6 @@ mn-statistics-chart {
   width: calc(50% - .5rem);
   padding: .25rem;
   margin: .25rem;
-  height: 144px;
 }
 .statistics-medium:hover {
   background-color: #f6fafd;
@@ -2696,8 +2694,6 @@ mn-statistics-chart {
 .chart-controls .icon:hover {
   color: #000;
 }
-
-
 .chart-adder {
   background-color: #f5f5f5;
   border-radius: 5px;
@@ -2790,36 +2786,99 @@ input[type="text"]:focus.charts-group-name {
   background-color: transparent;
 }
 
-/* over-writes of nvd3 css -------------------------------------------------- */
-.nvd3 .nv-axis line {
+/* mnd3 css ----------------------------------------------------------------- */
+text.charts-nodata {
+  fill: red;
+  font-size: .75rem;
+  transform: translate(-20px, 20px);
+}
+.nv-axis line {
   opacity: 0!important;
 }
-.nvd3 .nv-axis.nv-y1 line,
-.nvd3 .nv-axis.nv-x line {
-  opacity: 1!important;
-}
-.nvd3 text {
-  font: normal 10px OpenSans!important;
-}
 .tick line {
-  display:none!important;
+  opacity: .2!important;
 }
 .domain {
   opacity: .2!important;
 }
-.nv-axisMaxMin-y text,
-.nv-axisMin-y text {
-  font-weight: 400!important;
+.yAxis text,
+.xAxis text {
+  font-size: .625rem;
+  font-family: OpenSans;
 }
-.nvtooltip {
-  position: fixed!important;
+.mnd3-tooltip {
+  pointer-events:none;
+  padding: .5rem 1rem;
+  position: absolute;
+  display: none;
+  border: 1px solid #d1d1d1;
+  background-color: rgba(255, 255, 255, 0.9);
+  font-size: .75rem;
+  z-index: 1050;
+  border-radius: 1rem;
 }
-.nvd3.nv-noData {
-  font-weight: 400 !important;
-  font-size: .75rem !important;
-  fill: #cc2a2e !important;
+.charts-tooltip-row {
+  margin: .25rem 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
-
+.charts-tooltip-key {
+  margin-right: .5rem;
+}
+.charts-tooltip-row i {
+  display: inline-block;
+  height: 10px;
+  width: 10px;
+  margin-right: .5rem;
+}
+.tip-line-wrap .tip-line {
+  stroke: #d1d1d1;
+  stroke-width: 1px;
+}
+.legends-wrap {
+  margin: 1rem .5rem 0 4rem;
+  position: relative;
+}
+.legends {
+  display: inline-block;
+  margin: 0 1rem .25rem 0;
+  cursor: pointer;
+  font-size: .75rem;
+}
+.legends i {
+  display: inline-block;
+  height: 10px;
+  width: 10px;
+  margin-right: .25rem;
+}
+rect.selection {
+  fill: #c6dbf2;
+}
+.minute-chart .charts-filter-icon:before{
+  display: none;
+}
+.charts-filter-icon:before {
+  font-family: FontAwesome;
+  content: "\f010";
+  font-size: 1.5rem;
+  color: #a6b2bf;
+  position: absolute;
+  top: -72px;
+  left: -2.5rem;
+}
+.handle {
+  stroke: #d1d1d1;
+  stroke-opacity: .6;
+  fill: #d1d1d1;
+  fill-opacity: .6;
+}
+.detailed-chart svg {
+  cursor: pointer;
+}
+.focus-chart {
+  transform: translate(64px, 10px);
+}
 /* cbui custom dropdown menu  ------------------------------------------------*/
 mn-dropdown {
   display: block;
