@@ -5,7 +5,7 @@
     .module("mnStatisticsNew")
     .controller("mnStatisticsDetailedChartController", mnStatisticsDetailedChartController)
 
-  function mnStatisticsDetailedChartController(chart, $timeout, $state, items) {
+  function mnStatisticsDetailedChartController($scope, chart, $timeout, $state, items, mnStatisticsNewService) {
     var vm = this;
     vm.chart = Object.assign({}, chart, {size: "extra"});
 

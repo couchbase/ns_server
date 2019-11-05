@@ -90,7 +90,7 @@
         return "translate(" + x + ", " + y + ")";
       }
       filterDisabled(line) {
-        return !line.disabled && !!line.values.length;
+        return !!line.values.length;
       }
       redrawXAxis() {
         return this.svg.selectAll(".xAxis").transition().duration(0).call(this.xAxis);
@@ -100,7 +100,11 @@
       }
       drawLine(path) {
         path.attr("d", function (d) {
-          return this.yLines[d.yAxis](d.values);
+          if (!d.disabled) {
+            return this.yLines[d.yAxis](d.values);
+          } else {
+            return undefined;
+          }
         }.bind(this))
           .call(this.drawLinePath.bind(this));
       }
@@ -118,14 +122,20 @@
       }
       updateLine() {
         this.linesWrap.selectAll('.lines')
-          .data(this.data.filter(this.filterDisabled.bind(this)))
+          .data(this.data)
           .join(function (enter) {
             enter
               .append('path').attr('class', 'lines')
+              .style("opacity", function (d) {
+                return d.disabled ? 0 : 1;
+              })
               .call(this.drawLine.bind(this));
           }.bind(this), function (update) {
             update
               .transition().duration(0)
+              .style("opacity", function (d) {
+                return d.disabled ? 0 : 1;
+              })
               .call(this.drawLine.bind(this));
           }.bind(this));
       }
@@ -367,7 +377,7 @@
           .data(this.data.filter(this.filterDisabled.bind(this)))
           .style('opacity', function (d) {
             var idx = this.selectedValueIndex;
-            return (d.values.length && !isNaN(d.values[idx] && d.values[idx][1])) ? 1 : 0;
+            return (d.values.length && !d.disabled && !isNaN(d.values[idx] && d.values[idx][1])) ? 1 : 0;
           }.bind(this));
 
       circlesPerLine.join(function (enter) {
@@ -426,6 +436,7 @@
       this.clickCB = this.getLegends().nodes().map(function (node, i) {
         var cb = function () {
           this.toggleLine(i);
+          this.rootEl.dispatch('toggleLegend', {detail: {index: i}});
         }.bind(this);
         angular.element(node).on('click', cb);
         return cb;
@@ -439,7 +450,7 @@
 
     function updateLabelRow(line, i) {
       var idx = this.selectedValueIndex;
-      if (!(line.values[idx] && line.values[idx].length)) {
+      if (!(line.values[idx] && line.values[idx].length) || line.disabled) {
         return;
       }
       return "<i style='background-color:" + this.getLineColor(line, i) + "'></i>" +

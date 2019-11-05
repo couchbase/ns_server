@@ -47,6 +47,11 @@
         angular.element($window).on('resize', chartF.throttledResize);
 
         $scope.$watch("data", chartF.updateData.bind(chartF));
+
+        chart.rootEl.on("toggleLegend", function (opt) {
+          chartF.updateData(chartF.data);
+        });
+
         $scope.$on("$destroy", function () {
           angular.element($window).off('resize', chartF.throttledResize);
           chartF.destroy.bind(chartF);
