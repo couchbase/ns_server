@@ -91,13 +91,18 @@
         return "translate(" + x + ", " + y + ")";
       }
       filterDisabled(line) {
-        return !!line.values.length;
+        return !!line.values.length && !line.disabled;
       }
       redrawXAxis() {
         return this.svg.selectAll(".xAxis").transition().duration(0).call(this.xAxis);
       }
       getLineColor(d, i) {
-        return this.colors[i % this.colors.length];
+        var color = this.colors
+            .slice(0, this.data.length)
+            .filter(function (_, i) {
+              return !!this.data[i].values.length && !this.data[i].disabled;
+            }.bind(this));
+        return color[i % color.length];
       }
       drawLine(path) {
         path.attr("d", function (d) {
@@ -126,20 +131,14 @@
       }
       updateLine() {
         this.linesWrap.selectAll('.lines')
-          .data(this.data)
+          .data(this.data.filter(this.filterDisabled.bind(this)))
           .join(function (enter) {
             enter
               .append('path').attr('class', 'lines')
-              .style("opacity", function (d) {
-                return d.disabled ? 0 : 1;
-              })
               .call(this.drawLine.bind(this));
           }.bind(this), function (update) {
             update
               .transition().duration(0)
-              .style("opacity", function (d) {
-                return d.disabled ? 0 : 1;
-              })
               .call(this.drawLine.bind(this));
           }.bind(this));
       }
