@@ -2819,7 +2819,7 @@ do_get_indexes(Service, BucketId0, Nodes) ->
             not(ordsets:is_disjoint(WantedHosts,
                                     lists:usort(proplists:get_value(hosts, I))))].
 
--record(params, {bucket, stat, start_ts, end_ts, step, nodes, aggregate}).
+-record(params, {bucket, start_ts, end_ts, step, nodes, aggregate}).
 
 filter_samples(Samples, StartTS, EndTS) ->
     S1 = lists:dropwhile(fun (#stat_entry{timestamp = T}) -> T < StartTS end,
@@ -2876,20 +2876,21 @@ archives(#params{step = Step}) ->
           end, lists:zip(Archives, Archives1 ++ [undefined])),
     [A || {A, _} <- ArchivesZipped].
 
-retrive_samples_from_all_archives(Params) ->
+retrive_samples_from_all_archives(Params, Stat) ->
     {S, N, _, _} =
-        lists:foldl(?cut(retrive_samples_from_archive(_1, Params, _2)),
+        lists:foldl(?cut(retrive_samples_from_archive(_1, Stat, Params, _2)),
                     {undefined, undefined, undefined, true}, archives(Params)),
     {S, N}.
 
-retrive_samples_from_archive(_Archive, _Params,
+retrive_samples_from_archive(_Archive, _Stat, _Params,
                              {_AccSamples, _AccNodes, _Kind, false} = Acc) ->
     Acc;
-retrive_samples_from_archive(Archive, Params = #params{start_ts = StartTS,
-                                                       end_ts = EndTS,
-                                                       aggregate = Aggregate},
+retrive_samples_from_archive(Archive, Stat,
+                             Params = #params{start_ts = StartTS,
+                                              end_ts = EndTS,
+                                              aggregate = Aggregate},
                              {AccSamples, AccNodes, Kind, Continue}) ->
-    case do_retrive_samples_from_archive(Archive, Params, Kind) of
+    case do_retrive_samples_from_archive(Archive, Stat, Params, Kind) of
         #gathered_stats{samples = [[]]} ->
             %% no results for this stat in current archive
             %% no need to proceed to less detailed archives
@@ -2919,9 +2920,8 @@ retrive_samples_from_archive(Archive, Params = #params{start_ts = StartTS,
             {MergedSamples, Nodes, NewKind, NewContinue}
     end.
 
-do_retrive_samples_from_archive({Period, Seconds, Count},
+do_retrive_samples_from_archive({Period, Seconds, Count}, StatName,
                                 #params{bucket = BucketName,
-                                        stat = StatName,
                                         start_ts = StartTS,
                                         step = Step,
                                         nodes = Nodes}, Kind) ->
@@ -2954,36 +2954,86 @@ handle_ui_stats_post(Req) ->
                          V <- List])
       end, Req, json_array, ui_stats_post_validators(Req)).
 
+jsonify_node(N, LocalAddr) ->
+    menelaus_web_node:build_node_hostname(ns_config:latest(), N, LocalAddr).
+
+build_one_stat_json([{{aggregate, Nodes}, Samples}], LocalAddr) ->
+    {[{aggregate, Samples},
+      {aggregateNodes,
+       [list_to_binary(jsonify_node(N, LocalAddr)) || N <- Nodes]}]};
+build_one_stat_json(SamplesForNodes, LocalAddr) ->
+    {[{jsonify_node(N, LocalAddr), Samples} ||
+         {N, Samples} <- SamplesForNodes]}.
+
 handle_ui_stats_post_section(LocalAddr, Values) ->
-    [handle_one_stat(Stat, LocalAddr, Values) ||
-        Stat <- proplists:get_value(stats, Values, [])].
+    Bucket = proplists:get_value(bucket, Values),
+    StatNames = proplists:get_value(stats, Values),
+    Nodes = proplists:get_value(nodes, Values, all),
+    Step = proplists:get_value(step, Values, 1),
+    Aggregate = proplists:get_value(aggregate, Values, false),
 
-handle_one_stat(Stat, LocalAddr, Values) ->
-    Params =
-        #params{
-           bucket = proplists:get_value(bucket, Values),
-           stat = Stat,
-           start_ts = proplists:get_value(startTS, Values, 0),
-           end_ts = proplists:get_value(endTS, Values, ?MAX_TS),
-           step = proplists:get_value(step, Values, 1),
-           nodes = proplists:get_value(nodes, Values, all),
-           aggregate = proplists:get_value(aggregate, Values, false)},
-    {Samples, Nodes, AggregatedNodes} =
-        fix_response(retrive_samples_from_all_archives(Params), Params),
-    build_one_stat_json(LocalAddr, Params, Samples, Nodes, AggregatedNodes).
+    Params = #params{
+                bucket = Bucket,
+                start_ts = proplists:get_value(startTS, Values, 0),
+                end_ts = proplists:get_value(endTS, Values, ?MAX_TS),
+                step = Step,
+                nodes = Nodes,
+                aggregate = Aggregate},
 
-fix_response({undefined, undefined}, #params{aggregate = true}) ->
-    {[[]], [aggregate], []};
-fix_response({undefined, undefined}, #params{nodes = all}) ->
-    {[[]], [node()], undefined};
-fix_response({undefined, undefined}, #params{nodes = Nodes}) ->
-    {[[] || _ <- Nodes], Nodes, undefined};
-fix_response({[[]], _}, Params) ->
-    fix_response({undefined, undefined}, Params);
-fix_response({Stats, Nodes}, #params{aggregate = true}) ->
-    {Stats, [aggregate], Nodes};
-fix_response({Stats, Nodes}, _) ->
-    {Stats, Nodes, undefined}.
+    SamplesForAllStats =
+        lists:filtermap(
+          fun (Stat) ->
+                  case retrive_samples_from_all_archives(Params, Stat) of
+                      {undefined, undefined} ->
+                          false;
+                      {[[]], _} ->
+                          false;
+                      {S, N} ->
+                          {true, {Stat, case Aggregate of
+                                            true ->
+                                                {S, [{aggregate, N}]};
+                                            false ->
+                                                {S, N}
+                                        end}}
+                  end
+          end, StatNames),
+
+    {Timestamps, PreparedStats} = prepare_ui_stats(SamplesForAllStats),
+
+    StatsJson =
+        {[{list_to_binary(StatName), build_one_stat_json(Samples, LocalAddr)} ||
+             {StatName, Samples} <- PreparedStats]},
+
+    {[{timestamps, Timestamps},
+      {step, Step},
+      {stats, StatsJson}] ++
+         [{bucket, list_to_binary(Bucket)} || Bucket =/= undefined]}.
+
+build_timestamps(SamplesForStatsAndNodes) ->
+    lists:umerge(
+      lists:append(
+        lists:map(
+          fun ({_, {SamplesForNodes, _}}) ->
+                  lists:map([TS || {TS, _} <- _], SamplesForNodes)
+          end, SamplesForStatsAndNodes))).
+
+normalize_samples(_, [], Acc) ->
+    lists:reverse(Acc);
+normalize_samples([{TS, V} | RestV], [TS | RestTS], Acc) ->
+    normalize_samples(RestV, RestTS, [V | Acc]);
+normalize_samples(Values, [_ | RestTS], Acc) ->
+    normalize_samples(Values, RestTS, [null | Acc]).
+
+prepare_ui_stats(SamplesForStatsAndNodes) ->
+    Timestamps = build_timestamps(SamplesForStatsAndNodes),
+    {Timestamps,
+     lists:map(
+       fun ({StatName, {SamplesForNodes, Nodes}}) ->
+               {StatName,
+                lists:zip(Nodes,
+                          [normalize_samples(Samples, Timestamps, []) ||
+                              Samples <- SamplesForNodes])}
+       end, SamplesForStatsAndNodes)}.
 
 ui_stats_post_validators(Req) ->
     Now = os:system_time(millisecond),
@@ -3057,33 +3107,6 @@ validate_nodes(Name, State, Req) ->
               end
       end, Name, State).
 
-build_one_stat_json(LocalAddr,
-                    #params{bucket = Bucket, stat = Stat, step = Step}, Stats,
-                    Nodes, AggregatedNodes) ->
-    StatsJson =
-        lists:map(
-          fun({S, N}) ->
-                  Host = case N of
-                             aggregate ->
-                                 aggregate;
-                             _ ->
-                                 menelaus_web_node:build_node_hostname(
-                                   ns_config:latest(), N, LocalAddr)
-                         end,
-                  {Timestamps, Samples} = lists:unzip(S),
-                  {Host, {[{samples, Samples}, {timestamps, Timestamps}]}}
-          end, lists:zip(Stats, Nodes)),
-    {[{statName, list_to_binary(Stat)},
-      {step, Step},
-      {stats, {StatsJson}}] ++
-         [{bucket, list_to_binary(Bucket)} || Bucket =/= undefined] ++
-         [{aggregatedNodes,
-           [list_to_binary(
-              menelaus_web_node:build_node_hostname(ns_config:latest(),
-                                                    N, LocalAddr)) ||
-               N <- AggregatedNodes]} || AggregatedNodes =/= undefined]
-    }.
-
 -ifdef(TEST).
 join_samples_test() ->
     A = [
@@ -3148,4 +3171,16 @@ aggregate_stat_kv_pairs_test() ->
                                           {<<"views/A1/accesses">>, 2},
                                           {<<"views/A1/blah">>, 2}],
                                          [])).
+
+prepare_ui_stats_test() ->
+    ?assertEqual(
+       {[0, 1, 2, 3, 4, 5, 6],
+        [{stat1, [{n1, [null, a1, a2, null, a4, a5, null]},
+                  {n2, [null, null, b2, b3, null, null, null]}]},
+         {stat2, [{n1, [c0, null, c2, null, c4, null, c6]}]}]},
+       prepare_ui_stats(
+         [{stat1, {[[{1, a1}, {2, a2}, {4, a4}, {5, a5}], [{2, b2}, {3, b3}]],
+                   [n1, n2]}},
+          {stat2, {[[{0, c0}, {2, c2}, {4, c4}, {6, c6}]], [n1]}}])).
+
 -endif.
