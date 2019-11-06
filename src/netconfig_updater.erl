@@ -5,7 +5,8 @@
 %% API
 -export([start_link/0,
          apply_config/1,
-         change_external_listeners/2]).
+         change_external_listeners/2,
+         ensure_tls_dist_started/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -28,6 +29,9 @@ apply_config(Config) ->
 
 change_external_listeners(Action, Config) ->
     gen_server:call(?MODULE, {change_listeners, Action, Config}, infinity).
+
+ensure_tls_dist_started(Nodes) ->
+    gen_server:call(?MODULE, {ensure_tls_dist_started, Nodes}, infinity).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -79,6 +83,32 @@ handle_call({change_listeners, Action, Config}, _From, State) ->
     NewConfig = [{externalListeners, Protos}],
     CurConfig = [{externalListeners, CurProtos}],
     handle_with_marker(apply_config, CurConfig, NewConfig, State);
+
+handle_call({ensure_tls_dist_started, Nodes}, _From, State) ->
+    ?log_info("Check that tls distribution server has started and "
+              "the following nodes are connected: ~p", [Nodes]),
+
+    NotStartedTLSListeners =
+        case cb_dist:ensure_config() of
+            ok -> [];
+            {error, {not_started, List}} ->
+                [L || L = {_, Encrypted} <- List, Encrypted =:= true]
+        end,
+
+    case NotStartedTLSListeners of
+        [] ->
+            NotConnected = [N || N <- Nodes, false <- [net_kernel:connect(N)]],
+            case NotConnected of
+                [] ->
+                    {reply, ok, State};
+                NotConnected ->
+                    Reason = format_error({not_connected, NotConnected}),
+                    {reply, {error, iolist_to_binary(Reason)}, State}
+            end;
+        NotStartedListeners ->
+            Reason = format_error({not_started_listeners, NotStartedListeners}),
+            {reply, {error, iolist_to_binary(Reason)}, State}
+    end;
 
 handle_call(Request, _From, State) ->
     ?log_error("Unhandled call: ~p", [Request]),
@@ -287,6 +317,13 @@ format_error({start_listeners_failed, L}) ->
     ProtoStrs = [cb_dist:netsettings2str(P) || P <- L],
     io_lib:format("Failed to start listeners: ~s",
                   [string:join(ProtoStrs, ", ")]);
+format_error({not_connected, Nodes}) ->
+    NodesStr = string:join([atom_to_list(N) || N <- Nodes], ", "),
+    io_lib:format("Could not connect to nodes: ~s", [NodesStr]);
+format_error({not_started_listeners, Listeners}) ->
+    ListenersStr = string:join([cb_dist:netsettings2str(L) || L <- Listeners],
+                               ", "),
+    io_lib:format("Could not start distribution servers: ~s", [ListenersStr]);
 format_error(R) ->
     io_lib:format("~p", [R]).
 

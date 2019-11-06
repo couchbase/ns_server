@@ -32,6 +32,7 @@
          get_preferred_dist/1,
          reload_config/0,
          reload_config/1,
+         ensure_config/0,
          status/0,
          config_path/0,
          address_family/0,
@@ -196,6 +197,9 @@ reload_config() ->
 reload_config(Node) when is_atom(Node) ->
     gen_server:call({?MODULE, Node}, reload_config, infinity).
 
+ensure_config() ->
+    gen_server:call(?MODULE, ensure_config, infinity).
+
 status() ->
     gen_server:call(?MODULE, status).
 
@@ -316,6 +320,15 @@ handle_call(close, _From, State) ->
 
 handle_call(reload_config, _From, State) ->
     handle_reload_config(State);
+
+handle_call(ensure_config, _From, State) ->
+    NewState = ensure_config(State),
+    case not_started_required_listeners(NewState) of
+        [] -> {reply, ok, NewState};
+        List ->
+            ProtoList = [proto2netsettings(L) || L <- List],
+            {reply, {error, {not_started, ProtoList}}, NewState}
+    end;
 
 handle_call(status, _From, #s{listeners = Listeners,
                               acceptors = Acceptors,
@@ -678,15 +691,12 @@ handle_reload_config(State) ->
         Cfg ->
             info_msg("Reloading configuration: ~p", [Cfg]),
             NewState = ensure_config(State#s{config = Cfg}),
-            NewCurrentProtos = [M || {M, _} <- NewState#s.listeners],
-            Required = [R || R <- get_required_protos(NewState),
-                             lists:member(R, get_protos(NewState))],
-            NotStartedRequired = Required -- NewCurrentProtos,
-            case NotStartedRequired of
+            case not_started_required_listeners(NewState) of
                 [] ->
-                    L = [proto2netsettings(Proto) || Proto <- NewCurrentProtos],
+                    #s{listeners = Listeners} = NewState,
+                    L = [proto2netsettings(M) || {M, _} <- Listeners],
                     {reply, {ok, L}, NewState};
-                _ ->
+                NotStartedRequired ->
                     error_msg("Failed to start required dist listeners ~p",
                               [NotStartedRequired]),
                     {reply, {error, {not_started, NotStartedRequired}},
@@ -695,6 +705,12 @@ handle_reload_config(State) ->
     catch
         _:Error -> {reply, {error, Error}, State}
     end.
+
+not_started_required_listeners(State) ->
+    Current = [M || {M, _} <- State#s.listeners],
+    Required = [R || R <- get_required_protos(State),
+                     lists:member(R, get_protos(State))],
+    Required -- Current.
 
 ensure_config(#s{listeners = Listeners} = State) ->
     CurrentProtos = [M || {M, _} <- Listeners],
