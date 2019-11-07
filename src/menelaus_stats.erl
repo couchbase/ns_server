@@ -521,26 +521,6 @@ build_response_for_specific_stat(BucketName, StatName, Params, LocalAddr) ->
                                                  end,
                                                  Hostnames, AllValues)}}]}.
 
-%% ops SUM(cmd_total_gets, cmd_set,
-%%         incr_misses, incr_hits,
-%%         decr_misses, decr_hits,
-%%         cas_misses, cas_hits, cas_badval,
-%%         delete_misses, delete_hits,
-%%         cmd_flush)
-%% cmd_get (cmd_get)
-%% get_misses (get_misses)
-%% get_hits (get_hits)
-%% cmd_set (cmd_set)
-%% evictions (evictions)
-%% replacements (if available in time)
-%% misses SUM(get_misses, delete_misses, incr_misses, decr_misses,
-%%            cas_misses)
-%% updates SUM(cmd_set, incr_hits, decr_hits, cas_hits)
-%% bytes_read (bytes_read)
-%% bytes_written (bytes_written)
-%% hit_ratio (get_hits / cmd_get)
-%% curr_items (curr_items)
-
 %% Implementation
 
 merge_all_samples_normally(MainSamples, ListOfLists) ->
