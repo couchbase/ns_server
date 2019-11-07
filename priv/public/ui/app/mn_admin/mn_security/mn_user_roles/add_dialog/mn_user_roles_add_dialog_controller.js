@@ -118,7 +118,7 @@
       vm.reloadUserRoles = true;
       $q.all([
         mnUserRolesService.getRolesByRole(),
-        mnPoolDefault.isEnterprise ? mnUserRolesService.getRolesGroups() : $q.when()
+        mnPoolDefault.export.isEnterprise ? mnUserRolesService.getRolesGroups() : $q.when()
       ]).then(function (resp) {
         vm.byRole = resp[0];
         vm.groups = resp[1] && resp[1].data;
