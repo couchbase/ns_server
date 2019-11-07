@@ -886,13 +886,13 @@ computed_stats_lazy_proplist(_) ->
                   fun (Gets, _Hits) when Gets == 0 -> 0; % this handles int and float 0
                       (Gets, Hits) -> Hits * 100/Gets
                   end),
-    %% Pre-6.5 nodes do not collect cmd_total_gets.
+    %% Pre-6.5 nodes do not collect cmd_lookup.
     %% Cache miss ratio will show up as 0 for such nodes when the statistics
     %% are viewed from 6.5/post 6.5 nodes. So, use cmd_get
     %% till the cluster is upgraded.
     GetStat = case cluster_compat_mode:is_cluster_65() of
                   true ->
-                      cmd_total_gets;
+                      cmd_lookup;
                   false ->
                       cmd_get
               end,
@@ -1718,7 +1718,7 @@ membase_summary_stats_description(BucketId, ServiceNodes, IsEphemeral) ->
                   {name, <<"ops">>},
                   {desc, <<"Total amount of operations per second "
                            "(including XDCR) to this bucket "
-                           "(measured from cmd_total_gets + cmd_set "
+                           "(measured from cmd_lookup + cmd_set "
                            "+ incr_misses + incr_hits + decr_misses "
                            "+ decr_hits + delete_misses + delete_hits "
                            "+ ep_num_ops_del_meta + "
@@ -1728,15 +1728,15 @@ membase_summary_stats_description(BucketId, ServiceNodes, IsEphemeral) ->
                    {name, <<"ep_cache_miss_rate">>},
                    {desc, <<"Percentage of reads per second to this bucket "
                             "from disk as opposed to RAM (measured from "
-                            "ep_bg_fetches / cmd_total_gets * 100)">>},
+                            "ep_bg_fetches / cmd_lookup * 100)">>},
                    {maxY, 100}]},
          {struct, [{title, <<"gets per sec.">>},
                    {name, <<"cmd_get">>},
                    {desc, <<"Number of reads (get operations) per second from this bucket (measured from cmd_get)">>}]},
          {struct, [{title, <<"total gets per sec.">>},
-                   {name, <<"cmd_total_gets">>},
+                   {name, <<"cmd_lookup">>},
                    {desc, <<"Number of total get operations per second from "
-                            "this bucket (measured from cmd_total_gets). "
+                            "this bucket (measured from cmd_lookup). "
                             "This includes additional get operations such as "
                             "get locked that are not included in cmd_get">>}]},
          {struct, [{title, <<"sets per sec.">>},

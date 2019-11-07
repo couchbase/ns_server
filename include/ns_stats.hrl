@@ -134,7 +134,7 @@
         %% this is memcached-level stats
         % used by ops aggregation. Misses are used by misses aggregation
         cmd_get,
-        cmd_total_gets,
+        cmd_lookup,
         cmd_set,
         decr_hits,
         decr_misses,
