@@ -259,7 +259,9 @@ reload_node_certificate_error(encrypted_pkey) ->
 reload_node_certificate_error(too_many_pkey_entries) ->
     <<"Provided private key contains incorrect number of entries">>;
 reload_node_certificate_error(malformed_pkey) ->
-    <<"Malformed or unsupported private key format">>.
+    <<"Malformed or unsupported private key format">>;
+reload_node_certificate_error(n2n_enabled) ->
+    <<"Operation requires node-to-node encryption to be disabled">>.
 
 node_certificate_warning(mismatch) ->
     <<"Certificate is not signed with cluster CA.">>;

@@ -502,15 +502,24 @@ config_change_detector_loop(_OtherEvent, Parent) ->
     Parent.
 
 handle_call({set_node_certificate_chain, Props, CAChain, Cert, PKey}, _From, State) ->
-    ns_config:delete({node, node(), cert}),
+    CAChainFile = user_set_ca_chain_path(),
+    {ok, PrevCAChain} = file:read_file(CAChainFile),
+    CanUpdateChain = (PrevCAChain =:= CAChain) orelse
+                     misc:is_cluster_encryption_fully_disabled(),
+    case CanUpdateChain of
+        true ->
+            ns_config:delete({node, node(), cert}),
 
-    ok = misc:atomic_write_file(user_set_ca_chain_path(), CAChain),
-    ok = misc:atomic_write_file(user_set_cert_path(), Cert),
-    ok = misc:atomic_write_file(user_set_key_path(), PKey),
+            ok = misc:atomic_write_file(CAChainFile, CAChain),
+            ok = misc:atomic_write_file(user_set_cert_path(), Cert),
+            ok = misc:atomic_write_file(user_set_key_path(), PKey),
 
-    ns_config:set({node, node(), cert}, Props),
-    self() ! cert_and_pkey_changed,
-    {reply, ok, State};
+            ns_config:set({node, node(), cert}, Props),
+            self() ! cert_and_pkey_changed,
+            {reply, ok, State};
+        false ->
+            {reply, {error, n2n_enabled}, State}
+    end;
 handle_call(ping, _From, State) ->
     {reply, ok, State};
 handle_call(_, _From, State) ->

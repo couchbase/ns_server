@@ -89,6 +89,7 @@ handle_cluster_certificate_extended(Req) ->
 
 handle_regenerate_certificate(Req) ->
     menelaus_util:assert_is_enterprise(),
+    assert_n2n_encryption_is_disabled(),
 
     ns_server_cert:generate_and_set_cert_and_pkey(),
     ns_ssl_services_setup:sync_local_cert_and_pkey_change(),
@@ -102,6 +103,7 @@ reply_error(Req, Error) ->
 
 handle_upload_cluster_ca(Req) ->
     menelaus_util:assert_is_enterprise(),
+    assert_n2n_encryption_is_disabled(),
 
     case mochiweb_request:recv_body(Req) of
         undefined ->
@@ -116,6 +118,14 @@ handle_upload_cluster_ca(Req) ->
                 {error, Error} ->
                     reply_error(Req, Error)
             end
+    end.
+
+assert_n2n_encryption_is_disabled() ->
+    case misc:is_cluster_encryption_fully_disabled() of
+        true -> ok;
+        false ->
+            M = "Operation requires node-to-node encryption to be disabled",
+            erlang:throw({web_exception, 400, M, []})
     end.
 
 handle_reload_node_certificate(Req) ->

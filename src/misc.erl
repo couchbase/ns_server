@@ -1436,6 +1436,15 @@ is_cluster_encryption_fully_enabled() ->
         cluster_compat_mode:is_enterprise() andalso
         NonEncryptNodes =:= [].
 
+%% This function is not the same as (not is_cluster_encryption_fully_enabled())
+%% because the cluster encryption might be in one of 3 states: enabled, disabled
+%% and mixed. 'Mixed' means it's enabled for some nodes, but not for all of them
+-spec is_cluster_encryption_fully_disabled() -> true | false.
+is_cluster_encryption_fully_disabled() ->
+    Cfg = ns_config:latest(),
+    [] =:= [N || N <- ns_node_disco:nodes_wanted(),
+                 misc:is_node_encryption_enabled(Cfg, N)].
+
 -spec get_cluster_encryption_level() -> none | control | all.
 get_cluster_encryption_level() ->
     case is_cluster_encryption_fully_enabled() of
