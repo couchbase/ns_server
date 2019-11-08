@@ -140,12 +140,13 @@
 
 <div class="width-12">
   <div
-     ng-if="statisticsNewCtl.selectedBucket"
      ng-repeat="groupID in statisticsNewCtl.scenario.selected.groups track by ($index + groupID)"
      ng-attr-id="group-{{groupID}}"
      ng-controller="mnStatisticsGroupsController as mnStatsGroupsCtl"
+     ng-if="statisticsNewCtl.selectedBucket"
      class="charts-group">
     <div
+       ng-if="((mnStatsGroupsCtl.group.enterprise == undefined) || poolDefault.isEnterprise)"
        ng-click="mnStatsGroupsCtl.group.isOpen = !mnStatsGroupsCtl.group.isOpen;
                  mnStatsGroupsCtl.saveDashboard();"
        class="charts-group-row disclosure nowrap"

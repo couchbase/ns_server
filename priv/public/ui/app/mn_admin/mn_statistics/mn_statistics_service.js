@@ -513,6 +513,7 @@
                 }]
             }, {
           name: "Analytics",
+          enterprise: true,
           isOpen: false,
           charts: [{
             stats: {"@cbas-.cbas/incoming_records_count": true},
@@ -533,6 +534,7 @@
           }]
         }, {
           name: "Eventing",
+          enterprise: true,
           isOpen: false,
           charts: [{
             stats: {"@eventing.eventing/dcp_backlog": true},

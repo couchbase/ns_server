@@ -66,6 +66,7 @@
 
       <div class="row pills margin-bottom-half">
         <a ng-repeat="name in builderCtl.tabs"
+           ng-if="((name !== '@eventing') && (name !== '@cbas')) || poolDefault.isEnterprise"
            ng-class="{selected: builderCtl.tab == name}"
            ng-click="builderCtl.selectTab(name)"
            class="margin-right-half">
