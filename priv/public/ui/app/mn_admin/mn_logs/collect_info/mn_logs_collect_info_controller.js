@@ -17,7 +17,7 @@
     vm.mnSelectedNodesHolder = {};
 
     if (mnPoolDefault.latestValue().value.isEnterprise) {
-      vm.collect.uploadHost = 's3.amazonaws.com/cb-customers';
+      vm.collect.uploadHost = 'uploads.couchbase.com';
     }
 
     function isNodeDisabled(node) {
