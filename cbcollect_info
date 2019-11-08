@@ -752,10 +752,10 @@ def make_query_task(statement, user, password, port):
                           user=user, password=password, url=url)
 
 
-def make_index_task(name, api, passwd, index_port, logfile="couchbase.log"):
+def make_index_task(name, api, passwd, index_port, logfile="couchbase.log", **kwargs):
     index_url = 'http://%s:%s/%s' % (local_url_addr, index_port, api)
 
-    return make_curl_task(name, "@", passwd, index_url, log_file=logfile)
+    return make_curl_task(name, "@", passwd, index_url, log_file=logfile, **kwargs)
 
 
 def make_redaction_task():
@@ -1110,11 +1110,19 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                 memcached_pass,
                 index_port),
             make_index_task(
+                "Indexer CPU Profile: ",
+                "debug/pprof/profile",
+                memcached_pass,
+                index_port,
+                logfile="indexer_cprof.log",
+                no_header=True),
+            make_index_task(
                 "Indexer Memory Profile: ",
                 "debug/pprof/heap?debug=1",
                 memcached_pass,
                 index_port,
-                logfile="indexer_mprof.log"),
+                logfile="indexer_mprof.log",
+                no_header=True),
         ]
 
     projector_tasks = []
