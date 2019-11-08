@@ -137,7 +137,7 @@ get_cipher_suites(Str) ->
 
 get_cluster_encryption(Level) ->
     SupportedLevels = ["control", "all"],
-    IsCEncryptEnabled = misc:is_cluster_encryption_enabled(),
+    IsCEncryptEnabled = misc:is_cluster_encryption_fully_enabled(),
     ValidLevel = lists:member(Level, SupportedLevels),
     IsMandatory = (ns_ssl_services_setup:client_cert_auth_state() =:=
                        "mandatory"),
@@ -271,7 +271,7 @@ handle_get(Type, Keys, Req) ->
                      false;
                  ([cluster_encryption_level = K], _) ->
                      (ok == is_allowed_setting(K)) andalso
-                         misc:is_cluster_encryption_enabled();
+                         misc:is_cluster_encryption_fully_enabled();
                  (K, _) ->
                      ok == is_allowed_setting(K)
               end,

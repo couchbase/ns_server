@@ -1423,8 +1423,8 @@ is_ipv6() ->
 is_node_encryption_enabled(Cfg, Node) ->
     ns_config:search_node(Node, Cfg, node_encryption) =:= {value, true}.
 
--spec is_cluster_encryption_enabled() -> true | false.
-is_cluster_encryption_enabled() ->
+-spec is_cluster_encryption_fully_enabled() -> true | false.
+is_cluster_encryption_fully_enabled() ->
     %% Cluster wide encryption is considered to be enabled only if node
     %% level encryption is enabled on all the nodes in the cluster.
     Cfg = ns_config:latest(),
@@ -1438,7 +1438,7 @@ is_cluster_encryption_enabled() ->
 
 -spec get_cluster_encryption_level() -> none | control | all.
 get_cluster_encryption_level() ->
-    case is_cluster_encryption_enabled() of
+    case is_cluster_encryption_fully_enabled() of
         true ->
             ns_config:search(ns_config:latest(), cluster_encryption_level,
                              control);
