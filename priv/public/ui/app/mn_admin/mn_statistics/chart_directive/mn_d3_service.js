@@ -25,7 +25,9 @@
       init() {
         this.inititalized = true;
         this.svg.html("");
-        this.linesWrap = this.svg.append("g");
+
+        this.linesWrap = this.svg.append("g")
+          .attr("clip-path", "url(#clip)");
 
         // Initialise a X axis:
         this.xScale = d3.scaleTime().range([0, this.cvsRect.width]);
@@ -208,6 +210,16 @@
       init() {
         super.init();
 
+        this.chart.clip = this.svg.append("defs").append("svg:clipPath")
+          .attr("id", "clip")
+          .append("svg:rect")
+          .attr("width", this.chart.cvsRect.width)
+          .attr("height", this.chart.cvsRect.height)
+          .attr("x", 0)
+          .attr("y", 0);
+
+        this.chart.linesWrap.attr("clip-path", "url(#clip)");
+
         this.bisect = d3.bisector(function (d) { return d[0]; }).left;
 
         this.brush = d3.brushX()
@@ -237,6 +249,8 @@
         var domain = this.getDomain();
 
         this.chart.updateXAxis(domain);
+        this.chart.updateLine();
+        this.chart.drawTooltip();
       }
       updateData(data) {
         if (!super.updateData(data)) {
@@ -249,6 +263,10 @@
 
         super.resize();
 
+        this.chart.clip
+          .attr("width", this.chart.cvsRect.width)
+          .attr("height", this.chart.cvsRect.height);
+
         this.brush.extent([[0, 0], [this.cvsRect.width, this.cht.height]]);
         this.brushEl.call(this.brush);
 
@@ -257,8 +275,8 @@
           var i2 = this.bisect(this.xAxisData, s[1]);
 
           this.brush.move(this.brushEl, [
-            this.xScale(xAxisData[i1][0]),
-            this.xScale(xAxisData[i2][0])
+            this.xScale(this.xAxisData[i1][0]),
+            this.xScale(this.xAxisData[i2][0])
           ]);
 
           this.brushed();
