@@ -141,9 +141,9 @@ with_json_array(Body, Validators) ->
         Objects when is_list(Objects) ->
             [with_decoded_object(Object, Validators) || Object <- Objects];
         _ ->
-            #state{errors = [{<<"_">>, <<"Unexpected Json">>}]}
+            [#state{errors = [{<<"_">>, <<"Unexpected Json">>}]}]
     catch _:_ ->
-            #state{errors = [{<<"_">>, <<"Invalid Json">>}]}
+            [#state{errors = [{<<"_">>, <<"Invalid Json">>}]}]
     end.
 
 name_to_list(Name) when is_atom(Name) ->
