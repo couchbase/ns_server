@@ -367,13 +367,23 @@ are_samples_undefined(#gathered_stats{samples = Samples}) ->
                 end, NodeSamples)
       end, Samples).
 
-calculate_stats(Extractor, Samples) ->
-    lists:map(Extractor, Samples).
+calculate_stats(Extractor, keep_undefineds, Samples) ->
+    lists:map(Extractor, Samples);
+calculate_stats(Extractor, remove_undefineds, Samples) ->
+    lists:filtermap(
+      fun (StatEntry) ->
+              case Extractor(StatEntry) of
+                  {_, undefined} ->
+                      false;
+                  V ->
+                      {true, V}
+              end
+      end, Samples).
 
 calculate_stats(#gathered_stats{samples = Samples, nodes = Nodes,
                                 extractor = Extractor}) ->
-    {[calculate_stats(Extractor, NodeSamples) || NodeSamples <- Samples],
-     Nodes}.
+    {[calculate_stats(Extractor, keep_undefineds, NodeSamples)
+      || NodeSamples <- Samples], Nodes}.
 
 %%
 %% Earlier we were gathering all stats from all nodes even if we are
@@ -2828,7 +2838,7 @@ filter_samples(Samples, StartTS, EndTS) ->
 
 prepare_samples(Samples, StartTS, EndTS, Extractor) ->
     Filtered = filter_samples(Samples, StartTS, EndTS),
-    calculate_stats(Extractor, Filtered).
+    calculate_stats(Extractor, remove_undefineds, Filtered).
 
 merge_samples(Samples, undefined, StartTS, EndTS, Extractor) ->
     [prepare_samples(S, StartTS, EndTS, Extractor) || S <- Samples];
@@ -2845,7 +2855,7 @@ prepare_aggregated_samples(Samples, StartTS, EndTS, Extractor) ->
     [FirstNodeSamples | Rest] =
         [filter_samples(S, StartTS, EndTS) || S <- Samples],
     Aggregated = merge_all_samples_normally(FirstNodeSamples, Rest),
-    calculate_stats(Extractor, Aggregated).
+    calculate_stats(Extractor, remove_undefineds, Aggregated).
 
 aggregate_and_merge(Samples, [[{EndTS, _} | _]] = [AccSamples], StartTS, _,
                     Extractor) ->
