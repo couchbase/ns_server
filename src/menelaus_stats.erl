@@ -2897,7 +2897,9 @@ retrive_samples_from_archive(Archive, Stat,
             {AccSamples, AccNodes, Kind, false};
         #gathered_stats{nodes = Nodes, kind = NewKind, extractor = Extractor,
                         samples = Samples} ->
-            true = AccNodes =:= undefined orelse Nodes =:= AccNodes,
+            {true, AccNodes, Nodes} =
+                {AccNodes =:= undefined orelse Nodes =:= AccNodes,
+                 AccNodes, Nodes},
             NewContinue =
                 case latest_start_timestamp(Samples, StartTS) > StartTS of
                     true ->
