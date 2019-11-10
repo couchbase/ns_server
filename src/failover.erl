@@ -68,7 +68,7 @@ do_run(Nodes, AllowUnsafe) ->
 
     case Result of
         {leader_activities_error, _, {quorum_lost, _}} ->
-            orchestration_unsafe;
+            quorum_lost;
         {leader_activities_error, _, {no_quorum, _}} ->
             orchestration_unsafe;
         _ ->

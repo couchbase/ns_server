@@ -163,6 +163,7 @@ flush_bucket(BucketName) ->
                       unknown_node |
                       orchestration_unsafe |
                       config_sync_failed |
+                      quorum_lost |
                       %% the following is needed just to trick the dialyzer;
                       %% otherwise it wouldn't let the callers cover what it
                       %% believes to be an impossible return value if all
@@ -193,6 +194,7 @@ start_failover(Nodes, AllowUnsafe) ->
                                   in_recovery |
                                   orchestration_unsafe |
                                   config_sync_failed |
+                                  quorum_lost |
                                   {autofailover_unsafe, [bucket_name()]}.
 try_autofailover(Nodes) ->
     wait_for_orchestrator(),

@@ -560,6 +560,8 @@ process_failover_error(rebalance_running, Nodes, S) ->
 process_failover_error(in_recovery, Nodes, S) ->
     report_failover_error(in_recovery,
                           "Cluster is in recovery mode.", Nodes, S);
+process_failover_error(quorum_lost, Nodes, S) ->
+    process_failover_error(orchestration_unsafe, Nodes, S);
 process_failover_error(orchestration_unsafe, Nodes, S) ->
     report_failover_error(orchestration_unsafe,
                           "Could not contact majority of servers. "

@@ -724,6 +724,8 @@ failover_reply(orchestration_unsafe) ->
     {504, "Cannot safely perform a failover at the moment"};
 failover_reply(config_sync_failed) ->
     {500, "Failed to synchronize config to other nodes"};
+failover_reply(quorum_lost) ->
+    {500, "Cannot safely perform a failover at the moment"};
 failover_reply({config_sync_failed, _}) ->
     failover_reply(config_sync_failed);
 failover_reply(last_node) ->
