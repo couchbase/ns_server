@@ -165,6 +165,7 @@ flush_bucket(BucketName) ->
                       orchestration_unsafe |
                       config_sync_failed |
                       quorum_lost |
+                      stopped_by_user |
                       %% the following is needed just to trick the dialyzer;
                       %% otherwise it wouldn't let the callers cover what it
                       %% believes to be an impossible return value if all
@@ -196,6 +197,7 @@ start_failover(Nodes, AllowUnsafe) ->
                                   orchestration_unsafe |
                                   config_sync_failed |
                                   quorum_lost |
+                                  stopped_by_user |
                                   {autofailover_unsafe, [bucket_name()]}.
 try_autofailover(Nodes) ->
     wait_for_orchestrator(),
@@ -1641,5 +1643,7 @@ maybe_reply_to(_, #rebalancing_state{reply_to = undefined}) ->
     ok;
 maybe_reply_to(normal, State) ->
     maybe_reply_to(ok, State);
+maybe_reply_to({shutdown, stop}, State) ->
+    maybe_reply_to(stopped_by_user, State);
 maybe_reply_to(Reason, #rebalancing_state{reply_to = ReplyTo}) ->
     gen_statem:reply(ReplyTo, Reason).

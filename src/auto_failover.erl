@@ -569,7 +569,9 @@ process_failover_error(orchestration_unsafe, Nodes, S) ->
 process_failover_error(config_sync_failed, Nodes, S) ->
     report_failover_error(config_sync_failed,
                           "Could not synchronize metadata with some nodes.",
-                          Nodes, S).
+                          Nodes, S);
+process_failover_error(stopped_by_user, Nodes, S) ->
+    report_failover_error(stopped_by_user, "Stopped by user.", Nodes, S).
 
 report_failover_error(Flag, ErrMsg, Nodes, State) ->
     case should_report(Flag, State) of

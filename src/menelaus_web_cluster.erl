@@ -737,6 +737,8 @@ failover_reply(non_kv_node) ->
      " Use hard failover."};
 failover_reply(unknown_node) ->
     {400, "Unknown server given."};
+failover_reply(stopped_by_user) ->
+    {409, "Stopped by user."};
 failover_reply(Other) ->
     {500, io_lib:format("Unexpected server error: ~p", [Other])}.
 
