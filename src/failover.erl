@@ -29,41 +29,42 @@
 -export([fix_vbucket_map_test_wrapper/1, meck_query_vbuckets/2]).
 -endif.
 
--export([start/2, run/2, is_possible/1, orchestrate/2,
+-export([start/2, is_possible/1, orchestrate/2,
          get_failover_vbuckets/2, promote_max_replicas/4]).
 
 -define(DATA_LOST, 1).
 -define(FAILOVER_OPS_TIMEOUT, ?get_timeout(failover_ops_timeout, 10000)).
 
 start(Nodes, AllowUnsafe) ->
+    Parent = self(),
     case is_possible(Nodes) of
         ok ->
-            {ok, proc_lib:spawn_link(
-                   fun () ->
-                           case do_run(Nodes, AllowUnsafe) of
-                               ok ->
-                                   ok;
-                               Error ->
-                                   erlang:exit(Error)
-                           end
-                   end)};
+            Pid = proc_lib:spawn_link(
+                    fun () ->
+                            case run(Nodes, AllowUnsafe, Parent) of
+                                ok ->
+                                    ok;
+                                Error ->
+                                    erlang:exit(Error)
+                            end
+                    end),
+            receive
+                started ->
+                    {ok, Pid};
+                {'EXIT', Pid, Reason} ->
+                    Reason
+            end;
         Error ->
             Error
     end.
 
-run(Nodes, AllowUnsafe) ->
-    case is_possible(Nodes) of
-        ok ->
-            do_run(Nodes, AllowUnsafe);
-        Error ->
-            Error
-    end.
-
-
-do_run(Nodes, AllowUnsafe) ->
+run(Nodes, AllowUnsafe, Parent) ->
     Result = leader_activities:run_activity(
                failover, majority,
-               ?cut(orchestrate(Nodes, [durability_aware])),
+               fun () ->
+                       Parent ! started,
+                       orchestrate(Nodes, [durability_aware])
+               end,
                [{unsafe, AllowUnsafe}]),
 
     case Result of

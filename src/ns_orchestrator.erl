@@ -36,7 +36,8 @@
                             stop_timer,
                             type,
                             rebalance_id,
-                            abort_reason}).
+                            abort_reason,
+                            reply_to}).
 
 -record(recovery_state, {pid :: pid()}).
 
@@ -713,41 +714,9 @@ idle({failover, Node}, From, _State) ->
     {keep_state_and_data,
      [{next_event, {call, From}, {failover, [Node], false}}]};
 idle({failover, Nodes, AllowUnsafe}, From, _State) ->
-    auto_rebalance:cancel_any_pending_retry_async("failover"),
-    Result = failover:run(Nodes, AllowUnsafe),
-
-    {keep_state_and_data, [{reply, From, Result}]};
+    handle_start_failover(Nodes, AllowUnsafe, From, true);
 idle({start_failover, Nodes, AllowUnsafe}, From, _State) ->
-    auto_rebalance:cancel_any_pending_retry_async("failover"),
-
-    ActiveNodes = ns_cluster_membership:active_nodes(),
-    NodesInfo = [{active_nodes, ActiveNodes}],
-    Id = couch_uuids:random(),
-    {ok, ObserverPid} =
-        ns_rebalance_observer:start_link([], NodesInfo, failover, Id),
-    case failover:start(Nodes, AllowUnsafe) of
-        {ok, Pid} ->
-            ale:info(?USER_LOGGER, "Starting failover of nodes ~p. "
-                     "Operation Id = ~s", [Nodes, Id]),
-            Type = failover,
-            ns_cluster:counter_inc(Type, start),
-            set_rebalance_status(Type, running, Pid),
-            NewState = #rebalancing_state{rebalancer = Pid,
-                                          rebalance_observer = ObserverPid,
-                                          eject_nodes = [],
-                                          keep_nodes = [],
-                                          failed_nodes = [],
-                                          delta_recov_bkts = [],
-                                          retry_check = undefined,
-                                          to_failover = Nodes,
-                                          abort_reason = undefined,
-                                          type = Type,
-                                          rebalance_id = Id},
-            {next_state, rebalancing, NewState, [{reply, From, ok}]};
-        Error ->
-            misc:unlink_terminate_and_wait(ObserverPid, kill),
-            {keep_state_and_data, [{reply, From, Error}]}
-    end;
+    handle_start_failover(Nodes, AllowUnsafe, From, false);
 idle({try_autofailover, Nodes}, From, _State) ->
     case ns_rebalancer:validate_autofailover(Nodes) of
         {error, UnsafeBuckets} ->
@@ -1268,6 +1237,7 @@ terminate_observer(#rebalancing_state{rebalance_observer = ObserverPid}) ->
     misc:unlink_terminate_and_wait(ObserverPid, kill).
 
 handle_rebalance_completion(ExitReason, State) ->
+    maybe_reply_to(ExitReason, State),
     cancel_stop_timer(State),
     maybe_reset_autofailover_count(ExitReason, State),
     maybe_reset_reprovision_count(ExitReason, State),
@@ -1628,3 +1598,48 @@ check_for_passwordless_default(Config) ->
         false ->
             ok
     end.
+
+handle_start_failover(Nodes, AllowUnsafe, From, Wait) ->
+    auto_rebalance:cancel_any_pending_retry_async("failover"),
+
+    ActiveNodes = ns_cluster_membership:active_nodes(),
+    NodesInfo = [{active_nodes, ActiveNodes}],
+    Id = couch_uuids:random(),
+    {ok, ObserverPid} =
+        ns_rebalance_observer:start_link([], NodesInfo, failover, Id),
+    case failover:start(Nodes, AllowUnsafe) of
+        {ok, Pid} ->
+            ale:info(?USER_LOGGER, "Starting failover of nodes ~p. "
+                     "Operation Id = ~s", [Nodes, Id]),
+            Type = failover,
+            ns_cluster:counter_inc(Type, start),
+            set_rebalance_status(Type, running, Pid),
+            NewState = #rebalancing_state{rebalancer = Pid,
+                                          rebalance_observer = ObserverPid,
+                                          eject_nodes = [],
+                                          keep_nodes = [],
+                                          failed_nodes = [],
+                                          delta_recov_bkts = [],
+                                          retry_check = undefined,
+                                          to_failover = Nodes,
+                                          abort_reason = undefined,
+                                          type = Type,
+                                          rebalance_id = Id},
+            case Wait of
+                false ->
+                    {next_state, rebalancing, NewState, [{reply, From, ok}]};
+                true ->
+                    {next_state, rebalancing,
+                     NewState#rebalancing_state{reply_to = From}}
+            end;
+        Error ->
+            misc:unlink_terminate_and_wait(ObserverPid, kill),
+            {keep_state_and_data, [{reply, From, Error}]}
+    end.
+
+maybe_reply_to(_, #rebalancing_state{reply_to = undefined}) ->
+    ok;
+maybe_reply_to(normal, State) ->
+    maybe_reply_to(ok, State);
+maybe_reply_to(Reason, #rebalancing_state{reply_to = ReplyTo}) ->
+    gen_statem:reply(ReplyTo, Reason).
