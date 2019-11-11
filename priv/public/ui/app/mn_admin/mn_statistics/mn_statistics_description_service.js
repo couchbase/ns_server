@@ -968,7 +968,7 @@
           "index/cache_misses": null,
           "index/items_count": {
             unit: "number",
-            title: "Doc Count",
+            title: "Index Doc Count",
             desc: "Current total number of indexed documents"
           },
           "index/memory_used": {
@@ -985,7 +985,7 @@
           "index/num_docs_queued": null,
           "index/num_requests": {
             unit: "number/sec",
-            title: "Request Rate",
+            title: "Index Request Rate",
             desc: "Number of requests served by the indexer per second"
           },
           "index/num_rows_returned": {
