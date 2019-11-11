@@ -14,7 +14,7 @@
         this.throttledResize = _.throttle(this.resize.bind(this), 30);
         var elmRect = this.getElementRect();
         this.cvsRect = this.getCanvasRect(elmRect);
-        this.colors = this.cht.color || d3.schemeTableau10;
+        this.colors = this.cht.color || d3.schemeCategory10;
 
         //main container
         this.svg =

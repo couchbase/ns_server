@@ -1,24 +1,6 @@
 <div class="row flex-left margin-bottom-half">
 
   <select
-     ng-model="statisticsOverviewCtl.node"
-     class="max-width-4"
-     ng-change="statisticsOverviewCtl.onSelectNode(statisticsOverviewCtl.node)">
-    <option ng-repeat="name in statisticsOverviewCtl.nodes.nodesNames" value="{{name}}">
-      {{name}}
-    </option>
-  </select>
-
-  <select
-     ng-model="statisticsOverviewCtl.bucket"
-     class="max-width-4"
-     ng-change="statisticsOverviewCtl.onSelectBucket(statisticsOverviewCtl.bucket)">
-    <option ng-repeat="name in rbac.bucketNames['.stats!read']" value="{{name}}">
-      {{name}}
-    </option>
-  </select>
-
-  <select
      ng-model="statisticsOverviewCtl.zoom"
      ng-change="statisticsOverviewCtl.onSelectZoom(statisticsOverviewCtl.zoom)"
      class="margin-right-half">
@@ -29,10 +11,27 @@
     <option value="month">month</option>
   </select>
 
+  <select
+     ng-model="statisticsOverviewCtl.bucket"
+     class="max-width-4 margin-right-half"
+     ng-change="statisticsOverviewCtl.onSelectBucket(statisticsOverviewCtl.bucket)">
+    <option ng-repeat="name in rbac.bucketNames['.stats!read']" value="{{name}}">
+      {{name}}
+    </option>
+  </select>
+
+  <select
+     ng-model="statisticsOverviewCtl.node"
+     class="max-width-4"
+     ng-change="statisticsOverviewCtl.onSelectNode(statisticsOverviewCtl.node)">
+    <option ng-repeat="name in statisticsOverviewCtl.nodes.nodesNames" value="{{name}}">
+      {{name}}
+    </option>
+  </select>
+
 </div>
 
 <div class="width-12">
-
 
   <div class="row flex-column items-top margin-bottom-2" ng-if="statisticsOverviewCtl.bucket && statisticsOverviewCtl.node">
     <div
