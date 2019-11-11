@@ -11,7 +11,7 @@
     vm.defaultJoinClusterSerivesConfig = _.clone(vm.joinClusterConfig.services, true);
     vm.isEnterprise = pools.isEnterprise;
     vm.hostConfig = {
-      afamily: 'ipv4',
+      afamily: pools.isIPv6 ? "ipv6" : "ipv4",
       nodeEncryption: 'off'
     };
 
