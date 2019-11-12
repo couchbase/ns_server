@@ -21,6 +21,7 @@
 
 -include_lib("kernel/include/net_address.hrl").
 -include_lib("kernel/include/dist_util.hrl").
+-include("cut.hrl").
 
 % dist module callbacks, called from net_kernel
 -export([listen/1, accept/1, accept_connection/5,
@@ -45,13 +46,19 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+-record(con, {ref :: reference(),
+              mod :: protocol(),
+              pid :: pid() | undefined,
+              mon :: reference() | undefined}).
+
 -record(s, {listeners = [],
             acceptors = [],
             creation = undefined,
             kernel_pid = undefined,
             config = undefined,
             name = undefined,
-            ensure_config_timer = undefined}).
+            ensure_config_timer = undefined,
+            connections = [] :: [#con{}]}).
 
 -define(family, ?MODULE).
 -define(proto, ?MODULE).
@@ -104,12 +111,15 @@ accept(_LSocket) ->
     gen_server:call(?MODULE, {accept, self()}, infinity).
 
 -spec accept_connection(CBDistPid :: pid(),
-                        Acceptor :: {pid(), socket()},
+                        Acceptor :: {reference(), pid(), socket()},
                         MyNode :: atom(),
                         Allowed :: any(),
                         SetupTime :: any()) ->
-                            {ConPid :: pid(), AcceptorPid :: pid()}.
-accept_connection(_, {AcceptorPid, ConnectionSocket}, MyNode, Allowed, SetupTime) ->
+                            {ConRef :: reference(),
+                             ConPid :: pid(),
+                             AcceptorPid :: pid()}.
+accept_connection(_, {ConRef, AcceptorPid, ConnectionSocket}, MyNode, Allowed,
+                  SetupTime) ->
     Module = gen_server:call(?MODULE, {get_module_by_acceptor, AcceptorPid},
                              infinity),
     info_msg("Accepting connection from acceptor ~p using module ~p",
@@ -118,9 +128,10 @@ accept_connection(_, {AcceptorPid, ConnectionSocket}, MyNode, Allowed, SetupTime
         true ->
             ConPid = Module:accept_connection(AcceptorPid, ConnectionSocket,
                                               MyNode, Allowed, SetupTime),
-            {ConPid, AcceptorPid};
+            {ConRef, ConPid, AcceptorPid};
         false ->
-            {spawn_opt(
+            {ConRef,
+             spawn_opt(
                fun () ->
                        error_msg("** Connection from unknown acceptor ~p, "
                                  "please reconnect ** ~n", [AcceptorPid]),
@@ -146,10 +157,13 @@ select(Node) ->
             SetupTime :: any()) -> ConPid :: pid().
 setup(Node, Type, MyNode, LongOrShortNames, SetupTime) ->
     try get_preferred_dist(Node) of
-        Module ->
-            info_msg("Setting up new connection to ~p using ~p",
-                     [Node, Module]),
-            Module:setup(Node, Type, MyNode, LongOrShortNames, SetupTime)
+        Mod ->
+            info_msg("Setting up new connection to ~p using ~p", [Node, Mod]),
+            %% We can't call Mod:setup from inside of cb_dist process because
+            %% dist modules expect self() to be net_kernel
+            with_registered_connection(
+              ?cut(Mod:setup(Node, Type, MyNode, LongOrShortNames, SetupTime)),
+              Mod)
     catch
         _:Error ->
             spawn_opt(
@@ -302,17 +316,29 @@ handle_call(reload_config, _From, State) ->
 handle_call(status, _From, #s{listeners = Listeners,
                               acceptors = Acceptors,
                               name = Name,
-                              config = Config} = State) ->
+                              config = Config,
+                              connections = Connections} = State) ->
     {reply, [{name, Name},
              {config, Config},
              {listeners, Listeners},
-             {acceptors, Acceptors}], State};
+             {acceptors, Acceptors},
+             {connections, Connections}], State};
 
 handle_call({update_config, Props}, _From, #s{config = Cfg} = State) ->
     case store_config(import_props_to_config(Props, Cfg)) of
         ok -> handle_reload_config(State);
         {error, _} = Error -> {reply, Error, State}
     end;
+
+handle_call({register_connection, Mod}, _From,
+            #s{connections = Connections} = State) ->
+    Ref = make_ref(),
+    Con = #con{ref = Ref, mod = Mod, pid = undefined},
+    info_msg("Added connection ~p", [Con]),
+    {reply, Ref, State#s{connections = [Con | Connections]}};
+
+handle_call({update_connection_pid, Ref, Pid}, _From, State) ->
+    {reply, ok, update_connection_pid(Ref, Pid, State)};
 
 handle_call(_Request, _From, State) ->
     {noreply, State}.
@@ -321,15 +347,19 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info({accept, AcceptorPid, ConSocket, _Family, _Protocol},
-            #s{kernel_pid = KernelPid} = State) ->
-    info_msg("Accepted new connection from ~p", [AcceptorPid]),
-    KernelPid ! {accept, self(), {AcceptorPid, ConSocket}, ?family, ?proto},
-    {noreply, State};
+            #s{kernel_pid = KernelPid,
+               connections = Connections,
+               acceptors = Acceptors} = State) ->
+    Ref = make_ref(),
+    Con = #con{ref = Ref, mod = proplists:get_value(AcceptorPid, Acceptors)},
+    info_msg("Accepted new connection from ~p: ~p", [AcceptorPid, Con]),
+    KernelPid ! {accept, self(), {Ref, AcceptorPid, ConSocket}, ?family, ?proto},
+    {noreply, State#s{connections = [Con | Connections]}};
 
-handle_info({KernelPid, controller, {ConPid, AcceptorPid}},
+handle_info({KernelPid, controller, {ConRef, ConPid, AcceptorPid}},
             #s{kernel_pid = KernelPid} = State) ->
     AcceptorPid ! {self(), controller, ConPid},
-    {noreply, State};
+    {noreply, update_connection_pid(ConRef, ConPid, State)};
 
 handle_info({'EXIT', Kernel, Reason}, State = #s{kernel_pid = Kernel}) ->
     error_msg("received EXIT from kernel, stoping: ~p", [Reason]),
@@ -342,6 +372,18 @@ handle_info({'EXIT', From, Reason}, State) ->
 handle_info(ensure_config_timer, State) ->
     info_msg("received ensure_config_timer", []),
     {noreply, ensure_config(State#s{ensure_config_timer = undefined})};
+
+handle_info({'DOWN', MonRef, process, Pid, _Reason},
+            #s{connections = Connections} = State) ->
+    case lists:keytake(MonRef, #con.mon, Connections) of
+        {value, Con, Rest} ->
+            info_msg("Connection down: ~p", [Con]),
+            {noreply, State#s{connections = Rest}};
+        false ->
+            error_msg("Received DOWN for unknown connection: ~p ~p",
+                      [MonRef, Pid]),
+            {noreply, State}
+    end;
 
 handle_info(Info, State) ->
     error_msg("received unknown message: ~p", [Info]),
@@ -786,3 +828,32 @@ proto2netsettings(inet6_tcp_dist) -> {inet6, false};
 proto2netsettings(inet_tls_dist) -> {inet, true};
 proto2netsettings(inet6_tls_dist) -> {inet6, true}.
 
+with_registered_connection(Fun, Module) ->
+    Ref = gen_server:call(?MODULE, {register_connection, Module}, infinity),
+    try Fun() of
+        Pid ->
+            gen_server:call(?MODULE, {update_connection_pid, Ref, Pid},
+                            infinity),
+            Pid
+    catch
+        C:E ->
+            ST = erlang:get_stacktrace(),
+            gen_server:call(?MODULE, {update_connection_pid, Ref, undefined},
+                            infinity),
+            erlang:raise(C, E, ST)
+    end.
+
+update_connection_pid(Ref, Pid, #s{connections = Connections} = State) ->
+    case lists:keytake(Ref, #con.ref, Connections) of
+        {value, Con, Rest} when Pid =:= undefined ->
+            info_msg("Removed connection: ~p", [Con]),
+            State#s{connections = Rest};
+        {value, Con, Rest} ->
+            MonRef = erlang:monitor(process, Pid),
+            Con2 = Con#con{pid = Pid, mon = MonRef},
+            info_msg("Updated connection: ~p", [Con2]),
+            State#s{connections = [Con2|Rest]};
+        false ->
+            error_msg("Connection not found: ~p", [Ref]),
+            State
+    end.
