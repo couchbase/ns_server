@@ -526,7 +526,7 @@ parse_stats_test() ->
                          Now - 1000,
                          TestGauges, TestCounters),
 
-    ?assertEqual([37610,823281,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5,0,0,0],
+    ?assertEqual([37610,823281,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5,0,0,0],
                  ActualCounters),
 
     E = lists:keysort(1, ExpectedPropList),
