@@ -22,10 +22,6 @@ start() ->
     try
         %% Check disk space every minute instead of every 30
         application:set_env(os_mon, disk_space_check_interval, 1),
-        case erlang:system_info(system_architecture) of
-            "win32" -> inet_db:set_lookup([native, file]);
-            _ -> ok
-        end,
 
         Apps = [ale, asn1, crypto, public_key, ssl,
                 lhttpc, inets, sasl, os_mon, ns_server],
