@@ -60,8 +60,8 @@
 
     function getLatestStat(statName) {
       return $scope.mnUIStats &&
-        $scope.mnUIStats[$scope.stats.indexOf(statName)] &&
-        $scope.mnUIStats[$scope.stats.indexOf(statName)].stats.aggregate.samples.slice(-1)[0];
+        $scope.mnUIStats.stats[statName] &&
+        $scope.mnUIStats.stats[statName].aggregate.slice(-1)[0];
     }
 
     function getLatestStatExponent(statName, digits) {

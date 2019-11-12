@@ -22,6 +22,7 @@
         scenario: {}
       },
       subscribeUIStatsPoller: subscribeUIStatsPoller,
+      descriptionPathsToStatNames: descriptionPathsToStatNames,
       descriptionPathToStatName: descriptionPathToStatName,
       defaultZoomInterval: defaultZoomInterval,
 
@@ -198,13 +199,17 @@
       });
     }
 
-    function descriptionPathToStatName(chartConfig, items) {
-      return Object.keys(chartConfig.stats).map(function (descPath) {
-        var splitted = descPath.split(".");
-        var service = splitted[0].substring(1, splitted[0].length-1);
+    function descriptionPathToStatName(descPath, items) {
+      var splitted = descPath.split(".");
+      var service = splitted[0].substring(1, splitted[0].length-1);
 
-        var maybeItem = descPath.includes("@items") && ((items || {})[service])
-        return (maybeItem || "") + splitted[splitted.length - 1];
+      var maybeItem = descPath.includes("@items") && ((items || {})[service])
+      return (maybeItem || "") + splitted[splitted.length - 1];
+    }
+
+    function descriptionPathsToStatNames(chartConfig, items) {
+      return Object.keys(chartConfig.stats).map(function (descPath) {
+        return descriptionPathToStatName(descPath, items);
       });
     }
 

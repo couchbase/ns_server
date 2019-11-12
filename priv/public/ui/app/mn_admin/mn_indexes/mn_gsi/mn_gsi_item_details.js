@@ -49,28 +49,28 @@
       return 'index/' + $scope.row.index + '/' + statName;
     }
 
-    function hasNoValue(i) {
-      var stats = getStatSamples(i);
+    function hasNoValue(statName) {
+      var stats = getStatSamples(statName);
       return !(stats && stats.length)
     }
 
-    function hasValue(i) {
-      var stats = getStatSamples(i);
+    function hasValue(statName) {
+      var stats = getStatSamples(statName);
       return stats && stats.length;
     }
 
-    function getStatSamples(i) {
+    function getStatSamples(statName) {
       return $scope.mnUIStats &&
-        $scope.mnUIStats[i].stats[$scope.nodeName || "aggregate"].samples;
+        $scope.mnUIStats.stats[getIndexStatName(statName)][$scope.nodeName || "aggregate"];
     }
 
     function updateValues() {
       (['num_requests', 'index_resident_percent', 'items_count', 'data_size','num_docs_pending+queued'])
-        .forEach(function (statName, i) {
-          vm['has_' + statName] = hasValue(i);
-          vm['has_no_' + statName] = hasNoValue(i);
+        .forEach(function (statName) {
+          vm['has_' + statName] = hasValue(statName);
+          vm['has_no_' + statName] = hasNoValue(statName);
           if (vm['has_' + statName]) {
-            var samples = getStatSamples(i);
+            var samples = getStatSamples(statName);
             //set value to the row, so we can use it for sorting later
             $scope.row[statName] = samples[samples.length - 1];
           }

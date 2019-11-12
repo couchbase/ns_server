@@ -55,7 +55,7 @@
         mnStatisticsNewService.subscribeUIStatsPoller({
           bucket: $scope.bucket,
           node: $scope.node || "all",
-          stats: mnStatisticsNewService.descriptionPathToStatName($scope.config, $scope.items),
+          stats: mnStatisticsNewService.descriptionPathsToStatNames($scope.config, $scope.items),
           zoom: $scope.zoom,
           specificStat: $scope.config.specificStat
         }, $scope);
@@ -203,25 +203,26 @@
         var chartData = [];
         if ($scope.config.specificStat) {
           var descPath = Object.keys($scope.config.stats)[0];
+          var statName = Object.keys(stats.stats)[0];
           var desc = mnStatisticsNewService.readByPath(descPath);
-          if (desc) {
+          if (desc ) {
             (($scope.node == "all") ?
-             Object.keys(stats[0].stats) : ([$scope.node]))
+             Object.keys(stats.stats[statName] || {}) : ([$scope.node]))
               .forEach(function (nodeName) {
-                var nodeStat = stats[0].stats[nodeName];
-                if (nodeStat.samples) {
-                  nodeStat.samples = nodeStat.samples.map(function (v) {
-                    return (v === "undefined") ? undefined : v;
-                  });
-                }
+                var nodeStat = stats.stats[statName][nodeName];
+                nodeStat = nodeStat.map(function (v) {
+                  return (v === null) ? undefined : v;
+                });
                 chartData.push({
                   type: 'line',
                   unit: desc.unit,
-                  max: d3.max(nodeStat.samples || []) || 1,
-                  min: d3.min(nodeStat.samples || []) || 0,
+                  max: d3.max(nodeStat || []) || 1,
+                  min: d3.min(nodeStat || []) || 0,
                   yAxis: units[desc.unit],
                   key: nodeName,
-                  values: _.zip(nodeStat.timestamps, nodeStat.samples)
+                  values: stats.timestamps.map(function (v, i) {
+                    return [v, nodeStat[i]];
+                  })
                 });
               });
           }
@@ -231,21 +232,26 @@
             if (!desc) {
               return;
             }
-            var stat = stats[i].stats[$scope.node == "all" ? "aggregate" : $scope.node];
-            if (stat.samples) {
-              stat.samples = stat.samples.map(function (v) {
-                return (v === "undefined") ? undefined : v;
-              });
+            var statName = mnStatisticsNewService
+                .descriptionPathToStatName(descPath, $scope.items);
+            var stat;
+            if (stats.stats[statName]) {
+              stat = stats.stats[statName][$scope.node == "all" ? "aggregate" : $scope.node];
+            } else {
+              stat = [];
             }
+            stat = stat.map(function (v) {
+              return (v === null) ? undefined : v;
+            });
             chartData.push({
               type: 'line',
               unit: desc.unit,
-              max: d3.max(stat.samples || []) || 1,
-              min: d3.min(stat.samples || []) || 0,
+              max: d3.max(stat) || 1,
+              min: d3.min(stat) || 0,
               yAxis: units[desc.unit],
               key: desc.title,
-              values: stat.timestamps.map(function (v, i) {
-                return [v, stat.samples[i]];
+              values: stats.timestamps.map(function (v, i) {
+                return [v, stat[i]];
               })
             });
           });

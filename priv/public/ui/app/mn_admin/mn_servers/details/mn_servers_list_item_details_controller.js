@@ -69,15 +69,15 @@
         vm.memoryUsages.push(
           mnServersListItemDetailsService.getBaseConfig(
             'index service used',
-            stats[0].stats[$scope.node.hostname].samples,
+            stats.stats['index_memory_used'][$scope.node.hostname],
             details.indexMemoryQuota*1024*1024),
           mnServersListItemDetailsService.getBaseConfig(
             'search service used',
-            stats[1].stats[$scope.node.hostname].samples,
+            stats.stats['fts_num_bytes_used_ram'][$scope.node.hostname],
             details.ftsMemoryQuota*1024*1024),
           mnServersListItemDetailsService.getBaseConfig(
             'analytics service used',
-            stats[2].stats[$scope.node.hostname].samples,
+            stats.stats['cbas_heap_used'][$scope.node.hostname],
             details.cbasMemoryQuota*1024*1024)
         );
 
@@ -89,7 +89,7 @@
         ]).forEach(function (stat, i) {
           vm.diskUsages.push(mnServersListItemDetailsService.getBaseConfig(
             stat.label,
-            stats[i + 3].stats[$scope.node.hostname].samples,
+            stats.stats[stat.name][$scope.node.hostname],
             hdd.free,
             hdd.usedByData))
         });
