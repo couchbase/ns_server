@@ -16,7 +16,7 @@
 -module(ns_bootstrap).
 -include("ns_common.hrl").
 
--export([start/0, stop/0, remote_stop/1, override_resolver/0, ensure_os_mon/0]).
+-export([start/0, stop/0, remote_stop/1, ensure_os_mon/0]).
 
 start() ->
     try
@@ -78,10 +78,6 @@ remote_stop(Node) ->
                          1
                  end,
     init:stop(ExitStatus).
-
-override_resolver() ->
-    inet_db:set_lookup([file, dns]),
-    start().
 
 ensure_os_mon() ->
     %% since os_mon is started as temporary application, if it

@@ -14,7 +14,7 @@
 %% limitations under the License.
 -module(ns_babysitter_bootstrap).
 
--export([start/0, stop/0, get_quick_stop/0, remote_stop/1, override_resolver/0]).
+-export([start/0, stop/0, get_quick_stop/0, remote_stop/1]).
 
 -include("ns_common.hrl").
 
@@ -53,8 +53,3 @@ get_quick_stop() ->
 quick_stop() ->
     application:set_env(ns_babysitter, port_shutdown_command, "die!"),
     stop().
-
-
-override_resolver() ->
-    inet_db:set_lookup([file, dns]),
-    start().
