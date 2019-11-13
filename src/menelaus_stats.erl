@@ -2886,21 +2886,21 @@ archives(#params{step = Step}) ->
           end, lists:zip(Archives, Archives1 ++ [undefined])),
     [A || {A, _} <- ArchivesZipped].
 
-retrive_samples_from_all_archives(Params, Stat) ->
+retrieve_samples_from_all_archives(Params, Stat) ->
     {S, N, _, _} =
-        lists:foldl(?cut(retrive_samples_from_archive(_1, Stat, Params, _2)),
+        lists:foldl(?cut(retrieve_samples_from_archive(_1, Stat, Params, _2)),
                     {undefined, undefined, undefined, true}, archives(Params)),
     {S, N}.
 
-retrive_samples_from_archive(_Archive, _Stat, _Params,
-                             {_AccSamples, _AccNodes, _Kind, false} = Acc) ->
+retrieve_samples_from_archive(_Archive, _Stat, _Params,
+                              {_AccSamples, _AccNodes, _Kind, false} = Acc) ->
     Acc;
-retrive_samples_from_archive(Archive, Stat,
-                             Params = #params{start_ts = StartTS,
-                                              end_ts = EndTS,
-                                              aggregate = Aggregate},
-                             {AccSamples, AccNodes, Kind, Continue}) ->
-    case do_retrive_samples_from_archive(Archive, Stat, Params, Kind) of
+retrieve_samples_from_archive(Archive, Stat,
+                              Params = #params{start_ts = StartTS,
+                                               end_ts = EndTS,
+                                               aggregate = Aggregate},
+                              {AccSamples, AccNodes, Kind, Continue}) ->
+    case do_retrieve_samples_from_archive(Archive, Stat, Params, Kind) of
         #gathered_stats{samples = [[]]} ->
             %% no results for this stat in current archive
             %% no need to proceed to less detailed archives
@@ -2932,7 +2932,7 @@ retrive_samples_from_archive(Archive, Stat,
             {MergedSamples, Nodes, NewKind, NewContinue}
     end.
 
-do_retrive_samples_from_archive({Period, Seconds, Count}, StatName,
+do_retrieve_samples_from_archive({Period, Seconds, Count}, StatName,
                                 #params{bucket = BucketName,
                                         start_ts = StartTS,
                                         step = Step,
@@ -2995,7 +2995,7 @@ handle_ui_stats_post_section(LocalAddr, Values) ->
     SamplesForAllStats =
         lists:filtermap(
           fun (Stat) ->
-                  case retrive_samples_from_all_archives(Params, Stat) of
+                  case retrieve_samples_from_all_archives(Params, Stat) of
                       {undefined, undefined} ->
                           false;
                       {[[]], _} ->
