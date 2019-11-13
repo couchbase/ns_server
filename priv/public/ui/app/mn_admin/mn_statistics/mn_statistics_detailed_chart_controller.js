@@ -16,6 +16,9 @@
     vm.node = $state.params.statsHostname;
     vm.options = {showFocus: true, showTicks: true, showLegends: true};
 
+    mnStatisticsNewService.heartbeat.setInterval(
+      mnStatisticsNewService.defaultZoomInterval(vm.zoom));
+
     function onSelectZoom() {
       vm.options.showFocus = vm.zoom !== "minute";
       mnStatisticsNewService.heartbeat.setInterval(
@@ -25,6 +28,12 @@
         vm.reloadChartDirective = false;
       });
     }
+
+    $scope.$on("$destroy", function () {
+      mnStatisticsNewService.heartbeat.setInterval(
+        mnStatisticsNewService.defaultZoomInterval($state.params.scenarioZoom));
+      mnStatisticsNewService.heartbeat.reload();
+    })
 
   }
 })();
