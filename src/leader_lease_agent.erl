@@ -37,6 +37,8 @@
                         node :: node() }).
 
 -record(lease, { holder      :: #lease_holder{},
+                 %% acquired_at can be undefined when the lease is recovered
+                 %% from disk and exact acquisition time is unknown
                  acquired_at :: undefined | lease_ts(),
                  expires_at  :: lease_ts(),
                  timer       :: misc:timer(),
