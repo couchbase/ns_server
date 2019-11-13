@@ -502,9 +502,12 @@ config_change_detector_loop(_OtherEvent, Parent) ->
 
 handle_call({set_node_certificate_chain, Props, CAChain, Cert, PKey}, _From, State) ->
     CAChainFile = user_set_ca_chain_path(),
-    {ok, PrevCAChain} = file:read_file(CAChainFile),
-    CanUpdateChain = (PrevCAChain =:= CAChain) orelse
-                     misc:is_cluster_encryption_fully_disabled(),
+    CanUpdateChain =
+        case file:read_file(CAChainFile) of
+            {ok, CAChain} -> true;
+            _ ->  misc:is_cluster_encryption_fully_disabled()
+        end,
+
     case CanUpdateChain of
         true ->
             ns_config:delete({node, node(), cert}),
