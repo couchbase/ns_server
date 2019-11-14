@@ -33,6 +33,8 @@
     vm.closeAlert = mnAlertsService.removeItem;
     vm.setHideNavSidebar = mnPoolDefault.setHideNavSidebar;
     vm.postStopRebalance = postStopRebalance;
+    vm.closeCustomAlert = closeCustomAlert;
+    vm.enableCustomAlert = enableCustomAlert;
 
     vm.getRebalanceReport = getRebalanceReport;
 
@@ -42,6 +44,14 @@
     $rootScope.buckets = mnBucketsService.export;
 
     activate();
+
+    function closeCustomAlert(alertName) {
+      vm.clientAlerts[alertName] = true;
+    }
+
+    function enableCustomAlert(alertName) {
+      vm.clientAlerts[alertName] = false;
+    }
 
     function postCancelRebalanceRetry(id) {
       mnSettingsClusterService.postCancelRebalanceRetry(id);

@@ -418,37 +418,51 @@
   </div>
   <div
      class="alert alert-warning"
-     ng-show="adminCtl.tasks.isLoadingSamples && rbac.cluster.tasks.read && !poolDefault.balanced">
+     ng-if="adminCtl.tasks.isLoadingSamples && rbac.cluster.tasks.read && !poolDefault.balanced"
+     ng-show="!adminCtl.clientAlerts.rebalanceDataLoading"
+     ng-init="adminCtl.enableCustomAlert('rebalanceDataLoading')">
     <p>Warning: Rebalance is not available until data loading is completed.</p>
+    <a ng-click="adminCtl.closeCustomAlert('rebalanceDataLoading')" class="close">X</a>
   </div>
   <div
      class="alert alert-warning"
-     ng-show="!adminCtl.poolDefault.compat.atLeast55 && !!adminCtl.moxiBucket">
+     ng-if="!adminCtl.poolDefault.compat.atLeast55 && !!adminCtl.moxiBucket && !poolDefault.balanced"
+     ng-show="!adminCtl.clientAlerts.moxiBucket"
+     ng-init="adminCtl.enableCustomAlert('moxiBucket')">
     <p>Your Couchbase bucket <i>{{adminCtl.moxiBucket.name}}</i> has an active dedicated port, also known as a Moxi port. Moxi is deprecated and will be removed in a future release.<br> You can run the CLI command <i>couchbase-cli bucket-edit</i> command with the <i>--remove-bucket-port</i> option to remove the Moxi port.</p>
+    <a ng-click="adminCtl.closeCustomAlert('moxiBucket')" class="close">X</a>
   </div>
   <div
      class="alert alert-warning"
-     ng-show="!('every' | lodash:('values' | lodash:poolDefault.compat)) && !adminCtl.clientAlerts.hideCompatibility">
+     ng-if="!('every' | lodash:('values' | lodash:poolDefault.compat)) && !adminCtl.clientAlerts.hideCompatibility"
+     ng-show="!adminCtl.clientAlerts.hideCompatibility"
+     ng-init="adminCtl.enableCustomAlert('hideCompatibility')">
     <p>This cluster contains multiple server versions and is running in {{::poolDefault.thisNode.clusterCompatibility | decodeCompatVersion}} compatibility mode.</p>
-    <a ng-click="adminCtl.clientAlerts.hideCompatibility = true" class="close">X</a>
+    <a ng-click="adminCtl.closeCustomAlert('hideCompatibility')" class="close">X</a>
   </div>
   <div
      class="alert alert-warning"
-     ng-repeat="warning in poolDefault.failoverWarnings"
-     ng-show="warning && warning != 'failoverNeeded' && !poolDefault.rebalancing">
+     ng-repeat="warning in poolDefault.failoverWarnings track by warning"
+     ng-if="warning && warning != 'failoverNeeded' && !poolDefault.rebalancing"
+     ng-show="!adminCtl.clientAlerts[warning]"
+     ng-init="adminCtl.enableCustomAlert(warning)">
     <p>Warning: {{warning | formatFailoverWarnings}}</p>
+    <a ng-click="adminCtl.closeCustomAlert(warning)" class="close">X</a>
   </div>
   <div
      class="alert alert-warning"
-     ng-show="adminCtl.autoFailoverSettings.count > 0 && rbac.cluster.settings.read">
+     ng-if="adminCtl.autoFailoverSettings.count > 0 && rbac.cluster.settings.read"
+     ng-show="!adminCtl.clientAlerts.maxCount"
+     ng-init="adminCtl.enableCustomAlert('maxCount')">
     <p>
       A server was automatically failed over. Failover quota used/max:
       {{adminCtl.autoFailoverSettings.count}}/{{adminCtl.autoFailoverSettings.maxCount}}
     </p>
+    <a ng-click="adminCtl.closeCustomAlert('maxCount')" class="close">X</a>
   </div>
   <div
      class="alert alert-warning ng-hide"
-     ng-show="(adminCtl.autoFailoverSettings &&
+     ng-if="(adminCtl.autoFailoverSettings &&
               (adminCtl.autoFailoverSettings.count == adminCtl.autoFailoverSettings.maxCount)) ||
               (!(poolDefault.compat.atLeast55 && pools.isEnterprise) &&
                  adminCtl.autoFailoverSettings.count == 1)">
