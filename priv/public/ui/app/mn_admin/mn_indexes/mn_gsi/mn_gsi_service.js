@@ -16,7 +16,7 @@
     function postDropIndex(row) {
       // to drop an index, we create a 'DROP' query to send to the query workbench
       return qwQueryService
-        .executeQueryUtil('DROP INDEX `' + row.bucket + '`.`' + row.index + '`', true);
+        .executeQueryUtil('DROP INDEX `' + row.bucket + '`.`' + row.indexName + '`', true);
     }
 
     function getIndexesState(mnHttpParams) {
