@@ -2,7 +2,11 @@
   <div class="row flex-left items-top resp-sml">
     <div class="cbui-table-props cursor-text" ng-click="$event.stopPropagation();">
       <div class="break-word">
-        <strong>Addresses:</strong> {{node.hostname | mnStripPortHTML:serversCtl.nodes.allNodes}}
+        <strong>Addresses:</strong> {{node.hostname | mnStripPortHTML:serversCtl.nodes.allNodes}} (int) <span ng-if="serversListItemDetailsCtl.server.details.alternateAddresses">
+          | {{serversListItemDetailsCtl.server.details.alternateAddresses.external.hostname}}
+          <span ng-if="serversListItemDetailsCtl.server.details.alternateAddresses.external.ports.mgmt">:{{serversListItemDetailsCtl.server.details.alternateAddresses.external.ports.mgmt}}
+          </span> (ext)
+        </span>
       </div>
       <div>
         <strong>Address Family:</strong> <span ng-if="node.addressFamily == 'inet6'">IPv6</span><span ng-if="node.addressFamily == 'inet'">IPv4</span>
