@@ -99,7 +99,7 @@
 start_link() ->
     leader_utils:ignore_if_new_orchestraction_disabled(
       fun () ->
-          gen_server2:start_link({local, ?SERVER}, ?MODULE, [], [])
+              gen_server2:start_link({local, ?SERVER}, ?MODULE, [], [])
       end).
 
 register_acquirer(Pid) ->

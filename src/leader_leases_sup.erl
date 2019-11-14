@@ -27,7 +27,7 @@ init([]) ->
     {ok, {{rest_for_one,
            misc:get_env_default(max_r, 3),
            misc:get_env_default(max_t, 10)},
-         child_specs()}}.
+          child_specs()}}.
 
 child_specs() ->
     [{leader_activities, {leader_activities, start_link, []},
