@@ -36,7 +36,7 @@
     mnStatisticsNewService.subscribeUIStatsPoller({
       bucket: $scope.row.bucket,
       node: $scope.nodeName || "all",
-      zoom: 1000,
+      zoom: 3000,
       step: 1,
       stats: (['num_requests', 'index_resident_percent', 'items_count', 'data_size', 'num_docs_pending+queued'])
         .map(getIndexStatName)
@@ -50,18 +50,20 @@
     }
 
     function hasNoValue(statName) {
-      var stats = getStatSamples(statName);
-      return !(stats && stats.length)
+      var value = getStatSamples(statName);
+      return parseFloat(value) !== value; //is not Numeric?
     }
 
     function hasValue(statName) {
-      var stats = getStatSamples(statName);
-      return stats && stats.length;
+      var value = getStatSamples(statName);
+      return parseFloat(value) === value;
     }
 
     function getStatSamples(statName) {
       return $scope.mnUIStats &&
-        $scope.mnUIStats.stats[getIndexStatName(statName)][$scope.nodeName || "aggregate"];
+        $scope.mnUIStats.stats[getIndexStatName(statName)] &&
+        $scope.mnUIStats.stats[getIndexStatName(statName)][$scope.nodeName || "aggregate"]
+        .slice().reverse().find(stat => stat != null);
     }
 
     function updateValues() {
@@ -70,9 +72,8 @@
           vm['has_' + statName] = hasValue(statName);
           vm['has_no_' + statName] = hasNoValue(statName);
           if (vm['has_' + statName]) {
-            var samples = getStatSamples(statName);
             //set value to the row, so we can use it for sorting later
-            $scope.row[statName] = samples[samples.length - 1];
+            $scope.row[statName] = getStatSamples(statName);
           }
         });
     }

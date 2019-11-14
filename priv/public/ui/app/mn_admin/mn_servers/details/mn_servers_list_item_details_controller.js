@@ -19,7 +19,7 @@
 
       mnStatisticsNewService.subscribeUIStatsPoller({
         node: $scope.node.hostname || "all",
-        zoom: 1000,
+        zoom: 3000,
         step: 1,
         bucket: mnPermissions.export.bucketNames['.stats!read'] &&
           mnPermissions.export.bucketNames['.stats!read'][0],
@@ -69,15 +69,18 @@
         vm.memoryUsages.push(
           mnServersListItemDetailsService.getBaseConfig(
             'index service used',
-            stats.stats['index_memory_used'][$scope.node.hostname],
+            stats.stats['index_memory_used'] &&
+              stats.stats['index_memory_used'][$scope.node.hostname],
             details.indexMemoryQuota*1024*1024),
           mnServersListItemDetailsService.getBaseConfig(
             'search service used',
-            stats.stats['fts_num_bytes_used_ram'][$scope.node.hostname],
+            stats.stats['fts_num_bytes_used_ram'] &&
+              stats.stats['fts_num_bytes_used_ram'][$scope.node.hostname],
             details.ftsMemoryQuota*1024*1024),
           mnServersListItemDetailsService.getBaseConfig(
             'analytics service used',
-            stats.stats['cbas_heap_used'][$scope.node.hostname],
+            stats.stats['cbas_heap_used'] &&
+              stats.stats['cbas_heap_used'][$scope.node.hostname],
             details.cbasMemoryQuota*1024*1024)
         );
 
@@ -89,7 +92,7 @@
         ]).forEach(function (stat, i) {
           vm.diskUsages.push(mnServersListItemDetailsService.getBaseConfig(
             stat.label,
-            stats.stats[stat.name][$scope.node.hostname],
+            stats.stats[stat.name] && stats.stats[stat.name][$scope.node.hostname],
             hdd.free,
             hdd.usedByData))
         });

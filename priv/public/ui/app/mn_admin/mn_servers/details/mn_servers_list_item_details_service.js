@@ -13,7 +13,8 @@
     return mnServersListItemDetailsService;
 
     function getValue(value) {
-      return parseFloat(Array.isArray(value) ? value.slice(-1)[0] : value);
+      return parseFloat(Array.isArray(value) ?
+                        value.slice().reverse().find(stat => stat != null) : value);
     }
 
     function getBaseConfig(title, used, total, used2) {

@@ -47,7 +47,7 @@
     var config = {
       bucket: vm.currentBucket,
       node: "all",
-      zoom: 1000,
+      zoom: 3000,
       step: 1,
       stats: $scope.stats
     };
@@ -61,7 +61,7 @@
     function getLatestStat(statName) {
       return $scope.mnUIStats &&
         $scope.mnUIStats.stats[statName] &&
-        $scope.mnUIStats.stats[statName].aggregate.slice(-1)[0];
+        $scope.mnUIStats.stats[statName].aggregate.slice().reverse().find(stat => stat != null);
     }
 
     function getLatestStatExponent(statName, digits) {
