@@ -770,7 +770,7 @@ computed_stats_lazy_proplist("@index-"++BucketId) ->
     [{global_index_stat(<<"fragmentation">>), GlobalFragmentation}] ++
         lists:flatmap(
           fun (Index) ->
-                  AvgItemSize = Z2(per_index_stat(Index, <<"data_size">>),
+                  AvgItemSize = Z2(per_index_stat(Index, <<"raw_data_size">>),
                                    per_index_stat(Index, <<"items_count">>),
                                    fun (DataSize, Count) ->
                                            try
@@ -809,14 +809,14 @@ computed_stats_lazy_proplist("@index-"++BucketId) ->
                                             end
                                     end),
 
-                  FragPercent = Z2(per_index_stat(Index, <<"disk_size">>),
-                                   per_index_stat(Index, <<"data_size">>),
-                                   fun (Disk, Data)
-                                         when Data == 0 orelse Disk < Data ->
+                  FragPercent = Z2(per_index_stat(Index, <<"data_size_on_disk">>),
+                                   per_index_stat(Index, <<"log_space_on_disk">>),
+                                   fun (Data, Log)
+                                         when Log == 0 orelse Log < Data ->
                                            0;
-                                       (Disk, Data) ->
+                                       (Data, Log) ->
                                            try
-                                               (Disk - Data) * 100.0 / Disk
+                                               (Log - Data) * 100.00 / Log
                                            catch
                                                error:badarith ->
                                                    0
