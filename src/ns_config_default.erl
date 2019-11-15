@@ -165,7 +165,9 @@ default() ->
        {breakpad_minidump_dir_path, BreakpadMinidumpDir},
        {dedupe_nmvb_maps, false},
        {tracing_enabled, IsEnterprise},
-       {datatype_snappy, true}]},
+       {datatype_snappy, true},
+       {num_reader_threads, 0},
+       {num_writer_threads, 0}]},
 
      %% Memcached config
      {{node, node(), memcached},
@@ -267,6 +269,8 @@ default() ->
         {collections_enabled, {memcached_config_mgr, collections_enabled, []}},
         {max_connections, max_connections},
         {system_connections, system_connections},
+        {num_reader_threads, num_reader_threads},
+        {num_writer_threads, num_writer_threads},
 
         {logger,
          {[{filename, {"~s/~s", [log_path, log_prefix]}},
