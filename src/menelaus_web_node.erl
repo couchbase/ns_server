@@ -308,7 +308,8 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
                    rest_port],
 
     AFamily = ns_config:search_node_with_default(WantENode, Config,
-                                                 address_family, inet),
+                                                 address_family, undefined),
+
     NEncryption = misc:is_node_encryption_enabled(Config, WantENode),
     Listeners = case ns_config:search_node_with_default(WantENode, Config,
                                                         erl_external_listeners,
@@ -327,10 +328,10 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
           {cpuCount, CpuCount},
           {ports, {struct, PortsKV ++ DistPorts}},
           {services, ns_cluster_membership:node_services(Config, WantENode)},
-          {addressFamily, AFamily},
           {nodeEncryption, NEncryption},
           {configuredHostname, list_to_binary(ConfiguredHostname)}
-         ] ++ [{externalListeners, Listeners} || Listeners =/= undefined]
+         ] ++ [{addressFamily, AFamily} || AFamily =/= undefined]
+           ++ [{externalListeners, Listeners} || Listeners =/= undefined]
            ++ alternate_addresses_json(WantENode, Config, WantedPorts),
     case WantENode =:= node() of
         true ->

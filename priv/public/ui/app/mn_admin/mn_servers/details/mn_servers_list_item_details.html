@@ -8,7 +8,7 @@
           </span> (ext)
         </span>
       </div>
-      <div>
+      <div ng-if="node.hasOwnProperty('addressFamily')">
         <strong>Address Family:</strong> <span ng-if="node.addressFamily == 'inet6'">IPv6</span><span ng-if="node.addressFamily == 'inet'">IPv4</span>
       </div>
       <div>
