@@ -293,14 +293,37 @@ sortby(List, KeyFn, LessEqFn) ->
                              end, KeyedList),
     [E || {_, E} <- KeyedSorted].
 
-move_is_possible(Src, Dst, BackfillsLimit, NowBackfills, CompactionCountdown,
+move_is_possible([Src | _] = OldChain,
+                 [Dst | _] = NewChain,
+                 BackfillsLimit, NowBackfills, CompactionCountdown,
                  InFlightMoves, InFlightMovesLimit) ->
-    dict:fetch(Src, NowBackfills) < BackfillsLimit
-        andalso dict:fetch(Dst, NowBackfills) < BackfillsLimit
-        andalso dict:fetch(Src, CompactionCountdown) > 0
+    dict:fetch(Src, CompactionCountdown) > 0
         andalso dict:fetch(Dst, CompactionCountdown) > 0
         andalso dict:fetch(Dst, InFlightMoves) < InFlightMovesLimit
-        andalso dict:fetch(Src, InFlightMoves) < InFlightMovesLimit.
+        andalso dict:fetch(Src, InFlightMoves) < InFlightMovesLimit
+        andalso lists:all(fun (N) ->
+                                  dict:fetch(N, NowBackfills) < BackfillsLimit
+                          end, backfill_nodes(OldChain, NewChain)).
+
+backfill_nodes([OldMaster | _] = OldChain,
+               [NewMaster | NewReplicas]) ->
+    %% The old master is always charged a backfill as long as it exists. The
+    %% reasons are:
+    %%   - it's almost certain that it'll need to stream a lot of stuff
+    %%   - if the master changes, it will also have to clean up views
+    [OldMaster || OldMaster =/= undefined] ++
+        %% The new master is charged a backfill as long as the vbucket is
+        %% moved from a different node, even if the new master already has a
+        %% copy. That's because views might need to be built, and that's
+        %% expensive.
+        [NewMaster || NewMaster =/= OldMaster] ++
+        %% All replica nodes are charged a backfill as long as they don't
+        %% already have the vbucket. This is to ensure that that we don't have
+        %% lots of "free" replica moves into a node, which can significantly
+        %% affect clients.
+        [N || N <- NewReplicas,
+              N =/= undefined,
+              not lists:member(N, OldChain)].
 
 increment_counter(Node, Node, Dict) ->
     dict:update_counter(Node, 1, Dict);
@@ -322,8 +345,9 @@ choose_action_not_compaction(#state{
                                 moves_left = MovesLeft,
                                 compaction_countdown_per_node = CompactionCountdown} = State) ->
     PossibleMoves =
-        lists:flatmap(fun ({_V, [Src|_], [Dst|_], _} = Move) ->
-                              Can1 = move_is_possible(Src, Dst, BackfillsLimit, NowBackfills,
+        lists:flatmap(fun ({_V, [Src|_] = OldChain, [Dst|_] = NewChain, _} = Move) ->
+                              Can1 = move_is_possible(OldChain, NewChain,
+                                                      BackfillsLimit, NowBackfills,
                                                       CompactionCountdown,
                                                       NowInFlight, MaxInflightMoves),
                               Can2 = Can1 andalso not sets:is_element(Src, NowCompactions),
@@ -388,13 +412,19 @@ choose_action_not_compaction(#state{
     {SelectedMoves, NewNowBackfills, NewCompactionCountdown, NewNowInFlight, NewLeftCount} =
         misc:letrec(
           [SortedMoves, NowBackfills, CompactionCountdown, NowInFlight, LeftCount, []],
-          fun (Rec, [{_V, [Src|_], [Dst|_], _} = Move | RestMoves],
+          fun (Rec, [{_V, [Src|_] = OldChain, [Dst|_] = NewChain, _} = Move | RestMoves],
                NowBackfills0, CompactionCountdown0, NowInFlight0, LeftCount0, Acc) ->
-                  case move_is_possible(Src, Dst, BackfillsLimit, NowBackfills0,
+                  case move_is_possible(OldChain, NewChain, BackfillsLimit, NowBackfills0,
                                         CompactionCountdown0, NowInFlight0, MaxInflightMoves) of
                       true ->
+                          NewNowBackfills =
+                              lists:foldl(
+                                fun (N, Acc0) ->
+                                        dict:update_counter(N, 1, Acc0)
+                                end, NowBackfills0, backfill_nodes(OldChain, NewChain)),
+
                           Rec(Rec, RestMoves,
-                              increment_counter(Src, Dst, NowBackfills0),
+                              NewNowBackfills,
                               decrement_counter_if_real_move(Src, Dst, CompactionCountdown0),
                               increment_counter(Src, Dst, NowInFlight0),
                               decrement_counter_if_real_move(Src, Dst, LeftCount0),
@@ -437,16 +467,13 @@ extract_progress(#state{initial_move_counts = InitialCounts,
 %% that next moves can be started.
 note_backfill_done(State, {move, {_V, [undefined|_], [_Dst|_], _}}) ->
     State;
-note_backfill_done(State, {move, {_V, [Src|_], [Dst|_], _}}) ->
+note_backfill_done(State, {move, {_V, OldChain, NewChain, _}}) ->
     updatef(State, #state.in_flight_backfills_per_node,
             fun (NowBackfills) ->
-                    NowBackfills1 = dict:update_counter(Src, -1, NowBackfills),
-                    case Src =:= Dst of
-                        true ->
-                            NowBackfills1;
-                        _ ->
-                            dict:update_counter(Dst, -1, NowBackfills1)
-                    end
+                    lists:foldl(
+                      fun (N, Acc) ->
+                              dict:update_counter(N, -1, Acc)
+                      end, NowBackfills, backfill_nodes(OldChain, NewChain))
             end).
 
 %% @doc marks entire move that was previously started done. NOTE: this
