@@ -748,6 +748,8 @@ def make_os_tasks():
         LinuxTask("Distro version", "lsb_release -a"),
         LinuxTask("Distro version", "cat /etc/SuSE-release"),
         LinuxTask("Distro version", "cat /etc/issue"),
+        LinuxTask("Distro version", "cat /etc/os-release"),
+        LinuxTask("Distro version", "cat /etc/system-release"),
         LinuxTask("Installed software", "rpm -qa"),
         LinuxTask("Hot fix list", "rpm -V couchbase-server"),
         # NOTE: AFAIK columns _was_ necessary, but it doesn't appear to be
