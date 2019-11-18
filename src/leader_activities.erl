@@ -58,12 +58,14 @@
 -type user_quorum() :: quorum(sets:set(node()) | [node()]).
 
 -type quorum() :: quorum(sets:set(node())).
--type quorum(Nodes) :: all
-                     | follower
-                     | majority
-                     | {all, Nodes}
-                     | {majority, Nodes}
-                     | [quorum(Nodes)].
+-type quorum(Nodes) :: leader_quorum(Nodes) | follower_quorum().
+
+-type follower_quorum() :: follower.
+-type leader_quorum(Nodes) :: all
+                            | majority
+                            | {all, Nodes}
+                            | {majority, Nodes}
+                            | [leader_quorum(Nodes)].
 
 -type activity_option() :: {quorum_timeout, non_neg_integer()}
                          | {timeout, non_neg_integer()}
@@ -717,9 +719,6 @@ have_quorum(Quorums, State)
 
 quorum_requires_leader(follower) ->
     false;
-quorum_requires_leader(Quorum)
-  when is_list(Quorum) ->
-    lists:any(fun quorum_requires_leader/1, Quorum);
 quorum_requires_leader(_) ->
     true.
 
@@ -851,12 +850,17 @@ handle_activity_subcall(Request, From, State) ->
     State.
 
 -spec convert_quorum(user_quorum()) -> quorum().
-convert_quorum(Tag)
+convert_quorum(FollowerQuorum)
+  when FollowerQuorum =:= follower ->
+    FollowerQuorum;
+convert_quorum(LeaderQuorum) ->
+    convert_leader_quorum(LeaderQuorum).
+
+convert_leader_quorum(Tag)
   when Tag =:= all;
-       Tag =:= follower;
        Tag =:= majority ->
     Tag;
-convert_quorum({Tag, Nodes} = UserQuorum)
+convert_leader_quorum({Tag, Nodes} = UserQuorum)
   when Tag =:= all;
        Tag =:= majority ->
 
@@ -867,9 +871,9 @@ convert_quorum({Tag, Nodes} = UserQuorum)
             true = is_list(Nodes),
             {Tag, sets:from_list(Nodes)}
     end;
-convert_quorum(Quorums)
+convert_leader_quorum(Quorums)
   when is_list(Quorums) ->
-    lists:map(fun convert_quorum/1, Quorums).
+    lists:map(fun convert_leader_quorum/1, Quorums).
 
 check_activity_body(_Node, {_M, _F, _A}) ->
     ok;
