@@ -562,7 +562,22 @@ handle_local_lease_expired(LocalLease, From, State) ->
 
 expire_local_lease(State) ->
     NewState = State#state{local_lease_holder = undefined},
-    terminate_all_activities(NewState, {shutdown, local_lease_expired}).
+
+    %% Terminate all activities that require local lease, that is, activities
+    %% that requested a 'follower' quorum.
+    %%
+    %% Note that we don't clean up activities that simply requested this node
+    %% as part of their quorum here, i.e., something like {all, [node()]}, nor
+    %% do we remove the lease for node() from State#state.leases. This is
+    %% handled when we receive a notification from leader_lease_acquirer that
+    %% this lease was lost. leader_lease_acquirer is our source of truth with
+    %% respect to which leases we have. Normally, we expect to receive the
+    %% notification from leader_lease_acquirer before local lease expiriation
+    %% notification from leader_lease_agent. But in pathological situations
+    %% they can get reordered and touching State#state.leases would break
+    %% internal invariants.
+    Pred = ?cut(is_follower_quorum(_#activity.quorum)),
+    terminate_activities(Pred, NewState, {shutdown, local_lease_expired}).
 
 handle_note_quorum_nodes(QuorumNodes, From, State) ->
     %% The quorum nodes manager will only notify us of the quorum nodes once,
@@ -717,10 +732,13 @@ have_quorum(Quorums, State)
   when is_list(Quorums) ->
     lists:all(have_quorum(_, State), Quorums).
 
-quorum_requires_leader(follower) ->
-    false;
-quorum_requires_leader(_) ->
-    true.
+quorum_requires_leader(Quorum) ->
+    not is_follower_quorum(Quorum).
+
+is_follower_quorum(follower) ->
+    true;
+is_follower_quorum(_) ->
+    false.
 
 check_quorum_requires_leader(Quorum, State) ->
     case quorum_requires_leader(Quorum) of
