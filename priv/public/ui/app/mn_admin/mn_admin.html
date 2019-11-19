@@ -8,6 +8,9 @@
 </div>
 
 <div class="row">
+  <div class="red-1 nowrap text-smaller margin-left-1">
+    <span ng-show="adminCtl.isDeveloperPreview">PREVIEW MODE &#8231; UNSUPPORTED &#8231; NOT FOR USE IN PRODUCTION</span>
+  </div>
   <nav class="nav-header">
     <a ng-click="adminCtl.toggleProgressBar()" class="activities" ng-if="rbac.cluster.tasks.read">
       activity
