@@ -191,6 +191,9 @@
         rv.indexPath = selfConfig.storage.hdd[0].index_path;
         rv.eventingPath = selfConfig.storage.hdd[0].eventing_path;
         rv.java_home = selfConfig.storage.hdd[0].java_home;
+        rv.addressFamily = selfConfig.addressFamily;
+        rv.nodeEncryption = selfConfig.nodeEncryption;
+
         return rv;
       });
     }

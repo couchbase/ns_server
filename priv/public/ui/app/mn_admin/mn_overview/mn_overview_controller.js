@@ -20,7 +20,7 @@
     var vm = this;
 
     vm.getEndings = mnHelper.getEndings;
-    vm.isIPv6 = pools.isIPv6;
+    vm.addressFamily = mnPoolDefault.export.thisNode.addressFamily;
     vm.nodeEncryption = mnPoolDefault.export.thisNode.nodeEncryption;
 
     activate();

@@ -59,7 +59,8 @@ handle_pools(Req) ->
            {isROAdminCreds, false},
            {isEnterprise, Enterprise},
            {allowedServices, AllowedServices},
-           {isIPv6, misc:is_ipv6()},
+           {isIPv6, misc:is_ipv6()}, %% Obsolete, use 'addressFamily' from
+                                     %% /pools/default or /nodes/self instead
            {isDeveloperPreview, cluster_compat_mode:is_developer_preview()}
            | get_content_for_provisioned_system()],
     RV = RV1 ++ menelaus_web_cache:versions_response(),

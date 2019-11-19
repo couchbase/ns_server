@@ -11,7 +11,7 @@
     vm.defaultJoinClusterSerivesConfig = _.clone(vm.joinClusterConfig.services, true);
     vm.isEnterprise = pools.isEnterprise;
     vm.hostConfig = {
-      afamily: pools.isIPv6 ? "ipv6" : "ipv4",
+      afamily: "ipv4",
       nodeEncryption: 'off'
     };
 
@@ -50,6 +50,11 @@
         .applyToScope("config")
         .onSuccess(function (config) {
           vm.defaultConfig = _.clone(config);
+          vm.hostConfig = {
+            afamily: vm.defaultConfig.addressFamily == 'inet6' ? "ipv6" : "ipv4",
+            nodeEncryption: vm.defaultConfig.nodeEncryption ? 'on' : 'off'
+          };
+          onIPvChange();
         });
 
       mnPromiseHelper(vm, mnClusterConfigurationService.getQuerySettings())
