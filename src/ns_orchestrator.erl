@@ -1239,7 +1239,6 @@ terminate_observer(#rebalancing_state{rebalance_observer = ObserverPid}) ->
     misc:unlink_terminate_and_wait(ObserverPid, kill).
 
 handle_rebalance_completion(ExitReason, State) ->
-    maybe_reply_to(ExitReason, State),
     cancel_stop_timer(State),
     maybe_reset_autofailover_count(ExitReason, State),
     maybe_reset_reprovision_count(ExitReason, State),
@@ -1251,6 +1250,7 @@ handle_rebalance_completion(ExitReason, State) ->
     update_rebalance_status(ExitReason, State),
     rpc:eval_everywhere(diag_handler, log_all_dcp_stats, []),
     terminate_observer(State),
+    maybe_reply_to(ExitReason, State),
 
     R = compat_mode_manager:consider_switching_compat_mode(),
     case maybe_start_service_upgrader(ExitReason, R, State) of
