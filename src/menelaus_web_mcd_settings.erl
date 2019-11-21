@@ -31,6 +31,8 @@
 
 supported_setting_names() ->
     [{max_connections, {int, 2000, ?MC_MAXINT}},
+     {num_reader_threads, {int, 0, 64}},
+     {num_writer_threads, {int, 0, 64}},
      {system_connections, {int, 1000, ?MC_MAXINT}},
      {verbosity, {int, 0, ?MC_MAXINT}},
      {ssl_cipher_list, string},
