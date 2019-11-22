@@ -74,7 +74,9 @@
       "cluster.settings.indexes!write",
       "cluster.admin.security!write",
       "cluster.samples!read",
-      "cluster.nodes!read"
+      "cluster.nodes!read",
+      "cluster.admin.memcached!read",
+      "cluster.admin.memcached!write"
     ];
 
     function getAll() {

@@ -327,60 +327,60 @@ footer {
   width: 0px;
 }
 .fix-width-half {
-  width: 2rem; /* 1rem = 16px, 2rem = 32px */
+  width: 2rem !important; /* 1rem = 16px, 2rem = 32px */
 }
 .fix-width-1 {
-  width: 4rem; /* 1rem = 16px, 4rem = 64px */
+  width: 4rem !important; /* 1rem = 16px, 4rem = 64px */
 }
 .fix-width-1-5 {
-  width: 6rem; /* 1rem = 16px, 6rem = 96px */
+  width: 6rem !important; /* 1rem = 16px, 6rem = 96px */
 }
 .fix-width-2 {
-  width: 8rem; /* 128px */
+  width: 8rem !important; /* 128px */
 }
 .fix-width-3 {
-  width: 12rem; /* 192px */
+  width: 12rem !important; /* 192px */
 }
 .fix-width-4 {
-  width: 16rem; /* 256px */
+  width: 16rem !important; /* 256px */
 }
 .fix-width-5 {
-  width: 24rem; /* 384px */
+  width: 24rem !important; /* 384px */
 }
 .fix-width-6 {
-  width: 32rem; /* 512px */
+  width: 32rem !important; /* 512px */
 }
 .fix-width-7 {
-  width: 40rem; /* 640px */
+  width: 40rem !important; /* 640px */
 }
 .fix-width-8 {
-  width: 48rem; /* 768px */
+  width: 48rem !important; /* 768px */
 }
 .fix-width-9 {
-  width: 56rem; /* 896px */
+  width: 56rem !important; /* 896px */
 }
 .fix-width-10 {
-  width: 64rem; /* 1024px */
+  width: 64rem !important; /* 1024px */
 }
 .fix-width-11 {
-  width: 72rem; /* 1152px */
+  width: 72rem !important; /* 1152px */
 }
 .fix-width-12 {
-  width: 80rem; /* 1280px */
+  width: 80rem !important; /* 1280px */
 }
 
 /* fixed pixel width -------------------------------------------------- */
 .width-300 {
-  width: 300px;
+  width: 300px !important;
 }
 .width-480 {
-  width: 480px;
+  width: 480px !important;
 }
 .width-530 {
-  width: 530px;
+  width: 530px !important;
 }
 .width-680 {
-  width: 680px;
+  width: 680px !important;
 }
 
 /* fixed height ------------------------------------------------------- */
