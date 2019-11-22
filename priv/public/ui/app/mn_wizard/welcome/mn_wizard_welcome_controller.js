@@ -1,18 +1,12 @@
-(function () {
-  "use strict";
+export default mnWizardWelcomeController;
 
-  angular
-    .module("mnWizard")
-    .controller("mnWizardWelcomeController", mnWizardWelcomeController);
+function mnWizardWelcomeController(pools, mnWizardService) {
+  var vm = this;
 
-  function mnWizardWelcomeController(pools, mnWizardService) {
-    var vm = this;
+  vm.implementationVersion = pools.implementationVersion;
+  vm.setIsNewClusterFlag = setIsNewClusterFlag;
 
-    vm.implementationVersion = pools.implementationVersion;
-    vm.setIsNewClusterFlag = setIsNewClusterFlag;
-
-    function setIsNewClusterFlag(value) {
-      mnWizardService.getState().isNewCluster = value;
-    }
+  function setIsNewClusterFlag(value) {
+    mnWizardService.getState().isNewCluster = value;
   }
-})();
+}

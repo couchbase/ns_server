@@ -1,30 +1,30 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
 
-  angular
-    .module("mnBucketsStats", [])
-    .factory("mnBucketsStats", mnBucketsFactory);
+export default "mnBucketsStats";
 
-  function mnBucketsFactory($http, $cacheFactory) {
-    var mnBucketsStats = {
-      get: get,
-      clearCache: clearCache,
-    };
+angular
+  .module("mnBucketsStats", [])
+  .factory("mnBucketsStats", mnBucketsFactory);
 
-    return mnBucketsStats;
+function mnBucketsFactory($http, $cacheFactory) {
+  var mnBucketsStats = {
+    get: get,
+    clearCache: clearCache,
+  };
 
-    function get(mnHttpParams) {
-      return $http({
-        method: "GET",
-        cache: true,
-        url: '/pools/default/buckets?basic_stats=true&skipMap=true',
-        mnHttp: mnHttpParams
-      });
-    }
+  return mnBucketsStats;
 
-    function clearCache() {
-      $cacheFactory.get('$http').remove('/pools/default/buckets?basic_stats=true&skipMap=true');
-      return this;
-    }
+  function get(mnHttpParams) {
+    return $http({
+      method: "GET",
+      cache: true,
+      url: '/pools/default/buckets?basic_stats=true&skipMap=true',
+      mnHttp: mnHttpParams
+    });
   }
-})();
+
+  function clearCache() {
+    $cacheFactory.get('$http').remove('/pools/default/buckets?basic_stats=true&skipMap=true');
+    return this;
+  }
+}

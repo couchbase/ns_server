@@ -1,22 +1,22 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
 
-  angular
-    .module('mnPeriod', [])
-    .directive('mnPeriod', mnPeriodDirective);
+export default "mnPeriod";
 
-   function mnPeriodDirective() {
-    var mnPeriod = {
-      restrict: 'A',
-      scope: {
-        mnPeriod: "@",
-        autoCompactionSettings: '=',
-        errors: "=",
-        rbac: "="
-      },
-      templateUrl: 'app/components/directives/mn_period/mn_period.html'
-    };
+angular
+  .module('mnPeriod', [])
+  .directive('mnPeriod', mnPeriodDirective);
 
-    return mnPeriod;
-  }
-})();
+function mnPeriodDirective() {
+  var mnPeriod = {
+    restrict: 'A',
+    scope: {
+      mnPeriod: "@",
+      autoCompactionSettings: '=',
+      errors: "=",
+      rbac: "="
+    },
+    templateUrl: 'app/components/directives/mn_period/mn_period.html'
+  };
+
+  return mnPeriod;
+}

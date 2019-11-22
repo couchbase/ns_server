@@ -1,20 +1,15 @@
-(function () {
-  "use strict";
+export default mnDocumentsCreateDialogController;
 
-  angular
-    .module("mnDocuments")
-    .controller("mnDocumentsCreateDialogController", mnDocumentsCreateDialogController);
+function mnDocumentsCreateDialogController($scope, mnDocumentsEditingService, mnPromiseHelper, $state, $uibModalInstance, doc) {
+  var vm = this;
+  vm.onSubmit = onSubmit;
 
-  function mnDocumentsCreateDialogController($scope, mnDocumentsEditingService, mnPromiseHelper, $state, $uibModalInstance, doc) {
-    var vm = this;
-    vm.onSubmit = onSubmit;
-
-    function onSubmit() {
-      var newDocumentParams = {
-        bucket: $state.params.bucket,
-        documentId: vm.documentId
-      };
-      var promise = mnDocumentsEditingService.getDocument(newDocumentParams)
+  function onSubmit() {
+    var newDocumentParams = {
+      bucket: $state.params.bucket,
+      documentId: vm.documentId
+    };
+    var promise = mnDocumentsEditingService.getDocument(newDocumentParams)
         .then(function () {
           vm.error = "Document with given ID already exists";
         }, function (resp) {
@@ -36,9 +31,8 @@
             vm.error = resp.data && resp.data.reason;
           }
         });
-      mnPromiseHelper($scope, promise, $uibModalInstance)
-        .showGlobalSpinner()
-        .showGlobalSuccess("Document created successfully!");
-    }
+    mnPromiseHelper($scope, promise, $uibModalInstance)
+      .showGlobalSpinner()
+      .showGlobalSuccess("Document created successfully!");
   }
-})();
+}

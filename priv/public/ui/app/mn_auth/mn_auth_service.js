@@ -1,87 +1,88 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
+import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
+import mnPools from "/ui/app/components/mn_pools.js";
+import _ from "/ui/web_modules/lodash.js";
 
-  angular.module('mnAuthService', [
-    'mnPools',
-    'ui.router',
-    'mnPendingQueryKeeper',
-    'mnPermissions'
-  ]).factory('mnAuthService', mnAuthServiceFactory);
+export default 'mnAuthService';
 
-  function mnAuthServiceFactory($http, $state, mnPools, $rootScope, mnPendingQueryKeeper, mnPermissions, $uibModalStack, $window, $q, $cacheFactory) {
-    var mnAuthService = {
-      login: login,
-      logout: _.once(logout),
-      whoami: whoami,
-      canUseCertForAuth: canUseCertForAuth
-    };
+angular
+  .module('mnAuthService', [mnPools, uiRouter])
+  .factory('mnAuthService', mnAuthServiceFactory);
 
-    return mnAuthService;
+function mnAuthServiceFactory(mnPools, $http, $uibModalStack, $window, $q) {
+  var mnAuthService = {
+    login: login,
+    logout: _.once(logout),
+    whoami: whoami,
+    canUseCertForAuth: canUseCertForAuth
+  };
 
-    function whoami() {
-      return $http({
-        method: 'GET',
-        cache: true,
-        url: '/whoami'
-      }).then(function (resp) {
-        return resp.data;
-      });
-    }
+  return mnAuthService;
 
-    function canUseCertForAuth() {
-      return $http({
-        method: 'GET',
-        url: '/_ui/canUseCertForAuth'
-      }).then(function (r) {
-        return r.data;
-      });
-    }
-
-    function login(user, useCertForAuth) {
-      var config = {
-        method: 'POST',
-        url: '/uilogin'
-      }
-
-      if (useCertForAuth) {
-        config.params = {
-          use_cert_for_auth: 1
-        };
-      } else {
-        user = user || {};
-        config.data = {
-          user: user.username,
-          password: user.password
-        };
-      }
-
-      return $http(config).then(function (resp) {
-        return mnPools.get().then(function (cachedPools) {
-          mnPools.clearCache();
-          return mnPools.get().then(function (newPools) {
-            if (cachedPools.implementationVersion !== newPools.implementationVersion) {
-              return $q.reject({status: 410});
-            } else {
-              return resp;
-            }
-          });
-        }).then(function (resp) {
-          localStorage.setItem("mnLogIn",
-                               Number(localStorage.getItem("mnLogIn") || "0") + 1);
-          return resp;
-        })
-      });
-    }
-    function logout() {
-      $uibModalStack.dismissAll("uilogout");
-      return $http({
-        method: 'POST',
-        url: "/uilogout"
-      }).then(function () {
-        $window.location.reload();
-      }, function () {
-        $window.location.reload();
-      });
-    }
+  function whoami() {
+    return $http({
+      method: 'GET',
+      cache: true,
+      url: '/whoami'
+    }).then(function (resp) {
+      return resp.data;
+    });
   }
-})();
+
+  function canUseCertForAuth() {
+    return $http({
+      method: 'GET',
+      url: '/_ui/canUseCertForAuth'
+    }).then(function (r) {
+      return r.data;
+    });
+  }
+
+  function login(user, useCertForAuth) {
+    var config = {
+      method: 'POST',
+      url: '/uilogin'
+    }
+
+    if (useCertForAuth) {
+      config.params = {
+        use_cert_for_auth: 1
+      };
+    } else {
+      user = user || {};
+      config.data = {
+        user: user.username,
+        password: user.password
+      };
+    }
+
+    return $http(config).then(function (resp) {
+      return mnPools.get().then(function (cachedPools) {
+        mnPools.clearCache();
+        return mnPools.get().then(function (newPools) {
+          if (cachedPools.implementationVersion !== newPools.implementationVersion) {
+            return $q.reject({status: 410});
+          } else {
+            return resp;
+          }
+        });
+      }).then(function (resp) {
+        localStorage.setItem("mnLogIn",
+                             Number(localStorage.getItem("mnLogIn") || "0") + 1);
+        return resp;
+      })
+    });
+  }
+
+  function logout() {
+    $uibModalStack.dismissAll("uilogout");
+    return $http({
+      method: 'POST',
+      url: "/uilogout"
+    }).then(function () {
+      $window.location.reload();
+    }, function () {
+      $window.location.reload();
+    });
+  }
+}

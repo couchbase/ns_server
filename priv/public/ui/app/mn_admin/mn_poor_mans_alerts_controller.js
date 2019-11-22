@@ -1,24 +1,28 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
 
-  angular
-    .module("mnPoorMansAlerts", [
-      "mnPromiseHelper",
-      "mnPoorMansAlertsService",
-      "mnSpinner"
-    ])
-    .controller("mnPoorMansAlertsController", mnPoorMansAlertsController);
+import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
+import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
+import mnPoorMansAlertsService from "./mn_poor_mans_alerts_service.js";
 
-  function mnPoorMansAlertsController(mnPromiseHelper, mnPoorMansAlertsService, alertsSilenceURL, alerts, $uibModalInstance) {
-    var vm = this;
+export default "mnPoorMansAlerts";
 
-    vm.alerts = alerts;
-    vm.onClose = onClose;
+angular
+  .module("mnPoorMansAlerts", [
+    mnSpinner,
+    mnPromiseHelper,
+    mnPoorMansAlertsService
+  ])
+  .controller("mnPoorMansAlertsController", mnPoorMansAlertsController);
 
-    function onClose() {
-      mnPromiseHelper(vm, mnPoorMansAlertsService.postAlertsSilenceURL(alertsSilenceURL), $uibModalInstance)
-        .showGlobalSpinner()
-        .closeOnSuccess();
-    }
+function mnPoorMansAlertsController(mnPromiseHelper, mnPoorMansAlertsService, alertsSilenceURL, alerts, $uibModalInstance) {
+  var vm = this;
+
+  vm.alerts = alerts;
+  vm.onClose = onClose;
+
+  function onClose() {
+    mnPromiseHelper(vm, mnPoorMansAlertsService.postAlertsSilenceURL(alertsSilenceURL), $uibModalInstance)
+      .showGlobalSpinner()
+      .closeOnSuccess();
   }
-})();
+}

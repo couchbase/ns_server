@@ -1,38 +1,42 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
+import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
+import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
 
-  angular
-    .module("mnInternalSettings", [
-      "mnInternalSettingsService",
-      "mnPromiseHelper",
-      "mnSpinner"
-    ])
-    .controller("mnInternalSettingsController", mnInternalSettingsController);
+import mnInternalSettingsService from "./mn_internal_settings_service.js";
 
-  function mnInternalSettingsController($scope, mnInternalSettingsService, mnPromiseHelper, mnPoolDefault, $uibModalInstance) {
-    var vm = this;
+export default "mnInternalSettings";
 
-    vm.onSubmit = onSubmit;
-    vm.mnPoolDefault = mnPoolDefault.latestValue();
+angular
+  .module("mnInternalSettings", [
+    mnPromiseHelper,
+    mnSpinner,
+    mnInternalSettingsService
+  ])
+  .controller("mnInternalSettingsController", mnInternalSettingsController);
 
-    activate();
+function mnInternalSettingsController(mnInternalSettingsService, mnPromiseHelper, mnPoolDefault, $uibModalInstance) {
+  var vm = this;
 
-    function onSubmit() {
-      if (vm.viewLoading) {
-        return;
-      }
-      mnPromiseHelper(vm, mnInternalSettingsService.save(vm.state), $uibModalInstance)
-        .showGlobalSpinner()
-        .catchErrors()
-        .closeOnSuccess()
-        .reloadState()
-        .showGlobalSuccess("Settings saved successfully!");
+  vm.onSubmit = onSubmit;
+  vm.mnPoolDefault = mnPoolDefault.latestValue();
+
+  activate();
+
+  function onSubmit() {
+    if (vm.viewLoading) {
+      return;
     }
-
-    function activate() {
-      mnPromiseHelper(vm, mnInternalSettingsService.getState())
-        .showSpinner()
-        .applyToScope("state");
-    }
+    mnPromiseHelper(vm, mnInternalSettingsService.save(vm.state), $uibModalInstance)
+      .showGlobalSpinner()
+      .catchErrors()
+      .closeOnSuccess()
+      .reloadState()
+      .showGlobalSuccess("Settings saved successfully!");
   }
-})();
+
+  function activate() {
+    mnPromiseHelper(vm, mnInternalSettingsService.getState())
+      .showSpinner()
+      .applyToScope("state");
+  }
+}

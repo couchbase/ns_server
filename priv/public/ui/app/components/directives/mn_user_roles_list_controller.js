@@ -1,112 +1,111 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
+import mnFilters from "/ui/app/components/mn_filters.js";
+import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
+import mnUserRolesService from "/ui/app/mn_admin/mn_user_roles_service.js";
 
-  angular
-    .module('mnUserRolesList', [
-      "mnFilters",
-      "mnUserRolesService",
-      "mnPromiseHelper"
-    ])
-    .directive('mnUserRolesList', mnUserRolesListDirective);
+export default "mnUserRolesList";
 
-   function mnUserRolesListDirective() {
-    var mnUserRolesList = {
-      restrict: 'E',
-      scope: {
-        rolesToEnable: "=?",
-        selectedRoles: "=",
-        selectedWrappers: "=?",
-        selectedGroupsRoles: "=?"
-      },
-      templateUrl: 'app/components/directives/mn_user_roles_list.html',
-      controller: mnUserRolesListController,
-      controllerAs: "mnThisCtl",
-      bindToController: true
-    };
+angular
+  .module('mnUserRolesList', [mnFilters, mnUserRolesService, mnPromiseHelper])
+  .directive('mnUserRolesList', mnUserRolesListDirective);
 
-     return mnUserRolesList;
+function mnUserRolesListDirective() {
+  var mnUserRolesList = {
+    restrict: 'E',
+    scope: {
+      rolesToEnable: "=?",
+      selectedRoles: "=",
+      selectedWrappers: "=?",
+      selectedGroupsRoles: "=?"
+    },
+    templateUrl: 'app/components/directives/mn_user_roles_list.html',
+    controller: mnUserRolesListController,
+    controllerAs: "mnThisCtl",
+    bindToController: true
+  };
 
-     function mnUserRolesListController(mnUserRolesService, mnPromiseHelper) {
-       var vm = this;
+  return mnUserRolesList;
 
-       vm.openedWrappers = {};
+  function mnUserRolesListController(mnUserRolesService, mnPromiseHelper) {
+    var vm = this;
 
-       vm.getUIID = mnUserRolesService.getRoleUIID;
+    vm.openedWrappers = {};
 
-       vm.toggleWrappers = toggleWrappers;
-       vm.isRoleDisabled = isRoleDisabled;
-       vm.onCheckChange = onCheckChange;
-       vm.getGroupsList = getGroupsList;
-       vm.hasGroups = hasGroups;
+    vm.getUIID = mnUserRolesService.getRoleUIID;
 
-       activate();
+    vm.toggleWrappers = toggleWrappers;
+    vm.isRoleDisabled = isRoleDisabled;
+    vm.onCheckChange = onCheckChange;
+    vm.getGroupsList = getGroupsList;
+    vm.hasGroups = hasGroups;
 
-       function hasGroups(id) {
-         if (vm.selectedGroupsRoles && vm.selectedGroupsRoles[id]) {
-           return !!Object.keys(vm.selectedGroupsRoles[id]).length;
-         } else {
-           return false;
-         }
-       }
+    activate();
 
-       function getGroupsList(id) {
-         return Object.keys(vm.selectedGroupsRoles[id]).join(", ");
-       }
+    function hasGroups(id) {
+      if (vm.selectedGroupsRoles && vm.selectedGroupsRoles[id]) {
+        return !!Object.keys(vm.selectedGroupsRoles[id]).length;
+      } else {
+        return false;
+      }
+    }
 
-       function activate() {
-         vm.openedWrappers[vm.getUIID({role: "admin"}, true)] = true;
+    function getGroupsList(id) {
+      return Object.keys(vm.selectedGroupsRoles[id]).join(", ");
+    }
 
-         mnPromiseHelper(vm, mnUserRolesService.getRoles())
-           .showSpinner()
-           .onSuccess(function (roles) {
-             vm.allRoles = roles;
-             vm.rolesTree = mnUserRolesService.getRolesTree(roles);
-             if (vm.rolesToEnable) {
-               // user.roles
-               vm.rolesToEnable.forEach(function (role) {
-                 var id = vm.getUIID(role);
-                 vm.selectedRoles[id] = true;
-                 onCheckChange(role, id);
-               });
-             }
-           });
-       }
+    function activate() {
+      vm.openedWrappers[vm.getUIID({role: "admin"}, true)] = true;
 
-       function onCheckChange(role, id) {
-         var selectedRoles;
-         if (vm.selectedRoles[id]) {
-           if (role.role === "admin") {
-             selectedRoles = {};
-             selectedRoles[id] = true;
-             vm.selectedRoles = selectedRoles;
-           } else if (role.bucket_name === "*") {
-             vm.allRoles.forEach(function (item) {
-               if (item.bucket_name !== undefined &&
-                   item.bucket_name !== "*" &&
-                   item.role === role.role) {
-                 vm.selectedRoles[vm.getUIID(item)] = false;
-               }
-             });
-           }
-         }
+      mnPromiseHelper(vm, mnUserRolesService.getRoles())
+        .showSpinner()
+        .onSuccess(function (roles) {
+          vm.allRoles = roles;
+          vm.rolesTree = mnUserRolesService.getRolesTree(roles);
+          if (vm.rolesToEnable) {
+            // user.roles
+            vm.rolesToEnable.forEach(function (role) {
+              var id = vm.getUIID(role);
+              vm.selectedRoles[id] = true;
+              onCheckChange(role, id);
+            });
+          }
+        });
+    }
 
-         reviewSelectedWrappers();
-       }
+    function onCheckChange(role, id) {
+      var selectedRoles;
+      if (vm.selectedRoles[id]) {
+        if (role.role === "admin") {
+          selectedRoles = {};
+          selectedRoles[id] = true;
+          vm.selectedRoles = selectedRoles;
+        } else if (role.bucket_name === "*") {
+          vm.allRoles.forEach(function (item) {
+            if (item.bucket_name !== undefined &&
+                item.bucket_name !== "*" &&
+                item.role === role.role) {
+              vm.selectedRoles[vm.getUIID(item)] = false;
+            }
+          });
+        }
+      }
 
-       function reviewSelectedWrappers() {
-         vm.selectedWrappers =
-           mnUserRolesService.reviewSelectedWrappers(vm.selectedRoles, vm.selectedGroupsRoles);
-       }
+      reviewSelectedWrappers();
+    }
 
-       function isRoleDisabled(role) {
-         return (role.role !== 'admin' && vm.selectedRoles[vm.getUIID({role: 'admin'})]) ||
-           (role.bucket_name !== '*' &&
-            vm.selectedRoles[vm.getUIID({role: role.role, bucket_name: '*'})]);
-       }
+    function reviewSelectedWrappers() {
+      vm.selectedWrappers =
+        mnUserRolesService.reviewSelectedWrappers(vm.selectedRoles, vm.selectedGroupsRoles);
+    }
 
-       function toggleWrappers(id, value) {
-         vm.openedWrappers[id] = !vm.openedWrappers[id];
-       }
-     }
+    function isRoleDisabled(role) {
+      return (role.role !== 'admin' && vm.selectedRoles[vm.getUIID({role: 'admin'})]) ||
+        (role.bucket_name !== '*' &&
+         vm.selectedRoles[vm.getUIID({role: role.role, bucket_name: '*'})]);
+    }
+
+    function toggleWrappers(id, value) {
+      vm.openedWrappers[id] = !vm.openedWrappers[id];
+    }
   }
-})();
+}

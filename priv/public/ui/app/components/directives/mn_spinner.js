@@ -1,33 +1,33 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
 
-  angular
-    .module('mnSpinner', [])
-    .directive('mnSpinner', mnSpinnerDirective);
+export default "mnSpinner";
 
-    function mnSpinnerDirective($compile) {
-      var directive = {
-        restrict: 'A',
-        scope: {
-          mnSpinner: '=',
-          minHeight: '@',
-          opacity: '@'
-        },
-        link: link
-      };
+angular
+  .module('mnSpinner', [])
+  .directive('mnSpinner', mnSpinnerDirective);
 
-      return directive;
+function mnSpinnerDirective($compile) {
+  var directive = {
+    restrict: 'A',
+    scope: {
+      mnSpinner: '=',
+      minHeight: '@',
+      opacity: '@'
+    },
+    link: link
+  };
 
-      function link($scope, $element) {
-        var spinner = angular.element("<div class=\"spinner\" ng-show=\"mnSpinner\"></div>");
-        if ($scope.opacity) {
-          spinner.addClass("opacity");
-        }
-        if ($scope.minHeight) {
-          spinner.css({minHeight: $scope.minHeight});
-        }
-        $element.addClass("relative");
-        $element.append($compile(spinner)($scope));
-      }
+  return directive;
+
+  function link($scope, $element) {
+    var spinner = angular.element("<div class=\"spinner\" ng-show=\"mnSpinner\"></div>");
+    if ($scope.opacity) {
+      spinner.addClass("opacity");
     }
-})();
+    if ($scope.minHeight) {
+      spinner.css({minHeight: $scope.minHeight});
+    }
+    $element.addClass("relative");
+    $element.append($compile(spinner)($scope));
+  }
+}

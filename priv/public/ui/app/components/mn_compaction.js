@@ -1,59 +1,59 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
+import _ from "/ui/web_modules/lodash.js";
 
-  angular
-    .module('mnCompaction', [
-    ])
-    .factory('mnCompaction', mnCompactionFactory);
+export default "mnCompaction";
 
-  function mnCompactionFactory($interval, $http) {
-    var startedCompactions = {};
-    var mnCompaction = {
-      registerAsTriggered: registerAsTriggered,
-      registerAsTriggeredAndPost: registerAsTriggeredAndPost,
-      getStartedCompactions: getStartedCompactions,
-      canCompact: canCompact
-    };
+angular
+  .module('mnCompaction', [])
+  .factory('mnCompaction', mnCompactionFactory);
 
-    activate();
+function mnCompactionFactory($interval, $http) {
+  var startedCompactions = {};
+  var mnCompaction = {
+    registerAsTriggered: registerAsTriggered,
+    registerAsTriggeredAndPost: registerAsTriggeredAndPost,
+    getStartedCompactions: getStartedCompactions,
+    canCompact: canCompact
+  };
 
-    return mnCompaction;
+  activate();
 
-    function activate() {
-      $interval(function () {
-        _.each(startedCompactions, mayBeExpired);
-      }, 2000);
-    }
-    function now() {
-      return new Date().valueOf();
-    }
-    function mayBeExpired(desc, key) {
-      if (desc.staredAt < now()) {
-        desc.undoBody();
-        delete startedCompactions[key];
-      }
-    }
-    function registerAsTriggered(url, undoBody) {
-      if (startedCompactions[url]) {
-        mayBeExpired(startedCompactions[url], url);
-      } else {
-        startedCompactions[url] = {
-          url: url,
-          undoBody: undoBody || new Function(),
-          staredAt: now() + 10000
-        };
-      }
-    }
-    function registerAsTriggeredAndPost(url, undoBody) {
-      mnCompaction.registerAsTriggered(url, undoBody);
-      return $http.post(url);
-    }
-    function getStartedCompactions() {
-      return startedCompactions;
-    }
-    function canCompact(url) {
-      var desc = startedCompactions[url];
-      return desc ? desc.staredAt <= now() : true;
+  return mnCompaction;
+
+  function activate() {
+    $interval(function () {
+      _.each(startedCompactions, mayBeExpired);
+    }, 2000);
+  }
+  function now() {
+    return new Date().valueOf();
+  }
+  function mayBeExpired(desc, key) {
+    if (desc.staredAt < now()) {
+      desc.undoBody();
+      delete startedCompactions[key];
     }
   }
-})();
+  function registerAsTriggered(url, undoBody) {
+    if (startedCompactions[url]) {
+      mayBeExpired(startedCompactions[url], url);
+    } else {
+      startedCompactions[url] = {
+        url: url,
+        undoBody: undoBody || new Function(),
+        staredAt: now() + 10000
+      };
+    }
+  }
+  function registerAsTriggeredAndPost(url, undoBody) {
+    mnCompaction.registerAsTriggered(url, undoBody);
+    return $http.post(url);
+  }
+  function getStartedCompactions() {
+    return startedCompactions;
+  }
+  function canCompact(url) {
+    var desc = startedCompactions[url];
+    return desc ? desc.staredAt <= now() : true;
+  }
+}

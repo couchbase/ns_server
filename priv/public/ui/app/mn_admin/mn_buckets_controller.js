@@ -1,88 +1,116 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
+import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
 
-  angular
-    .module('mnBuckets', [
-      'mnHelper',
-      'mnBucketsService',
-      'ui.bootstrap',
-      'mnBucketsDetailsDialogService',
-      'mnBarUsage',
-      'mnBucketsForm',
-      'mnPromiseHelper',
-      'mnPoll',
-      'mnPoolDefault',
-      'mnSpinner',
-      'mnSearch',
-      'mnFilters',
-      'mnTasksDetails',
-      'mnWarmupProgress',
-      'mnElementCrane',
-      'mnSortableTable'
-    ])
-    .controller('mnBucketsController', mnBucketsController);
+import mnBucketsDeleteDialogController from "./mn_buckets_delete_dialog_controller.js";
+import mnBucketsDetailsController from "./mn_buckets_details_controller.js";
+import mnBucketsDetailsDialogController from "./mn_buckets_details_dialog_controller.js";
+import mnBucketsFlushDialogController from "./mn_buckets_flush_dialog_controller.js";
+import mnBucketsListItemController from "./mn_buckets_list_item_controller.js";
+import mnBucketsList from "./mn_buckets_list_directive.js";
+import mnBucketsDetailsDialogService from "./mn_buckets_details_dialog_service.js";
 
-  function mnBucketsController($scope, mnBucketsService, mnHelper, mnPoolDefault, mnPromiseHelper, mnPoller, $uibModal, $rootScope, $interval) {
-    var vm = this;
+import mnHelper from "/ui/app/components/mn_helper.js";
+import mnBarUsage from "/ui/app/components/directives/mn_bar_usage/mn_bar_usage.js";
+import mnBucketsForm from "/ui/app/components/directives/mn_buckets_form/mn_buckets_form.js";
+import mnSearch from "/ui/app/components/directives/mn_search/mn_search_directive.js";
+import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
+import mnPoll from "/ui/app/components/mn_poll.js";
+import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
+import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
+import mnFilters from "/ui/app/components/mn_filters.js";
+import mnTasksDetails from "/ui/app/components/mn_tasks_details.js";
+import mnWarmupProgress from "/ui/app/components/directives/mn_warmup_progress/mn_warmup_progress.js";
+import mnElementCrane from "/ui/app/components/directives/mn_element_crane/mn_element_crane.js";
+import mnSortableTable from "/ui/app/components/directives/mn_sortable_table.js";
 
-    var poolDefault = mnPoolDefault.latestValue();
+export default 'mnBuckets';
 
-    vm.isCreateNewDataBucketDisabled = isCreateNewDataBucketDisabled;
-    vm.isBucketCreationWarning = isBucketCreationWarning;
-    vm.isMaxBucketCountWarning = isMaxBucketCountWarning;
-    vm.areThereCreationWarnings = areThereCreationWarnings;
-    vm.addBucket = addBucket;
+angular
+  .module('mnBuckets', [
+    mnHelper,
+    uiBootstrap,
+    mnBucketsDetailsDialogService,
+    mnBarUsage,
+    mnBucketsForm,
+    mnPromiseHelper,
+    mnPoll,
+    mnPoolDefault,
+    mnSpinner,
+    mnSearch,
+    mnFilters,
+    mnTasksDetails,
+    mnWarmupProgress,
+    mnElementCrane,
+    mnSortableTable
+  ])
+  .controller('mnBucketsController', mnBucketsController)
+  .controller('mnBucketsDeleteDialogController', mnBucketsDeleteDialogController)
+  .controller('mnBucketsDetailsController', mnBucketsDetailsController)
+  .controller('mnBucketsDetailsDialogController', mnBucketsDetailsDialogController)
+  .controller('mnBucketsFlushDialogController', mnBucketsFlushDialogController)
+  .controller('mnBucketsListItemController', mnBucketsListItemController)
+  .directive('mnBucketsList', mnBucketsList);
 
-    vm.maxBucketCount = poolDefault.value.maxBucketCount;
+function mnBucketsController($scope, mnPoolDefault, mnPromiseHelper, $uibModal, $rootScope, $interval) {
+  var vm = this;
 
-    activate();
+  var poolDefault = mnPoolDefault.latestValue();
 
-    function activate() {
-      var pull = $interval(function () {
-        $rootScope.$broadcast("reloadBucketStats");
-      }, 3000);
+  vm.isCreateNewDataBucketDisabled = isCreateNewDataBucketDisabled;
+  vm.isBucketCreationWarning = isBucketCreationWarning;
+  vm.isMaxBucketCountWarning = isMaxBucketCountWarning;
+  vm.areThereCreationWarnings = areThereCreationWarnings;
+  vm.addBucket = addBucket;
 
+  vm.maxBucketCount = poolDefault.value.maxBucketCount;
+
+  activate();
+
+  function activate() {
+    var pull = $interval(function () {
       $rootScope.$broadcast("reloadBucketStats");
+    }, 3000);
 
-      $scope.$on('$destroy', function () {
-        $interval.cancel(pull);
-      });
-    }
+    $rootScope.$broadcast("reloadBucketStats");
 
-    function isCreateNewDataBucketDisabled() {
-      return !$scope.buckets || !$scope.buckets.details || areThereCreationWarnings();
-    }
-    function isBucketCreationWarning() {
-      return poolDefault.value.rebalancing;
-    }
-    function isMaxBucketCountWarning() {
-      return (($scope.buckets && $scope.buckets.details) || []).length >= poolDefault.value.maxBucketCount;
-    }
-    function areThereCreationWarnings() {
-      return isMaxBucketCountWarning() || isBucketCreationWarning();
-    }
-    function addBucket() {
-      mnPromiseHelper(vm, mnPoolDefault.getFresh())
-        .onSuccess(function (poolDefault) {
-          if (poolDefault.storageTotals.ram.quotaTotal === poolDefault.storageTotals.ram.quotaUsed) {
-            $uibModal.open({
-              templateUrl: 'app/mn_admin/mn_bucket_full_dialog.html'
-            });
-          } else {
-            !areThereCreationWarnings() && $uibModal.open({
-              templateUrl: 'app/mn_admin/mn_buckets_details_dialog.html',
-              controller: 'mnBucketsDetailsDialogController as bucketsDetailsDialogCtl',
-              resolve: {
-                bucketConf: function (mnBucketsDetailsDialogService) {
-                  return mnBucketsDetailsDialogService.getNewBucketConf();
-                },
-                autoCompactionSettings: function (mnSettingsAutoCompactionService) {
-                  return mnSettingsAutoCompactionService.getAutoCompaction(true);
-                }
-              }
-            });
-          }
-        });
-    }
+    $scope.$on('$destroy', function () {
+      $interval.cancel(pull);
+    });
   }
-})();
+
+  function isCreateNewDataBucketDisabled() {
+    return !$scope.buckets || !$scope.buckets.details || areThereCreationWarnings();
+  }
+  function isBucketCreationWarning() {
+    return poolDefault.value.rebalancing;
+  }
+  function isMaxBucketCountWarning() {
+    return (($scope.buckets && $scope.buckets.details) || []).length >= poolDefault.value.maxBucketCount;
+  }
+  function areThereCreationWarnings() {
+    return isMaxBucketCountWarning() || isBucketCreationWarning();
+  }
+  function addBucket() {
+    mnPromiseHelper(vm, mnPoolDefault.getFresh())
+      .onSuccess(function (poolDefault) {
+        if (poolDefault.storageTotals.ram.quotaTotal === poolDefault.storageTotals.ram.quotaUsed) {
+          $uibModal.open({
+            templateUrl: 'app/mn_admin/mn_bucket_full_dialog.html'
+          });
+        } else {
+          !areThereCreationWarnings() && $uibModal.open({
+            templateUrl: 'app/mn_admin/mn_buckets_details_dialog.html',
+            controller: 'mnBucketsDetailsDialogController as bucketsDetailsDialogCtl',
+            resolve: {
+              bucketConf: function (mnBucketsDetailsDialogService) {
+                return mnBucketsDetailsDialogService.getNewBucketConf();
+              },
+              autoCompactionSettings: function (mnSettingsAutoCompactionService) {
+                return mnSettingsAutoCompactionService.getAutoCompaction(true);
+              }
+            }
+          });
+        }
+      });
+  }
+}

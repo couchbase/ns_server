@@ -1,25 +1,25 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
 
-  angular
-    .module('mnMinlength', [])
-    .directive('mnMinlength', mnMinlengthDirective);
+export default "mnMinlength";
 
-  function mnMinlengthDirective() {
-    var mnMinlength = {
-      restrict: 'A',
-      require: 'ngModel',
-      link: link
-    };
-    return mnMinlength;
+angular
+  .module('mnMinlength', [])
+  .directive('mnMinlength', mnMinlengthDirective);
 
-    function link(scope, element, attrs, ctrl) {
+function mnMinlengthDirective() {
+  var mnMinlength = {
+    restrict: 'A',
+    require: 'ngModel',
+    link: link
+  };
+  return mnMinlength;
 
-      ctrl.$parsers.unshift(function (value) {
-        var min = attrs.mnMinlength;
-        ctrl.$setValidity('mnMinlength', min && value && value.length >= parseInt(min));
-        return value;
-      });
-    }
+  function link(scope, element, attrs, ctrl) {
+
+    ctrl.$parsers.unshift(function (value) {
+      var min = attrs.mnMinlength;
+      ctrl.$setValidity('mnMinlength', min && value && value.length >= parseInt(min));
+      return value;
+    });
   }
-})();
+}

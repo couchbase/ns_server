@@ -1,33 +1,33 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
 
-  angular
-    .module("mnInternalSettingsService", [])
-    .factory("mnInternalSettingsService", mnInternalSettingsFactory);
+export default "mnInternalSettingsService";
 
-  function mnInternalSettingsFactory($http) {
-    var mnInternalSettingsService = {
-      getState: getState,
-      save: save
-    };
+angular
+  .module("mnInternalSettingsService", [])
+  .factory("mnInternalSettingsService", mnInternalSettingsFactory);
 
-    return mnInternalSettingsService;
+function mnInternalSettingsFactory($http) {
+  var mnInternalSettingsService = {
+    getState: getState,
+    save: save
+  };
 
-    function save(data) {
-      return $http({
-        method: "POST",
-        url: "/internalSettings",
-        data: data
-      });
-    }
+  return mnInternalSettingsService;
 
-    function getState() {
-      return $http({
-        method: "GET",
-        url: "/internalSettings"
-      }).then(function (resp) {
-        return resp.data;
-      })
-    }
+  function save(data) {
+    return $http({
+      method: "POST",
+      url: "/internalSettings",
+      data: data
+    });
   }
-})();
+
+  function getState() {
+    return $http({
+      method: "GET",
+      url: "/internalSettings"
+    }).then(function (resp) {
+      return resp.data;
+    })
+  }
+}

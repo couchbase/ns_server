@@ -1,38 +1,38 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
 
-  angular
-    .module('mnFocus', [])
-    .directive('mnFocus', mnFocusDirective);
+export default 'mnFocus';
 
-  function mnFocusDirective($parse) {
-    var mnFocus = {
-      link: link
-    };
+angular
+  .module('mnFocus', [])
+  .directive('mnFocus', mnFocusDirective);
 
-    return mnFocus;
+function mnFocusDirective($parse) {
+  var mnFocus = {
+    link: link
+  };
 
-    function link($scope, $element, $attrs) {
+  return mnFocus;
 
-      if ($attrs.mnFocus === "") {
-        return $element[0].focus();
+  function link($scope, $element, $attrs) {
+
+    if ($attrs.mnFocus === "") {
+      return $element[0].focus();
+    }
+
+    var getter = $parse($attrs.mnFocus);
+    var setter = getter.assign;
+    $scope.$watch($attrs.mnFocus, function (focus) {
+      focus && $element[0].focus();
+    });
+
+    if (setter) {
+      var handler = function handler() {
+        setter($scope, false);
       }
-
-      var getter = $parse($attrs.mnFocus);
-      var setter = getter.assign;
-      $scope.$watch($attrs.mnFocus, function (focus) {
-        focus && $element[0].focus();
-      });
-
-      if (setter) {
-        var handler = function handler() {
-          setter($scope, false);
-        }
-        $element.on('blur', handler);
-        $scope.$on('$destroy', function () {
-          $element.off('blur', handler);
-        })
-      }
+      $element.on('blur', handler);
+      $scope.$on('$destroy', function () {
+        $element.off('blur', handler);
+      })
     }
   }
-})();
+}

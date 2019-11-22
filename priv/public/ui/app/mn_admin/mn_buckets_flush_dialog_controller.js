@@ -1,22 +1,16 @@
-(function () {
-  "use strict";
+export default mnBucketsFlushDialogController;
 
-  angular
-    .module('mnBuckets')
-    .controller('mnBucketsFlushDialogController', mnBucketsFlushDialogController);
+function mnBucketsFlushDialogController($uibModalInstance, bucket, mnPromiseHelper, mnBucketsDetailsService) {
+  var vm = this;
+  vm.doFlush = doFlush;
 
-  function mnBucketsFlushDialogController($scope, $uibModalInstance, bucket, mnPromiseHelper, mnBucketsDetailsService) {
-    var vm = this;
-    vm.doFlush = doFlush;
-
-    function doFlush() {
-      var promise = mnBucketsDetailsService.flushBucket(bucket);
-      mnPromiseHelper(vm, promise, $uibModalInstance)
-        .showGlobalSpinner()
-        .closeFinally()
-        .catchGlobalErrors()
-        .broadcast("reloadBucketStats")
-        .showGlobalSuccess("Bucket flushed successfully!");
-    }
+  function doFlush() {
+    var promise = mnBucketsDetailsService.flushBucket(bucket);
+    mnPromiseHelper(vm, promise, $uibModalInstance)
+      .showGlobalSpinner()
+      .closeFinally()
+      .catchGlobalErrors()
+      .broadcast("reloadBucketStats")
+      .showGlobalSuccess("Bucket flushed successfully!");
   }
-})();
+}

@@ -1,27 +1,27 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
 
-  angular
-    .module("mnRootCertificateService", [])
-    .factory("mnRootCertificateService", mnRootCertificateFactory);
+export default "mnRootCertificateService";
 
-  function mnRootCertificateFactory($http, $q) {
-    var mnRootCertificateService = {
-      getDefaultCertificate: getDefaultCertificate
-    };
+angular
+  .module("mnRootCertificateService", [])
+  .factory("mnRootCertificateService", mnRootCertificateFactory);
 
-    return mnRootCertificateService;
+function mnRootCertificateFactory($http, $q) {
+  var mnRootCertificateService = {
+    getDefaultCertificate: getDefaultCertificate
+  };
 
-    function getDefaultCertificate() {
-      return $http({
-        method: 'GET',
-        url: '/pools/default/certificate',
-        params: {
-          extended: true
-        }
-      }).then(function (resp) {
-        return resp.data;
-      });
-    }
+  return mnRootCertificateService;
+
+  function getDefaultCertificate() {
+    return $http({
+      method: 'GET',
+      url: '/pools/default/certificate',
+      params: {
+        extended: true
+      }
+    }).then(function (resp) {
+      return resp.data;
+    });
   }
-})();
+}

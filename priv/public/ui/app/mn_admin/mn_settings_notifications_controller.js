@@ -1,31 +1,35 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
 
-  angular
-    .module('mnSettingsNotifications', [
-      'mnSettingsNotificationsService',
-      'mnPromiseHelper',
-      'mnSettingsClusterService'
-    ])
-    .controller('mnSettingsNotificationsController', mnSettingsNotificationsController);
+import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
+import mnSettingsNotificationsService from "./mn_settings_notifications_service.js";
+import mnSettingsClusterService from "./mn_settings_cluster_service.js"
 
-  function mnSettingsNotificationsController($scope, mnPromiseHelper, mnSettingsNotificationsService, pools, mnSettingsClusterService) {
-    var vm = this;
+export default "mnSettingsNotifications";
 
-    mnSettingsClusterService.registerSubmitCallback(submit);
-    vm.implementationVersion = pools.implementationVersion;
+angular
+  .module('mnSettingsNotifications', [
+    mnPromiseHelper,
+    mnSettingsNotificationsService,
+    mnSettingsClusterService
+  ])
+  .controller('mnSettingsNotificationsController', mnSettingsNotificationsController);
 
-    activate();
+function mnSettingsNotificationsController(mnPromiseHelper, mnSettingsNotificationsService, pools, mnSettingsClusterService) {
+  var vm = this;
 
-    function activate() {
-      mnPromiseHelper(vm, mnSettingsNotificationsService.maybeCheckUpdates())
-        .applyToScope("updates");
-    }
+  mnSettingsClusterService.registerSubmitCallback(submit);
+  vm.implementationVersion = pools.implementationVersion;
 
-    function submit() {
-      return mnPromiseHelper(vm, mnSettingsNotificationsService.saveSendStatsFlag(vm.updates.enabled))
-        .catchGlobalErrors('An error occured, update notifications settings were not saved.')
-        .getPromise();
-    }
+  activate();
+
+  function activate() {
+    mnPromiseHelper(vm, mnSettingsNotificationsService.maybeCheckUpdates())
+      .applyToScope("updates");
   }
-})();
+
+  function submit() {
+    return mnPromiseHelper(vm, mnSettingsNotificationsService.saveSendStatsFlag(vm.updates.enabled))
+      .catchGlobalErrors('An error occured, update notifications settings were not saved.')
+      .getPromise();
+  }
+}

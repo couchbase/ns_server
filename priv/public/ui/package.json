@@ -1,0 +1,70 @@
+{
+  "name": "ns_server-ui",
+  "version": "0.0.0",
+  "scripts": {
+    "rebuild": "rm -rf node_modules package-lock.json web_modules && npm install",
+    "prepare": "snowpack --optimize"
+  },
+  "dependencies": {
+    "@uirouter/angularjs": "1.0.24",
+    "angular": "1.6.9",
+    "beautify": "0.0.8",
+    "lodash": "3.3.0",
+    "clipboard": "1.5.16",
+    "file-saver": "2.0.2",
+    "ui-select": "0.19.8",
+    "d3-array": "2.4.0",
+    "d3-format": "1.4.3",
+    "d3-time": "1.1.0",
+    "d3-time-format": "2.2.3",
+    "d3-selection": "1.4.1",
+    "d3-scale-chromatic": "1.5.0",
+    "d3-scale": "3.2.1",
+    "d3-axis": "1.0.12",
+    "d3-shape": "1.3.7",
+    "d3-brush": "1.1.5",
+    "angular-animate": "1.6.9",
+    "angular-messages": "1.6.9",
+    "angular-sanitize": "1.6.9",
+    "angular-ui-bootstrap": "1.2.0"
+  },
+  "devDependencies": {
+    "snowpack": "1.4.0"
+  },
+  "snowpack": {
+    "dedupe": [],
+    "webDependencies": [
+      "@uirouter/angularjs",
+      "angular",
+      "beautify",
+      "lodash",
+      "clipboard",
+      "file-saver",
+      "ui-select",
+      "d3-array",
+      "d3-format",
+      "d3-time",
+      "d3-time-format",
+      "d3-selection",
+      "d3-scale-chromatic",
+      "d3-scale",
+      "d3-axis",
+      "d3-shape",
+      "d3-brush",
+      "angular-animate",
+      "angular-messages",
+      "angular-sanitize",
+      "angular-ui-bootstrap"
+    ]
+  },
+  "browserslist": [
+    "Chrome >= 61",
+    "Firefox >= 60",
+    "Safari >= 11",
+    "Opera >= 48",
+    "Samsung >= 8",
+    "Android >= 67",
+    "ChromeAndroid >= 74",
+    "FirefoxAndroid >= 66"
+  ]
+}

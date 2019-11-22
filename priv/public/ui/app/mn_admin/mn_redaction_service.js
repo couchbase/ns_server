@@ -1,26 +1,26 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
 
-  angular
-    .module("mnLogRedactionService", [])
-    .factory("mnLogRedactionService", mnRedactionFactory);
+export default "mnLogRedactionService";
 
-  function mnRedactionFactory($http) {
-    var mnLogRedactionService = {
-      get: get,
-      post: post
-    };
+angular
+  .module("mnLogRedactionService", [])
+  .factory("mnLogRedactionService", mnRedactionFactory);
 
-    return mnLogRedactionService;
+function mnRedactionFactory($http) {
+  var mnLogRedactionService = {
+    get: get,
+    post: post
+  };
 
-    function get() {
-      return $http.get("/settings/logRedaction").then(function (resp) {
-        return resp.data;
-      });
-    }
+  return mnLogRedactionService;
 
-    function post(data) {
-      return $http.post("/settings/logRedaction", data);
-    }
+  function get() {
+    return $http.get("/settings/logRedaction").then(function (resp) {
+      return resp.data;
+    });
   }
-})();
+
+  function post(data) {
+    return $http.post("/settings/logRedaction", data);
+  }
+}

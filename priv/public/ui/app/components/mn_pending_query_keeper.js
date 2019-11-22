@@ -1,54 +1,55 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
+import _ from "/ui/web_modules/lodash.js";
 
-  angular
-    .module("mnPendingQueryKeeper", [])
-    .factory("mnPendingQueryKeeper", mnPendingQueryKeeperFactory);
+export default "mnPendingQueryKeeper";
 
-  function mnPendingQueryKeeperFactory() {
-    var pendingQueryKeeper = [];
+angular
+  .module("mnPendingQueryKeeper", [])
+  .factory("mnPendingQueryKeeper", mnPendingQueryKeeperFactory);
 
-    return {
-      getQueryInFly: getQueryInFly,
-      removeQueryInFly: removeQueryInFly,
-      push: push,
-      cancelTabsSpecificQueries: cancelTabsSpecificQueries,
-      cancelAllQueries: cancelAllQueries
-    };
+function mnPendingQueryKeeperFactory() {
+  var pendingQueryKeeper = [];
 
-    function cancelAllQueries() {
-      var i = pendingQueryKeeper.length;
-      while (i--) {
+  return {
+    getQueryInFly: getQueryInFly,
+    removeQueryInFly: removeQueryInFly,
+    push: push,
+    cancelTabsSpecificQueries: cancelTabsSpecificQueries,
+    cancelAllQueries: cancelAllQueries
+  };
+
+  function cancelAllQueries() {
+    var i = pendingQueryKeeper.length;
+    while (i--) {
+      pendingQueryKeeper[i].canceler();
+    }
+  }
+  function cancelTabsSpecificQueries() {
+    var i = pendingQueryKeeper.length;
+    while (i--) {
+      if (pendingQueryKeeper[i].group !== "global") {
         pendingQueryKeeper[i].canceler();
       }
     }
-    function cancelTabsSpecificQueries() {
-      var i = pendingQueryKeeper.length;
-      while (i--) {
-        if (pendingQueryKeeper[i].group !== "global") {
-          pendingQueryKeeper[i].canceler();
-        }
+  }
+
+  function removeQueryInFly(findMe) {
+    var i = pendingQueryKeeper.length;
+    while (i--) {
+      if (pendingQueryKeeper[i] === findMe) {
+        pendingQueryKeeper.splice(i, 1);
       }
-    }
-
-    function removeQueryInFly(findMe) {
-      var i = pendingQueryKeeper.length;
-      while (i--) {
-        if (pendingQueryKeeper[i] === findMe) {
-          pendingQueryKeeper.splice(i, 1);
-        }
-      }
-    }
-
-    function getQueryInFly(config) {
-      return _.find(pendingQueryKeeper, function (inFly) {
-        return inFly.config.method === config.method &&
-               inFly.config.url === config.url;
-      });
-    }
-
-    function push(query) {
-      pendingQueryKeeper.push(query);
     }
   }
-})();
+
+  function getQueryInFly(config) {
+    return _.find(pendingQueryKeeper, function (inFly) {
+      return inFly.config.method === config.method &&
+        inFly.config.url === config.url;
+    });
+  }
+
+  function push(query) {
+    pendingQueryKeeper.push(query);
+  }
+}

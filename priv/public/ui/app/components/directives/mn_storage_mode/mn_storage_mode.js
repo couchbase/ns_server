@@ -1,46 +1,46 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
 
-  angular
-    .module('mnStorageMode', [])
-    .directive('mnStorageMode', mnStorageModeDirective)
-    .filter('mnFormatStorageModeError', mnFormatStorageModeError);
+export default "mnStorageMode";
 
-  function mnFormatStorageModeError() {
-    return function (error) {
-      if (!error) {
-        return;
-      }
-      var errorCode =
-          error.indexOf("Storage mode cannot be set to") > -1 ? 1 :
-          error.indexOf("storageMode must be one of") > -1 ? 2 :
-          0;
-      switch (errorCode) {
-      case 1:
-        return "please choose another index storage mode";
-      case 2:
-        return "please choose an index storage mode";
-      default:
-        return error;
-      }
-    };
-  }
+angular
+  .module('mnStorageMode', [])
+  .directive('mnStorageMode', mnStorageModeDirective)
+  .filter('mnFormatStorageModeError', mnFormatStorageModeError);
 
-   function mnStorageModeDirective() {
-    var mnStorageMode = {
-      restrict: 'E',
-      scope: {
-        mnIsEnterprise: "=",
-        mnModel: "=",
-        mnErrors: "=",
-        mnCompat: "=?",
-        mnPermissions: "=?",
-        mnServicesModel: "=?",
-        mnInitial: "=?"
-      },
-      templateUrl: 'app/components/directives/mn_storage_mode/mn_storage_mode.html'
-    };
+function mnFormatStorageModeError() {
+  return function (error) {
+    if (!error) {
+      return;
+    }
+    var errorCode =
+        error.indexOf("Storage mode cannot be set to") > -1 ? 1 :
+        error.indexOf("storageMode must be one of") > -1 ? 2 :
+        0;
+    switch (errorCode) {
+    case 1:
+      return "please choose another index storage mode";
+    case 2:
+      return "please choose an index storage mode";
+    default:
+      return error;
+    }
+  };
+}
 
-    return mnStorageMode;
-  }
-})();
+function mnStorageModeDirective() {
+  var mnStorageMode = {
+    restrict: 'E',
+    scope: {
+      mnIsEnterprise: "=",
+      mnModel: "=",
+      mnErrors: "=",
+      mnCompat: "=?",
+      mnPermissions: "=?",
+      mnServicesModel: "=?",
+      mnInitial: "=?"
+    },
+    templateUrl: 'app/components/directives/mn_storage_mode/mn_storage_mode.html'
+  };
+
+  return mnStorageMode;
+}

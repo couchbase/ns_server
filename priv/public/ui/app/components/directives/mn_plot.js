@@ -1,12 +1,15 @@
-(function () {
-    "use strict";
-    var insertSteps;
-    var i;
+import angular from "/ui/web_modules/angular.js";
+import _ from "/ui/web_modules/lodash.js";
+import mnFilters from "/ui/app/components/mn_filters.js";
+import mnJquery from "/ui/app/components/mn_jquery.js";
 
-angular.module('mnPlot', [
-  'mnJquery',
-  'mnFilters'
-]).directive('mnPlot', function (mnPrepareQuantityFilter, mnTruncateTo3DigitsFilter, jQuery) {
+export default "mnPlot";
+var insertSteps;
+var i;
+
+angular
+  .module('mnPlot', [mnJquery, mnFilters])
+  .directive('mnPlot', function (mnPrepareQuantityFilter, mnTruncateTo3DigitsFilter, jQuery) {
 
 /* Javascript plotting library for jQuery, v. 0.6.
  *
@@ -2535,4 +2538,3 @@ angular.module('mnPlot', [
     }
   };
 });
-})();

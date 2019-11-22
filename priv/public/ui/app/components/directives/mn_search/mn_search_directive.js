@@ -1,41 +1,41 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
 
-  angular
-    .module('mnSearch', [])
-    .directive('mnSearch', mnSearchDirective);
+export default "mnSearch";
 
-  function mnSearchDirective() {
+angular
+  .module('mnSearch', [])
+  .directive('mnSearch', mnSearchDirective);
 
-    var mnSearch = {
-      restrict: 'AE',
-      scope: {
-        mnSearch: "=",
-        mnPlaceholder: "@",
-        mnHideButton: "=",
-        mnDisabled: "="
-      },
-      templateUrl: 'app/components/directives/mn_search/mn_search.html',
-      controller: controller,
-      controllerAs: "mnSearchCtl",
-      bindToController: true
-    };
+function mnSearchDirective() {
 
-    return mnSearch;
+  var mnSearch = {
+    restrict: 'AE',
+    scope: {
+      mnSearch: "=",
+      mnPlaceholder: "@",
+      mnHideButton: "=",
+      mnDisabled: "="
+    },
+    templateUrl: 'app/components/directives/mn_search/mn_search.html',
+    controller: controller,
+    controllerAs: "mnSearchCtl",
+    bindToController: true
+  };
 
-    function controller() {
-      var vm = this;
-      vm.hideFilter = hideFilter;
-      vm.showFilter = showFilter;
+  return mnSearch;
 
-      function hideFilter() {
-        vm.mnSearch = "";
-        vm.showFilterFlag = false;
-      }
-      function showFilter() {
-        vm.showFilterFlag = true;
-        vm.focusFilterField = true;
-      }
+  function controller() {
+    var vm = this;
+    vm.hideFilter = hideFilter;
+    vm.showFilter = showFilter;
+
+    function hideFilter() {
+      vm.mnSearch = "";
+      vm.showFilterFlag = false;
+    }
+    function showFilter() {
+      vm.showFilterFlag = true;
+      vm.focusFilterField = true;
     }
   }
-})();
+}

@@ -1,56 +1,56 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
+import mnFilters from "/ui/app/components/mn_filters.js";
+import _ from "/ui/web_modules/lodash.js";
 
-  angular
-    .module('mnBarUsage', [
-      'mnFilters'
-    ])
-    .directive('mnBarUsage', mnBarUsageDirective);
+export default "mnBarUsage";
 
-  function mnBarUsageDirective(mnRescaleForSumFilter, mnCalculatePercentFilter) {
+angular
+  .module('mnBarUsage', [mnFilters])
+  .directive('mnBarUsage', mnBarUsageDirective);
 
-    var mnBarUsage = {
-      restrict: 'A',
-      scope: {
-        baseInfo: '=',
-      },
-      isolate: false,
-      templateUrl: 'app/components/directives/mn_bar_usage/mn_bar_usage.html',
-      controller: controller
-    };
+function mnBarUsageDirective(mnRescaleForSumFilter) {
 
-    return mnBarUsage;
+  var mnBarUsage = {
+    restrict: 'A',
+    scope: {
+      baseInfo: '=',
+    },
+    isolate: false,
+    templateUrl: 'app/components/directives/mn_bar_usage/mn_bar_usage.html',
+    controller: controller
+  };
 
-    function controller($scope) {
-      $scope.$watch('baseInfo', function (options) {
-        if (!options) {
-          return;
-        }
-        var sum = 0;
-        var newOptions = _.cloneDeep(options);
-        var items = newOptions.items;
-        var values = _.map(items, function (item) {
-          return Math.max(item.value, 0);
-        });
-        var total = _.chain(values).reduce(function (sum, num) {
-          return sum + num;
-        }).value();
+  return mnBarUsage;
 
-        values = mnRescaleForSumFilter(100, values, total);
+  function controller($scope) {
+    $scope.$watch('baseInfo', function (options) {
+      if (!options) {
+        return;
+      }
+      var sum = 0;
+      var newOptions = _.cloneDeep(options);
+      var items = newOptions.items;
+      var values = _.map(items, function (item) {
+        return Math.max(item.value, 0);
+      });
+      var total = _.chain(values).reduce(function (sum, num) {
+        return sum + num;
+      }).value();
 
-        _.each(values, function (item, i) {
-          var v = values[i];
-          values[i] += sum;
-          newOptions.items[i].itemStyle = newOptions.items[i].itemStyle || {};
-          newOptions.items[i].itemStyle.width = values[i] + "%";
-          sum += v;
-        });
-        newOptions.tdItems = _.select(newOptions.items, function (item) {
-          return item.name !== null;
-        });
+      values = mnRescaleForSumFilter(100, values, total);
 
-        $scope.config = newOptions;
-      }, true);
-    }
+      _.each(values, function (item, i) {
+        var v = values[i];
+        values[i] += sum;
+        newOptions.items[i].itemStyle = newOptions.items[i].itemStyle || {};
+        newOptions.items[i].itemStyle.width = values[i] + "%";
+        sum += v;
+      });
+      newOptions.tdItems = _.select(newOptions.items, function (item) {
+        return item.name !== null;
+      });
+
+      $scope.config = newOptions;
+    }, true);
   }
-})();
+}

@@ -1,19 +1,13 @@
-(function () {
-  "use strict";
+export default mnServersEjectDialogController;
 
-  angular
-    .module('mnServers')
-    .controller('mnServersEjectDialogController', mnServersEjectDialogController);
+function mnServersEjectDialogController($rootScope, $uibModalInstance, node, warnings, mnServersService) {
+  var vm = this;
+  vm.warningFlags = warnings;
+  vm.doEjectServer = doEjectServer;
 
-    function mnServersEjectDialogController($scope, $rootScope, $uibModalInstance, node, warnings, mnHelper, mnPromiseHelper, mnServersService) {
-      var vm = this;
-      vm.warningFlags = warnings;
-      vm.doEjectServer = doEjectServer;
-
-      function doEjectServer() {
-        mnServersService.addToPendingEject(node);
-        $uibModalInstance.close();
-        $rootScope.$broadcast("reloadNodes");
-      };
-    }
-})();
+  function doEjectServer() {
+    mnServersService.addToPendingEject(node);
+    $uibModalInstance.close();
+    $rootScope.$broadcast("reloadNodes");
+  };
+}

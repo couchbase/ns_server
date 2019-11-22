@@ -1,21 +1,15 @@
-(function () {
-  "use strict";
+export default mnRolesGroupsDeleteDialogController;
 
-  angular
-    .module("mnRolesGroups")
-    .controller("mnRolesGroupsDeleteDialogController", mnRolesGroupsDeleteDialogController);
+function mnRolesGroupsDeleteDialogController(mnUserRolesService, rolesGroup, mnPromiseHelper, $uibModalInstance) {
+  var vm = this;
+  vm.grolesGroupsId = rolesGroup.id;
+  vm.onSubmit = onSubmit;
 
-  function mnRolesGroupsDeleteDialogController($scope, mnUserRolesService, rolesGroup, mnPromiseHelper, $uibModalInstance) {
-    var vm = this;
-    vm.grolesGroupsId = rolesGroup.id;
-    vm.onSubmit = onSubmit;
-
-    function onSubmit() {
-      mnPromiseHelper(vm, mnUserRolesService.deleteRolesGroup(rolesGroup), $uibModalInstance)
-        .showGlobalSpinner()
-        .closeFinally()
-        .broadcast("reloadRolesGroupsPoller")
-        .showGlobalSuccess("Group deleted successfully!");
-    }
+  function onSubmit() {
+    mnPromiseHelper(vm, mnUserRolesService.deleteRolesGroup(rolesGroup), $uibModalInstance)
+      .showGlobalSpinner()
+      .closeFinally()
+      .broadcast("reloadRolesGroupsPoller")
+      .showGlobalSuccess("Group deleted successfully!");
   }
-})();
+}

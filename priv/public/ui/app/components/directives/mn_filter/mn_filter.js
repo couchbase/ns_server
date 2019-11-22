@@ -1,42 +1,42 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
 
-  angular
-    .module("mnFilter", [])
-    .directive("mnFilter", mnFilterDirective);
+export default "mnFilter";
 
-  function mnFilterDirective($window) {
-    var mnFilter = {
-      restrict: "A",
-      scope: {
-        config: "=",
-        mnDisabled: "=",
-        onClose: "&",
-        onOpen: "&",
-        onReset: "&"
-      },
-      templateUrl: "app/components/directives/mn_filter/mn_filter.html",
-      controller: mnFilterController,
-      controllerAs: "mnFilterCtl",
-      bindToController: true
-    };
+angular
+  .module("mnFilter", [])
+  .directive("mnFilter", mnFilterDirective);
 
-    return mnFilter;
+function mnFilterDirective($window) {
+  var mnFilter = {
+    restrict: "A",
+    scope: {
+      config: "=",
+      mnDisabled: "=",
+      onClose: "&",
+      onOpen: "&",
+      onReset: "&"
+    },
+    templateUrl: "app/components/directives/mn_filter/mn_filter.html",
+    controller: mnFilterController,
+    controllerAs: "mnFilterCtl",
+    bindToController: true
+  };
 
-    function mnFilterController($scope) {
-      var vm = this;
+  return mnFilter;
 
-      vm.togglePopup = togglePopup;
+  function mnFilterController($scope) {
+    var vm = this;
+
+    vm.togglePopup = togglePopup;
 
 
-      function togglePopup(open) {
-        vm.showPopup = open;
-        if (vm.showPopup) {
-          vm.onOpen && vm.onOpen();
-        } else {
-          vm.onClose && vm.onClose();
-        }
+    function togglePopup(open) {
+      vm.showPopup = open;
+      if (vm.showPopup) {
+        vm.onOpen && vm.onOpen();
+      } else {
+        vm.onClose && vm.onClose();
       }
     }
   }
-})();
+}

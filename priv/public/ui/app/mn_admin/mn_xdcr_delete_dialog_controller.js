@@ -1,20 +1,16 @@
-(function () {
-  "use strict";
+export default mnXDCRDeleteDialogController;
 
-  angular.module('mnXDCR').controller('mnXDCRDeleteDialogController', mnXDCRDeleteDialogController);
+function mnXDCRDeleteDialogController($uibModalInstance, mnPromiseHelper, mnXDCRService, id) {
+  var vm = this;
 
-  function mnXDCRDeleteDialogController($scope, $uibModalInstance, mnPromiseHelper, mnXDCRService, id) {
-    var vm = this;
+  vm.deleteReplication = deleteReplication;
 
-    vm.deleteReplication = deleteReplication;
-
-    function deleteReplication() {
-      var promise = mnXDCRService.deleteReplication(id);
-      mnPromiseHelper(vm, promise, $uibModalInstance)
-        .showGlobalSpinner()
-        .closeFinally()
-        .broadcast("reloadTasksPoller")
-        .showGlobalSuccess("Replication deleted successfully!");
-    }
+  function deleteReplication() {
+    var promise = mnXDCRService.deleteReplication(id);
+    mnPromiseHelper(vm, promise, $uibModalInstance)
+      .showGlobalSpinner()
+      .closeFinally()
+      .broadcast("reloadTasksPoller")
+      .showGlobalSuccess("Replication deleted successfully!");
   }
-})();
+}

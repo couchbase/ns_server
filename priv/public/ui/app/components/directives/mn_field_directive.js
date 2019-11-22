@@ -1,32 +1,32 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
 
-  angular
-    .module('mnField', [])
-    .directive('mnField', mnFieldDirective);
+export default "mnField";
 
-  function mnFieldDirective() {
-    var mnFieldDirective = {
-      restrict: "AE",
-      scope: {
-        mnName: "@",
-        mnType: "@",
-        mnId: "@",
-        mnDisabled: "=",
-        mnLabel: "@",
-        mnErrors: "=?",
-        mnModel: "=",
-        mnItems: "="
-      },
-      templateUrl: "app/components/directives/mn_field.html",
-      controller: controller,
-      controllerAs: "thisCtl"
-    };
+angular
+  .module('mnField', [])
+  .directive('mnField', mnFieldDirective);
 
-    return mnFieldDirective;
+function mnFieldDirective() {
+  var mnFieldDirective = {
+    restrict: "AE",
+    scope: {
+      mnName: "@",
+      mnType: "@",
+      mnId: "@",
+      mnDisabled: "=",
+      mnLabel: "@",
+      mnErrors: "=?",
+      mnModel: "=",
+      mnItems: "="
+    },
+    templateUrl: "app/components/directives/mn_field.html",
+    controller: controller,
+    controllerAs: "thisCtl"
+  };
 
-    function controller($scope) {
+  return mnFieldDirective;
 
-    }
+  function controller($scope) {
+
   }
-})();
+}

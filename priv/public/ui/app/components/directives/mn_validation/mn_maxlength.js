@@ -1,25 +1,25 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
 
-  angular
-    .module('mnMaxlength', [])
-    .directive('mnMaxlength', mnMaxlengthDirective);
+export default "mnMaxlength";
 
-  function mnMaxlengthDirective() {
-    var mnMaxlength = {
-      restrict: 'A',
-      require: 'ngModel',
-      link: link
-    };
-    return mnMaxlength;
+angular
+  .module('mnMaxlength', [])
+  .directive('mnMaxlength', mnMaxlengthDirective);
 
-    function link(scope, element, attrs, ctrl) {
+function mnMaxlengthDirective() {
+  var mnMaxlength = {
+    restrict: 'A',
+    require: 'ngModel',
+    link: link
+  };
+  return mnMaxlength;
 
-      ctrl.$parsers.unshift(function (value) {
-        var max = attrs.mnMaxlength;
-        ctrl.$setValidity('mnMaxlength', max && value && value.length <= parseInt(max));
-        return value;
-      });
-    }
+  function link(scope, element, attrs, ctrl) {
+
+    ctrl.$parsers.unshift(function (value) {
+      var max = attrs.mnMaxlength;
+      ctrl.$setValidity('mnMaxlength', max && value && value.length <= parseInt(max));
+      return value;
+    });
   }
-})();
+}

@@ -1,110 +1,128 @@
-(function () {
-  "use strict";
+import angular from "/ui/web_modules/angular.js";
+import _ from "/ui/web_modules/lodash.js";
+import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
 
-  angular
-    .module('mnGroups', [
-      'mnGroupsService',
-      'mnSpinner',
-      'mnHelper',
-      'mnPoll',
-      'mnPromiseHelper',
-      'mnDragAndDrop',
-      'ui.bootstrap',
-      'mnFilters',
-      'mnAlertsService',
-      'mnPoolDefault',
-      'mnElementCrane'
-    ])
-    .controller('mnGroupsController', mnGroupsController);
+import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
+import mnHelper from "/ui/app/components/mn_helper.js";
+import mnFilters from "/ui/app/components/mn_filters.js";
+import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
+import mnPoll from "/ui/app/components/mn_poll.js";
+import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
+import mnAlertsService from "/ui/app/components/mn_alerts.js";
+import mnDragAndDrop from "/ui/app/components/directives/mn_drag_and_drop.js";
+import mnElementCrane from "/ui/app/components/directives/mn_element_crane/mn_element_crane.js";
 
-    function mnGroupsController($scope, $uibModal, mnGroupsService, mnPromiseHelper, mnHelper, mnPoller, mnMakeSafeForCSSFilter, mnNaturalSortingFilter, $window, mnAlertsService, mnPoolDefault) {
-      var vm = this;
+import mnGroupsDeleteDialogController from "./mn_groups_delete_dialog_controller.js";
+import mnGroupsGroupDialogController from "./mn_groups_group_dialog_controller.js";
+import mnGroupsService from "./mn_groups_service.js";
 
-      vm.createGroup = createGroup;
-      vm.deleteGroup = deleteGroup;
-      vm.applyChanges = applyChanges;
-      vm.reloadState = mnHelper.reloadState;
-      vm.changeNodeGroup = changeNodeGroup;
-      vm.disableApplyChangesBtn = true;
+export default 'mnGroups';
 
-      activate();
+angular
+  .module('mnGroups', [
+    mnGroupsService,
+    mnSpinner,
+    mnHelper,
+    mnPoll,
+    mnPromiseHelper,
+    mnDragAndDrop,
+    uiBootstrap,
+    mnFilters,
+    mnAlertsService,
+    mnPoolDefault,
+    mnElementCrane
+  ])
+  .controller('mnGroupsController', mnGroupsController)
+  .controller('mnGroupsDeleteDialogController', mnGroupsDeleteDialogController)
+  .controller('mnGroupsGroupDialogController', mnGroupsGroupDialogController);
 
-      function applyChanges() {
-        mnPromiseHelper($scope, mnGroupsService.applyChanges(vm.state.uri, vm.state.currentGroups))
-          .reloadState("app.admin.servers.list.groups")
-          .showGlobalSuccess("Group changes applied successfully!")
-          .getPromise()
-          .then(null, function (resp) {
-            if (resp.status === 409) {
-              vm.disableAddGroupBtn = true;
-              vm.disableApplyChangesBtn = true;
-              vm.revisionMismatch = true;
-            } else {
-              mnAlertsService.showAlertInPopup(resp.data, 'error');
-            }
-          });
-      }
+function mnGroupsController($scope, $uibModal, mnGroupsService, mnPromiseHelper, mnHelper, $window, mnAlertsService) {
+  var vm = this;
 
-      function isGroupsEqual() {
-        return _.isEqual(vm.state.initialGroups, vm.state.currentGroups);
-      }
+  vm.createGroup = createGroup;
+  vm.deleteGroup = deleteGroup;
+  vm.applyChanges = applyChanges;
+  vm.reloadState = mnHelper.reloadState;
+  vm.changeNodeGroup = changeNodeGroup;
+  vm.disableApplyChangesBtn = true;
 
-      function deleteGroup(group) {
-        if (isGroupsEqual()) {
-          return $uibModal.open({
-            templateUrl: 'app/mn_admin/mn_groups_delete_dialog.html',
-            controller: 'mnGroupsDeleteDialogController as groupsDeleteDialogCtl',
-            resolve: {
-              group: mnHelper.wrapInFunction(group)
-            }
-          });
+  activate();
+
+  function applyChanges() {
+    mnPromiseHelper($scope, mnGroupsService.applyChanges(vm.state.uri, vm.state.currentGroups))
+      .reloadState("app.admin.servers.list.groups")
+      .showGlobalSuccess("Group changes applied successfully!")
+      .getPromise()
+      .then(null, function (resp) {
+        if (resp.status === 409) {
+          vm.disableAddGroupBtn = true;
+          vm.disableApplyChangesBtn = true;
+          vm.revisionMismatch = true;
         } else {
-          $window.scrollTo(0, 0);
-          vm.serverGroupsWarnig = true;
-          vm.disableApplyChangesBtn = false;
+          mnAlertsService.showAlertInPopup(resp.data, 'error');
         }
-      }
+      });
+  }
 
-      function createGroup(group) {
-        return $uibModal.open({
-          templateUrl: 'app/mn_admin/mn_groups_group_dialog.html',
-          controller: 'mnGroupsGroupDialogController as groupsGroupDialogCtl',
-          resolve: {
-            group: mnHelper.wrapInFunction(group)
-          }
-        });
-      }
+  function isGroupsEqual() {
+    return _.isEqual(vm.state.initialGroups, vm.state.currentGroups);
+  }
 
-      function changeNodeGroup(groupOld, groupNew, server) {
-        if (groupOld === groupNew || groupNew === server.toGroupPending) {
-          return;
+  function deleteGroup(group) {
+    if (isGroupsEqual()) {
+      return $uibModal.open({
+        templateUrl: 'app/mn_admin/mn_groups_delete_dialog.html',
+        controller: 'mnGroupsDeleteDialogController as groupsDeleteDialogCtl',
+        resolve: {
+          group: mnHelper.wrapInFunction(group)
         }
-        var fromGroup = _.find(vm.state.currentGroups, function (cGroup) {
-          return cGroup.name === groupOld;
-        });
-
-        var toGroup = _.find(vm.state.currentGroups, function (cGroup) {
-          return cGroup.name === groupNew;
-        });
-
-        _.remove(fromGroup.nodes, function (node) {
-          return node.hostname === server.hostname;
-        });
-
-        toGroup.nodes.push(server);
-
-        if (server.toGroupPending === groupOld) {
-          delete server.toGroupPending;
-        } else {
-          server.toGroupPending = toGroup.name
-        }
-
-        vm.disableApplyChangesBtn = false;
-      }
-
-      function activate() {
-        mnPromiseHelper(vm, mnGroupsService.getGroupsState())
-          .applyToScope("state");
-      }
+      });
+    } else {
+      $window.scrollTo(0, 0);
+      vm.serverGroupsWarnig = true;
+      vm.disableApplyChangesBtn = false;
     }
-})();
+  }
+
+  function createGroup(group) {
+    return $uibModal.open({
+      templateUrl: 'app/mn_admin/mn_groups_group_dialog.html',
+      controller: 'mnGroupsGroupDialogController as groupsGroupDialogCtl',
+      resolve: {
+        group: mnHelper.wrapInFunction(group)
+      }
+    });
+  }
+
+  function changeNodeGroup(groupOld, groupNew, server) {
+    if (groupOld === groupNew || groupNew === server.toGroupPending) {
+      return;
+    }
+    var fromGroup = _.find(vm.state.currentGroups, function (cGroup) {
+      return cGroup.name === groupOld;
+    });
+
+    var toGroup = _.find(vm.state.currentGroups, function (cGroup) {
+      return cGroup.name === groupNew;
+    });
+
+    _.remove(fromGroup.nodes, function (node) {
+      return node.hostname === server.hostname;
+    });
+
+    toGroup.nodes.push(server);
+
+    if (server.toGroupPending === groupOld) {
+      delete server.toGroupPending;
+    } else {
+      server.toGroupPending = toGroup.name
+    }
+
+    vm.disableApplyChangesBtn = false;
+  }
+
+  function activate() {
+    mnPromiseHelper(vm, mnGroupsService.getGroupsState())
+      .applyToScope("state");
+  }
+}

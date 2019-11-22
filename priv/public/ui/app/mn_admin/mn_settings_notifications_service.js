@@ -1,19 +1,42 @@
+import angular from "/ui/web_modules/angular.js";
+import _ from "/ui/web_modules/lodash.js";
+
+import mnPools from "/ui/app/components/mn_pools.js";
+import mnFilters from "/ui/app/components/mn_filters.js";
+import mnPermissions from "/ui/app/components/mn_permissions.js";
+import mnTasksDetails from "/ui/app/components/mn_tasks_details.js";
+import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
+
+import mnBucketsService from "./mn_buckets_service.js";
+import mnAnalyticsService from "./mn_analytics_service.js";
+import mnViewsListService from "./mn_views_list_service.js";
+import mnSettingsClusterService from "./mn_settings_cluster_service.js";
+import mnSettingsAutoFailoverService from "./mn_settings_auto_failover_service.js";
+import mnSettingsAutoCompactionService from "./mn_settings_auto_compaction_service.js";
+import mnGsiService from "./mn_gsi_service.js";
+import mnAuditService from "./mn_audit_service.js";
+import mnUserRolesService from "./mn_user_roles_service.js";
+import mnXDCRService from "./mn_xdcr_service.js";
+
+export default 'mnSettingsNotificationsService';
+
 angular.module('mnSettingsNotificationsService', [
-  'mnPoolDefault',
-  'mnBucketsService',
-  'mnPools',
-  'mnAnalyticsService',
-  'mnViewsListService',
-  'mnSettingsClusterService',
-  'mnSettingsAutoFailoverService',
-  'mnSettingsAutoCompactionService',
-  'mnGsiService',
-  'mnAuditService',
-  'mnFilters',
-  'mnPermissions',
-  'mnTasksDetails',
-  'mnUserRolesService'
-]).factory('mnSettingsNotificationsService', function ($http, mnPoolDefault, mnBucketsService, mnPools, $q, $window, $rootScope, mnAnalyticsService, mnViewsListService, mnGsiService, mnAuditService, mnMBtoBytesFilter, mnPermissions, mnSettingsClusterService, mnSettingsAutoFailoverService, mnSettingsAutoCompactionService, mnTasksDetails, mnXDCRService, mnUserRolesService) {
+  mnPools,
+  mnFilters,
+  mnPermissions,
+  mnTasksDetails,
+  mnPoolDefault,
+  mnBucketsService,
+  mnAnalyticsService,
+  mnViewsListService,
+  mnSettingsClusterService,
+  mnSettingsAutoFailoverService,
+  mnSettingsAutoCompactionService,
+  mnGsiService,
+  mnAuditService,
+  mnUserRolesService,
+  mnXDCRService
+]).factory('mnSettingsNotificationsService', function ($http, mnPoolDefault, mnBucketsService, mnPools, $q, $window, mnAnalyticsService, mnViewsListService, mnGsiService, mnAuditService, mnMBtoBytesFilter, mnPermissions, mnSettingsClusterService, mnSettingsAutoFailoverService, mnSettingsAutoCompactionService, mnTasksDetails, mnXDCRService, mnUserRolesService) {
     var mnSettingsNotificationsService = {};
 
     function sumWithoutNull(array, average) {
