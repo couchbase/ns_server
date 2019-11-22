@@ -501,6 +501,7 @@ add_proto(Mod, #s{name = NodeName, listeners = Listeners,
                     end;
                 {error, eafnosupport} -> State;
                 {error, eprotonosupport} -> State;
+                ignore -> State;
                 _Error -> start_ensure_config_timer(State)
             end;
         {error, Reason} ->
