@@ -509,7 +509,8 @@ add_proto(Mod, #s{name = NodeName, listeners = Listeners,
     end.
 
 start_ensure_config_timer(#s{ensure_config_timer = undefined} = State) ->
-    {ok, Ref} = timer:send_after(?ENSURE_CONFIG_TIMEOUT, ensure_config_timer),
+    Ref = erlang:send_after(?ENSURE_CONFIG_TIMEOUT, self(),
+                            ensure_config_timer),
     State#s{ensure_config_timer = Ref};
 start_ensure_config_timer(#s{} = State) ->
     State.
