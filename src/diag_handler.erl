@@ -501,10 +501,7 @@ handle_per_node_just_diag(Resp, [{Node, DiagBinary} | Results]) ->
 do_handle_per_node_just_diag(Resp, Node, Failed) when not is_list(Failed) ->
     write_chunk_format(Resp, "per_node_diag(~p) = ~p~n~n~n", [Node, Failed]);
 do_handle_per_node_just_diag(Resp, Node, PerNodeDiag) ->
-    %% NOTE: as of 4.0 we're not collecting master events here; but I'm
-    %% leaving this for mixed clusters
-    DiagNoMasterEvents = lists:keydelete(master_events, 1, PerNodeDiag),
-    do_handle_per_node_processes(Resp, Node, DiagNoMasterEvents).
+    do_handle_per_node_processes(Resp, Node, PerNodeDiag).
 
 get_other_node_processes(Key, PerNodeDiag) ->
     Processes = proplists:get_value(Key, PerNodeDiag, []),
