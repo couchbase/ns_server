@@ -31,8 +31,8 @@
 
 supported_setting_names() ->
     [{max_connections, {int, 2000, ?MC_MAXINT}},
-     {num_reader_threads, {int, 0, 64}},
-     {num_writer_threads, {int, 0, 64}},
+     {num_reader_threads, fun validate_num_threads/1},
+     {num_writer_threads, fun validate_num_threads/1},
      {system_connections, {int, 1000, ?MC_MAXINT}},
      {verbosity, {int, 0, ?MC_MAXINT}},
      {ssl_cipher_list, string},
@@ -173,7 +173,13 @@ validate_param(Value, bool) ->
             <<"must be either true or false">>
     end;
 validate_param(Value, string) ->
-    {ok, Value}.
+    {ok, Value};
+validate_param(Value, Fun) when is_function(Fun, 1) ->
+    Fun(Value).
+
+validate_num_threads("default") -> {ok, <<"default">>};
+validate_num_threads("disk_io_optimized") -> {ok, <<"disk_io_optimized">>};
+validate_num_threads(Value) -> validate_param(Value, {int, 1, 64}).
 
 continue_handle_post(Req, Params, SettingsKey, ExtraConfigKey) ->
     ParsedParams =
