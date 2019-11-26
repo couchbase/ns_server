@@ -394,13 +394,9 @@ handle_diag(Req) ->
                         "view" -> [];
                         _ -> [{"Content-Disposition", "attachment; filename=" ++ generate_diag_filename()}]
                     end,
-    case proplists:get_value("noLogs", Params, "0") of
-        "0" ->
-            do_handle_diag(Req, MaybeContDisp);
-        _ ->
-            Resp = handle_just_diag(Req, MaybeContDisp),
-            Resp:write_chunk(<<>>)
-    end,
+
+    Resp = handle_just_diag(Req, MaybeContDisp),
+    Resp:write_chunk(<<>>),
     trace_memory("Finished handling diag.").
 
 garbage_collect_rpc() ->
@@ -662,30 +658,6 @@ do_continue_handling_per_node_just_diag(Resp, Node, Diag) ->
 
     Resp:write_chunk(<<"\n\n">>).
 
-do_handle_diag(Req, Extra) ->
-    Resp = handle_just_diag(Req, Extra),
-
-    Logs = [?DEBUG_LOG_FILENAME, ?STATS_LOG_FILENAME,
-            ?DEFAULT_LOG_FILENAME, ?ERRORS_LOG_FILENAME,
-            ?XDCR_TARGET_LOG_FILENAME,
-            ?COUCHDB_LOG_FILENAME,
-            ?VIEWS_LOG_FILENAME, ?MAPREDUCE_ERRORS_LOG_FILENAME,
-            ?BABYSITTER_LOG_FILENAME,
-            ?REPORTS_LOG_FILENAME,
-            ?METAKV_LOG_FILENAME,
-            ?ACCESS_LOG_FILENAME, ?INT_ACCESS_LOG_FILENAME,
-            ?QUERY_LOG_FILENAME, ?PROJECTOR_LOG_FILENAME,
-            ?GOXDCR_LOG_FILENAME, ?INDEXER_LOG_FILENAME,
-            ?FTS_LOG_FILENAME, ?CBAS_LOG_FILENAME,
-            ?JSON_RPC_LOG_FILENAME,
-            ?EVENTING_LOG_FILENAME],
-
-    lists:foreach(fun (Log) ->
-                          handle_log(Resp, Log)
-                  end, Logs),
-    handle_memcached_logs(Resp),
-    Resp:write_chunk(<<"">>).
-
 handle_log(Resp, LogName) ->
     LogsHeader = io_lib:format("logs_node (~s):~n"
                                "-------------------------------~n", [LogName]),
@@ -693,55 +665,6 @@ handle_log(Resp, LogName) ->
     ns_log_browser:stream_logs(LogName,
                                fun (Data) -> Resp:write_chunk(Data) end),
     Resp:write_chunk(<<"-------------------------------\n">>).
-
-
-handle_memcached_logs(Resp) ->
-    Config = ns_config:get(),
-    Path = ns_config:search_node_prop(Config, memcached, log_path),
-    Prefix = ns_config:search_node_prop(Config, memcached, log_prefix),
-
-    {ok, AllFiles} = file:list_dir(Path),
-    Logs = [filename:join(Path, F) || F <- AllFiles,
-                                      string:str(F, Prefix) == 1],
-    TsLogs = lists:map(fun(F) ->
-                               case file:read_file_info(F) of
-                                   {ok, Info} ->
-                                       {F, Info#file_info.mtime};
-                                   {error, enoent} ->
-                                       deleted
-                               end
-                       end, Logs),
-
-    Sorted = lists:keysort(2, lists:filter(fun (X) -> X /= deleted end, TsLogs)),
-
-    Resp:write_chunk(<<"memcached logs:\n-------------------------------\n">>),
-
-    lists:foreach(fun ({Log, _}) ->
-                          handle_memcached_log(Resp, Log)
-                  end, Sorted).
-
-handle_memcached_log(Resp, Log) ->
-    case file:open(Log, [raw, binary]) of
-        {ok, File} ->
-            try
-                do_handle_memcached_log(Resp, File)
-            after
-                file:close(File)
-            end;
-        Error ->
-            Resp:write_chunk(
-              list_to_binary(io_lib:format("Could not open file ~s: ~p~n", [Log, Error])))
-    end.
-
--define(CHUNK_SIZE, 65536).
-
-do_handle_memcached_log(Resp, File) ->
-    case file:read(File, ?CHUNK_SIZE) of
-        eof ->
-            ok;
-        {ok, Data} ->
-            Resp:write_chunk(Data)
-    end.
 
 handle_sasl_logs(LogName, Req) ->
     FullLogName = LogName ++ ".log",

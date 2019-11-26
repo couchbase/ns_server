@@ -900,9 +900,9 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
     viewdir = os.path.realpath(read_guts(guts, "idx_dir"))
     nodes = correct_split(read_guts(guts, "nodes"), ",")
 
-    diag_url = "http://%s:%s/diag?noLogs=1" % (local_url_addr, read_guts(guts, "rest_port"))
+    diag_url = "http://%s:%s/diag" % (local_url_addr, read_guts(guts, "rest_port"))
     if not options.multi_node_diag:
-        diag_url += "&oneNode=1"
+        diag_url += "?oneNode=1"
 
 
     from distutils.spawn import find_executable
