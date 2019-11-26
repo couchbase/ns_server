@@ -208,14 +208,14 @@ log_all_dcp_stats() ->
 task_status_all() ->
     local_tasks:all() ++ ns_couchdb_api:get_tasks().
 
-do_diag_per_node_binary() ->
+do_diag_per_node() ->
     work_queue:submit_sync_work(
       diag_handler_worker,
       fun () ->
-              (catch collect_diag_per_node_binary(40000))
+              (catch collect_diag_per_node(40000))
       end).
 
-collect_diag_per_node_binary(Timeout) ->
+collect_diag_per_node(Timeout) ->
     ReplyRef = make_ref(),
     Parent = self(),
     {ChildPid, ChildRef} =
@@ -239,7 +239,7 @@ collect_diag_per_node_binary(Timeout) ->
                     end),
 
                   try
-                      collect_diag_per_node_binary_body(Reply)
+                      collect_diag_per_node_body(Reply)
                   catch
                       T:E ->
                           Reply(partial_results_reason,
@@ -250,8 +250,7 @@ collect_diag_per_node_binary(Timeout) ->
     TRef = erlang:send_after(Timeout, self(), timeout),
 
     try
-        RV = collect_diag_per_node_binary_loop(ReplyRef, ChildRef, []),
-        term_to_binary(RV)
+        collect_diag_per_node_loop(ReplyRef, ChildRef, [])
     after
         erlang:cancel_timer(TRef),
         receive
@@ -274,17 +273,17 @@ flush_leftover_replies(ReplyRef) ->
         0 -> ok
     end.
 
-collect_diag_per_node_binary_loop(ReplyRef, ChildRef, Results) ->
+collect_diag_per_node_loop(ReplyRef, ChildRef, Results) ->
     receive
         {ReplyRef, Item} ->
-            collect_diag_per_node_binary_loop(ReplyRef, ChildRef, [Item | Results]);
+            collect_diag_per_node_loop(ReplyRef, ChildRef, [Item | Results]);
         timeout ->
             [{partial_results_reason, timeout} | Results];
         {'DOWN', ChildRef, process, _, _} ->
             Results
     end.
 
-collect_diag_per_node_binary_body(Reply) ->
+collect_diag_per_node_body(Reply) ->
     ?log_debug("Start collecting diagnostic data"),
     ActiveBuckets = ns_memcached:active_buckets(),
     PersistentBuckets = [B || B <- ActiveBuckets, ns_bucket:is_persistent(B)],
@@ -393,7 +392,7 @@ grab_per_node_diag() ->
 
 grab_per_node_diag(Timeout) ->
     Result = case async:run_with_timeout(fun () ->
-                                                 do_diag_per_node_binary()
+                                                 do_diag_per_node()
                                          end, Timeout) of
                  {ok, R} ->
                      R;
@@ -449,24 +448,10 @@ write_chunk_format(Resp, Fmt, Args) ->
 
 handle_per_node_just_diag(_Resp, []) ->
     erlang:garbage_collect();
-handle_per_node_just_diag(Resp, [{Node, DiagBinary} | Results]) ->
+handle_per_node_just_diag(Resp, [{Node, Diag} | Results]) ->
     erlang:garbage_collect(),
 
     trace_memory("Processing diag info for node ~p", [Node]),
-    Diag = case is_binary(DiagBinary) of
-               true ->
-                   try
-                       binary_to_term(DiagBinary)
-                   catch
-                       error:badarg ->
-                           ?log_error("Could not convert "
-                                      "binary diag to term (node ~p)", [Node]),
-                           {diag_failed, binary_to_term_failed}
-                   end;
-               false ->
-                   DiagBinary
-           end,
-    trace_memory("Binary is unpacked for node ~p", [Node]),
     do_handle_per_node_just_diag(Resp, Node, Diag),
     handle_per_node_just_diag(Resp, Results).
 
