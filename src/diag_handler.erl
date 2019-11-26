@@ -23,8 +23,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--export([do_diag_per_node_binary/0,
-         handle_diag/1,
+-export([handle_diag/1,
          handle_sasl_logs/1, handle_sasl_logs/2,
          handle_diag_ale/1,
          handle_diag_eval/1,
@@ -40,9 +39,7 @@
          %% rpc-ed to grab babysitter and couchdb processes
          grab_process_infos/0,
          %% rpc-ed to grab couchdb ets_tables
-         grab_all_ets_tables/0,
-         %% rpc-ed to release big binary refc'd by rpc server
-         garbage_collect_rpc/0]).
+         grab_all_ets_tables/0]).
 
 %% Read the manifest.xml file
 manifest() ->
@@ -212,16 +209,13 @@ task_status_all() ->
     local_tasks:all() ++ ns_couchdb_api:get_tasks().
 
 do_diag_per_node_binary() ->
-    do_diag_per_node_binary(remote).
-
-do_diag_per_node_binary(Remoteness) ->
     work_queue:submit_sync_work(
       diag_handler_worker,
       fun () ->
-              (catch collect_diag_per_node_binary(Remoteness, 40000))
+              (catch collect_diag_per_node_binary(40000))
       end).
 
-collect_diag_per_node_binary(Remoteness, Timeout) ->
+collect_diag_per_node_binary(Timeout) ->
     ReplyRef = make_ref(),
     Parent = self(),
     {ChildPid, ChildRef} =
@@ -245,7 +239,7 @@ collect_diag_per_node_binary(Remoteness, Timeout) ->
                     end),
 
                   try
-                      collect_diag_per_node_binary_body(Remoteness, Reply)
+                      collect_diag_per_node_binary_body(Reply)
                   catch
                       T:E ->
                           Reply(partial_results_reason,
@@ -290,7 +284,7 @@ collect_diag_per_node_binary_loop(ReplyRef, ChildRef, Results) ->
             Results
     end.
 
-collect_diag_per_node_binary_body(Remoteness, Reply) ->
+collect_diag_per_node_binary_body(Reply) ->
     ?log_debug("Start collecting diagnostic data"),
     ActiveBuckets = ns_memcached:active_buckets(),
     PersistentBuckets = [B || B <- ActiveBuckets, ns_bucket:is_persistent(B)],
@@ -310,7 +304,7 @@ collect_diag_per_node_binary_body(Remoteness, Reply) ->
     Reply(replication_docs, (catch goxdcr_rest:find_all_replication_docs(5000))),
     Reply(design_docs, [{Bucket, (catch capi_utils:full_live_ddocs(Bucket, 2000))} ||
                            Bucket <- PersistentBuckets]),
-    Reply(ets_tables, (catch grab_all_ets_tables(Remoteness))),
+    Reply(ets_tables, grab_later),
     Reply(couchdb_ets_tables, (catch grab_couchdb_ets_tables())),
     Reply(internal_settings, (catch menelaus_web_settings:build_kvs(internal))),
     Reply(logging, (catch ale:capture_logging_diagnostics())),
@@ -354,11 +348,6 @@ sanitize_ets_table(_, Info, Content) ->
     end.
 
 grab_all_ets_tables() ->
-    grab_all_ets_tables(remote).
-
-grab_all_ets_tables(local) ->
-    grab_later;
-grab_all_ets_tables(remote) ->
     lists:flatmap(fun grab_ets_table/1, ets:all()).
 
 grab_ets_table(T) ->
@@ -399,33 +388,20 @@ handle_diag(Req) ->
     Resp:write_chunk(<<>>),
     trace_memory("Finished handling diag.").
 
-garbage_collect_rpc() ->
-    garbage_collect(whereis(rex)).
+grab_per_node_diag() ->
+    grab_per_node_diag(45000).
 
-grab_per_node_diag(Nodes) ->
-    Remotes = lists:delete(node(), Nodes),
-    false = Nodes =:= Remotes,
-    grab_per_node_diag(Remotes, 45000).
+grab_per_node_diag(Timeout) ->
+    Result = case async:run_with_timeout(fun () ->
+                                                 do_diag_per_node_binary()
+                                         end, Timeout) of
+                 {ok, R} ->
+                     R;
+                 {error, timeout} ->
+                     diag_failed
+             end,
 
-grab_per_node_diag(Remotes, Timeout) ->
-    GrabDiag =
-        fun (self) ->
-                async:run_with_timeout(fun () -> do_diag_per_node_binary(local) end, Timeout);
-            (remotes) ->
-                RV = rpc:multicall(Remotes, ?MODULE, do_diag_per_node_binary, [], Timeout),
-                rpc:eval_everywhere(Remotes, ?MODULE, garbage_collect_rpc, []),
-                RV
-        end,
-
-    {Results, BadNodes} =
-        case async:map(GrabDiag, [self, remotes]) of
-            [{ok, R}, {Res, BN}] ->
-                {[R | Res], BN};
-            [{error, timeout}, {Res, BN}] ->
-                {Res, [node() | BN]}
-        end,
-    ResultPairs = lists:zip(lists:subtract([node() | Remotes], BadNodes), Results),
-    [{N, diag_failed} || N <- BadNodes] ++ ResultPairs.
+    [{node(), Result}].
 
 handle_just_diag(Req, Extra) ->
     Resp = menelaus_util:reply_ok(Req, "text/plain; charset=utf-8", chunked, Extra),
@@ -449,11 +425,7 @@ handle_just_diag(Req, Extra) ->
                   end, lists:keysort(#log_entry.tstamp, ns_log:recent())),
     Resp:write_chunk(<<"-------------------------------\n\n\n">>),
 
-    Nodes = case proplists:get_value("oneNode", Req:parse_qs(), "0") of
-                "0" -> ns_node_disco:erlang_visible_nodes();
-                _ -> [node()]
-            end,
-    Results = grab_per_node_diag(Nodes),
+    Results = grab_per_node_diag(),
     handle_per_node_just_diag(Resp, Results),
 
     Buckets = lists:sort(fun (A,B) -> element(1, A) =< element(1, B) end,

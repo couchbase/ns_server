@@ -153,23 +153,9 @@ collect_cluster_logs(Nodes, BaseURL, Options) ->
 
     ns_heart:force_beat(),
 
-    JustOneNode = case Nodes of
-                      [_] -> true;
-                      _ -> false
-                  end,
-
-    MaybeNoSingleNode = case (JustOneNode orelse
-                              ns_config:read_key_fast(cluster_logs_no_single_node_diag, false)) of
-                            true ->
-                                [no_single_node_diag];
-                            _ ->
-                                []
-                        end,
-
     misc:parallel_map(
       fun (N) ->
-              run_node_collection(N, BaseURL, TimestampS,
-                                  Options ++ MaybeNoSingleNode)
+              run_node_collection(N, BaseURL, TimestampS, Options)
       end, Nodes, infinity),
 
     update_ets_status({cluster, Nodes, BaseURL, Timestamp, completed}).
@@ -291,19 +277,12 @@ start_collection_per_node(TimestampS, Parent, Options) ->
         end,
     proc_lib:init_ack(Parent, {ok, self(), UploadFilename}),
 
-    MaybeSingleNode = case proplists:get_bool(no_single_node_diag, Options) of
-                          false ->
-                              [];
-                          _ ->
-                              ["--multi-node-diag"]
-                      end,
-
     MaybeTmpDir = case proplists:get_value(tmp_dir, Options) of
                       undefined -> [];
                       Value -> ["--tmp-dir=" ++ Value]
                   end,
 
-    Args0 = ["--watch-stdin"] ++ MaybeSingleNode ++ MaybeLogRedaction ++
+    Args0 = ["--watch-stdin"] ++ MaybeLogRedaction ++
         MaybeTmpDir ++ ["--initargs=" ++ InitargsFilename, Filename],
 
     ExtraArgs = ns_config:search_node_with_default(cbcollect_info_extra_args, []),
