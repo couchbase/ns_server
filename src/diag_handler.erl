@@ -17,6 +17,7 @@
 -module(diag_handler).
 -author('NorthScale <info@northscale.com>').
 
+-include("cut.hrl").
 -include("ns_common.hrl").
 -include("ns_log.hrl").
 -include_lib("kernel/include/file.hrl").
@@ -327,36 +328,66 @@ grab_process_infos_loop([P | RestPids], Acc) ->
 grab_couchdb_ets_tables() ->
     rpc:call(ns_node_disco:couchdb_node(), ?MODULE, grab_all_ets_tables, [], 5000).
 
-prepare_ets_table(_Table, failed) ->
-    [];
-prepare_ets_table(Table, {Info, Content}) ->
-    [{{Table, Info}, sanitize_ets_table(Table, Info, Content)}].
-
-sanitize_ets_table(menelaus_ui_auth, _Info, _Content) ->
-    ["not printed"];
-sanitize_ets_table(menelaus_ui_auth_by_expiration, _Info, _Content) ->
-    ["not printed"];
-sanitize_ets_table(menelaus_web_cache, _Info, Content) ->
-    ns_cluster:sanitize_node_info(Content);
-sanitize_ets_table(_, Info, Content) ->
+get_ets_table_sanitizer(menelaus_ui_auth, _Info) ->
+    skip;
+get_ets_table_sanitizer(menelaus_ui_auth_by_expiration, _Info) ->
+    skip;
+get_ets_table_sanitizer(menelaus_web_cache, _Info) ->
+    {ok, fun ns_cluster:sanitize_node_info/1};
+get_ets_table_sanitizer(_, Info) ->
     case proplists:get_value(name, Info) of
         ssl_otp_pem_cache ->
-            ["not printed"];
+            skip;
         _ ->
-            ns_config_log:sanitize(Content, true)
+            {ok, ns_config_log:sanitize(_, true)}
+    end.
+
+get_ets_table_info(Table) ->
+    case ets:info(Table) of
+        undefined ->
+            {error, not_found};
+        Info ->
+            {ok, Info}
+    end.
+
+stream_ets_table(Table, Info, Fun, State) ->
+    try
+        do_stream_ets_table(Table, Info, Fun, State)
+    catch
+        T:E ->
+            {error, {failed, T, E, erlang:get_stacktrace()}}
+    end.
+
+do_stream_ets_table(Table, Info, Fun, State) ->
+    case get_ets_table_sanitizer(Table, Info) of
+        skip ->
+            {error, skipped};
+        {ok, Sanitizer} ->
+            FinalState =
+                ets:foldl(fun (Element, Acc) ->
+                                  Fun(Sanitizer(Element), Acc)
+                          end, State, Table),
+            {ok, FinalState}
     end.
 
 grab_all_ets_tables() ->
     lists:flatmap(fun grab_ets_table/1, ets:all()).
 
-grab_ets_table(T) ->
-    InfoAndContent =
-        try
-            {ets:info(T), ets:tab2list(T)}
-        catch
-            _:_ -> failed
-        end,
-    prepare_ets_table(T, InfoAndContent).
+grab_ets_table(Table) ->
+    case get_ets_table_info(Table) of
+        {ok, Info} ->
+            case stream_ets_table(Table, Info,
+                                  fun (Elem, AccValues) ->
+                                          [Elem | AccValues]
+                                  end, []) of
+                {ok, ReversedValues} ->
+                    [{{Table, Info}, lists:reverse(ReversedValues)}];
+                Error ->
+                    [{{Table, Info}, [Error]}]
+            end;
+        _Error ->
+            []
+    end.
 
 diag_format_timestamp(EpochMilliseconds) ->
     SecondsRaw = trunc(EpochMilliseconds/1000),
@@ -511,13 +542,30 @@ print_ets_table(Resp, Node, Key, Table, Info, Values) ->
       end).
 
 do_print_ets_table(Resp, Node, Key, Table, [], grab_later) ->
-    case grab_ets_table(Table) of
-        [] ->
-            ok;
-        [{{Table, Info}, Values}] ->
-            do_print_ets_table(Resp, Node, Key, Table, Info, Values)
+    case get_ets_table_info(Table) of
+        {ok, Info} ->
+            ProducerFun =
+                fun (Callback) ->
+                        case stream_ets_table(Table, Info,
+                                              fun (Value, _) ->
+                                                      Callback(Value)
+                                              end, unused) of
+                            {ok, _} ->
+                                ok;
+                            Error ->
+                                Error
+                        end
+                end,
+
+            format_ets_table(Resp, Node, Key, Table, Info, ProducerFun);
+        _Error ->
+            ok
     end;
 do_print_ets_table(Resp, Node, Key, Table, Info, Values) ->
+    format_ets_table(Resp, Node, Key, Table, Info,
+                     lists:foreach(_, Values)).
+
+format_ets_table(Resp, Node, Key, Table, Info, ProduceValues) ->
     write_chunk_format(Resp, "per_node_~p(~p, ~p) =~n",
                        [Key, Node, Table]),
     case Info of
@@ -526,15 +574,13 @@ do_print_ets_table(Resp, Node, Key, Table, Info, Values) ->
         _ ->
             write_chunk_format(Resp, "  Info: ~p~n", [Info])
     end,
-    case Values of
-        [] ->
+
+    Resp:write_chunk(<<"  Values: \n">>),
+    case ProduceValues(?cut(write_chunk_format(Resp, "    ~p~n", [_]))) of
+        ok ->
             ok;
-        _ ->
-            Resp:write_chunk(<<"  Values: \n">>),
-            lists:foreach(
-              fun (Value) ->
-                      write_chunk_format(Resp, "    ~p~n", [Value])
-              end, Values)
+        Error ->
+            write_chunk_format(Resp, "    ~p~n", [Error])
     end,
     Resp:write_chunk(<<"\n">>).
 
