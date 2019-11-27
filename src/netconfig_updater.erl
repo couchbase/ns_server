@@ -245,9 +245,12 @@ change_ext_dist_proto(ExpectedFamily, ExpectedEncryption) ->
         || N <- Nodes],
     ok.
 
-ensure_connection_proto(Node, _Family, _Encr, Retries) when Retries =< 0 ->
+ensure_connection_proto(Node, _Family, _Encr, Retries) ->
+    ensure_connection_proto(Node, _Family, _Encr, Retries, 10).
+
+ensure_connection_proto(Node, _Family, _Encr, Retries, _) when Retries =< 0 ->
     erlang:throw({exceeded_retries, Node});
-ensure_connection_proto(Node, Family, Encryption, Retries) ->
+ensure_connection_proto(Node, Family, Encryption, Retries, RetryTimeout) ->
     erlang:disconnect_node(Node),
     case net_kernel:connect(Node) of
         true ->
@@ -258,17 +261,19 @@ ensure_connection_proto(Node, Family, Encryption, Retries) ->
             catch
                 throw:Reason ->
                     ?log_error("Checking node ~p connection type failed with "
-                               "reason: ~p, retries left: ~p",
-                               [Node, Reason, Retries - 1]),
-                    timer:sleep(rand:uniform(30)),
+                               "reason: ~p, will sleep for ~p ms, "
+                               "retries left: ~p",
+                               [Node, Reason, RetryTimeout, Retries - 1]),
+                    Retries > 1 andalso timer:sleep(RetryTimeout),
                     ensure_connection_proto(Node, Family, Encryption,
-                                            Retries - 1)
+                                            Retries - 1, RetryTimeout * 2)
             end;
         false ->
-            ?log_error("Failed to connect to node ~p, retries left: ~p",
-                       [Node, Retries - 1]),
-            timer:sleep(100),
-            ensure_connection_proto(Node, Family, Encryption, Retries - 1)
+            ?log_error("Failed to connect to node ~p, will sleep for ~p ms, "
+                       "retries left: ~p", [Node, RetryTimeout, Retries - 1]),
+            Retries > 1 andalso timer:sleep(RetryTimeout),
+            ensure_connection_proto(Node, Family, Encryption, Retries - 1,
+                                    RetryTimeout * 2)
     end.
 
 check_connection_proto(Node, Family, Encryption) ->
