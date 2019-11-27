@@ -107,8 +107,10 @@
 
     function maybeShowItemsControls() {
       var items = {};
-      vm.group.charts.forEach(function (chartID) {
-        var chartStats = Object.keys(mnStoreService.store("charts").get(chartID).stats);
+      ((vm.group || {}).charts || []).forEach(function (chartID) {
+        var stats = mnStoreService.store("charts").get(chartID) ?
+            mnStoreService.store("charts").get(chartID).stats : {};
+        var chartStats = Object.keys(stats);
         chartStats.forEach(function (statPath) {
           if (statPath.includes("@items")) {
             items[statPath.split(".")[0]] = true;

@@ -2674,8 +2674,8 @@ mn-statistics-chart {
   color: #cc2a2e !important;
   text-align: center;
   width: 100%;
-  position: absolute;
-  top: 45%;
+  min-height: 120px;
+  line-height: 110px;
 }
 .chart-overlay .dialog {
   width: 100%;
