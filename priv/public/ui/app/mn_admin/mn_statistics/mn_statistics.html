@@ -146,7 +146,7 @@
      ng-if="statisticsNewCtl.selectedBucket"
      class="charts-group">
     <div
-       ng-if="((mnStatsGroupsCtl.group.enterprise == undefined) || poolDefault.isEnterprise)"
+       ng-if="mnStatsGroupsCtl.group && ((mnStatsGroupsCtl.group.enterprise == undefined) || poolDefault.isEnterprise)"
        ng-click="mnStatsGroupsCtl.group.isOpen = !mnStatsGroupsCtl.group.isOpen;
                  mnStatsGroupsCtl.saveDashboard();"
        class="charts-group-row disclosure nowrap"
