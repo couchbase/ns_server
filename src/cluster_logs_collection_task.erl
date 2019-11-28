@@ -365,7 +365,4 @@ preflight_base_url(BaseURL, false) ->
 preflight_proxy_url(false) ->
     ok;
 preflight_proxy_url({upload_proxy, URL}) ->
-    preflight_lhttpc_request("Proxy", URL, []);
-preflight_proxy_url(ProxyInfo) ->
-    Msg = io_lib:format("Invalid proxy '~s'", [ProxyInfo]),
-    {error, iolist_to_binary(Msg)}.
+    preflight_lhttpc_request("Proxy", URL, []).
