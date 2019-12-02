@@ -21,6 +21,10 @@
 -include("ns_common.hrl").
 -include("cut.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([start_link/4,
          get_detailed_progress/0,
          get_aggregated_progress/1,
@@ -998,3 +1002,193 @@ get_all_stage_rebalance_details(#state{bucket_info = BucketLevelInfo},
         [] -> [];
         _ -> [{kv, {RV}}]
     end.
+
+-ifdef(TEST).
+test_get_rebalance_info() ->
+    gen_server:call(?MODULE, {get_rebalance_info, [{add_vbucket_info, true}]}).
+
+setup_test_ns_rebalance_observer() ->
+    meck:new(janitor_agent, [passthrough]),
+    meck:expect(janitor_agent, get_mass_dcp_docs_estimate,
+                fun (_, _, VBs) ->
+                        {ok, lists:duplicate(length(VBs), {0, 0, random_state})}
+                end),
+    meck:expect(janitor_agent, get_dcp_docs_estimate,
+                fun (_, _, VB, _) ->
+                        {ok, {VB, 0, <<"backfilling">>}}
+                end),
+
+    ns_config:test_setup(
+      [{buckets, [{configs,
+                   [{"Bucket1",
+                     [{storage_mode, couchstore},
+                      {type, membase},
+                      {num_vbuckets, 2},
+                      {servers, ['n_0', 'n_1']},
+                      {map, [['n_0','n_1'], ['n_1','n_0']]}]}]}]}]),
+    {ok, Pid} = gen_server:start_link(?MODULE,
+                                      {[], [{active_nodes, [n1, n0]}],
+                                       rebalance, <<"rebalanceID">>},
+                                      []),
+    Pid.
+
+teardown_test_ns_rebalance_observer(Pid) ->
+    gen_server:stop(Pid),
+    meck:unload(janitor_agent).
+
+ns_rebalance_observer_test_() ->
+    {foreach,
+     fun setup_test_ns_rebalance_observer/0,
+     fun teardown_test_ns_rebalance_observer/1,
+     [{"rebalance", fun rebalance/0},
+      {"failover", fun failover/0}]}.
+
+rebalance() ->
+    submit_master_event({rebalance_stage_started, [kv], [n1, n0]}),
+    submit_master_event({rebalance_stage_started, [kv, kv_delta_recovery], [n1]}),
+    submit_master_event({rebalance_stage_completed, [kv, kv_delta_recovery]}),
+    submit_master_event({bucket_rebalance_started, "Bucket1", unused}),
+    submit_master_event({planned_moves, "Bucket1",
+                         {[{0, [n_0, n_1], [n_1, n_0], []}], []}}),
+    submit_master_event({vbucket_move_start, unused, "Bucket1",
+                         unused, 0, unused, unused}),
+    submit_master_event({backfill_phase_started, "Bucket1", 0}),
+    submit_master_event({compaction_uninhibit_started, "Bucket1", n_0}),
+    submit_master_event({compaction_uninhibit_started, "Bucket1", n_1}),
+    submit_master_event({compaction_uninhibit_done, "Bucket1", n_1}),
+    submit_master_event({seqno_waiting_started, "Bucket1", 0, unused, unused}),
+    submit_master_event({seqno_waiting_ended, "Bucket1", 0, unused, unused}),
+    submit_master_event({backfill_phase_ended, "Bucket1", 0}),
+    submit_master_event({takeover_started, "Bucket1", 0, unused, unused}),
+    submit_master_event({takeover_ended, "Bucket1", 0, unused, unused}),
+    submit_master_event({vbucket_move_done, "Bucket1", 0}),
+    submit_master_event({bucket_rebalance_ended, "Bucket1", unused}),
+    submit_master_event({rebalance_stage_completed, [kv]}),
+    Services = [n1ql, index, eventing],
+    [begin
+         submit_master_event({rebalance_stage_started, [S], [n1, n0]}),
+         submit_master_event({rebalance_stage_completed, [S]})
+     end || S <- Services],
+
+    ?assertMatch(
+       {ok, [{stageInfo,
+              {[{<<"eventing">>,
+                 {[{totalProgress, 100.0},
+                   {perNodeProgress, {[{n0, 1.0}, {n1, 1.0}]}},
+                   {startTime, _},
+                   {completedTime, _},
+                   {timeTaken, _}]}},
+                {<<"index">>,
+                 {[{totalProgress, 100.0},
+                   {perNodeProgress, {[{n0, 1.0}, {n1, 1.0}]}},
+                   {startTime, _},
+                   {completedTime, _},
+                   {timeTaken, _}]}},
+                {<<"query">>,
+                 {[{totalProgress, 100.0},
+                   {perNodeProgress, {[{n0, 1.0}, {n1, 1.0}]}},
+                   {startTime, _},
+                   {completedTime, _},
+                   {timeTaken, _}]}},
+                {<<"data">>,
+                 {[{totalProgress, 100.0},
+                   {perNodeProgress, {[{n0, 1.0}, {n1, 1.0}]}},
+                   {startTime, _},
+                   {completedTime, _},
+                   {timeTaken, _},
+                   {subStages,
+                    {[{<<"deltaRecovery">>,
+                       {[{totalProgress, 100.0},
+                         {perNodeProgress, {[{n1, 1.0}]}},
+                         {startTime,  _},
+                         {completedTime, _},
+                         {timeTaken, _}]}}]}},
+                   {details,
+                    {[{"Bucket1",
+                       {[{compactionInfo,
+                          {[{inProgress,
+                             {[{n_0,
+                                {[{startTime, _},
+                                  {completedTime, false},
+                                  {timeTaken, _}]}}]}},
+                            {perNode, {[{n_1, {[{averageTime, _}]}}]}}]}},
+                         {vbucketLevelInfo,
+                          {[{move,
+                             {[{averageTime, _},
+                               {totalCount, 1},
+                               {remainingCount, 0}]}},
+                            {backfill, {[{averageTime, _}]}},
+                            {takeover, {[{averageTime, _}]}},
+                            {persistence, {[{averageTime, _}]}},
+                            {vbucketInfo,
+                             [{[{id,0},
+                                {beforeChain, [n_0, n_1]},
+                                {afterChain, [n_1, n_0]},
+                                {move,
+                                 {[{startTime, _},
+                                   {completedTime, _},
+                                   {timeTaken, _}]}},
+                                {backfill,
+                                 {[{startTime, _},
+                                   {completedTime, _},
+                                   {timeTaken, _}]}},
+                                {takeover,
+                                 {[{startTime, _},
+                                   {completedTime, _},
+                                   {timeTaken, _}]}},
+                                {persistence,
+                                 {[{startTime, _},
+                                   {completedTime, _},
+                                   {timeTaken, _}]}},
+                                {replicationInfo,
+                                 {[{n_1,
+                                    {[{node, n_1},
+                                      {inDocsTotal, _},
+                                      {inDocsLeft, _}]}}]}}]}]}]}},
+                         {replicationInfo,
+                          {[{n_0,
+                             {[{inDocsTotal, _},
+                               {inDocsLeft, 0},
+                               {outDocsTotal, _},
+                               {outDocsLeft, 0}]}},
+                            {n_1,
+                             {[{inDocsTotal, _},
+                               {inDocsLeft, 0},
+                               {outDocsTotal, _},
+                               {outDocsLeft, 0}]}}]}},
+                         {startTime, _},
+                         {completedTime, _},
+                         {timeTaken, _}]}}]}}]}}]}},
+             {rebalanceId, <<"rebalanceID">>},
+             {nodesInfo, {[{active_nodes, [n1, n0]}]}},
+             {masterNode, _}]},
+       test_get_rebalance_info()),
+    ?assert(meck:validate(janitor_agent)).
+
+failover() ->
+    submit_master_event({failover, [n_1]}),
+    submit_master_event({bucket_failover_started, "Bucket1", [n_1], unused}),
+    submit_master_event({bucket_failover_ended, "Bucket1", [n_1], unused}),
+    submit_master_event({failover_ended}),
+
+    ?assertMatch(
+       {ok, [{stageInfo,
+              {[{<<"failover">>,
+                 {[{totalProgress, 100.0},
+                   {perNodeProgress, {[{n_1, 1.0}]}},
+                   {startTime, _},
+                   {completedTime, _},
+                   {timeTaken, _},
+                   {subStages,
+                    {[{<<"Bucket1">>,
+                       {[{totalProgress, 100.0},
+                         {perNodeProgress, {[{n_1, 1.0}]}},
+                         {startTime, _},
+                         {completedTime, _},
+                         {timeTaken, _}]}}]}}]}}]}},
+             {rebalanceId, <<"rebalanceID">>},
+             {nodesInfo, {[{active_nodes, [n1, n0]}]}},
+             {masterNode, _}]},
+       test_get_rebalance_info()),
+    ?assert(meck:validate(janitor_agent)).
+-endif.
