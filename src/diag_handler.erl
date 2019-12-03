@@ -17,6 +17,7 @@
 -module(diag_handler).
 -author('NorthScale <info@northscale.com>').
 
+-include("cut.hrl").
 -include("ns_common.hrl").
 -include("ns_log.hrl").
 -include_lib("kernel/include/file.hrl").
@@ -25,8 +26,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([do_diag_per_node_binary/0,
-         handle_diag/1,
+-export([handle_diag/1,
          handle_sasl_logs/1, handle_sasl_logs/2,
          handle_diag_ale/1,
          handle_diag_eval/1,
@@ -42,9 +42,7 @@
          %% rpc-ed to grab babysitter and couchdb processes
          grab_process_infos/0,
          %% rpc-ed to grab couchdb ets_tables
-         grab_all_ets_tables/0,
-         %% rpc-ed to release big binary refc'd by rpc server
-         garbage_collect_rpc/0]).
+         grab_all_ets_tables/0]).
 
 %% Read the manifest.xml file
 manifest() ->
@@ -215,17 +213,14 @@ log_all_dcp_stats() ->
 task_status_all() ->
     local_tasks:all() ++ ns_couchdb_api:get_tasks().
 
-do_diag_per_node_binary() ->
-    do_diag_per_node_binary(remote).
-
-do_diag_per_node_binary(Remoteness) ->
+do_diag_per_node() ->
     work_queue:submit_sync_work(
       diag_handler_worker,
       fun () ->
-              (catch collect_diag_per_node_binary(Remoteness, 40000))
+              (catch collect_diag_per_node(40000))
       end).
 
-collect_diag_per_node_binary(Remoteness, Timeout) ->
+collect_diag_per_node(Timeout) ->
     ReplyRef = make_ref(),
     Parent = self(),
     {ChildPid, ChildRef} =
@@ -249,7 +244,7 @@ collect_diag_per_node_binary(Remoteness, Timeout) ->
                     end),
 
                   try
-                      collect_diag_per_node_binary_body(Remoteness, Reply)
+                      collect_diag_per_node_body(Reply)
                   catch
                       T:E ->
                           Reply(partial_results_reason,
@@ -260,8 +255,7 @@ collect_diag_per_node_binary(Remoteness, Timeout) ->
     TRef = erlang:send_after(Timeout, self(), timeout),
 
     try
-        RV = collect_diag_per_node_binary_loop(ReplyRef, ChildRef, []),
-        term_to_binary(RV)
+        collect_diag_per_node_loop(ReplyRef, ChildRef, [])
     after
         erlang:cancel_timer(TRef),
         receive
@@ -284,17 +278,17 @@ flush_leftover_replies(ReplyRef) ->
         0 -> ok
     end.
 
-collect_diag_per_node_binary_loop(ReplyRef, ChildRef, Results) ->
+collect_diag_per_node_loop(ReplyRef, ChildRef, Results) ->
     receive
         {ReplyRef, Item} ->
-            collect_diag_per_node_binary_loop(ReplyRef, ChildRef, [Item | Results]);
+            collect_diag_per_node_loop(ReplyRef, ChildRef, [Item | Results]);
         timeout ->
             [{partial_results_reason, timeout} | Results];
         {'DOWN', ChildRef, process, _, _} ->
             Results
     end.
 
-collect_diag_per_node_binary_body(Remoteness, Reply) ->
+collect_diag_per_node_body(Reply) ->
     ?log_debug("Start collecting diagnostic data"),
     ActiveBuckets = ns_memcached:active_buckets(),
     PersistentBuckets = [B || B <- ActiveBuckets, ns_bucket:is_persistent(B)],
@@ -315,7 +309,7 @@ collect_diag_per_node_binary_body(Remoteness, Reply) ->
     Reply(replication_docs, (catch goxdcr_rest:find_all_replication_docs(5000))),
     Reply(design_docs, [{Bucket, (catch capi_utils:full_live_ddocs(Bucket, 2000))} ||
                            Bucket <- PersistentBuckets]),
-    Reply(ets_tables, (catch grab_all_ets_tables(Remoteness))),
+    Reply(ets_tables, grab_later),
     Reply(couchdb_ets_tables, (catch grab_couchdb_ets_tables())),
     Reply(internal_settings, (catch menelaus_web_settings:build_kvs(internal))),
     Reply(logging, (catch ale:capture_logging_diagnostics())),
@@ -345,41 +339,66 @@ grab_process_infos_loop([P | RestPids], Acc) ->
 grab_couchdb_ets_tables() ->
     rpc:call(ns_node_disco:couchdb_node(), ?MODULE, grab_all_ets_tables, [], 5000).
 
-prepare_ets_table(_Table, failed) ->
-    [];
-prepare_ets_table(Table, {Info, Content}) ->
-    [{{Table, Info}, sanitize_ets_table(Table, Info, Content)}].
-
-sanitize_ets_table(menelaus_ui_auth, _Info, _Content) ->
-    ["not printed"];
-sanitize_ets_table(menelaus_ui_auth_by_expiration, _Info, _Content) ->
-    ["not printed"];
-sanitize_ets_table(menelaus_web_cache, _Info, Content) ->
-    ns_cluster:sanitize_node_info(Content);
-sanitize_ets_table(_, Info, Content) ->
+get_ets_table_sanitizer(menelaus_ui_auth, _Info) ->
+    skip;
+get_ets_table_sanitizer(menelaus_ui_auth_by_expiration, _Info) ->
+    skip;
+get_ets_table_sanitizer(menelaus_web_cache, _Info) ->
+    {ok, fun ns_cluster:sanitize_node_info/1};
+get_ets_table_sanitizer(_, Info) ->
     case proplists:get_value(name, Info) of
         ssl_otp_pem_cache ->
-            ["not printed"];
+            skip;
         _ ->
-            ns_config_log:sanitize(Content, true)
+            {ok, ns_config_log:sanitize(_, true)}
+    end.
+
+get_ets_table_info(Table) ->
+    case ets:info(Table) of
+        undefined ->
+            {error, not_found};
+        Info ->
+            {ok, Info}
+    end.
+
+stream_ets_table(Table, Info, Fun, State) ->
+    try
+        do_stream_ets_table(Table, Info, Fun, State)
+    catch
+        T:E ->
+            {error, {failed, T, E, erlang:get_stacktrace()}}
+    end.
+
+do_stream_ets_table(Table, Info, Fun, State) ->
+    case get_ets_table_sanitizer(Table, Info) of
+        skip ->
+            {error, skipped};
+        {ok, Sanitizer} ->
+            FinalState =
+                ets:foldl(fun (Element, Acc) ->
+                                  Fun(Sanitizer(Element), Acc)
+                          end, State, Table),
+            {ok, FinalState}
     end.
 
 grab_all_ets_tables() ->
-    grab_all_ets_tables(remote).
-
-grab_all_ets_tables(local) ->
-    grab_later;
-grab_all_ets_tables(remote) ->
     lists:flatmap(fun grab_ets_table/1, ets:all()).
 
-grab_ets_table(T) ->
-    InfoAndContent =
-        try
-            {ets:info(T), ets:tab2list(T)}
-        catch
-            _:_ -> failed
-        end,
-    prepare_ets_table(T, InfoAndContent).
+grab_ets_table(Table) ->
+    case get_ets_table_info(Table) of
+        {ok, Info} ->
+            case stream_ets_table(Table, Info,
+                                  fun (Elem, AccValues) ->
+                                          [Elem | AccValues]
+                                  end, []) of
+                {ok, ReversedValues} ->
+                    [{{Table, Info}, lists:reverse(ReversedValues)}];
+                Error ->
+                    [{{Table, Info}, [Error]}]
+            end;
+        _Error ->
+            []
+    end.
 
 diag_format_timestamp(EpochMilliseconds) ->
     SecondsRaw = trunc(EpochMilliseconds/1000),
@@ -405,42 +424,25 @@ handle_diag(Req) ->
                         "view" -> [];
                         _ -> [{"Content-Disposition", "attachment; filename=" ++ generate_diag_filename()}]
                     end,
-    case proplists:get_value("noLogs", Params, "0") of
-        "0" ->
-            do_handle_diag(Req, MaybeContDisp);
-        _ ->
-            Resp = handle_just_diag(Req, MaybeContDisp),
-            mochiweb_response:write_chunk(<<>>, Resp)
-    end,
+
+    Resp = handle_just_diag(Req, MaybeContDisp),
+    mochiweb_response:write_chunk(<<>>, Resp),
     trace_memory("Finished handling diag.").
 
-garbage_collect_rpc() ->
-    garbage_collect(whereis(rex)).
+grab_per_node_diag() ->
+    grab_per_node_diag(45000).
 
-grab_per_node_diag(Nodes) ->
-    Remotes = lists:delete(node(), Nodes),
-    false = Nodes =:= Remotes,
-    grab_per_node_diag(Remotes, 45000).
+grab_per_node_diag(Timeout) ->
+    Result = case async:run_with_timeout(fun () ->
+                                                 do_diag_per_node()
+                                         end, Timeout) of
+                 {ok, R} ->
+                     R;
+                 {error, timeout} ->
+                     diag_failed
+             end,
 
-grab_per_node_diag(Remotes, Timeout) ->
-    GrabDiag =
-        fun (self) ->
-                async:run_with_timeout(fun () -> do_diag_per_node_binary(local) end, Timeout);
-            (remotes) ->
-                RV = rpc:multicall(Remotes, ?MODULE, do_diag_per_node_binary, [], Timeout),
-                rpc:eval_everywhere(Remotes, ?MODULE, garbage_collect_rpc, []),
-                RV
-        end,
-
-    {Results, BadNodes} =
-        case async:map(GrabDiag, [self, remotes]) of
-            [{ok, R}, {Res, BN}] ->
-                {[R | Res], BN};
-            [{error, timeout}, {Res, BN}] ->
-                {Res, [node() | BN]}
-        end,
-    ResultPairs = lists:zip(lists:subtract([node() | Remotes], BadNodes), Results),
-    [{N, diag_failed} || N <- BadNodes] ++ ResultPairs.
+    [{node(), Result}].
 
 handle_just_diag(Req, Extra) ->
     Resp = menelaus_util:reply_ok(Req, "text/plain; charset=utf-8", chunked, Extra),
@@ -464,11 +466,7 @@ handle_just_diag(Req, Extra) ->
                   end, lists:keysort(#log_entry.tstamp, ns_log:recent())),
     mochiweb_response:write_chunk(<<"-------------------------------\n\n\n">>, Resp),
 
-    Nodes = case proplists:get_value("oneNode", mochiweb_request:parse_qs(Req), "0") of
-                "0" -> ns_node_disco:erlang_visible_nodes();
-                _ -> [node()]
-            end,
-    Results = grab_per_node_diag(Nodes),
+    Results = grab_per_node_diag(),
     handle_per_node_just_diag(Resp, Results),
 
     Buckets = lists:sort(fun (A,B) -> element(1, A) =< element(1, B) end,
@@ -492,34 +490,17 @@ write_chunk_format(Resp, Fmt, Args) ->
 
 handle_per_node_just_diag(_Resp, []) ->
     erlang:garbage_collect();
-handle_per_node_just_diag(Resp, [{Node, DiagBinary} | Results]) ->
+handle_per_node_just_diag(Resp, [{Node, Diag} | Results]) ->
     erlang:garbage_collect(),
 
     trace_memory("Processing diag info for node ~p", [Node]),
-    Diag = case is_binary(DiagBinary) of
-               true ->
-                   try
-                       binary_to_term(DiagBinary)
-                   catch
-                       error:badarg ->
-                           ?log_error("Could not convert "
-                                      "binary diag to term (node ~p)", [Node]),
-                           {diag_failed, binary_to_term_failed}
-                   end;
-               false ->
-                   DiagBinary
-           end,
-    trace_memory("Binary is unpacked for node ~p", [Node]),
     do_handle_per_node_just_diag(Resp, Node, Diag),
     handle_per_node_just_diag(Resp, Results).
 
 do_handle_per_node_just_diag(Resp, Node, Failed) when not is_list(Failed) ->
     write_chunk_format(Resp, "per_node_diag(~p) = ~p~n~n~n", [Node, Failed]);
 do_handle_per_node_just_diag(Resp, Node, PerNodeDiag) ->
-    %% NOTE: as of 4.0 we're not collecting master events here; but I'm
-    %% leaving this for mixed clusters
-    DiagNoMasterEvents = lists:keydelete(master_events, 1, PerNodeDiag),
-    do_handle_per_node_processes(Resp, Node, DiagNoMasterEvents).
+    do_handle_per_node_processes(Resp, Node, PerNodeDiag).
 
 get_other_node_processes(Key, PerNodeDiag) ->
     Processes = proplists:get_value(Key, PerNodeDiag, []),
@@ -562,43 +543,7 @@ do_handle_per_node_processes(Resp, Node, PerNodeDiag) ->
     write_processes(Resp, Node, couchdb_processes, CouchdbProcesses),
 
     trace_memory("Finished pretty printing processes for ~p", [Node]),
-    do_handle_per_node_stats(Resp, Node, DiagNoProcesses).
-
-do_handle_per_node_stats(Resp, Node, PerNodeDiag)->
-    trace_memory("Starting pretty printing stats for ~p", [Node]),
-    %% pre 3.0 versions return stats as part of per node diagnostics; since
-    %% number of samples may be quite substantial to cause memory issues while
-    %% pretty-printing all of them in a bulk, to play safe we have this code
-    %% to print samples one by one
-    Stats0 = proplists:get_value(stats, PerNodeDiag, []),
-    Stats = case is_list(Stats0) of
-                true ->
-                    Stats0;
-                false ->
-                    [{"_", [{'_', [Stats0]}]}]
-            end,
-
-    misc:executing_on_new_process(
-      fun () ->
-              lists:foreach(
-                fun ({Bucket, BucketStats}) ->
-                        lists:foreach(
-                          fun ({Period, Samples}) ->
-                                  write_chunk_format(Resp, "per_node_stats(~p, ~p, ~p) =~n",
-                                                     [Node, Bucket, Period]),
-
-                                  lists:foreach(
-                                    fun (Sample) ->
-                                            write_chunk_format(Resp, "     ~p~n", [Sample])
-                                    end, Samples)
-                          end, BucketStats)
-                end, Stats),
-              mochiweb_response:write_chunk(<<"\n\n">>, Resp)
-      end),
-
-    DiagNoStats = lists:keydelete(stats, 1, PerNodeDiag),
-    trace_memory("Finished pretty printing stats for ~p", [Node]),
-    do_handle_per_node_ets_tables(Resp, Node, DiagNoStats).
+    do_handle_per_node_ets_tables(Resp, Node, DiagNoProcesses).
 
 print_ets_table(Resp, Node, Key, Table, Info, Values) ->
     trace_memory("Printing ets table ~p for node ~p", [Table, Node]),
@@ -608,13 +553,30 @@ print_ets_table(Resp, Node, Key, Table, Info, Values) ->
       end).
 
 do_print_ets_table(Resp, Node, Key, Table, [], grab_later) ->
-    case grab_ets_table(Table) of
-        [] ->
-            ok;
-        [{{Table, Info}, Values}] ->
-            do_print_ets_table(Resp, Node, Key, Table, Info, Values)
+    case get_ets_table_info(Table) of
+        {ok, Info} ->
+            ProducerFun =
+                fun (Callback) ->
+                        case stream_ets_table(Table, Info,
+                                              fun (Value, _) ->
+                                                      Callback(Value)
+                                              end, unused) of
+                            {ok, _} ->
+                                ok;
+                            Error ->
+                                Error
+                        end
+                end,
+
+            format_ets_table(Resp, Node, Key, Table, Info, ProducerFun);
+        _Error ->
+            ok
     end;
 do_print_ets_table(Resp, Node, Key, Table, Info, Values) ->
+    format_ets_table(Resp, Node, Key, Table, Info,
+                     lists:foreach(_, Values)).
+
+format_ets_table(Resp, Node, Key, Table, Info, ProduceValues) ->
     write_chunk_format(Resp, "per_node_~p(~p, ~p) =~n",
                        [Key, Node, Table]),
     case Info of
@@ -623,15 +585,13 @@ do_print_ets_table(Resp, Node, Key, Table, Info, Values) ->
         _ ->
             write_chunk_format(Resp, "  Info: ~p~n", [Info])
     end,
-    case Values of
-        [] ->
+
+    mochiweb_response:write_chunk(<<"  Values: \n">>, Resp),
+    case ProduceValues(?cut(write_chunk_format(Resp, "    ~p~n", [_]))) of
+        ok ->
             ok;
-        _ ->
-            mochiweb_response:write_chunk(<<"  Values: \n">>, Resp),
-            lists:foreach(
-              fun (Value) ->
-                      write_chunk_format(Resp, "    ~p~n", [Value])
-              end, Values)
+        Error ->
+            write_chunk_format(Resp, "    ~p~n", [Error])
     end,
     mochiweb_response:write_chunk(<<"\n">>, Resp).
 
@@ -673,30 +633,6 @@ do_continue_handling_per_node_just_diag(Resp, Node, Diag) ->
 
     mochiweb_response:write_chunk(<<"\n\n">>, Resp).
 
-do_handle_diag(Req, Extra) ->
-    Resp = handle_just_diag(Req, Extra),
-
-    Logs = [?DEBUG_LOG_FILENAME, ?STATS_LOG_FILENAME,
-            ?DEFAULT_LOG_FILENAME, ?ERRORS_LOG_FILENAME,
-            ?XDCR_TARGET_LOG_FILENAME,
-            ?COUCHDB_LOG_FILENAME,
-            ?VIEWS_LOG_FILENAME, ?MAPREDUCE_ERRORS_LOG_FILENAME,
-            ?BABYSITTER_LOG_FILENAME,
-            ?REPORTS_LOG_FILENAME,
-            ?METAKV_LOG_FILENAME,
-            ?ACCESS_LOG_FILENAME, ?INT_ACCESS_LOG_FILENAME,
-            ?QUERY_LOG_FILENAME, ?PROJECTOR_LOG_FILENAME,
-            ?GOXDCR_LOG_FILENAME, ?INDEXER_LOG_FILENAME,
-            ?FTS_LOG_FILENAME, ?CBAS_LOG_FILENAME,
-            ?JSON_RPC_LOG_FILENAME,
-            ?EVENTING_LOG_FILENAME],
-
-    lists:foreach(fun (Log) ->
-                          handle_log(Resp, Log)
-                  end, Logs),
-    handle_memcached_logs(Resp),
-    mochiweb_response:write_chunk(<<"">>, Resp).
-
 handle_log(Resp, LogName) ->
     LogsHeader = io_lib:format("logs_node (~s):~n"
                                "-------------------------------~n", [LogName]),
@@ -704,55 +640,6 @@ handle_log(Resp, LogName) ->
     ns_log_browser:stream_logs(LogName,
                                fun (Data) -> mochiweb_response:write_chunk(Data, Resp) end),
     mochiweb_response:write_chunk(<<"-------------------------------\n">>, Resp).
-
-
-handle_memcached_logs(Resp) ->
-    Config = ns_config:get(),
-    Path = ns_config:search_node_prop(Config, memcached, log_path),
-    Prefix = ns_config:search_node_prop(Config, memcached, log_prefix),
-
-    {ok, AllFiles} = file:list_dir(Path),
-    Logs = [filename:join(Path, F) || F <- AllFiles,
-                                      string:str(F, Prefix) == 1],
-    TsLogs = lists:map(fun(F) ->
-                               case file:read_file_info(F) of
-                                   {ok, Info} ->
-                                       {F, Info#file_info.mtime};
-                                   {error, enoent} ->
-                                       deleted
-                               end
-                       end, Logs),
-
-    Sorted = lists:keysort(2, lists:filter(fun (X) -> X /= deleted end, TsLogs)),
-
-    mochiweb_response:write_chunk(<<"memcached logs:\n-------------------------------\n">>, Resp),
-
-    lists:foreach(fun ({Log, _}) ->
-                          handle_memcached_log(Resp, Log)
-                  end, Sorted).
-
-handle_memcached_log(Resp, Log) ->
-    case file:open(Log, [raw, binary]) of
-        {ok, File} ->
-            try
-                do_handle_memcached_log(Resp, File)
-            after
-                file:close(File)
-            end;
-        Error ->
-            mochiweb_response:write_chunk(
-              list_to_binary(io_lib:format("Could not open file ~s: ~p~n", [Log, Error])), Resp)
-    end.
-
--define(CHUNK_SIZE, 65536).
-
-do_handle_memcached_log(Resp, File) ->
-    case file:read(File, ?CHUNK_SIZE) of
-        eof ->
-            ok;
-        {ok, Data} ->
-            mochiweb_response:write_chunk(Data, Resp)
-    end.
 
 handle_sasl_logs(LogName, Req) ->
     FullLogName = LogName ++ ".log",

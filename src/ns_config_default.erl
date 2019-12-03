@@ -166,8 +166,8 @@ default() ->
        {dedupe_nmvb_maps, false},
        {tracing_enabled, IsEnterprise},
        {datatype_snappy, true},
-       {num_reader_threads, 0},
-       {num_writer_threads, 0}]},
+       {num_reader_threads, <<"default">>},
+       {num_writer_threads, <<"default">>}]},
 
      %% Memcached config
      {{node, node(), memcached},

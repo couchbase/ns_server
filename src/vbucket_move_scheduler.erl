@@ -203,7 +203,13 @@ prepare(CurrentMap, TargetMap, Quirks,
                                           end, InitialMoveCounts),
 
     InFlight = dict:map(fun (_K, _V) -> 0 end, InitialMoveCounts),
-
+    BackfillNodes =
+        lists:foldl(
+          fun ({_V, OldChain, NewChain, _Quirks}, Acc) ->
+                  MoveNodes = backfill_nodes(OldChain, NewChain),
+                  sets:union(sets:from_list(MoveNodes), Acc)
+          end, sets:new(), Moves),
+    Backfills = dict:from_list([{N, 0} || N <- sets:to_list(BackfillNodes)]),
 
     State = #state{backfills_limit = BackfillsLimit,
                    moves_before_compaction = MovesBeforeCompaction,
@@ -213,7 +219,7 @@ prepare(CurrentMap, TargetMap, Quirks,
                    moves_left = Moves,
                    moves_from_undefineds = UndefinedMoves,
                    compaction_countdown_per_node = CompactionCountdownPerNode,
-                   in_flight_backfills_per_node = InFlight,
+                   in_flight_backfills_per_node = Backfills,
                    in_flight_per_node = InFlight,
                    in_flight_compactions = sets:new(),
                    initial_move_counts = InitialMoveCounts,

@@ -45,11 +45,11 @@ remote_set_password([Node, Password]) ->
     %% that calls this to ascertain the outcome.
     ExitCode = case RV of
                    ok                   -> 0;
-                   retry                -> 1;
-                   {error, not_allowed} -> 2;
-                   {badrpc, nodedown}   -> 3;
-                   auth_failure         -> 4;
-                   _                    -> 5
+                   retry                -> 101;
+                   {error, not_allowed} -> 102;
+                   {badrpc, nodedown}   -> 103;
+                   auth_failure         -> 104;
+                   _                    -> 105
                end,
     init:stop(ExitCode).
 
