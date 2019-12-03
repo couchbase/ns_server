@@ -1029,10 +1029,8 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
         read_guts(guts, "log_path"), "rebalance"))
     nodes = correct_split(read_guts(guts, "nodes"), ",")
 
-    diag_url = "http://%s:%s/diag?noLogs=1" % (
+    diag_url = "http://%s:%s/diag" % (
         local_url_addr, read_guts(guts, "rest_port"))
-    if not options.multi_node_diag:
-        diag_url += "&oneNode=1"
 
     from distutils.spawn import find_executable
 
@@ -1669,12 +1667,6 @@ def main():
                       help=optparse.SUPPRESS_HELP)
     parser.add_option("--initargs", dest="initargs",
                       help="server 'initargs' path")
-    parser.add_option(
-        "--multi-node-diag",
-        dest="multi_node_diag",
-        action="store_true",
-        default=False,
-        help="collect per-node diag  on all reachable nodes (default is just this node)")
     parser.add_option(
         "--log-redaction-level",
         dest="redact_level",
