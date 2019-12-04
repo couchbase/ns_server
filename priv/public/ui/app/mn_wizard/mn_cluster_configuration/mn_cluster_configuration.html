@@ -67,6 +67,11 @@
            ng-show="clusterConfigurationCtl.postHostConfigErrors.nodeEncryption">
           {{clusterConfigurationCtl.postHostConfigErrors.nodeEncryption}}
         </div>
+        <div
+           class="error error-form"
+           ng-show="clusterConfigurationCtl.postHostConfigErrors.hasOwnProperty('_')">
+          {{clusterConfigurationCtl.postHostConfigErrors["_"]}}
+        </div>
       </div>
 
       <mn-services-disk-paths

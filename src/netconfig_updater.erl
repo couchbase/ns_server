@@ -222,7 +222,9 @@ change_local_dist_proto(ExpectedFamily, ExpectedEncryption) ->
             check_connection_proto(ns_node_disco:couchdb_node(),
                                    ExpectedFamily, ExpectedEncryption);
         {error, not_running} -> ok;
-        Error2 -> erlang:throw({ns_server_restart_error, Error2})
+        Error2 ->
+            ?log_error("Failed to restart ns_server with reason: ~p", [Error2]),
+            erlang:throw({ns_server_restart_error, Error2})
     end.
 
 change_ext_dist_proto(ExpectedFamily, ExpectedEncryption) ->
@@ -288,12 +290,13 @@ check_connection_proto(Node, Family, Encryption) ->
     end.
 
 format_error({update_cb_dist_config_error, Msg}) ->
-    io_lib:format("Failed to update cb_dist configuration file: ~s", [Msg]);
+    io_lib:format("Failed to update distribution configuration file. ~s",
+                  [Msg]);
 format_error({reload_cb_dist_config_error, Node, Msg}) ->
-    io_lib:format("Failed to reload cb_dist configuration file on node ~p: ~s",
+    io_lib:format("Failed to reload distribution configuration file on ~p. ~s",
                   [Node, Msg]);
-format_error({ns_server_restart_error, Error}) ->
-    io_lib:format("Restart error: ~p", [Error]);
+format_error({ns_server_restart_error, _Error}) ->
+    "Cluster manager restart failed";
 format_error({node_info, Node, Error}) ->
     io_lib:format("Failed to get connection info to node ~p: ~p",
                   [Node, Error]);
