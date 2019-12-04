@@ -164,8 +164,8 @@ apply_config_unprotected(Config) ->
         ExternalListeners = proplists:get_value(externalListeners, Config,
                                                 cb_dist:external_listeners()),
         case cb_dist:update_config(Config) of
-            {ok, Listeners} ->
-                verify_listeners_started(Listeners, Config);
+            {ok, _Listeners} ->
+                ok;
             {error, Reason} ->
                 erlang:throw({update_cb_dist_config_error,
                               cb_dist:format_error(Reason)})
@@ -199,17 +199,6 @@ need_local_update(Config) ->
 need_external_update(Config) ->
     (proplists:get_value(afamily, Config) =/= undefined) orelse
         (proplists:get_value(nodeEncryption, Config) =/= undefined).
-
-verify_listeners_started(Listeners, Config) ->
-    Protos = proplists:get_value(externalListeners, Config),
-    NotStarted = case Protos of
-                     undefined -> [];
-                     _ -> Protos -- Listeners
-                 end,
-    case NotStarted of
-        [] -> ok;
-        L -> erlang:throw({start_listeners_failed, L})
-    end.
 
 change_local_dist_proto(ExpectedFamily, ExpectedEncryption) ->
     ?log_info("Reconnecting to babysitter and restarting couchdb since local "
