@@ -12,9 +12,9 @@ function mnStatisticsOverviewController($scope, mnStatisticsNewService, mnStatis
 
     vm.rbac = mnPermissions.export;
 
-    vm.node =  $state.params.statsNode;
-    vm.bucket = $state.params.statsBucket;
-    vm.zoom = $state.params.statsZoom;
+    vm.node =  $stateParams.overviewHostname;
+    vm.bucket = $stateParams.overviewBucket;
+    vm.zoom = $stateParams.overviewZoom;
 
     vm.onSelectNode = onSelectNode;
     vm.onSelectBucket = onSelectBucket;
@@ -39,15 +39,15 @@ function mnStatisticsOverviewController($scope, mnStatisticsNewService, mnStatis
 
 
     function onSelectNode(selectedHostname) {
-      $state.go('.', {statsNode: selectedHostname}, {reload:true});
+      $state.go('.', {overviewHostname: vm.node, overviewBucket: vm.bucket, overviewZoom: vm.zoom}, {reload:true});
     }
 
     function onSelectBucket(bucket) {
-      $state.go('.', {statsBucket: bucket}, {reload:true});
+      $state.go('.', {overviewHostname: vm.node, overviewBucket: vm.bucket, overviewZoom: vm.zoom}, {reload:true});
     }
 
     function onSelectZoom(zoom) {
-      $state.go('.', {statsZoom: zoom}, {reload:true});
+      $state.go('.', {overviewHostname: vm.node, overviewBucket: vm.bucket, overviewZoom: vm.zoom}, {reload:true});
     }
 
     function openDetailedChartDialog(block,chart) {
@@ -113,7 +113,7 @@ function mnStatisticsOverviewController($scope, mnStatisticsNewService, mnStatis
         vm.zoom = "hour";
       }
 
-      if ($state.params.statsNode)
+      if ($stateParams.overviewHostname)
         updateCharts();
 
       new mnPoller($scope, function () {
@@ -123,7 +123,7 @@ function mnStatisticsOverviewController($scope, mnStatisticsNewService, mnStatis
         //nodes.nodesNames.unshift("All Server Nodes (" + nodes.nodesNames.length + ")");
         var origNode = vm.node;
         vm.nodes = nodes;
-        if (!vm.node) {
+        if (!vm.node || vm.node == 'all') {
           vm.node = nodes.nodesNames[0];
         }
         if (vm.node != origNode) {
