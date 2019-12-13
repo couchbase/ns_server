@@ -2,7 +2,7 @@
 # -*- python -*-
 #
 # @author Couchbase <info@couchbase.com>
-# @copyright 2011-2019 Couchbase, Inc.
+# @copyright 2011-2020 Couchbase, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ import shutil
 import errno
 import hashlib
 import uuid
-import codecs
+import io
 from datetime import datetime, timedelta, tzinfo
 from io import BytesIO, StringIO
 
@@ -291,7 +291,7 @@ class LogRedactor:
         # Don't try to catch any errors here as we want failures (e.g.
         # due to disk full) to abort the collection.  This will allow
         # the cause of the failure to be fixed and collection retried.
-        with codecs.open(ifile, 'r', LATIN1) as inp:
+        with io.open(ifile, 'r', encoding=LATIN1) as inp:
             with open(ofile, 'w+') as out:
                 for line in inp:
                     out.write(processor.do(line))
