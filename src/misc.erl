@@ -849,9 +849,9 @@ raw_read_loop(File, Acc) ->
         eof ->
             file:close(File),
             {ok, iolist_to_binary(Acc)};
-        {error, Reason} ->
+        {error, _} = Error ->
             file:close(File),
-            erlang:error(Reason)
+            Error
     end.
 
 assoc_multicall_results_rec([], _ResL, _BadNodes, SuccessAcc, ErrorAcc) ->
