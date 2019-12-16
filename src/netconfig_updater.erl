@@ -164,8 +164,8 @@ apply_config_unprotected(Config) ->
         ExternalListeners = proplists:get_value(externalListeners, Config,
                                                 cb_dist:external_listeners()),
         case cb_dist:update_config(Config) of
-            {ok, Listeners} ->
-                verify_listeners_started(Listeners, Config);
+            {ok, _Listeners} ->
+                ok;
             {error, Reason} ->
                 erlang:throw({update_cb_dist_config_error,
                               cb_dist:format_error(Reason)})
@@ -200,17 +200,6 @@ need_external_update(Config) ->
     (proplists:get_value(afamily, Config) =/= undefined) orelse
         (proplists:get_value(nodeEncryption, Config) =/= undefined).
 
-verify_listeners_started(Listeners, Config) ->
-    Protos = proplists:get_value(externalListeners, Config),
-    NotStarted = case Protos of
-                     undefined -> [];
-                     _ -> Protos -- Listeners
-                 end,
-    case NotStarted of
-        [] -> ok;
-        L -> erlang:throw({start_listeners_failed, L})
-    end.
-
 change_local_dist_proto(ExpectedFamily, ExpectedEncryption) ->
     ?log_info("Reconnecting to babysitter and restarting couchdb since local "
               "dist protocol settings changed, expected afamily is ~p, "
@@ -233,7 +222,9 @@ change_local_dist_proto(ExpectedFamily, ExpectedEncryption) ->
             check_connection_proto(ns_node_disco:couchdb_node(),
                                    ExpectedFamily, ExpectedEncryption);
         {error, not_running} -> ok;
-        Error2 -> erlang:throw({ns_server_restart_error, Error2})
+        Error2 ->
+            ?log_error("Failed to restart ns_server with reason: ~p", [Error2]),
+            erlang:throw({ns_server_restart_error, Error2})
     end.
 
 change_ext_dist_proto(ExpectedFamily, ExpectedEncryption) ->
@@ -299,12 +290,13 @@ check_connection_proto(Node, Family, Encryption) ->
     end.
 
 format_error({update_cb_dist_config_error, Msg}) ->
-    io_lib:format("Failed to update cb_dist configuration file: ~s", [Msg]);
+    io_lib:format("Failed to update distribution configuration file. ~s",
+                  [Msg]);
 format_error({reload_cb_dist_config_error, Node, Msg}) ->
-    io_lib:format("Failed to reload cb_dist configuration file on node ~p: ~s",
+    io_lib:format("Failed to reload distribution configuration file on ~p. ~s",
                   [Node, Msg]);
-format_error({ns_server_restart_error, Error}) ->
-    io_lib:format("Restart error: ~p", [Error]);
+format_error({ns_server_restart_error, _Error}) ->
+    "Cluster manager restart failed";
 format_error({node_info, Node, Error}) ->
     io_lib:format("Failed to get connection info to node ~p: ~p",
                   [Node, Error]);

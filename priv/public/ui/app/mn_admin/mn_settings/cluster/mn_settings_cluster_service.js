@@ -16,7 +16,9 @@
       getSettingsRetryRebalance: getSettingsRetryRebalance,
       postSettingsRetryRebalance: postSettingsRetryRebalance,
       getPendingRetryRebalance: getPendingRetryRebalance,
-      postCancelRebalanceRetry: postCancelRebalanceRetry
+      postCancelRebalanceRetry: postCancelRebalanceRetry,
+      getMemcachedSettings: getMemcachedSettings,
+      postMemcachedSettings: postMemcachedSettings
     };
 
     var childSubmitCallbacks = [];
@@ -25,6 +27,14 @@
 
     function postSettingsRetryRebalance(data, params) {
       return $http.post("/settings/retryRebalance", data, {params: params});
+    }
+
+    function getMemcachedSettings() {
+      return $http.get("/pools/default/settings/memcached/global");
+    }
+
+    function postMemcachedSettings(data) {
+      return $http.post("/pools/default/settings/memcached/global", data);
     }
 
     function getPendingRetryRebalance(mnHttpParams) {

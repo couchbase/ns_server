@@ -46,7 +46,8 @@
 
         <div ng-if="rbac.cluster.settings.read" ui-view="autofailover"></div>
 
-        <div ng-if="adminCtl.poolDefault.isEnterprise && rbac.cluster.settings.indexes.read">
+        <div ng-if="adminCtl.poolDefault.isEnterprise && rbac.cluster.settings.indexes.read"
+             class="formrow">
           <label class="margin-top-half">Rebalance Settings</label>
           <div class="row flex-left text-medium flex-wrap">
             <input
@@ -100,6 +101,124 @@
              class="error"
              ng-show="settingsClusterCtl.retryRebalanceErrors.afterTimePeriod">
             {{settingsClusterCtl.retryRebalanceErrors.afterTimePeriod}}
+          </div>
+        </div>
+
+        <div ng-if="rbac.cluster.admin.memcached.read" class="margin-top-1">
+          <label>Data Settings</label>
+          <p
+             class="disclosure"
+             ng-class="{disclosed: settingsClusterCtl.showDataService}"
+             ng-click="settingsClusterCtl.showDataService = !settingsClusterCtl.showDataService">
+            Advanced Data Settings
+          </p>
+          <div
+            ng-show="settingsClusterCtl.showDataService"
+            class="indent-1-5">
+
+            <label class="margin-top-half">Reader Thread Settings</label>
+            <input
+              type="radio"
+              id="for-reader-default"
+              name="reader_thread_options"
+              ng-model="settingsClusterCtl.readerThreads"
+              value="default">
+            <label for="for-reader-default">
+              Default
+            </label>
+            <br>
+            <input
+              type="radio"
+              id="for-reader-optimized"
+              name="reader_thread_options"
+              ng-model="settingsClusterCtl.readerThreads"
+              value="disk_io_optimized">
+            <label for="for-reader-optimized">
+              Disk i/o optimized
+            </label>
+            <div class="row flex-left">
+              <input
+                type="radio"
+                id="for-reader-fixed"
+                name="reader_thread_options"
+                ng-model="settingsClusterCtl.readerThreads"
+                value="fixed">
+              <label for="for-reader-fixed">
+                Fixed value
+              </label>
+              <select
+                class="select-small fix-width-1"
+                ng-model="settingsClusterCtl.readerThreadsFixed"
+                ng-if="settingsClusterCtl.readerThreads == 'fixed'">
+                <option
+                  ng-repeat="item in settingsClusterCtl.itemsSelect"
+                  value="{{item}}">{{item}}
+                </option>
+              </select>
+            </div>
+            <p class="desc max-width-6" ng-if="settingsClusterCtl.readerThreads == 'fixed'">
+              Higher reader and writer thread counts reduce latency and improve
+              transaction and synchronous write performance. They can also increase
+              CPU and write amplification. Consult Couchbase documentation before
+              setting these values.
+            </p>
+            <div
+              class="error"
+              ng-show="settingsClusterCtl.dataServiceSettingsErrors.num_reader_threads">
+              {{settingsClusterCtl.dataServiceSettingsErrors.num_reader_threads}}
+            </div>
+
+            <label class="margin-top-half">Writer Thread Settings</label>
+            <input
+              type="radio"
+              id="for-writer-default"
+              name="writer_thread_options"
+              ng-model="settingsClusterCtl.writerThreads"
+              value="default">
+            <label for="for-writer-default">
+              Default
+            </label>
+            <br>
+            <input
+              type="radio"
+              id="for-writer-optimized"
+              name="writer_thread_options"
+              ng-model="settingsClusterCtl.writerThreads"
+              value="disk_io_optimized">
+            <label for="for-writer-optimized">
+              Disk i/o optimized
+            </label>
+            <div class="row flex-left">
+              <input
+                type="radio"
+                id="for-writer-fixed"
+                name="writer_thread_options"
+                ng-model="settingsClusterCtl.writerThreads"
+                value="fixed">
+              <label for="for-writer-fixed">
+                Fixed value
+              </label>
+              <select
+                class="select-small fix-width-1"
+                ng-model="settingsClusterCtl.writerThreadsFixed"
+                ng-if="settingsClusterCtl.writerThreads == 'fixed'">
+                <option
+                  ng-repeat="item in settingsClusterCtl.itemsSelect"
+                  value="{{item}}">{{item}}
+                </option>
+              </select>
+            </div>
+            <p class="desc max-width-6" ng-if="settingsClusterCtl.writerThreads == 'fixed'">
+              Higher reader and writer thread counts reduce latency and improve
+              transaction and synchronous write performance. They can also increase
+              CPU and write amplification. Consult Couchbase documentation before
+              setting these values.
+            </p>
+            <div
+              class="error"
+              ng-show="settingsClusterCtl.dataServiceSettingsErrors.num_writer_threads">
+              {{settingsClusterCtl.dataServiceSettingsErrors.num_writer_threads}}
+            </div>
           </div>
         </div>
 

@@ -19,6 +19,7 @@
     var vm = this;
     vm.saveVisualInternalSettings = saveVisualInternalSettings;
     vm.reloadState = mnHelper.reloadState;
+    vm.itemsSelect = [...Array(65).keys()].slice(1);
 
     activate();
 
@@ -52,6 +53,7 @@
       var promise3;
       var promise5;
       var promise6;
+      var promise8;
       var promise7 =
           mnPromiseHelper(vm, mnSettingsClusterService
                           .postSettingsRetryRebalance(vm.retryRebalanceCfg))
@@ -97,9 +99,17 @@
           .onSuccess(prepareQueryCurl)
           .getPromise();
 
-        queries.push(promise3);
-        queries.push(promise5);
-        queries.push(promise7);
+        queries.push(promise3, promise5, promise7);
+      }
+
+      if ($scope.rbac.cluster.admin.memcached.write) {
+        promise8 = mnPromiseHelper(vm, mnSettingsClusterService.postMemcachedSettings({
+          num_reader_threads: packThreadValue('reader'),
+          num_writer_threads: packThreadValue('writer')
+        }))
+          .catchErrors("dataServiceSettingsErrors")
+          .getPromise();
+        queries.push(promise8);
       }
 
       queries = queries.concat(mnSettingsClusterService.getSubmitCallbacks().map(function (cb) {
@@ -111,6 +121,25 @@
         .showGlobalSpinner()
         .reloadState()
         .showGlobalSuccess("Settings saved successfully!");
+    }
+    function packThreadValue(type) {
+      switch (vm[type + 'Threads']) {
+      case "fixed": return vm[type + 'ThreadsFixed'];
+      default: return vm[type + 'Threads'];
+      }
+    }
+    function unpackThreadValue(value, settings) {
+      switch (typeof value) {
+      case "string": return value;
+      case "number": return "fixed";
+      default: return "default";
+      }
+    }
+    function unpackThreadsCount(value) {
+      switch (typeof value) {
+      case "number": return value.toString();
+      default: return "4";
+      }
     }
     function saveVisualInternalSettings() {
       if (vm.clusterSettingsLoading) {
@@ -166,6 +195,15 @@
       mnXDCRService.getSettingsReplications().then(function (rv) {
         vm.replicationSettings = rv.data;
       });
+
+      if ($scope.rbac.cluster.admin.memcached.read) {
+        mnSettingsClusterService.getMemcachedSettings().then(function (rv) {
+          vm.readerThreads = unpackThreadValue(rv.data.num_reader_threads);
+          vm.writerThreads = unpackThreadValue(rv.data.num_writer_threads);
+          vm.readerThreadsFixed = unpackThreadsCount(rv.data.num_reader_threads);
+          vm.writerThreadsFixed = unpackThreadsCount(rv.data.num_writer_threads);
+        });
+      }
 
       mnSettingsClusterService.getSettingsRetryRebalance().then(function (data) {
         vm.retryRebalanceCfg = data;
