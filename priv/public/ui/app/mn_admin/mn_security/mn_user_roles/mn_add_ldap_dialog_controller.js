@@ -129,10 +129,10 @@
       }
       switch (type) {
       case "template":
-        return {template: mapping.template};
+        return {template: mapping.template, scope: "one"};
       case "query":
         var query = mapping.query.split("?");
-        return {base: query[0], filter: query[3]};
+        return {base: query[0], scope: query[2] || "one", filter: query[3]};
       }
     }
 
@@ -173,8 +173,9 @@
         return JSON.stringify({template: config.userDNMapping.template || ""});
       case "query":
         var dnQuery =
-          (config.userDNMapping.base || "")+"??one?"
-          +(config.userDNMapping.filter || "");
+          (config.userDNMapping.base || "") + "??" +
+          (config.userDNMapping.scope || "") + "?" +
+          (config.userDNMapping.filter || "");
         return JSON.stringify({query: dnQuery});
       }
     }
