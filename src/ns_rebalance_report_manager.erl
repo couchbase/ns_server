@@ -262,8 +262,6 @@ fetch_rebalance_report_local(FileName, Dir) ->
         Path = filename:join(Dir, FileName),
         misc:raw_read_file(Path)
     catch
-        error:Reason ->
-            {error, Reason};
         T:E ->
             ?log_debug("Unexpected exception ~p", [{T, E}]),
             {error, unexpected_exception}
