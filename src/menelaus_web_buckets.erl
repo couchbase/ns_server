@@ -186,49 +186,66 @@ external_bucket_type(BucketConfig) ->
 external_bucket_type(memcached = _Type, _) ->
     memcached;
 external_bucket_type(membase = _Type, BucketConfig) ->
-    case ns_bucket:storage_mode(BucketConfig) of
-        couchstore ->
+    case ns_bucket:is_persistent(BucketConfig) of
+        true ->
             membase;
-        ephemeral ->
+        false ->
             ephemeral
     end.
 
-build_auto_compaction_info(BucketConfig, couchstore) ->
-    ACSettings = case proplists:get_value(autocompaction, BucketConfig) of
-                     undefined -> false;
-                     false -> false;
-                     ACSettingsX -> ACSettingsX
-                 end,
+build_auto_compaction_info(BucketConfig) ->
+    case ns_bucket:is_persistent(BucketConfig) of
+        true ->
+            ACSettings = case proplists:get_value(autocompaction,
+                                                  BucketConfig) of
+                             undefined -> false;
+                             false -> false;
+                             ACSettingsX -> ACSettingsX
+                         end,
 
-    case ACSettings of
+            case ACSettings of
+                false ->
+                    [{autoCompactionSettings, false}];
+                _ ->
+                    [{autoCompactionSettings,
+                      menelaus_web_autocompaction:build_bucket_settings(
+                        ACSettings)}]
+            end;
         false ->
-            [{autoCompactionSettings, false}];
-        _ ->
-            [{autoCompactionSettings,
-              menelaus_web_autocompaction:build_bucket_settings(ACSettings)}]
-    end;
-build_auto_compaction_info(_BucketConfig, ephemeral) ->
-    [];
-build_auto_compaction_info(_BucketConfig, undefined) ->
-    %% When the bucket type is memcached.
-    [{autoCompactionSettings, false}].
+            case ns_bucket:storage_mode(BucketConfig) of
+                ephemeral ->
+                    [];
+                undefined ->
+                    %% When the bucket type is memcached.
+                    [{autoCompactionSettings, false}]
+            end
+    end.
 
-build_purge_interval_info(BucketConfig, couchstore) ->
-    case proplists:get_value(autocompaction, BucketConfig, false) of
+build_purge_interval_info(BucketConfig) ->
+    case ns_bucket:is_persistent(BucketConfig) of
+        true ->
+            case proplists:get_value(autocompaction, BucketConfig, false) of
+                false ->
+                    [];
+                _Val ->
+                    PInterval = case proplists:get_value(purge_interval,
+                                                         BucketConfig) of
+                                    undefined ->
+                                        compaction_api:get_purge_interval(global);
+                                    PI -> PI
+                                end,
+                    [{purgeInterval, PInterval}]
+            end;
         false ->
-            [];
-        _Val ->
-            PInterval = case proplists:get_value(purge_interval, BucketConfig) of
-                            undefined -> compaction_api:get_purge_interval(global);
-                            PI -> PI
-                        end,
-            [{purgeInterval, PInterval}]
-    end;
-build_purge_interval_info(BucketConfig, ephemeral) ->
-    [{purgeInterval, proplists:get_value(purge_interval, BucketConfig)}];
-build_purge_interval_info(_BucketConfig, undefined) ->
-    %% When the bucket type is memcached.
-    [].
+            case ns_bucket:storage_mode(BucketConfig) of
+                ephemeral ->
+                    [{purgeInterval, proplists:get_value(purge_interval,
+                                                         BucketConfig)}];
+                undefined ->
+                    %% When the bucket type is memcached.
+                    []
+            end
+    end.
 
 build_eviction_policy(BucketConfig) ->
     case ns_bucket:eviction_policy(BucketConfig) of
@@ -287,6 +304,7 @@ build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
                                             {rawRAM, ns_bucket:raw_ram_quota(BucketConfig)}]}},
                           {basicStats, {struct, BasicStats}},
                           {evictionPolicy, EvictionPolicy},
+                          {storageBackend, ns_bucket:storage_backend(BucketConfig)},
                           {conflictResolutionType, ConflictResolutionType}
                           | BucketCaps],
 
@@ -330,22 +348,12 @@ build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
                   memcached ->
                       Suffix
               end,
+    ACInfo = build_auto_compaction_info(BucketConfig),
+    PIInfo = build_purge_interval_info(BucketConfig),
+    CanHaveViews = ns_bucket:can_have_views(BucketConfig),
 
-    StorageMode = ns_bucket:storage_mode(BucketConfig),
-    ACInfo = build_auto_compaction_info(BucketConfig, StorageMode),
-    PIInfo = build_purge_interval_info(BucketConfig, StorageMode),
-    Suffix2 = ACInfo ++ PIInfo ++ Suffix1 ,
-
-    Suffix3 = case StorageMode of
-                  couchstore ->
-                      DDocsURI = bin_concat_path(["pools", "default", "buckets",
-                                                  Id, "ddocs"]),
-                      [{ddocs, {struct, [{uri, DDocsURI}]}},
-                       {replicaIndex, proplists:get_value(replica_index, BucketConfig, true)}
-                       | Suffix2];
-                  _ ->
-                      Suffix2
-              end,
+    Suffix2 = build_ddocs_uri(CanHaveViews, Id,
+                              BucketConfig) ++ ACInfo ++ PIInfo ++ Suffix1,
 
     FlushEnabled = proplists:get_value(flush_enabled, BucketConfig, false),
     MaybeFlushController =
@@ -357,13 +365,13 @@ build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
                 []
         end,
 
-    Suffix4 = case MayExposeAuth of
+    Suffix3 = case MayExposeAuth of
                   true ->
                       [{saslPassword,
                        list_to_binary(proplists:get_value(sasl_password, BucketConfig, ""))} |
-                       Suffix3];
+                       Suffix2];
                   false ->
-                      Suffix3
+                      Suffix2
               end,
 
     {struct, [{name, list_to_binary(Id)},
@@ -390,7 +398,15 @@ build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
                                 {directoryURI, StatsDirectoryUri},
                                 {nodeStatsListURI, NodeStatsListURI}]}},
               {nodeLocator, ns_bucket:node_locator(BucketConfig)}
-              | Suffix4]}.
+              | Suffix3]}.
+
+build_ddocs_uri(true, Id, BucketConfig) ->
+    DDocsURI = bin_concat_path(["pools", "default", "buckets",
+                                Id, "ddocs"]),
+    [{ddocs, {struct, [{uri, DDocsURI}]}},
+     {replicaIndex, proplists:get_value(replica_index, BucketConfig, true)}];
+build_ddocs_uri(false, _Id, _BucketConfig) ->
+    [].
 
 build_bucket_capabilities(BucketConfig) ->
     Caps =
@@ -399,8 +415,7 @@ build_bucket_capabilities(BucketConfig) ->
                 Conditional =
                     [{collections, collections:enabled(BucketConfig)},
                      {durableWrite, cluster_compat_mode:is_cluster_65()},
-                     {couchapi,
-                      ns_bucket:storage_mode(BucketConfig) =:= couchstore}],
+                     {couchapi, ns_bucket:can_have_views(BucketConfig)}],
 
                 [C || {C, true} <- Conditional] ++
                     [dcp, cbhello, touch, cccp, xdcrCheckpointing, nodesExt,
@@ -754,6 +769,8 @@ num_replicas_warnings_validation(Ctx, NReplicas) ->
 %% 'storage_mode'. So to fix the log message to display the correct bucket type
 %% we use both type and storage_mode parameters of the bucket config.
 display_type(membase = _Type, couchstore = _StorageMode) ->
+    couchbase;
+display_type(membase = _Type, magma = _StorageMode) ->
     couchbase;
 display_type(membase = _Type, ephemeral = _StorageMode) ->
     ephemeral;
@@ -1122,14 +1139,25 @@ validate_replicas_number(Params, IsNew) ->
 get_storage_mode(Params, _BucketConfig, true = _IsNew) ->
     case proplists:get_value("bucketType", Params, "membase") of
         "membase" ->
-            {ok, storage_mode, couchstore};
+            get_storage_mode_based_on_storage_backend(Params);
         "couchbase" ->
-            {ok, storage_mode, couchstore};
+            get_storage_mode_based_on_storage_backend(Params);
         "ephemeral" ->
             {ok, storage_mode, ephemeral}
     end;
 get_storage_mode(_Params, BucketConfig, false = _IsNew)->
     {ok, storage_mode, ns_bucket:storage_mode(BucketConfig)}.
+
+get_storage_mode_based_on_storage_backend(Params) ->
+    case proplists:get_value("storageBackend", Params, "couchstore") of
+        "couchstore" ->
+            {ok, storage_mode, couchstore};
+        "magma" ->
+            {ok, storage_mode, magma};
+        _ ->
+            {error, storage_mode,
+             <<"storage backend must be couchstore or magma">>}
+    end.
 
 get_conflict_resolution_type_and_thresholds(Params, _BucketConfig, true = IsNew) ->
     case proplists:get_value("conflictResolutionType", Params) of

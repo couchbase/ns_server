@@ -622,7 +622,7 @@ section_nodes(Section) ->
 is_persistent("@"++_) ->
     false;
 is_persistent(BucketName) ->
-    ns_bucket:is_persistent(BucketName).
+    ns_bucket:is_named_bucket_persistent(BucketName).
 
 bucket_exists(Bucket) ->
     ns_bucket:get_bucket(Bucket) =/= not_present.

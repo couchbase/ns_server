@@ -44,7 +44,7 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
 
     [{"max_size", [{reload, flush}], MemQuota},
      {"dbname", [restart], DBSubDir},
-     {"backend", [], couchdb},
+     {"backend", [], storage_mode_to_backend_type(StorageMode)},
      {"couch_bucket", [], BucketName},
      {"max_vbuckets", [], proplists:get_value(num_vbuckets, BucketConfig)},
      {"alog_path", [], filename:join(DBSubDir, "access.log")},
@@ -54,17 +54,17 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
      {"uuid", [], UUID},
      {"conflict_resolution_type", [],
       ns_bucket:conflict_resolution_type(BucketConfig)},
-     {"bucket_type", [], storage_mode_to_bucket_type(StorageMode)},
+     {"bucket_type", [], ns_bucket:kv_bucket_type(BucketConfig)},
      {"hlc_drift_ahead_threshold_us", [no_param, {reload, vbucket}],
       DriftAheadThreshold},
      {"hlc_drift_behind_threshold_us", [no_param, {reload, vbucket}],
       DriftBehindThreshold},
      {"item_eviction_policy", maybe_restart(),
-      item_eviction_policy(StorageMode, BucketConfig)},
+      get_eviction_policy(true, BucketConfig)},
      {"ephemeral_full_policy", [{reload, flush}],
-      ephemeral_full_policy(StorageMode, BucketConfig)},
+      get_eviction_policy(false, BucketConfig)},
      {"ephemeral_metadata_purge_age", [{reload, flush}],
-      ephemeral_metadata_purge_age(StorageMode, BucketConfig)},
+      ephemeral_metadata_purge_age(BucketConfig)},
      {"max_ttl", [{reload, flush}], proplists:get_value(max_ttl, BucketConfig)},
      {"ht_locks", [], proplists:get_value(
                         ht_locks, BucketConfig,
@@ -78,10 +78,15 @@ params(memcached, _BucketName, _BucketConfig, MemQuota, UUID) ->
     [{"cache_size", [], MemQuota},
      {"uuid", [], UUID}].
 
-storage_mode_to_bucket_type(couchstore) ->
-    persistent;
-storage_mode_to_bucket_type(ephemeral) ->
-    ephemeral.
+storage_mode_to_backend_type(StorageMode)
+  when StorageMode =:= couchstore;
+       StorageMode =:= ephemeral ->
+    %% This isn't used by kv for ephemeral buckets but changing it to
+    %% something else requires non-zero changes to kv-engine which aren't
+    %% felt to provide any "real" value.
+    couchdb;
+storage_mode_to_backend_type(magma) ->
+    magma.
 
 maybe_restart() ->
     case ns_config:read_key_fast(dont_reload_bucket_on_cfg_change, false) of
@@ -91,29 +96,32 @@ maybe_restart() ->
             []
     end.
 
-item_eviction_policy(couchstore, BucketConfig) ->
-    proplists:get_value(eviction_policy, BucketConfig, value_only);
-item_eviction_policy(ephemeral, _BucketConfig) ->
-    undefined.
+get_eviction_policy(Persistent, BucketConfig) ->
+    case ns_bucket:is_persistent(BucketConfig) of
+        Persistent ->
+            case ns_bucket:eviction_policy(BucketConfig) of
+                nru_eviction ->
+                    auto_delete;
+                no_eviction ->
+                    fail_new_data;
+                Other ->
+                    Other
+            end;
+        _ ->
+            undefined
+    end.
 
-ephemeral_full_policy(ephemeral, BucketConfig) ->
-    case proplists:get_value(eviction_policy, BucketConfig, no_eviction) of
-        nru_eviction ->
-            auto_delete;
-        no_eviction ->
-            fail_new_data
-    end;
-ephemeral_full_policy(couchstore, _BucketConfig) ->
-    undefined.
-
-ephemeral_metadata_purge_age(ephemeral, BucketConfig) ->
-    %% Purge interval is accepted in # of days but the ep-engine
-    %% needs it to be expressed in seconds.
-    Val = proplists:get_value(purge_interval, BucketConfig,
-                              ?DEFAULT_EPHEMERAL_PURGE_INTERVAL_DAYS),
-    erlang:round(Val * 24 * 3600);
-ephemeral_metadata_purge_age(couchstore, _BucketConfig) ->
-    undefined.
+ephemeral_metadata_purge_age(BucketConfig) ->
+    case ns_bucket:is_persistent(BucketConfig) of
+        true ->
+            undefined;
+        false ->
+            %% Purge interval is accepted in # of days but the ep-engine
+            %% needs it to be expressed in seconds.
+            Val = proplists:get_value(purge_interval, BucketConfig,
+                                      ?DEFAULT_EPHEMERAL_PURGE_INTERVAL_DAYS),
+            erlang:round(Val * 24 * 3600)
+    end.
 
 get(Config, BucketName) ->
     {ok, BucketConfig} = ns_bucket:get_bucket(BucketName, Config),

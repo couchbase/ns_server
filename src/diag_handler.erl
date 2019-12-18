@@ -291,7 +291,8 @@ collect_diag_per_node_loop(ReplyRef, ChildRef, Results) ->
 collect_diag_per_node_body(Reply) ->
     ?log_debug("Start collecting diagnostic data"),
     ActiveBuckets = ns_memcached:active_buckets(),
-    PersistentBuckets = [B || B <- ActiveBuckets, ns_bucket:is_persistent(B)],
+    PersistentBuckets = [B || B <- ActiveBuckets,
+                              ns_bucket:is_named_bucket_persistent(B)],
 
     Reply(processes, grab_process_infos()),
     Reply(babysitter_processes, (catch grab_babysitter_process_infos())),

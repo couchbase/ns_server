@@ -201,11 +201,11 @@ compute_bucket_info_with_config(Bucket, Config, BucketConfig) ->
                 {struct, VBMap} = ns_bucket:json_map_with_full_config(?LOCALHOST_MARKER_STRING,
                                                                       BucketConfig, Config),
                 VBMapInfo = [{vBucketServerMap, {VBMap}} | Caps],
-                case ns_bucket:storage_mode(BucketConfig) of
-                    couchstore ->
-                        [{ddocs, {[{uri, <<"/pools/default/buckets/", BucketBin/binary, "/ddocs">>}]}}
-                         | VBMapInfo];
-                    _ ->
+                case ns_bucket:can_have_views(BucketConfig) of
+                    true ->
+                        [{ddocs, {[{uri, <<"/pools/default/buckets/", BucketBin/binary,
+                                           "/ddocs">>}]}} | VBMapInfo];
+                    false ->
                         VBMapInfo
                 end
         end,

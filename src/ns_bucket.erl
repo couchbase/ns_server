@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2019 Couchbase, Inc.
+%% @copyright 2009-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@
 -export([auth_type/1,
          get_servers/1,
          bucket_type/1,
+         kv_bucket_type/1,
          num_replicas_changed/1,
          create_bucket/3,
          credentials/1,
@@ -41,6 +42,7 @@
          get_bucket_names_of_type/2,
          get_buckets/0,
          get_buckets/1,
+         is_named_bucket_persistent/1,
          is_persistent/1,
          is_valid_bucket_name/1,
          json_map_from_config/2,
@@ -61,6 +63,7 @@
          drift_thresholds/1,
          eviction_policy/1,
          storage_mode/1,
+         storage_backend/1,
          raw_ram_quota/1,
          sasl_password/1,
          set_bucket_config/2,
@@ -133,6 +136,7 @@ get_bucket_names(BucketConfigs) ->
     proplists:get_keys(BucketConfigs).
 
 -type bucket_type_mode() :: memcached|membase|{membase, couchstore}|
+                            {membase, magma}|
                             {membase, ephemeral}| {memcached, undefined}.
 
 -spec get_bucket_names_of_type(bucket_type_mode()) -> list().
@@ -178,6 +182,7 @@ eviction_policy(BucketConfig) ->
     Default = case storage_mode(BucketConfig) of
                   undefined -> value_only;
                   couchstore -> value_only;
+                  magma -> value_only;
                   ephemeral -> no_eviction
               end,
     proplists:get_value(eviction_policy, BucketConfig, Default).
@@ -189,6 +194,22 @@ storage_mode(BucketConfig) ->
             undefined;
         membase ->
             proplists:get_value(storage_mode, BucketConfig, couchstore)
+    end.
+
+-spec storage_backend([{_,_}]) -> atom().
+storage_backend(BucketConfig) ->
+    BucketType = bucket_type(BucketConfig),
+    StorageMode = storage_mode(BucketConfig),
+    case BucketType of
+        membase ->
+            case StorageMode of
+                ephemeral ->
+                    undefined;
+                SM ->
+                    SM
+            end;
+        memcached ->
+            undefined
     end.
 
 %% returns bucket ram quota multiplied by number of nodes this bucket
@@ -361,8 +382,16 @@ num_replicas(Bucket) ->
             X
     end.
 
+%% ns_server type (membase vs memcached)
 bucket_type(Bucket) ->
     proplists:get_value(type, Bucket).
+
+%% KV type (persistent vs ephemeral)
+kv_bucket_type(BucketConfig) ->
+    case is_persistent(BucketConfig) of
+        true -> persistent;
+        false -> ephemeral
+    end.
 
 auth_type(Bucket) ->
     proplists:get_value(auth_type, Bucket).
@@ -650,10 +679,14 @@ update_bucket_config(BucketName, Fun) ->
               RV
       end).
 
-is_persistent(BucketName) ->
+is_named_bucket_persistent(BucketName) ->
     {ok, BucketConfig} = get_bucket(BucketName),
+    is_persistent(BucketConfig).
+
+is_persistent(BucketConfig) ->
     bucket_type(BucketConfig) =:= membase andalso
-        storage_mode(BucketConfig) =:= couchstore.
+        (storage_mode(BucketConfig) =:= couchstore orelse
+         storage_mode(BucketConfig) =:= magma).
 
 names_conflict(BucketNameA, BucketNameB) ->
     string:to_lower(BucketNameA) =:= string:to_lower(BucketNameB).
@@ -676,12 +709,13 @@ node_bucket_names(Node) ->
     node_bucket_names(Node, get_buckets()).
 
 -spec node_bucket_names_of_type(node(), memcached|membase,
-                                undefined|couchstore|ephemeral) -> list().
+                                undefined|couchstore|magma|ephemeral) -> list().
 node_bucket_names_of_type(Node, Type, Mode) ->
     node_bucket_names_of_type(Node, Type, Mode, get_buckets()).
 
 -spec node_bucket_names_of_type(node(), memcached|membase,
-                                undefined|couchstore|ephemeral, list()) -> list().
+                                undefined|couchstore|magma|ephemeral,
+                                list()) -> list().
 node_bucket_names_of_type(Node, Type, Mode, BucketConfigs) ->
     [B || {B, C} <- BucketConfigs,
           lists:member(Node, get_servers(C)),
@@ -774,7 +808,8 @@ is_compatible_past_map(Nodes, BucketConfig, Map) ->
     lists:member(Map, Matching).
 
 can_have_views(BucketConfig) ->
-    storage_mode(BucketConfig) =:= couchstore.
+    storage_mode(BucketConfig) =:= couchstore orelse
+    storage_mode(BucketConfig) =:= magma.
 
 bucket_view_nodes(Bucket) ->
     bucket_view_nodes(Bucket, ns_config:latest()).
