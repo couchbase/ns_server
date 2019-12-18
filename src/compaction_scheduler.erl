@@ -39,20 +39,16 @@ set_interval(Interval, State) ->
     State#state{interval=Interval}.
 
 -spec schedule_next(#state{}) -> #state{}.
-schedule_next(#state{start_ts = StartTs0,
+schedule_next(#state{start_ts = StartTs,
                      interval = CheckInterval,
                      timer = Timer,
                      message = Message} = State) ->
-    Now = now_utc_seconds(),
-
-    StartTs = case StartTs0 of
-                  undefined ->
-                      Now;
-                  _ ->
-                      StartTs0
-              end,
-
-    Diff = Now - StartTs,
+    Diff = case StartTs of
+               undefined ->
+                   0;
+               _ ->
+                   now_utc_seconds() - StartTs
+           end,
 
     Timeout =
         case Diff < CheckInterval of
