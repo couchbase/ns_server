@@ -21,7 +21,7 @@
 -include("ns_common.hrl").
 
 -record(state, {start_ts,
-                timer_ref,
+                timer,
                 interval,
                 message}).
 
@@ -29,19 +29,20 @@
 
 -spec init(integer(), term()) -> #state{}.
 init(Interval, Message) ->
-    #state{start_ts=undefined,
-           timer_ref=undefined,
-           interval=Interval,
-           message=Message}.
+    #state{start_ts = undefined,
+           timer = misc:create_timer(Message),
+           interval = Interval,
+           message = Message}.
 
 -spec set_interval(integer(), #state{}) -> #state{}.
 set_interval(Interval, State) ->
     State#state{interval=Interval}.
 
 -spec schedule_next(#state{}) -> #state{}.
-schedule_next(#state{start_ts=StartTs0,
-                     interval=CheckInterval,
-                     message=Message} = State) ->
+schedule_next(#state{start_ts = StartTs0,
+                     interval = CheckInterval,
+                     timer = Timer,
+                     message = Message} = State) ->
     Now = now_utc_seconds(),
 
     StartTs = case StartTs0 of
@@ -53,41 +54,27 @@ schedule_next(#state{start_ts=StartTs0,
 
     Diff = Now - StartTs,
 
-    NewState0 =
+    Timeout =
         case Diff < CheckInterval of
             true ->
                 RepeatIn = (CheckInterval - Diff),
-                ?log_debug("Finished compaction for ~p too soon. Next run will be in ~ps",
-                           [Message, RepeatIn]),
-                {ok, NewTRef} = timer2:send_after(RepeatIn * 1000, Message),
-                State#state{timer_ref=NewTRef};
+                ?log_debug("Finished compaction for ~p too soon. "
+                           "Next run will be in ~ps", [Message, RepeatIn]),
+                RepeatIn * 1000;
             false ->
-                self() ! Message,
-                State#state{timer_ref=undefined}
+                0
         end,
 
-    NewState0#state{start_ts=undefined}.
+    State#state{start_ts = undefined,
+                timer = misc:arm_timer(Timeout, Timer)}.
 
 -spec start_now(#state{}) -> #state{}.
 start_now(State) ->
-    State#state{start_ts=now_utc_seconds(),
-                timer_ref=undefined}.
+    State#state{start_ts = now_utc_seconds()}.
 
 -spec cancel(#state{}) -> #state{}.
-cancel(#state{timer_ref=undefined} = State) ->
-    State;
-cancel(#state{timer_ref=TRef,
-              message=Message} = State) ->
-    {ok, cancel} = timer2:cancel(TRef),
-
-    receive
-        Message ->
-            ok
-    after 0 ->
-            ok
-    end,
-
-    State#state{timer_ref=undefined}.
+cancel(#state{timer = Timer} = State) ->
+    State#state{timer = misc:cancel_timer(Timer)}.
 
 now_utc_seconds() ->
     calendar:datetime_to_gregorian_seconds(erlang:universaltime()).
