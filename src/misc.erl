@@ -2516,9 +2516,6 @@ arm_timer(Timeout, Timer) ->
 
 do_arm_timer(infinity, Timer) ->
     Timer;
-do_arm_timer(0, Timer) ->
-    self() ! Timer#timer.msg,
-    Timer;
 do_arm_timer(Timeout, #timer{msg = Msg} = Timer) ->
     TRef = erlang:send_after(Timeout, self(), Msg),
     Timer#timer{tref = TRef}.
