@@ -35,6 +35,8 @@ def usage():
             -I <index memory size> default: 256\n\
             -t <bucket type> (ephemeral, membase, memcached)\n\
                default: membase\n\
+            -S <storage backend> (couchstore, magma)\n\
+               default: couchstore\n\
             -r <num replicas> (max 3) default: 1\n\
                (Only for ephemeral or membase buckets!)\n\
             -i (don't index replicas) default: replica index enabled\n\
@@ -52,7 +54,7 @@ class PasswordManager(urllib2.HTTPPasswordMgr):
 def main():
     try:
         opts, args = getopt.getopt(sys.argv[1:],
-                                   "n:t:s:r:iT:I:p:",
+                                   "n:t:s:r:iT:S:I:p:",
                                    ["dont-rebalance", "afamily=",
                                     "enable-encryption"])
     except getopt.GetoptError as err:
@@ -61,6 +63,7 @@ def main():
         sys.exit()
     nodes = 0
     buckettype = "membase"
+    storage_backend = "couchstore"
     memsize = 256
     indexmemsize = 256
     replicas = 1
@@ -99,6 +102,10 @@ def main():
             encryption = True
         elif o == "--dont-rebalance":
             do_rebalance = False
+        elif o == "-S":
+            if a not in ("couchstore", "magma"):
+                assert False, "invalid storage backend"
+            storage_backend = a
         else:
             usage()
             sys.exit()
@@ -155,6 +162,7 @@ def main():
            "&authType=sasl" +
            "&saslPassword=" +
            "&bucketType=" + buckettype +
+           "&storageBackend=" + storage_backend +
            "&ramQuotaMB=" + str(memsize) +
            "&replicaNumber=" + str(replicas) +
            "&replicaIndex=" + bool_request_value(replica_index)).read()
