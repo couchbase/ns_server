@@ -28,6 +28,7 @@
          get_servers/1,
          bucket_type/1,
          kv_bucket_type/1,
+         kv_backend_type/1,
          num_replicas_changed/1,
          create_bucket/3,
          credentials/1,
@@ -391,6 +392,17 @@ kv_bucket_type(BucketConfig) ->
     case is_persistent(BucketConfig) of
         true -> persistent;
         false -> ephemeral
+    end.
+
+kv_backend_type(BucketConfig) ->
+    StorageMode = storage_mode(BucketConfig),
+    case StorageMode of
+        couchstore -> couchdb;
+        magma -> magma;
+        %% KV requires a value but only accepts: couchdb, magma, rocksdb.
+        %% So we've always passed couchdb for ephemeral buckets which KV
+        %% will parse as an acceptable value but not use it.
+        ephemeral -> couchdb
     end.
 
 auth_type(Bucket) ->
