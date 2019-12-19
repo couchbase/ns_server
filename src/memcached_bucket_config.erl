@@ -30,8 +30,6 @@
          get_current_collections_uid/1]).
 
 params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
-    StorageMode = ns_bucket:storage_mode(BucketConfig),
-
     {DriftAheadThreshold, DriftBehindThreshold} =
         case ns_bucket:drift_thresholds(BucketConfig) of
             undefined ->
@@ -44,7 +42,7 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
 
     [{"max_size", [{reload, flush}], MemQuota},
      {"dbname", [restart], DBSubDir},
-     {"backend", [], storage_mode_to_backend_type(StorageMode)},
+     {"backend", [], ns_bucket:kv_backend_type(BucketConfig)},
      {"couch_bucket", [], BucketName},
      {"max_vbuckets", [], proplists:get_value(num_vbuckets, BucketConfig)},
      {"alog_path", [], filename:join(DBSubDir, "access.log")},
@@ -74,19 +72,10 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
                           misc:getenv_int("MEMBASE_HT_SIZE", undefined))},
      {"compression_mode", [{reload, flush}],
       proplists:get_value(compression_mode, BucketConfig)}];
+
 params(memcached, _BucketName, _BucketConfig, MemQuota, UUID) ->
     [{"cache_size", [], MemQuota},
      {"uuid", [], UUID}].
-
-storage_mode_to_backend_type(StorageMode)
-  when StorageMode =:= couchstore;
-       StorageMode =:= ephemeral ->
-    %% This isn't used by kv for ephemeral buckets but changing it to
-    %% something else requires non-zero changes to kv-engine which aren't
-    %% felt to provide any "real" value.
-    couchdb;
-storage_mode_to_backend_type(magma) ->
-    magma.
 
 maybe_restart() ->
     case ns_config:read_key_fast(dont_reload_bucket_on_cfg_change, false) of
