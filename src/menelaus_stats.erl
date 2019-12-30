@@ -3124,6 +3124,20 @@ validate_nodes(Name, State, Req) ->
       end, Name, State).
 
 -ifdef(TEST).
+guess_sections_by_prefix_test() ->
+    ?assertEqual(["@query"], guess_sections_by_prefix("query_blah", "test")),
+    ?assertEqual(["@xdcr-test"], guess_sections_by_prefix("replicationblah",
+                                                          "test")),
+    ?assertEqual([], guess_sections_by_prefix("replicationblah", undefined)),
+    lists:foreach(
+      fun (StatName) ->
+              ?assertEqual(["test"],
+                           guess_sections_by_prefix(StatName, "test")),
+              ?assertEqual([], guess_sections_by_prefix(StatName, undefined))
+      end, ["viewsblah", "spatialblah", "vb_blah", "ep_blah"]),
+    ?assertEqual([], guess_sections_by_prefix("blah", "test")),
+    ?assertEqual([], guess_sections_by_prefix("blah", undefined)).
+
 join_samples_test() ->
     A = [
          {stat_entry, 1, [{key1, 1},
