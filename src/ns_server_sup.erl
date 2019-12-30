@@ -74,6 +74,9 @@ child_specs() ->
      {ns_log, {ns_log, start_link, []},
       permanent, 1000, worker, [ns_log]},
 
+     {timer_lag_recorder, {timer_lag_recorder, start_link, []},
+      permanent, 1000, worker, []},
+
      {ns_crash_log_consumer, {ns_log, start_link_crash_consumer, []},
       {permanent, 4}, 1000, worker, []},
 
