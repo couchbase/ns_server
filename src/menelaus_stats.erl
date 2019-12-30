@@ -452,7 +452,7 @@ get_samples_for_system_or_bucket_stat(BucketName, StatName,
     calculate_stats(Stats).
 
 %% For many stats, their section can be identified by their prefix.
-guess_sections_by_pefix(StatName, BucketName) ->
+guess_sections_by_prefix(StatName, BucketName) ->
     case StatName of
         "query_" ++ _Rest ->
             ["@query"];
@@ -488,7 +488,7 @@ guess_sections_by_pefix(StatName, BucketName) ->
 %% query related stats first.
 %%
 get_stats_search_order(StatName, BucketName) ->
-    GuessedSections = guess_sections_by_pefix(StatName, BucketName),
+    GuessedSections = guess_sections_by_prefix(StatName, BucketName),
     AllSections = ["@system" | case BucketName of
                                    undefined ->
                                        [];
