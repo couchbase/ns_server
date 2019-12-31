@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2013-2018 Couchbase, Inc.
+%% @copyright 2013-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -91,7 +91,7 @@ handle_info(refresh, ToRefresh) ->
         _ ->
             RetryAfter = ns_config:read_key_fast(memcached_file_refresh_retry_after, 1000),
             ?log_debug("Refresh of ~p failed. Retry in ~p ms.", [ToRetry, RetryAfter]),
-            timer2:send_after(RetryAfter, refresh)
+            erlang:send_after(RetryAfter, self(), refresh)
     end,
     {noreply, ToRetry}.
 

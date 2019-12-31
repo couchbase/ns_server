@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2013-2019 Couchbase, Inc.
+%% @copyright 2013-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -151,7 +151,7 @@ handle_info(send, #state{queue = Queue, retries = Retries} = State) ->
             ok ->
                 0;
             error ->
-                timer2:send_after(1000, send),
+                erlang:send_after(1000, self(), send),
                 Retries + 1
         end,
     {noreply, State#state{queue = NewQueue, retries = NewRetries}};

@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2019 Couchbase, Inc.
+%% @copyright 2009-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -303,7 +303,7 @@ synchronize_remote(Nodes, Timeout) ->
 
 schedule_config_sync() ->
     Frequency = 5000 + trunc(rand:uniform() * 55000),
-    timer2:send_after(Frequency, self(), sync_random).
+    erlang:send_after(Frequency, self(), sync_random).
 
 extract_kvs([], _KVs, Acc) ->
     Acc;

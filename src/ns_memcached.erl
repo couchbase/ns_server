@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2010-2019 Couchbase, Inc.
+%% @copyright 2010-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -69,7 +69,6 @@
           start_time :: undefined | tuple(),
           bucket :: bucket_name(),
           sock = still_connecting :: port() | still_connecting,
-          timer :: any(),
           work_requests = [],
           warmup_stats = [] :: [{binary(), binary()}],
           check_config_pid = undefined :: undefined | pid()
@@ -632,13 +631,10 @@ handle_cast({connect_done, WorkersCount, RV}, #state{bucket = Bucket,
                     ?log_info("Main ns_memcached connection established: ~p",
                               [RV]),
 
-                    {ok, Timer} = timer2:send_interval(?CHECK_WARMUP_INTERVAL,
-                                                       check_started),
                     Self = self(),
                     Self ! check_started,
 
                     InitialState = State#state{
-                                     timer = Timer,
                                      start_time = os:timestamp(),
                                      sock = Sock,
                                      status = init
@@ -664,7 +660,7 @@ handle_cast(start_completed, #state{start_time=Start,
     ale:info(?USER_LOGGER, "Bucket ~p loaded on node ~p in ~p seconds.",
              [Bucket, node(), timer:now_diff(os:timestamp(), Start) div 1000000]),
     gen_event:notify(buckets_events, {loaded, Bucket}),
-    timer2:send_interval(?CHECK_INTERVAL, check_config),
+    send_check_config_msg(),
     BucketConfig = case ns_bucket:get_bucket(State#state.bucket) of
                        {ok, BC} -> BC;
                        not_present -> []
@@ -679,17 +675,18 @@ handle_cast(start_completed, #state{start_time=Start,
                 end,
     {noreply, State#state{status=NewStatus, warmup_stats=[]}}.
 
-
 handle_info(check_started, #state{status=Status} = State)
   when Status =:= connected orelse Status =:= warmed ->
+    %% XXX: doesn't appear this path is reachable... ensure that's the case
+    %% and then remove this function.
+    exit({shutdown, cant_happen}),
+    send_check_started_msg(),
     {noreply, State};
 handle_info(check_started,
-            #state{timer=Timer, bucket=Bucket, sock=Sock} = State) ->
+            #state{bucket=Bucket, sock=Sock} = State) ->
     Stats = retrieve_warmup_stats(Sock),
     case has_started(Stats, Bucket) of
         true ->
-            {ok, cancel} = timer2:cancel(Timer),
-            misc:flush(check_started),
             Pid = self(),
             proc_lib:spawn_link(
               fun () ->
@@ -706,15 +703,18 @@ handle_info(check_started,
             {noreply, State};
         false ->
             {ok, S} = Stats,
+            send_check_started_msg(),
             {noreply, State#state{warmup_stats = S}}
     end;
 handle_info(check_config, #state{check_config_pid = undefined} = State) ->
     misc:flush(check_config),
+    send_check_config_msg(),
     Pid = proc_lib:start_link(erlang, apply,
                               [fun run_check_and_maybe_update_config/2,
                                [State#state.bucket, self()]]),
     {noreply, State#state{check_config_pid = Pid}};
 handle_info(check_config, State) ->
+    send_check_config_msg(),
     {noreply, State};
 handle_info({'EXIT', Pid, normal}, #state{check_config_pid = Pid} = State) ->
     {noreply, State#state{check_config_pid = undefined}};
@@ -1327,7 +1327,7 @@ perform_checkpoint_commit_for_xdcr(Bucket, VBucketId, Timeout) ->
 do_perform_checkpoint_commit_for_xdcr(Sock, VBucketId, Timeout) ->
     case Timeout of
         infinity -> ok;
-        _ -> timer2:exit_after(Timeout, timeout)
+        _ -> timer:exit_after(Timeout, timeout)
     end,
     StatsKey = iolist_to_binary(io_lib:format("vbucket-seqno ~B", [VBucketId])),
     SeqnoKey = iolist_to_binary(io_lib:format("vb_~B:high_seqno", [VBucketId])),
@@ -1496,3 +1496,9 @@ get_vbucket_details_inner(Sock, DetailsKey, ReqdKeys) ->
                       Dict
               end
       end, dict:new()).
+
+send_check_started_msg() ->
+    erlang:send_after(?CHECK_WARMUP_INTERVAL, self(), check_started).
+
+send_check_config_msg() ->
+    erlang:send_after(?CHECK_INTERVAL, self(), check_config).

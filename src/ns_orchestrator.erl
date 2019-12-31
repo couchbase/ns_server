@@ -414,7 +414,6 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 init([]) ->
     process_flag(trap_exit, true),
     self() ! janitor,
-    timer2:send_interval(?JANITOR_INTERVAL, janitor),
 
     {ok, idle, #idle_state{}}.
 
@@ -512,6 +511,7 @@ handle_event({call, From}, Event, StateName, StateData) ->
     ?MODULE:StateName(Event, From, StateData).
 
 handle_info(janitor, idle, _State) ->
+    send_janitor_msg(),
     {ok, ID} = ns_janitor_server:start_cleanup(
                  fun(Pid, UnsafeNodes, CleanupID) ->
                          Pid ! {cleanup_done, UnsafeNodes, CleanupID},
@@ -521,6 +521,7 @@ handle_info(janitor, idle, _State) ->
 
 handle_info(janitor, StateName, _StateData) ->
     ?log_info("Skipping janitor in state ~p", [StateName]),
+    send_janitor_msg(),
     keep_state_and_data;
 
 handle_info({'EXIT', Pid, Reason}, rebalancing,
@@ -1647,3 +1648,6 @@ maybe_reply_to({shutdown, stop}, State) ->
     maybe_reply_to(stopped_by_user, State);
 maybe_reply_to(Reason, #rebalancing_state{reply_to = ReplyTo}) ->
     gen_statem:reply(ReplyTo, Reason).
+
+send_janitor_msg() ->
+    erlang:send_after(?JANITOR_INTERVAL, self(), janitor).

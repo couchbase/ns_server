@@ -1,5 +1,5 @@
 %% @author Couchbase, Inc <info@couchbase.com>
-%% @copyright 2011-2019 Couchbase, Inc.
+%% @copyright 2011-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -432,12 +432,12 @@ do_takeover(false, Pid, _Bucket, VBucket) ->
     do_takeover(Pid, VBucket);
 do_takeover(true, Pid, Bucket, VBucket) ->
     Timeout = ns_config:get_timeout(takeover_via_orchestrator, 10000),
-    {ok, TRef} = timer2:exit_after(Timeout,
-                                   {takeover_timeout, Bucket, VBucket}),
+    {ok, TRef} = timer:exit_after(Timeout,
+                                  {takeover_timeout, Bucket, VBucket}),
     try
         do_takeover(Pid, VBucket)
     after
-        timer2:cancel(TRef)
+        timer:cancel(TRef)
     end.
 
 do_takeover(Pid, VBucket) ->

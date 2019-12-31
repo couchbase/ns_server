@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2010-2018 Couchbase, Inc.
+%% @copyright 2010-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -69,7 +69,7 @@ init([]) ->
                              #cfg_handler_state{}),
     case misc:get_env_default(dont_log_stats, false) of
         false ->
-            timer2:send_interval(?LOG_INTERVAL, log);
+            send_log_msg();
         _ -> ok
     end,
     {ok, #state{nodes=dict:new(),
@@ -185,6 +185,7 @@ handle_info(acquire_initial_status, #state{nodes=NodeDict} = State) ->
 handle_info(log, #state{nodes=NodeDict} = State) ->
     ?doctor_debug("Current node statuses:~n~p",
                   [lists:sort(dict:to_list(NodeDict))]),
+    send_log_msg(),
     {noreply, State};
 handle_info({nodes_wanted, NewNodes0}, #state{nodes=Statuses} = State) ->
     NewNodes = lists:sort(NewNodes0),
@@ -345,6 +346,9 @@ annotate_status(Node, Status, Now, LiveNodes) ->
         false ->
             [ down | Stale ]
     end.
+
+send_log_msg() ->
+    erlang:send_after(?LOG_INTERVAL, self(), log).
 
 maybe_refresh_tasks_version(#state{nodes = Nodes,
                                    tasks_hash_nodes = VersionNodes} = State)

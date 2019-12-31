@@ -177,7 +177,7 @@ grab_all_dcp_stats(Timeout) ->
                                               lists:sort(ThisNodeBuckets)),
     misc:parallel_map(
       fun (Bucket) ->
-              {ok, _} = timer2:kill_after(Timeout),
+              {ok, _} = timer:kill_after(Timeout),
               case get_dcp_stats(Bucket) of
                   {ok, V} -> V;
                   Crap -> Crap

@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2010-2019 Couchbase, Inc.
+%% @copyright 2010-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -30,8 +30,8 @@
 -export([slow_updater_loop/0]).
 
 -record(state, {
-          forced_beat_timer :: reference() | undefined,
-          event_handler :: pid(),
+          timer_ref :: reference() | undefined,
+          event_handler :: pid() | undefined,
           slow_status = [] :: term(),
           slow_status_ts = 0 :: integer()
          }).
@@ -60,8 +60,7 @@ is_interesting_buckets_event(_Event) -> false.
 init([]) ->
     process_flag(trap_exit, true),
 
-    timer2:send_interval(?HEART_BEAT_PERIOD, beat),
-    self() ! beat,
+    State = send_beat_msg(0, #state{}),
     Self = self(),
     EventHandler =
         ns_pubsub:subscribe_link(
@@ -74,23 +73,35 @@ init([]) ->
                   end
           end, []),
 
-    {ok, #state{event_handler=EventHandler}}.
+    {ok, State#state{event_handler = EventHandler}}.
 
 force_beat() ->
     ?MODULE ! force_beat.
 
-arm_forced_beat_timer(#state{forced_beat_timer = TRef} = State) when TRef =/= undefined ->
-    State;
-arm_forced_beat_timer(State) ->
-    TRef = erlang:send_after(200, self(), beat),
-    State#state{forced_beat_timer = TRef}.
+maybe_send_forced_beat(#state{timer_ref = TRef} = State) ->
+    %% If the expected time of the next heartbeat is less than or equal to
+    %% 200 msecs then we don't need a forced beat.  If the expected time is
+    %% greater than 200 msecs, we'll cancel the next heartbeat and send
+    %% a new one to occur in 200 msecs.
+    TimeLeft = case erlang:read_timer(TRef) of
+                   false ->
+                       %% Can happen when timer has expired
+                       0;
+                   TimeMS ->
+                       TimeMS
+               end,
+    case TimeLeft > 200 of
+        false ->
+            State;
+        true ->
+            State0 = cancel_normal_timer(State),
+            send_beat_msg(200, State0)
+    end.
 
-disarm_forced_beat_timer(#state{forced_beat_timer = undefined} = State) ->
-    State;
-disarm_forced_beat_timer(#state{forced_beat_timer = TRef} = State) ->
+cancel_normal_timer(#state{timer_ref = TRef} = State) ->
     erlang:cancel_timer(TRef),
-    State#state{forced_beat_timer = undefined}.
-
+    misc:flush(beat),
+    State#state{timer_ref = undefined}.
 
 handle_call(status, _From, State) ->
     {Status, NewState} = update_current_status(State),
@@ -108,19 +119,12 @@ handle_info({'EXIT', EventHandler, _} = ExitMsg,
 handle_info({slow_update, NewStatus, ReqTS}, State) ->
     {noreply, State#state{slow_status = NewStatus, slow_status_ts = ReqTS}};
 handle_info(beat, State) ->
-    NewState = disarm_forced_beat_timer(State),
-    Dropped = misc:flush(beat),
-    case Dropped of
-        0 ->
-            ok;
-        _ ->
-            ?log_warning("Dropped ~p heartbeats", [Dropped])
-    end,
-    {Status, NewState2} = update_current_status(NewState),
+    {Status, State0} = update_current_status(State),
     heartbeat(Status),
-    {noreply, NewState2};
+    State1 = send_beat_msg(?HEART_BEAT_PERIOD, State0),
+    {noreply, State1};
 handle_info(force_beat, State) ->
-    {noreply, arm_forced_beat_timer(State)};
+    {noreply, maybe_send_forced_beat(State)};
 handle_info(_, State) ->
     {noreply, State}.
 
@@ -172,6 +176,11 @@ is_interesting_stat({ep_bg_fetched, _}) -> true;
 is_interesting_stat({ops, _}) -> true;
 is_interesting_stat(_) -> false.
 
+
+send_beat_msg(Interval, State) ->
+    ExpectedTime = erlang:monotonic_time(millisecond) + Interval,
+    TRef = erlang:send_after(ExpectedTime, self(), beat, [{abs, true}]),
+    State#state{timer_ref = TRef}.
 
 eat_earlier_slow_updates(TS) ->
     receive

@@ -29,7 +29,8 @@
 -export([code_change/3, handle_call/3, handle_cast/2, handle_info/2, init/1,
          terminate/2]).
 
--record(state, {time}).
+-record(state, {tick_interval :: non_neg_integer(),
+                time}).
 
 %%
 %% API
@@ -53,8 +54,8 @@ code_change(_OldVsn, State, _Extra) ->
 
 init([]) ->
     Interval = misc:get_env_default(tick_interval, ?INTERVAL),
-    timer2:send_interval(Interval, tick),
-    {ok, #state{}}.
+    send_tick_msg(Interval),
+    {ok, #state{tick_interval=Interval}}.
 
 
 handle_call(time, _From, #state{time=Time} = State) ->
@@ -66,16 +67,8 @@ handle_cast(Msg, State) ->
 
 
 %% Called once per second on the node where the gen_server runs
-handle_info(tick, State) ->
-    %% Get rid of any other tick messages.  If we send more than one in the
-    %% same msec it causes downstream problems for some consumers.
-    Dropped = misc:flush(tick),
-    case Dropped of
-        0 ->
-            ok;
-        _ ->
-            ?log_warning("Dropped ~p ns_tick messages", [Dropped])
-    end,
+handle_info(tick, #state{tick_interval=Interval} = State) ->
+    send_tick_msg(Interval),
     Now = os:system_time(millisecond),
     ns_tick_agent:send_tick(ns_node_disco:nodes_actual(), Now),
 
@@ -86,3 +79,6 @@ handle_info(_, State) ->
 
 terminate(_Reason, _State) ->
     ok.
+
+send_tick_msg(Interval) ->
+    erlang:send_after(Interval, self(), tick).

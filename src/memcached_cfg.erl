@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2016-2017 Couchbase, Inc.
+%% @copyright 2016-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -147,7 +147,7 @@ rename_and_refresh(#state{path = Path,
                 _ ->
                     ?log_info("Trying again after ~p ms (~p tries remaining)",
                               [SleepTime, Tries]),
-                    {ok, _TRef} = timer2:apply_after(SleepTime, ?MODULE, rename_and_refresh,
-                                                     [State, Tries - 1, SleepTime * 2.0])
+                    {ok, _TRef} = timer:apply_after(SleepTime, ?MODULE, rename_and_refresh,
+                                                    [State, Tries - 1, SleepTime * 2.0])
             end
     end.

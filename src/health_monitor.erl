@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2017-2018 Couchbase, Inc.
+%% @copyright 2017-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -89,7 +89,7 @@ handle_cast(Cast, State) ->
 
 handle_info(refresh, State) ->
     RV = handle_message(handle_info, refresh, State),
-    timer2:send_after(?REFRESH_INTERVAL, self(), refresh),
+    erlang:send_after(?REFRESH_INTERVAL, self(), refresh),
     RV;
 
 handle_info({nodes_wanted, NewNodes}, #state{nodes = Statuses} = State) ->

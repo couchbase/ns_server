@@ -1,5 +1,5 @@
 %% @author Couchbase, Inc <info@couchbase.com>
-%% @copyright 2011-2019 Couchbase, Inc.
+%% @copyright 2011-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -83,7 +83,7 @@
 -record(state,
         { auto_failover_logic_state,
           %% Reference to the tick timer.
-          tick_ref = nil :: nil | timer:tref(),
+          tick_ref = nil :: nil | reference(),
           %% Time a node needs to be down until it is automatically failovered
           timeout = nil :: nil | integer(),
           %% Maximum number of auto-failover events
@@ -216,7 +216,7 @@ handle_call({enable_auto_failover, Timeout, Max, Extras}, _From,
     ale:info(?USER_LOGGER,
              "Enabled auto-failover with timeout ~p and max count ~p",
              [Timeout, Max]),
-    {ok, Ref} = timer2:send_interval(get_tick_period(), tick),
+    Ref = send_tick_msg(),
     State1 = State#state{tick_ref = Ref, timeout = Timeout, max_count = Max,
                          auto_failover_logic_state = init_logic_state(Timeout)},
     make_state_persistent(State1, Extras),
@@ -239,7 +239,8 @@ handle_call({disable_auto_failover, _}, _From,
 handle_call({disable_auto_failover, Extras}, _From,
             #state{tick_ref = Ref} = State) ->
     ?log_debug("disable_auto_failover: ~p", [State]),
-    {ok, cancel} = timer2:cancel(Ref),
+    erlang:cancel_timer(Ref),
+    misc:flush(tick),
     State2 = State#state{tick_ref = nil, auto_failover_logic_state = undefined},
     make_state_persistent(State2, Extras),
     ale:info(?USER_LOGGER, "Disabled auto-failover"),
@@ -273,16 +274,7 @@ handle_cast(_Msg, State) ->
 
 %% @doc Check if nodes should/could be auto-failovered on every tick
 handle_info(tick, State0) ->
-    %% Get rid of any other tick messages. We can't assume the current state
-    %% reflects how it has been prior to this moment and so shouldn't take
-    %% action other than for the current tick.
-    Dropped = misc:flush(tick),
-    case Dropped of
-        0 ->
-            ok;
-        _ ->
-            ?log_warning("Dropped ~p auto-failover ticks", [Dropped])
-    end,
+    Ref = send_tick_msg(),
     Config = ns_config:get(),
 
     %% Reread autofailover count from config just in case. This value can be
@@ -330,7 +322,8 @@ handle_info(tick, State0) ->
             make_state_persistent(NewState1);
         true -> ok
     end,
-    {noreply, NewState1};
+
+    {noreply, NewState1#state{tick_ref = Ref}};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -865,6 +858,8 @@ restart_on_compat_mode_change() ->
                                      ok
                              end).
 
+send_tick_msg() ->
+    erlang:send_after(get_tick_period(), self(), tick).
 
 -ifdef(TEST).
 -define(FLAG, autofailover_unsafe).

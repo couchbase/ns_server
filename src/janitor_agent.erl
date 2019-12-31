@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2012-2018 Couchbase, Inc.
+%% @copyright 2012-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -141,7 +141,7 @@ wait_for_memcached(NodeCalls, Bucket, WaitTimeout) ->
               NodePids =
                   [{Node, proc_lib:spawn_link(
                             fun () ->
-                                    {ok, TRef} = timer2:kill_after(WaitTimeout),
+                                    {ok, TRef} = timer:kill_after(WaitTimeout),
                                     RV = query_vbuckets_loop(Node, Bucket,
                                                              Call, Me),
                                     Me ! {'EXIT', self(), {Ref, RV}},
@@ -149,7 +149,7 @@ wait_for_memcached(NodeCalls, Bucket, WaitTimeout) ->
                                     %% important. kill_after is
                                     %% not automagically
                                     %% canceled
-                                    timer2:cancel(TRef),
+                                    timer:cancel(TRef),
                                     %% Nodes list can be reasonably
                                     %% big. Let's not slow down
                                     %% receive loop below due to

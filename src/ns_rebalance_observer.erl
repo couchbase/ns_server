@@ -1,5 +1,5 @@
 %% @author Couchbase, Inc <info@couchbase.com>
-%% @copyright 2013-2018 Couchbase, Inc.
+%% @copyright 2013-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -433,7 +433,7 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 docs_left_updater_init(Parent) ->
-    {ok, _} = timer2:send_interval(?DOCS_LEFT_REFRESH_INTERVAL, refresh),
+    send_refresh_msg(),
     docs_left_updater_loop(Parent).
 
 docs_left_updater_loop(Parent) ->
@@ -454,7 +454,7 @@ docs_left_updater_loop(Parent) ->
         VBInfo#vbucket_info.move#stat_info.end_time =:= false],
     receive
         refresh ->
-            _Lost = misc:flush(refresh),
+            send_refresh_msg(),
             docs_left_updater_loop(Parent)
     end.
 
@@ -500,6 +500,9 @@ update_docs_left_for_move(Parent, BucketName, VBucket,
             ?log_debug("Exception in get_docs_estimate ~p", [{T, E}]),
             ok
     end.
+
+send_refresh_msg() ->
+    erlang:send_after(?DOCS_LEFT_REFRESH_INTERVAL, self(), refresh).
 
 keygroup_sorted(Items) ->
     lists:foldr(

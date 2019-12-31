@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2019 Couchbase, Inc.
+%% @copyright 2009-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -168,12 +168,11 @@ init(Bucket) ->
       fun ({Period, Step, Samples}) ->
               Interval = 100 * Step * Samples,  % Allow to go over by 10% of the
                                                 % total samples
-              Msg = {truncate, Period, Samples},
-              timer2:send_interval(Interval, Msg),
+              Msg = {truncate, Period, Samples, Interval},
               self() ! Msg
       end, Archives),
     start_cascade_timers(Archives),
-    timer2:send_after(rand:uniform(?BACKUP_INTERVAL), backup),
+    erlang:send_after(rand:uniform(?BACKUP_INTERVAL), self(), backup),
 
     ns_pubsub:subscribe_link(ns_stats_event,
                              fun stats_event_handler/2,
@@ -202,17 +201,17 @@ handle_info({stats, Bucket, Sample}, State) ->
     ets:insert(Tab, {TS, Sample}),
     gen_event:notify(ns_stats_event, {sample_archived, Bucket, Sample}),
     {noreply, State};
-handle_info({truncate, Period, N} = Msg, #state{bucket=Bucket} = State) ->
-    flush(Msg),
+handle_info({truncate, Period, N, Interval} = Msg,
+            #state{bucket=Bucket} = State) ->
+    erlang:send_after(Interval, self(), Msg),
     Tab = table(Bucket, Period),
     truncate_logger(Tab, N),
     {noreply, State};
 handle_info({cascade, Prev, Period, Step} = Msg, #state{bucket=Bucket} = State) ->
-    flush(Msg),
+    erlang:send_after(200 * Step, self(), Msg),
     cascade_logger(Bucket, Prev, Period, Step),
     {noreply, State};
 handle_info(backup, #state{bucket=Bucket} = State) ->
-    misc:flush(backup),
     Pid = proc_lib:spawn_link(
             fun () ->
                     backup_loggers(Bucket)
@@ -226,7 +225,7 @@ handle_info({'EXIT', Pid, Reason} = Exit, #state{saver = Saver} = State)
         _Other ->
             ?log_warning("Saver process terminated abnormally: ~p", [Exit])
     end,
-    timer2:send_after(?BACKUP_INTERVAL, backup),
+    erlang:send_after(?BACKUP_INTERVAL, self(), backup),
     {noreply, State#state{saver = undefined}};
 handle_info({'EXIT', _, _} = Exit, State) ->
     ?log_error("Got unexpected exit message: ~p", [Exit]),
@@ -352,7 +351,7 @@ server(Bucket) ->
 
 %% @doc Start the timers to cascade samples to the next resolution.
 start_cascade_timers([{Prev, _, _} | [{Next, Step, _} | _] = Rest]) ->
-    timer2:send_interval(200 * Step, {cascade, Prev, Next, Step}),
+    erlang:send_after(200 * Step, self(), {cascade, Prev, Next, Step}),
     start_cascade_timers(Rest);
 
 start_cascade_timers([_]) ->
@@ -364,15 +363,6 @@ fmt(Str, Args)  ->
 
 stats_dir() ->
     path_config:component_path(data, "stats").
-
-flush(Msg) ->
-    N = misc:flush(Msg),
-    case N =/= 0 of
-        true ->
-            ?log_warning("Dropped ~b ~p messages", [N, Msg]);
-        false ->
-            ok
-    end.
 
 stats_event_handler(Event, {Parent, Bucket} = State) ->
     case Event of

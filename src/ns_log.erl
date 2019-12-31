@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2019 Couchbase, Inc.
+%% @copyright 2009-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -93,7 +93,7 @@ read_logs(Filename) ->
     end.
 
 init([]) ->
-    timer2:send_interval(?GC_TIME, garbage_collect),
+    send_garbage_collect_msg(),
     Filename = log_filename(),
     Recent = read_logs(Filename),
     %% initiate log syncing
@@ -196,7 +196,7 @@ send_sync_to(Recent, Node, Src) ->
 
 %% Nothing special.
 handle_info(garbage_collect, State) ->
-    misc:flush(garbage_collect),
+    send_garbage_collect_msg(),
     {noreply, gc(State), hibernate};
 handle_info(sync, StateBefore) ->
     State = flush_pending(StateBefore),
@@ -263,7 +263,7 @@ gc(Now, [{Key, Value} | Rest], DupesList) ->
     end.
 
 schedule_save(State = #state{save_tref=undefined}) ->
-    {ok, TRef} = timer2:send_after(?SAVE_DELAY, save),
+    TRef = erlang:send_after(?SAVE_DELAY, self(), save),
     State#state{save_tref=TRef};
 schedule_save(State) ->
     %% Don't reschedule if a save is already scheduled.
@@ -281,6 +281,9 @@ do_log(#log_entry{code=Code, tstamp=TStamp} = Entry) when is_integer(Code) ->
 
     Nodes = ns_node_disco:nodes_actual(),
     gen_server:abcast(Nodes, ?MODULE, {do_log, EntryNew}).
+
+send_garbage_collect_msg() ->
+    erlang:send_after(?GC_TIME, self(), garbage_collect).
 
 %% API
 

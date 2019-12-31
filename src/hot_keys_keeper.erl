@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2018 Couchbase, Inc.
+%% @copyright 2009-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -33,6 +33,8 @@
 -record(state, {bucket_hot_keys, local_hot_keys, keys_updater}).
 
 -define(TOP_KEYS_NUMBER, 10).
+%% Frequency (in milliseconds) at which to fetch keys.
+-define(FETCH_KEYS_PERIOD, 15000).
 
 %%%===================================================================
 %%% API
@@ -73,7 +75,7 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    timer2:send_interval(15000, fetch_keys),
+    send_fetch_keys_msg(),
     {ok, #state{bucket_hot_keys = [], local_hot_keys = []}}.
 
 %%--------------------------------------------------------------------
@@ -123,6 +125,7 @@ handle_cast({set_keys, Keys, LocalKeys}, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(fetch_keys, #state{keys_updater = P} = State) ->
+    send_fetch_keys_msg(),
     Pid = case is_pid(P) andalso is_process_alive(P) of
               true -> P;
               _ -> spawn_link(fun keys_updater_body/0)
@@ -130,6 +133,9 @@ handle_info(fetch_keys, #state{keys_updater = P} = State) ->
     {noreply, State#state{keys_updater = Pid}};
 handle_info(_, State) ->
     {noreply, State}.
+
+send_fetch_keys_msg() ->
+    erlang:send_after(?FETCH_KEYS_PERIOD, self(), fetch_keys).
 
 aggregate_key_ops(KeyStats) ->
     OpsTotal = lists:foldl(fun ({StatName, Value}, Acc) ->

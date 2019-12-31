@@ -141,7 +141,7 @@ init({Bucket, Nodes, OldMap, NewMap, ProgressCallback}) ->
                                                     ok
                                             end),
 
-    timer2:send_interval(?DCP_STATS_LOGGING_INTERVAL, log_dcp_stats),
+    send_log_dcp_stats_msg(),
 
     {ok, _} = janitor_agent:prepare_nodes_for_rebalance(Bucket, Nodes, self()),
 
@@ -177,8 +177,8 @@ handle_cast(unhandled, unhandled) ->
 
 
 handle_info(log_dcp_stats, State) ->
+    send_log_dcp_stats_msg(),
     rpc:eval_everywhere(diag_handler, log_all_dcp_stats, []),
-    misc:flush(log_dcp_stats),
     {noreply, State};
 handle_info(spawn_initial, State) ->
     report_progress(State),
@@ -427,6 +427,9 @@ take_worker(Pid) ->
 
 get_all_workers() ->
     ets:tab2list(workers).
+
+send_log_dcp_stats_msg() ->
+    erlang:send_after(?DCP_STATS_LOGGING_INTERVAL, self(), log_dcp_stats).
 
 -ifdef(TEST).
 is_swap_rebalance_test() ->

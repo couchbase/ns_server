@@ -108,7 +108,7 @@ handle_info(refresh, #state{enabled = false} = State) ->
 handle_info(refresh, #state{buckets = Buckets,
                             numSamples = NumSamples} = State) ->
     NewBuckets = check_for_disk_issues(Buckets, NumSamples),
-    timer2:send_after(?REFRESH_INTERVAL, self(), refresh),
+    send_refresh_msg(),
     {noreply, State#state{buckets = NewBuckets}};
 
 handle_info({buckets, Buckets}, #state{buckets = Dict} = State) ->
@@ -137,7 +137,7 @@ handle_info({auto_failover_cfg, NewCfg},
                      false ->
                          reset_bucket_info();
                      true ->
-                         timer2:send_after(?REFRESH_INTERVAL, self(), refresh),
+                         send_refresh_msg(),
                          Buckets
                  end,
     ?log_debug("auto_failover_cfg change enabled:~p numSamples:~p ",
@@ -362,3 +362,6 @@ get_failover_on_disk_issues(Config) ->
             NumSamples = round((TimePeriod * 1000)/?REFRESH_INTERVAL),
             {Enabled, NumSamples}
     end.
+
+send_refresh_msg() ->
+    erlang:send_after(?REFRESH_INTERVAL, self(), refresh).

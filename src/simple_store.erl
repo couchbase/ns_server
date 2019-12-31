@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2015-2016 Couchbase, Inc.
+%% @copyright 2015-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -163,11 +163,11 @@ schedule_flush(StoreName, NumRetries) ->
             ok;
         false ->
             erlang:put(flush_pending, true),
-            {ok, _} = timer2:apply_after(?FLUSH_AFTER, work_queue, submit_work,
-                                         [self(),
-                                          fun () ->
-                                                  flush_table(StoreName, NumRetries)
-                                          end]),
+            {ok, _} = timer:apply_after(?FLUSH_AFTER, work_queue, submit_work,
+                                        [self(),
+                                         fun () ->
+                                                 flush_table(StoreName, NumRetries)
+                                         end]),
             ?metakv_debug("Successfully scheduled a flush to the file."),
             ok
     end.

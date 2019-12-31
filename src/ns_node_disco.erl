@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2019 Couchbase, Inc.
+%% @copyright 2009-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -132,7 +132,7 @@ init([]) ->
                           ?SYNC_TIMEOUT),
     % Register for nodeup/down messages as handle_info callbacks.
     ok = net_kernel:monitor_nodes(true, [nodedown_reason]),
-    timer2:send_interval(?PING_FREQ, ping_all),
+    send_ping_all_msg(),
     self() ! notify_clients,
     % Track the last list of actual ndoes.
     {ok, #state{nodes = []}}.
@@ -196,7 +196,7 @@ handle_info(notify_clients, State) ->
     {noreply, State2};
 
 handle_info(ping_all, State) ->
-    misc:flush(ping_all),
+    send_ping_all_msg(),
     spawn_link(fun ping_all/0),
     {noreply, State};
 
@@ -244,6 +244,9 @@ do_notify(#state{nodes = NodesOld} = State) ->
 
 ping_all() ->
     lists:foreach(fun net_adm:ping/1, nodes_wanted()).
+
+send_ping_all_msg() ->
+    erlang:send_after(?PING_FREQ, self(), ping_all).
 
 % -----------------------------------------------------------
 

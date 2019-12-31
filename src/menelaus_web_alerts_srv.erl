@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2011-2019 Couchbase, Inc.
+%% @copyright 2011-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -203,15 +203,11 @@ is_checker_active(Pid) ->
     erlang:is_process_alive(Pid).
 
 handle_info(check_alerts, #state{checker_pid = Pid} = State) ->
+    start_timer(),
     case is_checker_active(Pid) of
         true ->
             {noreply, State};
         _ ->
-            case misc:flush(check_alerts) of
-                0 -> ok;
-                N ->
-                    ?log_warning("Eaten ~p previously unconsumed check_alerts~n", [N])
-            end,
             Self = self(),
             CheckerPid = erlang:spawn_link(fun () ->
                                                    NewOpaque = do_handle_check_alerts_info(State),
@@ -261,7 +257,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% @doc Remind myself to check the alert status
 start_timer() ->
-    timer2:send_interval(?SAMPLE_RATE, check_alerts).
+    erlang:send_after(?SAMPLE_RATE, self(), check_alerts).
 
 
 %% @doc global checks for any server specific problems locally then
