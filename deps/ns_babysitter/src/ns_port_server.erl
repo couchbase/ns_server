@@ -129,7 +129,7 @@ handle_info({Port, {data, Data}}, #state{port = Port,
                                  end,
                 TRef = case State#state.log_tref of
                            undefined ->
-                               timer2:send_after(?INTERVAL, log);
+                               erlang:send_after(?INTERVAL, self(), log);
                            T ->
                                T
                        end,

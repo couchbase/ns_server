@@ -118,7 +118,7 @@ capture_local_master_docs(Bucket, Timeout) ->
       fun () ->
               case Timeout of
                   infinity -> ok;
-                  _ -> timer2:kill_after(Timeout)
+                  _ -> timer:kill_after(Timeout)
               end,
               DB = must_open_master_vbucket(Bucket),
               {ok, _, LocalDocs} = couch_btree:fold(DB#db.local_docs_btree,

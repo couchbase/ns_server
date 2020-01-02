@@ -97,7 +97,7 @@ handle_info(refresh_stats, #state{bucket = Bucket,
 
     NowTS = erlang:monotonic_time(millisecond),
     Delta = min(?SAMPLE_INTERVAL, NowTS - TS),
-    timer2:send_after(?SAMPLE_INTERVAL - Delta, refresh_stats),
+    erlang:send_after(?SAMPLE_INTERVAL - Delta, self(), refresh_stats),
 
     {noreply, State#state{last_view_stats = NewLastViewStats,
                           last_ts = TS}};

@@ -55,7 +55,7 @@ rpc_handle_update_ns_server_node_name(Node) ->
 
 schedule_config_pull() ->
     Frequency = 5000 + trunc(rand:uniform() * 55000),
-    timer2:send_after(Frequency, self(), pull).
+    erlang:send_after(Frequency, self(), pull).
 
 meld_config(KVList, FromNode) ->
     ok = gen_server:call(ns_config, {merge_ns_couchdb_config, KVList, FromNode}, infinity).

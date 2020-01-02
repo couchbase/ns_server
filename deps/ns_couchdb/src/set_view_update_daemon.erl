@@ -88,13 +88,13 @@ schedule_timer(#state{interval=0} = State) ->
 schedule_timer(#state{interval=Interval} = State) ->
     _ = cancel_timer(State),
     {ok, NewTimerRef} =
-        timer2:apply_after(Interval, gen_server, cast, [?MODULE, trigger_updates]),
+        timer:apply_after(Interval, gen_server, cast, [?MODULE, trigger_updates]),
     State#state{timer_ref=NewTimerRef}.
 
 cancel_timer(#state{timer_ref=undefined} = State) ->
     State;
 cancel_timer(#state{timer_ref=Ref} = State) ->
-    {ok, cancel} = timer2:cancel(Ref),
+    {ok, cancel} = timer:cancel(Ref),
     State#state{timer_ref=undefined}.
 
 read_config(State) ->
