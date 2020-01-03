@@ -226,7 +226,7 @@ reconnect(State = #s{mcd_socket = OldSock, enabled = Enabled}) ->
                 {ok, Socket} ->
                     NewState#s{mcd_socket = Socket};
                 {error, _} ->
-                    timer:send_after(?RECONNECT_TIMEOUT, self(), reconnect),
+                    erlang:send_after(?RECONNECT_TIMEOUT, self(), reconnect),
                     NewState
             end;
         false ->

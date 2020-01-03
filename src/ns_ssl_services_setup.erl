@@ -761,7 +761,7 @@ notify_services(#state{reload_state = Reloads} = State) ->
             ok;
         _ ->
             ?log_info("Failed to notify some services. Will retry in 5 sec, ~p", [Bad]),
-            timer:send_after(5000, notify_services)
+            erlang:send_after(5000, self(), notify_services)
     end,
     State#state{reload_state = [Svc || {_, Svc} <- Bad]}.
 
