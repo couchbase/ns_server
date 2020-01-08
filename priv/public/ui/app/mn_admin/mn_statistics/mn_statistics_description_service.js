@@ -1273,7 +1273,7 @@
           },
           "cbas_thread_count": {
             unit: "number",
-            title: "AnalyticsThread Count",
+            title: "Analytics Thread Count",
             desc: "Number of threads for Analytics node."
           },
           "cbas_io_reads": {
