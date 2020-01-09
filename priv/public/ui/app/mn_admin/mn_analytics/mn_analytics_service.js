@@ -182,7 +182,7 @@
           if (a.blockName < b.blockName) {
             return -1;
           }
-          if (b.blockName > a.blockName) {
+          if (a.blockName > b.blockName) {
             return 1
           }
         }
