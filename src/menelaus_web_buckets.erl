@@ -947,7 +947,8 @@ validate_membase_bucket_params(CommonParams, Params,
          parse_validate_threads_number(Params, IsNew),
          parse_validate_eviction_policy(Params, BucketConfig, IsNew),
          quota_size_error(CommonParams, membase, IsNew, BucketConfig),
-         get_storage_mode(Params, BucketConfig, IsNew),
+         parse_validate_storage_mode(Params, BucketConfig, IsNew, Version,
+                                     IsEnterprise),
          parse_validate_max_ttl(Params, BucketConfig,
                                 IsNew, Version, IsEnterprise),
          parse_validate_compression_mode(Params, BucketConfig,
@@ -1136,20 +1137,41 @@ validate_replicas_number(Params, IsNew) ->
 %% Ideally we should store this as a new bucket type but the bucket_type is
 %% used/checked at multiple places and would need changes in all those places.
 %% Hence the above described approach.
-get_storage_mode(Params, _BucketConfig, true = _IsNew) ->
+parse_validate_storage_mode(Params, _BucketConfig, true = _IsNew, Version,
+                            IsEnterprise) ->
+    RV =
     case proplists:get_value("bucketType", Params, "membase") of
         "membase" ->
-            get_storage_mode_based_on_storage_backend(Params);
+            get_storage_mode_based_on_storage_backend(Params, Version,
+                                                      IsEnterprise);
         "couchbase" ->
-            get_storage_mode_based_on_storage_backend(Params);
+            get_storage_mode_based_on_storage_backend(Params, Version,
+                                                      IsEnterprise);
         "ephemeral" ->
             {ok, storage_mode, ephemeral}
-    end;
-get_storage_mode(_Params, BucketConfig, false = _IsNew)->
+    end,
+    RV;
+
+parse_validate_storage_mode(_Params, BucketConfig, false = _IsNew, _Version,
+                            _IsEnterprise)->
     {ok, storage_mode, ns_bucket:storage_mode(BucketConfig)}.
 
-get_storage_mode_based_on_storage_backend(Params) ->
-    case proplists:get_value("storageBackend", Params, "couchstore") of
+get_storage_mode_based_on_storage_backend(Params, Version, IsEnterprise) ->
+    StorageBackend = proplists:get_value("storageBackend", Params,
+                                         "couchstore"),
+    do_get_storage_mode_based_on_storage_backend(
+      StorageBackend, IsEnterprise,
+      cluster_compat_mode:is_version_cheshirecat(Version)).
+
+do_get_storage_mode_based_on_storage_backend("magma", false, _Is70) ->
+    {error, storageBackend,
+     <<"Magma is supported in enterprise edition only">>};
+do_get_storage_mode_based_on_storage_backend("magma", true, false) ->
+    {error, storageBackend,
+     <<"Not allowed until entire cluster is upgraded to 7.0">>};
+do_get_storage_mode_based_on_storage_backend(StorageBackend, _IsEnterprise,
+                                             _IsCheshireCat) ->
+    case StorageBackend of
         "couchstore" ->
             {ok, storage_mode, couchstore};
         "magma" ->
