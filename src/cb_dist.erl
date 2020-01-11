@@ -797,6 +797,10 @@ validate_config_file(CfgFile) ->
             orelse throw({missing_preferred_external_listener, ExtPreferred}),
         lists:member(LocalPreferred, LocalListeners)
             orelse throw({missing_preferred_local_listener, LocalPreferred}),
+        AllListeners = ExternalListeners ++ LocalListeners,
+        (lists:member(inet_tls_dist, AllListeners) and
+         lists:member(inet6_tls_dist, AllListeners))
+            andalso throw(ipv4_and_ipv6_tls),
         ok
     catch
         _:E -> {error, E}
@@ -865,6 +869,8 @@ format_error({missing_preferred_external_listener, Proto}) ->
 format_error({missing_preferred_local_listener, Proto}) ->
     io_lib:format("Missing ~s listener (needed for local communication)",
                   [proto2str(Proto)]);
+format_error(ipv4_and_ipv6_tls) ->
+    "Can't change address family while node-to-node encryption is enabled";
 format_error(Unknown) ->
     io_lib:format("~p", [Unknown]).
 
