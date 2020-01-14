@@ -468,12 +468,12 @@ guess_sections_by_prefix(StatName, BucketName) ->
             [BucketName || BucketName =/= undefined];
         Other ->
             case string:split(Other, "/") of
-                [Prefix, _] ->
+                [P, _] ->
+                    Prefix = [$@ | P],
                     case lists:member(Prefix, services_sections(undefined)) of
                         true ->
-                            ["@" ++ Prefix] ++
-                                ["@" ++ Prefix ++ "-" ++ BucketName ||
-                                    BucketName =/= undefined];
+                            [Prefix | [Prefix ++ "-" ++ BucketName ||
+                                          BucketName =/= undefined]];
                         false ->
                             []
                     end;
@@ -3135,6 +3135,14 @@ guess_sections_by_prefix_test() ->
                            guess_sections_by_prefix(StatName, "test")),
               ?assertEqual([], guess_sections_by_prefix(StatName, undefined))
       end, ["viewsblah", "spatialblah", "vb_blah", "ep_blah"]),
+    lists:foreach(
+      fun ("@" ++ Prefix = Section) ->
+              Stat = Prefix ++ "/blah/blah",
+              ?assertEqual([Section, Section ++ "-test"],
+                           guess_sections_by_prefix(Stat, "test")),
+              ?assertEqual([Section],
+                           guess_sections_by_prefix(Stat, undefined))
+      end, services_sections(undefined) -- ["@query"]),
     ?assertEqual([], guess_sections_by_prefix("blah", "test")),
     ?assertEqual([], guess_sections_by_prefix("blah", undefined)).
 
