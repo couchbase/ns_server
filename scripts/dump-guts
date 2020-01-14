@@ -115,7 +115,7 @@ parse_app_flags(Args) ->
                 _ ->
                     complain("\n", []),
                     usage(),
-                    init:stop(1)
+                    erlang:halt(1)
             end;
         {bad_flags, BadBools, BadNonBools, Flags, _} ->
             [complain("Value flag ~s (i.e. --~s=<value>) is used without value~n", [Flag, Flag])
@@ -127,7 +127,7 @@ parse_app_flags(Args) ->
             maybe_report_unknown_flags(Flags),
             complain("\n", []),
             usage(),
-            init:stop(1)
+            erlang:halt(1)
     end.
 
 main(Args) ->
@@ -137,7 +137,7 @@ main(Args) ->
                 case proplists:get_value("help", Flags) of
                     true ->
                         usage(),
-                        init:stop(0);
+                        erlang:halt(0);
                     _ ->
                         main_main(Flags, NonFlags)
                 end;
@@ -263,7 +263,7 @@ main_main(_Flags, [_|_]) ->
     usage(),
     %% {ok, Bin} = file:read_file("etc/capi.ini.in"),
     %% complain("Couch stuff:~n~p~n", [parse_couch_ini_file(Bin)]),
-    init:stop(1);
+    erlang:halt(1);
 main_main(Flags, []) ->
     Config0 = lists:foldl(fun ({Flag, Value}, Acc) ->
                                   Field = flag_to_config_field(Flag),
@@ -283,7 +283,7 @@ main_main(Flags, []) ->
                 _ ->
                     ok
             end,
-            init:stop(1);
+            erlang:halt(1);
         _ ->
             case file:consult(StaticPath) of
                 {ok, Terms} when is_list(Terms) ->
@@ -296,7 +296,7 @@ main_main(Flags, []) ->
                     main_with_static_config(Terms2);
                 Err ->
                     io:format(standard_error, "Failed to read static config ~s (~p):~n~p~n", [filename:absname(StaticPath), file:get_cwd(), Err]),
-                    init:stop(1)
+                    erlang:halt(1)
             end
     end.
 
@@ -404,11 +404,11 @@ main_with_static_config(Terms) ->
                     main_after_ns_config(Terms, NSConfig);
                 Err ->
                     complain("Failed to read ns_config: ~p~n", [Err]),
-                    init:stop(1)
+                    erlang:halt(1)
             end;
         _ ->
             complain("static config is missing path_config_datadir~n~p~n", [Terms]),
-            init:stop(1)
+            erlang:halt(1)
     end.
 
 main_after_ns_config(Terms, NSConfig) ->
@@ -416,7 +416,7 @@ main_after_ns_config(Terms, NSConfig) ->
         {ok, CouchInisPList} ->
             main_after_couch_inis(Terms, NSConfig, CouchInisPList);
         failed ->
-            init:stop(1)
+            erlang:halt(1)
     end.
 
 main_after_couch_inis(Terms, NSConfig, CouchInisPList) ->
@@ -425,13 +425,13 @@ main_after_couch_inis(Terms, NSConfig, CouchInisPList) ->
             case lists:keyfind({node, Atom, port_servers}, 1, NSConfig) of
                 false ->
                     complain("Given node name (~s) doesn't appear in ns_config.~n", [Atom]),
-                    init:stop(1);
+                    erlang:halt(1);
                 _ ->
                     main_with_everything(Terms, NSConfig, CouchInisPList, Atom)
             end;
         failed ->
             %% NOTE: error is already reported here
-            init:stop(1)
+            erlang:halt(1)
     end.
 
 strip_config_meta([{'_vclock', _} | Value]) ->
@@ -642,10 +642,10 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
 
     _ = io:rows(user),
 
-    init:stop(0),
-
     %% not sure why but output to tty is sometimes truncated otherwise
-    timer:sleep(100).
+    timer:sleep(100),
+
+    erlang:halt(0).
 
 is_net_config_ipv6(DistCfgPath) ->
     case file:consult(DistCfgPath) of
