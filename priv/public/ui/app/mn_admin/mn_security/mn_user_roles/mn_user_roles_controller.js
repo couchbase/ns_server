@@ -90,7 +90,7 @@
           .applyToScope("saslauthdAuth");
       }
 
-      if (poolDefault.isEditingMode) {
+      if (poolDefault.isEnterprise) {
         new mnPoller($scope, function () {
           return mnUserRolesService.getLdapSettings();
         })
