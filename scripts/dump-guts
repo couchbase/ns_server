@@ -648,29 +648,24 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
     timer:sleep(100).
 
 is_net_config_ipv6(DistCfgPath) ->
-    RV = case file:consult(DistCfgPath) of
-             {error, enoent} ->
-                 undefined;
-             {ok, Val} ->
-                 lists:keyfind(dist_type, 1, Val);
-             Error ->
-                 Error
-         end,
-
-    case RV of
+    case file:consult(DistCfgPath) of
+        %% Backward Compat
+        {ok, [false]} -> false;
+        {ok, [{dist_type, inet6_tcp, _}]} -> true;
+        {ok, [{dist_type, inet6_tcp}]}    -> true;
+        {ok, [{dist_type, _, _}]} -> false;
+        {ok, [{dist_type, _}]}    -> false;
+        %% End of backward compat
+        {ok, [Cfg]} ->
+            Proto = proplists:get_value(preferred_external_proto, Cfg,
+                                        inet_tcp_dist),
+            (Proto =:= inet6_tcp_dist) orelse (Proto =:= inet6_tls_dist);
+        {error, enoent} -> false;
         {error, _} = Err ->
             io:format(standard_error,
                       "Failed to read dist_cfg file '~s': ~p~n",
                       [filename:absname(DistCfgPath), Err]),
-            init:stop(1);
-        X when X =:= undefined; X =:= false ->
-            false;
-        Cfg ->
-            Mode = case Cfg of
-                       {dist_type, M, _} -> M;
-                       {dist_type, M}    -> M
-                   end,
-            Mode =:= inet6_tcp
+            erlang:halt(1)
     end.
 
 read_ns_log(Path) ->
