@@ -359,7 +359,8 @@ angular.module('mnSettingsNotificationsService', [
           queries[12] = mnSettingsNotificationsService.getCbasData();
         }
 
-        if (poolDefault.isEnterprise && mnPermissions.export.cluster.admin.security.read) {
+        if (poolDefault.compat.atLeast65 && poolDefault.isEnterprise &&
+            mnPermissions.export.cluster.admin.security.read) {
           queries[13] = mnUserRolesService.getLdapSettings();
         }
 

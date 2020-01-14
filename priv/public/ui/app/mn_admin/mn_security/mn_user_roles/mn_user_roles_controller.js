@@ -90,7 +90,8 @@
           .applyToScope("saslauthdAuth");
       }
 
-      if (poolDefault.isEnterprise) {
+
+      if (poolDefault.compat.atLeast65 && poolDefault.isEnterprise) {
         new mnPoller($scope, function () {
           return mnUserRolesService.getLdapSettings();
         })
