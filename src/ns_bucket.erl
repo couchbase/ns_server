@@ -33,6 +33,9 @@
          create_bucket/3,
          credentials/1,
          delete_bucket/1,
+         display_type/1,
+         display_type/2,
+         external_bucket_type/1,
          failover_warnings/0,
          get_bucket/1,
          get_bucket/2,
@@ -404,6 +407,43 @@ kv_backend_type(BucketConfig) ->
         %% will parse as an acceptable value but not use it.
         ephemeral -> couchdb
     end.
+
+%% Used for REST API compatibility.  This transforms the internal
+%% representation of bucket types to externally known bucket types.
+%% Ideally the 'display_type' function should suffice here but there
+%% is too much reliance on the atom membase by other modules (ex: xdcr).
+external_bucket_type(BucketConfig) ->
+    BucketType = bucket_type(BucketConfig),
+    case BucketType of
+        memcached -> memcached;
+        membase ->
+            case storage_mode(BucketConfig) of
+                couchstore -> membase;
+                magma -> membase;
+                ephemeral -> ephemeral
+            end
+    end.
+
+%% Default bucket type is now couchbase and not membase. Ideally, we should
+%% change the default bucket type atom to couchbase but the bucket type membase
+%% is used/checked at multiple locations. For similar reasons, the ephemeral
+%% bucket type also gets stored as 'membase' and to differentiate between the
+%% couchbase and ephemeral buckets we store an extra parameter called
+%% 'storage_mode'. So to fix the log message to display the correct bucket type
+%% we use both type and storage_mode parameters of the bucket config.
+display_type(BucketConfig) ->
+    BucketType = bucket_type(BucketConfig),
+    StorageMode = storage_mode(BucketConfig),
+    display_type(BucketType, StorageMode).
+
+display_type(membase = _Type, couchstore = _StorageMode) ->
+    couchbase;
+display_type(membase = _Type, magma = _StorageMode) ->
+    couchbase;
+display_type(membase = _Type, ephemeral = _StorageMode) ->
+    ephemeral;
+display_type(Type, _) ->
+    Type.
 
 auth_type(Bucket) ->
     proplists:get_value(auth_type, Bucket).

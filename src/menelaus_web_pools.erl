@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2017-2018 Couchbase, Inc.
+%% @copyright 2017-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -557,11 +557,7 @@ extract_bucket_specific_data(BucketCfgs, ExtractFun) ->
                       undefined ->
                           Acc;
                       Val ->
-                          StorageMode = ns_bucket:storage_mode(BCfg),
-                          BucketType = ns_bucket:bucket_type(BCfg),
-                          DisplayType =
-                              menelaus_web_buckets:display_type(BucketType,
-                                                                StorageMode),
+                          DisplayType = ns_bucket:display_type(BCfg),
 
                           case proplists:get_value(DisplayType, Acc) of
                               undefined ->

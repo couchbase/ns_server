@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2019 Couchbase, Inc.
+%% @copyright 2009-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -49,8 +49,6 @@
          handle_set_ddoc_update_min_changes/4,
          handle_local_random_key/3,
          build_bucket_capabilities/1,
-         external_bucket_type/1,
-         display_type/2,
          maybe_cleanup_old_buckets/0,
          serve_short_bucket_info/2,
          serve_streaming_short_bucket_info/2,
@@ -175,23 +173,6 @@ add_couch_api_base(BucketName, BucketUUID, KV, Node, LocalAddr) ->
                                 end
                         end
                 end, KV, NodesKeysList).
-
-%% Used while building the bucket info. This transforms the internal
-%% representation of bucket types to externally known bucket types.
-%% Ideally the 'display_type' function should suffice here but there
-%% is too much reliance on the atom membase by other modules (ex: xdcr).
-external_bucket_type(BucketConfig) ->
-    external_bucket_type(ns_bucket:bucket_type(BucketConfig), BucketConfig).
-
-external_bucket_type(memcached = _Type, _) ->
-    memcached;
-external_bucket_type(membase = _Type, BucketConfig) ->
-    case ns_bucket:is_persistent(BucketConfig) of
-        true ->
-            membase;
-        false ->
-            ephemeral
-    end.
 
 build_auto_compaction_info(BucketConfig) ->
     case ns_bucket:is_persistent(BucketConfig) of
@@ -376,7 +357,7 @@ build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
 
     {struct, [{name, list_to_binary(Id)},
               {uuid, BucketUUID},
-              {bucketType, external_bucket_type(BucketType, BucketConfig)},
+              {bucketType, ns_bucket:external_bucket_type(BucketConfig)},
               {authType, misc:expect_prop_value(auth_type, BucketConfig)},
               {uri, BuildUUIDURI(["pools", "default", "buckets", Id])},
               {streamingUri, BuildUUIDURI(["pools", "default", "bucketsStreaming", Id])},
@@ -605,7 +586,8 @@ handle_bucket_update_inner(BucketId, Req, Params, Limit) ->
                                                BucketId, UpdatedProps) of
                 ok ->
                     ns_audit:modify_bucket(Req, BucketId, BucketType, UpdatedProps),
-                    DisplayBucketType = display_type(BucketType, StorageMode),
+                    DisplayBucketType = ns_bucket:display_type(BucketType,
+                                                               StorageMode),
                     ale:info(?USER_LOGGER, "Updated bucket \"~s\" (of type ~s) properties:~n~p",
                              [BucketId, DisplayBucketType,
                               lists:keydelete(sasl_password, 1, UpdatedProps)]),
@@ -656,7 +638,7 @@ do_bucket_create(Req, Name, ParsedProps) ->
     case ns_orchestrator:create_bucket(BucketType, Name, BucketProps) of
         ok ->
             ns_audit:create_bucket(Req, Name, BucketType, BucketProps),
-            DisplayBucketType = display_type(BucketType, StorageMode),
+            DisplayBucketType = ns_bucket:display_type(BucketType, StorageMode),
             ?MENELAUS_WEB_LOG(?BUCKET_CREATED, "Created bucket \"~s\" of type: ~s~n~p",
                               [Name, DisplayBucketType, lists:keydelete(sasl_password, 1, BucketProps)]),
             ok;
@@ -760,22 +742,6 @@ num_replicas_warnings_validation(Ctx, NReplicas) ->
         _ ->
             [{replicaNumber, ?l2b("Warning: " ++ Msg ++ ".")}]
     end.
-
-%% Default bucket type is now couchbase and not membase. Ideally, we should
-%% change the default bucket type atom to couchbase but the bucket type membase
-%% is used/checked at multiple locations. For similar reasons, the ephemeral
-%% bucket type also gets stored as 'membase' and to differentiate between the
-%% couchbase and ephemeral buckets we store an extra parameter called
-%% 'storage_mode'. So to fix the log message to display the correct bucket type
-%% we use both type and storage_mode parameters of the bucket config.
-display_type(membase = _Type, couchstore = _StorageMode) ->
-    couchbase;
-display_type(membase = _Type, magma = _StorageMode) ->
-    couchbase;
-display_type(membase = _Type, ephemeral = _StorageMode) ->
-    ephemeral;
-display_type(Type, _) ->
-    Type.
 
 handle_bucket_flush(_PoolId, Id, Req) ->
     XDCRDocs = goxdcr_rest:find_all_replication_docs(),
@@ -1058,7 +1024,7 @@ validate_bucket_purge_interval(Params, _BucketConfig, true = IsNew) ->
     BucketType = proplists:get_value("bucketType", Params, "membase"),
     parse_validate_bucket_purge_interval(Params, BucketType, IsNew);
 validate_bucket_purge_interval(Params, BucketConfig, false = IsNew) ->
-    BucketType = external_bucket_type(BucketConfig),
+    BucketType = ns_bucket:external_bucket_type(BucketConfig),
     parse_validate_bucket_purge_interval(Params, atom_to_list(BucketType), IsNew).
 
 parse_validate_bucket_purge_interval(Params, "couchbase", IsNew) ->
@@ -1435,7 +1401,7 @@ parse_validate_threads_number(NumThreads) ->
 parse_validate_eviction_policy(Params, BCfg, IsNew) ->
     BType = case IsNew of
                      true -> proplists:get_value("bucketType", Params, "membase");
-                     false -> atom_to_list(external_bucket_type(BCfg))
+                     false -> atom_to_list(ns_bucket:external_bucket_type(BCfg))
                  end,
     do_parse_validate_eviction_policy(Params, BCfg, BType, IsNew).
 
