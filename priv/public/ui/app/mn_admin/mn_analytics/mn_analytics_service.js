@@ -173,6 +173,22 @@
       rv.specificStat = params.$stateParams.specificStat;
 
       rv.statsByName = statsByName;
+
+      // Alpha sort the UI only Eventing Stats
+      //section in Server/Statistics to prevent real-time reorders
+      statDesc.blocks.sort(function (a,b) {
+        if (a.blockName.startsWith("Eventing Stats:") &&
+            b.blockName.startsWith("Eventing Stats:")) {
+          if (a.blockName < b.blockName) {
+            return -1;
+          }
+          if (a.blockName > b.blockName) {
+            return 1
+          }
+        }
+        return 0;
+      });
+
       rv.statsDirectoryBlocks = statDesc.blocks;
       rv.stats = stats;
       rv.origTitle = data[1].origTitle;
