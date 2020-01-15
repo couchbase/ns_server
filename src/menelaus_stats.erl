@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2018 Couchbase, Inc.
+%% @copyright 2009-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -2467,7 +2467,7 @@ server_resources_stats_description(ServiceNodes) ->
 
 base_stats_directory(BucketId, ServiceNodes) ->
     {ok, BucketConfig} = ns_bucket:get_bucket(BucketId),
-    Base = case menelaus_web_buckets:external_bucket_type(BucketConfig) of
+    Base = case ns_bucket:external_bucket_type(BucketConfig) of
                membase -> membase_stats_description(BucketId, ServiceNodes);
                memcached -> memcached_stats_description();
                ephemeral -> ephemeral_stats_description(BucketId, ServiceNodes)
