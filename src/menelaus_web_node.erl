@@ -374,14 +374,19 @@ normalize_hostport(HostPortStr, Req) ->
     misc:join_host_port(HostnameStr2, PortStr).
 
 find_node_hostname(HostPortStr, Req) ->
-    HostPortBin = list_to_binary(normalize_hostport(HostPortStr, Req)),
-    NHs = nodes_to_hostnames(ns_config:get(), Req),
-    case [N || {N, CandidateHostPort} <- NHs,
-               CandidateHostPort =:= HostPortBin] of
-        [] ->
-            false;
-        [Node] ->
-            {ok, Node}
+    try normalize_hostport(HostPortStr, Req) of
+        Normalized ->
+            HostPortBin = list_to_binary(Normalized),
+            NHs = nodes_to_hostnames(ns_config:get(), Req),
+            case [N || {N, CandidateHostPort} <- NHs,
+                       CandidateHostPort =:= HostPortBin] of
+                [] ->
+                    {error, not_found};
+                [Node] ->
+                    {ok, Node}
+            end
+    catch
+        throw:{error, Reason} -> {error, {invalid_node, Reason}}
     end.
 
 %% Per-Node Stats URL information
@@ -393,8 +398,10 @@ find_node_hostname(HostPortStr, Req) ->
 %% TODO: consider what else might be of value here
 handle_bucket_node_info(BucketName, Hostname, Req) ->
     case find_node_hostname(Hostname, Req) of
-        false ->
+        {error, not_found} ->
             reply_not_found(Req);
+        {error, {invalid_node, Reason}} ->
+            menelaus_util:reply_text(Req, Reason, 400);
         _ ->
             BucketURI = bin_concat_path(["pools", "default", "buckets", BucketName]),
             NodeStatsURI = bin_concat_path(

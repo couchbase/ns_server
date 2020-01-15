@@ -222,8 +222,10 @@ do_handle_stats_section(Id, Req) ->
 %% stats specific to the node (obviously), and removal of any cross-node stats
 handle_bucket_node_stats(_PoolId, BucketName, HostName, Req) ->
     case menelaus_web_node:find_node_hostname(HostName, Req) of
-        false ->
+        {error, not_found} ->
             menelaus_util:reply_not_found(Req);
+        {error, {invalid_node, Reason}} ->
+            menelaus_util:reply_text(Req, Reason, 400);
         {ok, Node} ->
             Params = mochiweb_request:parse_qs(Req),
             Ops = build_bucket_stats_ops_response([Node], BucketName, Params, true),
@@ -241,8 +243,10 @@ handle_bucket_node_stats(_PoolId, BucketName, HostName, Req) ->
 
 handle_stats_section_for_node(_PoolId, Id, HostName, Req) ->
     case menelaus_web_node:find_node_hostname(HostName, Req) of
-        false ->
+        {error, not_found} ->
             menelaus_util:reply_not_found(Req);
+        {error, {invalid_node, Reason}} ->
+            menelaus_util:reply_text(Req, Reason, 400);
         {ok, Node} ->
             case section_exists(Id) andalso lists:member(Node, section_nodes(Id)) of
                 true ->
@@ -3105,7 +3109,7 @@ validate_nodes(Name, State, Req) ->
                     fun (HostName) ->
                             case menelaus_web_node:find_node_hostname(
                                    HostName, Req) of
-                                false ->
+                                {error, _} ->
                                     {right, HostName};
                                 {ok, Node} ->
                                     {left, Node}
