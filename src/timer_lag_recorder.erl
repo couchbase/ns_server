@@ -28,19 +28,14 @@
 -export([start_link/0]).
 -export([init/1, handle_call/3, handle_info/2, handle_cast/2]).
 
--record(state, {time_expected}).
+-record(state, {}).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 init([]) ->
-    TimeExpected = send_check_time(),
-    {ok, #state{time_expected = TimeExpected}}.
-
-send_check_time() ->
-    TimeExpected = erlang:monotonic_time(millisecond) + ?TIMER_INTERVAL,
-    erlang:send_after(TimeExpected, self(), check_time, [{abs, true}]),
-    TimeExpected.
+    send_check_time_msg(),
+    {ok, #state{}}.
 
 handle_call(Msg, _From, _State) ->
     erlang:error({unknown_msg, Msg}).
@@ -48,22 +43,29 @@ handle_call(Msg, _From, _State) ->
 handle_cast(Msg, _State) ->
     erlang:error({unknown_cast, Msg}).
 
-handle_info(check_time, #state{time_expected = TimeExpected0} = State) ->
+report_missed_msgs(Skipped, Lag) when Skipped > 10 ->
+    error_logger:error_msg("Detected time forward jump (or too large "
+                           "erlang scheduling latency).  Skipping ~w "
+                           "samples (or ~w milliseconds)",
+                           [Skipped, Lag]);
+report_missed_msgs(Skipped, _Lag) when Skipped > 0 ->
+    ?log_warning("Skipped ~p 'check_time' messages", [Skipped]);
+report_missed_msgs(_Skipped, _Lag) ->
+    ok.
+
+handle_info({check_time, ExpectedTime}, State) ->
     TimeNow = erlang:monotonic_time(millisecond),
-    Lag = TimeNow - TimeExpected0,
+    Lag = TimeNow - ExpectedTime,
     system_stats_collector:add_histo(timer_lag, Lag * 1000),
-    Skipped = Lag / ?TIMER_INTERVAL,
 
-    case Skipped > 10 of
-        true ->
-            error_logger:error_msg("Detected time forward jump (or too large "
-                                   "erlang scheduling latency).  Skipping ~w "
-                                   "samples (or ~w milliseconds)",
-                                   [Skipped, Lag]);
-        false ->
-            ok
-    end,
+    Skipped = trunc(Lag / ?TIMER_INTERVAL),
+    report_missed_msgs(Skipped, Lag),
 
-    TimeExpected = send_check_time(),
+    send_check_time_msg(),
 
-    {noreply, State#state{time_expected = TimeExpected}}.
+    {noreply, State}.
+
+send_check_time_msg() ->
+    ExpectedTime = erlang:monotonic_time(millisecond) + ?TIMER_INTERVAL,
+    erlang:send_after(ExpectedTime, self(), {check_time, ExpectedTime},
+                      [{abs, true}]).
