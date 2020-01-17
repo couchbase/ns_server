@@ -19,7 +19,8 @@
       uri: '/pools/default/buckets',
       purgeInterval: "3",
       compressionMode: "passive",
-      maxTTL: 0
+      maxTTL: 0,
+      storageBackend: 'couchstore',
     })
     .constant('daysOfWeek', [
       'Monday',

@@ -487,6 +487,44 @@
 
       </div>
 
+      <div
+         class="formrow checkbox-list"
+         [hidden]="!(bucketsDialogForm | mnIsMembase)">
+         <label class="inline">Storage Backend</label>
+         <ng-template #storageBackendTooltip>
+             The type of storage backend to use for this bucket.
+         </ng-template>
+         <span
+            class="fa-stack icon-info"
+            [ngbTooltip]="storageBackendTooltip"
+            placement="top">
+           <span class="icon fa-circle-thin fa-stack-2x"></span>
+           <span class="icon fa-info fa-stack-1x"></span>
+         </span>
+         <div class="formrow">
+            <input
+               type="radio"
+               name="storageBackend"
+               formControlName="storageBackend"
+               value="couchstore"
+               id="for-storage-backend-couchstore">
+            <label for="for-storage-backend-couchstore">couchstore</label>
+            <input
+               type="radio"
+               name="storageBackend"
+               formControlName="storageBackend"
+               value="magma"
+               id="for-storage-backend-magma">
+            <label for="for-storage-backend-magma">magma</label>
+            <div
+               class="error"
+               [hidden]="!(storageBackendWarning | async)">
+              {{(storageBackendWarning | async)}}
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
     <div class="panel-footer">
       <a (click)="activeModal.dismiss()">Cancel</a>

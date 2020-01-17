@@ -41,6 +41,7 @@
       }
       if (bucketConf.bucketType === "membase") {
         copyProperties(["autoCompactionDefined", "evictionPolicy"]);
+        copyProperty("storageBackend");
       }
       if (bucketConf.bucketType === "ephemeral") {
         copyProperty("purgeInterval");

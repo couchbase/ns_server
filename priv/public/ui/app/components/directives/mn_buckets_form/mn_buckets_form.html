@@ -453,5 +453,42 @@
          ng-true-value="1">
       <label for="for-enable-flush">Enable</label>
     </div>
+
+    <div
+       class="formrow checkbox-list"
+       ng-if="pools.isEnterprise && bucketConf.bucketType === 'membase'">
+      <label class="inline">Storage Backend</label>
+      <span
+         class="fa-stack icon-info"
+         uib-tooltip-html="'Type of storage backend'"
+         tooltip-placement="top">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+      </span>
+      <div class="formrow checkbox-list">
+        <input
+           type="radio"
+           name="storageBackend"
+           value="couchstore"
+           id="for-storage-backend-couchstore"
+           checked="checked"
+           ng-model="bucketConf.storageBackend"
+           ng-disabled="!bucketConf.isNew">
+        <label for="for-storage-backend-couchstore">CouchStore</label>
+        <input
+           type="radio"
+           name="storageBackend"
+           value="magma"
+           id="for-storage-backend-magma"
+           ng-model="bucketConf.storageBackend"
+           ng-disabled="!bucketConf.isNew">
+        <label for="for-storage-backend-magma">Magma</label>
+        <div
+           class="error margin-bottom-half"
+           ng-show="validation.result.errors.storageBackend">
+            {{validation.result.errors.storageBackend}}
+        </div>
+      </div>
+    </div>
   </div>
 </div>
