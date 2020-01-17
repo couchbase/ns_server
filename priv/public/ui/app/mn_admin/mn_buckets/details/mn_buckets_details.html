@@ -50,6 +50,13 @@
         <strong>Metadata Purge Interval:</strong>
         {{(bucketsDetailsCtl.bucketDetails.purgeInterval)}}
       </div>
+      <div
+         class="nowrap"
+         ng-if="bucket.isMembase">
+        <strong>Storage Backend:</strong>
+        {{bucketsDetailsCtl.bucketDetails.storageBackend === "couchstore" ? "CouchStore" :
+          bucketsDetailsCtl.bucketDetails.storageBackend === "magma" ? "Magma" : ""}}
+      </div>
     </div>
 
     <div class="cbui-table-meters buckets">
