@@ -500,8 +500,6 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, setup], write}, fun menelaus_web_cluster:handle_complete_join/1};
                 ["node", "controller", "doJoinCluster"] ->
                     {{[admin, setup], write}, fun menelaus_web_cluster:handle_join/1};
-                ["node", "controller", "doJoinClusterV2"] ->
-                    {{[admin, setup], write}, fun menelaus_web_cluster:handle_join/1};
                 ["node", "controller", "rename"] ->
                     {{[admin, setup], write}, fun menelaus_web_node:handle_node_rename/1};
                 ["nodes", NodeId, "controller", "settings"] ->
