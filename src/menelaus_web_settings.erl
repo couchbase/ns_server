@@ -126,8 +126,8 @@ get_cipher_suites(Str) ->
             case InvalidNames of
                 [] -> {ok, L};
                 _ ->
-                    M = io_lib:format("Invalid cipher suite names = ~s",
-                                      [InvalidNames]),
+                    M = io_lib:format("Invalid cipher suite names ~s",
+                                      [lists:join(", ", InvalidNames)]),
                     {error, lists:flatten(M)}
             end;
         _ -> {error, "Invalid format. Expecting a list of ciphers."}
