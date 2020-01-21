@@ -1,6 +1,7 @@
 import { BrowserModule } from '../web_modules/@angular/platform-browser.js';
 import { HttpClientModule } from '../web_modules/@angular/common/http.js';
 import { UIRouterModule, UIView } from '../web_modules/@uirouter/angular.js';
+import { MnPipesModule } from './mn.pipes.module.js';
 import { MnAppComponent } from './mn.app.component.js';
 import { MnAuthComponent } from './mn.auth.component.js';
 import { MnAuthModule } from './mn.auth.module.js';
@@ -28,6 +29,7 @@ let mnAppState = {
 
 export let mnAppImports = [
   UpgradeModule,
+  MnPipesModule,
   BrowserModule,
   HttpClientModule,
   UIRouterModule.forRoot({
