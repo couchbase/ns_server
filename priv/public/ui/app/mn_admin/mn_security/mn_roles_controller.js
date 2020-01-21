@@ -21,7 +21,7 @@
             return $q.all([
               poolDefault.saslauthdEnabled ?
                 mnUserRolesService.getSaslauthdAuth() : $q.when(),
-              poolDefault.isEnterprise ?
+              (poolDefault.isEnterprise && poolDefault.compat.atLeast65) ?
                 mnUserRolesService.getLdapSettings() : $q.when()
             ]).then(function (resp) {
               return (resp[0] && resp[0].enabled) || (resp[1] && resp[1].data.authenticationEnabled);
