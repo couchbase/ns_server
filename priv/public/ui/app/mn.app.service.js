@@ -15,7 +15,6 @@ class MnAppService {
     this.stream.loading = new BehaviorSubject(false);
     this.stream.httpResponse = new Subject();
     this.stream.pageNotFound = new Subject();
-    this.stream.appError = new Subject();
     this.stream.http401 =
       this.stream.httpResponse.pipe(filter(function (rv) {
         //rejection.config.url !== "/controller/changePassword"

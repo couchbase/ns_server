@@ -20,6 +20,8 @@ mn.modules.MnWizard =
       var newClusterConfig = mnWizardService.wizardForm.newClusterConfig;
       var joinCluster = mnWizardService.wizardForm.joinCluster;
 
+      //MnExceptionHandlerService.stream.appException.subscribe(MnExceptionHandlerService.send);
+
       mnAdminService.stream.implementationVersion
         .pipe(Rx.operators.first())
         .subscribe(function (implementationVersion) {

@@ -80,6 +80,8 @@ mn.components.MnAdmin =
       mn.core.MnEventableComponent.call(this);
       mnSessionService.activate(this.mnOnDestroy);
 
+      //MnExceptionHandlerService.stream.appException.subscribe(MnExceptionHandlerService.send);
+
       this.postUILogout = mnAuthService.stream.postUILogout;
       this.isProgressBarClosed = new Rx.BehaviorSubject(true);
       this.getPoolsDefaultEtag = mnAdminService.stream.etag;

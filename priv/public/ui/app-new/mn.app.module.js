@@ -1,8 +1,10 @@
 import { MnAppComponent } from './mn.app.component.js';
 import { MnAppService } from './mn.app.service.js';
+import { MnPoolsService } from './mn.pools.service.js';
 import { mnAppImports } from './mn.app.imports.js';
 import { MnHttpInterceptor } from './mn.http.interceptor.js';
-import { NgModule } from '../web_modules/@angular/core.js';
+import { MnExceptionHandlerService } from './mn.exception.handler.service.js';
+import { NgModule, ErrorHandler} from '../web_modules/@angular/core.js';
 import { HTTP_INTERCEPTORS, HttpClient } from '../web_modules/@angular/common/http.js';
 import { UIView } from '../web_modules/@uirouter/angular.js';
 
@@ -19,10 +21,15 @@ class MnAppModule {
         UIView
       ],
       providers: [
-        MnAppService, {
+        MnAppService,
+        MnPoolsService,
+        {
           provide: HTTP_INTERCEPTORS,
           useClass: MnHttpInterceptor,
           multi: true
+        }, {
+          provide: ErrorHandler,
+          useClass: MnExceptionHandlerService
         }
       ]
     })
@@ -30,10 +37,13 @@ class MnAppModule {
 
   static parameters = [
     MnAppService,
-    HttpClient
+    ErrorHandler
   ]
 
-  constructor(mnAppService) {
+  constructor(mnAppService, mnExceptionHandlerService) {
+    mnExceptionHandlerService.stream.appException
+      .subscribe(mnExceptionHandlerService.send.bind(mnExceptionHandlerService));
+    // setTimeout(function () {a}, 1000)
 
   }
 }
