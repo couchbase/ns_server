@@ -189,10 +189,12 @@ dynamic_children(Mode) ->
 
 do_dynamic_children(shutdown, Config) ->
     [memcached_spec(),
-     saslauthd_port_spec(Config)];
+     saslauthd_port_spec(Config)] ++
+        prometheus_cfg:specs(Config);
 do_dynamic_children(normal, Config) ->
     [memcached_spec(),
      saslauthd_port_spec(Config)] ++
+        prometheus_cfg:specs(Config) ++
         build_goport_specs(Config).
 
 expand_specs(Specs, Config) ->
