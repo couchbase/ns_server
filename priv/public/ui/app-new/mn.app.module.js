@@ -2,6 +2,7 @@ import { MnAppComponent } from './mn.app.component.js';
 import { MnAppService } from './mn.app.service.js';
 import { MnPoolsService } from './mn.pools.service.js';
 import { mnAppImports } from './mn.app.imports.js';
+import { MnAlertsService } from './mn.alerts.service.js';
 import { MnHttpInterceptor } from './mn.http.interceptor.js';
 import { MnExceptionHandlerService } from './mn.exception.handler.service.js';
 import { NgModule, ErrorHandler} from '../web_modules/@angular/core.js';
@@ -23,6 +24,7 @@ class MnAppModule {
       providers: [
         MnAppService,
         MnPoolsService,
+        MnAlertsService,
         {
           provide: HTTP_INTERCEPTORS,
           useClass: MnHttpInterceptor,
