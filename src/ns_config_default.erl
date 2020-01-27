@@ -26,7 +26,7 @@
 -define(NS_LOG, "ns_log").
 
 get_current_version() ->
-    {5,5,3}.
+    {6,0,4}.
 
 get_data_dir() ->
     RawDir = path_config:component_path(data),
@@ -527,8 +527,11 @@ upgrade_config(Config) ->
             [{set, {node, node(), config_version}, {5,5}} |
              upgrade_config_from_5_1_1_to_5_5(Config)];
         {value, {5,5}} ->
-            [{set, {node, node(), config_version}, CurrentVersion} |
+            [{set, {node, node(), config_version}, {5,5,3}} |
              upgrade_config_from_5_5_to_5_5_3()];
+        {value, {5,5,3}} ->
+            [{set, {node, node(), config_version}, CurrentVersion} |
+             upgrade_config_from_5_5_3_to_6_0_4(Config)];
         V0 ->
             OldVersion =
                 case V0 of
@@ -622,6 +625,13 @@ upgrade_config_from_5_5_to_5_5_3() ->
 
 do_upgrade_config_from_5_5_to_5_5_3(DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig)].
+
+upgrade_config_from_5_5_3_to_6_0_4(Config) ->
+    DefaultConfig = default(),
+    do_upgrade_config_from_5_5_3_to_6_0_4(Config, DefaultConfig).
+
+do_upgrade_config_from_5_5_3_to_6_0_4(Config, DefaultConfig) ->
+    [upgrade_sub_keys(memcached, [admin_user], Config, DefaultConfig)].
 
 encrypt_config_val(Val) ->
     {ok, Encrypted} = encryption_service:encrypt(term_to_binary(Val)),
@@ -731,6 +741,15 @@ upgrade_5_5_to_5_5_3_test() ->
 
     ?assertMatch([{set, {node, _, memcached_config}, new_memcached_config}],
                  do_upgrade_config_from_5_5_to_5_5_3(Default)).
+
+upgrade_5_5_3_to_6_0_4_test() ->
+    Cfg = [[{some_key, some_value},
+            {{node, node(), memcached}, [{old, info}, {admin_user, old}]}]],
+
+    Default = [{{node, node(), memcached}, [{some, stuff}, {admin_user, new}]}],
+
+    ?assertMatch([{set, {node, _, memcached}, [{old, info}, {admin_user, new}]}],
+                 do_upgrade_config_from_5_5_3_to_6_0_4(Cfg, Default)).
 
 no_upgrade_on_current_version_test() ->
     ?assertEqual([], upgrade_config([[{{node, node(), config_version}, get_current_version()}]])).
