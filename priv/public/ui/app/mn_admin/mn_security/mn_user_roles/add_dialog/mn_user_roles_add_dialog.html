@@ -132,7 +132,8 @@
              ng-class="{selected : (userRolesAddDialogCtl.selectedPanel == 'roles')}">
             Roles
           </a>
-          <a ng-click="userRolesAddDialogCtl.selectedPanel = 'groups'"
+          <a ng-show="poolDefault.isEnterprise && poolDefault.compat.atLeast65"
+             ng-click="userRolesAddDialogCtl.selectedPanel = 'groups'"
              ng-class="{selected : (userRolesAddDialogCtl.selectedPanel == 'groups')}">
             Groups
           </a>

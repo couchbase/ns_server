@@ -201,21 +201,23 @@
         var tasksPoller = new mnPoller($scope, function (prevTask) {
           return mnTasksDetails.getFresh({group: "global"})
             .then(function (tasks) {
-              if (tasks.tasksRebalance.status == "notRunning") {
-                if (!tasks.tasksRebalance.masterRequestTimedOut &&
-                    prevTask && (tasks.tasksRebalance.lastReportURI !=
-                                 prevTask.tasksRebalance.lastReportURI)) {
-                  mnTasksDetails.clearRebalanceReportCache(prevTask.tasksRebalance.lastReportURI);
+              if (poolDefault.compat.atLeast65) {
+                if (tasks.tasksRebalance.status == "notRunning") {
+                  if (!tasks.tasksRebalance.masterRequestTimedOut &&
+                      prevTask && (tasks.tasksRebalance.lastReportURI !=
+                                   prevTask.tasksRebalance.lastReportURI)) {
+                    mnTasksDetails.clearRebalanceReportCache(prevTask.tasksRebalance.lastReportURI);
+                  }
+                  return mnTasksDetails.getRebalanceReport(tasks.tasksRebalance.lastReportURI)
+                    .then(function (rv) {
+                      if (rv.data.stageInfo) {
+                        tasks.tasksRebalance.stageInfo = rv.data.stageInfo;
+                        tasks.tasksRebalance.completionMessage = rv.data.completionMessage;
+                      }
+                      return tasks;
+                    });
                 }
-                return mnTasksDetails.getRebalanceReport(tasks.tasksRebalance.lastReportURI)
-                  .then(function (rv) {
-                    if (rv.data.stageInfo) {
-                      tasks.tasksRebalance.stageInfo = rv.data.stageInfo;
-                      tasks.tasksRebalance.completionMessage = rv.data.completionMessage;
-                    }
-                    return tasks;
-                  });
-
+                return tasks;
               }
               return tasks;
             });

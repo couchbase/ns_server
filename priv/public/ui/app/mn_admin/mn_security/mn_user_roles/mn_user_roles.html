@@ -25,7 +25,7 @@
           <span ng-show="userRolesCtl.saslauthdAuth"><span ng-show="!userRolesCtl.saslauthdAuth.enabled">not</span> enabled</span>
         </p>
       </div>
-      <div class="users-auth-check" ng-show="poolDefault.isEnterprise">
+      <div class="users-auth-check" ng-show="poolDefault.isEnterprise && poolDefault.compat.atLeast65">
         <span
            class="icon margin-right"
            ng-class="userRolesCtl.ldapSettings.data.authenticationEnabled ? 'fa-check success' : 'fa-ban grayblack-3'">
@@ -43,7 +43,7 @@
       <a
          ui-sref="app.admin.security.roles.groups"
          ui-sref-active="selected"
-         ng-if="poolDefault.isEnterprise">Groups</a>
+         ng-if="poolDefault.isEnterprise && poolDefault.compat.atLeast65">Groups</a>
     </span>
   </div>
   <div class="cbui-table" ng-if="userRolesCtl.state.users.length">
@@ -63,7 +63,8 @@
                         'dynamic-inverted': userRolesCtl.isOrderBy('name')
                         && userRolesCtl.isDesc()}">full name</span>
       </span>
-      <span class="cbui-table-cell">
+      <span class="cbui-table-cell"
+            ng-if="poolDefault.isEnterprise && poolDefault.compat.atLeast65">
         <span>groups</span>
       </span>
       <span class="cbui-table-cell flex-grow-3">
@@ -95,7 +96,10 @@
           <span ng-show="user.passwordless" class="label lt-blue">no password</span>
         </span>
         <span class="cbui-table-cell resp-hide-sml">{{user.name}}</span>
-        <span class="cbui-table-cell wrap">{{userRolesCtl.parseGroupNames(user)}}</span>
+        <span class="cbui-table-cell wrap"
+              ng-if="poolDefault.isEnterprise && poolDefault.compat.atLeast65">
+          {{userRolesCtl.parseGroupNames(user)}}
+        </span>
         <span class="cbui-table-cell flex-grow-3 wrap">
           <span
               class="relative"
