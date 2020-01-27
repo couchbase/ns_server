@@ -8,7 +8,7 @@ import { MnAuthModule } from './mn.auth.module.js';
 import { UpgradeModule } from '/ui/web_modules/@angular/upgrade/static.js';
 
 
-let mnAppState = {
+let appState = {
   name: 'app',
   url: '/?{enableInternalSettings:bool}&{disablePoorMansAlerts:bool}',
   component: MnAppComponent,
@@ -27,13 +27,22 @@ let mnAppState = {
   abstract: true
 };
 
+let authState = {
+  name: "app.auth",
+  component: MnAuthComponent
+}
+
 export let mnAppImports = [
   UpgradeModule,
   MnPipesModule,
   BrowserModule,
   HttpClientModule,
+  MnAuthModule,
   UIRouterModule.forRoot({
-    states: [mnAppState],
-    useHash: true
+    states: [appState, authState],
+    useHash: true,
+    config: function mnRouterConfig(uiRouter) {
+      uiRouter.urlRouter.deferIntercept();
+    }
   })
 ];
