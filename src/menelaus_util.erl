@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2019 Couchbase, Inc.
+%% @copyright 2009-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -451,9 +451,14 @@ require_auth(Req) ->
             %% WWW-Authenticate header response, even via XHR
             reply(Req, 401);
         {_, undefined} ->
-            reply(Req, 401,
-                  [{"WWW-Authenticate",
-                    "Basic realm=\"Couchbase Server Admin / REST\""}]);
+            case ns_config:read_key_fast(disable_www_authenticate, false) of
+                false ->
+                    reply(Req, 401,
+                          [{"WWW-Authenticate",
+                            "Basic realm=\"Couchbase Server Admin / REST\""}]);
+                true ->
+                    reply(Req, 401)
+            end;
         _ ->
             %% scram sha meta header will be converted later on to scram sha
             %% related auth headers
