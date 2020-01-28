@@ -655,6 +655,7 @@ is_net_config_ipv6(DistCfgPath) ->
         {ok, [{dist_type, inet6_tcp}]}    -> true;
         {ok, [{dist_type, _, _}]} -> false;
         {ok, [{dist_type, _}]}    -> false;
+        {ok, []} -> false;
         %% End of backward compat
         {ok, [Cfg]} ->
             Proto = proplists:get_value(preferred_external_proto, Cfg,
