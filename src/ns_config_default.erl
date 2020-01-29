@@ -29,7 +29,7 @@
 -define(NS_LOG, "ns_log").
 
 get_current_version() ->
-    list_to_tuple(?VERSION_65).
+    {6,5,1}.
 
 get_data_dir() ->
     RawDir = path_config:component_path(data),
@@ -385,8 +385,14 @@ upgrade_config(Config) ->
             [{set, {node, node(), config_version}, {5,5,3}} |
              upgrade_config_from_5_5_to_5_5_3()];
         {5,5,3} ->
+            [{set, {node, node(), config_version}, {6,0,4}} |
+             upgrade_config_from_5_5_3_to_6_0_4(Config)];
+        {6,0,4} ->
+            [{set, {node, node(), config_version}, {6,5}} |
+             upgrade_config_from_6_0_4_to_6_5(Config)];
+        {6,5} ->
             [{set, {node, node(), config_version}, CurrentVersion} |
-             upgrade_config_from_5_5_3_to_65(Config)];
+             upgrade_config_from_6_5_to_6_5_1(Config)];
         OldVersion ->
             ?log_error("Detected an attempt to offline upgrade from "
                        "unsupported version ~p. Terminating.", [OldVersion]),
@@ -456,17 +462,31 @@ upgrade_config_from_5_5_to_5_5_3() ->
 do_upgrade_config_from_5_5_to_5_5_3(DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig)].
 
-upgrade_config_from_5_5_3_to_65(Config) ->
+upgrade_config_from_5_5_3_to_6_0_4(Config) ->
     DefaultConfig = default(),
-    do_upgrade_config_from_5_5_3_to_65(Config, DefaultConfig).
+    do_upgrade_config_from_5_5_3_to_6_0_4(Config, DefaultConfig).
 
-do_upgrade_config_from_5_5_3_to_65(Config, DefaultConfig) ->
+do_upgrade_config_from_5_5_3_to_6_0_4(Config, DefaultConfig) ->
+    [upgrade_sub_keys(memcached, [admin_user], Config, DefaultConfig)].
+
+upgrade_config_from_6_0_4_to_6_5(Config) ->
+    DefaultConfig = default(),
+    do_upgrade_config_from_6_0_4_to_6_5(Config, DefaultConfig).
+
+do_upgrade_config_from_6_0_4_to_6_5(Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
      upgrade_key(memcached_defaults, DefaultConfig),
      upgrade_sub_keys(memcached, [dedicated_ssl_port],
                       Config, DefaultConfig),
      upgrade_key(moxi, DefaultConfig) |
      rename_key(ldap_enabled, saslauthd_enabled, Config)].
+
+upgrade_config_from_6_5_to_6_5_1(Config) ->
+    DefaultConfig = default(),
+    do_upgrade_config_from_6_5_to_6_5_1(Config, DefaultConfig).
+
+do_upgrade_config_from_6_5_to_6_5_1(Config, DefaultConfig) ->
+    [upgrade_sub_keys(memcached, [admin_user], Config, DefaultConfig)].
 
 encrypt_config_val(Val) ->
     {ok, Encrypted} = encryption_service:encrypt(term_to_binary(Val)),
@@ -537,7 +557,16 @@ upgrade_5_5_to_5_5_3_test() ->
     ?assertMatch([{set, {node, _, memcached_config}, new_memcached_config}],
                  do_upgrade_config_from_5_5_to_5_5_3(Default)).
 
-upgrade_5_5_3_to_65_test() ->
+upgrade_5_5_3_to_6_0_4_test() ->
+    Cfg = [[{some_key, some_value},
+            {{node, node(), memcached}, [{old, info}, {admin_user, old}]}]],
+
+    Default = [{{node, node(), memcached}, [{some, stuff}, {admin_user, new}]}],
+
+    ?assertMatch([{set, {node, _, memcached}, [{old, info}, {admin_user, new}]}],
+                 do_upgrade_config_from_5_5_3_to_6_0_4(Cfg, Default)).
+
+upgrade_6_0_4_to_6_5_test() ->
     Cfg1 = [[{some_key, some_value},
              {{node, node(), memcached}, [{old, info}]},
              {{node, node(), memcached_defaults}, [{k1, v1}]},
@@ -560,7 +589,7 @@ upgrade_5_5_3_to_65_test() ->
                   {set, {node, _, moxi}, new_moxi_value},
                   {delete, {node, _, ldap_enabled}},
                   {set, {node, _, saslauthd_enabled}, true}],
-                 do_upgrade_config_from_5_5_3_to_65(Cfg1, Default)),
+                 do_upgrade_config_from_6_0_4_to_6_5(Cfg1, Default)),
     Cfg2 = [[{some_key, some_value},
              {{node, node(), memcached}, [{old, info}]}]],
     ?assertMatch([{set, {node, _, memcached_config}, [{interfaces,
@@ -569,7 +598,16 @@ upgrade_5_5_3_to_65_test() ->
                   {set, {node, _, memcached}, [{old, info},
                                                {dedicated_ssl_port, 123}]},
                   {set, {node, _, moxi}, new_moxi_value}],
-                 do_upgrade_config_from_5_5_3_to_65(Cfg2, Default)).
+                 do_upgrade_config_from_6_0_4_to_6_5(Cfg2, Default)).
+
+upgrade_6_5_to_6_5_1_test() ->
+    Cfg = [[{some_key, some_value},
+            {{node, node(), memcached}, [{old, info}, {admin_user, old}]}]],
+
+    Default = [{{node, node(), memcached}, [{some, stuff}, {admin_user, new}]}],
+
+    ?assertMatch([{set, {node, _, memcached}, [{old, info}, {admin_user, new}]}],
+                 do_upgrade_config_from_6_5_to_6_5_1(Cfg, Default)).
 
 no_upgrade_on_current_version_test() ->
     ?assertEqual([], upgrade_config([[{{node, node(), config_version}, get_current_version()}]])).
