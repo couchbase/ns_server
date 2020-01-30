@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2019 Couchbase, Inc.
+%% @copyright 2009-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -172,9 +172,7 @@ grab_all_dcp_stats() ->
 
 grab_all_dcp_stats(Timeout) ->
     ActiveBuckets = ns_memcached:active_buckets(),
-    ThisNodeBuckets =
-        ns_bucket:node_bucket_names_of_type(node(), membase, couchstore) ++
-        ns_bucket:node_bucket_names_of_type(node(), membase, ephemeral),
+    ThisNodeBuckets = ns_bucket:node_bucket_names_of_type(node(), membase),
     InterestingBuckets = ordsets:intersection(lists:sort(ActiveBuckets),
                                               lists:sort(ThisNodeBuckets)),
     misc:parallel_map(

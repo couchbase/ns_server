@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2010-2019 Couchbase, Inc.
+%% @copyright 2010-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -986,8 +986,7 @@ bucket_failover_vbuckets(Config, Bucket, DeltaNodes) ->
 
 get_buckets_to_delta_recover(BucketConfigs, RequestedBuckets) ->
     [P || {Bucket, BucketConfig} = P <- BucketConfigs,
-          ns_bucket:bucket_type(BucketConfig) =:= membase,
-          ns_bucket:storage_mode(BucketConfig) =:= couchstore,
+          ns_bucket:is_persistent(BucketConfig),
           RequestedBuckets =:= all orelse
               lists:member(Bucket, RequestedBuckets)].
 
@@ -1497,11 +1496,13 @@ get_buckets_to_delta_recovery_test() ->
                {"b3", [{type, membase},
                        {storage_mode, couchstore}]},
                {"b4", [{type, membase},
-                       {storage_mode, ephemeral}]}],
-    ?assertMatch([{"b1", _}, {"b3", _}],
+                       {storage_mode, ephemeral}]},
+               {"b5", [{type, membase},
+                       {storage_mode, magma}]}],
+    ?assertMatch([{"b1", _}, {"b3", _}, {"b5", _}],
                  get_buckets_to_delta_recover(Buckets,
-                                              ["b1", "b2", "b3", "b4"])),
-    ?assertMatch([{"b1", _}, {"b3", _}],
+                                              ["b1", "b2", "b3", "b4", "b5"])),
+    ?assertMatch([{"b1", _}, {"b3", _}, {"b5", _}],
                  get_buckets_to_delta_recover(Buckets, all)),
     ?assertMatch([{"b3", _}],
                  get_buckets_to_delta_recover(Buckets, ["b3", "b4"])).

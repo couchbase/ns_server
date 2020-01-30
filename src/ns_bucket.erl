@@ -81,8 +81,8 @@
          update_bucket_props/4,
          node_bucket_names/1,
          node_bucket_names/2,
+         node_bucket_names_of_type/2,
          node_bucket_names_of_type/3,
-         node_bucket_names_of_type/4,
          all_node_vbuckets/1,
          update_vbucket_map_history/2,
          past_vbucket_maps/0,
@@ -139,7 +139,7 @@ get_bucket_names() ->
 get_bucket_names(BucketConfigs) ->
     proplists:get_keys(BucketConfigs).
 
--type bucket_type_mode() :: memcached|membase|{membase, couchstore}|
+-type bucket_type_mode() :: memcached|membase|persistent|{membase, couchstore}|
                             {membase, magma}|
                             {membase, ephemeral}| {memcached, undefined}.
 
@@ -151,6 +151,9 @@ get_bucket_names_of_type(Type) ->
 get_bucket_names_of_type({Type, Mode}, BucketConfigs) ->
     [Name || {Name, Config} <- BucketConfigs, bucket_type(Config) == Type,
              storage_mode(Config) == Mode];
+get_bucket_names_of_type(persistent, BucketConfigs) ->
+    [Name || {Name, Config} <- BucketConfigs,
+             is_persistent(Config)];
 get_bucket_names_of_type(Type, BucketConfigs) ->
     [Name || {Name, Config} <- BucketConfigs, bucket_type(Config) == Type].
 
@@ -760,19 +763,24 @@ node_bucket_names(Node, BucketsConfigs) ->
 node_bucket_names(Node) ->
     node_bucket_names(Node, get_buckets()).
 
--spec node_bucket_names_of_type(node(), memcached|membase,
-                                undefined|couchstore|magma|ephemeral) -> list().
-node_bucket_names_of_type(Node, Type, Mode) ->
-    node_bucket_names_of_type(Node, Type, Mode, get_buckets()).
+-spec node_bucket_names_of_type(node(), bucket_type_mode()) -> list().
+node_bucket_names_of_type(Node, Type) ->
+    node_bucket_names_of_type(Node, Type, get_buckets()).
 
--spec node_bucket_names_of_type(node(), memcached|membase,
-                                undefined|couchstore|magma|ephemeral,
-                                list()) -> list().
-node_bucket_names_of_type(Node, Type, Mode, BucketConfigs) ->
+-spec node_bucket_names_of_type(node(), bucket_type_mode(), list()) -> list().
+node_bucket_names_of_type(Node, {Type, Mode}, BucketConfigs) ->
     [B || {B, C} <- BucketConfigs,
           lists:member(Node, get_servers(C)),
           bucket_type(C) =:= Type,
-          storage_mode(C) =:= Mode].
+          storage_mode(C) =:= Mode];
+node_bucket_names_of_type(Node, persistent, BucketConfigs) ->
+    [B || {B, C} <- BucketConfigs,
+          lists:member(Node, get_servers(C)),
+          is_persistent(C)];
+node_bucket_names_of_type(Node, Type, BucketConfigs) ->
+    [B || {B, C} <- BucketConfigs,
+          lists:member(Node, get_servers(C)),
+          bucket_type(C) =:= Type].
 
 %% All the vbuckets (active or replica) on a node
 -spec all_node_vbuckets(term()) -> list(integer()).

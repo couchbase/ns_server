@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2017-2018 Couchbase, Inc.
+%% @copyright 2017-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -113,8 +113,7 @@ handle_info(refresh, #state{buckets = Buckets,
 
 handle_info({buckets, Buckets}, #state{buckets = Dict} = State) ->
     BucketConfigs = proplists:get_value(configs, Buckets, []),
-    NewBuckets0 = ns_bucket:get_bucket_names_of_type({membase, couchstore},
-                                                     BucketConfigs),
+    NewBuckets0 = ns_bucket:get_bucket_names_of_type(persistent, BucketConfigs),
     NewBuckets = lists:sort(NewBuckets0),
     KnownBuckets = lists:sort(dict:fetch_keys(Dict)),
     ToRemove = KnownBuckets -- NewBuckets,
@@ -195,7 +194,7 @@ get_errors() ->
     [io_failed | [Err || {_, Err} <- failure_stats()]].
 
 reset_bucket_info() ->
-    Buckets = ns_bucket:node_bucket_names_of_type(node(), membase, couchstore),
+    Buckets = ns_bucket:node_bucket_names_of_type(node(), persistent),
     lists:foldl(
       fun (Bucket, Acc) ->
               dict:store(Bucket, {active, []}, Acc)

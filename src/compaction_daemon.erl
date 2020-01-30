@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2012-2018 Couchbase, Inc.
+%% @copyright 2012-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -1296,7 +1296,8 @@ process_scheduler_message(Msg, #compaction_state{buckets_to_compact=Buckets0,
         case Buckets0 of
             [] ->
                 lists:map(fun list_to_binary/1,
-                          ns_bucket:node_bucket_names_of_type(node(), membase, couchstore));
+                          ns_bucket:node_bucket_names_of_type(node(),
+                                                              persistent));
             _ ->
                 Buckets0
         end,

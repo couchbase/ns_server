@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2010-2019 Couchbase, Inc.
+%% @copyright 2010-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -605,8 +605,7 @@ delete_unused_buckets_db_files() ->
     BucketNames =
         case lists:member(kv, Services) of
             true ->
-                ns_bucket:node_bucket_names_of_type(node(), membase, couchstore, BCfgs)
-                    ++ ns_bucket:node_bucket_names_of_type(node(), membase, ephemeral, BCfgs);
+                ns_bucket:node_bucket_names_of_type(node(), membase, BCfgs);
             false ->
                 case ns_cluster_membership:get_cluster_membership(node(), Config) of
                     active ->

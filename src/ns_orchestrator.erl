@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2010-2019 Couchbase, Inc.
+%% @copyright 2010-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -113,7 +113,7 @@ create_bucket(BucketType, BucketName, NewConfig) ->
     gen_statem:call(?SERVER, {create_bucket, BucketType, BucketName,
                               NewConfig}, infinity).
 
--spec update_bucket(memcached|membase, undefined|couchstore|ephemeral,
+-spec update_bucket(memcached|membase, undefined|couchstore|magma|ephemeral,
                     nonempty_string(), list()) ->
                            ok | {exit, {not_found, nonempty_string()}, []}
                                | rebalance_running
