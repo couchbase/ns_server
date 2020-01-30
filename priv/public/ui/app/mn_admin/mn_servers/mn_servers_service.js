@@ -134,7 +134,7 @@
             resp.data.mismatch = "Could not Rebalance because the cluster configuration was modified by someone else.\nYou may want to verify the latest cluster configuration and, if necessary, please retry a Rebalance.";
           }
           if (resp.data.deltaRecoveryNotPossible) {
-            resp.data.deltaRecoveryNotPossible = "Could not Rebalance because requested delta recovery is not possible. You probably added more nodes to the cluster or changed server groups configuration.";
+            resp.data.deltaRecoveryNotPossible = "Delta recovery is not possible. This could be because a node was added, server groups or bucket configurations were changed or a failover may have finished in a way that prevents delta recovery. Please rebalance using full recovery.";
           }
           if (resp.data.noKVNodesLeft) {
             resp.data.noKVNodesLeft = "Could not Rebalance out last kv node(s).";
