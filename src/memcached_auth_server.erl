@@ -160,6 +160,14 @@ process_req(#mc_header{opcode = ?MC_AUTH_REQUEST} = Header,
              State}
     end;
 
+process_req(#mc_header{opcode = ?MC_AUTHORIZATION_REQUEST} = Header,
+            #mc_entry{key = UserBin}, #s{buckets = Buckets} = State) ->
+    User = binary_to_list(UserBin),
+    Resp = [{rbac, get_user_rbac_record_json({User, external}, Buckets)}],
+    {Header#mc_header{status = ?SUCCESS},
+     #mc_entry{data = ejson:encode({Resp})},
+     State};
+
 process_req(#mc_header{opcode = ?MC_ACTIVE_EXTERNAL_USERS} = Header,
             #mc_entry{data = Data},
             #s{buckets = Buckets, rbac_updater_ref = undefined} = State) ->
