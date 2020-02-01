@@ -19,7 +19,7 @@ class MnAlertsService {
     this.stream.alerts =
       this.stream.alert.pipe(tap(function () {
         window.scrollTo(0, 0);
-      }), map(this._setAlerrt.bind(this)));
+      }), map(this._setAlert.bind(this)));
   }
 
   success(message) {

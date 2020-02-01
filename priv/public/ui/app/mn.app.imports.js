@@ -2,6 +2,10 @@ import { BrowserModule } from '../web_modules/@angular/platform-browser.js';
 import { HttpClientModule } from '../web_modules/@angular/common/http.js';
 import { UIRouterModule, UIView } from '../web_modules/@uirouter/angular.js';
 import { MnAppComponent } from './mn.app.component.js';
+import { MnAuthComponent } from './mn.auth.component.js';
+import { MnAuthModule } from './mn.auth.module.js';
+import { UpgradeModule } from '/ui/web_modules/@angular/upgrade/static.js';
+
 
 let mnAppState = {
   name: 'app',
@@ -23,6 +27,7 @@ let mnAppState = {
 };
 
 export let mnAppImports = [
+  UpgradeModule,
   BrowserModule,
   HttpClientModule,
   UIRouterModule.forRoot({
