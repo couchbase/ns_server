@@ -19,21 +19,23 @@
 %%    wildcard all can be used in place of bucket_name
 %% 4. Permission pattern is a pair {Object pattern, Allowed operations}
 %% 5. Allowed operations can be list of operations, all or none
-%% 6. Object pattern is a list of vertices that define a certain subtree of the objects tree
-%% 7. Object pattern vertex {bucket, bucket_name} always matches object vertex {bucket, any},
-%%    object pattern vertex {bucket, any} matches {bucket, bucket_name} with any bucket_name
+%% 6. Object pattern is a list of vertices that define a certain subtree of the
+%%    objects tree
+%% 7. Object pattern vertex {bucket, bucket_name} always matches object vertex
+%%    {bucket, any}, object pattern vertex {bucket, any} matches
+%%    {bucket, bucket_name} with any bucket_name
 %%    otherwise vertices match if they are equal
-%% 8. Object matches the object pattern if all the vertices of object pattern match
-%%    corresponding vertices of the object.
+%% 8. Object matches the object pattern if all the vertices of object pattern
+%%    match corresponding vertices of the object.
 %% 9. Each role is defined as a list of permission patterns.
-%% 10.To find which operations are allowed for certain object in certain role we look for the
-%%    first permission pattern with matching object pattern in the permission pattern list of
-%%    the role.
-%% 11.The permission is allowed by the role if its operation is among the allowed operations
-%%    for its object.
+%% 10.To find which operations are allowed for certain object in certain role
+%%    we look for the first permission pattern with matching object pattern in
+%%    the permission pattern list of the role.
+%% 11.The permission is allowed by the role if its operation is among the
+%%    allowed operations for its object.
 %% 12.Each user can have multiple roles assigned
-%% 13.Certain permission is allowed to the user if it is allowed at least by one of the roles
-%%    assigned to user.
+%% 13.Certain permission is allowed to the user if it is allowed at least by
+%%    one of the roles assigned to user.
 
 %% @doc roles and permissions implementation
 
@@ -94,7 +96,8 @@ roles_50() ->
        {[], all}]},
      {bucket_admin, [bucket_name],
       [{name, <<"Bucket Admin">>},
-       {desc, <<"Can manage ALL bucket features for specified buckets (incl. start/stop XDCR)">>}],
+       {desc, <<"Can manage ALL bucket features for specified buckets "
+                "(incl. start/stop XDCR)">>}],
       [{[{bucket, bucket_name}, xdcr], [read, execute]},
        {[{bucket, bucket_name}], all},
        {[{bucket, any}, settings], [read]},
@@ -527,9 +530,9 @@ roles_55() ->
        {[pools], [read]}]},
      {analytics_manager, [bucket_name],
       [{name, <<"Analytics Manager">>},
-       {desc, <<"Can manage Analytics links. Can manage datasets on a given bucket. "
-                "Can query datasets. This user can access the web console and read "
-                "some data.">>}],
+       {desc, <<"Can manage Analytics links. Can manage datasets on a given "
+                "bucket. Can query datasets. This user can access the web "
+                "console and read some data.">>}],
       [{[{bucket, bucket_name}, analytics], [manage]},
        {[analytics], [select]},
        {[ui], [read]},
@@ -556,22 +559,26 @@ get_definitions(Config) ->
             roles_50()
     end.
 
--spec object_match(rbac_permission_object(), rbac_permission_pattern_object()) ->
+-spec object_match(
+        rbac_permission_object(), rbac_permission_pattern_object()) ->
                           boolean().
 object_match(_, []) ->
     true;
 object_match([], [_|_]) ->
     false;
-object_match([{_Same, _} | RestOfObject], [{_Same, any} | RestOfObjectPattern]) ->
+object_match([{_Same, _} | RestOfObject],
+             [{_Same, any} | RestOfObjectPattern]) ->
     object_match(RestOfObject, RestOfObjectPattern);
-object_match([{_Same, any} | RestOfObject], [{_Same, _} | RestOfObjectPattern]) ->
+object_match([{_Same, any} | RestOfObject],
+             [{_Same, _} | RestOfObjectPattern]) ->
     object_match(RestOfObject, RestOfObjectPattern);
 object_match([_Same | RestOfObject], [_Same | RestOfObjectPattern]) ->
     object_match(RestOfObject, RestOfObjectPattern);
 object_match(_, _) ->
     false.
 
--spec get_allowed_operations(rbac_permission_object(), [rbac_permission_pattern()]) ->
+-spec get_allowed_operations(
+        rbac_permission_object(), [rbac_permission_pattern()]) ->
                                     rbac_permission_pattern_operations().
 get_allowed_operations(_Object, []) ->
     none;
@@ -583,7 +590,8 @@ get_allowed_operations(Object, [{ObjectPattern, AllowedOperations} | Rest]) ->
             get_allowed_operations(Object, Rest)
     end.
 
--spec operation_allowed(rbac_operation(), rbac_permission_pattern_operations()) ->
+-spec operation_allowed(rbac_operation(),
+                        rbac_permission_pattern_operations()) ->
                                boolean().
 operation_allowed(_, all) ->
     true;
@@ -594,7 +602,8 @@ operation_allowed(any, _) ->
 operation_allowed(Operation, AllowedOperations) ->
     lists:member(Operation, AllowedOperations).
 
--spec is_allowed(rbac_permission(), rbac_identity() | [rbac_compiled_role()]) -> boolean().
+-spec is_allowed(rbac_permission(),
+                 rbac_identity() | [rbac_compiled_role()]) -> boolean().
 is_allowed(Permission, {_, _} = Identity) ->
     Roles = get_compiled_roles(Identity),
     is_allowed(Permission, Roles);
@@ -604,22 +613,25 @@ is_allowed({Object, Operation}, Roles) ->
                       operation_allowed(Operation, Operations)
               end, Roles).
 
--spec substitute_params([string()], [atom()], [rbac_permission_pattern_raw()]) ->
+-spec substitute_params([string()],
+                        [atom()], [rbac_permission_pattern_raw()]) ->
                                [rbac_permission_pattern()].
 substitute_params([], [], Permissions) ->
     Permissions;
 substitute_params(Params, ParamDefinitions, Permissions) ->
     ParamPairs = lists:zip(ParamDefinitions, Params),
-    lists:map(fun ({ObjectPattern, AllowedOperations}) ->
-                      {lists:map(fun ({Name, any}) ->
-                                         {Name, any};
-                                     ({Name, Param}) ->
-                                         {Param, Subst} = lists:keyfind(Param, 1, ParamPairs),
-                                         {Name, Subst};
-                                     (Vertex) ->
-                                         Vertex
-                                 end, ObjectPattern), AllowedOperations}
-              end, Permissions).
+    lists:map(
+      fun ({ObjectPattern, AllowedOperations}) ->
+              {lists:map(
+                 fun ({Name, any}) ->
+                         {Name, any};
+                     ({Name, Param}) ->
+                         {Param, Subst} = lists:keyfind(Param, 1, ParamPairs),
+                         {Name, Subst};
+                     (Vertex) ->
+                         Vertex
+                 end, ObjectPattern), AllowedOperations}
+      end, Permissions).
 
 -spec compile_params([atom()], [rbac_role_param()], rbac_all_param_values()) ->
                             false | [[rbac_role_param()]].
@@ -633,28 +645,31 @@ compile_params(ParamDefs, Params, AllParamValues) ->
     end.
 
 compile_roles(CompileRole, Roles, Definitions, AllParamValues) ->
-    lists:filtermap(fun (Name) when is_atom(Name) ->
-                            case lists:keyfind(Name, 1, Definitions) of
-                                {Name, [], _Props, Permissions} ->
-                                    {true, CompileRole(Name, [], [], Permissions)};
-                                false ->
-                                    false
-                            end;
-                        ({Name, Params}) ->
-                            case lists:keyfind(Name, 1, Definitions) of
-                                {Name, ParamDefs, _Props, Permissions} ->
-                                    case compile_params(ParamDefs, Params, AllParamValues) of
-                                        false ->
-                                            false;
-                                        NewParams ->
-                                            {true, CompileRole(Name, NewParams, ParamDefs, Permissions)}
-                                    end;
-                                false ->
-                                    false
-                            end
-                    end, Roles).
+    lists:filtermap(
+      fun (Name) when is_atom(Name) ->
+              case lists:keyfind(Name, 1, Definitions) of
+                  {Name, [], _Props, Permissions} ->
+                      {true, CompileRole(Name, [], [], Permissions)};
+                  false ->
+                      false
+              end;
+          ({Name, Params}) ->
+              case lists:keyfind(Name, 1, Definitions) of
+                  {Name, ParamDefs, _Props, Permissions} ->
+                      case compile_params(ParamDefs, Params, AllParamValues) of
+                          false ->
+                              false;
+                          NewParams ->
+                              {true, CompileRole(Name, NewParams,
+                                                 ParamDefs, Permissions)}
+                      end;
+                  false ->
+                      false
+              end
+      end, Roles).
 
--spec compile_roles([rbac_role()], [rbac_role_def()] | undefined, rbac_all_param_values()) ->
+-spec compile_roles([rbac_role()],
+                    [rbac_role_def()] | undefined, rbac_all_param_values()) ->
                            [rbac_compiled_role()].
 compile_roles(_Roles, undefined, _AllParamValues) ->
     %% can happen briefly after node joins the cluster on pre 5.0 clusters
@@ -680,7 +695,8 @@ get_roles({"", anonymous}) ->
             [admin];
         true ->
             [{bucket_full_access, [BucketName]} ||
-                BucketName <- ns_config_auth:get_no_auth_buckets(ns_config:latest())]
+                BucketName <- ns_config_auth:get_no_auth_buckets(
+                                ns_config:latest())]
     end;
 get_roles({_, admin}) ->
     [admin];
@@ -720,14 +736,17 @@ start_compiled_roles_cache() ->
                  menelaus_users:get_groups_version(),
                  ns_config_auth:is_system_provisioned(),
                  [{Name, ns_bucket:bucket_uuid(BucketConfig)} ||
-                     {Name, BucketConfig} <- ns_bucket:get_buckets(ns_config:latest())]}
+                     {Name, BucketConfig} <- ns_bucket:get_buckets(
+                                               ns_config:latest())]}
         end,
     GetEvents =
         case ns_node_disco:couchdb_node() == node() of
             true ->
                 fun () ->
-                        dist_manager:wait_for_node(fun ns_node_disco:ns_server_node/0),
-                        [{{user_storage_events, ns_node_disco:ns_server_node()}, UsersFilter},
+                        dist_manager:wait_for_node(
+                          fun ns_node_disco:ns_server_node/0),
+                        [{{user_storage_events, ns_node_disco:ns_server_node()},
+                          UsersFilter},
                          {ns_config_events, ConfigFilter}]
                 end;
             false ->
@@ -753,12 +772,14 @@ build_compiled_roles(Identity) ->
             ?log_debug("Compile roles for user ~p",
                        [ns_config_log:tag_user_data(Identity)]),
             Definitions = get_definitions(),
-            AllPossibleValues = calculate_possible_param_values(ns_bucket:get_buckets()),
+            AllPossibleValues = calculate_possible_param_values(
+                                  ns_bucket:get_buckets()),
             compile_roles(get_roles(Identity), Definitions, AllPossibleValues);
         true ->
             ?log_debug("Retrieve compiled roles for user ~p from ns_server "
                        "node", [ns_config_log:tag_user_data(Identity)]),
-            rpc:call(ns_node_disco:ns_server_node(), ?MODULE, build_compiled_roles, [Identity])
+            rpc:call(ns_node_disco:ns_server_node(),
+                     ?MODULE, build_compiled_roles, [Identity])
     end.
 
 filter_out_invalid_roles(Roles, Definitions, AllPossibleValues) ->
@@ -771,7 +792,8 @@ filter_out_invalid_roles(Roles, Definitions, AllPossibleValues) ->
 calculate_possible_param_values(_Buckets, []) ->
     [[]];
 calculate_possible_param_values(Buckets, [bucket_name]) ->
-    [[any] | [[{Name, ns_bucket:bucket_uuid(Props)}] || {Name, Props} <- Buckets]].
+    [[any] | [[{Name, ns_bucket:bucket_uuid(Props)}] ||
+                 {Name, Props} <- Buckets]].
 
 all_params_combinations() ->
     [[], [bucket_name]].
@@ -781,7 +803,8 @@ calculate_possible_param_values(Buckets) ->
     [{Combination, calculate_possible_param_values(Buckets, Combination)} ||
         Combination <- all_params_combinations()].
 
--spec get_possible_param_values([atom()], rbac_all_param_values()) -> [[rbac_role_param()]].
+-spec get_possible_param_values([atom()], rbac_all_param_values()) ->
+                                       [[rbac_role_param()]].
 get_possible_param_values(ParamDefs, AllValues) ->
     {ParamDefs, Values} = lists:keyfind(ParamDefs, 1, AllValues),
     Values.
@@ -835,7 +858,8 @@ strip_id(bucket_name, P) ->
     P.
 
 strip_ids(ParamDefs, Params) ->
-    [strip_id(ParamDef, Param) || {ParamDef, Param} <- lists:zip(ParamDefs, Params)].
+    [strip_id(ParamDef, Param) || {ParamDef, Param} <-
+                                      lists:zip(ParamDefs, Params)].
 
 match_param(bucket_name, P, P) ->
     true;
@@ -857,7 +881,8 @@ match_params(ParamDefs, Params, Values) ->
             false
     end.
 
--spec find_matching_value([atom()], [rbac_role_param()], [[rbac_role_param()]]) ->
+-spec find_matching_value([atom()], [rbac_role_param()],
+                          [[rbac_role_param()]]) ->
                                  false | [rbac_role_param()].
 find_matching_value(ParamDefs, Params, PossibleValues) ->
     case lists:dropwhile(
@@ -955,13 +980,15 @@ toy_config() ->
           {"default", [{uuid, <<"default_id">>}]}]}]}]].
 
 compile_roles(Roles, Definitions) ->
-    AllPossibleValues = calculate_possible_param_values(ns_bucket:get_buckets(toy_config())),
+    AllPossibleValues = calculate_possible_param_values(
+                          ns_bucket:get_buckets(toy_config())),
     compile_roles(Roles, Definitions, AllPossibleValues).
 
 compile_roles_test() ->
     ?assertEqual([[{[{bucket, "test"}], none}]],
                  compile_roles([{test_role, ["test"]}],
-                               [{test_role, [bucket_name], [], [{[{bucket, bucket_name}], none}]}])).
+                               [{test_role, [bucket_name], [],
+                                 [{[{bucket, bucket_name}], none}]}])).
 
 admin_test() ->
     Roles = compile_roles([admin], roles_50()),
@@ -970,10 +997,13 @@ admin_test() ->
 
 ro_admin_test() ->
     Roles = compile_roles([ro_admin], roles_50()),
-    ?assertEqual(false, is_allowed({[{bucket, "test"}, password], read}, Roles)),
+    ?assertEqual(false,
+                 is_allowed({[{bucket, "test"}, password], read}, Roles)),
     ?assertEqual(false, is_allowed({[{bucket, "test"}, data], read}, Roles)),
-    ?assertEqual(true, is_allowed({[{bucket, "test"}, something], read}, Roles)),
-    ?assertEqual(false, is_allowed({[{bucket, "test"}, something], write}, Roles)),
+    ?assertEqual(true,
+                 is_allowed({[{bucket, "test"}, something], read}, Roles)),
+    ?assertEqual(false,
+                 is_allowed({[{bucket, "test"}, something], write}, Roles)),
     ?assertEqual(false, is_allowed({[admin, security], write}, Roles)),
     ?assertEqual(true, is_allowed({[admin, security], read}, Roles)),
     ?assertEqual(false, is_allowed({[admin, other], write}, Roles)),
@@ -989,18 +1019,24 @@ bucket_views_admin_check_global(Roles) ->
 
 bucket_views_admin_check_another(Roles) ->
     ?assertEqual(false, is_allowed({[{bucket, "another"}, xdcr], read}, Roles)),
-    ?assertEqual(false, is_allowed({[{bucket, "another"}, views], read}, Roles)),
+    ?assertEqual(false,
+                 is_allowed({[{bucket, "another"}, views], read}, Roles)),
     ?assertEqual(false, is_allowed({[{bucket, "another"}, data], read}, Roles)),
-    ?assertEqual(true, is_allowed({[{bucket, "another"}, settings], read}, Roles)),
-    ?assertEqual(false, is_allowed({[{bucket, "another"}, settings], write}, Roles)),
+    ?assertEqual(true,
+                 is_allowed({[{bucket, "another"}, settings], read}, Roles)),
+    ?assertEqual(false,
+                 is_allowed({[{bucket, "another"}, settings], write}, Roles)),
     ?assertEqual(false, is_allowed({[{bucket, "another"}], read}, Roles)),
     ?assertEqual(false, is_allowed({[buckets], create}, Roles)).
 
 bucket_admin_check_default(Roles) ->
     ?assertEqual(true, is_allowed({[{bucket, "default"}, xdcr], read}, Roles)),
-    ?assertEqual(true, is_allowed({[{bucket, "default"}, xdcr], execute}, Roles)),
-    ?assertEqual(true, is_allowed({[{bucket, "default"}, anything], anything}, Roles)),
-    ?assertEqual(true, is_allowed({[{bucket, "default"}, anything], anything}, Roles)).
+    ?assertEqual(true,
+                 is_allowed({[{bucket, "default"}, xdcr], execute}, Roles)),
+    ?assertEqual(
+       true, is_allowed({[{bucket, "default"}, anything], anything}, Roles)),
+    ?assertEqual(
+       true, is_allowed({[{bucket, "default"}, anything], anything}, Roles)).
 
 bucket_admin_test() ->
     Roles = compile_roles([{bucket_admin, ["default"]}], roles_50()),
@@ -1014,11 +1050,16 @@ bucket_admin_wildcard_test() ->
     bucket_views_admin_check_global(Roles).
 
 views_admin_check_default(Roles) ->
-    ?assertEqual(true, is_allowed({[{bucket, "default"}, views], anything}, Roles)),
-    ?assertEqual(true, is_allowed({[{bucket, "default"}, data], read}, Roles)),
-    ?assertEqual(false, is_allowed({[{bucket, "default"}, data], write}, Roles)),
-    ?assertEqual(true, is_allowed({[{bucket, "default"}, settings], read}, Roles)),
-    ?assertEqual(false, is_allowed({[{bucket, "default"}, settings], write}, Roles)),
+    ?assertEqual(true,
+                 is_allowed({[{bucket, "default"}, views], anything}, Roles)),
+    ?assertEqual(true,
+                 is_allowed({[{bucket, "default"}, data], read}, Roles)),
+    ?assertEqual(false,
+                 is_allowed({[{bucket, "default"}, data], write}, Roles)),
+    ?assertEqual(true,
+                 is_allowed({[{bucket, "default"}, settings], read}, Roles)),
+    ?assertEqual(false,
+                 is_allowed({[{bucket, "default"}, settings], write}, Roles)),
     ?assertEqual(false, is_allowed({[{bucket, "default"}], read}, Roles)).
 
 views_admin_test() ->
@@ -1033,7 +1074,8 @@ views_admin_wildcard_test() ->
     bucket_views_admin_check_global(Roles).
 
 bucket_full_access_check(Roles, Bucket, Allowed) ->
-    ?assertEqual(Allowed, is_allowed({[{bucket, Bucket}, data], anything}, Roles)),
+    ?assertEqual(Allowed,
+                 is_allowed({[{bucket, Bucket}, data], anything}, Roles)),
     ?assertEqual(Allowed, is_allowed({[{bucket, Bucket}], flush}, Roles)),
     ?assertEqual(Allowed, is_allowed({[{bucket, Bucket}], flush}, Roles)),
     ?assertEqual(false, is_allowed({[{bucket, Bucket}], write}, Roles)).
@@ -1047,13 +1089,20 @@ bucket_full_access_test() ->
 
 replication_admin_test() ->
     Roles = compile_roles([replication_admin], roles_50()),
-    ?assertEqual(true, is_allowed({[{bucket, "default"}, xdcr], anything}, Roles)),
-    ?assertEqual(false, is_allowed({[{bucket, "default"}, password], read}, Roles)),
-    ?assertEqual(false, is_allowed({[{bucket, "default"}, views], read}, Roles)),
-    ?assertEqual(true, is_allowed({[{bucket, "default"}, settings], read}, Roles)),
-    ?assertEqual(false, is_allowed({[{bucket, "default"}, settings], write}, Roles)),
-    ?assertEqual(true, is_allowed({[{bucket, "default"}, data], read}, Roles)),
-    ?assertEqual(false, is_allowed({[{bucket, "default"}, data], write}, Roles)),
+    ?assertEqual(true,
+                 is_allowed({[{bucket, "default"}, xdcr], anything}, Roles)),
+    ?assertEqual(false,
+                 is_allowed({[{bucket, "default"}, password], read}, Roles)),
+    ?assertEqual(false,
+                 is_allowed({[{bucket, "default"}, views], read}, Roles)),
+    ?assertEqual(true,
+                 is_allowed({[{bucket, "default"}, settings], read}, Roles)),
+    ?assertEqual(false,
+                 is_allowed({[{bucket, "default"}, settings], write}, Roles)),
+    ?assertEqual(true,
+                 is_allowed({[{bucket, "default"}, data], read}, Roles)),
+    ?assertEqual(false,
+                 is_allowed({[{bucket, "default"}, data], write}, Roles)),
     ?assertEqual(true, is_allowed({[xdcr], anything}, Roles)),
     ?assertEqual(false, is_allowed({[admin], read}, Roles)),
     ?assertEqual(true, is_allowed({[other], read}, Roles)).
@@ -1061,16 +1110,25 @@ replication_admin_test() ->
 validate_role_test() ->
     Config = toy_config(),
     Definitions = roles_50(),
-    AllParamValues = calculate_possible_param_values(ns_bucket:get_buckets(Config)),
-    ?assertEqual({ok, admin}, validate_role(admin, Definitions, AllParamValues)),
+    AllParamValues = calculate_possible_param_values(
+                       ns_bucket:get_buckets(Config)),
+    ?assertEqual({ok, admin},
+                 validate_role(admin, Definitions, AllParamValues)),
     ?assertEqual({ok, {bucket_admin, [{"test", <<"test_id">>}]}},
-                 validate_role({bucket_admin, ["test"]}, Definitions, AllParamValues)),
+                 validate_role({bucket_admin, ["test"]}, Definitions,
+                               AllParamValues)),
     ?assertEqual({ok, {views_admin, [any]}},
-                 validate_role({views_admin, [any]}, Definitions, AllParamValues)),
+                 validate_role({views_admin, [any]}, Definitions,
+                               AllParamValues)),
     ?assertEqual(false, validate_role(something, Definitions, AllParamValues)),
-    ?assertEqual(false, validate_role({bucket_admin, ["something"]}, Definitions, AllParamValues)),
-    ?assertEqual(false, validate_role({something, ["test"]}, Definitions, AllParamValues)),
-    ?assertEqual(false, validate_role({admin, ["test"]}, Definitions, AllParamValues)),
-    ?assertEqual(false, validate_role(bucket_admin, Definitions, AllParamValues)),
-    ?assertEqual(false, validate_role({bucket_admin, ["test", "test"]}, Definitions, AllParamValues)).
+    ?assertEqual(false, validate_role({bucket_admin, ["something"]},
+                                      Definitions, AllParamValues)),
+    ?assertEqual(false, validate_role({something, ["test"]}, Definitions,
+                                      AllParamValues)),
+    ?assertEqual(false, validate_role({admin, ["test"]}, Definitions,
+                                      AllParamValues)),
+    ?assertEqual(false, validate_role(bucket_admin, Definitions,
+                                      AllParamValues)),
+    ?assertEqual(false, validate_role({bucket_admin, ["test", "test"]},
+                                      Definitions, AllParamValues)).
 -endif.
