@@ -62,10 +62,13 @@ n1ql_cluster_capabilities(?VERSION_65, true) ->
 n1ql_cluster_capabilities(?VERSION_65, false) ->
     [enhancedPreparedStatements].
 
-cluster_capabilities(?VERSION_65, IsDP) ->
-    [{n1ql, n1ql_cluster_capabilities(?VERSION_65, IsDP)}];
-cluster_capabilities(_, _) ->
-    [].
+cluster_capabilities(Version, IsDP) ->
+    case is_version_65(Version) of
+        true ->
+            [{n1ql, n1ql_cluster_capabilities(?VERSION_65, IsDP)}];
+        false ->
+            []
+    end.
 
 get_cluster_capabilities(Config) ->
     cluster_capabilities(get_compat_version(Config),
