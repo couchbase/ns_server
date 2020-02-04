@@ -40,12 +40,13 @@
         "RANGE|GROUPS|EXCLUDE|UNNEST|SET|LET";
       var newline_before_and_after = "UNION ALL|UNION";
       var newline_before_plus_indent = "AND|OR|JOIN";
+      var newline_after_regex = new RegExp("(;)","ig");
 
       var newline_before_regex =
         new RegExp('(?:\\bBETWEEN\\b.+?\\bAND\\b)' +    // don't want newline before AND in "BETWEEN ... AND"
             '|\\b(' + newline_before + '|' + newline_before_plus_indent + ')\\b','ig');
       var newline_before_and_after_regex = new RegExp(prefix + '|\\b(' + newline_before_and_after + ')\\b','ig');
-      var newline_after_regex = /\bOVER[\s]*\(/ig;
+      var newline_after_over_paren_regex = /(\bOVER[\s]*\([\s]*\))|(\bOVER[\s]*\([\s]*)/ig;
       // we need an indent if the line starts with one of these
       var needs_indent_regex = new RegExp('^(' + newline_before_plus_indent + ')\\b','ig');
 
@@ -110,7 +111,8 @@
         str2 = str2.replace(function_regex, function(match,p1) {if (p1) return p1.toUpperCase() + '('; else return match}); // upper case all keywords
         str2 = str2.replace(newline_before_regex, function(match,p1) {if (p1) return "~::~" + p1; else return match});
         str2 = str2.replace(newline_before_and_after_regex, function(match,p1) {if (p1) return "~::~" + p1 + "~::~"; else return match});
-        str2 = str2.replace(newline_after_regex, function(match) {return 'OVER (~::~';});  // put a newline after ( in "OVER ("
+        str2 = str2.replace(newline_after_regex, function(match,p1) {if (p1) return p1 + "~::~"; else return match});
+        str2 = str2.replace(newline_after_over_paren_regex, function(match,p1) {if (p1) return p1; else return 'OVER (~::~';});  // put a newline after ( in "OVER ("
         str2 = str2.replace(/\([\s]*SELECT\b/ig, function(match) {return '(~::~SELECT'});  // put a newline after ( in "( SELECT"
         str2 = str2.replace(/\)[\s]*SELECT\b/ig, function(match) {return ')~::~SELECT'});  // put a newline after ) in ") SELECT"
         str2 = str2.replace(/\)[\s]*,/ig,function(match) {return '),'});                   // remove any whitespace between ) and ,
@@ -179,10 +181,11 @@
 
           needs_indent_regex.lastIndex = 0;
           newline_before_and_after_regex.lastIndex = 0;
-          newline_after_regex.lastIndex = 0;
+          newline_after_over_paren_regex.lastIndex = 0;
+          var indent = (indents.length>0?indents[indents.length - 1]:'');
 
           var needs_indent = !!needs_indent_regex.exec(ar[ix]);
-          var after = !!newline_before_and_after_regex.exec(ar[ix]) || !!newline_after_regex.exec(ar[ix]);
+          var after = !!newline_before_and_after_regex.exec(ar[ix]) || !!newline_after_over_paren_regex.exec(ar[ix]);
           var ends_with_comma = ar[ix].endsWith(',');
           var ends_with_paren_comma = ar[ix].endsWith('),');
           var ends_with_paren = ar[ix].endsWith('(');
@@ -196,7 +199,7 @@
 //              );
 
           // each array element should start a new line, add appropriate indent
-           str += '\n' + indents[indents.length - 1];
+          str += '\n' + indent;
 
           // do we need a special indent for just this line?
           if (needs_indent)
@@ -223,24 +226,31 @@
               fs = 13;
             else if (ar[ix].startsWith("LET"))
               fs = 4;
+            else if (ar[ix].startsWith("INSERT INTO "))
+              fs = 12;
             else for (fs = ar[ix].length - 1; fs >= 0; fs--)
               if (ar[ix].charAt(fs) == ' ') {
                 fs++;
                 break;
               }
             // subsequent lines should be indented by this much
-            indents.push(indents[indents.length - 1] + ' '.repeat(fs));
+            indents.push(indent + ' '.repeat(fs));
           }
 
           // if the nesting level goes up, add elements to the indent array,
           // if it goes down, pop them
           if (paren_level > prev_paren_level) {
-            indents.push(indents[indents.length-1] + tab);
+            var curIndent = indent;
+            for (var i=prev_paren_level; i < paren_level; i++) {
+              curIndent = curIndent + tab;
+              indents.push(curIndent);
+            }
             parens_in_lists.push(comma_prev); // is the paren scope part of a comma list?
           }
           else if (paren_level < prev_paren_level) {
             // get rid of indentation for the parens
-            indents.pop();
+            for (var i=prev_paren_level; i > paren_level; i--)
+              indents.pop();
 
             // if our paren scope had a comma list, pop that indent
             if (comma_prev)
