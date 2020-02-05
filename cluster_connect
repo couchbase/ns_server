@@ -24,6 +24,7 @@ from functools import reduce
 
 valid_bucket_types = ["ephemeral", "membase", "memcached"]
 valid_service_types = {"kv", "n1ql", "index", "fts", "cbas", "eventing"}
+valid_index_storage_modes = ["forestdb", "plasma", "memory_optimized"]
 
 
 def usage():
@@ -33,6 +34,8 @@ def usage():
                (eg: n0:kv,n1:index+n1ql+fts+eventing+cbas)\n\
             -s <memory size> (min 256) default: 256\n\
             -I <index memory size> default: 256\n\
+            -M <index storage mode> (forestdb, plasma, memory_optimized)\n\
+               default: None\n\
             -t <bucket type> (ephemeral, membase, memcached)\n\
                default: membase\n\
             -S <storage backend> (couchstore, magma)\n\
@@ -54,7 +57,7 @@ class PasswordManager(urllib2.HTTPPasswordMgr):
 def main():
     try:
         opts, args = getopt.getopt(sys.argv[1:],
-                                   "n:t:s:r:iT:S:I:p:",
+                                   "n:t:s:r:iT:S:I:M:p:",
                                    ["dont-rebalance", "afamily=",
                                     "enable-encryption"])
     except getopt.GetoptError as err:
@@ -64,6 +67,7 @@ def main():
     nodes = 0
     buckettype = "membase"
     storage_backend = "couchstore"
+    index_storage_mode = None
     memsize = 256
     indexmemsize = 256
     replicas = 1
@@ -82,6 +86,10 @@ def main():
             memsize = a
         elif o == "-I":
             indexmemsize = a
+        elif o == "-M":
+            if a not in valid_index_storage_modes:
+                assert False, "invalid index storage mode"
+            index_storage_mode = a
         elif o == "-r":
             replicas = a
         elif o == "-i":
@@ -168,6 +176,9 @@ def main():
            "&replicaIndex=" + bool_request_value(replica_index)).read()
     o.open("http://{0}:{1}/settings/web".format(addr, base_port),
            "port=SAME&username=Administrator&password=asdasd").read()
+    if index_storage_mode is not None:
+        o.open("http://{0}:{1}/settings/indexes".format(addr, base_port),
+                "storageMode=" + index_storage_mode).read()
 
     for i in range(1, nodes):
         port = base_port + i
