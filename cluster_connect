@@ -20,6 +20,7 @@ import getopt
 import urllib2
 import urllib
 import json
+import traceback
 from functools import reduce
 
 valid_bucket_types = ["ephemeral", "membase", "memcached"]
@@ -212,4 +213,9 @@ def bool_request_value(value):
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except urllib2.HTTPError as e:
+        traceback.print_exc()
+        print("\nError {}: {} ({})".format(e.code, e.reason, e.read()))
+        sys.exit(1)
