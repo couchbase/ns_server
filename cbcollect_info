@@ -297,7 +297,7 @@ class LogRedactor:
                     out.write(processor.do(line))
 
     def redact_file(self, name, ifile):
-        ofile = os.path.join(self.target_dir, name)
+        ofile = os.path.join(self.target_dir, os.path.basename(name))
         if "http_access" in name:
             self._process_file(ifile, ofile, self.access_log)
         elif name == self.default_name:
