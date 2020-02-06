@@ -182,6 +182,7 @@ ee_only_settings(_) -> false.
 conf(security) ->
     [{disable_ui_over_http, disableUIOverHttp, false, fun get_bool/1},
      {disable_ui_over_https, disableUIOverHttps, false, fun get_bool/1},
+     {disable_www_authenticate, disableWWWAuthenticate, false, fun get_bool/1},
      {ui_session_timeout, uiSessionTimeout, undefined,
       get_number(60, 1000000, undefined)},
      {ssl_minimum_protocol, tlsMinVersion,
