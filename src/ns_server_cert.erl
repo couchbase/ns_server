@@ -32,7 +32,8 @@
          get_sub_alt_names_by_type/2,
          get_node_cert_info/1,
          tls_server_validation_options/0,
-         set_generated_public_ca/1]).
+         set_generated_public_ca/1,
+         validate_pkey/1]).
 
 inbox_chain_path() ->
     filename:join(path_config:component_path(data, "inbox"), "chain.pem").

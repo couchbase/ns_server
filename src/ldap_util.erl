@@ -23,6 +23,7 @@
 -endif.
 
 -export([with_authenticated_connection/4,
+         with_connection/2,
          search/6,
          parse_url/1,
          parse_url/2,
@@ -31,16 +32,42 @@
          build_settings/0,
          set_settings/1,
          replace_expressions/2,
-         parse_dn/1]).
+         parse_dn/1,
+         client_cert_auth_enabled/1]).
 
 ssl_options(Host, Settings) ->
-    case proplists:get_value(server_cert_validation, Settings) of
+    ClientAuthOpts =
+        case client_cert_auth_enabled(Settings) of
+            true ->
+                ClientCert = proplists:get_value(client_tls_cert, Settings),
+                ClientKey = proplists:get_value(client_tls_key, Settings),
+                [{cert, DecodedCert} || {_, DecodedCert} <- [ClientCert]] ++
+                [{key, {T, D}} || {password, {T, D, _}} <- [ClientKey]];
+            false ->
+                []
+        end,
+    PeerVerificationOpts =
+        case proplists:get_value(server_cert_validation, Settings) of
+            true ->
+                [{verify, verify_peer}, {cacerts, get_cacerts(Settings)},
+                 {server_name_indication, Host}, {log_alert, false},
+                 {depth, ?ALLOWED_CERT_CHAIN_LENGTH}];
+            false ->
+                [{verify, verify_none}]
+        end,
+    ClientAuthOpts ++ PeerVerificationOpts.
+
+client_cert_auth_enabled(Settings) ->
+    Encryption = proplists:get_value(encryption, Settings),
+    EncryptionEnabled = (Encryption == 'TLS') or
+                        (Encryption == 'StartTLSExtension'),
+    case EncryptionEnabled of
         true ->
-            [{verify, verify_peer}, {cacerts, get_cacerts(Settings)},
-             {server_name_indication, Host}, {log_alert, false},
-             {depth, ?ALLOWED_CERT_CHAIN_LENGTH}];
-        false ->
-            [{verify, verify_none}]
+            case proplists:get_value(client_tls_cert, Settings) of
+                {_, _} -> true;
+                _ -> false
+            end;
+        false -> false
     end.
 
 get_cacerts(Settings) ->
@@ -136,6 +163,8 @@ default_settings() ->
      {user_dn_mapping, {'None', []}},
      {bind_dn, ""},
      {bind_pass, {password, ""}},
+     {client_tls_cert, undefined},
+     {client_tls_key, undefined},
      {groups_query, undefined},
      {max_parallel_connections, 100},
      {max_cache_size, 10000},

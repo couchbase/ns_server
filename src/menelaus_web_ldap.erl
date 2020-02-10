@@ -160,12 +160,29 @@ ldap_settings_desc() ->
      {server_cert_validation, serverCertValidation,
       Curry(fun validator:boolean/2), Id},
      {cacert, cacert,
-      Curry(fun validate_cert/2), fun ({CA, _Decoded}) -> CA end}
+      Curry(fun validate_cert/2), fun ({CA, _Decoded}) -> CA end},
+     {client_tls_cert, clientTLSCert,
+      Curry(fun validate_cert/2), fun ({CA, _Decoded}) -> CA end},
+     {client_tls_key, clientTLSKey,
+      Curry(fun validate_key/2),
+      fun (undefined) -> <<>>;
+          ({password, {_, _, not_encrypted}}) -> <<"**********">>
+      end}
     ].
 
 ldap_settings_validators() ->
     [Validator(JsonKey) || {_, JsonKey, Validator, _} <- ldap_settings_desc()]
     ++ [validator:unsupported(_)].
+
+validate_key(Name, State) ->
+    validator:validate(
+      fun ("") -> {value, undefined};
+          (Key) ->
+              case ns_server_cert:validate_pkey(iolist_to_binary(Key)) of
+                  {ok, DecodedKey} -> {value, {password, DecodedKey}};
+                  {error, _} -> {error, "invalid key"}
+              end
+      end, Name, State).
 
 validate_cert(Name, State) ->
     validator:validate(
@@ -173,7 +190,7 @@ validate_cert(Name, State) ->
           (Cert) ->
               BinCert = iolist_to_binary(Cert),
               case ns_server_cert:decode_single_certificate(BinCert) of
-                  {error, _} -> {error, "invalid ca certificate"};
+                  {error, _} -> {error, "invalid certificate"};
                   Decoded -> {value, {BinCert, Decoded}}
               end
       end, Name, State).
