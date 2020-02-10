@@ -125,7 +125,7 @@
 
     function unpackUserDnMapping(type, mapping) {
       if (mapping == "None") {
-          return {template: ""}
+          return {template: "", scope: "one"}
       }
       switch (type) {
       case "template":
