@@ -279,7 +279,7 @@ make_props(Id, Props, ItemList) ->
     make_props(Id, Props, ItemList, make_props_state(ItemList)).
 
 make_props(Id, Props, ItemList, {Passwordless, Definitions,
-                                 AllPossibleValues}) ->
+                                 Buckets}) ->
 
     %% Groups calculation might be heavy, so we want to make sure they
     %% are calculated only once
@@ -304,16 +304,16 @@ make_props(Id, Props, ItemList, {Passwordless, Definitions,
                  storage_name(), {auth, Id}, undefined), Cache};
           (group_roles, Cache) ->
               {Groups, NewCache} = GetGroups(Cache),
-              Roles = get_groups_roles(Groups, Definitions, AllPossibleValues),
+              Roles = get_groups_roles(Groups, Definitions, Buckets),
               {Roles, NewCache};
           (user_roles, Cache) ->
-              UserRoles = get_user_roles(Props, Definitions, AllPossibleValues),
+              UserRoles = get_user_roles(Props, Definitions, Buckets),
               {UserRoles, Cache};
           (roles, Cache) ->
               {DirtyGroups, NewCache} = GetDirtyGroups(Cache),
-              UserRoles = get_user_roles(Props, Definitions, AllPossibleValues),
+              UserRoles = get_user_roles(Props, Definitions, Buckets),
               GroupsAndRoles = get_groups_roles(DirtyGroups, Definitions,
-                                                AllPossibleValues),
+                                                Buckets),
               GroupRoles = lists:concat([R || {_, R} <- GroupsAndRoles]),
               {lists:usort(UserRoles ++ GroupRoles), NewCache};
           (passwordless, Cache) ->
@@ -341,16 +341,14 @@ make_props(Id, Props, ItemList, {Passwordless, Definitions,
 make_props_state(ItemList) ->
     Passwordless = lists:member(passwordless, ItemList) andalso
                        menelaus_users:get_passwordless(),
-    {Definitions, AllPossibleValues} =
+    {Definitions, Buckets} =
         case lists:member(roles, ItemList) orelse
              lists:member(user_roles, ItemList) orelse
              lists:member(group_roles, ItemList) of
-            true -> {menelaus_roles:get_definitions(),
-                     menelaus_roles:calculate_possible_param_values(
-                       ns_bucket:get_buckets())};
+            true -> {menelaus_roles:get_definitions(), ns_bucket:get_buckets()};
             false -> {undefined, undefined}
         end,
-    {Passwordless, Definitions, AllPossibleValues}.
+    {Passwordless, Definitions, Buckets}.
 
 select_auth_infos(KeySpec) ->
     replicated_dets:select(storage_name(), {auth, KeySpec}, 100).
@@ -596,9 +594,9 @@ get_group_props(GroupId, Items) ->
     Props = replicated_dets:get(storage_name(), {group, GroupId}, []),
     make_group_props(Props, Items).
 
-get_group_props(GroupId, Items, Definitions, AllPossibleValues) ->
+get_group_props(GroupId, Items, Definitions, Buckets) ->
     Props = replicated_dets:get(storage_name(), {group, GroupId}, []),
-    make_group_props(Props, Items, {[], Definitions, AllPossibleValues}).
+    make_group_props(Props, Items, {[], Definitions, Buckets}).
 
 group_exists(GroupId) ->
     false =/= replicated_dets:get(storage_name(), {group, GroupId}).
@@ -606,28 +604,27 @@ group_exists(GroupId) ->
 get_group_roles(GroupId) ->
     proplists:get_value(roles, get_group_props(GroupId, [roles]), []).
 
-get_group_roles(GroupId, Definitions, AllPossibleValues) ->
-    Props = get_group_props(GroupId, [roles], Definitions, AllPossibleValues),
+get_group_roles(GroupId, Definitions, Buckets) ->
+    Props = get_group_props(GroupId, [roles], Definitions, Buckets),
     proplists:get_value(roles, Props, []).
 
 make_group_props(Props, Items) ->
     make_group_props(Props, Items, make_props_state(Items)).
 
-make_group_props(Props, Items, {_, Definitions, AllPossibleValues}) ->
+make_group_props(Props, Items, {_, Definitions, Buckets}) ->
     lists:map(
       fun (roles = Name) ->
               Roles = proplists:get_value(roles, Props, []),
               Roles2 = menelaus_roles:filter_out_invalid_roles(
-                         Roles, Definitions, AllPossibleValues),
+                         Roles, Definitions, Buckets),
               {Name, Roles2};
           (Name) ->
               {Name, proplists:get_value(Name, Props)}
       end, Items).
 
-get_user_roles(UserProps, Definitions, AllPossibleValues) ->
+get_user_roles(UserProps, Definitions, Buckets) ->
     menelaus_roles:filter_out_invalid_roles(
-      proplists:get_value(roles, UserProps, []),
-      Definitions, AllPossibleValues).
+      proplists:get_value(roles, UserProps, []), Definitions, Buckets).
 
 clean_groups({DirtyLocalGroups, DirtyExtGroups}) ->
     {lists:filter(group_exists(_), DirtyLocalGroups),
@@ -646,8 +643,8 @@ get_dirty_groups(Id, Props) ->
         end,
     {LocalGroups, ExternalGroups}.
 
-get_groups_roles({LocalGroups, ExtGroups}, Definitions, AllPossibleValues) ->
-    [{G, get_group_roles(G, Definitions, AllPossibleValues)}
+get_groups_roles({LocalGroups, ExtGroups}, Definitions, Buckets) ->
+    [{G, get_group_roles(G, Definitions, Buckets)}
         || G <- LocalGroups ++ ExtGroups].
 
 get_ldap_groups(User) ->
@@ -746,21 +743,19 @@ upgrade_status() ->
         _ -> upgrade_in_progress
     end.
 
-filter_out_invalid_roles(Props, Definitions, AllPossibleValues) ->
+filter_out_invalid_roles(Props, Definitions, Buckets) ->
     Roles = proplists:get_value(roles, Props, []),
-    FilteredRoles = menelaus_roles:filter_out_invalid_roles(Roles, Definitions, AllPossibleValues),
+    FilteredRoles = menelaus_roles:filter_out_invalid_roles(Roles, Definitions,
+                                                            Buckets),
     lists:keystore(roles, 1, Props, {roles, FilteredRoles}).
 
 cleanup_bucket_roles(BucketName) ->
     ?log_debug("Delete all roles for bucket ~p", [BucketName]),
     Buckets = lists:keydelete(BucketName, 1, ns_bucket:get_buckets()),
     Definitions = menelaus_roles:get_definitions(),
-    AllPossibleValues = menelaus_roles:calculate_possible_param_values(Buckets),
-
     UpdateFun =
         fun ({Type, Key}, Props) when Type == user; Type == group ->
-                case filter_out_invalid_roles(Props, Definitions,
-                                              AllPossibleValues) of
+                case filter_out_invalid_roles(Props, Definitions, Buckets) of
                     Props ->
                         skip;
                     NewProps ->

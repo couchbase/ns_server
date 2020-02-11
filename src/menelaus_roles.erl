@@ -59,7 +59,7 @@
          get_compiled_roles/1,
          compile_roles/3,
          validate_roles/2,
-         calculate_possible_param_values/1,
+         params_version/1,
          filter_out_invalid_roles/3,
          produce_roles_by_permission/3,
          get_security_roles/0,
@@ -633,18 +633,41 @@ substitute_params(Params, ParamDefinitions, Permissions) ->
                  end, ObjectPattern), AllowedOperations}
       end, Permissions).
 
--spec compile_params([atom()], [rbac_role_param()], rbac_all_param_values()) ->
-                            false | [[rbac_role_param()]].
-compile_params(ParamDefs, Params, AllParamValues) ->
-    PossibleValues = get_possible_param_values(ParamDefs, AllParamValues),
-    case find_matching_value(ParamDefs, Params, PossibleValues) of
-        false ->
-            false;
-        Values ->
-            Values
+validate_param(bucket_name, any, _Buckets) ->
+    {ok, any};
+validate_param(bucket_name, B, Buckets) ->
+    find_bucket(B, Buckets).
+
+find_bucket({Name, Id}, Buckets) ->
+    case find_bucket(Name, Buckets) of
+        RV = {ok, {Name, Id}} ->
+            RV;
+        _ ->
+            not_present
+    end;
+find_bucket(Name, Buckets) when is_list(Name) ->
+    case ns_bucket:get_bucket_from_configs(Name, Buckets) of
+        {ok, Props} ->
+            {ok, {Name, ns_bucket:bucket_uuid(Props)}};
+        not_present ->
+            not_present
     end.
 
-compile_roles(CompileRole, Roles, Definitions, AllParamValues) ->
+-spec params_version(list()) -> term().
+params_version(Buckets) ->
+    [{Name, ns_bucket:bucket_uuid(Props)} || {Name, Props} <- Buckets].
+
+compile_params([], [], _Buckets, Acc) ->
+    lists:reverse(Acc);
+compile_params([ParamDef | RestParamDef], [Param | RestParams], Buckets, Acc) ->
+    case validate_param(ParamDef, Param, Buckets) of
+        {ok, V} ->
+            compile_params(RestParamDef, RestParams, Buckets, [V | Acc]);
+        not_present ->
+            false
+    end.
+
+compile_roles(CompileRole, Roles, Definitions, Buckets) ->
     lists:filtermap(
       fun (Name) when is_atom(Name) ->
               case lists:keyfind(Name, 1, Definitions) of
@@ -656,7 +679,7 @@ compile_roles(CompileRole, Roles, Definitions, AllParamValues) ->
           ({Name, Params}) ->
               case lists:keyfind(Name, 1, Definitions) of
                   {Name, ParamDefs, _Props, Permissions} ->
-                      case compile_params(ParamDefs, Params, AllParamValues) of
+                      case compile_params(ParamDefs, Params, Buckets, []) of
                           false ->
                               false;
                           NewParams ->
@@ -668,18 +691,17 @@ compile_roles(CompileRole, Roles, Definitions, AllParamValues) ->
               end
       end, Roles).
 
--spec compile_roles([rbac_role()],
-                    [rbac_role_def()] | undefined, rbac_all_param_values()) ->
+-spec compile_roles([rbac_role()], [rbac_role_def()] | undefined, list()) ->
                            [rbac_compiled_role()].
-compile_roles(_Roles, undefined, _AllParamValues) ->
+compile_roles(_Roles, undefined, _Buckets) ->
     %% can happen briefly after node joins the cluster on pre 5.0 clusters
     [];
-compile_roles(Roles, Definitions, AllParamValues) ->
+compile_roles(Roles, Definitions, Buckets) ->
     compile_roles(
       fun (_Name, Params, ParamDefs, Permissions) ->
               substitute_params(strip_ids(ParamDefs, Params),
                                 ParamDefs, Permissions)
-      end, Roles, Definitions, AllParamValues).
+      end, Roles, Definitions, Buckets).
 
 -spec get_roles(rbac_identity()) -> [rbac_role()].
 get_roles({"", wrong_token}) ->
@@ -772,9 +794,8 @@ build_compiled_roles(Identity) ->
             ?log_debug("Compile roles for user ~p",
                        [ns_config_log:tag_user_data(Identity)]),
             Definitions = get_definitions(),
-            AllPossibleValues = calculate_possible_param_values(
-                                  ns_bucket:get_buckets()),
-            compile_roles(get_roles(Identity), Definitions, AllPossibleValues);
+            compile_roles(get_roles(Identity), Definitions,
+                          ns_bucket:get_buckets());
         true ->
             ?log_debug("Retrieve compiled roles for user ~p from ns_server "
                        "node", [ns_config_log:tag_user_data(Identity)]),
@@ -782,12 +803,12 @@ build_compiled_roles(Identity) ->
                      ?MODULE, build_compiled_roles, [Identity])
     end.
 
-filter_out_invalid_roles(Roles, Definitions, AllPossibleValues) ->
+filter_out_invalid_roles(Roles, Definitions, Buckets) ->
     compile_roles(fun (Name, [], _, _) ->
                           Name;
                       (Name, Params, _, _) ->
                           {Name, Params}
-                  end, Roles, Definitions, AllPossibleValues).
+                  end, Roles, Definitions, Buckets).
 
 calculate_possible_param_values(_Buckets, []) ->
     [[]];
@@ -832,13 +853,13 @@ expand_params(AllPossibleValues) ->
                    end, get_possible_param_values(ParamDefs, AllPossibleValues))
          end)).
 
-filter_by_permission(undefined, _ParamValues, _Definitions) ->
+filter_by_permission(undefined, _Buckets, _Definitions) ->
     pipes:filter(fun (_) -> true end);
-filter_by_permission(Permission, ParamValues, Definitions) ->
+filter_by_permission(Permission, Buckets, Definitions) ->
     pipes:filter(
       fun ({Role, _}) ->
               menelaus_roles:is_allowed(
-                Permission, compile_roles([Role], Definitions, ParamValues))
+                Permission, compile_roles([Role], Definitions, Buckets))
       end).
 
 -spec produce_roles_by_permission(rbac_permission(), ns_config(), list()) ->
@@ -850,7 +871,7 @@ produce_roles_by_permission(Permission, Config, Buckets) ->
       [pipes:stream_list(Definitions),
        visible_roles_filter(),
        expand_params(AllValues),
-       filter_by_permission(Permission, AllValues, Definitions)]).
+       filter_by_permission(Permission, Buckets, Definitions)]).
 
 strip_id(bucket_name, {P, _Id}) ->
     P;
@@ -954,12 +975,9 @@ filter_out_invalid_roles_test() ->
                    {role2, [bucket_name],
                     [{name,<<"">>},{desc, <<"">>}],
                     [{[{bucket,bucket_name},n1ql,update],[execute]}]}],
-    PossibleValues = [{[],[[]]},
-                      {[bucket_name],
-                       [[any],
-                       [{"bucket1",<<"id1">>}]]}],
+    Buckets = [{"bucket1", [{uuid, <<"id1">>}]}],
     ?assertEqual([{role1, [{"bucket1", <<"id1">>}]}],
-                 filter_out_invalid_roles(Roles, Definitions, PossibleValues)).
+                 filter_out_invalid_roles(Roles, Definitions, Buckets)).
 
 %% assertEqual is used instead of assert and assertNot to avoid
 %% dialyzer warnings
@@ -980,9 +998,7 @@ toy_config() ->
           {"default", [{uuid, <<"default_id">>}]}]}]}]].
 
 compile_roles(Roles, Definitions) ->
-    AllPossibleValues = calculate_possible_param_values(
-                          ns_bucket:get_buckets(toy_config())),
-    compile_roles(Roles, Definitions, AllPossibleValues).
+    compile_roles(Roles, Definitions, ns_bucket:get_buckets(toy_config())).
 
 compile_roles_test() ->
     ?assertEqual([[{[{bucket, "test"}], none}]],
