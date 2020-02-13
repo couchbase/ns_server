@@ -256,4 +256,10 @@
                   end
           end)).
 
+%% Maximum number of non-self-issued intermediate certificates that can follow
+%% the peer certificate in a valid certification path. So, if depth is 0 the
+%% PEER must be signed by the trusted ROOT-CA directly; if 1 the path can be
+%% PEER, CA, ROOT-CA; if 2 the path can be PEER, CA, CA, ROOT-CA, and so on.
+-define(ALLOWED_CERT_CHAIN_LENGTH, 10).
+
 -endif.
