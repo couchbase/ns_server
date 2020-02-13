@@ -90,7 +90,7 @@
 
     function editRolesGroup(rolesGroup) {
       $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_security/mn_roles_groups_add_dialog.html',
+        templateUrl: 'app/mn_admin/mn_roles_groups_add_dialog.html',
         controller: 'mnRolesGroupsAddDialogController as rolesGroupsAddDialogCtl',
         resolve: {
           rolesGroup: mnHelper.wrapInFunction(rolesGroup)
@@ -99,7 +99,7 @@
     }
     function addRolesGroup() {
       $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_security/mn_roles_groups_add_dialog.html',
+        templateUrl: 'app/mn_admin/mn_roles_groups_add_dialog.html',
         controller: 'mnRolesGroupsAddDialogController as rolesGroupsAddDialogCtl',
         resolve: {
           rolesGroup: mnHelper.wrapInFunction(undefined)
@@ -108,7 +108,7 @@
     }
     function deleteRolesGroup(rolesGroup) {
       $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_security/mn_roles_groups_delete_dialog.html',
+        templateUrl: 'app/mn_admin/mn_roles_groups_delete_dialog.html',
         controller: 'mnRolesGroupsDeleteDialogController as rolesGroupsDeleteDialogCtl',
         resolve: {
           rolesGroup: mnHelper.wrapInFunction(rolesGroup)

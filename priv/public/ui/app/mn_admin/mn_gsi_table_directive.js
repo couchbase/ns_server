@@ -18,7 +18,7 @@
       },
       controller: mnGsiTableController,
       controllerAs: "mnGsiTableCtl",
-      templateUrl: 'app/mn_admin/mn_indexes/mn_gsi/mn_gsi_table_directive.html'
+      templateUrl: 'app/mn_admin/mn_gsi_table_directive.html'
     };
 
     return mnGsiTable;

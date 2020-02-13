@@ -112,7 +112,7 @@
 
     function editUser(user) {
       $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_security/mn_user_roles/add_dialog/mn_user_roles_add_dialog.html',
+        templateUrl: 'app/mn_admin/mn_user_roles_add_dialog.html',
         controller: 'mnUserRolesAddDialogController as userRolesAddDialogCtl',
         resolve: {
           user: mnHelper.wrapInFunction(user),
@@ -124,7 +124,7 @@
     }
     function resetUserPassword(user) {
       $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_security/mn_user_roles/reset_password_dialog/mn_user_roles_reset_password_dialog.html',
+        templateUrl: 'app/mn_admin/mn_user_roles_reset_password_dialog.html',
         controller: 'mnUserRolesResetPasswordDialogController as userRolesResetPasswordDialogCtl',
         resolve: {
           user: mnHelper.wrapInFunction(user)
@@ -133,7 +133,7 @@
     }
     function deleteUser(user) {
       $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_security/mn_user_roles/delete_dialog/mn_user_roles_delete_dialog.html',
+        templateUrl: 'app/mn_admin/mn_user_roles_delete_dialog.html',
         controller: 'mnUserRolesDeleteDialogController as userRolesDeleteDialogCtl',
         resolve: {
           user: mnHelper.wrapInFunction(user)

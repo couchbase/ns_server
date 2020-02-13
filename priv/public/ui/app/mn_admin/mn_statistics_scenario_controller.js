@@ -33,7 +33,7 @@
 
     function deleteScenario(scenarioID) {
       $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_scenario_delete.html',
+        templateUrl: 'app/mn_admin/mn_statistics_scenario_delete.html',
       }).result.then(function () {
         mnStatisticsNewService.deleteScenario(scenarioID);
         selectLastScenario();

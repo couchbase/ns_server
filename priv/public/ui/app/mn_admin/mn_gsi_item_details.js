@@ -92,7 +92,7 @@
       },
       controller: mnGsiItemDetailsController,
       controllerAs: "mnGsiItemDetailsCtl",
-      templateUrl: 'app/mn_admin/mn_indexes/mn_gsi/mn_gsi_item_details.html'
+      templateUrl: 'app/mn_admin/mn_gsi_item_details.html'
     };
 
     return mnGsiItemDetails;
@@ -115,7 +115,7 @@
         $uibModal.open({
           windowClass: "z-index-10001",
           backdrop: 'static',
-          templateUrl: 'app/mn_admin/mn_indexes/mn_gsi/mn_gsi_drop_confirm_dialog.html',
+          templateUrl: 'app/mn_admin/mn_gsi_drop_confirm_dialog.html',
           scope: scope
         }).result.then(function () {
           row.awaitingRemoval = true;

@@ -69,7 +69,7 @@
 
     function runInternalSettingsDialog() {
       $uibModal.open({
-        templateUrl: "app/mn_admin/mn_internal_settings/mn_internal_settings.html",
+        templateUrl: "app/mn_admin/mn_internal_settings.html",
         controller: "mnInternalSettingsController as internalSettingsCtl"
       });
     }
@@ -372,7 +372,7 @@
             $uibModal.open({
               windowTopClass: "without-titlebar-close",
               backdrop: 'static',
-              templateUrl: 'app/mn_admin/mn_servers/memory_quota_dialog/memory_quota_dialog.html',
+              templateUrl: 'app/mn_admin/memory_quota_dialog.html',
               controller: 'mnServersMemoryQuotaDialogController as serversMemoryQuotaDialogCtl',
               resolve: {
                 memoryQuotaConfig: function (mnMemoryQuotaService) {

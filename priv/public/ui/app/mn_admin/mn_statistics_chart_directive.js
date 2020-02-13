@@ -16,7 +16,7 @@
   function mnStatisticsNewChartDirective(mnStatisticsNewService, mnStatisticsDescriptionService, $uibModal, $state, mnPrepareQuantityFilter, mnTruncateTo3DigitsFilter, $rootScope, mnHelper, $timeout, $window) {
     return {
       restrict: 'AE',
-      templateUrl: 'app/mn_admin/mn_statistics/chart_directive/mn_statistics_chart_directive.html',
+      templateUrl: 'app/mn_admin/mn_statistics_chart_directive.html',
       scope: {
         syncScope: "=?",
         config: "=",

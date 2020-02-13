@@ -16,7 +16,7 @@
         },
         isolate: false,
         replace: true,
-        templateUrl: 'app/mn_admin/mn_xdcr/settings/mn_xdcr_settings.html',
+        templateUrl: 'app/mn_admin/mn_xdcr_settings.html',
         controller: controller,
         controllerAs: "xdcrSettingsCtl",
         bindToController: true

@@ -34,7 +34,7 @@
         .then(null, function (resp) {
           if (resp.status == 504) {
             return $uibModal.open({
-              templateUrl: 'app/mn_admin/mn_servers/failover_dialog/mn_servers_failover_confirmation_dialog.html'
+              templateUrl: 'app/mn_admin/mn_servers_failover_confirmation_dialog.html'
             }).result.then(function () {
               return doPostFailover(true);
             });

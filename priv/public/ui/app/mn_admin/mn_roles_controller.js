@@ -13,7 +13,7 @@
 
     function addUser() {
       $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_security/mn_user_roles/add_dialog/mn_user_roles_add_dialog.html',
+        templateUrl: 'app/mn_admin/mn_user_roles_add_dialog.html',
         controller: 'mnUserRolesAddDialogController as userRolesAddDialogCtl',
         resolve: {
           user: mnHelper.wrapInFunction(undefined),
@@ -33,14 +33,14 @@
 
     function addLDAP() {
       $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_security/mn_user_roles/mn_add_ldap_dialog.html',
+        templateUrl: 'app/mn_admin/mn_add_ldap_dialog.html',
         controller: 'mnAddLDAPDialogController as addLdapDialogCtl'
       });
     }
 
     function addRolesGroup() {
       $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_security/mn_roles_groups_add_dialog.html',
+        templateUrl: 'app/mn_admin/mn_roles_groups_add_dialog.html',
         controller: 'mnRolesGroupsAddDialogController as rolesGroupsAddDialogCtl',
         resolve: {
           rolesGroup: mnHelper.wrapInFunction(undefined)

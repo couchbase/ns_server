@@ -19,7 +19,7 @@
         views: {
           "main@app.admin": {
             controller: "mnSecurityController as securityCtl",
-            templateUrl: "app/mn_admin/mn_security/mn_security.html"
+            templateUrl: "app/mn_admin/mn_security.html"
           }
         },
         data: {
@@ -29,7 +29,7 @@
       })
       .state('app.admin.security.roles', {
         abstract: true,
-        templateUrl: "app/mn_admin/mn_security/mn_roles.html",
+        templateUrl: "app/mn_admin/mn_roles.html",
         controller: "mnRolesController as rolesCtl"
       })
       .state('app.admin.security.roles.user', {
@@ -62,7 +62,7 @@
           }
         },
         controller: "mnUserRolesController as userRolesCtl",
-        templateUrl: "app/mn_admin/mn_security/mn_user_roles/mn_user_roles.html"
+        templateUrl: "app/mn_admin/mn_user_roles.html"
       })
       .state('app.admin.security.roles.groups', {
         // url: "/userRoles?openedUsers&startFrom&startFromDomain&{pageSize:int}",
@@ -92,7 +92,7 @@
           }
         },
         controller: "mnRolesGroupsController as rolesGroupsCtl",
-        templateUrl: "app/mn_admin/mn_security/mn_roles_groups.html",
+        templateUrl: "app/mn_admin/mn_roles_groups.html",
         data: {
           enterprise: true
         }
@@ -100,7 +100,7 @@
       .state('app.admin.security.session', {
         url: '/session',
         controller: 'mnSessionController as sessionCtl',
-        templateUrl: 'app/mn_admin/mn_security/mn_session/mn_session.html',
+        templateUrl: 'app/mn_admin/mn_session.html',
         data: {
           permissions: "cluster.admin.security.read"
         }
@@ -108,7 +108,7 @@
       .state('app.admin.security.rootCertificate', {
         url: '/rootCertificate',
         controller: 'mnRootCertificateController as rootCertificateCtl',
-        templateUrl: 'app/mn_admin/mn_security/mn_root_certificate/mn_root_certificate.html',
+        templateUrl: 'app/mn_admin/mn_root_certificate.html',
         data: {
           enterprise: true
         }
@@ -116,7 +116,7 @@
       .state('app.admin.security.clientCert', {
         url: '/clientCert',
         controller: 'mnClientCertController as clientCertCtl',
-        templateUrl: 'app/mn_admin/mn_security/mn_client_certificate/mn_client_certificate.html',
+        templateUrl: 'app/mn_admin/mn_client_certificate.html',
         data: {
           enterprise: true
         }
@@ -124,7 +124,7 @@
       .state('app.admin.security.audit', {
         url: '/audit',
         controller: 'mnAuditController as auditCtl',
-        templateUrl: 'app/mn_admin/mn_security/mn_audit/mn_audit.html',
+        templateUrl: 'app/mn_admin/mn_audit.html',
         data: {
           enterprise: true
         }
@@ -132,7 +132,7 @@
       .state('app.admin.security.redaction', {
         url: '/redaction',
         controller: 'mnRedactionController as redactionCtl',
-        templateUrl: 'app/mn_admin/mn_security/mn_redaction/mn_redaction.html',
+        templateUrl: 'app/mn_admin/mn_redaction.html',
         data: {
           compat: "atLeast55",
           enterprise: true

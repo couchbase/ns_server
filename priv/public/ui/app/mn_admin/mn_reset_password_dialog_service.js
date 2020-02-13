@@ -17,7 +17,7 @@
 
     function showDialog(user) {
       $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_reset_password_dialog/mn_reset_password_dialog.html',
+        templateUrl: 'app/mn_admin/mn_reset_password_dialog.html',
         controller: "mnResetPasswordDialogController as resetPasswordDialogCtl",
         resolve: {
           user: function () {

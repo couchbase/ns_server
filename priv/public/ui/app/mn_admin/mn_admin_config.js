@@ -88,7 +88,7 @@
             templateUrl: 'app/mn_admin/mn_admin.html'
           },
           "lostConnection@app.admin": {
-            templateUrl: 'app/mn_admin/mn_lost_connection/mn_lost_connection.html',
+            templateUrl: 'app/mn_admin/mn_lost_connection.html',
             controller: 'mnLostConnectionController as lostConnCtl'
           }
         }
@@ -99,7 +99,7 @@
         views: {
           "main@app.admin": {
             controller: 'mnOverviewController as overviewCtl',
-            templateUrl: 'app/mn_admin/mn_overview/mn_overview.html'
+            templateUrl: 'app/mn_admin/mn_overview.html'
           }
         },
         data: {
@@ -117,14 +117,14 @@
         views: {
           "main@app.admin": {
             controller: 'mnBucketsController as bucketsCtl',
-            templateUrl: 'app/mn_admin/mn_buckets/mn_buckets.html'
+            templateUrl: 'app/mn_admin/mn_buckets.html'
           },
           "details@app.admin.buckets": {
-            templateUrl: 'app/mn_admin/mn_buckets/details/mn_buckets_details.html',
+            templateUrl: 'app/mn_admin/mn_buckets_details.html',
             controller: 'mnBucketsDetailsController as bucketsDetailsCtl'
           },
           "item@app.admin.buckets": {
-            templateUrl: 'app/mn_admin/mn_buckets/list/item/mn_buckets_list_item.html',
+            templateUrl: 'app/mn_admin/mn_buckets_list_item.html',
             controller: 'mnBucketsListItemController as bucketsItemCtl'
           }
         },
@@ -139,7 +139,7 @@
         views: {
           "main@app.admin": {
             controller: 'mnServersController as serversCtl',
-            templateUrl: 'app/mn_admin/mn_servers/mn_servers.html'
+            templateUrl: 'app/mn_admin/mn_servers.html'
           }
         },
         data: {
@@ -156,14 +156,14 @@
         },
         views: {
           "" : {
-            templateUrl: 'app/mn_admin/mn_servers/list/mn_servers_list.html'
+            templateUrl: 'app/mn_admin/mn_servers_list.html'
           },
           "details@app.admin.servers.list": {
-            templateUrl: 'app/mn_admin/mn_servers/details/mn_servers_list_item_details.html',
+            templateUrl: 'app/mn_admin/mn_servers_list_item_details.html',
             controller: 'mnServersListItemDetailsController as serversListItemDetailsCtl'
           },
           "item@app.admin.servers.list": {
-            templateUrl: 'app/mn_admin/mn_servers/list/item/mn_servers_list_item.html',
+            templateUrl: 'app/mn_admin/mn_servers_list_item.html',
             controller: 'mnServersListItemController as serversItemCtl'
           }
         }
@@ -172,7 +172,7 @@
         url: '/replications',
         views: {
           "main@app.admin": {
-            templateUrl: 'app/mn_admin/mn_xdcr/mn_xdcr.html',
+            templateUrl: 'app/mn_admin/mn_xdcr.html',
             controller: 'mnXDCRController as xdcrCtl'
           }
         },
@@ -192,7 +192,7 @@
         abstract: true,
         views: {
           "main@app.admin": {
-            templateUrl: 'app/mn_admin/mn_logs/mn_logs.html',
+            templateUrl: 'app/mn_admin/mn_logs.html',
             controller: 'mnLogsController as logsCtl'
           }
         },
@@ -204,13 +204,13 @@
       .state('app.admin.logs.list', {
         url: '',
         controller: 'mnLogsListController as logsListCtl',
-        templateUrl: 'app/mn_admin/mn_logs/list/mn_logs_list.html'
+        templateUrl: 'app/mn_admin/mn_logs_list.html'
       })
       .state('app.admin.logs.collectInfo', {
         url: '/collectInfo',
         abstract: true,
         controller: 'mnLogsCollectInfoController as logsCollectInfoCtl',
-        templateUrl: 'app/mn_admin/mn_logs/collect_info/mn_logs_collect_info.html',
+        templateUrl: 'app/mn_admin/mn_logs_collect_info.html',
         data: {
           permissions: "cluster.admin.logs.read",
           title: "Collect Information"
@@ -218,18 +218,18 @@
       })
       .state('app.admin.logs.collectInfo.result', {
         url: '/result',
-        templateUrl: 'app/mn_admin/mn_logs/collect_info/mn_logs_collect_info_result.html'
+        templateUrl: 'app/mn_admin/mn_logs_collect_info_result.html'
       })
       .state('app.admin.logs.collectInfo.form', {
         url: '/form',
-        templateUrl: 'app/mn_admin/mn_logs/collect_info/mn_logs_collect_info_form.html'
+        templateUrl: 'app/mn_admin/mn_logs_collect_info_form.html'
       })
       .state('app.admin.statistics_overview', {
         url: '/stats_overview?overviewHostname&overviewBucket&overviewZoom',
         views: {
           "main@app.admin": {
             controller: 'mnStatisticsOverviewController as statisticsOverviewCtl',
-            templateUrl: 'app/mn_admin/mn_statistics/overview_page/mn_statistics_overview.html',
+            templateUrl: 'app/mn_admin/mn_statistics_overview.html',
           }
         },
         data: {
@@ -240,7 +240,7 @@
       .state('app.admin.overview.statistics', {
         url: '/stats?statsHostname',
         controller: 'mnStatisticsNewController as statisticsNewCtl',
-        templateUrl: 'app/mn_admin/mn_statistics/mn_statistics.html',
+        templateUrl: 'app/mn_admin/mn_statistics.html',
         params: {
           statsHostname: "all"
         },
@@ -279,7 +279,7 @@
       url: '/groups',
       views: {
         "main@app.admin": {
-          templateUrl: 'app/mn_admin/mn_groups/mn_groups.html',
+          templateUrl: 'app/mn_admin/mn_groups.html',
           controller: 'mnGroupsController as groupsCtl'
         }
       },
@@ -298,7 +298,7 @@
         abstract: true,
         views: {
           "main@app.admin": {
-            templateUrl: 'app/mn_admin/mn_documents/mn_documents.html',
+            templateUrl: 'app/mn_admin/mn_documents.html',
             controller: "mnDocumentsController as documentsCtl"
           }
         },
@@ -312,7 +312,7 @@
       .state(parent + '.documents.control', {
         abstract: true,
         controller: 'mnDocumentsControlController as documentsControlCtl',
-        templateUrl: 'app/mn_admin/mn_documents/list/mn_documents_control.html'
+        templateUrl: 'app/mn_admin/mn_documents_control.html'
       })
       .state(parent + '.documents.control.list', {
         url: "?{pageLimit:int}&{pageNumber:int}&documentsFilter",
@@ -326,12 +326,12 @@
           documentsFilter: null
         },
         controller: 'mnDocumentsListController as documentsListCtl',
-        templateUrl: 'app/mn_admin/mn_documents/list/mn_documents_list.html'
+        templateUrl: 'app/mn_admin/mn_documents_list.html'
       })
       .state(parent + '.documents.editing', {
         url: '/:documentId',
         controller: 'mnDocumentsEditingController as documentsEditingCtl',
-        templateUrl: 'app/mn_admin/mn_documents/editing/mn_documents_editing.html',
+        templateUrl: 'app/mn_admin/mn_documents_editing.html',
         data: {
           child: parent + ".documents.control.list",
           title: "Documents Editing"
@@ -347,7 +347,7 @@
         views: {
           "main@app.admin": {
             controller: 'mnAnalyticsController as analyticsCtl',
-            templateUrl: 'app/mn_admin/mn_analytics/mn_analytics.html'
+            templateUrl: 'app/mn_admin/mn_analytics.html'
           }
         },
         params: {
@@ -387,7 +387,7 @@
           child: parent
         },
         controller: 'mnAnalyticsListController as analyticsListCtl',
-        templateUrl: 'app/mn_admin/mn_analytics/mn_analytics_list.html',
+        templateUrl: 'app/mn_admin/mn_analytics_list.html',
         redirectTo: function (trans) {
           var mnAnalyticsService = trans.injector().get("mnAnalyticsService");
           var params = _.clone(trans.params(), true);
@@ -449,7 +449,7 @@
           }
         },
         controller: 'mnAnalyticsListGraphController as analyticsListGraphCtl',
-        templateUrl: 'app/mn_admin/mn_analytics/mn_analytics_list_graph.html'
+        templateUrl: 'app/mn_admin/mn_analytics_list_graph.html'
       })
       .state(parent + '.analytics.list.graph', {
         url: '/:graph?zoom',
@@ -462,7 +462,7 @@
           }
         },
         controller: 'mnAnalyticsListGraphController as analyticsListGraphCtl',
-        templateUrl: 'app/mn_admin/mn_analytics/mn_analytics_list_graph.html'
+        templateUrl: 'app/mn_admin/mn_analytics_list_graph.html'
       });
   }
   }

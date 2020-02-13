@@ -40,7 +40,7 @@
         .then(null, function (resp) {
           if (resp.status === 504) {
             return $uibModal.open({
-              templateUrl: 'app/mn_admin/mn_servers/stop_rebalance_dialog/mn_servers_stop_rebalance_dialog.html'
+              templateUrl: 'app/mn_admin/mn_servers_stop_rebalance_dialog.html'
             }).result.then(function () {
               return stopRebalance(true);
             });

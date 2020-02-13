@@ -35,7 +35,7 @@
         views: {
           "main@app.admin": {
             controller: "mnGsiController as gsiCtl",
-            templateUrl: "app/mn_admin/mn_indexes/mn_gsi/mn_gsi.html"
+            templateUrl: "app/mn_admin/mn_gsi.html"
           }
         }
       });
@@ -57,7 +57,7 @@
         },
         views: {
           "main@app.admin": {
-            templateUrl: 'app/mn_admin/mn_indexes/mn_views/mn_views.html',
+            templateUrl: 'app/mn_admin/mn_views.html',
             controller: 'mnViewsController as viewsCtl'
           }
         }
@@ -73,7 +73,7 @@
             }
           },
           controller: 'mnViewsListController as viewsListCtl',
-          templateUrl: 'app/mn_admin/mn_indexes/mn_views/list/mn_views_list.html'
+          templateUrl: 'app/mn_admin/mn_views_list.html'
         })
         .state(parent + '.views.list.editing', {
           abstract: true,
@@ -81,7 +81,7 @@
           views: {
             "main@app.admin": {
               controller: 'mnViewsEditingController as viewsEditingCtl',
-              templateUrl: 'app/mn_admin/mn_indexes/mn_views/editing/mn_views_editing.html'
+              templateUrl: 'app/mn_admin/mn_views_editing.html'
             }
           },
           data: {
@@ -104,7 +104,7 @@
             }
           },
           controller: 'mnViewsEditingResultController as viewsEditingResultCtl',
-          templateUrl: 'app/mn_admin/mn_indexes/mn_views/editing/mn_views_editing_result.html'
+          templateUrl: 'app/mn_admin/mn_views_editing_result.html'
         });
 
     }

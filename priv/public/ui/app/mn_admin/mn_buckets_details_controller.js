@@ -59,7 +59,7 @@
       }
       function editBucket() {
         $uibModal.open({
-          templateUrl: 'app/mn_admin/mn_buckets/details_dialog/mn_buckets_details_dialog.html',
+          templateUrl: 'app/mn_admin/mn_buckets_details_dialog.html',
           controller: 'mnBucketsDetailsDialogController as bucketsDetailsDialogCtl',
           resolve: {
             bucketConf: function () {
@@ -78,7 +78,7 @@
       }
       function deleteBucket(bucket) {
         $uibModal.open({
-          templateUrl: 'app/mn_admin/mn_buckets/delete_dialog/mn_buckets_delete_dialog.html',
+          templateUrl: 'app/mn_admin/mn_buckets_delete_dialog.html',
           controller: 'mnBucketsDeleteDialogController as bucketsDeleteDialogCtl',
           resolve: {
             bucket: function () {
@@ -89,7 +89,7 @@
       }
       function flushBucket(bucket) {
         $uibModal.open({
-          templateUrl: 'app/mn_admin/mn_buckets/flush_dialog/mn_buckets_flush_dialog.html',
+          templateUrl: 'app/mn_admin/mn_buckets_flush_dialog.html',
           controller: 'mnBucketsFlushDialogController as bucketsFlushDialogCtl',
           resolve: {
             bucket: function () {

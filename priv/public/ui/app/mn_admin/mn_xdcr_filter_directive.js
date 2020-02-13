@@ -13,7 +13,7 @@
           mnIsEditing: "=?",
           mnErrors: "=?"
         },
-        templateUrl: 'app/mn_admin/mn_xdcr/mn_xdcr_filter.html',
+        templateUrl: 'app/mn_admin/mn_xdcr_filter.html',
         controller: controller,
         controllerAs: "xdcrFilterCtl",
       };

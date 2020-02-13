@@ -14,7 +14,7 @@
       },
       controller: mnXDCRItemDetailsController,
       controllerAs: "xdcrItemDetailsCtl",
-      templateUrl: 'app/mn_admin/mn_xdcr/mn_xdcr_item_details.html'
+      templateUrl: 'app/mn_admin/mn_xdcr_item_details.html'
     };
 
     return mnXDCRItemDetails;
@@ -35,7 +35,7 @@
       function editReplication(row) {
         $uibModal.open({
           controller: 'mnXDCREditDialogController as xdcrEditDialogCtl',
-          templateUrl: 'app/mn_admin/mn_xdcr/edit_dialog/mn_xdcr_edit_dialog.html',
+          templateUrl: 'app/mn_admin/mn_xdcr_edit_dialog.html',
           scope: $scope,
           resolve: {
             source: mnHelper.wrapInFunction(row.source),
@@ -49,7 +49,7 @@
       function deleteReplication(row) {
         $uibModal.open({
           controller: 'mnXDCRDeleteDialogController as xdcrDeleteDialogCtl',
-          templateUrl: 'app/mn_admin/mn_xdcr/delete_dialog/mn_xdcr_delete_dialog.html',
+          templateUrl: 'app/mn_admin/mn_xdcr_delete_dialog.html',
           scope: $scope,
           resolve: {
             id: mnHelper.wrapInFunction(row.id)

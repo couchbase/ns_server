@@ -82,7 +82,7 @@
     }
     function multipleFailoverDialog() {
       $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_servers/mn_multiple_failover_dialog.html',
+        templateUrl: 'app/mn_admin/mn_multiple_failover_dialog.html',
         controller: 'mnMultipleFailoverDialogController as multipleFailoverDialogCtl',
         resolve: {
           groups: function () {
@@ -100,7 +100,7 @@
     }
     function addServer() {
       $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_servers/add_dialog/mn_servers_add_dialog.html',
+        templateUrl: 'app/mn_admin/mn_servers_add_dialog.html',
         controller: 'mnServersAddDialogController as serversAddDialogCtl',
         resolve: {
           groups: function () {

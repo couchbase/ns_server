@@ -55,7 +55,7 @@ function mnStatisticsOverviewController($scope, mnStatisticsNewService, mnStatis
       $state.params.statsHostname = vm.getNode();
       $uibModal.open(
           {
-            templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_detailed_chart.html',
+            templateUrl: 'app/mn_admin/mn_statistics_detailed_chart.html',
             controller: 'mnStatisticsDetailedChartController as detailedChartCtl',
             windowTopClass: "chart-overlay",
             resolve: {

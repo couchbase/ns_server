@@ -67,7 +67,7 @@
               $interval.cancel(timer);
             });
           },
-          templateUrl: 'app/mn_admin/mn_security/mn_session/mn_session_timeout_dialog.html'
+          templateUrl: 'app/mn_admin/mn_session_timeout_dialog.html'
         });
 
         sessionTimeoutDialog.result.then(function () {

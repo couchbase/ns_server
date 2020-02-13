@@ -33,7 +33,7 @@
     function deleteChart() {
       vm.showChartControls = false;
       $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_statistics/chart_builder/mn_statistics_chart_builder_delete.html'
+        templateUrl: 'app/mn_admin/mn_statistics_chart_builder_delete.html'
       }).result.then(function () {
         mnStatisticsNewService.deleteChart($scope.chartID);
         mnUserRolesService.saveDashboard();
@@ -44,7 +44,7 @@
     function editChart(group, scenario) {
       vm.showChartControls = false;
       $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_statistics/chart_builder/mn_statistics_chart_builder.html',
+        templateUrl: 'app/mn_admin/mn_statistics_chart_builder.html',
         controller: 'mnStatisticsNewChartBuilderController as builderCtl',
         resolve: {
           chart: mnHelper.wrapInFunction(vm.chart),
@@ -63,7 +63,7 @@
 
     function openDetailedChartDialog() {
       $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_detailed_chart.html',
+        templateUrl: 'app/mn_admin/mn_statistics_detailed_chart.html',
         controller: 'mnStatisticsDetailedChartController as detailedChartCtl',
         windowTopClass: "chart-overlay",
         resolve: {
@@ -122,7 +122,7 @@
 
     function deleteGroup(groupID) {
       $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_group_delete.html',
+        templateUrl: 'app/mn_admin/mn_statistics_group_delete.html',
       }).result.then(function () {
         mnStatisticsNewService.deleteGroup(groupID);
         mnUserRolesService.saveDashboard();
@@ -191,7 +191,7 @@
 
     function resetDashboardConfiguration() {
       return $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_reset_dialog.html'
+        templateUrl: 'app/mn_admin/mn_statistics_reset_dialog.html'
       }).result.then(function () {
         mnStoreService.store("charts").clear();
         mnStoreService.store("groups").clear();
@@ -211,7 +211,7 @@
 
     function openGroupDialog(scenario) {
       $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_statistics/mn_statistics_group.html',
+        templateUrl: 'app/mn_admin/mn_statistics_group.html',
         controller: 'mnGroupDialogController as groupDialogCtl',
         resolve: {
           scenario: mnHelper.wrapInFunction(scenario)
@@ -225,7 +225,7 @@
 
     function openChartBuilderDialog(group, scenario, groupCtl) {
       $uibModal.open({
-        templateUrl: 'app/mn_admin/mn_statistics/chart_builder/mn_statistics_chart_builder.html',
+        templateUrl: 'app/mn_admin/mn_statistics_chart_builder.html',
         controller: 'mnStatisticsNewChartBuilderController as builderCtl',
         resolve: {
           scenario: mnHelper.wrapInFunction(scenario),
