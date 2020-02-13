@@ -240,6 +240,8 @@ reload_node_certificate_error({bad_cert, {invalid_issuer, Subject, LastSubject}}
 reload_node_certificate_error({bad_cert, {Error, Subject}}) ->
     list_to_binary(io_lib:format("Incorrectly configured certificate chain. Error: ~p. Certificate: ~p",
                                  [Error, Subject]));
+reload_node_certificate_error({bad_cert, max_path_length_reached}) ->
+    <<"The certificate chain is too long">>;
 reload_node_certificate_error({bad_chain, Error}) ->
     iolist_to_binary([<<"Incorrectly configured certificate chain. ">>,
                       cert_validation_error_message(Error)]);
