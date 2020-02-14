@@ -98,11 +98,10 @@
             </div>
 
 <!-- delta recovery info *************************************************** -->
-<!-- failover info *************************************************** -->
             <div
                ng-repeat="(name, subStage) in service.subStages track by name"
-               class="row indent-1-5 margin-bottom-half margin-top-half">
-              <label>{{name == "deltaRecovery" ? "Delta Recovery" : name}}</label>
+               class="row margin-left-half margin-bottom-half margin-top-half">
+              <label>{{name == "deltaRecovery" ? "Delta Recovery Warmup" : name}}</label>
               <span
                  ng-show="subStage.timeTaken !== false"
                  class="rebalance-stage-status">

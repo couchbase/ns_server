@@ -2,9 +2,11 @@
           {certfile, "@CONFIG_PREFIX@/ssl-cert-key.pem"},
           {keyfile, "@CONFIG_PREFIX@/ssl-cert-key.pem"},
           {cacertfile, "@CONFIG_PREFIX@/ssl-cert-key.pem-ca"},
+          {depth, 10},
           {reuse_sessions,false}]},
  {client,[{certfile, "@CONFIG_PREFIX@/ssl-cert-key.pem"},
           {keyfile, "@CONFIG_PREFIX@/ssl-cert-key.pem"},
           {cacertfile, "@CONFIG_PREFIX@/ssl-cert-key.pem-ca"},
           {verify, verify_peer},
+          {depth, 10},
           {reuse_sessions,false}]}].

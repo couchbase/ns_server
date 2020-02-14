@@ -578,5 +578,6 @@ tls_server_validation_options() ->
         {UploadedCAProps, _, _} ->
             Pem = proplists:get_value(pem, UploadedCAProps),
             [{verify, verify_peer},
-             {cacerts, [ns_server_cert:decode_single_certificate(Pem)]}]
+             {cacerts, [ns_server_cert:decode_single_certificate(Pem)]},
+             {depth, ?ALLOWED_CERT_CHAIN_LENGTH}]
     end.
