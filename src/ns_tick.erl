@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2018 Couchbase, Inc.
+%% @copyright 2009-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -18,6 +18,8 @@
 -module(ns_tick).
 
 -behaviour(gen_server).
+
+-include("ns_common.hrl").
 
 -define(INTERVAL, 1000).
 -define(SERVER, {via, leader_registry, ?MODULE}).
@@ -65,6 +67,15 @@ handle_cast(Msg, State) ->
 
 %% Called once per second on the node where the gen_server runs
 handle_info(tick, State) ->
+    %% Get rid of any other tick messages.  If we send more than one in the
+    %% same msec it causes downstream problems for some consumers.
+    Dropped = misc:flush(tick),
+    case Dropped of
+        0 ->
+            ok;
+        _ ->
+            ?log_warning("Dropped ~p ns_tick messages", [Dropped])
+    end,
     Now = os:system_time(millisecond),
     ns_tick_agent:send_tick(ns_node_disco:nodes_actual(), Now),
 
