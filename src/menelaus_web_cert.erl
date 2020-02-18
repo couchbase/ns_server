@@ -160,7 +160,9 @@ handle_get_node_certificate(NodeId, Req) ->
                 Props ->
                     menelaus_util:reply_json(Req, {jsonify_cert_props(Props)})
             end;
-        false ->
+        {error, {invalid_node, Reason}} ->
+            menelaus_util:reply_text(Req, Reason, 400);
+        {error, not_found} ->
             menelaus_util:reply_text(
               Req,
               <<"Node is not found, make sure the ip address/hostname matches the ip address/hostname used by Couchbase">>,

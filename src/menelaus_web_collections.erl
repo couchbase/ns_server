@@ -158,7 +158,7 @@ nodes_validator(BucketNodes, Req, State) ->
                     fun (HostPort, {G, B}) ->
                             case menelaus_web_node:find_node_hostname(
                                    HostPort, Req) of
-                                false ->
+                                {error, _} ->
                                     {G, [HostPort | B]};
                                 {ok, Node} ->
                                     case lists:member(Node, BucketNodes) of
