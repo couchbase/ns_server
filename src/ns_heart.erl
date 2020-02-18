@@ -54,6 +54,7 @@ start_link_slow_updater() ->
 is_interesting_buckets_event({started, _}) -> true;
 is_interesting_buckets_event({loaded, _}) -> true;
 is_interesting_buckets_event({stopped, _}) -> true;
+is_interesting_buckets_event({warmed, _}) -> true;
 is_interesting_buckets_event(_Event) -> false.
 
 init([]) ->
