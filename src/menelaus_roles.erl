@@ -991,14 +991,12 @@ object_match_test() ->
     ?assertEqual(true, object_match([{b, "a"}], [{b, any}])),
     ?assertEqual(true, object_match([{b, any}], [{b, any}])).
 
-toy_config() ->
-    [[{buckets,
-       [{configs,
-         [{"test", [{uuid, <<"test_id">>}]},
-          {"default", [{uuid, <<"default_id">>}]}]}]}]].
+toy_buckets() ->
+    [{"test", [{uuid, <<"test_id">>}]},
+     {"default", [{uuid, <<"default_id">>}]}].
 
 compile_roles(Roles, Definitions) ->
-    compile_roles(Roles, Definitions, ns_bucket:get_buckets(toy_config())).
+    compile_roles(Roles, Definitions, toy_buckets()).
 
 compile_roles_test() ->
     ?assertEqual([[{[{bucket, "test"}], none}]],
@@ -1124,10 +1122,8 @@ replication_admin_test() ->
     ?assertEqual(true, is_allowed({[other], read}, Roles)).
 
 validate_role_test() ->
-    Config = toy_config(),
     Definitions = roles_50(),
-    AllParamValues = calculate_possible_param_values(
-                       ns_bucket:get_buckets(Config)),
+    AllParamValues = calculate_possible_param_values(toy_buckets()),
     ?assertEqual({ok, admin},
                  validate_role(admin, Definitions, AllParamValues)),
     ?assertEqual({ok, {bucket_admin, [{"test", <<"test_id">>}]}},
