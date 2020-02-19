@@ -187,6 +187,9 @@ child_specs() ->
      {ns_bucket_worker_sup, {ns_bucket_worker_sup, start_link, []},
       permanent, infinity, supervisor, [ns_bucket_worker_sup]},
 
+     {ns_server_stats, {ns_server_stats, start_link, []},
+      permanent, 1000, worker, [ns_server_stats]},
+
      {system_stats_collector, {system_stats_collector, start_link, []},
       permanent, 1000, worker, [system_stats_collector]},
 
