@@ -312,6 +312,9 @@ handle_call(mark_warmed, _From, #state{status=Status,
                         Time = timer:now_diff(os:timestamp(), Start) div 1000000,
                         ?log_info("Bucket ~p marked as warmed in ~p seconds",
                                   [Bucket, Time]),
+                        %% Make best effort to update the status of bucket
+                        %% readiness on node.
+                        gen_event:notify(buckets_events, {warmed, Bucket}),
                         {warmed, ok};
                     Error ->
                         ?log_error("Failed to enable traffic to bucket ~p: ~p",
@@ -669,6 +672,7 @@ handle_cast(start_completed, #state{start_time=Start,
     NewStatus = case proplists:get_value(type, BucketConfig, unknown) of
                     memcached ->
                         %% memcached buckets are warmed up automagically
+                        gen_event:notify(buckets_events, {warmed, Bucket}),
                         warmed;
                     _ ->
                         connected
