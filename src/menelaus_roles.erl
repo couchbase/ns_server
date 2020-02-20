@@ -45,6 +45,7 @@
 -include("ns_config.hrl").
 -include("rbac.hrl").
 -include("pipes.hrl").
+-include("cut.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -882,52 +883,17 @@ strip_ids(ParamDefs, Params) ->
     [strip_id(ParamDef, Param) || {ParamDef, Param} <-
                                       lists:zip(ParamDefs, Params)].
 
-match_param(bucket_name, P, P) ->
-    true;
-match_param(bucket_name, P, {P, _Id}) ->
-    true;
-match_param(bucket_name, _, _) ->
-    false.
-
-match_params([], [], []) ->
-    true;
-match_params(ParamDefs, Params, Values) ->
-    case lists:dropwhile(
-           fun ({ParamDef, Param, Value}) ->
-                   match_param(ParamDef, Param, Value)
-           end, lists:zip3(ParamDefs, Params, Values)) of
-        [] ->
-            true;
-        _ ->
-            false
-    end.
-
--spec find_matching_value([atom()], [rbac_role_param()],
-                          [[rbac_role_param()]]) ->
-                                 false | [rbac_role_param()].
-find_matching_value(ParamDefs, Params, PossibleValues) ->
-    case lists:dropwhile(
-           fun (Values) ->
-                   not match_params(ParamDefs, Params, Values)
-           end, PossibleValues) of
-        [] ->
-            false;
-        [V | _] ->
-            V
-    end.
-
--spec validate_role(rbac_role(), [rbac_role_def()], [[rbac_role_param()]]) ->
+-spec validate_role(rbac_role(), [rbac_role_def()], list()) ->
                            false | {ok, rbac_role()}.
-validate_role(Role, Definitions, AllValues) when is_atom(Role) ->
-    validate_role(Role, [], Definitions, AllValues);
-validate_role({Role, Params}, Definitions, AllValues) ->
-    validate_role(Role, Params, Definitions, AllValues).
+validate_role(Role, Definitions, Buckets) when is_atom(Role) ->
+    validate_role(Role, [], Definitions, Buckets);
+validate_role({Role, Params}, Definitions, Buckets) ->
+    validate_role(Role, Params, Definitions, Buckets).
 
-validate_role(Role, Params, Definitions, AllValues) ->
+validate_role(Role, Params, Definitions, Buckets) ->
     case lists:keyfind(Role, 1, Definitions) of
         {Role, ParamsDef, _, _} when length(Params) =:= length(ParamsDef) ->
-            PossibleValues = get_possible_param_values(ParamsDef, AllValues),
-            case find_matching_value(ParamsDef, Params, PossibleValues) of
+            case compile_params(ParamsDef, Params, Buckets, []) of
                 false ->
                     false;
                 [] ->
@@ -946,9 +912,9 @@ validate_roles(Roles, Config) ->
     Definitions = pipes:run(pipes:stream_list(get_definitions(Config)),
                             visible_roles_filter(),
                             pipes:collect()),
-    AllValues = calculate_possible_param_values(ns_bucket:get_buckets(Config)),
+    Buckets = ns_bucket:get_buckets(Config),
     lists:foldl(fun (Role, {Validated, Unknown}) ->
-                        case validate_role(Role, Definitions, AllValues) of
+                        case validate_role(Role, Definitions, Buckets) of
                             false ->
                                 {Validated, [Role | Unknown]};
                             {ok, R} ->
@@ -1125,25 +1091,16 @@ replication_admin_test() ->
     ?assertEqual(true, is_allowed({[other], read}, Roles)).
 
 validate_role_test() ->
-    Definitions = roles_50(),
-    AllParamValues = calculate_possible_param_values(toy_buckets()),
-    ?assertEqual({ok, admin},
-                 validate_role(admin, Definitions, AllParamValues)),
+    ValidateRole = validate_role(_, roles_50(), toy_buckets()),
+    ?assertEqual({ok, admin}, ValidateRole(admin)),
     ?assertEqual({ok, {bucket_admin, [{"test", <<"test_id">>}]}},
-                 validate_role({bucket_admin, ["test"]}, Definitions,
-                               AllParamValues)),
+                 ValidateRole({bucket_admin, ["test"]})),
     ?assertEqual({ok, {views_admin, [any]}},
-                 validate_role({views_admin, [any]}, Definitions,
-                               AllParamValues)),
-    ?assertEqual(false, validate_role(something, Definitions, AllParamValues)),
-    ?assertEqual(false, validate_role({bucket_admin, ["something"]},
-                                      Definitions, AllParamValues)),
-    ?assertEqual(false, validate_role({something, ["test"]}, Definitions,
-                                      AllParamValues)),
-    ?assertEqual(false, validate_role({admin, ["test"]}, Definitions,
-                                      AllParamValues)),
-    ?assertEqual(false, validate_role(bucket_admin, Definitions,
-                                      AllParamValues)),
-    ?assertEqual(false, validate_role({bucket_admin, ["test", "test"]},
-                                      Definitions, AllParamValues)).
+                 ValidateRole({views_admin, [any]})),
+    ?assertEqual(false, ValidateRole(something)),
+    ?assertEqual(false, ValidateRole({bucket_admin, ["something"]})),
+    ?assertEqual(false, ValidateRole({something, ["test"]})),
+    ?assertEqual(false, ValidateRole({admin, ["test"]})),
+    ?assertEqual(false, ValidateRole(bucket_admin)),
+    ?assertEqual(false, ValidateRole({bucket_admin, ["test", "test"]})).
 -endif.
