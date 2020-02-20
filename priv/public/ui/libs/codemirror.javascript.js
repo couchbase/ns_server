@@ -1,17 +1,4 @@
-// CodeMirror, copyright (c) by Marijn Haverbeke and others
-// Distributed under an MIT license: http://codemirror.net/LICENSE
-
-// TODO actually recognize syntax of TypeScript constructs
-
-(function(mod) {
-  if (typeof exports == "object" && typeof module == "object") // CommonJS
-    mod(require("../../lib/codemirror"));
-  else if (typeof define == "function" && define.amd) // AMD
-    define(["../../lib/codemirror"], mod);
-  else // Plain browser env
-    mod(CodeMirror);
-})(function(CodeMirror) {
-"use strict";
+import CodeMirror from "/ui/web_modules/codemirror.js";
 
 CodeMirror.defineMode("javascript", function(config, parserConfig) {
   var indentUnit = config.indentUnit;
@@ -704,5 +691,3 @@ CodeMirror.defineMIME("application/x-json", {name: "javascript", json: true});
 CodeMirror.defineMIME("application/ld+json", {name: "javascript", jsonld: true});
 CodeMirror.defineMIME("text/typescript", { name: "javascript", typescript: true });
 CodeMirror.defineMIME("application/typescript", { name: "javascript", typescript: true });
-
-});

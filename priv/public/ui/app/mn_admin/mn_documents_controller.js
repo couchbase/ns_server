@@ -1,7 +1,7 @@
 import angular from "/ui/web_modules/angular.js";
 import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
 import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
-// import uiCodemirror from "/ui/web_modules/ui-codemirror.js";
+import uiCodemirror from "/ui/libs/angular-ui-codemirror.js";
 
 import mnDocumentsControlController from "./mn_documents_control_controller.js";
 import mnDocumentsListController from "./mn_documents_list_controller.js";
@@ -32,7 +32,7 @@ angular
     mnFilters,
     uiRouter,
     uiBootstrap,
-    // uiCodemirror.name,
+    uiCodemirror,
     mnSpinner,
     ngMessages,
     mnPoll,

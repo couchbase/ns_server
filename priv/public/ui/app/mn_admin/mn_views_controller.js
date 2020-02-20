@@ -2,6 +2,7 @@ import angular from "/ui/web_modules/angular.js";
 import uiSelect from "/ui/web_modules/ui-select.js";
 import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
 import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
+import uiCodemirror from "/ui/libs/angular-ui-codemirror.js";
 
 import ngSanitize from "/ui/web_modules/angular-sanitize.js";
 import ngMessages from "/ui/web_modules/angular-messages.js";
@@ -31,6 +32,7 @@ angular
     uiSelect,
     uiRouter,
     uiBootstrap,
+    uiCodemirror,
     ngSanitize,
     ngMessages,
     mnCompaction,

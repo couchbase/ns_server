@@ -1,5 +1,4 @@
 import angular from "/ui/web_modules/angular.js";
-// import uiCodemirror from "/ui/web_modules/ui-codemirror.js";
 
 import mnXDCRService from "./mn_xdcr_service.js";
 import mnXDCREditDialogController from "./mn_xdcr_edit_dialog_controller.js";
@@ -33,7 +32,6 @@ angular.module('mnXDCR', [
   mnPools,
   mnSortableTable,
   mnSpinner,
-  // uiCodemirror.name,
   mnAlertsService
 ]).controller('mnXDCRController', mnXDCRController)
   .controller('mnXDCREditDialogController', mnXDCREditDialogController)
