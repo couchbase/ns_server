@@ -168,24 +168,23 @@ role_origin_to_json(user) ->
 role_origin_to_json(O) ->
     {[{type, group}, {name, list_to_binary(O)}]}.
 
-get_roles_by_permission(Permission) ->
-    Config = ns_config:get(),
-    Buckets = ns_bucket:get_buckets(Config),
+get_roles_by_permission(Permission, Config) ->
     pipes:run(
-      menelaus_roles:produce_roles_by_permission(Permission, Config, Buckets),
+      menelaus_roles:produce_roles_by_permission(Permission, Config),
       pipes:collect()).
 
 handle_get_roles(Req) ->
+    Config = ns_config:get(),
     validator:handle(
       fun (Values) ->
               Permission = proplists:get_value(permission, Values),
               Roles =
-                  get_roles_by_permission(Permission) --
+                  get_roles_by_permission(Permission, Config) --
                   case menelaus_auth:has_permission(?SECURITY_READ, Req) of
                       true ->
                           [];
                       false ->
-                          menelaus_roles:get_security_roles()
+                          menelaus_roles:get_security_roles(Config)
                   end,
               Json =
                   [{role_to_json(Role) ++ Props} || {Role, Props} <- Roles],
@@ -293,7 +292,7 @@ handle_get_users(Path, Domain, Req) ->
 get_roles_for_users_filtering(undefined) ->
     all;
 get_roles_for_users_filtering(Permission) ->
-    get_roles_by_permission(Permission).
+    get_roles_by_permission(Permission, ns_config:latest()).
 
 handle_get_users_with_domain(Req, DomainAtom, Path) ->
     Query = mochiweb_request:parse_qs(Req),
@@ -945,7 +944,7 @@ overlap(List1, List2) ->
     lists:any(fun (V) -> lists:member(V, List1) end, List2).
 
 get_security_roles() ->
-    [R || {R, _} <- menelaus_roles:get_security_roles()].
+    [R || {R, _} <- menelaus_roles:get_security_roles(ns_config:latest())].
 
 handle_put_user_validated(Identity, Name, Password, Roles, Groups, Req) ->
     GroupRoles = lists:concat([menelaus_users:get_group_roles(G)

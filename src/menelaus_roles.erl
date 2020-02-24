@@ -62,8 +62,8 @@
          validate_roles/2,
          params_version/1,
          filter_out_invalid_roles/3,
-         produce_roles_by_permission/3,
-         get_security_roles/0,
+         produce_roles_by_permission/2,
+         get_security_roles/1,
          external_auth_polling_interval/0]).
 
 -export([start_compiled_roles_cache/0]).
@@ -863,9 +863,10 @@ filter_by_permission(Permission, Buckets, Definitions) ->
                 Permission, compile_roles([Role], Definitions, Buckets))
       end).
 
--spec produce_roles_by_permission(rbac_permission(), ns_config(), list()) ->
+-spec produce_roles_by_permission(rbac_permission(), ns_config()) ->
                                          pipes:producer(rbac_role()).
-produce_roles_by_permission(Permission, Config, Buckets) ->
+produce_roles_by_permission(Permission, Config) ->
+    Buckets = ns_bucket:get_buckets(Config),
     AllValues = calculate_possible_param_values(Buckets),
     Definitions = get_definitions(Config),
     pipes:compose(
@@ -922,11 +923,9 @@ validate_roles(Roles, Config) ->
                         end
                 end, {[], []}, Roles).
 
-get_security_roles() ->
-    get_security_roles(ns_config:latest()).
-
+-spec get_security_roles(ns_config()) -> [rbac_role()].
 get_security_roles(Config) ->
-    pipes:run(produce_roles_by_permission({[admin, security], any}, Config, []),
+    pipes:run(produce_roles_by_permission({[admin, security], any}, Config),
               pipes:collect()).
 
 external_auth_polling_interval() ->
