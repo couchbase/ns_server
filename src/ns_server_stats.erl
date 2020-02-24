@@ -36,13 +36,14 @@
          get_ns_server_stats/0, set_counter/2,
          add_histo/2,
          cleanup_stale_epoch_histos/0, log_system_stats/1,
-         stale_histo_epoch_cleaner/0]).
+         stale_histo_epoch_cleaner/0, report_prom_stats/1]).
 
 -type os_pid() :: integer().
 
 -record(state, {
           port      :: port() | undefined,
-          pid_names :: [{os_pid(), binary()}]
+          pid_names :: [{os_pid(), binary()}],
+          prev      :: term()
          }).
 
 start_link() ->
@@ -59,6 +60,22 @@ process_stats(TS, Binary, PrevSample) ->
         {ok, R} -> R;
         {exception, C, E, ST} -> erlang:raise(C, E, ST)
     end.
+
+report_prom_stats(ReportFun) ->
+    Stats = gen_server:call(?MODULE, get_stats),
+    SystemStats = proplists:get_value("@system", Stats, []),
+    lists:foreach(
+        fun ({Key, Val}) ->
+            ReportFun({<<"sys">>, Key, [], Val})
+        end, SystemStats),
+
+    SysProcStats = proplists:get_value("@system-processes", Stats, []),
+    lists:foreach(
+        fun ({KeyBin, Val}) ->
+            [Proc, Name] = binary:split(KeyBin, <<"/">>),
+            ReportFun({<<"sysproc">>, Name, [{<<"proc">>, Proc}], Val})
+        end, SysProcStats),
+    ok.
 
 init([]) ->
     ets:new(ns_server_system_stats, [public, named_table, set]),
@@ -85,6 +102,12 @@ init([]) ->
                    pid_names = grab_pid_names()},
 
     {ok, State}.
+
+handle_call(get_stats, _From, State = #state{prev = Prev}) ->
+    Data = grab_stats(State),
+    {Stats, NewPrev} =
+        process_stats(os:system_time(millisecond), Data, Prev, State),
+    {reply, Stats, State#state{prev = NewPrev}};
 
 handle_call(grab_stats, _From, State) ->
     try

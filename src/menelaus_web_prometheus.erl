@@ -26,9 +26,22 @@
 handle_get_metrics(Req) ->
     RespTuple = {200, [], chunked},
     Resp = mochiweb_request:respond(RespTuple, Req),
+    ns_server_stats:report_prom_stats(fun (M) -> report_metric(M, Resp) end),
     mochiweb_response:write_chunk(<<>>, Resp).
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
+report_metric({Prefix, Metric, Labels, Value}, Resp) ->
+    Line =
+        [Prefix, <<":">>, name_to_iolist(Metric), <<"{">>,
+         lists:join(<<",">>,[[K, <<"=\"">>, V, <<"\"">>] || {K, V} <- Labels]),
+         <<"} ">>, format_prometheus_number(Value), <<"\n">>],
+    mochiweb_response:write_chunk(Line, Resp).
+
+name_to_iolist(A) when is_atom(A) -> atom_to_binary(A, latin1);
+name_to_iolist(A) -> A.
+
+format_prometheus_number(N) when is_integer(N) -> integer_to_binary(N);
+format_prometheus_number(N) -> float_to_binary(N).
