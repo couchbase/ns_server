@@ -13,6 +13,7 @@
       'mnPoll',
       'mnPoolDefault',
       'mnSpinner',
+      'mnSearch',
       'mnFilters',
       'mnTasksDetails',
       'mnWarmupProgress',

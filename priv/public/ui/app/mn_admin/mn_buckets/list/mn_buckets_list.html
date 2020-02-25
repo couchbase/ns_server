@@ -1,4 +1,11 @@
 <div
+  ng-if="buckets.length"
+  class="row filter-server"
+  mn-placeholder="filter buckets..."
+  mn-search="bucketsListCtl.filterField"
+  mn-hide-button="true">
+</div>
+<div
    class="cbui-table"
    mn-sortable-table>
   <div class="cbui-table-header" ng-if="buckets.length">
@@ -23,7 +30,7 @@
   </div>
   <div
      ng-if="buckets.length"
-     ng-repeat="bucket in buckets | orderBy:mnSortableTable.sortableTableProperties.orderBy:mnSortableTable.sortableTableProperties.invert track by bucket.name"
+     ng-repeat="bucket in buckets | orderBy:mnSortableTable.sortableTableProperties.orderBy:mnSortableTable.sortableTableProperties.invert | filter:{name: bucketsListCtl.filterField} track by bucket.name"
      ui-view="item">
   </div>
 </div>
