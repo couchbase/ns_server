@@ -860,8 +860,8 @@ filter_by_permission(undefined, _Buckets, _Definitions) ->
 filter_by_permission(Permission, Buckets, Definitions) ->
     pipes:filter(
       fun ({Role, _}) ->
-              menelaus_roles:is_allowed(
-                Permission, compile_roles([Role], Definitions, Buckets))
+              is_allowed(Permission,
+                         compile_roles([Role], Definitions, Buckets))
       end).
 
 -spec produce_roles_by_permission(rbac_permission(), ns_config()) ->
