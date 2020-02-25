@@ -9,7 +9,7 @@ import { MnSharedModule } from './mn.shared.module.js';
 export { MnAuthModule };
 
 class MnAuthModule {
-  static annotations = [
+  static get annotations() { return [
     new NgModule({
       declarations: [
         MnAuthComponent
@@ -28,5 +28,5 @@ class MnAuthModule {
         Location
       ]
     })
-  ]
+  ]}
 }

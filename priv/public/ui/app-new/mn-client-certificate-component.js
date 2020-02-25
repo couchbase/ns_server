@@ -45,16 +45,15 @@ mn.components.MnClientCertificate =
         .clearErrors()
         .successMessage("Settings saved successfully!");
 
-      var formValues = Rx.merge(this.form.group.valueChanges, this.form.sourcePipe);
 
       this.isErrorString =
         this.form.postRequest.error.pipe(Rx.operators.map(R.is(String)));
 
       this.isStateDisabled =
-        formValues.pipe(Rx.operators.map(R.pipe(R.path(["state"]), R.equals("disable"))));
+        this.form.changes.pipe(Rx.operators.map(R.pipe(R.path(["state"]), R.equals("disable"))));
 
       this.isLastPrefix =
-        formValues.pipe(Rx.operators.map(R.pipe(R.path(["prefixes", "length"]), R.equals(1))));
+        this.form.changes.pipe(Rx.operators.map(R.pipe(R.path(["prefixes", "length"]), R.equals(1))));
 
       this.securityWrite
         .pipe(Rx.operators.takeUntil(this.mnOnDestroy))

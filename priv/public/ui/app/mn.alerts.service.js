@@ -5,11 +5,9 @@ import { tap, map } from '../web_modules/rxjs/operators.js';
 export { MnAlertsService };
 
 class MnAlertsService {
-  static annotations = [
+  static get annotations() { return [
     new Injectable()
-  ]
-
-  static parameters = []
+  ]}
 
   constructor() {
     this._alerts = [];

@@ -7,15 +7,15 @@ import { map, tap, first, merge, takeUntil, switchMap, throttleTime } from "../w
 export { MnFormService };
 
 class MnFormService {
-  static annotations = [
+  static get annotations() { return [
     new Injectable()
-  ]
+  ]}
 
-  static parameters = [
+  static get parameters() { return [
     FormBuilder,
     MnAlertsService
     // ngb.NgbModal
-  ]
+  ]}
 
   constructor(formBuilder, mnAlertsService, modalService) {
     this.formBuilder = formBuilder;
@@ -34,6 +34,7 @@ class MnForm {
     this.component = component;
     this.mnAlertsService = mnAlertsService;
     this.defaultPackPipe = map(this.getFormValue.bind(this));
+    this.requestsChain = [];
   }
 
   getFormValue() {
@@ -47,27 +48,26 @@ class MnForm {
   }
 
   setSource(source) {
-    this.sourcePipe = source.pipe(this.unpackPipe || tap(), first());
+    var sourcePipe = source.pipe(this.unpackPipe || tap(), first());
 
-    this.changes = merge(this.group.valueChanges, this.sourcePipe);
+    sourcePipe.subscribe((v) => this.group.patchValue(v));
 
-    this.sourcePipe
-      .pipe(takeUntil(this.component.mnOnDestroy))
-      .subscribe((v) => {
-        this.group.patchValue(v, {emitEvent: false});
-      });
     return this;
   }
 
+  getLastRequest() {
+    return this.requestsChain[this.requestsChain.length - 1];
+  }
+
   success(fn) {
-    this.postRequest.success
+    (this.requestsChain.length ? this.getLastRequest().success : this.submitPipe)
       .pipe(takeUntil(this.component.mnOnDestroy))
       .subscribe(fn);
     return this;
   }
 
   error(fn) {
-    this.postRequest.error
+    this.getLastRequest().error
       .pipe(this.unpackErrorPipe || tap(),
             takeUntil(this.component.mnOnDestroy))
       .subscribe(fn);
@@ -91,31 +91,54 @@ class MnForm {
   }
 
   setPostRequest(postRequest) {
-    this.postRequest = postRequest;
-    this.submit = new Subject();
+    let lastRequest = this.getLastRequest();
+    this.requestsChain.push(postRequest);
 
-    this.submit
-      .pipe(this.packPipe || (this.group ? this.defaultPackPipe : tap()),
-            takeUntil(this.component.mnOnDestroy))
-      .subscribe(function (v) {
-        this.postRequest.post(v);
-      }.bind(this));
+    if (!lastRequest) {
+      this.createSubmitPipe();
+      this.submitPipe.subscribe((v) => this.requestsChain[0].post(v));
+    } else {
+      lastRequest.success
+        .pipe(this.getPackPipe(),
+              takeUntil(this.component.mnOnDestroy))
+        .subscribe((function (postRequestIndex) {
+          return (v) => this.requestsChain[postRequestIndex - 1].post(v);
+        }.bind(this))(this.requestsChain.length));
+    }
     return this;
   }
 
+  // setNextPostRequest() {
+  //   this.postRequest.success
+  // }
+
+  hasNoPostRequest() {
+    this.createSubmitPipe();
+    return this;
+  }
+
+  getPackPipe() {
+    return this.packPipe || (this.group ? this.defaultPackPipe : tap())
+  }
+
+  createSubmitPipe() {
+    this.submit = new Subject();
+    this.submitPipe =
+      this.submit.pipe(this.getPackPipe(),
+                       takeUntil(this.component.mnOnDestroy))
+  }
+
   hasNoHandler() {
-    this.postRequest.success
-      .pipe(Rx.operators.takeUntil(this.component.mnOnDestroy))
+    this.getLastRequest().success
+      .pipe(takeUntil(this.component.mnOnDestroy))
       .subscribe();
     return this;
   }
 
   clearErrors() {
     this.submit
-      .pipe(Rx.operators.takeUntil(this.component.mnOnDestroy))
-      .subscribe(function () {
-        this.postRequest.clearError();
-      }.bind(this));
+      .pipe(takeUntil(this.component.mnOnDestroy))
+      .subscribe(() => this.requestsChain.forEach((req) => req.clearError()));
     return this;
   }
 
@@ -135,7 +158,7 @@ class MnForm {
   }
 
   confirmation504(dialog) {
-    this.postRequest.error
+    this.getLastRequest().error
       .pipe(takeUntil(this.component.mnOnDestroy))
       .subscribe((resp) => {
         if (resp && resp.status === 504) {
@@ -156,14 +179,12 @@ class MnForm {
       .subscribe(function () {
         validationPostRequest.clearError();
       });
-
-    (permissionStream || new BehaviorSubject(true)).pipe(
-      switchMap((v) => {
-        return v ? this.group.valueChanges : Rx.NEVER;
-      }),
+    //skip initialization of the form
+    ;(permissionStream || new BehaviorSubject(true)).pipe(
+      switchMap((v) => v ? this.group.valueChanges.pipe(skip(1)) : Rx.NEVER),
       throttleTime(500, undefined, {leading: true, trailing: true}),
       // Rx.operators.debounceTime(0),
-      this.packPipe || this.defaultPackPipe,
+      this.getPackPipe(),
       takeUntil(this.component.mnOnDestroy))
       .subscribe((v) => {
         validationPostRequest.post(v);

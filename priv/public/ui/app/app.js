@@ -34,7 +34,7 @@ angular.module('app', [
   mnHttp,
   mnFilters,
   mnWizard,
-  mnExceptionReporter,
+  // mnExceptionReporter,
   ngAnimate,
   ngSanitize,
   uiRouter,
@@ -66,20 +66,9 @@ angular.module('ui.select').run(function($animate) {
 
 function appRun($state, $urlRouter, $exceptionHandler, mnPools, $window, $rootScope, $location, $http, mnPrettyVersionFilter) {
 
-
-
-
-  $rootScope.$on("$locationChangeStart", function (event, newUrl) {
-    //angular do not replace url when it tries
-    //to insert hashprefix in accordance with config (e.g. when user navigates
-    //from url that starts with #!/ to #/). Such behaviour breaks back button.
-    if ($location.url().indexOf("#") === 0) {
-      $location.replace();
-    }
-  });
-
   angular.element($window).on("storage", function (storage) {
     if (storage.key === "mnLogIn") {
+      mnPools.clearCache();
       $urlRouter.sync();
     }
   });
@@ -101,19 +90,6 @@ function appRun($state, $urlRouter, $exceptionHandler, mnPools, $window, $rootSc
     var pools = resp.data;
     var version = mnPrettyVersionFilter(pools.implementationVersion);
     $rootScope.mnTitle = "Couchbase Server";
-  });
-
-  mnPools.get().then(function (pools) {
-    if (!pools.isInitialized) {
-      return $state.go('app.wizard.welcome');
-    }
-  }, function (resp) {
-    switch (resp.status) {
-    case 401: return $state.go('app.auth', null, {location: false});
-    }
-  }).then(function () {
-    $urlRouter.listen();
-    $urlRouter.sync();
   });
 
   $state.defaultErrorHandler(function (error) {

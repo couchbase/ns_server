@@ -2,7 +2,7 @@ import _ from "/ui/web_modules/lodash.js";
 
 export default mnClusterConfigurationController;
 
-function mnClusterConfigurationController($scope, $rootScope, $q, mnClusterConfigurationService, mnSettingsClusterService, mnAuthService, pools, mnHelper, mnServersService, mnAlertsService, mnPromiseHelper, mnWizardService, mnRootCertificateService) {
+function mnClusterConfigurationController($scope, $rootScope, $q, mnClusterConfigurationService, mnSettingsClusterService, mnAuthService, mnHelper, mnServersService, mnAlertsService, mnPromiseHelper, mnWizardService, mnRootCertificateService) {
   var vm = this;
 
   vm.joinClusterConfig = mnClusterConfigurationService.getJoinClusterConfig();

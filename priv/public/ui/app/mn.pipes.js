@@ -20,9 +20,9 @@ export {
 }
 
 class MnParseVersion {
-  static annotations = [
+  static get annotations() { return [
     new Pipe({name: "mnParseVersion"})
-  ]
+  ]}
 
   transform(str) {
     if (!str) {
@@ -50,13 +50,13 @@ class MnParseVersion {
 
 
 class MnMBtoBytes {
-  static annotations = [
+  static get annotations() { return [
     new Pipe({name: "mnMBtoBytes"})
-  ]
+  ]}
 
-  static parameters = [
+  static get parameters() { return [
     MnHelperService
-  ]
+  ]}
 
   constructor(mnHelperService) {
     this.IEC = mnHelperService.IEC;
@@ -69,13 +69,13 @@ class MnMBtoBytes {
 
 
 class MnBytesToMB {
-  static annotations = [
+  static get annotations() { return [
     new Pipe({name: "mnBytesToMB"})
-  ]
+  ]}
 
-  static parameters = [
+  static get parameters() { return [
     MnHelperService
-  ]
+  ]}
 
   constructor(mnHelperService) {
     this.IEC = mnHelperService.IEC;
@@ -88,9 +88,9 @@ class MnBytesToMB {
 
 
 class MnObjectKeys {
-  static annotations = [
+  static get annotations() { return [
     new Pipe({name: "mnObjectKeys"})
-  ]
+  ]}
 
   transform(object) {
     if (object) {
@@ -103,13 +103,13 @@ class MnObjectKeys {
 
 
 class MnPrettyVersion {
-  static annotations = [
+  static get annotations() { return [
     new Pipe({name: "mnPrettyVersion"})
-  ]
+  ]}
 
-  static parameters = [
+  static get parameters() { return [
     MnParseVersion
-  ]
+  ]}
 
   constructor(mnParseVersion) {
     this.mnParseVersion = mnParseVersion;
@@ -132,9 +132,9 @@ class MnPrettyVersion {
 
 
 class MnFormatProgressMessage {
-  static annotations = [
+  static get annotations() { return [
     new Pipe({name: "mnFormatProgressMessage"})
-  ]
+  ]}
 
   addNodeCount(perNode) {
     var serversCount = Object.keys(task.perNode || {}).length;
@@ -167,9 +167,9 @@ class MnFormatProgressMessage {
 
 
 class MnFormatStorageModeError {
-  static annotations = [
+  static get annotations() { return [
     new Pipe({name: "mnFormatStorageModeError"})
-  ]
+  ]}
 
   transform(error) {
     if (!error) {
@@ -193,9 +193,9 @@ class MnFormatStorageModeError {
 
 
 class MnPrepareQuantity {
-  static annotations = [
+  static get annotations() { return [
     new Pipe({name: "mnPrepareQuantity"})
-  ]
+  ]}
 
   transform(value, K) {
     K = K || 1024;
@@ -223,9 +223,9 @@ class MnPrepareQuantity {
 
 
 class MnFormatUptime {
-  static annotations = [
+  static get annotations() { return [
     new Pipe({name: "mnFormatUptime"})
-  ]
+  ]}
 
   transform(seconds, precision) {
     precision = precision || 8;
@@ -253,14 +253,14 @@ class MnFormatUptime {
 
 
 class MnFormatQuantity {
-  static annotations = [
+  static get annotations() { return [
     new Pipe({name: "mnFormatQuantity"})
-  ]
+  ]}
 
-  static parameters = [
+  static get parameters() { return [
     MnPrepareQuantity,
     DecimalPipe
-  ]
+  ]}
 
   constructor(mnPrepareQuantity, decimalPipe) {
     this.mnPrepareQuantity = mnPrepareQuantity;
@@ -286,9 +286,9 @@ class MnFormatQuantity {
 
 
 class MnLeftEllipsis {
-  static annotations = [
+  static get annotations() { return [
     new Pipe({name: "mnLeftEllipsis"})
-  ]
+  ]}
 
   transform(text, length) {
     if (!text) {
@@ -309,9 +309,9 @@ class MnLeftEllipsis {
 
 
 class MnFormatWarmupMessage {
-  static annotations = [
+  static get annotations() { return [
     new Pipe({name: "mnFormatWarmupMessage"})
-  ]
+  ]}
 
   transform(task) {
     var message = task.stats.ep_warmup_state;
@@ -329,9 +329,9 @@ class MnFormatWarmupMessage {
 
 
 class MnBucketsType {
-  static annotations = [
+  static get annotations() { return [
     new Pipe({name: "mnBucketsType"})
-  ]
+  ]}
 
   transform(type) {
     switch (type) {

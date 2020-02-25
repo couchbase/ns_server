@@ -5,7 +5,8 @@ import { switchMap,
          shareReplay,
          pluck,
          distinctUntilChanged,
-         map
+         map,
+         tap
        } from '../web_modules/rxjs/operators.js';
 import { MnParseVersion } from './mn.pipes.js'
 
@@ -14,21 +15,22 @@ export { MnPoolsService };
 let launchID =  (new Date()).valueOf() + '-' + ((Math.random() * 65536) >> 0);
 
 class MnPoolsService {
-  static annotations = [
+  static get annotations() { return [
     new Injectable()
-  ]
+  ]}
 
-  static parameters = [
+  static get parameters() { return [
     HttpClient,
     MnParseVersion
-  ]
+  ]}
 
   constructor(http, mnParseVersionPipe) {
     this.http = http;
     this.stream = {};
 
     this.stream.getSuccess =
-      (new BehaviorSubject()).pipe(switchMap(this.get), shareReplay(1));
+      (new BehaviorSubject()).pipe(switchMap(this.get.bind(this)),
+                                   shareReplay({refCount: true, bufferSize: 1}));
 
     this.stream.isEnterprise =
       this.stream.getSuccess.pipe(pluck("isEnterprise"), distinctUntilChanged());
@@ -48,17 +50,17 @@ class MnPoolsService {
       this.stream.isEnterprise
       .pipe(map(function (isEnterprise) {
         return isEnterprise ?
-          ["kv", "index", "fts", "n1ql", "eventing", "cbas"] :
+          ["kv", "n1ql", "index", "fts", "cbas", "eventing"] :
           ["kv", "index", "fts", "n1ql"];
-      }), shareReplay(1));
+      }), shareReplay({refCount: true, bufferSize: 1}));
 
     this.stream.quotaServices =
       this.stream.isEnterprise
       .pipe(map(function (isEnterprise) {
         return isEnterprise ?
-          ["kv", "index", "fts", "eventing", "cbas"] :
+          ["kv", "index", "fts", "cbas", "eventing"] :
           ["kv", "index", "fts"];
-      }), shareReplay(1));
+      }), shareReplay({refCount: true, bufferSize: 1}));
   }
 
   get() {

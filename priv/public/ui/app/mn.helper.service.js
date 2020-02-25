@@ -6,15 +6,15 @@ import { not } from '../web_modules/ramda.js';
 export { MnHelperService };
 
 class MnHelperService {
-  static annotations = [
+  static get annotations() { return [
     new Injectable()
-  ]
+  ]}
 
-  daysOfWeek = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+  get daysOfWeek() {
+    return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']}
 
-  IEC = {Ki: 1024, Mi: 1024 * 1024, Gi: 1024 * 1024 * 1024}
-
-  constructor() {
+  get IEC() {
+    return {Ki: 1024, Mi: 1024 * 1024, Gi: 1024 * 1024 * 1024}
   }
 
   invert(v) { //TODO: sould be replaced with Ramda.not
@@ -71,7 +71,8 @@ class MnHelperService {
 
   createToggle(version) {
     this.click = new Subject();
-    this.state = this.click.pipe(scan(not, false), shareReplay(1));
+    this.state = this.click.pipe(scan(not, false),
+                                 shareReplay({refCount: true, bufferSize: 1}));
   }
 
   doSort([array, [sortBy, isAsc]]) {
@@ -90,8 +91,9 @@ class MnHelperService {
       var isAsc = sortByStream.pipe(scan(not, false));
 
       return combineLatest(arrayStream,
-                           zip(sortByStream, isAsc)).pipe(map(this.doSort),
-                                                          shareReplay(1));
+                           zip(sortByStream, isAsc))
+        .pipe(map(this.doSort),
+              shareReplay({refCount: true, bufferSize: 1}));
     }
   }
 }

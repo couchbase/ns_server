@@ -1,28 +1,30 @@
-
-import { Component } from '../web_modules/@angular/core.js';
-import { FormGroup, FormControl, Validators } from '../web_modules/@angular/forms.js';
-import { BehaviorSubject } from '../web_modules/rxjs.js';
+import { Component, ChangeDetectionStrategy } from '/ui/web_modules/@angular/core.js';
+import { FormGroup, FormControl, Validators } from '/ui/web_modules/@angular/forms.js';
+import { BehaviorSubject } from '/ui/web_modules/rxjs.js';
 import { MnAuthService } from './mn.auth.service.js';
 import { MnFormService } from './mn.form.service.js';
-import { UIRouter } from '../web_modules/@uirouter/angular.js';
+import { UIRouter } from '/ui/web_modules/@uirouter/angular.js';
 import { MnLifeCycleHooksToStream } from './mn.core.js';
+import { MnPools } from "./ajs.upgraded.providers.js";
 
 export { MnAuthComponent };
 
 class MnAuthComponent extends MnLifeCycleHooksToStream {
-  static annotations = [
+  static get annotations() { return [
     new Component({
       templateUrl: "app/mn.auth.html",
+      changeDetection: ChangeDetectionStrategy.OnPush
     })
-  ]
+  ]}
 
-  static parameters = [
+  static get parameters() { return [
     MnFormService,
     MnAuthService,
-    UIRouter
-  ]
+    UIRouter,
+    MnPools
+  ]}
 
-  constructor(mnFormService, mnAuthService, uiRouter) {
+  constructor(mnFormService, mnAuthService, uiRouter, mnPools) {
     super();
     this.focusFieldSubject = new BehaviorSubject(true);
 
@@ -33,6 +35,9 @@ class MnAuthComponent extends MnLifeCycleHooksToStream {
         user: ['', Validators.required],
         password: ['', Validators.required]})
       .setPostRequest(this.postUILogin)
-      .success(uiRouter.urlRouter.sync.bind(uiRouter.urlRouter));
+      .success(() => {
+        mnPools.clearCache();
+        uiRouter.urlRouter.sync();
+      });
   }
 }

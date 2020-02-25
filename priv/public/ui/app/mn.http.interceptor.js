@@ -8,13 +8,13 @@ import { tap, catchError } from '../web_modules/rxjs/operators.js';
 export { MnHttpInterceptor };
 
 class MnHttpInterceptor {
-  static annotations = [
+  static get annotations() { return [
     new Injectable()
-  ]
+  ]}
 
-  static parameters = [
+  static get parameters() { return [
     MnAppService
-  ]
+  ]}
 
   constructor(mnAppService) {
     this.httpResponse = mnAppService.stream.httpResponse;

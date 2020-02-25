@@ -1,0 +1,94 @@
+<div
+  class="panel dialog-med dialog dialog-wizard height-85vh">
+  <!-- mn-spinner="clusterConfigurationCtl.viewLoading || !clusterConfigurationCtl.config.selfConfig" -->
+  <div class="panel-header flex-left margin-bottom-quarter">
+    <img
+      src="../cb_logo_bug_white_2.svg"
+      width="32"
+      height="32"
+      class="margin-right-half">
+    <h2>Couchbase &gt; New Cluster &gt; Configure </h2>
+  </div>
+  <form
+    class="forms"
+    style="height:inherit;"
+    [formGroup]="newClusterConfigForm"
+    (ngSubmit)="form.submit.next()"
+    novalidate>
+    <div style="height:calc(100% - 112px);overflow:auto;" class="show-scrollbar">
+      <div class="panel-content">
+        <mn-node-storage-config
+          [isHostCfgEnabled]="true"
+          [group]="newClusterConfigForm.get('clusterStorage')">
+        </mn-node-storage-config>
+        <div class="formrow" *ngIf="isEnterprise | async">
+          <div class="row">
+            <label for="setup_java_runtime_path_input">Java Runtime Path</label>
+            <small class="text-smaller">optional</small>
+          </div>
+          <input
+            type="text"
+            formControlName="javaPath"
+            autocorrect="off"
+            spellcheck="false"
+            autocapitalize="off"
+            id="setup_java_runtime_path_input">
+        </div>
+        <div class="formrow">
+          <div class="row formrow">
+            <label>Service Memory Quotas</label>
+            <small class="text-smaller">Per service / per node</small>
+          </div>
+          <div>
+            <div
+              class="error error-form"
+              [hidden]="!(servicesHttp.error | async)">
+              <div *ngFor="let error of (servicesHttp.error | async)">{{error}}</div>
+            </div>
+            <mn-services-config
+              [isFieldEnabled]="true"
+              [isFlagEnabled]="true"
+              [initDataStream]="memoryQuotasFirst"
+              [group]="newClusterConfigForm.get('services')">
+            </mn-services-config>
+            <div class="content-box text-center margin-top-1">
+              <strong>RAM Available</strong> {{totalRAMMegs | async}}MB &nbsp;
+              <strong>Max Allowed Quota</strong> {{maxRAMMegs | async}}MB
+            </div>
+            <label>Index Storage Setting</label>
+            <mn-storage-mode
+              [indexFlagChanges]="newClusterConfigForm.get('services.flag.index')?.valueChanges"
+              [control]="newClusterConfigForm.get('storageMode')">
+            </mn-storage-mode>
+          </div>
+        </div>
+
+        <div>
+          <input
+            type="checkbox"
+            id="init-notifications-updates-enabled"
+            formControlName="enableStats"
+            checked="checked">
+          <label for="init-notifications-updates-enabled">
+            Enable software update notifications in the web console
+          </label>
+          <!-- <span class="fa-stack icon-info" -->
+          <!--       uib-tooltip="Enabling software update notifications allows notification in the Couchbase web console when a new version of Couchbase Server is available. Configuration information transferred in the update check is anonymous and does not include any stored key-value data." -->
+          <!--       tooltip-placement="top"> -->
+          <!--   <span class="icon fa-circle-thin fa-stack-2x"></span> -->
+          <!--   <span class="icon fa-info fa-stack-1x"></span> -->
+          <!-- </span> -->
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-footer scroll-shadow margin-top-quarter">
+      <a
+        uiSref="app.wizard.termsAndConditions"
+        [uiOptions]="{location: false}">&lt; Back</a>
+      <button
+        [disabled]="isButtonDisabled | async"
+        type="submit">Save & Finish</button>
+    </div>
+  </form>
+</div>

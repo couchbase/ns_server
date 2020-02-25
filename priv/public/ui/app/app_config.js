@@ -1,12 +1,20 @@
 export default appConfig;
 
-function appConfig($httpProvider, $stateProvider, $urlRouterProvider, $transitionsProvider, $uibTooltipProvider, $animateProvider, $qProvider, $sceDelegateProvider) {
+function appConfig($httpProvider, $stateProvider, $urlRouterProvider, $transitionsProvider, $uibTooltipProvider, $animateProvider, $qProvider, $sceDelegateProvider, $locationProvider) {
   $httpProvider.defaults.headers.common['invalid-auth-response'] = 'on';
   $httpProvider.defaults.headers.common['Cache-Control'] = 'no-cache';
   $httpProvider.defaults.headers.common['Pragma'] = 'no-cache';
   $httpProvider.defaults.headers.common['ns-server-ui'] = 'yes';
 
   $animateProvider.classNameFilter(/enable-ng-animation/);
+
+  $urlRouterProvider.deferIntercept();
+  $locationProvider.hashPrefix('');
+  $urlRouterProvider.otherwise(function ($injector) {
+    $injector.invoke(['$state', function($state) {
+      $state.go('app.admin.overview.statistics');
+    }]);
+  });
 
   $sceDelegateProvider.resourceUrlWhitelist([
     'self', // Allow same origin resource loads
@@ -19,26 +27,6 @@ function appConfig($httpProvider, $stateProvider, $urlRouterProvider, $transitio
   $uibTooltipProvider.options({
     placement: "auto right",
     trigger: "outsideClick"
-  });
-
-  $urlRouterProvider.rule(function ($injector, $location) {
-    //If hashprefix entered incorrectly, angular redirects to
-    //url with correct hashprefix and inserts everything
-    //after it using encodeURIcompoment (e.g #/asdasd -> #!#%2Fasdasd)
-    //With this rule, we insert orinal hash right after correct
-    //hashprefix (e.g. #!/asdasd)
-    if ($location.url().indexOf("#") === 0) {
-      return $location.hash();
-    }
-  });
-
-  $urlRouterProvider.otherwise(function ($injector, $location) {
-    $injector.get("mnPools").get().then(function (pools) {
-      if (pools.isInitialized) {
-        return $injector.get("$state").go("app.admin.overview.statistics");
-      }
-    });
-    return true;
   });
 
   $stateProvider.state('app', {
@@ -63,6 +51,27 @@ function appConfig($httpProvider, $stateProvider, $urlRouterProvider, $transitio
     },
     template: '<div ui-view="" class="root-container"></div>' +
       '<div ng-show="mnGlobalSpinnerFlag" class="global-spinner"></div>'
+  });
+
+  $transitionsProvider.onBefore({
+    to: (state) => state.data && state.data.requiresAuth
+  }, (transition) => {
+    let mnPools = transition.injector().get('mnPools');
+    let $state = transition.router.stateService;
+    return mnPools.get().then(pools => {
+      if (!pools.isInitialized) {
+        $state.go('app.wizard.welcome', null, {location: false});
+        return false;
+      } else {
+        return true;
+      }
+    }, function (resp) {
+      switch (resp.status) {
+      case 401:
+        $state.go('app.auth', null, {location: false});
+        return false;
+      }
+    });
   });
 
   $transitionsProvider.onFinish({
@@ -124,32 +133,7 @@ function appConfig($httpProvider, $stateProvider, $urlRouterProvider, $transitio
       return pools.isInitialized;
     });
   });
-  $transitionsProvider.onBefore({
-    from: "app.wizard.**",
-    to: "app.auth"
-  }, function (trans) {
-    var mnPools = trans.injector().get('mnPools');
-    return mnPools.get().then(function (pools) {
-      return pools.isInitialized;
-    }, function (resp) {
-      switch (resp.status) {
-      case 401: return true;
-      }
-    });
-  });
-  $transitionsProvider.onBefore({
-    from: "app.admin.**",
-    to: "app.auth"
-  }, function (trans) {
-    var mnPools = trans.injector().get('mnPools');
-    return mnPools.get().then(function () {
-      return false;
-    }, function (resp) {
-      switch (resp.status) {
-      case 401: return true;
-      }
-    });
-  });
+
   $transitionsProvider.onStart({
     to: function (state) {
       return state.data && state.data.permissions;
@@ -194,6 +178,4 @@ function appConfig($httpProvider, $stateProvider, $urlRouterProvider, $transitio
       }
     });
   });
-
-  $urlRouterProvider.deferIntercept();
 }

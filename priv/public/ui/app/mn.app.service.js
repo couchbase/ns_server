@@ -6,9 +6,9 @@ import {HttpErrorResponse, HttpClient} from '../web_modules/@angular/common/http
 export {MnAppService};
 
 class MnAppService {
-  static annotations = [
+  static get annotations() { return [
     new Injectable()
-  ]
+  ]}
 
   constructor() {
     this.stream = {};

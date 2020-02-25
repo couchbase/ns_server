@@ -8,7 +8,7 @@ import { MnLifeCycleHooksToStream } from './mn.core.js';
 export { MnFocusDirective };
 
 class MnFocusDirective extends MnLifeCycleHooksToStream {
-  static annotations = [
+  static get annotations() { return [
     new Directive({
       selector: "[mnFocus]",
       inputs: [
@@ -16,9 +16,9 @@ class MnFocusDirective extends MnLifeCycleHooksToStream {
       ],
       changeDetection: ChangeDetectionStrategy.OnPush
     })
-  ];
+  ]}
 
-  static parameters = [ElementRef]
+  static get parameters() { return [ElementRef]}
 
   constructor(el) {
     super();

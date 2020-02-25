@@ -17,7 +17,6 @@ function mnAuthConfig($stateProvider, $httpProvider) {
   $httpProvider.interceptors.push(['$q', '$injector', interceptorOf401]);
 
   $stateProvider.state('app.auth', {
-    url: "/auth",
     // templateUrl: 'app/mn_auth/mn_auth.html',
     component: MnAuthComponent
     // controller: 'mnAuthController as authCtl'
@@ -65,12 +64,7 @@ function mnAuthController(mnAuthService, $location, $state, $urlRouter) {
     vm.error["_" + resp.status] = true;
   }
   function success() {
-    /* never sync to /auth URL (as user will stay on the login page) */
-    if ($location.path() === "/auth") {
-      $state.go('app.admin.overview.statistics');
-    } else {
-      $urlRouter.sync();
-    }
+    $urlRouter.sync();
   }
   function submit(useCertForAuth) {
     mnAuthService

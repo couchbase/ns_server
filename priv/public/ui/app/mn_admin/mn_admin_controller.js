@@ -6,6 +6,7 @@ export default mnAdminController;
 
 function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnSettingsNotificationsService, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnPoorMansAlertsService, mnLostConnectionService, mnPermissions, mnPools, mnMemoryQuotaService, mnResetPasswordDialogService, whoami, mnBucketsService, $q, mnSessionService, mnServersService, mnSettingsClusterService, mnLogsService) {
   var vm = this;
+
   vm.poolDefault = poolDefault;
   vm.launchpadId = pools.launchID;
   vm.implementationVersion = pools.implementationVersion;

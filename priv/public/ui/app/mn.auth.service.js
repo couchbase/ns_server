@@ -5,13 +5,13 @@ import { MnHttpRequest } from './mn.http.request.js';
 export { MnAuthService }
 
 class MnAuthService {
-  static annotations = [
+  static get annotations() { return [
     new Injectable()
-  ]
+  ]}
 
-  static parameters = [
+  static get parameters() { return [
     HttpClient
-  ]
+  ]}
 
   constructor(http) {
     this.http = http;

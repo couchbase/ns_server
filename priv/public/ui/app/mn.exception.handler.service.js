@@ -9,15 +9,15 @@ import { take, filter, map, withLatestFrom, tap } from '../web_modules/rxjs/oper
 export { MnExceptionHandlerService };
 
 class MnExceptionHandlerService {
-  static annotations = [
+  static get annotations() { return [
     new Injectable()
-  ]
+  ]}
 
-  static parameters = [
+  static get parameters() { return [
     HttpClient,
     MnPoolsService,
     // UIRouter
-  ]
+  ]}
 
   constructor(http, mnPoolsService, uiRouter) {
     this.stream = {};
@@ -61,8 +61,8 @@ class MnExceptionHandlerService {
   filterException(exception) {
     return !(exception instanceof HttpErrorResponse) &&
       //we are not interested in these Rejection exceptions;
-      !(exception.constructor.name === "Rejection" &&
-        (exception.type === 2 || exception.type === 3 || exception.type === 5));
+    !(exception.constructor.name === "Rejection" &&
+      (exception.type === 2 || exception.type === 3 || exception.type === 5));
   }
 
   formatErrorMessage(exception, index) {

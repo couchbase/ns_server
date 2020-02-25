@@ -1,13 +1,14 @@
-import { BrowserModule } from '../web_modules/@angular/platform-browser.js';
-import { HttpClientModule } from '../web_modules/@angular/common/http.js';
-import { UIRouterModule, UIView } from '../web_modules/@uirouter/angular.js';
-import { MnPipesModule } from './mn.pipes.module.js';
-import { MnAppComponent } from './mn.app.component.js';
-import { MnAuthComponent } from './mn.auth.component.js';
-import { MnAuthModule } from './mn.auth.module.js';
-import { UpgradeModule } from '/ui/web_modules/@angular/upgrade/static.js';
-import { UIRouterUpgradeModule } from '/ui/web_modules/@uirouter/angular-hybrid.js';
-
+import {BrowserModule} from '../web_modules/@angular/platform-browser.js';
+import {HttpClientModule} from '../web_modules/@angular/common/http.js';
+import {UIRouterModule, UIView} from '../web_modules/@uirouter/angular.js';
+import {MnPipesModule} from './mn.pipes.module.js';
+import {MnAppComponent} from './mn.app.component.js';
+import {MnAuthComponent} from './mn.auth.component.js';
+import {MnAuthModule} from './mn.auth.module.js';
+import {UpgradeModule} from '/ui/web_modules/@angular/upgrade/static.js';
+import {MnSharedModule} from './mn.shared.module.js';
+import {MnWizardModule} from './mn.wizard.module.js';
+import {UIRouterUpgradeModule} from '/ui/web_modules/@uirouter/angular-hybrid.js';
 
 let appState = {
   name: 'app',
@@ -35,11 +36,14 @@ let authState = {
 
 export let mnAppImports = [
   UpgradeModule,
+  UIRouterModule,
   MnPipesModule,
   BrowserModule,
   HttpClientModule,
   MnAuthModule,
-  UIRouterUpgradeModule,
+  MnWizardModule,
+  MnSharedModule,
+  UIRouterUpgradeModule
   // UIRouterModule.forRoot({
   //   states: [appState, authState],
   //   useHash: true,

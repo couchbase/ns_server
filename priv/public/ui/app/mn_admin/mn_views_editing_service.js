@@ -1,8 +1,6 @@
 import angular from "/ui/web_modules/angular.js";
 import _ from "/ui/web_modules/lodash.js";
 import js_beautify from "/ui/web_modules/beautify.js";
-console.log(js_beautify)
-
 import mnFilters from "/ui/app/components/mn_filters.js";
 import mnPermissions from "/ui/app/components/mn_permissions.js";
 import mnViewsListService from "./mn_views_list_service.js";

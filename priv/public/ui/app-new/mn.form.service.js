@@ -47,11 +47,11 @@ class MnForm {
   }
 
   setSource(source) {
-    this.sourcePipe = source.pipe(this.unpackPipe || tap(), first());
+    var sourcePipe = source.pipe(this.unpackPipe || tap(), first());
 
-    this.changes = merge(this.group.valueChanges, this.sourcePipe);
+    this.changes = merge(this.group.valueChanges, sourcePipe);
 
-    this.sourcePipe
+    sourcePipe
       .pipe(takeUntil(this.component.mnOnDestroy))
       .subscribe((v) => {
         this.group.patchValue(v, {emitEvent: false});

@@ -5,7 +5,7 @@ import { DecimalPipe } from '../web_modules/@angular/common.js';
 export { MnPipesModule };
 
 class MnPipesModule {
-  static annotations = [
+  static get annotations() { return [
     new NgModule({
       declarations: [
         pipes.MnParseVersion,
@@ -47,5 +47,5 @@ class MnPipesModule {
         DecimalPipe
       ]
     })
-  ]
+  ]}
 }

@@ -16,13 +16,24 @@ const MnPendingQueryKeeperProvider = {
   deps: ['$injector']
 };
 
+class MnPools {}
+const MnPoolsProvider = {
+  provide: MnPools,
+  useFactory: function MnPoolsFactory(i) {
+    return i.get('mnPools');
+  },
+  deps: ['$injector']
+};
+
 let ajsUpgradedProviders = [
   $stateProvider,
+  MnPoolsProvider,
   MnPendingQueryKeeper
 ];
 
 export {
   ajsUpgradedProviders,
   $state,
-  MnPendingQueryKeeper
+  MnPendingQueryKeeper,
+  MnPools
 };

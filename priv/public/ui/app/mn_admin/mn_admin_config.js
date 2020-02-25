@@ -105,6 +105,9 @@ function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider) {
     .state('app.admin', {
       url: "?scenarioBucket&scenarioZoom&scenario",
       abstract: true,
+      data: {
+        requiresAuth: true
+      },
       params: {
         scenarioBucket: {
           value: null
@@ -293,7 +296,7 @@ function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider) {
       params: {
         statsHostname: "all"
       },
-      redirectTo: function (trans, permissions) {
+      redirectTo: function (trans) {
         var mnPermissionsService = trans.injector().get("mnPermissions");
         var params = _.clone(trans.params(), true);
         return mnPermissionsService.check().then(function (permissions) {
