@@ -349,7 +349,9 @@
           vm.scenario.selected =
             $state.params.scenario ?
             mnStoreService.store("scenarios").get($state.params.scenario) :
-            mnStoreService.store("scenarios").last();
+            mnStoreService.store("scenarios").share().find(function (item) {
+              return item.name === "Cluster Overview";
+            }) || mnStoreService.store("scenarios").last();
           vm.scenarios = mnStoreService.store("scenarios").share();
         });
       }
