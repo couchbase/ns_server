@@ -812,18 +812,31 @@ filter_out_invalid_roles(Roles, Definitions, Buckets) ->
                           {Name, Params}
                   end, Roles, Definitions, Buckets).
 
-calculate_possible_param_values(_Buckets, []) ->
+get_applicable_buckets(Buckets, {[{bucket, Bucket} | _], _})
+  when Bucket =/= any ->
+    case ns_bucket:get_bucket_from_configs(Bucket, Buckets) of
+        {ok, Props} ->
+            [{Bucket, Props}];
+        not_present ->
+            []
+    end;
+get_applicable_buckets(Buckets, _) ->
+    Buckets.
+
+calculate_possible_param_values(_Buckets, [], _) ->
     [[]];
-calculate_possible_param_values(Buckets, [bucket_name]) ->
+calculate_possible_param_values(Buckets, [bucket_name], Permission) ->
     [[any] | [[{Name, ns_bucket:bucket_uuid(Props)}] ||
-                 {Name, Props} <- Buckets]].
+                 {Name, Props} <- get_applicable_buckets(Buckets, Permission)]].
 
 all_params_combinations() ->
     [[], [bucket_name]].
 
--spec calculate_possible_param_values(list()) -> rbac_all_param_values().
-calculate_possible_param_values(Buckets) ->
-    [{Combination, calculate_possible_param_values(Buckets, Combination)} ||
+-spec calculate_possible_param_values(list(), undefined | rbac_permission()) ->
+                                             rbac_all_param_values().
+calculate_possible_param_values(Buckets, Permission) ->
+    [{Combination,
+      calculate_possible_param_values(Buckets, Combination, Permission)} ||
         Combination <- all_params_combinations()].
 
 -spec get_possible_param_values([atom()], rbac_all_param_values()) ->
@@ -868,7 +881,7 @@ filter_by_permission(Permission, Buckets, Definitions) ->
                                          pipes:producer(rbac_role()).
 produce_roles_by_permission(Permission, Config) ->
     Buckets = ns_bucket:get_buckets(Config),
-    AllValues = calculate_possible_param_values(Buckets),
+    AllValues = calculate_possible_param_values(Buckets, Permission),
     Definitions = get_definitions(Config),
     pipes:compose(
       [pipes:stream_list(Definitions),
@@ -1157,9 +1170,8 @@ produce_roles_by_permission_test_() ->
       {"bucket settings read",
        Test([admin, cluster_admin, query_external_access, query_system_catalog,
              replication_admin, ro_admin, security_admin] ++
-                enum_roles([bucket_admin, views_admin],
-                           [any, "test", "default"]) ++
-                enum_roles([bucket_full_access, data_backup, data_dcp_reader,
+                enum_roles([bucket_full_access, bucket_admin, views_admin,
+                            data_backup, data_dcp_reader,
                             data_monitoring, data_reader, data_writer,
                             fts_admin, fts_searcher, query_delete,
                             query_insert, query_manage_index, query_select,
