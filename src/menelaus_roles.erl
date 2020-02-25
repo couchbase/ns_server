@@ -49,6 +49,7 @@
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-include("ns_test.hrl").
 -endif.
 
 -define(DEFAULT_EXTERNAL_ROLES_POLLING_INTERVAL, 10*60*1000).
@@ -1102,4 +1103,83 @@ validate_role_test() ->
     ?assertEqual(false, ValidateRole({admin, ["test"]})),
     ?assertEqual(false, ValidateRole(bucket_admin)),
     ?assertEqual(false, ValidateRole({bucket_admin, ["test", "test"]})).
+
+enum_roles(Roles, Buckets) ->
+    lists:flatten(
+      lists:map(
+        fun (BucketName) ->
+                BucketWithId =
+                    case BucketName of
+                        any ->
+                            any;
+                        _ ->
+                            {ok, Props} = ns_bucket:get_bucket_from_configs(
+                                            BucketName, toy_buckets()),
+                            {BucketName, ns_bucket:bucket_uuid(Props)}
+                    end,
+                [{Role, [BucketWithId]} || Role <- Roles]
+        end, Buckets)).
+
+produce_roles_by_permission_test_() ->
+    Config = [[{buckets, [{configs, toy_buckets()}]}]],
+    GetRoles =
+        fun (Permission) ->
+                proplists:get_keys(
+                  pipes:run(produce_roles_by_permission(Permission, Config),
+                            pipes:collect()))
+        end,
+    Test =
+        fun (Roles, Permission) ->
+                fun () ->
+                        ?assertListsEqual(Roles, GetRoles(Permission))
+                end
+        end,
+    {foreach,
+     fun() ->
+             meck:new(cluster_compat_mode, [passthrough]),
+             meck:expect(cluster_compat_mode, is_enterprise,
+                         fun () -> true end),
+             meck:expect(cluster_compat_mode, is_cluster_55,
+                         fun (_) -> true end)
+     end,
+     fun (_) ->
+             meck:unload(cluster_compat_mode)
+     end,
+     [{"security permission",
+       Test([admin, ro_admin, security_admin], {[admin, security], any})},
+      {"pools read",
+       fun () ->
+               Roles = GetRoles({[pools], read}),
+               ?assertListsEqual(
+                  [], [admin, analytics_reader, {data_reader, [any]},
+                       {data_reader, [{"test",<<"test_id">>}]}] -- Roles)
+       end},
+      {"bucket settings read",
+       Test([admin, cluster_admin, query_external_access, query_system_catalog,
+             replication_admin, ro_admin, security_admin] ++
+                enum_roles([bucket_admin, views_admin],
+                           [any, "test", "default"]) ++
+                enum_roles([bucket_full_access, data_backup, data_dcp_reader,
+                            data_monitoring, data_reader, data_writer,
+                            fts_admin, fts_searcher, query_delete,
+                            query_insert, query_manage_index, query_select,
+                            query_update, replication_target],
+                           [any, "test"]),
+            {[{bucket, "test"}, settings], read})},
+      {"xattr write",
+       Test([admin] ++
+                enum_roles([bucket_full_access, data_backup, data_writer],
+                           [any, "test"]),
+            {[{bucket, "test"}, data, xattr], write})},
+      {"any bucket",
+       Test([admin] ++
+                enum_roles([bucket_full_access, data_backup, data_writer],
+                           [any, "test", "default"]),
+            {[{bucket, any}, data, xattr], write})},
+      {"wrong bucket",
+       Test([admin] ++
+                enum_roles([bucket_full_access, data_backup, data_writer],
+                           [any]),
+            {[{bucket, "wrong"}, data, xattr], write})}]}.
+
 -endif.
