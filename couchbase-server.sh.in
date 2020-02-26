@@ -150,7 +150,7 @@ _drop_old_crashdumps () {
 _start() {
     # Warn if user limits are restrictive.
     _check_ulimit -u 10000 "maximum number of processes" "nproc"
-    _check_ulimit -n 70000 "maximum number of open files" "nofile"
+    _check_ulimit -n 200000 "maximum number of open files" "nofile"
 
     _prepare_datadir
     _maybe_start_epmd
