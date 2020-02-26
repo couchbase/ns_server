@@ -30,7 +30,7 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
--export([grab_stats/0, process_stats/3]).
+-export([grab_stats/1, process_stats/3, spawn_sigar/0]).
 
 -export([increment_counter/1, increment_counter/2,
          get_ns_server_stats/0, set_counter/2,
@@ -48,12 +48,6 @@
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
-
-grab_stats() ->
-    case gen_server:call(?MODULE, grab_stats) of
-        {ok, R} -> R;
-        {exception, C, E, ST} -> erlang:raise(C, E, ST)
-    end.
 
 process_stats(TS, Binary, PrevSample) ->
     case gen_server:call(?MODULE, {process_stats, TS, Binary, PrevSample}) of
@@ -87,15 +81,8 @@ init([]) ->
     increment_counter(log_counter, 0),
     increment_counter(odp_report_failed, 0),
     _ = spawn_link(fun stale_histo_epoch_cleaner/0),
-    Path = path_config:component_path(bin, "sigar_port"),
 
-    BabysitterPid = ns_server:get_babysitter_pid(),
-    Port = open_port({spawn_executable, Path},
-                     [stream, use_stdio, exit_status,
-                      binary, eof,
-                      {arg0, lists:flatten(
-                               io_lib:format("portsigar for ~s", [node()]))},
-                      {args, [integer_to_list(BabysitterPid)]}]),
+    Port = spawn_sigar(),
     spawn_ale_stats_collector(),
 
     State = #state{port = Port,
@@ -103,15 +90,24 @@ init([]) ->
 
     {ok, State}.
 
-handle_call(get_stats, _From, State = #state{prev = Prev}) ->
-    Data = grab_stats(State),
+spawn_sigar() ->
+    Path = path_config:component_path(bin, "sigar_port"),
+    BabysitterPid = ns_server:get_babysitter_pid(),
+    Name = lists:flatten(io_lib:format("portsigar for ~s", [node()])),
+    open_port({spawn_executable, Path},
+              [stream, use_stdio, exit_status, binary, eof,
+               {arg0, Name},
+               {args, [integer_to_list(BabysitterPid)]}]).
+
+handle_call(get_stats, _From, State = #state{port = Port, prev = Prev}) ->
+    Data = grab_stats(Port),
     {Stats, NewPrev} =
         process_stats(os:system_time(millisecond), Data, Prev, State),
     {reply, Stats, State#state{prev = NewPrev}};
 
-handle_call(grab_stats, _From, State) ->
+handle_call(grab_stats, _From, State = #state{port = Port}) ->
     try
-        {reply, {ok, grab_stats(State)}, State}
+        {reply, {ok, grab_stats(Port)}, State}
     catch
         C:E ->
             {reply, {exception, C, E, erlang:get_stacktrace()}, State}
@@ -359,7 +355,7 @@ log_system_stats(TS) ->
     stats_collector:log_stats(TS, "@system",
                               lists:keymerge(1, NSServerStats, NSCouchDbStats)).
 
-grab_stats(#state{port = Port}) ->
+grab_stats(Port) ->
     port_command(Port, <<0:32/native>>),
     {recv_data(Port), grab_local_stats()}.
 

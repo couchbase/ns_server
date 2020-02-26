@@ -31,19 +31,20 @@
 
 
 -record(state, {
+          port :: port() | undefined
          }).
 
 start_link() ->
     base_stats_collector:start_link({local, ?MODULE}, ?MODULE, []).
 
 init([]) ->
-    {ok, #state{}}.
+    {ok, #state{port = ns_server_stats:spawn_sigar()}}.
 
 log_system_stats(TS) ->
     ns_server_stats:log_system_stats(TS).
 
-grab_stats(_State) ->
-    ns_server_stats:grab_stats().
+grab_stats(#state{port = Port}) ->
+    ns_server_stats:grab_stats(Port).
 
 process_stats(TS, Binary, PrevSample, _, State) ->
     {RetStats, NewPrevSample} =
