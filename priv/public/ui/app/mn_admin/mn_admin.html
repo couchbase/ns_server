@@ -195,7 +195,7 @@
           </div>
         </div>
         <div ng-repeat="task in adminCtl.filterTasks(adminCtl.tasks.running)" class="zero-content margin-top-1">
-          <div class="text-small text-left">
+          <div class="text-small text-left break-word">
             {{task | formatProgressMessage}}
             <span ng-if="task.progress != undefined">{{(task.progress | number:1) + '%'}}</span>
           </div>
