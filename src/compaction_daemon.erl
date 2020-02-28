@@ -1295,9 +1295,15 @@ process_scheduler_message(Msg, #compaction_state{buckets_to_compact=Buckets0,
     Buckets =
         case Buckets0 of
             [] ->
-                lists:map(fun list_to_binary/1,
-                          ns_bucket:node_bucket_names_of_type(node(),
-                                                              persistent));
+                BucketNames =
+                  ns_bucket:node_bucket_names_of_type(node(),
+                                                      case Msg of
+                                                          compact_kv ->
+                                                              auto_compactable;
+                                                          _ ->
+                                                              persistent
+                                                      end),
+                lists:map(fun list_to_binary/1, BucketNames);
             _ ->
                 Buckets0
         end,

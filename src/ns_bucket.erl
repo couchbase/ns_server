@@ -139,7 +139,8 @@ get_bucket_names() ->
 get_bucket_names(BucketConfigs) ->
     proplists:get_keys(BucketConfigs).
 
--type bucket_type_mode() :: memcached|membase|persistent|{membase, couchstore}|
+-type bucket_type_mode() :: memcached|membase|persistent|auto_compactable|
+                            {membase, couchstore}|
                             {membase, magma}|
                             {membase, ephemeral}| {memcached, undefined}.
 
@@ -154,6 +155,9 @@ get_bucket_names_of_type({Type, Mode}, BucketConfigs) ->
 get_bucket_names_of_type(persistent, BucketConfigs) ->
     [Name || {Name, Config} <- BucketConfigs,
              is_persistent(Config)];
+get_bucket_names_of_type(auto_compactable, BucketConfigs) ->
+    [Name || {Name, Config} <- BucketConfigs,
+             is_auto_compactable(Config)];
 get_bucket_names_of_type(Type, BucketConfigs) ->
     [Name || {Name, Config} <- BucketConfigs, bucket_type(Config) == Type].
 
@@ -743,6 +747,10 @@ is_persistent(BucketConfig) ->
         (storage_mode(BucketConfig) =:= couchstore orelse
          storage_mode(BucketConfig) =:= magma).
 
+is_auto_compactable(BucketConfig) ->
+    is_persistent(BucketConfig) andalso
+    storage_mode(BucketConfig) =/= magma.
+
 names_conflict(BucketNameA, BucketNameB) ->
     string:to_lower(BucketNameA) =:= string:to_lower(BucketNameB).
 
@@ -777,6 +785,10 @@ node_bucket_names_of_type(Node, persistent, BucketConfigs) ->
     [B || {B, C} <- BucketConfigs,
           lists:member(Node, get_servers(C)),
           is_persistent(C)];
+node_bucket_names_of_type(Node, auto_compactable, BucketConfigs) ->
+    [B || {B, C} <- BucketConfigs,
+          lists:member(Node, get_servers(C)),
+          is_auto_compactable(C)];
 node_bucket_names_of_type(Node, Type, BucketConfigs) ->
     [B || {B, C} <- BucketConfigs,
           lists:member(Node, get_servers(C)),
