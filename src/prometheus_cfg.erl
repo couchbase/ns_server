@@ -25,7 +25,10 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(s, {}).
+-record(s, {cur_settings = [],
+            reload_timer_ref = undefined}).
+
+-define(RELOAD_RETRY_PERIOD, 10000).
 
 %%%===================================================================
 %%% API
@@ -72,6 +75,7 @@ specs(Config) ->
 
     Args = ["--config.file", ConfigFile,
             "--web.enable-admin-api",
+            "--web.enable-lifecycle", %% needed for hot cfg reload
             "--storage.tsdb.retention.size", RetentionSize,
             "--storage.tsdb.retention.time", RetentionTime,
             "--web.listen-address", ListenAddress,
@@ -94,15 +98,36 @@ specs(Config) ->
 %%%===================================================================
 
 init([]) ->
+    EventHandler =
+        fun ({stats_settings, _}) ->
+                gen_server:cast(?MODULE, settings_updated);
+            ({{node, Node, prometheus_http_port}, _}) when Node == node() ->
+                gen_server:cast(?MODULE, settings_updated);
+            ({{node, Node, address_family}, _}) when Node == node() ->
+                gen_server:cast(?MODULE, settings_updated);
+            (_) -> ok
+        end,
+    ns_pubsub:subscribe_link(ns_config_events, EventHandler),
     Settings = settings(),
     ensure_prometheus_config(Settings),
-    {ok, #s{}}.
+    case proplists:get_value(enabled, Settings) of
+        true ->
+            {ok, try_config_reload(#s{cur_settings = Settings})};
+        false ->
+            {ok, #s{cur_settings = Settings}}
+    end.
 
 handle_call(_Request, _From, State) ->
     {noreply, State}.
 
+handle_cast(settings_updated, State) ->
+    {noreply, maybe_apply_new_settings(State)};
+
 handle_cast(_Msg, State) ->
     {noreply, State}.
+
+handle_info(reload_timer, State) ->
+    {noreply, try_config_reload(State#s{reload_timer_ref = undefined})};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -116,6 +141,56 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+maybe_apply_new_settings(#s{cur_settings = OldSettings} = State) ->
+    case settings() of
+        OldSettings ->
+            ?log_debug("Settings didn't change, ignoring update"),
+            State;
+        NewSettings ->
+            ?log_debug("New settings received: ~p~nOld settings: ~p",
+                       [NewSettings, OldSettings]),
+            ensure_prometheus_config(NewSettings),
+            case proplists:get_value(enabled, NewSettings) of
+                true ->
+                    try_config_reload(State#s{cur_settings = NewSettings});
+                false ->
+                    State#s{cur_settings = NewSettings}
+            end
+    end.
+
+try_config_reload(#s{cur_settings = Settings} = State) ->
+    Addr = proplists:get_value(listen_addr, Settings),
+    URL = io_lib:format("http://~s/-/reload", [Addr]),
+    ?log_debug("Reloading prometheus config by sending http post to ~s", [URL]),
+    case lhttpc:request(lists:flatten(URL), 'post', [], 5000) of
+        {ok, {{200, _}, _, _}} ->
+            ?log_debug("Config successfully reloaded"),
+            cancel_reload_timer(State);
+        {ok, {{Code, Text}, _, Error}} ->
+            ?log_error("Failed to reload config: ~p ~p ~p",
+                       [Code, Text, Error]),
+            start_reload_timer(State);
+        {error, {econnrefused, _}} ->
+            ?log_debug("Can't connect to prometheus (~s)", [URL]),
+            start_reload_timer(State);
+        {error, Error} ->
+            ?log_error("Failed to reload config: ~p", [Error]),
+            start_reload_timer(State)
+    end.
+
+start_reload_timer(#s{reload_timer_ref = undefined} = State) ->
+    Ref = erlang:send_after(?RELOAD_RETRY_PERIOD, self(), reload_timer),
+    State#s{reload_timer_ref = Ref};
+start_reload_timer(State) ->
+    State.
+
+cancel_reload_timer(#s{reload_timer_ref = undefined} = State) ->
+    State;
+cancel_reload_timer(#s{reload_timer_ref = Ref} = State) ->
+    erlang:cancel_timer(Ref),
+    misc:flush(reload_timer),
+    State#s{reload_timer_ref = undefined}.
 
 prometheus_config_file(Settings) ->
     File = proplists:get_value(config_file, Settings),
