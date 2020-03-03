@@ -71,6 +71,9 @@ child_specs() ->
      {compiled_roles_cache, {menelaus_roles, start_compiled_roles_cache, []},
       {permanent, 5}, 1000, worker, [versioned_cache]},
 
+     {roles_cache, {roles_cache, start_link, []},
+      {permanent, 5}, 1000, worker, []},
+
      {request_throttler, {request_throttler, start_link, []},
       permanent, 1000, worker, [request_throttler]},
 

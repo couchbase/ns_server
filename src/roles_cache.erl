@@ -57,27 +57,33 @@ renew() ->
 %%%===================================================================
 
 init([]) ->
+    Self = self(),
     EventHandler =
         fun ({P, _} = Event)
             when P =:= external_user_roles_cache_size;
                  P =:= external_user_roles_parrallel_procs;
                  P =:= external_user_roles_cache_expiration_timeout;
                  P =:= external_auth_polling_interval ->
-                active_cache:reload_opts(?MODULE, [Event]);
+                active_cache:reload_opts(Self, [Event]);
             ({ldap_settings, _}) ->
                 %% Ldap cache might receive this notification later
                 %% but we need to make sure it is flushed before
                 %% we renew the upper level cache
                 ldap_auth_cache:flush(),
-                active_cache:renew_cache(?MODULE);
+                active_cache:renew_cache(Self);
             ({group_version, _}) ->
-                active_cache:renew_cache(?MODULE);
+                active_cache:renew_cache(Self);
             ({user_version, _}) ->
-                active_cache:renew_cache(?MODULE);
+                active_cache:renew_cache(Self);
             (_) -> ok
         end,
     ns_pubsub:subscribe_link(ns_config_events, EventHandler),
-    ns_pubsub:subscribe_link(user_storage_events, EventHandler),
+    UserEvents =
+        case ns_node_disco:couchdb_node() == node() of
+            true -> {user_storage_events, ns_node_disco:ns_server_node()};
+            false -> user_storage_events
+        end,
+    ns_pubsub:subscribe_link(UserEvents, EventHandler),
     ok.
 
 translate_options([Opt]) -> [opt(Opt)].
