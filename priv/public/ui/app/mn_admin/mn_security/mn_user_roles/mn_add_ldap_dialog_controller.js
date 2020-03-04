@@ -78,9 +78,7 @@
     }
 
     function isThisAnonConnection(data) {
-      return !data.bindDN && !!((data.authenticationEnabled && data.userDNMapping &&
-                                   data.userDNMapping.includes("query")) ||
-                                  (data.authorizationEnabled && data.groupsQuery));
+      return !data.bindDN;
     }
 
     function clearLdapCache() {
