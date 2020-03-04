@@ -782,7 +782,7 @@ handle_diag_eval(Req) ->
     end,
     Snippet = binary_to_list(mochiweb_request:recv_body(Req)),
 
-    ?log_debug("WARNING: /diag/eval:~n~n~s", [Snippet]),
+    ?log_error("WARNING: /diag/eval:~n~n~s", [Snippet]),
 
     try misc:eval(Snippet, erl_eval:add_binding('Req', Req, erl_eval:new_bindings())) of
         {value, Value, _} ->
