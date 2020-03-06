@@ -635,11 +635,8 @@ substitute_params(Params, ParamDefinitions, Permissions) ->
                  end, ObjectPattern), AllowedOperations}
       end, Permissions).
 
-validate_param(bucket_name, any, _Buckets) ->
+find_bucket(any, _Buckets) ->
     {ok, any};
-validate_param(bucket_name, B, Buckets) ->
-    find_bucket(B, Buckets).
-
 find_bucket({Name, Id}, Buckets) ->
     case find_bucket(Name, Buckets) of
         RV = {ok, {Name, Id}} ->
@@ -659,39 +656,33 @@ find_bucket(Name, Buckets) when is_list(Name) ->
 params_version(Buckets) ->
     [{Name, ns_bucket:bucket_uuid(Props)} || {Name, Props} <- Buckets].
 
-compile_params([], [], _Buckets, Acc) ->
-    lists:reverse(Acc);
-compile_params([ParamDef | RestParamDef], [Param | RestParams], Buckets, Acc) ->
-    case validate_param(ParamDef, Param, Buckets) of
-        {ok, V} ->
-            compile_params(RestParamDef, RestParams, Buckets, [V | Acc]);
+compile_params([], [], _Buckets) ->
+    [];
+compile_params([bucket_name], [B], Buckets) ->
+    case find_bucket(B, Buckets) of
+        {ok, Bucket} ->
+            [Bucket];
         not_present ->
             false
     end.
 
+compile_role({Name, Params}, CompileRole, Definitions, Buckets) ->
+    case lists:keyfind(Name, 1, Definitions) of
+        {Name, ParamDefs, _Props, Permissions} ->
+            case compile_params(ParamDefs, Params, Buckets) of
+                false ->
+                    false;
+                NewParams ->
+                    {true, CompileRole(Name, NewParams, ParamDefs, Permissions)}
+            end;
+        false ->
+            false
+    end;
+compile_role(Name, CompileRole, Definitions, Buckets) when is_atom(Name) ->
+    compile_role({Name, []}, CompileRole, Definitions, Buckets).
+
 compile_roles(CompileRole, Roles, Definitions, Buckets) ->
-    lists:filtermap(
-      fun (Name) when is_atom(Name) ->
-              case lists:keyfind(Name, 1, Definitions) of
-                  {Name, [], _Props, Permissions} ->
-                      {true, CompileRole(Name, [], [], Permissions)};
-                  false ->
-                      false
-              end;
-          ({Name, Params}) ->
-              case lists:keyfind(Name, 1, Definitions) of
-                  {Name, ParamDefs, _Props, Permissions} ->
-                      case compile_params(ParamDefs, Params, Buckets, []) of
-                          false ->
-                              false;
-                          NewParams ->
-                              {true, CompileRole(Name, NewParams,
-                                                 ParamDefs, Permissions)}
-                      end;
-                  false ->
-                      false
-              end
-      end, Roles).
+    lists:filtermap(compile_role(_, CompileRole, Definitions, Buckets), Roles).
 
 -spec compile_roles([rbac_role()], [rbac_role_def()] | undefined, list()) ->
                            [rbac_compiled_role()].
@@ -908,7 +899,7 @@ validate_role({Role, Params}, Definitions, Buckets) ->
 validate_role(Role, Params, Definitions, Buckets) ->
     case lists:keyfind(Role, 1, Definitions) of
         {Role, ParamsDef, _, _} when length(Params) =:= length(ParamsDef) ->
-            case compile_params(ParamsDef, Params, Buckets, []) of
+            case compile_params(ParamsDef, Params, Buckets) of
                 false ->
                     false;
                 [] ->
