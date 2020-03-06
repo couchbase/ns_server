@@ -627,29 +627,56 @@ substitute_params(Params, ParamDefinitions, Permissions) ->
               {lists:map(
                  fun ({Name, any}) ->
                          {Name, any};
+                     ({Name, List}) when is_list(List) ->
+                         {Name, [substitute_param(Param, ParamPairs) ||
+                                    Param <- List]};
                      ({Name, Param}) ->
-                         {Param, Subst} = lists:keyfind(Param, 1, ParamPairs),
-                         {Name, Subst};
+                         {Name, substitute_param(Param, ParamPairs)};
                      (Vertex) ->
                          Vertex
                  end, ObjectPattern), AllowedOperations}
       end, Permissions).
 
-find_bucket(any, _Buckets) ->
-    {ok, any};
-find_bucket({Name, Id}, Buckets) ->
-    case find_bucket(Name, Buckets) of
-        RV = {ok, {Name, Id}} ->
+substitute_param(Param, ParamPairs) ->
+    {Param, Subst} = lists:keyfind(Param, 1, ParamPairs),
+    Subst.
+
+find_bucket(Name, Buckets) ->
+    find_object(Name, Buckets,
+                fun (N, B) ->
+                        case ns_bucket:get_bucket_from_configs(N, B) of
+                            {ok, Props} ->
+                                Props;
+                            not_present ->
+                                undefined
+                        end
+                end,
+                fun ns_bucket:bucket_uuid/1).
+
+find_scope(Name, BucketCfg) ->
+    find_object(Name, BucketCfg,
+                ?cut(collections:get_scope(_1, collections:get_manifest(_2))),
+                fun collections:get_uid/1).
+
+find_collection(Name, Scope) ->
+    find_object(Name, Scope, fun collections:get_collection/2,
+                fun collections:get_uid/1).
+
+find_object(any, _List, _Find, _GetId) ->
+    {any, any};
+find_object({Name, Id}, List, Find, GetId) ->
+    case find_object(Name, List, Find, GetId) of
+        RV = {{Name, Id}, _} ->
             RV;
         _ ->
-            not_present
+            undefined
     end;
-find_bucket(Name, Buckets) when is_list(Name) ->
-    case ns_bucket:get_bucket_from_configs(Name, Buckets) of
-        {ok, Props} ->
-            {ok, {Name, ns_bucket:bucket_uuid(Props)}};
-        not_present ->
-            not_present
+find_object(Name, List, Find, GetId) when is_list(Name) ->
+    case Find(Name, List) of
+        undefined ->
+            undefined;
+        Props ->
+            {{Name, GetId(Props)}, Props}
     end.
 
 -spec params_version(list()) -> term().
@@ -660,9 +687,27 @@ compile_params([], [], _Buckets) ->
     [];
 compile_params([bucket_name], [B], Buckets) ->
     case find_bucket(B, Buckets) of
-        {ok, Bucket} ->
+        {Bucket, _} ->
             [Bucket];
-        not_present ->
+        undefined ->
+            false
+    end;
+compile_params([bucket_name, scope_name, collection_name],
+              [B, S, C], Buckets) ->
+    case find_bucket(B, Buckets) of
+        {Bucket, Props} ->
+            case find_scope(S, Props) of
+                {Scope, ScopeProps} ->
+                    case find_collection(C, ScopeProps) of
+                        {Coll, _} ->
+                            [Bucket, Scope, Coll];
+                        undefined ->
+                            false
+                    end;
+                undefined ->
+                    false
+            end;
+        undefined ->
             false
     end.
 
@@ -880,9 +925,12 @@ produce_roles_by_permission(Permission, Config) ->
        expand_params(AllValues),
        filter_by_permission(Permission, Buckets, Definitions)]).
 
-strip_id(bucket_name, {P, _Id}) ->
+strip_id(_, any) ->
+    any;
+strip_id(_, {P, _Id}) ->
     P;
 strip_id(bucket_name, P) ->
+    %% to be removed as part of MB-38411
     P.
 
 strip_ids(ParamDefs, Params) ->
@@ -966,7 +1014,14 @@ object_match_test() ->
 
 toy_buckets() ->
     [{"test", [{uuid, <<"test_id">>}]},
-     {"default", [{uuid, <<"default_id">>}]}].
+     {"default", [{uuid, <<"default_id">>},
+                  {collections_manifest, toy_manifest()}]}].
+
+toy_manifest() ->
+    [{uid, 2},
+     {scopes, [{"s",  [{uid, 1}, {collections, [{"c",  [{uid, 1}]},
+                                                {"c1", [{uid, 2}]}]}]},
+               {"s1", [{uid, 2}, {collections, [{"c",  [{uid, 3}]}]}]}]}].
 
 compile_roles(Roles, Definitions) ->
     compile_roles(Roles, Definitions, toy_buckets()).
@@ -975,7 +1030,13 @@ compile_roles_test() ->
     Definitions = [{simple_role, [], [],
                     [{[admin], all}]},
                    {test_role, [bucket_name], [],
-                    [{[{bucket, bucket_name}], none}]}],
+                    [{[{bucket, bucket_name}], none}]},
+                   {test_role1, [bucket_name, scope_name, collection_name], [],
+                    [{[{bucket, bucket_name}], oper1},
+                     {[{bucket, any}, docs], oper2},
+                     {[v1, v2], oper3},
+                     {[{collection,
+                        [bucket_name, scope_name, collection_name]}], oper4}]}],
     ?assertEqual([[{[admin], all}]],
                  compile_roles([simple_role, wrong_role], Definitions)),
     ?assertEqual([[{[{bucket, "test"}], none}]],
@@ -984,7 +1045,27 @@ compile_roles_test() ->
                  compile_roles([{test_role, [{"test", <<"test_id">>}]}],
                                Definitions)),
     ?assertEqual([], compile_roles([{test_role, [{"test", <<"wrong_id">>}]}],
-                                   Definitions)).
+                                   Definitions)),
+
+    ExpectedTestRole1 = [[{[{bucket, "default"}], oper1},
+                          {[{bucket, any}, docs], oper2},
+                          {[v1, v2], oper3},
+                          {[{collection, ["default", "s", "c"]}], oper4}]],
+    ?assertEqual(ExpectedTestRole1,
+                 compile_roles(
+                   [{test_role1, ["default", "s", "c"]}], Definitions)),
+    ?assertEqual(ExpectedTestRole1,
+                 compile_roles(
+                   [{test_role1, [{"default", <<"default_id">>},
+                                  {"s", 1}, {"c", 1}]}], Definitions)),
+    ?assertEqual([],
+                 compile_roles(
+                   [{test_role1, [{"default", <<"wrong_id">>},
+                                  {"s", 1}, {"c", 1}]}], Definitions)),
+    ?assertEqual([],
+                 compile_roles(
+                   [{test_role1, [{"default", <<"default_id">>},
+                                  {"s", 1}, {"c", 2}]}], Definitions)).
 
 admin_test() ->
     Roles = compile_roles([admin], roles_50()),

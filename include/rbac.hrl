@@ -40,9 +40,9 @@
 -type rbac_operation() :: atom().
 -type rbac_permission_pattern_operations() :: none | all |
                                               nonempty_list(rbac_operation()).
--type rbac_permission_pattern_vertex_param_raw() :: atom().
 -type rbac_permission_pattern_vertex_raw() ::
-        atom() | {atom(), rbac_permission_pattern_vertex_param_raw()}.
+        atom() | {bucket, bucket_name | any} |
+        {collection, [bucket_name | scope_name | collection_name]}.
 -type rbac_permission_pattern_object_raw() ::
         [rbac_permission_pattern_vertex_raw()].
 -type rbac_permission_pattern_raw() :: {rbac_permission_pattern_object_raw(),
@@ -50,19 +50,23 @@
 
 -type rbac_permission_pattern_vertex_param() :: string() | any.
 -type rbac_permission_pattern_vertex() ::
-        atom() | {atom(), rbac_permission_pattern_vertex_param()}.
+        atom() | {bucket, rbac_permission_pattern_vertex_param()} |
+        {collection, [rbac_permission_pattern_vertex_param()]}.
 -type rbac_permission_pattern_object() :: [rbac_permission_pattern_vertex()].
 -type rbac_permission_pattern() :: {rbac_permission_pattern_object(),
                                     rbac_permission_pattern_operations()}.
 -type rbac_compiled_role() :: [rbac_permission_pattern()].
 
 -type rbac_role_props() :: [{name | desc, binary()}].
--type rbac_role_def() :: {rbac_role_name(), [atom()], rbac_role_props(),
+-type rbac_role_def_param() :: bucket_name | scope_name | collection_name.
+-type rbac_role_def() :: {rbac_role_name(), [rbac_role_def_param()],
+                          rbac_role_props(),
                           nonempty_list(rbac_permission_pattern_raw())}.
 
 -type rbac_permission_vertex_param() :: string() | any.
 -type rbac_permission_vertex() ::
-        atom() | {atom(), rbac_permission_vertex_param()}.
+        atom() | {bucket, rbac_permission_vertex_param()} |
+        {collection, [rbac_permission_vertex_param()]}.
 -type rbac_permission_object() :: [rbac_permission_vertex(), ...].
 -type rbac_permission_operations() ::
         rbac_operation() | [rbac_operation(), ...].

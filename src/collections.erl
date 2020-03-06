@@ -31,7 +31,11 @@
          drop_scope/2,
          drop_collection/3,
          wait_for_manifest_uid/5,
-         convert_uid_from_memcached/1]).
+         convert_uid_from_memcached/1,
+         get_manifest/1,
+         get_scope/2,
+         get_collection/2,
+         get_uid/1]).
 
 %% rpc from other nodes
 -export([wait_for_manifest_uid/4]).
@@ -269,6 +273,9 @@ handle_oper({drop_collection, Scope, Name}, Manifest) ->
 get_manifest(BucketCfg) ->
     proplists:get_value(collections_manifest, BucketCfg, default_manifest()).
 
+get_scope(Name, Manifest) ->
+    find_scope(Name, get_scopes(Manifest)).
+
 get_scopes(Manifest) ->
     proplists:get_value(scopes, Manifest).
 
@@ -292,6 +299,9 @@ on_scopes(Fun, Manifest) ->
 
 get_collections(Scope) ->
     proplists:get_value(collections, Scope).
+
+get_collection(Name, Scope) ->
+    find_collection(Name, get_collections(Scope)).
 
 find_collection(Name, Collections) ->
     proplists:get_value(Name, Collections).
