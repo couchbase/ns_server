@@ -548,6 +548,30 @@ roles_55() ->
        {[ui], [read]},
        {[pools], [read]}]}].
 
+-ifdef(TEST).
+update_roles([{Name, _, _, _} = Role | NewRoles],
+             [{Name, _, _, _} | OldRoles], Acc) ->
+    update_roles(NewRoles, OldRoles, [Role | Acc]);
+update_roles(NewRoles, [Role | OldRoles], Acc) ->
+    update_roles(NewRoles, OldRoles, [Role | Acc]);
+update_roles([], [], Acc) ->
+    lists:reverse(Acc).
+
+roles_cheshirecat() ->
+    CollectionParams = [bucket_name, scope_name, collection_name],
+    update_roles(
+      [{data_reader, CollectionParams,
+        [{name, <<"Data Reader">>},
+         {desc, <<"Can read information from specified bucket, "
+                  "scope or collection">>}],
+        [{[{collection, CollectionParams}, data, docs], [read]},
+         {[{collection, CollectionParams}, data, meta], [read]},
+         {[{collection, CollectionParams}, data, xattr], [read]},
+         {[{bucket, bucket_name}, settings], [read]},
+         {[pools], [read]}]}],
+      roles_55(), []).
+-endif.
+
 -spec get_definitions() -> [rbac_role_def(), ...].
 get_definitions() ->
     get_definitions(ns_config:latest()).
@@ -568,15 +592,40 @@ object_match(_, []) ->
     true;
 object_match([], [_|_]) ->
     false;
-object_match([{_Same, _} | RestOfObject],
-             [{_Same, any} | RestOfObjectPattern]) ->
-    object_match(RestOfObject, RestOfObjectPattern);
-object_match([{_Same, any} | RestOfObject],
-             [{_Same, _} | RestOfObjectPattern]) ->
-    object_match(RestOfObject, RestOfObjectPattern);
-object_match([_Same | RestOfObject], [_Same | RestOfObjectPattern]) ->
-    object_match(RestOfObject, RestOfObjectPattern);
+object_match([Vertex | RestOfObject],
+             [FilterVertex | RestOfObjectPattern]) ->
+    case vertex_match(Vertex, FilterVertex) of
+        true ->
+            object_match(RestOfObject, RestOfObjectPattern);
+        false ->
+            false
+    end;
 object_match(_, _) ->
+    false.
+
+vertex_params_match(Params, FilterParams) ->
+    lists:all(fun vertex_param_match/1, lists:zip(Params, FilterParams)).
+
+vertex_param_match({any, _}) ->
+    true;
+vertex_param_match({all, any}) ->
+    true;
+vertex_param_match({_, any}) ->
+    true;
+vertex_param_match({A, B}) ->
+    A =:= B.
+
+vertex_match({collection, Params}, {bucket, B}) ->
+    vertex_params_match(Params, [B, any, any]);
+vertex_match({bucket, B}, {collection, Params}) ->
+    vertex_params_match([B, all, all], Params);
+vertex_match({collection, Params}, {collection, FilterParams}) ->
+    vertex_params_match(Params, FilterParams);
+vertex_match({_Same, Param}, {_Same, FilterParam}) ->
+    vertex_param_match({Param, FilterParam});
+vertex_match(_Same, _Same) ->
+    true;
+vertex_match(_, _) ->
     false.
 
 -spec get_allowed_operations(
@@ -1183,6 +1232,46 @@ replication_admin_test() ->
     ?assertEqual(true, is_allowed({[xdcr], anything}, Roles)),
     ?assertEqual(false, is_allowed({[admin], read}, Roles)),
     ?assertEqual(true, is_allowed({[other], read}, Roles)).
+
+data_reader_collection_test_() ->
+    Permissions =
+        [{[{collection, ["default", "s", "c"]}, data, docs], read},
+         {[{collection, ["default", "s", "c1"]}, data, docs], read},
+         {[{collection, ["default", "s", "c2"]}, data, docs], read},
+         {[{collection, ["default", "s", all]}, data, docs], read},
+         {[{collection, ["default", "s1", all]}, data, docs], read},
+         {[{collection, ["default", "s2", all]}, data, docs], read},
+         {[{bucket, "default"}, data, docs], read},
+         {[{bucket, "default"}, settings], read}],
+    Test =
+        fun (Params, Results) ->
+                fun () ->
+                        Roles = compile_roles([{data_reader, Params}],
+                                              roles_cheshirecat()),
+                        ?assertEqual(Results, lists:map(is_allowed(_, Roles),
+                                                        Permissions))
+                end
+        end,
+    {foreach, fun () -> ok end,
+     [{"existing collection with id's",
+       Test([{"default", <<"default_id">>}, {"s", 1}, {"c", 1}],
+            [true, false, false, false, false, false, false, true])},
+      {"wrong collection id",
+       Test([{"default", <<"default_id">>}, {"s", 1}, {"c", 2}],
+            [false, false, false, false, false, false, false, false])},
+      {"existing collection without id's",
+       Test(["default", "s", "c"],
+            [true, false, false, false, false, false, false, true])},
+      {"scope",
+       Test(["default", "s", any],
+            [true, true, true, true, false, false, false, true])},
+      {"whole bucket",
+       Test(["default", any, any],
+            [true, true, true, true, true, true, true, true])},
+      {"another bucket",
+       Test(["test", any, any],
+            [false, false, false, false, false, false, false, false])}
+     ]}.
 
 validate_role_test() ->
     ValidateRole = validate_role(_, roles_50(), toy_buckets()),
