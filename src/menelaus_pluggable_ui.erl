@@ -287,7 +287,8 @@ address_and_port(#prefix_props{port_name = UnsecurePortName}, Node) ->
             true -> https;
             false -> http
         end,
-    {Scheme, Addr, Port}.
+    AFamily = ns_config:read_key_fast({node, Node, address_family}, inet),
+    {Scheme, Addr, Port, AFamily}.
 
 node_address(Node) ->
     misc:extract_node_address(Node).
@@ -345,11 +346,12 @@ filter_headers(Headers, {drop, Names}) ->
 member(Name, Names) ->
     lists:member(string:to_lower(Name), Names).
 
-do_proxy_req({Scheme, Host, Port}, Path, Headers, Timeout, Req) ->
+do_proxy_req({Scheme, Host, Port, AFamily}, Path, Headers, Timeout, Req) ->
     Method = mochiweb_request:get(method, Req),
     Body = get_body(Req),
     Options = [{partial_download, [{window_size, ?WINDOW_SIZE},
-                                   {part_size, ?PART_SIZE}]}],
+                                   {part_size, ?PART_SIZE}]},
+               {connect_options, [AFamily]}],
     Resp = lhttpc:request(Host, Port, Scheme =:= https, Path, Method, Headers,
                           Body, Timeout, Options),
     handle_resp(Resp, Req).

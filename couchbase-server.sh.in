@@ -1,6 +1,6 @@
 #! /usr/bin/env bash
 #
-# Copyright (c) 2010-2019, Couchbase, Inc.
+# Copyright (c) 2010-2020, Couchbase, Inc.
 # All rights reserved
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -213,19 +213,39 @@ _stop() {
     return $errcode
 }
 
+_status() {
+    if [ ! -f "$PIDFILE" ]; then
+        echo "Couchbase Server is not running"
+        return 3
+    fi
+
+    pid=`cat "$PIDFILE"`
+
+    progname=`ps -p "$pid" -c -o comm=`
+
+    if [ "$progname" == "beam.smp" ]; then
+        echo "Couchbase Server is running"
+        return 0
+    else
+        echo "Couchbase Server is not running"
+        return 1
+    fi
+}
+
 usage() {
 cat <<EOF
-couchbase-server is a script to start/stop the Couchbase server.
+couchbase-server is a script to start/stop Couchbase Server.
 
 Usage: $0 [options]
 
   Special options:
      --help, -h     Print this help text
      --version, -v  Print software Version
+     --status, -s   Determine if Couchbase Server is running
      -k             Stop couchbase Server
 
-All other options and arguments will be passed to the Couchbase
-server and should NOT be used unless you know what you're doing.
+All other options and arguments will be passed to Couchbase
+Server and should NOT be used unless you know what you're doing.
 
 EOF
 }
@@ -244,8 +264,14 @@ _parse_options () {
        exit 0
     fi
 
+    if [ "$1" == "--status" ]
+    then
+       _status
+       exit $?
+    fi
+
     # set +e
-    while getopts "kvh" opt
+    while getopts "kvhs" opt
     do
        case $opt in
        k)
@@ -259,6 +285,10 @@ _parse_options () {
        h)
          usage
          exit 0
+         ;;
+       s)
+         _status
+         exit $?
          ;;
        *)
          break
