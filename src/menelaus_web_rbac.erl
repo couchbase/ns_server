@@ -57,7 +57,8 @@
          handle_get_profile/2,
          handle_delete_profile/2,
          handle_put_profile/2,
-         handle_lookup_ldap_user/2
+         handle_lookup_ldap_user/2,
+         gen_password/1
 ]).
 
 -define(MIN_USERS_PAGE_SIZE, 2).

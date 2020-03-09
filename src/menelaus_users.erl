@@ -62,6 +62,7 @@
 
 %% Actions:
          authenticate/2,
+         authenticate_with_info/2,
          build_scram_auth/1,
          build_plain_auth/1,
          build_plain_auth/2,

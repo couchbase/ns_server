@@ -91,18 +91,24 @@ admin_credentials_changed(User, Password) ->
             true
     end.
 
-authenticate_as_admin([$@ | _] = User, Password) ->
+authenticate_special("@prometheus" = User, Password) ->
+    prometheus_cfg:authenticate(User, Password);
+authenticate_special([$@ | _] = User, Password) ->
     MemcachedPassword =
         ns_config:search_node_prop(ns_config:latest(), memcached, admin_pass),
-    misc:compare_secure(MemcachedPassword, Password)
-        orelse authenticate_non_special(User, Password);
-authenticate_as_admin(User, Password) ->
-    authenticate_non_special(User, Password).
+    case misc:compare_secure(MemcachedPassword, Password) of
+        true ->
+            {ok, {User, admin}};
+        false ->
+            authenticate_admin(User, Password)
+    end;
+authenticate_special(User, Password) ->
+    authenticate_admin(User, Password).
 
 authenticate(Username, Password) ->
-    case authenticate_as_admin(Username, Password) of
-        true ->
-            {ok, {Username, admin}};
+    case authenticate_special(Username, Password) of
+        {ok, Id} ->
+            {ok, Id};
         false ->
             case menelaus_users:authenticate(Username, Password) of
                 true ->
@@ -117,13 +123,16 @@ authenticate(Username, Password) ->
             end
     end.
 
-authenticate_non_special(User, Password) ->
+authenticate_admin(User, Password) ->
     case get_admin_user_and_auth() of
         null ->
-            true;
+            {ok, {User, admin}};
         {User, Auth} ->
             {Salt, Mac} = get_salt_and_mac(Auth),
-            misc:compare_secure(hash_password(Salt, Password), Mac);
+            case misc:compare_secure(hash_password(Salt, Password), Mac) of
+                true -> {ok, {User, admin}};
+                false -> false
+            end;
         {_, _} ->
             false
     end.

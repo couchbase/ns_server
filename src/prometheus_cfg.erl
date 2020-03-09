@@ -19,7 +19,7 @@
 -include("ns_common.hrl").
 
 %% API
--export([start_link/0, specs/1]).
+-export([start_link/0, specs/1, authenticate/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -48,7 +48,8 @@ default_settings() ->
      {log_file_name, "prometheus.log"},
      {log_level, "debug"},
      {max_block_duration, 25}, %% in hours
-     {scrape_interval, 10}]. %% in seconds
+     {scrape_interval, 10}, %% in seconds
+     {token_file, "prometheus_token"}].
 
 settings() -> settings(ns_config:get()).
 settings(Config) ->
@@ -95,6 +96,18 @@ specs(Config) ->
             []
     end.
 
+authenticate("@prometheus" = User, Pass) ->
+    case ns_config:search_node(prometheus_auth_info) of
+        {value, {password, AuthInfo}} ->
+            case menelaus_users:authenticate_with_info(AuthInfo, Pass) of
+                true -> {ok, {User, stats_reader}};
+                false -> false
+            end;
+        false ->
+            false
+    end;
+authenticate(_, _) ->
+    false.
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -113,6 +126,7 @@ init([]) ->
     ns_pubsub:subscribe_link(ns_config_events, EventHandler),
     Settings = settings(),
     ensure_prometheus_config(Settings),
+    generate_prometheus_auth_info(Settings),
     case proplists:get_value(enabled, Settings) of
         true ->
             {ok, try_config_reload(#s{cur_settings = Settings})};
@@ -144,6 +158,18 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+generate_prometheus_auth_info(Settings) ->
+    Token = menelaus_web_rbac:gen_password({256, [uppercase, lowercase,
+                                                  digits]}),
+    AuthInfo = menelaus_users:build_scram_auth(Token),
+    ns_config:set({node, node(), prometheus_auth_info}, {password, AuthInfo}),
+    TokenFile = token_file(Settings),
+    ok = misc:atomic_write_file(TokenFile, Token ++ "\n").
+
+token_file(Settings) ->
+    filename:join(path_config:component_path(data, "config"),
+                  proplists:get_value(token_file, Settings)).
 
 maybe_apply_new_settings(#s{cur_settings = OldSettings} = State) ->
     case settings() of
@@ -202,7 +228,7 @@ prometheus_config_file(Settings) ->
 ensure_prometheus_config(Settings) ->
     File = prometheus_config_file(Settings),
     ScrapeInterval = proplists:get_value(scrape_interval, Settings),
-    TokenFile = path_config:component_path(data, "localtoken"),
+    TokenFile = token_file(Settings),
     ConfigTemplate =
         "global:\n"
         "  scrape_interval: ~bs\n"
@@ -210,7 +236,7 @@ ensure_prometheus_config(Settings) ->
         "  - job_name: 'ns_server'\n"
         "    metrics_path: /_prometheusMetrics\n"
         "    basic_auth:\n"
-        "      username: \"@localtoken\"\n"
+        "      username: \"@prometheus\"\n"
         "      password_file: ~s\n"
         "    static_configs:\n"
         "    - targets: ['localhost:9000']\n",

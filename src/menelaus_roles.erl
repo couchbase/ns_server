@@ -820,6 +820,8 @@ get_roles({"", anonymous}) ->
     end;
 get_roles({_, admin}) ->
     [admin];
+get_roles({_, stats_reader}) ->
+    [stats_reader];
 get_roles({BucketName, bucket}) ->
     [{bucket_full_access, [BucketName]}];
 get_roles({_User, external} = Identity) ->

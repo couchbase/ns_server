@@ -97,6 +97,7 @@ is_interesting({honor_cipher_order, _}) -> true;
 is_interesting({ssl_minimum_protocol, _}) -> true;
 is_interesting({cluster_encryption_level, _}) -> true;
 is_interesting({{security_settings, _}, _}) -> true;
+is_interesting({{node, N, prometheus_auth_info}, _}) when N =:= node() -> true;
 is_interesting(_) -> false.
 
 handle_call(_Msg, _From, State) ->
@@ -322,7 +323,8 @@ default_cbauth_ciphers() ->
 auth_version(Config) ->
     B = term_to_binary(
           [ns_config_auth:get_admin_creds(Config),
-           menelaus_users:get_auth_version()]),
+           menelaus_users:get_auth_version(),
+           ns_config:search_node(Config, prometheus_auth_info)]),
     base64:encode(crypto:hash(sha, B)).
 
 client_cert_auth_version() ->
