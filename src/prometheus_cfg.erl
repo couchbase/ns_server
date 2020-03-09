@@ -46,6 +46,7 @@ default_settings() ->
      {storage_path, "./stats_data"},
      {config_file, "prometheus.yml"},
      {log_file_name, "prometheus.log"},
+     {log_level, "debug"},
      {max_block_duration, 25}, %% in hours
      {scrape_interval, 10}]. %% in seconds
 
@@ -72,6 +73,7 @@ specs(Config) ->
     LogFile = proplists:get_value(log_file_name, Settings),
     MaxBlockDuration = integer_to_list(proplists:get_value(max_block_duration,
                                                            Settings)) ++ "h",
+    LogLevel = proplists:get_value(log_level, Settings),
 
     Args = ["--config.file", ConfigFile,
             "--web.enable-admin-api",
@@ -80,7 +82,8 @@ specs(Config) ->
             "--storage.tsdb.retention.time", RetentionTime,
             "--web.listen-address", ListenAddress,
             "--storage.tsdb.max-block-duration", MaxBlockDuration,
-            "--storage.tsdb.path", FullStoragePath],
+            "--storage.tsdb.path", FullStoragePath,
+            "--log.level", LogLevel],
 
     case proplists:get_value(enabled, Settings) of
         true ->
