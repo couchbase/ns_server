@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2014-2018 Couchbase, Inc.
+%% @copyright 2014-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -87,7 +87,9 @@ get_request_header_value(Req, Header) ->
         undefined ->
             "-";
         Value ->
-            Value
+            ["\"",
+             Value,
+             "\""]
     end.
 
 get_response_header_value(Resp, Header) ->
