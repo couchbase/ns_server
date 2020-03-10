@@ -28,7 +28,8 @@ format_msg(#log_info{time = Time,
      io_lib:format("~w", [mochiweb_response:get(code, Resp)]), " ",
      get_size(Resp), " ",
      get_request_header_value(Req, "Referer"), " ",
-     get_request_header_value(Req, "User-agent"), "\n"].
+     get_request_header_value(Req, "User-agent"), " ",
+     add_response_time(Req), "\n"].
 
 month(1) -> "Jan";
 month(2) -> "Feb";
@@ -108,6 +109,12 @@ get_size(Resp) ->
         _ ->
             get_response_header_value(Resp, "Content-Length")
     end.
+
+add_response_time(Req) ->
+    Now = erlang:monotonic_time(millisecond),
+    Time0 = mochiweb_request:get_header_value("menelaus-start-time", Req),
+    Time = list_to_integer(Time0),
+    io_lib:format("~p", [Now - Time]).
 
 get_auth_user(Req) ->
     User =

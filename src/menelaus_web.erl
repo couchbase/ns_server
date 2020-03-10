@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2019 Couchbase, Inc.
+%% @copyright 2009-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -124,8 +124,11 @@ webconfig(Config) ->
 webconfig() ->
     webconfig(ns_config:get()).
 
-loop(Req, Config) ->
+loop(Req0, Config) ->
     ok = menelaus_sup:barrier_wait(),
+    StartTime = erlang:monotonic_time(millisecond),
+    Req = menelaus_auth:apply_headers(Req0,
+                                      [{"menelaus-start-time", StartTime}]),
 
     try
         %% Using raw_path so encoded slash characters like %2F are handed correctly,
