@@ -70,11 +70,17 @@ sync() ->
 
 init() ->
     Config = ns_config:get(),
+    AdminUser =
+        case ns_config:search(Config, rest_creds) of
+            {value, {U, _}} -> U;
+            _ -> undefined
+        end,
     #state{buckets = ns_bucket:get_bucket_names(ns_bucket:get_buckets(Config)),
            param_values =
                menelaus_roles:calculate_possible_param_values(ns_bucket:get_buckets(Config)),
            users = spec_users(Config),
-           roles = menelaus_roles:get_definitions(Config)}.
+           roles = menelaus_roles:get_definitions(Config),
+           cluster_admin = AdminUser}.
 
 spec_users() -> spec_users(ns_config:get()).
 spec_users(Config) ->
