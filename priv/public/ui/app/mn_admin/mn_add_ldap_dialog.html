@@ -120,7 +120,7 @@
               <label
                  for="bindDN"
                  ng-disabled="addLdapDialogCtl.config.connect.encryption == 'None'">
-                Certificate Text</label>
+                LDAP Server Root Certificate</label>
               <textarea
                  rows="4"
                  id="ldap_group_ref"
@@ -590,6 +590,16 @@
 
 <!-- help sidebar ---------------------------------------------------------- -->
         <div class="ldap-helpsidebar">
+          <p class="text-small margin-bottom-1 grayblack-bg-7 padding-half">
+            For more help:<br>
+            <a
+               href="https://docs.couchbase.com/server/6.5/manage/manage-security/configure-ldap.html"
+               target="_blank"
+               class="bold">
+              Configuring LDAP
+              <span class="icon fa-external-link"></span>
+            </a>
+          </p>
           <h5
              class="disclosure"
              ng-class="{disclosed: sectFocus == 'LDAP'}"
