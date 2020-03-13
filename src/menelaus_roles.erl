@@ -548,7 +548,6 @@ roles_55() ->
        {[ui], [read]},
        {[pools], [read]}]}].
 
--ifdef(TEST).
 update_roles([{Name, _, _, _} = Role | NewRoles],
              [{Name, _, _, _} | OldRoles], Acc) ->
     update_roles(NewRoles, OldRoles, [Role | Acc]);
@@ -570,7 +569,6 @@ roles_cheshirecat() ->
          {[{bucket, bucket_name}, settings], [read]},
          {[pools], [read]}]}],
       roles_55(), []).
--endif.
 
 -spec get_definitions() -> [rbac_role_def(), ...].
 get_definitions() ->
@@ -578,11 +576,16 @@ get_definitions() ->
 
 -spec get_definitions(ns_config()) -> [rbac_role_def(), ...].
 get_definitions(Config) ->
-    case cluster_compat_mode:is_cluster_55(Config) of
+    case cluster_compat_mode:is_cluster_cheshirecat(Config) of
         true ->
-            roles_55();
+            roles_cheshirecat();
         false ->
-            roles_50()
+            case cluster_compat_mode:is_cluster_55(Config) of
+                true ->
+                    roles_55();
+                false ->
+                    roles_50()
+            end
     end.
 
 -spec object_match(
@@ -912,10 +915,16 @@ calculate_possible_param_values(_Buckets, [], _) ->
     [[]];
 calculate_possible_param_values(Buckets, [bucket_name], Permission) ->
     [[any] | [[{Name, ns_bucket:bucket_uuid(Props)}] ||
-                 {Name, Props} <- get_applicable_buckets(Buckets, Permission)]].
+                 {Name, Props} <- get_applicable_buckets(Buckets, Permission)]];
+calculate_possible_param_values(Buckets,
+                                [bucket_name, scope_name, collection_name],
+                                Permission) ->
+    [[any, any, any] |
+     [[{Name, ns_bucket:bucket_uuid(Props)}, any, any] ||
+         {Name, Props} <- get_applicable_buckets(Buckets, Permission)]].
 
 all_params_combinations() ->
-    [[], [bucket_name]].
+    [[], [bucket_name], [bucket_name, scope_name, collection_name]].
 
 -spec calculate_possible_param_values(list(), undefined | rbac_permission()) ->
                                              rbac_all_param_values().
@@ -1322,7 +1331,7 @@ produce_roles_by_permission_test_() ->
              meck:new(cluster_compat_mode, [passthrough]),
              meck:expect(cluster_compat_mode, is_enterprise,
                          fun () -> true end),
-             meck:expect(cluster_compat_mode, is_cluster_55,
+             meck:expect(cluster_compat_mode, is_cluster_cheshirecat,
                          fun (_) -> true end)
      end,
      fun (_) ->
@@ -1334,19 +1343,23 @@ produce_roles_by_permission_test_() ->
        fun () ->
                Roles = GetRoles({[pools], read}),
                ?assertListsEqual(
-                  [], [admin, analytics_reader, {data_reader, [any]},
-                       {data_reader, [{"test",<<"test_id">>}]}] -- Roles)
+                  [],
+                  [admin, analytics_reader,
+                   {data_reader, [any, any, any]},
+                   {data_reader, [{"test",<<"test_id">>}, any, any]}] -- Roles)
        end},
       {"bucket settings read",
        Test([admin, cluster_admin, query_external_access, query_system_catalog,
              replication_admin, ro_admin, security_admin] ++
                 enum_roles([bucket_full_access, bucket_admin, views_admin,
                             data_backup, data_dcp_reader,
-                            data_monitoring, data_reader, data_writer,
+                            data_monitoring, data_writer,
                             fts_admin, fts_searcher, query_delete,
                             query_insert, query_manage_index, query_select,
                             query_update, replication_target],
-                           [any, "test"]),
+                           [any, "test"]) ++
+                [{data_reader, [any, any, any]},
+                 {data_reader, [{"test", <<"test_id">>}, any, any]}],
             {[{bucket, "test"}, settings], read})},
       {"xattr write",
        Test([admin] ++

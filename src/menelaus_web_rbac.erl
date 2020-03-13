@@ -156,7 +156,9 @@ role_to_json({Name, [any]}) ->
 role_to_json({Name, [{BucketName, _Id}]}) ->
     [{role, Name}, {bucket_name, list_to_binary(BucketName)}];
 role_to_json({Name, [BucketName]}) ->
-    [{role, Name}, {bucket_name, list_to_binary(BucketName)}].
+    [{role, Name}, {bucket_name, list_to_binary(BucketName)}];
+role_to_json({Name, [BucketName, any, any]}) ->
+    role_to_json({Name, [BucketName]}).
 
 role_to_json(Role, Origins) ->
     role_to_json(Role) ++
