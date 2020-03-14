@@ -51,10 +51,12 @@ init() ->
     Users = ns_config:search_node_prop(Config, memcached, other_users, []),
     AP = ns_config:search_node_prop(Config, memcached, admin_pass),
     Buckets = extract_creds(ns_config:search(Config, buckets, [])),
+    RestCreds = ns_config:read_key_fast(rest_creds, undefined),
 
     #state{buckets = Buckets,
            users = [AU | Users],
-           admin_pass = AP}.
+           admin_pass = AP,
+           rest_creds = RestCreds}.
 
 filter_event({buckets, _V}) ->
     true;
