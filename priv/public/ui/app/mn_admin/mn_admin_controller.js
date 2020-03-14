@@ -38,6 +38,7 @@
 
     vm.getRebalanceReport = getRebalanceReport;
 
+    $rootScope.implementationVersion = pools.implementationVersion;
     $rootScope.rbac = mnPermissions.export;
     $rootScope.poolDefault = mnPoolDefault.export;
     $rootScope.pools = mnPools.export;
