@@ -38,8 +38,7 @@
          find_matching_past_maps/5,
          is_trivially_compatible_past_map/5,
          enumerate_chains/2,
-         align_replicas/2,
-         align_chain_replicas/2]).
+         align_replicas/2]).
 
 %% removes RemapNodes from head of vbucket map Map. Returns new map
 promote_replicas(undefined, _RemapNode) ->
@@ -854,13 +853,7 @@ enumerate_chains(Map, FastForwardMap) ->
 
 -spec align_replicas([[atom()]], non_neg_integer()) -> [[atom()]].
 align_replicas(Map, NumReplicas) ->
-    lists:map(align_chain_replicas(_, NumReplicas + 1), Map).
-
-align_chain_replicas(_, 0) -> [];
-align_chain_replicas([H|T] = _Chain, ReplicasLeft) ->
-    [H | align_chain_replicas(T, ReplicasLeft-1)];
-align_chain_replicas([] = _Chain, ReplicasLeft) ->
-    lists:duplicate(ReplicasLeft, undefined).
+    lists:map(misc:align_list(_, NumReplicas + 1, undefined), Map).
 
 -ifdef(TEST).
 align_replicas_test() ->

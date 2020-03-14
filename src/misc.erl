@@ -2891,3 +2891,18 @@ partitionmap_test() ->
                            end
                    end, lists:seq(1, 10))).
 -endif.
+
+align_list(_, 0, _) ->
+    [];
+align_list([H | T], LengthLeft, Pad) ->
+    [H | align_list(T, LengthLeft - 1, Pad)];
+align_list([], LengthLeft, PadElement) ->
+    lists:duplicate(LengthLeft, PadElement).
+
+-ifdef(TEST).
+align_list_test() ->
+    ?assertEqual([pad, pad, pad, pad], align_list([], 4, pad)),
+    ?assertEqual([a, b, pad, pad], align_list([a, b], 4, pad)),
+    ?assertEqual([a], align_list([a, b], 1, pad)),
+    ?assertEqual([a, b], align_list([a, b], 2, pad)).
+-endif.

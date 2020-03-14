@@ -1127,7 +1127,7 @@ build_transitional_chain(CurrentChain, DeltaNodes) ->
 
     N = length(CurrentChain),
     true = length(TransitionalChain) =< N,
-    mb_map:align_chain_replicas(TransitionalChain, N).
+    misc:align_list(TransitionalChain, N, undefined).
 
 -ifdef(TEST).
 build_transitional_chain_test() ->
