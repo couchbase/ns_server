@@ -65,7 +65,8 @@
          filter_out_invalid_roles/3,
          produce_roles_by_permission/2,
          get_security_roles/1,
-         external_auth_polling_interval/0]).
+         external_auth_polling_interval/0,
+         get_param_defs/2]).
 
 -export([start_compiled_roles_cache/0]).
 
@@ -994,6 +995,16 @@ strip_id(bucket_name, P) ->
 strip_ids(ParamDefs, Params) ->
     [strip_id(ParamDef, Param) || {ParamDef, Param} <-
                                       lists:zip(ParamDefs, Params)].
+
+-spec get_param_defs(rbac_role_name(), [rbac_role_def()]) ->
+                            not_found | [rbac_role_def_param()].
+get_param_defs(RoleName, Definitions) ->
+    case lists:keyfind(RoleName, 1, Definitions) of
+        {RoleName, ParamsDef, _, _} ->
+            ParamsDef;
+        _ ->
+            not_found
+    end.
 
 -spec validate_role(rbac_role(), [rbac_role_def()], list()) ->
                            false | {ok, rbac_role()}.
