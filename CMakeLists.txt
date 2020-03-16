@@ -7,6 +7,7 @@ INCLUDE (ParseArguments)
 INCLUDE (CTest)
 
 # Global project variables
+SET (PROMETHEUS_VERSION 2.16.0)
 
 # Installation subdir
 SET (INST_LIBDIR "lib/ns_server/erlang/lib")
@@ -220,6 +221,17 @@ PyWrapper (SCRIPTS cbcollect_info)
 INSTALL (PROGRAMS cbbrowse_logs DESTINATION bin)
 INSTALL (PROGRAMS scripts/cbdump-config scripts/dump-guts DESTINATION bin)
 INSTALL (PROGRAMS scripts/escript-wrapper scripts/dump-stats DESTINATION bin)
+
+# Include Prometheus binary for statistics gathering
+CBDEP_INSTALL (PACKAGE prometheus VERSION ${PROMETHEUS_VERSION})
+IF (WIN32)
+    SET (PROMETHEUS_EXE prometheus.exe)
+ELSE ()
+    SET (PROMETHEUS_EXE prometheus)
+ENDIF ()
+INSTALL (
+    PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/prometheus-${PROMETHEUS_VERSION}/${PROMETHEUS_EXE}
+    DESTINATION bin)
 
 # Configure custom copies of scripts for installation
 SET (PREFIX "${CMAKE_INSTALL_PREFIX}")
