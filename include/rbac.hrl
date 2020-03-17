@@ -27,7 +27,7 @@
 -type rbac_password() :: string().
 -type rbac_identity_type() :: rejected | wrong_token | anonymous | admin |
                               ro_admin | bucket | external | local |
-                              local_token.
+                              local_token | stats_reader.
 -type rbac_identity() :: {rbac_user_id(), rbac_identity_type()}.
 -type rbac_role_param() :: string() | {string(), binary()} | any.
 -type rbac_role_name() :: atom().

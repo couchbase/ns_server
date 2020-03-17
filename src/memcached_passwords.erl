@@ -29,7 +29,8 @@
 -record(state, {buckets,
                 users,
                 admin_pass,
-                rest_creds}).
+                rest_creds,
+                prometheus_auth}).
 
 start_link() ->
     Path = ns_config:search_node_prop(ns_config:latest(), isasl, path),
@@ -52,17 +53,22 @@ init() ->
     AP = ns_config:search_node_prop(Config, memcached, admin_pass),
     Buckets = extract_creds(ns_config:search(Config, buckets, [])),
     RestCreds = ns_config:read_key_fast(rest_creds, undefined),
+    PromAuth = ns_config:search_node_with_default(Config, prometheus_auth_info,
+                                                  undefined),
 
     #state{buckets = Buckets,
            users = [AU | Users],
            admin_pass = AP,
-           rest_creds = RestCreds}.
+           rest_creds = RestCreds,
+           prometheus_auth = PromAuth}.
 
 filter_event({buckets, _V}) ->
     true;
 filter_event({auth_version, _V}) ->
     true;
 filter_event({rest_creds, _V}) ->
+    true;
+filter_event({{node, Node, prometheus_auth_info}, _}) when Node =:= node() ->
     true;
 filter_event(_) ->
     false.
@@ -79,14 +85,24 @@ handle_event({auth_version, _V}, State) ->
 handle_event({rest_creds, Creds}, #state{rest_creds = Creds}) ->
     unchanged;
 handle_event({rest_creds, Creds}, State) ->
-    {changed, State#state{rest_creds = Creds}}.
+    {changed, State#state{rest_creds = Creds}};
+handle_event({{node, Node, prometheus_auth_info}, {_, _} = Auth},
+             #state{prometheus_auth = Auth}) when Node =:= node() ->
+    unchanged;
+handle_event({{node, Node, prometheus_auth_info}, {_, _} = Auth},
+             State) when Node =:= node() ->
+    {changed, State#state{prometheus_auth = Auth}};
+handle_event({{node, Node, prometheus_auth_info}, _Auth},
+             State) when Node =:= node() ->
+    {changed, State#state{prometheus_auth = undefined}}.
 
 producer(#state{buckets = Buckets,
                 users = Users,
                 admin_pass = AP,
-                rest_creds = RestCreds}) ->
+                rest_creds = RestCreds,
+                prometheus_auth = PromAuth}) ->
     pipes:compose([menelaus_users:select_auth_infos({'_', local}),
-                   jsonify_auth(Users, AP, Buckets, RestCreds),
+                   jsonify_auth(Users, AP, Buckets, RestCreds, PromAuth),
                    sjson:encode_extended_json([{compact, false},
                                                {strict, false}])]).
 
@@ -98,7 +114,7 @@ get_admin_auth_json({User, {auth, Auth}}) ->
 get_admin_auth_json(_) ->
     undefined.
 
-jsonify_auth(Users, AdminPass, Buckets, RestCreds) ->
+jsonify_auth(Users, AdminPass, Buckets, RestCreds, PromAuth) ->
     MakeAuthInfo = fun menelaus_users:user_auth_info/2,
     ?make_transducer(
        begin
@@ -114,6 +130,13 @@ jsonify_auth(Users, AdminPass, Buckets, RestCreds) ->
                        ?yield({json, MakeAuthInfo(User, Auth)}),
                        User
                end,
+
+           case PromAuth of
+               {PUser, {auth, PAuth}} ->
+                   ?yield({json, MakeAuthInfo(PUser, PAuth)}),
+                   PUser;
+               undefined -> ok
+           end,
 
            AdminAuth = menelaus_users:build_scram_auth(AdminPass),
            [?yield({json, MakeAuthInfo(U, AdminAuth)}) || U <- Users],

@@ -29,6 +29,7 @@
             reload_timer_ref = undefined}).
 
 -define(RELOAD_RETRY_PERIOD, 10000).
+-define(USERNAME, "@prometheus").
 
 %%%===================================================================
 %%% API
@@ -96,18 +97,18 @@ specs(Config) ->
             []
     end.
 
-authenticate("@prometheus" = User, Pass) ->
+authenticate(User, Pass) ->
     case ns_config:search_node(prometheus_auth_info) of
-        {value, {password, AuthInfo}} ->
+        {value, {User, {auth, AuthInfo}}} ->
             case menelaus_users:authenticate_with_info(AuthInfo, Pass) of
                 true -> {ok, {User, stats_reader}};
                 false -> false
             end;
+        {value, {_, {auth, _}}} ->
+            false;
         false ->
             false
-    end;
-authenticate(_, _) ->
-    false.
+    end.
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -163,7 +164,8 @@ generate_prometheus_auth_info(Settings) ->
     Token = menelaus_web_rbac:gen_password({256, [uppercase, lowercase,
                                                   digits]}),
     AuthInfo = menelaus_users:build_scram_auth(Token),
-    ns_config:set({node, node(), prometheus_auth_info}, {password, AuthInfo}),
+    ns_config:set({node, node(), prometheus_auth_info},
+                  {?USERNAME, {auth, AuthInfo}}),
     TokenFile = token_file(Settings),
     ok = misc:atomic_write_file(TokenFile, Token ++ "\n").
 
@@ -236,7 +238,7 @@ ensure_prometheus_config(Settings) ->
         "  - job_name: 'ns_server'\n"
         "    metrics_path: /_prometheusMetrics\n"
         "    basic_auth:\n"
-        "      username: \"@prometheus\"\n"
+        "      username: \""?USERNAME"\"\n"
         "      password_file: ~s\n"
         "    static_configs:\n"
         "    - targets: ['localhost:9000']\n",

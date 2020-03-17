@@ -38,7 +38,8 @@
 -record(state, {version,
                 roles,
                 users,
-                cluster_admin}).
+                cluster_admin,
+                prometheus_user}).
 
 bucket_permissions_to_check(Bucket) ->
     [{{[{bucket, Bucket}, data, docs], read},   'Read'},
@@ -78,11 +79,17 @@ init() ->
             {value, {U, _}} -> U;
             _ -> undefined
         end,
+    PromUser =
+        case ns_config:search_node(Config, prometheus_auth_info) of
+            {value, {U2, _}} -> U2;
+            _ -> undefined
+        end,
     #state{version = menelaus_roles:params_version(
                        ns_bucket:get_buckets(Config)),
            users = spec_users(Config),
            roles = menelaus_roles:get_definitions(Config, all),
-           cluster_admin = AdminUser}.
+           cluster_admin = AdminUser,
+           prometheus_user = PromUser}.
 
 spec_users() -> spec_users(ns_config:get()).
 spec_users(Config) ->
@@ -98,6 +105,8 @@ filter_event({group_version, _V}) ->
 filter_event({user_version, _V}) ->
     true;
 filter_event({rest_creds, _V}) ->
+    true;
+filter_event({{node, Node, prometheus_auth_info}, _}) when Node =:= node() ->
     true;
 filter_event(_) ->
     false.
@@ -129,7 +138,16 @@ handle_event({rest_creds, {ClusterAdmin, _}}, State) ->
 handle_event({rest_creds, _}, #state{cluster_admin = undefined}) ->
     unchanged;
 handle_event({rest_creds, _}, State) ->
-    {changed, State#state{cluster_admin = undefined}}.
+    {changed, State#state{cluster_admin = undefined}};
+handle_event({{node, Node, prometheus_auth_info}, {User, _}},
+             #state{prometheus_user = User}) when Node =:= node() ->
+    unchanged;
+handle_event({{node, Node, prometheus_auth_info}, {User, _}},
+             State) when Node =:= node() ->
+    {changed, State#state{prometheus_user = User}};
+handle_event({{node, Node, prometheus_auth_info}, _Info},
+             State) when Node =:= node() ->
+    {changed, State#state{prometheus_user = undefined}}.
 
 refresh() ->
     memcached_refresh:refresh(rbac).
@@ -199,7 +217,7 @@ jsonify_user({UserName, Domain},
 memcached_admin_json(AU) ->
     jsonify_user({AU, local}, [{global, [all]}, {"*", [all]}]).
 
-jsonify_users(Users, RoleDefinitions, ClusterAdmin) ->
+jsonify_users(Users, RoleDefinitions, ClusterAdmin, PromUser) ->
     Buckets = ns_bucket:get_buckets(),
     ?make_transducer(
        begin
@@ -227,12 +245,22 @@ jsonify_users(Users, RoleDefinitions, ClusterAdmin) ->
                end,
 
            Dict2 =
+               case PromUser of
+                   undefined ->
+                       Dict1;
+                   _ ->
+                       PromRoles = menelaus_roles:get_roles({PromUser,
+                                                             stats_reader}),
+                       EmitUser({PromUser, local}, PromRoles, Dict1)
+               end,
+
+           Dict3 =
                lists:foldl(
                  fun (Bucket, Dict) ->
                          LegacyName = Bucket ++ ";legacy",
                          Roles2 = menelaus_roles:get_roles({Bucket, bucket}),
                          EmitUser({LegacyName, local}, Roles2, Dict)
-                 end, Dict1, ns_bucket:get_bucket_names(Buckets)),
+                 end, Dict2, ns_bucket:get_bucket_names(Buckets)),
 
            pipes:fold(
              ?producer(),
@@ -248,15 +276,17 @@ jsonify_users(Users, RoleDefinitions, ClusterAdmin) ->
                              Roles3 = proplists:get_value(roles, Props, []),
                              EmitUser(Identity, Roles3, Dict)
                      end
-             end, Dict2),
+             end, Dict3),
            ?yield(object_end)
        end).
 
 producer(#state{roles = RoleDefinitions,
                 users = Users,
-                cluster_admin = ClusterAdmin}) ->
+                cluster_admin = ClusterAdmin,
+                prometheus_user = PromUser}) ->
     pipes:compose([menelaus_users:select_users({'_', local}, [roles]),
-                   jsonify_users(Users, RoleDefinitions, ClusterAdmin),
+                   jsonify_users(Users, RoleDefinitions, ClusterAdmin,
+                                 PromUser),
                    sjson:encode_extended_json([{compact, false},
                                                {strict, false}])]).
 

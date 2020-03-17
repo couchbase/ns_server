@@ -80,6 +80,9 @@ child_specs() ->
      {ns_crash_log_consumer, {ns_log, start_link_crash_consumer, []},
       {permanent, 4}, 1000, worker, []},
 
+     {prometheus_cfg, {prometheus_cfg, start_link, []},
+      permanent, 1000, worker, [prometheus_cfg]},
+
      {memcached_passwords, {memcached_passwords, start_link, []},
       permanent, 1000, worker, []},
 
@@ -141,9 +144,6 @@ child_specs() ->
 
      {eventing_settings_manager, {eventing_settings_manager, start_link, []},
       permanent, 1000, worker, [work_queue]},
-
-     {prometheus_cfg, {prometheus_cfg, start_link, []},
-      permanent, 1000, worker, [prometheus_cfg]},
 
      {audit_events,
       {gen_event, start_link, [{local, audit_events}]},
