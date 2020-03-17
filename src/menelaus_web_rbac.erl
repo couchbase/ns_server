@@ -697,17 +697,40 @@ parse_until(Str, Delimeters) ->
 role_to_atom(Role) ->
     list_to_existing_atom(string:to_lower(Role)).
 
-parse_role(RoleRaw) ->
+get_num_params(Role, Definitions) ->
+    case menelaus_roles:get_param_defs(Role, Definitions) of
+        not_found ->
+            not_found;
+        Defs ->
+            length(Defs)
+    end.
+
+adjust_role(Role, Params, Definitions) ->
+    RoleAtom = role_to_atom(Role),
+    AdjustedParams =
+        case get_num_params(RoleAtom, Definitions) of
+            I when is_integer(I),
+                   I >= length(Params) ->
+                misc:align_list(Params, I, any);
+            _ ->
+                %% this will be handled later
+                %% in validate_roles
+                Params
+        end,
+    {RoleAtom, AdjustedParams}.
+
+parse_role(RoleRaw, Definitions) ->
     try
         case parse_until(RoleRaw, "[") of
             {Role, []} ->
                 role_to_atom(Role);
             {Role, "[*]"} ->
-                {role_to_atom(Role), [any]};
+                adjust_role(Role, [any], Definitions);
             {Role, [$[ | ParamAndBracket]} ->
                 case parse_until(ParamAndBracket, "]") of
                     {Param, "]"} ->
-                        {role_to_atom(Role), [Param]};
+                        adjust_role(Role, string:tokens(Param, ":"),
+                                    Definitions);
                     _ ->
                         {error, RoleRaw}
                 end
@@ -719,8 +742,10 @@ parse_role(RoleRaw) ->
 parse_roles(undefined) ->
     [];
 parse_roles(RolesStr) ->
+    Definitions = menelaus_roles:get_definitions(),
     RolesRaw = string:tokens(RolesStr, ","),
-    [parse_role(string:trim(RoleRaw)) || RoleRaw <- RolesRaw].
+    [parse_role(string:trim(RoleRaw), Definitions) || RoleRaw <- RolesRaw].
+
 params_to_string([any]) ->
     "*";
 params_to_string([any | Rest]) ->
@@ -1675,6 +1700,35 @@ role_to_json_test_() ->
                       {scope_name, <<"s">>}, {collection_name, <<"c">>}],
                      {data_reader, ["test", "s", "c"]})
         end}]).
+
+parse_roles_test_() ->
+    t_wrap(
+      [{"without colletions",
+        fun () ->
+                ?assertEqual(
+                   [admin,
+                    {bucket_admin, ["test.test"]},
+                    {bucket_admin, [any]},
+                    {error, "no_such_atom"},
+                    {error, "bucket_admin[default"}],
+                   parse_roles("admin, bucket_admin[test.test], bucket_admin[*],"
+                               "no_such_atom, bucket_admin[default"))
+        end},
+       {"with collections",
+        fun () ->
+                ?assertEqual(
+                   [{data_reader, [any, any, any]},
+                    {data_reader, ["test", any, any]},
+                    {data_reader, ["test", "s", any]},
+                    {data_reader, ["test", "s", "c"]},
+                    {data_reader, ["test", "s", "c", "c", "c"]},
+                    {bucket_admin, ["test", "s"]}],
+                   parse_roles("data_reader[*], data_reader[test], "
+                               "data_reader[test:s], data_reader[test:s:c], "
+                               "data_reader[test:s:c:c:c], "
+                               "bucket_admin[test:s]"))
+        end}]).
+
 parse_permissions_test() ->
     ?assertMatch(
        [{"cluster.admin!write", {[admin], write}},
