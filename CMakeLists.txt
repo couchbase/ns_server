@@ -223,15 +223,14 @@ INSTALL (PROGRAMS scripts/cbdump-config scripts/dump-guts DESTINATION bin)
 INSTALL (PROGRAMS scripts/escript-wrapper scripts/dump-stats DESTINATION bin)
 
 # Include Prometheus binary for statistics gathering
-CBDEP_INSTALL (PACKAGE prometheus VERSION ${PROMETHEUS_VERSION})
+SET (PROMETHEUS_EXE "${CMAKE_CURRENT_BINARY_DIR}/prometheus-${PROMETHEUS_VERSION}/prometheus")
 IF (WIN32)
-    SET (PROMETHEUS_EXE prometheus.exe)
-ELSE ()
-    SET (PROMETHEUS_EXE prometheus)
+    SET (PROMETHEUS_EXE "${PROMETHEUS_EXE}.exe")
 ENDIF ()
-INSTALL (
-    PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/prometheus-${PROMETHEUS_VERSION}/${PROMETHEUS_EXE}
-    DESTINATION bin)
+IF (NOT EXISTS "${PROMETHEUS_EXE}")
+    CBDEP_INSTALL (PACKAGE prometheus VERSION ${PROMETHEUS_VERSION})
+ENDIF ()
+INSTALL (PROGRAMS "${PROMETHEUS_EXE}" DESTINATION bin)
 
 # Configure custom copies of scripts for installation
 SET (PREFIX "${CMAKE_INSTALL_PREFIX}")
