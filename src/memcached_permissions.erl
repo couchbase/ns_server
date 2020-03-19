@@ -117,7 +117,8 @@ handle_event({cluster_compat_version, _V}, #state{roles = Roles} = State) ->
         NewRoles ->
             {changed, State#state{roles = NewRoles}}
     end;
-handle_event({rest_creds, {ClusterAdmin, _}}, #state{cluster_admin = ClusterAdmin}) ->
+handle_event({rest_creds, {ClusterAdmin, _}},
+             #state{cluster_admin = ClusterAdmin}) ->
     unchanged;
 handle_event({rest_creds, {ClusterAdmin, _}}, State) ->
     {changed, State#state{cluster_admin = ClusterAdmin}};
@@ -130,14 +131,17 @@ refresh() ->
     memcached_refresh:refresh(rbac).
 
 bucket_permissions(Bucket, CompiledRoles) ->
-    lists:usort([MemcachedPermission ||
-                    {Permission, MemcachedPermission} <- bucket_permissions_to_check(Bucket),
-                    menelaus_roles:is_allowed(Permission, CompiledRoles)]).
+    lists:usort(
+      [MemcachedPermission ||
+          {Permission,
+           MemcachedPermission} <- bucket_permissions_to_check(Bucket),
+          menelaus_roles:is_allowed(Permission, CompiledRoles)]).
 
 global_permissions(CompiledRoles) ->
-    lists:usort([MemcachedPermission ||
-                    {Permission, MemcachedPermission} <- global_permissions_to_check(),
-                    menelaus_roles:is_allowed(Permission, CompiledRoles)]).
+    lists:usort(
+      [MemcachedPermission ||
+          {Permission, MemcachedPermission} <- global_permissions_to_check(),
+          menelaus_roles:is_allowed(Permission, CompiledRoles)]).
 
 format_permissions(Buckets, CompiledRoles) ->
     [{global, global_permissions(CompiledRoles)} |
@@ -174,13 +178,15 @@ permissions_for_user(Roles, Buckets, RoleDefinitions, RolesDict) ->
                                            Role, Dict),
                   {zip_permissions(Permissions, Acc), NewDict}
           end, {Acc0, RolesDict}, Roles),
-    MergedPermissions = [{Bucket, lists:umerge(Perm)} || {Bucket, Perm} <- ZippedPermissions],
+    MergedPermissions =
+        [{Bucket, lists:umerge(Perm)} || {Bucket, Perm} <- ZippedPermissions],
     {MergedPermissions, NewRolesDict}.
 
 jsonify_user(Identity, CompiledRoles, Buckets) ->
     jsonify_user(Identity, format_permissions(Buckets, CompiledRoles)).
 
-jsonify_user({UserName, Domain}, [{global, GlobalPermissions} | BucketPermissions]) ->
+jsonify_user({UserName, Domain},
+             [{global, GlobalPermissions} | BucketPermissions]) ->
     Buckets = {buckets, {[{list_to_binary(BucketName), Permissions} ||
                              {BucketName, Permissions} <- BucketPermissions]}},
     Global = {privileges, GlobalPermissions},
