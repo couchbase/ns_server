@@ -1401,11 +1401,10 @@ inner_wait_shutdown(Pid) ->
 try_with_maybe_ignorant_after(TryBody, AfterBody) ->
     RV =
         try TryBody()
-        catch T:E ->
-                Stacktrace = erlang:get_stacktrace(),
+        catch T:E:Stacktrace ->
                 try AfterBody()
-                catch T2:E2 ->
-                        ?log_error("Eating exception from ignorant after-block:~n~p", [{T2, E2, erlang:get_stacktrace()}])
+                catch T2:E2:S2 ->
+                        ?log_error("Eating exception from ignorant after-block:~n~p", [{T2, E2, S2}])
                 end,
                 erlang:raise(T, E, Stacktrace)
         end,
@@ -1597,8 +1596,7 @@ is_local_port_open(Port, Timeout) ->
 delaying_crash(DelayBy, Body) ->
     try
         Body()
-    catch T:E ->
-            ST = erlang:get_stacktrace(),
+    catch T:E:ST ->
             ?log_debug("Delaying crash ~p:~p by ~pms~nStacktrace: ~p", [T, E, DelayBy, ST]),
             timer:sleep(DelayBy),
             erlang:raise(T, E, ST)

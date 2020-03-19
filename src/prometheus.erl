@@ -79,8 +79,7 @@ post_async(Path, Body, Timeout, Settings, Handler) ->
                                 Handler(Reply)
                         end
                     catch
-                        Class:Error ->
-                            ST = erlang:get_stacktrace(),
+                        Class:Error:ST ->
                             ?log_error("Exception in httpc receiver ~p:~p~n"
                                        "Stacktrace: ~p~nRes: ~w",
                                        [Class, Error, ST, Res])

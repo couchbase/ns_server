@@ -359,15 +359,13 @@ handle_connection(Conn, State) ->
     try
         do_handle_connection(Conn, State)
     catch
-        T:E ->
+        T:E:Stack ->
             %% We might get here because of misbehaving revrpc service, so try
             %% to drop the connection in the hope that it will help the
             %% service to recover. We do a similar thing in the terminate
             %% function, but that won't work for this case because there's no
             %% connection in the state yet.
             exit(Conn, {handle_connection_failed, {T, E}}),
-
-            Stack = erlang:get_stacktrace(),
             erlang:raise(T, E, Stack)
     end.
 
@@ -824,9 +822,9 @@ process_service_response(Name, Raw, Fun) ->
     try
         Fun(Raw)
     catch
-        T:E ->
+        T:E:S ->
             ?log_error("Error while processing response to ~p: ~p~n~p",
-                       [Name, {T, E, erlang:get_stacktrace()}, Raw])
+                       [Name, {T, E, S}, Raw])
     end.
 
 handle_multicall_result(Service, Call, Result) ->

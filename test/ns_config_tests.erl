@@ -301,8 +301,7 @@ test_save_config() ->
 test_svc() ->
     try
         do_test_svc()
-    catch E:T ->
-            Stack = erlang:get_stacktrace(),
+    catch E:T:Stack ->
             io:format("Details:~n~p~n~p~n", [{E,T}, Stack]),
             erlang:E(T)
     end.

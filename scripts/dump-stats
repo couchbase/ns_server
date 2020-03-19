@@ -130,8 +130,7 @@ do_main(StatsDir, OutputFile) ->
 main([StatsDir, OutputFile]) ->
     try
         do_main(StatsDir, OutputFile)
-    catch T:E ->
-            Stack = erlang:get_stacktrace(),
+    catch T:E:Stack ->
             fatal("failed to encode stats to ~p: ~p~n~p",
                   [OutputFile, {T, E}, Stack])
     end;

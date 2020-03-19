@@ -305,8 +305,7 @@ do_test_rebalance(VBuckets, BackfillsLimit, MovesBeforeCompaction, MaxInflightMo
         miniassert(CompactedNodes =:= AffectedNodes,
                    {"every node at least once compacted", CompactedNodes, AffectedNodes}),
         ok
-    catch T:E ->
-            ST = erlang:get_stacktrace(),
+    catch T:E:ST ->
             ?debugFmt("~p~n~p", [{T,E}, ST]),
             erlang:raise(T, E, ST)
     end.

@@ -207,11 +207,11 @@ stacktrace_(Mod) ->
         Mod:test(),
         throw(failed)
     catch
-        error:test_error ->
+        error:test_error:Stack ->
             ?assert(lists:any(fun({M, test, []}) when M == Mod    -> true;
                                  ({M, test, [],[]}) when M == Mod -> true;
                                  (_)                              -> false
-                              end, erlang:get_stacktrace()))
+                              end, Stack))
     end.
 
 stacktrace_function_clause_(Mod) ->
@@ -220,8 +220,7 @@ stacktrace_function_clause_(Mod) ->
         Mod:test(error),
         throw(failed)
     catch
-        error:function_clause ->
-            Stacktrace = erlang:get_stacktrace(),
+        error:function_clause:Stacktrace ->
             ?assert(lists:any(
                 fun ({M, test, [error]}) when M == Mod     -> true;
                     ({M, test, [error], []}) when M == Mod -> true;

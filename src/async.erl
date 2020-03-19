@@ -198,8 +198,7 @@ async_init(Parent, ParentController, Opts, Fun) ->
                       R ->
                           reply(To, {ok, R})
                   catch
-                      T:E ->
-                          Stack = erlang:get_stacktrace(),
+                      T:E:Stack ->
                           reply(To, {raised, {T, E, Stack}}),
                           erlang:raise(T, E, Stack)
                   end

@@ -96,8 +96,7 @@ pre_db_open(DbName) ->
         _ ->
             try
                 erlang:error({you_cannot_open_vbucket_dbs_anymore, DbName})
-            catch T:E ->
-                    Stack = erlang:get_stacktrace(),
+            catch T:E:Stack ->
                     couch_log:error("Something attempted to open database vbucket: ~s~nAt:~p",
                                     [DbName, Stack]),
                     erlang:raise(T, E, Stack)

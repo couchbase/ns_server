@@ -167,8 +167,8 @@ check_input(Fun,Input,IDom,#triq{count=Count,report=DoReport}=QCT) ->
             {failure, Fun, Input, IDom, QCT#triq{count=Count+1,result=Any}}
 
     catch
-        Class : Exception ->
-            DoReport(fail, {Class, Exception, erlang:get_stacktrace()}),
+        Class : Exception : Stack->
+            DoReport(fail, {Class, Exception, Stack}),
             {failure, Fun, Input, IDom, QCT#triq{count=Count+1,
                                                  result={'EXIT',Exception}}}
 

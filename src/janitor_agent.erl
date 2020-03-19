@@ -951,9 +951,9 @@ read_flush_counter(BucketName) ->
                 FlushSeq ->
                     ?log_info("Got flushseq from local file: ~p", [FlushSeq]),
                     FlushSeq
-            catch T:E ->
+            catch T:E:S ->
                     ?log_error("Parsing flushseq failed: ~p",
-                               [{T, E, erlang:get_stacktrace()}]),
+                               [{T, E, S}]),
                     read_flush_counter_from_config(BucketName)
             end;
         Error ->

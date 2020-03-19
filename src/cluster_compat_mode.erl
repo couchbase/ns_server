@@ -264,8 +264,8 @@ do_switch_compat_mode(NewVersion, NodesWanted) ->
                 ale:error(?USER_LOGGER, "Was unable to sync cluster_compat_version update to some nodes: ~p", [BadNodes]),
                 ok
         end
-    catch T:E ->
-            ale:error(?USER_LOGGER, "Got problems trying to replicate cluster_compat_version update~n~p", [{T,E,erlang:get_stacktrace()}])
+    catch T:E:S ->
+            ale:error(?USER_LOGGER, "Got problems trying to replicate cluster_compat_version update~n~p", [{T, E, S}])
     end.
 
 consider_switching_compat_mode_loop(_NodeInfos, _NodesWanted, _Version = undefined) ->

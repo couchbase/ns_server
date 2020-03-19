@@ -89,8 +89,7 @@ report_couch_stats(Bucket, ReportFun) ->
     Stats = try
                 ns_couchdb_api:fetch_raw_stats(Bucket)
             catch
-                _:E ->
-                    ST = erlang:get_stacktrace(),
+                _:E:ST ->
                     ?log_info("Failed to fetch couch stats:~p~n~p", [E, ST]),
                     []
             end,
@@ -161,16 +160,16 @@ handle_call(grab_stats, _From, State = #state{port = Port}) ->
     try
         {reply, {ok, grab_stats(Port)}, State}
     catch
-        C:E ->
-            {reply, {exception, C, E, erlang:get_stacktrace()}, State}
+        C:E:S ->
+            {reply, {exception, C, E, S}, State}
     end;
 
 handle_call({process_stats, TS, Bin, PrevSample}, _From, State) ->
     try
         {reply, {ok, process_stats(TS, Bin, PrevSample, State)}, State}
     catch
-        C:E ->
-            {reply, {exception, C, E, erlang:get_stacktrace()}, State}
+        C:E:S ->
+            {reply, {exception, C, E, S}, State}
     end;
 
 %% Can be called from another node. Introduced in Cheshire-Cat

@@ -145,8 +145,7 @@ load_configuration() ->
                 fun ({Key, Val}) ->
                     application:set_env(kernel, Key, Val)
                 end, Config)
-    catch _:Error ->
-            ST = erlang:get_stacktrace(),
+    catch _:Error:ST ->
             error_logger:error_msg("Invalid config ~p: ~p~n~p",
                                    [ConfigFile, Error, ST]),
             erlang:error({invalid_format, ConfigFile})

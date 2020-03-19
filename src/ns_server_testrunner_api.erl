@@ -28,8 +28,7 @@ kill_memcached(Timeout) ->
     try
         {ok, Pid} = ns_ports_manager:send_command(ns_server:get_babysitter_node(), memcached, <<"die!\n">>),
         ok = misc:wait_for_process(Pid, Timeout)
-    catch E:T ->
-            ST = erlang:get_stacktrace(),
+    catch E:T:ST ->
             ?log_error("Got exception in kill_memcached: ~p~n~p", [{E,T}, ST]),
             erlang:raise(E, T, ST)
     end.

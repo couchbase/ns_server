@@ -263,8 +263,7 @@ config_sync(Type, Options) ->
         Error ->
             throw({error, {config_sync_failed, Type, Error}})
     catch
-        T:E ->
-            Stack = erlang:get_stacktrace(),
+        T:E:Stack ->
             throw({error, {config_sync_failed, Type, {T, E, Stack}}})
     end.
 

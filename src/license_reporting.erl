@@ -191,10 +191,10 @@ post(URL, Headers, Body, Timeout, RedirectsLeft) ->
                 end,
             {error, misc:format_bin("~p", [Reason2])}
     catch
-        _:Error ->
+        _:Error:Stack ->
             ?log_error("Sending on-demand pricing report crashed with error: ~p"
                        "~nStacktrace: ~p",
-                       [Error, erlang:get_stacktrace()]),
+                       [Error, Stack]),
             {error,
              misc:format_bin("http client crashed with reason ~p", [Error])}
     end.

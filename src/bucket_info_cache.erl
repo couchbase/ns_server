@@ -316,8 +316,8 @@ compute_bucket_info_with_config(Id, Config, BucketConfig) ->
 compute_bucket_info(Bucket) ->
     Config = ns_config:get(),
     try do_compute_bucket_info(Bucket, Config)
-    catch T:E ->
-            {T, E, erlang:get_stacktrace()}
+    catch T:E:S ->
+            {T, E, S}
     end.
 
 
@@ -376,8 +376,8 @@ call_build_node_services() ->
                               ets:insert(bucket_info_cache,
                                          {'node_services', Rev, V}),
                               {ok, Rev, V}
-                      catch T:E ->
-                              {T, E, erlang:get_stacktrace()}
+                      catch T:E:S ->
+                              {T, E, S}
                       end;
                   [{_, Rev, V}] ->
                       {ok, Rev, V}

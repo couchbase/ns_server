@@ -100,9 +100,9 @@ handle_info({tick, TS0}, #state{module = Module,
                                           impl_state = NewImplState,
                                           prev_counters = NewCounters,
                                           prev_ts = TS}}
-            catch T:E ->
+            catch T:E:S ->
                     ?stats_error("(Collector: ~p) Exception in stats collector: ~p~n",
-                                 [Module, {T,E, erlang:get_stacktrace()}]),
+                                 [Module, {T, E, S}]),
                     {noreply, State#state{count = NewCount}}
             end;
         _ ->

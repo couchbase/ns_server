@@ -247,9 +247,9 @@ do_save_doc(#doc{id = Id} = Doc,
         do_save_doc_with_bucket(Doc, Bucket),
         gen_event:sync_notify(EventManager, {resume, Ref, {ok, Doc}})
     catch
-        T:E ->
+        T:E:S ->
             ?log_debug("Saving of document ~p for bucket ~p failed with ~p:~p~nStack trace: ~p",
-                       [Id, Bucket, T, E, erlang:get_stacktrace()]),
+                       [Id, Bucket, T, E, S]),
             gen_event:sync_notify(EventManager, {resume, Ref, {error, Doc, E}}),
             throw(E)
     end,

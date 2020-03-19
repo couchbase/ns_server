@@ -253,9 +253,9 @@ read_table(Path, TableName) ->
     try
         ok = do_read_table(Path, TableName)
     catch
-        T:E ->
+        T:E:S ->
             ?log_error("Failed to read table ~p from ~p:~n~p",
-                       [TableName, Path, {T, E, erlang:get_stacktrace()}])
+                       [TableName, Path, {T, E, S}])
     end.
 
 do_read_table(Path, TableName) ->

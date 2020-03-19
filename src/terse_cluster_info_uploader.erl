@@ -47,8 +47,7 @@ handle_info(refresh, State) ->
         {Rev, Bin} ->
             ?log_debug("Refreshing terse cluster info with ~p", [Bin]),
             ok = ns_memcached:set_cluster_config(Rev, Bin)
-    catch T:E ->
-            Stack = erlang:get_stacktrace(),
+    catch T:E:Stack ->
             ?log_error("Got exception trying to get terse cluster info: ~p",
                        [{T, E, Stack}]),
             timer:sleep(10000),

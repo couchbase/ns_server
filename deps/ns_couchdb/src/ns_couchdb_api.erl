@@ -167,8 +167,10 @@ rpc_couchdb_node(Node, Request, RpcTimeout, Default) ->
     RV = rpc:call(Node, ?MODULE, handle_rpc, [Request], RpcTimeout),
     case {RV, Default} of
         {{badrpc, _}, undefined} ->
-            Stack = try throw(42) catch 42 -> erlang:get_stacktrace() end,
-            ?log_debug("RPC to couchdb node failed for ~p with ~p~nStack: ~p", [Request, RV, Stack]),
+            {current_stacktrace, Stack} = erlang:process_info(
+                                            self(), current_stacktrace),
+            ?log_debug("RPC to couchdb node failed for ~p with ~p~nStack: ~p",
+                       [Request, RV, Stack]),
             exit({error, RV});
         {{badrpc, _}, Default} ->
             ?log_debug("RPC to couchdb node failed for ~p with ~p. Use default value ~p~n",
@@ -266,18 +268,18 @@ handle_rpc({try_to_cleanup_indexes, BucketName}) ->
 
     try
         couch_set_view:cleanup_index_files(mapreduce_view, BucketName)
-    catch SetViewT:SetViewE ->
+    catch SetViewT:SetViewE:SetViewStack ->
             ?log_error("Error while doing cleanup of old "
                        "index files for bucket `~s`: ~p~n~p",
-                       [BucketName, {SetViewT, SetViewE}, erlang:get_stacktrace()])
+                       [BucketName, {SetViewT, SetViewE}, SetViewStack])
     end,
 
     try
         couch_set_view:cleanup_index_files(spatial_view, BucketName)
-    catch SpatialT:SpatialE ->
+    catch SpatialT:SpatialE:SpatialStack ->
             ?log_error("Error while doing cleanup of old "
                        "spatial index files for bucket `~s`: ~p~n~p",
-                       [BucketName, {SpatialT, SpatialE}, erlang:get_stacktrace()])
+                       [BucketName, {SpatialT, SpatialE}, SpatialStack])
     end;
 
 handle_rpc({get_view_group_data_size, BucketName, DDocId, Kind}) ->

@@ -75,9 +75,9 @@ refresh() ->
         Reps ->
             update_ets_table(Reps)
     catch
-        T:E ->
+        T:E:S ->
             ?log_warning("Failed to refresh goxdcr replications: ~p",
-                         [{T, E, erlang:get_stacktrace()}])
+                         [{T, E, S}])
     end.
 
 update_ets_table(Reps) ->

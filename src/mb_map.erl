@@ -782,10 +782,10 @@ do_invoke_vbmap_body(VbmapPath, DiagPath, CurrentMap, Nodes,
 
                 {ok, Map}
             catch
-                E:T ->
+                E:T:S ->
                     ?log_error("seems that vbmap produced invalid json (error ~p):~n~s",
                                [{E, T}, Output]),
-                    erlang:raise(E, T, erlang:get_stacktrace())
+                    erlang:raise(E, T, S)
             end;
         {no_solution, _} ->
             no_solution;

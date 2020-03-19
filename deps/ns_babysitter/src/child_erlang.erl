@@ -88,9 +88,9 @@ open_port_args() ->
 child_start(Arg) ->
     try
         do_child_start(Arg)
-    catch T:E ->
-            io:format("Crap ~p:~p~n~p~n", [T, E, erlang:get_stacktrace()]),
-            (catch ?log_debug("Crap to start:  ~p:~p~n~p~n", [T, E, erlang:get_stacktrace()])),
+    catch T:E:S ->
+            io:format("Crap ~p:~p~n~p~n", [T, E, S]),
+            (catch ?log_debug("Crap to start:  ~p:~p~n~p~n", [T, E, S])),
             timer:sleep(1000),
             misc:halt(3)
     end.

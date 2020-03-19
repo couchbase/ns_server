@@ -53,9 +53,9 @@ stop() ->
              %% application:stop(ale),
 
              ok
-         catch T:E ->
+         catch T:E:S ->
                  Msg = io_lib:format("Got error trying to stop applications~n~p",
-                                     [{T, E, erlang:get_stacktrace()}]),
+                                     [{T, E, S}]),
 
                  (catch ?log_error(Msg)),
                  (catch error_logger:error_msg(Msg)),

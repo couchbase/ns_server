@@ -243,8 +243,7 @@ spawn_and_wait(Body) ->
                           try Body() of
                               RV ->
                                   exit({done, RV})
-                          catch T:E ->
-                                  Stack = erlang:get_stacktrace(),
+                          catch T:E:Stack ->
                                   exit({done, T, E, Stack})
                           end
                   end),

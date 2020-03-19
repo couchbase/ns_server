@@ -73,9 +73,9 @@ decode_json_response_ext({ok, {{200 = _StatusCode, _} = _StatusLine,
     try mochijson2:decode(Body) of
         X -> {ok, X}
     catch
-        Type:What ->
+        Type:What:Stack ->
             {error, bad_json, <<"Malformed JSON response">>,
-             {Type, What, erlang:get_stacktrace()}}
+             {Type, What, Stack}}
     end;
 
 decode_json_response_ext({ok, {{400 = _StatusCode, _} = _StatusLine,

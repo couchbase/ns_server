@@ -383,9 +383,9 @@ grab_index_status() ->
             try
                 {ok, Status} = service_index:get_status(2000),
                 Status
-            catch T:E ->
+            catch T:E:S ->
                     ?log_debug("ignoring failure to get index status: ~p~n~p",
-                               [{T, E}, erlang:get_stacktrace()]),
+                               [{T, E}, S]),
                     []
             end;
         false ->
@@ -450,8 +450,9 @@ grab_local_xdcr_replications() ->
                   {errors, Errors}
                   | Props]
              end || {Id, Props, LastErrors} <- Infos]
-    catch T:E ->
-            ?log_debug("Ignoring exception getting xdcr replication infos~n~p", [{T,E,erlang:get_stacktrace()}]),
+    catch T:E:S ->
+            ?log_debug("Ignoring exception getting xdcr replication infos~n~p",
+                       [{T, E, S}]),
             []
     end.
 
@@ -462,8 +463,9 @@ grab_samples_loading_tasks() ->
               {bucket, list_to_binary(Name)},
               {pid, list_to_binary(pid_to_list(Pid))}]
              || {Name, Pid} <- RawTasks]
-    catch T:E ->
-            ?log_error("Failed to grab samples loader tasks: ~p", [{T,E,erlang:get_stacktrace()}]),
+    catch T:E:S ->
+            ?log_error("Failed to grab samples loader tasks: ~p",
+                       [{T, E, S}]),
             []
     end.
 
@@ -501,9 +503,9 @@ grab_one_service_status(Service) ->
     try
         service_agent:get_status(Service, 2000)
     catch
-        T:E ->
+        T:E:S ->
             ?log_error("Failed to grab service ~p status: ~p",
-                       [Service, {T, E, erlang:get_stacktrace()}]),
+                       [Service, {T, E, S}]),
             []
     end.
 

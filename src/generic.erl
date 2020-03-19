@@ -118,9 +118,9 @@ gfold(Fun, State, Term) ->
                 try
                     term_recover(Type, NewChildren)
                 catch
-                    T:E ->
+                    T:E:S ->
                         error({term_recover_failed,
-                               {T, E, erlang:get_stacktrace()},
+                               {T, E, S},
                                {term, Term},
                                {type, Type},
                                {children, Children},

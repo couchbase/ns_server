@@ -64,12 +64,11 @@ initiate_indexing(Bucket) ->
                                    [Call, Kind, Bucket, DDocId, RestArgs, __Result, __Time div 1000]),
                       __Result
                   catch
-                      __T:__E ->
+                      __T:__E:__Stack ->
                           ?views_debug("~ncouch_set_view:~p(~s, <<\"~s\">>, <<\"~s\">>, ~w) raised~n~p:~p",
                                        [Call, Kind, Bucket, DDocId, RestArgs, __T, __E]),
 
                           %% rethrowing the exception
-                          __Stack = erlang:get_stacktrace(),
                           erlang:raise(__T, __E, __Stack)
                   end
           end)())).
@@ -371,8 +370,7 @@ apply_index_states(SetName, DDocId, Active, Passive, Cleanup,
         end
 
     catch
-        T:E ->
-            Stack = erlang:get_stacktrace(),
+        T:E:Stack ->
             Exc = [T, E, Stack],
             Undefined = case Exc of
                             [throw, {error, view_undefined}, _] ->

@@ -120,8 +120,9 @@ decode_single_certificate(CertPemBin) ->
 do_decode_certificates(CertPemBin) ->
     try
         public_key:pem_decode(CertPemBin)
-    catch T:E ->
-            ?log_error("Unknown error while parsing certificate:~n~p", [{T,E,erlang:get_stacktrace()}]),
+    catch T:E:S ->
+            ?log_error("Unknown error while parsing certificate:~n~p",
+                       [{T, E, S}]),
             malformed_cert
     end.
 
@@ -151,8 +152,9 @@ validate_pkey(PKeyPemBin) ->
         Other ->
             ?log_debug("Too many (~p) pkey entries.", [length(Other)]),
             {error, too_many_pkey_entries}
-    catch T:E ->
-            ?log_error("Unknown error while parsing private key:~n~p", [{T,E,erlang:get_stacktrace()}]),
+    catch T:E:S ->
+            ?log_error("Unknown error while parsing private key:~n~p",
+                       [{T, E, S}]),
             {error, malformed_pkey}
     end.
 
@@ -315,9 +317,9 @@ parse_cluster_ca(CA) ->
                               {subject, Subject},
                               {expires, NotAfter}]}
                 end
-            catch T:E ->
+            catch T:E:S ->
                     ?log_error("Failed to get certificate info:~n~p~n~p",
-                               [RootCertDer, {T,E,erlang:get_stacktrace()}]),
+                               [RootCertDer, {T, E, S}]),
                     {error, malformed_cert}
             end
     end.
@@ -413,8 +415,9 @@ verify_fun(Cert, Event, State) ->
 decode_chain(Chain) ->
     try
         lists:reverse(public_key:pem_decode(Chain))
-    catch T:E ->
-            ?log_error("Unknown error while parsing certificate chain:~n~p", [{T,E,erlang:get_stacktrace()}]),
+    catch T:E:S ->
+            ?log_error("Unknown error while parsing certificate chain:~n~p",
+                       [{T, E, S}]),
             {error, {bad_chain, malformed_cert}}
     end.
 

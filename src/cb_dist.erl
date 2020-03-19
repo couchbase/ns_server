@@ -311,8 +311,8 @@ handle_call({get_preferred, Target}, _From, #s{name = Name,
                 end,
             {reply, {ok, Res}, State}
     catch
-        C:E ->
-            {reply, {exception, {C, E, erlang:get_stacktrace()}}, State}
+        C:E:S ->
+            {reply, {exception, {C, E, S}}, State}
     end;
 
 handle_call(close, _From, State) ->
@@ -491,8 +491,7 @@ add_proto(Mod, #s{name = NodeName, listeners = Listeners,
                         State#s{listeners = [{Mod, L}|Listeners],
                                 acceptors = [{APid, Mod}|Acceptors]}
                     catch
-                        _:E ->
-                            ST = erlang:get_stacktrace(),
+                        _:E:ST ->
                             catch Mod:close(LSocket),
                             error_msg(
                               "Accept failed for protocol ~p with reason: ~p~n"
@@ -900,8 +899,7 @@ with_registered_connection(Fun, Module) ->
                             infinity),
             Pid
     catch
-        C:E ->
-            ST = erlang:get_stacktrace(),
+        C:E:ST ->
             gen_server:call(?MODULE, {update_connection_pid, Ref, undefined},
                             infinity),
             erlang:raise(C, E, ST)

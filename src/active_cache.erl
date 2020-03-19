@@ -186,7 +186,7 @@ worker(Ref, Key, GetValue) ->
     Res = try
               {ok, GetValue()}
           catch
-              C:E -> {exception, {C, E, erlang:get_stacktrace()}}
+              C:E:S -> {exception, {C, E, S}}
           end,
     {Ref, Key, GetValue, Res}.
 

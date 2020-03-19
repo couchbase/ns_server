@@ -1157,9 +1157,9 @@ ensure_bucket(Sock, Bucket, BucketSelected) ->
                     Error
             end
     catch
-        E:R ->
+        E:R:S ->
             ?log_error("Unable to get config for bucket ~p: ~p",
-                       [Bucket, {E, R, erlang:get_stacktrace()}]),
+                       [Bucket, {E, R, S}]),
             {E, R}
     end.
 
@@ -1262,8 +1262,9 @@ do_call(Server, Msg, Timeout) ->
                       end,
             system_stats_collector:increment_counter({Service, e2e_call_time}, Diff),
             system_stats_collector:increment_counter({Service, e2e_calls}, 1)
-        catch T:E ->
-                ?log_debug("failed to measure ns_memcached call:~n~p", [{T,E,erlang:get_stacktrace()}])
+        catch T:E:S ->
+                ?log_debug("failed to measure ns_memcached call:~n~p",
+                           [{T, E, S}])
         end
     end.
 

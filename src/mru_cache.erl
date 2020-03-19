@@ -503,8 +503,7 @@ check_cache_loop([Op | Ops], Trace, Check, State) ->
                     {failed, [{ops, lists:reverse(NewTrace)} | Diag]}
             end
     catch
-        T:E ->
-            Stack = erlang:get_stacktrace(),
+        T:E:Stack ->
             {raised, [{what, {T, E}},
                       {stack, Stack},
                       {ops, lists:reverse(NewTrace)},

@@ -36,9 +36,9 @@ init([]) ->
 send_command(PortName, Command) ->
     try
         do_send_command(PortName, Command)
-    catch T:E ->
+    catch T:E:S ->
             ?log_error("Failed to send command ~p to port ~p due to ~p:~p. Ignoring...~n~p",
-                       [Command, PortName, T, E, erlang:get_stacktrace()]),
+                       [Command, PortName, T, E, S]),
             {T, E}
     end.
 

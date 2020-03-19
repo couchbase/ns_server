@@ -236,9 +236,9 @@ collect_diag_per_node(Timeout) ->
                   try
                       collect_diag_per_node_body(Reply)
                   catch
-                      T:E ->
+                      T:E:S ->
                           Reply(partial_results_reason,
-                                {process_died, {T, E, erlang:get_stacktrace()}})
+                                {process_died, {T, E, S}})
                   end
           end),
 
@@ -358,8 +358,8 @@ stream_ets_table(Table, Info, Fun, State) ->
     try
         do_stream_ets_table(Table, Info, Fun, State)
     catch
-        T:E ->
-            {error, {failed, T, E, erlang:get_stacktrace()}}
+        T:E:S ->
+            {error, {failed, T, E, S}}
     end.
 
 do_stream_ets_table(Table, Info, Fun, State) ->
@@ -789,14 +789,11 @@ handle_diag_eval(Req) ->
                     menelaus_util:reply_text(Req, io_lib:format("~p", [Value]), 200)
             end
     catch
-        T:E ->
+        T:E:S ->
             Msg = io_lib:format("/diag/eval failed.~nError: ~p~nBacktrace:~n~p",
-                                [{T, E}, erlang:get_stacktrace()]),
+                                [{T, E}, S]),
             ?log_error("Server error during processing: ~s", [Msg]),
-
-            menelaus_util:reply_text(Req, io_lib:format("/diag/eval failed.~nError: ~p~nBacktrace:~n~p",
-                                                        [{T, E}, erlang:get_stacktrace()]),
-                                     500)
+            menelaus_util:reply_text(Req, Msg, 500)
     end.
 
 handle_diag_master_events(Req) ->

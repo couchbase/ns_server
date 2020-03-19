@@ -993,9 +993,9 @@ node_add_transaction_finish(Node, GroupUUID, Body) ->
             shun(Node),
             Crap
     catch
-        Type:What ->
+        Type:What:Stack ->
             ?cluster_error("Add transaction of ~p failed because of exception ~p",
-                           [Node, {Type, What, erlang:get_stacktrace()}]),
+                           [Node, {Type, What, Stack}]),
             shun(Node),
             erlang:Type(What),
             erlang:error(cannot_happen)
@@ -1312,9 +1312,7 @@ perform_actual_join(RemoteNode, NewCookie) ->
 
         {ok, ok}
     catch
-        Type:Error ->
-            Stack = erlang:get_stacktrace(),
-
+        Type:Error:Stack ->
             ?cluster_error("Error during join: ~p", [{Type, Error, Stack}]),
             {ok, _} = ns_server_cluster_sup:start_ns_server(),
             misc:remove_marker(start_marker_path()),

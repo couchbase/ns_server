@@ -219,8 +219,8 @@ handle_request(Req, Fun) ->
             reply_json(Req, Json, StatusCode);
         throw:{web_exception, StatusCode, Message, ExtraHeaders} ->
             reply_text(Req, Message, StatusCode, ExtraHeaders);
-        Type:What ->
-            reply_server_error(Req, Type, What, erlang:get_stacktrace())
+        Type:What:Stack ->
+            reply_server_error(Req, Type, What, Stack)
     end.
 
 log_web_hit(Peer, Req, Resp) ->
@@ -432,17 +432,15 @@ strip_json_struct(Other) -> Other.
 
 encode_json(JSON) ->
     Stripped = try strip_json_struct(JSON)
-               catch T1:E1 ->
+               catch T1:E1:Stack1 ->
                        ?log_debug("errored while stripping:~n~p", [JSON]),
-                       Stack1 = erlang:get_stacktrace(),
                        erlang:raise(T1, E1, Stack1)
                end,
 
     try
         ejson:encode(Stripped)
-    catch T:E ->
+    catch T:E:Stack ->
             ?log_debug("errored while sending:~n~p~n->~n~p", [JSON, Stripped]),
-            Stack = erlang:get_stacktrace(),
             erlang:raise(T, E, Stack)
     end.
 

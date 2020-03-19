@@ -813,9 +813,9 @@ upgrade(Version, Config, Nodes) ->
         do_upgrade(Version),
         sync_with_remotes(Nodes, Version),
         ok
-    catch T:E ->
+    catch T:E:S ->
               ale:error(?USER_LOGGER, "Unsuccessful user storage upgrade.~n~p",
-                        [{T, E, erlang:get_stacktrace()}]),
+                        [{T, E, S}]),
               error
     end.
 

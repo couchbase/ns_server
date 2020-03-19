@@ -959,8 +959,7 @@ handle_call({update_with_changes, Fun}, From, #config{uuid = UUID} = State) ->
             announce_locally_made_changes(NewPairs),
             handle_call(resave, From, NewState)
     catch
-        T:E ->
-            Stacktrace = erlang:get_stacktrace(),
+        T:E:Stacktrace ->
             ?log_error("Failed to update config: ~p~nStacktrace: ~n~p",
                        [{T, E}, Stacktrace]),
             {reply, {T, E, Stacktrace}, State}
