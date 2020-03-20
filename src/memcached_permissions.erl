@@ -19,6 +19,10 @@
 
 -behaviour(memcached_cfg).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([start_link/0, sync/0, jsonify_user/3, spec_users/0]).
 
 %% callbacks
@@ -255,3 +259,84 @@ producer(#state{roles = RoleDefinitions,
                    jsonify_users(Users, RoleDefinitions, ClusterAdmin),
                    sjson:encode_extended_json([{compact, false},
                                                {strict, false}])]).
+
+-ifdef(TEST).
+permissions_for_user_test_() ->
+    Manifest =
+        [{uid, 2},
+         {scopes, [{"s",  [{uid, 1}, {collections, [{"c",  [{uid, 1}]},
+                                                    {"c1", [{uid, 2}]}]}]},
+                   {"s1", [{uid, 2}, {collections, [{"c",  [{uid, 3}]}]}]}]}],
+    Buckets =
+        [{"test", [{uuid, <<"test_id">>}]},
+         {"default", [{uuid, <<"default_id">>},
+                      {collections_manifest, Manifest}]}],
+    AllGlobalPermissions =
+        lists:sort([P || {_, P} <- global_permissions_to_check()]),
+    AllBucketPermissions =
+        lists:sort([P || {_, P} <- bucket_permissions_to_check(undefined)]),
+    FullRead =
+        lists:sort([P || {{[{bucket, _}, data | _], read}, P}
+                             <- bucket_permissions_to_check(undefined)]),
+    Test =
+        fun (Roles, Expected) ->
+                {lists:flatten(io_lib:format("~p", [Roles])),
+                 fun () ->
+                         {Res, _} =
+                             permissions_for_user(
+                               Roles, Buckets, menelaus_roles:get_definitions(),
+                               dict:new()),
+                         ?assertEqual(
+                            Expected,
+                            [{Type, lists:sort(Perm)} || {Type, Perm} <- Res])
+                 end}
+        end,
+    {foreach,
+     fun() ->
+             meck:new(cluster_compat_mode, [passthrough]),
+             meck:expect(cluster_compat_mode, is_enterprise,
+                         fun () -> true end),
+             meck:expect(cluster_compat_mode, is_cluster_cheshirecat,
+                         fun (_) -> true end)
+     end,
+     fun (_) ->
+             meck:unload(cluster_compat_mode)
+     end,
+     [Test([admin],
+           [{global, AllGlobalPermissions},
+            {"default", AllBucketPermissions},
+            {"test", AllBucketPermissions}]),
+      Test([ro_admin],
+           [{global, ['Stats','SystemSettings']},
+            {"default", ['SimpleStats']},
+            {"test", ['SimpleStats']}]),
+      Test([{bucket_admin, ["test"]}],
+           [{global, ['Stats','SystemSettings']},
+            {"default", []},
+            {"test", ['SimpleStats']}]),
+      Test([{bucket_full_access, ["test"]}],
+           [{global, ['SystemSettings']},
+            {"default", []},
+            {"test", AllBucketPermissions}]),
+      Test([{views_admin, ["test"]}, {views_reader, ["default"]}],
+           [{global, ['Stats', 'SystemSettings']},
+            {"default", ['Read']},
+            {"test", FullRead}]),
+      Test([{data_reader, ["test", any, any]}],
+           [{global, ['SystemSettings']},
+            {"default", []},
+            {"test", ['MetaRead', 'Read', 'XattrRead']}]),
+      Test([{data_dcp_reader, ["test"]}],
+           [{global, ['IdleConnection','SystemSettings']},
+            {"default", []},
+            {"test", FullRead}]),
+      Test([{data_backup, ["test"]}, {data_monitoring, ["default"]}],
+           [{global, ['SystemSettings']},
+            {"default", ['SimpleStats']},
+            {"test", AllBucketPermissions}]),
+      Test([{data_writer, ["test"]}],
+           [{global, ['SystemSettings']},
+            {"default", []},
+            {"test", ['Delete', 'Insert', 'Upsert', 'XattrWrite']}])
+     ]}.
+-endif.
