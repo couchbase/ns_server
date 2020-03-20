@@ -164,7 +164,8 @@ zip_permissions(Permissions, PermissionsAcc) ->
                   end, Permissions, PermissionsAcc).
 
 permissions_for_user(Roles, Buckets, RoleDefinitions, RolesDict) ->
-    Acc0 = [{global, []} | [{Bucket, []} || {Bucket, _} <- Buckets]],
+    Acc0 = [{global, []} | [{Bucket, []} ||
+                               Bucket <- ns_bucket:get_bucket_names(Buckets)]],
     {ZippedPermissions, NewRolesDict} =
         lists:foldl(
           fun (Role, {Acc, Dict}) ->
