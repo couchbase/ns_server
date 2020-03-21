@@ -2,7 +2,11 @@
 // A modified version of the Ace searchbox
 //
 
-define("ace/ext/cb-searchbox",["require","exports","module","ace/lib/dom","ace/lib/lang","ace/lib/event","ace/keyboard/hash_handler","ace/lib/keys"], function(require, exports, module) {
+import ace from './ace.js';
+
+export default "cb-searchbox";
+
+ace.define("ace/ext/cb-searchbox",["require","exports","module","ace/lib/dom","ace/lib/lang","ace/lib/event","ace/keyboard/hash_handler","ace/lib/keys"], function(require, exports, module) {
 "use strict";
 
 var dom = require("../lib/dom");

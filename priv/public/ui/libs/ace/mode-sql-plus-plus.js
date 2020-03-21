@@ -1,3 +1,7 @@
+import ace from './ace.js';
+
+export default "mode-sql-plus-plus";
+
 (function() {
 
   // some globals used by both the highlighter and the autocompleter
@@ -27,7 +31,7 @@
     {name:"function", tokens: builtinFunctions_array}
   ];
 
-  define("ace/mode/sql_plus_plus_highlight_rules",["require","exports","module","ace/lib/oop","ace/mode/text_highlight_rules"],
+  ace.define("ace/mode/sql-plus-plus_highlight_rules",["require","exports","module","ace/lib/oop","ace/mode/text_highlight_rules"],
       function(require, exports, module) {
     "use strict";
 
@@ -93,7 +97,7 @@
    * Define the SQL++ mode
    */
 
-  define("ace/mode/sql_plus_plus_completions",["require","exports","module","ace/token_iterator"], function(require, exports, module) {
+  ace.define("ace/mode/sql-plus-plus_completions",["require","exports","module","ace/token_iterator"], function(require, exports, module) {
     "use strict";
 
     var TokenIterator = require("../token_iterator").TokenIterator;
@@ -136,15 +140,15 @@
     exports.SqlPlusPlusCompletions = SqlPlusPlusCompletions;
   });
 
-  define("ace/mode/sql-plus-plus",["require","exports","module","ace/lib/oop","ace/mode/text",
-    "ace/mode/sql_plus_plus_highlight_rules","ace/mode/query-formatter"],
+  ace.define("ace/mode/sql-plus-plus",["require","exports","module","ace/lib/oop","ace/mode/text",
+    "ace/mode/sql-plus-plus_highlight_rules","ace/mode/query-formatter"],
       function(require, exports, module) {
     "use strict";
 
     var oop = require("../lib/oop");
     var TextMode = require("./text").Mode;
-    var SqlPlusPlusHighlightRules = require("./sql_plus_plus_highlight_rules").SqlPlusPlusHighlightRules;
-    var SqlPlusPlusCompletions = require("./sql_plus_plus_completions").SqlPlusPlusCompletions;
+    var SqlPlusPlusHighlightRules = require("./sql-plus-plus_highlight_rules").SqlPlusPlusHighlightRules;
+    var SqlPlusPlusCompletions = require("./sql-plus-plus_completions").SqlPlusPlusCompletions;
 
     //////////////////////////////////////////////////////////////////////////////////////
     // build a SQL++ formatter from the more generic formatter package
@@ -174,7 +178,7 @@
         return this.$completer.getCompletions(state, session, pos, prefix);
       };
 
-      this.$id = "ace/mode/sql_plus_plus";
+      this.$id = "ace/mode/sql-plus-plus";
     }).call(Mode.prototype);
 
     exports.Mode = Mode;

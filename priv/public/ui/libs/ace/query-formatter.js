@@ -1,6 +1,10 @@
+import ace from "./ace.js";
+
+export default "query-formatter";
+
 (function() {
 
-  define("ace/mode/query-formatter",["require","exports","module","ace/lib/oop"],
+  ace.define("ace/mode/query-formatter",["require","exports","module","ace/lib/oop"],
       function(require, exports, module) {
     "use strict";
 

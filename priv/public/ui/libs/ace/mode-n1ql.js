@@ -1,3 +1,8 @@
+import ace from './ace.js';
+import _ from "/ui/web_modules/lodash.js";
+
+export default "mode-n1ql";
+
 (function() {
 
   //
@@ -124,7 +129,7 @@
   // language tokens
   //
 
-  define("ace/mode/n1ql_highlight_rules",["require","exports","module","ace/lib/oop","ace/mode/text_highlight_rules"],
+  ace.define("ace/mode/n1ql_highlight_rules",["require","exports","module","ace/lib/oop","ace/mode/text_highlight_rules"],
       function(require, exports, module) {
     "use strict";
 
@@ -187,7 +192,7 @@
    * Define the N1QL mode
    */
 
-  define("ace/mode/n1ql_completions",["require","exports","module","ace/token_iterator"], function(require, exports, module) {
+  ace.define("ace/mode/n1ql_completions",["require","exports","module","ace/token_iterator"], function(require, exports, module) {
     "use strict";
 
     var TokenIterator = require("../token_iterator").TokenIterator;
@@ -234,7 +239,7 @@
     exports.N1qlCompletions = N1qlCompletions;
   });
 
-  define("ace/mode/n1ql",["require","exports","module","ace/lib/oop","ace/mode/text","ace/mode/n1ql_highlight_rules",
+  ace.define("ace/mode/n1ql",["require","exports","module","ace/lib/oop","ace/mode/text","ace/mode/n1ql_highlight_rules",
     "ace/mode/query-formatter"],
       function(require, exports, module) {
     "use strict";

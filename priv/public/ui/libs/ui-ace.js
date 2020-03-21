@@ -1,13 +1,17 @@
-'use strict';
+import angular from '/ui/web_modules/angular.js';
+import ace from './ace/ace-wrapper.js';
 
 /**
  * Binds a ACE Editor widget
  */
+
+export default "ui.ace";
+
 angular.module('ui.ace', [])
   .constant('uiAceConfig', {})
   .directive('uiAce', ['uiAceConfig', function (uiAceConfig) {
 
-    if (angular.isUndefined(window.ace)) {
+    if (angular.isUndefined(ace)) {
       throw new Error('ui-ace need ace to work... (o rly?)');
     }
 
@@ -33,13 +37,13 @@ angular.module('ui.ace', [])
       // sets the ace worker path, if running from concatenated
       // or minified source
       if (angular.isDefined(opts.workerPath)) {
-        var config = window.ace.require('ace/config');
+        var config = ace.require('ace/config');
         config.set('workerPath', opts.workerPath);
       }
       // ace requires loading
       if (angular.isDefined(opts.require)) {
         opts.require.forEach(function (n) {
-            window.ace.require(n);
+            ace.require(n);
         });
       }
       // Boolean options
@@ -145,7 +149,7 @@ angular.module('ui.ace', [])
          * ACE editor
          * @type object
          */
-        var acee = window.ace.edit(elm[0]);
+        var acee = ace.edit(elm[0]);
 
         /**
          * ACE editor session.
