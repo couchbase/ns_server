@@ -16,7 +16,7 @@ class MnExceptionHandlerService {
   static parameters = [
     HttpClient,
     MnPoolsService,
-    UIRouter
+    // UIRouter
   ]
 
   constructor(http, mnPoolsService, uiRouter) {
@@ -32,7 +32,7 @@ class MnExceptionHandlerService {
       map(this.formatErrorMessage.bind(this))
     );
 
-    uiRouter.stateService.defaultErrorHandler(this.handleError.bind(this));
+    // uiRouter.stateService.defaultErrorHandler(this.handleError.bind(this));
   }
 
   handleError(exception, cause) {

@@ -6,6 +6,7 @@ import { MnAppComponent } from './mn.app.component.js';
 import { MnAuthComponent } from './mn.auth.component.js';
 import { MnAuthModule } from './mn.auth.module.js';
 import { UpgradeModule } from '/ui/web_modules/@angular/upgrade/static.js';
+import { UIRouterUpgradeModule } from '/ui/web_modules/@uirouter/angular-hybrid.js';
 
 
 let appState = {
@@ -38,11 +39,12 @@ export let mnAppImports = [
   BrowserModule,
   HttpClientModule,
   MnAuthModule,
-  UIRouterModule.forRoot({
-    states: [appState, authState],
-    useHash: true,
-    config: function mnRouterConfig(uiRouter) {
-      uiRouter.urlRouter.deferIntercept();
-    }
-  })
+  UIRouterUpgradeModule,
+  // UIRouterModule.forRoot({
+  //   states: [appState, authState],
+  //   useHash: true,
+  //   config: function mnRouterConfig(uiRouter) {
+  //     uiRouter.urlRouter.deferIntercept();
+  //   }
+  // })
 ];

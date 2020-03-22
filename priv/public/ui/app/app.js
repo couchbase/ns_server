@@ -1,5 +1,6 @@
 import angular from "/ui/web_modules/angular.js";
 import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
+import { upgradeModule } from '/ui/web_modules/@uirouter/angular-hybrid.js';
 import ngSanitize from "/ui/web_modules/angular-sanitize.js";
 import ngAnimate from "/ui/web_modules/angular-animate.js";
 import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
@@ -26,6 +27,7 @@ import {
 export default 'app';
 
 angular.module('app', [
+  upgradeModule.name,
   mnAuth,
   mnPools,
   mnEnv,

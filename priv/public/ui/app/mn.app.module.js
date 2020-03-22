@@ -14,7 +14,6 @@ import { HTTP_INTERCEPTORS, HttpClient } from '../web_modules/@angular/common/ht
 import { UIView, UIRouter} from '../web_modules/@uirouter/angular.js';
 import { UpgradeModule } from '/ui/web_modules/@angular/upgrade/static.js';
 
-
 export { MnAppModule };
 
 class MnAppModule {
@@ -37,7 +36,8 @@ class MnAppModule {
           provide: HTTP_INTERCEPTORS,
           useClass: MnHttpInterceptor,
           multi: true
-        }, {
+        }
+        , {
           provide: ErrorHandler,
           useClass: MnExceptionHandlerService
         }

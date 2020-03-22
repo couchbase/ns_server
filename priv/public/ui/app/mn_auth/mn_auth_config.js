@@ -1,4 +1,5 @@
 import angular from "/ui/web_modules/angular.js";
+import { MnAuthComponent } from '../mn.auth.component.js';
 import ngMessages from "/ui/web_modules/angular-messages.js";
 import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
 import mnAuthService from "./mn_auth_service.js";
@@ -17,8 +18,9 @@ function mnAuthConfig($stateProvider, $httpProvider) {
 
   $stateProvider.state('app.auth', {
     url: "/auth",
-    templateUrl: 'app/mn_auth/mn_auth.html',
-    controller: 'mnAuthController as authCtl'
+    // templateUrl: 'app/mn_auth/mn_auth.html',
+    component: MnAuthComponent
+    // controller: 'mnAuthController as authCtl'
   });
 
   function interceptorOf401($q, $injector) {
