@@ -281,7 +281,8 @@ low_security_ciphers_openssl() ->
      "EXP-RC4-MD5"].
 
 openssl_cipher_to_erlang(Cipher) ->
-    try ssl_cipher:erl_suite_definition(ssl_cipher:openssl_suite(Cipher)) of
+    try ssl_cipher_format:suite_legacy(
+          ssl_cipher_format:suite_openssl_str_to_map(Cipher)) of
         V ->
             {ok, V}
     catch _:_ ->
