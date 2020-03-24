@@ -182,6 +182,7 @@ do_init_logging() ->
               ok = ale:set_loglevel(Logger, debug)
       end,
       StdLoggers),
+    ok = logger:set_primary_config(level, info),
 
     ok = ale:start_logger(?ACCESS_LOGGER, debug, menelaus_access_log_formatter),
 

@@ -105,6 +105,7 @@ init_logging() ->
               ok = ale:set_loglevel(Logger, debug)
       end,
       StdLoggers),
+    ok = logger:set_primary_config(level, info),
 
     lists:foreach(
       fun (Logger) ->

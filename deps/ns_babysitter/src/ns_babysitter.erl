@@ -145,6 +145,7 @@ do_init_logging() ->
 
     ok = ale:start_logger(?NS_SERVER_LOGGER, debug),
     ok = ale:set_loglevel(?ERROR_LOGGER, debug),
+    ok = logger:set_primary_config(level, info),
 
     ok = ale:add_sink(?NS_SERVER_LOGGER, babysitter_sink, debug),
     ok = ale:add_sink(?ERROR_LOGGER, babysitter_sink, debug),

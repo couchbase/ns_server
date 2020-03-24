@@ -40,6 +40,8 @@
          error/2, error/3, xerror/4, xerror/5,
          critical/2, critical/3, xcritical/4, xcritical/5]).
 
+%% logger callbacks.
+-export([adding_handler/1, removing_handler/1, log/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -223,18 +225,39 @@ capture_logging_diagnostics() ->
     [{sinks, dict:to_list(Sinks)},
      {loggers, LoggersD}].
 
-%% Callbacks
+%%%-----------------------------------------------------------------
+%%% Callbacks for logger
+%%%-----------------------------------------------------------------
+-spec adding_handler(logger:handler_config()) ->
+    {ok, logger:handler_config()} | {error, term()}.
+adding_handler(Config) ->
+    {ok, Config}.
+
+-spec removing_handler(logger:handler_config()) -> ok.
+removing_handler(#{id:=Logger}) ->
+    gen_server:cast(?MODULE, {removing_handler, Logger}),
+    ok.
+
+-spec log(logger:log_event(), logger:handler_config()) -> ok.
+log(#{level:=Level, msg:=Msg, meta:=Meta}, #{id:=Logger}) ->
+    ale_error_logger_handler:log(Logger, Level, Msg, Meta).
+%%%-----------------------------------------------------------------
+%%% End: Callbacks for logger
+%%%-----------------------------------------------------------------
+
+%%%-----------------------------------------------------------------
+%%% Callbacks for gen_server
+%%%-----------------------------------------------------------------
 init([]) ->
     State = #state{sinks=dict:new(),
                    loggers=dict:new()},
 
-    {ok, State1} = do_start_logger(?ERROR_LOGGER,
-                                   ?DEFAULT_LOGLEVEL, ?DEFAULT_FORMATTER, State),
-    {ok, State2} = do_start_logger(?ALE_LOGGER,
-                                   ?DEFAULT_LOGLEVEL, ?DEFAULT_FORMATTER, State1),
-
-    set_error_logger_handler(),
-
+    {ok, State1} = do_start_logger(?ERROR_LOGGER, ?DEFAULT_LOGLEVEL,
+                                   ?DEFAULT_FORMATTER, State),
+    {ok, State2} = do_start_logger(?ALE_LOGGER, ?DEFAULT_LOGLEVEL,
+                                   ?DEFAULT_FORMATTER, State1),
+    _ = logger:remove_handler(?ERROR_LOGGER),
+    ok = set_error_logger_handler(),
     {ok, State2}.
 
 handle_call(get_state, _From, State) ->
@@ -297,18 +320,13 @@ handle_call(thaw_compilations, _From, State) ->
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
+handle_cast({removing_handler, ?ERROR_LOGGER}, State) ->
+    ale:error(?ALE_LOGGER, "~p has been removed. Setting it up again.",
+              [?ERROR_LOGGER]),
+    ok = set_error_logger_handler(),
+    {noreply, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
-
-handle_info({'gen_event_EXIT', ale_error_logger_handler, Reason}, State)
-  when Reason =/= normal,
-       Reason =/= shutdown ->
-    ale:error(?ALE_LOGGER,
-              "ale_reports_handler terminated with reason ~p; restarting",
-              [Reason]),
-
-    set_error_logger_handler(),
-    {noreply, State};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -318,6 +336,9 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+%%%-----------------------------------------------------------------
+%%% End: Callbacks for gen_server
+%%%-----------------------------------------------------------------
 
 ensure_sink(SinkName, #state{sinks=Sinks} = _State, Fn) ->
     case dict:find(SinkName, Sinks) of
@@ -510,9 +531,11 @@ do_get_sink_loglevel(LoggerName, SinkName, State) ->
       end).
 
 set_error_logger_handler() ->
-    error_logger:swap_handler(silent),
-    ok = gen_event:add_sup_handler(error_logger, ale_error_logger_handler,
-                                   [?ERROR_LOGGER]).
+    logger:add_handler(
+      ?ERROR_LOGGER, ?MODULE,
+      #{level => info,
+        filter_default => log,
+        filters => [{remote_gl, {fun logger_filters:remote_gl/2, stop}}]}).
 
 compile(#state{compile_frozen = Frozen,
                loggers=Loggers} = State,
