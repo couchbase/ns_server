@@ -55,7 +55,8 @@ medium() ->
 
 supported(ns_server) ->
     [N || C <- ssl:cipher_suites(all, 'tlsv1.2'),
-          {ok, N} <- [cipher_name_by_code(ssl_cipher:suite(C))]];
+          {ok, N} <- [cipher_name_by_code(
+                        ssl_cipher_format:suite_map_to_bin(C))]];
 supported(fts) -> golang_ciphers({1, 11, 5});
 supported(index) -> golang_ciphers({1, 7, 6});
 supported(n1ql) -> golang_ciphers({1, 11, 4});
