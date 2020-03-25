@@ -249,7 +249,12 @@ ensure_prometheus_config(Settings) ->
         "      username: \""?USERNAME"\"\n"
         "      password_file: ~s\n"
         "    static_configs:\n"
-        "    - targets: ['~s']\n",
+        "    - targets: ['~s']\n"
+        "    relabel_configs:\n"
+        "    - source_labels: [__address__]\n"
+        "      regex: '.*:(\\d*)'\n"
+        "      target_label: 'instance'\n"
+        "      replacement: \"localhost:${1}\"",
     Config = io_lib:format(ConfigTemplate, [ScrapeInterval, TokenFile,
                                             LocalHostPort]),
     ?log_debug("Updating prometheus config file: ~s", [File]),
