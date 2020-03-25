@@ -56,12 +56,19 @@ settings() -> settings(ns_config:get()).
 settings(Config) ->
     AFamily = ns_config:search_node_with_default(Config, address_family, inet),
     Port = service_ports:get_port(prometheus_http_port, Config),
-    RestPort = service_ports:get_port(rest_port, Config),
     LocalAddr = misc:localhost(AFamily, [url]),
+    Services = ns_cluster_membership:node_services(Config, node()),
+    Targets = lists:filtermap(
+                fun (S) ->
+                        case service_ports:get_port(get_service_port(S)) of
+                            undefined -> false;
+                            P -> {true, {S, misc:join_host_port(LocalAddr, P)}}
+                        end
+                end, [ns_server | Services]),
     Settings =
         ns_config:search(Config, stats_settings, []) ++
         [{listen_addr, misc:join_host_port(LocalAddr, Port)},
-         {targets, [{ns_server, misc:join_host_port(LocalAddr, RestPort)}]}],
+         {targets, Targets}],
     misc:update_proplist(default_settings(), Settings).
 
 specs(Config) ->
@@ -123,6 +130,8 @@ init([]) ->
             ({{node, Node, prometheus_http_port}, _}) when Node == node() ->
                 gen_server:cast(?MODULE, settings_updated);
             ({{node, Node, address_family}, _}) when Node == node() ->
+                gen_server:cast(?MODULE, settings_updated);
+            ({node, Node, services}) when Node == node() ->
                 gen_server:cast(?MODULE, settings_updated);
             ({node, Node, rest}) when Node == node() ->
                 gen_server:cast(?MODULE, settings_updated);
@@ -238,24 +247,32 @@ ensure_prometheus_config(Settings) ->
     ScrapeInterval = proplists:get_value(scrape_interval, Settings),
     TokenFile = token_file(Settings),
     Targets = proplists:get_value(targets, Settings, []),
-    LocalHostPort = proplists:get_value(ns_server, Targets),
+    TargetsStr = string:join(["'" ++ T ++ "'"|| {_, T} <- Targets], ","),
     ConfigTemplate =
         "global:\n"
         "  scrape_interval: ~bs\n"
         "scrape_configs:\n"
-        "  - job_name: 'ns_server'\n"
+        "  - job_name: 'general'\n"
         "    metrics_path: /_prometheusMetrics\n"
         "    basic_auth:\n"
         "      username: \""?USERNAME"\"\n"
         "      password_file: ~s\n"
         "    static_configs:\n"
-        "    - targets: ['~s']\n"
+        "    - targets: [~s]\n"
         "    relabel_configs:\n"
         "    - source_labels: [__address__]\n"
         "      regex: '.*:(\\d*)'\n"
         "      target_label: 'instance'\n"
         "      replacement: \"localhost:${1}\"",
     Config = io_lib:format(ConfigTemplate, [ScrapeInterval, TokenFile,
-                                            LocalHostPort]),
+                                            TargetsStr]),
     ?log_debug("Updating prometheus config file: ~s", [File]),
     ok = misc:atomic_write_file(File, Config).
+
+get_service_port(ns_server) -> rest_port;
+get_service_port(index) -> indexer_http_port;
+get_service_port(cbas) -> cbas_admin_port;
+get_service_port(n1ql) -> query_port;
+get_service_port(fts) -> fts_http_port;
+get_service_port(eventing) -> eventing_http_port;
+get_service_port(kv) -> undefined.
