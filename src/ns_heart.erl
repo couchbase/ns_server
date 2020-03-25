@@ -91,11 +91,11 @@ maybe_send_forced_beat(#state{timer_ref = TRef} = State) ->
                        TimeMS
                end,
     case TimeLeft > 200 of
-        false ->
-            State;
         true ->
             State0 = cancel_normal_timer(State),
-            send_beat_msg(200, State0)
+            send_beat_msg(200, State0);
+        false ->
+            State
     end.
 
 cancel_normal_timer(#state{timer_ref = TRef} = State) ->
@@ -178,8 +178,7 @@ is_interesting_stat(_) -> false.
 
 
 send_beat_msg(Interval, State) ->
-    ExpectedTime = erlang:monotonic_time(millisecond) + Interval,
-    TRef = erlang:send_after(ExpectedTime, self(), beat, [{abs, true}]),
+    TRef = erlang:send_after(Interval, self(), beat),
     State#state{timer_ref = TRef}.
 
 eat_earlier_slow_updates(TS) ->
