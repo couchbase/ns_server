@@ -56,10 +56,12 @@ settings() -> settings(ns_config:get()).
 settings(Config) ->
     AFamily = ns_config:search_node_with_default(Config, address_family, inet),
     Port = service_ports:get_port(prometheus_http_port, Config),
-    ListenAddr = misc:localhost(AFamily, [url]),
+    RestPort = service_ports:get_port(rest_port, Config),
+    LocalAddr = misc:localhost(AFamily, [url]),
     Settings =
         ns_config:search(Config, stats_settings, []) ++
-        [{listen_addr, ListenAddr ++ ":" ++ integer_to_list(Port)}],
+        [{listen_addr, misc:join_host_port(LocalAddr, Port)},
+         {targets, [{ns_server, misc:join_host_port(LocalAddr, RestPort)}]}],
     misc:update_proplist(default_settings(), Settings).
 
 specs(Config) ->
@@ -121,6 +123,10 @@ init([]) ->
             ({{node, Node, prometheus_http_port}, _}) when Node == node() ->
                 gen_server:cast(?MODULE, settings_updated);
             ({{node, Node, address_family}, _}) when Node == node() ->
+                gen_server:cast(?MODULE, settings_updated);
+            ({node, Node, rest}) when Node == node() ->
+                gen_server:cast(?MODULE, settings_updated);
+            (rest) ->
                 gen_server:cast(?MODULE, settings_updated);
             (_) -> ok
         end,
@@ -231,6 +237,8 @@ ensure_prometheus_config(Settings) ->
     File = prometheus_config_file(Settings),
     ScrapeInterval = proplists:get_value(scrape_interval, Settings),
     TokenFile = token_file(Settings),
+    Targets = proplists:get_value(targets, Settings, []),
+    LocalHostPort = proplists:get_value(ns_server, Targets),
     ConfigTemplate =
         "global:\n"
         "  scrape_interval: ~bs\n"
@@ -241,7 +249,8 @@ ensure_prometheus_config(Settings) ->
         "      username: \""?USERNAME"\"\n"
         "      password_file: ~s\n"
         "    static_configs:\n"
-        "    - targets: ['localhost:9000']\n",
-    Config = io_lib:format(ConfigTemplate, [ScrapeInterval, TokenFile]),
+        "    - targets: ['~s']\n",
+    Config = io_lib:format(ConfigTemplate, [ScrapeInterval, TokenFile,
+                                            LocalHostPort]),
     ?log_debug("Updating prometheus config file: ~s", [File]),
     ok = misc:atomic_write_file(File, Config).
