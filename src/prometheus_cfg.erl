@@ -50,6 +50,7 @@ default_settings() ->
      {log_level, "debug"},
      {max_block_duration, 25}, %% in hours
      {scrape_interval, 10}, %% in seconds
+     {scrape_timeout, 10}, %% in seconds
      {token_file, "prometheus_token"}].
 
 settings() -> settings(ns_config:get()).
@@ -245,12 +246,14 @@ prometheus_config_file(Settings) ->
 ensure_prometheus_config(Settings) ->
     File = prometheus_config_file(Settings),
     ScrapeInterval = proplists:get_value(scrape_interval, Settings),
+    ScrapeTimeout = proplists:get_value(scrape_timeout, Settings),
     TokenFile = token_file(Settings),
     Targets = proplists:get_value(targets, Settings, []),
     TargetsStr = string:join(["'" ++ T ++ "'"|| {_, T} <- Targets], ","),
     ConfigTemplate =
         "global:\n"
         "  scrape_interval: ~bs\n"
+        "  scrape_timeout: ~bs\n"
         "scrape_configs:\n"
         "  - job_name: 'general'\n"
         "    metrics_path: /_prometheusMetrics\n"
@@ -264,8 +267,8 @@ ensure_prometheus_config(Settings) ->
         "      regex: '.*:(\\d*)'\n"
         "      target_label: 'instance'\n"
         "      replacement: \"localhost:${1}\"",
-    Config = io_lib:format(ConfigTemplate, [ScrapeInterval, TokenFile,
-                                            TargetsStr]),
+    Config = io_lib:format(ConfigTemplate, [ScrapeInterval, ScrapeTimeout,
+                                            TokenFile, TargetsStr]),
     ?log_debug("Updating prometheus config file: ~s", [File]),
     ok = misc:atomic_write_file(File, Config).
 
