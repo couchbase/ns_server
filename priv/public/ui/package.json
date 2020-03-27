@@ -9,7 +9,7 @@
     "@uirouter/angularjs": "1.0.24",
     "angular": "1.6.9",
     "beautify": "0.0.8",
-    "lodash": "3.3.0",
+    "lodash": "4.17.15",
     "clipboard": "1.5.16",
     "file-saver": "2.0.2",
     "ui-select": "0.19.8",
