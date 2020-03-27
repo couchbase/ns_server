@@ -81,7 +81,7 @@ init() ->
     #state{version = menelaus_roles:params_version(
                        ns_bucket:get_buckets(Config)),
            users = spec_users(Config),
-           roles = menelaus_roles:get_definitions(Config),
+           roles = menelaus_roles:get_definitions(Config, all),
            cluster_admin = AdminUser}.
 
 spec_users() -> spec_users(ns_config:get()).
@@ -115,7 +115,7 @@ handle_event({user_version, _V}, State) ->
 handle_event({group_version, _V}, State) ->
     {changed, State};
 handle_event({cluster_compat_version, _V}, #state{roles = Roles} = State) ->
-    case menelaus_roles:get_definitions() of
+    case menelaus_roles:get_definitions(all) of
         Roles ->
             unchanged;
         NewRoles ->
@@ -284,7 +284,8 @@ permissions_for_user_test_() ->
                  fun () ->
                          {Res, _} =
                              permissions_for_user(
-                               Roles, Buckets, menelaus_roles:get_definitions(),
+                               Roles, Buckets,
+                               menelaus_roles:get_definitions(all),
                                dict:new()),
                          ?assertEqual(
                             Expected,

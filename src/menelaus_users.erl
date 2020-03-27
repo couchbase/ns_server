@@ -345,7 +345,8 @@ make_props_state(ItemList) ->
         case lists:member(roles, ItemList) orelse
              lists:member(user_roles, ItemList) orelse
              lists:member(group_roles, ItemList) of
-            true -> {menelaus_roles:get_definitions(), ns_bucket:get_buckets()};
+            true -> {menelaus_roles:get_definitions(public),
+                     ns_bucket:get_buckets()};
             false -> {undefined, undefined}
         end,
     {Passwordless, Definitions, Buckets}.
@@ -752,7 +753,7 @@ filter_out_invalid_roles(Props, Definitions, Buckets) ->
 cleanup_bucket_roles(BucketName) ->
     ?log_debug("Delete all roles for bucket ~p", [BucketName]),
     Buckets = lists:keydelete(BucketName, 1, ns_bucket:get_buckets()),
-    Definitions = menelaus_roles:get_definitions(),
+    Definitions = menelaus_roles:get_definitions(all),
     UpdateFun =
         fun ({Type, Key}, Props) when Type == user; Type == group ->
                 case filter_out_invalid_roles(Props, Definitions, Buckets) of

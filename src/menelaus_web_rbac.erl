@@ -170,7 +170,7 @@ strip_ids(Params) ->
 role_to_json(Name) when is_atom(Name) ->
     [{role, Name}];
 role_to_json({Name, Params}) ->
-    Definitions = menelaus_roles:get_definitions(),
+    Definitions = menelaus_roles:get_definitions(public),
     [{role, Name} |
      lists:filtermap(fun jsonify_param/1,
                      lists:zip(menelaus_roles:get_param_defs(Name, Definitions),
@@ -742,7 +742,7 @@ parse_role(RoleRaw, Definitions) ->
 parse_roles(undefined) ->
     [];
 parse_roles(RolesStr) ->
-    Definitions = menelaus_roles:get_definitions(),
+    Definitions = menelaus_roles:get_definitions(public),
     RolesRaw = string:tokens(RolesStr, ","),
     [parse_role(string:trim(RoleRaw), Definitions) || RoleRaw <- RolesRaw].
 

@@ -54,8 +54,8 @@
 
 -define(DEFAULT_EXTERNAL_ROLES_POLLING_INTERVAL, 10*60*1000).
 
--export([get_definitions/0,
-         get_definitions/1,
+-export([get_definitions/1,
+         get_definitions/2,
          is_allowed/2,
          get_roles/1,
          get_compiled_roles/1,
@@ -571,12 +571,19 @@ roles_cheshirecat() ->
          {[pools], [read]}]}],
       roles_55(), []).
 
--spec get_definitions() -> [rbac_role_def(), ...].
-get_definitions() ->
-    get_definitions(ns_config:latest()).
+internal_roles() ->
+    [{stats_reader, [], [],
+      [{[{bucket, any}, stats], [read]},
+       {[stats], [read]}]}].
 
--spec get_definitions(ns_config()) -> [rbac_role_def(), ...].
-get_definitions(Config) ->
+-spec get_definitions(all | public) -> [rbac_role_def(), ...].
+get_definitions(Type) ->
+    get_definitions(ns_config:latest(), Type).
+
+-spec get_definitions(ns_config(), all | public) -> [rbac_role_def(), ...].
+get_definitions(Config, all) ->
+    get_definitions(Config, public) ++ internal_roles();
+get_definitions(Config, public) ->
     case cluster_compat_mode:is_cluster_cheshirecat(Config) of
         true ->
             roles_cheshirecat();
@@ -884,7 +891,7 @@ build_compiled_roles(Identity) ->
         false ->
             ?log_debug("Compile roles for user ~p",
                        [ns_config_log:tag_user_data(Identity)]),
-            Definitions = get_definitions(),
+            Definitions = get_definitions(all),
             compile_roles(get_roles(Identity), Definitions,
                           ns_bucket:get_buckets());
         true ->
@@ -977,7 +984,7 @@ filter_by_permission(Permission, Buckets, Definitions) ->
 produce_roles_by_permission(Permission, Config) ->
     Buckets = ns_bucket:get_buckets(Config),
     AllValues = calculate_possible_param_values(Buckets, Permission),
-    Definitions = get_definitions(Config),
+    Definitions = get_definitions(Config, public),
     pipes:compose(
       [pipes:stream_list(Definitions),
        visible_roles_filter(),
@@ -1032,7 +1039,7 @@ validate_role(Role, Params, Definitions, Buckets) ->
                             {GoodRoles :: [rbac_role()],
                              BadRoles :: [rbac_role()]}.
 validate_roles(Roles, Config) ->
-    Definitions = pipes:run(pipes:stream_list(get_definitions(Config)),
+    Definitions = pipes:run(pipes:stream_list(get_definitions(Config, public)),
                             visible_roles_filter(),
                             pipes:collect()),
     Buckets = ns_bucket:get_buckets(Config),
