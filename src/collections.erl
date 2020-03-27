@@ -32,6 +32,7 @@
          drop_collection/3,
          wait_for_manifest_uid/5,
          convert_uid_from_memcached/1,
+         convert_uid_to_memcached/1,
          get_manifest/1,
          get_scope/2,
          get_collection/2,

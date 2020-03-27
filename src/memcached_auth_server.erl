@@ -321,9 +321,9 @@ process_data_test() ->
              {[{mechanism, <<"PLAIN">>}, {challenge, <<"AFVzZXIxAGZvbw==">>}]}},
             fun (?MC_AUTH_REQUEST, ?SUCCESS, undefined,
                  {[{<<"rbac">>, {[{<<"User1">>,
-                                   {[{<<"buckets">>,{[{<<"b1">>,[]}]}},
-                                     {<<"privileges">>,[]},
-                                     {<<"domain">>,<<"local">>}]}}]}}
+                                   {[{<<"buckets">>, {[]}},
+                                     {<<"privileges">>, []},
+                                     {<<"domain">>, <<"local">>}]}}]}}
                   ]}) -> ok
             end),
           test_process_data(
@@ -331,9 +331,11 @@ process_data_test() ->
              {[{mechanism, <<"PLAIN">>}, {challenge, <<"AFVzZXIyAGJhcg==">>}]}},
             fun (?MC_AUTH_REQUEST, ?SUCCESS, undefined,
                  {[{<<"rbac">>,
-                    {[{<<"User2">>,{[{<<"buckets">>,{[{<<"b1">>,[_|_]}]}},
-                                     {<<"privileges">>,[_]},
-                                     {<<"domain">>,<<"external">>}]}}]}}
+                    {[{<<"User2">>,
+                       {[{<<"buckets">>,
+                          {[{<<"b1">>, {[{<<"privileges">>, [_|_]}]}}]}},
+                         {<<"privileges">>, [_]},
+                         {<<"domain">>, <<"external">>}]}}]}}
                   ]}) -> ok
             end),
           test_process_data(

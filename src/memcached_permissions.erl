@@ -30,9 +30,11 @@
 
 -include("ns_common.hrl").
 -include("pipes.hrl").
+-include("cut.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-include("ns_test.hrl").
 -endif.
 
 -record(state, {version,
@@ -152,12 +154,59 @@ handle_event({{node, Node, prometheus_auth_info}, _Info},
 refresh() ->
     memcached_refresh:refresh(rbac).
 
-bucket_permissions(Bucket, CompiledRoles) ->
-    lists:usort(
-      [MemcachedPermission ||
-          {Permission,
-           MemcachedPermission} <- bucket_permissions_to_check(Bucket),
-          menelaus_roles:is_allowed(Permission, CompiledRoles)]).
+-record(priv_object, {privileges, children}).
+
+priv_set(Privilege, [Object], Map) ->
+    maps:update_with(
+      Object,
+      fun (#priv_object{privileges = Privileges, children = Children}) ->
+              #priv_object{privileges = Privileges#{Privilege => true},
+                           children = priv_erase(Privilege, Children)}
+      end,
+      #priv_object{privileges = #{Privilege => true}, children = #{}},
+      Map);
+priv_set(Privilege, [Object | Rest], Map) ->
+    Map#{Object =>
+             case maps:find(Object, Map) of
+                 {ok, #priv_object{privileges = Privileges,
+                                   children = Children} = Old} ->
+                     case maps:is_key(Privilege, Privileges) of
+                         true ->
+                             Old;
+                         false ->
+                             Old#priv_object{
+                               children = priv_set(Privilege, Rest, Children)}
+                     end;
+                 error ->
+                     #priv_object{privileges = #{},
+                                  children = priv_set(Privilege, Rest, #{})}
+             end}.
+
+priv_erase(Privilege, Map) ->
+    maps:fold(
+      fun (Key, #priv_object{privileges = Privileges, children = Children},
+           Acc) ->
+              case #priv_object{privileges = maps:remove(Privilege, Privileges),
+                                children = priv_erase(Privilege, Children)} of
+                  #priv_object{privileges = P, children = C} when
+                        map_size(P) =:= 0,
+                        map_size(C) =:= 0 ->
+                      Acc;
+                  NotEmpty ->
+                      Acc#{Key => NotEmpty}
+              end
+      end, #{}, Map).
+
+bucket_permissions(BucketName, CompiledRoles, Acc) ->
+    lists:foldl(
+      fun ({Permission, MemcachedPrivilege}, Acc1) ->
+              case menelaus_roles:is_allowed(Permission, CompiledRoles) of
+                  true ->
+                      priv_set(MemcachedPrivilege, [BucketName], Acc1);
+                  false ->
+                      Acc1
+              end
+      end, Acc, bucket_permissions_to_check(BucketName)).
 
 global_permissions(CompiledRoles) ->
     lists:usort(
@@ -165,57 +214,49 @@ global_permissions(CompiledRoles) ->
           {Permission, MemcachedPermission} <- global_permissions_to_check(),
           menelaus_roles:is_allowed(Permission, CompiledRoles)]).
 
-format_permissions(Buckets, CompiledRoles) ->
-    [{global, global_permissions(CompiledRoles)} |
-     [{Bucket, bucket_permissions(Bucket, CompiledRoles)}
-         || Bucket <- Buckets]].
+check_permissions(BucketNames, CompiledRoles) ->
+    {global_permissions(CompiledRoles),
+     lists:foldl(bucket_permissions(_, CompiledRoles, _), #{},
+                 BucketNames)}.
 
-permissions_for_role(Buckets, RoleDefinitions, Role) ->
-    CompiledRoles = menelaus_roles:compile_roles([Role], RoleDefinitions,
+permissions_for_user(Roles, Buckets, RoleDefinitions) ->
+    CompiledRoles = menelaus_roles:compile_roles(Roles, RoleDefinitions,
                                                  Buckets),
-    format_permissions(ns_bucket:get_bucket_names(Buckets), CompiledRoles).
+    check_permissions(ns_bucket:get_bucket_names(Buckets), CompiledRoles).
 
-permissions_for_role(Buckets, RoleDefinitions, Role, RolesDict) ->
-    case dict:find(Role, RolesDict) of
-        {ok, Permissions} ->
-            {Permissions, RolesDict};
-        error ->
-            Permissions = permissions_for_role(Buckets, RoleDefinitions, Role),
-            {Permissions, dict:store(Role, Permissions, RolesDict)}
-    end.
+jsonify_user(Identity, CompiledRoles, BucketNames) ->
+    jsonify_user(Identity, check_permissions(BucketNames, CompiledRoles)).
 
-zip_permissions(Permissions, PermissionsAcc) ->
-    lists:zipwith(fun ({Bucket, Perm}, {Bucket, PermAcc}) ->
-                          {Bucket, [Perm | PermAcc]}
-                  end, Permissions, PermissionsAcc).
+jsonify_key(String) when is_list(String) ->
+    list_to_binary(String);
+jsonify_key(Num) when is_number(Num) ->
+    collections:convert_uid_to_memcached(Num).
 
-permissions_for_user(Roles, Buckets, RoleDefinitions, RolesDict) ->
-    Acc0 = [{global, []} | [{Bucket, []} ||
-                               Bucket <- ns_bucket:get_bucket_names(Buckets)]],
-    {ZippedPermissions, NewRolesDict} =
-        lists:foldl(
-          fun (Role, {Acc, Dict}) ->
-                  {Permissions, NewDict} =
-                      permissions_for_role(Buckets, RoleDefinitions,
-                                           Role, Dict),
-                  {zip_permissions(Permissions, Acc), NewDict}
-          end, {Acc0, RolesDict}, Roles),
-    MergedPermissions =
-        [{Bucket, lists:umerge(Perm)} || {Bucket, Perm} <- ZippedPermissions],
-    {MergedPermissions, NewRolesDict}.
+jsonify_privs([SectionKey | Rest], Map) ->
+    {SectionKey,
+     {maps:fold(
+        fun (Key, #priv_object{privileges = Privileges, children = Children},
+             Acc) ->
+                [{jsonify_key(Key),
+                  {[{privileges, maps:keys(Privileges)} ||
+                       map_size(Privileges) =/= 0] ++
+                       [jsonify_privs(Rest, Children) ||
+                           map_size(Children) =/= 0]}} | Acc]
+        end, [], Map)}}.
 
-jsonify_user(Identity, CompiledRoles, Buckets) ->
-    jsonify_user(Identity, format_permissions(Buckets, CompiledRoles)).
-
-jsonify_user({UserName, Domain},
-             [{global, GlobalPermissions} | BucketPermissions]) ->
-    Buckets = {buckets, {[{list_to_binary(BucketName), Permissions} ||
-                             {BucketName, Permissions} <- BucketPermissions]}},
+jsonify_user({UserName, Domain}, {GlobalPermissions, BucketPermissions}) ->
+    Buckets =
+        case BucketPermissions of
+            all ->
+                {buckets, {[{<<"*">>, [all]}]}};
+            _ ->
+                jsonify_privs([buckets, scopes, collections], BucketPermissions)
+        end,
     Global = {privileges, GlobalPermissions},
     {list_to_binary(UserName), {[Buckets, Global, {domain, Domain}]}}.
 
 memcached_admin_json(AU) ->
-    jsonify_user({AU, local}, [{global, [all]}, {"*", [all]}]).
+    jsonify_user({AU, local}, {[all], all}).
 
 jsonify_users(Users, RoleDefinitions, ClusterAdmin, PromUser) ->
     Buckets = ns_bucket:get_buckets(),
@@ -227,56 +268,41 @@ jsonify_users(Users, RoleDefinitions, ClusterAdmin, PromUser) ->
                          end, Users),
 
            EmitUser =
-               fun (Identity, Roles, Dict) ->
-                       {Permissions, NewDict} =
-                           permissions_for_user(Roles, Buckets, RoleDefinitions,
-                                                Dict),
-                       ?yield({kv, jsonify_user(Identity, Permissions)}),
-                       NewDict
+               fun (Identity, Roles) ->
+                       Permissions =
+                           permissions_for_user(Roles, Buckets,
+                                                RoleDefinitions),
+                       ?yield({kv, jsonify_user(Identity, Permissions)})
                end,
 
-           Dict1 =
-               case ClusterAdmin of
-                   undefined ->
-                       dict:new();
-                   _ ->
-                       Roles1 = menelaus_roles:get_roles({ClusterAdmin, admin}),
-                       EmitUser({ClusterAdmin, local}, Roles1, dict:new())
+           EmitLocalUser =
+               fun (undefined, _) ->
+                       ok;
+                   (Name, Identity) ->
+                       EmitUser({Name, local},
+                                menelaus_roles:get_roles(Identity))
                end,
 
-           Dict2 =
-               case PromUser of
-                   undefined ->
-                       Dict1;
-                   _ ->
-                       PromRoles = menelaus_roles:get_roles({PromUser,
-                                                             stats_reader}),
-                       EmitUser({PromUser, local}, PromRoles, Dict1)
-               end,
+           EmitLocalUser(ClusterAdmin, {ClusterAdmin, admin}),
+           EmitLocalUser(PromUser, {PromUser, stats_reader}),
 
-           Dict3 =
-               lists:foldl(
-                 fun (Bucket, Dict) ->
-                         LegacyName = Bucket ++ ";legacy",
-                         Roles2 = menelaus_roles:get_roles({Bucket, bucket}),
-                         EmitUser({LegacyName, local}, Roles2, Dict)
-                 end, Dict2, ns_bucket:get_bucket_names(Buckets)),
+           lists:foreach(?cut(EmitLocalUser(_1 ++ ";legacy", {_1, bucket})),
+                         ns_bucket:get_bucket_names(Buckets)),
 
-           pipes:fold(
+           pipes:foreach(
              ?producer(),
-             fun ({{user, {UserName, _} = Identity}, Props}, Dict) ->
+             fun ({{user, {UserName, _} = Identity}, Props}) ->
                      case UserName of
                          ClusterAdmin ->
                              TagCA = ns_config_log:tag_user_name(ClusterAdmin),
                              ?log_warning("Encountered user ~p with the same
                                           name as cluster administrator",
-                                          [TagCA]),
-                             Dict;
+                                          [TagCA]);
                          _ ->
-                             Roles3 = proplists:get_value(roles, Props, []),
-                             EmitUser(Identity, Roles3, Dict)
+                             EmitUser(Identity,
+                                      proplists:get_value(roles, Props, []))
                      end
-             end, Dict3),
+             end),
            ?yield(object_end)
        end).
 
@@ -291,6 +317,45 @@ producer(#state{roles = RoleDefinitions,
                                                {strict, false}])]).
 
 -ifdef(TEST).
+flatten_priv_object(Map) ->
+    flatten_priv_object([], [], Map).
+
+flatten_priv_object(Prefix, Acc, Map) ->
+    maps:fold(
+      fun (Key, #priv_object{
+                   privileges = Privileges,
+                   children = Children}, Acc1) when map_size(Privileges) =:= 0,
+                                                    map_size(Children) =:= 0 ->
+              [{lists:reverse([Key | Prefix]), empty} | Acc1];
+          (Key, #priv_object{privileges = Privileges,
+                             children = Children}, Acc1) ->
+              NewPrefix = [Key | Prefix],
+              NewPrefixReversed = lists:reverse(NewPrefix),
+              flatten_priv_object(
+                NewPrefix,
+                Acc1 ++ [{NewPrefixReversed, K} || K <- maps:keys(Privileges)],
+                Children)
+      end, Acc, Map).
+
+priv_object_test() ->
+    PrivObject =
+        functools:chain(
+          #{},
+          [priv_set(p1, [b1, s1, c1], _),
+           priv_set(p1, [b2], _),
+           priv_set(p2, [b1, s1, c1], _),
+           priv_set(p2, [b1, s1, c2], _),
+           priv_set(p2, [b1, s2, c3], _),
+           priv_set(p2, [b1, s2], _),
+           priv_set(p3, [b1, s1, c1], _),
+           priv_set(p3, [b1], _)]),
+    ?assertListsEqual([{[b1, s1, c1], p1},
+                       {[b2], p1},
+                       {[b1, s1, c1], p2},
+                       {[b1, s1, c2], p2},
+                       {[b1, s2], p2},
+                       {[b1], p3}], flatten_priv_object(PrivObject)).
+
 permissions_for_user_test_() ->
     Manifest =
         [{uid, 2},
@@ -301,25 +366,27 @@ permissions_for_user_test_() ->
         [{"test", [{uuid, <<"test_id">>}]},
          {"default", [{uuid, <<"default_id">>},
                       {collections_manifest, Manifest}]}],
-    AllGlobalPermissions =
-        lists:sort([P || {_, P} <- global_permissions_to_check()]),
+    AllGlobalPermissions = [P || {_, P} <- global_permissions_to_check()],
     AllBucketPermissions =
-        lists:sort([P || {_, P} <- bucket_permissions_to_check(undefined)]),
-    FullRead =
-        lists:sort([P || {{[{bucket, _}, data | _], read}, P}
-                             <- bucket_permissions_to_check(undefined)]),
+        [P || {_, P} <- bucket_permissions_to_check(undefined)],
+    FullRead = [P || {{[{bucket, _}, data | _], read}, P}
+                         <- bucket_permissions_to_check(undefined)],
     Test =
-        fun (Roles, Expected) ->
+        fun (Roles, ExpectedGlobal, ExpectedBuckets) ->
                 {lists:flatten(io_lib:format("~p", [Roles])),
                  fun () ->
-                         {Res, _} =
+                         {GlobalRes, BucketsRes} =
                              permissions_for_user(
                                Roles, Buckets,
-                               menelaus_roles:get_definitions(all),
-                               dict:new()),
-                         ?assertEqual(
-                            Expected,
-                            [{Type, lists:sort(Perm)} || {Type, Perm} <- Res])
+                               menelaus_roles:get_definitions(all)),
+                         ?assertListsEqual(ExpectedGlobal, GlobalRes),
+                         FlatExpected =
+                             lists:flatmap(
+                               fun ({Key, List}) ->
+                                       [{Key, El} || El <- List]
+                               end, ExpectedBuckets),
+                         ?assertListsEqual(FlatExpected,
+                                           flatten_priv_object(BucketsRes))
                  end}
         end,
     {foreach,
@@ -334,40 +401,35 @@ permissions_for_user_test_() ->
              meck:unload(cluster_compat_mode)
      end,
      [Test([admin],
-           [{global, AllGlobalPermissions},
-            {"default", AllBucketPermissions},
-            {"test", AllBucketPermissions}]),
+           AllGlobalPermissions,
+           [{["default"], AllBucketPermissions},
+            {["test"], AllBucketPermissions}]),
       Test([ro_admin],
-           [{global, ['Stats','SystemSettings']},
-            {"default", ['SimpleStats']},
-            {"test", ['SimpleStats']}]),
+           ['Stats','SystemSettings'],
+           [{["default"], ['SimpleStats']},
+            {["test"], ['SimpleStats']}]),
       Test([{bucket_admin, ["test"]}],
-           [{global, ['Stats','SystemSettings']},
-            {"default", []},
-            {"test", ['SimpleStats']}]),
+           ['Stats','SystemSettings'],
+           [{["test"], ['SimpleStats']}]),
       Test([{bucket_full_access, ["test"]}],
-           [{global, ['SystemSettings']},
-            {"default", []},
-            {"test", AllBucketPermissions}]),
+           ['SystemSettings'],
+           [{["test"], AllBucketPermissions}]),
       Test([{views_admin, ["test"]}, {views_reader, ["default"]}],
-           [{global, ['Stats', 'SystemSettings']},
-            {"default", ['Read']},
-            {"test", FullRead}]),
+           ['Stats', 'SystemSettings'],
+           [{["default"], ['Read']},
+            {["test"], FullRead}]),
       Test([{data_reader, ["test", any, any]}],
-           [{global, ['SystemSettings']},
-            {"default", []},
-            {"test", ['MetaRead', 'Read', 'XattrRead']}]),
+           ['SystemSettings'],
+           [{["test"], ['MetaRead', 'Read', 'XattrRead']}]),
       Test([{data_dcp_reader, ["test"]}],
-           [{global, ['IdleConnection','SystemSettings']},
-            {"default", []},
-            {"test", FullRead}]),
+           ['IdleConnection','SystemSettings'],
+           [{["test"], FullRead}]),
       Test([{data_backup, ["test"]}, {data_monitoring, ["default"]}],
-           [{global, ['SystemSettings']},
-            {"default", ['SimpleStats']},
-            {"test", AllBucketPermissions}]),
+           ['SystemSettings'],
+           [{["default"], ['SimpleStats']},
+            {["test"], AllBucketPermissions}]),
       Test([{data_writer, ["test"]}],
-           [{global, ['SystemSettings']},
-            {"default", []},
-            {"test", ['Delete', 'Insert', 'Upsert', 'XattrWrite']}])
+           ['SystemSettings'],
+           [{["test"], ['Delete', 'Insert', 'Upsert', 'XattrWrite']}])
      ]}.
 -endif.
