@@ -279,7 +279,8 @@ format_error(user_placeholder) ->
 format_error(max_depth) ->
     "Nested search max depth has been reached";
 format_error({invalid_groups_query, Query, Reason}) ->
-    io_lib:format("Invalid LDAP query: \"~s\". ~s", [Query, format_error(Reason)]);
+    io_lib:format("Invalid LDAP query: \"~s\". ~s",
+                  [Query, format_error(Reason)]);
 format_error({bind_failed, DN, Bind}) ->
     io_lib:format("Bind failed for \"~s\". ~s", [DN, format_error(Bind)]);
 format_error(invalidCredentials) ->
