@@ -652,18 +652,17 @@ check_vbuckets_compatible(_ActiveFailoverLog, _LocalFailoverLog, 0) ->
     true;
 check_vbuckets_compatible(ActiveFailoverLog,
                           LocalFailoverLog, LocalHighSeqno) ->
-    %% Local high seqno is not 0, so we expect to find the UID.
-    {ok, LocalUID} = failover_uid_for_seqno(LocalFailoverLog, LocalHighSeqno),
-
-    case failover_uid_for_seqno(ActiveFailoverLog, LocalHighSeqno) of
-        {error, not_found} ->
-            %% The failover log is capped in size. It appears that the new
-            %% active lost track of the history as of our high seqno. There's
-            %% no way to say if we are compatible or not, so we opt for full
-            %% recovery.
-            false;
-        {ok, ActiveUID} ->
-            ActiveUID =:= LocalUID
+    case {failover_uid_for_seqno(LocalFailoverLog, LocalHighSeqno),
+          failover_uid_for_seqno(ActiveFailoverLog, LocalHighSeqno)} of
+        {{ok, LocalUID}, {ok, ActiveUID}} ->
+            ActiveUID =:= LocalUID;
+        _ ->
+            %% We'll get here if we can't find a UID for our high seqno either
+            %% in the new active vbucket or in our local vbucket. This may
+            %% happen since failover log is capped in size. So if there are
+            %% enough events that create new failover entries (unclean
+            %% restarts or failovers), old entries fall off.
+            false
     end.
 
 -ifdef(TEST).
@@ -721,7 +720,18 @@ check_vbuckets_compatible_test() ->
                                           HighSeqno + 200)),
     ?assert(not check_vbuckets_compatible(LostHistory,
                                           History ++ [{d, HighSeqno + 200}],
-                                          HighSeqno + 200)).
+                                          HighSeqno + 200)),
+
+    %% Local high seqno fell behind local failover history
+    LocalLostHistory = [{b, HighSeqno}],
+    ?assert(not check_vbuckets_compatible(History,
+                                          LocalLostHistory, HighSeqno)),
+    ?assert(not check_vbuckets_compatible(History,
+                                          LocalLostHistory ++ [{c, HighSeqno}],
+                                          HighSeqno)),
+    ?assert(not check_vbuckets_compatible(LostHistory,
+                                          LocalLostHistory, HighSeqno)).
+
 
 -endif.
 

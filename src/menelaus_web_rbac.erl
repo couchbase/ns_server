@@ -848,17 +848,19 @@ validate_id([], Fieldname) ->
     <<Fieldname/binary, " must not be empty">>;
 validate_id(Id, Fieldname) when length(Id) > 128 ->
     <<Fieldname/binary, " may not exceed 128 characters">>;
+validate_id("@" ++ _, Fieldname) ->
+    <<Fieldname/binary, " cannot start with '@'">>;
 validate_id(Id, Fieldname) ->
     V = lists:all(
           fun (C) ->
                   C > 32 andalso C =/= 127 andalso
-                      not lists:member(C, "()<>@,;:\\\"/[]?={}")
+                      not lists:member(C, "()<>,;:\\\"/[]?={}")
           end, Id)
         andalso couch_util:validate_utf8(Id),
 
     V orelse
         <<Fieldname/binary, " must not contain spaces, control or any of "
-          "()<>@,;:\\\"/[]?={} characters and must be valid utf8">>.
+          "()<>,;:\\\"/[]?={} characters and must be valid utf8">>.
 
 is_valid_password(P, {MinLength, MustPresent}) ->
     LengthError = io_lib:format(
