@@ -182,14 +182,11 @@ generate_a_map(VBucketsCount, ReplicasCount, Nodes) ->
     EmptyMap = lists:duplicate(VBucketsCount, Chain),
     mb_map:generate_map(EmptyMap, ReplicasCount, lists:sort(Nodes), []).
 
-simulate_rebalance_log(Msg, Args) ->
-    ?log_info(Msg, Args).
-
 simulate_rebalance(CurrentMap, TargetMap, BackfillsLimit, MovesBeforeCompaction, MaxInflightMoves) ->
-    S = prepare_verifier(vbucket_move_scheduler:prepare(CurrentMap, TargetMap, [],
-                                                        BackfillsLimit, MovesBeforeCompaction,
-                                                        MaxInflightMoves,
-                                                        fun simulate_rebalance_log/2),
+    S = prepare_verifier(vbucket_move_scheduler:prepare(
+                           CurrentMap, TargetMap, [],
+                           BackfillsLimit, MovesBeforeCompaction,
+                           MaxInflightMoves),
                          BackfillsLimit, MovesBeforeCompaction, MaxInflightMoves),
 
     R = lists:foldl(fun (_, R0) ->

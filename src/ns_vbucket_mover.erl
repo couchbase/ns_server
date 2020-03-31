@@ -152,8 +152,7 @@ init({Bucket, Nodes, OldMap, NewMap, ProgressCallback}) ->
     SchedulerState = vbucket_move_scheduler:prepare(
                        OldMap, NewMap, Quirks,
                        ?MAX_MOVES_PER_NODE, ?MOVES_BEFORE_COMPACTION,
-                       ?MAX_INFLIGHT_MOVES_PER_NODE,
-                       fun (Msg, Args) -> ?log_debug(Msg, Args) end),
+                       ?MAX_INFLIGHT_MOVES_PER_NODE),
 
     ns_rebalance_observer:submit_master_event(
       {planned_moves, Bucket, vbucket_move_scheduler:get_moves(SchedulerState)}),
