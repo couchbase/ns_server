@@ -29,6 +29,14 @@
 -define(NS_LOG, "ns_log").
 
 get_current_version() ->
+    %% This function identifies the version of the config and one of its
+    %% uses is during an offline upgrade.  A newer release will use this
+    %% version to determine what upgrade operations need to take place.
+    %% If the newer release doesn't know about this version it will not
+    %% be able to complete the upgrade.  As an example, this version was
+    %% changed in 6.0.4 after 6.5.0 had shipped.  As 6.5.0 had no knowledge
+    %% of the 6.0.4 version (as it didn't exist when 6.5.0 shipped) it
+    %% was unable to perform an upgrade.
     {6,5,1}.
 
 get_data_dir() ->
