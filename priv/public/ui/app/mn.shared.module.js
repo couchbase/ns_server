@@ -1,6 +1,6 @@
 import { MnFocusDirective } from './mn.focus.directive.js';
 import { NgModule } from '../web_modules/@angular/core.js';
-import { BrowserModule } from '../web_modules/@angular/platform-browser.js';
+import { CommonModule } from '/ui/web_modules/@angular/common.js';
 import { ReactiveFormsModule } from '../web_modules/@angular/forms.js';
 
 export { MnSharedModule }
@@ -25,7 +25,7 @@ class MnSharedModule {
       ],
       imports: [
         ReactiveFormsModule,
-        BrowserModule,
+        CommonModule,
         // ngb.NgbModule,
       ]
     })

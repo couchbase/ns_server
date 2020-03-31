@@ -1,13 +1,12 @@
-import {BrowserModule} from '../web_modules/@angular/platform-browser.js';
+import {CommonModule} from '/ui/web_modules/@angular/common.js';
+import {BrowserModule} from '/ui/web_modules/@angular/platform-browser.js';
 import {HttpClientModule} from '../web_modules/@angular/common/http.js';
 import {UIRouterModule, UIView} from '../web_modules/@uirouter/angular.js';
 import {MnPipesModule} from './mn.pipes.module.js';
 import {MnAppComponent} from './mn.app.component.js';
 import {MnAuthComponent} from './mn.auth.component.js';
-import {MnAuthModule} from './mn.auth.module.js';
 import {UpgradeModule} from '/ui/web_modules/@angular/upgrade/static.js';
 import {MnSharedModule} from './mn.shared.module.js';
-import {MnWizardModule} from './mn.wizard.module.js';
 import {UIRouterUpgradeModule} from '/ui/web_modules/@uirouter/angular-hybrid.js';
 import * as pluggableUIsModules from '/ui/pluggable-uis.js';
 
@@ -30,9 +29,22 @@ let appState = {
   abstract: true
 };
 
+let wizardState = {
+  name: 'app.wizard.**',
+  loadChildren: () => {
+    return import('./mn.wizard.module.js').then(m => {
+      return m.MnWizardModule;
+    })
+  }
+};
+
 let authState = {
-  name: "app.auth",
-  component: MnAuthComponent
+  name: "app.auth.**",
+  loadChildren: () => {
+    return import('./mn.auth.module.js').then(m => {
+      return m.MnAuthModule;
+    })
+  }
 }
 
 export let mnAppImports = [
@@ -41,16 +53,10 @@ export let mnAppImports = [
   UIRouterModule,
   MnPipesModule,
   BrowserModule,
+  CommonModule,
   HttpClientModule,
-  MnAuthModule,
-  MnWizardModule,
   MnSharedModule,
-  UIRouterUpgradeModule
-  // UIRouterModule.forRoot({
-  //   states: [appState, authState],
-  //   useHash: true,
-  //   config: function mnRouterConfig(uiRouter) {
-  //     uiRouter.urlRouter.deferIntercept();
-  //   }
-  // })
+  UIRouterUpgradeModule.forRoot({
+    states: [authState, wizardState]
+  })
 ];

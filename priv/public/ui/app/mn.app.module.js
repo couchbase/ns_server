@@ -17,6 +17,7 @@ import { HTTP_INTERCEPTORS, HttpClient } from '/ui/web_modules/@angular/common/h
 import { UIView} from '/ui/web_modules/@uirouter/angular.js';
 import { UpgradeModule } from '/ui/web_modules/@angular/upgrade/static.js';
 
+
 export { MnAppModule };
 
 class MnAppModule {

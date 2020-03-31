@@ -293,7 +293,6 @@ class MnWizardService {
     var data = _.clone(user[0]);
     delete data.passwordVerify;
     data.port = "SAME";
-
     return this.http.post('/settings/web', data, {
       params: new HttpParams().set("just_validate", user[1] ? 1 : 0)
     });

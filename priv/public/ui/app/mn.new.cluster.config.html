@@ -43,7 +43,7 @@
             <div
               class="error error-form"
               [hidden]="!(servicesHttp.error | async)">
-              <div *ngFor="let error of (servicesHttp.error | async)">{{error}}</div>
+              <!-- <div *ngFor="let error of (servicesHttp.error | async)">{{error}}</div> -->
             </div>
             <mn-services-config
               [isFieldEnabled]="true"

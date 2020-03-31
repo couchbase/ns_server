@@ -4,10 +4,8 @@ import { upgradeModule } from '/ui/web_modules/@uirouter/angular-hybrid.js';
 import ngSanitize from "/ui/web_modules/angular-sanitize.js";
 import ngAnimate from "/ui/web_modules/angular-animate.js";
 import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
-import mnAuth from "/ui/app/mn_auth/mn_auth_config.js";
 import mnAdmin from "/ui/app/mn_admin/mn_admin_config.js";
 import mnAppConfig from "/ui/app/app_config.js";
-import mnWizard from "/ui/app/mn_wizard/mn_wizard_config.js";
 import mnPools from "/ui/app/components/mn_pools.js";
 import mnEnv from "/ui/app/components/mn_env.js";
 import mnFilters from "/ui/app/components/mn_filters.js";
@@ -28,12 +26,10 @@ export default 'app';
 
 angular.module('app', [
   upgradeModule.name,
-  mnAuth,
   mnPools,
   mnEnv,
   mnHttp,
   mnFilters,
-  mnWizard,
   // mnExceptionReporter,
   ngAnimate,
   ngSanitize,
