@@ -960,15 +960,6 @@ serve_ui(Req, IsSSL, F, Args) ->
             apply(F, Args ++ [Req])
     end.
 
-use_minified(Req) ->
-    Query = mochiweb_request:parse_qs(Req),
-    %% explicity specified minified in the query params
-    %% overrides the application env value
-    Minified = proplists:get_value("minified", Query),
-    Minified =:= "true" orelse
-        Minified =:= undefined andalso
-        misc:get_env_default(use_minified, true).
-
 serve_ui_env(Req) ->
     %% UI env values are expected to be unfolded proplists
     UIEnvDefault = lists:ukeysort(1, misc:get_env_default(ui_env, [])),
@@ -979,12 +970,7 @@ serve_ui_env(Req) ->
                                               lists:ukeymerge(1, GlobalUIEnv, UIEnvDefault))}).
 
 handle_ui_root(AppRoot, Path, Plugins, Req) ->
-    Filename = case use_minified(Req) of
-                   true ->
-                       filename:join([AppRoot, "ui", "index.min.html"]);
-                   _ ->
-                       filename:join(AppRoot, Path)
-               end,
+    Filename = filename:join(AppRoot, Path),
     menelaus_util:reply_ok(
       Req,
       "text/html; charset=utf8",
