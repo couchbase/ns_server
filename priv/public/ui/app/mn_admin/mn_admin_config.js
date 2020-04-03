@@ -30,7 +30,6 @@ import mnBuckets from "./mn_buckets_controller.js";
 import mnAnalytics from "./mn_analytics_controller.js";
 import mnStatisticsNew from "./mn_statistics_controller.js";
 import mnLogs from "./mn_logs_controller.js";
-import mnOverview from "./mn_overview_controller.js";
 import mnIndexes from "./mn_indexes_config.js";
 import mnServers from "./mn_servers_controller.js";
 import mnGroups from "./mn_groups_controller.js";
@@ -62,9 +61,7 @@ angular.module('mnAdmin', [
   mnTasksDetails,
   mnBuckets,
   mnAnalytics,
-  mnStatisticsNew,
   mnLogs,
-  mnOverview,
   mnIndexes,
   mnServers,
   mnGroups,
@@ -86,6 +83,19 @@ angular.module('mnAdmin', [
   mnClusterConfigurationService
 ]).config(mnAdminConfig)
   .controller('mnAdminController', mnAdminController);
+
+//https://github.com/angular-ui/ui-select/issues/1560
+angular.module('ui.select').run(function($animate) {
+  var origEnabled = $animate.enabled
+  $animate.enabled = function (elem) {
+    if (arguments.length !== 1) {
+      return origEnabled.apply($animate, arguments);
+    } else if (origEnabled(elem)) {
+      return (/enable-ng-animation/).test(elem.classNames);
+    }
+    return false
+  }
+});
 
 function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider) {
 
@@ -142,19 +152,6 @@ function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider) {
           templateUrl: 'app/mn_admin/mn_lost_connection.html',
           controller: 'mnLostConnectionController as lostConnCtl'
         }
-      }
-    })
-    .state('app.admin.overview', {
-      url: '/overview',
-      abstract: true,
-      views: {
-        "main@app.admin": {
-          controller: 'mnOverviewController as overviewCtl',
-          templateUrl: 'app/mn_admin/mn_overview.html'
-        }
-      },
-      data: {
-        title: "Dashboard"
       }
     })
     .state('app.admin.buckets', {
@@ -285,36 +282,6 @@ function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider) {
       },
       data: {
         title: "Statistics Overview"
-      }
-    })
-
-    .state('app.admin.overview.statistics', {
-      url: '/stats?statsHostname',
-      controller: 'mnStatisticsNewController as statisticsNewCtl',
-      templateUrl: 'app/mn_admin/mn_statistics.html',
-      params: {
-        statsHostname: "all"
-      },
-      redirectTo: function (trans) {
-        var mnPermissionsService = trans.injector().get("mnPermissions");
-        var params = _.clone(trans.params(), true);
-        return mnPermissionsService.check().then(function (permissions) {
-          var statsRead = permissions.bucketNames['.stats!read'];
-          var state = {state: "app.admin.overview.statistics", params: params};
-          if (!params.scenarioBucket && statsRead && statsRead[0]) {
-            state.params.scenarioBucket = statsRead[0];
-            return state;
-          }
-          if (params.scenarioBucket &&
-              statsRead && statsRead.indexOf(params.scenarioBucket) < 0) {
-            state.params.scenarioBucket = statsRead[0];
-            return state;
-          }
-          if (params.scenarioBucket && (!statsRead || !statsRead[0])) {
-            state.params.scenarioBucket = null;
-            return state;
-          }
-        });
       }
     });
 

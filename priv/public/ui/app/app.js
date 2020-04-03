@@ -1,6 +1,7 @@
 import angular from "/ui/web_modules/angular.js";
 import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
 import { upgradeModule } from '/ui/web_modules/@uirouter/angular-hybrid.js';
+import oclazyLoad from "/ui/web_modules/oclazyload.js";
 import ngSanitize from "/ui/web_modules/angular-sanitize.js";
 import ngAnimate from "/ui/web_modules/angular-animate.js";
 import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
@@ -26,6 +27,7 @@ export default 'app';
 
 angular.module('app', [
   upgradeModule.name,
+  oclazyLoad,
   mnPools,
   mnEnv,
   mnHttp,
@@ -46,19 +48,6 @@ angular.module('app', [
   .constant("viewsPerPageLimit", viewsPerPageLimit)
   .constant("IEC", IEC)
   .run(appRun);
-
-//https://github.com/angular-ui/ui-select/issues/1560
-angular.module('ui.select').run(function($animate) {
-  var origEnabled = $animate.enabled
-  $animate.enabled = function (elem) {
-    if (arguments.length !== 1) {
-      return origEnabled.apply($animate, arguments);
-    } else if (origEnabled(elem)) {
-      return (/enable-ng-animation/).test(elem.classNames);
-    }
-    return false
-  }
-});
 
 function appRun($state, $urlRouter, $exceptionHandler, mnPools, $window, $rootScope, $location, $http, mnPrettyVersionFilter) {
 

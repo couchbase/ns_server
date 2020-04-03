@@ -34,7 +34,17 @@ let wizardState = {
   loadChildren: () => {
     return import('./mn.wizard.module.js').then(m => {
       return m.MnWizardModule;
-    })
+    });
+  }
+};
+
+let overviewState = {
+  name: 'app.admin.overview.**',
+  url: '/overview',
+  lazyLoad: ($transition$) => {
+    return import('./mn_admin/mn_overview_controller.js').then(m => {
+      $transition$.injector().get('$ocLazyLoad').load({name: 'mnOverview'});
+    });
   }
 };
 
@@ -43,9 +53,9 @@ let authState = {
   loadChildren: () => {
     return import('./mn.auth.module.js').then(m => {
       return m.MnAuthModule;
-    })
+    });
   }
-}
+};
 
 export let mnAppImports = [
   ...Object.values(pluggableUIsModules),
@@ -57,6 +67,6 @@ export let mnAppImports = [
   HttpClientModule,
   MnSharedModule,
   UIRouterUpgradeModule.forRoot({
-    states: [authState, wizardState]
+    states: [authState, wizardState, overviewState]
   })
 ];

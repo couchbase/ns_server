@@ -4,6 +4,7 @@
     "angular": "./angular.js",
     "js-beautify": "./js-beautify.js",
     "lodash": "./lodash.js",
+    "oclazyload": "./oclazyload.js",
     "clipboard": "./clipboard.js",
     "file-saver": "./file-saver.js",
     "codemirror": "./codemirror.js",

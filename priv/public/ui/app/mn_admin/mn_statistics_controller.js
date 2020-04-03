@@ -8,6 +8,7 @@ import mnFilters from "/ui/app/components/mn_filters.js";
 import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
 import mnHelper from "/ui/app/components/mn_helper.js";
 import mnStoreService from "/ui/app/components/mn_store_service.js";
+import mnDropdown from "/ui/app/components/directives/mn_dropdown.js";
 
 import mnStatisticsChart from "./mn_statistics_chart_directive.js";
 import mnStatisticsNewService from "./mn_statistics_service.js";
@@ -30,6 +31,7 @@ angular
     mnHelper,
     mnSpinner,
     mnFilters,
+    mnDropdown,
     mnStatisticsChart,
     mnStatisticsNewService,
     mnStatisticsDescriptionService,
