@@ -211,8 +211,7 @@ authenticate(Unknown, _) ->
     {error, io_lib:format("Unknown mechanism: ~p", [Unknown])}.
 
 get_user_rbac_record_json(Identity, Buckets) ->
-    Roles = menelaus_roles:get_compiled_roles(Identity),
-    {[memcached_permissions:jsonify_user(Identity, Roles, Buckets)]}.
+    {[memcached_permissions:jsonify_user_with_cache(Identity, Buckets)]}.
 
 cmd_auth_provider(Sock) ->
     Resp = mc_client_binary:cmd_vocal(?MC_AUTH_PROVIDER, Sock,
@@ -397,6 +396,12 @@ with_mocked_users(Users, Fun) ->
                                             N == Name, D == Domain],
                             Roles
                     end),
+        %% the following 2 funs are used for checking collection specific
+        %% permissions only, so returning [] from both will just result in
+        %% checking none of them
+        meck:expect(menelaus_roles, get_roles,
+                    fun ({_Name, _Domain}) -> [] end),
+        meck:expect(menelaus_roles, get_definitions, fun (all) -> [] end),
         Fun(),
         true = meck:validate(menelaus_auth),
         true = meck:validate(menelaus_roles),

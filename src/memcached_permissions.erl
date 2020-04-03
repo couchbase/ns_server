@@ -23,7 +23,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([start_link/0, sync/0, jsonify_user/3, spec_users/0]).
+-export([start_link/0, sync/0, jsonify_user_with_cache/2, spec_users/0]).
 
 %% callbacks
 -export([init/0, filter_event/1, handle_event/2, producer/1, refresh/0]).
@@ -31,6 +31,7 @@
 -include("ns_common.hrl").
 -include("pipes.hrl").
 -include("cut.hrl").
+-include("rbac.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -43,20 +44,22 @@
                 cluster_admin,
                 prometheus_user}).
 
+collection_permissions_to_check([B, S, C]) ->
+    [{{[{collection, [B, S, C]}, data, docs], read},   'Read'},
+     {{[{collection, [B, S, C]}, data, docs], insert}, 'Insert'},
+     {{[{collection, [B, S, C]}, data, docs], delete}, 'Delete'},
+     {{[{collection, [B, S, C]}, data, docs], upsert}, 'Upsert'},
+     {{[{collection, [B, S, C]}, data, meta], read},   'MetaRead'},
+     {{[{collection, [B, S, C]}, data, meta], write},  'MetaWrite'},
+     {{[{collection, [B, S, C]}, data, xattr], read},  'XattrRead'},
+     {{[{collection, [B, S, C]}, data, xattr], write}, 'XattrWrite'},
+     {{[{collection, [B, S, C]}, data, sxattr], read}, 'SystemXattrRead'},
+     {{[{collection, [B, S, C]}, data, sxattr], write},'SystemXattrWrite'}].
+
 bucket_permissions_to_check(Bucket) ->
-    [{{[{bucket, Bucket}, data, docs], read},   'Read'},
-     {{[{bucket, Bucket}, data, docs], insert}, 'Insert'},
-     {{[{bucket, Bucket}, data, docs], delete}, 'Delete'},
-     {{[{bucket, Bucket}, data, docs], upsert}, 'Upsert'},
-     {{[{bucket, Bucket}, stats], read},        'SimpleStats'},
+    [{{[{bucket, Bucket}, stats], read},        'SimpleStats'},
      {{[{bucket, Bucket}, data, dcp], read},    'DcpProducer'},
-     {{[{bucket, Bucket}, data, dcp], write},   'DcpConsumer'},
-     {{[{bucket, Bucket}, data, meta], read},   'MetaRead'},
-     {{[{bucket, Bucket}, data, meta], write},  'MetaWrite'},
-     {{[{bucket, Bucket}, data, xattr], read},  'XattrRead'},
-     {{[{bucket, Bucket}, data, xattr], write}, 'XattrWrite'},
-     {{[{bucket, Bucket}, data, sxattr], read}, 'SystemXattrRead'},
-     {{[{bucket, Bucket}, data, sxattr], write},'SystemXattrWrite'}].
+     {{[{bucket, Bucket}, data, dcp], write},   'DcpConsumer'}].
 
 global_permissions_to_check() ->
     [{{[stats, memcached], read},           'Stats'},
@@ -156,6 +159,21 @@ refresh() ->
 
 -record(priv_object, {privileges, children}).
 
+priv_is_granted(_Privilege, [], _Map) ->
+    false;
+priv_is_granted(Privilege, [Object | Rest], Map) ->
+    case maps:find(Object, Map) of
+        {ok, #priv_object{privileges = Privileges, children = Children}} ->
+            case maps:is_key(Privilege, Privileges) of
+                true ->
+                    true;
+                false ->
+                    priv_is_granted(Privilege, Rest, Children)
+            end;
+        error ->
+            false
+    end.
+
 priv_set(Privilege, [Object], Map) ->
     maps:update_with(
       Object,
@@ -208,24 +226,71 @@ bucket_permissions(BucketName, CompiledRoles, Acc) ->
               end
       end, Acc, bucket_permissions_to_check(BucketName)).
 
+get_priv_object_key([Bucket | Rest]) ->
+    [case Bucket of
+         {N, _} ->
+             N;
+         _ ->
+             Bucket
+     end | [Id || {_, Id} <- Rest]].
+
+collection_permissions(Params, CompiledRoles, Acc) ->
+    ToCheck = lists:map(
+                fun (any) ->
+                        all;
+                    (X) ->
+                        X
+                end, menelaus_roles:strip_ids(?RBAC_COLLECTION_PARAMS, Params)),
+    ToStore = get_priv_object_key(Params),
+    lists:foldl(
+      fun ({Permission, MemcachedPrivilege}, Acc1) ->
+              case priv_is_granted(MemcachedPrivilege, ToStore, Acc1) of
+                  true ->
+                      Acc1;
+                  false ->
+                      case menelaus_roles:is_allowed(Permission,
+                                                     CompiledRoles) of
+                          true ->
+                              priv_set(MemcachedPrivilege, ToStore, Acc1);
+                          false ->
+                              Acc1
+                      end
+              end
+      end, Acc, collection_permissions_to_check(ToCheck)).
+
 global_permissions(CompiledRoles) ->
     lists:usort(
       [MemcachedPermission ||
           {Permission, MemcachedPermission} <- global_permissions_to_check(),
           menelaus_roles:is_allowed(Permission, CompiledRoles)]).
 
-check_permissions(BucketNames, CompiledRoles) ->
+check_permissions(BucketNames, Roles, CompiledRoles, RoleDefinitions) ->
+    CollectionParams =
+        [[N, any, any] || N <- BucketNames] ++
+        [Params || {RoleName, Params} <- Roles, Params =/= [any, any, any],
+                   menelaus_roles:get_param_defs(RoleName, RoleDefinitions) =:=
+                       ?RBAC_COLLECTION_PARAMS],
+    BucketPrivileges =
+        lists:foldl(bucket_permissions(_, CompiledRoles, _), #{},
+                    BucketNames),
     {global_permissions(CompiledRoles),
-     lists:foldl(bucket_permissions(_, CompiledRoles, _), #{},
-                 BucketNames)}.
+     lists:foldl(collection_permissions(_, CompiledRoles, _),
+                 BucketPrivileges, CollectionParams)}.
 
 permissions_for_user(Roles, Buckets, RoleDefinitions) ->
     CompiledRoles = menelaus_roles:compile_roles(Roles, RoleDefinitions,
                                                  Buckets),
-    check_permissions(ns_bucket:get_bucket_names(Buckets), CompiledRoles).
+    check_permissions(ns_bucket:get_bucket_names(Buckets), Roles,
+                      CompiledRoles, RoleDefinitions).
 
-jsonify_user(Identity, CompiledRoles, BucketNames) ->
-    jsonify_user(Identity, check_permissions(BucketNames, CompiledRoles)).
+jsonify_user_with_cache(Identity, BucketNames) ->
+    %% TODO: consider caching collection parameters too so get_roles call
+    %% doesn't have to be made here
+    jsonify_user(Identity,
+                 check_permissions(BucketNames,
+                                   menelaus_roles:get_roles(Identity),
+                                   menelaus_roles:get_compiled_roles(Identity),
+                                   menelaus_roles:get_definitions(all))).
 
 jsonify_key(String) when is_list(String) ->
     list_to_binary(String);
@@ -349,6 +414,14 @@ priv_object_test() ->
            priv_set(p2, [b1, s2], _),
            priv_set(p3, [b1, s1, c1], _),
            priv_set(p3, [b1], _)]),
+    ?assert(priv_is_granted(p1, [b1, s1, c1], PrivObject)),
+    ?assertNot(priv_is_granted(p1, [b1, s1], PrivObject)),
+    ?assertNot(priv_is_granted(p1, [b1], PrivObject)),
+    ?assert(priv_is_granted(p1, [b2, any, any], PrivObject)),
+    ?assert(priv_is_granted(p1, [b2, any], PrivObject)),
+    ?assert(priv_is_granted(p1, [b2], PrivObject)),
+    ?assertNot(priv_is_granted(wrong, [b2], PrivObject)),
+    ?assertNot(priv_is_granted(p1, [wrong], PrivObject)),
     ?assertListsEqual([{[b1, s1, c1], p1},
                        {[b2], p1},
                        {[b1, s1, c1], p2},
@@ -367,10 +440,14 @@ permissions_for_user_test_() ->
          {"default", [{uuid, <<"default_id">>},
                       {collections_manifest, Manifest}]}],
     AllGlobalPermissions = [P || {_, P} <- global_permissions_to_check()],
+    AllCollectionPermissions =
+        [P || {_, P} <- collection_permissions_to_check([x, x, x])],
     AllBucketPermissions =
-        [P || {_, P} <- bucket_permissions_to_check(undefined)],
-    FullRead = [P || {{[{bucket, _}, data | _], read}, P}
-                         <- bucket_permissions_to_check(undefined)],
+        [P || {_, P} <- bucket_permissions_to_check(undefined)] ++
+        AllCollectionPermissions,
+    FullRead = [P || {{[_, data | _], read}, P}
+                      <- bucket_permissions_to_check(undefined) ++
+                          collection_permissions_to_check([x, x, x])],
     Test =
         fun (Roles, ExpectedGlobal, ExpectedBuckets) ->
                 {lists:flatten(io_lib:format("~p", [Roles])),
@@ -422,6 +499,12 @@ permissions_for_user_test_() ->
       Test([{data_reader, [{"test", <<"test_id">>}, any, any]}],
            ['SystemSettings'],
            [{["test"], ['MetaRead', 'Read', 'XattrRead']}]),
+      Test([{data_reader, [{"default", <<"default_id">>}, {"s", 1}, any]}],
+           ['SystemSettings'],
+           [{["default", 1], ['MetaRead', 'Read', 'XattrRead']}]),
+      Test([{data_reader, [{"default", <<"default_id">>}, {"s", 1}, {"c", 1}]}],
+           ['SystemSettings'],
+           [{["default", 1, 1], ['MetaRead', 'Read', 'XattrRead']}]),
       Test([{data_dcp_reader, [{"test", <<"test_id">>}]}],
            ['IdleConnection','SystemSettings'],
            [{["test"], FullRead}]),

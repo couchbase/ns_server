@@ -66,7 +66,8 @@
          produce_roles_by_permission/2,
          get_security_roles/1,
          external_auth_polling_interval/0,
-         get_param_defs/2]).
+         get_param_defs/2,
+         strip_ids/2]).
 
 -export([start_compiled_roles_cache/0]).
 
@@ -1001,6 +1002,8 @@ strip_id(bucket_name, P) ->
     %% to be removed as part of MB-38411
     P.
 
+-spec strip_ids([rbac_role_def_param()], [rbac_role_param()]) ->
+                       [rbac_role_param()].
 strip_ids(ParamDefs, Params) ->
     [strip_id(ParamDef, Param) || {ParamDef, Param} <-
                                       lists:zip(ParamDefs, Params)].
