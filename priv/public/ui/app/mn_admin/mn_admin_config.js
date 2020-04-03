@@ -27,8 +27,6 @@ import mnTasksDetails from "/ui/app/components/mn_tasks_details.js";
 import mnSessionService from "/ui/app/components/mn_session.js";
 
 import mnBuckets from "./mn_buckets_controller.js";
-import mnAnalytics from "./mn_analytics_controller.js";
-import mnStatisticsNew from "./mn_statistics_controller.js";
 import mnLogs from "./mn_logs_controller.js";
 import mnIndexes from "./mn_indexes_config.js";
 import mnServers from "./mn_servers_controller.js";
@@ -60,7 +58,6 @@ angular.module('mnAdmin', [
 
   mnTasksDetails,
   mnBuckets,
-  mnAnalytics,
   mnLogs,
   mnIndexes,
   mnServers,
@@ -285,10 +282,8 @@ function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider) {
       }
     });
 
-  addAnalyticsStates("app.admin.servers.list");
   addGroupsStates("app.admin.servers.list");
 
-  addAnalyticsStates("app.admin.buckets");
   addDocumentsStates("app.admin.buckets");
 
 
@@ -357,130 +352,4 @@ function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider) {
       });
   }
 
-  function addAnalyticsStates(parent) {
-    $stateProvider
-      .state(parent + '.analytics', {
-        abstract: true,
-        url: '/analytics?statsHostname&bucket&specificStat',
-        views: {
-          "main@app.admin": {
-            controller: 'mnAnalyticsController as analyticsCtl',
-            templateUrl: 'app/mn_admin/mn_analytics.html'
-          }
-        },
-        params: {
-          specificStat: {
-            value: null
-          },
-          bucket: {
-            value: null
-          }
-        },
-        data: {
-          permissions: "cluster.bucket['.'].settings.read && " +
-            "cluster.bucket['.'].stats.read && cluster.stats.read"
-        }
-      })
-      .state(parent + '.analytics.list', {
-        url: '?openedStatsBlock&openedSpecificStatsBlock&columnName',
-        params: {
-          openedStatsBlock: {
-            array: true,
-            dynamic: true
-          },
-          openedSpecificStatsBlock: {
-            array: true,
-            dynamic: true
-          },
-          transZoom: {
-            dynamic: true
-          },
-          transGraph: {
-            dynamic: true
-          },
-          columnName: null
-        },
-        data: {
-          title: "Statistics",
-          child: parent
-        },
-        controller: 'mnAnalyticsListController as analyticsListCtl',
-        templateUrl: 'app/mn_admin/mn_analytics_list.html',
-        redirectTo: function (trans) {
-          var mnAnalyticsService = trans.injector().get("mnAnalyticsService");
-          var params = _.clone(trans.params(), true);
-          params.zoom = params.transZoom || "minute";
-          params.graph = params.transGraph;
-          return mnAnalyticsService.getStats({$stateParams: params}).then(function (state) {
-            function checkLackOfParam(paramName) {
-              return !params[paramName] || !params[paramName].length || !_.intersection(params[paramName], _.pluck(state.statsDirectoryBlocks, 'blockName')).length;
-            }
-            if (!state.status) {
-              if (params.specificStat) {
-                if (checkLackOfParam("openedSpecificStatsBlock")) {
-                  params.openedSpecificStatsBlock = [state.statsDirectoryBlocks[0].blockName];
-                }
-              } else {
-                if (checkLackOfParam("openedStatsBlock")) {
-                  params.openedStatsBlock = [
-                    state.statsDirectoryBlocks[0].blockName,
-                    state.statsDirectoryBlocks[1].blockName
-                  ];
-                }
-              }
-              var selectedStat = state.statsByName && state.statsByName[params.graph];
-              if (!params.graph && (!selectedStat || !selectedStat.config.data.length)) {
-                var findBy = function (info) {
-                  return info.config.data.length;
-                };
-                if (params.specificStat) {
-                  var directoryForSearch = state.statsDirectoryBlocks[0];
-                } else {
-                  var directoryForSearch = state.statsDirectoryBlocks[1];
-                }
-                selectedStat = _.detect(directoryForSearch.stats, findBy) ||
-                  _.detect(state.statsByName, findBy);
-                if (selectedStat) {
-                  params.graph = selectedStat.name;
-                }
-              }
-            }
-            return {state: parent + ".analytics.list" + (params.specificStat ? ".specificGraph" : ".graph"), params: params};
-          });
-        }
-      })
-      .state(parent + '.analytics.list.specificGraph', {
-        url: '/specific/:graph?zoom',
-        params: {
-          graph: {
-            value: null
-          },
-          zoom: {
-            value: null
-          }
-        },
-        data: {
-          title: "Specific",
-          child: parent + ".analytics.list",
-          childParams: {
-            specificStat: null
-          }
-        },
-        controller: 'mnAnalyticsListGraphController as analyticsListGraphCtl',
-        templateUrl: 'app/mn_admin/mn_analytics_list_graph.html'
-      })
-      .state(parent + '.analytics.list.graph', {
-        url: '/:graph?zoom',
-        params: {
-          graph: {
-            value: null
-          },
-          zoom: {
-            value: null
-          }
-        },
-        controller: 'mnAnalyticsListGraphController as analyticsListGraphCtl',
-        templateUrl: 'app/mn_admin/mn_analytics_list_graph.html'
-      });
-  }
 }
