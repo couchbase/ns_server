@@ -23,6 +23,7 @@ import mnSearch from "/ui/app/components/directives/mn_search/mn_search_directiv
 import mnBarUsage from "/ui/app/components/directives/mn_bar_usage/mn_bar_usage.js";
 import mnSortableTable from "/ui/app/components/directives/mn_sortable_table.js";
 import mnSelectableNodesList from "/ui/app/components/directives/mn_selectable_nodes_list.js";
+import mnServicesDiskPaths from "/ui/app/components/directives/mn_services_disk_paths.js";
 
 import mnServersService from "./mn_servers_service.js";
 import mnServersListItemDetailsService from "./mn_servers_list_item_details_service.js";
@@ -59,6 +60,7 @@ angular
     mnMemoryQuotaService,
     mnWarmupProgress,
     mnElementCrane,
+    mnServicesDiskPaths,
     mnSearch,
     mnBarUsage,
     mnSortableTable,
@@ -69,6 +71,7 @@ angular
     mnGroupsService,
     mnRootCertificateService
   ])
+  .config(configure)
   .controller('mnServersController', mnServersController)
   .controller('mnServersMemoryQuotaDialogController', mnServersMemoryQuotaDialogController)
   .controller('mnServersListItemDetailsController', mnServersListItemDetailsController)
@@ -77,6 +80,45 @@ angular
   .controller('mnServersEjectDialogController', mnServersEjectDialogController)
   .controller('mnServersAddDialogController', mnServersAddDialogController)
   .controller('mnMultipleFailoverDialogController', mnMultipleFailoverDialogController);
+
+function configure($stateProvider) {
+  $stateProvider
+    .state('app.admin.servers', {
+      abstract: true,
+      url: '/servers',
+      views: {
+        "main@app.admin": {
+          controller: 'mnServersController as serversCtl',
+          templateUrl: 'app/mn_admin/mn_servers.html'
+        }
+      },
+      data: {
+        title: "Servers"
+      }
+    })
+    .state('app.admin.servers.list', {
+      url: '/list?openedServers',
+      params: {
+        openedServers: {
+          array: true,
+          dynamic: true
+        }
+      },
+      views: {
+        "" : {
+          templateUrl: 'app/mn_admin/mn_servers_list.html'
+        },
+        "details@app.admin.servers.list": {
+          templateUrl: 'app/mn_admin/mn_servers_list_item_details.html',
+          controller: 'mnServersListItemDetailsController as serversListItemDetailsCtl'
+        },
+        "item@app.admin.servers.list": {
+          templateUrl: 'app/mn_admin/mn_servers_list_item.html',
+          controller: 'mnServersListItemController as serversItemCtl'
+        }
+      }
+    });
+}
 
 function mnServersController($scope, $state, $uibModal, mnPoolDefault, mnPoller, mnServersService, mnHelper, mnGroupsService, mnPromiseHelper, permissions, mnStatisticsNewService) {
   var vm = this;

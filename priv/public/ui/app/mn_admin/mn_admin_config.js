@@ -29,7 +29,6 @@ import mnSessionService from "/ui/app/components/mn_session.js";
 import mnBuckets from "./mn_buckets_controller.js";
 import mnLogs from "./mn_logs_controller.js";
 import mnIndexes from "./mn_indexes_config.js";
-import mnServers from "./mn_servers_controller.js";
 import mnGroups from "./mn_groups_controller.js";
 import mnDocuments from "./mn_documents_controller.js";
 import mnSettings from "./mn_settings_config.js";
@@ -60,7 +59,6 @@ angular.module('mnAdmin', [
   mnBuckets,
   mnLogs,
   mnIndexes,
-  mnServers,
   mnGroups,
   mnDocuments,
   mnSettings,
@@ -176,41 +174,6 @@ function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider) {
       data: {
         title: "Buckets",
         permissions: "cluster.bucket['.'].settings.read"
-      }
-    })
-    .state('app.admin.servers', {
-      abstract: true,
-      url: '/servers',
-      views: {
-        "main@app.admin": {
-          controller: 'mnServersController as serversCtl',
-          templateUrl: 'app/mn_admin/mn_servers.html'
-        }
-      },
-      data: {
-        title: "Servers"
-      }
-    })
-    .state('app.admin.servers.list', {
-      url: '/list?openedServers',
-      params: {
-        openedServers: {
-          array: true,
-          dynamic: true
-        }
-      },
-      views: {
-        "" : {
-          templateUrl: 'app/mn_admin/mn_servers_list.html'
-        },
-        "details@app.admin.servers.list": {
-          templateUrl: 'app/mn_admin/mn_servers_list_item_details.html',
-          controller: 'mnServersListItemDetailsController as serversListItemDetailsCtl'
-        },
-        "item@app.admin.servers.list": {
-          templateUrl: 'app/mn_admin/mn_servers_list_item.html',
-          controller: 'mnServersListItemController as serversItemCtl'
-        }
       }
     })
     .state('app.admin.replications', {
