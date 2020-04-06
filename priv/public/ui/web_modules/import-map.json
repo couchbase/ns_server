@@ -2,7 +2,7 @@
   "imports": {
     "@uirouter/angularjs": "./@uirouter/angularjs.js",
     "angular": "./angular.js",
-    "beautify": "./beautify.js",
+    "js-beautify": "./js-beautify.js",
     "lodash": "./lodash.js",
     "clipboard": "./clipboard.js",
     "file-saver": "./file-saver.js",

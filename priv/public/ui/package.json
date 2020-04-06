@@ -24,7 +24,7 @@
     "angular-messages": "1.6.9",
     "angular-sanitize": "1.6.9",
     "angular-ui-bootstrap": "1.2.0",
-    "beautify": "0.0.8",
+    "js-beautify": "1.10.3",
     "clipboard": "1.5.16",
     "codemirror": "5.51.0",
     "d3-array": "2.4.0",
@@ -58,7 +58,7 @@
     "webDependencies": [
       "@uirouter/angularjs",
       "angular",
-      "beautify",
+      "js-beautify",
       "lodash",
       "clipboard",
       "file-saver",
