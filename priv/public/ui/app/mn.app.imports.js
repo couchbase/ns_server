@@ -88,6 +88,16 @@ let bucketsState = {
   }
 };
 
+let documentsState = {
+  name: "app.admin.documents.**",
+  url: "/documents",
+  lazyLoad: ($transition$) => {
+    return import('./mn_admin/mn_documents_controller.js').then(m => {
+      $transition$.injector().get('$ocLazyLoad').load({name: 'mnDocuments'});
+    });
+  }
+};
+
 let authState = {
   name: "app.auth.**",
   loadChildren: () => {
@@ -107,6 +117,6 @@ export let mnAppImports = [
   HttpClientModule,
   MnSharedModule,
   UIRouterUpgradeModule.forRoot({
-    states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, groupsState]
+    states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, groupsState, documentsState]
   })
 ];

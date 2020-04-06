@@ -29,7 +29,6 @@ import mnLogsService from "./mn_logs_service.js";
 
 import mnIndexes from "./mn_indexes_config.js";
 
-import mnDocuments from "./mn_documents_controller.js";
 import mnSettings from "./mn_settings_config.js";
 import mnXDCR from "./mn_xdcr_controller.js";
 import mnSecurity from "./mn_security_config.js";
@@ -57,7 +56,6 @@ angular.module('mnAdmin', [
 
   mnTasksDetails,
   mnIndexes,
-  mnDocuments,
   mnSettings,
   mnXDCR,
   mnSecurity,
@@ -177,54 +175,5 @@ function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider) {
         title: "Statistics Overview"
       }
     });
-
-  addDocumentsStates("app.admin.buckets");
-
-  function addDocumentsStates(parent) {
-    $stateProvider
-      .state(parent + '.documents', {
-        abstract: true,
-        views: {
-          "main@app.admin": {
-            templateUrl: 'app/mn_admin/mn_documents.html',
-            controller: "mnDocumentsController as documentsCtl"
-          }
-        },
-        url: "/documents?bucket",
-        data: {
-          title: "Documents",
-          child: parent,
-          permissions: "cluster.bucket['.'].settings.read && cluster.bucket['.'].data.docs.read"
-        }
-      })
-      .state(parent + '.documents.control', {
-        abstract: true,
-        controller: 'mnDocumentsControlController as documentsControlCtl',
-        templateUrl: 'app/mn_admin/mn_documents_control.html'
-      })
-      .state(parent + '.documents.control.list', {
-        url: "?{pageLimit:int}&{pageNumber:int}&documentsFilter",
-        params: {
-          pageLimit: {
-            value: 10
-          },
-          pageNumber: {
-            value: 0
-          },
-          documentsFilter: null
-        },
-        controller: 'mnDocumentsListController as documentsListCtl',
-        templateUrl: 'app/mn_admin/mn_documents_list.html'
-      })
-      .state(parent + '.documents.editing', {
-        url: '/:documentId',
-        controller: 'mnDocumentsEditingController as documentsEditingCtl',
-        templateUrl: 'app/mn_admin/mn_documents_editing.html',
-        data: {
-          child: parent + ".documents.control.list",
-          title: "Documents Editing"
-        }
-      });
-  }
 
 }

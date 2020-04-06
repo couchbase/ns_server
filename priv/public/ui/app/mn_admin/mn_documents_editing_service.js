@@ -37,6 +37,7 @@ function mnDocumentsEditingFactory($http, $q, getStringBytesFilter, docBytesLimi
       if (_.chain(editorWarnings).values().some().value()) {
         rv.editorWarnings = editorWarnings;
       } else {
+        console.log(doc.json,js_beautify(doc.json, {"indent_size": 2}))
         rv.doc = js_beautify(doc.json, {"indent_size": 2});
         rv.meta = JSON.stringify(doc.meta, null, "  ");
       }

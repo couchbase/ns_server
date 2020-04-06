@@ -38,12 +38,60 @@ angular
     mnPoll,
     mnElementCrane
   ])
+  .config(configure)
   .controller("mnDocumentsController", mnDocumentsController)
   .controller("mnDocumentsControlController", mnDocumentsControlController)
   .controller("mnDocumentsCreateDialogController", mnDocumentsCreateDialogController)
   .controller("mnDocumentsListController", mnDocumentsListController)
   .controller("mnDocumentsEditingController", mnDocumentsEditingController)
   .controller("mnDocumentsDeleteDialogController", mnDocumentsDeleteDialogController);
+
+function configure($stateProvider) {
+  $stateProvider
+    .state('app.admin.documents', {
+      abstract: true,
+      views: {
+        "main@app.admin": {
+          templateUrl: 'app/mn_admin/mn_documents.html',
+          controller: "mnDocumentsController as documentsCtl"
+        }
+      },
+      url: "/documents?bucket",
+      data: {
+        title: "Documents",
+        child: "app.admin.buckets",
+        permissions: "cluster.bucket['.'].settings.read && cluster.bucket['.'].data.docs.read"
+      }
+    })
+    .state('app.admin.documents.control', {
+      abstract: true,
+      controller: 'mnDocumentsControlController as documentsControlCtl',
+      templateUrl: 'app/mn_admin/mn_documents_control.html'
+    })
+    .state('app.admin.documents.control.list', {
+      url: "?{pageLimit:int}&{pageNumber:int}&documentsFilter",
+      params: {
+        pageLimit: {
+          value: 10
+        },
+        pageNumber: {
+          value: 0
+        },
+        documentsFilter: null
+      },
+      controller: 'mnDocumentsListController as documentsListCtl',
+      templateUrl: 'app/mn_admin/mn_documents_list.html'
+    })
+    .state('app.admin.documents.editing', {
+      url: '/:documentId',
+      controller: 'mnDocumentsEditingController as documentsEditingCtl',
+      templateUrl: 'app/mn_admin/mn_documents_editing.html',
+      data: {
+        child: "app.admin.buckets.documents.control.list",
+        title: "Documents Editing"
+      }
+    });
+}
 
 function mnDocumentsController($state) {
   var vm = this;
