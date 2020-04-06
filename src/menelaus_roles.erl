@@ -74,201 +74,8 @@
 %% for RPC from ns_couchdb node
 -export([build_compiled_roles/1]).
 
--spec roles_50() -> [rbac_role_def(), ...].
-roles_50() ->
-    [{admin, [],
-      [{name, <<"Admin">>},
-       {desc, <<"Can manage ALL cluster features including security.">>},
-       {ce, true}],
-      [{[], all}]},
-     {ro_admin, [],
-      [{name, <<"Read Only Admin">>},
-       {desc, <<"Can view ALL cluster features.">>},
-       {ce, true}],
-      [{[{bucket, any}, password], none},
-       {[{bucket, any}, data], none},
-       {[admin, security], [read]},
-       {[admin], none},
-       {[], [read, list]}]},
-     {cluster_admin, [],
-      [{name, <<"Cluster Admin">>},
-       {desc, <<"Can manage all cluster features EXCEPT security.">>}],
-      [{[admin, internal], none},
-       {[admin, security], none},
-       {[admin, diag], read},
-       {[n1ql, curl], none},
-       {[], all}]},
-     {bucket_admin, [bucket_name],
-      [{name, <<"Bucket Admin">>},
-       {desc, <<"Can manage ALL bucket features for specified buckets "
-                "(incl. start/stop XDCR)">>}],
-      [{[{bucket, bucket_name}, xdcr], [read, execute]},
-       {[{bucket, bucket_name}], all},
-       {[{bucket, any}, settings], [read]},
-       {[{bucket, any}], none},
-       {[xdcr], none},
-       {[admin], none},
-       {[], [read]}]},
-     {bucket_full_access, [bucket_name],
-      [{name, <<"Bucket Full Access">>},
-       {desc, <<"Full access to bucket data">>},
-       {ce, true}],
-      [{[{bucket, bucket_name}, data], all},
-       {[{bucket, bucket_name}, views], all},
-       {[{bucket, bucket_name}, n1ql, index], all},
-       {[{bucket, bucket_name}, n1ql], [execute]},
-       {[{bucket, bucket_name}], [read, flush]},
-       {[{bucket, bucket_name}, settings], [read]},
-       {[pools], [read]}]},
-     {views_admin, [bucket_name],
-      [{name, <<"Views Admin">>},
-       {desc, <<"Can manage views for specified buckets">>}],
-      [{[{bucket, bucket_name}, views], all},
-       {[{bucket, bucket_name}, data], [read]},
-       {[{bucket, any}, settings], [read]},
-       {[{bucket, any}], none},
-       {[{bucket, bucket_name}, n1ql], [execute]},
-       {[xdcr], none},
-       {[admin], none},
-       {[], [read]}]},
-     {views_reader, [bucket_name],
-      [{name, <<"Views Reader">>},
-       {desc, <<"Can read data from the views of specified bucket">>}],
-      [{[{bucket, bucket_name}, views], [read]},
-       {[{bucket, bucket_name}, data, docs], [read]},
-       {[pools], [read]}]},
-     {replication_admin, [],
-      [{name, <<"Replication Admin">>},
-       {desc, <<"Can manage ONLY XDCR features (cluster AND bucket level)">>}],
-      [{[{bucket, any}, xdcr], all},
-       {[{bucket, any}, data], [read]},
-       {[{bucket, any}, settings], [read]},
-       {[{bucket, any}], none},
-       {[xdcr], all},
-       {[admin], none},
-       {[], [read]}]},
-     {data_reader, [bucket_name],
-      [{name, <<"Data Reader">>},
-       {desc, <<"Can read information from specified bucket">>}],
-      [{[{bucket, bucket_name}, data, docs], [read]},
-       {[{bucket, bucket_name}, data, meta], [read]},
-       {[{bucket, bucket_name}, data, xattr], [read]},
-       {[{bucket, bucket_name}, settings], [read]},
-       {[pools], [read]}]},
-     {data_writer, [bucket_name],
-      [{name, <<"Data Writer">>},
-       {desc, <<"Can write information from/to specified bucket">>}],
-      [{[{bucket, bucket_name}, data, docs], [insert, upsert, delete]},
-       {[{bucket, bucket_name}, data, xattr], [write]},
-       {[{bucket, bucket_name}, settings], [read]},
-       {[pools], [read]}]},
-     {data_dcp_reader, [bucket_name],
-      [{name, <<"Data DCP Reader">>},
-       {desc, <<"Can read DCP data streams">>}],
-      [{[{bucket, bucket_name}, data, docs], [read]},
-       {[{bucket, bucket_name}, data, meta], [read]},
-       {[{bucket, bucket_name}, data, dcp], [read]},
-       {[{bucket, bucket_name}, data, sxattr], [read]},
-       {[{bucket, bucket_name}, data, xattr], [read]},
-       {[{bucket, bucket_name}, settings], [read]},
-       {[admin, memcached, idle], [write]},
-       {[pools], [read]}]},
-     {data_backup, [bucket_name],
-      [{name, <<"Data Backup">>},
-       {desc, <<"Can backup and restore bucket data">>}],
-      [{[{bucket, bucket_name}, data], all},
-       {[{bucket, bucket_name}, views], [read, write]},
-       {[{bucket, bucket_name}, fts], [read, write, manage]},
-       {[{bucket, bucket_name}, stats], [read]},
-       {[{bucket, bucket_name}, settings], [read]},
-       {[{bucket, bucket_name}, n1ql, index], [create, list, build]},
-       {[pools], [read]}]},
-     {data_monitoring, [bucket_name],
-      [{name, <<"Data Monitoring">>},
-       {desc, <<"Can read full bucket stats">>}],
-      [{[{bucket, bucket_name}, stats], [read]},
-       {[{bucket, bucket_name}, settings], [read]},
-       {[pools], [read]}]},
-     {fts_admin, [bucket_name],
-      [{name, <<"FTS Admin">>},
-       {desc, <<"Can administer all FTS features">>}],
-      [{[{bucket, bucket_name}, fts], [read, write, manage]},
-       {[settings, fts], [read, write, manage]},
-       {[ui], [read]},
-       {[pools], [read]},
-       {[{bucket, bucket_name}, settings], [read]}]},
-     {fts_searcher, [bucket_name],
-      [{name, <<"FTS Searcher">>},
-       {desc, <<"Can query FTS indexes if they have bucket permissions">>}],
-      [{[{bucket, bucket_name}, fts], [read]},
-       {[settings, fts], [read]},
-       {[ui], [read]},
-       {[pools], [read]},
-       {[{bucket, bucket_name}, settings], [read]}]},
-     {query_select, [bucket_name],
-      [{name, <<"Query Select">>},
-       {desc, <<"Can execute SELECT statement on bucket to retrieve data">>}],
-      [{[{bucket, bucket_name}, n1ql, select], [execute]},
-       {[{bucket, bucket_name}, data, docs], [read]},
-       {[{bucket, bucket_name}, settings], [read]},
-       {[ui], [read]},
-       {[pools], [read]}]},
-     {query_update, [bucket_name],
-      [{name, <<"Query Update">>},
-       {desc, <<"Can execute UPDATE statement on bucket to update data">>}],
-      [{[{bucket, bucket_name}, n1ql, update], [execute]},
-       {[{bucket, bucket_name}, data, docs], [upsert]},
-       {[{bucket, bucket_name}, settings], [read]},
-       {[ui], [read]},
-       {[pools], [read]}]},
-     {query_insert, [bucket_name],
-      [{name, <<"Query Insert">>},
-       {desc, <<"Can execute INSERT statement on bucket to add data">>}],
-      [{[{bucket, bucket_name}, n1ql, insert], [execute]},
-       {[{bucket, bucket_name}, data, docs], [insert]},
-       {[{bucket, bucket_name}, settings], [read]},
-       {[ui], [read]},
-       {[pools], [read]}]},
-     {query_delete, [bucket_name],
-      [{name, <<"Query Delete">>},
-       {desc, <<"Can execute DELETE statement on bucket to delete data">>}],
-      [{[{bucket, bucket_name}, n1ql, delete], [execute]},
-       {[{bucket, bucket_name}, data, docs], [delete]},
-       {[{bucket, bucket_name}, settings], [read]},
-       {[ui], [read]},
-       {[pools], [read]}]},
-     {query_manage_index, [bucket_name],
-      [{name, <<"Query Manage Index">>},
-       {desc, <<"Can manage indexes for the bucket">>}],
-      [{[{bucket, bucket_name}, n1ql, index], all},
-       {[{bucket, bucket_name}, settings], [read]},
-       {[ui], [read]},
-       {[pools], [read]}]},
-     {query_system_catalog, [],
-      [{name, <<"Query System Catalog">>},
-       {desc, <<"Can lookup system catalog information">>}],
-      [{[{bucket, any}, n1ql, index], [list]},
-       {[{bucket, any}, settings], [read]},
-       {[n1ql, meta], [read]},
-       {[ui], [read]},
-       {[pools], [read]}]},
-     {query_external_access, [],
-      [{name, <<"Query External Access">>},
-       {desc, <<"Can execute CURL statement">>}],
-      [{[n1ql, curl], [execute]},
-       {[{bucket, any}, settings], [read]},
-       {[ui], [read]},
-       {[pools], [read]}]},
-     {replication_target, [bucket_name],
-      [{name, <<"Replication Target">>},
-       {desc, <<"XDC replication target for bucket">>}],
-      [{[{bucket, bucket_name}, settings], [read]},
-       {[{bucket, bucket_name}, data, meta], [read, write]},
-       {[{bucket, bucket_name}, stats], [read]},
-       {[pools], [read]}]}].
-
--spec roles_55() -> [rbac_role_def(), ...].
-roles_55() ->
+-spec roles() -> [rbac_role_def(), ...].
+roles() ->
     [{admin, [],
       [{name, <<"Full Admin">>},
        {desc, <<"Can manage all cluster features (including security). "
@@ -384,14 +191,15 @@ roles_55() ->
        {[admin], none},
        {[eventing], none},
        {[], [read]}]},
-     {data_reader, [bucket_name],
+     {data_reader, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Data Reader">>},
-       {desc, <<"Can read data from a given bucket. This user cannot access "
-                "the web console and is intended only for application access. "
-                "This user can read data, but cannot write it.">>}],
-      [{[{bucket, bucket_name}, data, docs], [read]},
-       {[{bucket, bucket_name}, data, meta], [read]},
-       {[{bucket, bucket_name}, data, xattr], [read]},
+       {desc, <<"Can read data from a given bucket, scope or collection. "
+                "This user cannot access the web console and is intended only "
+                "for application access. This user can read data, but cannot "
+                "write it.">>}],
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs], [read]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, data, meta], [read]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, data, xattr], [read]},
        {[{bucket, bucket_name}, settings], [read]},
        {[pools], [read]}]},
      {data_writer, [bucket_name],
@@ -550,27 +358,6 @@ roles_55() ->
        {[ui], [read]},
        {[pools], [read]}]}].
 
-update_roles([{Name, _, _, _} = Role | NewRoles],
-             [{Name, _, _, _} | OldRoles], Acc) ->
-    update_roles(NewRoles, OldRoles, [Role | Acc]);
-update_roles(NewRoles, [Role | OldRoles], Acc) ->
-    update_roles(NewRoles, OldRoles, [Role | Acc]);
-update_roles([], [], Acc) ->
-    lists:reverse(Acc).
-
-roles_cheshirecat() ->
-    update_roles(
-      [{data_reader, ?RBAC_COLLECTION_PARAMS,
-        [{name, <<"Data Reader">>},
-         {desc, <<"Can read information from specified bucket, "
-                  "scope or collection">>}],
-        [{[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs], [read]},
-         {[{collection, ?RBAC_COLLECTION_PARAMS}, data, meta], [read]},
-         {[{collection, ?RBAC_COLLECTION_PARAMS}, data, xattr], [read]},
-         {[{bucket, bucket_name}, settings], [read]},
-         {[pools], [read]}]}],
-      roles_55(), []).
-
 internal_roles() ->
     [{stats_reader, [], [],
       [{[{bucket, any}, stats], [read]},
@@ -586,13 +373,13 @@ get_definitions(Config, all) ->
 get_definitions(Config, public) ->
     case cluster_compat_mode:is_cluster_cheshirecat(Config) of
         true ->
-            roles_cheshirecat();
+            roles();
         false ->
             case cluster_compat_mode:is_cluster_55(Config) of
                 true ->
-                    roles_55();
+                    menelaus_old_roles:roles_pre_cheshirecat();
                 false ->
-                    roles_50()
+                    menelaus_old_roles:roles_pre_55()
             end
     end.
 
@@ -1144,12 +931,12 @@ compile_roles_test() ->
                                   {"s", 1}, {"c", 2}]}], Definitions)).
 
 admin_test() ->
-    Roles = compile_roles([admin], roles_50()),
+    Roles = compile_roles([admin], roles()),
     ?assertEqual(true, is_allowed({[buckets], create}, Roles)),
     ?assertEqual(true, is_allowed({[something, something], anything}, Roles)).
 
 ro_admin_test() ->
-    Roles = compile_roles([ro_admin], roles_50()),
+    Roles = compile_roles([ro_admin], roles()),
     ?assertEqual(false,
                  is_allowed({[{bucket, "test"}, password], read}, Roles)),
     ?assertEqual(false, is_allowed({[{bucket, "test"}, data], read}, Roles)),
@@ -1192,13 +979,13 @@ bucket_admin_check_default(Roles) ->
        true, is_allowed({[{bucket, "default"}, anything], anything}, Roles)).
 
 bucket_admin_test() ->
-    Roles = compile_roles([{bucket_admin, ["default"]}], roles_50()),
+    Roles = compile_roles([{bucket_admin, ["default"]}], roles()),
     bucket_admin_check_default(Roles),
     bucket_views_admin_check_another(Roles),
     bucket_views_admin_check_global(Roles).
 
 bucket_admin_wildcard_test() ->
-    Roles = compile_roles([{bucket_admin, [any]}], roles_50()),
+    Roles = compile_roles([{bucket_admin, [any]}], roles()),
     bucket_admin_check_default(Roles),
     bucket_views_admin_check_global(Roles).
 
@@ -1216,13 +1003,13 @@ views_admin_check_default(Roles) ->
     ?assertEqual(false, is_allowed({[{bucket, "default"}], read}, Roles)).
 
 views_admin_test() ->
-    Roles = compile_roles([{views_admin, ["default"]}], roles_50()),
+    Roles = compile_roles([{views_admin, ["default"]}], roles()),
     views_admin_check_default(Roles),
     bucket_views_admin_check_another(Roles),
     bucket_views_admin_check_global(Roles).
 
 views_admin_wildcard_test() ->
-    Roles = compile_roles([{views_admin, [any]}], roles_50()),
+    Roles = compile_roles([{views_admin, [any]}], roles()),
     views_admin_check_default(Roles),
     bucket_views_admin_check_global(Roles).
 
@@ -1234,14 +1021,14 @@ bucket_full_access_check(Roles, Bucket, Allowed) ->
     ?assertEqual(false, is_allowed({[{bucket, Bucket}], write}, Roles)).
 
 bucket_full_access_test() ->
-    Roles = compile_roles([{bucket_full_access, ["default"]}], roles_50()),
+    Roles = compile_roles([{bucket_full_access, ["default"]}], roles()),
     bucket_full_access_check(Roles, "default", true),
     bucket_full_access_check(Roles, "another", false),
     ?assertEqual(true, is_allowed({[pools], read}, Roles)),
     ?assertEqual(false, is_allowed({[another], read}, Roles)).
 
 replication_admin_test() ->
-    Roles = compile_roles([replication_admin], roles_50()),
+    Roles = compile_roles([replication_admin], roles()),
     ?assertEqual(true,
                  is_allowed({[{bucket, "default"}, xdcr], anything}, Roles)),
     ?assertEqual(false,
@@ -1273,8 +1060,7 @@ data_reader_collection_test_() ->
     Test =
         fun (Params, Results) ->
                 fun () ->
-                        Roles = compile_roles([{data_reader, Params}],
-                                              roles_cheshirecat()),
+                        Roles = compile_roles([{data_reader, Params}], roles()),
                         ?assertEqual(Results, lists:map(is_allowed(_, Roles),
                                                         Permissions))
                 end
@@ -1301,7 +1087,7 @@ data_reader_collection_test_() ->
      ]}.
 
 validate_role_test() ->
-    ValidateRole = validate_role(_, roles_50(), toy_buckets()),
+    ValidateRole = validate_role(_, roles(), toy_buckets()),
     ?assertEqual({ok, admin}, ValidateRole(admin)),
     ?assertEqual({ok, {bucket_admin, [{"test", <<"test_id">>}]}},
                  ValidateRole({bucket_admin, ["test"]})),
