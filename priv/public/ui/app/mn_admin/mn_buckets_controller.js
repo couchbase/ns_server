@@ -43,6 +43,7 @@ angular
     mnElementCrane,
     mnSortableTable
   ])
+  .config(configure)
   .controller('mnBucketsController', mnBucketsController)
   .controller('mnBucketsDeleteDialogController', mnBucketsDeleteDialogController)
   .controller('mnBucketsDetailsController', mnBucketsDetailsController)
@@ -50,6 +51,37 @@ angular
   .controller('mnBucketsFlushDialogController', mnBucketsFlushDialogController)
   .controller('mnBucketsListItemController', mnBucketsListItemController)
   .directive('mnBucketsList', mnBucketsList);
+
+function configure($stateProvider) {
+  $stateProvider
+    .state('app.admin.buckets', {
+      url: '/buckets?openedBucket',
+      params: {
+        openedBucket: {
+          array: true,
+          dynamic: true
+        }
+      },
+      views: {
+        "main@app.admin": {
+          controller: 'mnBucketsController as bucketsCtl',
+          templateUrl: 'app/mn_admin/mn_buckets.html'
+        },
+        "details@app.admin.buckets": {
+          templateUrl: 'app/mn_admin/mn_buckets_details.html',
+          controller: 'mnBucketsDetailsController as bucketsDetailsCtl'
+        },
+        "item@app.admin.buckets": {
+          templateUrl: 'app/mn_admin/mn_buckets_list_item.html',
+          controller: 'mnBucketsListItemController as bucketsItemCtl'
+        }
+      },
+      data: {
+        title: "Buckets",
+        permissions: "cluster.bucket['.'].settings.read"
+      }
+    });
+}
 
 function mnBucketsController($scope, mnPoolDefault, mnPromiseHelper, $uibModal, $rootScope, $interval) {
   var vm = this;

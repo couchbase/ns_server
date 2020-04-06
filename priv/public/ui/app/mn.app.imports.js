@@ -58,6 +58,16 @@ let serversState = {
   }
 };
 
+let bucketsState = {
+  name: 'app.admin.buckets.**',
+  url: '/buckets',
+  lazyLoad: ($transition$) => {
+    return import('./mn_admin/mn_buckets_controller.js').then(m => {
+      $transition$.injector().get('$ocLazyLoad').load({name: 'mnBuckets'});
+    });
+  }
+};
+
 let authState = {
   name: "app.auth.**",
   loadChildren: () => {
@@ -77,6 +87,6 @@ export let mnAppImports = [
   HttpClientModule,
   MnSharedModule,
   UIRouterUpgradeModule.forRoot({
-    states: [authState, wizardState, overviewState, serversState]
+    states: [authState, wizardState, overviewState, serversState, bucketsState]
   })
 ];

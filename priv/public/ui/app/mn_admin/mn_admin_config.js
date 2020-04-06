@@ -26,7 +26,6 @@ import mnDragAndDrop from "/ui/app/components/directives/mn_drag_and_drop.js";
 import mnTasksDetails from "/ui/app/components/mn_tasks_details.js";
 import mnSessionService from "/ui/app/components/mn_session.js";
 
-import mnBuckets from "./mn_buckets_controller.js";
 import mnLogs from "./mn_logs_controller.js";
 import mnIndexes from "./mn_indexes_config.js";
 import mnGroups from "./mn_groups_controller.js";
@@ -56,7 +55,6 @@ angular.module('mnAdmin', [
   mnLogsCollectInfoService,
 
   mnTasksDetails,
-  mnBuckets,
   mnLogs,
   mnIndexes,
   mnGroups,
@@ -147,33 +145,6 @@ function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider) {
           templateUrl: 'app/mn_admin/mn_lost_connection.html',
           controller: 'mnLostConnectionController as lostConnCtl'
         }
-      }
-    })
-    .state('app.admin.buckets', {
-      url: '/buckets?openedBucket',
-      params: {
-        openedBucket: {
-          array: true,
-          dynamic: true
-        }
-      },
-      views: {
-        "main@app.admin": {
-          controller: 'mnBucketsController as bucketsCtl',
-          templateUrl: 'app/mn_admin/mn_buckets.html'
-        },
-        "details@app.admin.buckets": {
-          templateUrl: 'app/mn_admin/mn_buckets_details.html',
-          controller: 'mnBucketsDetailsController as bucketsDetailsCtl'
-        },
-        "item@app.admin.buckets": {
-          templateUrl: 'app/mn_admin/mn_buckets_list_item.html',
-          controller: 'mnBucketsListItemController as bucketsItemCtl'
-        }
-      },
-      data: {
-        title: "Buckets",
-        permissions: "cluster.bucket['.'].settings.read"
       }
     })
     .state('app.admin.replications', {
