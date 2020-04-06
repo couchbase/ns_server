@@ -68,6 +68,16 @@ let logsState = {
   }
 };
 
+let groupsState = {
+  name: 'app.admin.groups.**',
+  url: '/groups',
+  lazyLoad: ($transition$) => {
+    return import('./mn_admin/mn_groups_controller.js').then(m => {
+      $transition$.injector().get('$ocLazyLoad').load({name: 'mnGroups'});
+    });
+  }
+};
+
 let bucketsState = {
   name: 'app.admin.buckets.**',
   url: '/buckets',
@@ -97,6 +107,6 @@ export let mnAppImports = [
   HttpClientModule,
   MnSharedModule,
   UIRouterUpgradeModule.forRoot({
-    states: [authState, wizardState, overviewState, serversState, bucketsState, logsState]
+    states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, groupsState]
   })
 ];

@@ -32,9 +32,29 @@ angular
     mnPoolDefault,
     mnElementCrane
   ])
+  .config(configure)
   .controller('mnGroupsController', mnGroupsController)
   .controller('mnGroupsDeleteDialogController', mnGroupsDeleteDialogController)
   .controller('mnGroupsGroupDialogController', mnGroupsGroupDialogController);
+
+function configure($stateProvider) {
+  $stateProvider
+    .state('app.admin.groups', {
+      url: '/groups',
+      views: {
+        "main@app.admin": {
+          templateUrl: 'app/mn_admin/mn_groups.html',
+          controller: 'mnGroupsController as groupsCtl'
+        }
+      },
+      data: {
+        enterprise: true,
+        permissions: "cluster.server_groups.read",
+        title: "Server Groups",
+        child: "app.admin.servers.list"
+      }
+    });
+}
 
 function mnGroupsController($scope, $uibModal, mnGroupsService, mnPromiseHelper, mnHelper, $window, mnAlertsService) {
   var vm = this;

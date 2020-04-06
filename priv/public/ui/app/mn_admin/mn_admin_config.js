@@ -28,7 +28,7 @@ import mnSessionService from "/ui/app/components/mn_session.js";
 import mnLogsService from "./mn_logs_service.js";
 
 import mnIndexes from "./mn_indexes_config.js";
-import mnGroups from "./mn_groups_controller.js";
+
 import mnDocuments from "./mn_documents_controller.js";
 import mnSettings from "./mn_settings_config.js";
 import mnXDCR from "./mn_xdcr_controller.js";
@@ -57,7 +57,6 @@ angular.module('mnAdmin', [
 
   mnTasksDetails,
   mnIndexes,
-  mnGroups,
   mnDocuments,
   mnSettings,
   mnXDCR,
@@ -179,28 +178,7 @@ function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider) {
       }
     });
 
-  addGroupsStates("app.admin.servers.list");
-
   addDocumentsStates("app.admin.buckets");
-
-
-  function addGroupsStates(parent) {
-    $stateProvider.state(parent + '.groups', {
-      url: '/groups',
-      views: {
-        "main@app.admin": {
-          templateUrl: 'app/mn_admin/mn_groups.html',
-          controller: 'mnGroupsController as groupsCtl'
-        }
-      },
-      data: {
-        enterprise: true,
-        permissions: "cluster.server_groups.read",
-        title: "Server Groups",
-        child: parent
-      }
-    });
-  }
 
   function addDocumentsStates(parent) {
     $stateProvider
