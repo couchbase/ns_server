@@ -30,10 +30,52 @@ angular.module('mnLogs', [
   mnLogRedactionService,
   mnGroupsService
 ])
+  .config(configure)
   .controller('mnLogsController', mnLogsController)
   .controller('mnLogsListController', mnLogsListController)
   .controller('mnLogsCollectInfoController', mnLogsCollectInfoController)
   .filter('moduleCode', moduleCodeFilter);
+
+function configure($stateProvider) {
+  $stateProvider
+    .state('app.admin.logs', {
+      url: '/logs',
+      abstract: true,
+      views: {
+        "main@app.admin": {
+          templateUrl: 'app/mn_admin/mn_logs.html',
+          controller: 'mnLogsController as logsCtl'
+        }
+      },
+      data: {
+        title: "Logs",
+        permissions: "cluster.logs.read"
+      }
+    })
+    .state('app.admin.logs.list', {
+      url: '',
+      controller: 'mnLogsListController as logsListCtl',
+      templateUrl: 'app/mn_admin/mn_logs_list.html'
+    })
+    .state('app.admin.logs.collectInfo', {
+      url: '/collectInfo',
+      abstract: true,
+      controller: 'mnLogsCollectInfoController as logsCollectInfoCtl',
+      templateUrl: 'app/mn_admin/mn_logs_collect_info.html',
+      data: {
+        permissions: "cluster.admin.logs.read",
+        title: "Collect Information"
+      }
+    })
+    .state('app.admin.logs.collectInfo.result', {
+      url: '/result',
+      templateUrl: 'app/mn_admin/mn_logs_collect_info_result.html'
+    })
+    .state('app.admin.logs.collectInfo.form', {
+      url: '/form',
+      templateUrl: 'app/mn_admin/mn_logs_collect_info_form.html'
+    });
+}
 
 function mnLogsController($scope, mnHelper, mnLogsService) {
   var vm = this;

@@ -25,8 +25,8 @@ import mnElementCrane from "/ui/app/components/directives/mn_element_crane/mn_el
 import mnDragAndDrop from "/ui/app/components/directives/mn_drag_and_drop.js";
 import mnTasksDetails from "/ui/app/components/mn_tasks_details.js";
 import mnSessionService from "/ui/app/components/mn_session.js";
+import mnLogsService from "./mn_logs_service.js";
 
-import mnLogs from "./mn_logs_controller.js";
 import mnIndexes from "./mn_indexes_config.js";
 import mnGroups from "./mn_groups_controller.js";
 import mnDocuments from "./mn_documents_controller.js";
@@ -53,9 +53,9 @@ angular.module('mnAdmin', [
   mnAlertsService,
   mnPoolDefault,
   mnLogsCollectInfoService,
+  mnLogsService,
 
   mnTasksDetails,
-  mnLogs,
   mnIndexes,
   mnGroups,
   mnDocuments,
@@ -165,43 +165,6 @@ function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider) {
         permissions: "cluster.tasks.read",
         title: "XDCR Replications"
       }
-    })
-    .state('app.admin.logs', {
-      url: '/logs',
-      abstract: true,
-      views: {
-        "main@app.admin": {
-          templateUrl: 'app/mn_admin/mn_logs.html',
-          controller: 'mnLogsController as logsCtl'
-        }
-      },
-      data: {
-        title: "Logs",
-        permissions: "cluster.logs.read"
-      }
-    })
-    .state('app.admin.logs.list', {
-      url: '',
-      controller: 'mnLogsListController as logsListCtl',
-      templateUrl: 'app/mn_admin/mn_logs_list.html'
-    })
-    .state('app.admin.logs.collectInfo', {
-      url: '/collectInfo',
-      abstract: true,
-      controller: 'mnLogsCollectInfoController as logsCollectInfoCtl',
-      templateUrl: 'app/mn_admin/mn_logs_collect_info.html',
-      data: {
-        permissions: "cluster.admin.logs.read",
-        title: "Collect Information"
-      }
-    })
-    .state('app.admin.logs.collectInfo.result', {
-      url: '/result',
-      templateUrl: 'app/mn_admin/mn_logs_collect_info_result.html'
-    })
-    .state('app.admin.logs.collectInfo.form', {
-      url: '/form',
-      templateUrl: 'app/mn_admin/mn_logs_collect_info_form.html'
     })
     .state('app.admin.statistics_overview', {
       url: '/stats_overview?overviewHostname&overviewBucket&overviewZoom',
