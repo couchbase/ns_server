@@ -559,15 +559,14 @@ update_roles([], [], Acc) ->
     lists:reverse(Acc).
 
 roles_cheshirecat() ->
-    CollectionParams = [bucket_name, scope_name, collection_name],
     update_roles(
-      [{data_reader, CollectionParams,
+      [{data_reader, ?RBAC_COLLECTION_PARAMS,
         [{name, <<"Data Reader">>},
          {desc, <<"Can read information from specified bucket, "
                   "scope or collection">>}],
-        [{[{collection, CollectionParams}, data, docs], [read]},
-         {[{collection, CollectionParams}, data, meta], [read]},
-         {[{collection, CollectionParams}, data, xattr], [read]},
+        [{[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs], [read]},
+         {[{collection, ?RBAC_COLLECTION_PARAMS}, data, meta], [read]},
+         {[{collection, ?RBAC_COLLECTION_PARAMS}, data, xattr], [read]},
          {[{bucket, bucket_name}, settings], [read]},
          {[pools], [read]}]}],
       roles_55(), []).
@@ -753,8 +752,7 @@ compile_params([bucket_name], [B], Buckets) ->
         undefined ->
             false
     end;
-compile_params([bucket_name, scope_name, collection_name],
-              [B, S, C], Buckets) ->
+compile_params(?RBAC_COLLECTION_PARAMS, [B, S, C], Buckets) ->
     case find_bucket(B, Buckets) of
         {Bucket, Props} ->
             case find_scope(S, Props) of
@@ -927,15 +925,13 @@ calculate_possible_param_values(_Buckets, [], _) ->
 calculate_possible_param_values(Buckets, [bucket_name], Permission) ->
     [[any] | [[{Name, ns_bucket:bucket_uuid(Props)}] ||
                  {Name, Props} <- get_applicable_buckets(Buckets, Permission)]];
-calculate_possible_param_values(Buckets,
-                                [bucket_name, scope_name, collection_name],
-                                Permission) ->
+calculate_possible_param_values(Buckets, ?RBAC_COLLECTION_PARAMS, Permission) ->
     [[any, any, any] |
      [[{Name, ns_bucket:bucket_uuid(Props)}, any, any] ||
          {Name, Props} <- get_applicable_buckets(Buckets, Permission)]].
 
 all_params_combinations() ->
-    [[], [bucket_name], [bucket_name, scope_name, collection_name]].
+    [[], [bucket_name], ?RBAC_COLLECTION_PARAMS].
 
 -spec calculate_possible_param_values(list(), undefined | rbac_permission()) ->
                                              rbac_all_param_values().
@@ -1112,12 +1108,11 @@ compile_roles_test() ->
                     [{[admin], all}]},
                    {test_role, [bucket_name], [],
                     [{[{bucket, bucket_name}], none}]},
-                   {test_role1, [bucket_name, scope_name, collection_name], [],
+                   {test_role1, ?RBAC_COLLECTION_PARAMS, [],
                     [{[{bucket, bucket_name}], oper1},
                      {[{bucket, any}, docs], oper2},
                      {[v1, v2], oper3},
-                     {[{collection,
-                        [bucket_name, scope_name, collection_name]}], oper4}]}],
+                     {[{collection, ?RBAC_COLLECTION_PARAMS}], oper4}]}],
     ?assertEqual([[{[admin], all}]],
                  compile_roles([simple_role, wrong_role], Definitions)),
     ?assertEqual([[{[{bucket, "test"}], none}]],
