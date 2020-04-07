@@ -34,7 +34,12 @@
                             {ok, gen_tcp:socket() | ssl:sslsocket()} |
                             {error, term()}.
 socket_connect(ssl, Host, Port, Opts, Timeout) ->
-    ssl:connect(Host, Port, Opts, Timeout);
+    Addr =
+        case inet:parse_address(Host) of
+            {ok, A} -> A;
+            {error, einval} -> Host
+        end,
+    ssl:connect(Addr, Port, Opts, Timeout);
 socket_connect(tcp, Host, Port, Opts, Timeout) ->
     gen_tcp:connect(Host, Port, Opts, Timeout).
 
