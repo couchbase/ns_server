@@ -505,7 +505,7 @@ permissions_for_user_test_() ->
       Test([{data_reader, [{"default", <<"default_id">>}, {"s", 1}, {"c", 1}]}],
            ['SystemSettings'],
            [{["default", 1, 1], ['MetaRead', 'Read', 'XattrRead']}]),
-      Test([{data_dcp_reader, [{"test", <<"test_id">>}]}],
+      Test([{data_dcp_reader, [{"test", <<"test_id">>}, any, any]}],
            ['IdleConnection','SystemSettings'],
            [{["test"], FullRead}]),
       Test([{data_backup, [{"test", <<"test_id">>}]},
@@ -513,7 +513,7 @@ permissions_for_user_test_() ->
            ['SystemSettings'],
            [{["default"], ['SimpleStats']},
             {["test"], AllBucketPermissions}]),
-      Test([{data_writer, [{"test", <<"test_id">>}]}],
+      Test([{data_writer, [{"test", <<"test_id">>}, any, any]}],
            ['SystemSettings'],
            [{["test"], ['Delete', 'Insert', 'Upsert', 'XattrWrite']}])
      ]}.

@@ -202,25 +202,28 @@ roles() ->
        {[{collection, ?RBAC_COLLECTION_PARAMS}, data, xattr], [read]},
        {[{bucket, bucket_name}, settings], [read]},
        {[pools], [read]}]},
-     {data_writer, [bucket_name],
+     {data_writer, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Data Writer">>},
-       {desc, <<"Can write data to a given bucket. This user cannot access the "
-                "web console and is intended only for application access. This "
-                "user can write data, but cannot read it.">>}],
-      [{[{bucket, bucket_name}, data, docs], [insert, upsert, delete]},
-       {[{bucket, bucket_name}, data, xattr], [write]},
+       {desc, <<"Can write data to a given bucket, scope or collection. "
+                "This user cannot access the web console and is intended only "
+                "for application access. This user can write data, but cannot "
+                "read it.">>}],
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs],
+        [insert, upsert, delete]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, data, xattr], [write]},
        {[{bucket, bucket_name}, settings], [read]},
        {[pools], [read]}]},
-     {data_dcp_reader, [bucket_name],
+     {data_dcp_reader, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Data DCP Reader">>},
-       {desc, <<"Can initiate DCP streams for a given bucket. This user cannot "
-                "access the web console and is intended only for application "
-                "access. This user can read data.">>}],
-      [{[{bucket, bucket_name}, data, docs], [read]},
-       {[{bucket, bucket_name}, data, meta], [read]},
-       {[{bucket, bucket_name}, data, dcp], [read]},
-       {[{bucket, bucket_name}, data, sxattr], [read]},
-       {[{bucket, bucket_name}, data, xattr], [read]},
+       {desc, <<"Can initiate DCP streams for a given bucket, scope or "
+                "collection. This user cannot access the web console and is "
+                "intended only for application access. "
+                "This user can read data.">>}],
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs], [read]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, data, meta], [read]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, data, dcp], [read]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, data, sxattr], [read]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, data, xattr], [read]},
        {[{bucket, bucket_name}, settings], [read]},
        {[admin, memcached, idle], [write]},
        {[pools], [read]}]},
@@ -256,61 +259,62 @@ roles() ->
        {[ui], [read]},
        {[pools], [read]},
        {[{bucket, bucket_name}, settings], [read]}]},
-     {fts_searcher, [bucket_name],
+     {fts_searcher, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Search Reader">>},
-       {desc, <<"Can query Full Text Search indexes for a given bucket. This "
-                "user can access the web console. This user can read some "
-                "data.">>}],
-      [{[{bucket, bucket_name}, fts], [read]},
+       {desc, <<"Can query Full Text Search indexes for a given bucket, scope "
+                "or collection. This user can access the web console. This "
+                "user can read some data.">>}],
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, fts], [read]},
        {[settings, fts], [read]},
        {[ui], [read]},
        {[pools], [read]},
        {[{bucket, bucket_name}, settings], [read]}]},
-     {query_select, [bucket_name],
+     {query_select, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Query Select">>},
-       {desc, <<"Can execute a SELECT statement on a given bucket to retrieve "
-                "data. This user can access the web console and can read data, "
-                "but not write it.">>}],
-      [{[{bucket, bucket_name}, n1ql, select], [execute]},
-       {[{bucket, bucket_name}, data, docs], [read]},
+       {desc, <<"Can execute a SELECT statement on a given bucket, scope or "
+                "collection to retrieve data. This user can access the web "
+                "console and can read data, but not write it.">>}],
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, select], [execute]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs], [read]},
        {[{bucket, bucket_name}, settings], [read]},
        {[ui], [read]},
        {[pools], [read]}]},
-     {query_update, [bucket_name],
+     {query_update, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Query Update">>},
-       {desc, <<"Can execute an UPDATE statement on a given bucket to update "
-                "data. This user can access the web console and write data, "
-                "but cannot read it.">>}],
-      [{[{bucket, bucket_name}, n1ql, update], [execute]},
-       {[{bucket, bucket_name}, data, docs], [upsert]},
+       {desc, <<"Can execute an UPDATE statement on a given bucket, scope or "
+                "collection to update data. This user can access the web "
+                "console and write data, but cannot read it.">>}],
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, update], [execute]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs], [upsert]},
        {[{bucket, bucket_name}, settings], [read]},
        {[ui], [read]},
        {[pools], [read]}]},
-     {query_insert, [bucket_name],
+     {query_insert, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Query Insert">>},
-       {desc, <<"Can execute an INSERT statement on a given bucket to add "
-                "data. This user can access the web console and insert data, "
-                "but cannot read it.">>}],
-      [{[{bucket, bucket_name}, n1ql, insert], [execute]},
-       {[{bucket, bucket_name}, data, docs], [insert]},
+       {desc, <<"Can execute an INSERT statement on a given bucket, scope or "
+                "collection to add data. This user can access the web console "
+                "and insert data, but cannot read it.">>}],
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, insert], [execute]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs], [insert]},
        {[{bucket, bucket_name}, settings], [read]},
        {[ui], [read]},
        {[pools], [read]}]},
-     {query_delete, [bucket_name],
+     {query_delete, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Query Delete">>},
-       {desc, <<"Can execute a DELETE statement on a given bucket to delete "
-                "data. This user can access the web console, but cannot read "
-                "data. This user can delete data.">>}],
-      [{[{bucket, bucket_name}, n1ql, delete], [execute]},
-       {[{bucket, bucket_name}, data, docs], [delete]},
+       {desc, <<"Can execute a DELETE statement on a given bucket, scope or "
+                "collection to delete data. This user can access the web "
+                "console, but cannot read data. This user can delete data.">>}],
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, delete], [execute]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs], [delete]},
        {[{bucket, bucket_name}, settings], [read]},
        {[ui], [read]},
        {[pools], [read]}]},
-     {query_manage_index, [bucket_name],
+     {query_manage_index, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Query Manage Index">>},
-       {desc, <<"Can manage indexes for a given bucket. This user can access "
-                "the web console, but cannot read data.">>}],
-      [{[{bucket, bucket_name}, n1ql, index], all},
+       {desc, <<"Can manage indexes for a given bucket, scope or collection. "
+                "This user can access the web console, but cannot read data.">>
+       }],
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, index], all},
        {[{bucket, bucket_name}, settings], [read]},
        {[ui], [read]},
        {[pools], [read]}]},
