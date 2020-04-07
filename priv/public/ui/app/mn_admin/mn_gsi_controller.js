@@ -50,7 +50,6 @@ angular
   .directive('mnGsiTable', mnGsiTableDirective);
 
 function configure($stateProvider) {
-
   $stateProvider
     .state('app.admin.gsi', {
       url: "/index?openedIndex",

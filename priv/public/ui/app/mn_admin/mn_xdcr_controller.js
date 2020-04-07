@@ -33,7 +33,9 @@ angular.module('mnXDCR', [
   mnSortableTable,
   mnSpinner,
   mnAlertsService
-]).controller('mnXDCRController', mnXDCRController)
+])
+  .config(configure)
+  .controller('mnXDCRController', mnXDCRController)
   .controller('mnXDCREditDialogController', mnXDCREditDialogController)
   .controller('mnXDCRReferenceDialogController', mnXDCRReferenceDialogController)
   .controller('mnXDCRDeleteReferenceDialogController', mnXDCRDeleteReferenceDialogController)
@@ -42,6 +44,28 @@ angular.module('mnXDCR', [
   .directive('mnXdcrFilter', mnXdcrFilterDirective)
   .directive('mnXdcrItemDetails', mnXdcrItemDetails)
   .directive('mnXdcrSettings', mnXdcrSettingsDirective);
+
+function configure($stateProvider) {
+  $stateProvider.state('app.admin.replications', {
+    url: '/replications',
+    views: {
+      "main@app.admin": {
+        templateUrl: 'app/mn_admin/mn_xdcr.html',
+        controller: 'mnXDCRController as xdcrCtl'
+      }
+    },
+    params: {
+      xdcrDetails: {
+        array: true,
+        dynamic: true
+      }
+    },
+    data: {
+      permissions: "cluster.tasks.read",
+      title: "XDCR Replications"
+    }
+  });
+}
 
 function mnXDCRController($scope, $uibModal, mnHelper, mnPoller, mnPoolDefault, mnXDCRService) {
   var vm = this;

@@ -27,7 +27,6 @@ import mnTasksDetails from "/ui/app/components/mn_tasks_details.js";
 import mnSessionService from "/ui/app/components/mn_session.js";
 import mnLogsService from "./mn_logs_service.js";
 
-import mnXDCR from "./mn_xdcr_controller.js";
 import mnInternalSettings from "./mn_internal_settings_controller.js";
 import mnLostConnection from "./mn_lost_connection_config.js";
 import mnPoorMansAlerts from "./mn_poor_mans_alerts_controller.js"
@@ -54,7 +53,6 @@ angular.module('mnAdmin', [
   mnLogsService,
 
   mnTasksDetails,
-  mnXDCR,
 
   mnLaunchpad,
   mnPluggableUiRegistry,
@@ -150,25 +148,6 @@ function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider, mnPluggableUi
           templateUrl: 'app/mn_admin/mn_lost_connection.html',
           controller: 'mnLostConnectionController as lostConnCtl'
         }
-      }
-    })
-    .state('app.admin.replications', {
-      url: '/replications',
-      views: {
-        "main@app.admin": {
-          templateUrl: 'app/mn_admin/mn_xdcr.html',
-          controller: 'mnXDCRController as xdcrCtl'
-        }
-      },
-      params: {
-        xdcrDetails: {
-          array: true,
-          dynamic: true
-        }
-      },
-      data: {
-        permissions: "cluster.tasks.read",
-        title: "XDCR Replications"
       }
     })
     .state('app.admin.statistics_overview', {

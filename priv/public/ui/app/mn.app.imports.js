@@ -147,6 +147,16 @@ let securityState = {
   }
 };
 
+let xdcrState = {
+  name: "app.admin.replications.**",
+  url: "/replications",
+  lazyLoad: ($transition$) => {
+    return import('./mn_admin/mn_xdcr_controller.js').then(m => {
+      $transition$.injector().get('$ocLazyLoad').load({name: 'mnXDCR'});
+    });
+  }
+};
+
 export let mnAppImports = [
   ...Object.values(pluggableUIsModules),
   UpgradeModule,
@@ -157,6 +167,6 @@ export let mnAppImports = [
   HttpClientModule,
   MnSharedModule,
   UIRouterUpgradeModule.forRoot({
-    states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, groupsState, documentsState, gsiState, viewsState, settingsState, securityState]
+    states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, groupsState, documentsState, gsiState, viewsState, settingsState, securityState, xdcrState]
   })
 ];
