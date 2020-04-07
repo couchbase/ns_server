@@ -44,6 +44,7 @@ angular
     mnViewsEditingService,
     mnFilter
   ])
+  .config(configure)
   .controller("mnViewsController", mnViewsController)
   .controller("mnViewsListController", mnViewsListController)
   .controller("mnViewsEditingResultController", mnViewsEditingResultController)
@@ -52,6 +53,70 @@ angular
   .controller("mnViewsDeleteDdocDialogController", mnViewsDeleteDdocDialogController)
   .controller("mnViewsCreateDialogController", mnViewsCreateDialogController)
   .controller("mnViewsCopyDialogController", mnViewsCopyDialogController);
+
+function configure($stateProvider) {
+  $stateProvider
+    .state('app.admin.views', {
+      abstract: true,
+      url: '/views?bucket',
+      params: {
+        bucket: {
+          value: null
+        }
+      },
+      data: {
+        title: "Views",
+        permissions: "cluster.bucket['.'].settings.read && cluster.bucket['.'].views.read"
+      },
+      views: {
+        "main@app.admin": {
+          templateUrl: 'app/mn_admin/mn_views.html',
+          controller: 'mnViewsController as viewsCtl'
+        }
+      }
+    })
+    .state('app.admin.views.list', {
+      url: "?type",
+      params: {
+        type: {
+          value: 'development'
+        }
+      },
+      controller: 'mnViewsListController as viewsListCtl',
+      templateUrl: 'app/mn_admin/mn_views_list.html'
+    })
+    .state('app.admin.views.list.editing', {
+      abstract: true,
+      url: '/:documentId?viewId&{isSpatial:bool}&sampleDocumentId',
+      views: {
+        "main@app.admin": {
+          controller: 'mnViewsEditingController as viewsEditingCtl',
+          templateUrl: 'app/mn_admin/mn_views_editing.html'
+        }
+      },
+      data: {
+        child: "app.admin.views.list",
+        title: "Views Editing"
+      }
+    })
+    .state('app.admin.views.list.editing.result', {
+      url: '?subset&{pageNumber:int}&viewsParams',
+      params: {
+        full_set: {
+          value: null
+        },
+        pageNumber: {
+          value: 0
+        },
+        activate: {
+          value: null,
+          dynamic: true
+        }
+      },
+      controller: 'mnViewsEditingResultController as viewsEditingResultCtl',
+      templateUrl: 'app/mn_admin/mn_views_editing_result.html'
+    });
+}
 
 function mnViewsController($state, mnPoolDefault) {
   var vm = this;

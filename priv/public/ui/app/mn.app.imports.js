@@ -107,6 +107,26 @@ let authState = {
   }
 };
 
+let gsiState = {
+  name: "app.admin.gsi.**",
+  url: "/index",
+  lazyLoad: ($transition$) => {
+    return import('./mn_admin/mn_gsi_controller.js').then(m => {
+      $transition$.injector().get('$ocLazyLoad').load({name: 'mnGsi'});
+    });
+  }
+};
+
+let viewsState = {
+  name: "app.admin.views.**",
+  url: "/views",
+  lazyLoad: ($transition$) => {
+    return import('./mn_admin/mn_views_controller.js').then(m => {
+      $transition$.injector().get('$ocLazyLoad').load({name: 'mnViews'});
+    });
+  }
+};
+
 export let mnAppImports = [
   ...Object.values(pluggableUIsModules),
   UpgradeModule,
@@ -117,6 +137,6 @@ export let mnAppImports = [
   HttpClientModule,
   MnSharedModule,
   UIRouterUpgradeModule.forRoot({
-    states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, groupsState, documentsState]
+    states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, groupsState, documentsState, gsiState, viewsState]
   })
 ];

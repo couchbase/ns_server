@@ -39,14 +39,39 @@ angular
     mnElementCrane,
     mnDetailStats,
     mnGsiService,
-    mnStatisticsNewService,
+    mnStatisticsNewService
   ])
+  .config(configure)
   .controller('mnGsiController', mnGsiController)
   .controller('mnFooterStatsController', mnFooterStatsController)
   .controller('mnGsiItemController', mnGsiItemController)
   .controller('mnGsiItemStatsController', mnGsiItemStatsController)
   .directive('mnGsiItemDetails', mnGsiItemDetails)
   .directive('mnGsiTable', mnGsiTableDirective);
+
+function configure($stateProvider) {
+
+  $stateProvider
+    .state('app.admin.gsi', {
+      url: "/index?openedIndex",
+      params: {
+        openedIndex: {
+          array: true,
+          dynamic: true
+        }
+      },
+      data: {
+        title: "Indexes",
+        permissions: "cluster.bucket['.'].n1ql.index.read"
+      },
+      views: {
+        "main@app.admin": {
+          controller: "mnGsiController as gsiCtl",
+          templateUrl: "app/mn_admin/mn_gsi.html"
+        }
+      }
+    });
+}
 
 function mnGsiController($scope, mnGsiService, mnPoller) {
   var vm = this;

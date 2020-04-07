@@ -27,8 +27,6 @@ import mnTasksDetails from "/ui/app/components/mn_tasks_details.js";
 import mnSessionService from "/ui/app/components/mn_session.js";
 import mnLogsService from "./mn_logs_service.js";
 
-import mnIndexes from "./mn_indexes_config.js";
-
 import mnSettings from "./mn_settings_config.js";
 import mnXDCR from "./mn_xdcr_controller.js";
 import mnSecurity from "./mn_security_config.js";
@@ -55,7 +53,6 @@ angular.module('mnAdmin', [
   mnLogsService,
 
   mnTasksDetails,
-  mnIndexes,
   mnSettings,
   mnXDCR,
   mnSecurity,
@@ -87,7 +84,7 @@ angular.module('ui.select').run(function($animate) {
   }
 });
 
-function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider) {
+function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider, mnPluggableUiRegistryProvider) {
 
   function valToString(val) {
     return val != null ? val.toString() : val;
@@ -98,6 +95,15 @@ function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider) {
     is: function (val) {
       return (/[^/]*/).test(val);
     }
+  });
+
+  mnPluggableUiRegistryProvider.registerConfig({
+    name: 'Indexes',
+    state: 'app.admin.gsi',
+    includedByState: 'app.admin.gsi',
+    plugIn: 'workbenchTab',
+    index: 2,
+    ngShow: "rbac.cluster.bucket['.'].n1ql.index.read"
   });
 
   $stateProvider
