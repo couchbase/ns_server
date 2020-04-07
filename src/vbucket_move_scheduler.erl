@@ -401,19 +401,6 @@ choose_action_not_compaction(#state{
     LessEqFn = fun (GoodnessA, GoodnessB) -> GoodnessA >= GoodnessB end,
     SortedMoves = sortby(PossibleMoves, GoodnessFn, LessEqFn),
 
-    %% case PossibleMoves =/= [] of
-    %%     true ->
-    %%         ?log_debug("PossibleMovesKeyed:~n~p", [begin
-    %%                                                    KeyedList = [{GoodnessFn(E), E} || E <- PossibleMoves],
-    %%                                                    KS = lists:sort(fun ({KA, _}, {KB, _}) ->
-    %%                                                                            LessEqFn(KA, KB)
-    %%                                                                    end, KeyedList),
-    %%                                                    lists:sublist(KS, 20)
-    %%                                                end]);
-    %%     _ ->
-    %%         ok
-    %% end,
-
     %% NOTE: we know that first move is always allowed
     {SelectedMoves, NewNowBackfills, NewCompactionCountdown, NewNowInFlight, NewLeftCount} =
         misc:letrec(
