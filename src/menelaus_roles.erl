@@ -1101,20 +1101,24 @@ validate_role_test() ->
     ?assertEqual(false, ValidateRole({bucket_admin, ["test", "test"]})).
 
 enum_roles(Roles, Buckets) ->
-    lists:flatten(
-      lists:map(
-        fun (BucketName) ->
-                BucketWithId =
-                    case BucketName of
-                        any ->
-                            any;
-                        _ ->
-                            {ok, Props} = ns_bucket:get_bucket_from_configs(
-                                            BucketName, toy_buckets()),
-                            {BucketName, ns_bucket:bucket_uuid(Props)}
-                    end,
-                [{Role, [BucketWithId]} || Role <- Roles]
-        end, Buckets)).
+    Definitions = roles(),
+    lists:flatmap(
+      fun (BucketName) ->
+              BucketWithId =
+                  case BucketName of
+                      any ->
+                          any;
+                      _ ->
+                          {ok, Props} = ns_bucket:get_bucket_from_configs(
+                                          BucketName, toy_buckets()),
+                          {BucketName, ns_bucket:bucket_uuid(Props)}
+                  end,
+              lists:map(
+                fun (Role) ->
+                        Length = length(get_param_defs(Role, Definitions)),
+                        {Role, misc:align_list([BucketWithId], Length, any)}
+                end, Roles)
+      end, Buckets).
 
 produce_roles_by_permission_test_() ->
     Config = [[{buckets, [{configs, toy_buckets()}]}]],
@@ -1157,13 +1161,11 @@ produce_roles_by_permission_test_() ->
              replication_admin, ro_admin, security_admin] ++
                 enum_roles([bucket_full_access, bucket_admin, views_admin,
                             data_backup, data_dcp_reader,
-                            data_monitoring, data_writer,
+                            data_monitoring, data_writer, data_reader,
                             fts_admin, fts_searcher, query_delete,
                             query_insert, query_manage_index, query_select,
                             query_update, replication_target],
-                           [any, "test"]) ++
-                [{data_reader, [any, any, any]},
-                 {data_reader, [{"test", <<"test_id">>}, any, any]}],
+                           [any, "test"]),
             {[{bucket, "test"}, settings], read})},
       {"xattr write",
        Test([admin] ++
