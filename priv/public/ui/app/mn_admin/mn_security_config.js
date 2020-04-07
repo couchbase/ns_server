@@ -1,16 +1,20 @@
 import angular from "/ui/web_modules/angular.js";
 import mnUserRoles from "./mn_user_roles_controller.js";
+import mnAudit from "./mn_audit_controller.js";
 import mnRootCertificate from "./mn_root_certificate_controller.js";
 import mnRedaction from "./mn_redaction_controller.js";
 import mnClientCertificate from "./mn_client_certificate_controller.js";
 import mnRolesGroups from "./mn_roles_groups_controller.js";
 import mnElementCrane from "/ui/app/components/directives/mn_element_crane/mn_element_crane.js";
 import mnPluggableUiRegistry from "/ui/app/components/mn_pluggable_ui_registry.js";
+import mnSession from "./mn_session_controller.js";
 
 export default 'mnSecurity';
 
 angular
   .module('mnSecurity', [
+    mnAudit,
+    mnSession,
     mnUserRoles,
     mnRootCertificate,
     mnRedaction,

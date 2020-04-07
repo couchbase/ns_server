@@ -127,6 +127,26 @@ let viewsState = {
   }
 };
 
+let settingsState = {
+  name: "app.admin.settings.**",
+  url: "/settings",
+  lazyLoad: ($transition$) => {
+    return import('./mn_admin/mn_settings_config.js').then(m => {
+      $transition$.injector().get('$ocLazyLoad').load({name: 'mnSettings'});
+    });
+  }
+};
+
+let securityState = {
+  name: "app.admin.security.**",
+  url: "/security",
+  lazyLoad: ($transition$) => {
+    return import('./mn_admin/mn_security_config.js').then(m => {
+      $transition$.injector().get('$ocLazyLoad').load({name: 'mnSecurity'});
+    });
+  }
+};
+
 export let mnAppImports = [
   ...Object.values(pluggableUIsModules),
   UpgradeModule,
@@ -137,6 +157,6 @@ export let mnAppImports = [
   HttpClientModule,
   MnSharedModule,
   UIRouterUpgradeModule.forRoot({
-    states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, groupsState, documentsState, gsiState, viewsState]
+    states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, groupsState, documentsState, gsiState, viewsState, settingsState, securityState]
   })
 ];

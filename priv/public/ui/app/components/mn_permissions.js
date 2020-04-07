@@ -1,10 +1,11 @@
 import angular from "/ui/web_modules/angular.js";
 import _ from "/ui/web_modules/lodash.js";
+import mnBucketsService from "/ui/app/mn_admin/mn_buckets_service.js";
 
 export default "mnPermissions";
 
 angular
-  .module("mnPermissions", [])
+  .module("mnPermissions", [mnBucketsService])
   .provider("mnPermissions", mnPermissionsProvider);
 
 function mnPermissionsProvider() {

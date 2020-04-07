@@ -27,9 +27,7 @@ import mnTasksDetails from "/ui/app/components/mn_tasks_details.js";
 import mnSessionService from "/ui/app/components/mn_session.js";
 import mnLogsService from "./mn_logs_service.js";
 
-import mnSettings from "./mn_settings_config.js";
 import mnXDCR from "./mn_xdcr_controller.js";
-import mnSecurity from "./mn_security_config.js";
 import mnInternalSettings from "./mn_internal_settings_controller.js";
 import mnLostConnection from "./mn_lost_connection_config.js";
 import mnPoorMansAlerts from "./mn_poor_mans_alerts_controller.js"
@@ -37,6 +35,8 @@ import mnPoorMansAlerts from "./mn_poor_mans_alerts_controller.js"
 import mnResetPasswordDialog from "./mn_reset_password_dialog_controller.js"
 import mnResetPasswordDialogService from "./mn_reset_password_dialog_service.js";
 
+import mnSettingsNotificationsService from "./mn_settings_notifications_service.js"
+import uiSelect from "/ui/web_modules/ui-select.js";
 
 export default 'mnAdmin';
 
@@ -44,6 +44,7 @@ angular.module('mnAdmin', [
   ngAnimate,
   uiBootstrap,
   uiRouter,
+  uiSelect,
 
   mnPoll,
   mnFilters,
@@ -53,9 +54,8 @@ angular.module('mnAdmin', [
   mnLogsService,
 
   mnTasksDetails,
-  mnSettings,
   mnXDCR,
-  mnSecurity,
+
   mnLaunchpad,
   mnPluggableUiRegistry,
   mnInternalSettings,
@@ -67,7 +67,9 @@ angular.module('mnAdmin', [
   mnResetPasswordDialog,
   mnResetPasswordDialogService,
   mnSessionService,
-  mnClusterConfigurationService
+  mnClusterConfigurationService,
+  mnSettingsNotificationsService,
+  mnMemoryQuotaService
 ]).config(mnAdminConfig)
   .controller('mnAdminController', mnAdminController);
 
