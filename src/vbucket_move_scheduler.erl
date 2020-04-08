@@ -336,9 +336,9 @@ increment_counter(Node, Node, Dict) ->
 increment_counter(Src, Dst, Dict) ->
     dict:update_counter(Dst, 1, dict:update_counter(Src, 1, Dict)).
 
-decrement_counter_if_real_move(Node, Node, Dict) ->
+decrement_counter_if_active_move(Node, Node, Dict) ->
     Dict;
-decrement_counter_if_real_move(Src, Dst, Dict) ->
+decrement_counter_if_active_move(Src, Dst, Dict) ->
     dict:update_counter(Dst, -1, dict:update_counter(Src, -1, Dict)).
 
 choose_action_not_compaction(#state{
@@ -431,9 +431,9 @@ choose_action_not_compaction(#state{
 
                           Rec(Rec, RestMoves,
                               NewNowBackfills,
-                              decrement_counter_if_real_move(Src, Dst, CompactionCountdown0),
+                              decrement_counter_if_active_move(Src, Dst, CompactionCountdown0),
                               increment_counter(Src, Dst, NowInFlight0),
-                              decrement_counter_if_real_move(Src, Dst, LeftCount0),
+                              decrement_counter_if_active_move(Src, Dst, LeftCount0),
                               [Move | Acc]);
                       _ ->
                           Rec(Rec, RestMoves, NowBackfills0, CompactionCountdown0, NowInFlight0,
