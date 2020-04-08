@@ -125,10 +125,14 @@
 -type action() :: {move, move()} |
                   {compact, node()}.
 
-
--record(state, {
+-record(restrictions, {
           backfills_limit :: non_neg_integer(),
           moves_before_compaction :: non_neg_integer(),
+          moves_limit :: non_neg_integer()
+         }).
+
+-record(state, {
+          restrictions :: #restrictions{},
           total_in_flight = 0 :: non_neg_integer(),
           moves_left_count_per_node :: dict:dict(), % node() -> non_neg_integer()
           moves_left :: [move()],
@@ -144,8 +148,7 @@
           in_flight_compactions :: set:set(),           % set of nodes
 
           initial_move_counts :: dict:dict(),
-          left_move_counts :: dict:dict(),
-          inflight_moves_limit :: non_neg_integer()
+          left_move_counts :: dict:dict()
          }).
 
 %% @doc prepares state (list of moves etc) based on current and target map
@@ -210,10 +213,12 @@ prepare(CurrentMap, TargetMap, Quirks,
                   sets:union(sets:from_list(MoveNodes), Acc)
           end, sets:new(), Moves),
     Backfills = dict:from_list([{N, 0} || N <- sets:to_list(BackfillNodes)]),
+    Restrictions = #restrictions{
+                      backfills_limit = BackfillsLimit,
+                      moves_before_compaction = MovesBeforeCompaction,
+                      moves_limit = MaxInflightMoves},
 
-    State = #state{backfills_limit = BackfillsLimit,
-                   moves_before_compaction = MovesBeforeCompaction,
-                   inflight_moves_limit = MaxInflightMoves,
+    State = #state{restrictions = Restrictions,
                    total_in_flight = 0,
                    moves_left_count_per_node = MovesPerNode,
                    moves_left = Moves,
@@ -249,14 +254,18 @@ updatef(Record, Field, Body) ->
     NewV = Body(V),
     erlang:setelement(Field, Record, NewV).
 
-
 consider_starting_compaction(State) ->
+    MovesBeforeCompaction =
+        State#state.restrictions#restrictions.moves_before_compaction,
     dict:fold(
       fun (Node, Counter, Acc0) ->
               CanDo0 = dict:fetch(Node, State#state.in_flight_per_node) =:= 0,
               CanDo1 = CanDo0 andalso not sets:is_element(Node, State#state.in_flight_compactions),
-              CanDo2 = CanDo1 andalso (Counter =:= 0 orelse (Counter < State#state.moves_before_compaction
-                                                             andalso dict:fetch(Node, State#state.moves_left_count_per_node) =:= 0)),
+              CanDo2 = CanDo1 andalso
+                       (Counter =:= 0 orelse
+                        (Counter < MovesBeforeCompaction andalso
+                         dict:fetch(
+                           Node, State#state.moves_left_count_per_node) =:= 0)),
               case CanDo2 of
                   true ->
                       [Node | Acc0];
@@ -275,6 +284,8 @@ choose_action(#state{moves_from_undefineds = [_|_] = Moves,
     {OtherActions, NewState2} = choose_action(NewState),
     {OtherActions ++ [{move, M} || M <- Moves], NewState2};
 choose_action(State) ->
+    MovesBeforeCompaction =
+        State#state.restrictions#restrictions.moves_before_compaction,
     Nodes = consider_starting_compaction(State),
     NewState = updatef(State, #state.in_flight_compactions,
                        fun (InFlightCompactions) ->
@@ -284,7 +295,8 @@ choose_action(State) ->
                         fun (CompactionCountdownPerNode) ->
                                 lists:foldl(
                                   fun (N, D0) ->
-                                          dict:store(N, State#state.moves_before_compaction, D0)
+                                          dict:store(N, MovesBeforeCompaction,
+                                                     D0)
                                   end, CompactionCountdownPerNode, Nodes)
                         end),
     {OtherActions, NewState2} = choose_action_not_compaction(NewState1),
@@ -301,8 +313,10 @@ sortby(List, KeyFn, LessEqFn) ->
 
 move_is_possible([Src | _] = OldChain,
                  [Dst | _] = NewChain,
-                 BackfillsLimit, NowBackfills, CompactionCountdown,
-                 InFlightMoves, InFlightMovesLimit) ->
+                 NowBackfills, CompactionCountdown, InFlightMoves,
+                 #restrictions{
+                    backfills_limit = BackfillsLimit,
+                    moves_limit = InFlightMovesLimit}) ->
     dict:fetch(Src, CompactionCountdown) > 0
         andalso dict:fetch(Dst, CompactionCountdown) > 0
         andalso dict:fetch(Dst, InFlightMoves) < InFlightMovesLimit
@@ -342,8 +356,7 @@ decrement_counter_if_active_move(Src, Dst, Dict) ->
     dict:update_counter(Dst, -1, dict:update_counter(Src, -1, Dict)).
 
 choose_action_not_compaction(#state{
-                                backfills_limit = BackfillsLimit,
-                                inflight_moves_limit = MaxInflightMoves,
+                                restrictions = Restrictions,
                                 in_flight_backfills_per_node = NowBackfills,
                                 in_flight_per_node = NowInFlight,
                                 in_flight_compactions = NowCompactions,
@@ -353,9 +366,10 @@ choose_action_not_compaction(#state{
     PossibleMoves =
         lists:flatmap(fun ({_V, [Src|_] = OldChain, [Dst|_] = NewChain, _} = Move) ->
                               Can1 = move_is_possible(OldChain, NewChain,
-                                                      BackfillsLimit, NowBackfills,
+                                                      NowBackfills,
                                                       CompactionCountdown,
-                                                      NowInFlight, MaxInflightMoves),
+                                                      NowInFlight,
+                                                      Restrictions),
                               Can2 = Can1 andalso not sets:is_element(Src, NowCompactions),
                               Can3 = Can2 andalso not sets:is_element(Dst, NowCompactions),
                               case Can3 of
@@ -407,8 +421,9 @@ choose_action_not_compaction(#state{
           [SortedMoves, NowBackfills, CompactionCountdown, NowInFlight, LeftCount, []],
           fun (Rec, [{_V, [Src|_] = OldChain, [Dst|_] = NewChain, _} = Move | RestMoves],
                NowBackfills0, CompactionCountdown0, NowInFlight0, LeftCount0, Acc) ->
-                  case move_is_possible(OldChain, NewChain, BackfillsLimit, NowBackfills0,
-                                        CompactionCountdown0, NowInFlight0, MaxInflightMoves) of
+                  case move_is_possible(OldChain, NewChain, NowBackfills0,
+                                        CompactionCountdown0, NowInFlight0,
+                                        Restrictions) of
                       true ->
                           NewNowBackfills =
                               lists:foldl(
