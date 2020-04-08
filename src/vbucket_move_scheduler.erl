@@ -314,6 +314,7 @@ sortby(List, KeyFn, LessEqFn) ->
 move_is_possible([Src | _] = OldChain,
                  [Dst | _] = NewChain,
                  NowBackfills, CompactionCountdown, InFlightMoves,
+                 NowCompactions,
                  #restrictions{
                     backfills_limit = BackfillsLimit,
                     moves_limit = InFlightMovesLimit}) ->
@@ -323,7 +324,9 @@ move_is_possible([Src | _] = OldChain,
         andalso dict:fetch(Src, InFlightMoves) < InFlightMovesLimit
         andalso lists:all(fun (N) ->
                                   dict:fetch(N, NowBackfills) < BackfillsLimit
-                          end, backfill_nodes(OldChain, NewChain)).
+                          end, backfill_nodes(OldChain, NewChain))
+        andalso not sets:is_element(Src, NowCompactions)
+        andalso not sets:is_element(Dst, NowCompactions).
 
 backfill_nodes([OldMaster | _] = OldChain,
                [NewMaster | NewReplicas]) ->
@@ -363,22 +366,14 @@ choose_action_not_compaction(#state{
                                 moves_left_count_per_node = LeftCount,
                                 moves_left = MovesLeft,
                                 compaction_countdown_per_node = CompactionCountdown} = State) ->
-    PossibleMoves =
-        lists:flatmap(fun ({_V, [Src|_] = OldChain, [Dst|_] = NewChain, _} = Move) ->
-                              Can1 = move_is_possible(OldChain, NewChain,
-                                                      NowBackfills,
-                                                      CompactionCountdown,
-                                                      NowInFlight,
-                                                      Restrictions),
-                              Can2 = Can1 andalso not sets:is_element(Src, NowCompactions),
-                              Can3 = Can2 andalso not sets:is_element(Dst, NowCompactions),
-                              case Can3 of
-                                  true ->
-                                      %% consider computing goodness here
-                                      [Move];
-                                  false ->
-                                      []
-                              end
+    PossibleMoves = lists:filter(
+                      fun ({_V, OldChain, NewChain, _}) ->
+                              move_is_possible(OldChain, NewChain,
+                                               NowBackfills,
+                                               CompactionCountdown,
+                                               NowInFlight,
+                                               NowCompactions,
+                                               Restrictions)
                       end, MovesLeft),
 
     GoodnessFn =
@@ -423,7 +418,7 @@ choose_action_not_compaction(#state{
                NowBackfills0, CompactionCountdown0, NowInFlight0, LeftCount0, Acc) ->
                   case move_is_possible(OldChain, NewChain, NowBackfills0,
                                         CompactionCountdown0, NowInFlight0,
-                                        Restrictions) of
+                                        NowCompactions, Restrictions) of
                       true ->
                           NewNowBackfills =
                               lists:foldl(
