@@ -449,14 +449,7 @@ choose_action_not_compaction(#state{
                            moves_left = NewMovesLeft,
                            compaction_countdown_per_node = NewCompactionCountdown},
 
-    case SelectedMoves of
-        [] ->
-            {newstate, true} = {newstate, State =:= NewState},
-            {[], State};
-        _ ->
-            {MoreMoves, NewState2} = choose_action_not_compaction(NewState),
-            {MoreMoves ++ [{move, M} || M <- SelectedMoves], NewState2}
-    end.
+    {[{move, M} || M <- SelectedMoves], NewState}.
 
 extract_progress(#state{initial_move_counts = InitialCounts,
                         left_move_counts = LeftCounts} = _State) ->
