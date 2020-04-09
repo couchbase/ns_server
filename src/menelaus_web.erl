@@ -790,6 +790,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["_uistats"] ->
                     {{[stats], read},
                      fun menelaus_stats:handle_ui_stats_post/1};
+                ["_uistats", "v2"] ->
+                    {{[stats], read},
+                     fun menelaus_web_ui_stats:handle_ui_stats_post_v2/1};
                 [?PLUGGABLE_UI, RestPrefix | _] ->
                     {no_check,
                      fun (PReq) ->

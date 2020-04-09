@@ -121,6 +121,11 @@ handle_call({process_stats, TS, Bin, PrevSample}, _From, State) ->
             {reply, {exception, C, E, erlang:get_stacktrace()}, State}
     end;
 
+handle_call({extract, Query, Start, End, Step, Timeout}, _From, State) ->
+    Settings = prometheus_cfg:settings(),
+    Res = prometheus:range_query(Query, Start, End, Step, Timeout, Settings),
+    {reply, Res, State};
+
 handle_call(_Request, _From, State) ->
     {noreply, State}.
 
