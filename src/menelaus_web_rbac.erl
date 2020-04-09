@@ -1706,7 +1706,7 @@ role_to_json_test_() ->
 
 parse_roles_test_() ->
     t_wrap(
-      [{"without colletions",
+      [{"without collections",
         fun () ->
                 ?assertEqual(
                    [admin,
