@@ -3,7 +3,7 @@
 -include("ns_common.hrl").
 -include("../lhttpc/lhttpc.hrl").
 
--export([range_query/6]).
+-export([range_query/6, format_value/1, parse_value/1]).
 
 range_query(Query, Start, End, Step, Timeout, Settings) ->
     Addr = proplists:get_value(listen_addr, Settings),
@@ -59,3 +59,18 @@ post(URL, Headers, Body, Timeout) ->
             end
     end.
 
+format_value(undefined) -> <<"NaN">>;
+format_value(infinity) -> <<"Inf">>;
+format_value(neg_infinity) -> <<"-Inf">>;
+format_value(N) when is_integer(N) -> integer_to_binary(N);
+format_value(N) -> float_to_binary(N).
+
+parse_value(<<"NaN">>) -> undefined;
+parse_value(<<"Inf">>) -> infinity;
+parse_value(<<"-Inf">>) -> neg_infinity;
+parse_value(B) ->
+    try
+        binary_to_float(B)
+    catch
+        _:_ -> binary_to_integer(B)
+    end.
