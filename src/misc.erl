@@ -2906,3 +2906,6 @@ align_list_test() ->
     ?assertEqual([a], align_list([a, b], 1, pad)),
     ?assertEqual([a, b], align_list([a, b], 2, pad)).
 -endif.
+
+format_bin(F, A) ->
+    iolist_to_binary(io_lib:format(F, A)).

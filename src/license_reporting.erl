@@ -173,11 +173,11 @@ post(URL, Headers, Body, Timeout, RedirectsLeft) ->
                 case RespBody of
                     undefined -> "";
                     Bin when is_binary(Bin) andalso size(Bin) > 100 ->
-                        format_bin(" ~100s...", [Bin]);
+                        misc:format_bin(" ~100s...", [Bin]);
                     Bin when is_binary(Bin) ->
-                        format_bin(" ~s", [Bin])
+                        misc:format_bin(" ~s", [Bin])
                 end,
-            {error, format_bin("server returned ~p ~p~s",
+            {error, misc:format_bin("server returned ~p ~p~s",
                                [Status, Reason, RespBodyFormatted])};
         {error, Reason} ->
             ?log_error("Sending on-demand pricing report failed. Error: ~p",
@@ -189,17 +189,15 @@ post(URL, Headers, Body, Timeout, RedirectsLeft) ->
                     {R, [_|_]} -> R;
                     R -> R
                 end,
-            {error, format_bin("~p", [Reason2])}
+            {error, misc:format_bin("~p", [Reason2])}
     catch
         _:Error ->
             ?log_error("Sending on-demand pricing report crashed with error: ~p"
                        "~nStacktrace: ~p",
                        [Error, erlang:get_stacktrace()]),
-            {error, format_bin("http client crashed with reason ~p", [Error])}
+            {error,
+             misc:format_bin("http client crashed with reason ~p", [Error])}
     end.
-
-format_bin(F, A) ->
-    iolist_to_binary(io_lib:format(F, A)).
 
 get_setting(Prop, Settings) ->
     proplists:get_value(Prop, Settings).
