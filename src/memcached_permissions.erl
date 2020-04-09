@@ -45,16 +45,17 @@
                 prometheus_user}).
 
 collection_permissions_to_check([B, S, C]) ->
-    [{{[{collection, [B, S, C]}, data, docs], read},   'Read'},
-     {{[{collection, [B, S, C]}, data, docs], insert}, 'Insert'},
-     {{[{collection, [B, S, C]}, data, docs], delete}, 'Delete'},
-     {{[{collection, [B, S, C]}, data, docs], upsert}, 'Upsert'},
-     {{[{collection, [B, S, C]}, data, meta], read},   'MetaRead'},
-     {{[{collection, [B, S, C]}, data, meta], write},  'MetaWrite'},
-     {{[{collection, [B, S, C]}, data, xattr], read},  'XattrRead'},
-     {{[{collection, [B, S, C]}, data, xattr], write}, 'XattrWrite'},
-     {{[{collection, [B, S, C]}, data, sxattr], read}, 'SystemXattrRead'},
-     {{[{collection, [B, S, C]}, data, sxattr], write},'SystemXattrWrite'}].
+    [{{[{collection, [B, S, C]}, data, docs], read},      'Read'},
+     {{[{collection, [B, S, C]}, data, docs], insert},    'Insert'},
+     {{[{collection, [B, S, C]}, data, docs], delete},    'Delete'},
+     {{[{collection, [B, S, C]}, data, docs], upsert},    'Upsert'},
+     {{[{collection, [B, S, C]}, data, meta], read},      'MetaRead'},
+     {{[{collection, [B, S, C]}, data, meta], write},     'MetaWrite'},
+     {{[{collection, [B, S, C]}, data, xattr], read},     'XattrRead'},
+     {{[{collection, [B, S, C]}, data, xattr], write},    'XattrWrite'},
+     {{[{collection, [B, S, C]}, data, sxattr], read},    'SystemXattrRead'},
+     {{[{collection, [B, S, C]}, data, sxattr], write},   'SystemXattrWrite'},
+     {{[{collection, [B, S, C]}, data, dcpstream], read}, 'DcpStream'}].
 
 bucket_permissions_to_check(Bucket) ->
     [{{[{bucket, Bucket}, stats], read},        'SimpleStats'},
@@ -445,9 +446,12 @@ permissions_for_user_test_() ->
     AllBucketPermissions =
         [P || {_, P} <- bucket_permissions_to_check(undefined)] ++
         AllCollectionPermissions,
+    FullReadCollections =
+        [P || {{[_, data | _], read}, P}
+                  <- collection_permissions_to_check([x, x, x])],
     FullRead = [P || {{[_, data | _], read}, P}
-                      <- bucket_permissions_to_check(undefined) ++
-                          collection_permissions_to_check([x, x, x])],
+                         <- bucket_permissions_to_check(undefined)] ++
+        FullReadCollections,
     Test =
         fun (Roles, ExpectedGlobal, ExpectedBuckets) ->
                 {lists:flatten(io_lib:format("~p", [Roles])),
@@ -508,6 +512,11 @@ permissions_for_user_test_() ->
       Test([{data_dcp_reader, [{"test", <<"test_id">>}, any, any]}],
            ['IdleConnection','SystemSettings'],
            [{["test"], FullRead}]),
+      Test([{data_dcp_reader,
+             [{"default", <<"default_id">>}, {"s", 1}, {"c", 1}]}],
+           ['IdleConnection','SystemSettings'],
+           [{["default"], ['DcpProducer']},
+            {["default", 1, 1], FullReadCollections}]),
       Test([{data_backup, [{"test", <<"test_id">>}]},
             {data_monitoring, [{"default", <<"default_id">>}]}],
            ['SystemSettings'],
