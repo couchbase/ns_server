@@ -1969,6 +1969,8 @@ multi_call_request(NodeRequests, Name, Timeout, OkPred) ->
                                case OkPred(Res) of
                                    true ->
                                        {ok, Res};
+                                   {true, OkRes} ->
+                                       {ok, OkRes};
                                    false ->
                                        {error, Res};
                                    {false, ErrorTerm} ->
