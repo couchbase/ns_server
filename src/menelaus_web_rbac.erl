@@ -1733,18 +1733,18 @@ parse_roles_test_() ->
         end}]).
 
 parse_permissions_test() ->
-    ?assertMatch(
+    ?assertEqual(
        [{"cluster.admin!write", {[admin], write}},
         {"cluster.admin", error},
         {"admin!write", error}],
        parse_permissions("cluster.admin!write, cluster.admin, admin!write")),
-    ?assertMatch(
+    ?assertEqual(
        [{"cluster.bucket[test.test]!read", {[{bucket, "test.test"}], read}},
         {"cluster.bucket[test.test].stats!read",
          {[{bucket, "test.test"}, stats], read}}],
        parse_permissions(" cluster.bucket[test.test]!read, "
                          "cluster.bucket[test.test].stats!read ")),
-    ?assertMatch(
+    ?assertEqual(
        [{"cluster.no_such_atom!no_such_atom", {['_unknown_'], '_unknown_'}}],
        parse_permissions("cluster.no_such_atom!no_such_atom")).
 
