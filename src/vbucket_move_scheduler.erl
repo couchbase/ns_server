@@ -133,9 +133,10 @@
 
 -record(state, {
           restrictions :: #restrictions{},
-          total_in_flight = 0 :: non_neg_integer(),
           moves_left_count_per_node :: dict:dict(), % node() -> non_neg_integer()
           moves_left :: [move()],
+          in_flight_backfills :: [move()],
+          in_flight_moves :: [move()],
 
           %% pending moves when current master is undefined For them
           %% we don't have any limits and compaction is not needed.
@@ -143,7 +144,6 @@
           moves_from_undefineds :: [move()],
 
           compaction_countdown_per_node :: dict:dict(), % node() -> non_neg_integer()
-          in_flight_backfills_per_node :: dict:dict(),  % node() -> non_neg_integer() (I.e. counts current moves)
           in_flight_per_node :: dict:dict(),            % node() -> non_neg_integer() (I.e. counts current moves)
           in_flight_compactions :: set:set(),           % set of nodes
 
@@ -206,27 +206,20 @@ prepare(CurrentMap, TargetMap, Quirks,
                                           end, InitialMoveCounts),
 
     InFlight = dict:map(fun (_K, _V) -> 0 end, InitialMoveCounts),
-    BackfillNodes =
-        lists:foldl(
-          fun ({_V, OldChain, NewChain, _Quirks}, Acc) ->
-                  MoveNodes = backfill_nodes(OldChain, NewChain),
-                  sets:union(sets:from_list(MoveNodes), Acc)
-          end, sets:new(), Moves),
-    Backfills = dict:from_list([{N, 0} || N <- sets:to_list(BackfillNodes)]),
     Restrictions = #restrictions{
                       backfills_limit = BackfillsLimit,
                       moves_before_compaction = MovesBeforeCompaction,
                       moves_limit = MaxInflightMoves},
 
     State = #state{restrictions = Restrictions,
-                   total_in_flight = 0,
                    moves_left_count_per_node = MovesPerNode,
                    moves_left = Moves,
                    moves_from_undefineds = UndefinedMoves,
                    compaction_countdown_per_node = CompactionCountdownPerNode,
-                   in_flight_backfills_per_node = Backfills,
                    in_flight_per_node = InFlight,
                    in_flight_compactions = sets:new(),
+                   in_flight_backfills = [],
+                   in_flight_moves = [],
                    initial_move_counts = InitialMoveCounts,
                    left_move_counts = InitialMoveCounts},
 
@@ -244,10 +237,10 @@ get_moves(#state{moves_left = Moves,
 %% choose_action returned empty actions list
 is_done(#state{moves_left = MovesLeft,
                moves_from_undefineds = UndefinedMoves,
-               total_in_flight = TotalInFlight,
+               in_flight_moves = InFlightMoves,
                in_flight_compactions = InFlightCompactions} = _State) ->
     MovesLeft =:= [] andalso UndefinedMoves =:= []
-        andalso TotalInFlight =:= 0 andalso sets:new() =:= InFlightCompactions.
+        andalso InFlightMoves =:= [] andalso sets:new() =:= InFlightCompactions.
 
 updatef(Record, Field, Body) ->
     V = erlang:element(Field, Record),
@@ -278,9 +271,9 @@ consider_starting_compaction(State) ->
 %% with new state (assuming actions are started)
 -spec choose_action(#state{}) -> {[action()], #state{}}.
 choose_action(#state{moves_from_undefineds = [_|_] = Moves,
-                     total_in_flight = TotalInFlight} = State) ->
+                     in_flight_moves = InFlightMoves} = State) ->
     NewState = State#state{moves_from_undefineds = [],
-                           total_in_flight = TotalInFlight + length(Moves)},
+                           in_flight_moves = InFlightMoves ++ Moves},
     {OtherActions, NewState2} = choose_action(NewState),
     {OtherActions ++ [{move, M} || M <- Moves], NewState2};
 choose_action(State) ->
@@ -323,7 +316,15 @@ move_is_possible([Src | _] = OldChain,
         andalso dict:fetch(Dst, InFlightMoves) < InFlightMovesLimit
         andalso dict:fetch(Src, InFlightMoves) < InFlightMovesLimit
         andalso lists:all(fun (N) ->
-                                  dict:fetch(N, NowBackfills) < BackfillsLimit
+                                  Val = case dict:find(N, NowBackfills) of
+                                            {ok, V} ->
+                                                V;
+                                            _ ->
+                                                %% Node not involved in
+                                                %% in-progress backfills
+                                                0
+                                        end,
+                                  Val < BackfillsLimit
                           end, backfill_nodes(OldChain, NewChain))
         andalso not sets:is_element(Src, NowCompactions)
         andalso not sets:is_element(Dst, NowCompactions).
@@ -358,14 +359,25 @@ decrement_counter_if_active_move(Node, Node, Dict) ->
 decrement_counter_if_active_move(Src, Dst, Dict) ->
     dict:update_counter(Dst, -1, dict:update_counter(Src, -1, Dict)).
 
+update_counter_nodes(Nodes, Value, Dict) ->
+    lists:foldl(fun (N, Acc) ->
+                        dict:update_counter(N, Value, Acc)
+                end, Dict, Nodes).
+
 choose_action_not_compaction(#state{
                                 restrictions = Restrictions,
-                                in_flight_backfills_per_node = NowBackfills,
                                 in_flight_per_node = NowInFlight,
                                 in_flight_compactions = NowCompactions,
                                 moves_left_count_per_node = LeftCount,
                                 moves_left = MovesLeft,
+                                in_flight_backfills = CurrentBackfills,
+                                in_flight_moves = CurrentMoves,
                                 compaction_countdown_per_node = CompactionCountdown} = State) ->
+    NowBackfills = lists:foldl(
+                     fun ({_V, OldChain, NewChain, _Quirks}, Acc) ->
+                             BackfillNodes = backfill_nodes(OldChain, NewChain),
+                             update_counter_nodes(BackfillNodes, 1, Acc)
+                     end, dict:new(), CurrentBackfills),
     PossibleMoves = lists:filter(
                       fun ({_V, OldChain, NewChain, _}) ->
                               move_is_possible(OldChain, NewChain,
@@ -411,7 +423,7 @@ choose_action_not_compaction(#state{
     SortedMoves = sortby(PossibleMoves, GoodnessFn, LessEqFn),
 
     %% NOTE: we know that first move is always allowed
-    {SelectedMoves, NewNowBackfills, NewCompactionCountdown, NewNowInFlight, NewLeftCount} =
+    {SelectedMoves, _NewNowBackfills, NewCompactionCountdown, NewNowInFlight, NewLeftCount} =
         misc:letrec(
           [SortedMoves, NowBackfills, CompactionCountdown, NowInFlight, LeftCount, []],
           fun (Rec, [{_V, [Src|_] = OldChain, [Dst|_] = NewChain, _} = Move | RestMoves],
@@ -442,11 +454,11 @@ choose_action_not_compaction(#state{
 
     NewMovesLeft = MovesLeft -- SelectedMoves,
 
-    NewState = State#state{in_flight_backfills_per_node = NewNowBackfills,
-                           in_flight_per_node = NewNowInFlight,
-                           total_in_flight = State#state.total_in_flight + length(SelectedMoves),
+    NewState = State#state{in_flight_per_node = NewNowInFlight,
                            moves_left_count_per_node = NewLeftCount,
                            moves_left = NewMovesLeft,
+                           in_flight_backfills = CurrentBackfills ++ SelectedMoves,
+                           in_flight_moves = CurrentMoves ++ SelectedMoves,
                            compaction_countdown_per_node = NewCompactionCountdown},
 
     {[{move, M} || M <- SelectedMoves], NewState}.
@@ -461,26 +473,30 @@ extract_progress(#state{initial_move_counts = InitialCounts,
 %% @doc marks backfill phase of previously started move as done. Users
 %% of this code will call it when backfill is done to update state so
 %% that next moves can be started.
-note_backfill_done(State, {move, {_V, [undefined|_], [_Dst|_], _}}) ->
+note_backfill_done(State, {move, {_, [undefined | _], _, _}}) ->
     State;
-note_backfill_done(State, {move, {_V, OldChain, NewChain, _}}) ->
-    updatef(State, #state.in_flight_backfills_per_node,
-            fun (NowBackfills) ->
-                    lists:foldl(
-                      fun (N, Acc) ->
-                              dict:update_counter(N, -1, Acc)
-                      end, NowBackfills, backfill_nodes(OldChain, NewChain))
+note_backfill_done(State, {move, {VB, _, _, _}}) ->
+    updatef(State, #state.in_flight_backfills,
+            fun (CurrentBackfills) ->
+                    lists:keydelete(VB, 1, CurrentBackfills)
             end).
 
 %% @doc marks entire move that was previously started done. NOTE: this
 %% assumes that backfill phase of this move was previously marked as
 %% done. Users of this code will call it when move is done to update
 %% state so that next moves and/or compactions can be started.
-note_move_completed(State, {move, {_V, [undefined|_], [_Dst|_], _}}) ->
-    updatef(State, #state.total_in_flight, fun (V) -> V - 1 end);
-note_move_completed(State, {move, {_V, [Src|_], [Dst|_], _}}) ->
+note_move_completed(State, {move, {VB, [undefined|_], [_Dst|_], _}}) ->
+    updatef(State, #state.in_flight_moves,
+            fun (CurrentMoves) ->
+                    lists:keydelete(VB, 1, CurrentMoves)
+            end);
+note_move_completed(State, {move, {VB, [Src|_], [Dst|_], _}}) ->
+    State0 = updatef(State, #state.in_flight_moves,
+                     fun (CurrentMoves) ->
+                             lists:keydelete(VB, 1, CurrentMoves)
+                     end),
     State1 =
-        updatef(State, #state.in_flight_per_node,
+        updatef(State0, #state.in_flight_per_node,
                 fun (NowInFlight) ->
                         NowInFlight1 = dict:update_counter(Src, -1, NowInFlight),
                         case Src =:= Dst of
@@ -490,13 +506,11 @@ note_move_completed(State, {move, {_V, [Src|_], [Dst|_], _}}) ->
                                 dict:update_counter(Dst, -1, NowInFlight1)
                         end
                 end),
-    State2 =
-        updatef(State1, #state.left_move_counts,
-                fun (LeftMoveCounts) ->
-                        D = dict:update_counter(Src, -1, LeftMoveCounts),
-                        dict:update_counter(Dst, -1, D)
-                end),
-    updatef(State2, #state.total_in_flight, fun (V) -> V - 1 end).
+    updatef(State1, #state.left_move_counts,
+            fun (LeftMoveCounts) ->
+                    D = dict:update_counter(Src, -1, LeftMoveCounts),
+                    dict:update_counter(Dst, -1, D)
+            end).
 
 %% @doc marks previously started compaction as done. Users of this
 %% code will call it when compaction is done to update state so that
