@@ -268,11 +268,12 @@ ensure_prometheus_config(Settings) ->
         "      password_file: ~s\n"
         "    static_configs:\n"
         "    - targets: [~s]\n"
-        "    relabel_configs:\n"
-        "    - source_labels: [__address__]\n"
-        "      regex: '.*:(\\d*)'\n"
+        "    relabel_configs:\n" ++
+      [ "    - regex: '" ++ addr2re(A) ++ "'\n"
+        "      source_labels: [__address__]\n"
         "      target_label: 'instance'\n"
-        "      replacement: \"localhost:${1}\"",
+        "      replacement: '" ++ atom_to_list(N) ++ "'\n"
+                    || {N, A} <- Targets ],
     Config = io_lib:format(ConfigTemplate, [ScrapeInterval, ScrapeTimeout,
                                             TokenFile, TargetsStr]),
     ?log_debug("Updating prometheus config file: ~s", [File]),
@@ -285,3 +286,11 @@ get_service_port(n1ql) -> query_port;
 get_service_port(fts) -> fts_http_port;
 get_service_port(eventing) -> eventing_http_port;
 get_service_port(kv) -> undefined.
+
+addr2re(A) ->
+    Replace = fun (P,V) ->
+                  fun (X) -> re:replace(X, P, V, [{return, list}, global]) end
+              end,
+    functools:chain(A, [Replace("\\[", "\\\\["),
+                        Replace("\\]", "\\\\]"),
+                        Replace("\\.", "\\\\.")]).
