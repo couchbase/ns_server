@@ -35,7 +35,7 @@ handle_get_metrics(Req) ->
 
 report_metric({Prefix, Metric, Labels, Value}, Resp) ->
     Line =
-        [Prefix, <<":">>, name_to_iolist(Metric), <<"{">>,
+        [Prefix, <<"_">>, name_to_iolist(Metric), <<"{">>,
          lists:join(<<",">>,[[K, <<"=\"">>, V, <<"\"">>] || {K, V} <- Labels]),
          <<"} ">>, format_prometheus_number(Value), <<"\n">>],
     mochiweb_response:write_chunk(Line, Resp).
