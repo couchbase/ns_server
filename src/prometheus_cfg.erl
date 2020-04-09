@@ -19,7 +19,7 @@
 -include("ns_common.hrl").
 
 %% API
--export([start_link/0, specs/1, authenticate/2]).
+-export([start_link/0, specs/1, authenticate/2, settings/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -40,6 +40,9 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
+settings() ->
+    gen_server:call(?MODULE, settings).
+
 default_settings() ->
     [{enabled, false},
      {retention_size, 1024*20}, %% in MB
@@ -53,8 +56,8 @@ default_settings() ->
      {scrape_timeout, 10}, %% in seconds
      {token_file, "prometheus_token"}].
 
-settings() -> settings(ns_config:get()).
-settings(Config) ->
+build_settings() -> build_settings(ns_config:get()).
+build_settings(Config) ->
     AFamily = ns_config:search_node_with_default(Config, address_family, inet),
     Port = service_ports:get_port(prometheus_http_port, Config),
     LocalAddr = misc:localhost(AFamily, [url]),
@@ -73,7 +76,7 @@ settings(Config) ->
     misc:update_proplist(default_settings(), Settings).
 
 specs(Config) ->
-    Settings = settings(Config),
+    Settings = build_settings(Config),
     ConfigFile = prometheus_config_file(Settings),
     RetentionSize = integer_to_list(proplists:get_value(retention_size,
                                                         Settings)) ++ "MB",
@@ -141,7 +144,7 @@ init([]) ->
             (_) -> ok
         end,
     ns_pubsub:subscribe_link(ns_config_events, EventHandler),
-    Settings = settings(),
+    Settings = build_settings(),
     ensure_prometheus_config(Settings),
     generate_prometheus_auth_info(Settings),
     case proplists:get_value(enabled, Settings) of
@@ -150,6 +153,9 @@ init([]) ->
         false ->
             {ok, #s{cur_settings = Settings}}
     end.
+
+handle_call(settings, _From, #s{cur_settings = Settings} = State) ->
+    {reply, Settings, State};
 
 handle_call(_Request, _From, State) ->
     {noreply, State}.
@@ -190,7 +196,7 @@ token_file(Settings) ->
                   proplists:get_value(token_file, Settings)).
 
 maybe_apply_new_settings(#s{cur_settings = OldSettings} = State) ->
-    case settings() of
+    case build_settings() of
         OldSettings ->
             ?log_debug("Settings didn't change, ignoring update"),
             State;
