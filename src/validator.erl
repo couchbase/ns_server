@@ -35,6 +35,7 @@
          integer/4,
          range/4,
          range/5,
+         greater_or_equal/3,
          length/4,
          string/4,
          dir/2,
@@ -308,6 +309,15 @@ range(Name, Min, Max0, ErrorFun, State) ->
                       {error, ErrorFun()}
               end
       end, Name, State).
+
+greater_or_equal(Name1, Name2, State) ->
+     validator:validate_relative(
+       fun (Value1, Value2) when Value1 < Value2 ->
+               {error,
+                io_lib:format("should be greater or equal than ~p", [Name2])};
+           (_, _) ->
+               ok
+       end, Name1, Name2, State).
 
 length(Name, Min, Max, State) ->
     validate(
