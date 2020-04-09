@@ -2911,3 +2911,23 @@ align_list_test() ->
 
 format_bin(F, A) ->
     iolist_to_binary(io_lib:format(F, A)).
+
+zipwithN(_Fun, []) -> [];
+zipwithN(Fun, [L | Tail]) ->
+    zipwithN(Fun, Tail, [[E] || E <- L]).
+zipwithN(Fun, [], Acc) ->
+    [Fun(lists:reverse(L)) || L <- Acc];
+zipwithN(Fun, [L | Tail], Acc) ->
+    NewAcc = lists:zipwith(fun (AccL, E) -> [E | AccL] end, Acc, L),
+    zipwithN(Fun, Tail, NewAcc).
+
+-ifdef(TEST).
+zipwithN_test() ->
+    Z = fun (L) -> zipwithN(fun functools:id/1, L) end,
+    ?assertEqual([], Z([])),
+    ?assertEqual([], Z([[]])),
+    ?assertEqual([], Z([[],[]])),
+    ?assertEqual([[1]], Z([[1]])),
+    ?assertEqual([[1,2,3]], Z([[1],[2],[3]])),
+    ?assertEqual([[1,3,5],[2,4,6]], Z([[1,2],[3,4],[5,6]])).
+-endif.
