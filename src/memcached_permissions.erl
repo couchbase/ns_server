@@ -515,6 +515,13 @@ permissions_for_user_test_() ->
             {["test"], AllBucketPermissions}]),
       Test([{data_writer, [{"test", <<"test_id">>}, any, any]}],
            ['SystemSettings'],
-           [{["test"], ['Delete', 'Insert', 'Upsert', 'XattrWrite']}])
-     ]}.
+           [{["test"], ['Delete', 'Insert', 'Upsert', 'XattrWrite']}]),
+      Test([{data_writer, [{"test", <<"test_id">>}, any, any]},
+            {data_writer, [{"default", <<"default_id">>}, {"s", 1}, {"c", 1}]},
+            {data_writer, [{"default", <<"default_id">>}, {"s", 1}, any]},
+            {data_reader, [{"default", <<"default_id">>}, {"s1", 2}, any]}],
+           ['SystemSettings'],
+           [{["test"], ['Delete', 'Insert', 'Upsert', 'XattrWrite']},
+            {["default", 1], ['Delete', 'Insert', 'Upsert', 'XattrWrite']},
+            {["default", 2], ['MetaRead', 'Read', 'XattrRead']}])]}.
 -endif.
