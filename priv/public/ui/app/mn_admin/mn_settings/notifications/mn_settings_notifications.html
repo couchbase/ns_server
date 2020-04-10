@@ -3,21 +3,18 @@
   <p class="text-medium">
     <em>Couchbase Server {{settingsNotificationsCtl.implementationVersion | mnPrettyVersion}}</em>
   </p>
-  <div class="margin-bottom-half">
+  <div class="margin-bottom-half row">
     <input
        type="checkbox"
        id="for-update-notice-enable"
        ng-disabled="!rbac.cluster.settings.write"
        ng-model="settingsNotificationsCtl.updates.enabled">
     <label for="for-update-notice-enable" class="margin-right-zero">
-      Enable software update notifications
+      Share usage information with Couchbase and get software update notifications.
     </label>
     <span
        class="fa-stack icon-info"
-       uib-tooltip="Enabling software update notifications allows notification
-       in the Couchbase web console when a new version of Couchbase Server is
-       available. Configuration information transferred in the update check is
-       anonymous and does not include any stored key-value data."
+       uib-tooltip-html="'{{settingsNotificationsCtl.tooltip}}'"
        tooltip-placement="auto right">
       <span class="icon fa-circle-thin fa-stack-2x"></span>
       <span class="icon fa-info fa-stack-1x"></span>

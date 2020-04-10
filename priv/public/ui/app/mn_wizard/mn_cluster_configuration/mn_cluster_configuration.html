@@ -123,18 +123,19 @@
         </div>
       </div>
 
-      <div>
+      <div class="row">
         <input
            type="checkbox"
            id="init-notifications-updates-enabled"
            ng-model="clusterConfigurationCtl.sendStats"
            checked="checked">
            <label for="init-notifications-updates-enabled" class="margin-right-zero">
-             Enable software update notifications in the web console.
+            Share usage information with Couchbase and get software update notifications.
            </label>
-           <span class="fa-stack icon-info"
-                 uib-tooltip="Enabling software update notifications allows notification in the Couchbase web console when a new version of Couchbase Server is available. Configuration information transferred in the update check is anonymous and does not include any stored key-value data."
-                 tooltip-placement="top">
+           <span
+             class="fa-stack icon-info"
+             uib-tooltip-html="'{{clusterConfigurationCtl.tooltip}}'"
+             tooltip-placement="auto right">
              <span class="icon fa-circle-thin fa-stack-2x"></span>
              <span class="icon fa-info fa-stack-1x"></span>
            </span>
