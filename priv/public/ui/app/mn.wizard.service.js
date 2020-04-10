@@ -42,11 +42,11 @@ var wizardForm = {
       // field
     }),
     javaPath: new FormControl(),
-    storageMode: new FormControl(null),
-    enableStats: new FormControl(true)
+    storageMode: new FormControl(null)
   }),
   termsAndConditions: new FormGroup({
-    agree: new FormControl(false, [Validators.required])
+    agree: new FormControl(false, [Validators.required]),
+    enableStats: new FormControl(true)
   }),
   joinCluster: new FormGroup({
     clusterAdmin: new FormGroup({

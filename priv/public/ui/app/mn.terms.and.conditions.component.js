@@ -154,7 +154,7 @@ class MnTermsAndConditionsComponent extends MnLifeCycleHooksToStream {
         clusterName: this.wizardForm.newCluster.get("clusterName").value
       }, false],
       hostnameHttp: this.initialValues.hostname,
-      statsHttp: true
+      statsHttp: this.wizardForm.termsAndConditions.get("enableStats").value
     };
   }
 }

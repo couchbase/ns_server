@@ -142,7 +142,7 @@ class MnNewClusterConfigComponent extends MnLifeCycleHooksToStream {
     return {
       hostnameHttp: this.wizardForm.newClusterConfig.get("clusterStorage.hostname").value,
       postPoolsDefault: [this.getPoolsDefaultValues.bind(this)(isEnterprise[1]), false],
-      statsHttp: this.wizardForm.newClusterConfig.get("enableStats").value
+      statsHttp: this.wizardForm.termsAndConditions.get("enableStats").value
     };
   }
 
