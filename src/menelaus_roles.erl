@@ -876,6 +876,9 @@ filter_out_invalid_roles_test() ->
 %% assertEqual is used instead of assert and assertNot to avoid
 %% dialyzer warnings
 object_match_test() ->
+    ?assertEqual(true, object_match([], [])),
+    ?assertEqual(false, object_match([], [o1, o2])),
+    ?assertEqual(true, object_match([o3], [])),
     ?assertEqual(true, object_match([o1, o2], [o1, o2])),
     ?assertEqual(false, object_match([o1], [o1, o2])),
     ?assertEqual(true, object_match([o1, o2], [o1])),
@@ -883,7 +886,39 @@ object_match_test() ->
     ?assertEqual(false, object_match([{b, "a"}], [{b, "b"}])),
     ?assertEqual(true, object_match([{b, any}], [{b, "b"}])),
     ?assertEqual(true, object_match([{b, "a"}], [{b, any}])),
-    ?assertEqual(true, object_match([{b, any}], [{b, any}])).
+    ?assertEqual(true, object_match([{b, any}], [{b, any}])),
+    ?assertEqual(true, object_match([{b, all}], [{b, any}])),
+    ?assertEqual(false, object_match([{b, all}], [{b, "a"}])).
+
+object_match_with_collections_test() ->
+    ?assertEqual(true, object_match([{collection, ["b", "s", "c"]}],
+                                    [{bucket, "b"}])),
+    ?assertEqual(true, object_match([{collection, ["b", "s", all]}],
+                                    [{bucket, "b"}])),
+    ?assertEqual(true, object_match([{collection, ["b", all, all]}],
+                                    [{bucket, "b"}])),
+    ?assertEqual(true, object_match([{scope, ["b", "s"]}], [{bucket, "b"}])),
+    ?assertEqual(true, object_match([{scope, ["b", all]}], [{bucket, "b"}])),
+    ?assertEqual(true, object_match([{collection, ["b", "s", "c"]}],
+                                    [{collection, ["b", "s", "c"]}])),
+    ?assertEqual(false, object_match([{collection, ["b", "s", "c1"]}],
+                                     [{collection, ["b", "s", "c"]}])),
+    ?assertEqual(false, object_match([{collection, ["b", "s", all]}],
+                                     [{collection, ["b", "s", "c"]}])),
+    ?assertEqual(true, object_match([{collection, ["b", "s", any]}],
+                                    [{collection, ["b", "s", "c"]}])),
+    ?assertEqual(false, object_match([{scope, ["b", "s"]}],
+                                     [{collection, ["b", "s", "c"]}])),
+    ?assertEqual(true, object_match([{scope, ["b", "s"]}],
+                                    [{collection, ["b", "s", any]}])),
+    ?assertEqual(false, object_match([{bucket, "b"}],
+                                     [{collection, ["b", "s", "c"]}])),
+    ?assertEqual(false, object_match([{bucket, "b"}],
+                                     [{collection, ["b", "s", any]}])),
+    ?assertEqual(true, object_match([{bucket, "b"}],
+                                    [{collection, ["b", any, any]}])),
+    ?assertEqual(false, object_match([{bucket, "b"}],
+                                     [{collection, ["b1", any, any]}])).
 
 toy_buckets() ->
     [{"test", [{uuid, <<"test_id">>}]},
