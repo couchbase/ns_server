@@ -533,7 +533,9 @@ find_object(Name, List, Find, GetId) when is_list(Name) ->
 
 -spec params_version(list()) -> term().
 params_version(Buckets) ->
-    [{Name, ns_bucket:bucket_uuid(Props)} || {Name, Props} <- Buckets].
+    [{Name, ns_bucket:bucket_uuid(Props),
+      collections:get_uid(collections:get_manifest(Props))} ||
+        {Name, Props} <- Buckets].
 
 compile_params([], [], _Buckets) ->
     [];
@@ -1187,5 +1189,20 @@ produce_roles_by_permission_test_() ->
                 enum_roles([bucket_full_access, data_backup, data_writer],
                            [any]),
             {[{bucket, "wrong"}, data, xattr], write})}]}.
+
+params_version_test() ->
+    Version1 = params_version(toy_buckets()),
+    Version2 = params_version(lists:keydelete("test", 1, toy_buckets())),
+    Version3 = params_version(lists:keyreplace(
+                                "test", 1, toy_buckets(),
+                                {"test", [{uuid, <<"test_id1">>}]})),
+    Version4 = params_version(
+                 lists:keyreplace(
+                   "test", 1, toy_buckets(),
+                   {"test", [{uuid, <<"test_id">>},
+                             {collections_manifest, toy_manifest()}]})),
+    ?assertNotEqual(Version1, Version2),
+    ?assertNotEqual(Version1, Version3),
+    ?assertNotEqual(Version1, Version4).
 
 -endif.
