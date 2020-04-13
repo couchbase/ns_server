@@ -18,7 +18,8 @@
 -export([find_plugins/0,
          inject_head_fragments/3,
          proxy_req/4,
-         maybe_serve_file/4]).
+         maybe_serve_file/4,
+         handle_pluggable_uis_js/3]).
 
 -include("ns_common.hrl").
 -include("cut.hrl").
@@ -39,6 +40,7 @@
                                          "transfer-encoding",
                                          "www-authenticate"]}).
 -type service_name()   :: atom().
+-type module_name()    :: string() | undefined.
 -type proxy_strategy() :: local | sticky.
 -type filter_op()      :: keep | drop.
 -type ui_compat_version() :: [integer()].
@@ -48,7 +50,8 @@
                   rest_api_prefixes      :: dict:dict(),
                   doc_roots              :: [string()],
                   version_dirs           :: undefined | [{ui_compat_version(), string()}],
-                  request_headers_filter :: {filter_op(), [string()]}}).
+                  request_headers_filter :: {filter_op(), [string()]},
+                  module                 :: module_name()}).
 -type plugin()  :: #plugin{}.
 -type plugins() :: [plugin()].
 
@@ -129,6 +132,7 @@ validate_plugin_spec(KVs, Plugins) ->
     VersionDirs = decode_version_dirs(get_opt_element(<<"version-dirs">>, KVs)),
     ReqHdrFilter = decode_request_headers_filter(
                      get_opt_element(<<"request-headers-filter">>, KVs)),
+    Module = get_opt_element(<<"module">>, KVs),
     case {valid_service(ServiceName),
           check_prefix_uniqueness(RestApiPrefixes, Plugins)} of
         {true, ok} ->
@@ -139,7 +143,8 @@ validate_plugin_spec(KVs, Plugins) ->
                      rest_api_prefixes = dict:from_list(RestApiPrefixes),
                      doc_roots = DocRoots,
                      version_dirs = VersionDirs,
-                     request_headers_filter = ReqHdrFilter} | Plugins];
+                     request_headers_filter = ReqHdrFilter,
+                     module = Module} | Plugins];
         {true, {error, {duplicates, Duplicates}}} ->
             ?log_info("Pluggable UI specification for ~p not loaded, "
                       "duplicate REST API prefixes ~p",
@@ -455,17 +460,22 @@ find_plugin_by_prefix(Prefix, [Plugin|Tail]) ->
 %%% =============================================================
 %%%
 
+handle_pluggable_uis_js(Plugins, UiCompatVersion, Req) ->
+    menelaus_util:reply_ok(Req, "application/javascript",
+                           get_fragments(UiCompatVersion, Plugins,
+                               fun export_module_getter/2)).
+
 -spec inject_head_fragments(file:filename_all(), ui_compat_version(), plugins()) -> [binary()].
 inject_head_fragments(File, UiCompatVersion, Plugins) ->
     {ok, Index} = file:read_file(File),
     [Head, Tail] = split_index(Index),
-    [Head, head_fragments(UiCompatVersion, Plugins), Tail].
+    [Head, get_fragments(UiCompatVersion, Plugins, head_fragment(_, _)), Tail].
 
 split_index(Bin) ->
     binary:split(Bin, ?HEAD_MARKER).
 
-head_fragments(UiCompatVersion, Plugins) ->
-    [head_fragment(UiCompatVersion, P) || P <- Plugins].
+get_fragments(UiCompatVersion, Plugins, FragmentGetter) ->
+    [FragmentGetter(UiCompatVersion, P) || P <- Plugins].
 
 head_fragment(_UiCompatVersion, #plugin{doc_roots = []}) ->
     [];
@@ -473,6 +483,36 @@ head_fragment(UiCompatVersion, #plugin{name = Service, doc_roots = DocRoots,
                                        version_dirs = VersionDirs}) ->
     VersionDir = proplists:get_value(UiCompatVersion, VersionDirs),
     create_service_block(Service, find_head_fragments(Service, DocRoots, VersionDir)).
+
+export_module_getter(_UiCompatVersion, #plugin{module = undefined}) ->
+    [];
+export_module_getter(UiCompatVersion, #plugin{name = Service,
+                                              version_dirs = VersionDirs,
+                                              rest_api_prefixes = RestApiPrefixes,
+                                              module = Module}) ->
+    VersionDir = proplists:get_value(UiCompatVersion, VersionDirs),
+    case VersionDir of
+        undefined ->
+            io_lib:format("/* service ~s not compatible with UI compat version ~p */~n",
+                          [Service, UiCompatVersion]);
+        _ ->
+            % We don't support importing pluggable modules where the pluggable
+            % UI component has more than one REST API prefix as it's not clear
+            % which REST prefix we should use when importing it. This doesn't cause
+            % problems currently as all pluggable modules have exactly one REST
+            % API prefix.
+            [{Prefix, _} | Tail] = dict:to_list(RestApiPrefixes),
+            case Tail of
+                [] ->
+                    io_lib:format("import pluggableUI_~s from \"/_p/ui/~s/~s/~s\"~n"
+                                  "export {pluggableUI_~s}~n",
+                                  [Service, Prefix, VersionDir, Module, Service]);
+                _ ->
+                    io_lib:format("/* can't import pluggable module for service ~s "
+                                  "as there are multiple REST API Prefixes */~n",
+                                  [Service])
+            end
+    end.
 
 find_head_fragments(Service, _, undefined) ->
     Msg = io_lib:format("Pluggable component for service ~p is not supported for "

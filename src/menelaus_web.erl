@@ -475,9 +475,12 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["_prometheusMetrics"] ->
                     {{[stats], read},
                      fun menelaus_web_prometheus:handle_get_metrics/1};
+                ["ui", "pluggable-uis.js"] ->
+                    {ui, IsSSL, fun menelaus_pluggable_ui:handle_pluggable_uis_js/3,
+                     [Plugins, ?VERSION_50]};
                 [?PLUGGABLE_UI, "ui", RestPrefix | _] ->
                     {ui, IsSSL, fun menelaus_pluggable_ui:maybe_serve_file/4,
-                        [RestPrefix, Plugins, nth_path_tail(Path, 3)]};
+                     [RestPrefix, Plugins, nth_path_tail(Path, 3)]};
                 [?PLUGGABLE_UI, RestPrefix | _] ->
                     {no_check,
                      fun (PReq) ->
