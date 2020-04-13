@@ -44,12 +44,11 @@ import mnPoorMansAlerts from "./mn_poor_mans_alerts_controller.js"
 
 import mnResetPasswordDialog from "./mn_reset_password_dialog_controller.js"
 import mnResetPasswordDialogService from "./mn_reset_password_dialog_service.js";
-import pluggableUIs from "/ui/pluggable.uis.wrapper.js";
+
 
 export default 'mnAdmin';
 
 angular.module('mnAdmin', [
-  ...pluggableUIs,
   ngAnimate,
   uiBootstrap,
   uiRouter,

@@ -28,7 +28,7 @@ const MnPoolsProvider = {
 let ajsUpgradedProviders = [
   $stateProvider,
   MnPoolsProvider,
-  MnPendingQueryKeeper
+  MnPendingQueryKeeperProvider
 ];
 
 export {

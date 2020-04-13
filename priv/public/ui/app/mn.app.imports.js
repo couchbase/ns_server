@@ -9,6 +9,7 @@ import {UpgradeModule} from '/ui/web_modules/@angular/upgrade/static.js';
 import {MnSharedModule} from './mn.shared.module.js';
 import {MnWizardModule} from './mn.wizard.module.js';
 import {UIRouterUpgradeModule} from '/ui/web_modules/@uirouter/angular-hybrid.js';
+import * as pluggableUIsModules from '/ui/pluggable-uis.js';
 
 let appState = {
   name: 'app',
@@ -35,6 +36,7 @@ let authState = {
 }
 
 export let mnAppImports = [
+  ...Object.values(pluggableUIsModules),
   UpgradeModule,
   UIRouterModule,
   MnPipesModule,
