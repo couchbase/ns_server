@@ -422,6 +422,8 @@ vertex_match({collection, Params}, {bucket, B}) ->
     vertex_params_match(Params, [B, any, any]);
 vertex_match({bucket, B}, {collection, Params}) ->
     vertex_params_match([B, all, all], Params);
+vertex_match({scope, [B, S]}, Filter) ->
+    vertex_match({collection, [B, S, all]}, Filter);
 vertex_match({collection, Params}, {collection, FilterParams}) ->
     vertex_params_match(Params, FilterParams);
 vertex_match({_Same, Param}, {_Same, FilterParam}) ->
@@ -1059,9 +1061,9 @@ data_reader_collection_test_() ->
         [{[{collection, ["default", "s", "c"]}, data, docs], read},
          {[{collection, ["default", "s", "c1"]}, data, docs], read},
          {[{collection, ["default", "s", "c2"]}, data, docs], read},
-         {[{collection, ["default", "s", all]}, data, docs], read},
-         {[{collection, ["default", "s1", all]}, data, docs], read},
-         {[{collection, ["default", "s2", all]}, data, docs], read},
+         {[{scope, ["default", "s"]}, data, docs], read},
+         {[{scope, ["default", "s1"]}, data, docs], read},
+         {[{scope, ["default", "s2"]}, data, docs], read},
          {[{bucket, "default"}, data, docs], read},
          {[{bucket, "default"}, settings], read}],
     Test =

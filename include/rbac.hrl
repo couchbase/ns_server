@@ -66,6 +66,7 @@
 -type rbac_permission_vertex_param() :: string() | any.
 -type rbac_permission_vertex() ::
         atom() | {bucket, rbac_permission_vertex_param()} |
+        {scope, [rbac_permission_vertex_param()]} |
         {collection, [rbac_permission_vertex_param()]}.
 -type rbac_permission_object() :: [rbac_permission_vertex(), ...].
 -type rbac_permission_operations() ::
