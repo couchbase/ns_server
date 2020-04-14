@@ -273,6 +273,16 @@ handle_cast(_Msg, State) ->
 
 %% @doc Check if nodes should/could be auto-failovered on every tick
 handle_info(tick, State0) ->
+    %% Get rid of any other tick messages. We can't assume the current state
+    %% reflects how it has been prior to this moment and so shouldn't take
+    %% action other than for the current tick.
+    Dropped = misc:flush(tick),
+    case Dropped of
+        0 ->
+            ok;
+        _ ->
+            ?log_warning("Dropped ~p auto-failover ticks", [Dropped])
+    end,
     Config = ns_config:get(),
 
     %% Reread autofailover count from config just in case. This value can be
