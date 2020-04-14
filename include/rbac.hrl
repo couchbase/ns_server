@@ -69,10 +69,8 @@
         {scope, [rbac_permission_vertex_param()]} |
         {collection, [rbac_permission_vertex_param()]}.
 -type rbac_permission_object() :: [rbac_permission_vertex(), ...].
--type rbac_permission_operations() ::
-        rbac_operation() | [rbac_operation(), ...].
 -type rbac_permission() ::
-        {rbac_permission_object(), rbac_permission_operations()}.
+        {rbac_permission_object(), rbac_operation()}.
 -type rbac_all_param_values() :: [{[atom()], [[rbac_role_param()]]}].
 
 -define(RBAC_COLLECTION_PARAMS, [bucket_name, scope_name, collection_name]).
