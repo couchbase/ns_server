@@ -664,7 +664,7 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
 
     {Users, Skipped, Links} = page_data_from_skews(PageSkews, PageSize),
     UsersJson = [UserJson(O) || O <- Users],
-    LinksParams = [{permission, permission_to_binary(Permission)}
+    LinksParams = [{permission, format_permission(Permission)}
                         || Permission =/= undefined] ++
                   [{substr, Substr} || Substr =/= undefined] ++
                   [{pageSize, PageSize},
@@ -1322,28 +1322,15 @@ vertex_to_iolist({Atom, any}) ->
 vertex_to_iolist({Atom, Param}) ->
     [atom_to_list(Atom), "[", Param, "]"].
 
-permission_to_binary({Object, Operation}) ->
+format_permission({Object, Operation}) ->
     FormattedVertices = ["cluster" | [vertex_to_iolist(Vertex) ||
                                          Vertex <- Object]],
     iolist_to_binary(
       [string:join(FormattedVertices, "."), "!", atom_to_list(Operation)]).
 
-format_permissions(Permissions) ->
-    lists:foldl(
-      fun ({Object, Operations}, Acc) when is_list(Operations) ->
-              lists:foldl(
-                fun (Oper, Acc1) ->
-                        [permission_to_binary({Object, Oper}) | Acc1]
-                end, Acc, Operations);
-          (Permission, Acc) ->
-              [permission_to_binary(Permission) | Acc]
-      end, [], Permissions).
-
-forbidden_response(Permissions) when is_list(Permissions) ->
-    {[{message, <<"Forbidden. User needs one of the following permissions">>},
-      {permissions, format_permissions(Permissions)}]};
 forbidden_response(Permission) ->
-    forbidden_response([Permission]).
+    {[{message, <<"Forbidden. User needs one of the following permissions">>},
+      {permissions, [format_permission(Permission)]}]}.
 
 handle_get_password_policy(Req) ->
     {MinLength, MustPresent} = get_password_policy(),
@@ -1803,21 +1790,15 @@ parse_permissions_test() ->
     TestOne("cluster.collection[test:s].n1ql.update!execute", error),
     TestOne("cluster.collection[test:s::c].n1ql.update!execute", error).
 
-format_permissions_test() ->
-    Permissions = [{[{bucket, any}, views], write},
-                   {[{bucket, "default"}], all},
-                   {[], all},
-                   {[admin, diag], read},
-                   {[{bucket, "test"}, xdcr], [write, execute]}],
-    Formatted = [<<"cluster.bucket[.].views!write">>,
-                 <<"cluster.bucket[default]!all">>,
-                 <<"cluster!all">>,
-                 <<"cluster.admin.diag!read">>,
-                 <<"cluster.bucket[test].xdcr!write">>,
-                 <<"cluster.bucket[test].xdcr!execute">>],
-    ?assertEqual(
-       lists:sort(Formatted),
-       lists:sort(format_permissions(Permissions))).
+format_permission_test() ->
+    ?assertEqual(<<"cluster.bucket[.].views!write">>,
+                 format_permission({[{bucket, any}, views], write})),
+    ?assertEqual(<<"cluster.bucket[default]!all">>,
+                 format_permission({[{bucket, "default"}], all})),
+    ?assertEqual(<<"cluster!all">>,
+                 format_permission({[], all})),
+    ?assertEqual(<<"cluster.admin.diag!read">>,
+                 format_permission({[admin, diag], read})).
 
 toy_users(First, Last) ->
     [toy_user(U) || U <- lists:seq(First, Last)].
