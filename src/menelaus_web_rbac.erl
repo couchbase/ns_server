@@ -1317,10 +1317,13 @@ handle_check_permission_for_cbauth(Req) ->
 
 vertex_to_iolist(Atom) when is_atom(Atom) ->
     atom_to_list(Atom);
-vertex_to_iolist({Atom, any}) ->
-    [atom_to_list(Atom), "[.]"];
-vertex_to_iolist({Atom, Param}) ->
-    [atom_to_list(Atom), "[", Param, "]"].
+vertex_to_iolist({Atom, Params}) when Atom =:= collection;
+                                      Atom =:= scope ->
+    [atom_to_list(Atom), "[", lists:join(":", Params), "]"];
+vertex_to_iolist({bucket, any}) ->
+    "bucket[.]";
+vertex_to_iolist({bucket, Param}) ->
+    ["bucket[", Param, "]"].
 
 format_permission({Object, Operation}) ->
     FormattedVertices = ["cluster" | [vertex_to_iolist(Vertex) ||
@@ -1798,7 +1801,14 @@ format_permission_test() ->
     ?assertEqual(<<"cluster!all">>,
                  format_permission({[], all})),
     ?assertEqual(<<"cluster.admin.diag!read">>,
-                 format_permission({[admin, diag], read})).
+                 format_permission({[admin, diag], read})),
+    ?assertEqual(
+       <<"cluster.collection[test:s:c].n1ql.update!execute">>,
+       format_permission(
+         {[{collection, ["test", "s", "c"]}, n1ql, update], execute})),
+    ?assertEqual(<<"cluster.scope[test:s].n1ql.update!execute">>,
+                 format_permission(
+                   {[{scope, ["test", "s"]}, n1ql, update], execute})).
 
 toy_users(First, Last) ->
     [toy_user(U) || U <- lists:seq(First, Last)].
