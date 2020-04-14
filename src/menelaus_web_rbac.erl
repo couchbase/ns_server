@@ -1219,20 +1219,47 @@ parse_vertices([$. | Rest], Acc) ->
             parse_vertices([], [list_to_rbac_atom(Name) | Acc]);
         {Name, [$[ | Rest1]} ->
             case parse_until(Rest1, "]") of
-                {Param, [$] | Rest2]} ->
-                    parse_vertices(Rest2, [{list_to_rbac_atom(Name),
-                                            case Param of
-                                                "." ->
-                                                    any;
-                                                _ ->
-                                                    Param
-                                            end} | Acc]);
+                {ParamsStr, [$] | Rest2]} ->
+                    case parse_parameterized_vertex(Name, ParamsStr) of
+                        error ->
+                            error;
+                        Parsed ->
+                            parse_vertices(Rest2, [Parsed | Acc])
+                    end;
                 _ ->
                     error
             end
     end;
 parse_vertices(_, _) ->
     error.
+
+parse_parameterized_vertex(Name, Params) ->
+    NameAtom = list_to_rbac_atom(Name),
+    case parse_vertex_params(NameAtom, Params) of
+        error ->
+            error;
+        Res ->
+            {NameAtom, Res}
+    end.
+
+parse_vertex_params(bucket, ".") ->
+    any;
+parse_vertex_params(bucket, Name) ->
+    Name;
+parse_vertex_params(scope, ParamsStr) ->
+    case string:split(ParamsStr, ":", all) of
+        [_, _] = Params ->
+            Params;
+        _ ->
+            error
+    end;
+parse_vertex_params(collection, ParamsStr) ->
+    case string:split(ParamsStr, ":", all) of
+        [_, _, _] = Params ->
+            Params;
+        _ ->
+            error
+    end.
 
 parse_permissions(Body) ->
     RawPermissions = string:tokens(Body, ","),
@@ -1733,6 +1760,11 @@ parse_roles_test_() ->
         end}]).
 
 parse_permissions_test() ->
+    TestOne =
+        fun (String, Expected) ->
+                ?assertEqual([{String, Expected}], parse_permissions(String))
+        end,
+
     ?assertEqual(
        [{"cluster.admin!write", {[admin], write}},
         {"cluster.admin", error},
@@ -1744,9 +1776,33 @@ parse_permissions_test() ->
          {[{bucket, "test.test"}, stats], read}}],
        parse_permissions(" cluster.bucket[test.test]!read, "
                          "cluster.bucket[test.test].stats!read ")),
-    ?assertEqual(
-       [{"cluster.no_such_atom!no_such_atom", {['_unknown_'], '_unknown_'}}],
-       parse_permissions("cluster.no_such_atom!no_such_atom")).
+
+    TestOne("cluster.bucket[].stats!read", {[{bucket, ""}, stats], read}),
+    TestOne("cluster.bucket[.].stats!read", {[{bucket, any}, stats], read}),
+
+    TestOne("cluster.no_such_atom!no_such_atom", {['_unknown_'], '_unknown_'}),
+
+    TestOne("cluster.collection[test:s:c].n1ql.update!execute",
+            {[{collection, ["test", "s", "c"]}, n1ql, update], execute}),
+    TestOne("cluster.collection[:s:c].n1ql.update!execute",
+            {[{collection, ["", "s", "c"]}, n1ql, update], execute}),
+    TestOne("cluster.collection[::].n1ql.update!execute",
+            {[{collection, ["", "", ""]}, n1ql, update], execute}),
+    TestOne("cluster.collection[test:s:c].n1ql.update!execute",
+            {[{collection, ["test", "s", "c"]}, n1ql, update], execute}),
+    TestOne("cluster.scope[test:s].n1ql.update!execute",
+            {[{scope, ["test", "s"]}, n1ql, update], execute}),
+    TestOne("cluster.scope[test:].n1ql.update!execute",
+            {[{scope, ["test", ""]}, n1ql, update], execute}),
+
+    TestOne("cluster.scope[].n1ql.update!execute", error),
+    TestOne("cluster.scope[test].n1ql.update!execute", error),
+    TestOne("cluster.scope[test:s:c].n1ql.update!execute", error),
+    TestOne("cluster.scope[test::s].n1ql.update!execute", error),
+    TestOne("cluster.collection[].n1ql.update!execute", error),
+    TestOne("cluster.collection[test].n1ql.update!execute", error),
+    TestOne("cluster.collection[test:s].n1ql.update!execute", error),
+    TestOne("cluster.collection[test:s::c].n1ql.update!execute", error).
 
 format_permissions_test() ->
     Permissions = [{[{bucket, any}, views], write},
