@@ -171,11 +171,12 @@ basic_stats(BucketName) ->
     [{quotaPercentUsed, lists:min([QuotaPercent, 100])}
      | Stats].
 
+stats_read_permission(BucketName) ->
+    {[{bucket, BucketName}, stats], read}.
+
 handle_overview_stats(_PoolId, Req) ->
     BucketNamesUnsorted =
-        menelaus_auth:get_accessible_buckets(fun (BucketName) ->
-                                                     {[{bucket, BucketName}, stats], read}
-                                             end, Req),
+        menelaus_auth:get_accessible_buckets(fun stats_read_permission/1, Req),
 
     Names = lists:sort(BucketNamesUnsorted),
     {ClientTStamp, Window} = parse_stats_params([{"zoom", "hour"}]),
@@ -200,6 +201,36 @@ handle_bucket_stats(_PoolId, Id, Req) ->
     PropList1 = build_bucket_stats_ops_response(all, Id, Params, true),
     PropList2 = build_bucket_stats_hks_response(Id),
     menelaus_util:reply_json(Req, {struct, PropList1 ++ PropList2}).
+
+check_bucket(BucketName, Req) ->
+    Permission = stats_read_permission(BucketName),
+    case menelaus_auth:has_permission(Permission, Req) of
+        true ->
+            case lists:member(BucketName, ns_bucket:get_bucket_names()) of
+                true ->
+                    ok;
+                _ ->
+                    not_found
+            end;
+        false ->
+            case ns_bucket:is_valid_bucket_name(BucketName) of
+                true ->
+                    {forbidden, Permission};
+                {error, _} ->
+                    not_found
+            end
+    end.
+
+with_valid_bucket(Fun, Bucket, Req) ->
+    case check_bucket(Bucket, Req) of
+        ok ->
+            Fun();
+        not_found ->
+            menelaus_util:reply_not_found(Req);
+        {forbidden, Permission} ->
+            menelaus_util:reply_json(
+              Req, menelaus_web_rbac:forbidden_response(Permission), 403)
+    end.
 
 handle_stats_section(_PoolId, Id, Req) ->
     case section_exists(Id) of
@@ -2581,17 +2612,15 @@ grab_ui_stats(Kind, Nodes, HaveStamp, Wnd) ->
 %%
 serve_ui_stats(Req) ->
     Params = mochiweb_request:parse_qs(Req),
-    case lists:member(proplists:get_value("bucket", Params), ns_bucket:get_bucket_names()) of
-        true ->
-            case proplists:get_value("statName", Params) of
-                undefined ->
-                    serve_aggregated_ui_stats(Req, Params);
-                StatName ->
-                    serve_specific_ui_stats(Req, StatName, Params)
-            end;
-        _ ->
-            menelaus_util:reply_not_found(Req)
-    end.
+    with_valid_bucket(
+      fun () ->
+              case proplists:get_value("statName", Params) of
+                  undefined ->
+                      serve_aggregated_ui_stats(Req, Params);
+                  StatName ->
+                      serve_specific_ui_stats(Req, StatName, Params)
+              end
+      end, proplists:get_value("bucket", Params), Req).
 
 extract_ui_stats_params(Params) ->
     Bucket = proplists:get_value("bucket", Params),

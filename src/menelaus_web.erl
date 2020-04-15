@@ -221,7 +221,8 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["pools", "default", "overviewStats"] ->
                     {{[{bucket, any}, stats], read}, fun menelaus_stats:handle_overview_stats/2, ["default"]};
                 ["_uistats"] ->
-                    {{[stats], read}, fun menelaus_stats:serve_ui_stats/1};
+                    {{[ui], read},
+                     fun menelaus_stats:serve_ui_stats/1};
                 ["_uiEnv"] ->
                     {done, serve_ui_env(Req)};
                 ["poolsStreaming", "default"] ->
