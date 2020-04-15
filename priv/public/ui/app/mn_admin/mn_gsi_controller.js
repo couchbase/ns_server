@@ -1,6 +1,5 @@
 import angular from "/ui/web_modules/angular.js";
 import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
-import {format} from "/ui/web_modules/d3-format.js";
 
 import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnHelper from "/ui/app/components/mn_helper.js";
@@ -19,6 +18,7 @@ import mnStatisticsNewService from "./mn_statistics_service.js";
 import mnGsiService from "./mn_gsi_service.js";
 
 import {mnGsiItemController, mnGsiItemStatsController, mnGsiItemDetails} from "./mn_gsi_item_details.js";
+import mnFooterStatsController from "./mn_footer_stats_controller.js";
 import mnGsiTableDirective from "./mn_gsi_table_directive.js";
 
 export default 'mnGsi';
@@ -61,49 +61,4 @@ function mnGsiController($scope, mnGsiService, mnPoller) {
       .reloadOnScopeEvent("indexStatusURIChanged")
       .cycle();
   }
-}
-
-function mnFooterStatsController($scope, mnStatisticsNewService, mnPermissions) {
-  var vm = this;
-  vm.currentBucket = mnPermissions.export.bucketNames['.stats!read'] &&
-    mnPermissions.export.bucketNames['.stats!read'][0];
-  vm.onSelectBucket = onSelectBucket;
-
-  vm.getLatestStat = getLatestStat;
-  vm.getLatestStatExponent = getLatestStatExponent;
-
-  var config = {
-    bucket: vm.currentBucket,
-    node: "all",
-    zoom: 3000,
-    step: 1,
-    stats: $scope.stats
-  };
-
-  activate();
-
-  function activate() {
-    mnStatisticsNewService.subscribeUIStatsPoller(config, $scope);
-  }
-
-  function getLatestStat(statName) {
-    return $scope.mnUIStats &&
-      $scope.mnUIStats.stats[statName] &&
-      $scope.mnUIStats.stats[statName].aggregate.slice().reverse().find(stat => stat != null);
-  }
-
-  function getLatestStatExponent(statName, digits) {
-    var value = getLatestStat(statName);
-    if (value) {
-      return(format('.'+digits+'e')(value));
-    } else {
-      return value;
-    }
-  }
-
-  function onSelectBucket() {
-    config.bucket = vm.currentBucket;
-    mnStatisticsNewService.heartbeat.throttledReload();
-  }
-
 }
