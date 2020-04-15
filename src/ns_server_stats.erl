@@ -123,7 +123,7 @@ handle_call({process_stats, TS, Bin, PrevSample}, _From, State) ->
 
 handle_call({extract, Query, Start, End, Step, Timeout}, _From, State) ->
     Settings = prometheus_cfg:settings(),
-    Res = prometheus:range_query(Query, Start, End, Step, Timeout, Settings),
+    Res = prometheus:query_range(Query, Start, End, Step, Timeout, Settings),
     {reply, Res, State};
 
 handle_call(_Request, _From, State) ->

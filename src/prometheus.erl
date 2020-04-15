@@ -3,9 +3,9 @@
 -include("ns_common.hrl").
 -include("../lhttpc/lhttpc.hrl").
 
--export([range_query/6, format_value/1, parse_value/1]).
+-export([query_range/6, format_value/1, parse_value/1]).
 
-range_query(Query, Start, End, Step, Timeout, Settings) ->
+query_range(Query, Start, End, Step, Timeout, Settings) ->
     Addr = proplists:get_value(listen_addr, Settings),
     URL = io_lib:format("http://~s/api/v1/query_range", [Addr]),
     Body = mochiweb_util:urlencode(
