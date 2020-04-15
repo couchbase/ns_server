@@ -76,7 +76,7 @@ recv_data(Port) ->
 
 recv_data_loop(Port, <<Version:32/native,
                        StructSize:32/native, _/binary>> = Acc)
-  when Version =:= 4 ->
+  when Version =:= 5 ->
     recv_data_with_length(Port, Acc, StructSize - erlang:size(Acc));
 recv_data_loop(_, <<Version:32/native, _/binary>>) ->
     error({unsupported_portsigar_version, Version});
@@ -115,6 +115,7 @@ unpack_data({Bin, LocalStats}, PrevSample, State) ->
       MemUsed:64/native,
       MemActualUsed:64/native,
       MemActualFree:64/native,
+      AllocStall:64/native,
       Rest/binary>> = Bin,
 
     StructSize = erlang:size(Bin),
@@ -164,7 +165,8 @@ unpack_data({Bin, LocalStats}, PrevSample, State) ->
                      {mem_used_sys, MemUsed},
                      {mem_actual_used, MemActualUsed},
                      {mem_actual_free, MemActualFree},
-                     {mem_free, MemActualFree}]
+                     {mem_free, MemActualFree},
+                     {allocstall, AllocStall}]
         end,
 
     {{NowSamplesGlobal, NowSamplesProcs}, {Counters, PrevSampleProcs1}}.

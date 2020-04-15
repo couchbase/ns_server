@@ -362,7 +362,7 @@ current_status_slow_inner() ->
                          || N <- [cpu_utilization_rate, cpu_stolen_rate,
                                   swap_total, swap_used,
                                   mem_total, mem_free, mem_limit,
-                                  cpu_cores_available]]},
+                                  cpu_cores_available, allocstall]]},
          {interesting_stats, InterestingStats},
          {per_bucket_interesting_stats, PerBucketInterestingStats},
          {processes_stats, InterestingProcessesStats},
