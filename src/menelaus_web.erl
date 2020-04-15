@@ -782,7 +782,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                       drop_prefix(mochiweb_request:get(raw_path, Req)),
                       Plugins]};
                 ["_uistats"] ->
-                    {{[stats], read},
+                    {{[ui], read},
                      fun menelaus_stats:handle_ui_stats_post/1};
                 [?PLUGGABLE_UI, RestPrefix | _] ->
                     {no_check,

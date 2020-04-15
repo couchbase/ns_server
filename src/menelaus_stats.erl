@@ -2991,6 +2991,16 @@ do_retrieve_samples_from_archive({Period, Seconds, Count}, StatName,
 -define(MIN_TS, -?MAX_TS).
 
 handle_ui_stats_post(Req) ->
+    Permission = stats_read_permission(any),
+    case menelaus_auth:has_permission(Permission, Req) of
+        true ->
+            do_handle_ui_stats_post(Req);
+        false ->
+            menelaus_util:reply_json(
+              Req, menelaus_web_rbac:forbidden_response(Permission))
+    end.
+
+do_handle_ui_stats_post(Req) ->
     validator:handle(
       fun (List) ->
               LocalAddr = menelaus_util:local_addr(Req),
@@ -3083,7 +3093,7 @@ prepare_ui_stats(SamplesForStatsAndNodes) ->
 ui_stats_post_validators(Req) ->
     Now = os:system_time(millisecond),
     [validator:string(bucket, _),
-     validate_bucket(bucket, _),
+     validate_bucket(bucket, Req, _),
      validator:required(stats, _),
      validator:string_array(stats, _),
      validator:string(statName, _),
@@ -3118,15 +3128,16 @@ validate_negative_ts(Name, Now, State) ->
               ok
       end, Name, State).
 
-validate_bucket(Name, State) ->
+validate_bucket(Name, Req, State) ->
     validator:validate(
       fun (BucketName) ->
-              case lists:member(BucketName,
-                                ns_bucket:get_bucket_names()) of
-                  true ->
+              case check_bucket(BucketName, Req) of
+                  ok ->
                       ok;
-                  false ->
-                      {error, "Bucket not found"}
+                  not_found ->
+                      {error, "Bucket not found"};
+                  {forbidden, Permission} ->
+                      {error, {403, Permission}}
               end
       end, Name, State).
 
