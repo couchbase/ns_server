@@ -31,6 +31,7 @@
          get_service_counters/0,
          compute_gauges/1,
          compute_service_gauges/1,
+         compute_version/2,
          split_stat_name/1,
          is_started/0]).
 
@@ -155,6 +156,9 @@ compute_service_gauges(Stats) ->
 
 compute_gauges(_Gauges) ->
     [].
+
+compute_version(Items, IsStale) ->
+    erlang:phash2({Items, IsStale}).
 
 split_stat_name(X) ->
     X.

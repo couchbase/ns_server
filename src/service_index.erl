@@ -26,7 +26,7 @@
 -export([get_type/0, get_remote_items/1, get_local_status/0, restart/0,
          get_gauges/0, get_counters/0, get_computed/0, grab_stats/0,
          compute_gauges/1, get_service_gauges/0, compute_service_gauges/1,
-         get_service_counters/0, process_status/1,
+         get_service_counters/0, process_status/1, compute_version/2,
          split_stat_name/1, is_started/0]).
 
 get_status(Timeout) ->
@@ -130,6 +130,22 @@ compute_index_ram_usage_stats(Stats) ->
 
 compute_gauges(Gauges) ->
     compute_disk_overhead_estimates(Gauges).
+
+compute_version_ignored_items() ->
+    [lastScanTime, progress].
+
+compute_version(Items, IsStale) ->
+    %% Don't include items that change frequently and are "unimportant"
+    %% wrt determining whether or not a change has occurred.  This is done
+    %% to avoid unnecessary change notifications.
+    Items0 = lists:map(
+               fun (ItemList) ->
+                       lists:foldl(
+                         fun (Key, Acc) ->
+                                 lists:keydelete(Key, 1, Acc)
+                         end, ItemList, compute_version_ignored_items())
+               end, Items),
+    erlang:phash2({Items0, IsStale}).
 
 split_stat_name(Name) ->
     binary:split(Name, <<":">>, [global]).
