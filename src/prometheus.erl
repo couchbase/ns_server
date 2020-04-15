@@ -11,7 +11,7 @@ query_range(Query, Start, End, Step, Timeout, Settings) ->
     Body = mochiweb_util:urlencode(
              [{query, Query}, {start, Start}, {'end', End},
               {step, integer_to_list(Step) ++ "s"},
-              {timeout, integer_to_list(Timeout) ++ "s"}]),
+              {timeout, integer_to_list(max(Timeout div 1000, 1)) ++ "s"}]),
     Headers = [{"Content-Type", "application/x-www-form-urlencoded"}],
     case post(lists:flatten(URL), Headers, Body, 5000) of
         {ok, json, {Data}} ->
