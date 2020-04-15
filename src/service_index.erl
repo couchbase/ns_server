@@ -203,4 +203,29 @@ compute_disk_overhead_estimates_test() ->
     Expected = lists:keysort(1, Expected0),
 
     ?assertEqual(Expected, Out).
+
+compute_version_test() ->
+    ItemsWithLst = [[{storageMode,<<"plasma">>},
+                     {progress,100},
+                     {hosts,[<<"127.0.0.1:9000">>]},
+                     {lastScanTime,<<"Mon Sep 23 11:07:30 PDT 2019">>},
+                     {index,<<"beer_primary">>}],
+                    [{storageMode,<<"plasma">>},
+                     {progress,55},
+                     {hosts,[<<"127.0.0.1:9001">>]},
+                     {lastScanTime,<<"Mon Sep 23 12:11:22 PDT 2019">>},
+                     {index,<<"def_airportname">>}]],
+    ItemsRedactedLst = [[{storageMode,<<"plasma">>},
+                         {hosts,[<<"127.0.0.1:9000">>]},
+                         {index,<<"beer_primary">>}],
+                        [{storageMode,<<"plasma">>},
+                         {hosts,[<<"127.0.0.1:9001">>]},
+                         {index,<<"def_airportname">>}]],
+    LstVersion = compute_version(ItemsWithLst, false),
+    NoLstVersion = compute_version(ItemsRedactedLst, false),
+    Direct = erlang:phash2({ItemsRedactedLst, false}),
+
+    ?assertEqual(LstVersion, NoLstVersion),
+    ?assertEqual(LstVersion, Direct).
+
 -endif.
