@@ -476,7 +476,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, internal], all},
                      fun menelaus_web_rbac:handle_check_permission_for_cbauth/1};
                 ["_prometheusMetrics"] ->
-                    {{[stats], read},
+                    {{[admin, internal, stats], read},
                      fun menelaus_web_prometheus:handle_get_metrics/1};
                 ["ui", "pluggable-uis.js"] ->
                     {ui, IsSSL, fun menelaus_pluggable_ui:handle_pluggable_uis_js/3,

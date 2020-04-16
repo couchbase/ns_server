@@ -365,8 +365,7 @@ roles() ->
 
 internal_roles() ->
     [{stats_reader, [], [],
-      [{[{bucket, any}, stats], [read]},
-       {[stats], [read]}]}].
+      [{[admin, internal, stats], [read]}]}].
 
 -spec get_definitions(all | public) -> [rbac_role_def(), ...].
 get_definitions(Type) ->

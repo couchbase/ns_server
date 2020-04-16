@@ -59,11 +59,13 @@ collection_permissions_to_check([B, S, C]) ->
 
 bucket_permissions_to_check(Bucket) ->
     [{{[{bucket, Bucket}, stats], read},        'SimpleStats'},
+     {{[admin, internal, stats], read},         'SimpleStats'},
      {{[{bucket, Bucket}, data, dcp], read},    'DcpProducer'},
      {{[{bucket, Bucket}, data, dcp], write},   'DcpConsumer'}].
 
 global_permissions_to_check() ->
     [{{[stats, memcached], read},           'Stats'},
+     {{[admin, internal, stats], read},     'Stats'},
      {{[buckets], create},                  'BucketManagement'},
      {{[admin, memcached, node], write},    'NodeManagement'},
      {{[admin, memcached, session], write}, 'SessionManagement'},
@@ -440,11 +442,12 @@ permissions_for_user_test_() ->
         [{"test", [{uuid, <<"test_id">>}]},
          {"default", [{uuid, <<"default_id">>},
                       {collections_manifest, Manifest}]}],
-    AllGlobalPermissions = [P || {_, P} <- global_permissions_to_check()],
+    AllGlobalPermissions =
+        lists:usort([P || {_, P} <- global_permissions_to_check()]),
     AllCollectionPermissions =
-        [P || {_, P} <- collection_permissions_to_check([x, x, x])],
+        lists:usort([P || {_, P} <- collection_permissions_to_check([x, x, x])]),
     AllBucketPermissions =
-        [P || {_, P} <- bucket_permissions_to_check(undefined)] ++
+        lists:usort([P || {_, P} <- bucket_permissions_to_check(undefined)]) ++
         AllCollectionPermissions,
     FullReadCollections =
         [P || {{[_, data | _], read}, P}
