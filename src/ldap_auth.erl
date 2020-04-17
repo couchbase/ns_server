@@ -55,9 +55,14 @@ authenticate_with_cause(Username, Password, Settings) ->
     end.
 
 with_query_connection(Settings, Fun) ->
-    DN = proplists:get_value(bind_dn, Settings),
-    {password, Pass} = proplists:get_value(bind_pass, Settings),
-    ldap_util:with_authenticated_connection(DN, Pass, Settings, Fun).
+    case ldap_util:client_cert_auth_enabled(Settings) of
+        true ->
+            ldap_util:with_connection(Settings, Fun);
+        false ->
+            DN = proplists:get_value(bind_dn, Settings),
+            {password, Pass} = proplists:get_value(bind_pass, Settings),
+            ldap_util:with_authenticated_connection(DN, Pass, Settings, Fun)
+    end.
 
 lookup_user(Username) ->
     Settings = ldap_util:build_settings(),
