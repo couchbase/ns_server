@@ -232,19 +232,22 @@ with_valid_bucket(Fun, Bucket, Req) ->
               Req, menelaus_web_rbac:forbidden_response(Permission), 403)
     end.
 
-handle_stats_section(_PoolId, Id, Req) ->
-    case section_exists(Id) of
-        true ->
-            do_handle_stats_section(Id, Req);
-        false ->
-            menelaus_util:reply_not_found(Req)
+with_valid_section_id(Fun, Id, Req) ->
+    case section_bucket(Id) of
+        undefined ->
+            Fun();
+        BucketName ->
+            with_valid_bucket(Fun, BucketName, Req)
     end.
 
-do_handle_stats_section(Id, Req) ->
-    Params = mochiweb_request:parse_qs(Req),
-    PropList1 = build_bucket_stats_ops_response(all, Id, Params, false),
-    menelaus_util:reply_json(Req, {struct, PropList1}).
-
+handle_stats_section(_PoolId, Id, Req) ->
+    with_valid_section_id(
+      fun () ->
+              Params = mochiweb_request:parse_qs(Req),
+              PropList1 =
+                  build_bucket_stats_ops_response(all, Id, Params, false),
+              menelaus_util:reply_json(Req, {struct, PropList1})
+      end, Id, Req).
 
 %% Per-Node Stats
 %% GET /pools/{PoolID}/buckets/{Id}/nodes/{NodeId}/stats
@@ -279,12 +282,16 @@ handle_stats_section_for_node(_PoolId, Id, HostName, Req) ->
         {error, {invalid_node, Reason}} ->
             menelaus_util:reply_text(Req, Reason, 400);
         {ok, Node} ->
-            case section_exists(Id) andalso lists:member(Node, section_nodes(Id)) of
-                true ->
-                    do_handle_stats_section_for_node(Id, HostName, Node, Req);
-                false ->
-                    menelaus_util:reply_not_found(Req)
-            end
+            with_valid_section_id(
+              fun () ->
+                      case lists:member(Node, section_nodes(Id)) of
+                          true ->
+                              do_handle_stats_section_for_node(
+                                Id, HostName, Node, Req);
+                          false ->
+                              menelaus_util:reply_not_found(Req)
+                      end
+              end, Id, Req)
     end.
 
 do_handle_stats_section_for_node(Id, HostName, Node, Req) ->
@@ -659,21 +666,16 @@ is_persistent("@"++_) ->
 is_persistent(BucketName) ->
     ns_bucket:is_persistent(BucketName).
 
-bucket_exists(Bucket) ->
-    ns_bucket:get_bucket(Bucket) =/= not_present.
-
-section_exists("@system") ->
-    true;
-section_exists("@xdcr-"++Bucket) ->
-    bucket_exists(Bucket);
-section_exists(Section) ->
+section_bucket("@system") ->
+    undefined;
+section_bucket("@xdcr-"++Bucket) ->
+    Bucket;
+section_bucket(Section) ->
     case describe_section(Section) of
         undefined ->
-            bucket_exists(Section);
-        {_Service, undefined} ->
-            true;
+            Section;
         {_Service, Bucket} ->
-            bucket_exists(Bucket)
+            Bucket
     end.
 
 grab_system_aggregate_op_stats(all, ClientTStamp, Window) ->
