@@ -9,7 +9,7 @@ angular
   .module('mnSessionService', [mnAuthService, mnPoolDefault])
   .factory('mnSessionService', mnSessionFactory);
 
-function mnSessionFactory($http, $window, $timeout, mnAuthService, $interval, mnPoolDefault) {
+function mnSessionFactory($http, $window, $timeout, mnAuthService, $interval, mnPoolDefault, $uibModal) {
   var mnSession = {
     post: post,
     get: get,

@@ -27,7 +27,6 @@ import mnTasksDetails from "/ui/app/components/mn_tasks_details.js";
 import mnSessionService from "/ui/app/components/mn_session.js";
 import mnLogsService from "./mn_logs_service.js";
 
-import mnInternalSettings from "./mn_internal_settings_controller.js";
 import mnLostConnection from "./mn_lost_connection_config.js";
 import mnPoorMansAlerts from "./mn_poor_mans_alerts_controller.js"
 
@@ -56,7 +55,6 @@ angular.module('mnAdmin', [
 
   mnLaunchpad,
   mnPluggableUiRegistry,
-  mnInternalSettings,
   mnLostConnection,
   mnPoorMansAlerts,
   mnPermissions,

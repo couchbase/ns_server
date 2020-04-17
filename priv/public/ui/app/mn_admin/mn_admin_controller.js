@@ -4,7 +4,7 @@ import saveAs from "/ui/web_modules/file-saver.js";
 
 export default mnAdminController;
 
-function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnSettingsNotificationsService, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnPoorMansAlertsService, mnLostConnectionService, mnPermissions, mnPools, mnMemoryQuotaService, mnResetPasswordDialogService, whoami, mnBucketsService, $q, mnSessionService, mnServersService, mnSettingsClusterService, mnLogsService) {
+function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnSettingsNotificationsService, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnPoorMansAlertsService, mnLostConnectionService, mnPermissions, mnPools, mnMemoryQuotaService, mnResetPasswordDialogService, whoami, mnBucketsService, $q, mnSessionService, mnServersService, mnSettingsClusterService, mnLogsService, $ocLazyLoad) {
   var vm = this;
 
   vm.poolDefault = poolDefault;
@@ -69,10 +69,14 @@ function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsServic
   }
 
   function runInternalSettingsDialog() {
-    $uibModal.open({
-      templateUrl: "app/mn_admin/mn_internal_settings.html",
-      controller: "mnInternalSettingsController as internalSettingsCtl"
-    });
+    import('/ui/app/mn_admin/mn_internal_settings_controller.js')
+      .then(function () {
+        $ocLazyLoad.load({name: 'mnInternalSettings'});
+        $uibModal.open({
+          templateUrl: "app/mn_admin/mn_internal_settings.html",
+          controller: "mnInternalSettingsController as internalSettingsCtl"
+        });
+      });
   }
 
   function toggleProgressBar() {
