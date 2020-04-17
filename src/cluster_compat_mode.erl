@@ -37,6 +37,9 @@
          is_cluster_65/0,
          is_cluster_65/1,
          is_version_65/1,
+         is_cluster_66/0,
+         is_cluster_66/1,
+         is_version_66/1,
          is_cluster_cheshirecat/0,
          is_cluster_cheshirecat/1,
          is_version_cheshirecat/1,
@@ -140,6 +143,15 @@ is_cluster_65() ->
 
 is_cluster_65(Config) ->
     is_enabled(Config, ?VERSION_65).
+
+is_version_66(ClusterVersion) ->
+    is_enabled_at(ClusterVersion, ?VERSION_66).
+
+is_cluster_66() ->
+    is_cluster_66(ns_config:latest()).
+
+is_cluster_66(Config) ->
+    is_enabled(Config, ?VERSION_66).
 
 is_version_cheshirecat(ClusterVersion) ->
     is_enabled_at(ClusterVersion, ?VERSION_CHESHIRECAT).

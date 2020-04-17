@@ -222,6 +222,7 @@
 -define(VERSION_55, [5, 5]).
 -define(VERSION_60, [6, 0]).
 -define(VERSION_65, [6, 5]).
+-define(VERSION_66, [6, 6]).
 -define(VERSION_CHESHIRECAT, [7, 0]).
 
 %% Points to latest release
