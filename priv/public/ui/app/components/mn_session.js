@@ -2,11 +2,12 @@ import angular from "/ui/web_modules/angular.js";
 import mnAuthService from "/ui/app/mn_auth/mn_auth_service.js";
 import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
 import _ from "/ui/web_modules/lodash.js";
+import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
 
 export default 'mnSessionService';
 
 angular
-  .module('mnSessionService', [mnAuthService, mnPoolDefault])
+  .module('mnSessionService', [mnAuthService, mnPoolDefault, uiBootstrap])
   .factory('mnSessionService', mnSessionFactory);
 
 function mnSessionFactory($http, $window, $timeout, mnAuthService, $interval, mnPoolDefault, $uibModal) {
