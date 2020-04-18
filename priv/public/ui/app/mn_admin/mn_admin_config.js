@@ -37,13 +37,9 @@ import mnResetPasswordDialogService from "./mn_reset_password_dialog_service.js"
 import mnSettingsNotificationsService from "./mn_settings_notifications_service.js"
 import uiSelect from "/ui/web_modules/ui-select.js";
 
-import eventingUI from "/_p/ui/event/ui-current/eventing.js";
-
 export default 'mnAdmin';
 
 angular.module('mnAdmin', [
-  eventingUI,
-
   ngAnimate,
   uiBootstrap,
   uiRouter,
