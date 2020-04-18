@@ -134,20 +134,8 @@ validate_plugin_spec(KVs, Plugins) ->
     ServiceName = binary_to_atom(get_element(<<"service">>, KVs), latin1),
     ProxyStrategy = decode_proxy_strategy(get_element(<<"proxy-strategy">>,
                                                       KVs)),
-    Prefixes = get_element(<<"rest-api-prefixes">>, KVs,
-                           decode_prefixes(ServiceName, _), undefined),
-
-    %% Backward compatibility code
-    %% remove this code when all the services switch to using
-    %% rest-api-prefixes instead of rest-api-prefix
-    RestApiPrefixes = case Prefixes of
-                          undefined ->
-                              decode_obsolete_prefixes(
-                                get_element(<<"rest-api-prefix">>, KVs),
-                                ServiceName);
-                          _ -> Prefixes
-                      end,
-    %% End of backward compatibility code
+    RestApiPrefixes = decode_prefixes(ServiceName,
+                                      get_element(<<"rest-api-prefixes">>, KVs)),
     DocRoots = decode_docroots(get_element(<<"doc-root">>, KVs)),
     VersionDirs = get_element(<<"version-dirs">>, KVs,
                               fun decode_version_dirs/1, []),
@@ -196,10 +184,6 @@ decode_prefixes(Service, {KeyValues}) ->
                               port_name_by_service_name(Service)),
               {Prefix, #prefix_props{port_name = Port}}
       end, KeyValues).
-
-decode_obsolete_prefixes(PrefixBin, Service) ->
-    Prefix = binary_to_list(PrefixBin),
-    [{Prefix, #prefix_props{port_name = port_name_by_service_name(Service)}}].
 
 valid_service(ServiceName) ->
     lists:member(ServiceName,
