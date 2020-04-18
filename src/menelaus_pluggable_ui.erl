@@ -134,8 +134,9 @@ validate_plugin_spec(KVs, Plugins) ->
     ServiceName = binary_to_atom(get_element(<<"service">>, KVs), latin1),
     ProxyStrategy = decode_proxy_strategy(get_element(<<"proxy-strategy">>,
                                                       KVs)),
-    Prefixes = get_element(<<"rest-api-prefixes">>, KVs, fun decode_prefixes/1,
-                           undefined),
+    Prefixes = get_element(<<"rest-api-prefixes">>, KVs,
+                           decode_prefixes(ServiceName, _), undefined),
+
     %% Backward compatibility code
     %% remove this code when all the services switch to using
     %% rest-api-prefixes instead of rest-api-prefix
@@ -186,11 +187,13 @@ check_prefix_uniqueness(Prefixes, Plugins) ->
         _  -> {error, {duplicates, Duplicates}}
     end.
 
-decode_prefixes({KeyValues}) ->
+decode_prefixes(Service, {KeyValues}) ->
     lists:map(
       fun ({PrefixBin, {Props}}) ->
               Prefix = binary_to_list(PrefixBin),
-              Port = binary_to_atom(get_element(<<"portName">>, Props), latin1),
+              Port =
+                  get_element(<<"portName">>, Props, binary_to_atom(_, latin1),
+                              port_name_by_service_name(Service)),
               {Prefix, #prefix_props{port_name = Port}}
       end, KeyValues).
 
