@@ -198,7 +198,7 @@ angular.module('mnSettingsNotificationsService', [
 
       // analytics
       stats.analytics = analytics;
-
+      var i;
       for(i in poolsDefault.nodes) {
         stats.nodes.os.push(poolsDefault.nodes[i].os);
         stats.nodes.uptime.push(poolsDefault.nodes[i].uptime);

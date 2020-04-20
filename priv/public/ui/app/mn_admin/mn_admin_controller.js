@@ -4,7 +4,7 @@ import saveAs from "/ui/web_modules/file-saver.js";
 
 export default mnAdminController;
 
-function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnSettingsNotificationsService, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnPoorMansAlertsService, mnLostConnectionService, mnPermissions, mnPools, mnMemoryQuotaService, mnResetPasswordDialogService, whoami, mnBucketsService, $q, mnSessionService, mnServersService, mnSettingsClusterService, mnLogsService, $ocLazyLoad) {
+function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnPoorMansAlertsService, mnLostConnectionService, mnPermissions, mnPools, mnMemoryQuotaService, mnResetPasswordDialogService, whoami, mnBucketsService, $q, mnSessionService, mnServersService, mnSettingsClusterService, mnLogsService, $ocLazyLoad, $injector) {
   var vm = this;
 
   vm.poolDefault = poolDefault;
@@ -131,14 +131,7 @@ function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsServic
     mnSessionService.init($scope);
 
     if (mnPermissions.export.cluster.settings.read) {
-      mnPromiseHelper(vm, mnSettingsNotificationsService.maybeCheckUpdates({group: "global"}))
-        .applyToScope("updates")
-        .onSuccess(function (updates) {
-          if (updates.sendStats) {
-            mnPromiseHelper(vm, mnSettingsNotificationsService.buildPhoneHomeThingy({group: "global"}))
-              .applyToScope("launchpadSource")
-          }
-        });
+      loadAndRunLauchpad($ocLazyLoad, $injector, vm);
     }
 
     var etagPoller = new mnEtagPoller($scope, function (previous) {
@@ -394,5 +387,17 @@ function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsServic
         }
       });
     });
+  }
+}
+
+async function loadAndRunLauchpad($ocLazyLoad, $injector, vm) {
+  await import("/ui/app/mn_admin/mn_settings_notifications_service.js");
+  await $ocLazyLoad.load({name: 'mnSettingsNotificationsService'});
+  var mnSettingsNotificationsService = $injector.get('mnSettingsNotificationsService');
+
+  vm.updates = await mnSettingsNotificationsService.maybeCheckUpdates({group: "global"});
+  if (vm.updates.sendStats) {
+    vm.launchpadSource = await mnSettingsNotificationsService
+      .buildPhoneHomeThingy({group: "global"})
   }
 }

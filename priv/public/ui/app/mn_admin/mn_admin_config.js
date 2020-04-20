@@ -17,6 +17,8 @@ import mnMemoryQuotaService from "/ui/app/components/directives/mn_memory_quota/
 import mnLogsCollectInfoService from "/ui/app/mn_admin/mn_logs_collect_info_service.js";
 import mnLaunchpad from "/ui/app/components/directives/mn_launchpad.js";
 import mnPluggableUiRegistry from "/ui/app/components/mn_pluggable_ui_registry.js";
+import mnSettingsAutoFailoverService from "/ui/app/mn_admin/mn_settings_auto_failover_service.js";
+import mnSettingsClusterService from "/ui/app/mn_admin/mn_settings_cluster_service.js";
 
 import mnAuthService from "/ui/app/mn_auth/mn_auth_service.js";
 import mnClusterConfigurationService from "/ui/app/mn_wizard/mn_cluster_configuration/mn_cluster_configuration_service.js";
@@ -33,7 +35,6 @@ import mnPoorMansAlerts from "./mn_poor_mans_alerts_controller.js"
 import mnResetPasswordDialog from "./mn_reset_password_dialog_controller.js"
 import mnResetPasswordDialogService from "./mn_reset_password_dialog_service.js";
 
-import mnSettingsNotificationsService from "./mn_settings_notifications_service.js"
 import uiSelect from "/ui/web_modules/ui-select.js";
 
 export default 'mnAdmin';
@@ -64,8 +65,9 @@ angular.module('mnAdmin', [
   mnResetPasswordDialogService,
   mnSessionService,
   mnClusterConfigurationService,
-  mnSettingsNotificationsService,
-  mnMemoryQuotaService
+  mnMemoryQuotaService,
+  mnSettingsAutoFailoverService,
+  mnSettingsClusterService
 ]).config(mnAdminConfig)
   .controller('mnAdminController', mnAdminController);
 

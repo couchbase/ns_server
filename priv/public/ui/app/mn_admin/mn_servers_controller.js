@@ -30,6 +30,7 @@ import mnServersListItemDetailsService from "./mn_servers_list_item_details_serv
 import mnGsiService from "./mn_gsi_service.js";
 import mnGroupsService from "./mn_groups_service.js";
 import mnRootCertificateService from "./mn_root_certificate_service.js";
+import mnStatisticsNewService from "./mn_statistics_service.js";
 
 import mnServersMemoryQuotaDialogController from "./memory_quota_dialog_controller.js";
 import mnServersListItemDetailsController from "./mn_servers_list_item_details_controller.js";
@@ -69,7 +70,8 @@ angular
     mnServersListItemDetailsService,
     mnGsiService,
     mnGroupsService,
-    mnRootCertificateService
+    mnRootCertificateService,
+    mnStatisticsNewService
   ])
   .config(configure)
   .controller('mnServersController', mnServersController)
