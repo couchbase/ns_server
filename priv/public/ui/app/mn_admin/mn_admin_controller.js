@@ -4,7 +4,7 @@ import saveAs from "/ui/web_modules/file-saver.js";
 
 export default mnAdminController;
 
-function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnPoorMansAlertsService, mnLostConnectionService, mnPermissions, mnPools, mnMemoryQuotaService, mnResetPasswordDialogService, whoami, mnBucketsService, $q, mnSessionService, mnServersService, mnSettingsClusterService, mnLogsService, $ocLazyLoad, $injector) {
+function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnPoorMansAlertsService, mnLostConnectionService, mnPermissions, mnPools, mnMemoryQuotaService, whoami, mnBucketsService, $q, mnSessionService, mnServersService, mnSettingsClusterService, mnLogsService, $ocLazyLoad, $injector) {
   var vm = this;
 
   vm.poolDefault = poolDefault;
@@ -58,8 +58,11 @@ function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsServic
     mnSettingsClusterService.postCancelRebalanceRetry(id);
   }
 
-  function showResetPasswordDialog() {
+  async function showResetPasswordDialog() {
     vm.showUserDropdownMenu = false;
+    await import('/ui/app/mn_admin/mn_reset_password_dialog_controller.js');
+    await $ocLazyLoad.load({name: 'mnResetPasswordDialog'});
+    var mnResetPasswordDialogService = $injector.get('mnResetPasswordDialogService');
     mnResetPasswordDialogService.showDialog(whoami);
   }
 

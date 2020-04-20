@@ -32,9 +32,6 @@ import mnLogsService from "./mn_logs_service.js";
 import mnLostConnection from "./mn_lost_connection_config.js";
 import mnPoorMansAlerts from "./mn_poor_mans_alerts_controller.js"
 
-import mnResetPasswordDialog from "./mn_reset_password_dialog_controller.js"
-import mnResetPasswordDialogService from "./mn_reset_password_dialog_service.js";
-
 import uiSelect from "/ui/web_modules/ui-select.js";
 
 export default 'mnAdmin';
@@ -61,8 +58,6 @@ angular.module('mnAdmin', [
   mnPermissions,
   mnElementCrane,
   mnDragAndDrop,
-  mnResetPasswordDialog,
-  mnResetPasswordDialogService,
   mnSessionService,
   mnClusterConfigurationService,
   mnMemoryQuotaService,
