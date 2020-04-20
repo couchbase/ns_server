@@ -1192,7 +1192,7 @@ list_to_rbac_atom(List) ->
     end.
 
 parse_permission(RawPermission) ->
-    case string:tokens(RawPermission, "!") of
+    case string:split(RawPermission, "!", all) of
         [Object, Operation] ->
             case parse_object(Object) of
                 error ->
@@ -1262,7 +1262,7 @@ parse_vertex_params(collection, ParamsStr) ->
     end.
 
 parse_permissions(Body) ->
-    RawPermissions = string:tokens(Body, ","),
+    RawPermissions = string:split(Body, ",", all),
     lists:map(fun (RawPermission) ->
                       Trimmed = string:trim(RawPermission),
                       {Trimmed, parse_permission(Trimmed)}
@@ -1754,11 +1754,15 @@ parse_permissions_test() ->
                 ?assertEqual([{String, Expected}], parse_permissions(String))
         end,
 
+    ?assertEqual([{"", error}], parse_permissions("")),
+    ?assertEqual([{"", error}, {"", error}], parse_permissions(",")),
+
     ?assertEqual(
-       [{"cluster.admin!write", {[admin], write}},
+       [{"", error},
+        {"cluster.admin!write", {[admin], write}},
         {"cluster.admin", error},
         {"admin!write", error}],
-       parse_permissions("cluster.admin!write, cluster.admin, admin!write")),
+       parse_permissions(",cluster.admin!write, cluster.admin, admin!write")),
     ?assertEqual(
        [{"cluster.bucket[test.test]!read", {[{bucket, "test.test"}], read}},
         {"cluster.bucket[test.test].stats!read",
@@ -1767,6 +1771,7 @@ parse_permissions_test() ->
                          "cluster.bucket[test.test].stats!read ")),
 
     TestOne("cluster.bucket[].stats!read", {[{bucket, ""}, stats], read}),
+    TestOne("cluster.bucket[].stats!!read", error),
     TestOne("cluster.bucket[.].stats!read", {[{bucket, any}, stats], read}),
 
     TestOne("cluster.no_such_atom!no_such_atom", {['_unknown_'], '_unknown_'}),
