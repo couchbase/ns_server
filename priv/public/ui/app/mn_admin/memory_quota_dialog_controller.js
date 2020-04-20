@@ -1,8 +1,21 @@
+import angular from "/ui/web_modules/angular.js";
 import _ from "/ui/web_modules/lodash.js";
+import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
+import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
+import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
+import mnSettingsClusterService from "/ui/app/mn_admin/mn_settings_cluster_service.js";
 
-export default mnServersMemoryQuotaDialogController;
+export default 'mnMemoryQuotaDialogController';
 
-function mnServersMemoryQuotaDialogController(indexSettings, $q, mnPoolDefault, $uibModalInstance, mnSettingsClusterService, memoryQuotaConfig, mnPromiseHelper, firstTimeAddedServices) {
+angular.module('mnMemoryQuotaDialogController', [
+  uiBootstrap,
+  mnPoolDefault,
+  mnPromiseHelper,
+  mnSettingsClusterService
+])
+  .controller('mnMemoryQuotaDialogController', mnMemoryQuotaDialogController)
+
+function mnMemoryQuotaDialogController($q, $uibModalInstance, mnPoolDefault, mnPromiseHelper, mnSettingsClusterService, indexSettings, memoryQuotaConfig, firstTimeAddedServices) {
   var vm = this;
   vm.config = memoryQuotaConfig;
   vm.isEnterprise = mnPoolDefault.latestValue().value.isEnterprise;

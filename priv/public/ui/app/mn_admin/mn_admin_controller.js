@@ -4,7 +4,7 @@ import saveAs from "/ui/web_modules/file-saver.js";
 
 export default mnAdminController;
 
-function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnPoorMansAlertsService, mnLostConnectionService, mnPermissions, mnPools, mnMemoryQuotaService, whoami, mnBucketsService, $q, mnSessionService, mnServersService, mnSettingsClusterService, mnLogsService, $ocLazyLoad, $injector) {
+function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnPoorMansAlertsService, mnLostConnectionService, mnPermissions, mnPools, whoami, mnBucketsService, $q, mnSessionService, mnServersService, mnSettingsClusterService, mnLogsService, $ocLazyLoad, $injector) {
   var vm = this;
 
   vm.poolDefault = poolDefault;
@@ -360,35 +360,46 @@ function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsServic
     });
     $rootScope.$broadcast("reloadBucketStats");
 
-    $scope.$on("maybeShowMemoryQuotaDialog", function (event, services) {
-      return mnPoolDefault.get().then(function (poolsDefault) {
-        var servicesToCheck = ["index", "fts"];
-        if (poolsDefault.isEnterprise) {
-          servicesToCheck = servicesToCheck.concat(["cbas", "eventing"]);
+    $scope.$on("maybeShowMemoryQuotaDialog",
+               loadAndRunMemoryQuotaDialog($uibModal, $ocLazyLoad, $injector, mnPoolDefault));
+  }
+}
+
+function loadAndRunMemoryQuotaDialog($uibModal, $ocLazyLoad, $injector, mnPoolDefault) {
+  return async function (event, services) {
+    var poolsDefault = await mnPoolDefault.get();
+    var servicesToCheck = ["index", "fts"];
+    if (poolsDefault.isEnterprise) {
+      servicesToCheck = servicesToCheck.concat(["cbas", "eventing"]);
+    }
+    await import("/ui/app/components/directives/mn_memory_quota/mn_memory_quota_service.js");
+    await $ocLazyLoad.load({name: 'mnMemoryQuotaService'});
+    var mnMemoryQuotaService = $injector.get('mnMemoryQuotaService');
+
+    var firstTimeAddedServices =
+        mnMemoryQuotaService.getFirstTimeAddedServices(servicesToCheck,
+                                                       services, poolsDefault.nodes);
+    if (!firstTimeAddedServices.count) {
+      return;
+    }
+    await import("/ui/app/mn_admin/memory_quota_dialog_controller.js");
+    await $ocLazyLoad.load({name: 'mnMemoryQuotaDialogController'});
+    $uibModal.open({
+      windowTopClass: "without-titlebar-close",
+      backdrop: 'static',
+      templateUrl: 'app/mn_admin/memory_quota_dialog.html',
+      controller: 'mnMemoryQuotaDialogController as memoryQuotaDialogCtl',
+      resolve: {
+        memoryQuotaConfig: function (mnMemoryQuotaService) {
+          return mnMemoryQuotaService.memoryQuotaConfig(services, true, false);
+        },
+        indexSettings: function (mnSettingsClusterService) {
+          return mnSettingsClusterService.getIndexSettings();
+        },
+        firstTimeAddedServices: function() {
+          return firstTimeAddedServices;
         }
-        var firstTimeAddedServices =
-            mnMemoryQuotaService
-            .getFirstTimeAddedServices(servicesToCheck, services, poolsDefault.nodes);
-        if (firstTimeAddedServices.count) {
-          $uibModal.open({
-            windowTopClass: "without-titlebar-close",
-            backdrop: 'static',
-            templateUrl: 'app/mn_admin/memory_quota_dialog.html',
-            controller: 'mnServersMemoryQuotaDialogController as serversMemoryQuotaDialogCtl',
-            resolve: {
-              memoryQuotaConfig: function (mnMemoryQuotaService) {
-                return mnMemoryQuotaService.memoryQuotaConfig(services, true, false);
-              },
-              indexSettings: function (mnSettingsClusterService) {
-                return mnSettingsClusterService.getIndexSettings();
-              },
-              firstTimeAddedServices: function() {
-                return firstTimeAddedServices;
-              }
-            }
-          });
-        }
-      });
+      }
     });
   }
 }

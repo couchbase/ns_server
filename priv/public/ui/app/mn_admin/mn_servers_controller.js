@@ -32,7 +32,6 @@ import mnGroupsService from "./mn_groups_service.js";
 import mnRootCertificateService from "./mn_root_certificate_service.js";
 import mnStatisticsNewService from "./mn_statistics_service.js";
 
-import mnServersMemoryQuotaDialogController from "./memory_quota_dialog_controller.js";
 import mnServersListItemDetailsController from "./mn_servers_list_item_details_controller.js";
 import mnServersListItemController from "./mn_servers_list_item_controller.js";
 import mnServersFailOverDialogController from "./mn_servers_failover_dialog_controller.js";
@@ -75,7 +74,6 @@ angular
   ])
   .config(configure)
   .controller('mnServersController', mnServersController)
-  .controller('mnServersMemoryQuotaDialogController', mnServersMemoryQuotaDialogController)
   .controller('mnServersListItemDetailsController', mnServersListItemDetailsController)
   .controller("mnServersListItemController", mnServersListItemController)
   .controller('mnServersFailOverDialogController', mnServersFailOverDialogController)
