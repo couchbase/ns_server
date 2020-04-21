@@ -4,7 +4,7 @@ import saveAs from "/ui/web_modules/file-saver.js";
 
 export default mnAdminController;
 
-function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnLostConnectionService, mnPermissions, mnPools, whoami, mnBucketsService, $q, mnSessionService, mnServersService, mnSettingsClusterService, mnLogsService, $ocLazyLoad, $injector) {
+function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnLostConnectionService, mnPermissions, mnPools, whoami, mnBucketsService, $q, mnServersService, mnSettingsClusterService, mnLogsService, $ocLazyLoad, $injector) {
   var vm = this;
 
   vm.poolDefault = poolDefault;
@@ -131,7 +131,7 @@ function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsServic
         .cycle();
     }
 
-    mnSessionService.init($scope);
+    loadAndRunSessionService($ocLazyLoad, $injector, $scope);
 
     if (mnPermissions.export.cluster.settings.read) {
       loadAndRunLauchpad($ocLazyLoad, $injector, vm);
@@ -335,11 +335,6 @@ function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsServic
       mnPermissions.getFresh();
     });
 
-    $scope.$on("newSessionTimeout", function (e, uiSessionTimeout) {
-      mnSessionService.setTimeout(uiSessionTimeout);
-      mnSessionService.resetTimeoutAndSyncAcrossTabs();
-    });
-
     $scope.$on("reloadTasksPoller", function (event, params) {
       if (!params || !params.doNotShowSpinner) {
         vm.showTasksSpinner = true;
@@ -363,6 +358,17 @@ function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsServic
     $scope.$on("maybeShowMemoryQuotaDialog",
                loadAndRunMemoryQuotaDialog($uibModal, $ocLazyLoad, $injector, mnPoolDefault));
   }
+}
+
+async function loadAndRunSessionService($ocLazyLoad, $injector, $scope) {
+  await import("/ui/app/components/mn_session.js");
+  await $ocLazyLoad.load({name: 'mnSessionService'});
+  var mnSessionService = $injector.get('mnSessionService');
+  mnSessionService.init($scope);
+  $scope.$on("newSessionTimeout", function (e, uiSessionTimeout) {
+    mnSessionService.setTimeout(uiSessionTimeout);
+    mnSessionService.resetTimeoutAndSyncAcrossTabs();
+  });
 }
 
 function loadAndRunMemoryQuotaDialog($uibModal, $ocLazyLoad, $injector, mnPoolDefault) {

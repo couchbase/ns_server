@@ -25,7 +25,6 @@ import mnPermissions from "/ui/app/components/mn_permissions.js";
 import mnElementCrane from "/ui/app/components/directives/mn_element_crane/mn_element_crane.js";
 import mnDragAndDrop from "/ui/app/components/directives/mn_drag_and_drop.js";
 import mnTasksDetails from "/ui/app/components/mn_tasks_details.js";
-import mnSessionService from "/ui/app/components/mn_session.js";
 import mnLogsService from "./mn_logs_service.js";
 
 import mnLostConnection from "./mn_lost_connection_config.js";
@@ -46,6 +45,7 @@ angular.module('mnAdmin', [
   mnPoolDefault,
   mnLogsCollectInfoService,
   mnLogsService,
+  mnAuthService,
 
   mnTasksDetails,
 
@@ -55,7 +55,6 @@ angular.module('mnAdmin', [
   mnPermissions,
   mnElementCrane,
   mnDragAndDrop,
-  mnSessionService,
   mnClusterConfigurationService,
   mnSettingsAutoFailoverService,
   mnSettingsClusterService
