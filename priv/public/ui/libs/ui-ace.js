@@ -1,5 +1,7 @@
 import angular from '/ui/web_modules/angular.js';
-import ace from './ace/ace-wrapper.js';
+import './ace/ace-loader.js';
+import ace from './ace/ace.js';
+
 
 /**
  * Binds a ACE Editor widget
