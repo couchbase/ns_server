@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2018 Couchbase, Inc.
+%% @copyright 2009-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -55,6 +55,8 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
      {"conflict_resolution_type", [],
       ns_bucket:conflict_resolution_type(BucketConfig)},
      {"bucket_type", [], storage_mode_to_bucket_type(StorageMode)},
+     {"durability_min_level", [{reload, flush}],
+      ns_bucket:durability_min_level(BucketConfig)},
      {"hlc_drift_ahead_threshold_us", [no_param, {reload, vbucket}],
       DriftAheadThreshold},
      {"hlc_drift_behind_threshold_us", [no_param, {reload, vbucket}],

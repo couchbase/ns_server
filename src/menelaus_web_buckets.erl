@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2019 Couchbase, Inc.
+%% @copyright 2009-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -242,6 +242,20 @@ build_eviction_policy(BucketConfig) ->
             <<"nruEviction">>
     end.
 
+build_durability_min_level(BucketConfig) ->
+    case ns_bucket:durability_min_level(BucketConfig) of
+        undefined ->
+            <<"none">>;
+        none ->
+            <<"none">>;
+        majority ->
+            <<"majority">>;
+        majority_and_persist_on_master ->
+            <<"majorityAndPersistActive">>;
+        persist_to_majority ->
+            <<"persistToMajority">>
+    end.
+
 build_bucket_info(Id, undefined, InfoLevel, LocalAddr, MayExposeAuth,
                   SkipMap) ->
     {ok, BucketConfig} = ns_bucket:get_bucket(Id),
@@ -264,6 +278,7 @@ build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
 
     EvictionPolicy = build_eviction_policy(BucketConfig),
     ConflictResolutionType = ns_bucket:conflict_resolution_type(BucketConfig),
+    DurabilityMinLevel = build_durability_min_level(BucketConfig),
 
     Suffix = case InfoLevel of
                  streaming ->
@@ -287,6 +302,7 @@ build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
                                             {rawRAM, ns_bucket:raw_ram_quota(BucketConfig)}]}},
                           {basicStats, {struct, BasicStats}},
                           {evictionPolicy, EvictionPolicy},
+                          {durabilityMinLevel, DurabilityMinLevel},
                           {conflictResolutionType, ConflictResolutionType}
                           | BucketCaps],
 
@@ -508,6 +524,7 @@ extract_bucket_props(Props) ->
     [X || X <-
               [lists:keyfind(Y, 1, Props) ||
                   Y <- [num_replicas, replica_index, ram_quota, auth_type,
+                        durability_min_level,
                         sasl_password, moxi_port, autocompaction,
                         purge_interval, flush_enabled, num_threads,
                         eviction_policy, conflict_resolution_type,
@@ -931,6 +948,8 @@ validate_membase_bucket_params(CommonParams, Params,
          parse_validate_eviction_policy(Params, BucketConfig, IsNew),
          quota_size_error(CommonParams, membase, IsNew, BucketConfig),
          get_storage_mode(Params, BucketConfig, IsNew),
+         parse_validate_durability_min_level(Params, BucketConfig, IsNew,
+                                             Version),
          parse_validate_max_ttl(Params, BucketConfig,
                                 IsNew, Version, IsEnterprise),
          parse_validate_compression_mode(Params, BucketConfig,
@@ -1111,6 +1130,15 @@ validate_replicas_number(Params, IsNew) ->
       IsNew,
       fun parse_validate_replicas_number/1).
 
+is_ephemeral(Params, _BucketConfig, true = _IsNew) ->
+    case proplists:get_value("bucketType", Params, "membase") of
+        "membase" -> false;
+        "couchbase" -> false;
+        "ephemeral" -> true
+    end;
+is_ephemeral(_Params, BucketConfig, false = _IsNew) ->
+    ns_bucket:is_ephemeral_bucket(BucketConfig).
+
 %% The 'bucketType' parameter of the bucket create REST API will be set to
 %% 'ephemeral' by user. As this type, in many ways, is similar in functionality
 %% to 'membase' buckets we have decided to not store this as a new bucket type
@@ -1119,17 +1147,55 @@ validate_replicas_number(Params, IsNew) ->
 %% Ideally we should store this as a new bucket type but the bucket_type is
 %% used/checked at multiple places and would need changes in all those places.
 %% Hence the above described approach.
-get_storage_mode(Params, _BucketConfig, true = _IsNew) ->
-    case proplists:get_value("bucketType", Params, "membase") of
-        "membase" ->
-            {ok, storage_mode, couchstore};
-        "couchbase" ->
-            {ok, storage_mode, couchstore};
-        "ephemeral" ->
-            {ok, storage_mode, ephemeral}
-    end;
-get_storage_mode(_Params, BucketConfig, false = _IsNew)->
-    {ok, storage_mode, ns_bucket:storage_mode(BucketConfig)}.
+get_storage_mode(Params, BucketConfig, IsNew) ->
+    case is_ephemeral(Params, BucketConfig, IsNew) of
+        true ->
+            {ok, storage_mode, ephemeral};
+        false ->
+            {ok, storage_mode, couchstore}
+    end.
+
+parse_validate_durability_min_level(Params, BucketConfig, IsNew, Version) ->
+    IsEphemeral = is_ephemeral(Params, BucketConfig, IsNew),
+    Level = proplists:get_value("durabilityMinLevel", Params),
+    IsCompat = cluster_compat_mode:is_version_66(Version),
+    do_parse_validate_durability_min_level(IsEphemeral, Level, IsNew, IsCompat).
+
+do_parse_validate_durability_min_level(_IsEphemeral, Level, _IsNew,
+                                       false = _IsCompat)
+  when Level =/= undefined ->
+    {error, durability_min_level,
+     <<"Durability minimum level cannot be set until cluster is fully 6.6">>};
+do_parse_validate_durability_min_level(false = _IsEphemeral, Level, IsNew,
+                                       _IsCompat) ->
+    validate_with_missing(Level, "none", IsNew,
+      fun parse_validate_membase_durability_min_level/1);
+do_parse_validate_durability_min_level(true = _IsEphemeral, Level, IsNew,
+                                       _IsCompat) ->
+    validate_with_missing(Level, "none", IsNew,
+      fun parse_validate_ephemeral_durability_min_level/1).
+
+parse_validate_membase_durability_min_level("none") ->
+    {ok, durability_min_level, none};
+parse_validate_membase_durability_min_level("majority") ->
+    {ok, durability_min_level, majority};
+parse_validate_membase_durability_min_level("majorityAndPersistActive") ->
+    {ok, durability_min_level, majorityAndPersistActive};
+parse_validate_membase_durability_min_level("persistToMajority") ->
+    {ok, durability_min_level, persistToMajority};
+parse_validate_membase_durability_min_level(_Other) ->
+    {error, durability_min_level,
+     <<"Durability minimum level must be one of 'none', 'majority', "
+       "'majorityAndPersistActive', or 'persistToMajority'">>}.
+
+parse_validate_ephemeral_durability_min_level("none") ->
+    {ok, durability_min_level, none};
+parse_validate_ephemeral_durability_min_level("majority") ->
+    {ok, durability_min_level, majority};
+parse_validate_ephemeral_durability_min_level(_Other) ->
+    {error, durability_min_level,
+     <<"Durability minimum level must be either 'none' or 'majority' for "
+       "ephemeral buckets">>}.
 
 get_conflict_resolution_type_and_thresholds(Params, _BucketConfig, true = IsNew) ->
     case proplists:get_value("conflictResolutionType", Params) of
@@ -1405,23 +1471,20 @@ parse_validate_threads_number(NumThreads) ->
     end.
 
 parse_validate_eviction_policy(Params, BCfg, IsNew) ->
-    BType = case IsNew of
-                     true -> proplists:get_value("bucketType", Params, "membase");
-                     false -> atom_to_list(external_bucket_type(BCfg))
-                 end,
-    do_parse_validate_eviction_policy(Params, BCfg, BType, IsNew).
+    IsEphemeral = is_ephemeral(Params, BCfg, IsNew),
+    do_parse_validate_eviction_policy(Params, BCfg, IsEphemeral, IsNew).
 
-do_parse_validate_eviction_policy(Params, BCfg, "couchbase", IsNew) ->
-    do_parse_validate_eviction_policy(Params, BCfg, "membase", IsNew);
-do_parse_validate_eviction_policy(Params, _BCfg, "membase", IsNew) ->
+do_parse_validate_eviction_policy(Params, _BCfg, false = _IsEphemeral, IsNew) ->
     validate_with_missing(proplists:get_value("evictionPolicy", Params),
                           "valueOnly", IsNew,
                           fun parse_validate_membase_eviction_policy/1);
-do_parse_validate_eviction_policy(Params, _BCfg, "ephemeral", true = IsNew) ->
+do_parse_validate_eviction_policy(Params, _BCfg, true = _IsEphemeral,
+                                  true = IsNew) ->
     validate_with_missing(proplists:get_value("evictionPolicy", Params),
                           "noEviction", IsNew,
                           fun parse_validate_ephemeral_eviction_policy/1);
-do_parse_validate_eviction_policy(Params, BCfg, "ephemeral", false = _IsNew) ->
+do_parse_validate_eviction_policy(Params, BCfg, true = _IsEphemeral,
+                                  false = _IsNew) ->
     case proplists:get_value("evictionPolicy", Params) of
         undefined ->
             ignore;

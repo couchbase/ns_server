@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2019 Couchbase, Inc.
+%% @copyright 2009-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@
          create_bucket/3,
          credentials/1,
          delete_bucket/1,
+         durability_min_level/1,
          failover_warnings/0,
          get_bucket/1,
          get_bucket/2,
@@ -42,6 +43,7 @@
          get_buckets/0,
          get_buckets/1,
          is_persistent/1,
+         is_ephemeral_bucket/1,
          is_valid_bucket_name/1,
          json_map_from_config/2,
          json_map_with_full_config/3,
@@ -189,6 +191,24 @@ storage_mode(BucketConfig) ->
             undefined;
         membase ->
             proplists:get_value(storage_mode, BucketConfig, couchstore)
+    end.
+
+durability_min_level(BucketConfig) ->
+    case bucket_type(BucketConfig) of
+        memcached ->
+            undefined;
+        membase ->
+            case proplists:get_value(durability_min_level, BucketConfig,
+                                     none) of
+                none ->
+                    none;
+                majority ->
+                    majority;
+                majorityAndPersistActive ->
+                    majority_and_persist_on_master;
+                persistToMajority ->
+                    persist_to_majority
+            end
     end.
 
 %% returns bucket ram quota multiplied by number of nodes this bucket
@@ -654,6 +674,12 @@ is_persistent(BucketName) ->
     {ok, BucketConfig} = get_bucket(BucketName),
     bucket_type(BucketConfig) =:= membase andalso
         storage_mode(BucketConfig) =:= couchstore.
+
+is_ephemeral_bucket(BucketConfig) ->
+    case storage_mode(BucketConfig) of
+        ephemeral -> true;
+        couchstore -> false
+    end.
 
 names_conflict(BucketNameA, BucketNameB) ->
     string:to_lower(BucketNameA) =:= string:to_lower(BucketNameB).
