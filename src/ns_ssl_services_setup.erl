@@ -598,8 +598,22 @@ trigger_ssl_reload(Event, Services, #state{reload_state = ReloadState} = State) 
 
 do_generate_local_cert(CertPEM, PKeyPEM, Node) ->
     Host = misc:extract_node_address(node()),
+    SANArg =
+        case misc:is_raw_ip(Host) of
+            true -> "--san-ip-addrs=" ++ Host;
+            false -> "--san-dns-names=" ++ Host
+        end,
+
+    %% CN can't be longer than 64 characters. Since it will be used for
+    %% displaying purposing only, it doesn't make sense to make it even
+    %% that long
+    HostShortened = case string:slice(Host, 0, 20) of
+                        Host -> Host;
+                        Shortened -> Shortened ++ "..."
+                    end,
     Args = ["--generate-leaf",
-            "--common-name=" ++ Host],
+            "--common-name=Couchbase Server Node (" ++ HostShortened ++ ")",
+            SANArg],
     Env = [{"CACERT", binary_to_list(CertPEM)},
            {"CAPKEY", binary_to_list(PKeyPEM)}],
     {LocalCert, LocalPKey} = ns_server_cert:do_generate_cert_and_pkey(Args, Env),
