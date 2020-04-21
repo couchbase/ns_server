@@ -29,7 +29,6 @@ import mnSessionService from "/ui/app/components/mn_session.js";
 import mnLogsService from "./mn_logs_service.js";
 
 import mnLostConnection from "./mn_lost_connection_config.js";
-import mnPoorMansAlerts from "./mn_poor_mans_alerts_controller.js"
 
 import uiSelect from "/ui/web_modules/ui-select.js";
 
@@ -53,7 +52,6 @@ angular.module('mnAdmin', [
   mnLaunchpad,
   mnPluggableUiRegistry,
   mnLostConnection,
-  mnPoorMansAlerts,
   mnPermissions,
   mnElementCrane,
   mnDragAndDrop,
@@ -155,5 +153,4 @@ function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider, mnPluggableUi
         title: "Statistics Overview"
       }
     });
-
 }

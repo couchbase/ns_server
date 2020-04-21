@@ -4,7 +4,7 @@ import saveAs from "/ui/web_modules/file-saver.js";
 
 export default mnAdminController;
 
-function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnPoorMansAlertsService, mnLostConnectionService, mnPermissions, mnPools, whoami, mnBucketsService, $q, mnSessionService, mnServersService, mnSettingsClusterService, mnLogsService, $ocLazyLoad, $injector) {
+function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnLostConnectionService, mnPermissions, mnPools, whoami, mnBucketsService, $q, mnSessionService, mnServersService, mnSettingsClusterService, mnLogsService, $ocLazyLoad, $injector) {
   var vm = this;
 
   vm.poolDefault = poolDefault;
@@ -169,8 +169,8 @@ function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsServic
         $rootScope.$broadcast("indexStatusURIChanged");
       }
 
-      if (!_.isEqual(resp.alerts, (previous || {}).alerts)) {
-        mnPoorMansAlertsService.maybeShowAlerts(resp);
+      if (!_.isEqual(resp.alerts, (previous || {}).alerts || [])) {
+        loadAndRunPoorMansAlertsDialog($ocLazyLoad, $injector, resp);
       }
 
       var version = mnPrettyVersionFilter(pools.implementationVersion);
@@ -382,6 +382,7 @@ function loadAndRunMemoryQuotaDialog($uibModal, $ocLazyLoad, $injector, mnPoolDe
     if (!firstTimeAddedServices.count) {
       return;
     }
+
     await import("/ui/app/mn_admin/memory_quota_dialog_controller.js");
     await $ocLazyLoad.load({name: 'mnMemoryQuotaDialogController'});
     $uibModal.open({
@@ -402,6 +403,13 @@ function loadAndRunMemoryQuotaDialog($uibModal, $ocLazyLoad, $injector, mnPoolDe
       }
     });
   }
+}
+
+async function loadAndRunPoorMansAlertsDialog($ocLazyLoad, $injector, resp) {
+  await import("/ui/app/mn_admin/mn_poor_mans_alerts_controller.js");
+  await $ocLazyLoad.load({name: 'mnPoorMansAlerts'});
+  var mnPoorMansAlertsService = $injector.get('mnPoorMansAlertsService');
+  mnPoorMansAlertsService.maybeShowAlerts(resp);
 }
 
 async function loadAndRunLauchpad($ocLazyLoad, $injector, vm) {
