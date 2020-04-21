@@ -4,7 +4,7 @@ import saveAs from "/ui/web_modules/file-saver.js";
 
 export default mnAdminController;
 
-function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnLostConnectionService, mnPermissions, mnPools, whoami, mnBucketsService, $q, mnServersService, mnSettingsClusterService, mnLogsService, $ocLazyLoad, $injector) {
+function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnLostConnectionService, mnPermissions, mnPools, whoami, mnBucketsService, $q, mnServersService, mnSettingsClusterService, $ocLazyLoad, $injector) {
   var vm = this;
 
   vm.poolDefault = poolDefault;
@@ -17,7 +17,7 @@ function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsServic
   vm.filterTasks = filterTasks;
   vm.showResetPasswordDialog = showResetPasswordDialog;
   vm.postCancelRebalanceRetry = postCancelRebalanceRetry;
-  vm.showClusterInfoDialog = mnLogsService.showClusterInfoDialog;
+  vm.showClusterInfoDialog = showClusterInfoDialog;
   vm.isDeveloperPreview = pools.isDeveloperPreview;
 
   vm.user = whoami;
@@ -56,6 +56,13 @@ function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsServic
 
   function postCancelRebalanceRetry(id) {
     mnSettingsClusterService.postCancelRebalanceRetry(id);
+  }
+
+  async function showClusterInfoDialog() {
+    await import('/ui/app/mn_admin/mn_logs_service.js');
+    await $ocLazyLoad.load({name: 'mnLogsService'});
+    var mnLogsService = $injector.get('mnLogsService');
+    mnLogsService.showClusterInfoDialog();
   }
 
   async function showResetPasswordDialog() {
