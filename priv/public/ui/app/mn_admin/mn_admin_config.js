@@ -13,7 +13,6 @@ import mnPoll from "/ui/app/components/mn_poll.js";
 import mnFilters from "/ui/app/components/mn_filters.js";
 import mnHelper from "/ui/app/components/mn_helper.js";
 import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
-import mnLogsCollectInfoService from "/ui/app/mn_admin/mn_logs_collect_info_service.js";
 import mnLaunchpad from "/ui/app/components/directives/mn_launchpad.js";
 import mnPluggableUiRegistry from "/ui/app/components/mn_pluggable_ui_registry.js";
 import mnSettingsAutoFailoverService from "/ui/app/mn_admin/mn_settings_auto_failover_service.js";
@@ -42,7 +41,6 @@ angular.module('mnAdmin', [
   mnFilters,
   mnAlertsService,
   mnPoolDefault,
-  mnLogsCollectInfoService,
   mnAuthService,
 
   mnTasksDetails,

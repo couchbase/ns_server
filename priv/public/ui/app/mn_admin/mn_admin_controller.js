@@ -4,7 +4,7 @@ import saveAs from "/ui/web_modules/file-saver.js";
 
 export default mnAdminController;
 
-function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnLostConnectionService, mnPermissions, mnPools, whoami, mnBucketsService, $q, mnServersService, mnSettingsClusterService, $ocLazyLoad, $injector) {
+function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnLostConnectionService, mnPermissions, mnPools, whoami, mnBucketsService, $q, mnSettingsClusterService, $ocLazyLoad, $injector) {
   var vm = this;
 
   vm.poolDefault = poolDefault;
@@ -73,7 +73,10 @@ function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsServic
     mnResetPasswordDialogService.showDialog(whoami);
   }
 
-  function postStopRebalance() {
+  async function postStopRebalance() {
+    await import('/ui/app/mn_admin/mn_servers_service.js');
+    await $ocLazyLoad.load({name: 'mnServersService'});
+    var mnServersService = $injector.get('mnServersService');
     return mnPromiseHelper(vm, mnServersService.stopRebalanceWithConfirm())
       .broadcast("reloadServersPoller");
   }
