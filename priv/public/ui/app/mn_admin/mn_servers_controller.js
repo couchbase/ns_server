@@ -38,6 +38,8 @@ import mnServersFailOverDialogController from "./mn_servers_failover_dialog_cont
 import mnServersEjectDialogController from "./mn_servers_eject_dialog_controller.js";
 import mnServersAddDialogController from "./mn_servers_add_dialog_controller.js";
 import mnMultipleFailoverDialogController from "./mn_multiple_failover_dialog.js";
+import mnClusterConfigurationService from "/ui/app/mn_wizard/mn_cluster_configuration/mn_cluster_configuration_service.js";
+
 
 export default "mnServers";
 
@@ -70,7 +72,8 @@ angular
     mnGsiService,
     mnGroupsService,
     mnRootCertificateService,
-    mnStatisticsNewService
+    mnStatisticsNewService,
+    mnClusterConfigurationService
   ])
   .config(configure)
   .controller('mnServersController', mnServersController)

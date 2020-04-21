@@ -19,7 +19,6 @@ import mnSettingsAutoFailoverService from "/ui/app/mn_admin/mn_settings_auto_fai
 import mnSettingsClusterService from "/ui/app/mn_admin/mn_settings_cluster_service.js";
 
 import mnAuthService from "/ui/app/mn_auth/mn_auth_service.js";
-import mnClusterConfigurationService from "/ui/app/mn_wizard/mn_cluster_configuration/mn_cluster_configuration_service.js";
 import mnPermissions from "/ui/app/components/mn_permissions.js";
 import mnElementCrane from "/ui/app/components/directives/mn_element_crane/mn_element_crane.js";
 import mnDragAndDrop from "/ui/app/components/directives/mn_drag_and_drop.js";
@@ -51,7 +50,6 @@ angular.module('mnAdmin', [
   mnPermissions,
   mnElementCrane,
   mnDragAndDrop,
-  mnClusterConfigurationService,
   mnSettingsAutoFailoverService,
   mnSettingsClusterService
 ]).config(mnAdminConfig)
