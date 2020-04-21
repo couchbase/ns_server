@@ -29,6 +29,7 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -81,10 +82,14 @@ func init() {
 func main() {
 	var genereateLeaf bool
 	var commonName string
+	var sanIPAddrsArg string
+	var sanDNSNamesArg string
 	var useSha1 bool
 
 	flag.StringVar(&commonName, "common-name", "*", "common name field of certificate (hostname)")
-	flag.BoolVar(&genereateLeaf, "generate-leaf", false, "whether to generate leaf certificat (passing ca cert and pkey via environment variables)")
+	flag.StringVar(&sanIPAddrsArg, "san-ip-addrs", "", "Subject Alternative Name IP addresses (comma separated)")
+	flag.StringVar(&sanDNSNamesArg, "san-dns-names", "", "Subject Alternative Name DNS names (comma separated)")
+	flag.BoolVar(&genereateLeaf, "generate-leaf", false, "whether to generate leaf certificate (passing ca cert and pkey via environment variables)")
 
 	flag.BoolVar(&useSha1, "use-sha1", false, "whether to use sha1 instead of default sha256 signature algorithm")
 
@@ -125,8 +130,21 @@ func main() {
 			BasicConstraintsValid: true,
 		}
 
-		if ip := net.ParseIP(commonName); ip != nil {
-			leafTemplate.IPAddresses = []net.IP{ip}
+		if sanIPAddrsArg != "" {
+			ips := []net.IP{}
+			ipStrings := strings.Split(sanIPAddrsArg, ",")
+			for _, s := range ipStrings {
+				ip := net.ParseIP(s)
+				if ip == nil {
+					log.Fatalf("can't parse address \"%s\"", s)
+				}
+				ips = append(ips, ip)
+			}
+			leafTemplate.IPAddresses = ips
+		}
+
+		if sanDNSNamesArg != "" {
+			leafTemplate.DNSNames = strings.Split(sanDNSNamesArg, ",")
 		}
 
 		certDer, err := x509.CreateCertificate(rand.Reader, &leafTemplate, caCert, &leafPKey.PublicKey, pkey)
