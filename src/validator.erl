@@ -114,11 +114,35 @@ prepare_params(#state{kv = Props, touched = Touched}) ->
                             end
                     end, Props).
 
+process_fatal_errors(Req, Errors) ->
+    case lists:keyfind(403, 1, [E || {_, E} <- Errors]) of
+        false ->
+            false;
+        {403, Permission} ->
+            menelaus_util:reply_json(
+              Req, menelaus_web_rbac:forbidden_response(Permission), 403),
+            true
+    end.
+
+jsonify_errors(Errors) ->
+    [{Name, iolist_to_binary(E)} || {Name, E} <- Errors].
+
 report_errors_for_multiple(Req, Errors, Code) ->
-    send_error_json(Req, [{struct, E} || E <- Errors], Code).
+    case process_fatal_errors(Req, lists:flatten(Errors)) of
+        true ->
+            ok;
+        false ->
+            send_error_json(Req, [{struct, jsonify_errors(E)} || E <- Errors],
+                            Code)
+    end.
 
 report_errors_for_one(Req, Errors, Code) ->
-    send_error_json(Req, {struct, Errors}, Code).
+    case process_fatal_errors(Req, Errors) of
+        true ->
+            ok;
+        false ->
+            send_error_json(Req, {struct, jsonify_errors(Errors)}, Code)
+    end.
 
 send_error_json(Req, Errors, Code) ->
     menelaus_util:reply_json(Req, {struct, [{errors, Errors}]}, Code).
@@ -182,8 +206,7 @@ return_value(Name, Value, #state{kv = Props} = State) ->
     State1#state{kv = lists:keystore(LName, 1, Props, {LName, Value})}.
 
 return_error(Name, Error, #state{errors = Errors} = State) ->
-    State#state{errors = [{name_to_list(Name),
-                           iolist_to_binary(Error)} | Errors]}.
+    State#state{errors = [{name_to_list(Name), Error} | Errors]}.
 
 validate(Fun, Name, State0) ->
     State = touch(Name, State0),
