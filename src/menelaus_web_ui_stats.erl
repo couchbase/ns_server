@@ -37,6 +37,8 @@ handle_ui_stats_post_v2(Req) ->
 ui_stats_post_validators_v2(Now, Req) ->
     [validator:required(query, _),
      validator:string(query, _),
+     validator:one_of(aggregate, [max, min, avg, sum, none], _),
+     validator:convert(aggregate, fun (L) -> binary_to_atom(L, latin1) end, _),
      validator:integer(start, ?MIN_TS, ?MAX_TS, _),
      validator:required(start, _),
      validator:integer('end', ?MIN_TS, ?MAX_TS, _),
@@ -74,6 +76,7 @@ validate_nodes_v2(Name, State, Req) ->
 
 extract_uistats(Now, Params, Req) ->
     Query = proplists:get_value(query, Params),
+    Aggregate = proplists:get_value(aggregate, Params, none),
     Start = proplists:get_value(start, Params),
     End = proplists:get_value('end', Params, Now),
     Step = proplists:get_value(step, Params),
@@ -104,7 +107,7 @@ extract_uistats(Now, Params, Req) ->
     Errors = [{[{node, MapNode(N)},
                 {error, format_error(R)}]} || {N, R} <- BadRes],
     NodeStats = [{MapNode(N), R} || {N, R} <- GoodRes],
-    {Timestamps, Stats} = merge_metrics(NodeStats),
+    {Timestamps, Stats} = merge_metrics(NodeStats, Aggregate),
     {[{timestamps, Timestamps},
       {stats, Stats},
       {errors, Errors}]}.
@@ -113,7 +116,7 @@ format_error(Bin) when is_binary(Bin) -> Bin;
 format_error({exit, {{nodedown, _}, _}}) -> <<"Node is down">>;
 format_error({exit, _}) -> <<"Unexpected server error">>.
 
-merge_metrics(Res) ->
+merge_metrics(Res, Aggregate) ->
     FlatList = [{maps:from_list(Metric), Node, Values} ||
                     {Node, Metrics} <- Res,
                     {Props} <- Metrics,
@@ -125,27 +128,28 @@ merge_metrics(Res) ->
 
     Stats = lists:map(
               fun ({M, L}) ->
-                  Values = {[{N, normalize_datapoints(Timestamps, V, [])}
-                                 || {_, N, V} <- L]},
-                  {[{<<"metric">>, {maps:to_list(M)}},
-                    {<<"values">>, Values}]}
+                  Values = [{N, normalize_datapoints(Timestamps, V, [])}
+                                 || {_, N, V} <- L],
+                  {[{<<"metric">>, {maps:to_list(M)}} |
+                    aggregate_datapoints(Aggregate, Values)]}
               end, misc:keygroup(1, lists:sort(FlatList))),
     {Timestamps, Stats}.
 
 -ifdef(TEST).
 
 merge_metrics_test() ->
-    ?assertEqual({[], []}, merge_metrics([])),
-    ?assertEqual({[], []}, merge_metrics([{node1, []}])),
+    Merge = fun (Data) -> merge_metrics(Data, none) end,
+    ?assertEqual({[], []}, Merge([])),
+    ?assertEqual({[], []}, Merge([{node1, []}])),
     ?assertEqual({[], [{[{<<"metric">>, {[{name, m1}]}},
                          {<<"values">>, {[{node1, []}]}}]}]},
-                 merge_metrics([{node1, [{[{<<"metric">>, {[{name, m1}]}},
-                                           {<<"values">>, []}]}]}])),
+                 Merge([{node1, [{[{<<"metric">>, {[{name, m1}]}},
+                                   {<<"values">>, []}]}]}])),
     ?assertEqual({[10,20], [{[{<<"metric">>, {[{name, m1}]}},
                               {<<"values">>, {[{node1, [v1, v2]}]}}]}]},
-                 merge_metrics([{node1, [{[{<<"metric">>, {[{name, m1}]}},
-                                           {<<"values">>, [[10,v1],
-                                                           [20,v2]]}]}]}])),
+                 Merge([{node1, [{[{<<"metric">>, {[{name, m1}]}},
+                                   {<<"values">>, [[10,v1],
+                                                   [20,v2]]}]}]}])),
     ?assertEqual(
         {[10,15,20,25,35,40],
          [
@@ -161,21 +165,21 @@ merge_metrics_test() ->
             {<<"values">>, {[{node2, [n2m3v1, <<"NaN">>, n2m3v2, <<"NaN">>,
                                       <<"NaN">>, <<"NaN">>]}]}}]}
          ]},
-         merge_metrics([{node1, [{[{<<"metric">>, {[{name, m1}]}},
-                                   {<<"values">>, [[10,n1m1v1],
-                                                   [20,n1m1v2]]}]},
-                                 {[{<<"metric">>, {[{name, m2}]}},
-                                   {<<"values">>, [[15,n1m2v1],
-                                                   [25,n1m2v2],
-                                                   [35,n1m2v3]]}]}]},
-                        {node2, [{[{<<"metric">>, {[{name, m2}]}},
-                                   {<<"values">>, [[15,n2m2v1],
-                                                   [20,n2m2v2],
-                                                   [35,n2m2v3],
-                                                   [40,n2m2v4]]}]},
-                                 {[{<<"metric">>, {[{name, m3}]}},
-                                   {<<"values">>, [[10,n2m3v1],
-                                                   [20,n2m3v2]]}]}]}])).
+         Merge([{node1, [{[{<<"metric">>, {[{name, m1}]}},
+                           {<<"values">>, [[10,n1m1v1],
+                                           [20,n1m1v2]]}]},
+                         {[{<<"metric">>, {[{name, m2}]}},
+                           {<<"values">>, [[15,n1m2v1],
+                                           [25,n1m2v2],
+                                           [35,n1m2v3]]}]}]},
+                {node2, [{[{<<"metric">>, {[{name, m2}]}},
+                           {<<"values">>, [[15,n2m2v1],
+                                           [20,n2m2v2],
+                                           [35,n2m2v3],
+                                           [40,n2m2v4]]}]},
+                         {[{<<"metric">>, {[{name, m3}]}},
+                           {<<"values">>, [[10,n2m3v1],
+                                           [20,n2m3v2]]}]}]}])).
 -endif.
 
 normalize_datapoints([], [], Acc) ->
@@ -184,6 +188,107 @@ normalize_datapoints([T | Tail1], [[T, V] | Tail2], Acc) ->
     normalize_datapoints(Tail1, Tail2, [V | Acc]);
 normalize_datapoints([_ | Tail1], Values, Acc) ->
     normalize_datapoints(Tail1, Values, [<<"NaN">> | Acc]).
+
+aggregate_datapoints(none, Datapoints) -> [{<<"values">>, {Datapoints}}];
+aggregate_datapoints(F, Datapoints) ->
+    {Nodes, DatapointsWithoutNodes} = lists:unzip(Datapoints),
+    Fun = fun (L) ->
+              Res = aggregate(F, [prometheus:parse_value(E) || E <- L]),
+              prometheus:format_value(Res)
+          end,
+    [{<<"values">>, misc:zipwithN(Fun, DatapointsWithoutNodes)},
+     {<<"nodes">>, Nodes}].
+
+aggregate(sum, List) -> foldl2(fun prometheus_sum/2, undefined, List);
+aggregate(max, List) -> foldl2(fun prometheus_max/2, undefined, List);
+aggregate(min, List) -> foldl2(fun prometheus_min/2, undefined, List);
+aggregate(avg, List) ->
+    case aggregate(sum, List) of
+        undefined -> undefined;
+        infinity -> infinity;
+        neg_infinity -> neg_infinity;
+        N -> N / length(List)
+    end.
+
+foldl2(_, Acc, []) -> Acc;
+foldl2(F, Acc, [E | Tail]) ->
+    case F(E, Acc) of
+        {stop, Res} -> Res;
+        {ok, NewAcc} -> foldl2(F, NewAcc, Tail)
+    end.
+
+-ifdef(TEST).
+
+aggregate_test() ->
+    ?assertEqual(undefined, aggregate(sum, [])),
+    ?assertEqual(undefined, aggregate(max, [])),
+    ?assertEqual(undefined, aggregate(min, [])),
+    ?assertEqual(undefined, aggregate(avg, [])).
+
+aggregate_randomized_test() ->
+    RandomList = fun (N, K, Extra) ->
+            L = lists:seq(1,N),
+            Undefined = lists:duplicate(K, undefined),
+            {lists:sum(L), misc:shuffle(L ++ Undefined ++ Extra)}
+        end,
+    lists:foreach(
+      fun (_) ->
+              N = rand:uniform(30),
+              K = rand:uniform(20),
+              {Sum, List} = RandomList(N, K, []),
+              ?assertEqual(Sum, aggregate(sum, List)),
+              ?assertEqual(N, aggregate(max, List)),
+              ?assertEqual(1, aggregate(min, List)),
+              ?assertEqual(Sum / length(List), aggregate(avg, List)),
+
+              {_, List2} = RandomList(N, K, [infinity]),
+              ?assertEqual(infinity, aggregate(sum, List2)),
+              ?assertEqual(infinity, aggregate(max, List2)),
+              ?assertEqual(1, aggregate(min, List2)),
+              ?assertEqual(infinity, aggregate(avg, List2)),
+
+              {_, List3} = RandomList(N, K, [neg_infinity]),
+              ?assertEqual(neg_infinity, aggregate(sum, List3)),
+              ?assertEqual(N, aggregate(max, List3)),
+              ?assertEqual(neg_infinity, aggregate(min, List3)),
+              ?assertEqual(neg_infinity, aggregate(avg, List3)),
+
+              {_, List4} = RandomList(N, K, lists:duplicate(3, neg_infinity) ++
+                                            lists:duplicate(3, infinity)),
+              ?assertEqual(undefined, aggregate(sum, List4)),
+              ?assertEqual(infinity, aggregate(max, List4)),
+              ?assertEqual(neg_infinity, aggregate(min, List4)),
+              ?assertEqual(undefined, aggregate(avg, List4))
+      end, lists:seq(1,1000)).
+-endif.
+
+prometheus_sum(undefined, V) -> {ok, V};
+prometheus_sum(V, undefined) -> {ok, V};
+prometheus_sum(infinity, neg_infinity) -> {stop, undefined};
+prometheus_sum(neg_infinity, infinity) -> {stop, undefined};
+prometheus_sum(infinity, _) -> {ok, infinity};
+prometheus_sum(_, infinity) -> {ok, infinity};
+prometheus_sum(neg_infinity, _) -> {ok, neg_infinity};
+prometheus_sum(_, neg_infinity) -> {ok, neg_infinity};
+prometheus_sum(V1, V2) -> {ok, V1 + V2}.
+
+prometheus_max(undefined, V) -> {ok, V};
+prometheus_max(V, undefined) -> {ok, V};
+prometheus_max(infinity, _) -> {stop, infinity};
+prometheus_max(_, infinity) -> {stop, infinity};
+prometheus_max(V, neg_infinity) -> {ok, V};
+prometheus_max(neg_infinity, V) -> {ok, V};
+prometheus_max(V1, V2) when V1 >= V2 -> {ok, V1};
+prometheus_max(_V1, V2) -> {ok, V2}.
+
+prometheus_min(undefined, V) -> {ok, V};
+prometheus_min(V, undefined) -> {ok, V};
+prometheus_min(neg_infinity, _) -> {stop, neg_infinity};
+prometheus_min(_, neg_infinity) -> {stop, neg_infinity};
+prometheus_min(V, infinity) -> {ok, V};
+prometheus_min(infinity, V) -> {ok, V};
+prometheus_min(V1, V2) when V1 >= V2 -> {ok, V2};
+prometheus_min(V1, _V2) -> {ok, V1}.
 
 validate_negative_ts(Name, Now, State) ->
     validator:validate(
