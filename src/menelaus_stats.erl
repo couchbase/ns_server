@@ -452,7 +452,7 @@ get_samples_for_system_or_bucket_stat(BucketName, StatName,
     calculate_stats(Stats).
 
 %% For many stats, their section can be identified by their prefix.
-guess_sections_by_pefix(StatName, BucketName) ->
+guess_sections_by_prefix(StatName, BucketName) ->
     case StatName of
         "query_" ++ _Rest ->
             ["@query"];
@@ -468,12 +468,12 @@ guess_sections_by_pefix(StatName, BucketName) ->
             [BucketName || BucketName =/= undefined];
         Other ->
             case string:split(Other, "/") of
-                [Prefix, _] ->
+                [P, _] ->
+                    Prefix = [$@ | P],
                     case lists:member(Prefix, services_sections(undefined)) of
                         true ->
-                            ["@" ++ Prefix] ++
-                                ["@" ++ Prefix ++ "-" ++ BucketName ||
-                                    BucketName =/= undefined];
+                            [Prefix | [Prefix ++ "-" ++ BucketName ||
+                                          BucketName =/= undefined]];
                         false ->
                             []
                     end;
@@ -488,7 +488,7 @@ guess_sections_by_pefix(StatName, BucketName) ->
 %% query related stats first.
 %%
 get_stats_search_order(StatName, BucketName) ->
-    GuessedSections = guess_sections_by_pefix(StatName, BucketName),
+    GuessedSections = guess_sections_by_prefix(StatName, BucketName),
     AllSections = ["@system" | case BucketName of
                                    undefined ->
                                        [];
@@ -3124,6 +3124,28 @@ validate_nodes(Name, State, Req) ->
       end, Name, State).
 
 -ifdef(TEST).
+guess_sections_by_prefix_test() ->
+    ?assertEqual(["@query"], guess_sections_by_prefix("query_blah", "test")),
+    ?assertEqual(["@xdcr-test"], guess_sections_by_prefix("replicationblah",
+                                                          "test")),
+    ?assertEqual([], guess_sections_by_prefix("replicationblah", undefined)),
+    lists:foreach(
+      fun (StatName) ->
+              ?assertEqual(["test"],
+                           guess_sections_by_prefix(StatName, "test")),
+              ?assertEqual([], guess_sections_by_prefix(StatName, undefined))
+      end, ["viewsblah", "spatialblah", "vb_blah", "ep_blah"]),
+    lists:foreach(
+      fun ("@" ++ Prefix = Section) ->
+              Stat = Prefix ++ "/blah/blah",
+              ?assertEqual([Section, Section ++ "-test"],
+                           guess_sections_by_prefix(Stat, "test")),
+              ?assertEqual([Section],
+                           guess_sections_by_prefix(Stat, undefined))
+      end, services_sections(undefined) -- ["@query"]),
+    ?assertEqual([], guess_sections_by_prefix("blah", "test")),
+    ?assertEqual([], guess_sections_by_prefix("blah", undefined)).
+
 join_samples_test() ->
     A = [
          {stat_entry, 1, [{key1, 1},
