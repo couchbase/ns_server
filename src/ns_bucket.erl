@@ -95,7 +95,8 @@
          deactivate_bucket_data_on_this_node/1,
          config_upgrade_to_51/1,
          config_upgrade_to_55/1,
-         config_upgrade_to_65/1]).
+         config_upgrade_to_65/1,
+         config_upgrade_to_66/1]).
 
 
 %%%===================================================================
@@ -874,36 +875,34 @@ deactivate_bucket_data_on_this_node(Name) ->
     ns_config:update_key(
       {node, node(), buckets_with_data}, lists:keydelete(Name, 1, _), []).
 
-config_upgrade_to_51(Config) ->
-    %% fix for possible consequence of MB-27160
+upgrade_buckets(Config, Fun) ->
     Buckets = get_buckets(Config),
-    NewBuckets =
-        lists:map(
-          fun ({"default" = Name, BucketConfig}) ->
-                  {Name,
-                   case sasl_password(BucketConfig) of
-                       "" ->
-                           lists:keystore(sasl_password, 1, BucketConfig,
-                                          {sasl_password, generate_sasl_password()});
-                       _ ->
-                           BucketConfig
-                   end};
-              (Pair) ->
-                  Pair
-          end, Buckets),
+    NewBuckets = [{Name, Fun(Name, BucketConfig)} ||
+                  {Name, BucketConfig} <-Buckets],
     [{set, buckets, [{configs, NewBuckets}]}].
 
+config_upgrade_to_51(Config) ->
+    %% fix for possible consequence of MB-27160
+    upgrade_buckets(Config,
+          fun ("default" = _Name, BucketConfig) ->
+                  case sasl_password(BucketConfig) of
+                      "" ->
+                          lists:keystore(sasl_password, 1, BucketConfig,
+                                         {sasl_password, generate_sasl_password()});
+                      _ ->
+                          BucketConfig
+                  end;
+              (_Name, BucketConfig) ->
+                  BucketConfig
+          end).
+
 config_upgrade_to_55(Config) ->
-    Buckets = get_buckets(Config),
-    NewBuckets =
-        lists:map(
-          fun ({Name, BCfg}) ->
+    upgrade_buckets(Config,
+          fun (_Name, BCfg) ->
                   BCfg1 = lists:keystore(max_ttl, 1, BCfg, {max_ttl, 0}),
-                  BCfg2 = lists:keystore(compression_mode, 1, BCfg1,
-                                         {compression_mode, off}),
-                  {Name, BCfg2}
-          end, Buckets),
-    [{set, buckets, [{configs, NewBuckets}]}].
+                  lists:keystore(compression_mode, 1, BCfg1,
+                                 {compression_mode, off})
+          end).
 
 config_upgrade_to_65(Config) ->
     MaxBuckets = case ns_config:search(Config, max_bucket_count) of
@@ -913,6 +912,18 @@ config_upgrade_to_65(Config) ->
                          erlang:max(V, ?MAX_BUCKETS_SUPPORTED)
                  end,
     [{set, max_bucket_count, MaxBuckets}].
+
+config_upgrade_to_66(Config) ->
+    upgrade_buckets(Config,
+          fun (_Name, BCfg) ->
+                  case ns_bucket:bucket_type(BCfg) of
+                      membase ->
+                          lists:keystore(durability_min_level, 1, BCfg,
+                                         {durability_min_level, none});
+                      memcached ->
+                          BCfg
+                  end
+          end).
 
 -ifdef(TEST).
 min_live_copies_test() ->
