@@ -183,7 +183,8 @@ with_verify_bucket_auth(Req, BucketName, UUID, Fun) ->
         auth_failure ->
             throw({unauthorized, <<"password required">>});
         {forbidden, Permission} ->
-            couch_httpd:send_json(Req, 403, menelaus_web_rbac:forbidden_response(Permission))
+            Resp = menelaus_web_rbac:forbidden_response([Permission]),
+            couch_httpd:send_json(Req, 403, Resp)
     end.
 
 verify_bucket_type_support(views = _OperType, BucketConfig) ->

@@ -1041,7 +1041,7 @@ perform_action(Req, {Permission, Fun, Args}) ->
             menelaus_util:require_auth(NewReq);
         forbidden ->
             menelaus_util:reply_json(
-              NewReq, menelaus_web_rbac:forbidden_response(Permission), 403)
+              NewReq, menelaus_web_rbac:forbidden_response([Permission]), 403)
     end.
 
 check_uuid(F, Args, Req) ->

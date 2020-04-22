@@ -987,7 +987,7 @@ perform_if_allowed(Fun, Req, Permission, Roles) ->
         true ->
             Fun(Req);
         false ->
-            menelaus_util:reply_json(Req, forbidden_response(Permission), 403)
+            menelaus_util:reply_json(Req, forbidden_response([Permission]), 403)
     end.
 
 overlap(List1, List2) ->
@@ -1331,9 +1331,10 @@ format_permission({Object, Operation}) ->
     iolist_to_binary(
       [string:join(FormattedVertices, "."), "!", atom_to_list(Operation)]).
 
-forbidden_response(Permission) ->
-    {[{message, <<"Forbidden. User needs one of the following permissions">>},
-      {permissions, [format_permission(Permission)]}]}.
+forbidden_response(Permissions) ->
+    FormattedList = [format_permission(P) || P <- lists:usort(Permissions)],
+    {[{message, <<"Forbidden. User needs the following permissions">>},
+      {permissions, FormattedList}]}.
 
 handle_get_password_policy(Req) ->
     {MinLength, MustPresent} = get_password_policy(),

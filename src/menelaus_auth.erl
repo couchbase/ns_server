@@ -369,7 +369,7 @@ uilogin(Req, Params) ->
             ns_audit:login_failure(
               apply_headers(Req, meta_headers(Identity))),
             menelaus_util:reply_json(
-              Req, menelaus_web_rbac:forbidden_response(Permission), 403)
+              Req, menelaus_web_rbac:forbidden_response([Permission]), 403)
     end.
 
 -spec can_use_cert_for_auth(mochiweb_request()) ->
