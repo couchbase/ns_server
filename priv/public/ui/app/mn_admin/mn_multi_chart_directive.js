@@ -84,8 +84,8 @@ function mnMultiChartDirective($window, mnD3Service) {
 
       $scope.$on("syncTooltips", function (e, source) {
         if (source.element[0] !== $element[0]) {
-          var sourcePos = source.chart.tipBox.node().getBoundingClientRect();
-          var elementPos = chart.tipBox.node().getBoundingClientRect();
+          var sourcePos = source.chart.tipBoxRect;
+          var elementPos = chart.tipBoxRect;
           var sourceGraphRelativeX = source.event.clientX - sourcePos.x;
           var sourceGraphRelativeY = source.event.clientY - sourcePos.y;
 

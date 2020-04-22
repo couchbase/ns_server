@@ -164,6 +164,7 @@ function mnD3ServiceFactory() {
                 , []);
       this.data = data;
 
+
       if (this.xAxisData && this.xAxisData.length) {
         if (!this.inititalized) {
           this.init();
@@ -256,7 +257,6 @@ function mnD3ServiceFactory() {
         return;
       }
       var domain = this.getDomain();
-
       this.chart.updateXAxis(domain);
       this.chart.updateLine();
       this.chart.drawTooltip();
@@ -350,7 +350,10 @@ function mnD3ServiceFactory() {
     }
     resize() {
       super.resize();
-      this.tipBox && this.tipBox.attr("height", this.cvsRect.height).attr("width", this.cvsRect.width);
+      if (this.tipBox) {
+        this.tipBox.attr("height", this.cvsRect.height).attr("width", this.cvsRect.width);
+        this.tipBoxRect = this.tipBox.node().getBoundingClientRect();
+      }
     }
   }
 
@@ -363,7 +366,7 @@ function mnD3ServiceFactory() {
   mnD3Tooltip.prototype.disableTooltip = disableTooltip;
   mnD3Tooltip.prototype.drawLegends = drawLegends;
   mnD3Tooltip.prototype.getLegends = getLegends;
-
+  mnD3Tooltip.prototype.getLabelRowValues = getLabelRowValues;
 
   function getLegends() {
     return this.legendsWrap.selectAll('.legends');
@@ -379,7 +382,8 @@ function mnD3ServiceFactory() {
     if (!this.mouseMoveEvent || !this.data) {
       return;
     }
-    var elementRect = this.tipBox.node().getBoundingClientRect();
+
+    var elementRect = this.tipBoxRect;
     var cvsRect = this.getCanvasRect(elementRect);
 
     var elementX = this.mouseMoveEvent.pageX - elementRect.left;
@@ -431,20 +435,31 @@ function mnD3ServiceFactory() {
           .style('left', this.mouseMoveEvent.pageX + 20 + "px")
           .style('top', this.mouseMoveEvent.pageY - 40 + "px")
           .selectAll(".charts-tooltip-row")
-          .data(this.data.filter(this.filterDisabled.bind(this)));
+          .data(this.data
+                .filter(this.filterDisabled.bind(this))
+                .map(this.getLabelRowValues.bind(this)),
+                line => line.color+line.key+line.value)
 
-      tooltipRows.join(function (enter) {
+      tooltipRows.join((enter) => {
         enter
           .append("div")
           .attr('class', 'charts-tooltip-row')
           .html(this.updateLabelRow.bind(this));
-      }.bind(this), function (update) {
-        update
-          .html(this.updateLabelRow.bind(this))
-          .transition()
-          .duration(0);
-      }.bind(this))
+      });
     }
+  }
+
+  function getLabelRowValues(line, i) {
+    var idx = this.selectedValueIndex;
+    if (!(line.values[idx] && line.values[idx].length) || line.disabled) {
+      return;
+    }
+    return {
+      color: this.getLineColor(line, i),
+      key: line.key,
+      value: (!line.values[idx] || line.values[idx][1] == undefined) ? "-" :
+        this.cht.tooltip.valueFormatter(line.values[idx][1], line.unit)
+    };
   }
 
   function drawLegends() {
@@ -481,15 +496,10 @@ function mnD3ServiceFactory() {
       "<span>" + line.key + "</span>";
   }
 
-  function updateLabelRow(line, i) {
-    var idx = this.selectedValueIndex;
-    if (!(line.values[idx] && line.values[idx].length) || line.disabled) {
-      return;
-    }
-    return "<span><i style='background-color:" + this.getLineColor(line, i) + "'></i>" +
+  function updateLabelRow(line) {
+    return "<span><i style='background-color:" + line.color + "'></i>" +
       "<span class='charts-tooltip-key'>" + line.key + "</span></span>" +
-      "<span class='bold'>" + ((!line.values[idx] || line.values[idx][1] == undefined) ? "-" :
-                               this.cht.tooltip.valueFormatter(line.values[idx][1], line.unit)) + "</span>";
+      "<span class='bold'>" + line.value + "</span>";
   }
 
   function updateCirclePosition(pipe, idx) {
