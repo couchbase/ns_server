@@ -115,12 +115,13 @@ prepare_params(#state{kv = Props, touched = Touched}) ->
                     end, Props).
 
 process_fatal_errors(Req, Errors) ->
-    case lists:keyfind(403, 1, [E || {_, E} <- Errors]) of
-        false ->
+    MissingPermissions = lists:flatten([P || {_, {403, P}} <- Errors]),
+    case MissingPermissions of
+        [] ->
             false;
-        {403, Permission} ->
-            menelaus_util:reply_json(
-              Req, menelaus_web_rbac:forbidden_response(Permission), 403),
+        _ ->
+            Resp = menelaus_web_rbac:forbidden_response(MissingPermissions),
+            menelaus_util:reply_json(Req, Resp, 403),
             true
     end.
 
