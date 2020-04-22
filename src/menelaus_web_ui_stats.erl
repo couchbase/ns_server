@@ -35,8 +35,8 @@ handle_ui_stats_post_v2(Req) ->
       end, Req, json_array, ui_stats_post_validators_v2(Now, Req)).
 
 ui_stats_post_validators_v2(Now, Req) ->
-    [validator:required(query, _),
-     validator:string(query, _),
+    [validator:required(queries, _),
+     validate_queries(queries, _),
      validator:one_of(aggregate, [max, min, avg, sum, none], _),
      validator:convert(aggregate, fun (L) -> binary_to_atom(L, latin1) end, _),
      validator:integer(start, ?MIN_TS, ?MAX_TS, _),
@@ -51,6 +51,59 @@ ui_stats_post_validators_v2(Now, Req) ->
      validate_nodes_v2(nodes, _, Req),
      validator:integer(timeout, 1, 60*5*1000, _),
      validator:unsupported(_)].
+
+validate_queries(Name, State) ->
+    validator:validate(
+      fun (JSONList) when is_list(JSONList) ->
+              validate_query_list(JSONList, []);
+          (_) ->
+              {error, "Must be a json array"}
+      end, Name, State).
+
+validate_query_list([], Acc) -> {value, Acc};
+validate_query_list([{Props} | Tail], Acc) ->
+    Name = proplists:get_value(<<"name">>, Props),
+    case menelaus_stats_queries:find_query(Name) of
+        undefined when is_binary(Name) ->
+            {error, io_lib:format("Unknown query \"~s\"", [Name])};
+        undefined ->
+            {error, "Query name is not a string"};
+        #{args := Args} = Q ->
+            ArgValues = [{A, proplists:get_value(A, Props)} || A <- Args],
+            {Bad, Good} = misc:partitionmap(
+                            fun ({A, undefined}) -> {left, A};
+                                ({A, V}) when is_binary(V) -> {right, {A, V}};
+                                ({A, _}) -> {left, A}
+                            end, ArgValues),
+            case Bad of
+                [] ->
+                    GoodSafe = [{A, sanitize_query_arg(G)} || {A, G} <- Good],
+                    validate_query_list(Tail,
+                                        [{Name, Q#{args => GoodSafe}} | Acc]);
+                _ ->
+                    MissingStr = lists:join(", ", Bad),
+                    {error, io_lib:format("Invalid arguments for query \"~s\": "
+                                          "~s", [Name, MissingStr])}
+            end
+    end;
+validate_query_list([_ | _], _Acc) ->
+    {error, "Every query must be a json object"}.
+
+format_queries(Queries) ->
+    iolist_to_binary(
+      lists:join(<<" or ">>, [format_query(N, Q) || {N, Q} <- Queries])).
+
+format_query(Name, #{format := P, args := Args}) ->
+    Query = misc:format_bin(P, [Value || {_Name, Value} <- Args]),
+    lists:foldl(
+        fun ({N, V}, Acc) ->
+            misc:format_bin("label_replace(~s, \"~s\",\"~s\", \"\", \"\")",
+                            [Acc, N, V])
+        end, Query, [{<<"query">>, Name}|Args]).
+
+sanitize_query_arg(Bin) ->
+    binary:replace(Bin, [<<"\"">>, <<"'">>, <<"{">>, <<"}">>,<<"=">>], <<>>,
+                   [global]).
 
 validate_nodes_v2(Name, State, Req) ->
     validator:validate(
@@ -75,7 +128,8 @@ validate_nodes_v2(Name, State, Req) ->
       end, Name, State).
 
 extract_uistats(Now, Params, Req) ->
-    Query = proplists:get_value(query, Params),
+    Queries = proplists:get_value(queries, Params),
+    QueryStr = format_queries(Queries),
     Aggregate = proplists:get_value(aggregate, Params, none),
     Start = proplists:get_value(start, Params),
     End = proplists:get_value('end', Params, Now),
@@ -88,8 +142,8 @@ extract_uistats(Now, Params, Req) ->
                   end,
 
     {GoodRes, BadRes} = misc:multi_call(NodesToPoll, ns_server_stats,
-                                        {extract, Query, Start, End, Step,
-                                         Timeout}, 2 * Timeout,
+                                        {extract, QueryStr, Start, End,
+                                         Step, Timeout}, 2 * Timeout,
                                         fun ({ok, R}) -> {true, R};
                                             ({error, Reason}) -> {false, Reason}
                                         end),
