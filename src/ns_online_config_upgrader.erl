@@ -84,4 +84,7 @@ upgrade(?VERSION_60, Config) ->
          menelaus_web_settings:config_upgrade_to_65(Config)};
 
 upgrade(?VERSION_65, _Config) ->
+    {?VERSION_66, []};
+
+upgrade(?VERSION_66, _Config) ->
     {?VERSION_CHESHIRECAT, []}.
