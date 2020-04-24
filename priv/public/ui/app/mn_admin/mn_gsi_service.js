@@ -1,14 +1,15 @@
 import angular from "/ui/web_modules/angular.js";
+import qwQueryService from "/_p/ui/query/qw_query_service.js";
 
 export default 'mnGsiService';
 
 angular
   .module('mnGsiService', [
-    // "qwQuery"
+    qwQueryService
   ])
   .factory('mnGsiService', mnGsiServiceFactory);
 
-function mnGsiServiceFactory($http) {
+function mnGsiServiceFactory($http, qwQueryService) {
   var mnGsiService = {
     getIndexesState: getIndexesState,
     postDropIndex: postDropIndex
