@@ -42,7 +42,7 @@
       {{::role.name}}
       <span
         ng-if="getUIID === mnThisCtl.getUIID({role: 'query_external_access'})"
-        tooltip-trigger="'mouseenter'"
+        tooltip-trigger="mouseenter"
         tooltip-append-to-body="true"
         tooltip-placement="auto top"
         class="fa-exclamation-circle icon orange-3"
@@ -52,7 +52,7 @@
   <span
    class="role-from-group"
    ng-if="mnThisCtl.hasGroups(getUIID)"
-   tooltip-trigger="'mouseenter'"
+   tooltip-trigger="mouseenter"
    tooltip-append-to-body="true"
    uib-tooltip="{{mnThisCtl.getGroupsList(getUIID)}}">&nbsp;</span>
   </div>

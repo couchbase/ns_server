@@ -75,7 +75,7 @@
              uib-tooltip="Index replicas are always active and automatically load-balance scan requests."
              tooltip-append-to-body="true"
              tooltip-placement="auto top"
-             tooltip-trigger="'mouseenter'">
+             tooltip-trigger="mouseenter">
             replica {{row.index.split("(replica ")[1].slice(0,-1)}}
           </span>
         </span>
@@ -118,7 +118,7 @@
            ng-show="row.status == 'Building'"
            uib-tooltip="{{mnGsiTableCtl.getStatusDescription(row)}}"
            tooltip-append-to-body="true"
-           tooltip-trigger="'mouseenter'"
+           tooltip-trigger="mouseenter"
            ng-click="$event.stopPropagation();">
           building {{row.progress}}%
         </div>
@@ -126,7 +126,7 @@
            ng-show="row.status != 'Building'"
            uib-tooltip="{{mnGsiTableCtl.getStatusDescription(row)}}"
            tooltip-append-to-body="true"
-           tooltip-trigger="'mouseenter'"
+           tooltip-trigger="mouseenter"
            ng-click="$event.stopPropagation();"
            class="nocaps">
           {{row.status}}
