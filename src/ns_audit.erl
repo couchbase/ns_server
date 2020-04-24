@@ -472,16 +472,7 @@ send_to_memcached(Queue) ->
     end.
 
 stats() ->
-    case ns_memcached_sockets_pool:executing_on_socket(
-           fun (Sock) ->
-                   mc_binary:quick_stats(Sock, <<"audit">>,
-                                         fun mc_binary:quick_stats_append/3, [])
-           end) of
-        {ok, Stats} ->
-            {ok, Stats ++ gen_server:call(?MODULE, stats)};
-        Error ->
-            Error
-    end.
+    {ok, gen_server:call(?MODULE, stats)}.
 
 login_success(Req) ->
     Identity = menelaus_auth:get_identity(Req),

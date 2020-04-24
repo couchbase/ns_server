@@ -56,6 +56,7 @@ process_stats(TS, Binary, PrevSample) ->
     end.
 
 report_prom_stats(ReportFun) ->
+    report_audit_stats(ReportFun),
     Stats = gen_server:call(?MODULE, get_stats),
     SystemStats = proplists:get_value("@system", Stats, []),
     lists:foreach(
@@ -70,6 +71,13 @@ report_prom_stats(ReportFun) ->
             ReportFun({<<"sysproc">>, Name, [{<<"proc">>, Proc}], Val})
         end, SysProcStats),
     ok.
+
+report_audit_stats(ReportFun) ->
+    {ok, Stats} = ns_audit:stats(),
+    AuditQueueLen = proplists:get_value(queue_length, Stats, 0),
+    AuditRetries = proplists:get_value(unsuccessful_retries, Stats, 0),
+    ReportFun({<<"audit">>, <<"queue_length">>, [], AuditQueueLen}),
+    ReportFun({<<"audit">>, <<"unsuccessful_retries">>, [], AuditRetries}).
 
 init([]) ->
     ets:new(ns_server_system_stats, [public, named_table, set]),
