@@ -1,0 +1,2 @@
+var r=function(){function r(){return Error.call(this),this.message="argument out of range",this.name="ArgumentOutOfRangeError",this}return r.prototype=Object.create(Error.prototype),r}(),t=function(){function r(){return Error.call(this),this.message="no elements in sequence",this.name="EmptyError",this}return r.prototype=Object.create(Error.prototype),r}();export{r as A,t as E};
+//# sourceMappingURL=EmptyError-27135b5c.js.map
