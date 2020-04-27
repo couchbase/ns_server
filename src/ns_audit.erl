@@ -23,6 +23,7 @@
 
 -export([login_success/1,
          login_failure/1,
+         session_expired/2,
          logout/1,
          delete_user/2,
          password_change/2,
@@ -346,7 +347,9 @@ code(read_doc) ->
 code(logout) ->
     8256;
 code(alert_email_sent) ->
-    8257.
+    8257;
+code(session_expired) ->
+    8258.
 
 to_binary({list, List}) ->
     [to_binary(A) || A <- List];
@@ -488,6 +491,12 @@ login_success(Req) ->
 
 login_failure(Req) ->
     put(login_failure, Req, []).
+
+%% This audit event doesn't have a "Req" because it's not caused by an HTTP
+%% request.
+session_expired(Identity, Token) ->
+    put(session_expired, undefined,
+        [{real_userid, get_identity(Identity)}, {sessionid, Token}]).
 
 logout(Req) ->
     put(logout, Req, []).
