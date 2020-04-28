@@ -27,6 +27,8 @@
          check/3, check/2, reset_all/1, remove/2,
          purge/2, take/2]).
 
+-define(EXPIRATION_CHECKING_INTERVAL, 15000).
+
 start_link(Module, MaxTokens, ExpirationSeconds, ExpirationCallback) ->
     gen_server:start_link({local, Module}, ?MODULE,
                           [Module, MaxTokens, ExpirationSeconds,
@@ -80,6 +82,13 @@ init([Module, MaxTokens, ExpirationSeconds, ExpirationCallback]) ->
     _ = ets:new(Module, [protected, named_table, set]),
     _ = ets:new(ExpTable, [protected, named_table, ordered_set]),
     Module:init(),
+    case ExpirationCallback of
+        undefined ->
+            ok;
+        _ ->
+            erlang:send_after(?EXPIRATION_CHECKING_INTERVAL, self(),
+                              check_for_expirations)
+    end,
     {ok, #state{table_by_token = Module,
                 table_by_exp = ExpTable,
                 max_tokens = MaxTokens,
@@ -235,8 +244,28 @@ handle_cast({purge, MemoPattern}, #state{table_by_token = Table} = State) ->
 handle_cast(Msg, _State) ->
     erlang:error({unknown_cast, Msg}).
 
+handle_info(check_for_expirations, State) ->
+    do_check_for_expirations(State),
+    erlang:send_after(?EXPIRATION_CHECKING_INTERVAL, self(),
+                      check_for_expirations),
+    {noreply, State};
 handle_info(_Msg, State) ->
     {noreply, State}.
+
+do_check_for_expirations(#state{table_by_exp = ExpTable} = State) ->
+    case ets:first(ExpTable) of
+        '$end_of_table' ->
+            ok;
+        {Expiration, _Token} ->
+            Now = get_now(),
+            case Expiration < Now of
+                true ->
+                    expire_oldest(State),
+                    do_check_for_expirations(State);
+                false ->
+                    ok
+            end
+    end.
 
 terminate(_Reason, _State) ->
     ok.
