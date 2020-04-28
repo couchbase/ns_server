@@ -19,7 +19,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/3]).
+-export([start_link/4]).
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
 
@@ -27,9 +27,10 @@
          check/3, check/2, reset_all/1, remove/2,
          purge/2, take/2]).
 
-start_link(Module, MaxTokens, ExpirationSeconds) ->
+start_link(Module, MaxTokens, ExpirationSeconds, ExpirationCallback) ->
     gen_server:start_link({local, Module}, ?MODULE,
-                           [Module, MaxTokens, ExpirationSeconds], []).
+                          [Module, MaxTokens, ExpirationSeconds,
+                           ExpirationCallback], []).
 
 tok2bin(Token) when is_list(Token) ->
     list_to_binary(Token);
@@ -71,9 +72,10 @@ purge(Module, MemoPattern) ->
 -record(state, {table_by_token,
                 table_by_exp,
                 max_tokens,
-                exp_seconds}).
+                exp_seconds,
+                exp_callback}).
 
-init([Module, MaxTokens, ExpirationSeconds]) ->
+init([Module, MaxTokens, ExpirationSeconds, ExpirationCallback]) ->
     ExpTable = list_to_atom(atom_to_list(Module) ++ "_by_expiration"),
     _ = ets:new(Module, [protected, named_table, set]),
     _ = ets:new(ExpTable, [protected, named_table, ordered_set]),
@@ -81,7 +83,8 @@ init([Module, MaxTokens, ExpirationSeconds]) ->
     {ok, #state{table_by_token = Module,
                 table_by_exp = ExpTable,
                 max_tokens = MaxTokens,
-                exp_seconds = ExpirationSeconds}}.
+                exp_seconds= ExpirationSeconds,
+                exp_callback = ExpirationCallback}}.
 
 maybe_expire(#state{table_by_token = Table,
                     max_tokens = MaxTokens} = State) ->
@@ -94,10 +97,20 @@ maybe_expire(#state{table_by_token = Table,
     end.
 
 expire_oldest(#state{table_by_token = Table,
-                     table_by_exp = ExpTable}) ->
+                     table_by_exp = ExpTable,
+                     exp_callback = ExpCallback}) ->
     {Expiration, Token} = ets:first(ExpTable),
+    Memo = case ExpCallback of
+               undefined ->
+                   unused;
+               _ ->
+                   [{_Token, _Expiration, _ReplacedToken,
+                     Memo0}] = ets:lookup(Table, Token),
+                   Memo0
+           end,
     ets:delete(ExpTable, {Expiration, Token}),
     ets:delete(Table, Token),
+    maybe_do_callback(ExpCallback, Memo, Token),
     ok.
 
 remove_token(Token, #state{table_by_token = Table,
@@ -142,13 +155,15 @@ do_generate_token(ReplacedToken, Memo,
     ets:insert(ExpTable, {{Expiration, Token}}),
     Token.
 
-validate_token_maybe_expire(Token, #state{table_by_token = Table} = State) ->
+validate_token_maybe_expire(Token, #state{table_by_token = Table,
+                                         exp_callback = ExpCallback} = State) ->
     case ets:lookup(Table, Token) of
         [{Token, Expiration, _, Memo}] ->
             Now = get_now(),
             case Expiration < Now of
                 true ->
                     remove_token(Token, State),
+                    maybe_do_callback(ExpCallback, Memo, Token),
                     false;
                 _ ->
                     {Expiration, Now, Memo}
@@ -156,6 +171,11 @@ validate_token_maybe_expire(Token, #state{table_by_token = Table} = State) ->
         [] ->
             false
     end.
+
+maybe_do_callback(undefined, _Memo, _Token) ->
+    ok;
+maybe_do_callback(Callback, Memo, Token) ->
+    Callback(Memo, Token).
 
 handle_call(reset_all, _From, #state{table_by_token = Table,
                                      table_by_exp = ExpTable} = State) ->

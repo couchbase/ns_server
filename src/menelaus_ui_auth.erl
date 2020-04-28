@@ -29,7 +29,8 @@
          check/1, reset/0, logout/1, set_token_node/2]).
 
 start_link() ->
-    token_server:start_link(?MODULE, 1024, ?UI_AUTH_EXPIRATION_SECONDS).
+    token_server:start_link(?MODULE, 1024, ?UI_AUTH_EXPIRATION_SECONDS,
+                            fun ns_audit:session_expired/2).
 
 -spec generate_token(term()) -> auth_token().
 generate_token(Memo) ->

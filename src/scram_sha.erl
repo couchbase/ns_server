@@ -43,7 +43,7 @@
 -export([init/0]).
 
 start_link() ->
-    token_server:start_link(?MODULE, 1024, 15).
+    token_server:start_link(?MODULE, 1024, 15, undefined).
 
 init() ->
     ok.
