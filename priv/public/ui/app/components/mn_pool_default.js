@@ -29,6 +29,7 @@ function mnPoolDefaultFactory(mnPools, mnHelper, $http, $q, $window, $location, 
   var version51 = encodeCompatVersion(5, 1);
   var version55 = encodeCompatVersion(5, 5);
   var version65 = encodeCompatVersion(6, 5);
+  var version70 = encodeCompatVersion(7, 0);
   var cache;
   var request;
 
@@ -78,13 +79,15 @@ function mnPoolDefaultFactory(mnPools, mnHelper, $http, $q, $window, $location, 
       poolDefault.compat = {
         atLeast51: poolDefault.thisNode.clusterCompatibility >= version51,
         atLeast55: poolDefault.thisNode.clusterCompatibility >= version55,
-        atLeast65: poolDefault.thisNode.clusterCompatibility >= version65
+        atLeast65: poolDefault.thisNode.clusterCompatibility >= version65,
+        atLeast70: poolDefault.thisNode.clusterCompatibility >= version70
       };
       poolDefault.versions = {
         "50": version50,
         "51": version51,
         "55": version55,
-        "65": version65
+        "65": version65,
+        "70": version70
       };
       poolDefault.capiBase = $window.location.protocol === "https:" ? poolDefault.thisNode.couchApiBaseHTTPS : poolDefault.thisNode.couchApiBase;
 

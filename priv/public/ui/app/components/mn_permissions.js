@@ -28,7 +28,10 @@ function mnPermissionsProvider() {
       "cluster.bucket[" + name + "].xdcr!execute",
       "cluster.bucket[" + name + "].n1ql.select!execute",
       "cluster.bucket[" + name + "].n1ql.index!read",
-      "cluster.bucket[" + name + "].n1ql.index!write"
+      "cluster.bucket[" + name + "].n1ql.index!write",
+      "cluster.bucket[" + name + "].collections!read",
+      "cluster.bucket[" + name + "].collections!write",
+      "cluster.bucket[" + name + "].collections!delete"
 
     ];
     if (name === "." || buckets.byName[name].isMembase) {

@@ -38,6 +38,16 @@ let wizardState = {
   }
 };
 
+let collectionsState = {
+  name: 'app.admin.collections.**',
+  url: '/collections',
+  loadChildren: () => {
+    return import('./mn.collections.module.js').then(m => {
+      return m.MnCollectionsModule;
+    });
+  }
+};
+
 let overviewState = {
   name: 'app.admin.overview.**',
   url: '/overview',
@@ -167,6 +177,6 @@ export let mnAppImports = [
   HttpClientModule,
   MnSharedModule,
   UIRouterUpgradeModule.forRoot({
-    states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, groupsState, documentsState, gsiState, viewsState, settingsState, securityState, xdcrState]
+    states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, groupsState, documentsState, gsiState, viewsState, settingsState, securityState, xdcrState, collectionsState]
   })
 ];
