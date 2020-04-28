@@ -355,7 +355,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[settings, indexes], read},
                      fun menelaus_web_settings:handle_settings_view_update_daemon/1};
                 ["settings", "autoCompaction"] ->
-                    {{[settings], read},
+                    {{[settings, autocompaction], read},
                      fun menelaus_web_autocompaction:handle_get_global_settings/1};
                 ["settings", "replications"] ->
                     {no_check, fun goxdcr_rest:proxy/1};
@@ -640,7 +640,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["controller", "setRecoveryType"] ->
                     {{[pools], write}, fun menelaus_web_cluster:handle_set_recovery_type/1};
                 ["controller", "setAutoCompaction"] ->
-                    {{[settings], write},
+                    {{[settings, autocompaction], write},
                      fun menelaus_web_autocompaction:handle_set_global_settings/1};
                 ["controller", "createReplication"] ->
                     {no_check, fun goxdcr_rest:proxy/1};
