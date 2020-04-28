@@ -543,6 +543,25 @@ roles_55() ->
        {[ui], [read]},
        {[pools], [read]}]}].
 
+roles_66() ->
+    roles_55() ++
+        [{mobile_sync_gateway, [bucket_name],
+          [{name, <<"Sync Gateway">>},
+           {desc, <<"Full access to bucket data as required by Sync Gateway. "
+                    "This user cannot access the web console and is intended "
+                    "only for use by Sync Gateway. This user can read and "
+                    "write data, manage indexes and views, and read some "
+                    "cluster information.">>}],
+          [{[{bucket, bucket_name}, data], all},
+           {[{bucket, bucket_name}, views], all},
+           {[{bucket, bucket_name}, n1ql, index], all},
+           {[{bucket, bucket_name}, n1ql], [execute]},
+           {[{bucket, bucket_name}], [read, flush]},
+           {[{bucket, bucket_name}, settings], [read]},
+           {[admin, memcached, idle], [write]},
+           {[settings, autocompaction], [read]},
+           {[pools], [read]}]}].
+
 -spec get_definitions() -> [rbac_role_def(), ...].
 get_definitions() ->
     get_definitions(ns_config:latest()).
@@ -551,7 +570,12 @@ get_definitions() ->
 get_definitions(Config) ->
     case cluster_compat_mode:is_cluster_55(Config) of
         true ->
-            roles_55();
+            case cluster_compat_mode:is_cluster_66(Config) of
+                true ->
+                    roles_66();
+                false ->
+                    roles_55()
+            end;
         false ->
             roles_50()
     end.
