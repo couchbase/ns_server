@@ -8,7 +8,7 @@
   </div>
 </mn-element-cargo>
 
-<div class="margin-top-quarter" mn-spinner="(rbac.cluster.bucket['.'].stats.read && !overviewCtl.mnOverviewStats) || !overviewCtl.mnOverviewConfig || !overviewCtl.nodes || (rbac.cluster.bucket['.'].settings.read && !buckets.details)">
+<div class="margin-top-quarter" mn-spinner="!overviewCtl.nodes || (rbac.cluster.bucket['.'].settings.read && !buckets.details)">
 
   <div class="zero-content max-width-12" ng-show="!buckets.details.length">
     You have no data buckets.

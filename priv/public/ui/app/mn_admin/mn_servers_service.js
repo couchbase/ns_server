@@ -30,7 +30,8 @@ function mnServersFactory($http, $q, $uibModal, mnPoolDefault) {
     getNodeStatuses: getNodeStatuses,
     addNodesByStatus: addNodesByStatus,
     getNodes: getNodes,
-    addServer: addServer
+    addServer: addServer,
+    getServicesStatus: getServicesStatus
   };
 
   return mnServersService;
@@ -46,6 +47,28 @@ function mnServersFactory($http, $q, $uibModal, mnPoolDefault) {
           });
         }
       });
+  }
+
+  function getNodesByService(service, nodes) {
+    var nodes2 = nodes.allNodes.filter(node => node.services.indexOf(service) > -1);
+    return addNodesByStatus(nodes2);
+  }
+
+  function getServicesStatus(isEnterprise) {
+    return mnServersService.getNodes().then(function (nodes) {
+      var rv = {
+        kv: getNodesByService("kv", nodes),
+        index: getNodesByService("index", nodes),
+        n1ql: getNodesByService("n1ql", nodes),
+        fts: getNodesByService("fts", nodes),
+        all: nodes
+      };
+      if (isEnterprise) {
+        rv.cbas = getNodesByService("cbas", nodes);
+        rv.eventing = getNodesByService("eventing", nodes);
+      }
+      return rv;
+    });
   }
 
   function addToPendingEject(node) {

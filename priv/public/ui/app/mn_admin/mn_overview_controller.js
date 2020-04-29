@@ -8,7 +8,7 @@ import mnHelper from "/ui/app/components/mn_helper.js";
 import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
 import mnXDCRService from "./mn_xdcr_service.js";
 import mnBucketsService from "./mn_buckets_service.js";
-import mnOverviewService from "./mn_overview_service.js";
+import mnServersService from "./mn_servers_service.js";
 import mnStatisticsNew from "./mn_statistics_controller.js";
 
 import mnElementCrane from "/ui/app/components/directives/mn_element_crane/mn_element_crane.js";
@@ -25,7 +25,7 @@ angular
     mnPoolDefault,
     mnXDCRService,
     mnBucketsService,
-    mnOverviewService,
+    mnServersService,
     mnElementCrane
   ])
   .config(mnOverviewConfig)
@@ -78,7 +78,7 @@ function mnOverviewConfig($stateProvider) {
 }
 
 
-function mnOverviewController($scope, $rootScope, mnBucketsService, mnOverviewService, mnPoller, mnPromiseHelper, mnHelper, mnXDCRService, permissions, pools, mnPoolDefault) {
+function mnOverviewController($scope, $rootScope, mnBucketsService, mnServersService, mnPoller, mnPromiseHelper, mnHelper, mnXDCRService, permissions, pools, mnPoolDefault) {
   var vm = this;
 
   vm.getEndings = mnHelper.getEndings;
@@ -88,32 +88,11 @@ function mnOverviewController($scope, $rootScope, mnBucketsService, mnOverviewSe
   activate();
 
   function activate() {
-    $rootScope.$broadcast("reloadPoolDefaultPoller");
-
-    if (permissions.cluster.xdcr.remote_clusters.read) {
-      new mnPoller($scope, mnXDCRService.getReplicationState)
-        .setInterval(3000)
-        .subscribe("xdcrReferences", vm)
-        .cycle();
-    }
-
-    new mnPoller($scope, mnOverviewService.getOverviewConfig)
-      .reloadOnScopeEvent("mnPoolDefaultChanged")
-      .subscribe("mnOverviewConfig", vm)
-      .cycle();
-
     new mnPoller($scope, function () {
-      return mnOverviewService.getServices();
+      return mnServersService.getServicesStatus(mnPoolDefault.export.isEnterprise);
     })
       .reloadOnScopeEvent("nodesChanged")
       .subscribe("nodes", vm)
       .cycle();
-
-    if (permissions.cluster.bucket['.'].stats.read) {
-      new mnPoller($scope, mnOverviewService.getStats)
-        .setInterval(3000)
-        .subscribe("mnOverviewStats", vm)
-        .cycle();
-    }
   }
 }
