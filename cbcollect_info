@@ -588,7 +588,10 @@ class TaskRunner(object):
         for name, fp in self.files.items():
             if "users.dets" in name:
                 continue
-            files.append(redactor.redact_file(name, fp.name))
+            elif name.lower().endswith(('.gz', '.dmp')):
+                files.append(fp.name)
+            else:
+                files.append(redactor.redact_file(name, fp.name))
 
         prefix = "cbcollect_info_%s_%s" % (node, self.start_time)
         self._zip_helper(prefix, filename, files)
