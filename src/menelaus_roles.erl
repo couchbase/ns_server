@@ -703,7 +703,7 @@ roles_66() ->
        {[{bucket, bucket_name}, stats], [read]},
        {[{bucket, bucket_name}, settings], [read]},
        {[{bucket, bucket_name}, n1ql, index], [create, list, build]},
-       {[{bucket, bucket_name}, analytics], [manage]},
+       {[{bucket, bucket_name}, analytics], [manage, select]},
        {[analytics], [select, backup]},
        {[pools], [read]}]},
      {data_monitoring, [bucket_name],
@@ -811,10 +811,9 @@ roles_66() ->
      {analytics_manager, [bucket_name],
       [{name, <<"Analytics Manager">>},
        {desc, <<"Can manage Analytics links. Can manage datasets on a given "
-                "bucket. Can query datasets. This user can access the web "
-                "console and read some data.">>}],
-      [{[{bucket, bucket_name}, analytics], [manage]},
-       {[analytics], [select]},
+                "bucket. Can query datasets created on this bucket. This user "
+                "can access the web console and read some data.">>}],
+      [{[{bucket, bucket_name}, analytics], [manage, select]},
        {[ui], [read]},
        {[pools], [read]}]},
      {analytics_reader, [],
@@ -823,6 +822,14 @@ roles_66() ->
                 "be created on different buckets. This user can access the "
                 "web console and read some data.">>}],
       [{[analytics], [select]},
+       {[{bucket, any}, analytics], [select]},
+       {[ui], [read]},
+       {[pools], [read]}]},
+     {analytics_select, [bucket_name],
+      [{name, <<"Analytics Select">>},
+       {desc, <<"Can query datasets created on this bucket. This user can "
+                "access the web console and read some data.">>}],
+      [{[{bucket, bucket_name}, analytics], [select]},
        {[ui], [read]},
        {[pools], [read]}]},
      {mobile_sync_gateway, [bucket_name],
