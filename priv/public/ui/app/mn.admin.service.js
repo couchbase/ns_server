@@ -1,8 +1,7 @@
 import {Injectable} from "/ui/web_modules/@angular/core.js";
 import {UIRouter} from "/ui/web_modules/@uirouter/angular.js";
-import {BehaviorSubject, Subject, combineLatest} from "/ui/web_modules/rxjs.js";
-import {filter,
-        pluck,
+import {BehaviorSubject, combineLatest} from "/ui/web_modules/rxjs.js";
+import {pluck,
         switchMap,
         shareReplay,
         map,
@@ -20,10 +19,6 @@ export {MnAdminService};
 // counterpart of ns_heart:effective_cluster_compat_version/0
 function encodeCompatVersion(major, minor) {
   return (major < 2) ? 1 : major * 0x10000 + minor;
-}
-
-function getPoolsDefaultInterval(state) {
-  return state.to().name === "app.admin.overview" ? 3000 : 10000;
 }
 
 class MnAdminService {
@@ -54,11 +49,8 @@ class MnAdminService {
       );
 
     this.stream.getPoolsDefault =
-      combineLatest(this.stream.etag,
-                    uiRouter.globals.success$.pipe(map(getPoolsDefaultInterval),
-                                                   distinctUntilChanged()))
-      .pipe(switchMap(this.getPoolsDefault.bind(this)),
-            shareReplay({refCount: true, bufferSize: 1}));
+      this.stream.etag.pipe(switchMap(this.getPoolsDefault.bind(this)),
+                            shareReplay({refCount: true, bufferSize: 1}));
 
     this.stream.isRebalancing =
       this.stream.getPoolsDefault.pipe(
@@ -135,18 +127,15 @@ class MnAdminService {
     return this.http.get('/whoami');
   }
 
-  getPoolsDefault(params) {
+  getPoolsDefault(etag) {
     return this.http.get('/pools/default', {
-      params: new ng.common.http.HttpParams()
-        .set('waitChange', params[1])
-        .set('etag', params[0] || "")
+      params: new HttpParams().set('waitChange', 10000).set('etag', etag || "")
     });
   }
 
   postPoolsDefault(data) {
     return this.http.post('/pools/default', data[0], {
-      params: new HttpParams()
-        .set("just_validate", data[1] ? 1 : 0)
+      params: new HttpParams().set("just_validate", data[1] ? 1 : 0)
     });
   }
 }
