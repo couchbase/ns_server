@@ -1,19 +1,27 @@
 import { NgModule } from '/ui/web_modules/@angular/core.js';
-import { CommonModule } from '/ui/web_modules/@angular/common.js';
 import { UIRouterModule } from "/ui/web_modules/@uirouter/angular.js";
+import { ReactiveFormsModule } from '/ui/web_modules/@angular/forms.js';
 
 import { MnCollectionsComponent } from './mn.collections.component.js';
 import { MnCollectionsService } from './mn.collections.service.js';
+import { MnPermissionsService } from './mn.permissions.service.js';
 import { MnSharedModule } from './mn.shared.module.js';
+import { MnBucketsService } from './mn.buckets.service.js';
 
 let collectionsState = {
-  url: '/collections',
+  url: '/collections?collectionsBucket',
   name: "app.admin.collections",
   data: {
     permissions: "cluster.bucket['.'].collections.read",
     title: "Scopes & Collections",
     child: "app.admin.buckets",
     compat: "atLeast70"
+  },
+  params: {
+    collectionsBucket: {
+      type: 'string',
+      dynamic: true
+    }
   },
   views: {
     "main@app.admin": {
@@ -31,12 +39,14 @@ class MnCollectionsModule {
         MnCollectionsComponent
       ],
       imports: [
-        CommonModule,
+        ReactiveFormsModule,
         MnSharedModule,
         UIRouterModule.forChild({ states: [collectionsState] })
       ],
       providers: [
-        MnCollectionsService
+        MnPermissionsService,
+        MnCollectionsService,
+        MnBucketsService
       ]
     })
   ]}

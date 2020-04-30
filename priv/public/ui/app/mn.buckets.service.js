@@ -2,7 +2,8 @@ import {Injectable} from "/ui/web_modules/@angular/core.js";
 import {pluck,
         switchMap,
         shareReplay,
-        distinctUntilChanged} from "/ui/web_modules/rxjs/operators.js";
+        distinctUntilChanged,
+        map} from "/ui/web_modules/rxjs/operators.js";
 import {HttpClient, HttpParams} from '/ui/web_modules/@angular/common/http.js';
 import {MnAdminService} from './mn.admin.service.js';
 
@@ -25,9 +26,16 @@ class MnBucketsService {
     var bucketsUri =
         mnAdminService.stream.getPoolsDefault.pipe(pluck("buckets", "uri"),
                                                    distinctUntilChanged());
-    this.stream.buckets =
+    this.stream.getBuckets =
       bucketsUri.pipe(switchMap(this.get.bind(this)),
                       shareReplay({refCount: true, bufferSize: 1}));
+
+    this.stream.getBucketsByName =
+      this.stream.getBuckets.pipe(map(buckets =>
+                                      buckets.reduce((acc, bucket) => {
+                                        acc[bucket.name] = bucket;
+                                        return acc;
+                                      }, {})));
   }
 
   get(url) {

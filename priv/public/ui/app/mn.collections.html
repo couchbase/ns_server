@@ -1,0 +1,7 @@
+<div [formGroup]="bucketSelect">
+  <select formControlName="name">
+    <option *ngFor="let name of (buckets | async)" [ngValue]="name">
+      {{name}}
+    </option>
+  </select>
+</div>

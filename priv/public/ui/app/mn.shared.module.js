@@ -8,6 +8,11 @@ export { MnSharedModule }
 class MnSharedModule {
   static get annotations() { return [
     new NgModule({
+      imports: [
+        ReactiveFormsModule,
+        CommonModule,
+        // ngb.NgbModule,
+      ],
       declarations: [
         MnFocusDirective,
         // mn.components.MnAutoCompactionForm,
@@ -18,15 +23,11 @@ class MnSharedModule {
       ],
       exports: [
         MnFocusDirective,
+        CommonModule
         // mn.components.MnServicesConfig,
         // mn.components.MnAutoCompactionForm,
         // mn.components.MnSearch,
         // mn.components.MnSearchField
-      ],
-      imports: [
-        ReactiveFormsModule,
-        CommonModule,
-        // ngb.NgbModule,
       ]
     })
   ]}
