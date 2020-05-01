@@ -93,7 +93,7 @@ function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, m
   function getGroupTitle(roles) {
     return roles && roles.map(function (v) {
       return vm.byRole[v.role + (v.bucket_name ? '[' + v.bucket_name + ']' : '')].name;
-    }).join(',');
+    }).join(', ');
   }
 
   function getUserRoles(user) {

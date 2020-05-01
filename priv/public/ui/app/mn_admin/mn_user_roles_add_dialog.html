@@ -158,10 +158,16 @@
                    ng-change="userRolesAddDialogCtl.onGroupChanged(group)"
                    id="for-{{::group.id}}"
                    ng-model="userRolesAddDialogCtl.selectedGroups[group.id]">
-                <label
-                   ng-attr-title="{{::userRolesAddDialogCtl.getGroupTitle(group.roles);}}"
-                   for="for-{{::group.id}}">
+                <label for="for-{{::group.id}}">
                   {{::group.id}}
+                  <span class="fa-stack icon-info"
+                     uib-tooltip="{{userRolesAddDialogCtl.getGroupTitle(group.roles)}}"
+                     tooltip-placement="auto top"
+                     tooltip-append-to-body="true"
+                     tooltip-trigger="mouseenter">
+                    <span class="icon fa-circle-thin fa-stack-2x"></span>
+                    <span class="icon fa-info fa-stack-1x"></span>
+                  </span>
                 </label>
               </div>
             </div>
