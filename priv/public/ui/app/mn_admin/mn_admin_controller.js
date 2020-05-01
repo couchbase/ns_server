@@ -4,7 +4,7 @@ import saveAs from "/ui/web_modules/file-saver.js";
 
 export default mnAdminController;
 
-function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnLostConnectionService, mnPermissions, mnPools, whoami, mnBucketsService, $q, mnSettingsClusterService, $ocLazyLoad, $injector) {
+function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnLostConnectionService, mnPermissions, mnPools, whoami, mnBucketsService, $q, mnSettingsClusterService, $ocLazyLoad, $injector, mnAdminService) {
   var vm = this;
 
   vm.poolDefault = poolDefault;
@@ -153,6 +153,9 @@ function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsServic
         waitChange: 10000
       }, {group: "global"});
     }, true).subscribe(function (resp, previous) {
+
+      mnAdminService.stream.getPoolsDefault.next(resp);
+
       if (!_.isEqual(resp, previous)) {
         $rootScope.$broadcast("mnPoolDefaultChanged");
       }

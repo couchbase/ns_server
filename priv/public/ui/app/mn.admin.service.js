@@ -48,9 +48,11 @@ class MnAdminService {
         shareReplay({refCount: true, bufferSize: 1})
       );
 
-    this.stream.getPoolsDefault =
-      this.stream.etag.pipe(switchMap(this.getPoolsDefault.bind(this)),
-                            shareReplay({refCount: true, bufferSize: 1}));
+    // this.stream.getPoolsDefault =
+    //   this.stream.etag.pipe(switchMap(this.getPoolsDefault.bind(this)),
+    //                         shareReplay({refCount: true, bufferSize: 1}));
+
+    this.stream.getPoolsDefault = new BehaviorSubject();
 
     this.stream.isRebalancing =
       this.stream.getPoolsDefault.pipe(

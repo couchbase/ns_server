@@ -1,4 +1,5 @@
 import mnAdminController from "./mn_admin_controller.js";
+import {downgradeInjectable} from "/ui/web_modules/@angular/upgrade/static.js";
 
 import angular from "/ui/web_modules/angular.js";
 import _ from "/ui/web_modules/lodash.js";
@@ -25,6 +26,7 @@ import mnDragAndDrop from "/ui/app/components/directives/mn_drag_and_drop.js";
 import mnTasksDetails from "/ui/app/components/mn_tasks_details.js";
 
 import mnLostConnection from "./mn_lost_connection_config.js";
+import {MnAdminService} from "../mn.admin.service.js";
 
 import uiSelect from "/ui/web_modules/ui-select.js";
 
@@ -53,7 +55,8 @@ angular.module('mnAdmin', [
   mnSettingsAutoFailoverService,
   mnSettingsClusterService
 ]).config(mnAdminConfig)
-  .controller('mnAdminController', mnAdminController);
+  .controller('mnAdminController', mnAdminController)
+  .factory('mnAdminService', downgradeInjectable(MnAdminService))
 
 //https://github.com/angular-ui/ui-select/issues/1560
 angular.module('ui.select').run(function($animate) {
