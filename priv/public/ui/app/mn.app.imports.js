@@ -7,6 +7,7 @@ import {MnAppComponent} from './mn.app.component.js';
 import {MnAuthComponent} from './mn.auth.component.js';
 import {UpgradeModule} from '/ui/web_modules/@angular/upgrade/static.js';
 import {MnSharedModule} from './mn.shared.module.js';
+import {MnElementCraneModule} from './mn.element.crane.js';
 import {UIRouterUpgradeModule} from '/ui/web_modules/@uirouter/angular-hybrid.js';
 import * as pluggableUIsModules from '/ui/pluggable-uis.js';
 
@@ -176,6 +177,7 @@ export let mnAppImports = [
   CommonModule,
   HttpClientModule,
   MnSharedModule,
+  MnElementCraneModule.forRoot(),
   UIRouterUpgradeModule.forRoot({
     states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, groupsState, documentsState, gsiState, viewsState, settingsState, securityState, xdcrState, collectionsState]
   })

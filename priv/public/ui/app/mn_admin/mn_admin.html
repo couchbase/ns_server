@@ -306,6 +306,99 @@
 
 <mn-element-depot name="subnav"></mn-element-depot>
 
+<div class="alert-wrapper fix-position-bl">
+  <mn-element-depot name="alerts"></mn-element-depot>
+  <div
+     class="alert alert-warning ng-hide"
+     ng-show="adminCtl.retryRebalance && (adminCtl.retryRebalance.retry_rebalance !== 'not_pending')">
+    <p>
+      <span ng-show="adminCtl.retryRebalance.type == 'rebalance'">Rebalance</span>
+      <span ng-show="adminCtl.retryRebalance.type == 'graceful_failover'">Graceful Failover</span>
+      failed. It will be automatically retried in {{adminCtl.retryRebalance.retry_after_secs}}<br>
+      <a
+         ng-click="adminCtl.postCancelRebalanceRetry(adminCtl.retryRebalance.rebalance_id)"
+         ng-show="rbac.cluster.pools.write">
+        CANCEL RETRY
+      </a>
+    </p>
+  </div>
+  <div
+     class="alert alert-warning"
+     ng-if="adminCtl.tasks.isLoadingSamples && rbac.cluster.tasks.read && !poolDefault.balanced"
+     ng-show="!adminCtl.clientAlerts.rebalanceDataLoading"
+     ng-init="adminCtl.enableCustomAlert('rebalanceDataLoading')">
+    <p>Warning: Rebalance is not available until data loading is completed.</p>
+    <a ng-click="adminCtl.closeCustomAlert('rebalanceDataLoading')" class="close">X</a>
+  </div>
+  <div
+     class="alert alert-warning"
+     ng-if="!adminCtl.poolDefault.compat.atLeast55 && !!adminCtl.moxiBucket && !poolDefault.balanced"
+     ng-show="!adminCtl.clientAlerts.moxiBucket"
+     ng-init="adminCtl.enableCustomAlert('moxiBucket')">
+    <p>Your Couchbase bucket <i>{{adminCtl.moxiBucket.name}}</i> has an active dedicated port, also known as a Moxi port. Moxi is deprecated and will be removed in a future release.<br> You can run the CLI command <i>couchbase-cli bucket-edit</i> command with the <i>--remove-bucket-port</i> option to remove the Moxi port.</p>
+    <a ng-click="adminCtl.closeCustomAlert('moxiBucket')" class="close">X</a>
+  </div>
+  <div
+     class="alert alert-warning"
+     ng-if="!('every' | lodash:('values' | lodash:poolDefault.compat)) && !adminCtl.clientAlerts.hideCompatibility"
+     ng-show="!adminCtl.clientAlerts.hideCompatibility"
+     ng-init="adminCtl.enableCustomAlert('hideCompatibility')">
+    <p>This cluster contains multiple server versions and is running in {{::poolDefault.thisNode.clusterCompatibility | decodeCompatVersion}} compatibility mode.</p>
+    <a ng-click="adminCtl.closeCustomAlert('hideCompatibility')" class="close">X</a>
+  </div>
+  <div
+     class="alert alert-warning"
+     ng-repeat="warning in poolDefault.failoverWarnings track by warning"
+     ng-if="warning && warning != 'failoverNeeded' && !poolDefault.rebalancing"
+     ng-show="!adminCtl.clientAlerts[warning]"
+     ng-init="adminCtl.enableCustomAlert(warning)">
+    <p>Warning: {{warning | formatFailoverWarnings}}</p>
+    <a ng-click="adminCtl.closeCustomAlert(warning)" class="close">X</a>
+  </div>
+  <div
+     class="alert alert-warning"
+     ng-if="adminCtl.autoFailoverSettings.count > 0 && rbac.cluster.settings.read"
+     ng-show="!adminCtl.clientAlerts.maxCount"
+     ng-init="adminCtl.enableCustomAlert('maxCount')">
+    <p>
+      A server was automatically failed over. Failover quota used/max:
+      {{adminCtl.autoFailoverSettings.count}}/{{adminCtl.autoFailoverSettings.maxCount}}
+    </p>
+    <a ng-click="adminCtl.closeCustomAlert('maxCount')" class="close">X</a>
+  </div>
+  <div
+     class="alert alert-warning ng-hide"
+     ng-if="(adminCtl.autoFailoverSettings &&
+            (adminCtl.autoFailoverSettings.count == adminCtl.autoFailoverSettings.maxCount)) ||
+            (!(poolDefault.compat.atLeast55 && pools.isEnterprise) &&
+            adminCtl.autoFailoverSettings.count == 1)">
+    <p>
+      The maximum number of nodes have been automatically failed over.
+      Auto-failover is disabled until you reset it.<br>
+      <a
+         ng-click="adminCtl.resetAutoFailOverCount()"
+         ng-show="rbac.cluster.settings.write">
+        Reset Auto-Failover
+      </a>
+    </p>
+  </div>
+  <div
+     class="alert alert-warning"
+     ng-show="adminCtl.lostConnState.isActive">
+    <p>Difficulties communicating with the cluster. Displaying cached information.</p>
+  </div>
+  <div
+     ng-repeat="alert in adminCtl.alerts"
+     class="animate-alert alert enable-ng-animation"
+     ng-class="['alert-' + alert.type]">
+    <p>{{alert.msg}}</p>
+    <a
+       ng-click="adminCtl.closeAlert(alert)"
+       class="close"
+       ng-hide="alert.type == 'success'">X</a>
+  </div>
+</div>
+
 <main>
   <nav
      class="nav-sidebar"
@@ -401,96 +494,3 @@
      mn-spinner="showMainSpinner"
      opacity="true"></div>
 </main>
-
-<div class="alert-wrapper fix-position-bl">
-  <mn-element-depot name="alerts"></mn-element-depot>
-  <div
-     class="alert alert-warning ng-hide"
-     ng-show="adminCtl.retryRebalance && (adminCtl.retryRebalance.retry_rebalance !== 'not_pending')">
-    <p>
-      <span ng-show="adminCtl.retryRebalance.type == 'rebalance'">Rebalance</span>
-      <span ng-show="adminCtl.retryRebalance.type == 'graceful_failover'">Graceful Failover</span>
-      failed. It will be automatically retried in {{adminCtl.retryRebalance.retry_after_secs}}<br>
-      <a
-         ng-click="adminCtl.postCancelRebalanceRetry(adminCtl.retryRebalance.rebalance_id)"
-         ng-show="rbac.cluster.pools.write">
-        CANCEL RETRY
-      </a>
-    </p>
-  </div>
-  <div
-     class="alert alert-warning"
-     ng-if="adminCtl.tasks.isLoadingSamples && rbac.cluster.tasks.read && !poolDefault.balanced"
-     ng-show="!adminCtl.clientAlerts.rebalanceDataLoading"
-     ng-init="adminCtl.enableCustomAlert('rebalanceDataLoading')">
-    <p>Warning: Rebalance is not available until data loading is completed.</p>
-    <a ng-click="adminCtl.closeCustomAlert('rebalanceDataLoading')" class="close">X</a>
-  </div>
-  <div
-     class="alert alert-warning"
-     ng-if="!adminCtl.poolDefault.compat.atLeast55 && !!adminCtl.moxiBucket && !poolDefault.balanced"
-     ng-show="!adminCtl.clientAlerts.moxiBucket"
-     ng-init="adminCtl.enableCustomAlert('moxiBucket')">
-    <p>Your Couchbase bucket <i>{{adminCtl.moxiBucket.name}}</i> has an active dedicated port, also known as a Moxi port. Moxi is deprecated and will be removed in a future release.<br> You can run the CLI command <i>couchbase-cli bucket-edit</i> command with the <i>--remove-bucket-port</i> option to remove the Moxi port.</p>
-    <a ng-click="adminCtl.closeCustomAlert('moxiBucket')" class="close">X</a>
-  </div>
-  <div
-     class="alert alert-warning"
-     ng-if="!('every' | lodash:('values' | lodash:poolDefault.compat)) && !adminCtl.clientAlerts.hideCompatibility"
-     ng-show="!adminCtl.clientAlerts.hideCompatibility"
-     ng-init="adminCtl.enableCustomAlert('hideCompatibility')">
-    <p>This cluster contains multiple server versions and is running in {{::poolDefault.thisNode.clusterCompatibility | decodeCompatVersion}} compatibility mode.</p>
-    <a ng-click="adminCtl.closeCustomAlert('hideCompatibility')" class="close">X</a>
-  </div>
-  <div
-     class="alert alert-warning"
-     ng-repeat="warning in poolDefault.failoverWarnings track by warning"
-     ng-if="warning && warning != 'failoverNeeded' && !poolDefault.rebalancing"
-     ng-show="!adminCtl.clientAlerts[warning]"
-     ng-init="adminCtl.enableCustomAlert(warning)">
-    <p>Warning: {{warning | formatFailoverWarnings}}</p>
-    <a ng-click="adminCtl.closeCustomAlert(warning)" class="close">X</a>
-  </div>
-  <div
-     class="alert alert-warning"
-     ng-if="adminCtl.autoFailoverSettings.count > 0 && rbac.cluster.settings.read"
-     ng-show="!adminCtl.clientAlerts.maxCount"
-     ng-init="adminCtl.enableCustomAlert('maxCount')">
-    <p>
-      A server was automatically failed over. Failover quota used/max:
-      {{adminCtl.autoFailoverSettings.count}}/{{adminCtl.autoFailoverSettings.maxCount}}
-    </p>
-    <a ng-click="adminCtl.closeCustomAlert('maxCount')" class="close">X</a>
-  </div>
-  <div
-     class="alert alert-warning ng-hide"
-     ng-if="(adminCtl.autoFailoverSettings &&
-              (adminCtl.autoFailoverSettings.count == adminCtl.autoFailoverSettings.maxCount)) ||
-              (!(poolDefault.compat.atLeast55 && pools.isEnterprise) &&
-                 adminCtl.autoFailoverSettings.count == 1)">
-    <p>
-      The maximum number of nodes have been automatically failed over.
-      Auto-failover is disabled until you reset it.<br>
-      <a
-         ng-click="adminCtl.resetAutoFailOverCount()"
-         ng-show="rbac.cluster.settings.write">
-        Reset Auto-Failover
-      </a>
-    </p>
-  </div>
-  <div
-     class="alert alert-warning"
-     ng-show="adminCtl.lostConnState.isActive">
-    <p>Difficulties communicating with the cluster. Displaying cached information.</p>
-  </div>
-  <div
-     ng-repeat="alert in adminCtl.alerts"
-     class="animate-alert alert enable-ng-animation"
-     ng-class="['alert-' + alert.type]">
-    <p>{{alert.msg}}</p>
-    <a
-       ng-click="adminCtl.closeAlert(alert)"
-       class="close"
-       ng-hide="alert.type == 'success'">X</a>
-  </div>
-</div>
