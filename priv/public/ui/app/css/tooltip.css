@@ -32,16 +32,6 @@
   font-size: .8125rem;
   line-height: 1.5 !important;
 }
-.fade {
-  opacity: 0;
-  -ms-filter: "progid:DXImageTransform.Microsoft.Alpha(Opacity=0)";
-  -webkit-transition: opacity .25s linear;
-  transition: opacity .25s linear;
-}
-.fade.in {
-  opacity: 1;
-  -ms-filter: "progid:DXImageTransform.Microsoft.Alpha(Opacity=100)";
-}
 .tooltip.right {
   padding: 0 0 0 1.25rem;
 }

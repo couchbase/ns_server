@@ -1,6 +1,9 @@
 import { NgModule } from '/ui/web_modules/@angular/core.js';
 import { UIRouterModule } from "/ui/web_modules/@uirouter/angular.js";
 import { ReactiveFormsModule } from '/ui/web_modules/@angular/forms.js';
+import { NgbModule } from '/ui/web_modules/@ng-bootstrap/ng-bootstrap.js';
+
+import { MnElementCraneModule } from './mn.element.crane.js';
 
 import { MnCollectionsComponent } from './mn.collections.component.js';
 import { MnCollectionsItemComponent } from './mn.collections.item.component.js';
@@ -8,6 +11,8 @@ import { MnCollectionsService } from './mn.collections.service.js';
 import { MnPermissionsService } from './mn.permissions.service.js';
 import { MnSharedModule } from './mn.shared.module.js';
 import { MnBucketsService } from './mn.buckets.service.js';
+import { MnCollectionsAddScopeComponent } from './mn.collections.add.scope.component.js';
+import { MnCollectionsDeleteScopeComponent } from './mn.collections.delete.scope.component.js';
 
 let collectionsState = {
   url: '/collections?collectionsBucket',
@@ -36,11 +41,19 @@ export { MnCollectionsModule };
 class MnCollectionsModule {
   static get annotations() { return [
     new NgModule({
+      entryComponents: [
+        MnCollectionsAddScopeComponent,
+        MnCollectionsDeleteScopeComponent
+      ],
       declarations: [
         MnCollectionsComponent,
-        MnCollectionsItemComponent
+        MnCollectionsItemComponent,
+        MnCollectionsAddScopeComponent,
+        MnCollectionsDeleteScopeComponent
       ],
       imports: [
+        NgbModule,
+        MnElementCraneModule,
         ReactiveFormsModule,
         MnSharedModule,
         UIRouterModule.forChild({ states: [collectionsState] })

@@ -1,0 +1,26 @@
+<div class="dialog-med">
+  <div class="panel-header">
+    <h2>{{bucketName}} Scopes</h2>
+    <a class="ui-dialog-titlebar-close modal-close" (click)="activeModal.dismiss()">X</a>
+  </div>
+  <form (ngSubmit)="form.submit.next()" [formGroup]="form.group" class="forms">
+    <div class="panel-content">
+      <div class="formrow">
+        <label for="add-scope">New Scope Name</label>
+        <input
+           type="text"
+           id="add-scope"
+           name="name"
+           formControlName="name"
+           required
+           autocorrect="off"
+           spellcheck="false"
+           autocapitalize="off">
+      </div>
+    </div>
+    <div class="panel-footer">
+      <a (click)="activeModal.dismiss()">Cancel</a>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+</div>

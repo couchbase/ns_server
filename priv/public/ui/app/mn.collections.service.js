@@ -23,15 +23,22 @@ class MnCollectionsService {
     this.http = http;
     this.stream = {};
 
+
     this.stream.updateManifest =
       new BehaviorSubject();
+
+    this.stream.addScopeHttp =
+      new MnHttpRequest(this.addScope.bind(this)).addSuccess().addError();
+
+    this.stream.deleteScopeHttp =
+      new MnHttpRequest(this.deleteScope.bind(this)).addSuccess().addError();
   }
 
   getManifest(bucket) {
     return this.http.get(`${restApiBase}/${bucket}/collections`);
   }
 
-  addScope(bucket, body) {
+  addScope([bucket, body]) {
     return this.http.post(`${restApiBase}/${bucket}/collections`, body);
   }
 
@@ -39,7 +46,7 @@ class MnCollectionsService {
     return this.http.post(`${restApiBase}/${bucket}/collections/${scope}`, body);
   }
 
-  deleteScope(bucket, scope) {
+  deleteScope([bucket, scope]) {
     return this.http.delete(`${restApiBase}/${bucket}/collections/${scope}`);
   }
 

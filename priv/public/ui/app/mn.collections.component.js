@@ -2,14 +2,16 @@ import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.
 import {FormGroup, FormControl} from "/ui/web_modules/@angular/forms.js";
 import {UIRouter} from "/ui/web_modules/@uirouter/angular.js";
 import {pluck, take, filter, switchMap,
-        switchMapTo, map, shareReplay} from '/ui/web_modules/rxjs/operators.js';
-import {combineLatest, timer} from "/ui/web_modules/rxjs.js";
+        switchMapTo, map, shareReplay, takeUntil} from '/ui/web_modules/rxjs/operators.js';
+import {combineLatest, Subject, timer} from "/ui/web_modules/rxjs.js";
 import {equals, compose, not} from "/ui/web_modules/ramda.js";
+import {NgbModal} from "/ui/web_modules/@ng-bootstrap/ng-bootstrap.js";
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnCollectionsService} from './mn.collections.service.js';
 import {MnPermissionsService} from './mn.permissions.service.js';
 import {MnBucketsService} from './mn.buckets.service.js';
+import {MnCollectionsAddScopeComponent} from './mn.collections.add.scope.component.js';
 
 export {MnCollectionsComponent};
 
@@ -25,11 +27,15 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
     MnCollectionsService,
     MnPermissionsService,
     MnBucketsService,
-    UIRouter
+    UIRouter,
+    NgbModal
   ]}
 
-  constructor(mnCollectionsService, mnPermissionsService, mnBucketsService, uiRouter) {
+  constructor(mnCollectionsService, mnPermissionsService, mnBucketsService,
+              uiRouter, modalService) {
     super();
+
+    var clickAddScope = new Subject();
 
     var bucketSelect = new FormGroup({
       name: new FormControl()
@@ -70,6 +76,7 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
     bucketSelect.valueChanges
       .subscribe(setBucketUrlParam);
 
+
     var manifest =
       combineLatest(getBucketUrlParam,
                     mnCollectionsService.stream.updateManifest,
@@ -77,9 +84,17 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
         .pipe(switchMap(([bucket]) => mnCollectionsService.getManifest(bucket)),
               shareReplay({refCount: true, bufferSize: 1}));
 
+    clickAddScope
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(() => {
+        var ref = modalService.open(MnCollectionsAddScopeComponent);
+        ref.componentInstance.bucketName = bucketSelect.get("name").value;
+      });
+
     this.buckets = getBuckets;
     this.bucketSelect = bucketSelect;
     this.manifest = manifest;
+    this.clickAddScope = clickAddScope;
   }
 
   trackByFn(_, scope) {

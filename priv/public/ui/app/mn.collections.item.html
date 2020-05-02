@@ -7,6 +7,11 @@
       {{scope.collections.length}}
     </span>
     <span class="cbui-table-cell flex-grow-1-5 wrap text-right resp-hide-xsml">
+      <a
+         class="nowrap"
+         style="margin-right: -3px;"
+         (click)="$event.stopPropagation();clickDeleteScope.next();">
+        Drop</a>
     </span>
   </div>
 </section>

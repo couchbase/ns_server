@@ -31,20 +31,6 @@
     top: 2.5rem;
 }
 
-
-.fade {
-    opacity: 0;
-    -webkit-transition: opacity .0s linear;
-    -o-transition: opacity .0s linear;
-    transition: opacity .0s linear;
-}
-
-.modal.in {
-    opacity: 1
-}
-.modal-backdrop.in {
-    opacity: 0.8
-}
 .modal-backdrop {
     position: fixed;
 }
