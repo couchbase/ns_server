@@ -1,6 +1,9 @@
 import { Injectable } from "/ui/web_modules/@angular/core.js";
 import { HttpClient } from '/ui/web_modules/@angular/common/http.js';
+import { UIRouter } from "/ui/web_modules/@uirouter/angular.js";
 import { MnHttpRequest } from './mn.http.request.js';
+
+import { BehaviorSubject} from "/ui/web_modules/rxjs.js";
 
 const restApiBase = "/pools/default/buckets";
 
@@ -12,12 +15,16 @@ class MnCollectionsService {
   ]}
 
   static get parameters() { return [
-    HttpClient
+    HttpClient,
+    UIRouter
   ]}
 
-  constructor(http) {
+  constructor(http, uiRouter) {
     this.http = http;
     this.stream = {};
+
+    this.stream.updateManifest =
+      new BehaviorSubject();
   }
 
   getManifest(bucket) {

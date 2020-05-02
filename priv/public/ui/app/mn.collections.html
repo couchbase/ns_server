@@ -5,3 +5,17 @@
     </option>
   </select>
 </div>
+
+<div class="cbui-table">
+  <div class="cbui-table-header">
+    <span class="cbui-table-cell flex-grow-3">scope name</span>
+    <span class="cbui-table-cell">collections</span>
+    <span class="cbui-table-cell flex-grow-1-5 resp-hide-xsml"></span>
+  </div>
+  <div *ngIf="!(manifest | async)?.scopes.length" class="zero-content">
+    There are no collections yet.
+  </div>
+  <div *ngFor="let scope of (manifest | async)?.scopes; trackBy: trackByFn">
+    <mn-collections-item [scope]="scope"></mn-collections-item>
+  </div>
+</div>

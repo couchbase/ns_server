@@ -3,6 +3,7 @@ import { UIRouterModule } from "/ui/web_modules/@uirouter/angular.js";
 import { ReactiveFormsModule } from '/ui/web_modules/@angular/forms.js';
 
 import { MnCollectionsComponent } from './mn.collections.component.js';
+import { MnCollectionsItemComponent } from './mn.collections.item.component.js';
 import { MnCollectionsService } from './mn.collections.service.js';
 import { MnPermissionsService } from './mn.permissions.service.js';
 import { MnSharedModule } from './mn.shared.module.js';
@@ -36,7 +37,8 @@ class MnCollectionsModule {
   static get annotations() { return [
     new NgModule({
       declarations: [
-        MnCollectionsComponent
+        MnCollectionsComponent,
+        MnCollectionsItemComponent
       ],
       imports: [
         ReactiveFormsModule,

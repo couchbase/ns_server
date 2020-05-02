@@ -1,8 +1,9 @@
 import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
 import {FormGroup, FormControl} from "/ui/web_modules/@angular/forms.js";
 import {UIRouter} from "/ui/web_modules/@uirouter/angular.js";
-import {pluck, take, filter, switchMapTo, map} from '/ui/web_modules/rxjs/operators.js';
-import {combineLatest} from "/ui/web_modules/rxjs.js";
+import {pluck, take, filter, switchMap,
+        switchMapTo, map, shareReplay} from '/ui/web_modules/rxjs/operators.js';
+import {combineLatest, timer} from "/ui/web_modules/rxjs.js";
 import {equals, compose, not} from "/ui/web_modules/ramda.js";
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
@@ -51,24 +52,37 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
                       mnPermissionsService.stream.getBucketsPermissions)
         .pipe(map(filterBuckets));
 
-    var getBucketUrlParam = uiRouter.globals
-        .params$
-        .pipe(pluck("collectionsBucket"), take(1));
+    var getBucketUrlParam =
+        uiRouter.globals.params$.pipe(pluck("collectionsBucket"))
 
     getBucketUrlParam
-      .pipe(filter(equals(undefined)),
-            switchMapTo(getBuckets),
-            pluck(0))
+      .pipe(
+        filter(equals(undefined)),
+        switchMapTo(getBuckets),
+        pluck(0),
+        take(1))
       .subscribe(setBucket);
 
     getBucketUrlParam
-      .pipe(filter(compose(not, equals(undefined))))
+      .pipe(filter(compose(not, equals(undefined))), take(1))
       .subscribe(setBucket);
 
     bucketSelect.valueChanges
       .subscribe(setBucketUrlParam);
 
+    var manifest =
+      combineLatest(getBucketUrlParam,
+                    mnCollectionsService.stream.updateManifest,
+                    timer(0, 5000))
+        .pipe(switchMap(([bucket]) => mnCollectionsService.getManifest(bucket)),
+              shareReplay({refCount: true, bufferSize: 1}));
+
     this.buckets = getBuckets;
     this.bucketSelect = bucketSelect;
+    this.manifest = manifest;
+  }
+
+  trackByFn(_, scope) {
+    return scope.name;
   }
 }
