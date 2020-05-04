@@ -19,6 +19,7 @@
 -export([handle_get/2, handle_put/2, handle_delete/2]).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 -include("ns_config.hrl").
 
 get_key(Path) ->
@@ -136,12 +137,7 @@ handle_iterate(Req, Path, Continuous) ->
         false ->
             ok
     end,
-    RV = metakv:iterate_matching(Path, Continuous,
-                                 fun({K, V, VC}) ->
-                                         output_kv(HTTPRes, K, V, VC);
-                                    ({K, V}) ->
-                                         output_kv(HTTPRes, K, V, undefined)
-                                 end),
+    RV = metakv:iterate_matching(Path, Continuous, output_kv(HTTPRes, _)),
     case Continuous of
         true ->
             RV;
@@ -149,13 +145,9 @@ handle_iterate(Req, Path, Continuous) ->
             mochiweb_response:write_chunk("", HTTPRes)
     end.
 
-output_kv(HTTPRes, K, V, undefined) ->
-    ?metakv_debug("Sent ~s", [K]),
-    mochiweb_response:write_chunk(ejson:encode({[{rev, null},
-                                                 {path, K},
-                                                 {value, base64:encode(V)}]}),
-                                  HTTPRes);
-output_kv(HTTPRes, K, V, VC) ->
+output_kv(HTTPRes, {K, V}) ->
+    write_chunk(HTTPRes, null, K, base64:encode(V), false);
+output_kv(HTTPRes, {K, V, VC, Sensitive}) ->
     Rev0 = base64:encode(erlang:term_to_binary(VC)),
     {Rev, Value} = case V of
                        ?DELETED_MARKER ->
@@ -163,7 +155,10 @@ output_kv(HTTPRes, K, V, VC) ->
                        _ ->
                            {Rev0, base64:encode(V)}
                    end,
-    ?metakv_debug("Sent ~s rev: ~s", [K, Rev]),
-    mochiweb_response:write_chunk(ejson:encode({[{rev, Rev},
-                                                 {path, K},
-                                                 {value, Value}]}), HTTPRes).
+    write_chunk(HTTPRes, Rev, K, Value, Sensitive).
+
+write_chunk(HTTPRes, Rev, Path, Value, Sensitive) ->
+    ?metakv_debug("Sent ~s rev: ~s sensitive: ~p", [Path, Rev, Sensitive]),
+    mochiweb_response:write_chunk(
+      ejson:encode({[{rev, Rev}, {path, Path}, {value, Value},
+                     {sensitive, Sensitive}]}), HTTPRes).

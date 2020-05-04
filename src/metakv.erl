@@ -156,7 +156,8 @@ ns_config_get(Key) ->
         false ->
             false;
         {value, Val, VC} ->
-            {value, strip_sensitive(Val), VC}
+            {_, RawVal} = strip_sensitive(Val),
+            {value, RawVal, VC}
     end.
 
 ns_config_mutation(Key, Value, Params) ->
@@ -238,9 +239,9 @@ check_sensitive(Sensitive, NewValue) ->
 
 %% Strip senstive tag from the value
 strip_sensitive({?METAKV_SENSITIVE, Value}) ->
-    Value;
+    {true, Value};
 strip_sensitive(Value) ->
-    Value.
+    {false, Value}.
 
 get_old_value(OldData) ->
     case OldData of
@@ -320,14 +321,7 @@ ns_config_iterate_matching(Key, Continuous, Callback) ->
         false ->
             ok
     end,
-    KV = ns_config_iterate_matching(Key),
-    lists:foreach(
-      fun({{metakv, K}, V0}) ->
-              VC = ns_config:extract_vclock(V0),
-              V = strip_sensitive(ns_config:strip_metadata(V0)),
-              Callback({K, V, VC})
-      end,
-      KV),
+    ns_config_emit_values(ns_config_iterate_matching(Key), Callback),
     case Continuous of
         true ->
             ns_config_iterate_loop(Key, Callback);
@@ -338,18 +332,19 @@ ns_config_iterate_matching(Key, Continuous, Callback) ->
 ns_config_iterate_loop(Key, Callback) ->
     receive
         {config, KVs} ->
-            KV = ns_config_matching_kvs(Key, KVs),
-            lists:foreach(
-              fun({{metakv, K}, V0}) ->
-                      VC = ns_config:extract_vclock(V0),
-                      V = strip_sensitive(ns_config:strip_metadata(V0)),
-                      Callback({K, V, VC})
-              end,
-              KV),
+            ns_config_emit_values(ns_config_matching_kvs(Key, KVs), Callback),
             ns_config_iterate_loop(Key, Callback);
         _ ->
             erlang:exit(normal)
     end.
+
+ns_config_emit_values(KV, Callback) ->
+    lists:foreach(
+      fun({{metakv, K}, V0}) ->
+              VC = ns_config:extract_vclock(V0),
+              {Sensitive, V} = strip_sensitive(ns_config:strip_metadata(V0)),
+              Callback({K, V, VC, Sensitive})
+      end, KV).
 
 ns_config_matching_kvs(Key, KVList) ->
     Filter = mk_config_filter(Key),
