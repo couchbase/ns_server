@@ -9,6 +9,7 @@
     "@angular/platform-browser-dynamic": "./@angular/platform-browser-dynamic.js",
     "@angular/upgrade": "./@angular/upgrade.js",
     "@angular/upgrade/static": "./@angular/upgrade/static.js",
+    "@ng-bootstrap/ng-bootstrap": "./@ng-bootstrap/ng-bootstrap.js",
     "@uirouter/angular": "./@uirouter/angular.js",
     "@uirouter/angular-hybrid": "./@uirouter/angular-hybrid.js",
     "@uirouter/angularjs": "./@uirouter/angularjs.js",
