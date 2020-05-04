@@ -1229,6 +1229,21 @@
           },
           "optional_fields" : {
           }
+      },
+      {
+          "id" : 8258,
+          "name" : "session timeout",
+          "description" : "User session has ended due to a timeout",
+          "sync" : false,
+          "enabled" : true,
+          "filtering_permitted" : false,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"domain" : "", "user" : ""}
+          },
+          "optional_fields" : {
+              "sessionid" : ""
+          }
       }
     ]
 }
