@@ -20,6 +20,7 @@
 -include("rbac.hrl").
 
 -export([roles_pre_55/0,
+         roles_pre_66/0,
          roles_pre_cheshirecat/0]).
 
 -spec roles_pre_55() -> [rbac_role_def(), ...].
@@ -216,8 +217,8 @@ roles_pre_55() ->
        {[{bucket, bucket_name}, stats], [read]},
        {[pools], [read]}]}].
 
--spec roles_pre_cheshirecat() -> [rbac_role_def(), ...].
-roles_pre_cheshirecat() ->
+-spec roles_pre_66() -> [rbac_role_def(), ...].
+roles_pre_66() ->
     [{admin, [],
       [{name, <<"Full Admin">>},
        {desc, <<"Can manage all cluster features (including security). "
@@ -498,4 +499,311 @@ roles_pre_cheshirecat() ->
                 "web console and read some data.">>}],
       [{[analytics], [select]},
        {[ui], [read]},
+       {[pools], [read]}]}].
+
+-spec roles_pre_cheshirecat() -> [rbac_role_def(), ...].
+roles_pre_cheshirecat() ->
+    [{admin, [],
+      [{name, <<"Full Admin">>},
+       {desc, <<"Can manage all cluster features (including security). "
+                "This user can access the web console. This user can read and "
+                "write all data.">>},
+       {ce, true}],
+      [{[], all}]},
+     {ro_admin, [],
+      [{name, <<"Read-Only Admin">>},
+       {desc, <<"Can view all cluster statistics. This user can access the "
+                "web console. This user can read some data.">>},
+       {ce, true}],
+      [{[{bucket, any}, password], none},
+       {[{bucket, any}, data], none},
+       {[{bucket, any}, fts], none},
+       {[admin, security], [read]},
+       {[admin], none},
+       {[eventing], none},
+       {[], [read, list]}]},
+     {security_admin, [],
+      [{name, <<"Security Admin">>},
+       {desc, <<"Can view all cluster statistics and manage user roles, but "
+                "not grant Full Admin or Security Admin roles to other users "
+                "or alter their own role. This user can access the web "
+                "console. This user cannot read data.">>}],
+      [{[admin, security, admin], none},
+       {[admin, security], all},
+       {[admin, logs], none},
+       {[{bucket, any}, data], none},
+       {[{bucket, any}, views], none},
+       {[{bucket, any}, n1ql], none},
+       {[{bucket, any}, fts], none},
+       {[{bucket, any}, password], none},
+       {[{bucket, any}], [read]},
+       {[], [read, list]}]},
+     {cluster_admin, [],
+      [{name, <<"Cluster Admin">>},
+       {desc, <<"Can manage all cluster features except security. This user "
+                "can access the web console. This user cannot read data.">>}],
+      [{[admin, internal], none},
+       {[admin, security], none},
+       {[admin, diag], read},
+       {[{bucket, any}, data], none},
+       {[{bucket, any}, views], none},
+       {[{bucket, any}, n1ql], none},
+       {[{bucket, any}, fts], none},
+       {[{bucket, any}, password], none},
+       {[n1ql, curl], none},
+       {[eventing], none},
+       {[], all}]},
+     {bucket_admin, [bucket_name],
+      [{name, <<"Bucket Admin">>},
+       {desc, <<"Can manage ALL bucket features for a given bucket (including "
+                "start/stop XDCR). This user can access the web console. This "
+                "user cannot read data.">>}],
+      [{[{bucket, bucket_name}, xdcr], [read, execute]},
+       {[{bucket, bucket_name}, data], none},
+       {[{bucket, bucket_name}, views], none},
+       {[{bucket, bucket_name}, n1ql], none},
+       {[{bucket, bucket_name}, password], none},
+       {[{bucket, bucket_name}, fts], none},
+       {[{bucket, bucket_name}], all},
+       {[{bucket, any}, settings], [read]},
+       {[{bucket, any}], none},
+       {[xdcr], none},
+       {[admin], none},
+       {[eventing], none},
+       {[], [read]}]},
+     {bucket_full_access, [bucket_name],
+      [{name, <<"Application Access">>},
+       {desc, <<"Full access to bucket data. This user cannot access the web "
+                "console and is intended only for application access. This "
+                "user can read and write data.">>},
+       {ce, true}],
+      [{[{bucket, bucket_name}, data], all},
+       {[{bucket, bucket_name}, views], all},
+       {[{bucket, bucket_name}, n1ql, index], all},
+       {[{bucket, bucket_name}, n1ql], [execute]},
+       {[{bucket, bucket_name}], [read, flush]},
+       {[{bucket, bucket_name}, settings], [read]},
+       {[pools], [read]}]},
+     {views_admin, [bucket_name],
+      [{name, <<"Views Admin">>},
+       {desc, <<"Can create and manage views of a given bucket. This user can "
+                "access the web console. This user can read some data.">>}],
+      [{[{bucket, bucket_name}, views], all},
+       {[{bucket, bucket_name}, data], [read]},
+       {[{bucket, any}, settings], [read]},
+       {[{bucket, any}], none},
+       {[{bucket, bucket_name}, n1ql], [execute]},
+       {[xdcr], none},
+       {[admin], none},
+       {[eventing], none},
+       {[], [read]}]},
+     {views_reader, [bucket_name],
+      [{name, <<"Views Reader">>},
+       {desc, <<"Can read data from the views of a given bucket. This user "
+                "cannot access the web console and is intended only for "
+                "application access. This user can read some data.">>}],
+      [{[{bucket, bucket_name}, views], [read]},
+       {[{bucket, bucket_name}, data, docs], [read]},
+       {[pools], [read]}]},
+     {replication_admin, [],
+      [{name, <<"XDCR Admin">>},
+       {desc, <<"Can administer XDCR features to create cluster references and "
+                "replication streams out of this cluster. This user can "
+                "access the web console. This user can read some data.">>}],
+      [{[{bucket, any}, xdcr], all},
+       {[{bucket, any}, data], [read]},
+       {[{bucket, any}, settings], [read]},
+       {[{bucket, any}], none},
+       {[xdcr], all},
+       {[admin], none},
+       {[eventing], none},
+       {[], [read]}]},
+     {data_reader, [bucket_name],
+      [{name, <<"Data Reader">>},
+       {desc, <<"Can read data from a given bucket. This user cannot access "
+                "the web console and is intended only for application access. "
+                "This user can read data, but cannot write it.">>}],
+      [{[{bucket, bucket_name}, data, docs], [read]},
+       {[{bucket, bucket_name}, data, meta], [read]},
+       {[{bucket, bucket_name}, data, xattr], [read]},
+       {[{bucket, bucket_name}, settings], [read]},
+       {[pools], [read]}]},
+     {data_writer, [bucket_name],
+      [{name, <<"Data Writer">>},
+       {desc, <<"Can write data to a given bucket. This user cannot access the "
+                "web console and is intended only for application access. This "
+                "user can write data, but cannot read it.">>}],
+      [{[{bucket, bucket_name}, data, docs], [insert, upsert, delete]},
+       {[{bucket, bucket_name}, data, xattr], [write]},
+       {[{bucket, bucket_name}, settings], [read]},
+       {[pools], [read]}]},
+     {data_dcp_reader, [bucket_name],
+      [{name, <<"Data DCP Reader">>},
+       {desc, <<"Can initiate DCP streams for a given bucket. This user cannot "
+                "access the web console and is intended only for application "
+                "access. This user can read data.">>}],
+      [{[{bucket, bucket_name}, data, docs], [read]},
+       {[{bucket, bucket_name}, data, meta], [read]},
+       {[{bucket, bucket_name}, data, dcp], [read]},
+       {[{bucket, bucket_name}, data, dcpstream], [read]},
+       {[{bucket, bucket_name}, data, sxattr], [read]},
+       {[{bucket, bucket_name}, data, xattr], [read]},
+       {[{bucket, bucket_name}, settings], [read]},
+       {[admin, memcached, idle], [write]},
+       {[pools], [read]}]},
+     {data_backup, [bucket_name],
+      [{name, <<"Data Backup & Restore">>},
+       {desc, <<"Can backup and restore a given bucket’s data. This user "
+                "cannot access the web console and is intended only for "
+                "application access. This user can read data.">>}],
+      [{[{bucket, bucket_name}, data], all},
+       {[{bucket, bucket_name}, views], [read, write]},
+       {[{bucket, bucket_name}, fts], [read, write, manage]},
+       {[{bucket, bucket_name}, stats], [read]},
+       {[{bucket, bucket_name}, settings], [read]},
+       {[{bucket, bucket_name}, n1ql, index], [create, list, build]},
+       {[{bucket, bucket_name}, analytics], [manage, select]},
+       {[analytics], [select, backup]},
+       {[pools], [read]}]},
+     {data_monitoring, [bucket_name],
+      [{name, <<"Data Monitor">>},
+       {desc, <<"Can read statistics for a given bucket. This user cannot "
+                "access the web console and is intended only for application "
+                "access. This user cannot read data.">>}],
+      [{[{bucket, bucket_name}, stats], [read]},
+       {[{bucket, bucket_name}, settings], [read]},
+       {[tasks], [read]},
+       {[pools], [read]}]},
+     {fts_admin, [bucket_name],
+      [{name, <<"Search Admin">>},
+       {desc, <<"Can administer all Full Text Search features. This user can "
+                "access the web console. This user can read some data.">>}],
+      [{[{bucket, bucket_name}, fts], [read, write, manage]},
+       {[settings, fts], [read, write, manage]},
+       {[ui], [read]},
+       {[pools], [read]},
+       {[{bucket, bucket_name}, settings], [read]}]},
+     {fts_searcher, [bucket_name],
+      [{name, <<"Search Reader">>},
+       {desc, <<"Can query Full Text Search indexes for a given bucket. This "
+                "user can access the web console. This user can read some "
+                "data.">>}],
+      [{[{bucket, bucket_name}, fts], [read]},
+       {[settings, fts], [read]},
+       {[ui], [read]},
+       {[pools], [read]},
+       {[{bucket, bucket_name}, settings], [read]}]},
+     {query_select, [bucket_name],
+      [{name, <<"Query Select">>},
+       {desc, <<"Can execute a SELECT statement on a given bucket to retrieve "
+                "data. This user can access the web console and can read data, "
+                "but not write it.">>}],
+      [{[{bucket, bucket_name}, n1ql, select], [execute]},
+       {[{bucket, bucket_name}, data, docs], [read]},
+       {[{bucket, bucket_name}, settings], [read]},
+       {[ui], [read]},
+       {[pools], [read]}]},
+     {query_update, [bucket_name],
+      [{name, <<"Query Update">>},
+       {desc, <<"Can execute an UPDATE statement on a given bucket to update "
+                "data. This user can access the web console and write data, "
+                "but cannot read it.">>}],
+      [{[{bucket, bucket_name}, n1ql, update], [execute]},
+       {[{bucket, bucket_name}, data, docs], [upsert]},
+       {[{bucket, bucket_name}, settings], [read]},
+       {[ui], [read]},
+       {[pools], [read]}]},
+     {query_insert, [bucket_name],
+      [{name, <<"Query Insert">>},
+       {desc, <<"Can execute an INSERT statement on a given bucket to add "
+                "data. This user can access the web console and insert data, "
+                "but cannot read it.">>}],
+      [{[{bucket, bucket_name}, n1ql, insert], [execute]},
+       {[{bucket, bucket_name}, data, docs], [insert]},
+       {[{bucket, bucket_name}, settings], [read]},
+       {[ui], [read]},
+       {[pools], [read]}]},
+     {query_delete, [bucket_name],
+      [{name, <<"Query Delete">>},
+       {desc, <<"Can execute a DELETE statement on a given bucket to delete "
+                "data. This user can access the web console, but cannot read "
+                "data. This user can delete data.">>}],
+      [{[{bucket, bucket_name}, n1ql, delete], [execute]},
+       {[{bucket, bucket_name}, data, docs], [delete]},
+       {[{bucket, bucket_name}, settings], [read]},
+       {[ui], [read]},
+       {[pools], [read]}]},
+     {query_manage_index, [bucket_name],
+      [{name, <<"Query Manage Index">>},
+       {desc, <<"Can manage indexes for a given bucket. This user can access "
+                "the web console, but cannot read data.">>}],
+      [{[{bucket, bucket_name}, n1ql, index], all},
+       {[{bucket, bucket_name}, settings], [read]},
+       {[ui], [read]},
+       {[pools], [read]}]},
+     {query_system_catalog, [],
+      [{name, <<"Query System Catalog">>},
+       {desc, <<"Can look up system catalog information via N1QL. This user "
+                "can access the web console, but cannot read user data.">>}],
+      [{[{bucket, any}, n1ql, index], [list]},
+       {[{bucket, any}, settings], [read]},
+       {[n1ql, meta], [read]},
+       {[ui], [read]},
+       {[pools], [read]}]},
+     {query_external_access, [],
+      [{name, <<"Query CURL Access">>},
+       {desc, <<"Can execute the CURL statement from within N1QL. This user "
+                "can access the web console, but cannot read data (within "
+                "Couchbase).">>}],
+      [{[n1ql, curl], [execute]},
+       {[{bucket, any}, settings], [read]},
+       {[ui], [read]},
+       {[pools], [read]}]},
+     {replication_target, [bucket_name],
+      [{name, <<"XDCR Inbound">>},
+       {desc, <<"Can create XDCR streams into a given bucket. This user cannot "
+                "access the web console or read any data.">>}],
+      [{[{bucket, bucket_name}, settings], [read]},
+       {[{bucket, bucket_name}, data, meta], [read, write]},
+       {[{bucket, bucket_name}, stats], [read]},
+       {[pools], [read]}]},
+     {analytics_manager, [bucket_name],
+      [{name, <<"Analytics Manager">>},
+       {desc, <<"Can manage Analytics links. Can manage datasets on a given "
+                "bucket. Can query datasets created on this bucket. This user "
+                "can access the web console and read some data.">>}],
+      [{[{bucket, bucket_name}, analytics], [manage, select]},
+       {[analytics], [select]},
+       {[ui], [read]},
+       {[pools], [read]}]},
+     {analytics_reader, [],
+      [{name, <<"Analytics Reader">>},
+       {desc, <<"Can query datasets. This is a global role as datasets may "
+                "be created on different buckets. This user can access the "
+                "web console and read some data.">>}],
+      [{[analytics], [select]},
+       {[ui], [read]},
+       {[pools], [read]}]},
+     {analytics_select, [bucket_name],
+      [{name, <<"Analytics Select">>},
+       {desc, <<"Can query datasets created on this bucket. This user can "
+                "access the web console and read some data.">>}],
+      [{[{bucket, bucket_name}, analytics], [select]},
+       {[ui], [read]},
+       {[pools], [read]}]},
+     {mobile_sync_gateway, [bucket_name],
+      [{name, <<"Sync Gateway">>},
+       {desc, <<"Full access to bucket data as required by Sync Gateway. "
+                "This user cannot access the web console and is intended "
+                "only for use by Sync Gateway. This user can read and "
+                "write data, manage indexes and views, and read some "
+                "cluster information.">>}],
+      [{[{bucket, bucket_name}, data], all},
+       {[{bucket, bucket_name}, views], all},
+       {[{bucket, bucket_name}, n1ql, index], all},
+       {[{bucket, bucket_name}, n1ql], [execute]},
+       {[{bucket, bucket_name}], [read, flush]},
+       {[{bucket, bucket_name}, settings], [read]},
+       {[admin, memcached, idle], [write]},
+       {[settings, autocompaction], [read]},
        {[pools], [read]}]}].

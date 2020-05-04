@@ -239,7 +239,7 @@ roles() ->
        {[{bucket, bucket_name}, stats], [read]},
        {[{bucket, bucket_name}, settings], [read]},
        {[{bucket, bucket_name}, n1ql, index], [create, list, build]},
-       {[{bucket, bucket_name}, analytics], [manage]},
+       {[{bucket, bucket_name}, analytics], [manage, select]},
        {[analytics], [select, backup]},
        {[pools], [read]}]},
      {data_monitoring, [bucket_name],
@@ -348,9 +348,9 @@ roles() ->
      {analytics_manager, [bucket_name],
       [{name, <<"Analytics Manager">>},
        {desc, <<"Can manage Analytics links. Can manage datasets on a given "
-                "bucket. Can query datasets. This user can access the web "
-                "console and read some data.">>}],
-      [{[{bucket, bucket_name}, analytics], [manage]},
+                "bucket. Can query datasets created on this bucket. This user "
+                "can access the web console and read some data.">>}],
+      [{[{bucket, bucket_name}, analytics], [manage, select]},
        {[analytics], [select]},
        {[ui], [read]},
        {[pools], [read]}]},
@@ -361,6 +361,29 @@ roles() ->
                 "web console and read some data.">>}],
       [{[analytics], [select]},
        {[ui], [read]},
+       {[pools], [read]}]},
+     {analytics_select, [bucket_name],
+      [{name, <<"Analytics Select">>},
+       {desc, <<"Can query datasets created on this bucket. This user can "
+                "access the web console and read some data.">>}],
+      [{[{bucket, bucket_name}, analytics], [select]},
+       {[ui], [read]},
+       {[pools], [read]}]},
+     {mobile_sync_gateway, [bucket_name],
+      [{name, <<"Sync Gateway">>},
+       {desc, <<"Full access to bucket data as required by Sync Gateway. "
+                "This user cannot access the web console and is intended "
+                "only for use by Sync Gateway. This user can read and "
+                "write data, manage indexes and views, and read some "
+                "cluster information.">>}],
+      [{[{bucket, bucket_name}, data], all},
+       {[{bucket, bucket_name}, views], all},
+       {[{bucket, bucket_name}, n1ql, index], all},
+       {[{bucket, bucket_name}, n1ql], [execute]},
+       {[{bucket, bucket_name}], [read, flush]},
+       {[{bucket, bucket_name}, settings], [read]},
+       {[admin, memcached, idle], [write]},
+       {[settings, autocompaction], [read]},
        {[pools], [read]}]}].
 
 internal_roles() ->
@@ -379,11 +402,16 @@ get_definitions(Config, public) ->
         true ->
             roles();
         false ->
-            case cluster_compat_mode:is_cluster_55(Config) of
+            case cluster_compat_mode:is_cluster_66(Config) of
                 true ->
                     menelaus_old_roles:roles_pre_cheshirecat();
                 false ->
-                    menelaus_old_roles:roles_pre_55()
+                    case cluster_compat_mode:is_cluster_55(Config) of
+                        true ->
+                            menelaus_old_roles:roles_pre_66();
+                        false ->
+                            menelaus_old_roles:roles_pre_55()
+                    end
             end
     end.
 
@@ -1207,22 +1235,26 @@ produce_roles_by_permission_test_() ->
                             data_monitoring, data_writer, data_reader,
                             fts_admin, fts_searcher, query_delete,
                             query_insert, query_manage_index, query_select,
-                            query_update, replication_target],
+                            query_update, replication_target,
+                            mobile_sync_gateway],
                            [any, "test"]),
             {[{bucket, "test"}, settings], read})},
       {"xattr write",
        Test([admin] ++
-                enum_roles([bucket_full_access, data_backup, data_writer],
+                enum_roles([bucket_full_access, data_backup, data_writer,
+                            mobile_sync_gateway],
                            [any, "test"]),
             {[{bucket, "test"}, data, xattr], write})},
       {"any bucket",
        Test([admin] ++
-                enum_roles([bucket_full_access, data_backup, data_writer],
+                enum_roles([bucket_full_access, data_backup, data_writer,
+                            mobile_sync_gateway],
                            [any, "test", "default"]),
             {[{bucket, any}, data, xattr], write})},
       {"wrong bucket",
        Test([admin] ++
-                enum_roles([bucket_full_access, data_backup, data_writer],
+                enum_roles([bucket_full_access, data_backup, data_writer,
+                            mobile_sync_gateway],
                            [any]),
             {[{bucket, "wrong"}, data, xattr], write})}]}.
 
