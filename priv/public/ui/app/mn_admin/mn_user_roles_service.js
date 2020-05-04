@@ -252,9 +252,7 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     case "query": return "Query and Index Services";
     case "fts": return "Search Service";
     case "analytics": return "Analytics Service";
-    case "replication":
-    case "bucket": return undefined;
-    default: return name;
+    default: return undefined;
     }
   }
 
@@ -287,15 +285,19 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     _.forEach(_.groupBy(roles, function (role) {
       return role.role.split("_")[0];
     }), function (value, key) {
-      switch(key) {
-      case "data": restRoles[0] = [getWrapperName(key), value]; break;
-      case "views": restRoles[1] = [getWrapperName(key), value]; break;
-      case "query": restRoles[2] = [getWrapperName(key), value]; break;
-      case "fts": restRoles[3] = [getWrapperName(key), value]; break;
-      case "analytics": restRoles[4] = [getWrapperName(key), value]; break;
-      case "bucket":
-      case "replication": rv = rv.concat(value); break;
-      default: restRoles[5].push([getWrapperName(key), value]); break;
+      var wrapperName = getWrapperName(key);
+      if(wrapperName == undefined) {
+        rv = rv.concat(value);
+      } else {
+        var index;
+        switch(key) {
+        case "data": index = 0; break;
+        case "views": index = 1; break;
+        case "query": index = 2; break;
+        case "fts": index = 3; break;
+        case "analytics": index = 4; break;
+        };
+        restRoles[index] = [wrapperName, value];
       }
     });
 
@@ -329,7 +331,7 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
 
   function getRoleUIID(role, isWrapper) {
     var rv = "";
-    var bucketWrapperName = getWrapperName(role.bucket_name || "undefined");
+    var bucketWrapperName = role.bucket_name || "undefined";
     var serviceWrapperName;
     if (role.bucket_name) {
       serviceWrapperName = getWrapperName(role.role.split("_")[0]);
