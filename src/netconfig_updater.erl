@@ -272,7 +272,7 @@ ensure_connection_proto(Node, Family, Encryption, Retries, RetryTimeout) ->
 
 check_connection_proto(Node, Family, Encryption) ->
     Proto = case Encryption of
-                true -> proxy;
+                true -> tls;
                 false -> tcp
             end,
     case net_kernel:node_info(Node) of
@@ -282,8 +282,8 @@ check_connection_proto(Node, Family, Encryption) ->
                 %% address family is always set to inet, even when the socket
                 %% is actually an inet6 socket
                 #net_address{address = {{_, _, _, _, _, _, _, _}, _},
-                             protocol = proxy,
-                             family = inet} when Proto == proxy,
+                             protocol = tls,
+                             family = inet} when Proto == tls,
                                                  Family == inet6 -> ok;
                 #net_address{protocol = Proto, family = Family} -> ok;
                 A -> erlang:throw({wrong_proto, Node, A})
