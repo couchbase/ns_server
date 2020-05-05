@@ -24,8 +24,8 @@
     There are no collections yet.
   </div>
   <div *ngFor="let scope of (manifest | async)?.scopes; trackBy: trackByFn">
-    <mn-collections-item
+    <mn-collections-scope
        [scope]="scope"
-       [bucketName]="bucketSelect.get('name').value"></mn-collections-item>
+       [bucketName]="bucketSelect.get('name').value"></mn-collections-scope>
   </div>
 </div>
