@@ -15,6 +15,8 @@ import { MnSharedModule } from './mn.shared.module.js';
 import { MnBucketsService } from './mn.buckets.service.js';
 import { MnCollectionsAddScopeComponent } from './mn.collections.add.scope.component.js';
 import { MnCollectionsDeleteScopeComponent } from './mn.collections.delete.scope.component.js';
+import { MnCollectionsAddItemComponent} from './mn.collections.add.item.component.js';
+import { MnCollectionsDeleteItemComponent} from './mn.collections.delete.item.component.js';
 
 let collectionsState = {
   url: '/collections?collectionsBucket&scopeDetails',
@@ -49,7 +51,9 @@ class MnCollectionsModule {
     new NgModule({
       entryComponents: [
         MnCollectionsAddScopeComponent,
-        MnCollectionsDeleteScopeComponent
+        MnCollectionsDeleteScopeComponent,
+        MnCollectionsAddItemComponent,
+        MnCollectionsDeleteItemComponent
       ],
       declarations: [
         MnCollectionsComponent,
@@ -57,7 +61,9 @@ class MnCollectionsModule {
         MnCollectionsScopeComponent,
         MnCollectionsScopeDetailsComponent,
         MnCollectionsAddScopeComponent,
-        MnCollectionsDeleteScopeComponent
+        MnCollectionsDeleteScopeComponent,
+        MnCollectionsAddItemComponent,
+        MnCollectionsDeleteItemComponent
       ],
       imports: [
         NgbModule,

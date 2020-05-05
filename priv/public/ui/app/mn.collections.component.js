@@ -12,6 +12,7 @@ import {MnCollectionsService} from './mn.collections.service.js';
 import {MnPermissionsService} from './mn.permissions.service.js';
 import {MnBucketsService} from './mn.buckets.service.js';
 import {MnCollectionsAddScopeComponent} from './mn.collections.add.scope.component.js';
+import {MnCollectionsAddItemComponent} from './mn.collections.add.item.component.js';
 
 export {MnCollectionsComponent};
 
@@ -36,6 +37,7 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
     super();
 
     var clickAddScope = new Subject();
+    var clickAddCollection = new Subject();
 
     var bucketSelect = new FormGroup({
       name: new FormControl()
@@ -74,8 +76,8 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
       .subscribe(setBucket);
 
     bucketSelect.valueChanges
+      .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(setBucketUrlParam);
-
 
     var manifest =
       combineLatest(getBucketUrlParam,
@@ -91,10 +93,18 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
         ref.componentInstance.bucketName = bucketSelect.get("name").value;
       });
 
+    clickAddCollection
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(() => {
+        var ref = modalService.open(MnCollectionsAddItemComponent);
+        ref.componentInstance.bucketName = bucketSelect.get("name").value;
+      });
+
     this.buckets = getBuckets;
     this.bucketSelect = bucketSelect;
     this.manifest = manifest;
     this.clickAddScope = clickAddScope;
+    this.clickAddCollection = clickAddCollection;
   }
 
   trackByFn(_, scope) {

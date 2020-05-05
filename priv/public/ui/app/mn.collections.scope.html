@@ -19,6 +19,9 @@
   <div
      class="cbui-tablerow-expanded"
      *ngIf="(detailsHashObserver.stream.isOpened | async)">
-    <mn-collections-scope-details [scope]="scope"></mn-collections-scope-details>
+    <mn-collections-scope-details
+       [scope]="scope"
+       [bucketName]="bucketName"
+    ></mn-collections-scope-details>
   </div>
 </section>

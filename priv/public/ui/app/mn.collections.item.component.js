@@ -5,6 +5,7 @@ import {Subject} from "/ui/web_modules/rxjs.js";
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnCollectionsService} from './mn.collections.service.js';
+import {MnCollectionsDeleteItemComponent} from './mn.collections.delete.item.component.js';
 
 export {MnCollectionsItemComponent};
 
@@ -15,7 +16,9 @@ class MnCollectionsItemComponent extends MnLifeCycleHooksToStream {
       templateUrl: "app/mn.collections.item.html",
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
-        "collection"
+        "collection",
+        "scopeName",
+        "bucketName"
       ]
     })
   ]}
@@ -27,5 +30,18 @@ class MnCollectionsItemComponent extends MnLifeCycleHooksToStream {
 
   constructor(mnCollectionsService, modalService) {
     super();
+
+    var clickDeleteCollection = new Subject();
+
+    clickDeleteCollection
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(() => {
+        var ref = modalService.open(MnCollectionsDeleteItemComponent);
+        ref.componentInstance.scopeName = this.scopeName;
+        ref.componentInstance.bucketName = this.bucketName;
+        ref.componentInstance.collectionName = this.collection.name;
+      });
+
+    this.clickDeleteCollection = clickDeleteCollection;
   }
 }

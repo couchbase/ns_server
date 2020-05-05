@@ -9,6 +9,8 @@
   </div>
   <div *ngFor="let collection of scope.collections; trackBy: trackByFn">
     <mn-collections-item
+       [scopeName]="scope.name"
+       [bucketName]="bucketName"
        [collection]="collection"></mn-collections-item>
   </div>
 </div>

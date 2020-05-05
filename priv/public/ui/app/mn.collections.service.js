@@ -32,6 +32,12 @@ class MnCollectionsService {
 
     this.stream.deleteScopeHttp =
       new MnHttpRequest(this.deleteScope.bind(this)).addSuccess().addError();
+
+    this.stream.addCollectionHttp =
+      new MnHttpRequest(this.addCollection.bind(this)).addSuccess().addError();
+
+    this.stream.deleteCollectionHttp =
+      new MnHttpRequest(this.deleteCollection.bind(this)).addSuccess().addError();
   }
 
   getManifest(bucket) {
@@ -42,15 +48,15 @@ class MnCollectionsService {
     return this.http.post(`${restApiBase}/${bucket}/collections`, body);
   }
 
-  addCollection(bucket, scope, body) {
-    return this.http.post(`${restApiBase}/${bucket}/collections/${scope}`, body);
+  addCollection([bucket, {scope, name}]) {
+    return this.http.post(`${restApiBase}/${bucket}/collections/${scope}`, {name: name});
   }
 
   deleteScope([bucket, scope]) {
     return this.http.delete(`${restApiBase}/${bucket}/collections/${scope}`);
   }
 
-  deleteCollection(bucket, scope, collection) {
+  deleteCollection([bucket, scope, collection]) {
     return this.http.delete(`${restApiBase}/${bucket}/collections/${scope}/${collection}`);
   }
 }
