@@ -21,6 +21,9 @@
 -include("pipes.hrl").
 -include("ns_common.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([handle/4,
          touch/2,
@@ -346,15 +349,26 @@ greater_or_equal(Name1, Name2, State) ->
 length(Name, Min, Max, State) ->
     validate(
       fun (Value) ->
-              Length = size(unicode:characters_to_binary(
-                              list_to_binary(Value), utf8, utf32)) div 4,
-              case Length < Min orelse Length > Max of
-                  true ->
+              %% Mochiweb converts the utf8 string to a list, which isn't
+              %% correct, so we need to undo that conversion here.
+              case unicode:characters_to_binary(list_to_binary(Value)) of
+                  {incomplete, _, _} ->
                       {error,
-                       io_lib:format("Length must be in range from ~p to ~p",
-                                     [Min, Max])};
-                  false ->
-                      ok
+                       io_lib:format("Incomplete utf8 name ~p", [Value])};
+                  {error, _, _} ->
+                      {error,
+                       io_lib:format("Ill-formed utf8 name ~p", [Value])};
+                  BinaryChars ->
+                      Length = string:length(BinaryChars),
+                      case Length < Min orelse Length > Max of
+                          true ->
+                              {error,
+                               io_lib:format("Name length (~p) must be in the "
+                                             "range from ~p to ~p, inclusive",
+                                             [Length, Min, Max])};
+                          false ->
+                              ok
+                      end
               end
       end, Name, State).
 
@@ -431,3 +445,59 @@ string_array(Name, State) ->
           (_) ->
               {error, "Must be an array of non-empty strings"}
       end, Name, State).
+
+-ifdef(TEST).
+%% Validates that the length of the value is in range, returning the resulting
+%% error array.
+length_in_range(Value, Min, Max) ->
+    #state{errors = E} = length(name, Min, Max, #state{kv=[{"name", Value}]}),
+    E.
+
+assert_in_range(Value, Length, Min, Max) ->
+    ?assertEqual(length_in_range(Value, Min, Max), [],
+                 io:format("Length of '~ts' (~p) must be in the range "
+                           "~p to ~p, inclusive",
+                           [Value, Length, Min, Max])).
+
+assert_not_in_range(Value, Length, Min, Max) ->
+    ?assertNotEqual(length_in_range(Value, Min, Max), [],
+                 io:format("Length of '~ts' (~p) should not fall in the "
+                           "range ~p to ~p, inclusive",
+                           [Value, Length, Min, Max])).
+
+length_tester(Value, Length) ->
+    %% Length is exactly right.
+    assert_in_range(Value, Length, Length, Length),
+
+    %% Length falls completely inside the range.
+    assert_in_range(Value, Length, Length - 1, Length + 1),
+
+    %% Length falls in the range, but at the lower bound.
+    assert_in_range(Value, Length, Length, Length + 1),
+
+    %% Length is less than the lower bound.
+    assert_not_in_range(Value, Length, Length -1, Length - 1),
+
+    %% Length falls in the range, but at the upper bound.
+    assert_in_range(Value, Length, Length - 1, Length),
+
+    %% Length is greater than the upper bound.
+    assert_not_in_range(Value, Length, Length + 1, Length + 1).
+
+%% We'd like this to directly determine if length/4 returns an error, but
+%% that's tricky due to the way that length/4 is tied to validate/3.
+assert_length_error(Value, Length) ->
+    ?assertNotEqual(length_in_range(Value, Length, Length), [],
+                    io:format("length/4 of '~ts' should produce an error",
+                              [Value])).
+
+length_test() ->
+    length_tester(binary_to_list(<<""/utf8>>), 0),
+    length_tester(binary_to_list(<<"1" /utf8>>), 1),
+    length_tester(binary_to_list(<<"ß↑e̊"/utf8>>), 3),
+    length_tester(binary_to_list(<<"12345" /utf8>>), 5),
+
+    %% An ill-formed utf8 string, which we expect to produce an error.
+    assert_length_error(
+      binary_to_list(<<"g5DEWBlmDJhJ"/utf8, 16#EE, "Lx9Fa"/utf8>>), 18).
+-endif.
