@@ -224,7 +224,8 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["pools", "default", "overviewStats"] ->
                     {{[{bucket, any}, stats], read}, fun menelaus_stats:handle_overview_stats/2, ["default"]};
                 ["_uistats"] ->
-                    {{[stats], read}, fun menelaus_stats:serve_ui_stats/1};
+                    {{[ui], read},
+                     fun menelaus_stats:serve_ui_stats/1};
                 ["_uiEnv"] ->
                     {done, serve_ui_env(Req)};
                 ["poolsStreaming", "default"] ->
@@ -253,8 +254,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[{bucket, Id}, data, docs], read},
                      fun menelaus_web_crud:handle_get/3, [Id, DocId]};
                 ["pools", "default", "buckets", "@" ++ _ = Id, "stats"] ->
-                    {{[stats], read},
-                     fun menelaus_stats:handle_stats_section/3, ["default", Id]};
+                    {{[{bucket, any}, stats], read},
+                     fun menelaus_stats:handle_stats_section/3,
+                     ["default", Id]};
                 ["pools", "default", "buckets", Id, "stats"] ->
                     {{[{bucket, Id}, stats], read},
                      fun menelaus_stats:handle_bucket_stats/3,
@@ -284,7 +286,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_node:handle_bucket_node_info/3, [Id, NodeId]};
                 ["pools", "default", "buckets", "@" ++ _ = Id, "nodes", NodeId,
                  "stats"] ->
-                    {{[stats], read},
+                    {{[{bucket, any}, stats], read},
                      fun menelaus_stats:handle_stats_section_for_node/4,
                      ["default", Id, NodeId]};
                 ["pools", "default", "buckets", Id, "nodes", NodeId, "stats"] ->
@@ -788,7 +790,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                       drop_prefix(mochiweb_request:get(raw_path, Req)),
                       Plugins]};
                 ["_uistats"] ->
-                    {{[stats], read},
+                    {{[ui], read},
                      fun menelaus_stats:handle_ui_stats_post/1};
                 ["_uistats", "v2"] ->
                     {{[stats], read},

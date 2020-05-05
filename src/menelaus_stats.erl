@@ -171,11 +171,12 @@ basic_stats(BucketName) ->
     [{quotaPercentUsed, lists:min([QuotaPercent, 100])}
      | Stats].
 
+stats_read_permission(BucketName) ->
+    {[{bucket, BucketName}, stats], read}.
+
 handle_overview_stats(_PoolId, Req) ->
     BucketNamesUnsorted =
-        menelaus_auth:get_accessible_buckets(fun (BucketName) ->
-                                                     {[{bucket, BucketName}, stats], read}
-                                             end, Req),
+        menelaus_auth:get_accessible_buckets(fun stats_read_permission/1, Req),
 
     Names = lists:sort(BucketNamesUnsorted),
     {ClientTStamp, Window} = parse_stats_params([{"zoom", "hour"}]),
@@ -201,19 +202,52 @@ handle_bucket_stats(_PoolId, Id, Req) ->
     PropList2 = build_bucket_stats_hks_response(Id),
     menelaus_util:reply_json(Req, {struct, PropList1 ++ PropList2}).
 
-handle_stats_section(_PoolId, Id, Req) ->
-    case section_exists(Id) of
+check_bucket(BucketName, Req) ->
+    Permission = stats_read_permission(BucketName),
+    case menelaus_auth:has_permission(Permission, Req) of
         true ->
-            do_handle_stats_section(Id, Req);
+            case lists:member(BucketName, ns_bucket:get_bucket_names()) of
+                true ->
+                    ok;
+                _ ->
+                    not_found
+            end;
         false ->
-            menelaus_util:reply_not_found(Req)
+            case ns_bucket:is_valid_bucket_name(BucketName) of
+                true ->
+                    {forbidden, Permission};
+                {error, _} ->
+                    not_found
+            end
     end.
 
-do_handle_stats_section(Id, Req) ->
-    Params = mochiweb_request:parse_qs(Req),
-    PropList1 = build_bucket_stats_ops_response(all, Id, Params, false),
-    menelaus_util:reply_json(Req, {struct, PropList1}).
+with_valid_bucket(Fun, Bucket, Req) ->
+    case check_bucket(Bucket, Req) of
+        ok ->
+            Fun();
+        not_found ->
+            menelaus_util:reply_not_found(Req);
+        {forbidden, Permission} ->
+            menelaus_util:reply_json(
+              Req, menelaus_web_rbac:forbidden_response([Permission]), 403)
+    end.
 
+with_valid_section_id(Fun, Id, Req) ->
+    case section_bucket(Id) of
+        undefined ->
+            Fun();
+        BucketName ->
+            with_valid_bucket(Fun, BucketName, Req)
+    end.
+
+handle_stats_section(_PoolId, Id, Req) ->
+    with_valid_section_id(
+      fun () ->
+              Params = mochiweb_request:parse_qs(Req),
+              PropList1 =
+                  build_bucket_stats_ops_response(all, Id, Params, false),
+              menelaus_util:reply_json(Req, {struct, PropList1})
+      end, Id, Req).
 
 %% Per-Node Stats
 %% GET /pools/{PoolID}/buckets/{Id}/nodes/{NodeId}/stats
@@ -248,12 +282,16 @@ handle_stats_section_for_node(_PoolId, Id, HostName, Req) ->
         {error, {invalid_node, Reason}} ->
             menelaus_util:reply_text(Req, Reason, 400);
         {ok, Node} ->
-            case section_exists(Id) andalso lists:member(Node, section_nodes(Id)) of
-                true ->
-                    do_handle_stats_section_for_node(Id, HostName, Node, Req);
-                false ->
-                    menelaus_util:reply_not_found(Req)
-            end
+            with_valid_section_id(
+              fun () ->
+                      case lists:member(Node, section_nodes(Id)) of
+                          true ->
+                              do_handle_stats_section_for_node(
+                                Id, HostName, Node, Req);
+                          false ->
+                              menelaus_util:reply_not_found(Req)
+                      end
+              end, Id, Req)
     end.
 
 do_handle_stats_section_for_node(Id, HostName, Node, Req) ->
@@ -628,21 +666,16 @@ is_persistent("@"++_) ->
 is_persistent(BucketName) ->
     ns_bucket:is_named_bucket_persistent(BucketName).
 
-bucket_exists(Bucket) ->
-    ns_bucket:get_bucket(Bucket) =/= not_present.
-
-section_exists("@system") ->
-    true;
-section_exists("@xdcr-"++Bucket) ->
-    bucket_exists(Bucket);
-section_exists(Section) ->
+section_bucket("@system") ->
+    undefined;
+section_bucket("@xdcr-"++Bucket) ->
+    Bucket;
+section_bucket(Section) ->
     case describe_section(Section) of
         undefined ->
-            bucket_exists(Section);
-        {_Service, undefined} ->
-            true;
+            Section;
         {_Service, Bucket} ->
-            bucket_exists(Bucket)
+            Bucket
     end.
 
 grab_system_aggregate_op_stats(all, ClientTStamp, Window) ->
@@ -2581,17 +2614,15 @@ grab_ui_stats(Kind, Nodes, HaveStamp, Wnd) ->
 %%
 serve_ui_stats(Req) ->
     Params = mochiweb_request:parse_qs(Req),
-    case lists:member(proplists:get_value("bucket", Params), ns_bucket:get_bucket_names()) of
-        true ->
-            case proplists:get_value("statName", Params) of
-                undefined ->
-                    serve_aggregated_ui_stats(Req, Params);
-                StatName ->
-                    serve_specific_ui_stats(Req, StatName, Params)
-            end;
-        _ ->
-            menelaus_util:reply_not_found(Req)
-    end.
+    with_valid_bucket(
+      fun () ->
+              case proplists:get_value("statName", Params) of
+                  undefined ->
+                      serve_aggregated_ui_stats(Req, Params);
+                  StatName ->
+                      serve_specific_ui_stats(Req, StatName, Params)
+              end
+      end, proplists:get_value("bucket", Params), Req).
 
 extract_ui_stats_params(Params) ->
     Bucket = proplists:get_value("bucket", Params),
@@ -2962,6 +2993,16 @@ do_retrieve_samples_from_archive({Period, Seconds, Count}, StatName,
 -define(MIN_TS, -?MAX_TS).
 
 handle_ui_stats_post(Req) ->
+    Permission = stats_read_permission(any),
+    case menelaus_auth:has_permission(Permission, Req) of
+        true ->
+            do_handle_ui_stats_post(Req);
+        false ->
+            menelaus_util:reply_json(
+              Req, menelaus_web_rbac:forbidden_response([Permission]))
+    end.
+
+do_handle_ui_stats_post(Req) ->
     validator:handle(
       fun (List) ->
               LocalAddr = menelaus_util:local_addr(Req),
@@ -3054,7 +3095,7 @@ prepare_ui_stats(SamplesForStatsAndNodes) ->
 ui_stats_post_validators(Req) ->
     Now = os:system_time(millisecond),
     [validator:string(bucket, _),
-     validate_bucket(bucket, _),
+     validate_bucket(bucket, Req, _),
      validator:required(stats, _),
      validator:string_array(stats, _),
      validator:string(statName, _),
@@ -3089,15 +3130,16 @@ validate_negative_ts(Name, Now, State) ->
               ok
       end, Name, State).
 
-validate_bucket(Name, State) ->
+validate_bucket(Name, Req, State) ->
     validator:validate(
       fun (BucketName) ->
-              case lists:member(BucketName,
-                                ns_bucket:get_bucket_names()) of
-                  true ->
+              case check_bucket(BucketName, Req) of
+                  ok ->
                       ok;
-                  false ->
-                      {error, "Bucket not found"}
+                  not_found ->
+                      {error, "Bucket not found"};
+                  {forbidden, Permission} ->
+                      {error, {403, Permission}}
               end
       end, Name, State).
 
