@@ -61,14 +61,16 @@ report_prom_stats(ReportFun) ->
     SystemStats = proplists:get_value("@system", Stats, []),
     lists:foreach(
         fun ({Key, Val}) ->
-            ReportFun({<<"sys">>, Key, [], Val})
+            ReportFun({<<"sys">>, Key, [{<<"type">>, <<"system">>}], Val})
         end, SystemStats),
 
     SysProcStats = proplists:get_value("@system-processes", Stats, []),
     lists:foreach(
         fun ({KeyBin, Val}) ->
             [Proc, Name] = binary:split(KeyBin, <<"/">>),
-            ReportFun({<<"sysproc">>, Name, [{<<"proc">>, Proc}], Val})
+            ReportFun({<<"sysproc">>, Name,
+                       [{<<"proc">>, Proc},
+                        {<<"type">>, <<"system-processes">>}], Val})
         end, SysProcStats),
     ok.
 
@@ -76,8 +78,10 @@ report_audit_stats(ReportFun) ->
     {ok, Stats} = ns_audit:stats(),
     AuditQueueLen = proplists:get_value(queue_length, Stats, 0),
     AuditRetries = proplists:get_value(unsuccessful_retries, Stats, 0),
-    ReportFun({<<"audit">>, <<"queue_length">>, [], AuditQueueLen}),
-    ReportFun({<<"audit">>, <<"unsuccessful_retries">>, [], AuditRetries}).
+    ReportFun({<<"audit">>, <<"queue_length">>,
+              [{<<"type">>, <<"audit">>}], AuditQueueLen}),
+    ReportFun({<<"audit">>, <<"unsuccessful_retries">>,
+              [{<<"type">>, <<"audit">>}], AuditRetries}).
 
 init([]) ->
     ets:new(ns_server_system_stats, [public, named_table, set]),
