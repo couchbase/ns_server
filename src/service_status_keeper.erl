@@ -308,20 +308,30 @@ handle_node_disco_event(Event, Pid) ->
     end,
     Pid.
 
-set_items(Items, #state{version = OldVersion} = State) ->
-    Version = compute_version(Items, false),
+set_items(Items, #state{version = OldVersion,
+                        items = OldItems,
+                        service = Service} = State) ->
+    Version = Service:compute_version(Items, false),
 
     case Version =:= OldVersion of
         true ->
-            State;
+            case Items =:= OldItems of
+                true ->
+                    State;
+                false ->
+                    %% Some items are not used in the computation of the
+                    %% version.  Update the state so getters get the most
+                    %% recent info.
+                    State#state{items = Items, stale = {false, 0}}
+            end;
         false ->
             notify_change(State#state{items = Items,
                                       stale = {false, 0},
                                       version = Version})
     end.
 
-set_stale(#state{items = Items} = State) ->
-    Version = compute_version(Items, true),
+set_stale(#state{items = Items, service = Service} = State) ->
+    Version = Service:compute_version(Items, true),
     notify_change(State#state{stale = true,
                               version = Version}).
 
@@ -344,9 +354,6 @@ increment_stale(#state{stale = StaleInfo,
                     State#state{stale = {false, NewStaleCount}}
             end
     end.
-
-compute_version(Items, IsStale) ->
-    erlang:phash2({Items, IsStale}).
 
 notify_change(#state{service = Service,
                      version = Version} = State) ->
