@@ -89,6 +89,13 @@ angular.module('mnSettingsNotificationsService', [
         version: pools.implementationVersion,
         componentsVersion: pools.componentsVersion,
         uuid: pools.uuid,
+        isOperatorManaged: !!poolsDefault.nodes.find((node) => {
+          //should match to 1234-0000.1234.my-namespace.svc
+          var levels = node.otpNode.split("@")[1].split(".");
+          if ((levels.length == 4) && (levels[3] == "svc")) {
+            return levels[0].startsWith(levels[1] + "-");
+          }
+        }),
         numNodes: poolsDefault.nodes.length, //Total number of nodes
         isEnterpriseEdition: pools.isEnterprise,
         adminLDAPEnabled : poolsDefault.saslauthdEnabled ||
