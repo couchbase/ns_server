@@ -167,6 +167,7 @@ extract_uistats(Now, Params, Req) ->
       {errors, Errors}]}.
 
 format_error(Bin) when is_binary(Bin) -> Bin;
+format_error(timeout) -> <<"Request timed out">>;
 format_error({exit, {{nodedown, _}, _}}) -> <<"Node is down">>;
 format_error({exit, _}) -> <<"Unexpected server error">>.
 
