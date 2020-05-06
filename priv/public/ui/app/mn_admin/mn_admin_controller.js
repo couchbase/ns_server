@@ -140,7 +140,7 @@
       var etagPoller = new mnEtagPoller($scope, function (previous) {
         return mnPoolDefault.get({
           etag: previous ? previous.etag : "",
-          waitChange: $state.current.name === "app.admin.overview.statistics" ? 3000 : 10000
+          waitChange: 10000
         }, {group: "global"});
       }, true).subscribe(function (resp, previous) {
         if (!_.isEqual(resp, previous)) {
@@ -347,11 +347,6 @@
         if (tasksPoller) {
           tasksPoller.reload(true);
         }
-      });
-
-      $scope.$on("reloadPoolDefaultPoller", function () {
-        mnPoolDefault.clearCache();
-        etagPoller.reload();
       });
 
       $scope.$on("reloadBucketStats", function () {
