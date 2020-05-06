@@ -2,8 +2,8 @@
 
 -include("ns_common.hrl").
 
--export([query_range/6, query_range_async/7, format_value/1, parse_value/1,
-         format_promql/1]).
+-export([query_range/6, query_range_async/7, query/4,
+         format_value/1, parse_value/1, format_promql/1]).
 
 query_range(Query, Start, End, Step, Timeout, Settings) ->
     Self = self(),
@@ -52,6 +52,54 @@ query_range_async(Query, Start, End, Step, Timeout, Settings, Handler) ->
                         Handler({error, {unexpected, Unhandled}})
                 end,
             post_async(URL, HeadersWithAuth, BodyEncoded, AFamily, Timeout,
+                       HandlerWrap);
+        false ->
+            Handler({error, <<"Stats backend is disabled">>})
+    end.
+
+query(Query, Time, Timeout, Settings) ->
+    Self = self(),
+    Ref = make_ref(),
+    ok = query_async(Query, Time, Timeout, Settings,
+                     fun (Res) -> Self ! {Ref, Res} end),
+    receive
+        {Ref, Res} -> Res
+    after Timeout ->
+        {error, timeout}
+    end.
+
+query_async(Query, Time, Timeout, Settings, Handler) ->
+    case proplists:get_value(enabled, Settings) of
+        true ->
+            Addr = proplists:get_value(listen_addr, Settings),
+            URL = lists:flatten(io_lib:format("http://~s/api/v1/query",
+                                [Addr])),
+            TimeoutStr = integer_to_list(max(Timeout div 1000, 1)) ++ "s",
+            Body = mochiweb_util:urlencode(
+                     [{query, Query}, {timeout, TimeoutStr}] ++
+                     [{time, Time} || Time =/= undefined]),
+            {Username, Password} = proplists:get_value(prometheus_creds,
+                                                       Settings),
+            Headers = [{"Content-Type", "application/x-www-form-urlencoded"}],
+            HeadersWithAuth = menelaus_rest:add_basic_auth(Headers, Username,
+                                                           Password),
+            AFamily = proplists:get_value(afamily, Settings),
+            HandlerWrap =
+                fun ({ok, json, {Data}}) ->
+                        Res = proplists:get_value(<<"result">>, Data, {[]}),
+                        Handler({ok, Res});
+                    ({error, Reason}) ->
+                        ?log_error("Prometheus query request failed:~n"
+                                   "URL: ~s~nHeaders: ~p~nBody: ~s~nReason: ~p",
+                                   [URL, Headers, Body, Reason]),
+                        Handler({error, Reason});
+                    (Unhandled) ->
+                        ?log_error("Unexpected query_async result: ~p~n"
+                                   "URL: ~s~nHeaders: ~p~nBody: ~s",
+                                   [Unhandled, URL, Headers, Body]),
+                        Handler({error, {unexpected, Unhandled}})
+                end,
+            post_async(URL, HeadersWithAuth, Body, AFamily, Timeout,
                        HandlerWrap);
         false ->
             Handler({error, <<"Stats backend is disabled">>})
