@@ -450,10 +450,15 @@ permissions_for_user_test_() ->
         lists:usort([P || {_, P} <- bucket_permissions_to_check(undefined)]) ++
         AllCollectionPermissions,
     FullReadCollections =
-        [P || {{[_, data | _], read}, P}
-                  <- collection_permissions_to_check([x, x, x])],
-    FullRead = [P || {{[_, data | _], read}, P}
-                         <- bucket_permissions_to_check(undefined)] ++
+        lists:usort([P || {{[_, data | _], read}, P}
+                               <- collection_permissions_to_check([x, x, x])]),
+    FullDataRead =
+        lists:usort([P || {{[_, data | _], read}, P}
+                              <- bucket_permissions_to_check(undefined)]) ++
+        FullReadCollections,
+    FullRead =
+        lists:usort([P || {{_, read}, P}
+                              <- bucket_permissions_to_check(undefined)]) ++
         FullReadCollections,
     Test =
         fun (Roles, ExpectedGlobal, ExpectedBuckets) ->
@@ -514,7 +519,7 @@ permissions_for_user_test_() ->
            [{["default", 1, 1], ['MetaRead', 'Read', 'XattrRead']}]),
       Test([{data_dcp_reader, [{"test", <<"test_id">>}, any, any]}],
            ['IdleConnection','SystemSettings'],
-           [{["test"], FullRead}]),
+           [{["test"], FullDataRead}]),
       Test([{data_dcp_reader,
              [{"default", <<"default_id">>}, {"s", 1}, {"c", 1}]}],
            ['IdleConnection','SystemSettings'],
