@@ -22,7 +22,7 @@
 -export([get_type/0, get_remote_items/1, get_local_status/0, restart/0,
          process_status/1,
          get_gauges/0, get_counters/0, get_computed/0, grab_stats/0,
-         compute_gauges/1, get_service_gauges/0,
+         compute_gauges/1, get_service_gauges/0, compute_version/2,
          compute_service_gauges/1, get_service_counters/0, split_stat_name/1,
          is_started/0]).
 
@@ -89,6 +89,9 @@ compute_service_gauges(_Gauges) ->
 
 compute_gauges(_Gauges) ->
     [].
+
+compute_version(Items, IsStale) ->
+    erlang:phash2({Items, IsStale}).
 
 split_stat_name(Name) ->
     binary:split(Name, <<":">>, [global]).
