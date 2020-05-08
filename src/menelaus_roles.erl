@@ -244,12 +244,12 @@ roles() ->
        {[{bucket, bucket_name}, analytics], [manage, select]},
        {[analytics], [select, backup]},
        {[pools], [read]}]},
-     {data_monitoring, [bucket_name],
+     {data_monitoring, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Data Monitor">>},
-       {desc, <<"Can read statistics for a given bucket. This user cannot "
-                "access the web console and is intended only for application "
-                "access. This user cannot read data.">>}],
-      [{[{bucket, bucket_name}, stats], [read]},
+       {desc, <<"Can read statistics for a given bucket, scope or collection. "
+                "This user cannot access the web console and is intended only "
+                "for application access. This user cannot read data.">>}],
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, stats], [read]},
        {[{bucket, bucket_name}, settings], [read]},
        {[tasks], [read]},
        {[pools], [read]}]},

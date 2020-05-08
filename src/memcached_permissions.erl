@@ -55,11 +55,11 @@ collection_permissions_to_check([B, S, C]) ->
      {{[{collection, [B, S, C]}, data, xattr], write},    'XattrWrite'},
      {{[{collection, [B, S, C]}, data, sxattr], read},    'SystemXattrRead'},
      {{[{collection, [B, S, C]}, data, sxattr], write},   'SystemXattrWrite'},
-     {{[{collection, [B, S, C]}, data, dcpstream], read}, 'DcpStream'}].
+     {{[{collection, [B, S, C]}, data, dcpstream], read}, 'DcpStream'},
+     {{[{collection, [B, S, C]}, stats], read},           'SimpleStats'}].
 
 bucket_permissions_to_check(Bucket) ->
-    [{{[{bucket, Bucket}, stats], read},        'SimpleStats'},
-     {{[admin, internal, stats], read},         'SimpleStats'},
+    [{{[admin, internal, stats], read},         'SimpleStats'},
      {{[{bucket, Bucket}, data, dcp], read},    'DcpProducer'},
      {{[{bucket, Bucket}, data, dcp], write},   'DcpConsumer'}].
 
@@ -520,8 +520,12 @@ permissions_for_user_test_() ->
            ['IdleConnection','SystemSettings'],
            [{["default"], ['DcpProducer']},
             {["default", 1, 1], DataRead(JustCollections)}]),
+      Test([{data_monitoring,
+             [{"default", <<"default_id">>}, {"s", 1}, {"c", 1}]}],
+           ['SystemSettings'],
+           [{["default", 1, 1], ['SimpleStats']}]),
       Test([{data_backup, [{"test", <<"test_id">>}]},
-            {data_monitoring, [{"default", <<"default_id">>}]}],
+            {data_monitoring, [{"default", <<"default_id">>}, any, any]}],
            ['SystemSettings'],
            [{["default"], ['SimpleStats']},
             {["test"], AllBucketPermissions}]),
