@@ -442,24 +442,19 @@ permissions_for_user_test_() ->
         [{"test", [{uuid, <<"test_id">>}]},
          {"default", [{uuid, <<"default_id">>},
                       {collections_manifest, Manifest}]}],
-    AllGlobalPermissions =
-        lists:usort([P || {_, P} <- global_permissions_to_check()]),
-    AllCollectionPermissions =
-        lists:usort([P || {_, P} <- collection_permissions_to_check([x, x, x])]),
-    AllBucketPermissions =
-        lists:usort([P || {_, P} <- bucket_permissions_to_check(undefined)]) ++
-        AllCollectionPermissions,
-    FullReadCollections =
-        lists:usort([P || {{[_, data | _], read}, P}
-                               <- collection_permissions_to_check([x, x, x])]),
-    FullDataRead =
-        lists:usort([P || {{[_, data | _], read}, P}
-                              <- bucket_permissions_to_check(undefined)]) ++
-        FullReadCollections,
-    FullRead =
-        lists:usort([P || {{_, read}, P}
-                              <- bucket_permissions_to_check(undefined)]) ++
-        FullReadCollections,
+
+    All = fun (L) -> lists:usort([P || {_, P} <- L]) end,
+    Read = fun (L) -> lists:usort([P || {{_, read}, P} <- L]) end,
+    DataRead = fun (L) ->
+                       lists:usort([P || {{[_, data | _], read}, P} <- L])
+               end,
+
+    BucketsPlusCollections = bucket_permissions_to_check(undefined) ++
+        collection_permissions_to_check([x, x, x]),
+    JustCollections = collection_permissions_to_check([x, x, x]),
+
+    AllBucketPermissions = All(BucketsPlusCollections),
+
     Test =
         fun (Roles, ExpectedGlobal, ExpectedBuckets) ->
                 {lists:flatten(io_lib:format("~p", [Roles])),
@@ -490,7 +485,7 @@ permissions_for_user_test_() ->
              meck:unload(cluster_compat_mode)
      end,
      [Test([admin],
-           AllGlobalPermissions,
+           All(global_permissions_to_check()),
            [{["default"], AllBucketPermissions},
             {["test"], AllBucketPermissions}]),
       Test([ro_admin],
@@ -507,7 +502,7 @@ permissions_for_user_test_() ->
             {views_reader, [{"default", <<"default_id">>}]}],
            ['Stats', 'SystemSettings'],
            [{["default"], ['Read']},
-            {["test"], FullRead}]),
+            {["test"], Read(BucketsPlusCollections)}]),
       Test([{data_reader, [{"test", <<"test_id">>}, any, any]}],
            ['SystemSettings'],
            [{["test"], ['MetaRead', 'Read', 'XattrRead']}]),
@@ -519,12 +514,12 @@ permissions_for_user_test_() ->
            [{["default", 1, 1], ['MetaRead', 'Read', 'XattrRead']}]),
       Test([{data_dcp_reader, [{"test", <<"test_id">>}, any, any]}],
            ['IdleConnection','SystemSettings'],
-           [{["test"], FullDataRead}]),
+           [{["test"], DataRead(BucketsPlusCollections)}]),
       Test([{data_dcp_reader,
              [{"default", <<"default_id">>}, {"s", 1}, {"c", 1}]}],
            ['IdleConnection','SystemSettings'],
            [{["default"], ['DcpProducer']},
-            {["default", 1, 1], FullReadCollections}]),
+            {["default", 1, 1], DataRead(JustCollections)}]),
       Test([{data_backup, [{"test", <<"test_id">>}]},
             {data_monitoring, [{"default", <<"default_id">>}]}],
            ['SystemSettings'],
