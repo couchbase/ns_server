@@ -417,9 +417,16 @@ handle_info({'EXIT', Kernel, Reason}, State = #s{kernel_pid = Kernel}) ->
     error_msg("received EXIT from kernel, stoping: ~p", [Reason]),
     {stop, Reason, State};
 
-handle_info({'EXIT', From, Reason}, State) ->
-    error_msg("received EXIT from ~p, stoping: ~p", [From, Reason]),
-    {stop, {'EXIT', From, Reason}, State};
+handle_info({'EXIT', From, Reason}, #s{acceptors = Acceptors} = State) ->
+    error_msg("received EXIT from ~p, reason: ~p", [From, Reason]),
+    case {is_restartable_event(Reason), lists:keyfind(From, 1, Acceptors)} of
+        {true, {From, Module}} ->
+            error_msg("Try to restart module ~p", [Module]),
+            NewState = ensure_config(remove_proto(Module, State)),
+            {noreply, NewState};
+        _ ->
+            {stop, {'EXIT', From, Reason}, State}
+    end;
 
 handle_info(ensure_config_timer, State) ->
     info_msg("received ensure_config_timer", []),
@@ -902,3 +909,12 @@ close_dist_connection(Pid, KernelPid) ->
             error_msg("Close connection ~p error: ~p", [Pid, Reason]),
             exit(Pid, kill)
     end.
+
+is_restartable_event({error, closed}) ->
+    true;
+is_restartable_event({error, timeout}) ->
+    true;
+is_restartable_event({error, {tls_alert, {_, _}}}) ->
+    true;
+is_restartable_event(_) ->
+    false.
