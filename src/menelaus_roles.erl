@@ -973,15 +973,23 @@ compile_roles(Roles, Definitions) ->
     compile_roles(Roles, Definitions, toy_buckets()).
 
 compile_roles_test() ->
+    StripId = fun ({N, _Id}) -> N; (N) -> N end,
+    PermissionFilters =
+        fun([B, S, C]) ->
+                [{[{bucket, StripId(B)}], oper1},
+                 {[{bucket, any}, docs], oper2},
+                 {[v1, v2], oper3},
+                 {[{collection, [StripId(B), StripId(S), StripId(C)]}],
+                  oper4}]
+        end,
+
     Definitions = [{simple_role, [], [],
                     [{[admin], all}]},
                    {test_role, [bucket_name], [],
                     [{[{bucket, bucket_name}], none}]},
                    {test_role1, ?RBAC_COLLECTION_PARAMS, [],
-                    [{[{bucket, bucket_name}], oper1},
-                     {[{bucket, any}, docs], oper2},
-                     {[v1, v2], oper3},
-                     {[{collection, ?RBAC_COLLECTION_PARAMS}], oper4}]}],
+                    PermissionFilters(?RBAC_COLLECTION_PARAMS)}],
+
     ?assertEqual([[{[admin], all}]],
                  compile_roles([simple_role, wrong_role], Definitions)),
     ?assertEqual([[{[{bucket, "test"}], none}]],
@@ -992,25 +1000,21 @@ compile_roles_test() ->
     ?assertEqual([], compile_roles([{test_role, [{"test", <<"wrong_id">>}]}],
                                    Definitions)),
 
-    ExpectedTestRole1 = [[{[{bucket, "default"}], oper1},
-                          {[{bucket, any}, docs], oper2},
-                          {[v1, v2], oper3},
-                          {[{collection, ["default", "s", "c"]}], oper4}]],
-    ?assertEqual(ExpectedTestRole1,
-                 compile_roles(
-                   [{test_role1, ["default", "s", "c"]}], Definitions)),
-    ?assertEqual(ExpectedTestRole1,
-                 compile_roles(
-                   [{test_role1, [{"default", <<"default_id">>},
-                                  {"s", 1}, {"c", 1}]}], Definitions)),
-    ?assertEqual([],
-                 compile_roles(
-                   [{test_role1, [{"default", <<"wrong_id">>},
-                                  {"s", 1}, {"c", 1}]}], Definitions)),
-    ?assertEqual([],
-                 compile_roles(
-                   [{test_role1, [{"default", <<"default_id">>},
-                                  {"s", 1}, {"c", 2}]}], Definitions)).
+    TestRole1 =
+        fun (Success, Params) ->
+                Expected = [PermissionFilters(Params) || Success],
+                ?assertEqual(Expected,
+                             compile_roles([{test_role1, Params}],
+                                           Definitions))
+        end,
+
+    TestRole1(true, ["default", "s", "c"]),
+    TestRole1(true, [{"default", <<"default_id">>}, {"s", 1}, {"c", 1}]),
+    TestRole1(true, [{"default", <<"default_id">>}, {"s", 1}, any]),
+    TestRole1(true, [{"default", <<"default_id">>}, any, any]),
+    TestRole1(true, [any, any, any]),
+    TestRole1(false, [{"default", <<"wrong_id">>}, {"s", 1}, {"c", 1}]),
+    TestRole1(false, [{"default", <<"default_id">>}, {"s", 1}, {"c", 2}]).
 
 admin_test() ->
     Roles = compile_roles([admin], roles()),
