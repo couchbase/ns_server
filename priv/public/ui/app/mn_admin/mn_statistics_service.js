@@ -108,7 +108,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
       addq: "1"
     };
     return $http({
-      url: "/pools/default/buckets//" + bucket + "/statsDirectory",
+      url: "/pools/default/buckets/" + bucket + "/statsDirectory",
       method: 'GET',
       params: params
     });
