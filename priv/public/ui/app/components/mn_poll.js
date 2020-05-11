@@ -44,9 +44,9 @@ function mnPollerFactory($q, $timeout, mnPromiseHelper) {
     var self = this;
     function onVisibilitychange() {
       if (document.hidden) {
-        self.stop();
+        self.pause();
       } else {
-        self.reload();
+        self.resume();
       }
     }
 
@@ -77,6 +77,8 @@ function mnPollerFactory($q, $timeout, mnPromiseHelper) {
   Poller.prototype.subscribe = subscribe;
   Poller.prototype.showSpinner = showSpinner;
   Poller.prototype.reload = reload;
+  Poller.prototype.resume = resume;
+  Poller.prototype.pause = pause;
   Poller.prototype.reloadOnScopeEvent = reloadOnScopeEvent;
   Poller.prototype.onDestroy = onDestroy;
   Poller.prototype.getLatestResult = getLatestResult;
@@ -163,7 +165,6 @@ function mnPollerFactory($q, $timeout, mnPromiseHelper) {
         var interval = angular.isFunction(self.extractInterval) ?
             self.extractInterval(result) :
             self.extractInterval;
-
         self.timeout = $timeout(self.doCycle.bind(self), interval);
       }.bind(self.doCallPromise));
     }
@@ -171,6 +172,15 @@ function mnPollerFactory($q, $timeout, mnPromiseHelper) {
       self.stop(); //stop cycle on any http error;
     });
     return this;
+  }
+  function resume() {
+    if (this.state) {
+      this.reload();
+    }
+  }
+  function pause() {
+    this.state = this.isLaunched;
+    this.stop();
   }
   function stop() {
     var self = this;
