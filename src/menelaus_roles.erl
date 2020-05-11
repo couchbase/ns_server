@@ -1180,7 +1180,18 @@ validate_role_test() ->
     ?assertEqual(false, ValidateRole({something, ["test"]})),
     ?assertEqual(false, ValidateRole({admin, ["test"]})),
     ?assertEqual(false, ValidateRole(bucket_admin)),
-    ?assertEqual(false, ValidateRole({bucket_admin, ["test", "test"]})).
+    ?assertEqual(false, ValidateRole({bucket_admin, ["test", "test"]})),
+    ?assertEqual(false, ValidateRole({data_reader, ["default"]})),
+    ?assertEqual(false, ValidateRole({data_reader, ["default", "s"]})),
+    DataReader =
+        {data_reader, [{"default", <<"default_id">>}, {"s", 1}, {"c", 1}]},
+    ?assertEqual({ok, DataReader},
+                 ValidateRole({data_reader, ["default", "s", "c"]})),
+    ?assertEqual(false, ValidateRole({data_reader, ["default", "s", "d"]})),
+    ?assertEqual({ok, DataReader}, ValidateRole(DataReader)),
+    ?assertEqual(false, ValidateRole(
+                          {data_reader,
+                           [{"default", <<"test_id">>}, {"s", 1}, {"c", 2}]})).
 
 enum_roles(Roles, Buckets) ->
     Definitions = roles(),
