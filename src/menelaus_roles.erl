@@ -517,9 +517,7 @@ substitute_params(Params, ParamDefinitions, Permissions) ->
     lists:map(
       fun ({ObjectPattern, AllowedOperations}) ->
               {lists:map(
-                 fun ({Name, any}) ->
-                         {Name, any};
-                     ({Name, List}) when is_list(List) ->
+                 fun ({Name, List}) when is_list(List) ->
                          {Name, [substitute_param(Param, ParamPairs) ||
                                     Param <- List]};
                      ({Name, Param}) ->
@@ -529,6 +527,8 @@ substitute_params(Params, ParamDefinitions, Permissions) ->
                  end, ObjectPattern), AllowedOperations}
       end, Permissions).
 
+substitute_param(any, _ParamPairs) ->
+    any;
 substitute_param(Param, ParamPairs) ->
     {Param, Subst} = lists:keyfind(Param, 1, ParamPairs),
     Subst.
