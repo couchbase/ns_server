@@ -533,7 +533,7 @@ substitute_param(Param, ParamPairs) ->
     {Param, Subst} = lists:keyfind(Param, 1, ParamPairs),
     Subst.
 
-find_bucket(Name, Buckets) ->
+compile_param(bucket_name, Name, Buckets) ->
     find_object(Name, Buckets,
                 fun (N, B) ->
                         case ns_bucket:get_bucket_from_configs(N, B) of
@@ -543,14 +543,12 @@ find_bucket(Name, Buckets) ->
                                 undefined
                         end
                 end,
-                fun ns_bucket:bucket_uuid/1).
-
-find_scope(Name, BucketCfg) ->
+                fun ns_bucket:bucket_uuid/1);
+compile_param(scope_name, Name, BucketCfg) ->
     find_object(Name, BucketCfg,
                 ?cut(collections:get_scope(_1, collections:get_manifest(_2))),
-                fun collections:get_uid/1).
-
-find_collection(Name, Scope) ->
+                fun collections:get_uid/1);
+compile_param(collection_name, Name, Scope) ->
     find_object(Name, Scope, fun collections:get_collection/2,
                 fun collections:get_uid/1).
 
@@ -577,32 +575,18 @@ params_version(Buckets) ->
       collections:get_uid(collections:get_manifest(Props))} ||
         {Name, Props} <- Buckets].
 
-compile_params([], [], _Buckets) ->
-    [];
-compile_params([bucket_name], [B], Buckets) ->
-    case find_bucket(B, Buckets) of
-        {Bucket, _} ->
-            [Bucket];
+compile_params([], [], Acc, _) ->
+    lists:reverse(Acc);
+compile_params([ParamDef | RestParamDefs], [Param | RestParams], Acc, Ctx) ->
+    case compile_param(ParamDef, Param, Ctx) of
         undefined ->
-            false
-    end;
-compile_params(?RBAC_COLLECTION_PARAMS, [B, S, C], Buckets) ->
-    case find_bucket(B, Buckets) of
-        {Bucket, Props} ->
-            case find_scope(S, Props) of
-                {Scope, ScopeProps} ->
-                    case find_collection(C, ScopeProps) of
-                        {Coll, _} ->
-                            [Bucket, Scope, Coll];
-                        undefined ->
-                            false
-                    end;
-                undefined ->
-                    false
-            end;
-        undefined ->
-            false
+            false;
+        {Compiled, NewCtx} ->
+            compile_params(RestParamDefs, RestParams, [Compiled | Acc], NewCtx)
     end.
+
+compile_params(ParamDefs, Params, Buckets) ->
+    compile_params(ParamDefs, Params, [], Buckets).
 
 compile_role({Name, Params}, CompileRole, Definitions, Buckets) ->
     case lists:keyfind(Name, 1, Definitions) of
@@ -988,7 +972,9 @@ compile_roles_test() ->
                    {test_role, [bucket_name], [],
                     [{[{bucket, bucket_name}], none}]},
                    {test_role1, ?RBAC_COLLECTION_PARAMS, [],
-                    PermissionFilters(?RBAC_COLLECTION_PARAMS)}],
+                    PermissionFilters(?RBAC_COLLECTION_PARAMS)},
+                   {test_role2, ?RBAC_SCOPE_PARAMS, [],
+                    PermissionFilters(?RBAC_SCOPE_PARAMS ++ [any])}],
 
     ?assertEqual([[{[admin], all}]],
                  compile_roles([simple_role, wrong_role], Definitions)),
@@ -1000,21 +986,30 @@ compile_roles_test() ->
     ?assertEqual([], compile_roles([{test_role, [{"test", <<"wrong_id">>}]}],
                                    Definitions)),
 
-    TestRole1 =
-        fun (Success, Params) ->
-                Expected = [PermissionFilters(Params) || Success],
+    TestRole =
+        fun (Success, Role, RoleParams, ParamsForExpected) ->
+                Expected = [PermissionFilters(ParamsForExpected) || Success],
                 ?assertEqual(Expected,
-                             compile_roles([{test_role1, Params}],
+                             compile_roles([{Role, RoleParams}],
                                            Definitions))
         end,
 
+    TestRole1 = ?cut(TestRole(_1, test_role1, _2, _2)),
     TestRole1(true, ["default", "s", "c"]),
     TestRole1(true, [{"default", <<"default_id">>}, {"s", 1}, {"c", 1}]),
     TestRole1(true, [{"default", <<"default_id">>}, {"s", 1}, any]),
     TestRole1(true, [{"default", <<"default_id">>}, any, any]),
     TestRole1(true, [any, any, any]),
     TestRole1(false, [{"default", <<"wrong_id">>}, {"s", 1}, {"c", 1}]),
-    TestRole1(false, [{"default", <<"default_id">>}, {"s", 1}, {"c", 2}]).
+    TestRole1(false, [{"default", <<"default_id">>}, {"s", 1}, {"c", 2}]),
+
+    TestRole2 = ?cut(TestRole(_1, test_role2, _2, _2 ++ [any])),
+    TestRole2(true, ["default", "s"]),
+    TestRole2(true, [{"default", <<"default_id">>}, {"s", 1}]),
+    TestRole2(true, [{"default", <<"default_id">>}, any]),
+    TestRole2(true, [any, any]),
+    TestRole1(false, [{"default", <<"wrong_id">>}, {"s", 1}]),
+    TestRole1(false, [{"default", <<"default_id">>}, {"s", 2}]).
 
 admin_test() ->
     Roles = compile_roles([admin], roles()),

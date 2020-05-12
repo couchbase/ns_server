@@ -73,6 +73,7 @@
         {rbac_permission_object(), rbac_operation()}.
 -type rbac_all_param_values() :: [{[atom()], [[rbac_role_param()]]}].
 
+-define(RBAC_SCOPE_PARAMS, [bucket_name, scope_name]).
 -define(RBAC_COLLECTION_PARAMS, [bucket_name, scope_name, collection_name]).
 
 -endif.
