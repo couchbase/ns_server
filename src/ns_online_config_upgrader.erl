@@ -83,8 +83,9 @@ upgrade(?VERSION_60, Config) ->
          query_settings_manager:config_upgrade_to_65(Config) ++
          menelaus_web_settings:config_upgrade_to_65(Config)};
 
-upgrade(?VERSION_65, _Config) ->
-    {?VERSION_66, []};
+upgrade(?VERSION_65, Config) ->
+    {?VERSION_66,
+     ns_bucket:config_upgrade_to_66(Config)};
 
 upgrade(?VERSION_66, _Config) ->
     {?VERSION_CHESHIRECAT, []}.
