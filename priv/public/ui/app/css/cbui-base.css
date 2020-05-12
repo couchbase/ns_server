@@ -322,6 +322,10 @@ i {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.left-ellipsis {
+  direction: rtl;
+  text-align: left;
+}
 
 /* super-, sub-script ------------------------------------------------------- */
 sub,

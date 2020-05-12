@@ -137,17 +137,42 @@
               </div>
             </div>
             <div class="formrow">
-              <input
-                 type="checkbox"
-                 id="anonymous-access"
-                 ng-model="addLdapDialogCtl.config.isAnon">
-              <label for="anonymous-access">Contact LDAP host anonymously</label>
-            </div>
-            <div class="formrow row items-top">
-              <span class="width-6 margin-right-half">
+              <label>
+                Contact LDAP host:</label>
+              <small>"Client Certificate" requires "Encryption" to be enabled.</small>
+              <div class="checkbox-list">
+                <input
+                   type="radio"
+                   id="anonymous-access"
+                   name="authType"
+                   value="anon"
+                   ng-model="addLdapDialogCtl.config.authType">
+                <label for="anonymous-access">Anonymously</label>
+                <input
+                   type="radio"
+                   id="auth-using-usr-pwd"
+                   name="authType"
+                   value="creds"
+                   ng-model="addLdapDialogCtl.config.authType">
+                <label for="auth-using-usr-pwd">Credentials</label>
+                <input
+                   type="radio"
+                   id="auth-using-client-cert"
+                   name="authType"
+                   ng-disabled="addLdapDialogCtl.maybeDisableClientCert()"
+                   ng-model="addLdapDialogCtl.config.authType"
+                   value="cert">
                 <label
-                   for="bindDN"
-                   ng-disabled="addLdapDialogCtl.config.isAnon">
+                   for="auth-using-client-cert"
+                   ng-disabled="addLdapDialogCtl.maybeDisableClientCert()">
+                  Client Certificate</label>
+              </div>
+            </div>
+            <div
+               class="formrow row items-top"
+               ng-show="addLdapDialogCtl.config.authType == 'creds'">
+              <span class="width-6 margin-right-half">
+                <label for="bindDN">
                   Bind DN
                 </label>
                 <input
@@ -158,8 +183,7 @@
                    mn-autocomplete-off="enforce"
                    id="bindDN"
                    ng-model="addLdapDialogCtl.config.connect.bindDN"
-                   placeholder="uid=admin,ou=users,dc=example,dc=com"
-                   ng-disabled="addLdapDialogCtl.config.isAnon">
+                   placeholder="uid=admin,ou=users,dc=example,dc=com">
                 <div
                    class="error"
                    ng-show="addLdapDialogCtl.errors.bindDN">
@@ -167,9 +191,7 @@
                 </div>
               </span>
               <span class="width-6">
-                <label
-                   for="bindPass"
-                   ng-disabled="addLdapDialogCtl.config.isAnon">
+                <label for="bindPass">
                   Password
                 </label>
                 <input
@@ -179,14 +201,54 @@
                    autocapitalize="off"
                    mn-autocomplete-off="enforce"
                    id="bindPass"
-                   ng-model="addLdapDialogCtl.config.connect.bindPass"
-                   ng-disabled="addLdapDialogCtl.config.isAnon">
+                   ng-model="addLdapDialogCtl.config.connect.bindPass">
                 <div
                    class="error"
                    ng-show="addLdapDialogCtl.errors.bindPass">
                   {{addLdapDialogCtl.errors.bindPass}}
                 </div>
+
               </span>
+            </div>
+            <div
+               class="formrow row items-top"
+               ng-show="addLdapDialogCtl.config.authType == 'cert'">
+              <div class="width-6 margin-right-half">
+                <label
+                   for="client-tls-cert"
+                   ng-disabled="addLdapDialogCtl.maybeDisableClientCert()">
+                  Client Certificate
+                </label>
+                <div
+                   mn-file-reader
+                   classes="['fix-width-3-5']"
+                   disable="addLdapDialogCtl.maybeDisableClientCert()"
+                   result="addLdapDialogCtl.config.connect.clientTLSCert">
+                </div>
+                <div
+                   class="error"
+                   ng-show="addLdapDialogCtl.errors.clientTLSCert">
+                  {{addLdapDialogCtl.errors.clientTLSCert}}
+                </div>
+              </div>
+              <div class="width-6">
+                <label
+                   for="client-tls-key"
+                   ng-disabled="addLdapDialogCtl.maybeDisableClientCert()">
+                  Client Key
+                </label>
+                <div
+                   mn-file-reader
+                   classes="['fix-width-3-5']"
+                   disable="addLdapDialogCtl.maybeDisableClientCert()"
+                   result="addLdapDialogCtl.config.connect.clientTLSKey">
+                </div>
+                <div
+                   class="error"
+                   ng-show="addLdapDialogCtl.errors.clientTLSKey">
+                  {{addLdapDialogCtl.errors.clientTLSKey}}
+                </div>
+              </div>
             </div>
             <button
                type="button"
@@ -202,7 +264,7 @@
             </p>
           </span>
 
-<!-- Enable LDAP user authentication --------------------------------------- -->
+          <!-- Enable LDAP user authentication --------------------------------------- -->
           <span ng-click="sectFocus = 'user auth'">
             <div class="formrow row flex-left margin-top-2">
               <label
@@ -345,16 +407,16 @@
                   {{addLdapDialogCtl.authenticationSuccessResult.data.result == "error" ?
                   addLdapDialogCtl.authenticationSuccessResult.data.reason || "Error authenticating user" : "User recognized by LDAP server:"}}
                 </p>
-                  <p
-                     ng-if="addLdapDialogCtl.authenticationSuccessResult.data.dn"
-                     class="text-smallish">
-                    {{addLdapDialogCtl.authenticationSuccessResult.data.dn}}
-                  </p>
+                <p
+                   ng-if="addLdapDialogCtl.authenticationSuccessResult.data.dn"
+                   class="text-smallish">
+                  {{addLdapDialogCtl.authenticationSuccessResult.data.dn}}
+                </p>
               </div>
             </div>
           </span>
 
-<!-- Enable LDAP group authorization & sync -------------------------------- -->
+          <!-- Enable LDAP group authorization & sync -------------------------------- -->
           <span ng-click="sectFocus = 'group auth'">
             <div class="formrow row flex-left">
               <label
@@ -451,9 +513,9 @@
                 <label for="for-nested-groups-enabled">Traverse nested groups</label>
               </div>
               <p
-                class="disclosure margin-top-1"
-                ng-class="{disclosed: addLdapDialogCtl.testGroupsQuery}"
-                ng-click="addLdapDialogCtl.testGroupsQuery = !addLdapDialogCtl.testGroupsQuery">
+                 class="disclosure margin-top-1"
+                 ng-class="{disclosed: addLdapDialogCtl.testGroupsQuery}"
+                 ng-click="addLdapDialogCtl.testGroupsQuery = !addLdapDialogCtl.testGroupsQuery">
                 Test Groups Query
               </p>
               <div ng-if="addLdapDialogCtl.testGroupsQuery" class="margin-left-1-5">
@@ -468,8 +530,8 @@
                      id="for-groups-query-user"
                      ng-model="addLdapDialogCtl.config.groupsQueryUser">
                   <div
-                    class="error"
-                    ng-show="addLdapDialogCtl.errors.groupsQueryUser">
+                     class="error"
+                     ng-show="addLdapDialogCtl.errors.groupsQueryUser">
                     {{addLdapDialogCtl.errors.groupsQueryUser}}
                   </div>
                 </div>
@@ -480,7 +542,7 @@
                   Test Groups Query
                 </button>
                 <p class="result-status error"
-                     ng-show="addLdapDialogCtl.queryForGroupsSuccessResult.data.result == 'error'">
+                   ng-show="addLdapDialogCtl.queryForGroupsSuccessResult.data.result == 'error'">
                   {{addLdapDialogCtl.queryForGroupsSuccessResult.data.reason}}
                 </p>
                 <p class="result-status success"
@@ -497,7 +559,7 @@
             </div>
           </span>
 
-<!-- advanced settings ----------------------------------------------------- -->
+          <!-- advanced settings ----------------------------------------------------- -->
           <label
              class="disclosure"
              ng-class="{disclosed: addLdapDialogCtl.advancedSettings}"
@@ -588,7 +650,7 @@
           </div>
         </div>
 
-<!-- help sidebar ---------------------------------------------------------- -->
+        <!-- help sidebar ---------------------------------------------------------- -->
         <div class="ldap-helpsidebar">
           <p class="text-small margin-bottom-1 grayblack-bg-7 padding-half">
             For more help:<br>

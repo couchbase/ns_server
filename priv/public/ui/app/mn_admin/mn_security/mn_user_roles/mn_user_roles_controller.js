@@ -14,7 +14,8 @@
       "mnEqual",
       "mnFilters",
       "mnAutocompleteOff",
-      "mnFocus"
+      "mnFocus",
+      "mnFileReader"
     ])
     .controller("mnUserRolesController", mnUserRolesController);
 
