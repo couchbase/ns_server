@@ -47,6 +47,7 @@
 -record(prefix_props, { port_name :: atom() }).
 -record(plugin, { name                   :: service_name(),
                   proxy_strategy         :: proxy_strategy(),
+                  module_prefix          :: string(),
                   rest_api_prefixes      :: dict:dict(),
                   doc_roots              :: [string()],
                   version_dirs           :: undefined | [{ui_compat_version(), string()}],
@@ -65,6 +66,7 @@ view_plugin() ->
     Prefixes = [{"couchBase", #prefix_props{port_name = ViewPortName}}],
     #plugin{name = views,
             proxy_strategy = sticky,
+            module_prefix = "couchBase",
             rest_api_prefixes = dict:from_list(Prefixes),
             doc_roots = [],
             request_headers_filter = {keep, ["accept",
@@ -134,8 +136,8 @@ validate_plugin_spec(KVs, Plugins) ->
     ServiceName = binary_to_atom(get_element(<<"service">>, KVs), latin1),
     ProxyStrategy = decode_proxy_strategy(get_element(<<"proxy-strategy">>,
                                                       KVs)),
-    RestApiPrefixes = decode_prefixes(ServiceName,
-                                      get_element(<<"rest-api-prefixes">>, KVs)),
+    {RestApiPrefixes, ModulePrefix} =
+        decode_prefixes(ServiceName, get_element(<<"rest-api-prefixes">>, KVs)),
     DocRoots = decode_docroots(get_element(<<"doc-root">>, KVs)),
     VersionDirs = get_element(<<"version-dirs">>, KVs,
                               fun decode_version_dirs/1, []),
@@ -150,6 +152,7 @@ validate_plugin_spec(KVs, Plugins) ->
                       [ServiceName]),
             [#plugin{name = ServiceName,
                      proxy_strategy = ProxyStrategy,
+                     module_prefix = ModulePrefix,
                      rest_api_prefixes = dict:from_list(RestApiPrefixes),
                      doc_roots = DocRoots,
                      version_dirs = VersionDirs,
@@ -176,14 +179,45 @@ check_prefix_uniqueness(Prefixes, Plugins) ->
     end.
 
 decode_prefixes(Service, {KeyValues}) ->
-    lists:map(
-      fun ({PrefixBin, {Props}}) ->
+    case do_decode_prefixes(Service, KeyValues) of
+        {[], undefined} ->
+            panic("No REST API prefixes specified");
+        {[{Prefix, _}] = Prefixes, undefined} ->
+            {Prefixes, Prefix};
+        {_, undefined} ->
+            panic("One REST API prefix must be specified as a module prefix");
+        Other ->
+            Other
+    end.
+
+do_decode_prefixes(Service, KeyValues) ->
+    lists:foldl(
+      fun ({PrefixBin, {Props}}, {Acc, ModulePrefix}) ->
               Prefix = binary_to_list(PrefixBin),
               Port =
                   get_element(<<"portName">>, Props, binary_to_atom(_, latin1),
                               port_name_by_service_name(Service)),
-              {Prefix, #prefix_props{port_name = Port}}
-      end, KeyValues).
+              IsModulePrefix =
+                  get_element(
+                    <<"isModulePrefix">>, Props,
+                    fun (true) ->
+                            true;
+                        (V) ->
+                            panic("Incorrect value ~p of key isModulePrefix",
+                                  [V])
+                    end, false),
+              NewModulePrefix =
+                  case {IsModulePrefix, ModulePrefix} of
+                      {true, undefined} ->
+                          Prefix;
+                      {true, _} ->
+                          panic("Duplicate module prefixes");
+                      {false, _} ->
+                          ModulePrefix
+                  end,
+              {[{Prefix, #prefix_props{port_name = Port}} | Acc],
+               NewModulePrefix}
+      end, {[], undefined}, KeyValues).
 
 valid_service(ServiceName) ->
     lists:member(ServiceName,
@@ -502,30 +536,18 @@ export_module_getter(_UiCompatVersion, #plugin{module = undefined}) ->
     [];
 export_module_getter(UiCompatVersion, #plugin{name = Service,
                                               version_dirs = VersionDirs,
-                                              rest_api_prefixes = RestApiPrefixes,
+                                              module_prefix = ModulePrefix,
                                               module = Module}) ->
     VersionDir = proplists:get_value(UiCompatVersion, VersionDirs),
     case VersionDir of
         undefined ->
-            io_lib:format("/* service ~s not compatible with UI compat version ~p */~n",
-                          [Service, UiCompatVersion]);
+            io_lib:format(
+              "/* service ~s not compatible with UI compat version ~p */~n",
+              [Service, UiCompatVersion]);
         _ ->
-            % We don't support importing pluggable modules where the pluggable
-            % UI component has more than one REST API prefix as it's not clear
-            % which REST prefix we should use when importing it. This doesn't cause
-            % problems currently as all pluggable modules have exactly one REST
-            % API prefix.
-            [{Prefix, _} | Tail] = dict:to_list(RestApiPrefixes),
-            case Tail of
-                [] ->
-                    io_lib:format("import pluggableUI_~s from \"/_p/ui/~s/~s/~s\"~n"
-                                  "export {pluggableUI_~s}~n",
-                                  [Service, Prefix, VersionDir, Module, Service]);
-                _ ->
-                    io_lib:format("/* can't import pluggable module for service ~s "
-                                  "as there are multiple REST API Prefixes */~n",
-                                  [Service])
-            end
+            io_lib:format("import pluggableUI_~s from \"/_p/ui/~s/~s/~s\"~n"
+                          "export {pluggableUI_~s}~n",
+                          [Service, ModulePrefix, VersionDir, Module, Service])
     end.
 
 find_head_fragments(Service, _, undefined) ->
