@@ -775,11 +775,10 @@ roles_pre_cheshirecat() ->
        {[pools], [read]}]},
      {analytics_manager, [bucket_name],
       [{name, <<"Analytics Manager">>},
-       {desc, <<"Can manage Analytics links. Can manage datasets on a given "
-                "bucket. Can query datasets created on this bucket. This user "
-                "can access the web console and read some data.">>}],
+       {desc, <<"Can manage Analytics local links. Can manage datasets on a "
+                "given bucket. Can query datasets created on this bucket. "
+                "This user can access the web console and read some data.">>}],
       [{[{bucket, bucket_name}, analytics], [manage, select]},
-       {[analytics], [select]},
        {[ui], [read]},
        {[pools], [read]}]},
      {analytics_reader, [],
@@ -788,6 +787,7 @@ roles_pre_cheshirecat() ->
                 "be created on different buckets. This user can access the "
                 "web console and read some data.">>}],
       [{[analytics], [select]},
+       {[{bucket, any}, analytics], [select]},
        {[ui], [read]},
        {[pools], [read]}]},
      {analytics_select, [bucket_name],
@@ -795,6 +795,15 @@ roles_pre_cheshirecat() ->
        {desc, <<"Can query datasets created on this bucket. This user can "
                 "access the web console and read some data.">>}],
       [{[{bucket, bucket_name}, analytics], [select]},
+       {[ui], [read]},
+       {[pools], [read]}]},
+     {analytics_admin, [],
+      [{name, <<"Analytics Admin">>},
+       {desc, <<"Can manage dataverses. Can manage all Analytics links. "
+                "Can manage all datasets. This user can access the web "
+                "console but cannot read data.">>}],
+      [{[analytics], [manage]},
+       {[{bucket, any}, analytics], [manage]},
        {[ui], [read]},
        {[pools], [read]}]},
      {mobile_sync_gateway, [bucket_name],
