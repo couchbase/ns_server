@@ -325,7 +325,11 @@ parse_timing_range(Rest) ->
 parse_timing_key(Prefix, Key) ->
     case (catch erlang:split_binary(Key, erlang:size(Prefix))) of
         {Prefix, Suffix} ->
-            parse_timing_range(Suffix);
+            try
+                parse_timing_range(Suffix)
+            catch
+                _:_ -> nothing
+            end;
         _ ->
             nothing
     end.
