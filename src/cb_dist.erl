@@ -404,7 +404,8 @@ handle_info({accept, AcceptorPid, ConSocket, _Family, _Protocol},
                acceptors = Acceptors} = State) ->
     Ref = make_ref(),
     Con = #con{ref = Ref, mod = proplists:get_value(AcceptorPid, Acceptors)},
-    info_msg("Accepted new connection from ~p: ~p", [AcceptorPid, Con]),
+    info_msg("Accepted new connection from ~p DistCtrl ~p: ~p",
+             [AcceptorPid, ConSocket, Con]),
     KernelPid ! {accept, self(), {Ref, AcceptorPid, ConSocket}, ?family, ?proto},
     {noreply, State#s{connections = [Con | Connections]}};
 
@@ -910,6 +911,11 @@ close_dist_connection(Pid, KernelPid) ->
             exit(Pid, kill)
     end.
 
+is_restartable_event({{badmatch, {error, closed}}, _}) ->
+    %% One occurence of this intermittent error is when Pid from
+    %% accept_connection in inet_tls_dist crashes before we make it the
+    %% controlling process.
+    true;
 is_restartable_event({error, closed}) ->
     true;
 is_restartable_event({error, timeout}) ->
