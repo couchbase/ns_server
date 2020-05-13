@@ -729,7 +729,7 @@ parse_role(RoleRaw, Definitions) ->
                 adjust_role(Role, [any], Definitions);
             {Role, [$[ | ParamAndBracket]} ->
                 case parse_until(ParamAndBracket, "]") of
-                    {Param, "]"} ->
+                    {Param, "]"} when Param =/= [] ->
                         adjust_role(Role, string:tokens(Param, ":"),
                                     Definitions);
                     _ ->
@@ -1729,9 +1729,11 @@ parse_roles_test_() ->
                    [admin,
                     {bucket_admin, ["test.test"]},
                     {bucket_admin, [any]},
+                    {error, "bucket_admin[]"},
                     {error, "no_such_atom"},
                     {error, "bucket_admin[default"}],
-                   parse_roles("admin, bucket_admin[test.test], bucket_admin[*],"
+                   parse_roles("admin, bucket_admin[test.test], "
+                               "bucket_admin[*], bucket_admin[],"
                                "no_such_atom, bucket_admin[default"))
         end},
        {"with collections",
