@@ -743,13 +743,17 @@ calculate_possible_param_values(_Buckets, [], _) ->
 calculate_possible_param_values(Buckets, [bucket_name], Permission) ->
     [[any] | [[{Name, ns_bucket:bucket_uuid(Props)}] ||
                  {Name, Props} <- get_applicable_buckets(Buckets, Permission)]];
+calculate_possible_param_values(Buckets, ?RBAC_SCOPE_PARAMS, Permission) ->
+    [[any, any] |
+     [[{Name, ns_bucket:bucket_uuid(Props)}, any] ||
+         {Name, Props} <- get_applicable_buckets(Buckets, Permission)]];
 calculate_possible_param_values(Buckets, ?RBAC_COLLECTION_PARAMS, Permission) ->
     [[any, any, any] |
      [[{Name, ns_bucket:bucket_uuid(Props)}, any, any] ||
          {Name, Props} <- get_applicable_buckets(Buckets, Permission)]].
 
 all_params_combinations() ->
-    [[], [bucket_name], ?RBAC_COLLECTION_PARAMS].
+    [[], [bucket_name], ?RBAC_SCOPE_PARAMS, ?RBAC_COLLECTION_PARAMS].
 
 -spec calculate_possible_param_values(list(), undefined | rbac_permission()) ->
                                              rbac_all_param_values().
