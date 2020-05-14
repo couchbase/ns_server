@@ -291,8 +291,8 @@ class LogRedactor:
         # Don't try to catch any errors here as we want failures (e.g.
         # due to disk full) to abort the collection.  This will allow
         # the cause of the failure to be fixed and collection retried.
-        with io.open(ifile, 'r', encoding=LATIN1) as inp:
-            with open(ofile, 'w+') as out:
+        with open(ifile, 'r', newline='', encoding=LATIN1) as inp:
+            with open(ofile, 'w+', newline='', encoding=LATIN1) as out:
                 for line in inp:
                     out.write(processor.do(line))
 
@@ -588,7 +588,10 @@ class TaskRunner(object):
         for name, fp in self.files.items():
             if "users.dets" in name:
                 continue
-            files.append(redactor.redact_file(name, fp.name))
+            elif name.lower().endswith(('.gz', '.dmp')):
+                files.append(fp.name)
+            else:
+                files.append(redactor.redact_file(name, fp.name))
 
         prefix = "cbcollect_info_%s_%s" % (node, self.start_time)
         self._zip_helper(prefix, filename, files)
