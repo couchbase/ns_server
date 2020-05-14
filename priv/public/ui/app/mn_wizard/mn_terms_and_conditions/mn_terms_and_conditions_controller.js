@@ -11,6 +11,7 @@
     vm.isEnterprise = pools.isEnterprise;
     vm.onSubmit = onSubmit;
     vm.finishWithDefault = finishWithDefault;
+    vm.sendStats = true;
 
     activate();
     function activate() {
@@ -35,7 +36,7 @@
       }
 
       mnClusterConfigurationService
-        .postStats(true).then(function () {
+        .postStats(vm.sendStats).then(function () {
           var services = "kv,index,fts,n1ql";
           if (vm.isEnterprise) {
             services += ",eventing,cbas";
@@ -71,7 +72,11 @@
       if (vm.form.$invalid) {
         return;
       }
-      $state.go('app.wizard.clusterConfiguration');
+
+      mnClusterConfigurationService
+      .postStats(vm.sendStats).then(function () {
+        $state.go('app.wizard.clusterConfiguration');
+      });
     }
   }
 })();
