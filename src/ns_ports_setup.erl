@@ -385,6 +385,7 @@ goport_args(goxdcr, Config, _Cmd, _NodeUUID) ->
         [IsEnterprise, IsIpv6];
 
 goport_args(indexer, Config, _Cmd, NodeUUID) ->
+    {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
     RestPort = service_ports:get_port(rest_port, Config),
     {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
     IdxDir2 = filename:join(IdxDir, "@2i"),
@@ -403,6 +404,7 @@ goport_args(indexer, Config, _Cmd, NodeUUID) ->
          "-cluster=" ++ misc:local_url(RestPort, [no_scheme]),
          "-storageDir=" ++ IdxDir2,
          "-diagDir=" ++ path_config:minidump_dir(),
+         "-logDir=" ++ LogDir,
          "-nodeUUID=" ++ NodeUUID,
          "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
          "-isEnterprise=" ++ atom_to_list(cluster_compat_mode:is_enterprise())];
