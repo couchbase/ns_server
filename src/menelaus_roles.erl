@@ -1182,6 +1182,10 @@ replication_admin_test() ->
     ?assertEqual(false, is_allowed({[admin], read}, Roles)),
     ?assertEqual(true, is_allowed({[other], read}, Roles)).
 
+compile_and_assert(Role, Permissions, Params, Results) ->
+    Roles = compile_roles([{Role, Params}], roles()),
+    ?assertEqual(Results, lists:map(is_allowed(_, Roles), Permissions)).
+
 data_reader_collection_test_() ->
     Permissions =
         [{[{collection, ["default", "s", "c"]}, data, docs], read},
@@ -1192,14 +1196,11 @@ data_reader_collection_test_() ->
          {[{scope, ["default", "s2"]}, data, docs], read},
          {[{bucket, "default"}, data, docs], read},
          {[{bucket, "default"}, settings], read}],
-    Test =
-        fun (Params, Results) ->
-                fun () ->
-                        Roles = compile_roles([{data_reader, Params}], roles()),
-                        ?assertEqual(Results, lists:map(is_allowed(_, Roles),
-                                                        Permissions))
-                end
-        end,
+
+    Test = ?cut(fun () ->
+                        compile_and_assert(data_reader, Permissions, _, _)
+                end),
+
     {foreach, fun () -> ok end,
      [{"existing collection with id's",
        Test([{"default", <<"default_id">>}, {"s", 1}, {"c", 1}],
@@ -1220,6 +1221,46 @@ data_reader_collection_test_() ->
        Test(["test", any, any],
             [false, false, false, false, false, false, false, false])}
      ]}.
+
+query_functions_test_() ->
+    Roles = [{query_manage_functions, [n1ql, udf], manage},
+             {query_execute_functions, [n1ql, udf], execute},
+             {query_manage_external_functions, [n1ql, udf_external], manage},
+             {query_execute_external_functions, [n1ql, udf_external], execute}],
+
+    Sources = [{scope, ["default", "s"]},
+               {scope, ["default", "s1"]},
+               {scope, ["default", "s2"]},
+               {bucket, "default"}],
+
+    Tests =
+        lists:flatmap(
+          fun ({Role, Object, Oper}) ->
+                  RoleStr = atom_to_list(Role),
+                  Permissions = [{[S | Object], Oper} || S <- Sources],
+                  Test =
+                      ?cut(fun () ->
+                                   compile_and_assert(Role, Permissions, _, _)
+                           end),
+
+                  [{"existing scope with id's : " ++ RoleStr,
+                    Test([{"default", <<"default_id">>}, {"s", 1}],
+                         [true, false, false, false])},
+                   {"wrong scope id : " ++ RoleStr,
+                    Test([{"default", <<"default_id">>}, {"s", 2}],
+                         [false, false, false, false])},
+                   {"existing scope without id's : " ++ RoleStr,
+                    Test(["default", "s"],
+                         [true, false, false, false])},
+                   {"whole bucket",
+                    Test(["default", any],
+                         [true, true, true, true])},
+                   {"another bucket",
+                    Test(["test", any],
+                         [false, false, false, false])}]
+          end, Roles),
+
+    {foreach, fun () -> ok end, Tests}.
 
 validate_role_test() ->
     ValidateRole = validate_role(_, roles(), toy_buckets()),
@@ -1244,7 +1285,16 @@ validate_role_test() ->
     ?assertEqual({ok, DataReader}, ValidateRole(DataReader)),
     ?assertEqual(false, ValidateRole(
                           {data_reader,
-                           [{"default", <<"test_id">>}, {"s", 1}, {"c", 2}]})).
+                           [{"default", <<"test_id">>}, {"s", 1}, {"c", 2}]})),
+    QMF = {query_manage_functions, [{"default", <<"default_id">>}, {"s", 1}]},
+    ?assertEqual({ok, QMF}, ValidateRole(QMF)),
+    ?assertEqual({ok, QMF}, ValidateRole({query_manage_functions,
+                                          ["default", "s"]})),
+    ?assertEqual(false, ValidateRole({query_manage_functions,
+                                      [{"default", <<"test_id">>}, {"s", 1}]})),
+    ?assertEqual(false, ValidateRole({query_manage_functions,
+                                      [{"default", <<"default_id">>},
+                                       {"s", 2}]})).
 
 enum_roles(Roles, Buckets) ->
     Definitions = roles(),
