@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2010-2018 Couchbase, Inc.
+%% @copyright 2010-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -53,6 +53,9 @@
 
 -define(MAX_BUCKETS_SUPPORTED, 30).
 -define(VBMAP_HISTORY_SIZE, ?MAX_BUCKETS_SUPPORTED).
+
+-define(MAX_SCOPES_SUPPORTED, 1200).
+-define(MAX_COLLECTIONS_SUPPORTED, 1200).
 
 -define(DEFAULT_LOG_FILENAME, "info.log").
 -define(ERRORS_LOG_FILENAME, "error.log").

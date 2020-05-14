@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2017-2019 Couchbase, Inc.
+%% @copyright 2017-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -59,6 +59,8 @@ default_manifest() ->
      {next_uid, 0},
      {next_scope_uid, 7},
      {next_coll_uid, 7},
+     {num_scopes, 0},
+     {num_collections, 0},
      {scopes,
       [{"_default",
         [{uid, 0},
@@ -112,6 +114,23 @@ manifest_json(BucketCfg) ->
 
     {[{uid, get_uid_in_memcached_format(Manifest)},
       {scopes, ScopesJson}]}.
+
+get_max_supported(num_scopes) ->
+    ns_config:read_key_fast(max_scopes_count, ?MAX_SCOPES_SUPPORTED);
+get_max_supported(num_collections) ->
+    ns_config:read_key_fast(max_collections_count, ?MAX_COLLECTIONS_SUPPORTED).
+
+get_total_in_cluster(Counter) ->
+    Buckets = ns_bucket:get_buckets(),
+    lists:foldl(fun ({_Name, BucketCfg}, Acc) ->
+                        case enabled(BucketCfg) of
+                            true ->
+                                Manifest = get_manifest(BucketCfg),
+                                Acc + get_counter(Manifest, Counter);
+                            false ->
+                                Acc
+                        end
+                end, 0, Buckets).
 
 create_scope(Bucket, Name) ->
     update(Bucket, {create_scope, Name}).
@@ -212,11 +231,19 @@ needed_ids({create_collection, _, _, _}) ->
 needed_ids(_) ->
     [].
 
+check_limit(Counter) ->
+    case get_total_in_cluster(Counter) + 1 > get_max_supported(Counter) of
+        false ->
+            ok;
+        true ->
+            {max_number_exceeded, Counter}
+    end.
+
 verify_oper({create_scope, Name}, Manifest) ->
     Scopes = get_scopes(Manifest),
     case find_scope(Name, Scopes) of
         undefined ->
-            ok;
+            check_limit(num_scopes);
         _ ->
             scope_already_exists
     end;
@@ -242,7 +269,7 @@ verify_oper({create_collection, ScopeName, Name, _}, Manifest) ->
             Collections = get_collections(Scope),
             case find_collection(Name, Collections) of
                 undefined ->
-                    ok;
+                    check_limit(num_collections);
                 _ ->
                     collection_already_exists
             end
@@ -263,13 +290,25 @@ verify_oper({drop_collection, ScopeName, Name}, Manifest) ->
     end.
 
 handle_oper({create_scope, Name}, Manifest) ->
-    on_scopes(add_scope(Name, _, Manifest), Manifest);
+    Manifest0 = on_scopes(add_scope(Name, _, Manifest), Manifest),
+    update_counter(Manifest0, num_scopes, 1);
 handle_oper({drop_scope, Name}, Manifest) ->
-    on_scopes(delete_scope(Name, _), Manifest);
+    Manifest0 = on_scopes(delete_scope(Name, _), Manifest),
+    update_counter(Manifest0, num_scopes, -1);
 handle_oper({create_collection, Scope, Name, Props}, Manifest) ->
-    on_collections(add_collection(Name, Props, _, Manifest), Scope, Manifest);
+    Manifest0 = on_collections(add_collection(Name, Props, _, Manifest),
+                               Scope, Manifest),
+    update_counter(Manifest0, num_collections, 1);
 handle_oper({drop_collection, Scope, Name}, Manifest) ->
-    on_collections(delete_collection(Name, _), Scope, Manifest).
+    Manifest0 = on_collections(delete_collection(Name, _), Scope, Manifest),
+    update_counter(Manifest0, num_collections, -1).
+
+get_counter(Manifest, Counter) ->
+    proplists:get_value(Counter, Manifest).
+
+update_counter(Manifest, Counter, Amount) ->
+    lists:keystore(Counter, 1, Manifest,
+                   {Counter, get_counter(Manifest, Counter) + Amount}).
 
 get_manifest(BucketCfg) ->
     proplists:get_value(collections_manifest, BucketCfg, default_manifest()).

@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2017-2019 Couchbase, Inc.
+%% @copyright 2017-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -194,6 +194,12 @@ handle_rv(scope_not_found, Req) ->
 handle_rv(default_scope, Req) ->
     menelaus_util:reply_json(
       Req, <<"Deleting _default scope is not allowed">>, 400);
+handle_rv({max_number_exceeded, num_scopes}, Req) ->
+    menelaus_util:reply_json(
+      Req, <<"Maximum number of scopes has been reached">>, 400);
+handle_rv({max_number_exceeded, num_collections}, Req) ->
+    menelaus_util:reply_json(
+      Req, <<"Maximum number of collections has been reached">>, 400);
 handle_rv(Error, Req) when Error =:= unsafe;
                            Error =:= push_config;
                            Error =:= pull_config ->
