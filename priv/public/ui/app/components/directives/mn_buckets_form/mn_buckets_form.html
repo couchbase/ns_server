@@ -3,20 +3,20 @@
     <div class="row">
       <label>Name</label>
       <script type="text/ng-template" id="users-tooltip.html">
-       <div ng-if="users.length > 3">
-       <div ng-repeat="user in users.slice(0, 3)">{{user}}</div>
-       <a ng-click="goToUsersPage()">more ...</a>
-       </div>
-       <div ng-if="users.length < 4">
-       <div ng-repeat="user in users">{{user}}</div>
-       </div>
+        <div ng-if="users.length > 3">
+          <div ng-repeat="user in users.slice(0, 3)">{{user}}</div>
+          <a ng-click="goToUsersPage()">more ...</a>
+        </div>
+        <div ng-if="users.length < 4">
+          <div ng-repeat="user in users">{{user}}</div>
+        </div>
       </script>
       <a
-        ng-if="rbac && rbac.cluster.admin.security.read && users.length > 0"
-        class="cursor-pointer"
-        uib-tooltip-template="'users-tooltip.html'"
-        tooltip-append-to-body="true"
-        tooltip-placement="right">
+         ng-if="rbac && rbac.cluster.admin.security.read && users.length > 0"
+         class="cursor-pointer"
+         uib-tooltip-template="'users-tooltip.html'"
+         tooltip-append-to-body="true"
+         tooltip-placement="right">
         <span class="text-smaller">authorized users</span>
       </a>
     </div>
@@ -84,7 +84,11 @@
        ng-disabled="!bucketConf.isNew">
     <label
        for="for-bucket-type-ephemeral">Ephemeral</label>
+    <div class="error error-form" ng-show="bucketConf.bucketType == 'memcached'">
+      Warning: Memcached buckets are deprecated.
+    </div>
   </div>
+
 
   <div class="formrow">
     <span
