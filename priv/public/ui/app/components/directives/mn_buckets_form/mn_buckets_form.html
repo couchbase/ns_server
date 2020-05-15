@@ -201,10 +201,10 @@
       <span
          class="fa-stack icon-info"
          uib-tooltip-html="'<strong>Off</strong> - compressed documents are accepted but actively decompressed for storage in memory and for streaming. Not advised!<br>
-                           <strong>Passive</strong> - compressed documents can be stored and streamed from the server,
-                           but the server does not try to actively compress documents (client-initiated)<br>
-                           <strong>Active</strong> - the server will try to actively compress documents in memory'"
-                           tooltip-placement="right">
+                <strong>Passive</strong> - compressed documents can be stored and streamed from the server,
+                but the server does not try to actively compress documents (client-initiated)<br>
+                <strong>Active</strong> - the server will try to actively compress documents in memory'"
+         tooltip-placement="right">
         <span class="icon fa-circle-thin fa-stack-2x"></span>
         <span class="icon fa-info fa-stack-1x"></span>
       </span>
@@ -407,6 +407,32 @@
          class="error"
          ng-show="!!threadsNumberWarning">
         {{threadsNumberWarning}}
+      </div>
+    </div>
+
+    <div ng-show="bucketConf.bucketType === 'membase'">
+      <label class="inline">Durability Level</label>
+      <span
+         class="fa-stack icon-info"
+         uib-tooltip='Bucket Minimum Durability Level. KVEngine upgrades any write request to this min-level, if the min-level is higher than the write-level. May upgrade a NormalWrite to SyncWrite.'
+         tooltip-placement="right">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+      </span><br>
+      <div class="formrow simple-select">
+        <select
+           name="durabilityMinLevel"
+           ng-model="bucketConf.durabilityMinLevel">
+          <option value="none">None</option>
+          <option value="majority">Majority</option>
+          <option value="majorityAndPersistActive">Majority and persist to active</option>
+          <option value="persistToMajority">Persist to majority</option>
+        </select>
+      </div>
+      <div
+         class="error"
+         ng-show="validation.result.errors.durability_min_level">
+        {{validation.result.errors.durability_min_level}}
       </div>
     </div>
 

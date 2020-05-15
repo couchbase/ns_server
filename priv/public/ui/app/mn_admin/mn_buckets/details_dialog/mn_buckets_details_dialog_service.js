@@ -40,7 +40,7 @@
         copyProperties(["name", "bucketType"]);
       }
       if (bucketConf.bucketType === "membase") {
-        copyProperties(["autoCompactionDefined", "evictionPolicy"]);
+        copyProperties(["autoCompactionDefined", "evictionPolicy", "durabilityMinLevel"]);
       }
       if (bucketConf.bucketType === "ephemeral") {
         copyProperty("purgeInterval");
