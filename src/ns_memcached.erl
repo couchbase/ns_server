@@ -152,16 +152,6 @@ init(Bucket) ->
     Self = self(),
     proc_lib:spawn_link(erlang, apply, [fun run_connect_phase/3,
                                         [Self, Bucket, WorkersCount]]),
-    CollectionsCheckPid =
-        proc_lib:spawn_link(erlang, apply, [fun collections_uid_check_loop/3,
-                                            [Self, Bucket, undefined]]),
-    ns_pubsub:subscribe_link(
-      ns_config_events,
-      fun ({buckets, [{configs, Configs}]}) ->
-              CollectionsCheckPid ! {check, Configs};
-          (_) ->
-              ok
-      end),
     State = #state{
                status = connecting,
                bucket = Bucket,
@@ -642,6 +632,18 @@ handle_cast({connect_done, WorkersCount, RV}, #state{bucket = Bucket,
                     [proc_lib:spawn_link(erlang, apply, [fun worker_init/2,
                                                          [Self, InitialState]])
                      || _ <- lists:seq(1, WorkersCount)],
+
+                    CollectionsCheckPid =
+                        proc_lib:spawn_link(erlang, apply, [fun collections_uid_check_loop/3,
+                                                            [Self, Bucket, undefined]]),
+                    ns_pubsub:subscribe_link(
+                      ns_config_events,
+                      fun ({buckets, [{configs, Configs}]}) ->
+                              CollectionsCheckPid ! {check, Configs};
+                          (_) ->
+                              ok
+                      end),
+
                     {noreply, InitialState};
                 Error ->
                     ?log_info("ensure_bucket failed: ~p", [Error]),
