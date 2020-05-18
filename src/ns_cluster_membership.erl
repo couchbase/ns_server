@@ -261,17 +261,19 @@ allowed_services(community) ->
     supported_services() -- enterprise_only_services().
 
 enterprise_only_services() ->
-    [cbas, eventing].
+    [cbas, eventing, backup].
 
 -define(PREHISTORIC, [0, 0]).
 
 services_by_version() ->
     [{?PREHISTORIC, [kv, n1ql, index, fts]},
-     {?VERSION_55,  [cbas, eventing]}].
+     {?VERSION_55,  [cbas, eventing]},
+     {?VERSION_CHESHIRECAT, [backup]}].
 
 topology_aware_services_by_version() ->
     [{?PREHISTORIC, [fts, index]},
-     {?VERSION_55,  [cbas, eventing]}].
+     {?VERSION_55,  [cbas, eventing]},
+     {?VERSION_CHESHIRECAT, [backup]}].
 
 filter_services_by_version(Version, ServicesTable) ->
     lists:flatmap(fun ({V, Services}) ->
@@ -405,11 +407,17 @@ supported_services_for_version_test() ->
     ?assertEqual(lists:sort([fts,kv,index,n1ql]),
                  lists:sort(supported_services_for_version(?VERSION_50))),
     ?assertEqual(lists:sort([fts,kv,index,n1ql,cbas,eventing]),
-                 lists:sort(supported_services_for_version(?VERSION_55))).
+                 lists:sort(supported_services_for_version(?VERSION_55))),
+    ?assertEqual(lists:sort([fts,kv,index,n1ql,cbas,eventing,backup]),
+                 lists:sort(supported_services_for_version(
+                              ?VERSION_CHESHIRECAT))).
 
 topology_aware_services_for_version_test() ->
     ?assertEqual(lists:sort([fts,index]),
                  lists:sort(topology_aware_services_for_version(?VERSION_50))),
     ?assertEqual(lists:sort([fts,index,cbas,eventing]),
-                 lists:sort(topology_aware_services_for_version(?VERSION_55))).
+                 lists:sort(topology_aware_services_for_version(?VERSION_55))),
+    ?assertEqual(lists:sort([fts,index,cbas,eventing,backup]),
+                 lists:sort(topology_aware_services_for_version(
+                              ?VERSION_CHESHIRECAT))).
 -endif.

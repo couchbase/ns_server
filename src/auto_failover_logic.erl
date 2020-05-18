@@ -1,5 +1,5 @@
 %% @author Couchbase, Inc <info@couchbase.com>
-%% @copyright 2011-2019 Couchbase, Inc.
+%% @copyright 2011-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -40,6 +40,7 @@
 -define(AUTO_FAILOVER_FTS_NODE_COUNT, 1).
 -define(AUTO_FAILOVER_EVENTING_NODE_COUNT, 1).
 -define(AUTO_FAILOVER_CBAS_NODE_COUNT, 1).
+-define(AUTO_FAILOVER_BACKUP_NODE_COUNT, 1).
 
 -record(node_state, {
           name :: term(),
@@ -536,7 +537,9 @@ service_failover_min_node_count(fts) ->
 service_failover_min_node_count(eventing) ->
     ?AUTO_FAILOVER_EVENTING_NODE_COUNT;
 service_failover_min_node_count(cbas) ->
-    ?AUTO_FAILOVER_CBAS_NODE_COUNT.
+    ?AUTO_FAILOVER_CBAS_NODE_COUNT;
+service_failover_min_node_count(backup) ->
+    ?AUTO_FAILOVER_BACKUP_NODE_COUNT.
 
 
 -ifdef(TEST).
