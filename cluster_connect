@@ -24,7 +24,8 @@ import traceback
 from functools import reduce
 
 valid_bucket_types = ["ephemeral", "membase", "memcached"]
-valid_service_types = {"kv", "n1ql", "index", "fts", "cbas", "eventing"}
+valid_service_types = {"kv", "n1ql", "index", "fts", "cbas", "eventing",
+        "backup"}
 valid_index_storage_modes = ["forestdb", "plasma", "memory_optimized"]
 
 
@@ -32,7 +33,7 @@ def usage():
     print "usage: \n\
             -n <number of nodes>\n\
             -T <services to run. kv if unspecified>\n\
-               (eg: n0:kv,n1:index+n1ql+fts+eventing+cbas)\n\
+               (eg: n0:kv,n1:index+n1ql+fts+eventing+cbas+backup)\n\
             -s <memory size> (min 256) default: 256\n\
             -I <index memory size> default: 256\n\
             -M <index storage mode> (forestdb, plasma, memory_optimized)\n\
