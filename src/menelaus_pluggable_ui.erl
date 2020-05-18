@@ -363,6 +363,7 @@ node_address(Node) ->
     misc:extract_node_address(Node).
 
 port_name_by_service_name(fts) -> fts_http_port;
+port_name_by_service_name(backup) -> backup_http_port;
 port_name_by_service_name(cbas) -> cbas_http_port;
 port_name_by_service_name(n1ql) -> query_port;
 port_name_by_service_name(views) -> capi_port;

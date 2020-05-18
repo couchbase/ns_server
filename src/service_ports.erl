@@ -114,7 +114,12 @@ all_ports() ->
      ?define_port(cbas_metadata_port,          undefined,       misc, 9121),
      ?define_port(cbas_parent_port,            cbasParent,      misc, 9122),
      ?define_port(cbas_debug_port,             cbasDebug,       misc, -1),
-     ?define_port(prometheus_http_port,        prometheusPort,  misc, 9123)
+     ?define_port(prometheus_http_port,        prometheusPort,  misc, 9123),
+
+     %% Backup service ports
+     ?define_port(backup_http_port,  backupAPI,      backup, 8097),
+     ?define_port(backup_https_port, backupAPIHTTPS, backup, 18097),
+     ?define_port(backup_grpc_port,  backupGRPC,     backup, 9124)
     ].
 
 config_key(memcached_port) ->

@@ -79,6 +79,7 @@
 -define(JSON_RPC_LOG_FILENAME, "json_rpc.log").
 -define(EVENTING_LOG_FILENAME, "eventing.log").
 -define(CBAS_LOG_FILENAME, "analytics_info.log").
+-define(BACKUP_LOG_FILENAME, "backup_service.log").
 
 -define(NS_SERVER_LOGGER, ns_server).
 -define(COUCHDB_LOGGER, couchdb).
