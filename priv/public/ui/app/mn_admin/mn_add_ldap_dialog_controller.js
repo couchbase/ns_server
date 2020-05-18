@@ -11,9 +11,11 @@ function mnAddLDAPDialogController(mnUserRolesService, mnPromiseHelper, $uibModa
       serverCertValidation: "false",
       cacert: "",
       bindDN: "",
-      bindPass: ""
+      bindPass: "",
+      clientTLSCert: "",
+      clientTLSKey: ""
     },
-    isAnon: false,
+    authType: "anon",
     userDnMapping: "template",
     authentication: {
       authenticationEnabled: false,
@@ -44,6 +46,7 @@ function mnAddLDAPDialogController(mnUserRolesService, mnPromiseHelper, $uibModa
   vm.checkGroupsQuery = checkGroupsQuery;
   vm.clearLdapCache = clearLdapCache;
   vm.removeGroupsQueryErrors = removeGroupsQueryErrors;
+  vm.maybeDisableClientCert = maybeDisableClientCert;
   activate();
 
   function activate() {
@@ -67,13 +70,16 @@ function mnAddLDAPDialogController(mnUserRolesService, mnPromiseHelper, $uibModa
         unpackQueryForGroups(vm.config.queryForGroups, config.groupsQuery);
       vm.config.advanced =
         unpackAdvancedSettings(config);
-      vm.config.isAnon =
-        isThisAnonConnection(config);
+      vm.config.authType =
+        getAuthType(config);
+      vm.config.connect.clientTLSCert = config.clientTLSCert || "";
+      vm.config.connect.clientTLSKey = config.clientTLSKey || "";
+      vm.isCertLoaded = !!config.clientTLSCert;
     });
   }
 
-  function isThisAnonConnection(data) {
-    return !data.bindDN;
+  function getAuthType(data) {
+    return data.clientTLSCert ? "cert" : data.bindDN ? "creds" : "anon";
   }
 
   function clearLdapCache() {
@@ -90,6 +96,10 @@ function mnAddLDAPDialogController(mnUserRolesService, mnPromiseHelper, $uibModa
         acc[key] = config[key];
         return acc;
       }, {});
+  }
+
+  function maybeDisableClientCert() {
+    return vm.config.connect.encryption == 'None';
   }
 
   function unpackConnectivity(config) {
@@ -189,7 +199,10 @@ function mnAddLDAPDialogController(mnUserRolesService, mnPromiseHelper, $uibModa
     if (config.bindPass == "**********") {
       delete config.bindPass;
     }
-    if (vm.config.isAnon) {
+    if (config.clientTLSKey == "**********") {
+      delete config.clientTLSKey;
+    }
+    if (vm.config.authType != "creds") {
       config.bindDN = "";
       config.bindPass = "";
     }

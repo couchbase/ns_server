@@ -14,6 +14,7 @@ import mnFilters from "/ui/app/components/mn_filters.js";
 import mnAutocompleteOff from "/ui/app/components/directives/mn_autocomplete_off.js";
 import mnFocus from "/ui/app/components/directives/mn_focus.js";
 import mnUserRolesList from "/ui/app/components/directives/mn_user_roles_list_controller.js";
+import mnFileReader from "/ui/app/components/mn_file_reader.js";
 
 import mnUserRolesService from "./mn_user_roles_service.js";
 import mnAddLDAPDialogController from "./mn_add_ldap_dialog_controller.js";
@@ -38,7 +39,8 @@ angular
     mnAutocompleteOff,
     mnFocus,
     mnUserRolesService,
-    mnUserRolesList
+    mnUserRolesList,
+    mnFileReader
   ])
   .controller("mnUserRolesController", mnUserRolesController)
   .controller("mnAddLDAPDialogController", mnAddLDAPDialogController)

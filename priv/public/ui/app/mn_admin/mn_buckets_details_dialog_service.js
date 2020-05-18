@@ -50,7 +50,7 @@ function mnBucketsDetailsDialogServiceFactory($http, $q, mnBytesToMBFilter, mnCo
       copyProperties(["name", "bucketType"]);
     }
     if (bucketConf.bucketType === "membase") {
-      copyProperties(["autoCompactionDefined", "evictionPolicy"]);
+      copyProperties(["autoCompactionDefined", "evictionPolicy", "durabilityMinLevel"]);
       copyProperty("storageBackend");
     }
     if (bucketConf.bucketType === "ephemeral") {

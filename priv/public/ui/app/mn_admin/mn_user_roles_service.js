@@ -47,6 +47,7 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     getSaslauthdAuth: getSaslauthdAuth
   };
 
+  var clientTLSCert = "Client Cert should be supplied";
   var queryDnError = "LDAP DN should be supplied";
   var usersAttrsError = "The field can't be empty";
 
@@ -103,10 +104,6 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     });
   }
 
-  function isAnonOrQueryDn(data, isAnon) {
-    return (isAnon || data.bindDN);
-  }
-
   function validateLDAPQuery(data) {
     return !!(data.userDNMapping &&
               data.userDNMapping.includes("query"));
@@ -121,24 +118,41 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
       !formData.group.groupsQuery.attributes;
   }
 
-  function ldapConnectivityValidate(data, formData) {
-    if (!isAnonOrQueryDn(data, formData.isAnon)) {
-      return $q.reject({bindDN: queryDnError});
+  function validateAuthType(errors, data, formData) {
+    if ((formData.authType == "creds") && !data.bindDN) {
+      errors.bindDN = queryDnError;
     }
-    return $http.post("/settings/ldap/validate/connectivity", data);
+    if ((formData.authType == "cert") && !data.clientTLSCert) {
+      errors.clientTLSCert = clientTLSCert;
+    }
+  }
+
+  function ldapConnectivityValidate(data, formData) {
+    var errors = {};
+    validateAuthType(errors, data, formData);
+    if (Object.keys(errors).length) {
+      return $q.reject(errors);
+    } else {
+      return $http.post("/settings/ldap/validate/connectivity", data);
+    }
   }
 
   function ldapAuthenticationValidate(data, formData) {
-    if (!isAnonOrQueryDn(data, formData.isAnon) && validateLDAPQuery(data)) {
-      return $q.reject({bindDN: queryDnError});
+    var errors = {};
+    if (validateLDAPQuery(data)) {
+      validateAuthType(errors, data, formData);
     }
-    return $http.post("/settings/ldap/validate/authentication", data);
+    if (Object.keys(errors).length) {
+      return $q.reject(errors);
+    } else {
+      return $http.post("/settings/ldap/validate/authentication", data);
+    }
   }
 
   function ldapGroupsQueryValidate(data, formData) {
     var errors = {};
-    if (!isAnonOrQueryDn(data, formData.isAnon) && validateGroupQuery(data)) {
-      errors.bindDN = queryDnError;
+    if (validateGroupQuery(data)) {
+      validateAuthType(errors, data, formData);
     }
     if (validateGroupUserAttrs(formData)) {
       errors.groupsQuery = usersAttrsError;
@@ -157,10 +171,9 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     var errors = {};
     var isGroups = data.authorizationEnabled;
     var isUser = data.authenticationEnabled;
-    if (!isAnonOrQueryDn(data, formData.isAnon) && ((!isUser && !isGroups) ||
-                                                    (validateLDAPQuery(data) && isUser) ||
-                                                    (validateGroupQuery(data) && isGroups))) {
-      errors.bindDN = queryDnError;
+    if ((!isUser && !isGroups) || (validateLDAPQuery(data) && isUser) ||
+        (validateGroupQuery(data) && isGroups)) {
+      validateAuthType(errors, data, formData);
     }
     if (isGroups && validateGroupUserAttrs(formData)) {
       errors.groupsQuery = usersAttrsError;

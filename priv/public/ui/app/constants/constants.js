@@ -14,6 +14,7 @@ let bucketsFormConfiguration = {
   uri: '/pools/default/buckets',
   purgeInterval: "3",
   compressionMode: "passive",
+  durabilityMinLevel: "none",
   maxTTL: 0,
   storageBackend: 'couchstore'
 };

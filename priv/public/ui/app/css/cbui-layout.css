@@ -341,6 +341,9 @@ footer {
 .fix-width-3 {
   width: 12rem !important; /* 192px */
 }
+.fix-width-3-5 {
+  width: 14rem !important; /* 192px */
+}
 .fix-width-4 {
   width: 16rem !important; /* 256px */
 }
