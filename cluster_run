@@ -37,6 +37,10 @@ base_fts_port = 9200
 base_eventing_port = 9300
 base_cbas_port = 9600
 base_prometheus_port = 9900
+base_backup_http_port= 7100
+base_backup_https_port= 17100
+base_backup_grpc_port = 7200
+
 
 LOGLEVELS = ["debug", "info", "warn", "error", "critical"]
 
@@ -186,9 +190,9 @@ def os_specific(args, params):
         # OS X has a pretty tiny default fd limit.  Let's increase it
         # (if it hasn't already been).
         (soft, hard) = resource.getrlimit(resource.RLIMIT_NOFILE)
-        if soft < 2048:
-            resource.setrlimit(resource.RLIMIT_NOFILE, (2048, 2048))
-        params['env'] = {"ERL_MAX_PORTS": "2048"}
+        if soft < 4096:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (4096, 4096))
+        params['env'] = {"ERL_MAX_PORTS": "4096"}
         params['env'].update(os.environ)
 
 
@@ -316,7 +320,11 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix):
         "cbas_metadata_port", str(base_cbas_port + i * 15 + 13),
         "cbas_metadata_callback_port", str(base_cbas_port + i * 15 + 14),
         "cbas_ssl_port", str(10000 + base_cbas_port + i),
-        "prometheus_http_port", str(base_prometheus_port + i)
+        "prometheus_http_port", str(base_prometheus_port + i),
+        "backup_http_port", str(base_backup_http_port + i),
+        "backup_https_port", str(base_backup_https_port + i),
+        "backup_grpc_port", str(base_backup_grpc_port + i),
+
     ] + extra_args
 
     return args
