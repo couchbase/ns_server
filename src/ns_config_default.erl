@@ -187,7 +187,7 @@ default() ->
        {ssl_port, service_ports:default(memcached_ssl_port, IsEnterprise)},
        {admin_user, "@ns_server"},
        {other_users, ["@cbq-engine", "@projector", "@goxdcr", "@index", "@fts",
-                      "@eventing", "@cbas"]},
+                      "@eventing", "@cbas", "@backup"]},
        {admin_pass, binary_to_list(couch_uuids:random())},
        {engines,
         [{membase,
