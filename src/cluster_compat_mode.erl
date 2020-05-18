@@ -317,5 +317,5 @@ mb_master_advertised_version_test() ->
 -endif.
 
 preserve_durable_mutations() ->
-    cluster_compat_mode:is_cluster_65() andalso
+    is_cluster_65() andalso
         ns_config:read_key_fast({failover, preserve_durable_mutations}, true).
