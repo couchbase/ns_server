@@ -323,7 +323,12 @@ goport_defs() ->
           exe = "eventing-producer",
           service = eventing,
           rpc = eventing,
-          log = ?EVENTING_LOG_FILENAME}].
+          log = ?EVENTING_LOG_FILENAME},
+     #def{id = backup,
+          exe = "backup",
+          service = backup,
+          rpc = backup,
+          log = ?BACKUP_LOG_FILENAME}].
 
 build_goport_spec(#def{id = SpecId,
                        exe = Executable,
@@ -408,6 +413,30 @@ goport_args(indexer, Config, _Cmd, NodeUUID) ->
          "-nodeUUID=" ++ NodeUUID,
          "-ipv6=" ++ atom_to_list(misc:is_ipv6()),
          "-isEnterprise=" ++ atom_to_list(cluster_compat_mode:is_enterprise())];
+
+goport_args(backup, Config, _Cmd, NodeUUID) ->
+    build_port_args([{"-http-port", backup_http_port},
+                     {"-grpc-port", backup_grpc_port}], Config) ++
+
+    build_https_args(backup_https_port, "-https-port", "-cert-path",
+                     "-key-path", Config) ++
+
+    ["-cbm=" ++ filename:join(path_config:component_path(bin), "cbbackupmgr"),
+     "-node-uuid=" ++ NodeUUID,
+     "-public-address=" ++ misc:extract_node_address(node()),
+     "-admin-port=" ++ integer_to_list(service_ports:get_port(rest_port,
+                                                              Config)),
+     "-log-file=none",
+     "-log-level=" ++ atom_to_list(ns_server:get_loglevel(backup)),
+     "-integrated-mode",
+     "-integrated-mode-host=" ++ misc:local_url(
+                                   service_ports:get_port(rest_port, Config),
+                                   []),
+     "-integrated-mode-user=@backup",
+     "-integrated-mode-password=" ++ ns_config_auth:get_password(special),
+     "-cbauth-host=" ++ misc:local_url(
+                          service_ports:get_port(rest_port, Config),
+                          [no_scheme])];
 
 goport_args(fts, Config, _Cmd, NodeUUID) ->
     NsRestPort = service_ports:get_port(rest_port, Config),
