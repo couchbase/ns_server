@@ -211,6 +211,10 @@
         config.bindDN = "";
         config.bindPass = "";
       }
+      if (vm.config.authType != "cert") {
+        config.clientTLSCert = "";
+        config.clientTLSKey = "";
+      }
       if (config.serverCertValidation == "pasteCert") {
         config.serverCertValidation = "true";
       } else if (config.serverCertValidation == "true") {
