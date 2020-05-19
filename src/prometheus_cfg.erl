@@ -345,6 +345,9 @@ ensure_prometheus_config(Settings) ->
         "      password_file: ~s\n"
         "    static_configs:\n"
         "    - targets: [~s]\n"
+        "    metric_relabel_configs:\n"
+        "    - source_labels: [\"__name__\"]\n"
+        "      target_label: 'name'\n"
         "    relabel_configs:\n" ++
       [ "    - regex: '" ++ addr2re(A) ++ "'\n"
         "      source_labels: [__address__]\n"
