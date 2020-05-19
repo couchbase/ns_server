@@ -25,7 +25,14 @@
 
 -define(TIMEOUT, 5000).
 
--record(state, {bucket}).
+%% For how long to maintain the most recent ns_tick timestamps, in ms.
+%% Despite the fact that we need to cover only the most recent minute, we add
+%% some time (5 seconds) in order to make sure we are not losing the last
+%% timestamp in a minute.
+-define(TS_TRACKING_TIME_MSEC, 65000).
+
+-record(state, {bucket,
+                last_timestamps}).
 
 -export([start_link/1,
          latest/3, latest/4, latest/5,
@@ -102,7 +109,8 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 init(Bucket) ->
-    {ok, #state{bucket=Bucket}}.
+    ns_pubsub:subscribe_link(ns_tick_event),
+    {ok, #state{bucket=Bucket, last_timestamps = queue:new()}}.
 
 handle_call({latest, Period}, _From, #state{bucket=Bucket} = State) ->
     Reply = get_latest_sample(Bucket, Period),
@@ -132,6 +140,13 @@ handle_call({latest_specific, Period, Step, N, StatList}, _From, #state{bucket=B
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
+%% Keep track of last minute ns_tick timestamps, needed for backward compat
+%% only. Can be removed when support for all pre-7.0 stats endpoints is dropped.
+handle_info({tick, TS}, #state{last_timestamps = LastTSQ} = State) ->
+    Now = timestamp_ms(),
+    Threshold = Now - ?TS_TRACKING_TIME_MSEC,
+    NewLastTSQ = prune_old_ts(queue:in({Now, TS}, LastTSQ), Threshold),
+    {noreply, State#state{last_timestamps = NewLastTSQ}};
 
 handle_info(_Msg, State) -> % Don't crash on delayed responses from calls
     {noreply, State}.
@@ -275,3 +290,16 @@ resample(Bucket, Period, Step, N) ->
 %% @doc Generate a suitable name for the per-bucket gen_server.
 server(Bucket) ->
     list_to_atom(?MODULE_STRING ++ "-" ++ Bucket).
+
+timestamp_ms() ->
+    os:system_time(millisecond).
+
+prune_old_ts(Q, Threshold) ->
+    case queue:out(Q) of
+        {empty, _} ->
+            Q;
+        {{value, {TS, _}}, NewQ} when TS < Threshold ->
+            prune_old_ts(NewQ, Threshold);
+        {{value, {_TS, _}}, _NewQ} ->
+            Q
+    end.
