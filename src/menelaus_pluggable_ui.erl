@@ -116,7 +116,8 @@ validate_plugin_spec(KVs, Plugins) ->
     ServiceName = binary_to_atom(get_element(<<"service">>, KVs), latin1),
     ProxyStrategy = decode_proxy_strategy(get_element(<<"proxy-strategy">>,
                                                       KVs)),
-    Prefixes = decode_prefixes(get_opt_element(<<"rest-api-prefixes">>, KVs)),
+    Prefixes = get_element(<<"rest-api-prefixes">>, KVs, fun decode_prefixes/1,
+                           undefined),
     %% Backward compatibility code
     %% remove this code when all the services switch to using
     %% rest-api-prefixes instead of rest-api-prefix
@@ -129,10 +130,12 @@ validate_plugin_spec(KVs, Plugins) ->
                       end,
     %% End of backward compatibility code
     DocRoots = decode_docroots(get_element(<<"doc-root">>, KVs)),
-    VersionDirs = decode_version_dirs(get_opt_element(<<"version-dirs">>, KVs)),
-    ReqHdrFilter = decode_request_headers_filter(
-                     get_opt_element(<<"request-headers-filter">>, KVs)),
-    Module = get_opt_element(<<"module">>, KVs),
+    VersionDirs = get_element(<<"version-dirs">>, KVs,
+                              fun decode_version_dirs/1, []),
+    ReqHdrFilter = get_element(<<"request-headers-filter">>, KVs,
+                               fun decode_request_headers_filter/1,
+                               ?DEF_REQ_HEADERS_FILTER),
+    Module = proplists:get_value(<<"module">>, KVs),
     case {valid_service(ServiceName),
           check_prefix_uniqueness(RestApiPrefixes, Plugins)} of
         {true, ok} ->
@@ -165,7 +168,6 @@ check_prefix_uniqueness(Prefixes, Plugins) ->
         _  -> {error, {duplicates, Duplicates}}
     end.
 
-decode_prefixes(undefined) -> undefined;
 decode_prefixes({KeyValues}) ->
     lists:map(
       fun ({PrefixBin, {Props}}) ->
@@ -186,12 +188,12 @@ get_element(Key, KVs) ->
     {Key, Val} = lists:keyfind(Key, 1, KVs),
     Val.
 
-get_opt_element(Key, KVs) ->
-    case lists:keyfind(Key, 1, KVs) of
-        {Key, Val} ->
-            Val;
-        false ->
-            undefined
+get_element(Key, KVs, Decode, Default) ->
+    case proplists:get_value(Key, KVs) of
+        undefined ->
+            Default;
+        Value ->
+            Decode(Value)
     end.
 
 decode_proxy_strategy(<<"sticky">>) -> sticky;
@@ -212,15 +214,11 @@ decode_docroots(Prefix, Root) ->
 create_docroot(Prefix, Root) ->
     filename:join(Prefix, binary_to_list(Root)).
 
-decode_version_dirs(undefined) ->
-    [];
 decode_version_dirs(VersionDirs) ->
     [{get_element(<<"version">>, VersionDir),
       binary_to_list(get_element(<<"dir">>, VersionDir))} ||
         {VersionDir} <- VersionDirs].
 
-decode_request_headers_filter(undefined) ->
-    ?DEF_REQ_HEADERS_FILTER;
 decode_request_headers_filter({[{Op, BinNames}]}) ->
     Names = [string:to_lower(binary_to_list(Name)) || Name <- BinNames],
     {binary_to_existing_atom(Op, latin1), Names}.
