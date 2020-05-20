@@ -31,7 +31,6 @@
          handle_bucket_node_stats/4,
          handle_stats_section_for_node/4,
          handle_specific_stat_for_buckets/4,
-         handle_overview_stats/2,
          basic_stats/1,
          bucket_disk_usage/1,
          bucket_ram_usage/1,
@@ -51,12 +50,6 @@ bucket_ram_usage(BucketName) ->
     %% NOTE: we're getting last membase sample, but first stat name is
     %% same in memcached buckets, so it works for them too.
     element(1, last_membase_sample(BucketName, live_bucket_nodes(BucketName))).
-
-extract_stat(StatName, Sample) ->
-    case orddict:find(StatName, Sample#stat_entry.values) of
-        error -> 0;
-        {ok, V} -> V
-    end.
 
 get_node_infos(NodeNames) ->
     NodesDict = ns_doctor:get_nodes(),
@@ -173,27 +166,6 @@ basic_stats(BucketName) ->
 
 stats_read_permission(BucketName) ->
     {[{bucket, BucketName}, stats], read}.
-
-handle_overview_stats(_PoolId, Req) ->
-    BucketNamesUnsorted =
-        menelaus_auth:get_accessible_buckets(fun stats_read_permission/1, Req),
-
-    Names = lists:sort(BucketNamesUnsorted),
-    {ClientTStamp, Window} = parse_stats_params([{"zoom", "hour"}]),
-    AllSamples = lists:map(fun (Name) ->
-                                   grab_aggregate_op_stats(Name, all, ClientTStamp, Window, [ops, ep_bg_fetched])
-                           end, Names),
-    MergedSamples = case AllSamples of
-                        [FirstBucketSamples | RestSamples] ->
-                            merge_all_samples_normally(FirstBucketSamples, RestSamples);
-                        [] -> []
-                    end,
-    TStamps = [X#stat_entry.timestamp || X <- MergedSamples],
-    Ops = [extract_stat(ops, X) || X <- MergedSamples],
-    DiskReads = [extract_stat(ep_bg_fetched, X) || X <- MergedSamples],
-    menelaus_util:reply_json(Req, {struct, [{timestamp, TStamps},
-                                            {ops, Ops},
-                                            {ep_bg_fetched, DiskReads}]}).
 
 %% GET /pools/{PoolID}/buckets/{Id}/stats
 handle_bucket_stats(_PoolId, Id, Req) ->

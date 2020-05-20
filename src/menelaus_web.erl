@@ -218,8 +218,6 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 %% /pools/default
                 ["pools", "nodes"] ->
                     {{[pools], read}, fun menelaus_web_pools:check_and_handle_pool_info/2, ["default"]};
-                ["pools", "default", "overviewStats"] ->
-                    {{[{bucket, any}, stats], read}, fun menelaus_stats:handle_overview_stats/2, ["default"]};
                 ["_uistats"] ->
                     {{[ui], read},
                      fun menelaus_stats:serve_ui_stats/1};
