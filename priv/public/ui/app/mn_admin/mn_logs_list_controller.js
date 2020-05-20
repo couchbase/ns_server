@@ -9,8 +9,17 @@ function mnLogsListController($scope, mnLogsService, mnPoller, $filter, moduleCo
   vm.textLimit = textLimit;
   vm.isOpened = isOpened;
   vm.isOverLimit = isOverLimit;
+  vm.filterField = "";
+  vm.filter = filter;
 
   activate();
+
+  function filter(value) {
+    return !vm.filterField || vm.filterField
+      .split(" ").reduce((acc, find) =>
+                         acc && (Object.values(value).join("").indexOf(find) > -1),
+                         true);
+  }
 
   function activate() {
     new mnPoller($scope, mnLogsService.getLogs)

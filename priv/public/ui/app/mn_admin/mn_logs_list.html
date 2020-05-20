@@ -22,7 +22,7 @@
     </div>
     <section
        ng-init="mnSortableTable.sortableTableProperties.invert = true"
-       ng-repeat="row in logsListCtl.logs | orderBy:mnSortableTable.sortableTableProperties.orderBy:mnSortableTable.sortableTableProperties.invert | filter:logsListCtl.filterField track by $index">
+       ng-repeat="row in logsListCtl.logs | orderBy:mnSortableTable.sortableTableProperties.orderBy:mnSortableTable.sortableTableProperties.invert | filter:logsListCtl.filter track by $index">
       <div class="cbui-tablerow items-top resp-sml">
         <span class="cbui-table-cell flex-grow-3 min-width-zero resp-sml">
           <span
