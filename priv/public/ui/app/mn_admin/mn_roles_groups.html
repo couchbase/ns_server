@@ -13,10 +13,10 @@
     </div>
     <span class="pills nowrap">
       <a
-         ui-sref="app.admin.security.roles.user"
+         ui-sref="app.admin.security.roles.user({pageSize: rolesGroupsCtl.stateParams.pageSize})"
          ui-sref-active="selected">Users</a>
       <a
-         ui-sref="app.admin.security.roles.groups"
+         ui-sref="app.admin.security.roles.groups({pageSize: rolesGroupsCtl.stateParams.pageSize})"
          ui-sref-active="selected">Groups</a>
     </span>
   </div>
@@ -24,17 +24,17 @@
     <div class="cbui-table-header padding-left">
       <span class="cbui-table-cell">
         <span class="sorter"
-              ng-click="rolesGroupsCtl.sortByChanged('id')"
-              ng-class="{'dynamic-active': rolesGroupsCtl.isOrderBy('id'),
-                        'dynamic-inverted': rolesGroupsCtl.isOrderBy('id')
-                        && rolesGroupsCtl.isDesc()}">group name</span>
+           ng-click="rolesGroupsCtl.sortByChanged('id')"
+           ng-class="{'dynamic-active': rolesGroupsCtl.isOrderBy('id'),
+                     'dynamic-inverted': rolesGroupsCtl.isOrderBy('id')
+                     && rolesGroupsCtl.isDesc()}">group name</span>
       </span>
       <span class="cbui-table-cell flex-grow-3">
         <span class="sorter"
-              ng-click="rolesGroupsCtl.sortByChanged('roles')"
-              ng-class="{'dynamic-active': rolesGroupsCtl.isOrderBy('roles'),
-                        'dynamic-inverted': rolesGroupsCtl.isOrderBy('roles')
-                        && rolesGroupsCtl.isDesc()}">roles</span>
+           ng-click="rolesGroupsCtl.sortByChanged('roles')"
+           ng-class="{'dynamic-active': rolesGroupsCtl.isOrderBy('roles'),
+                     'dynamic-inverted': rolesGroupsCtl.isOrderBy('roles')
+                     && rolesGroupsCtl.isDesc()}">roles</span>
       </span>
       <span class="cbui-table-cell resp-hide-xsml">
         <span class="sorter"

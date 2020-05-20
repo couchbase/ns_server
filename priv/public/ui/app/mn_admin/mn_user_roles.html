@@ -37,11 +37,11 @@
     </span>
     <span class="pills nowrap">
       <a
-         ui-sref="app.admin.security.roles.user"
+         ui-sref="app.admin.security.roles.user({pageSize: userRolesCtl.stateParams.pageSize})"
          ui-sref-active="selected"
          ng-if="poolDefault.isEnterprise">Users</a>
       <a
-         ui-sref="app.admin.security.roles.groups"
+         ui-sref="app.admin.security.roles.groups({pageSize: userRolesCtl.stateParams.pageSize})"
          ui-sref-active="selected"
          ng-if="poolDefault.isEnterprise && poolDefault.compat.atLeast65">Groups</a>
     </span>

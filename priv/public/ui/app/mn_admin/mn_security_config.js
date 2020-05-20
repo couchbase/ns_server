@@ -85,7 +85,6 @@ function mnIndexesConfig($stateProvider) {
       templateUrl: "app/mn_admin/mn_user_roles.html"
     })
     .state('app.admin.security.roles.groups', {
-      // url: "/userRoles?openedUsers&startFrom&startFromDomain&{pageSize:int}",
       url: "/rolesGroups?startFrom&sortBy&order&substr&{pageSize:int}",
       params: {
         openedRolesGroups: {
