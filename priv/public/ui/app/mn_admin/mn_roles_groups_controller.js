@@ -10,6 +10,7 @@ import mnEqual from "/ui/app/components/directives/mn_validation/mn_equal.js";
 import mnFilters from "/ui/app/components/mn_filters.js";
 import mnAutocompleteOff from "/ui/app/components/directives/mn_autocomplete_off.js";
 import mnFocus from "/ui/app/components/directives/mn_focus.js";
+import mnSearch from "/ui/app/components/directives/mn_search/mn_search_directive.js";
 
 import mnUserRolesList from "/ui/app/components/directives/mn_user_roles_list_controller.js";
 import mnUserRolesService from "./mn_user_roles_service.js";
@@ -32,6 +33,7 @@ angular
     mnFocus,
     mnUserRolesService,
     mnUserRolesList,
+    mnSearch
   ])
   .controller("mnRolesGroupsController", mnRolesGroupsController)
   .controller("mnRolesGroupsDeleteDialogController", mnRolesGroupsDeleteDialogController)
