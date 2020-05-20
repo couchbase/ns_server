@@ -491,10 +491,17 @@ align_timestamps(StatEntries, _EndTS, _Period, Step, TimestampsQ) ->
             Timestamps = queue:to_list(TimestampsQ),
             %% Estimation for time difference between nodes
             Corr = lists:max([T2 - T1 || {T1, T2} <- Timestamps]),
-            lists:map(
-              fun (#stat_entry{timestamp = TS} = E) ->
+            {value, {MinTS, _}} = queue:peek(TimestampsQ),
+            OneMinAgoTS = timestamp_ms() - 60000,
+            lists:filtermap(
+              %% Don't return stats from interval Now - 1m < X < MinTS
+              %% to avoid artifacts on minute graphs when node starts
+              fun (#stat_entry{timestamp = TS} = E) when TS < OneMinAgoTS;
+                                                         TS > MinTS ->
                       NewTS = misc:trunc_ts(TS + Corr, Step),
-                      E#stat_entry{timestamp = NewTS}
+                      {true, E#stat_entry{timestamp = NewTS}};
+                  (_) ->
+                      false
               end, StatEntries)
     end.
 
