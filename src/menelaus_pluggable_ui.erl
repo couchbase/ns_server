@@ -109,7 +109,13 @@ read_and_validate_plugin_specs(SpecFiles, InitPlugins) ->
 read_and_validate_plugin_spec(File, Acc) ->
     {ok, Bin} = file:read_file(File),
     {KVs} = ejson:decode(Bin),
-    validate_plugin_spec(KVs, Acc).
+    try
+        validate_plugin_spec(KVs, Acc)
+    catch
+        throw:{error, Error} ->
+            ?log_error("Error parsing file ~s. ~s", [File, Error]),
+            error({error, pluggable_ui_not_loaded})
+    end.
 
 -spec validate_plugin_spec([{binary(), binary()}], plugins()) -> plugins().
 validate_plugin_spec(KVs, Plugins) ->
@@ -184,9 +190,16 @@ valid_service(ServiceName) ->
     lists:member(ServiceName,
                  ns_cluster_membership:supported_services()).
 
+panic(Format, Params) ->
+    throw({error, lists:flatten(io_lib:format(Format, Params))}).
+
 get_element(Key, KVs) ->
-    {Key, Val} = lists:keyfind(Key, 1, KVs),
-    Val.
+    case proplists:get_value(Key, KVs) of
+        undefined ->
+            panic("Missing required key ~p", [binary_to_list(Key)]);
+        Value ->
+            Value
+    end.
 
 get_element(Key, KVs, Decode, Default) ->
     case proplists:get_value(Key, KVs) of
