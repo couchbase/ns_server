@@ -97,7 +97,8 @@ handle_call({ensure_tls_dist_started, Nodes}, _From, State) ->
 
     case NotStartedTLSListeners of
         [] ->
-            NotConnected = [N || N <- Nodes, false <- [net_kernel:connect(N)]],
+            NotConnected = [N || N <- Nodes,
+                                 false <- [net_kernel:connect_node(N)]],
             case NotConnected of
                 [] ->
                     {reply, ok, State};
@@ -243,7 +244,7 @@ ensure_connection_proto(Node, _Family, _Encr, Retries, _) when Retries =< 0 ->
     erlang:throw({exceeded_retries, Node});
 ensure_connection_proto(Node, Family, Encryption, Retries, RetryTimeout) ->
     erlang:disconnect_node(Node),
-    case net_kernel:connect(Node) of
+    case net_kernel:connect_node(Node) of
         true ->
             ?log_debug("Reconnected to ~p, checking connection type...",
                        [Node]),
