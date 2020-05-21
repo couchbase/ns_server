@@ -328,7 +328,8 @@ port_name_by_service_name(fts) -> fts_http_port;
 port_name_by_service_name(cbas) -> cbas_http_port;
 port_name_by_service_name(n1ql) -> query_port;
 port_name_by_service_name(views) -> capi_port;
-port_name_by_service_name(eventing) -> eventing_http_port.
+port_name_by_service_name(eventing) -> eventing_http_port;
+port_name_by_service_name(Service) -> panic("Unknown service ~p", [Service]).
 
 get_timeout(views, Req) ->
     Params = mochiweb_request:parse_qs(Req),
