@@ -376,7 +376,9 @@ build_auth({_, CurrentAuth}, Password) ->
     end.
 
 -spec store_user(rbac_identity(), rbac_user_name(), rbac_password(),
-                 [rbac_role()], [rbac_group_id()]) -> run_txn_return().
+                 [rbac_role()], [rbac_group_id()]) ->
+    {commit, ok} | {abort, {error, roles_validation, _}} |
+    {abort, password_required} | {abort, too_many}.
 store_user({_UserName, Domain} = Identity, Name, Password, Roles, Groups) ->
     Props = [{name, Name} || Name =/= undefined] ++
             [{groups, Groups} || Groups =/= undefined],
@@ -460,7 +462,8 @@ change_password({_UserName, local} = Identity, Password) when is_list(Password) 
             store_auth(Identity, Auth)
     end.
 
--spec delete_user(rbac_identity()) -> run_txn_return().
+-spec delete_user(rbac_identity()) -> {commit, ok} |
+                                      {abort, {error, not_found}}.
 delete_user({_, Domain} = Identity) ->
     case Domain of
         local ->
