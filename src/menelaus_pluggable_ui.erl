@@ -44,7 +44,6 @@
 -type proxy_strategy() :: local | sticky.
 -type filter_op()      :: keep | drop.
 -type ui_compat_version() :: [integer()].
--record(prefix_props, { port_name :: atom() }).
 -record(plugin, { name                   :: service_name(),
                   proxy_strategy         :: proxy_strategy(),
                   module_prefix          :: string(),
@@ -63,7 +62,7 @@ find_plugins() ->
 
 view_plugin() ->
     ViewPortName = port_name_by_service_name(views),
-    Prefixes = [{"couchBase", #prefix_props{port_name = ViewPortName}}],
+    Prefixes = [{"couchBase", ViewPortName}],
     #plugin{name = views,
             proxy_strategy = sticky,
             module_prefix = "couchBase",
@@ -215,8 +214,7 @@ do_decode_prefixes(Service, KeyValues) ->
                       {false, _} ->
                           ModulePrefix
                   end,
-              {[{Prefix, #prefix_props{port_name = Port}} | Acc],
-               NewModulePrefix}
+              {[{Prefix, Port} | Acc], NewModulePrefix}
       end, {[], undefined}, KeyValues).
 
 valid_service(ServiceName) ->
@@ -279,10 +277,10 @@ proxy_req(RestPrefix, Path, Plugins, Req) ->
         #plugin{name = Service,
                 request_headers_filter = HdrFilter,
                 rest_api_prefixes = Prefixes} = Plugin ->
-            {ok, PrefixProps} = dict:find(RestPrefix, Prefixes),
+            {ok, Port} = dict:find(RestPrefix, Prefixes),
             case choose_node(Plugin, Req) of
                 {ok, Node} ->
-                    HostPort = address_and_port(PrefixProps, Node),
+                    HostPort = address_and_port(Port, Node),
                     Timeout = get_timeout(Service, Req),
                     AuthToken = auth_token(Req),
                     Headers = AuthToken ++ convert_headers(Req, HdrFilter) ++
@@ -323,7 +321,7 @@ service_nodes(Service) ->
     {ok, LocalVsn} = dict:find(node(), Versions),
     lists:usort([N || N <- Nodes, {ok, LocalVsn} =:= dict:find(N, Versions)]).
 
-address_and_port(#prefix_props{port_name = UnsecurePortName}, Node) ->
+address_and_port(UnsecurePortName, Node) ->
     Addr = node_address(Node),
     NodeEncryption = misc:is_node_encryption_enabled(ns_config:latest(),
                                                      node()),
