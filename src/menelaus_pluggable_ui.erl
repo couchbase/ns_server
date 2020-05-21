@@ -127,16 +127,31 @@ read_and_validate_plugin_spec(File, Acc) ->
     catch
         throw:{error, Error} ->
             ?log_error("Error parsing file ~s. ~s", [File, Error]),
-            error({error, pluggable_ui_not_loaded})
+            error({error, pluggable_ui_not_loaded});
+        throw:{skip, Message} ->
+            ?log_info("Skipped file ~s. ~s", [File, Message]),
+            Acc
     end.
 
 -spec validate_plugin_spec([{binary(), binary()}], plugins()) -> plugins().
 validate_plugin_spec(KVs, Plugins) ->
     ServiceName = binary_to_atom(get_element(<<"service">>, KVs), latin1),
+    case valid_service(ServiceName) of
+        true -> ok;
+        false -> skip("Unsupported service ~p", [ServiceName])
+    end,
+    case lists:any(fun (#plugin{name = N}) -> N =:= ServiceName end,
+                   Plugins) of
+        false -> ok;
+        true -> skip("Duplicate service ~p", [ServiceName])
+    end,
+
     ProxyStrategy = decode_proxy_strategy(get_element(<<"proxy-strategy">>,
                                                       KVs)),
     {RestApiPrefixes, ModulePrefix} =
         decode_prefixes(ServiceName, get_element(<<"rest-api-prefixes">>, KVs)),
+    check_prefix_uniqueness(RestApiPrefixes, Plugins),
+
     DocRoots = decode_docroots(get_element(<<"doc-root">>, KVs)),
     VersionDirs = get_element(<<"version-dirs">>, KVs,
                               fun decode_version_dirs/1, []),
@@ -144,37 +159,27 @@ validate_plugin_spec(KVs, Plugins) ->
                                fun decode_request_headers_filter/1,
                                ?DEF_REQ_HEADERS_FILTER),
     Module = proplists:get_value(<<"module">>, KVs),
-    case {valid_service(ServiceName),
-          check_prefix_uniqueness(RestApiPrefixes, Plugins)} of
-        {true, ok} ->
-            ?log_info("Loaded pluggable UI specification for ~p",
-                      [ServiceName]),
-            [#plugin{name = ServiceName,
+
+    Plugin = #plugin{name = ServiceName,
                      proxy_strategy = ProxyStrategy,
                      module_prefix = ModulePrefix,
                      rest_api_prefixes = dict:from_list(RestApiPrefixes),
                      doc_roots = DocRoots,
                      version_dirs = VersionDirs,
                      request_headers_filter = ReqHdrFilter,
-                     module = Module} | Plugins];
-        {true, {error, {duplicates, Duplicates}}} ->
-            ?log_info("Pluggable UI specification for ~p not loaded, "
-                      "duplicate REST API prefixes ~p",
-                      [ServiceName, Duplicates]),
-            Plugins;
-        {false, _} ->
-            ?log_info("Pluggable UI specification for ~p not loaded",
-                      [ServiceName]),
-            Plugins
-    end.
+                     module = Module},
+
+    ?log_info("Loaded pluggable UI specification for ~p", [ServiceName]),
+    [Plugin | Plugins].
 
 check_prefix_uniqueness(Prefixes, Plugins) ->
     PrefixNames = [P || {P, _} <- Prefixes],
-    Duplicates = misc:duplicates(PrefixNames) ++
-        lists:filter(is_plugin(_, Plugins), PrefixNames),
-    case Duplicates of
-        [] -> ok;
-        _  -> {error, {duplicates, Duplicates}}
+    case misc:duplicates(PrefixNames) ++
+        lists:filter(is_plugin(_, Plugins), PrefixNames) of
+        [] ->
+            ok;
+        Duplicates  ->
+            panic("Duplicate REST API prefixes ~p", [Duplicates])
     end.
 
 decode_prefixes(Service, {KeyValues}) ->
@@ -225,7 +230,13 @@ panic(Str) ->
     panic(Str, []).
 
 panic(Format, Params) ->
-    throw({error, lists:flatten(io_lib:format(Format, Params))}).
+    abort(error, Format, Params).
+
+skip(Format, Params) ->
+    abort(skip, Format, Params).
+
+abort(Type, Format, Params) ->
+    throw({Type, lists:flatten(io_lib:format(Format, Params))}).
 
 get_element(Key, KVs) ->
     case proplists:get_value(Key, KVs) of
