@@ -604,10 +604,11 @@ listen_proto(Module, NodeName) ->
 maybe_register_on_epmd(Module, NodeName, PortNo)
   when Module =:= inet_tcp_dist;
        Module =:= inet6_tcp_dist ->
-    case cb_epmd:node_type(atom_to_list(NodeName)) of
+    NameStr = atom_to_list(NodeName),
+    case cb_epmd:node_type(NameStr) of
         ns_server ->
             Family = proto_to_family(Module),
-            case erl_epmd:register_node(NodeName, PortNo, Family) of
+            case erl_epmd:register_node(NameStr, PortNo, Family) of
                 {ok, _} -> ok;
                 {error, already_registered} -> ok;
                 Error -> Error
