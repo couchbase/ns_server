@@ -106,10 +106,22 @@ find_plugin_spec_files_from_env() ->
 read_and_validate_plugin_specs(SpecFiles, InitPlugins) ->
     lists:foldl(fun read_and_validate_plugin_spec/2, InitPlugins, SpecFiles).
 
+decode_json(Bin) ->
+    try ejson:decode(Bin) of
+        {KVs} ->
+            KVs;
+        _ ->
+            panic("Incorrect json")
+    catch
+        throw:{invalid_json, E} ->
+            panic("Error parsing json: ~p", [E])
+    end.
+
+
 read_and_validate_plugin_spec(File, Acc) ->
     {ok, Bin} = file:read_file(File),
-    {KVs} = ejson:decode(Bin),
     try
+        KVs = decode_json(Bin),
         validate_plugin_spec(KVs, Acc)
     catch
         throw:{error, Error} ->
@@ -189,6 +201,9 @@ decode_obsolete_prefixes(PrefixBin, Service) ->
 valid_service(ServiceName) ->
     lists:member(ServiceName,
                  ns_cluster_membership:supported_services()).
+
+panic(Str) ->
+    panic(Str, []).
 
 panic(Format, Params) ->
     throw({error, lists:flatten(io_lib:format(Format, Params))}).
