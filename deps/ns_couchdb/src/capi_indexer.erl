@@ -70,7 +70,9 @@ design_doc_view_loop(Mod, Req, DbName, DDocId, ViewName, VBucketsDict,
 run_on_subset(#httpd{path_parts=[_, _, DName, _, _]}=Req, Name) ->
     case DName of
         <<"dev_", _/binary>> ->
-            case get_value("full_set", (Req#httpd.mochi_req):parse_qs()) =/= "true"
+            case get_value(
+                   "full_set",
+                   mochiweb_request:parse_qs(Req#httpd.mochi_req)) =/= "true"
                 andalso run_on_subset_according_to_stats(Name) of
                 true -> capi_frontend:first_vbucket(Name);
                 false -> full_set;
