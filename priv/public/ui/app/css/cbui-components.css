@@ -2659,14 +2659,22 @@ mn-statistics-chart {
   width: calc(100% - .5rem);
   padding: .25rem;
   margin: .25rem;
-
 }
 .statistics-large:hover {
   background-color: #f6fafd;
   cursor: pointer;
 }
+.statistics-small {
+  min-height: 134px;
+}
+.statistics-medium {
+  min-height: 158px;
+}
+.statistics-large {
+  min-height: 348px;
+}
 .statistics-extra-large {
-  height: 444px;
+  min-height: 444px;
 }
 .statistics-not-available {
   font-weight: 400;
