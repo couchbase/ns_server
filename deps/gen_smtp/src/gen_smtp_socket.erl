@@ -20,7 +20,7 @@
 %%% WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 %% @doc Facilitates transparent gen_tcp/ssl socket handling
--module(socket).
+-module(gen_smtp_socket).
 
 
 -define(TCP_LISTEN_OPTIONS,[  {active, false},
@@ -327,9 +327,9 @@ set_sockopt(ListenObject, ClientSocket) ->
 		{ok, Opts} ->
 			case prim_inet:setopts(ClientSocket, Opts) of
 				ok -> ok;
-				Error -> socket:close(ClientSocket), Error
+				Error -> close(ClientSocket), Error
 			end;
-		Error -> socket:close(ClientSocket), Error
+		Error -> close(ClientSocket), Error
 	end.
 
 -ifdef(TEST).
@@ -626,7 +626,7 @@ ssl_upgrade_test_() ->
 			spawn(fun() ->
 			      	{ok, ListenSocket} = listen(tcp, ?TEST_PORT),
 			      	{ok, ServerSocket} = accept(ListenSocket),
-							{ok, NewServerSocket} = socket:to_ssl_server(ServerSocket, [{keyfile, "test/fixtures/server.key"}, {certfile, "test/fixtures/server.crt"}]),
+							{ok, NewServerSocket} = to_ssl_server(ServerSocket, [{keyfile, "test/fixtures/server.key"}, {certfile, "test/fixtures/server.crt"}]),
 			      	Self ! NewServerSocket
 			      end),
 			{ok, ClientSocket} = connect(tcp, "localhost", ?TEST_PORT),
