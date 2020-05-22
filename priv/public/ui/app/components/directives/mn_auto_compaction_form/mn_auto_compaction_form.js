@@ -3,11 +3,13 @@ import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
 import mnPermissions from "/ui/app/components/mn_permissions.js";
 import mnSettingsClusterService from "/ui/app/mn_admin/mn_settings_cluster_service.js";
+import mnPeriod from "/ui/app/components/directives/mn_period/mn_period.js";
 
 export default "mnAutoCompactionForm";
 
 angular
   .module('mnAutoCompactionForm', [
+    mnPeriod,
     mnPermissions,
     mnPoolDefault,
     mnPromiseHelper,
