@@ -29,7 +29,8 @@
 -define(PLUGIN_FILE_PATTERN, "pluggable-ui-*.json").
 
 -define(HEAD_FRAG_HTML, <<"head.frag.html">>).
--define(HEAD_MARKER, <<"<!-- Inject head.frag.html file content for Pluggable UI components here -->">>).
+-define(HEAD_MARKER, <<"<!-- Inject head.frag.html file content for Pluggable "
+                       "UI components here -->">>).
 -define(TIMEOUT, 60000).
 -define(PART_SIZE, 100000).
 -define(WINDOW_SIZE, 5).
@@ -552,8 +553,8 @@ export_module_getter(UiCompatVersion, Service,
     end.
 
 find_head_fragments(Service, _, undefined) ->
-    Msg = io_lib:format("Pluggable component for service ~p is not supported for "
-                        "this UI compat version", [Service]),
+    Msg = io_lib:format("Pluggable component for service ~p is not supported "
+                        "for this UI compat version", [Service]),
     ?log_error(Msg),
     html_comment(Msg);
 find_head_fragments(Service, [DocRoot|DocRoots], VersionDir) ->
@@ -597,7 +598,8 @@ create_fragment_block(File, Bin) ->
      end_of_docroot_fragment(File)].
 
 start_of_service_fragment(Service) ->
-    html_comment([<<"Beginning of head html fragments for service ">>, Service]).
+    html_comment([<<"Beginning of head html fragments for service ">>,
+                  Service]).
 
 end_of_service_fragment(Service) ->
     html_comment([<<"End of head html fragments for service ">>, Service]).
