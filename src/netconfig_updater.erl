@@ -97,8 +97,10 @@ handle_call({ensure_tls_dist_started, Nodes}, _From, State) ->
 
     case NotStartedTLSListeners of
         [] ->
-            NotConnected = [N || N <- Nodes,
-                                 false <- [net_kernel:connect_node(N)]],
+            NotConnected = lists:filter(
+                             fun (N) ->
+                                     net_kernel:connect_node(N) =/= true
+                             end, Nodes),
             case NotConnected of
                 [] ->
                     {reply, ok, State};
@@ -260,7 +262,7 @@ ensure_connection_proto(Node, Family, Encryption, Retries, RetryTimeout) ->
                     ensure_connection_proto(Node, Family, Encryption,
                                             Retries - 1, RetryTimeout * 2)
             end;
-        false ->
+        _ ->
             ?log_error("Failed to connect to node ~p, will sleep for ~p ms, "
                        "retries left: ~p", [Node, RetryTimeout, Retries - 1]),
             Retries > 1 andalso timer:sleep(RetryTimeout),
