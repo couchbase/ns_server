@@ -55,6 +55,8 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
      {"bucket_type", [], ns_bucket:kv_bucket_type(BucketConfig)},
      {"durability_min_level", [{reload, flush}],
       ns_bucket:durability_min_level(BucketConfig)},
+     {"magma_fragmentation_percentage", [{reload, flush}],
+      proplists:get_value(frag_percent, BucketConfig, 50)},
      {"hlc_drift_ahead_threshold_us", [no_param, {reload, vbucket}],
       DriftAheadThreshold},
      {"hlc_drift_behind_threshold_us", [no_param, {reload, vbucket}],

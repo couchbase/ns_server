@@ -302,6 +302,8 @@ build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
                           {evictionPolicy, EvictionPolicy},
                           {storageBackend, ns_bucket:storage_backend(BucketConfig)},
                           {durabilityMinLevel, DurabilityMinLevel},
+                          {fragmentationPercentage,
+                           proplists:get_value(frag_percent, BucketConfig, 50)},
                           {conflictResolutionType, ConflictResolutionType}
                           | BucketCaps],
 
@@ -520,7 +522,7 @@ extract_bucket_props(Props) ->
     [X || X <-
               [lists:keyfind(Y, 1, Props) ||
                   Y <- [num_replicas, replica_index, ram_quota, auth_type,
-                        durability_min_level,
+                        durability_min_level, frag_percent,
                         sasl_password, moxi_port, autocompaction,
                         purge_interval, flush_enabled, num_threads,
                         eviction_policy, conflict_resolution_type,
@@ -934,6 +936,8 @@ validate_membase_bucket_params(CommonParams, Params,
                                      IsEnterprise),
          parse_validate_durability_min_level(Params, BucketConfig, IsNew,
                                              Version),
+         parse_validate_frag_percent(Params, BucketConfig, IsNew, Version,
+                                     IsEnterprise),
          parse_validate_max_ttl(Params, BucketConfig,
                                 IsNew, Version, IsEnterprise),
          parse_validate_compression_mode(Params, BucketConfig,
@@ -1133,7 +1137,6 @@ is_ephemeral(_Params, BucketConfig, false = _IsNew) ->
 %% Hence the above described approach.
 parse_validate_storage_mode(Params, _BucketConfig, true = _IsNew, Version,
                             IsEnterprise) ->
-    RV =
     case proplists:get_value("bucketType", Params, "membase") of
         "membase" ->
             get_storage_mode_based_on_storage_backend(Params, Version,
@@ -1143,9 +1146,7 @@ parse_validate_storage_mode(Params, _BucketConfig, true = _IsNew, Version,
                                                       IsEnterprise);
         "ephemeral" ->
             {ok, storage_mode, ephemeral}
-    end,
-    RV;
-
+    end;
 parse_validate_storage_mode(_Params, BucketConfig, false = _IsNew, _Version,
                             _IsEnterprise)->
     {ok, storage_mode, ns_bucket:storage_mode(BucketConfig)}.
@@ -1465,6 +1466,65 @@ do_parse_validate_max_ttl(Val) ->
         _Error ->
             Msg = io_lib:format("Max TTL must be an integer between 0 and ~p", [?MC_MAXINT]),
             {error, maxTTL, list_to_binary(Msg)}
+    end.
+
+is_magma(Params, _BucketCfg, true = _IsNew) ->
+    proplists:get_value("storageBackend", Params, "couchstore") =:= "magma";
+is_magma(_Params, BucketCfg, false = _IsNew) ->
+    ns_bucket:storage_mode(BucketCfg) =:= magma.
+
+parse_validate_frag_percent(Params, BucketConfig, IsNew, Version,
+                            IsEnterprise) ->
+    Percent = proplists:get_value("fragmentationPercentage", Params),
+    IsCompat = cluster_compat_mode:is_version_cheshirecat(Version),
+    IsMagma = is_magma(Params, BucketConfig, IsNew),
+    parse_validate_frag_percent_inner(IsEnterprise, IsCompat, Percent,
+                                      BucketConfig, IsNew, IsMagma).
+
+parse_validate_frag_percent_inner(false = _IsEnterprise, _IsCompat, undefined,
+                                  _BucketCfg, _IsNew, _IsMagma) ->
+    %% Community edition but percent wasn't specified
+    ignore;
+parse_validate_frag_percent_inner(_IsEnterprise, false = _IsCompat, undefined,
+                                  _BucketCfg, _IsNew, _IsMagma) ->
+    %% Not cluster compatible but percent wasn't specified
+    ignore;
+parse_validate_frag_percent_inner(false = _IsEnterprise, _IsCompat, _Percent,
+                                  _BucketCfg, _IsNew, _IsMagma) ->
+    {error, fragmentationPercentage,
+     <<"Fragmentation percentage is supported in enterprise edition only">>};
+parse_validate_frag_percent_inner(_IsEnterprise, false = _IsCompat, _Percent,
+                                  _BucketCfg, _IsNew, _IsMagma) ->
+    {error, fragmentationPercentage,
+     <<"Fragmentation percentage cannot be set until the cluster is fully 7.0">>};
+parse_validate_frag_percent_inner(true = _IsEnterprise, true = _IsCompat,
+                                  undefined, _BucketCfg, _IsNew,
+                                  false = _IsMagma) ->
+    %% Not a magma bucket and percent wasn't specified
+    ignore;
+parse_validate_frag_percent_inner(true = _IsEnterprise, true = _IsCompat,
+                                  _Percent, _BucketCfg, _IsNew,
+                                  false = _IsMagma) ->
+    {error, fragmentationPercentage,
+     <<"Fragmentation percentage is only used with Magma">>};
+parse_validate_frag_percent_inner(true = _IsEnterprise, true = _IsCompat,
+                                  Percent, BucketCfg, IsNew,
+                                  true = _IsMagma) ->
+    DefaultVal = case IsNew of
+                     true -> "50";
+                     false -> proplists:get_value(frag_percent, BucketCfg)
+                 end,
+    validate_with_missing(Percent, DefaultVal, IsNew,
+                          fun do_parse_validate_frag_percent/1).
+
+do_parse_validate_frag_percent(Val) ->
+    case menelaus_util:parse_validate_number(Val, 10, 100) of
+        {ok, X} ->
+            {ok, frag_percent, X};
+        _Error ->
+            {error, fragmentationPercentage,
+             <<"Fragmentation percentage must be between 10 and 100, "
+               "inclusive">>}
     end.
 
 parse_validate_threads_number(Params, IsNew) ->
