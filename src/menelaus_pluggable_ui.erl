@@ -39,45 +39,48 @@
 -define(DEF_RESP_HEADERS_FILTER, {drop, ["content-length",
                                          "transfer-encoding",
                                          "www-authenticate"]}).
--type service_name()   :: atom().
 -type module_name()    :: string() | undefined.
 -type proxy_strategy() :: local | sticky.
 -type filter_op()      :: keep | drop.
 -type ui_compat_version() :: [integer()].
--record(plugin, { name                   :: service_name(),
-                  proxy_strategy         :: proxy_strategy(),
-                  module_prefix          :: string(),
-                  rest_api_prefixes      :: dict:dict(),
-                  doc_roots              :: [string()],
-                  version_dirs           :: undefined | [{ui_compat_version(), string()}],
-                  request_headers_filter :: {filter_op(), [string()]},
-                  module                 :: module_name()}).
--type plugin()  :: #plugin{}.
--type plugins() :: [plugin()].
+-record(plugin,
+        {proxy_strategy         :: proxy_strategy(),
+         module_prefix          :: string(),
+         doc_roots              :: [string()],
+         version_dirs           :: undefined |
+                                   [{ui_compat_version(), string()}],
+         request_headers_filter :: {filter_op(), [string()]},
+         module                 :: module_name()}).
+-record(prefix, {port_name :: atom(),
+                 service   :: atom()}).
+-record(config, {prefixes :: dict:dict(), plugins  :: dict:dict()}).
 
--spec find_plugins() -> plugins().
+-spec find_plugins() -> #config{}.
 find_plugins() ->
     SpecFiles = find_plugin_spec_files(),
-    read_and_validate_plugin_specs(SpecFiles, [view_plugin()]).
+    read_and_validate_plugin_specs(SpecFiles, hardcoded_plugins()).
 
-view_plugin() ->
-    ViewPortName = port_name_by_service_name(views),
-    Prefixes = [{"couchBase", ViewPortName}],
-    #plugin{name = views,
-            proxy_strategy = sticky,
-            module_prefix = "couchBase",
-            rest_api_prefixes = dict:from_list(Prefixes),
-            doc_roots = [],
-            request_headers_filter = {keep, ["accept",
-                                             "accept-encoding",
-                                             "accept-language",
-                                             "authorization",
-                                             "cache-control",
-                                             "connection",
-                                             "content-type",
-                                             "pragma",
-                                             "user-agent",
-                                             "referer"]}}.
+hardcoded_plugins() ->
+    #config{prefixes =
+                add_prefix(views, {"couchBase",
+                                   port_name_by_service_name(views)},
+                           dict:new()),
+            plugins =
+                dict:from_list([{views,
+                                 #plugin{proxy_strategy = sticky,
+                                         module_prefix = "couchBase",
+                                         doc_roots = [],
+                                         request_headers_filter =
+                                             {keep, ["accept",
+                                                     "accept-encoding",
+                                                     "accept-language",
+                                                     "authorization",
+                                                     "cache-control",
+                                                     "connection",
+                                                     "content-type",
+                                                     "pragma",
+                                                     "user-agent",
+                                                     "referer"]}}}])}.
 
 %% The plugin files passed via the command line are processed first so it is
 %% possible to override the standard files.
@@ -118,30 +121,46 @@ decode_json(Bin) ->
             panic("Error parsing json: ~p", [E])
     end.
 
+add_prefix(Service, {Prefix, PortName}, Dict) ->
+    case dict:is_key(Prefix, Dict) of
+        true ->
+            panic("Prefix ~p is already defined", [Prefix]);
+        false ->
+            dict:store(Prefix, #prefix{port_name = PortName,
+                                       service = Service}, Dict)
+    end.
 
-read_and_validate_plugin_spec(File, Acc) ->
+read_and_validate_plugin_spec(File, #config{plugins = Plugins,
+                                            prefixes = Prefixes} =
+                                  PluginsConfig) ->
     {ok, Bin} = file:read_file(File),
     try
         KVs = decode_json(Bin),
-        validate_plugin_spec(KVs, Acc)
+        {Service, PrefixesList, NewPlugin} = validate_plugin_spec(KVs, Plugins),
+
+        NewPrefixes =
+            lists:foldl(add_prefix(Service, _, _), Prefixes, PrefixesList),
+        ?log_info("Loaded pluggable UI specification for ~p from ~p",
+                  [Service, File]),
+        #config{prefixes = NewPrefixes,
+                plugins = dict:store(Service, NewPlugin, Plugins)}
     catch
         throw:{error, Error} ->
             ?log_error("Error parsing file ~s. ~s", [File, Error]),
             error({error, pluggable_ui_not_loaded});
         throw:{skip, Message} ->
             ?log_info("Skipped file ~s. ~s", [File, Message]),
-            Acc
+            PluginsConfig
     end.
 
--spec validate_plugin_spec([{binary(), binary()}], plugins()) -> plugins().
 validate_plugin_spec(KVs, Plugins) ->
     ServiceName = binary_to_atom(get_element(<<"service">>, KVs), latin1),
-    case valid_service(ServiceName) of
+    case lists:member(ServiceName,
+                      ns_cluster_membership:supported_services()) of
         true -> ok;
         false -> skip("Unsupported service ~p", [ServiceName])
     end,
-    case lists:any(fun (#plugin{name = N}) -> N =:= ServiceName end,
-                   Plugins) of
+    case dict:is_key(ServiceName, Plugins) of
         false -> ok;
         true -> skip("Duplicate service ~p", [ServiceName])
     end,
@@ -150,7 +169,6 @@ validate_plugin_spec(KVs, Plugins) ->
                                                       KVs)),
     {RestApiPrefixes, ModulePrefix} =
         decode_prefixes(ServiceName, get_element(<<"rest-api-prefixes">>, KVs)),
-    check_prefix_uniqueness(RestApiPrefixes, Plugins),
 
     DocRoots = decode_docroots(get_element(<<"doc-root">>, KVs)),
     VersionDirs = get_element(<<"version-dirs">>, KVs,
@@ -160,27 +178,13 @@ validate_plugin_spec(KVs, Plugins) ->
                                ?DEF_REQ_HEADERS_FILTER),
     Module = proplists:get_value(<<"module">>, KVs),
 
-    Plugin = #plugin{name = ServiceName,
-                     proxy_strategy = ProxyStrategy,
-                     module_prefix = ModulePrefix,
-                     rest_api_prefixes = dict:from_list(RestApiPrefixes),
-                     doc_roots = DocRoots,
-                     version_dirs = VersionDirs,
-                     request_headers_filter = ReqHdrFilter,
-                     module = Module},
-
-    ?log_info("Loaded pluggable UI specification for ~p", [ServiceName]),
-    [Plugin | Plugins].
-
-check_prefix_uniqueness(Prefixes, Plugins) ->
-    PrefixNames = [P || {P, _} <- Prefixes],
-    case misc:duplicates(PrefixNames) ++
-        lists:filter(is_plugin(_, Plugins), PrefixNames) of
-        [] ->
-            ok;
-        Duplicates  ->
-            panic("Duplicate REST API prefixes ~p", [Duplicates])
-    end.
+    {ServiceName, RestApiPrefixes,
+     #plugin{proxy_strategy = ProxyStrategy,
+             module_prefix = ModulePrefix,
+             doc_roots = DocRoots,
+             version_dirs = VersionDirs,
+             request_headers_filter = ReqHdrFilter,
+             module = Module}}.
 
 decode_prefixes(Service, {KeyValues}) ->
     case do_decode_prefixes(Service, KeyValues) of
@@ -221,10 +225,6 @@ do_decode_prefixes(Service, KeyValues) ->
                   end,
               {[{Prefix, Port} | Acc], NewModulePrefix}
       end, {[], undefined}, KeyValues).
-
-valid_service(ServiceName) ->
-    lists:member(ServiceName,
-                 ns_cluster_membership:supported_services()).
 
 panic(Str) ->
     panic(Str, []).
@@ -283,19 +283,17 @@ decode_request_headers_filter({[{Op, BinNames}]}) ->
 
 %%% =============================================================
 %%%
-proxy_req(RestPrefix, Path, Plugins, Req) ->
-    case find_plugin_by_prefix(RestPrefix, Plugins) of
-        #plugin{name = Service,
-                request_headers_filter = HdrFilter,
-                rest_api_prefixes = Prefixes} = Plugin ->
-            {ok, Port} = dict:find(RestPrefix, Prefixes),
-            case choose_node(Plugin, Req) of
+proxy_req(RestPrefix, Path, PluginsConfig, Req) ->
+    case find_prefix_info(RestPrefix, PluginsConfig) of
+        {#prefix{port_name = Port, service = Service},
+         #plugin{request_headers_filter = HdrFilter} = Plugin} ->
+            case choose_node(Service, Plugin, Req) of
                 {ok, Node} ->
                     HostPort = address_and_port(Port, Node),
                     Timeout = get_timeout(Service, Req),
                     AuthToken = auth_token(Req),
                     Headers = AuthToken ++ convert_headers(Req, HdrFilter) ++
-                              forwarded_headers(Req),
+                        forwarded_headers(Req),
                     do_proxy_req(HostPort, Path, Headers, Timeout, Req);
                 {error, Error} ->
                     server_error(Req, Error)
@@ -304,14 +302,23 @@ proxy_req(RestPrefix, Path, Plugins, Req) ->
             server_error(Req, service_not_found)
     end.
 
-choose_node(#plugin{name = views} = Plugin, Req) ->
-    choose_node(Plugin#plugin{name = kv}, Req);
-choose_node(#plugin{name = Service, proxy_strategy = local}, _Req) ->
+find_prefix_info(RestPrefix, #config{plugins = Plugins, prefixes = Prefixes}) ->
+    case dict:find(RestPrefix, Prefixes) of
+        {ok, #prefix{service = Service} = Prefix} ->
+            {ok, Plugin} = dict:find(Service, Plugins),
+            {Prefix, Plugin};
+        error ->
+            false
+    end.
+
+choose_node(views, Plugin, Req) ->
+    choose_node(kv, Plugin, Req);
+choose_node(Service, #plugin{proxy_strategy = local}, _Req) ->
     case ns_cluster_membership:should_run_service(Service, node()) of
         true -> {ok, node()};
         false -> {error, {service_not_running, Service}}
     end;
-choose_node(#plugin{name = Service, proxy_strategy = sticky}, Req) ->
+choose_node(Service, #plugin{proxy_strategy = sticky}, Req) ->
     case service_nodes(Service) of
         [] -> {error, {service_not_running, Service}};
         Nodes ->
@@ -462,17 +469,17 @@ send_server_error(Req, Msg) ->
 
 %%% =============================================================
 %%%
-maybe_serve_file(RestPrefix, Plugins, Path, Req) ->
-    case doc_roots(RestPrefix, Plugins) of
+maybe_serve_file(RestPrefix, PluginsConfig, Path, Req) ->
+    case doc_roots(RestPrefix, PluginsConfig) of
         DocRoots when is_list(DocRoots) ->
             serve_file_multiple_roots(Req, Path, DocRoots);
         undefined ->
             menelaus_util:reply_not_found(Req)
     end.
 
-doc_roots(RestPrefix, Plugins) ->
-    case find_plugin_by_prefix(RestPrefix, Plugins) of
-        #plugin{doc_roots = DocRoots} ->
+doc_roots(RestPrefix, PluginsConfig) ->
+    case find_prefix_info(RestPrefix, PluginsConfig) of
+        {_, #plugin{doc_roots = DocRoots}} ->
             DocRoots;
         false ->
             undefined
@@ -497,56 +504,41 @@ serve_file(Req, Path, DocRoot) ->
 
 %%% =============================================================
 %%%
--spec is_plugin(string(), plugins()) -> boolean().
-is_plugin(Prefix, Plugins) ->
-    case find_plugin_by_prefix(Prefix, Plugins) of
-        #plugin{} ->
-            true;
-        _ ->
-            false
-    end.
 
-find_plugin_by_prefix(_Prefix, []) ->
-    false;
-find_plugin_by_prefix(Prefix, [Plugin|Tail]) ->
-    case dict:find(Prefix, Plugin#plugin.rest_api_prefixes) of
-        {ok, _} -> Plugin;
-        error -> find_plugin_by_prefix(Prefix, Tail)
-    end.
+handle_pluggable_uis_js(PluginsConfig, UiCompatVersion, Req) ->
+    menelaus_util:reply_ok(
+      Req, "application/javascript",
+      get_fragments(UiCompatVersion, PluginsConfig,
+                    fun export_module_getter/3)).
 
-%%% =============================================================
-%%%
-
-handle_pluggable_uis_js(Plugins, UiCompatVersion, Req) ->
-    menelaus_util:reply_ok(Req, "application/javascript",
-                           get_fragments(UiCompatVersion, Plugins,
-                               fun export_module_getter/2)).
-
--spec inject_head_fragments(file:filename_all(), ui_compat_version(), plugins()) -> [binary()].
-inject_head_fragments(File, UiCompatVersion, Plugins) ->
+-spec inject_head_fragments(file:filename_all(), ui_compat_version(),
+                            #config{}) -> [binary()].
+inject_head_fragments(File, UiCompatVersion, PluginsConfig) ->
     {ok, Index} = file:read_file(File),
     [Head, Tail] = split_index(Index),
-    [Head, get_fragments(UiCompatVersion, Plugins, head_fragment(_, _)), Tail].
+    [Head, get_fragments(UiCompatVersion, PluginsConfig, fun head_fragment/3),
+     Tail].
 
 split_index(Bin) ->
     binary:split(Bin, ?HEAD_MARKER).
 
-get_fragments(UiCompatVersion, Plugins, FragmentGetter) ->
-    [FragmentGetter(UiCompatVersion, P) || P <- Plugins].
+get_fragments(UiCompatVersion, #config{plugins = Plugins}, FragmentGetter) ->
+    [FragmentGetter(UiCompatVersion, S, P) || {S, P} <- dict:to_list(Plugins)].
 
-head_fragment(_UiCompatVersion, #plugin{doc_roots = []}) ->
+head_fragment(_UiCompatVersion, _, #plugin{doc_roots = []}) ->
     [];
-head_fragment(UiCompatVersion, #plugin{name = Service, doc_roots = DocRoots,
-                                       version_dirs = VersionDirs}) ->
+head_fragment(UiCompatVersion, Service, #plugin{doc_roots = DocRoots,
+                                                version_dirs = VersionDirs}) ->
     VersionDir = proplists:get_value(UiCompatVersion, VersionDirs),
-    create_service_block(Service, find_head_fragments(Service, DocRoots, VersionDir)).
+    create_service_block(Service,
+                         find_head_fragments(Service, DocRoots, VersionDir)).
 
-export_module_getter(_UiCompatVersion, #plugin{module = undefined}) ->
+export_module_getter(_UiCompatVersion, _, #plugin{module = undefined}) ->
     [];
-export_module_getter(UiCompatVersion, #plugin{name = Service,
-                                              version_dirs = VersionDirs,
-                                              module_prefix = ModulePrefix,
-                                              module = Module}) ->
+export_module_getter(UiCompatVersion, Service,
+                     #plugin{version_dirs = VersionDirs,
+                             module_prefix = ModulePrefix,
+                             module = Module}) ->
     VersionDir = proplists:get_value(UiCompatVersion, VersionDirs),
     case VersionDir of
         undefined ->
