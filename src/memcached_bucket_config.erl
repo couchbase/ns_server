@@ -67,6 +67,8 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
       get_eviction_policy(false, BucketConfig)},
      {"ephemeral_metadata_purge_age", [{reload, flush}],
       ephemeral_metadata_purge_age(BucketConfig)},
+     {"persistent_metadata_purge_age", [{reload, flush}],
+      persistent_metadata_purge_age(BucketName, BucketConfig)},
      {"max_ttl", [{reload, flush}], proplists:get_value(max_ttl, BucketConfig)},
      {"ht_locks", [], proplists:get_value(
                         ht_locks, BucketConfig,
@@ -114,6 +116,18 @@ ephemeral_metadata_purge_age(BucketConfig) ->
             Val = proplists:get_value(purge_interval, BucketConfig,
                                       ?DEFAULT_EPHEMERAL_PURGE_INTERVAL_DAYS),
             erlang:round(Val * 24 * 3600)
+    end.
+
+persistent_metadata_purge_age(BucketName, BucketConfig) ->
+    case ns_bucket:is_persistent(BucketConfig) of
+        false ->
+            undefined;
+        true ->
+            %% Purge interval is accepted in # of days but the ep-engine
+            %% needs it to be expressed in seconds.  For persistent buckets
+            %% the global auto-compaction purge interval may be used.
+            PI = compaction_api:get_purge_interval(list_to_binary(BucketName)),
+            erlang:round(PI * 24 * 3600)
     end.
 
 get(Config, BucketName) ->
