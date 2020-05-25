@@ -1,5 +1,4 @@
 import app from "./app.js";
-
 import { ajsUpgradedProviders } from '/ui/app/ajs.upgraded.providers.js';
 import { MnAppComponent } from './mn.app.component.js';
 import { MnAppService } from './mn.app.service.js';
@@ -9,7 +8,6 @@ import { MnPoolsService } from './mn.pools.service.js';
 import { MnSecurityService } from './mn.security.service.js';
 import { mnAppImports } from './mn.app.imports.js';
 import { MnFormService } from './mn.form.service.js';
-import { MnAlertsService } from './mn.alerts.service.js';
 import { MnHttpInterceptor } from './mn.http.interceptor.js';
 import { MnExceptionHandlerService } from './mn.exception.handler.service.js';
 import { NgModule, ErrorHandler, APP_INITIALIZER} from '/ui/web_modules/@angular/core.js';
@@ -38,7 +36,6 @@ class MnAppModule {
         MnAdminService,
         MnPoolsService,
         MnFormService,
-        MnAlertsService,
         MnHelperService,
         {
           provide: HTTP_INTERCEPTORS,

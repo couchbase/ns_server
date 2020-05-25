@@ -116,14 +116,14 @@ function mnIndexesConfig($stateProvider) {
         enterprise: true
       }
     })
-    .state('app.admin.security.session', {
-      url: '/session',
-      controller: 'mnSessionController as sessionCtl',
-      templateUrl: 'app/mn_admin/mn_session.html',
-      data: {
-        permissions: "cluster.admin.security.read"
-      }
-    })
+    // .state('app.admin.security.session', {
+    //   url: '/session',
+    //   controller: 'mnSessionController as sessionCtl',
+    //   templateUrl: 'app/mn_admin/mn_session.html',
+    //   data: {
+    //     permissions: "cluster.admin.security.read"
+    //   }
+    // })
     .state('app.admin.security.rootCertificate', {
       url: '/rootCertificate',
       controller: 'mnRootCertificateController as rootCertificateCtl',

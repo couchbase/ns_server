@@ -1,8 +1,9 @@
-import { Injectable } from '../web_modules/@angular/core.js';
-import { FormBuilder, FormGroup } from '../web_modules/@angular/forms.js';
-import { MnAlertsService } from './mn.alerts.service.js';
-import { BehaviorSubject, Subject } from "../web_modules/rxjs.js";
-import { map, tap, first, merge, takeUntil, switchMap, throttleTime } from "../web_modules/rxjs/operators.js";
+import { MnAlertsService } from '/ui/app/ajs.upgraded.providers.js';
+import { Injectable } from '/ui/web_modules/@angular/core.js';
+import { FormBuilder, FormGroup } from '/ui/web_modules/@angular/forms.js';
+import { BehaviorSubject, Subject } from "/ui/web_modules/rxjs.js";
+import { map, tap, first, merge, takeUntil, switchMap, throttleTime } from "/ui/web_modules/rxjs/operators.js";
+
 
 export { MnFormService };
 
@@ -50,7 +51,7 @@ class MnForm {
   setSource(source) {
     var sourcePipe = source.pipe(this.unpackPipe || tap(), first());
 
-    sourcePipe.subscribe((v) => this.group.patchValue(v));
+    sourcePipe.subscribe(v => this.group.patchValue(v));
 
     return this;
   }
@@ -75,12 +76,12 @@ class MnForm {
   }
 
   successMessage(message) {
-    this.success(this.mnAlertsService.success(message));
+    this.success(() => this.mnAlertsService.formatAndSetAlerts(message, "success", 2500));
     return this;
   }
 
   errorMessage(message) {
-    this.error(this.mnAlertsService.error(message));
+    this.error(() => this.mnAlertsService.formatAndSetAlerts(message, "error"));
     return this;
   }
 

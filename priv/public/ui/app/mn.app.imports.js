@@ -49,6 +49,16 @@ let collectionsState = {
   }
 };
 
+let sessionState = {
+  name: 'app.admin.security.session.**',
+  url: '/session',
+  loadChildren: () => {
+    return import('./mn.session.module.js').then(m => {
+      return m.MnSessionModule;
+    });
+  }
+};
+
 let overviewState = {
   name: 'app.admin.overview.**',
   url: '/overview',
@@ -179,6 +189,6 @@ export let mnAppImports = [
   MnSharedModule,
   MnElementCraneModule.forRoot(),
   UIRouterUpgradeModule.forRoot({
-    states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, groupsState, documentsState, gsiState, viewsState, settingsState, securityState, xdcrState, collectionsState]
+    states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, groupsState, documentsState, gsiState, viewsState, settingsState, securityState, xdcrState, collectionsState, sessionState]
   })
 ];
