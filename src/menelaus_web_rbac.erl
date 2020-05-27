@@ -72,12 +72,9 @@ assert_is_saslauthd_enabled() ->
         true ->
             ok;
         false ->
-            erlang:throw(
-              {web_exception,
-               400,
-               "This http API endpoint is only supported in enterprise edition "
-               "running on GNU/Linux",
-               []})
+            menelaus_util:web_exception(
+              400, "This http API endpoint is only supported in enterprise "
+              "edition running on GNU/Linux")
     end.
 
 handle_saslauthd_auth_settings(Req) ->
@@ -1385,10 +1382,8 @@ assert_no_users_upgrade() ->
         no_upgrade ->
             ok;
         upgrade_in_progress ->
-            erlang:throw({web_exception,
-                          503,
-                          "Not allowed during cluster upgrade.",
-                          []})
+            menelaus_util:web_exception(
+              503, "Not allowed during cluster upgrade.")
     end.
 
 handle_put_group(GroupId, Req) ->
@@ -1604,7 +1599,7 @@ get_identity_for_profiles({Name, "admin"}, _) ->
 get_identity_for_profiles({Name, DomainStr}, _) ->
     {Name, case domain_to_atom(DomainStr) of
                unknown ->
-                   erlang:throw({web_exception, 404, <<"Unknown domain">>, []});
+                   menelaus_util:web_exception(404, "Unknown domain");
                Atom ->
                    Atom
            end}.
@@ -1618,15 +1613,14 @@ validate_identity_for_profiles({Name, Domain}) ->
                         Name ->
                             ok;
                         _ ->
-                            erlang:throw(
-                              {web_exception, 404, <<"Unknown identity">>, []})
+                            menelaus_util:web_exception(404,
+                                                        "Unknown identity")
                     end;
                 local ->
                     case menelaus_users:user_exists({Name, local}) of
                         false ->
-                            erlang:throw(
-                              {web_exception, 404, <<"User does not exist">>,
-                               []});
+                            menelaus_util:web_exception(
+                              404, "User does not exist");
                         true ->
                             ok
                     end;
@@ -1634,8 +1628,7 @@ validate_identity_for_profiles({Name, Domain}) ->
                     ok
             end;
         Error ->
-            erlang:throw(
-              {web_exception, 400, Error, []})
+            menelaus_util:web_exception(400, Error)
     end.
 
 handle_get_profile(RawIdentity, Req) ->

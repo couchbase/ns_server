@@ -109,17 +109,16 @@ assert_api_available(Bucket) ->
         true ->
             ok;
         false ->
-            erlang:throw({web_exception, 400,
-                          "Not allowed until entire cluster is upgraded to 7.0",
-                          []})
+            menelaus_util:web_exception(
+              400, "Not allowed until entire cluster is upgraded to 7.0")
     end,
     {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
     case collections:enabled(BucketConfig) of
         true ->
             ok;
         false ->
-            erlang:throw({web_exception, 400,
-                          "Not allowed on this type of bucket", []})
+            menelaus_util:web_exception(
+              400, "Not allowed on this type of bucket")
     end.
 
 name_first_char_validator(State) ->
@@ -142,11 +141,11 @@ name_validator(State) ->
 convert_uid(Uid) ->
     try collections:convert_uid_from_memcached(Uid) of
         UidInt when UidInt < 0 ->
-            erlang:throw({web_exception, 400, "Invalid UID", []});
+            menelaus_util:web_exception(400, "Invalid UID");
         UidInt ->
             UidInt
     catch error:badarg ->
-            erlang:throw({web_exception, 400, "Invalid UID", []})
+            menelaus_util:web_exception(400, "Invalid UID")
     end.
 
 nodes_validator(BucketNodes, Req, State) ->

@@ -692,7 +692,7 @@ parse_stats_params(Params) ->
                    end,
     case find_zoom(proplists:get_value("zoom", Params, "minute")) of
         undefined ->
-            erlang:throw({web_exception, 400, "incorrect zoom value", []});
+            menelaus_util:web_exception(400, "incorrect zoom value");
         {Period, _, Count} ->
             {ClientTStamp, {1, Period, Count}}
     end.
@@ -2620,7 +2620,7 @@ serve_aggregated_ui_stats(Req, Params) ->
                     case menelaus_web_node:find_node_hostname(XHost, Req) of
                         {ok, N} -> [N];
                         _ ->
-                            erlang:throw({web_exception, 404, "not found", []})
+                            menelaus_util:web_exception(404, "not found")
                     end
             end,
     BS = grab_ui_stats(Bucket, Nodes, HaveStamp, Wnd),
@@ -2732,7 +2732,7 @@ serve_specific_ui_stats(Req, StatName, Params) ->
 
     case MaybeStatDesc of
         [] ->
-            erlang:throw({web_exception, 404, "not found", []});
+            menelaus_util:web_exception(404, "not found");
         [_|_] ->
             ok
     end,

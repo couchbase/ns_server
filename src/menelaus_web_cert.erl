@@ -124,8 +124,8 @@ assert_n2n_encryption_is_disabled() ->
     case misc:is_cluster_encryption_fully_disabled() of
         true -> ok;
         false ->
-            M = "Operation requires node-to-node encryption to be disabled",
-            erlang:throw({web_exception, 400, M, []})
+            menelaus_util:web_exception(
+              400, "Operation requires node-to-node encryption to be disabled")
     end.
 
 handle_reload_node_certificate(Req) ->

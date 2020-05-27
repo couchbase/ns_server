@@ -71,7 +71,8 @@
          assert_is_66/0,
          strip_json_struct/1,
          choose_node_consistently/2,
-         compute_sec_headers/0]).
+         compute_sec_headers/0,
+         web_exception/2]).
 
 %% used by parse_validate_number
 -export([list_to_integer/1, list_to_float/1]).
@@ -425,14 +426,19 @@ format_server_time({{YYYY, MM, DD}, {Hour, Min, Sec}}, MicroSecs) ->
       io_lib:format("~4.4.0w-~2.2.0w-~2.2.0wT~2.2.0w:~2.2.0w:~2.2.0w.~3.3.0wZ",
                     [YYYY, MM, DD, Hour, Min, Sec, MicroSecs div 1000])).
 
+web_exception(Code, Message) ->
+    web_exception(Code, Message, []).
+
+web_exception(Code, Message, ExtraHeaders) ->
+    erlang:throw({web_exception, Code, Message, ExtraHeaders}).
+
 ensure_local(Req) ->
     Host = mochiweb_request:get(peer, Req),
     case misc:is_localhost(Host) of
         true ->
             ok;
         false ->
-            erlang:throw({web_exception, 400,
-                          <<"API is accessible from localhost only">>, []})
+            web_exception(400, "API is accessible from localhost only")
     end.
 
 reply_global_error(Req, Error) ->
@@ -536,10 +542,9 @@ assert_is_enterprise() ->
         true ->
             ok;
         _ ->
-            erlang:throw({web_exception,
-                          400,
+            web_exception(400,
                           "This http API endpoint requires enterprise edition",
-                          [{"X-enterprise-edition-needed", 1}]})
+                          [{"X-enterprise-edition-needed", 1}])
     end.
 
 assert_is_55() ->
@@ -556,12 +561,9 @@ assert_cluster_version(Fun) ->
         true ->
             ok;
         false ->
-            erlang:throw(
-              {web_exception,
-               400,
-               "This http API endpoint isn't supported in mixed version "
-               "clusters",
-               []})
+            web_exception(
+              400, "This http API endpoint isn't supported in mixed version "
+              "clusters")
     end.
 
 choose_node_consistently(Req, Nodes) ->

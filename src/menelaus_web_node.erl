@@ -598,9 +598,9 @@ handle_node_settings_post(NodeStr, Req) when is_list(NodeStr) ->
 handle_node_settings_post(Node, Req) when is_atom(Node) ->
     case cluster_compat_mode:is_cluster_65() of
         false when Node =/= node() ->
-            throw({web_exception, 400,
-                   <<"Setting the disk storage path for other servers is "
-                     "not yet supported.">>, []});
+            menelaus_util:web_exception(
+              400, "Setting the disk storage path for other servers is "
+              "not yet supported.");
         _ ->
             ok
     end,
@@ -739,14 +739,14 @@ parse_validate_ports(Params) ->
                   [{PortKey, Port} | Acc]
               catch
                   throw:{error, [Msg]} ->
-                      ErrorMsg = io_lib:format("Invalid Port ~p : ~s",
-                                               [RestName, Msg]),
-                      throw({web_exception, 400, ErrorMsg, []})
+                      menelaus_util:web_exception(
+                        400, io_lib:format("Invalid Port ~p : ~s",
+                                           [RestName, Msg]))
               end
       end, [], Params).
 
 parse_validate_hostname(undefined) ->
-    throw({web_exception, 400, "hostname should be specified", []});
+    menelaus_util:web_exception(400, "hostname should be specified");
 parse_validate_hostname(Hostname) ->
     HN = string:trim(Hostname),
     case length(HN) =< ?MAX_HOSTNAME_LENGTH andalso
@@ -754,12 +754,12 @@ parse_validate_hostname(Hostname) ->
         true ->
             HN;
         false ->
-            Msg = io_lib:format(
-                    "Invalid hostname specified. "
-                    "Hostname should be ~p characters or less and "
-                    "either a valid IPv4, IPv6, or FQDN",
-                    [?MAX_HOSTNAME_LENGTH]),
-            throw({web_exception, 400, Msg, []})
+            menelaus_util:web_exception(
+              400, io_lib:format(
+                     "Invalid hostname specified. "
+                     "Hostname should be ~p characters or less and "
+                     "either a valid IPv4, IPv6, or FQDN",
+                     [?MAX_HOSTNAME_LENGTH]))
     end.
 
 parse_validate_external_params(Params) ->

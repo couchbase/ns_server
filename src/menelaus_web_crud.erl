@@ -247,10 +247,8 @@ extract_flags(Params) ->
                 Int when is_integer(Int) andalso Int > 0 ->
                     Int;
                 _ ->
-                    erlang:throw(
-                      {web_exception, 400,
-                       <<"'flags' must be a valid positive integer">>,
-                       []})
+                    menelaus_util:web_exception(
+                      400, "'flags' must be a valid positive integer")
             end
     end.
 

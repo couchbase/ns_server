@@ -52,10 +52,9 @@ handle_post(Req) ->
         ok ->
             ok;
         _ ->
-            throw({web_exception, 503,
-                   <<"System services have not completed startup. "
-                     "Please try again shortly.">>,
-                   []})
+            menelaus_util:web_exception(
+              503, "System services have not completed startup. "
+              "Please try again shortly.")
     end,
 
     Errors = case validate_post_sample_buckets(Samples) of
