@@ -401,9 +401,9 @@ handle_get_user(Domain, UserId, Req) ->
                 false ->
                     menelaus_util:reply_json(Req, <<"Unknown user.">>, 404);
                 true ->
-                    perform_if_allowed(
-                      menelaus_util:reply_json(_, get_user_json(Identity)),
-                      Req, ?SECURITY_READ, menelaus_users:get_roles(Identity))
+                    verify_security_roles_access(
+                      Req, ?SECURITY_READ, menelaus_users:get_roles(Identity)),
+                    menelaus_util:reply_json(Req, get_user_json(Identity))
             end
     end.
 
@@ -978,13 +978,12 @@ handle_put_user_with_identity({_UserId, Domain} = Identity, Req) ->
                                         Req)
       end, Req, form, put_user_validators(Domain)).
 
-perform_if_allowed(Fun, Req, Permission, Roles) ->
-    case menelaus_auth:has_permission(Permission, Req) orelse
-        not overlap(Roles, get_security_roles()) of
+verify_security_roles_access(Req, Permission, Roles) ->
+    case overlap(Roles, get_security_roles()) of
         true ->
-            Fun(Req);
+            menelaus_util:require_permission(Req, Permission);
         false ->
-            menelaus_util:reply_json(Req, forbidden_response([Permission]), 403)
+            ok
     end.
 
 overlap(List1, List2) ->
@@ -998,11 +997,10 @@ handle_put_user_validated(Identity, Name, Password, Roles, Groups, Req) ->
                                    || Groups =/= undefined, G <- Groups]),
     UniqueRoles = lists:usort(Roles),
     OldRoles = menelaus_users:get_roles(Identity),
-    perform_if_allowed(
-      do_store_user(Identity, Name, Password, UniqueRoles, Groups, _),
-      Req, ?SECURITY_WRITE, lists:usort(GroupRoles ++ Roles ++ OldRoles)).
 
-do_store_user(Identity, Name, Password, UniqueRoles, Groups, Req) ->
+    verify_security_roles_access(
+      Req, ?SECURITY_WRITE, lists:usort(GroupRoles ++ Roles ++ OldRoles)),
+
     Reason = case menelaus_users:user_exists(Identity) of
                  true -> updated;
                  false -> added
@@ -1026,15 +1024,6 @@ do_store_user(Identity, Name, Password, UniqueRoles, Groups, Req) ->
               "You cannot create any more users on Community Edition.")
     end.
 
-do_delete_user(Req, Identity) ->
-    case menelaus_users:delete_user(Identity) of
-        {commit, _} ->
-            ns_audit:delete_user(Req, Identity),
-            reply_put_delete_users(Req);
-        {abort, {error, not_found}} ->
-            menelaus_util:reply_json(Req, <<"User was not found.">>, 404)
-    end.
-
 handle_delete_user(Domain, UserId, Req) ->
     assert_no_users_upgrade(),
 
@@ -1043,9 +1032,17 @@ handle_delete_user(Domain, UserId, Req) ->
             menelaus_util:reply_json(Req, <<"Unknown user domain.">>, 404);
         T ->
             Identity = {UserId, T},
-            perform_if_allowed(
-              do_delete_user(_, Identity), Req, ?SECURITY_WRITE,
-              menelaus_users:get_roles(Identity))
+            verify_security_roles_access(
+              Req, ?SECURITY_WRITE, menelaus_users:get_roles(Identity)),
+
+            case menelaus_users:delete_user(Identity) of
+                {commit, _} ->
+                    ns_audit:delete_user(Req, Identity),
+                    reply_put_delete_users(Req);
+                {abort, {error, not_found}} ->
+                    menelaus_util:reply_json(Req, <<"User was not found.">>,
+                                             404)
+            end
     end.
 
 reply_put_delete_users(Req) ->
@@ -1407,12 +1404,14 @@ handle_put_group(GroupId, Req) ->
                       Roles = proplists:get_value(roles, Values),
                       UniqueRoles = lists:usort(Roles),
                       LDAPGroup = proplists:get_value(ldap_group_ref, Values),
-                      perform_if_allowed(
-                          do_store_group(GroupId, Description, UniqueRoles,
-                                         LDAPGroup, _),
-                          Req, ?SECURITY_WRITE,
-                          UniqueRoles ++
-                          menelaus_users:get_group_roles(GroupId))
+
+                      verify_security_roles_access(
+                        Req, ?SECURITY_WRITE,
+                        lists:usort(
+                          Roles ++ menelaus_users:get_group_roles(GroupId))),
+
+                      do_store_group(GroupId, Description, UniqueRoles,
+                                     LDAPGroup, Req)
               end, Req, form, put_group_validators());
         Error ->
             menelaus_util:reply_global_error(Req, Error)
@@ -1457,11 +1456,9 @@ do_store_group(GroupId, Description, UniqueRoles, LDAPGroup, Req) ->
 
 handle_delete_group(GroupId, Req) ->
     assert_groups_and_ldap_enabled(),
-    perform_if_allowed(
-      do_delete_group(GroupId, _), Req, ?SECURITY_WRITE,
-      menelaus_users:get_group_roles(GroupId)).
+    verify_security_roles_access(
+      Req, ?SECURITY_WRITE, menelaus_users:get_group_roles(GroupId)),
 
-do_delete_group(GroupId, Req) ->
     case menelaus_users:delete_group(GroupId) of
         ok ->
             ns_audit:delete_user_group(Req, GroupId),
@@ -1557,9 +1554,10 @@ handle_get_group(GroupId, Req) ->
         false ->
             menelaus_util:reply_json(Req, <<"Unknown group.">>, 404);
         true ->
-            perform_if_allowed(
-              menelaus_util:reply_json(_, get_group_json(GroupId)),
-              Req, ?SECURITY_READ, menelaus_users:get_group_roles(GroupId))
+            verify_security_roles_access(
+              Req, ?SECURITY_READ, menelaus_users:get_group_roles(GroupId)),
+
+            menelaus_util:reply_json(Req, get_group_json(GroupId))
     end.
 
 get_group_json(GroupId) ->
