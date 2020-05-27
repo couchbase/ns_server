@@ -2966,15 +2966,7 @@ do_retrieve_samples_from_archive({Period, Seconds, Count}, StatName,
 
 handle_ui_stats_post(Req) ->
     Permission = stats_read_permission(any),
-    case menelaus_auth:has_permission(Permission, Req) of
-        true ->
-            do_handle_ui_stats_post(Req);
-        false ->
-            menelaus_util:reply_json(
-              Req, menelaus_web_rbac:forbidden_response([Permission]))
-    end.
-
-do_handle_ui_stats_post(Req) ->
+    menelaus_util:require_permission(Req, Permission),
     validator:handle(
       fun (List) ->
               LocalAddr = menelaus_util:local_addr(Req),

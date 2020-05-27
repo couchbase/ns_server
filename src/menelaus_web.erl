@@ -155,6 +155,8 @@ loop(Req0, Config) ->
         exit:normal ->
             %% this happens when the client closed the connection
             exit(normal);
+        throw:{web_json_exception, StatusCode, Json} ->
+            reply_json(Req, Json, StatusCode);
         throw:{web_exception, StatusCode, Message, ExtraHeaders} ->
             reply_text(Req, Message, StatusCode, ExtraHeaders);
         Type:What ->

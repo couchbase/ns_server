@@ -72,7 +72,8 @@
          strip_json_struct/1,
          choose_node_consistently/2,
          compute_sec_headers/0,
-         web_exception/2]).
+         web_exception/2,
+         require_permission/2]).
 
 %% used by parse_validate_number
 -export([list_to_integer/1, list_to_float/1]).
@@ -431,6 +432,18 @@ web_exception(Code, Message) ->
 
 web_exception(Code, Message, ExtraHeaders) ->
     erlang:throw({web_exception, Code, Message, ExtraHeaders}).
+
+web_json_exception(Code, Json) ->
+    erlang:throw({web_json_exception, Code, Json}).
+
+require_permission(Req, Permission) ->
+    case menelaus_auth:has_permission(Permission, Req) of
+        true ->
+            ok;
+        false ->
+            web_json_exception(
+              403, menelaus_web_rbac:forbidden_response([Permission]))
+    end.
 
 ensure_local(Req) ->
     Host = mochiweb_request:get(peer, Req),
