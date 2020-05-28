@@ -27,11 +27,13 @@
 roles_pre_55() ->
     [{admin, [],
       [{name, <<"Admin">>},
+       {folder, admin},
        {desc, <<"Can manage ALL cluster features including security.">>},
        {ce, true}],
       [{[], all}]},
      {ro_admin, [],
       [{name, <<"Read Only Admin">>},
+       {folder, admin},
        {desc, <<"Can view ALL cluster features.">>},
        {ce, true}],
       [{[{bucket, any}, password], none},
@@ -41,6 +43,7 @@ roles_pre_55() ->
        {[], [read, list]}]},
      {cluster_admin, [],
       [{name, <<"Cluster Admin">>},
+       {folder, admin},
        {desc, <<"Can manage all cluster features EXCEPT security.">>}],
       [{[admin, internal], none},
        {[admin, security], none},
@@ -49,6 +52,7 @@ roles_pre_55() ->
        {[], all}]},
      {bucket_admin, [bucket_name],
       [{name, <<"Bucket Admin">>},
+       {folder, bucket},
        {desc, <<"Can manage ALL bucket features for specified buckets "
                 "(incl. start/stop XDCR)">>}],
       [{[{bucket, bucket_name}, xdcr], [read, execute]},
@@ -60,6 +64,7 @@ roles_pre_55() ->
        {[], [read]}]},
      {bucket_full_access, [bucket_name],
       [{name, <<"Bucket Full Access">>},
+       {folder, bucket},
        {desc, <<"Full access to bucket data">>},
        {ce, true}],
       [{[{bucket, bucket_name}, data], all},
@@ -71,6 +76,7 @@ roles_pre_55() ->
        {[pools], [read]}]},
      {views_admin, [bucket_name],
       [{name, <<"Views Admin">>},
+       {folder, views},
        {desc, <<"Can manage views for specified buckets">>}],
       [{[{bucket, bucket_name}, views], all},
        {[{bucket, bucket_name}, data], [read]},
@@ -83,12 +89,14 @@ roles_pre_55() ->
        {[], [read]}]},
      {views_reader, [bucket_name],
       [{name, <<"Views Reader">>},
+       {folder, views},
        {desc, <<"Can read data from the views of specified bucket">>}],
       [{[{bucket, bucket_name}, views], [read]},
        {[{bucket, bucket_name}, data, docs], [read]},
        {[pools], [read]}]},
      {replication_admin, [],
       [{name, <<"Replication Admin">>},
+       {folder, xdcr},
        {desc, <<"Can manage ONLY XDCR features (cluster AND bucket level)">>}],
       [{[{bucket, any}, xdcr], all},
        {[{bucket, any}, data], [read]},
@@ -100,6 +108,7 @@ roles_pre_55() ->
        {[], [read]}]},
      {data_reader, [bucket_name],
       [{name, <<"Data Reader">>},
+       {folder, data},
        {desc, <<"Can read information from specified bucket">>}],
       [{[{bucket, bucket_name}, data, docs], [read]},
        {[{bucket, bucket_name}, data, meta], [read]},
@@ -108,6 +117,7 @@ roles_pre_55() ->
        {[pools], [read]}]},
      {data_writer, [bucket_name],
       [{name, <<"Data Writer">>},
+       {folder, data},
        {desc, <<"Can write information from/to specified bucket">>}],
       [{[{bucket, bucket_name}, data, docs], [insert, upsert, delete]},
        {[{bucket, bucket_name}, data, xattr], [write]},
@@ -115,6 +125,7 @@ roles_pre_55() ->
        {[pools], [read]}]},
      {data_dcp_reader, [bucket_name],
       [{name, <<"Data DCP Reader">>},
+       {folder, data},
        {desc, <<"Can read DCP data streams">>}],
       [{[{bucket, bucket_name}, data, docs], [read]},
        {[{bucket, bucket_name}, data, meta], [read]},
@@ -127,6 +138,7 @@ roles_pre_55() ->
        {[pools], [read]}]},
      {data_backup, [bucket_name],
       [{name, <<"Data Backup">>},
+       {folder, data},
        {desc, <<"Can backup and restore bucket data">>}],
       [{[{bucket, bucket_name}, data], all},
        {[{bucket, bucket_name}, views], [read, write]},
@@ -137,12 +149,14 @@ roles_pre_55() ->
        {[pools], [read]}]},
      {data_monitoring, [bucket_name],
       [{name, <<"Data Monitoring">>},
+       {folder, data},
        {desc, <<"Can read full bucket stats">>}],
       [{[{bucket, bucket_name}, stats], [read]},
        {[{bucket, bucket_name}, settings], [read]},
        {[pools], [read]}]},
      {fts_admin, [bucket_name],
       [{name, <<"FTS Admin">>},
+       {folder, search},
        {desc, <<"Can administer all FTS features">>}],
       [{[{bucket, bucket_name}, fts], [read, write, manage]},
        {[settings, fts], [read, write, manage]},
@@ -151,6 +165,7 @@ roles_pre_55() ->
        {[{bucket, bucket_name}, settings], [read]}]},
      {fts_searcher, [bucket_name],
       [{name, <<"FTS Searcher">>},
+       {folder, search},
        {desc, <<"Can query FTS indexes if they have bucket permissions">>}],
       [{[{bucket, bucket_name}, fts], [read]},
        {[settings, fts], [read]},
@@ -159,6 +174,7 @@ roles_pre_55() ->
        {[{bucket, bucket_name}, settings], [read]}]},
      {query_select, [bucket_name],
       [{name, <<"Query Select">>},
+       {folder, 'query'},
        {desc, <<"Can execute SELECT statement on bucket to retrieve data">>}],
       [{[{bucket, bucket_name}, n1ql, select], [execute]},
        {[{bucket, bucket_name}, data, docs], [read]},
@@ -167,6 +183,7 @@ roles_pre_55() ->
        {[pools], [read]}]},
      {query_update, [bucket_name],
       [{name, <<"Query Update">>},
+       {folder, 'query'},
        {desc, <<"Can execute UPDATE statement on bucket to update data">>}],
       [{[{bucket, bucket_name}, n1ql, update], [execute]},
        {[{bucket, bucket_name}, data, docs], [upsert]},
@@ -175,6 +192,7 @@ roles_pre_55() ->
        {[pools], [read]}]},
      {query_insert, [bucket_name],
       [{name, <<"Query Insert">>},
+       {folder, 'query'},
        {desc, <<"Can execute INSERT statement on bucket to add data">>}],
       [{[{bucket, bucket_name}, n1ql, insert], [execute]},
        {[{bucket, bucket_name}, data, docs], [insert]},
@@ -183,6 +201,7 @@ roles_pre_55() ->
        {[pools], [read]}]},
      {query_delete, [bucket_name],
       [{name, <<"Query Delete">>},
+       {folder, 'query'},
        {desc, <<"Can execute DELETE statement on bucket to delete data">>}],
       [{[{bucket, bucket_name}, n1ql, delete], [execute]},
        {[{bucket, bucket_name}, data, docs], [delete]},
@@ -191,6 +210,7 @@ roles_pre_55() ->
        {[pools], [read]}]},
      {query_manage_index, [bucket_name],
       [{name, <<"Query Manage Index">>},
+       {folder, 'query'},
        {desc, <<"Can manage indexes for the bucket">>}],
       [{[{bucket, bucket_name}, n1ql, index], all},
        {[{bucket, bucket_name}, settings], [read]},
@@ -198,6 +218,7 @@ roles_pre_55() ->
        {[pools], [read]}]},
      {query_system_catalog, [],
       [{name, <<"Query System Catalog">>},
+       {folder, 'query'},
        {desc, <<"Can lookup system catalog information">>}],
       [{[{bucket, any}, n1ql, index], [list]},
        {[{bucket, any}, settings], [read]},
@@ -206,6 +227,7 @@ roles_pre_55() ->
        {[pools], [read]}]},
      {query_external_access, [],
       [{name, <<"Query External Access">>},
+       {folder, 'query'},
        {desc, <<"Can execute CURL statement">>}],
       [{[n1ql, curl], [execute]},
        {[{bucket, any}, settings], [read]},
@@ -213,6 +235,7 @@ roles_pre_55() ->
        {[pools], [read]}]},
      {replication_target, [bucket_name],
       [{name, <<"Replication Target">>},
+       {folder, xdcr},
        {desc, <<"XDC replication target for bucket">>}],
       [{[{bucket, bucket_name}, settings], [read]},
        {[{bucket, bucket_name}, data, meta], [read, write]},
@@ -223,6 +246,7 @@ roles_pre_55() ->
 roles_pre_66() ->
     [{admin, [],
       [{name, <<"Full Admin">>},
+       {folder, admin},
        {desc, <<"Can manage all cluster features (including security). "
                 "This user can access the web console. This user can read and "
                 "write all data.">>},
@@ -230,6 +254,7 @@ roles_pre_66() ->
       [{[], all}]},
      {ro_admin, [],
       [{name, <<"Read-Only Admin">>},
+       {folder, admin},
        {desc, <<"Can view all cluster statistics. This user can access the "
                 "web console. This user can read some data.">>},
        {ce, true}],
@@ -242,6 +267,7 @@ roles_pre_66() ->
        {[], [read, list]}]},
      {security_admin, [],
       [{name, <<"Security Admin">>},
+       {folder, admin},
        {desc, <<"Can view all cluster statistics and manage user roles, but "
                 "not grant Full Admin or Security Admin roles to other users "
                 "or alter their own role. This user can access the web "
@@ -258,6 +284,7 @@ roles_pre_66() ->
        {[], [read, list]}]},
      {cluster_admin, [],
       [{name, <<"Cluster Admin">>},
+       {folder, admin},
        {desc, <<"Can manage all cluster features except security. This user "
                 "can access the web console. This user cannot read data.">>}],
       [{[admin, internal], none},
@@ -273,6 +300,7 @@ roles_pre_66() ->
        {[], all}]},
      {bucket_admin, [bucket_name],
       [{name, <<"Bucket Admin">>},
+       {folder, bucket},
        {desc, <<"Can manage ALL bucket features for a given bucket (including "
                 "start/stop XDCR). This user can access the web console. This "
                 "user cannot read data.">>}],
@@ -291,6 +319,7 @@ roles_pre_66() ->
        {[], [read]}]},
      {bucket_full_access, [bucket_name],
       [{name, <<"Application Access">>},
+       {folder, bucket},
        {desc, <<"Full access to bucket data. This user cannot access the web "
                 "console and is intended only for application access. This "
                 "user can read and write data.">>},
@@ -304,6 +333,7 @@ roles_pre_66() ->
        {[pools], [read]}]},
      {views_admin, [bucket_name],
       [{name, <<"Views Admin">>},
+       {folder, views},
        {desc, <<"Can create and manage views of a given bucket. This user can "
                 "access the web console. This user can read some data.">>}],
       [{[{bucket, bucket_name}, views], all},
@@ -318,6 +348,7 @@ roles_pre_66() ->
        {[], [read]}]},
      {views_reader, [bucket_name],
       [{name, <<"Views Reader">>},
+       {folder, views},
        {desc, <<"Can read data from the views of a given bucket. This user "
                 "cannot access the web console and is intended only for "
                 "application access. This user can read some data.">>}],
@@ -326,6 +357,7 @@ roles_pre_66() ->
        {[pools], [read]}]},
      {replication_admin, [],
       [{name, <<"XDCR Admin">>},
+       {folder, xdcr},
        {desc, <<"Can administer XDCR features to create cluster references and "
                 "replication streams out of this cluster. This user can "
                 "access the web console. This user can read some data.">>}],
@@ -340,6 +372,7 @@ roles_pre_66() ->
        {[], [read]}]},
      {data_reader, [bucket_name],
       [{name, <<"Data Reader">>},
+       {folder, data},
        {desc, <<"Can read data from a given bucket. This user cannot access "
                 "the web console and is intended only for application access. "
                 "This user can read data, but cannot write it.">>}],
@@ -350,6 +383,7 @@ roles_pre_66() ->
        {[pools], [read]}]},
      {data_writer, [bucket_name],
       [{name, <<"Data Writer">>},
+       {folder, data},
        {desc, <<"Can write data to a given bucket. This user cannot access the "
                 "web console and is intended only for application access. This "
                 "user can write data, but cannot read it.">>}],
@@ -359,6 +393,7 @@ roles_pre_66() ->
        {[pools], [read]}]},
      {data_dcp_reader, [bucket_name],
       [{name, <<"Data DCP Reader">>},
+       {folder, data},
        {desc, <<"Can initiate DCP streams for a given bucket. This user cannot "
                 "access the web console and is intended only for application "
                 "access. This user can read data.">>}],
@@ -373,6 +408,7 @@ roles_pre_66() ->
        {[pools], [read]}]},
      {data_backup, [bucket_name],
       [{name, <<"Data Backup & Restore">>},
+       {folder, data},
        {desc, <<"Can backup and restore a given bucket’s data. This user "
                 "cannot access the web console and is intended only for "
                 "application access. This user can read data.">>}],
@@ -387,6 +423,7 @@ roles_pre_66() ->
        {[pools], [read]}]},
      {data_monitoring, [bucket_name],
       [{name, <<"Data Monitor">>},
+       {folder, data},
        {desc, <<"Can read statistics for a given bucket. This user cannot "
                 "access the web console and is intended only for application "
                 "access. This user cannot read data.">>}],
@@ -396,6 +433,7 @@ roles_pre_66() ->
        {[pools], [read]}]},
      {fts_admin, [bucket_name],
       [{name, <<"Search Admin">>},
+       {folder, search},
        {desc, <<"Can administer all Full Text Search features. This user can "
                 "access the web console. This user can read some data.">>}],
       [{[{bucket, bucket_name}, fts], [read, write, manage]},
@@ -405,6 +443,7 @@ roles_pre_66() ->
        {[{bucket, bucket_name}, settings], [read]}]},
      {fts_searcher, [bucket_name],
       [{name, <<"Search Reader">>},
+       {folder, search},
        {desc, <<"Can query Full Text Search indexes for a given bucket. This "
                 "user can access the web console. This user can read some "
                 "data.">>}],
@@ -415,6 +454,7 @@ roles_pre_66() ->
        {[{bucket, bucket_name}, settings], [read]}]},
      {query_select, [bucket_name],
       [{name, <<"Query Select">>},
+       {folder, 'query'},
        {desc, <<"Can execute a SELECT statement on a given bucket to retrieve "
                 "data. This user can access the web console and can read data, "
                 "but not write it.">>}],
@@ -425,6 +465,7 @@ roles_pre_66() ->
        {[pools], [read]}]},
      {query_update, [bucket_name],
       [{name, <<"Query Update">>},
+       {folder, 'query'},
        {desc, <<"Can execute an UPDATE statement on a given bucket to update "
                 "data. This user can access the web console and write data, "
                 "but cannot read it.">>}],
@@ -435,6 +476,7 @@ roles_pre_66() ->
        {[pools], [read]}]},
      {query_insert, [bucket_name],
       [{name, <<"Query Insert">>},
+       {folder, 'query'},
        {desc, <<"Can execute an INSERT statement on a given bucket to add "
                 "data. This user can access the web console and insert data, "
                 "but cannot read it.">>}],
@@ -445,6 +487,7 @@ roles_pre_66() ->
        {[pools], [read]}]},
      {query_delete, [bucket_name],
       [{name, <<"Query Delete">>},
+       {folder, 'query'},
        {desc, <<"Can execute a DELETE statement on a given bucket to delete "
                 "data. This user can access the web console, but cannot read "
                 "data. This user can delete data.">>}],
@@ -455,6 +498,7 @@ roles_pre_66() ->
        {[pools], [read]}]},
      {query_manage_index, [bucket_name],
       [{name, <<"Query Manage Index">>},
+       {folder, 'query'},
        {desc, <<"Can manage indexes for a given bucket. This user can access "
                 "the web console, but cannot read data.">>}],
       [{[{bucket, bucket_name}, n1ql, index], all},
@@ -463,6 +507,7 @@ roles_pre_66() ->
        {[pools], [read]}]},
      {query_system_catalog, [],
       [{name, <<"Query System Catalog">>},
+       {folder, 'query'},
        {desc, <<"Can look up system catalog information via N1QL. This user "
                 "can access the web console, but cannot read user data.">>}],
       [{[{bucket, any}, n1ql, index], [list]},
@@ -472,6 +517,7 @@ roles_pre_66() ->
        {[pools], [read]}]},
      {query_external_access, [],
       [{name, <<"Query CURL Access">>},
+       {folder, 'query'},
        {desc, <<"Can execute the CURL statement from within N1QL. This user "
                 "can access the web console, but cannot read data (within "
                 "Couchbase).">>}],
@@ -481,6 +527,7 @@ roles_pre_66() ->
        {[pools], [read]}]},
      {replication_target, [bucket_name],
       [{name, <<"XDCR Inbound">>},
+       {folder, xdcr},
        {desc, <<"Can create XDCR streams into a given bucket. This user cannot "
                 "access the web console or read any data.">>}],
       [{[{bucket, bucket_name}, settings], [read]},
@@ -489,6 +536,7 @@ roles_pre_66() ->
        {[pools], [read]}]},
      {analytics_manager, [bucket_name],
       [{name, <<"Analytics Manager">>},
+       {folder, analytics},
        {desc, <<"Can manage Analytics links. Can manage datasets on a given "
                 "bucket. Can query datasets. This user can access the web "
                 "console and read some data.">>}],
@@ -498,6 +546,7 @@ roles_pre_66() ->
        {[pools], [read]}]},
      {analytics_reader, [],
       [{name, <<"Analytics Reader">>},
+       {folder, analytics},
        {desc, <<"Can query datasets. This is a global role as datasets may "
                 "be created on different buckets. This user can access the "
                 "web console and read some data.">>}],
@@ -509,6 +558,7 @@ roles_pre_66() ->
 roles_pre_cheshirecat() ->
     [{admin, [],
       [{name, <<"Full Admin">>},
+       {folder, admin},
        {desc, <<"Can manage all cluster features (including security). "
                 "This user can access the web console. This user can read and "
                 "write all data.">>},
@@ -516,6 +566,7 @@ roles_pre_cheshirecat() ->
       [{[], all}]},
      {ro_admin, [],
       [{name, <<"Read-Only Admin">>},
+       {folder, admin},
        {desc, <<"Can view all cluster statistics. This user can access the "
                 "web console. This user can read some data.">>},
        {ce, true}],
@@ -528,6 +579,7 @@ roles_pre_cheshirecat() ->
        {[], [read, list]}]},
      {security_admin, [],
       [{name, <<"Security Admin">>},
+       {folder, admin},
        {desc, <<"Can view all cluster statistics and manage user roles, but "
                 "not grant Full Admin or Security Admin roles to other users "
                 "or alter their own role. This user can access the web "
@@ -544,6 +596,7 @@ roles_pre_cheshirecat() ->
        {[], [read, list]}]},
      {cluster_admin, [],
       [{name, <<"Cluster Admin">>},
+       {folder, admin},
        {desc, <<"Can manage all cluster features except security. This user "
                 "can access the web console. This user cannot read data.">>}],
       [{[admin, internal], none},
@@ -559,6 +612,7 @@ roles_pre_cheshirecat() ->
        {[], all}]},
      {bucket_admin, [bucket_name],
       [{name, <<"Bucket Admin">>},
+       {folder, bucket},
        {desc, <<"Can manage ALL bucket features for a given bucket (including "
                 "start/stop XDCR). This user can access the web console. This "
                 "user cannot read data.">>}],
@@ -577,6 +631,7 @@ roles_pre_cheshirecat() ->
        {[], [read]}]},
      {bucket_full_access, [bucket_name],
       [{name, <<"Application Access">>},
+       {folder, bucket},
        {desc, <<"Full access to bucket data. This user cannot access the web "
                 "console and is intended only for application access. This "
                 "user can read and write data.">>},
@@ -590,6 +645,7 @@ roles_pre_cheshirecat() ->
        {[pools], [read]}]},
      {views_admin, [bucket_name],
       [{name, <<"Views Admin">>},
+       {folder, views},
        {desc, <<"Can create and manage views of a given bucket. This user can "
                 "access the web console. This user can read some data.">>}],
       [{[{bucket, bucket_name}, views], all},
@@ -604,6 +660,7 @@ roles_pre_cheshirecat() ->
        {[], [read]}]},
      {views_reader, [bucket_name],
       [{name, <<"Views Reader">>},
+       {folder, views},
        {desc, <<"Can read data from the views of a given bucket. This user "
                 "cannot access the web console and is intended only for "
                 "application access. This user can read some data.">>}],
@@ -612,6 +669,7 @@ roles_pre_cheshirecat() ->
        {[pools], [read]}]},
      {replication_admin, [],
       [{name, <<"XDCR Admin">>},
+       {folder, xdcr},
        {desc, <<"Can administer XDCR features to create cluster references and "
                 "replication streams out of this cluster. This user can "
                 "access the web console. This user can read some data.">>}],
@@ -626,6 +684,7 @@ roles_pre_cheshirecat() ->
        {[], [read]}]},
      {data_reader, [bucket_name],
       [{name, <<"Data Reader">>},
+       {folder, data},
        {desc, <<"Can read data from a given bucket. This user cannot access "
                 "the web console and is intended only for application access. "
                 "This user can read data, but cannot write it.">>}],
@@ -636,6 +695,7 @@ roles_pre_cheshirecat() ->
        {[pools], [read]}]},
      {data_writer, [bucket_name],
       [{name, <<"Data Writer">>},
+       {folder, data},
        {desc, <<"Can write data to a given bucket. This user cannot access the "
                 "web console and is intended only for application access. This "
                 "user can write data, but cannot read it.">>}],
@@ -645,6 +705,7 @@ roles_pre_cheshirecat() ->
        {[pools], [read]}]},
      {data_dcp_reader, [bucket_name],
       [{name, <<"Data DCP Reader">>},
+       {folder, data},
        {desc, <<"Can initiate DCP streams for a given bucket. This user cannot "
                 "access the web console and is intended only for application "
                 "access. This user can read data.">>}],
@@ -659,6 +720,7 @@ roles_pre_cheshirecat() ->
        {[pools], [read]}]},
      {data_backup, [bucket_name],
       [{name, <<"Data Backup & Restore">>},
+       {folder, data},
        {desc, <<"Can backup and restore a given bucket’s data. This user "
                 "cannot access the web console and is intended only for "
                 "application access. This user can read data.">>}],
@@ -673,6 +735,7 @@ roles_pre_cheshirecat() ->
        {[pools], [read]}]},
      {data_monitoring, [bucket_name],
       [{name, <<"Data Monitor">>},
+       {folder, data},
        {desc, <<"Can read statistics for a given bucket. This user cannot "
                 "access the web console and is intended only for application "
                 "access. This user cannot read data.">>}],
@@ -682,6 +745,7 @@ roles_pre_cheshirecat() ->
        {[pools], [read]}]},
      {fts_admin, [bucket_name],
       [{name, <<"Search Admin">>},
+       {folder, search},
        {desc, <<"Can administer all Full Text Search features. This user can "
                 "access the web console. This user can read some data.">>}],
       [{[{bucket, bucket_name}, fts], [read, write, manage]},
@@ -691,6 +755,7 @@ roles_pre_cheshirecat() ->
        {[{bucket, bucket_name}, settings], [read]}]},
      {fts_searcher, [bucket_name],
       [{name, <<"Search Reader">>},
+       {folder, search},
        {desc, <<"Can query Full Text Search indexes for a given bucket. This "
                 "user can access the web console. This user can read some "
                 "data.">>}],
@@ -701,6 +766,7 @@ roles_pre_cheshirecat() ->
        {[{bucket, bucket_name}, settings], [read]}]},
      {query_select, [bucket_name],
       [{name, <<"Query Select">>},
+       {folder, 'query'},
        {desc, <<"Can execute a SELECT statement on a given bucket to retrieve "
                 "data. This user can access the web console and can read data, "
                 "but not write it.">>}],
@@ -711,6 +777,7 @@ roles_pre_cheshirecat() ->
        {[pools], [read]}]},
      {query_update, [bucket_name],
       [{name, <<"Query Update">>},
+       {folder, 'query'},
        {desc, <<"Can execute an UPDATE statement on a given bucket to update "
                 "data. This user can access the web console and write data, "
                 "but cannot read it.">>}],
@@ -721,6 +788,7 @@ roles_pre_cheshirecat() ->
        {[pools], [read]}]},
      {query_insert, [bucket_name],
       [{name, <<"Query Insert">>},
+       {folder, 'query'},
        {desc, <<"Can execute an INSERT statement on a given bucket to add "
                 "data. This user can access the web console and insert data, "
                 "but cannot read it.">>}],
@@ -731,6 +799,7 @@ roles_pre_cheshirecat() ->
        {[pools], [read]}]},
      {query_delete, [bucket_name],
       [{name, <<"Query Delete">>},
+       {folder, 'query'},
        {desc, <<"Can execute a DELETE statement on a given bucket to delete "
                 "data. This user can access the web console, but cannot read "
                 "data. This user can delete data.">>}],
@@ -741,6 +810,7 @@ roles_pre_cheshirecat() ->
        {[pools], [read]}]},
      {query_manage_index, [bucket_name],
       [{name, <<"Query Manage Index">>},
+       {folder, 'query'},
        {desc, <<"Can manage indexes for a given bucket. This user can access "
                 "the web console, but cannot read data.">>}],
       [{[{bucket, bucket_name}, n1ql, index], all},
@@ -749,6 +819,7 @@ roles_pre_cheshirecat() ->
        {[pools], [read]}]},
      {query_system_catalog, [],
       [{name, <<"Query System Catalog">>},
+       {folder, 'query'},
        {desc, <<"Can look up system catalog information via N1QL. This user "
                 "can access the web console, but cannot read user data.">>}],
       [{[{bucket, any}, n1ql, index], [list]},
@@ -758,6 +829,7 @@ roles_pre_cheshirecat() ->
        {[pools], [read]}]},
      {query_external_access, [],
       [{name, <<"Query CURL Access">>},
+       {folder, 'query'},
        {desc, <<"Can execute the CURL statement from within N1QL. This user "
                 "can access the web console, but cannot read data (within "
                 "Couchbase).">>}],
@@ -767,6 +839,7 @@ roles_pre_cheshirecat() ->
        {[pools], [read]}]},
      {replication_target, [bucket_name],
       [{name, <<"XDCR Inbound">>},
+       {folder, xdcr},
        {desc, <<"Can create XDCR streams into a given bucket. This user cannot "
                 "access the web console or read any data.">>}],
       [{[{bucket, bucket_name}, settings], [read]},
@@ -775,6 +848,7 @@ roles_pre_cheshirecat() ->
        {[pools], [read]}]},
      {analytics_manager, [bucket_name],
       [{name, <<"Analytics Manager">>},
+       {folder, analytics},
        {desc, <<"Can manage Analytics local links. Can manage datasets on a "
                 "given bucket. Can query datasets created on this bucket. "
                 "This user can access the web console and read some data.">>}],
@@ -783,6 +857,7 @@ roles_pre_cheshirecat() ->
        {[pools], [read]}]},
      {analytics_reader, [],
       [{name, <<"Analytics Reader">>},
+       {folder, analytics},
        {desc, <<"Can query datasets. This is a global role as datasets may "
                 "be created on different buckets. This user can access the "
                 "web console and read some data.">>}],
@@ -792,6 +867,7 @@ roles_pre_cheshirecat() ->
        {[pools], [read]}]},
      {analytics_select, [bucket_name],
       [{name, <<"Analytics Select">>},
+       {folder, analytics},
        {desc, <<"Can query datasets created on this bucket. This user can "
                 "access the web console and read some data.">>}],
       [{[{bucket, bucket_name}, analytics], [select]},
@@ -799,6 +875,7 @@ roles_pre_cheshirecat() ->
        {[pools], [read]}]},
      {analytics_admin, [],
       [{name, <<"Analytics Admin">>},
+       {folder, analytics},
        {desc, <<"Can manage dataverses. Can manage all Analytics links. "
                 "Can manage all datasets. This user can access the web "
                 "console but cannot read data.">>}],
@@ -808,6 +885,7 @@ roles_pre_cheshirecat() ->
        {[pools], [read]}]},
      {mobile_sync_gateway, [bucket_name],
       [{name, <<"Sync Gateway">>},
+       {folder, mobile},
        {desc, <<"Full access to bucket data as required by Sync Gateway. "
                 "This user cannot access the web console and is intended "
                 "only for use by Sync Gateway. This user can read and "

@@ -68,6 +68,7 @@
          get_security_roles/1,
          external_auth_polling_interval/0,
          get_param_defs/2,
+         ui_folders/0,
          strip_ids/2]).
 
 -export([start_compiled_roles_cache/0]).
@@ -79,6 +80,7 @@
 roles() ->
     [{admin, [],
       [{name, <<"Full Admin">>},
+       {folder, admin},
        {desc, <<"Can manage all cluster features (including security). "
                 "This user can access the web console. This user can read and "
                 "write all data.">>},
@@ -86,6 +88,7 @@ roles() ->
       [{[], all}]},
      {ro_admin, [],
       [{name, <<"Read-Only Admin">>},
+       {folder, admin},
        {desc, <<"Can view all cluster statistics. This user can access the "
                 "web console. This user can read some data.">>},
        {ce, true}],
@@ -98,6 +101,7 @@ roles() ->
        {[], [read, list]}]},
      {security_admin, [],
       [{name, <<"Security Admin">>},
+       {folder, admin},
        {desc, <<"Can view all cluster statistics and manage user roles, but "
                 "not grant Full Admin or Security Admin roles to other users "
                 "or alter their own role. This user can access the web "
@@ -114,6 +118,7 @@ roles() ->
        {[], [read, list]}]},
      {cluster_admin, [],
       [{name, <<"Cluster Admin">>},
+       {folder, admin},
        {desc, <<"Can manage all cluster features except security. This user "
                 "can access the web console. This user cannot read data.">>}],
       [{[admin, internal], none},
@@ -129,6 +134,7 @@ roles() ->
        {[], all}]},
      {bucket_admin, [bucket_name],
       [{name, <<"Bucket Admin">>},
+       {folder, bucket},
        {desc, <<"Can manage ALL bucket features for a given bucket (including "
                 "start/stop XDCR). This user can access the web console. This "
                 "user cannot read data.">>}],
@@ -147,6 +153,7 @@ roles() ->
        {[], [read]}]},
      {bucket_full_access, [bucket_name],
       [{name, <<"Application Access">>},
+       {folder, bucket},
        {desc, <<"Full access to bucket data. This user cannot access the web "
                 "console and is intended only for application access. This "
                 "user can read and write data.">>},
@@ -160,6 +167,7 @@ roles() ->
        {[pools], [read]}]},
      {views_admin, [bucket_name],
       [{name, <<"Views Admin">>},
+       {folder, views},
        {desc, <<"Can create and manage views of a given bucket. This user can "
                 "access the web console. This user can read some data.">>}],
       [{[{bucket, bucket_name}, views], all},
@@ -174,6 +182,7 @@ roles() ->
        {[], [read]}]},
      {views_reader, [bucket_name],
       [{name, <<"Views Reader">>},
+       {folder, admin},
        {desc, <<"Can read data from the views of a given bucket. This user "
                 "cannot access the web console and is intended only for "
                 "application access. This user can read some data.">>}],
@@ -182,6 +191,7 @@ roles() ->
        {[pools], [read]}]},
      {replication_admin, [],
       [{name, <<"XDCR Admin">>},
+       {folder, xdcr},
        {desc, <<"Can administer XDCR features to create cluster references and "
                 "replication streams out of this cluster. This user can "
                 "access the web console. This user can read some data.">>}],
@@ -196,6 +206,7 @@ roles() ->
        {[], [read]}]},
      {data_reader, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Data Reader">>},
+       {folder, data},
        {desc, <<"Can read data from a given bucket, scope or collection. "
                 "This user cannot access the web console and is intended only "
                 "for application access. This user can read data, but cannot "
@@ -207,6 +218,7 @@ roles() ->
        {[pools], [read]}]},
      {data_writer, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Data Writer">>},
+       {folder, data},
        {desc, <<"Can write data to a given bucket, scope or collection. "
                 "This user cannot access the web console and is intended only "
                 "for application access. This user can write data, but cannot "
@@ -218,6 +230,7 @@ roles() ->
        {[pools], [read]}]},
      {data_dcp_reader, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Data DCP Reader">>},
+       {folder, data},
        {desc, <<"Can initiate DCP streams for a given bucket, scope or "
                 "collection. This user cannot access the web console and is "
                 "intended only for application access. "
@@ -233,6 +246,7 @@ roles() ->
        {[pools], [read]}]},
      {data_backup, [bucket_name],
       [{name, <<"Data Backup & Restore">>},
+       {folder, data},
        {desc, <<"Can backup and restore a given bucket’s data. This user "
                 "cannot access the web console and is intended only for "
                 "application access. This user can read data.">>}],
@@ -247,6 +261,7 @@ roles() ->
        {[pools], [read]}]},
      {data_monitoring, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Data Monitor">>},
+       {folder, data},
        {desc, <<"Can read statistics for a given bucket, scope or collection. "
                 "This user cannot access the web console and is intended only "
                 "for application access. This user cannot read data.">>}],
@@ -256,6 +271,7 @@ roles() ->
        {[pools], [read]}]},
      {fts_admin, [bucket_name],
       [{name, <<"Search Admin">>},
+       {folder, search},
        {desc, <<"Can administer all Full Text Search features. This user can "
                 "access the web console. This user can read some data.">>}],
       [{[{bucket, bucket_name}, fts], [read, write, manage]},
@@ -265,6 +281,7 @@ roles() ->
        {[{bucket, bucket_name}, settings], [read]}]},
      {fts_searcher, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Search Reader">>},
+       {folder, search},
        {desc, <<"Can query Full Text Search indexes for a given bucket, scope "
                 "or collection. This user can access the web console. This "
                 "user can read some data.">>}],
@@ -275,6 +292,7 @@ roles() ->
        {[{bucket, bucket_name}, settings], [read]}]},
      {query_select, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Query Select">>},
+       {folder, 'query'},
        {desc, <<"Can execute a SELECT statement on a given bucket, scope or "
                 "collection to retrieve data. This user can access the web "
                 "console and can read data, but not write it.">>}],
@@ -285,6 +303,7 @@ roles() ->
        {[pools], [read]}]},
      {query_update, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Query Update">>},
+       {folder, 'query'},
        {desc, <<"Can execute an UPDATE statement on a given bucket, scope or "
                 "collection to update data. This user can access the web "
                 "console and write data, but cannot read it.">>}],
@@ -295,6 +314,7 @@ roles() ->
        {[pools], [read]}]},
      {query_insert, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Query Insert">>},
+       {folder, 'query'},
        {desc, <<"Can execute an INSERT statement on a given bucket, scope or "
                 "collection to add data. This user can access the web console "
                 "and insert data, but cannot read it.">>}],
@@ -305,6 +325,7 @@ roles() ->
        {[pools], [read]}]},
      {query_delete, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Query Delete">>},
+       {folder, 'query'},
        {desc, <<"Can execute a DELETE statement on a given bucket, scope or "
                 "collection to delete data. This user can access the web "
                 "console, but cannot read data. This user can delete data.">>}],
@@ -315,6 +336,7 @@ roles() ->
        {[pools], [read]}]},
      {query_manage_index, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Query Manage Index">>},
+       {folder, 'query'},
        {desc, <<"Can manage indexes for a given bucket, scope or collection. "
                 "This user can access the web console, but cannot read data.">>
        }],
@@ -324,6 +346,7 @@ roles() ->
        {[pools], [read]}]},
      {query_system_catalog, [],
       [{name, <<"Query System Catalog">>},
+       {folder, 'query'},
        {desc, <<"Can look up system catalog information via N1QL. This user "
                 "can access the web console, but cannot read user data.">>}],
       [{[{bucket, any}, n1ql, index], [list]},
@@ -333,6 +356,7 @@ roles() ->
        {[pools], [read]}]},
      {query_external_access, [],
       [{name, <<"Query CURL Access">>},
+       {folder, 'query'},
        {desc, <<"Can execute the CURL statement from within N1QL. This user "
                 "can access the web console, but cannot read data (within "
                 "Couchbase).">>}],
@@ -342,42 +366,49 @@ roles() ->
        {[pools], [read]}]},
      {query_manage_global_functions, [],
       [{name, <<"Manage Global Functions">>},
+       {folder, 'query'},
        {desc, <<"Can manage global n1ql functions">>}],
       [{[n1ql, udf], [manage]},
        {[ui], [read]},
        {[pools], [read]}]},
      {query_execute_global_functions, [],
       [{name, <<"Execute Global Functions">>},
+       {folder, 'query'},
        {desc, <<"Can execute global n1ql functions">>}],
       [{[n1ql, udf], [execute]},
        {[ui], [read]},
        {[pools], [read]}]},
      {query_manage_functions, ?RBAC_SCOPE_PARAMS,
       [{name, <<"Manage Scope Functions">>},
+       {folder, 'query'},
        {desc, <<"Can manage n1ql functions for a given scope">>}],
       [{[{collection, [bucket_name, scope_name, any]}, n1ql, udf], [manage]},
        {[ui], [read]},
        {[pools], [read]}]},
      {query_execute_functions, ?RBAC_SCOPE_PARAMS,
       [{name, <<"Execute Scope Functions">>},
+       {folder, 'query'},
        {desc, <<"Can execute n1ql functions for a given scope">>}],
       [{[{collection, [bucket_name, scope_name, any]}, n1ql, udf], [execute]},
        {[ui], [read]},
        {[pools], [read]}]},
      {query_manage_global_external_functions, [],
       [{name, <<"Manage Global External Functions">>},
+       {folder, 'query'},
        {desc, <<"Can manage global external language functions">>}],
       [{[n1ql, udf_external], [manage]},
        {[ui], [read]},
        {[pools], [read]}]},
      {query_execute_global_external_functions, [],
       [{name, <<"Execute Global External Functions">>},
+       {folder, 'query'},
        {desc, <<"Can execute global external language functions">>}],
       [{[n1ql, udf_external], [execute]},
        {[ui], [read]},
        {[pools], [read]}]},
      {query_manage_external_functions, ?RBAC_SCOPE_PARAMS,
       [{name, <<"Manage Scope External Functions">>},
+       {folder, 'query'},
        {desc, <<"Can manage external language functions for a given scope">>}],
       [{[{collection, [bucket_name, scope_name, any]}, n1ql,
          udf_external], [manage]},
@@ -385,6 +416,7 @@ roles() ->
        {[pools], [read]}]},
      {query_execute_external_functions, ?RBAC_SCOPE_PARAMS,
       [{name, <<"Execute Scope External Functions">>},
+       {folder, 'query'},
        {desc, <<"Can execute external language functions for a given scope">>}],
       [{[{collection, [bucket_name, scope_name, any]}, n1ql,
          udf_external], [execute]},
@@ -392,6 +424,7 @@ roles() ->
        {[pools], [read]}]},
      {replication_target, [bucket_name],
       [{name, <<"XDCR Inbound">>},
+       {folder, xdcr},
        {desc, <<"Can create XDCR streams into a given bucket. This user cannot "
                 "access the web console or read any data.">>}],
       [{[{bucket, bucket_name}, settings], [read]},
@@ -400,6 +433,7 @@ roles() ->
        {[pools], [read]}]},
      {analytics_manager, [bucket_name],
       [{name, <<"Analytics Manager">>},
+       {folder, analytics},
        {desc, <<"Can manage Analytics local links. Can manage datasets on a "
                 "given bucket. Can query datasets created on this bucket. "
                 "This user can access the web console and read some data.">>}],
@@ -408,6 +442,7 @@ roles() ->
        {[pools], [read]}]},
      {analytics_reader, [],
       [{name, <<"Analytics Reader">>},
+       {folder, analytics},
        {desc, <<"Can query datasets. This is a global role as datasets may "
                 "be created on different buckets. This user can access the "
                 "web console and read some data.">>}],
@@ -417,6 +452,7 @@ roles() ->
        {[pools], [read]}]},
      {analytics_select, [bucket_name],
       [{name, <<"Analytics Select">>},
+       {folder, analytics},
        {desc, <<"Can query datasets created on this bucket. This user can "
                 "access the web console and read some data.">>}],
       [{[{bucket, bucket_name}, analytics], [select]},
@@ -424,6 +460,7 @@ roles() ->
        {[pools], [read]}]},
      {analytics_admin, [],
       [{name, <<"Analytics Admin">>},
+       {folder, analytics},
        {desc, <<"Can manage dataverses. Can manage all Analytics links. "
                 "Can manage all datasets. This user can access the web "
                 "console but cannot read data.">>}],
@@ -433,6 +470,7 @@ roles() ->
        {[pools], [read]}]},
      {mobile_sync_gateway, [bucket_name],
       [{name, <<"Sync Gateway">>},
+       {folder, mobile},
        {desc, <<"Full access to bucket data as required by Sync Gateway. "
                 "This user cannot access the web console and is intended "
                 "only for use by Sync Gateway. This user can read and "
@@ -447,6 +485,17 @@ roles() ->
        {[admin, memcached, idle], [write]},
        {[settings, autocompaction], [read]},
        {[pools], [read]}]}].
+
+ui_folders() ->
+    [{admin, "Administrative Roles"},
+     {bucket, "Bucket Roles"},
+     {data, "Data Service"},
+     {views, "Views"},
+     {'query', "Query and Index Services"},
+     {search, "Search Service"},
+     {analytics, "Analytics Service"},
+     {xdcr, "Replication Service"},
+     {mobile, "Mobile Service"}].
 
 internal_roles() ->
     [{stats_reader, [], [],
