@@ -116,14 +116,6 @@ function mnIndexesConfig($stateProvider) {
         enterprise: true
       }
     })
-    // .state('app.admin.security.session', {
-    //   url: '/session',
-    //   controller: 'mnSessionController as sessionCtl',
-    //   templateUrl: 'app/mn_admin/mn_session.html',
-    //   data: {
-    //     permissions: "cluster.admin.security.read"
-    //   }
-    // })
     .state('app.admin.security.rootCertificate', {
       url: '/rootCertificate',
       controller: 'mnRootCertificateController as rootCertificateCtl',
@@ -145,15 +137,6 @@ function mnIndexesConfig($stateProvider) {
       controller: 'mnAuditController as auditCtl',
       templateUrl: 'app/mn_admin/mn_audit.html',
       data: {
-        enterprise: true
-      }
-    })
-    .state('app.admin.security.redaction', {
-      url: '/redaction',
-      controller: 'mnRedactionController as redactionCtl',
-      templateUrl: 'app/mn_admin/mn_redaction.html',
-      data: {
-        compat: "atLeast55",
         enterprise: true
       }
     });

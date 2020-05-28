@@ -59,6 +59,16 @@ let sessionState = {
   }
 };
 
+let logRedactionState = {
+  name: 'app.admin.security.redaction.**',
+  url: '/redaction',
+  loadChildren: () => {
+    return import('./mn.log.redaction.module.js').then(m => {
+      return m.MnLogRedactionModule;
+    });
+  }
+};
+
 let overviewState = {
   name: 'app.admin.overview.**',
   url: '/overview',
@@ -189,6 +199,6 @@ export let mnAppImports = [
   MnSharedModule,
   MnElementCraneModule.forRoot(),
   UIRouterUpgradeModule.forRoot({
-    states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, groupsState, documentsState, gsiState, viewsState, settingsState, securityState, xdcrState, collectionsState, sessionState]
+    states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, groupsState, documentsState, gsiState, viewsState, settingsState, securityState, xdcrState, collectionsState, sessionState, logRedactionState]
   })
 ];
