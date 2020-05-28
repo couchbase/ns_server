@@ -29,7 +29,7 @@
          handle_ensure_manifest/3]).
 
 handle_get(Bucket, Req) ->
-    assert_api_available(Bucket),
+    assert_api_available_for_read(Bucket),
     {ok, BucketCfg} = ns_bucket:get_bucket(Bucket),
     menelaus_util:reply_json(Req, collections:manifest_json(BucketCfg)).
 
@@ -104,14 +104,17 @@ handle_ensure_manifest(Bucket, Uid, Req) ->
        nodes_validator(BucketNodes, Req, _),
        validator:unsupported(_)]).
 
-assert_api_available(Bucket) ->
+assert_api_available_for_read(_Bucket) ->
     case collections:enabled() of
         true ->
             ok;
         false ->
             menelaus_util:web_exception(
               400, "Not allowed until entire cluster is upgraded to 7.0")
-    end,
+    end.
+
+assert_api_available(Bucket) ->
+    assert_api_available_for_read(Bucket),
     {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
     case collections:enabled(BucketConfig) of
         true ->
