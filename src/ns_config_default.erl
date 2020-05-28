@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2019 Couchbase, Inc.
+%% @copyright 2009-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -175,7 +175,8 @@ default() ->
        {tracing_enabled, IsEnterprise},
        {datatype_snappy, true},
        {num_reader_threads, <<"default">>},
-       {num_writer_threads, <<"default">>}]},
+       {num_writer_threads, <<"default">>},
+       {num_storage_threads, <<"default">>}]},
 
      %% Memcached config
      {{node, node(), memcached},
@@ -279,6 +280,7 @@ default() ->
         {system_connections, system_connections},
         {num_reader_threads, num_reader_threads},
         {num_writer_threads, num_writer_threads},
+        {num_storage_threads, num_storage_threads},
 
         {logger,
          {[{filename, {"~s/~s", [log_path, log_prefix]}},
