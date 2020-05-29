@@ -1,7 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # @author Couchbase <info@couchbase.com>
-# @copyright 2011-2019 Couchbase, Inc.
+# @copyright 2011-2020 Couchbase, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,8 +17,9 @@
 import os
 import sys
 import getopt
-import urllib2
-import urllib
+import urllib.request
+import urllib.parse
+import urllib.error
 import json
 import traceback
 from functools import reduce
@@ -30,7 +31,7 @@ valid_index_storage_modes = ["forestdb", "plasma", "memory_optimized"]
 
 
 def usage():
-    print "usage: \n\
+    print("usage: \n\
             -n <number of nodes>\n\
             -T <services to run. kv if unspecified>\n\
                (eg: n0:kv,n1:index+n1ql+fts+eventing+cbas+backup)\n\
@@ -45,15 +46,19 @@ def usage():
             -r <num replicas> (max 3) default: 1\n\
                (Only for ephemeral or membase buckets!)\n\
             -i (don't index replicas) default: replica index enabled\n\
-            -p <networking protocol to use> (ipv4, ipv6) default: ipv4"
+            -p <networking protocol to use> (ipv4, ipv6) default: ipv4")
 
 
-class PasswordManager(urllib2.HTTPPasswordMgr):
+class PasswordManager(urllib.request.HTTPPasswordMgr):
     def __init__(self, username, password):
         self.auth = (username, password)
 
     def find_user_password(self, realm, authuri):
         return self.auth
+
+
+def do_encode(input_string):
+    return input_string.encode()
 
 
 def main():
@@ -63,7 +68,7 @@ def main():
                                    ["dont-rebalance", "afamily=",
                                     "enable-encryption"])
     except getopt.GetoptError as err:
-        print str(err)
+        print(str(err))
         usage()
         sys.exit()
     nodes = 0
@@ -103,7 +108,8 @@ def main():
                 deploy = plan[0].split('+')
             else:
                 plan = dict(e.split(':') for e in plan)
-                deploy = dict([(k, v.split('+')) for k, v in plan.items()])
+                deploy = dict([(k, v.split('+'))
+                               for k, v in plan.items()])
         elif o in ("-p", "--afamily"):
             if a not in ("ipv4", "ipv6"):
                 assert False, "invalid address family"
@@ -122,7 +128,7 @@ def main():
 
     if isinstance(deploy, list):
         services = deploy
-        deploy = dict(("n%d" % i, services[:]) for i in xrange(nodes))
+        deploy = dict(("n%d" % i, services[:]) for i in range(nodes))
 
     if "kv" not in deploy.get("n0", []):
         deploy["n0"] = deploy.get("n0", []) + ["kv"]
@@ -137,76 +143,82 @@ def main():
         sys.exit()
 
     password_mgr = PasswordManager("Administrator", "asdasd")
-    handler = urllib2.HTTPBasicAuthHandler(password_mgr)
-    o = urllib2.build_opener(handler)
+    handler = urllib.request.HTTPBasicAuthHandler(password_mgr)
+    o = urllib.request.build_opener(handler)
 
-    print "Connecting {0} nodes, bucket type {1}, mem size {2} " \
-        "with {3} replica copies, password asdasd, "\
-        "deployment plan {4}\n".format(
-            nodes, buckettype, memsize, replicas, str(deploy))
+    print("Connecting {0} nodes, bucket type {1}, mem size {2} "
+          "with {3} replica copies, password asdasd, "
+          "deployment plan {4}\n".format(
+              nodes, buckettype, memsize, replicas, str(deploy)))
 
     base_port = 9000
 
     addr = "127.0.0.1" if protocol == "ipv4" else "[::1]"
     services = deploy["n0"]
-    print "Connecting node 0 with services {0}".format(str(services))
+    print("Connecting node 0 with services {0}".format(str(services)))
 
     info = json.loads(o.open("http://{0}:{1}/pools".format(
         addr, base_port)).read())
     community_edition = info['isEnterprise'] is not True
 
-    net_opts = "afamily={0}".format(protocol) + \
-               "&nodeEncryption={0}".format("on" if encryption else "off")
+    net_opts = do_encode(
+        "afamily={0}".format(protocol) +
+        "&nodeEncryption={0}".format(
+            "on" if encryption else "off"))
     o.open("http://{0}:{1}/node/controller/enableExternalListener".format(
            addr, base_port), net_opts)
     o.open("http://{0}:{1}/node/controller/setupNetConfig".format(
            addr, base_port), net_opts)
+    data = do_encode("services={0}".format(",".join(services)))
     o.open("http://{0}:{1}/node/controller/setupServices".format(
-           addr, base_port),
-           "services={0}".format(",".join(services))).read()
-    o.open("http://{0}:{1}/pools/default".format(addr, base_port),
-           "memoryQuota=" + str(memsize) +
-           "&indexMemoryQuota=" + str(indexmemsize)).read()
+           addr, base_port), data).read()
+    data = do_encode("memoryQuota=" + str(memsize) +
+                     "&indexMemoryQuota=" + str(indexmemsize))
+    o.open("http://{0}:{1}/pools/default".format(addr, base_port), data).read()
+    data = do_encode("name=default" +
+                     "&authType=sasl" +
+                     "&saslPassword=" +
+                     "&bucketType=" + buckettype +
+                     "&storageBackend=" + storage_backend +
+                     "&ramQuotaMB=" + str(memsize) +
+                     "&replicaNumber=" + str(replicas) +
+                     "&replicaIndex=" + bool_request_value(replica_index))
     o.open("http://{0}:{1}/pools/default/buckets".format(addr, base_port),
-           "name=default" +
-           "&authType=sasl" +
-           "&saslPassword=" +
-           "&bucketType=" + buckettype +
-           "&storageBackend=" + storage_backend +
-           "&ramQuotaMB=" + str(memsize) +
-           "&replicaNumber=" + str(replicas) +
-           "&replicaIndex=" + bool_request_value(replica_index)).read()
+           data).read()
+    data = do_encode("port=SAME&username=Administrator&password=asdasd")
     o.open("http://{0}:{1}/settings/web".format(addr, base_port),
-           "port=SAME&username=Administrator&password=asdasd").read()
+           data).read()
     if index_storage_mode is not None:
         o.open("http://{0}:{1}/settings/indexes".format(addr, base_port),
-                "storageMode=" + index_storage_mode).read()
+               do_encode("storageMode=" + index_storage_mode)).read()
 
     for i in range(1, nodes):
         port = base_port + i
         services = deploy.get("n" + str(i), [])
         if not services:
             services = ["kv"]
-        print "Connecting node {0} with services {1}".format(i, str(services))
+        print("Connecting node {0} with services {1}".format(i, str(services)))
         cluster_member_port = base_port if community_edition else \
             base_port + 10000
+        data = do_encode("user=Administrator&password=asdasd&" +
+                         "clusterMemberHostIp={0}".format(addr) +
+                         "&clusterMemberPort={0}".format(cluster_member_port) +
+                         "&services={0}".format(",".join(services)))
         o.open("http://{0}:{1}/node/controller/doJoinCluster".format(
-               addr, port),
-               "user=Administrator&password=asdasd&" +
-               "clusterMemberHostIp={0}".format(addr) +
-               "&clusterMemberPort={0}".format(cluster_member_port) +
-               "&services={0}".format(",".join(services))).read()
+               addr, port), data).read()
 
     if do_rebalance:
-        print "Getting node list"
+        print("Getting node list")
         info = json.loads(o.open("http://{0}:{1}/nodeStatuses".format(
             addr, base_port)).read())
 
-        print "Servers added, triggering rebalance."
-        o.open("http://{0}:{1}/controller/rebalance".format(addr, base_port),
-               urllib.urlencode(
+        print("Servers added, triggering rebalance.")
+        data = do_encode(urllib.parse.urlencode(
             {'knownNodes': ",".join([info[k]['otpNode'] for k in info]),
-             'ejectedNodes': ''})).read()
+                'ejectedNodes': ''}))
+
+        o.open("http://{0}:{1}/controller/rebalance".format(addr, base_port),
+               data).read()
 
 
 def bool_request_value(value):
@@ -216,7 +228,7 @@ def bool_request_value(value):
 if __name__ == '__main__':
     try:
         main()
-    except urllib2.HTTPError as e:
+    except urllib.error.HTTPError as e:
         traceback.print_exc()
         print("\nError {}: {} ({})".format(e.code, e.reason, e.read()))
         sys.exit(1)
