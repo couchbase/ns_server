@@ -25,15 +25,27 @@ const MnPoolsProvider = {
   deps: ['$injector']
 };
 
+class MnPermissions {}
+const MnPermissionsProvider = {
+  provide: MnPermissions,
+  useFactory: function MnPermissionsFactory(i) {
+    return i.get('mnPermissions');
+  },
+  deps: ['$injector']
+};
+
+
 let ajsUpgradedProviders = [
   $stateProvider,
   MnPoolsProvider,
-  MnPendingQueryKeeperProvider
+  MnPendingQueryKeeperProvider,
+  MnPermissionsProvider
 ];
 
 export {
   ajsUpgradedProviders,
   $state,
+  MnPools,
   MnPendingQueryKeeper,
-  MnPools
+  MnPermissions
 };

@@ -6,10 +6,10 @@ import {pluck, take, filter, switchMap,
 import {combineLatest, Subject, timer} from "/ui/web_modules/rxjs.js";
 import {equals, compose, not} from "/ui/web_modules/ramda.js";
 import {NgbModal} from "/ui/web_modules/@ng-bootstrap/ng-bootstrap.js";
+import {MnPermissions} from '/ui/app/ajs.upgraded.providers.js';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnCollectionsService} from './mn.collections.service.js';
-import {MnPermissionsService} from './mn.permissions.service.js';
 import {MnBucketsService} from './mn.buckets.service.js';
 import {MnCollectionsAddScopeComponent} from './mn.collections.add.scope.component.js';
 import {MnCollectionsAddItemComponent} from './mn.collections.add.item.component.js';
@@ -26,13 +26,13 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
 
   static get parameters() { return [
     MnCollectionsService,
-    MnPermissionsService,
+    MnPermissions,
     MnBucketsService,
     UIRouter,
     NgbModal
   ]}
 
-  constructor(mnCollectionsService, mnPermissionsService, mnBucketsService,
+  constructor(mnCollectionsService, mnPermissions, mnBucketsService,
               uiRouter, modalService) {
     super();
 
@@ -49,16 +49,14 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
     var setBucketUrlParam = (v) =>
         uiRouter.stateService.go('.', {collectionsBucket: v.name}, {notify: false});
 
-    var filterBuckets = ([buckets, permissions]) => Object
+    var filterBuckets = buckets => Object
         .keys(buckets)
         .filter(bucketName =>
-                permissions[`cluster.bucket[${bucketName}].collections!read`]
+                mnPermissions.export.cluster.bucket[bucketName].collections.read
                 && buckets[bucketName].bucketType !== "memcached");
 
     var getBuckets =
-        combineLatest(mnBucketsService.stream.getBucketsByName,
-                      mnPermissionsService.stream.getBucketsPermissions)
-        .pipe(map(filterBuckets));
+        mnBucketsService.stream.getBucketsByName.pipe(map(filterBuckets));
 
     var getBucketUrlParam =
         uiRouter.globals.params$.pipe(pluck("collectionsBucket"))

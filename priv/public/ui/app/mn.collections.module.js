@@ -10,7 +10,6 @@ import { MnCollectionsItemComponent } from './mn.collections.item.component.js';
 import { MnCollectionsScopeComponent } from './mn.collections.scope.component.js';
 import { MnCollectionsScopeDetailsComponent } from './mn.collections.scope.details.component.js';
 import { MnCollectionsService } from './mn.collections.service.js';
-import { MnPermissionsService } from './mn.permissions.service.js';
 import { MnSharedModule } from './mn.shared.module.js';
 import { MnBucketsService } from './mn.buckets.service.js';
 import { MnCollectionsAddScopeComponent } from './mn.collections.add.scope.component.js';
@@ -73,7 +72,6 @@ class MnCollectionsModule {
         UIRouterModule.forChild({ states: [collectionsState] })
       ],
       providers: [
-        MnPermissionsService,
         MnCollectionsService,
         MnBucketsService
       ]
