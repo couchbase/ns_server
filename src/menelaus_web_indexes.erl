@@ -171,8 +171,8 @@ handle_settings_post(Req) ->
 handle_index_status(Req) ->
     AllowedBuckets =
         [list_to_binary(B) ||
-            B <- menelaus_auth:get_accessible_buckets(
-                   ?cut({[{bucket, _}, n1ql, index], read}), Req)],
+            {B, _} <- menelaus_auth:get_accessible_buckets(
+                        ?cut({[{bucket, _}, n1ql, index], read}), Req)],
 
     {ok, Indexes0, Stale, Version} = service_index:get_indexes(),
     Indexes =

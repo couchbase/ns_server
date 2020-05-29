@@ -45,14 +45,15 @@
 
 %% External API
 
--spec get_accessible_buckets(fun ((bucket_name()) -> rbac_permission()), mochiweb_request()) ->
-                                    [bucket_name()].
+-spec get_accessible_buckets(
+        fun ((bucket_name()) -> rbac_permission()), mochiweb_request()) ->
+                                    [{bucket_name(), list()}].
 get_accessible_buckets(Fun, Req) ->
     Identity = get_identity(Req),
     Roles = menelaus_roles:get_compiled_roles(Identity),
 
-    [BucketName ||
-        {BucketName, _Config} <- ns_bucket:get_buckets(),
+    [{BucketName, Config} ||
+        {BucketName, Config} <- ns_bucket:get_buckets(),
         menelaus_roles:is_allowed(Fun(BucketName), Roles)].
 
 -spec get_cookies(mochiweb_request()) -> [{string(), string()}].

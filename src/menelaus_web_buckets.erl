@@ -23,6 +23,7 @@
 -include("ns_common.hrl").
 -include("couch_db.hrl").
 -include("ns_stats.hrl").
+-include("cut.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -93,12 +94,10 @@ may_expose_bucket_auth(Name, Req) ->
     end.
 
 handle_bucket_list(Req) ->
-    BucketNamesUnsorted =
-        menelaus_auth:get_accessible_buckets(fun (BucketName) ->
-                                                     {[{bucket, BucketName}, settings], read}
-                                             end, Req),
+    BucketsUnsorted = menelaus_auth:get_accessible_buckets(
+                        ?cut({[{bucket, _}, settings], read}), Req),
 
-    BucketNames = lists:sort(fun (A,B) -> A =< B end, BucketNamesUnsorted),
+    Buckets = lists:sort(fun (A,B) -> A =< B end, BucketsUnsorted),
 
     LocalAddr = menelaus_util:local_addr(Req),
     InfoLevel = case proplists:get_value("basic_stats", mochiweb_request:parse_qs(Req)) of
@@ -106,9 +105,9 @@ handle_bucket_list(Req) ->
                     _ -> for_ui
                 end,
     SkipMap = proplists:get_value("skipMap", mochiweb_request:parse_qs(Req)) =:= "true",
-    BucketsInfo = [build_bucket_info(Name, undefined, InfoLevel, LocalAddr,
+    BucketsInfo = [build_bucket_info(Name, BucketConfig, InfoLevel, LocalAddr,
                                      may_expose_bucket_auth(Name, Req), SkipMap)
-                   || Name <- BucketNames],
+                   || {Name, BucketConfig} <- Buckets],
     reply_json(Req, BucketsInfo).
 
 handle_bucket_info(_PoolId, Id, Req) ->
