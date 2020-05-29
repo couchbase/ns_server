@@ -36,7 +36,9 @@
          get_manifest/1,
          get_scope/2,
          get_collection/2,
-         get_uid/1]).
+         get_uid/1,
+         get_scopes/1,
+         get_collections/1]).
 
 %% rpc from other nodes
 -export([wait_for_manifest_uid/4]).

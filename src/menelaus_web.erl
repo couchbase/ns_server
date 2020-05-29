@@ -226,6 +226,8 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["_uistats"] ->
                     {{[ui], read},
                      fun menelaus_stats:serve_ui_stats/1};
+                ["_uiroles"] ->
+                    {{[ui], read}, fun menelaus_web_rbac:handle_get_uiroles/1};
                 ["_uiEnv"] ->
                     {done, serve_ui_env(Req)};
                 ["poolsStreaming", "default"] ->

@@ -58,7 +58,8 @@
          handle_delete_profile/2,
          handle_put_profile/2,
          handle_lookup_ldap_user/2,
-         gen_password/1
+         gen_password/1,
+         handle_get_uiroles/1
 ]).
 
 -define(MIN_USERS_PAGE_SIZE, 2).
@@ -189,19 +190,23 @@ get_roles_by_permission(Permission, Config) ->
       menelaus_roles:produce_roles_by_permission(Permission, Config),
       pipes:collect()).
 
+maybe_remove_security_roles(Req, Config, Roles) ->
+    Roles --
+        case menelaus_auth:has_permission(?SECURITY_READ, Req) of
+            true ->
+                [];
+            false ->
+                menelaus_roles:get_security_roles(Config)
+        end.
+
 handle_get_roles(Req) ->
     Config = ns_config:get(),
     validator:handle(
       fun (Values) ->
               Permission = proplists:get_value(permission, Values),
-              Roles =
-                  get_roles_by_permission(Permission, Config) --
-                  case menelaus_auth:has_permission(?SECURITY_READ, Req) of
-                      true ->
-                          [];
-                      false ->
-                          menelaus_roles:get_security_roles(Config)
-                  end,
+              Roles = maybe_remove_security_roles(
+                        Req, Config,
+                        get_roles_by_permission(Permission, Config)),
               Json =
                   [{role_to_json(Role) ++ jsonify_props(Props)} ||
                       {Role, Props} <- Roles],
@@ -1676,6 +1681,72 @@ handle_put_profile(RawIdentity, Req) ->
     catch _:_ ->
             menelaus_util:reply_json(Req, <<"Invalid Json">>, 400)
     end.
+
+handle_get_uiroles(Req) ->
+    menelaus_util:require_permission(Req, {[admin, security], read}),
+
+    Roles =
+        maybe_remove_security_roles(Req, ns_config:latest(),
+                                    menelaus_roles:get_visible_role_definitions(
+                                      ns_config:latest())),
+    Folders =
+        lists:filtermap(build_ui_folder(_, Roles), menelaus_roles:ui_folders()),
+
+    Buckets = menelaus_auth:get_accessible_buckets(
+                ?cut({[{bucket, _}, settings], read}), Req),
+
+    Parameters = {[build_ui_parameters(bucket_name, Buckets)]},
+
+    menelaus_util:reply_json(Req, {[{folders, Folders},
+                                    {parameters, Parameters}]}).
+
+build_ui_folder({Key, Name}, Roles) ->
+    case lists:filter(fun ({_, _, Props, _}) ->
+                              proplists:get_value(folder, Props) =:= Key
+                      end, Roles) of
+        [] ->
+            false;
+        FolderRoles ->
+            {true, {[{name, list_to_binary(Name)},
+                     {roles, [build_ui_role(Role) || Role <- FolderRoles]}]}}
+    end.
+
+build_ui_role({Role, Params, Props, _}) ->
+    {[{role, Role}, {params, Params} | jsonify_props(Props)]}.
+
+build_ui_value(Value, Children) ->
+    case lists:filter(fun ({_, L}) -> L =/= [] end, Children) of
+        [] ->
+            {[{value, list_to_binary(Value)}]};
+        NonEmpty ->
+            {[{value, list_to_binary(Value)},
+              {children, {NonEmpty}}]}
+    end.
+
+build_ui_parameters(Name, List) ->
+    {Name, build_ui_values(Name, List)}.
+
+build_ui_values(bucket_name, Buckets) ->
+    lists:map(
+      fun ({Name, BucketCfg}) ->
+              Scopes =
+                  case cluster_compat_mode:is_enterprise() andalso
+                      collections:enabled(BucketCfg) of
+                      true ->
+                          collections:get_scopes(
+                            collections:get_manifest(BucketCfg));
+                      false ->
+                          []
+                  end,
+              build_ui_value(Name, [build_ui_parameters(scope_name, Scopes)])
+      end, Buckets);
+build_ui_values(scope_name, Scopes) ->
+    [build_ui_value(
+       Name, [build_ui_parameters(collection_name,
+                                  collections:get_collections(Scope))]) ||
+        {Name, Scope} <- Scopes];
+build_ui_values(collection_name, Collections) ->
+    [build_ui_value(Name, []) || {Name, _} <- Collections].
 
 -ifdef(TEST).
 role_to_string_test() ->

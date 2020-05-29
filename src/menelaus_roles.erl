@@ -69,6 +69,7 @@
          external_auth_polling_interval/0,
          get_param_defs/2,
          ui_folders/0,
+         get_visible_role_definitions/1,
          strip_ids/2]).
 
 -export([start_compiled_roles_cache/0]).
@@ -953,13 +954,16 @@ validate_role(Role, Params, Definitions, Buckets) ->
             false
     end.
 
+get_visible_role_definitions(Config) ->
+    pipes:run(pipes:stream_list(get_definitions(Config, public)),
+              visible_roles_filter(),
+              pipes:collect()).
+
 -spec validate_roles([rbac_role()], ns_config()) ->
                             {GoodRoles :: [rbac_role()],
                              BadRoles :: [rbac_role()]}.
 validate_roles(Roles, Config) ->
-    Definitions = pipes:run(pipes:stream_list(get_definitions(Config, public)),
-                            visible_roles_filter(),
-                            pipes:collect()),
+    Definitions = get_visible_role_definitions(Config),
     Buckets = ns_bucket:get_buckets(Config),
     lists:foldl(fun (Role, {Validated, Unknown}) ->
                         case validate_role(Role, Definitions, Buckets) of
