@@ -203,9 +203,14 @@ handle_get_roles(Req) ->
                           menelaus_roles:get_security_roles(Config)
                   end,
               Json =
-                  [{role_to_json(Role) ++ Props} || {Role, Props} <- Roles],
+                  [{role_to_json(Role) ++ jsonify_props(Props)} ||
+                      {Role, Props} <- Roles],
               menelaus_util:reply_json(Req, Json)
       end, Req, qs, get_users_or_roles_validators()).
+
+jsonify_props(Props) ->
+    [{name, proplists:get_value(name, Props)},
+     {desc, proplists:get_value(desc, Props)}].
 
 user_to_json({Id, Domain}, Props) ->
     Is65 = cluster_compat_mode:is_cluster_65(),
