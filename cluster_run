@@ -1,7 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # @author Couchbase <info@couchbase.com>
-# @copyright 2011-2019 Couchbase, Inc.
+# @copyright 2011-2020 Couchbase, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -392,7 +392,7 @@ def start_cluster(num_nodes, start_index, extra_args, args_prefix,
 
         return pr
 
-    return [start_node(i + start_index) for i in xrange(num_nodes)]
+    return [start_node(i + start_index) for i in range(num_nodes)]
 
 
 def usage():
@@ -445,7 +445,7 @@ def main():
                                            "pretend-version=", "afamily="])
     except getopt.GetoptError as err:
         # print help information and exit:
-        print str(err)  # will print something like "option -a not recognized"
+        print(str(err))  # will print something like "option -a not recognized"
         usage()
         sys.exit(2)
 
@@ -559,7 +559,7 @@ def main():
         extra_args += ["-ns_babysitter", "handle_ctrl_c", "true"]
 
     if loglevel not in LOGLEVELS:
-        print "Valid log levels are the following: %s" % ', '.join(LOGLEVELS)
+        print("Valid log levels are the following: %s" % ', '.join(LOGLEVELS))
         sys.exit(1)
     extra_args += ["-ns_server", "loglevel_stderr", loglevel]
 
