@@ -61,9 +61,11 @@ handle_pools(Req) ->
            {allowedServices, AllowedServices},
            {isIPv6, misc:is_ipv6()}, %% Obsolete, use 'addressFamily' from
                                      %% /pools/default or /nodes/self instead
-           {isDeveloperPreview, cluster_compat_mode:is_developer_preview()}
+           {isDeveloperPreview, cluster_compat_mode:is_developer_preview()},
+           {packageVariant,
+            menelaus_web_cache:get_static_value(package_variant)}
            | get_content_for_provisioned_system()],
-    RV = RV1 ++ menelaus_web_cache:versions_response(),
+    RV = RV1 ++ menelaus_web_cache:get_static_value(versions),
     reply_json(Req, {struct, RV}).
 
 get_content_for_provisioned_system() ->
