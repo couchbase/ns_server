@@ -182,7 +182,7 @@ class MnForm {
       });
     //skip initialization of the form
     ;(permissionStream || new BehaviorSubject(true)).pipe(
-      switchMap((v) => v ? this.group.valueChanges.pipe(skip(1)) : Rx.NEVER),
+      switchMap((v) => v ? this.group.valueChanges : Rx.NEVER),
       throttleTime(500, undefined, {leading: true, trailing: true}),
       // Rx.operators.debounceTime(0),
       this.getPackPipe(),

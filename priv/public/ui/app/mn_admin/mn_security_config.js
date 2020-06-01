@@ -131,13 +131,5 @@ function mnIndexesConfig($stateProvider) {
       data: {
         enterprise: true
       }
-    })
-    .state('app.admin.security.audit', {
-      url: '/audit',
-      controller: 'mnAuditController as auditCtl',
-      templateUrl: 'app/mn_admin/mn_audit.html',
-      data: {
-        enterprise: true
-      }
     });
 }

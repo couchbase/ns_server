@@ -69,6 +69,16 @@ let logRedactionState = {
   }
 };
 
+let auditState = {
+  name: 'app.admin.security.audit.**',
+  url: '/audit',
+  loadChildren: () => {
+    return import('./mn.audit.module.js').then(m => {
+      return m.MnAuditModule;
+    });
+  }
+};
+
 let overviewState = {
   name: 'app.admin.overview.**',
   url: '/overview',
@@ -209,6 +219,6 @@ export let mnAppImports = [
   MnSharedModule,
   MnElementCraneModule.forRoot(),
   UIRouterUpgradeModule.forRoot({
-    states: [authState, wizardState, overviewState, statsOverviewState, serversState, bucketsState, logsState, groupsState, documentsState, gsiState, viewsState, settingsState, securityState, xdcrState, collectionsState, sessionState, logRedactionState]
+    states: [authState, wizardState, overviewState, statsOverviewState, serversState, bucketsState, logsState, groupsState, documentsState, gsiState, viewsState, settingsState, securityState, xdcrState, collectionsState, sessionState, logRedactionState, auditState]
   })
 ];

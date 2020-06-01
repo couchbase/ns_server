@@ -1,7 +1,7 @@
 import {Injectable} from "/ui/web_modules/@angular/core.js";
 import {HttpClient, HttpParams, HttpHeaders} from '/ui/web_modules/@angular/common/http.js';
 import {BehaviorSubject} from '/ui/web_modules/rxjs.js';
-import {switchMap, shareReplay} from '/ui/web_modules/rxjs/operators.js';
+import {switchMap, shareReplay, map} from '/ui/web_modules/rxjs/operators.js';
 import {MnHttpRequest} from './mn.http.request.js';
 
 export {MnSecurityService};
@@ -50,6 +50,11 @@ class MnSecurityService {
         switchMap(this.getAuditDescriptors.bind(this)),
         shareReplay({refCount: true, bufferSize: 1}));
 
+    this.stream.getAuditNonFilterableDescriptors =
+      (new BehaviorSubject()).pipe(
+        switchMap(this.getAuditNonFilterableDescriptors.bind(this)),
+        shareReplay({refCount: true, bufferSize: 1}));
+
     this.stream.postLogRedaction =
       new MnHttpRequest(this.postLogRedaction.bind(this))
       .addSuccess()
@@ -90,6 +95,15 @@ class MnSecurityService {
 
   getAuditDescriptors() {
     return this.http.get("/settings/audit/descriptors");
+  }
+
+  getAuditNonFilterableDescriptors() {
+    return this.http
+      .get("/settings/audit/nonFilterableDescriptors")
+      .pipe(map(data => data.map((desc) => {
+        desc.nonFilterable = true;
+        return desc;
+      })));
   }
 
   getAudit() {
