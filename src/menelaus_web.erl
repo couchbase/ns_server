@@ -483,7 +483,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_prometheus:handle_get_metrics/1};
                 ["ui", "pluggable-uis.js"] ->
                     {ui, IsSSL, fun menelaus_pluggable_ui:handle_pluggable_uis_js/3,
-                     [Plugins, ?VERSION_50]};
+                     [Plugins, ?LATEST_UI_COMPAT_VERSION]};
                 [?PLUGGABLE_UI, "ui", RestPrefix | _] ->
                     {ui, IsSSL, fun menelaus_pluggable_ui:maybe_serve_file/4,
                      [RestPrefix, Plugins, nth_path_tail(Path, 3)]};
@@ -989,7 +989,8 @@ handle_ui_root(AppRoot, Path, Plugins, Req) ->
     menelaus_util:reply_ok(
       Req,
       "text/html; charset=utf8",
-      menelaus_pluggable_ui:inject_head_fragments(Filename, ?VERSION_50, Plugins)).
+      menelaus_pluggable_ui:inject_head_fragments(Filename, ?LATEST_UI_COMPAT_VERSION,
+                                                  Plugins)).
 
 handle_serve_file(AppRoot, Path, MaxAge, Req) ->
     menelaus_util:serve_file(

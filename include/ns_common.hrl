@@ -228,6 +228,8 @@
 -define(VERSION_66, [6, 6]).
 -define(VERSION_CHESHIRECAT, [7, 0]).
 
+-define(LATEST_UI_COMPAT_VERSION, ?VERSION_50).
+
 %% Points to latest release
 -define(LATEST_VERSION_NUM, ?VERSION_CHESHIRECAT).
 -define(MASTER_ADVERTISED_VERSION, [7, 0, 0]).
