@@ -160,6 +160,10 @@ command_2_atom(?DCP_COMMIT) ->
     dcp_commit;
 command_2_atom(?DCP_ABORT) ->
     dcp_abort;
+command_2_atom(?DCP_SEQNO_ADVANCED) ->
+    dcp_seqno_advanced;
+command_2_atom(?DCP_OSO_SNAPSHOT) ->
+    dcp_oso_snapshot;
 command_2_atom(_) ->
     not_dcp.
 

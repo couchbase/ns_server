@@ -209,6 +209,8 @@
 -define(DCP_SEQNO_ACKNOWLEDGED,    16#61).
 -define(DCP_COMMIT,                16#62).
 -define(DCP_ABORT,                 16#63).
+-define(DCP_SEQNO_ADVANCED,        16#64).
+-define(DCP_OSO_SNAPSHOT,          16#65).
 
 %% RBAC commands
 -define(MC_AUTH_PROVIDER,             16#F8).
