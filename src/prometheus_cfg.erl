@@ -285,7 +285,7 @@ get_service_port(cbas) -> cbas_admin_port;
 get_service_port(n1ql) -> query_port;
 get_service_port(fts) -> fts_http_port;
 get_service_port(eventing) -> eventing_http_port;
-get_service_port(kv) -> undefined.
+get_service_port(kv) -> memcached_prometheus.
 
 addr2re(A) ->
     Replace = fun (P,V) ->

@@ -60,6 +60,7 @@ all_ports() ->
      ?define_port(memcached_dedicated_port,     undefined, kv, 11209),
      ?define_port(memcached_dedicated_ssl_port, undefined, kv, 11206,
                   secure, memcached_dedicated_port),
+     ?define_port(memcached_prometheus,         undefined, kv, 11280),
      ?define_port(capi_port,                    capi,      kv, 8092),
      ?define_port(ssl_capi_port,                capiSSL,   kv, 18092,
                   secure, capi_port),
