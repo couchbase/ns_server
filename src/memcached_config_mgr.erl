@@ -29,7 +29,8 @@
          is_snappy_enabled/0, collections_enabled/2, get_fallback_salt/2,
          get_external_users_push_interval/2, get_ssl_cipher_list/2,
          get_ssl_cipher_order/2, get_external_auth_service/2,
-         is_external_auth_service_enabled/0, get_afamily_type/2]).
+         is_external_auth_service_enabled/0, get_afamily_type/2,
+         prometheus_cfg/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -437,3 +438,7 @@ get_afamily_type([AFamily], _Params) ->
         Required -> <<"required">>;
         _ -> <<"optional">>
     end.
+
+prometheus_cfg([], _Params) ->
+    {[{port, service_ports:get_port(memcached_prometheus)},
+      {family, ns_config:read_key_fast({node, node(), address_family}, inet)}]}.

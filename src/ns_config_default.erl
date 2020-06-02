@@ -37,7 +37,7 @@ get_current_version() ->
     %% changed in 6.0.4 after 6.5.0 had shipped.  As 6.5.0 had no knowledge
     %% of the 6.0.4 version (as it didn't exist when 6.5.0 shipped) it
     %% was unable to perform an upgrade.
-    {6,5,1}.
+    list_to_tuple(?VERSION_CHESHIRECAT).
 
 get_data_dir() ->
     RawDir = path_config:component_path(data),
@@ -288,7 +288,8 @@ default() ->
         {external_auth_service,
             {memcached_config_mgr, get_external_auth_service, []}},
         {active_external_users_push_interval,
-            {memcached_config_mgr, get_external_users_push_interval, []}}
+            {memcached_config_mgr, get_external_users_push_interval, []}},
+        {prometheus, {memcached_config_mgr, prometheus_cfg, []}}
        ]}},
 
      {memory_quota, KvQuota},
@@ -399,8 +400,11 @@ upgrade_config(Config) ->
             [{set, {node, node(), config_version}, {6,5}} |
              upgrade_config_from_6_0_4_to_6_5(Config)];
         {6,5} ->
-            [{set, {node, node(), config_version}, CurrentVersion} |
+            [{set, {node, node(), config_version}, {6,5,1}} |
              upgrade_config_from_6_5_to_6_5_1(Config)];
+        {6,5,1} ->
+            [{set, {node, node(), config_version}, CurrentVersion} |
+             upgrade_config_from_6_5_1_to_cheshire_cat()];
         OldVersion ->
             ?log_error("Detected an attempt to offline upgrade from "
                        "unsupported version ~p. Terminating.", [OldVersion]),
@@ -495,6 +499,10 @@ upgrade_config_from_6_5_to_6_5_1(Config) ->
 
 do_upgrade_config_from_6_5_to_6_5_1(Config, DefaultConfig) ->
     [upgrade_sub_keys(memcached, [admin_user], Config, DefaultConfig)].
+
+upgrade_config_from_6_5_1_to_cheshire_cat() ->
+    DefaultConfig = default(),
+    [upgrade_key(memcached_config, DefaultConfig)].
 
 encrypt_config_val(Val) ->
     {ok, Encrypted} = encryption_service:encrypt(term_to_binary(Val)),
