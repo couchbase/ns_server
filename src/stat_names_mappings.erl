@@ -18,6 +18,7 @@
          handle_stats_mapping_get/3]).
 
 -include("ns_test.hrl").
+-include("ns_stats.hrl").
 -include("cut.hrl").
 
 -ifdef(TEST).
@@ -209,10 +210,10 @@ pre_70_stat_to_prom_query("@xdcr-" ++ Bucket,
                N =:= <<"resp_wait_time">>;
                N =:= <<"throttle_latency">> ->
             M = Metric(<<"xdcr_", N/binary, "_seconds">>),
-            {ok, multiply_by_scalar(M, 1000)};
+            {ok, convert_units(seconds, milliseconds, M)};
         <<"dcp_dispatch_time">> ->
             M = Metric(<<"xdcr_dcp_dispatch_time_seconds">>),
-            {ok, multiply_by_scalar(M, 1000000000)};
+            {ok, convert_units(seconds, nanoseconds, M)};
         <<"bandwidth_usage">> ->
             M = rate(Metric(<<"xdcr_data_replicated_bytes">>)),
             {ok, named(<<"xdcr_bandwidth_usage_bytes_per_second">>, M)};
@@ -301,8 +302,28 @@ pre_70_stat_to_prom_query("@eventing", <<"eventing/", Stat/binary>>) ->
 pre_70_stat_to_prom_query("@eventing-" ++ _Bucket, _) ->
     {error, not_found};
 
-pre_70_stat_to_prom_query(_, _) ->
-    {error, not_found}.
+pre_70_stat_to_prom_query("@" ++ _, _) ->
+    {error, not_found};
+
+%% Memcached "empty key" metrics:
+pre_70_stat_to_prom_query(_Bucket, <<"curr_connections">>) ->
+    %% curr_connections can't be handled like other metrics because
+    %% it's not actually a "per-bucket" metric, but a global metric
+    {ok, metric(<<"kv_curr_connections">>)};
+pre_70_stat_to_prom_query(Bucket, Stat) ->
+    case kv_stats_mappings:old_to_new(Stat) of
+        {ok, {Type, {Metric, Labels}, {OldUnit, NewUnit}}} ->
+            M = {[{eq, <<"name">>, Metric},
+                  {eq, <<"bucket">>, list_to_binary(Bucket)}] ++
+                 [{eq, K, V} || {K, V} <- Labels]},
+            case Type of
+                counter -> {ok, convert_units(NewUnit, OldUnit, rate(M))};
+                gauge -> {ok, convert_units(NewUnit, OldUnit, M)}
+            end;
+        {error, not_found} ->
+            {error, not_found}
+    end.
+
 
 %% Works for fts and index, Prefix is the only difference
 map_index_stats(Prefix, Counters, Bucket, Stat) ->
@@ -381,6 +402,11 @@ named(Name, Ast) ->
 multiply_by_scalar(Ast, Scalar) ->
     {'*', [Ast, Scalar]}.
 
+convert_units(seconds, nanoseconds, Ast) -> multiply_by_scalar(Ast, 1000000000);
+convert_units(seconds, microseconds, Ast) -> multiply_by_scalar(Ast, 1000000);
+convert_units(seconds, milliseconds, Ast) -> multiply_by_scalar(Ast, 1000);
+convert_units(U, U, Ast) -> Ast.
+
 bin(A) when is_atom(A) -> atom_to_binary(A, latin1);
 bin(L) when is_list(L) -> list_to_binary(L);
 bin(B) when is_binary(B) -> B.
@@ -440,6 +466,12 @@ prom_name_to_pre_70_name(Bucket, {JSONProps}) ->
                     FName ->
                         {ok, <<"eventing/", FName/binary, "/", Name/binary>>}
                 end;
+            <<"kv_", _/binary>> = Name ->
+                DropLabels = [<<"name">>, <<"bucket">>, <<"job">>,
+                              <<"category">>, <<"instance">>, <<"__name__">>],
+                Filter = fun (L) -> not lists:member(L, DropLabels) end,
+                Labels = misc:proplist_keyfilter(Filter, JSONProps),
+                kv_stats_mappings:new_to_old({Name, lists:usort(Labels)});
             _ -> {error, not_found}
         end,
     case Res of
@@ -519,8 +551,8 @@ key_type_by_stat_type("@cbas") -> binary;
 key_type_by_stat_type("@cbas-" ++ _) -> binary;
 key_type_by_stat_type("@xdcr-" ++ _) -> binary;
 key_type_by_stat_type("@eventing") -> binary;
-key_type_by_stat_type("@eventing-" ++ _) -> binary.
-
+key_type_by_stat_type("@eventing-" ++ _) -> binary;
+key_type_by_stat_type(_) -> atom.
 
 
 %% For system stats it's simple, we can get all of them with a simple query
@@ -597,7 +629,9 @@ default_stat_list("@eventing") ->
     [<<"eventing/", (bin(S))/binary>> || S <- Stats] ++
     [<<"eventing/*/", (bin(S))/binary>> || S <- Stats];
 default_stat_list("@eventing-" ++ _) ->
-    [].
+    [];
+default_stat_list(_Bucket) ->
+    [?STAT_GAUGES, ?STAT_COUNTERS].
 
 is_system_stat(<<"cpu_", _/binary>>) -> true;
 is_system_stat(<<"swap_", _/binary>>) -> true;
