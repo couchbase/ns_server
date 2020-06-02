@@ -56,6 +56,7 @@
 
 -export([get_definitions/1,
          get_definitions/2,
+         get_public_definitions/1,
          is_allowed/2,
          get_roles/1,
          get_compiled_roles/1,
