@@ -459,22 +459,17 @@ get_definitions(Type) ->
 get_definitions(Config, all) ->
     get_definitions(Config, public) ++ internal_roles();
 get_definitions(Config, public) ->
-    case cluster_compat_mode:is_cluster_cheshirecat(Config) of
-        true ->
-            roles();
-        false ->
-            case cluster_compat_mode:is_cluster_66(Config) of
-                true ->
-                    menelaus_old_roles:roles_pre_cheshirecat();
-                false ->
-                    case cluster_compat_mode:is_cluster_55(Config) of
-                        true ->
-                            menelaus_old_roles:roles_pre_66();
-                        false ->
-                            menelaus_old_roles:roles_pre_55()
-                    end
-            end
-    end.
+    get_public_definitions(cluster_compat_mode:get_compat_version(Config)).
+
+-spec get_public_definitions(list()) -> [rbac_role_def(), ...].
+get_public_definitions(Version) when Version < ?VERSION_55 ->
+    menelaus_old_roles:roles_pre_55();
+get_public_definitions(Version) when Version < ?VERSION_66 ->
+    menelaus_old_roles:roles_pre_66();
+get_public_definitions(Version) when Version < ?VERSION_CHESHIRECAT ->
+    menelaus_old_roles:roles_pre_cheshirecat();
+get_public_definitions(_) ->
+    roles().
 
 -spec object_match(
         rbac_permission_object(), rbac_permission_pattern_object()) ->
@@ -1335,8 +1330,8 @@ produce_roles_by_permission_test_() ->
              meck:new(cluster_compat_mode, [passthrough]),
              meck:expect(cluster_compat_mode, is_enterprise,
                          fun () -> true end),
-             meck:expect(cluster_compat_mode, is_cluster_cheshirecat,
-                         fun (_) -> true end)
+             meck:expect(cluster_compat_mode, get_compat_version,
+                         fun (_) -> ?VERSION_CHESHIRECAT end)
      end,
      fun (_) ->
              meck:unload(cluster_compat_mode)
