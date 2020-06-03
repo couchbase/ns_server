@@ -109,6 +109,7 @@ angular.module('mnSettingsNotificationsService', [
 
       var stats = {
         cluster_settings: {},
+        packageVariant: pools.packageVariant,
         version: pools.implementationVersion,
         componentsVersion: pools.componentsVersion,
         uuid: pools.uuid,
