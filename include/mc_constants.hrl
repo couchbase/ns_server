@@ -115,6 +115,7 @@
 -define(CMD_ISASL_REFRESH, 16#f1).
 -define(CMD_SSL_CERTS_REFRESH, 16#f2).
 -define(CMD_RBAC_REFRESH, 16#f7).
+-define(CMD_GET_ERROR_MAP, 16#fe).
 
 -define(RGET,        16#30).
 -define(RSET,        16#31).
