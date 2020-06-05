@@ -139,17 +139,5 @@ function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider, mnPluggableUi
           controller: 'mnLostConnectionController as lostConnCtl'
         }
       }
-    })
-    .state('app.admin.statistics_overview', {
-      url: '/stats_overview?overviewHostname&overviewBucket&overviewZoom',
-      views: {
-        "main@app.admin": {
-          controller: 'mnStatisticsOverviewController as statisticsOverviewCtl',
-          templateUrl: 'app/mn_admin/mn_statistics_overview.html',
-        }
-      },
-      data: {
-        title: "Statistics Overview"
-      }
     });
 }

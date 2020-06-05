@@ -19,7 +19,6 @@ import mnGsiService from "./mn_gsi_service.js";
 import mnStatisticsDetailedChartController from "./mn_statistics_detailed_chart_controller.js";
 import mnGroupDialogController from "./mn_statistics_group_controller.js";
 import mnScenarioDialogController from "./mn_statistics_scenario_controller.js";
-import mnStatisticsOverviewController from "./mn_statistics_overview_controller.js";
 import {mnStatisticsNewChartBuilderController, mnFormatStatsSections} from "./mn_statistics_chart_builder_controller.js";
 
 export default "mnStatisticsNew";
@@ -47,7 +46,6 @@ angular
   .controller('mnStatisticsDetailedChartController', mnStatisticsDetailedChartController)
   .controller('mnGroupDialogController', mnGroupDialogController)
   .controller("mnStatisticsNewChartBuilderController", mnStatisticsNewChartBuilderController)
-  .controller('mnStatisticsOverviewController', mnStatisticsOverviewController)
   .filter("mnFormatStatsSections", mnFormatStatsSections);
 
 function mnStatisticsChartsController($scope, $uibModal, mnStatisticsNewService, mnStoreService, mnHelper, mnUserRolesService, $timeout) {

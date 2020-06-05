@@ -1,6 +1,46 @@
+import angular from "/ui/web_modules/angular.js";
 import _ from "/ui/web_modules/lodash.js";
 
-export default mnStatisticsOverviewController;
+import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
+
+import mnPoll from "/ui/app/components/mn_poll.js";
+import mnHelper from "/ui/app/components/mn_helper.js";
+import mnPermissions from "/ui/app/components/mn_permissions.js";
+
+import mnStatisticsChart from "./mn_statistics_chart_directive.js";
+import mnStatisticsNewService from "./mn_statistics_service.js";
+import mnStatisticsDescriptionService from "./mn_statistics_description_service.js";
+
+export default "mnStatisticsOverview";
+
+angular
+  .module('mnStatisticsOverview', [
+    uiRouter,
+    mnPoll,
+    mnHelper,
+    mnPermissions,
+    mnStatisticsChart,
+    mnStatisticsNewService,
+    mnStatisticsDescriptionService
+  ])
+  .controller('mnStatisticsOverviewController', mnStatisticsOverviewController)
+  .config(config);
+
+function config($stateProvider) {
+  $stateProvider
+    .state('app.admin.statistics_overview', {
+      url: '/stats_overview?overviewHostname&overviewBucket&overviewZoom',
+      views: {
+        "main@app.admin": {
+          controller: 'mnStatisticsOverviewController as statisticsOverviewCtl',
+          templateUrl: 'app/mn_admin/mn_statistics_overview.html',
+        }
+      },
+      data: {
+        title: "Statistics Overview"
+      }
+    });
+}
 
 function mnStatisticsOverviewController($scope, mnStatisticsNewService, mnStatisticsDescriptionService, $state, $stateParams, mnPoller, mnHelper, mnPermissions) {
   var vm = this;
