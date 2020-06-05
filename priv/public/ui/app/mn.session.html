@@ -23,8 +23,8 @@
       </div>
       <div
          class="error error-field"
-         [hidden]="!(postSession.error | async)?.error">
-        {{(postSession.error | async)?.error}}
+         [hidden]="!(postSession.error | async)?.errors">
+        {{(postSession.error | async)?.errors}}
       </div>
     </div>
 

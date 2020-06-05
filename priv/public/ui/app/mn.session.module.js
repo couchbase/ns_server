@@ -5,8 +5,7 @@ import {ReactiveFormsModule} from '/ui/web_modules/@angular/forms.js';
 import {NgbModule} from '/ui/web_modules/@ng-bootstrap/ng-bootstrap.js';
 
 import {MnSessionComponent} from './mn.session.component.js';
-import {MnSessionService} from './mn.session.service.js';
-import {MnBucketsService} from './mn.buckets.service.js';
+import {MnSessionServiceModule} from './mn.session.service.js';
 
 let sessionState = {
   url: '/session',
@@ -28,15 +27,12 @@ class MnSessionModule {
         MnSessionComponent
       ],
       imports: [
-        NgbModule,
         ReactiveFormsModule,
+        MnSessionServiceModule,
         MnSharedModule,
         UIRouterModule.forChild({ states: [sessionState] })
       ],
-      providers: [
-        MnSessionService,
-        MnBucketsService
-      ]
+      providers: []
     })
   ]}
 }

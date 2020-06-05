@@ -23,7 +23,7 @@ class MnSessionTimeoutDialogComponent extends MnLifeCycleHooksToStream {
     super();
     this.activeModal = activeModal;
     this.formGroup = new FormGroup({});
-    var time = (Number(localStorage.getItem("uiSessionTimeout")) - 30000) / 1000;
-    this.time = interval(1000).pipe(scan(acc => --acc, time), startWith(time));
+    var time = 29;
+    this.time = interval(1000).pipe(scan(acc => acc ? (--acc) : 0, time), startWith(time));
   }
 }

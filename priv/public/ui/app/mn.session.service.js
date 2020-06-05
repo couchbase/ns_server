@@ -1,14 +1,18 @@
-import {Injectable} from "/ui/web_modules/@angular/core.js";
+import {NgModule, Injectable} from "/ui/web_modules/@angular/core.js";
+import {ReactiveFormsModule} from '/ui/web_modules/@angular/forms.js';
 import {HttpClient} from '/ui/web_modules/@angular/common/http.js';
-import {NgbModule} from '/ui/web_modules/@ng-bootstrap/ng-bootstrap.js';
+import {NgbModule, NgbModal} from '/ui/web_modules/@ng-bootstrap/ng-bootstrap.js';
+import {MnSharedModule} from './mn.shared.module.js';
 import {fromEvent, merge, NEVER, timer} from "/ui/web_modules/rxjs.js";
-import {throttleTime, takeUntil, filter, switchMap} from '/ui/web_modules/rxjs/operators.js';
-import {not} from "/ui/web_modules/ramda.js";
+import {throttleTime, takeUntil, filter, tap,
+        switchMap, map, shareReplay} from '/ui/web_modules/rxjs/operators.js';
+import {not, compose} from "/ui/web_modules/ramda.js";
 import {MnAuthService} from "./ajs.upgraded.providers.js";
 import {MnAdminService} from "./mn.admin.service.js";
+import {MnBucketsService} from './mn.buckets.service.js';
 import {MnSessionTimeoutDialogComponent} from "./mn.session.timeout.dialog.component.js";
 
-export {MnSessionService};
+export {MnSessionService, MnSessionServiceModule};
 
 class MnSessionService {
   static get annotations() { return [
@@ -19,7 +23,7 @@ class MnSessionService {
     HttpClient,
     MnAuthService,
     MnAdminService,
-    NgbModule
+    NgbModal
   ]}
 
   constructor(http, mnAuthService, mnAdminService, modalService) {
@@ -50,8 +54,7 @@ class MnSessionService {
       merge(this.stream.storageResetSessionTimeout,
             this.stream.poolsSessionTimeout,
             this.stream.userEvents)
-      .pipe(map(this.isDialogOpened.bind(this)),
-            filter(not),
+      .pipe(filter(compose(not, this.isDialogOpened.bind(this))),
             map(this.getUiSessionTimeout.bind(this)),
             shareReplay({refCount: true, bufferSize: 1}));
   }
@@ -63,8 +66,7 @@ class MnSessionService {
       .subscribe(this.setTimeout.bind(this));
 
     this.stream.userEvents
-      .pipe(map(this.isDialogOpened.bind(this)),
-            filter(not),
+      .pipe(filter(compose(not, this.isDialogOpened.bind(this))),
             takeUntil(mnOnDestroy))
       .subscribe(this.resetAndSyncTimeout.bind(this));
 
@@ -136,4 +138,26 @@ class MnSessionService {
   logout() {
     this.postUILogout();
   }
+}
+
+class MnSessionServiceModule {
+  static get annotations() { return [
+    new NgModule({
+      entryComponents: [
+        MnSessionTimeoutDialogComponent
+      ],
+      declarations: [
+        MnSessionTimeoutDialogComponent
+      ],
+      imports: [
+        NgbModule,
+        ReactiveFormsModule,
+        MnSharedModule,
+      ],
+      providers: [
+        MnSessionService,
+        MnBucketsService
+      ]
+    })
+  ]}
 }

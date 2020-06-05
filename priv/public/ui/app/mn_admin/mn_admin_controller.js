@@ -1,10 +1,10 @@
-
+import {Subject} from "/ui/web_modules/rxjs.js";
 import _ from "/ui/web_modules/lodash.js";
 import saveAs from "/ui/web_modules/file-saver.js";
 
 export default mnAdminController;
 
-function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnLostConnectionService, mnPermissions, mnPools, whoami, mnBucketsService, $q, mnSettingsClusterService, $ocLazyLoad, $injector, mnAdminService) {
+function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnLostConnectionService, mnPermissions, mnPools, whoami, mnBucketsService, $q, mnSettingsClusterService, $ocLazyLoad, $injector, mnAdminService, injector, compiler) {
   var vm = this;
 
   vm.poolDefault = poolDefault;
@@ -141,7 +141,7 @@ function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsServic
         .cycle();
     }
 
-    loadAndRunSessionService($ocLazyLoad, $injector, $scope);
+    loadAndRunSessionService($scope, injector, compiler);
 
     if (mnPermissions.export.cluster.settings.read) {
       loadAndRunLauchpad($ocLazyLoad, $injector, vm);
@@ -368,14 +368,19 @@ function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsServic
   }
 }
 
-async function loadAndRunSessionService($ocLazyLoad, $injector, $scope) {
-  await import("/ui/app/components/mn_session.js");
-  await $ocLazyLoad.load({name: 'mnSessionService'});
-  var mnSessionService = $injector.get('mnSessionService');
-  mnSessionService.init($scope);
-  $scope.$on("newSessionTimeout", function (e, uiSessionTimeout) {
-    mnSessionService.setTimeout(uiSessionTimeout);
-    mnSessionService.resetTimeoutAndSyncAcrossTabs();
+
+async function loadAndRunSessionService($scope, injector, compiler) {
+  let module = await import("/ui/app/mn.session.service.js");
+  let factory = await compiler.compileModuleAsync(module.MnSessionServiceModule);
+  let moduleRef = factory.create(injector);
+  let mnSessionService = moduleRef.injector.get(module.MnSessionService);
+  let mnOnDestroy = new Subject();
+
+  mnSessionService.activate(mnOnDestroy);
+
+  $scope.$on("$destroy", function () {
+    mnOnDestroy.next();
+    mnOnDestroy.complete();
   });
 }
 

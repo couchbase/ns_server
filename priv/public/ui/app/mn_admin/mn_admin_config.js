@@ -29,6 +29,7 @@ import mnLostConnection from "./mn_lost_connection_config.js";
 import {MnAdminService} from "../mn.admin.service.js";
 
 import uiSelect from "/ui/web_modules/ui-select.js";
+import {Injector, Compiler} from "/ui/web_modules/@angular/core.js";
 
 export default 'mnAdmin';
 
@@ -57,6 +58,8 @@ angular.module('mnAdmin', [
 ]).config(mnAdminConfig)
   .controller('mnAdminController', mnAdminController)
   .factory('mnAdminService', downgradeInjectable(MnAdminService))
+  .factory('injector', downgradeInjectable(Injector))
+  .factory('compiler', downgradeInjectable(Compiler))
 
 //https://github.com/angular-ui/ui-select/issues/1560
 angular.module('ui.select').run(function($animate) {
