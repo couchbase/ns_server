@@ -30,6 +30,7 @@
 
 -define(RELOAD_RETRY_PERIOD, 10000).
 -define(USERNAME, "@prometheus").
+-define(NS_TO_PROMETHEUS_USERNAME, "ns_server").
 
 %%%===================================================================
 %%% API
@@ -50,6 +51,7 @@ default_settings() ->
      {storage_path, "./stats_data"},
      {config_file, "prometheus.yml"},
      {log_file_name, "prometheus.log"},
+     {prometheus_auth_filename, ns_to_prometheus_filename()},
      {log_level, "debug"},
      {max_block_duration, 25}, %% in hours
      {scrape_interval, 10}, %% in seconds
@@ -69,9 +71,14 @@ build_settings(Config) ->
                             P -> {true, {S, misc:join_host_port(LocalAddr, P)}}
                         end
                 end, [ns_server | Services]),
+    {value, NsToPrometheusAuthInfo} =
+        ns_config:search_node(Config, ns_to_prometheus_auth_info),
+    {pass, Creds} = proplists:get_value(creds, NsToPrometheusAuthInfo),
+
     Settings =
         ns_config:search(Config, stats_settings, []) ++
         [{listen_addr, misc:join_host_port(LocalAddr, Port)},
+         {prometheus_creds, Creds},
          {targets, Targets}],
     misc:update_proplist(default_settings(), Settings).
 
@@ -89,10 +96,12 @@ specs(Config) ->
     MaxBlockDuration = integer_to_list(proplists:get_value(max_block_duration,
                                                            Settings)) ++ "h",
     LogLevel = proplists:get_value(log_level, Settings),
+    AuthFile = proplists:get_value(prometheus_auth_filename, Settings),
 
     Args = ["--config.file", ConfigFile,
             "--web.enable-admin-api",
             "--web.enable-lifecycle", %% needed for hot cfg reload
+            "--web.basicauth.config", AuthFile,
             "--storage.tsdb.retention.size", RetentionSize,
             "--storage.tsdb.retention.time", RetentionTime,
             "--web.listen-address", ListenAddress,
@@ -144,6 +153,7 @@ init([]) ->
             (_) -> ok
         end,
     ns_pubsub:subscribe_link(ns_config_events, EventHandler),
+    generate_ns_to_prometheus_auth_info(),
     Settings = build_settings(),
     ensure_prometheus_config(Settings),
     generate_prometheus_auth_info(Settings),
@@ -181,6 +191,38 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+generate_ns_to_prometheus_auth_info() ->
+    Config = ns_config:get(),
+    case ns_config:search_node(Config, ns_to_prometheus_auth_info) of
+        false ->
+            Password = menelaus_web_rbac:gen_password({32,
+                                                       [uppercase, lowercase,
+                                                        digits]}),
+            {Salt0, Hash0, Iterations} = scram_sha:hash_password(sha512,
+                                                                 Password),
+            Salt = base64:encode_to_string(Salt0),
+            Hash = base64:encode_to_string(Hash0),
+
+            AuthInfo= {[{username, list_to_binary(?NS_TO_PROMETHEUS_USERNAME)},
+                        {salt, list_to_binary(Salt)},
+                        {hash, list_to_binary(Hash)},
+                        {iterations, Iterations}]},
+            AuthInfoJson = menelaus_util:encode_json(AuthInfo),
+
+            AuthFile = ns_to_prometheus_filename(),
+            ok = misc:atomic_write_file(AuthFile, AuthInfoJson),
+
+            ns_config:set({node, node(), ns_to_prometheus_auth_info},
+                          [{creds, {pass, {?NS_TO_PROMETHEUS_USERNAME,
+                                           Password}}}]);
+        _ ->
+            ok
+    end.
+
+ns_to_prometheus_filename() ->
+    filename:join(path_config:component_path(data, "config"),
+                  "prometheus_auth").
 
 generate_prometheus_auth_info(Settings) ->
     Token = menelaus_web_rbac:gen_password({256, [uppercase, lowercase,
