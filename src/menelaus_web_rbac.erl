@@ -1378,10 +1378,10 @@ handle_post_password_policy(Req) ->
       end, Req, form, post_password_policy_validators()).
 
 assert_no_users_upgrade() ->
-    case menelaus_users:upgrade_status() of
-        no_upgrade ->
+    case menelaus_users:upgrade_in_progress() of
+        false ->
             ok;
-        upgrade_in_progress ->
+        true ->
             menelaus_util:web_exception(
               503, "Not allowed during cluster upgrade.")
     end.

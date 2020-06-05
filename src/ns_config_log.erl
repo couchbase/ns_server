@@ -29,7 +29,8 @@
 -record(state, {buckets=[]}).
 
 %% state sanitization
--export([format_status/2, tag_user_data/1, tag_user_name/1, tag_doc_id/1]).
+-export([format_status/2, tag_user_data/1, tag_user_name/1, tag_doc_id/1,
+         tag_user_props/1]).
 
 format_status(_Opt, [_PDict, State]) ->
     sanitize(State).
@@ -102,8 +103,7 @@ do_tag_user_name(Name) when is_list(Name) ->
 do_tag_user_name(NotName) when is_atom(NotName) ->
     {ok, NotName};  %% Cases like {source, local} we don't want to tag.
 do_tag_user_name(Name) when is_binary(Name) ->
-    {ok, Val} = do_tag_user_name(binary_to_list(Name)),
-    {ok, list_to_binary(Val)};
+    {ok, list_to_binary(tag_user_name(binary_to_list(Name)))};
 do_tag_user_name(_) ->
     continue.
 
@@ -112,21 +112,15 @@ tag_user_data(DebugKVList) ->
       fun tag_user_tuples_fun/1, DebugKVList).
 
 tag_user_tuples_fun({user, UserName}) when is_binary(UserName) ->
-    {ok, Val} = do_tag_user_name(UserName),
-    {stop, {user, Val}};
+    {stop, {user, tag_user_name(UserName)}};
 tag_user_tuples_fun({doc, {user, {U, D}}, _, _, V} = Doc) ->
-    T = setelement(2, Doc, {user, {do_tag_user_name(U), D}}),
-    {stop, setelement(5, T, generic:transformt(
-                              ?transform({name, N},
-                                         {name, do_tag_user_name(N)}), V))};
+    T = setelement(2, Doc, {user, {tag_user_name(U), D}}),
+    {stop, setelement(5, T, tag_user_props(V))};
 tag_user_tuples_fun({docv2, {user, {U, D}}, V, _} = Doc) ->
-    T = setelement(2, Doc, {user, {do_tag_user_name(U), D}}),
-    {stop, setelement(3, T, generic:transformt(
-                              ?transform({name, N},
-                                         {name, do_tag_user_name(N)}), V))};
+    T = setelement(2, Doc, {user, {tag_user_name(U), D}}),
+    {stop, setelement(3, T, tag_user_props(V))};
 tag_user_tuples_fun({full_name, FullName}) when is_binary(FullName) ->
-    {ok, Val} = do_tag_user_name(FullName),
-    {stop, {full_name, Val}};
+    {stop, {full_name, tag_user_name(FullName)}};
 tag_user_tuples_fun({UName, Type}) when Type =:= local orelse
                                         Type =:= external orelse
                                         Type =:= admin ->
@@ -142,6 +136,10 @@ tag_user_tuples_fun(_Other) ->
 tag_user_name(UserName) ->
     {ok, Val} = do_tag_user_name(UserName),
     Val.
+
+tag_user_props(Props) ->
+    generic:transformt(?transform({name, N}, {name, tag_user_name(N)}),
+                       Props).
 
 do_tag_doc_id(DocId) when is_list(DocId) ->
     {ok, "<ud>" ++ DocId ++ "</ud>"};

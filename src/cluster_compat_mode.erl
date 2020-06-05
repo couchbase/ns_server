@@ -194,7 +194,8 @@ consider_switching_compat_mode() ->
     end.
 
 upgrades() ->
-    [{?VERSION_55, rbac, menelaus_users, upgrade_to_55}].
+    [{?VERSION_55, rbac, menelaus_users, upgrade},
+     {?VERSION_66, rbac, menelaus_users, upgrade}].
 
 do_upgrades(undefined, _, _, _) ->
     %% this happens during the cluster initialization. no upgrade needed
@@ -209,7 +210,7 @@ do_upgrades([{Version, Name, Module, Fun} | Rest],
   when CurrentVersion < Version andalso NewVersion >= Version ->
     ?log_debug("Initiating ~p upgrade due to version change from ~p to ~p",
                [Name, CurrentVersion, NewVersion]),
-    case Module:Fun(Config, NodesWanted) of
+    case Module:Fun(Version, Config, NodesWanted) of
         ok ->
             do_upgrades(Rest, CurrentVersion, NewVersion, Config, NodesWanted);
         _ ->
