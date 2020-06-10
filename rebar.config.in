@@ -1,7 +1,6 @@
 {lib_dirs, ["deps"]}.
 {erl_first_files, ["src/ns_log_categorizing.erl",
                    "src/supervisor2.erl",
-                   "src/memcached_cfg.erl",
                    "src/replicated_storage.erl",
                    "src/json_settings_manager.erl",
 
@@ -9,6 +8,7 @@
                    %% also need to be compiled early
                    "src/functools.erl", "src/generic.erl",
                    "src/cut.erl",
+                   "src/memcached_cfg.erl",
 
                    %% gen_server2 needs to go after cut
                    "src/gen_server2.erl"]}.

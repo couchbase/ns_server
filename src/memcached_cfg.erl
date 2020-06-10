@@ -19,6 +19,8 @@
 
 -behaviour(gen_server).
 
+-include("cut.hrl").
+
 -export([start_link/2, sync/1]).
 
 %% gen_event callbacks
@@ -114,15 +116,16 @@ write_cfg(#state{path = Path,
                  tmp_path = TmpPath,
                  stuff = Stuff,
                  module = Module} = State) ->
-    ok = filelib:ensure_dir(TmpPath),
-    ?log_debug("Writing config file for: ~p", [Path]),
-    misc:write_file(
-      TmpPath,
-      fun (File) ->
-              pipes:run(Module:producer(Stuff),
-                        pipes:write_file(File))
-      end),
-    rename_and_refresh(State, 5, 101).
+    case Module:producer(Stuff) of
+        undefined ->
+            ok;
+        Producer ->
+            ok = filelib:ensure_dir(TmpPath),
+            ?log_debug("Writing config file for: ~p", [Path]),
+            misc:write_file(TmpPath,
+                            ?cut(pipes:run(Producer, pipes:write_file(_)))),
+            rename_and_refresh(State, 5, 101)
+    end.
 
 rename_and_refresh(#state{path = Path,
                           tmp_path = TmpPath,

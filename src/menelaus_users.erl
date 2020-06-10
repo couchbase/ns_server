@@ -75,7 +75,8 @@
 %% Backward compatibility:
          upgrade/3,
          config_upgrade/1,
-         upgrade_in_progress/0
+         upgrade_in_progress/0,
+         upgrade_in_progress/1
         ]).
 
 %% callbacks for replicated_dets
@@ -750,8 +751,11 @@ config_upgrade(Version) ->
     [{delete, rbac_upgrade_key(Version)}].
 
 upgrade_in_progress() ->
-    ns_config:search(rbac_upgrade_key(?VERSION_55)) =/= false orelse
-        ns_config:search(rbac_upgrade_key()) =/= false.
+    upgrade_in_progress(ns_config:latest()).
+
+upgrade_in_progress(Config) ->
+    ns_config:search(Config, rbac_upgrade_key(?VERSION_55)) =/= false orelse
+        ns_config:search(Config, rbac_upgrade_key()) =/= false.
 
 filter_out_invalid_roles(Props, Definitions, Buckets) ->
     Roles = proplists:get_value(roles, Props, []),

@@ -39,7 +39,6 @@
 -endif.
 
 -record(state, {version,
-                roles,
                 users,
                 cluster_admin,
                 prometheus_user}).
@@ -95,7 +94,6 @@ init() ->
     #state{version = menelaus_roles:params_version(
                        ns_bucket:get_buckets(Config)),
            users = spec_users(Config),
-           roles = menelaus_roles:get_definitions(Config, all),
            cluster_admin = AdminUser,
            prometheus_user = PromUser}.
 
@@ -131,13 +129,8 @@ handle_event({user_version, _V}, State) ->
     {changed, State};
 handle_event({group_version, _V}, State) ->
     {changed, State};
-handle_event({cluster_compat_version, _V}, #state{roles = Roles} = State) ->
-    case menelaus_roles:get_definitions(all) of
-        Roles ->
-            unchanged;
-        NewRoles ->
-            {changed, State#state{roles = NewRoles}}
-    end;
+handle_event({cluster_compat_version, _V}, State) ->
+    {changed, State};
 handle_event({rest_creds, {ClusterAdmin, _}},
              #state{cluster_admin = ClusterAdmin}) ->
     unchanged;
@@ -374,15 +367,22 @@ jsonify_users(Users, RoleDefinitions, ClusterAdmin, PromUser) ->
            ?yield(object_end)
        end).
 
-producer(#state{roles = RoleDefinitions,
-                users = Users,
+producer(#state{users = Users,
                 cluster_admin = ClusterAdmin,
                 prometheus_user = PromUser}) ->
-    pipes:compose([menelaus_users:select_users({'_', local}, [roles]),
-                   jsonify_users(Users, RoleDefinitions, ClusterAdmin,
-                                 PromUser),
-                   sjson:encode_extended_json([{compact, false},
-                                               {strict, false}])]).
+    Config = ns_config:get(),
+    case menelaus_users:upgrade_in_progress(Config) of
+        true ->
+            ?log_debug("Skipping update during users upgrade"),
+            undefined;
+        false ->
+            RoleDefinitions = menelaus_roles:get_definitions(Config, all),
+            pipes:compose([menelaus_users:select_users({'_', local}, [roles]),
+                           jsonify_users(Users, RoleDefinitions, ClusterAdmin,
+                                         PromUser),
+                           sjson:encode_extended_json([{compact, false},
+                                                       {strict, false}])])
+    end.
 
 -ifdef(TEST).
 flatten_priv_object(Map) ->
