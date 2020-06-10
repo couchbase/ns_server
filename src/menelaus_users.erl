@@ -341,7 +341,7 @@ make_props(Id, Props, ItemList, {Passwordless, Definitions,
 
 make_props_state(ItemList) ->
     Passwordless = lists:member(passwordless, ItemList) andalso
-                       menelaus_users:get_passwordless(),
+                       get_passwordless(),
     {Definitions, Buckets} =
         case lists:member(roles, ItemList) orelse
              lists:member(user_roles, ItemList) orelse
@@ -403,7 +403,7 @@ store_user({_UserName, Domain} = Identity, Name, Password, Roles, Groups) ->
     end.
 
 count_users() ->
-    pipes:run(menelaus_users:select_users('_', []),
+    pipes:run(select_users('_', []),
               ?make_consumer(
                  pipes:fold(?producer(),
                             fun (_, Acc) ->
