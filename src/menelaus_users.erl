@@ -792,6 +792,10 @@ cleanup_bucket_roles(BucketName) ->
             ok
     end.
 
+sync_with_remotes(Nodes, Version) ->
+    replicated_storage:sync_to_me(
+      storage_name(), Nodes, ?get_timeout(rbac_upgrade_key(Version), 60000)).
+
 upgrade(Version, Config, Nodes) ->
     try
         Key = rbac_upgrade_key(Version),
@@ -804,12 +808,10 @@ upgrade(Version, Config, Nodes) ->
 
         %% propagate upgrade key to nodes
         ok = ns_config_rep:ensure_config_seen_by_nodes(Nodes),
-
-        replicated_storage:sync_to_me(
-          storage_name(), Nodes,
-          ?get_timeout(rbac_upgrade_key(Version), 60000)),
+        sync_with_remotes(Nodes, Version),
 
         do_upgrade(Version),
+        sync_with_remotes(Nodes, Version),
         ok
     catch T:E ->
               ale:error(?USER_LOGGER, "Unsuccessful user storage upgrade.~n~p",
