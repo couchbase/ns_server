@@ -45,7 +45,18 @@ start_loop(Name, GetNodes, StorageFrontend) ->
 
     loop(GetNodes, StorageFrontend, []).
 
-loop(GetNodes, StorageFrontend, RemoteNodes) ->
+loop(GetNodes, StorageFrontend, OldRemoteNodes) ->
+    ActualNodes = GetNodes(),
+    RemoteNodes =
+        case OldRemoteNodes -- ActualNodes of
+            [] ->
+                OldRemoteNodes;
+            EjectedNodes ->
+                ?log_debug("Stopping replication to following nodes: ~p",
+                           [EjectedNodes]),
+                OldRemoteNodes -- EjectedNodes
+        end,
+
     NewRemoteNodes =
         receive
             {replicate_change, Id, Doc} ->
@@ -56,14 +67,12 @@ loop(GetNodes, StorageFrontend, RemoteNodes) ->
                   end, RemoteNodes),
                 RemoteNodes;
             {replicate_newnodes_docs, Producer} ->
-                AllNodes = GetNodes(),
-                ?log_debug("doing replicate_newnodes_docs"),
-
-                NewNodes = AllNodes -- RemoteNodes,
-                case NewNodes of
+                case ActualNodes -- RemoteNodes of
                     [] ->
                         ok;
-                    _ ->
+                    NewNodes ->
+                        ?log_debug("Replicating all docs to new nodes: ~p",
+                                   [NewNodes]),
                         lists:foreach(
                           fun (Node) ->
                                   monitor(process, {StorageFrontend, Node})
@@ -78,7 +87,7 @@ loop(GetNodes, StorageFrontend, RemoteNodes) ->
                                     end, NewNodes)
                           end)
                 end,
-                AllNodes;
+                ActualNodes;
             {sync_token, From} ->
                 ?log_debug("Received sync_token from ~p", [From]),
                 gen_server:reply(From, ok),
