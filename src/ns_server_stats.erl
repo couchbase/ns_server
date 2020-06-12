@@ -72,6 +72,8 @@ report_prom_stats(ReportFun) ->
                        [{<<"proc">>, Proc},
                         {<<"type">>, <<"system-processes">>}], Val})
         end, SysProcStats),
+    Buckets = ns_bucket:get_bucket_names(),
+    [report_couch_stats(B, ReportFun) || B <- Buckets],
     ok.
 
 report_audit_stats(ReportFun) ->
@@ -82,6 +84,16 @@ report_audit_stats(ReportFun) ->
               [{<<"type">>, <<"audit">>}], AuditQueueLen}),
     ReportFun({<<"audit">>, <<"unsuccessful_retries">>,
               [{<<"type">>, <<"audit">>}], AuditRetries}).
+
+report_couch_stats(Bucket, ReportFun) ->
+    CouchStats = case (catch ns_couchdb_api:fetch_couch_stats(Bucket)) of
+                     {ok, CS} -> CS;
+                     Crap ->
+                         ?log_info("Failed to fetch couch stats:~n~p", [Crap]),
+                         []
+                 end,
+    [ReportFun({K, [{<<"bucket">>, Bucket},
+                    {<<"type">>, <<"bucket">>}], V}) || {K, V} <- CouchStats].
 
 init([]) ->
     ets:new(ns_server_system_stats, [public, named_table, set]),
