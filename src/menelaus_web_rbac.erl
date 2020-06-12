@@ -1239,21 +1239,24 @@ parse_parameterized_vertex(Name, Params) ->
             {NameAtom, Res}
     end.
 
-parse_vertex_params(bucket, ".") ->
+parse_vertex_param(".") ->
     any;
+parse_vertex_param(Param) ->
+    Param.
+
+params_length(scope) ->
+    2;
+params_length(collection) ->
+    3.
+
 parse_vertex_params(bucket, Name) ->
-    Name;
-parse_vertex_params(scope, ParamsStr) ->
-    case string:split(ParamsStr, ":", all) of
-        [_, _] = Params ->
-            Params;
-        _ ->
-            error
-    end;
-parse_vertex_params(collection, ParamsStr) ->
-    case string:split(ParamsStr, ":", all) of
-        [_, _, _] = Params ->
-            Params;
+    parse_vertex_param(Name);
+parse_vertex_params(VertexName, ParamsStr) ->
+    Params = string:split(ParamsStr, ":", all),
+    Length = params_length(VertexName),
+    case length(Params) of
+        Length ->
+            lists:map(fun parse_vertex_param/1, Params);
         _ ->
             error
     end.
@@ -1312,15 +1315,22 @@ handle_check_permission_for_cbauth(Req) ->
             menelaus_util:reply_text(Req, "", 401)
     end.
 
+vertex_param_to_list(any) ->
+    ".";
+vertex_param_to_list(Param) ->
+    Param.
+
 vertex_to_iolist(Atom) when is_atom(Atom) ->
     atom_to_list(Atom);
+vertex_to_iolist({bucket, Param}) ->
+    vertex_to_iolist(bucket, [Param]);
 vertex_to_iolist({Atom, Params}) when Atom =:= collection;
                                       Atom =:= scope ->
-    [atom_to_list(Atom), "[", lists:join(":", Params), "]"];
-vertex_to_iolist({bucket, any}) ->
-    "bucket[.]";
-vertex_to_iolist({bucket, Param}) ->
-    ["bucket[", Param, "]"].
+    vertex_to_iolist(Atom, Params).
+
+vertex_to_iolist(Atom, Params) ->
+    ConvertedParams = lists:map(fun vertex_param_to_list/1, Params),
+    [atom_to_list(Atom), "[", lists:join(":", ConvertedParams), "]"].
 
 format_permission({Object, Operation}) ->
     FormattedVertices = ["cluster" | [vertex_to_iolist(Vertex) ||
@@ -1780,10 +1790,21 @@ parse_permissions_test() ->
             {[{collection, ["", "", ""]}, n1ql, update], execute}),
     TestOne("cluster.collection[test:s:c].n1ql.update!execute",
             {[{collection, ["test", "s", "c"]}, n1ql, update], execute}),
+    TestOne("cluster.collection[test:s:.].n1ql.update!execute",
+            {[{collection, ["test", "s", any]}, n1ql, update], execute}),
+    TestOne("cluster.collection[test:.:.].n1ql.update!execute",
+            {[{collection, ["test", any, any]}, n1ql, update], execute}),
+    TestOne("cluster.collection[.:.:.].n1ql.update!execute",
+            {[{collection, [any, any, any]}, n1ql, update], execute}),
+
     TestOne("cluster.scope[test:s].n1ql.update!execute",
             {[{scope, ["test", "s"]}, n1ql, update], execute}),
     TestOne("cluster.scope[test:].n1ql.update!execute",
             {[{scope, ["test", ""]}, n1ql, update], execute}),
+    TestOne("cluster.scope[test:.].n1ql.update!execute",
+            {[{scope, ["test", any]}, n1ql, update], execute}),
+    TestOne("cluster.scope[.:.].n1ql.update!execute",
+            {[{scope, [any, any]}, n1ql, update], execute}),
 
     TestOne("cluster.scope[].n1ql.update!execute", error),
     TestOne("cluster.scope[test].n1ql.update!execute", error),
@@ -1803,13 +1824,21 @@ format_permission_test() ->
                  format_permission({[], all})),
     ?assertEqual(<<"cluster.admin.diag!read">>,
                  format_permission({[admin, diag], read})),
-    ?assertEqual(
-       <<"cluster.collection[test:s:c].n1ql.update!execute">>,
-       format_permission(
-         {[{collection, ["test", "s", "c"]}, n1ql, update], execute})),
-    ?assertEqual(<<"cluster.scope[test:s].n1ql.update!execute">>,
-                 format_permission(
-                   {[{scope, ["test", "s"]}, n1ql, update], execute})).
+    Test =
+        fun (Expected, Vertex) ->
+                ?assertEqual(list_to_binary("cluster." ++ Expected ++
+                                                ".n1ql.update!execute"),
+                             format_permission(
+                               {[Vertex, n1ql, update], execute}))
+        end,
+    Test("collection[test:s:c]", {collection, ["test", "s", "c"]}),
+    Test("collection[test:s:.]", {collection, ["test", "s", any]}),
+    Test("collection[test:.:.]", {collection, ["test", any, any]}),
+    Test("collection[.:.:.]", {collection, [any, any, any]}),
+
+    Test("scope[test:s]", {scope, ["test", "s"]}),
+    Test("scope[test:.]", {scope, ["test", any]}),
+    Test("scope[.:.]", {scope, [any, any]}).
 
 toy_users(First, Last) ->
     [toy_user(U) || U <- lists:seq(First, Last)].
