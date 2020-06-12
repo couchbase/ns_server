@@ -299,14 +299,13 @@ handle_proofs(Sha, SaltedPassword, Proof, AuthMessage) ->
 
 pbkdf2(Sha, Password, Salt, Iterations) ->
     Initial = crypto:hmac(Sha, Password, <<Salt/binary, 1:32/integer>>),
-    pbkdf2_iter(Sha, Password, Salt, Iterations - 1, Initial, Initial).
+    pbkdf2_iter(Sha, Password, Iterations - 1, Initial, Initial).
 
-pbkdf2_iter(_Sha, _Password, _Salt, 0, _Prev, Acc) ->
+pbkdf2_iter(_Sha, _Password, 0, _Prev, Acc) ->
     Acc;
-pbkdf2_iter(Sha, Password, Salt, Iteration, Prev, Acc) ->
+pbkdf2_iter(Sha, Password, Iteration, Prev, Acc) ->
     Next = crypto:hmac(Sha, Password, Prev),
-    pbkdf2_iter(Sha, Password, Salt, Iteration - 1,
-                Next, crypto:exor(Next, Acc)).
+    pbkdf2_iter(Sha, Password, Iteration - 1, Next, crypto:exor(Next, Acc)).
 
 hash_password(Type, Password) ->
     Iterations = iterations(),
