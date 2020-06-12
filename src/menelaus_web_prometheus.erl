@@ -33,12 +33,15 @@ handle_get_metrics(Req) ->
 %%% Internal functions
 %%%===================================================================
 
-report_metric({Prefix, Metric, Labels, Value}, Resp) ->
+report_metric({Metric, Labels, Value}, Resp) ->
     Line =
-        [Prefix, <<"_">>, name_to_iolist(Metric), <<"{">>,
+        [name_to_iolist(Metric), <<"{">>,
          lists:join(<<",">>,[[K, <<"=\"">>, V, <<"\"">>] || {K, V} <- Labels]),
          <<"} ">>, prometheus:format_value(Value), <<"\n">>],
-    mochiweb_response:write_chunk(Line, Resp).
+    mochiweb_response:write_chunk(Line, Resp);
+report_metric({Prefix, Metric, Labels, Value}, Resp) ->
+    Prefixed = [Prefix, <<"_">>, name_to_iolist(Metric)],
+    report_metric({Prefixed, Labels, Value}, Resp).
 
 name_to_iolist(A) when is_atom(A) -> atom_to_binary(A, latin1);
 name_to_iolist(A) -> A.
