@@ -36,6 +36,7 @@ function alertsLabelFilter(knownAlerts) {
     case knownAlerts[11]: return 'Approaching full Indexer RAM warning';
     case knownAlerts[12]: return 'Remote mutation timestamp exceeded drift threshold';
     case knownAlerts[13]: return 'Communication issues among some nodes in the cluster';
+    case knownAlerts[14]: return 'Node\'s time is out of sync with some nodes in the cluster';
     }
   };
 }

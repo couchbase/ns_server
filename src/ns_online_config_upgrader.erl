@@ -88,6 +88,7 @@ upgrade(?VERSION_65, Config) ->
      menelaus_users:config_upgrade(?VERSION_66) ++
          ns_bucket:config_upgrade_to_66(Config)};
 
-upgrade(?VERSION_66, _Config) ->
+upgrade(?VERSION_66, Config) ->
     {?VERSION_CHESHIRECAT,
-     menelaus_users:config_upgrade(?VERSION_CHESHIRECAT)}.
+     menelaus_users:config_upgrade(?VERSION_CHESHIRECAT) ++
+         menelaus_web_alerts_srv:config_upgrade_to_cheshire_cat(Config)}.

@@ -29,7 +29,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--export([alert_keys/0]).
+-export([alert_keys/0, config_upgrade_to_cheshire_cat/1]).
 
 %% @doc Hold client state for any alerts that need to be shown in
 %% the browser, is used by menelaus_web to piggy back for a transport
@@ -79,6 +79,8 @@ short_description(ep_clock_cas_drift_threshold_exceeded) ->
     "cas drift threshold exceeded error";
 short_description(communication_issue) ->
     "communication issue among some nodes";
+short_description(time_out_of_sync) ->
+    "node time not in sync";
 short_description(Other) ->
     %% this case is needed for tests to work
     couch_util:to_list(Other).
@@ -103,7 +105,10 @@ errors(ep_clock_cas_drift_threshold_exceeded) ->
     "than ~p milliseconds ahead of local clock. Please ensure that NTP is set up correctly "
     "on all nodes across the replication topology and clocks are synchronized.";
 errors(communication_issue) ->
-    "Warning: Node \"~s\" is having issues communicating with following nodes \"~s\".".
+    "Warning: Node \"~s\" is having issues communicating with following nodes \"~s\".";
+errors(time_out_of_sync) ->
+    "The time on node ~p is not synchronized. Please ensure that NTP is set "
+    "up correctly on all nodes and that clocks are synchronized.".
 
 %% ------------------------------------------------------------------
 %% API Function Definitions
@@ -251,6 +256,17 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+config_upgrade_to_cheshire_cat(Config) ->
+    case ns_config:search(Config, email_alerts) of
+        false -> [];
+        {value, EmailAlerts} ->
+            %% Add time_out_of_sync to the alerts list in email_alerts.
+            Alerts = proplists:get_value(alerts, EmailAlerts),
+            NewAlerts = {alerts, lists:append(Alerts, [time_out_of_sync])},
+            NewEmailAlerts = misc:update_proplist(EmailAlerts, [NewAlerts]),
+            [{set, email_alerts, NewEmailAlerts}]
+    end.
+
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
@@ -264,7 +280,8 @@ start_timer() ->
 %% broadcast alerts to clients connected to any particular node
 global_checks() ->
     [oom, ip, write_fail, overhead, disk, audit_write_fail,
-     indexer_ram_max_usage, cas_drift_threshold, communication_issue].
+     indexer_ram_max_usage, cas_drift_threshold, communication_issue,
+     time_out_of_sync].
 
 %% @doc fires off various checks
 check_alerts(Opaque, Hist, Stats) ->
@@ -442,7 +459,22 @@ check(communication_issue, Opaque, _History, _Stats) ->
                       ok
               end
       end, ClusterStatus),
+    Opaque;
+
+check(time_out_of_sync, Opaque, _History, _Stats) ->
+    case mb_master:master_node() =/= node() of
+        true ->
+            alert_if_time_out_of_sync(ns_tick_agent:time_offset_status());
+        false ->
+            ok
+    end,
     Opaque.
+
+alert_if_time_out_of_sync({time_offset_status, true}) ->
+    Err = fmt_to_bin(errors(time_out_of_sync), [node()]),
+    global_alert(time_out_of_sync, Err);
+alert_if_time_out_of_sync({time_offset_status, false}) ->
+    ok.
 
 %% @doc only check for disk usage if there has been no previous
 %% errors or last error was over the timeout ago
@@ -622,7 +654,7 @@ alert_keys() ->
     [ip, disk, overhead, ep_oom_errors, ep_item_commit_failed,
      audit_dropped_events, indexer_ram_max_usage,
      ep_clock_cas_drift_threshold_exceeded,
-     communication_issue].
+     communication_issue, time_out_of_sync].
 
 
 -ifdef(TEST).
@@ -661,4 +693,35 @@ basic_test() ->
     after
         misc:unlink_terminate_and_wait(Pid, shutdown)
     end.
+
+config_update_to_chesire_cat_test() ->
+    Config = [[{loglevel_default,debug},
+              {email_alerts,
+               [{recipients,["root@localhost"]},
+                {sender,"couchbase@localhost"},
+                {enabled,false},
+                {email_server,
+                 [{user,[]},{pass,"*****"},
+                  {host,"localhost"},{port,25},{encrypt,false}]},
+                {alerts,
+                 [auto_failover_node,communication_issue]
+                }
+               ]
+              }]],
+    %% time_out_of_sync should be added to "alerts".
+    ExpectedUpgrade = [{set,
+                        email_alerts,
+                        [{alerts,
+                          [auto_failover_node,communication_issue,
+                           time_out_of_sync]},
+                         {recipients,["root@localhost"]},
+                         {sender,"couchbase@localhost"},
+                         {enabled,false},
+                         {email_server,
+                          [{user,[]}, {pass,"*****"},
+                           {host,"localhost"}, {port,25}, {encrypt,false}]}
+                        ]
+                       }],
+    Upgrade = config_upgrade_to_cheshire_cat(Config),
+    ?assertMatch(Upgrade, ExpectedUpgrade).
 -endif.

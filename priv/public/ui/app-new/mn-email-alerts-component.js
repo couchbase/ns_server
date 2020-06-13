@@ -40,7 +40,8 @@ mn.components.MnEmailAlerts =
                   "audit_dropped_events",
                   "indexer_ram_max_usage",
                   "ep_clock_cas_drift_threshold_exceeded",
-                  "communication_issue"
+                  "communication_issue",
+                  "time_out_of_sync"
                  ];
 
     return MnEmailAlerts;
