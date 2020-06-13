@@ -7,13 +7,15 @@
 
 query_range(Query, Start, End, Step, Timeout, Settings) ->
     Addr = proplists:get_value(listen_addr, Settings),
+    {Username, Password} = proplists:get_value(prometheus_creds, Settings),
     URL = io_lib:format("http://~s/api/v1/query_range", [Addr]),
     Body = mochiweb_util:urlencode(
              [{query, Query}, {start, Start}, {'end', End},
               {step, integer_to_list(Step) ++ "s"},
               {timeout, integer_to_list(max(Timeout div 1000, 1)) ++ "s"}]),
     Headers = [{"Content-Type", "application/x-www-form-urlencoded"}],
-    case post(lists:flatten(URL), Headers, Body, 5000) of
+    HeadersWithAuth = menelaus_rest:add_basic_auth(Headers, Username, Password),
+    case post(lists:flatten(URL), HeadersWithAuth, Body, 5000) of
         {ok, json, {Data}} ->
             Res = proplists:get_value(<<"result">>, Data, {[]}),
             {ok, Res};
