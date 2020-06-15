@@ -53,14 +53,9 @@ handle_post_collection(Bucket, Scope, Req) ->
     validator:handle(
       fun (Values) ->
               Name = proplists:get_value(name, Values),
-              Props = case proplists:get_value(maxTTL, Values, 0) of
-                          0 ->
-                              [];
-                          MaxTTL ->
-                              [{maxTTL, MaxTTL}]
-                      end,
-              handle_rv(collections:create_collection(Bucket, Scope, Name,
-                                                      Props), Req)
+              handle_rv(
+                collections:create_collection(
+                  Bucket, Scope, Name, proplists:delete(name, Values)), Req)
       end, Req, form,
       [validator:required(name, _),
        validator:length(name, 1, 30, _),

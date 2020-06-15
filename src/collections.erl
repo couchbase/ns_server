@@ -146,7 +146,8 @@ create_scope(Bucket, Name) ->
     update(Bucket, {create_scope, Name}).
 
 create_collection(Bucket, Scope, Name, Props) ->
-    update(Bucket, {create_collection, Scope, Name, Props}).
+    update(Bucket, {create_collection, Scope, Name,
+                    Props -- default_collection_props()}).
 
 drop_scope(Bucket, Name) ->
     update(Bucket, {drop_scope, Name}).
