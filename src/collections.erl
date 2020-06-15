@@ -25,7 +25,7 @@
          enabled/0,
          enabled/1,
          uid/1,
-         manifest_json/1,
+         manifest_json/2,
          create_scope/2,
          create_collection/4,
          drop_scope/2,
@@ -95,11 +95,21 @@ collection_prop_to_memcached(uid, V) ->
 collection_prop_to_memcached(_, V) ->
     V.
 
-collection_to_memcached(Name, Props) ->
-    {[{name, list_to_binary(Name)} |
-      [{K, collection_prop_to_memcached(K, V)} || {K, V} <- Props]]}.
+default_collection_props() ->
+    [{maxTTL, 0}].
 
-manifest_json(BucketCfg) ->
+collection_to_memcached(Name, Props, WithDefaults) ->
+    AdjustedProps =
+        case WithDefaults of
+            true ->
+                misc:update_proplist(default_collection_props(), Props);
+            false ->
+                Props
+        end,
+    {[{name, list_to_binary(Name)} |
+      [{K, collection_prop_to_memcached(K, V)} || {K, V} <- AdjustedProps]]}.
+
+manifest_json(BucketCfg, WithDefaults) ->
     Manifest = get_manifest(BucketCfg),
 
     ScopesJson =
@@ -108,7 +118,7 @@ manifest_json(BucketCfg) ->
                   {[{name, list_to_binary(ScopeName)},
                     {uid, get_uid_in_memcached_format(Scope)},
                     {collections,
-                     [collection_to_memcached(CollName, Coll) ||
+                     [collection_to_memcached(CollName, Coll, WithDefaults) ||
                          {CollName, Coll} <- get_collections(Scope)]}]}
           end, get_scopes(Manifest)),
 

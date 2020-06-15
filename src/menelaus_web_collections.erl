@@ -31,7 +31,7 @@
 handle_get(Bucket, Req) ->
     assert_api_available_for_read(Bucket),
     {ok, BucketCfg} = ns_bucket:get_bucket(Bucket),
-    menelaus_util:reply_json(Req, collections:manifest_json(BucketCfg)).
+    menelaus_util:reply_json(Req, collections:manifest_json(BucketCfg, true)).
 
 handle_post_scope(Bucket, Req) ->
     assert_api_available(Bucket),

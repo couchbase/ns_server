@@ -262,7 +262,7 @@ ensure_collections(Sock, #cfg{name = BucketName, config = BucketConfig}) ->
         false ->
             ok;
         {true, Prev, Next} ->
-            Manifest = collections:manifest_json(BucketConfig),
+            Manifest = collections:manifest_json(BucketConfig, false),
             ?log_debug(
                "Applying collection manifest to bucket ~p due to id change from"
                " ~p to ~p. Manifest = ~p",
