@@ -93,34 +93,26 @@ may_expose_bucket_auth(Name, Req) ->
             false
     end.
 
+get_info_level(Req) ->
+    case proplists:get_value("basic_stats", mochiweb_request:parse_qs(Req)) of
+        undefined ->
+            normal;
+        _ ->
+            for_ui
+    end.
+
 handle_bucket_list(Req) ->
     BucketsUnsorted = menelaus_auth:get_accessible_buckets(
                         ?cut({[{bucket, _}, settings], read}), Req),
-
     Buckets = lists:sort(fun (A,B) -> A =< B end, BucketsUnsorted),
-
-    LocalAddr = menelaus_util:local_addr(Req),
-    InfoLevel = case proplists:get_value("basic_stats", mochiweb_request:parse_qs(Req)) of
-                    undefined -> normal;
-                    _ -> for_ui
-                end,
-    SkipMap = proplists:get_value("skipMap", mochiweb_request:parse_qs(Req)) =:= "true",
-    BucketsInfo = [build_bucket_info(Name, BucketConfig, InfoLevel, LocalAddr,
-                                     may_expose_bucket_auth(Name, Req), SkipMap)
-                   || {Name, BucketConfig} <- Buckets],
-    reply_json(Req, BucketsInfo).
+    reply_json(Req, build_buckets_info(Req, Buckets, get_info_level(Req))).
 
 handle_bucket_info(_PoolId, Id, Req) ->
-    InfoLevel = case proplists:get_value("basic_stats", mochiweb_request:parse_qs(Req)) of
-                    undefined -> normal;
-                    _ -> for_ui
-                end,
-    SkipMap = proplists:get_value("skipMap", mochiweb_request:parse_qs(Req)) =:= "true",
-    reply_json(Req, build_bucket_info(Id, undefined, InfoLevel,
-                                      menelaus_util:local_addr(Req),
-                                      may_expose_bucket_auth(Id, Req), SkipMap)).
+    {ok, BucketConfig} = ns_bucket:get_bucket(Id),
+    [Json] = build_buckets_info(Req, [{Id, BucketConfig}], get_info_level(Req)),
+    reply_json(Req, Json).
 
-build_bucket_node_infos(BucketName, BucketConfig, InfoLevel0, LocalAddr) ->
+build_bucket_nodes_info(BucketName, BucketConfig, InfoLevel0, LocalAddr) ->
     {InfoLevel, Stability} = convert_info_level(InfoLevel0),
     %% Only list nodes this bucket is mapped to
     F = menelaus_web_node:build_nodes_info_fun(false, InfoLevel, Stability, LocalAddr),
@@ -253,158 +245,114 @@ build_durability_min_level(BucketConfig) ->
             <<"persistToMajority">>
     end.
 
-build_bucket_info(Id, undefined, InfoLevel, LocalAddr, MayExposeAuth,
-                  SkipMap) ->
-    {ok, BucketConfig} = ns_bucket:get_bucket(Id),
-    build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
-                      SkipMap);
+build_buckets_info(Req, Buckets, InfoLevel) ->
+    SkipMap = InfoLevel =/= streaming andalso
+        proplists:get_value(
+          "skipMap", mochiweb_request:parse_qs(Req)) =:= "true",
+    LocalAddr = menelaus_util:local_addr(Req),
+    [build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr,
+                       may_expose_bucket_auth(Id, Req), SkipMap) ||
+        {Id, BucketConfig} <- Buckets].
+
 build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
                   SkipMap) ->
-    Nodes = build_bucket_node_infos(Id, BucketConfig, InfoLevel, LocalAddr),
-    StatsUri = bin_concat_path(["pools", "default", "buckets", Id, "stats"]),
-    StatsDirectoryUri = iolist_to_binary([StatsUri, <<"Directory">>]),
-    NodeStatsListURI = bin_concat_path(["pools", "default", "buckets", Id, "nodes"]),
-    BucketCaps = build_bucket_capabilities(BucketConfig),
-
     BucketUUID = ns_bucket:bucket_uuid(BucketConfig),
-    QSProps = [{"bucket_uuid", BucketUUID}],
-
-    BuildUUIDURI = fun (Segments) ->
-                           bin_concat_path(Segments, QSProps)
-                   end,
-
-    EvictionPolicy = build_eviction_policy(BucketConfig),
-    ConflictResolutionType = ns_bucket:conflict_resolution_type(BucketConfig),
-    DurabilityMinLevel = build_durability_min_level(BucketConfig),
-
-    Suffix = case InfoLevel of
-                 streaming ->
-                     BucketCaps;
-                 _ ->
-                     BasicStats0 = menelaus_stats:basic_stats(Id),
-
-                     BasicStats = case InfoLevel of
-                                      for_ui ->
-                                          StorageTotals = [{Key, {struct, StoragePList}}
-                                                           || {Key, StoragePList} <- ns_storage_conf:cluster_storage_info()],
-
-                                          [{storageTotals, {struct, StorageTotals}} | BasicStats0];
-                                      _ -> BasicStats0
-                                  end,
-
-                     BucketParams =
-                         [{replicaNumber, ns_bucket:num_replicas(BucketConfig)},
-                          {threadsNumber, proplists:get_value(num_threads, BucketConfig, 3)},
-                          {quota, {struct, [{ram, ns_bucket:ram_quota(BucketConfig)},
-                                            {rawRAM, ns_bucket:raw_ram_quota(BucketConfig)}]}},
-                          {basicStats, {struct, BasicStats}},
-                          {evictionPolicy, EvictionPolicy},
-                          {storageBackend, ns_bucket:storage_backend(BucketConfig)},
-                          {durabilityMinLevel, DurabilityMinLevel},
-                          {fragmentationPercentage,
-                           proplists:get_value(frag_percent, BucketConfig, 50)},
-                          {conflictResolutionType, ConflictResolutionType}
-                          | BucketCaps],
-
-                     BucketParams1 =
-                         case cluster_compat_mode:is_enterprise() andalso
-                             cluster_compat_mode:is_cluster_55() of
-                             true ->
-                                 CMode = proplists:get_value(compression_mode,
-                                                             BucketConfig, off),
-                                 [{maxTTL, proplists:get_value(max_ttl,
-                                                               BucketConfig, 0)},
-                                  {compressionMode, CMode} |
-                                  BucketParams];
-                             false ->
-                                 BucketParams
-                         end,
-
-                     case ns_bucket:drift_thresholds(BucketConfig) of
-                         undefined ->
-                             BucketParams1;
-                         {DriftAheadThreshold, DriftBehindThreshold} ->
-                             [{driftAheadThresholdMs, DriftAheadThreshold},
-                              {driftBehindThresholdMs, DriftBehindThreshold}
-                              | BucketParams1]
-                     end
-             end,
     BucketType = ns_bucket:bucket_type(BucketConfig),
-    %% Only list nodes this bucket is mapped to
-    %% Leave vBucketServerMap key out for memcached buckets; this is
-    %% how Enyim decides to use ketama
-    Suffix1 = case BucketType of
-                  membase ->
-                      case SkipMap of
-                          false ->
-                              [{vBucketServerMap, ns_bucket:json_map_from_config(
-                                                    LocalAddr, BucketConfig)} |
-                               Suffix];
-                          _ ->
-                              Suffix
-                      end;
-                  memcached ->
-                      Suffix
-              end,
-    ACInfo = build_auto_compaction_info(BucketConfig),
-    PIInfo = build_purge_interval_info(BucketConfig),
-    CanHaveViews = ns_bucket:can_have_views(BucketConfig),
+    {struct,
+     lists:flatten(
+       [{name, list_to_binary(Id)},
+        {uuid, BucketUUID},
+        {bucketType, ns_bucket:external_bucket_type(BucketConfig)},
+        {authType, misc:expect_prop_value(auth_type, BucketConfig)},
+        {uri, build_pools_uri(["buckets", Id], BucketUUID)},
+        {streamingUri, build_pools_uri(["bucketsStreaming", Id], BucketUUID)},
+        {localRandomKeyUri, build_pools_uri(["buckets", Id, "localRandomKey"])},
+        {controllers, {struct, build_controllers(Id, BucketConfig)}},
+        {nodes,
+         build_bucket_nodes_info(Id, BucketConfig, InfoLevel, LocalAddr)},
+        {stats,
+         {struct,
+          [{uri, build_pools_uri(["buckets", Id, "stats"])},
+           {directoryURI,
+            build_pools_uri(["buckets", Id, "stats", "Directory"])},
+           {nodeStatsListURI, build_pools_uri(["buckets", Id, "nodes"])}]}},
+        {nodeLocator, ns_bucket:node_locator(BucketConfig)},
+        build_bucket_capabilities(BucketConfig),
+        [{vBucketServerMap,
+          ns_bucket:json_map_from_config(LocalAddr, BucketConfig)} ||
+            {BucketType, SkipMap} =:= {membase, false}],
+        build_auto_compaction_info(BucketConfig),
+        build_purge_interval_info(BucketConfig),
+        [[{ddocs,
+           {struct,
+            [{uri, build_pools_uri(["buckets", Id, "ddocs"])}]}},
+          {replicaIndex,
+           proplists:get_value(replica_index, BucketConfig, true)}] ||
+            ns_bucket:can_have_views(BucketConfig)],
+        build_dynamic_bucket_info(InfoLevel, Id, BucketConfig),
+        [{saslPassword,
+          list_to_binary(proplists:get_value(sasl_password,
+                                             BucketConfig, ""))} ||
+            MayExposeAuth]])}.
 
-    Suffix2 = build_ddocs_uri(CanHaveViews, Id,
-                              BucketConfig) ++ ACInfo ++ PIInfo ++ Suffix1,
+build_pools_uri(Tail) ->
+    build_pools_uri(Tail, undefined).
 
-    FlushEnabled = proplists:get_value(flush_enabled, BucketConfig, false),
-    MaybeFlushController =
-        case FlushEnabled of
-            true ->
-                [{flush, bin_concat_path(["pools", "default",
-                                          "buckets", Id, "controller", "doFlush"])}];
-            false ->
-                []
-        end,
+build_pools_uri(Tail, UUID) ->
+    bin_concat_path(["pools", "default"] ++ Tail,
+                    [{"bucket_uuid", UUID} || UUID =/= undefined]).
 
-    Suffix3 = case MayExposeAuth of
-                  true ->
-                      [{saslPassword,
-                       list_to_binary(proplists:get_value(sasl_password, BucketConfig, ""))} |
-                       Suffix2];
-                  false ->
-                      Suffix2
-              end,
+build_controller(Id, Controller) ->
+    build_pools_uri(["buckets", Id, "controller", Controller]).
 
-    {struct, [{name, list_to_binary(Id)},
-              {uuid, BucketUUID},
-              {bucketType, ns_bucket:external_bucket_type(BucketConfig)},
-              {authType, misc:expect_prop_value(auth_type, BucketConfig)},
-              {uri, BuildUUIDURI(["pools", "default", "buckets", Id])},
-              {streamingUri, BuildUUIDURI(["pools", "default", "bucketsStreaming", Id])},
-              {localRandomKeyUri, bin_concat_path(["pools", "default",
-                                                   "buckets", Id, "localRandomKey"])},
-              {controllers,
-               {struct,
-                MaybeFlushController ++
-                    [{compactAll, bin_concat_path(["pools", "default",
-                                                   "buckets", Id, "controller", "compactBucket"])},
-                     {compactDB, bin_concat_path(["pools", "default",
-                                                  "buckets", Id, "controller", "compactDatabases"])},
-                     {purgeDeletes, bin_concat_path(["pools", "default",
-                                                     "buckets", Id, "controller", "unsafePurgeBucket"])},
-                     {startRecovery, bin_concat_path(["pools", "default",
-                                                      "buckets", Id, "controller", "startRecovery"])}]}},
-              {nodes, Nodes},
-              {stats, {struct, [{uri, StatsUri},
-                                {directoryURI, StatsDirectoryUri},
-                                {nodeStatsListURI, NodeStatsListURI}]}},
-              {nodeLocator, ns_bucket:node_locator(BucketConfig)}
-              | Suffix3]}.
+build_controllers(Id, BucketConfig) ->
+    [{compactAll, build_controller(Id, "compactBucket")},
+     {compactDB, build_controller(Id, "compactDatabases")},
+     {purgeDeletes, build_controller(Id, "unsafePurgeBucket")},
+     {startRecovery, build_controller(Id, "startRecovery")} |
+     [{flush, build_controller(Id, "doFlush")} ||
+         proplists:get_value(flush_enabled, BucketConfig, false)]].
 
-build_ddocs_uri(true, Id, BucketConfig) ->
-    DDocsURI = bin_concat_path(["pools", "default", "buckets",
-                                Id, "ddocs"]),
-    [{ddocs, {struct, [{uri, DDocsURI}]}},
-     {replicaIndex, proplists:get_value(replica_index, BucketConfig, true)}];
-build_ddocs_uri(false, _Id, _BucketConfig) ->
-    [].
+build_bucket_stats(for_ui, Id) ->
+    StorageTotals = [{Key, {struct, StoragePList}}
+                     || {Key, StoragePList} <-
+                            ns_storage_conf:cluster_storage_info()],
+
+    [{storageTotals, {struct, StorageTotals}} | menelaus_stats:basic_stats(Id)];
+build_bucket_stats(_, Id) ->
+    menelaus_stats:basic_stats(Id).
+
+build_dynamic_bucket_info(streaming, _Id, _BucketConfig) ->
+    [];
+build_dynamic_bucket_info(InfoLevel, Id, BucketConfig) ->
+    [[{replicaNumber, ns_bucket:num_replicas(BucketConfig)},
+      {threadsNumber, proplists:get_value(num_threads, BucketConfig, 3)},
+      {quota, {struct, [{ram, ns_bucket:ram_quota(BucketConfig)},
+                        {rawRAM, ns_bucket:raw_ram_quota(BucketConfig)}]}},
+      {basicStats, {struct, build_bucket_stats(InfoLevel, Id)}},
+      {evictionPolicy, build_eviction_policy(BucketConfig)},
+      {storageBackend, ns_bucket:storage_backend(BucketConfig)},
+      {durabilityMinLevel, build_durability_min_level(BucketConfig)},
+      {fragmentationPercentage,
+       proplists:get_value(frag_percent, BucketConfig, 50)},
+      {conflictResolutionType,
+       ns_bucket:conflict_resolution_type(BucketConfig)}],
+     case cluster_compat_mode:is_enterprise() andalso
+         cluster_compat_mode:is_cluster_55() of
+         true ->
+             [{maxTTL, proplists:get_value(max_ttl, BucketConfig, 0)},
+              {compressionMode,
+               proplists:get_value(compression_mode, BucketConfig, off)}];
+         false ->
+             []
+     end,
+     case ns_bucket:drift_thresholds(BucketConfig) of
+         undefined ->
+             [];
+         {DriftAheadThreshold, DriftBehindThreshold} ->
+             [{driftAheadThresholdMs, DriftAheadThreshold},
+              {driftBehindThresholdMs, DriftBehindThreshold}]
+     end].
 
 build_bucket_capabilities(BucketConfig) ->
     Caps =
@@ -476,25 +424,31 @@ handle_sasl_buckets_streaming(_PoolId, Req) ->
     handle_streaming(F, Req).
 
 handle_bucket_info_streaming(_PoolId, Id, Req) ->
-    LocalAddr = menelaus_util:local_addr(Req),
-    SendTerse = ns_config:read_key_fast(send_terse_streaming_buckets, false),
-    F = fun(_Stability, _UpdateID) ->
-                case ns_bucket:get_bucket(Id) of
-                    {ok, BucketConfig} ->
-                        case SendTerse of
-                            true ->
-                                {ok, Bin} = bucket_info_cache:terse_bucket_info_with_local_addr(Id, LocalAddr),
-                                {just_write, {write, Bin}};
-                            _ ->
-                                Info = build_bucket_info(Id, BucketConfig, streaming, LocalAddr,
-                                                         may_expose_bucket_auth(Id, Req), false),
-                                {just_write, Info}
-                        end;
-                    not_present ->
-                        exit(normal)
+    Build =
+        case ns_config:read_key_fast(send_terse_streaming_buckets, false) of
+            true ->
+                fun (_) ->
+                        {ok, Bin} =
+                            bucket_info_cache:terse_bucket_info_with_local_addr(
+                              Id, menelaus_util:local_addr(Req)),
+                        {write, Bin}
+                end;
+            false ->
+                fun (BucketConfig) ->
+                        [Info] = build_buckets_info(Req, [{Id, BucketConfig}],
+                                                    streaming),
+                        Info
                 end
         end,
-    handle_streaming(F, Req).
+
+    handle_streaming(fun(_Stability, _UpdateID) ->
+                             case ns_bucket:get_bucket(Id) of
+                                 {ok, BucketConfig} ->
+                                     {just_write, Build(BucketConfig)};
+                                 not_present ->
+                                     exit(normal)
+                             end
+                     end, Req).
 
 handle_bucket_delete(_PoolId, BucketId, Req) ->
     menelaus_web_rbac:assert_no_users_upgrade(),
