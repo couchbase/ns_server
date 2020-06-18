@@ -49,7 +49,6 @@
          handle_ddocs_list/3,
          handle_set_ddoc_update_min_changes/4,
          handle_local_random_key/3,
-         build_bucket_capabilities/1,
          maybe_cleanup_old_buckets/0,
          serve_short_bucket_info/2,
          serve_streaming_short_bucket_info/2,
@@ -256,54 +255,44 @@ build_buckets_info(Req, Buckets, InfoLevel) ->
 
 build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
                   SkipMap) ->
-    BucketUUID = ns_bucket:bucket_uuid(BucketConfig),
-    BucketType = ns_bucket:bucket_type(BucketConfig),
     {struct,
      lists:flatten(
-       [{name, list_to_binary(Id)},
-        {uuid, BucketUUID},
+       [bucket_info_cache:build_short_bucket_info(Id, BucketConfig),
+        bucket_info_cache:build_ddocs(Id, BucketConfig),
+        [bucket_info_cache:build_vbucket_map(LocalAddr, BucketConfig,
+                                             ns_config:get())
+         || not SkipMap],
         {bucketType, ns_bucket:external_bucket_type(BucketConfig)},
         {authType, misc:expect_prop_value(auth_type, BucketConfig)},
-        {uri, build_pools_uri(["buckets", Id], BucketUUID)},
-        {streamingUri, build_pools_uri(["bucketsStreaming", Id], BucketUUID)},
-        {localRandomKeyUri, build_pools_uri(["buckets", Id, "localRandomKey"])},
+        {localRandomKeyUri,
+         bucket_info_cache:build_pools_uri(["buckets", Id, "localRandomKey"])},
         {controllers, {struct, build_controllers(Id, BucketConfig)}},
         {nodes,
          build_bucket_nodes_info(Id, BucketConfig, InfoLevel, LocalAddr)},
         {stats,
          {struct,
-          [{uri, build_pools_uri(["buckets", Id, "stats"])},
+          [{uri, bucket_info_cache:build_pools_uri(["buckets", Id, "stats"])},
            {directoryURI,
-            build_pools_uri(["buckets", Id, "stats", "Directory"])},
-           {nodeStatsListURI, build_pools_uri(["buckets", Id, "nodes"])}]}},
-        {nodeLocator, ns_bucket:node_locator(BucketConfig)},
-        build_bucket_capabilities(BucketConfig),
-        [{vBucketServerMap,
-          ns_bucket:json_map_from_config(LocalAddr, BucketConfig)} ||
-            {BucketType, SkipMap} =:= {membase, false}],
+            bucket_info_cache:build_pools_uri(["buckets", Id, "stats",
+                                               "Directory"])},
+           {nodeStatsListURI,
+            bucket_info_cache:build_pools_uri(["buckets", Id, "nodes"])}]}},
         build_auto_compaction_info(BucketConfig),
         build_purge_interval_info(BucketConfig),
-        [[{ddocs,
-           {struct,
-            [{uri, build_pools_uri(["buckets", Id, "ddocs"])}]}},
-          {replicaIndex,
-           proplists:get_value(replica_index, BucketConfig, true)}] ||
-            ns_bucket:can_have_views(BucketConfig)],
+        build_replica_index(BucketConfig),
         build_dynamic_bucket_info(InfoLevel, Id, BucketConfig),
         [{saslPassword,
           list_to_binary(proplists:get_value(sasl_password,
                                              BucketConfig, ""))} ||
             MayExposeAuth]])}.
 
-build_pools_uri(Tail) ->
-    build_pools_uri(Tail, undefined).
-
-build_pools_uri(Tail, UUID) ->
-    bin_concat_path(["pools", "default"] ++ Tail,
-                    [{"bucket_uuid", UUID} || UUID =/= undefined]).
+build_replica_index(BucketConfig) ->
+    [{replicaIndex, proplists:get_value(replica_index, BucketConfig, true)} ||
+        ns_bucket:can_have_views(BucketConfig)].
 
 build_controller(Id, Controller) ->
-    build_pools_uri(["buckets", Id, "controller", Controller]).
+    bucket_info_cache:build_pools_uri(["buckets", Id, "controller",
+                                       Controller]).
 
 build_controllers(Id, BucketConfig) ->
     [{compactAll, build_controller(Id, "compactBucket")},
@@ -354,27 +343,6 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig) ->
               {driftBehindThresholdMs, DriftBehindThreshold}]
      end].
 
-build_bucket_capabilities(BucketConfig) ->
-    Caps =
-        case ns_bucket:bucket_type(BucketConfig) of
-            membase ->
-                Conditional =
-                    [{collections, collections:enabled(BucketConfig)},
-                     {durableWrite, cluster_compat_mode:is_cluster_65()},
-                     {tombstonedUserXAttrs,
-                      cluster_compat_mode:is_cluster_66()},
-                     {couchapi, ns_bucket:can_have_views(BucketConfig)}],
-
-                [C || {C, true} <- Conditional] ++
-                    [dcp, cbhello, touch, cccp, xdcrCheckpointing, nodesExt,
-                     xattr];
-            memcached ->
-                [cbhello, nodesExt]
-        end,
-
-    [{bucketCapabilitiesVer, ''},
-     {bucketCapabilities, Caps}].
-
 handle_sasl_buckets_streaming(_PoolId, Req) ->
     LocalAddr = menelaus_util:local_addr(Req),
 
@@ -404,8 +372,9 @@ handle_sasl_buckets_streaming(_PoolId, Req) ->
                               VBM = case ns_bucket:bucket_type(BucketInfo) of
                                         membase ->
                                             [{vBucketServerMap,
-                                              ns_bucket:json_map_from_config(
-                                                LocalAddr, BucketInfo)}];
+                                              ns_bucket:json_map(LocalAddr,
+                                                                 BucketInfo,
+                                                                 Config)}];
                                         memcached ->
                                             []
                                     end,

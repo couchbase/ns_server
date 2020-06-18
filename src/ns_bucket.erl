@@ -51,8 +51,7 @@
          is_persistent/1,
          is_ephemeral_bucket/1,
          is_valid_bucket_name/1,
-         json_map_from_config/2,
-         json_map_with_full_config/3,
+         json_map/3,
          live_bucket_nodes/1,
          live_bucket_nodes_from_config/1,
          map_to_replicas/1,
@@ -485,10 +484,6 @@ moxi_port(Bucket) ->
 get_servers(BucketConfig) ->
     proplists:get_value(servers, BucketConfig).
 
-json_map_from_config(LocalAddr, BucketConfig) ->
-    Config = ns_config:get(),
-    json_map_with_full_config(LocalAddr, BucketConfig, Config).
-
 equal_len_chains([]) ->
     [];
 equal_len_chains(Map) ->
@@ -498,7 +493,7 @@ equal_len_chains(Map) ->
     [Chain ++ lists:duplicate(MaxChainLen - length(Chain), undefined)
      || Chain <- Map].
 
-json_map_with_full_config(LocalAddr, BucketConfig, Config) ->
+json_map(LocalAddr, BucketConfig, Config) ->
     NumReplicas = num_replicas(BucketConfig),
     EMap = equal_len_chains(proplists:get_value(map, BucketConfig, [])),
     BucketNodes = get_servers(BucketConfig),
@@ -529,11 +524,11 @@ json_map_with_full_config(LocalAddr, BucketConfig, Config) ->
                   [[dict:fetch(N, NodesToPositions) || N <- Chain]
                    || Chain <- FFM]}]
         end,
-    {struct, [{hashAlgorithm, <<"CRC">>},
-              {numReplicas, NumReplicas},
-              {serverList, Servers},
-              {vBucketMap, Map} |
-              FastForwardMapList]}.
+    {[{hashAlgorithm, <<"CRC">>},
+      {numReplicas, NumReplicas},
+      {serverList, Servers},
+      {vBucketMap, Map} |
+      FastForwardMapList]}.
 
 set_bucket_config(Bucket, NewConfig) ->
     update_bucket_config(Bucket, fun (_) -> NewConfig end).

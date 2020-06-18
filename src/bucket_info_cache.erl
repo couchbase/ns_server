@@ -23,7 +23,12 @@
          terse_bucket_info/1,
          terse_bucket_info_with_local_addr/2]).
 
--export([build_node_services/0]).
+-export([build_node_services/0,
+         build_pools_uri/1,
+         build_pools_uri/2,
+         build_short_bucket_info/2,
+         build_vbucket_map/3,
+         build_ddocs/2]).
 
 %% for diagnostics
 -export([submit_full_reset/0]).
@@ -174,64 +179,85 @@ node_bucket_info(Node, Config, Bucket, BucketUUID, BucketConfig) ->
            end,
     {Info}.
 
-compute_bucket_info_with_config(Bucket, Config, BucketConfig) ->
-    {_, Servers0} = lists:keyfind(servers, 1, BucketConfig),
+build_short_bucket_info(Id, BucketConfig) ->
+    BucketUUID = ns_bucket:bucket_uuid(BucketConfig),
+    [build_name_and_locator(Id, BucketConfig),
+     {uuid, BucketUUID},
+     {uri, build_pools_uri(["buckets", Id], BucketUUID)},
+     {streamingUri, build_pools_uri(["bucketsStreaming", Id], BucketUUID)},
+     build_bucket_capabilities(BucketConfig)].
 
+build_name_and_locator(Id, BucketConfig) ->
+    [{name, list_to_binary(Id)},
+     {nodeLocator, ns_bucket:node_locator(BucketConfig)}].
+
+build_vbucket_map(LocalAddr, BucketConfig, Config) ->
+    case ns_bucket:bucket_type(BucketConfig) of
+        memcached ->
+            [];
+        membase ->
+            {vBucketServerMap,
+             ns_bucket:json_map(LocalAddr, BucketConfig, Config)}
+    end.
+
+build_ddocs(Id, BucketConfig) ->
+    [{ddocs, {[{uri, build_pools_uri(["buckets", Id, "ddocs"])}]}} ||
+        ns_bucket:can_have_views(BucketConfig)].
+
+build_pools_uri(Tail) ->
+    build_pools_uri(Tail, undefined).
+
+build_pools_uri(Tail, UUID) ->
+    menelaus_util:bin_concat_path(
+      ["pools", "default"] ++ Tail,
+      [{"bucket_uuid", UUID} || UUID =/= undefined]).
+
+build_bucket_capabilities(BucketConfig) ->
+    Caps =
+        case ns_bucket:bucket_type(BucketConfig) of
+            membase ->
+                Conditional =
+                    [{collections, collections:enabled(BucketConfig)},
+                     {durableWrite, cluster_compat_mode:is_cluster_65()},
+                     {tombstonedUserXAttrs,
+                      cluster_compat_mode:is_cluster_66()},
+                     {couchapi, ns_bucket:can_have_views(BucketConfig)}],
+
+                [C || {C, true} <- Conditional] ++
+                    [dcp, cbhello, touch, cccp, xdcrCheckpointing, nodesExt,
+                     xattr];
+            memcached ->
+                [cbhello, nodesExt]
+        end,
+
+    [{bucketCapabilitiesVer, ''},
+     {bucketCapabilities, Caps}].
+
+compute_bucket_info_with_config(Id, Config, BucketConfig) ->
     %% we do sorting to make nodes list match order of servers inside
     %% vBucketServerMap
-    Servers = lists:sort(Servers0),
+    Servers = lists:sort(ns_bucket:get_servers(BucketConfig)),
     BucketUUID = ns_bucket:bucket_uuid(BucketConfig),
 
-    NIs = lists:map(fun (Node) ->
-                            node_bucket_info(Node, Config, Bucket,
-                                             BucketUUID, BucketConfig)
-                    end, Servers),
     AllServers = Servers ++
         ordsets:subtract(ns_cluster_membership:active_nodes(Config), Servers),
-    NEIs = build_nodes_ext(AllServers, Config, []),
-
-    {_, UUID} = lists:keyfind(uuid, 1, BucketConfig),
-
-    BucketBin = list_to_binary(Bucket),
-
-    Caps = menelaus_web_buckets:build_bucket_capabilities(BucketConfig) ++
-             build_cluster_capabilities(Config),
-
-    MaybeVBMapDDocs =
-        case lists:keyfind(type, 1, BucketConfig) of
-            {_, memcached} ->
-                Caps;
-            _ ->
-                {struct, VBMap} =
-                    ns_bucket:json_map_with_full_config(
-                      ?LOCALHOST_MARKER_STRING, BucketConfig, Config),
-                VBMapInfo = [{vBucketServerMap, {VBMap}} | Caps],
-                case ns_bucket:can_have_views(BucketConfig) of
-                    true ->
-                        [{ddocs,
-                          {[{uri, <<"/pools/default/buckets/", BucketBin/binary,
-                                    "/ddocs">>}]}} | VBMapInfo];
-                    false ->
-                        VBMapInfo
-                end
-        end,
 
     %% We're computing rev using config's global rev which allows us
     %% to track changes to node services and set of active nodes.
     Rev = ns_config:compute_global_rev(Config),
 
-    J = {[{rev, Rev},
-          {name, BucketBin},
-          {uri, <<"/pools/default/buckets/", BucketBin/binary,
-                  "?bucket_uuid=", UUID/binary>>},
-          {streamingUri, <<"/pools/default/bucketsStreaming/",
-                           BucketBin/binary, "?bucket_uuid=", UUID/binary>>},
-          {nodes, NIs},
-          {nodesExt, NEIs},
-          {nodeLocator, ns_bucket:node_locator(BucketConfig)},
-          {uuid, UUID}
-          | MaybeVBMapDDocs]},
-    {ok, Rev, ejson:encode(J), BucketConfig}.
+    Json =
+        {lists:flatten(
+           [{rev, Rev},
+            build_short_bucket_info(Id, BucketConfig),
+            build_ddocs(Id, BucketConfig),
+            build_vbucket_map(?LOCALHOST_MARKER_STRING, BucketConfig, Config),
+            {nodes,
+             [node_bucket_info(Node, Config, Id, BucketUUID, BucketConfig)
+                 || Node <- Servers]},
+            {nodesExt, build_nodes_ext(AllServers, Config, [])},
+            build_cluster_capabilities(Config)])},
+    {ok, Rev, ejson:encode(Json), BucketConfig}.
 
 compute_bucket_info(Bucket) ->
     Config = ns_config:get(),
