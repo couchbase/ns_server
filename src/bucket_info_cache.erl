@@ -98,7 +98,8 @@ submit_new_buckets(Pid, Buckets0) ->
                    ets:delete(bucket_info_cache, Name),
                    ets:delete(bucket_info_cache_buckets, Name)
                end || Name <- BucketNames],
-              [gen_event:notify(bucket_info_cache_invalidations, Name) || Name <- BucketNames],
+              [gen_event:notify(bucket_info_cache_invalidations, Name) ||
+                  Name <- BucketNames],
               ok
       end).
 
@@ -130,7 +131,8 @@ alternate_addresses_json(Node, Config, WantedPorts) ->
 build_nodes_ext([] = _Nodes, _Config, NodesExtAcc) ->
     lists:reverse(NodesExtAcc);
 build_nodes_ext([Node | RestNodes], Config, NodesExtAcc) ->
-    Services = [rest | ns_cluster_membership:node_active_services(Config, Node)],
+    Services =
+        [rest | ns_cluster_membership:node_active_services(Config, Node)],
     NI1 = maybe_build_ext_hostname(Node),
     NI2 = case Node =:= node() of
               true ->
@@ -175,7 +177,8 @@ node_bucket_info(Node, Config, Bucket, BucketUUID, BucketConfig) ->
 compute_bucket_info_with_config(Bucket, Config, BucketConfig) ->
     {_, Servers0} = lists:keyfind(servers, 1, BucketConfig),
 
-    %% we do sorting to make nodes list match order of servers inside vBucketServerMap
+    %% we do sorting to make nodes list match order of servers inside
+    %% vBucketServerMap
     Servers = lists:sort(Servers0),
     BucketUUID = ns_bucket:bucket_uuid(BucketConfig),
 
@@ -183,7 +186,8 @@ compute_bucket_info_with_config(Bucket, Config, BucketConfig) ->
                             node_bucket_info(Node, Config, Bucket,
                                              BucketUUID, BucketConfig)
                     end, Servers),
-    AllServers = Servers ++ ordsets:subtract(ns_cluster_membership:active_nodes(Config), Servers),
+    AllServers = Servers ++
+        ordsets:subtract(ns_cluster_membership:active_nodes(Config), Servers),
     NEIs = build_nodes_ext(AllServers, Config, []),
 
     {_, UUID} = lists:keyfind(uuid, 1, BucketConfig),
@@ -198,13 +202,15 @@ compute_bucket_info_with_config(Bucket, Config, BucketConfig) ->
             {_, memcached} ->
                 Caps;
             _ ->
-                {struct, VBMap} = ns_bucket:json_map_with_full_config(?LOCALHOST_MARKER_STRING,
-                                                                      BucketConfig, Config),
+                {struct, VBMap} =
+                    ns_bucket:json_map_with_full_config(
+                      ?LOCALHOST_MARKER_STRING, BucketConfig, Config),
                 VBMapInfo = [{vBucketServerMap, {VBMap}} | Caps],
                 case ns_bucket:can_have_views(BucketConfig) of
                     true ->
-                        [{ddocs, {[{uri, <<"/pools/default/buckets/", BucketBin/binary,
-                                           "/ddocs">>}]}} | VBMapInfo];
+                        [{ddocs,
+                          {[{uri, <<"/pools/default/buckets/", BucketBin/binary,
+                                    "/ddocs">>}]}} | VBMapInfo];
                     false ->
                         VBMapInfo
                 end
@@ -216,8 +222,10 @@ compute_bucket_info_with_config(Bucket, Config, BucketConfig) ->
 
     J = {[{rev, Rev},
           {name, BucketBin},
-          {uri, <<"/pools/default/buckets/", BucketBin/binary, "?bucket_uuid=", UUID/binary>>},
-          {streamingUri, <<"/pools/default/bucketsStreaming/", BucketBin/binary, "?bucket_uuid=", UUID/binary>>},
+          {uri, <<"/pools/default/buckets/", BucketBin/binary,
+                  "?bucket_uuid=", UUID/binary>>},
+          {streamingUri, <<"/pools/default/bucketsStreaming/",
+                           BucketBin/binary, "?bucket_uuid=", UUID/binary>>},
           {nodes, NIs},
           {nodesExt, NEIs},
           {nodeLocator, ns_bucket:node_locator(BucketConfig)},
