@@ -259,8 +259,7 @@ build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
      lists:flatten(
        [bucket_info_cache:build_short_bucket_info(Id, BucketConfig),
         bucket_info_cache:build_ddocs(Id, BucketConfig),
-        [bucket_info_cache:build_vbucket_map(LocalAddr, BucketConfig,
-                                             ns_config:get())
+        [bucket_info_cache:build_vbucket_map(LocalAddr, BucketConfig)
          || not SkipMap],
         {bucketType, ns_bucket:external_bucket_type(BucketConfig)},
         {authType, misc:expect_prop_value(auth_type, BucketConfig)},
@@ -348,33 +347,32 @@ handle_sasl_buckets_streaming(_PoolId, Req) ->
     LocalAddr = menelaus_util:local_addr(Req),
 
     F = fun (_, _) ->
-                Config = ns_config:get(),
-                List = [build_sasl_bucket_info({Id, BucketConfig},
-                                               LocalAddr, Config) ||
-                           {Id, BucketConfig} <- ns_bucket:get_buckets(Config),
+                List = [build_sasl_bucket_info({Id, BucketConfig}, LocalAddr) ||
+                           {Id, BucketConfig} <- ns_bucket:get_buckets(),
                            ns_bucket:auth_type(BucketConfig) =:= sasl],
                 {just_write, {struct, [{buckets, List}]}}
         end,
     handle_streaming(F, Req).
 
-build_sasl_bucket_nodes(BucketConfig, LocalAddr, Config) ->
+build_sasl_bucket_nodes(BucketConfig, LocalAddr) ->
     {nodes,
      [{struct,
        [{hostname,
          list_to_binary(menelaus_web_node:build_node_hostname(
-                          Config, N, LocalAddr))},
+                          ns_config:latest(), N, LocalAddr))},
         {ports, {struct,
                  [{direct,
-                   service_ports:get_port(memcached_port, Config, N)}]}}]} ||
+                   service_ports:get_port(
+                     memcached_port, ns_config:latest(), N)}]}}]} ||
          N <- ns_bucket:get_servers(BucketConfig)]}.
 
-build_sasl_bucket_info({Id, BucketConfig}, LocalAddr, Config) ->
+build_sasl_bucket_info({Id, BucketConfig}, LocalAddr) ->
     {struct,
      lists:flatten(
        [bucket_info_cache:build_name_and_locator(Id, BucketConfig),
         build_sasl_password(BucketConfig),
-        bucket_info_cache:build_vbucket_map(LocalAddr, BucketConfig, Config),
-        build_sasl_bucket_nodes(BucketConfig, LocalAddr, Config)])}.
+        bucket_info_cache:build_vbucket_map(LocalAddr, BucketConfig),
+        build_sasl_bucket_nodes(BucketConfig, LocalAddr)])}.
 
 handle_bucket_info_streaming(_PoolId, Id, Req) ->
     Build =

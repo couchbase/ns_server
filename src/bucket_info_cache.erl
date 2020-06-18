@@ -28,7 +28,7 @@
          build_pools_uri/2,
          build_short_bucket_info/2,
          build_name_and_locator/2,
-         build_vbucket_map/3,
+         build_vbucket_map/2,
          build_ddocs/2]).
 
 %% for diagnostics
@@ -193,13 +193,13 @@ build_name_and_locator(Id, BucketConfig) ->
     [{name, list_to_binary(Id)},
      {nodeLocator, ns_bucket:node_locator(BucketConfig)}].
 
-build_vbucket_map(LocalAddr, BucketConfig, Config) ->
+build_vbucket_map(LocalAddr, BucketConfig) ->
     case ns_bucket:bucket_type(BucketConfig) of
         memcached ->
             [];
         membase ->
             {vBucketServerMap,
-             ns_bucket:json_map(LocalAddr, BucketConfig, Config)}
+             ns_bucket:json_map(LocalAddr, BucketConfig, ns_config:latest())}
     end.
 
 build_ddocs(Id, BucketConfig) ->
@@ -261,7 +261,7 @@ compute_bucket_info_with_config(Id, Config, BucketConfig) ->
            [{rev, Rev},
             build_short_bucket_info(Id, BucketConfig),
             build_ddocs(Id, BucketConfig),
-            build_vbucket_map(?LOCALHOST_MARKER_STRING, BucketConfig, Config),
+            build_vbucket_map(?LOCALHOST_MARKER_STRING, BucketConfig),
             {nodes,
              [node_bucket_info(Node, Config, Id, BucketUUID, BucketConfig)
                  || Node <- Servers]},
