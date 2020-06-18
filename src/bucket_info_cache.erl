@@ -186,7 +186,8 @@ build_short_bucket_info(Id, BucketConfig) ->
      {uuid, BucketUUID},
      {uri, build_pools_uri(["buckets", Id], BucketUUID)},
      {streamingUri, build_pools_uri(["bucketsStreaming", Id], BucketUUID)},
-     build_bucket_capabilities(BucketConfig)].
+     build_bucket_capabilities(BucketConfig),
+     build_collections_manifest_id(BucketConfig)].
 
 build_name_and_locator(Id, BucketConfig) ->
     [{name, list_to_binary(Id)},
@@ -204,6 +205,14 @@ build_vbucket_map(LocalAddr, BucketConfig, Config) ->
 build_ddocs(Id, BucketConfig) ->
     [{ddocs, {[{uri, build_pools_uri(["buckets", Id, "ddocs"])}]}} ||
         ns_bucket:can_have_views(BucketConfig)].
+
+build_collections_manifest_id(BucketConfig) ->
+    case collections:uid(BucketConfig) of
+        undefined ->
+            [];
+        Uid ->
+            {collectionsManifestUid, Uid}
+    end.
 
 build_pools_uri(Tail) ->
     build_pools_uri(Tail, undefined).
