@@ -27,6 +27,7 @@
          build_pools_uri/1,
          build_pools_uri/2,
          build_short_bucket_info/2,
+         build_name_and_locator/2,
          build_vbucket_map/3,
          build_ddocs/2]).
 
