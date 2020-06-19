@@ -102,17 +102,19 @@
         </span>
         <span class="cbui-table-cell flex-grow-3 wrap">
           <span
-              class="relative"
-              ng-repeat="role in user.roles track by $index"
-              tooltip-trigger="mouseenter"
-              tooltip-append-to-body="true"
-              tooltip-placement="auto top"
-              ng-click="$event.stopPropagation()"
-              uib-tooltip="{{userRolesCtl.rolesByRole[role.role + (role.bucket_name ? '[' + role.bucket_name + ']' : '')].desc}}">
+             class="relative"
+             ng-repeat="role in user.roles track by $index"
+             tooltip-trigger="mouseenter"
+             tooltip-append-to-body="true"
+             tooltip-placement="auto top"
+             ng-click="$event.stopPropagation()"
+             uib-tooltip="{{userRolesCtl.rolesByRole[role.role].desc}}">
             <span class="ellipsis">
-              {{userRolesCtl.rolesByRole[role.role + (role.bucket_name ? '[' + role.bucket_name + ']' : '')].name}}<span ng-show="role.bucket_name"
-              >[{{role.bucket_name}}]</span
-              ><span ng-show="!$last && user.roles.length > 1">,</span>
+              {{userRolesCtl.rolesByRole[role.role].name}}
+              <span ng-show="userRolesCtl.rolesByRole[role.role].params.length">
+                [{{userRolesCtl.getRoleParams(role)}}]
+              </span>
+              <span ng-show="!$last">,</span>
             </span>
           </span>
         </span>

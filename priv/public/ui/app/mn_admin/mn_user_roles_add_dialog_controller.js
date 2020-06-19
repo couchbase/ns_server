@@ -14,14 +14,28 @@ function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, m
   vm.selectedGroups = {};
 
   vm.focusError = false;
-  vm.getGroupTitle = getGroupTitle;
-  vm.onGroupChanged = onGroupChanged;
   vm.selectedPanel = "roles";
   vm.lookupMembership =  _.debounce(lookupMembership, 500, {leading: true});
   vm.onDomainChanged = onDomainChanged;
   vm.isLookupEnabled = isLookupEnabled;
+  vm.onGroupChanged = onGroupChanged;
+  vm.getGroupTitle = getGroupTitle;
 
   activate();
+
+  function onGroupChanged(group) {
+    group.roles.forEach(selectGroupsRoles(vm.selectedGroups[group.id], group));
+  }
+
+  function getGroupTitle(roles) {
+    if (!vm.state.rolesByRole) {
+      return;
+    }
+    return roles && roles.map(function (v) {
+      let role = vm.state.rolesByRole[v.role];
+      return role.name + (role.params.length ? "[" + role.params.map(param => v[param]).join(":") + "]" : "");
+    }).join(', ');
+  }
 
   function onDomainChanged() {
     if (vm.user.domain === "external") {
@@ -51,55 +65,19 @@ function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, m
   }
 
   function clearRoles() {
-    vm.selectedRoles = {};
-    vm.selectedGroupsRoles = {};
+    vm.state.selectedRoles = {};
+    vm.state.selectedGroupsRoles = {};
+    vm.state.selectedRolesConfigs = {};
+    vm.state.selectedGroupsRolesConfigs = {};
     vm.selectedGroups = {};
     vm.externalGroups = {};
-    delete vm.rolesToEnable;
   }
 
-  function selectRoles(group, flag) {
-    return function (role) {
-      var id = mnUserRolesService.getRoleUIID(role);
-      vm.selectedGroupsRoles[id] = vm.selectedGroupsRoles[id] || {};
-      if (flag) {
-        vm.selectedGroupsRoles[id][group] = flag;
-      } else {
-        delete vm.selectedGroupsRoles[id][group];
-      }
-      reviewSelectedWrappers();
-    }
-  }
 
-  function reviewSelectedWrappers() {
-    vm.selectedWrappers =
-      mnUserRolesService.reviewSelectedWrappers(vm.selectedRoles, vm.selectedGroupsRoles);
-  }
-
-  function onGroupChanged(group) {
-    if (vm.selectedGroups[group.id]) {
-      group.roles.forEach(selectRoles(group.id, true));
-    } else {
-      group.roles.forEach(selectRoles(group.id, false));
-    }
-
-    if (vm.externalGroups[group.id]) {
-      group.roles.forEach(selectRoles(group.id, true));
-    }
-
-    reviewSelectedWrappers();
-  }
-
-  function getGroupTitle(roles) {
-    return roles && roles.map(function (v) {
-      return vm.byRole[v.role + (v.bucket_name ? '[' + v.bucket_name + ']' : '')].name;
-    }).join(', ');
-  }
-
-  function getUserRoles(user) {
+  function getRolesByType(user, type) {
     return user.roles.filter(function (role) {
       return role.origins.find(function (origin) {
-        return origin.type == "user";
+        return origin.type == type;
       });
     });
   }
@@ -113,18 +91,25 @@ function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, m
 
   function activate() {
     vm.reloadUserRoles = true;
-    $q.all([
-      mnUserRolesService.getRolesByRole(),
-      (mnPoolDefault.export.isEnterprise && mnPoolDefault.export.compat.atLeast65) ?
-        mnUserRolesService.getRolesGroups() : $q.when()
-    ]).then(function (resp) {
-      vm.byRole = resp[0];
-      vm.groups = resp[1] && resp[1].data;
+    mnUserRolesService.getRoles().then(resp => {
+      resp.selectedRolesConfigs = {};
+      resp.openedWrappers = {};
+      resp.selectedRoles = {};
+      resp.selectedGroupsRoles = {};
+      resp.selectedGroupsRolesConfigs = {};
+      vm.state = resp;
       applyUser(vm.user);
       vm.reloadUserRoles = false;
-    }, function () {
+    }, () => {
       vm.reloadUserRoles = false;
     });
+
+    if (mnPoolDefault.export.isEnterprise &&
+        mnPoolDefault.export.compat.atLeast65) {
+      mnUserRolesService.getRolesGroups().then(resp => {
+        vm.groups = resp.data;
+      });
+    }
   }
 
   function applyUser(user) {
@@ -132,18 +117,69 @@ function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, m
     vm.externalGroups = groupsToObject(user.external_groups || []);
 
     if (user.roles) {
-      vm.rolesToEnable = getUserRoles(user);
-      user.roles.forEach(function (role) {
-        var id = mnUserRolesService.getRoleUIID(role);
-        vm.selectedGroupsRoles[id] = vm.selectedGroupsRoles[id] || {};
-        role.origins.forEach(function (group) {
-          if (group.type == "group") {
-            vm.selectedGroupsRoles[id][group.name] = true;
-          }
-        });
+      getRolesByType(user, "user").forEach(role => {
+        if (vm.state.rolesByRole[role.role].params.length) {
+          vm.state.selectedRolesConfigs[role.role] =
+            vm.state.selectedRolesConfigs[role.role] || [];
+
+          vm.state.selectedRolesConfigs[role.role].push(
+            mnUserRolesService.getRoleParams(vm.state.rolesByRole, role)
+          );
+        } else {
+          vm.state.selectedRoles[role.role] = true;
+        }
       });
+
+      let addRole = selectGroupsRoles(true);
+      getRolesByType(user, "group").forEach(addRole);
     }
-    reviewSelectedWrappers();
+  }
+
+  function doSelectGroupsRoles(holder, origins, group) {
+    holder = holder || [];
+    if (origins) {
+      origins.forEach(group => {
+        if (group.type == "group") {
+          holder.push(group.name);
+        }
+      });
+    } else {
+      holder.push(group.id);
+    }
+
+    return holder;
+  }
+
+  function selectGroupsRoles(flag, group) {
+    return function (role) {
+      if (flag) {
+        if (vm.state.rolesByRole[role.role].params.length) {
+          let params = mnUserRolesService.getRoleParams(vm.state.rolesByRole, role);
+          vm.state.selectedGroupsRolesConfigs[role.role] =
+            vm.state.selectedGroupsRolesConfigs[role.role] || {};
+
+          vm.state.selectedGroupsRolesConfigs[role.role][params] =
+            doSelectGroupsRoles(vm.state.selectedGroupsRolesConfigs[role.role][params],
+                                role.origins, group);
+        } else {
+          vm.state.selectedGroupsRoles[role.role] =
+            doSelectGroupsRoles(vm.state.selectedGroupsRoles[role.role],
+                                role.origins, group);
+        }
+      } else {
+        if (vm.state.rolesByRole[role.role].params.length) {
+          let params = mnUserRolesService.getRoleParams(vm.state.rolesByRole, role);
+          let holder = vm.state.selectedGroupsRolesConfigs[role.role][params];
+          holder.splice(holder.indexOf(group.id), 1);
+          if (!holder.length) {
+            delete vm.state.selectedGroupsRolesConfigs[role.role][params];
+          }
+        } else {
+          let holder = vm.state.selectedGroupsRoles[role.role];
+          holder.splice(holder.indexOf(group.id), 1);
+        }
+      }
+    }
   }
 
   function save() {
@@ -152,15 +188,8 @@ function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, m
       return;
     }
 
-    //example of the inсoming role
-    //All Buckets (*)|Query and Index Services|query_insert[*]
-    var roles = [];
-    _.forEach(vm.selectedRoles, function (value, key) {
-      if (value) {
-        var path = key.split("|");
-        roles.push(path[path.length - 1]);
-      }
-    });
+    var roles = mnUserRolesService.packRolesToSend(vm.state.selectedRoles,
+                                                   vm.state.selectedRolesConfigs);
 
     mnPromiseHelper(vm, mnUserRolesService.addUser(
       vm.user, roles, mnHelper.checkboxesToList(vm.selectedGroups), vm.isEditingMode,

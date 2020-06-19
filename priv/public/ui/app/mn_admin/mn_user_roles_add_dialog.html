@@ -173,13 +173,10 @@
             </div>
           </div>
           <div style="width: 320px;">
-            <mn-user-roles-list
+            <mn-user-roles-select
                ng-if="!userRolesAddDialogCtl.reloadUserRoles"
                ng-show="userRolesAddDialogCtl.selectedPanel == 'roles'"
-               selected-wrappers="userRolesAddDialogCtl.selectedWrappers"
-               selected-groups-roles="userRolesAddDialogCtl.selectedGroupsRoles"
-               roles-to-enable="userRolesAddDialogCtl.rolesToEnable"
-               selected-roles="userRolesAddDialogCtl.selectedRoles"></mn-user-roles-list>
+               state="userRolesAddDialogCtl.state"></mn-user-roles-select>
           </div>
         </fieldset>
       </div>

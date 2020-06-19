@@ -63,11 +63,13 @@
              tooltip-append-to-body="true"
              tooltip-placement="auto top"
              ng-click="$event.stopPropagation()"
-             uib-tooltip="{{rolesGroupsCtl.rolesByRole[role.role + (role.bucket_name ? '[' + role.bucket_name + ']' : '')].desc}}">
+             uib-tooltip="{{rolesGroupsCtl.rolesByRole[role.role].desc}}">
             <span class="ellipsis">
-              {{rolesGroupsCtl.rolesByRole[role.role + (role.bucket_name ? '[' + role.bucket_name + ']' : '')].name}}<span ng-show="role.bucket_name"
-                                                                                                                           >[{{role.bucket_name}}]</span
-                                                                                                                                                    ><span ng-show="!$last && rolesGroup.roles.length > 1">,</span>
+              {{rolesGroupsCtl.rolesByRole[role.role].name}}
+              <span ng-show="rolesGroupsCtl.rolesByRole[role.role].params.length">
+                [{{rolesGroupsCtl.getRoleParams(role)}}]
+              </span>
+              <span ng-show="!$last">,</span>
             </span>
           </span>
         </span>

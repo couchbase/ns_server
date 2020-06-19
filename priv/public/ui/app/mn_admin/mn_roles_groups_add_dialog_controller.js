@@ -12,21 +12,45 @@ function mnRolesGroupsAddDialogController(mnUserRolesService, $uibModalInstance,
 
   vm.focusError = false;
 
+  activate();
+
+  function applyRoles(roles) {
+    if (!roles.length) {
+      return;
+    }
+    roles.forEach(role => {
+      if (vm.state.rolesByRole[role.role].params.length) {
+        vm.state.selectedRolesConfigs[role.role] =
+          vm.state.selectedRolesConfigs[role.role] || [];
+        vm.state.selectedRolesConfigs[role.role].push(
+          vm.state.rolesByRole[role.role].params.map(param => role[param]).join(":")
+        );
+      } else {
+        vm.state.selectedRoles[role.role] = true;
+      }
+    });
+  }
+
+  function activate() {
+    mnUserRolesService.getRoles().then(resp => {
+      resp.selectedRolesConfigs = {};
+      resp.openedWrappers = {};
+      resp.selectedRoles = {};
+      vm.state = resp;
+      if (vm.rolesGroup) {
+        applyRoles(vm.rolesGroup.roles);
+      }
+    })
+  }
+
   function save() {
     if (vm.form.$invalid) {
       vm.focusError = true;
       return;
     }
 
-    //example of the inсoming role
-    //All Buckets (*)|Query and Index Services|query_insert[*]
-    var roles = [];
-    _.forEach(vm.selectedRoles, function (value, key) {
-      if (value) {
-        var path = key.split("|");
-        roles.push(path[path.length - 1]);
-      }
-    });
+    var roles = mnUserRolesService.packRolesToSend(vm.state.selectedRoles,
+                                                   vm.state.selectedRolesConfigs);
 
     mnPromiseHelper(vm, mnUserRolesService.addGroup(vm.rolesGroup, roles, vm.isEditingMode), $uibModalInstance)
       .showGlobalSpinner()

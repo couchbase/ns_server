@@ -1,0 +1,45 @@
+<form>
+  <div class="row">
+    <select
+       ng-repeat="param in item.params"
+       ng-style="{width: 100 / item.params.length + '%', margin: '0 0.2rem'}"
+       ng-model="form[param]"
+       ng-disabled="isRoleDisabled(item)"
+       ng-init="form[param] = ''">
+      <option value="">*</option>
+      <option
+         ng-repeat="value in form[item.params[$index - 1] || 'init'].children[param]"
+         ng-value="value">
+        {{value.value}}
+      </option>
+    </select>
+    <a ng-click="submit()"
+       style="min-width: auto; padding: 0 1rem;">
+      add
+    </a>
+  </div>
+</form>
+<div
+   class="margin-left-half"
+   ng-repeat="cfg in state.selectedRolesConfigs[item.role]">
+  <div class="row">
+    {{cfg}}
+    <a ng-click="del(cfg)"
+       style="min-width: auto; padding: 0 1rem;">
+      X
+    </a>
+  </div>
+</div>
+<div
+   class="margin-left-half"
+   ng-repeat="(params, groups) in state.selectedGroupsRolesConfigs[item.role]">
+  <div class="row">
+    {{params}}
+    <span
+       class="role-from-group"
+       ng-if="groups.length"
+       tooltip-trigger="mouseenter"
+       tooltip-append-to-body="true"
+       uib-tooltip="{{groups.join(', ')}}">&nbsp;</span>
+  </div>
+</div>

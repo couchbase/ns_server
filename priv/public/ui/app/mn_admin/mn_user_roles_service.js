@@ -18,11 +18,9 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     deleteUser: deleteUser,
     getRoles: getRoles,
     getRolesByRole: getRolesByRole,
-    getRolesTree: getRolesTree,
     getUsers: getUsers,
     getUser: getUser,
     lookupLDAPUser: lookupLDAPUser,
-    getRoleUIID: getRoleUIID,
 
     addGroup: addGroup,
     deleteRolesGroup: deleteRolesGroup,
@@ -43,8 +41,9 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     putUserProfile: putUserProfile,
 
     saveDashboard: saveDashboard,
-    reviewSelectedWrappers: reviewSelectedWrappers,
-    getSaslauthdAuth: getSaslauthdAuth
+    getSaslauthdAuth: getSaslauthdAuth,
+    packRolesToSend: packRolesToSend,
+    getRoleParams: getRoleParams
   };
 
   var clientTLSCert = "Client Cert should be supplied";
@@ -69,32 +68,6 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
       method: "POST",
       url: "/settings/invalidateLDAPCache"
     });
-  }
-
-  function reviewSelectedWrappers(selectedRoles, selectedGroupsRoles) {
-    var rv = {};
-    Object.keys(selectedRoles).forEach(function (key) {
-      if (selectedRoles[key]) {
-        selectWrappers(key, true, rv);
-      }
-    });
-    Object.keys(selectedGroupsRoles || {}).forEach(function (key) {
-      if (Object.keys(selectedGroupsRoles[key]).length) {
-        selectWrappers(key, true, rv);
-      }
-    });
-    return rv;
-  }
-
-  function selectWrappers(id, value, applyTo) {
-    var wrappers = id.split("|");
-    var flag = wrappers.pop();
-    var id;
-    while (wrappers.length) {
-      id = wrappers.join("|");
-      applyTo[id] = value;
-      wrappers.pop();
-    }
   }
 
   function getLdapSettings() {
@@ -165,6 +138,34 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     } else {
       return $http.post("/settings/ldap/validate/groupsQuery", data);
     }
+  }
+
+  function getRoleParams(rolesByRole, role) {
+    if (!rolesByRole || !rolesByRole[role.role]) {
+      return;
+    }
+    return rolesByRole[role.role].params.map(param => role[param] || "*").join(":");
+  }
+
+  function packRolesToSend(selectedRoles, selectedRolesConfigs) {
+    return Object
+      .keys(selectedRoles)
+      .filter(role => selectedRoles[role])
+      .concat(Object
+              .keys(selectedRolesConfigs)
+              .reduce((acc, role) => {
+                let configs = selectedRolesConfigs[role];
+                if (configs && configs.length) {
+                  configs.forEach(config => {
+                    var params = config.split(":");
+                    params = (params.length > 1) ?
+                      params.map(p => (p == "*") ? "" : p).join(":") :
+                    params[0];
+                    acc.push(role + "[" + params + "]");
+                  });
+                }
+                return acc;
+              }, []));
   }
 
   function postLdapSettings(data, formData) {
@@ -249,114 +250,19 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     });
   }
 
+
   function getRoles() {
     return $http({
       method: "GET",
-      url: "/settings/rbac/roles"
+      url: "/_uiroles"
     }).then(function (resp) {
-      return resp.data;
+      let rv = resp.data;
+      rv.rolesByRole = rv.folders.reduce((acc, group) => {
+        group.roles.forEach(role => acc[role.role] = role);
+        return acc;
+      }, {});
+      return rv;
     });
-  }
-
-  function getWrapperName(name) {
-    switch (name) {
-    case "data": return "Data Service";
-    case "views": return "Views";
-    case "query": return "Query and Index Services";
-    case "fts": return "Search Service";
-    case "analytics": return "Analytics Service";
-    default: return undefined;
-    }
-  }
-
-  function sortAdminAndGlobalRoles(roles) {
-    var rv = new Array(8);
-
-    roles.forEach(function (role) {
-      switch (role.role) {
-      case "admin": rv[0] = role; break;
-      case "cluster_admin": rv[1] = role; break;
-      case "security_admin": rv[2] = role; break;
-      case "ro_admin": rv[3] = role; break;
-      case "replication_admin": rv[4] = role; break;
-      case "query_external_access": rv[5] = role; break;
-      case "query_system_catalog": rv[6] = role; break;
-      case "analytics_reader": rv[7] = role; break;
-      default: rv.push(role); break;
-      }
-    });
-
-    rv = _.compact(rv);
-
-    return rv;
-  }
-
-  function sortBucketRoles(roles) {
-    var rv = [];
-    var restRoles = new Array(5);
-
-    _.forEach(_.groupBy(roles, function (role) {
-      return role.role.split("_")[0];
-    }), function (value, key) {
-      var wrapperName = getWrapperName(key);
-      if(wrapperName == undefined) {
-        rv = rv.concat(value);
-      } else {
-        var index;
-        switch(key) {
-        case "data": index = 0; break;
-        case "views": index = 1; break;
-        case "query": index = 2; break;
-        case "fts": index = 3; break;
-        case "analytics": index = 4; break;
-        };
-        restRoles[index] = [wrapperName, value];
-      }
-    });
-
-    restRoles = _.compact(restRoles);
-
-    return rv.concat(restRoles);
-  }
-
-  function prepareRootRoles(roles) {
-    var rv = new Array(2);
-
-    _.forEach(_.groupBy(roles, 'bucket_name'), function (value, key) {
-      switch (key) {
-      case "undefined":
-        rv[0] = ["Administration & Global Roles", sortAdminAndGlobalRoles(value)]; break;
-      case "*":
-        rv[1] = ["All Buckets (*)", sortBucketRoles(value)]; break;
-      default:
-        rv.push([key, sortBucketRoles(value)]); break;
-      }
-    });
-
-    rv = _.compact(rv);
-
-    return rv;
-  }
-
-  function getRolesTree(roles) {
-    return prepareRootRoles(roles);
-  }
-
-  function getRoleUIID(role, isWrapper) {
-    var rv = "";
-    var bucketWrapperName = role.bucket_name || "undefined";
-    var serviceWrapperName;
-    if (role.bucket_name) {
-      serviceWrapperName = getWrapperName(role.role.split("_")[0]);
-    }
-    rv += bucketWrapperName;
-    if (serviceWrapperName) {
-      rv += ("|" + serviceWrapperName);
-    }
-    if (!isWrapper) {
-      rv += ("|" + (role.bucket_name ? (role.role + '[' + role.bucket_name + ']') : role.role));
-    }
-    return rv;
   }
 
   function getUser(user, params) {

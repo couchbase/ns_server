@@ -13,7 +13,7 @@ import mnEqual from "/ui/app/components/directives/mn_validation/mn_equal.js";
 import mnFilters from "/ui/app/components/mn_filters.js";
 import mnAutocompleteOff from "/ui/app/components/directives/mn_autocomplete_off.js";
 import mnFocus from "/ui/app/components/directives/mn_focus.js";
-import mnUserRolesList from "/ui/app/components/directives/mn_user_roles_list_controller.js";
+import mnUserRolesSelect from "/ui/app/components/directives/mn_user_roles_select_controller.js";
 import mnFileReader from "/ui/app/components/mn_file_reader.js";
 import mnSearch from "/ui/app/components/directives/mn_search/mn_search_directive.js";
 
@@ -40,7 +40,7 @@ angular
     mnAutocompleteOff,
     mnFocus,
     mnUserRolesService,
-    mnUserRolesList,
+    mnUserRolesSelect,
     mnFileReader,
     mnSearch
   ])
@@ -68,6 +68,7 @@ function mnUserRolesController($scope, $uibModal, mnPromiseHelper, mnUserRolesSe
   vm.sortByChanged = sortByChanged;
   vm.isOrderBy = isOrderBy;
   vm.isDesc = isDesc;
+  vm.getRoleParams = getRoleParams;
 
   activate();
 
@@ -97,6 +98,10 @@ function mnUserRolesController($scope, $uibModal, mnPromiseHelper, mnUserRolesSe
     });
   }
 
+  function getRoleParams(role) {
+    return mnUserRolesService.getRoleParams(vm.rolesByRole, role);
+  }
+
   function activate() {
     $scope.$watchGroup(["userRolesCtl.stateParams.order",
                         "userRolesCtl.stateParams.sortBy",
@@ -112,11 +117,9 @@ function mnUserRolesController($scope, $uibModal, mnPromiseHelper, mnUserRolesSe
 
     mnHelper.initializeDetailsHashObserver(vm, 'openedUsers', '.');
 
-    mnPromiseHelper(vm, mnUserRolesService.getRoles())
-      .applyToScope(function (roles) {
-        mnPromiseHelper(vm, mnUserRolesService.getRolesByRole(roles))
-          .applyToScope("rolesByRole");
-      });
+    mnUserRolesService.getRoles().then(roles => {
+      vm.rolesByRole = roles.rolesByRole;
+    });
 
     if (poolDefault.saslauthdEnabled) {
       mnPromiseHelper(vm, mnUserRolesService.getSaslauthdAuth())

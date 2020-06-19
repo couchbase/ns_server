@@ -12,8 +12,7 @@
   <form
      name="rolesGroupsAddDialogCtl.form"
      novalidate
-     ng-submit="rolesGroupsAddDialogCtl.save()"
-     mn-spinner="rolesGroupsAddDialogCtl.viewLoading">
+     ng-submit="rolesGroupsAddDialogCtl.save()">
     <div class="panel-content forms row resp-sml items-top" style="padding-bottom: .5rem;">
       <div class="column width-5">
         <div
@@ -77,9 +76,8 @@
         <label>Roles</label>
         <fieldset class="select-user-roles hide-track show-scrollbar">
           <div style="width: 320px;">
-            <mn-user-roles-list
-               roles-to-enable="rolesGroupsAddDialogCtl.rolesGroup.roles"
-               selected-roles="rolesGroupsAddDialogCtl.selectedRoles"></mn-user-roles-list>
+            <mn-user-roles-select
+               state="rolesGroupsAddDialogCtl.state"></mn-user-roles-select>
           </div>
         </fieldset>
       </div>

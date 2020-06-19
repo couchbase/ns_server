@@ -11,8 +11,8 @@ import mnFilters from "/ui/app/components/mn_filters.js";
 import mnAutocompleteOff from "/ui/app/components/directives/mn_autocomplete_off.js";
 import mnFocus from "/ui/app/components/directives/mn_focus.js";
 import mnSearch from "/ui/app/components/directives/mn_search/mn_search_directive.js";
+import mnUserRolesSelect from "/ui/app/components/directives/mn_user_roles_select_controller.js";
 
-import mnUserRolesList from "/ui/app/components/directives/mn_user_roles_list_controller.js";
 import mnUserRolesService from "./mn_user_roles_service.js";
 
 import mnRolesGroupsDeleteDialogController from "./mn_roles_groups_delete_dialog_controller.js";
@@ -31,8 +31,8 @@ angular
     mnFilters,
     mnAutocompleteOff,
     mnFocus,
+    mnUserRolesSelect,
     mnUserRolesService,
-    mnUserRolesList,
     mnSearch
   ])
   .controller("mnRolesGroupsController", mnRolesGroupsController)
@@ -55,6 +55,7 @@ function mnRolesGroupsController($scope, $uibModal, mnPromiseHelper, mnUserRoles
   vm.sortByChanged = sortByChanged;
   vm.isOrderBy = isOrderBy;
   vm.isDesc = isDesc;
+  vm.getRoleParams = getRoleParams;
 
   activate();
 
@@ -80,6 +81,10 @@ function mnRolesGroupsController($scope, $uibModal, mnPromiseHelper, mnUserRoles
     })
   }
 
+  function getRoleParams(role) {
+    return mnUserRolesService.getRoleParams(vm.rolesByRole, role);
+  }
+
   function activate() {
     $scope.$watch('rolesGroupsCtl.filterField', _.debounce(function () {
       $state.go('.', {
@@ -95,11 +100,9 @@ function mnRolesGroupsController($scope, $uibModal, mnPromiseHelper, mnUserRoles
 
     mnHelper.initializeDetailsHashObserver(vm, 'openedRolesGroups', '.');
 
-    mnPromiseHelper(vm, mnUserRolesService.getRoles())
-      .applyToScope(function (roles) {
-        mnPromiseHelper(vm, mnUserRolesService.getRolesByRole(roles))
-          .applyToScope("rolesByRole");
-      });
+    mnUserRolesService.getRoles().then(roles => {
+      vm.rolesByRole = roles.rolesByRole;
+    });
 
     var poller = new mnPoller($scope, function () {
       return mnUserRolesService.getRolesGroupsState($state.params);
