@@ -18,6 +18,7 @@
 %% explanation how this works.
 -module(bucket_info_cache).
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -export([start_link/0,
          terse_bucket_info/1,
@@ -204,11 +205,8 @@ build_vbucket_map(LocalAddr, BucketConfig) ->
 equal_len_chains([]) ->
     [];
 equal_len_chains(Map) ->
-    MaxChainLen = length(misc:min_by(fun (Chain, Max) ->
-                                             length(Chain) > length(Max)
-                                     end, Map)),
-    [Chain ++ lists:duplicate(MaxChainLen - length(Chain), undefined)
-     || Chain <- Map].
+    MaxChainLen = length(misc:min_by(?cut(length(_1) > length(_2)), Map)),
+    [misc:align_list(Chain, MaxChainLen, undefined) || Chain <- Map].
 
 do_build_vbucket_map(LocalAddr, BucketConfig, Config) ->
     NumReplicas = ns_bucket:num_replicas(BucketConfig),
