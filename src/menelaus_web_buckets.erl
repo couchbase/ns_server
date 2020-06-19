@@ -255,8 +255,7 @@ build_buckets_info(Req, Buckets, InfoLevel) ->
 
 build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
                   SkipMap) ->
-    {struct,
-     lists:flatten(
+    {lists:flatten(
        [bucket_info_cache:build_short_bucket_info(Id, BucketConfig),
         bucket_info_cache:build_ddocs(Id, BucketConfig),
         [bucket_info_cache:build_vbucket_map(LocalAddr, BucketConfig)
@@ -265,12 +264,12 @@ build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
         {authType, misc:expect_prop_value(auth_type, BucketConfig)},
         {localRandomKeyUri,
          bucket_info_cache:build_pools_uri(["buckets", Id, "localRandomKey"])},
-        {controllers, {struct, build_controllers(Id, BucketConfig)}},
+        {controllers, {build_controllers(Id, BucketConfig)}},
         {nodes,
-         build_bucket_nodes_info(Id, BucketConfig, InfoLevel, LocalAddr)},
+         menelaus_util:strip_json_struct(
+           build_bucket_nodes_info(Id, BucketConfig, InfoLevel, LocalAddr))},
         {stats,
-         {struct,
-          [{uri, bucket_info_cache:build_pools_uri(["buckets", Id, "stats"])},
+         {[{uri, bucket_info_cache:build_pools_uri(["buckets", Id, "stats"])},
            {directoryURI,
             bucket_info_cache:build_pools_uri(["buckets", Id, "stats",
                                                "Directory"])},
@@ -303,11 +302,11 @@ build_controllers(Id, BucketConfig) ->
          proplists:get_value(flush_enabled, BucketConfig, false)]].
 
 build_bucket_stats(for_ui, Id) ->
-    StorageTotals = [{Key, {struct, StoragePList}}
+    StorageTotals = [{Key, {StoragePList}}
                      || {Key, StoragePList} <-
                             ns_storage_conf:cluster_storage_info()],
 
-    [{storageTotals, {struct, StorageTotals}} | menelaus_stats:basic_stats(Id)];
+    [{storageTotals, {StorageTotals}} | menelaus_stats:basic_stats(Id)];
 build_bucket_stats(_, Id) ->
     menelaus_stats:basic_stats(Id).
 
@@ -316,9 +315,9 @@ build_dynamic_bucket_info(streaming, _Id, _BucketConfig) ->
 build_dynamic_bucket_info(InfoLevel, Id, BucketConfig) ->
     [[{replicaNumber, ns_bucket:num_replicas(BucketConfig)},
       {threadsNumber, proplists:get_value(num_threads, BucketConfig, 3)},
-      {quota, {struct, [{ram, ns_bucket:ram_quota(BucketConfig)},
-                        {rawRAM, ns_bucket:raw_ram_quota(BucketConfig)}]}},
-      {basicStats, {struct, build_bucket_stats(InfoLevel, Id)}},
+      {quota, {[{ram, ns_bucket:ram_quota(BucketConfig)},
+                {rawRAM, ns_bucket:raw_ram_quota(BucketConfig)}]}},
+      {basicStats, {build_bucket_stats(InfoLevel, Id)}},
       {evictionPolicy, build_eviction_policy(BucketConfig)},
       {storageBackend, ns_bucket:storage_backend(BucketConfig)},
       {durabilityMinLevel, build_durability_min_level(BucketConfig)},
@@ -350,25 +349,22 @@ handle_sasl_buckets_streaming(_PoolId, Req) ->
                 List = [build_sasl_bucket_info({Id, BucketConfig}, LocalAddr) ||
                            {Id, BucketConfig} <- ns_bucket:get_buckets(),
                            ns_bucket:auth_type(BucketConfig) =:= sasl],
-                {just_write, {struct, [{buckets, List}]}}
+                {just_write, {[{buckets, List}]}}
         end,
     handle_streaming(F, Req).
 
 build_sasl_bucket_nodes(BucketConfig, LocalAddr) ->
     {nodes,
-     [{struct,
-       [{hostname,
+     [{[{hostname,
          list_to_binary(menelaus_web_node:build_node_hostname(
                           ns_config:latest(), N, LocalAddr))},
-        {ports, {struct,
-                 [{direct,
+        {ports, {[{direct,
                    service_ports:get_port(
                      memcached_port, ns_config:latest(), N)}]}}]} ||
          N <- ns_bucket:get_servers(BucketConfig)]}.
 
 build_sasl_bucket_info({Id, BucketConfig}, LocalAddr) ->
-    {struct,
-     lists:flatten(
+    {lists:flatten(
        [bucket_info_cache:build_name_and_locator(Id, BucketConfig),
         build_sasl_password(BucketConfig),
         bucket_info_cache:build_vbucket_map(LocalAddr, BucketConfig),
