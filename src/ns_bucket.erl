@@ -51,7 +51,6 @@
          is_persistent/1,
          is_ephemeral_bucket/1,
          is_valid_bucket_name/1,
-         json_map/3,
          live_bucket_nodes/1,
          live_bucket_nodes_from_config/1,
          map_to_replicas/1,
@@ -483,52 +482,6 @@ moxi_port(Bucket) ->
 
 get_servers(BucketConfig) ->
     proplists:get_value(servers, BucketConfig).
-
-equal_len_chains([]) ->
-    [];
-equal_len_chains(Map) ->
-    MaxChainLen = length(misc:min_by(fun (Chain, Max) ->
-                                             length(Chain) > length(Max)
-                                     end, Map)),
-    [Chain ++ lists:duplicate(MaxChainLen - length(Chain), undefined)
-     || Chain <- Map].
-
-json_map(LocalAddr, BucketConfig, Config) ->
-    NumReplicas = num_replicas(BucketConfig),
-    EMap = equal_len_chains(proplists:get_value(map, BucketConfig, [])),
-    BucketNodes = get_servers(BucketConfig),
-    ENodes = lists:delete(undefined, lists:usort(lists:append([BucketNodes |
-                                                                EMap]))),
-    Servers = lists:map(
-                fun (ENode) ->
-                        Port = service_ports:get_port(memcached_port, Config,
-                                                      ENode),
-                        H = misc:extract_node_address(ENode),
-                        Host = case misc:is_localhost(H) of
-                                   true  -> LocalAddr;
-                                   false -> H
-                               end,
-                        list_to_binary(misc:join_host_port(Host, Port))
-                end, ENodes),
-    {_, NodesToPositions0}
-        = lists:foldl(fun (N, {Pos,Dict}) ->
-                              {Pos+1, dict:store(N, Pos, Dict)}
-                      end, {0, dict:new()}, ENodes),
-    NodesToPositions = dict:store(undefined, -1, NodesToPositions0),
-    Map = [[dict:fetch(N, NodesToPositions) || N <- Chain] || Chain <- EMap],
-    FastForwardMapList =
-        case proplists:get_value(fastForwardMap, BucketConfig) of
-            undefined -> [];
-            FFM ->
-                [{vBucketMapForward,
-                  [[dict:fetch(N, NodesToPositions) || N <- Chain]
-                   || Chain <- FFM]}]
-        end,
-    {[{hashAlgorithm, <<"CRC">>},
-      {numReplicas, NumReplicas},
-      {serverList, Servers},
-      {vBucketMap, Map} |
-      FastForwardMapList]}.
 
 set_bucket_config(Bucket, NewConfig) ->
     update_bucket_config(Bucket, fun (_) -> NewConfig end).
