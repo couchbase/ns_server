@@ -215,6 +215,8 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
          build_rebalance_params(Id, UUID),
          {nodeStatusesUri, <<"/nodeStatuses">>},
          {maxBucketCount, ns_bucket:get_max_buckets()},
+         {maxCollectionCount, collections:get_max_supported(num_collections)},
+         {maxScopeCount, collections:get_max_supported(num_scopes)},
          {autoCompactionSettings,
           menelaus_web_autocompaction:build_global_settings(Config)},
          {tasks, {struct, [{uri, TasksURI}]}},
