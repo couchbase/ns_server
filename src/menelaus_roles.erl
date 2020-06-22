@@ -451,12 +451,13 @@ roles() ->
        {[{bucket, any}, analytics], [select]},
        {[ui], [read]},
        {[pools], [read]}]},
-     {analytics_select, [bucket_name],
+     {analytics_select, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Analytics Select">>},
        {folder, analytics},
-       {desc, <<"Can query datasets created on this bucket. This user can "
-                "access the web console and read some data.">>}],
-      [{[{bucket, bucket_name}, analytics], [select]},
+       {desc, <<"Can query datasets on a given bucket, scope or "
+                "collection. This user can access the web console and read "
+                "some data.">>}],
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, analytics], [select]},
        {[ui], [read]},
        {[pools], [read]}]},
      {analytics_admin, [],
