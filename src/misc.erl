@@ -610,8 +610,8 @@ groupby_test() ->
     {1, [1,3,5,7,9]}    = lists:keyfind(1, 1, Groups).
 -endif.
 
-keygroup(Index, List) ->
-    keygroup(Index, List, []).
+keygroup(Index, SortedList) ->
+    keygroup(Index, SortedList, []).
 
 keygroup(_, [], Groups) ->
     lists:reverse(Groups);
