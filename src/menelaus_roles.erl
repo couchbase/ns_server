@@ -489,15 +489,15 @@ roles() ->
        {[pools], [read]}]}].
 
 ui_folders() ->
-    [{admin, "Administrative Roles"},
-     {bucket, "Bucket Roles"},
-     {data, "Data Service"},
+    [{admin, "Administrative"},
+     {bucket, "Bucket"},
+     {data, "Data"},
      {views, "Views"},
-     {'query', "Query and Index Services"},
-     {search, "Search Service"},
-     {analytics, "Analytics Service"},
-     {xdcr, "Replication Service"},
-     {mobile, "Mobile Service"}].
+     {'query', "Query & Index"},
+     {search, "Search"},
+     {analytics, "Analytics"},
+     {xdcr, "XDCR"},
+     {mobile, "Mobile"}].
 
 internal_roles() ->
     [{stats_reader, [], [],
