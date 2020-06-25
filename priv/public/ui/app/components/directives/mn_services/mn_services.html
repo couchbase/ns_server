@@ -70,3 +70,15 @@
     Eventing
   </label>
 </div>
+<div class="checkbox-service">
+  <input
+     type="checkbox"
+     value="backup"
+     id="for-backup-service"
+     ng-change="mnServicesCtl.change('backup', mnServicesCtl.config)"
+     ng-model="mnServicesCtl.config.services.model.backup"
+     ng-disabled="mnServicesCtl.config.services.disabled.backup || mnServicesCtl.mnIsDisabled">
+  <label for="for-backup-service">
+    Backup
+  </label>
+</div>

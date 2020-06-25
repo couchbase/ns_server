@@ -32,12 +32,12 @@
       </label>
       <small
          class="form-inline width-6 text-center"
-         *ngIf="group.value.field && service == 'n1ql'">
+         *ngIf="group.value.field && (service == 'n1ql' || service === 'backup')">
         - - - - - - -
       </small>
       <div
          class="row width-6 flex-right relative"
-         *ngIf="group.value.field && (service !== 'n1ql')"
+         *ngIf="group.value.field && (service !== 'n1ql' && service !== 'backup')"
          formGroupName="field">
         <input
            [attr.id]="service + '-service-field'"

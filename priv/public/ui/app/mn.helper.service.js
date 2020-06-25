@@ -56,6 +56,7 @@ class MnHelperService {
     case "n1ql": return "Query";
     case "eventing": return "Eventing";
     case "cbas": return "Analytics";
+    case "backup": return "Backup";
     }
   }
 

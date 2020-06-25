@@ -50,7 +50,7 @@ class MnPoolsService {
       this.stream.isEnterprise
       .pipe(map(function (isEnterprise) {
         return isEnterprise ?
-          ["kv", "n1ql", "index", "fts", "cbas", "eventing"] :
+          ["kv", "n1ql", "index", "fts", "cbas", "eventing", "backup"] :
           ["kv", "index", "fts", "n1ql"];
       }), shareReplay({refCount: true, bufferSize: 1}));
 

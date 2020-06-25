@@ -23,6 +23,7 @@ function mnServersAddDialogController($scope, $rootScope, $q, $uibModal, mnServe
   if ($scope.poolDefault.isEnterprise) {
     vm.addNodeConfig.services.model.cbas = true;
     vm.addNodeConfig.services.model.eventing = true;
+    vm.addNodeConfig.services.model.backup = true;
   }
   vm.isGroupsAvailable = !!groups;
   vm.onSubmit = onSubmit;
