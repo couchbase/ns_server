@@ -25,6 +25,7 @@
 /deps/mapreduce/
 /deps/mochiweb/
 /deps/snappy/
+/deps/chronicle/
 /doc/API/_site
 /lib
 /logs

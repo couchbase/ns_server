@@ -108,12 +108,12 @@ ADD_DEPENDENCIES (ns_distclean ns_realclean ns_dataclean)
 
 ADD_SUBDIRECTORY (deps)
 REBAR(TARGET ns_server
-  DEPENDS ns_cfg ale kv_mappings
+  DEPENDS ns_cfg ale kv_mappings chronicle
   EUNIT
   EUNIT_DEPENDS triq meck
   CLEAN_HOOK ns_realclean)
 
-ADD_CUSTOM_TARGET (erlang_deps DEPENDS gen_smtp ale ns_babysitter ns_couchdb)
+ADD_CUSTOM_TARGET (erlang_deps DEPENDS gen_smtp ale ns_babysitter ns_couchdb chronicle)
 ADD_CUSTOM_TARGET (ns_server_all DEPENDS ns_server erlang_deps)
 ADD_CUSTOM_TARGET (ns_server_tests
   DEPENDS ns_server-eunit ns_couchdb-eunit erlang_deps)

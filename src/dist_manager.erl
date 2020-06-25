@@ -362,7 +362,7 @@ do_adjust_address(MyIP, UserSupplied, OnRename,
                 case Status of
                     net_restarted ->
                         master_activity_events:note_name_changed(),
-                        complete_rename(OldNode, fun rename_node_in_config/2);
+                        complete_rename(OldNode, fun rename_node_in_configs/2);
                     _ ->
                         ok
                 end,
@@ -414,8 +414,9 @@ fixup_node_in_config(Old, New) ->
     %% this ensures that ns_config is initialized
     ns_config:get().
 
-rename_node_in_config(Old, New) ->
+rename_node_in_configs(Old, New) ->
     ?log_debug("Renaming node from ~p to ~p in config", [Old, New]),
+    ok = chronicle_local:rename(Old),
     ns_config:update(rename_config_kv(Old, New, _)).
 
 rename_config_kv(Old, New, {K, V}) ->
