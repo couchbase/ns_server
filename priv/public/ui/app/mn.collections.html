@@ -1,34 +1,40 @@
-<mn-element-cargo depot="actions">
-  <div class="header-controls resp-xsml">
-    <a (click)="clickAddScope.next()">
-      ADD SCOPE
-    </a>
-    <a (click)="clickAddCollection.next()">
-      ADD COLLECTION
-    </a>
-  </div>
-</mn-element-cargo>
+<div *ngIf="(buckets | async) && (buckets | async).length">
+  <mn-element-cargo depot="actions">
+    <div class="header-controls resp-xsml">
+      <a (click)="clickAddScope.next()">
+        ADD SCOPE
+      </a>
+      <a (click)="clickAddCollection.next()">
+        ADD COLLECTION
+      </a>
+    </div>
+  </mn-element-cargo>
 
-<div [formGroup]="bucketSelect">
-  <select formControlName="name">
-    <option *ngFor="let name of (buckets | async)" [ngValue]="name">
-      {{name}}
-    </option>
-  </select>
+  <div [formGroup]="bucketSelect">
+    <select formControlName="name">
+      <option *ngFor="let name of (buckets | async)" [ngValue]="name">
+        {{name}}
+      </option>
+    </select>
+  </div>
+
+  <div class="cbui-table">
+    <div class="cbui-table-header">
+      <span class="cbui-table-cell flex-grow-3">scope name</span>
+      <span class="cbui-table-cell">collections</span>
+      <span class="cbui-table-cell flex-grow-1-5 resp-hide-xsml"></span>
+    </div>
+    <div *ngIf="!(manifest | async)?.scopes.length" class="zero-content">
+      There are no collections yet.
+    </div>
+    <div *ngFor="let scope of (manifest | async)?.scopes; trackBy: trackByFn">
+      <mn-collections-scope
+         [scope]="scope"
+         [bucketName]="bucketSelect.get('name').value"></mn-collections-scope>
+    </div>
+  </div>
 </div>
-
-<div class="cbui-table">
-  <div class="cbui-table-header">
-    <span class="cbui-table-cell flex-grow-3">scope name</span>
-    <span class="cbui-table-cell">collections</span>
-    <span class="cbui-table-cell flex-grow-1-5 resp-hide-xsml"></span>
-  </div>
-  <div *ngIf="!(manifest | async)?.scopes.length" class="zero-content">
-    There are no collections yet.
-  </div>
-  <div *ngFor="let scope of (manifest | async)?.scopes; trackBy: trackByFn">
-    <mn-collections-scope
-       [scope]="scope"
-       [bucketName]="bucketSelect.get('name').value"></mn-collections-scope>
-  </div>
+<div *ngIf="!((buckets | async) && (buckets | async).length)"
+   class="zero-content">
+  There are currently no Couchbase buckets and no collections to show.
 </div>
