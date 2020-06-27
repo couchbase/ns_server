@@ -167,8 +167,8 @@ handle_call(Command, From, State = #state{ext_module = ExtModule, ext_state = Ex
 
 handle_packet(<<Magic:8, Opcode:8, _Rest/binary>> = Packet,
               State = #state{ext_module = ExtModule,
-                             ext_state = ExtState,
-                             proxy_to = ProxyTo}) ->
+                             ext_state = ExtState},
+              SendData) ->
     case (suppress_logging(Packet)
           orelse not ale:is_loglevel_enabled(?NS_SERVER_LOGGER, debug)) of
         true ->
@@ -183,14 +183,17 @@ handle_packet(<<Magic:8, Opcode:8, _Rest/binary>> = Packet,
                ?RES_MAGIC ->
                    response
            end,
-    {Action, NewExtState, NewState} = ExtModule:handle_packet(Type, Opcode, Packet, ExtState, State),
-    case Action of
-        proxy ->
-            ok = network:socket_send(ProxyTo, Packet);
-        block ->
-            ok
-    end,
-    {ok, NewState#state{ext_state = NewExtState, connection_alive = true}}.
+    {Action, NewExtState, NewState} = ExtModule:handle_packet(
+                                        Type, Opcode, Packet, ExtState, State),
+    NewSendData = case Action of
+                      proxy ->
+                          <<SendData/binary, Packet/binary>>;
+                      block ->
+                          SendData
+                  end,
+    {ok,
+     NewState#state{ext_state = NewExtState, connection_alive = true},
+     NewSendData}.
 
 suppress_logging(<<?REQ_MAGIC:8, ?DCP_MUTATION:8, _Rest/binary>>) ->
     true;
@@ -262,8 +265,7 @@ connect(Type, ConnName, Node, Bucket, RepFeatures) ->
 
 connect_inner(Cfg, Node, RepFeatures) ->
     SOpts = [misc:get_net_family(), binary,
-             {packet, raw}, {active, false},
-             {nodelay, true}, {delay_send, true},
+             {packet, raw}, {active, false}, {nodelay, true},
              {keepalive, true}, {recbuf, ?RECBUF},
              {sndbuf, ?SNDBUF}],
 
@@ -345,28 +347,33 @@ terminate_and_wait(Pairs, _Reason) ->
     misc:terminate_and_wait([Pid || {Pid, _} <- Pairs], kill).
 
 process_data(NewData, #state{buf = PrevData,
-                             packet_len = PacketLen} = State) ->
+                             packet_len = PacketLen, proxy_to = ProxyTo} = State) ->
     Data = <<PrevData/binary, NewData/binary>>,
-    process_data_loop(Data, PacketLen, State).
+    {NewState, SendData} = process_data_loop(Data, PacketLen, State, <<>>),
+    case SendData of
+        <<>> ->
+            ok;
+        _ ->
+            ok = network:socket_send(ProxyTo, SendData)
+    end,
+    NewState.
 
-process_data_loop(Data, undefined, State) ->
+process_data_loop(Data, undefined, State, SendData) ->
     case Data of
         <<_Magic:8, _Opcode:8, _KeyLen:16, _ExtLen:8, _DataType:8,
           _VBucket:16, BodyLen:32, _Opaque:32, _CAS:64, _Rest/binary>> ->
-            process_data_loop(Data, ?HEADER_LEN + BodyLen, State);
+            process_data_loop(Data, ?HEADER_LEN + BodyLen, State, SendData);
         _ ->
-            State#state{buf = Data,
-                        packet_len = undefined}
+            {State#state{buf = Data, packet_len = undefined}, SendData}
     end;
-process_data_loop(Data, PacketLen, State) ->
+process_data_loop(Data, PacketLen, State, SendData) ->
     case byte_size(Data) >= PacketLen of
         false ->
-            State#state{buf = Data,
-                        packet_len = PacketLen};
+            {State#state{buf = Data, packet_len = PacketLen}, SendData};
         true ->
             {Packet, Rest} = split_binary(Data, PacketLen),
-            {ok, NewState} = handle_packet(Packet, State),
-            process_data_loop(Rest, undefined, NewState)
+            {ok, NewState, NewSendData} = handle_packet(Packet, State, SendData),
+            process_data_loop(Rest, undefined, NewState, NewSendData)
     end.
 
 
