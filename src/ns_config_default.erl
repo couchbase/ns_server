@@ -404,7 +404,7 @@ upgrade_config(Config) ->
              upgrade_config_from_6_5_to_6_5_1(Config)];
         {6,5,1} ->
             [{set, {node, node(), config_version}, CurrentVersion} |
-             upgrade_config_from_6_5_1_to_cheshire_cat()];
+             upgrade_config_from_6_5_1_to_cheshire_cat(Config)];
         OldVersion ->
             ?log_error("Detected an attempt to offline upgrade from "
                        "unsupported version ~p. Terminating.", [OldVersion]),
@@ -500,9 +500,10 @@ upgrade_config_from_6_5_to_6_5_1(Config) ->
 do_upgrade_config_from_6_5_to_6_5_1(Config, DefaultConfig) ->
     [upgrade_sub_keys(memcached, [admin_user], Config, DefaultConfig)].
 
-upgrade_config_from_6_5_1_to_cheshire_cat() ->
+upgrade_config_from_6_5_1_to_cheshire_cat(Config) ->
     DefaultConfig = default(),
-    [upgrade_key(memcached_config, DefaultConfig)].
+    [upgrade_key(memcached_config, DefaultConfig),
+     upgrade_sub_keys(memcached, [other_users], Config, DefaultConfig)].
 
 encrypt_config_val(Val) ->
     {ok, Encrypted} = encryption_service:encrypt(term_to_binary(Val)),
