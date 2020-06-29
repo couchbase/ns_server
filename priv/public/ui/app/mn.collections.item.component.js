@@ -2,6 +2,7 @@ import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.
 import {NgbModal} from "/ui/web_modules/@ng-bootstrap/ng-bootstrap.js"
 import {takeUntil} from '/ui/web_modules/rxjs/operators.js';
 import {Subject} from "/ui/web_modules/rxjs.js";
+import {MnPermissions} from '/ui/app/ajs.upgraded.providers.js';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnCollectionsService} from './mn.collections.service.js';
@@ -25,10 +26,11 @@ class MnCollectionsItemComponent extends MnLifeCycleHooksToStream {
 
   static get parameters() { return [
     MnCollectionsService,
+    MnPermissions,
     NgbModal
   ]}
 
-  constructor(mnCollectionsService, modalService) {
+  constructor(mnCollectionsService, mnPermissions, modalService) {
     super();
 
     var clickDeleteCollection = new Subject();
@@ -43,5 +45,6 @@ class MnCollectionsItemComponent extends MnLifeCycleHooksToStream {
       });
 
     this.clickDeleteCollection = clickDeleteCollection;
+    this.permissions = mnPermissions.export;
   }
 }
