@@ -1,7 +1,7 @@
 import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
 import {FormGroup, FormControl} from "/ui/web_modules/@angular/forms.js";
 import {UIRouter} from "/ui/web_modules/@uirouter/angular.js";
-import {pluck, take, filter, switchMap,
+import {pluck, take, filter, switchMap, distinctUntilChanged,
         switchMapTo, map, shareReplay, takeUntil} from '/ui/web_modules/rxjs/operators.js';
 import {combineLatest, Subject, timer} from "/ui/web_modules/rxjs.js";
 import {equals, compose, not} from "/ui/web_modules/ramda.js";
@@ -60,7 +60,11 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
         mnBucketsService.stream.getBucketsByName.pipe(map(filterBuckets));
 
     var getBucketUrlParam =
-        uiRouter.globals.params$.pipe(pluck("collectionsBucket"))
+        uiRouter.globals.params$.pipe(pluck("collectionsBucket"),
+                                      distinctUntilChanged());
+    var getBucketUrlParamDefined =
+        getBucketUrlParam
+        .pipe(filter(compose(not, equals(undefined))));
 
     getBucketUrlParam
       .pipe(
@@ -70,8 +74,8 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
         take(1))
       .subscribe(setBucket);
 
-    getBucketUrlParam
-      .pipe(filter(compose(not, equals(undefined))), take(1))
+    getBucketUrlParamDefined
+      .pipe(take(1))
       .subscribe(setBucket);
 
     bucketSelect.valueChanges
@@ -79,7 +83,7 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
       .subscribe(setBucketUrlParam);
 
     var manifest =
-      combineLatest(getBucketUrlParam,
+      combineLatest(getBucketUrlParamDefined,
                     mnCollectionsService.stream.updateManifest,
                     timer(0, 5000))
         .pipe(switchMap(([bucket]) => mnCollectionsService.getManifest(bucket)),
