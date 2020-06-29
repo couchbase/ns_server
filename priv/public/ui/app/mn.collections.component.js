@@ -53,8 +53,7 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
         .keys(buckets)
         .filter(bucketName =>
                 mnPermissions.export.cluster.bucket[bucketName] &&
-                mnPermissions.export.cluster.bucket[bucketName].collections.read
-                && buckets[bucketName].bucketType !== "memcached");
+                mnPermissions.export.cluster.bucket[bucketName].collections.read);
 
     var getBuckets =
         mnBucketsService.stream.getBucketsByName.pipe(map(filterBuckets));
