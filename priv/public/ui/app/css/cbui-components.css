@@ -468,6 +468,21 @@ color: #333;
   left: 1rem;
 }
 /* CBUI FLEXBOX TABLES -------------------------------------------------  */
+.cbui-table-body {
+  background-color: #f6f7f9;
+  border-radius: 9px;
+  border: 1px solid #d1d1d1;
+  padding: 0.5rem;
+}
+.cbui-table-body div {
+  border-bottom: 1px solid #ececec;
+}
+.cbui-table-body div:last-child {
+  border-bottom: 0;
+}
+.inner-table .cbui-table-header {
+  border-bottom: 0;
+}
 .cbui-table {
   display: flex;
   flex-flow: column;

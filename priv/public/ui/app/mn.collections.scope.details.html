@@ -1,16 +1,18 @@
-<div class="cbui-table">
+<div class="cbui-table inner-table">
   <div class="cbui-table-header">
     <span class="cbui-table-cell flex-grow-3">collections</span>
     <span class="cbui-table-cell"></span>
     <span class="cbui-table-cell flex-grow-1-5 resp-hide-xsml"></span>
   </div>
-  <div *ngIf="!scope.collections.length">
-    There are no collections yet.
-  </div>
-  <div *ngFor="let collection of scope.collections; trackBy: trackByFn">
-    <mn-collections-item
-       [scopeName]="scope.name"
-       [bucketName]="bucketName"
-       [collection]="collection"></mn-collections-item>
+  <div class="cbui-table-body">
+    <div *ngIf="!scope.collections.length">
+      There are no collections yet.
+    </div>
+    <div *ngFor="let collection of scope.collections; trackBy: trackByFn">
+      <mn-collections-item
+         [scopeName]="scope.name"
+         [bucketName]="bucketName"
+         [collection]="collection"></mn-collections-item>
+    </div>
   </div>
 </div>
