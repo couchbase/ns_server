@@ -48,7 +48,8 @@
          prohibited/2,
          string_array/2,
          return_value/3,
-         return_error/3]).
+         return_error/3,
+         default/3]).
 
 -record(state, {kv = [], touched = [], errors = []}).
 
@@ -445,6 +446,16 @@ string_array(Name, State) ->
           (_) ->
               {error, "Must be an array of non-empty strings"}
       end, Name, State).
+
+default(Name, Default, State) ->
+    case get_value(Name, touch(Name, State)) of
+        undefined when is_function(Default) ->
+            return_value(Name, Default(), State);
+        undefined ->
+            return_value(Name, Default, State);
+        _Value ->
+            State
+    end.
 
 -ifdef(TEST).
 %% Validates that the length of the value is in range, returning the resulting
