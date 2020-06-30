@@ -27,4 +27,8 @@ class MnCollectionsScopeDetailsComponent extends MnLifeCycleHooksToStream {
   constructor(mnCollectionsService) {
     super();
   }
+
+  trackByFn(_, collection) {
+    return collection.uid;
+  }
 }
