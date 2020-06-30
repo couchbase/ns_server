@@ -100,6 +100,29 @@ EOF
     fi
 }
 
+_check_datadir_writeable() {
+    operation="$1"
+    if [ ! -w $CB_DATA_DIR ]; then
+        cat <<ERRORMSG
+Insufficient privileges to $operation; please ensure user
+has write privileges on the $CB_DATA_DIR directory.
+ERRORMSG
+        exit 1
+    fi
+}
+
+_check_file_readable () {
+    f="$1"
+    operation="$2"
+    if [ ! -r "$f" ]; then
+        cat <<ERRORMSG
+Insufficient privileges to $operation; please ensure user
+has read privileges on $f.
+ERRORMSG
+        exit 1
+    fi
+}
+
 _prepare_datadir () {
     test -d "$CB_DATA_DIR" || mkdir -p "$CB_DATA_DIR"
     cd "$CB_DATA_DIR"
@@ -148,11 +171,13 @@ _drop_old_crashdumps () {
 
 
 _start() {
+    _prepare_datadir
+    _check_datadir_writeable "start Couchbase Server"
+
     # Warn if user limits are restrictive.
     _check_ulimit -u 10000 "maximum number of processes" "nproc"
     _check_ulimit -n 200000 "maximum number of open files" "nofile"
 
-    _prepare_datadir
     _maybe_start_epmd
     _load_config
 
@@ -187,6 +212,8 @@ _start() {
 _stop() {
     [ -f "$COOKIEFILE" -a -f "$NODEFILE" ] || return 1
 
+    _check_file_readable "$COOKIEFILE" "stop Couchbase Server"
+
     cookie=`cat "$COOKIEFILE"`
     node=`cat "$NODEFILE"`
 
@@ -218,6 +245,8 @@ _status() {
         echo "Couchbase Server is not running"
         return 3
     fi
+
+    _check_file_readable "$PIDFILE" "check status"
 
     pid=`cat "$PIDFILE"`
 
