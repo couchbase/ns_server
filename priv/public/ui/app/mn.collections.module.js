@@ -11,6 +11,7 @@ import { MnCollectionsScopeComponent } from './mn.collections.scope.component.js
 import { MnCollectionsScopeDetailsComponent } from './mn.collections.scope.details.component.js';
 import { MnCollectionsService } from './mn.collections.service.js';
 import { MnSharedModule } from './mn.shared.module.js';
+import { MnInputFilterModule } from './mn.input.filter.module.js';
 import { MnBucketsService } from './mn.buckets.service.js';
 import { MnCollectionsAddScopeComponent } from './mn.collections.add.scope.component.js';
 import { MnCollectionsDeleteScopeComponent } from './mn.collections.delete.scope.component.js';
@@ -69,6 +70,7 @@ class MnCollectionsModule {
         MnElementCraneModule,
         ReactiveFormsModule,
         MnSharedModule,
+        MnInputFilterModule,
         UIRouterModule.forChild({ states: [collectionsState] })
       ],
       providers: [

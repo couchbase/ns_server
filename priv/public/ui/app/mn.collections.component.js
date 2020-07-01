@@ -1,5 +1,5 @@
 import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
-import {FormGroup, FormControl} from "/ui/web_modules/@angular/forms.js";
+import {FormBuilder} from "/ui/web_modules/@angular/forms.js";
 import {UIRouter} from "/ui/web_modules/@uirouter/angular.js";
 import {pluck, take, filter, switchMap, distinctUntilChanged,
         switchMapTo, map, shareReplay, takeUntil} from '/ui/web_modules/rxjs/operators.js';
@@ -13,6 +13,8 @@ import {MnCollectionsService} from './mn.collections.service.js';
 import {MnBucketsService} from './mn.buckets.service.js';
 import {MnCollectionsAddScopeComponent} from './mn.collections.add.scope.component.js';
 import {MnCollectionsAddItemComponent} from './mn.collections.add.item.component.js';
+
+import { MnInputFilterService } from './mn.input.filter.service.js';
 
 export {MnCollectionsComponent};
 
@@ -29,19 +31,19 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
     MnPermissions,
     MnBucketsService,
     UIRouter,
-    NgbModal
+    NgbModal,
+    FormBuilder,
+    MnInputFilterService
   ]}
 
   constructor(mnCollectionsService, mnPermissions, mnBucketsService,
-              uiRouter, modalService) {
+              uiRouter, modalService, formBuilder, mnInputFilterService) {
     super();
 
     var clickAddScope = new Subject();
     var clickAddCollection = new Subject();
 
-    var bucketSelect = new FormGroup({
-      name: new FormControl()
-    });
+    var bucketSelect = formBuilder.group({name: null});
 
     var setBucket = (v) =>
         bucketSelect.patchValue({name: v});
@@ -81,11 +83,12 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
       .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(setBucketUrlParam);
 
-    var manifest =
-      combineLatest(getBucketUrlParamDefined,
-                    mnCollectionsService.stream.updateManifest,
-                    timer(0, 5000))
+    var scopes =
+        combineLatest(getBucketUrlParamDefined,
+                      mnCollectionsService.stream.updateManifest,
+                      timer(0, 5000))
         .pipe(switchMap(([bucket]) => mnCollectionsService.getManifest(bucket)),
+              pluck("scopes"),
               shareReplay({refCount: true, bufferSize: 1}));
 
     clickAddScope
@@ -102,9 +105,10 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
         ref.componentInstance.bucketName = bucketSelect.get("name").value;
       });
 
+    this.filter = mnInputFilterService.create(scopes);
     this.buckets = getBuckets;
     this.bucketSelect = bucketSelect;
-    this.manifest = manifest;
+    this.scopes = scopes;
     this.clickAddScope = clickAddScope;
     this.clickAddCollection = clickAddCollection;
   }
