@@ -41,7 +41,9 @@ class MnServicesConfigComponent extends MnLifeCycleHooksToStream {
   }
 
   ngOnInit() {
-    this.activateHotKeys();
+    if (this.isFlagEnabled) {
+      this.activateHotKeys();
+    }
     if (!this.isFieldEnabled) {
       return;
     }
