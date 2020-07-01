@@ -1,8 +1,8 @@
 import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
-import {merge} from '/ui/web_modules/rxjs.js';
-import {takeUntil, map, withLatestFrom,
-        first, throttleTime} from '/ui/web_modules/rxjs/operators.js';
+import {merge, fromEvent} from '/ui/web_modules/rxjs.js';
+import {takeUntil, map, withLatestFrom, filter, switchMap,
+        first, throttleTime, distinctUntilChanged} from '/ui/web_modules/rxjs/operators.js';
 import {MnPoolsService} from './mn.pools.service.js';
 import {MnAdminService} from "./mn.admin.service.js";
 import {MnHelperService} from "./mn.helper.service.js";
@@ -41,6 +41,7 @@ class MnServicesConfigComponent extends MnLifeCycleHooksToStream {
   }
 
   ngOnInit() {
+    this.activateHotKeys();
     if (!this.isFieldEnabled) {
       return;
     }
@@ -125,4 +126,28 @@ class MnServicesConfigComponent extends MnLifeCycleHooksToStream {
   getField(name) {
     return this.group.get("field." + name);
   }
+
+  activateHotKeys() {
+    var altKey = merge(fromEvent(document, 'keyup'),
+                       fromEvent(document, 'keydown'))
+        .pipe(map(evt => evt.altKey),
+              distinctUntilChanged());
+
+    var isPressed = altKey.pipe(filter(isPressed => isPressed));
+    var isNotPressed = altKey.pipe(filter(isPressed => !isPressed));
+
+    isPressed
+      .pipe(switchMap(() =>
+                      this.group.get("flag").valueChanges.pipe(takeUntil(isNotPressed))),
+            takeUntil(this.mnOnDestroy))
+      .subscribe(flag => {
+        let flags = this.group.get("flag").controls;
+        let toggle = (Object.values(flag).filter(v => !v).length == 1);
+
+        Object.keys(flag).forEach(key => {
+          flags[key].setValue(!toggle, {onlySelf: true});
+        });
+      });
+  }
+
 }
