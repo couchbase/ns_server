@@ -1,0 +1,20 @@
+<div
+   [formGroup]="group"
+   class="filter-input-group">
+  <input
+     type="text"
+     formControlName="value"
+     maxlength="256"
+     class="filter-input"
+     placeholder="{{placeholder}}"
+     (click)="$event.stopPropagation()">
+  <span
+     class="icon fa-search-minus"
+     [hidden]="(group.get('value').valueChanges | async)">
+  </span>
+  <span
+     class="icon fa-times-circle"
+     [hidden]="!(group.get('value').valueChanges | async)"
+     (click)="$event.stopPropagation();group.patchValue({value: ''})">
+  </span>
+</div>
