@@ -123,12 +123,9 @@ handle_call({process_stats, TS, Bin, PrevSample}, _From, State) ->
 
 handle_call({extract, Query, Start, End, Step, Timeout}, From, State) ->
     Settings = prometheus_cfg:settings(),
-    proc_lib:spawn_link(
-        fun () ->
-            Res = prometheus:query_range(Query, Start, End, Step, Timeout,
-                                         Settings),
-            gen_server:reply(From, Res)
-        end),
+    Reply = fun (Res) -> gen_server:reply(From, Res) end,
+    prometheus:query_range_async(Query, Start, End, Step, Timeout,
+                                 Settings, Reply),
     {noreply, State};
 
 handle_call(_Request, _From, State) ->
