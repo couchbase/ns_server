@@ -767,6 +767,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["pools", "default", "checkPermissions"] ->
                     {no_check,
                      fun menelaus_web_rbac:handle_check_permissions_post/1};
+                ["pools", "default", "stats", "range"] ->
+                    {{[{bucket, any}, stats], read},
+                     fun menelaus_web_stats:handle_range_post/1, []};
                 ["settings", "indexes"] ->
                     {{[settings, indexes], write}, fun menelaus_web_indexes:handle_settings_post/1};
                 ["_cbauth"] ->

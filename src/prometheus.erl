@@ -2,7 +2,8 @@
 
 -include("ns_common.hrl").
 
--export([query_range/6, query_range_async/7, format_value/1, parse_value/1]).
+-export([query_range/6, query_range_async/7, format_value/1, parse_value/1,
+         format_promql/1]).
 
 query_range(Query, Start, End, Step, Timeout, Settings) ->
     Self = self(),
@@ -108,3 +109,35 @@ parse_value(B) ->
     catch
         _:_ -> binary_to_integer(B)
     end.
+
+format_promql(AST) ->
+    iolist_to_binary(format_promql_ast(AST)).
+
+format_promql_ast({call, F, By, Args}) when is_atom(F) ->
+    format_promql_ast({call, atom_to_list(F), By, Args});
+format_promql_ast({call, F, By, Args}) ->
+    ByStr =
+        case By of
+            {by, L} -> [" by (", lists:join(",", L) ,") "];
+            {without, L} -> [" without (", lists:join(",", L) ,") "];
+            none -> []
+        end,
+    [F, ByStr, "(", lists:join(",", [format_promql_ast(E) || E <- Args]), ")"];
+format_promql_ast({Op, Exprs}) when Op =:= 'or'; Op =:= 'and' ->
+    OpStr = " " ++ atom_to_list(Op) ++ " ",
+    lists:join(OpStr, [format_promql_ast(E) || E <- Exprs]);
+format_promql_ast({range_vector, Expr, Duration}) ->
+    [format_promql_ast(Expr), "[", Duration, "]"];
+format_promql_ast({Labels}) when is_list(Labels) ->
+    LabelsIOLists =
+      lists:map(
+        fun ({re, Name, Value}) ->
+                [Name, "=~`", Value, "`"];
+            ({eq, Name, Value}) ->
+                [Name, "=`", Value, "`"]
+        end, Labels),
+    ["{" ++ lists:join(",", LabelsIOLists) ++ "}"];
+format_promql_ast(N) when is_integer(N) ->
+    erlang:integer_to_list(N);
+format_promql_ast(X) when is_float(X) ->
+    erlang:float_to_list(X).

@@ -134,6 +134,12 @@ handle_call({extract, Query, Start, End, Step, Timeout}, From, State) ->
 handle_call(_Request, _From, State) ->
     {noreply, State}.
 
+handle_cast({extract, {From, Ref}, Query, Start, End, Step, Timeout}, State) ->
+    Settings = prometheus_cfg:settings(),
+    Reply = fun (Res) -> From ! {Ref, Res} end,
+    prometheus:query_range_async(Query, Start, End, Step, Timeout,
+                                 Settings, Reply),
+    {noreply, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 

@@ -15,7 +15,12 @@
 
 -module(menelaus_web_ui_stats).
 
--export([handle_ui_stats_post_v2/1]).
+-export([handle_ui_stats_post_v2/1,
+         validate_negative_ts/3,
+         validate_nodes_v2/3,
+         format_error/1,
+         normalize_datapoints/3,
+         aggregate/2]).
 
 -include("cut.hrl").
 
