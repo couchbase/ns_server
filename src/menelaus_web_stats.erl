@@ -17,7 +17,7 @@
 %% @doc rest api for stats
 -module(menelaus_web_stats).
 
--export([handle_range_post/1]).
+-export([handle_range_post/1, handle_range_get/2]).
 
 -include("ns_common.hrl").
 -include("rbac.hrl").
@@ -46,32 +46,71 @@ handle_range_post(Req) ->
           menelaus_util:reply_json(Req, ResList)
       end, Req, json_array, post_validators(Now, Req)).
 
+handle_range_get([], _Req) ->
+    menelaus_util:web_exception(404, "not found");
+handle_range_get([MetricName | NotvalidatedFunctions], Req) ->
+    PermFilters =
+        case promql_filters_for_identity(menelaus_auth:get_identity(Req)) of
+            [] -> menelaus_utils:web_exception(403, "Forbidden");
+            F -> F
+        end,
+    Functions = try validate_functions(NotvalidatedFunctions)
+                catch
+                    error:invalid_function ->
+                        menelaus_util:web_exception(404, "not found")
+                end,
+    Now = os:system_time(millisecond),
+    validator:handle(
+      fun (Props) ->
+          Labels = lists:filter(fun ({K, _V}) ->
+                                     not lists:member(K, [timeWindow, step,
+                                                          start, 'end', nodes,
+                                                          aggregationFunction,
+                                                          timeout])
+                                end, Props),
+          Metric = [{<<"name">>, iolist_to_binary(MetricName)}|Labels],
+          Monitors = start_node_extractors_monitoring([Props]),
+          Ref = send_metrics_request([{metric, Metric},
+                                      {applyFunctions, Functions} | Props],
+                                     PermFilters),
+          Res = read_metrics_response(Ref, Props, Now),
+          stop_node_extractors_monitoring(Monitors),
+          menelaus_util:reply_json(Req, Res)
+      end, Req, qs, get_validators(Now, Req)).
+
 post_validators(Now, Req) ->
-    NowSec = Now div 1000,
     [validate_metric_json(metric, _),
      validator:required(metric, _),
      validator:string_array(applyFunctions, _),
      validate_functions(applyFunctions, _),
-     validate_interval(timeWindow, _),
+     validator:string_array(nodes, _) | validators(Now, Req)] ++
+    [validator:unsupported(_)].
+
+get_validators(Now, Req) ->
+    [validator:token_list(nodes, ", ", _) | validators(Now, Req)].
+
+validators(Now, Req) ->
+    NowSec = Now div 1000,
+    [validate_interval(timeWindow, _),
      validator:default(timeWindow, "1m", _),
-     validator:string_array(nodes, _),
      menelaus_web_ui_stats:validate_nodes_v2(nodes, _, Req),
      validator:default(nodes, ?cut(default_nodes(Req)), _),
      validator:one_of(aggregationFunction, [max, min, avg, sum, none], _),
      validator:convert(aggregationFunction,
-                       fun (L) -> binary_to_atom(L, latin1) end, _),
+                       fun (L) when is_binary(L) -> binary_to_atom(L, latin1);
+                           (L) -> list_to_atom(L)
+                       end, _),
      validate_interval(step, _),
      validator:default(step, "10s", _),
      validator:integer(start, ?MIN_TS, ?MAX_TS, _),
      validator:integer('end', ?MIN_TS, ?MAX_TS, _),
      menelaus_web_ui_stats:validate_negative_ts(start, NowSec, _),
      menelaus_web_ui_stats:validate_negative_ts('end', NowSec, _),
+     validator:greater_or_equal('end', start, _),
      validator:default(start, NowSec - 60, _),
      validator:default('end', NowSec, _),
-     validator:greater_or_equal('end', start, _),
      validator:integer(timeout, 1, 60*5*1000, _),
-     validator:default(timeout, ?DEFAULT_PROMETHEUS_QUERY_TIMEOUT, _),
-     validator:unsupported(_)].
+     validator:default(timeout, ?DEFAULT_PROMETHEUS_QUERY_TIMEOUT, _)].
 
 start_node_extractors_monitoring(List) ->
     AllNodes = lists:foldl(

@@ -324,6 +324,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, memcached], read}, fun menelaus_web_mcd_settings:handle_node_get/2, [Node]};
                 ["pools", "default", "settings", "memcached", "node", Node, "setting", Name] ->
                     {{[admin, memcached], read}, fun menelaus_web_mcd_settings:handle_node_setting_get/3, [Node, Name]};
+                ["pools", "default", "stats", "range" | PathLeft] ->
+                    {{[{bucket, any}, stats], read},
+                     fun menelaus_web_stats:handle_range_get/2, [PathLeft]};
                 ["nodeStatuses"] ->
                     {{[nodes], read}, fun menelaus_web_node:handle_node_statuses/1};
                 ["logs"] ->
