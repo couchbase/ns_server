@@ -1,7 +1,7 @@
 import { MnAlertsService } from '/ui/app/ajs.upgraded.providers.js';
 import { Injectable } from '/ui/web_modules/@angular/core.js';
 import { FormBuilder, FormGroup } from '/ui/web_modules/@angular/forms.js';
-import { BehaviorSubject, Subject } from "/ui/web_modules/rxjs.js";
+import { BehaviorSubject, Subject, NEVER } from "/ui/web_modules/rxjs.js";
 import { map, tap, first, merge, takeUntil, switchMap, throttleTime } from "/ui/web_modules/rxjs/operators.js";
 
 
@@ -182,7 +182,7 @@ class MnForm {
       });
     //skip initialization of the form
     ;(permissionStream || new BehaviorSubject(true)).pipe(
-      switchMap((v) => v ? this.group.valueChanges : Rx.NEVER),
+      switchMap((v) => v ? this.group.valueChanges : NEVER),
       throttleTime(500, undefined, {leading: true, trailing: true}),
       // Rx.operators.debounceTime(0),
       this.getPackPipe(),
