@@ -48,8 +48,11 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
     var setBucket = (v) =>
         bucketSelect.patchValue({name: v});
 
-    var setBucketUrlParam = (v) =>
-        uiRouter.stateService.go('.', {collectionsBucket: v.name}, {notify: false});
+    var setBucketUrlParam = (v, location) =>
+        uiRouter.stateService.go('.', {collectionsBucket: v.name}, {
+          notify: false,
+          location: location || true
+        });
 
     var filterBuckets = buckets => Object
         .keys(buckets)
@@ -73,7 +76,7 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
         switchMapTo(getBuckets),
         pluck(0),
         take(1))
-      .subscribe(setBucket);
+      .subscribe(v => setBucketUrlParam({name: v}, "replace"));
 
     getBucketUrlParamDefined
       .pipe(take(1))
