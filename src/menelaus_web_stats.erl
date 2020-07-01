@@ -20,6 +20,7 @@
 -export([handle_range_post/1]).
 
 -include("ns_common.hrl").
+-include("rbac.hrl").
 -include("cut.hrl").
 
 -define(MAX_TS, 9999999999999).
@@ -27,11 +28,16 @@
 -define(DEFAULT_PROMETHEUS_QUERY_TIMEOUT, 60000).
 
 handle_range_post(Req) ->
+    PermFilters =
+        case promql_filters_for_identity(menelaus_auth:get_identity(Req)) of
+            [] -> menelaus_utils:web_exception(403, "Forbidden");
+            F -> F
+        end,
     Now = os:system_time(millisecond),
     validator:handle(
       fun (List) ->
           Monitors = start_node_extractors_monitoring(List),
-          Requests = lists:map(send_metrics_request(_), List),
+          Requests = lists:map(send_metrics_request(_, PermFilters), List),
           ResList = lists:map(
                       fun ({Ref, Props}) ->
                           read_metrics_response(Ref, Props, Now)
@@ -82,13 +88,14 @@ stop_node_extractors_monitoring(Refs) ->
           erlang:demonitor(Ref, [flush])
       end, Refs).
 
-send_metrics_request(Props) ->
+send_metrics_request(Props, PermFilters) ->
     Functions = proplists:get_value(applyFunctions, Props, []),
     Window = proplists:get_value(timeWindow, Props),
     Metric = proplists:get_value(metric, Props),
     Name = proplists:get_value(<<"name">>, Metric),
     Labels = proplists:delete(<<"name">>, Metric),
-    Query = construct_promql_query(Name, Labels, Functions, Window),
+    Query = construct_promql_query(Name, Labels, Functions,
+                                   Window, PermFilters),
     Start = proplists:get_value(start, Props),
     End = proplists:get_value('end', Props),
     Step = proplists:get_value(step, Props),
@@ -209,16 +216,23 @@ aggregate_datapoints(F, Datapoints) ->
           end,
     misc:zipwithN(Fun, Datapoints).
 
-construct_promql_query(Metric, Labels, Functions, Window) ->
-    NeedTimeWindow = lists:any(fun is_range_vector_function/1, Functions),
+construct_promql_query(Metric, Labels, Functions, Window, PermFilters) ->
+    {RangeVFunctions, InstantVFunctions} =
+        lists:splitwith(fun is_range_vector_function/1, Functions),
     functools:chain(
       Labels,
-      [?cut({[{eq, "__name__", Metric}] ++ [{eq, K, V} || {K, V} <- _]}),
-       case NeedTimeWindow of
-           true -> range_vector(_, Window);
-           false -> fun functools:id/1
+      [?cut(lists:map(fun ({PermFilter}) ->
+                          {[{eq, "__name__", Metric}] ++
+                           [{eq, K, V} || {K, V} <- _] ++
+                           PermFilter}
+                      end, PermFilters)),
+       case RangeVFunctions of
+           [] -> fun functools:id/1;
+           _ -> lists:map(fun (Ast) -> range_vector(Ast, Window) end, _)
        end,
-       apply_functions(_, Functions),
+       lists:map(fun (Ast) -> apply_functions(Ast, RangeVFunctions) end, _),
+       {'or', _},
+       apply_functions(_, InstantVFunctions),
        prometheus:format_promql(_)]).
 
 range_vector(Ast, TimeWindow) -> {range_vector, Ast, TimeWindow}.
@@ -310,3 +324,102 @@ validate_interval(Name, State) ->
                   _:_ -> {error, "invalid interval"}
               end
       end, Name, State).
+
+promql_filters_for_identity(Identity) ->
+    CompiledRoles = menelaus_roles:get_compiled_roles(Identity),
+    PermCheck =
+        fun (Obj) ->
+            menelaus_roles:is_allowed(collection_perm(Obj), CompiledRoles)
+        end,
+    case PermCheck([all, all, all]) of
+        true -> [{[]}]; %% one empty filter
+        false ->
+            Roles = menelaus_roles:get_roles(Identity),
+            Definitions = menelaus_roles:get_definitions(all),
+            PermMap = build_stats_perm_map(Roles, PermCheck, Definitions),
+            convert_perm_map_to_promql_ast(PermMap)
+    end.
+
+collection_perm([B, S, C]) -> {[{collection, [B, S, C]}, stats], read};
+collection_perm([B, S]) ->    {[{collection, [B, S, all]}, stats], read};
+collection_perm([B]) ->       {[{collection, [B, all, all]}, stats], read}.
+
+build_stats_perm_map(UserRoles, PermCheckFun, RolesDefinitions) ->
+    ParamDefs = menelaus_roles:get_param_defs(_, RolesDefinitions),
+    StrippedParams =
+        [{Defs, menelaus_roles:strip_ids(Defs, P)} || {R, P} <- UserRoles,
+                                                      Defs <- [ParamDefs(R)]],
+    Params =
+        misc:groupby_map(
+          fun ({[bucket_name], B}) -> {buckets, B};
+              ({?RBAC_SCOPE_PARAMS, [B, any]}) -> {buckets, [B]};
+              ({?RBAC_COLLECTION_PARAMS, [B, any, any]}) -> {buckets, [B]};
+              ({?RBAC_SCOPE_PARAMS, S}) -> {scopes, S};
+              ({?RBAC_COLLECTION_PARAMS, [B, S, any]}) -> {scopes, [B, S]};
+              ({?RBAC_COLLECTION_PARAMS, P}) -> {collections, P}
+          end, StrippedParams),
+
+    CheckParam =
+        fun F([Obj], CheckPerm, Acc) ->
+                case CheckPerm([Obj]) of
+                    true -> Acc#{Obj => true};
+                    false -> Acc
+                end;
+            F([Obj | T], CheckPerm, Acc) ->
+                case maps:get(Obj, Acc, #{}) of
+                    true -> Acc;
+                    Map ->
+                        NewCheckPerm = fun (E) -> CheckPerm([Obj | E]) end,
+                        SubAcc = F(T, NewCheckPerm, Map),
+                        Acc#{Obj => SubAcc}
+                end
+        end,
+
+    CheckParamPerm = ?cut(CheckParam(_1, PermCheckFun, _2)),
+
+    functools:chain(
+      #{},
+      [lists:foldl(CheckParamPerm, _,
+                   proplists:get_value(buckets, Params, [])),
+       lists:foldl(CheckParamPerm, _,
+                   proplists:get_value(scopes, Params, [])),
+       lists:foldl(CheckParamPerm, _,
+                   proplists:get_value(collections, Params, []))]).
+
+convert_perm_map_to_promql_ast(PermMap) ->
+    AllowedBuckets = maps:keys(maps:filter(fun (_, V) -> V =:= true end,
+                                           PermMap)),
+    AllowedBucketsRe = [escape_re_chars(B) || B <- AllowedBuckets],
+    Filters =
+        [{[{re, "bucket", lists:join("|", AllowedBucketsRe)}]}
+                || AllowedBucketsRe =/= []] ++
+        maps:fold(
+          fun (_Bucket, true, Acc) -> Acc;
+              (Bucket, ScopePermMap, Acc) ->
+                  AllowedScopes = maps:keys(
+                                    maps:filter(fun (_, V) -> V =:= true end,
+                                                ScopePermMap)),
+                  [{[{eq, "bucket", Bucket},
+                     {re, "scope", lists:join("|", AllowedScopes)}]}
+                        || AllowedScopes =/= []] ++
+                  maps:fold(
+                    fun (_Scope, true, Acc2) -> Acc2;
+                        (Scope, CollectionsPermMap, Acc2) ->
+                            AllowedCols = maps:keys(
+                                            maps:filter(
+                                              fun (_, V) -> V =:= true end,
+                                              CollectionsPermMap)),
+                            [{[{eq, "bucket", Bucket},
+                               {eq, "scope", Scope},
+                               {re, "collection", lists:join("|", AllowedCols)}]}
+                                    || AllowedCols =/= []] ++ Acc2
+                    end, Acc, ScopePermMap)
+          end, [], PermMap),
+    case Filters of
+        [] -> [];
+        _ -> [{[{eq, "type", "system"}]} | Filters]
+    end.
+
+escape_re_chars(Str) ->
+    re:replace(Str, "[\\[\\].\\\\^$|()?*+{}]", "\\\\&",
+               [{return,list}, global]).
