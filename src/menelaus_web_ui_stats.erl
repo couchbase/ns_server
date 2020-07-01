@@ -169,7 +169,10 @@ extract_uistats(Now, Params, Req) ->
 format_error(Bin) when is_binary(Bin) -> Bin;
 format_error(timeout) -> <<"Request timed out">>;
 format_error({exit, {{nodedown, _}, _}}) -> <<"Node is down">>;
-format_error({exit, _}) -> <<"Unexpected server error">>.
+format_error({exit, _}) -> <<"Unexpected server error">>;
+format_error({failed_connect, _}) -> <<"Connect to Prometheus failed">>;
+format_error(Unknown) -> misc:format_bin("Unexpected error - ~10000p",
+                                         [Unknown]).
 
 merge_metrics(Res, Aggregate) ->
     FlatList = [{maps:from_list(Metric), Node, Values} ||

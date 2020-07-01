@@ -1,65 +1,97 @@
 -module(prometheus).
 
 -include("ns_common.hrl").
--include("../lhttpc/lhttpc.hrl").
 
--export([query_range/6, format_value/1, parse_value/1]).
+-export([query_range/6, query_range_async/7, format_value/1, parse_value/1]).
 
 query_range(Query, Start, End, Step, Timeout, Settings) ->
+    Self = self(),
+    Ref = make_ref(),
+    ok = query_range_async(Query, Start, End, Step, Timeout, Settings,
+                           fun (Res) -> Self ! {Ref, Res} end),
+    receive
+        {Ref, Res} -> Res
+    after Timeout ->
+        {error, timeout}
+    end.
+
+query_range_async(Query, Start, End, Step, Timeout, Settings, Handler)
+                  when is_integer(Step) ->
+    StepStr = integer_to_list(Step) ++ "s",
+    query_range_async(Query, Start, End, StepStr, Timeout, Settings, Handler);
+query_range_async(Query, Start, End, Step, Timeout, Settings, Handler) ->
     Addr = proplists:get_value(listen_addr, Settings),
     {Username, Password} = proplists:get_value(prometheus_creds, Settings),
-    URL = io_lib:format("http://~s/api/v1/query_range", [Addr]),
+    URL = lists:flatten(io_lib:format("http://~s/api/v1/query_range", [Addr])),
     Body = mochiweb_util:urlencode(
-             [{query, Query}, {start, Start}, {'end', End},
-              {step, integer_to_list(Step) ++ "s"},
+             [{query, Query}, {start, Start}, {'end', End}, {step, Step},
               {timeout, integer_to_list(max(Timeout div 1000, 1)) ++ "s"}]),
     Headers = [{"Content-Type", "application/x-www-form-urlencoded"}],
     HeadersWithAuth = menelaus_rest:add_basic_auth(Headers, Username, Password),
-    case post(lists:flatten(URL), HeadersWithAuth, Body, 5000) of
-        {ok, json, {Data}} ->
-            Res = proplists:get_value(<<"result">>, Data, {[]}),
-            {ok, Res};
-        {error, Reason} ->
-            ?log_error("Prometheus query_range request failed:~n"
-                       "URL: ~s~nHeaders: ~p~nBody: ~s~nReason: ~s",
-                       [URL, Headers, Body, Reason]),
-            {error, Reason}
-    end.
+    HandlerWrap =
+        fun ({ok, json, {Data}}) ->
+                Res = proplists:get_value(<<"result">>, Data, {[]}),
+                Handler({ok, Res});
+            ({error, Reason}) ->
+                ?log_error("Prometheus query_range request failed:~n"
+                           "URL: ~s~nHeaders: ~p~nBody: ~s~nReason: ~p",
+                           [URL, Headers, Body, Reason]),
+                Handler({error, Reason});
+            (Unhandled) ->
+                ?log_error("Unexpected query_async result: ~p~n"
+                           "URL: ~s~nHeaders: ~p~nBody: ~s",
+                           [Unhandled, URL, Headers, Body]),
+                Handler({error, {unexpected, Unhandled}})
+        end,
+    post_async(URL, HeadersWithAuth, Body, Timeout, HandlerWrap).
 
-post(URL, Headers, Body, Timeout) ->
-    case lhttpc:request(URL, 'post', Headers, Body, Timeout) of
-        {ok, {{Code, CodeText}, ReplyHeaders, Reply}} ->
-            case proplists:get_value("Content-Type", ReplyHeaders) of
-                "application/json" ->
-                    try ejson:decode(Reply) of
-                        {JSON} ->
-                            case proplists:get_value(<<"status">>, JSON) of
-                                <<"success">> ->
-                                    R = proplists:get_value(<<"data">>, JSON),
-                                    {ok, json, R};
-                                <<"error">> ->
-                                    E = proplists:get_value(<<"error">>, JSON),
-                                    {error, E}
-                            end
-                    catch
-                        _:_ ->
-                            R = misc:format_bin("Invalid json: ~s", [Reply]),
-                            {error, R}
-                    end;
-                _ ->
-                    case Code of
-                        200 -> {ok, text, Reply};
-                        _ when Reply =/= <<>> -> {error, Reply};
-                        _ -> {error, CodeText}
+post_async(URL, Headers, Body, Timeout, Handler) ->
+    Receiver = fun (Res) ->
+                   try
+                       handle_post_async_reply(Handler, Res)
+                   catch
+                       Class:Error ->
+                           ?log_error("Exception in httpc receiver ~p:~p~n~p",
+                                      [Class, Error, erlang:get_stacktrace()])
+                   end
+                end,
+    HttpOptions = [{timeout, Timeout}, {connect_timeout, Timeout}],
+    Options = [{sync, false}, {receiver, Receiver}],
+    Req = {URL, Headers, "application/x-www-form-urlencoded", Body},
+    {ok, _} = httpc:request('post', Req, HttpOptions, Options),
+    ok.
+
+handle_post_async_reply(UserHandler, {_Ref, {error, R}}) ->
+    UserHandler({error, R});
+handle_post_async_reply(UserHandler,
+                        {_Ref, {{_, Code, CodeText}, Headers, Reply}}) ->
+    case proplists:get_value("content-type", Headers) of
+        "application/json" ->
+            try ejson:decode(Reply) of
+                {JSON} ->
+                    case proplists:get_value(<<"status">>, JSON) of
+                        <<"success">> ->
+                            R = proplists:get_value(<<"data">>, JSON),
+                            UserHandler({ok, json, R});
+                        <<"error">> ->
+                            E = proplists:get_value(<<"error">>, JSON),
+                            UserHandler({error, E})
                     end
+            catch
+                _:_ ->
+                    R = misc:format_bin("Invalid json in reply: ~s", [Reply]),
+                    UserHandler({error, R})
             end;
-        {error, Error} ->
-            #lhttpc_url{host = H, port = P} = lhttpc_lib:parse_url(URL),
-            case ns_error_messages:connection_error_message(Error, H, P) of
-                undefined -> {error, misc:format_bin("~p", [Error])};
-                Bin -> {error, Bin}
+        _ ->
+            case Code of
+                200 -> UserHandler({ok, text, Reply});
+                _ when Reply =/= <<>> -> UserHandler({error, Reply});
+                _ -> UserHandler({error, CodeText})
             end
-    end.
+    end;
+handle_post_async_reply(UserHandler, Unhandled) ->
+    ?log_error("Unhandled response from httpc: ~p", [Unhandled]),
+    UserHandler({error, {unexpected, Unhandled}}).
 
 format_value(undefined) -> <<"NaN">>;
 format_value(infinity) -> <<"Inf">>;
