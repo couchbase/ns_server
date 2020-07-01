@@ -49,7 +49,8 @@
          string_array/2,
          return_value/3,
          return_error/3,
-         default/3]).
+         default/3,
+         token_list/3]).
 
 -record(state, {kv = [], touched = [], errors = []}).
 
@@ -456,6 +457,12 @@ default(Name, Default, State) ->
         _Value ->
             State
     end.
+
+token_list(Name, Separator, State) ->
+    validate(
+      fun (String) ->
+          {value, string:lexemes(String, Separator)}
+      end, Name, State).
 
 -ifdef(TEST).
 %% Validates that the length of the value is in range, returning the resulting
