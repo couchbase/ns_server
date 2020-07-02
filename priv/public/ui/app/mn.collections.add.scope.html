@@ -1,10 +1,25 @@
 <div class="dialog-med">
   <div class="panel-header">
-    <h2>{{bucketName}} Scopes</h2>
+    <h2>Add Scope</h2>
     <a class="ui-dialog-titlebar-close modal-close" (click)="activeModal.dismiss()">X</a>
   </div>
   <form (ngSubmit)="form.submit.next()" [formGroup]="form.group" class="forms">
     <div class="panel-content">
+      <div class="formrow">
+        <label for="add-bucket-name">Bucket Name</label>
+        <select
+           formControlName="bucketName"
+           id="add-bucket-name">
+          <option *ngFor="let name of (buckets | async)" [ngValue]="name">
+            {{name}}
+          </option>
+        </select>
+        <div
+           class="error"
+           [hidden]="!(addScopeHttp.error | async)?.errors?.bucketName">
+          {{(addScopeHttp.error | async)?.errors?.bucketName}}
+        </div>
+      </div>
       <div class="formrow">
         <label for="add-scope">New Scope Name</label>
         <input
@@ -16,6 +31,11 @@
            autocorrect="off"
            spellcheck="false"
            autocapitalize="off">
+        <div
+           class="error"
+           [hidden]="!(addScopeHttp.error | async)?.errors?.name">
+          {{(addScopeHttp.error | async)?.errors?.name}}
+        </div>
       </div>
     </div>
     <div class="panel-footer">

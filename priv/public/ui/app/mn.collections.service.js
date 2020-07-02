@@ -4,6 +4,10 @@ import { UIRouter } from "/ui/web_modules/@uirouter/angular.js";
 import { MnHttpRequest } from './mn.http.request.js';
 
 import { BehaviorSubject} from "/ui/web_modules/rxjs.js";
+import {map, shareReplay} from '/ui/web_modules/rxjs/operators.js';
+
+import {MnBucketsService} from './mn.buckets.service.js';
+import {MnPermissions} from '/ui/app/ajs.upgraded.providers.js';
 
 const restApiBase = "/pools/default/buckets";
 
@@ -16,10 +20,12 @@ class MnCollectionsService {
 
   static get parameters() { return [
     HttpClient,
-    UIRouter
+    UIRouter,
+    MnBucketsService,
+    MnPermissions
   ]}
 
-  constructor(http, uiRouter) {
+  constructor(http, uiRouter, mnBucketsService, mnPermissions) {
     this.http = http;
     this.stream = {};
 
@@ -28,7 +34,18 @@ class MnCollectionsService {
       new BehaviorSubject();
 
     this.stream.addScopeHttp =
-      new MnHttpRequest(this.addScope.bind(this)).addSuccess().addError();
+      new MnHttpRequest(this.addScope.bind(this))
+      .addSuccess()
+      .addError(map(error => {
+        if (error === 404) {
+          return {errors: {bucketName: "This bucket doesn't exist"}}
+        }
+        if (typeof error === "string") {
+          //hanlde "Scope with this name already exists" error
+          return {errors: {name: error}};
+        }
+        return error;
+      }));
 
     this.stream.deleteScopeHttp =
       new MnHttpRequest(this.deleteScope.bind(this)).addSuccess().addError();
@@ -38,14 +55,24 @@ class MnCollectionsService {
 
     this.stream.deleteCollectionHttp =
       new MnHttpRequest(this.deleteCollection.bind(this)).addSuccess().addError();
+
+    this.stream.collectionBuckets = mnBucketsService.stream.getBucketsByName
+      .pipe(map(buckets => Object
+                .keys(buckets)
+                .filter(bucketName =>
+                        mnPermissions.export.cluster.bucket[bucketName] &&
+                        mnPermissions.export.cluster.bucket[bucketName].collections.read)),
+            shareReplay({refCount: true, bufferSize: 1}));
   }
 
   getManifest(bucket) {
     return this.http.get(`${restApiBase}/${bucket}/collections`);
   }
 
-  addScope([bucket, body]) {
-    return this.http.post(`${restApiBase}/${bucket}/collections`, body);
+  addScope(values) {
+    return this.http.post(`${restApiBase}/${values.bucketName}/collections`, {
+      name: values.name
+    });
   }
 
   addCollection([bucket, {scope, name}]) {

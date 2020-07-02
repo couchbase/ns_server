@@ -10,7 +10,6 @@ import {MnPermissions} from '/ui/app/ajs.upgraded.providers.js';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnCollectionsService} from './mn.collections.service.js';
-import {MnBucketsService} from './mn.buckets.service.js';
 import {MnCollectionsAddScopeComponent} from './mn.collections.add.scope.component.js';
 import {MnCollectionsAddItemComponent} from './mn.collections.add.item.component.js';
 
@@ -29,14 +28,13 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
   static get parameters() { return [
     MnCollectionsService,
     MnPermissions,
-    MnBucketsService,
     UIRouter,
     NgbModal,
     FormBuilder,
     MnInputFilterService
   ]}
 
-  constructor(mnCollectionsService, mnPermissions, mnBucketsService,
+  constructor(mnCollectionsService, mnPermissions,
               uiRouter, modalService, formBuilder, mnInputFilterService) {
     super();
 
@@ -54,14 +52,8 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
           location: location || true
         });
 
-    var filterBuckets = buckets => Object
-        .keys(buckets)
-        .filter(bucketName =>
-                mnPermissions.export.cluster.bucket[bucketName] &&
-                mnPermissions.export.cluster.bucket[bucketName].collections.read);
-
     var getBuckets =
-        mnBucketsService.stream.getBucketsByName.pipe(map(filterBuckets));
+        mnCollectionsService.stream.collectionBuckets;
 
     var getBucketUrlParam =
         uiRouter.globals.params$.pipe(pluck("collectionsBucket"),
