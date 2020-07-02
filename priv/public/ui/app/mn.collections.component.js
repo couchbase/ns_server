@@ -1,10 +1,9 @@
 import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
 import {FormBuilder} from "/ui/web_modules/@angular/forms.js";
 import {UIRouter} from "/ui/web_modules/@uirouter/angular.js";
-import {pluck, take, filter, switchMap, distinctUntilChanged,
-        switchMapTo, map, shareReplay, takeUntil} from '/ui/web_modules/rxjs/operators.js';
+import {pluck, filter, switchMap, distinctUntilChanged, withLatestFrom,
+        shareReplay, takeUntil} from '/ui/web_modules/rxjs/operators.js';
 import {combineLatest, Subject, timer} from "/ui/web_modules/rxjs.js";
-import {equals, compose, not} from "/ui/web_modules/ramda.js";
 import {NgbModal} from "/ui/web_modules/@ng-bootstrap/ng-bootstrap.js";
 import {MnPermissions} from '/ui/app/ajs.upgraded.providers.js';
 
@@ -46,8 +45,8 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
     var setBucket = (v) =>
         bucketSelect.patchValue({name: v});
 
-    var setBucketUrlParam = (v, location) =>
-        uiRouter.stateService.go('.', {collectionsBucket: v.name}, {
+    var setBucketUrlParam = (name, location) =>
+        uiRouter.stateService.go('.', {collectionsBucket: name ? name : null}, {
           notify: false,
           location: location || true
         });
@@ -59,24 +58,36 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
         uiRouter.globals.params$.pipe(pluck("collectionsBucket"),
                                       distinctUntilChanged());
     var getBucketUrlParamDefined =
-        getBucketUrlParam
-        .pipe(filter(compose(not, equals(undefined))));
+        combineLatest(
+          getBucketUrlParam,
+          getBuckets
+        ).pipe(filter(([param, buckets]) => param && buckets.includes(param)),
+               pluck(0),
+               distinctUntilChanged());
 
-    getBucketUrlParam
-      .pipe(
-        filter(equals(undefined)),
-        switchMapTo(getBuckets),
-        pluck(0),
-        take(1))
-      .subscribe(v => setBucketUrlParam({name: v}, "replace"));
+    var bucketsWithParams =
+        getBuckets.pipe(withLatestFrom(getBucketUrlParam));
 
     getBucketUrlParamDefined
-      .pipe(take(1))
+      .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(setBucket);
 
-    bucketSelect.valueChanges
-      .pipe(takeUntil(this.mnOnDestroy))
+    bucketSelect.get("name").valueChanges
+      .pipe(distinctUntilChanged(),
+            takeUntil(this.mnOnDestroy))
       .subscribe(setBucketUrlParam);
+
+    bucketsWithParams
+      .pipe(filter(([buckets, param]) => param && !buckets.includes(param)),
+            pluck(0, 0),
+            takeUntil(this.mnOnDestroy))
+      .subscribe(setBucketUrlParam);
+
+    bucketsWithParams
+      .pipe(filter(([_, param]) => !param),
+            pluck(0, 0),
+            takeUntil(this.mnOnDestroy))
+      .subscribe(v => setBucketUrlParam(v, "replace"));
 
     var scopes =
         combineLatest(getBucketUrlParamDefined,
