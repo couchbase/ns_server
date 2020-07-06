@@ -1,10 +1,12 @@
 <div *ngIf="(buckets | async) != null && (buckets | async).length">
   <mn-element-cargo depot="actions">
     <div class="header-controls resp-xsml">
-      <a (click)="clickAddScope.next()">
+      <a (click)="clickAddScope.next()"
+         [hidden]="!permissions.cluster.bucket['.'].collections.write">
         ADD SCOPE
       </a>
-      <a (click)="clickAddCollection.next()">
+      <a (click)="clickAddCollection.next()"
+         [hidden]="!permissions.cluster.bucket['.'].collections.write">
         ADD COLLECTION
       </a>
     </div>

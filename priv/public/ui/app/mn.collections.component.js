@@ -111,6 +111,7 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
         ref.componentInstance.bucketName = bucketSelect.get("name").value;
       });
 
+    this.permissions = mnPermissions.export;
     this.filter = mnInputFilterService.create(scopes);
     this.buckets = getBuckets;
     this.bucketSelect = bucketSelect;
