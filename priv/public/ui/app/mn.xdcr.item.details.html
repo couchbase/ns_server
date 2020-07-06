@@ -1,0 +1,35 @@
+<div class="indent-1 cursor-auto">
+  <div class="width-12 text-right margin-top-half">
+    <button
+       [hidden]="!permissions.cluster.bucket[item.source].xdcr.write"
+       (click)="$event.stopPropagation();onDeleteReplication.next(item)"
+       class="outline">
+      Delete
+    </button>
+
+    <button
+       [hidden]="!(permissions.cluster.bucket[item.source].xdcr.write &&
+                 permissions.cluster.xdcr.settings.write)"
+       (click)="$event.stopPropagation();onEditReplication.next(item)"
+       class="outline">
+      Edit
+    </button>
+    <button
+       (click)="$event.stopPropagation();form.submit.next(item)"
+       class="fix-width-2 replication">
+      <span>{{status | async | mnReplicationStatus}}</span>
+      <div
+         [hidden]="item.status == 'notRunning' ||
+                   !permissions.cluster.bucket[item.source].xdcr.execute"
+         class="icon margin-left-half"
+         [ngClass]="statusClass | async"></div>
+    </button>
+  </div>
+  <!-- <mn-detail-stats
+       bucket="{{row.source}}"
+       mn-title="XDCR Stats"
+       item-id="{{row.id}}"
+       service="xdcr"
+       prefix="replications"
+       ></mn-detail-stats> -->
+</div>

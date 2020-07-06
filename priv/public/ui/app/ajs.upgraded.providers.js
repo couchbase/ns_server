@@ -1,3 +1,12 @@
+class $rootScope {}
+const $rootScopeProvider = {
+  provide: $rootScope,
+  useFactory: function $rootScopeFactory(i) {
+    return i.get('$rootScope');
+  },
+  deps: ['$injector']
+};
+
 class $state {}
 const $stateProvider = {
   provide: $state,
@@ -54,6 +63,7 @@ const MnAlertsServiceProvider = {
 };
 
 let ajsUpgradedProviders = [
+  $rootScopeProvider,
   $stateProvider,
   MnPoolsProvider,
   MnPendingQueryKeeperProvider,
@@ -65,6 +75,7 @@ let ajsUpgradedProviders = [
 export {
   ajsUpgradedProviders,
   $state,
+  $rootScope,
   MnPools,
   MnPendingQueryKeeper,
   MnPermissions,

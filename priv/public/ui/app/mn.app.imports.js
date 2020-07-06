@@ -49,6 +49,16 @@ let collectionsState = {
   }
 };
 
+let XDCRState = {
+  name: 'app.admin.replications.**',
+  url: '/replications',
+  loadChildren: () => {
+    return import('./mn.xdcr.module.js').then(m => {
+      return m.MnXDCRModule;
+    });
+  }
+};
+
 let sessionState = {
   name: 'app.admin.security.session.**',
   url: '/session',
@@ -198,16 +208,6 @@ let securityState = {
   }
 };
 
-let xdcrState = {
-  name: "app.admin.replications.**",
-  url: "/replications",
-  lazyLoad: ($transition$) => {
-    return import('./mn_admin/mn_xdcr_controller.js').then(m => {
-      $transition$.injector().get('$ocLazyLoad').load({name: 'mnXDCR'});
-    });
-  }
-};
-
 export let mnAppImports = [
   ...Object.values(pluggableUIsModules),
   UpgradeModule,
@@ -219,6 +219,6 @@ export let mnAppImports = [
   MnSharedModule,
   MnElementCraneModule.forRoot(),
   UIRouterUpgradeModule.forRoot({
-    states: [authState, wizardState, overviewState, statsOverviewState, serversState, bucketsState, logsState, groupsState, documentsState, gsiState, viewsState, settingsState, securityState, xdcrState, collectionsState, sessionState, logRedactionState, auditState]
+    states: [authState, wizardState, overviewState, statsOverviewState, serversState, bucketsState, logsState, groupsState, documentsState, gsiState, viewsState, settingsState, securityState, collectionsState, XDCRState, sessionState, logRedactionState, auditState]
   })
 ];

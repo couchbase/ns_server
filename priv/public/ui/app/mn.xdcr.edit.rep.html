@@ -1,0 +1,40 @@
+<div class="dialog-med">
+  <div class="panel-header">
+    <h2>Advanced Settings</h2>
+    <a class="ui-dialog-titlebar-close modal-close" (click)="activeModal.dismiss()">X</a>
+  </div>
+  <form
+     [formGroup]="form.group"
+     (submit)="form.submit.next()"
+     class="forms">
+    <div class="panel-content">
+
+      <div class="formrow">
+        <label for="replication_priority">Replication Priority</label>
+        <select
+           id="replication_priority"
+           formControlName="priority">
+          <option value="Low">Low</option>
+          <option value="Medium">Medium</option>
+          <option value="High">High</option>
+        </select>
+      </div>
+
+      <mn-xdcr-filter
+         [bucket]="item.source"
+         [isEditMode]="true"
+         [group]="form.group"
+         *ngIf="(isEnterprise | async)"></mn-xdcr-filter>
+
+      <mn-xdcr-settings
+         class="panel-content"
+         [group]="form.group"
+         [type]="item.replicationType"></mn-xdcr-settings>
+
+    </div>
+    <div class="panel-footer">
+      <a (click)="activeModal.dismiss()">Cancel</a>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+</div>

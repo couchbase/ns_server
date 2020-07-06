@@ -1,5 +1,6 @@
-import { Injectable } from "../web_modules/@angular/core.js";
-import { HttpClient } from '../web_modules/@angular/common/http.js';
+import { Injectable } from "/ui/web_modules/@angular/core.js";
+import { HttpClient } from '/ui/web_modules/@angular/common/http.js';
+import { map } from '/ui/web_modules/rxjs/operators.js';
 import { MnHttpRequest } from './mn.http.request.js';
 
 export { MnAuthService }
@@ -20,7 +21,7 @@ class MnAuthService {
     this.stream.postUILogin =
       new MnHttpRequest(this.postUILogin.bind(this))
       .addSuccess()
-      .addError();
+      .addError(map(rv => rv.status));
 
     // this.stream.postUILogout =
     //   new mn.core.MnPostHttp(this.postUILogout.bind(this));

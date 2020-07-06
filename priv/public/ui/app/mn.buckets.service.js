@@ -4,6 +4,7 @@ import {pluck,
         shareReplay,
         distinctUntilChanged,
         map} from "/ui/web_modules/rxjs/operators.js";
+import {filter, anyPass, propEq} from "/ui/web_modules/ramda.js";
 import {HttpClient, HttpParams} from '/ui/web_modules/@angular/common/http.js';
 import {MnAdminService} from './mn.admin.service.js';
 
@@ -35,7 +36,14 @@ class MnBucketsService {
                                       buckets.reduce((acc, bucket) => {
                                         acc[bucket.name] = bucket;
                                         return acc;
-                                      }, {})));
+                                      }, {})),
+                                  shareReplay({refCount: true, bufferSize: 1}));
+
+    this.stream.bucketsMembaseEphemeral =
+      this.stream.getBuckets.pipe(map(filter(anyPass([
+        propEq('bucketType', 'membase'),
+        propEq('bucketType', 'ephemeral')
+      ]))), shareReplay({refCount: true, bufferSize: 1}));
   }
 
   get(url) {

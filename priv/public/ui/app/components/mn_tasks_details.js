@@ -1,13 +1,16 @@
 import angular from "/ui/web_modules/angular.js";
+import {downgradeInjectable} from "/ui/web_modules/@angular/upgrade/static.js";
 import _ from "/ui/web_modules/lodash.js";
+import {MnTasksService} from "../mn.tasks.service.js"
 
 export default "mnTasksDetails";
 
 angular
   .module('mnTasksDetails', [])
-  .factory('mnTasksDetails', mnTasksDetailsFactory);
+  .factory('mnTasksDetails', mnTasksDetailsFactory)
+  .factory('mnTasksService', downgradeInjectable(MnTasksService));
 
-function mnTasksDetailsFactory($http, $cacheFactory) {
+function mnTasksDetailsFactory($http, $cacheFactory, mnTasksService) {
   var mnTasksDetails = {
     get: get,
     clearCache: clearCache,
@@ -57,6 +60,8 @@ function mnTasksDetailsFactory($http, $cacheFactory) {
         return task.status === "running";
       });
       rv.isOrphanBucketTask = !!_.detect(tasks, detectOrphanBucketTask);
+
+      mnTasksService.stream.tasksXDCRPlug.next(rv.tasksXDCR);
 
       return rv;
     });

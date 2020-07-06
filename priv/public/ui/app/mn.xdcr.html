@@ -1,0 +1,71 @@
+<mn-element-cargo depot="actions">
+  <div class="header-controls resp-sml">
+    <a
+       [hidden]="!((permissions.cluster.xdcr.remote_clusters.read && (references | async)?.length) && permissions.cluster.xdcr.settings.read && permissions.cluster.xdcr.settings.write && permissions.cluster.bucket['.'].xdcr.write)"
+       (click)="onAddReplication.next()"
+       class="resp-hide-sml">
+      ADD REPLICATION
+    </a>
+    <a
+       [hidden]="!permissions.cluster.xdcr.remote_clusters.write"
+       (click)="onAddReference.next()"
+       class="resp-hide-sml">
+      ADD REMOTE
+    </a>
+  </div>
+</mn-element-cargo>
+
+<div [hidden]="!permissions.cluster.xdcr.remote_clusters.read">
+  <h4>Remote Clusters</h4>
+  <div class="cbui-table" [hidden]="!(references | async)?.length">
+    <div class="cbui-table-header padding-left">
+      <span class="cbui-table-cell flex-grow-1-5">
+        <span
+           class="sorter"
+           [ngClass]="{
+                  'dynamic-active': (referenceSorter.click | async) == 'name',
+                  'dynamic-inverted': (referenceSorter.state | async)
+                  }"
+           (click)="referenceSorter.click.next('name')">name</span>
+      </span>
+      <span class="cbui-table-cell flex-grow-1-5">IP/hostname</span>
+      <span class="cbui-table-cell flex-grow-1-5 resp-hide-sml"></span>
+      <span class="cbui-table-cell flex-grow-half resp-hide-sml"></span>
+    </div>
+    <mn-xdcr-ref-item
+       *ngFor="let ref of (references | async); trackBy: trackByFn"
+       [item]="ref"></mn-xdcr-ref-item>
+  </div>
+  <div
+     [hidden]="(references | async)?.length"
+     class="zero-content">
+    No remote clusters defined. Use ADD REMOTE to set one up.
+  </div>
+</div>
+
+<!-- Outgoing Replications ************************************************ -->
+<div
+   [hidden]="!(permissions.cluster.tasks.read && (references | async)?.length)"
+   class="margin-top-1-5">
+  <h4>Outgoing Replications</h4>
+  <div
+     class="cbui-table"
+     [hidden]="!(tasksXDCR | async)?.length">
+    <div class="cbui-table-header">
+      <span class="cbui-table-cell">
+        source bucket
+      </span>
+      <span class="cbui-table-cell">
+        destination bucket
+      </span>
+      <span class="cbui-table-cell">remote cluster</span>
+      <span class="cbui-table-cell">status</span>
+    </div>
+    <mn-xdcr-item
+       *ngFor="let item of (tasksXDCR | async); trackBy: tasksTrackByFn;"
+       [item]="item"></mn-xdcr-item>
+  </div>
+  <div [hidden]="(tasksXDCR | async)?.length" class="zero-content">
+    There are currently no replications defined. Use ADD REPLICATION to set one up.
+  </div>
+</div>

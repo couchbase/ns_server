@@ -1,0 +1,31 @@
+<section
+   class="has-hover"
+   (click)="detailsHashObserver.stream.toggleDetails.next(item.name)">
+  <div class="cbui-tablerow">
+    <span
+       [attr.title]="item.name"
+       class="cbui-table-cell flex-grow-1-5">{{item.name}}</span>
+    <span class="cbui-table-cell flex-grow-1-5">
+      <a
+         (click)="$event.stopPropagation();"
+         [attr.href]="generateStatisticsLink(item)">{{item.hostname}}</a>
+    </span>
+    <span class="cbui-table-cell flex-grow-1-5 resp-hide-sml"></span>
+    <span class="cbui-table-cell flex-grow-half resp-hide-sml"></span>
+  </div>
+  <div
+     [hidden]="!(detailsHashObserver.stream.isOpened | async)"
+     class="cbui-tablerow-expanded">
+    <div class="width-12 text-right margin-top-half">
+      <button
+         [hidden]="!permissions.cluster.xdcr.remote_clusters.write"
+         (click)="onDeleteReference.next(item)"
+         class="outline">
+        Delete
+      </button>
+      <button
+         [hidden]="!permissions.cluster.xdcr.remote_clusters.write"
+         (click)="onAddReference.next(item)">Edit</button>
+    </div>
+  </div>
+</section>

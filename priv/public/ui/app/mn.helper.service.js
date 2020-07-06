@@ -1,7 +1,7 @@
 import { Pipe, Injectable } from '../web_modules/@angular/core.js';
-import { Subject, combineLatest, zip } from '../web_modules/rxjs.js';
-import { scan, map  } from '../web_modules/rxjs/operators.js';
-import { not } from '../web_modules/ramda.js';
+import { BehaviorSubject, combineLatest, zip } from '../web_modules/rxjs.js';
+import { scan, map, shareReplay, distinctUntilChanged  } from '../web_modules/rxjs/operators.js';
+import { not, sort, prop, descend, ascend } from '../web_modules/ramda.js';
 
 export { MnHelperService };
 
@@ -70,32 +70,29 @@ class MnHelperService {
     }
   }
 
-  createToggle(version) {
-    this.click = new Subject();
-    this.state = this.click.pipe(scan(not, false),
-                                 shareReplay({refCount: true, bufferSize: 1}));
+  createToggle(defaultValue) {
+    var click = new BehaviorSubject(defaultValue);
+    return {
+      click: click,
+      state: click.pipe(scan(not, true),
+                        shareReplay({refCount: true, bufferSize: 1}))
+    };
   }
 
-  doSort([array, [sortBy, isAsc]]) {
-    var copyArray = array.slice();
-    copyArray = _.sortBy(copyArray, sortBy); //TODO: sould be replaced with Ramda.not
-
-    if (!isAsc) {
-      return copyArray.reverse();
-    } else {
-      return copyArray;
-    }
-  }
-
-  sortByStream(sortByStream) {
-    return function (arrayStream) {
-      var isAsc = sortByStream.pipe(scan(not, false));
-
-      return combineLatest(arrayStream,
-                           zip(sortByStream, isAsc))
-        .pipe(map(this.doSort),
-              shareReplay({refCount: true, bufferSize: 1}));
-    }
+  createSorter(defaultValue) {
+    var toggler = this.createToggle(defaultValue);
+    var click = toggler.click.pipe(distinctUntilChanged());
+    return {
+      click: click,
+      state: toggler.state,
+      pipe: (arrayStream) => {
+        return combineLatest(arrayStream, zip(toggler.click, toggler.state))
+          .pipe(map(([array, [sortByValue, isDesc]]) => {
+            var ascOrDesc = isDesc ? descend : ascend;
+            return sort(ascOrDesc(prop(sortByValue)), array);
+          }), shareReplay({refCount: true, bufferSize: 1}));
+      }
+    };
   }
 }
 // var mn = mn || {};

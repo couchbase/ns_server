@@ -1,8 +1,9 @@
 import { MnAlertsService } from '/ui/app/ajs.upgraded.providers.js';
 import { Injectable } from '/ui/web_modules/@angular/core.js';
 import { FormBuilder, FormGroup } from '/ui/web_modules/@angular/forms.js';
-import { BehaviorSubject, Subject, NEVER } from "/ui/web_modules/rxjs.js";
-import { map, tap, first, merge, takeUntil, switchMap, throttleTime } from "/ui/web_modules/rxjs/operators.js";
+import { BehaviorSubject, Subject, NEVER, merge } from "/ui/web_modules/rxjs.js";
+import { map, tap, first, takeUntil, switchMap, mapTo,
+         throttleTime, shareReplay } from "/ui/web_modules/rxjs/operators.js";
 
 
 export { MnFormService };
@@ -91,6 +92,13 @@ class MnForm {
     }
   }
 
+  trackSubmit() {
+    var response = this.getLastRequest().response.pipe(mapTo(false));
+    var request = this.submit.pipe(mapTo(true));
+    this.processing = merge(request, response).pipe(shareReplay({refCount: true, bufferSize: 1}));
+    return this;
+  }
+
   setPostRequest(postRequest) {
     let lastRequest = this.getLastRequest();
     this.requestsChain.push(postRequest);
@@ -108,10 +116,6 @@ class MnForm {
     }
     return this;
   }
-
-  // setNextPostRequest() {
-  //   this.postRequest.success
-  // }
 
   hasNoPostRequest() {
     this.createSubmitPipe();

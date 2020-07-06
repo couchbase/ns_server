@@ -1,0 +1,144 @@
+<p
+   class="disclosure margin-bottom-half"
+   [ngClass]="{disclosed: (toggler.state | async)}"
+   (click)="toggler.click.next()">
+  Replication Filters
+</p>
+
+<div
+   [hidden]="!(toggler.state | async)"
+   [formGroup]="group"
+   class="margin-left-1-5">
+  <div class="margin-bottom-1-5">
+    <label class="inline">Filter Expression</label>
+    <span
+       class="fa-stack icon-info"
+       ngbTooltip="You may filter for values and x-attributes in addition to key names.
+              If the filter matches, the document will be replicated; otherwise the document
+              won’t be replicated. See the XDCR documentation for possible filter expressions
+              (NOTE: regex pattern-matching and many N1QL statements are supported, but there
+              are some unique aspects to the XDCR filtering language). You may test if your
+              filter expression matches a document by entering the document ID in the test field."
+       placement="auto right">
+      <span class="icon fa-circle-thin fa-stack-2x"></span>
+      <span class="icon fa-info fa-stack-1x"></span>
+    </span>
+    <textarea
+       formControlName="filterExpression"
+       rows="4"
+       autocorrect="off"
+       autocompleterg="off"
+       spellcheck="false"
+       class="xdcr-filter margin-bottom-half">
+    </textarea>
+
+    <div
+       class="row margin-bottom-half"
+       [formGroup]="form.group">
+      <input
+         formControlName="docId"
+         type="text"
+         autocorrect="off"
+         autocompleterg="off"
+         spellcheck="false"
+         placeholder="id of document to test..."
+         class="margin-right-half">
+      <button
+         type="button"
+         class="outline"
+         [disabled]="(form.processing | async)"
+         (click)="form.submit.next()">
+        Test Filter
+      </button>
+      <div
+         class="xdcrfilter-matching"
+         [hidden]="(postRegexpValidation.success | async) == null || (errors | async)"
+         [ngClass]="{
+                dynamic_match: (postRegexpValidation.success | async)?.result,
+                dynamic_spinner: (form.processing | async)}">
+        <span class="xdcrfilter-nomatch">no match</span>
+        <span class="xdcrfilter-loading loading">...</span>
+        <span class="xdcrfilter-match">match</span>
+      </div>
+    </div>
+
+    <div
+       class="error"
+       [hidden]="!(errors | async)">
+      {{(errors | async)}}
+    </div>
+
+    <div
+       *ngIf="isEditMode"
+       class="xdcr-filter-stream formrow">
+      <input
+         type="radio"
+         value="false"
+         id="for-save-restart-replication"
+         formControlName="filterSkipRestream">
+      <label for="for-save-restart-replication">Save filter & restart replication</label>
+      <input
+         type="radio"
+         value="true"
+         id="for-save-continue-replicating"
+         formControlName="filterSkipRestream">
+      <label for="for-save-continue-replicating">Save & continue replicating</label>
+    </div>
+
+    <label>Deletion Filters</label>
+    <div>
+      <input
+         type="checkbox"
+         value="index"
+         id="for-do-not-replicate-ttl"
+         formControlName="filterExpiration">
+      <label for="for-do-not-replicate-ttl" class="margin-right-0">
+        Do not replicate document expirations
+      </label>
+      <span
+         class="fa-stack icon-info"
+         ngbTooltip="Source expirations will not be replicated."
+         placement="auto right">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+      </span>
+    </div>
+    <div>
+      <input
+         type="checkbox"
+         value="index"
+         id="for-do-not-replicate-delete"
+         formControlName="filterDeletion">
+      <label
+         for="for-do-not-replicate-delete"
+         class="margin-right-0">
+        Do not replicate DELETE operations
+      </label>
+      <span
+         class="fa-stack icon-info"
+         ngbTooltip="Application-level deletes will not be replicated."
+         placement="auto right">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+      </span>
+    </div>
+    <div class="margin-bottom-1">
+      <input
+         type="checkbox"
+         value="index"
+         id="for-do-not-replicate-TTL"
+         formControlName="filterBypassExpiry">
+      <label for="for-do-not-replicate-TTL" class="margin-right-0">
+        Remove TTL from replicated items
+      </label>
+      <span
+         class="fa-stack icon-info"
+         ngbTooltip="Destination items will have no TTL."
+         placement="auto right">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+      </span>
+    </div>
+
+  </div>
+</div>

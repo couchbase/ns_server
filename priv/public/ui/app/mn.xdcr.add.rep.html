@@ -1,0 +1,95 @@
+<div class="dialog-med">
+  <div class="panel-header">
+    <h2>Add Replication</h2>
+    <a class="ui-dialog-titlebar-close modal-close" (click)="activeModal.dismiss()">X</a>
+  </div>
+  <form
+     [formGroup]="form.group"
+     (submit)="form.submit.next()"
+     class="forms">
+    <div class="panel-content">
+      <div
+         class="error"
+         [hidden]="!(postCreateReplication.error | async)?._">
+        {{(postCreateReplication.error | async)?._}}
+      </div>
+      <div class="formrow">
+        <label for="replication_from_bucket">Replicate From Bucket</label>
+        <select
+           formControlName="fromBucket">
+          <option value="" disabled="true" [selected]="true" style="display: none;">
+            select a bucket
+          </option>
+          <option *ngFor="let v of (bucketsMembaseEphemeral | async)" [ngValue]="v.name">
+            {{v.name}}
+          </option>
+        </select>
+        <div
+           class="error error-field"
+           [hidden]="!(postCreateReplication.error | async)?.fromBucket">
+          {{(postCreateReplication.error | async)?.fromBucket}}
+        </div>
+      </div>
+
+      <div class="formrow">
+        <label for="replication_to_cluster">Remote Cluster</label>
+        <select
+           formControlName="toCluster">
+          <option value="" disabled="true" [selected]="true" style="display: none;">
+            Pick remote cluster
+          </option>
+          <option *ngFor="let v of (remoteClusters | async)" [ngValue]="v.name">
+            {{v.name}}
+          </option>
+        </select>
+        <div
+           class="error error-field"
+           [hidden]="!(postCreateReplication.error | async)?.toCluster">
+          {{(postCreateReplication.error | async)?.toCluster}}
+        </div>
+      </div>
+
+
+      <div class="formrow">
+        <label for="replication_to_bucket">Remote Bucket</label>
+        <input
+           id="replication_to_bucket"
+           formControlName="toBucket"
+           type="text"
+           autocorrect="off"
+           spellcheck="false"
+           autocapitalize="off">
+        <div
+           class="error error-field"
+           [hidden]="!(postCreateReplication.error | async)?.toBucket">
+          {{(postCreateReplication.error | async)?.toBucket}}
+        </div>
+      </div>
+
+      <div class="formrow">
+        <label for="replication_priority">Replication Priority</label>
+        <select
+           id="replication_priority"
+           formControlName="priority">
+          <option value="Low">Low</option>
+          <option value="Medium">Medium</option>
+          <option value="High">High</option>
+        </select>
+      </div>
+
+      <mn-xdcr-filter
+         [bucket]="form.group.get('fromBucket').value"
+         [group]="form.group"
+         *ngIf="(isEnterprise | async)"></mn-xdcr-filter>
+
+      <mn-xdcr-settings
+         [group]="form.group"
+         [type]="form.group.get('type').value"></mn-xdcr-settings>
+    </div>
+
+    <div class="panel-footer">
+      <a (click)="activeModal.dismiss()">Cancel</a>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+</div>

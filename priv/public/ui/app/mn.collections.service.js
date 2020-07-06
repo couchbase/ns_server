@@ -37,8 +37,8 @@ class MnCollectionsService {
       new MnHttpRequest(this.addScope.bind(this))
       .addSuccess()
       .addError(map(error => {
-        if (error === 404) {
-          return {errors: {bucketName: "This bucket doesn't exist"}}
+        if (error.status === 404) {
+          return {errors: {bucketName: "This bucket doesn't exist"}};
         }
         if (typeof error === "string") {
           //hanlde "Scope with this name already exists" error

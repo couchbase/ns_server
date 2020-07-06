@@ -1,6 +1,7 @@
 import { Subject, of, merge, NEVER, zip } from '../web_modules/rxjs.js';
 import { HttpErrorResponse } from '../web_modules/@angular/common/http.js';
-import { catchError, switchMap, shareReplay, mapTo, filter, map } from '../web_modules/rxjs/operators.js';
+import { catchError, switchMap, shareReplay, mapTo, filter, map,
+         tap } from '../web_modules/rxjs/operators.js';
 import { MnHelperService } from './mn.helper.service.js';
 
 export { MnHttpRequest, MnHttpGroupRequest };
@@ -117,14 +118,12 @@ class MnHttpRequest {
           if (!!rv.error && MnHelperService.prototype.isJson(rv.error)) {
             return JSON.parse(rv.error);
           } else {
-            return rv.status;
+            return rv;
           }
         }),
+        (modify ? modify : tap()),
         shareReplay({refCount: true, bufferSize: 1})));
 
-    if (modify) {
-      error = error.pipe(modify);
-    }
     this.error = error;
     return this;
   }
