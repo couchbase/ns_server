@@ -121,6 +121,7 @@ handle_call({process_stats, TS, Bin, PrevSample}, _From, State) ->
             {reply, {exception, C, E, erlang:get_stacktrace()}, State}
     end;
 
+%% Can be called from another node. Introduced in Cheshire-Cat
 handle_call({extract, Query, Start, End, Step, Timeout}, From, State) ->
     Settings = prometheus_cfg:settings(),
     Reply = fun (Res) -> gen_server:reply(From, Res) end,
@@ -131,6 +132,7 @@ handle_call({extract, Query, Start, End, Step, Timeout}, From, State) ->
 handle_call(_Request, _From, State) ->
     {noreply, State}.
 
+%% Can be called from another node. Introduced in Cheshire-Cat
 handle_cast({extract, {From, Ref}, Query, Start, End, Step, Timeout}, State) ->
     Settings = prometheus_cfg:settings(),
     Reply = fun (Res) -> From ! {Ref, Res} end,
