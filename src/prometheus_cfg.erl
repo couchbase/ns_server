@@ -51,6 +51,7 @@ default_settings() ->
      {storage_path, "./stats_data"},
      {config_file, "prometheus.yml"},
      {log_file_name, "prometheus.log"},
+     {prometheus_auth_enabled, true},
      {prometheus_auth_filename, ns_to_prometheus_filename()},
      {log_level, "debug"},
      {max_block_duration, 25}, %% in hours
@@ -97,17 +98,21 @@ specs(Config) ->
                                                            Settings)) ++ "h",
     LogLevel = proplists:get_value(log_level, Settings),
     AuthFile = proplists:get_value(prometheus_auth_filename, Settings),
+    PromAuthArgs =
+        case proplists:get_value(prometheus_auth_enabled, Settings) of
+            true -> ["--web.basicauth.config", AuthFile];
+            false -> []
+        end,
 
     Args = ["--config.file", ConfigFile,
             "--web.enable-admin-api",
             "--web.enable-lifecycle", %% needed for hot cfg reload
-            "--web.basicauth.config", AuthFile,
             "--storage.tsdb.retention.size", RetentionSize,
             "--storage.tsdb.retention.time", RetentionTime,
             "--web.listen-address", ListenAddress,
             "--storage.tsdb.max-block-duration", MaxBlockDuration,
             "--storage.tsdb.path", FullStoragePath,
-            "--log.level", LogLevel],
+            "--log.level", LogLevel] ++ PromAuthArgs,
 
     case proplists:get_value(enabled, Settings) of
         true ->
