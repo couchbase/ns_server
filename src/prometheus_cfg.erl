@@ -45,7 +45,7 @@ settings() ->
     gen_server:call(?MODULE, settings).
 
 default_settings() ->
-    [{enabled, false},
+    [{enabled, true},
      {retention_size, 1024*20}, %% in MB
      {retention_time, 365}, %% in days
      {storage_path, "./stats_data"},
