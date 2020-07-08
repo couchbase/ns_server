@@ -21,30 +21,39 @@ query_range_async(Query, Start, End, Step, Timeout, Settings, Handler)
     StepStr = integer_to_list(Step) ++ "s",
     query_range_async(Query, Start, End, StepStr, Timeout, Settings, Handler);
 query_range_async(Query, Start, End, Step, Timeout, Settings, Handler) ->
-    Addr = proplists:get_value(listen_addr, Settings),
-    {Username, Password} = proplists:get_value(prometheus_creds, Settings),
-    URL = lists:flatten(io_lib:format("http://~s/api/v1/query_range", [Addr])),
-    Body = mochiweb_util:urlencode(
-             [{query, Query}, {start, Start}, {'end', End}, {step, Step},
-              {timeout, integer_to_list(max(Timeout div 1000, 1)) ++ "s"}]),
-    Headers = [{"Content-Type", "application/x-www-form-urlencoded"}],
-    HeadersWithAuth = menelaus_rest:add_basic_auth(Headers, Username, Password),
-    HandlerWrap =
-        fun ({ok, json, {Data}}) ->
-                Res = proplists:get_value(<<"result">>, Data, {[]}),
-                Handler({ok, Res});
-            ({error, Reason}) ->
-                ?log_error("Prometheus query_range request failed:~n"
-                           "URL: ~s~nHeaders: ~p~nBody: ~s~nReason: ~p",
-                           [URL, Headers, Body, Reason]),
-                Handler({error, Reason});
-            (Unhandled) ->
-                ?log_error("Unexpected query_async result: ~p~n"
-                           "URL: ~s~nHeaders: ~p~nBody: ~s",
-                           [Unhandled, URL, Headers, Body]),
-                Handler({error, {unexpected, Unhandled}})
-        end,
-    post_async(URL, HeadersWithAuth, Body, Timeout, HandlerWrap).
+    case proplists:get_value(enabled, Settings) of
+        true ->
+            Addr = proplists:get_value(listen_addr, Settings),
+            {Username, Password} = proplists:get_value(prometheus_creds,
+                                                       Settings),
+            URL = lists:flatten(io_lib:format("http://~s/api/v1/query_range",
+                                              [Addr])),
+            TimeoutStr = integer_to_list(max(Timeout div 1000, 1)) ++ "s",
+            Body = [{query, Query}, {start, Start}, {'end', End}, {step, Step},
+                    {timeout, TimeoutStr}],
+            BodyEncoded = mochiweb_util:urlencode(Body),
+            Headers = [{"Content-Type", "application/x-www-form-urlencoded"}],
+            HeadersWithAuth = menelaus_rest:add_basic_auth(Headers, Username,
+                                                          Password),
+            HandlerWrap =
+                fun ({ok, json, {Data}}) ->
+                        Res = proplists:get_value(<<"result">>, Data, {[]}),
+                        Handler({ok, Res});
+                    ({error, Reason}) ->
+                        ?log_error("Prometheus query_range request failed:~n"
+                                   "URL: ~s~nHeaders: ~p~nBody: ~s~nReason: ~p",
+                                   [URL, Headers, BodyEncoded, Reason]),
+                        Handler({error, Reason});
+                    (Unhandled) ->
+                        ?log_error("Unexpected query_async result: ~p~n"
+                                   "URL: ~s~nHeaders: ~p~nBody: ~s",
+                                   [Unhandled, URL, Headers, BodyEncoded]),
+                        Handler({error, {unexpected, Unhandled}})
+                end,
+            post_async(URL, HeadersWithAuth, BodyEncoded, Timeout, HandlerWrap);
+        false ->
+            Handler({error, <<"Stats backend is disabled">>})
+    end.
 
 post_async(URL, Headers, Body, Timeout, Handler) ->
     Receiver = fun (Res) ->

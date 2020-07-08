@@ -72,19 +72,43 @@ build_settings(Config) ->
                             P -> {true, {S, misc:join_host_port(LocalAddr, P)}}
                         end
                 end, [ns_server | Services]),
-    {value, NsToPrometheusAuthInfo} =
-        ns_config:search_node(Config, ns_to_prometheus_auth_info),
-    {pass, Creds} = proplists:get_value(creds, NsToPrometheusAuthInfo),
+
+    NsToPrometheusAuthInfo = ns_config:search_node_with_default(
+                               Config, ns_to_prometheus_auth_info, []),
+    {pass, Creds} = proplists:get_value(creds, NsToPrometheusAuthInfo,
+                                        {pass, undefined}),
 
     Settings =
-        ns_config:search(Config, stats_settings, []) ++
-        [{listen_addr, misc:join_host_port(LocalAddr, Port)},
-         {prometheus_creds, Creds},
-         {targets, Targets}],
+        case Port == undefined orelse Creds == undefined of
+            true ->
+                ?log_debug("Prometheus is disabled because of insufficient "
+                           "information in ns_config (may happen during node "
+                           "rename)"),
+                [{enabled, false}];
+            false ->
+                ns_config:search(Config, stats_settings, []) ++
+                [{listen_addr, misc:join_host_port(LocalAddr, Port)},
+                 {prometheus_creds, Creds},
+                 {targets, Targets}]
+        end,
+
     misc:update_proplist(default_settings(), Settings).
 
 specs(Config) ->
     Settings = build_settings(Config),
+    case proplists:get_value(enabled, Settings) of
+        true ->
+            Args = generate_prometheus_args(Settings),
+            LogFile = proplists:get_value(log_file_name, Settings),
+            [{prometheus, path_config:component_path(bin, "prometheus"), Args,
+              [via_goport, exit_status, stderr_to_stdout, {env, []},
+               {log, LogFile}]}];
+        false ->
+            ?log_warning("Skipping prometheus start, since it's disabled"),
+            []
+    end.
+
+generate_prometheus_args(Settings) ->
     ConfigFile = prometheus_config_file(Settings),
     RetentionSize = integer_to_list(proplists:get_value(retention_size,
                                                         Settings)) ++ "MB",
@@ -93,7 +117,6 @@ specs(Config) ->
     ListenAddress = proplists:get_value(listen_addr, Settings),
     StoragePath = proplists:get_value(storage_path, Settings),
     FullStoragePath = path_config:component_path(data, StoragePath),
-    LogFile = proplists:get_value(log_file_name, Settings),
     MaxBlockDuration = integer_to_list(proplists:get_value(max_block_duration,
                                                            Settings)) ++ "h",
     LogLevel = proplists:get_value(log_level, Settings),
@@ -104,25 +127,15 @@ specs(Config) ->
             false -> []
         end,
 
-    Args = ["--config.file", ConfigFile,
-            "--web.enable-admin-api",
-            "--web.enable-lifecycle", %% needed for hot cfg reload
-            "--storage.tsdb.retention.size", RetentionSize,
-            "--storage.tsdb.retention.time", RetentionTime,
-            "--web.listen-address", ListenAddress,
-            "--storage.tsdb.max-block-duration", MaxBlockDuration,
-            "--storage.tsdb.path", FullStoragePath,
-            "--log.level", LogLevel] ++ PromAuthArgs,
-
-    case proplists:get_value(enabled, Settings) of
-        true ->
-            [{prometheus, path_config:component_path(bin, "prometheus"), Args,
-              [via_goport, exit_status, stderr_to_stdout, {env, []},
-               {log, LogFile}]}];
-        false ->
-            ?log_warning("Skipping prometheus start, since it's disabled"),
-            []
-    end.
+    ["--config.file", ConfigFile,
+     "--web.enable-admin-api",
+     "--web.enable-lifecycle", %% needed for hot cfg reload
+     "--storage.tsdb.retention.size", RetentionSize,
+     "--storage.tsdb.retention.time", RetentionTime,
+     "--web.listen-address", ListenAddress,
+     "--storage.tsdb.max-block-duration", MaxBlockDuration,
+     "--storage.tsdb.path", FullStoragePath,
+     "--log.level", LogLevel] ++ PromAuthArgs.
 
 authenticate(User, Pass) ->
     case ns_config:search_node(prometheus_auth_info) of
@@ -152,6 +165,12 @@ init([]) ->
             ({node, Node, services}) when Node == node() ->
                 gen_server:cast(?MODULE, settings_updated);
             ({node, Node, rest}) when Node == node() ->
+                gen_server:cast(?MODULE, settings_updated);
+            %% ns_to_prometheus_auth_info doesn't change normally.
+            %% Nevertheless we need to subscribe to this key to correctly
+            %% recover after node rename
+            ({{node, Node, ns_to_prometheus_auth_info}, _})
+                                                    when Node == node() ->
                 gen_server:cast(?MODULE, settings_updated);
             (rest) ->
                 gen_server:cast(?MODULE, settings_updated);
