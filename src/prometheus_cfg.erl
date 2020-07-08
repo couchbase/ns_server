@@ -162,9 +162,9 @@ init([]) ->
                 gen_server:cast(?MODULE, settings_updated);
             ({{node, Node, address_family}, _}) when Node == node() ->
                 gen_server:cast(?MODULE, settings_updated);
-            ({node, Node, services}) when Node == node() ->
+            ({{node, Node, services}, _}) when Node == node() ->
                 gen_server:cast(?MODULE, settings_updated);
-            ({node, Node, rest}) when Node == node() ->
+            ({{node, Node, rest}, _}) when Node == node() ->
                 gen_server:cast(?MODULE, settings_updated);
             %% ns_to_prometheus_auth_info doesn't change normally.
             %% Nevertheless we need to subscribe to this key to correctly
@@ -172,7 +172,7 @@ init([]) ->
             ({{node, Node, ns_to_prometheus_auth_info}, _})
                                                     when Node == node() ->
                 gen_server:cast(?MODULE, settings_updated);
-            (rest) ->
+            ({rest, _}) ->
                 gen_server:cast(?MODULE, settings_updated);
             (_) -> ok
         end,
