@@ -46,7 +46,7 @@ settings() ->
 
 default_settings() ->
     [{enabled, true},
-     {retention_size, 1024*20}, %% in MB
+     {retention_size, 1024}, %% in MB
      {retention_time, 365}, %% in days
      {storage_path, "./stats_data"},
      {config_file, "prometheus.yml"},
