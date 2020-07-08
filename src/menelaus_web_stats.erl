@@ -36,14 +36,21 @@ handle_range_post(Req) ->
     Now = os:system_time(millisecond),
     validator:handle(
       fun (List) ->
-          Monitors = start_node_extractors_monitoring(List),
-          Requests = lists:map(send_metrics_request(_, PermFilters), List),
-          ResList = lists:map(
-                      fun ({Ref, Props}) ->
-                          read_metrics_response(Ref, Props, Now)
-                      end, lists:zip(Requests, List)),
-          stop_node_extractors_monitoring(Monitors),
-          menelaus_util:reply_json(Req, ResList)
+          %% New process is needed to avoid leaving response messages in
+          %% mochiweb handler process's mailbox in case of timeout or other
+          %% problems
+          misc:executing_on_new_process(
+            fun () ->
+                Monitors = start_node_extractors_monitoring(List),
+                Requests = lists:map(send_metrics_request(_, PermFilters),
+                                     List),
+                ResList = lists:map(
+                            fun ({Ref, Props}) ->
+                                read_metrics_response(Ref, Props, Now)
+                            end, lists:zip(Requests, List)),
+                stop_node_extractors_monitoring(Monitors),
+                menelaus_util:reply_json(Req, ResList)
+            end)
       end, Req, json_array, post_validators(Now, Req)).
 
 handle_range_get([], _Req) ->
@@ -69,13 +76,18 @@ handle_range_get([MetricName | NotvalidatedFunctions], Req) ->
                                                           timeout])
                                 end, Props),
           Metric = [{<<"name">>, iolist_to_binary(MetricName)}|Labels],
-          Monitors = start_node_extractors_monitoring([Props]),
-          Ref = send_metrics_request([{metric, Metric},
-                                      {applyFunctions, Functions} | Props],
-                                     PermFilters),
-          Res = read_metrics_response(Ref, Props, Now),
-          stop_node_extractors_monitoring(Monitors),
-          menelaus_util:reply_json(Req, Res)
+          NewProps = [{metric, Metric}, {applyFunctions, Functions} | Props],
+          %% New process is needed to avoid leaving response messages in
+          %% mochiweb handler process's mailbox in case of timeout or other
+          %% problems
+          misc:executing_on_new_process(
+            fun () ->
+                Monitors = start_node_extractors_monitoring([Props]),
+                Ref = send_metrics_request(NewProps, PermFilters),
+                Res = read_metrics_response(Ref, Props, Now),
+                stop_node_extractors_monitoring(Monitors),
+                menelaus_util:reply_json(Req, Res)
+            end)
       end, Req, qs, get_validators(Now, Req)).
 
 post_validators(Now, Req) ->
