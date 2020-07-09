@@ -23,7 +23,7 @@
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3]).
+         terminate/2, code_change/3, format_status/2]).
 
 -record(s, {cur_settings = [],
             reload_timer_ref = undefined}).
@@ -213,6 +213,9 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+format_status(_Opt, [_PDict, #s{cur_settings = Settings} = State]) ->
+    State#s{cur_settings = sanitize_settings(Settings)}.
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -269,7 +272,8 @@ maybe_apply_new_settings(#s{cur_settings = OldSettings} = State) ->
             State;
         NewSettings ->
             ?log_debug("New settings received: ~p~nOld settings: ~p",
-                       [NewSettings, OldSettings]),
+                       [sanitize_settings(NewSettings),
+                        sanitize_settings(OldSettings)]),
             ensure_prometheus_config(NewSettings),
             case proplists:get_value(enabled, NewSettings) of
                 true ->
@@ -362,3 +366,10 @@ addr2re(A) ->
     functools:chain(A, [Replace("\\[", "\\\\["),
                         Replace("\\]", "\\\\]"),
                         Replace("\\.", "\\\\.")]).
+
+sanitize_settings(Settings) ->
+    lists:map(
+      fun ({prometheus_creds, {Name, _Password}}) ->
+              {prometheus_creds, {Name, "********"}};
+          (KV) -> KV
+      end, Settings).
