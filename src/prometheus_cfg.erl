@@ -286,8 +286,10 @@ maybe_apply_new_settings(#s{cur_settings = OldSettings} = State) ->
 try_config_reload(#s{cur_settings = Settings} = State) ->
     Addr = proplists:get_value(listen_addr, Settings),
     URL = io_lib:format("http://~s/-/reload", [Addr]),
+    {Username, Password} = proplists:get_value(prometheus_creds, Settings),
+    Headers = menelaus_rest:add_basic_auth([], Username, Password),
     ?log_debug("Reloading prometheus config by sending http post to ~s", [URL]),
-    case lhttpc:request(lists:flatten(URL), 'post', [], 5000) of
+    case lhttpc:request(lists:flatten(URL), 'post', Headers, [], 5000) of
         {ok, {{200, _}, _, _}} ->
             ?log_debug("Config successfully reloaded"),
             cancel_reload_timer(State);
