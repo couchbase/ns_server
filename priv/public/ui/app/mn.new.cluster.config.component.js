@@ -62,14 +62,14 @@ class MnNewClusterConfigComponent extends MnLifeCycleHooksToStream {
       ))
       .setPostRequest(new MnHttpGroupRequest({
         diskStorageHttp: mnWizardService.stream.diskStorageHttp,
-        setupNetConfigHttp: mnWizardService.stream.setupNetConfigHttp,
-        enableExternalListenerHttp: mnWizardService.stream.enableExternalListenerHttp,
+        enableExternalListenerHttp: mnWizardService.stream.enableExternalListenerHttp
       }).addSuccess())
       .setPackPipe(pipe(
         withLatestFrom(mnPoolsService.stream.isEnterprise),
         map(this.getWizardValues.bind(this))
       ))
       .setPostRequest(new MnHttpGroupRequest({
+        setupNetConfigHttp: mnWizardService.stream.setupNetConfigHttp,
         postPoolsDefault: mnAdminService.stream.postPoolsDefault,
         hostnameHttp: mnWizardService.stream.hostnameHttp,
         statsHttp: mnWizardService.stream.statsHttp
@@ -120,6 +120,14 @@ class MnNewClusterConfigComponent extends MnLifeCycleHooksToStream {
     return rv;
   }
 
+  getHostConfig() {
+    var clusterStor = this.wizardForm.newClusterConfig.get("clusterStorage");
+    return {
+      afamily: clusterStor.get("hostConfig.afamily").value ? "ipv6" : "ipv4",
+      nodeEncryption: clusterStor.get("hostConfig.nodeEncryption").value ? 'on' : 'off'
+    }
+  }
+
   getHostConfigValues(isEnterprise) {
     var clusterStor = this.wizardForm.newClusterConfig.get("clusterStorage");
     var rv = new Map();
@@ -127,23 +135,22 @@ class MnNewClusterConfigComponent extends MnLifeCycleHooksToStream {
     rv.set("diskStorageHttp", clusterStor.get("storage").value);
 
     if (isEnterprise[1]) {
-      let val = {
-        afamily: clusterStor.get("hostConfig.afamily").value ? "ipv6" : "ipv4",
-        nodeEncryption: clusterStor.get("hostConfig.nodeEncryption").value ? 'on' : 'off'
-      };
-      rv.set("enableExternalListenerHttp", val);
-      rv.set("setupNetConfigHttp", val);
+      rv.set("enableExternalListenerHttp", this.getHostConfig());
     }
 
     return rv;
   }
 
   getWizardValues(isEnterprise) {
-    return {
+    let rv = {
       hostnameHttp: this.wizardForm.newClusterConfig.get("clusterStorage.hostname").value,
       postPoolsDefault: [this.getPoolsDefaultValues.bind(this)(isEnterprise[1]), false],
       statsHttp: this.wizardForm.termsAndConditions.get("enableStats").value
     };
+    if (isEnterprise[1]) {
+      rv.setupNetConfigHttp = this.getHostConfig();
+    }
+    return rv;
   }
 
   getPoolsDefaultValues(isEnterprise) {
