@@ -35,6 +35,7 @@ query_range_async(Query, Start, End, Step, Timeout, Settings, Handler) ->
             Headers = [{"Content-Type", "application/x-www-form-urlencoded"}],
             HeadersWithAuth = menelaus_rest:add_basic_auth(Headers, Username,
                                                           Password),
+            AFamily = proplists:get_value(afamily, Settings),
             HandlerWrap =
                 fun ({ok, json, {Data}}) ->
                         Res = proplists:get_value(<<"result">>, Data, {[]}),
@@ -50,12 +51,13 @@ query_range_async(Query, Start, End, Step, Timeout, Settings, Handler) ->
                                    [Unhandled, URL, Headers, BodyEncoded]),
                         Handler({error, {unexpected, Unhandled}})
                 end,
-            post_async(URL, HeadersWithAuth, BodyEncoded, Timeout, HandlerWrap);
+            post_async(URL, HeadersWithAuth, BodyEncoded, AFamily, Timeout,
+                       HandlerWrap);
         false ->
             Handler({error, <<"Stats backend is disabled">>})
     end.
 
-post_async(URL, Headers, Body, Timeout, Handler) ->
+post_async(URL, Headers, Body, AFamily, Timeout, Handler) ->
     Receiver = fun (Res) ->
                    try
                        handle_post_async_reply(Handler, Res)
@@ -66,7 +68,8 @@ post_async(URL, Headers, Body, Timeout, Handler) ->
                    end
                 end,
     HttpOptions = [{timeout, Timeout}, {connect_timeout, Timeout}],
-    Options = [{sync, false}, {receiver, Receiver}],
+    Options = [{sync, false}, {receiver, Receiver},
+               {socket_opts, [{ipfamily, AFamily}]}],
     Req = {URL, Headers, "application/x-www-form-urlencoded", Body},
     {ok, _} = httpc:request('post', Req, HttpOptions, Options),
     ok.

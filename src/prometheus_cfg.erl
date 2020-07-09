@@ -89,7 +89,8 @@ build_settings(Config) ->
                 ns_config:search(Config, stats_settings, []) ++
                 [{listen_addr, misc:join_host_port(LocalAddr, Port)},
                  {prometheus_creds, Creds},
-                 {targets, Targets}]
+                 {targets, Targets},
+                 {afamily, AFamily}]
         end,
 
     misc:update_proplist(default_settings(), Settings).
