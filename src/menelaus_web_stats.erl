@@ -273,7 +273,7 @@ construct_promql_query(Metric, Labels, Functions, Window, PermFilters) ->
     functools:chain(
       Labels,
       [?cut(lists:map(fun ({PermFilter}) ->
-                          {[{eq, "__name__", Metric}] ++
+                          {[{eq, "__name__", Metric} || Metric =/= undefined] ++
                            [{eq, K, V} || {K, V} <- _] ++
                            PermFilter}
                       end, PermFilters)),
