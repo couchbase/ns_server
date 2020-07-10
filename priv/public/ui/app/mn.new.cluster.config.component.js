@@ -67,7 +67,8 @@ class MnNewClusterConfigComponent extends MnLifeCycleHooksToStream {
       ))
       .setPostRequest(new MnHttpGroupRequest({
         diskStorageHttp: mnWizardService.stream.diskStorageHttp,
-        enableExternalListenerHttp: mnWizardService.stream.enableExternalListenerHttp
+        postPoolsDefault: mnAdminService.stream.postPoolsDefault,
+        enableExternalListenerHttp: mnWizardService.stream.enableExternalListenerHttp,
       }).addSuccess())
       .setPackPipe(pipe(
         withLatestFrom(mnPoolsService.stream.isEnterprise),
@@ -75,16 +76,12 @@ class MnNewClusterConfigComponent extends MnLifeCycleHooksToStream {
       ))
       .setPostRequest(new MnHttpGroupRequest({
         setupNetConfigHttp: mnWizardService.stream.setupNetConfigHttp,
-        postPoolsDefault: mnAdminService.stream.postPoolsDefault,
-        hostnameHttp: mnWizardService.stream.hostnameHttp,
-        statsHttp: mnWizardService.stream.statsHttp
+        statsHttp: mnWizardService.stream.statsHttp,
+        servicesHttp: mnWizardService.stream.servicesHttp
       }).addSuccess())
-      .setPackPipe(map(() => ({
-        services: mnWizardService.getServicesValues(
-          this.wizardForm.newClusterConfig.get("services.flag")
-        ).join(",")
-      })))
-      .setPostRequest(mnWizardService.stream.servicesHttp)
+      .setPackPipe(map(() =>
+                       this.wizardForm.newClusterConfig.get("clusterStorage.hostname").value))
+      .setPostRequest(mnWizardService.stream.hostnameHttp)
       .setPackPipe(map(this.getFinalConfig.bind(this)))
       .setPostRequest(new MnHttpGroupRequest({
         indexesHttp: mnWizardService.stream.indexesHttp,
@@ -138,6 +135,7 @@ class MnNewClusterConfigComponent extends MnLifeCycleHooksToStream {
     var rv = new Map();
 
     rv.set("diskStorageHttp", clusterStor.get("storage").value);
+    rv.set("postPoolsDefault", [this.getPoolsDefaultValues.bind(this)(isEnterprise[1]), false]);
 
     if (isEnterprise[1]) {
       rv.set("enableExternalListenerHttp", this.getHostConfig());
@@ -148,9 +146,9 @@ class MnNewClusterConfigComponent extends MnLifeCycleHooksToStream {
 
   getWizardValues(isEnterprise) {
     let rv = {
-      hostnameHttp: this.wizardForm.newClusterConfig.get("clusterStorage.hostname").value,
-      postPoolsDefault: [this.getPoolsDefaultValues.bind(this)(isEnterprise[1]), false],
-      statsHttp: this.wizardForm.termsAndConditions.get("enableStats").value
+      statsHttp: this.wizardForm.termsAndConditions.get("enableStats").value,
+      servicesHttp: this.getServicesValues(this.wizardForm
+                                           .newClusterConfig.get("services.flag")).join(",")
     };
     if (isEnterprise[1]) {
       rv.setupNetConfigHttp = this.getHostConfig();
