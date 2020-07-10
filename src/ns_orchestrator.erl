@@ -413,9 +413,8 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 
 init([]) ->
     process_flag(trap_exit, true),
-    self() ! janitor,
 
-    {ok, idle, #idle_state{}}.
+    {ok, idle, #idle_state{}, {{timeout, janitor}, 0, run_janitor}}.
 
 handle_event({call, From},
              {maybe_start_rebalance, KnownNodes, EjectedNodes,
@@ -508,21 +507,21 @@ handle_event(info, Event, StateName, StateData)->
 handle_event(cast, Event, StateName, StateData) ->
     ?MODULE:StateName(Event, StateData);
 handle_event({call, From}, Event, StateName, StateData) ->
-    ?MODULE:StateName(Event, From, StateData).
+    ?MODULE:StateName(Event, From, StateData);
 
-handle_info(janitor, idle, _State) ->
-    send_janitor_msg(),
+handle_event({timeout, janitor}, run_janitor, idle, _State) ->
     {ok, ID} = ns_janitor_server:start_cleanup(
                  fun(Pid, UnsafeNodes, CleanupID) ->
                          Pid ! {cleanup_done, UnsafeNodes, CleanupID},
                          ok
                  end),
-    {next_state, janitor_running, #janitor_state{cleanup_id = ID}};
+    {next_state, janitor_running, #janitor_state{cleanup_id = ID},
+     {{timeout, janitor}, ?JANITOR_INTERVAL, run_janitor}};
 
-handle_info(janitor, StateName, _StateData) ->
+handle_event({timeout, janitor}, run_janitor, StateName, _StateData) ->
     ?log_info("Skipping janitor in state ~p", [StateName]),
-    send_janitor_msg(),
-    keep_state_and_data;
+    {keep_state_and_data,
+     {{timeout, janitor}, ?JANITOR_INTERVAL, run_janitor}}.
 
 handle_info({'EXIT', Pid, Reason}, rebalancing,
             #rebalancing_state{rebalancer = Pid} = State) ->
@@ -544,22 +543,25 @@ handle_info({cleanup_done, UnsafeNodes, ID}, janitor_running,
 
     %% If any 'unsafe nodes' were found then trigger an auto_reprovision
     %% operation via the orchestrator.
-    case UnsafeNodes =/= [] of
-        true ->
-            %% The unsafe nodes only affect the ephemeral buckets.
-            Buckets = ns_bucket:get_bucket_names_of_type({membase, ephemeral}),
-            RV = auto_reprovision:reprovision_buckets(Buckets, UnsafeNodes),
-            ?log_info("auto_reprovision status = ~p "
-                      "(Buckets = ~p, UnsafeNodes = ~p)",
-                      [RV, Buckets, UnsafeNodes]),
+    MaybeNewTimeout = case UnsafeNodes =/= [] of
+                          true ->
+                              %% The unsafe nodes only affect the ephemeral
+                              %% buckets.
+                              Buckets = ns_bucket:get_bucket_names_of_type(
+                                          {membase, ephemeral}),
+                              RV = auto_reprovision:reprovision_buckets(
+                                     Buckets, UnsafeNodes),
+                              ?log_info("auto_reprovision status = ~p "
+                                        "(Buckets = ~p, UnsafeNodes = ~p)",
+                                        [RV, Buckets, UnsafeNodes]),
 
-            %% Trigger the janitor cleanup immediately as the buckets need to be
-            %% brought online.
-            self() ! janitor;
-        false ->
-            ok
-    end,
-    {next_state, idle, #idle_state{}};
+                              %% Trigger the janitor cleanup immediately as
+                              %% the buckets need to be brought online.
+                              [{{timeout, janitor}, 0, run_janitor}];
+                          false ->
+                              []
+                      end,
+    {next_state, idle, #idle_state{}, MaybeNewTimeout};
 
 handle_info({timeout, _TRef, stop_timeout} = Msg, rebalancing, StateData) ->
     ?MODULE:rebalancing(Msg, StateData);
@@ -1032,13 +1034,13 @@ do_request_janitor_run(Item, FsmState, State) ->
 
 do_request_janitor_run(Item, Fun, FsmState, State) ->
     RV = ns_janitor_server:request_janitor_run({Item, [Fun]}),
-    case FsmState =:= idle andalso RV =:= added of
-        true ->
-            self() ! janitor;
-        false ->
-            ok
-    end,
-    {next_state, FsmState, State}.
+    MaybeNewTimeout = case FsmState =:= idle andalso RV =:= added of
+                          true ->
+                              [{{timeout, janitor}, 0, run_janitor}];
+                          false ->
+                              []
+                      end,
+    {next_state, FsmState, State, MaybeNewTimeout}.
 
 wait_for_nodes_loop(Nodes) ->
     receive
@@ -1648,6 +1650,3 @@ maybe_reply_to({shutdown, stop}, State) ->
     maybe_reply_to(stopped_by_user, State);
 maybe_reply_to(Reason, #rebalancing_state{reply_to = ReplyTo}) ->
     gen_statem:reply(ReplyTo, Reason).
-
-send_janitor_msg() ->
-    erlang:send_after(?JANITOR_INTERVAL, self(), janitor).
