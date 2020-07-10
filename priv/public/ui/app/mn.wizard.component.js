@@ -35,20 +35,9 @@ class MnWizardComponent extends MnLifeCycleHooksToStream {
         mnWizardService.initialValues.implementationVersion = implementationVersion;
       });
 
-    mnWizardService.stream.getSelfConfigFirst
-      .subscribe(function (selfConfig) {
-        var hostname = selfConfig['otpNode'].split('@')[1] || '127.0.0.1';
-        if (hostname == "cb.local") {
-          hostname = "127.0.0.1";
-        }
-        newClusterConfig.get("clusterStorage.hostname").setValue(hostname);
-        joinCluster.get("clusterStorage.hostname").setValue(hostname);
-        newClusterConfig.get("clusterStorage.hostConfig").patchValue({
-          afamily: selfConfig.addressFamily == "inet6",
-          nodeEncryption: selfConfig.nodeEncryption
-        });
-        mnWizardService.initialValues.hostname = hostname;
-      });
+    mnWizardService.stream.getSelfConfig
+      .pipe(first())
+      .subscribe(v => mnWizardService.setSelfConfig(v));
 
     function servicesToGroup(services, value) {
       return new FormGroup(services.reduce(function (acc, name) {

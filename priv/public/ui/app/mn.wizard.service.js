@@ -141,8 +141,6 @@ class MnWizardService {
       (new BehaviorSubject()).pipe(switchMap(this.getSelfConfig.bind(this)),
                                    shareReplay({refCount: true, bufferSize: 1}));
 
-    this.stream.getSelfConfigFirst =
-      this.stream.getSelfConfig.pipe(first());
 
     this.stream.memoryQuotasFirst =
       combineLatest(
@@ -192,6 +190,21 @@ class MnWizardService {
     //   }
     //   return result;
     // }, []);
+  }
+
+  setSelfConfig(selfConfig) {
+    var hostname = selfConfig['otpNode'].split('@')[1] || '127.0.0.1';
+    if (hostname == "cb.local") {
+      hostname = "127.0.0.1";
+    }
+
+    wizardForm.newClusterConfig.get("clusterStorage.hostname").setValue(hostname);
+    wizardForm.joinCluster.get("clusterStorage.hostname").setValue(hostname);
+    wizardForm.newClusterConfig.get("clusterStorage.hostConfig").patchValue({
+      afamily: selfConfig.addressFamily == "inet6",
+      nodeEncryption: selfConfig.nodeEncryption
+    });
+    this.initialValues.hostname = hostname;
   }
 
   getUserCreds() {

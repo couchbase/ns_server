@@ -1,7 +1,8 @@
 import {UIRouter} from '/ui/web_modules/@uirouter/angular.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
-import {takeUntil, filter, map, tap, withLatestFrom} from '/ui/web_modules/rxjs/operators.js';
+import {takeUntil, filter, map,
+        tap, withLatestFrom, first} from '/ui/web_modules/rxjs/operators.js';
 import {BehaviorSubject, pipe} from '/ui/web_modules/rxjs.js';
 import {MnWizardService} from './mn.wizard.service.js';
 import {MnPoolsService} from './mn.pools.service.js';
@@ -52,6 +53,10 @@ class MnNewClusterConfigComponent extends MnLifeCycleHooksToStream {
     this.isButtonDisabled =
       mnAdminService.stream.postPoolsDefault.error
       .pipe(map((error) => error && !!Object.keys(error.errors).length));
+
+    mnWizardService.stream.getSelfConfig
+      .pipe(first())
+      .subscribe(v => mnWizardService.setSelfConfig(v));
 
     this.form = mnFormService.create(this);
 
