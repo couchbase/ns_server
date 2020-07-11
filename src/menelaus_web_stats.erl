@@ -44,14 +44,30 @@ handle_range_post(Req) ->
                 Monitors = start_node_extractors_monitoring(List),
                 Requests = lists:map(send_metrics_request(_, PermFilters),
                                      List),
-                ResList = lists:map(
-                            fun ({Ref, Props}) ->
-                                read_metrics_response(Ref, Props, Now)
-                            end, lists:zip(Requests, List)),
-                stop_node_extractors_monitoring(Monitors),
-                menelaus_util:reply_json(Req, ResList)
+                reply_with_chunked_json_array(
+                  fun ({Ref, Props}) ->
+                      read_metrics_response(Ref, Props, Now)
+                  end, lists:zip(Requests, List), Req),
+                stop_node_extractors_monitoring(Monitors)
             end)
       end, Req, json_array, post_validators(Now, Req)).
+
+reply_with_chunked_json_array(Fun, List, Req) ->
+    HTTPResp = menelaus_util:reply_ok(
+                 Req, "application/json; charset=utf-8", chunked),
+    Write = mochiweb_response:write_chunk(_, HTTPResp),
+    Write(<<"[">>),
+    _ = lists:foldl(
+          fun (E, IsFirst) ->
+              case IsFirst of
+                  true -> ok;
+                  false -> Write(<<",">>)
+              end,
+              Write(ejson:encode(Fun(E))),
+              false
+          end, true, List),
+    Write(<<"]">>),
+    Write(<<>>).
 
 handle_range_get([], _Req) ->
     menelaus_util:web_exception(404, "not found");
