@@ -57,7 +57,8 @@ default_settings() ->
      {max_block_duration, 25}, %% in hours
      {scrape_interval, 10}, %% in seconds
      {scrape_timeout, 10}, %% in seconds
-     {token_file, "prometheus_token"}].
+     {token_file, "prometheus_token"},
+     {query_max_samples, 200000}].
 
 build_settings() -> build_settings(ns_config:get()).
 build_settings(Config) ->
@@ -121,6 +122,8 @@ generate_prometheus_args(Settings) ->
     MaxBlockDuration = integer_to_list(proplists:get_value(max_block_duration,
                                                            Settings)) ++ "h",
     LogLevel = proplists:get_value(log_level, Settings),
+    QueryMaxSamples = integer_to_list(proplists:get_value(query_max_samples,
+                                                          Settings)),
     AuthFile = proplists:get_value(prometheus_auth_filename, Settings),
     PromAuthArgs =
         case proplists:get_value(prometheus_auth_enabled, Settings) of
@@ -136,7 +139,8 @@ generate_prometheus_args(Settings) ->
      "--web.listen-address", ListenAddress,
      "--storage.tsdb.max-block-duration", MaxBlockDuration,
      "--storage.tsdb.path", FullStoragePath,
-     "--log.level", LogLevel] ++ PromAuthArgs.
+     "--log.level", LogLevel,
+     "--query.max-samples", QueryMaxSamples] ++ PromAuthArgs.
 
 authenticate(User, Pass) ->
     case ns_config:search_node(prometheus_auth_info) of
