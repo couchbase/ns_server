@@ -124,7 +124,6 @@ is_interesting_to_watchers({goxdcr_enabled, _}) -> true;
 is_interesting_to_watchers({{node, _, stop_xdcr}, _}) -> true;
 is_interesting_to_watchers({{node, _, services}, _}) -> true;
 is_interesting_to_watchers({{service_map, _}, _}) -> true;
-is_interesting_to_watchers({user_roles, _}) -> true;
 is_interesting_to_watchers({client_cert_auth, _}) -> true;
 is_interesting_to_watchers({audit_uid_change, _}) -> true;
 is_interesting_to_watchers(_) -> false.
