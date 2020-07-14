@@ -40,7 +40,7 @@
 handle_get_global_settings(Req) ->
     JSON = [{autoCompactionSettings, build_global_settings(ns_config:latest())},
             {purgeInterval, compaction_api:get_purge_interval(global)}],
-    reply_json(Req, {struct, JSON}, 200).
+    reply_json(Req, {JSON}, 200).
 
 build_global_settings(Config) ->
     IndexCompaction = index_settings_manager:get(compaction),
@@ -59,9 +59,9 @@ build_global_settings(Config) ->
 
     IndexSettings =
         [{indexCompactionMode, CompMode},
-         {indexCircularCompaction, {struct, Circ}},
+         {indexCircularCompaction, {Circ}},
          {indexFragmentationThreshold,
-          {struct, [{percentage, Fragmentation}]}}],
+          {[{percentage, Fragmentation}]}}],
 
     case ns_config:search(Config, autocompaction) of
         false ->
@@ -78,23 +78,23 @@ do_build_settings(Settings, Extra) ->
                       case proplists:get_value(CfgName, Settings) of
                           undefined -> [];
                           {Percentage, Size} ->
-                              [{JSONName, {struct, [{percentage, Percentage},
-                                                    {size,  Size}]}}]
+                              [{JSONName, {[{percentage, Percentage},
+                                            {size, Size}]}}]
                       end
               end,
     DBAndView = lists:flatmap(PropFun,
                               [{databaseFragmentationThreshold, database_fragmentation_threshold},
                                {viewFragmentationThreshold, view_fragmentation_threshold}]),
 
-    {struct, [{parallelDBAndViewCompaction, proplists:get_bool(parallel_db_and_view_compaction,
-                                                               Settings)}
+    {[{parallelDBAndViewCompaction, proplists:get_bool(parallel_db_and_view_compaction,
+                                                       Settings)}
               | case proplists:get_value(allowed_time_period, Settings) of
                     undefined -> [];
                     V -> [{allowedTimePeriod, build_allowed_time_period(V)}]
                 end] ++ DBAndView ++ Extra}.
 
 build_allowed_time_period(AllowedTimePeriod) ->
-    {struct, [{JSONName, proplists:get_value(CfgName, AllowedTimePeriod)}
+    {[{JSONName, proplists:get_value(CfgName, AllowedTimePeriod)}
               || {JSONName, CfgName} <- [{fromHour, from_hour},
                                          {toHour, to_hour},
                                          {fromMinute, from_minute},
@@ -108,11 +108,11 @@ handle_set_global_settings(Req) ->
     ValidateOnly = (proplists:get_value("just_validate", mochiweb_request:parse_qs(Req)) =:= "1"),
     case {ValidateOnly, SettingsRV, PurgeIntervalRV} of
         {_, {errors, Errors}, _} ->
-            reply_json(Req, {struct, [{errors, {struct, Errors}}]}, 400);
+            reply_json(Req, {[{errors, {Errors}}]}, 400);
         {_, _, [{error, Field, Msg}]} ->
-            reply_json(Req, {struct, [{errors, {struct, [{Field, Msg}]}}]}, 400);
+            reply_json(Req, {[{errors, {[{Field, Msg}]}}]}, 400);
         {true, {ok, _ACSettings, _}, _} ->
-            reply_json(Req, {struct, [{errors, {struct, []}}]}, 200);
+            reply_json(Req, {[{errors, {[]}}]}, 200);
         {false, {ok, ACSettings, MaybeIndex}, _} ->
             ns_config:set(autocompaction, ACSettings),
 
