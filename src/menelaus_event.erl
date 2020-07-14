@@ -38,58 +38,27 @@
 
 % Noop process to get initialized in the supervision tree.
 
+modules() ->
+    [ns_config_events,
+     ns_node_disco_events,
+     buckets_events,
+     index_events,
+     audit_events].
+
 start_link() ->
-    misc:start_event_link(fun () ->
-                                  ok = gen_event:add_sup_handler(ns_config_events,
-                                                                 {?MODULE, ns_config_events},
-                                                                 ns_config_events),
-                                  ok = gen_event:add_sup_handler(ns_node_disco_events,
-                                                                 {?MODULE, ns_node_disco_events},
-                                                                 simple_events_handler),
-                                  ok = gen_event:add_sup_handler(buckets_events,
-                                                                 {?MODULE, buckets_events},
-                                                                 simple_events_handler),
-                                  ok = gen_event:add_sup_handler(index_events,
-                                                                 {?MODULE, index_events},
-                                                                 simple_events_handler),
-                                  ok = gen_event:add_sup_handler(audit_events,
-                                                                 {?MODULE, audit_events},
-                                                                 simple_events_handler)
-                          end).
+    misc:start_event_link(
+      fun () ->
+              [ok = gen_event:add_sup_handler(M, {?MODULE, M}, M) ||
+                  M <- modules()]
+      end).
 
 register_watcher(Pid) ->
-    ok = gen_event:call(ns_config_events,
-                        {?MODULE, ns_config_events},
-                        {register_watcher, Pid}),
-    ok = gen_event:call(ns_node_disco_events,
-                        {?MODULE, ns_node_disco_events},
-                        {register_watcher, Pid}),
-    ok = gen_event:call(buckets_events,
-                        {?MODULE, buckets_events},
-                        {register_watcher, Pid}),
-    ok = gen_event:call(index_events,
-                        {?MODULE, index_events},
-                        {register_watcher, Pid}),
-    ok = gen_event:call(audit_events,
-                        {?MODULE, audit_events},
-                        {register_watcher, Pid}).
+    [ok = gen_event:call(M, {?MODULE, M}, {register_watcher, Pid}) ||
+        M <- modules()].
 
 unregister_watcher(Pid) ->
-    ok = gen_event:call(ns_config_events,
-                        {?MODULE, ns_config_events},
-                        {unregister_watcher, Pid}),
-    ok = gen_event:call(ns_node_disco_events,
-                        {?MODULE, ns_node_disco_events},
-                        {unregister_watcher, Pid}),
-    ok = gen_event:call(buckets_events,
-                        {?MODULE, buckets_events},
-                        {unregister_watcher, Pid}),
-    ok = gen_event:call(index_events,
-                        {?MODULE, index_events},
-                        {unregister_watcher, Pid}),
-    ok = gen_event:call(audit_events,
-                        {?MODULE, audit_events},
-                        {unregister_watcher, Pid}).
+    [ok = gen_event:call(M, {?MODULE, M}, {unregister_watcher, Pid}) ||
+        M <- modules()].
 
 %% Implementation
 
