@@ -43,7 +43,8 @@ modules() ->
      ns_node_disco_events,
      buckets_events,
      index_events,
-     audit_events].
+     audit_events,
+     user_storage_events].
 
 start_link() ->
     misc:start_event_link(
@@ -95,6 +96,8 @@ is_interesting_to_watchers({{node, _, services}, _}) -> true;
 is_interesting_to_watchers({{service_map, _}, _}) -> true;
 is_interesting_to_watchers({client_cert_auth, _}) -> true;
 is_interesting_to_watchers({audit_uid_change, _}) -> true;
+is_interesting_to_watchers({user_version, _}) -> true;
+is_interesting_to_watchers({group_version, _}) -> true;
 is_interesting_to_watchers(_) -> false.
 
 handle_event({{node, Node, rest}, _}, State) when Node =:= node() ->
