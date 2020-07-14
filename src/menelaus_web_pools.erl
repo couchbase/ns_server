@@ -222,15 +222,12 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
          {tasks, {struct, [{uri, TasksURI}]}},
          {counters, {struct, ns_cluster:counters()}},
          {indexStatusURI, <<"/indexStatus?v=", IndexesVersion/binary>>},
-         {checkPermissionsURI,
-          bin_concat_path(
-            ["pools", Id, "checkPermissions"],
-            [{"v", menelaus_web_rbac:check_permissions_url_version(Config)}])},
          {serverGroupsUri,
           <<"/pools/default/serverGroups?v=",
             (list_to_binary(integer_to_list(GroupsV)))/binary>>},
          {clusterName, list_to_binary(get_cluster_name())},
          {balanced, ns_cluster_membership:is_balanced()},
+         build_check_permissions_uri(InfoLevel, Id, Config),
          menelaus_web_node:build_memory_quota_info(Config),
          build_ui_params(InfoLevel),
          build_internal_params(InfoLevel),
@@ -267,6 +264,18 @@ build_ui_params(for_ui) ->
       ns_config:read_key_fast(ui_session_timeout, undefined)}];
 build_ui_params(_) ->
     [].
+
+build_check_permissions_uri(InfoLevel, Id, Config) ->
+    Params =
+        case InfoLevel of
+            for_ui ->
+                [{"v",
+                  menelaus_web_rbac:check_permissions_url_version(Config)}];
+            _ ->
+                []
+        end,
+    {checkPermissionsURI, bin_concat_path(["pools", Id, "checkPermissions"],
+                                          Params)}.
 
 build_unstable_params(stable) ->
     [];
