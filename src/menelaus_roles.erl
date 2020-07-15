@@ -1349,16 +1349,7 @@ validate_role_test() ->
 enum_roles(Roles, Buckets) ->
     Definitions = roles(),
     lists:flatmap(
-      fun (BucketName) ->
-              BucketWithId =
-                  case BucketName of
-                      any ->
-                          any;
-                      _ ->
-                          {ok, Props} = ns_bucket:get_bucket_from_configs(
-                                          BucketName, toy_buckets()),
-                          {BucketName, ns_bucket:bucket_uuid(Props)}
-                  end,
+      fun (BucketWithId) ->
               lists:map(
                 fun (Role) ->
                         Length = length(get_param_defs(Role, Definitions)),
@@ -1380,6 +1371,8 @@ produce_roles_by_permission_test_() ->
                         ?assertListsEqual(Roles, GetRoles(Permission))
                 end
         end,
+    TestBucket = {"test", <<"test_id">>},
+    DefaultBucket = {"default", <<"default_id">>},
     {foreach,
      fun() ->
              meck:new(cluster_compat_mode, [passthrough]),
@@ -1412,19 +1405,19 @@ produce_roles_by_permission_test_() ->
                             query_insert, query_manage_index, query_select,
                             query_update, replication_target,
                             mobile_sync_gateway],
-                           [any, "test"]),
+                           [any, TestBucket]),
             {[{bucket, "test"}, settings], read})},
       {"xattr write",
        Test([admin] ++
                 enum_roles([bucket_full_access, data_backup, data_writer,
                             mobile_sync_gateway],
-                           [any, "test"]),
+                           [any, TestBucket]),
             {[{bucket, "test"}, data, xattr], write})},
       {"any bucket",
        Test([admin] ++
                 enum_roles([bucket_full_access, data_backup, data_writer,
                             mobile_sync_gateway],
-                           [any, "test", "default"]),
+                           [any, TestBucket, DefaultBucket]),
             {[{bucket, any}, data, xattr], write})},
       {"wrong bucket",
        Test([admin] ++
