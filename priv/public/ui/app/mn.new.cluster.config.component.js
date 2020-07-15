@@ -147,8 +147,10 @@ class MnNewClusterConfigComponent extends MnLifeCycleHooksToStream {
   getWizardValues(isEnterprise) {
     let rv = {
       statsHttp: this.wizardForm.termsAndConditions.get("enableStats").value,
-      servicesHttp: this.getServicesValues(this.wizardForm
-                                           .newClusterConfig.get("services.flag")).join(",")
+      servicesHttp: {
+        services: this.getServicesValues(this.wizardForm
+                                         .newClusterConfig.get("services.flag")).join(",")
+      }
     };
     if (isEnterprise[1]) {
       rv.setupNetConfigHttp = this.getHostConfig();

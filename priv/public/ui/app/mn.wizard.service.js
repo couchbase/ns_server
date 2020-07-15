@@ -287,7 +287,7 @@ class MnWizardService {
   }
 
   postServices(data) {
-    return this.http.post('/node/controller/setupServices', {services: data});
+    return this.http.post('/node/controller/setupServices', data);
   }
 
   postQuerySettings(data) {
