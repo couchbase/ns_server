@@ -1008,13 +1008,13 @@ object_match_test() ->
     ?assertEqual(true, object_match([o1, o2], [o1, o2])),
     ?assertEqual(false, object_match([o1], [o1, o2])),
     ?assertEqual(true, object_match([o1, o2], [o1])),
-    ?assertEqual(true, object_match([{b, "a"}], [{b, "a"}])),
-    ?assertEqual(false, object_match([{b, "a"}], [{b, "b"}])),
-    ?assertEqual(true, object_match([{b, any}], [{b, "b"}])),
-    ?assertEqual(true, object_match([{b, "a"}], [{b, any}])),
-    ?assertEqual(true, object_match([{b, any}], [{b, any}])),
-    ?assertEqual(true, object_match([{b, all}], [{b, any}])),
-    ?assertEqual(false, object_match([{b, all}], [{b, "a"}])).
+    ?assertEqual(true, object_match([{bucket, "a"}], [{bucket, "a"}])),
+    ?assertEqual(false, object_match([{bucket, "a"}], [{bucket, "b"}])),
+    ?assertEqual(true, object_match([{bucket, any}], [{bucket, "b"}])),
+    ?assertEqual(true, object_match([{bucket, "a"}], [{bucket, any}])),
+    ?assertEqual(true, object_match([{bucket, any}], [{bucket, any}])),
+    ?assertEqual(true, object_match([{bucket, all}], [{bucket, any}])),
+    ?assertEqual(false, object_match([{bucket, all}], [{bucket, "a"}])).
 
 object_match_with_collections_test() ->
     ?assertEqual(true, object_match([{collection, ["b", "s", "c"]}],
