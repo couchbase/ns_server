@@ -845,30 +845,35 @@ filter_out_invalid_roles(Roles, Definitions, Buckets) ->
                           {Name, Params}
                   end, Roles, Definitions, Buckets).
 
-get_applicable_buckets(Buckets, {[{bucket, Bucket} | _], _})
-  when Bucket =/= any ->
-    case ns_bucket:get_bucket_from_configs(Bucket, Buckets) of
-        {ok, Props} ->
-            [{Bucket, Props}];
-        not_present ->
+get_permission_params({[V | _], _}) ->
+    case is_data_vertex(V) of
+        true ->
+            get_vertex_param_list(V);
+        _ ->
             []
     end;
-get_applicable_buckets(Buckets, _) ->
-    Buckets.
+get_permission_params(_) ->
+    [].
 
-calculate_possible_param_values(_Buckets, [], _) ->
-    [[]];
-calculate_possible_param_values(Buckets, [bucket_name], Permission) ->
-    [[any] | [[{Name, ns_bucket:bucket_uuid(Props)}] ||
-                 {Name, Props} <- get_applicable_buckets(Buckets, Permission)]];
-calculate_possible_param_values(Buckets, ?RBAC_SCOPE_PARAMS, Permission) ->
-    [[any, any] |
-     [[{Name, ns_bucket:bucket_uuid(Props)}, any] ||
-         {Name, Props} <- get_applicable_buckets(Buckets, Permission)]];
-calculate_possible_param_values(Buckets, ?RBAC_COLLECTION_PARAMS, Permission) ->
-    [[any, any, any] |
-     [[{Name, ns_bucket:bucket_uuid(Props)}, any, any] ||
-         {Name, Props} <- get_applicable_buckets(Buckets, Permission)]].
+calculate_possible_param_values(Buckets, Combination, Permission) ->
+    Len = length(Combination),
+    PermissionParams = get_permission_params(Permission),
+    RawParams =
+        lists:usort(
+          lists:map(
+            fun (I) ->
+                    misc:align_list(PermissionParams, I, any) ++
+                        lists:duplicate(Len - I, any)
+            end, lists:seq(0, length(Combination)))),
+    lists:filtermap(
+      fun (Params) ->
+              case compile_params(Combination, Params, Buckets) of
+                  false ->
+                      false;
+                  Compiled ->
+                      {true, Compiled}
+              end
+      end, RawParams).
 
 all_params_combinations() ->
     [[], [bucket_name], ?RBAC_SCOPE_PARAMS, ?RBAC_COLLECTION_PARAMS].
@@ -1367,16 +1372,16 @@ validate_role_test() ->
                                       [{"default", <<"default_id">>},
                                        {"s", 2}]})).
 
-enum_roles(Roles, Buckets) ->
+enum_roles(Roles, ParamsList) ->
     Definitions = roles(),
     lists:flatmap(
-      fun (BucketWithId) ->
+      fun (Params) ->
               lists:map(
                 fun (Role) ->
                         Length = length(get_param_defs(Role, Definitions)),
-                        {Role, misc:align_list([BucketWithId], Length, any)}
+                        {Role, misc:align_list(Params, Length, any)}
                 end, Roles)
-      end, Buckets).
+      end, ParamsList).
 
 produce_roles_by_permission_test_() ->
     Config = [[{buckets, [{configs, toy_buckets()}]}]],
@@ -1413,8 +1418,7 @@ produce_roles_by_permission_test_() ->
                ?assertListsEqual(
                   [],
                   [admin, analytics_reader,
-                   {data_reader, [any, any, any]},
-                   {data_reader, [{"test",<<"test_id">>}, any, any]}] -- Roles)
+                   {data_reader, [any, any, any]}] -- Roles)
        end},
       {"bucket settings read",
        Test([admin, cluster_admin, query_external_access, query_system_catalog,
@@ -1426,25 +1430,60 @@ produce_roles_by_permission_test_() ->
                             query_insert, query_manage_index, query_select,
                             query_update, replication_target,
                             mobile_sync_gateway],
-                           [any, TestBucket]),
+                           [[any], [TestBucket]]),
             {[{bucket, "test"}, settings], read})},
-      {"xattr write",
+      {"xattr write for bucket",
        Test([admin] ++
                 enum_roles([bucket_full_access, data_backup, data_writer,
                             mobile_sync_gateway],
-                           [any, TestBucket]),
+                           [[any], [TestBucket]]),
             {[{bucket, "test"}, data, xattr], write})},
+      {"xattr write for wrong bucket",
+       Test([admin] ++
+                enum_roles([bucket_full_access, data_backup, data_writer,
+                            mobile_sync_gateway],
+                           [[any]]),
+            {[{bucket, "wrong"}, data, xattr], write})},
+      {"xattr write for collection",
+       Test([admin] ++
+                enum_roles([bucket_full_access, data_backup, data_writer,
+                            mobile_sync_gateway],
+                           [[any], [DefaultBucket]]) ++
+                enum_roles([data_writer], [[DefaultBucket, {"s", 1}]]) ++
+                enum_roles([data_writer], [[DefaultBucket,
+                                            {"s", 1}, {"c", 1}]]),
+            {[{collection, ["default", "s", "c"]}, data, xattr], write})},
+      {"xattr write for wrong collection",
+       Test([admin] ++
+                enum_roles([bucket_full_access, data_backup, data_writer,
+                            mobile_sync_gateway],
+                           [[any], [DefaultBucket]]) ++
+                enum_roles([data_writer], [[DefaultBucket, {"s", 1}]]),
+            {[{collection, ["default", "s", "w"]}, data, xattr], write})},
+      {"xattr write for scope",
+       Test([admin] ++
+                enum_roles([bucket_full_access, data_backup, data_writer,
+                            mobile_sync_gateway],
+                           [[any], [DefaultBucket]]) ++
+                enum_roles([data_writer], [[DefaultBucket, {"s", 1}]]),
+            {[{scope, ["default", "s"]}, data, xattr], write})},
+      {"xattr write for wrong scope",
+       Test([admin] ++
+                enum_roles([bucket_full_access, data_backup, data_writer,
+                            mobile_sync_gateway],
+                           [[any], [DefaultBucket]]),
+            {[{scope, ["default", "w"]}, data, xattr], write})},
       {"any bucket",
        Test([admin] ++
                 enum_roles([bucket_full_access, data_backup, data_writer,
                             mobile_sync_gateway],
-                           [any, TestBucket, DefaultBucket]),
+                           [[any]]),
             {[{bucket, any}, data, xattr], write})},
       {"wrong bucket",
        Test([admin] ++
                 enum_roles([bucket_full_access, data_backup, data_writer,
                             mobile_sync_gateway],
-                           [any]),
+                           [[any]]),
             {[{bucket, "wrong"}, data, xattr], write})}]}.
 
 params_version_test() ->
