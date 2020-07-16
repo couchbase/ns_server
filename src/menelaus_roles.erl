@@ -553,19 +553,40 @@ vertex_param_match({_, any}) ->
 vertex_param_match({A, B}) ->
     A =:= B.
 
-vertex_match({collection, Params}, {bucket, B}) ->
-    vertex_params_match(Params, [B, any, any]);
-vertex_match({bucket, B}, {collection, Params}) ->
-    vertex_params_match([B, all, all], Params);
-vertex_match({scope, [B, S]}, Filter) ->
-    vertex_match({collection, [B, S, all]}, Filter);
-vertex_match({collection, Params}, {collection, FilterParams}) ->
-    vertex_params_match(Params, FilterParams);
-vertex_match({_Same, Param}, {_Same, FilterParam}) ->
-    vertex_param_match({Param, FilterParam});
-vertex_match(_Same, _Same) ->
+is_data_vertex({bucket, _}) ->
     true;
-vertex_match(_, _) ->
+is_data_vertex({scope, _}) ->
+    true;
+is_data_vertex({collection, _}) ->
+    true;
+is_data_vertex(_) ->
+    false.
+
+get_vertex_param_list({bucket, B}) ->
+    [B];
+get_vertex_param_list({_, Params}) ->
+    Params;
+get_vertex_param_list(_) ->
+    [].
+
+expand_vertex(Vertex, Pad) ->
+    case is_data_vertex(Vertex) of
+        true ->
+            {collection,
+             misc:align_list(get_vertex_param_list(Vertex), 3, Pad)};
+        false ->
+            Vertex
+    end.
+
+vertex_match(PermissionVertex, FilterVertex) ->
+    expanded_vertex_match(expand_vertex(PermissionVertex, all),
+                          expand_vertex(FilterVertex, any)).
+
+expanded_vertex_match({_Same, Params}, {_Same, FilterParams}) ->
+    vertex_params_match(Params, FilterParams);
+expanded_vertex_match(_Same, _Same) ->
+    true;
+expanded_vertex_match(_, _) ->
     false.
 
 -spec get_allowed_operations(
