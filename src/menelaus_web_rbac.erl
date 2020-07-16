@@ -1254,7 +1254,9 @@ parse_vertex_param(Param) ->
 params_length(scope) ->
     2;
 params_length(collection) ->
-    3.
+    3;
+params_length(_) ->
+    undefined.
 
 parse_vertex_params(bucket, Name) ->
     parse_vertex_param(Name);
@@ -1887,7 +1889,10 @@ parse_permissions_test() ->
     TestOne("cluster.collection[].n1ql.update!execute", error),
     TestOne("cluster.collection[test].n1ql.update!execute", error),
     TestOne("cluster.collection[test:s].n1ql.update!execute", error),
-    TestOne("cluster.collection[test:s::c].n1ql.update!execute", error).
+    TestOne("cluster.collection[test:s::c].n1ql.update!execute", error),
+
+    TestOne("cluster.wrong[].n1ql.update!execute", error),
+    TestOne("cluster.wrong[test:s::c].n1ql.update!execute", error).
 
 format_permission_test() ->
     ?assertEqual(<<"cluster.bucket[.].views!write">>,
