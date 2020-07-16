@@ -484,7 +484,7 @@ convert_perm_map_to_promql_ast(PermMap) ->
           end, [], PermMap),
     case Filters of
         [] -> [];
-        _ -> [{[{eq, "type", "system"}]} | Filters]
+        _ -> [{[{re, "type", "system|system-processes|audit"}]} | Filters]
     end.
 
 escape_re_chars(Str) ->
