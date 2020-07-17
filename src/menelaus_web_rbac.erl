@@ -148,32 +148,28 @@ handle_saslauthd_auth_settings_post(Req) ->
             menelaus_util:reply_json(Req, {Errors}, 400)
     end.
 
-jsonify_param({bucket_name, any}) ->
-    {true, {bucket_name, <<"*">>}};
-jsonify_param({bucket_name, BucketName}) ->
-    {true, {bucket_name, list_to_binary(BucketName)}};
-jsonify_param({Atom, any}) when Atom =:= scope_name;
-                                Atom =:= collection_name ->
-    false;
-jsonify_param({Atom, Name}) when Atom =:= scope_name;
-                                 Atom =:= collection_name ->
-    {true, {Atom, list_to_binary(Name)}}.
+jsonify_param(any) ->
+    <<"*">>;
+jsonify_param(Value) ->
+    list_to_binary(strip_id(Value)).
+
+strip_id({P, _Id}) ->
+    P;
+strip_id(P) ->
+    P.
 
 strip_ids(Params) ->
-    lists:map(fun ({P, _Id}) ->
-                      P;
-                  (P) ->
-                      P
-              end, Params).
+    lists:map(fun strip_id/1, Params).
 
 role_to_json(Name) when is_atom(Name) ->
     [{role, Name}];
 role_to_json({Name, Params}) ->
     Definitions = menelaus_roles:get_definitions(public),
     [{role, Name} |
-     lists:filtermap(fun jsonify_param/1,
-                     lists:zip(menelaus_roles:get_param_defs(Name, Definitions),
-                               strip_ids(Params)))].
+     [{Param, jsonify_param(Value)} ||
+         {Param, Value} <-
+             lists:zip(menelaus_roles:get_param_defs(Name, Definitions),
+                       Params)]].
 
 role_to_json(Role, Origins) ->
     role_to_json(Role) ++
@@ -1788,12 +1784,14 @@ role_to_json_test_() ->
                      {bucket_admin, [any]}),
                 Test([{role, bucket_admin}, {bucket_name, <<"test">>}],
                      {bucket_admin, ["test"]}),
-                Test([{role, data_reader}, {bucket_name, <<"*">>}],
+                Test([{role, data_reader}, {bucket_name, <<"*">>},
+                      {scope_name, <<"*">>}, {collection_name, <<"*">>}],
                      {data_reader, [any, any, any]}),
-                Test([{role, data_reader}, {bucket_name, <<"test">>}],
+                Test([{role, data_reader}, {bucket_name, <<"test">>},
+                      {scope_name, <<"*">>}, {collection_name, <<"*">>}],
                      {data_reader, ["test", any, any]}),
                 Test([{role, data_reader}, {bucket_name, <<"test">>},
-                      {scope_name, <<"s">>}],
+                      {scope_name, <<"s">>}, {collection_name, <<"*">>}],
                      {data_reader, ["test", "s", any]}),
                 Test([{role, data_reader}, {bucket_name, <<"test">>},
                       {scope_name, <<"s">>}, {collection_name, <<"c">>}],
