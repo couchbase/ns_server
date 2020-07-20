@@ -223,6 +223,7 @@ function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMem
     if (mnPoolDefault.export.isEnterprise) {
       services.cbas = mnPoolDefault.export.compat.atLeast55;
       services.eventing = mnPoolDefault.export.compat.atLeast55;
+      services.backup = mnPoolDefault.export.compat.atLeast70;
     }
 
     mnXDCRService.getSettingsReplications().then(function (rv) {

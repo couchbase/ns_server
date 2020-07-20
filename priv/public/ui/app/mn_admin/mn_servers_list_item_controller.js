@@ -110,6 +110,7 @@ function mnServersListItemController($scope, $rootScope, $uibModal, mnServersSer
       var warnings = {
         isLastIndex: mnMemoryQuotaService.isOnlyOneNodeWithService(nodes.allNodes, node.services, 'index', true),
         isLastQuery: mnMemoryQuotaService.isOnlyOneNodeWithService(nodes.allNodes, node.services, 'n1ql', true),
+        isLastBackup: mnMemoryQuotaService.isOnlyOneNodeWithService(nodes.allNodes, node.services, 'backup', true),
         isLastFts: mnMemoryQuotaService.isOnlyOneNodeWithService(nodes.allNodes, node.services, 'fts', true),
         isLastEventing: mnMemoryQuotaService.isOnlyOneNodeWithService(nodes.allNodes, node.services, 'eventing', true),
         isKv: _.indexOf(node.services, 'kv') > -1

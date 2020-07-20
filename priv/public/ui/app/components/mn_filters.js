@@ -638,6 +638,7 @@ function mnFormatServices() {
     case 'fts': return 'Search';
     case 'eventing': return 'Eventing';
     case 'cbas': return 'Analytics';
+    case 'backup': return 'Backup';
     default: return service;
     }
   }

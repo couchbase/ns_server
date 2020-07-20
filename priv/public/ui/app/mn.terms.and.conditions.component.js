@@ -67,9 +67,9 @@ class MnTermsAndConditionsComponent extends MnLifeCycleHooksToStream {
       .setPackPipe(pipe(
         filter(this.isValid.bind(this)),
         // filter(this.isNotLoading.bind(this)),
-        withLatestFrom(mnPoolsService.stream.isEnterprise),
-        map((isEnterprise) => ({
-          services: 'kv,index,fts,n1ql' + (isEnterprise[1] ? ',eventing,cbas' : ''),
+        withLatestFrom(mnPoolsService.stream.mnServices),
+        map(([_, services]) => ({
+          services: services.join(","),
           setDefaultMemQuotas : true
         }))
       ))
