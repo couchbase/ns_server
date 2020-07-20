@@ -40,12 +40,17 @@ handle_post_scope(Bucket, Req) ->
       fun (Values) ->
               Name = proplists:get_value(name, Values),
               handle_rv(collections:create_scope(Bucket, Name), Req)
-      end, Req, form,
-      [validator:required(name, _),
-       validator:length(name, 1, 30, _),
-       name_validator(_),
-       name_first_char_validator(_),
-       validator:unsupported(_)]).
+      end, Req, form, scope_validators()).
+
+scope_validators() ->
+    [validator:required(name, _),
+     validator:length(name, 1, 30, _),
+     name_validator(_),
+     name_first_char_validator(_),
+     validator:unsupported(_)].
+
+collection_validators() ->
+    [validator:integer(maxTTL, 0, ?MC_MAXINT, _) | scope_validators()].
 
 handle_post_collection(Bucket, Scope, Req) ->
     assert_api_available(Bucket),
@@ -56,13 +61,7 @@ handle_post_collection(Bucket, Scope, Req) ->
               handle_rv(
                 collections:create_collection(
                   Bucket, Scope, Name, proplists:delete(name, Values)), Req)
-      end, Req, form,
-      [validator:required(name, _),
-       validator:length(name, 1, 30, _),
-       name_validator(_),
-       name_first_char_validator(_),
-       validator:integer(maxTTL, 0, ?MC_MAXINT, _),
-       validator:unsupported(_)]).
+      end, Req, form, collection_validators()).
 
 handle_delete_scope(Bucket, Name, Req) ->
     assert_api_available(Bucket),
