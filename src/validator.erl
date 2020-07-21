@@ -29,6 +29,7 @@
          touch/2,
          validate/3,
          validate_relative/4,
+         json_array/3,
          get_value/2,
          convert/3,
          one_of/3,
@@ -131,14 +132,19 @@ process_fatal_errors(Req, Errors) ->
     end.
 
 jsonify_errors(Errors) ->
-    [{Name, iolist_to_binary(E)} || {Name, E} <- Errors].
+    {struct, [{Name, jsonify_error(E)} || {Name, E} <- Errors]}.
+
+jsonify_error({json, Json}) ->
+    Json;
+jsonify_error(E) ->
+    iolist_to_binary(E).
 
 report_errors_for_multiple(Req, Errors, Code) ->
     case process_fatal_errors(Req, lists:flatten(Errors)) of
         true ->
             ok;
         false ->
-            send_error_json(Req, [{struct, jsonify_errors(E)} || E <- Errors],
+            send_error_json(Req, [jsonify_errors(E) || E <- Errors],
                             Code)
     end.
 
@@ -147,11 +153,26 @@ report_errors_for_one(Req, Errors, Code) ->
         true ->
             ok;
         false ->
-            send_error_json(Req, {struct, jsonify_errors(Errors)}, Code)
+            send_error_json(Req, jsonify_errors(Errors), Code)
     end.
 
 send_error_json(Req, Errors, Code) ->
     menelaus_util:reply_json(Req, {struct, [{errors, Errors}]}, Code).
+
+json_array(Name, Validators, State) ->
+    validate(
+      fun (JsonArray) ->
+              States = [with_decoded_object(Elem, Validators) ||
+                           Elem <- JsonArray],
+              Errors = [ErrorList || #state{errors = ErrorList} <- States],
+              case lists:flatten(Errors) of
+                  [] ->
+                      {value, [{prepare_params(St)} || St <- States]};
+                  _ ->
+                      {error, {json, [jsonify_errors(ErrorList) ||
+                                         ErrorList <- Errors]}}
+              end
+      end, Name, State).
 
 with_decoded_object({KVList}, Validators) ->
     Params = [{binary_to_list(Name), Value} || {Name, Value} <- KVList],
