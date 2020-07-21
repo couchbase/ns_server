@@ -19,6 +19,7 @@
 
 -export([start/2, stop/1, get_loglevel/1, setup_node_names/0,
          get_babysitter_node/0, get_babysitter_cookie/0, get_babysitter_pid/0,
+         read_cookie_file/1,
          start_disk_sink/2, get_disk_sink_rotation_opts/1, adjust_loglevel/2]).
 
 -include("ns_common.hrl").
@@ -270,10 +271,15 @@ setup_node_names() ->
     application:set_env(ns_server, ns_couchdb_node, Couchdb),
     application:set_env(ns_server, babysitter_node, Babysitter).
 
+read_cookie_file(FilePath) ->
+    {ok, Cookie0} = file:read_file(FilePath),
+    Cookie1 = binary_to_list(Cookie0),
+    Cookie2 = string:trim(Cookie1, trailing, "\n"),
+    list_to_atom(Cookie2).
+
 get_babysitter_cookie() ->
-    case os:getenv("NS_SERVER_BABYSITTER_COOKIE") of
-        X when is_list(X) -> list_to_atom(X)
-    end.
+    {ok, CookieFile} = application:get_env(ns_babysitter, cookiefile),
+    read_cookie_file(CookieFile).
 
 get_babysitter_node() ->
     {ok, Node} = application:get_env(ns_server, babysitter_node),
