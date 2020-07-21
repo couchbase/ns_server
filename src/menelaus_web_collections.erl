@@ -26,6 +26,7 @@
          handle_post_collection/3,
          handle_delete_scope/3,
          handle_delete_collection/4,
+         handle_set_manifest/2,
          handle_ensure_manifest/3]).
 
 handle_get(Bucket, Req) ->
@@ -40,17 +41,23 @@ handle_post_scope(Bucket, Req) ->
       fun (Values) ->
               Name = proplists:get_value(name, Values),
               handle_rv(collections:create_scope(Bucket, Name), Req)
-      end, Req, form, scope_validators()).
+      end, Req, form, scope_validators(default_not_allowed)).
 
-scope_validators() ->
+scope_validators(default_not_allowed) ->
+    scope_validators([]);
+scope_validators(default_allowed) ->
+    scope_validators(["_default"]);
+scope_validators(Exceptions) ->
     [validator:required(name, _),
+     validator:string(name, _),
      validator:length(name, 1, 30, _),
      name_validator(_),
-     name_first_char_validator(_),
+     name_first_char_validator(_, Exceptions),
      validator:unsupported(_)].
 
-collection_validators() ->
-    [validator:integer(maxTTL, 0, ?MC_MAXINT, _) | scope_validators()].
+collection_validators(DefaultAllowed) ->
+    [validator:integer(maxTTL, 0, ?MC_MAXINT, _) |
+     scope_validators(DefaultAllowed)].
 
 handle_post_collection(Bucket, Scope, Req) ->
     assert_api_available(Bucket),
@@ -61,7 +68,7 @@ handle_post_collection(Bucket, Scope, Req) ->
               handle_rv(
                 collections:create_collection(
                   Bucket, Scope, Name, proplists:delete(name, Values)), Req)
-      end, Req, form, collection_validators()).
+      end, Req, form, collection_validators(default_not_allowed)).
 
 handle_delete_scope(Bucket, Name, Req) ->
     assert_api_available(Bucket),
@@ -70,6 +77,44 @@ handle_delete_scope(Bucket, Name, Req) ->
 handle_delete_collection(Bucket, Scope, Name, Req) ->
     assert_api_available(Bucket),
     handle_rv(collections:drop_collection(Bucket, Scope, Name), Req).
+
+handle_set_manifest(Bucket, Req) ->
+    assert_api_available(Bucket),
+
+    ValidOnUid = proplists:get_value("validOnUid",
+                                     mochiweb_request:parse_qs(Req)),
+    validator:handle(
+      fun (KVList) ->
+              Scopes = proplists:get_value(scopes, KVList),
+              handle_rv(collections:set_manifest(Bucket, Scopes, ValidOnUid),
+                        Req)
+      end, Req, json,
+      [validator:required(scopes, _),
+       validate_scopes(scopes, _),
+       check_duplicates(scopes, _),
+       validator:unsupported(_)]).
+
+check_duplicates(Name, State) ->
+    validator:validate(
+      fun (JsonArray) ->
+              Names = [proplists:get_value(name, Props) ||
+                          {Props} <- JsonArray],
+              case length(Names) =:= length(lists:usort(Names)) of
+                  true ->
+                      ok;
+                  false ->
+                      {error, "Contains duplicate name"}
+              end
+      end, Name, State).
+
+validate_scopes(Name, State) ->
+    validator:json_array(
+      Name, [validate_collections(collections, _),
+             check_duplicates(collections, _) |
+             scope_validators(default_allowed)], State).
+
+validate_collections(Name, State) ->
+    validator:json_array(Name, collection_validators(default_allowed), State).
 
 handle_ensure_manifest(Bucket, Uid, Req) ->
     assert_api_available(Bucket),
@@ -118,12 +163,17 @@ assert_api_available(Bucket) ->
               400, "Not allowed on this type of bucket")
     end.
 
-name_first_char_validator(State) ->
+name_first_char_validator(State, Exceptions) ->
     validator:validate(
-      fun ([Char | _]) ->
+      fun ([Char | _] = Elem) ->
               case lists:member(Char, "_%") of
                   true ->
-                      {error, "First character must not be _ or %"};
+                      case lists:member(Elem, Exceptions) of
+                          false ->
+                              {error, "First character must not be _ or %"};
+                          true ->
+                              ok
+                      end;
                   false ->
                       ok
               end
@@ -173,6 +223,16 @@ nodes_validator(BucketNodes, Req, State) ->
               end
       end, nodes, State).
 
+get_err_code_msg(invalid_uid) ->
+    {"Invalid validOnUid", 400};
+get_err_code_msg(uid_mismatch) ->
+    {"validOnUid doesn't match the current manifest Uid", 400};
+get_err_code_msg({cannot_create_default_collection, ScopeName}) ->
+    {"Cannot create _default collection in scope ~p. Creation of _default "
+     "collection is not allowed.", [ScopeName], 400};
+get_err_code_msg({cannot_modify_collection, Scope, Collection}) ->
+    {"Cannot modify collection properties for Scope ~p Collection ~p",
+     [Scope, Collection], 400};
 get_err_code_msg(scope_already_exists) ->
     {"Scope with this name already exists", 400};
 get_err_code_msg(collection_already_exists) ->
@@ -196,6 +256,12 @@ get_err_code_msg(Error) ->
 
 handle_rv({ok, Uid}, Req) ->
     menelaus_util:reply_json(Req, {[{uid, Uid}]}, 200);
+handle_rv({errors, List}, Req) when is_list(List) ->
+    Errors = lists:map(fun (Elem) ->
+                               {Msg, _} = get_err_code_msg(Elem),
+                               Msg
+                       end, lists:usort(List)),
+    menelaus_util:reply_json(Req, {[{errors, Errors}]}, 400);
 handle_rv(Error, Req) ->
     case get_err_code_msg(Error) of
         {Msg, Code} ->

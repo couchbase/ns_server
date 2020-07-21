@@ -919,6 +919,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, security], write},
                      fun menelaus_web_rbac:handle_put_profile/2,
                      [{UserId, Domain}]};
+                ["pools", "default", "buckets", Id, "collections"] ->
+                    {{[{bucket, Id}, collections], write},
+                     fun menelaus_web_collections:handle_set_manifest/2, [Id]};
                 ["couchBase" | _] ->
                     {no_check, fun menelaus_pluggable_ui:proxy_req/4,
                      ["couchBase",
