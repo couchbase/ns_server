@@ -733,7 +733,7 @@ parse_role(RoleRaw, Definitions) ->
             {Role, [$[ | ParamAndBracket]} ->
                 case parse_until(ParamAndBracket, "]") of
                     {Param, "]"} when Param =/= [] ->
-                        adjust_role(Role, string:tokens(Param, ":"),
+                        adjust_role(Role, string:split(Param, ":", all),
                                     Definitions);
                     _ ->
                         {error, RoleRaw}
@@ -1821,11 +1821,12 @@ parse_roles_test_() ->
                     {data_reader, ["test", "s", any]},
                     {data_reader, ["test", "s", "c"]},
                     {data_reader, ["test", "s", "c", "c", "c"]},
-                    {bucket_admin, ["test", "s"]}],
+                    {bucket_admin, ["test", "s"]},
+                    {data_reader, ["", "", ""]}],
                    parse_roles("data_reader[*], data_reader[test], "
                                "data_reader[test:s], data_reader[test:s:c], "
                                "data_reader[test:s:c:c:c], "
-                               "bucket_admin[test:s]"))
+                               "bucket_admin[test:s], data_reader[::]"))
         end}]).
 
 parse_permissions_test() ->
