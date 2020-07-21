@@ -173,34 +173,34 @@ nodes_validator(BucketNodes, Req, State) ->
               end
       end, nodes, State).
 
+get_err_code_msg(scope_already_exists) ->
+    {"Scope with this name already exists", 400};
+get_err_code_msg(collection_already_exists) ->
+    {"Collection with this name already exists", 400};
+get_err_code_msg(collection_not_found) ->
+    {"Collection with this name is not found", 404};
+get_err_code_msg(scope_not_found) ->
+    {"Scope with this name is not found", 404};
+get_err_code_msg(default_scope) ->
+    {"Deleting _default scope is not allowed", 400};
+get_err_code_msg({max_number_exceeded, num_scopes}) ->
+    {"Maximum number of scopes has been reached", 400};
+get_err_code_msg({max_number_exceeded, num_collections}) ->
+    {"Maximum number of collections has been reached", 400};
+get_err_code_msg(Error) when Error =:= unsafe;
+                             Error =:= push_config;
+                             Error =:= pull_config ->
+    {"Operation is unsafe at this time. Retry later.", 503};
+get_err_code_msg(Error) ->
+    {"Unknown error ~p", [Error], 400}.
+
 handle_rv({ok, Uid}, Req) ->
     menelaus_util:reply_json(Req, {[{uid, Uid}]}, 200);
-handle_rv(scope_already_exists, Req) ->
-    menelaus_util:reply_json(
-      Req, <<"Scope with this name already exists">>, 400);
-handle_rv(collection_already_exists, Req) ->
-    menelaus_util:reply_json(
-      Req, <<"Collection with this name already exists">>, 400);
-handle_rv(collection_not_found, Req) ->
-    menelaus_util:reply_json(
-      Req, <<"Collection with this name is not found">>, 404);
-handle_rv(scope_not_found, Req) ->
-    menelaus_util:reply_json(
-      Req, <<"Scope with this name is not found">>, 404);
-handle_rv(default_scope, Req) ->
-    menelaus_util:reply_json(
-      Req, <<"Deleting _default scope is not allowed">>, 400);
-handle_rv({max_number_exceeded, num_scopes}, Req) ->
-    menelaus_util:reply_json(
-      Req, <<"Maximum number of scopes has been reached">>, 400);
-handle_rv({max_number_exceeded, num_collections}, Req) ->
-    menelaus_util:reply_json(
-      Req, <<"Maximum number of collections has been reached">>, 400);
-handle_rv(Error, Req) when Error =:= unsafe;
-                           Error =:= push_config;
-                           Error =:= pull_config ->
-    menelaus_util:reply_json(
-      Req, <<"Operation is unsafe at this time. Retry later.">>, 503);
 handle_rv(Error, Req) ->
-    menelaus_util:reply_json(
-      Req, iolist_to_binary(io_lib:format("Unknown error ~p", [Error])), 400).
+    case get_err_code_msg(Error) of
+        {Msg, Code} ->
+            menelaus_util:reply_json(Req, iolist_to_binary(Msg), Code);
+        {Msg, Params, Code} ->
+            menelaus_util:reply_json(
+              Req, iolist_to_binary(io_lib:format(Msg, Params)), Code)
+    end.
