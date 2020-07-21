@@ -18,6 +18,7 @@
 
 -module(stats_reader).
 
+-include("cut.hrl").
 -include_lib("stdlib/include/qlc.hrl").
 
 -include("ns_common.hrl").
@@ -32,7 +33,8 @@
 -define(TS_TRACKING_TIME_MSEC, 65000).
 
 -record(state, {bucket,
-                last_timestamps}).
+                last_timestamps,
+                use_new_stats = false}).
 
 -export([start_link/1,
          latest/3, latest/4, latest/5,
@@ -110,32 +112,93 @@ code_change(_OldVsn, State, _Extra) ->
 
 init(Bucket) ->
     ns_pubsub:subscribe_link(ns_tick_event),
-    {ok, #state{bucket=Bucket, last_timestamps = queue:new()}}.
+    UseNewStats =
+        case Bucket of
+             "@index-" ++ _ -> false;
+             "@xdcr-" ++ _ -> false;
+             "@fts-" ++ _ -> false;
+             "@cbas-" ++ _ -> false;
+             "@eventing-" ++ _ -> false;
+             "@fts" -> false;
+             "@query" -> false;
+             "@index" -> false;
+             "@cbas" -> false;
+             "@eventing" -> false;
+             "@system-processes" -> true;
+             "@system" -> true;
+             "@global" -> true;
+             _ -> false
+        end,
+    {ok, #state{bucket=Bucket,
+                last_timestamps = queue:new(),
+                use_new_stats = UseNewStats}}.
 
-handle_call({latest, Period}, _From, #state{bucket=Bucket} = State) ->
+
+handle_call({latest, Period}, _From,
+            #state{bucket=Bucket, use_new_stats = false} = State) ->
     Reply = get_latest_sample(Bucket, Period),
     {reply, Reply, State};
-handle_call({latest, Period, N}, _From, #state{bucket=Bucket} = State) ->
+
+handle_call({latest, Period}, _From, State) ->
+    Res =
+        case get_stats(Period, default_step(Period), 1, all, State) of
+            %% Converting results for backward compatibility reasons
+            {ok, []} -> {error, no_samples};
+            {ok, [E]} -> {ok, E};
+            {error, _} = Error -> Error
+        end,
+    {reply, Res, State};
+
+handle_call({latest, Period, N}, _From,
+            #state{bucket=Bucket, use_new_stats = false} = State) ->
     Reply = fetch_latest_sample(Bucket, Period, N),
     {reply, Reply, State};
-handle_call({latest, Period, Step, N}, _From, #state{bucket=Bucket} = State) ->
+
+handle_call({latest, Period, N}, _From, State) ->
+    {reply, get_stats(Period, default_step(Period), N, all, State), State};
+
+handle_call({latest, Period, Step, N}, _From,
+            #state{bucket=Bucket, use_new_stats = false} = State) ->
     Reply = resample_latest_sample(Bucket, Period, Step, N),
     {reply, Reply, State};
 
-handle_call({latest_specific, Period, StatList}, _From, #state{bucket=Bucket} = State) ->
+handle_call({latest, Period, Step, N}, _From, State) ->
+    {reply, get_stats(Period, Step, N, all, State), State};
+
+handle_call({latest_specific, Period, StatList}, _From,
+            #state{bucket=Bucket, use_new_stats = false} = State) ->
     RV = get_latest_sample(Bucket, Period),
     Reply = extract_stats(StatList, RV),
     {reply, Reply, State};
 
-handle_call({latest_specific, Period, N, StatList}, _From, #state{bucket=Bucket} = State) ->
+handle_call({latest_specific, Period, StatList}, _From, State) ->
+    Res =
+        case get_stats(Period, default_step(Period), 1, StatList, State) of
+            %% Converting results for backward compatibility reasons
+            {ok, []} -> {error, no_samples};
+            {ok, [E]} -> {ok, E};
+            {error, _} = Error -> Error
+        end,
+    {reply, Res, State};
+
+handle_call({latest_specific, Period, N, StatList}, _From,
+            #state{bucket=Bucket, use_new_stats = false} = State) ->
     RV = fetch_latest_sample(Bucket, Period, N),
     Reply = extract_stats(StatList, RV),
     {reply, Reply, State};
 
-handle_call({latest_specific, Period, Step, N, StatList}, _From, #state{bucket=Bucket} = State) ->
+handle_call({latest_specific, Period, N, StatList}, _From, State) ->
+    StatEntries = get_stats(Period, default_step(Period), N, StatList, State),
+    {reply, StatEntries, State};
+
+handle_call({latest_specific, Period, Step, N, StatList}, _From,
+            #state{bucket=Bucket, use_new_stats = false} = State) ->
     RV = resample_latest_sample(Bucket, Period, Step, N),
     Reply = extract_stats(StatList, RV),
-    {reply, Reply, State}.
+    {reply, Reply, State};
+
+handle_call({latest_specific, Period, Step, N, StatList}, _From, State) ->
+    {reply, get_stats(Period, Step, N, StatList, State), State}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -303,3 +366,123 @@ prune_old_ts(Q, Threshold) ->
         {{value, {_TS, _}}, _NewQ} ->
             Q
     end.
+
+default_step(Period) ->
+    {Period, Step, _} = lists:keyfind(Period, 1, stats_archiver:archives()),
+    Step.
+
+max_samples_num(Period) ->
+    {Period, _, Count} = lists:keyfind(Period, 1, stats_archiver:archives()),
+    Count.
+
+%% Backward compatibility function
+%% Retrieves stats from prometheus and returns results in pre-7.0 format
+%% StatList is the list of pre-7.0 stat names (or atom 'all')
+get_stats(Period, Step, N, StatList, #state{bucket=Bucket,
+                                            last_timestamps = LastTSQ}) ->
+    SamplesNum = min(N, max_samples_num(Period)),
+    Now = timestamp_ms(),
+    StartTSms = misc:trunc_ts(Now - Step * (SamplesNum + 1) * 1000, Step),
+    StartTS = StartTSms / 1000,
+    EndTS = Now / 1000,
+    Query = stat_names_mappings:pre_70_stats_to_prom_query(Bucket, StatList),
+    Settings = prometheus_cfg:settings(),
+    case prometheus:query_range(Query, StartTS, EndTS, Step, 5000, Settings) of
+        {ok, JSONList} ->
+            StatEntries = parse_matrix(JSONList, Bucket),
+            Aligned = align_timestamps(StatEntries, EndTS, Period,
+                                       Step, LastTSQ),
+            StartIndex = max(length(Aligned) - SamplesNum, 0) + 1,
+            {ok, lists:sublist(Aligned, StartIndex, SamplesNum)};
+        {error, _} = Error ->
+            Error
+    end.
+
+parse_matrix(JSONList, Bucket) ->
+    lists:foldl(
+      fun ({JSONProps}, Acc) ->
+            add_prom_entry_to_stat_entry_list(Bucket, JSONProps, Acc)
+      end, [], JSONList).
+
+add_prom_entry_to_stat_entry_list(Bucket, JSONProps, StatEntries) ->
+    JSONMetric = proplists:get_value(<<"metric">>, JSONProps),
+    Name = stat_names_mappings:prom_name_to_pre_70_name(Bucket, JSONMetric),
+    JSONValues = proplists:get_value(<<"values">>, JSONProps),
+    add_stat_entry(Name, JSONValues, StatEntries, []).
+
+add_stat_entry(_Name, [], Rest, Res) -> lists:reverse(Res, Rest);
+add_stat_entry(Name, [[TS, ValStr] | Tail1], Stats, Res) ->
+    NewVal = prometheus:parse_value(ValStr),
+    NewTS = round(TS * 1000), %% prometheus returns seconds, but stat_entry
+                              %% record uses milliseconds
+    case Stats of
+        [] ->
+            NewEntry = #stat_entry{timestamp = NewTS,
+                                   values = [{Name, NewVal}]},
+            add_stat_entry(Name, Tail1, Stats, [NewEntry | Res]);
+        [#stat_entry{timestamp = NewTS, values = Values} | Tail2] ->
+            NewEntry = #stat_entry{timestamp = NewTS,
+                                   values = [{Name, NewVal}|Values]},
+            add_stat_entry(Name, Tail1, Tail2, [NewEntry | Res]);
+        [#stat_entry{timestamp = AnotherTS} | _] when AnotherTS > NewTS ->
+            NewEntry = #stat_entry{timestamp = NewTS,
+                                   values = [{Name, NewVal}]},
+            add_stat_entry(Name, Tail1, Stats, [NewEntry | Res]);
+        [#stat_entry{timestamp = AnotherTS} = Entry | Tail2]
+                                                when AnotherTS < NewTS ->
+            add_stat_entry(Name, [[NewTS, ValStr] | Tail1], Tail2,
+                           [Entry | Res])
+    end.
+
+%% Pre-7.0 nodes expect us to use exactly ns_tick timestamps for the last
+%% minute stats, but prometheus knows nothing about ns_tick. As a workaround,
+%% for backward compatibility reasons, we replace prometheus timestamps with
+%% ones that were received from ns_tick. Since both of them are for the last
+%% minute and retrieved with 1s granularity, the real difference between them
+%% should be less then 1s which is acceptable
+align_timestamps(StatEntries, EndTS, minute, 1, TimestampsQ) ->
+    Timestamps = lists:reverse([T || {_, T} <- queue:to_list(TimestampsQ)]),
+    Length = length(Timestamps),
+    {Results, _, _} =
+        lists:foldr(
+          fun (_, {Res, [], PassedNum}) ->
+                  {Res, [], PassedNum};
+              (#stat_entry{timestamp = TS} = E,
+               {Res, LeftTimestamps, PassedNum}) ->
+                  N = round(EndTS * 1000 - TS) div 1000 - PassedNum,
+                  case (N >= 0) and (N < Length - PassedNum - N) of
+                      true ->
+                          NewLeftTimestamps = lists:nthtail(N, LeftTimestamps),
+                          [NewTS | _] = NewLeftTimestamps,
+                          {[E#stat_entry{timestamp = NewTS} | Res],
+                           NewLeftTimestamps, PassedNum + N};
+                      false ->
+                          {Res, [], PassedNum}
+                  end
+          end, {[], Timestamps, 0}, StatEntries),
+    Results;
+%% Pre-7.0 nodes expect all timestamps (except last minute stats) to be aligned
+%% with respect to stats collection step. For example, if step is 4s
+%% the timestamps should be as follows:
+%% 1589849732000, 1589849736000, 1589849740000
+%% Another thing that needs to be handled here is time correction for the case
+%% when nodes are not syncronized. Since pre-7.0 nodes use ns_tick timestamps,
+%% they don't need the time to be synchronized accross cluster. In 7.0 each node
+%% uses its own system time when collecting stats and it's required to
+%% syncronize time, but to stay compatible with previous versions we have to
+%% mimic pre-7.0 behavior and handle the situation when time is out of sync.
+align_timestamps(StatEntries, _EndTS, _Period, Step, TimestampsQ) ->
+    case queue:is_empty(TimestampsQ) of
+        true ->
+            [];
+        false ->
+            Timestamps = queue:to_list(TimestampsQ),
+            %% Estimation for time difference between nodes
+            Corr = lists:max([T2 - T1 || {T1, T2} <- Timestamps]),
+            lists:map(
+              fun (#stat_entry{timestamp = TS} = E) ->
+                      NewTS = misc:trunc_ts(TS + Corr, Step),
+                      E#stat_entry{timestamp = NewTS}
+              end, StatEntries)
+    end.
+
