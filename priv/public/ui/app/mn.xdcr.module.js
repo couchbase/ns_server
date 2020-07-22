@@ -23,6 +23,8 @@ import { MnXDCRSettingsComponent } from "./mn.xdcr.settings.component.js";
 import { MnXDCREditRepComponent } from "./mn.xdcr.edit.rep.component.js";
 import { MnXDCRErrorsComponent } from "./mn.xdcr.errors.component.js";
 
+import { MnDetailStatsDirective } from "./ajs.upgraded.components.js";
+
 let XDCRState = {
   url: '/replications',
   name: "app.admin.replications",
@@ -57,6 +59,8 @@ class MnXDCRModule {
         MnXDCRErrorsComponent
       ],
       declarations: [
+        MnDetailStatsDirective,
+
         MnXDCRComponent,
         MnXDCRItemComponent,
         MnXDCRItemDetailsComponent,

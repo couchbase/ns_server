@@ -25,11 +25,11 @@
          [ngClass]="statusClass | async"></div>
     </button>
   </div>
-  <!-- <mn-detail-stats
-       bucket="{{row.source}}"
-       mn-title="XDCR Stats"
-       item-id="{{row.id}}"
-       service="xdcr"
-       prefix="replications"
-       ></mn-detail-stats> -->
+  <mn-detail-stats
+     bucket="{{item.source}}"
+     mnTitle="XDCR Stats"
+     itemId="{{item.id}}"
+     service="xdcr"
+     prefix="replications"
+  ></mn-detail-stats>
 </div>

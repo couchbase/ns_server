@@ -30,6 +30,7 @@ import {MnAdminService} from "../mn.admin.service.js";
 
 import uiSelect from "/ui/web_modules/ui-select.js";
 import {Injector, Compiler} from "/ui/web_modules/@angular/core.js";
+import mnDetailStatsModule from "/ui/app/components/directives/mn_detail_stats_controller.js";
 
 export default 'mnAdmin';
 
@@ -54,7 +55,8 @@ angular.module('mnAdmin', [
   mnElementCrane,
   mnDragAndDrop,
   mnSettingsAutoFailoverService,
-  mnSettingsClusterService
+  mnSettingsClusterService,
+  mnDetailStatsModule
 ]).config(mnAdminConfig)
   .controller('mnAdminController', mnAdminController)
   .factory('mnAdminService', downgradeInjectable(MnAdminService))
