@@ -21,41 +21,17 @@ query_range_async(Query, Start, End, Step, Timeout, Settings, Handler)
     StepStr = integer_to_list(Step) ++ "s",
     query_range_async(Query, Start, End, StepStr, Timeout, Settings, Handler);
 query_range_async(Query, Start, End, Step, Timeout, Settings, Handler) ->
-    case proplists:get_value(enabled, Settings) of
-        true ->
-            Addr = proplists:get_value(listen_addr, Settings),
-            {Username, Password} = proplists:get_value(prometheus_creds,
-                                                       Settings),
-            URL = lists:flatten(io_lib:format("http://~s/api/v1/query_range",
-                                              [Addr])),
-            TimeoutStr = integer_to_list(max(Timeout div 1000, 1)) ++ "s",
-            Body = [{query, Query}, {start, Start}, {'end', End}, {step, Step},
-                    {timeout, TimeoutStr}],
-            BodyEncoded = mochiweb_util:urlencode(Body),
-            Headers = [{"Content-Type", "application/x-www-form-urlencoded"}],
-            HeadersWithAuth = menelaus_rest:add_basic_auth(Headers, Username,
-                                                          Password),
-            AFamily = proplists:get_value(afamily, Settings),
-            HandlerWrap =
-                fun ({ok, json, {Data}}) ->
-                        Res = proplists:get_value(<<"result">>, Data, {[]}),
-                        Handler({ok, Res});
-                    ({error, Reason}) ->
-                        ?log_error("Prometheus query_range request failed:~n"
-                                   "URL: ~s~nHeaders: ~p~nBody: ~s~nReason: ~p",
-                                   [URL, Headers, BodyEncoded, Reason]),
-                        Handler({error, Reason});
-                    (Unhandled) ->
-                        ?log_error("Unexpected query_async result: ~p~n"
-                                   "URL: ~s~nHeaders: ~p~nBody: ~s",
-                                   [Unhandled, URL, Headers, BodyEncoded]),
-                        Handler({error, {unexpected, Unhandled}})
-                end,
-            post_async(URL, HeadersWithAuth, BodyEncoded, AFamily, Timeout,
-                       HandlerWrap);
-        false ->
-            Handler({error, <<"Stats backend is disabled">>})
-    end.
+    TimeoutStr = integer_to_list(max(Timeout div 1000, 1)) ++ "s",
+    Body = [{query, Query}, {start, Start}, {'end', End}, {step, Step},
+            {timeout, TimeoutStr}],
+    HandlerWrap =
+        fun ({ok, json, {Data}}) ->
+                Res = proplists:get_value(<<"result">>, Data, {[]}),
+                Handler({ok, Res});
+            ({error, Reason}) ->
+                Handler({error, Reason})
+        end,
+    post_async("/api/v1/query_range", Body, Timeout, Settings, HandlerWrap).
 
 query(Query, Time, Timeout, Settings) ->
     Self = self(),
@@ -69,63 +45,61 @@ query(Query, Time, Timeout, Settings) ->
     end.
 
 query_async(Query, Time, Timeout, Settings, Handler) ->
+    TimeoutStr = integer_to_list(max(Timeout div 1000, 1)) ++ "s",
+    Body = [{query, Query}, {timeout, TimeoutStr}] ++
+           [{time, Time} || Time =/= undefined],
+    HandlerWrap =
+        fun ({ok, json, {Data}}) ->
+                Res = proplists:get_value(<<"result">>, Data, {[]}),
+                Handler({ok, Res});
+            ({error, Reason}) ->
+                Handler({error, Reason})
+        end,
+    post_async("/api/v1/query", Body, Timeout, Settings, HandlerWrap).
+
+post_async(Path, Body, Timeout, Settings, Handler) ->
     case proplists:get_value(enabled, Settings) of
         true ->
             Addr = proplists:get_value(listen_addr, Settings),
-            URL = lists:flatten(io_lib:format("http://~s/api/v1/query",
-                                [Addr])),
-            TimeoutStr = integer_to_list(max(Timeout div 1000, 1)) ++ "s",
-            Body = mochiweb_util:urlencode(
-                     [{query, Query}, {timeout, TimeoutStr}] ++
-                     [{time, Time} || Time =/= undefined]),
+            URL = lists:flatten(io_lib:format("http://~s~s", [Addr, Path])),
+            BodyEncoded = mochiweb_util:urlencode(Body),
             {Username, Password} = proplists:get_value(prometheus_creds,
                                                        Settings),
-            Headers = [{"Content-Type", "application/x-www-form-urlencoded"}],
-            HeadersWithAuth = menelaus_rest:add_basic_auth(Headers, Username,
-                                                           Password),
+            Headers = menelaus_rest:add_basic_auth([], Username, Password),
             AFamily = proplists:get_value(afamily, Settings),
-            HandlerWrap =
-                fun ({ok, json, {Data}}) ->
-                        Res = proplists:get_value(<<"result">>, Data, {[]}),
-                        Handler({ok, Res});
-                    ({error, Reason}) ->
-                        ?log_error("Prometheus query request failed:~n"
-                                   "URL: ~s~nHeaders: ~p~nBody: ~s~nReason: ~p",
-                                   [URL, Headers, Body, Reason]),
-                        Handler({error, Reason});
-                    (Unhandled) ->
-                        ?log_error("Unexpected query_async result: ~p~n"
-                                   "URL: ~s~nHeaders: ~p~nBody: ~s",
-                                   [Unhandled, URL, Headers, Body]),
-                        Handler({error, {unexpected, Unhandled}})
+            Receiver =
+                fun (Res) ->
+                    try
+                        case handle_post_async_reply(Res) of
+                            {ok, _, _} = Reply -> Handler(Reply);
+                            {error, Reason} = Reply ->
+                                ?log_error("Prometheus query request failed:~n"
+                                           "URL: ~s~nBody: ~s~nReason: ~p",
+                                           [URL, BodyEncoded, Reason]),
+                                Handler(Reply)
+                        end
+                    catch
+                        Class:Error ->
+                            ST = erlang:get_stacktrace(),
+                            ?log_error("Exception in httpc receiver ~p:~p~n"
+                                       "Stacktrace: ~p~nRes: ~w",
+                                       [Class, Error, ST, Res])
+                    end
                 end,
-            post_async(URL, HeadersWithAuth, Body, AFamily, Timeout,
-                       HandlerWrap);
+            HttpOptions = [{timeout, Timeout}, {connect_timeout, Timeout}],
+            Options = [{sync, false}, {receiver, Receiver},
+                       {socket_opts, [{ipfamily, AFamily}]}],
+            Req = {URL, Headers, "application/x-www-form-urlencoded",
+                   BodyEncoded},
+            {ok, _} = httpc:request('post', Req, HttpOptions, Options);
         false ->
             Handler({error, <<"Stats backend is disabled">>})
-    end.
-
-post_async(URL, Headers, Body, AFamily, Timeout, Handler) ->
-    Receiver = fun (Res) ->
-                   try
-                       handle_post_async_reply(Handler, Res)
-                   catch
-                       Class:Error ->
-                           ?log_error("Exception in httpc receiver ~p:~p~n~p",
-                                      [Class, Error, erlang:get_stacktrace()])
-                   end
-                end,
-    HttpOptions = [{timeout, Timeout}, {connect_timeout, Timeout}],
-    Options = [{sync, false}, {receiver, Receiver},
-               {socket_opts, [{ipfamily, AFamily}]}],
-    Req = {URL, Headers, "application/x-www-form-urlencoded", Body},
-    {ok, _} = httpc:request('post', Req, HttpOptions, Options),
+    end,
     ok.
 
-handle_post_async_reply(UserHandler, {_Ref, {error, R}}) ->
-    UserHandler({error, R});
-handle_post_async_reply(UserHandler,
-                        {_Ref, {{_, Code, CodeText}, Headers, Reply}}) ->
+handle_post_async_reply({_Ref, {error, R}}) ->
+    {error, R};
+handle_post_async_reply({_Ref, {{_, Code, CodeText}, Headers, Reply}}) ->
     case proplists:get_value("content-type", Headers) of
         "application/json" ->
             try ejson:decode(Reply) of
@@ -133,26 +107,26 @@ handle_post_async_reply(UserHandler,
                     case proplists:get_value(<<"status">>, JSON) of
                         <<"success">> ->
                             R = proplists:get_value(<<"data">>, JSON),
-                            UserHandler({ok, json, R});
+                            {ok, json, R};
                         <<"error">> ->
                             E = proplists:get_value(<<"error">>, JSON),
-                            UserHandler({error, E})
+                            {error, E}
                     end
             catch
                 _:_ ->
                     R = misc:format_bin("Invalid json in reply: ~s", [Reply]),
-                    UserHandler({error, R})
+                    {error, R}
             end;
         _ ->
             case Code of
-                200 -> UserHandler({ok, text, Reply});
-                _ when Reply =/= <<>> -> UserHandler({error, Reply});
-                _ -> UserHandler({error, CodeText})
+                200 -> {ok, text, Reply};
+                _ when Reply =/= <<>> -> {error, Reply};
+                _ -> {error, CodeText}
             end
     end;
-handle_post_async_reply(UserHandler, Unhandled) ->
+handle_post_async_reply(Unhandled) ->
     ?log_error("Unhandled response from httpc: ~p", [Unhandled]),
-    UserHandler({error, {unexpected, Unhandled}}).
+    {error, {unexpected, Unhandled}}.
 
 format_value(undefined) -> <<"NaN">>;
 format_value(infinity) -> <<"Inf">>;
