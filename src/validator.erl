@@ -291,7 +291,7 @@ string(Name, State) ->
                       {error, "Value must be json string"}
               end;
           false ->
-              functools:id(_)
+              fun (_) -> ok end
       end, Name, State).
 
 boolean(Name, State) ->
