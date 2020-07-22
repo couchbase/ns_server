@@ -386,16 +386,24 @@ get_stats(Period, Step, N, StatList, #state{bucket=Bucket,
     StartTS = StartTSms / 1000,
     EndTS = Now / 1000,
     Query = stat_names_mappings:pre_70_stats_to_prom_query(Bucket, StatList),
-    Settings = prometheus_cfg:settings(),
-    case prometheus:query_range(Query, StartTS, EndTS, Step, 5000, Settings) of
-        {ok, JSONList} ->
-            StatEntries = parse_matrix(JSONList, Bucket),
-            Aligned = align_timestamps(StatEntries, EndTS, Period,
-                                       Step, LastTSQ),
-            StartIndex = max(length(Aligned) - SamplesNum, 0) + 1,
-            {ok, lists:sublist(Aligned, StartIndex, SamplesNum)};
-        {error, _} = Error ->
-            Error
+    case Query of
+        <<>> ->
+            %% Happens when menelaus_stats tries to guess stat section by
+            %% stat name
+            {ok, []};
+        _ ->
+            Settings = prometheus_cfg:settings(),
+            case prometheus:query_range(Query, StartTS, EndTS, Step, 5000,
+                                        Settings) of
+                {ok, JSONList} ->
+                    StatEntries = parse_matrix(JSONList, Bucket),
+                    Aligned = align_timestamps(StatEntries, EndTS, Period,
+                                               Step, LastTSQ),
+                    StartIndex = max(length(Aligned) - SamplesNum, 0) + 1,
+                    {ok, lists:sublist(Aligned, StartIndex, SamplesNum)};
+                {error, _} = Error ->
+                    Error
+            end
     end.
 
 parse_matrix(JSONList, Bucket) ->
