@@ -120,7 +120,7 @@ init(Bucket) ->
              "@cbas-" ++ _ -> false;
              "@eventing-" ++ _ -> false;
              "@fts" -> false;
-             "@query" -> false;
+             "@query" -> true;
              "@index" -> false;
              "@cbas" -> false;
              "@eventing" -> false;
@@ -406,9 +406,13 @@ parse_matrix(JSONList, Bucket) ->
 
 add_prom_entry_to_stat_entry_list(Bucket, JSONProps, StatEntries) ->
     JSONMetric = proplists:get_value(<<"metric">>, JSONProps),
-    Name = stat_names_mappings:prom_name_to_pre_70_name(Bucket, JSONMetric),
-    JSONValues = proplists:get_value(<<"values">>, JSONProps),
-    add_stat_entry(Name, JSONValues, StatEntries, []).
+    case stat_names_mappings:prom_name_to_pre_70_name(Bucket, JSONMetric) of
+        {ok, Name} ->
+            JSONValues = proplists:get_value(<<"values">>, JSONProps),
+            add_stat_entry(Name, JSONValues, StatEntries, []);
+        {error, not_found} ->
+            StatEntries
+    end.
 
 add_stat_entry(_Name, [], Rest, Res) -> lists:reverse(Res, Rest);
 add_stat_entry(Name, [[TS, ValStr] | Tail1], Stats, Res) ->

@@ -353,7 +353,11 @@ ensure_prometheus_config(Settings) ->
         "      source_labels: [__address__]\n"
         "      target_label: 'instance'\n"
         "      replacement: '" ++ atom_to_list(N) ++ "'\n"
-                    || {N, A} <- Targets ],
+                    || {N, A} <- Targets ] ++
+        "    - regex: 'n1ql'\n"
+        "      source_labels: [instance]\n"
+        "      target_label: 'type'\n"
+        "      replacement: 'n1ql'",
     Config = io_lib:format(ConfigTemplate, [ScrapeInterval, ScrapeTimeout,
                                             TokenFile, TargetsStr]),
     ?log_debug("Updating prometheus config file: ~s", [File]),
