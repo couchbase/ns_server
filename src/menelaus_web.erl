@@ -829,12 +829,12 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["pools", "default", "remoteClusters", _Id] ->
                     {no_check, fun goxdcr_rest:proxy/1};
                 ["pools", "default", "buckets", Id, "collections", Name] ->
-                    {{[{bucket, Id}, collections], delete},
+                    {{[{bucket, Id}, collections], write},
                      fun menelaus_web_collections:handle_delete_scope/3,
                      [Id, Name]};
                 ["pools", "default", "buckets", Id, "collections",
                  Scope, Name] ->
-                    {{[{bucket, Id}, collections], delete},
+                    {{[{bucket, Id}, collections], write},
                      fun menelaus_web_collections:handle_delete_collection/4,
                      [Id, Scope, Name]};
                 ["pools", "default", "buckets", Id, "docs", DocId] ->
