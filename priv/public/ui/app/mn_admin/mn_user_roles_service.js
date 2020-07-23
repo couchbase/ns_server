@@ -147,26 +147,35 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     return rolesByRole[role.role].params.map(param => role[param] || "*").join(":");
   }
 
+  function packParams(params) {
+    let i;
+    let rv = [];
+    params = params.split(":");
+    for (i = 0; i < params.length; i++) {
+      let val = params[i];
+      if (val == "*") {
+        if (i == 0) {
+          rv.push("*");
+        }
+        break;
+      } else {
+        rv.push(val);
+      }
+    }
+    return rv.join(":");
+  }
+
   function packRolesToSend(selectedRoles, selectedRolesConfigs) {
     return Object
       .keys(selectedRoles)
       .filter(role => selectedRoles[role])
       .concat(Object
               .keys(selectedRolesConfigs)
-              .reduce((acc, role) => {
-                let configs = selectedRolesConfigs[role];
-                if (configs && configs.length) {
-                  configs.forEach(config => {
-                    var params = config.split(":");
-                    params = (params.length > 1) ?
-                      params.map(p => (p == "*") ? "" : p).join(":") :
-                    params[0];
-                    acc.push(role + "[" + params + "]");
-                  });
-                }
-                return acc;
-              }, []));
+              .reduce((acc, role) =>
+                      acc.concat((selectedRolesConfigs[role] || [])
+                                 .map(config => (role + "[" + packParams(config) + "]"))), []));
   }
+
 
   function postLdapSettings(data, formData) {
     var errors = {};

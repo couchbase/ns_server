@@ -78,6 +78,12 @@ function mnUserRolesSelectFormDirective() {
     $scope.submit = submit;
     $scope.del = del;
     $scope.isRoleDisabled = isRoleDisabled;
+    $scope.isSelectDisabled = isSelectDisabled;
+
+    function isSelectDisabled($index) {
+      var headParam = $scope.item.params[$index - 1];
+      return headParam && !$scope.form[headParam];
+    }
 
     function isRoleDisabled(role) {
       return role.role !== 'admin' && $scope.state.selectedRoles["admin"];

@@ -4,7 +4,7 @@
        ng-repeat="param in item.params"
        ng-style="{width: 100 / item.params.length + '%', margin: '0 0.2rem'}"
        ng-model="form[param]"
-       ng-disabled="isRoleDisabled(item)"
+       ng-disabled="isRoleDisabled(item) || isSelectDisabled($index)"
        ng-init="form[param] = ''">
       <option value="">*</option>
       <option
