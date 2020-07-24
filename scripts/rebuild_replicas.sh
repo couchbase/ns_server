@@ -66,21 +66,21 @@ SyncConfig =
 
 Rebalance =
   fun (C) ->
-    error_logger:info_msg("Starting fixup rebalance ~p", [{VBucket, C}]),
+    logger:notice("Starting fixup rebalance ~p", [{VBucket, C}]),
 
     SyncConfig(),
     ok = ns_orchestrator:ensure_janitor_run({bucket, Bucket}),
     ok = gen_fsm:sync_send_event({via, leader_registry, ns_orchestrator},
                                  {move_vbuckets, Bucket, [{VBucket, C}]}),
-    error_logger:info_msg("Waiting for a fixup rebalance ~p to complete", [{VBucket, C}]),
+    logger:notice("Waiting for a fixup rebalance ~p to complete", [{VBucket, C}]),
     WaitForRebalance(WaitForRebalance),
-    error_logger:info_msg("Fixup rebalance ~p is complete", [{VBucket, C}])
+    logger:notice("Fixup rebalance ~p is complete", [{VBucket, C}])
   end,
 
 {OldChain, NoReplicasChain} =
   case ns_config:search({fixup_rebalance, Bucket, VBucket}) of
     {value, Chains} ->
-      error_logger:info_msg("Found unfinished fixup rebalance for ~p. Chains:~n~p", [VBucket, Chains]),
+      logger:notice("Found unfinished fixup rebalance for ~p. Chains:~n~p", [VBucket, Chains]),
       Chains;
     false ->
       Chains = GetChainsFromBucket(),
