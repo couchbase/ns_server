@@ -18,6 +18,7 @@
 %%      based on node names.
 -module(cb_epmd).
 
+-include_lib("kernel/include/logger.hrl").
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
@@ -146,8 +147,8 @@ load_configuration() ->
                     application:set_env(kernel, Key, Val)
                 end, Config)
     catch _:Error:ST ->
-            error_logger:error_msg("Invalid config ~p: ~p~n~p",
-                                   [ConfigFile, Error, ST]),
+            ?LOG_ERROR("Invalid config ~p: ~p~n~p",
+                       [ConfigFile, Error, ST]),
             erlang:error({invalid_format, ConfigFile})
     end.
 

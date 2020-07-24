@@ -21,6 +21,8 @@
 
 -include_lib("kernel/include/net_address.hrl").
 -include_lib("kernel/include/dist_util.hrl").
+-include_lib("kernel/include/logger.hrl").
+
 -include("cut.hrl").
 
 % dist module callbacks, called from net_kernel
@@ -723,7 +725,7 @@ get_required_protos(#s{name = Name, config = Config}) ->
     end.
 
 info_msg(F, A) ->
-    %% Not using error_logger here to prevent showing those messages on
+    %% Not using kernel logger here to prevent showing those messages on
     %% console during service start
     %% On babysitter cb_dist starts before ale so we simply ignore
     %% logs in this case
@@ -733,10 +735,10 @@ info_msg(F, A) ->
         error:undef -> ok
     end.
 error_msg(F, A) ->
-    %% Preformat the message, since the default error_logger handler
+    %% Preformat the message, since the default kernel logger handler
     %% doesn't format it even when error_msg/2 is used
     Msg = lists:flatten(io_lib:format("cb_dist: " ++ F, A)),
-    error_logger:error_msg(Msg).
+    ?LOG_ERROR(Msg).
 
 proto_to_family(inet_tcp_dist) -> inet;
 proto_to_family(inet_tls_dist) -> inet;

@@ -14,6 +14,7 @@
 %% limitations under the License.
 %%
 -module(ns_bootstrap).
+-include_lib("kernel/include/logger.hrl").
 -include("ns_common.hrl").
 
 -export([start/0, stop/0, remote_stop/1, ensure_os_mon/0]).
@@ -38,7 +39,7 @@ start() ->
 
 stop() ->
     ?log_info("Initiated server shutdown"),
-    error_logger:info_msg("Initiated server shutdown"),
+    ?LOG_INFO("Initiated server shutdown"),
     RV = try
              ok = application:stop(ns_server),
              ?log_info("Successfully stopped ns_server"),
@@ -47,7 +48,7 @@ stop() ->
              %% seconds. So we're just doing sync above and exit
              %%
              %% ?log_info("Stopped ns_server application"),
-             %% error_logger:info_msg("Stopped ns_server application"),
+             %% ?LOG_INFO("Stopped ns_server application"),
              %% application:stop(os_mon),
              %% application:stop(sasl),
              %% application:stop(ale),
@@ -58,7 +59,7 @@ stop() ->
                                      [{T, E, S}]),
 
                  (catch ?log_error(Msg)),
-                 (catch error_logger:error_msg(Msg)),
+                 (catch ?LOG_ERROR(Msg)),
                  {T, E}
          end,
 

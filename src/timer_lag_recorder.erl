@@ -18,6 +18,7 @@
 
 -module(timer_lag_recorder).
 
+-include_lib("kernel/include/logger.hrl").
 -include("ns_common.hrl").
 
 %% How often to send ourself a message in milliseconds.
@@ -44,10 +45,10 @@ handle_cast(Msg, _State) ->
     erlang:error({unknown_cast, Msg}).
 
 report_missed_msgs(Skipped, Lag) when Skipped > 10 ->
-    error_logger:error_msg("Detected time forward jump (or too large "
-                           "erlang scheduling latency).  Skipping ~w "
-                           "samples (or ~w milliseconds)",
-                           [Skipped, Lag]);
+    ?LOG_ERROR("Detected time forward jump (or too large "
+               "erlang scheduling latency).  Skipping ~w "
+               "samples (or ~w milliseconds)",
+               [Skipped, Lag]);
 report_missed_msgs(Skipped, _Lag) when Skipped > 0 ->
     ?log_warning("Skipped ~p 'check_time' messages", [Skipped]);
 report_missed_msgs(_Skipped, _Lag) ->

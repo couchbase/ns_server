@@ -63,6 +63,7 @@
 
 -behaviour(gen_server).
 
+-include_lib("kernel/include/logger.hrl").
 %% External exports
 -export([start_link/2, start_link/3,
 	 start_child/2, restart_child/2,
@@ -631,8 +632,8 @@ handle_info({delayed_restart, {RestartType, Reason, Child}}, State) ->
 %% this is important.
 
 handle_info(Msg, State) ->
-    error_logger:error_msg("Supervisor received unexpected message: ~p~n", 
-			   [Msg]),
+    ?LOG_ERROR("Supervisor received unexpected message: ~p~n", 
+               [Msg]),
     {noreply, State}.
 
 %%

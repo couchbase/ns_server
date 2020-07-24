@@ -26,6 +26,8 @@
 -module(gen_smtp_server).
 -behaviour(gen_server).
 
+-include_lib("kernel/include/logger.hrl").
+
 -define(PORT, 2525).
 
 %% External API
@@ -125,7 +127,7 @@ init([Module, Configurations]) ->
 		{port, ?PORT}, {protocol, tcp}, {family, inet}],
     case Configurations of
         [FirstConfig|_] when is_list(FirstConfig) ->
-            error_logger:info_msg("~p starting at ~p~n", [?MODULE, node()]),
+            ?LOG_INFO("~p starting at ~p~n", [?MODULE, node()]),
             Listeners = [extract_listener(Config, DefaultConfig) || Config <- Configurations],
             case lists:dropwhile(fun(R) -> element(1, R) =/= error end, Listeners) of
                 [] ->
@@ -148,13 +150,13 @@ extract_listener(Config, DefaultConfig) ->
     ListenOptions = [binary, {ip, IP}, Family],
     case gen_smtp_socket:listen(Protocol, Port, ListenOptions) of
         {ok, ListenSocket} -> %%Create first accepting process
-            error_logger:info_msg("~p listening on ~p:~p via ~p~n", [?MODULE, IP, Port, Protocol]),
+            ?LOG_INFO("~p listening on ~p:~p via ~p~n", [?MODULE, IP, Port, Protocol]),
             gen_smtp_socket:begin_inet_async(ListenSocket),
             #listener{port = gen_smtp_socket:extract_port_from_socket(ListenSocket),
                       hostname = Hostname, sessionoptions = SessionOptions,
                       socket = ListenSocket, listenoptions = ListenOptions};
         {error, Reason} = Error ->
-            error_logger:error_msg("~p could not listen on ~p:~p via ~p. Error: ~p~n", [?MODULE, IP, Port, Protocol, Reason]),
+            ?LOG_ERROR("~p could not listen on ~p:~p via ~p. Error: ~p~n", [?MODULE, IP, Port, Protocol, Reason]),
             Error
     end.
 
@@ -197,7 +199,7 @@ handle_info({inet_async, ListenPort,_, {ok, ClientAcceptSocket}},
 		end,
 		{noreply, State#state{sessions = Sessions}}
 	catch _:Error ->
-		error_logger:error_msg("Error in socket acceptor: ~p.~n", [Error]),
+		?LOG_ERROR("Error in socket acceptor: ~p.~n", [Error]),
 		{noreply, State}
 	end;
 handle_info({'EXIT', From, Reason}, State) ->
@@ -213,7 +215,7 @@ handle_info({inet_async, ListenSocket, _, {error, econnaborted}}, State) ->
 	gen_smtp_socket:begin_inet_async(ListenSocket),
 	{noreply, State};
 handle_info({inet_async, _ListenSocket,_, Error}, State) ->
-	error_logger:error_msg("Error in socket acceptor: ~p.~n", [Error]),
+	?LOG_ERROR("Error in socket acceptor: ~p.~n", [Error]),
 	{stop, Error, State};
 handle_info(_Info, State) ->
 	{noreply, State}.
