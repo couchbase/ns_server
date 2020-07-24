@@ -111,7 +111,7 @@
                              ?MAPREDUCE_ERRORS_LOGGER,
                              ?XDCR_LOGGER]).
 
--define(LOG(Level, Format, Args),
+-define(ALE_LOG(Level, Format, Args),
         ale:log(?NS_SERVER_LOGGER, Level, Format, Args)).
 
 -define(log_debug(Format, Args), ale:debug(?NS_SERVER_LOGGER, Format, Args)).

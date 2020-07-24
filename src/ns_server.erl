@@ -30,7 +30,7 @@ log_pending() ->
         done ->
             ok;
         {LogLevel, Fmt, Args} ->
-            ?LOG(LogLevel, Fmt, Args),
+            ?ALE_LOG(LogLevel, Fmt, Args),
             log_pending()
     end.
 
