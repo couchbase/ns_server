@@ -1465,13 +1465,15 @@ inPeriod(Then, Now, Period) ->
 %%% Error and progress reporting.
 %%% ------------------------------------------------------
 
-report_error(Error, Reason, Child, SupName) ->
-    ErrorMsg = [{supervisor, SupName},
-		{errorContext, Error},
-		{reason, Reason},
-		{offender, extract_child(Child)}],
-    error_logger:error_report(supervisor_report, ErrorMsg).
-
+report_error(Error, Reason, Child, Name) ->
+    ?LOG_ERROR(#{label => {supervisor, error},
+                 report => [{supervisor, Name},
+                            {errorContext, Error},
+                            {reason, Reason},
+                            {offender, extract_child(Child)}]},
+               #{domain => [ns_server],
+                 report_cb => fun logger:format_otp_report/1,
+                 logger_formatter => #{title => "SUPERVISOR REPORT"}}).
 
 extract_child(Child) when is_list(Child#child.pid) ->
     [{nb_children, length(Child#child.pid)},
@@ -1489,6 +1491,9 @@ extract_child(Child) ->
      {child_type, Child#child.child_type}].
 
 report_progress(Child, SupName) ->
-    Progress = [{supervisor, SupName},
-		{started, extract_child(Child)}],
-    error_logger:info_report(progress, Progress).
+    ?LOG_INFO(#{label => {supervisor, progress},
+                report => [{supervisor, SupName},
+                           {started, extract_child(Child)}]},
+              #{domain => [ns_server],
+                report_cb => fun logger:format_otp_report/1,
+                logger_formatter => #{title => "PROGRESS REPORT"}}).
