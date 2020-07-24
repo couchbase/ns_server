@@ -18,6 +18,10 @@
 
 -include("cut.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -define(IRATE_INTERVAL, "1m").
 
 pre_70_stats_to_prom_query(StatSection, StatList) ->
@@ -127,3 +131,62 @@ default_stat_list("@query") ->
      query_requests_5000ms, query_result_count, query_result_size,
      query_selects, query_service_time, query_warnings];
 default_stat_list(_) -> all.
+
+
+-ifdef(TEST).
+pre_70_to_prom_query_test_() ->
+    Test = fun (Section, Stats, ExpectedQuery) ->
+               Name = lists:flatten(io_lib:format("~s: ~p", [Section, Stats])),
+               {Name,
+                fun () ->
+                    ?assertEqual(pre_70_stats_to_prom_query(Section, Stats),
+                                 list_to_binary(ExpectedQuery))
+                end}
+           end,
+    [Test("@system", all, "{instance=`ns_server`,type=`system`}"),
+     Test("@system", [], ""),
+     Test("@system-processes", all,
+          "{instance=`ns_server`,type=`system-processes`}"),
+     Test("@system-processes", [sysproc_cpu_utilization,sysproc_mem_resident],
+          "{name=~`sysproc_cpu_utilization|sysproc_mem_resident`,"
+          "instance=`ns_server`,type=`system-processes`}"),
+     Test("@query", all,
+          "irate({name=~`n1ql_errors|n1ql_invalid_requests|n1ql_request_time|"
+                        "n1ql_requests|n1ql_requests_1000ms|"
+                        "n1ql_requests_250ms|n1ql_requests_5000ms|"
+                        "n1ql_requests_500ms|n1ql_result_count|"
+                        "n1ql_result_size|n1ql_selects|n1ql_service_time|"
+                        "n1ql_warnings`,"
+                 "instance=`n1ql`,type=`n1ql`}["?IRATE_INTERVAL"]) or "
+          "{name=~`n1ql_active_requests|n1ql_queued_requests`,"
+           "instance=`n1ql`,type=`n1ql`}"),
+      Test("@query", [query_errors, query_active_requests, query_request_time],
+           "irate({name=~`n1ql_errors|n1ql_request_time`,instance=`n1ql`,"
+                  "type=`n1ql`}["?IRATE_INTERVAL"]) or "
+           "{name=~`n1ql_active_requests`,instance=`n1ql`,type=`n1ql`}")].
+
+prom_name_to_pre_70_name_test_() ->
+    Test = fun (Section, Json, ExpectedRes) ->
+               Name = lists:flatten(io_lib:format("~s: ~s", [Section, Json])),
+               Props = ejson:decode(Json),
+               {Name,
+                fun () ->
+                    ?assertEqual(prom_name_to_pre_70_name(Section, Props),
+                                 ExpectedRes)
+                end}
+           end,
+    [Test("@system", "{\"name\": \"sys_cpu_user_rate\"}",
+          {ok, cpu_user_rate}),
+     Test("@system-processes",
+          "{\"name\": \"sysproc_cpu_utilization\",\"proc\": \"ns_server\"}",
+          {ok, <<"ns_server/cpu_utilization">>}),
+     Test("@query", "{\"name\": \"n1ql_active_requests\"}",
+          {ok, query_active_requests}),
+     Test("@query", "{}",
+          {error, not_found}),
+     Test("@query", "{\"name\": \"unknown\"}",
+          {error, not_found}),
+     Test("@query", "{\"proc\": \"ns_server\"}",
+          {error, not_found})].
+
+-endif.
