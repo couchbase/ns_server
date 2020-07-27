@@ -52,6 +52,7 @@ function mnRolesGroupsAddDialogController(mnUserRolesService, $uibModalInstance,
     var roles = mnUserRolesService.packRolesToSend(vm.state.selectedRoles,
                                                    vm.state.selectedRolesConfigs);
 
+
     mnPromiseHelper(vm, mnUserRolesService.addGroup(vm.rolesGroup, roles, vm.isEditingMode), $uibModalInstance)
       .showGlobalSpinner()
       .catchErrors()

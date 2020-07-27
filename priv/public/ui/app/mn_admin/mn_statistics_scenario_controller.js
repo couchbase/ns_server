@@ -1,6 +1,6 @@
 export default mnScenarioDialogController;
 
-function mnScenarioDialogController($scope, mnStatisticsNewService, mnUserRolesService, $state, $document, $uibModal, mnStoreService) {
+function mnScenarioDialogController($scope, $rootScope, mnStatisticsNewService, mnUserRolesService, $state, $document, $uibModal, mnStoreService) {
   var vm = this;
 
   vm.editScenario = editScenario;
@@ -31,8 +31,10 @@ function mnScenarioDialogController($scope, mnStatisticsNewService, mnUserRolesS
       templateUrl: 'app/mn_admin/mn_statistics_scenario_delete.html',
     }).result.then(function () {
       mnStatisticsNewService.deleteScenario(scenarioID);
-      selectLastScenario();
-      mnUserRolesService.saveDashboard();
+      mnUserRolesService.saveDashboard().then(() => {
+        $rootScope.$broadcast("scenariosChanged");
+        selectLastScenario();
+      });
     });
   }
 
@@ -43,7 +45,7 @@ function mnScenarioDialogController($scope, mnStatisticsNewService, mnUserRolesS
   }
 
   function selectLastScenario() {
-    $scope.statisticsNewCtl.scenario.selected = mnStoreService.store("scenarios").last();
+    $scope.statisticsNewCtl.scenarioId = mnStoreService.store("scenarios").last().id;
     return $state.go("^.statistics", {
       scenario: mnStoreService.store("scenarios").last().id
     });
@@ -66,8 +68,10 @@ function mnScenarioDialogController($scope, mnStatisticsNewService, mnUserRolesS
       selectLastScenario();
     }
 
-    $document.triggerHandler("click");
-    clear();
-    mnUserRolesService.saveDashboard();
+    mnUserRolesService.saveDashboard().then(() => {
+      $rootScope.$broadcast("scenariosChanged");
+      $document.triggerHandler("click");
+      clear();
+    });
   }
 }

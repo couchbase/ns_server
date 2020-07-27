@@ -1,4 +1,5 @@
 import angular from "/ui/web_modules/angular.js";
+import {equals} from '/ui/web_modules/ramda.js';
 
 import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
 import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
@@ -54,8 +55,27 @@ function mnStatisticsChartsController($scope, $uibModal, mnStatisticsNewService,
   vm.deleteChart = deleteChart;
   vm.editChart = editChart;
   vm.openDetailedChartDialog = openDetailedChartDialog;
-  vm.chart = mnStoreService.store("charts").get($scope.chartID);
+  vm.getChart = getChart;
   vm.api = {};
+
+  $scope.$watch("statisticsNewCtl.chartsById[chartID]", function (a,b) {
+    if (b && !equals(a,b)) {
+      onItemChange();
+    }
+  })
+
+  function onItemChange() {
+    vm.reloadChartDirective = true;
+    $timeout(function () {
+      vm.reloadChartDirective = false;
+      $scope.mnStatsGroupsCtl.maybeShowItemsControls();
+    });
+  }
+
+  function getChart() {
+    return $scope.statisticsNewCtl.chartsById &&
+      $scope.statisticsNewCtl.chartsById[$scope.chartID];
+  }
 
   function deleteChart() {
     vm.showChartControls = false;
@@ -74,17 +94,13 @@ function mnStatisticsChartsController($scope, $uibModal, mnStatisticsNewService,
       templateUrl: 'app/mn_admin/mn_statistics_chart_builder.html',
       controller: 'mnStatisticsNewChartBuilderController as builderCtl',
       resolve: {
-        chart: mnHelper.wrapInFunction(vm.chart),
+        chart: mnHelper.wrapInFunction(vm.getChart()),
         group: mnHelper.wrapInFunction(group),
         scenario: mnHelper.wrapInFunction(scenario)
       }
     }).result.then(function () {
       mnUserRolesService.saveDashboard();
-      vm.reloadChartDirective = true;
-      $timeout(function () {
-        vm.reloadChartDirective = false;
-        $scope.mnStatsGroupsCtl.maybeShowItemsControls();
-      });
+      onItemChange();
     });
   }
 
@@ -95,7 +111,7 @@ function mnStatisticsChartsController($scope, $uibModal, mnStatisticsNewService,
       windowTopClass: "chart-overlay",
       resolve: {
         items: mnHelper.wrapInFunction($scope.mnStatsGroupsCtl.items),
-        chart: mnHelper.wrapInFunction(vm.chart)
+        chart: mnHelper.wrapInFunction(vm.getChart())
       }
     });
   }
@@ -116,7 +132,8 @@ function mnStatisticsGroupsController($scope, $uibModal, $timeout,
 
   vm.items = {};
   vm.enabledItems = {};
-  vm.group = mnStoreService.store("groups").get($scope.groupID);
+
+  vm.getGroup = getGroup;
 
   maybeShowItemsControls();
 
@@ -124,6 +141,11 @@ function mnStatisticsGroupsController($scope, $uibModal, $timeout,
   $scope.$watch("mnStatsGroupsCtl.items.xdcr", onItemChange);
   $scope.$watch("mnStatsGroupsCtl.items.fts", onItemChange);
   $scope.$watch("mnStatsGroupsCtl.items.kv", onItemChange);
+
+  function getGroup() {
+    return $scope.statisticsNewCtl.groupsById &&
+      $scope.statisticsNewCtl.groupsById[$scope.groupID];
+  }
 
   function onItemChange() {
     vm.reloadChartDirective = true;
@@ -134,7 +156,7 @@ function mnStatisticsGroupsController($scope, $uibModal, $timeout,
 
   function maybeShowItemsControls() {
     var items = {};
-    ((vm.group || {}).charts || []).forEach(function (chartID) {
+    ((vm.getGroup() || {}).charts || []).forEach(function (chartID) {
       var stats = mnStoreService.store("charts").get(chartID) ?
           mnStoreService.store("charts").get(chartID).stats : {};
       var chartStats = Object.keys(stats);
@@ -163,7 +185,7 @@ function mnStatisticsGroupsController($scope, $uibModal, $timeout,
   }
 
   function onGroupSubmit() {
-    vm.initName = vm.group.name;
+    vm.initName = vm.getGroup().name;
     mnUserRolesService.saveDashboard()
     hideGroupControls();
     vm.focusOnSubmit = true;
@@ -171,14 +193,14 @@ function mnStatisticsGroupsController($scope, $uibModal, $timeout,
 
   function onGroupFocus() {
     vm.showGroupControls = true;
-    vm.initName = vm.group.name;
+    vm.initName = vm.getGroup().name;
   }
 
   function onGroupNameBlur() {
     if (!vm.onControlClick) {
       vm.showGroupControls = false;
-      vm.group.name = vm.initName;
-      mnStoreService.store("groups").put(vm.group);
+      vm.getGroup().name = vm.initName;
+      mnStoreService.store("groups").put(vm.getGroup());
     }
   }
 
@@ -202,11 +224,11 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
   vm.zoom = $state.params.scenarioZoom;
   vm.node = $state.params.statsHostname;
   //selected scenario holder
-  vm.scenario = {};
   vm.openGroupDialog = openGroupDialog;
   vm.selectedBucket = $state.params.scenarioBucket;
   vm.onBucketChange = onBucketChange;
   vm.onSelectNode = onSelectNode;
+  vm.getSelectedScenario = getSelectedScenario;
 
   vm.openChartBuilderDialog = openChartBuilderDialog;
   vm.resetDashboardConfiguration = resetDashboardConfiguration;
@@ -219,29 +241,24 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
   function resetDashboardConfiguration() {
     return $uibModal.open({
       templateUrl: 'app/mn_admin/mn_statistics_reset_dialog.html'
-    }).result.then(function () {
-      mnStoreService.store("charts").clear();
-      mnStoreService.store("groups").clear();
-      mnStoreService.store("scenarios").clear();
-      mnStatisticsNewService.doAddPresetScenario();
-
-      vm.scenario.selected =
-        mnStoreService.store("scenarios").last();
-
-      $state.go("^.statistics", {
-        scenario: mnStoreService.store("scenarios").last().id
+    }).result
+      .then(() => mnUserRolesService.resetDashboard())
+      .then(() => {
+        vm.scenarioId =
+          mnStoreService.store("scenarios").last().id;
+        $state.go("^.statistics", {
+          scenario: mnStoreService.store("scenarios").last().id
+        });
+        $scope.$broadcast("scenariosChanged");
       });
-
-      return mnUserRolesService.saveDashboard();
-    });
   }
 
-  function openGroupDialog(scenario) {
+  function openGroupDialog() {
     $uibModal.open({
       templateUrl: 'app/mn_admin/mn_statistics_group.html',
       controller: 'mnGroupDialogController as groupDialogCtl',
       resolve: {
-        scenario: mnHelper.wrapInFunction(scenario)
+        scenarioId: mnHelper.wrapInFunction(vm.scenarioId)
       }
     }).result.then(function (group) {
       $location.hash('group-' + group.id);
@@ -277,9 +294,9 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
     });
   }
 
-  function onSelectScenario(scenario) {
+  function onSelectScenario(scenarioId) {
     $state.go('^.statistics', {
-      scenario: scenario.id,
+      scenario: scenarioId,
     });
   }
 
@@ -365,6 +382,10 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
     }
   }
 
+  function getSelectedScenario() {
+    return vm.scenariosById && vm.scenariosById[vm.scenarioId] || {};
+  }
+
   function activate() {
     initItemsDropdownSelect();
 
@@ -373,14 +394,33 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
 
     if ($scope.rbac.cluster.stats.read) {
       mnUserRolesService.getUserProfile().then(function (profile) {
-        vm.scenario.selected =
+        vm.scenarioId =
           $state.params.scenario ?
-          mnStoreService.store("scenarios").get($state.params.scenario) :
+          $state.params.scenario :
           mnStoreService.store("scenarios").share().find(function (item) {
             return item.name === "Cluster Overview";
-          }) || mnStoreService.store("scenarios").last();
-        vm.scenarios = mnStoreService.store("scenarios").share();
+          }).id || mnStoreService.store("scenarios").last().id
       });
+
+      function groupById(arr) {
+        return arr.reduce((acc, item) => {
+          acc[item.id] = item;
+          return acc;
+        }, {});
+      }
+
+      new mnPoller($scope, function () {
+        return mnUserRolesService.getUserProfile();
+      })
+        .setInterval(10000)
+        .subscribe(function () {
+          vm.scenarios = mnStoreService.store("scenarios").share();
+          vm.scenariosById = groupById(vm.scenarios);
+          vm.groupsById = groupById(mnStoreService.store("groups").share());
+          vm.chartsById = groupById(mnStoreService.store("charts").share());
+        })
+        .reloadOnScopeEvent("scenariosChanged")
+        .cycle();
     }
 
     new mnPoller($scope, function () {

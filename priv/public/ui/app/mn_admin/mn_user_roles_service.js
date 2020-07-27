@@ -4,6 +4,7 @@ import _ from "/ui/web_modules/lodash.js";
 import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
 import mnStoreService from "/ui/app/components/mn_store_service.js";
 import mnStatisticsNewService from "./mn_statistics_service.js";
+import mnStatsDesc from "./mn_statistics_description.js";
 
 export default "mnUserRolesService";
 
@@ -41,6 +42,7 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     putUserProfile: putUserProfile,
 
     saveDashboard: saveDashboard,
+    resetDashboard: resetDashboard,
     getSaslauthdAuth: getSaslauthdAuth,
     packRolesToSend: packRolesToSend,
     getRoleParams: getRoleParams
@@ -214,6 +216,28 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     });
   }
 
+  function resetDashboard() {
+    return getProfile().then(function (resp) {
+      var profile = resp.data;
+      mnStoreService.store("charts").clear();
+      mnStoreService.store("groups").clear();
+      mnStoreService.store("scenarios").clear();
+
+      mnStatisticsNewService.doAddPresetScenario();
+
+      profile.scenarios = mnStoreService.store("scenarios").share();
+      profile.groups = mnStoreService.store("groups").share();
+      profile.charts = mnStoreService.store("charts").share();
+
+
+      if (mnPoolDefault.export.compat.atLeast70) {
+        upgradeChartsNamesTo70(profile);
+      }
+
+      return putUserProfile(profile);
+    });
+  }
+
   function putUserProfile(data) {
     return $http.put("/settings/rbac/profiles/@self", JSON.stringify(data));
   }
@@ -229,6 +253,17 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     });
   }
 
+  function upgradeChartsNamesTo70(profile) {
+    profile.charts = profile.charts.map(chart => {
+      chart.stats = Object.keys(chart.stats)
+        .reduce((acc, stat65) => {
+          acc[mnStatsDesc.mapping65(stat65)] = true;
+          return acc;
+        }, {});
+      return chart;
+    });
+  }
+
   function getUserProfile() {
     return $q.all([
       getProfile(),
@@ -236,14 +271,17 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     ]).then(function (resp) {
       var profile = resp[0].data;
       var poolDefault = resp[1];
-
       if (profile.version) {
-        //example of how to perform upgrade
-        // if (profile.version < poolDefault.versions["70"]) {
-        //   //add fields for 70
-        //   profile.version = poolDefault.versions["70"];
-        // }
-
+        if (poolDefault.compat.atLeast70 && (profile.version < poolDefault.versions["70"])) {
+          //upgrade stat names to 70
+          upgradeChartsNamesTo70(profile);
+          return putUserProfile({
+            version: poolDefault.versions["70"],
+            scenarios: profile.scenarios,
+            groups: profile.groups,
+            charts: profile.charts
+          }).then(getUserProfile);
+        }
         mnStoreService.createStore("scenarios", {keyPath: "id", fill: profile.scenarios});
         mnStoreService.createStore("groups", {keyPath: "id", fill: profile.groups});
         mnStoreService.createStore("charts", {keyPath: "id", fill: profile.charts});

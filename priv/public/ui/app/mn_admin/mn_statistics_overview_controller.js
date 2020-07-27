@@ -111,7 +111,7 @@ function mnStatisticsOverviewController($scope, mnStatisticsNewService, mnStatis
         fullStatNames[objName] = prefix + '.' + objName;
     });
   }
-  extractFullStatNames(mnStatisticsDescriptionService.stats,'');
+  extractFullStatNames(mnStatisticsDescriptionService.getStats(),'');
 
   function updateCharts() {
     if (!vm.bucket)

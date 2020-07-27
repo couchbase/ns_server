@@ -320,15 +320,8 @@ function mnD3ServiceFactory() {
       this.onInit && this.onInit();
     }
     destroy() {
-      angular.element(this.tipBox.node()).off('mousemove', this.setMouseMoveEvent.bind(this));
-      angular.element(this.tipBox.node()).off('mousemove', this.drawTooltipThrottle);
-      angular.element(this.tipBox.node()).off('mouseout', this.hideTooltip.bind(this));
-      this.getLegends().nodes().forEach(function (node, i) {
-        angular.element(node).off('click', this.clickCB[i]);
-      }.bind(this));
-      this.tip.remove();
-      this.svg.remove();
-      this.legendsWrap.remove();
+      this.tip && this.tip.remove();
+      this.svg && this.svg.remove();
     }
     showEmptyContent() {
       super.showEmptyContent();

@@ -1,6 +1,8 @@
+import mnStatsDesc from "./mn_statistics_description.js";
+
 export default mnServersListItemDetailsController;
 
-function mnServersListItemDetailsController($scope, mnServersListItemDetailsService, mnPromiseHelper, mnStatisticsNewService, mnPermissions) {
+function mnServersListItemDetailsController($scope, mnServersListItemDetailsService, mnPromiseHelper, mnStatisticsNewService, mnPermissions, mnPoolDefault) {
   var vm = this;
 
   $scope.$watch('node', function (node) {
@@ -12,21 +14,39 @@ function mnServersListItemDetailsController($scope, mnServersListItemDetailsServ
     vm.tasks = mnServersListItemDetailsService.getNodeTasks(values[0], values[1]);
   });
 
+  let statsNames = [
+    '@index.index_memory_used',
+    '@fts.fts_num_bytes_used_ram',
+    '@cbas.cbas_heap_used',
+    '@cbas.cbas_disk_used'
+  ];
+
+  statsNames =
+    mnPoolDefault.export.compat.atLeast70 ? statsNames.map(mnStatsDesc.mapping65) : statsNames;
+  vm.getLatestStat =
+    mnPoolDefault.export.compat.atLeast70 ? getLatestStat70 : getLatestStat;
+
   mnStatisticsNewService.subscribeUIStatsPoller({
     node: $scope.node.hostname || "all",
     zoom: 3000,
     step: 1,
     bucket: mnPermissions.export.bucketNames['.stats!read'] &&
       mnPermissions.export.bucketNames['.stats!read'][0],
-    stats: ['@index.index_memory_used',
-            '@fts.fts_num_bytes_used_ram',
-            '@cbas.cbas_heap_used',
-            '@cbas.cbas_disk_used']
+    stats: statsNames
   }, $scope);
 
   $scope.$watch("mnUIStats", updateBarChartData);
 
   $scope.$watch("serversListItemDetailsCtl.server", updateBarChartData);
+
+  function getLatestStat(statName, stats) {
+    return stats.stats[statName] && stats.stats[statName][$scope.node.hostname];
+  }
+
+  function getLatestStat70(statName, stats) {
+    return stats.stats[statName] &&
+      stats.stats[statName][$scope.node.hostname].values.map(([_, v])=> v);
+  }
 
   function updateBarChartData() {
     if (!vm.server) {
@@ -67,18 +87,15 @@ function mnServersListItemDetailsController($scope, mnServersListItemDetailsServ
     vm.memoryUsages.push(
       mnServersListItemDetailsService.getBaseConfig(
         'index service used',
-        stats.stats['index_memory_used'] &&
-          stats.stats['index_memory_used'][$scope.node.hostname],
+        vm.getLatestStat(statsNames[0], stats),
         details.indexMemoryQuota*1024*1024, true),
       mnServersListItemDetailsService.getBaseConfig(
         'search service used',
-        stats.stats['fts_num_bytes_used_ram'] &&
-          stats.stats['fts_num_bytes_used_ram'][$scope.node.hostname],
+        vm.getLatestStat(statsNames[1], stats),
         details.ftsMemoryQuota*1024*1024, true),
       mnServersListItemDetailsService.getBaseConfig(
         'analytics service used',
-        stats.stats['cbas_heap_used'] &&
-          stats.stats['cbas_heap_used'][$scope.node.hostname],
+        vm.getLatestStat(statsNames[2], stats),
         details.cbasMemoryQuota*1024*1024, true)
     );
 
@@ -86,11 +103,11 @@ function mnServersListItemDetailsController($scope, mnServersListItemDetailsServ
       //{name: 'couch_views_actual_disk_size', label: "views"},
       //{name: 'index/disk_size', label: "indexes"},
       //{name: 'fts/num_bytes_used_disk', label: "analytics"},
-      {name: 'cbas_disk_used', label: "analytics service"}
+      {name: statsNames[3], label: "analytics service"}
     ]).forEach(function (stat, i) {
       vm.diskUsages.push(mnServersListItemDetailsService.getBaseConfig(
         stat.label,
-        stats.stats[stat.name] && stats.stats[stat.name][$scope.node.hostname],
+        vm.getLatestStat(stat.name, stats),
         hdd.free))
     });
 

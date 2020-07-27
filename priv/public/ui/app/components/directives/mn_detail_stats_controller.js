@@ -2,6 +2,7 @@ import mnStatisticsNewService from "/ui/app/mn_admin/mn_statistics_service.js";
 import mnStatisticsDescriptionService from "/ui/app/mn_admin/mn_statistics_description_service.js";
 import mnStatisticsChart from "/ui/app/mn_admin/mn_statistics_chart_directive.js";
 import mnHelper from "/ui/app/components/mn_helper.js";
+import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
 
 export default 'mnDetailStatsModule';
 
@@ -10,7 +11,8 @@ angular
     mnStatisticsNewService,
     mnStatisticsDescriptionService,
     mnStatisticsChart,
-    mnHelper
+    mnHelper,
+    mnPoolDefault
   ])
   .component('mnDetailStats', {
     bindings: {
@@ -25,13 +27,12 @@ angular
     controller: controller
   });
 
-function controller(mnStatisticsNewService, mnStatisticsDescriptionService, mnHelper, $scope) {
+function controller(mnStatisticsNewService, mnStatisticsDescriptionService, mnHelper, $scope, mnPoolDefault) {
   var vm = this;
   vm.zoom = "minute";
   vm.onSelectZoom = onSelectZoom;
   vm.items = {};
   vm.$onInit = activate;
-  vm.scope = $scope;
 
   function onSelectZoom() {
     activate();
@@ -44,13 +45,16 @@ function controller(mnStatisticsNewService, mnStatisticsDescriptionService, mnHe
   }
 
   function activate() {
+    vm.scope = $scope;
     mnStatisticsNewService.heartbeat.setInterval(
       mnStatisticsNewService.defaultZoomInterval(vm.zoom));
-    vm.items[vm.service] = vm.prefix + "/" + vm.itemId + "/";
+    vm.items[vm.service] =
+      mnPoolDefault.export.compat.atLeast70 ? vm.itemId : (vm.prefix + "/" + vm.itemId + "/")
+    var stats = mnStatisticsDescriptionService.getStats();
     vm.charts = Object
-      .keys(mnStatisticsDescriptionService.stats["@" + vm.service + "-"]["@items"])
+      .keys(stats["@" + vm.service + "-"]["@items"])
       .filter(function (key) {
-        return mnStatisticsDescriptionService.stats["@" +vm.service+"-"]["@items"][key];
+        return stats["@" + vm.service + "-"]["@items"][key];
       })
       .map(function (stat) {
         return {

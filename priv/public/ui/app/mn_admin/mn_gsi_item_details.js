@@ -1,4 +1,5 @@
 import _ from "/ui/web_modules/lodash.js";
+import mnStatsDesc from "./mn_statistics_description.js";
 
 export {mnGsiItemController, mnGsiItemStatsController, mnGsiItemDetails};
 
@@ -25,17 +26,30 @@ function mnGsiItemStatsController($scope) {
   }
 }
 
-function mnGsiItemController($scope, mnStatisticsNewService) {
+function mnGsiItemController($scope, mnStatisticsNewService, mnPoolDefault) {
   var vm = this;
+
+  var stats = mnPoolDefault.export.compat.atLeast70 ? [
+    "@index-.@items.index_num_requests", "@index-.@items.index_resident_percent",
+    "@index-.@items.index_items_count", "@index-.@items.index_data_size",
+    "@index-.@items.index_num_docs_pending", "@index-.@items.index_num_docs_queued"
+  ] : [
+    "@index-.@items.num_requests", "@index-.@items.index_resident_percent",
+    "@index-.@items.items_count", "@index-.@items.data_size",
+    "@index-.@items.num_docs_pending+queued"
+  ];
+  var getStatSamples = mnPoolDefault.export.compat.atLeast70 ?
+      getStatSamples70 : getStatSamplesPre70;
 
   mnStatisticsNewService.subscribeUIStatsPoller({
     bucket: $scope.row.bucket,
     node: $scope.nodeName || "all",
     zoom: 3000,
     step: 1,
-    stats: (['num_requests', 'index_resident_percent', 'items_count', 'data_size', 'num_docs_pending+queued']).map(name => "@index-.@items." + name),
+    stats: stats,
     items: {
-      index: "index/" + $scope.row.index + "/"
+      index: mnPoolDefault.export.compat.atLeast70 ?
+        $scope.row.index : ("index/" + $scope.row.index + "/")
     }
   }, $scope);
 
@@ -46,17 +60,25 @@ function mnGsiItemController($scope, mnStatisticsNewService) {
     return 'index/' + $scope.row.index + '/' + statName;
   }
 
-  function hasNoValue(statName) {
-    var value = getStatSamples(statName);
-    return parseFloat(value) !== value; //is not Numeric?
+  function doGetStatSamples70(statName) {
+    var stats = $scope.mnUIStats && $scope.mnUIStats.stats;
+    return stats && stats[statName] && stats[statName] &&
+      stats[statName][$scope.nodeName || "aggregate"] &&
+      Number(stats[statName][$scope.nodeName || "aggregate"]
+             .values.slice().reverse().find(stat => stat != null)[1]);
   }
 
-  function hasValue(statName) {
-    var value = getStatSamples(statName);
-    return parseFloat(value) === value;
+  function getStatSamples70(statName) {
+    switch (statName) {
+    case "num_docs_pending+queued":
+      return doGetStatSamples70("@index-.@items.index_num_docs_pending") +
+        doGetStatSamples70("@index-.@items.index_num_docs_queued");
+    default:
+      return doGetStatSamples70(mnStatsDesc.mapping65("@index-.@items." + statName));
+    }
   }
 
-  function getStatSamples(statName) {
+  function getStatSamplesPre70(statName) {
     return $scope.mnUIStats &&
       $scope.mnUIStats.stats[getIndexStatName(statName)] &&
       $scope.mnUIStats.stats[getIndexStatName(statName)][$scope.nodeName || "aggregate"]
@@ -64,13 +86,14 @@ function mnGsiItemController($scope, mnStatisticsNewService) {
   }
 
   function updateValues() {
-    (['num_requests', 'index_resident_percent', 'items_count', 'data_size','num_docs_pending+queued'])
+    (['num_requests', 'index_resident_percent', 'items_count', 'data_size', 'num_docs_pending+queued'])
       .forEach(function (statName) {
-        vm['has_' + statName] = hasValue(statName);
-        vm['has_no_' + statName] = hasNoValue(statName);
+        var value = getStatSamples(statName);
+        vm['has_' + statName] = parseFloat(value) === value;
+        vm['has_no_' + statName] = parseFloat(value) !== value;
         if (vm['has_' + statName]) {
           //set value to the row, so we can use it for sorting later
-          $scope.row[statName] = getStatSamples(statName);
+          $scope.row[statName] = value;
         }
       });
   }

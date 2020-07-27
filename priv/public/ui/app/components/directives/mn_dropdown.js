@@ -76,7 +76,7 @@ function mnDropdownDirective($document) {
 
     function closeMenu() {
       $scope.showMenu = false;
-      $scope.onClose && $scope.onClose($scope.model && $scope.model.selected);
+      $scope.onClose && $scope.onClose($scope.model);
     }
 
     function openMenu() {
@@ -85,8 +85,8 @@ function mnDropdownDirective($document) {
 
     function onItemClick(item) {
       $timeout(function () {
-        $scope.model && ($scope.model.selected = item);
-        $scope.onSelect && $scope.onSelect({scenario: item});
+        $scope.model && ($scope.model = item);
+        $scope.onSelect && $scope.onSelect({scenarioId: item});
         toggleMenu();
       });
     }

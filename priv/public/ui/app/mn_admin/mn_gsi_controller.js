@@ -1,5 +1,6 @@
 import angular from "/ui/web_modules/angular.js";
 import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
+import {format} from "/ui/web_modules/d3-format.js";
 
 import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnHelper from "/ui/app/components/mn_helper.js";
@@ -18,7 +19,7 @@ import mnStatisticsNewService from "./mn_statistics_service.js";
 import mnGsiService from "./mn_gsi_service.js";
 
 import {mnGsiItemController, mnGsiItemStatsController, mnGsiItemDetails} from "./mn_gsi_item_details.js";
-import mnFooterStatsController from "./mn_footer_stats_controller.js";
+import mnFooterStatsController from "./mn_gsi_footer_controller.js";
 import mnGsiTableDirective from "./mn_gsi_table_directive.js";
 
 export default 'mnGsi';
@@ -43,7 +44,7 @@ angular
   ])
   .config(configure)
   .controller('mnGsiController', mnGsiController)
-  .controller('mnFooterStatsController', mnFooterStatsController)
+  .controller('mnGsiFooterController', mnFooterStatsController)
   .controller('mnGsiItemController', mnGsiItemController)
   .controller('mnGsiItemStatsController', mnGsiItemStatsController)
   .directive('mnGsiItemDetails', mnGsiItemDetails)
@@ -56,6 +57,10 @@ function configure($stateProvider) {
       params: {
         openedIndex: {
           array: true,
+          dynamic: true
+        },
+        footerBucket: {
+          value: null,
           dynamic: true
         }
       },
@@ -72,8 +77,10 @@ function configure($stateProvider) {
     });
 }
 
+
 function mnGsiController($scope, mnGsiService, mnPoller, $state) {
   var vm = this;
+
   vm.setIndexesView = setIndexesView;
 
   activate();
@@ -93,4 +100,5 @@ function mnGsiController($scope, mnGsiService, mnPoller, $state) {
       .reloadOnScopeEvent("indexStatusURIChanged")
       .cycle();
   }
+
 }

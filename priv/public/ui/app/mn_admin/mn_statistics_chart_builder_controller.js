@@ -22,7 +22,7 @@ function mnFormatStatsSections() {
 }
 
 
-function mnStatisticsNewChartBuilderController(mnStatisticsNewService, chart, group, scenario, $uibModalInstance, mnStatisticsDescriptionService, $state, mnFormatStatsSectionsFilter, mnFormatServicesFilter, mnStoreService) {
+function mnStatisticsNewChartBuilderController($rootScope, mnStatisticsNewService, chart, group, scenario, $uibModalInstance, mnStatisticsDescriptionService, $state, mnFormatStatsSectionsFilter, mnFormatServicesFilter, mnStoreService, mnUserRolesService) {
   var vm = this;
   vm.isEditing = !!chart;
   vm.create = create;
@@ -38,8 +38,8 @@ function mnStatisticsNewChartBuilderController(mnStatisticsNewService, chart, gr
   vm.maybeDisableField = maybeDisableField;
   vm.filterStats = filterStats;
   vm.selectTab = selectTab;
-  vm.statsDesc = mnStatisticsDescriptionService.stats;
-  vm.kvGroups = mnStatisticsDescriptionService.kvGroups;
+  vm.statsDesc = mnStatisticsDescriptionService.getStats();
+  vm.kvGroups = mnStatisticsDescriptionService.getKvGroups();
   vm.getSelectedStats = getSelectedStats;
   vm.getSelectedStatsLength = getSelectedStatsLength;
   vm.formatGroupLabel = formatGroupLabel;
@@ -218,7 +218,10 @@ function mnStatisticsNewChartBuilderController(mnStatisticsNewService, chart, gr
     } else {
       toGroup.charts.push(mnStoreService.store("charts").add(chart).id);
     }
-    $uibModalInstance.close();
+    mnUserRolesService.saveDashboard().then(() => {
+      $rootScope.$broadcast("scenariosChanged");
+      $uibModalInstance.close();
+    });
   }
 
 }

@@ -1,6 +1,6 @@
 export default mnGroupDialogController;
 
-function mnGroupDialogController($uibModalInstance, mnUserRolesService, mnPromiseHelper, scenario, mnStoreService) {
+function mnGroupDialogController($rootScope, $uibModalInstance, mnUserRolesService, mnPromiseHelper, scenarioId, mnStoreService) {
   var vm = this;
   vm.group = {
     name: "",
@@ -13,12 +13,16 @@ function mnGroupDialogController($uibModalInstance, mnUserRolesService, mnPromis
 
   function submit() {
     var group = mnStoreService.store("groups").add(vm.group);
-    scenario.groups.push(group.id);
+    mnStoreService.store("scenarios")
+      .share()
+      .find(scenario => scenario.id === scenarioId)
+      .groups.push(group.id);
 
     mnPromiseHelper(vm, mnUserRolesService.saveDashboard())
       .showGlobalSpinner()
       .showGlobalSuccess("Group added successfully!")
       .onSuccess(function () {
+        $rootScope.$broadcast("scenariosChanged");
         $uibModalInstance.close(group);
       });
   }

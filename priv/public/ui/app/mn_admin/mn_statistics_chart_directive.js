@@ -11,6 +11,8 @@ import mnD3Service from "./mn_d3_service.js";
 import mnStatisticsNewService from "./mn_statistics_service.js";
 import mnMultiChartDirective from "./mn_multi_chart_directive.js";
 
+import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
+
 export default "mnStatisticsChart";
 
 angular
@@ -20,11 +22,12 @@ angular
     mnHelper,
     mnD3Service,
     mnStatisticsNewService,
+    mnPoolDefault
   ])
   .directive("mnStatisticsChart", mnStatisticsNewChartDirective)
   .directive("mnMultiChart", mnMultiChartDirective);
 
-function mnStatisticsNewChartDirective(mnStatisticsNewService, mnPrepareQuantityFilter, $state, mnTruncateTo3DigitsFilter, mnHelper) {
+function mnStatisticsNewChartDirective(mnStatisticsNewService, mnPrepareQuantityFilter, $state, mnTruncateTo3DigitsFilter, mnHelper, mnPoolDefault) {
   return {
     restrict: 'AE',
     templateUrl: 'app/mn_admin/mn_statistics_chart_directive.html',
@@ -213,61 +216,37 @@ function mnStatisticsNewChartDirective(mnStatisticsNewService, mnPrepareQuantity
       }
 
       var chartData = [];
+
       if ($scope.config.specificStat) {
         var descPath = Object.keys($scope.config.stats)[0];
-        var statName = Object.keys(stats.stats)[0];
         var desc = mnStatisticsNewService.readByPath(descPath);
-        if (desc ) {
-          (($scope.node == "all") ?
-           Object.keys(stats.stats[statName] || {}) : ([$scope.node]))
-            .forEach(function (nodeName) {
-              var nodeStat = stats.stats[statName][nodeName];
-              nodeStat = nodeStat.map(function (v) {
-                return (v === null) ? undefined : v;
-              });
-              chartData.push({
-                type: 'line',
-                unit: desc.unit,
-                max: d3Max(nodeStat || []) || 1,
-                min: d3Min(nodeStat || []) || 0,
-                yAxis: units[desc.unit],
-                key: nodeName,
-                values: stats.timestamps.map(function (v, i) {
-                  return [v, nodeStat[i]];
-                })
-              });
-            });
+        if (!desc) {
+          return;
         }
+        var statName = Object.keys(stats.stats)[0];
+        var nodes = ($scope.node == "all") ?
+            Object.keys(stats.stats[statName] || {}) : [$scope.node];
+
+        nodes.forEach(nodeName =>
+                      chartData.push(
+                        mnStatisticsNewService.buildChartConfig(
+                          stats, statName, nodeName, nodeName, desc.unit, units[desc.unit])));
       } else {
-        Object.keys($scope.config.stats).forEach(function (descPath, i) {
+        Object.keys($scope.config.stats).forEach(function (descPath) {
           var desc = mnStatisticsNewService.readByPath(descPath);
           if (!desc) {
             return;
           }
-          var statName = mnStatisticsNewService
-              .descriptionPathToStatName(descPath, $scope.items);
-          var stat;
-          if (stats.stats[statName]) {
-            stat = stats.stats[statName][$scope.node == "all" ? "aggregate" : $scope.node];
-          } else {
-            stat = [];
-          }
-          stat = stat.map(function (v) {
-            return (v === null) ? undefined : v;
-          });
-          chartData.push({
-            type: 'line',
-            unit: desc.unit,
-            max: d3Max(stat) || 1,
-            min: d3Min(stat) || 0,
-            yAxis: units[desc.unit],
-            key: desc.title,
-            values: stats.timestamps.map(function (v, i) {
-              return [v, stat[i]];
-            })
-          });
+
+          var statName =
+              mnStatisticsNewService.descriptionPathToStatName(descPath, $scope.items);
+          chartData.push(
+            mnStatisticsNewService.buildChartConfig(stats, statName, $scope.node,
+                                                    desc.title, desc.unit, units[desc.unit]));
+
         });
       }
+
       if ($scope.chartData) {
         $scope.chartData.forEach(function (v, i) {
           if (!chartData[i]) {

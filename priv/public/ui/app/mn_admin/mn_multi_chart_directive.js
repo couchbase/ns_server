@@ -32,7 +32,7 @@ function mnMultiChartDirective($window, mnD3Service) {
     $scope.$watch("data", chart.updateData.bind(chart));
     $scope.$on("$destroy", function () {
       angular.element($window).off('resize', chart.throttledResize);
-      chart.destroy.bind(chart);
+      chart.destroy();
     });
 
     if ($scope.api) {
@@ -59,7 +59,7 @@ function mnMultiChartDirective($window, mnD3Service) {
 
       $scope.$on("$destroy", function () {
         angular.element($window).off('resize', chartF.throttledResize);
-        chartF.destroy.bind(chartF);
+        chartF.destroy();
       });
     }
 
