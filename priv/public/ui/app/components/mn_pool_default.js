@@ -82,7 +82,8 @@ function mnPoolDefaultFactory(mnPools, mnHelper, $http, $q, $window, $location, 
         atLeast55: poolDefault.thisNode.clusterCompatibility >= version55,
         atLeast65: poolDefault.thisNode.clusterCompatibility >= version65,
         atLeast66: poolDefault.thisNode.clusterCompatibility >= version66,
-        atLeast70: poolDefault.thisNode.clusterCompatibility >= version70
+        // atLeast70: poolDefault.thisNode.clusterCompatibility >= version70
+
       };
       poolDefault.versions = {
         "50": version50,

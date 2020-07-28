@@ -66,7 +66,8 @@ function mnStatisticsNewChartDirective(mnStatisticsNewService, mnPrepareQuantity
       mnStatisticsNewService.subscribeUIStatsPoller({
         bucket: $scope.bucket,
         node: $scope.node || "all",
-        stats: mnStatisticsNewService.descriptionPathsToStatNames($scope.config, $scope.items),
+        stats: $scope.config.stats,
+        items: $scope.items,
         zoom: $scope.zoom,
         specificStat: $scope.config.specificStat
       }, $scope);

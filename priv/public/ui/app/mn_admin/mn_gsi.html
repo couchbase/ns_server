@@ -71,7 +71,7 @@
     You have no GSI indexes yet.
   </div>
 
-  <div ng-init="stats = ['index_memory_quota','index_memory_used','index_remaining_ram','index_ram_percent','index/num_rows_returned','index/fragmentation','index/data_size','index/disk_size']">
+  <div ng-init="stats = ['@index.index_memory_quota','@index.index_memory_used','@index.index_remaining_ram','@index.index_ram_percent','@index-.index/num_rows_returned','@index-.index/fragmentation','@index-.index/data_size','@index-.index/disk_size']">
   <footer
      class="footer-indexes"
      ng-if="gsiCtl.state.indexes.length && rbac.bucketNames['.stats!read'].length"

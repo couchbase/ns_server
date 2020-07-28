@@ -18,7 +18,10 @@ function mnServersListItemDetailsController($scope, mnServersListItemDetailsServ
     step: 1,
     bucket: mnPermissions.export.bucketNames['.stats!read'] &&
       mnPermissions.export.bucketNames['.stats!read'][0],
-    stats: ['index_memory_used','fts_num_bytes_used_ram','cbas_heap_used','cbas_disk_used']
+    stats: ['@index.index_memory_used',
+            '@fts.fts_num_bytes_used_ram',
+            '@cbas.cbas_heap_used',
+            '@cbas.cbas_disk_used']
   }, $scope);
 
   $scope.$watch("mnUIStats", updateBarChartData);

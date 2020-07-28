@@ -226,8 +226,8 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
     return (maybeItem || "") + splitted[splitted.length - 1];
   }
 
-  function descriptionPathsToStatNames(chartConfig, items) {
-    return Object.keys(chartConfig.stats).map(function (descPath) {
+  function descriptionPathsToStatNames(stats, items) {
+    return (Array.isArray(stats) ? stats : Object.keys(stats)).map(function (descPath) {
       return descriptionPathToStatName(descPath, items);
     });
   }
@@ -259,6 +259,8 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
     if (config.node !== "all") {
       config.nodes = [config.node];
     }
+
+    config.stats = descriptionPathsToStatNames(config.stats, config.items);
 
     _.difference(Object.keys(config),
                  ["bucket","stats","startTS","endTS","step","nodes","aggregate"])

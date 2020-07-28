@@ -33,8 +33,10 @@ function mnGsiItemController($scope, mnStatisticsNewService) {
     node: $scope.nodeName || "all",
     zoom: 3000,
     step: 1,
-    stats: (['num_requests', 'index_resident_percent', 'items_count', 'data_size', 'num_docs_pending+queued'])
-      .map(getIndexStatName)
+    stats: (['num_requests', 'index_resident_percent', 'items_count', 'data_size', 'num_docs_pending+queued']).map(name => "@index-.@items." + name),
+    items: {
+      index: "index/" + $scope.row.index + "/"
+    }
   }, $scope);
 
   $scope.$watch("mnUIStats", updateValues);
