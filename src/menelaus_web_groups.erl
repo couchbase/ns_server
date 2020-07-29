@@ -93,9 +93,8 @@ build_replacement_groups(Groups, ParsedGroups) ->
 finish_handle_server_groups_put(Req, ReplacementGroups, RawGroups) ->
     TXNRV = ns_config:run_txn(
               fun (Cfg, SetFn) ->
-                      RebalancerPid = ns_config:search(Cfg, rebalancer_pid, undefined),
-                      case RebalancerPid of
-                          undefined ->
+                      case rebalance:running(Cfg) of
+                          false ->
                               {value, NowRawGroups} = ns_config:search(Cfg, server_groups),
                               case NowRawGroups =:= RawGroups of
                                   true ->
@@ -103,7 +102,7 @@ finish_handle_server_groups_put(Req, ReplacementGroups, RawGroups) ->
                                   _ ->
                                       {abort, retry}
                               end;
-                          _ ->
+                          true ->
                               {abort, {error, rebalance_running}}
                       end
               end),

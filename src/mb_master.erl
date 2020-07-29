@@ -389,8 +389,8 @@ candidate(info, {heartbeat, NodeInfo, master, _H},
                     false ->
                         State#state{last_heard=erlang:monotonic_time(), master=Node};
                     true ->
-                        case ns_config:search(rebalance_status) of
-                            {value, running} ->
+                        case rebalance:status() of
+                            running ->
                                 ale:info(?USER_LOGGER,
                                          "Candidate got master heartbeat from "
                                          "node ~p which has lower priority. "

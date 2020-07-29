@@ -643,7 +643,7 @@ check_add_possible(Body) ->
                   <<"Adding nodes to not provisioned nodes is not allowed.">>,
                   system_not_provisioned};
         true ->
-            case ns_orchestrator:is_rebalance_running() of
+            case rebalance:running() of
                 true ->
                     Msg = <<"Node addition is disallowed while rebalance "
                             "is in progress">>,

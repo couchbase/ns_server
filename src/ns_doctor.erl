@@ -365,7 +365,7 @@ maybe_refresh_tasks_version(State) ->
           end, new_hash(), Nodes),
 
     Buckets = ns_bucket:get_bucket_names(),
-    RebalanceStatus = ns_config:read_key_fast(rebalance_status_uuid, undefined),
+    RebalanceStatus = rebalance:status_uuid(),
     RecoveryStatus = ns_orchestrator:is_recovery_running(),
 
     FinalHash = final_hash(add_hash({Buckets,
@@ -795,12 +795,9 @@ jsonify_rebalance_type(T) ->
     T.
 
 do_build_rebalance_task(Timeout) ->
-    case ns_config:search(rebalance_status_uuid) of
-        false -> [];
-        {value, undefined} -> [];
-        {value, Id} -> [{statusId, Id}]
-    end ++
-        case ns_orchestrator:rebalance_progress(Timeout) of
+    [{statusId, Id} || Id <- [rebalance:status_uuid()],
+                       Id =/= undefined] ++
+        case rebalance:progress(Timeout) of
             {running, PerNode} ->
                 DetailedProgress = get_detailed_progress(),
                 RebalanceInfo =
@@ -810,9 +807,7 @@ do_build_rebalance_task(Timeout) ->
                     end,
 
                 [{type, rebalance},
-                 {subtype,
-                  jsonify_rebalance_type(
-                    ns_config:read_key_fast(rebalance_type, rebalance))},
+                 {subtype, jsonify_rebalance_type(rebalance:type())},
                  {recommendedRefreshPeriod, 0.25},
                  {status, running},
                  {progress, case lists:foldl(fun ({_, Progress}, {Total, Count}) ->
@@ -840,11 +835,7 @@ do_build_rebalance_task(Timeout) ->
                  {status, notRunning},
                  {statusIsStale, FullProgress =/= not_running},
                  {masterRequestTimedOut, (FullProgress =:= {error, timeout})}
-                 | case ns_config:search(rebalance_status) of
-                       {value, {none, ErrorMessage}} ->
-                           [{errorMessage, iolist_to_binary(ErrorMessage)}];
-                       _ -> []
-                   end] ++ ReportURI
+                 | menelaus_web_cluster:get_rebalance_error()] ++ ReportURI
         end.
 
 build_orphan_buckets_tasks(Buckets, NodesDict) ->

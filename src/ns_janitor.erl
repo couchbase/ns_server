@@ -25,7 +25,6 @@
 -endif.
 
 -export([cleanup/2,
-         reset_rebalance_status/1,
          cleanup_apply_config/4,
          check_server_list/2]).
 
@@ -368,23 +367,6 @@ data_loss_possible(VBucket, Chain, States) ->
             false
     end.
 
-reset_rebalance_status(Fn) ->
-    Fun = fun ({rebalance_status, Value}) ->
-                  case Value of
-                      running ->
-                          NewValue = Fn(),
-                          {update, {rebalance_status, NewValue}};
-                      _ ->
-                          skip
-                  end;
-              ({rebalancer_pid, Pid}) when is_pid(Pid) ->
-                  {update, {rebalancer_pid, undefined}};
-              (_Other) ->
-                  skip
-          end,
-
-    ok = ns_config:update(Fun).
-
 maybe_reset_rebalance_status(Options) ->
     case proplists:get_bool(consider_resetting_rebalance_status, Options) of
         true ->
@@ -394,20 +376,19 @@ maybe_reset_rebalance_status(Options) ->
     end.
 
 maybe_reset_rebalance_status() ->
-    Status = ns_orchestrator:rebalance_progress(),
-    case Status of
+    case rebalance:running() of
         %% if rebalance is not actually running according to our
         %% orchestrator, we'll consider checking config and seeing if
         %% we should unmark is at not running
-        not_running ->
-            reset_rebalance_status(
+        false ->
+            rebalance:reset_status(
               fun () ->
                       ale:info(?USER_LOGGER,
                                "Resetting rebalance status "
                                "since it's not really running"),
                       {none, <<"Rebalance stopped by janitor.">>}
               end);
-        _ ->
+        true ->
             ok
     end.
 

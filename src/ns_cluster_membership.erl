@@ -38,9 +38,6 @@
          failover/2,
          re_failover/1,
          system_joinable/0,
-         start_rebalance/3,
-         stop_rebalance/1,
-         get_rebalance_status/0,
          is_balanced/0,
          get_recovery_type/2,
          update_recovery_type/2,
@@ -131,12 +128,6 @@ get_node_server_group_inner(Node, [SG | Rest]) ->
 system_joinable() ->
     ns_node_disco:nodes_wanted() =:= [node()].
 
-get_rebalance_status() ->
-    ns_orchestrator:rebalance_progress().
-
-start_rebalance(KnownNodes, EjectedNodes, DeltaRecoveryBuckets) ->
-    ns_orchestrator:start_rebalance(KnownNodes, EjectedNodes, DeltaRecoveryBuckets).
-
 activate(Nodes) ->
     ns_config:set([{{node, Node, membership}, active} ||
                       Node <- Nodes]).
@@ -148,39 +139,6 @@ deactivate(Nodes) ->
 is_newly_added_node(Node) ->
     get_cluster_membership(Node) =:= inactiveAdded andalso
         get_recovery_type(ns_config:latest(), Node) =:= none.
-
-is_stop_rebalance_safe() ->
-    case ns_config:search(rebalancer_pid) of
-        false ->
-            true;
-        {value, undefined} ->
-            true;
-        {value, Pid} ->
-            PidNode = node(Pid),
-            MasterNode = mb_master:master_node(),
-            PidNode =:= MasterNode
-    end.
-
-stop_rebalance(AllowUnsafe) ->
-    case AllowUnsafe of
-        true ->
-            stop_rebalance();
-        false ->
-            stop_rebalance_if_safe()
-    end.
-
-stop_rebalance() ->
-    ns_orchestrator:stop_rebalance().
-
-stop_rebalance_if_safe() ->
-    %% NOTE: this is inherently raceful. But race is tiny and largely
-    %% harmless. So we KISS instead.
-    case is_stop_rebalance_safe() of
-        false ->
-            unsafe;
-        _ ->
-            stop_rebalance()
-    end.
 
 is_balanced() ->
     not ns_orchestrator:needs_rebalance().

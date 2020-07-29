@@ -43,7 +43,8 @@
          handle_re_add_node/1,
          handle_re_failover/1,
          handle_stop_rebalance/1,
-         handle_set_recovery_type/1]).
+         handle_set_recovery_type/1,
+         get_rebalance_error/0]).
 
 -import(menelaus_util,
         [reply_json/2,
@@ -809,8 +810,7 @@ handle_rebalance(Req) ->
 do_handle_rebalance(Req, KnownNodesS, EjectedNodesS, DeltaRecoveryBuckets) ->
     EjectedNodes = [list_to_existing_atom(N) || N <- EjectedNodesS],
     KnownNodes = [list_to_existing_atom(N) || N <- KnownNodesS],
-    case ns_cluster_membership:start_rebalance(KnownNodes,
-                                               EjectedNodes, DeltaRecoveryBuckets) of
+    case rebalance:start(KnownNodes, EjectedNodes, DeltaRecoveryBuckets) of
         already_balanced ->
             reply(Req, 200);
         in_progress ->
@@ -831,7 +831,7 @@ do_handle_rebalance(Req, KnownNodesS, EjectedNodesS, DeltaRecoveryBuckets) ->
     end.
 
 handle_rebalance_progress(_PoolId, Req) ->
-    case ns_cluster_membership:get_rebalance_status() of
+    case rebalance:progress() of
         {running, PerNode} ->
             PerNodeJson = [{atom_to_binary(Node, latin1),
                             {struct, [{progress, Progress}]}}
@@ -839,17 +839,15 @@ handle_rebalance_progress(_PoolId, Req) ->
             Status = [{status, <<"running">>} | PerNodeJson],
             reply_json(Req, {struct, Status}, 200);
         not_running ->
-            Status = case ns_config:search(rebalance_status) of
-                         {value, {none, ErrorMessage}} ->
-                             [{status, <<"none">>},
-                              {errorMessage, iolist_to_binary(ErrorMessage)}];
-                         _ ->
-                             [{status, <<"none">>}]
-                     end,
+            Status = [{status, <<"none">>} | get_rebalance_error()],
             reply_json(Req, {struct, Status}, 200);
         {error, timeout} = Err ->
             reply_json(Req, {[Err]}, 503)
     end.
+
+get_rebalance_error() ->
+    [{errorMessage, iolist_to_binary(ErrorMessage)} ||
+        {none, ErrorMessage} <- [rebalance:status()]].
 
 handle_stop_rebalance(Req) ->
     validator:handle(handle_stop_rebalance(Req, _),
@@ -857,7 +855,7 @@ handle_stop_rebalance(Req) ->
 
 handle_stop_rebalance(Req, Params) ->
     AllowUnsafe = proplists:get_value(allowUnsafe, Params, false),
-    case ns_cluster_membership:stop_rebalance(AllowUnsafe) of
+    case rebalance:stop(AllowUnsafe) of
         unsafe ->
             reply_text(Req,
                        "Cannot communicate to the orchestrator node. "

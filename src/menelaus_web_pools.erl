@@ -235,7 +235,7 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
     {struct, lists:flatten(PropList)}.
 
 build_rebalance_params(Id, UUID) ->
-    RebalanceStatus = case ns_orchestrator:is_rebalance_running() of
+    RebalanceStatus = case rebalance:running() of
                           true ->
                               <<"running">>;
                           _ ->

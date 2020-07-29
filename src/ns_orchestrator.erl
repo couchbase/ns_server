@@ -52,13 +52,10 @@
          try_autofailover/1,
          needs_rebalance/0,
          request_janitor_run/1,
-         rebalance_progress/0,
-         rebalance_progress/1,
          start_link/0,
          start_rebalance/3,
          retry_rebalance/4,
          stop_rebalance/0,
-         is_rebalance_running/0,
          start_recovery/1,
          stop_recovery/2,
          commit_vbucket/3,
@@ -243,37 +240,6 @@ buckets_need_rebalance(NodesWanted) ->
                       ns_bucket:needs_rebalance(BucketConfig, KvNodes)
               end,
               ns_bucket:get_buckets()).
-
--spec rebalance_progress() -> {running, [{atom(), float()}]} |
-                              not_running |
-                              {error, timeout}.
-rebalance_progress() ->
-    rebalance_progress(?REBALANCE_OBSERVER_TASK_DEFAULT_TIMEOUT).
-
--spec rebalance_progress(non_neg_integer()) -> {running, [{atom(), float()}]} |
-                                               not_running |
-                                               {error, timeout}.
-rebalance_progress(Timeout) ->
-    case ns_config:search(rebalancer_pid) of
-        false ->
-            not_running;
-        {value, undefined} ->
-            not_running;
-        {value, Pid} when is_pid(Pid) ->
-            get_aggregated_progress(Timeout)
-    end.
-
-get_aggregated_progress() ->
-    get_aggregated_progress(?REBALANCE_OBSERVER_TASK_DEFAULT_TIMEOUT).
-
-get_aggregated_progress(Timeout) ->
-    case ns_rebalance_observer:get_aggregated_progress(Timeout) of
-        {ok, Aggr} ->
-            {running, Aggr};
-        Err ->
-            ?log_error("Couldn't reach ns_rebalance_observer"),
-            Err
-    end.
 
 -spec request_janitor_run(janitor_item()) -> ok.
 request_janitor_run(Item) ->
@@ -869,7 +835,7 @@ idle({move_vbuckets, Bucket, Moves}, From, _State) ->
                         rebalance_id = Id},
      [{reply, From, ok}]};
 idle(stop_rebalance, From, _State) ->
-    ns_janitor:reset_rebalance_status(
+    rebalance:reset_status(
       fun () ->
               ale:info(?USER_LOGGER,
                        "Resetting rebalance status since rebalance stop "
@@ -970,8 +936,7 @@ rebalancing(stop_rebalance, From,
     {keep_state, stop_rebalance(State, user_stop), [{reply, From, ok}]};
 rebalancing(rebalance_progress, From, _State) ->
     %% called by pre-6.5 nodes
-    {keep_state_and_data,
-     [{reply, From, get_aggregated_progress()}]};
+    {keep_state_and_data, [{reply, From, rebalance:progress()}]};
 rebalancing(Event, From, _State) ->
     ?log_warning("Got event ~p while rebalancing.", [Event]),
     {keep_state_and_data, [{reply, From, rebalance_running}]}.
@@ -1102,11 +1067,6 @@ wait_for_nodes(Nodes, Pred, Timeout) ->
               wait_for_nodes_loop(Nodes1)
       end).
 
-%% quickly and _without_ communication to potentially remote
-%% ns_orchestrator find out if rebalance is running.
-is_rebalance_running() ->
-    ns_config:search(rebalance_status) =:= {value, running}.
-
 perform_bucket_flushing(BucketName) ->
     case ns_bucket:get_bucket(BucketName) of
         not_present ->
@@ -1207,17 +1167,7 @@ set_rebalance_status(move_vbuckets, Status, Pid) ->
 set_rebalance_status(service_upgrade, Status, Pid) ->
     set_rebalance_status(rebalance, Status, Pid);
 set_rebalance_status(Type, Status, Pid) ->
-    ns_config:set([{rebalance_status, Status},
-                   {rebalance_status_uuid, couch_uuids:random()},
-                   {rebalancer_pid, Pid},
-                   {rebalance_type, Type},
-                   set_graceful_failover_pid(Type, Pid)]).
-
-%% needed for compatibility with pre-6.5 nodes
-set_graceful_failover_pid(graceful_failover, Pid) ->
-    {graceful_failover_pid, Pid};
-set_graceful_failover_pid(_, _) ->
-    {graceful_failover_pid, undefined}.
+    rebalance:set_status(Type, Status, Pid).
 
 cancel_stop_timer(State) ->
     do_cancel_stop_timer(State#rebalancing_state.stop_timer).
