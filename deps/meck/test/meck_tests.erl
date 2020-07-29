@@ -1119,6 +1119,27 @@ cover_path_test() ->
         ok = file:set_cwd(CWD)
     end.
 
+tty(false) ->
+    case logger:get_handler_config(default) of
+        {ok, #{module:=logger_std_h, config:=#{type:=standard_io}}} ->
+            %% add filter to stop all logging on standard_io.
+            logger:add_handler_filter(default, meck_tty_false,
+                                      {fun(_,_) -> stop end, ok});
+        _ ->
+            ok
+    end,
+    ok.
+
+tty(true) ->
+    case logger:get_handler_config(default) of
+        {ok, #{module:=logger_std_h, config:=#{type:=standard_io}}} ->
+            logger:remove_handler_filter(default, meck_tty_false);
+        _ ->
+            ok
+    end,
+    ok.
+
+
 % @doc The mocked module is unloaded if the meck process crashes.
 unload_when_crashed_test() ->
     ok = meck:new(mymod, [non_strict]),
@@ -1127,10 +1148,10 @@ unload_when_crashed_test() ->
     Pid = whereis(SaltedName),
     ?assertEqual(true, is_pid(Pid)),
     unlink(Pid),
-    error_logger:tty(false),
+    tty(false),
     exit(Pid, expected_test_exit),
     timer:sleep(100),
-    error_logger:tty(true),
+    tty(true),
     ?assertEqual(undefined, whereis(SaltedName)),
     ?assertEqual(false, code:is_loaded(mymod)).
 
@@ -1348,9 +1369,9 @@ can_mock_sticky_module_not_yet_loaded_({Mod, _}) ->
     ?assert(code:is_sticky(Mod)).
 
 cannot_mock_sticky_module_without_unstick_({Mod, _}) ->
-    error_logger:tty(false),
+    tty(false),
     ?assertError(module_is_sticky, meck:new(Mod, [no_link])),
-    error_logger:tty(true).
+    tty(true).
 
 can_mock_non_sticky_module_test() ->
     ?assertNot(code:is_sticky(meck_test_module)),
@@ -1454,7 +1475,7 @@ wait_timeout_test() ->
     meck:unload().
 
 wait_for_the_same_pattern_on_different_processes_test() ->
-    error_logger:tty(false),
+    tty(false),
     %% Given
     meck:new(test, [non_strict]),
     meck:expect(test, foo, 2, ok),
@@ -1479,10 +1500,10 @@ wait_for_the_same_pattern_on_different_processes_test() ->
     ?assertTerminated(MonitorRef2, {timeout, _}, 300),
     %% Clean
     meck:unload(),
-    error_logger:tty(true).
+    tty(true).
 
 wait_for_different_patterns_on_different_processes_test() ->
-    error_logger:tty(false),
+    tty(false),
     %% Given
     meck:new(test, [non_strict]),
     meck:expect(test, foo, 1, ok),
@@ -1510,7 +1531,7 @@ wait_for_different_patterns_on_different_processes_test() ->
     ?assertTerminated(MonitorRef2, normal, 300),
     %% Clean
     meck:unload(),
-    error_logger:tty(true).
+    tty(true).
 
 wait_purge_expired_tracker_test() ->
     %% Given
