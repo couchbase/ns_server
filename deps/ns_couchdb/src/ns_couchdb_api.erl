@@ -29,6 +29,7 @@
          restart_capi_ssl_service/0,
          fetch_stats/0,
          fetch_couch_stats/1,
+         fetch_raw_stats/1,
          delete_databases_and_files/1,
          wait_index_updated/2,
          initiate_indexing/1,
@@ -76,6 +77,9 @@ fetch_stats() ->
 
 fetch_couch_stats(BucketName) ->
     maybe_rpc_couchdb_node({fetch_couch_stats, BucketName}).
+
+fetch_raw_stats(BucketName) ->
+    maybe_rpc_couchdb_node({fetch_raw_stats, BucketName}).
 
 delete_databases_and_files(Bucket) ->
     case maybe_rpc_couchdb_node({delete_databases_and_files, Bucket}) of
@@ -186,6 +190,8 @@ handle_rpc(fetch_stats) ->
     ns_couchdb_stats_collector:get_stats();
 handle_rpc({fetch_couch_stats, BucketName}) ->
     couch_stats_reader:fetch_stats(BucketName);
+handle_rpc({fetch_raw_stats, BucketName}) ->
+    couch_stats_reader:grab_raw_stats(BucketName);
 handle_rpc({delete_databases_and_files, Bucket}) ->
     ns_couchdb_storage:delete_databases_and_files(Bucket);
 handle_rpc({initiate_indexing, Bucket}) ->

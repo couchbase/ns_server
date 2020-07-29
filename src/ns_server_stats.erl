@@ -86,14 +86,42 @@ report_audit_stats(ReportFun) ->
               [{<<"type">>, <<"audit">>}], AuditRetries}).
 
 report_couch_stats(Bucket, ReportFun) ->
-    CouchStats = case (catch ns_couchdb_api:fetch_couch_stats(Bucket)) of
-                     {ok, CS} -> CS;
-                     Crap ->
-                         ?log_info("Failed to fetch couch stats:~n~p", [Crap]),
-                         []
-                 end,
-    [ReportFun({K, [{<<"bucket">>, Bucket},
-                    {<<"type">>, <<"bucket">>}], V}) || {K, V} <- CouchStats].
+    Stats = try
+                ns_couchdb_api:fetch_raw_stats(Bucket)
+            catch
+                _:E ->
+                    ST = erlang:get_stacktrace(),
+                    ?log_info("Failed to fetch couch stats:~p~n~p", [E, ST]),
+                    []
+            end,
+    ViewsStats = proplists:get_value(views_per_ddoc_stats, Stats, []),
+    SpatialStats = proplists:get_value(spatial_per_ddoc_stats, Stats, []),
+    DocsDiskSize = proplists:get_value(couch_docs_actual_disk_size, Stats),
+    ViewsDiskSize = proplists:get_value(couch_views_actual_disk_size, Stats),
+
+    Labels = [{<<"bucket">>, Bucket}],
+    case DocsDiskSize of
+        undefined -> ok;
+        _ -> ReportFun({couch_docs_actual_disk_size, Labels, DocsDiskSize})
+    end,
+    case ViewsDiskSize of
+        undefined -> ok;
+        _ -> ReportFun({couch_views_actual_disk_size, Labels, ViewsDiskSize})
+    end,
+    lists:foreach(
+      fun ({Sig, Disk, Data, Ops}) ->
+            L = [{<<"signature">>, Sig} | Labels],
+            ReportFun({couch_views_disk_size, L, Disk}),
+            ReportFun({couch_views_data_size, L, Data}),
+            ReportFun({couch_views_ops, L, Ops})
+      end, ViewsStats),
+    lists:foreach(
+      fun ({Sig, Disk, Data, Ops}) ->
+            L = [{<<"signature">>, Sig} | Labels],
+            ReportFun({couch_spatial_disk_size, L, Disk}),
+            ReportFun({couch_spatial_data_size, L, Data}),
+            ReportFun({couch_spatial_ops, L, Ops})
+      end, SpatialStats).
 
 init([]) ->
     ets:new(ns_server_system_stats, [public, named_table, set]),

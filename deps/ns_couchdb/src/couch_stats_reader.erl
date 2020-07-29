@@ -44,7 +44,7 @@
 
 
 %% API
--export([start_link_remote/2, fetch_stats/1]).
+-export([start_link_remote/2, fetch_stats/1, grab_raw_stats/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -163,22 +163,44 @@ maybe_adjust_data_size(DataSize, DiskSize, MinFileSize) ->
             DataSize
     end.
 
--spec grab_couch_stats(bucket_name(), integer()) -> #ns_server_couch_stats{}.
-grab_couch_stats(Bucket, MinFileSize) ->
+grab_raw_stats(Bucket) ->
+    MinFileSize = ns_config:search_node_prop(ns_config:latest(),
+                                             compaction_daemon,
+                                             min_view_file_size),
+    true = (MinFileSize =/= undefined),
+    grab_raw_stats(Bucket, MinFileSize).
+
+grab_raw_stats(Bucket, MinFileSize) ->
     BinBucket = ?l2b(Bucket),
 
     DDocIdList = capi_utils:fetch_ddoc_ids(BinBucket),
-    ViewStats = collect_view_stats(mapreduce_view, BinBucket, DDocIdList, MinFileSize),
-    {ViewsDiskSize, ViewsDataSize} = aggregate_view_stats_loop(0, 0, ViewStats),
-
-    SpatialStats = collect_view_stats(spatial_view, BinBucket, DDocIdList, MinFileSize),
-    {SpatialDiskSize, SpatialDataSize} = aggregate_view_stats_loop(0, 0, SpatialStats),
-
+    ViewStats = collect_view_stats(mapreduce_view, BinBucket, DDocIdList,
+                                   MinFileSize),
+    SpatialStats = collect_view_stats(spatial_view, BinBucket, DDocIdList,
+                                      MinFileSize),
     {ok, CouchDir} = ns_storage_conf:this_node_dbdir(),
     {ok, ViewRoot} = ns_storage_conf:this_node_ixdir(),
 
     DocsActualDiskSize = dir_size:get(filename:join([CouchDir, Bucket])),
     ViewsActualDiskSize = dir_size:get(couch_set_view:set_index_dir(ViewRoot, BinBucket, prod)),
+
+    [{couch_docs_actual_disk_size, DocsActualDiskSize},
+     {couch_views_actual_disk_size, ViewsActualDiskSize},
+     {views_per_ddoc_stats, lists:sort(ViewStats)},
+     {spatial_per_ddoc_stats, lists:sort(SpatialStats)}].
+
+-spec grab_couch_stats(bucket_name(), integer()) -> #ns_server_couch_stats{}.
+grab_couch_stats(Bucket, MinFileSize) ->
+    Raw = grab_raw_stats(Bucket, MinFileSize),
+    ViewsStats = proplists:get_value(views_per_ddoc_stats, Raw),
+    SpatialStats = proplists:get_value(spatial_per_ddoc_stats, Raw),
+    DocsActualDiskSize = proplists:get_value(couch_docs_actual_disk_size, Raw),
+    ViewsActualDiskSize = proplists:get_value(couch_views_actual_disk_size,
+                                              Raw),
+    {ViewsDiskSize, ViewsDataSize} =
+        aggregate_view_stats_loop(0, 0, ViewsStats),
+    {SpatialDiskSize, SpatialDataSize} =
+        aggregate_view_stats_loop(0, 0, SpatialStats),
 
     #ns_server_couch_stats{couch_docs_actual_disk_size = DocsActualDiskSize,
                            couch_views_actual_disk_size = ViewsActualDiskSize,
@@ -186,8 +208,8 @@ grab_couch_stats(Bucket, MinFileSize) ->
                            couch_views_data_size = ViewsDataSize,
                            couch_spatial_disk_size = SpatialDiskSize,
                            couch_spatial_data_size = SpatialDataSize,
-                           views_per_ddoc_stats = lists:sort(ViewStats),
-                           spatial_per_ddoc_stats = lists:sort(SpatialStats)}.
+                           views_per_ddoc_stats = ViewsStats,
+                           spatial_per_ddoc_stats = SpatialStats}.
 
 find_not_less_sig(Sig, [{CandidateSig, _, _, _} | RestViewStatsTuples] = VS) ->
     case CandidateSig < Sig of
