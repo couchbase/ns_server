@@ -145,7 +145,7 @@ create_erl_node_spec(Type, Args, EnvArgsVar, ErlangArgs) ->
     EnvArgsTail = [{K, V}
                    || {K, V} <- application:get_all_env(ns_server),
                       case atom_to_list(K) of
-                          "error_logger" ++ _ -> true;
+                          "error_logger_mf_dir" -> true;
                           "path_config" ++ _ -> true;
                           "dont_suppress_stderr_logger" -> true;
                           "loglevel_" ++ _ -> true;
