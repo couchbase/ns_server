@@ -145,26 +145,37 @@ send_time_offset_request(Master) ->
                                send_time_mono = NowMono},
     gen_server:cast({?MODULE, Master}, Req).
 
-handle_time_offset_reply(Reply, NodeReceiveTimeMono, State) ->
-    TimeOffsetThreshold = time_offset_threshold(),
+handle_time_offset_reply(Reply, NodeReceiveTimeMono,
+                         #state{time_out_of_sync = true} = State) ->
+    %% We are currently out of sync.
+    TimeOffsetThreshold = time_offset_go_in_sync_threshold(),
     RttThreshold = time_offset_rtt_threshold(),
 
     case is_time_in_sync(Reply, NodeReceiveTimeMono, RttThreshold,
                          TimeOffsetThreshold) of
-        true when State#state.time_out_of_sync ->
+        true ->
             %% We were out of sync and are now in sync.
             ?log_debug("now in sync"),
             State#state{time_out_of_sync = false};
-        true ->
-            %% Still in sync.
-            State#state{time_out_of_sync = false};
-        false when not State#state.time_out_of_sync ->
-            %% We just went out of sync; set alert state.
-            ?log_debug("now out of sync"),
-            State#state{time_out_of_sync = true};
         false ->
             %% Still out of sync.
             State
+    end;
+handle_time_offset_reply(Reply, NodeReceiveTimeMono,
+                         #state{time_out_of_sync = false} = State) ->
+    %% We are currently in sync.
+    TimeOffsetThreshold = time_offset_go_out_of_sync_threshold(),
+    RttThreshold = time_offset_rtt_threshold(),
+
+    case is_time_in_sync(Reply, NodeReceiveTimeMono, RttThreshold,
+                         TimeOffsetThreshold) of
+        true ->
+            %% Still in sync.
+            State;
+        false ->
+            %% We were in sync and are now out of sync.
+            ?log_debug("now out of sync"),
+            State#state{time_out_of_sync = true}
     end.
 
 notify(TS) ->
@@ -204,8 +215,12 @@ time_offset_default_values() ->
       %% is greater than this, we don't check whether time is in sync.
       {rtt_threshold, 500},
       %% Maximum difference between node and Master system clock we will
-      %% tolerate before raising a "time out of sync" alert, in msec.
-      {threshold, 1000}].
+      %% tolerate while still considering a node in sync, in msec.
+      {threshold, 1000},
+      %% The time difference above which we raise a "time out of sync"
+      %% alert, represented as a percentage of "threshold".  Must be
+      %% greater than 100.
+      {out_of_sync_percentage, 120}].
 
 time_offset_config_value(Key) ->
     Proplist = ns_config:read_key_fast(time_offset_cfg,
@@ -223,6 +238,20 @@ time_offset_rtt_threshold() ->
 
 time_offset_threshold() ->
     time_offset_config_value(threshold).
+
+time_offset_out_of_sync_percentage() ->
+    time_offset_config_value(out_of_sync_percentage).
+
+%% In order to prevent oscillation between being in sync and out of sync,
+%% the time offset which causes us to go "in sync" must be smaller than the
+%% offset that causes us to go "out of sync".
+
+time_offset_go_in_sync_threshold() ->
+    time_offset_threshold().
+
+time_offset_go_out_of_sync_threshold() ->
+    trunc(time_offset_threshold()) *
+              (time_offset_out_of_sync_percentage() / 100).
 
 -ifdef(TEST).
 
@@ -278,4 +307,64 @@ big_positive_delta_big_rtt_test() ->
 %% With a big delta and a big rtt, we should be in sync.
 big_negative_delta_big_rtt_test() ->
     ?assert(is_time_in_sync_tester(-1200, 600)).
+
+%% Returns the new time_out_of_sync state.
+time_offset_reply_tester(CurrentlyOutOfSync, TimeDelta) ->
+    SendTimeSys = os:system_time(millisecond),
+    SendTimeMono = erlang:monotonic_time(millisecond),
+    ReplyTimeSys = SendTimeSys + TimeDelta,
+    Req = #time_offset_request{from = node(), send_time_sys = SendTimeSys,
+                               send_time_mono = SendTimeMono},
+    Reply = #time_offset_reply{from = "master_node", request = Req,
+                               reply_time_sys = ReplyTimeSys},
+    %% For testing, we assume the RTT is zero.
+    ReceiveTimeMono = SendTimeMono,
+    #state{time_out_of_sync = NewOutOfSync} =
+        handle_time_offset_reply(Reply, ReceiveTimeMono,
+                                 #state{time_out_of_sync = CurrentlyOutOfSync}),
+    NewOutOfSync.
+
+time_offset_reply_test_() ->
+    {foreach,
+     %% per-test setup
+     fun() ->
+             meck:new(ns_config, [passthrough]),
+             meck:expect(ns_config, read_key_fast,
+                         fun (_, _) -> time_offset_default_values() end)
+     end,
+     %% per-test cleanup
+     fun(_) ->
+             meck:unload(ns_config)
+     end,
+     %% tests
+     [
+      {"In sync: if offset > threshold we should become out of sync",
+       fun() ->
+               OutOfSync = false,
+               Delta = time_offset_go_out_of_sync_threshold() + 1,
+               NowOutOfSync = time_offset_reply_tester(OutOfSync, Delta),
+               ?assert(NowOutOfSync)
+       end},
+      {"In sync: if offset == threshold we should stay in sync",
+       fun() ->
+               OutOfSync = false,
+               Delta = time_offset_go_out_of_sync_threshold(),
+               NowOutOfSync = time_offset_reply_tester(OutOfSync, Delta),
+               ?assertNot(NowOutOfSync)
+       end},
+      {"Out of sync: if offset == threshold we should become in sync",
+       fun() ->
+               OutOfSync = true,
+               Delta = time_offset_go_in_sync_threshold(),
+               NowOutOfSync = time_offset_reply_tester(OutOfSync, Delta),
+               ?assertNot(NowOutOfSync)
+       end},
+      {"Out of sync: if offset > threshold we should stay out of sync",
+       fun() ->
+               OutOfSync = true,
+               Delta = time_offset_go_in_sync_threshold() + 1,
+               NowOutOfSync = time_offset_reply_tester(OutOfSync, Delta),
+               ?assert(NowOutOfSync)
+       end}
+     ]}.
 -endif.
