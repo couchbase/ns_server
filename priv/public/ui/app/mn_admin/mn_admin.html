@@ -276,9 +276,10 @@
   </a>
   <h1>
     <a ui-sref="app.admin.overview.statistics" class="resp-txt-xsml ellipsis">
-      {{adminCtl.tabName}} <!-- the cluster name -->
+      <span ng-if="!adminCtl.tabName">Cluster</span>
+      {{adminCtl.tabName}} <!-- the cluster name from Settings -->
     </a>
-    <span class="resp-hide-xsml" ng-show="adminCtl.tabName">
+    <span class="resp-hide-xsml">
       <span class="icon fa-angle-right"></span>
     </span>
     <span ng-if="adminCtl.$state.current.data.child">
