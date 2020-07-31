@@ -356,7 +356,7 @@ ensure_prometheus_config(Settings) ->
                     || {N, A} <- Targets ] ++
         "    - regex: 'n1ql'\n"
         "      source_labels: [instance]\n"
-        "      target_label: 'type'\n"
+        "      target_label: 'category'\n"
         "      replacement: 'n1ql'",
     Config = io_lib:format(ConfigTemplate, [ScrapeInterval, ScrapeTimeout,
                                             TokenFile, TargetsStr]),

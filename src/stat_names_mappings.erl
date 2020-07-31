@@ -25,15 +25,15 @@
 -define(IRATE_INTERVAL, "1m").
 
 pre_70_stats_to_prom_query(StatSection, StatList) ->
-    {Instance, Type} =
+    Category =
         case StatSection of
-            "@query" -> {"n1ql", "n1ql"};
-            "@global" -> {"ns_server", "audit"};
-            "@system" -> {"ns_server", "system"};
-            "@system-processes" -> {"ns_server", "system-processes"}
+            "@query" -> "n1ql";
+            "@global" -> "audit";
+            "@system" -> "system";
+            "@system-processes" -> "system-processes"
         end,
 
-    CommonLabels = [{<<"instance">>, Instance}, {<<"type">>, Type}],
+    CommonLabels = [{<<"category">>, Category}],
 
     StatList2 = case StatList of
                     all -> default_stat_list(StatSection);
@@ -117,7 +117,7 @@ key_type_by_stat_type("@system") -> atom;
 key_type_by_stat_type("@system-processes") -> binary.
 
 %% For system stats it's simple, we can get all of them with a simple query
-%% {type="system"}. For most of other stats it's not always the case.
+%% {category="system"}. For most of other stats it's not always the case.
 %% For example, for query we need to request rates for some stats, so we have
 %% to know which stats should be rates and which stats should be plain. This
 %% leads to the fact that when we need to get all of them we have to know
@@ -143,13 +143,12 @@ pre_70_to_prom_query_test_() ->
                                  list_to_binary(ExpectedQuery))
                 end}
            end,
-    [Test("@system", all, "{instance=`ns_server`,type=`system`}"),
+    [Test("@system", all, "{category=`system`}"),
      Test("@system", [], ""),
-     Test("@system-processes", all,
-          "{instance=`ns_server`,type=`system-processes`}"),
+     Test("@system-processes", all, "{category=`system-processes`}"),
      Test("@system-processes", [sysproc_cpu_utilization,sysproc_mem_resident],
           "{name=~`sysproc_cpu_utilization|sysproc_mem_resident`,"
-          "instance=`ns_server`,type=`system-processes`}"),
+           "category=`system-processes`}"),
      Test("@query", all,
           "irate({name=~`n1ql_errors|n1ql_invalid_requests|n1ql_request_time|"
                         "n1ql_requests|n1ql_requests_1000ms|"
@@ -157,13 +156,13 @@ pre_70_to_prom_query_test_() ->
                         "n1ql_requests_500ms|n1ql_result_count|"
                         "n1ql_result_size|n1ql_selects|n1ql_service_time|"
                         "n1ql_warnings`,"
-                 "instance=`n1ql`,type=`n1ql`}["?IRATE_INTERVAL"]) or "
+                 "category=`n1ql`}["?IRATE_INTERVAL"]) or "
           "{name=~`n1ql_active_requests|n1ql_queued_requests`,"
-           "instance=`n1ql`,type=`n1ql`}"),
+           "category=`n1ql`}"),
       Test("@query", [query_errors, query_active_requests, query_request_time],
-           "irate({name=~`n1ql_errors|n1ql_request_time`,instance=`n1ql`,"
-                  "type=`n1ql`}["?IRATE_INTERVAL"]) or "
-           "{name=~`n1ql_active_requests`,instance=`n1ql`,type=`n1ql`}")].
+           "irate({name=~`n1ql_errors|n1ql_request_time`,"
+                  "category=`n1ql`}["?IRATE_INTERVAL"])"
+           " or {name=~`n1ql_active_requests`,category=`n1ql`}")].
 
 prom_name_to_pre_70_name_test_() ->
     Test = fun (Section, Json, ExpectedRes) ->

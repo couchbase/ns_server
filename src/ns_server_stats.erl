@@ -61,7 +61,7 @@ report_prom_stats(ReportFun) ->
     SystemStats = proplists:get_value("@system", Stats, []),
     lists:foreach(
         fun ({Key, Val}) ->
-            ReportFun({<<"sys">>, Key, [{<<"type">>, <<"system">>}], Val})
+            ReportFun({<<"sys">>, Key, [{<<"category">>, <<"system">>}], Val})
         end, SystemStats),
 
     SysProcStats = proplists:get_value("@system-processes", Stats, []),
@@ -70,7 +70,7 @@ report_prom_stats(ReportFun) ->
             [Proc, Name] = binary:split(KeyBin, <<"/">>),
             ReportFun({<<"sysproc">>, Name,
                        [{<<"proc">>, Proc},
-                        {<<"type">>, <<"system-processes">>}], Val})
+                        {<<"category">>, <<"system-processes">>}], Val})
         end, SysProcStats),
     Buckets = ns_bucket:get_bucket_names(),
     [report_couch_stats(B, ReportFun) || B <- Buckets],
@@ -81,9 +81,9 @@ report_audit_stats(ReportFun) ->
     AuditQueueLen = proplists:get_value(queue_length, Stats, 0),
     AuditRetries = proplists:get_value(unsuccessful_retries, Stats, 0),
     ReportFun({<<"audit">>, <<"queue_length">>,
-              [{<<"type">>, <<"audit">>}], AuditQueueLen}),
+              [{<<"category">>, <<"audit">>}], AuditQueueLen}),
     ReportFun({<<"audit">>, <<"unsuccessful_retries">>,
-              [{<<"type">>, <<"audit">>}], AuditRetries}).
+              [{<<"category">>, <<"audit">>}], AuditRetries}).
 
 report_couch_stats(Bucket, ReportFun) ->
     Stats = try

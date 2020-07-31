@@ -23,7 +23,7 @@
 -define(IRATE_INTERVAL, "1m").
 
 system_stats() ->
-    latest(<<"{type=\"system\", __name__=~\"sys_cpu_utilization_rate|"
+    latest(<<"{category=\"system\", __name__=~\"sys_cpu_utilization_rate|"
              "sys_cpu_stolen_rate|sys_swap_total|sys_swap_used|"
              "sys_mem_total|sys_mem_free|sys_mem_limit|"
              "sys_cpu_cores_available|sys_allocstall\"}">>,
@@ -34,7 +34,7 @@ system_stats() ->
 
 sysproc_stats() ->
     Res = latest(
-            <<"{type=\"system-processes\", __name__=~\""
+            <<"{category=\"system-processes\", __name__=~\""
               "sysproc_mem_resident|sysproc_mem_size|"
               "sysproc_cpu_utilization|sysproc_major_faults_raw\"}">>,
             fun (Props) ->
