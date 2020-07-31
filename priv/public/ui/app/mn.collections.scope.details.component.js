@@ -2,7 +2,7 @@ import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.
 import {pluck} from '/ui/web_modules/rxjs/operators.js';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
-import {MnInputFilterService} from './mn.input.filter.service.js';
+import {MnHelperService} from './mn.helper.service.js';
 
 export {MnCollectionsScopeDetailsComponent};
 
@@ -20,18 +20,19 @@ class MnCollectionsScopeDetailsComponent extends MnLifeCycleHooksToStream {
   ]}
 
   static get parameters() { return [
-    MnInputFilterService
+    MnHelperService
   ]}
 
-  constructor(mnInputFilterService) {
+  constructor(mnHelperService) {
     super();
-    this.mnInputFilterService = mnInputFilterService;
+
+    this.filter = mnHelperService.createFilter("name");
   }
 
   ngOnInit() {
-    this.filter = this.mnInputFilterService.create(
-      this.mnOnChanges.pipe(pluck("scope", "currentValue", "collections"))
-    );
+    this.collections = this.mnOnChanges
+      .pipe(pluck("scope", "currentValue", "collections"),
+            this.filter.pipe);
   }
 
   trackByFn(_, collection) {

@@ -1,17 +1,31 @@
-import { Pipe, Injectable } from '../web_modules/@angular/core.js';
-import { BehaviorSubject, combineLatest, zip } from '../web_modules/rxjs.js';
-import { scan, map, shareReplay, distinctUntilChanged  } from '../web_modules/rxjs/operators.js';
-import { not, sort, prop, descend, ascend } from '../web_modules/ramda.js';
+import {Injectable} from '/ui/web_modules/@angular/core.js';
+import {BehaviorSubject, combineLatest, zip} from '/ui/web_modules/rxjs.js';
+import {scan, map, shareReplay, distinctUntilChanged,
+        debounceTime, startWith, pluck, takeUntil} from '/ui/web_modules/rxjs/operators.js';
+import {not, sort, prop, descend, ascend, equals} from '/ui/web_modules/ramda.js';
+import {FormBuilder} from "/ui/web_modules/@angular/forms.js";
+import {UIRouter} from "/ui/web_modules/@uirouter/angular.js";
 
-export { MnHelperService };
+export {MnHelperService};
 
 class MnHelperService {
   static get annotations() { return [
     new Injectable()
   ]}
 
+  static get parameters() { return [
+    FormBuilder,
+    UIRouter
+  ]}
+
+  constructor(formBuilder, uiRouter) {
+    this.formBuilder = formBuilder;
+    this.uiRouter = uiRouter;
+  }
+
   get daysOfWeek() {
-    return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']}
+    return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+  }
 
   get IEC() {
     return {Ki: 1024, Mi: 1024 * 1024, Gi: 1024 * 1024 * 1024}
@@ -92,6 +106,72 @@ class MnHelperService {
             return sort(ascOrDesc(prop(sortByValue)), array);
           }), shareReplay({refCount: true, bufferSize: 1}));
       }
+    };
+  }
+
+  createFilter() {
+    var group = this.formBuilder.group({value: ""});
+    var inputStream =
+        group.get("value").valueChanges.pipe(debounceTime(200),
+                                             startWith(""));
+
+    var filterFunction = ([list, filterValue]) =>
+        list ? list.filter(item => item.name.includes(filterValue)) : [];
+
+    // R.filter(R.compose(R.any(R.contains(val)), R.values))
+
+    return {
+      group: group,
+      pipe: (arrayStream) => {
+        return combineLatest(arrayStream, inputStream)
+          .pipe(map(filterFunction),
+                shareReplay({refCount: true, bufferSize: 1}));
+      }
+    };
+  }
+
+  createPagenator(component, arrayStream, stateParam) {
+    var params = {};
+    var urlParam =
+        this.uiRouter.globals.params$.pipe(pluck(stateParam));
+
+    var group = this.formBuilder.group({size: null, page: null});
+
+    var setParamToGroup = (scopesPage) => {
+      Object.assign(params, scopesPage)
+      group.patchValue(scopesPage);
+    };
+
+    var setParamToUrl = (scopesPage, location) => {
+      console.log(scopesPage)
+      var params = {};
+      scopesPage = scopesPage ? Object.assign({}, group.value, scopesPage) : null;
+      params[stateParam] = scopesPage;
+      this.uiRouter.stateService.go('.', params, {
+        notify: false,
+        location: location || true
+      });
+    };
+
+    group.valueChanges
+      .pipe(distinctUntilChanged(),
+            takeUntil(component.mnOnDestroy))
+      .subscribe(setParamToUrl);
+
+    urlParam
+      .pipe(takeUntil(component.mnOnDestroy))
+      .subscribe(setParamToGroup);
+
+    var page = combineLatest(arrayStream, urlParam)
+        .pipe(map(([array, {size, page}]) => {
+          return array.slice((page-1) * size, (page-1) * size + size)}),
+              shareReplay({refCount: true, bufferSize: 1}));
+
+    return {
+      group: group,
+      params: params,
+      page: page,
+      setParamToUrl: setParamToUrl
     };
   }
 }

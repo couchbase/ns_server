@@ -1,4 +1,3 @@
-import {MnInputFilterService} from './mn.input.filter.service.js';
 import {MnInputFilterComponent} from './mn.input.filter.component.js';
 import {NgModule} from '/ui/web_modules/@angular/core.js';
 import {CommonModule} from '/ui/web_modules/@angular/common.js';
@@ -18,9 +17,6 @@ class MnInputFilterModule {
       ],
       exports: [
         MnInputFilterComponent
-      ],
-      providers: [
-        MnInputFilterService
       ]
     })
   ]}

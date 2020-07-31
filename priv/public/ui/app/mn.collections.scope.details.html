@@ -14,7 +14,7 @@
     <div *ngIf="!scope.collections.length">
       There are no collections yet.
     </div>
-    <div *ngFor="let collection of (filter.result | async); trackBy: trackByFn">
+    <div *ngFor="let collection of (collections | async); trackBy: trackByFn">
       <mn-collections-item
          [scopeName]="scope.name"
          [bucketName]="bucketName"

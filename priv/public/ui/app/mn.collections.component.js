@@ -12,7 +12,7 @@ import {MnCollectionsService} from './mn.collections.service.js';
 import {MnCollectionsAddScopeComponent} from './mn.collections.add.scope.component.js';
 import {MnCollectionsAddItemComponent} from './mn.collections.add.item.component.js';
 
-import { MnInputFilterService } from './mn.input.filter.service.js';
+import {MnHelperService} from './mn.helper.service.js';
 
 export {MnCollectionsComponent};
 
@@ -30,11 +30,11 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
     UIRouter,
     NgbModal,
     FormBuilder,
-    MnInputFilterService
+    MnHelperService
   ]}
 
   constructor(mnCollectionsService, mnPermissions,
-              uiRouter, modalService, formBuilder, mnInputFilterService) {
+              uiRouter, modalService, formBuilder, mnHelperService) {
     super();
 
     var clickAddScope = new Subject();
@@ -89,13 +89,21 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
             takeUntil(this.mnOnDestroy))
       .subscribe(v => setBucketUrlParam(v, "replace"));
 
+    var scopesSorter = mnHelperService.createSorter("name");
+    var scopesFilter = mnHelperService.createFilter("name");
+
     var scopes =
         combineLatest(getBucketUrlParamDefined,
                       mnCollectionsService.stream.updateManifest,
                       timer(0, 5000))
         .pipe(switchMap(([bucket]) => mnCollectionsService.getManifest(bucket)),
               pluck("scopes"),
+              scopesSorter.pipe,
+              scopesFilter.pipe,
               shareReplay({refCount: true, bufferSize: 1}));
+
+    var scopesPaginator = mnHelperService.createPagenator(this, scopes, "scopesPage");
+
 
     clickAddScope
       .pipe(takeUntil(this.mnOnDestroy))
@@ -111,8 +119,11 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
         ref.componentInstance.bucketName = bucketSelect.get("name").value;
       });
 
+    this.scopesSorter = scopesSorter;
+    this.scopesFilter = scopesFilter;
+    this.scopesPaginator = scopesPaginator;
+
     this.permissions = mnPermissions.export;
-    this.filter = mnInputFilterService.create(scopes);
     this.buckets = getBuckets;
     this.bucketSelect = bucketSelect;
     this.scopes = scopes;
