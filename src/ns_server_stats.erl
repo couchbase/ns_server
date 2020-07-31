@@ -72,8 +72,8 @@ report_prom_stats(ReportFun) ->
                        [{<<"proc">>, Proc},
                         {<<"category">>, <<"system-processes">>}], Val})
         end, SysProcStats),
-    Buckets = ns_bucket:get_bucket_names(),
-    [report_couch_stats(B, ReportFun) || B <- Buckets],
+    ThisNodeBuckets = ns_bucket:node_bucket_names(node()),
+    [report_couch_stats(B, ReportFun) || B <- ThisNodeBuckets],
     ok.
 
 report_audit_stats(ReportFun) ->
