@@ -59,12 +59,12 @@
       </div>
 
       <ngb-pagination
-         *ngIf="(scopes | async)?.length"
-         [page]="scopesPaginator.params.page"
+         *ngIf="(scopesPaginator.values | async)?.size && (scopes | async)?.length"
+         [page]="(scopesPaginator.values | async)?.page"
          [maxSize]="5"
-         [pageSize]="scopesPaginator.params.size"
+         [pageSize]="(scopesPaginator.values | async)?.size"
          [collectionSize]="(scopes | async)?.length"
-         (pageChange)="scopesPaginator.setParamToUrl({page:$event})">
+         (pageChange)="scopesPaginator.group.patchValue({page:$event})">
         <ng-template ngbPaginationPrevious>&#60; prev</ng-template>
         <ng-template ngbPaginationNext>next &#62;</ng-template>
       </ngb-pagination>

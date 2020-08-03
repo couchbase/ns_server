@@ -6,19 +6,50 @@
 </div>
 <div class="cbui-table inner-table">
   <div class="cbui-table-header">
-    <span class="cbui-table-cell flex-grow-3">collections</span>
-    <span class="cbui-table-cell"></span>
-    <span class="cbui-table-cell flex-grow-1-5 resp-hide-xsml"></span>
+    <span class="cbui-table-cell flex-grow-3">
+      <span
+         class="sorter"
+         [ngClass]="{
+                'dynamic-active': (sorter.click | async) == 'name',
+                'dynamic-inverted': (sorter.state | async)
+                }"
+         (click)="$event.stopPropagation();sorter.click.next('name')">
+        collections</span></span>
+      <span class="cbui-table-cell"></span>
+      <span class="cbui-table-cell flex-grow-1-5 resp-hide-xsml"></span>
   </div>
   <div class="cbui-table-body">
     <div *ngIf="!scope.collections.length">
       There are no collections yet.
     </div>
-    <div *ngFor="let collection of (collections | async); trackBy: trackByFn">
+    <div *ngFor="let collection of (paginator.page | async); trackBy: trackByFn">
       <mn-collections-item
          [scopeName]="scope.name"
          [bucketName]="bucketName"
          [collection]="collection"></mn-collections-item>
     </div>
+  </div>
+  <div class="row">
+    <div
+       (click)="$event.stopPropagation();"
+       [formGroup]="paginator.group">
+      <select formControlName="size">
+        <option *ngFor="let num of [9,19,29,39]" [ngValue]="num">
+          {{num}}
+        </option>
+      </select>
+    </div>
+
+    <ngb-pagination
+       (click)="$event.stopPropagation();"
+       *ngIf="(collections | async)?.length && (paginator.values | async)?.page"
+       [page]="(paginator.values | async)?.page"
+       [maxSize]="5"
+       [pageSize]="(paginator.values | async)?.size"
+       [collectionSize]="(collections | async)?.length"
+       (pageChange)="paginator.group.patchValue({page:$event})">
+      <ng-template ngbPaginationPrevious>&#60; prev</ng-template>
+      <ng-template ngbPaginationNext>next &#62;</ng-template>
+    </ngb-pagination>
   </div>
 </div>
