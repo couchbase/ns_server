@@ -1371,6 +1371,13 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
             set(correct_split(read_guts(guts, "memcached_buckets"), ","))
          for path in glob.glob(os.path.join(dbdir, bucket, "*.couch.*"))],
 
+        [AllOsTask("mdocs for %s (%s)" % (bucket, path),
+                   ["magma_dump", path, "--cbcollect"],
+                   log_file="mdocs.log")
+         for bucket in set(correct_split(read_guts(guts, "buckets"), ",")) - \
+            set(correct_split(read_guts(guts, "memcached_buckets"), ","))
+         for path in glob.glob(os.path.join(dbdir, bucket))],
+
         # RocksDB has logs per DB (i.e. vBucket). 'LOG' is the most
         # recent file, with old files named LOG.old.<timestamp>.
         # Sort so we go from oldest -> newest as per other log files.
