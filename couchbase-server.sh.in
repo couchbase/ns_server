@@ -313,6 +313,15 @@ _parse_options () {
       exit $?
     fi
 
+    # All other long options are not allowed, except for a bare '--', which
+    # is used to separate script options from options to be passed to erl
+    # if we are starting the server.
+    if [[ "$1" =~ --.+ ]]
+    then
+      echo "illegal option $1"
+      exit 1
+    fi
+
     # set +e
     while getopts "kvhs" opt
     do
