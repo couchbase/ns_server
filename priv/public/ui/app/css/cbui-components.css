@@ -3367,6 +3367,9 @@ a.supported-browsers {
   color: #555;
   margin-top: .5rem;
   font-size: .688rem;
+  width: 380px;
+  text-align: center;
+  display: inline-block;
 }
 a:hover.supported-browsers {
   color: #000;
