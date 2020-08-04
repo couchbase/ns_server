@@ -15,7 +15,7 @@
 -module(menelaus_web_prometheus).
 
 %% API
--export([handle_get_metrics/1]).
+-export([handle_get_metrics/1, handle_create_snapshot/1]).
 
 -include("ns_common.hrl").
 
@@ -28,6 +28,16 @@ handle_get_metrics(Req) ->
     Resp = mochiweb_request:respond(RespTuple, Req),
     ns_server_stats:report_prom_stats(fun (M) -> report_metric(M, Resp) end),
     mochiweb_response:write_chunk(<<>>, Resp).
+
+handle_create_snapshot(Req) ->
+    menelaus_util:ensure_local(Req),
+    Settings = prometheus_cfg:settings(),
+    case prometheus:create_snapshot(5000, Settings) of
+        {ok, Response} ->
+            menelaus_util:reply_text(Req, Response, 200);
+        {error, Reason} ->
+            menelaus_util:reply_text(Req, Reason, 500)
+    end.
 
 %%%===================================================================
 %%% Internal functions

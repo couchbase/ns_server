@@ -7,7 +7,31 @@
 -endif.
 
 -export([query_range/6, query_range_async/7, query/4,
-         format_value/1, parse_value/1, format_promql/1]).
+         format_value/1, parse_value/1, format_promql/1,
+         create_snapshot/2]).
+
+create_snapshot(Timeout, Settings) ->
+    Self = self(),
+    Ref = make_ref(),
+    Handler = fun ({ok, json, {Data}}) ->
+                      SnapshotName = proplists:get_value(<<"name">>,
+                                                         Data, {[]}),
+                      Self ! {Ref, {ok, SnapshotName}};
+                  ({error, Reason}) ->
+                      Self ! {Ref, {error, Reason}}
+              end,
+    post_async("/api/v1/admin/tsdb/snapshot", [], Timeout, Settings, Handler),
+    receive
+        {Ref, {ok, SnapshotName}} ->
+            StoragePath = proplists:get_value(storage_path, Settings),
+            FullStoragePath = path_config:component_path(data, StoragePath),
+            {ok, filename:join(FullStoragePath ++ "/snapshots/",
+                               SnapshotName)};
+        {Ref, {error, Reason}} ->
+            {error, Reason}
+    after Timeout ->
+              {error, timeoout}
+    end.
 
 query_range(Query, Start, End, Step, Timeout, Settings) ->
     Self = self(),
