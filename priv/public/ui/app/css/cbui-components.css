@@ -749,7 +749,7 @@ section.error {
   font-size: .961rem;
 }
 .panel-footer a.tight {
-  margin-right: 1rem;
+  margin-right: .75rem;
 }
 
 .dialog-resizable {
@@ -3363,7 +3363,8 @@ button.replication .fa-spinner {
   content: "\f00c";
 }
 
-a.supported-browsers {
+a.supported-browsers,
+a.supported-browsers-530 {
   color: #555;
   margin-top: .5rem;
   font-size: .688rem;
@@ -3371,8 +3372,12 @@ a.supported-browsers {
   text-align: center;
   display: inline-block;
 }
-a:hover.supported-browsers {
+a:hover.supported-browsers,
+a:hover.supported-browsers-530 {
   color: #000;
+}
+a.supported-browsers-530 {
+  width: 530px !important;
 }
 
 /* for import docs page ----------------------------------------------------- */
