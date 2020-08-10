@@ -72,7 +72,7 @@ build_settings(Config) ->
                             undefined -> false;
                             P -> {true, {S, misc:join_host_port(LocalAddr, P)}}
                         end
-                end, [ns_server | Services]),
+                end, [ns_server, xdcr | Services]),
 
     NsToPrometheusAuthInfo = ns_config:search_node_with_default(
                                Config, ns_to_prometheus_auth_info, []),
@@ -363,6 +363,7 @@ get_service_port(n1ql) -> query_port;
 get_service_port(fts) -> fts_http_port;
 get_service_port(eventing) -> eventing_http_port;
 get_service_port(kv) -> memcached_prometheus;
+get_service_port(xdcr) -> xdcr_rest_port;
 get_service_port(backup) -> backup_http_port.
 
 addr2re(A) ->
