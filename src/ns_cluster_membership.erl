@@ -25,6 +25,8 @@
 -export([get_nodes_with_status/1,
          get_nodes_with_status/2,
          get_nodes_with_status/3,
+         server_groups/0,
+         server_groups/1,
          active_nodes/0,
          active_nodes/1,
          inactive_added_nodes/0,
@@ -85,6 +87,13 @@ get_nodes_with_status(Config, Nodes, Pred)
     [Node || Node <- Nodes,
              Pred(get_cluster_membership(Node, Config))].
 
+server_groups() ->
+    server_groups(ns_config:latest()).
+
+server_groups(Config) ->
+    {value, Groups} = ns_config:search(Config, server_groups),
+    Groups.
+
 active_nodes() ->
     active_nodes(ns_config:get()).
 
@@ -112,8 +121,7 @@ get_cluster_membership(Node, Config) ->
     end.
 
 get_node_server_group(Node, Config) ->
-    {value, Groups} = ns_config:search(Config, server_groups),
-    get_node_server_group_inner(Node, Groups).
+    get_node_server_group_inner(Node, server_groups(Config)).
 
 get_node_server_group_inner(_, []) ->
     undefined;

@@ -35,7 +35,7 @@ build_group_uri(GroupPList) ->
     build_group_uri(proplists:get_value(uuid, GroupPList)).
 
 handle_server_groups(Req) ->
-    {value, Groups} = ns_config:search(server_groups),
+    Groups = ns_cluster_membership:server_groups(),
     LocalAddr = menelaus_util:local_addr(Req),
     CanIncludeOtpCookie = menelaus_auth:has_permission({[admin, internal], all}, Req),
     Fun = menelaus_web_node:build_nodes_info_fun(CanIncludeOtpCookie, normal, unstable, LocalAddr),
@@ -57,7 +57,7 @@ handle_server_groups_put(Req) ->
     Rev = proplists:get_value("rev", mochiweb_request:parse_qs(Req)),
     JSON = menelaus_util:parse_json(Req),
     Config = ns_config:get(),
-    Groups = ns_config:search(Config, server_groups, []),
+    Groups = ns_cluster_membership:server_groups(Config),
     Nodes = ns_node_disco:nodes_wanted(Config),
     V = integer_to_list(erlang:phash2(Groups)),
     case V =/= Rev of

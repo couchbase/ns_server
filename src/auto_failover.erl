@@ -740,7 +740,7 @@ enough_active_server_groups(Config) ->
     end.
 
 active_server_groups(Config) ->
-    {value, Groups} = ns_config:search(Config, server_groups),
+    Groups = ns_cluster_membership:server_groups(Config),
     AllSGs = [{proplists:get_value(name, SG),
                proplists:get_value(nodes, SG)} || SG <- Groups],
     lists:filtermap(

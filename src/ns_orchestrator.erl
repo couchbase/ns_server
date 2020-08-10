@@ -1313,7 +1313,7 @@ retry_ok(RetryChk, NewChk) ->
     false.
 
 get_retry_check(Config, FailedNodes) ->
-    SGs = ns_config:search(Config, server_groups, []),
+    SGs = ns_cluster_membership:server_groups(Config),
     [{failed_nodes, lists:sort(FailedNodes)},
      {server_groups, groups_chk(SGs, fun (Nodes) -> Nodes end)},
      {buckets, buckets_chk(Config)}].
