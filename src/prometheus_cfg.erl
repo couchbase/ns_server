@@ -332,36 +332,29 @@ ensure_prometheus_config(Settings) ->
     ScrapeTimeout = proplists:get_value(scrape_timeout, Settings),
     TokenFile = token_file(Settings),
     Targets = proplists:get_value(targets, Settings, []),
-    TargetsStr = string:join(["'" ++ T ++ "'"|| {_, T} <- Targets], ","),
-    ConfigTemplate =
-        "global:\n"
-        "  scrape_interval: ~bs\n"
-        "  scrape_timeout: ~bs\n"
-        "scrape_configs:\n"
-        "  - job_name: 'general'\n"
-        "    metrics_path: /_prometheusMetrics\n"
-        "    basic_auth:\n"
-        "      username: \""?USERNAME"\"\n"
-        "      password_file: ~s\n"
-        "    static_configs:\n"
-        "    - targets: [~s]\n"
-        "    metric_relabel_configs:\n"
-        "    - source_labels: [\"__name__\"]\n"
-        "      target_label: 'name'\n"
-        "    relabel_configs:\n" ++
-      [ "    - regex: '" ++ addr2re(A) ++ "'\n"
-        "      source_labels: [__address__]\n"
-        "      target_label: 'instance'\n"
-        "      replacement: '" ++ atom_to_list(N) ++ "'\n"
-                    || {N, A} <- Targets ] ++
-        "    - regex: 'n1ql'\n"
-        "      source_labels: [instance]\n"
-        "      target_label: 'category'\n"
-        "      replacement: 'n1ql'",
-    Config = io_lib:format(ConfigTemplate, [ScrapeInterval, ScrapeTimeout,
-                                            TokenFile, TargetsStr]),
+    TargetsBin = [list_to_binary(T) || {_, T} <- Targets],
+    Cfg = #{global => #{scrape_interval => {"~bs", [ScrapeInterval]},
+                        scrape_timeout => {"~bs", [ScrapeTimeout]}},
+            scrape_configs =>
+              [#{job_name => general,
+                 metrics_path => <<"/_prometheusMetrics">>,
+                 basic_auth => #{username => list_to_binary(?USERNAME),
+                                 password_file => list_to_binary(TokenFile)},
+                 static_configs => [#{targets => TargetsBin}],
+                 metric_relabel_configs => [#{source_labels => [<<"__name__">>],
+                                              target_label => <<"name">>}],
+                 relabel_configs =>
+                   [#{regex => list_to_binary(addr2re(A)),
+                      source_labels => [<<"__address__">>],
+                      target_label => <<"instance">>,
+                      replacement => N} || {N, A} <- Targets] ++
+                   [#{regex => <<"n1ql">>,
+                      source_labels => [<<"instance">>],
+                      target_label => <<"category">>,
+                      replacement => <<"n1ql">>}]}]},
+    ConfigBin = yaml:encode(Cfg),
     ?log_debug("Updating prometheus config file: ~s", [File]),
-    ok = misc:atomic_write_file(File, Config).
+    ok = misc:atomic_write_file(File, ConfigBin).
 
 get_service_port(ns_server) -> rest_port;
 get_service_port(index) -> indexer_http_port;
