@@ -61,6 +61,8 @@ do_upgrade_config(Config, FinalVersion) ->
             upgrade_compat_version(?VERSION_50);
         {value, Ver} ->
             {NewVersion, Upgrade} = upgrade(Ver, Config),
+            ok = maybe_upgrade_to_cronicle(NewVersion, Config),
+
             ?log_info("Performing online config upgrade to ~p", [NewVersion]),
             upgrade_compat_version(NewVersion) ++
                 maybe_final_upgrade(NewVersion) ++ Upgrade
@@ -73,6 +75,11 @@ maybe_final_upgrade(?LATEST_VERSION_NUM) ->
     ns_audit_cfg:upgrade_descriptors();
 maybe_final_upgrade(_) ->
     [].
+
+maybe_upgrade_to_cronicle(?VERSION_CHESHIRECAT, Config) ->
+    chronicle_local:upgrade(Config);
+maybe_upgrade_to_cronicle(_, _) ->
+    ok.
 
 %% Note: upgrade functions must ensure that they do not add entries to the
 %% configuration which are already present.

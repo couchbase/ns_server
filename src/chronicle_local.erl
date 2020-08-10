@@ -29,6 +29,7 @@
          join_cluster/1,
          leave_cluster/0,
          rename/1,
+         upgrade/1,
          sync/0]).
 
 %% exported chronicle log fun
@@ -139,3 +140,24 @@ format_msg(#log_info{user_data = #{module := M, function := F, line := L}}
            = Info, UserMsg) ->
     ale_default_formatter:format_msg(
       Info#log_info{module = M, function = F, line = L}, UserMsg).
+
+
+should_move(_) ->
+    false.
+
+-dialyzer({nowarn_function, upgrade/1}).
+
+upgrade(Config) ->
+    ns_config:foreach(
+      fun (Key, Value) ->
+              case should_move(Key) of
+                  true ->
+                      {ok, Rev} = chronicle_kv:set(kv, Key, Value),
+                      ?log_debug("Key ~p is migrated to chronicle. Rev = ~p."
+                                 "Value = ~p",
+                                 [Key, Rev, Value]);
+                  false ->
+                      ok
+              end
+      end, Config),
+    ok.

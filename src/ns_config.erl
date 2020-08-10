@@ -68,7 +68,7 @@
          sync_announcements/0,
          get_kv_list/0, get_kv_list/1, get_kv_list_with_config/1,
          upgrade_config_explicitly/1, config_version_token/0,
-         fold/3, read_key_fast/2, get_timeout/2,
+         fold/3, foreach/2, read_key_fast/2, get_timeout/2,
          delete/1,
          regenerate_node_uuid/0,
          get_node_uuid_map/1,
@@ -617,6 +617,11 @@ fold(Fun, Acc, #config{dynamic = DL, static = SL}) ->
 fold(Fun, Acc, 'latest-config-marker') ->
     fold(Fun, Acc, ns_config:get()).
 
+foreach(Fun, Config) ->
+    ns_config:fold(
+      fun (Key, Value, _) ->
+              Fun(Key, Value)
+      end, ok, Config).
 
 %% Implementation
 
