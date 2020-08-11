@@ -23,7 +23,7 @@
 -export([start_link/0]).
 -export([request/3]).
 
--export([hibernate/3, unhibernate_trampoline/3]).
+-export([hibernate/4, unhibernate_trampoline/3]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
@@ -45,9 +45,9 @@ request(Type, Body, RejectBody) ->
             RejectBody(Error, describe_error(Error))
     end.
 
-hibernate(M, F, A) ->
+hibernate(Req, M, F, A) ->
     gen_server:cast(?MODULE, {note_hibernate, self()}),
-    erlang:hibernate(?MODULE, unhibernate_trampoline, [M, F, A]).
+    menelaus_util:hibernate(Req, ?MODULE, unhibernate_trampoline, [M, F, A]).
 
 unhibernate_trampoline(M, F, A) ->
     gen_server:cast(?MODULE, {note_unhibernate, self()}),

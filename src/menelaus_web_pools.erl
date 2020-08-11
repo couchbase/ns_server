@@ -117,8 +117,8 @@ handle_pool_info_wait(Req, Id, LocalAddr, PassedETag, UpdateID) ->
     ETag = integer_to_list(erlang:phash2(Info)),
     if
         ETag =:= PassedETag ->
-            erlang:hibernate(?MODULE, handle_pool_info_wait_wake,
-                             [Req, Id, LocalAddr, PassedETag]);
+            menelaus_util:hibernate(Req, ?MODULE, handle_pool_info_wait_wake,
+                                    [Req, Id, LocalAddr, PassedETag]);
         true ->
             handle_pool_info_wait_tail(Req, Id, LocalAddr, ETag, UpdateID)
     end.

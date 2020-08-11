@@ -130,44 +130,33 @@ loop(Req0, Config) ->
     Req = menelaus_auth:apply_headers(Req0,
                                       [{"menelaus-start-time", StartTime}]),
 
-    try
-        %% Using raw_path so encoded slash characters like %2F are handed correctly,
-        %% in that we delay converting %2F's to slash characters until after we split by slashes.
-        "/" ++ RawPath = mochiweb_request:get(raw_path, Req),
-        {Path, _, _} = mochiweb_util:urlsplit_path(RawPath),
-        PathTokens = lists:map(fun mochiweb_util:unquote/1, string:tokens(Path, "/")),
+    menelaus_util:handle_request(
+      Req,
+      fun () ->
+              %% Using raw_path so encoded slash characters like %2F are
+              %% handed correctly, in that we delay converting %2F's to slash
+              %% characters until after we split by slashes.
+              "/" ++ RawPath = mochiweb_request:get(raw_path, Req),
+              {Path, _, _} = mochiweb_util:urlsplit_path(RawPath),
+              PathTokens = lists:map(fun mochiweb_util:unquote/1,
+                                     string:tokens(Path, "/")),
 
-        case is_throttled_request(PathTokens) of
-            false ->
-                loop_inner(Req, Config, Path, PathTokens);
-            true ->
-                request_throttler:request(
-                  rest,
-                  fun () ->
-                          loop_inner(Req, Config, Path, PathTokens)
-                  end,
-                  fun (_Error, Reason) ->
-                          Retry = integer_to_list(rand:uniform(10)),
-                          reply_text(Req, Reason, 503, [{"Retry-After", Retry}])
-                  end)
-        end
-    catch
-        exit:normal ->
-            %% this happens when the client closed the connection
-            exit(normal);
-        throw:{web_json_exception, StatusCode, Json} ->
-            reply_json(Req, Json, StatusCode);
-        throw:{web_exception, StatusCode, Message, ExtraHeaders} ->
-            reply_text(Req, Message, StatusCode, ExtraHeaders);
-        Type:What ->
-            Report = ["web request failed",
-                      {path, mochiweb_request:get(path, Req)},
-                      {method, mochiweb_request:get(method, Req)},
-                      {type, Type}, {what, What},
-                      {trace, erlang:get_stacktrace()}], % todo: find a way to enable this for field info gathering
-            ?log_error("Server error during processing: ~p", [Report]),
-            reply_json(Req, [list_to_binary("Unexpected server error, request logged.")], 500)
-    end.
+              case is_throttled_request(PathTokens) of
+                  false ->
+                      loop_inner(Req, Config, Path, PathTokens);
+                  true ->
+                      request_throttler:request(
+                        rest,
+                        fun () ->
+                                loop_inner(Req, Config, Path, PathTokens)
+                        end,
+                        fun (_Error, Reason) ->
+                                Retry = integer_to_list(rand:uniform(10)),
+                                reply_text(Req, Reason, 503,
+                                           [{"Retry-After", Retry}])
+                        end)
+              end
+      end).
 
 is_throttled_request(["internalSettings"]) ->
     false;

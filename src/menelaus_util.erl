@@ -39,6 +39,8 @@
          reply_json/4,
          parse_json/1,
          reply_not_found/1,
+         handle_request/2,
+         hibernate/4,
          serve_file/3,
          serve_file/4,
          serve_static_file/4,
@@ -74,6 +76,9 @@
          compute_sec_headers/0,
          web_exception/2,
          require_permission/2]).
+
+%% Internal exports.
+-export([wake_up/4]).
 
 %% used by parse_validate_number
 -export([list_to_integer/1, list_to_float/1]).
@@ -187,6 +192,36 @@ reply_json(Req, Body, Code) ->
 reply_json(Req, Body, Code, ExtraHeaders) ->
     reply(Req, encode_json(Body), Code,
           [{"Content-Type", "application/json"} | ExtraHeaders]).
+
+reply_server_error(Req, Type, What, Stack) ->
+    Report = ["web request failed",
+              {path, mochiweb_request:get(path, Req)},
+              {method, mochiweb_request:get(method, Req)},
+              {type, Type}, {what, What},
+              {trace, Stack}],
+    ?log_error("Server error during processing: ~p", [Report]),
+    reply_json(
+      Req, [list_to_binary("Unexpected server error, request logged.")], 500).
+
+hibernate(Req, M, F, A) when is_atom(M), is_atom(F), is_list(A) ->
+    erlang:hibernate(?MODULE, wake_up, [Req, M, F, A]).
+
+wake_up(Req, M, F, A) ->
+    handle_request(Req, fun() -> erlang:apply(M, F, A) end).
+
+handle_request(Req, Fun) ->
+    try
+        Fun()
+    catch
+        exit:normal ->
+            erlang:exit(normal);
+        throw:{web_json_exception, StatusCode, Json} ->
+            reply_json(Req, Json, StatusCode);
+        throw:{web_exception, StatusCode, Message, ExtraHeaders} ->
+            reply_text(Req, Message, StatusCode, ExtraHeaders);
+        Type:What ->
+            reply_server_error(Req, Type, What, erlang:get_stacktrace())
+    end.
 
 log_web_hit(Peer, Req, Resp) ->
     Level = case menelaus_auth:get_user_id(Req) of
@@ -534,7 +569,7 @@ handle_streaming(F, Req, HTTPRes, LastRes, UpdateID) ->
                 mochiweb_response:write_chunk("", HTTPRes),
                 exit(normal)
         end,
-    request_throttler:hibernate(?MODULE, handle_streaming_wakeup,
+    request_throttler:hibernate(Req, ?MODULE, handle_streaming_wakeup,
                                 [F, Req, HTTPRes, Res]).
 
 handle_streaming_wakeup(F, Req, HTTPRes, Res) ->
