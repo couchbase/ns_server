@@ -58,7 +58,11 @@ default_settings() ->
      {scrape_interval, 10}, %% in seconds
      {scrape_timeout, 10}, %% in seconds
      {token_file, "prometheus_token"},
-     {query_max_samples, 200000}].
+     {query_max_samples, 200000},
+     {services, [{index,     [{high_cardinality_enabled, true}]},
+                 {fts,       [{high_cardinality_enabled, true}]},
+                 {kv,        [{high_cardinality_enabled, true}]},
+                 {cbas,      [{high_cardinality_enabled, true}]}]}].
 
 build_settings() -> build_settings(ns_config:get()).
 build_settings(Config) ->
@@ -326,6 +330,38 @@ prometheus_config_file(Settings) ->
     File = proplists:get_value(config_file, Settings),
     filename:join(path_config:component_path(data, "config"), File).
 
+high_cardinality_jobs_config(Settings) ->
+    Targets = proplists:get_value(targets, Settings, []),
+    Services = [{Name, Props} ||
+                    {Name, Props} <- proplists:get_value(services, Settings),
+                    proplists:get_value(high_cardinality_enabled, Props, false),
+                    proplists:is_defined(Name, Targets)],
+    TokenFile = token_file(Settings),
+    DefaultInterval = proplists:get_value(scrape_interval, Settings),
+    DefaultTimeout = proplists:get_value(scrape_timeout, Settings),
+    lists:map(
+      fun ({Name, Props}) ->
+          Addr = proplists:get_value(Name, Targets),
+          Interval = proplists:get_value(scrape_interval, Props,
+                                         DefaultInterval),
+          Timeout = proplists:get_value(scrape_timeout, Props,
+                                        min(Interval, DefaultTimeout)),
+          #{job_name => {"~p_high_cardinality", [Name]},
+            scrape_interval => {"~bs", [Interval]},
+            scrape_timeout => {"~bs", [Timeout]},
+            metrics_path => <<"/_prometheusMetricsHigh">>,
+            basic_auth => #{username => list_to_binary(?USERNAME),
+                            password_file => list_to_binary(TokenFile)},
+            static_configs => [#{targets => [list_to_binary(Addr)]}],
+            metric_relabel_configs => [#{source_labels => [<<"__name__">>],
+                                         target_label => <<"name">>}],
+            relabel_configs =>
+              [#{regex => list_to_binary(addr2re(Addr)),
+                 source_labels => [<<"__address__">>],
+                 target_label => <<"instance">>,
+                 replacement => Name}]}
+      end, Services).
+
 ensure_prometheus_config(Settings) ->
     File = prometheus_config_file(Settings),
     ScrapeInterval = proplists:get_value(scrape_interval, Settings),
@@ -351,7 +387,8 @@ ensure_prometheus_config(Settings) ->
                    [#{regex => <<"n1ql">>,
                       source_labels => [<<"instance">>],
                       target_label => <<"category">>,
-                      replacement => <<"n1ql">>}]}]},
+                      replacement => <<"n1ql">>}]}] ++
+              high_cardinality_jobs_config(Settings)},
     ConfigBin = yaml:encode(Cfg),
     ?log_debug("Updating prometheus config file: ~s", [File]),
     ok = misc:atomic_write_file(File, ConfigBin).
