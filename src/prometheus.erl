@@ -147,6 +147,11 @@ parse_value(B) ->
 format_promql(AST) ->
     iolist_to_binary(format_promql_ast(AST)).
 
+-define(BINOP(Op), Op =:= 'or'; Op =:= 'and'; Op =:= 'unless'; Op =:= '/';
+                   Op =:= '+';  Op =:= '-';   Op =:= '/';      Op =:= '*';
+                   Op =:= '%';  Op =:= '^';   Op =:= '==';     Op =:= '!=';
+                   Op =:= '>';  Op =:= '<';   Op =:= '>=';     Op =:= '<=').
+
 format_promql_ast({call, F, By, Args}) when is_atom(F) ->
     format_promql_ast({call, atom_to_list(F), By, Args});
 format_promql_ast({call, F, By, Args}) ->
@@ -157,8 +162,13 @@ format_promql_ast({call, F, By, Args}) ->
             none -> []
         end,
     [F, ByStr, "(", lists:join(",", [format_promql_ast(E) || E <- Args]), ")"];
-format_promql_ast({Op, Exprs}) when Op =:= 'or'; Op =:= 'and' ->
-    OpStr = " " ++ atom_to_list(Op) ++ " ",
+format_promql_ast({Op, Exprs}) when ?BINOP(Op) ->
+    format_promql_ast({Op, [], Exprs});
+format_promql_ast({Op, Opts, Exprs}) when ?BINOP(Op) ->
+    OptsIOList = lists:map(fun ({T, L}) ->
+                               [atom_to_list(T), "(", lists:join(",", L), ") "]
+                           end, Opts),
+    OpStr = " " ++ atom_to_list(Op) ++ " " ++ OptsIOList,
     lists:join(OpStr, [format_promql_ast(E) || E <- Exprs]);
 format_promql_ast({range_vector, Expr, Duration}) ->
     [format_promql_ast(Expr), "[", Duration, "]"];
@@ -167,10 +177,14 @@ format_promql_ast({Labels}) when is_list(Labels) ->
       lists:map(
         fun ({re, Name, Value}) ->
                 [Name, "=~`", Value, "`"];
+            ({eq_any, Name, [_|_] = Values}) ->
+                [Name, "=~`", lists:join("|", Values), "`"];
             ({eq, Name, Value}) ->
                 [Name, "=`", Value, "`"]
         end, Labels),
     ["{" ++ lists:join(",", LabelsIOLists) ++ "}"];
+format_promql_ast(Bin) when is_binary(Bin) ->
+    <<"`", Bin/binary, "`">>;
 format_promql_ast(N) when is_integer(N) ->
     erlang:integer_to_list(N);
 format_promql_ast(X) when is_float(X) ->
