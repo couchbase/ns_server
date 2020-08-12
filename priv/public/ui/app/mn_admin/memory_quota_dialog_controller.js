@@ -4,6 +4,7 @@ import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
 import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
 import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnSettingsClusterService from "/ui/app/mn_admin/mn_settings_cluster_service.js";
+import mnMemoryQuota from "/ui/app/components/directives/mn_memory_quota/mn_memory_quota.js";
 
 export default 'mnMemoryQuotaDialogController';
 
@@ -11,7 +12,8 @@ angular.module('mnMemoryQuotaDialogController', [
   uiBootstrap,
   mnPoolDefault,
   mnPromiseHelper,
-  mnSettingsClusterService
+  mnSettingsClusterService,
+  mnMemoryQuota
 ])
   .controller('mnMemoryQuotaDialogController', mnMemoryQuotaDialogController)
 
