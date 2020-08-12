@@ -24,67 +24,53 @@
 
 -define(IRATE_INTERVAL, "1m").
 
-pre_70_stats_to_prom_query(StatSection, StatList) ->
-    Category =
-        case StatSection of
-            "@query" -> "n1ql";
-            "@global" -> "audit";
-            "@system" -> "system";
-            "@system-processes" -> "system-processes"
-        end,
+pre_70_stats_to_prom_query("@system", all) ->
+    <<"{category=`system`}">>;
+pre_70_stats_to_prom_query("@system-processes", all) ->
+    <<"{category=`system-processes`}">>;
+pre_70_stats_to_prom_query("@global", all) ->
+    <<"{category=`audit`}">>;
+pre_70_stats_to_prom_query(StatSection, all) ->
+    pre_70_stats_to_prom_query(StatSection, default_stat_list(StatSection));
+pre_70_stats_to_prom_query(StatSection, List) ->
+    AstList = lists:filtermap(
+                fun (S) ->
+                    case pre_70_stat_to_prom_query(StatSection, S) of
+                        {ok, R} -> {true, R};
+                        {error, not_found} -> false
+                    end
+                end, [bin(S) || S <- List]),
+    prometheus:format_promql({'or', AstList}).
 
-    CommonLabels = [{<<"category">>, Category}],
+pre_70_stat_to_prom_query("@system", Stat) ->
+    {ok, {[{eq, <<"name">>, <<"sys_", Stat/binary>>}]}};
 
-    StatList2 = case StatList of
-                    all -> default_stat_list(StatSection);
-                    _ -> StatList
-                end,
-
-    Metrics = case StatList2 of
-                  all -> [{{gauge, []}, []}];
-                  L ->
-                      Convert = pre_70_name_to_prom_name(StatSection, _),
-                      misc:groupby_map(
-                        fun ({MetricType, {Name, Params}}) ->
-                            {{MetricType, lists:usort(Params)}, Name}
-                        end, [M || S <- L, {ok, M} <- [Convert(S)]])
-              end,
-
-    Asts =
-        lists:map(
-          fun ({{MetricType, Labels}, Names}) ->
-                  NamesStr = lists:join("|", lists:usort(Names)),
-                  LabelsAst =
-                      {[{re, <<"name">>, NamesStr} || NamesStr =/= ""] ++
-                       [{eq, K, V} || {K, V} <- Labels ++ CommonLabels]},
-                  case MetricType of
-                      gauge -> LabelsAst;
-                      counter -> {call, <<"irate">>, none,
-                                  [{range_vector, LabelsAst, ?IRATE_INTERVAL}]}
-                  end
-          end, Metrics),
-    prometheus:format_promql({'or', Asts}).
-
-pre_70_name_to_prom_name(Section, Name) when is_atom(Name) ->
-    pre_70_name_to_prom_name(Section, atom_to_binary(Name, latin1));
-pre_70_name_to_prom_name("@system", Name) ->
-    {ok, {gauge, {<<"sys_", Name/binary>>, []}}};
-pre_70_name_to_prom_name("@system-processes", Name) ->
-    case binary:split(Name, <<"/">>) of
+pre_70_stat_to_prom_query("@system-processes", Stat) ->
+    case binary:split(Stat, <<"/">>) of
         [ProcName, MetricName] ->
-            {ok, {gauge, {MetricName, [{proc, ProcName}]}}};
+            {ok, {[{eq, <<"name">>, <<"sysproc_", MetricName/binary>>},
+                   {eq, <<"proc">>, ProcName}]}};
         _ ->
-            {ok, {gauge, {Name, []}}}
+            {error, not_found}
     end;
-pre_70_name_to_prom_name("@query", <<"query_", Name/binary>>)
-                                        when Name == <<"active_requests">>;
-                                             Name == <<"queued_requests">> ->
-    {ok, {gauge, {<<"n1ql_", Name/binary>>, []}}};
-pre_70_name_to_prom_name("@query", <<"query_", Name/binary>>) ->
-    {ok, {counter, {<<"n1ql_", Name/binary>>, []}}};
-pre_70_name_to_prom_name("@global", Name) -> {ok, {gauge, {Name, []}}};
-pre_70_name_to_prom_name(_, _) ->
+
+pre_70_stat_to_prom_query("@global", Stat) ->
+    {ok, {[{eq, <<"name">>, Stat}]}};
+
+pre_70_stat_to_prom_query("@query", <<"query_", Stat/binary>>) ->
+    Gauges = [<<"active_requests">>, <<"queued_requests">>],
+    case lists:member(Stat, Gauges) of
+        true -> {ok, {[{eq, <<"name">>, <<"n1ql_", Stat/binary>>}]}};
+        false -> {ok, rate({[{eq, <<"name">>, <<"n1ql_", Stat/binary>>}]})}
+    end;
+
+pre_70_stat_to_prom_query(_, _) ->
     {error, not_found}.
+
+rate(Ast) -> {call, irate, none, [{range_vector, Ast, ?IRATE_INTERVAL}]}.
+
+bin(A) when is_atom(A) -> atom_to_binary(A, latin1);
+bin(B) when is_binary(B) -> B.
 
 prom_name_to_pre_70_name(Bucket, {JSONProps}) ->
     Res =
@@ -129,8 +115,7 @@ default_stat_list("@query") ->
      query_invalid_requests, query_request_time, query_requests,
      query_requests_500ms, query_requests_250ms, query_requests_1000ms,
      query_requests_5000ms, query_result_count, query_result_size,
-     query_selects, query_service_time, query_warnings];
-default_stat_list(_) -> all.
+     query_selects, query_service_time, query_warnings].
 
 
 -ifdef(TEST).
@@ -146,23 +131,25 @@ pre_70_to_prom_query_test_() ->
     [Test("@system", all, "{category=`system`}"),
      Test("@system", [], ""),
      Test("@system-processes", all, "{category=`system-processes`}"),
-     Test("@system-processes", [sysproc_cpu_utilization,sysproc_mem_resident],
+     Test("@system-processes", [], ""),
+     Test("@system-processes", [<<"ns_server/cpu_utilization">>,
+                                <<"ns_server/mem_resident">>,
+                                <<"couchdb/cpu_utilization">>],
+          "{name=`sysproc_cpu_utilization`,proc=`couchdb`} or "
           "{name=~`sysproc_cpu_utilization|sysproc_mem_resident`,"
-           "category=`system-processes`}"),
+           "proc=`ns_server`}"),
      Test("@query", all,
+          "{name=~`n1ql_active_requests|n1ql_queued_requests`} or "
           "irate({name=~`n1ql_errors|n1ql_invalid_requests|n1ql_request_time|"
                         "n1ql_requests|n1ql_requests_1000ms|"
                         "n1ql_requests_250ms|n1ql_requests_5000ms|"
                         "n1ql_requests_500ms|n1ql_result_count|"
                         "n1ql_result_size|n1ql_selects|n1ql_service_time|"
-                        "n1ql_warnings`,"
-                 "category=`n1ql`}["?IRATE_INTERVAL"]) or "
-          "{name=~`n1ql_active_requests|n1ql_queued_requests`,"
-           "category=`n1ql`}"),
-      Test("@query", [query_errors, query_active_requests, query_request_time],
-           "irate({name=~`n1ql_errors|n1ql_request_time`,"
-                  "category=`n1ql`}["?IRATE_INTERVAL"])"
-           " or {name=~`n1ql_active_requests`,category=`n1ql`}")].
+                        "n1ql_warnings`}["?IRATE_INTERVAL"])"),
+     Test("@query", [], ""),
+     Test("@query", [query_errors, query_active_requests, query_request_time],
+          "{name=`n1ql_active_requests`} or "
+          "irate({name=~`n1ql_errors|n1ql_request_time`}["?IRATE_INTERVAL"])")].
 
 prom_name_to_pre_70_name_test_() ->
     Test = fun (Section, Json, ExpectedRes) ->
