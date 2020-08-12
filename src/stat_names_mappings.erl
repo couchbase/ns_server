@@ -67,10 +67,50 @@ pre_70_stat_to_prom_query("@query", <<"query_", Stat/binary>>) ->
 pre_70_stat_to_prom_query("@fts", Stat) ->
     {ok, {[{eq, <<"name">>, Stat}]}};
 
+pre_70_stat_to_prom_query("@fts-" ++ Bucket, <<"fts/", Stat/binary>>) ->
+    Counters = service_fts:get_counters(),
+    IsCounter =
+        fun (N) ->
+            try
+                lists:member(binary_to_existing_atom(N, latin1), Counters)
+            catch
+                _:_ -> false
+            end
+        end,
+    case binary:split(Stat, <<"/">>, [global]) of
+        [N] ->
+            Name = <<"fts_", N/binary>>,
+            case IsCounter(N) of
+                true ->
+                    {ok, sumby([<<"name">>],
+                               rate(bucket_metric(Name, Bucket)))};
+                false ->
+                    {ok, sumby([<<"name">>], bucket_metric(Name, Bucket))}
+            end;
+        [Index, N] ->
+            Name = <<"fts_", N/binary>>,
+            case IsCounter(N) of
+                true ->
+                    {ok, sumby([<<"name">>, <<"index">>],
+                               rate(index_metric(Name, Bucket, Index)))};
+                false ->
+                    {ok, sumby([<<"name">>, <<"index">>],
+                               index_metric(Name, Bucket, Index))}
+            end;
+        _ ->
+            {error, not_found}
+    end;
+
 pre_70_stat_to_prom_query(_, _) ->
     {error, not_found}.
 
 rate(Ast) -> {call, irate, none, [{range_vector, Ast, ?IRATE_INTERVAL}]}.
+sumby(ByFields, Ast) -> {call, sum, {by, ByFields}, [Ast]}.
+bucket_metric(Name, Bucket) ->
+    {[{eq, <<"name">>, Name}, {eq, <<"bucket">>, Bucket}]}.
+index_metric(Name, Bucket, Index) ->
+    {[{eq, <<"name">>, Name}, {eq, <<"bucket">>, Bucket}] ++
+     [{eq, <<"index">>, Index} || Index =/= <<"*">>]}.
 
 bin(A) when is_atom(A) -> atom_to_binary(A, latin1);
 bin(B) when is_binary(B) -> B.
@@ -85,7 +125,13 @@ prom_name_to_pre_70_name(Bucket, {JSONProps}) ->
                 Proc = proplists:get_value(<<"proc">>, JSONProps, <<>>),
                 {ok, <<Proc/binary, "/", Name/binary>>};
             <<"audit_", _/binary>> = Name -> {ok, Name};
-            <<"fts_", _/binary>> = Name -> {ok, Name};
+            <<"fts_", _/binary>> = Name when Bucket == "@fts" ->
+                {ok, Name};
+            <<"fts_", Name/binary>> -> %% for @fts-<bucket>
+                case proplists:get_value(<<"index">>, JSONProps, <<>>) of
+                    <<>> -> {ok, <<"fts/", Name/binary>>};
+                    Index -> {ok, <<"fts/", Index/binary, "/", Name/binary>>}
+                end;
             _ -> {error, not_found}
         end,
     case Res of
@@ -105,7 +151,8 @@ key_type_by_stat_type("@query") -> atom;
 key_type_by_stat_type("@global") -> atom;
 key_type_by_stat_type("@system") -> atom;
 key_type_by_stat_type("@system-processes") -> binary;
-key_type_by_stat_type("@fts") -> binary.
+key_type_by_stat_type("@fts") -> binary;
+key_type_by_stat_type("@fts-" ++ _) -> binary.
 
 %% For system stats it's simple, we can get all of them with a simple query
 %% {category="system"}. For most of other stats it's not always the case.
@@ -124,7 +171,12 @@ default_stat_list("@query") ->
 default_stat_list("@fts") ->
     Stats = service_fts:get_service_gauges() ++
             service_fts:get_service_counters(),
-    [<<"fts_", (bin(S))/binary>> || S <- Stats].
+    [<<"fts_", (bin(S))/binary>> || S <- Stats];
+default_stat_list("@fts-" ++ _) ->
+    Stats = service_fts:get_gauges() ++
+            service_fts:get_counters(),
+    [<<"fts/", (bin(S))/binary>> || S <- Stats] ++
+    [<<"fts/*/", (bin(S))/binary>> || S <- Stats].
 
 -ifdef(TEST).
 pre_70_to_prom_query_test_() ->

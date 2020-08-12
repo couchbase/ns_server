@@ -116,7 +116,7 @@ init(Bucket) ->
         case Bucket of
              "@index-" ++ _ -> false;
              "@xdcr-" ++ _ -> false;
-             "@fts-" ++ _ -> false;
+             "@fts-" ++ _ -> true;
              "@cbas-" ++ _ -> false;
              "@eventing-" ++ _ -> false;
              "@fts" -> true;
