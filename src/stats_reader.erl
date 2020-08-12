@@ -119,7 +119,7 @@ init(Bucket) ->
              "@fts-" ++ _ -> false;
              "@cbas-" ++ _ -> false;
              "@eventing-" ++ _ -> false;
-             "@fts" -> false;
+             "@fts" -> true;
              "@query" -> true;
              "@index" -> false;
              "@cbas" -> false;

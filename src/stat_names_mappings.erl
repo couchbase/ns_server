@@ -64,6 +64,9 @@ pre_70_stat_to_prom_query("@query", <<"query_", Stat/binary>>) ->
         false -> {ok, rate({[{eq, <<"name">>, <<"n1ql_", Stat/binary>>}]})}
     end;
 
+pre_70_stat_to_prom_query("@fts", Stat) ->
+    {ok, {[{eq, <<"name">>, Stat}]}};
+
 pre_70_stat_to_prom_query(_, _) ->
     {error, not_found}.
 
@@ -82,6 +85,7 @@ prom_name_to_pre_70_name(Bucket, {JSONProps}) ->
                 Proc = proplists:get_value(<<"proc">>, JSONProps, <<>>),
                 {ok, <<Proc/binary, "/", Name/binary>>};
             <<"audit_", _/binary>> = Name -> {ok, Name};
+            <<"fts_", _/binary>> = Name -> {ok, Name};
             _ -> {error, not_found}
         end,
     case Res of
@@ -100,7 +104,8 @@ prom_name_to_pre_70_name(Bucket, {JSONProps}) ->
 key_type_by_stat_type("@query") -> atom;
 key_type_by_stat_type("@global") -> atom;
 key_type_by_stat_type("@system") -> atom;
-key_type_by_stat_type("@system-processes") -> binary.
+key_type_by_stat_type("@system-processes") -> binary;
+key_type_by_stat_type("@fts") -> binary.
 
 %% For system stats it's simple, we can get all of them with a simple query
 %% {category="system"}. For most of other stats it's not always the case.
@@ -115,8 +120,11 @@ default_stat_list("@query") ->
      query_invalid_requests, query_request_time, query_requests,
      query_requests_500ms, query_requests_250ms, query_requests_1000ms,
      query_requests_5000ms, query_result_count, query_result_size,
-     query_selects, query_service_time, query_warnings].
-
+     query_selects, query_service_time, query_warnings];
+default_stat_list("@fts") ->
+    Stats = service_fts:get_service_gauges() ++
+            service_fts:get_service_counters(),
+    [<<"fts_", (bin(S))/binary>> || S <- Stats].
 
 -ifdef(TEST).
 pre_70_to_prom_query_test_() ->
