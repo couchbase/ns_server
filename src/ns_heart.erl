@@ -159,6 +159,24 @@ erlang_stats() ->
 
 %% Internal fuctions
 
+is_interesting_stat({curr_items, _}) -> true;
+is_interesting_stat({curr_items_tot, _}) -> true;
+is_interesting_stat({vb_replica_curr_items, _}) -> true;
+is_interesting_stat({mem_used, _}) -> true;
+is_interesting_stat({couch_docs_actual_disk_size, _}) -> true;
+is_interesting_stat({couch_views_actual_disk_size, _}) -> true;
+is_interesting_stat({couch_spatial_disk_size, _}) -> true;
+is_interesting_stat({couch_docs_data_size, _}) -> true;
+is_interesting_stat({couch_views_data_size, _}) -> true;
+is_interesting_stat({couch_spatial_data_size, _}) -> true;
+is_interesting_stat({vb_active_num_non_resident, _}) -> true;
+is_interesting_stat({cmd_get, _}) -> true;
+is_interesting_stat({get_hits, _}) -> true;
+is_interesting_stat({ep_bg_fetched, _}) -> true;
+is_interesting_stat({ops, _}) -> true;
+is_interesting_stat(_) -> false.
+
+
 send_beat_msg(Interval, State) ->
     TRef = erlang:send_after(Interval, self(), beat),
     State#state{timer_ref = TRef}.
@@ -246,36 +264,53 @@ current_status_slow(TS) ->
     system_stats_collector:add_histo(status_latency, Diff),
     [{status_latency, Diff} | Status0].
 
-%% Stat names changed in Chesire-Cat
-%% There are 2 reasons why we need to convert interesting stats names to
-%% old names:
-%% 1) Compatibility between nodes during upgrade;
-%% 2) Compatibility of GET /pools/nodes/
-interesting_stats_backward_compat_mapping(BucketStats) ->
-   Map = fun (kv_mem_used_bytes) -> mem_used;
-             (kv_curr_items) -> curr_items;
-             (kv_curr_items_tot) -> curr_items_tot;
-             (kv_vb_replica_curr_items) -> vb_replica_curr_items;
-             (kv_ep_db_data_size_bytes) -> couch_docs_data_size;
-             (kv_vb_active_num_non_resident) -> vb_active_num_non_resident;
-             (kv_operations) -> cmd_get;
-             (kv_get_hits) -> get_hits;
-             (kv_ep_bg_fetched) -> ep_bg_fetched;
-             (kv_ops) -> ops;
-             (N) -> N
-         end,
-    lists:map(
-      fun ({Bucket, Stats}) ->
-          {Bucket, [{Map(N), V} || {N, V} <- Stats]}
-      end, BucketStats).
+grab_latest_stats(Bucket) ->
+    case catch stats_archiver:latest_sample(Bucket, minute) of
+        {ok, #stat_entry{values = Values}} ->
+            Values;
+        Error ->
+            ?log_debug("Ignoring failure to grab ~p stats:~n~p~n", [Bucket, Error]),
+            []
+    end.
+
+add_interesting_index_stats(BucketName, BucketStats) ->
+    IndexStats = grab_latest_stats("@index-" ++ BucketName),
+
+    DataSizeKey =
+        service_stats_collector:global_stat(service_index, <<"data_size">>),
+    DiskSizeKey =
+        service_stats_collector:global_stat(service_index, <<"disk_size">>),
+
+    DataSize = proplists:get_value(DataSizeKey, IndexStats, 0),
+    DiskSize = proplists:get_value(DiskSizeKey, IndexStats, 0),
+    orddict:store(index_disk_size, DiskSize,
+                  orddict:store(index_data_size, DataSize, BucketStats)).
 
 current_status_slow_inner() ->
+    [SystemStats, ProcessesStats] =
+        [grab_latest_stats(PseudoBucket) || PseudoBucket <- ["@system", "@system-processes"]],
+
     BucketNames = ns_bucket:node_bucket_names(node()),
 
-    PerBucketInterestingStats = interesting_stats_backward_compat_mapping(
-                                  stats_interface:buckets_interesting_stats()),
-    ProcessesStats = stats_interface:sysproc_stats(),
-    SystemStats = stats_interface:system_stats(),
+    IndexStatus = grab_index_status(),
+    Indexes = proplists:get_value(indexes, IndexStatus, []),
+    IndexBuckets = sets:from_list([binary_to_list(B) || {B, _} <- Indexes]),
+
+    PerBucketInterestingStats =
+        lists:foldl(fun (BucketName, Acc) ->
+                            Values = grab_latest_stats(BucketName),
+                            InterestingValues0 = lists:filter(fun is_interesting_stat/1, Values),
+
+                            InterestingValues =
+                                case sets:is_element(BucketName, IndexBuckets) of
+                                    true ->
+                                        add_interesting_index_stats(BucketName, InterestingValues0);
+                                    false ->
+                                        InterestingValues0
+                                end,
+
+                            [{BucketName, InterestingValues} | Acc]
+                    end, [], BucketNames),
 
     InterestingStats =
         lists:foldl(fun ({BucketName, InterestingValues}, Acc) ->
@@ -303,6 +338,21 @@ current_status_slow_inner() ->
 
     StorageConf = ns_storage_conf:query_storage_conf(),
 
+    InterestingProcessesStats =
+        lists:filter(
+          fun ({Name, _}) ->
+                  case binary:split(Name, <<$/>>, [global]) of
+                      [_Process, StatName] ->
+                          lists:member(StatName,
+                                       [<<"mem_resident">>, <<"mem_size">>,
+                                        <<"cpu_utilization">>, <<"major_faults_raw">>]);
+                      _ ->
+                          false
+                  end;
+              (_) ->
+                  false
+          end, ProcessesStats),
+
     ProcFSFiles = grab_procfs_files(),
     ServiceStatuses = grab_service_statuses(),
 
@@ -323,9 +373,24 @@ current_status_slow_inner() ->
                                   cpu_cores_available, allocstall]]},
          {interesting_stats, InterestingStats},
          {per_bucket_interesting_stats, PerBucketInterestingStats},
-         {processes_stats, ProcessesStats},
+         {processes_stats, InterestingProcessesStats},
          {cluster_compatibility_version, ClusterCompatVersion}
          | element(2, ns_info:basic_info())].
+
+grab_index_status() ->
+    case ns_cluster_membership:should_run_service(index, node()) of
+        true ->
+            try
+                {ok, Status} = service_index:get_status(2000),
+                Status
+            catch T:E ->
+                    ?log_debug("ignoring failure to get index status: ~p~n~p",
+                               [{T, E}, erlang:get_stacktrace()]),
+                    []
+            end;
+        false ->
+            []
+    end.
 
 %% returns dict as if returned by ns_doctor:get_nodes/0 but containing only
 %% failover safeness fields (or down bool property). Instead of going
