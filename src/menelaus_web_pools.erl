@@ -152,6 +152,8 @@ handle_pool_info_wait_tail(Req, Id, LocalAddr, ETag, UpdateID) ->
     %% keeping memory usage low is imho more important
     exit(normal).
 
+config_version_token() ->
+    {chronicle_kv:get_revision(kv), ns_config:config_version_token()}.
 
 build_pool_info(Id, Req, normal, Stability, LocalAddr, UpdateID) ->
     InfoLevel =
@@ -176,12 +178,12 @@ build_pool_info(Id, Req, normal, Stability, LocalAddr, UpdateID) ->
       {pool_details, InfoLevel, Stability, LocalAddr},
       fun () ->
               %% NOTE: token needs to be taken before building pool info
-              Vsn = {ns_config:config_version_token(), nodes(), UpdateID},
+              Vsn = {config_version_token(), nodes(), UpdateID},
               {do_build_pool_info(Id, InfoLevel, Stability, LocalAddr), 1000,
                Vsn}
       end,
       fun (_Key, _Value, {ConfigVersionToken, Nodes, OldUpdateID}) ->
-              ConfigVersionToken =/= ns_config:config_version_token()
+              ConfigVersionToken =/= config_version_token()
                   orelse Nodes =/= nodes()
                   orelse ((UpdateID =/= OldUpdateID) andalso
                           (UpdateID =/= undefined))
