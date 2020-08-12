@@ -442,7 +442,7 @@ add_stat_entry(Name, [[TS, ValStr] | Tail1], Stats, Res) ->
             add_stat_entry(Name, Tail1, Stats, [NewEntry | Res]);
         [#stat_entry{timestamp = AnotherTS} = Entry | Tail2]
                                                 when AnotherTS < NewTS ->
-            add_stat_entry(Name, [[NewTS, ValStr] | Tail1], Tail2,
+            add_stat_entry(Name, [[TS, ValStr] | Tail1], Tail2,
                            [Entry | Res])
     end.
 
