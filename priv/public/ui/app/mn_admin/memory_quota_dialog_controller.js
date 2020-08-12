@@ -22,6 +22,7 @@ function mnMemoryQuotaDialogController($q, $uibModalInstance, mnPoolDefault, mnP
   vm.config = memoryQuotaConfig;
   vm.isEnterprise = mnPoolDefault.latestValue().value.isEnterprise;
   vm.onSubmit = onSubmit;
+
   vm.initialIndexSettings = _.clone(indexSettings);
   vm.indexSettings = indexSettings;
   vm.firstTimeAddedServices = firstTimeAddedServices;

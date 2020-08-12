@@ -18,7 +18,7 @@ function mnGroupsGroupDialogController($uibModalInstance, mnGroupsService, mnPro
       .showGlobalSpinner()
       .catchErrors()
       .closeOnSuccess()
-      .reloadState("app.admin.servers.list.groups")
+      .reloadState("app.admin.groups")
       .showGlobalSuccess("Group saved successfully!");
   }
 }

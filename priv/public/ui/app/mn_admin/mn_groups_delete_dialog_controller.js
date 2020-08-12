@@ -15,7 +15,7 @@ function mnGroupsDeleteDialogController($uibModalInstance, mnGroupsService, mnPr
       .showGlobalSpinner()
       .catchErrors()
       .closeFinally()
-      .reloadState("app.admin.servers.list.groups")
+      .reloadState("app.admin.groups")
       .showGlobalSuccess("Group deleted successfully!");
   }
 }

@@ -70,7 +70,7 @@ function mnGroupsController($scope, $uibModal, mnGroupsService, mnPromiseHelper,
 
   function applyChanges() {
     mnPromiseHelper($scope, mnGroupsService.applyChanges(vm.state.uri, vm.state.currentGroups))
-      .reloadState("app.admin.servers.list.groups")
+      .reloadState("app.admin.groups")
       .showGlobalSuccess("Group changes applied successfully!")
       .getPromise()
       .then(null, function (resp) {

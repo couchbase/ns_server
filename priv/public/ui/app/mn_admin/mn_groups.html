@@ -8,7 +8,7 @@
      class="alert alert-warning"
      ng-show="groupsCtl.revisionMismatch">
     <p>Revision mismatch. Please sync the state of groups before trying to apply changes.</p>
-    <a ng-click="groupsCtl.reloadState('app.admin.servers.list.groups')">Sync Groups</a>
+    <a ng-click="groupsCtl.reloadState('app.admin.groups')">Sync Groups</a>
   </div>
 </mn-element-cargo>
 <mn-element-cargo depot="actions">
@@ -33,7 +33,7 @@
   <a
      class="margin-right-1"
      ng-show="!groupsCtl.disableApplyChangesBtn"
-     ng-click="groupsCtl.reloadState('app.admin.servers.list.groups')"
+     ng-click="groupsCtl.reloadState('app.admin.groups')"
      >Reset</a>
   <span>
     <button
