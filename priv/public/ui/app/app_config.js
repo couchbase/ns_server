@@ -1,6 +1,6 @@
 export default appConfig;
 
-function appConfig($httpProvider, $stateProvider, $urlRouterProvider, $transitionsProvider, $uibTooltipProvider, $animateProvider, $qProvider, $sceDelegateProvider, $locationProvider) {
+function appConfig($httpProvider, $stateProvider, $urlRouterProvider, $transitionsProvider, $uibTooltipProvider, $animateProvider, $qProvider, $sceDelegateProvider, $locationProvider, $uibModalProvider) {
   $httpProvider.defaults.headers.common['invalid-auth-response'] = 'on';
   $httpProvider.defaults.headers.common['Cache-Control'] = 'no-cache';
   $httpProvider.defaults.headers.common['Pragma'] = 'no-cache';
@@ -15,6 +15,8 @@ function appConfig($httpProvider, $stateProvider, $urlRouterProvider, $transitio
       $state.go('app.admin.overview.statistics');
     }]);
   });
+
+  $uibModalProvider.options.backdrop = "static";
 
   $sceDelegateProvider.resourceUrlWhitelist([
     'self', // Allow same origin resource loads

@@ -15,7 +15,7 @@ import { NgModule, ErrorHandler, APP_INITIALIZER} from '/ui/web_modules/@angular
 import { HTTP_INTERCEPTORS, HttpClient } from '/ui/web_modules/@angular/common/http.js';
 import { UIView} from '/ui/web_modules/@uirouter/angular.js';
 import { UpgradeModule } from '/ui/web_modules/@angular/upgrade/static.js';
-
+import { NgbModalConfig } from '/ui/web_modules/@ng-bootstrap/ng-bootstrap.js';
 
 export { MnAppModule };
 
@@ -46,19 +46,24 @@ class MnAppModule {
         }, {
           provide: ErrorHandler,
           useClass: MnExceptionHandlerService
-        }
+        },
+        NgbModalConfig
       ]
     })
   ]}
 
-  static get parameters() {return  [UpgradeModule]}
+  static get parameters() {return  [
+    UpgradeModule,
+    NgbModalConfig
+  ]}
 
   ngDoBootstrap() {
     this.upgrade.bootstrap(document, [app], { strictDi: false });
   }
 
-  constructor(upgrade) {
+  constructor(upgrade, ngbModalConfig) {
     this.upgrade = upgrade;
+    ngbModalConfig.backdrop = "static";
   }
 
 }
