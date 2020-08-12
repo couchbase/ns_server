@@ -12,15 +12,16 @@ function mnRolesController(poolDefault, mnHelper, $uibModal, $q) {
       controller: 'mnUserRolesAddDialogController as userRolesAddDialogCtl',
       resolve: {
         user: mnHelper.wrapInFunction(undefined),
+        isSaslauthdAuthEnabled: function (mnUserRolesService) {
+          return (poolDefault.saslauthdEnabled ?
+                  mnUserRolesService.getSaslauthdAuth() : $q.when())
+            .then((resp) => resp && resp.enabled);
+        },
         isLdapEnabled: function (mnUserRolesService) {
-          return $q.all([
-            poolDefault.saslauthdEnabled ?
-              mnUserRolesService.getSaslauthdAuth() : $q.when(),
-            (poolDefault.isEnterprise && poolDefault.compat.atLeast65) ?
-              mnUserRolesService.getLdapSettings() : $q.when()
-          ]).then(function (resp) {
-            return (resp[0] && resp[0].enabled) || (resp[1] && resp[1].data.authenticationEnabled);
-          });
+          return ((poolDefault.isEnterprise && poolDefault.compat.atLeast65) ?
+                  mnUserRolesService.getLdapSettings() : $q.when())
+            .then((resp) =>
+                  resp && resp.data.authenticationEnabled);
         }
       }
     });

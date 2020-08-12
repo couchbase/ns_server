@@ -2,13 +2,14 @@ import _ from "/ui/web_modules/lodash.js";
 
 export default mnUserRolesAddDialogController;
 
-function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, mnPromiseHelper, user, isLdapEnabled, mnPoolDefault, mnHelper, $q) {
+function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, mnPromiseHelper, user, isLdapEnabled, mnPoolDefault, mnHelper, $q, isSaslauthdAuthEnabled) {
   var vm = this;
   vm.user = _.clone(user) || {domain: "local"};
   vm.userID = vm.user.id || 'New';
   vm.save = save;
   vm.isEditingMode = !!user;
   vm.isLdapEnabled = isLdapEnabled;
+  vm.isSaslauthdAuthEnabled = isSaslauthdAuthEnabled;
   vm.selectedRoles = {};
   vm.selectedGroupsRoles = {};
   vm.selectedGroups = {};
@@ -38,7 +39,7 @@ function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, m
   }
 
   function onDomainChanged() {
-    if (vm.user.domain === "external") {
+    if (vm.user.domain === "external" && isLdapEnabled) {
       lookupMembership();
     } else {
       clearRoles();
@@ -61,7 +62,7 @@ function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, m
   }
 
   function isLookupEnabled() {
-    return !vm.isEditingMode && (vm.user.domain === 'external');
+    return isLdapEnabled && !vm.isEditingMode && (vm.user.domain === 'external');
   }
 
   function clearRoles() {

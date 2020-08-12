@@ -152,8 +152,11 @@ function mnUserRolesController($scope, $uibModal, mnPromiseHelper, mnUserRolesSe
       controller: 'mnUserRolesAddDialogController as userRolesAddDialogCtl',
       resolve: {
         user: mnHelper.wrapInFunction(user),
+        isSaslauthdAuthEnabled: function () {
+          return (vm.ldapSettings && vm.ldapSettings.data.authenticationEnabled);
+        },
         isLdapEnabled: function () {
-          return (vm.saslauthdAuth && vm.saslauthdAuth.enabled) || (vm.ldapSettings && vm.ldapSettings.data.authenticationEnabled);
+          return (vm.saslauthdAuth && vm.saslauthdAuth.enabled);
         }
       }
     });

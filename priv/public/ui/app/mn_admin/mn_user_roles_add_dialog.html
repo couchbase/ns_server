@@ -24,7 +24,8 @@
            ng-repeat="error in userRolesAddDialogCtl.errors">
           {{error}}
         </div>
-        <div ng-if="userRolesAddDialogCtl.isLdapEnabled" class="formrow checkbox-list">
+        <div ng-if="userRolesAddDialogCtl.isLdapEnabled ||
+                    userRolesAddDialogCtl.isSaslauthdAuthEnabled" class="formrow checkbox-list">
           <div>
             <h4>Authentication Domain</h4>
             <input
