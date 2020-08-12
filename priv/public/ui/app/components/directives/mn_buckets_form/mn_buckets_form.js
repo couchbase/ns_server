@@ -7,6 +7,7 @@ import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnPermissions from "/ui/app/components/mn_permissions.js";
 import mnBarUsage from "/ui/app/components/directives/mn_bar_usage/mn_bar_usage.js";
 import mnUserRolesService from "/ui/app/mn_admin/mn_user_roles_service.js";
+import mnAutoCompactionForm from "/ui/app/components/directives/mn_auto_compaction_form/mn_auto_compaction_form.js";
 
 export default "mnBucketsForm";
 
@@ -18,7 +19,8 @@ angular
     mnPromiseHelper,
     mnBarUsage,
     mnUserRolesService,
-    mnPermissions
+    mnPermissions,
+    mnAutoCompactionForm
   ])
   .directive('mnBucketsForm', mnBucketsFormDirective);
 
