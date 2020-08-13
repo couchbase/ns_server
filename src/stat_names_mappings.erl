@@ -209,7 +209,74 @@ pre_70_to_prom_query_test_() ->
      Test("@query", [], ""),
      Test("@query", [query_errors, query_active_requests, query_request_time],
           "{name=`n1ql_active_requests`} or "
-          "irate({name=~`n1ql_errors|n1ql_request_time`}["?IRATE_INTERVAL"])")].
+          "irate({name=~`n1ql_errors|n1ql_request_time`}["?IRATE_INTERVAL"])"),
+     Test("@fts", all, "{name=~`fts_curr_batches_blocked_by_herder|"
+                               "fts_num_bytes_used_ram|"
+                               "fts_total_queries_rejected_by_herder`}"),
+     Test("@fts", [], ""),
+     Test("@fts", [<<"fts_num_bytes_used_ram">>,
+                   <<"fts_curr_batches_blocked_by_herder">>],
+          "{name=~`fts_curr_batches_blocked_by_herder|"
+                  "fts_num_bytes_used_ram`}"),
+     Test("@fts-test", all,
+          "sum by (name) ({name=~`fts_doc_count|"
+                                 "fts_num_bytes_used_disk|"
+                                 "fts_num_files_on_disk|"
+                                 "fts_num_mutations_to_index|"
+                                 "fts_num_pindexes_actual|"
+                                 "fts_num_pindexes_target|"
+                                 "fts_num_recs_to_persist|"
+                                 "fts_num_root_filesegments|"
+                                 "fts_num_root_memorysegments`,"
+                          "bucket=`test`}) or "
+          "sum by (name) (irate({name=~`fts_total_bytes_indexed|"
+                                       "fts_total_bytes_query_results|"
+                                       "fts_total_compaction_written_bytes|"
+                                       "fts_total_queries|"
+                                       "fts_total_queries_error|"
+                                       "fts_total_queries_slow|"
+                                       "fts_total_queries_timeout|"
+                                       "fts_total_request_time|"
+                                       "fts_total_term_searchers`,"
+                                "bucket=`test`}[1m])) or "
+          "sum by (name,index) ({name=~`fts_doc_count|"
+                                       "fts_num_bytes_used_disk|"
+                                       "fts_num_files_on_disk|"
+                                       "fts_num_mutations_to_index|"
+                                       "fts_num_pindexes_actual|"
+                                       "fts_num_pindexes_target|"
+                                       "fts_num_recs_to_persist|"
+                                       "fts_num_root_filesegments|"
+                                       "fts_num_root_memorysegments`,"
+                                "bucket=`test`}) or "
+          "sum by (name,index) (irate({name=~`fts_total_bytes_indexed|"
+                                             "fts_total_bytes_query_results|"
+                                             "fts_total_compaction_written_bytes|"
+                                             "fts_total_queries|"
+                                             "fts_total_queries_error|"
+                                             "fts_total_queries_slow|"
+                                             "fts_total_queries_timeout|"
+                                             "fts_total_request_time|"
+                                             "fts_total_term_searchers`,"
+                                      "bucket=`test`}[1m]))"),
+     Test("@fts-test", [], ""),
+     Test("@fts-test", [<<"fts/num_files_on_disk">>,
+                        <<"fts/num_pindexes_target">>,
+                        <<"fts/doc_count">>,
+                        <<"fts/ind1/doc_count">>,
+                        <<"fts/ind1/num_pindexes_target">>,
+                        <<"fts/ind2/num_files_on_disk">>,
+                        <<"fts/ind2/total_queries">>],
+          "sum by (name) ({name=~`fts_doc_count|"
+                                 "fts_num_files_on_disk|"
+                                 "fts_num_pindexes_target`,bucket=`test`}) or "
+          "sum by (name,index) ({name=~`fts_doc_count|"
+                                       "fts_num_pindexes_target`,"
+                                "bucket=`test`,index=`ind1`}) or "
+          "sum by (name,index) ({name=`fts_num_files_on_disk`,"
+                                "bucket=`test`,index=`ind2`}) or "
+          "sum by (name,index) (irate({name=`fts_total_queries`,"
+                                      "bucket=`test`,index=`ind2`}[1m]))")].
 
 prom_name_to_pre_70_name_test_() ->
     Test = fun (Section, Json, ExpectedRes) ->
@@ -233,6 +300,12 @@ prom_name_to_pre_70_name_test_() ->
      Test("@query", "{\"name\": \"unknown\"}",
           {error, not_found}),
      Test("@query", "{\"proc\": \"ns_server\"}",
-          {error, not_found})].
+          {error, not_found}),
+     Test("@fts", "{\"name\": \"fts_num_bytes_used_ram\"}",
+          {ok, <<"fts_num_bytes_used_ram">>}),
+     Test("@fts-test", "{\"name\": \"fts_doc_count\"}",
+          {ok, <<"fts/doc_count">>}),
+     Test("@fts-test", "{\"name\": \"fts_doc_count\", \"index\": \"ind1\"}",
+          {ok, <<"fts/ind1/doc_count">>})].
 
 -endif.
