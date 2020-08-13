@@ -47,21 +47,18 @@ set_token_node(Token, Node) ->
 -spec get_token_node(auth_token() | undefined) ->
         {Node :: atom(), auth_token() | undefined}.
 get_token_node(undefined) ->
-    {undefined, undefined};
+    {local, undefined};
 get_token_node(Token) ->
     try
         erlang:binary_to_term(base64:decode(Token), [safe])
     catch
-        _:_ -> {undefined, Token}
+        _:_ -> {local, Token}
     end.
 
 -spec check(auth_token() | undefined) -> false | {ok, term()}.
 check(Token) ->
     {Node, CleanToken} = get_token_node(Token),
-    case Node of
-        undefined -> token_server:check(?MODULE, CleanToken);
-        _ -> token_server:check(?MODULE, CleanToken, Node)
-    end.
+    token_server:check(?MODULE, CleanToken, Node).
 
 -spec reset() -> ok.
 reset() ->
@@ -84,9 +81,9 @@ ns_config_event_handler(_Evt) ->
 
 -ifdef(TEST).
 set_and_get_token_node_test() ->
-    ?assertEqual({undefined, undefined}, get_token_node(undefined)),
-    ?assertEqual({undefined, <<"token">>}, get_token_node(<<"token">>)),
-    ?assertEqual({undefined, "token"}, get_token_node("token")),
+    ?assertEqual({local, undefined}, get_token_node(undefined)),
+    ?assertEqual({local, <<"token">>}, get_token_node(<<"token">>)),
+    ?assertEqual({local, "token"}, get_token_node("token")),
     [?assertEqual({Node, Token}, get_token_node(set_token_node(Token, Node)))
         || _    <- lists:seq(1,1000),
            Node <- ['n_0@192.168.0.1',

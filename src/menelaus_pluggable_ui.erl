@@ -289,10 +289,10 @@ proxy_req(RestPrefix, Path, PluginsConfig, Req) ->
         {#prefix{port_name = Port, service = Service},
          #plugin{request_headers_filter = HdrFilter} = Plugin} ->
             case choose_node(Service, Plugin, Req) of
-                {ok, Node} ->
+                {ok, Node, Remote} ->
                     HostPort = address_and_port(Port, Node),
                     Timeout = get_timeout(Service, Req),
-                    AuthToken = auth_token(Req),
+                    AuthToken = auth_token(Req, Remote),
                     Headers = AuthToken ++ convert_headers(Req, HdrFilter) ++
                         forwarded_headers(Req),
                     do_proxy_req(HostPort, Path, Headers, Timeout, Req);
@@ -315,18 +315,21 @@ find_prefix_info(RestPrefix, #config{plugins = Plugins, prefixes = Prefixes}) ->
 choose_node(views, Plugin, Req) ->
     choose_node(kv, Plugin, Req);
 choose_node(Service, #plugin{proxy_strategy = local}, _Req) ->
-    case ns_cluster_membership:should_run_service(Service, node()) of
-        true -> {ok, node()};
+    Node = node(),
+    case ns_cluster_membership:should_run_service(Service, Node) of
+        true -> {ok, Node, local};
         false -> {error, {service_not_running, Service}}
     end;
 choose_node(Service, #plugin{proxy_strategy = sticky}, Req) ->
+    Node = node(),
     case service_nodes(Service) of
         [] -> {error, {service_not_running, Service}};
         Nodes ->
-            case lists:member(node(), Nodes) of
-                true -> {ok, node()};
+            case lists:member(Node, Nodes) of
+                true -> {ok, Node, local};
                 false ->
-                    {ok, menelaus_util:choose_node_consistently(Req, Nodes)}
+                    {ok, menelaus_util:choose_node_consistently(Req, Nodes),
+                     remote}
             end
     end.
 
@@ -381,12 +384,20 @@ get_timeout(_Service, Req) ->
             list_to_integer(Val)
     end.
 
-auth_token(Req) ->
+auth_token(Req, Remote) ->
     case menelaus_auth:extract_ui_auth_token(Req) of
         undefined ->
             [];
         Token ->
-            NodeToken = menelaus_ui_auth:set_token_node(Token, node()),
+            %% if we go agains local node, there's no reason to pack node name
+            %% into the token. In fact it causes the race with node rename that
+            %% results in 401
+            NodeToken = case Remote of
+                            local ->
+                                Token;
+                            remote ->
+                                menelaus_ui_auth:set_token_node(Token, node())
+                        end,
             [{"ns-server-ui","yes"},
              {"ns-server-auth-token", NodeToken}]
     end.

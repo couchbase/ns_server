@@ -24,7 +24,7 @@
          handle_info/2, terminate/2, code_change/3]).
 
 -export([generate/2, maybe_refresh/2,
-         check/3, check/2, reset_all/1, remove/2,
+         check/3, reset_all/1, remove/2,
          purge/2, take/2]).
 
 -define(EXPIRATION_CHECKING_INTERVAL, 15000).
@@ -46,11 +46,12 @@ maybe_refresh(Module, Token) ->
     gen_server:call(Module, {maybe_refresh, tok2bin(Token)}, infinity).
 
 
-check(Module, Token) ->
-    check(Module, Token, node()).
-
 check(_, undefined, _) ->
     false;
+check(Module, Token, local) ->
+    %% we do not check if node is part of the cluster for the
+    %% local node to avoid 401 during the node rename
+    gen_server:call(Module, {check, tok2bin(Token)}, infinity);
 check(Module, Token, Node) ->
     case lists:member(Node, ns_node_disco:nodes_actual()) of
         true ->
