@@ -30,7 +30,7 @@
          ng-if="!bucket.isMemcached">
         <strong>Ejection Method: </strong>
         {{bucket.isEphemeral ?
-        bucketsDetailsCtl.bucketDetails.evictionPolicy === "noEviction" ? 'No ejection' : 'NRU ejection' :
+        bucketsDetailsCtl.bucketDetails.evictionPolicy === "noEviction" ? 'No ejection' : 'Eject data when RAM is full' :
         bucketsDetailsCtl.bucketDetails.evictionPolicy === "valueOnly" ? 'Value-Only' : 'Full'}}
       </div>
       <div class="nowrap" ng-if="!bucket.isMemcached">
