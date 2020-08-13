@@ -1,20 +1,22 @@
 <section
    class="has-hover"
+   [ngClass]="(detailsHashObserver.stream.isOpened | async) ? 'dynamic_healthy' : ''"
    (click)="detailsHashObserver.stream.toggleDetails.next(scope.name)">
-  <div class="cbui-tablerow">
-    <span class="cbui-table-cell flex-grow-3 row">
+  <div
+     class="cbui-tablerow"
+     [ngClass]="(detailsHashObserver.stream.isOpened | async) ? '' : 'dynamic_healthy'">
+    <span class="cbui-table-cell flex-grow-3 cbui-tablerow-title">
       {{scope.name}}
     </span>
     <span class="cbui-table-cell">
       {{scope.collections.length}}
     </span>
-    <span class="cbui-table-cell flex-grow-1-5 wrap text-right resp-hide-xsml">
+    <span class="cbui-table-cell flex-grow-1-5 text-right resp-hide-xsml">
       <a
-         class="nowrap"
-         style="margin-right: -3px;"
          [hidden]="!permissions.cluster.bucket[bucketName]?.collections.delete"
          (click)="$event.stopPropagation();clickDeleteScope.next();">
         Drop</a>
+      <a class="margin-left-half">Add Collection</a>
     </span>
   </div>
   <div

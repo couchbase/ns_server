@@ -161,7 +161,7 @@ class MnHelperService {
     };
 
     var unpackPerItemPaginationParams = (page) => ({
-      size: page[perItem + "s"] || 9,
+      size: page[perItem + "s"] || 10,
       page: page[perItem + "p"] || 1
     });
 

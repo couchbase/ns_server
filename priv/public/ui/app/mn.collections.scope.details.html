@@ -1,4 +1,4 @@
-<div class="row">
+<div class="row force-icon-size-16">
   <mn-input-filter
      [group]="filter.group"
      placeholder="filter collections">
@@ -6,7 +6,7 @@
 </div>
 <div class="cbui-table inner-table">
   <div class="cbui-table-header">
-    <span class="cbui-table-cell flex-grow-3">
+    <span class="cbui-table-cell flex-grow-3 text-fine" *ngIf="(collections | async)?.length">
       <span
          class="sorter"
          [ngClass]="{
@@ -14,27 +14,38 @@
                 'dynamic-inverted': (sorter.state | async)
                 }"
          (click)="$event.stopPropagation();sorter.click.next('name')">
-        collections</span></span>
+        collection name
+      </span>
+    </span>
       <span class="cbui-table-cell"></span>
       <span class="cbui-table-cell flex-grow-1-5 resp-hide-xsml"></span>
   </div>
-  <div class="cbui-table-body">
-    <div *ngIf="!scope.collections.length">
-      There are no collections yet.
-    </div>
-    <div *ngFor="let collection of (paginator.page | async); trackBy: trackByFn">
-      <mn-collections-item
-         [scopeName]="scope.name"
-         [bucketName]="bucketName"
-         [collection]="collection"></mn-collections-item>
-    </div>
+  <span *ngIf="!scope.collections.length" class="zero-content">
+    You have no collections yet. Use Add Collection above to start.
+  </span>
+  <!-- <div *ngIf="!(collections | async)?.length" class="text-fine padding-half">
+   No collections match.
+  </div> -->
+  <div
+     class="cbui-table-body"
+     (click)="$event.stopPropagation();"
+     *ngIf="scope.collections.length">
+    <section *ngFor="let collection of (paginator.page | async); trackBy: trackByFn">
+      <div class="dynamic_healthy">
+        <mn-collections-item
+           [scopeName]="scope.name"
+           [bucketName]="bucketName"
+           [collection]="collection"></mn-collections-item>
+      </div>
+    </section>
   </div>
-  <div class="row">
+  <div class="row row-min">
     <div
        (click)="$event.stopPropagation();"
-       [formGroup]="paginator.group">
-      <select formControlName="size">
-        <option *ngFor="let num of [9,19,29,39]" [ngValue]="num">
+       [formGroup]="paginator.group"
+       *ngIf="(collections | async)?.length">
+      <select formControlName="size" class="cbui-select-small">
+        <option *ngFor="let num of [10,20,40,80]" [ngValue]="num">
           {{num}}
         </option>
       </select>

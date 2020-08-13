@@ -321,7 +321,7 @@ input.filter-input {
 /* inserts X circle (clear control) inside filter input field ----------- */
 .filter-input-group .fa-times-circle {
   color: #888;
-  font-size: 20px;
+  font-size: 20px !important;
   position: absolute;
   top: .4rem;
   right: .4rem;
@@ -470,15 +470,30 @@ color: #333;
 /* CBUI FLEXBOX TABLES -------------------------------------------------  */
 .cbui-table-body {
   background-color: #f6f7f9;
-  border-radius: 9px;
-  border: 1px solid #d1d1d1;
-  padding: 0.5rem;
+  border-radius: 7px;
+  border: 1px solid #d8d8d8;
+  padding: 0 .5rem;
+  cursor: default !important;
+  margin: 0 0 4px 2px;
+}
+.cbui-table-body .cbui-tablerow {
+  padding: 2px !important;
+  font-size: .725rem;
+  font-weight: 600;
 }
 .cbui-table-body div {
-  border-bottom: 1px solid #ececec;
+  border-bottom: 1px solid #d8d8d8;
+  margin: 2px;
+  padding-left: 6px;
 }
-.cbui-table-body div:last-child {
-  border-bottom: 0;
+.cbui-table-body section div:last-child {
+  border-bottom: 4px !important;
+}
+.cbui-table-body section {
+    padding: .25rem 0;
+}
+.cbui-table-body section:last-child {
+  border-bottom: 0 !important;
 }
 .inner-table .cbui-table-header {
   border-bottom: 0;
@@ -690,8 +705,11 @@ section.error {
 .cbui-tablerow .cbui-table-cell:last-child {
   padding-right: 0;
 }
-.cbui-table .icon {
+/* .cbui-table .icon {
   font-size: .75rem;
+} */
+.force-icon-size-16 .icon {
+  font-size: 1rem !important; /* hack for collections filter icon */
 }
 .cbui-table-header .icon,
 .cbui-table-header-filled .icon {
@@ -1391,6 +1409,7 @@ section.error {
   border: 1px solid #d1d1d1;
   border-radius: 3px;
 }
+.cbui-select-small,
 .cbui-select-small .selectize-input {
   height: 1.75rem;
   line-height: 1.5rem;
@@ -1983,7 +2002,7 @@ button:hover.scenarios-delete {
 
 /* pagination ----------------------------------------------------------- */
 .pagination {
-  padding: 0 1.5rem 0 .5rem;
+  padding: 0;
 }
 .pagination a {
   padding-left: .25rem;
