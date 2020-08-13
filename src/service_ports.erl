@@ -118,7 +118,8 @@ all_ports() ->
 
      %% Backup service ports
      ?define_port(backup_http_port,  backupAPI,      backup, 8097),
-     ?define_port(backup_https_port, backupAPIHTTPS, backup, 18097),
+     ?define_port(backup_https_port, backupAPIHTTPS, backup, 18097, secure,
+                  backup_http_port),
      ?define_port(backup_grpc_port,  backupGRPC,     backup, 9124)
     ].
 
