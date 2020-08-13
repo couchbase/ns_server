@@ -2,6 +2,10 @@
 
 -include("ns_common.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([query_range/6, query_range_async/7, query/4,
          format_value/1, parse_value/1, format_promql/1]).
 
@@ -189,3 +193,33 @@ format_promql_ast(N) when is_integer(N) ->
     erlang:integer_to_list(N);
 format_promql_ast(X) when is_float(X) ->
     erlang:float_to_list(X).
+
+-ifdef(TEST).
+format_promql_test() ->
+    ?assertEqual(format_promql({[]}), <<"{}">>),
+    ?assertEqual(format_promql({[{eq, <<"label1">>, <<"val1">>},
+                                 {eq_any, <<"label2">>, [<<"opt1">>,
+                                                         <<"opt2">>,
+                                                         <<"opt3">>]},
+                                 {re, <<"label3">>, "re"}]}),
+                 <<"{label1=`val1`,label2=~`opt1|opt2|opt3`,label3=~`re`}">>),
+    ?assertEqual(format_promql({call, sum, {by, [<<"label1">>, <<"label2">>]},
+                                [{[{eq, <<"name">>, <<"metric">>}]}]}),
+                 <<"sum by (label1,label2) ({name=`metric`})">>),
+    ?assertEqual(format_promql({'or', [{[{eq, <<"label1">>, <<"val1">>}]},
+                                       {[{eq, <<"label2">>, <<"val2">>}]}]}),
+                 <<"{label1=`val1`} or {label2=`val2`}">>),
+    ?assertEqual(format_promql({'/', [{ignoring, [<<"l1">>, <<"l2">>]},
+                                      {group_left, [<<"l3">>, <<"l4">>]}],
+                                     [{[{eq, <<"l1">>, <<"v1">>}]},
+                                      {[{eq, <<"l2">>, <<"v2">>}]}]}),
+                 <<"{l1=`v1`} / ignoring(l1,l2) group_left(l3,l4) "
+                   "{l2=`v2`}">>),
+    ?assertEqual(format_promql({call, label_replace, none,
+                                [{[]}, <<"l1">>, <<"l2">>, <<>>, <<>>]}),
+                 <<"label_replace({},`l1`,`l2`,``,``)">>),
+    ?assertEqual(format_promql({call, vector, none, [1]}), <<"vector(1)">>),
+    ?assertEqual(format_promql({call, rate, none,
+                                [{range_vector, {[]}, <<"1m">>}]}),
+                 <<"rate({}[1m])">>).
+-endif.
