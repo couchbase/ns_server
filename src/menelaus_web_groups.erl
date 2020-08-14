@@ -58,7 +58,7 @@ handle_server_groups_put(Req) ->
     JSON = menelaus_util:parse_json(Req),
     Config = ns_config:get(),
     Groups = ns_config:search(Config, server_groups, []),
-    {value, Nodes} = ns_config:search(Config, nodes_wanted),
+    Nodes = ns_node_disco:nodes_wanted(Config),
     V = integer_to_list(erlang:phash2(Groups)),
     case V =/= Rev of
         true ->

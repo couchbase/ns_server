@@ -225,7 +225,7 @@ do_upgrades([_ | Rest], CurrentVersion, NewVersion, Config, NodesWanted) ->
     do_upgrades(Rest, CurrentVersion, NewVersion, Config, NodesWanted).
 
 do_consider_switching_compat_mode(Config, CurrentVersion) ->
-    NodesWanted = lists:sort(ns_config:search(Config, nodes_wanted, undefined)),
+    NodesWanted = ns_node_disco:nodes_wanted(Config),
     NodesUp = lists:sort([node() | nodes()]),
     case ordsets:is_subset(NodesWanted, NodesUp) of
         true ->
