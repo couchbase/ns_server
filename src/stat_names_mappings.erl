@@ -68,38 +68,7 @@ pre_70_stat_to_prom_query("@fts", Stat) ->
     {ok, {[{eq, <<"name">>, Stat}]}};
 
 pre_70_stat_to_prom_query("@fts-" ++ Bucket, <<"fts/", Stat/binary>>) ->
-    Counters = service_fts:get_counters(),
-    IsCounter =
-        fun (N) ->
-            try
-                lists:member(binary_to_existing_atom(N, latin1), Counters)
-            catch
-                _:_ -> false
-            end
-        end,
-    case binary:split(Stat, <<"/">>, [global]) of
-        [N] ->
-            Name = <<"fts_", N/binary>>,
-            case IsCounter(N) of
-                true ->
-                    {ok, sumby([<<"name">>],
-                               rate(bucket_metric(Name, Bucket)))};
-                false ->
-                    {ok, sumby([<<"name">>], bucket_metric(Name, Bucket))}
-            end;
-        [Index, N] ->
-            Name = <<"fts_", N/binary>>,
-            case IsCounter(N) of
-                true ->
-                    {ok, sumby([<<"name">>, <<"index">>],
-                               rate(index_metric(Name, Bucket, Index)))};
-                false ->
-                    {ok, sumby([<<"name">>, <<"index">>],
-                               index_metric(Name, Bucket, Index))}
-            end;
-        _ ->
-            {error, not_found}
-    end;
+    map_index_stats(<<"fts">>, service_fts:get_counters(), Bucket, Stat);
 
 pre_70_stat_to_prom_query("@index", <<"index_ram_percent">>) ->
     {ok, named(<<"index_ram_percent">>,
@@ -116,8 +85,65 @@ pre_70_stat_to_prom_query("@index", <<"index_memory_used">>) ->
 pre_70_stat_to_prom_query("@index", Stat) ->
     {ok, metric(Stat)};
 
+pre_70_stat_to_prom_query("@index-" ++ Bucket, <<"index/", Stat/binary>>) ->
+    map_index_stats(<<"index">>, service_index:get_counters(), Bucket, Stat);
+
 pre_70_stat_to_prom_query(_, _) ->
     {error, not_found}.
+
+%% Works for fts and index, Prefix is the only difference
+map_index_stats(Prefix, Counters, Bucket, Stat) ->
+    IsCounter =
+        fun (N) ->
+            try
+                lists:member(binary_to_existing_atom(N, latin1), Counters)
+            catch
+                _:_ -> false
+            end
+        end,
+    case binary:split(Stat, <<"/">>, [global]) of
+        [<<"disk_overhead_estimate">> = N] ->
+              DiskSize = sumby([<<"name">>],
+                               bucket_metric(<<Prefix/binary, "_disk_size">>,
+                                             Bucket)),
+              FragPerc = sumby([<<"name">>],
+                               bucket_metric(<<Prefix/binary, "_frag_percent">>,
+                                             Bucket)),
+              Name = <<Prefix/binary, "_", N/binary>>,
+              {ok, named(Name, {'/', [{'*', [{ignoring, [<<"name">>]}],
+                                       [DiskSize, FragPerc]}, 100]})};
+        [Index,  <<"disk_overhead_estimate">> = N] ->
+              DiskSize = sumby([<<"name">>, <<"index">>],
+                               index_metric(<<Prefix/binary, "_disk_size">>,
+                                             Bucket, Index)),
+              FragPerc = sumby([<<"name">>, <<"index">>],
+                               index_metric(<<Prefix/binary, "_frag_percent">>,
+                                             Bucket, Index)),
+              Name = <<Prefix/binary, "_", N/binary>>,
+              {ok, named(Name, {'/', [{'*', [{ignoring, [<<"name">>]}],
+                                       [DiskSize, FragPerc]}, 100]})};
+        [N] ->
+            Name = <<Prefix/binary, "_", N/binary>>,
+            case IsCounter(N) of
+                true ->
+                    {ok, sumby([<<"name">>],
+                               rate(bucket_metric(Name, Bucket)))};
+                false ->
+                    {ok, sumby([<<"name">>], bucket_metric(Name, Bucket))}
+            end;
+        [Index, N] ->
+            Name = <<Prefix/binary, "_", N/binary>>,
+            case IsCounter(N) of
+                true ->
+                    {ok, sumby([<<"name">>, <<"index">>],
+                               rate(index_metric(Name, Bucket, Index)))};
+                false ->
+                    {ok, sumby([<<"name">>, <<"index">>],
+                               index_metric(Name, Bucket, Index))}
+            end;
+        _ ->
+            {error, not_found}
+    end.
 
 rate(Ast) -> {call, irate, none, [{range_vector, Ast, ?IRATE_INTERVAL}]}.
 sumby(ByFields, Ast) -> {call, sum, {by, ByFields}, [Ast]}.
@@ -154,6 +180,11 @@ prom_name_to_pre_70_name(Bucket, {JSONProps}) ->
                 {ok, <<"index_memory_used">>};
             <<"index_", _/binary>> = Name when Bucket == "@index" ->
                 {ok, Name};
+            <<"index_", Name/binary>> -> %% for @index-<bucket>
+                case proplists:get_value(<<"index">>, JSONProps, <<>>) of
+                    <<>> -> {ok, <<"index/", Name/binary>>};
+                    Index -> {ok, <<"index/", Index/binary, "/", Name/binary>>}
+                end;
             _ -> {error, not_found}
         end,
     case Res of
@@ -175,7 +206,8 @@ key_type_by_stat_type("@system") -> atom;
 key_type_by_stat_type("@system-processes") -> binary;
 key_type_by_stat_type("@fts") -> binary;
 key_type_by_stat_type("@fts-" ++ _) -> binary;
-key_type_by_stat_type("@index") -> binary.
+key_type_by_stat_type("@index") -> binary;
+key_type_by_stat_type("@index-" ++ _) -> binary.
 
 
 %% For system stats it's simple, we can get all of them with a simple query
@@ -205,7 +237,13 @@ default_stat_list("@index") ->
     Stats = service_index:get_service_gauges() ++
             service_index:get_service_counters() ++
             [ram_percent, remaining_ram],
-    [<<"index_", (bin(S))/binary>> || S <- Stats].
+    [<<"index_", (bin(S))/binary>> || S <- Stats];
+default_stat_list("@index-" ++ _) ->
+    Stats = service_index:get_gauges() ++
+            service_index:get_counters() ++
+            service_index:get_computed(),
+    [<<"index/", (bin(S))/binary>> || S <- Stats] ++
+    [<<"index/*/", (bin(S))/binary>> || S <- Stats].
 
 -ifdef(TEST).
 pre_70_to_prom_query_test_() ->

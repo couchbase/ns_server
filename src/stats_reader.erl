@@ -114,7 +114,7 @@ init(Bucket) ->
     ns_pubsub:subscribe_link(ns_tick_event),
     UseNewStats =
         case Bucket of
-             "@index-" ++ _ -> false;
+             "@index-" ++ _ -> true;
              "@xdcr-" ++ _ -> false;
              "@fts-" ++ _ -> true;
              "@cbas-" ++ _ -> false;
