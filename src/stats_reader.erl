@@ -121,7 +121,7 @@ init(Bucket) ->
              "@eventing-" ++ _ -> false;
              "@fts" -> true;
              "@query" -> true;
-             "@index" -> false;
+             "@index" -> true;
              "@cbas" -> false;
              "@eventing" -> false;
              "@system-processes" -> true;

@@ -101,16 +101,34 @@ pre_70_stat_to_prom_query("@fts-" ++ Bucket, <<"fts/", Stat/binary>>) ->
             {error, not_found}
     end;
 
+pre_70_stat_to_prom_query("@index", <<"index_ram_percent">>) ->
+    {ok, named(<<"index_ram_percent">>,
+               {'*', [{'/', [{ignoring, [<<"name">>]}],
+                       [metric(<<"index_memory_used_total">>),
+                        metric(<<"index_memory_quota">>)]}, 100]})};
+pre_70_stat_to_prom_query("@index", <<"index_remaining_ram">>) ->
+    {ok, named(<<"index_remaining_ram">>,
+               {'-', [{ignoring, [<<"name">>]}],
+                [metric(<<"index_memory_quota">>),
+                 metric(<<"index_memory_used_total">>)]})};
+pre_70_stat_to_prom_query("@index", <<"index_memory_used">>) ->
+    {ok, metric(<<"index_memory_used_total">>)};
+pre_70_stat_to_prom_query("@index", Stat) ->
+    {ok, metric(Stat)};
+
 pre_70_stat_to_prom_query(_, _) ->
     {error, not_found}.
 
 rate(Ast) -> {call, irate, none, [{range_vector, Ast, ?IRATE_INTERVAL}]}.
 sumby(ByFields, Ast) -> {call, sum, {by, ByFields}, [Ast]}.
+metric(Name) -> {[{eq, <<"name">>, Name}]}.
 bucket_metric(Name, Bucket) ->
     {[{eq, <<"name">>, Name}, {eq, <<"bucket">>, Bucket}]}.
 index_metric(Name, Bucket, Index) ->
     {[{eq, <<"name">>, Name}, {eq, <<"bucket">>, Bucket}] ++
      [{eq, <<"index">>, Index} || Index =/= <<"*">>]}.
+named(Name, Ast) ->
+    {call, label_replace, none, [Ast, <<"name">>, Name, <<>>, <<>>]}.
 
 bin(A) when is_atom(A) -> atom_to_binary(A, latin1);
 bin(B) when is_binary(B) -> B.
@@ -132,6 +150,10 @@ prom_name_to_pre_70_name(Bucket, {JSONProps}) ->
                     <<>> -> {ok, <<"fts/", Name/binary>>};
                     Index -> {ok, <<"fts/", Index/binary, "/", Name/binary>>}
                 end;
+            <<"index_memory_used_total">> when Bucket == "@index" ->
+                {ok, <<"index_memory_used">>};
+            <<"index_", _/binary>> = Name when Bucket == "@index" ->
+                {ok, Name};
             _ -> {error, not_found}
         end,
     case Res of
@@ -152,7 +174,9 @@ key_type_by_stat_type("@global") -> atom;
 key_type_by_stat_type("@system") -> atom;
 key_type_by_stat_type("@system-processes") -> binary;
 key_type_by_stat_type("@fts") -> binary;
-key_type_by_stat_type("@fts-" ++ _) -> binary.
+key_type_by_stat_type("@fts-" ++ _) -> binary;
+key_type_by_stat_type("@index") -> binary.
+
 
 %% For system stats it's simple, we can get all of them with a simple query
 %% {category="system"}. For most of other stats it's not always the case.
@@ -176,7 +200,12 @@ default_stat_list("@fts-" ++ _) ->
     Stats = service_fts:get_gauges() ++
             service_fts:get_counters(),
     [<<"fts/", (bin(S))/binary>> || S <- Stats] ++
-    [<<"fts/*/", (bin(S))/binary>> || S <- Stats].
+    [<<"fts/*/", (bin(S))/binary>> || S <- Stats];
+default_stat_list("@index") ->
+    Stats = service_index:get_service_gauges() ++
+            service_index:get_service_counters() ++
+            [ram_percent, remaining_ram],
+    [<<"index_", (bin(S))/binary>> || S <- Stats].
 
 -ifdef(TEST).
 pre_70_to_prom_query_test_() ->
