@@ -173,7 +173,13 @@ format_promql_ast({Op, Opts, Exprs}) when ?BINOP(Op) ->
                                [atom_to_list(T), "(", lists:join(",", L), ") "]
                            end, Opts),
     OpStr = " " ++ atom_to_list(Op) ++ " " ++ OptsIOList,
-    lists:join(OpStr, [format_promql_ast(E) || E <- Exprs]);
+    lists:join(OpStr, lists:map(fun ({O, _} = E) when ?BINOP(O) ->
+                                        ["(", format_promql_ast(E), ")"];
+                                    ({O, _, _} = E) when ?BINOP(O) ->
+                                        ["(", format_promql_ast(E), ")"];
+                                    (E) ->
+                                        format_promql_ast(E)
+                                end, Exprs));
 format_promql_ast({range_vector, Expr, Duration}) ->
     [format_promql_ast(Expr), "[", Duration, "]"];
 format_promql_ast({Labels}) when is_list(Labels) ->
@@ -221,5 +227,10 @@ format_promql_test() ->
     ?assertEqual(format_promql({call, vector, none, [1]}), <<"vector(1)">>),
     ?assertEqual(format_promql({call, rate, none,
                                 [{range_vector, {[]}, <<"1m">>}]}),
-                 <<"rate({}[1m])">>).
+                 <<"rate({}[1m])">>),
+    ?assertEqual(format_promql({'*', [{'+', [{[{eq, <<"l1">>, <<"v1">>}]},
+                                             {[{eq, <<"l2">>, <<"v2">>}]}]},
+                                      {'+', [{[{eq, <<"l3">>, <<"v3">>}]},
+                                             {[{eq, <<"l4">>, <<"v4">>}]}]}]}),
+                <<"({l1=`v1`} + {l2=`v2`}) * ({l3=`v3`} + {l4=`v4`})">>).
 -endif.
