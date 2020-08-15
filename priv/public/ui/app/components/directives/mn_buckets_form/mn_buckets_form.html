@@ -414,10 +414,10 @@
     </div>
 
     <div ng-show="bucketConf.bucketType === 'membase' || bucketConf.bucketType === 'ephemeral'">
-      <label class="inline">Durability Level</label>
+      <label class="inline">Minimum Durability Level</label>
       <span
          class="fa-stack icon-info"
-         uib-tooltip='Bucket Minimum Durability Level. KVEngine upgrades any write request to this min-level, if the min-level is higher than the write-level. May upgrade a NormalWrite to SyncWrite.'
+         uib-tooltip='Bucket Minimum Durability Level. The Data Service upgrades any write request to this minimum level of durability if the write level is lower than the minimum level. It will also upgrade an async write to a sync write if the minimum level is higher than none.'
          tooltip-placement="right">
         <span class="icon fa-circle-thin fa-stack-2x"></span>
         <span class="icon fa-info fa-stack-1x"></span>
