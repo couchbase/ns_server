@@ -426,12 +426,12 @@
         <select
            name="durabilityMinLevel"
            ng-model="bucketConf.durabilityMinLevel">
-          <option value="none">None</option>
-          <option value="majority">Majority</option>
+          <option value="none">none</option>
+          <option value="majority">majority</option>
           <option value="majorityAndPersistActive"
-             ng-show="bucketConf.bucketType === 'membase'">Majority and persist to active</option>
+             ng-show="bucketConf.bucketType === 'membase'">majorityAndPersistActive</option>
           <option value="persistToMajority"
-             ng-show="bucketConf.bucketType === 'membase'">Persist to majority</option>
+             ng-show="bucketConf.bucketType === 'membase'">persistToMajority</option>
         </select>
       </div>
       <div
