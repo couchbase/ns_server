@@ -343,7 +343,84 @@ pre_70_to_prom_query_test_() ->
           "sum by (name,index) ({name=`fts_num_files_on_disk`,"
                                 "bucket=`test`,index=`ind2`}) or "
           "sum by (name,index) (irate({name=`fts_total_queries`,"
-                                      "bucket=`test`,index=`ind2`}[1m]))")].
+                                      "bucket=`test`,index=`ind2`}[1m]))"),
+     Test("@index", all,
+          "{name=~`index_memory_quota|index_memory_used_total`} or "
+          "label_replace(({name=`index_memory_used_total`} / ignoring(name)"
+                        " {name=`index_memory_quota`}) * 100,"
+                        "`name`,`index_ram_percent`,``,``) or "
+          "label_replace({name=`index_memory_quota`} - ignoring(name) "
+                        "{name=`index_memory_used_total`},"
+                        "`name`,`index_remaining_ram`,``,``)"),
+     Test("@index", [], ""),
+     Test("@index", [<<"index_memory_quota">>, <<"index_remaining_ram">>],
+          "{name=`index_memory_quota`} or "
+          "label_replace({name=`index_memory_quota`} - ignoring(name) "
+                        "{name=`index_memory_used_total`},"
+                        "`name`,`index_remaining_ram`,``,``)"),
+     Test("@index-test", all,
+          "label_replace((sum by (name) ({name=`index_disk_size`,"
+                                         "bucket=`test`})"
+                           " * ignoring(name) "
+                         "sum by (name) ({name=`index_frag_percent`,"
+                                         "bucket=`test`})) / 100,"
+                         "`name`,`index_disk_overhead_estimate`,``,``) or "
+          "label_replace((sum by (name,index) ({name=`index_disk_size`,"
+                                               "bucket=`test`})"
+                           " * ignoring(name) "
+                         "sum by (name,index) ({name=`index_frag_percent`,"
+                                               "bucket=`test`})) / 100,"
+                        "`name`,`index_disk_overhead_estimate`,``,``) or "
+          "sum by (name) ({name=~`index_data_size|index_data_size_on_disk|"
+                                 "index_disk_size|index_frag_percent|"
+                                 "index_items_count|index_log_space_on_disk|"
+                                 "index_memory_used|index_num_docs_pending|"
+                                 "index_num_docs_queued|index_raw_data_size|"
+                                 "index_recs_in_mem|index_recs_on_disk`,"
+                          "bucket=`test`}) or "
+          "sum by (name) (irate({name=~`index_cache_hits|index_cache_misses|"
+                                       "index_num_docs_indexed|"
+                                       "index_num_requests|"
+                                       "index_num_rows_returned|"
+                                       "index_scan_bytes_read|"
+                                       "index_total_scan_duration`,"
+                                "bucket=`test`}[1m])) or "
+          "sum by (name,index) ({name=~`index_data_size|"
+                                       "index_data_size_on_disk|"
+                                       "index_disk_size|"
+                                       "index_frag_percent|"
+                                       "index_items_count|"
+                                       "index_log_space_on_disk|"
+                                       "index_memory_used|"
+                                       "index_num_docs_pending|"
+                                       "index_num_docs_queued|"
+                                       "index_raw_data_size|"
+                                       "index_recs_in_mem|"
+                                       "index_recs_on_disk`,bucket=`test`}) or "
+          "sum by (name,index) (irate({name=~`index_cache_hits|"
+                                             "index_cache_misses|"
+                                             "index_num_docs_indexed|"
+                                             "index_num_requests|"
+                                             "index_num_rows_returned|"
+                                             "index_scan_bytes_read|"
+                                             "index_total_scan_duration`,"
+                                      "bucket=`test`}[1m]))"),
+     Test("@index-test", [], ""),
+     Test("@index-test", [<<"index/cache_hits">>,
+                          <<"index/i1/num_requests">>,
+                          <<"index/i1/disk_overhead_estimate">>],
+          "label_replace((sum by (name,index) ({name=`index_disk_size`,"
+                                               "bucket=`test`,"
+                                               "index=`i1`}) * ignoring(name) "
+                         "sum by (name,index) ({name=`index_frag_percent`,"
+                                               "bucket=`test`,"
+                                               "index=`i1`})) / 100,"
+                        "`name`,`index_disk_overhead_estimate`,``,``) or "
+          "sum by (name) (irate({name=`index_cache_hits`,"
+                                 "bucket=`test`}[1m])) or "
+          "sum by (name,index) (irate({name=`index_num_requests`,"
+                                      "bucket=`test`,"
+                                      "index=`i1`}[1m]))")].
 
 prom_name_to_pre_70_name_test_() ->
     Test = fun (Section, Json, ExpectedRes) ->
@@ -373,6 +450,14 @@ prom_name_to_pre_70_name_test_() ->
      Test("@fts-test", "{\"name\": \"fts_doc_count\"}",
           {ok, <<"fts/doc_count">>}),
      Test("@fts-test", "{\"name\": \"fts_doc_count\", \"index\": \"ind1\"}",
-          {ok, <<"fts/ind1/doc_count">>})].
+          {ok, <<"fts/ind1/doc_count">>}),
+     Test("@index", "{\"name\": \"index_memory_used_total\"}",
+          {ok, <<"index_memory_used">>}),
+     Test("@index", "{\"name\": \"index_remaining_ram\"}",
+          {ok, <<"index_remaining_ram">>}),
+     Test("@index-test", "{\"name\": \"index_disk_size\"}",
+          {ok, <<"index/disk_size">>}),
+     Test("@index-test", "{\"name\": \"index_disk_size\", \"index\": \"ind1\"}",
+          {ok, <<"index/ind1/disk_size">>})].
 
 -endif.
