@@ -16,7 +16,8 @@ class MnCollectionsScopeDetailsComponent extends MnLifeCycleHooksToStream {
       inputs: [
         "scope",
         "scopeName",
-        "bucketName"
+        "bucketName",
+        "statusClass"
       ]
     })
   ]}

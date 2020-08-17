@@ -37,7 +37,7 @@ let collectionsState = {
       dynamic: true
     },
     scopesPage: {
-      value: {page:1, size:9},
+      value: {page:1, size:10},
       type: 'json',
       dynamic: true
     },

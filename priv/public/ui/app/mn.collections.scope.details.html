@@ -31,7 +31,7 @@
      (click)="$event.stopPropagation();"
      *ngIf="scope.collections.length">
     <section *ngFor="let collection of (paginator.page | async); trackBy: trackByFn">
-      <div class="dynamic_healthy">
+      <div [ngClass]="statusClass">
         <mn-collections-item
            [scopeName]="scope.name"
            [bucketName]="bucketName"

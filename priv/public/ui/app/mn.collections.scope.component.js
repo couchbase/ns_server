@@ -19,7 +19,8 @@ class MnCollectionsScopeComponent extends MnLifeCycleHooksToStream {
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
         "scope",
-        "bucketName"
+        "bucketName",
+        "statusClass"
       ]
     })
   ]}

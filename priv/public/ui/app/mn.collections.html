@@ -14,9 +14,9 @@
 
   <div class="row">
     <div [formGroup]="bucketSelect">
-      <select formControlName="name">
-        <option *ngFor="let name of (buckets | async)" [ngValue]="name">
-          {{name}}
+      <select formControlName="item">
+        <option *ngFor="let bucket of (buckets | async)" [ngValue]="bucket">
+          {{bucket.name}}
         </option>
       </select>
     </div>
@@ -47,7 +47,8 @@
     <div *ngFor="let scope of (scopesPaginator.page | async); trackBy: trackByFn">
       <mn-collections-scope
          [scope]="scope"
-         [bucketName]="bucketSelect.get('name').value"></mn-collections-scope>
+         [statusClass]="(statusClass | async)"
+         [bucketName]="bucketSelect.get('item').value.name"></mn-collections-scope>
     </div>
     <div class="row">
       <div [formGroup]="scopesPaginator.group">

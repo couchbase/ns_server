@@ -10,8 +10,8 @@
         <select
            formControlName="bucketName"
            id="add-bucket-name">
-          <option *ngFor="let name of (buckets | async)" [ngValue]="name">
-            {{name}}
+          <option *ngFor="let bucket of (buckets | async)" [ngValue]="bucket.name">
+            {{bucket.name}}
           </option>
         </select>
         <div

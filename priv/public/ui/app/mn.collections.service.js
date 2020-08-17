@@ -56,12 +56,11 @@ class MnCollectionsService {
     this.stream.deleteCollectionHttp =
       new MnHttpRequest(this.deleteCollection.bind(this)).addSuccess().addError();
 
-    this.stream.collectionBuckets = mnBucketsService.stream.getBucketsByName
-      .pipe(map(buckets => Object
-                .keys(buckets)
-                .filter(bucketName =>
-                        mnPermissions.export.cluster.bucket[bucketName] &&
-                        mnPermissions.export.cluster.bucket[bucketName].collections.read)),
+    this.stream.collectionBuckets = mnBucketsService.stream.getBuckets
+      .pipe(map(buckets => buckets
+                .filter(bucket =>
+                        mnPermissions.export.cluster.bucket[bucket.name] &&
+                        mnPermissions.export.cluster.bucket[bucket.name].collections.read)),
             shareReplay({refCount: true, bufferSize: 1}));
   }
 

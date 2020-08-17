@@ -2,10 +2,10 @@ import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.
 import {FormBuilder} from "/ui/web_modules/@angular/forms.js";
 import {UIRouter} from "/ui/web_modules/@uirouter/angular.js";
 import {pluck, filter, switchMap, distinctUntilChanged, withLatestFrom,
-        shareReplay, takeUntil} from '/ui/web_modules/rxjs/operators.js';
+        shareReplay, takeUntil, tap, map} from '/ui/web_modules/rxjs/operators.js';
 import {combineLatest, Subject, timer} from "/ui/web_modules/rxjs.js";
 import {NgbModal} from "/ui/web_modules/@ng-bootstrap/ng-bootstrap.js";
-import {MnPermissions} from '/ui/app/ajs.upgraded.providers.js';
+import {MnPermissions, MnServersService} from '/ui/app/ajs.upgraded.providers.js';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnCollectionsService} from './mn.collections.service.js';
@@ -30,20 +30,21 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
     UIRouter,
     NgbModal,
     FormBuilder,
-    MnHelperService
+    MnHelperService,
+    MnServersService
   ]}
 
   constructor(mnCollectionsService, mnPermissions,
-              uiRouter, modalService, formBuilder, mnHelperService) {
+              uiRouter, modalService, formBuilder, mnHelperService, mnServersService) {
     super();
 
     var clickAddScope = new Subject();
     var clickAddCollection = new Subject();
 
-    var bucketSelect = formBuilder.group({name: null});
+    var bucketSelect = formBuilder.group({item: null});
 
     var setBucket = (v) =>
-        bucketSelect.patchValue({name: v});
+        bucketSelect.patchValue({item: v});
 
     var setBucketUrlParam = (name, location) =>
         uiRouter.stateService.go('.', {collectionsBucket: name ? name : null}, {
@@ -61,31 +62,41 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
         combineLatest(
           getBucketUrlParam,
           getBuckets
-        ).pipe(filter(([param, buckets]) => param && buckets.includes(param)),
-               pluck(0),
-               distinctUntilChanged());
+        ).pipe(filter(([param, buckets]) => param && buckets
+                      .map(bucket => bucket.name).includes(param)),
+               pluck(1, 0),
+               distinctUntilChanged(),
+               shareReplay({refCount: true, bufferSize: 1}));
 
     var bucketsWithParams =
         getBuckets.pipe(withLatestFrom(getBucketUrlParam));
+
+    var statusClass = getBucketUrlParamDefined
+        .pipe(map(item =>
+                  ("dynamic_" + mnServersService.addNodesByStatus(item.nodes).statusClass)),
+              takeUntil(this.mnOnDestroy),
+              distinctUntilChanged());
 
     getBucketUrlParamDefined
       .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(setBucket);
 
-    bucketSelect.get("name").valueChanges
-      .pipe(distinctUntilChanged(),
+    bucketSelect.get("item").valueChanges
+      .pipe(pluck("name"),
+            distinctUntilChanged(),
             takeUntil(this.mnOnDestroy))
       .subscribe(setBucketUrlParam);
 
     bucketsWithParams
-      .pipe(filter(([buckets, param]) => param && !buckets.includes(param)),
-            pluck(0, 0),
+      .pipe(filter(([buckets, param]) => param && !buckets
+                   .map(bucket => bucket.name).includes(param)),
+            pluck(0, 0, "name"),
             takeUntil(this.mnOnDestroy))
       .subscribe(setBucketUrlParam);
 
     bucketsWithParams
       .pipe(filter(([_, param]) => !param),
-            pluck(0, 0),
+            pluck(0, 0, "name"),
             takeUntil(this.mnOnDestroy))
       .subscribe(v => setBucketUrlParam(v, "replace"));
 
@@ -96,7 +107,7 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
         combineLatest(getBucketUrlParamDefined,
                       mnCollectionsService.stream.updateManifest,
                       timer(0, 5000))
-        .pipe(switchMap(([bucket]) => mnCollectionsService.getManifest(bucket)),
+        .pipe(switchMap(([bucket]) => mnCollectionsService.getManifest(bucket.name)),
               pluck("scopes"),
               scopesSorter.pipe,
               scopesFilter.pipe,
@@ -109,14 +120,14 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
       .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(() => {
         var ref = modalService.open(MnCollectionsAddScopeComponent);
-        ref.componentInstance.bucketName = bucketSelect.get("name").value;
+        ref.componentInstance.bucketName = bucketSelect.get("item").value.name;
       });
 
     clickAddCollection
       .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(() => {
         var ref = modalService.open(MnCollectionsAddItemComponent);
-        ref.componentInstance.bucketName = bucketSelect.get("name").value;
+        ref.componentInstance.bucketName = bucketSelect.get("item").value.name;
       });
 
     this.scopesSorter = scopesSorter;
@@ -129,6 +140,7 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
     this.scopes = scopes;
     this.clickAddScope = clickAddScope;
     this.clickAddCollection = clickAddCollection;
+    this.statusClass = statusClass;
   }
 
   trackByFn(_, scope) {
