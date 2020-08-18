@@ -8,6 +8,7 @@ import {MnPermissions} from '/ui/app/ajs.upgraded.providers.js';
 import {MnLifeCycleHooksToStream, DetailsHashObserver} from './mn.core.js';
 import {MnCollectionsService} from './mn.collections.service.js';
 import {MnCollectionsDeleteScopeComponent} from './mn.collections.delete.scope.component.js';
+import {MnCollectionsAddItemComponent} from './mn.collections.add.item.component.js';
 
 export {MnCollectionsScopeComponent};
 
@@ -36,6 +37,7 @@ class MnCollectionsScopeComponent extends MnLifeCycleHooksToStream {
     super();
 
     var clickDeleteScope = new Subject();
+    var clickAddCollection = new Subject();
 
     clickDeleteScope
       .pipe(takeUntil(this.mnOnDestroy))
@@ -45,8 +47,17 @@ class MnCollectionsScopeComponent extends MnLifeCycleHooksToStream {
         ref.componentInstance.bucketName = this.bucketName;
       });
 
+    clickAddCollection
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(() => {
+        var ref = modalService.open(MnCollectionsAddItemComponent);
+        ref.componentInstance.scopeName = this.scope.name;
+        ref.componentInstance.bucketName = this.bucketName;
+      });
+
     this.uiRouter = uiRouter;
     this.clickDeleteScope = clickDeleteScope;
+    this.clickAddCollection = clickAddCollection;
     this.permissions = mnPermissions.export;
   }
 

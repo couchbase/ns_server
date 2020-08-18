@@ -16,7 +16,11 @@
          [hidden]="!permissions.cluster.bucket[bucketName]?.collections.delete"
          (click)="$event.stopPropagation();clickDeleteScope.next();">
         Drop</a>
-      <a class="margin-left-half">Add Collection</a>
+      <a
+         class="margin-left-half"
+         [hidden]="!permissions.cluster.bucket['.'].collections.write"
+         (click)="$event.stopPropagation();clickAddCollection.next();">
+        Add Collection</a>
     </span>
   </div>
   <div

@@ -74,7 +74,7 @@ class MnCollectionsService {
     });
   }
 
-  addCollection([bucket, {scope, name}]) {
+  addCollection([bucket, scope, name]) {
     return this.http.post(`${restApiBase}/${bucket}/collections/${scope}`, {name: name});
   }
 

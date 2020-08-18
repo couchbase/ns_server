@@ -1,6 +1,6 @@
 <div class="dialog-med">
   <div class="panel-header">
-    <h2>Add Collection</h2>
+    <h2>Add Collection into {{scopeName}} scope</h2>
     <a class="ui-dialog-titlebar-close modal-close" (click)="activeModal.dismiss()">X</a>
   </div>
   <form (ngSubmit)="form.submit.next()" [formGroup]="form.group" class="forms">
@@ -12,18 +12,6 @@
            id="add-collection"
            name="name"
            formControlName="name"
-           required
-           autocorrect="off"
-           spellcheck="false"
-           autocapitalize="off">
-      </div>
-      <div class="formrow">
-        <label for="add-scope">Scope</label>
-        <input
-           type="text"
-           id="add-scope"
-           name="name"
-           formControlName="scope"
            required
            autocorrect="off"
            spellcheck="false"
