@@ -37,6 +37,8 @@ function mnServersFailOverDialogController(mnServersService, mnPromiseHelper, no
       });
   }
   function activate() {
+    vm.isEventingNode = node.services.includes("eventing");
+
     mnPromiseHelper(vm, mnServersService.getNodeStatuses(node.hostname))
       .showSpinner()
       .getPromise()
