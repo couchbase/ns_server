@@ -8,7 +8,8 @@
     <a
        class="nowrap"
        style="margin-right: -3px;"
-       [hidden]="!permissions.cluster.bucket[bucketName]?.collections.delete"
+       [hidden]="!permissions.cluster.bucket[bucketName]?.collections.delete ||
+              collection.name.startsWith('_')"
        (click)="$event.stopPropagation();clickDeleteCollection.next();">
       Drop</a>
   </span>
