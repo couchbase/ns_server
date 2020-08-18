@@ -2,4 +2,3 @@
 :node-name "ns_server"
 :lib-dirs '("deps")
 :app-include-dirs '("include")
-:xref-error-whitelist '("Call to undefined function 'ale_logger")
