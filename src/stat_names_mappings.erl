@@ -88,6 +88,23 @@ pre_70_stat_to_prom_query("@index", Stat) ->
 pre_70_stat_to_prom_query("@index-" ++ Bucket, <<"index/", Stat/binary>>) ->
     map_index_stats(<<"index">>, service_index:get_counters(), Bucket, Stat);
 
+pre_70_stat_to_prom_query("@cbas", <<"cbas_disk_used">>) ->
+    {ok, metric(<<"cbas_disk_used_bytes_total">>)};
+pre_70_stat_to_prom_query("@cbas", <<"cbas_gc_count">>) ->
+    {ok, rate(metric(<<"cbas_gc_count_total">>))};
+pre_70_stat_to_prom_query("@cbas", <<"cbas_gc_time">>) ->
+    {ok, rate(metric(<<"cbas_gc_time_milliseconds_total">>))};
+pre_70_stat_to_prom_query("@cbas", <<"cbas_heap_used">>) ->
+    {ok, metric(<<"cbas_heap_memory_used_bytes">>)};
+pre_70_stat_to_prom_query("@cbas", <<"cbas_system_load_average">>) ->
+    {ok, metric(<<"cbas_system_load_average">>)};
+pre_70_stat_to_prom_query("@cbas", <<"cbas_thread_count">>) ->
+    {ok, metric(<<"cbas_thread_count">>)};
+pre_70_stat_to_prom_query("@cbas", <<"cbas_io_reads">>) ->
+    {ok, rate(metric(<<"cbas_io_reads_total">>))};
+pre_70_stat_to_prom_query("@cbas", <<"cbas_io_writes">>) ->
+    {ok, rate(metric(<<"cbas_io_writes_total">>))};
+
 pre_70_stat_to_prom_query(_, _) ->
     {error, not_found}.
 
@@ -185,6 +202,22 @@ prom_name_to_pre_70_name(Bucket, {JSONProps}) ->
                     <<>> -> {ok, <<"index/", Name/binary>>};
                     Index -> {ok, <<"index/", Index/binary, "/", Name/binary>>}
                 end;
+            <<"cbas_disk_used_bytes_total">> ->
+                {ok, <<"cbas_disk_used">>};
+            <<"cbas_gc_count_total">> ->
+                {ok, <<"cbas_gc_count">>};
+            <<"cbas_gc_time_milliseconds_total">> ->
+                {ok, <<"cbas_gc_time">>};
+            <<"cbas_heap_memory_used_bytes">> ->
+                {ok, <<"cbas_heap_used">>};
+            <<"cbas_system_load_average">> ->
+                {ok, <<"cbas_system_load_average">>};
+            <<"cbas_thread_count">> ->
+                {ok, <<"cbas_thread_count">>};
+            <<"cbas_io_reads_total">> ->
+                {ok, <<"cbas_io_reads">>};
+            <<"cbas_io_writes_total">> ->
+                {ok, <<"cbas_io_writes">>};
             _ -> {error, not_found}
         end,
     case Res of
@@ -207,7 +240,8 @@ key_type_by_stat_type("@system-processes") -> binary;
 key_type_by_stat_type("@fts") -> binary;
 key_type_by_stat_type("@fts-" ++ _) -> binary;
 key_type_by_stat_type("@index") -> binary;
-key_type_by_stat_type("@index-" ++ _) -> binary.
+key_type_by_stat_type("@index-" ++ _) -> binary;
+key_type_by_stat_type("@cbas") -> binary.
 
 
 %% For system stats it's simple, we can get all of them with a simple query
@@ -243,7 +277,11 @@ default_stat_list("@index-" ++ _) ->
             service_index:get_counters() ++
             service_index:get_computed(),
     [<<"index/", (bin(S))/binary>> || S <- Stats] ++
-    [<<"index/*/", (bin(S))/binary>> || S <- Stats].
+    [<<"index/*/", (bin(S))/binary>> || S <- Stats];
+default_stat_list("@cbas") ->
+    Stats = service_cbas:get_service_gauges() ++
+            service_cbas:get_service_counters(),
+    [<<"cbas_", (bin(S))/binary>> || S <- Stats].
 
 -ifdef(TEST).
 pre_70_to_prom_query_test_() ->

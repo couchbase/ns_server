@@ -122,7 +122,7 @@ init(Bucket) ->
              "@fts" -> true;
              "@query" -> true;
              "@index" -> true;
-             "@cbas" -> false;
+             "@cbas" -> true;
              "@eventing" -> false;
              "@system-processes" -> true;
              "@system" -> true;
