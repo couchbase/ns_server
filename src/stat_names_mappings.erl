@@ -105,6 +105,42 @@ pre_70_stat_to_prom_query("@cbas", <<"cbas_io_reads">>) ->
 pre_70_stat_to_prom_query("@cbas", <<"cbas_io_writes">>) ->
     {ok, rate(metric(<<"cbas_io_writes_total">>))};
 
+pre_70_stat_to_prom_query("@cbas-" ++ Bucket, <<"cbas/", Stat/binary>>) ->
+    Incoming = {[{eq, <<"name">>, <<"cbas_incoming_records_count">>},
+                 {eq, <<"bucket">>, Bucket},
+                 {eq, <<"link">>, <<"Local">>}]},
+    Failed = {[{eq, <<"name">>, <<"cbas_failed_to_parse_records_count">>},
+               {eq, <<"bucket">>, Bucket},
+               {eq, <<"link">>, <<"Local">>}]},
+    case Stat of
+        <<"incoming_records_count_total">> ->
+            {ok, named(<<"cbas_incoming_records_count_total">>,
+                       sumby([], Incoming))};
+        <<"all/incoming_records_count_total">> ->
+            {ok, named(<<"cbas_all_incoming_records_count_total">>,
+                       sumby([], Incoming))};
+        <<"failed_at_parser_records_count_total">> ->
+            {ok, named(<<"cbas_failed_at_parser_records_count_total">>,
+                       sumby([], Failed))};
+        <<"all/failed_at_parser_records_count_total">> ->
+            {ok, named(<<"cbas_all_failed_at_parser_records_count_total">>,
+                       sumby([], Failed))};
+        <<"incoming_records_count">> ->
+            {ok, named(<<"cbas_incoming_records_count">>,
+                       sumby([], rate(Incoming)))};
+        <<"all/incoming_records_count">> ->
+            {ok, named(<<"cbas_all_incoming_records_count">>,
+                       sumby([], rate(Incoming)))};
+        <<"failed_at_parser_records_count">> ->
+            {ok, named(<<"cbas_failed_at_parser_records_count">>,
+                       sumby([], rate(Failed)))};
+        <<"all/failed_at_parser_records_count">> ->
+            {ok, named(<<"cbas_all_failed_at_parser_records_count">>,
+                       sumby([], rate(Failed)))};
+        _ ->
+            {error, not_found}
+    end;
+
 pre_70_stat_to_prom_query(_, _) ->
     {error, not_found}.
 
@@ -218,6 +254,10 @@ prom_name_to_pre_70_name(Bucket, {JSONProps}) ->
                 {ok, <<"cbas_io_reads">>};
             <<"cbas_io_writes_total">> ->
                 {ok, <<"cbas_io_writes">>};
+            <<"cbas_all_", Name/binary>> ->
+                {ok, <<"cbas/all/", Name/binary>>};
+            <<"cbas_", Name/binary>> ->
+                {ok, <<"cbas/", Name/binary>>};
             _ -> {error, not_found}
         end,
     case Res of
@@ -241,7 +281,9 @@ key_type_by_stat_type("@fts") -> binary;
 key_type_by_stat_type("@fts-" ++ _) -> binary;
 key_type_by_stat_type("@index") -> binary;
 key_type_by_stat_type("@index-" ++ _) -> binary;
-key_type_by_stat_type("@cbas") -> binary.
+key_type_by_stat_type("@cbas") -> binary;
+key_type_by_stat_type("@cbas-" ++ _) -> binary.
+
 
 
 %% For system stats it's simple, we can get all of them with a simple query
@@ -281,7 +323,12 @@ default_stat_list("@index-" ++ _) ->
 default_stat_list("@cbas") ->
     Stats = service_cbas:get_service_gauges() ++
             service_cbas:get_service_counters(),
-    [<<"cbas_", (bin(S))/binary>> || S <- Stats].
+    [<<"cbas_", (bin(S))/binary>> || S <- Stats];
+default_stat_list("@cbas-" ++ _) ->
+    Stats = service_cbas:get_gauges() ++
+            service_cbas:get_counters(),
+    [<<"cbas/", (bin(S))/binary>> || S <- Stats] ++
+    [<<"cbas/all/", (bin(S))/binary>> || S <- Stats].
 
 -ifdef(TEST).
 pre_70_to_prom_query_test_() ->

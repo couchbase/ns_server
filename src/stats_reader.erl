@@ -117,7 +117,7 @@ init(Bucket) ->
              "@index-" ++ _ -> true;
              "@xdcr-" ++ _ -> false;
              "@fts-" ++ _ -> true;
-             "@cbas-" ++ _ -> false;
+             "@cbas-" ++ _ -> true;
              "@eventing-" ++ _ -> false;
              "@fts" -> true;
              "@query" -> true;
