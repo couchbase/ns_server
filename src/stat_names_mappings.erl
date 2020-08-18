@@ -505,7 +505,52 @@ pre_70_to_prom_query_test_() ->
                                  "bucket=`test`}[1m])) or "
           "sum by (name,index) (irate({name=`index_num_requests`,"
                                       "bucket=`test`,"
-                                      "index=`i1`}[1m]))")].
+                                      "index=`i1`}[1m]))"),
+     Test("@cbas", all, "{name=~`cbas_disk_used_bytes_total|"
+                                "cbas_heap_memory_used_bytes|"
+                                "cbas_system_load_average|"
+                                "cbas_thread_count`} or "
+                        "irate({name=~`cbas_gc_count_total|"
+                                      "cbas_gc_time_milliseconds_total|"
+                                      "cbas_io_reads_total|"
+                                      "cbas_io_writes_total`}[1m])"),
+     Test("@cbas", [], ""),
+     Test("@cbas", [<<"cbas_disk_used">>, <<"cbas_gc_count">>],
+          "{name=`cbas_disk_used_bytes_total`} or "
+          "irate({name=`cbas_gc_count_total`}[1m])"),
+     Test("@cbas-test", all,
+          "label_replace(sum by () ({name=`cbas_failed_to_parse_records_count`,"
+                                    "bucket=`test`,link=`Local`}),"
+                        "`name`,`cbas_all_failed_at_parser_records_count_total`"
+                        ",``,``) or "
+          "label_replace(sum by () ({name=`cbas_incoming_records_count`,"
+                                    "bucket=`test`,link=`Local`}),"
+                        "`name`,`cbas_all_incoming_records_count_total`,"
+                        "``,``) or "
+          "label_replace(sum by () ({name=`cbas_failed_to_parse_records_count`,"
+                                    "bucket=`test`,link=`Local`}),"
+                        "`name`,`cbas_failed_at_parser_records_count_total`,"
+                        "``,``) or "
+          "label_replace(sum by () ({name=`cbas_incoming_records_count`,"
+                                    "bucket=`test`,link=`Local`}),"
+                        "`name`,`cbas_incoming_records_count_total`,``,``) or "
+          "label_replace(sum by () (irate({name=`cbas_failed_to_parse_records_"
+                                          "count`,"
+                                          "bucket=`test`,link=`Local`}[1m])),"
+                        "`name`,`cbas_all_failed_at_parser_records_count`,"
+                        "``,``) or "
+          "label_replace(sum by () (irate({name=`cbas_incoming_records_count`,"
+                                          "bucket=`test`,link=`Local`}[1m])),"
+                        "`name`,`cbas_all_incoming_records_count`,``,``) or "
+          "label_replace(sum by () (irate({name=`cbas_failed_to_parse_records_"
+                                          "count`,"
+                                          "bucket=`test`,link=`Local`}[1m])),"
+                        "`name`,`cbas_failed_at_parser_records_count`,"
+                        "``,``) or "
+          "label_replace(sum by () (irate({name=`cbas_incoming_records_count`,"
+                                          "bucket=`test`,link=`Local`}[1m])),"
+                        "`name`,`cbas_incoming_records_count`,``,``)"),
+     Test("@cbas-test", [], "")].
 
 prom_name_to_pre_70_name_test_() ->
     Test = fun (Section, Json, ExpectedRes) ->
@@ -543,6 +588,14 @@ prom_name_to_pre_70_name_test_() ->
      Test("@index-test", "{\"name\": \"index_disk_size\"}",
           {ok, <<"index/disk_size">>}),
      Test("@index-test", "{\"name\": \"index_disk_size\", \"index\": \"ind1\"}",
-          {ok, <<"index/ind1/disk_size">>})].
+          {ok, <<"index/ind1/disk_size">>}),
+     Test("@cbas", "{\"name\": \"cbas_gc_time_milliseconds_total\"}",
+          {ok, <<"cbas_gc_time">>}),
+     Test("@cbas-test",
+          "{\"name\": \"cbas_failed_at_parser_records_count_total\"}",
+          {ok, <<"cbas/failed_at_parser_records_count_total">>}),
+     Test("@cbas-test",
+          "{\"name\": \"cbas_all_failed_at_parser_records_count_total\"}",
+          {ok, <<"cbas/all/failed_at_parser_records_count_total">>})].
 
 -endif.
