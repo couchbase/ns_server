@@ -19,6 +19,7 @@ import {UIRouterModule} from '/ui/web_modules/@uirouter/angular.js';
 import {UIRouterUpgradeModule} from '/ui/web_modules/@uirouter/angular-hybrid.js';
 
 import {MnNodeStorageConfigComponent} from './mn.node.storage.config.component.js';
+import {MnHostnameConfigComponent} from './mn.hostname.config.component.js';
 import {MnServicesConfigComponent} from './mn.services.config.component.js';
 import {MnStorageModeComponent} from './mn.storage.mode.component.js';
 import {MnPathFieldComponent} from './mn.path.field.component.js';
@@ -59,6 +60,7 @@ class MnWizardModule {
     new NgModule({
       declarations: [
         MnNodeStorageConfigComponent,
+        MnHostnameConfigComponent,
         MnServicesConfigComponent,
         MnStorageModeComponent,
         MnPathFieldComponent,

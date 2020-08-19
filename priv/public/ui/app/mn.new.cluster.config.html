@@ -17,23 +17,10 @@
     novalidate>
     <div style="height:calc(100% - 112px);overflow:auto;" class="show-scrollbar">
       <div class="panel-content">
-        <mn-node-storage-config
-          [isHostCfgEnabled]="true"
-          [group]="newClusterConfigForm.get('clusterStorage')">
-        </mn-node-storage-config>
-        <div class="formrow" *ngIf="isEnterprise | async">
-          <div class="row">
-            <label for="setup_java_runtime_path_input">Java Runtime Path</label>
-            <small class="text-smaller">optional</small>
-          </div>
-          <input
-            type="text"
-            formControlName="javaPath"
-            autocorrect="off"
-            spellcheck="false"
-            autocapitalize="off"
-            id="setup_java_runtime_path_input">
-        </div>
+        <mn-hostname-config
+           [isHostCfgEnabled]="true"
+           [group]="newClusterConfigForm.get('clusterStorage')">
+        </mn-hostname-config>
         <div class="formrow">
           <div class="row formrow">
             <label>Service Memory Quotas</label>
@@ -41,15 +28,15 @@
           </div>
           <div>
             <div
-              class="error error-form"
-              [hidden]="!(servicesHttp.error | async)">
+               class="error error-form"
+               [hidden]="!(servicesHttp.error | async)">
               <div *ngFor="let error of (servicesHttp.error | async)">{{error}}</div>
             </div>
             <mn-services-config
-              [isFieldEnabled]="true"
-              [isFlagEnabled]="true"
-              [initDataStream]="memoryQuotasFirst"
-              [group]="newClusterConfigForm.get('services')">
+               [isFieldEnabled]="true"
+               [isFlagEnabled]="true"
+               [initDataStream]="memoryQuotasFirst"
+               [group]="newClusterConfigForm.get('services')">
             </mn-services-config>
             <div class="content-box text-center margin-top-1">
               <strong>RAM Available</strong> {{totalRAMMegs | async}}MB &nbsp;
@@ -57,9 +44,25 @@
             </div>
             <label>Index Storage Setting</label>
             <mn-storage-mode
-              [indexFlagChanges]="newClusterConfigForm.get('services.flag.index')?.valueChanges"
-              [control]="newClusterConfigForm.get('storageMode')">
+               [indexFlagChanges]="newClusterConfigForm.get('services.flag.index')?.valueChanges"
+               [control]="newClusterConfigForm.get('storageMode')">
             </mn-storage-mode>
+            <mn-node-storage-config
+               [group]="newClusterConfigForm.get('clusterStorage')">
+            </mn-node-storage-config>
+            <div class="formrow" *ngIf="isEnterprise | async">
+              <div class="row">
+                <label for="setup_java_runtime_path_input">Java Runtime Path</label>
+                <small class="text-smaller">optional</small>
+              </div>
+              <input
+                 type="text"
+                 formControlName="javaPath"
+                 autocorrect="off"
+                 spellcheck="false"
+                 autocapitalize="off"
+                 id="setup_java_runtime_path_input">
+            </div>
           </div>
         </div>
 

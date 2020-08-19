@@ -89,6 +89,9 @@
       </div>
 
       <div *ngIf="toggleConfigurationSection">
+        <mn-hostname-config
+           [group]="joinClusterForm.get('clusterStorage')">
+        </mn-hostname-config>
         <mn-services-config
           [group]="joinClusterForm.get('services')">
         </mn-services-config>
