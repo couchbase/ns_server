@@ -505,6 +505,7 @@ do_upgrade_config_from_6_5_to_6_5_1(Config, DefaultConfig) ->
 upgrade_config_from_6_5_1_to_cheshire_cat(Config) ->
     DefaultConfig = default(),
     [upgrade_key(memcached_config, DefaultConfig),
+     upgrade_key(memcached_defaults, DefaultConfig),
      upgrade_sub_keys(memcached, [other_users], Config, DefaultConfig)].
 
 encrypt_config_val(Val) ->
