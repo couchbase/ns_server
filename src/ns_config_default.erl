@@ -504,6 +504,9 @@ do_upgrade_config_from_6_5_to_6_5_1(Config, DefaultConfig) ->
 
 upgrade_config_from_6_5_1_to_cheshire_cat(Config) ->
     DefaultConfig = default(),
+    do_upgrade_config_from_6_5_1_to_cheshire_cat(Config, DefaultConfig).
+
+do_upgrade_config_from_6_5_1_to_cheshire_cat(Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
      upgrade_key(memcached_defaults, DefaultConfig),
      upgrade_sub_keys(memcached, [other_users], Config, DefaultConfig)].
@@ -628,6 +631,24 @@ upgrade_6_5_to_6_5_1_test() ->
 
     ?assertMatch([{set, {node, _, memcached}, [{old, info}, {admin_user, new}]}],
                  do_upgrade_config_from_6_5_to_6_5_1(Cfg, Default)).
+
+upgrade_6_5_1_to_cheshire_cat_test() ->
+    Cfg = [[{some_key, some_value},
+            {{node, node(), memcached}, [{old, info}, {other_users, old}]},
+            {{node, node(), memcached_defaults}, old_memcached_defaults},
+            {{node, node(), memcached_config}, old_memcached_config}]],
+
+    Default = [{{node, node(), memcached}, [{some, stuff}, {other_users, new}]},
+               {{node, node(), memcached_defaults}, [{some, stuff},
+                                                     {num_storage_threads, 4}]},
+               {{node, node(), memcached_config}, new_memcached_config}],
+
+    ?assertMatch([{set, {node, _, memcached_config}, new_memcached_config},
+                  {set, {node, _, memcached_defaults},
+                   [{some, stuff}, {num_storage_threads, 4}]},
+                  {set, {node, _, memcached},
+                   [{old, info}, {other_users, new}]}],
+                 do_upgrade_config_from_6_5_1_to_cheshire_cat(Cfg, Default)).
 
 no_upgrade_on_current_version_test() ->
     ?assertEqual([], upgrade_config([[{{node, node(), config_version}, get_current_version()}]])).
