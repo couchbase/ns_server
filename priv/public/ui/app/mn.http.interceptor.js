@@ -37,6 +37,7 @@ class MnHttpInterceptor {
       if (!req.headers.get('isNotForm')) {
         if (is(Object, mnReq.body) && !Array.isArray(mnReq.body)) {
           params = new HttpParams({
+            encoder: new CustomEncoder(),
             fromObject: mnReq.body
           });
         } else {
@@ -64,5 +65,23 @@ class MnHttpInterceptor {
           return throwError(event);
         })
       );
+  }
+}
+
+class CustomEncoder {
+  encodeKey(key) {
+    return encodeURIComponent(key);
+  }
+
+  encodeValue(value) {
+    return encodeURIComponent(value);
+  }
+
+  decodeKey(key) {
+    return decodeURIComponent(key);
+  }
+
+  decodeValue(value) {
+    return decodeURIComponent(value);
   }
 }
