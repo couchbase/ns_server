@@ -37,15 +37,15 @@ class MnXDCRAddRefComponent extends MnLifeCycleHooksToStream {
     this.form = mnFormService.create(this);
 
     this.form
-      .setFormGroup({name: null,
-                     hostname: null,
-                     username: null,
-                     password: null,
-                     demandEncryption: null,
+      .setFormGroup({name: "",
+                     hostname: "",
+                     username: "",
+                     password: "",
+                     demandEncryption: false,
                      encryptionType: null,
-                     certificate: null,
-                     clientCertificate: null,
-                     clientKey: null})
+                     certificate: "",
+                     clientCertificate: "",
+                     clientKey: ""})
       .setPackPipe(map(this.pack.bind(this)))
       .setPostRequest(this.postRemoteClusters)
       .clearErrors()

@@ -147,26 +147,29 @@ class MnXDCRService {
   }
 
   postRemoteClusters(source) {
-    var cluster = source[0];
+    var cluster = Object.assign({}, source[0]);
     var name = source[1];
-    var re;
-    var result;
-    if (cluster.hostname) {
-      re = /^\[?([^\]]+)\]?:(\d+)$/; // ipv4/ipv6/hostname + port
-      result = re.exec(cluster.hostname);
-      if (!result) {
-        cluster.hostname += ":8091";
+    var requestBody = {};
+    var requestBodyFields = ["name", "hostname", "username", "password"];
+
+    if (cluster.hostname &&
+        !(/^\[?([^\]]+)\]?:(\d+)$/).exec(cluster.hostname)) {
+      // ipv4/ipv6/hostname + port
+      cluster.hostname += ":8091";
+    }
+
+    if (cluster.demandEncryption) {
+      requestBodyFields.push("demandEncryption");
+      requestBodyFields.push("certificate");
+      requestBodyFields.push("encryptionType");
+      if (cluster.encryptionType === "full") {
+        requestBodyFields.push("clientCertificate");
+        requestBodyFields.push("clientKey");
       }
     }
-    if (!cluster.demandEncryption) {
-      delete cluster.certificate;
-      delete cluster.demandEncryption;
-      delete cluster.encryptionType;
-      delete cluster.clientCertificate;
-      delete cluster.clientKey;
-    }
-    delete cluster.secureType;
+    requestBodyFields.forEach(field =>
+                              requestBody[field] = cluster[field]);
     return this.http.post('/pools/default/remoteClusters' +
-                          (name ? ("/" + encodeURIComponent(name)) : ""), cluster);
+                          (name ? ("/" + encodeURIComponent(name)) : ""), requestBody);
   }
 }
