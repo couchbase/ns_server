@@ -37,6 +37,9 @@ function mnLogsCollectInfoServiceFactory($http, $q, mnServersService, mnTasksDet
       if (collect.uploadProxy) {
         data.uploadProxy = collect.uploadProxy;
       }
+      if (collect.bypassReachabilityChecks) {
+        data.bypassReachabilityChecks = collect.bypassReachabilityChecks;
+      }
     }
     if (collect.enableLogDir) {
       data.logDir = collect.logDir;
