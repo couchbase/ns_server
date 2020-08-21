@@ -41,11 +41,18 @@
         &#8212;
       </span>
     </span>
-    <span class="cbui-table-cell flex-grow-1-5 wrap text-right resp-hide-xsml">
+    <span class="cbui-table-cell flex-grow-2-5 wrap text-right resp-hide-xsml">
+      <a
+         ng-click="$event.stopPropagation()"
+         class="nowrap"
+         style="margin-right: -3px;"
+         ng-show="rbac.cluster.bucket[bucket.name].collections.read"
+         ui-sref="app.admin.collections({collectionsBucket: bucket.name})">
+        Collections</a>
       <span ng-if="!bucket.isMemcached">
         <a
            ng-click="$event.stopPropagation()"
-           class="nowrap"
+           class="margin-left-half nowrap"
            style="margin-right: -3px;"
            ng-show="rbac.cluster.bucket[bucket.name].data.docs.read"
            ui-sref="app.admin.doc_editor({bucket: bucket.name, statsHostname: 'all'})">
