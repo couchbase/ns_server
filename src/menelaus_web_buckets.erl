@@ -441,7 +441,8 @@ extract_bucket_props(Props) ->
           all_buckets,
           cluster_storage_totals,
           cluster_version,
-          is_enterprise}).
+          is_enterprise,
+          is_developer_preview}).
 
 init_bucket_validation_context(IsNew, BucketName, Req) ->
     ValidateOnly = (proplists:get_value("just_validate", mochiweb_request:parse_qs(Req)) =:= "1"),
@@ -454,11 +455,13 @@ init_bucket_validation_context(IsNew, BucketName, ValidateOnly, IgnoreWarnings) 
                                    extended_cluster_storage_info(),
                                    ValidateOnly, IgnoreWarnings,
                                    cluster_compat_mode:get_compat_version(),
-                                   cluster_compat_mode:is_enterprise()).
+                                   cluster_compat_mode:is_enterprise(),
+                                   cluster_compat_mode:is_developer_preview()).
 
 init_bucket_validation_context(IsNew, BucketName, AllBuckets, ClusterStorageTotals,
                                ValidateOnly, IgnoreWarnings,
-                               ClusterVersion, IsEnterprise) ->
+                               ClusterVersion, IsEnterprise,
+                               IsDeveloperPreview) ->
     {BucketConfig, ExtendedTotals} =
         case lists:keyfind(BucketName, 1, AllBuckets) of
             false -> {false, ClusterStorageTotals};
@@ -480,7 +483,8 @@ init_bucket_validation_context(IsNew, BucketName, AllBuckets, ClusterStorageTota
        bucket_config = BucketConfig,
        cluster_storage_totals = ExtendedTotals,
        cluster_version = ClusterVersion,
-       is_enterprise = IsEnterprise
+       is_enterprise = IsEnterprise,
+       is_developer_preview = IsDeveloperPreview
       }.
 
 handle_bucket_update(_PoolId, BucketId, Req) ->
@@ -796,7 +800,9 @@ validate_bucket_type_specific_params(CommonParams, Params,
                                      #bv_ctx{new = IsNew,
                                              bucket_config = BucketConfig,
                                              cluster_version = Version,
-                                             is_enterprise = IsEnterprise}) ->
+                                             is_enterprise = IsEnterprise,
+                                             is_developer_preview =
+                                                 IsDeveloperPreview}) ->
     BucketType = get_bucket_type(IsNew, BucketConfig, Params),
 
     case BucketType of
@@ -805,7 +811,8 @@ validate_bucket_type_specific_params(CommonParams, Params,
                                              BucketConfig);
         membase ->
             validate_membase_bucket_params(CommonParams, Params, IsNew,
-                                           BucketConfig, Version, IsEnterprise);
+                                           BucketConfig, Version, IsEnterprise,
+                                           IsDeveloperPreview);
         _ ->
             validate_unknown_bucket_params(Params)
     end.
@@ -825,7 +832,8 @@ validate_memcached_bucket_params(CommonParams, Params, IsNew, BucketConfig) ->
      quota_size_error(CommonParams, memcached, IsNew, BucketConfig)].
 
 validate_membase_bucket_params(CommonParams, Params,
-                               IsNew, BucketConfig, Version, IsEnterprise) ->
+                               IsNew, BucketConfig, Version, IsEnterprise,
+                               IsDeveloperPreview) ->
     ReplicasNumResult = validate_replicas_number(Params, IsNew),
     BucketParams =
         [{ok, bucketType, membase},
@@ -835,7 +843,7 @@ validate_membase_bucket_params(CommonParams, Params,
          parse_validate_eviction_policy(Params, BucketConfig, IsNew),
          quota_size_error(CommonParams, membase, IsNew, BucketConfig),
          parse_validate_storage_mode(Params, BucketConfig, IsNew, Version,
-                                     IsEnterprise),
+                                     IsEnterprise, IsDeveloperPreview),
          parse_validate_durability_min_level(Params, BucketConfig, IsNew,
                                              Version),
          parse_validate_frag_percent(Params, BucketConfig, IsNew, Version,
@@ -1038,19 +1046,21 @@ is_ephemeral(_Params, BucketConfig, false = _IsNew) ->
 %% used/checked at multiple places and would need changes in all those places.
 %% Hence the above described approach.
 parse_validate_storage_mode(Params, _BucketConfig, true = _IsNew, Version,
-                            IsEnterprise) ->
+                            IsEnterprise, IsDeveloperPreview) ->
     case proplists:get_value("bucketType", Params, "membase") of
         "membase" ->
             get_storage_mode_based_on_storage_backend(Params, Version,
-                                                      IsEnterprise);
+                                                      IsEnterprise,
+                                                      IsDeveloperPreview);
         "couchbase" ->
             get_storage_mode_based_on_storage_backend(Params, Version,
-                                                      IsEnterprise);
+                                                      IsEnterprise,
+                                                      IsDeveloperPreview);
         "ephemeral" ->
             {ok, storage_mode, ephemeral}
     end;
 parse_validate_storage_mode(_Params, BucketConfig, false = _IsNew, _Version,
-                            _IsEnterprise)->
+                            _IsEnterprise, _IsDeveloperPreview)->
     {ok, storage_mode, ns_bucket:storage_mode(BucketConfig)}.
 
 parse_validate_durability_min_level(Params, BucketConfig, IsNew, Version) ->
@@ -1095,21 +1105,26 @@ parse_validate_ephemeral_durability_min_level(_Other) ->
      <<"Durability minimum level must be either 'none' or 'majority' for "
        "ephemeral buckets">>}.
 
-get_storage_mode_based_on_storage_backend(Params, Version, IsEnterprise) ->
+get_storage_mode_based_on_storage_backend(Params, Version, IsEnterprise,
+                                          IsDeveloperPreview) ->
     StorageBackend = proplists:get_value("storageBackend", Params,
                                          "couchstore"),
     do_get_storage_mode_based_on_storage_backend(
       StorageBackend, IsEnterprise,
-      cluster_compat_mode:is_version_cheshirecat(Version)).
+      cluster_compat_mode:is_version_cheshirecat(Version),
+      IsDeveloperPreview).
 
-do_get_storage_mode_based_on_storage_backend("magma", false, _Is70) ->
+do_get_storage_mode_based_on_storage_backend("magma", false, _Is70, _IsDP) ->
     {error, storageBackend,
      <<"Magma is supported in enterprise edition only">>};
-do_get_storage_mode_based_on_storage_backend("magma", true, false) ->
+do_get_storage_mode_based_on_storage_backend("magma", true, false, _IsDP) ->
     {error, storageBackend,
      <<"Not allowed until entire cluster is upgraded to 7.0">>};
+do_get_storage_mode_based_on_storage_backend("magma", true, true, false) ->
+    {error, storageBackend,
+     <<"Magma is supported only in developer preview mode">>};
 do_get_storage_mode_based_on_storage_backend(StorageBackend, _IsEnterprise,
-                                             _IsCheshireCat) ->
+                                             _IsCheshireCat, _IsDP) ->
     case StorageBackend of
         "couchstore" ->
             {ok, storage_mode, couchstore};
@@ -1752,7 +1767,10 @@ basic_bucket_params_screening(IsNew, Name, Params, AllBuckets) ->
     Version = cluster_compat_mode:supported_compat_version(),
     Ctx = init_bucket_validation_context(IsNew, Name, AllBuckets, undefined,
                                          false, false,
-                                         Version, true),
+                                         Version, true,
+                                         %% Change when developer_preview
+                                         %% defaults to false
+                                         true),
     basic_bucket_params_screening(Ctx, Params).
 
 basic_bucket_params_screening_test() ->
