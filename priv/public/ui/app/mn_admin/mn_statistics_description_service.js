@@ -254,9 +254,6 @@ function mnStatisticsDescriptionFactory() {
           desc: "Bytes of active data in this bucket. (measured from couch_docs_data_size)"
         },
         "couch_docs_disk_size": null,
-        "couch_spatial_data_size": null,
-        "couch_spatial_disk_size": null,
-        "couch_spatial_ops": null,
         "couch_views_actual_disk_size": {
           unit: "bytes",
           title: "Views Disk Size",

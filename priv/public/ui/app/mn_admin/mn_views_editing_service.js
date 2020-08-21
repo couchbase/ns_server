@@ -33,12 +33,8 @@ function mnViewsEditingFactory($http, $state, mnPermissions, mnViewsListService,
   };
   return mnViewsEditingService;
 
-  function getInitialViewsFilterParams(isSpatial) {
-    return isSpatial ? {
-      limit: viewsPerPageLimit,
-      stale: "false",
-      connection_timeout: 60000,
-    } : {
+  function getInitialViewsFilterParams() {
+    return {
       limit: viewsPerPageLimit,
       stale: "false",
       connection_timeout: 60000,
@@ -58,7 +54,7 @@ function mnViewsEditingFactory($http, $state, mnPermissions, mnViewsListService,
     if (params.documentId.slice(0, "_local/".length) === "_local/") {
       params.documentId = "_local/" + encodeURIComponent(params.documentId.slice("_local/".length));
     }
-    return encodeURIComponent(params.bucket) + "/" + params.documentId + (params.isSpatial ? "/_spatial/" : "/_view/") + encodeURIComponent(params.viewId);
+    return encodeURIComponent(params.bucket) + "/" + params.documentId + "/_view/" + encodeURIComponent(params.viewId);
   }
 
   function getRandomKey(bucket) {

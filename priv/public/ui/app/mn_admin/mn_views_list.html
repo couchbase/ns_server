@@ -1,11 +1,6 @@
 <mn-element-cargo depot="actions">
   <div class="header-controls resp-hide-sml">
     <a
-       ng-show="viewsListCtl.showViewCreationButtons() && rbac.cluster.bucket[viewsCtl.currentBucketName].views.write"
-       ng-click="viewsListCtl.showSpatialCreationDialog()">
-      ADD SPATIAL VIEW
-    </a>
-    <a
        ng-click="viewsListCtl.showMapreduceCreationDialog()"
        ng-show="viewsListCtl.showViewCreationButtons() && rbac.cluster.bucket[viewsCtl.currentBucketName].views.write">
       ADD VIEW
@@ -90,13 +85,12 @@
       </div>
 
       <div
-         ng-repeat-start="row in viewsListCtl.ddocs[viewsListCtl.type] | orderBy:'hostname' track by row.doc.meta.id"
+         ng-repeat="row in viewsListCtl.ddocs[viewsListCtl.type] | orderBy:'hostname' track by row.doc.meta.id"
          ng-if="viewsListCtl.ddocs.rows.length">
         <hr class="margin-bottom-half margin-top-1">
         <div class="cbui-tablerow">
           <span class="cbui-table-cell flex-grow-2 cbui-tablerow-title">
             {{row.doc.meta.id}}
-            <span class="label lt-blue" ng-show="viewsListCtl.showSpatialButton(row)">spatial views</span>
             <span class="label lt-blue" ng-show="viewsListCtl.showCreationButton(row)">views</span>
           </span>
           <span class="cbui-table-cell flex-grow-1">
@@ -112,7 +106,7 @@
                ng-click="viewsListCtl.showDdocDeletionDialog(row.doc)">Delete</button>
             <button
                class="outline tight"
-               ng-disabled="(('isEmpty' | lodash:row.doc.json.views) && ('isEmpty' | lodash:row.doc.json.spatial)) || !!(viewsListCtl.tasks[row.doc.meta.id][0].type === 'view_compaction') || !!viewsListCtl.getStartedCompactions()[row.controllers.compact]"
+               ng-disabled="('isEmpty' | lodash:row.doc.json.views) || !!(viewsListCtl.tasks[row.doc.meta.id][0].type === 'view_compaction') || !!viewsListCtl.getStartedCompactions()[row.controllers.compact]"
                ng-show="rbac.cluster.bucket[viewsCtl.currentBucketName].views.compact"
                ng-click="viewsListCtl.registerCompactionAsTriggeredAndPost(row)">Compact</button>
             <button
@@ -120,32 +114,22 @@
                ng-click="viewsListCtl.showCreationDialog(row.doc)"
                ng-show="viewsListCtl.showCreationButton(row) && rbac.cluster.bucket[viewsCtl.currentBucketName].views.write">Add View</button>
             <button
-               class="outline tight"
-               ng-click="viewsListCtl.showCreationDialog(row.doc, true)"
-               ng-show="viewsListCtl.showSpatialButton(row) && rbac.cluster.bucket[viewsCtl.currentBucketName].views.write">Add Spatial View</button>
-            <button
                ng-show="!viewsListCtl.isDevelopmentViews && rbac.cluster.bucket[viewsCtl.currentBucketName].views.write"
                ng-click="viewsListCtl.copyToDev(row.doc)">Copy to Dev</button>
             <button
-               ng-disabled="('isEmpty' | lodash:row.doc.json.views) && ('isEmpty' | lodash:row.doc.json.spatial)"
+               ng-disabled="('isEmpty' | lodash:row.doc.json.views)"
                ng-click="viewsListCtl.publishDdoc(row.doc)"
                ng-show="viewsListCtl.showPublishButton(row) && rbac.cluster.bucket[viewsCtl.currentBucketName].views.write">Publish</button>
-            <div
-               class="error"
-               ng-show="viewsListCtl.showMatchingWarning(row)">
-              No new views can be added to this document. Delete either mapreduce or spatial views first.
-            </div>
           </span>
         </div>
-      </div>
 
-      <div class="zero-content" ng-if="('isEmpty' | lodash:row.doc.json.views) && ('isEmpty' | lodash:row.doc.json.spatial)">
-        No views defined!<span class="when-in-dev"> Click "Create View" above to create one.</span>
-      </div>
+        <div class="zero-content" ng-if="('isEmpty' | lodash:row.doc.json.views)">
+          No views defined!<span class="when-in-dev"> Click "Create View" above to create one.</span>
+        </div>
 
-      <div
-         class="cbui-tablerow row-min has-hover"
-         ng-if="!('isEmpty' | lodash:row.doc.json.views)"
+        <div
+           class="cbui-tablerow row-min has-hover"
+           ng-if="!('isEmpty' | lodash:row.doc.json.views)"
          ng-repeat="(key, view) in row.doc.json.views"
          ui-sref=".editing.result(viewsListCtl.getInitialViewsFilterParams(key, row, false))">
         <span class="cbui-table-cell">
@@ -166,26 +150,6 @@
           </button>
         </span>
       </div>
-
-      <div class="cbui-tablerow has-hover row-min"
-         ng-repeat-end=""
-         ng-if="!('isEmpty' | lodash:row.doc.json.spatial)"
-         ng-repeat="(key, spatial) in row.doc.json.spatial"
-         ui-sref=".editing.result(viewsListCtl.getInitialViewsFilterParams(key, row, true))">
-        <span class="cbui-table-cell"><span class="semi-bold indent-1">{{key}}</span></span>
-        <span class="cbui-table-cell flex-grow-3 text-right">
-          <button
-             class="outline tight"
-             ng-show="viewsListCtl.isDevModeDoc(row.doc.meta.id) && rbac.cluster.bucket[viewsCtl.currentBucketName].views.write"
-             ng-click="$event.stopPropagation() || viewsListCtl.showViewDeletionDialog(row.doc, key, true)">
-            Delete
-          </button>
-          <button
-             ng-click="$event.stopPropagation()"
-             ui-sref=".editing.result(viewsListCtl.getInitialViewsFilterParams(key, row, true))">
-            {{viewsListCtl.isDevModeDoc(row.doc.meta.id) && rbac.cluster.bucket[viewsCtl.currentBucketName].views.write ? 'Edit' : 'Show' }}
-           </button>
-        </span>
       </div>
     </div>
   </div>

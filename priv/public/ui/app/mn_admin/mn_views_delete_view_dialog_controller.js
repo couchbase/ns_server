@@ -1,17 +1,16 @@
 export default mnViewsDeleteViewDialogController;
 
-function mnViewsDeleteViewDialogController($state, $uibModalInstance, mnPromiseHelper, mnViewsListService, currentDdocName, currentViewName, isSpatial) {
+function mnViewsDeleteViewDialogController($state, $uibModalInstance, mnPromiseHelper, mnViewsListService, currentDdocName, currentViewName) {
   var vm = this;
   vm.currentDdocName = currentDdocName;
   vm.currentViewName = currentViewName;
-  vm.maybeSpatial = isSpatial ? 'Spatial' : '';
   vm.doDelete = doDelete;
 
   function doDelete() {
     var url = mnViewsListService.getDdocUrl($state.params.bucket, currentDdocName);
 
     var promise = mnViewsListService.getDdoc(url).then(function (presentDdoc) {
-      delete presentDdoc.json[isSpatial ? 'spatial' : 'views'][currentViewName];
+      delete presentDdoc.json['views'][currentViewName];
       return mnViewsListService.createDdoc(url, presentDdoc.json);
     });
 

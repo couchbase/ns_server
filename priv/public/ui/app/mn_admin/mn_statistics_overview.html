@@ -42,7 +42,7 @@
                  'columns-four-new': block.blockName=='vBucket Resources' || block.blockName=='Disk Queues' || block.blockName=='Query' || block.blockName=='Incoming XDCR Operations',
                  'columns-six-new': block.blockName=='DCP Queues',
                  'columns-five-new': (block.blockName=='Summary') || (block.blockName.indexOf('Server Resources') > -1),
-                 'columns-three-new': (block.blockName.indexOf('Mapreduce View Stats') > -1) || (block.blockName.indexOf('Spatial View Stats') > -1)}">
+                 'columns-three-new': block.blockName.indexOf('Mapreduce View Stats') > -1}">
       <h4
          class="disclosure"
          ng-class="{disclosed: statisticsOverviewCtl.myIsDetailsOpened(block.blockName)}"

@@ -84,8 +84,8 @@ function mnViewsListFactory($http, $q, mnTasksDetails) {
       ddocs.development = _.filter(ddocs.rows, function (row) {
         return isDevModeDoc(row.doc.meta.id);
       });
-      ddocs.production = _.reject(ddocs.rows, function (row) {
-        return isDevModeDoc(row.doc.meta.id);
+      ddocs.production = _.filter(ddocs.rows, function (row) {
+        return !isDevModeDoc(row.doc.meta.id) && !row.doc.json.spatial;
       });
       return ddocs;
     }, function (resp) {

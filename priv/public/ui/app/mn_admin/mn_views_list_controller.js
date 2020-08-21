@@ -11,7 +11,6 @@ function mnViewsListController($scope, $state, $uibModal, mnViewsListService, mn
 
   vm.showCreationDialog = showCreationDialog;
   vm.showMapreduceCreationDialog = showMapreduceCreationDialog;
-  vm.showSpatialCreationDialog = showSpatialCreationDialog;
   vm.showDdocDeletionDialog = showDdocDeletionDialog;
   vm.showViewDeletionDialog = showViewDeletionDialog;
   vm.publishDdoc = publishDdoc;
@@ -19,62 +18,48 @@ function mnViewsListController($scope, $state, $uibModal, mnViewsListService, mn
   vm.registerCompactionAsTriggeredAndPost = registerCompactionAsTriggeredAndPost;
   vm.showPublishButton = showPublishButton;
   vm.showCreationButton = showCreationButton;
-  vm.showSpatialButton = showSpatialButton;
   vm.showViewCreationButtons = showViewCreationButtons;
-  vm.showMatchingWarning = showMatchingWarning;
   vm.getInitialViewsFilterParams = getInitialViewsFilterParams;
   vm.isDevelopmentViews = $state.params.type === 'development';
 
   activate();
 
-  function getInitialViewsFilterParams(key, row, isSpatial) {
+  function getInitialViewsFilterParams(key, row) {
     return {
       sampleDocumentId: null,
       pageNumber: 0,
       viewId: key,
       full_set: null,
-      isSpatial: isSpatial,
       documentId: row.doc.meta.id,
       bucket: $state.params.bucket,
-      viewsParams: JSON.stringify(mnViewsEditingService.getInitialViewsFilterParams(isSpatial))
+      viewsParams: JSON.stringify(mnViewsEditingService.getInitialViewsFilterParams())
     };
-  }
-  function showMatchingWarning(row) {
-    return row.doc.json.spatial && row.doc.json.views && !_.isEmpty(row.doc.json.spatial) && !_.isEmpty(row.doc.json.views)
   }
   function showViewCreationButtons() {
     return vm.ddocs && $state.params.bucket && vm.isDevelopmentViews && !vm.ddocs.ddocsAreInFactMissing;
   }
   function showPublishButton(row) {
-    return vm.isDevelopmentViews && !(row.doc.json.spatial && row.doc.json.views && !_.isEmpty(row.doc.json.spatial) && !_.isEmpty(row.doc.json.views));
+    return vm.isDevelopmentViews && !isEmptyView(row);
   }
   function isEmptyView(row) {
-    return (!row.doc.json.spatial && !row.doc.json.views || _.isEmpty(row.doc.json.spatial) && _.isEmpty(row.doc.json.views));
+    return !row.doc.json.views || _.isEmpty(row.doc.json.views);
   }
   function showCreationButton(row) {
-    return vm.isDevelopmentViews && (isEmptyView(row) ||
-                                     (row.doc.json.views && !_.isEmpty(row.doc.json.views) && (!row.doc.json.spatial || _.isEmpty(row.doc.json.spatial))));
-  }
-  function showSpatialButton(row) {
-    return vm.isDevelopmentViews && (isEmptyView(row) ||
-                                     (row.doc.json.spatial && !_.isEmpty(row.doc.json.spatial) && (!row.doc.json.views || _.isEmpty(row.doc.json.views))));
+    return vm.isDevelopmentViews
   }
 
   function showMapreduceCreationDialog() {
     showCreationDialog(undefined, false);
   }
-  function showSpatialCreationDialog() {
-    showCreationDialog(undefined, true);
-  }
 
-  function showCreationDialog(ddoc, isSpatial) {
+  function showCreationDialog(ddoc) {
     $uibModal.open({
       controller: 'mnViewsCreateDialogController as viewsCreateDialogCtl',
       templateUrl: 'app/mn_admin/mn_views_create_dialog.html',
       scope: $scope,
       resolve: {
         currentDdoc: mnHelper.wrapInFunction(ddoc),
-        viewType: mnHelper.wrapInFunction(isSpatial ? "spatial" : "views")
+        viewType: mnHelper.wrapInFunction("views")
       }
     });
   }
@@ -88,15 +73,14 @@ function mnViewsListController($scope, $state, $uibModal, mnViewsListService, mn
       }
     });
   }
-  function showViewDeletionDialog(ddoc, viewName, isSpatial) {
+  function showViewDeletionDialog(ddoc, viewName) {
     $uibModal.open({
       controller: 'mnViewsDeleteViewDialogController as viewsDeleteViewDialogCtl',
       templateUrl: 'app/mn_admin/mn_views_delete_view_dialog.html',
       scope: $scope,
       resolve: {
         currentDdocName: mnHelper.wrapInFunction(ddoc.meta.id),
-        currentViewName: mnHelper.wrapInFunction(viewName),
-        isSpatial: mnHelper.wrapInFunction(isSpatial)
+        currentViewName: mnHelper.wrapInFunction(viewName)
       }
     });
   }

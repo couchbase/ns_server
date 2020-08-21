@@ -65,7 +65,6 @@
     <table class="table-stroked">
       <tr>
         <th>Key</th>
-        <th ng-if="viewsEditingCtl.isSpatial">Geometry</th>
         <th>Value</th>
       </tr>
       <tbody
@@ -81,9 +80,6 @@
                ng-show="r.id === undefined"
                class="id ellipsis">undefined</div>
           </td>
-          <td ng-if="viewsEditingCtl.isSpatial">
-            {{r.geometry === undefined ? 'undefined' : (r.geometry | json)}}
-          </td>
           <td class="ellipsis">
             <pre style="padding: 0rem; margin-bottom: 0rem; background-color: #ffffff;">{{r.value === undefined ? 'undefined' : (r.value | json)}}</pre>
           </td>
@@ -91,14 +87,14 @@
       </tbody>
       <tbody ng-show="!viewsEditingResultCtl.state">
         <tr>
-          <td class="zero-content" colspan="{{viewsEditingCtl.isSpatial ? 3 : 2}}">
+          <td class="zero-content" colspan="2">
             To see the results of this view, click "Show Results" above.
           </td>
         </tr>
       </tbody>
       <tbody ng-show="viewsEditingResultCtl.state && !viewsEditingResultCtl.state.rows.length && !viewsEditingResultCtl.errors">
         <tr>
-          <td class="zero-content" colspan="{{viewsEditingCtl.isSpatial ? 3 : 2}}">
+          <td class="zero-content" colspan="2">
             This view returns no results.
           </td>
         </tr>

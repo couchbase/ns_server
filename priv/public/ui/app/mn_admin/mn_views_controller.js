@@ -87,7 +87,7 @@ function configure($stateProvider) {
     })
     .state('app.admin.views.list.editing', {
       abstract: true,
-      url: '/:documentId?viewId&{isSpatial:bool}&sampleDocumentId',
+      url: '/:documentId?viewId&sampleDocumentId',
       views: {
         "main@app.admin": {
           controller: 'mnViewsEditingController as viewsEditingCtl',

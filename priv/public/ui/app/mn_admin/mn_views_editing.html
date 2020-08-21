@@ -51,7 +51,7 @@
     </div>
 
     <div class="row margin-top-2 margin-bottom-half">
-      <h4>{{viewsEditingCtl.isSpatial ? "Spatial" : "View"}} Index Code</h4>
+      <h4>View Index Code</h4>
       <span>
         <button
            ng-hide="viewsEditingCtl.isViewsClosed"
@@ -73,21 +73,10 @@
        class="row padded text-small"
        mn-spinner="viewsEditingCtl.awaitingViews()">
       <div
-         class="column"
-         ng-class="{'width-8': !viewsEditingCtl.isSpatial, 'read-only-editor': viewsEditingCtl.isViewsEditorControllsDisabled()}">
+         class="column width-8"
+         ng-class="{'read-only-editor': viewsEditingCtl.isViewsEditorControllsDisabled()}">
         <label for="viewcode_map">Map</label>
         <textarea
-           autocorrect="off"
-           autocapitalize="off"
-           spellcheck="false"
-           class="width-4 text-small"
-           ng-if="viewsEditingCtl.isSpatial"
-           spellcheck="false"
-           ng-model="viewsEditingCtl.state.currentDocument.doc.json.spatial[viewsEditingCtl.viewId]"
-           ui-codemirror="viewsEditingCtl.viewsOptions"
-           ></textarea>
-        <textarea
-           ng-if="!viewsEditingCtl.isSpatial"
            autocorrect="off"
            autocapitalize="off"
            spellcheck="false"
@@ -97,7 +86,6 @@
       </div>
       <div
          ng-class="{'read-only-editor': viewsEditingCtl.isViewsEditorControllsDisabled()}"
-         ng-if="!viewsEditingCtl.isSpatial"
          class="width-4">
         <label for="viewcode_reduce">Reduce
           <span class="text-normal">(built in:

@@ -6,7 +6,6 @@ function mnViewsCreateDialogController($uibModal, $state, $q, mnViewsListService
   var vm = this;
   var isViewsEditingSection = $state.includes('views.editing.result');
   vm.ddoc = {};
-  vm.isSpatial = viewType === "spatial";
   vm.ddoc.name = currentDdoc && mnViewsListService.cutOffDesignPrefix(currentDdoc.meta.id);
   vm.doesDdocExist = !!currentDdoc;
   if (isViewsEditingSection) {
@@ -25,13 +24,9 @@ function mnViewsCreateDialogController($uibModal, $state, $q, mnViewsListService
     if (vm.isCopy) {
       views[vm.ddoc.view] = currentDdoc.json[viewType][$state.params.viewId];
     } else {
-      if (vm.isSpatial) {
-        views[vm.ddoc.view] = 'function (doc) {\n  if (doc.geometry) {\n    emit(doc.geometry, null);\n  }\n}'
-      } else {
-        views[vm.ddoc.view] = {
-          map: 'function (doc, meta) {\n  emit(meta.id, null);\n}'
-        };
-      }
+      views[vm.ddoc.view] = {
+        map: 'function (doc, meta) {\n  emit(meta.id, null);\n}'
+      };
     }
 
     return mnViewsListService.createDdoc(getDdocUrl(), ddoc.json);

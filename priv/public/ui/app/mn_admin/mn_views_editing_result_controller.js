@@ -3,31 +3,21 @@ export default mnViewsEditingResultController;
 function mnViewsEditingResultController($scope, $state, mnPromiseHelper, mnViewsEditingService, viewsPerPageLimit) {
   var vm = this;
   var filterConfig = {};
-  if ($state.params.isSpatial) {
-    filterConfig.items = {
-      stale: true,
-      connectionTimeout: true,
-      bbox: true,
-      startRange: true,
-      endRange: true
-    };
-  } else {
-    filterConfig.items = {
-      stale: true,
-      connectionTimeout: true,
-      descending: true,
-      startkey: true,
-      endkey: true,
-      startkeyDocid: true,
-      endkeyDocid: true,
-      group: true,
-      groupLevel: true,
-      inclusiveEnd: true,
-      key: true,
-      keys: true,
-      reduce: true
-    };
-  }
+  filterConfig.items = {
+    stale: true,
+    connectionTimeout: true,
+    descending: true,
+    startkey: true,
+    endkey: true,
+    startkeyDocid: true,
+    endkeyDocid: true,
+    group: true,
+    groupLevel: true,
+    inclusiveEnd: true,
+    key: true,
+    keys: true,
+    reduce: true
+  };
 
   vm.filterConfig = filterConfig;
   vm.onFilterClose = onFilterClose;
@@ -52,7 +42,7 @@ function mnViewsEditingResultController($scope, $state, mnPromiseHelper, mnViews
   }
 
   function onFilterReset() {
-    filterConfig.params = mnViewsEditingService.getInitialViewsFilterParams($state.params.isSpatial);
+    filterConfig.params = mnViewsEditingService.getInitialViewsFilterParams();
   }
 
   function generateViewHref() {

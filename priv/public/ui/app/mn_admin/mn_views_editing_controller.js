@@ -26,7 +26,6 @@ function mnViewsEditingController($scope, $state, $uibModal, mnHelper, mnViewsEd
   vm.viewsOptions = viewsOptions;
   vm.sampleDocumentOptions = sampleDocumentOptions;
   vm.sampleMetaOptions = sampleMetaOptions;
-  vm.isSpatial = $state.params.isSpatial;
   vm.viewId = $state.params.viewId;
   vm.previewRandomDocument = previewRandomDocument;
   vm.awaitingSampleDocument = awaitingSampleDocument;
@@ -78,7 +77,7 @@ function mnViewsEditingController($scope, $state, $uibModal, mnHelper, mnViewsEd
     return !vm.state || vm.state.viewsLoading;
   }
   function isViewPathTheSame(current, selected) {
-    return current.viewId === selected.viewId && current.isSpatial === selected.isSpatial && current.documentId === selected.documentId;
+    return current.viewId === selected.viewId && current.documentId === selected.documentId;
   }
   function previewRandomDocument(e) {
     e && e.stopImmediatePropagation && e.stopImmediatePropagation();
@@ -94,12 +93,11 @@ function mnViewsEditingController($scope, $state, $uibModal, mnHelper, mnViewsEd
       scope: $scope,
       resolve: {
         currentDdoc: mnHelper.wrapInFunction(vm.state.currentDocument.doc),
-        viewType: mnHelper.wrapInFunction($state.params.isSpatial ? "spatial" : "views")
+        viewType: mnHelper.wrapInFunction("views")
       }
     }).result.then(function (vm) {
       var selected = {
         documentId: '_design/dev_' + vm.ddoc.name,
-        isSpatial: vm.isSpatial,
         viewId: vm.ddoc.view
       };
       if (!isViewPathTheSame($state.params, selected)) {
@@ -132,7 +130,6 @@ function mnViewsEditingController($scope, $state, $uibModal, mnHelper, mnViewsEd
   function onSelectViewName(selected) {
     $state.go('^.result', {
       viewId: selected.viewId,
-      isSpatial: selected.isSpatial,
       documentId: selected.documentId
     });
   }
