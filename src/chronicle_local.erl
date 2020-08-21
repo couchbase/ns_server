@@ -29,6 +29,7 @@
          join_cluster/1,
          leave_cluster/0,
          rename/1,
+         get_snapshot/1,
          upgrade/1,
          node_keys/1,
          sync/0]).
@@ -80,6 +81,19 @@ handle_call({rename, OldNode}, _From, State) ->
     {reply, ok, State};
 handle_call({pull, Timeout}, _From, State) ->
     {reply, pull(Timeout), State};
+handle_call(get_snapshot, _From, Pid) ->
+    RV =
+        try chronicle_kv:get_full_snapshot(kv) of
+            {ok, {Snapshot, _}} ->
+                {ok, maps:fold(fun (K, {V, _}, Acc) ->
+                                       [{K, V} | Acc]
+                               end, [], Snapshot)}
+        catch T:E:S ->
+                ?log_debug("Unable to obtain chronicle snapshot:~n~p",
+                           [{T, E, S}]),
+                {error, cannot_get_snapshot}
+        end,
+    {reply, RV, Pid};
 handle_call(sync, _From, State) ->
     {reply, ok, State}.
 
@@ -94,6 +108,9 @@ join_cluster(Info) ->
 
 rename(OldNode) ->
     gen_server2:call(?MODULE, {rename, OldNode}).
+
+get_snapshot(Node) ->
+    gen_server2:call({?MODULE, Node}, get_snapshot).
 
 sync() ->
     gen_server2:call(?MODULE, sync).

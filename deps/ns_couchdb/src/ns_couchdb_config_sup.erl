@@ -45,6 +45,14 @@ init([]) ->
             {ns_couchdb_config_rep, start_link, []},
             permanent, 1000, worker, []},
 
+           {chronicle_events,
+            {gen_event, start_link, [{local, chronicle_kv:event_manager(kv)}]},
+            permanent, 1000, worker, []},
+
+           {ns_couchdb_chronicle_dup,
+            {ns_couchdb_chronicle_dup, start_link, []},
+            permanent, 1000, worker, []},
+
            {cb_config_couch_sync,
             {cb_config_couch_sync, start_link, []},
             permanent, 1000, worker, []},

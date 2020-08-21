@@ -39,8 +39,7 @@ backend() ->
     end.
 
 enabled() ->
-    ns_node_disco:couchdb_node() =/= node() andalso
-        cluster_compat_mode:is_cluster_cheshirecat().
+    cluster_compat_mode:is_cluster_cheshirecat().
 
 get(Key, Opts) ->
     get(ns_config:latest(), Key, Opts).
@@ -67,11 +66,21 @@ get(Snapshot, Key, #{}) when is_map(Snapshot) ->
 get(Config, Key, #{}) ->
     case backend() of
         chronicle ->
-            case chronicle_kv:get(kv, Key, #{}) of
-                {ok, {V, _R}} ->
-                    {ok, V};
-                Error ->
-                    Error
+            case ns_node_disco:couchdb_node() =:= node() of
+                true ->
+                    case ns_couchdb_chronicle_dup:lookup(Key) of
+                        [{Key, Value}] ->
+                            {ok, Value};
+                        [] ->
+                            {error, not_found}
+                    end;
+                false ->
+                    case chronicle_kv:get(kv, Key, #{}) of
+                        {ok, {V, _R}} ->
+                            {ok, V};
+                        Error ->
+                            Error
+                    end
             end;
         ns_config ->
             case ns_config:search(Config, Key) of
