@@ -654,7 +654,7 @@ no_upgrade_on_current_version_test() ->
     ?assertEqual([], upgrade_config([[{{node, node(), config_version}, get_current_version()}]])).
 
 all_upgrades_test() ->
-    Default = default(),
+    Default = [{developer_preview_enabled, false} | default()],
     KVs = misc:update_proplist(Default,
                                [{{node, node(), config_version}, {5,0}}]),
     Cfg = #config{dynamic = [KVs], uuid = <<"uuid">>},
