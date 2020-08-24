@@ -45,7 +45,7 @@ function mnViewsListController($scope, $state, $uibModal, mnViewsListService, mn
     return !row.doc.json.views || _.isEmpty(row.doc.json.views);
   }
   function showCreationButton(row) {
-    return vm.isDevelopmentViews
+    return vm.isDevelopmentViews;
   }
 
   function showMapreduceCreationDialog() {

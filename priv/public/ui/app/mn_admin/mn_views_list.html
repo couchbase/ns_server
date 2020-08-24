@@ -91,7 +91,10 @@
         <div class="cbui-tablerow">
           <span class="cbui-table-cell flex-grow-2 cbui-tablerow-title">
             {{row.doc.meta.id}}
-            <span class="label lt-blue" ng-show="viewsListCtl.showCreationButton(row)">views</span>
+            <span class="label lt-blue" ng-show="viewsListCtl.showCreationButton(row)">
+              {{row.doc.json.spatial ? 'spatial' : 'views'}}</span>
+            <span class="label red"
+               ng-show="row.doc.json.spatial">is not supported</span>
           </span>
           <span class="cbui-table-cell flex-grow-1">
             <div ng-if="viewsListCtl.tasks[row.doc.meta.id][0].progress && rbac.cluster.tasks.read">
@@ -107,23 +110,23 @@
             <button
                class="outline tight"
                ng-disabled="('isEmpty' | lodash:row.doc.json.views) || !!(viewsListCtl.tasks[row.doc.meta.id][0].type === 'view_compaction') || !!viewsListCtl.getStartedCompactions()[row.controllers.compact]"
-               ng-show="rbac.cluster.bucket[viewsCtl.currentBucketName].views.compact"
+               ng-show="!row.doc.json.spatial && rbac.cluster.bucket[viewsCtl.currentBucketName].views.compact"
                ng-click="viewsListCtl.registerCompactionAsTriggeredAndPost(row)">Compact</button>
             <button
                class="outline tight"
                ng-click="viewsListCtl.showCreationDialog(row.doc)"
-               ng-show="viewsListCtl.showCreationButton(row) && rbac.cluster.bucket[viewsCtl.currentBucketName].views.write">Add View</button>
+               ng-show="!row.doc.json.spatial && viewsListCtl.showCreationButton(row) && rbac.cluster.bucket[viewsCtl.currentBucketName].views.write">Add View</button>
             <button
-               ng-show="!viewsListCtl.isDevelopmentViews && rbac.cluster.bucket[viewsCtl.currentBucketName].views.write"
+               ng-show="!row.doc.json.spatial && !viewsListCtl.isDevelopmentViews && rbac.cluster.bucket[viewsCtl.currentBucketName].views.write"
                ng-click="viewsListCtl.copyToDev(row.doc)">Copy to Dev</button>
             <button
                ng-disabled="('isEmpty' | lodash:row.doc.json.views)"
                ng-click="viewsListCtl.publishDdoc(row.doc)"
-               ng-show="viewsListCtl.showPublishButton(row) && rbac.cluster.bucket[viewsCtl.currentBucketName].views.write">Publish</button>
+               ng-show="!row.doc.json.spatial && viewsListCtl.showPublishButton(row) && rbac.cluster.bucket[viewsCtl.currentBucketName].views.write">Publish</button>
           </span>
         </div>
 
-        <div class="zero-content" ng-if="('isEmpty' | lodash:row.doc.json.views)">
+        <div class="zero-content" ng-if="!row.doc.json.spatial && ('isEmpty' | lodash:row.doc.json.views)">
           No views defined!<span class="when-in-dev"> Click "Create View" above to create one.</span>
         </div>
 
