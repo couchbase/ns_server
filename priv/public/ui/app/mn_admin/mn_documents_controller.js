@@ -87,7 +87,7 @@ function configure($stateProvider) {
       controller: 'mnDocumentsEditingController as documentsEditingCtl',
       templateUrl: 'app/mn_admin/mn_documents_editing.html',
       data: {
-        child: "app.admin.buckets.documents.control.list",
+        child: "app.admin.documents.control.list",
         title: "Documents Editing"
       }
     });
