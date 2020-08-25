@@ -181,7 +181,7 @@ get_err_code_msg(collection_not_found) ->
     {"Collection with this name is not found", 404};
 get_err_code_msg(scope_not_found) ->
     {"Scope with this name is not found", 404};
-get_err_code_msg(default_scope) ->
+get_err_code_msg(cannot_drop_default_scope) ->
     {"Deleting _default scope is not allowed", 400};
 get_err_code_msg({max_number_exceeded, num_scopes}) ->
     {"Maximum number of scopes has been reached", 400};

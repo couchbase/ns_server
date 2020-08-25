@@ -265,7 +265,7 @@ verify_oper({drop_scope, Name}, Manifest) ->
     Scopes = get_scopes(Manifest),
     case Name of
         "_default" ->
-            default_scope;
+            cannot_drop_default_scope;
         _ ->
             case find_scope(Name, Scopes) of
                 undefined ->
