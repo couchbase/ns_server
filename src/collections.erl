@@ -307,15 +307,23 @@ handle_oper({create_scope, Name}, Manifest) ->
     Manifest0 = on_scopes(add_scope(Name, _, Manifest), Manifest),
     update_counter(Manifest0, num_scopes, 1);
 handle_oper({drop_scope, Name}, Manifest) ->
-    Manifest0 = on_scopes(delete_scope(Name, _), Manifest),
-    update_counter(Manifest0, num_scopes, -1);
+    NumCollections = length(get_collections(get_scope(Name, Manifest))),
+    functools:chain(
+      Manifest,
+      [on_scopes(delete_scope(Name, _), _),
+       update_counter(_, num_scopes, -1),
+       update_counter(_, num_collections, -NumCollections)]);
 handle_oper({create_collection, Scope, Name, Props}, Manifest) ->
     Manifest0 = on_collections(add_collection(Name, Props, _, Manifest),
                                Scope, Manifest),
     update_counter(Manifest0, num_collections, 1);
 handle_oper({drop_collection, Scope, Name}, Manifest) ->
+    NumCollections = case Name of
+                         "_default" -> 0;
+                         _ -> 1
+                     end,
     Manifest0 = on_collections(delete_collection(Name, _), Scope, Manifest),
-    update_counter(Manifest0, num_collections, -1).
+    update_counter(Manifest0, num_collections, -NumCollections).
 
 get_counter(Manifest, Counter) ->
     proplists:get_value(Counter, Manifest).
