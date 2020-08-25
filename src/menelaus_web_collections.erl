@@ -199,8 +199,11 @@ handle_rv({ok, Uid}, Req) ->
 handle_rv(Error, Req) ->
     case get_err_code_msg(Error) of
         {Msg, Code} ->
-            menelaus_util:reply_json(Req, iolist_to_binary(Msg), Code);
+            reply_global_error(Req, Msg, Code);
         {Msg, Params, Code} ->
-            menelaus_util:reply_json(
-              Req, iolist_to_binary(io_lib:format(Msg, Params)), Code)
+            reply_global_error(Req, io_lib:format(Msg, Params), Code)
     end.
+
+reply_global_error(Req, Msg, Code) ->
+    menelaus_util:reply_json(
+      Req, {[{errors, {[{<<"_">>, iolist_to_binary(Msg)}]}}]}, Code).
