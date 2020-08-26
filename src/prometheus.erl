@@ -156,6 +156,13 @@ format_promql(AST) ->
                    Op =:= '%';  Op =:= '^';   Op =:= '==';     Op =:= '!=';
                    Op =:= '>';  Op =:= '<';   Op =:= '>=';     Op =:= '<=').
 
+-define(AGGREGATION_OP(Op), Op =:= sum;     Op =:= min;   Op =:= max;
+                            Op =:= avg;     Op =:= group; Op =:= stddev;
+                            Op =:= stdvar;  Op =:= count; Op =:= count_values;
+                            Op =:= bottomk; Op =:= topk;  Op =:= quantile).
+
+-define(MERGE_LABEL, <<"name">>).
+
 format_promql_ast({call, F, By, Args}) when is_atom(F) ->
     format_promql_ast({call, atom_to_list(F), By, Args});
 format_promql_ast({call, F, By, Args}) ->
@@ -168,7 +175,11 @@ format_promql_ast({call, F, By, Args}) ->
     [F, ByStr, "(", lists:join(",", [format_promql_ast(E) || E <- Args]), ")"];
 format_promql_ast({Op, Exprs}) when ?BINOP(Op) ->
     format_promql_ast({Op, [], Exprs});
-format_promql_ast({Op, Opts, Exprs}) when ?BINOP(Op) ->
+format_promql_ast({Op, Opts, Exprs0}) when ?BINOP(Op) ->
+    Exprs = case Op of
+                'or' -> merge_or_operands(Exprs0);
+                _ -> Exprs0
+            end,
     OptsIOList = lists:map(fun ({T, L}) ->
                                [atom_to_list(T), "(", lists:join(",", L), ") "]
                            end, Opts),
@@ -199,6 +210,116 @@ format_promql_ast(N) when is_integer(N) ->
     erlang:integer_to_list(N);
 format_promql_ast(X) when is_float(X) ->
     erlang:float_to_list(X).
+
+%% Transform "f({name=`m1`, ...}) or f({name=`m2`, ...} or ..." to
+%% "f({name=~`m1|m1|...`, ...})" as it works faster.
+%% Note: it's correct only if function 'f' commutes with 'or'
+merge_or_operands(List) ->
+    Sorted = lists:usort(
+               fun (A, B) ->
+                   comparable(A) =< comparable(B)
+               end, List),
+    merge_or_operands_sorted(Sorted, []).
+
+merge_or_operands_sorted([], Res) -> lists:reverse(Res);
+merge_or_operands_sorted([E], Res) -> merge_or_operands_sorted([], [E | Res]);
+merge_or_operands_sorted([E1, E2 | T], Res) ->
+    case merge_or_operands(E1, E2) of
+        match -> merge_or_operands_sorted([E1 | T], Res);
+        {merged, E} -> merge_or_operands_sorted([E | T], Res);
+        conflict -> merge_or_operands_sorted([E2 | T], [E1 | Res])
+    end.
+
+merge_or_operands({Op, [Op1, Scalar]}, {Op, [Op2, Scalar]})
+                                                    when (Op =:= '*' orelse
+                                                          Op =:= '/'),
+                                                         is_number(Scalar) ->
+    case merge_or_operands(Op1, Op2) of
+        match -> match;
+        conflict -> conflict;
+        {merged, M} -> {merged, {Op, [M, Scalar]}}
+    end;
+merge_or_operands({call, F, By, Args1}, {call, F, By, Args2})
+                                        when length(Args1) == length(Args2) ->
+    case commute_with_or(F, By) of
+        true ->
+            {NewArgs, Res} =
+                lists:mapfoldl(
+                  fun ({_, _}, conflict) ->
+                          {undefined, conflict};
+                      ({A1, A2}, Status) ->
+                          case merge_or_operands(A1, A2) of
+                              match -> {A1, match};
+                              conflict -> {undefined, conflict};
+                              {merged, M} when Status =:= match -> {M, merged};
+                              {merged, _} -> {undefined, conflict}
+                          end
+                  end, match, lists:zip(Args1, Args2)),
+            case Res of
+                conflict -> conflict;
+                merged -> {merged, {call, F, By, NewArgs}};
+                match -> match
+            end;
+        false ->
+            conflict
+    end;
+merge_or_operands({range_vector, E1, D}, {range_vector, E2, D}) ->
+    case merge_or_operands(E1, E2) of
+        match -> match;
+        conflict -> conflict;
+        {merged, E} -> {merged, {range_vector, E, D}}
+    end;
+merge_or_operands({L1}, {L2}) when is_list(L1), is_list(L2) ->
+    case {extract_merge_label(L1), extract_merge_label(L2)} of
+        {{Names, Rest}, {Names, Rest}} ->
+            match;
+        {{Names1, Rest}, {Names2, Rest}} ->
+            NewNames = lists:umerge(Names1, Names2),
+            {merged, {[{eq_any, ?MERGE_LABEL, NewNames} | Rest]}};
+        _ ->
+            conflict
+    end;
+merge_or_operands(Q, Q) -> match;
+merge_or_operands(_, _) -> conflict.
+
+comparable({List}) when is_list(List) ->
+    case extract_merge_label(List) of
+        {Names, Rest} -> {{lists:usort(Rest)}, Names};
+        not_found -> {{lists:usort(List)}, []}
+    end;
+comparable({Op, List}) when ?BINOP(Op) ->
+    comparable({Op, [], List});
+comparable({Op, Opts, Args}) when ?BINOP(Op) ->
+    {NewArgs, NewNames} = comparable(Args),
+    {{Op, Opts, NewArgs}, NewNames};
+comparable({call, F, By, Args}) when is_atom(F) ->
+    comparable({call, atom_to_binary(F, latin1), By, Args});
+comparable({call, F, By, Args}) ->
+    {NewArgs, NewNames} = comparable(Args),
+    {{call, F, By, NewArgs}, NewNames};
+comparable({range_vector, Expr, Duration}) ->
+    {NewExpr, Names} = comparable(Expr),
+    {{range_vector, NewExpr, Duration}, Names};
+comparable(L) when is_list(L) ->
+    lists:mapfoldl(
+      fun (A, Acc) ->
+          {NewA, Names} = comparable(A),
+          {NewA, Acc ++ Names}
+      end, [], L);
+comparable(Const) when is_number(Const); is_binary(Const) ->
+    {Const, []}.
+
+commute_with_or(F, {by, List}) when ?AGGREGATION_OP(F) ->
+    lists:member(?MERGE_LABEL, List);
+commute_with_or(F, none) when ?AGGREGATION_OP(F) -> false;
+commute_with_or(_, none) -> true.
+
+extract_merge_label(Props) ->
+    case lists:keytake(?MERGE_LABEL, 2, Props) of
+        {value, {eq, _, N}, Rest} -> {[N], Rest};
+        {value, {eq_any, _, NL}, Rest} -> {lists:usort(NL), Rest};
+        _ -> not_found
+    end.
 
 -ifdef(TEST).
 format_promql_test() ->
@@ -232,5 +353,30 @@ format_promql_test() ->
                                              {[{eq, <<"l2">>, <<"v2">>}]}]},
                                       {'+', [{[{eq, <<"l3">>, <<"v3">>}]},
                                              {[{eq, <<"l4">>, <<"v4">>}]}]}]}),
-                <<"({l1=`v1`} + {l2=`v2`}) * ({l3=`v3`} + {l4=`v4`})">>).
+                <<"({l1=`v1`} + {l2=`v2`}) * ({l3=`v3`} + {l4=`v4`})">>),
+    ?assertEqual(format_promql({'or', [{[{eq, <<"l1">>, <<"v1">>}]},
+                                       {[{eq, <<"l1">>, <<"v1">>}]}]}),
+                <<"{l1=`v1`}">>),
+    ?assertEqual(format_promql({'or', [{[{eq, <<"name">>, <<"v1">>}]},
+                                       {[{eq, <<"name">>, <<"v2">>}]}]}),
+                <<"{name=~`v1|v2`}">>),
+    ?assertEqual(format_promql({'or', [{[{eq, <<"name">>, <<"v1">>}]},
+                                       {[{eq, <<"name">>, <<"v2">>},
+                                         {eq, <<"l2">>, <<"v3">>}]}]}),
+                <<"{name=`v1`} or {name=`v2`,l2=`v3`}">>),
+    ?assertEqual(format_promql(
+                   {'or', [{call, irate, none,
+                            [{range_vector,
+                              {[{eq, <<"name">>, <<"v1">>},
+                                {eq, <<"l1">>, <<"v2">>}]},
+                              <<"1m">>}]},
+                           {[{eq, <<"name">>, <<"v2">>},
+                             {eq, <<"l1">>, <<"v2">>}]},
+                           {call, irate, none,
+                            [{range_vector,
+                              {[{eq, <<"l1">>, <<"v2">>},
+                                {eq_any, <<"name">>, [<<"v2">>,<<"v3">>]}]},
+                              <<"1m">>}]}]}),
+                 <<"{name=`v2`,l1=`v2`} or "
+                   "irate({name=~`v1|v2|v3`,l1=`v2`}[1m])">>).
 -endif.
