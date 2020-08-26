@@ -132,7 +132,7 @@ process_fatal_errors(Req, Errors) ->
     end.
 
 jsonify_errors(Errors) ->
-    {struct, [{Name, jsonify_error(E)} || {Name, E} <- Errors]}.
+    {[{Name, jsonify_error(E)} || {Name, E} <- Errors]}.
 
 jsonify_error({json, Json}) ->
     Json;
@@ -157,7 +157,7 @@ report_errors_for_one(Req, Errors, Code) ->
     end.
 
 send_error_json(Req, Errors, Code) ->
-    menelaus_util:reply_json(Req, {struct, [{errors, Errors}]}, Code).
+    menelaus_util:reply_json(Req, {[{errors, Errors}]}, Code).
 
 json_array(Name, Validators, State) ->
     validate(
