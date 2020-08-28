@@ -23,18 +23,17 @@ start() ->
         ok = application:start(ale),
         ok = application:start(sasl),
         ok = application:start(ns_babysitter, permanent),
-        (catch ?log_info("~s: babysitter has started", [os:getpid()])),
-        ns_babysitter:make_pidfile()
+        (catch ?log_info("~s: babysitter has started", [os:getpid()]))
     catch T:E ->
             timer:sleep(500),
             erlang:T(E)
     end.
 
 stop() ->
+    %% This is typically called via "couchbase-server -k" (most commonly
+    %% when a user does "service couchbase-server stop").  The init:stop
+    %% smoothly takes down all applications, unloads code, etc.
     (catch ?log_info("~s: got shutdown request. Terminating.", [os:getpid()])),
-    application:stop(ns_babysitter),
-    ale:sync_all_sinks(),
-    ns_babysitter:delete_pidfile(),
     init:stop().
 
 remote_stop(Node) ->

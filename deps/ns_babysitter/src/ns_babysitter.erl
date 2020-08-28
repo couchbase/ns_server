@@ -18,7 +18,6 @@
 -behavior(application).
 
 -export([start/2, stop/1]).
--export([make_pidfile/0, delete_pidfile/0]).
 
 -include("ns_common.hrl").
 -include_lib("ale/include/ale.hrl").
@@ -63,6 +62,8 @@ start(_, _) ->
               [ns_cookie_manager:sanitize_cookie(Cookie)]),
     write_required_file(cookiefile, Cookie, "babysitter cookie"),
     maybe_write_file(nodefile, node(), "babysitter node name"),
+
+    make_pidfile(),
 
     % Clear the HTTP proxy environment variables as they are honored, when they
     % are set, by the golang net/http package.
@@ -164,7 +165,9 @@ do_init_logging() ->
     end.
 
 stop(_) ->
-    ok.
+    ale:info(?NS_SERVER_LOGGER, "Received shutdown request. Terminating."),
+    ale:sync_all_sinks(),
+    delete_pidfile().
 
 convert_disk_log_files(Dir) ->
     lists:foreach(
