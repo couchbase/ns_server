@@ -1,5 +1,6 @@
 import angular from "/ui/web_modules/angular.js";
 import _ from "/ui/web_modules/lodash.js";
+import ngMessages from "/ui/web_modules/angular-messages.js";
 
 import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnElementCrane from "/ui/app/components/directives/mn_element_crane/mn_element_crane.js";
@@ -11,7 +12,8 @@ angular
   .module("mnSettingsSampleBuckets", [
     mnPromiseHelper,
     mnElementCrane,
-    mnSettingsSampleBucketsService
+    mnSettingsSampleBucketsService,
+    ngMessages
   ])
   .controller("mnSettingsSampleBucketsController", mnSettingsSampleBucketsController);
 
