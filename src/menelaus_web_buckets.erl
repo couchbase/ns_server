@@ -1159,6 +1159,8 @@ get_conflict_resolution_type_and_thresholds(Params, BucketConfig, false = IsNew)
                     [get_drift_ahead_threshold(Params, IsNew),
                      get_drift_behind_threshold(Params, IsNew)];
                 seqno ->
+                    [];
+                custom ->
                     []
             end;
         _Any ->
@@ -1578,9 +1580,25 @@ parse_validate_conflict_resolution_type("lww") ->
             {error, conflictResolutionType,
              <<"Conflict resolution type 'lww' is supported only in enterprise edition">>}
     end;
+parse_validate_conflict_resolution_type("custom") ->
+    case cluster_compat_mode:is_enterprise() of
+        true ->
+            case cluster_compat_mode:is_developer_preview() of
+                true ->
+                    {ok, conflict_resolution_type, custom};
+                false ->
+                    {error, conflictResolutionType,
+                     <<"Conflict resolution type 'custom' is supported only "
+                       "with developer preview enabled">>}
+            end;
+        false ->
+            {error, conflictResolutionType,
+             <<"Conflict resolution type 'custom' is supported only in "
+               "enterprise edition">>}
+    end;
 parse_validate_conflict_resolution_type(_Other) ->
     {error, conflictResolutionType,
-     <<"Conflict resolution type must be 'seqno' or 'lww'">>}.
+     <<"Conflict resolution type must be 'seqno' or 'lww' or 'custom'">>}.
 
 extended_cluster_storage_info() ->
     [{nodesCount, length(ns_cluster_membership:service_active_nodes(kv))}

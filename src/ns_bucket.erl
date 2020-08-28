@@ -187,6 +187,8 @@ drift_thresholds(BucketConfig) ->
             {proplists:get_value(drift_ahead_threshold_ms, BucketConfig),
              proplists:get_value(drift_behind_threshold_ms, BucketConfig)};
         seqno ->
+            undefined;
+        custom ->
             undefined
     end.
 
