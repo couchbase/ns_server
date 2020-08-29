@@ -115,7 +115,7 @@ init(Bucket) ->
     UseNewStats =
         case Bucket of
              "@index-" ++ _ -> true;
-             "@xdcr-" ++ _ -> false;
+             "@xdcr-" ++ _ -> true;
              "@fts-" ++ _ -> true;
              "@cbas-" ++ _ -> true;
              "@eventing-" ++ _ -> false;

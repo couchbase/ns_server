@@ -141,6 +141,97 @@ pre_70_stat_to_prom_query("@cbas-" ++ Bucket, <<"cbas/", Stat/binary>>) ->
             {error, not_found}
     end;
 
+pre_70_stat_to_prom_query("@xdcr-" ++ Bucket, <<"replication_changes_left">>) ->
+    M = {[{eq, <<"name">>, <<"xdcr_changes_left_total">>},
+          {eq, <<"sourceBucketName">>, Bucket}]},
+    {ok, sumby([<<"name">>], M)};
+pre_70_stat_to_prom_query("@xdcr-" ++ Bucket,
+                          <<"replication_docs_rep_queue">>) ->
+    M = {[{eq, <<"name">>, <<"xdcr_docs_rep_queue_total">>},
+          {eq, <<"sourceBucketName">>, Bucket}]},
+    {ok, sumby([<<"name">>], M)};
+pre_70_stat_to_prom_query("@xdcr-" ++ Bucket,
+                          <<"replications/", Stat/binary>>) ->
+    BucketBin = list_to_binary(Bucket),
+    [ReplId, Source, Target, Name] = binary:split(Stat, <<"/">>, [global]),
+    Metric = fun (N) ->
+                 {RId, Type} =
+                    case ReplId of
+                        <<"*">> -> {<<"*">>, <<"*">>};
+                        <<"backfill_", Id/binary>> -> {Id, <<"Backfill">>};
+                        Id -> {Id, <<"Main">>}
+                    end,
+                 {[{eq, <<"name">>, N}, {eq, <<"sourceBucketName">>, Bucket}] ++
+                  [{eq, <<"pipelineType">>, Type} || Type =/= <<"*">>] ++
+                  [{eq, <<"targetClusterUUID">>, RId} || RId =/= <<"*">>] ++
+                  [{eq, <<"targetBucketName">>, Target} || Target =/= <<"*">>]}
+             end,
+    case Name of
+        _ when Source =/= BucketBin ->
+            {error, not_found};
+        N when N =:= <<"time_committing">>;
+               N =:= <<"wtavg_docs_latency">>;
+               N =:= <<"wtavg_get_latency">>;
+               N =:= <<"wtavg_meta_latency">>;
+               N =:= <<"throughput_throttle_latency">>;
+               N =:= <<"resp_wait_time">>;
+               N =:= <<"throttle_latency">> ->
+            M = Metric(<<"xdcr_", N/binary, "_seconds">>),
+            {ok, multiply_by_scalar(M, 1000)};
+        <<"dcp_dispatch_time">> ->
+            M = Metric(<<"xdcr_dcp_dispatch_time_seconds">>),
+            {ok, multiply_by_scalar(M, 1000000000)};
+        <<"bandwidth_usage">> ->
+            M = rate(Metric(<<"xdcr_data_replicated_bytes">>)),
+            {ok, named(<<"xdcr_bandwidth_usage_bytes_per_second">>, M)};
+        <<"rate_doc_checks">> ->
+            {ok, named(<<"xdcr_rate_doc_checks_docs_per_second">>,
+                       {call, idelta, none,
+                        [{range_vector, Metric(<<"xdcr_docs_checked_total">>),
+                          ?IRATE_INTERVAL}]})};
+        <<"rate_received_from_dcp">> ->
+            {ok, named(<<"xdcr_rate_received_from_dcp_docs_per_second">>,
+                       rate(Metric(<<"xdcr_docs_received_from_dcp_total">>)))};
+        <<"rate_doc_opt_repd">> ->
+            {ok, named(<<"xdcr_rate_doc_opt_repd_docs_per_second">>,
+                       rate(Metric(<<"xdcr_docs_opt_repd_total">>)))};
+        <<"rate_replicated">> ->
+            {ok, named(<<"xdcr_rate_replicated_docs_per_second">>,
+                       rate(Metric(<<"xdcr_docs_written_total">>)))};
+        N when N =:= <<"deletion_filtered">>;
+               N =:= <<"expiry_received_from_dcp">>;
+               N =:= <<"docs_opt_repd">>;
+               N =:= <<"deletion_failed_cr_source">>;
+               N =:= <<"set_filtered">>;
+               N =:= <<"datapool_failed_gets">>;
+               N =:= <<"dcp_datach_length">>;
+               N =:= <<"docs_filtered">>;
+               N =:= <<"docs_checked">>;
+               N =:= <<"set_received_from_dcp">>;
+               N =:= <<"docs_unable_to_filter">>;
+               N =:= <<"set_failed_cr_source">>;
+               N =:= <<"set_docs_written">>;
+               N =:= <<"docs_written">>;
+               N =:= <<"deletion_docs_written">>;
+               N =:= <<"expiry_docs_written">>;
+               N =:= <<"num_failedckpts">>;
+               N =:= <<"add_docs_written">>;
+               N =:= <<"docs_rep_queue">>;
+               N =:= <<"docs_failed_cr_source">>;
+               N =:= <<"deletion_received_from_dcp">>;
+               N =:= <<"num_checkpoints">>;
+               N =:= <<"expiry_filtered">>;
+               N =:= <<"expiry_stripped">>;
+               N =:= <<"changes_left">>;
+               N =:= <<"docs_processed">>;
+               N =:= <<"docs_received_from_dcp">>;
+               N =:= <<"expiry_failed_cr_source">> ->
+            {ok, Metric(<<"xdcr_", N/binary, "_total">>)};
+        N when N =:= <<"size_rep_queue">>;
+               N =:= <<"data_replicated">> ->
+            {ok, Metric(<<"xdcr_", N/binary, "_bytes">>)}
+    end;
+
 pre_70_stat_to_prom_query(_, _) ->
     {error, not_found}.
 
@@ -208,6 +299,8 @@ index_metric(Name, Bucket, Index) ->
      [{eq, <<"index">>, Index} || Index =/= <<"*">>]}.
 named(Name, Ast) ->
     {call, label_replace, none, [Ast, <<"name">>, Name, <<>>, <<>>]}.
+multiply_by_scalar(Ast, Scalar) ->
+    {'*', [Ast, Scalar]}.
 
 bin(A) when is_atom(A) -> atom_to_binary(A, latin1);
 bin(B) when is_binary(B) -> B.
@@ -258,6 +351,8 @@ prom_name_to_pre_70_name(Bucket, {JSONProps}) ->
                 {ok, <<"cbas/all/", Name/binary>>};
             <<"cbas_", Name/binary>> ->
                 {ok, <<"cbas/", Name/binary>>};
+            <<"xdcr_", Name/binary>> ->
+                build_pre_70_xdcr_name(Name, JSONProps);
             _ -> {error, not_found}
         end,
     case Res of
@@ -273,6 +368,58 @@ prom_name_to_pre_70_name(Bucket, {JSONProps}) ->
             Error
     end.
 
+build_pre_70_xdcr_name(Name, Props) ->
+    Suffixes = [<<"_total">>, <<"_seconds">>,
+                <<"_bytes_per_second">>, <<"_docs_per_second">>,
+                <<"_bytes">>],
+    case drop_suffixes(Name, Suffixes) of
+        {ok, Stripped} ->
+            Id = proplists:get_value(<<"targetClusterUUID">>, Props),
+            Source = proplists:get_value(<<"sourceBucketName">>, Props),
+            Target = proplists:get_value(<<"targetBucketName">>, Props),
+            Type = proplists:get_value(<<"pipelineType">>, Props),
+            if
+                Type   =:= <<"Backfill">>,
+                Id     =/= undefined,
+                Source =/= undefined,
+                Target =/= undefined ->
+                    {ok, <<"replications/backfill_", Id/binary, "/",
+                           Source/binary, "/", Target/binary,"/",
+                           Stripped/binary>>};
+                Type   =:= <<"Main">>,
+                Id     =/= undefined,
+                Source =/= undefined,
+                Target =/= undefined ->
+                    {ok, <<"replications/", Id/binary, "/",
+                           Source/binary, "/", Target/binary,"/",
+                           Stripped/binary>>};
+                (Stripped =:= <<"docs_rep_queue">>) or
+                (Stripped =:= <<"changes_left">>),
+                Id       =:= undefined,
+                Source   =:= undefined,
+                Target   =:= undefined ->
+                    {ok, <<"replication_", Stripped/binary>>};
+                true ->
+                    {error, not_found}
+            end;
+        false ->
+            {error, not_found}
+    end.
+
+drop_suffixes(Bin, Suffixes) ->
+    Check = fun (Suffix) ->
+                fun (NameToParse) ->
+                    case misc:is_binary_ends_with(NameToParse, Suffix) of
+                        true ->
+                            L = byte_size(NameToParse) - byte_size(Suffix),
+                            {ok, binary:part(NameToParse, {0, L})};
+                        false ->
+                            false
+                    end
+                end
+            end,
+    functools:alternative(Bin,[Check(S) || S <- Suffixes]).
+
 key_type_by_stat_type("@query") -> atom;
 key_type_by_stat_type("@global") -> atom;
 key_type_by_stat_type("@system") -> atom;
@@ -282,7 +429,8 @@ key_type_by_stat_type("@fts-" ++ _) -> binary;
 key_type_by_stat_type("@index") -> binary;
 key_type_by_stat_type("@index-" ++ _) -> binary;
 key_type_by_stat_type("@cbas") -> binary;
-key_type_by_stat_type("@cbas-" ++ _) -> binary.
+key_type_by_stat_type("@cbas-" ++ _) -> binary;
+key_type_by_stat_type("@xdcr-" ++ _) -> binary.
 
 
 
@@ -328,7 +476,32 @@ default_stat_list("@cbas-" ++ _) ->
     Stats = service_cbas:get_gauges() ++
             service_cbas:get_counters(),
     [<<"cbas/", (bin(S))/binary>> || S <- Stats] ++
-    [<<"cbas/all/", (bin(S))/binary>> || S <- Stats].
+    [<<"cbas/all/", (bin(S))/binary>> || S <- Stats];
+default_stat_list("@xdcr-" ++ B) ->
+    Bucket = list_to_binary(B),
+    Stats = [
+        <<"add_docs_written">>, <<"bandwidth_usage">>, <<"changes_left">>,
+        <<"data_replicated">>, <<"datapool_failed_gets">>,
+        <<"dcp_datach_length">>, <<"dcp_dispatch_time">>,
+        <<"deletion_docs_written">>, <<"deletion_failed_cr_source">>,
+        <<"deletion_filtered">>, <<"deletion_received_from_dcp">>,
+        <<"docs_checked">>, <<"docs_failed_cr_source">>, <<"docs_filtered">>,
+        <<"docs_opt_repd">>, <<"docs_processed">>, <<"docs_received_from_dcp">>,
+        <<"docs_rep_queue">>, <<"docs_unable_to_filter">>, <<"docs_written">>,
+        <<"expiry_docs_written">>, <<"expiry_failed_cr_source">>,
+        <<"expiry_filtered">>, <<"expiry_received_from_dcp">>,
+        <<"expiry_stripped">>, <<"num_checkpoints">>, <<"num_failedckpts">>,
+        <<"rate_doc_checks">>, <<"rate_doc_opt_repd">>,
+        <<"rate_received_from_dcp">>, <<"rate_replicated">>,
+        <<"resp_wait_time">>, <<"set_docs_written">>,
+        <<"set_failed_cr_source">>, <<"set_filtered">>,
+        <<"set_received_from_dcp">>, <<"size_rep_queue">>,
+        <<"throttle_latency">>, <<"throughput_throttle_latency">>,
+        <<"time_committing">>, <<"wtavg_docs_latency">>,
+        <<"wtavg_get_latency">>, <<"wtavg_meta_latency">>
+    ],
+    [<<"replication_changes_left">>, <<"replication_docs_rep_queue">>] ++
+    [<<"replications/*/", Bucket/binary, "/*/", S/binary>> || S <- Stats].
 
 -ifdef(TEST).
 pre_70_to_prom_query_test_() ->
