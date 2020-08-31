@@ -16,6 +16,7 @@
 
 -export([pre_70_stats_to_prom_query/2, prom_name_to_pre_70_name/2]).
 
+-include("ns_test.hrl").
 -include("cut.hrl").
 
 -ifdef(TEST).
@@ -507,11 +508,9 @@ default_stat_list("@xdcr-" ++ B) ->
 pre_70_to_prom_query_test_() ->
     Test = fun (Section, Stats, ExpectedQuery) ->
                Name = lists:flatten(io_lib:format("~s: ~p", [Section, Stats])),
-               {Name,
-                fun () ->
-                    ?assertEqual(pre_70_stats_to_prom_query(Section, Stats),
-                                 list_to_binary(ExpectedQuery))
-                end}
+               {Name, ?_assertBinStringsEqual(
+                         list_to_binary(ExpectedQuery),
+                         pre_70_stats_to_prom_query(Section, Stats))}
            end,
     [Test("@system", all, "{category=`system`}"),
      Test("@system", [], ""),
