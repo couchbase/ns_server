@@ -722,7 +722,90 @@ pre_70_to_prom_query_test_() ->
           "label_replace(sum by () (irate({name=`cbas_incoming_records_count`,"
                                           "bucket=`test`,link=`Local`}[1m])),"
                         "`name`,`cbas_incoming_records_count`,``,``)"),
-     Test("@cbas-test", [], "")].
+     Test("@cbas-test", [], ""),
+     Test("@xdcr-test", all,
+          "{name=~`xdcr_add_docs_written_total|xdcr_changes_left_total|"
+                  "xdcr_data_replicated_bytes|xdcr_datapool_failed_gets_total|"
+                  "xdcr_dcp_datach_length_total|"
+                  "xdcr_deletion_docs_written_total|"
+                  "xdcr_deletion_failed_cr_source_total|"
+                  "xdcr_deletion_filtered_total|"
+                  "xdcr_deletion_received_from_dcp_total|"
+                  "xdcr_docs_checked_total|xdcr_docs_failed_cr_source_total|"
+                  "xdcr_docs_filtered_total|xdcr_docs_opt_repd_total|"
+                  "xdcr_docs_processed_total|xdcr_docs_received_from_dcp_total|"
+                  "xdcr_docs_rep_queue_total|xdcr_docs_unable_to_filter_total|"
+                  "xdcr_docs_written_total|xdcr_expiry_docs_written_total|"
+                  "xdcr_expiry_failed_cr_source_total|"
+                  "xdcr_expiry_filtered_total|"
+                  "xdcr_expiry_received_from_dcp_total|"
+                  "xdcr_expiry_stripped_total|xdcr_num_checkpoints_total|"
+                  "xdcr_num_failedckpts_total|xdcr_set_docs_written_total|"
+                  "xdcr_set_failed_cr_source_total|xdcr_set_filtered_total|"
+                  "xdcr_set_received_from_dcp_total|xdcr_size_rep_queue_bytes`,"
+           "sourceBucketName=`test`} or "
+          "({name=~`xdcr_resp_wait_time_seconds|xdcr_throttle_latency_seconds|"
+                   "xdcr_throughput_throttle_latency_seconds|"
+                   "xdcr_time_committing_seconds|"
+                   "xdcr_wtavg_docs_latency_seconds|"
+                   "xdcr_wtavg_get_latency_seconds|"
+                   "xdcr_wtavg_meta_latency_seconds`,"
+            "sourceBucketName=`test`} * 1000) or "
+          "({name=`xdcr_dcp_dispatch_time_seconds`,"
+            "sourceBucketName=`test`} * 1000000000) or "
+          "label_replace(idelta({name=`xdcr_docs_checked_total`,"
+                                "sourceBucketName=`test`}[1m]),`name`,"
+                        "`xdcr_rate_doc_checks_docs_per_second`,``,``) or "
+          "label_replace(irate({name=`xdcr_data_replicated_bytes`,"
+                               "sourceBucketName=`test`}[1m]),`name`,"
+                        "`xdcr_bandwidth_usage_bytes_per_second`,``,``) or "
+          "label_replace(irate({name=`xdcr_docs_opt_repd_total`,"
+                               "sourceBucketName=`test`}[1m]),`name`,"
+                        "`xdcr_rate_doc_opt_repd_docs_per_second`,``,``) or "
+          "label_replace(irate({name=`xdcr_docs_received_from_dcp_total`,"
+                               "sourceBucketName=`test`}[1m]),`name`,"
+                        "`xdcr_rate_received_from_dcp_docs_per_second`,``,``)"
+          " or "
+          "label_replace(irate({name=`xdcr_docs_written_total`,"
+                               "sourceBucketName=`test`}[1m]),`name`,"
+                        "`xdcr_rate_replicated_docs_per_second`,``,``) or "
+          "sum by (name) ({name=~`xdcr_changes_left_total|"
+                                 "xdcr_docs_rep_queue_total`,"
+                          "sourceBucketName=`test`})"),
+     Test("@xdcr-test", [], ""),
+     Test("@xdcr-test",
+          [<<"replications/id1/test/test2/changes_left">>,
+           <<"replications/backfill_id1/test/test2/changes_left">>,
+           <<"replications/id1/test/test2/docs_processed">>,
+           <<"replications/backfill_id1/test/test2/docs_processed">>,
+           <<"replications/id1/test/test2/bandwidth_usage">>,
+           <<"replications/backfill_id1/test/test2/bandwidth_usage">>,
+           <<"replications/id1/test/test2/time_committing">>,
+           <<"replications/backfill_id1/test/test2/time_committing">>],
+          "{name=~`xdcr_changes_left_total|xdcr_docs_processed_total`,"
+           "sourceBucketName=`test`,pipelineType=`Backfill`,"
+           "targetClusterUUID=`id1`,targetBucketName=`test2`} or "
+          "{name=~`xdcr_changes_left_total|xdcr_docs_processed_total`,"
+           "sourceBucketName=`test`,pipelineType=`Main`,"
+           "targetClusterUUID=`id1`,targetBucketName=`test2`} or "
+          "({name=`xdcr_time_committing_seconds`,sourceBucketName=`test`,"
+            "pipelineType=`Backfill`,targetClusterUUID=`id1`,"
+            "targetBucketName=`test2`} * 1000) or "
+          "({name=`xdcr_time_committing_seconds`,sourceBucketName=`test`,"
+            "pipelineType=`Main`,targetClusterUUID=`id1`,"
+            "targetBucketName=`test2`} * 1000) or "
+          "label_replace(irate({name=`xdcr_data_replicated_bytes`,"
+                               "sourceBucketName=`test`,"
+                               "pipelineType=`Backfill`,"
+                               "targetClusterUUID=`id1`,"
+                               "targetBucketName=`test2`}[1m]),`name`,"
+                        "`xdcr_bandwidth_usage_bytes_per_second`,``,``) or "
+          "label_replace(irate({name=`xdcr_data_replicated_bytes`,"
+                               "sourceBucketName=`test`,"
+                               "pipelineType=`Main`,"
+                               "targetClusterUUID=`id1`,"
+                               "targetBucketName=`test2`}[1m]),`name`,"
+                        "`xdcr_bandwidth_usage_bytes_per_second`,``,``)")].
 
 prom_name_to_pre_70_name_test_() ->
     Test = fun (Section, Json, ExpectedRes) ->
@@ -768,6 +851,23 @@ prom_name_to_pre_70_name_test_() ->
           {ok, <<"cbas/failed_at_parser_records_count_total">>}),
      Test("@cbas-test",
           "{\"name\": \"cbas_all_failed_at_parser_records_count_total\"}",
-          {ok, <<"cbas/all/failed_at_parser_records_count_total">>})].
+          {ok, <<"cbas/all/failed_at_parser_records_count_total">>}),
+     Test("@xdcr-test",
+          "{\"name\": \"xdcr_docs_processed_total\","
+           "\"sourceBucketName\": \"b1\","
+           "\"pipelineType\": \"Backfill\","
+           "\"targetClusterUUID\": \"id1\","
+           "\"targetBucketName\":\"b2\"}",
+          {ok, <<"replications/backfill_id1/b1/b2/docs_processed">>}),
+     Test("@xdcr-test",
+          "{\"name\": \"xdcr_bandwidth_usage_bytes_per_second\","
+           "\"sourceBucketName\": \"b1\","
+           "\"pipelineType\": \"Main\","
+           "\"targetClusterUUID\": \"id1\","
+           "\"targetBucketName\":\"b2\"}",
+          {ok, <<"replications/id1/b1/b2/bandwidth_usage">>}),
+     Test("@xdcr-test",
+          "{\"name\": \"xdcr_changes_left_total\"}",
+          {ok, <<"replication_changes_left">>})].
 
 -endif.
