@@ -13,6 +13,7 @@ import { MnXDCRItemDetailsComponent,
 import { MnXDCRRefItemComponent } from "./mn.xdcr.ref.item.component.js";
 import { MnXDCRService } from "./mn.xdcr.service.js";
 import { MnBucketsService } from "./mn.buckets.service.js";
+import { MnCollectionsService } from './mn.collections.service.js';
 
 import { MnXDCRAddRefComponent } from "./mn.xdcr.add.ref.component.js";
 import { MnXDCRAddRepComponent } from "./mn.xdcr.add.rep.component.js";
@@ -84,7 +85,8 @@ class MnXDCRModule {
       ],
       providers: [
         MnXDCRService,
-        MnBucketsService
+        MnBucketsService,
+        MnCollectionsService
       ]
     })
   ]}

@@ -102,6 +102,13 @@ class MnXDCRService {
     if (!isEnterprise || settings.type !== "xmem") {
       delete settings.networkUsageLimit;
     }
+    if (settings.collectionsExplicitMapping) {
+      if (settings.collectionsMigrationMode) {
+        settings.colMappingRules = JSON.stringify(this.explicitRuleBasedMappings);
+      } else {
+        settings.colMappingRules = JSON.stringify(this.explicitMappingRules);
+      }
+    }
     settings.replicationType = "continuous";
 
     return settings;
