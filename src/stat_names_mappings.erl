@@ -305,6 +305,9 @@ pre_70_stat_to_prom_query("@eventing-" ++ _Bucket, _) ->
 pre_70_stat_to_prom_query("@" ++ _, _) ->
     {error, not_found};
 
+%% Couchdb metrics:
+pre_70_stat_to_prom_query(Bucket, <<"couch_", _/binary>> = N) ->
+    {ok, sumby([<<"name">>], bucket_metric(N, Bucket))};
 %% Memcached "empty key" metrics:
 pre_70_stat_to_prom_query(_Bucket, <<"curr_connections">>) ->
     %% curr_connections can't be handled like other metrics because
@@ -472,6 +475,8 @@ prom_name_to_pre_70_name(Bucket, {JSONProps}) ->
                 Filter = fun (L) -> not lists:member(L, DropLabels) end,
                 Labels = misc:proplist_keyfilter(Filter, JSONProps),
                 kv_stats_mappings:new_to_old({Name, lists:usort(Labels)});
+            <<"couch_", _/binary>> = Name ->
+                {ok, Name};
             _ -> {error, not_found}
         end,
     case Res of
@@ -631,7 +636,10 @@ default_stat_list("@eventing") ->
 default_stat_list("@eventing-" ++ _) ->
     [];
 default_stat_list(_Bucket) ->
-    [?STAT_GAUGES, ?STAT_COUNTERS].
+    [?STAT_GAUGES, ?STAT_COUNTERS, couch_docs_actual_disk_size,
+     couch_views_actual_disk_size, couch_spatial_data_size,
+     couch_spatial_disk_size, couch_spatial_ops, couch_views_data_size,
+     couch_views_disk_size, couch_views_ops].
 
 is_system_stat(<<"cpu_", _/binary>>) -> true;
 is_system_stat(<<"swap_", _/binary>>) -> true;
