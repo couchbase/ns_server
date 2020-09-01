@@ -305,6 +305,30 @@ pre_70_stat_to_prom_query("@eventing-" ++ _Bucket, _) ->
 pre_70_stat_to_prom_query("@" ++ _, _) ->
     {error, not_found};
 
+%% Timings metrics:
+pre_70_stat_to_prom_query(Bucket, <<"bg_wait_count">>) ->
+    {ok, rate(bucket_metric(<<"kv_bg_wait_seconds_count">>, Bucket))};
+pre_70_stat_to_prom_query(Bucket, <<"bg_wait_total">>) ->
+    M = rate(bucket_metric(<<"kv_bg_wait_seconds_sum">>, Bucket)),
+    {ok, convert_units(seconds, microseconds, M)};
+pre_70_stat_to_prom_query(Bucket, <<"disk_commit_count">>) ->
+    {ok, rate({[{eq, <<"name">>, <<"kv_disk_seconds_count">>},
+                {eq, <<"op">>, <<"commit">>},
+                {eq, <<"bucket">>, Bucket}]})};
+pre_70_stat_to_prom_query(Bucket, <<"disk_commit_total">>) ->
+    M = rate({[{eq, <<"name">>, <<"kv_disk_seconds_sum">>},
+               {eq, <<"op">>, <<"commit">>},
+               {eq, <<"bucket">>, Bucket}]}),
+    {ok, convert_units(seconds, microseconds, M)};
+pre_70_stat_to_prom_query(Bucket, <<"disk_update_count">>) ->
+    {ok, rate({[{eq, <<"name">>, <<"kv_disk_seconds_count">>},
+                {eq, <<"op">>, <<"update">>},
+                {eq, <<"bucket">>, Bucket}]})};
+pre_70_stat_to_prom_query(Bucket, <<"disk_update_total">>) ->
+    M = rate({[{eq, <<"name">>, <<"kv_disk_seconds_sum">>},
+               {eq, <<"op">>, <<"update">>},
+               {eq, <<"bucket">>, Bucket}]}),
+    {ok, convert_units(seconds, microseconds, M)};
 %% Couchdb metrics:
 pre_70_stat_to_prom_query(Bucket, <<"couch_", _/binary>> = N) ->
     {ok, sumby([<<"name">>], bucket_metric(N, Bucket))};
@@ -468,6 +492,22 @@ prom_name_to_pre_70_name(Bucket, {JSONProps}) ->
                         {ok, <<"eventing/", Name/binary>>};
                     FName ->
                         {ok, <<"eventing/", FName/binary, "/", Name/binary>>}
+                end;
+            <<"kv_bg_wait_seconds_count">> ->
+                {ok, <<"bg_wait_count">>};
+            <<"kv_bg_wait_seconds_sum">> ->
+                {ok, <<"bg_wait_total">>};
+            <<"kv_disk_seconds_count">> ->
+                case proplists:get_value(<<"op">>, JSONProps) of
+                    <<"commit">> -> {ok, <<"disk_commit_count">>};
+                    <<"update">> -> {ok, <<"disk_update_count">>};
+                    _ -> {error, not_found}
+                end;
+            <<"kv_disk_seconds_sum">> ->
+                case proplists:get_value(<<"op">>, JSONProps) of
+                    <<"commit">> -> {ok, <<"disk_commit_total">>};
+                    <<"update">> -> {ok, <<"disk_update_total">>};
+                    _ -> {error, not_found}
                 end;
             <<"kv_", _/binary>> = Name ->
                 DropLabels = [<<"name">>, <<"bucket">>, <<"job">>,
@@ -639,7 +679,9 @@ default_stat_list(_Bucket) ->
     [?STAT_GAUGES, ?STAT_COUNTERS, couch_docs_actual_disk_size,
      couch_views_actual_disk_size, couch_spatial_data_size,
      couch_spatial_disk_size, couch_spatial_ops, couch_views_data_size,
-     couch_views_disk_size, couch_views_ops].
+     couch_views_disk_size, couch_views_ops, bg_wait_count, bg_wait_total,
+     disk_commit_count, disk_commit_total, disk_update_count,
+     disk_update_total].
 
 is_system_stat(<<"cpu_", _/binary>>) -> true;
 is_system_stat(<<"swap_", _/binary>>) -> true;
