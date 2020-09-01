@@ -62,11 +62,7 @@ stop() ->
                  (catch ?LOG_ERROR(Msg)),
                  {T, E}
          end,
-
-    case RV of
-        ok -> init:stop();
-        X -> X
-    end.
+    RV.
 
 ensure_os_mon() ->
     %% since os_mon is started as temporary application, if it
