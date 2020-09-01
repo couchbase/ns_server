@@ -17,7 +17,7 @@
 -include_lib("kernel/include/logger.hrl").
 -include("ns_common.hrl").
 
--export([start/0, stop/0, remote_stop/1, ensure_os_mon/0]).
+-export([start/0, stop/0, ensure_os_mon/0]).
 
 start() ->
     try
@@ -67,18 +67,6 @@ stop() ->
         ok -> init:stop();
         X -> X
     end.
-
-%% Call ns_bootstrap:stop on a remote node and exit with status indicating the
-%% success of the call.
-remote_stop(Node) ->
-    RV = rpc:call(Node, ns_bootstrap, stop, []),
-    ExitStatus = case RV of
-                     ok -> 0;
-                     Other ->
-                         io:format("NOTE: shutdown failed~n~p~n", [Other]),
-                         1
-                 end,
-    init:stop(ExitStatus).
 
 ensure_os_mon() ->
     %% since os_mon is started as temporary application, if it
