@@ -34,9 +34,6 @@
 -export([handle_settings_web/1,
          handle_settings_web_post/1,
 
-         handle_settings_alerts/1,
-         handle_settings_alerts_post/1,
-         handle_settings_alerts_send_test_email/1,
          handle_reset_alerts/1,
 
          handle_settings_stats/1,
@@ -769,52 +766,6 @@ do_handle_settings_web_post(Port, U, P, Req) ->
     %% TODO: detect and support https when time will come
     reply_json(Req, {struct, [{newBaseUri, list_to_binary("http://" ++ NewHost ++ "/")}]}),
     exit(normal).
-
-handle_settings_alerts(Req) ->
-    {value, Config} = ns_config:search(email_alerts),
-    reply_json(Req, {struct, menelaus_alert:build_alerts_json(Config)}).
-
-handle_settings_alerts_post(Req) ->
-    PostArgs = mochiweb_request:parse_post(Req),
-    ValidateOnly = proplists:get_value("just_validate", mochiweb_request:parse_qs(Req)) =:= "1",
-    case {ValidateOnly, menelaus_alert:parse_settings_alerts_post(PostArgs)} of
-        {false, {ok, Config}} ->
-            ns_config:set(email_alerts, Config),
-            ns_audit:alerts(Req, Config),
-            reply(Req, 200);
-        {false, {error, Errors}} ->
-            reply_json(Req, {struct, [{errors, {struct, Errors}}]}, 400);
-        {true, {ok, _}} ->
-            reply_json(Req, {struct, [{errors, null}]}, 200);
-        {true, {error, Errors}} ->
-            reply_json(Req, {struct, [{errors, {struct, Errors}}]}, 200)
-    end.
-
-%% @doc Sends a test email with the current settings
-handle_settings_alerts_send_test_email(Req) ->
-    PostArgs = mochiweb_request:parse_post(Req),
-    Subject = proplists:get_value("subject", PostArgs),
-    Body = proplists:get_value("body", PostArgs),
-    PostArgs1 = [{K, V} || {K, V} <- PostArgs,
-                           not lists:member(K, ["subject", "body"])],
-    {ok, Config} = menelaus_alert:parse_settings_alerts_post(PostArgs1),
-
-    case ns_mail:send(Subject, Body, Config) of
-        ok ->
-            reply(Req, 200);
-        {error, Reason} ->
-            Msg =
-                case Reason of
-                    {_, _, {error, R}} ->
-                        R;
-                    {_, _, R} ->
-                        R;
-                    R ->
-                        R
-                end,
-
-            reply_json(Req, {struct, [{error, couch_util:to_binary(Msg)}]}, 400)
-    end.
 
 handle_reset_alerts(Req) ->
     Params = mochiweb_request:parse_qs(Req),

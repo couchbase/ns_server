@@ -346,7 +346,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "web"] ->
                     {{[settings], read}, fun menelaus_web_settings:handle_settings_web/1};
                 ["settings", "alerts"] ->
-                    {{[settings], read}, fun menelaus_web_settings:handle_settings_alerts/1};
+                    {{[settings], read}, fun menelaus_alert:handle_settings_alerts/1};
                 ["settings", "stats"] ->
                     {{[settings], read}, fun menelaus_web_settings:handle_settings_stats/1};
                 ["settings", "failover"] ->
@@ -566,10 +566,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "web"] ->
                     {{[admin, setup], write}, fun menelaus_web_settings:handle_settings_web_post/1};
                 ["settings", "alerts"] ->
-                    {{[settings], write}, fun menelaus_web_settings:handle_settings_alerts_post/1};
+                    {{[settings], write}, fun menelaus_alert:handle_settings_alerts_post/1};
                 ["settings", "alerts", "testEmail"] ->
                     {{[settings], write},
-                     fun menelaus_web_settings:handle_settings_alerts_send_test_email/1};
+                     fun menelaus_alert:handle_settings_alerts_send_test_email/1};
                 ["settings", "stats"] ->
                     {{[settings], write}, fun menelaus_web_settings:handle_settings_stats_post/1};
                 ["settings", "autoFailover"] ->

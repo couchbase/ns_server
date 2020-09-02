@@ -20,116 +20,58 @@
 
 -include("ns_log.hrl").
 -include("ns_common.hrl").
+-include("cut.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([handle_logs/1,
-         parse_settings_alerts_post/1,
-         build_alerts_json/1]).
+         handle_settings_alerts/1,
+         handle_settings_alerts_post/1,
+         handle_settings_alerts_send_test_email/1,
+         build_alerts_json/1,
+         build_alerts_config/1]).
 
 -export([category_bin/1]).
 
 -import(menelaus_util,
-        [reply_json/2]).
+        [reply_json/2,
+         reply_json/3,
+         reply/2]).
 
 %% External API
 
 -define(DEFAULT_LIMIT, 250).
 
--record(alerts_query_args, {
-          %% Whether to enable or disable email notifications
-          enabled=false :: true|false,
-          %% The sender address of the email
-          sender="couchbase@localhost" :: string(),
-          %% A comma separated list of recipients of the of the alert emails.
-          recipients=[] :: [string()],
-          %% Host address of the SMTP server
-          email_host="localhost" :: string(),
-          %% Port of the SMTP server
-          email_port=25 :: integer(),
-          %%  Whether you'd like to use TLS or not
-          email_encrypt=false :: true|false,
-          %% Username for the SMTP server
-          email_user="" :: string(),
-          %% Password for the SMTP server
-          email_pass="" :: string(),
-          %% Comma separated list of alerts that should cause an email to
-          %% be sent.
-          alerts=[auto_failover_node,
-                  auto_failover_maximum_reached,
-                  auto_failover_other_nodes_down,
-                  auto_failover_cluster_too_small,
-                  auto_failover_disabled
-                 ] :: [atom()]
-         }).
-
 handle_logs(Req) ->
     reply_json(Req, {struct, [{list, build_logs(mochiweb_request:parse_qs(Req))}]}).
 
+%% @doc Handle the email alerts request.
+handle_settings_alerts(Req) ->
+    {value, Config} = ns_config:search(email_alerts),
+    reply_json(Req, {struct, build_alerts_json(Config)}).
 
-%% @doc Parse alert setting that were posted. Return either the parsed
-%% query or the errors that occured while parsing.
--spec parse_settings_alerts_post(PostArgs::[{string(), string()}]) ->
-                                    {ok, [{atom(), any()}]}|
-                                    {error, [string()]}.
-parse_settings_alerts_post(PostArgs) ->
-    QueryParams = lists:foldl(fun({K, V}, Acc) ->
-        parse_settings_alerts_param(K, V) ++ Acc
-    end, [], PostArgs),
-    case QueryParams of
-        [] ->
-            {error, [{general, <<"No valid parameters given.">>}]};
-        QueryParams ->
-            {QueryArgs, Errors} =
-            lists:foldl(
-              fun({K, V}, {Args, Errors}) ->
-                  case validate_settings_alerts_query(K, V, Args) of
-                      Args2 when is_record(Args2, alerts_query_args) ->
-                          {Args2, Errors};
-                      Error ->
-                          % Save the key with the error, so that they can
-                          % be identified for the user interface
-                          {Args, [{K, Error}|Errors]}
-                  end
-              end, {#alerts_query_args{}, []}, lists:reverse(QueryParams)),
-            case Errors of
-                [] ->
-                    Config = build_alerts_config(QueryArgs),
-                    {ok, Config};
-                Errors ->
-                    {error, Errors}
-            end
-    end.
+%% @doc Handle the email alerts post.
+handle_settings_alerts_post(Req) ->
+    validator:handle(fun (Values) ->
+                             Config = build_alerts_config(Values),
+                             ns_config:set(email_alerts, Config),
+                             ns_audit:alerts(Req, Config),
+                             reply(Req, 200)
+                     end, Req, form, alerts_query_validators()).
 
-
-%%
-%% Internal functions
-%%
-
-%% @doc Returns a list of all alerts that might send out an email notfication.
-%% Every module that creates alerts that should be sent by email needs to
-%% implement an alert_keys/0 function that returns all its alert keys.
--spec alert_keys() -> [atom()].
-alert_keys() ->
-    Modules = [auto_failover, menelaus_web_alerts_srv],
-    Keys = [M:alert_keys() || M <- Modules],
-    lists:append(Keys).
-
-%% @doc Create the config structure out of the request parameters.
--spec build_alerts_config(Args::#alerts_query_args{}) -> [{atom(), any()}].
-build_alerts_config(Args) ->
-     [{recipients, Args#alerts_query_args.recipients},
-      {sender, Args#alerts_query_args.sender},
-      {enabled, Args#alerts_query_args.enabled},
-      {email_server, [{user, Args#alerts_query_args.email_user},
-                      {pass, Args#alerts_query_args.email_pass},
-                      {host, Args#alerts_query_args.email_host},
-                      {port, Args#alerts_query_args.email_port},
-                      {encrypt, Args#alerts_query_args.email_encrypt}]},
-      {alerts, Args#alerts_query_args.alerts}].
-
-
+%% @doc Sends a test email with the current settings
+handle_settings_alerts_send_test_email(Req) ->
+    validator:handle(fun (Values) ->
+                             Subject = proplists:get_value(subject, Values),
+                             Body = proplists:get_value(body, Values),
+                             Config = build_alerts_config(Values),
+                             send_test_message(Req, Subject, Body, Config)
+                     end, Req, form, alerts_query_validators()).
 
 %% @doc Returns the config settings as Mochijson2 JSON
-%-spec build_alerts_config(Args::#alerts_query_args{}) -> tuple().
+-spec build_alerts_json([{atom(), any()}]) -> [{atom(), any()}].
 build_alerts_json(Config) ->
     Server = proplists:get_value(email_server, Config),
     Rcpts = [list_to_binary(R) || R <- proplists:get_value(recipients,
@@ -145,92 +87,154 @@ build_alerts_json(Config) ->
         {port, proplists:get_value(port, Server)},
         {encrypt, proplists:get_value(encrypt, Server)}]}},
      {alerts, proplists:get_value(alerts, Config)}].
-      %{struct, lists:map(fun(X) -> {atom_to_list(X), true} end,
-      %                   proplists:get_value(alerts, C, []))}}].
 
+%% @doc Create the config structure from the Args proplist.
+%% arguments.
+-spec build_alerts_config([{atom(), any()}]) -> [{atom(), any()}].
+build_alerts_config(Args) ->
+    [{recipients, proplists:get_value(recipients, Args, [])},
+     {sender, proplists:get_value(sender, Args, "couchbase@localhost")},
+     {enabled, proplists:get_bool(enabled, Args)},
+     {email_server, [{user, proplists:get_value(emailUser, Args, "")},
+                     {pass, proplists:get_value(emailPass, Args, "")},
+                     {host,
+                      proplists:get_value(emailHost, Args, "localhost")},
+                     {port, proplists:get_value(emailPort, Args, 25)},
+                     {encrypt,
+                      proplists:get_bool(emailEncrypt, Args)}]},
+     {alerts, proplists:get_value(alerts, Args, [])}].
 
-parse_settings_alerts_param("alerts", Alerts) ->
-    [{alerts, [list_to_atom(A) || A <- string:tokens(Alerts, ",")]}];
-parse_settings_alerts_param("emailEncrypt", "false") ->
-    [{email_encrypt, false}];
-parse_settings_alerts_param("emailEncrypt", "true") ->
-    [{email_encrypt, true}];
-parse_settings_alerts_param("emailEncrypt", _) ->
-    [{email_encrypt, error}];
-parse_settings_alerts_param("emailHost", Host) ->
-    [{email_host, string:trim(Host)}];
-parse_settings_alerts_param("emailPort", Port) ->
-    [{email_port, try list_to_integer(Port) catch error:badarg -> error end}];
-parse_settings_alerts_param("emailPass", Password) ->
-    [{email_pass, Password}];
-parse_settings_alerts_param("emailUser", User) ->
-    [{email_user, string:trim(User)}];
-parse_settings_alerts_param("enabled", "false") ->
-    [{enabled, false}];
-parse_settings_alerts_param("enabled", "true") ->
-    [{enabled, true}];
-parse_settings_alerts_param("enabled", _) ->
-    [{enabled, error}];
-parse_settings_alerts_param("recipients", Rcpts) ->
-    [{recipients, [string:trim(R) || R <- string:tokens(Rcpts, ",")]}];
-parse_settings_alerts_param("sender", Sender) ->
-    [{sender, string:trim(Sender)}];
-parse_settings_alerts_param(Key, _Value) ->
-    [{error, "Unsupported paramater " ++ Key ++ " was specified"}].
+%%
+%% Internal functions
+%%
 
-%% @doc Return either the updated record, or in case of an error the
-%% error message
--spec validate_settings_alerts_query(Key::atom(), Value::any,
-                                     Args::#alerts_query_args{}) ->
-                                        #alerts_query_args{}|binary().
-validate_settings_alerts_query(alerts, Alerts, Args) ->
-    Keys = alert_keys(),
-    case [A || A <- Alerts, not lists:member(A, Keys)] of
-        [] ->
-            Args#alerts_query_args{alerts=Alerts};
-        _ ->
-            Keys2 = list_to_binary(string:join(
-                                     [atom_to_list(K) || K <- Keys], ", ")),
-            {alerts, <<"alerts contained invalid keys. Valid keys are: ",
-                       Keys2/binary, ".">>}
-    end;
-validate_settings_alerts_query(email_encrypt, error, _Args) ->
-    <<"emailEncrypt must be either true or false.">>;
-validate_settings_alerts_query(email_encrypt, Value, Args) ->
-    Args#alerts_query_args{email_encrypt=Value};
-validate_settings_alerts_query(email_host, Value, Args) ->
-    Args#alerts_query_args{email_host=Value};
-validate_settings_alerts_query(email_port, Port, Args) ->
-    case (Port=/=error) and (Port>0) and (Port<65535) of
-        true -> Args#alerts_query_args{email_port=Port};
-        false -> <<"emailPort must be a positive integer less than 65536.">>
-    end;
-validate_settings_alerts_query(email_pass, Value, Args) ->
-    Args#alerts_query_args{email_pass=Value};
-validate_settings_alerts_query(email_user, Value, Args) ->
-    Args#alerts_query_args{email_user=Value};
-validate_settings_alerts_query(enabled, error, _Args) ->
-    <<"enabled must be either true or false.">>;
-validate_settings_alerts_query(enabled, Value, Args) ->
-    Args#alerts_query_args{enabled=Value};
-validate_settings_alerts_query(recipients, Rcpts, Args) ->
-    case [R || R <- Rcpts, not menelaus_util:validate_email_address(R)] of
-        [] ->
-            Args#alerts_query_args{recipients=Rcpts};
-        _ ->
-            <<"recipients must be a comma separated list of valid "
-              "email addresses.">>
-    end;
-validate_settings_alerts_query(sender, Sender, Args) ->
-    case menelaus_util:validate_email_address(Sender) of
-        true -> Args#alerts_query_args{sender=Sender};
-        false -> <<"sender must be a valid email address.">>
-    end;
-validate_settings_alerts_query(error, Value, _Args) ->
-    list_to_binary(Value);
-validate_settings_alerts_query(_Key, _Value, Args) ->
-    Args.
+default(message_body) ->
+    "This email was sent to you to test the email alert email server settings.";
+default(subject)->
+    "Test email from Couchbase Server".
 
+alerts_query_validators() ->
+    [validator:required(enabled, _),
+     validator:boolean(enabled, _),
+
+     validator:string(sender, _),
+     validator:default(sender, "couchbase@localhost", _),
+     validator:email_address(sender, _),
+
+     validator:string(recipients, _),
+     validator:token_list(recipients, ",", _),
+     validate_recipients(_),
+     validator:default(recipients, [], _),
+
+     validator:string(emailHost, _),
+     validator:default(emailHost, "localhost",  _),
+
+     validator:integer(emailPort, _),
+     validator:default(emailPort, 25, _),
+
+     validator:boolean(emailEncrypt, _),
+     validator:default(emailEncrypt, false, _),
+
+     validator:string(emailUser, _),
+     validator:default(emailUser, "", _),
+
+     validator:string(emailPass, _),
+     validator:default(emailPass, "", _),
+
+     validator:string(alerts, _),
+     validate_alerts(alerts, _),
+     validator:default(alerts, [], _),
+
+     validator:string(body, _),
+     validator:default(body, default(message_body), _),
+
+     validator:string(subject, _),
+     validator:default(subject, default(subject), _),
+
+     %% Any other parameters are unsupported.
+     validator:unsupported(_)
+].
+
+send_test_message(Req, Subject, Body, Config) ->
+    case ns_mail:send(Subject, Body, Config) of
+        ok ->
+            reply(Req, 200);
+        {error, Reason} ->
+            Msg =
+                case Reason of
+                    {_, _, {error, R}} ->
+                        R;
+                    {_, _, R} ->
+                        R;
+                    R ->
+                        R
+                end,
+
+            reply_json(Req, {struct, [{error, couch_util:to_binary(Msg)}]}, 400)
+    end.
+
+%% @doc Returns a list of all alerts that might send out an email notification.
+%% Every module that creates alerts that should be sent by email needs to
+%% implement an alert_keys/0 function that returns all its alert keys.
+-spec alert_keys() -> [atom()].
+alert_keys() ->
+    Modules = [auto_failover, menelaus_web_alerts_srv],
+    Keys = [M:alert_keys() || M <- Modules],
+    lists:append(Keys).
+
+-spec alert_keys_string_list() -> [string()].
+alert_keys_string_list() ->
+    [atom_to_list(K) || K <- alert_keys()].
+
+-spec alert_keys_string([atom()]) -> string().
+alert_keys_string(Keys) ->
+    string:join([atom_to_list(K) || K <- Keys], ", ").
+
+-spec is_legal_alert_key_string(Key::string()) -> boolean().
+is_legal_alert_key_string(Key) ->
+   lists:member(Key, alert_keys_string_list()).
+
+%% validate a string containing alert keys
+-spec validate_alerts(atom(), tuple()) -> tuple().
+validate_alerts(Name, State) ->
+    validator:validate(
+      fun (AlertsString) ->
+              AlertsKeys = string:lexemes(AlertsString, ","),
+              GoodKeys = lists:filter(
+                           fun(Key) -> is_legal_alert_key_string(Key) end,
+                           AlertsKeys),
+              BadKeys = AlertsKeys -- GoodKeys,
+
+              case BadKeys of
+                  [] ->
+                      GoodKeysAtoms = [list_to_atom(A) || A <- GoodKeys],
+                      {value, GoodKeysAtoms};
+                  _ ->
+                      {error, error_message(bad_key)}
+              end
+      end, Name, State).
+
+error_message(bad_key) ->
+    io_lib:format("alerts contained invalid keys. Valid keys are: ~s.",
+                  [alert_keys_string(alert_keys())]);
+error_message(bad_recipients) ->
+    "recipients must be a comma separated list of valid email addresses.".
+
+%% validate email recipients
+-spec validate_recipients(tuple()) -> tuple().
+validate_recipients(State) ->
+    validator:validate(
+      fun (Recipients) ->
+              Good = lists:filter(
+                       fun menelaus_util:validate_email_address/1, Recipients),
+              Bad = Recipients -- Good,
+              case Bad of
+                  [] ->
+                      {value, Good};
+                  _ ->
+                      {error, error_message(bad_recipients)}
+              end
+      end, recipients, State).
 
 build_logs(Params) ->
     {MinTStamp, Limit} = common_params(Params),
@@ -294,3 +298,221 @@ common_params(Params) ->
                 L -> list_to_integer(L)
             end,
     {MinTStamp, Limit}.
+
+-ifdef(TEST).
+sort_if_list(X) when is_list(X) ->
+    %% Only sort non-string lists.
+    case io_lib:printable_list(X) of
+        true ->
+            X;
+        _ ->
+            lists:sort(X)
+    end;
+sort_if_list(X) ->
+    X.
+
+%% Sort a key/value list by key, also sorting the values if they are
+%% non-string lists.
+sort_kv(L) ->
+    lists:sort([{K, sort_if_list(V)} || {K, V} <- L]).
+
+validate_all_params_correct_test() ->
+    Params =
+        [{"alerts",
+          "auto_failover_node,"
+          "auto_failover_maximum_reached,"
+          "auto_failover_other_nodes_down,"
+          "auto_failover_cluster_too_small"},
+         {"body", default(message_body)},
+         {"emailEncrypt", "false"},
+         {"emailHost", "foo.com"},
+         {"emailPass", "password"},
+         {"emailPort", "25"},
+         {"emailUser", "ploni"},
+         {"enabled", "true"},
+         {"recipients", "foo@bar.com,bar@bar.com"},
+         {"sender", "noreply@couchbase.com"},
+         {"subject", default(subject)}],
+
+    ExpectedValues =
+        [{alerts, [auto_failover_node,auto_failover_maximum_reached,
+                   auto_failover_other_nodes_down,
+                   auto_failover_cluster_too_small]},
+         {body, default(message_body)},
+         {emailEncrypt, false},
+         {emailHost, "foo.com"},
+         {emailPass, "password"},
+         {emailPort, 25},
+         {emailUser, "ploni"},
+         {enabled, true},
+         {sender, "noreply@couchbase.com"},
+         {subject, default(subject)},
+         {recipients, ["foo@bar.com", "bar@bar.com"]}],
+
+    {ok, Values} = validator:handle_proplist(Params, alerts_query_validators()),
+    ?assertEqual(sort_kv(ExpectedValues), sort_kv(Values)).
+
+validate_params_defaults_test() ->
+    %% All parameters except "enabled" have default values.
+    Params = [{"enabled", "true"}],
+
+    ExpectedValues =
+        [{alerts, []},
+         {body, default(message_body) },
+         {emailEncrypt, false},
+         {emailHost, "localhost"},
+         {emailPass, []},
+         {emailPort, 25},
+         {emailUser, []},
+         {enabled, true},
+         {sender, "couchbase@localhost"},
+         {subject, default(subject)},
+         {recipients, []}],
+
+    {ok, Values} = validator:handle_proplist(Params, alerts_query_validators()),
+    ?assertEqual(sort_kv(ExpectedValues), sort_kv(Values)).
+
+%% Ensure that we get an error when an invalid parameter is supplied.
+validate_params_invalid_parameter_test() ->
+    Params =
+        [{"alerts",
+          "auto_failover_node,"
+          "auto_failover_maximum_reached,"
+          "auto_failover_other_nodes_down,"
+          "auto_failover_cluster_too_small"},
+         %% unsupported parameter
+         {"bogus_parameter", "some_value"},
+         {"body", default(message_body)},
+         {"emailEncrypt", "false"},
+         {"emailHost", "foo.com"},
+         {"emailPass", "password"},
+         {"emailPort", "25"},
+         {"emailUser", "ploni"},
+         {"enabled", "true"},
+         {"recipients", "foo@bar.com,bar@bar.com"},
+         {"sender", "noreply@couchbase.com"},
+         {"subject", default(subject)}],
+
+    ExpectedErrors = [{"bogus_parameter", <<"Unsupported key">>}],
+
+    {error, Errors} =
+        validator:handle_proplist(Params, alerts_query_validators()),
+    ?assertEqual(sort_kv(ExpectedErrors), sort_kv(Errors)).
+
+%% Ensure that we get an error when invalid alert keys are supplied.
+validate_params_invalid_alerts_list_test() ->
+    Params =
+        [{"alerts",
+          "auto_failover_node,"
+          "auto_failover_maximum_reached,"
+          "auto_failover_other_nodes_down,"
+          "auto_failover_cluster_too_small"
+          "bogus_alert"},
+         {"body", default(message_body)},
+         {"emailEncrypt", "false"},
+         {"emailHost", "foo.com"},
+         {"emailPass", "password"},
+         {"emailPort", "25"},
+         {"emailUser", "ploni"},
+         {"enabled", "true"},
+         {"recipients", "foo@bar.com,bar@bar.com"},
+         {"sender", "noreply@couchbase.com"},
+         {"subject", default(subject)}],
+
+    ExpectedErrors = [{"alerts", error_message(bad_key)}],
+
+    {error, Errors} =
+        validator:handle_proplist(Params, alerts_query_validators()),
+    ?assertEqual(sort_kv(ExpectedErrors), sort_kv(Errors)).
+
+%% Ensure that we get an error when invalid recipients are supplied.
+validate_params_invalid_recipients_test() ->
+    Params =
+        [{"alerts",
+          "auto_failover_node,"
+          "auto_failover_maximum_reached,"
+          "auto_failover_other_nodes_down,"
+          "auto_failover_cluster_too_small"},
+         {"body", default(message_body)},
+         {"emailEncrypt", "false"},
+         {"emailHost", "foo.com"},
+         {"emailPass", "password"},
+         {"emailPort", "25"},
+         {"emailUser", "ploni"},
+         {"enabled", "true"},
+         {"recipients", "foo@,@bar.com"},
+         {"sender", "noreply@couchbase.com"},
+         {"subject", default(subject)}],
+
+    ExpectedErrors = [{"recipients", error_message(bad_recipients)}],
+
+    {error, Errors} =
+        validator:handle_proplist(Params, alerts_query_validators()),
+    ?assertEqual(sort_kv(ExpectedErrors), sort_kv(Errors)).
+
+build_alerts_config_all_specified_test() ->
+    Values =
+        [{alerts, [auto_failover_node,auto_failover_maximum_reached,
+                   auto_failover_other_nodes_down,
+                   auto_failover_cluster_too_small]},
+         {body, "the message body shouldn't be in the config"},
+         {emailEncrypt, false},
+         {emailHost, "foo.com"},
+         {emailPass, "password"},
+         {emailPort, 25},
+         {emailUser, "ploni"},
+         {enabled, true},
+         {sender, "noreply@couchbase.com"},
+         {subject, "the subject line shouldn't be in the config"},
+         {recipients, ["foo@bar.com", "bar@bar.com"]}],
+
+    ExpectedConfig =
+        [{alerts, [auto_failover_node,auto_failover_maximum_reached,
+                   auto_failover_other_nodes_down,
+                   auto_failover_cluster_too_small]},
+         %% body shouldn't be in the config.
+         {email_server,[{encrypt, false},
+                        {host, "foo.com"},
+                        {pass, "password"},
+                        {port, 25},
+                        {user, "ploni"}]},
+         {enabled, true},
+         {sender, "noreply@couchbase.com"},
+         %% subject shouldn't be in the config.
+         {recipients, ["foo@bar.com", "bar@bar.com"]}],
+
+    Config = build_alerts_config(Values),
+    ?assertEqual(sort_kv(ExpectedConfig), sort_kv(Config)).
+
+build_alerts_config_defaults_test() ->
+    Values =
+        [{alerts, [auto_failover_node,auto_failover_maximum_reached,
+                   auto_failover_other_nodes_down,
+                   auto_failover_cluster_too_small]},
+         %% leave out emailEncrypt
+         {emailHost, "foo.com"},
+         {emailPass, "password"},
+         {emailPort, 25},
+         {emailUser, "ploni"},
+         {enabled, true},
+         %% leave out sender
+         {recipients, ["foo@bar.com", "bar@bar.com"]}],
+
+    ExpectedConfig =
+        [{alerts, [auto_failover_node,auto_failover_maximum_reached,
+                   auto_failover_other_nodes_down,
+                   auto_failover_cluster_too_small]},
+         {email_server,[%% email_encrypt default value
+                        {encrypt, false},
+                        {host, "foo.com"},
+                        {pass, "password"},
+                        {port, 25},
+                        {user, "ploni"}]},
+         {enabled, true},
+         % sender default value
+         {sender, "couchbase@localhost"},
+         {recipients, ["foo@bar.com", "bar@bar.com"]}],
+
+    Config = build_alerts_config(Values),
+    ?assertEqual(sort_kv(ExpectedConfig), sort_kv(Config)).
+-endif.

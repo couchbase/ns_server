@@ -43,6 +43,7 @@
          length/4,
          string/4,
          dir/2,
+         email_address/2,
          has_params/1,
          unsupported/1,
          required/2,
@@ -52,6 +53,11 @@
          return_error/3,
          default/3,
          token_list/3]).
+
+%% Used for testing validators.
+-ifdef(TEST).
+-export([handle_proplist/2]).
+-endif.
 
 -record(state, {kv = [], touched = [], errors = []}).
 
@@ -417,6 +423,16 @@ dir(Name, State) ->
                      end
              end, Name, State).
 
+email_address(Name, State) ->
+    validate(fun (Value) ->
+                     case menelaus_util:validate_email_address(Value) of
+                         true ->
+                             ok;
+                         false ->
+                             {error, "The value must be a valid email address"}
+                     end
+             end, Name, State).
+
 has_params(#state{kv = []} = State) ->
     return_error("_", "Request should have parameters", State);
 has_params(State) ->
@@ -486,6 +502,23 @@ token_list(Name, Separator, State) ->
       end, Name, State).
 
 -ifdef(TEST).
+%% Apply the validators to the arguments, returning the validated
+%% arguments if validation succeeds or a list of errors if validation fails.
+%% Used for testing validators.
+-spec handle_proplist(Args, Validators) ->  {ok, Values} | {error, Errors} when
+      Args :: [tuple()],
+      Validators :: [fun()],
+      Values :: [{atom() | string(), any()}],
+      Errors :: [{string(), string()}].
+handle_proplist(Args, Validators) ->
+    State = functools:chain(#state{kv = Args}, Validators),
+    case State#state.errors of
+        [] -> {ok, prepare_params(State)};
+        Errors -> {error, Errors}
+    end.
+-endif.
+
+-ifdef(TEST).
 %% Validates that the length of the value is in range, returning the resulting
 %% error array.
 length_in_range(Value, Min, Max) ->
@@ -539,4 +572,34 @@ length_test() ->
     %% An ill-formed utf8 string, which we expect to produce an error.
     assert_length_error(
       binary_to_list(<<"g5DEWBlmDJhJ"/utf8, 16#EE, "Lx9Fa"/utf8>>), 18).
+
+validators_for_testing() ->
+    [validator:required(required_boolean, _),
+     validator:boolean(required_boolean, _),
+     validator:string(optional_string, _),
+     validator:default(optional_string, "default value", _)].
+
+handle_proplist_all_valid_test() ->
+    Args =
+        [{"optional_string", "some string"},
+         {"required_boolean", "true"}],
+    ExpectedKv =
+        [{optional_string, "some string"},
+         {required_boolean, true}],
+
+    {ok, Kv} = handle_proplist(Args, validators_for_testing()),
+    ?assertEqual(lists:sort(ExpectedKv), lists:sort(Kv)).
+
+handle_proplist_invalid_value_test() ->
+    Args =
+        [{"optional_string", "some string"},
+         {"required_boolean", "not boolean"}],
+    ExpectedErrorMessage = io_lib:format(
+                             "The value must be one of the following: [~s]",
+                             [string:join(["true", "false"], ",")]),
+
+    {error, [{ErrorKey, ErrorMessage}]} =
+        handle_proplist(Args, validators_for_testing()),
+    ?assertEqual("required_boolean", ErrorKey),
+    ?assertEqual(ExpectedErrorMessage, ErrorMessage).
 -endif.
