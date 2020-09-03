@@ -125,13 +125,15 @@ perform_loading_task(Name, Quota) ->
     Port = service_ports:get_port(rest_port),
     BinDir = path_config:component_path(bin),
 
-    Cmd = BinDir ++ "/cbdocloader",
-    Args = ["--cluster", misc:join_host_port(Host, Port),
+    Cmd = BinDir ++ "/cbimport",
+    Args = ["json",
+            "--cluster", misc:join_host_port(Host, Port),
             "--bucket", Name,
+            "--format", "sample",
             "--bucket-quota", integer_to_list(Quota),
             "--threads", "2",
             "--verbose",
-            "--dataset", filename:join([BinDir, "..",
+            "--dataset", "file://" ++ filename:join([BinDir, "..",
                                         "samples", Name ++ ".zip"])],
 
     Env = [{"CB_USERNAME", "@ns_server"},
