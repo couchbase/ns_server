@@ -29,3 +29,29 @@
 
 -define(_assertListsEqual(Expect, Expr),
         ?_test(?assertListsEqual(Expect, Expr))).
+
+-define(assertBinStringsEqual(Expect, Expr),
+        (fun () ->
+                 __Val = (Expr),
+                 __Expect = (Expect),
+                 case __Val =/= __Expect of
+                        true ->
+                            __Pos = binary:longest_common_prefix(
+                                      [__Val, __Expect]) + 1,
+                            erlang:error(
+                              {assertBinStringsEqual,
+                               [{module, ?MODULE},
+                                {line, ?LINE},
+                                {expression, (??Expr)},
+                                {diff_at, __Pos},
+                                {expected,
+                                 misc:bin_part_near(__Expect, __Pos, 30)},
+                                {value,
+                                 misc:bin_part_near(__Val, __Pos, 30)}]});
+                        false ->
+                            ok
+                    end
+         end)()).
+
+-define(_assertBinStringsEqual(Expect, Expr),
+        ?_test(?assertBinStringsEqual(Expect, Expr))).

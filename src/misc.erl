@@ -2929,3 +2929,36 @@ zipwithN_test() ->
     ?assertEqual([[1,2,3]], Z([[1],[2],[3]])),
     ?assertEqual([[1,3,5],[2,4,6]], Z([[1,2],[3,4],[5,6]])).
 -endif.
+
+bin_part_near(Bin, Pos, Len) ->
+    PartStart0 = Pos - Len div 2 - 1,
+    PartStart =
+        if
+            PartStart0 < 0 -> 0;
+            PartStart0 + Len > byte_size(Bin) -> max(byte_size(Bin) - Len, 0);
+            true -> PartStart0
+        end,
+    PartLen = min(Len, byte_size(Bin) - PartStart),
+    BinPart = binary:part(Bin, {PartStart, PartLen}),
+    Prefix = case PartStart > 0 of
+                 true -> <<"...">>;
+                 false -> <<>>
+             end,
+    Suffix = case PartStart + PartLen < byte_size(Bin) of
+                 true -> <<"...">>;
+                 false -> <<>>
+             end,
+    <<Prefix/binary, BinPart/binary, Suffix/binary>>.
+
+-ifdef(TEST).
+bin_part_near_test() ->
+    ?assertEqual(<<>>, bin_part_near(<<>>, 0, 30)),
+    ?assertEqual(<<>>, bin_part_near(<<>>, 1, 30)),
+    ?assertEqual(<<"0123456789">>,  bin_part_near(<<"0123456789">>, 1, 30)),
+    ?assertEqual(<<"0123456789">>,  bin_part_near(<<"0123456789">>, 5, 30)),
+    ?assertEqual(<<"0123456789">>,  bin_part_near(<<"0123456789">>, 10, 30)),
+    ?assertEqual(<<"01234...">>,    bin_part_near(<<"0123456789">>, 1, 5)),
+    ?assertEqual(<<"...23456...">>, bin_part_near(<<"0123456789">>, 5, 5)),
+    ?assertEqual(<<"...56789">>,    bin_part_near(<<"0123456789">>, 10, 5)),
+    ?assertEqual(<<"...56789">>,    bin_part_near(<<"0123456789">>, 11, 5)).
+-endif.
