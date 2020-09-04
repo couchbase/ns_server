@@ -367,10 +367,16 @@ do_stream_ets_table(Table, Info, Fun, State) ->
         skip ->
             {error, skipped};
         {ok, Sanitizer} ->
-            FinalState =
-                ets:foldl(fun (Element, Acc) ->
-                                  Fun(Sanitizer(Element), Acc)
-                          end, State, Table),
+            %% Skip private tables as they are not accessible and will lead
+            %% to a badarg error.
+            FinalState = case proplists:get_value(protection, Info) of
+                             private ->
+                                 ["Inaccessible private table"];
+                             _ ->
+                                 ets:foldl(fun (Element, Acc) ->
+                                                   Fun(Sanitizer(Element), Acc)
+                                           end, State, Table)
+                         end,
             {ok, FinalState}
     end.
 
