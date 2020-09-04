@@ -14,10 +14,10 @@
         view by
       </div>
       <div class="simple-select margin-right-half">
-        <select ng-model="viewby" ng-init="viewby = 'viewby_index'">
-          <option value="viewby_index">index</option>
-          <option value="viewby_bucket">bucket</option>
-          <option value="viewby_node">server node</option>
+        <select ng-model="gsiCtl.viewBy" ng-change="gsiCtl.setIndexesView()">
+          <option value="viewByIndex">index</option>
+          <option value="viewByBucket">bucket</option>
+          <option value="viewByNode">server node</option>
         </select>
       </div>
     </span>
@@ -31,7 +31,7 @@
 
   <div ng-if="gsiCtl.state.indexes.length">
     <div
-       ng-if="viewby == 'viewby_node'"
+       ng-if="gsiCtl.viewBy == 'viewByNode'"
        ng-repeat="(nodeName, group) in gsiCtl.state.byNodes track by nodeName">
       <h4 class="margin-top-1-5">{{nodeName}}</h4>
       <mn-gsi-table
@@ -45,7 +45,7 @@
     </div>
 
     <div
-       ng-if="viewby == 'viewby_bucket'"
+       ng-if="gsiCtl.viewBy == 'viewByBucket'"
        ng-repeat="(bucketName, group) in gsiCtl.state.byBucket track by bucketName">
       <h4 class="margin-top-1-5">{{bucketName}}</h4>
       <mn-gsi-table
@@ -58,7 +58,7 @@
     </div>
 
     <mn-gsi-table
-       ng-if="viewby == 'viewby_index'"
+       ng-if="gsiCtl.viewBy == 'viewByIndex'"
        list="gsiCtl.state.byID"
        rbac="rbac"
        pools="pools"

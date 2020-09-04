@@ -72,11 +72,19 @@ function configure($stateProvider) {
     });
 }
 
-function mnGsiController($scope, mnGsiService, mnPoller) {
+function mnGsiController($scope, mnGsiService, mnPoller, $state) {
   var vm = this;
+  vm.setIndexesView = setIndexesView;
+
   activate();
 
+  function setIndexesView() {
+    $state.go('.', {indexesView: vm.viewBy}, {notify: false});
+  }
+
   function activate() {
+    vm.viewBy = $state.params.indexesView;
+
     new mnPoller($scope, function () {
       return mnGsiService.getIndexesState();
     })
