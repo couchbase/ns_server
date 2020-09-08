@@ -21,7 +21,6 @@
 -include("ns_common.hrl").
 
 -define(PING_FREQ, 60000).
--define(SYNC_TIMEOUT, 5000).
 
 -define(NODE_UP, 4).
 -define(NODE_DOWN, 5).
@@ -126,14 +125,10 @@ nodes_wanted_updated() ->
 
 init([]) ->
     ?log_debug("Initting ns_node_disco with ~p", [nodes()]),
-    %% Proactively run one round of reconfiguration update.
-    %% It may take longer than SYNC_TIMEOUT to complete if nodes are down.
-    misc:wait_for_process(do_nodes_wanted_updated(nodes_wanted()),
-                          ?SYNC_TIMEOUT),
     % Register for nodeup/down messages as handle_info callbacks.
     ok = net_kernel:monitor_nodes(true, [nodedown_reason]),
     send_ping_all_msg(),
-    self() ! notify_clients,
+    nodes_wanted_updated(),
     % Track the last list of actual ndoes.
     {ok, #state{nodes = []}}.
 
