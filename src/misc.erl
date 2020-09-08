@@ -49,6 +49,45 @@
 -compile(export_all).
 -export_type([timer/0, timer/1]).
 
+decode_unsigned_leb128(Binary) ->
+    {Size, BinValue, Tail} = take_leb128_chunks(Binary),
+    <<Value:Size/unsigned-integer>> = BinValue,
+    {Value, Tail}.
+
+take_leb128_chunks(<<0:1, Chunk:7/bitstring, Tail/bitstring>>) ->
+    {7, Chunk, Tail};
+take_leb128_chunks(<<1:1, Chunk:7/bitstring, Tail/bitstring>>) ->
+    {Size2, Chunks2, Tail2} = take_leb128_chunks(Tail),
+    {Size2+7, <<Chunks2/bitstring, Chunk/bitstring>>, Tail2}.
+
+encode_unsigned_leb128(Val) ->
+    rec_encode_leb128(Val).
+
+rec_encode_leb128(Value) when Value < 16#80 ->
+    <<0:1, Value:7/integer>>;
+
+rec_encode_leb128(Value) ->
+    Tail = rec_encode_leb128(Value bsr 7),
+    <<1:1, Value:7/integer, Tail/binary>>.
+
+-ifdef(TEST).
+unsigned_leb128_test() ->
+    Extra = <<"random_string">>,
+    ?assertEqual(<<16#E5, 16#8E, 16#26>>, encode_unsigned_leb128(624485)),
+    ?assertEqual({624485, Extra}, decode_unsigned_leb128(
+                                    <<16#E5, 16#8E, 16#26, Extra/binary>>)),
+
+    ?assertEqual(<<127/integer>>, encode_unsigned_leb128(127)),
+    ?assertEqual({127, <<>>}, decode_unsigned_leb128(<<127/integer>>)),
+
+    ?assertEqual(<<16#80, 16#81, 16#2>>, encode_unsigned_leb128(16#8080)),
+    ?assertEqual({16#8080, <<>>}, decode_unsigned_leb128(
+                                    <<16#80, 16#81, 16#2>>)),
+
+    ?assertEqual(<<16#80, 16#1>>, encode_unsigned_leb128(128)),
+    ?assertEqual({128, <<>>}, decode_unsigned_leb128(<<16#80, 16#1>>)).
+-endif.
+
 shuffle(List) when is_list(List) ->
     [N || {_R, N} <- lists:keysort(1, [{rand:uniform(), X} || X <- List])].
 
