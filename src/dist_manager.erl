@@ -29,7 +29,7 @@
 
 -export([adjust_my_address/3, save_address_config/1,
          ip_config_path/0, using_user_supplied_address/0, reset_address/0,
-         wait_for_node/1, fixup_config/1]).
+         wait_for_node/1, fixup_config/1, get_rename_txn_pid/0]).
 
 %% used by babysitter and ns_couchdb
 -export([configure_net_kernel/0]).
@@ -189,6 +189,9 @@ nodefile_exists() ->
 
 init([]) ->
     register(?MODULE, self()),
+
+    ets:new(?MODULE, [set, named_table, public]),
+
     net_kernel:stop(),
 
     {Address, UserSupplied} =
@@ -217,13 +220,19 @@ init([]) ->
 
     State = bringup(Address, UserSupplied),
     ok = save_address_config(State),
-    proc_lib:init_ack({ok, self()}),
     case read_marker() of
         {ok, OldNode} ->
             ?log_debug("Found rename marker. Old Node = ~p", [OldNode]),
-            complete_rename(OldNode, fun fixup_node_in_config/2);
+            Pid = spawn_link(
+                    fun  () ->
+                            complete_rename(OldNode, fun fixup_node_in_config/2)
+                    end),
+            ets:insert(?MODULE, {rename_txn_pid, Pid}),
+            proc_lib:init_ack({ok, self()}),
+            misc:wait_for_process(Pid, infinity),
+            ets:delete(?MODULE, rename_txn_pid);
         _ ->
-            ok
+            proc_lib:init_ack({ok, self()})
     end,
     gen_server:enter_loop(?MODULE, [], State).
 
@@ -310,13 +319,27 @@ teardown() ->
               end
       end).
 
-do_adjust_address(MyIP, UserSupplied, OnRename, State = #state{my_ip = MyOldIP}) ->
+get_rename_txn_pid() ->
+    case ets:lookup(?MODULE, rename_txn_pid) of
+        [] ->
+            undefined;
+        [{rename_txn_pid, Pid}] ->
+            Pid
+    end.
+
+handle_adjust_address(MyIP, UserSupplied, OnRename, State) ->
+    misc:executing_on_new_process(
+      ?cut(do_adjust_address(MyIP, UserSupplied, OnRename, State))).
+
+do_adjust_address(MyIP, UserSupplied, OnRename,
+                  State = #state{my_ip = MyOldIP}) ->
     OldNode = node(),
     {NewState, Status} =
         case MyOldIP of
             MyIP ->
                 {State#state{user_supplied = UserSupplied}, nothing};
             _ ->
+                ets:insert(?MODULE, {rename_txn_pid, self()}),
                 OnRename(),
                 Cookie = erlang:get_cookie(),
                 teardown(),
@@ -333,22 +356,25 @@ do_adjust_address(MyIP, UserSupplied, OnRename, State = #state{my_ip = MyOldIP})
                 {NewState1, net_restarted}
         end,
 
-    case save_address_config(NewState) of
-        ok ->
-            case Status of
-                net_restarted ->
-                    master_activity_events:note_name_changed(),
-                    complete_rename(OldNode, fun rename_node_in_config/2);
-                _ ->
-                    ok
-            end,
-            {reply, Status, NewState};
-        {error, Error} ->
-            {stop,
-             {address_save_failed, Error},
-             {address_save_failed, Error},
-             State}
-    end.
+    RV =
+        case save_address_config(NewState) of
+            ok ->
+                case Status of
+                    net_restarted ->
+                        master_activity_events:note_name_changed(),
+                        complete_rename(OldNode, fun rename_node_in_config/2);
+                    _ ->
+                        ok
+                end,
+                {reply, Status, NewState};
+            {error, Error} ->
+                {stop,
+                 {address_save_failed, Error},
+                 {address_save_failed, Error},
+                 State}
+        end,
+    ets:delete(?MODULE, rename_txn_pid),
+    RV.
 
 notify_couchdb_node(NewNSServerNodeName) ->
     %% is_couchdb_node_started is raceful, but if node starts right after is_couchdb_node_started
@@ -451,7 +477,7 @@ handle_call({adjust_my_address, MyIP, true, OnRename}, From, State) ->
         true ->
             handle_call({adjust_my_address, MyIP, false, OnRename}, From, State);
         false ->
-            do_adjust_address(MyIP, true, OnRename, State)
+            handle_adjust_address(MyIP, true, OnRename, State)
     end;
 handle_call({adjust_my_address, _MyIP, false = _UserSupplied, _}, _From,
             #state{user_supplied = true} = State) ->
@@ -459,9 +485,8 @@ handle_call({adjust_my_address, _MyIP, false = _UserSupplied, _}, _From,
 handle_call({adjust_my_address, MyOldIP, UserSupplied, _}, _From,
             #state{my_ip = MyOldIP, user_supplied = UserSupplied} = State) ->
     {reply, nothing, State};
-handle_call({adjust_my_address, MyIP, UserSupplied, OnRename}, _From,
-            State) ->
-    do_adjust_address(MyIP, UserSupplied, OnRename, State);
+handle_call({adjust_my_address, MyIP, UserSupplied, OnRename}, _From, State) ->
+    handle_adjust_address(MyIP, UserSupplied, OnRename, State);
 
 handle_call(using_user_supplied_address, _From,
             #state{user_supplied = UserSupplied} = State) ->

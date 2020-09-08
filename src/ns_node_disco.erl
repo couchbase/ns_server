@@ -145,7 +145,8 @@ init([]) ->
     send_ping_all_msg(),
     cast_nodes_wanted_updated(),
     % Track the last list of actual ndoes.
-    {ok, #state{nodes = []}}.
+    {ok, maybe_monitor_rename_txn(dist_manager:get_rename_txn_pid(),
+                                  #state{nodes = []})}.
 
 terminate(_Reason, _State) ->
     ok.
@@ -183,9 +184,7 @@ handle_cast(_Msg, State)       -> {noreply, State}.
 handle_call({register_node_renaming_txn, Pid}, _From, State) ->
     case State of
         #state{node_renaming_txn_mref = undefined} ->
-            MRef = erlang:monitor(process, Pid),
-            NewState = State#state{node_renaming_txn_mref = MRef},
-            {reply, ok, NewState};
+            {reply, ok, maybe_monitor_rename_txn(Pid, State)};
         _ ->
             {reply, already_doing_renaming, State}
     end;
@@ -198,6 +197,7 @@ handle_info({'DOWN', MRef, _, _, _},
             #state{node_renaming_txn_mref = MRef} = State) ->
     self() ! notify_clients,
     do_nodes_wanted_updated(),
+    ?log_debug("Node renaming transaction ended. MRef = ~p", [MRef]),
     {noreply, State#state{node_renaming_txn_mref = undefined}};
 handle_info({nodeup, Node, InfoList}, State) ->
     ?user_log(?NODE_UP, "Node ~p saw that node ~p came up. Tags: ~p",
@@ -226,6 +226,15 @@ handle_info(Msg, State) ->
     {noreply, State}.
 
 % -----------------------------------------------------------
+
+maybe_monitor_rename_txn(undefined, State) ->
+    State;
+maybe_monitor_rename_txn(Pid,
+                         State = #state{node_renaming_txn_mref = undefined}) ->
+    MRef = erlang:monitor(process, Pid),
+    ?log_debug("Monitor node renaming transaction. Pid = ~p, MRef = ~p",
+               [Pid, MRef]),
+    State#state{node_renaming_txn_mref = MRef}.
 
 %% The core of what happens when nodelists change
 %% only used by do_nodes_wanted_updated

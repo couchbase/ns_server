@@ -33,8 +33,8 @@
                }).
 
 init([]) ->
-    {ok, #state{node_renaming_txn_mref = undefined,
-                monitors = []}}.
+    {ok, maybe_monitor_rename_txn(dist_manager:get_rename_txn_pid(),
+                                  #state{monitors = []})}.
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -65,10 +65,8 @@ terminate(_Reason, _State) ->
 handle_call({register_node_renaming_txn, Pid}, _From, #state{monitors = Monitors} = State) ->
     case State of
         #state{node_renaming_txn_mref = undefined} ->
-            MRef = erlang:monitor(process, Pid),
             [gen_server:call(MonPid, pause) || MonPid <- Monitors],
-            NewState = State#state{node_renaming_txn_mref = MRef},
-            {reply, ok, NewState};
+            {reply, ok, maybe_monitor_rename_txn(Pid, State)};
         _ ->
             {reply, already_doing_renaming, State}
     end;
@@ -91,6 +89,7 @@ handle_call(monitor_net_kernel, {FromPid, _}, State) ->
 handle_info({'DOWN', MRef, _, _, _}, #state{node_renaming_txn_mref = MRef,
                                             monitors = Monitors} = State) ->
     [MonPid ! unpause || MonPid <- Monitors],
+    ?log_debug("Node renaming transaction ended. MRef = ~p", [MRef]),
     {noreply, State#state{node_renaming_txn_mref = undefined,
                           monitors = []}}.
 
@@ -158,3 +157,11 @@ handle_down(Caller, Reason) ->
     ?log_debug("Caller of remote monitor ~p died with ~p. Exiting", [Caller, Reason]),
     remove_monitor(self()),
     exit(normal).
+
+maybe_monitor_rename_txn(undefined, State) ->
+    State;
+maybe_monitor_rename_txn(Pid, State = #state{node_renaming_txn_mref = undefined}) ->
+    MRef = erlang:monitor(process, Pid),
+    ?log_debug("Monitor node renaming transaction. Pid = ~p, MRef = ~p",
+               [Pid, MRef]),
+    State#state{node_renaming_txn_mref = MRef}.

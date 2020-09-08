@@ -614,35 +614,31 @@ do_change_address(NewAddr, UserSupplied) ->
 
 maybe_rename(NewAddr, UserSupplied) ->
     OldName = node(),
-    misc:executing_on_new_process(
-      fun () ->
-              Self = self(),
+    OnRename =
+        fun() ->
+                %% prevent node disco events while we're in the middle
+                %% of renaming
+                ns_node_disco:register_node_renaming_txn(self()),
 
-              OnRename = fun() ->
-                                 %% prevent node disco events while we're in the middle
-                                 %% of renaming
-                                 ns_node_disco:register_node_renaming_txn(Self),
+                %% prevent breaking remote monitors while we're in the middle
+                %% of renaming
+                remote_monitors:register_node_renaming_txn(self())
+        end,
 
-                                 %% prevent breaking remote monitors while we're in the middle
-                                 %% of renaming
-                                 remote_monitors:register_node_renaming_txn(Self)
-                         end,
-
-              case dist_manager:adjust_my_address(NewAddr, UserSupplied, OnRename) of
-                  nothing ->
-                      ?cluster_debug("Not renaming node.", []),
-                      not_renamed;
-                  not_self_started ->
-                      ?cluster_debug("Didn't rename the node because net_kernel "
-                                     "is not self started", []),
-                      not_self_started;
-                  {address_save_failed, _} = Error ->
-                      Error;
-                  net_restarted ->
-                      ?cluster_debug("Renamed node from ~p to ~p.", [OldName, node()]),
-                      renamed
-              end
-      end).
+    case dist_manager:adjust_my_address(NewAddr, UserSupplied, OnRename) of
+        nothing ->
+            ?cluster_debug("Not renaming node.", []),
+            not_renamed;
+        not_self_started ->
+            ?cluster_debug("Didn't rename the node because net_kernel "
+                           "is not self started", []),
+            not_self_started;
+        {address_save_failed, _} = Error ->
+            Error;
+        net_restarted ->
+            ?cluster_debug("Renamed node from ~p to ~p.", [OldName, node()]),
+            renamed
+    end.
 
 check_add_possible(Body) ->
     case ns_config_auth:is_system_provisioned() of
