@@ -176,7 +176,8 @@ handle_call(Msg, _From, State) ->
     ?log_warning("Unhandled ~p call: ~p", [?MODULE, Msg]),
     {reply, error, State}.
 
-handle_info({'DOWN', MRef, _, _, _}, #state{node_renaming_txn_mref = MRef} = State) ->
+handle_info({'DOWN', MRef, _, _, _},
+            #state{node_renaming_txn_mref = MRef} = State) ->
     self() ! notify_clients,
     do_nodes_wanted_updated(),
     {noreply, State#state{node_renaming_txn_mref = undefined}};
@@ -213,14 +214,15 @@ handle_info(Msg, State) ->
 do_nodes_wanted_updated_fun(Node, NodeListIn) ->
     {ok, _Cookie} = ns_cookie_manager:cookie_sync(),
     NodeList = lists:usort(NodeListIn),
+    SanitizedCookie = ns_cookie_manager:sanitize_cookie(erlang:get_cookie()),
     ?log_debug("ns_node_disco: nodes_wanted updated: ~p, with cookie: ~p",
-               [NodeList, ns_cookie_manager:sanitize_cookie(erlang:get_cookie())]),
+               [NodeList, SanitizedCookie]),
     PongList = lists:filter(fun(N) ->
                                     net_adm:ping(N) == pong
                             end,
                             NodeList),
     ?log_debug("ns_node_disco: nodes_wanted pong: ~p, with cookie: ~p",
-               [PongList, ns_cookie_manager:sanitize_cookie(erlang:get_cookie())]),
+               [PongList, SanitizedCookie]),
     case lists:member(Node, NodeList) of
         true ->
             ok;
@@ -234,7 +236,8 @@ do_nodes_wanted_updated() ->
     NodeListIn = nodes_wanted(),
     spawn(fun() -> do_nodes_wanted_updated_fun(Node, NodeListIn) end).
 
-do_notify(#state{node_renaming_txn_mref = MRef} = State) when MRef =/= undefined ->
+do_notify(#state{node_renaming_txn_mref = MRef} = State)
+  when MRef =/= undefined ->
     State;
 do_notify(#state{nodes = NodesOld} = State) ->
     NodesNew = nodes_actual(),
