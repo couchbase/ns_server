@@ -136,9 +136,15 @@ terminate(_Reason, _State) ->
     ok.
 code_change(_OldVsn, State, _) -> {ok, State}.
 
-handle_cast(nodes_wanted_updated, State) ->
+handle_cast(nodes_wanted_updated,
+            State = #state{node_renaming_txn_mref = MRef}) ->
     self() ! notify_clients,
-    do_nodes_wanted_updated(nodes_wanted()),
+    case MRef of
+        undefined ->
+            do_nodes_wanted_updated();
+        _ ->
+            ok
+    end,
     {noreply, State};
 
 handle_cast(we_were_shunned, #state{we_were_shunned = true} = State) ->
@@ -172,6 +178,7 @@ handle_call(Msg, _From, State) ->
 
 handle_info({'DOWN', MRef, _, _, _}, #state{node_renaming_txn_mref = MRef} = State) ->
     self() ! notify_clients,
+    do_nodes_wanted_updated(),
     {noreply, State#state{node_renaming_txn_mref = undefined}};
 handle_info({nodeup, Node, InfoList}, State) ->
     ?user_log(?NODE_UP, "Node ~p saw that node ~p came up. Tags: ~p",
@@ -203,7 +210,7 @@ handle_info(Msg, State) ->
 
 %% The core of what happens when nodelists change
 %% only used by do_nodes_wanted_updated
-do_nodes_wanted_updated_fun(NodeListIn) ->
+do_nodes_wanted_updated_fun(Node, NodeListIn) ->
     {ok, _Cookie} = ns_cookie_manager:cookie_sync(),
     NodeList = lists:usort(NodeListIn),
     ?log_debug("ns_node_disco: nodes_wanted updated: ~p, with cookie: ~p",
@@ -214,17 +221,18 @@ do_nodes_wanted_updated_fun(NodeListIn) ->
                             NodeList),
     ?log_debug("ns_node_disco: nodes_wanted pong: ~p, with cookie: ~p",
                [PongList, ns_cookie_manager:sanitize_cookie(erlang:get_cookie())]),
-    case lists:member(node(), NodeList) of
+    case lists:member(Node, NodeList) of
         true ->
             ok;
         false ->
             gen_server:cast(ns_node_disco, {we_were_shunned, NodeList})
-    end,
-    ok.
+    end.
 
 %% Run do_nodes_wanted_updated_fun in a process, return the Pid.
-do_nodes_wanted_updated(NodeListIn) ->
-    spawn(fun() -> do_nodes_wanted_updated_fun(NodeListIn) end).
+do_nodes_wanted_updated() ->
+    Node = node(),
+    NodeListIn = nodes_wanted(),
+    spawn(fun() -> do_nodes_wanted_updated_fun(Node, NodeListIn) end).
 
 do_notify(#state{node_renaming_txn_mref = MRef} = State) when MRef =/= undefined ->
     State;
