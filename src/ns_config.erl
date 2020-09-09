@@ -123,7 +123,7 @@ eval(Fun) ->
     gen_server:call(?MODULE, {eval, Fun}, ?DEFAULT_TIMEOUT).
 
 uuid() ->
-    ns_config:eval(fun uuid/1).
+    eval(fun uuid/1).
 
 uuid(#config{uuid = UUID}) ->
     UUID.
@@ -206,7 +206,7 @@ run_txn_with_config(Config, Body) ->
     run_txn_iter(Config, Body).
 
 run_txn_iter(FullConfig, Body) ->
-    UUID = ns_config:uuid(FullConfig),
+    UUID = uuid(FullConfig),
     Cfg = [get_kv_list_with_config(FullConfig)],
 
     SetFun = fun (Key, Value, Config) ->
@@ -465,14 +465,14 @@ get()              -> diag_handler:diagnosing_timeouts(
                         fun () ->
                                 gen_server:call(?MODULE, get, ?DEFAULT_TIMEOUT)
                         end).
-get(Node)          -> ?MODULE:get(Node, ?DEFAULT_TIMEOUT).
+get(Node)          -> get(Node, ?DEFAULT_TIMEOUT).
 get(Node, Timeout) -> gen_server:call({?MODULE, Node}, get, Timeout).
 
 -spec get_kv_list() -> [{term(), term()}].
 get_kv_list() -> get_kv_list(?DEFAULT_TIMEOUT).
 
 -spec get_kv_list(timeout()) -> [{term(), term()}].
-get_kv_list(Timeout) -> get_kv_list_with_config(ns_config:get(node(), Timeout)).
+get_kv_list(Timeout) -> get_kv_list_with_config(get(node(), Timeout)).
 
 get_kv_list_with_config([DynamicConfig]) ->
     DynamicConfig;
@@ -548,7 +548,7 @@ search_node(Config, Key) ->
     search_node(node(), Config, Key).
 
 search_node_with_default(Key, Default) ->
-    search_node_with_default(ns_config:latest(), Key, Default).
+    search_node_with_default(latest(), Key, Default).
 
 search_node_with_default(Config, Key, Default) ->
     search_node_with_default(node(), Config, Key, Default).
@@ -1026,7 +1026,7 @@ handle_call({cas_config, NewKVList, ExtraLocalChanges, OldKVList, Type},
                         %% counter, so we need to make sure it's replicated
                         %% immediately too
                         ToReplicate =
-                            [{local_changes_count, ns_config:uuid(State)} |
+                            [{local_changes_count, uuid(State)} |
                              ExtraLocalChanges],
 
                         lists:partition(
@@ -1467,7 +1467,7 @@ setup_with_saver() ->
                              saver_mfa = {?MODULE, send_config, [save_config_target]},
                              upgrade_config_fun = fun upgrade_config/1,
                              uuid = testuuid},
-               {ok, _} = ns_config:start_link({with_state, Cfg}),
+               {ok, _} = start_link({with_state, Cfg}),
                MRef = erlang:monitor(process, Parent),
 
                proc_lib:init_ack(self()),
@@ -1517,7 +1517,7 @@ test_with_saver_set_and_stop() ->
                                ?assertEqual(false, Cfg1#config.pending_more_save),
 
                                %% send last mutation
-                               ns_config:set(d, 10),
+                               set(d, 10),
 
                                %% check that pending_more_save is false
                                Cfg2 = ns_config:get(),
@@ -1541,10 +1541,10 @@ do_test_with_saver(KillerFn, PostKillerFn) ->
     erlang:process_flag(trap_exit, true),
     true = erlang:register(save_config_target, self()),
 
-    ?assertEqual({value, 3}, ns_config:search(d)),
-    ?assertEqual(2, ns_config:search_prop(ns_config:get(), a, c)),
+    ?assertEqual({value, 3}, search(d)),
+    ?assertEqual(2, search_prop(ns_config:get(), a, c)),
 
-    ns_config:set(d, 4),
+    set(d, 4),
 
     {NewConfig1, Ref1, Pid1} = receive
                                    {saving, R, C, P} -> {C, R, P}
@@ -1552,9 +1552,9 @@ do_test_with_saver(KillerFn, PostKillerFn) ->
 
     fail_on_incoming_message(),
 
-    ?assertEqual({value, 4}, ns_config:search(NewConfig1, d)),
+    ?assertEqual({value, 4}, search(NewConfig1, d)),
 
-    ns_config:set(d, 5),
+    set(d, 5),
 
     %% ensure that save request is not sent while first is not yet
     %% complete
@@ -1604,10 +1604,10 @@ test_clear() ->
     erlang:process_flag(trap_exit, true),
     true = erlang:register(save_config_target, self()),
 
-    ?assertEqual({value, 3}, ns_config:search(d)),
-    ?assertEqual(2, ns_config:search_prop(ns_config:get(), a, c)),
+    ?assertEqual({value, 3}, search(d)),
+    ?assertEqual(2, search_prop(ns_config:get(), a, c)),
 
-    ns_config:set(d, 4),
+    set(d, 4),
 
     NewConfig1 = receive
                      {saving, Ref1, C, Pid1} ->
@@ -1617,12 +1617,10 @@ test_clear() ->
 
     fail_on_incoming_message(),
 
-    ?assertEqual({value, 4}, ns_config:search(NewConfig1, d)),
+    ?assertEqual({value, 4}, search(NewConfig1, d)),
 
-    %% ns_config:clear blocks on saver, so we need concurrency here
-    Clearer = spawn_link(fun () ->
-                                 ns_config:clear([])
-                         end),
+    %% clear/1 blocks on saver, so we need concurrency here
+    Clearer = spawn_link(fun () -> clear([]) end),
 
     %% make sure we're saving correctly cleared config
     receive
@@ -1639,17 +1637,17 @@ test_clear() ->
 
     %% now verify that ns_config was re-inited. In our case this means
     %% returning to original config
-    ?assertEqual({value, 3}, ns_config:search(d)),
-    ?assertEqual(2, ns_config:search_prop(ns_config:get(), a, c)).
+    ?assertEqual({value, 3}, search(d)),
+    ?assertEqual(2, search_prop(ns_config:get(), a, c)).
 
 test_clear_with_concurrent_save() ->
     erlang:process_flag(trap_exit, true),
     true = erlang:register(save_config_target, self()),
 
-    ?assertEqual({value, 3}, ns_config:search(d)),
-    ?assertEqual(2, ns_config:search_prop(ns_config:get(), a, c)),
+    ?assertEqual({value, 3}, search(d)),
+    ?assertEqual(2, search_prop(ns_config:get(), a, c)),
 
-    ns_config:set(d, 4),
+    set(d, 4),
 
     %% don't reply right now
     {NewConfig1, Pid1, Ref1} = receive
@@ -1659,12 +1657,10 @@ test_clear_with_concurrent_save() ->
 
     fail_on_incoming_message(),
 
-    ?assertEqual({value, 4}, ns_config:search(NewConfig1, d)),
+    ?assertEqual({value, 4}, search(NewConfig1, d)),
 
-    %% ns_config:clear blocks on saver, so we need concurrency here
-    Clearer = spawn_link(fun () ->
-                                 ns_config:clear([])
-                         end),
+    %% clear/1 blocks on saver, so we need concurrency here
+    Clearer = spawn_link(fun () -> clear([]) end),
 
     %% this is racy, but don't know how to test other process waiting
     %% on reply from us
@@ -1690,22 +1686,22 @@ test_clear_with_concurrent_save() ->
 
     %% now verify that ns_config was re-inited. In our case this means
     %% returning to original config
-    ?assertEqual({value, 3}, ns_config:search(d)),
-    ?assertEqual(2, ns_config:search_prop(ns_config:get(), a, c)).
+    ?assertEqual({value, 3}, search(d)),
+    ?assertEqual(2, search_prop(ns_config:get(), a, c)).
 
 test_local_changes_count() ->
     erlang:process_flag(trap_exit, true),
     true = erlang:register(save_config_target, self()),
 
-    ?assertEqual({value, 3}, ns_config:search(d)),
-    ?assertEqual({value, 3}, ns_config:search(ns_config:get(), d)),
+    ?assertEqual({value, 3}, search(d)),
+    ?assertEqual({value, 3}, search(ns_config:get(), d)),
 
-    ?assertEqual(0, compute_global_rev(ns_config:latest())),
+    ?assertEqual(0, compute_global_rev(latest())),
     ?assertEqual(0, compute_global_rev(ns_config:get())),
 
-    ?assertEqual([], ns_config:read_key_fast({local_changes_count, testuuid}, undefined)),
+    ?assertEqual([], read_key_fast({local_changes_count, testuuid}, undefined)),
 
-    ns_config:set(d, 4),
+    set(d, 4),
 
     receive
         {saving, Ref1, _C, Pid1} ->
@@ -1714,10 +1710,11 @@ test_local_changes_count() ->
 
     fail_on_incoming_message(),
 
-    ?assertEqual(1, compute_global_rev(ns_config:latest())),
+    ?assertEqual(1, compute_global_rev(latest())),
     ?assertEqual(1, compute_global_rev(ns_config:get())),
 
-    {value, [], VC} = ns_config:search_with_vclock(ns_config:get(), {local_changes_count, testuuid}),
+    {value, [], VC} = search_with_vclock(ns_config:get(),
+                                         {local_changes_count, testuuid}),
     ?assertEqual(1, vclock:count_changes(VC)),
 
     ok.
