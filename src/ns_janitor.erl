@@ -370,17 +370,6 @@ data_loss_possible(VBucket, Chain, States) ->
 maybe_reset_rebalance_status(Options) ->
     case proplists:get_bool(consider_resetting_rebalance_status, Options) of
         true ->
-            maybe_reset_rebalance_status();
-        false ->
-            ok
-    end.
-
-maybe_reset_rebalance_status() ->
-    case rebalance:running() of
-        %% if rebalance is not actually running according to our
-        %% orchestrator, we'll consider checking config and seeing if
-        %% we should unmark is at not running
-        false ->
             rebalance:reset_status(
               fun () ->
                       ale:info(?USER_LOGGER,
@@ -388,7 +377,7 @@ maybe_reset_rebalance_status() ->
                                "since it's not really running"),
                       {none, <<"Rebalance stopped by janitor.">>}
               end);
-        true ->
+        false ->
             ok
     end.
 
