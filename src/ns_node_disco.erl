@@ -30,7 +30,7 @@
          nodes_wanted/0, nodes_wanted/1,
          nodes_wanted_updated/0,
          erlang_visible_nodes/0,
-         random_node/0,
+         another_live_node/0,
          nodes_actual/0,
          nodes_actual_other/0,
          register_node_renaming_txn/1,
@@ -94,7 +94,7 @@ local_sub_nodes() ->
 register_node_renaming_txn(Pid) ->
     gen_server:call(?MODULE, {register_node_renaming_txn, Pid}).
 
-random_node() ->
+another_live_node() ->
     case ping_all(nodes_wanted() -- [node()]) of
         [] -> exit(nonode);
         [N|_] -> N
