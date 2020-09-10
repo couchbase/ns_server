@@ -2,7 +2,7 @@
 %% -*- erlang -*-
 %%
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2013-2018 Couchbase, Inc.
+%% @copyright 2013-2020 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -602,6 +602,11 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
 
     {_, DataDir} = lists:keyfind(path_config_datadir, 1, StaticTerms),
     StatsDir = filename:join(DataDir, "stats"),
+    PromStatsSettings = search_config(NSConfig, stats_settings, []),
+    PromStoragePath = proplists:get_value(storage_path,
+                                          PromStatsSettings,
+                                          "./stats_data"),
+    PromStatsDir = filename:join(DataDir, PromStoragePath),
 
     IndexerMDD = filename:join(DataDir, "crash"),
 
@@ -631,6 +636,7 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
          {indexer_breakpad_minidump_dir, IndexerMDD},
          {nodes, string:join(Nodes, ",")},
          {stats_dir, StatsDir},
+         {prom_stats_dir, PromStatsDir},
          {localtoken_path, filename:join(DataDir, "localtoken")},
          {users_storage_path, UsersStoragePath},
          {dist_cfg_path, DistCfgPath},
