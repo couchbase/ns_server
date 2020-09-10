@@ -142,7 +142,10 @@ handle_cast(nodes_wanted_updated,
     end,
     {noreply, State};
 
-handle_cast(we_were_shunned, #state{we_were_shunned = true} = State) ->
+handle_cast({we_were_shunned, NodeList},
+            #state{we_were_shunned = true} = State) ->
+    ?log_debug("Duplicate request to leave the cluster. (nodes_wanted = ~p).",
+               [NodeList]),
     {noreply, State};
 
 handle_cast({we_were_shunned, NodeList}, State) ->
