@@ -95,12 +95,7 @@ register_node_renaming_txn(Pid) ->
     gen_server:call(?MODULE, {register_node_renaming_txn, Pid}).
 
 random_node() ->
-    WorkingNodes = lists:filter(fun(N) ->
-                                        net_adm:ping(N) == pong
-                                end,
-                                nodes_wanted() -- [node()]),
-
-    case WorkingNodes of
+    case ping_all(nodes_wanted() -- [node()]) of
         [] -> exit(nonode);
         [N|_] -> N
     end.
@@ -200,7 +195,7 @@ handle_info(notify_clients, State) ->
 
 handle_info(ping_all, State) ->
     send_ping_all_msg(),
-    spawn_link(fun ping_all/0),
+    spawn_link(fun () -> ping_all(nodes_wanted()) end),
     {noreply, State};
 
 handle_info(Msg, State) ->
@@ -217,10 +212,7 @@ do_nodes_wanted_updated_fun(Node, NodeListIn) ->
     SanitizedCookie = ns_cookie_manager:sanitize_cookie(erlang:get_cookie()),
     ?log_debug("ns_node_disco: nodes_wanted updated: ~p, with cookie: ~p",
                [NodeList, SanitizedCookie]),
-    PongList = lists:filter(fun(N) ->
-                                    net_adm:ping(N) == pong
-                            end,
-                            NodeList),
+    PongList = ping_all(NodeList),
     ?log_debug("ns_node_disco: nodes_wanted pong: ~p, with cookie: ~p",
                [PongList, SanitizedCookie]),
     case lists:member(Node, NodeList) of
@@ -248,8 +240,8 @@ do_notify(#state{nodes = NodesOld} = State) ->
                  State#state{nodes = NodesNew}
     end.
 
-ping_all() ->
-    lists:foreach(fun net_adm:ping/1, nodes_wanted()).
+ping_all(Nodes) ->
+    lists:filter(fun(N) -> net_adm:ping(N) == pong end, Nodes).
 
 send_ping_all_msg() ->
     erlang:send_after(?PING_FREQ, self(), ping_all).
