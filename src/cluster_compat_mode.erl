@@ -308,9 +308,7 @@ get_pretend_version() ->
 
 is_developer_preview() -> is_developer_preview(ns_config:get()).
 is_developer_preview(Config) ->
-    %% The default value should be returned back to false once we're
-    %% closer to shipping cheshire-cat.
-    ns_config:search(Config, developer_preview_enabled, true).
+    ns_config:search(Config, developer_preview_enabled, false).
 
 tls_supported() ->
     is_enterprise().
