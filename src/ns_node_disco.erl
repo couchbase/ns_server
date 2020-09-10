@@ -206,9 +206,8 @@ handle_info(Msg, State) ->
 
 %% The core of what happens when nodelists change
 %% only used by do_nodes_wanted_updated
-do_nodes_wanted_updated_fun(Node, NodeListIn) ->
+do_nodes_wanted_updated_fun(Node, NodeList) ->
     {ok, _Cookie} = ns_cookie_manager:cookie_sync(),
-    NodeList = lists:usort(NodeListIn),
     SanitizedCookie = ns_cookie_manager:sanitize_cookie(erlang:get_cookie()),
     ?log_debug("ns_node_disco: nodes_wanted updated: ~p, with cookie: ~p",
                [NodeList, SanitizedCookie]),
@@ -225,8 +224,8 @@ do_nodes_wanted_updated_fun(Node, NodeListIn) ->
 %% Run do_nodes_wanted_updated_fun in a process, return the Pid.
 do_nodes_wanted_updated() ->
     Node = node(),
-    NodeListIn = nodes_wanted(),
-    spawn(fun() -> do_nodes_wanted_updated_fun(Node, NodeListIn) end).
+    NodeList = nodes_wanted(),
+    spawn(fun() -> do_nodes_wanted_updated_fun(Node, NodeList) end).
 
 do_notify(#state{node_renaming_txn_mref = MRef} = State)
   when MRef =/= undefined ->
