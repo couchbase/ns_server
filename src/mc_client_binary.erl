@@ -57,7 +57,7 @@
          get_mass_dcp_docs_estimate/2,
          ext/2,
          set_cluster_config/4,
-         get_random_key/1,
+         get_random_key/2,
          compact_vbucket/5,
          wait_for_seqno_persistence/3,
          vbucket_state_to_atom/1,
@@ -619,6 +619,8 @@ map_status(?DELTA_BADVAL) ->
     delta_badval;
 map_status(?NOT_MY_VBUCKET) ->
     not_my_vbucket;
+map_status(?UNKNOWN_COLLECTION) ->
+    unknown_collection;
 map_status(?NO_COLL_MANIFEST) ->
     no_coll_manifest;
 map_status(?UNKNOWN_COMMAND) ->
@@ -752,9 +754,23 @@ set_cluster_config(Sock, Bucket, Rev, Blob) ->
             process_error_response(Other)
     end.
 
-get_random_key(Sock) ->
+get_random_key(Sock, undefined) ->
+    get_random_key(Sock, #mc_header{}, #mc_entry{});
+get_random_key(Sock, CollectionsUid) ->
+    RV = get_random_key(
+           Sock, #mc_header{},
+           #mc_entry{ext = <<CollectionsUid:32/unsigned-integer>>}),
+    case RV of
+        {ok, Key} ->
+            {CollectionsUid, DKey} = misc:decode_unsigned_leb128(Key),
+            {ok, DKey};
+        Err ->
+            Err
+    end.
+
+get_random_key(Sock, Header, Entry) ->
     RV = cmd(?CMD_GET_RANDOM_KEY, Sock, undefined, undefined,
-             {#mc_header{}, #mc_entry{}},
+             {Header, Entry},
              infinity),
     case RV of
         {ok, #mc_header{status=?SUCCESS}, #mc_entry{key = Key}, _} ->

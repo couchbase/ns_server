@@ -132,25 +132,26 @@
 -define(RDECRQ,      16#3c).
 
 % Response status codes.
--define(SUCCESS,          16#00).
--define(KEY_ENOENT,       16#01).
--define(KEY_EEXISTS,      16#02).
--define(E2BIG,            16#03).
--define(EINVAL,           16#04).
--define(NOT_STORED,       16#05).
--define(DELTA_BADVAL,     16#06).
--define(NOT_MY_VBUCKET,   16#07).
--define(MC_AUTH_ERROR,    16#20).
--define(MC_AUTH_CONTINUE, 16#21).
--define(ERANGE,           16#22).
--define(ROLLBACK,         16#23).
--define(UNKNOWN_COMMAND,  16#81).
--define(ENOMEM,           16#82).
--define(NOT_SUPPORTED,    16#83).
--define(EINTERNAL,        16#84).
--define(EBUSY,            16#85).
--define(ETMPFAIL,         16#86).
--define(NO_COLL_MANIFEST, 16#89).
+-define(SUCCESS,            16#00).
+-define(KEY_ENOENT,         16#01).
+-define(KEY_EEXISTS,        16#02).
+-define(E2BIG,              16#03).
+-define(EINVAL,             16#04).
+-define(NOT_STORED,         16#05).
+-define(DELTA_BADVAL,       16#06).
+-define(NOT_MY_VBUCKET,     16#07).
+-define(MC_AUTH_ERROR,      16#20).
+-define(MC_AUTH_CONTINUE,   16#21).
+-define(ERANGE,             16#22).
+-define(ROLLBACK,           16#23).
+-define(UNKNOWN_COMMAND,    16#81).
+-define(ENOMEM,             16#82).
+-define(NOT_SUPPORTED,      16#83).
+-define(EINTERNAL,          16#84).
+-define(EBUSY,              16#85).
+-define(ETMPFAIL,           16#86).
+-define(UNKNOWN_COLLECTION, 16#88).
+-define(NO_COLL_MANIFEST,   16#89).
 
 -define(SUBDOC_PATH_NOT_EXIST,      16#c0).
 -define(SUBDOC_NOT_DICT,            16#c1).

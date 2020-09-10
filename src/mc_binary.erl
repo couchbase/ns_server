@@ -22,7 +22,8 @@
 -export([bin/1, recv/2, recv/3, send/4, encode/3, quick_stats/4,
          quick_stats/5, quick_stats_append/3,
          decode_packet/1, decode_packet_ext/1,
-         get_keys/4, get_xattrs/4]).
+         get_keys/5, get_xattrs/4,
+         maybe_encode_uid_in_key/3]).
 
 -define(RECV_TIMEOUT,             ?get_timeout(recv, 120000)).
 -define(QUICK_STATS_RECV_TIMEOUT, ?get_timeout(stats_recv, 180000)).
@@ -262,6 +263,8 @@ recv_data(Sock, NumBytes, Timeout) -> network:socket_recv(Sock, NumBytes,
 -record(get_keys_params, {
           start_key :: binary(),
           end_key :: undefined | binary(),
+          collections_enabled :: boolean(),
+          collection_uid :: undefined | non_neg_integer(),
           inclusive_end :: boolean(),
           limit :: non_neg_integer(),
           include_docs :: boolean()
@@ -270,31 +273,47 @@ recv_data(Sock, NumBytes, Timeout) -> network:socket_recv(Sock, NumBytes,
 -record(heap_item, {
           vbucket :: vbucket_id(),
           key :: binary(),
+          collection_uid :: undefined | non_neg_integer(),
           rest_keys :: binary()
          }).
 
 decode_first_key(<<Len:16, First:Len/binary, Rest/binary>>) ->
     {First, Rest}.
 
-mk_heap_item(VBucket, Data) ->
-    {First, Rest} = decode_first_key(Data),
+mk_heap_item(VBucket, Data,
+             #get_keys_params{collections_enabled = Enabled,
+                              collection_uid = Uid}) ->
+    {Key, Rest} = decode_first_key(Data),
+    {Uid, DKey} = maybe_decode_key(Enabled, Key),
     #heap_item{vbucket = VBucket,
-               key = First,
+               key = DKey,
+               collection_uid = Uid,
                rest_keys = Rest}.
 
-heap_item_from_rest(#heap_item{rest_keys = Rest} = Item) ->
-    {First, Rest2} = decode_first_key(Rest),
-    Item#heap_item{key = First, rest_keys = Rest2}.
+heap_item_from_rest(#heap_item{rest_keys = Rest} = Item,
+                    #get_keys_params{collections_enabled = Enabled,
+                                     collection_uid = Uid}) ->
+    {Key, Rest2} = decode_first_key(Rest),
+    {Uid, DKey} = maybe_decode_key(Enabled, Key),
+    Item#heap_item{key = DKey, collection_uid = Uid, rest_keys = Rest2}.
 
-encode_get(Key, VBucket) ->
+encode_get(Key, VBucket, CollectionsEnabled, CollectionUid) ->
     mc_binary:encode(?REQ_MAGIC,
                      #mc_header{opcode = ?GET, vbucket = VBucket},
-                     #mc_entry{key = Key}).
+                     #mc_entry{key = maybe_encode_uid_in_key(CollectionsEnabled,
+                                                             CollectionUid,
+                                                             Key)}).
 
-encode_get_keys(VBuckets, StartKey, Limit) ->
+encode_get_keys(VBuckets,
+                #get_keys_params{start_key = StartKey,
+                                 collections_enabled = Enabled,
+                                 collection_uid = Uid},
+                Limit) ->
     [mc_binary:encode(?REQ_MAGIC,
                       #mc_header{opcode = ?CMD_GET_KEYS, vbucket = V},
-                      #mc_entry{key = StartKey, ext = <<Limit:32>>})
+                      #mc_entry{key = maybe_encode_uid_in_key(Enabled, Uid,
+                                                              StartKey),
+                                ext = <<Limit:32>>})
      || V <- VBuckets].
 
 get_keys_recv(Sock, TRef, F, InitAcc, List) ->
@@ -338,7 +357,7 @@ handle_get_keys_response(VBucket, Header, Entry, Params) ->
                 undefined ->
                     false;
                 _ ->
-                    Item = mk_heap_item(VBucket, Data),
+                    Item = mk_heap_item(VBucket, Data, Params),
                     case is_interesting_item(Item, Params) of
                         true ->
                             Item;
@@ -353,7 +372,10 @@ handle_get_keys_response(VBucket, Header, Entry, Params) ->
 fetch_more(Sock, TRef, Number, Params,
            #heap_item{vbucket = VBucket, key = LastKey, rest_keys = <<>>}) ->
     ok = network:socket_send(Sock,
-                             encode_get_keys([VBucket], LastKey, Number + 1)),
+                             encode_get_keys(
+                               [VBucket],
+                               Params#get_keys_params{start_key = LastKey},
+                               Number + 1)),
 
     get_keys_recv(
       Sock, TRef,
@@ -366,30 +388,47 @@ fetch_more(Sock, TRef, Number, Params,
                           {LastKey, <<>>} ->
                               false;
                           {LastKey, _} ->
-                              heap_item_from_rest(Item);
+                              heap_item_from_rest(Item, Params);
                           _ ->
                               Item
                       end
               end
       end, unused, [VBucket]).
 
-get_keys(Sock, VBuckets, Props, Timeout) ->
+encode_uid_in_key(CollectionUid, Key) ->
+    BinUid = misc:encode_unsigned_leb128(CollectionUid),
+    <<BinUid/binary, Key/binary>>.
+
+maybe_encode_uid_in_key(_, _CollectionUid, undefined) ->
+    undefined;
+maybe_encode_uid_in_key(true, CollectionUid, Key) ->
+    encode_uid_in_key(CollectionUid, Key);
+maybe_encode_uid_in_key(false, undefined, Key) ->
+    Key.
+
+maybe_decode_key(true, Key) ->
+    misc:decode_unsigned_leb128(Key);
+maybe_decode_key(false, Key) ->
+    {undefined, Key}.
+
+get_keys(Sock, Features, VBuckets, Props, Timeout) ->
     IncludeDocs = proplists:get_value(include_docs, Props),
     InclusiveEnd = proplists:get_value(inclusive_end, Props),
     Limit = proplists:get_value(limit, Props),
-    StartKey0 = proplists:get_value(start_key, Props),
-    EndKey = proplists:get_value(end_key, Props),
-
-    StartKey = case StartKey0 of
-                   undefined ->
-                       <<0>>;
-                   _ ->
-                       StartKey0
+    CollectionUid = proplists:get_value(collection_uid, Props),
+    CollectionsEnabled = proplists:get_bool(collections, Features),
+    StartKey = case proplists:get_value(start_key, Props) of
+                   %% undefined is valid start_key and can be passed to us.
+                   undefined -> <<0>>;
+                   K -> K
                end,
+    EndKey = proplists:get_value(end_key, Props),
 
     Params = #get_keys_params{include_docs = IncludeDocs,
                               inclusive_end = InclusiveEnd,
                               limit = Limit,
+                              collections_enabled = CollectionsEnabled,
+                              collection_uid = CollectionUid,
                               start_key = StartKey,
                               end_key = EndKey},
 
@@ -407,15 +446,14 @@ get_keys(Sock, VBuckets, Props, Timeout) ->
     end.
 
 do_get_keys(Sock, VBuckets, Params, TRef) ->
-    #get_keys_params{start_key = StartKey,
-                     limit = Limit,
+    #get_keys_params{limit = Limit,
                      include_docs = IncludeDocs} = Params,
 
     PrefetchLimit = 2 * (Limit div length(VBuckets) + 1),
     proc_lib:spawn_link(
       fun () ->
               ok = network:socket_send(Sock,
-                                       encode_get_keys(VBuckets, StartKey,
+                                       encode_get_keys(VBuckets, Params,
                                                        PrefetchLimit))
       end),
 
@@ -431,14 +469,14 @@ do_get_keys(Sock, VBuckets, Params, TRef) ->
                   end
           end, couch_skew:new(), VBuckets),
 
-    {KeysAndVBuckets, Heap1} = handle_limit(Heap0, Sock, TRef, PrefetchLimit, Params),
+    {KeyTuples, Heap1} = handle_limit(Heap0, Sock, TRef, PrefetchLimit, Params),
 
     R = case IncludeDocs of
             true ->
                 handle_include_docs(Sock, TRef, PrefetchLimit,
-                                    Params, KeysAndVBuckets, Heap1);
+                                    Params, KeyTuples, Heap1);
             false ->
-                [{K, undefined} || {K, _VB} <- KeysAndVBuckets]
+                [{K, undefined} || {K, _VB, _CollectionUid} <- KeyTuples]
         end,
 
 
@@ -462,6 +500,7 @@ fold_heap(Heap, N, Sock, TRef, FetchLimit, Params, F, Acc) ->
             case is_interesting_item(MinItem, Params) of
                 true ->
                     #heap_item{key = Key,
+                               collection_uid = CollectionUid,
                                rest_keys = RestKeys,
                                vbucket = VBucket} = MinItem,
                     Heap2 =
@@ -475,10 +514,11 @@ fold_heap(Heap, N, Sock, TRef, FetchLimit, Params, F, Acc) ->
                                         heap_insert(Heap1, NewItem)
                                 end;
                             _ ->
-                                heap_insert(Heap1, heap_item_from_rest(MinItem))
+                                heap_insert(
+                                  Heap1, heap_item_from_rest(MinItem, Params))
                         end,
                     fold_heap(Heap2, N - 1, Sock, TRef, FetchLimit, Params,
-                              F, F(Key, VBucket, Acc));
+                              F, F(Key, VBucket, CollectionUid, Acc));
                 false ->
                     {Acc, couch_skew:new()}
             end
@@ -487,25 +527,26 @@ fold_heap(Heap, N, Sock, TRef, FetchLimit, Params, F, Acc) ->
 
 handle_limit(Heap, Sock, TRef, FetchLimit,
              #get_keys_params{limit = Limit} = Params) ->
-    {Keys0, Heap1} =
+    {KeyTuples, Heap1} =
         fold_heap(Heap, Limit, Sock, TRef, FetchLimit, Params,
-                  fun (Key, VBucket, Acc) ->
-                          [{Key, VBucket} | Acc]
+                  fun (Key, VBucket, CollectionUid, Acc) ->
+                          [{Key, VBucket, CollectionUid} | Acc]
                   end, []),
-    {lists:reverse(Keys0), Heap1}.
+    {lists:reverse(KeyTuples), Heap1}.
 
-retrieve_values(Sock, TRef, KeysAndVBuckets) ->
+retrieve_values(Sock, TRef, KeyTuples,
+                #get_keys_params{collections_enabled = CollectionsEnabled}) ->
     proc_lib:spawn_link(
       fun () ->
-              ok = network:socket_send(Sock,
-                                       [encode_get(K, VB) ||
-                                           {K, VB} <- KeysAndVBuckets])
+              ok = network:socket_send(
+                     Sock, [encode_get(K, VB, CollectionsEnabled, CUid) ||
+                            {K, VB, CUid} <- KeyTuples])
       end),
 
     {KVs, Missing} =
         get_keys_recv(
           Sock, TRef,
-          fun ({K, _VB}, Header, Entry, {AccKV, AccMissing}) ->
+          fun ({K, _VB, _CollUid}, Header, Entry, {AccKV, AccMissing}) ->
                   #mc_header{status = Status} = Header,
                   #mc_entry{data = Data} = Entry,
 
@@ -518,7 +559,7 @@ retrieve_values(Sock, TRef, KeysAndVBuckets) ->
                           throw({memcached_error,
                                  mc_client_binary:map_status(Status)})
                   end
-          end, {[], 0}, KeysAndVBuckets),
+          end, {[], 0}, KeyTuples),
     {lists:reverse(KVs), Missing}.
 
 
@@ -536,17 +577,17 @@ annotate_value(Value) ->
             {binary, Value1}
     end.
 
-handle_include_docs(Sock, TRef, FetchLimit, Params, KeysAndVBuckets, Heap) ->
-    {KVs, Missing} = retrieve_values(Sock, TRef, KeysAndVBuckets),
+handle_include_docs(Sock, TRef, FetchLimit, Params, KeyTuples, Heap) ->
+    {KVs, Missing} = retrieve_values(Sock, TRef, KeyTuples, Params),
     case Missing =:= 0 of
         true ->
             KVs;
         false ->
-            {NewKeysAndVBuckets, NewHeap} =
+            {NewKeyTuples, NewHeap} =
                 handle_limit(Heap, Sock, TRef, FetchLimit,
                              Params#get_keys_params{limit=Missing}),
             KVs ++ handle_include_docs(Sock, TRef, FetchLimit, Params,
-                                       NewKeysAndVBuckets, NewHeap)
+                                       NewKeyTuples, NewHeap)
     end.
 
 get_xattrs(Sock, DocId, VBucket, Permissions) ->

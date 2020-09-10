@@ -61,8 +61,17 @@ process_memcached_error_response({Err, _, _, _}) ->
               {status, Err},
               {message, "Unknown error"}]}.
 
+get_default_collection_uid() ->
+    case collections:enabled() of
+        true -> 0;
+        false -> undefined
+    end.
+
 add_document(Bucket, VBucket, Key, Value) ->
-    {json, case ns_memcached:add(Bucket, Key, VBucket, Value) of
+    add_document(Bucket, VBucket, Key, get_default_collection_uid(), Value).
+
+add_document(Bucket, VBucket, Key, CollectionUid, Value) ->
+    {json, case ns_memcached:add(Bucket, Key, CollectionUid, VBucket, Value) of
                {ok, #mc_header{status=?SUCCESS}, _, _} ->
                    {struct, [{result, ok}]};
                Error ->
@@ -70,7 +79,11 @@ add_document(Bucket, VBucket, Key, Value) ->
            end}.
 
 get_document_replica(Bucket, VBucket, Key) ->
-    {json, case ns_memcached:get_from_replica(Bucket, Key, VBucket) of
+    get_document_replica(Bucket, VBucket, Key, get_default_collection_uid()).
+
+get_document_replica(Bucket, VBucket, Key, CollectionUid) ->
+    {json, case ns_memcached:get_from_replica(Bucket, Key, CollectionUid,
+                                              VBucket) of
                {ok, #mc_header{status=?SUCCESS}, #mc_entry{data = Data}, _} ->
                    {struct, [{result, ok},
                              {value, Data}]};

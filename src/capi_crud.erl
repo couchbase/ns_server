@@ -22,6 +22,7 @@
 -include("mc_constants.hrl").
 
 -export([get/3, set/3, set/4, delete/2]).
+-export([get/4, set/5, delete/3]).
 
 -export([is_valid_json/1]).
 
@@ -30,6 +31,8 @@ handle_mutation_rv(#mc_header{status = ?SUCCESS} = _Header, _Entry) ->
     ok;
 handle_mutation_rv(#mc_header{status = ?EINVAL} = _Header, Entry) ->
     {error, Entry#mc_entry.data};
+handle_mutation_rv(#mc_header{status = ?UNKNOWN_COLLECTION}, Entry) ->
+    {error, Entry#mc_entry.data};
 handle_mutation_rv(#mc_header{status = ?NOT_MY_VBUCKET} = _Header, _Entry) ->
     throw(not_my_vbucket).
 
@@ -37,28 +40,43 @@ handle_mutation_rv(#mc_header{status = ?NOT_MY_VBUCKET} = _Header, _Entry) ->
 set(BucketBin, DocId, Value) ->
     set(BucketBin, DocId, Value, 0).
 
+%% For cluster pre ?VERSION_CHESHIRECAT
 set(BucketBin, DocId, Value, Flags) ->
+    set(BucketBin, DocId, undefined, Value, Flags).
+
+set(BucketBin, DocId, CollectionUid, Value, Flags) ->
     Bucket = binary_to_list(BucketBin),
     {VBucket, _} = cb_util:vbucket_from_id(Bucket, DocId),
-    {ok, Header, Entry, _} = ns_memcached:set(Bucket, DocId, VBucket, Value, Flags),
+    {ok, Header, Entry, _} = ns_memcached:set(Bucket, DocId, CollectionUid,
+                                              VBucket, Value, Flags),
     handle_mutation_rv(Header, Entry).
 
+%% For cluster pre ?VERSION_CHESHIRECAT
 delete(BucketBin, DocId) ->
+    delete(BucketBin, DocId, undefined).
+
+delete(BucketBin, DocId, CollectionUid) ->
     Bucket = binary_to_list(BucketBin),
     {VBucket, _} = cb_util:vbucket_from_id(Bucket, DocId),
-    {ok, Header, Entry, _} = ns_memcached:delete(Bucket, DocId, VBucket),
+    {ok, Header, Entry, _} = ns_memcached:delete(Bucket, DocId, CollectionUid,
+                                                 VBucket),
     handle_mutation_rv(Header, Entry).
 
+%% For cluster pre ?VERSION_CHESHIRECAT
 get(BucketBin, DocId, Options) ->
+    get(BucketBin, DocId, undefined, Options).
+
+get(BucketBin, DocId, CollectionUid, Options) ->
     Bucket = binary_to_list(BucketBin),
     {VBucket, _} = cb_util:vbucket_from_id(Bucket, DocId),
-    get_inner(Bucket, DocId, VBucket, Options, 10).
+    get_inner(Bucket, DocId, CollectionUid, VBucket, Options, 10).
 
-get_inner(_Bucket, _DocId, _VBucket, _Options, _RetriesLeft = 0) ->
+get_inner(_Bucket, _DocId, _CollectionUid, _VBucket, _Options, 0) ->
     erlang:error(cas_retries_exceeded);
-get_inner(Bucket, DocId, VBucket, Options, RetriesLeft) ->
+get_inner(Bucket, DocId, CollectionUid, VBucket, Options, RetriesLeft) ->
     XAttrPermissions = proplists:get_value(xattrs_perm, Options, []),
-    {ok, Header, Entry, _} = ns_memcached:get(Bucket, DocId, VBucket),
+    {ok, Header, Entry, _} = ns_memcached:get(Bucket, DocId, CollectionUid,
+                                              VBucket),
 
     case Header#mc_header.status of
         ?SUCCESS ->
@@ -69,10 +87,12 @@ get_inner(Bucket, DocId, VBucket, Options, RetriesLeft) ->
                               false -> ?CONTENT_META_INVALID_JSON
                           end,
             try
-                {ok, Rev, _MetaFlags} = get_meta(Bucket, DocId, VBucket, CAS),
+                {ok, Rev, _MetaFlags} = get_meta(Bucket, DocId, CollectionUid,
+                                                 VBucket, CAS),
                 case cluster_compat_mode:is_cluster_55() of
                     true ->
                         {ok, XAttrsJsonObj} = get_xattrs(Bucket, DocId,
+                                                         CollectionUid,
                                                          VBucket, CAS,
                                                          XAttrPermissions),
                         {ok, #doc{id = DocId, body = Value, rev = Rev,
@@ -88,25 +108,29 @@ get_inner(Bucket, DocId, VBucket, Options, RetriesLeft) ->
                     ?log_error("Error during retrieving doc for ~p/~p: ~p",
                                [Bucket, ns_config_log:tag_doc_id(DocId),
                                 Reason]),
-                    get_inner(Bucket, DocId, VBucket, Options, RetriesLeft-1)
+                    get_inner(Bucket, DocId, CollectionUid,
+                              VBucket, Options, RetriesLeft-1)
             end;
         ?KEY_ENOENT ->
             {not_found, missing};
         ?NOT_MY_VBUCKET ->
             throw(not_my_vbucket);
+        ?UNKNOWN_COLLECTION ->
+            {error, Entry#mc_entry.data};
         ?EINVAL ->
             {error, Entry#mc_entry.data}
     end.
 
-get_meta(Bucket, DocId, VBucket, CAS) ->
-    case ns_memcached:get_meta(Bucket, DocId, VBucket) of
+get_meta(Bucket, DocId, CollectionUid, VBucket, CAS) ->
+    case ns_memcached:get_meta(Bucket, DocId, CollectionUid, VBucket) of
         {ok, Rev, CAS, MetaFlags} -> {ok, Rev, MetaFlags};
         {ok, _, _, _} -> {error, bad_cas};
         _ -> {error, bad_resp}
     end.
 
-get_xattrs(Bucket, DocId, VBucket, CAS, Permissions) ->
-    case ns_memcached:get_xattrs(Bucket, DocId, VBucket, Permissions) of
+get_xattrs(Bucket, DocId, CollectionUid, VBucket, CAS, Permissions) ->
+    case ns_memcached:get_xattrs(Bucket, DocId, CollectionUid,
+                                 VBucket, Permissions) of
         {ok, CAS, XAttrs} -> {ok, {[{<<"xattrs">>, {XAttrs}}]}};
         {ok, _, _} -> {error, bad_cas};
         Error -> Error

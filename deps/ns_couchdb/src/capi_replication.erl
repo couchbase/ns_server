@@ -212,7 +212,7 @@ update_locally(Bucket, DocId, VBucket, Value, Rev, DocDeleted, LocalCAS) ->
 
 
 get_meta(Bucket, VBucket, DocId) ->
-    case ns_memcached:get_meta(Bucket, DocId, VBucket) of
+    case ns_memcached:get_meta(Bucket, DocId, undefined, VBucket) of
         {ok, Rev, CAS, _MetaFlags} ->
             {ok, Rev, CAS};
         Other ->
