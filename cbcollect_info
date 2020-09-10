@@ -593,59 +593,28 @@ class TaskRunner(object):
             else:
                 files.append(redactor.redact_file(name, fp.name))
 
-        prefix = "cbcollect_info_%s_%s" % (node, self.start_time)
-        self._zip_helper(prefix, filename, files)
+        prefix = f"cbcollect_info_{node}_{self.start_time}"
+        TaskRunner.make_zip(prefix, filename, files)
 
     def close_all_files(self):
         for name, fp in self.files.items():
             fp.close()
 
     def zip(self, filename, node):
-        prefix = "cbcollect_info_%s_%s" % (node, self.start_time)
+        prefix = f"cbcollect_info_{node}_{self.start_time}"
 
         files = []
         for name, fp in self.files.items():
             files.append(fp.name)
-        self._zip_helper(prefix, filename, files)
+        TaskRunner.make_zip(prefix, filename, files)
 
-    def _zip_helper(self, prefix, filename, files):
-        """Write all our logs to a zipfile"""
-        exe = exec_name("gozip")
-
-        fallback = False
-
-        try:
-            p = subprocess.Popen([exe,
-                                  "-strip-path",
-                                  "-prefix",
-                                  prefix,
-                                  filename] + files,
-                                 stderr=subprocess.STDOUT,
-                                 stdin=subprocess.PIPE)
-            p.stdin.close()
-            status = p.wait()
-
-            if status != 0:
-                log("gozip terminated with non-zero exit code (%d)" % status)
-        except OSError as e:
-            log("Exception during compression: %s" % e)
-            fallback = True
-
-        if fallback:
-            log("IMPORTANT:")
-            log("  Compression using gozip failed.")
-            log("  Falling back to python implementation.")
-            log("  Please let us know about this and provide console output.")
-
-            self._zip_fallback(filename, prefix, files)
-
-    def _zip_fallback(self, filename, prefix, files):
+    @staticmethod
+    def make_zip(prefix, filename, files):
         from zipfile import ZipFile, ZIP_DEFLATED
         zf = ZipFile(filename, mode='w', compression=ZIP_DEFLATED)
         try:
             for name in files:
-                zf.write(name,
-                         "%s/%s" % (prefix, os.path.basename(name)))
+                zf.write(name, f"{prefix}/{os.path.basename(name)}")
         finally:
             zf.close()
 
