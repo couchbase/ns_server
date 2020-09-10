@@ -393,13 +393,11 @@ get_keys(Sock, VBuckets, Props, Timeout) ->
                               start_key = StartKey,
                               end_key = EndKey},
 
-    Params1 = Params#get_keys_params{start_key = StartKey},
-
     TRef = make_ref(),
     Timer = erlang:send_after(Timeout, self(), TRef),
 
     try
-        do_get_keys(Sock, VBuckets, Params1, TRef)
+        do_get_keys(Sock, VBuckets, Params, TRef)
     catch
         throw:Error ->
             Error
