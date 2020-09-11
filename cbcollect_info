@@ -293,13 +293,21 @@ class LogRedactor:
         # Don't try to catch any errors here as we want failures (e.g.
         # due to disk full) to abort the collection.  This will allow
         # the cause of the failure to be fixed and collection retried.
+        # The one exception is when creating the directory for the output
+        # file which may already exist (e.g. stats related files in the
+        # same directory).
         with open(ifile, 'r', newline='', encoding=LATIN1) as inp:
+            try:
+                os.makedirs(os.path.dirname(ofile))
+            except OSError as exc:
+                if exc.errno != errno.EEXIST:
+                    raise
             with open(ofile, 'w+', newline='', encoding=LATIN1) as out:
                 for line in inp:
                     out.write(processor.do(line))
 
-    def redact_file(self, name, ifile):
-        ofile = os.path.join(self.target_dir, os.path.basename(name))
+    def redact_file(self, name, ifile, relative_name):
+        ofile = os.path.join(self.target_dir, relative_name)
         if "http_access" in name:
             self._process_file(ifile, ofile, self.access_log)
         elif name == self.default_name:
@@ -515,6 +523,14 @@ class TaskRunner(object):
         else:
             log("Unable to collect file '%s' - already collected." % filename)
 
+    def collect_dir(self, directory_path, relative_path_base):
+        for dirpath, dirnames, filenames in os.walk(directory_path):
+            for f in filenames:
+                full_path = os.path.join(dirpath, f)
+                relative_path = os.path.relpath(full_path, directory_path)
+                path_in_zip = os.path.join(relative_path_base, relative_path)
+                self.collect_file(full_path, path_in_zip)
+
     def get_file(self, collected_file):
         if collected_file in self.files:
             fp = self.files[collected_file]
@@ -604,7 +620,8 @@ class TaskRunner(object):
             elif name.lower().endswith(('.gz', '.dmp')):
                 files.append((fp.name, collected_file.relative_name))
             else:
-                redacted_file = redactor.redact_file(name, fp.name)
+                redacted_file = redactor.redact_file(
+                        name, fp.name, collected_file.relative_name)
                 files.append((redacted_file, collected_file.relative_name))
 
         prefix = f"cbcollect_info_{node}_{self.start_time}"
@@ -1640,6 +1657,42 @@ class CbcollectInfoOptions(optparse.Option):
     TYPE_CHECKER["ticket"] = check_ticket
 
 
+def cleanup_old_prometheus_stats(guts):
+    prom_stats_dir = read_guts(guts, "prom_stats_dir")
+    if not prom_stats_dir:
+        return None
+
+    # Remove any existing snapshot directory. Assumes we're the only client
+    # of prometheus snapshots.
+    snapshot_dir = os.path.join(prom_stats_dir, "/snapshots/")
+    print(f"Removing existing snapshot directory '{snapshot_dir}'")
+    shutil.rmtree(snapshot_dir, ignore_errors=True)
+
+
+def get_prometheus_stats(guts, tmpdir):
+    # Generate a prometheus snapshot. These consist of hard links to
+    # existing blocks and a dump of the current open blocks.
+
+    token = get_local_token(guts)
+    port = read_guts(guts, "rest_port")
+    user_and_password = f"@localtoken:{token}"
+    url = f"http://{local_url_addr}:{port}/_createStatsSnapshot"
+
+    command = ["curl", "-X", "POST", "-sS", "--proxy", "",
+               "-u", user_and_password, url]
+    task = AllOsTask("Generate prometheus snapshot", command, timeout=60)
+    output_bytes = BytesIO()
+    status = task.execute(output_bytes)
+    if status != 0:
+        print(f"Error while getting prometheus snapshot: {status}")
+        return None
+
+    # The name of the created snapshot directory is returned.
+    snapshot_dir_path = output_bytes.getvalue().decode(LATIN1)
+
+    return snapshot_dir_path
+
+
 def main():
     # ask all tools to use C locale (MB-12050)
     os.environ['LANG'] = 'C'
@@ -1867,6 +1920,12 @@ def main():
                         indexer_breakpad_minidump_dir, "*.dmp")):
                     runner.collect_file(dump)
 
+    # Collect prometheus stats files
+    cleanup_old_prometheus_stats(guts)
+    snapshot_dir_path = get_prometheus_stats(guts, runner.tmpdir)
+    if snapshot_dir_path is not None:
+        runner.collect_dir(snapshot_dir_path, "./stats_snapshot")
+
     fts_port = read_guts(guts, "fts_http_port")
     if fts_port:
         idx_dir = read_guts(guts, "idx_dir")
@@ -1892,6 +1951,8 @@ def main():
         runner.redact_and_zip(redact_zip_file, zip_node)
 
     runner.zip(zip_filename, zip_node)
+
+    cleanup_old_prometheus_stats(guts)
 
     if upload_url and options.redact_level != "none":
         do_upload_and_exit(redact_zip_file, upload_url, options.upload_proxy)
