@@ -36,7 +36,9 @@ import uuid
 import io
 from datetime import datetime, timedelta, tzinfo
 from io import BytesIO, StringIO
+from collections import namedtuple
 
+CollectedFile = namedtuple('CollectedFile', ['filename', 'relative_name'])
 
 # This is a facility that provides a functionality similar to atexit from the
 # standard library. We don't use the latter for the following reasons.
@@ -452,6 +454,8 @@ class TaskRunner(object):
 
     def __init__(self, verbosity=0, task_regexp='', tmp_dir=None,
                  salt_value=""):
+        # A dictionary with an instance of CollectedFile as the key and
+        # a fileobject to the opened file as the value
         self.files = {}
         self.verbosity = verbosity
         self.start_time = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
@@ -483,7 +487,7 @@ class TaskRunner(object):
 
     def finalize(self):
         try:
-            for fp in self.files.items():
+            for collected_file, fp in self.files.items():
                 fp.close()
         except BaseException:
             # Continue exit handling in spite of any exceptions
@@ -491,26 +495,33 @@ class TaskRunner(object):
 
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
-    def collect_file(self, filename):
+    def collect_file(self, filename, relative_name=None):
         """Add a file to the list of files collected. Used to capture the exact
         file (including timestamps) from the Couchbase instance.
 
         filename - Absolute path to file to collect.
+        relative_name - Path to use in the final .zip bundle. Typically this
+                        is the basename of the path.  But can include a
+                        directory structure if that is wanted in the bundle.
         """
-        if filename not in self.files:
+        if relative_name is None:
+            relative_name = os.path.basename(filename)
+        collected_file = CollectedFile(filename, relative_name)
+        if collected_file not in self.files:
             try:
-                self.files[filename] = open(filename, 'r')
+                self.files[collected_file] = open(filename, 'r')
             except IOError as e:
                 log("Failed to collect file '%s': %s" % (filename, str(e)))
         else:
             log("Unable to collect file '%s' - already collected." % filename)
 
-    def get_file(self, filename):
-        if filename in self.files:
-            fp = self.files[filename]
+    def get_file(self, collected_file):
+        if collected_file in self.files:
+            fp = self.files[collected_file]
         else:
-            fp = open(os.path.join(self.tmpdir, filename), 'wb+')
-            self.files[filename] = fp
+            fp = open(os.path.join(self.tmpdir, collected_file.filename),
+                      'wb+')
+            self.files[collected_file] = fp
 
         return fp
 
@@ -551,7 +562,8 @@ class TaskRunner(object):
             task.set_task_runner(self)
 
             filename = getattr(task, 'log_file', self.default_name)
-            fp = self.get_file(filename)
+            collected_file = CollectedFile(filename, os.path.basename(filename))
+            fp = self.get_file(collected_file)
             if not task.no_header:
                 self.header(fp, task.description, task.command)
 
@@ -585,27 +597,29 @@ class TaskRunner(object):
         files = []
         redactor = LogRedactor(self.salt_value, self.tmpdir, self.default_name)
 
-        for name, fp in self.files.items():
+        for collected_file, fp in self.files.items():
+            name = collected_file.filename
             if "users.dets" in name:
                 continue
             elif name.lower().endswith(('.gz', '.dmp')):
-                files.append(fp.name)
+                files.append((fp.name, collected_file.relative_name))
             else:
-                files.append(redactor.redact_file(name, fp.name))
+                redacted_file = redactor.redact_file(name, fp.name)
+                files.append((redacted_file, collected_file.relative_name))
 
         prefix = f"cbcollect_info_{node}_{self.start_time}"
         TaskRunner.make_zip(prefix, filename, files)
 
     def close_all_files(self):
-        for name, fp in self.files.items():
+        for collected_file, fp in self.files.items():
             fp.close()
 
     def zip(self, filename, node):
         prefix = f"cbcollect_info_{node}_{self.start_time}"
 
         files = []
-        for name, fp in self.files.items():
-            files.append(fp.name)
+        for collected_file, fp in self.files.items():
+            files.append((fp.name, collected_file.relative_name))
         TaskRunner.make_zip(prefix, filename, files)
 
     @staticmethod
@@ -613,8 +627,8 @@ class TaskRunner(object):
         from zipfile import ZipFile, ZIP_DEFLATED
         zf = ZipFile(filename, mode='w', compression=ZIP_DEFLATED)
         try:
-            for name in files:
-                zf.write(name, f"{prefix}/{os.path.basename(name)}")
+            for name, relative_name in files:
+                zf.write(name, f"{prefix}/{relative_name}")
         finally:
             zf.close()
 
