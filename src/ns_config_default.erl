@@ -165,9 +165,6 @@ default() ->
        {connection_idle_time, 0},
        {verbosity, 0},
        {privilege_debug, false},
-       {opentracing_enabled, false},
-       {opentracing_module, ""},
-       {opentracing_config, ""},
        {breakpad_enabled, true},
        %% Location that Breakpad should write minidumps upon memcached crash.
        {breakpad_minidump_dir_path, BreakpadMinidumpDir},
@@ -257,13 +254,6 @@ default() ->
         {breakpad,
          {[{enabled, breakpad_enabled},
            {minidump_dir, {memcached_config_mgr, get_minidump_dir, []}}]}},
-
-        %% OpenTracing configuration
-        {opentracing,
-         {[{enabled, opentracing_enabled},
-           {module, {"~s", [opentracing_module]}},
-           {config, {"~s", [opentracing_config]}}
-           ]}},
 
         {admin, {"~s", [admin_user]}},
 

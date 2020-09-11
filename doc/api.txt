@@ -418,9 +418,6 @@ GET /pools/default/serverGroups =>
   (ssl_cipher_list: <string>)?
   (connection_idle_time: <number>)?
   (privilege_debug: <bool>)?
-  (opentracing_enabled: <bool>)?
-  (opentracing_module: <string>)?
-  (opentracing_config: <string>)?
 }
 
 
