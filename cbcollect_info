@@ -720,7 +720,7 @@ def make_cbstats_task(kind, memcached_pass, guts):
                      addenv=[("CB_PASSWORD", memcached_pass)])
 
 
-def get_local_token(guts, port):
+def get_local_token(guts):
     path = read_guts(guts, "localtoken_path")
     token = ""
     try:
@@ -733,7 +733,7 @@ def get_local_token(guts, port):
 
 def get_diag_password(guts):
     port = read_guts(guts, "rest_port")
-    pwd = get_local_token(guts, port)
+    pwd = get_local_token(guts)
     url = "http://%s:%s/diag/password" % (local_url_addr, port)
     command = ["curl", "-sS", "--proxy", "", "-u", "@localtoken:%s" % pwd, url]
 
