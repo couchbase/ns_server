@@ -1473,13 +1473,16 @@ def get_server_guts(initargs_path):
     if extra_args:
         args = args + extra_args.split(";")
     print("Checking for server guts in %s..." % initargs_path)
-    p = subprocess.Popen(args, stdout=subprocess.PIPE)
-    output = p.stdout.read().decode(LATIN1)
+    p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    output, err = p.communicate()
     p.wait()
     rc = p.returncode
-    # print("args: %s gave rc: %d and:\n\n%s\n" % (args, rc, output))
-    tokens = output.rstrip("\0").split("\0")
     d = {}
+    if rc != 0:
+        log(f"Error occurred getting server guts: {err.decode(LATIN1)}")
+        return d
+    # print("args: %s gave rc: %d and:\n\n%s\n" % (args, rc, output))
+    tokens = output.decode(LATIN1).rstrip("\0").split("\0")
     if len(tokens) > 1:
         for i in range(0, len(tokens), 2):
             d[tokens[i]] = tokens[i + 1]
