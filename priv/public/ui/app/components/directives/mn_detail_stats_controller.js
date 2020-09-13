@@ -25,12 +25,13 @@ angular
     controller: controller
   });
 
-function controller(mnStatisticsNewService, mnStatisticsDescriptionService, mnHelper) {
+function controller(mnStatisticsNewService, mnStatisticsDescriptionService, mnHelper, $scope) {
   var vm = this;
   vm.zoom = "minute";
   vm.onSelectZoom = onSelectZoom;
   vm.items = {};
   vm.$onInit = activate;
+  vm.scope = $scope;
 
   function onSelectZoom() {
     activate();

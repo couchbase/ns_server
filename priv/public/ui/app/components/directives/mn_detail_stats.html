@@ -23,6 +23,8 @@
    ng-if="$ctrl.showStats"
    ng-click="$event.stopPropagation();">
   <mn-statistics-chart
+     ng-if="$ctrl.scope"
+     sync-scope="$ctrl.scope"
      ng-repeat="config in $ctrl.charts track by config.id"
      items="$ctrl.items"
      ng-class="'statistics-' + config.size"
