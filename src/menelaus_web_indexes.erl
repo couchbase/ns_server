@@ -33,10 +33,16 @@ settings_post_validators() ->
      validator:integer(indexerThreads, 0, 1024, _),
      validator:integer(memorySnapshotInterval, 1, infinity, _),
      validator:integer(stableSnapshotInterval, 1, infinity, _),
-     validator:integer(maxRollbackPoints, 1, infinity, _),
-     validate_param(logLevel, _),
-     validate_storage_mode(_),
-     validator:unsupported(_)].
+     validator:integer(maxRollbackPoints, 1, infinity, _)] ++
+        case cluster_compat_mode:is_cluster_cheshirecat() of
+            true ->
+                [validator:boolean(redistributeIndexes, _)];
+            _ ->
+                []
+        end ++
+        [validate_param(logLevel, _),
+         validate_storage_mode(_),
+         validator:unsupported(_)].
 
 validate_storage_mode(State) ->
     %% Note, at the beginning the storage mode will be empty. Once set,

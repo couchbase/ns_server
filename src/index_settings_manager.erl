@@ -34,7 +34,8 @@
 -export([cfg_key/0,
          is_enabled/0,
          known_settings/0,
-         on_update/2]).
+         on_update/2,
+         config_upgrade_to_cheshire_cat/1]).
 
 -import(json_settings_manager,
         [id_lens/1]).
@@ -78,15 +79,19 @@ default_settings() ->
                     {interval, compaction_interval_default()}],
 
     [{memoryQuota, 512},
-     {generalSettings, general_settings_defaults()},
+     {generalSettings, general_settings_defaults(?LATEST_VERSION_NUM)},
      {compaction, compaction_defaults()},
      {storageMode, <<"">>},
      {compactionMode, <<"circular">>},
      {circularCompaction, CircDefaults}].
 
 known_settings() ->
+    ClusterVersion = cluster_compat_mode:get_compat_version(),
+    known_settings(ClusterVersion).
+
+known_settings(ClusterVersion) ->
     [{memoryQuota, memory_quota_lens()},
-     {generalSettings, general_settings_lens()},
+     {generalSettings, general_settings_lens(ClusterVersion)},
      {compaction, compaction_lens()},
      {storageMode, id_lens(<<"indexer.settings.storage_mode">>)},
      {compactionMode,
@@ -96,7 +101,7 @@ known_settings() ->
 config_default() ->
     {?INDEX_CONFIG_KEY, json_settings_manager:build_settings_json(
                           default_settings(),
-                          dict:new(), known_settings())}.
+                          dict:new(), known_settings(?LATEST_VERSION_NUM))}.
 
 memory_quota_lens() ->
     Key = <<"indexer.settings.memory_quota">>,
@@ -119,12 +124,23 @@ indexer_threads_lens() ->
           end,
     {Get, Set}.
 
-general_settings_lens_props() ->
-    [{indexerThreads, indexer_threads_lens()},
-     {memorySnapshotInterval, id_lens(<<"indexer.settings.inmemory_snapshot.interval">>)},
-     {stableSnapshotInterval, id_lens(<<"indexer.settings.persisted_snapshot.interval">>)},
-     {maxRollbackPoints, id_lens(<<"indexer.settings.recovery.max_rollbacks">>)},
-     {logLevel, id_lens(<<"indexer.settings.log_level">>)}].
+general_settings_lens_props(ClusterVersion) ->
+    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_CHESHIRECAT) of
+        true ->
+            [{redistributeIndexes,
+              id_lens(<<"indexer.settings.rebalance.redistribute_indexes">>)}];
+        _ ->
+            []
+    end ++
+        [{indexerThreads,
+          indexer_threads_lens()},
+         {memorySnapshotInterval,
+          id_lens(<<"indexer.settings.inmemory_snapshot.interval">>)},
+         {stableSnapshotInterval,
+          id_lens(<<"indexer.settings.persisted_snapshot.interval">>)},
+         {maxRollbackPoints,
+          id_lens(<<"indexer.settings.recovery.max_rollbacks">>)},
+         {logLevel, id_lens(<<"indexer.settings.log_level">>)}].
 
 default_rollback_points() ->
     case ns_config_default:init_is_enterprise() of
@@ -134,15 +150,21 @@ default_rollback_points() ->
             ?DEFAULT_MAX_ROLLBACK_PTS_FORESTDB
     end.
 
-general_settings_defaults() ->
-    [{indexerThreads, 0},
-     {memorySnapshotInterval, 200},
-     {stableSnapshotInterval, 5000},
-     {maxRollbackPoints, default_rollback_points()},
-     {logLevel, <<"info">>}].
+general_settings_defaults(ClusterVersion) ->
+    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_CHESHIRECAT) of
+        true ->
+            [{redistributeIndexes, false}];
+        _ ->
+            []
+    end ++
+        [{indexerThreads, 0},
+         {memorySnapshotInterval, 200},
+         {stableSnapshotInterval, 5000},
+         {maxRollbackPoints, default_rollback_points()},
+         {logLevel, <<"info">>}].
 
-general_settings_lens() ->
-    json_settings_manager:props_lens(general_settings_lens_props()).
+general_settings_lens(ClusterVersion) ->
+    json_settings_manager:props_lens(general_settings_lens_props(ClusterVersion)).
 
 compaction_interval_default() ->
     [{from_hour, 0},
@@ -205,13 +227,25 @@ compaction_defaults() ->
 compaction_lens() ->
     json_settings_manager:props_lens(compaction_lens_props()).
 
+config_upgrade_to_cheshire_cat(Config) ->
+    NewSettings = general_settings_defaults(?VERSION_CHESHIRECAT) --
+        general_settings_defaults(?VERSION_66),
+    json_settings_manager:upgrade_existing_key(
+      ?MODULE, Config, [{generalSettings, NewSettings}],
+      known_settings(?VERSION_CHESHIRECAT)).
 
 -ifdef(TEST).
 defaults_test() ->
     Keys = fun (L) -> lists:sort([K || {K, _} <- L]) end,
 
-    ?assertEqual(Keys(known_settings()), Keys(default_settings())),
+    ?assertEqual(Keys(known_settings(?LATEST_VERSION_NUM)), Keys(default_settings())),
     ?assertEqual(Keys(compaction_lens_props()), Keys(compaction_defaults())),
-    ?assertEqual(Keys(general_settings_lens_props()),
-                 Keys(general_settings_defaults())).
+    ?assertEqual(Keys(general_settings_lens_props(?LATEST_VERSION_NUM)),
+                 Keys(general_settings_defaults(?LATEST_VERSION_NUM))).
+
+config_upgrade_test() ->
+    CmdList = config_upgrade_to_cheshire_cat([]),
+    RedistributeCmd = {set,{metakv,<<"/indexing/settings/config">>},
+                       <<"{\"indexer.settings.rebalance.redistribute_indexes\":false}">>},
+    ?assert(lists:member(RedistributeCmd, CmdList)).
 -endif.
