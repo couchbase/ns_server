@@ -65,24 +65,33 @@ class MnCollectionsService {
   }
 
   getManifest(bucket) {
+    bucket = encodeURIComponent(bucket);
     return this.http.get(`${restApiBase}/${bucket}/collections`);
   }
 
-  addScope(values) {
-    return this.http.post(`${restApiBase}/${values.bucketName}/collections`, {
-      name: values.name
+  addScope({name, bucketName}) {
+    bucketName = encodeURIComponent(bucketName);
+    return this.http.post(`${restApiBase}/${bucketName}/collections`, {
+      name: name
     });
   }
 
   addCollection([bucket, scope, name]) {
+    bucket = encodeURIComponent(bucket);
+    scope = encodeURIComponent(scope);
     return this.http.post(`${restApiBase}/${bucket}/collections/${scope}`, {name: name});
   }
 
   deleteScope([bucket, scope]) {
+    bucket = encodeURIComponent(bucket);
+    scope = encodeURIComponent(scope);
     return this.http.delete(`${restApiBase}/${bucket}/collections/${scope}`);
   }
 
   deleteCollection([bucket, scope, collection]) {
+    bucket = encodeURIComponent(bucket);
+    scope = encodeURIComponent(scope);
+    collection = encodeURIComponent(collection);
     return this.http.delete(`${restApiBase}/${bucket}/collections/${scope}/${collection}`);
   }
 }

@@ -49,8 +49,7 @@ class DetailsHashObserver {
 
     this.stream.openedDetailsHash = this.uiRouter.globals.params$
       .pipe(pluck(this.paramKey),
-            distinctUntilChanged(),
-            map(this.prepareHashValue.bind(this)));
+            distinctUntilChanged());
 
     this.stream.isOpened = this.stream.openedDetailsHash
       .pipe(map(this.isOpened.bind(this)));
@@ -70,11 +69,7 @@ class DetailsHashObserver {
     this.uiRouter.stateService.go('.', stateParams, {notify: false});
   }
 
-  prepareHashValue(v) {
-    return (v || []).map(decodeURIComponent);
-  }
-
-  getNewHashValue([toggleValue, values]) {
+  getNewHashValue([toggleValue, values = []]) {
     values = [...values];
     if (this.isOpened(values)) {
       values.splice(values.indexOf(toggleValue), 1);
@@ -84,7 +79,7 @@ class DetailsHashObserver {
     return values;
   }
 
-  isOpened(values) {
+  isOpened(values = []) {
     return values.indexOf(this.paramValue) > -1;
   }
 }
