@@ -36,7 +36,8 @@ settings_post_validators() ->
      validator:integer(maxRollbackPoints, 1, infinity, _)] ++
         case cluster_compat_mode:is_cluster_cheshirecat() of
             true ->
-                [validator:boolean(redistributeIndexes, _)];
+                [validator:boolean(redistributeIndexes, _),
+                 validator:integer(numReplica, 0, 16, _)];
             _ ->
                 []
         end ++

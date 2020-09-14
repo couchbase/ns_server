@@ -128,7 +128,9 @@ general_settings_lens_props(ClusterVersion) ->
     case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_CHESHIRECAT) of
         true ->
             [{redistributeIndexes,
-              id_lens(<<"indexer.settings.rebalance.redistribute_indexes">>)}];
+              id_lens(<<"indexer.settings.rebalance.redistribute_indexes">>)},
+             {numReplica,
+              id_lens(<<"indexer.settings.num_replica">>)}];
         _ ->
             []
     end ++
@@ -140,7 +142,8 @@ general_settings_lens_props(ClusterVersion) ->
           id_lens(<<"indexer.settings.persisted_snapshot.interval">>)},
          {maxRollbackPoints,
           id_lens(<<"indexer.settings.recovery.max_rollbacks">>)},
-         {logLevel, id_lens(<<"indexer.settings.log_level">>)}].
+         {logLevel,
+          id_lens(<<"indexer.settings.log_level">>)}].
 
 default_rollback_points() ->
     case ns_config_default:init_is_enterprise() of
@@ -153,7 +156,8 @@ default_rollback_points() ->
 general_settings_defaults(ClusterVersion) ->
     case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_CHESHIRECAT) of
         true ->
-            [{redistributeIndexes, false}];
+            [{redistributeIndexes, false},
+             {numReplica, 0}];
         _ ->
             []
     end ++
@@ -247,5 +251,8 @@ config_upgrade_test() ->
     CmdList = config_upgrade_to_cheshire_cat([]),
     RedistributeCmd = {set,{metakv,<<"/indexing/settings/config">>},
                        <<"{\"indexer.settings.rebalance.redistribute_indexes\":false}">>},
-    ?assert(lists:member(RedistributeCmd, CmdList)).
+    NumReplicaCmd = {set,{metakv,<<"/indexing/settings/config">>},
+                     <<"{\"indexer.settings.num_replica\":0}">>},
+    ?assert(lists:member(RedistributeCmd, CmdList)),
+    ?assert(lists:member(NumReplicaCmd, CmdList)).
 -endif.
