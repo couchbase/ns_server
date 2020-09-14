@@ -42,17 +42,10 @@
       </span>
     </span>
     <span class="cbui-table-cell flex-grow-2-5 wrap text-right resp-hide-xsml">
-      <a
-         ng-click="$event.stopPropagation()"
-         class="nowrap"
-         style="margin-right: -3px;"
-         ng-show="rbac.cluster.bucket[bucket.name].collections.read"
-         ui-sref="app.admin.collections({collectionsBucket: bucket.name})">
-        Collections</a>
       <span ng-if="!bucket.isMemcached">
         <a
            ng-click="$event.stopPropagation()"
-           class="margin-left-half nowrap"
+           class="nowrap"
            style="margin-right: -3px;"
            ng-show="rbac.cluster.bucket[bucket.name].data.docs.read"
            ui-sref="app.admin.doc_editor({bucket: bucket.name, statsHostname: 'all'})">
@@ -60,13 +53,10 @@
       </span>
       <a
          ng-click="$event.stopPropagation()"
-         title="Go to statistics for {{ bucket.name }}"
-         ui-sref="app.admin.statistics_overview({overviewBucket: bucket.name, overviewHostname: 'all', overviewZoom: 'minute'})"
-         ng-show="rbac.cluster.bucket[bucket.name].stats.read && rbac.cluster.stats.read"
-         class="margin-left-half nowrap">
-        Statistics
-      </a>
-
+         class="margin-left-1 nowrap"
+         ng-show="rbac.cluster.bucket[bucket.name].collections.read"
+         ui-sref="app.admin.collections({collectionsBucket: bucket.name})">
+        Scopes & Collections</a>
     </span>
   </div>
 

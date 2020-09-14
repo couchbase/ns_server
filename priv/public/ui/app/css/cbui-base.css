@@ -686,7 +686,7 @@ label {
   font-weight: 600;
   color: #000;
   display: block;
-  line-height: 1.7;
+  line-height: 1.6;
 }
 .forms p {
   margin-bottom: .5rem;
@@ -707,7 +707,7 @@ label {
   margin: 0 0 .5rem 0;
 }
 .formrow {
-  margin-bottom: 1rem;
+  margin-bottom: .85rem;
 }
 .formrow p {
   margin: 0;
