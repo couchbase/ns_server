@@ -131,10 +131,12 @@ function mnSettingsClusterServiceFactory($http, $q, IEC, mnPools, mnPoolDefault)
   }
   function postIndexSettings(data, justValidate) {
     var configData = {};
+
     let fields = ["indexerThreads", "logLevel", "maxRollbackPoints", "storageMode"];
 
     if (mnPoolDefault.export.compat.atLeast70) {
       fields.push("redistributeIndexes");
+      fields.push("numReplica");
     }
 
     fields
