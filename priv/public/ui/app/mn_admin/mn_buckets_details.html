@@ -101,7 +101,7 @@
          class="outline"
          ng-disabled="poolDefault.rebalancing"
          ng-show="rbac.cluster.bucket[bucket.name].delete"
-         ng-click="$event.stopPropagation();bucketsDetailsCtl.deleteBucket(bucketsDetailsCtl.bucketDetails)">Delete</button>
+         ng-click="$event.stopPropagation();bucketsDetailsCtl.deleteBucket(bucketsDetailsCtl.bucketDetails)">Drop</button>
       <button
          class="outline"
          ng-show="!bucketsDetailsCtl.compactionTasks.thisBucketCompactionTask.cancelURI && bucket.isMembase && rbac.cluster.tasks.read && rbac.cluster.bucket[bucket.name].compact"
