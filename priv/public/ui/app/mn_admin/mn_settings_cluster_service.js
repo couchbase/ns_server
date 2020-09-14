@@ -1,13 +1,14 @@
 import angular from "/ui/web_modules/angular.js";
 import mnPools from "/ui/app/components/mn_pools.js";
+import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
 
 export default "mnSettingsClusterService";
 
 angular
-  .module('mnSettingsClusterService', [mnPools])
+  .module('mnSettingsClusterService', [mnPools, mnPoolDefault])
   .factory('mnSettingsClusterService', mnSettingsClusterServiceFactory);
 
-function mnSettingsClusterServiceFactory($http, $q, IEC, mnPools) {
+function mnSettingsClusterServiceFactory($http, $q, IEC, mnPools, mnPoolDefault) {
   var mnSettingsClusterService = {
     postPoolsDefault: postPoolsDefault,
     getIndexSettings: getIndexSettings,
@@ -130,7 +131,13 @@ function mnSettingsClusterServiceFactory($http, $q, IEC, mnPools) {
   }
   function postIndexSettings(data, justValidate) {
     var configData = {};
-    (["indexerThreads", "logLevel", "maxRollbackPoints", "storageMode"])
+    let fields = ["indexerThreads", "logLevel", "maxRollbackPoints", "storageMode"];
+
+    if (mnPoolDefault.export.compat.atLeast70) {
+      fields.push("redistributeIndexes");
+    }
+
+    fields
       .forEach(function (name) {
         if (data[name] !== undefined) {
           configData[name] = data[name];

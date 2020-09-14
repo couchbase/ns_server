@@ -577,9 +577,9 @@
           Advanced Index Settings
         </p>
         <div
-          ng-if="rbac.cluster.settings.read"
-          ng-show="settingsClusterCtl.showAdvancedSettings"
-          class="indent-1-5">
+           ng-if="rbac.cluster.settings.read"
+           ng-show="settingsClusterCtl.showAdvancedSettings"
+           class="indent-1-5">
           <div class="formrow">
             <label for="index_settings_thread" class="inline">
               Indexer Threads
@@ -622,6 +622,27 @@
               {{settingsClusterCtl.indexSettingsErrors.maxRollbackPoints}}
             </div>
           </div>
+
+          <div class="formrow"
+             ng-show="adminCtl.poolDefault.compat.atLeast70">
+            <label for="redistribute_indexes">
+              Optimize Index Placement On Rebalance
+            </label>
+            <input
+               type="checkbox"
+               id="redistribute_indexes"
+               ng-disabled="settingsClusterCtl.indexSettings.storageMode === '' || !rbac.cluster.settings.indexes.write"
+               ng-model="settingsClusterCtl.indexSettings.redistributeIndexes">
+            <label for="redistribute_indexes" class="checkbox">
+              Enable Redistribute Indexes
+            </label>
+            <div
+               class="error error-field"
+               ng-show="settingsClusterCtl.indexSettingsErrors.redistributeIndexes">
+              {{settingsClusterCtl.indexSettingsErrors.redistributeIndexes}}
+            </div>
+          </div>
+
           <div class="formrow">
             <label for="indexer_log_level">
               Indexer Log Level
