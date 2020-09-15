@@ -16,14 +16,53 @@
 
 -include("ns_common.hrl").
 
--export([handle_list/2,
-         handle_get/3,
-         handle_post/3,
-         handle_delete/3]).
+-export([handle_list/2, handle_list/4,
+         handle_get/3, handle_get/5,
+         handle_post/3, handle_post/5,
+         handle_delete/3, handle_delete/5]).
 
 %% RFC-20 Common flags value used by clients to indicate the
 %% data format as JSON.
 -define(COMMON_FLAGS_JSON, 16#02000006).
+
+assert_collection_uid(Bucket, Scope, Collection) ->
+    case collections:get_collection_uid(Bucket, Scope, Collection) of
+        {ok, Uid} ->
+            Uid;
+        {error, Err} ->
+            {Msg, Code} = menelaus_web_collections:get_formatted_err_msg(Err),
+            menelaus_util:web_json_exception(Code,
+                                             {[{error, iolist_to_binary(Msg)}]})
+    end.
+
+handle_list(Bucket, Scope, Collection, Req) ->
+    menelaus_web_collections:assert_api_available(Bucket),
+    handle_list(Bucket, assert_collection_uid(Bucket, Scope, Collection), Req).
+
+get_xattrs_permissions(Bucket, Scope, Collection, Req) ->
+    ServerPrivilege = {[{collection, [Bucket, Scope, Collection]},
+                        data, sxattr], read},
+    UserPrivilege = {[{collection, [Bucket, Scope, Collection]},
+                      data, xattr], read},
+    ServerPerm = menelaus_auth:has_permission(ServerPrivilege, Req),
+    UserPerm = menelaus_auth:has_permission(UserPrivilege, Req),
+    [server_read||ServerPerm] ++ [user_read||UserPerm].
+
+handle_get(Bucket, Scope, Collection, DocId, Req) ->
+    menelaus_web_collections:assert_api_available(Bucket),
+    do_handle_get(Bucket, DocId,
+                  assert_collection_uid(Bucket, Scope, Collection),
+                  get_xattrs_permissions(Bucket, Scope, Collection, Req), Req).
+
+handle_post(Bucket, Scope, Collection, DocId, Req) ->
+    menelaus_web_collections:assert_api_available(Bucket),
+    handle_post(Bucket, DocId,
+                assert_collection_uid(Bucket, Scope, Collection), Req).
+
+handle_delete(Bucket, Scope, Collection, DocId, Req) ->
+    menelaus_web_collections:assert_api_available(Bucket),
+    handle_delete(Bucket, DocId,
+                  assert_collection_uid(Bucket, Scope, Collection), Req).
 
 parse_bool(undefined, Default) -> Default;
 parse_bool("true", _) -> true;
@@ -60,10 +99,23 @@ parse_params(Params) ->
       {start_key, parse_key(proplists:get_value("startkey", Params))},
       {end_key, parse_key(proplists:get_value("endkey", Params))}]}.
 
+assert_default_collection_uid(Bucket) ->
+    case collections:enabled() of
+        false ->
+            undefined;
+        true ->
+            assert_collection_uid(Bucket, "_default", "_default")
+    end.
+
 handle_list(BucketId, Req) ->
+    handle_list(BucketId, assert_default_collection_uid(BucketId), Req).
+
+handle_list(BucketId, CollectionUid, Req) ->
     try parse_params(mochiweb_request:parse_qs(Req)) of
-        Params ->
-            do_handle_list(Req, BucketId, Params, 20)
+        {Skip, Limit, Params} ->
+            do_handle_list(
+              Req, BucketId,
+              {Skip, Limit, [{collection_uid, CollectionUid} | Params]}, 20)
     catch
         throw:bad_request ->
             menelaus_util:reply_json(Req,
@@ -172,13 +224,13 @@ encode_doc({Key, Value}) ->
           end,
     {struct, [{id, Key}, {doc, {struct, [Doc]}}]}.
 
-do_get(BucketId, DocId, Options) ->
+do_get(BucketId, DocId, CollectionUid, Options) ->
     BinaryBucketId = list_to_binary(BucketId),
     BinaryDocId = list_to_binary(DocId),
-    attempt(BinaryBucketId,
-            BinaryDocId,
-            capi_crud, get,
-            [BinaryBucketId, BinaryDocId, [ejson_body|Options]]).
+    Args = [X || X <- [BinaryBucketId, BinaryDocId, CollectionUid,
+                       [ejson_body | Options]],
+                 X =/= undefined],
+    attempt(BinaryBucketId, BinaryDocId, capi_crud, get, Args).
 
 couch_errorjson_to_context(ErrData) ->
     ErrStruct = mochijson2:decode(ErrData),
@@ -201,8 +253,13 @@ construct_error_reply(Msg) ->
     {struct, [{error, <<"bad_request">>}, {reason, Reason}]}.
 
 handle_get(BucketId, DocId, Req) ->
-    XAttrPermissions = get_xattrs_permissions(BucketId, Req),
-    case do_get(BucketId, DocId, [{xattrs_perm, XAttrPermissions}]) of
+    CollectionUid = assert_default_collection_uid(BucketId),
+    XAttrPerm = get_xattrs_permissions(BucketId, "_default", "_default", Req),
+    do_handle_get(BucketId, DocId, CollectionUid, XAttrPerm, Req).
+
+do_handle_get(BucketId, DocId, CollectionUid, XAttrPermissions, Req) ->
+    case do_get(BucketId, DocId, CollectionUid,
+                [{xattrs_perm, XAttrPermissions}]) of
         {not_found, missing} ->
             menelaus_util:reply(Req, 404);
         {error, Msg} ->
@@ -217,19 +274,12 @@ handle_get(BucketId, DocId, Req) ->
             menelaus_util:reply_json(Req, Res)
     end.
 
-get_xattrs_permissions(BucketId, Req) ->
-    ServerPrivilege = {[{bucket, BucketId}, data, sxattr], read},
-    UserPrivilage = {[{bucket, BucketId}, data, xattr], read},
-    ServerPerm = menelaus_auth:has_permission(ServerPrivilege, Req),
-    UserPerm = menelaus_auth:has_permission(UserPrivilage, Req),
-    [server_read||ServerPerm] ++ [user_read||UserPerm].
-
-mutate(Req, Oper, BucketId, DocId, Body, Flags) ->
+mutate(Req, Oper, BucketId, DocId, CollectionUid, Body, Flags) ->
     BinaryBucketId = list_to_binary(BucketId),
     BinaryDocId = list_to_binary(DocId),
 
-    Args =
-        [X || X <- [BinaryBucketId, BinaryDocId, Body, Flags], X =/= undefined],
+    Args = [X || X <- [BinaryBucketId, BinaryDocId, CollectionUid, Body, Flags],
+                 X =/= undefined],
     case attempt(BinaryBucketId, BinaryDocId, capi_crud, Oper, Args) of
         ok ->
             ns_audit:mutate_doc(Req, Oper, BucketId, DocId),
@@ -253,11 +303,14 @@ extract_flags(Params) ->
     end.
 
 handle_post(BucketId, DocId, Req) ->
+    handle_post(BucketId, DocId, assert_default_collection_uid(BucketId), Req).
+
+handle_post(BucketId, DocId, CollectionUid, Req) ->
     Params = mochiweb_request:parse_post(Req),
     Value = list_to_binary(proplists:get_value("value", Params, [])),
     Flags = extract_flags(Params),
 
-    case mutate(Req, set, BucketId, DocId, Value, Flags) of
+    case mutate(Req, set, BucketId, DocId, CollectionUid, Value, Flags) of
         ok ->
             menelaus_util:reply_json(Req, []);
         {error, Msg} ->
@@ -265,7 +318,12 @@ handle_post(BucketId, DocId, Req) ->
     end.
 
 handle_delete(BucketId, DocId, Req) ->
-    case mutate(Req, delete, BucketId, DocId, undefined, undefined) of
+    handle_delete(BucketId, DocId, assert_default_collection_uid(BucketId),
+                  Req).
+
+handle_delete(BucketId, DocId, CollectionUid, Req) ->
+    case mutate(Req, delete, BucketId, DocId, CollectionUid,
+                undefined, undefined) of
         ok ->
             menelaus_util:reply_json(Req, []);
         {error, Msg} ->

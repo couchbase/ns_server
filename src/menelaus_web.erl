@@ -239,11 +239,25 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[{bucket, Id}, views], read},
                      fun menelaus_web_buckets:handle_ddocs_list/3, ["default", Id]};
                 ["pools", "default", "buckets", Id, "docs"] ->
-                    {{[{bucket, Id}, data, docs], read},
+                    {{[{collection, [Id, "_default", "_default"]},
+                       data, docs], read},
                      fun menelaus_web_crud:handle_list/2, [Id]};
                 ["pools", "default", "buckets", Id, "docs", DocId] ->
-                    {{[{bucket, Id}, data, docs], read},
+                    {{[{collection, [Id, "_default", "_default"]},
+                       data, docs], read},
                      fun menelaus_web_crud:handle_get/3, [Id, DocId]};
+                ["pools", "default", "buckets", BucketId, "scopes", ScopeId,
+                 "collections", CollectionId, "docs"] ->
+                    {{[{collection, [BucketId, ScopeId, CollectionId]},
+                       data, docs], read},
+                     fun menelaus_web_crud:handle_list/4,
+                     [BucketId, ScopeId, CollectionId]};
+                ["pools", "default", "buckets", BucketId, "scopes", ScopeId,
+                 "collections", CollectionId, "docs", DocId] ->
+                    {{[{collection, [BucketId, ScopeId, CollectionId]},
+                       data, docs], read},
+                     fun menelaus_web_crud:handle_get/5,
+                     [BucketId, ScopeId, CollectionId, DocId]};
                 ["pools", "default", "buckets", "@" ++ _ = Id, "stats"] ->
                     {{[{bucket, any}, stats], read},
                      fun menelaus_stats:handle_stats_section/3,
@@ -688,8 +702,15 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_buckets:handle_bucket_create/2,
                      ["default"]};
                 ["pools", "default", "buckets", Id, "docs", DocId] ->
-                    {{[{bucket, Id}, data, docs], upsert},
+                    {{[{collection, [Id, "_default", "_default"]},
+                       data, docs], upsert},
                      fun menelaus_web_crud:handle_post/3, [Id, DocId]};
+                ["pools", "default", "buckets", BucketId, "scopes", ScopeId,
+                 "collections", CollectionId, "docs", DocId] ->
+                    {{[{collection, [BucketId, ScopeId, CollectionId]},
+                       data, docs], upsert},
+                     fun menelaus_web_crud:handle_post/5,
+                     [BucketId, ScopeId, CollectionId, DocId]};
                 ["pools", "default", "buckets", Id, "controller", "doFlush"] ->
                     {{[{bucket, Id}], flush},
                      fun menelaus_web_buckets:handle_bucket_flush/3, ["default", Id]};
@@ -829,8 +850,15 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_collections:handle_delete_collection/4,
                      [Id, Scope, Name]};
                 ["pools", "default", "buckets", Id, "docs", DocId] ->
-                    {{[{bucket, Id}, data, docs], delete},
+                    {{[{collection, [Id, "_default", "_default"]},
+                       data, docs], delete},
                      fun menelaus_web_crud:handle_delete/3, [Id, DocId]};
+                ["pools", "default", "buckets", BucketId, "scopes", ScopeId,
+                 "collections", CollectionId, "docs", DocId] ->
+                    {{[{collection, [BucketId, ScopeId, CollectionId]},
+                       data, docs], delete},
+                     fun menelaus_web_crud:handle_delete/5,
+                     [BucketId, ScopeId, CollectionId, DocId]};
                 ["controller", "cancelXCDR", XID] ->
                     {no_check, fun goxdcr_rest:proxy/2,
                      [menelaus_util:concat_url_path(

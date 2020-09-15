@@ -44,6 +44,7 @@
          get_collection/2,
          get_max_supported/1,
          get_uid/1,
+         get_collection_uid/3,
          get_scopes/1,
          get_collections/1]).
 
@@ -76,6 +77,22 @@ default_manifest() ->
          {collections,
           [{"_default",
             [{uid, 0}]}]}]}]}].
+
+get_collection_uid(Bucket, ScopeName, CollectionName) ->
+    {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
+    Scopes = get_scopes(get_manifest(BucketConfig)),
+    case find_scope(ScopeName, Scopes) of
+        undefined ->
+            {error, {scope_not_found, ScopeName}};
+        Scope ->
+            Collections = get_collections(Scope),
+            case find_collection(CollectionName, Collections) of
+                undefined ->
+                    {error, {collection_not_found, ScopeName, CollectionName}};
+                Props ->
+                    {ok, get_uid(Props)}
+            end
+    end.
 
 uid(BucketCfg) ->
     case enabled(BucketCfg) of

@@ -27,6 +27,8 @@
          handle_delete_scope/3,
          handle_delete_collection/4,
          handle_set_manifest/2,
+         assert_api_available/1,
+         get_formatted_err_msg/1,
          handle_ensure_manifest/3]).
 
 handle_get(Bucket, Req) ->

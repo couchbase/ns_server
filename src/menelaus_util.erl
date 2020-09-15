@@ -75,6 +75,7 @@
          choose_node_consistently/2,
          compute_sec_headers/0,
          web_exception/2,
+         web_json_exception/2,
          require_permission/2]).
 
 %% Internal exports.
