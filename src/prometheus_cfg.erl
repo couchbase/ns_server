@@ -18,6 +18,10 @@
 
 -include("ns_common.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 %% API
 -export([start_link/0, specs/1, authenticate/2, settings/0]).
 
@@ -26,12 +30,15 @@
          terminate/2, code_change/3, format_status/2]).
 
 -record(s, {cur_settings = [],
-            reload_timer_ref = undefined}).
+            reload_timer_ref = undefined,
+            intervals_calc_timer_ref = undefined}).
 
--define(RELOAD_RETRY_PERIOD, 10000).
+-define(RELOAD_RETRY_PERIOD, 10000). %% in milliseconds
+-define(DEFAULT_PROMETHEUS_TIMEOUT, 5000). %% in milliseconds
 -define(USERNAME, "@prometheus").
 -define(NS_TO_PROMETHEUS_USERNAME, "ns_server").
 -define(DEFAULT_HIGH_CARD_SERVICES, [index, fts, kv, cbas]).
+-define(MAX_SCRAPE_INTERVAL, 6*60*60). %% 6h, in seconds
 
 %%%===================================================================
 %%% API
@@ -62,6 +69,10 @@ default_settings() ->
      {snapshot_timeout_msecs, 30000}, %% in milliseconds
      {token_file, "prometheus_token"},
      {query_max_samples, 200000},
+     {intervals_calculation_period, 10*60*1000}, %% 10m
+     {cbcollect_stats_dump_max_size, 1024*1024*1024}, %% 1GB, in bytes
+     {cbcollect_stats_min_period, 14}, %% in days
+     {average_sample_size, 3}, %% in bytes
      {services, [{S, [{high_cardinality_enabled, true}]}
                         || S <- ?DEFAULT_HIGH_CARD_SERVICES]},
      {external_prometheus_services, [{S, [{high_cardinality_enabled, true}]}
@@ -89,6 +100,23 @@ build_settings(Config) ->
     {pass, Creds} = proplists:get_value(creds, NsToPrometheusAuthInfo,
                                         {pass, undefined}),
 
+    %% Dynamic scrape intervals are used for high cardinality metrics endpoints
+    %% where scrape intervals are not set explicitly.
+    %% They are recalculated periodically based on the number of samples
+    %% reported by each endpoint. The more samples are reported by a particular
+    %% endpoint, the greater scrape interval is set for that endpoint.
+    %% The goal is to maintain the sane size of cbcollect dump, which can grow
+    %% quickly when too many stats are reported.
+    %% Note that dynamic scrape intervals are "per-node" and "per-service".
+    %% If services don't report thousands of metrics it's ok for this list to be
+    %% empty, which means "use the default scrape interval".
+    %% Example of non empty value is [{kv, 25}, {index, 30}], which means
+    %% prometheus should use 25 second scrape interval for kv's high cardinality
+    %% metrics collection, and 30 second scrape interval for index service
+    %% high cardinality metrics collection.
+    DynamicScrapeIntervals = ns_config:search_node_with_default(
+                         Config, stats_scrape_dynamic_intervals, []),
+
     Settings =
         case Port == undefined orelse Creds == undefined of
             true ->
@@ -105,7 +133,8 @@ build_settings(Config) ->
                  {addr, misc:join_host_port(LocalAddr, Port)},
                  {prometheus_creds, Creds},
                  {targets, Targets},
-                 {afamily, AFamily}]
+                 {afamily, AFamily},
+                 {dynamic_scrape_intervals, DynamicScrapeIntervals}]
         end,
 
     misc:update_proplist(default_settings(), Settings).
@@ -203,6 +232,9 @@ init([]) ->
             ({{node, Node, ns_to_prometheus_auth_info}, _})
                                                     when Node == node() ->
                 gen_server:cast(?MODULE, settings_updated);
+            ({{node, Node, stats_scrape_dynamic_intervals}, _})
+                                                    when Node == node() ->
+                gen_server:cast(?MODULE, settings_updated);
             ({rest, _}) ->
                 gen_server:cast(?MODULE, settings_updated);
             (_) -> ok
@@ -212,12 +244,14 @@ init([]) ->
     Settings = build_settings(),
     ensure_prometheus_config(Settings),
     generate_prometheus_auth_info(Settings),
-    case proplists:get_value(enabled, Settings) of
-        true ->
-            {ok, try_config_reload(#s{cur_settings = Settings})};
-        false ->
-            {ok, #s{cur_settings = Settings}}
-    end.
+    State =
+        case proplists:get_value(enabled, Settings) of
+            true ->
+                try_config_reload(#s{cur_settings = Settings});
+            false ->
+                #s{cur_settings = Settings}
+        end,
+    {ok, restart_intervals_calculation_timer(State)}.
 
 handle_call(settings, _From, #s{cur_settings = Settings} = State) ->
     {reply, Settings, State};
@@ -233,6 +267,10 @@ handle_cast(_Msg, State) ->
 
 handle_info(reload_timer, State) ->
     {noreply, try_config_reload(State#s{reload_timer_ref = undefined})};
+
+handle_info(intervals_calculation_timer, #s{cur_settings = Settings} = State) ->
+    maybe_update_scrape_dynamic_intervals(Settings),
+    {noreply, restart_intervals_calculation_timer(State)};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -305,12 +343,14 @@ maybe_apply_new_settings(#s{cur_settings = OldSettings} = State) ->
                        [sanitize_settings(NewSettings),
                         sanitize_settings(OldSettings)]),
             ensure_prometheus_config(NewSettings),
-            case proplists:get_value(enabled, NewSettings) of
-                true ->
-                    try_config_reload(State#s{cur_settings = NewSettings});
-                false ->
-                    State#s{cur_settings = NewSettings}
-            end
+            NewState =
+                case proplists:get_value(enabled, NewSettings) of
+                    true ->
+                        try_config_reload(State#s{cur_settings = NewSettings});
+                    false ->
+                        State#s{cur_settings = NewSettings}
+                end,
+            restart_intervals_calculation_timer(NewState)
     end.
 
 try_config_reload(#s{cur_settings = Settings} = State) ->
@@ -361,11 +401,20 @@ high_cardinality_jobs_config(Settings) ->
     TokenFile = token_file(Settings),
     DefaultInterval = proplists:get_value(scrape_interval, Settings),
     DefaultTimeout = proplists:get_value(scrape_timeout, Settings),
+    DynamicScrapeIntervals = proplists:get_value(dynamic_scrape_intervals,
+                                                 Settings, []),
     lists:map(
       fun ({Name, Props}) ->
           Addr = proplists:get_value(Name, Targets),
-          Interval = proplists:get_value(scrape_interval, Props,
-                                         DefaultInterval),
+          Interval =
+              case proplists:get_value(high_cardinality_scrape_interval, Props,
+                                       auto) of
+                  auto ->
+                      proplists:get_value(Name, DynamicScrapeIntervals,
+                                          DefaultInterval);
+                  I ->
+                      I
+              end,
           Timeout = proplists:get_value(scrape_timeout, Props,
                                         min(Interval, DefaultTimeout)),
           #{job_name => {"~p_high_cardinality", [Name]},
@@ -461,3 +510,390 @@ sanitize_settings(Settings) ->
               {prometheus_creds, {Name, "********"}};
           (KV) -> KV
       end, Settings).
+
+restart_intervals_calculation_timer(#s{intervals_calc_timer_ref = undefined,
+                         cur_settings = Settings} = State) ->
+    case intervals_calculation_period(Settings) of
+        disabled -> State;
+        Timeout ->
+            Ref = erlang:send_after(Timeout, self(),
+                                    intervals_calculation_timer),
+            State#s{intervals_calc_timer_ref = Ref}
+    end;
+restart_intervals_calculation_timer(#s{intervals_calc_timer_ref = Ref} = State) ->
+    _ = erlang:cancel_timer(Ref),
+    restart_intervals_calculation_timer(State#s{intervals_calc_timer_ref = undefined}).
+
+%% The prometheus_cfg process wakes up every 10 min (it's configurable) and
+%% performs the following steps:
+%% 1) Firstly, it gets the latest scrape information for each target
+%%    from prometheus. Right now we need to know only how many samples
+%%    are reported in each scrape by each service. Prometheus keeps this
+%%    information in the scrape_samples_scraped metric.
+%% 2) All samples are divided into two parts: those for which the scrape
+%%    interval is static, and those for which the scrape interval can be
+%%    changed. First group is all the low cardinality metrics and
+%%    the high cardinality metrics for which the scrape interval is set
+%%    explicitly. All other samples fall to the second group (all high
+%%    cardinality metrics where the scrape interval is not explicitly
+%%    set).
+%% 3) Then it calculates how many samples can be written per second to
+%%    satisfy cbcollect dump size requirement and subtracts the rate of
+%%    "static" samples from it (first group from #2). The resulting
+%%    number is the maximum samples rate for metrics from second group.
+%% 4) Now when it knows the max samples rate and the number of samples
+%%    per scrape, it is easy to calculate scrape intervals for each
+%%    service.
+maybe_update_scrape_dynamic_intervals(Settings) ->
+    case intervals_calculation_period(Settings) of
+        disabled -> ok;
+        _ ->
+            ?log_debug("Recalculating prometheus scrape intervals for high "
+                       "cardinality metrics"),
+            try
+                Info = scrapes_info(Settings),
+                Intervals = calculate_dynamic_intervals(Info, Settings),
+                RoundedIntervals = [{S, min(round(Float), ?MAX_SCRAPE_INTERVAL)}
+                                        || {S, Float} <- Intervals],
+                CurIntervals = ns_config:read_key_fast(
+                                 {node, node(), stats_scrape_dynamic_intervals},
+                                 undefined),
+                case RoundedIntervals of
+                    CurIntervals ->
+                        ?log_debug("Scrape intervals haven't changed:~n~p~n"
+                                   "Calculated based on scrapes info:~n~p~n"
+                                   "Raw intervals:~n~p",
+                                   [RoundedIntervals, Info, Intervals]);
+                    _ ->
+                        ns_config:set(
+                          {node, node(), stats_scrape_dynamic_intervals},
+                          RoundedIntervals),
+                        ?log_debug("New scrape intervals:~n~p~n"
+                                   "Previous scrape intervals: ~n~p~n"
+                                   "Calculated based on scrapes info:~n~p~n"
+                                   "Raw intervals:~n~p",
+                                   [RoundedIntervals, CurIntervals, Info,
+                                    Intervals])
+                end
+            catch
+                C:E:ST ->
+                    ?log_error("Failed to calculate scrape intervals because of"
+                               " ~p: ~p~n~p", [C, E, ST])
+            end,
+            ok
+    end.
+
+%% Pure function that calculates scrape intervals for services' high cardinality
+%% endpoints for given numbers of samples that are reported by those services
+%% (ScrapeInfos) and stats settings.
+%% Function returns a proplist where the key is a service name and the value is
+%% a scrape interval for that service (as float). If some service is missing
+%% in the resulting proplist, the default scrape interval should be
+%% used for that service.
+-spec calculate_dynamic_intervals([{Service, Type, NumberOfSamples}],
+                                  [Setting]) -> [{Service, ScrapeInterval}] when
+                        Service         :: atom(),
+                        Type            :: low_cardinality | high_cardinality,
+                        NumberOfSamples :: non_neg_integer(),
+                        Setting         :: {Key :: atom(), Value :: term()},
+                        ScrapeInterval  :: float().
+calculate_dynamic_intervals(ScrapeInfos, Settings) ->
+    ServiceSettings = proplists:get_value(services, Settings, []),
+    MinScrapeInterval = proplists:get_value(scrape_interval, Settings),
+    %% Split all reporting targets into two lists
+    %% First list is for targets that use static scrape intervals (they can't be
+    %% modified), we need to calculate total reported rate for them (in samples
+    %% per second)
+    %% Second list is targets for which we need to calculate scrape intervals.
+    {StaticIntSampleRates, DynamicIntTargets} =
+        misc:partitionmap(
+          fun ({_Name, low_cardinality, Num}) ->
+                  {left, Num / MinScrapeInterval};
+              ({Name, high_cardinality, Num}) ->
+                  Props = proplists:get_value(Name, ServiceSettings, []),
+                  case proplists:get_value(high_cardinality_scrape_interval,
+                                           Props, auto) of
+                      auto -> {right, {Name, Num}};
+                      I -> {left, Num / I}
+                  end
+          end, ScrapeInfos),
+    %% This is the total sample rate reported by targets with static scrape
+    %% interval
+    StaticIntTotalRate = lists:sum(StaticIntSampleRates),
+    %% This is how many samples we can report per second (to maintain the max
+    %% cbcollect dump size)
+    TotalSamplesQuota = samples_per_second_quota(Settings),
+    %% This is how many samples can be reported per seconds by targets with
+    %% dynamic scrape intervals
+    DynamicIntSamplesQuota = max(TotalSamplesQuota - StaticIntTotalRate, 0),
+    %% This is how many samples per second each service wants to report
+    DynamicIntDesiredSamplesRates =
+        [{Name, Num / MinScrapeInterval} || {Name, Num} <- DynamicIntTargets],
+    %% The same as above but sorted by the second tuple element
+    DynamicIntDesiredSamplesRatesSorted =
+        lists:usort(fun ({T1, N1}, {T2, N2}) -> {N1, T1} =< {N2, T2} end,
+                    DynamicIntDesiredSamplesRates),
+    %% split_quota calculates max rates per service, the only thing left is
+    %% to convert "report speed" to "scrape interval" by dividing "distance" by
+    %% "speed"
+    lists:map(fun ({Target, MaxSampleRate}) when MaxSampleRate < 1.0e-8 ->
+                      {Target, infinity};
+                  ({Target, MaxSampleRate}) ->
+                      SamplesPerScrape = proplists:get_value(Target, DynamicIntTargets),
+                      {Target, SamplesPerScrape / MaxSampleRate}
+              end, split_quota(DynamicIntDesiredSamplesRatesSorted,
+                               DynamicIntSamplesQuota, [])).
+
+%% Distribute sample rate quota among services
+%% Input proplist is how many samples per seconds services want to report
+%% That list must be sorted by second tuple element the way that services that
+%% report fewer samples go first.
+%% If there are N services and total quota is Q, each service gets Q/N quota
+%% but if some service doesn't need that much it lets other services to use its
+%% unused quota (we put nothing in a resulting list in this case, which means
+%% "no limit required"). If a service wants to report more then Q/N samples
+%% per second, that service is given a quota = Q/N.
+split_quota([], _Quota, Res) -> Res;
+split_quota([{Target, Need} | Tail], Quota, Res) ->
+    QuotaPerTarget = Quota / (length(Tail) + 1),
+    case Need < QuotaPerTarget of
+        true ->
+            QuotaLeft = Quota - Need,
+            split_quota(Tail, QuotaLeft, Res);
+        false ->
+            QuotaLeft = Quota - QuotaPerTarget,
+            split_quota(Tail, QuotaLeft, [{Target, QuotaPerTarget} | Res])
+    end.
+
+intervals_calculation_period(Settings) ->
+    case proplists:get_bool(enabled, Settings) of
+        true ->
+            case proplists:get_value(intervals_calculation_period, Settings) of
+                undefined -> disabled;
+                Timeout -> Timeout
+            end;
+        false ->
+            disabled
+    end.
+
+scrapes_info(Settings) ->
+    Query = io_lib:format("scrape_samples_scraped[~bs:1m]",
+                          [?MAX_SCRAPE_INTERVAL]),
+    case prometheus:query(lists:flatten(Query), undefined,
+                          ?DEFAULT_PROMETHEUS_TIMEOUT, Settings) of
+        {ok, JSON} ->
+            lists:map(
+              fun ({Props}) ->
+                  {MetricProps} = proplists:get_value(<<"metric">>, Props),
+                  TargetName = proplists:get_value(<<"instance">>, MetricProps),
+                  JobName = proplists:get_value(<<"job">>, MetricProps),
+                  Type = case JobName of
+                             <<"general">> -> low_cardinality;
+                             _ -> high_cardinality
+                         end,
+                  [_, ValBin] = lists:last(proplists:get_value(<<"values">>,
+                                                               Props)),
+                  Num = case prometheus:parse_value(ValBin) of
+                            %% NaN will be returned as undefined
+                            undefined -> 0;
+                            %% We assume this metric should never return
+                            %% +-Inf, so we are making sure it will crash here
+                            %% in such case.
+                            N when is_number(N) -> N
+                        end,
+                  {binary_to_atom(TargetName, latin1), Type, Num}
+              end, JSON);
+        {error, Error} ->
+            erlang:error(Error)
+    end.
+
+samples_per_second_quota(Settings) ->
+    MaxSize = proplists:get_value(cbcollect_stats_dump_max_size, Settings),
+    MinPeriod = proplists:get_value(cbcollect_stats_min_period, Settings),
+    AverageSampleSize = proplists:get_value(average_sample_size, Settings),
+    MaxSize / AverageSampleSize / MinPeriod / 24 / 60 / 60.
+
+
+-ifdef(TEST).
+
+dynamic_intervals_monotonicity_test_() ->
+    {timeout, 60,
+     fun () ->
+         [randomly_test_dynamic_intervals_monotonocity()
+            || _ <- lists:seq(0,1000)]
+     end}.
+
+calculate_dynamic_intervals_test_() ->
+    {timeout, 60,
+     fun () ->
+         [randomly_test_calculate_dynamic_intervals()
+            || _ <- lists:seq(0,10000)]
+     end}.
+
+randomly_test_dynamic_intervals_monotonocity() ->
+    LCS1Num = rand:uniform(500),
+    LCS2Num = rand:uniform(500),
+    HCS1Num = rand:uniform(10000),
+    HCS2Num = rand:uniform(10000),
+    ScrapeInt = rand:uniform(100),
+    MaxSize = rand:uniform(2*1024*1024*1024),
+    Period = rand:uniform(60),
+    SampleSize = rand:uniform(10),
+
+    ScrapeInfos = fun (N) ->
+                      [{service1, low_cardinality, LCS1Num},
+                       {service1, high_cardinality, HCS1Num},
+                       {service2, low_cardinality, LCS2Num},
+                       {service2, high_cardinality, N}]
+                  end,
+
+    Settings = fun (Size) ->
+                   [{services, []},
+                    {scrape_interval, ScrapeInt},
+                    {cbcollect_stats_dump_max_size, Size},
+                    {cbcollect_stats_min_period, Period},
+                    {average_sample_size, SampleSize}]
+               end,
+
+    Fun = fun (ScrapeNum, Size) ->
+              Intervals = calculate_dynamic_intervals(ScrapeInfos(ScrapeNum),
+                                                      Settings(Size)),
+              proplists:get_value(service2, Intervals, ScrapeInt)
+          end,
+    try
+        assert_monotonic_fun(fun (N) -> Fun(N, MaxSize) end,
+                             0, HCS2Num, max(HCS2Num div 100, 1)),
+        assert_monotonic_fun(fun (N) -> Fun(HCS2Num, N) end,
+                             MaxSize, 0, -max(MaxSize div 100, 1))
+    catch
+        C:E:ST ->
+            io:format("Info:~n~p~nSettings:~n~p", [ScrapeInfos(HCS2Num),
+                                                   Settings(MaxSize)]),
+            erlang:raise(C, E, ST)
+    end.
+
+assert_monotonic_fun(Fun, From, To, Step) ->
+    lists:mapfoldl(
+      fun (Param, PrevValue) ->
+          NextValue = Fun(Param),
+          ?assert(NextValue >= PrevValue),
+          {NextValue, NextValue}
+      end, Fun(From), lists:seq(From + Step, To, Step)).
+
+
+randomly_test_calculate_dynamic_intervals() ->
+    ServiceNum = rand:uniform(10) - 1,
+    ServiceName = fun (N) -> list_to_atom("service" ++ integer_to_list(N)) end,
+    WithProbability = fun (P) -> rand:uniform() < P end,
+    GenerateScrapeInfo =
+        fun (N) ->
+            Name = ServiceName(N),
+            LCNum = rand:uniform(200),
+            HCNum = rand:uniform(2000),
+            [{Name, low_cardinality, LCNum} || WithProbability(0.8)] ++
+            [{Name, high_cardinality, HCNum} || WithProbability(0.8)]
+        end,
+    ScrapeInfos = lists:flatmap(GenerateScrapeInfo, lists:seq(1, ServiceNum)),
+    GenerateServiceSettings =
+        fun (N) ->
+            Name = ServiceName(N),
+            Interval = case WithProbability(0.5) of
+                           true -> auto;
+                           false -> rand:uniform(120)
+                       end,
+            [{Name, [{high_cardinality_scrape_interval, Interval}]}
+                || WithProbability(0.2)]
+        end,
+    ServicesSettings = lists:flatmap(GenerateServiceSettings,
+                                     lists:seq(1, ServiceNum)),
+    MaxSize = rand:uniform(1024*1024*1024),
+    DefaultInterval = rand:uniform(60),
+    Settings = [{services, ServicesSettings},
+                {scrape_interval, DefaultInterval},
+                {cbcollect_stats_dump_max_size, MaxSize},
+                {cbcollect_stats_min_period, rand:uniform(60)},
+                {average_sample_size, rand:uniform(10)}],
+
+    try
+        DynamicIntervals = calculate_dynamic_intervals(ScrapeInfos, Settings),
+
+        lists:map(
+          fun ({_, infinity}) -> ok;
+              ({_, I}) -> ?assert(I >= DefaultInterval)
+          end, DynamicIntervals),
+
+        SizeEstimate = total_db_size_estimate(ScrapeInfos, Settings,
+                                              DynamicIntervals),
+
+        DynamicTargets =
+            begin
+                HCTargets = [N || {N, high_cardinality, _} <- ScrapeInfos],
+                StaticTargets =
+                    [N || {N, Props} <- ServicesSettings,
+                          auto =/= proplists:get_value(
+                                     high_cardinality_scrape_interval, Props)],
+                HCTargets -- StaticTargets
+            end,
+
+        AllInfinities = lists:all(fun ({_, infinity}) -> true;
+                                      ({_, _}) -> false
+                                  end, DynamicIntervals),
+
+        if
+            %% If all intervals are static, we should not try to change anything
+            DynamicTargets == [] -> ?assert(DynamicIntervals == []);
+
+            %% If we are not changing any intervals while we can,
+            %% db size should not be greater than max
+            DynamicIntervals == [] -> ?assert(SizeEstimate =< MaxSize);
+
+            %% If we are setting all possible intervals to infinity,
+            %% it means that static metrics only should give us db size > max
+            AllInfinities -> ?assert(SizeEstimate >= MaxSize);
+
+            %% If we are setting some intervals to non infinity values,
+            %% expected db size should be almost equal to max
+            %% They don't match exactly because:
+            %%    1) they are floats;
+            %%    2) we treat very big intervals as infinities
+            true -> ?assert((abs(SizeEstimate - MaxSize) / MaxSize) < 0.01)
+        end
+    catch
+        C:E:ST ->
+            io:format("Info:~n~p~nSettings:~n~p", [ScrapeInfos, Settings]),
+            erlang:raise(C, E, ST)
+    end.
+
+total_db_size_estimate(Info, Settings, Intervals) ->
+    DefaultInterval = proplists:get_value(scrape_interval, Settings),
+    Services = proplists:get_value(services, Settings),
+    GetRate =
+        fun ({_, low_cardinality, Num}) -> Num / DefaultInterval;
+            ({Name, high_cardinality, Num}) ->
+                Props = proplists:get_value(Name, Services, []),
+                Interval =
+                    case proplists:get_value(high_cardinality_scrape_interval,
+                                             Props, auto) of
+                        auto ->
+                            proplists:get_value(Name, Intervals, DefaultInterval);
+                        I ->
+                            I
+                    end,
+                case Interval of
+                    infinity -> 0;
+                    _ -> Num / Interval
+                end
+        end,
+    TotalSamplesRate = lists:sum(lists:map(GetRate, Info)),
+
+    Days = proplists:get_value(cbcollect_stats_min_period, Settings),
+    SampleSize = proplists:get_value(average_sample_size, Settings),
+    TotalSize = TotalSamplesRate * SampleSize
+                * 60 %% seconds
+                * 60 %% minutes
+                * 24 %% hours
+                * Days,
+    round(TotalSize).
+
+-endif.
+
