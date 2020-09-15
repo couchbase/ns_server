@@ -1085,7 +1085,8 @@ load_config(ConfigPath, DirPath, PolicyMod) ->
             Config1 = #config{static = [S, DefaultConfig],
                               policy_mod = PolicyMod,
                               uuid = UUID},
-            DynamicPropList = do_merge_dynamic_and_static(Dynamic1, Config1),
+            DynamicPropList = PolicyMod:fixup(
+                                do_merge_dynamic_and_static(Dynamic1, Config1)),
 
             ?log_info("Here's full dynamic config we loaded + static & default config:~n~p",
                       [ns_config_log:sanitize(DynamicPropList)]),

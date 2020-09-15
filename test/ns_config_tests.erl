@@ -71,6 +71,8 @@ default() -> [].
 
 upgrade_config(_) -> [].
 
+fixup(KV) -> KV.
+
 test_search_list() ->
     ?assertMatch(false, ns_config:search([], foo)),
     ?assertMatch(false, ns_config:search([[], []], foo)),

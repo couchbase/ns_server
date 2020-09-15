@@ -20,6 +20,7 @@
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -export([start_link/0]).
 
@@ -28,7 +29,7 @@
 
 -export([adjust_my_address/3, save_address_config/1,
          ip_config_path/0, using_user_supplied_address/0, reset_address/0,
-         wait_for_node/1]).
+         wait_for_node/1, fixup_config/1]).
 
 %% used by babysitter and ns_couchdb
 -export([configure_net_kernel/0]).
@@ -217,10 +218,10 @@ init([]) ->
     State = bringup(Address, UserSupplied),
     ok = save_address_config(State),
     proc_lib:init_ack({ok, self()}),
-    case misc:read_marker(ns_cluster:rename_marker_path()) of
+    case read_marker() of
         {ok, OldNode} ->
             ?log_debug("Found rename marker. Old Node = ~p", [OldNode]),
-            complete_rename(list_to_atom(OldNode));
+            complete_rename(OldNode, fun fixup_node_in_config/2);
         _ ->
             ok
     end,
@@ -337,7 +338,7 @@ do_adjust_address(MyIP, UserSupplied, OnRename, State = #state{my_ip = MyOldIP})
             case Status of
                 net_restarted ->
                     master_activity_events:note_name_changed(),
-                    complete_rename(OldNode);
+                    complete_rename(OldNode, fun rename_node_in_config/2);
                 _ ->
                     ok
             end,
@@ -361,15 +362,15 @@ notify_couchdb_node(NewNSServerNodeName) ->
             ?log_debug("Couchdb node is not started. Don't need to notify")
     end.
 
-complete_rename(OldNode) ->
+complete_rename(OldNode, RenameFun) ->
     NewNode = node(),
     case OldNode of
         NewNode ->
             ?log_debug("Rename marker exists but node name didn't change. Nothing to do.");
         _ ->
-            ?log_debug("Renaming node from ~p to ~p in config", [OldNode, NewNode]),
-            rename_node_in_config(OldNode, NewNode),
+            RenameFun(OldNode, NewNode),
             notify_couchdb_node(NewNode),
+            ns_config_rep:ensure_config_seen_by_nodes(),
             ?log_debug("Node ~p has been renamed to ~p.", [OldNode, NewNode])
     end,
     %% Rename of the node leads to generation of node's certs, which leads
@@ -380,23 +381,67 @@ complete_rename(OldNode) ->
     cluster_compat_mode:is_enterprise() andalso ns_ssl_services_setup:sync(),
     misc:remove_marker(ns_cluster:rename_marker_path()).
 
-rename_node_in_config(Old, New) ->
+fixup_node_in_config(Old, New) ->
+    ?log_debug("Fixing after the aborted rename from ~p to ~p", [Old, New]),
     ok = misc:wait_for_local_name(ns_config, 60000),
     ok = misc:wait_for_local_name(ns_config_rep, 60000),
-    ns_config:update(fun ({K, V}) ->
-                             NewK = misc:rewrite_value(Old, New, K),
-                             NewV = misc:rewrite_value(Old, New, V),
-                             if
-                                 NewK =/= K orelse NewV =/= V ->
-                                     ?log_debug("renaming node conf ~p -> ~p:~n  ~p ->~n  ~p",
-                                                [K, NewK, ns_config_log:sanitize(V),
-                                                 ns_config_log:sanitize(NewV)]),
-                                     {update, {NewK, NewV}};
-                                 true ->
-                                     skip
-                             end
-                     end),
-    ns_config_rep:ensure_config_seen_by_nodes().
+    %% this ensures that ns_config is initialized
+    ns_config:get().
+
+rename_node_in_config(Old, New) ->
+    ?log_debug("Renaming node from ~p to ~p in config", [Old, New]),
+    ns_config:update(rename_config_kv(Old, New, _)).
+
+rename_config_kv(Old, New, {K, V}) ->
+    NewK = misc:rewrite_value(Old, New, K),
+    NewV = misc:rewrite_value(Old, New, V),
+    if
+        NewK =/= K orelse NewV =/= V ->
+            ?log_debug("renaming node conf ~p -> ~p:~n  ~p ->~n  ~p",
+                       [K, NewK, ns_config_log:sanitize(V),
+                        ns_config_log:sanitize(NewV)]),
+            {update, {NewK, NewV}};
+        true ->
+            skip
+    end.
+
+need_fixup() ->
+    case read_marker() of
+        {ok, OldNode} when node() =/= OldNode ->
+            {true, OldNode};
+        _ ->
+            false
+    end.
+
+read_marker() ->
+    case misc:read_marker(ns_cluster:rename_marker_path()) of
+        {ok, OldNodeStr} ->
+            {ok, list_to_atom(OldNodeStr)};
+        RV ->
+            RV
+    end.
+
+fixup_config(KV) ->
+    case need_fixup() of
+        {true, OldNode} ->
+            Node = node(),
+            ?log_debug("Fixing loaded config by renaming node from ~p to ~p",
+                       [OldNode, Node]),
+            maps:to_list(
+              lists:foldl(
+                fun ({K, V}, Acc) ->
+                        case rename_config_kv(OldNode, Node, {K, V}) of
+                            {update, {K, NewV}} ->
+                                Acc#{K => NewV};
+                            {update, {NewK, NewV}} ->
+                                maps:remove(K, Acc#{NewK => NewV});
+                            skip ->
+                                Acc
+                        end
+                end, maps:from_list(KV), KV));
+        false ->
+            KV
+    end.
 
 handle_call({adjust_my_address, _, _, _}, _From,
             #state{self_started = false} = State) ->
