@@ -1,9 +1,9 @@
 <div class="indent-1 cursor-auto">
-  <div class="width-12 text-right margin-top-half">
+  <div class="row flex-right">
     <button
        [hidden]="!permissions.cluster.bucket[item.source].xdcr.write"
        (click)="$event.stopPropagation();onDeleteReplication.next(item)"
-       class="outline">
+       class="outline margin-right-quarter">
       Delete
     </button>
 
@@ -11,7 +11,7 @@
        [hidden]="!(permissions.cluster.bucket[item.source].xdcr.write &&
                  permissions.cluster.xdcr.settings.write)"
        (click)="$event.stopPropagation();onEditReplication.next(item)"
-       class="outline">
+       class="outline margin-right-quarter">
       Edit
     </button>
     <button

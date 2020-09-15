@@ -3428,3 +3428,7 @@ a.supported-browsers-530 {
 }
 .import-raw-panel {
 }
+
+.block {
+  display: block!important;
+}
