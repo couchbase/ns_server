@@ -49,6 +49,7 @@
          handle_ddocs_list/3,
          handle_set_ddoc_update_min_changes/4,
          handle_local_random_key/3,
+         handle_local_random_key/4,
          maybe_cleanup_old_buckets/0,
          serve_short_bucket_info/2,
          serve_streaming_short_bucket_info/2,
@@ -1714,9 +1715,22 @@ complete_update_ddoc_options(Req, Bucket, #doc{body={Body0}}= DDoc, Options0) ->
     ok = ns_couchdb_api:update_doc(Bucket, NewDDoc),
     reply_json(Req, Options).
 
+handle_local_random_key(Bucket, Scope, Collection, Req) ->
+    menelaus_web_collections:assert_api_available(Bucket),
+    do_handle_local_random_key(
+      Bucket,
+      menelaus_web_crud:assert_collection_uid(Bucket, Scope, Collection),
+      Req).
+
 handle_local_random_key(_PoolId, Bucket, Req) ->
+    CollectionUid = menelaus_web_crud:assert_default_collection_uid(Bucket),
+    do_handle_local_random_key(Bucket, CollectionUid, Req).
+
+do_handle_local_random_key(Bucket, CollectionUId, Req) ->
     Nodes = ns_cluster_membership:service_active_nodes(kv),
-    {ok, Res} = run_on_node({ns_memcached, get_random_key, [Bucket]},
+    Args = [X || X <- [Bucket, CollectionUId],
+                 X =/= undefined],
+    {ok, Res} = run_on_node({ns_memcached, get_random_key, Args},
                             Nodes, Req),
     case Res of
         {ok, Key} ->

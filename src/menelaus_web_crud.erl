@@ -19,7 +19,9 @@
 -export([handle_list/2, handle_list/4,
          handle_get/3, handle_get/5,
          handle_post/3, handle_post/5,
-         handle_delete/3, handle_delete/5]).
+         handle_delete/3, handle_delete/5,
+         assert_default_collection_uid/1,
+         assert_collection_uid/3]).
 
 %% RFC-20 Common flags value used by clients to indicate the
 %% data format as JSON.
