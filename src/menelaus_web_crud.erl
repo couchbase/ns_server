@@ -196,7 +196,7 @@ construct_error_reply(Msg) ->
              catch
                  _:_ ->
                     ?log_debug("Unknown error format ~p", [Msg]),
-                    "unknown error"
+                    <<"unknown error">>
              end,
     {struct, [{error, <<"bad_request">>}, {reason, Reason}]}.
 
