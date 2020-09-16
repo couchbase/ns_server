@@ -74,7 +74,7 @@ sanitize_cookie(nocookie) ->
 sanitize_cookie(Cookie) when is_atom(Cookie) ->
     sanitize_cookie(list_to_binary(atom_to_list(Cookie)));
 sanitize_cookie(Cookie) when is_binary(Cookie) ->
-    {sanitized, base64:encode(crypto:hash(sha256, Cookie))}.
+    ns_config_log:sanitize_value(Cookie).
 
 %% Auxiliary functions
 

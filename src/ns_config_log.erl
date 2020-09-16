@@ -21,7 +21,7 @@
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3, sanitize/1, sanitize/2]).
+         terminate/2, code_change/3, sanitize/1, sanitize/2, sanitize_value/1]).
 
 -include("ns_common.hrl").
 -include("generic.hrl").
@@ -178,29 +178,29 @@ sanitize(Config, TagUserTuples) ->
                 fun tag_user_tuples_fun/1
         end,
     rewrite_tuples_with_vclock(
-      fun ({password, _}) ->
-              {stop, {password, "*****"}};
-          ({sasl_password, _}) ->
-              {stop, {sasl_password, "*****"}};
-          ({admin_pass, _}) ->
-              {stop, {admin_pass, "*****"}};
-          ({pass, _}) ->
-              {stop, {pass, "*****"}};
-          ({cert_and_pkey, {Cert, _PKey}}) ->
-              {stop, {cert_and_pkey, {Cert, <<"*****">>}}};
-          ({cert_and_pkey, {Props, Cert, _PKey}}) ->
-              {stop, {cert_and_pkey, {Props, Cert, <<"*****">>}}};
-          ({{metakv, K}, {?METAKV_SENSITIVE, _V}}) ->
-              {stop, {{metakv, K}, {?METAKV_SENSITIVE, <<"*****">>}}};
+      fun ({password, V}) ->
+              {stop, {password, sanitize_value(V)}};
+          ({sasl_password, V}) ->
+              {stop, {sasl_password, sanitize_value(V)}};
+          ({admin_pass, V}) ->
+              {stop, {admin_pass, sanitize_value(V)}};
+          ({pass, V}) ->
+              {stop, {pass, sanitize_value(V)}};
+          ({cert_and_pkey, {Cert, PKey}}) ->
+              {stop, {cert_and_pkey, {Cert, sanitize_value(PKey)}}};
+          ({cert_and_pkey, {Props, Cert, PKey}}) ->
+              {stop, {cert_and_pkey, {Props, Cert, sanitize_value(PKey)}}};
+          ({{metakv, K}, {?METAKV_SENSITIVE, V}}) ->
+              {stop, {{metakv, K}, {?METAKV_SENSITIVE, sanitize_value(V)}}};
           ({cookie, Cookie}) ->
               {stop, {cookie, ns_cookie_manager:sanitize_cookie(Cookie)}};
           ({UName, {auth, Auth}}) ->
               {stop, {tag_user_name(UName),
                       {auth, sanitize(Auth, TagUserTuples)}}};
-          ({<<"h">>, _}) ->
-              {stop, {<<"h">>, "*****"}};
-          ({<<"plain">>, _}) ->
-              {stop, {<<"plain">>, "*****"}};
+          ({<<"h">>, V}) ->
+              {stop, {<<"h">>, sanitize_value(V)}};
+          ({<<"plain">>, V}) ->
+              {stop, {<<"plain">>, sanitize_value(V)}};
           ({Key, ListUsers}) when Key =:= disabled_users orelse
                                   Key =:= disabled_userids ->
               TaggedUsers = [{tag_user_name(N), Src} || {N, Src} <- ListUsers],
@@ -208,6 +208,9 @@ sanitize(Config, TagUserTuples) ->
           (Other) ->
               Continue(Other)
       end, Config).
+
+sanitize_value(Value) ->
+    {sanitized, base64:encode(crypto:hash(sha256, term_to_binary(Value)))}.
 
 log_kv({buckets, RawBuckets0}, #state{buckets=OldBuckets} = State) ->
     VClock = ns_config:extract_vclock(RawBuckets0),
