@@ -820,7 +820,8 @@ wait_saver(State, Timeout) ->
             end
     end.
 
-terminate(_Reason, State) ->
+terminate(Reason, State) ->
+    ?log_debug("Config is terminating with reason ~p", [Reason]),
     case wait_saver(State, ?TERMINATE_SAVE_TIMEOUT) of
         timeout ->
             ale:warn(?USER_LOGGER,
@@ -854,6 +855,7 @@ handle_info(Info, State) ->
     {noreply, State}.
 
 handle_call(reload, _From, State) ->
+    ?log_debug("Reload config"),
     wait_saver(State, infinity),
     case init(State#config.init) of
         {ok, State2} ->
