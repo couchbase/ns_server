@@ -1131,8 +1131,8 @@ do_connect(Options) ->
                                            list_to_binary(Pass)}}) of
             ok -> ok;
             Err ->
-                ?log_debug("MB-34675: Login failed for <ud>~s</ud> with "
-                           "provided password <ud>~s</ud>", [User, Pass]),
+                ?log_debug("Login failed for ~s with provided password"
+                           " ~p", [User, ns_config_log:sanitize_value(Pass)]),
                 error({auth_failure, Err})
         end,
         Features = mc_client_binary:hello_features(Options),
