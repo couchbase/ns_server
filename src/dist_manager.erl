@@ -29,7 +29,7 @@
 
 -export([adjust_my_address/3, save_address_config/1,
          ip_config_path/0, using_user_supplied_address/0, reset_address/0,
-         wait_for_node/1, fixup_config/1, get_rename_txn_pid/0]).
+         wait_for_node/1, fixup_config/1, need_fixup/0, get_rename_txn_pid/0]).
 
 %% used by babysitter and ns_couchdb
 -export([configure_net_kernel/0]).
@@ -411,8 +411,10 @@ fixup_node_in_config(Old, New) ->
     ?log_debug("Fixing after the aborted rename from ~p to ~p", [Old, New]),
     ok = misc:wait_for_local_name(ns_config, 60000),
     ok = misc:wait_for_local_name(ns_config_rep, 60000),
+    ok = misc:wait_for_local_name(chronicle_local, 60000),
     %% this ensures that ns_config is initialized
-    ns_config:get().
+    ns_config:get(),
+    chronicle_local:sync().
 
 rename_node_in_configs(Old, New) ->
     ?log_debug("Renaming node from ~p to ~p in config", [Old, New]),

@@ -25,7 +25,8 @@
 -export([start_link/0,
          init/1,
          handle_call/3,
-         rename/1]).
+         rename/1,
+         sync/0]).
 
 %% exported chronicle log fun
 -export([log/4]).
@@ -45,14 +46,26 @@ init([]) ->
     ok = application:ensure_started(chronicle, permanent),
 
     ok = ensure_provisioned(),
+    case dist_manager:need_fixup() of
+        {true, OldNode} ->
+            ?log_info("Aborted rename from ~p was detected", [OldNode]),
+            handle_rename(OldNode);
+        false ->
+            ok
+    end,
     {ok, []}.
 
 handle_call({rename, OldNode}, _From, State) ->
     handle_rename(OldNode),
+    {reply, ok, State};
+handle_call(sync, _From, State) ->
     {reply, ok, State}.
 
 rename(OldNode) ->
     gen_server2:call(?MODULE, {rename, OldNode}).
+
+sync() ->
+    gen_server2:call(?MODULE, sync).
 
 ensure_provisioned() ->
     ?log_debug("Ensure that chronicle is provisioned"),
