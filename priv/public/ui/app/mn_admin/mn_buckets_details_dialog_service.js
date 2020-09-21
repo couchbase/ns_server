@@ -57,6 +57,10 @@ function mnBucketsDetailsDialogServiceFactory($http, $q, mnBytesToMBFilter, mnCo
       copyProperty("purgeInterval");
       conf["evictionPolicy"] = bucketConf["evictionPolicyEphemeral"];
     }
+    if (bucketConf.storageBackend === "magma") {
+      copyProperty("fragmentationPercentage");
+    }
+
     if (bucketConf.bucketType === "membase" || bucketConf.bucketType === "ephemeral") {
       copyProperties(["threadsNumber", "replicaNumber"]);
       if (pools.isEnterprise && poolDefault.compat.atLeast55) {

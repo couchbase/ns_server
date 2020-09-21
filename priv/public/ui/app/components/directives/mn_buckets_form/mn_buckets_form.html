@@ -514,9 +514,25 @@
         <div
            class="error margin-bottom-half"
            ng-show="validation.result.errors.storageBackend">
-            {{validation.result.errors.storageBackend}}
+          {{validation.result.errors.storageBackend}}
         </div>
       </div>
+
+      <div
+         class="formrow checkbox-list"
+         ng-if="bucketConf.storageBackend === 'magma'">
+        <label>Magma Buckets Fragmentation</label>
+        <div class="formrow form-inline">
+          <input
+             ng-model="bucketConf.fragmentationPercentage"
+             type="number">
+          <small> %</small>
+          <div
+             class="error margin-bottom-half"
+             ng-show="validation.result.errors.fragmentationPercentage">
+            {{validation.result.errors.fragmentationPercentage}}
+          </div>
+        </div>
     </div>
   </div>
 </div>
