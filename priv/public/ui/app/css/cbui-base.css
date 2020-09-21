@@ -113,6 +113,9 @@ body {
   line-height: 1.5;
   background: #fff;
   color: #000;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale;
 }
 /* improves antialiasing of text in Mac OS ---------------------------------- */
 h1,
@@ -519,6 +522,10 @@ button.tight {
   padding: 0 .75rem;
   line-height: normal;
   font-size: .961rem;
+}
+/* when there are button siblings, make 2-x have a left margin -------------- */
+button + button {
+  margin-left: .25rem!important;
 }
 /* special button for rebalance - orange ------------------------------------ */
 .btn.orange,
