@@ -138,7 +138,8 @@ function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMem
     if ($scope.rbac.cluster.admin.memcached.write) {
       promise8 = mnPromiseHelper(vm, mnSettingsClusterService.postMemcachedSettings({
         num_reader_threads: packThreadValue('reader'),
-        num_writer_threads: packThreadValue('writer')
+        num_writer_threads: packThreadValue('writer'),
+        num_storage_threads: packThreadValue('storage')
       }))
         .catchErrors("dataServiceSettingsErrors")
         .getPromise();
@@ -234,8 +235,10 @@ function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMem
       mnSettingsClusterService.getMemcachedSettings().then(function (rv) {
         vm.readerThreads = unpackThreadValue(rv.data.num_reader_threads);
         vm.writerThreads = unpackThreadValue(rv.data.num_writer_threads);
+        vm.storageThreads = unpackThreadValue(rv.data.num_storage_threads);
         vm.readerThreadsFixed = unpackThreadsCount(rv.data.num_reader_threads);
         vm.writerThreadsFixed = unpackThreadsCount(rv.data.num_writer_threads);
+        vm.storageThreadsFixed = unpackThreadsCount(rv.data.num_storage_threads);
       });
     }
 
