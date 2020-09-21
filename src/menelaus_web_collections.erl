@@ -233,14 +233,16 @@ get_err_code_msg({cannot_create_default_collection, ScopeName}) ->
 get_err_code_msg({cannot_modify_collection, Scope, Collection}) ->
     {"Cannot modify collection properties for Scope ~p Collection ~p",
      [Scope, Collection], 400};
-get_err_code_msg(scope_already_exists) ->
-    {"Scope with this name already exists", 400};
-get_err_code_msg(collection_already_exists) ->
-    {"Collection with this name already exists", 400};
-get_err_code_msg(collection_not_found) ->
-    {"Collection with this name is not found", 404};
-get_err_code_msg(scope_not_found) ->
-    {"Scope with this name is not found", 404};
+get_err_code_msg({scope_already_exists, ScopeName}) ->
+    {"Scope with name ~p already exists", [ScopeName], 400};
+get_err_code_msg({collection_already_exists, ScopeName, CollectionName}) ->
+    {"Collection with name ~p in scope ~p already exists",
+     [CollectionName, ScopeName], 400};
+get_err_code_msg({collection_not_found, ScopeName, CollectionName}) ->
+    {"Collection with name ~p in scope ~p is not found",
+     [CollectionName, ScopeName], 404};
+get_err_code_msg({scope_not_found, ScopeName}) ->
+    {"Scope with name ~p is not found", [ScopeName], 404};
 get_err_code_msg(cannot_drop_default_scope) ->
     {"Deleting _default scope is not allowed", 400};
 get_err_code_msg({max_number_exceeded, num_scopes}) ->
@@ -254,21 +256,23 @@ get_err_code_msg(Error) when Error =:= unsafe;
 get_err_code_msg(Error) ->
     {"Unknown error ~p", [Error], 400}.
 
+get_formatted_err_msg(Error) ->
+    case get_err_code_msg(Error) of
+        {Msg, Code} -> {Msg, Code};
+        {Msg, Params, Code} -> {io_lib:format(Msg, Params), Code}
+    end.
+
 handle_rv({ok, Uid}, Req) ->
     menelaus_util:reply_json(Req, {[{uid, Uid}]}, 200);
 handle_rv({errors, List}, Req) when is_list(List) ->
     Errors = lists:map(fun (Elem) ->
-                               {Msg, _} = get_err_code_msg(Elem),
+                               {Msg, _} = get_formatted_err_msg(Elem),
                                Msg
                        end, lists:usort(List)),
     menelaus_util:reply_json(Req, {[{errors, Errors}]}, 400);
 handle_rv(Error, Req) ->
-    case get_err_code_msg(Error) of
-        {Msg, Code} ->
-            reply_global_error(Req, Msg, Code);
-        {Msg, Params, Code} ->
-            reply_global_error(Req, io_lib:format(Msg, Params), Code)
-    end.
+    {Msg, Code} = get_formatted_err_msg(Error),
+    reply_global_error(Req, Msg, Code).
 
 reply_global_error(Req, Msg, Code) ->
     menelaus_util:reply_json(

@@ -373,7 +373,7 @@ verify_oper({create_scope, Name}, Manifest) ->
         undefined ->
             ok;
         _ ->
-            scope_already_exists
+            {scope_already_exists, Name}
     end;
 verify_oper({drop_scope, Name}, Manifest) ->
     Scopes = get_scopes(Manifest),
@@ -383,7 +383,7 @@ verify_oper({drop_scope, Name}, Manifest) ->
         _ ->
             case find_scope(Name, Scopes) of
                 undefined ->
-                    scope_not_found;
+                    {scope_not_found, Name};
                 _ ->
                     ok
             end
@@ -394,26 +394,26 @@ verify_oper({create_collection, ScopeName, Name, _}, Manifest) ->
     Scopes = get_scopes(Manifest),
     case find_scope(ScopeName, Scopes) of
         undefined ->
-            scope_not_found;
+            {scope_not_found, ScopeName};
         Scope ->
             Collections = get_collections(Scope),
             case find_collection(Name, Collections) of
                 undefined ->
                     ok;
                 _ ->
-                    collection_already_exists
+                    {collection_already_exists, ScopeName, Name}
             end
     end;
 verify_oper({drop_collection, ScopeName, Name}, Manifest) ->
     Scopes = get_scopes(Manifest),
     case find_scope(ScopeName, Scopes) of
         undefined ->
-            scope_not_found;
+            {scope_not_found, ScopeName};
         Scope ->
             Collections = get_collections(Scope),
             case find_collection(Name, Collections) of
                 undefined ->
-                    collection_not_found;
+                    {collection_not_found, ScopeName, Name};
                 _ ->
                     ok
             end
