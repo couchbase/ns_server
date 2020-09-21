@@ -269,8 +269,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["pools", "default", "buckets", Id, "localRandomKey"] ->
                     {{[{collection, [Id, "_default", "_default"]},
                        data, docs], read},
-                     fun menelaus_web_buckets:handle_local_random_key/3,
-                     ["default", Id]};
+                     fun menelaus_web_buckets:handle_local_random_key/2, [Id]};
                 ["pools", "default", "buckets", BucketId, "scopes", ScopeId,
                  "collections", CollectionId, "localRandomKey"] ->
                     {{[{collection, [BucketId, ScopeId, CollectionId]},

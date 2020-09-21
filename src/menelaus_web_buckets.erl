@@ -48,7 +48,7 @@
          handle_cancel_view_compaction/4,
          handle_ddocs_list/3,
          handle_set_ddoc_update_min_changes/4,
-         handle_local_random_key/3,
+         handle_local_random_key/2,
          handle_local_random_key/4,
          maybe_cleanup_old_buckets/0,
          serve_short_bucket_info/2,
@@ -1722,7 +1722,7 @@ handle_local_random_key(Bucket, Scope, Collection, Req) ->
       menelaus_web_crud:assert_collection_uid(Bucket, Scope, Collection),
       Req).
 
-handle_local_random_key(_PoolId, Bucket, Req) ->
+handle_local_random_key(Bucket, Req) ->
     CollectionUid = menelaus_web_crud:assert_default_collection_uid(Bucket),
     do_handle_local_random_key(Bucket, CollectionUid, Req).
 
