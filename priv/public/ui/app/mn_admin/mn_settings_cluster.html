@@ -580,7 +580,8 @@
                type="text"
                ng-model="settingsClusterCtl.indexSettings.maxRollbackPoints"
                ng-disabled="settingsClusterCtl.indexSettings.storageMode === '' || !rbac.cluster.settings.indexes.write"
-               id="in_memory_snapshot">
+               id="in_memory_snapshot"
+               class="input-small input-short-1">
             <div class="error error-field" ng-show="settingsClusterCtl.indexSettingsErrors.maxRollbackPoints">
               {{settingsClusterCtl.indexSettingsErrors.maxRollbackPoints}}
             </div>
