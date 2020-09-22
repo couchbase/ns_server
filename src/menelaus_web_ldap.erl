@@ -36,10 +36,14 @@ prepare_ldap_settings(Settings) ->
     Fun =
       fun (_, undefined) -> undefined;
           (K, V) ->
-            {_, JsonKey, _, Formatter} = lists:keyfind(K, 1, SettingsDesc),
-            {JsonKey, Formatter(V)}
+            case lists:keyfind(K, 1, SettingsDesc) of
+                %% Removing parameters that are used for validation only,
+                %% like authUser and authPass
+                false -> undefined;
+                {_, JsonKey, _, Formatter} -> {JsonKey, Formatter(V)}
+            end
       end,
-    [Fun(K, V) || {K, V} <- Settings, V =/= undefined].
+    [{ResK, ResV} || {K, V} <- Settings, {ResK, ResV} <- [Fun(K, V)]].
 
 handle_ldap_settings_post(Req) ->
     menelaus_web_rbac:assert_groups_and_ldap_enabled(),
@@ -60,8 +64,16 @@ parse_ldap_settings_keys(Props) ->
           end
       end, Props).
 
-build_new_ldap_settings(Props) ->
-    misc:update_proplist(ldap_util:build_settings(), Props).
+build_validation_settings(Props) ->
+    Current = ldap_util:build_settings(),
+    SetReuseSessions =
+        %% Set reuse_sessions to false, unless it's set to another value
+        %% in settings explicitly
+        fun (undefined) -> [{reuse_sessions, false}];
+            (Opts) -> misc:update_proplist([{reuse_sessions, false}], Opts)
+        end,
+    Settings = misc:key_update(extra_tls_opts, Current, SetReuseSessions),
+    {Current, misc:update_proplist(Settings, Props)}.
 
 handle_ldap_settings_validate_post(Type, Req) when Type =:= "connectivity";
                                                    Type =:= "authentication";
@@ -70,7 +82,14 @@ handle_ldap_settings_validate_post(Type, Req) when Type =:= "connectivity";
     validator:handle(
       fun (Props) ->
               ParsedProps = parse_ldap_settings_keys(Props),
-              NewProps = build_new_ldap_settings(ParsedProps),
+              {CurrProps, NewProps} = build_validation_settings(ParsedProps),
+              ?log_debug("Validating ~p for LDAP settings: ~n~p~n"
+                         "Modified settings:~n~p~n"
+                         "Full list of settings:~n~p",
+                         [Type,
+                          prepare_ldap_settings(ParsedProps),
+                          prepare_ldap_settings(ParsedProps -- CurrProps),
+                          prepare_ldap_settings(NewProps)]),
               Res = validate_ldap_settings(Type, NewProps),
               menelaus_util:reply_json(Req, {Res})
       end, Req, form, ldap_settings_validator_validators(Type) ++
@@ -130,6 +149,12 @@ ldap_settings_desc() ->
       end, Id},
      {user_dn_mapping, userDNMapping,
       Curry(fun validate_user_dn_mapping/2), fun ({Obj, _}) -> Obj end},
+     {bind_method, bindMethod,
+      fun (N) ->
+          functools:compose(
+            [validator:one_of(N, ["Simple", "SASLExternal", "None"], _),
+             validator:convert(N, fun list_to_atom/1, _)])
+      end, Id},
      {bind_dn, bindDN,
       Curry(fun validate_ldap_dn/2), list_to_binary(_)},
      {bind_pass, bindPass,
@@ -167,8 +192,23 @@ ldap_settings_desc() ->
       Curry(fun validate_key/2),
       fun (undefined) -> <<>>;
           ({password, {_, _, not_encrypted}}) -> <<"**********">>
+      end},
+     {extra_tls_opts, extraTLSOpts,
+      Curry(fun not_supported/2),
+      fun (List) ->
+          Sanitized =
+              lists:map(
+                fun ({K, {password, _}}) -> {K, <<"********">>};
+                    ({K, V}) -> {K, V}
+                end, List),
+          iolist_to_binary(io_lib:format("~p", [Sanitized]))
       end}
     ].
+
+not_supported(Name, State) ->
+    validator:validate(
+      fun (_) -> {error, "modification not supported"} end,
+      Name, State).
 
 ldap_settings_validators() ->
     [Validator(JsonKey) || {_, JsonKey, Validator, _} <- ldap_settings_desc()]

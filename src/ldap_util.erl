@@ -22,7 +22,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([with_authenticated_connection/4,
+-export([with_simple_bind/4,
+         with_external_bind/2,
          with_connection/2,
          search/6,
          parse_url/1,
@@ -50,12 +51,27 @@ ssl_options(Host, Settings) ->
         case proplists:get_value(server_cert_validation, Settings) of
             true ->
                 [{verify, verify_peer}, {cacerts, get_cacerts(Settings)},
-                 {server_name_indication, Host}, {log_alert, false},
+                 {server_name_indication, Host}, {log_alert, true},
                  {depth, ?ALLOWED_CERT_CHAIN_LENGTH}];
             false ->
                 [{verify, verify_none}]
         end,
-    ClientAuthOpts ++ PeerVerificationOpts.
+    ExtraOptsUnprepared =
+        case proplists:get_value(extra_tls_opts, Settings) of
+            undefined -> []; %% not a default, but value == undefined
+            L -> L
+        end,
+    %% Remove {password, _} wrap.
+    %% In case if a value in opts contains sensitive information (like
+    %% a password or a private key) it might be protected by such a wrap.
+    %% That would prevent the value from being printed to logs or returned as
+    %% an API response. We need to drop it before use, because ssl knows nothing
+    %% about it.
+    ExtraOpts = lists:map(
+                  fun ({K, {password, V}}) -> {K, V};
+                      (KV) -> KV
+                  end, ExtraOptsUnprepared),
+    misc:update_proplist(ClientAuthOpts ++ PeerVerificationOpts, ExtraOpts).
 
 client_cert_auth_enabled(Settings) ->
     Encryption = proplists:get_value(encryption, Settings),
@@ -110,7 +126,8 @@ with_connection(Settings, Fun) ->
 
     case open_ldap_connection(Hosts, Port, SSL, Timeout, Settings) of
         {ok, Handle, Host} ->
-            ?log_debug("Connected to LDAP server: ~p", [Host]),
+            ?log_debug("Connected to LDAP server: ~p (port: ~p, SSL: ~p)",
+                       [Host, Port, SSL]),
             try
                 %% The upgrade is done in two phases: first the server is asked
                 %% for permission to upgrade. Second, if the request is
@@ -132,20 +149,36 @@ with_connection(Settings, Fun) ->
                 eldap:close(Handle)
             end;
         {error, Reason} ->
-            ?log_error("Connect to ldap {~p, ~p, ~p} failed: ~p",
+            ?log_error("Connect to ldap ~p (port: ~p, SSL: ~p} failed: ~p",
                        [Hosts, Port, SSL, Reason]),
             {error, {connect_failed, Reason}}
     end.
 
-with_authenticated_connection(DN, Password, Settings, Fun) ->
+with_external_bind(Settings, Fun) ->
+    with_connection(Settings,
+                    fun (Handle) ->
+                            Bind = eldap:sasl_external_bind(Handle),
+                            ?log_debug("SASL EXTERNAL bind res: ~p", [Bind]),
+                            case Bind of
+                                ok -> Fun(Handle);
+                                {ok, {referral, _}} ->
+                                    {error, referral_not_supported};
+                                {error, Error} ->
+                                    {error, {bind_failed, "<external>", Error}}
+                            end
+                    end).
+
+with_simple_bind(DN, Password, Settings, Fun) ->
     with_connection(Settings,
                     fun (Handle) ->
                             PasswordBin = iolist_to_binary(Password),
                             Bind = eldap:simple_bind(Handle, DN, PasswordBin),
-                            ?log_debug("Bind for dn ~p: ~p",
+                            ?log_debug("Simple bind for DN ~p: ~p",
                                        [ns_config_log:tag_user_name(DN), Bind]),
                             case Bind of
                                 ok -> Fun(Handle);
+                                {ok, {referral, _}} ->
+                                    {error, referral_not_supported};
                                 {error, Error} ->
                                     {error, {bind_failed, DN, Error}}
                             end
@@ -175,7 +208,9 @@ default_settings() ->
      {cache_value_lifetime,
       round(0.5*menelaus_roles:external_auth_polling_interval())},
      {cacert, undefined},
-     {server_cert_validation, true}].
+     {server_cert_validation, true},
+     {bind_method, undefined},
+     {extra_tls_opts, undefined}].
 
 build_settings() ->
     case ns_config:search(ldap_settings) of
