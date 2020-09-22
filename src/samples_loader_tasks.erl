@@ -137,7 +137,8 @@ perform_loading_task(Name, Quota) ->
                                         "samples", Name ++ ".zip"])],
 
     Env = [{"CB_USERNAME", "@ns_server"},
-           {"CB_PASSWORD", ns_config_auth:get_password(special)}],
+           {"CB_PASSWORD", ns_config_auth:get_password(special)} |
+           ns_ports_setup:build_cbauth_env_vars(ns_config:latest(), cbimport)],
 
     {Status, Output} = misc:run_external_tool(Cmd, Args, Env),
     case Status of
