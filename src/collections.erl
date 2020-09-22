@@ -78,21 +78,32 @@ default_manifest() ->
           [{"_default",
             [{uid, 0}]}]}]}]}].
 
-get_collection_uid(Bucket, ScopeName, CollectionName) ->
-    {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
-    Scopes = get_scopes(get_manifest(BucketConfig)),
+with_scope(Fun, ScopeName, Manifest) ->
+    Scopes = get_scopes(Manifest),
     case find_scope(ScopeName, Scopes) of
         undefined ->
             {error, {scope_not_found, ScopeName}};
         Scope ->
-            Collections = get_collections(Scope),
-            case find_collection(CollectionName, Collections) of
-                undefined ->
-                    {error, {collection_not_found, ScopeName, CollectionName}};
-                Props ->
-                    {ok, get_uid(Props)}
-            end
+            Fun(Scope)
     end.
+
+with_collection(Fun, ScopeName, CollectionName, Manifest) ->
+    with_scope(
+      fun (Scope) ->
+              Collections = get_collections(Scope),
+              case find_collection(CollectionName, Collections) of
+                  undefined ->
+                      {error,
+                       {collection_not_found, ScopeName, CollectionName}};
+                  Props ->
+                      Fun(Props)
+              end
+      end, ScopeName, Manifest).
+
+get_collection_uid(Bucket, ScopeName, CollectionName) ->
+    {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
+    with_collection(?cut({ok, get_uid(_)}), ScopeName,
+                    CollectionName, get_manifest(BucketConfig)).
 
 uid(BucketCfg) ->
     case enabled(BucketCfg) of
@@ -392,49 +403,25 @@ verify_oper({create_scope, Name}, Manifest) ->
         _ ->
             {scope_already_exists, Name}
     end;
+verify_oper({drop_scope, "_default"}, _Manifest) ->
+    cannot_drop_default_scope;
 verify_oper({drop_scope, Name}, Manifest) ->
-    Scopes = get_scopes(Manifest),
-    case Name of
-        "_default" ->
-            cannot_drop_default_scope;
-        _ ->
-            case find_scope(Name, Scopes) of
-                undefined ->
-                    {scope_not_found, Name};
-                _ ->
-                    ok
-            end
-    end;
+    with_scope(fun (_) -> ok end, Name, Manifest);
 verify_oper({create_collection, ScopeName, "_default", _}, _Manifest) ->
     {cannot_create_default_collection, ScopeName};
 verify_oper({create_collection, ScopeName, Name, _}, Manifest) ->
-    Scopes = get_scopes(Manifest),
-    case find_scope(ScopeName, Scopes) of
-        undefined ->
-            {scope_not_found, ScopeName};
-        Scope ->
-            Collections = get_collections(Scope),
-            case find_collection(Name, Collections) of
-                undefined ->
-                    ok;
-                _ ->
-                    {collection_already_exists, ScopeName, Name}
-            end
-    end;
+    with_scope(
+      fun (Scope) ->
+              Collections = get_collections(Scope),
+              case find_collection(Name, Collections) of
+                  undefined ->
+                      ok;
+                  _ ->
+                      {collection_already_exists, ScopeName, Name}
+              end
+      end, ScopeName, Manifest);
 verify_oper({drop_collection, ScopeName, Name}, Manifest) ->
-    Scopes = get_scopes(Manifest),
-    case find_scope(ScopeName, Scopes) of
-        undefined ->
-            {scope_not_found, ScopeName};
-        Scope ->
-            Collections = get_collections(Scope),
-            case find_collection(Name, Collections) of
-                undefined ->
-                    {collection_not_found, ScopeName, Name};
-                _ ->
-                    ok
-            end
-    end;
+    with_collection(fun (_) -> ok end, ScopeName, Name, Manifest);
 verify_oper({modify_collection, ScopeName, Name}, _Manifest) ->
     {cannot_modify_collection, ScopeName, Name}.
 
