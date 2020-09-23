@@ -71,7 +71,11 @@ function mnDocumentsListFactory($http, $q, docsLimit) {
   }
 
   function getDocumentsURI(params) {
-    return "/pools/default/buckets/" + encodeURIComponent(params.bucket) + "/docs";
+    let base = "/pools/default/buckets/" + encodeURIComponent(params.bucket)
+    if (params.scope && params.collection) {
+      base += "/scopes/" + encodeURIComponent(params.scope) + "/collections/" + encodeURIComponent(params.collection);
+    }
+    return base + "/docs";
   }
 
   function getDocuments(params) {

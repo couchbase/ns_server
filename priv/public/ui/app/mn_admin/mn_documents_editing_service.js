@@ -89,6 +89,10 @@ function mnDocumentsEditingFactory($http, $q, getStringBytesFilter, docBytesLimi
     });
   }
   function buildDocumentUrl(params) {
-    return "/pools/default/buckets/" + encodeURIComponent(params.bucket) + "/docs/" + encodeURIComponent(params.documentId);
+    let base =  "/pools/default/buckets/" + encodeURIComponent(params.bucket);
+    if (params.scope && params.collection) {
+      base += "/scopes/" + encodeURIComponent(params.scope) + "/collections/" + encodeURIComponent(params.collection);
+    }
+    return base + "/docs/" + encodeURIComponent(params.documentId);
   }
 }
