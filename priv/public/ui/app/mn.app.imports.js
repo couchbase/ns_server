@@ -83,8 +83,8 @@ let auditState = {
   name: 'app.admin.security.audit.**',
   url: '/audit',
   loadChildren: () => {
-    return import('./mn.audit.module.js').then(m => {
-      return m.MnAuditModule;
+    return import('./mn.security.audit.module.js').then(m => {
+      return m.MnSecurityAuditModule;
     });
   }
 };

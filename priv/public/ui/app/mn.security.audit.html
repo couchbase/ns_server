@@ -94,11 +94,11 @@
          class="audit-module"
          *ngFor="let moduleName of (descriptorsByModule | async | mnObjectKeys);">
 
-        <mn-audit-item
+        <mn-security-audit-item
            [form]="form"
            [descriptors]="descriptorsByModule"
            moduleName="{{moduleName}}"
-        ></mn-audit-item>
+        ></mn-security-audit-item>
 
       </section>
 

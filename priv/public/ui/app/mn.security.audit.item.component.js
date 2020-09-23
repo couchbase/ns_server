@@ -7,13 +7,13 @@ import {FormControl, FormGroup} from '/ui/web_modules/@angular/forms.js';
 
 import { MnLifeCycleHooksToStream } from './mn.core.js';
 
-export {MnAuditItemComponent};
+export {MnSecurityAuditItemComponent};
 
-class MnAuditItemComponent extends MnLifeCycleHooksToStream {
+class MnSecurityAuditItemComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
-      selector: "mn-audit-item",
-      templateUrl: "/ui/app/mn.audit.item.html",
+      selector: "mn-security-audit-item",
+      templateUrl: "/ui/app/mn.security.audit.item.html",
       inputs: [
         "form",
         "descriptors",

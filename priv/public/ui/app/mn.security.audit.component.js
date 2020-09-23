@@ -12,12 +12,12 @@ import {MnPermissions} from '/ui/app/ajs.upgraded.providers.js';
 import {MnAdminService} from './mn.admin.service.js';
 import {MnPoolsService} from './mn.pools.service.js';
 
-export {MnAuditComponent};
+export {MnSecurityAuditComponent};
 
-class MnAuditComponent extends MnLifeCycleHooksToStream {
+class MnSecurityAuditComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
-      templateUrl: "/ui/app/mn.audit.html",
+      templateUrl: "/ui/app/mn.security.audit.html",
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}

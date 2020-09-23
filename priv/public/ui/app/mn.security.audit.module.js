@@ -6,8 +6,8 @@ import {MnSharedModule} from './mn.shared.module.js';
 
 import {MnPipesModule} from './mn.pipes.module.js';
 
-import {MnAuditComponent} from './mn.audit.component.js';
-import {MnAuditItemComponent} from './mn.audit.item.component.js';
+import {MnSecurityAuditComponent} from './mn.security.audit.component.js';
+import {MnSecurityAuditItemComponent} from './mn.security.audit.item.component.js';
 import {MnSecurityService} from './mn.security.service.js';
 
 let auditState = {
@@ -16,19 +16,19 @@ let auditState = {
   data: {
     enterprise: true
   },
-  component: MnAuditComponent
+  component: MnSecurityAuditComponent
 };
 
-export {MnAuditModule};
+export {MnSecurityAuditModule};
 
-class MnAuditModule {
+class MnSecurityAuditModule {
   static get annotations() { return [
     new NgModule({
       entryComponents: [
       ],
       declarations: [
-        MnAuditComponent,
-        MnAuditItemComponent
+        MnSecurityAuditComponent,
+        MnSecurityAuditItemComponent
       ],
       imports: [
         MnPipesModule,
