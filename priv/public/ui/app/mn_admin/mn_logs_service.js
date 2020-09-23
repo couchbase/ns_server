@@ -1,10 +1,11 @@
 import angular from "/ui/web_modules/angular.js";
 import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
+import ngClipboard from "/ui/libs/ngclipboard.js";
 
 export default "mnLogsService";
 
 angular
-  .module('mnLogsService', [uiBootstrap])
+  .module('mnLogsService', [uiBootstrap, ngClipboard])
   .service('mnLogsService', mnLogsServiceFactory);
 
 function mnLogsServiceFactory($http, $rootScope, $uibModal) {
