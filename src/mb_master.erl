@@ -28,8 +28,9 @@
 -endif.
 
 %% Constants and definitions
--define(HEARTBEAT_INTERVAL, 2000).
--define(TIMEOUT, ?HEARTBEAT_INTERVAL * 5).
+-define(HEARTBEAT_INTERVAL, ?get_param(heartbeat_interval, 2000)).
+-define(TIMEOUT_INTERVAL_COUNT, ?get_param(timeout_interval_count, 5)).
+-define(TIMEOUT, ?HEARTBEAT_INTERVAL * ?TIMEOUT_INTERVAL_COUNT).
 
 -type node_info() :: {version(), node()}.
 
