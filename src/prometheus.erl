@@ -93,7 +93,7 @@ post_async(Path, Body, Timeout, Settings, Handler) ->
             BodyEncoded = mochiweb_util:urlencode(Body),
             {Username, Password} = proplists:get_value(prometheus_creds,
                                                        Settings),
-            Headers = menelaus_rest:add_basic_auth([], Username, Password),
+            Headers = [menelaus_rest:basic_auth_header(Username, Password)],
             AFamily = proplists:get_value(afamily, Settings),
             Receiver =
                 fun (Res) ->
