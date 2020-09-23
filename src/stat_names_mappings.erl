@@ -14,7 +14,8 @@
 %% limitations under the License.
 -module(stat_names_mappings).
 
--export([pre_70_stats_to_prom_query/2, prom_name_to_pre_70_name/2]).
+-export([pre_70_stats_to_prom_query/2, prom_name_to_pre_70_name/2,
+         handle_stats_mapping_get/3]).
 
 -include("ns_test.hrl").
 -include("cut.hrl").
@@ -24,6 +25,15 @@
 -endif.
 
 -define(IRATE_INTERVAL, "1m").
+
+handle_stats_mapping_get(Section, StatTokens, Req) ->
+    StatName = lists:join("/", StatTokens),
+    Stats = case StatName of
+                "all" -> all;
+                S -> [list_to_binary(S)]
+            end,
+    Query = pre_70_stats_to_prom_query(Section, Stats),
+    menelaus_util:reply_text(Req, Query, 200).
 
 pre_70_stats_to_prom_query("@system", all) ->
     <<"{category=`system`}">>;
