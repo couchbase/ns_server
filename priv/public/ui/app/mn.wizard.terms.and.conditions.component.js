@@ -12,12 +12,12 @@ import {MnHttpGroupRequest} from "./mn.http.request.js";
 import {MnAdminService} from "./mn.admin.service.js";
 import {MnPools} from "./ajs.upgraded.providers.js";
 
-export {MnTermsAndConditionsComponent};
+export {MnWizardTermsAndConditionsComponent};
 
-class MnTermsAndConditionsComponent extends MnLifeCycleHooksToStream {
+class MnWizardTermsAndConditionsComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
-      templateUrl: "/ui/app/mn.terms.and.conditions.html",
+      templateUrl: "/ui/app/mn.wizard.terms.and.conditions.html",
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}

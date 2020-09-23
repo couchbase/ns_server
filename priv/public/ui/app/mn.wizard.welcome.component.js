@@ -3,12 +3,12 @@ import { MnLifeCycleHooksToStream } from './mn.core.js';
 import { MnAdminService } from './mn.admin.service.js';
 import { BehaviorSubject } from '/ui/web_modules/rxjs.js';
 
-export { MnWelcomeComponent };
+export { MnWizardWelcomeComponent };
 
-class MnWelcomeComponent extends MnLifeCycleHooksToStream {
+class MnWizardWelcomeComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
-      templateUrl: "/ui/app/mn.welcome.html",
+      templateUrl: "/ui/app/mn.wizard.welcome.html",
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}

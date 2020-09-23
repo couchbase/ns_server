@@ -7,12 +7,12 @@ import { MnHelperService } from './mn.helper.service.js';
 import { MnWizardService } from './mn.wizard.service.js';
 import { MnFormService } from "./mn.form.service.js";
 
-export {MnSetupNewClusterComponent};
+export {MnWizardSetupNewClusterComponent};
 
-class MnSetupNewClusterComponent extends MnLifeCycleHooksToStream {
+class MnWizardSetupNewClusterComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
-      templateUrl: "/ui/app/mn.setup.new.cluster.html",
+      templateUrl: "/ui/app/mn.wizard.setup.new.cluster.html",
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}

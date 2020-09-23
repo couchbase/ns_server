@@ -4,11 +4,11 @@ import {ReactiveFormsModule} from '/ui/web_modules/@angular/forms.js';
 import {HttpClientJsonpModule} from '/ui/web_modules/@angular/common/http.js';
 import {CommonModule} from '/ui/web_modules/@angular/common.js';
 import {MnWizardComponent} from './mn.wizard.component.js';
-import {MnWelcomeComponent} from './mn.welcome.component.js';
-import {MnSetupNewClusterComponent} from './mn.setup.new.cluster.component.js';
-import {MnNewClusterConfigComponent} from './mn.new.cluster.config.component.js';
-import {MnTermsAndConditionsComponent} from './mn.terms.and.conditions.component.js';
-import {MnJoinClusterComponent} from './mn.join.cluster.component.js';
+import {MnWizardWelcomeComponent} from './mn.wizard.welcome.component.js';
+import {MnWizardSetupNewClusterComponent} from './mn.wizard.setup.new.cluster.component.js';
+import {MnWizardNewClusterConfigComponent} from './mn.wizard.new.cluster.config.component.js';
+import {MnWizardTermsAndConditionsComponent} from './mn.wizard.terms.and.conditions.component.js';
+import {MnWizardJoinClusterComponent} from './mn.wizard.join.cluster.component.js';
 import {MnWizardService} from './mn.wizard.service.js';
 import {MnAuthService} from './mn.auth.service.js';
 import {MnSharedModule} from './mn.shared.module.js';
@@ -36,19 +36,19 @@ let states = [{
   component: MnWizardComponent
 }, {
   name: 'app.wizard.welcome',
-  component: MnWelcomeComponent
+  component: MnWizardWelcomeComponent
 }, {
   name: "app.wizard.setupNewCluster",
-  component: MnSetupNewClusterComponent
+  component: MnWizardSetupNewClusterComponent
 }, {
   name: 'app.wizard.joinCluster',
-  component: MnJoinClusterComponent
+  component: MnWizardJoinClusterComponent
 }, {
   name:'app.wizard.termsAndConditions',
-  component: MnTermsAndConditionsComponent
+  component: MnWizardTermsAndConditionsComponent
 }, {
   name: 'app.wizard.clusterConfiguration',
-  component: MnNewClusterConfigComponent
+  component: MnWizardNewClusterConfigComponent
 }];
 
 
@@ -66,11 +66,11 @@ class MnWizardModule {
         MnPathFieldComponent,
 
         MnWizardComponent,
-        MnWelcomeComponent,
-        MnNewClusterConfigComponent,
-        MnSetupNewClusterComponent,
-        MnTermsAndConditionsComponent,
-        MnJoinClusterComponent
+        MnWizardWelcomeComponent,
+        MnWizardNewClusterConfigComponent,
+        MnWizardSetupNewClusterComponent,
+        MnWizardTermsAndConditionsComponent,
+        MnWizardJoinClusterComponent
       ],
       providers: [
         MnWizardService,

@@ -12,13 +12,13 @@ import {MnAdminService} from "./mn.admin.service.js";
 import {MnHttpGroupRequest} from "./mn.http.request.js";
 import {MnPools} from "./ajs.upgraded.providers.js";
 
-export {MnNewClusterConfigComponent};
+export {MnWizardNewClusterConfigComponent};
 
-class MnNewClusterConfigComponent extends MnLifeCycleHooksToStream {
+class MnWizardNewClusterConfigComponent extends MnLifeCycleHooksToStream {
 
   static get annotations() { return [
     new Component({
-      templateUrl: "/ui/app/mn.new.cluster.config.html",
+      templateUrl: "/ui/app/mn.wizard.new.cluster.config.html",
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}

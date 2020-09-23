@@ -11,13 +11,13 @@ import {MnHttpGroupRequest} from './mn.http.request.js';
 import {MnSecurityService} from "./mn.security.service.js"
 import {MnPools} from "./ajs.upgraded.providers.js";
 
-export {MnJoinClusterComponent};
+export {MnWizardJoinClusterComponent};
 
-class MnJoinClusterComponent extends MnLifeCycleHooksToStream {
+class MnWizardJoinClusterComponent extends MnLifeCycleHooksToStream {
 
   static get annotations() { return [
     new Component({
-      templateUrl: "/ui/app/mn.join.cluster.html",
+      templateUrl: "/ui/app/mn.wizard.join.cluster.html",
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}
