@@ -73,8 +73,8 @@ let logRedactionState = {
   name: 'app.admin.security.redaction.**',
   url: '/redaction',
   loadChildren: () => {
-    return import('./mn.log.redaction.module.js').then(m => {
-      return m.MnLogRedactionModule;
+    return import('./mn.security.log.redaction.module.js').then(m => {
+      return m.MnSecurityLogRedactionModule;
     });
   }
 };

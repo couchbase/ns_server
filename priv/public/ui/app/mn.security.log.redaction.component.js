@@ -5,12 +5,12 @@ import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnSecurityService} from './mn.security.service.js';
 import {MnFormService} from './mn.form.service.js';
 
-export {MnLogRedactionComponent};
+export {MnSecurityLogRedactionComponent};
 
-class MnLogRedactionComponent extends MnLifeCycleHooksToStream {
+class MnSecurityLogRedactionComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
-      templateUrl: "/ui/app/mn.log.redaction.html",
+      templateUrl: "/ui/app/mn.security.log.redaction.html",
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}

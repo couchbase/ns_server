@@ -4,7 +4,7 @@ import {MnSharedModule} from './mn.shared.module.js';
 import {ReactiveFormsModule} from '/ui/web_modules/@angular/forms.js';
 import {NgbModule} from '/ui/web_modules/@ng-bootstrap/ng-bootstrap.js';
 
-import {MnLogRedactionComponent} from './mn.log.redaction.component.js';
+import {MnSecurityLogRedactionComponent} from './mn.security.log.redaction.component.js';
 import {MnSecurityService} from './mn.security.service.js';
 import {MnBucketsService} from './mn.buckets.service.js';
 import {MnFormService} from './mn.form.service.js';
@@ -12,22 +12,22 @@ import {MnFormService} from './mn.form.service.js';
 let logRedactionState = {
   url: '/redaction',
   name: "app.admin.security.redaction",
-  component: MnLogRedactionComponent,
+  component: MnSecurityLogRedactionComponent,
   data: {
     compat: "atLeast55",
     enterprise: true
   }
 };
 
-export {MnLogRedactionModule};
+export {MnSecurityLogRedactionModule};
 
-class MnLogRedactionModule {
+class MnSecurityLogRedactionModule {
   static get annotations() { return [
     new NgModule({
       entryComponents: [
       ],
       declarations: [
-        MnLogRedactionComponent
+        MnSecurityLogRedactionComponent
       ],
       imports: [
         NgbModule,
