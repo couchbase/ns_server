@@ -11,7 +11,6 @@ import mnSettingsSampleBuckets from "./mn_settings_sample_buckets_controller.js"
 import mnSettingsCluster from "./mn_settings_cluster_controller.js";
 import mnSettingsAutoFailover from "./mn_settings_auto_failover_controller.js";
 import mnSettingsAutoCompaction from "./mn_settings_auto_compaction_controller.js"
-import mnAudit from "./mn_audit_controller.js";
 import mnSettingsAlerts from "./mn_settings_alerts_controller.js";
 import mnSettingsNotificationsService from "./mn_settings_notifications_service.js";
 
@@ -27,7 +26,6 @@ angular
     mnSettingsSampleBuckets,
     mnSettingsAutoFailover,
     mnSettingsAutoCompaction,
-    mnAudit,
     mnSettingsCluster,
     mnSettingsAlerts,
     mnSettingsNotificationsService

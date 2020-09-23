@@ -6,7 +6,6 @@ import mnPoll from "/ui/app/components/mn_poll.js";
 import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnHelper from "/ui/app/components/mn_helper.js";
 import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
-import mnXDCRService from "./mn_xdcr_service.js";
 import mnBucketsService from "./mn_buckets_service.js";
 import mnServersService from "./mn_servers_service.js";
 import mnStatisticsNew from "./mn_statistics_controller.js";
@@ -23,7 +22,6 @@ angular
     mnPromiseHelper,
     mnHelper,
     mnPoolDefault,
-    mnXDCRService,
     mnBucketsService,
     mnServersService,
     mnElementCrane
@@ -78,7 +76,7 @@ function mnOverviewConfig($stateProvider) {
 }
 
 
-function mnOverviewController($scope, $rootScope, mnBucketsService, mnServersService, mnPoller, mnPromiseHelper, mnHelper, mnXDCRService, permissions, pools, mnPoolDefault) {
+function mnOverviewController($scope, $rootScope, mnBucketsService, mnServersService, mnPoller, mnPromiseHelper, mnHelper, permissions, pools, mnPoolDefault) {
   var vm = this;
 
   vm.getEndings = mnHelper.getEndings;
