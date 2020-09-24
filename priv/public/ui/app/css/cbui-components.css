@@ -1652,6 +1652,7 @@ section.error {
 label + .fa-stack,
 h4 + .fa-stack { /* elevate icon next to label or heading  */
   top: -4px;
+  left: 4px;
 }
 .raised { /* elevate element which is child of relatively-positioned parent  */
   top: -4px;
