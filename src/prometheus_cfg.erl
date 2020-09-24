@@ -31,6 +31,7 @@
 -define(RELOAD_RETRY_PERIOD, 10000).
 -define(USERNAME, "@prometheus").
 -define(NS_TO_PROMETHEUS_USERNAME, "ns_server").
+-define(DEFAULT_HIGH_CARD_SERVICES, [index, fts, kv, cbas]).
 
 %%%===================================================================
 %%% API
@@ -59,10 +60,10 @@ default_settings() ->
      {scrape_timeout, 10}, %% in seconds
      {token_file, "prometheus_token"},
      {query_max_samples, 200000},
-     {services, [{index,     [{high_cardinality_enabled, true}]},
-                 {fts,       [{high_cardinality_enabled, true}]},
-                 {kv,        [{high_cardinality_enabled, true}]},
-                 {cbas,      [{high_cardinality_enabled, true}]}]}].
+     {services, [{S, [{high_cardinality_enabled, true}]}
+                        || S <- ?DEFAULT_HIGH_CARD_SERVICES]},
+     {external_prometheus_services, [{S, [{high_cardinality_enabled, true}]}
+                                        || S <- ?DEFAULT_HIGH_CARD_SERVICES]}].
 
 build_settings() -> build_settings(ns_config:get()).
 build_settings(Config) ->
@@ -89,7 +90,10 @@ build_settings(Config) ->
                 ?log_debug("Prometheus is disabled because of insufficient "
                            "information in ns_config (may happen during node "
                            "rename)"),
-                [{enabled, false}];
+                [{enabled, false},
+                 {targets, Targets}]; %% Can be used to report metrics to
+                                      %% external Prometheus even if local one
+                                      %% is disabled
             false ->
                 ns_config:search(Config, stats_settings, []) ++
                 [{listen_addr, misc:join_host_port(LocalAddr, Port)},

@@ -496,7 +496,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_rbac:handle_check_permission_for_cbauth/1};
                 ["_prometheusMetrics"] ->
                     {{[admin, internal, stats], read},
-                     fun menelaus_web_prometheus:handle_get_metrics/1};
+                     fun menelaus_web_prometheus:handle_get_local_metrics/1};
                 ["_statsMapping", Section | StatTokens] ->
                     {{[admin, internal], all},
                      fun stat_names_mappings:handle_stats_mapping_get/3,
@@ -515,6 +515,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                                drop_rest_prefix(mochiweb_request:get(raw_path, Req)),
                                Plugins, PReq)
                      end};
+                ["metrics"] ->
+                    {{[admin, stats_export], read},
+                     fun menelaus_web_prometheus:handle_get_metrics/1};
                 _ ->
                     {ui, IsSSL, fun handle_serve_file/4, [AppRoot, Path, 10]}
             end;
