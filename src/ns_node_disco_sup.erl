@@ -44,10 +44,6 @@ get_child_specs() ->
      {ns_node_disco_log,
       {ns_node_disco_log, start_link, []},
       permanent, 1000, worker, []},
-     % listens for ns_config events relevant to node_disco.
-     {ns_node_disco_conf_events,
-      {ns_node_disco_conf_events, start_link, []},
-      permanent, 1000, worker, []},
      % merges incoming config changes.
      {ns_config_rep_merger, {ns_config_rep, start_link_merger, []},
       permanent, brutal_kill, worker, [ns_config_rep]},

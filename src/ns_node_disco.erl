@@ -28,7 +28,6 @@
 %% API
 -export([start_link/0,
          nodes_wanted/0, nodes_wanted/1,
-         nodes_wanted_updated/0,
          erlang_visible_nodes/0,
          another_live_node/0,
          nodes_actual/0,
@@ -113,8 +112,15 @@ nodes_wanted(Config) ->
 % API's used as callbacks that are invoked when ns_config
 % keys have changed.
 
-nodes_wanted_updated() ->
+cast_nodes_wanted_updated() ->
     gen_server:cast(?MODULE, nodes_wanted_updated).
+
+is_interesting_event({nodes_wanted, _V}) ->
+    true;
+is_interesting_event({otp, _V}) ->
+    true;
+is_interesting_event(_) ->
+    false.
 
 %% gen_server implementation
 
@@ -122,8 +128,22 @@ init([]) ->
     ?log_debug("Initting ns_node_disco with ~p", [nodes()]),
     % Register for nodeup/down messages as handle_info callbacks.
     ok = net_kernel:monitor_nodes(true, [nodedown_reason]),
+
+    ns_pubsub:subscribe_link(
+      ns_config_events,
+      fun (Event) ->
+              case is_interesting_event(Event) of
+                  true ->
+                      ?log_debug("Got event ~p",
+                                 [ns_config_log:sanitize(Event)]),
+                      cast_nodes_wanted_updated();
+                  false ->
+                      ok
+              end
+      end),
+
     send_ping_all_msg(),
-    nodes_wanted_updated(),
+    cast_nodes_wanted_updated(),
     % Track the last list of actual ndoes.
     {ok, #state{nodes = []}}.
 
