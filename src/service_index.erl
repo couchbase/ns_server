@@ -76,6 +76,8 @@ status_mapping() ->
      {lastScanTime, <<"lastScanTime">>},
      {numReplica, <<"numReplica">>},
      {bucket, <<"bucket">>},
+     {scope, <<"scope">>},
+     {collection, <<"collection">>},
      {status, <<"status">>},
      {definition, <<"definition">>},
      {progress, <<"completion">>},
