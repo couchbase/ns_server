@@ -30,29 +30,30 @@
 -include("ns_common.hrl").
 
 rebalancer(Config) ->
-   case ns_config:search(Config, rebalancer_pid) of
-       {value, Pid} when is_pid(Pid) ->
-           Pid;
-       _ ->
-           undefined
-   end.
+    chronicle_compat:get(Config, rebalancer_pid, #{default => undefined}).
 
 running() ->
-    running(ns_config:latest()).
+    running(direct).
 
-running(Config) ->
-    rebalancer(Config) =/= undefined.
+running(Snapshot) ->
+    rebalancer(Snapshot) =/= undefined.
 
 type() ->
-    ns_config:read_key_fast(rebalance_type, rebalance).
+    chronicle_compat:get(rebalance_type, #{default => rebalance}).
 
 status_uuid() ->
-    ns_config:read_key_fast(rebalance_status_uuid, undefined).
+    chronicle_compat:get(rebalance_status_uuid, #{default => undefined}).
 
 status() ->
-    ns_config:read_key_fast(rebalance_status, undefined).
+    status(direct).
+
+status(Snapshot) ->
+    chronicle_compat:get(Snapshot, rebalance_status, #{default => undefined}).
 
 reset_status(Fn) ->
+    reset_status(Fn, chronicle_compat:backend()).
+
+reset_status(Fn, ns_config) ->
     ok =
         ns_config:update(
           fun ({rebalance_status, Value}) ->
@@ -67,26 +68,45 @@ reset_status(Fn) ->
                   {update, {rebalancer_pid, undefined}};
               (_Other) ->
                   skip
-          end).
+          end);
+reset_status(Fn, chronicle) ->
+    RV =
+        chronicle_kv:transaction(
+          kv, [rebalance_status],
+          fun (Snapshot) ->
+                  case status(Snapshot) of
+                      running ->
+                          {commit, [{set, rebalance_status, Fn()},
+                                    {delete, rebalancer_pid}]};
+                      _ ->
+                          {abort, skip}
+                  end
+          end, #{}),
+    case RV of
+        skip ->
+            ok;
+        {ok, _} ->
+            ok
+    end.
 
 set_status(Type, Status, Pid) ->
-    ns_config:set(
-      [{rebalance_status, Status},
-       {rebalance_status_uuid, couch_uuids:random()},
-       {rebalancer_pid, Pid},
-       {rebalance_type, Type}] ++
-          case cluster_compat_mode:is_cluster_65() of
-              true ->
-                  [];
-              false ->
-                  [{graceful_failover_pid,
-                    case Type of
-                        graceful_failover ->
-                            Pid;
-                        _ ->
-                            undefined
-                    end}]
-          end).
+    ok = chronicle_compat:set_multiple(
+           [{rebalance_status, Status},
+            {rebalance_status_uuid, couch_uuids:random()},
+            {rebalancer_pid, Pid},
+            {rebalance_type, Type}] ++
+               case cluster_compat_mode:is_cluster_65() of
+                   true ->
+                       [];
+                   false ->
+                       [{graceful_failover_pid,
+                         case Type of
+                             graceful_failover ->
+                                 Pid;
+                             _ ->
+                                 undefined
+                         end}]
+               end).
 
 start(KnownNodes, EjectedNodes, DeltaRecoveryBuckets) ->
     ns_orchestrator:start_rebalance(KnownNodes, EjectedNodes,
@@ -105,7 +125,7 @@ stop(AllowUnsafe) ->
 can_stop(true) ->
     true;
 can_stop(false) ->
-    case rebalancer(ns_config:latest()) of
+    case rebalancer(direct) of
         undefined ->
             true;
         Pid ->
