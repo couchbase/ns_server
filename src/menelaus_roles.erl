@@ -496,7 +496,14 @@ roles() ->
        {[{bucket, bucket_name}, settings], [read]},
        {[admin, memcached, idle], [write]},
        {[settings, autocompaction], [read]},
-       {[pools], [read]}]}].
+       {[pools], [read]}]},
+     {external_stats_reader, [],
+      [{name, <<"External Stats Reader">>},
+       {folder, admin},
+       {desc, <<"Access to /metrics endpoint for Prometheus integration. "
+                "Can read all stats for all services. This user cannot "
+                "access the web console">>}],
+      [{[admin, stats_export], [read]}]}].
 
 ui_folders() ->
     [{admin, "Administrative"},
