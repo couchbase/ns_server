@@ -210,6 +210,12 @@ footer {
 .flex-order-6 {
   order: 6 !important;
 }
+.flex-order-7 {
+  order: 7 !important;
+}
+.flex-order-8 {
+  order: 8 !important;
+}
 /* flex-grow factors --------------------------------------------------- */
 .flex-basis-2 {
   flex-basis: 2rem !important;

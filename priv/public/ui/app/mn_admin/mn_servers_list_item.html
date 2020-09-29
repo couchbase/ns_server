@@ -20,7 +20,7 @@
        title="{{serversCtl.getGroupsByHostname[node.hostname].name}}">
         {{serversCtl.getGroupsByHostname[node.hostname].name | mnLimitTo: 20}}
     </span>
-    <span class="cbui-table-cell flex-grow-3 wrap resp-hide-xsml" style="display:flex;">
+    <span class="cbui-table-cell flex-grow-3 wrap resp-hide-xsml" style="display:flex;flex-wrap:wrap;">
       <span
          ng-repeat="service in node.services | mnFormatServicesArray | orderBy"
          class="label neutral nocaps"
@@ -29,7 +29,8 @@
                     'flex-order-3' : service == 'Index',
                     'flex-order-4' : service == 'Search',
                     'flex-order-5' : service == 'Analytics',
-                    'flex-order-6' : service == 'Eventing'}">
+                    'flex-order-6' : service == 'Eventing',
+                    'flex-order-7' : service == 'Backup'}">
         {{service}}
       </span>
     </span>
