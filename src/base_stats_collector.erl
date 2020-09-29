@@ -68,7 +68,7 @@ latest_tick(TS, Module, NumDropped) ->
             TS
     end.
 
-handle_info({tick, TS0}, #state{module = Module,
+do_handle_info({tick, TS0}, #state{module = Module,
                                 count = Count,
                                 impl_state = ImplState,
                                 prev_counters = PrevCounters,
@@ -107,6 +107,14 @@ handle_info({tick, TS0}, #state{module = Module,
             end;
         _ ->
             {noreply, State#state{count = NewCount}}
+    end.
+
+handle_info({tick, TS}, State) ->
+    case ns_config:read_key_fast(disable_old_style_stats, false) of
+        false ->
+            do_handle_info({tick, TS}, State);
+        _ ->
+            {noreply, State}
     end;
 handle_info(Info, #state{module = Module,
                          impl_state = ImplState} = State) ->
