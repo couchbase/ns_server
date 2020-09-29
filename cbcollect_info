@@ -1664,7 +1664,7 @@ def cleanup_old_prometheus_stats(guts):
 
     # Remove any existing snapshot directory. Assumes we're the only client
     # of prometheus snapshots.
-    snapshot_dir = os.path.join(prom_stats_dir, "/snapshots/")
+    snapshot_dir = os.path.join(prom_stats_dir, "snapshots")
     print(f"Removing existing snapshot directory '{snapshot_dir}'")
     shutil.rmtree(snapshot_dir, ignore_errors=True)
 
