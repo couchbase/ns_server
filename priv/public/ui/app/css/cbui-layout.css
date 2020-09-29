@@ -501,6 +501,9 @@ footer {
 .margin-bottom-1-5 {
   margin-bottom: 1.5rem !important;
 }
+.margin-bottom-neg-1 {
+  margin-bottom: -1rem !important;
+}
 /* REMOVE */
 .margin-bottom1 {
   margin-bottom: 1rem;
