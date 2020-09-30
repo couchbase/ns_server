@@ -820,8 +820,24 @@ handle_reset_alerts(Req) ->
     Token = list_to_binary(proplists:get_value("token", Params, "")),
     reply_json(Req, menelaus_web_alerts_srv:consume_alerts(Token)).
 
+reset_per_service_cipher_suites(Req) ->
+    lists:foreach(
+      fun ({S, _}) ->
+              case ns_config:update_key({security_settings, S},
+                                        proplists:delete(cipher_suites, _)) of
+                  ok ->
+                      ns_audit:security_settings(
+                        Req, [{{security_settings, S},
+                               {[{cipher_suites, deleted}]}}]);
+                  {throw, {config_key_not_found, _}, _} ->
+                      not_found
+              end
+      end, services_with_security_settings()).
+
 handle_reset_ciphers_suites(Req) ->
     ns_config:set(cipher_suites, []),
+    ns_audit:security_settings(Req, [{cipher_suites, []}]),
+    reset_per_service_cipher_suites(Req),
     reply_json(Req, {[]}).
 
 config_upgrade_to_65(Config) ->
