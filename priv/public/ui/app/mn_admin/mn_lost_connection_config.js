@@ -31,7 +31,7 @@ function interceptorOfErrConnectionRefused($q, $injector) {
           .get("mnLostConnectionService")
           .activate();
       } else {
-        if (wantedUrls[rejection.config.url]) { //in order to avoid cached queries
+        if (rejection.config && wantedUrls[rejection.config.url]) { //in order to avoid cached queries
           wantedUrls = {};
           $injector
             .get("mnLostConnectionService")

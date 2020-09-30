@@ -87,7 +87,8 @@ function mnHttpFactory(mnPendingQueryKeeper, $q, $timeout, jQueryLikeParamSerial
 
 
   function clearOnResponse(response) {
-    if (response.config.clear && angular.isFunction(response.config.clear)) {
+    if (response.config &&
+        response.config.clear && angular.isFunction(response.config.clear)) {
       response.config.clear();
       delete response.config.clear;
     }
