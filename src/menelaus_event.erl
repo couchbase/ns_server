@@ -34,6 +34,7 @@
          handle_info/2, terminate/2, code_change/3]).
 
 -record(state, {webconfig,
+                module,
                 disable_non_ssl_ports,
                 afamily_requirement,
                 watchers = []}).
@@ -48,7 +49,8 @@ modules() ->
      buckets_events,
      index_events,
      audit_events,
-     user_storage_events].
+     user_storage_events,
+     chronicle_kv:event_manager(kv)].
 
 start_link() ->
     misc:start_event_link(
@@ -70,21 +72,21 @@ sync(Module) ->
 
 %% Implementation
 
-init(ns_config_events) ->
-    {ok, #state{watchers = [],
+init(ns_config_events = Module) ->
+    {ok, #state{webconfig = menelaus_web:webconfig(),
                 disable_non_ssl_ports = misc:disable_non_ssl_ports(),
                 afamily_requirement = misc:address_family_requirement(),
-                webconfig = menelaus_web:webconfig()}};
+                module = Module}};
 
-init(_) ->
-    {ok, #state{watchers = []}}.
+init(Module) ->
+    {ok, #state{module = Module}}.
 
 terminate(_Reason, _State)     -> ok.
 code_change(_OldVsn, State, _) -> {ok, State}.
 
 handle_event(Event, State) ->
     NewState = maybe_restart(Event, State),
-    maybe_notify_watchers(Event, State),
+    maybe_notify_watchers(convert_event(Event, NewState), NewState),
     {ok, NewState}.
 
 handle_call({register_watcher, Pid},
@@ -127,6 +129,17 @@ handle_info(_Info, State) ->
     {ok, State}.
 
 % ------------------------------------------------------------
+
+convert_event({{key, Key}, _, _} = Event, #state{module = Module}) ->
+    case chronicle_kv:event_manager(kv) of
+        Module ->
+            {Key, something};
+        _ ->
+            Event
+    end;
+convert_event(Event, _) ->
+    Event.
+
 is_interesting_to_watchers({significant_buckets_change, _}) -> true;
 is_interesting_to_watchers({memcached, _}) -> true;
 is_interesting_to_watchers({{node, _, memcached}, _}) -> true;

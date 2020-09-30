@@ -316,19 +316,8 @@ init([]) ->
             (_) -> false
         end,
 
-    EventHandler =
-        fun ({Key, _}) ->
-                case EventFilter(Key) of
-                    true ->
-                        gen_server:cast(?MODULE, settings_updated);
-                    false ->
-                        ok
-                end;
-            (_) ->
-                ok
-        end,
+    chronicle_compat:notify_if_key_changes(EventFilter, settings_updated),
 
-    ns_pubsub:subscribe_link(ns_config_events, EventHandler),
     process_flag(trap_exit,true),
     generate_ns_to_prometheus_auth_info(),
     Settings = build_settings(),
@@ -343,11 +332,11 @@ handle_call(settings, _From, #s{cur_settings = Settings} = State) ->
 handle_call(_Request, _From, State) ->
     {noreply, State}.
 
-handle_cast(settings_updated, State) ->
-    {noreply, maybe_apply_new_settings(State)};
-
 handle_cast(_Msg, State) ->
     {noreply, State}.
+
+handle_info(settings_updated, State) ->
+    {noreply, maybe_apply_new_settings(State)};
 
 handle_info(reload_timer, State) ->
     {noreply, apply_config(State#s{reload_timer_ref = undefined})};

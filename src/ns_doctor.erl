@@ -34,13 +34,8 @@
           nodes_wanted :: [node()],
           tasks_hash_nodes :: undefined | dict:dict(),
           tasks_hash :: undefined | integer(),
-          tasks_version :: undefined | string()
-         }).
-
--record(cfg_handler_state, {
-          rebalance_state,
-          recovery_state,
-          buckets
+          tasks_version :: undefined | string(),
+          config_state = #{}
          }).
 
 -define(doctor_debug(Msg), ale:debug(?NS_DOCTOR_LOGGER, Msg)).
@@ -62,11 +57,21 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 init([]) ->
+    Self = self(),
     erlang:process_flag(priority, high),
-    self() ! acquire_initial_status,
-    ns_pubsub:subscribe_link(ns_config_events,
-                             fun handle_config_event/2,
-                             #cfg_handler_state{}),
+    Self ! acquire_initial_status,
+    chronicle_compat:subscribe_to_key_change(
+      fun (rebalance_status_uuid) ->
+              true;
+          (recovery_status) ->
+              true;
+          (buckets) ->
+              true;
+          (nodes_wanted) ->
+              true;
+          (_) ->
+              false
+      end, fun (Key) -> Self ! {config_change, Key} end),
     case misc:get_env_default(dont_log_stats, false) of
         false ->
             send_log_msg();
@@ -75,59 +80,17 @@ init([]) ->
     {ok, #state{nodes=dict:new(),
                 nodes_wanted=ns_node_disco:nodes_wanted()}}.
 
-handle_recovery_status_change(not_running, {running, _Bucket, _UUID}) ->
-    {not_running, true};
-handle_recovery_status_change({running, _NewBucket, NewUUID} = New,
-                              {running, _OldBucket, OldUUID}) ->
-    case OldUUID =:= NewUUID of
-        true ->
-            {New, false};
-        false ->
-            {New, true}
+get_from_config(rebalance_status_uuid) ->
+    rebalance:status_uuid();
+get_from_config(recovery_status) ->
+    case recovery_server:get_status_from_config() of
+        {running, _Bucket, UUID} ->
+            {running, UUID};
+        Other ->
+            Other
     end;
-handle_recovery_status_change({running, _NewBucket, _NewUUID} = New, not_running) ->
-    {New, true};
-handle_recovery_status_change(not_running, not_running) ->
-    {not_running, false};
-handle_recovery_status_change(New, undefined) ->
-    {New, true}.
-
-handle_config_event({rebalance_status_uuid, NewValue},
-                    #cfg_handler_state{rebalance_state = RebalanceState} = State) ->
-    case NewValue of
-        RebalanceState ->
-            State;
-        _ ->
-            ns_doctor ! significant_change,
-            State#cfg_handler_state{rebalance_state = NewValue}
-    end;
-handle_config_event({recovery_status, NewValue},
-                    #cfg_handler_state{recovery_state = RecoveryState} = State) ->
-    {NewState, Changed} = handle_recovery_status_change(NewValue, RecoveryState),
-    case Changed of
-        true ->
-            ns_doctor ! significant_change,
-            State#cfg_handler_state{recovery_state = NewState};
-        false ->
-            ok
-    end;
-handle_config_event({buckets, Buckets},
-                    #cfg_handler_state{buckets = KnownBuckets} = State) ->
-    BucketConfigs = proplists:get_value(configs, Buckets, []),
-    BucketNames = lists:sort([Name || {Name, _} <- BucketConfigs]),
-    case BucketNames =:= KnownBuckets of
-        true ->
-            State;
-        false ->
-            ns_doctor ! significant_change,
-            State#cfg_handler_state{buckets = BucketNames}
-    end;
-handle_config_event({nodes_wanted, _} = Msg, State) ->
-    ns_doctor ! Msg,
-    State;
-handle_config_event(_, State) ->
-    State.
-
+get_from_config(buckets) ->
+    lists:sort(ns_bucket:get_bucket_names()).
 
 handle_call(get_tasks_version, _From, State) ->
     NewState = maybe_refresh_tasks_version(State),
@@ -169,10 +132,34 @@ handle_cast(Msg, State) ->
     ?doctor_warning("Unexpected cast: ~p", [Msg]),
     {noreply, State}.
 
+handle_info({config_change, nodes_wanted}, #state{nodes=Statuses} = State) ->
+    NewNodes = lists:sort(ns_node_disco:nodes_wanted()),
+    CurrentNodes = lists:sort(dict:fetch_keys(Statuses)),
+    ToRemove = ordsets:subtract(CurrentNodes, NewNodes),
 
-handle_info(significant_change, State) ->
-    %% force hash recomputation next time maybe_refresh_tasks_version is called
-    {noreply, State#state{tasks_hash_nodes = undefined}};
+    NewStatuses =
+        lists:foldl(
+          fun (Node, Acc) ->
+                  dict:erase(Node, Acc)
+          end, Statuses, ToRemove),
+
+    {noreply, State#state{nodes=NewStatuses,
+                          nodes_wanted=NewNodes}};
+
+handle_info({config_change, Key}, #state{config_state = ConfigState} = State) ->
+    OldValue = maps:get(Key, ConfigState, undefined),
+    NewState =
+        case get_from_config(Key) of
+            OldValue ->
+                State;
+            NewValue ->
+                %% force hash recomputation next time
+                %% maybe_refresh_tasks_version is called
+                State#state{tasks_hash_nodes = undefined,
+                            config_state = maps:put(Key, NewValue, ConfigState)}
+        end,
+    {noreply, NewState};
+
 handle_info(acquire_initial_status, #state{nodes=NodeDict} = State) ->
     Replies = ns_heart:status_all(),
     %% Get an initial status so we don't start up thinking everything's down
@@ -187,19 +174,7 @@ handle_info(log, #state{nodes=NodeDict} = State) ->
                   [lists:sort(dict:to_list(NodeDict))]),
     send_log_msg(),
     {noreply, State};
-handle_info({nodes_wanted, NewNodes0}, #state{nodes=Statuses} = State) ->
-    NewNodes = lists:sort(NewNodes0),
-    CurrentNodes = lists:sort(dict:fetch_keys(Statuses)),
-    ToRemove = ordsets:subtract(CurrentNodes, NewNodes),
 
-    NewStatuses =
-        lists:foldl(
-          fun (Node, Acc) ->
-                  dict:erase(Node, Acc)
-          end, Statuses, ToRemove),
-
-    {noreply, State#state{nodes=NewStatuses,
-                          nodes_wanted=NewNodes}};
 handle_info(Info, State) ->
     ?doctor_warning("Unexpected message ~p in state", [Info]),
     {noreply, State}.

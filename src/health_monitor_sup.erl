@@ -51,34 +51,17 @@ init(child) ->
           []}}.
 
 start_link_worker() ->
-    RV = {ok, Pid} =
-        work_queue:start_link(
-          service_monitor_worker,
-          fun () ->
-                  ns_pubsub:subscribe_link(ns_config_events,
-                                           fun handle_cfg_event/2,
-                                           self())
-          end),
-    work_queue:submit_sync_work(Pid, fun refresh_children/0),
-    RV.
+    chronicle_compat:start_refresh_worker(fun is_notable_event/1,
+                                          fun refresh_children/0).
 
-is_notable_event({{node, Node, membership}, _}) when Node =:= node() ->
+is_notable_event({node, Node, membership}) when Node =:= node() ->
     true;
-is_notable_event({{node, Node, services}, _}) when Node =:= node() ->
+is_notable_event({node, Node, services}) when Node =:= node() ->
     true;
-is_notable_event({rest_creds, _}) ->
+is_notable_event(rest_creds) ->
     true;
 is_notable_event(_) ->
     false.
-
-handle_cfg_event(Event, Worker) ->
-    case is_notable_event(Event) of
-        false ->
-            Worker;
-        true ->
-            work_queue:submit_work(Worker, fun refresh_children/0),
-            Worker
-    end.
 
 wanted_children(Config) ->
     [S || S <- health_monitor:supported_services(),

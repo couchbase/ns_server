@@ -21,7 +21,8 @@
 
 %% API
 -export([start_recovery/2, commit_vbucket/4, stop_recovery/3]).
--export([recovery_status/1, recovery_map/3, is_recovery_running/0]).
+-export([recovery_status/1, recovery_map/3, is_recovery_running/0,
+         get_status_from_config/0]).
 
 %% gen_server2 callbacks
 -export([handle_call/3]).
@@ -62,9 +63,12 @@ recovery_status(Pid) ->
 recovery_map(Pid, Bucket, UUID) ->
     call(Pid, {check, Bucket, UUID, recovery_map}).
 
+get_status_from_config() ->
+    ns_config:read_key_fast(recovery_status, undefined).
+
 is_recovery_running() ->
-    case ns_config:search(recovery_status) of
-        {value, {running, _Bucket, _UUID}} ->
+    case get_status_from_config() of
+        {running, _Bucket, _UUID} ->
             true;
         _ ->
             false

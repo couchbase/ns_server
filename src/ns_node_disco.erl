@@ -112,16 +112,6 @@ nodes_wanted(Config) ->
 % API's used as callbacks that are invoked when ns_config
 % keys have changed.
 
-cast_nodes_wanted_updated() ->
-    gen_server:cast(?MODULE, nodes_wanted_updated).
-
-is_interesting_event({nodes_wanted, _V}) ->
-    true;
-is_interesting_event({otp, _V}) ->
-    true;
-is_interesting_event(_) ->
-    false.
-
 %% gen_server implementation
 
 init([]) ->
@@ -129,21 +119,11 @@ init([]) ->
     % Register for nodeup/down messages as handle_info callbacks.
     ok = net_kernel:monitor_nodes(true, [nodedown_reason]),
 
-    ns_pubsub:subscribe_link(
-      ns_config_events,
-      fun (Event) ->
-              case is_interesting_event(Event) of
-                  true ->
-                      ?log_debug("Got event ~p",
-                                 [ns_config_log:sanitize(Event)]),
-                      cast_nodes_wanted_updated();
-                  false ->
-                      ok
-              end
-      end),
+    chronicle_compat:notify_if_key_changes([nodes_wanted, otp],
+                                           nodes_wanted_updated),
 
     send_ping_all_msg(),
-    cast_nodes_wanted_updated(),
+    self() ! nodes_wanted_updated,
     % Track the last list of actual ndoes.
     {ok, maybe_monitor_rename_txn(dist_manager:get_rename_txn_pid(),
                                   #state{nodes = []})}.
@@ -151,17 +131,6 @@ init([]) ->
 terminate(_Reason, _State) ->
     ok.
 code_change(_OldVsn, State, _) -> {ok, State}.
-
-handle_cast(nodes_wanted_updated,
-            State = #state{node_renaming_txn_mref = MRef}) ->
-    self() ! notify_clients,
-    case MRef of
-        undefined ->
-            do_nodes_wanted_updated();
-        _ ->
-            ok
-    end,
-    {noreply, State};
 
 handle_cast({we_were_shunned, NodeList},
             #state{we_were_shunned = true} = State) ->
@@ -192,6 +161,17 @@ handle_call({register_node_renaming_txn, Pid}, _From, State) ->
 handle_call(Msg, _From, State) ->
     ?log_warning("Unhandled ~p call: ~p", [?MODULE, Msg]),
     {reply, error, State}.
+
+handle_info(nodes_wanted_updated,
+            State = #state{node_renaming_txn_mref = MRef}) ->
+    self() ! notify_clients,
+    case MRef of
+        undefined ->
+            do_nodes_wanted_updated();
+        _ ->
+            ok
+    end,
+    {noreply, State};
 
 handle_info({'DOWN', MRef, _, _, _},
             #state{node_renaming_txn_mref = MRef} = State) ->

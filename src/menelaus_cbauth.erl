@@ -39,7 +39,8 @@ start_link() ->
 init([]) ->
     ns_pubsub:subscribe_link(json_rpc_events, fun json_rpc_event/1),
     ns_pubsub:subscribe_link(ns_node_disco_events, fun node_disco_event/1),
-    ns_pubsub:subscribe_link(ns_config_events, fun ns_config_event/1),
+    chronicle_compat:subscribe_to_key_change(fun is_interesting/1,
+                                             fun handle_config_event/1),
     ns_pubsub:subscribe_link(user_storage_events, fun user_storage_event/1),
     ns_pubsub:subscribe_link(ssl_service_events, fun ssl_service_event/1),
     json_rpc_connection_sup:reannounce(),
@@ -60,15 +61,10 @@ json_rpc_event({_, Label, _} = Event) ->
 node_disco_event(_Event) ->
     ?MODULE ! maybe_notify_cbauth.
 
-ns_config_event({client_cert_auth, _}) ->
+handle_config_event(client_cert_auth) ->
     ?MODULE ! client_cert_auth_event;
-ns_config_event(Event) ->
-    case is_interesting(Event) of
-        true ->
-            ?MODULE ! maybe_notify_cbauth;
-        _ ->
-            ok
-    end.
+handle_config_event(_) ->
+    ?MODULE ! maybe_notify_cbauth.
 
 user_storage_event(_Event) ->
     ?MODULE ! maybe_notify_cbauth.
@@ -79,25 +75,26 @@ ssl_service_event(_Event) ->
 terminate(_Reason, _State)     -> ok.
 code_change(_OldVsn, State, _) -> {ok, State}.
 
-is_interesting({{node, _, services}, _}) -> true;
-is_interesting({{service_map, _}, _}) -> true;
-is_interesting({{node, _, membership}, _}) -> true;
-is_interesting({{node, _, memcached}, _}) -> true;
-is_interesting({{node, _, capi_port}, _}) -> true;
-is_interesting({{node, _, ssl_capi_port}, _}) -> true;
-is_interesting({{node, _, ssl_rest_port}, _}) -> true;
-is_interesting({rest, _}) -> true;
-is_interesting({rest_creds, _}) -> true;
-is_interesting({cluster_compat_version, _}) -> true;
-is_interesting({{node, _, is_enterprise}, _}) -> true;
-is_interesting({user_roles, _}) -> true;
-is_interesting({buckets, _}) -> true;
-is_interesting({cipher_suites, _}) -> true;
-is_interesting({honor_cipher_order, _}) -> true;
-is_interesting({ssl_minimum_protocol, _}) -> true;
-is_interesting({cluster_encryption_level, _}) -> true;
-is_interesting({{security_settings, _}, _}) -> true;
-is_interesting({{node, N, prometheus_auth_info}, _}) when N =:= node() -> true;
+is_interesting(client_cert_auth) -> true;
+is_interesting({node, _, services}) -> true;
+is_interesting({service_map, _}) -> true;
+is_interesting({node, _, membership}) -> true;
+is_interesting({node, _, memcached}) -> true;
+is_interesting({node, _, capi_port}) -> true;
+is_interesting({node, _, ssl_capi_port}) -> true;
+is_interesting({node, _, ssl_rest_port}) -> true;
+is_interesting(rest) -> true;
+is_interesting(rest_creds) -> true;
+is_interesting(cluster_compat_version) -> true;
+is_interesting({node, _, is_enterprise}) -> true;
+is_interesting(user_roles) -> true;
+is_interesting(buckets) -> true;
+is_interesting(cipher_suites) -> true;
+is_interesting(honor_cipher_order) -> true;
+is_interesting(ssl_minimum_protocol) -> true;
+is_interesting(cluster_encryption_level) -> true;
+is_interesting({security_settings, _}) -> true;
+is_interesting({node, N, prometheus_auth_info}) when N =:= node() -> true;
 is_interesting(_) -> false.
 
 handle_call(_Msg, _From, State) ->

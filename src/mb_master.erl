@@ -87,15 +87,7 @@ callback_mode() ->
     state_functions.
 
 init([]) ->
-    Self = self(),
-    ns_pubsub:subscribe_link(
-      ns_config_events,
-      fun ({nodes_wanted, Nodes}, State) ->
-              Self ! {peers, Nodes},
-              State;
-          (_, State) ->
-              State
-      end, empty),
+    chronicle_compat:notify_if_key_changes([nodes_wanted], peers_changed),
     erlang:process_flag(trap_exit, true),
     CurHBInterval = ?HEARTBEAT_INTERVAL,
     ?log_debug("Heartbeat interval is ~p", [CurHBInterval]),
@@ -338,7 +330,8 @@ terminate(_Reason, _StateName, StateData) ->
 %% States
 %%
 
-candidate(info, {peers, Peers}, StateData) ->
+candidate(info, peers_changed, StateData) ->
+    Peers = ns_node_disco:nodes_wanted(),
     S = update_peers(StateData, Peers),
     case Peers of
         [N] when N == node() ->
@@ -450,7 +443,8 @@ candidate(info, {heartbeat, NodeInfo, candidate, _H},
 candidate(Type, Msg, State) ->
     handle_event(Type, Msg, candidate, State).
 
-master(info, {peers, Peers}, StateData) ->
+master(info, peers_changed, StateData) ->
+    Peers = ns_node_disco:nodes_wanted(),
     S = update_peers(StateData, Peers),
     case lists:member(node(), Peers) of
         true ->

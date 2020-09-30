@@ -25,7 +25,10 @@
          get/3,
          set/2,
          set_multiple/1,
-         transaction/2]).
+         transaction/2,
+         subscribe_to_key_change/2,
+         notify_if_key_changes/2,
+         start_refresh_worker/2]).
 
 backend() ->
     case enabled() of
@@ -159,3 +162,47 @@ transaction(Keys, Fun) ->
                     erlang:error(exceeded_retries)
             end
     end.
+
+subscribe_to_key_change(Handler) ->
+    BuildHandler = fun (Type) ->
+                           ?cut(Handler(extract_event_key(Type, _)))
+                   end,
+    ns_pubsub:subscribe_link(ns_config_events, BuildHandler(ns_config)),
+    ns_pubsub:subscribe_link(chronicle_kv:event_manager(kv),
+                             BuildHandler(chronicle)).
+
+subscribe_to_key_change(Keys, Worker) when is_list(Keys) ->
+    subscribe_to_key_change(lists:member(_, Keys), Worker);
+subscribe_to_key_change(Filter, Worker) ->
+    subscribe_to_key_change(fun (Key) ->
+                                    case Filter(Key) of
+                                        false ->
+                                            ok;
+                                        true ->
+                                            Worker(Key)
+                                    end
+                            end).
+
+notify_if_key_changes(Filter, Message) ->
+    Self = self(),
+    subscribe_to_key_change(Filter, fun (_) -> Self ! Message end).
+
+start_refresh_worker(Filter, Refresh) ->
+    RV = {ok, Pid} =
+        work_queue:start_link(
+          fun () ->
+                  Self = self(),
+                  subscribe_to_key_change(
+                    Filter, fun (_) ->
+                                    work_queue:submit_work(Self, Refresh)
+                            end)
+          end),
+    work_queue:submit_sync_work(Pid, Refresh),
+    RV.
+
+extract_event_key(ns_config, {Key, _}) ->
+    Key;
+extract_event_key(chronicle, {{key, Key}, _, _}) ->
+    Key;
+extract_event_key(_, _) ->
+    undefined.

@@ -45,22 +45,14 @@ init(child) ->
            misc:get_env_default(max_t, 10)},
           []}}.
 
-is_notable_event({buckets, _}) ->
+is_notable_event(buckets) ->
     true;
-is_notable_event({{node, Node, membership}, _}) when Node =:= node() ->
+is_notable_event({node, Node, membership}) when Node =:= node() ->
     true;
-is_notable_event({rest_creds, _}) ->
+is_notable_event(rest_creds) ->
     true;
 is_notable_event(_) ->
     false.
-
-handle_cfg_event(Event) ->
-    case is_notable_event(Event) of
-        false ->
-            ok;
-        true ->
-            work_queue:submit_work(service_stats_worker, fun refresh_children/0)
-    end.
 
 compute_wanted_children(Service, Config) ->
     case ns_cluster_membership:should_run_service(Config, Service:get_type(),
@@ -129,12 +121,5 @@ stop_child(Id) ->
     ok = supervisor:delete_child(service_stats_children_sup, Id).
 
 start_link_worker() ->
-    RV = {ok, _} =
-        work_queue:start_link(
-          service_stats_worker,
-          fun () ->
-                  ns_pubsub:subscribe_link(ns_config_events,
-                                           fun handle_cfg_event/1)
-          end),
-    work_queue:submit_work(service_stats_worker, fun refresh_children/0),
-    RV.
+    chronicle_compat:start_refresh_worker(fun is_notable_event/1,
+                                          fun refresh_children/0).

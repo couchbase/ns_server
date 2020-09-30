@@ -47,58 +47,36 @@ cache_init() ->
     {ok, _} = gen_event:start_link({local, bucket_info_cache_invalidations}),
     ets:new(bucket_info_cache, [set, named_table]),
     ets:new(bucket_info_cache_buckets, [ordered_set, named_table]),
-    Self = self(),
-    ns_pubsub:subscribe_link(ns_config_events, fun cleaner_loop/2, Self),
-    submit_new_buckets(Self, ns_bucket:get_buckets()),
+    chronicle_compat:subscribe_to_key_change(fun is_interesting/1,
+                                             fun handle_config_event/1),
+    submit_new_buckets(),
     submit_full_reset().
 
-cleaner_loop({buckets, [{configs, NewBuckets}]}, Parent) ->
-    submit_new_buckets(Parent, NewBuckets),
-    Parent;
-cleaner_loop({{_, _, alternate_addresses}, _Value}, State) ->
-    submit_full_reset(),
-    State;
-cleaner_loop({{_, _, capi_port}, _Value}, State) ->
-    submit_full_reset(),
-    State;
-cleaner_loop({{_, _, ssl_capi_port}, _Value}, State) ->
-    submit_full_reset(),
-    State;
-cleaner_loop({{_, _, ssl_rest_port}, _Value}, State) ->
-    submit_full_reset(),
-    State;
-cleaner_loop({{_, _, rest}, _Value}, State) ->
-    submit_full_reset(),
-    State;
-cleaner_loop({rest, _Value}, State) ->
-    submit_full_reset(),
-    State;
-cleaner_loop({{node, _, memcached}, _Value}, State) ->
-    submit_full_reset(),
-    State;
-cleaner_loop({{node, _, membership}, _Value}, State) ->
-    submit_full_reset(),
-    State;
-cleaner_loop({cluster_compat_version, _Value}, State) ->
-    submit_full_reset(),
-    State;
-cleaner_loop({developer_preview_enabled, _Value}, State) ->
-    submit_full_reset(),
-    State;
-cleaner_loop({{node, _, services}, _Value}, State) ->
-    submit_full_reset(),
-    State;
-cleaner_loop({{service_map, _}, _Value}, State) ->
-    submit_full_reset(),
-    State;
-cleaner_loop(_, Cleaner) ->
-    Cleaner.
+handle_config_event({buckets, _}) ->
+    submit_new_buckets();
+handle_config_event(_) ->
+    submit_full_reset().
 
-submit_new_buckets(Pid, Buckets0) ->
+is_interesting({buckets, _}) -> true;
+is_interesting({_, _, alternate_addresses}) -> true;
+is_interesting({_, _, capi_port}) -> true;
+is_interesting({_, _, ssl_capi_port}) -> true;
+is_interesting({_, _, ssl_rest_port}) -> true;
+is_interesting({_, _, rest}) -> true;
+is_interesting(rest) -> true;
+is_interesting({node, _, memcached}) -> true;
+is_interesting({node, _, membership}) -> true;
+is_interesting(cluster_compat_version) -> true;
+is_interesting(developer_preview_enabled) -> true;
+is_interesting({node, _, services}) -> true;
+is_interesting({service_map, _}) -> true;
+is_interesting(_) -> false.
+
+submit_new_buckets() ->
     work_queue:submit_work(
-      Pid,
+      ?MODULE,
       fun () ->
-              Buckets = lists:sort(Buckets0),
+              Buckets = lists:sort(ns_bucket:get_buckets()),
               BucketNames = compute_buckets_to_invalidate(Buckets),
               [begin
                    ets:delete(bucket_info_cache, Name),
@@ -116,7 +94,7 @@ compute_buckets_to_invalidate(Buckets) ->
 
 submit_full_reset() ->
     work_queue:submit_work(
-      bucket_info_cache,
+      ?MODULE,
       fun () ->
               ets:delete_all_objects(bucket_info_cache),
               ets:delete_all_objects(bucket_info_cache_buckets),

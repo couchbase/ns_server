@@ -54,8 +54,7 @@ common_init(MonModule, with_refresh) ->
     common_init(MonModule).
 
 common_init(MonModule) ->
-    ns_pubsub:subscribe_link(ns_config_events,
-                             fun handle_config_event/2, self()),
+    chronicle_compat:notify_if_key_changes([nodes_wanted], peers_changed),
     {ok, #state{nodes = dict:new(),
                 nodes_wanted = ns_node_disco:nodes_wanted(),
                 monitor_module = MonModule}}.
@@ -92,8 +91,8 @@ handle_info(refresh, State) ->
     erlang:send_after(?REFRESH_INTERVAL, self(), refresh),
     RV;
 
-handle_info({nodes_wanted, NewNodes}, #state{nodes = Statuses} = State) ->
-    NewNodesSorted = lists:usort(NewNodes),
+handle_info(peers_changed, #state{nodes = Statuses} = State) ->
+    NewNodesSorted = lists:usort(ns_node_disco:nodes_wanted()),
     FilteredStatuses = erase_unknown_nodes(Statuses, NewNodesSorted),
     {noreply, State#state{nodes = FilteredStatuses,
                           nodes_wanted = NewNodesSorted}};
@@ -172,9 +171,3 @@ skip_heartbeats_to(MonModule) ->
             ?log_debug("~p skip heartbeats to ~p ~n", [MonModule, SkipList]),
             SkipList
     end.
-
-handle_config_event({nodes_wanted, _} = Msg, Pid) ->
-    Pid ! Msg,
-    Pid;
-handle_config_event(_, Pid) ->
-    Pid.

@@ -71,8 +71,21 @@ init(Service) ->
 
     Self ! refresh,
 
-    ns_pubsub:subscribe_link(ns_config_events, fun handle_config_event/2, Self),
-    ns_pubsub:subscribe_link(ns_node_disco_events, fun handle_node_disco_event/2, Self),
+    chronicle_compat:notify_if_key_changes(
+      fun ({node, _, membership}) ->
+              true;
+          (nodes_wanted) ->
+              true;
+          (rest_creds) ->
+              true;
+          ({service_map, _}) ->
+              true;
+          (_) ->
+              false
+      end, notable_event),
+
+    ns_pubsub:subscribe_link(ns_node_disco_events,
+                             fun handle_node_disco_event/2, Self),
 
     State = #state{service = Service,
                    num_connections = 0,
@@ -276,33 +289,10 @@ get_source(Service) ->
             {remote, ServiceNodes, length(ServiceNodes)}
     end.
 
-is_notable({{node, _, membership}, _}) ->
-    true;
-is_notable({nodes_wanted, _}) ->
-    true;
-is_notable({rest_creds, _}) ->
-    true;
-is_notable({{service_map, _}, _}) ->
-    true;
-is_notable(_) ->
-    false.
-
-notify_notable(Pid) ->
-    Pid ! notable_event.
-
-handle_config_event(Event, Pid) ->
-    case is_notable(Event) of
-        true ->
-            notify_notable(Pid);
-        false ->
-            ok
-    end,
-    Pid.
-
 handle_node_disco_event(Event, Pid) ->
     case Event of
         {ns_node_disco_events, _NodesOld, _NodesNew} ->
-            notify_notable(Pid);
+            Pid ! notable_event;
         false ->
             ok
     end,
