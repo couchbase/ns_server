@@ -118,12 +118,12 @@ init(Bucket) ->
              "@xdcr-" ++ _ -> true;
              "@fts-" ++ _ -> true;
              "@cbas-" ++ _ -> true;
-             "@eventing-" ++ _ -> false;
+             "@eventing-" ++ _ -> true;
              "@fts" -> true;
              "@query" -> true;
              "@index" -> true;
              "@cbas" -> true;
-             "@eventing" -> false;
+             "@eventing" -> true;
              "@system-processes" -> true;
              "@system" -> true;
              "@global" -> true;

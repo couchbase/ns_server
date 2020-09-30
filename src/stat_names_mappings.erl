@@ -243,6 +243,43 @@ pre_70_stat_to_prom_query("@xdcr-" ++ Bucket,
             {ok, Metric(<<"xdcr_", N/binary, "_bytes">>)}
     end;
 
+pre_70_stat_to_prom_query("@eventing", <<"eventing/", Stat/binary>>) ->
+    case binary:split(Stat, <<"/">>, [global]) of
+        [<<"failed_count">>] ->
+            Metrics = [eventing_metric(bin(M), <<"*">>)
+                          || M <- service_eventing:failures()],
+            {ok, named(<<"eventing_failed_count">>,
+                       sumby([], {'or', Metrics}))};
+        [FunctionName, <<"failed_count">>] ->
+            Metrics = [eventing_metric(bin(M), FunctionName)
+                           || M <- service_eventing:failures()],
+            {ok, named(<<"eventing_failed_count">>,
+                       sumby([<<"functionName">>], {'or', Metrics}))};
+        [<<"processed_count">>] ->
+            Metrics = [eventing_metric(bin(M), <<"*">>)
+                           || M <- service_eventing:successes()],
+            {ok, named(<<"eventing_processed_count">>,
+                       sumby([], {'or', Metrics}))};
+        [FunctionName, <<"processed_count">>] ->
+            Metrics = [eventing_metric(bin(M), FunctionName)
+                           || M <- service_eventing:successes()],
+            {ok, named(<<"eventing_processed_count">>,
+                       sumby([<<"functionName">>], {'or', Metrics}))};
+        [N] ->
+            {ok, sumby([<<"name">>], eventing_metric(N, <<"*">>))};
+        [FunctionName, N] ->
+            Metric = eventing_metric(N, FunctionName),
+            {ok, sumby([<<"name">>, <<"functionName">>], Metric)};
+        _ ->
+            {error, not_found}
+    end;
+
+%% Starting from Chesire-Cat eventing functions are not necessarily associated
+%% with a bucket and the bucket label is removed from all metrics.
+%% Because of that @eventing-bucket stats don't make any sense anymore.
+pre_70_stat_to_prom_query("@eventing-" ++ _Bucket, _) ->
+    {error, not_found};
+
 pre_70_stat_to_prom_query(_, _) ->
     {error, not_found}.
 
@@ -301,19 +338,30 @@ map_index_stats(Prefix, Counters, Bucket, Stat) ->
     end.
 
 rate(Ast) -> {call, irate, none, [{range_vector, Ast, ?IRATE_INTERVAL}]}.
+
 sumby(ByFields, Ast) -> {call, sum, {by, ByFields}, [Ast]}.
+
 metric(Name) -> {[{eq, <<"name">>, Name}]}.
+
 bucket_metric(Name, Bucket) ->
     {[{eq, <<"name">>, Name}, {eq, <<"bucket">>, Bucket}]}.
+
 index_metric(Name, Bucket, Index) ->
     {[{eq, <<"name">>, Name}, {eq, <<"bucket">>, Bucket}] ++
      [{eq, <<"index">>, Index} || Index =/= <<"*">>]}.
+
+eventing_metric(Name, FunctionName) ->
+    {[{eq, <<"name">>, <<"eventing_", (bin(Name))/binary>>}] ++
+     [{eq, <<"functionName">>, FunctionName} || FunctionName =/= <<"*">>]}.
+
 named(Name, Ast) ->
     {call, label_replace, none, [Ast, <<"name">>, Name, <<>>, <<>>]}.
+
 multiply_by_scalar(Ast, Scalar) ->
     {'*', [Ast, Scalar]}.
 
 bin(A) when is_atom(A) -> atom_to_binary(A, latin1);
+bin(L) when is_list(L) -> list_to_binary(L);
 bin(B) when is_binary(B) -> B.
 
 prom_name_to_pre_70_name(Bucket, {JSONProps}) ->
@@ -364,6 +412,13 @@ prom_name_to_pre_70_name(Bucket, {JSONProps}) ->
                 {ok, <<"cbas/", Name/binary>>};
             <<"xdcr_", Name/binary>> ->
                 build_pre_70_xdcr_name(Name, JSONProps);
+            <<"eventing_", Name/binary>> ->
+                case proplists:get_value(<<"functionName">>, JSONProps, <<>>) of
+                    <<>> ->
+                        {ok, <<"eventing/", Name/binary>>};
+                    FName ->
+                        {ok, <<"eventing/", FName/binary, "/", Name/binary>>}
+                end;
             _ -> {error, not_found}
         end,
     case Res of
@@ -441,7 +496,9 @@ key_type_by_stat_type("@index") -> binary;
 key_type_by_stat_type("@index-" ++ _) -> binary;
 key_type_by_stat_type("@cbas") -> binary;
 key_type_by_stat_type("@cbas-" ++ _) -> binary;
-key_type_by_stat_type("@xdcr-" ++ _) -> binary.
+key_type_by_stat_type("@xdcr-" ++ _) -> binary;
+key_type_by_stat_type("@eventing") -> binary;
+key_type_by_stat_type("@eventing-" ++ _) -> binary.
 
 
 
@@ -512,7 +569,14 @@ default_stat_list("@xdcr-" ++ B) ->
         <<"wtavg_get_latency">>, <<"wtavg_meta_latency">>
     ],
     [<<"replication_changes_left">>, <<"replication_docs_rep_queue">>] ++
-    [<<"replications/*/", Bucket/binary, "/*/", S/binary>> || S <- Stats].
+    [<<"replications/*/", Bucket/binary, "/*/", S/binary>> || S <- Stats];
+default_stat_list("@eventing") ->
+    Stats = service_eventing:get_service_gauges() ++
+            service_eventing:get_computed(),
+    [<<"eventing/", (bin(S))/binary>> || S <- Stats] ++
+    [<<"eventing/*/", (bin(S))/binary>> || S <- Stats];
+default_stat_list("@eventing-" ++ _) ->
+    [].
 
 -ifdef(TEST).
 pre_70_to_prom_query_test_() ->
@@ -815,7 +879,84 @@ pre_70_to_prom_query_test_() ->
                                "pipelineType=`Main`,"
                                "targetClusterUUID=`id1`,"
                                "targetBucketName=`test2`}[1m]),`name`,"
-                        "`xdcr_bandwidth_usage_bytes_per_second`,``,``)")].
+                        "`xdcr_bandwidth_usage_bytes_per_second`,``,``)"),
+     Test("@eventing", [], ""),
+     Test("@eventing", all,
+          "label_replace(sum by () ({name=~`eventing_on_delete_success|"
+                                           "eventing_on_update_success`}),"
+                        "`name`,`eventing_processed_count`,``,``) or "
+          "label_replace(sum by () ("
+                          "{name=~`eventing_bucket_op_exception_count|"
+                                  "eventing_checkpoint_failure_count|"
+                                  "eventing_doc_timer_create_failure|"
+                                  "eventing_n1ql_op_exception_count|"
+                                  "eventing_non_doc_timer_create_failure|"
+                                  "eventing_on_delete_failure|"
+                                  "eventing_on_update_failure|"
+                                  "eventing_timeout_count`}),"
+                         "`name`,`eventing_failed_count`,``,``) or "
+          "label_replace(sum by (functionName) ("
+                          "{name=~`eventing_on_delete_success|"
+                                  "eventing_on_update_success`}),"
+                        "`name`,`eventing_processed_count`,``,``) or "
+          "label_replace(sum by (functionName) ("
+                          "{name=~`eventing_bucket_op_exception_count|"
+                                  "eventing_checkpoint_failure_count|"
+                                  "eventing_doc_timer_create_failure|"
+                                  "eventing_n1ql_op_exception_count|"
+                                  "eventing_non_doc_timer_create_failure|"
+                                  "eventing_on_delete_failure|"
+                                  "eventing_on_update_failure|"
+                                  "eventing_timeout_count`}),"
+                        "`name`,`eventing_failed_count`,``,``) or "
+          "sum by (name) ({name=~`eventing_bucket_op_exception_count|"
+                                 "eventing_checkpoint_failure_count|"
+                                 "eventing_dcp_backlog|"
+                                 "eventing_doc_timer_create_failure|"
+                                 "eventing_n1ql_op_exception_count|"
+                                 "eventing_non_doc_timer_create_failure|"
+                                 "eventing_on_delete_failure|"
+                                 "eventing_on_delete_success|"
+                                 "eventing_on_update_failure|"
+                                 "eventing_on_update_success|"
+                                 "eventing_timeout_count`}) or "
+          "sum by (name,functionName) ("
+            "{name=~`eventing_bucket_op_exception_count|"
+                    "eventing_checkpoint_failure_count|"
+                    "eventing_dcp_backlog|"
+                    "eventing_doc_timer_create_failure|"
+                    "eventing_n1ql_op_exception_count|"
+                    "eventing_non_doc_timer_create_failure|"
+                    "eventing_on_delete_failure|"
+                    "eventing_on_delete_success|"
+                    "eventing_on_update_failure|"
+                    "eventing_on_update_success|"
+                    "eventing_timeout_count`})"),
+     Test("@eventing", [<<"eventing/test/failed_count">>,
+                        <<"eventing/test/processed_count">>,
+                        <<"eventing/bucket_op_exception_count">>,
+                        <<"eventing/test/bucket_op_exception_count">>],
+          "label_replace(sum by (functionName) ("
+                          "{name=~`eventing_on_delete_success|"
+                                  "eventing_on_update_success`,"
+                           "functionName=`test`}),"
+                        "`name`,`eventing_processed_count`,``,``) or "
+          "label_replace(sum by (functionName) ("
+                          "{name=~`eventing_bucket_op_exception_count|"
+                                  "eventing_checkpoint_failure_count|"
+                                  "eventing_doc_timer_create_failure|"
+                                  "eventing_n1ql_op_exception_count|"
+                                  "eventing_non_doc_timer_create_failure|"
+                                  "eventing_on_delete_failure|"
+                                  "eventing_on_update_failure|"
+                                  "eventing_timeout_count`,"
+                           "functionName=`test`}),"
+                        "`name`,`eventing_failed_count`,``,``) or "
+          "sum by (name) ({name=`eventing_bucket_op_exception_count`}) or "
+          "sum by (name,functionName) ("
+            "{name=`eventing_bucket_op_exception_count`,functionName=`test`})"),
+     Test("@eventing-test", [], ""),
+     Test("@eventing-test", all, "")].
 
 prom_name_to_pre_70_name_test_() ->
     Test = fun (Section, Json, ExpectedRes) ->
@@ -878,6 +1019,13 @@ prom_name_to_pre_70_name_test_() ->
           {ok, <<"replications/id1/b1/b2/bandwidth_usage">>}),
      Test("@xdcr-test",
           "{\"name\": \"xdcr_changes_left_total\"}",
-          {ok, <<"replication_changes_left">>})].
+          {ok, <<"replication_changes_left">>}),
+     Test("@eventing",
+          "{\"name\": \"eventing_bucket_op_exception_count\"}",
+          {ok, <<"eventing/bucket_op_exception_count">>}),
+     Test("@eventing",
+          "{\"name\": \"eventing_bucket_op_exception_count\","
+           "\"functionName\": \"test\"}",
+          {ok, <<"eventing/test/bucket_op_exception_count">>})].
 
 -endif.

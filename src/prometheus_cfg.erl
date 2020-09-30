@@ -39,7 +39,7 @@
 -define(DEFAULT_PROMETHEUS_TIMEOUT, 5000). %% in milliseconds
 -define(USERNAME, "@prometheus").
 -define(NS_TO_PROMETHEUS_USERNAME, "ns_server").
--define(DEFAULT_HIGH_CARD_SERVICES, [index, fts, kv, cbas]).
+-define(DEFAULT_HIGH_CARD_SERVICES, [index, fts, kv, cbas, eventing]).
 -define(MAX_SCRAPE_INTERVAL, 6*60*60). %% 6h, in seconds
 -define(PROMETHEUS_SHUTDOWN_TIMEOUT, 20000). %% 20s, in milliseconds
 

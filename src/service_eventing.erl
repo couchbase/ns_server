@@ -33,7 +33,9 @@
          compute_service_gauges/1,
          compute_version/2,
          split_stat_name/1,
-         is_started/0]).
+         is_started/0,
+         failures/0,
+         successes/0]).
 
 get_functions() ->
     {ok, Functions, _, _} = service_status_keeper:get_items(?MODULE),
