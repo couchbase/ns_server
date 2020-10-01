@@ -191,7 +191,7 @@ re_failover(NodeString) ->
 get_recovery_type(Config, Node) ->
     ns_config:search(Config, {node, Node, recovery_type}, none).
 
--spec update_recovery_type(node(), delta | full) -> ok | bad_node | conflict.
+-spec update_recovery_type(node(), delta | full) -> ok | bad_node.
 update_recovery_type(Node, NewType) ->
     RV = ns_config:run_txn(
            fun (Config, Set) ->
@@ -205,17 +205,15 @@ update_recovery_type(Node, NewType) ->
                            {commit,
                             Set({node, Node, recovery_type}, NewType, Config1)};
                        false ->
-                           {abort, {error, bad_node}}
+                           {abort, bad_node}
                    end
            end),
 
     case RV of
         {commit, _} ->
             ok;
-        {abort, not_needed} ->
-            ok;
-        {abort, {error, Error}} ->
-            Error;
+        {abort, bad_node} ->
+            bad_node;
         retry_needed ->
             erlang:error(exceeded_retries)
     end.
