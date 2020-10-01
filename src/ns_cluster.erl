@@ -539,22 +539,7 @@ shun(RemoteNode) ->
     case RemoteNode =:= node() of
         false ->
             ?cluster_debug("Shunning ~p", [RemoteNode]),
-            ok = ns_config:update(
-                   fun ({nodes_wanted, V}) ->
-                           {update, {nodes_wanted, V -- [RemoteNode]}};
-                       ({server_groups, Groups}) ->
-                           G2 = [case proplists:get_value(nodes, G) of
-                                     Nodes ->
-                                         NewNodes = Nodes -- [RemoteNode],
-                                         lists:keystore(nodes, 1, G, {nodes, NewNodes})
-                                 end || G <- Groups],
-                           {update, {server_groups, G2}};
-                       ({{node, Node, _}, _})
-                         when Node =:= RemoteNode ->
-                           delete;
-                       (_Other) ->
-                           skip
-                   end),
+            ns_cluster_membership:remove_node(RemoteNode),
             ns_config_rep:ensure_config_pushed();
         true ->
             ?cluster_debug("Asked to shun myself. Leaving cluster.", []),
@@ -946,62 +931,18 @@ do_add_node_engaged_inner(NodeKVList, OtpNode, Auth, Services, Scheme) ->
             {error, complete_join, M, E}
     end.
 
-do_node_add_transaction(Cfg, SetFn, Node, NWanted, Services, GroupUUID) ->
-    NewNWanted = lists:usort([Node | NWanted]),
-    Cfg1 = SetFn(nodes_wanted, NewNWanted, Cfg),
-    Cfg2 = SetFn({node, Node, membership}, inactiveAdded, Cfg1),
-    CfgPreGroups = SetFn({node, Node, services}, Services, Cfg2),
-    {value, Groups} = ns_config:search(Cfg, server_groups),
-    MaybeGroup0 = [G || G <- Groups,
-                        proplists:get_value(uuid, G) =:= GroupUUID],
-    MaybeGroup = case MaybeGroup0 of
-                     [] ->
-                         case GroupUUID of
-                             undefined ->
-                                 [hd(Groups)];
-                             _ ->
-                                 []
-                         end;
-                     _ ->
-                         true = (undefined =/= GroupUUID),
-                         MaybeGroup0
-                 end,
-    case MaybeGroup of
-        [] ->
-            {abort, notfound};
-        [TheGroup] ->
-            GroupNodes = proplists:get_value(nodes, TheGroup),
-            true = (is_list(GroupNodes)),
-            NewGroupNodes = lists:usort([Node | GroupNodes]),
-            NewGroup = lists:keystore(nodes, 1, TheGroup, {nodes, NewGroupNodes}),
-            NewGroups = lists:usort([NewGroup | (Groups -- MaybeGroup)]),
-            Cfg3 = SetFn(server_groups, NewGroups, CfgPreGroups),
-            {commit, Cfg3}
-    end.
-
 node_add_transaction(Node, GroupUUID, Services, Body) ->
-    TXNRV = ns_config:run_txn(
-              fun (Cfg, SetFn) ->
-                      {value, NWanted} = ns_config:search(Cfg, nodes_wanted),
-                      case lists:member(Node, NWanted) of
-                          true ->
-                              {abort, node_present};
-                          false ->
-                              do_node_add_transaction(Cfg, SetFn, Node, NWanted, Services, GroupUUID)
-                      end
-              end),
-    case TXNRV of
-        {commit, _} ->
+    case ns_cluster_membership:add_node(Node, GroupUUID, Services) of
+        ok ->
             node_add_transaction_finish(Node, GroupUUID, Body);
-        {abort, notfound} ->
-            M = iolist_to_binary([<<"Could not find group with uuid: ">>, GroupUUID]),
+        group_not_found ->
+            M = iolist_to_binary([<<"Could not find group with uuid: ">>,
+                                  GroupUUID]),
             {error, unknown_group, M, {unknown_group, GroupUUID}};
-        {abort, node_present} ->
+        node_present ->
             M = iolist_to_binary([<<"Node already exists in cluster: ">>,
                                   atom_to_list(Node)]),
-            {error, node_present, M, {node_present, Node}};
-        retry_needed ->
-            erlang:error(exceeded_retries)
+            {error, node_present, M, {node_present, Node}}
     end.
 
 node_add_transaction_finish(Node, GroupUUID, Body) ->
@@ -1284,38 +1225,8 @@ perform_actual_join(RemoteNode, NewCookie) ->
     ns_log:delete_log(),
     Status = try
         ?cluster_debug("ns_cluster: joining cluster. Child has exited.", []),
+        ns_cluster_membership:prepare_to_join(RemoteNode, NewCookie),
 
-        MyNode = node(),
-        %% Generate new node UUID while joining a cluster.
-        %% We want to prevent situations where multiple nodes in
-        %% the same cluster end up having same node uuid because they
-        %% were created from same virtual machine image.
-        ns_config:regenerate_node_uuid(),
-
-        %% For the keys that are being preserved and have vclocks,
-        %% we will just update_vclock so that these keys get stamped
-        %% with new node uuid vclock.
-        ns_config:update(fun ({directory,_}) ->
-                                 skip;
-                             ({otp, _}) ->
-                                 {update, {otp, [{cookie, NewCookie}]}};
-                             ({nodes_wanted, _}) ->
-                                 {set_initial, {nodes_wanted, [node(), RemoteNode]}};
-                             ({cluster_compat_mode, _}) ->
-                                 {set_initial, {cluster_compat_mode, undefined}};
-                             ({{node, _, services}, _}) ->
-                                 erase;
-                             ({{node, Node, membership}, _} = P) when Node =:= MyNode ->
-                                 {set_initial, P};
-                             ({{node, Node, _}, _} = Pair) when Node =:= MyNode ->
-                                 %% update for the sake of incrementing the
-                                 %% vclock
-                                 {update, Pair};
-                             ({cert_and_pkey, V}) ->
-                                 {set_initial, {cert_and_pkey, V}};
-                             (_) ->
-                                 erase
-                         end),
         %% reload is needed to reinitialize ns_config's cache after
         %% config cleanup ('erase' causes the problem, but it looks like
         %% it's not worth it to add proper 'erase' support to ns_config)

@@ -43,6 +43,9 @@
          is_balanced/0,
          get_recovery_type/2,
          update_recovery_type/2,
+         add_node/3,
+         remove_node/1,
+         prepare_to_join/2,
          is_newly_added_node/1,
          attach_node_uuids/2
         ]).
@@ -217,6 +220,124 @@ update_recovery_type(Node, NewType) ->
         retry_needed ->
             erlang:error(exceeded_retries)
     end.
+
+add_node(Node, GroupUUID, Services) ->
+    TXNRV =
+        ns_config:run_txn(
+          fun (Cfg, SetFn) ->
+                  {value, NWanted} = ns_config:search(Cfg, nodes_wanted),
+                  case lists:member(Node, NWanted) of
+                      true ->
+                          {abort, node_present};
+                      false ->
+                          NewNWanted = lists:usort([Node | NWanted]),
+                          Cfg1 = SetFn(nodes_wanted, NewNWanted, Cfg),
+                          Cfg2 = SetFn({node, Node, membership}, inactiveAdded,
+                                       Cfg1),
+                          CfgPreGroups = SetFn({node, Node, services}, Services,
+                                               Cfg2),
+
+                          {value, Groups} =
+                              ns_config:search(Cfg, server_groups),
+                          case add_node_to_groups(Groups, GroupUUID, Node) of
+                              {error, Error} ->
+                                  {abort, Error};
+                              NewGroups ->
+                                  Cfg3 = SetFn(server_groups, NewGroups,
+                                               CfgPreGroups),
+                                  {commit, Cfg3}
+                          end
+                  end
+          end),
+    case TXNRV of
+        {commit, _} ->
+            ok;
+        {abort, Error} ->
+            Error;
+        retry_needed ->
+            erlang:error(exceeded_retries)
+    end.
+
+add_node_to_groups(Groups, GroupUUID, Node) ->
+    MaybeGroup0 = [G || G <- Groups,
+                        proplists:get_value(uuid, G) =:= GroupUUID],
+    MaybeGroup = case MaybeGroup0 of
+                     [] ->
+                         case GroupUUID of
+                             undefined ->
+                                 [hd(Groups)];
+                             _ ->
+                                 []
+                         end;
+                     _ ->
+                         true = (undefined =/= GroupUUID),
+                         MaybeGroup0
+                 end,
+    case MaybeGroup of
+        [] ->
+            {error, group_not_found};
+        [TheGroup] ->
+            GroupNodes = proplists:get_value(nodes, TheGroup),
+            true = (is_list(GroupNodes)),
+            NewGroupNodes = lists:usort([Node | GroupNodes]),
+            NewGroup =
+                lists:keystore(nodes, 1, TheGroup, {nodes, NewGroupNodes}),
+            lists:usort([NewGroup | (Groups -- MaybeGroup)])
+    end.
+
+remove_node(RemoteNode) ->
+    ok = ns_config:update(
+           fun ({nodes_wanted, V}) ->
+                   {update, {nodes_wanted, V -- [RemoteNode]}};
+               ({server_groups, Groups}) ->
+                   {update, {server_groups,
+                             remove_node_from_server_groups(
+                               RemoteNode, Groups)}};
+               ({{node, Node, _}, _})
+                 when Node =:= RemoteNode ->
+                   delete;
+               (_Other) ->
+                   skip
+           end).
+
+remove_node_from_server_groups(RemoteNode, Groups) ->
+    [lists:keystore(nodes, 1, G,
+                    {nodes, proplists:get_value(nodes, G) -- [RemoteNode]}) ||
+        G <- Groups].
+
+prepare_to_join(RemoteNode, Cookie) ->
+    MyNode = node(),
+    %% Generate new node UUID while joining a cluster.
+    %% We want to prevent situations where multiple nodes in
+    %% the same cluster end up having same node uuid because they
+    %% were created from same virtual machine image.
+    ns_config:regenerate_node_uuid(),
+
+    %% For the keys that are being preserved and have vclocks,
+    %% we will just update_vclock so that these keys get stamped
+    %% with new node uuid vclock.
+    ns_config:update(
+      fun ({directory,_}) ->
+              skip;
+          ({otp, _}) ->
+              {update, {otp, [{cookie, Cookie}]}};
+          ({nodes_wanted, _}) ->
+              {set_initial, {nodes_wanted, [node(), RemoteNode]}};
+          ({cluster_compat_mode, _}) ->
+              {set_initial, {cluster_compat_mode, undefined}};
+          ({{node, _, services}, _}) ->
+              erase;
+          ({{node, Node, membership}, _} = P) when Node =:= MyNode ->
+              {set_initial, P};
+          ({{node, Node, _}, _} = Pair) when Node =:= MyNode ->
+              %% update for the sake of incrementing the
+              %% vclock
+              {update, Pair};
+          ({cert_and_pkey, V}) ->
+              {set_initial, {cert_and_pkey, V}};
+          (_) ->
+              erase
+      end).
 
 supported_services() ->
     supported_services_for_version(cluster_compat_mode:supported_compat_version()).
