@@ -67,8 +67,9 @@ maybe_init_service(Config, Service) ->
 maybe_init_simple_service(Config, Service) ->
     case ns_cluster_membership:get_service_map(Config, Service) of
         [] ->
-            ns_cluster_membership:set_service_map(Service, [node()]),
-            ?log_debug("Created initial service map for service `~p'", [Service]),
+            ok = ns_cluster_membership:set_service_map(Service, [node()]),
+            ?log_debug("Created initial service map for service `~p'",
+                       [Service]),
             ok;
         _ ->
             ok
@@ -114,7 +115,8 @@ do_orchestrate_initial_rebalance(Service) ->
         {'DOWN', MRef, _, Pid, Reason} ->
             case Reason of
                 normal ->
-                    ns_cluster_membership:set_service_map(Service, KeepNodes),
+                    ok = ns_cluster_membership:set_service_map(
+                           Service, KeepNodes),
                     ok;
                 _ ->
                     {error, {initial_rebalance_failed, Service, Reason}}
@@ -193,7 +195,7 @@ complete_service_failover(Config, Service, FailedNodes) ->
     RV.
 
 clear_pending_failover(Config, Service, FailedNodes) ->
-    ns_cluster_membership:service_clear_pending_failover(Service),
+    ok = ns_cluster_membership:service_clear_pending_failover(Service),
 
     OtherNodes = ns_node_disco:nodes_wanted(Config) -- FailedNodes,
     LiveNodes  = leader_utils:live_nodes(Config, OtherNodes),

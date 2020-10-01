@@ -146,15 +146,16 @@ default_settings() ->
      {rules_config_file, "prometheus_rules.yml"}].
 
 -spec build_settings() -> stats_settings().
-build_settings() -> build_settings(ns_config:get(), node()).
+build_settings() -> build_settings(ns_config:get(), direct, node()).
 
--spec build_settings(Config :: term(), Node :: atom()) -> stats_settings().
-build_settings(Config, Node) ->
+-spec build_settings(Config :: term(), Snapshot :: direct | map(),
+                     Node :: atom()) -> stats_settings().
+build_settings(Config, Snapshot, Node) ->
     AFamily = ns_config:search_node_with_default(Node, Config, address_family,
                                                  inet),
     Port = service_ports:get_port(prometheus_http_port, Config, Node),
     LocalAddr = misc:localhost(AFamily, [url]),
-    Services = ns_cluster_membership:node_services(Config, Node),
+    Services = ns_cluster_membership:node_services(Snapshot, Node),
     Targets = lists:filtermap(
                 fun (S) ->
                         case service_ports:get_port(get_service_port(S),
@@ -1216,19 +1217,19 @@ total_db_size_estimate(Info, Settings, Intervals) ->
 
 -define(NODE, nodename).
 
-generate_prometheus_test_config(ExtraConfig) ->
-    BaseConfig = [{{node, ?NODE, services}, [kv]},
-                  {{node, ?NODE, ns_to_prometheus_auth_info},
+generate_prometheus_test_config(ExtraConfig, Services) ->
+    BaseConfig = [{{node, ?NODE, ns_to_prometheus_auth_info},
                    [{creds, {pass, {"user", "pass"}}}]}
                   | service_ports:default_config(true, ?NODE)],
     NsConfig = [misc:update_proplist(BaseConfig, ExtraConfig)],
-    Settings = build_settings(NsConfig, ?NODE),
+    Snapshot = #{{node, ?NODE, services} => {Services, no_rev}},
+    Settings = build_settings(NsConfig, Snapshot, ?NODE),
     Configs = generate_prometheus_configs(Settings),
     [{F, yaml:preprocess(Yaml)} || {F, Yaml} <- Configs].
 
 default_config_test() ->
     [{_, DefaultMainCfg}, {RulesFile, DefaultRulesCfg}] =
-        generate_prometheus_test_config([]),
+        generate_prometheus_test_config([], [kv]),
     RulesFileBin = list_to_binary(RulesFile),
 
     ?assert(is_binary(yaml:encode(DefaultMainCfg))),
@@ -1258,11 +1259,11 @@ default_config_test() ->
 prometheus_config_test() ->
     MainConfig =
         fun (StatsSettings, NodeServices) ->
-            ExtraConfig = [{stats_settings, StatsSettings},
-                           {{node, ?NODE, services}, NodeServices}],
-            [{_, Cfg} | _] = generate_prometheus_test_config(ExtraConfig),
-            ?assert(is_binary(yaml:encode(Cfg))),
-            Cfg
+                ExtraConfig = [{stats_settings, StatsSettings}],
+                [{_, Cfg} | _] = generate_prometheus_test_config(ExtraConfig,
+                                                                 NodeServices),
+                ?assert(is_binary(yaml:encode(Cfg))),
+                Cfg
         end,
 
     ?assertMatch(
@@ -1308,17 +1309,17 @@ prometheus_config_test() ->
 prometheus_derived_metrics_config_test() ->
     RulesConfig =
         fun (StatsSettings, NodeServices) ->
-            ExtraConfig = [{stats_settings, StatsSettings},
-                           {{node, ?NODE, services}, NodeServices}],
-            [{_, Cfg} | Rest] = generate_prometheus_test_config(ExtraConfig),
-            ?assert(is_binary(yaml:encode(Cfg))),
-            case Rest of
-                [{_, RulesCfg}] ->
-                    ?assert(is_binary(yaml:encode(RulesCfg))),
-                    RulesCfg;
-                [] ->
-                    undefined
-            end
+                ExtraConfig = [{stats_settings, StatsSettings}],
+                [{_, Cfg} | Rest] =
+                    generate_prometheus_test_config(ExtraConfig, NodeServices),
+                ?assert(is_binary(yaml:encode(Cfg))),
+                case Rest of
+                    [{_, RulesCfg}] ->
+                        ?assert(is_binary(yaml:encode(RulesCfg))),
+                        RulesCfg;
+                    [] ->
+                        undefined
+                end
         end,
 
     ?assertMatch(
@@ -1354,7 +1355,7 @@ prometheus_derived_metrics_config_test() ->
 
 prometheus_config_afamily_test() ->
     ExtraConfig = [{{node, ?NODE, address_family}, inet6}],
-    [{_, Cfg}, _] = generate_prometheus_test_config(ExtraConfig),
+    [{_, Cfg}, _] = generate_prometheus_test_config(ExtraConfig, [kv]),
     ?assert(is_binary(yaml:encode(Cfg))),
 
     ?assertMatch(

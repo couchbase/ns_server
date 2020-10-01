@@ -107,7 +107,7 @@ nodes_wanted() ->
     nodes_wanted(ns_config:latest()).
 
 nodes_wanted(Config) ->
-    lists:usort(ns_config:search(Config, nodes_wanted, [])).
+    ns_cluster_membership:nodes_wanted(Config).
 
 % API's used as callbacks that are invoked when ns_config
 % keys have changed.

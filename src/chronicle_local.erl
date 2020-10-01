@@ -30,6 +30,7 @@
          leave_cluster/0,
          rename/1,
          upgrade/1,
+         node_keys/1,
          sync/0]).
 
 %% exported chronicle log fun
@@ -167,10 +168,30 @@ remote_pull(Nodes, Timeout) ->
             {remote_pull_failed, Errors}
     end.
 
+node_keys(Node) ->
+    [{node, Node, membership},
+     {node, Node, services},
+     {node, Node, recovery_type},
+     {node, Node, failover_vbuckets}].
+
+should_move(nodes_wanted) ->
+    true;
+should_move(server_groups) ->
+    true;
+should_move({node, _, membership}) ->
+    true;
+should_move({node, _, services}) ->
+    true;
+should_move({node, _, recovery_type}) ->
+    true;
+should_move({node, _, failover_vbuckets}) ->
+    true;
+should_move(service_map) ->
+    true;
+should_move(service_failover_pending) ->
+    true;
 should_move(_) ->
     false.
-
--dialyzer({nowarn_function, upgrade/1}).
 
 upgrade(Config) ->
     OtherNodes = ns_node_disco:nodes_wanted(Config) -- [node()],

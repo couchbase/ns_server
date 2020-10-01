@@ -17,6 +17,7 @@
 
 -include("cut.hrl").
 -include("ns_common.hrl").
+-include("ns_config.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -25,6 +26,7 @@
 -export([get_nodes_with_status/1,
          get_nodes_with_status/2,
          get_nodes_with_status/3,
+         nodes_wanted/1,
          server_groups/0,
          server_groups/1,
          active_nodes/0,
@@ -36,6 +38,7 @@
          get_cluster_membership/2,
          get_node_server_group/2,
          activate/1,
+         update_membership_sets/2,
          deactivate/1,
          failover/2,
          re_failover/1,
@@ -43,6 +46,7 @@
          is_balanced/0,
          get_recovery_type/2,
          update_recovery_type/2,
+         clear_recovery_type_sets/1,
          add_node/3,
          remove_node/1,
          prepare_to_join/2,
@@ -79,8 +83,7 @@ get_nodes_with_status(PredOrStatus) ->
     get_nodes_with_status(ns_config:latest(), PredOrStatus).
 
 get_nodes_with_status(Config, PredOrStatus) ->
-    get_nodes_with_status(Config,
-                          ns_node_disco:nodes_wanted(Config), PredOrStatus).
+    get_nodes_with_status(Config, nodes_wanted(Config), PredOrStatus).
 
 get_nodes_with_status(Config, Nodes, any) ->
     get_nodes_with_status(Config, Nodes, fun (_) -> true end);
@@ -92,12 +95,16 @@ get_nodes_with_status(Config, Nodes, Pred)
     [Node || Node <- Nodes,
              Pred(get_cluster_membership(Node, Config))].
 
+nodes_wanted() ->
+    nodes_wanted(ns_config:latest()).
+
+nodes_wanted(Config) ->
+    lists:usort(chronicle_compat:get(Config, nodes_wanted, #{default => []})).
 server_groups() ->
     server_groups(ns_config:latest()).
 
 server_groups(Config) ->
-    {value, Groups} = ns_config:search(Config, server_groups),
-    Groups.
+    chronicle_compat:get(Config, server_groups, #{required => true}).
 
 active_nodes() ->
     active_nodes(ns_config:get()).
@@ -115,15 +122,11 @@ actual_active_nodes(Config) ->
     get_nodes_with_status(Config, ns_node_disco:nodes_actual(), active).
 
 get_cluster_membership(Node) ->
-    get_cluster_membership(Node, ns_config:get()).
+    get_cluster_membership(Node, ns_config:latest()).
 
 get_cluster_membership(Node, Config) ->
-    case ns_config:search(Config, {node, Node, membership}) of
-        {value, Value} ->
-             Value;
-        _ ->
-            inactiveAdded
-    end.
+    chronicle_compat:get(Config, {node, Node, membership},
+                         #{default => inactiveAdded}).
 
 get_node_server_group(Node, Config) ->
     get_node_server_group_inner(Node, server_groups(Config)).
@@ -139,15 +142,17 @@ get_node_server_group_inner(Node, [SG | Rest]) ->
     end.
 
 system_joinable() ->
-    ns_node_disco:nodes_wanted() =:= [node()].
+    nodes_wanted() =:= [node()].
 
 activate(Nodes) ->
-    ns_config:set([{{node, Node, membership}, active} ||
-                      Node <- Nodes]).
+    chronicle_compat:set_multiple(update_membership_sets(Nodes, active)).
 
 deactivate(Nodes) ->
-    ns_config:set([{{node, Node, membership}, inactiveFailed}
-                   || Node <- Nodes]).
+    chronicle_compat:set_multiple(update_membership_sets(Nodes,
+                                                         inactiveFailed)).
+
+update_membership_sets(Nodes, Membership) ->
+    [{{node, Node, membership}, Membership} || Node <- Nodes].
 
 is_newly_added_node(Node) ->
     get_cluster_membership(Node) =:= inactiveAdded andalso
@@ -159,104 +164,87 @@ is_balanced() ->
 failover(Nodes, AllowUnsafe) ->
     ns_orchestrator:failover(Nodes, AllowUnsafe).
 
-re_failover_possible(NodeString) ->
+get_failover_node(NodeString) ->
+    true = is_list(NodeString),
     case (catch list_to_existing_atom(NodeString)) of
         Node when is_atom(Node) ->
-            RecoveryType = ns_config:search(ns_config:latest(), {node, Node, recovery_type}, none),
-            Membership = ns_config:search(ns_config:latest(), {node, Node, membership}),
-            Ok = (lists:member(Node, ns_node_disco:nodes_wanted())
-                  andalso RecoveryType =/= none
-                  andalso Membership =:= {value, inactiveAdded}),
-            case Ok of
-                true ->
-                    {ok, Node};
-                _ ->
-                    not_possible
-            end;
+            Node;
         _ ->
-            not_possible
+            undefined
     end.
 
 %% moves node from pending-recovery state to failed over state
 %% used when users hits Cancel for pending-recovery node on UI
 re_failover(NodeString) ->
-    true = is_list(NodeString),
-    case re_failover_possible(NodeString) of
-        {ok, Node} ->
-            KVList = [{{node, Node, membership}, inactiveFailed},
-                      {{node, Node, recovery_type}, none}],
-            ns_config:set(KVList),
-            ok;
-        not_possible ->
-            not_possible
+    case get_failover_node(NodeString) of
+        undefined ->
+            not_possible;
+        Node ->
+            chronicle_compat:transaction(
+              [nodes_wanted,
+               {node, Node, membership},
+               {node, Node, recovery_type}],
+              fun (Snapshot) ->
+                      case lists:member(Node, nodes_wanted(Snapshot)) andalso
+                          get_recovery_type(Snapshot, Node) =/= none andalso
+                          get_cluster_membership(Node,
+                                                 Snapshot) =:= inactiveAdded of
+                          true ->
+                              [{{node, Node, membership}, inactiveFailed},
+                               {{node, Node, recovery_type}, none}];
+                          false ->
+                              {abort, not_possible}
+                      end
+              end)
     end.
 
 get_recovery_type(Config, Node) ->
-    ns_config:search(Config, {node, Node, recovery_type}, none).
+    chronicle_compat:get(Config, {node, Node, recovery_type},
+                         #{default => none}).
 
 -spec update_recovery_type(node(), delta | full) -> ok | bad_node.
 update_recovery_type(Node, NewType) ->
-    RV = ns_config:run_txn(
-           fun (Config, Set) ->
-                   Membership = ns_config:search(Config, {node, Node, membership}),
+    chronicle_compat:transaction(
+      [{node, Node, membership},
+       {node, Node, recovery_type}],
+      fun (Snapshot) ->
+              Membership = get_cluster_membership(Node, Snapshot),
+              case (Membership =:= inactiveAdded
+                    andalso get_recovery_type(Snapshot, Node) =/= none)
+                  orelse Membership =:= inactiveFailed of
+                  true ->
+                      [{{node, Node, membership}, inactiveAdded},
+                       {{node, Node, recovery_type}, NewType}];
+                  false ->
+                      {abort, bad_node}
+              end
+      end).
 
-                   case (Membership =:= {value, inactiveAdded}
-                         andalso get_recovery_type(Config, Node) =/= none)
-                       orelse Membership =:= {value, inactiveFailed} of
-                       true ->
-                           Config1 = Set({node, Node, membership}, inactiveAdded, Config),
-                           {commit,
-                            Set({node, Node, recovery_type}, NewType, Config1)};
-                       false ->
-                           {abort, bad_node}
-                   end
-           end),
-
-    case RV of
-        {commit, _} ->
-            ok;
-        {abort, bad_node} ->
-            bad_node;
-        retry_needed ->
-            erlang:error(exceeded_retries)
-    end.
+clear_recovery_type_sets(Nodes) ->
+    [{{node, N, recovery_type}, none} || N <- Nodes].
 
 add_node(Node, GroupUUID, Services) ->
-    TXNRV =
-        ns_config:run_txn(
-          fun (Cfg, SetFn) ->
-                  {value, NWanted} = ns_config:search(Cfg, nodes_wanted),
-                  case lists:member(Node, NWanted) of
-                      true ->
-                          {abort, node_present};
-                      false ->
-                          NewNWanted = lists:usort([Node | NWanted]),
-                          Cfg1 = SetFn(nodes_wanted, NewNWanted, Cfg),
-                          Cfg2 = SetFn({node, Node, membership}, inactiveAdded,
-                                       Cfg1),
-                          CfgPreGroups = SetFn({node, Node, services}, Services,
-                                               Cfg2),
-
-                          {value, Groups} =
-                              ns_config:search(Cfg, server_groups),
-                          case add_node_to_groups(Groups, GroupUUID, Node) of
-                              {error, Error} ->
-                                  {abort, Error};
-                              NewGroups ->
-                                  Cfg3 = SetFn(server_groups, NewGroups,
-                                               CfgPreGroups),
-                                  {commit, Cfg3}
-                          end
-                  end
-          end),
-    case TXNRV of
-        {commit, _} ->
-            ok;
-        {abort, Error} ->
-            Error;
-        retry_needed ->
-            erlang:error(exceeded_retries)
-    end.
+    chronicle_compat:transaction(
+      [nodes_wanted, server_groups],
+      fun (Snapshot) ->
+              NodesWanted = nodes_wanted(Snapshot),
+              case lists:member(Node, NodesWanted) of
+                  true ->
+                      {abort, node_present};
+                  false ->
+                      Groups = server_groups(Snapshot),
+                      case add_node_to_groups(Groups, GroupUUID, Node) of
+                          {error, Error} ->
+                              {abort, Error};
+                          NewGroups ->
+                              [{nodes_wanted,
+                                lists:usort([Node | NodesWanted])},
+                               {{node, Node, membership}, inactiveAdded},
+                               {{node, Node, services}, Services},
+                               {server_groups, NewGroups}]
+                      end
+              end
+      end).
 
 add_node_to_groups(Groups, GroupUUID, Node) ->
     MaybeGroup0 = [G || G <- Groups,
@@ -286,19 +274,43 @@ add_node_to_groups(Groups, GroupUUID, Node) ->
     end.
 
 remove_node(RemoteNode) ->
-    ok = ns_config:update(
-           fun ({nodes_wanted, V}) ->
-                   {update, {nodes_wanted, V -- [RemoteNode]}};
-               ({server_groups, Groups}) ->
-                   {update, {server_groups,
+    case chronicle_compat:backend() of
+        ns_config ->
+            ok = ns_config:update(
+                   fun ({nodes_wanted, V}) ->
+                           {update, {nodes_wanted, V -- [RemoteNode]}};
+                       ({server_groups, Groups}) ->
+                           {update, {server_groups,
+                                     remove_node_from_server_groups(
+                                       RemoteNode, Groups)}};
+                       ({{node, Node, _}, _})
+                         when Node =:= RemoteNode ->
+                           delete;
+                       (_Other) ->
+                           skip
+                   end);
+        chronicle ->
+            ok = ns_config:update(
+                   fun ({{node, Node, _}, _})
+                         when Node =:= RemoteNode ->
+                           delete;
+                       (_Other) ->
+                           skip
+                   end),
+            NodeKeys = chronicle_local:node_keys(RemoteNode),
+            {ok, _} =
+                chronicle_kv:transaction(
+                  kv, [nodes_wanted, server_groups | NodeKeys],
+                  fun (Snapshot) ->
+                          {commit,
+                           [{set, nodes_wanted,
+                             nodes_wanted(Snapshot) -- [RemoteNode]},
+                            {set, server_groups,
                              remove_node_from_server_groups(
-                               RemoteNode, Groups)}};
-               ({{node, Node, _}, _})
-                 when Node =:= RemoteNode ->
-                   delete;
-               (_Other) ->
-                   skip
-           end).
+                               RemoteNode, server_groups(Snapshot))} |
+                            [{delete, K} || K <- NodeKeys]]}
+                  end)
+    end.
 
 remove_node_from_server_groups(RemoteNode, Groups) ->
     [lists:keystore(nodes, 1, G,
@@ -393,26 +405,27 @@ set_service_map(kv, _Nodes) ->
     ok;
 set_service_map(Service, Nodes) ->
     master_activity_events:note_set_service_map(Service, Nodes),
-    ns_config:set({service_map, Service}, Nodes).
+    chronicle_compat:set({service_map, Service}, Nodes).
 
 get_service_map(Config, kv) ->
     %% kv is special; just return active kv nodes
     ActiveNodes = active_nodes(Config),
     service_nodes(Config, ActiveNodes, kv);
 get_service_map(Config, Service) ->
-    ns_config:search(Config, {service_map, Service}, []).
+    chronicle_compat:get(Config, {service_map, Service}, #{default => []}).
 
 failover_service_nodes(Config, Service, Nodes) ->
     Map = get_service_map(Config, Service),
-    NewMap = Map -- Nodes,
-    ok = ns_config:set([{{service_map, Service}, NewMap},
-                        {{service_failover_pending, Service}, true}]).
+    chronicle_compat:set_multiple(
+      [{{service_map, Service}, Map -- Nodes},
+       {{service_failover_pending, Service}, true}]).
 
 service_has_pending_failover(Config, Service) ->
-    ns_config:search(Config, {service_failover_pending, Service}, false).
+    chronicle_compat:get(Config, {service_failover_pending, Service},
+                         #{default => false}).
 
 service_clear_pending_failover(Service) ->
-    ns_config:set({service_failover_pending, Service}, false).
+    chronicle_compat:set({service_failover_pending, Service}, false).
 
 node_active_services(Node) ->
     node_active_services(ns_config:latest(), Node).
@@ -426,12 +439,8 @@ node_services(Node) ->
     node_services(ns_config:latest(), Node).
 
 node_services(Config, Node) ->
-    case ns_config:search(Config, {node, Node, services}) of
-        false ->
-            default_services();
-        {value, Value} ->
-            Value
-    end.
+    chronicle_compat:get(Config, {node, Node, services},
+                         #{default => default_services()}).
 
 should_run_service(Service, Node) ->
     should_run_service(ns_config:latest(), Service, Node).

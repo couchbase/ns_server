@@ -30,7 +30,8 @@
 -endif.
 
 -export([start/2, is_possible/1, orchestrate/2,
-         get_failover_vbuckets/2, promote_max_replicas/4]).
+         get_failover_vbuckets/2, promote_max_replicas/4,
+         clear_failover_vbuckets_sets/1]).
 
 -define(DATA_LOST, 1).
 -define(FAILOVER_OPS_TIMEOUT, ?get_timeout(failover_ops_timeout, 10000)).
@@ -149,7 +150,7 @@ deactivate_nodes([]) ->
     ok;
 deactivate_nodes(Nodes) ->
     ale:info(?USER_LOGGER, "Deactivating failed over nodes ~p", [Nodes]),
-    ns_cluster_membership:deactivate(Nodes).
+    ok = ns_cluster_membership:deactivate(Nodes).
 
 %% @doc Fail one or more nodes. Doesn't eject the node from the cluster. Takes
 %% effect immediately.
@@ -181,6 +182,9 @@ failover_buckets(Nodes, Options) ->
     update_failover_vbuckets(Results),
     failover_handle_results(Results).
 
+clear_failover_vbuckets_sets(Nodes) ->
+    [{{node, N, failover_vbuckets}, []} || N <- Nodes].
+
 update_failover_vbuckets(Results) ->
     GroupedByNode =
         misc:groupby_map(fun (L) ->
@@ -190,16 +194,16 @@ update_failover_vbuckets(Results) ->
 
                                  {Node, {Bucket, VBs}}
                          end, Results),
-    {commit, _} =
-        ns_config:run_txn(
-          fun (Config, Set) ->
-                  {commit,
-                   lists:foldl(?cut(update_failover_vbuckets(Set, _, _)),
-                               Config, GroupedByNode)}
+    ok =
+        chronicle_compat:transaction(
+          [{node, N, failover_vbuckets} || {N, _} <- GroupedByNode],
+          fun (Snapshot) ->
+                  lists:filtermap(update_failover_vbuckets(Snapshot, _),
+                                  GroupedByNode)
           end).
 
-update_failover_vbuckets(Set, {Node, BucketResults}, Config) ->
-    ExistingBucketResults = get_failover_vbuckets(Config, Node),
+update_failover_vbuckets(Snapshot, {Node, BucketResults}) ->
+    ExistingBucketResults = get_failover_vbuckets(Snapshot, Node),
     Merged = merge_failover_vbuckets(ExistingBucketResults, BucketResults),
 
     ?log_debug("Updating failover_vbuckets for ~p with ~p~n"
@@ -208,9 +212,9 @@ update_failover_vbuckets(Set, {Node, BucketResults}, Config) ->
 
     case Merged of
         ExistingBucketResults ->
-            Config;
+            false;
         _ ->
-            Set({node, Node, failover_vbuckets}, Merged, Config)
+            {true, {{node, Node, failover_vbuckets}, Merged}}
     end.
 
 merge_failover_vbuckets(ExistingBucketResults, BucketResults) ->
@@ -293,7 +297,7 @@ failover_services(Nodes) ->
     failover_handle_results(Results).
 
 failover_service(Config, Service, Nodes) ->
-    ns_cluster_membership:failover_service_nodes(Config, Service, Nodes),
+    ok = ns_cluster_membership:failover_service_nodes(Config, Service, Nodes),
 
     %% We're refetching the config since failover_service_nodes updated the
     %% one that we had.
@@ -503,7 +507,8 @@ is_possible(Nodes) ->
     end.
 
 get_failover_vbuckets(Config, Node) ->
-    ns_config:search(Config, {node, Node, failover_vbuckets}, []).
+    chronicle_compat:get(Config, {node, Node, failover_vbuckets},
+                         #{default => []}).
 
 
 -ifdef(TEST).
