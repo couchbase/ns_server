@@ -84,22 +84,10 @@ handle_info(Msg, State) ->
     {noreply, State}.
 
 %% internal
-config_event_handler(WorkerPid, Event) ->
-    case is_interesting_event(Event) of
-        true ->
-            submit_update(WorkerPid);
-        false ->
-            ok
-    end.
-
-is_interesting_event({buckets, _}) ->
-    true;
-is_interesting_event({node, Node, membership}) when Node =:= node() ->
-    true;
-is_interesting_event({node, Node, services}) when Node =:= node() ->
-    true;
-is_interesting_event(_) ->
-    false.
+config_event_handler(WorkerPid, {buckets, _}) ->
+    submit_update(WorkerPid);
+config_event_handler(_, _) ->
+    ok.
 
 submit_update(Pid) ->
     gen_server:cast(Pid, update_buckets).
