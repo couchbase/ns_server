@@ -18,11 +18,14 @@
 
 -module(chronicle_compat).
 
+-include("cut.hrl").
+
 -export([backend/0,
          get/2,
          get/3,
          set/2,
-         set_multiple/1]).
+         set_multiple/1,
+         transaction/2]).
 
 backend() ->
     case enabled() of
@@ -102,4 +105,57 @@ set_multiple(List) ->
             end;
         ns_config ->
             ns_config:set(List)
+    end.
+
+transaction(Keys, Fun) ->
+    RunCallback =
+        fun (Snapshot, BuildCommit) ->
+                case Fun(Snapshot) of
+                    {abort, _} = Abort ->
+                        Abort;
+                    {List, Extra} ->
+                        {commit, BuildCommit(List), Extra};
+                    List ->
+                        {commit, BuildCommit(List)}
+                end
+        end,
+
+    case backend() of
+        chronicle ->
+            RV =
+                chronicle_kv:transaction(
+                  kv, Keys,
+                  fun (Snapshot) ->
+                          RunCallback(Snapshot,
+                                      ?cut([{set, K, V} || {K, V} <- _]))
+                  end, #{}),
+            case RV of
+                {ok, _} ->
+                    ok;
+                {ok, _, Extra} ->
+                    {ok, Extra};
+                Error ->
+                    Error
+            end;
+        ns_config ->
+            TXNRV =
+                ns_config:run_txn(
+                  fun (Cfg, SetFn) ->
+                          RunCallback(Cfg, fun (List) ->
+                                                   lists:foldl(
+                                                     fun ({K, V}, Acc) ->
+                                                             SetFn(K, V, Acc)
+                                                     end, Cfg, List)
+                                           end)
+                  end),
+            case TXNRV of
+                {commit, _} ->
+                    ok;
+                {commit, _, Extra} ->
+                    {ok, Extra};
+                {abort, Error} ->
+                    Error;
+                retry_needed ->
+                    erlang:error(exceeded_retries)
+            end
     end.
