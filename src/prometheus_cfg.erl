@@ -58,6 +58,7 @@ default_settings() ->
      {max_block_duration, 25}, %% in hours
      {scrape_interval, 10}, %% in seconds
      {scrape_timeout, 10}, %% in seconds
+     {snapshot_timeout_msecs, 30000}, %% in milliseconds
      {token_file, "prometheus_token"},
      {query_max_samples, 200000},
      {services, [{S, [{high_cardinality_enabled, true}]}

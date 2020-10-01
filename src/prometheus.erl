@@ -30,7 +30,7 @@ create_snapshot(Timeout, Settings) ->
         {Ref, {error, Reason}} ->
             {error, Reason}
     after Timeout ->
-              {error, timeoout}
+              {error, timeout}
     end.
 
 query_range(Query, Start, End, Step, Timeout, Settings) ->
