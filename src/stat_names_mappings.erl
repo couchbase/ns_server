@@ -27,7 +27,7 @@
 -define(IRATE_INTERVAL, "1m").
 
 handle_stats_mapping_get(Section, StatTokens, Req) ->
-    StatName = lists:join("/", StatTokens),
+    StatName = lists:flatten(lists:join("/", StatTokens)),
     Stats = case StatName of
                 "all" -> all;
                 S -> [list_to_binary(S)]
