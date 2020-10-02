@@ -386,6 +386,12 @@ handle_cast(leave, State) ->
     %% and then we clear config. In fact better name would be 'reset',
     %% because as seen above we actually re-initialize default config
     ns_config:clear([directory,
+                     %% Preserve these directories as they may have been
+                     %% changed from their defaults and their handling
+                     %% should be consistent with the way we retain the
+                     %% index and data directories.
+                     {node, node(), cbas_dirs},
+                     {node, node(), eventing_dir},
                      %% we preserve rest settings, so if the server runs on a
                      %% custom port, it doesn't revert to the default
                      rest,
