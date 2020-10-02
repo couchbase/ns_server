@@ -98,6 +98,7 @@
 -define(ACCESS_LOGGER, access).
 -define(METAKV_LOGGER, metakv).
 -define(JSON_RPC_LOGGER, json_rpc).
+-define(CHRONICLE_ALE_LOGGER, chronicle).
 
 -define(LOGGERS, [?NS_SERVER_LOGGER,
                   ?USER_LOGGER, ?MENELAUS_LOGGER,

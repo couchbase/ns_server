@@ -152,12 +152,12 @@ init_logging() ->
 
 do_init_logging() ->
     StdLoggers = [?ALE_LOGGER, ?ERROR_LOGGER],
-    AllLoggers = StdLoggers ++ ?LOGGERS,
+    AllLoggers = [?CHRONICLE_ALE_LOGGER | StdLoggers] ++ ?LOGGERS,
 
     lists:foreach(
       fun (Logger) ->
               ale:stop_logger(Logger)
-      end, ?LOGGERS ++ [?ACCESS_LOGGER]),
+      end, ?LOGGERS ++ [?ACCESS_LOGGER, ?CHRONICLE_ALE_LOGGER]),
 
     ok = start_disk_sink(disk_default, ?DEFAULT_LOG_FILENAME),
     ok = start_disk_sink(disk_error, ?ERRORS_LOG_FILENAME),
@@ -185,6 +185,7 @@ do_init_logging() ->
     ok = logger:set_primary_config(level, info),
 
     ok = ale:start_logger(?ACCESS_LOGGER, debug, menelaus_access_log_formatter),
+    ok = ale:start_logger(?CHRONICLE_ALE_LOGGER, debug, chronicle_local),
 
     OverrideLoglevels = [{?STATS_LOGGER, warn},
                          {?NS_DOCTOR_LOGGER, warn}],

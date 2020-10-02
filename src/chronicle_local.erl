@@ -20,11 +20,18 @@
 -include("ns_common.hrl").
 -include("ns_config.hrl").
 -include("cut.hrl").
+-include_lib("ale/include/ale.hrl").
 
 -export([start_link/0,
          init/1,
          handle_call/3,
          rename/1]).
+
+%% exported chronicle log fun
+-export([log/4]).
+
+%% exported for log formatting
+-export([format_msg/2, format_time/1]).
 
 start_link() ->
     gen_server2:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -32,6 +39,8 @@ start_link() ->
 init([]) ->
     application:set_env(chronicle, data_dir,
                         path_config:component_path(data, "config")),
+    application:set_env(chronicle, logger_function, {?MODULE, log}),
+
     ?log_debug("Ensure chronicle is started"),
     ok = application:ensure_started(chronicle, permanent),
 
@@ -72,3 +81,18 @@ handle_rename(OldNode) ->
                           {update, NewK, NewV}
                   end
           end).
+
+log(Level, Fmt, Args, Info) ->
+    AleLevel = case Level of
+                   warning -> warn;
+                   _ -> Level
+               end,
+    ale:xlog(?CHRONICLE_ALE_LOGGER, AleLevel, Info, Fmt, Args).
+
+format_time(Time) ->
+    ale_default_formatter:format_time(Time).
+
+format_msg(#log_info{user_data = #{module := M, function := F, line := L}}
+           = Info, UserMsg) ->
+    ale_default_formatter:format_msg(
+      Info#log_info{module = M, function = F, line = L}, UserMsg).
