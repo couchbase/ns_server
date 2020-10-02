@@ -2132,6 +2132,7 @@ button:hover.scenarios-delete {
   padding: 1.5rem !important;
   height: 94% !important;
   font-size: .75rem;
+  margin-top: 1rem;
 }
 
 /* ACE editor overrides ---------------------------------------------------- */
@@ -2385,13 +2386,15 @@ button:hover.scenarios-delete {
   transition: all 1s;
 }
 .insights-sidebar-expand,
-.wb-fullscreen {
+.wb-fullscreen,
+.find-icon {
   cursor: pointer;
   color: #d1d1d1;
   padding: 0 .5rem;
 }
 .insights-sidebar-expand:hover,
-.wb-fullscreen:hover {
+.wb-fullscreen:hover,
+.find-icon:hover {
   color: #333;
 }
 .insights-sidebar-body {
