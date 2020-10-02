@@ -231,24 +231,10 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 do_handle_check_alerts_info(#state{history=Hist, opaque=Opaque}) ->
-    BucketNames = ordsets:intersection(lists:sort(ns_memcached:active_buckets()),
-                                       lists:sort(ns_bucket:node_bucket_names(node()))),
-    IsIndex = lists:member(index, ns_cluster_membership:node_active_services(node())),
-    %% the single index-related alert only applies to memory optimized
-    %% indexes, so we only bother to collect index stats in this case
-    StorageMode = index_settings_manager:get(storageMode),
-    Index = case IsIndex andalso
-                index_settings_manager:is_memory_optimized(StorageMode) of
-                true ->
-                    ["@index"];
-                false ->
-                    []
-            end,
-    AllNames = ["@global" | BucketNames] ++ Index,
-    RawPairs = [{Name, stats_reader:latest(minute, node(), Name, 1)} || Name <- AllNames],
-    Stats = [{Name, OrdDict}
-             || {Name, {ok, [#stat_entry{values = OrdDict}|_]}} <- RawPairs],
-    check_alerts(Opaque, Hist, Stats).
+    Stats = stats_interface:for_alerts(),
+    StatsOrddict = orddict:from_list([{K, orddict:from_list(V)}
+                                          || {K, V} <- Stats]),
+    check_alerts(Opaque, Hist, StatsOrddict).
 
 terminate(_Reason, _State) ->
     ok.
@@ -352,7 +338,8 @@ check(disk, Opaque, _History, _Stats) ->
 
 %% @doc check how much overhead there is compared to data
 check(overhead, Opaque, _History, Stats) ->
-    [case over_threshold(fetch_bucket_stat(Stats, Bucket, ep_meta_data_memory),
+    [case over_threshold(fetch_bucket_stat(Stats, Bucket,
+                                           ep_meta_data_memory_bytes),
                          fetch_bucket_stat(Stats, Bucket, ep_max_size)) of
          {true, X} ->
              Host = misc:extract_node_address(node()),
@@ -365,11 +352,15 @@ check(overhead, Opaque, _History, Stats) ->
 
 %% @doc check for indexer ram usage
 check(indexer_ram_max_usage, Opaque, _History, Stats) ->
+    %% the single index-related alert only applies to memory optimized
+    %% indexes, so we simply ignore index stats in non memory optimized case
+    StorageMode = index_settings_manager:get(storageMode),
+    IsMemoryOptimized = index_settings_manager:is_memory_optimized(StorageMode),
     case proplists:get_value("@index", Stats) of
         undefined ->
             ok;
-        Val ->
-            IndexerRam = proplists:get_value(<<"index_ram_percent">>, Val),
+        Val when IsMemoryOptimized ->
+            IndexerRam = proplists:get_value(index_ram_percent, Val),
             case IndexerRam of
                 undefined ->
                     ok;
@@ -386,7 +377,9 @@ check(indexer_ram_max_usage, Opaque, _History, Stats) ->
                         false ->
                             ok
                     end
-            end
+            end;
+        _ ->
+            ok
     end,
     Opaque;
 

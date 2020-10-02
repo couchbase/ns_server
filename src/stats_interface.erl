@@ -17,6 +17,7 @@
 -export([system/0,
          sysproc/0,
          buckets_interesting/0,
+         for_alerts/0,
          latest/2]).
 
 -define(DEFAULT_TIMEOUT, 5000).
@@ -84,6 +85,45 @@ buckets_interesting() ->
       misc:groupby_map(fun ({{Bucket, Name}, Value}) ->
                            {Bucket, {Name, Value}}
                        end, Res)).
+
+%% Return current metrics values required for alert conditions checks
+%%
+%% Note that this function also maps real metrics names to metric
+%% names expected by alert system. If metrics names in prometheus change,
+%% metrics names returned by this functions should stay the same.
+-spec for_alerts() -> [{Section, [{MetricName, Value}]}]
+            when Section :: string(),
+                 MetricName :: atom(),
+                 Value :: number().
+for_alerts() ->
+    Q = <<"{name=~`kv_ep_meta_data_memory_bytes|"
+                  "kv_ep_max_size|"
+                  "kv_ep_oom_errors|"
+                  "kv_ep_item_commit_failed|"
+                  "kv_ep_clock_cas_drift_threshold_exceeded`} or "
+          "label_replace(sum(kv_audit_dropped_events),"
+                        "`name`, `audit_dropped_events`,``,``) or "
+          "label_replace(({name=`index_memory_used_total`} / ignoring(name) "
+                         "{name=`index_memory_quota`}) * 100,"
+                        "`name`,`index_ram_percent`,``,``)">>,
+
+    Res = latest(Q, fun (Props) ->
+                        case proplists:get_value(<<"name">>, Props) of
+                            <<"audit_", _/binary>> = N ->
+                                {true, {"@global", binary_to_atom(N, latin1)}};
+                            <<"index_", _/binary>> = N ->
+                                {true, {"@index", binary_to_atom(N, latin1)}};
+                            <<"kv_", N/binary>> ->
+                                B = proplists:get_value(<<"bucket">>, Props),
+                                {true, {binary_to_list(B),
+                                        binary_to_atom(N, latin1)}};
+                            _ ->
+                                false
+                        end
+                    end),
+    misc:groupby_map(fun ({{Bucket, Name}, Value}) ->
+                         {Bucket, {Name, Value}}
+                     end, Res).
 
 latest(Query, NameParser) ->
     latest(Query, NameParser, ?DEFAULT_TIMEOUT).
