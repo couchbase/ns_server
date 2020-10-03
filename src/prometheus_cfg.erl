@@ -64,7 +64,9 @@ default_settings() ->
      {services, [{S, [{high_cardinality_enabled, true}]}
                         || S <- ?DEFAULT_HIGH_CARD_SERVICES]},
      {external_prometheus_services, [{S, [{high_cardinality_enabled, true}]}
-                                        || S <- ?DEFAULT_HIGH_CARD_SERVICES]}].
+                                        || S <- ?DEFAULT_HIGH_CARD_SERVICES]},
+     {prometheus_metrics_enabled, false},
+     {prometheus_metrics_scrape_interval, 60}]. %% in seconds
 
 build_settings() -> build_settings(ns_config:get()).
 build_settings(Config) ->
@@ -393,10 +395,32 @@ ensure_prometheus_config(Settings) ->
                       source_labels => [<<"instance">>],
                       target_label => <<"category">>,
                       replacement => <<"n1ql">>}]}] ++
-              high_cardinality_jobs_config(Settings)},
+              high_cardinality_jobs_config(Settings) ++
+              prometheus_metrics_jobs_config(Settings)},
     ConfigBin = yaml:encode(Cfg),
     ?log_debug("Updating prometheus config file: ~s", [File]),
     ok = misc:atomic_write_file(File, ConfigBin).
+
+prometheus_metrics_jobs_config(Settings) ->
+    case proplists:get_bool(prometheus_metrics_enabled, Settings) of
+        true ->
+            TokenFile = token_file(Settings),
+            ListenAddress = iolist_to_binary(
+                              proplists:get_value(listen_addr, Settings)),
+            Interval = proplists:get_value(prometheus_metrics_scrape_interval,
+                                           Settings),
+            [#{job_name => prometheus,
+               scrape_interval => {"~bs", [Interval]},
+               scrape_timeout => {"~bs", [Interval]},
+               basic_auth => #{username => list_to_binary(?USERNAME),
+                               password_file => list_to_binary(TokenFile)},
+               static_configs => [#{targets => [ListenAddress]}],
+               relabel_configs =>
+                   [#{target_label => <<"instance">>,
+                      replacement => <<"prometheus">>}]}];
+        false ->
+            []
+    end.
 
 get_service_port(ns_server) -> rest_port;
 get_service_port(index) -> indexer_http_port;
