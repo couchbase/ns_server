@@ -1,0 +1,28 @@
+<div
+   class="inline"
+   [formGroup]="group.flags">
+  <input
+     type="checkbox"
+     [attr.id]="'dynamic_collection_' + parent + item.name"
+     [formControlName]="item.name">
+  <label
+     class="checkbox"
+     [attr.for]="'dynamic_collection_' + parent + item.name">
+    {{parent ? "" : "Scope: "}}
+    {{item.name}}
+  </label>
+  &gt;
+</div>
+<div
+   class="inline"
+   [formGroup]="group.fields">
+  <input
+     placeholder="null"
+     style="border:0;"
+     [formControlName]="item.name"
+     [mnFocus]="group.flags.get(item.name).valueChanges"
+     type="text"
+     autocorrect="off"
+     spellcheck="false"
+     autocapitalize="off">
+</div>

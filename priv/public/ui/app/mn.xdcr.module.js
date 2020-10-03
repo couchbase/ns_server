@@ -5,6 +5,7 @@ import { NgbModule } from "/ui/web_modules/@ng-bootstrap/ng-bootstrap.js";
 
 import { MnElementCraneModule } from "./mn.element.crane.js";
 import { MnSharedModule } from './mn.shared.module.js';
+import { MnInputFilterModule } from './mn.input.filter.module.js';
 
 import { MnXDCRComponent } from "./mn.xdcr.component.js";
 import { MnXDCRItemComponent } from "./mn.xdcr.item.component.js";
@@ -17,6 +18,8 @@ import { MnCollectionsService } from './mn.collections.service.js';
 
 import { MnXDCRAddRefComponent } from "./mn.xdcr.add.ref.component.js";
 import { MnXDCRAddRepComponent } from "./mn.xdcr.add.rep.component.js";
+import { MnXDCRAddRepScopeComponent } from "./mn.xdcr.add.rep.scope.component.js";
+import { MnXDCRAddRepMappingComponent } from "./mn.xdcr.add.rep.mapping.component.js";
 import { MnXDCRDeleteRefComponent } from "./mn.xdcr.delete.ref.component.js";
 import { MnXDCRDeleteRepComponent } from "./mn.xdcr.delete.rep.component.js";
 import { MnXDCRFilterComponent } from "./mn.xdcr.filter.component.js";
@@ -46,6 +49,26 @@ let XDCRState = {
   }
 };
 
+let AddXDCRState = {
+  name: "app.admin.replications.add",
+  data: {
+    permissions: "cluster.tasks.read",
+    title: "Add Replication"
+  },
+  params: {
+    scopesPage: {
+      value: {page:1, size:5},
+      type: 'json',
+      dynamic: true
+    },
+  },
+  views: {
+    "main@app.admin": {
+      component: MnXDCRAddRepComponent
+    }
+  }
+};
+
 export { MnXDCRModule };
 
 class MnXDCRModule {
@@ -53,7 +76,6 @@ class MnXDCRModule {
     new NgModule({
       entryComponents: [
         MnXDCRAddRefComponent,
-        MnXDCRAddRepComponent,
         MnXDCRDeleteRefComponent,
         MnXDCRDeleteRepComponent,
         MnXDCREditRepComponent,
@@ -68,6 +90,8 @@ class MnXDCRModule {
         MnXDCRRefItemComponent,
         MnXDCRAddRefComponent,
         MnXDCRAddRepComponent,
+        MnXDCRAddRepMappingComponent,
+        MnXDCRAddRepScopeComponent,
         MnXDCRDeleteRefComponent,
         MnXDCRDeleteRepComponent,
         MnXDCREditRepComponent,
@@ -77,11 +101,12 @@ class MnXDCRModule {
         MnReplicationStatus
       ],
       imports: [
+        MnInputFilterModule,
         NgbModule,
         MnElementCraneModule,
         ReactiveFormsModule,
         MnSharedModule,
-        UIRouterModule.forChild({ states: [XDCRState] })
+        UIRouterModule.forChild({ states: [XDCRState, AddXDCRState] })
       ],
       providers: [
         MnXDCRService,

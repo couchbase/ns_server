@@ -2,7 +2,7 @@
   <div class="header-controls resp-sml">
     <a
        [hidden]="!((permissions.cluster.xdcr.remote_clusters.read && (references | async)?.length) && permissions.cluster.xdcr.settings.read && permissions.cluster.xdcr.settings.write && permissions.cluster.bucket['.'].xdcr.write)"
-       (click)="onAddReplication.next()"
+       uiSref="app.admin.replications.add"
        class="resp-hide-sml">
       ADD REPLICATION
     </a>

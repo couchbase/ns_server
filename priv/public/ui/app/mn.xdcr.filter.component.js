@@ -1,11 +1,10 @@
 import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
 import {merge} from '/ui/web_modules/rxjs.js';
-import {map} from '/ui/web_modules/rxjs/operators.js';
+import {map, pluck} from '/ui/web_modules/rxjs/operators.js';
 
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
 import {MnXDCRService} from "./mn.xdcr.service.js";
 import {MnFormService} from "./mn.form.service.js";
-import {MnHelperService} from "./mn.helper.service.js";
 
 export {MnXDCRFilterComponent};
 
@@ -25,21 +24,22 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
 
   static get parameters() { return [
     MnXDCRService,
-    MnFormService,
-    MnHelperService
+    MnFormService
   ]}
 
-  constructor(mnXDCRService, mnFormService, mnHelperService) {
+  constructor(mnXDCRService, mnFormService) {
     super();
 
     this.form = mnFormService.create(this);
+
+    this.formHelper =
+      mnFormService.create(this)
+      .setFormGroup({enableFilters: false});
 
     this.postRegexpValidation =
       mnXDCRService.stream.postRegexpValidation;
     this.postSettingsReplicationsValidation =
       mnXDCRService.stream.postSettingsReplicationsValidation;
-
-    this.toggler = mnHelperService.createToggle();
 
     this.errors = merge(
       this.postRegexpValidation.success,

@@ -11,7 +11,6 @@ import {MnTasksService} from './mn.tasks.service.js';
 import {MnHelperService} from './mn.helper.service.js';
 
 import {MnXDCRAddRefComponent} from "./mn.xdcr.add.ref.component.js";
-import {MnXDCRAddRepComponent} from "./mn.xdcr.add.rep.component.js";
 
 export { MnXDCRComponent };
 
@@ -41,13 +40,6 @@ class MnXDCRComponent extends MnLifeCycleHooksToStream {
       .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(() => modalService.open(MnXDCRAddRefComponent));
 
-    var onAddReplication = new Subject();
-    onAddReplication
-      .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(function () {
-        modalService.open(MnXDCRAddRepComponent);
-      });
-
     var referenceSorter = mnHelperService.createSorter("name");
 
     this.tasksXDCR = mnTasksService.stream.tasksXDCR;
@@ -58,8 +50,6 @@ class MnXDCRComponent extends MnLifeCycleHooksToStream {
       .pipe(referenceSorter.pipe);
 
     this.onAddReference = onAddReference;
-    this.onAddReplication = onAddReplication;
-
     this.referenceSorter = referenceSorter;
 
   }

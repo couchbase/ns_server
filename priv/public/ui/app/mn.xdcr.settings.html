@@ -2,9 +2,20 @@
    class="disclosure margin-bottom-half"
    [ngClass]="{disclosed: (toggler.state | async)}"
    (click)="toggler.click.next()">
-  Advanced Replication Settings
+  Advanced Settings
 </p>
 <div [hidden]="!(toggler.state | async)" [formGroup]="group">
+  <div class="formrow">
+    <label for="replication_priority">Replication Priority</label>
+    <select
+       id="replication_priority"
+       formControlName="priority">
+      <option value="Low">Low</option>
+      <option value="Medium">Medium</option>
+      <option value="High">High</option>
+    </select>
+  </div>
+
   <div class="formrow">
     <label for="xdcr_advaced_settings_type">XDCR Protocol</label>
     <select

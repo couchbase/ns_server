@@ -1,45 +1,94 @@
-<div class="dialog-med">
-  <div class="panel-header">
-    <h2>Add Replication</h2>
-    <a class="ui-dialog-titlebar-close modal-close" (click)="activeModal.dismiss()">X</a>
+<mn-element-cargo depot="actions">
+  <div class="header-controls resp-sml">
+    <a
+       uiSref="app.admin.replications"
+       class="resp-hide-sml">
+      BACK
+    </a>
   </div>
-  <form
-     [formGroup]="form.group"
-     (submit)="form.submit.next()"
-     class="forms">
-    <div class="panel-content">
+</mn-element-cargo>
+
+<form
+   [formGroup]="form.group"
+   (submit)="form.submit.next()"
+   class="forms">
+  <div class="row flex-left items-stretch resp-flex-column-med margin-bottom-2">
+    <div class="width-7">
       <div
          class="error"
          [hidden]="!(postCreateReplication.error | async)?._">
         {{(postCreateReplication.error | async)?._}}
       </div>
-      <div class="formrow">
-        <label for="replication_from_bucket">Replicate From Bucket</label>
-        <select
-           formControlName="fromBucket">
-          <option value="" disabled="true" [selected]="true" style="display: none;">
-            select a bucket
-          </option>
-          <option *ngFor="let v of (bucketsMembaseEphemeral | async)" [ngValue]="v.name">
-            {{v.name}}
-          </option>
-        </select>
-        <div
-           class="error error-field"
-           [hidden]="!(postCreateReplication.error | async)?.fromBucket">
-          {{(postCreateReplication.error | async)?.fromBucket}}
+      <div>
+        <div class="formrow inline margin-right-3 align-top">
+          <label for="replication_from_bucket">Replicate From Bucket</label>
+          <select
+             formControlName="fromBucket">
+            <option value="" disabled="true" [selected]="true" style="display: none;">
+              select a bucket
+            </option>
+            <option *ngFor="let v of (bucketsMembaseEphemeral | async)" [ngValue]="v.name">
+              {{v.name}}
+            </option>
+          </select>
+          <div
+             class="error error-field"
+             [hidden]="!(postCreateReplication.error | async)?.fromBucket">
+            {{(postCreateReplication.error | async)?.fromBucket}}
+          </div>
+        </div>
+
+        <div class="formrow inline margin-right-1 align-top">
+          <label for="replication_to_cluster">Remote Cluster</label>
+          <select
+             formControlName="toCluster">
+            <option value="" disabled="true" [selected]="true" style="display: none;">
+              Pick remote cluster
+            </option>
+            <option *ngFor="let v of (remoteClusters | async)" [ngValue]="v.name">
+              {{v.name}}
+            </option>
+          </select>
+          <div
+             class="error error-field"
+             [hidden]="!(postCreateReplication.error | async)?.toCluster">
+            {{(postCreateReplication.error | async)?.toCluster}}
+          </div>
+        </div>
+
+        <div class="formrow inline margin-right-3 align-top">
+          <label for="replication_to_bucket">Remote Bucket</label>
+          <input
+             id="replication_to_bucket"
+             formControlName="toBucket"
+             type="text"
+             autocorrect="off"
+             spellcheck="false"
+             autocapitalize="off">
+          <div
+             class="error error-field"
+             [hidden]="!(postCreateReplication.error | async)?.toBucket">
+            {{(postCreateReplication.error | async)?.toBucket}}
+          </div>
         </div>
       </div>
 
       <div
-         class="formrow checkbox-list">
-        <input
-           formControlName="collectionsExplicitMapping"
-           id="collections_explicit_mapping"
-           type="checkbox">
-        <label for="collections_explicit_mapping" class="margin-right-zero">
-          Specify scopes, collections, and mapping
+         class="zero-content"
+         [hidden]="!form.group.get('fromBucket').value">
+        The bucket {{form.group.get('fromBucket').value}}’s topology (including scopes &amp;
+        collections) will be mirrored on {{form.group.get('toCluster').value}}
+      </div>
+
+      <div class="row flex-left margin-bottom-half">
+        <label class="toggle-control margin-0">
+          <input
+             formControlName="collectionsExplicitMapping"
+             id="collections_explicit_mapping"
+             type="checkbox">
+          <span class="toggle-control-body"></span>
         </label>
+        <span class="text-small margin-left-half">Specify scopes, collections, and mapping</span>
         <span
            class="fa-stack icon-info"
            ngbTooltip=""
@@ -52,176 +101,94 @@
       <div
          class="margin-bottom-1"
          [hidden]="!form.group.get('collectionsExplicitMapping').value">
-
         <div
-           class="formrow checkbox-list">
+           class="error error-field"
+           [hidden]="!(postCreateReplication.error | async)?.colMappingRules">
+          {{(postCreateReplication.error | async)?.colMappingRules}}
+        </div>
+
+        <mn-input-filter
+           class="inline"
+           [group]="scopesFilter.group"
+           placeholder="filter scopes">
+        </mn-input-filter>
+
+        <div *ngFor="let scope of (scopesPaginator.page | async);">
+          <mn-xdcr-add-rep-scope
+             style="display: block;"
+             [group]="explicitMappingGroup"
+             [item]="scope"
+             [rulesHolder]="explicitMappingRules">
+          </mn-xdcr-add-rep-scope>
+        </div>
+
+        <ngb-pagination
+           *ngIf="(scopesPaginator.values | async)?.size && (scopes | async)?.length"
+           [page]="(scopesPaginator.values | async)?.page"
+           [maxSize]="5"
+           [pageSize]="(scopesPaginator.values | async)?.size"
+           [collectionSize]="(scopes | async)?.length"
+           (pageChange)="scopesPaginator.group.patchValue({page:$event})">
+          <ng-template ngbPaginationPrevious>&#60; prev</ng-template>
+          <ng-template ngbPaginationNext>next &#62;</ng-template>
+        </ngb-pagination>
+      </div>
+
+      <div class="row flex-left margin-bottom-half">
+        <label class="toggle-control margin-0">
           <input
              formControlName="collectionsMigrationMode"
              id="collections_migration_mode"
              type="checkbox">
-          <label for="collections_migration_mode" class="margin-right-zero">
-            Enable Collections Migration Mode
-          </label>
-          <span
-             class="fa-stack icon-info"
-             ngbTooltip=""
-             placement="top">
-            <span class="icon fa-circle-thin fa-stack-2x"></span>
-            <span class="icon fa-info fa-stack-1x"></span>
-          </span>
-        </div>
-
-        <div
-           [formGroup]="explicitMappingForm.group"
-           [hidden]="form.group.get('collectionsMigrationMode').value">
-          <div class="formrow">
-            <select
-               formControlName="scope">
-              <option value="" disabled="true" [selected]="true" style="display: none;">
-                choose a scope
-              </option>
-              <option
-                 *ngFor="let v of (selectedBucketScopes | async)"
-                 [ngValue]="v">
-                {{v.name}}
-              </option>
-            </select>
-          </div>
-          <div class="formrow">
-            <select
-               formControlName="collection">
-              <option value="" disabled="true" [selected]="true" style="display: none;">
-                or choose a collection
-              </option>
-              <option
-                 *ngFor="let v of explicitMappingForm.group.get('scope').value.collections"
-                 [ngValue]="v">
-                {{v.name}}
-              </option>
-            </select>
-          </div>
-          <div class="formrow">
-            <label for="remote_scope_name">Name On Remote</label>
-            <input
-               id="remote_scope_name"
-               formControlName="target"
-               placeholder="scope:collection or scope"
-               type="text"
-               autocorrect="off"
-               spellcheck="false"
-               autocapitalize="off">
-          </div>
-          <button
-             class="margin-bottom-half"
-             type="button"
-             (click)="addExplicitMappingRules.next()">Save Mapping</button>
-
-          <div
-             class="error error-field"
-             [hidden]="!(postCreateReplication.error | async)?.colMappingRules">
-            {{(postCreateReplication.error | async)?.colMappingRules}}
-          </div>
-
-          <div *ngFor="let item of getExplicitMappingRulesKeys()"
-             class="row" style="background: lightgrey;">
-            <span>
-              {{item}} --> {{explicitMappingRules[item] || 'null'}}
-            </span>
-            <span (click)="delExplicitMappingRules(item)">X</span>
-          </div>
-        </div>
-
-        <div
-           [formGroup]="explicitMappingForm.group"
-           [hidden]="!form.group.get('collectionsMigrationMode').value">
-          <div class="formrow">
-            <textarea
-               placeholder="Expression for source default collection"
-               formControlName="key"
-               rows="4"
-               autocorrect="off"
-               autocompleterg="off"
-               spellcheck="false"
-               class="xdcr-filter margin-bottom-half">
-            </textarea>
-          </div>
-          <div class="formrow">
-            <textarea
-               placeholder="Expression for specific target collection"
-               formControlName="target"
-               rows="4"
-               autocorrect="off"
-               autocompleterg="off"
-               spellcheck="false"
-               class="xdcr-filter margin-bottom-half">
-            </textarea>
-          </div>
-          <button
-             class="margin-bottom-half"
-             type="button"
-             (click)="addExplicitRuleBasedMappings.next()">Save Mapping</button>
-
-          <div
-             class="error error-field"
-             [hidden]="!(postCreateReplication.error | async)?.colMappingRules">
-            {{(postCreateReplication.error | async)?.colMappingRules}}
-          </div>
-
-          <div *ngFor="let item of getExplicitRuleBasedMappingsKeys()"
-             class="row" style="background: lightgrey;">
-            <span>
-              {{item}} --> {{explicitRuleBasedMappings[item]}}
-            </span>
-            <span (click)="delExplicitRuleBasedMappings(item)">X</span>
-          </div>
-        </div>
-
+          <span class="toggle-control-body"></span>
+        </label>
+        <span class="text-small margin-left-half">Enable Collections Migration Mode</span>
+        <span
+           class="fa-stack icon-info"
+           ngbTooltip=""
+           placement="top">
+          <span class="icon fa-circle-thin fa-stack-2x"></span>
+          <span class="icon fa-info fa-stack-1x"></span>
+        </span>
       </div>
 
-      <div class="formrow">
-        <label for="replication_to_cluster">Remote Cluster</label>
-        <select
-           formControlName="toCluster">
-          <option value="" disabled="true" [selected]="true" style="display: none;">
-            Pick remote cluster
-          </option>
-          <option *ngFor="let v of (remoteClusters | async)" [ngValue]="v.name">
-            {{v.name}}
-          </option>
-        </select>
+      <div
+         [formGroup]="explicitRuleBasedMappingGroup"
+         [hidden]="!form.group.get('collectionsMigrationMode').value">
+        <div class="formrow inline align-top margin-right-1">
+          <label for="migration_from_collection">Replicate From Collection</label>
+          <input
+             class="fix-width-4-5"
+             id="migration_from_collection"
+             formControlName="migrationKey"
+             placeholder="Expression for source default collection"
+             type="text"
+             autocorrect="off"
+             spellcheck="false"
+             autocapitalize="off">
+        </div>
+        <div class="formrow inline align-top margin-right-1">
+          <label for="migration_to_collection">Replicate To Collection</label>
+          <input
+             class="fix-width-4-5"
+             id="migration_to_collection"
+             formControlName="migrationTarget"
+             placeholder="Expression for specific target collection"
+             type="text"
+             autocorrect="off"
+             spellcheck="false"
+             autocapitalize="off">
+        </div>
+        <button
+           class="margin-top-1-5 inline align-top"
+           type="button"
+           (click)="addExplicitRuleBasedMappings.next()">Save Mapping</button>
+
         <div
            class="error error-field"
-           [hidden]="!(postCreateReplication.error | async)?.toCluster">
-          {{(postCreateReplication.error | async)?.toCluster}}
+           [hidden]="!(postCreateReplication.error | async)?.colMappingRules">
+          {{(postCreateReplication.error | async)?.colMappingRules}}
         </div>
-      </div>
-
-
-      <div class="formrow">
-        <label for="replication_to_bucket">Remote Bucket</label>
-        <input
-           id="replication_to_bucket"
-           formControlName="toBucket"
-           type="text"
-           autocorrect="off"
-           spellcheck="false"
-           autocapitalize="off">
-        <div
-           class="error error-field"
-           [hidden]="!(postCreateReplication.error | async)?.toBucket">
-          {{(postCreateReplication.error | async)?.toBucket}}
-        </div>
-      </div>
-
-      <div class="formrow">
-        <label for="replication_priority">Replication Priority</label>
-        <select
-           id="replication_priority"
-           formControlName="priority">
-          <option value="Low">Low</option>
-          <option value="Medium">Medium</option>
-          <option value="High">High</option>
-        </select>
       </div>
 
       <mn-xdcr-filter
@@ -234,9 +201,31 @@
          [type]="form.group.get('type').value"></mn-xdcr-settings>
     </div>
 
-    <div class="panel-footer">
-      <a (click)="activeModal.dismiss()">Cancel</a>
-      <button type="submit">Save</button>
+    <div
+       style="border-left: 1px solid #d1d1d1; margin: 0 40px; flex-basis: 1;"
+       class="resp-hide-med">&nbsp;</div>
+
+    <div class="width-4">
+      <div *ngFor="let item of getExplicitMappingRulesKeys()"
+         class="row" style="background: lightgrey;">
+        <span>
+          {{item}} --> {{explicitMappingRules[item] || 'null'}}
+        </span>
+        <span (click)="delExplicitMappingRules(item)">X</span>
+      </div>
+
+      <div *ngFor="let item of getExplicitRuleBasedMappingsKeys()"
+         class="row" style="background: lightgrey;">
+        <span>
+          {{item}} --> {{explicitRuleBasedMappings[item]}}
+        </span>
+        <span (click)="delExplicitRuleBasedMappings(item)">X</span>
+      </div>
     </div>
-  </form>
-</div>
+  </div>
+
+  <footer class="footer-save">
+    <a uiSref="app.admin.replications">Cancel</a>
+    <button type="submit">Save</button>
+  </footer>
+</form>
