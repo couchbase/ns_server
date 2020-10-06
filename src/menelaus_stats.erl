@@ -65,9 +65,19 @@ grab_latest_bucket_stats(BucketName, Nodes) ->
     Stats = extract_interesting_buckets(BucketName, NodeInfos),
     {FoundNodes, _} = lists:unzip(Stats),
     RestNodes = Nodes -- FoundNodes,
-    RestStats = [{N, S} || {N, [#stat_entry{values=S} | _]} <-
-                               menelaus_stats_gatherer:invoke_archiver(BucketName, RestNodes,
-                                                                       {1, minute, 1})],
+    RestStats =
+        case Nodes -- FoundNodes of
+            [] -> [];
+            RestNodes ->
+                case cluster_compat_mode:is_cluster_cheshirecat() of
+                    true ->
+                        stats_interface:buckets_interesting(RestNodes);
+                    false ->
+                        Entries = menelaus_stats_gatherer:invoke_archiver(
+                                    BucketName, RestNodes, {1, minute, 1}),
+                        [{N, S} || {N, [#stat_entry{values=S} | _]} <- Entries]
+                end
+        end,
     Stats ++ RestStats.
 
 extract_interesting_stat(Key, Stats) ->

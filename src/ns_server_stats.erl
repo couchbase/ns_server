@@ -173,6 +173,15 @@ handle_call({process_stats, TS, Bin, PrevSample}, _From, State) ->
     end;
 
 %% Can be called from another node. Introduced in Cheshire-Cat
+handle_call({stats_interface, Function, Args}, From, State) ->
+    _ = proc_lib:spawn_link(
+          fun () ->
+              Res = erlang:apply(stats_interface, Function, Args),
+              gen_server:reply(From, Res)
+          end),
+    {noreply, State};
+
+%% Can be called from another node. Introduced in Cheshire-Cat
 handle_call({extract, Query, Start, End, Step, Timeout}, From, State) ->
     Settings = prometheus_cfg:settings(),
     Reply = fun (Res) -> gen_server:reply(From, Res) end,

@@ -14,9 +14,12 @@
 %% limitations under the License.
 -module(stats_interface).
 
+-include("ns_common.hrl").
+
 -export([system/0,
          sysproc/0,
          buckets_interesting/0,
+         buckets_interesting/1,
          for_alerts/0,
          latest/2]).
 
@@ -48,6 +51,9 @@ sysproc() ->
     misc:groupby_map(fun ({{Proc, Name}, Value}) ->
                          {Proc, {Name, Value}}
                      end, Res).
+
+buckets_interesting(Nodes) ->
+    from_nodes(Nodes, buckets_interesting, [], ?DEFAULT_TIMEOUT).
 
 buckets_interesting() ->
     Q = <<"{name=~`kv_curr_items|"
@@ -85,6 +91,18 @@ buckets_interesting() ->
       misc:groupby_map(fun ({{Bucket, Name}, Value}) ->
                            {Bucket, {Name, Value}}
                        end, Res)).
+
+from_nodes(Nodes, Function, Args, Timeout) ->
+    {GoodRes, BadRes} = misc:multi_call(Nodes, ns_server_stats,
+                                        {stats_interface, Function, Args},
+                                        Timeout),
+    case BadRes of
+        [] -> ok;
+        _ ->
+            ?log_error("Failed to get ~p~p stats from ~p with reason:~n~p",
+                       [Function, Args, [N || {N, _} <- BadRes], BadRes])
+    end,
+    GoodRes.
 
 %% Return current metrics values required for alert conditions checks
 %%
