@@ -1684,7 +1684,7 @@ def get_prometheus_stats(guts, tmpdir):
     output_bytes = BytesIO()
     status = task.execute(output_bytes)
     if status != 0:
-        log(f"Error while getting prometheus snapshot: {status}")
+        log(f"Failed to create prometheus snapshot: {status}")
         return None
 
     # The name of the created snapshot directory is returned.
