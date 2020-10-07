@@ -735,7 +735,8 @@ label {
 }
 .formrow small,
 label small,
-h5 small {
+h5 small,
+h6 small {
   font-size: .75rem;
   color: #888;
 }
