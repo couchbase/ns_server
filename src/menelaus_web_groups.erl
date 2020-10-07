@@ -58,21 +58,21 @@ handle_server_groups_put(Req) ->
     Rev = proplists:get_value("rev", mochiweb_request:parse_qs(Req)),
     JSON = menelaus_util:parse_json(Req),
 
-    RV = ns_config:run_txn(server_groups_put_txn(_, _, JSON, Rev)),
+    RV = chronicle_compat:transaction(
+           [rebalancer_pid, server_groups, nodes_wanted],
+           server_groups_put_txn(_, JSON, Rev)),
     case RV of
-        {commit, _, Groups} ->
+        {ok, Groups} ->
             [ns_audit:update_group(Req, Group) || Group <- Groups],
             menelaus_util:reply_json(Req, [], 200);
-        {abort, {parse_error, Error}} ->
+        {parse_error, Error} ->
             reply_json(Req, Error, 400);
-        {abort, rebalance_running} ->
+        rebalance_running ->
             menelaus_util:reply_json(
               Req, "Cannot update server group while rebalance is running",
               503);
-        {abort, wrong_revision} ->
-            menelaus_util:reply_json(Req, [], 409);
-        retry_needed ->
-            erlang:error(exceeded_retries)
+        wrong_revision ->
+            menelaus_util:reply_json(Req, [], 409)
     end.
 
 build_replacement_groups(Groups, ParsedGroups) ->
@@ -89,7 +89,7 @@ build_replacement_groups(Groups, ParsedGroups) ->
                        KA =< KB
                end, ReplacementGroups0).
 
-server_groups_put_txn(Cfg, SetFn, JSON, Rev) ->
+server_groups_put_txn(Cfg, JSON, Rev) ->
     Groups = ns_cluster_membership:server_groups(Cfg),
     Nodes = ns_node_disco:nodes_wanted(Cfg),
     ParsedGroups =
@@ -113,7 +113,7 @@ server_groups_put_txn(Cfg, SetFn, JSON, Rev) ->
                         false ->
                             NewGroups = build_replacement_groups(
                                           Groups, ParsedGroups),
-                            {commit, SetFn(server_groups, NewGroups, Cfg),
+                            {commit, [{server_groups, NewGroups}],
                              NewGroups}
                     end;
                 _ ->
@@ -255,9 +255,10 @@ find_group_by_prop(Prop, Value, Groups) ->
     lists:search(?cut(proplists:get_value(Prop, _) =:= Value), Groups).
 
 do_handle_server_groups_post(Name, Req) ->
-    RV = ns_config:run_txn(
-           fun (Cfg, SetFn) ->
-                   Groups = ns_cluster_membership:server_groups(Cfg),
+    RV = chronicle_compat:transaction(
+           [server_groups],
+           fun (Snapshot) ->
+                   Groups = ns_cluster_membership:server_groups(Snapshot),
                    case find_group_by_prop(name, Name, Groups) of
                        false ->
                            UUID = couch_uuids:random(),
@@ -266,20 +267,17 @@ do_handle_server_groups_post(Name, Req) ->
                                      {name, Name},
                                      {nodes, []}],
                            NewGroups = lists:sort([AGroup | Groups]),
-                           {commit, SetFn(server_groups, NewGroups, Cfg),
-                            AGroup};
+                           {commit, [{server_groups, NewGroups}], AGroup};
                        {value, _} ->
                            {abort, already_exists}
                    end
            end),
     case RV of
-        {commit, _, AGroup} ->
+        {ok, AGroup} ->
             ns_audit:add_group(Req, AGroup),
             ok;
-        {abort, Error} ->
-            Error;
-        retry_needed ->
-            erlang:error(exceeded_retries)
+        Error ->
+            Error
     end.
 
 parse_groups_post(Params) ->
@@ -338,9 +336,10 @@ handle_server_group_update(GroupUUID, Req) ->
     end.
 
 do_group_update(GroupUUID, Name, Req) ->
-    RV = ns_config:run_txn(
-           fun (Cfg, SetFn) ->
-                   Groups = ns_cluster_membership:server_groups(Cfg),
+    RV = chronicle_compat:transaction(
+           [server_groups],
+           fun (Snapshot) ->
+                   Groups = ns_cluster_membership:server_groups(Snapshot),
                    case {find_group_by_prop(uuid, GroupUUID, Groups),
                          find_group_by_prop(name, Name, Groups)} of
                        {false, _} ->
@@ -352,18 +351,16 @@ do_group_update(GroupUUID, Name, Req) ->
                                                            {name, Name}),
                            NewGroups =
                                lists:sort([UpdatedGroup | Groups -- [G]]),
-                           {commit, SetFn(server_groups, NewGroups, Cfg),
+                           {commit, [{server_groups, NewGroups}],
                             UpdatedGroup}
                    end
            end),
     case RV of
-        {commit, _, UpdatedGroup} ->
+        {ok, UpdatedGroup} ->
             ns_audit:update_group(Req, UpdatedGroup),
             ok;
-        {abort, Error} ->
-            Error;
-        retry_needed ->
-            erlang:error(exceeded_retries)
+        Error ->
+            Error
     end.
 
 handle_server_group_delete(GroupUUID, Req) ->
@@ -378,9 +375,10 @@ handle_server_group_delete(GroupUUID, Req) ->
     end.
 
 do_group_delete(GroupUUID, Req) ->
-    RV = ns_config:run_txn(
-           fun (Cfg, SetFn) ->
-                   Groups = ns_cluster_membership:server_groups(Cfg),
+    RV = chronicle_compat:transaction(
+           [server_groups],
+           fun (Snapshot) ->
+                   Groups = ns_cluster_membership:server_groups(Snapshot),
                    case find_group_by_prop(uuid, GroupUUID, Groups) of
                        false ->
                            {abort, not_found};
@@ -389,18 +387,16 @@ do_group_delete(GroupUUID, Req) ->
                                [_|_] ->
                                    {abort, not_empty};
                                [] ->
-                                   {commit, SetFn(server_groups,
-                                                  Groups -- [Victim], Cfg),
+                                   {commit,
+                                    [{server_groups, Groups -- [Victim]}],
                                     Victim}
                            end
                    end
            end),
     case RV of
-        {commit, _, Victim} ->
+        {ok, Victim} ->
             ns_audit:delete_group(Req, Victim),
             ok;
-        {abort, Error} ->
-            Error;
-        retry_needed ->
-            erlang:error(exceeded_retries)
+        Error ->
+            Error
     end.
