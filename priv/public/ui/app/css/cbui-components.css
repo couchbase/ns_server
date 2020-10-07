@@ -275,9 +275,20 @@ h1 a:active {
   text-align: center;
   color: #333;
   position: absolute;
-  top: -1px;
   left: 0;
   text-decoration: none;
+}
+.disclosure:before {
+  top: -1px;
+}
+.lower.disclosure:before {
+  top: 0;
+}
+.higher.disclosure:before {
+  top: -2px;
+}
+.disclosure.medium {
+  padding-left: 1.25rem;
 }
 .disclosed:before {
   font-family: FontAwesome;
@@ -303,7 +314,14 @@ h1 a:active {
   left: 0;
   text-decoration: none;
 }
-
+.disclosure.tight {
+  padding-left: 1rem !important;
+}
+.insights-sidebar-body .disclosure:before,
+.insights-sidebar-body .disclosed:before {
+  font-size: .85rem !important;
+  color: #333;
+}
 /* search/filter control ------------------------------------------------ */
 .filter-input-group {
   position: relative;
@@ -2426,7 +2444,7 @@ button:hover.scenarios-delete {
   cursor: default;
 }
 .insights-sidebar-body ul ul {
-  margin-left: 1.5rem;
+
 }
 .insights-sidebar-body li {
   list-style-type: none;
@@ -2437,11 +2455,6 @@ button:hover.scenarios-delete {
   margin: 0;
   padding: 0;
 }
-.insights-sidebar-body .disclosure:before,
-.insights-sidebar-body .disclosed:before {
-  font-size: 1rem !important;
-  top: 0;
-}
 .insights-sidebar-schema .indexed {
   color: #000;
   font-weight: 700;
@@ -2449,7 +2462,13 @@ button:hover.scenarios-delete {
   font-size: .8125rem;
   line-height: 1.7;
 }
+.insights-sidebar-schema ul {
 
+}
+.insights-sidebar-schema li {
+
+  vertical-align: top !important;
+}
 /* workbench query history -------------------------------------------------- */
 .wb-history-controls {
   display: flex;
@@ -3435,4 +3454,9 @@ a.supported-browsers-530 {
 
 .block {
   display: block!important;
+}
+
+schema-display {
+  display: block;
+  margin-left: 1rem;
 }
