@@ -1669,7 +1669,7 @@ def cleanup_old_prometheus_stats(guts):
     shutil.rmtree(snapshot_dir, ignore_errors=True)
 
 
-def get_prometheus_stats(guts, tmpdir):
+def get_prometheus_stats(guts):
     # Generate a prometheus snapshot. These consist of hard links to
     # existing blocks and a dump of the current open blocks.
 
@@ -1922,7 +1922,7 @@ def main():
 
     # Collect prometheus stats files
     cleanup_old_prometheus_stats(guts)
-    snapshot_dir_path = get_prometheus_stats(guts, runner.tmpdir)
+    snapshot_dir_path = get_prometheus_stats(guts)
     if snapshot_dir_path is not None:
         runner.collect_dir(snapshot_dir_path, "./stats_snapshot")
 
