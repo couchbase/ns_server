@@ -88,7 +88,7 @@ query_async(Query, Time, Timeout, Settings, Handler) ->
 post_async(Path, Body, Timeout, Settings, Handler) ->
     case proplists:get_value(enabled, Settings) of
         true ->
-            Addr = proplists:get_value(listen_addr, Settings),
+            Addr = proplists:get_value(addr, Settings),
             URL = lists:flatten(io_lib:format("http://~s~s", [Addr, Path])),
             BodyEncoded = mochiweb_util:urlencode(Body),
             {Username, Password} = proplists:get_value(prometheus_creds,

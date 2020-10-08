@@ -66,7 +66,8 @@ default_settings() ->
      {external_prometheus_services, [{S, [{high_cardinality_enabled, true}]}
                                         || S <- ?DEFAULT_HIGH_CARD_SERVICES]},
      {prometheus_metrics_enabled, false},
-     {prometheus_metrics_scrape_interval, 60}]. %% in seconds
+     {prometheus_metrics_scrape_interval, 60}, %% in seconds
+     {listen_addr_type, loopback}].
 
 build_settings() -> build_settings(ns_config:get()).
 build_settings(Config) ->
@@ -99,7 +100,8 @@ build_settings(Config) ->
                                       %% is disabled
             false ->
                 ns_config:search(Config, stats_settings, []) ++
-                [{listen_addr, misc:join_host_port(LocalAddr, Port)},
+                [{listen_port, Port},
+                 {addr, misc:join_host_port(LocalAddr, Port)},
                  {prometheus_creds, Creds},
                  {targets, Targets},
                  {afamily, AFamily}]
@@ -127,7 +129,12 @@ generate_prometheus_args(Settings) ->
                                                         Settings)) ++ "MB",
     RetentionTime = integer_to_list(proplists:get_value(retention_time,
                                                         Settings)) ++ "d",
-    ListenAddress = proplists:get_value(listen_addr, Settings),
+    Port = proplists:get_value(listen_port, Settings),
+    AFamily = proplists:get_value(afamily, Settings),
+    ListenAddress = case proplists:get_value(listen_addr_type, Settings) of
+                        loopback -> misc:localhost(AFamily, [url]);
+                        any -> misc:inaddr_any(AFamily, [url])
+                    end,
     StoragePath = proplists:get_value(storage_path, Settings),
     FullStoragePath = path_config:component_path(data, StoragePath),
     MaxBlockDuration = integer_to_list(proplists:get_value(max_block_duration,
@@ -147,7 +154,7 @@ generate_prometheus_args(Settings) ->
      "--web.enable-lifecycle", %% needed for hot cfg reload
      "--storage.tsdb.retention.size", RetentionSize,
      "--storage.tsdb.retention.time", RetentionTime,
-     "--web.listen-address", ListenAddress,
+     "--web.listen-address", misc:join_host_port(ListenAddress, Port),
      "--storage.tsdb.max-block-duration", MaxBlockDuration,
      "--storage.tsdb.path", FullStoragePath,
      "--log.level", LogLevel,
@@ -299,7 +306,7 @@ maybe_apply_new_settings(#s{cur_settings = OldSettings} = State) ->
     end.
 
 try_config_reload(#s{cur_settings = Settings} = State) ->
-    Addr = proplists:get_value(listen_addr, Settings),
+    Addr = proplists:get_value(addr, Settings),
     URL = io_lib:format("http://~s/-/reload", [Addr]),
     {Username, Password} = proplists:get_value(prometheus_creds, Settings),
     Headers = [menelaus_rest:basic_auth_header(Username, Password)],
@@ -405,8 +412,8 @@ prometheus_metrics_jobs_config(Settings) ->
     case proplists:get_bool(prometheus_metrics_enabled, Settings) of
         true ->
             TokenFile = token_file(Settings),
-            ListenAddress = iolist_to_binary(
-                              proplists:get_value(listen_addr, Settings)),
+            Address = iolist_to_binary(
+                              proplists:get_value(addr, Settings)),
             Interval = proplists:get_value(prometheus_metrics_scrape_interval,
                                            Settings),
             [#{job_name => prometheus,
@@ -414,7 +421,7 @@ prometheus_metrics_jobs_config(Settings) ->
                scrape_timeout => {"~bs", [Interval]},
                basic_auth => #{username => list_to_binary(?USERNAME),
                                password_file => list_to_binary(TokenFile)},
-               static_configs => [#{targets => [ListenAddress]}],
+               static_configs => [#{targets => [Address]}],
                relabel_configs =>
                    [#{target_label => <<"instance">>,
                       replacement => <<"prometheus">>}]}];
