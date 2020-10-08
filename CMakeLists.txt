@@ -9,8 +9,6 @@ INCLUDE (CTest)
 # Installation subdir
 SET (INST_LIBDIR "lib/ns_server/erlang/lib")
 
-SET (PRODUCT_VERSION "" CACHE STRING "Product version with build number")
-
 # If PRODUCT_VERSION is set externally, derive product version string based on
 # it and BUILD_ENTERPRISE. Otherwise, fallback to output of 'git describe'.
 
