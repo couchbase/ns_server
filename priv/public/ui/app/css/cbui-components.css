@@ -2408,6 +2408,9 @@ button:hover.scenarios-delete {
   color: #d1d1d1;
   padding: 0 .5rem;
 }
+.find-icon {
+  padding: 0 1rem;
+}
 .insights-sidebar-expand:hover,
 .wb-fullscreen:hover,
 .find-icon:hover {
