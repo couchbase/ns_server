@@ -315,7 +315,7 @@ h1 a:active {
   text-decoration: none;
 }
 .disclosure.tight {
-  padding-left: 1rem !important;
+  padding-left: 1.125rem !important;
 }
 .insights-sidebar-body .disclosure:before,
 .insights-sidebar-body .disclosed:before {
@@ -2409,6 +2409,8 @@ button:hover.scenarios-delete {
   padding: 0 .5rem;
 }
 .find-icon {
+  cursor: pointer;
+  color: #a1a1a1;
   padding: 0 1rem;
 }
 .insights-sidebar-expand:hover,
@@ -2418,7 +2420,7 @@ button:hover.scenarios-delete {
 }
 .insights-sidebar-body {
   border-left: 1px solid #d1d1d1;
-  padding: .25rem 0 .5rem .75rem;
+  padding: .25rem .25rem .5rem .75rem;
   white-space: nowrap;
   overflow: auto;
   height: 100%;
@@ -2463,12 +2465,17 @@ button:hover.scenarios-delete {
   font-size: .8125rem;
   line-height: 1.7;
 }
-.insights-sidebar-schema ul {
-
+.insights-sidebar-schema {
+  margin: .25rem 0;
 }
 .insights-sidebar-schema li {
-
   vertical-align: top !important;
+}
+.insights-scope {
+  margin: .25rem 0 .25rem 1rem;
+}
+.insights-collection {
+  margin: .25rem 0 .25rem 1rem;
 }
 /* workbench query history -------------------------------------------------- */
 .wb-history-controls {
