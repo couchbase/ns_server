@@ -165,6 +165,8 @@ def buffer_log_line(message, new_line):
         return None
 
 
+# Note: QE's collectinfo_test looks for "ERROR" or "Error" in the
+# log messages and if found triggers a fatal error.
 def log(message, new_line=True):
     global log_stream
 
@@ -1669,7 +1671,7 @@ def cleanup_old_prometheus_stats(guts):
     shutil.rmtree(snapshot_dir, ignore_errors=True)
 
 
-def get_prometheus_stats(guts):
+def get_prometheus_stats_via_snapshot(guts):
     # Generate a prometheus snapshot. These consist of hard links to
     # existing blocks and a dump of the current open blocks.
 
@@ -1691,6 +1693,30 @@ def get_prometheus_stats(guts):
     snapshot_dir_path = output_bytes.getvalue().decode(LATIN1)
 
     return snapshot_dir_path
+
+
+def get_prometheus_stats_from_disk(guts):
+    prom_stats_dir = read_guts(guts, "prom_stats_dir")
+    if not prom_stats_dir:
+        return None
+
+    # As a prometheus snapshot couldn't be obtained we're going to
+    # grab the contents of the directory.  Typically this is much
+    # larger than a snapshot so we'll try to do what we can to
+    # decrease the size.
+
+    # Until we can determine how to do so we'll just return the entire
+    # directory
+
+    return prom_stats_dir
+
+
+def get_prometheus_stats(guts):
+    snapshot_dir_path = get_prometheus_stats_via_snapshot(guts)
+    if snapshot_dir_path is not None:
+        return snapshot_dir_path
+
+    return get_prometheus_stats_from_disk(guts)
 
 
 def main():
@@ -1925,6 +1951,8 @@ def main():
     snapshot_dir_path = get_prometheus_stats(guts)
     if snapshot_dir_path is not None:
         runner.collect_dir(snapshot_dir_path, "./stats_snapshot")
+    else:
+        log("Error: unable to retrieve statistics")
 
     fts_port = read_guts(guts, "fts_http_port")
     if fts_port:
