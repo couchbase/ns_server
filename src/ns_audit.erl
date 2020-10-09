@@ -403,11 +403,17 @@ get_identity(undefined) ->
 get_identity({User, Domain}) ->
     {[{domain, convert_domain(Domain)}, {user, to_binary(User)}]}.
 
-get_remote(Req) ->
+get_socket_name(Req, SockNameGetter) ->
     Socket = mochiweb_request:get(socket, Req),
-    {ok, {Host, Port}} = mochiweb_socket:peername(Socket),
+    {ok, {Host, Port}} = SockNameGetter(Socket),
     {[{ip, to_binary(inet_parse:ntoa(Host))},
       {port, Port}]}.
+
+get_remote(Req) ->
+    get_socket_name(Req, fun mochiweb_socket:peername/1).
+
+get_local(Req) ->
+    get_socket_name(Req, fun network:sockname/1).
 
 key_to_binary(A) when is_list(A) ->
     iolist_to_binary(A);
@@ -427,17 +433,18 @@ prepare_list(List) ->
       end, [], List).
 
 prepare(Req, Params) ->
-    {User, Token, Remote} =
+    {User, Token, Remote, Local} =
         case Req of
             undefined ->
-                {undefined, undefined, undefined};
+                {undefined, undefined, undefined, undefined};
             _ ->
                 {get_identity(menelaus_auth:get_identity(Req)),
                  menelaus_auth:get_token(Req),
-                 get_remote(Req)}
+                 get_remote(Req), get_local(Req)}
         end,
     Body = [{timestamp, now_to_iso8601(os:timestamp())},
             {remote, Remote},
+            {local, Local},
             {sessionid, Token},
             {real_userid, User}] ++ Params,
 
