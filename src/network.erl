@@ -23,7 +23,8 @@
          socket_setopts/2,
          socket_send/2,
          socket_recv/3,
-         socket_close/1
+         socket_close/1,
+         sockname/1
         ]).
 
 -spec socket_connect(tcp | ssl,
@@ -74,3 +75,14 @@ socket_close({sslsocket, _, _} = Socket) ->
     ssl:close(Socket);
 socket_close(Socket) ->
     gen_tcp:close(Socket).
+
+-spec sockname(ssl:sslsocket() | gen_tcp:socket()) ->
+    {ok,
+        {inet:ip_address(), inet:port_number()} |
+         inet:returned_non_ip_address()} |
+        {error, inet:posix() | ssl:reason()}.
+
+sockname({ssl, Socket}) ->
+    ssl:sockname(Socket);
+sockname(Socket) ->
+    inet:sockname(Socket).

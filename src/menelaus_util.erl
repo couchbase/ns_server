@@ -415,14 +415,7 @@ validate_email_address(Address) ->
 %% Extract the local address of the socket used for the request
 local_addr(Req) ->
     Socket = mochiweb_request:get(socket, Req),
-    Address = case Socket of
-                  {ssl, SSLSock} ->
-                      {ok, {AV, _Port}} = ssl:sockname(SSLSock),
-                      AV;
-                  _ ->
-                      {ok, {AV, _Port}} = inet:sockname(Socket),
-                      AV
-              end,
+    {ok, {Address, _Port}} = network:sockname(Socket),
     misc:maybe_add_brackets(inet:ntoa(Address)).
 
 strip_json_struct({struct, Pairs}) -> {strip_json_struct(Pairs)};
