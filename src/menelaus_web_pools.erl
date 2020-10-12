@@ -26,7 +26,8 @@
          check_and_handle_pool_info/2,
          handle_pool_info_streaming/2,
          handle_pool_settings_post/1,
-         handle_terse_cluster_info/1]).
+         handle_terse_cluster_info/1,
+         get_cluster_name/1]).
 
 %% for hibernate
 -export([handle_pool_info_wait_wake/4]).

@@ -16,7 +16,7 @@
 
 %% API
 -export([handle_get_local_metrics/1, handle_create_snapshot/1,
-         handle_get_metrics/1]).
+         handle_get_metrics/1, handle_sd_config/1]).
 
 -include("ns_common.hrl").
 
@@ -49,6 +49,17 @@ handle_get_metrics(Req) ->
                 || {_, Addr} <- HighCardTargets],
     [proxy_chunks_from_url(URL, Resp) || URL <- URLs],
     mochiweb_response:write_chunk(<<>>, Resp).
+
+handle_sd_config(Req) ->
+    Cfg = ns_config:get(),
+    Nodes = menelaus_web_node:nodes_to_hostnames(Cfg, Req, any),
+    Yaml = [#{targets => [HostPort || {_, HostPort} <- Nodes]}],
+    YamlBin = yaml:encode(Yaml),
+    ClusterName = menelaus_web_pools:get_cluster_name(Cfg),
+    Filename = io_lib:format("couchbase_sd_config_~s.yaml", [ClusterName]),
+    ContentDisp = io_lib:format("attachment; filename=\"~s\"", [Filename]),
+    ExtraHeaders = [{"Content-Disposition", lists:flatten(ContentDisp)}],
+    menelaus_util:reply_ok(Req, "text/yaml", YamlBin, ExtraHeaders).
 
 proxy_chunks_from_url(URL, Resp) ->
     Options = [{connect_timeout, ?METRICS_TIMEOUT},

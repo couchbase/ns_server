@@ -518,6 +518,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["metrics"] ->
                     {{[admin, stats_export], read},
                      fun menelaus_web_prometheus:handle_get_metrics/1};
+                ["prometheus_sd_config.yaml"] ->
+                    {{[admin, stats_export], read},
+                     fun menelaus_web_prometheus:handle_sd_config/1};
                 _ ->
                     {ui, IsSSL, fun handle_serve_file/4, [AppRoot, Path, 10]}
             end;
