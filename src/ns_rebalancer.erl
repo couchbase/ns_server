@@ -537,7 +537,12 @@ rebalance_body(KeepNodes,
 
     ok = leader_activities:activate_quorum_nodes(KeepNodes),
     ok = ns_cluster_membership:activate(KeepNodes),
-    ok = chronicle_master:ensure_voters(KeepNodes),
+    case chronicle_compat:enabled() of
+        true ->
+            ok = chronicle_master:ensure_voters(KeepNodes);
+        false ->
+            ok
+    end,
 
     pull_and_push_config(EjectNodesAll ++ KeepNodes),
 

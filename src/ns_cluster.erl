@@ -18,6 +18,7 @@
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -31,6 +32,8 @@
 -define(ADD_NODE_TIMEOUT,       ?get_timeout(add_node, 160000)).
 -define(ENGAGE_TIMEOUT,         ?get_timeout(engage, 30000)).
 -define(COMPLETE_TIMEOUT,       ?get_timeout(complete, 120000)).
+-define(PREP_CHRONICLE_TIMEOUT, ?get_timeout(prep_chronicle, 120000)).
+-define(JOIN_CHRONICLE_TIMEOUT, ?get_timeout(join_chronicle, 120000)).
 -define(CHANGE_ADDRESS_TIMEOUT, ?get_timeout(change_address, 30000)).
 
 -define(cluster_log(Code, Fmt, Args),
@@ -56,6 +59,7 @@
 
 -export([add_node_to_group/6,
          engage_cluster/1, complete_join/1,
+         prep_chronicle/3, join_chronicle/2,
          check_host_port_connectivity/2, change_address/1,
          enforce_topology_limitation/1,
          rename_marker_path/0,
@@ -68,7 +72,7 @@
          counter_inc/1,
          counter_inc/2]).
 
--record(state, {}).
+-record(state, {mref}).
 
 %%
 %% API
@@ -283,6 +287,22 @@ call_engage_cluster(NodeKVList) ->
 complete_join(NodeKVList) ->
     gen_server:call(?MODULE, {complete_join, NodeKVList}, ?COMPLETE_TIMEOUT).
 
+multi_call(Nodes, Call, Timeout) ->
+    {_Replies, BadNodes} =
+        misc:multi_call(Nodes, ?MODULE, Call, Timeout, _ =:= ok),
+    case BadNodes of
+        [] ->
+            ok;
+        _ ->
+            {bad_nodes, BadNodes}
+    end.
+
+prep_chronicle(Nodes, Parent, Info) ->
+    multi_call(Nodes, {prep_chronicle, Parent, Info}, ?PREP_CHRONICLE_TIMEOUT).
+
+join_chronicle(Nodes, Info) ->
+    multi_call(Nodes, {join_chronicle, Info}, ?JOIN_CHRONICLE_TIMEOUT).
+
 -spec change_address(string()) -> ok
                                   | {cannot_resolve, {inet:posix(), inet|inet6}}
                                   | {cannot_listen, inet:posix()}
@@ -374,7 +394,31 @@ handle_call({change_address, Address}, _From, State) ->
              false ->
                  already_part_of_cluster
          end,
-    {reply, RV, State}.
+    {reply, RV, State};
+
+handle_call({prep_chronicle, Pid, Info}, _From,
+            State = #state{mref = undefined}) ->
+    ?log_debug("Preparing chronicle to join cluster"),
+    MRef = erlang:monitor(process, Pid),
+    misc:create_marker(start_marker_path()),
+    ok = ns_server_cluster_sup:stop_ns_server(),
+
+    ok = chronicle_local:prepare_join(Info),
+    ?log_debug("Successfully prepared chronicle"),
+
+    {reply, ok, State#state{mref = MRef}};
+
+handle_call({join_chronicle, Info}, _From,
+            State = #state{mref = MRef}) when MRef =/= undefined ->
+    ?log_debug("Received request to join cluster"),
+    ok = chronicle_local:join_cluster(Info),
+
+    {ok, _} = ns_server_cluster_sup:start_ns_server(),
+    misc:remove_marker(start_marker_path()),
+    erlang:demonitor(MRef, [flush]),
+    ?log_debug("Successfully joined cluster"),
+
+    {reply, ok, State#state{mref = undefined}}.
 
 handle_cast(leave, State) ->
     ?cluster_log(0001, "Node ~p is leaving cluster.", [node()]),
@@ -454,9 +498,13 @@ handle_cast(retry_start_ns_server, State) ->
 
     {noreply, State}.
 
+handle_info({'DOWN', MRef, process, Pid, Reason},
+            State = #state{mref = MRef}) ->
+    ?log_info("Caller process ~p died with ~p", [Pid, Reason]),
+    {stop, {error, caller_died}, State#state{mref = undefined}};
 
 handle_info(Msg, State) ->
-    ?cluster_debug("Unexpected message ~p", [Msg]),
+    ?cluster_debug("Unexpected message ~p, State = ~p", [Msg, State]),
     {noreply, State}.
 
 
@@ -543,7 +591,12 @@ shun(RemoteNode) ->
             ?cluster_debug("Shunning ~p", [RemoteNode]),
             ns_cluster_membership:remove_node(RemoteNode),
             ns_config_rep:ensure_config_pushed(),
-            ok = chronicle_master:remove_peer(RemoteNode);
+            case chronicle_compat:enabled() of
+                true ->
+                    ok = chronicle_master:remove_peer(RemoteNode);
+                false ->
+                    ok
+            end;
         true ->
             ?cluster_debug("Asked to shun myself. Leaving cluster.", []),
             leave()
@@ -894,12 +947,19 @@ do_add_node_engaged_inner(NodeKVList, OtpNode, Auth, Services, Scheme) ->
 
     {struct, MyNodeKVList} = menelaus_web_node:build_full_node_info(node(),
                                                                     misc:localhost()),
-    {ok, ChronicleInfo} = chronicle_master:add_replica(OtpNode),
+    ChronicleInfo =
+        case chronicle_compat:enabled() of
+            true ->
+                {ok, CI} = chronicle_master:add_replica(OtpNode),
+                base64:encode(term_to_binary(CI));
+            false ->
+                undefined
+        end,
     Struct = {struct, [{<<"targetNode">>, OtpNode},
-                       {<<"chronicleInfo">>,
-                        base64:encode(term_to_binary(ChronicleInfo))},
                        {<<"requestedServices">>, Services}
-                       | MyNodeKVList]},
+                       | MyNodeKVList] ++
+                  [{<<"chronicleInfo">>, ChronicleInfo} ||
+                      ChronicleInfo =/= undefined]},
 
     ConnectOpts = [misc:get_net_family()],
 
@@ -1186,14 +1246,20 @@ check_can_join_to(NodeKVList, Services) ->
         Error -> Error
     end.
 
+get_chronicle_info(KVList) ->
+    case proplists:get_value(<<"chronicleInfo">>, KVList) of
+        undefined ->
+            undefined;
+        Binary ->
+            binary_to_term(base64:decode(Binary), [safe])
+    end.
+
 -spec do_complete_join([{binary(), term()}]) -> {ok, ok} | {error, atom(), binary(), term()}.
 do_complete_join(NodeKVList) ->
     try
         OtpNode = expect_json_property_atom(<<"otpNode">>, NodeKVList),
         OtpCookie = expect_json_property_atom(<<"otpCookie">>, NodeKVList),
         MyNode = expect_json_property_atom(<<"targetNode">>, NodeKVList),
-        ChronicleInfo =
-            expect_json_property_binary(<<"chronicleInfo">>, NodeKVList),
 
         {ok, Services} = get_requested_services(NodeKVList),
         case check_can_join_to(NodeKVList, Services) of
@@ -1204,9 +1270,7 @@ do_complete_join(NodeKVList) ->
                          <<"Node is already part of cluster.">>, system_not_joinable};
                     true ->
                         perform_actual_join(
-                          OtpNode, OtpCookie,
-                          erlang:binary_to_term(base64:decode(ChronicleInfo),
-                                                [safe]))
+                          OtpNode, OtpCookie, get_chronicle_info(NodeKVList))
                 end;
             Error -> Error
         end

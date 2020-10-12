@@ -47,6 +47,7 @@
 
 -define(DEFAULT_TIMEOUT, 15000).
 -define(TERMINATE_SAVE_TIMEOUT, 10000).
+-define(UPGRADE_TIMEOUT, ?get_timeout(upgrade, 240000)).
 
 -export([uuid/1,
          start_link/2, start_link/1,
@@ -592,7 +593,8 @@ search_raw(#config{dynamic = DL, static = SL}, Key) ->
     end.
 
 upgrade_config_explicitly(Upgrader) ->
-    gen_server:call(?MODULE, {upgrade_config_explicitly, Upgrader}).
+    gen_server:call(?MODULE, {upgrade_config_explicitly, Upgrader},
+                    ?UPGRADE_TIMEOUT).
 
 config_version_token() ->
     {ets:lookup(ns_config_announces_counter, changes_counter), erlang:whereis(?MODULE)}.

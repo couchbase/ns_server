@@ -27,7 +27,10 @@
          handle_call/3,
          add_replica/1,
          remove_peer/1,
-         ensure_voters/1]).
+         ensure_voters/1,
+         upgrade_cluster/1]).
+
+-define(UPGRADE_TIMEOUT, ?get_timeout(upgrade, 240000)).
 
 start_link() ->
     misc:start_singleton(gen_server2, start_link, [?SERVER, ?MODULE, [], []]).
@@ -40,6 +43,11 @@ ensure_voters(Nodes) ->
 
 remove_peer(Node) ->
     gen_server2:call(?SERVER, {remove_peer, Node}).
+
+upgrade_cluster([]) ->
+    ok;
+upgrade_cluster(OtherNodes) ->
+    gen_server2:call(?SERVER, {upgrade_cluster, OtherNodes}, ?UPGRADE_TIMEOUT).
 
 init([]) ->
     {ok, Lock} = chronicle:acquire_lock(),
@@ -66,6 +74,30 @@ handle_call({ensure_voters, Nodes}, _From, Lock) ->
         NewVoters ->
             ok = promote_to_voters(Lock, NewVoters)
     end,
+    {reply, ok, Lock};
+
+handle_call({upgrade_cluster, NodesToAdd}, _From, Lock) ->
+    ?log_debug("Adding nodes ~p to chronicle cluster. Lock: ~p",
+               [NodesToAdd, Lock]),
+    ClusterInfo = chronicle:get_cluster_info(),
+
+    ?log_debug("Preparing nodes ~p to join chronicle cluster with info ~p",
+               [NodesToAdd, ClusterInfo]),
+    Self = self(),
+    ok = ns_cluster:prep_chronicle(NodesToAdd, Self, ClusterInfo),
+
+    ?log_debug("Adding nodes ~p as replicas to chronicle cluster",
+               [NodesToAdd]),
+    ok = chronicle:add_replicas(Lock, NodesToAdd),
+
+    ClusterInfo1 = chronicle:get_cluster_info(),
+
+    ?log_debug("Asking nodes ~p to join chronicle cluster with info ~p",
+               [NodesToAdd, ClusterInfo1]),
+    ok = ns_cluster:join_chronicle(NodesToAdd, ClusterInfo1),
+
+    ok = promote_to_voters(Lock, NodesToAdd),
+    ?log_info("Cluster successfully upgraded to chronicle"),
     {reply, ok, Lock}.
 
 promote_to_voters(Lock, Nodes) ->

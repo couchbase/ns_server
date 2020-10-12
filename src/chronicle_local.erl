@@ -66,8 +66,14 @@ init([]) ->
 handle_call({prepare_join, Info}, _From, State) ->
     ?log_debug("Wiping chronicle before prepare join."),
     ok = chronicle:wipe(),
-    ?log_debug("Prepare join. Info: ~p", [Info]),
-    ok = chronicle:prepare_join(Info),
+    case Info of
+        undefined ->
+            ?log_debug("Joining not chronicle enabled cluster"),
+            ok = ensure_provisioned();
+        _ ->
+            ?log_debug("Prepare join. Info: ~p", [Info]),
+            ok = chronicle:prepare_join(Info)
+    end,
     {reply, ok, State};
 handle_call({join_cluster, Info}, _From, State) ->
     ?log_debug("Joining cluster. Info: ~p", [Info]),
@@ -103,6 +109,8 @@ leave_cluster() ->
 prepare_join(Info) ->
     gen_server2:call(?MODULE, {prepare_join, Info}).
 
+join_cluster(undefined) ->
+    ok;
 join_cluster(Info) ->
     gen_server2:call(?MODULE, {join_cluster, Info}).
 
@@ -110,7 +118,8 @@ rename(OldNode) ->
     gen_server2:call(?MODULE, {rename, OldNode}).
 
 get_snapshot(Node) ->
-    gen_server2:call({?MODULE, Node}, get_snapshot).
+    {ok, Snapshot} = gen_server2:call({?MODULE, Node}, get_snapshot),
+    Snapshot.
 
 sync() ->
     gen_server2:call(?MODULE, sync).
@@ -212,6 +221,7 @@ should_move(_) ->
 
 upgrade(Config) ->
     OtherNodes = ns_node_disco:nodes_wanted(Config) -- [node()],
+    ok = chronicle_master:upgrade_cluster(OtherNodes),
 
     ns_config:foreach(
       fun (Key, Value) ->

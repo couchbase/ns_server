@@ -26,6 +26,7 @@
 -export([get_nodes_with_status/1,
          get_nodes_with_status/2,
          get_nodes_with_status/3,
+         nodes_wanted/0,
          nodes_wanted/1,
          server_groups/0,
          server_groups/1,

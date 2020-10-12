@@ -21,6 +21,7 @@
 -include("cut.hrl").
 
 -export([backend/0,
+         enabled/0,
          get/2,
          get/3,
          set/2,
