@@ -35,6 +35,7 @@
          handle_bucket_node_list/2,
          handle_bucket_node_info/3,
          find_node_hostname/2,
+         find_node_hostname/3,
          handle_node_statuses/1,
          handle_node_rename/1,
          handle_node_altaddr_external/1,
@@ -44,7 +45,8 @@
          apply_node_settings/1,
          alternate_addresses_json/3,
          handle_setup_net_config/1,
-         handle_change_external_listeners/2]).
+         handle_change_external_listeners/2,
+         nodes_to_hostnames/3]).
 
 -import(menelaus_util,
         [local_addr/1,
@@ -339,8 +341,8 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
         _ -> RV
     end.
 
-nodes_to_hostnames(Config, Req) ->
-    Nodes = ns_cluster_membership:active_nodes(Config),
+nodes_to_hostnames(Config, Req, NodeStatus) ->
+    Nodes = ns_cluster_membership:get_nodes_with_status(Config, NodeStatus),
     LocalAddr = local_addr(Req),
     [{N, list_to_binary(build_node_hostname(Config, N, LocalAddr))}
      || N <- Nodes].
@@ -353,7 +355,7 @@ nodes_to_hostnames(Config, Req) ->
 handle_bucket_node_list(BucketName, Req) ->
     %% NOTE: since 4.0 release we're listing all active nodes as
     %% part of our approach for dealing with query stats
-    NHs = nodes_to_hostnames(ns_config:get(), Req),
+    NHs = nodes_to_hostnames(ns_config:get(), Req, active),
     Servers =
         [{struct,
           [{hostname, Hostname},
@@ -374,10 +376,13 @@ normalize_hostport(HostPortStr, Req) ->
     misc:join_host_port(HostnameStr2, PortStr).
 
 find_node_hostname(HostPortStr, Req) ->
+    find_node_hostname(HostPortStr, Req, active).
+
+find_node_hostname(HostPortStr, Req, NodeStatus) ->
     try normalize_hostport(HostPortStr, Req) of
         Normalized ->
             HostPortBin = list_to_binary(Normalized),
-            NHs = nodes_to_hostnames(ns_config:get(), Req),
+            NHs = nodes_to_hostnames(ns_config:get(), Req, NodeStatus),
             case [N || {N, CandidateHostPort} <- NHs,
                        CandidateHostPort =:= HostPortBin] of
                 [] ->

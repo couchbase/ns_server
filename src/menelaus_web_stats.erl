@@ -202,11 +202,7 @@ read_metrics_response(Ref, Props, StartTimestampMs) ->
     {[{data, Data}, {errors, Errors}]}.
 
 default_nodes(Req) ->
-    AllNodes = ns_cluster_membership:actual_active_nodes(),
-    LocalAddr = menelaus_util:local_addr(Req),
-    HostPort = menelaus_web_node:build_node_hostname(ns_config:latest(), _,
-                                                     LocalAddr),
-    [{N, iolist_to_binary(HostPort(N))} || N <- AllNodes].
+    menelaus_web_node:nodes_to_hostnames(ns_config:get(), Req, any).
 
 validate_metric_json(Name, State) ->
     validator:validate(

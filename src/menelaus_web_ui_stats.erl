@@ -117,7 +117,7 @@ validate_nodes_v2(Name, State, Req) ->
                   misc:partitionmap(
                     fun (HostName) ->
                             case menelaus_web_node:find_node_hostname(
-                                   HostName, Req) of
+                                   HostName, Req, any) of
                                 {error, _} ->
                                     {right, HostName};
                                 {ok, Node} ->

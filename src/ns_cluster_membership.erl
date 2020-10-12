@@ -79,6 +79,8 @@ get_nodes_with_status(Config, PredOrStatus) ->
     get_nodes_with_status(Config,
                           ns_node_disco:nodes_wanted(Config), PredOrStatus).
 
+get_nodes_with_status(Config, Nodes, any) ->
+    get_nodes_with_status(Config, Nodes, fun (_) -> true end);
 get_nodes_with_status(Config, Nodes, Status)
   when is_atom(Status) ->
     get_nodes_with_status(Config, Nodes, _ =:= Status);
