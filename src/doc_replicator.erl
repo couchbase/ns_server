@@ -46,20 +46,25 @@ start_loop(Name, GetNodes, StorageFrontend) ->
     loop(GetNodes, StorageFrontend, []).
 
 loop(GetNodes, StorageFrontend, OldRemoteNodes) ->
-    ActualNodes = GetNodes(),
-    RemoteNodes =
-        case OldRemoteNodes -- ActualNodes of
-            [] ->
-                OldRemoteNodes;
-            EjectedNodes ->
-                ?log_debug("Stopping replication to following nodes: ~p",
-                           [EjectedNodes]),
-                OldRemoteNodes -- EjectedNodes
+    NodesFun =
+        fun () ->
+            ActualNodes = GetNodes(),
+            RemoteNodes =
+                case OldRemoteNodes -- ActualNodes of
+                    [] ->
+                        OldRemoteNodes;
+                    EjectedNodes ->
+                        ?log_debug("Stopping replication to following nodes: "
+                                   "~p", [EjectedNodes]),
+                        OldRemoteNodes -- EjectedNodes
+                end,
+            {ActualNodes, RemoteNodes}
         end,
 
     NewRemoteNodes =
         receive
             {replicate_change, Id, Doc} ->
+                {_ActualNodes, RemoteNodes} = NodesFun(),
                 lists:foreach(
                   fun (Node) ->
                           replicate_change_to_node(
@@ -67,6 +72,7 @@ loop(GetNodes, StorageFrontend, OldRemoteNodes) ->
                   end, RemoteNodes),
                 RemoteNodes;
             {replicate_newnodes_docs, Producer} ->
+                {ActualNodes, RemoteNodes} = NodesFun(),
                 case ActualNodes -- RemoteNodes of
                     [] ->
                         ok;
@@ -89,10 +95,12 @@ loop(GetNodes, StorageFrontend, OldRemoteNodes) ->
                 end,
                 ActualNodes;
             {sync_token, From} ->
+                {_ActualNodes, RemoteNodes} = NodesFun(),
                 ?log_debug("Received sync_token from ~p", [From]),
                 gen_server:reply(From, ok),
                 RemoteNodes;
             {'$gen_call', From, {sync_to_me, NodesWanted, Timeout}} ->
+                {_ActualNodes, RemoteNodes} = NodesFun(),
                 ?log_debug("Received sync_to_me with timeout = ~p, nodes = ~p",
                            [Timeout, NodesWanted]),
                 proc_lib:spawn_link(
@@ -102,6 +110,7 @@ loop(GetNodes, StorageFrontend, OldRemoteNodes) ->
                   end),
                 RemoteNodes;
             {'DOWN', _Ref, _Type, {Server, RemoteNode}, Error} ->
+                {_ActualNodes, RemoteNodes} = NodesFun(),
                 ?log_warning("Remote server node ~p process down: ~p",
                              [{Server, RemoteNode}, Error]),
                 RemoteNodes -- [RemoteNode];
