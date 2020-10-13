@@ -165,7 +165,8 @@ generate_prometheus_args(Settings) ->
      "--storage.tsdb.max-block-duration", MaxBlockDuration,
      "--storage.tsdb.path", FullStoragePath,
      "--log.level", LogLevel,
-     "--query.max-samples", QueryMaxSamples] ++ PromAuthArgs ++ WalCompression.
+     "--query.max-samples", QueryMaxSamples,
+     "--storage.tsdb.no-lockfile"] ++ PromAuthArgs ++ WalCompression.
 
 authenticate(User, Pass) ->
     case ns_config:search_node(prometheus_auth_info) of
