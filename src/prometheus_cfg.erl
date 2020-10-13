@@ -49,6 +49,7 @@ default_settings() ->
     [{enabled, true},
      {retention_size, 1024}, %% in MB
      {retention_time, 365}, %% in days
+     {wal_compression, false},
      {storage_path, "./stats_data"},
      {config_file, "prometheus.yml"},
      {log_file_name, "prometheus.log"},
@@ -148,6 +149,12 @@ generate_prometheus_args(Settings) ->
             true -> ["--web.basicauth.config", AuthFile];
             false -> []
         end,
+    WalCompression = case proplists:get_bool(wal_compression, Settings) of
+                         true ->
+                             ["--storage.tsdb.wal-compression"];
+                         false ->
+                             []
+                     end,
 
     ["--config.file", ConfigFile,
      "--web.enable-admin-api",
@@ -158,7 +165,7 @@ generate_prometheus_args(Settings) ->
      "--storage.tsdb.max-block-duration", MaxBlockDuration,
      "--storage.tsdb.path", FullStoragePath,
      "--log.level", LogLevel,
-     "--query.max-samples", QueryMaxSamples] ++ PromAuthArgs.
+     "--query.max-samples", QueryMaxSamples] ++ PromAuthArgs ++ WalCompression.
 
 authenticate(User, Pass) ->
     case ns_config:search_node(prometheus_auth_info) of
