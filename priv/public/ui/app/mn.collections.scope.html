@@ -13,6 +13,14 @@
     </span>
     <span class="cbui-table-cell flex-grow-1-5 text-right resp-hide-xsml">
       <a
+         (click)="$event.stopPropagation()"
+         [hidden]="!permissions.cluster.bucket['.'].collections.read"
+         uiSref="app.admin.docs.editor"
+         [uiParams]="{bucket: bucketName, scope: scope.name}">
+        Documents</a>
+
+      <a
+         class="margin-left-half"
          [hidden]="!permissions.cluster.bucket[bucketName]?.collections.delete ||
                    scope.name.startsWith('_')"
          (click)="$event.stopPropagation();clickDeleteScope.next();">
