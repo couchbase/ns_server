@@ -164,6 +164,10 @@
   .wb-main-wrapper.resp-small {
     width: 100% !important;
   }
+  .resp-flex-column-s {
+    flex-direction: column;
+    justify-content: flex-start;
+  }
   .column {
     margin-right: 0;
   }
@@ -264,10 +268,15 @@
   .resp-margin-xsml {
     margin-top: 2rem;
   }
+  .resp-flex-column-xs {
+    flex-direction: column;
+    justify-content: flex-start;
+  }
   .width-480 {
     width: 94vw;
   }
-  div[class*="fix-width-"] {
+  div[class*="fix-width-"],
+  select[class*="fix-width-"] {
     width: 94vw;
   }
   nav.nav-header {

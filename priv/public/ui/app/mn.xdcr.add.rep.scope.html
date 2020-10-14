@@ -1,53 +1,51 @@
-<mn-xdcr-add-rep-mapping
-   style="display: block;"
-   [groups]="group"
-   [item]="item"
-   [rulesHolder]="rulesHolder">
-</mn-xdcr-add-rep-mapping>
-
-<div
-   class="disclosure inline"
-   [ngClass]="{disclosed: (toggler.state | async)}"
-   (click)="toggler.click.next()">
-  Collections
-</div>
-
-<div class="force-icon-size-16"
-   [hidden]="!(toggler.state | async)">
-  <mn-input-filter
-     class="inline"
-     [group]="filter.group"
-     placeholder="filter collections">
-  </mn-input-filter>
-  <div [formGroup]="group.collectionsControls[item.name]">
-    <div class="inline margin-left-1">
-      <input
-         [attr.id]="'dynamic_collections_check_all' + item.name"
-         formControlName="checkAll"
-         type="checkbox">
-      <label [attr.for]="'dynamic_collections_check_all' + item.name" class="margin-right-zero">
-        check all
-      </label>
-    </div>
-    <div class="inline margin-left-1">
-      <input
-         [attr.id]="'collections_deny_mode' + item.name"
-         formControlName="denyMode"
-         type="checkbox">
-      <label [attr.for]="'collections_deny_mode' + item.name" class="margin-right-zero">
-        include future collections
-      </label>
-    </div>
-  </div>
-
-  <div style="border: 1px solid grey; height:11rem; column-width: 260px;overflow-x:auto">
+<section class="has-hover" (click)="toggler.click.next();">
+  <div class="cbui-tablerow">
     <mn-xdcr-add-rep-mapping
-       *ngFor="let coll of (collections | async); trackBy: trackCollectionsBy"
-       style="display: block;"
-       [parent]="item.name"
-       [groups]="group"
-       [item]="coll"
-       [rulesHolder]="rulesHolder">
+     style="display: block;"
+     [groups]="group"
+     [item]="item"
+     [rulesHolder]="rulesHolder">
     </mn-xdcr-add-rep-mapping>
   </div>
-</div>
+  <div class="margin-left-2" [hidden]="!(toggler.state | async)">
+    <mn-input-filter
+       class="inline"
+       [group]="filter.group"
+       placeholder="filter collections">
+    </mn-input-filter>
+
+    <div [formGroup]="group.collectionsControls[item.name]" class="inline">
+      <div class="inline margin-left-1 text-smaller">
+        <input
+           [attr.id]="'dynamic_collections_check_all' + item.name"
+           formControlName="checkAll"
+           type="checkbox">
+        <label [attr.for]="'dynamic_collections_check_all' + item.name" class="margin-right-zero">
+          check all
+        </label>
+      </div>
+      <div class="inline margin-left-1">
+        <input
+           [attr.id]="'collections_deny_mode' + item.name"
+           formControlName="denyMode"
+           type="checkbox">
+        <label [attr.for]="'collections_deny_mode' + item.name" class="margin-right-zero">
+          include future collections
+        </label>
+      </div>
+    </div>
+<!-- list of collections *************************************************** -->
+    <div class="cbui-table-body margin-top-1 max-height-280" style="columns: 3 auto; column-gap:0px">
+      <mn-xdcr-add-rep-mapping
+         *ngFor="let coll of (collections | async); trackBy: trackCollectionsBy"
+         style="display:block;white-space:nowrap"
+         [parent]="item.name"
+         [groups]="group"
+         [item]="coll"
+         [rulesHolder]="rulesHolder"
+         class="">
+      </mn-xdcr-add-rep-mapping>
+    </div>
+  </div>
+
+</section>

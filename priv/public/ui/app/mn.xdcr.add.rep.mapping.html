@@ -1,4 +1,4 @@
-<div
+<span
    class="inline"
    [formGroup]="group.flags">
   <input
@@ -6,23 +6,23 @@
      [attr.id]="'dynamic_collection_' + parent + item.name"
      [formControlName]="item.name">
   <label
-     class="checkbox"
+     class="checkbox bold"
      [attr.for]="'dynamic_collection_' + parent + item.name">
-    {{parent ? "" : "Scope: "}}
     {{item.name}}
   </label>
   &gt;
-</div>
-<div
+</span>
+<span
    class="inline"
    [formGroup]="group.fields">
   <input
      placeholder="null"
-     style="border:0;"
+     style="border-width: 0;display: table;background-color: inherit;"
      [formControlName]="item.name"
      [mnFocus]="group.flags.get(item.name).valueChanges"
      type="text"
      autocorrect="off"
      spellcheck="false"
-     autocapitalize="off">
-</div>
+     autocapitalize="off"
+     (click)="$event.stopPropagation();">
+</span>

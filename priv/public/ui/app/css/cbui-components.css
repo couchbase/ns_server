@@ -603,6 +603,11 @@ color: #333;
   font-size: .961rem !important;
   padding-right: .25rem;
 }
+div.has-hover:hover,
+section.has-hover:hover {
+  background-color: #f6fafd;
+  cursor: pointer;
+}
 section.has-hover:hover {
   background-color: #f6fafd;
   cursor: pointer;
@@ -3467,4 +3472,13 @@ a.supported-browsers-530 {
 schema-display {
   display: block;
   margin-left: 1rem;
+}
+a.x-close-sml {
+  display: block;
+  padding: .25rem;
+  margin-left: 1rem;
+  color: #555;
+}
+a:hover.x-close-sml {
+  color: #000;
 }

@@ -354,7 +354,7 @@ footer {
   width: 16rem !important; /* 256px */
 }
 .fix-width-4-5 {
-  width: 20rem !important; /* 256px */
+  width: 20rem !important; /* 320px */
 }
 .fix-width-5 {
   width: 24rem !important; /* 384px */
@@ -396,6 +396,10 @@ footer {
 }
 
 /* fixed height ------------------------------------------------------- */
+.max-height-280 {
+  max-height: 280px;
+  overflow: auto;
+}
 .max-height-500 {
   max-height: 500px;
   overflow: auto;
@@ -410,6 +414,9 @@ footer {
 .min-height-2 {
   height: 2rem;
 }
+.height-1-5 {
+  height: 1.5rem;
+}
 
 /* responsive height -------------------------------------------------- */
 .height-85vh {
@@ -422,6 +429,9 @@ footer {
 }
 .margin-quarter {
   margin: .25rem !important;
+}
+.margin-1 {
+  margin: 1rem !important;
 }
 .margin-quarter:last-child {
   margin: .25rem 0 !important;

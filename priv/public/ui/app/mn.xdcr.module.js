@@ -53,7 +53,7 @@ let AddXDCRState = {
   name: "app.admin.replications.add",
   data: {
     permissions: "cluster.tasks.read",
-    title: "Add Replication"
+    title: "XDCR Add Replication"
   },
   params: {
     scopesPage: {

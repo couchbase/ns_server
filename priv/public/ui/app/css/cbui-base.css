@@ -290,16 +290,19 @@ small {
 .text-larger {
   font-size: 130%;
 }
+.text-superbig {
+  font-size: 200% !important;
+}
 .text-normal {
-  font-size: 1rem;
-  font-weight: 400;
+  font-size: 1rem !important;
+  font-weight: 400 !important;
 }
 strong,
 b {
   font-weight: 600;
 }
 .semi-bold, .bold {
-  font-weight: 600;
+  font-weight: 600 !important;
 }
 em,
 i {
