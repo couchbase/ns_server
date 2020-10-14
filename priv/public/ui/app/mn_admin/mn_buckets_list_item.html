@@ -46,7 +46,7 @@
         <a
            ng-click="$event.stopPropagation()"
            ng-show="rbac.cluster.bucket[bucket.name].data.docs.read"
-           ui-sref="app.admin.doc_editor({bucket: bucket.name, statsHostname: 'all'})">
+           ui-sref="app.admin.docs.editor({bucket: bucket.name})">
           Documents</a>
       </span>
       <a
