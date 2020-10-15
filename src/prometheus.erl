@@ -11,37 +11,21 @@
          create_snapshot/2]).
 
 create_snapshot(Timeout, Settings) ->
-    Self = self(),
-    Ref = make_ref(),
-    Handler = fun ({ok, json, {Data}}) ->
-                      SnapshotName = proplists:get_value(<<"name">>,
-                                                         Data, {[]}),
-                      Self ! {Ref, {ok, SnapshotName}};
-                  ({error, Reason}) ->
-                      Self ! {Ref, {error, Reason}}
-              end,
-    post_async("/api/v1/admin/tsdb/snapshot", [], Timeout, Settings, Handler),
-    receive
-        {Ref, {ok, SnapshotName}} ->
+    case post("/api/v1/admin/tsdb/snapshot", [], Timeout, Settings) of
+        {ok, json, {Data}} ->
+            SnapshotName = proplists:get_value(<<"name">>, Data, {[]}),
             StoragePath = proplists:get_value(storage_path, Settings),
             FullStoragePath = path_config:component_path(data, StoragePath),
             {ok, filename:join([FullStoragePath, "snapshots", SnapshotName])};
-        {Ref, {error, Reason}} ->
+        {error, Reason} ->
             {error, Reason}
-    after Timeout ->
-              {error, timeout}
     end.
 
 query_range(Query, Start, End, Step, Timeout, Settings) ->
-    Self = self(),
-    Ref = make_ref(),
-    ok = query_range_async(Query, Start, End, Step, Timeout, Settings,
-                           fun (Res) -> Self ! {Ref, Res} end),
-    receive
-        {Ref, Res} -> Res
-    after Timeout ->
-        {error, timeout}
-    end.
+    wait_async(
+      fun (H) ->
+          query_range_async(Query, Start, End, Step, Timeout, Settings, H)
+      end, Timeout).
 
 query_range_async(Query, Start, End, Step, Timeout, Settings, Handler)
                   when is_integer(Step) ->
@@ -61,15 +45,8 @@ query_range_async(Query, Start, End, Step, Timeout, Settings, Handler) ->
     post_async("/api/v1/query_range", Body, Timeout, Settings, HandlerWrap).
 
 query(Query, Time, Timeout, Settings) ->
-    Self = self(),
-    Ref = make_ref(),
-    ok = query_async(Query, Time, Timeout, Settings,
-                     fun (Res) -> Self ! {Ref, Res} end),
-    receive
-        {Ref, Res} -> Res
-    after Timeout ->
-        {error, timeout}
-    end.
+    wait_async(fun (H) -> query_async(Query, Time, Timeout, Settings, H) end,
+               Timeout).
 
 query_async(Query, Time, Timeout, Settings, Handler) ->
     TimeoutStr = integer_to_list(max(Timeout div 1000, 1)) ++ "s",
@@ -83,6 +60,25 @@ query_async(Query, Time, Timeout, Settings, Handler) ->
                 Handler({error, Reason})
         end,
     post_async("/api/v1/query", Body, Timeout, Settings, HandlerWrap).
+
+post(Path, Body, Timeout, Settings) ->
+    wait_async(fun (H) -> post_async(Path, Body, Timeout, Settings, H) end,
+               Timeout).
+
+%% Wait in a separate process in order to correctly handle (ignore)
+%% late replies in case when request times out.
+wait_async(F, Timeout) ->
+    misc:executing_on_new_process(
+      fun () ->
+          Self = self(),
+          Ref = make_ref(),
+          F(fun (Res) -> Self ! {Ref, Res} end),
+          receive
+              {Ref, Res} -> Res
+          after Timeout ->
+              {error, timeout}
+          end
+      end).
 
 post_async(Path, Body, Timeout, Settings, Handler) ->
     case proplists:get_value(enabled, Settings) of
@@ -100,7 +96,7 @@ post_async(Path, Body, Timeout, Settings, Handler) ->
                         case handle_post_async_reply(Res) of
                             {ok, _, _} = Reply -> Handler(Reply);
                             {error, Reason} = Reply ->
-                                ?log_error("Prometheus query request failed:~n"
+                                ?log_error("Prometheus http request failed:~n"
                                            "URL: ~s~nBody: ~s~nReason: ~p",
                                            [URL, BodyEncoded, Reason]),
                                 Handler(Reply)
