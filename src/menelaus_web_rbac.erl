@@ -1320,6 +1320,8 @@ handle_check_permission_for_cbauth(Req) ->
             menelaus_util:reply_text(Req, "", 401)
     end.
 
+vertex_param_to_list(all) ->
+    "*";
 vertex_param_to_list(any) ->
     ".";
 vertex_param_to_list(Param) ->

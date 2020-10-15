@@ -774,7 +774,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_collections:handle_ensure_manifest/3,
                      [Id, ManifestId]};
                 ["pools", "default", "buckets", Id, "collections", Scope] ->
-                    {{[{bucket, Id}, collections], write},
+                    {{[{collection, [Id, Scope, all]}, collections], write},
                      fun menelaus_web_collections:handle_post_collection/3,
                      [Id, Scope]};
                 ["pools", "default", "buckets", Id, "collections"] ->
@@ -862,7 +862,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      [Id, Name]};
                 ["pools", "default", "buckets", Id, "collections",
                  Scope, Name] ->
-                    {{[{bucket, Id}, collections], write},
+                    {{[{collection, [Id, Scope, all]}, collections], write},
                      fun menelaus_web_collections:handle_delete_collection/4,
                      [Id, Scope, Name]};
                 ["pools", "default", "buckets", Id, "docs", DocId] ->
