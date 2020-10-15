@@ -22,7 +22,7 @@ function mnLogsServiceFactory($http, $rootScope, $uibModal) {
   }
 
   function getClusterInfo() {
-    return $http.get('/pools/default/terseClusterInfo');
+    return $http.get('/pools/default/terseClusterInfo?all=true');
   }
 
   function showClusterInfoDialog() {
