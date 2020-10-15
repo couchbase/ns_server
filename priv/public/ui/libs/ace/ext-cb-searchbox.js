@@ -19,24 +19,26 @@ var keyUtil = require("../lib/keys");
 
 //dom.importCssString(searchboxCss, "ace_searchbox");
 
-var html = '<div class="ace_search">\
-    <div class="ace_search_form row">\
-        <input type="text" class="ace_search_field" placeholder="Search for" spellcheck="false"></input>\
-        <span action="findPrev" class="icon angle-icon up"></span>\
-        <span action="findNext" class="icon angle-icon down"></span>\
-        <span action="hide" class="ace_searchbtn_close">X</span>\
-    </div>\
-    <div class="ace_replace_form">\
-        <input class="ace_search_field" placeholder="Replace with" spellcheck="false"></input>\
-        <button type="button" action="replaceAndFindNext" class="ace_replacebtn">Replace</button>\
-        <button type="button" action="replaceAll" class="ace_replacebtn">All</button>\
-    </div>\
-    <div class="ace_search_options">\
-        <span action="toggleRegexpMode" class="ace_button" title="RegExp Search">.*</span>\
-        <span action="toggleCaseSensitive" class="ace_button" title="CaseSensitive Search">Aa</span>\
-        <span action="toggleWholeWords" class="ace_button" title="Whole Word Search">\\b</span>\
-    </div>\
-</div>'.replace(/>\s+/g, ">");
+var html = `<div class="ace_search">
+    <div class="row" id="find_label">Find</div>
+    <div class="ace_search_form row">
+        <input type="text" class="ace_search_field" placeholder="Search for" spellcheck="false"></input>
+        <span action="findPrev" class="icon angle-icon up"></span>
+        <span action="findNext" class="icon angle-icon down"></span>
+        <span action="hide" class="ace_searchbtn_close">X</span>
+    </div>
+    <div class="row" id="replace_label">Replace</div>
+    <div class="ace_replace_form">
+        <input class="ace_search_field" placeholder="Replace with" spellcheck="false"></input>
+        <button type="button" action="replaceAndFindNext" class="ace_replacebtn">Replace</button>
+        <button type="button" action="replaceAll" class="ace_replacebtn">All</button>
+    </div>
+    <div class="ace_search_options">
+        <button class="ace_search_options_buttons" action="toggleRegexpMode" class="ace_button" title="RegExp Search">.*</button>
+        <button class="ace_search_options_buttons" action="toggleCaseSensitive" class="ace_button" title="CaseSensitive Search">Aa</s>
+        <button class="ace_search_options_buttons" action="toggleWholeWords" class="ace_button" title="Whole Word Search">\\b</button>
+    </div>
+</div>`.replace(/>\s+/g, ">");
 
 var SearchBox = function(editor, range, showReplaceForm) {
     var div = dom.createElement("div");
@@ -63,6 +65,8 @@ var SearchBox = function(editor, range, showReplaceForm) {
         this.wholeWordOption = sb.querySelector("[action=toggleWholeWords]");
         this.searchInput = this.searchBox.querySelector(".ace_search_field");
         this.replaceInput = this.replaceBox.querySelector(".ace_search_field");
+        this.findLabel = sb.querySelector("#find_label");
+        this.replaceLabel = sb.querySelector("#replace_label");
     };
 
     this.$init = function() {
@@ -237,9 +241,12 @@ var SearchBox = function(editor, range, showReplaceForm) {
         this.editor.keyBinding.removeKeyboardHandler(this.$closeSearchBarKb);
         this.editor.focus();
     };
-    this.show = function(value, isReplace) {
+    this.show = function(value, isReplace, showOptions) {
         this.element.style.display = "";
         this.replaceBox.style.display = isReplace ? "" : "none";
+        this.searchOptions.style.display = isReplace && showOptions ? "" : "none";
+        this.findLabel.style.display = isReplace ? "" : "none";
+        this.replaceLabel.style.display = isReplace ? "" : "none";
 
         this.isReplace = isReplace;
 
@@ -262,9 +269,9 @@ var SearchBox = function(editor, range, showReplaceForm) {
 
 exports.SearchBox = SearchBox;
 
-exports.Search = function(editor, isReplace) {
+exports.Search = function(editor, isReplace, showOptions) {
     var sb = editor.searchBox || new SearchBox(editor);
-    sb.show(editor.session.getTextRange(), isReplace);
+    sb.show(editor.session.getTextRange(), isReplace, showOptions);
 };
 
 });

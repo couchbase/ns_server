@@ -2351,6 +2351,7 @@ button:hover.scenarios-delete {
   width: 100%;
   border-width: 0!important;
   font-size: .8125rem;
+  line-height: 2rem;
 }
 .ace_searchbtn_close {
   font-size: .961rem;
@@ -2363,8 +2364,24 @@ button:hover.scenarios-delete {
   background-color: #ececec;
   color: #333;
 }
-.ace_search_options{
-  display: none
+
+.ace_replace_form,
+.ace_search_options {
+  padding: 0 0.5rem;
+}
+
+.ace_search_options_buttons {
+  min-width: 1.5rem;
+  margin-top: 0.25rem;
+  background-color: #ececec;
+}
+
+.ace_search_options_buttons:hover {
+  background-color: #bcbcbc;
+}
+
+.ace_search_options_buttons.checked {
+  background-color: #4287d6;
 }
 
 /* bucket inference sidebar ------------------------------------------------- */
