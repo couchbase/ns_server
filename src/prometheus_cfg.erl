@@ -23,13 +23,15 @@
 -endif.
 
 %% API
--export([start_link/0, specs/1, authenticate/2, settings/0]).
+-export([start_link/0, authenticate/2, settings/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3, format_status/2]).
 
 -record(s, {cur_settings = [],
+            specs = undefined,
+            prometheus_port = undefined,
             reload_timer_ref = undefined,
             intervals_calc_timer_ref = undefined}).
 
@@ -139,19 +141,12 @@ build_settings(Config) ->
 
     misc:update_proplist(default_settings(), Settings).
 
-specs(Config) ->
-    Settings = build_settings(Config),
-    case proplists:get_value(enabled, Settings) of
-        true ->
-            Args = generate_prometheus_args(Settings),
-            LogFile = proplists:get_value(log_file_name, Settings),
-            [{prometheus, path_config:component_path(bin, "prometheus"), Args,
-              [via_goport, exit_status, stderr_to_stdout, {env, []},
-               {log, LogFile}]}];
-        false ->
-            ?log_warning("Skipping prometheus start, since it's disabled"),
-            []
-    end.
+specs(Settings) ->
+    Args = generate_prometheus_args(Settings),
+    LogFile = proplists:get_value(log_file_name, Settings),
+    {prometheus, path_config:component_path(bin, "prometheus"), Args,
+     [via_goport, exit_status, stderr_to_stdout, {env, []},
+      {log, LogFile}]}.
 
 generate_prometheus_args(Settings) ->
     ConfigFile = prometheus_config_file(Settings),
@@ -244,13 +239,7 @@ init([]) ->
     Settings = build_settings(),
     ensure_prometheus_config(Settings),
     generate_prometheus_auth_info(Settings),
-    State =
-        case proplists:get_value(enabled, Settings) of
-            true ->
-                try_config_reload(#s{cur_settings = Settings});
-            false ->
-                #s{cur_settings = Settings}
-        end,
+    State = apply_config(#s{cur_settings = Settings}),
     {ok, restart_intervals_calculation_timer(State)}.
 
 handle_call(settings, _From, #s{cur_settings = Settings} = State) ->
@@ -266,7 +255,7 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info(reload_timer, State) ->
-    {noreply, try_config_reload(State#s{reload_timer_ref = undefined})};
+    {noreply, apply_config(State#s{reload_timer_ref = undefined})};
 
 handle_info(intervals_calculation_timer, #s{cur_settings = Settings} = State) ->
     maybe_update_scrape_dynamic_intervals(Settings),
@@ -343,15 +332,37 @@ maybe_apply_new_settings(#s{cur_settings = OldSettings} = State) ->
                        [sanitize_settings(NewSettings),
                         sanitize_settings(OldSettings)]),
             ensure_prometheus_config(NewSettings),
-            NewState =
-                case proplists:get_value(enabled, NewSettings) of
-                    true ->
-                        try_config_reload(State#s{cur_settings = NewSettings});
-                    false ->
-                        State#s{cur_settings = NewSettings}
-                end,
+            NewState = apply_config(State#s{cur_settings = NewSettings}),
             restart_intervals_calculation_timer(NewState)
     end.
+
+apply_config(#s{cur_settings = Settings, specs = OldSpecs} = State) ->
+    case proplists:get_bool(enabled, Settings) of
+        true ->
+            case specs(Settings) of
+                OldSpecs ->
+                    try_config_reload(State);
+                NewSpecs ->
+                    ?log_debug("Restarting Prometheus as the start specs have "
+                               "changed"),
+                    NewState = terminate_prometheus(State),
+                    SpecsFun = fun () -> NewSpecs end,
+                    {ok, NewPortServer} = ns_port_server:start_link(SpecsFun),
+                    NewState#s{specs = NewSpecs,
+                               prometheus_port = NewPortServer}
+            end;
+        false ->
+            NewState = terminate_prometheus(State),
+            ?log_warning("Skipping prometheus start, since it's disabled"),
+            NewState
+    end.
+
+terminate_prometheus(#s{prometheus_port = undefined} = State) -> State;
+terminate_prometheus(#s{prometheus_port = PortServer} = State) ->
+    ?log_debug("Terminating Prometheus"),
+    misc:unlink_terminate(PortServer, normal),
+    ok = misc:wait_for_process(PortServer, 20000),
+    State#s{prometheus_port = undefined, specs = undefined}.
 
 try_config_reload(#s{cur_settings = Settings} = State) ->
     Addr = proplists:get_value(addr, Settings),
