@@ -1,11 +1,11 @@
 <section class="has-hover" (click)="toggler.click.next();">
   <div class="cbui-tablerow">
-    <mn-xdcr-add-rep-mapping
-     style="display: block;"
-     [groups]="group"
-     [item]="item"
-     [rulesHolder]="rulesHolder">
-    </mn-xdcr-add-rep-mapping>
+    <mn-xdcr-add-rep-mapping-item
+       style="display: block;"
+       [groups]="group"
+       [item]="item"
+       [explicitMappingRules]="explicitMappingRules">
+    </mn-xdcr-add-rep-mapping-item>
   </div>
   <div class="margin-left-2" [hidden]="!(toggler.state | async)">
     <mn-input-filter
@@ -36,15 +36,15 @@
     </div>
 <!-- list of collections *************************************************** -->
     <div class="cbui-table-body margin-top-1 max-height-280" style="columns: 3 auto; column-gap:0px">
-      <mn-xdcr-add-rep-mapping
+      <mn-xdcr-add-rep-mapping-item
          *ngFor="let coll of (collections | async); trackBy: trackCollectionsBy"
          style="display:block;white-space:nowrap"
          [parent]="item.name"
          [groups]="group"
          [item]="coll"
-         [rulesHolder]="rulesHolder"
+         [explicitMappingRules]="explicitMappingRules"
          class="">
-      </mn-xdcr-add-rep-mapping>
+      </mn-xdcr-add-rep-mapping-item>
     </div>
   </div>
 

@@ -87,129 +87,11 @@
         will not be replicated.
       </div>
 
-      <div class="row flex-left margin-bottom-half margin-top-1">
-        <label class="toggle-control margin-0">
-          <input
-             formControlName="collectionsExplicitMapping"
-             id="collections_explicit_mapping"
-             type="checkbox">
-          <span class="toggle-control-body"></span>
-        </label>
-        <span class="text-small margin-left-half">
-          Specify scopes, collections, and mapping
-        </span>
-      </div>
-
-      <div
-         class="margin-bottom-1-5"
-         [hidden]="!form.group.get('collectionsExplicitMapping').value">
-        <div
-           class="error error-field"
-           [hidden]="!(postCreateReplication.error | async)?.colMappingRules">
-          {{(postCreateReplication.error | async)?.colMappingRules}}
-        </div>
-
-        <div class="row">
-          <h4>Scopes and Collections to Replicate</h4>
-          <mn-input-filter
-             class="inline"
-             [group]="scopesFilter.group"
-             placeholder="filter scopes">
-          </mn-input-filter>
-        </div>
-        <div class="cbui-table">
-          <div class="cbui-table-header">
-            <span class="cbui-table-cell flex-grow-3">
-              <span
-                 mn-sortable-title="name"
-                 sort-by-default="true"
-                 class="sorter indent-1">
-                scope
-              </span>
-            </span>
-          </div>
-          <div
-             *ngFor="let scope of (scopesPaginator.page | async);">
-            <mn-xdcr-add-rep-scope
-               style="display: block;"
-               [group]="explicitMappingGroup"
-               [item]="scope"
-               [rulesHolder]="explicitMappingRules">
-            </mn-xdcr-add-rep-scope>
-          </div>
-        </div>
-        <ngb-pagination
-           *ngIf="(scopesPaginator.values | async)?.size && (scopes | async)?.length"
-           [page]="(scopesPaginator.values | async)?.page"
-           [maxSize]="5"
-           [pageSize]="(scopesPaginator.values | async)?.size"
-           [collectionSize]="(scopes | async)?.length"
-           (pageChange)="scopesPaginator.group.patchValue({page:$event})">
-          <ng-template ngbPaginationPrevious>&#60; prev</ng-template>
-          <ng-template ngbPaginationNext>next &#62;</ng-template>
-        </ngb-pagination>
-      </div>
-
-      <div class="row flex-left margin-bottom-half">
-        <label class="toggle-control margin-0">
-          <input
-             formControlName="collectionsMigrationMode"
-             id="collections_migration_mode"
-             type="checkbox">
-          <span class="toggle-control-body"></span>
-        </label>
-        <span class="text-small margin-left-half">Enable Collections Migration Mode </span>
-
-        <span
-           class="fa-stack icon-info sup"
-           ngbTooltip="Something wise here..."
-           placement="top">
-          <span class="icon fa-circle-thin fa-stack-2x"></span>
-          <span class="icon fa-info fa-stack-1x"></span>
-        </span>
-      </div>
-
-      <div
-         [formGroup]="explicitRuleBasedMappingGroup"
-         [hidden]="!form.group.get('collectionsMigrationMode').value"
-         class="margin-bottom-1-5">
-        <div class="formrow row flex-left items-stretch resp-flex-column-s">
-          <div class="column width-4">
-            <label for="migration_from_collection">Replicate From Collection</label>
-            <input
-               class="width-12"
-               id="migration_from_collection"
-               formControlName="migrationKey"
-               placeholder="Expression for source default collection"
-               type="text"
-               autocorrect="off"
-               spellcheck="false"
-               autocapitalize="off">
-          </div>
-          <div class="column width-4">
-            <label for="migration_to_collection">Replicate To Collection</label>
-            <input
-               class="width-12"
-               id="migration_to_collection"
-               formControlName="migrationTarget"
-               placeholder="Expression for specific target collection"
-               type="text"
-               autocorrect="off"
-               spellcheck="false"
-               autocapitalize="off">
-          </div>
-          <button
-             class="margin-top-1-5 inline"
-             type="button"
-             (click)="addExplicitRuleBasedMappings.next()">Save Mapping</button>
-
-          <div
-             class="error error-field"
-             [hidden]="!(postCreateReplication.error | async)?.colMappingRules">
-            {{(postCreateReplication.error | async)?.colMappingRules}}
-          </div>
-        </div>
-      </div>
+      <mn-xdcr-mapping
+         [explicitMappingRules]="explicitMappingRules"
+         [explicitMappingMigrationRules]="explicitMappingMigrationRules"
+         [explicitMappingGroup]="explicitMappingGroup"
+         [group]="form.group"></mn-xdcr-mapping>
 
       <mn-xdcr-filter
          [bucket]="form.group.get('fromBucket').value"
@@ -227,27 +109,14 @@
        style="border-left: 1px solid #d1d1d1; margin: 0 16px; flex-basis: 1;"
        class="resp-hide-med">&nbsp;</div>
 
-    <div class="width-4">
-      <h4>Mapping Rules</h4>
-      <div *ngFor="let item of getExplicitMappingRulesKeys()"
-         class="row padding-quarter margin-top-half margin-bottom-quarter grayblack-bg-7 text-small">
-        <span>
-          {{item}} &gt; {{explicitMappingRules[item] || 'null'}}
-        </span>
-        <a
-           (click)="delExplicitMappingRules(item)"
-           class="x-close-sml">
-          X</a>
-      </div>
+    <mn-xdcr-mapping-rules
+       class="width-4"
+       style="display:block;"
+       [explicitMappingRules]="explicitMappingRules"
+       [explicitMappingMigrationRules]="explicitMappingMigrationRules"
+       [explicitMappingGroup]="explicitMappingGroup"></mn-xdcr-mapping-rules>
 
-      <div *ngFor="let item of getExplicitRuleBasedMappingsKeys()"
-         class="row padding-quarter margin-quarter label neutral">
-        <span>
-          {{item}} --> {{explicitRuleBasedMappings[item]}}
-        </span>
-        <a (click)="delExplicitRuleBasedMappings(item)">X</a>
-      </div>
-    </div>
+
   </div>
 
   <footer class="footer-save">

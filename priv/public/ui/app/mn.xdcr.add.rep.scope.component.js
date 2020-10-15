@@ -17,7 +17,7 @@ class MnXDCRAddRepScopeComponent extends MnLifeCycleHooksToStream {
       inputs: [
         "item",
         "group",
-        "rulesHolder"
+        "explicitMappingRules"
       ]
     })
   ]}
@@ -47,6 +47,7 @@ class MnXDCRAddRepScopeComponent extends MnLifeCycleHooksToStream {
         fields: this.formBuilder.group({})
       };
     }
+
     if (!this.group.collectionsControls[name]) {
       this.group.collectionsControls[name] = this.formBuilder.group({
         checkAll: this.formBuilder.control({value: true, disabled: true}),
@@ -55,11 +56,9 @@ class MnXDCRAddRepScopeComponent extends MnLifeCycleHooksToStream {
     }
     if (!this.group.scopes.flags.get(name)) {
       this.group.scopes.flags
-        .addControl(name, this.formBuilder.control({value: false, disabled: false})
-      );
+        .addControl(name, this.formBuilder.control({value: false, disabled: false}));
       this.group.scopes.fields
-        .addControl(name, this.formBuilder.control({value: name, disabled: false})
-      );
+        .addControl(name, this.formBuilder.control({value: name, disabled: false}));
     }
 
     this.childGroup = this.group.collections[name];
@@ -92,25 +91,25 @@ class MnXDCRAddRepScopeComponent extends MnLifeCycleHooksToStream {
         this.denyModeControl.valueChanges.pipe(startWith(this.denyModeControl.value));
 
     merge(this.flag.valueChanges,
+          this.field.valueChanges,
           this.childGroup.flags.valueChanges,
           denyModeStream)
       .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(this.toggleScopeRule.bind(this));
+      .subscribe(this.setScopeRule.bind(this));
   }
 
-  toggleScopeRule() {
-    let collectionsPresent = Object.keys(this.childGroup.fields.value).length;
+  setScopeRule() {
+    let rules = this.explicitMappingRules.getValue();
     if (this.flag.value) {
-      if (!this.denyModeControl.value &&
-          this.childGroup.fields.enabled &&
-          collectionsPresent) {
-        delete this.rulesHolder[this.item.name];
+      if (!this.denyModeControl.value) {
+        delete rules[this.item.name];
       } else {
-        this.rulesHolder[this.item.name] = this.field.value;
+        rules[this.item.name] = this.field.value;
       }
     } else {
-      delete this.rulesHolder[this.item.name];
+      delete rules[this.item.name];
     }
+    this.explicitMappingRules.next(rules);
   }
 
   toggleFilteredCollections([value, collections]) {

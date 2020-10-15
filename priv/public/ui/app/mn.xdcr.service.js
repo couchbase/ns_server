@@ -104,10 +104,10 @@ class MnXDCRService {
     }
     if (settings.collectionsExplicitMapping) {
       settings.collectionsMigrationMode = false;
-      settings.colMappingRules = JSON.stringify(this.explicitMappingRules);
+      settings.colMappingRules = JSON.stringify(this.explicitMappingRules.getValue());
     } else {
       settings.collectionsExplicitMapping = true;
-      settings.colMappingRules = JSON.stringify(this.explicitRuleBasedMappings);
+      settings.colMappingRules = JSON.stringify(this.explicitMappingMigrationRules.getValue());
     }
     settings.replicationType = "continuous";
 

@@ -10,7 +10,8 @@
     <button
        [hidden]="!(permissions.cluster.bucket[item.source].xdcr.write &&
                  permissions.cluster.xdcr.settings.write)"
-       (click)="$event.stopPropagation();onEditReplication.next(item)"
+       [uiParams]="{item: item}"
+       uiSref="app.admin.replications.edit"
        class="outline margin-right-quarter">
       Edit
     </button>

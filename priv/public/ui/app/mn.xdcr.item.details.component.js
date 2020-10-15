@@ -9,8 +9,6 @@ import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnXDCRService} from './mn.xdcr.service.js';
 import {MnFormService} from "./mn.form.service.js";
 import {MnXDCRDeleteRepComponent} from "./mn.xdcr.delete.rep.component.js";
-import {MnXDCREditRepComponent} from "./mn.xdcr.edit.rep.component.js";
-
 
 export {MnXDCRItemDetailsComponent, MnReplicationStatus};
 
@@ -49,17 +47,8 @@ class MnXDCRItemDetailsComponent extends MnLifeCycleHooksToStream {
         ref.componentInstance.item = item;
       });
 
-    var onEditReplication = new Subject();
-    onEditReplication
-      .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(item => {
-        var ref = modalService.open(MnXDCREditRepComponent);
-        ref.componentInstance.item = item;
-      });
-
     this.permissions = mnPermissions.export;
     this.onDeleteReplication = onDeleteReplication;
-    this.onEditReplication = onEditReplication;
 
   }
 

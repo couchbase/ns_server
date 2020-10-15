@@ -19,6 +19,8 @@ import { MnCollectionsService } from './mn.collections.service.js';
 import { MnXDCRAddRefComponent } from "./mn.xdcr.add.ref.component.js";
 import { MnXDCRAddRepComponent } from "./mn.xdcr.add.rep.component.js";
 import { MnXDCRAddRepScopeComponent } from "./mn.xdcr.add.rep.scope.component.js";
+import { MnXDCRAddRepMappingItemComponent } from "./mn.xdcr.add.rep.mapping.item.component.js";
+import { MnXDCRAddRepMappingRulesComponent } from "./mn.xdcr.add.rep.mapping.rules.component.js";
 import { MnXDCRAddRepMappingComponent } from "./mn.xdcr.add.rep.mapping.component.js";
 import { MnXDCRDeleteRefComponent } from "./mn.xdcr.delete.ref.component.js";
 import { MnXDCRDeleteRepComponent } from "./mn.xdcr.delete.rep.component.js";
@@ -52,7 +54,6 @@ let XDCRState = {
 let AddXDCRState = {
   name: "app.admin.replications.add",
   data: {
-    permissions: "cluster.tasks.read",
     title: "XDCR Add Replication"
   },
   params: {
@@ -65,6 +66,26 @@ let AddXDCRState = {
   views: {
     "main@app.admin": {
       component: MnXDCRAddRepComponent
+    }
+  }
+};
+
+let EditXDCRState = {
+  name: "app.admin.replications.edit",
+  data: {
+    title: "XDCR Edit Replication"
+  },
+  params: {
+    scopesPage: {
+      value: {page:1, size:5},
+      type: 'json',
+      dynamic: true
+    },
+    item: null
+  },
+  views: {
+    "main@app.admin": {
+      component: MnXDCREditRepComponent
     }
   }
 };
@@ -90,6 +111,8 @@ class MnXDCRModule {
         MnXDCRRefItemComponent,
         MnXDCRAddRefComponent,
         MnXDCRAddRepComponent,
+        MnXDCRAddRepMappingItemComponent,
+        MnXDCRAddRepMappingRulesComponent,
         MnXDCRAddRepMappingComponent,
         MnXDCRAddRepScopeComponent,
         MnXDCRDeleteRefComponent,
@@ -106,7 +129,7 @@ class MnXDCRModule {
         MnElementCraneModule,
         ReactiveFormsModule,
         MnSharedModule,
-        UIRouterModule.forChild({ states: [XDCRState, AddXDCRState] })
+        UIRouterModule.forChild({ states: [XDCRState, AddXDCRState, EditXDCRState] })
       ],
       providers: [
         MnXDCRService,

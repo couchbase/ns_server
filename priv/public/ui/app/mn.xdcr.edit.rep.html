@@ -1,24 +1,27 @@
-<div class="dialog-med">
-  <div class="panel-header">
-    <h2>Advanced Settings</h2>
-    <a class="ui-dialog-titlebar-close modal-close" (click)="activeModal.dismiss()">X</a>
+<mn-element-cargo depot="actions">
+  <div class="header-controls resp-sml">
+    <a
+       uiSref="app.admin.replications"
+       class="resp-hide-sml">
+      <span class="icon fa-arrow-left"></span> BACK
+    </a>
   </div>
-  <form
-     [formGroup]="form.group"
-     (submit)="form.submit.next()"
-     class="forms">
-    <div class="panel-content">
+</mn-element-cargo>
 
-      <div class="formrow">
-        <label for="replication_priority">Replication Priority</label>
-        <select
-           id="replication_priority"
-           formControlName="priority">
-          <option value="Low">Low</option>
-          <option value="Medium">Medium</option>
-          <option value="High">High</option>
-        </select>
-      </div>
+<form
+   [formGroup]="form.group"
+   (submit)="form.submit.next()"
+   class="forms">
+  <div class="row flex-left items-stretch resp-flex-column-med margin-bottom-2">
+    <div class="width-8">
+
+      <mn-xdcr-mapping
+         *ngIf="explicitMappingGroup"
+         [explicitMappingRules]="explicitMappingRules"
+         [explicitMappingMigrationRules]="explicitMappingMigrationRules"
+         [explicitMappingGroup]="explicitMappingGroup"
+         [group]="form.group"
+         [bucket]="item.source"></mn-xdcr-mapping>
 
       <mn-xdcr-filter
          [bucket]="item.source"
@@ -30,11 +33,24 @@
          class="panel-content"
          [group]="form.group"
          [type]="item.replicationType"></mn-xdcr-settings>
+    </div>
+    <div
+       style="border-left: 1px solid #d1d1d1; margin: 0 16px; flex-basis: 1;"
+       class="resp-hide-med">&nbsp;</div>
 
-    </div>
-    <div class="panel-footer">
-      <a (click)="activeModal.dismiss()">Cancel</a>
-      <button type="submit">Save</button>
-    </div>
-  </form>
-</div>
+    <mn-xdcr-mapping-rules
+       class="width-4"
+       style="display:block;"
+       *ngIf="explicitMappingGroup"
+       [explicitMappingRules]="explicitMappingRules"
+       [explicitMappingMigrationRules]="explicitMappingMigrationRules"
+       [explicitMappingGroup]="explicitMappingGroup"></mn-xdcr-mapping-rules>
+
+
+  </div>
+
+  <footer class="footer-save">
+    <button type="submit" class="margin-right-2">Save Replication</button>
+    <a class="text-medium" uiSref="app.admin.replications">Cancel/Reset</a>
+  </footer>
+</form>

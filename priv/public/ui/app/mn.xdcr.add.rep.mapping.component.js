@@ -1,120 +1,109 @@
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js'
-import {takeUntil, filter, withLatestFrom,
-        map, startWith} from '/ui/web_modules/rxjs/operators.js';
-import {combineLatest} from '/ui/web_modules/rxjs.js';
-import {FormBuilder} from '/ui/web_modules/@angular/forms.js';
+import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
+import {pipe, Subject, of} from '/ui/web_modules/rxjs.js';
+import {withLatestFrom, map, filter, switchMap, pluck, shareReplay,
+        takeUntil, startWith} from '/ui/web_modules/rxjs/operators.js';
 
-import {MnLifeCycleHooksToStream} from './mn.core.js';
+import {MnLifeCycleHooksToStream} from "./mn.core.js";
+
+import {MnPoolsService} from "./mn.pools.service.js";
+import {MnXDCRService} from "./mn.xdcr.service.js";
+import {MnCollectionsService} from './mn.collections.service.js';
+import {MnHelperService} from "./mn.helper.service.js";
 
 export {MnXDCRAddRepMappingComponent};
 
 class MnXDCRAddRepMappingComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
-      selector: "mn-xdcr-add-rep-mapping",
+      selector: "mn-xdcr-mapping",
       templateUrl: "/ui/app/mn.xdcr.add.rep.mapping.html",
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
-        "item",
-        "groups",
-        "parent",
-        "rulesHolder"
+        "explicitMappingRules",
+        "explicitMappingMigrationRules",
+        "explicitMappingGroup",
+        "group",
+        "bucket"
       ]
     })
   ]}
 
   static get parameters() { return [
-    FormBuilder
+    MnPoolsService,
+    MnXDCRService,
+    MnHelperService,
+    MnCollectionsService
   ]}
 
-  constructor(formBuilder) {
+  constructor(mnPoolsService, mnXDCRService, mnHelperService, mnCollectionsService) {
     super();
-    this.formBuilder = formBuilder;
+
+    this.mnCollectionsService = mnCollectionsService;
+    this.mnHelperService = mnHelperService;
+    this.isEnterprise = mnPoolsService.stream.isEnterprise;
+    this.postCreateReplication = mnXDCRService.stream.postCreateReplication;
+    this.postSettingsReplicationsValidation =
+      mnXDCRService.stream.postSettingsReplicationsValidation;
+
+    this.addExplicitMappingMigrationRules = new Subject();
+
+    this.addExplicitMappingMigrationRules
+      .pipe(filter(() => !!this.explicitMappingGroup.migrationMode.value.key),
+            map(() => [this.explicitMappingGroup.migrationMode.value.key,
+                       this.explicitMappingGroup.migrationMode.value.target]),
+            takeUntil(this.mnOnDestroy))
+      .subscribe(v => {
+        let rules = this.explicitMappingMigrationRules.getValue();
+        rules[v[0]] = v[1];
+        this.explicitMappingMigrationRules.next(rules);
+        resetExplicitMappingMigrationGroup.bind(this)();
+      });
+
+    function resetExplicitMappingMigrationGroup() {
+      this.explicitMappingGroup.migrationMode.patchValue({key: "", target: ""});
+    }
   }
 
   ngOnInit() {
-    if (this.parent) {
-      this.group = this.groups.collections[this.parent];
-      this.parentGroup = this.groups.scopes;
-      this.controls = this.groups.collectionsControls[this.parent];
-      if (!this.group.flags.get(this.item.name)) {
-        let maybeDisabled = !!this.parentGroup.fields.get(this.parent).value;
-        this.group.flags.addControl(
-          this.item.name,
-          this.formBuilder.control({value: true, disabled: maybeDisabled})
-        );
-        this.group.fields.addControl(
-          this.item.name,
-          this.formBuilder.control({value: this.item.name, disabled: maybeDisabled})
-        );
-      }
-    } else {
-      this.group = this.groups.scopes;
-    }
-
-    this.flag = this.group.flags.get(this.item.name);
-    this.field = this.group.fields.get(this.item.name);
-
-    this.flag.valueChanges
+    this.group.get("collectionsExplicitMapping").valueChanges
       .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(this.toggleFiled.bind(this));
+      .subscribe(enabled => {
+        if (enabled) {
+          this.group.get("collectionsMigrationMode").patchValue(false, {onlySelf: true});
+        }
+      });
 
-    this.toggleFiled(this.flag.value);
+    this.group.get("collectionsMigrationMode").valueChanges
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(enabled => {
+        if (enabled) {
+          this.group.get("collectionsExplicitMapping").patchValue(false, {onlySelf: true});
+        }
+      });
 
-    if (this.parent) {
-      let denyModeControl = this.controls.get("denyMode");
-      let denyModeStream = denyModeControl.valueChanges.pipe(startWith(denyModeControl.value));
-      //collections behaviours
-      this.parentFlag = this.parentGroup.flags.get(this.parent);
-      this.parentField = this.parentGroup.fields.get(this.parent);
-      let flagStream = this.flag.valueChanges.pipe(startWith(this.flag.value));
-
-      combineLatest(flagStream, denyModeStream)
-        .pipe(filter(v => this.parentFlag.value && v[0]),
+    let hasSourceBucketField = this.group.get("fromBucket");
+    if (hasSourceBucketField) {
+      hasSourceBucketField.valueChanges
+        .pipe(startWith(hasSourceBucketField.value),
               takeUntil(this.mnOnDestroy))
-        .subscribe(this.setRule.bind(this));
-
-      combineLatest(flagStream, denyModeStream)
-        .pipe(filter(v => this.parentFlag.value && !v[0]),
-              takeUntil(this.mnOnDestroy))
-        .subscribe(this.deleteRule.bind(this));
-
-      this.field.valueChanges
-        .pipe(withLatestFrom(denyModeStream),
-              takeUntil(this.mnOnDestroy))
-        .subscribe(this.setRule.bind(this));
-
-      this.parentFlag.valueChanges
-        .pipe(filter(v => !v),
-              map(v => [v, false]),
-              takeUntil(this.mnOnDestroy))
-        .subscribe(this.deleteRule.bind(this));
+        .subscribe(v => {
+          let action = v ? "enable" : "disable";
+          this.group.get("collectionsExplicitMapping")[action]({onlySelf: true});
+          this.group.get("collectionsMigrationMode")[action]({onlySelf: true});
+        });
     }
-  }
 
-  setRule([_, denyMode]) {
-    let from = this.parent + ":" + this.item.name;
-    let to = this.parentField.value + ":" + this.field.value;
-    if (denyMode) {
-      if (from === to) {
-        delete this.rulesHolder[from];
-      } else {
-        this.rulesHolder[from] = to;
-      }
-    } else {
-      this.rulesHolder[from] = to;
-    }
-  }
+    this.scopesFilter = this.mnHelperService.createFilter("name");
 
-  deleteRule([_, denyMode]) {
-    if (denyMode) {
-      this.rulesHolder[this.parent + ":" + this.item.name] = null;
-    } else {
-      delete this.rulesHolder[this.parent + ":" + this.item.name];
-    }
-  }
+    this.scopes =
+      (this.bucket ? of(this.bucket) : this.group.get("fromBucket").valueChanges)
+      .pipe(filter(v => !!v),
+            switchMap(bucketName => this.mnCollectionsService.getManifest(bucketName)),
+            pluck("scopes"),
+            this.scopesFilter.pipe,
+            shareReplay({refCount: true, bufferSize: 1}));
 
-  toggleFiled(v) {
-    this.field[v ? "enable" : "disable"]();
+    this.scopesPaginator =
+      this.mnHelperService.createPagenator(this, this.scopes, "scopesPage");
   }
 }

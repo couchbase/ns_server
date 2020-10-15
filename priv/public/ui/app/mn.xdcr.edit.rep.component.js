@@ -1,7 +1,8 @@
 import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
-import {NgbActiveModal} from '/ui/web_modules/@ng-bootstrap/ng-bootstrap.js';
-import {combineLatest, pipe} from '/ui/web_modules/rxjs.js';
-import {map, withLatestFrom} from '/ui/web_modules/rxjs/operators.js';
+import {combineLatest, pipe, BehaviorSubject} from '/ui/web_modules/rxjs.js';
+import {map, withLatestFrom, takeUntil} from '/ui/web_modules/rxjs/operators.js';
+import {UIRouter} from "/ui/web_modules/@uirouter/angular.js";
+import {FormBuilder} from '/ui/web_modules/@angular/forms.js';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnXDCRService} from "./mn.xdcr.service.js";
@@ -23,17 +24,20 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
   ]}
 
   static get parameters() { return [
-    NgbActiveModal,
     MnXDCRService,
     MnFormService,
     MnPoolsService,
-    MnAdminService
+    MnAdminService,
+    UIRouter,
+    FormBuilder
   ]}
 
-  constructor(activeModal, mnXDCRService, mnFormService, mnPoolsService, mnAdminService) {
+  constructor(mnXDCRService, mnFormService, mnPoolsService, mnAdminService, uiRouter,
+              formBuilder) {
     super();
+    this.item = uiRouter.globals.params.item;
     this.isEditMode = true;
-    this.activeModal = activeModal;
+    this.formBuilder = formBuilder;
     this.mnFormService = mnFormService;
     this.isEnterprise = mnPoolsService.stream.isEnterprise;
     this.compatVersion55 = mnAdminService.stream.compatVersion55;
@@ -48,6 +52,10 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
   }
 
   ngOnInit() {
+    this.replicationSettings =
+      combineLatest(this.getSettingsReplications,
+                    this.createGetSettingsReplicationsPipe(this.item.id));
+
     this.form = this.mnFormService.create(this)
       .setFormGroup({type: null,
                      priority: null,
@@ -56,6 +64,8 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
                      filterSkipRestream: "false",
                      filterDeletion: false,
                      filterBypassExpiry: false,
+                     collectionsExplicitMapping: false,
+                     collectionsMigrationMode: false,
                      compressionType: null,
                      sourceNozzlePerNode: null,
                      targetNozzlePerNode: null,
@@ -74,14 +84,78 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
       .setUnpackPipe(map(function (source) {
         return Object.assign({}, source[0], source[1]);
       }))
-      .setSource(combineLatest(
-        this.getSettingsReplications,
-        this.createGetSettingsReplicationsPipe(this.item.id)
-      ))
+      .setSource(this.replicationSettings)
       .setPostRequest(this.postSettingsReplications)
       .setValidation(this.postSettingsReplicationsValidation)
       .successMessage("Settings saved successfully!")
-      .clearErrors()
-      .success(() => this.activeModal.close());
+      .clearErrors();
+    // .success(() => this.activeModal.close());
+    this.replicationSettings
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(this.unpackReplicationSettings.bind(this));
+  }
+
+  unpackReplicationSettings(v) {
+    let scopesFlags = {};
+    let scopesFields = {};
+    let collections = {}
+    let collectionsControls = {}
+    Object.keys(v[1].colMappingRules).forEach(sourceRule => {
+      let targetRule = v[1].colMappingRules[sourceRule];
+      let sourcePair = sourceRule.split(":");
+
+      scopesFlags[sourcePair[0]] = true;
+
+      if (sourcePair.length == 2) {
+        if (!collections[sourcePair[0]]) {
+          collections[sourcePair[0]] = {
+            flags: this.formBuilder.group({}),
+            fields: this.formBuilder.group({})
+          };
+        }
+
+        let collectionFlag = collections[sourcePair[0]].flags.get(sourcePair[1]);
+        let collectionField = collections[sourcePair[0]].fields.get(sourcePair[1]);
+        let fieldValue = targetRule ? targetRule.split(":")[1] : sourcePair[1];
+
+        if (collectionFlag) {
+          collectionFlag.setValue(!!targetRule, {emitEvent: false});
+          collectionField.setValue(fieldValue, {emitEvent: false});
+        } else {
+          collections[sourcePair[0]]
+            .flags.addControl(sourcePair[1], this.formBuilder.control(!!targetRule));
+          collections[sourcePair[0]]
+            .fields.addControl(sourcePair[1], this.formBuilder.control(fieldValue));
+        }
+
+        if (targetRule) {
+          scopesFields[sourcePair[0]] = targetRule.split(":")[0];
+          if (!collectionsControls[sourcePair[0]]) {
+            collectionsControls[sourcePair[0]] = this.formBuilder.group({
+              checkAll: this.formBuilder.control(true),
+              denyMode: this.formBuilder.control(false)
+            });
+          }
+        }
+      } else {
+        scopesFields[sourcePair[0]] = targetRule;
+      }
+    });
+
+
+    this.explicitMappingRules = new BehaviorSubject(v[1].colMappingRules);
+    this.explicitMappingMigrationRules = new BehaviorSubject({});
+
+    this.explicitMappingGroup = {
+      scopes: {
+        flags: this.formBuilder.group(scopesFlags),
+        fields: this.formBuilder.group(scopesFields)
+      },
+      collections: collections,
+      collectionsControls: collectionsControls,
+      migrationMode: this.formBuilder.group({key: "", target: ""})
+    };
+
+
   }
 }
