@@ -25,8 +25,7 @@ create_snapshot(Timeout, Settings) ->
         {Ref, {ok, SnapshotName}} ->
             StoragePath = proplists:get_value(storage_path, Settings),
             FullStoragePath = path_config:component_path(data, StoragePath),
-            {ok, filename:join(FullStoragePath ++ "/snapshots/",
-                               SnapshotName)};
+            {ok, filename:join([FullStoragePath, "snapshots", SnapshotName])};
         {Ref, {error, Reason}} ->
             {error, Reason}
     after Timeout ->
