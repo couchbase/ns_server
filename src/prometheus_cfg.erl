@@ -365,24 +365,13 @@ terminate_prometheus(#s{prometheus_port = PortServer} = State) ->
     State#s{prometheus_port = undefined, specs = undefined}.
 
 try_config_reload(#s{cur_settings = Settings} = State) ->
-    Addr = proplists:get_value(addr, Settings),
-    URL = io_lib:format("http://~s/-/reload", [Addr]),
-    {Username, Password} = proplists:get_value(prometheus_creds, Settings),
-    Headers = [menelaus_rest:basic_auth_header(Username, Password)],
-    ?log_debug("Reloading prometheus config by sending http post to ~s", [URL]),
-    case lhttpc:request(lists:flatten(URL), 'post', Headers, [], 5000) of
-        {ok, {{200, _}, _, _}} ->
+    ?log_debug("Reloading prometheus config"),
+    case prometheus:reload(?DEFAULT_PROMETHEUS_TIMEOUT, Settings) of
+        ok ->
             ?log_debug("Config successfully reloaded"),
             cancel_reload_timer(State);
-        {ok, {{Code, Text}, _, Error}} ->
-            ?log_error("Failed to reload config: ~p ~p ~p",
-                       [Code, Text, Error]),
-            start_reload_timer(State);
-        {error, {econnrefused, _}} ->
-            ?log_debug("Can't connect to prometheus (~s)", [URL]),
-            start_reload_timer(State);
-        {error, Error} ->
-            ?log_error("Failed to reload config: ~p", [Error]),
+        {error, Reason} ->
+            ?log_error("Failed to reload config: ~p", [Reason]),
             start_reload_timer(State)
     end.
 
