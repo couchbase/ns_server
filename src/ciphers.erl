@@ -57,9 +57,9 @@ supported(ns_server) ->
     [N || C <- ssl:cipher_suites(all, 'tlsv1.2'),
           {ok, N} <- [cipher_name_by_code(
                         ssl_cipher_format:suite_map_to_bin(C))]];
-supported(fts) -> golang_ciphers({1, 11, 5});
-supported(index) -> golang_ciphers({1, 7, 6});
-supported(n1ql) -> golang_ciphers({1, 11, 4});
+supported(fts) -> golang_ciphers({1, 13, 7});
+supported(index) -> golang_ciphers({1, 13, 7});
+supported(n1ql) -> golang_ciphers({1, 13, 7});
 supported(eventing) -> golang_ciphers({1, 10, 3});
 supported(kv) ->
 %% This list is constructed using the following command
@@ -244,20 +244,43 @@ supported(cbas) ->
         <<"TLS_RSA_WITH_3DES_EDE_CBC_SHA">>
     ].
 
-golang_ciphers({1, 11, 5}) -> golang_ciphers({1, 10, 3});
-golang_ciphers({1, 11, 4}) -> golang_ciphers({1, 10, 3});
+golang_ciphers({1, 13, 7}) ->
+%% 1.13.7
+%% https://github.com/golang/go/commit/7d2473dc81c659fba3f3b83bc6e93ca5fe37a898
+%% https://github.com/golang/go/blob/7d2473dc81c659fba3f3b83bc6e93ca5fe37a898/src/crypto/tls/cipher_suites.go
+%% (note that POLY1305 ciphers have non standard names in go file, add _SHA256)
+    [
+        <<"TLS_RSA_WITH_RC4_128_SHA">>,
+        <<"TLS_RSA_WITH_3DES_EDE_CBC_SHA">>,
+        <<"TLS_RSA_WITH_AES_128_CBC_SHA">>,
+        <<"TLS_RSA_WITH_AES_256_CBC_SHA">>,
+        <<"TLS_RSA_WITH_AES_128_CBC_SHA256">>,
+        <<"TLS_RSA_WITH_AES_128_GCM_SHA256">>,
+        <<"TLS_RSA_WITH_AES_256_GCM_SHA384">>,
+        <<"TLS_ECDHE_ECDSA_WITH_RC4_128_SHA">>,
+        <<"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA">>,
+        <<"TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA">>,
+        <<"TLS_ECDHE_RSA_WITH_RC4_128_SHA">>,
+        <<"TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA">>,
+        <<"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA">>,
+        <<"TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA">>,
+        <<"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256">>,
+        <<"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256">>,
+        <<"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256">>,
+        <<"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256">>,
+        <<"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384">>,
+        <<"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384">>,
+        <<"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256">>,
+        <<"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256">>,
+        <<"TLS_AES_128_GCM_SHA256">>,
+        <<"TLS_AES_256_GCM_SHA384">>,
+        <<"TLS_CHACHA20_POLY1305_SHA256">>
+    ];
 golang_ciphers({1, 10, 3}) ->
-%% go1.11.5 go1.11.4 and go1.10.3 have the same set of supported chipers
-%% 1.11.5
-%% https://github.com/golang/go/commit/35bb62e60a7779ff82c3067903b3306ff8666471
-%% https://github.com/golang/go/blob/35bb62e60a7779ff82c3067903b3306ff8666471/src/crypto/tls/cipher_suites.go
-%% 1.11.4:
-%% https://github.com/golang/go/commit/4601a4c1b1c00fbe507508f0267ec5a9445bb7e5
-%% https://github.com/golang/go/blob/4601a4c1b1c00fbe507508f0267ec5a9445bb7e5/src/crypto/tls/cipher_suites.go
 %% 1.10.3:
 %% https://github.com/golang/go/commit/fe8a0d12b14108cbe2408b417afcaab722b0727c
 %% https://github.com/golang/go/blob/fe8a0d12b14108cbe2408b417afcaab722b0727c/src/crypto/tls/cipher_suites.go
-%% (note that POLY1205 ciphers have non standard names in go file, add _SHA256)
+%% (note that POLY1305 ciphers have non standard names in go file, add _SHA256)
     [
         <<"TLS_RSA_WITH_RC4_128_SHA">>,
         <<"TLS_RSA_WITH_3DES_EDE_CBC_SHA">>,
@@ -281,28 +304,6 @@ golang_ciphers({1, 10, 3}) ->
         <<"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384">>,
         <<"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256">>,
         <<"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256">>
-    ];
-golang_ciphers({1, 7, 6}) ->
-%% https://github.com/golang/go/commit/2b7a7b710f096b1b7e6f2ab5e9e3ec003ad7cd12
-%% https://github.com/golang/go/blob/2b7a7b710f096b1b7e6f2ab5e9e3ec003ad7cd12/src/crypto/tls/cipher_suites.go
-    [
-        <<"TLS_RSA_WITH_RC4_128_SHA">>,
-        <<"TLS_RSA_WITH_3DES_EDE_CBC_SHA">>,
-        <<"TLS_RSA_WITH_AES_128_CBC_SHA">>,
-        <<"TLS_RSA_WITH_AES_256_CBC_SHA">>,
-        <<"TLS_RSA_WITH_AES_128_GCM_SHA256">>,
-        <<"TLS_RSA_WITH_AES_256_GCM_SHA384">>,
-        <<"TLS_ECDHE_ECDSA_WITH_RC4_128_SHA">>,
-        <<"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA">>,
-        <<"TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA">>,
-        <<"TLS_ECDHE_RSA_WITH_RC4_128_SHA">>,
-        <<"TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA">>,
-        <<"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA">>,
-        <<"TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA">>,
-        <<"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256">>,
-        <<"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256">>,
-        <<"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384">>,
-        <<"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384">>
     ].
 
 -ifdef(TEST).
