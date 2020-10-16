@@ -16,7 +16,7 @@
     <div class="width-8">
 
       <mn-xdcr-mapping
-         *ngIf="explicitMappingGroup"
+         *ngIf="replicationSettings | async"
          [explicitMappingRules]="explicitMappingRules"
          [explicitMappingMigrationRules]="explicitMappingMigrationRules"
          [explicitMappingGroup]="explicitMappingGroup"
@@ -41,7 +41,8 @@
     <mn-xdcr-mapping-rules
        class="width-4"
        style="display:block;"
-       *ngIf="explicitMappingGroup"
+       *ngIf="replicationSettings | async"
+       [group]="form.group"
        [explicitMappingRules]="explicitMappingRules"
        [explicitMappingMigrationRules]="explicitMappingMigrationRules"
        [explicitMappingGroup]="explicitMappingGroup"></mn-xdcr-mapping-rules>

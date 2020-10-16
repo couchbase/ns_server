@@ -1,6 +1,7 @@
-<div>
-  <h4>Mapping Rules</h4>
-  <div *ngFor="let item of explicitMappingRulesKeys | async"
+<h4>Mapping Rules</h4>
+<div [hidden]="isMigrationMode | async">
+  <div
+     *ngFor="let item of explicitMappingRulesKeys | async"
      class="row padding-quarter margin-top-half margin-bottom-quarter grayblack-bg-7 text-small">
     <span>
       {{item[0]}} &gt; {{item[1] || "null"}}
@@ -9,8 +10,10 @@
        (click)="delExplicitMappingRules(item[0])"
        class="x-close-sml">X</a>
   </div>
-
-  <div *ngFor="let item of explicitMappingMigrationRulesKeys | async"
+</div>
+<div [hidden]="!(isMigrationMode | async)">
+  <div
+     *ngFor="let item of explicitMappingMigrationRulesKeys | async"
      class="row padding-quarter margin-quarter label neutral">
     <span>
       {{item[0]}} --&gt; {{item[1]}}

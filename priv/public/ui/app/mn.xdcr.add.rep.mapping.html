@@ -44,8 +44,8 @@
        *ngFor="let scope of (scopesPaginator.page | async);">
       <mn-xdcr-add-rep-scope
          style="display: block;"
-         [group]="explicitMappingGroup"
          [item]="scope"
+         [explicitMappingGroup]="explicitMappingGroup"
          [explicitMappingRules]="explicitMappingRules">
       </mn-xdcr-add-rep-scope>
     </div>
@@ -89,12 +89,12 @@
    class="margin-bottom-1-5">
   <div class="formrow row flex-left items-stretch resp-flex-column-s">
     <div class="column width-4">
-      <label for="migration_from_collection">Replicate From Collection</label>
+      <label for="migration_from_collection">Replication filter for source</label>
       <input
          class="width-12"
          id="migration_from_collection"
          formControlName="key"
-         placeholder="Expression for source default collection"
+         placeholder="Filter for source default collection"
          type="text"
          autocorrect="off"
          spellcheck="false"
@@ -106,7 +106,7 @@
          class="width-12"
          id="migration_to_collection"
          formControlName="target"
-         placeholder="Expression for specific target collection"
+         placeholder="use : as separator. e.g. scope:collection"
          type="text"
          autocorrect="off"
          spellcheck="false"
@@ -116,11 +116,10 @@
        class="margin-top-1-5 inline"
        type="button"
        (click)="addExplicitMappingMigrationRules.next()">Save Mapping</button>
-
-    <div
-       class="error error-field"
-       [hidden]="!(postCreateReplication.error | async)?.colMappingRules">
-      {{(postCreateReplication.error | async)?.colMappingRules}}
-    </div>
+  </div>
+  <div
+     class="error error-field"
+     [hidden]="!(postCreateReplication.error | async)?.colMappingRules">
+    {{(postCreateReplication.error | async)?.colMappingRules}}
   </div>
 </div>

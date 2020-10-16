@@ -2,7 +2,7 @@
   <div class="cbui-tablerow">
     <mn-xdcr-add-rep-mapping-item
        style="display: block;"
-       [groups]="group"
+       [explicitMappingGroup]="explicitMappingGroup"
        [item]="item"
        [explicitMappingRules]="explicitMappingRules">
     </mn-xdcr-add-rep-mapping-item>
@@ -14,7 +14,7 @@
        placeholder="filter collections">
     </mn-input-filter>
 
-    <div [formGroup]="group.collectionsControls[item.name]" class="inline">
+    <div [formGroup]="explicitMappingGroup.collectionsControls[item.name]" class="inline">
       <div class="inline margin-left-1 text-smaller">
         <input
            [attr.id]="'dynamic_collections_check_all' + item.name"
@@ -40,7 +40,7 @@
          *ngFor="let coll of (collections | async); trackBy: trackCollectionsBy"
          style="display:block;white-space:nowrap"
          [parent]="item.name"
-         [groups]="group"
+         [explicitMappingGroup]="explicitMappingGroup"
          [item]="coll"
          [explicitMappingRules]="explicitMappingRules"
          class="">

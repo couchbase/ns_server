@@ -1,5 +1,5 @@
 import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
-import {map} from '/ui/web_modules/rxjs/operators.js';
+import {map, startWith} from '/ui/web_modules/rxjs/operators.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 
 export {MnXDCRAddRepMappingRulesComponent};
@@ -11,6 +11,7 @@ class MnXDCRAddRepMappingRulesComponent extends MnLifeCycleHooksToStream {
       templateUrl: "/ui/app/mn.xdcr.add.rep.mapping.rules.html",
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
+        "group",
         "explicitMappingRules",
         "explicitMappingMigrationRules",
         "explicitMappingGroup"
@@ -24,12 +25,16 @@ class MnXDCRAddRepMappingRulesComponent extends MnLifeCycleHooksToStream {
 
   ngOnInit() {
     let kvToArray = (rules) => Object.keys(rules).map(from => [from, rules[from]]);
+    let migrationMode = this.group.get("collectionsMigrationMode")
 
     this.explicitMappingRulesKeys =
       this.explicitMappingRules.pipe(map(kvToArray));
 
     this.explicitMappingMigrationRulesKeys =
       this.explicitMappingMigrationRules.pipe(map(kvToArray));
+
+    this.isMigrationMode =
+      migrationMode.valueChanges.pipe(startWith(migrationMode.value));
   }
 
   delExplicitMappingRules(key) {

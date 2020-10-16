@@ -16,7 +16,7 @@ class MnXDCRAddRepMappingItemComponent extends MnLifeCycleHooksToStream {
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
         "item",
-        "groups",
+        "explicitMappingGroup",
         "parent",
         "explicitMappingRules"
       ]
@@ -34,9 +34,10 @@ class MnXDCRAddRepMappingItemComponent extends MnLifeCycleHooksToStream {
 
   ngOnInit() {
     if (this.parent) {
-      this.group = this.groups.collections[this.parent];
-      this.parentGroup = this.groups.scopes;
-      this.controls = this.groups.collectionsControls[this.parent];
+      this.group = this.explicitMappingGroup.collections[this.parent];
+      this.parentGroup = this.explicitMappingGroup.scopes;
+      this.controls = this.explicitMappingGroup.collectionsControls[this.parent];
+
       if (!this.group.flags.get(this.item.name)) {
         let maybeDisabled = !this.parentGroup.flags.get(this.parent).value;
         this.group.flags.addControl(
@@ -52,7 +53,7 @@ class MnXDCRAddRepMappingItemComponent extends MnLifeCycleHooksToStream {
         );
       }
     } else {
-      this.group = this.groups.scopes;
+      this.group = this.explicitMappingGroup.scopes;
     }
 
     this.flag = this.group.flags.get(this.item.name);
@@ -121,6 +122,8 @@ class MnXDCRAddRepMappingItemComponent extends MnLifeCycleHooksToStream {
     } else {
       rules[source] = target;
     }
+
+    this.explicitMappingRules.next(rules);
   }
 
   deleteRule([_, denyMode]) {

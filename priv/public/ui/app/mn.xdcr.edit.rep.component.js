@@ -36,6 +36,7 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
               formBuilder) {
     super();
     this.item = uiRouter.globals.params.item;
+    this.uiRouter = uiRouter;
     this.isEditMode = true;
     this.formBuilder = formBuilder;
     this.mnFormService = mnFormService;
@@ -82,14 +83,18 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
         map(this.prepareReplicationSettigns),
         map(data => [this.item.id, data])))
       .setUnpackPipe(map(function (source) {
+        if (source[1].collectionsMigrationMode) {
+          source[1].collectionsExplicitMapping = false;
+        }
         return Object.assign({}, source[0], source[1]);
       }))
       .setSource(this.replicationSettings)
       .setPostRequest(this.postSettingsReplications)
       .setValidation(this.postSettingsReplicationsValidation)
       .successMessage("Settings saved successfully!")
-      .clearErrors();
-    // .success(() => this.activeModal.close());
+      .clearErrors()
+      .success(() => this.uiRouter.stateService.go('app.admin.replications'));
+
     this.replicationSettings
       .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(this.unpackReplicationSettings.bind(this));
@@ -98,8 +103,9 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
   unpackReplicationSettings(v) {
     let scopesFlags = {};
     let scopesFields = {};
-    let collections = {}
-    let collectionsControls = {}
+    let collections = {};
+    let collectionsControls = {};
+
     Object.keys(v[1].colMappingRules).forEach(sourceRule => {
       let targetRule = v[1].colMappingRules[sourceRule];
       let sourcePair = sourceRule.split(":");
@@ -128,23 +134,27 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
             .fields.addControl(sourcePair[1], this.formBuilder.control(fieldValue));
         }
 
+        if (!collectionsControls[sourcePair[0]]) {
+          collectionsControls[sourcePair[0]] = this.formBuilder.group({
+            checkAll: this.formBuilder.control(true),
+            denyMode: this.formBuilder.control(false)
+          });
+        }
+
         if (targetRule) {
           scopesFields[sourcePair[0]] = targetRule.split(":")[0];
-          if (!collectionsControls[sourcePair[0]]) {
-            collectionsControls[sourcePair[0]] = this.formBuilder.group({
-              checkAll: this.formBuilder.control(true),
-              denyMode: this.formBuilder.control(false)
-            });
-          }
+        } else {
+          collectionsControls[sourcePair[0]].get("denyMode").setValue(true);
         }
       } else {
         scopesFields[sourcePair[0]] = targetRule;
       }
     });
 
-
-    this.explicitMappingRules = new BehaviorSubject(v[1].colMappingRules);
-    this.explicitMappingMigrationRules = new BehaviorSubject({});
+    this.explicitMappingRules =
+      new BehaviorSubject(v[1].collectionsMigrationMode ? {} : v[1].colMappingRules);
+    this.explicitMappingMigrationRules =
+      new BehaviorSubject(v[1].collectionsMigrationMode ? v[1].colMappingRules : {});
 
     this.explicitMappingGroup = {
       scopes: {

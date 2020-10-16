@@ -16,7 +16,7 @@ class MnXDCRAddRepScopeComponent extends MnLifeCycleHooksToStream {
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
         "item",
-        "group",
+        "explicitMappingGroup",
         "explicitMappingRules"
       ]
     })
@@ -41,30 +41,30 @@ class MnXDCRAddRepScopeComponent extends MnLifeCycleHooksToStream {
 
   ngOnInit() {
     let name = this.item.name;
-    if (!this.group.collections[name]) {
-      this.group.collections[name] = {
+    if (!this.explicitMappingGroup.collections[name]) {
+      this.explicitMappingGroup.collections[name] = {
         flags: this.formBuilder.group({}),
         fields: this.formBuilder.group({})
       };
     }
 
-    if (!this.group.collectionsControls[name]) {
-      this.group.collectionsControls[name] = this.formBuilder.group({
+    if (!this.explicitMappingGroup.collectionsControls[name]) {
+      this.explicitMappingGroup.collectionsControls[name] = this.formBuilder.group({
         checkAll: this.formBuilder.control({value: true, disabled: true}),
         denyMode: this.formBuilder.control({value: true, disabled: true})
       });
     }
-    if (!this.group.scopes.flags.get(name)) {
-      this.group.scopes.flags
+    if (!this.explicitMappingGroup.scopes.flags.get(name)) {
+      this.explicitMappingGroup.scopes.flags
         .addControl(name, this.formBuilder.control({value: false, disabled: false}));
-      this.group.scopes.fields
+      this.explicitMappingGroup.scopes.fields
         .addControl(name, this.formBuilder.control({value: name, disabled: false}));
     }
 
-    this.childGroup = this.group.collections[name];
-    this.controls = this.group.collectionsControls[name];
-    this.flag = this.group.scopes.flags.get(name);
-    this.field = this.group.scopes.fields.get(name);
+    this.childGroup = this.explicitMappingGroup.collections[name];
+    this.controls = this.explicitMappingGroup.collectionsControls[name];
+    this.flag = this.explicitMappingGroup.scopes.flags.get(name);
+    this.field = this.explicitMappingGroup.scopes.fields.get(name);
 
     this.filter.group.get("value").valueChanges
       .pipe(takeUntil(this.mnOnDestroy))
