@@ -770,7 +770,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      ["default", Id, DDocId]};
                 ["pools", "default", "buckets", Id, "collections",
                  "@ensureManifest", ManifestId] ->
-                    {{[{bucket, Id}, collections], read},
+                    {{[{collection, [Id, any, any]}, collections], read},
                      fun menelaus_web_collections:handle_ensure_manifest/3,
                      [Id, ManifestId]};
                 ["pools", "default", "buckets", Id, "collections", Scope] ->
