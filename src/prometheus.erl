@@ -8,7 +8,13 @@
 
 -export([query_range/6, query_range_async/7, query/4,
          format_value/1, parse_value/1, format_promql/1,
-         create_snapshot/2, reload/2]).
+         create_snapshot/2, reload/2, quit/2]).
+
+quit(Timeout, Settings) ->
+    case post("/-/quit", [], Timeout, Settings) of
+        {ok, text, _} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
 
 reload(Timeout, Settings) ->
     case post("/-/reload", [], Timeout, Settings) of

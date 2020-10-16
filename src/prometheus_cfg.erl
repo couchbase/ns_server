@@ -41,6 +41,7 @@
 -define(NS_TO_PROMETHEUS_USERNAME, "ns_server").
 -define(DEFAULT_HIGH_CARD_SERVICES, [index, fts, kv, cbas]).
 -define(MAX_SCRAPE_INTERVAL, 6*60*60). %% 6h, in seconds
+-define(PROMETHEUS_SHUTDOWN_TIMEOUT, 20000). %% 20s, in milliseconds
 
 %%%===================================================================
 %%% API
@@ -235,6 +236,7 @@ init([]) ->
             (_) -> ok
         end,
     ns_pubsub:subscribe_link(ns_config_events, EventHandler),
+    process_flag(trap_exit,true),
     generate_ns_to_prometheus_auth_info(),
     Settings = build_settings(),
     ensure_prometheus_config(Settings),
@@ -261,10 +263,31 @@ handle_info(intervals_calculation_timer, #s{cur_settings = Settings} = State) ->
     maybe_update_scrape_dynamic_intervals(Settings),
     {noreply, restart_intervals_calculation_timer(State)};
 
-handle_info(_Info, State) ->
+handle_info({'EXIT', PortServer, Reason},
+            #s{prometheus_port = PortServer} = State) ->
+    ?log_error("Received exit from Prometheus port server - ~p: ~p. "
+               "Restarting Prometheus...", [PortServer, Reason]),
+    %% Restart prometheus but wait a bit before trying in order to avoid
+    %% cpu burning if it crashes again and again.
+    {noreply, start_reload_timer(State#s{prometheus_port = undefined,
+                                         specs = undefined})};
+
+handle_info({'EXIT', Pid, normal}, State) ->
+    ?log_debug("Received exit from ~p with reason normal. Ignoring... ", [Pid]),
+    {noreply, State};
+
+handle_info({'EXIT', Pid, Reason}, State) ->
+    ?log_error("Received exit from ~p with reason ~p. Stopping... ",
+               [Pid, Reason]),
+    {stop, Reason, State};
+
+handle_info(Info, State) ->
+    ?log_error("Unhandled info: ~p", [Info]),
     {noreply, State}.
 
-terminate(_Reason, _State) ->
+terminate(Reason, State) ->
+    ?log_error("Terminate: ~p", [Reason]),
+    terminate_prometheus(State),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -358,10 +381,30 @@ apply_config(#s{cur_settings = Settings, specs = OldSpecs} = State) ->
     end.
 
 terminate_prometheus(#s{prometheus_port = undefined} = State) -> State;
-terminate_prometheus(#s{prometheus_port = PortServer} = State) ->
-    ?log_debug("Terminating Prometheus"),
-    misc:unlink_terminate(PortServer, normal),
-    ok = misc:wait_for_process(PortServer, 20000),
+terminate_prometheus(#s{prometheus_port = PortServer,
+                        cur_settings = Settings} = State) ->
+    ?log_debug("Terminating Prometheus gracefully"),
+    case prometheus:quit(?DEFAULT_PROMETHEUS_TIMEOUT, Settings) of
+        ok ->
+            case misc:wait_for_process(PortServer,
+                                       ?PROMETHEUS_SHUTDOWN_TIMEOUT) of
+                ok ->
+                    ?flush({'EXIT', PortServer, _}),
+                    ok;
+                {error, timeout} ->
+                    ?log_error("Prometheus graceful shutdown timed out, "
+                               "trying to kill it..."),
+                    misc:unlink_terminate(PortServer, normal),
+                    ok = misc:wait_for_process(PortServer,
+                                               ?PROMETHEUS_SHUTDOWN_TIMEOUT)
+            end;
+        {error, _} ->
+            ?log_error("Failed to terminate Prometheus gracefully, "
+                       "trying to kill it..."),
+            misc:unlink_terminate(PortServer, normal),
+            ok = misc:wait_for_process(PortServer, ?PROMETHEUS_SHUTDOWN_TIMEOUT)
+    end,
+    ?log_debug("Prometheus port server stopped successfully"),
     State#s{prometheus_port = undefined, specs = undefined}.
 
 try_config_reload(#s{cur_settings = Settings} = State) ->
