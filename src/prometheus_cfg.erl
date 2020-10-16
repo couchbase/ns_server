@@ -23,7 +23,7 @@
 -endif.
 
 %% API
--export([start_link/0, authenticate/2, settings/0, wipe/0]).
+-export([start_link/0, authenticate/2, settings/0, wipe/0, storage_path/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -161,8 +161,7 @@ generate_prometheus_args(Settings) ->
                         loopback -> misc:localhost(AFamily, [url]);
                         any -> misc:inaddr_any(AFamily, [url])
                     end,
-    StoragePath = proplists:get_value(storage_path, Settings),
-    FullStoragePath = path_config:component_path(data, StoragePath),
+    StoragePath = storage_path(Settings),
     MaxBlockDuration = integer_to_list(proplists:get_value(max_block_duration,
                                                            Settings)) ++ "h",
     LogLevel = proplists:get_value(log_level, Settings),
@@ -188,7 +187,7 @@ generate_prometheus_args(Settings) ->
      "--storage.tsdb.retention.time", RetentionTime,
      "--web.listen-address", misc:join_host_port(ListenAddress, Port),
      "--storage.tsdb.max-block-duration", MaxBlockDuration,
-     "--storage.tsdb.path", FullStoragePath,
+     "--storage.tsdb.path", StoragePath,
      "--log.level", LogLevel,
      "--query.max-samples", QueryMaxSamples,
      "--storage.tsdb.no-lockfile"] ++ PromAuthArgs ++ WalCompression.
@@ -209,18 +208,20 @@ authenticate(User, Pass) ->
 %% This function should work even when prometheus_cfg is down
 wipe() ->
     Settings = build_settings(),
-    StoragePath = proplists:get_value(storage_path, Settings),
-    FullStoragePath = path_config:component_path(data, StoragePath),
-    Result = misc:rm_rf(FullStoragePath),
+    StoragePath = storage_path(Settings),
+    Result = misc:rm_rf(StoragePath),
     case Result of
         ok ->
-            ?log_info("Deleted stats directory (~s)", [FullStoragePath]);
+            ?log_info("Deleted stats directory (~s)", [StoragePath]);
         _ ->
             ?log_error("Failed to delete stats directory ~s: ~p",
-                       [FullStoragePath, Result])
+                       [StoragePath, Result])
     end,
     Result.
 
+storage_path(Settings) ->
+    StoragePath = proplists:get_value(storage_path, Settings),
+    path_config:component_path(data, StoragePath).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -384,16 +385,48 @@ apply_config(#s{cur_settings = Settings, specs = OldSpecs} = State) ->
                 NewSpecs ->
                     ?log_debug("Restarting Prometheus as the start specs have "
                                "changed"),
-                    NewState = terminate_prometheus(State),
-                    SpecsFun = fun () -> NewSpecs end,
-                    {ok, NewPortServer} = ns_port_server:start_link(SpecsFun),
-                    NewState#s{specs = NewSpecs,
-                               prometheus_port = NewPortServer}
+                    restart_prometheus(NewSpecs, State)
             end;
         false ->
             NewState = terminate_prometheus(State),
             ?log_warning("Skipping prometheus start, since it's disabled"),
             NewState
+    end.
+
+restart_prometheus(Specs, State) ->
+    NewState = terminate_prometheus(State),
+    take_out_the_garbage(State),
+    SpecsFun = fun () -> Specs end,
+    {ok, NewPortServer} = ns_port_server:start_link(SpecsFun),
+    NewState#s{prometheus_port = NewPortServer, specs = Specs}.
+
+%% If prometheus is happened to be killed during compaction, it can leave
+%% huge garbage files on disk. Those files are never removed by prometheus and
+%% can eat up the whole disk eventually. To prevent that we search for ".tmp"
+%% files in prometheus data dir and delete them.
+take_out_the_garbage(#s{cur_settings = Settings}) ->
+    StoragePath = storage_path(Settings),
+    case file:list_dir(StoragePath) of
+        {ok, FileList} ->
+            lists:foreach(
+              fun (Name) ->
+                  FullPath = filename:join(StoragePath, Name),
+                  case filelib:is_dir(FullPath) andalso
+                       lists:suffix(".tmp", Name) of
+                      true ->
+                          ?log_warning("Removing .tmp dir in stats_dir: ~s",
+                                       [FullPath]),
+                          misc:rm_rf(FullPath);
+                      false ->
+                          ok
+                  end
+              end, FileList);
+        {error, enoent} ->
+            ok;
+        {error, Reason} ->
+            ?log_warning("Can't list files in stats data dir - ~s: ~p",
+                         [StoragePath, Reason]),
+            ok
     end.
 
 terminate_prometheus(#s{prometheus_port = undefined} = State) -> State;

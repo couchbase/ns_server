@@ -26,9 +26,8 @@ create_snapshot(Timeout, Settings) ->
     case post("/api/v1/admin/tsdb/snapshot", [], Timeout, Settings) of
         {ok, json, {Data}} ->
             SnapshotName = proplists:get_value(<<"name">>, Data, {[]}),
-            StoragePath = proplists:get_value(storage_path, Settings),
-            FullStoragePath = path_config:component_path(data, StoragePath),
-            {ok, filename:join([FullStoragePath, "snapshots", SnapshotName])};
+            StoragePath = prometheus_cfg:storage_path(Settings),
+            {ok, filename:join([StoragePath, "snapshots", SnapshotName])};
         {error, Reason} ->
             {error, Reason}
     end.
