@@ -375,6 +375,7 @@ handle_cast(leave, State) ->
     ok = ns_server_cluster_sup:stop_ns_server(),
 
     stats_archiver:wipe(),
+    prometheus_cfg:wipe(),
 
     %% in order to disconnect from rest of nodes we need new cookie
     %% and explicit disconnect_node calls

@@ -23,7 +23,7 @@
 -endif.
 
 %% API
--export([start_link/0, authenticate/2, settings/0]).
+-export([start_link/0, authenticate/2, settings/0, wipe/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -205,6 +205,22 @@ authenticate(User, Pass) ->
         false ->
             false
     end.
+
+%% This function should work even when prometheus_cfg is down
+wipe() ->
+    Settings = build_settings(),
+    StoragePath = proplists:get_value(storage_path, Settings),
+    FullStoragePath = path_config:component_path(data, StoragePath),
+    Result = misc:rm_rf(FullStoragePath),
+    case Result of
+        ok ->
+            ?log_info("Deleted stats directory (~s)", [FullStoragePath]);
+        _ ->
+            ?log_error("Failed to delete stats directory ~s: ~p",
+                       [FullStoragePath, Result])
+    end,
+    Result.
+
 
 %%%===================================================================
 %%% gen_server callbacks
