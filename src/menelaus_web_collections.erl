@@ -33,8 +33,10 @@
 
 handle_get(Bucket, Req) ->
     assert_api_available_for_read(Bucket),
+    Identity = menelaus_auth:get_identity(Req),
     {ok, BucketCfg} = ns_bucket:get_bucket(Bucket),
-    menelaus_util:reply_json(Req, collections:manifest_json(BucketCfg, true)).
+    menelaus_util:reply_json(
+      Req, collections:manifest_json(Identity, Bucket, BucketCfg)).
 
 handle_post_scope(Bucket, Req) ->
     assert_api_available(Bucket),
@@ -88,8 +90,10 @@ handle_set_manifest(Bucket, Req) ->
     validator:handle(
       fun (KVList) ->
               Scopes = proplists:get_value(scopes, KVList),
-              handle_rv(collections:set_manifest(Bucket, Scopes, ValidOnUid),
-                        Req)
+              Identity = menelaus_auth:get_identity(Req),
+              handle_rv(
+                collections:set_manifest(Bucket, Identity, Scopes, ValidOnUid),
+                Req)
       end, Req, json,
       [validator:required(scopes, _),
        validate_scopes(scopes, _),
@@ -225,6 +229,8 @@ nodes_validator(BucketNodes, Req, State) ->
               end
       end, nodes, State).
 
+get_err_code_msg(forbidden) ->
+    {"Operation is not allowed due to insufficient permissions", 403};
 get_err_code_msg(invalid_uid) ->
     {"Invalid validOnUid", 400};
 get_err_code_msg(uid_mismatch) ->

@@ -313,7 +313,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_recovery:handle_recovery_status/3,
                      ["default", Id]};
                 ["pools", "default", "buckets", Id, "collections"] ->
-                    {{[{bucket, Id}, collections], read},
+                    {{[{collection, [Id, any, any]}, collections], read},
                      fun menelaus_web_collections:handle_get/2, [Id]};
                 ["pools", "default", "remoteClusters"] ->
                     {no_check, fun goxdcr_rest:proxy/1};
@@ -857,7 +857,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["pools", "default", "remoteClusters", _Id] ->
                     {no_check, fun goxdcr_rest:proxy/1};
                 ["pools", "default", "buckets", Id, "collections", Name] ->
-                    {{[{bucket, Id}, collections], write},
+                    {{[{collection, [Id, Name, all]}, collections], write},
                      fun menelaus_web_collections:handle_delete_scope/3,
                      [Id, Name]};
                 ["pools", "default", "buckets", Id, "collections",
@@ -955,7 +955,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_rbac:handle_put_profile/2,
                      [{UserId, Domain}]};
                 ["pools", "default", "buckets", Id, "collections"] ->
-                    {{[{bucket, Id}, collections], write},
+                    {{[{collection, [Id, any, any]}, collections], write},
                      fun menelaus_web_collections:handle_set_manifest/2, [Id]};
                 ["couchBase" | _] ->
                     {no_check, fun menelaus_pluggable_ui:proxy_req/4,

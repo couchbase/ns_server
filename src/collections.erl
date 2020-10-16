@@ -30,7 +30,8 @@
          enabled/0,
          enabled/1,
          uid/1,
-         manifest_json/2,
+         manifest_json/1,
+         manifest_json/3,
          create_scope/2,
          create_collection/4,
          drop_scope/2,
@@ -39,7 +40,7 @@
          convert_uid_from_memcached/1,
          convert_uid_to_memcached/1,
          get_manifest/1,
-         set_manifest/3,
+         set_manifest/4,
          get_scope/2,
          get_collection/2,
          get_max_supported/1,
@@ -144,9 +145,28 @@ collection_to_memcached(Name, Props, WithDefaults) ->
     {[{name, list_to_binary(Name)} |
       [{K, collection_prop_to_memcached(K, V)} || {K, V} <- AdjustedProps]]}.
 
-manifest_json(BucketCfg, WithDefaults) ->
-    Manifest = get_manifest(BucketCfg),
+filter_scopes_with_roles(Bucket, Scopes, Roles, Permission) ->
+    lists:filter(
+      fun ({ScopeName, _Scope}) ->
+              menelaus_roles:is_allowed(
+                {[{collection, [Bucket, ScopeName, all]}, collections],
+                 Permission},
+                Roles)
+      end, Scopes).
 
+manifest_json(BucketCfg) ->
+    Manifest = get_manifest(BucketCfg),
+    jsonify_manifest(Manifest, false).
+
+manifest_json(Identity, Bucket, BucketCfg) ->
+    Roles = menelaus_roles:get_compiled_roles(Identity),
+    Manifest = get_manifest(BucketCfg),
+    FilteredManifest = on_scopes(
+                         filter_scopes_with_roles(Bucket, _, Roles, read),
+                         Manifest),
+    jsonify_manifest(FilteredManifest, true).
+
+jsonify_manifest(Manifest, WithDefaults) ->
     ScopesJson =
         lists:map(
           fun ({ScopeName, Scope}) ->
@@ -231,8 +251,8 @@ do_update_as_leader(Bucket, Operation) ->
 
             ?log_debug("Perform operation ~p on manifest ~p of bucket ~p",
                        [Operation, Manifest, Bucket]),
-            case perform_operations(Manifest,
-                                    compile_operation(Operation, Manifest)) of
+            case perform_operations(
+                   Manifest, compile_operation(Operation, Bucket, Manifest)) of
                 {ok, Manifest} ->
                     {ok, convert_uid_to_memcached(proplists:get_value(
                                                     uid, Manifest))};
@@ -264,6 +284,8 @@ commit(Bucket, Manifest, NewManifest, OtherNodes) ->
             {push_config, Error}
     end.
 
+perform_operations(_Manifest, {error, Error}) ->
+    Error;
 perform_operations(Manifest, []) ->
     {ok, Manifest};
 perform_operations(Manifest, [Operation | Rest]) ->
@@ -379,10 +401,21 @@ get_operations(CurrentScopes, RequiredScopes) ->
                 get_collections(ScopeProps))
       end, CurrentScopes, RequiredScopes).
 
-compile_operation({set_manifest, RequiredScopes, CheckUid}, Manifest) ->
-    [{check_uid, CheckUid} |
-     get_operations(get_scopes(Manifest), RequiredScopes)];
-compile_operation(Oper, _Manifest) ->
+compile_operation({set_manifest, Identity, RequiredScopes, CheckUid},
+                  Bucket, Manifest) ->
+    Roles = menelaus_roles:get_compiled_roles(Identity),
+    case filter_scopes_with_roles(Bucket, RequiredScopes, Roles, write) of
+        RequiredScopes ->
+            FilteredCurScopes = filter_scopes_with_roles(
+                                  Bucket, get_scopes(Manifest), Roles, write),
+            %% scope admin can delete it's own scope.
+            [{check_uid, CheckUid} |
+             get_operations(FilteredCurScopes, RequiredScopes)];
+        _ ->
+            %% Trying to create/delete scopes we don't have permissions to.
+            {error, forbidden}
+    end;
+compile_operation(Oper, _Bucket, _Manifest) ->
     [Oper].
 
 verify_oper({check_uid, CheckUid}, Manifest) ->
@@ -600,7 +633,7 @@ convert_manifest_uid(Uid) ->
             invalid_uid
     end.
 
-set_manifest(Bucket, RequiredScopes, RequestedUid) ->
+set_manifest(Bucket, Identity, RequiredScopes, RequestedUid) ->
     case convert_manifest_uid(RequestedUid) of
         invalid_uid ->
             invalid_uid;
@@ -610,7 +643,7 @@ set_manifest(Bucket, RequiredScopes, RequestedUid) ->
                   [{collections, [extract_name(Props) ||
                                      {Props} <- get_collections(Scope)]}]} ||
                     {Scope} <- RequiredScopes],
-            update(Bucket, {set_manifest, Scopes, Uid})
+            update(Bucket, {set_manifest, Identity, Scopes, Uid})
     end.
 
 -ifdef(TEST).
