@@ -1,6 +1,6 @@
 <div class="dialog-small">
   <div class="panel-header">
-    <h2>Confirm Delete Bucket</h2>
+    <h2>Confirm Drop Bucket</h2>
   </div>
   <div mn-spinner="bucketsDeleteDialogCtl.viewLoading">
     <div class="panel-content">
@@ -8,7 +8,7 @@
         <span class="icon fa-warning fa-2x red-3"></span>
         <p>
           Warning: Bucket data will be lost.
-          <br>Delete <strong>{{::bucketsDeleteDialogCtl.bucketName}}</strong> bucket?
+          <br>Drop <strong>{{::bucketsDeleteDialogCtl.bucketName}}</strong> bucket?
         </p>
       </div>
     </div>
@@ -16,7 +16,7 @@
       <a ng-click="$dismiss()">Cancel</a>
       <button
          type="submit"
-         ng-click="bucketsDeleteDialogCtl.doDelete()">Delete Bucket</button>
+         ng-click="bucketsDeleteDialogCtl.doDelete()">Drop Bucket</button>
     </div>
   </div>
 </div>
