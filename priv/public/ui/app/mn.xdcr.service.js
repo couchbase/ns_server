@@ -103,11 +103,23 @@ class MnXDCRService {
       delete settings.networkUsageLimit;
     }
     if (settings.collectionsExplicitMapping) {
+      let rules = this.explicitMappingRules.getValue();
       settings.collectionsMigrationMode = false;
-      settings.colMappingRules = JSON.stringify(this.explicitMappingRules.getValue());
+      if (Object.keys(rules).length) {
+        settings.colMappingRules = JSON.stringify(rules);
+      } else {
+        settings.collectionsExplicitMapping = false;
+      }
     } else {
-      settings.collectionsExplicitMapping = true;
-      settings.colMappingRules = JSON.stringify(this.explicitMappingMigrationRules.getValue());
+      if (settings.collectionsMigrationMode) {
+        let rules = this.explicitMappingMigrationRules.getValue();
+        settings.collectionsExplicitMapping = true;
+        if (Object.keys(rules).length) {
+          settings.colMappingRules = JSON.stringify(rules);
+        } else {
+          settings.collectionsMigrationMode = false;
+        }
+      }
     }
     settings.replicationType = "continuous";
 
