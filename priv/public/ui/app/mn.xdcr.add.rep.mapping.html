@@ -20,6 +20,11 @@
      [hidden]="!(postCreateReplication.error | async)?.colMappingRules">
     {{(postCreateReplication.error | async)?.colMappingRules}}
   </div>
+  <div
+     class="error error-field"
+     [hidden]="!(postSettingsReplications.error | async)?.colMappingRules">
+    {{(postSettingsReplications.error | async)?.colMappingRules}}
+  </div>
 
   <div class="row">
     <h4>Scopes and Collections to Replicate</h4>
@@ -121,5 +126,10 @@
      class="error error-field"
      [hidden]="!(postCreateReplication.error | async)?.colMappingRules">
     {{(postCreateReplication.error | async)?.colMappingRules}}
+  </div>
+  <div
+     class="error error-field"
+     [hidden]="!(postSettingsReplications.error | async)?.colMappingRules">
+    {{(postSettingsReplications.error | async)?.colMappingRules}}
   </div>
 </div>

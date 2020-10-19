@@ -44,6 +44,8 @@ class MnXDCRAddRepMappingComponent extends MnLifeCycleHooksToStream {
     this.postCreateReplication = mnXDCRService.stream.postCreateReplication;
     this.postSettingsReplicationsValidation =
       mnXDCRService.stream.postSettingsReplicationsValidation;
+    this.postSettingsReplications =
+      mnXDCRService.stream.postSettingsReplications;
 
     this.addExplicitMappingMigrationRules = new Subject();
 
