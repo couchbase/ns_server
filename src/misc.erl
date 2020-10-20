@@ -2945,6 +2945,45 @@ align_list_test() ->
     ?assertEqual([a, b], align_list([a, b], 2, pad)).
 -endif.
 
+%% Sort the argument if it is a non-string (not printable) list.
+sort_if_non_string_list(X) when is_list(X) ->
+    case io_lib:printable_list(X) of
+        true ->
+            X;
+        _ ->
+            lists:sort(X)
+    end;
+sort_if_non_string_list(X) ->
+    X.
+
+-ifdef(TEST).
+sort_if_non_string_list_test() ->
+    ?assertEqual([], sort_if_non_string_list([])),
+    ?assertEqual(a, sort_if_non_string_list(a)),
+    ?assertEqual([a], sort_if_non_string_list([a])),
+    ?assertEqual({b, a}, sort_if_non_string_list({b, a})),
+    ?assertEqual([a, b], sort_if_non_string_list([b, a])),
+    ?assertEqual("foo", sort_if_non_string_list("foo")),
+    ?assertEqual(<<"foo">>, sort_if_non_string_list(<<"foo">>)).
+-endif.
+
+%% Sort a key/value list by key, also sorting the values if they are
+%% non-string lists.
+-spec sort_kv_list([{any(), any()}]) -> [{any(), any()}].
+sort_kv_list(L) ->
+    lists:sort([{K, sort_if_non_string_list(V)} || {K, V} <- L]).
+
+-ifdef(TEST).
+sort_kv_list_test() ->
+    ?assertEqual([], sort_kv_list([])),
+    ?assertEqual([{a, b}], sort_kv_list([{a, b}])),
+    ?assertEqual([{a, b}, {c, d}], sort_kv_list([{c, d}, {a, b}])),
+    ?assertEqual([{a, [b, c]}, {g, [h, i]}],
+                 sort_kv_list([{g, [i, h]}, {a, [c, b]}])),
+    ?assertEqual([{a, "foo"}, {b, "bar"}],
+                 sort_kv_list([{b, "bar"}, {a, "foo"}])).
+-endif.
+
 format_bin(F, A) ->
     iolist_to_binary(io_lib:format(F, A)).
 

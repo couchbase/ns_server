@@ -300,22 +300,6 @@ common_params(Params) ->
     {MinTStamp, Limit}.
 
 -ifdef(TEST).
-sort_if_list(X) when is_list(X) ->
-    %% Only sort non-string lists.
-    case io_lib:printable_list(X) of
-        true ->
-            X;
-        _ ->
-            lists:sort(X)
-    end;
-sort_if_list(X) ->
-    X.
-
-%% Sort a key/value list by key, also sorting the values if they are
-%% non-string lists.
-sort_kv(L) ->
-    lists:sort([{K, sort_if_list(V)} || {K, V} <- L]).
-
 validate_all_params_correct_test() ->
     Params =
         [{"alerts",
@@ -350,7 +334,7 @@ validate_all_params_correct_test() ->
          {recipients, ["foo@bar.com", "bar@bar.com"]}],
 
     {ok, Values} = validator:handle_proplist(Params, alerts_query_validators()),
-    ?assertEqual(sort_kv(ExpectedValues), sort_kv(Values)).
+    ?assertEqual(misc:sort_kv_list(ExpectedValues), misc:sort_kv_list(Values)).
 
 validate_params_defaults_test() ->
     %% All parameters except "enabled" have default values.
@@ -370,7 +354,7 @@ validate_params_defaults_test() ->
          {recipients, []}],
 
     {ok, Values} = validator:handle_proplist(Params, alerts_query_validators()),
-    ?assertEqual(sort_kv(ExpectedValues), sort_kv(Values)).
+    ?assertEqual(misc:sort_kv_list(ExpectedValues), misc:sort_kv_list(Values)).
 
 %% Ensure that we get an error when an invalid parameter is supplied.
 validate_params_invalid_parameter_test() ->
@@ -397,7 +381,7 @@ validate_params_invalid_parameter_test() ->
 
     {error, Errors} =
         validator:handle_proplist(Params, alerts_query_validators()),
-    ?assertEqual(sort_kv(ExpectedErrors), sort_kv(Errors)).
+    ?assertEqual(misc:sort_kv_list(ExpectedErrors), misc:sort_kv_list(Errors)).
 
 %% Ensure that we get an error when invalid alert keys are supplied.
 validate_params_invalid_alerts_list_test() ->
@@ -423,7 +407,7 @@ validate_params_invalid_alerts_list_test() ->
 
     {error, Errors} =
         validator:handle_proplist(Params, alerts_query_validators()),
-    ?assertEqual(sort_kv(ExpectedErrors), sort_kv(Errors)).
+    ?assertEqual(misc:sort_kv_list(ExpectedErrors), misc:sort_kv_list(Errors)).
 
 %% Ensure that we get an error when invalid recipients are supplied.
 validate_params_invalid_recipients_test() ->
@@ -448,7 +432,7 @@ validate_params_invalid_recipients_test() ->
 
     {error, Errors} =
         validator:handle_proplist(Params, alerts_query_validators()),
-    ?assertEqual(sort_kv(ExpectedErrors), sort_kv(Errors)).
+    ?assertEqual(misc:sort_kv_list(ExpectedErrors), misc:sort_kv_list(Errors)).
 
 build_alerts_config_all_specified_test() ->
     Values =
@@ -482,7 +466,7 @@ build_alerts_config_all_specified_test() ->
          {recipients, ["foo@bar.com", "bar@bar.com"]}],
 
     Config = build_alerts_config(Values),
-    ?assertEqual(sort_kv(ExpectedConfig), sort_kv(Config)).
+    ?assertEqual(misc:sort_kv_list(ExpectedConfig), misc:sort_kv_list(Config)).
 
 build_alerts_config_defaults_test() ->
     Values =
@@ -514,5 +498,5 @@ build_alerts_config_defaults_test() ->
          {recipients, ["foo@bar.com", "bar@bar.com"]}],
 
     Config = build_alerts_config(Values),
-    ?assertEqual(sort_kv(ExpectedConfig), sort_kv(Config)).
+    ?assertEqual(misc:sort_kv_list(ExpectedConfig), misc:sort_kv_list(Config)).
 -endif.
