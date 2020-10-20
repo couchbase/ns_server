@@ -123,6 +123,22 @@ get_tls_version(SV, Service) ->
 get_cipher_suites(Str) ->
     try ejson:decode(Str) of
         L when is_list(L) ->
+            %% Note that the following lists:filter allows you to set TLS 1.3
+            %% ciphers in the cipher list.
+            %% However, golang TLS used by services index, ftx, n1ql, and
+            %% eventing, doesn't allow configuring TLS 1.3 cipherSuites, see,
+            %% https://golang.org/pkg/crypto/tls/#Config.
+            %%
+            %% This means that golang will,
+            %% 1. Honor TLS 1.2 and TLS 1.1 cipherSuites if specified, i.e.,
+            %%    only the TLS 1.2, and TLS 1.1 ciphers on this list are used.
+            %% 2. If only TLS 1.3 cipher are specified in cipherSuites,
+            %%    TLS 1.2 and TLS 1.1 ciphers are not used.
+            %% 3. Allow all TLS 1.3 ciphers to be used, even if just a
+            %%    few/none are specified.
+            %%
+            %% This behavior is fine by us, so we will allow setting TLS1.3
+            %% ciphers in the cipherSuites.
             InvalidNames = lists:filter(?cut(not ciphers:is_valid_name(_)), L),
             case InvalidNames of
                 [] -> {ok, L};
