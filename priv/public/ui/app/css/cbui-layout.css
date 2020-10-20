@@ -612,6 +612,9 @@ footer {
 .padding-bottom-6 {
   padding-bottom: 6rem !important;
 }
+.padding-top-1 {
+  padding-top: 1rem !important;
+}
 
 /* extras -------------------------------------------------------------- */
 .pre-line {
