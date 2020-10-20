@@ -214,34 +214,57 @@ supported(kv) ->
         <<"TLS_PSK_WITH_CAMELLIA_128_CBC_SHA256">>
     ];
 supported(cbas) ->
-%% analytics/cbas/pom.xml:
-%%        <groupId>io.netty</groupId>
-%%        <artifactId>netty-tcnative-boringssl-static</artifactId>
-%%        <version>2.0.20.Final</version>
-%% It was hard to determine the borrinssl sha that was used by this particular
-%% netty version, so the list of ciphers was extracted by
-%% Murtadha using debugger in MB-35621
+%% From Murtadha,
+%% [1] analytics/cbas/cbas-test/cbas-cbserver-test/src/test/java/com/couchbase/
+%%     analytics/test/cbserver/SupportedCiphersTest.java
+%% The above was run on the java version we bundle (adoptopenjdk-11) and the
+%% output is as below:
     [
-        <<"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256">>,
-        <<"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256">>,
+        <<"TLS_AES_128_GCM_SHA256">>,
+        <<"TLS_AES_256_GCM_SHA384">>,
         <<"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384">>,
+        <<"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256">>,
         <<"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384">>,
-        <<"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256">>,
-        <<"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256">>,
-        <<"TLS_ECDHE_PSK_WITH_CHACHA20_POLY1305_SHA256">>,
-        <<"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA">>,
-        <<"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA">>,
-        <<"TLS_ECDHE_PSK_WITH_AES_128_CBC_SHA">>,
+        <<"TLS_RSA_WITH_AES_256_GCM_SHA384">>,
+        <<"TLS_ECDH_ECDSA_WITH_AES_256_GCM_SHA384">>,
+        <<"TLS_ECDH_RSA_WITH_AES_256_GCM_SHA384">>,
+        <<"TLS_DHE_RSA_WITH_AES_256_GCM_SHA384">>,
+        <<"TLS_DHE_DSS_WITH_AES_256_GCM_SHA384">>,
+        <<"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256">>,
+        <<"TLS_RSA_WITH_AES_128_GCM_SHA256">>,
+        <<"TLS_ECDH_ECDSA_WITH_AES_128_GCM_SHA256">>,
+        <<"TLS_ECDH_RSA_WITH_AES_128_GCM_SHA256">>,
+        <<"TLS_DHE_RSA_WITH_AES_128_GCM_SHA256">>,
+        <<"TLS_DHE_DSS_WITH_AES_128_GCM_SHA256">>,
+        <<"TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384">>,
+        <<"TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384">>,
+        <<"TLS_RSA_WITH_AES_256_CBC_SHA256">>,
+        <<"TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA384">>,
+        <<"TLS_ECDH_RSA_WITH_AES_256_CBC_SHA384">>,
+        <<"TLS_DHE_RSA_WITH_AES_256_CBC_SHA256">>,
+        <<"TLS_DHE_DSS_WITH_AES_256_CBC_SHA256">>,
         <<"TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA">>,
         <<"TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA">>,
-        <<"TLS_ECDHE_PSK_WITH_AES_256_CBC_SHA">>,
-        <<"TLS_RSA_WITH_AES_128_GCM_SHA256">>,
-        <<"TLS_RSA_WITH_AES_256_GCM_SHA384">>,
-        <<"TLS_RSA_WITH_AES_128_CBC_SHA">>,
-        <<"TLS_PSK_WITH_AES_128_CBC_SHA">>,
         <<"TLS_RSA_WITH_AES_256_CBC_SHA">>,
-        <<"TLS_PSK_WITH_AES_256_CBC_SHA">>,
-        <<"TLS_RSA_WITH_3DES_EDE_CBC_SHA">>
+        <<"TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA">>,
+        <<"TLS_ECDH_RSA_WITH_AES_256_CBC_SHA">>,
+        <<"TLS_DHE_RSA_WITH_AES_256_CBC_SHA">>,
+        <<"TLS_DHE_DSS_WITH_AES_256_CBC_SHA">>,
+        <<"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256">>,
+        <<"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256">>,
+        <<"TLS_RSA_WITH_AES_128_CBC_SHA256">>,
+        <<"TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA256">>,
+        <<"TLS_ECDH_RSA_WITH_AES_128_CBC_SHA256">>,
+        <<"TLS_DHE_RSA_WITH_AES_128_CBC_SHA256">>,
+        <<"TLS_DHE_DSS_WITH_AES_128_CBC_SHA256">>,
+        <<"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA">>,
+        <<"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA">>,
+        <<"TLS_RSA_WITH_AES_128_CBC_SHA">>,
+        <<"TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA">>,
+        <<"TLS_ECDH_RSA_WITH_AES_128_CBC_SHA">>,
+        <<"TLS_DHE_RSA_WITH_AES_128_CBC_SHA">>,
+        <<"TLS_DHE_DSS_WITH_AES_128_CBC_SHA">>,
+        <<"TLS_EMPTY_RENEGOTIATION_INFO_SCSV">>
     ].
 
 golang_ciphers({1, 13, 7}) ->
