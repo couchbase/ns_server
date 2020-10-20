@@ -31,7 +31,8 @@
          handle_settings_alerts_post/1,
          handle_settings_alerts_send_test_email/1,
          build_alerts_json/1,
-         build_alerts_config/1]).
+         build_alerts_config/1,
+         alert_keys/0]).
 
 -export([category_bin/1]).
 
@@ -86,7 +87,8 @@ build_alerts_json(Config) ->
         {host, list_to_binary(proplists:get_value(host, Server))},
         {port, proplists:get_value(port, Server)},
         {encrypt, proplists:get_value(encrypt, Server)}]}},
-     {alerts, proplists:get_value(alerts, Config)}].
+     {alerts, proplists:get_value(alerts, Config)},
+     {pop_up_alerts, proplists:get_value(pop_up_alerts, Config)}].
 
 %% @doc Create the config structure from the Args proplist.
 %% arguments.
@@ -102,7 +104,17 @@ build_alerts_config(Args) ->
                      {port, proplists:get_value(emailPort, Args, 25)},
                      {encrypt,
                       proplists:get_bool(emailEncrypt, Args)}]},
-     {alerts, proplists:get_value(alerts, Args, [])}].
+     {alerts, proplists:get_value(alerts, Args, [])},
+     {pop_up_alerts, proplists:get_value(pop_up_alerts, Args, [])}].
+
+%% @doc Returns a list of all alerts that might send out an email notification.
+%% Every module that creates alerts that should be sent by email needs to
+%% implement an alert_keys/0 function that returns all its alert keys.
+-spec alert_keys() -> [atom()].
+alert_keys() ->
+    Modules = [auto_failover, menelaus_web_alerts_srv],
+    Keys = [M:alert_keys() || M <- Modules],
+    lists:append(Keys).
 
 %%
 %% Internal functions
@@ -145,6 +157,10 @@ alerts_query_validators() ->
      validate_alerts(alerts, _),
      validator:default(alerts, [], _),
 
+     validator:string(pop_up_alerts, _),
+     validate_alerts(pop_up_alerts, _),
+     validator:default(pop_up_alerts, [], _),
+
      validator:string(body, _),
      validator:default(body, default(message_body), _),
 
@@ -172,15 +188,6 @@ send_test_message(Req, Subject, Body, Config) ->
 
             reply_json(Req, {struct, [{error, couch_util:to_binary(Msg)}]}, 400)
     end.
-
-%% @doc Returns a list of all alerts that might send out an email notification.
-%% Every module that creates alerts that should be sent by email needs to
-%% implement an alert_keys/0 function that returns all its alert keys.
--spec alert_keys() -> [atom()].
-alert_keys() ->
-    Modules = [auto_failover, menelaus_web_alerts_srv],
-    Keys = [M:alert_keys() || M <- Modules],
-    lists:append(Keys).
 
 -spec alert_keys_string_list() -> [string()].
 alert_keys_string_list() ->
@@ -314,6 +321,7 @@ validate_all_params_correct_test() ->
          {"emailPort", "25"},
          {"emailUser", "ploni"},
          {"enabled", "true"},
+         {"pop_up_alerts", "ip,disk"},
          {"recipients", "foo@bar.com,bar@bar.com"},
          {"sender", "noreply@couchbase.com"},
          {"subject", default(subject)}],
@@ -329,6 +337,7 @@ validate_all_params_correct_test() ->
          {emailPort, 25},
          {emailUser, "ploni"},
          {enabled, true},
+         {pop_up_alerts, [ip, disk]},
          {sender, "noreply@couchbase.com"},
          {subject, default(subject)},
          {recipients, ["foo@bar.com", "bar@bar.com"]}],
@@ -349,6 +358,7 @@ validate_params_defaults_test() ->
          {emailPort, 25},
          {emailUser, []},
          {enabled, true},
+         {pop_up_alerts, []},
          {sender, "couchbase@localhost"},
          {subject, default(subject)},
          {recipients, []}],
@@ -446,6 +456,7 @@ build_alerts_config_all_specified_test() ->
          {emailPort, 25},
          {emailUser, "ploni"},
          {enabled, true},
+         {pop_up_alerts, [ip, disk]},
          {sender, "noreply@couchbase.com"},
          {subject, "the subject line shouldn't be in the config"},
          {recipients, ["foo@bar.com", "bar@bar.com"]}],
@@ -461,6 +472,7 @@ build_alerts_config_all_specified_test() ->
                         {port, 25},
                         {user, "ploni"}]},
          {enabled, true},
+         {pop_up_alerts, [ip, disk]},
          {sender, "noreply@couchbase.com"},
          %% subject shouldn't be in the config.
          {recipients, ["foo@bar.com", "bar@bar.com"]}],
@@ -479,6 +491,7 @@ build_alerts_config_defaults_test() ->
          {emailPort, 25},
          {emailUser, "ploni"},
          {enabled, true},
+         %% leave out pop_up_alerts
          %% leave out sender
          {recipients, ["foo@bar.com", "bar@bar.com"]}],
 
@@ -493,6 +506,8 @@ build_alerts_config_defaults_test() ->
                         {port, 25},
                         {user, "ploni"}]},
          {enabled, true},
+         % pop_up_alerts default value
+         {pop_up_alerts, []},
          % sender default value
          {sender, "couchbase@localhost"},
          {recipients, ["foo@bar.com", "bar@bar.com"]}],

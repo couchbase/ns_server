@@ -16,6 +16,7 @@
 
 -include("ns_common.hrl").
 -include("ns_stats.hrl").
+-include("cut.hrl").
 
 %% needed to mock ns_config in tests
 -include("ns_config.hrl").
@@ -242,22 +243,18 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-%% If time_out_of_sync isn't already in the alerts list, add it.
-maybe_upgrade_alerts_list(EmailAlerts) ->
-    Alerts = proplists:get_value(alerts, EmailAlerts),
-    case lists:member(time_out_of_sync, Alerts) of
-        true ->
-            [];
-        false ->
-            NewAlerts = {alerts, lists:append(Alerts, [time_out_of_sync])},
-            NewEmailAlerts = misc:update_proplist(EmailAlerts, [NewAlerts]),
-            [{set, email_alerts, NewEmailAlerts}]
-    end.
+alert_keys() ->
+    [ip, disk, overhead, ep_oom_errors, ep_item_commit_failed,
+     audit_dropped_events, indexer_ram_max_usage,
+     ep_clock_cas_drift_threshold_exceeded,
+     communication_issue, time_out_of_sync].
 
 config_upgrade_to_cheshire_cat(Config) ->
     case ns_config:search(Config, email_alerts) of
-        false -> [];
-        {value, EmailAlerts} -> maybe_upgrade_alerts_list(EmailAlerts)
+        false ->
+            [];
+        {value, EmailAlerts} ->
+            config_email_alerts_upgrade_to_cheshire_cat(EmailAlerts)
     end.
 
 %% ------------------------------------------------------------------
@@ -650,12 +647,37 @@ maybe_send_out_email_alert({Key0, Node}, Message) ->
             ok
     end.
 
-alert_keys() ->
-    [ip, disk, overhead, ep_oom_errors, ep_item_commit_failed,
-     audit_dropped_events, indexer_ram_max_usage,
-     ep_clock_cas_drift_threshold_exceeded,
-     communication_issue, time_out_of_sync].
+%% Add {Key, Value} to PList if there is no member whose first element
+%% compares equal to Key.
+add_proplist_kv(Key, Value, PList) ->
+    case lists:keysearch(Key, 1, PList) of
+        false ->
+            [{Key, Value} | PList];
+        _ ->
+            PList
+      end.
 
+%% If it is not already present, add Elem to the value of the proplist
+%% member {ListKey, <list_value>}, which is assumed to exist and have a
+%% list value.
+add_proplist_list_elem(ListKey, Elem, PList) ->
+    List = misc:expect_prop_value(ListKey, PList),
+    misc:update_proplist(PList, [{ListKey, lists:usort([Elem | List])}]).
+
+config_email_alerts_upgrade_to_cheshire_cat(EmailAlerts) ->
+    Result =
+        functools:chain(
+          EmailAlerts,
+          [add_proplist_list_elem(alerts, time_out_of_sync, _),
+           add_proplist_kv(pop_up_alerts, alert_keys(), _)]),
+
+    case misc:sort_kv_list(Result) =:= misc:sort_kv_list(EmailAlerts) of
+        true ->
+            %% No change due to upgrade
+            [];
+        false ->
+            [{set, email_alerts, Result}]
+    end.
 
 -ifdef(TEST).
 %% Cant currently test the alert timeouts as would need to mock
@@ -694,57 +716,90 @@ basic_test() ->
         misc:unlink_terminate_and_wait(Pid, shutdown)
     end.
 
-%% If the time_out_of_sync key isn't present, we expect it to be added.
-config_update_to_chesire_cat_key_not_present_test() ->
-    Config =
-        [[{loglevel_default, debug},
-          {email_alerts,
-           [{alerts, [auto_failover_node, communication_issue]},
-            {email_server, [{encrypt, false},
-                            {host, "localhost"},
-                            {pass, "*****"},
-                            {port, 25},
-                            {user, []}]},
-            {enabled, false},
-            {recipients, ["root@localhost"]},
-            {sender, "couchbase@localhost"}]}
-         ]],
+config_update_to_cheshire_cat_test() ->
+    %% Note: in this test the config keys and values aren't supplied in
+    %% sorted order so we can ensure that we handle upgrade correctly
+    %% regardless of key and value order.
 
-    ExpectedUpgradeValues =
-        [{alerts, [auto_failover_node, communication_issue, time_out_of_sync]},
-         {email_server, [{encrypt, false},
-                        {host, "localhost"},
-                        {pass, "*****"},
-                        {port, 25},
-                        {user, []}]},
+    %% Sub-test: config doesn't need upgrade because the time_out_of_sync
+    %% key is present and pop_up_alerts is present.
+    Config1 = [[{email_alerts,
+                 [{pop_up_alerts, [ip, disk]},
+                  {enabled, false},
+                  {alerts, [ip, time_out_of_sync, communication_issue]}]
+                }]],
+    Expected1 = [],
+    Result1 = config_upgrade_to_cheshire_cat(Config1),
+    ?assertEqual(Expected1, Result1),
+
+    %% Sub-test: config needs upgrade of alerts because the
+    %% time_out_of_sync key isn't present.
+    Config2 = [[{email_alerts,
+                 [{pop_up_alerts, [ip, disk]},
+                  {enabled, false},
+                  {alerts, [ip, communication_issue]}]
+                }]],
+    Expected2 =
+        [{alerts, [communication_issue, ip, time_out_of_sync]},
          {enabled, false},
-         {recipients, ["root@localhost"]},
-         {sender, "couchbase@localhost"}],
+         {pop_up_alerts, [ip, disk]}],
+    [{set, email_alerts, Actual2}] = config_upgrade_to_cheshire_cat(Config2),
+    ?assertEqual(misc:sort_kv_list(Expected2), misc:sort_kv_list(Actual2)),
 
-    [{set, email_alerts, Values}] = config_upgrade_to_cheshire_cat(Config),
+    %% Sub-test: config needs pop_up_alerts because it isn't present.
+    Config3 = [[{email_alerts,
+                 [{enabled, false},
+                  {alerts, [ip, communication_issue, time_out_of_sync]}]
+                }]],
+    Expected3 =
+        [{alerts, [ip, communication_issue, time_out_of_sync]},
+         {enabled, false},
+         {pop_up_alerts, alert_keys()}],
+    [{set, email_alerts, Actual3}] = config_upgrade_to_cheshire_cat(Config3),
+    ?assertEqual(misc:sort_kv_list(Expected3), misc:sort_kv_list(Actual3)),
 
-    ?assertEqual(misc:sort_kv_list(ExpectedUpgradeValues),
-                 misc:sort_kv_list(Values)).
+    %% Sub-test: config needs upgrade of alerts and pop_up_alerts because
+    %% neither time_out_of_sync nor pop_up_alerts are present.
+    Config4 =
+        [[{email_alerts,
+           [{enabled, false},
+            {alerts, [ip, communication_issue]}]}]],
+    Expected4 =
+        [{alerts, [ip, communication_issue, time_out_of_sync]},
+         {enabled, false},
+         {pop_up_alerts, alert_keys()}],
+    [{set, email_alerts, Actual4}] = config_upgrade_to_cheshire_cat(Config4),
+    ?assertEqual(misc:sort_kv_list(Expected4), misc:sort_kv_list(Actual4)).
 
-%% If the time_out_of_sync key is present, there should be no changes to
-%% the configuration.
-config_update_to_chesire_cat_key_present_test() ->
-    Config =
-        [[{loglevel_default, debug},
-          {email_alerts,
-           [{alerts,
-             [auto_failover_node, communication_issue, time_out_of_sync]},
-            {email_server,
-             [{encrypt, false},
-              {host, "localhost"},
-              {pass, "*****"},
-              {port, 25},
-              {user, []}]},
-            {enabled, false},
-            {recipients, ["root@localhost"]},
-            {sender, "couchbase@localhost"}]}
-         ]],
+add_proplist_kv_test() ->
+    %% Sub-test: key "pop_up_alerts" is already present
+    PL1 = [{alerts, [ip, time_out_of_sync, communication_issue]},
+          {pop_up_alerts, [ip, disk]},
+          {enabled, false}],
+    Result1 = add_proplist_kv(pop_up_alerts, [foo, bar], PL1),
+    ?assertEqual(misc:sort_kv_list(PL1), misc:sort_kv_list(Result1)),
 
-    Upgrade = config_upgrade_to_cheshire_cat(Config),
-    ?assertEqual([], Upgrade).
+    %% Sub-test: key "pop_up_alerts" is already present
+    PL2 = [{alerts, [ip, time_out_of_sync, communication_issue]},
+          {enabled, false}],
+    Expected2 = [{alerts, [ip, time_out_of_sync, communication_issue]},
+                 {pop_up_alerts, [ip, disk]},
+                 {enabled, false}],
+    Result2 = add_proplist_kv(pop_up_alerts, [ip, disk], PL2),
+    ?assertEqual(misc:sort_kv_list(Expected2), misc:sort_kv_list(Result2)).
+
+add_proplist_list_elem_test() ->
+    %% Sub-test: key "time_out_of_sync" is already present
+    PL1 = [{alerts, [ip, time_out_of_sync, communication_issue]},
+           {enabled, false}],
+    Result1 = add_proplist_list_elem(alerts, time_out_of_sync, PL1),
+    ?assertEqual(misc:sort_kv_list(PL1), misc:sort_kv_list(Result1)),
+
+    %% Sub-test: key "time_out_of_sync" isn't present and should be added.
+    PL2 = [{alerts, [ip, communication_issue]},
+           {enabled, false}],
+    Expected2 = [{alerts, [ip, time_out_of_sync, communication_issue]},
+                 {enabled, false}],
+    Result2 = add_proplist_list_elem(alerts, time_out_of_sync, PL1),
+    ?assertEqual(misc:sort_kv_list(Expected2), misc:sort_kv_list(Result2)).
 -endif.

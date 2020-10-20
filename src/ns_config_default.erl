@@ -316,13 +316,10 @@ default() ->
                        {host, "localhost"},
                        {port, 25},
                        {encrypt, false}]},
-       {alerts, [auto_failover_node, auto_failover_maximum_reached,
-                 auto_failover_other_nodes_down,
-                 auto_failover_cluster_too_small, auto_failover_disabled,
-                 ip, disk, overhead, ep_oom_errors, ep_item_commit_failed,
-                 audit_dropped_events, indexer_ram_max_usage,
-                 ep_clock_cas_drift_threshold_exceeded,
-                 communication_issue, time_out_of_sync]}
+       {alerts, menelaus_alert:alert_keys()},
+       %% The alerts which should produce UI pop-ups; does not include
+       %% auto_failover alerts.
+       {pop_up_alerts, menelaus_web_alerts_srv:alert_keys()}
       ]},
      {alert_limits, [
        %% Maximum percentage of overhead compared to max bucket size (%)
