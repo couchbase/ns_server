@@ -60,7 +60,7 @@ supported(ns_server) ->
 supported(fts) -> golang_ciphers({1, 13, 7});
 supported(index) -> golang_ciphers({1, 13, 7});
 supported(n1ql) -> golang_ciphers({1, 13, 7});
-supported(eventing) -> golang_ciphers({1, 10, 3});
+supported(eventing) -> golang_ciphers({1, 13, 7});
 supported(kv) ->
 %% This list is constructed using the following command
 %%  $ ./install/bin/openssl ciphers -stdname "ALL" | awk '{print "<<\x22"$1"\x22>>,"}'
@@ -298,35 +298,6 @@ golang_ciphers({1, 13, 7}) ->
         <<"TLS_AES_128_GCM_SHA256">>,
         <<"TLS_AES_256_GCM_SHA384">>,
         <<"TLS_CHACHA20_POLY1305_SHA256">>
-    ];
-golang_ciphers({1, 10, 3}) ->
-%% 1.10.3:
-%% https://github.com/golang/go/commit/fe8a0d12b14108cbe2408b417afcaab722b0727c
-%% https://github.com/golang/go/blob/fe8a0d12b14108cbe2408b417afcaab722b0727c/src/crypto/tls/cipher_suites.go
-%% (note that POLY1305 ciphers have non standard names in go file, add _SHA256)
-    [
-        <<"TLS_RSA_WITH_RC4_128_SHA">>,
-        <<"TLS_RSA_WITH_3DES_EDE_CBC_SHA">>,
-        <<"TLS_RSA_WITH_AES_128_CBC_SHA">>,
-        <<"TLS_RSA_WITH_AES_256_CBC_SHA">>,
-        <<"TLS_RSA_WITH_AES_128_CBC_SHA256">>,
-        <<"TLS_RSA_WITH_AES_128_GCM_SHA256">>,
-        <<"TLS_RSA_WITH_AES_256_GCM_SHA384">>,
-        <<"TLS_ECDHE_ECDSA_WITH_RC4_128_SHA">>,
-        <<"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA">>,
-        <<"TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA">>,
-        <<"TLS_ECDHE_RSA_WITH_RC4_128_SHA">>,
-        <<"TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA">>,
-        <<"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA">>,
-        <<"TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA">>,
-        <<"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256">>,
-        <<"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256">>,
-        <<"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256">>,
-        <<"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256">>,
-        <<"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384">>,
-        <<"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384">>,
-        <<"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256">>,
-        <<"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256">>
     ].
 
 -ifdef(TEST).
