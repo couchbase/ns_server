@@ -112,7 +112,7 @@ tlsv1_3_services() ->
 
 get_tls_version(SV, Service) ->
     Supported = ['tlsv1.3' || lists:member(Service, tlsv1_3_services())] ++
-                proplists:get_value(supported, ssl:versions(), []),
+                    ['tlsv1.2', 'tlsv1.1', tlsv1],
     SupportedStr = [atom_to_list(S) || S <- Supported],
     case lists:member(SV, SupportedStr) of
         true -> {ok, list_to_atom(SV)};
