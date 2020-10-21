@@ -106,7 +106,9 @@ get_number(Min, Max, Default) ->
 get_string(SV) ->
     {ok, list_to_binary(string:strip(SV))}.
 
-tlsv1_3_services() -> [kv].
+tlsv1_3_services() ->
+    [S || {S, _} <- services_with_security_settings(),
+          S =/= ns_server, S =/= eventing].
 
 get_tls_version(SV, Service) ->
     Supported = ['tlsv1.3' || lists:member(Service, tlsv1_3_services())] ++
