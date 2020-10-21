@@ -66,17 +66,13 @@ function mnXDCRServiceFactory($q, $http, mnPoolDefault, mnPools, getStringBytesF
   }
 
   function removeExcessSettings(settings) {
-    var neededProperties = ["replicationType", "optimisticReplicationThreshold", "failureRestartInterval", "docBatchSizeKb", "workerBatchSize", "checkpointInterval", "type", "toBucket", "toCluster", "fromBucket", "sourceNozzlePerNode", "targetNozzlePerNode", "statsInterval", "logLevel", "priority", "filterExpiration", "filterDeletion", "filterBypassExpiry"];
+    var neededProperties = ["replicationType", "optimisticReplicationThreshold", "failureRestartInterval", "docBatchSizeKb", "workerBatchSize", "checkpointInterval", "toBucket", "toCluster", "fromBucket", "sourceNozzlePerNode", "targetNozzlePerNode", "statsInterval", "logLevel", "priority", "filterExpiration", "filterDeletion", "filterBypassExpiry"];
 
     if (mnPools.export.isEnterprise &&
-        settings.type !== "capi" &&
-        mnPoolDefault.export.compat.atLeast55
-       ) {
+        mnPoolDefault.export.compat.atLeast55) {
       neededProperties.push("compressionType");
     }
-    if (mnPools.export.isEnterprise &&
-        settings.type === "xmem"
-       ) {
+    if (mnPools.export.isEnterprise) {
       neededProperties.push("networkUsageLimit");
     }
     var rv = {};

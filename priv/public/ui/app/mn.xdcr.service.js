@@ -97,10 +97,10 @@ class MnXDCRService {
     if (!this.isEditMode) {
       delete settings.filterSkipRestream;
     }
-    if (!isEnterprise || !compatVersion55 || settings.type == "capi") {
+    if (!isEnterprise || !compatVersion55) {
       delete settings.compressionType;
     }
-    if (!isEnterprise || settings.type !== "xmem") {
+    if (!isEnterprise) {
       delete settings.networkUsageLimit;
     }
     if (settings.collectionsExplicitMapping) {

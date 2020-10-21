@@ -16,25 +16,9 @@
     </select>
   </div>
 
-  <div class="formrow">
-    <label for="xdcr_advaced_settings_type">XDCR Protocol</label>
-    <select
-       id="xdcr_advaced_settings_type"
-       formControlName="type">
-      <option value="capi">Version 1</option>
-      <option value="xmem">Version 2</option>
-    </select>
-    <div
-       class="error"
-       [hidden]="!(error | async)?.type">
-      {{(error | async)?.type}}
-    </div>
-  </div>
-
   <div
      class="formrow"
      *ngIf="(isEnterprise | async) &&
-            type !== 'capi' &&
             (compatVersion55 | async)">
     <label for="for-xdcr-compression">
       XDCR Compression Type
@@ -153,7 +137,7 @@
 
   <div
      class="formrow"
-     *ngIf="(isEnterprise | async) && type === 'xmem'">
+     *ngIf="(isEnterprise | async)">
     <label for="statistics_collection_interval">XDCR Network Usage Limit (MB/sec)</label>
     <input
        type="number"

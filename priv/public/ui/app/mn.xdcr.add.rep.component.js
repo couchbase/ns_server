@@ -53,7 +53,6 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
       .setFormGroup({fromBucket: "",
                      toCluster: "",
                      toBucket: "",
-                     type: "xmem",
                      priority: null,
                      filterExpression: "",
                      filterExpiration: false,
