@@ -398,4 +398,47 @@ format_promql_test() ->
                               <<"1m">>}]}]}),
                  <<"{name=`v2`,l1=`v2`} or "
                    "irate({name=~`v1|v2|v3`,l1=`v2`}[1m])">>).
+
+post_timeout_test() ->
+    meck:new(httpc, [passthrough]),
+    ResData = iolist_to_binary(io_lib:format("~p", [erlang:make_ref()])),
+    ReqHandler =
+        fun('post',
+            {"http://127.0.0.1:9900/test/path", _,
+             "application/x-www-form-urlencoded", _Body},
+            _HttpOptions, Options) ->
+                Receiver = proplists:get_value(receiver, Options),
+                spawn(fun () ->
+                          Res = {{"HTTP/1.1", 200, ""}, [], ResData},
+                          Receiver({erlang:make_ref(), Res})
+                      end),
+                {ok, undefined}
+        end,
+    meck:expect(httpc, request, ReqHandler),
+    try
+        Settings = [{enabled, true},
+                    {addr, "127.0.0.1:9900"},
+                    {prometheus_creds, {"user", "pass"}},
+                    {afamily, "inet"}],
+
+        ?assertEqual({ok, text, ResData},
+                     post("/test/path", [], 10000, Settings)),
+
+        Results = [post("/test/path", [], 0, Settings)
+                       || _ <- lists:seq(1, 100)],
+        ?assert(lists:member({error, timeout}, lists:usort(Results))),
+        timer:sleep(1000),
+        CountRepliesInMainbox =
+            fun C(N) ->
+                receive
+                    {_, {ok, text, ResData}} -> C(N + 1)
+                after
+                    0 -> N
+                end
+            end,
+        ?assertEqual(0, CountRepliesInMainbox(0))
+    after
+        meck:unload(httpc)
+    end.
+
 -endif.
