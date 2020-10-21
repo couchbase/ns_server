@@ -57,9 +57,7 @@ start_link() ->
     misc:start_singleton(work_queue, start_link, [?SERVER]).
 
 enabled() ->
-    cluster_compat_mode:is_enabled(?VERSION_CHESHIRECAT) orelse
-    (cluster_compat_mode:is_enabled(?VERSION_65) andalso
-        cluster_compat_mode:is_developer_preview()).
+    cluster_compat_mode:is_enabled(?VERSION_CHESHIRECAT).
 
 enabled(BucketConfig) ->
     enabled() andalso ns_bucket:bucket_type(BucketConfig) =:= membase.
