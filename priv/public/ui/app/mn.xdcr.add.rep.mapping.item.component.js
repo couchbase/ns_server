@@ -5,6 +5,7 @@ import {combineLatest} from '/ui/web_modules/rxjs.js';
 import {FormBuilder} from '/ui/web_modules/@angular/forms.js';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
+import {collectionDelimiter} from "./mn.xdcr.service.js";
 
 export {MnXDCRAddRepMappingItemComponent};
 
@@ -100,11 +101,11 @@ class MnXDCRAddRepMappingItemComponent extends MnLifeCycleHooksToStream {
   setRule([_, denyMode]) {
     let sourceScope = this.parent;
     let sourceCollection = this.item.name;
-    let source = sourceScope + ":" + sourceCollection;
+    let source = sourceScope + collectionDelimiter + sourceCollection;
 
     let targetScope = this.parentField.value;
     let targetCollection = this.field.value;
-    let target = targetScope + ":" + targetCollection;
+    let target = targetScope + collectionDelimiter + targetCollection;
 
     let rules = this.explicitMappingRules.getValue();
     let collectionFlag = this.flag.value;
@@ -129,9 +130,9 @@ class MnXDCRAddRepMappingItemComponent extends MnLifeCycleHooksToStream {
   deleteRule([_, denyMode]) {
     let rules = this.explicitMappingRules.getValue();
     if (denyMode) {
-      rules[this.parent + ":" + this.item.name] = null;
+      rules[this.parent + collectionDelimiter + this.item.name] = null;
     } else {
-      delete rules[this.parent + ":" + this.item.name];
+      delete rules[this.parent + collectionDelimiter + this.item.name];
     }
     this.explicitMappingRules.next(rules);
   }

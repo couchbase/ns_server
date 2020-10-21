@@ -5,7 +5,7 @@ import {UIRouter} from "/ui/web_modules/@uirouter/angular.js";
 import {FormBuilder} from '/ui/web_modules/@angular/forms.js';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
-import {MnXDCRService} from "./mn.xdcr.service.js";
+import {MnXDCRService, collectionDelimiter} from "./mn.xdcr.service.js";
 import {MnFormService} from "./mn.form.service.js";
 import {MnPoolsService} from "./mn.pools.service.js";
 import {MnAdminService} from "./mn.admin.service.js";
@@ -108,7 +108,7 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
 
     Object.keys(v[1].colMappingRules).forEach(sourceRule => {
       let targetRule = v[1].colMappingRules[sourceRule];
-      let sourcePair = sourceRule.split(":");
+      let sourcePair = sourceRule.split(collectionDelimiter);
 
       scopesFlags[sourcePair[0]] = true;
 
@@ -122,7 +122,7 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
 
         let collectionFlag = collections[sourcePair[0]].flags.get(sourcePair[1]);
         let collectionField = collections[sourcePair[0]].fields.get(sourcePair[1]);
-        let fieldValue = targetRule ? targetRule.split(":")[1] : sourcePair[1];
+        let fieldValue = targetRule ? targetRule.split(collectionDelimiter)[1] : sourcePair[1];
 
         if (collectionFlag) {
           collectionFlag.setValue(!!targetRule, {emitEvent: false});
@@ -142,7 +142,7 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
         }
 
         if (targetRule) {
-          scopesFields[sourcePair[0]] = targetRule.split(":")[0];
+          scopesFields[sourcePair[0]] = targetRule.split(collectionDelimiter)[0];
         } else {
           collectionsControls[sourcePair[0]].get("denyMode").setValue(true);
         }

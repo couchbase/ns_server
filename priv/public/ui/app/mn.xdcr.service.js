@@ -6,7 +6,9 @@ import { pipe, filter, propEq, sortBy, prop, groupBy } from "/ui/web_modules/ram
 
 import { MnHttpRequest } from './mn.http.request.js';
 
-export { MnXDCRService };
+let collectionDelimiter = ".";
+
+export { MnXDCRService, collectionDelimiter };
 
 class MnXDCRService {
   static get annotations() { return [

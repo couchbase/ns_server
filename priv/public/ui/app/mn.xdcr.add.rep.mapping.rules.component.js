@@ -1,6 +1,7 @@
 import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
 import {map, startWith} from '/ui/web_modules/rxjs/operators.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
+import {collectionDelimiter} from './mn.xdcr.service.js';
 
 export {MnXDCRAddRepMappingRulesComponent};
 
@@ -38,7 +39,7 @@ class MnXDCRAddRepMappingRulesComponent extends MnLifeCycleHooksToStream {
   }
 
   delExplicitMappingRules(key) {
-    let scopeCollection = key.split(":");
+    let scopeCollection = key.split(collectionDelimiter);
     let rules = this.explicitMappingRules.getValue();
     if (scopeCollection.length == 2) {
       this.explicitMappingGroup.collections[scopeCollection[0]]
