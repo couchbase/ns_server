@@ -14,10 +14,12 @@
 <div [hidden]="!(isMigrationMode | async)">
   <div
      *ngFor="let item of explicitMappingMigrationRulesKeys | async"
-     class="row padding-quarter margin-quarter label neutral">
+     class="row padding-quarter margin-top-half margin-bottom-quarter grayblack-bg-7 text-small">
     <span>
       {{item[0]}} --&gt; {{item[1]}}
     </span>
-    <a (click)="delExplicitMappingMigrationRules(item[0])">X</a>
+    <a
+       (click)="delExplicitMappingMigrationRules(item[0])"
+       class="x-close-sml">X</a>
   </div>
 </div>

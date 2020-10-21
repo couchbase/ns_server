@@ -1,5 +1,5 @@
 <div [formGroup]="group"
-   class="row flex-left margin-bottom-half margin-top-1">
+   class="row flex-left margin-bottom-1 margin-top-1-5">
   <label class="toggle-control margin-0">
     <input
        formControlName="collectionsExplicitMapping"
@@ -27,11 +27,15 @@
   </div>
 
   <div class="row">
-    <h4>Scopes and Collections to Replicate</h4>
+    <span class="column">
+      <h4>Scopes & Collections to Replicate</h4>
+      <p class="desc">
+        Click the second part of a checked resource (ex: scopeName > scopeName) to re-name it.</p>
+    </span>
     <mn-input-filter
        class="inline"
        [group]="scopesFilter.group"
-       placeholder="filter scopes">
+       placeholder="filter scopes...">
     </mn-input-filter>
   </div>
   <div class="cbui-table">
@@ -69,7 +73,7 @@
 
 <div
    [formGroup]="group"
-   class="row flex-left margin-bottom-half">
+   class="row flex-left margin-bottom-1">
   <label class="toggle-control margin-0">
     <input
        formControlName="collectionsMigrationMode"
@@ -77,10 +81,10 @@
        type="checkbox">
     <span class="toggle-control-body"></span>
   </label>
-  <span class="text-small margin-left-half">Enable Collections Migration Mode </span>
+  <span class="text-small margin-left-half">Migrate collections</span>
 
   <span
-     class="fa-stack icon-info sup"
+     class="fa-stack icon-info"
      ngbTooltip="Something wise here..."
      placement="top">
     <span class="icon fa-circle-thin fa-stack-2x"></span>
@@ -94,7 +98,7 @@
    class="margin-bottom-1-5">
   <div class="formrow row flex-left items-stretch resp-flex-column-s">
     <div class="column width-4">
-      <label for="migration_from_collection">Replication filter for source</label>
+      <label for="migration_from_collection">Replication Filter for Source</label>
       <input
          class="width-12"
          id="migration_from_collection"

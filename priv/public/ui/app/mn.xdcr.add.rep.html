@@ -12,8 +12,8 @@
    [formGroup]="form.group"
    (submit)="form.submit.next()"
    class="forms">
-  <div class="row flex-left items-stretch resp-flex-column-med margin-bottom-2">
-    <div class="width-8">
+  <div class="row flex-left items-stretch resp-sml margin-bottom-2">
+    <div class="width-9">
       <div
          class="error"
          [hidden]="!(postCreateReplication.error | async)?._">
@@ -36,7 +36,7 @@
       </div>
 
       <div class="formrow row flex-left items-stretch resp-flex-column-s">
-        <div class="column">
+        <div class="column flex-grow-1">
           <label for="replication_from_bucket" class="nowrap">Replicate From Bucket</label>
           <select
              formControlName="fromBucket">
@@ -48,13 +48,11 @@
             </option>
           </select>
         </div>
-
-        <div class="column row">
+        <div class="column row resp-hide-sml">
           <span class="icon fa-angle-right text-superbig grayblack-2"></span>
         </div>
-
-        <div class="column">
-          <label for="replication_to_cluster">Remote Cluster</label>
+        <div class="column flex-grow-1">
+          <label for="replication_to_cluster" class="nowrap">Remote Cluster</label>
           <select formControlName="toCluster">
             <option value="" disabled="true">
               Pick remote cluster
@@ -64,8 +62,7 @@
             </option>
           </select>
         </div>
-
-        <div class="column">
+        <div class="flex-grow-1">
           <label for="replication_to_bucket">Remote Bucket</label>
           <input
              id="replication_to_bucket"
@@ -73,51 +70,54 @@
              type="text"
              autocorrect="off"
              spellcheck="false"
-             autocapitalize="off"
-             class="fix-width-4 resp-sml">
+             autocapitalize="off">
         </div>
       </div>
-
       <div
-         class="zero-content"
+         class="zero-content margin-bottom-1"
          [hidden]="!form.group.get('fromBucket').value">
-        The bucket <em>{{form.group.get('fromBucket').value}}</em>
-        will be replicated to <em>{{form.group.get('toCluster').value}}</em>.
-        Missing targets on the remote will be ignored and that data
-        will not be replicated.
+        <span [hidden]="!form.group.get('fromBucket').value">
+          The bucket <em>{{form.group.get('fromBucket').value}}</em>
+          will be replicated to
+        </span>
+        <span *ngIf="form.group.get('fromBucket').value && !form.group.get('toCluster').value">
+          . . .
+        </span>
+        <span [hidden]="!form.group.get('toCluster').value">
+          <em>{{form.group.get('toCluster').value}}</em>.
+          Missing targets on the remote will be ignored and that data
+          will not be replicated.
+        </span>
       </div>
-
       <mn-xdcr-mapping
          [explicitMappingRules]="explicitMappingRules"
          [explicitMappingMigrationRules]="explicitMappingMigrationRules"
          [explicitMappingGroup]="explicitMappingGroup"
+         class="block"
          [group]="form.group"></mn-xdcr-mapping>
 
       <mn-xdcr-filter
          [bucket]="form.group.get('fromBucket').value"
          [group]="form.group"
+         class="block"
          *ngIf="(isEnterprise | async)"></mn-xdcr-filter>
 
       <mn-xdcr-settings
          [group]="form.group"
-         style="display:block;"
-         class="margin-top-1-5"
+         class="block margin-top-1-5"
          [type]="form.group.get('type').value"></mn-xdcr-settings>
     </div>
 
     <div
        style="border-left: 1px solid #d1d1d1; margin: 0 16px; flex-basis: 1;"
-       class="resp-hide-med">&nbsp;</div>
+       class="resp-hide-sml">&nbsp;</div>
 
     <mn-xdcr-mapping-rules
-       class="width-4"
-       style="display:block;"
+       class="width-3 block"
        [group]="form.group"
        [explicitMappingRules]="explicitMappingRules"
        [explicitMappingMigrationRules]="explicitMappingMigrationRules"
        [explicitMappingGroup]="explicitMappingGroup"></mn-xdcr-mapping-rules>
-
-
   </div>
 
   <footer class="footer-save">

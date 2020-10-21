@@ -1670,6 +1670,7 @@ section.error {
   font-size: .5em;
   top: 1px;
 }
+.icon-info,
 label + .fa-stack,
 h4 + .fa-stack { /* elevate icon next to label or heading  */
   top: -4px;

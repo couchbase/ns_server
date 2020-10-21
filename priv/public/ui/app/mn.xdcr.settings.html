@@ -4,7 +4,7 @@
    (click)="toggler.click.next()">
   Advanced Settings
 </p>
-<div [hidden]="!(toggler.state | async)" [formGroup]="group">
+<div [hidden]="!(toggler.state | async)" [formGroup]="group" class="width-6">
   <div class="formrow" *ngIf="(isEnterprise | async)">
     <label for="replication_priority">Replication Priority</label>
     <select
