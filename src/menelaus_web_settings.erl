@@ -108,7 +108,7 @@ get_string(SV) ->
 
 tlsv1_3_services() ->
     [S || {S, _} <- services_with_security_settings(),
-          S =/= ns_server, S =/= eventing].
+          S =/= ns_server].
 
 get_tls_version(SV, Service) ->
     Supported = ['tlsv1.3' || lists:member(Service, tlsv1_3_services())] ++
