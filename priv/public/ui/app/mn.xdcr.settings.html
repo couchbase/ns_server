@@ -5,7 +5,7 @@
   Advanced Settings
 </p>
 <div [hidden]="!(toggler.state | async)" [formGroup]="group">
-  <div class="formrow">
+  <div class="formrow" *ngIf="(isEnterprise | async)">
     <label for="replication_priority">Replication Priority</label>
     <select
        id="replication_priority"

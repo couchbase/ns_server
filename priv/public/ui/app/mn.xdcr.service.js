@@ -91,6 +91,7 @@ class MnXDCRService {
     } else {
       delete settings.filterExpression;
       delete settings.filterSkipRestream;
+      delete settings.priority;
     }
 
     if (!this.isEditMode) {
