@@ -394,22 +394,25 @@ def start_cluster(num_nodes, start_index, extra_args, args_prefix,
     return [start_node(i + start_index) for i in range(num_nodes)]
 
 
+USAGE_STRING = """
+usage: {program_name}
+    [--nodes=<number of nodes>] (default: 1)
+    [--dont-rename] (don't change network address)
+    [--dont-start] (don't start ns_server)
+    [--static-cookie] (don't reset cookie)
+    [--start-index=<index>] (starting node number; default: 0)
+    [--loglevel=<level>] (logging level; default: 'debug')
+    [--prepend-extras] (extra arguments)
+    [--pluggable-config=<file name>] (plug-ins)
+    [--minified] (use minified files)
+    [--disable-autocomplete] (disable auto-completion in UI)
+    [--pretend-version=<version> (spoof different version;
+                                  default: current version)
+    [--community] (boot as Community Edition)
+"""
+
 def usage():
-    print("usage: {0}\n\
-            [--nodes=<number of nodes>] (default: 1)\n\
-            [--dont-rename] (don't change network address)\n\
-            [--dont-start] (don't start ns_server)\n\
-            [--static-cookie] (don't reset cookie)\n\
-            [--start-index=<index>] (starting node number; default: 0)\n\
-            [--loglevel=<level>] (logging level; default: 'debug')\n\
-            [--prepend-extras] (extra arguments)\n\
-            [--pluggable-config=<file name>] (plug-ins)\n\
-            [--minified] (use minified files)\n\
-            [--disable-autocomplete] (disable auto-completion in UI)\n\
-            [--pretend-version=<version> (spoof different version;\n\
-                                          default: current version)\n\
-            [--community] (boot as Community Edition)\n\
-            [ns_server args]".format(sys.argv[0]))
+    print(USAGE_STRING.format(program_name=sys.argv[0]))
 
 
 def find_primary_addr(ipv6):
