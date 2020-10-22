@@ -64,6 +64,7 @@ supported(fts) -> golang_ciphers({1, 13, 7});
 supported(index) -> golang_ciphers({1, 13, 7});
 supported(n1ql) -> golang_ciphers({1, 13, 7});
 supported(eventing) -> golang_ciphers({1, 13, 7});
+supported(backup) -> golang_ciphers({1, 13, 14});
 supported(kv) ->
 %% This list is constructed using the following command
 %%  $ ./install/bin/openssl ciphers -stdname "ALL" | awk '{print "<<\x22"$1"\x22>>,"}'
@@ -270,7 +271,14 @@ supported(cbas) ->
         <<"TLS_EMPTY_RENEGOTIATION_INFO_SCSV">>
     ].
 
+golang_ciphers({1, 13, 14}) -> golang_ciphers({1, 13, 7});
 golang_ciphers({1, 13, 7}) ->
+%% 1.13.14 and 1.13.7 have the same cipher list.
+%%
+%% 1.13.14
+%% https://github.com/golang/go/commit/d3ba94164a1c404a01369fb54ddd4f5b94d91348
+%% https://github.com/golang/go/blob/d3ba94164a1c404a01369fb54ddd4f5b94d91348/src/crypto/tls/cipher_suites.go
+%%
 %% 1.13.7
 %% https://github.com/golang/go/commit/7d2473dc81c659fba3f3b83bc6e93ca5fe37a898
 %% https://github.com/golang/go/blob/7d2473dc81c659fba3f3b83bc6e93ca5fe37a898/src/crypto/tls/cipher_suites.go

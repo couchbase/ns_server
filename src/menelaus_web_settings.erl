@@ -184,6 +184,7 @@ services_with_security_settings() ->
      {eventing, eventing},
      {n1ql, query},
      {cbas, analytics},
+     {backup, backup},
      {ns_server, clusterManager}].
 
 is_allowed_setting(K) ->
