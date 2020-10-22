@@ -291,9 +291,7 @@ perform_operations(Manifest, []) ->
 perform_operations(Manifest, [Operation | Rest]) ->
     case verify_oper(Operation, Manifest) of
         ok ->
-            NewManifest = handle_oper(Operation,
-                                      bump_next_id(Manifest, Operation)),
-            perform_operations(NewManifest, Rest);
+            perform_operations(handle_oper(Operation, Manifest), Rest);
         Error ->
             ?log_debug("Operation ~p failed with error ~p", [Operation, Error]),
             Error
@@ -311,11 +309,6 @@ update_manifest_next_ids(Bucket, CurrentManifest, NewManifest) ->
 update_manifest(Bucket, Manifest) ->
     ns_bucket:set_property(Bucket, collections_manifest, Manifest).
 
-bump_next_id(Manifest, Oper) ->
-    bump_id(Manifest, needed_next_id(Oper)).
-
-bump_id(Manifest, undefined) ->
-    Manifest;
 bump_id(Manifest, ID) ->
     misc:key_update(ID, Manifest, _ + 1).
 
@@ -323,13 +316,6 @@ bump_manifest_uid(Manifest) ->
     NewManifest = bump_id(Manifest, next_uid),
     Uid = proplists:get_value(next_uid, NewManifest),
     lists:keystore(uid, 1, NewManifest, {uid, Uid}).
-
-needed_next_id({create_scope, _}) ->
-    next_scope_uid;
-needed_next_id({create_collection, _, _, _}) ->
-    next_coll_uid;
-needed_next_id(_) ->
-    undefined.
 
 ensure_cluster_limits(Bucket, Manifest) ->
     case check_limit(num_scopes, Bucket, Manifest) of
@@ -459,26 +445,33 @@ verify_oper({modify_collection, ScopeName, Name}, _Manifest) ->
 handle_oper({check_uid, _CheckUid}, Manifest) ->
     Manifest;
 handle_oper({create_scope, Name}, Manifest) ->
-    Manifest0 = on_scopes(add_scope(Name, _, Manifest), Manifest),
-    update_counter(Manifest0, num_scopes, 1);
+    functools:chain(
+      Manifest,
+      [bump_id(_, next_scope_uid),
+       add_scope(_, Name),
+       update_counter(_, num_scopes, 1)]);
 handle_oper({drop_scope, Name}, Manifest) ->
     NumCollections = length(get_collections(get_scope(Name, Manifest))),
     functools:chain(
       Manifest,
-      [on_scopes(delete_scope(Name, _), _),
+      [delete_scope(_, Name),
        update_counter(_, num_scopes, -1),
        update_counter(_, num_collections, -NumCollections)]);
 handle_oper({create_collection, Scope, Name, Props}, Manifest) ->
-    Manifest0 = on_collections(add_collection(Name, Props, _, Manifest),
-                               Scope, Manifest),
-    update_counter(Manifest0, num_collections, 1);
+    functools:chain(
+      Manifest,
+      [bump_id(_, next_coll_uid),
+       add_collection(_, Name, Scope, Props),
+       update_counter(_, num_collections, 1)]);
 handle_oper({drop_collection, Scope, Name}, Manifest) ->
     NumCollections = case Name of
                          "_default" -> 0;
                          _ -> 1
                      end,
-    Manifest0 = on_collections(delete_collection(Name, _), Scope, Manifest),
-    update_counter(Manifest0, num_collections, -NumCollections).
+    functools:chain(
+      Manifest,
+      [delete_collection(_, Name, Scope),
+       update_counter(_, num_collections, -NumCollections)]).
 
 get_counter(Manifest, Counter) ->
     proplists:get_value(Counter, Manifest).
@@ -499,12 +492,12 @@ get_scopes(Manifest) ->
 find_scope(Name, Scopes) ->
     proplists:get_value(Name, Scopes).
 
-add_scope(Name, Scopes, Manifest) ->
-    [{Name, [{uid, proplists:get_value(next_scope_uid, Manifest)},
-             {collections, []}]} | Scopes].
+add_scope(Manifest, Name) ->
+    Uid = proplists:get_value(next_scope_uid, Manifest),
+    on_scopes([{Name, [{uid, Uid}, {collections, []}]} | _], Manifest).
 
-delete_scope(Name, Scopes) ->
-    lists:keydelete(Name, 1, Scopes).
+delete_scope(Manifest, Name) ->
+    on_scopes(lists:keydelete(Name, 1, _), Manifest).
 
 update_scopes(Scopes, Manifest) ->
     lists:keystore(scopes, 1, Manifest, {scopes, Scopes}).
@@ -523,12 +516,12 @@ get_collection(Name, Scope) ->
 find_collection(Name, Collections) ->
     proplists:get_value(Name, Collections).
 
-add_collection(Name, Props, Collections, Manifest) ->
-    [{Name, [{uid, proplists:get_value(next_coll_uid, Manifest)} | Props]} |
-     Collections].
+add_collection(Manifest, Name, ScopeName, Props) ->
+    Uid = proplists:get_value(next_coll_uid, Manifest),
+    on_collections([{Name, [{uid, Uid} | Props]} | _], ScopeName, Manifest).
 
-delete_collection(Name, Collections) ->
-    lists:keydelete(Name, 1, Collections).
+delete_collection(Manifest, Name, ScopeName) ->
+    on_collections(lists:keydelete(Name, 1, _), ScopeName, Manifest).
 
 update_collections(Collections, Scope) ->
     lists:keystore(collections, 1, Scope, {collections, Collections}).
