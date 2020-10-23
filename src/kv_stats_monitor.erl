@@ -73,7 +73,9 @@
           %% Number of stats samples to monitor - depends on timePeriod
           %% set by the user and the REFRESH_INTERVAL.
           numSamples = nil :: nil | integer(),
-          refresh_timer_ref = undefined
+          refresh_timer_ref = undefined,
+          stats_collector = undefined,
+          latest_stats = {undefined, dict:new()}
          }).
 
 start_link() ->
@@ -85,8 +87,9 @@ init([]) ->
     {Enabled, NumSamples} = get_failover_on_disk_issues(),
     ns_pubsub:subscribe_link(ns_config_events,
                              fun handle_config_event/2, self()),
-    {ok, #state{buckets = reset_bucket_info(),
-                enabled = Enabled, numSamples = NumSamples}}.
+    {ok, maybe_spawn_stats_collector(#state{buckets = reset_bucket_info(),
+                                            enabled = Enabled,
+                                            numSamples = NumSamples})}.
 
 handle_call(get_buckets, _From, #state{buckets = Buckets} = State) ->
     RV = dict:fold(
@@ -107,9 +110,13 @@ handle_cast(Cast, State) ->
 handle_info(refresh, #state{enabled = false} = State) ->
     {noreply, State};
 handle_info(refresh, #state{buckets = Buckets,
-                            numSamples = NumSamples} = State) ->
-    NewBuckets = check_for_disk_issues(Buckets, NumSamples),
-    {noreply, resend_refresh_msg(State#state{buckets = NewBuckets})};
+                            numSamples = NumSamples,
+                            latest_stats = {TS, Stats}} = State) ->
+    NewBuckets = check_for_disk_issues(Buckets, TS, Stats, NumSamples),
+    NewState = maybe_spawn_stats_collector(
+                 State#state{buckets = NewBuckets,
+                             latest_stats = {undefined, dict:new()}}),
+    {noreply, resend_refresh_msg(NewState)};
 
 handle_info({buckets, Buckets}, #state{buckets = Dict} = State) ->
     BucketConfigs = proplists:get_value(configs, Buckets, []),
@@ -139,6 +146,11 @@ handle_info({auto_failover_cfg, NewCfg},
     ?log_debug("auto_failover_cfg change enabled:~p numSamples:~p ",
                [Enabled, NumSamples]),
     {noreply, NewState#state{enabled = Enabled, numSamples = NumSamples}};
+
+handle_info({Pid, BucketStats}, #state{stats_collector = Pid} = State) ->
+    TS = os:system_time(millisecond),
+    {noreply, State#state{stats_collector = undefined,
+                          latest_stats = {TS, BucketStats}}};
 
 handle_info(Info, State) ->
     ?log_warning("Unexpected message ~p when in state:~n~p", [Info, State]),
@@ -199,32 +211,32 @@ failure_stats() ->
     [{ep_data_read_failed, read_failed},
      {ep_data_write_failed, write_failed}].
 
-get_latest_stats(Bucket, Stats) ->
-    try stats_reader:latest_specific_stats(minute, node(), Bucket, Stats) of
-        Result ->
-            Result
-    catch exit:{noproc, _} ->
-            {ok, []}
+get_latest_stats(Bucket) ->
+    try ns_memcached:stats(Bucket, <<"disk-failures">>) of
+        {ok, RawStats} ->
+            [{binary_to_atom(K, latin1), binary_to_integer(V)}
+                 || {K, V} <- RawStats];
+        Err ->
+            ?log_debug("Error ~p while trying to read disk-failures stats for "
+                       "bucket ~p", [Err, Bucket]),
+            []
+    catch
+        _:E ->
+            ?log_debug("Exception ~p while trying to read disk-failures stats "
+                       "for bucket ~p", [E, Bucket]),
+            []
     end.
 
-check_for_disk_issues(Buckets, NumSamples) ->
+check_for_disk_issues(Buckets, TS, LatestStats, NumSamples) ->
     dict:map(
       fun (Bucket, Info) ->
-              check_for_disk_issues_bucket(Bucket, Info, NumSamples)
+              case dict:find(Bucket, LatestStats) of
+                  {ok, Stats} ->
+                      check_for_disk_issues_stats(TS, Stats, Info, NumSamples);
+                  error ->
+                      Info
+              end
       end, Buckets).
-
-check_for_disk_issues_bucket(Bucket, Info, NumSamples) ->
-    Stats = [S || {S, _} <- failure_stats()],
-    case get_latest_stats(Bucket, Stats) of
-        {ok, []} ->
-            Info;
-        {ok, {stat_entry, TS, Vals}} ->
-            check_for_disk_issues_stats(TS, Vals, Info, NumSamples);
-        {error, Err} ->
-            ?log_debug("Error ~p while trying to read stats ~p for bucket ~p",
-                       [Err, Stats, Bucket]),
-            Info
-    end.
 
 check_for_disk_issues_stats(CurrTS, Vals, {_, PastInfo}, NumSamples) ->
     %% Vals is of the form: [{stat1, CurrVal1}, {stat2, CurrVal2}, ...]}
@@ -364,3 +376,20 @@ resend_refresh_msg(#state{refresh_timer_ref = undefined} = State) ->
 resend_refresh_msg(#state{refresh_timer_ref = Ref} = State) ->
     _ = erlang:cancel_timer(Ref),
     resend_refresh_msg(State#state{refresh_timer_ref = undefined}).
+
+maybe_spawn_stats_collector(#state{stats_collector = undefined,
+                                   buckets = Buckets} = State) ->
+    Self = self(),
+    Pid = proc_lib:spawn_link(
+            fun () ->
+                Res = dict:map(fun (Bucket, _Info) ->
+                                   get_latest_stats(Bucket)
+                               end, Buckets),
+                Self ! {self(), Res}
+            end),
+    State#state{stats_collector = Pid};
+maybe_spawn_stats_collector(#state{stats_collector = Pid} = State) ->
+    ?log_warning("Ignoring start of stats collector as the previous one "
+                 "haven't finished yet: ~p", [Pid]),
+    State.
+
