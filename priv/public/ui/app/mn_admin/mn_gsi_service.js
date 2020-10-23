@@ -1,12 +1,12 @@
 import angular from "/ui/web_modules/angular.js";
-import qwQueryService from "/_p/ui/query/qw_query_service.js";
+import { QwQueryService } from "/_p/ui/query/angular-services/qw.query.service.js";
+import {downgradeInjectable} from '/ui/web_modules/@angular/upgrade/static.js';
 
 export default 'mnGsiService';
 
 angular
-  .module('mnGsiService', [
-    qwQueryService
-  ])
+  .module('mnGsiService', [])
+  .factory('qwQueryService', downgradeInjectable(QwQueryService))
   .factory('mnGsiService', mnGsiServiceFactory);
 
 function mnGsiServiceFactory($http, qwQueryService) {

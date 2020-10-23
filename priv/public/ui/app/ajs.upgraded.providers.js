@@ -43,7 +43,6 @@ const MnPoolDefaultProvider = {
   deps: ['$injector']
 };
 
-
 class MnPermissions {}
 const MnPermissionsProvider = {
   provide: MnPermissions,
