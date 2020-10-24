@@ -558,6 +558,10 @@ ensure_prometheus_config(Settings) ->
     ok = misc:atomic_write_file(File, ConfigBin).
 
 prometheus_metrics_jobs_config(Settings) ->
+    DropMetrics = ["prometheus_target_interval_length_seconds_sum",
+                   "prometheus_target_interval_length_seconds",
+                   "prometheus_target_interval_length_seconds_count"],
+    DropRe = iolist_to_binary(lists:join("|", DropMetrics)),
     case proplists:get_bool(prometheus_metrics_enabled, Settings) of
         true ->
             TokenFile = token_file(Settings),
@@ -571,6 +575,9 @@ prometheus_metrics_jobs_config(Settings) ->
                basic_auth => #{username => list_to_binary(?USERNAME),
                                password_file => list_to_binary(TokenFile)},
                static_configs => [#{targets => [Address]}],
+               metric_relabel_configs => [#{source_labels => [<<"__name__">>],
+                                            regex => DropRe,
+                                            action => <<"drop">>}],
                relabel_configs =>
                    [#{target_label => <<"instance">>,
                       replacement => <<"prometheus">>}]}];
