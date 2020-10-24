@@ -228,30 +228,35 @@ storage_path(Settings) ->
 %%%===================================================================
 
 init([]) ->
-    EventHandler =
-        fun ({stats_settings, _}) ->
-                gen_server:cast(?MODULE, settings_updated);
-            ({{node, Node, prometheus_http_port}, _}) when Node == node() ->
-                gen_server:cast(?MODULE, settings_updated);
-            ({{node, Node, address_family}, _}) when Node == node() ->
-                gen_server:cast(?MODULE, settings_updated);
-            ({{node, Node, services}, _}) when Node == node() ->
-                gen_server:cast(?MODULE, settings_updated);
-            ({{node, Node, rest}, _}) when Node == node() ->
-                gen_server:cast(?MODULE, settings_updated);
+    EventFilter =
+        fun (stats_settings) -> true;
+            ({node, Node, prometheus_http_port}) when Node == node() -> true;
+            ({node, Node, address_family}) when Node == node() -> true;
+            ({node, Node, services}) when Node == node() -> true;
+            ({node, Node, rest}) when Node == node() -> true;
             %% ns_to_prometheus_auth_info doesn't change normally.
             %% Nevertheless we need to subscribe to this key to correctly
             %% recover after node rename
-            ({{node, Node, ns_to_prometheus_auth_info}, _})
-                                                    when Node == node() ->
-                gen_server:cast(?MODULE, settings_updated);
-            ({{node, Node, stats_scrape_dynamic_intervals}, _})
-                                                    when Node == node() ->
-                gen_server:cast(?MODULE, settings_updated);
-            ({rest, _}) ->
-                gen_server:cast(?MODULE, settings_updated);
-            (_) -> ok
+            ({node, Node, ns_to_prometheus_auth_info}) when Node == node() ->
+                true;
+            ({node, Node, stats_scrape_dynamic_intervals})
+              when Node == node() -> true;
+            (rest) -> true;
+            (_) -> false
         end,
+
+    EventHandler =
+        fun ({Key, _}) ->
+                case EventFilter(Key) of
+                    true ->
+                        gen_server:cast(?MODULE, settings_updated);
+                    false ->
+                        ok
+                end;
+            (_) ->
+                ok
+        end,
+
     ns_pubsub:subscribe_link(ns_config_events, EventHandler),
     process_flag(trap_exit,true),
     generate_ns_to_prometheus_auth_info(),
