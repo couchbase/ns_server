@@ -551,11 +551,7 @@ ensure_prometheus_config(Settings) ->
                    [#{regex => list_to_binary(addr2re(A)),
                       source_labels => [<<"__address__">>],
                       target_label => <<"instance">>,
-                      replacement => N} || {N, A} <- Targets] ++
-                   [#{regex => <<"n1ql">>,
-                      source_labels => [<<"instance">>],
-                      target_label => <<"category">>,
-                      replacement => <<"n1ql">>}]}] ++
+                      replacement => N} || {N, A} <- Targets]}] ++
               high_cardinality_jobs_config(Settings) ++
               prometheus_metrics_jobs_config(Settings)},
     ConfigBin = yaml:encode(Cfg),

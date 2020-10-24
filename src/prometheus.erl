@@ -243,6 +243,8 @@ format_promql_ast({Labels}) when is_list(Labels) ->
       lists:map(
         fun ({re, Name, Value}) ->
                 [Name, "=~`", Value, "`"];
+            ({not_re, Name, Value}) ->
+                [Name, "!~`", Value, "`"];
             ({eq_any, Name, [_|_] = Values}) ->
                 [Name, "=~`", lists:join("|", Values), "`"];
             ({eq, Name, Value}) ->
