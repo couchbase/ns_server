@@ -72,7 +72,8 @@
           enabled = false :: boolean(),
           %% Number of stats samples to monitor - depends on timePeriod
           %% set by the user and the REFRESH_INTERVAL.
-          numSamples = nil :: nil | integer()
+          numSamples = nil :: nil | integer(),
+          refresh_timer_ref = undefined
          }).
 
 start_link() ->
@@ -108,8 +109,7 @@ handle_info(refresh, #state{enabled = false} = State) ->
 handle_info(refresh, #state{buckets = Buckets,
                             numSamples = NumSamples} = State) ->
     NewBuckets = check_for_disk_issues(Buckets, NumSamples),
-    send_refresh_msg(),
-    {noreply, State#state{buckets = NewBuckets}};
+    {noreply, resend_refresh_msg(State#state{buckets = NewBuckets})};
 
 handle_info({buckets, Buckets}, #state{buckets = Dict} = State) ->
     BucketConfigs = proplists:get_value(configs, Buckets, []),
@@ -129,21 +129,16 @@ handle_info({buckets, Buckets}, #state{buckets = Dict} = State) ->
     {noreply, State#state{buckets = NewDict}};
 
 handle_info({auto_failover_cfg, NewCfg},
-            #state{enabled = OldEnabled, buckets = Buckets} = State) ->
+            #state{enabled = OldEnabled} = State) ->
     {Enabled, NumSamples} = get_failover_on_disk_issues(NewCfg),
-    NewBuckets = case Enabled of
-                     OldEnabled ->
-                         Buckets;
-                     false ->
-                         reset_bucket_info();
-                     true ->
-                         send_refresh_msg(),
-                         Buckets
+    NewState = case Enabled of
+                     OldEnabled -> State;
+                     false -> State#state{buckets = reset_bucket_info()};
+                     true -> resend_refresh_msg(State)
                  end,
     ?log_debug("auto_failover_cfg change enabled:~p numSamples:~p ",
                [Enabled, NumSamples]),
-    {noreply, State#state{buckets = NewBuckets,
-                          enabled = Enabled, numSamples = NumSamples}};
+    {noreply, NewState#state{enabled = Enabled, numSamples = NumSamples}};
 
 handle_info(Info, State) ->
     ?log_warning("Unexpected message ~p when in state:~n~p", [Info, State]),
@@ -363,5 +358,9 @@ get_failover_on_disk_issues(Config) ->
             {Enabled, NumSamples}
     end.
 
-send_refresh_msg() ->
-    erlang:send_after(?REFRESH_INTERVAL, self(), refresh).
+resend_refresh_msg(#state{refresh_timer_ref = undefined} = State) ->
+    Ref = erlang:send_after(?REFRESH_INTERVAL, self(), refresh),
+    State#state{refresh_timer_ref = Ref};
+resend_refresh_msg(#state{refresh_timer_ref = Ref} = State) ->
+    _ = erlang:cancel_timer(Ref),
+    resend_refresh_msg(State#state{refresh_timer_ref = undefined}).
