@@ -787,6 +787,9 @@ select {
   margin-bottom: 0;
   color: #333;
 }
+select {
+  padding: 0 .5rem 0 .25rem;
+}
 input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button {
   -webkit-appearance: none;

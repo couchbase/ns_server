@@ -2425,7 +2425,6 @@ button:hover.scenarios-delete {
   transition: all 1s;
 }
 .insights-sidebar-expand,
-.wb-fullscreen,
 .find-icon {
   cursor: pointer;
   color: #d1d1d1;
@@ -2437,7 +2436,6 @@ button:hover.scenarios-delete {
   padding: 0 1rem;
 }
 .insights-sidebar-expand:hover,
-.wb-fullscreen:hover,
 .find-icon:hover {
   color: #333;
 }
@@ -2545,6 +2543,34 @@ button:hover.scenarios-delete {
 .wb-history-table section span.selected {
   background-color: #ececec;
 }
+.wb-use {
+  white-space: nowrap;
+  font-size: .75rem;
+}
+.wb-use select {
+  height: 24px!important;
+  border-radius: 3px;
+  font-size: .75rem;
+  color: #333;
+}
+.wb-format,
+.wb-fullscreen {
+  cursor: pointer;
+  color: #a1a1a1;
+  padding: 0 .5rem;
+  display: inline-block;
+}
+.wb-fullscreen {
+  margin-right: .5rem;
+}
+.wb-format:hover,
+.wb-fullscreen:hover {
+  color: #333;
+}
+.wb-format {
+  font-size: .75rem;
+}
+
 /* force scrollbars to be visible ------------------------------------------- */
 .hide-track.show-scrollbar::-webkit-scrollbar-track {
   background-color: #fff !important;
