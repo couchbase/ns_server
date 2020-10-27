@@ -16,6 +16,24 @@
 
 -module(ns_online_config_upgrader).
 
+%% This module implements the online upgrade of a cluster.  "Online" here
+%% means "when the cluster comes online"; in other words, when it is
+%% formed.  This happens after the individual nodes have gone through the
+%% node upgrade process.
+%%
+%% The online upgrade upgrades the configuration starting with the lowest
+%% possible cluster version, regardless of a node's version.  This is done
+%% both when we are upgrading a node running down-rev software and when we
+%% are forming a cluster composed of nodes running up-rev code.
+%%
+%% If we are forming a cluster containing one or mode nodes running up-rev
+%% code, a node's configuration may contain entries which are up-rev
+%% relative to the cluster version being upgraded.  Consequently, the
+%% functions used to perform the online upgrade must ensure that they are
+%% not adding configuration information which is already present in the
+%% node's configuration.  If this is not done, we can end up with duplicate
+%% information in the configuration.
+
 -include("cut.hrl").
 -include("ns_common.hrl").
 
@@ -55,6 +73,9 @@ maybe_final_upgrade(?LATEST_VERSION_NUM) ->
     ns_audit_cfg:upgrade_descriptors();
 maybe_final_upgrade(_) ->
     [].
+
+%% Note: upgrade functions must ensure that they do not add entries to the
+%% configuration which are already present.
 
 upgrade(?VERSION_50, Config) ->
     {?VERSION_51,
