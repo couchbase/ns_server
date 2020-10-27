@@ -1354,7 +1354,27 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
             if any(".moss" in entry for entry in os.listdir(path))],
 
         [AllOsTask("fts scorch zap (%s)" % path,
-                   ["cbft-bleve", "zap", "footer", path],
+                   ["cbft-bleve", "zap", "v11", "footer", path],
+                   log_file="fts_store_stats.log")
+         for path in glob.glob(os.path.join(viewdir, "@fts", "*.pindex", "store", "*.zap"))],
+
+        [AllOsTask("fts scorch zap (%s)" % path,
+                   ["cbft-bleve", "zap", "v12", "footer", path],
+                   log_file="fts_store_stats.log")
+         for path in glob.glob(os.path.join(viewdir, "@fts", "*.pindex", "store", "*.zap"))],
+
+        [AllOsTask("fts scorch zap (%s)" % path,
+                   ["cbft-bleve", "zap", "v13", "footer", path],
+                   log_file="fts_store_stats.log")
+         for path in glob.glob(os.path.join(viewdir, "@fts", "*.pindex", "store", "*.zap"))],
+
+        [AllOsTask("fts scorch zap (%s)" % path,
+                   ["cbft-bleve", "zap", "v14", "footer", path],
+                   log_file="fts_store_stats.log")
+         for path in glob.glob(os.path.join(viewdir, "@fts", "*.pindex", "store", "*.zap"))],
+
+        [AllOsTask("fts scorch zap (%s)" % path,
+                   ["cbft-bleve", "zap", "v15", "footer", path],
                    log_file="fts_store_stats.log")
          for path in glob.glob(os.path.join(viewdir, "@fts", "*.pindex", "store", "*.zap"))],
 
