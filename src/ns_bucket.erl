@@ -38,6 +38,11 @@
          external_bucket_type/1,
          durability_min_level/1,
          failover_warnings/0,
+         root/0,
+         sub_key/2,
+         get_snapshot/0,
+         remove_from_snapshot/2,
+         toy_buckets/1,
          get_bucket/1,
          get_bucket/2,
          get_bucket_from_configs/2,
@@ -120,9 +125,62 @@ credentials(Bucket) ->
     {ok, BucketConfig} = get_bucket(Bucket),
     {Bucket, proplists:get_value(sasl_password, BucketConfig, "")}.
 
+root() ->
+    bucket_names.
+
+sub_key(Bucket, SubKey) ->
+    {bucket, Bucket, SubKey}.
+
+get_snapshot() ->
+    %% TODO: temporary implementation till we keep bucket props in ns_config
+    BucketConfigs = get_buckets(),
+    Buckets = get_bucket_names(BucketConfigs),
+
+    maps:from_list(
+      [{root(), {Buckets, no_rev}} |
+       lists:flatmap(
+         fun ({B, BC}) ->
+                 Default = case collections:enabled(BC) of
+                               true ->
+                                   collections:default_manifest();
+                               false ->
+                                   undefined
+                           end,
+                 Manifest = proplists:get_value(collections_manifest, BC,
+                                                Default),
+                 [{sub_key(B, props), {BC, no_rev}} |
+                  [{sub_key(B, collections), {Manifest, no_rev}} ||
+                      Manifest =/= undefined]]
+         end, BucketConfigs)]).
+
+remove_from_snapshot(BucketName, Snapshot) ->
+    functools:chain(
+      Snapshot,
+      [maps:remove(sub_key(BucketName, props), _),
+       maps:remove(sub_key(BucketName, collections), _),
+       maps:update_with(root(), fun ({List, Rev}) ->
+                                        {List -- [BucketName], Rev}
+                                end, _)]).
+
+toy_buckets(List) ->
+    maps:from_list(
+      [{root(), {[N || {N, _} <- List], no_rev}} |
+       lists:flatmap(
+         fun ({Bucket, Props}) ->
+                 [{ns_bucket:sub_key(Bucket, K), {V, no_rev}} ||
+                     {K, V} <- Props]
+         end, List)]).
+
 get_bucket(Bucket) ->
     get_bucket(Bucket, ns_config:latest()).
 
+get_bucket(Bucket, Snapshot) when is_map(Snapshot) ->
+    case maps:find(sub_key(Bucket, props), Snapshot) of
+        {ok, {Props, _}} ->
+            {ok, Props};
+        error ->
+            not_present
+    end;
 get_bucket(Bucket, Config) ->
     BucketConfigs = get_buckets(Config),
     get_bucket_from_configs(Bucket, BucketConfigs).
@@ -137,6 +195,9 @@ get_bucket_from_configs(Bucket, Configs) ->
 get_bucket_names() ->
     get_bucket_names(get_buckets()).
 
+get_bucket_names(Snapshot) when is_map(Snapshot) ->
+    {ok, {Names, _}} = maps:find(root(), Snapshot),
+    Names;
 get_bucket_names(BucketConfigs) ->
     proplists:get_keys(BucketConfigs).
 
@@ -165,6 +226,11 @@ get_bucket_names_of_type(Type, BucketConfigs) ->
 get_buckets() ->
     get_buckets(ns_config:latest()).
 
+get_buckets(Snapshot) when is_map(Snapshot) ->
+    lists:map(fun (N) ->
+                      {ok, {Props, _}} = maps:find(sub_key(N, props), Snapshot),
+                      {N, Props}
+              end, get_bucket_names(Snapshot));
 get_buckets(Config) ->
     ns_config:search_prop(Config, buckets, configs, []).
 

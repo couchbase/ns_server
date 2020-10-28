@@ -273,10 +273,10 @@ check_permissions(BucketNames, Roles, CompiledRoles, RoleDefinitions) ->
      lists:foldl(collection_permissions(_, CompiledRoles, _),
                  BucketPrivileges, CollectionParams)}.
 
-permissions_for_user(Roles, Buckets, RoleDefinitions) ->
+permissions_for_user(Roles, Snapshot, RoleDefinitions) ->
     CompiledRoles = menelaus_roles:compile_roles(Roles, RoleDefinitions,
-                                                 Buckets),
-    check_permissions(ns_bucket:get_bucket_names(Buckets), Roles,
+                                                 Snapshot),
+    check_permissions(ns_bucket:get_bucket_names(Snapshot), Roles,
                       CompiledRoles, RoleDefinitions).
 
 jsonify_user_with_cache(Identity, BucketNames) ->
@@ -320,7 +320,7 @@ memcached_admin_json(AU) ->
     jsonify_user({AU, local}, {[all], all}).
 
 jsonify_users(Users, RoleDefinitions, ClusterAdmin, PromUser) ->
-    Buckets = ns_bucket:get_buckets(),
+    Snapshot = ns_bucket:get_snapshot(),
     ?make_transducer(
        begin
            ?yield(object_start),
@@ -331,7 +331,7 @@ jsonify_users(Users, RoleDefinitions, ClusterAdmin, PromUser) ->
            EmitUser =
                fun (Identity, Roles) ->
                        Permissions =
-                           permissions_for_user(Roles, Buckets,
+                           permissions_for_user(Roles, Snapshot,
                                                 RoleDefinitions),
                        ?yield({kv, jsonify_user(Identity, Permissions)})
                end,
@@ -348,7 +348,7 @@ jsonify_users(Users, RoleDefinitions, ClusterAdmin, PromUser) ->
            EmitLocalUser(PromUser, {PromUser, stats_reader}),
 
            lists:foreach(?cut(EmitLocalUser(_1 ++ ";legacy", {_1, bucket})),
-                         ns_bucket:get_bucket_names(Buckets)),
+                         ns_bucket:get_bucket_names(Snapshot)),
 
            pipes:foreach(
              ?producer(),
@@ -438,10 +438,11 @@ permissions_for_user_test_() ->
          {scopes, [{"s",  [{uid, 1}, {collections, [{"c",  [{uid, 1}]},
                                                     {"c1", [{uid, 2}]}]}]},
                    {"s1", [{uid, 2}, {collections, [{"c",  [{uid, 3}]}]}]}]}],
-    Buckets =
-        [{"test", [{uuid, <<"test_id">>}]},
-         {"default", [{uuid, <<"default_id">>},
-                      {collections_manifest, Manifest}]}],
+    Snapshot =
+        ns_bucket:toy_buckets(
+          [{"test", [{props, [{uuid, <<"test_id">>}]}]},
+           {"default", [{props, [{uuid, <<"default_id">>}]},
+                        {collections, Manifest}]}]),
 
     All = fun (L) -> lists:usort([P || {_, P} <- L]) end,
     Read = fun (L) -> lists:usort([P || {{_, read}, P} <- L]) end,
@@ -461,7 +462,7 @@ permissions_for_user_test_() ->
                  fun () ->
                          {GlobalRes, BucketsRes} =
                              permissions_for_user(
-                               Roles, Buckets,
+                               Roles, Snapshot,
                                menelaus_roles:get_definitions(all)),
                          ?assertListsEqual(ExpectedGlobal, GlobalRes),
                          FlatExpected =

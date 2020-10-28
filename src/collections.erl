@@ -29,6 +29,7 @@
 -export([start_link/0,
          enabled/0,
          enabled/1,
+         default_manifest/0,
          uid/1,
          manifest_json/1,
          manifest_json/3,
@@ -40,6 +41,7 @@
          convert_uid_from_memcached/1,
          convert_uid_to_memcached/1,
          get_manifest/1,
+         get_manifest/2,
          set_manifest/4,
          get_scope/2,
          get_collection/2,
@@ -62,6 +64,9 @@ enabled() ->
 
 enabled(BucketConfig) ->
     enabled() andalso ns_bucket:bucket_type(BucketConfig) =:= membase.
+
+key(Bucket) ->
+    ns_bucket:sub_key(Bucket, collections).
 
 default_manifest() ->
     [{uid, 0},
@@ -501,6 +506,10 @@ update_counter(Manifest, Counter, Amount) ->
 
 get_manifest(BucketCfg) ->
     proplists:get_value(collections_manifest, BucketCfg, default_manifest()).
+
+get_manifest(Bucket, Snapshot) ->
+    {Manifest, _} = maps:get(key(Bucket), Snapshot, {undefined, no_rev}),
+    Manifest.
 
 get_scope(Name, Manifest) ->
     find_scope(Name, get_scopes(Manifest)).

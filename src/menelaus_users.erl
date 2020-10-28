@@ -281,7 +281,7 @@ make_props(Id, Props, ItemList) ->
     make_props(Id, Props, ItemList, make_props_state(ItemList)).
 
 make_props(Id, Props, ItemList, {Passwordless, Definitions,
-                                 Buckets}) ->
+                                 Snapshot}) ->
 
     %% Groups calculation might be heavy, so we want to make sure they
     %% are calculated only once
@@ -306,16 +306,16 @@ make_props(Id, Props, ItemList, {Passwordless, Definitions,
                  storage_name(), {auth, Id}, undefined), Cache};
           (group_roles, Cache) ->
               {Groups, NewCache} = GetGroups(Cache),
-              Roles = get_groups_roles(Groups, Definitions, Buckets),
+              Roles = get_groups_roles(Groups, Definitions, Snapshot),
               {Roles, NewCache};
           (user_roles, Cache) ->
-              UserRoles = get_user_roles(Props, Definitions, Buckets),
+              UserRoles = get_user_roles(Props, Definitions, Snapshot),
               {UserRoles, Cache};
           (roles, Cache) ->
               {DirtyGroups, NewCache} = GetDirtyGroups(Cache),
-              UserRoles = get_user_roles(Props, Definitions, Buckets),
+              UserRoles = get_user_roles(Props, Definitions, Snapshot),
               GroupsAndRoles = get_groups_roles(DirtyGroups, Definitions,
-                                                Buckets),
+                                                Snapshot),
               GroupRoles = lists:concat([R || {_, R} <- GroupsAndRoles]),
               {lists:usort(UserRoles ++ GroupRoles), NewCache};
           (passwordless, Cache) ->
@@ -348,7 +348,7 @@ make_props_state(ItemList) ->
              lists:member(user_roles, ItemList) orelse
              lists:member(group_roles, ItemList) of
             true -> {menelaus_roles:get_definitions(public),
-                     ns_bucket:get_buckets()};
+                     ns_bucket:get_snapshot()};
             false -> {undefined, undefined}
         end,
     {Passwordless, Definitions, Buckets}.
@@ -383,20 +383,22 @@ build_auth({_, CurrentAuth}, Password) ->
 store_user({_UserName, Domain} = Identity, Name, Password, Roles, Groups) ->
     Props = [{name, Name} || Name =/= undefined] ++
             [{groups, Groups} || Groups =/= undefined],
-    Config = ns_config:get(),
+    Snapshot = ns_bucket:get_snapshot(),
 
     CurrentAuth = replicated_dets:get(storage_name(), {auth, Identity}),
     case check_limit(Identity) of
         true ->
             case Domain of
                 external ->
-                    store_user_with_auth(Identity, Props, same, Roles, Config);
+                    store_user_with_auth(Identity, Props, same, Roles,
+                                         Snapshot);
                 local ->
                     case build_auth(CurrentAuth, Password) of
                         password_required ->
                             {abort, password_required};
                         Auth ->
-                            store_user_with_auth(Identity, Props, Auth, Roles, Config)
+                            store_user_with_auth(Identity, Props, Auth, Roles,
+                                                 Snapshot)
                     end
             end;
         false ->
@@ -424,10 +426,11 @@ check_limit(Identity) ->
             end
     end.
 
-store_user_with_auth(Identity, Props, Auth, Roles, Config) ->
-    case menelaus_roles:validate_roles(Roles, Config) of
+store_user_with_auth(Identity, Props, Auth, Roles, Snapshot) ->
+    case menelaus_roles:validate_roles(Roles, Snapshot) of
         {NewRoles, []} ->
-            ok = store_user_validated(Identity, [{roles, NewRoles} | Props], Auth),
+            ok = store_user_validated(Identity, [{roles, NewRoles} | Props],
+                                      Auth),
             {commit, ok};
         {_, BadRoles} ->
             {abort, {error, roles_validation, BadRoles}}
@@ -544,7 +547,8 @@ get_roles(Identity) ->
 %% Groups functions
 
 store_group(Identity, Description, Roles, LDAPGroup) ->
-    case menelaus_roles:validate_roles(Roles, ns_config:get()) of
+    Snapshot = ns_bucket:get_snapshot(),
+    case menelaus_roles:validate_roles(Roles, Snapshot) of
         {NewRoles, []} ->
             Props = [{description, Description} || Description =/= undefined] ++
                     [{ldap_group_ref, LDAPGroup} || LDAPGroup =/= undefined] ++
@@ -613,27 +617,27 @@ group_exists(GroupId) ->
 get_group_roles(GroupId) ->
     proplists:get_value(roles, get_group_props(GroupId, [roles]), []).
 
-get_group_roles(GroupId, Definitions, Buckets) ->
-    Props = get_group_props(GroupId, [roles], Definitions, Buckets),
+get_group_roles(GroupId, Definitions, Snapshot) ->
+    Props = get_group_props(GroupId, [roles], Definitions, Snapshot),
     proplists:get_value(roles, Props, []).
 
 make_group_props(Props, Items) ->
     make_group_props(Props, Items, make_props_state(Items)).
 
-make_group_props(Props, Items, {_, Definitions, Buckets}) ->
+make_group_props(Props, Items, {_, Definitions, Snapshot}) ->
     lists:map(
       fun (roles = Name) ->
               Roles = proplists:get_value(roles, Props, []),
               Roles2 = menelaus_roles:filter_out_invalid_roles(
-                         Roles, Definitions, Buckets),
+                         Roles, Definitions, Snapshot),
               {Name, Roles2};
           (Name) ->
               {Name, proplists:get_value(Name, Props)}
       end, Items).
 
-get_user_roles(UserProps, Definitions, Buckets) ->
+get_user_roles(UserProps, Definitions, Snapshot) ->
     menelaus_roles:filter_out_invalid_roles(
-      proplists:get_value(roles, UserProps, []), Definitions, Buckets).
+      proplists:get_value(roles, UserProps, []), Definitions, Snapshot).
 
 clean_groups({DirtyLocalGroups, DirtyExtGroups}) ->
     {lists:filter(group_exists(_), DirtyLocalGroups),
@@ -652,8 +656,8 @@ get_dirty_groups(Id, Props) ->
         end,
     {LocalGroups, ExternalGroups}.
 
-get_groups_roles({LocalGroups, ExtGroups}, Definitions, Buckets) ->
-    [{G, get_group_roles(G, Definitions, Buckets)}
+get_groups_roles({LocalGroups, ExtGroups}, Definitions, Snapshot) ->
+    [{G, get_group_roles(G, Definitions, Snapshot)}
         || G <- LocalGroups ++ ExtGroups].
 
 get_ldap_groups(User) ->
@@ -757,19 +761,21 @@ upgrade_in_progress(Config) ->
     ns_config:search(Config, rbac_upgrade_key(?VERSION_55)) =/= false orelse
         ns_config:search(Config, rbac_upgrade_key()) =/= false.
 
-filter_out_invalid_roles(Props, Definitions, Buckets) ->
+filter_out_invalid_roles(Props, Definitions, Snapshot) ->
     Roles = proplists:get_value(roles, Props, []),
     FilteredRoles = menelaus_roles:filter_out_invalid_roles(Roles, Definitions,
-                                                            Buckets),
+                                                            Snapshot),
     lists:keystore(roles, 1, Props, {roles, FilteredRoles}).
 
 cleanup_bucket_roles(BucketName) ->
     ?log_debug("Delete all roles for bucket ~p", [BucketName]),
-    Buckets = lists:keydelete(BucketName, 1, ns_bucket:get_buckets()),
+    Snapshot = ns_bucket:remove_from_snapshot(BucketName,
+                                              ns_bucket:get_snapshot()),
+
     Definitions = menelaus_roles:get_definitions(all),
     UpdateFun =
         fun ({Type, Key}, Props) when Type == user; Type == group ->
-                case filter_out_invalid_roles(Props, Definitions, Buckets) of
+                case filter_out_invalid_roles(Props, Definitions, Snapshot) of
                     Props ->
                         skip;
                     NewProps ->

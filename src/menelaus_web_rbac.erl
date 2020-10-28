@@ -187,28 +187,28 @@ role_origin_to_json(user) ->
 role_origin_to_json(O) ->
     {[{type, group}, {name, list_to_binary(O)}]}.
 
-get_roles_by_permission(Permission, Config) ->
+get_roles_by_permission(Permission, Snapshot) ->
     pipes:run(
-      menelaus_roles:produce_roles_by_permission(Permission, Config),
+      menelaus_roles:produce_roles_by_permission(Permission, Snapshot),
       pipes:collect()).
 
-maybe_remove_security_roles(Req, Config, Roles) ->
+maybe_remove_security_roles(Req, Snapshot, Roles) ->
     Roles --
         case menelaus_auth:has_permission(?SECURITY_READ, Req) of
             true ->
                 [];
             false ->
-                menelaus_roles:get_security_roles(Config)
+                menelaus_roles:get_security_roles(Snapshot)
         end.
 
 handle_get_roles(Req) ->
-    Config = ns_config:get(),
+    Snapshot = ns_bucket:get_snapshot(),
     validator:handle(
       fun (Values) ->
               Permission = proplists:get_value(permission, Values),
               Roles = maybe_remove_security_roles(
-                        Req, Config,
-                        get_roles_by_permission(Permission, Config)),
+                        Req, Snapshot,
+                        get_roles_by_permission(Permission, Snapshot)),
               Json =
                   [{role_to_json(Role) ++ jsonify_props(Props)} ||
                       {Role, Props} <- Roles],
@@ -320,7 +320,7 @@ handle_get_users(Path, Domain, Req) ->
 get_roles_for_users_filtering(undefined) ->
     all;
 get_roles_for_users_filtering(Permission) ->
-    get_roles_by_permission(Permission, ns_config:latest()).
+    get_roles_by_permission(Permission, ns_bucket:get_snapshot()).
 
 handle_get_users_with_domain(Req, DomainAtom, Path) ->
     Query = mochiweb_request:parse_qs(Req),
@@ -983,6 +983,7 @@ parse_groups(GroupsStr) ->
     [string:trim(G) || G <- GroupsTokens].
 
 validate_roles(Name, State) ->
+    Snapshot = ns_bucket:get_snapshot(),
     validator:validate(
       fun (RawRoles) ->
               Roles = parse_roles(RawRoles),
@@ -994,8 +995,7 @@ validate_roles(Name, State) ->
                   _ ->
                       GoodRoles = Roles -- BadRoles,
                       {_, MoreBadRoles} =
-                          menelaus_roles:validate_roles(GoodRoles,
-                                                        ns_config:latest()),
+                          menelaus_roles:validate_roles(GoodRoles, Snapshot),
                       {error, bad_roles_error(
                                 [Raw || {error, Raw} <- BadRoles] ++
                                     [role_to_string(R) || R <- MoreBadRoles])}
@@ -1025,7 +1025,8 @@ overlap(List1, List2) ->
     lists:any(fun (V) -> lists:member(V, List1) end, List2).
 
 get_security_roles() ->
-    [R || {R, _} <- menelaus_roles:get_security_roles(ns_config:latest())].
+    [R || {R, _} <- menelaus_roles:get_security_roles(
+                      ns_bucket:get_snapshot())].
 
 verify_domain_access(Req, {_UserId, local}) ->
     do_verify_domain_access(Req, ?LOCAL_USER_WRITE);
@@ -1731,10 +1732,10 @@ handle_put_profile(RawIdentity, Req) ->
 handle_get_uiroles(Req) ->
     menelaus_util:require_permission(Req, {[admin, security], read}),
 
+    Snapshot = ns_bucket:get_snapshot(),
     Roles =
-        maybe_remove_security_roles(Req, ns_config:latest(),
-                                    menelaus_roles:get_visible_role_definitions(
-                                      ns_config:latest())),
+        maybe_remove_security_roles(
+          Req, Snapshot, menelaus_roles:get_visible_role_definitions()),
     Folders =
         lists:filtermap(build_ui_folder(_, Roles), menelaus_roles:ui_folders()),
 

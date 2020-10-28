@@ -69,7 +69,7 @@
          external_auth_polling_interval/0,
          get_param_defs/2,
          ui_folders/0,
-         get_visible_role_definitions/1,
+         get_visible_role_definitions/0,
          strip_ids/2]).
 
 -export([start_compiled_roles_cache/0]).
@@ -725,38 +725,48 @@ substitute_param(Param, ParamPairs) ->
     {Param, Subst} = lists:keyfind(Param, 1, ParamPairs),
     Subst.
 
-compile_param(bucket_name, Name, Buckets) ->
-    find_object(Name, Buckets,
-                fun (N, B) ->
-                        case ns_bucket:get_bucket_from_configs(N, B) of
-                            {ok, Props} ->
-                                Props;
+compile_param(bucket_name, Name, Snapshot) ->
+    find_object(Name,
+                fun (BucketName) ->
+                        case ns_bucket:get_bucket(BucketName, Snapshot) of
                             not_present ->
-                                undefined
+                                undefined;
+                            {ok, Props} ->
+                                {Props,
+                                 collections:get_manifest(BucketName, Snapshot)}
                         end
-                end,
-                fun ns_bucket:bucket_uuid/1);
-compile_param(scope_name, Name, BucketCfg) ->
-    find_object(Name, BucketCfg,
-                ?cut(collections:get_scope(_1, collections:get_manifest(_2))),
-                fun collections:get_uid/1);
+                end, fun ns_bucket:bucket_uuid/1);
+compile_param(scope_name, Name, Manifest) ->
+    find_object(Name,
+                fun (ScopeName) ->
+                        case Manifest of
+                            undefined ->
+                                undefined;
+                            _ ->
+                                collections:get_scope(ScopeName, Manifest)
+                        end
+                end, fun collections:get_uid/1);
 compile_param(collection_name, Name, Scope) ->
-    find_object(Name, Scope, fun collections:get_collection/2,
+    find_object(Name, collections:get_collection(_, Scope),
                 fun collections:get_uid/1).
 
-find_object(any, _List, _Find, _GetId) ->
+find_object(any, _Find, _GetId) ->
     {any, any};
-find_object({Name, Id}, List, Find, GetId) ->
-    case find_object(Name, List, Find, GetId) of
+find_object({Name, Id}, Find, GetId) ->
+    case find_object(Name, Find, GetId) of
         RV = {{Name, Id}, _} ->
             RV;
         _ ->
             undefined
     end;
-find_object(Name, List, Find, GetId) when is_list(Name) ->
-    case Find(Name, List) of
+find_object(Name, Find, GetId) when is_list(Name) ->
+    case Find(Name) of
         undefined ->
             undefined;
+        {undefined, _} ->
+            undefined;
+        {Props, Ctx} ->
+            {{Name, GetId(Props)}, Ctx};
         Props ->
             {{Name, GetId(Props)}, Props}
     end.
@@ -780,10 +790,10 @@ compile_params([ParamDef | RestParamDefs], [Param | RestParams], Acc, Ctx) ->
 compile_params(ParamDefs, Params, Buckets) ->
     compile_params(ParamDefs, Params, [], Buckets).
 
-compile_role({Name, Params}, CompileRole, Definitions, Buckets) ->
+compile_role({Name, Params}, CompileRole, Definitions, Snapshot) ->
     case lists:keyfind(Name, 1, Definitions) of
         {Name, ParamDefs, _Props, Permissions} ->
-            case compile_params(ParamDefs, Params, Buckets) of
+            case compile_params(ParamDefs, Params, Snapshot) of
                 false ->
                     false;
                 NewParams ->
@@ -792,23 +802,23 @@ compile_role({Name, Params}, CompileRole, Definitions, Buckets) ->
         false ->
             false
     end;
-compile_role(Name, CompileRole, Definitions, Buckets) when is_atom(Name) ->
-    compile_role({Name, []}, CompileRole, Definitions, Buckets).
+compile_role(Name, CompileRole, Definitions, Snapshot) when is_atom(Name) ->
+    compile_role({Name, []}, CompileRole, Definitions, Snapshot).
 
-compile_roles(CompileRole, Roles, Definitions, Buckets) ->
-    lists:filtermap(compile_role(_, CompileRole, Definitions, Buckets), Roles).
+compile_roles(CompileRole, Roles, Definitions, Snapshot) ->
+    lists:filtermap(compile_role(_, CompileRole, Definitions, Snapshot), Roles).
 
--spec compile_roles([rbac_role()], [rbac_role_def()] | undefined, list()) ->
+-spec compile_roles([rbac_role()], [rbac_role_def()] | undefined, map()) ->
                            [rbac_compiled_role()].
-compile_roles(_Roles, undefined, _Buckets) ->
+compile_roles(_Roles, undefined, _Snapshot) ->
     %% can happen briefly after node joins the cluster on pre 5.0 clusters
     [];
-compile_roles(Roles, Definitions, Buckets) ->
+compile_roles(Roles, Definitions, Snapshot) ->
     compile_roles(
       fun (_Name, Params, ParamDefs, Permissions) ->
               substitute_params(strip_ids(ParamDefs, Params),
                                 ParamDefs, Permissions)
-      end, Roles, Definitions, Buckets).
+      end, Roles, Definitions, Snapshot).
 
 -spec get_roles(rbac_identity()) -> [rbac_role()].
 get_roles({"", wrong_token}) ->
@@ -902,7 +912,7 @@ build_compiled_roles(Identity) ->
                        [ns_config_log:tag_user_data(Identity)]),
             Definitions = get_definitions(all),
             compile_roles(get_roles(Identity), Definitions,
-                          ns_bucket:get_buckets());
+                          ns_bucket:get_snapshot());
         true ->
             ?log_debug("Retrieve compiled roles for user ~p from ns_server "
                        "node", [ns_config_log:tag_user_data(Identity)]),
@@ -910,12 +920,12 @@ build_compiled_roles(Identity) ->
                      ?MODULE, build_compiled_roles, [Identity])
     end.
 
-filter_out_invalid_roles(Roles, Definitions, Buckets) ->
+filter_out_invalid_roles(Roles, Definitions, Snapshot) ->
     compile_roles(fun (Name, [], _, _) ->
                           Name;
                       (Name, Params, _, _) ->
                           {Name, Params}
-                  end, Roles, Definitions, Buckets).
+                  end, Roles, Definitions, Snapshot).
 
 get_permission_params({[V | _], _}) ->
     case is_data_vertex(V) of
@@ -927,7 +937,7 @@ get_permission_params({[V | _], _}) ->
 get_permission_params(_) ->
     [].
 
-calculate_possible_param_values(Buckets, Combination, Permission) ->
+calculate_possible_param_values(Snapshot, Combination, Permission) ->
     Len = length(Combination),
     PermissionParams = get_permission_params(Permission),
     RawParams =
@@ -939,7 +949,7 @@ calculate_possible_param_values(Buckets, Combination, Permission) ->
             end, lists:seq(0, length(Combination)))),
     lists:filtermap(
       fun (Params) ->
-              case compile_params(Combination, Params, Buckets) of
+              case compile_params(Combination, Params, Snapshot) of
                   false ->
                       false;
                   Compiled ->
@@ -950,11 +960,11 @@ calculate_possible_param_values(Buckets, Combination, Permission) ->
 all_params_combinations() ->
     [[], [bucket_name], ?RBAC_SCOPE_PARAMS, ?RBAC_COLLECTION_PARAMS].
 
--spec calculate_possible_param_values(list(), undefined | rbac_permission()) ->
+-spec calculate_possible_param_values(map(), undefined | rbac_permission()) ->
                                              rbac_all_param_values().
-calculate_possible_param_values(Buckets, Permission) ->
+calculate_possible_param_values(Snapshot, Permission) ->
     [{Combination,
-      calculate_possible_param_values(Buckets, Combination, Permission)} ||
+      calculate_possible_param_values(Snapshot, Combination, Permission)} ||
         Combination <- all_params_combinations()].
 
 -spec get_possible_param_values([atom()], rbac_all_param_values()) ->
@@ -986,26 +996,25 @@ expand_params(AllPossibleValues) ->
                    end, get_possible_param_values(ParamDefs, AllPossibleValues))
          end)).
 
-filter_by_permission(undefined, _Buckets, _Definitions) ->
+filter_by_permission(undefined, _Snapshot, _Definitions) ->
     pipes:filter(fun (_) -> true end);
-filter_by_permission(Permission, Buckets, Definitions) ->
+filter_by_permission(Permission, Snapshot, Definitions) ->
     pipes:filter(
       fun ({Role, _}) ->
               is_allowed(Permission,
-                         compile_roles([Role], Definitions, Buckets))
+                         compile_roles([Role], Definitions, Snapshot))
       end).
 
--spec produce_roles_by_permission(rbac_permission(), ns_config()) ->
+-spec produce_roles_by_permission(rbac_permission(), map()) ->
                                          pipes:producer(rbac_role()).
-produce_roles_by_permission(Permission, Config) ->
-    Buckets = ns_bucket:get_buckets(Config),
-    AllValues = calculate_possible_param_values(Buckets, Permission),
-    Definitions = get_definitions(Config, public),
+produce_roles_by_permission(Permission, Snapshot) ->
+    AllValues = calculate_possible_param_values(Snapshot, Permission),
+    Definitions = get_definitions(ns_config:latest(), public),
     pipes:compose(
       [pipes:stream_list(Definitions),
        visible_roles_filter(),
        expand_params(AllValues),
-       filter_by_permission(Permission, Buckets, Definitions)]).
+       filter_by_permission(Permission, Snapshot, Definitions)]).
 
 strip_id(_, any) ->
     any;
@@ -1031,17 +1040,17 @@ get_param_defs(RoleName, Definitions) ->
             not_found
     end.
 
--spec validate_role(rbac_role(), [rbac_role_def()], list()) ->
+-spec validate_role(rbac_role(), [rbac_role_def()], map()) ->
                            false | {ok, rbac_role()}.
-validate_role(Role, Definitions, Buckets) when is_atom(Role) ->
-    validate_role(Role, [], Definitions, Buckets);
-validate_role({Role, Params}, Definitions, Buckets) ->
-    validate_role(Role, Params, Definitions, Buckets).
+validate_role(Role, Definitions, Snapshot) when is_atom(Role) ->
+    validate_role(Role, [], Definitions, Snapshot);
+validate_role({Role, Params}, Definitions, Snapshot) ->
+    validate_role(Role, Params, Definitions, Snapshot).
 
-validate_role(Role, Params, Definitions, Buckets) ->
+validate_role(Role, Params, Definitions, Snapshot) ->
     case lists:keyfind(Role, 1, Definitions) of
         {Role, ParamsDef, _, _} when length(Params) =:= length(ParamsDef) ->
-            case compile_params(ParamsDef, Params, Buckets) of
+            case compile_params(ParamsDef, Params, Snapshot) of
                 false ->
                     false;
                 [] ->
@@ -1053,19 +1062,18 @@ validate_role(Role, Params, Definitions, Buckets) ->
             false
     end.
 
-get_visible_role_definitions(Config) ->
-    pipes:run(pipes:stream_list(get_definitions(Config, public)),
+get_visible_role_definitions() ->
+    pipes:run(pipes:stream_list(get_definitions(public)),
               visible_roles_filter(),
               pipes:collect()).
 
--spec validate_roles([rbac_role()], ns_config()) ->
+-spec validate_roles([rbac_role()], map()) ->
                             {GoodRoles :: [rbac_role()],
                              BadRoles :: [rbac_role()]}.
-validate_roles(Roles, Config) ->
-    Definitions = get_visible_role_definitions(Config),
-    Buckets = ns_bucket:get_buckets(Config),
+validate_roles(Roles, Snapshot) ->
+    Definitions = get_visible_role_definitions(),
     lists:foldl(fun (Role, {Validated, Unknown}) ->
-                        case validate_role(Role, Definitions, Buckets) of
+                        case validate_role(Role, Definitions, Snapshot) of
                             false ->
                                 {Validated, [Role | Unknown]};
                             {ok, R} ->
@@ -1073,9 +1081,9 @@ validate_roles(Roles, Config) ->
                         end
                 end, {[], []}, Roles).
 
--spec get_security_roles(ns_config()) -> [rbac_role()].
-get_security_roles(Config) ->
-    pipes:run(produce_roles_by_permission({[admin, security], any}, Config),
+-spec get_security_roles(map()) -> [rbac_role()].
+get_security_roles(Snapshot) ->
+    pipes:run(produce_roles_by_permission({[admin, security], any}, Snapshot),
               pipes:collect()).
 
 external_auth_polling_interval() ->
@@ -1093,9 +1101,10 @@ filter_out_invalid_roles_test() ->
                    {role2, [bucket_name],
                     [{name,<<"">>},{desc, <<"">>}],
                     [{[{bucket,bucket_name},n1ql,update],[execute]}]}],
-    Buckets = [{"bucket1", [{uuid, <<"id1">>}]}],
+    Snapshot = ns_bucket:toy_buckets([{"bucket1",
+                                       [{props, [{uuid, <<"id1">>}]}]}]),
     ?assertEqual([{role1, [{"bucket1", <<"id1">>}]}],
-                 filter_out_invalid_roles(Roles, Definitions, Buckets)).
+                 filter_out_invalid_roles(Roles, Definitions, Snapshot)).
 
 %% assertEqual is used instead of assert and assertNot to avoid
 %% dialyzer warnings
@@ -1144,10 +1153,13 @@ object_match_with_collections_test() ->
     ?assertEqual(false, object_match([{bucket, "b"}],
                                      [{collection, ["b1", any, any]}])).
 
+toy_buckets_props() ->
+    [{"test", [{props, [{uuid, <<"test_id">>}]}]},
+     {"default", [{props, [{uuid, <<"default_id">>}]},
+                  {collections, toy_manifest()}]}].
+
 toy_buckets() ->
-    [{"test", [{uuid, <<"test_id">>}]},
-     {"default", [{uuid, <<"default_id">>},
-                  {collections_manifest, toy_manifest()}]}].
+    ns_bucket:toy_buckets(toy_buckets_props()).
 
 toy_manifest() ->
     [{uid, 2},
@@ -1477,11 +1489,11 @@ enum_roles(Roles, ParamsList) ->
       end, ParamsList).
 
 produce_roles_by_permission_test_() ->
-    Config = [[{buckets, [{configs, toy_buckets()}]}]],
     GetRoles =
         fun (Permission) ->
                 proplists:get_keys(
-                  pipes:run(produce_roles_by_permission(Permission, Config),
+                  pipes:run(produce_roles_by_permission(Permission,
+                                                        toy_buckets()),
                             pipes:collect()))
         end,
     Test =
@@ -1582,16 +1594,18 @@ produce_roles_by_permission_test_() ->
             {[{bucket, "wrong"}, data, xattr], write})}]}.
 
 params_version_test() ->
-    Version1 = params_version(toy_buckets()),
-    Version2 = params_version(lists:keydelete("test", 1, toy_buckets())),
-    Version3 = params_version(lists:keyreplace(
-                                "test", 1, toy_buckets(),
-                                {"test", [{uuid, <<"test_id1">>}]})),
-    Version4 = params_version(
-                 lists:keyreplace(
-                   "test", 1, toy_buckets(),
-                   {"test", [{uuid, <<"test_id">>},
-                             {collections_manifest, toy_manifest()}]})),
+    Test = ?cut(params_version(ns_bucket:get_buckets(
+                                 ns_bucket:toy_buckets(_)))),
+    Update = ?cut(lists:keyreplace("test", 1, toy_buckets_props(),
+                                   {"test", _})),
+
+    Version1 = Test(toy_buckets_props()),
+    Version2 = Test(lists:keydelete("test", 1, toy_buckets_props())),
+    Version3 = Test(Update([{props, [{uuid, <<"test_id1">>}]}])),
+    %% TODO: to be modified after collections are moved to chronicle
+    Version4 = Test(Update([{props,
+                             [{uuid, <<"test_id">>},
+                              {collections_manifest, toy_manifest()}]}])),
     ?assertNotEqual(Version1, Version2),
     ?assertNotEqual(Version1, Version3),
     ?assertNotEqual(Version1, Version4).
