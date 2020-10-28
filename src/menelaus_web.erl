@@ -1052,15 +1052,13 @@ loop_inner(Req, Info, Path, PathTokens) ->
 -spec get_bucket_id(rbac_permission() | no_check) -> bucket_name() | false.
 get_bucket_id(no_check) ->
     false;
-get_bucket_id({Object, _Operations}) ->
-    case lists:keyfind(bucket, 1, Object) of
-        {bucket, any} ->
-            false;
-        {bucket, Bucket} ->
-            Bucket;
-        false ->
-            false
-    end.
+get_bucket_id({[{bucket, Bucket} | _], _}) when Bucket =/= any ->
+    Bucket;
+get_bucket_id({[{collection, [Bucket, _, _]} | _], _}) ->
+    true = Bucket =/= any,
+    Bucket;
+get_bucket_id(_) ->
+    false.
 
 -spec perform_action(mochiweb_request(), action()) -> term().
 perform_action(_Req, {done, RV}) ->
