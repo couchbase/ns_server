@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2020 Couchbase, Inc.
+%% @copyright 2020-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -23,7 +23,8 @@
 
 -export([query_range/6, query_range_async/7, query/4,
          format_value/1, parse_value/1, format_promql/1,
-         create_snapshot/2, reload/2, quit/2]).
+         create_snapshot/2, reload/2, quit/2,
+         delete_series/5, clean_tombstones/2]).
 
 -type metrics_data() :: [JSONObject :: {[{binary(), term()}]}].
 -type error() :: {error, timeout | binary()}.
@@ -32,7 +33,8 @@
 -type prom_step() :: pos_integer() | string().
 -type http_timeout() :: non_neg_integer().
 -type successful_post() :: {ok, json, {[JSONObject :: term()]}} |
-                           {ok, text, BinString :: binary()}.
+                           {ok, text, BinString :: binary()} |
+                           {ok, no_content, BinString :: binary()}.
 
 -spec quit(http_timeout(), prometheus_cfg:stats_settings()) -> ok | error().
 quit(Timeout, Settings) ->
@@ -58,6 +60,21 @@ create_snapshot(Timeout, Settings) ->
             {ok, filename:join([StoragePath, "snapshots", SnapshotName])};
         {error, Reason} ->
             {error, Reason}
+    end.
+
+delete_series(MatchPatterns, Start, End, Timeout, Settings) ->
+    Body = [{"start", Start}, {"end", End}] ++
+           [{"match[]", P} || P <- MatchPatterns],
+
+    case post("/api/v1/admin/tsdb/delete_series", Body, Timeout, Settings) of
+        {ok, no_content, _} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
+
+clean_tombstones(Timeout, Settings) ->
+    case post("/api/v1/admin/tsdb/clean_tombstones", [], Timeout, Settings) of
+        {ok, no_content, _} -> ok;
+        {error, Reason} -> {error, Reason}
     end.
 
 -spec query_range(Query :: prom_query(),
@@ -220,6 +237,7 @@ handle_post_async_reply({_Ref, {{_, Code, CodeText}, Headers, Reply}}) ->
         _ ->
             case Code of
                 200 -> {ok, text, Reply};
+                204 -> {ok, no_content, Reply};
                 _ when Reply =/= <<>> -> {error, Reply};
                 _ -> {error, CodeText}
             end

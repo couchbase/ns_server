@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2020 Couchbase, Inc.
+%% @copyright 2020-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -36,7 +36,9 @@
             specs = undefined,
             prometheus_port = undefined,
             reload_timer_ref = undefined,
-            intervals_calc_timer_ref = undefined}).
+            intervals_calc_timer_ref = undefined,
+            pruning_timer_ref = undefined,
+            decimation_levels = []}).
 
 -define(RELOAD_RETRY_PERIOD, 10000). %% in milliseconds
 -define(DEFAULT_PROMETHEUS_TIMEOUT, 5000). %% in milliseconds
@@ -45,6 +47,7 @@
 -define(DEFAULT_HIGH_CARD_SERVICES, [index, fts, kv, cbas, eventing]).
 -define(MAX_SCRAPE_INTERVAL, 6*60*60). %% 6h, in seconds
 -define(PROMETHEUS_SHUTDOWN_TIMEOUT, 20000). %% 20s, in milliseconds
+-define(SECS_IN_DAY, 24*60*60).
 
 -type stats_settings() :: [stats_setting() | stats_derived_setting()].
 -type stats_setting() ::
@@ -62,6 +65,15 @@
     {scrape_interval, pos_integer()} |
     {scrape_timeout, pos_integer()} |
     {snapshot_timeout_msecs, pos_integer()} |
+    {decimation_enabled, true | false} |
+    {truncation_enabled, true | false} |
+    {decimation_defs,
+     [{atom(), pos_integer(), pos_integer() | skip}]} |
+    {pruning_interval, pos_integer()} |
+    {truncate_max_age, pos_integer()} |
+    {min_truncation_interval, pos_integer()} |
+    {decimation_match_patterns, [string()]} |
+    {truncation_match_patterns, [string()]} |
     {token_file, string()} |
     {query_max_samples, pos_integer()} |
     {intervals_calculation_period, pos_integer() | undefined} |
@@ -127,6 +139,14 @@ default_settings() ->
      {scrape_interval, 10}, %% in seconds
      {scrape_timeout, 10}, %% in seconds
      {snapshot_timeout_msecs, 30000}, %% in milliseconds
+     {decimation_enabled, true},
+     {truncation_enabled, true},
+     {decimation_defs, decimation_definitions_default()},
+     {pruning_interval, 60000}, %% frequency to try to prune stats (msecs)
+     {truncate_max_age, 3*?SECS_IN_DAY}, %% age (secs) to truncate stats
+     {min_truncation_interval, 0}, %% Secs past max age to keep stats
+     {decimation_match_patterns, ["{job=\"general\"}"]},
+     {truncation_match_patterns, ["{job=~\".*_high_cardinality\"}"]},
      {token_file, "prometheus_token"},
      {query_max_samples, 200000},
      {intervals_calculation_period, 10*60*1000}, %% 10m
@@ -325,7 +345,8 @@ init([]) ->
     ensure_prometheus_config(Settings),
     generate_prometheus_auth_info(Settings),
     State = apply_config(#s{cur_settings = Settings}),
-    {ok, restart_intervals_calculation_timer(State)}.
+    State1 = init_pruning_timer(State),
+    {ok, restart_intervals_calculation_timer(State1)}.
 
 handle_call(settings, _From, #s{cur_settings = Settings} = State) ->
     {reply, Settings, State};
@@ -345,6 +366,9 @@ handle_info(reload_timer, State) ->
 handle_info(intervals_calculation_timer, #s{cur_settings = Settings} = State) ->
     maybe_update_scrape_dynamic_intervals(Settings),
     {noreply, restart_intervals_calculation_timer(State)};
+
+handle_info(pruning_timer, State) ->
+    {noreply, maybe_prune_stats(State#s{pruning_timer_ref = undefined})};
 
 handle_info({'EXIT', PortServer, Reason},
             #s{prometheus_port = PortServer} = State) ->
@@ -1038,6 +1062,209 @@ derived_metrics(eventing) ->
 derived_metrics(_) ->
     [].
 
+init_pruning_timer(#s{cur_settings = Settings} = State) ->
+    Levels = proplists:get_value(decimation_defs, Settings),
+    %% Round to the next minute (makes triaging using timestamps easier)
+    Now0 = os:system_time(seconds),
+    Now = round(Now0 / 60) * 60 + 60,
+
+    case ns_config:search_node(node(), ns_config:latest(),
+                               stats_last_decimation_time) of
+        {value, _} ->
+            not_changed;
+        false ->
+            ns_config:set({node, node(), stats_last_decimation_time}, Now)
+    end,
+
+    %% High-cardinality stats get truncated after a certain period of time.
+    case ns_config:search_node(node(), ns_config:latest(),
+                               stats_last_truncation_time) of
+        {value, _} ->
+            not_changed;
+        false ->
+            ns_config:set({node, node(), stats_last_truncation_time}, Now)
+    end,
+
+    start_pruning_timer(State#s{decimation_levels = Levels}).
+
+start_pruning_timer(#s{pruning_timer_ref = undefined,
+                       cur_settings = Settings} = State) ->
+    Interval = proplists:get_value(pruning_interval, Settings),
+    Ref = erlang:send_after(Interval, self(), pruning_timer),
+    State#s{pruning_timer_ref = Ref};
+start_pruning_timer(State) ->
+    State.
+
+maybe_prune_stats(#s{cur_settings = Settings} = State) ->
+    case proplists:get_bool(enabled, Settings) of
+        true ->
+            StatsDecimated = case proplists:get_bool(decimation_enabled,
+                                                     Settings) of
+                                 true ->
+                                     maybe_decimate_stats(State);
+                                 false ->
+                                     false
+                             end,
+            StatsTruncated = case proplists:get_bool(truncation_enabled,
+                                                     Settings) of
+                                 true ->
+                                     maybe_truncate_stats(State);
+                                 false ->
+                                     false
+                             end,
+            case StatsDecimated orelse StatsTruncated of
+                true ->
+                    clean_tombstones(Settings);
+                false ->
+                    ok
+            end;
+        false ->
+            ok
+    end,
+    start_pruning_timer(State).
+
+%% The definitions of the decimation levels consist of the name of the level,
+%% the length (duration) for the level, and the length of time in which
+%% to decimate (or "skip" if no decimation for that level).
+%%
+%% Note: The length of time in which to decimate must be a multiple of the
+%%       value from the prior level (unless it's skip). This is needed to
+%%       keep the alignment of the intervals so we can keep only the
+%%       first scrape_interval seconds of data per interval.
+decimation_definitions_default() ->
+    [%% No decimation for the first 3 days
+     {low, 3 * ?SECS_IN_DAY, skip},
+     %% Keep 1 per minute for the next 4 days
+     {medium, 4 * ?SECS_IN_DAY, 60},
+     %% Keep 1 hour for the next 359 days
+     {large, 359 * ?SECS_IN_DAY, 6 * 60 * 60}].
+%% It is TBD on data older than one year. Perhaps we'll let the prometheus
+%% data management handle it (storage.tsdb.retention.size and
+%% storage.tsdb.retention.time).
+
+%% Pure function that processes the Levels and LastDecimationTime and
+%% returns a list of intervals to delete.
+decimate_stats(Levels, LastDecimationTime, Now, Gap) ->
+    TimeSinceLastDecimation = Now - LastDecimationTime,
+    {_, Intervals} =
+        lists:foldl(
+          fun ({_Coarseness, Duration, skip},
+               {LevelEnd, DeleteIntervals}) ->
+                  %% No decimation for this level.
+                  {LevelEnd - Duration, DeleteIntervals};
+              ({Coarseness, Duration, Interval},
+               {LevelEnd, DeleteIntervals}) ->
+                  PrevDecLevelEnd = LevelEnd - TimeSinceLastDecimation,
+                  LevelStart = max(PrevDecLevelEnd, LevelEnd - Duration),
+                  ToDelete = deletion_intervals(Coarseness, LevelStart,
+                                                LevelEnd, Interval, Gap),
+                  {LevelEnd - Duration, ToDelete ++ DeleteIntervals}
+          end, {Now, []}, Levels),
+    Intervals.
+
+deletion_intervals(Coarseness, Start, End, Interval, Gap) ->
+    StartAligned = floor(Start / Interval) * Interval,
+    EndAligned = floor(End / Interval) * Interval,
+    Num = (EndAligned - StartAligned) div Interval,
+    ToDelete = [{Coarseness, max(StartAligned + N * Interval + Gap, Start),
+                 StartAligned + (N + 1) * Interval}
+                   || N <- lists:seq(0, Num - 1)],
+    LastDeletionInterval = case max(EndAligned + Gap, Start) < End  of
+                               true -> [{Coarseness,
+                                         max(EndAligned + Gap, Start), End}];
+                               false -> []
+                           end,
+    ToDelete ++ LastDeletionInterval.
+
+maybe_decimate_stats(#s{decimation_levels = Levels,
+                        cur_settings = Settings}) ->
+    Now = os:system_time(seconds),
+    {value, LastDecimationTime} =
+        ns_config:search_node(node(), ns_config:latest(),
+                              stats_last_decimation_time),
+    ScrapeInterval = proplists:get_value(scrape_interval, Settings),
+    Deletions = decimate_stats(Levels, LastDecimationTime, Now, ScrapeInterval),
+
+    lists:map(
+      fun ({Coarseness, StartTime, EndTime}) ->
+              delete_stats(Coarseness, StartTime, EndTime, Settings)
+      end, Deletions),
+
+    ns_config:set({node, node(), stats_last_decimation_time}, Now),
+
+    %% Let caller know if any deletions were done
+    Deletions =/= [].
+
+%% Do the actual deletion of the stats
+delete_stats(Coarseness, StartTime, EndTime, Settings) ->
+    %% Only low-cardinality stats are decimated.
+    MatchPatterns = proplists:get_value(decimation_match_patterns, Settings),
+
+    ?log_debug("Deleting '~p' level stats from ~p (~p) to ~p (~p)",
+               [Coarseness,
+                calendar:system_time_to_rfc3339(StartTime, [{offset, 0}]),
+                StartTime,
+                calendar:system_time_to_rfc3339(EndTime, [{offset, 0}]),
+                EndTime]),
+
+    delete_series(MatchPatterns, StartTime, EndTime, 30000, Settings).
+
+maybe_truncate_stats(#s{cur_settings = Settings} = State) ->
+    Now = os:system_time(seconds),
+    %% XXX: maybe the last truncation time doesn't need to be saved (if
+    %% prometheus is smart about "minimum possible time" such that we don't
+    %% revisit the same time frames over and over again).
+    {value, LastTruncationTime} =
+        ns_config:search_node(node(), ns_config:latest(),
+                              stats_last_truncation_time),
+    MaxAge = proplists:get_value(truncate_max_age, Settings),
+    End = Now - MaxAge,
+    %% Each call truncates the little bit that has exceeded the age limit
+    %% since the last call.  We might want to do this less frequently e.g.
+    %% when a certain time frame is exceeded.
+    case End - LastTruncationTime > 0 of
+        true ->
+            do_truncate_stats(LastTruncationTime, End, State),
+            ?log_debug("Updating last truncation times, Old ~p, New ~p",
+                       [LastTruncationTime, End]),
+            ns_config:set({node, node(), stats_last_truncation_time}, End),
+            true;
+        false ->
+            false
+    end.
+
+do_truncate_stats(StartTime, EndTime, #s{cur_settings = Settings}) ->
+    %% Only high-cardinality stats are truncated
+    MatchPatterns = proplists:get_value(truncation_match_patterns, Settings),
+
+    ?log_debug("Truncating stats from ~p (~p) to ~p (~p)",
+               [calendar:system_time_to_rfc3339(StartTime, [{offset, 0}]),
+                StartTime,
+                calendar:system_time_to_rfc3339(EndTime, [{offset, 0}]),
+                EndTime]),
+
+    delete_series(MatchPatterns, StartTime, EndTime, 30000, Settings).
+
+delete_series(MatchPatterns, Start, End, Timeout, Settings) ->
+
+    case prometheus:delete_series(MatchPatterns, Start, End, Timeout,
+                                  Settings) of
+        ok -> ok;
+        {error, Reason} ->
+            ?log_error("Failed to delete stats: ~p", [Reason]),
+            {error, Reason}
+    end.
+
+clean_tombstones(Settings) ->
+    ?log_debug("Cleaning tombstones"),
+    case prometheus:clean_tombstones(30000, Settings) of
+        ok -> ok;
+        {error, Reason} ->
+            ?log_error("Failed to clean tombstones: ~p", [Reason]),
+            {error, Reason}
+    end.
+
+
 -ifdef(TEST).
 
 dynamic_intervals_monotonicity_test_() ->
@@ -1373,5 +1600,99 @@ prometheus_config_afamily_test() ->
                                [#{targets := [<<"[::1]:11280">>]}]}]},
       Cfg).
 
--endif.
+prometheus_basic_decimation_test() ->
+    Now = floor(os:system_time(seconds) / 60) * 60,
+    %% Coarseness, Duration, Interval
+    Levels = [{low, 3 * ?SECS_IN_DAY, skip},
+              {medium, 4 * ?SECS_IN_DAY, 60},
+              {large, 359 * ?SECS_IN_DAY, 6 * 60 * 60}],
+    LastDecimationTime = Now - 60,
 
+    ExpectedDeletions = [{large,
+                          Now - 7 * ?SECS_IN_DAY - 60,
+                          Now - 7 * ?SECS_IN_DAY},
+                         {medium,
+                          Now - 3 * ?SECS_IN_DAY - 60 + 10,
+                          Now - 3 * ?SECS_IN_DAY}],
+
+    Deletions = decimate_stats(Levels, LastDecimationTime, Now, 10),
+    ?assertMatch(Deletions, ExpectedDeletions).
+
+run_level(0) ->
+    ok;
+run_level(Val) ->
+    Now = floor(os:system_time(seconds) / 60) * 60 + misc:rand_uniform(0, 60),
+    ScrapeInterval = misc:rand_uniform(10, 60),
+    LastDecimationTime = Now - misc:rand_uniform(0, 300),
+    LowDuration = misc:rand_uniform(1, 3 * ?SECS_IN_DAY),
+    MediumDuration = misc:rand_uniform(1, 4 * ?SECS_IN_DAY),
+    MediumInterval = 60 * misc:rand_uniform(1, 10),
+    LargeDuration = misc:rand_uniform(1, 359 * ?SECS_IN_DAY),
+    %% Must be a multiple of medium
+    LargeInterval = MediumInterval * misc:rand_uniform(2, 100),
+    Level = [{low, LowDuration, skip},
+             {medium, MediumDuration, MediumInterval},
+             {large, LargeDuration, LargeInterval}],
+    Results = decimate_stats(Level, LastDecimationTime, Now, ScrapeInterval),
+    %% Validate the results are reasonable values (e.g. not more recent than
+    %% "Now")
+    lists:foreach(
+      fun ({_, Start, End}) ->
+              true = Start =< End,
+              true = Start >= Now - LowDuration - MediumDuration -
+              LargeDuration,
+              true = End =< Now - LowDuration
+      end, Results),
+
+    run_level(Val - 1).
+
+prometheus_random_decimation_values_test() ->
+    run_level(1000).
+
+prometheus_decimation_test() ->
+    SixHours = 6 * 60 * 60,
+    Now = floor(os:system_time(seconds) / SixHours) * SixHours,
+    %% Coarseness, Duration, Interval
+    Levels = [{low, 3 * ?SECS_IN_DAY, skip},
+              {medium, 4 * ?SECS_IN_DAY, 60},
+              {large, 359 * ?SECS_IN_DAY, SixHours}],
+    LastDecimationTime = Now - 4 * ?SECS_IN_DAY,
+
+    ExpectedLarge = [{large,
+                      Now - 11 * ?SECS_IN_DAY + SixHours * L + 10,
+                      Now - 11 * ?SECS_IN_DAY + SixHours * L + SixHours}
+                     || L <- lists:seq(0, 4 * ?SECS_IN_DAY div SixHours - 1)],
+    ExpectedMedium = [{medium,
+                       Now - 7 * ?SECS_IN_DAY + 60 * M + 10,
+                       Now - 7 * ?SECS_IN_DAY + 60 * M + 60}
+                      || M <- lists:seq(0, 4 * ?SECS_IN_DAY div 60 - 1)],
+
+    ExpectedDeletions = ExpectedLarge ++ ExpectedMedium,
+
+    Deletions = decimate_stats(Levels, LastDecimationTime, Now, 10),
+    ?assertMatch(Deletions, ExpectedDeletions).
+
+%% This test splits the sample to accommodate the gap at the interval boundary.
+prometheus_decimation_split_sample_test() ->
+    %% Set the time to be 23 seconds into the interval
+    Now = floor(os:system_time(seconds) / 60) * 60 + 23,
+
+    %% Coarseness, Duration, Interval
+    Levels = [{low, 5 * 60, skip},
+              {medium, 10 * 60, 60}],
+    LastDecimationTime = Now - 60,
+
+    %% The deletions should be the remaining 37 seconds in this minute for
+    %% the first sample. And then the 10 second gap where we save the data
+    %% and then the remaining 13 seconds.
+    ExpectedDeletions = [{medium,
+                          Now - 6 * 60,
+                          (Now - 6 * 60) div 60 * 60 + 60},
+                         {medium,
+                          (Now - 6 * 60) div 60 * 60 + 60 + 10,
+                          (Now - 6 * 60) div 60 * 60 + 60 + 10 + 13}],
+
+    Deletions = decimate_stats(Levels, LastDecimationTime, Now, 10),
+    ?assertMatch(Deletions, ExpectedDeletions).
+
+-endif.
