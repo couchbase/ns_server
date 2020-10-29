@@ -406,8 +406,20 @@ usage: {program_name}
     [--pluggable-config=<file name>] (plug-ins)
     [--minified] (use minified files)
     [--disable-autocomplete] (disable auto-completion in UI)
-    [--pretend-version=<version> (spoof different version;
-                                  default: current version)
+    [--pretend-version=<version>
+        When setting up a new cluster, spoof different version. Default
+        is to use current version. Can simplify basic mixed-version
+        cluster testing. E.g. (each command in its own terminal):
+
+       ./cluster_run -n2 --pretend-version 6.5
+       ./cluster_run -n2 --start-index 2
+       ./cluster_connect -n4 -Tkv
+
+       (Note the down-version cluster needs to be specified first as
+       you can't add down-version nodes to an up-version cluster.)
+       This will create a four node kv-only cluster with first two nodes
+       running at 6.5, and the other two running the "trunk" version.
+
     [--community] (boot as Community Edition)
     [--dev-preview-default=<true|false>]
         Sets the default value of developer preview enabled mode.
