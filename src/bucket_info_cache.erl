@@ -275,7 +275,11 @@ build_bucket_capabilities(BucketConfig) ->
                      {durableWrite, cluster_compat_mode:is_cluster_65()},
                      {tombstonedUserXAttrs,
                       cluster_compat_mode:is_cluster_66()},
-                     {couchapi, ns_bucket:can_have_views(BucketConfig)}],
+                     {couchapi, ns_bucket:can_have_views(BucketConfig)},
+                     {'subdoc.ReplaceBodyWithXattr',
+                      cluster_compat_mode:is_cluster_cheshirecat()},
+                     {'subdoc.DocumentMacroSupport',
+                      cluster_compat_mode:is_cluster_cheshirecat()}],
 
                 [C || {C, true} <- Conditional] ++
                     [dcp, cbhello, touch, cccp, xdcrCheckpointing, nodesExt,
