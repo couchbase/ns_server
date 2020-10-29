@@ -113,4 +113,5 @@ upgrade(?VERSION_66, Config) ->
     {?VERSION_CHESHIRECAT,
      menelaus_users:config_upgrade(?VERSION_CHESHIRECAT) ++
          menelaus_web_alerts_srv:config_upgrade_to_cheshire_cat(Config) ++
-         index_settings_manager:config_upgrade_to_cheshire_cat(Config)}.
+         index_settings_manager:config_upgrade_to_cheshire_cat(Config) ++
+         query_settings_manager:config_upgrade_to_cheshire_cat(Config)}.

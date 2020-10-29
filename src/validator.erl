@@ -44,6 +44,7 @@
          string/5,
          dir/2,
          email_address/2,
+         time_duration/2,
          has_params/1,
          unsupported/1,
          required/2,
@@ -434,6 +435,12 @@ email_address(Name, State) ->
                              {error, "The value must be a valid email address"}
                      end
              end, Name, State).
+
+%% Validates a subset of the golang time.duration values
+time_duration(Name, State) ->
+    string(Name, "^[0-9]+(ns|us|ms|s|m|h)$", [dollar_endonly],
+           "Must be in the form of number{ns|us|ms|s|m|h}",
+           State).
 
 has_params(#state{kv = []} = State) ->
     return_error("_", "Request should have parameters", State);

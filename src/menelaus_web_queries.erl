@@ -38,6 +38,7 @@ settings_post_validators() ->
      validator:dir(queryTmpSpaceDir, _),
      validator:convert(queryTmpSpaceDir, fun list_to_binary/1, _)] ++
         settings_post_validators_65() ++
+        settings_post_validators_cheshirecat() ++
         [validator:unsupported(_)].
 
 settings_post_validators_65() ->
@@ -55,6 +56,17 @@ settings_post_validators_65() ->
              validator:one_of(queryLogLevel, ["debug", "trace", "info", "warn",
                                               "error", "severe", "none"], _),
              validator:convert(queryLogLevel, fun list_to_binary/1, _)];
+        false ->
+            []
+    end.
+
+settings_post_validators_cheshirecat() ->
+    case cluster_compat_mode:is_cluster_cheshirecat() of
+        true ->
+            [validator:time_duration(queryTxTimeout, _),
+             validator:convert(queryTxTimeout, fun list_to_binary/1, _),
+             validator:integer(queryMemoryQuota, _),
+             validator:boolean(queryUseCBO, _)];
         false ->
             []
     end.

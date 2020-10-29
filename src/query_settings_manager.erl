@@ -28,7 +28,8 @@
          get_from_config/3,
          update/2,
          config_upgrade_to_55/0,
-         config_upgrade_to_65/1
+         config_upgrade_to_65/1,
+         config_upgrade_to_cheshire_cat/1
         ]).
 
 -export([cfg_key/0,
@@ -75,6 +76,13 @@ config_upgrade_to_65(Config) ->
       ?MODULE, Config, [{generalSettings, NewSettings}],
       known_settings(?VERSION_65)).
 
+config_upgrade_to_cheshire_cat(Config) ->
+    NewSettings = general_settings_defaults(?VERSION_CHESHIRECAT) --
+        general_settings_defaults(?VERSION_65),
+    json_settings_manager:upgrade_existing_key(
+      ?MODULE, Config, [{generalSettings, NewSettings}],
+      known_settings(?VERSION_CHESHIRECAT)).
+
 known_settings() ->
     known_settings(cluster_compat_mode:get_compat_version()).
 
@@ -103,6 +111,14 @@ general_settings(Ver) ->
                  {queryLogLevel,           "loglevel",            <<"info">>},
                  {queryMaxParallelism,     "max-parallelism",     1},
                  {queryN1QLFeatCtrl,       "n1ql-feat-ctrl",      12}];
+            false ->
+                []
+        end ++
+        case cluster_compat_mode:is_version_cheshirecat(Ver) of
+            true ->
+                [{queryTxTimeout,          "txtimeout",           <<"0ms">>},
+                 {queryMemoryQuota,        "memory-quota",        0},
+                 {queryUseCBO,             "use-cbo",             true}];
             false ->
                 []
         end.
