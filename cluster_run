@@ -409,6 +409,14 @@ usage: {program_name}
     [--pretend-version=<version> (spoof different version;
                                   default: current version)
     [--community] (boot as Community Edition)
+    [--dev-preview-default=<true|false>]
+        Sets the default value of developer preview enabled mode.
+        This flag only has an effect if the cluster is being set up
+        for the first time and in that case, this option sets the
+        value of the dev preview mode. Otherwise, it doesn't
+        override the dev preview mode setting. Useful when combined
+        with --pretend-version as that option doesn't work with
+        clusters that are defaulted to be in developer preview mode.
 """
 
 def usage():
@@ -444,7 +452,8 @@ def main():
                                            "pluggable-config=",
                                            "minified", "disable-autocomplete",
                                            "community",
-                                           "pretend-version=", "afamily="])
+                                           "pretend-version=", "afamily=",
+                                           "dev-preview-default="])
     except getopt.GetoptError as err:
         # print help information and exit:
         print(str(err))  # will print something like "option -a not recognized"
@@ -464,6 +473,7 @@ def main():
     use_minified = False
     disable_autocomplete = "{disable_autocomplete,false}"
     pretend_version = None
+    dev_preview_default = None
     force_community_edition = False
 
     for o, a in optlist:
@@ -492,6 +502,8 @@ def main():
             disable_autocomplete = "{disable_autocomplete,true}"
         elif o == "--pretend-version":
             pretend_version = a
+        elif o == "--dev-preview-default":
+            dev_preview_default = a == 'true'
         elif o in ("--afamily", "-p"):
             if a == "ipv6":
                 ipv6 = True
@@ -584,6 +596,10 @@ def main():
     if pretend_version is not None:
         extra_args += ["-ns_server",
                        "pretend_version", '"{}"'.format(pretend_version)]
+
+    if dev_preview_default is not None:
+        extra_args += ["-ns_server", "developer_preview_enabled_default",
+                       "true" if dev_preview_default else "false"]
 
     nodes = start_cluster(num_nodes, start_index, extra_args,
                           prepend_args, force_community_edition)
