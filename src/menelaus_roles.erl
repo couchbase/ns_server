@@ -809,9 +809,7 @@ start_compiled_roles_cache() ->
                  menelaus_users:get_users_version(),
                  menelaus_users:get_groups_version(),
                  ns_config_auth:is_system_provisioned(),
-                 [{Name, ns_bucket:bucket_uuid(BucketConfig)} ||
-                     {Name, BucketConfig} <- ns_bucket:get_buckets(
-                                               ns_config:latest())]}
+                 params_version(ns_bucket:get_buckets())}
         end,
     GetEvents =
         case ns_node_disco:couchdb_node() == node() of
