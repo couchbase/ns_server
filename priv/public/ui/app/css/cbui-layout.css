@@ -249,6 +249,9 @@ footer {
 .min-width-zero {
   min-width: 0;
 }
+.min-width-10 {
+  min-width: 10rem;
+}
 
 .max-width-1 {
   max-width: 4rem; /* 1rem = 16px, 4rem = 64px */
@@ -628,4 +631,10 @@ footer {
 }
 .border-0 {
   border-width: 0!important;
+}
+.overflow-auto {
+  overflow: auto;
+}
+.overflow-hidden {
+  overflow: hidden;
 }

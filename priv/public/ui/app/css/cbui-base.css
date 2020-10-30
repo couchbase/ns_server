@@ -628,10 +628,8 @@ table td {
   border-top: 1px solid #eceff2;
 }
 table th {
-  background: #eceff2;
   color: #555;
-  font-size: .813rem;
-  font-weight: 600;
+  font-size: .75rem;
   padding: .5rem 1rem;
 }
 table tr.has-hover:hover {

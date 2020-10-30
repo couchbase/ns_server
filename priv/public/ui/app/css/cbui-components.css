@@ -3531,10 +3531,25 @@ a:hover.x-close-sml {
   border-width: 0;
   padding-top: 0!important;
 }
-
 div.border-top + div.border-top {
   border: 1px solid #d1d1d1;
   border-width: 1px 0 0 0;
   padding-top: 1rem!important;
+}
 
+.fts-index-editor {
+  flex: 1 0 0;
+  margin-bottom: 2rem;
+}
+.fts-index-editor .CodeMirror {
+  height: 420px;
+}
+.fts-index-editor .CodeMirror * {
+  font-size: .8125rem !important;
+  cursor: pointer !important;
+}
+.fts-index-editor .filler {
+  width: 40vw;
+  height: 420px;
+  background-color: #f6f7f9;
 }
