@@ -38,5 +38,6 @@ class MnXDCRDeleteRefComponent extends MnLifeCycleHooksToStream {
       });
 
     this.activeModal = activeModal;
+    this.deleteRemoteClusters = mnXDCRService.stream.deleteRemoteClusters;
   }
 }
