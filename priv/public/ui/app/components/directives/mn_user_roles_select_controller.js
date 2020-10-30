@@ -79,6 +79,7 @@ function mnUserRolesSelectFormDirective() {
     $scope.del = del;
     $scope.isRoleDisabled = isRoleDisabled;
     $scope.isSelectDisabled = isSelectDisabled;
+    $scope.changeParams = changeParams;
 
     function isSelectDisabled($index) {
       var headParam = $scope.item.params[$index - 1];
@@ -87,6 +88,21 @@ function mnUserRolesSelectFormDirective() {
 
     function isRoleDisabled(role) {
       return role.role !== 'admin' && $scope.state.selectedRoles["admin"];
+    }
+
+    function changeParams(param) {
+      if ((param == "bucket_name") &&
+          $scope.form["bucket_name"] &&
+          $scope.form["scope_name"] !== undefined &&
+         $scope.form["collection_name"] !== undefined) {
+        $scope.form["scope_name"] = "*";
+        $scope.form["collection_name"] = "*";
+      }
+
+      if ((param == "scope_name") &&
+          $scope.form["collection_name"] !== undefined) {
+        $scope.form["collection_name"] = "*";
+      }
     }
 
     function del(cfg) {
@@ -100,6 +116,7 @@ function mnUserRolesSelectFormDirective() {
         return;
       }
       rolesConfigs.unshift(cfg);
+      $scope.item.params.forEach(param => ($scope.form[param] = null));
     }
   }
 }

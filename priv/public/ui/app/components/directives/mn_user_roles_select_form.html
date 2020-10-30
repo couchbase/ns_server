@@ -5,8 +5,9 @@
        ng-style="{width: 100 / item.params.length + '%', margin: '0 0.2rem'}"
        ng-model="form[param]"
        ng-disabled="isRoleDisabled(item) || isSelectDisabled($index)"
-       ng-init="form[param] = ''">
-      <option value="">*</option>
+       ng-change="changeParams(param)">
+      <option value="" disabled selected>{{param.split('_')[0]}}</option>
+      <option value="*">*</option>
       <option
          ng-repeat="value in form[item.params[$index - 1] || 'init'].children[param]"
          ng-value="value">
@@ -14,6 +15,7 @@
       </option>
     </select>
     <a ng-click="submit()"
+       ng-show="form['bucket_name']"
        style="min-width: auto; padding: 0 1rem;">
       add
     </a>
