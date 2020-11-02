@@ -1,13 +1,13 @@
 <mn-element-cargo depot="actions">
   <div class="header-controls resp-sml">
     <a
-       [hidden]="!((permissions.cluster.xdcr.remote_clusters.read && (references | async)?.length) && permissions.cluster.xdcr.settings.read && permissions.cluster.xdcr.settings.write && permissions.cluster.bucket['.'].xdcr.write)"
+       [hidden]="!(((permissions | async)?.cluster.xdcr.remote_clusters.read && (references | async)?.length) && (permissions | async)?.cluster.xdcr.settings.read && (permissions | async)?.cluster.xdcr.settings.write && (permissions | async)?.cluster.bucket['.'].xdcr.write)"
        uiSref="app.admin.replications.add"
        class="resp-hide-sml">
       ADD REPLICATION
     </a>
     <a
-       [hidden]="!permissions.cluster.xdcr.remote_clusters.write"
+       [hidden]="!(permissions | async)?.cluster.xdcr.remote_clusters.write"
        (click)="onAddReference.next()"
        class="resp-hide-sml">
       ADD REMOTE
@@ -15,7 +15,7 @@
   </div>
 </mn-element-cargo>
 
-<div [hidden]="!permissions.cluster.xdcr.remote_clusters.read">
+<div [hidden]="!(permissions | async)?.cluster.xdcr.remote_clusters.read">
   <h4>Remote Clusters</h4>
   <div class="cbui-table" [hidden]="!(references | async)?.length">
     <div class="cbui-table-header padding-left">
@@ -45,7 +45,7 @@
 
 <!-- Outgoing Replications ************************************************ -->
 <div
-   [hidden]="!(permissions.cluster.tasks.read && (references | async)?.length)"
+   [hidden]="!((permissions | async)?.cluster.tasks.read && (references | async)?.length)"
    class="margin-top-1-5">
   <h4>Outgoing Replications</h4>
   <div

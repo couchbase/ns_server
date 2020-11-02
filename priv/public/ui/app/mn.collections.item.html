@@ -8,7 +8,7 @@
     <a
        class="nowrap"
        style="margin-right: -3px;"
-       [hidden]="!permissions.cluster.bucket[bucketName]?.collections.delete ||
+       [hidden]="!(permissions | async)?.cluster.collection[bucketName + ':' + scopeName + ':' + '*']?.collections?.write ||
               collection.name.startsWith('_')"
        (click)="$event.stopPropagation();clickDeleteCollection.next();">
       Drop</a>
@@ -16,7 +16,7 @@
        class="margin-left-half"
        style="margin-right: -4px;"
        (click)="$event.stopPropagation()"
-       [hidden]="!permissions.cluster.bucket['.'].collections.read"
+       [hidden]="!(permissions | async)?.cluster.collection[bucketName + ':' + scopeName + ':' + collection.name]?.data?.docs?.read"
        uiSref="app.admin.docs.editor"
        [uiParams]="{bucket: bucketName, scope: scopeName, collection: collection.name}">
       Documents</a>

@@ -18,13 +18,13 @@
      class="cbui-tablerow-expanded">
     <div class="width-12 text-right margin-top-half">
       <button
-         [hidden]="!permissions.cluster.xdcr.remote_clusters.write"
+         [hidden]="!(permissions | async)?.cluster.xdcr.remote_clusters.write"
          (click)="onDeleteReference.next(item)"
          class="outline margin-right-quarter">
         Delete
       </button>
       <button
-         [hidden]="!permissions.cluster.xdcr.remote_clusters.write"
+         [hidden]="!(permissions | async)?.cluster.xdcr.remote_clusters.write"
          (click)="onAddReference.next(item)">Edit</button>
     </div>
   </div>

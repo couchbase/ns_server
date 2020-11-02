@@ -121,7 +121,7 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
     this.scopesFilter = scopesFilter;
     this.scopesPaginator = scopesPaginator;
 
-    this.permissions = mnPermissions.export;
+    this.permissions = mnPermissions.stream;
     this.buckets = getBuckets;
     this.bucketSelect = bucketSelect;
     this.scopes = scopes;
@@ -130,6 +130,6 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
   }
 
   trackByFn(_, scope) {
-    return scope.name;
+    return this.bucketSelect.get('item').value.name + scope.uid + scope.name;
   }
 }

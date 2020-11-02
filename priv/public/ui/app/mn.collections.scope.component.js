@@ -58,12 +58,21 @@ class MnCollectionsScopeComponent extends MnLifeCycleHooksToStream {
     this.uiRouter = uiRouter;
     this.clickDeleteScope = clickDeleteScope;
     this.clickAddCollection = clickAddCollection;
-    this.permissions = mnPermissions.export;
+    this.permissions = mnPermissions.stream;
+    this.mnPermissions = mnPermissions;
   }
 
   ngOnInit() {
     var detailsHashObserver =
         new DetailsHashObserver(this.uiRouter, this, "scopeDetails", this.scope.name);
     this.detailsHashObserver = detailsHashObserver;
+    this.interestingPermissions = this.mnPermissions.getPerScopePermissions(this.bucketName,
+                                                                            this.scope.name);
+    this.interestingPermissions.forEach(this.mnPermissions.set);
+    this.mnPermissions.throttledCheck();
+  }
+
+  ngOnDestroy() {
+    this.interestingPermissions.forEach(this.mnPermissions.remove);
   }
 }

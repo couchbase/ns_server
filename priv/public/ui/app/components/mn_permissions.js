@@ -1,6 +1,7 @@
 import angular from "/ui/web_modules/angular.js";
 import _ from "/ui/web_modules/lodash.js";
 import mnBucketsService from "/ui/app/mn_admin/mn_buckets_service.js";
+import {BehaviorSubject} from "/ui/web_modules/rxjs.js";
 
 export default "mnPermissions";
 
@@ -31,7 +32,8 @@ function mnPermissionsProvider() {
       "cluster.bucket[" + name + "].n1ql.index!write",
       "cluster.bucket[" + name + "].collections!read",
       "cluster.bucket[" + name + "].collections!write",
-      "cluster.bucket[" + name + "].collections!delete"
+      "cluster.collection[" + name + ":.:.].collections!read",
+      "cluster.collection[" + name + ":.:.].collections!write"
 
     ];
     if (name === "." || buckets.byName[name].isMembase) {
@@ -95,6 +97,14 @@ function mnPermissionsProvider() {
     return this;
   }
 
+  function remove(permission) {
+    let index = interestingPermissions.indexOf(permission);
+    if (index > 0) {
+      interestingPermissions.splice(index, 1);
+    }
+    return this;
+  }
+
   function setBucketSpecific(func) {
     if (angular.isFunction(func)) {
       bucketSpecificPermissions.push(func);
@@ -113,8 +123,14 @@ function mnPermissionsProvider() {
       clear: clear,
       get: doCheck,
       check: check,
+      set: set,
+      stream: new BehaviorSubject(),
+      remove: remove,
+      throttledCheck: _.debounce(getFresh, 200),
       getFresh: getFresh,
       getBucketPermissions: getBucketPermissions,
+      getPerScopePermissions: getPerScopePermissions,
+      getPerCollectionPermissions: getPerCollectionPermissions,
       export: {
         data: {},
         cluster: {},
@@ -130,6 +146,17 @@ function mnPermissionsProvider() {
     interestingPermissions.push(generateBucketPermissions("."));
 
     return mnPermissions;
+
+    function getPerScopePermissions(bucketName, scopeName) {
+      let any = bucketName + ":" + scopeName + ":.";
+      let all = bucketName + ":" + scopeName + ":*"
+      return ["cluster.collection[" + any + "].data.docs!read",
+              "cluster.collection[" + all + "].collections!write"];
+    }
+    function getPerCollectionPermissions(bucketName, scopeName, collectionName) {
+      let params = bucketName + ":" + scopeName + ":" + collectionName;
+      return ["cluster.collection[" + params + "].data.docs!read"];
+    }
 
     function clear() {
       delete $rootScope.rbac;
@@ -193,6 +220,8 @@ function mnPermissionsProvider() {
         mnPermissions.export.data = resp.data;
         mnPermissions.export.cluster = cache.cluster;
         mnPermissions.export.bucketNames = resp.bucketNames || {};
+
+        mnPermissions.stream.next(mnPermissions.export);
 
         return mnPermissions.export;
       });

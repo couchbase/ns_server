@@ -52,7 +52,7 @@ class MnXDCRItemComponent extends MnLifeCycleHooksToStream {
     this.statusClass = humanStatus.pipe(map(getStatusClass));
     this.toBucket = itemStream.pipe(map(getTargetBucket));
     this.uiRouter = uiRouter;
-    this.permissions = mnPermissions.export;
+    this.permissions = mnPermissions.stream;
     this.toCluster =
       combineLatest(
         itemStream,

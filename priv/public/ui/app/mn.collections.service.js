@@ -58,20 +58,21 @@ class MnCollectionsService {
 
     this.stream.collectionBuckets = mnBucketsService.stream.getBuckets
       .pipe(map(buckets => buckets
-                .filter(bucket =>
-                        mnPermissions.export.cluster.bucket[bucket.name] &&
-                        mnPermissions.export.cluster.bucket[bucket.name].collections.read)),
+                .filter(bucket => {
+                  let scope = mnPermissions.export.cluster.collection[bucket.name + ':.:.'];
+                  return scope && scope.collections.read;
+                })),
             shareReplay({refCount: true, bufferSize: 1}));
   }
 
   getManifest(bucket) {
     bucket = encodeURIComponent(bucket);
-    return this.http.get(`${restApiBase}/${bucket}/collections`);
+    return this.http.get(`${restApiBase}/${bucket}/scopes`);
   }
 
   addScope({name, bucketName}) {
     bucketName = encodeURIComponent(bucketName);
-    return this.http.post(`${restApiBase}/${bucketName}/collections`, {
+    return this.http.post(`${restApiBase}/${bucketName}/scopes`, {
       name: name
     });
   }
@@ -79,19 +80,19 @@ class MnCollectionsService {
   addCollection([bucket, scope, name]) {
     bucket = encodeURIComponent(bucket);
     scope = encodeURIComponent(scope);
-    return this.http.post(`${restApiBase}/${bucket}/collections/${scope}`, {name: name});
+    return this.http.post(`${restApiBase}/${bucket}/scopes/${scope}/collections`, {name: name});
   }
 
   deleteScope([bucket, scope]) {
     bucket = encodeURIComponent(bucket);
     scope = encodeURIComponent(scope);
-    return this.http.delete(`${restApiBase}/${bucket}/collections/${scope}`);
+    return this.http.delete(`${restApiBase}/${bucket}/scopes/${scope}`);
   }
 
   deleteCollection([bucket, scope, collection]) {
     bucket = encodeURIComponent(bucket);
     scope = encodeURIComponent(scope);
     collection = encodeURIComponent(collection);
-    return this.http.delete(`${restApiBase}/${bucket}/collections/${scope}/${collection}`);
+    return this.http.delete(`${restApiBase}/${bucket}/scopes/${scope}/collections/${collection}`);
   }
 }

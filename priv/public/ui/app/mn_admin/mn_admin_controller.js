@@ -347,7 +347,7 @@ function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsServic
     }
 
     $scope.$on("reloadPermissions", function () {
-      mnPermissions.getFresh();
+      mnPermissions.throttledCheck();
     });
 
     $scope.$on("reloadTasksPoller", function (event, params) {

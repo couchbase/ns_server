@@ -30,7 +30,7 @@
      class="cbui-table-body"
      (click)="$event.stopPropagation();"
      *ngIf="scope.collections.length">
-    <section *ngFor="let collection of (paginator.page | async); trackBy: trackByFn">
+    <section *ngFor="let collection of (paginator.page | async); trackBy: trackByFn.bind(this)">
       <div [ngClass]="statusClass">
         <mn-collections-item
            [scopeName]="scope.name"

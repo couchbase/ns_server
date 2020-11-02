@@ -45,6 +45,20 @@ class MnCollectionsItemComponent extends MnLifeCycleHooksToStream {
       });
 
     this.clickDeleteCollection = clickDeleteCollection;
-    this.permissions = mnPermissions.export;
+    this.permissions = mnPermissions.stream;
+    this.mnPermissions = mnPermissions;
+  }
+
+  ngOnInit() {
+    this.interestingPermissions =
+      this.mnPermissions.getPerCollectionPermissions(this.bucketName,
+                                                     this.scopeName,
+                                                     this.collection.name);
+    this.interestingPermissions.forEach(this.mnPermissions.set);
+    this.mnPermissions.throttledCheck();
+  }
+
+  ngOnDestroy() {
+    this.interestingPermissions.forEach(this.mnPermissions.remove);
   }
 }

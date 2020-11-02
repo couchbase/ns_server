@@ -47,7 +47,7 @@ class MnXDCRItemDetailsComponent extends MnLifeCycleHooksToStream {
         ref.componentInstance.item = item;
       });
 
-    this.permissions = mnPermissions.export;
+    this.permissions = mnPermissions.stream;
     this.onDeleteReplication = onDeleteReplication;
 
   }

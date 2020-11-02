@@ -47,6 +47,6 @@ class MnCollectionsScopeDetailsComponent extends MnLifeCycleHooksToStream {
   }
 
   trackByFn(_, collection) {
-    return collection.uid;
+    return this.bucketName + collection.uid + collection.name;
   }
 }

@@ -24,7 +24,7 @@ let bucketSpecificPermissions = [function (bucket) {
     "cluster.bucket[" + name + "].n1ql.index!write",
     "cluster.bucket[" + name + "].collections!read",
     "cluster.bucket[" + name + "].collections!write",
-    "cluster.bucket[" + name + "].collections!delete",
+    "cluster.bucket[" + name + "].collections!delete"
   ];
   if (bucket.name === "." || (bucket.bucketType === "membase")) {
     basePermissions = basePermissions.concat([

@@ -1,15 +1,15 @@
 <div class="indent-1 cursor-auto">
   <div class="row flex-right">
     <button
-       [hidden]="!permissions.cluster.bucket[item.source].xdcr.write"
+       [hidden]="!(permissions | async)?.cluster.bucket[item.source].xdcr.write"
        (click)="$event.stopPropagation();onDeleteReplication.next(item)"
        class="outline margin-right-quarter">
       Delete
     </button>
 
     <button
-       [hidden]="!(permissions.cluster.bucket[item.source].xdcr.write &&
-                 permissions.cluster.xdcr.settings.write)"
+       [hidden]="!((permissions | async)?.cluster.bucket[item.source].xdcr.write &&
+                 (permissions | async)?.cluster.xdcr.settings.write)"
        [uiParams]="{item: item}"
        uiSref="app.admin.replications.edit"
        class="outline margin-right-quarter">
@@ -21,7 +21,7 @@
       <span>{{status | async | mnReplicationStatus}}</span>
       <div
          [hidden]="item.status == 'notRunning' ||
-                   !permissions.cluster.bucket[item.source].xdcr.execute"
+                   !(permissions | async)?.cluster.bucket[item.source].xdcr.execute"
          class="icon margin-left-half"
          [ngClass]="statusClass | async"></div>
     </button>

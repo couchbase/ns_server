@@ -50,7 +50,7 @@ class MnXDCRRefItemComponent extends MnLifeCycleHooksToStream {
       });
 
     this.uiRouter = uiRouter;
-    this.permissions = mnPermissions.export;
+    this.permissions = mnPermissions.stream;
     this.onAddReference = onAddReference;
     this.onDeleteReference = onDeleteReference;
   }

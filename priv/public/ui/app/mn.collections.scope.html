@@ -13,20 +13,20 @@
     </span>
     <span class="cbui-table-cell flex-grow-1-5 text-right resp-hide-xsml">
       <a
-         [hidden]="!permissions.cluster.bucket[bucketName]?.collections.delete ||
+         [hidden]="!(permissions | async)?.cluster.collection[bucketName + ':' + scope.name + ':*']?.collections.write ||
                    scope.name.startsWith('_')"
          (click)="$event.stopPropagation();clickDeleteScope.next();">
         Drop</a>
       <a
          (click)="$event.stopPropagation()"
          class="margin-left-half"
-         [hidden]="!permissions.cluster.bucket['.'].collections.read"
+         [hidden]="!(permissions | async)?.cluster.collection[bucketName + ':' + scope.name + ':.']?.data?.docs?.read"
          uiSref="app.admin.docs.editor"
          [uiParams]="{bucket: bucketName, scope: scope.name}">
         Documents</a>
       <a
          class="margin-left-half"
-         [hidden]="!permissions.cluster.bucket['.'].collections.write"
+         [hidden]="!(permissions | async)?.cluster.collection[bucketName + ':' + scope.name + ':*']?.collections.write"
          (click)="$event.stopPropagation();clickAddCollection.next();">
         Add Collection</a>
     </span>

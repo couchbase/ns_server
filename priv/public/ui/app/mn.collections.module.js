@@ -22,7 +22,7 @@ let collectionsState = {
   url: '/collections?collectionsBucket&scopeDetails&scopesPage&collsPage',
   name: "app.admin.collections",
   data: {
-    permissions: "cluster.bucket['.'].settings.read && cluster.bucket['.'].collections.read",
+    permissions: "cluster.bucket['.'].settings.read && cluster.collection['.:.:.'].collections.read",
     title: "Scopes & Collections",
     child: "app.admin.buckets",
     compat: "atLeast70"
