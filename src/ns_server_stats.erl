@@ -72,7 +72,7 @@ report_prom_stats(ReportFun) ->
                        [{<<"proc">>, Proc},
                         {<<"category">>, <<"system-processes">>}], Val})
         end, SysProcStats),
-    ThisNodeBuckets = ns_bucket:node_bucket_names(node()),
+    ThisNodeBuckets = ns_bucket:node_bucket_names_of_type(node(), membase),
     [report_couch_stats(B, ReportFun) || B <- ThisNodeBuckets],
     ok.
 
