@@ -2554,7 +2554,8 @@ button:hover.scenarios-delete {
   color: #333;
 }
 .wb-format,
-.wb-fullscreen {
+.wb-fullscreen,
+.gray-icon {
   cursor: pointer;
   color: #a1a1a1;
   padding: 0 .5rem;
@@ -2564,7 +2565,8 @@ button:hover.scenarios-delete {
   margin-right: .5rem;
 }
 .wb-format:hover,
-.wb-fullscreen:hover {
+.wb-fullscreen:hover,
+.gray-icon:hover {
   color: #333;
 }
 .wb-format {
