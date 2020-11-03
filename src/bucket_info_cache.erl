@@ -27,7 +27,7 @@
 -export([build_node_services/0,
          build_pools_uri/1,
          build_pools_uri/2,
-         build_short_bucket_info/2,
+         build_short_bucket_info/3,
          build_name_and_locator/2,
          build_vbucket_map/2,
          build_ddocs/2]).
@@ -135,10 +135,11 @@ build_nodes_ext([Node | RestNodes], Config, NodesExtAcc) ->
     NodeInfo = {[{services, {PortInfo}} | NI3]},
     build_nodes_ext(RestNodes, Config, [NodeInfo | NodesExtAcc]).
 
-do_compute_bucket_info(Bucket, Config) ->
-    case ns_bucket:get_bucket(Bucket, Config) of
+do_compute_bucket_info(Bucket, Snapshot, Config) ->
+    case ns_bucket:get_bucket(Bucket, Snapshot) of
         {ok, BucketConfig} ->
-            compute_bucket_info_with_config(Bucket, Config, BucketConfig);
+            compute_bucket_info_with_config(Bucket, Config, BucketConfig,
+                                            Snapshot);
         not_present ->
             not_present
     end.
@@ -161,14 +162,14 @@ node_bucket_info(Node, Config, Bucket, BucketUUID, BucketConfig) ->
            end,
     {Info}.
 
-build_short_bucket_info(Id, BucketConfig) ->
+build_short_bucket_info(Id, BucketConfig, Snapshot) ->
     BucketUUID = ns_bucket:bucket_uuid(BucketConfig),
     [build_name_and_locator(Id, BucketConfig),
      {uuid, BucketUUID},
      {uri, build_pools_uri(["buckets", Id], BucketUUID)},
      {streamingUri, build_pools_uri(["bucketsStreaming", Id], BucketUUID)},
      build_bucket_capabilities(BucketConfig),
-     build_collections_manifest_id(BucketConfig)].
+     build_collections_manifest_id(Id, Snapshot)].
 
 build_name_and_locator(Id, BucketConfig) ->
     [{name, list_to_binary(Id)},
@@ -230,8 +231,8 @@ build_ddocs(Id, BucketConfig) ->
     [{ddocs, {[{uri, build_pools_uri(["buckets", Id, "ddocs"])}]}} ||
         ns_bucket:can_have_views(BucketConfig)].
 
-build_collections_manifest_id(BucketConfig) ->
-    case collections:uid(BucketConfig) of
+build_collections_manifest_id(Id, Snapshot) ->
+    case collections:uid(Id, Snapshot) of
         undefined ->
             [];
         Uid ->
@@ -271,7 +272,7 @@ build_bucket_capabilities(BucketConfig) ->
     [{bucketCapabilitiesVer, ''},
      {bucketCapabilities, Caps}].
 
-compute_bucket_info_with_config(Id, Config, BucketConfig) ->
+compute_bucket_info_with_config(Id, Config, BucketConfig, Snapshot) ->
     %% we do sorting to make nodes list match order of servers inside
     %% vBucketServerMap
     Servers = lists:sort(ns_bucket:get_servers(BucketConfig)),
@@ -287,7 +288,7 @@ compute_bucket_info_with_config(Id, Config, BucketConfig) ->
     Json =
         {lists:flatten(
            [{rev, Rev},
-            build_short_bucket_info(Id, BucketConfig),
+            build_short_bucket_info(Id, BucketConfig, Snapshot),
             build_ddocs(Id, BucketConfig),
             build_vbucket_map(?LOCALHOST_MARKER_STRING, BucketConfig),
             {nodes,
@@ -298,8 +299,8 @@ compute_bucket_info_with_config(Id, Config, BucketConfig) ->
     {ok, Rev, ejson:encode(Json), BucketConfig}.
 
 compute_bucket_info(Bucket) ->
-    Config = ns_config:get(),
-    try do_compute_bucket_info(Bucket, Config)
+    Snapshot = ns_bucket:get_snapshot(Bucket),
+    try do_compute_bucket_info(Bucket, Snapshot, ns_config:get())
     catch T:E:S ->
             {T, E, S}
     end.

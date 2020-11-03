@@ -41,8 +41,10 @@
          root/0,
          sub_key/2,
          get_snapshot/0,
+         get_snapshot/1,
          remove_from_snapshot/2,
          toy_buckets/1,
+         bucket_exists/2,
          get_bucket/1,
          get_bucket/2,
          get_bucket_from_configs/2,
@@ -132,8 +134,18 @@ sub_key(Bucket, SubKey) ->
     {bucket, Bucket, SubKey}.
 
 get_snapshot() ->
+    get_snapshot_int(get_buckets()).
+
+get_snapshot(Bucket) ->
+    case get_bucket(Bucket) of
+        not_present ->
+            #{};
+        {ok, BC} ->
+            get_snapshot_int([{Bucket, BC}])
+    end.
+
+get_snapshot_int(BucketConfigs) ->
     %% TODO: temporary implementation till we keep bucket props in ns_config
-    BucketConfigs = get_buckets(),
     Buckets = get_bucket_names(BucketConfigs),
 
     maps:from_list(
@@ -171,9 +183,19 @@ toy_buckets(List) ->
                      {K, V} <- Props]
          end, List)]).
 
+bucket_exists(Bucket, Snapshot) ->
+    case get_bucket(Bucket, Snapshot) of
+        {ok, _} ->
+            true;
+        not_present ->
+            false
+    end.
+
 get_bucket(Bucket) ->
     get_bucket(Bucket, ns_config:latest()).
 
+get_bucket(Bucket, direct) ->
+    get_bucket(Bucket);
 get_bucket(Bucket, Snapshot) when is_map(Snapshot) ->
     case maps:find(sub_key(Bucket, props), Snapshot) of
         {ok, {Props, _}} ->

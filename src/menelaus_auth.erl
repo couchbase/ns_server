@@ -20,10 +20,12 @@
 
 -include("ns_common.hrl").
 -include("rbac.hrl").
+-include("cut.hrl").
 
 -export([has_permission/2,
          is_internal/1,
          get_accessible_buckets/2,
+         filter_accessible_buckets/3,
          extract_auth/1,
          extract_identity_from_cert/1,
          extract_ui_auth_token/1,
@@ -56,6 +58,11 @@ get_accessible_buckets(Fun, Req) ->
     [{BucketName, Config} ||
         {BucketName, Config} <- ns_bucket:get_buckets(),
         menelaus_roles:is_allowed(Fun(BucketName), Roles)].
+
+filter_accessible_buckets(Fun, Buckets, Req) ->
+    Identity = get_identity(Req),
+    Roles = menelaus_roles:get_compiled_roles(Identity),
+    lists:filter(?cut(menelaus_roles:is_allowed(Fun(_), Roles)), Buckets).
 
 -spec get_cookies(mochiweb_request()) -> [{string(), string()}].
 get_cookies(Req) ->

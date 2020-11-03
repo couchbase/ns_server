@@ -31,6 +31,7 @@
          enabled/1,
          default_manifest/0,
          uid/1,
+         uid/2,
          manifest_json/1,
          manifest_json/3,
          create_scope/2,
@@ -115,6 +116,14 @@ uid(BucketCfg) ->
             get_uid_in_memcached_format(get_manifest(BucketCfg));
         false ->
             undefined
+    end.
+
+uid(Bucket, Snapshot) ->
+    case get_manifest(Bucket, Snapshot) of
+        undefined ->
+            undefined;
+        Manifest ->
+            get_uid_in_memcached_format(Manifest)
     end.
 
 get_uid(Props) ->

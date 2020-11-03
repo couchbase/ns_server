@@ -102,14 +102,20 @@ get_info_level(Req) ->
     end.
 
 handle_bucket_list(Req) ->
-    BucketsUnsorted = menelaus_auth:get_accessible_buckets(
-                        ?cut({[{bucket, _}, settings], read}), Req),
+    Snapshot = ns_bucket:get_snapshot(),
+
+    BucketsUnsorted =
+        menelaus_auth:filter_accessible_buckets(
+          ?cut({[{bucket, _}, settings], read}),
+          ns_bucket:get_bucket_names(Snapshot), Req),
     Buckets = lists:sort(fun (A,B) -> A =< B end, BucketsUnsorted),
-    reply_json(Req, build_buckets_info(Req, Buckets, get_info_level(Req))).
+
+    reply_json(Req, build_buckets_info(Req, Buckets, Snapshot,
+                                       get_info_level(Req))).
 
 handle_bucket_info(_PoolId, Id, Req) ->
-    {ok, BucketConfig} = ns_bucket:get_bucket(Id),
-    [Json] = build_buckets_info(Req, [{Id, BucketConfig}], get_info_level(Req)),
+    Snapshot = ns_bucket:get_snapshot(Id),
+    [Json] = build_buckets_info(Req, [Id], Snapshot, get_info_level(Req)),
     reply_json(Req, Json).
 
 build_bucket_nodes_info(BucketName, BucketConfig, InfoLevel0, LocalAddr) ->
@@ -245,19 +251,19 @@ build_durability_min_level(BucketConfig) ->
             <<"persistToMajority">>
     end.
 
-build_buckets_info(Req, Buckets, InfoLevel) ->
+build_buckets_info(Req, Buckets, Snapshot, InfoLevel) ->
     SkipMap = InfoLevel =/= streaming andalso
         proplists:get_value(
           "skipMap", mochiweb_request:parse_qs(Req)) =:= "true",
     LocalAddr = menelaus_util:local_addr(Req),
-    [build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr,
-                       may_expose_bucket_auth(Id, Req), SkipMap) ||
-        {Id, BucketConfig} <- Buckets].
+    [build_bucket_info(BucketName, Snapshot, InfoLevel, LocalAddr,
+                       may_expose_bucket_auth(BucketName, Req), SkipMap) ||
+        BucketName <- Buckets].
 
-build_bucket_info(Id, BucketConfig, InfoLevel, LocalAddr, MayExposeAuth,
-                  SkipMap) ->
+build_bucket_info(Id, Snapshot, InfoLevel, LocalAddr, MayExposeAuth, SkipMap) ->
+    {ok, BucketConfig} = ns_bucket:get_bucket(Id, Snapshot),
     {lists:flatten(
-       [bucket_info_cache:build_short_bucket_info(Id, BucketConfig),
+       [bucket_info_cache:build_short_bucket_info(Id, BucketConfig, Snapshot),
         bucket_info_cache:build_ddocs(Id, BucketConfig),
         [bucket_info_cache:build_vbucket_map(LocalAddr, BucketConfig)
          || not SkipMap],
@@ -382,31 +388,38 @@ build_sasl_bucket_info({Id, BucketConfig}, LocalAddr) ->
         bucket_info_cache:build_vbucket_map(LocalAddr, BucketConfig),
         build_sasl_bucket_nodes(BucketConfig, LocalAddr)])}.
 
+build_terse_streaming_info(Id, Req) ->
+    case ns_bucket:bucket_exists(Id, direct) of
+        true ->
+            {ok, Bin} =
+                bucket_info_cache:terse_bucket_info_with_local_addr(
+                  Id, menelaus_util:local_addr(Req)),
+            {write, Bin};
+        false ->
+            exit(normal)
+    end.
+
+build_streaming_info(Id, Req) ->
+    Snapshot = ns_bucket:get_snapshot(Id),
+    case ns_bucket:bucket_exists(Id, Snapshot) of
+        true ->
+            [Info] = build_buckets_info(Req, [Id], Snapshot, streaming),
+            Info;
+        false ->
+            exit(normal)
+    end.
+
 handle_bucket_info_streaming(_PoolId, Id, Req) ->
     Build =
         case ns_config:read_key_fast(send_terse_streaming_buckets, false) of
             true ->
-                fun (_) ->
-                        {ok, Bin} =
-                            bucket_info_cache:terse_bucket_info_with_local_addr(
-                              Id, menelaus_util:local_addr(Req)),
-                        {write, Bin}
-                end;
+                ?cut(build_terse_streaming_info(Id, Req));
             false ->
-                fun (BucketConfig) ->
-                        [Info] = build_buckets_info(Req, [{Id, BucketConfig}],
-                                                    streaming),
-                        Info
-                end
+                ?cut(build_streaming_info(Id, Req))
         end,
 
     handle_streaming(fun(_Stability, _UpdateID) ->
-                             case ns_bucket:get_bucket(Id) of
-                                 {ok, BucketConfig} ->
-                                     {just_write, Build(BucketConfig)};
-                                 not_present ->
-                                     exit(normal)
-                             end
+                             {just_write, Build()}
                      end, Req).
 
 handle_bucket_delete(_PoolId, BucketId, Req) ->
