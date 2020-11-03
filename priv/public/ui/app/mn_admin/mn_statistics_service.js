@@ -375,7 +375,6 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
         let cfg1 = Object.assign({statPath: statPath}, cfg);
         let service = getServiceNameFromDescriptionPath(statPath);
         cfg1.metric = Object.assign({}, statDesc.metric);
-        console.log()
         if (isPerBucketStat(statPath)) {
           if (statDesc.bucket === null) {
             delete cfg1.metric.bucket;
@@ -412,28 +411,55 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
 
   function subscribeUIStatsPoller(config, scope) {
     let config1 = packStatsConfig(config);
-    config1.forEach((config) => {
-      perChartConfig.push(config);
-      perChartScopes.push(scope);
+
+    function register(config2, statPath) {
       if (mnPoolDefault.export.compat.atLeast70) {
-        perChartStatsPath.push(config.statPath);
-        delete config.statPath;
+        perChartStatsPath.push(statPath);
+        delete config2.statPath;
       }
 
+      perChartConfig.push(config2);
+      perChartScopes.push(scope);
+
+      mnStatisticsNewService.heartbeat.throttledReload();
+    }
+
+    function omit(config2) {
+      var index = perChartConfig.indexOf(config2);
+      perChartConfig.splice(index, 1);
+      perChartScopes.splice(perChartScopes.indexOf(scope), 1);
+      if (mnPoolDefault.export.compat.atLeast70) {
+        perChartStatsPath.splice(index, 1);
+      }
+
+      if (!perChartConfig.length) {
+        mnStatisticsNewService.heartbeat.stop();
+      }
+    }
+
+    function doOmit(config2) {
+      return function () {
+        omit(config2);
+      };
+    }
+
+    function doRegister(config2, statPath) {
+      return function () {
+        register(config2, statPath);
+      };
+    }
+
+    config1.forEach((config2) => {
+      let statPath = config2.statPath;
+      register(config2, statPath);
+      let offPause = scope.$on("mnPauseStats", doOmit(config2));
+      let offResume = scope.$on("mnResumeStats", doRegister(config2, statPath));
       scope.$on("$destroy", function () {
-        var index = perChartConfig.indexOf(config);
-        perChartConfig.splice(perChartConfig.indexOf(config), 1);
-        perChartScopes.splice(perChartScopes.indexOf(scope), 1);
-        if (mnPoolDefault.export.compat.atLeast70) {
-          perChartStatsPath.splice(index, 1);
-        }
-        if (!perChartConfig.length) {
-          currentPerChartScopes = [];
-          mnStatisticsNewService.heartbeat.stop();
-        }
+        offResume && offResume();
+        offPause && offPause();
+        doOmit()(config2);
       });
     });
-    mnStatisticsNewService.heartbeat.throttledReload();
   }
 
   function prepareNodesList(params) {

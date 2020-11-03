@@ -14,12 +14,12 @@ function mnMultiChartDirective($window, mnD3Service) {
     controller: controller
   };
 
-  function controller($element, $scope) {
+  function controller($element, $scope, $timeout) {
     var chart = new mnD3Service.mnD3Tooltip($scope.options, $element, function () {
       angular.element($window).on('resize', chart.throttledResize);
       chart.resize();
       if ($scope.syncScope) {
-        syncTooltips();
+        syncTooltipsAndPauseCharts();
       }
       if ($scope.options.chart.showFocus) {
         addFocusChart();
@@ -30,6 +30,7 @@ function mnMultiChartDirective($window, mnD3Service) {
     });
 
     $scope.$watch("data", chart.updateData.bind(chart));
+
     $scope.$on("$destroy", function () {
       angular.element($window).off('resize', chart.throttledResize);
       chart.destroy();
@@ -63,23 +64,59 @@ function mnMultiChartDirective($window, mnD3Service) {
       });
     }
 
-    function syncTooltips() {
-      var throttledSync = _.throttle(function (e) {
+    function syncTooltipsAndPauseCharts() {
+      let mnPauseStats = false;
+      let resumeStatsTimer;
+      let chartNode = chart.tipBox.node();
+
+      let throttledSync = _.throttle(function (e) {
         if (e.bubbles) {
-          $scope.syncScope.$broadcast("syncTooltips", {
-            element: $element,
-            event: e,
-            chart: chart
-          });
+          $scope.syncScope.$broadcast("syncTooltips", {element: $element,
+                                                       event: e,
+                                                       chart: chart});
         }
       }, 10, {leading: true});
 
-      angular.element(chart.tipBox.node()).on("mousemove mouseup mousedown mouseout",
-                                              throttledSync);
+      let throttledPause = _.throttle(function (e) {
+        if (e.bubbles) {
+          $scope.syncScope.$broadcast("mnStatsCancelTimer");
+          if (!mnPauseStats) {
+            $scope.syncScope.$broadcast("mnPauseStats");
+            mnPauseStats = true;
+          }
+        }
+      }, 10, {leading: true});
+
+      let throttledResume = _.throttle(function (e) {
+        if (mnPauseStats && e.bubbles) {
+          resumeStatsTimer && $timeout.cancel(resumeStatsTimer);
+          resumeStatsTimer = $timeout(function () {
+            $scope.syncScope.$broadcast("mnResumeStats");
+            mnPauseStats = false;
+          }, 1000);
+        }
+      }, 10, {leading: true});
+
+      angular.element(chartNode).on("mousemove mouseup mousedown mouseout", throttledSync);
+      angular.element(chartNode).on("mousemove", throttledPause);
+      angular.element(chartNode).on("mouseout", throttledResume);
+
+      $scope.$on("mnStatsCancelTimer", function () {
+        resumeStatsTimer && $timeout.cancel(resumeStatsTimer);
+      });
+
+      $scope.$on("mnPauseStats", function () {
+        mnPauseStats = true;
+      });
+
+      $scope.$on("mnResumeStats", function () {
+        mnPauseStats = false;
+      });
 
       $scope.$on("$destroy", function () {
-        angular.element(chart.tipBox.node()).off("mousemove mouseup mousedown mouseout",
-                                                 throttledSync);
+        angular.element(chartNode).off("mousemove mouseup mousedown mouseout", throttledSync);
+        angular.element(chartNode).off("mousemove", throttledPause);
+        angular.element(chartNode).off("mouseout", throttledResume);
       });
 
       $scope.$on("syncTooltips", function (e, source) {
