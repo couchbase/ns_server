@@ -2862,10 +2862,10 @@ mn-statistics-chart {
   color: #000;
 }
 .chart-adder {
-  background-color: #f5f5f5;
+  background-color: #f6fafd;
   border-radius: 5px;
   font-family: FontAwesome;
-  color: #d1d1d1;
+  color: #a1a1a1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2874,15 +2874,26 @@ mn-statistics-chart {
   margin: .25rem;
   flex-grow: 2;
   min-height: 2rem;
-  transition: all 500ms;
+  transition: all 200ms;
 }
 .chart-adder:hover {
-  color: #a1a1a1;
+  color: #555;
   background-color: #fff;
 }
 .chart-adder:before {
   content: "\f055";
 }
+.chart-adder:hover span {
+  color: #000;
+}
+button.outline > .icon {
+  color: #a1a1a1;
+}
+button.outline:hover > .icon {
+  color: #555;
+}
+
+
 .charts-group {
   margin-bottom: 1rem;
 }

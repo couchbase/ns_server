@@ -126,14 +126,14 @@
     </a>
 -->
     <button ng-click="statisticsNewCtl.resetDashboardConfiguration();" class="outline tight scenario-delete indent-1">
-      <span class="icon fa-trash grayblack-3"></span> Reset
+      <span class="icon fa-trash"></span> Reset
     </button>
     <button
        ng-disabled="!statisticsNewCtl.scenarios.length"
        ng-click="statisticsNewCtl.openGroupDialog(statisticsNewCtl.scenario.selected)"
        class="outline tight"
        ng-hide="statisticsNewCtl.scenario.selected.preset">
-      <span class="icon fa-plus-circle grayblack-3"></span> Add Group
+      <span class="icon fa-plus-circle"></span> Add Group
     </button>
   </div>
 </div>
@@ -295,6 +295,7 @@
                    statisticsNewCtl.scenario.selected,
                    mnStatsGroupsCtl)"
          title="Add a Chart">
+        <span class="text text-small grayblack-2">&nbsp; Add a Chart</span>
       </div>
     </div>
   </div>

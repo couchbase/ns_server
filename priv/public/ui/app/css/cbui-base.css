@@ -294,8 +294,15 @@ small {
   font-size: 200% !important;
 }
 .text-normal {
+  font-family: 'OpenSans' !important;
   font-size: 1rem !important;
   font-weight: 400 !important;
+  color: #333;
+}
+.text {
+  font-family: 'OpenSans' !important;
+  font-weight: 400 !important;
+  color: #333;
 }
 strong,
 b {
