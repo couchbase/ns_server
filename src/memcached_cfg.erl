@@ -67,7 +67,7 @@ init([Module, Path]) ->
         fun (Evt) ->
                 case Module:filter_event(Evt) of
                     true ->
-                        gen_server:cast(Pid, Evt);
+                        gen_server:cast(Pid, {event, Evt});
                     false ->
                         ok
                 end
@@ -91,8 +91,8 @@ code_change(_OldVsn, State, _) -> {ok, State}.
 handle_cast(write_cfg, State) ->
     ok = write_cfg(State),
     {noreply, State#state{write_pending = false}};
-handle_cast(Evt, State = #state{module = Module,
-                                stuff = Stuff}) ->
+handle_cast({event, Evt}, State = #state{module = Module,
+                                         stuff = Stuff}) ->
     case Module:handle_event(Evt, Stuff) of
         {changed, NewStuff} ->
             {noreply, initiate_write(State#state{stuff = NewStuff})};
