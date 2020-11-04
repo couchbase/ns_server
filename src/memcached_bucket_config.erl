@@ -21,9 +21,9 @@
 -include("ns_common.hrl").
 -include("cut.hrl").
 
--record(cfg, {type, name, config, engine_config, params}).
+-record(cfg, {type, name, config, snapshot, engine_config, params}).
 
--export([get/2,
+-export([get/1,
          ensure/2,
          start_params/1,
          ensure_collections/2,
@@ -136,8 +136,10 @@ persistent_metadata_purge_age(BucketName, BucketConfig) ->
             erlang:round(PI * 24 * 3600)
     end.
 
-get(Config, BucketName) ->
-    {ok, BucketConfig} = ns_bucket:get_bucket(BucketName, Config),
+get(BucketName) ->
+    Snapshot = ns_bucket:get_snapshot(BucketName),
+
+    {ok, BucketConfig} = ns_bucket:get_bucket(BucketName, Snapshot),
     BucketType = proplists:get_value(type, BucketConfig),
 
     MemQuota = proplists:get_value(ram_quota, BucketConfig),
@@ -145,11 +147,12 @@ get(Config, BucketName) ->
 
     Params = params(BucketType, BucketName, BucketConfig, MemQuota, UUID),
 
-    Engines = ns_config:search_node_prop(Config, memcached, engines),
+    Engines = ns_config:search_node_prop(ns_config:latest(),
+                                         memcached, engines),
     EngineConfig = proplists:get_value(BucketType, Engines),
 
     #cfg{type = BucketType, name = BucketName, config = BucketConfig,
-         params = Params, engine_config = EngineConfig}.
+         snapshot = Snapshot, params = Params, engine_config = EngineConfig}.
 
 query_stats(Sock) ->
     {ok, Stats} =
@@ -250,8 +253,8 @@ get_current_collections_uid(Sock) ->
             proplists:get_value(<<"uid">>, Json)
     end.
 
-need_update_collections_manifest(Sock, BucketConfig) ->
-    case collections:uid(BucketConfig) of
+need_update_collections_manifest(Sock, BucketName, Snapshot) ->
+    case collections:uid(BucketName, Snapshot) of
         undefined ->
             false;
         Uid ->
@@ -263,12 +266,13 @@ need_update_collections_manifest(Sock, BucketConfig) ->
             end
     end.
 
-ensure_collections(Sock, #cfg{name = BucketName, config = BucketConfig}) ->
-    case need_update_collections_manifest(Sock, BucketConfig) of
+ensure_collections(Sock, #cfg{name = BucketName, config = BucketConfig,
+                              snapshot = Snapshot}) ->
+    case need_update_collections_manifest(Sock, BucketName, Snapshot) of
         false ->
             ok;
         {true, Prev, Next} ->
-            Manifest = collections:manifest_json(BucketConfig),
+            Manifest = collections:manifest_json(BucketName, Snapshot),
             ?log_debug(
                "Applying collection manifest to bucket ~p due to id change from"
                " ~p to ~p. Manifest = ~p",

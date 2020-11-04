@@ -32,7 +32,7 @@
          default_manifest/0,
          uid/1,
          uid/2,
-         manifest_json/1,
+         manifest_json/2,
          manifest_json/3,
          create_scope/2,
          create_collection/4,
@@ -187,8 +187,8 @@ filter_collections_with_roles(Bucket, Scopes, Roles) ->
               end
       end, Scopes).
 
-manifest_json(BucketCfg) ->
-    Manifest = get_manifest(BucketCfg),
+manifest_json(Bucket, Snapshot) ->
+    Manifest = get_manifest(Bucket, Snapshot),
     jsonify_manifest(Manifest, false).
 
 manifest_json(Identity, Bucket, BucketCfg) ->

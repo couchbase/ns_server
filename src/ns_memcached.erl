@@ -1218,8 +1218,7 @@ do_connect(Options) ->
     end.
 
 ensure_bucket(Sock, Bucket, BucketSelected) ->
-    Config = ns_config:get(),
-    try memcached_bucket_config:get(Config, Bucket) of
+    try memcached_bucket_config:get(Bucket) of
         BConf ->
             case do_ensure_bucket(Sock, Bucket, BConf, BucketSelected) of
                 ok ->
