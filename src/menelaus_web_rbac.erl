@@ -1739,10 +1739,11 @@ handle_get_uiroles(Req) ->
     Folders =
         lists:filtermap(build_ui_folder(_, Roles), menelaus_roles:ui_folders()),
 
-    Buckets = menelaus_auth:get_accessible_buckets(
-                ?cut({[{bucket, _}, settings], read}), Req),
+    BucketNames = menelaus_auth:filter_accessible_buckets(
+                    ?cut({[{bucket, _}, settings], read}),
+                    ns_bucket:get_bucket_names(Snapshot), Req),
 
-    Parameters = {[build_ui_parameters(bucket_name, Buckets)]},
+    Parameters = {[build_ui_parameters(bucket_name, {BucketNames, Snapshot})]},
 
     menelaus_util:reply_json(Req, {[{folders, Folders},
                                     {parameters, Parameters}]}).
@@ -1770,18 +1771,18 @@ build_ui_value(Value, Children) ->
               {children, {NonEmpty}}]}
     end.
 
-build_ui_parameters(Name, List) ->
-    {Name, build_ui_values(Name, List)}.
+build_ui_parameters(Name, Data) ->
+    {Name, build_ui_values(Name, Data)}.
 
-build_ui_values(bucket_name, Buckets) ->
+build_ui_values(bucket_name, {Buckets, Snapshot}) ->
     lists:map(
-      fun ({Name, BucketCfg}) ->
+      fun (Name) ->
+              Manifest = collections:get_manifest(Name, Snapshot),
               Scopes =
                   case cluster_compat_mode:is_enterprise() andalso
-                      collections:enabled(BucketCfg) of
+                      Manifest =/= undefined of
                       true ->
-                          collections:get_scopes(
-                            collections:get_manifest(BucketCfg));
+                          collections:get_scopes(Manifest);
                       false ->
                           []
                   end,
