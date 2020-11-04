@@ -1483,7 +1483,7 @@ is_cluster_encryption_fully_disabled() ->
     [] =:= [N || N <- ns_node_disco:nodes_wanted(),
                  misc:is_node_encryption_enabled(Cfg, N)].
 
--spec get_cluster_encryption_level() -> none | control | all.
+-spec get_cluster_encryption_level() -> none | control | all | strict.
 get_cluster_encryption_level() ->
     case is_cluster_encryption_fully_enabled() of
         true ->
@@ -1495,16 +1495,15 @@ get_cluster_encryption_level() ->
 
 -spec should_cluster_data_be_encrypted() -> true | false.
 should_cluster_data_be_encrypted() ->
-    get_cluster_encryption_level() =:= all.
+    case get_cluster_encryption_level() of
+        all -> true;
+        strict -> true;
+        _ -> false
+    end.
 
 -spec disable_non_ssl_ports() -> true | false.
 disable_non_ssl_ports() ->
-    %% TODO: Disabling the non-SSL ports in not targeted for the 6.5
-    %% release. Hence returning 'false' unconditionally. The thinking is to
-    %% implement this API correctly in the next release when this feature
-    %% will be supported. This will avoid making changes to the plumbing to
-    %% get this info to other services via cbauth.
-    false.
+    get_cluster_encryption_level() =:= strict.
 
 -spec get_net_family() -> inet:address_family().
 get_net_family() ->
