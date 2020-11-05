@@ -749,12 +749,22 @@ def get_diag_password(guts):
     return ""
 
 
-def make_query_task(statement, user, password, port):
+def make_query_statement_task(statement, user, password, port,
+                              logfile="couchbase.log", **kwargs):
     url = "http://%s:%s/query/service?statement=%s" % (
         local_url_addr, port, urllib.parse.quote(statement))
 
     return make_curl_task(name="Result of query statement \'%s\'" % statement,
-                          user=user, password=password, url=url)
+                          user=user, password=password, url=url,
+                          log_file=logfile, **kwargs)
+
+
+def make_query_task(name, api, passwd, query_port, logfile="couchbase.log",
+                    **kwargs):
+    query_url = f"http://{local_url_addr}:{query_port}/{api}"
+
+    return make_curl_task(name, "@", passwd, query_url, log_file=logfile,
+                          **kwargs)
 
 
 def make_index_task(name, api, passwd, index_port, logfile="couchbase.log", **kwargs):
@@ -1064,15 +1074,52 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
     query_tasks = []
     query_port = read_guts(guts, "query_port")
     if query_port:
-        def make(statement):
-            return make_query_task(statement, user="@",
-                                   password=memcached_pass,
-                                   port=query_port)
+        def make(statement, logfile="couchbase.log", **kwargs):
+            return make_query_statement_task(statement, user="@",
+                                             password=memcached_pass,
+                                             port=query_port,
+                                             logfile=logfile,
+                                             **kwargs)
 
-        query_tasks = [make("SELECT * FROM system:datastores"),
-                       make("SELECT * FROM system:namespaces"),
-                       make("SELECT * FROM system:keyspaces"),
-                       make("SELECT * FROM system:indexes")]
+        query_tasks = [
+            make("SELECT * FROM system:datastores"),
+            make("SELECT * FROM system:namespaces"),
+            make("SELECT * FROM system:keyspaces"),
+            make("SELECT * FROM system:indexes"),
+            make('SELECT requests.*, '
+                 '"<ud>"||requests.statement||"</ud>" AS statement, '
+                 '"<ud>"||requests.preparedText||"</ud>" AS preparedText, '
+                 '"<ud>"||requests.namedArgs||"</ud>" AS namedArgs, '
+                 '"<ud>"||requests.positionalArgs||"</ud>" AS positionalArgs, '
+                 '"<ud>"||requests.users||"</ud>" AS users '
+                 'FROM system:completed_requests AS requests;',
+                 logfile="completed_requests.json", no_header=True),
+            make('SELECT prepareds.*, '
+                 '"<ud>"||prepareds.statement||"</ud>" AS statement '
+                 'FROM system:prepareds AS prepareds;',
+                 logfile="prepareds.json", no_header=True),
+            make_query_task(
+                "Query Go routine dump: ",
+                "debug/pprof/goroutine?debug=1",
+                memcached_pass,
+                query_port,
+                logfile="query_pprof.log",
+                no_header=True),
+            make_query_task(
+                "Query CPU Profile: ",
+                "debug/pprof/profile",
+                memcached_pass,
+                query_port,
+                logfile="query_cprof.log",
+                no_header=True),
+            make_query_task(
+                "Query Memory Profile: ",
+                "debug/pprof/heap?debug=1",
+                memcached_pass,
+                query_port,
+                logfile="query_mprof.log",
+                no_header=True)
+        ]
 
     index_tasks = []
     index_port = read_guts(guts, "indexer_http_port")
@@ -1180,9 +1227,9 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
             local_url_addr, cbas_parent_port)
 
         def make_cbas(statement):
-            return make_query_task(statement, user="@",
-                                   password=memcached_pass,
-                                   port=cbas_port)
+            return make_query_statement_task(statement, user="@",
+                                             password=memcached_pass,
+                                             port=cbas_port)
 
         cbas_tasks = [
             make_curl_task(
