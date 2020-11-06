@@ -82,7 +82,8 @@ default_settings() ->
                                         || S <- ?DEFAULT_HIGH_CARD_SERVICES]},
      {prometheus_metrics_enabled, false},
      {prometheus_metrics_scrape_interval, 60}, %% in seconds
-     {listen_addr_type, loopback}].
+     {listen_addr_type, loopback},
+     {log_queries, false}].
 
 build_settings() -> build_settings(ns_config:get()).
 build_settings(Config) ->

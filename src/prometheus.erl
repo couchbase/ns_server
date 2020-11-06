@@ -58,6 +58,9 @@ query_range_async(Query, Start, End, Step, Timeout, Settings, Handler)
     StepStr = integer_to_list(Step) ++ "s",
     query_range_async(Query, Start, End, StepStr, Timeout, Settings, Handler);
 query_range_async(Query, Start, End, Step, Timeout, Settings, Handler) ->
+    proplists:get_bool(log_queries, Settings) andalso
+        ?log_debug("Query range: ~s Start: ~p End: ~p Step: ~p Timeout: ~p",
+                   [Query, Start, End, Step, Timeout]),
     TimeoutStr = integer_to_list(max(Timeout div 1000, 1)) ++ "s",
     Body = [{query, Query}, {start, Start}, {'end', End}, {step, Step},
             {timeout, TimeoutStr}],
@@ -75,6 +78,9 @@ query(Query, Time, Timeout, Settings) ->
                Timeout).
 
 query_async(Query, Time, Timeout, Settings, Handler) ->
+    proplists:get_bool(log_queries, Settings) andalso
+        ?log_debug("Query: ~s Time: ~p Timeout: ~p ms",
+                   [Query, Time, Timeout]),
     TimeoutStr = integer_to_list(max(Timeout div 1000, 1)) ++ "s",
     Body = [{query, Query}, {timeout, TimeoutStr}] ++
            [{time, Time} || Time =/= undefined],
