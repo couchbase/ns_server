@@ -37,6 +37,11 @@
          modify_bucket/4,
          delete_bucket/2,
          flush_bucket/2,
+         create_scope/4,
+         drop_scope/4,
+         create_collection/5,
+         drop_collection/5,
+         set_manifest/5,
          start_loading_sample/2,
          disk_storage_conf/3,
          rename_node/3,
@@ -349,7 +354,17 @@ code(logout) ->
 code(alert_email_sent) ->
     8257;
 code(session_expired) ->
-    8258.
+    8258;
+code(create_scope) ->
+    8259;
+code(drop_scope) ->
+    8260;
+code(create_collection) ->
+    8261;
+code(drop_collection) ->
+    8262;
+code(set_manifest) ->
+    8263.
 
 to_binary({list, List}) ->
     [to_binary(A) || A <- List];
@@ -902,3 +917,29 @@ failover_settings(Req, Settings) ->
     Settings1 = [{K, V} || {{failover, K}, V} <- Settings],
     put(failover_settings, Req,
         [{settings, {prepare_list(Settings1)}}]).
+
+create_scope(Req, BucketName, ScopeName, Uid) ->
+    put(create_scope, Req,
+        [{bucket_name, BucketName}, {scope_name, ScopeName},
+         {new_manifest_uid, Uid}]).
+
+drop_scope(Req, BucketName, ScopeName, Uid) ->
+    put(drop_scope, Req,
+        [{bucket_name, BucketName}, {scope_name, ScopeName},
+         {new_manifest_uid, Uid}]).
+
+create_collection(Req, BucketName, ScopeName, CollectionName,  Uid) ->
+    put(create_collection, Req,
+        [{bucket_name, BucketName}, {scope_name, ScopeName},
+         {collection_name, CollectionName},
+         {new_manifest_uid, Uid}]).
+
+drop_collection(Req, BucketName, ScopeName, CollectionName, Uid) ->
+    put(drop_collection, Req,
+        [{bucket_name, BucketName}, {scope_name, ScopeName},
+         {collection_name, CollectionName}, {new_manifest_uid, Uid}]).
+
+set_manifest(Req, BucketName, InputManifest, ValidOnUid, Uid) ->
+    put(set_manifest, Req,
+        [{bucket_name, BucketName}, {input_manifest, InputManifest},
+         {valid_on_uid, ValidOnUid}, {new_manifest_uid, Uid}]).

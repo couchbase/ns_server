@@ -44,8 +44,15 @@ handle_post_scope(Bucket, Req) ->
     validator:handle(
       fun (Values) ->
               Name = proplists:get_value(name, Values),
-              handle_rv(collections:create_scope(Bucket, Name), Req)
+              RV = collections:create_scope(Bucket, Name),
+              maybe_audit(RV, ns_audit:create_scope(Req, Bucket, Name, _)),
+              handle_rv(RV, Req)
       end, Req, form, scope_validators(default_not_allowed)).
+
+maybe_audit({ok, Uid}, AuditFun) ->
+    AuditFun(Uid);
+maybe_audit(_, _AuditFun) ->
+    ok.
 
 scope_validators(default_not_allowed) ->
     scope_validators([]);
@@ -69,18 +76,24 @@ handle_post_collection(Bucket, Scope, Req) ->
     validator:handle(
       fun (Values) ->
               Name = proplists:get_value(name, Values),
-              handle_rv(
-                collections:create_collection(
-                  Bucket, Scope, Name, proplists:delete(name, Values)), Req)
+              RV =  collections:create_collection(
+                  Bucket, Scope, Name, proplists:delete(name, Values)),
+              maybe_audit(RV, ns_audit:create_collection(Req, Bucket, Scope,
+                                                         Name, _)),
+              handle_rv(RV, Req)
       end, Req, form, collection_validators(default_not_allowed)).
 
 handle_delete_scope(Bucket, Name, Req) ->
     assert_api_available(Bucket),
-    handle_rv(collections:drop_scope(Bucket, Name), Req).
+    RV = collections:drop_scope(Bucket, Name),
+    maybe_audit(RV, ns_audit:drop_scope(Req, Bucket, Name, _)),
+    handle_rv(RV, Req).
 
 handle_delete_collection(Bucket, Scope, Name, Req) ->
     assert_api_available(Bucket),
-    handle_rv(collections:drop_collection(Bucket, Scope, Name), Req).
+    RV = collections:drop_collection(Bucket, Scope, Name),
+    maybe_audit(RV, ns_audit:drop_collection(Req, Bucket, Scope, Name, _)),
+    handle_rv(RV, Req).
 
 handle_set_manifest(Bucket, Req) ->
     assert_api_available(Bucket),
@@ -91,9 +104,12 @@ handle_set_manifest(Bucket, Req) ->
       fun (KVList) ->
               Scopes = proplists:get_value(scopes, KVList),
               Identity = menelaus_auth:get_identity(Req),
-              handle_rv(
-                collections:set_manifest(Bucket, Identity, Scopes, ValidOnUid),
-                Req)
+              RV = collections:set_manifest(Bucket, Identity, Scopes,
+                                            ValidOnUid),
+              InputManifest = mochiweb_request:recv_body(Req),
+              maybe_audit(RV, ns_audit:set_manifest(Req, Bucket, InputManifest,
+                                                    ValidOnUid, _)),
+              handle_rv(RV, Req)
       end, Req, json,
       [validator:required(scopes, _),
        validate_scopes(scopes, _),

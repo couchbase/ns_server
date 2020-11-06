@@ -1308,6 +1308,109 @@
           "optional_fields" : {
               "sessionid" : ""
           }
+      },
+      {
+          "id" : 8259,
+          "name" : "create scope",
+          "description" : "Scope was created",
+          "sync" : false,
+          "enabled" : true,
+          "filtering_permitted" : false,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"domain" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "local" : {"ip" : "", "port" : 1},
+              "bucket_name" : "",
+              "scope_name" : "",
+              "new_manifest_uid" : ""
+          },
+          "optional_fields" : {
+              "sessionid" : ""
+          }
+      },
+      {
+          "id" : 8260,
+          "name" : "drop scope",
+          "description" : "Scope was dropped",
+          "sync" : false,
+          "enabled" : true,
+          "filtering_permitted" : false,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"domain" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "local" : {"ip" : "", "port" : 1},
+              "bucket_name" : "",
+              "scope_name" : "",
+              "new_manifest_uid" : ""
+          },
+          "optional_fields" : {
+              "sessionid" : ""
+          }
+      },
+      {
+          "id" : 8261,
+          "name" : "create collection",
+          "description" : "Collection was created",
+          "sync" : false,
+          "enabled" : true,
+          "filtering_permitted" : false,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"domain" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "local" : {"ip" : "", "port" : 1},
+              "bucket_name" : "",
+              "scope_name" : "",
+              "collection_name" : "",
+              "new_manifest_uid" : ""
+          },
+          "optional_fields" : {
+              "sessionid" : ""
+          }
+      },
+      {
+          "id" : 8262,
+          "name" : "drop collection",
+          "description" : "Collection was dropped",
+          "sync" : false,
+          "enabled" : true,
+          "filtering_permitted" : false,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"domain" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "local" : {"ip" : "", "port" : 1},
+              "bucket_name" : "",
+              "scope_name" : "",
+              "collection_name" : "",
+              "new_manifest_uid" : ""
+          },
+          "optional_fields" : {
+              "sessionid" : ""
+          }
+      },
+      {
+          "id" : 8263,
+          "name" : "set manifest",
+          "description" : "Setting bucket manifest",
+          "sync" : false,
+          "enabled" : true,
+          "filtering_permitted" : false,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"domain" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "local" : {"ip" : "", "port" : 1},
+              "bucket_name" : "",
+              "input_manifest" : "",
+              "new_manifest_uid" : ""
+          },
+          "optional_fields" : {
+              "valid_on_uid" : "",
+              "sessionid" : ""
+          }
       }
     ]
 }
