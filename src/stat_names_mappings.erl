@@ -54,13 +54,21 @@ pre_70_stats_to_prom_query(StatSection, List) ->
     prometheus:format_promql({'or', AstList}).
 
 pre_70_stat_to_prom_query("@system", Stat) ->
-    {ok, {[{eq, <<"name">>, <<"sys_", Stat/binary>>}]}};
+    case is_system_stat(Stat) of
+        true -> {ok, {[{eq, <<"name">>, <<"sys_", Stat/binary>>}]}};
+        false -> {error, not_found}
+    end;
 
 pre_70_stat_to_prom_query("@system-processes", Stat) ->
     case binary:split(Stat, <<"/">>) of
         [ProcName, MetricName] ->
-            {ok, {[{eq, <<"name">>, <<"sysproc_", MetricName/binary>>},
-                   {eq, <<"proc">>, ProcName}]}};
+            case is_sysproc_stat(MetricName) of
+                true ->
+                    {ok, {[{eq, <<"name">>, <<"sysproc_", MetricName/binary>>},
+                           {eq, <<"proc">>, ProcName}]}};
+                false ->
+                    {error, not_found}
+            end;
         _ ->
             {error, not_found}
     end;
@@ -75,7 +83,7 @@ pre_70_stat_to_prom_query("@query", <<"query_", Stat/binary>>) ->
         false -> {ok, rate({[{eq, <<"name">>, <<"n1ql_", Stat/binary>>}]})}
     end;
 
-pre_70_stat_to_prom_query("@fts", Stat) ->
+pre_70_stat_to_prom_query("@fts", <<"fts_", _/binary>> = Stat) ->
     {ok, {[{eq, <<"name">>, Stat}]}};
 
 pre_70_stat_to_prom_query("@fts-" ++ Bucket, <<"fts/", Stat/binary>>) ->
@@ -93,7 +101,7 @@ pre_70_stat_to_prom_query("@index", <<"index_remaining_ram">>) ->
                  metric(<<"index_memory_used_total">>)]})};
 pre_70_stat_to_prom_query("@index", <<"index_memory_used">>) ->
     {ok, metric(<<"index_memory_used_total">>)};
-pre_70_stat_to_prom_query("@index", Stat) ->
+pre_70_stat_to_prom_query("@index", <<"index_", _/binary>> = Stat) ->
     {ok, metric(Stat)};
 
 pre_70_stat_to_prom_query("@index-" ++ Bucket, <<"index/", Stat/binary>>) ->
@@ -577,6 +585,25 @@ default_stat_list("@eventing") ->
     [<<"eventing/*/", (bin(S))/binary>> || S <- Stats];
 default_stat_list("@eventing-" ++ _) ->
     [].
+
+is_system_stat(<<"cpu_", _/binary>>) -> true;
+is_system_stat(<<"swap_", _/binary>>) -> true;
+is_system_stat(<<"mem_", _/binary>>) -> true;
+is_system_stat(<<"rest_requests">>) -> true;
+is_system_stat(<<"hibernated_", _/binary>>) -> true;
+is_system_stat(<<"odp_report_failed">>) -> true;
+is_system_stat(<<"allocstall">>) -> true;
+is_system_stat(_) -> false.
+
+is_sysproc_stat(<<"major_faults">>) -> true;
+is_sysproc_stat(<<"minor_faults">>) -> true;
+is_sysproc_stat(<<"page_faults">>) -> true;
+is_sysproc_stat(<<"mem_", _/binary>>) -> true;
+is_sysproc_stat(<<"cpu_utilization">>) -> true;
+is_sysproc_stat(<<"minor_faults_raw">>) -> true;
+is_sysproc_stat(<<"major_faults_raw">>) -> true;
+is_sysproc_stat(<<"page_faults_raw">>) -> true;
+is_sysproc_stat(_) -> false.
 
 -ifdef(TEST).
 pre_70_to_prom_query_test_() ->
