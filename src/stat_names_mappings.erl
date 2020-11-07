@@ -37,8 +37,14 @@ handle_stats_mapping_get(Section, StatTokens, Req) ->
 
 pre_70_stats_to_prom_query("@system", all) ->
     <<"{category=`system`}">>;
-pre_70_stats_to_prom_query("@system-processes", all) ->
-    <<"{category=`system-processes`}">>;
+pre_70_stats_to_prom_query("@system-processes" = Section, all) ->
+    SpecialMetrics =
+        [<<"*/major_faults">>, <<"*/minor_faults">>, <<"*/page_faults">>],
+    AstList =
+        [{[{eq, <<"category">>, <<"system-processes">>}]}] ++
+        [Ast || M <- SpecialMetrics,
+                {ok, Ast} <- [pre_70_stat_to_prom_query(Section, M)]],
+    prometheus:format_promql({'or', AstList});
 pre_70_stats_to_prom_query("@global", all) ->
     <<"{category=`audit`}">>;
 pre_70_stats_to_prom_query(StatSection, all) ->
@@ -61,6 +67,13 @@ pre_70_stat_to_prom_query("@system", Stat) ->
 
 pre_70_stat_to_prom_query("@system-processes", Stat) ->
     case binary:split(Stat, <<"/">>) of
+        [ProcName, Counter] when Counter == <<"major_faults">>;
+                                 Counter == <<"minor_faults">>;
+                                 Counter == <<"page_faults">> ->
+            Name = <<"sysproc_", Counter/binary>>,
+            Metric = {[{eq, <<"name">>, <<Name/binary, "_raw">>}] ++
+                      [{eq, <<"proc">>, ProcName} || ProcName =/= <<"*">>]},
+            {ok, named(Name, rate(Metric))};
         [ProcName, MetricName] ->
             case is_sysproc_stat(MetricName) of
                 true ->
@@ -615,7 +628,14 @@ pre_70_to_prom_query_test_() ->
            end,
     [Test("@system", all, "{category=`system`}"),
      Test("@system", [], ""),
-     Test("@system-processes", all, "{category=`system-processes`}"),
+     Test("@system-processes", all,
+          "{category=`system-processes`} or "
+          "label_replace(irate({name=`sysproc_major_faults_raw`}[1m]),"
+                        "`name`,`sysproc_major_faults`,``,``) or "
+          "label_replace(irate({name=`sysproc_minor_faults_raw`}[1m]),"
+                        "`name`,`sysproc_minor_faults`,``,``) or "
+          "label_replace(irate({name=`sysproc_page_faults_raw`}[1m]),"
+                        "`name`,`sysproc_page_faults`,``,``)"),
      Test("@system-processes", [], ""),
      Test("@system-processes", [<<"ns_server/cpu_utilization">>,
                                 <<"ns_server/mem_resident">>,

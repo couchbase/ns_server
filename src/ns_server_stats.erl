@@ -235,7 +235,7 @@ recv_data_with_length(Port, Acc, WantedLength) ->
             end
     end.
 
-unpack_data({Bin, LocalStats}, PrevSample, State) ->
+unpack_data({Bin, LocalStats}, PrevCounters, State) ->
     <<_Version:32/native,
       StructSize:32/native,
       CPUTotalMS:64/native,
@@ -255,16 +255,8 @@ unpack_data({Bin, LocalStats}, PrevSample, State) ->
 
     StructSize = erlang:size(Bin),
 
-    {PrevCounters, PrevSampleProcs} =
-        case PrevSample of
-            undefined ->
-                {undefined, []};
-            _ ->
-                PrevSample
-        end,
+    NowSamplesProcs0 = unpack_processes(Rest, State),
 
-    {NowSamplesProcs0, PrevSampleProcs1} =
-        unpack_processes(Rest, PrevSampleProcs, State),
     NowSamplesProcs =
         case NowSamplesProcs0 of
             [] ->
@@ -304,13 +296,11 @@ unpack_data({Bin, LocalStats}, PrevSample, State) ->
                      {allocstall, AllocStall}]
         end,
 
-    {{NowSamplesGlobal, NowSamplesProcs}, {Counters, PrevSampleProcs1}}.
+    {{NowSamplesGlobal, NowSamplesProcs}, Counters}.
 
-unpack_processes(Bin, PrevSample, State) ->
-    {NewSample0, NewPrevSample0} =
-        do_unpack_processes(Bin, {[], []}, PrevSample, State),
-
-    {collapse_duplicates(NewSample0), collapse_duplicates(NewPrevSample0)}.
+unpack_processes(Bin, State) ->
+    NewSample0 = do_unpack_processes(Bin, [], State),
+    collapse_duplicates(NewSample0).
 
 collapse_duplicates(Sample) ->
     Sorted = lists:keysort(1, Sample),
@@ -321,10 +311,9 @@ do_collapse_duplicates({K, V1}, [{K, V2} | Acc]) ->
 do_collapse_duplicates(KV, Acc) ->
     [KV | Acc].
 
-do_unpack_processes(Bin, Acc, _, _) when size(Bin) =:= 0 ->
+do_unpack_processes(Bin, Acc, _) when size(Bin) =:= 0 ->
     Acc;
-do_unpack_processes(Bin, {NewSampleAcc, NewPrevSampleAcc} = Acc, PrevSample,
-                    State) ->
+do_unpack_processes(Bin, NewSampleAcc, State) ->
     <<Name0:60/binary,
       CpuUtilization:32/native,
       Pid:64/native,
@@ -340,23 +329,12 @@ do_unpack_processes(Bin, {NewSampleAcc, NewPrevSampleAcc} = Acc, PrevSample,
     RawName = extract_string(Name0),
     case RawName of
         <<>> ->
-            Acc;
+            NewSampleAcc;
         _ ->
             Name = adjust_process_name(Pid, RawName, State),
 
-            OldMinorFaults = proc_stat(Name, minor_faults, PrevSample, 0),
-            OldMajorFaults = proc_stat(Name, major_faults, PrevSample, 0),
-            OldPageFaults = proc_stat(Name, page_faults, PrevSample, 0),
-
-            MinorFaultsDiff = MinorFaults - OldMinorFaults,
-            MajorFaultsDiff = MajorFaults - OldMajorFaults,
-            PageFaultsDiff = PageFaults - OldPageFaults,
-
             NewSample =
-                [{proc_stat_name(Name, major_faults), MajorFaultsDiff},
-                 {proc_stat_name(Name, minor_faults), MinorFaultsDiff},
-                 {proc_stat_name(Name, page_faults), PageFaultsDiff},
-                 {proc_stat_name(Name, mem_size), MemSize},
+                [{proc_stat_name(Name, mem_size), MemSize},
                  {proc_stat_name(Name, mem_resident), MemResident},
                  {proc_stat_name(Name, mem_share), MemShare},
                  {proc_stat_name(Name, cpu_utilization), CpuUtilization},
@@ -364,14 +342,8 @@ do_unpack_processes(Bin, {NewSampleAcc, NewPrevSampleAcc} = Acc, PrevSample,
                  {proc_stat_name(Name, major_faults_raw), MajorFaults},
                  {proc_stat_name(Name, page_faults_raw), PageFaults}],
 
-            NewPrevSampleAcc1 =
-                [{proc_stat_name(Name, major_faults), MajorFaults},
-                 {proc_stat_name(Name, minor_faults), MinorFaults},
-                 {proc_stat_name(Name, page_faults), PageFaults}
-                 | NewPrevSampleAcc],
-
-            Acc1 = {NewSample ++ NewSampleAcc, NewPrevSampleAcc1},
-            do_unpack_processes(Rest, Acc1, PrevSample, State)
+            Acc1 = NewSample ++ NewSampleAcc,
+            do_unpack_processes(Rest, Acc1, State)
     end.
 
 extract_string(Bin) ->
@@ -385,14 +357,6 @@ do_extract_string(Bin, Pos) ->
             do_extract_string(Bin, Pos - 1);
         _ ->
             binary:part(Bin, 0, Pos + 1)
-    end.
-
-proc_stat(Name, Stat, Sample, Default) ->
-    case lists:keyfind(proc_stat_name(Name, Stat), 1, Sample) of
-        {_, V} ->
-            V;
-        _ ->
-            Default
     end.
 
 proc_stat_name(Name, Stat) ->
