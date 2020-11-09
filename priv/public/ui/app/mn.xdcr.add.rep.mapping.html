@@ -71,6 +71,7 @@
   </ngb-pagination>
 </div>
 
+<!-- Migration Mode controls ----------------------------------------------- -->
 <div
    [formGroup]="group"
    class="row flex-left margin-bottom-1">
@@ -85,7 +86,9 @@
 
   <span
      class="fa-stack icon-info"
-     ngbTooltip="Something wise here..."
+     ngbTooltip="Use this tool to convert pre-7.0 bucket topologies to use buckets, scopes, and collections
+                 and replicate them to your remote cluster. Unlike typical replications, this replication
+                 should be deleted upon migration success."
      placement="top">
     <span class="icon fa-circle-thin fa-stack-2x"></span>
     <span class="icon fa-info fa-stack-1x"></span>
