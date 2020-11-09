@@ -57,3 +57,4 @@ tmp
 *.iml
 /venv
 *.swp
+/src/kv_stats_mappings.erl

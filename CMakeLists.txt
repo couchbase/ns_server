@@ -89,12 +89,26 @@ ADD_CUSTOM_COMMAND(OUTPUT "${rebar_config}"
   -P "${PROJECT_SOURCE_DIR}/cmake_modules/string-replace.cmake"
   VERBATIM)
 
+IF (NOT ESCRIPT_EXECUTABLE)
+  MESSAGE (FATAL_ERROR "escript not found")
+ENDIF (NOT ESCRIPT_EXECUTABLE)
+
+SET (kv_stats_mapping_src "${PROJECT_SOURCE_DIR}/priv/kv_stats_mappings.txt")
+SET (kv_stats_mapping_target "${PROJECT_SOURCE_DIR}/src/kv_stats_mappings.erl")
+ADD_CUSTOM_TARGET (kv_mappings DEPENDS "${kv_stats_mapping_target}")
+ADD_CUSTOM_COMMAND(OUTPUT "${kv_stats_mapping_target}"
+  COMMAND "${ESCRIPT_EXECUTABLE}"
+          "${PROJECT_SOURCE_DIR}/scripts/generate-kv-stats-mappings.erl"
+          "${kv_stats_mapping_src}"
+          "${kv_stats_mapping_target}"
+  DEPENDS "${kv_stats_mapping_src}")
+
 ADD_CUSTOM_TARGET (ns_distclean)
 ADD_DEPENDENCIES (ns_distclean ns_realclean ns_dataclean)
 
 ADD_SUBDIRECTORY (deps)
 REBAR(TARGET ns_server
-  DEPENDS ns_cfg ale
+  DEPENDS ns_cfg ale kv_mappings
   EUNIT
   EUNIT_DEPENDS triq meck
   CLEAN_HOOK ns_realclean)
