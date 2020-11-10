@@ -55,7 +55,6 @@
          live_bucket_nodes_from_config/1,
          map_to_replicas/1,
          replicated_vbuckets/3,
-         maybe_get_bucket/2,
          moxi_port/1,
          name_conflict/1,
          name_conflict/2,
@@ -128,11 +127,6 @@ get_bucket_from_configs(Bucket, Configs) ->
             {ok, BucketConfig};
         false -> not_present
     end.
-
-maybe_get_bucket(BucketName, undefined) ->
-    get_bucket(BucketName);
-maybe_get_bucket(_, BucketConfig) ->
-    {ok, BucketConfig}.
 
 get_bucket_names() ->
     get_bucket_names(get_buckets()).

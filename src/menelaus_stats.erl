@@ -160,7 +160,7 @@ last_bucket_stats(memcached, BucketName, Nodes) ->
      {memUsed, MemUsed}].
 
 basic_stats(BucketName) ->
-    {ok, BucketConfig} = ns_bucket:maybe_get_bucket(BucketName, undefined),
+    {ok, BucketConfig} = ns_bucket:get_bucket(BucketName),
     QuotaBytes = ns_bucket:ram_quota(BucketConfig),
     BucketType = ns_bucket:bucket_type(BucketConfig),
     BucketNodes = ns_bucket:live_bucket_nodes_from_config(BucketConfig),
