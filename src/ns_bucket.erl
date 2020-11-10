@@ -89,8 +89,7 @@
          config_to_map_options/1,
          needs_rebalance/2,
          can_have_views/1,
-         bucket_view_nodes/1,
-         bucket_config_view_nodes/1,
+         get_view_nodes/1,
          get_num_vbuckets/0,
          get_max_buckets/0,
          bucket_uuid/1,
@@ -855,18 +854,7 @@ can_have_views(BucketConfig) ->
     storage_mode(BucketConfig) =:= couchstore orelse
     storage_mode(BucketConfig) =:= magma.
 
-bucket_view_nodes(Bucket) ->
-    bucket_view_nodes(Bucket, ns_config:latest()).
-
-bucket_view_nodes(Bucket, Config) ->
-    case get_bucket(Bucket, Config) of
-        {ok, BucketConfig} ->
-            bucket_config_view_nodes(BucketConfig);
-        not_present ->
-            []
-    end.
-
-bucket_config_view_nodes(BucketConfig) ->
+get_view_nodes(BucketConfig) ->
     case can_have_views(BucketConfig) of
         true ->
             lists:sort(get_servers(BucketConfig));

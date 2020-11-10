@@ -1634,7 +1634,8 @@ handle_cancel_view_compaction(_PoolId, Bucket, DDocId, Req) ->
     reply(Req, 200).
 
 handle_ddocs_list(PoolId, BucketName, Req) ->
-    Nodes = ns_bucket:bucket_view_nodes(BucketName),
+    {ok, BucketConfig} = ns_bucket:get_bucket(BucketName),
+    Nodes = ns_bucket:get_view_nodes(BucketConfig),
     case run_on_node({?MODULE, get_ddocs_list, [PoolId, BucketName]},
                      Nodes, Req) of
         {ok, DDocs} -> reply_json(Req, DDocs);
