@@ -16,7 +16,7 @@
     <div class="width-8">
 
       <mn-xdcr-mapping
-         *ngIf="replicationSettings | async"
+         *ngIf="(replicationSettings | async) && (isEnterprise | async)"
          [explicitMappingRules]="explicitMappingRules"
          [explicitMappingMigrationRules]="explicitMappingMigrationRules"
          [explicitMappingGroup]="explicitMappingGroup"
@@ -34,13 +34,14 @@
          [group]="form.group"></mn-xdcr-settings>
     </div>
     <div
+       *ngIf="(isEnterprise | async)"
        style="border-left: 1px solid #d1d1d1; margin: 0 16px; flex-basis: 1;"
        class="resp-hide-med">&nbsp;</div>
 
     <mn-xdcr-mapping-rules
        class="width-4"
        style="display:block;"
-       *ngIf="replicationSettings | async"
+       *ngIf="(replicationSettings | async) && (isEnterprise | async)"
        [group]="form.group"
        [explicitMappingRules]="explicitMappingRules"
        [explicitMappingMigrationRules]="explicitMappingMigrationRules"

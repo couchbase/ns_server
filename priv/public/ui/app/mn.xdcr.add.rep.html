@@ -90,6 +90,7 @@
         </span>
       </div>
       <mn-xdcr-mapping
+         *ngIf="(isEnterprise | async)"
          [explicitMappingRules]="explicitMappingRules"
          [explicitMappingMigrationRules]="explicitMappingMigrationRules"
          [explicitMappingGroup]="explicitMappingGroup"
@@ -108,10 +109,12 @@
     </div>
 
     <div
+       *ngIf="(isEnterprise | async)"
        style="border-left: 1px solid #d1d1d1; margin: 0 16px; flex-basis: 1;"
        class="resp-hide-sml">&nbsp;</div>
 
     <mn-xdcr-mapping-rules
+       *ngIf="(isEnterprise | async)"
        class="width-3 block"
        [group]="form.group"
        [explicitMappingRules]="explicitMappingRules"
