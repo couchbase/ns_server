@@ -135,7 +135,7 @@ query_goxdcr(Fun, Method, Path, Timeout) ->
     end.
 
 get_from_goxdcr(Fun, Path, Timeout) ->
-    case ns_cluster_membership:get_cluster_membership(node(), ns_config:latest()) of
+    case ns_cluster_membership:get_cluster_membership(node()) of
         active ->
             try
                 query_goxdcr(Fun, "GET", Path, Timeout)
