@@ -39,7 +39,7 @@
          handle_change_password/1,
          handle_reset_admin_password/1,
          handle_check_permissions_post/1,
-         check_permissions_url_version/1,
+         check_permissions_url_version/0,
          handle_check_permission_for_cbauth/1,
          forbidden_response/1,
          role_to_string/1,
@@ -1344,13 +1344,14 @@ handle_check_permissions_post(Req) ->
             end
     end.
 
-check_permissions_url_version(Config) ->
+check_permissions_url_version() ->
+    Snapshot = ns_bucket:get_snapshot(),
     B = term_to_binary(
-          [cluster_compat_mode:get_compat_version(Config),
+          [cluster_compat_mode:get_compat_version(),
            menelaus_users:get_users_version(),
            menelaus_users:get_groups_version(),
-           menelaus_roles:params_version(),
-           ns_config_auth:get_no_auth_buckets(Config)]),
+           menelaus_roles:params_version(Snapshot),
+           ns_config_auth:get_no_auth_buckets(Snapshot)]),
     base64:encode(crypto:hash(sha, B)).
 
 handle_check_permission_for_cbauth(Req) ->

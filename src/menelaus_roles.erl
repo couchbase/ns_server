@@ -62,7 +62,7 @@
          get_compiled_roles/1,
          compile_roles/3,
          validate_roles/2,
-         params_version/0,
+         params_version/1,
          filter_out_invalid_roles/3,
          produce_roles_by_permission/2,
          get_security_roles/1,
@@ -779,10 +779,10 @@ find_object(Name, Find, GetId) when is_list(Name) ->
             {{Name, GetId(Props)}, Props}
     end.
 
--spec params_version() -> term().
 params_version() ->
     params_version(ns_bucket:get_snapshot()).
 
+-spec params_version(map()) -> term().
 params_version(Snapshot) ->
     [{Name, ns_bucket:bucket_uuid(Props),
       collections:get_uid(
@@ -847,8 +847,7 @@ get_roles({"", anonymous}) ->
             [admin];
         true ->
             [{bucket_full_access, [BucketName]} ||
-                BucketName <- ns_config_auth:get_no_auth_buckets(
-                                ns_config:latest())]
+                BucketName <- ns_config_auth:get_no_auth_buckets()]
     end;
 get_roles({_, admin}) ->
     [admin];
