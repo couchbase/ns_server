@@ -32,7 +32,7 @@
 -define(SAMPLE_BUCKET_QUOTA, 1024 * 1024 * ?SAMPLE_BUCKET_QUOTA_MB).
 
 handle_get(Req) ->
-    Buckets = [Bucket || {Bucket, _} <- ns_bucket:get_buckets(ns_config:get())],
+    Buckets = [Bucket || {Bucket, _} <- ns_bucket:get_buckets()],
 
     Map = [ begin
                 Name = filename:basename(Path, ".zip"),

@@ -69,9 +69,7 @@ init([]) ->
         end,
     ns_pubsub:subscribe_link(ns_config_events, EventHandler),
 
-    Config = ns_config:get(),
-    Buckets = ns_bucket:get_buckets(Config),
-    {ok, #s{buckets = ns_bucket:get_bucket_names(Buckets),
+    {ok, #s{buckets = ns_bucket:get_bucket_names(),
             enabled = memcached_config_mgr:is_external_auth_service_enabled()}}.
 
 handle_call(_Request, _From, State) ->
