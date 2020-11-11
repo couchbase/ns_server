@@ -19,26 +19,29 @@ var keyUtil = require("../lib/keys");
 
 //dom.importCssString(searchboxCss, "ace_searchbox");
 
-var html = `<div class="ace_search">
-    <div class="row" id="find_label">Find</div>
-    <div class="ace_search_form row">
-        <input type="text" class="ace_search_field" placeholder="Search for" spellcheck="false"></input>
-        <span action="findPrev" class="icon angle-icon up"></span>
-        <span action="findNext" class="icon angle-icon down"></span>
-        <span action="hide" class="ace_searchbtn_close">X</span>
+var html = `<div class="ace-search">
+    <div class="row flex-right">
+      <div class="ace-search-options">
+        <button class="ace-search-options-buttons" action="toggleRegexpMode" title="RegExp search">.*</button>
+        <button class="ace-search-options-buttons" action="toggleCaseSensitive" title="case sensitive search">Aa</button>
+        <button class="ace-search-options-buttons" action="toggleWholeWords" title="search whole word">\\b</button>
+      </div>
+      <span action="hide" class="ace-searchbtn-close">X</span>
     </div>
-    <div class="row" id="replace_label">Replace</div>
-    <div class="ace_replace_form">
-        <input class="ace_search_field" placeholder="Replace with" spellcheck="false"></input>
-        <button type="button" action="replaceAndFindNext" class="ace_replacebtn">Replace</button>
-        <button type="button" action="replaceAll" class="ace_replacebtn">All</button>
+    <div class="row ace-search-form">
+      <input type="text" class="ace-search-field" placeholder="Find..." spellcheck="false"></input>
+      <button action="findPrev" class="outline tight icon angle-icon up"></button>
+      <button action="findNext" class="outline tight icon angle-icon down"></button>
     </div>
-    <div class="ace_search_options">
-        <button class="ace_search_options_buttons" action="toggleRegexpMode" class="ace_button" title="RegExp Search">.*</button>
-        <button class="ace_search_options_buttons" action="toggleCaseSensitive" class="ace_button" title="CaseSensitive Search">Aa</s>
-        <button class="ace_search_options_buttons" action="toggleWholeWords" class="ace_button" title="Whole Word Search">\\b</button>
+    <div class="row items-top ace-replace-form">
+      <input type="text" class="ace-search-field" placeholder="Replace with..." spellcheck="false"></input>
+      <div class="flex-grow-half text-right">
+      <button type="button" action="replaceAndFindNext" class="outline tight">Replace</button>
+      <br>
+      <button type="button" action="replaceAll" class="outline tight">All</button>
+      </div>
     </div>
-</div>`.replace(/>\s+/g, ">");
+  </div>`.replace(/>\s+/g, ">");
 
 var SearchBox = function(editor, range, showReplaceForm) {
     var div = dom.createElement("div");
@@ -57,14 +60,14 @@ var SearchBox = function(editor, range, showReplaceForm) {
     };
 
     this.$initElements = function(sb) {
-        this.searchBox = sb.querySelector(".ace_search_form");
-        this.replaceBox = sb.querySelector(".ace_replace_form");
-        this.searchOptions = sb.querySelector(".ace_search_options");
+        this.searchBox = sb.querySelector(".ace-search-form");
+        this.replaceBox = sb.querySelector(".ace-replace-form");
+        this.searchOptions = sb.querySelector(".ace-search-options");
         this.regExpOption = sb.querySelector("[action=toggleRegexpMode]");
         this.caseSensitiveOption = sb.querySelector("[action=toggleCaseSensitive]");
         this.wholeWordOption = sb.querySelector("[action=toggleWholeWords]");
-        this.searchInput = this.searchBox.querySelector(".ace_search_field");
-        this.replaceInput = this.replaceBox.querySelector(".ace_search_field");
+        this.searchInput = this.searchBox.querySelector(".ace-search-field");
+        this.replaceInput = this.replaceBox.querySelector(".ace-search-field");
         this.findLabel = sb.querySelector("#find_label");
         this.replaceLabel = sb.querySelector("#replace_label");
     };
